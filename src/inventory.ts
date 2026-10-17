@@ -10,7 +10,7 @@
 import { bagSize, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, partsOf, quality, repaired, slotLabel } from '../shared/gear.ts';
 import { HOTBAR, ITEMS, type Item, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
-import { RARITY, TIERS } from '../shared/salvage.ts';
+import { RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -166,7 +166,10 @@ function partIcon(kind: string) {
   const letter = (ITEMS[kind]?.label.split(' ').pop() ?? '?')[0].toUpperCase();
   return `<img src="./icons/items/${kind}.png" alt="" draggable="false" onerror="this.outerHTML='<b class=&quot;tile&quot;>${letter}</b>'">`;
 }
-export const itemIcon = (kind: string) => ICONS[kind] ?? (partOf(kind) ? partIcon(kind) : `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`);
+/** Carried salvage wrecks use their Blender-rendered icons, public/icons/salvage/<id>.png (tools/blender/salvage). */
+const salvageIcon = (kind: string) => `<img src="./icons/salvage/${kind}.png" alt="" draggable="false">`;
+export const itemIcon = (kind: string) =>
+  ICONS[kind] ?? (partOf(kind) ? partIcon(kind) : kind in SALVAGE ? salvageIcon(kind) : `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`);
 export const itemLabel = (kind: string) => ITEMS[kind]?.label ?? kind;
 
 /** Quality as a rarity name (rounded down: three Common parts and one Rare is still Common... ish). */

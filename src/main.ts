@@ -46,11 +46,12 @@ import { Telescope } from './telescope';
 import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { machinesAt } from '../shared/crash.ts';
-import { COMPONENTS } from '../shared/salvage.ts';
+import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
 import { equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS } from '../shared/gear.ts';
 import { LootView, lootName } from './world/loot';
 import { Detector } from './detector';
 import { tools } from './input';
+import { Wrecks } from './world/wrecks';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -77,13 +78,14 @@ const windSound = new WindSound();
 const engineSound = new EngineSound();
 const storm = new StormFx();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
+const wrecks = new Wrecks(scene); // salvage wrecks out in the desert, carried home to the disassembly table
 const teardown = new TeardownView(scene, orbit.camera); // F at a machine site: the character walks up and the disassembly controls take over
 machines.busy = () => teardown.current?.id;
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
   const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, teardown, placedView } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView } });
 }
 
 const net = new Net(getBrowserId());
@@ -288,11 +290,12 @@ renderer.setAnimationLoop((time) => {
   const wrist = equipped(net.boxes.equip, 'wrist');
   const range = wrist ? locatorRange(quality(wrist)) : 0;
   locator.lost = storm.lost || !wrist;
-  locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range));
+  locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z)]);
   terrain.update(focus);
   scrap.update(focus);
   crashSites.update(focus);
   machines.update(focus);
+  wrecks.update(focus);
   sky.update(frameDt, focus, orbit.camera, net.worldTime());
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
@@ -323,7 +326,10 @@ renderer.setAnimationLoop((time) => {
   // it lies. A carried one is taken apart on the base's disassembly table.
   const site = net.connected && !teardown.active && station < 0 && !bed && !target && !find ? machines.nearest(net.me.x, net.me.z) : null;
   const small = site ? COMPONENTS[site.site.kind].carry : false;
-  const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`) : null;
+  // Salvage wrecks (src/world/wrecks.ts) are always carried home.
+  const wreck = net.connected && !teardown.active && station < 0 && !bed && !target && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
+  const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`)
+    : wreck ? `Pick up ${SALVAGE[wreck.kind].label.toLowerCase()}` : null;
   const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
   const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use disassembly table');
   const fPrompt = use ?? tend ?? target ?? findPrompt ?? sitePrompt;
@@ -341,7 +347,7 @@ renderer.setAnimationLoop((time) => {
           machines.bench.ask();
           net.crashUse(table.kind);
         }
-      } else hud.toast('Carry a small machine here to take it apart');
+      } else hud.toast('Carry a small machine or a wreck here to take it apart');
     } else if (tend && bed) net.tend(bed.id);
     else if (target) {
       if (net.pickup(target)) pickupSound.play();
@@ -352,7 +358,7 @@ renderer.setAnimationLoop((time) => {
     } else if (site) {
       if (small) net.crashTake(site.site.id);
       else teardown.begin(machines.workSite(site, net.siteLink(site.site.id)));
-    }
+    } else if (wreck) net.crashTake(wreck.id);
   }
   const targeted = use !== null || tend !== null || target !== null || findPrompt !== null || sitePrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));

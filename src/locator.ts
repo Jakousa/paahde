@@ -2,7 +2,8 @@
 // per far-away player at their bearing relative to where you look. The bar spans the horizontal FOV;
 // players behind you pin to its ends, dimmed. Dots shrink with distance, and an arrow marks players
 // well above or below your view. Close players (name tag in view) get no dot. The home base gets a
-// house-shaped marker the same way, so you can always find your way back (except in a sandstorm).
+// house-shaped marker the same way, so you can always find your way back (except in a sandstorm). Salvage
+// wrecks lying within a few hundred metres (src/world/wrecks.ts) get a diamond.
 import type * as THREE from 'three/webgpu';
 import { BASE } from '../shared/base.ts';
 
@@ -10,7 +11,7 @@ const NEAR = 25; // m: closer than this, no dot (fades in over the next FADE met
 const FADE = 10;
 const ELEVATION = 0.35; // rad off the view's pitch before the up/down arrow shows
 
-export type LocatorTarget = { id: number; color: number; x: number; y: number; z: number };
+export type LocatorTarget = { id: number; color: number; x: number; y: number; z: number; shape?: 'wreck' };
 
 const BASE_ID = -1; // player ids are positive
 const BASE_TARGET: LocatorTarget = { id: BASE_ID, color: 0xf2e6c8, x: BASE.x, y: BASE.y, z: BASE.z };
@@ -26,6 +27,9 @@ const css = `
 #locator .dot.base { border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 1px rgba(20, 10, 5, 0.9)); }
 #locator .dot.base::before { content: ''; position: absolute; inset: 0; background: currentColor;
   clip-path: polygon(50% 0, 100% 48%, 84% 48%, 84% 100%, 16% 100%, 16% 48%, 0 48%); }
+#locator .dot.wreck { border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 1px rgba(20, 10, 5, 0.9)); }
+#locator .dot.wreck::before { content: ''; position: absolute; inset: 0; background: currentColor;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
 `;
 
 export class LocatorBar {
@@ -56,7 +60,7 @@ export class LocatorBar {
       let d = this.dots.get(p.id);
       if (!d) {
         d = { el: document.createElement('div'), arrow: document.createElement('div') };
-        d.el.className = isBase ? 'dot base' : 'dot';
+        d.el.className = isBase ? 'dot base' : p.shape === 'wreck' ? 'dot wreck' : 'dot';
         d.arrow.className = 'arrow';
         d.el.appendChild(d.arrow);
         this.bar.appendChild(d.el);
@@ -72,7 +76,7 @@ export class LocatorBar {
       s.left = `${(Math.max(-1, Math.min(1, u)) * 0.5 + 0.5) * 100}%`;
       s.width = s.height = `${size}px`;
       s.color = color;
-      s.background = isBase ? '' : color;
+      s.background = isBase || p.shape ? '' : color;
       s.opacity = String(fade * (outside ? 0.45 : 1));
       const elev = Math.atan2(dy, flat) - pitch;
       d.arrow.textContent = elev > ELEVATION ? '▲' : elev < -ELEVATION ? '▼' : '';
