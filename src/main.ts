@@ -5,6 +5,7 @@ import { FirstPersonCamera } from './camera';
 import { DigFx } from './dig';
 import { footprints } from './footprints';
 import { readInput } from './input';
+import { LocatorBar } from './locator';
 import { getBrowserId, Net } from './net';
 import { Avatar } from './players';
 import { Post } from './post';
@@ -35,6 +36,7 @@ const me = new Avatar(0xffffff);
 me.root.visible = false; // first person: only remote players are drawn
 scene.add(me.root, footprints.mesh);
 const remotes = new Map<number, Avatar>();
+const locator = new LocatorBar();
 
 window.addEventListener('resize', () => {
   orbit.resize();
@@ -89,6 +91,7 @@ renderer.setAnimationLoop((time) => {
 
   focus.copy(me.root.position);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded }, frameDt);
+  locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
   sky.update(frameDt, focus);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
