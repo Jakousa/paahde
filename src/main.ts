@@ -156,7 +156,7 @@ const RIDE_EYE_AHEAD = 0.15;
 const locator = new LocatorBar();
 const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
-const menu = new Menu(renderer.domElement);
+const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
 net.onTended = (what) => hud.toast(what === 'planted' ? 'Seeds planted' : 'Harvested the greens');
 net.onPlaced = () => placedView.sync(placed, net.garden);

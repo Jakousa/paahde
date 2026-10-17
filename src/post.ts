@@ -7,6 +7,7 @@ import {
 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
   hazeColor, hazeColorFor, hazeDensity, heatHaze, stormDiscs, stormGround, stormHere, sunColor, sunDirection,
@@ -76,6 +77,8 @@ export class Post {
   private exposure = uniform(1);
   /** How directly we are staring into the (unoccluded) sun, 0..1 — drives veiling glare. */
   private stare = uniform(0);
+  /** Ambient occlusion strength, 0 (off) .. 1; set from the Esc menu. */
+  private aoIntensity = uniform(0.7);
   private camNear = uniform(0.1);
   private camFar = uniform(6000);
   private camWorld = uniform(new THREE.Matrix4());
@@ -99,7 +102,15 @@ export class Post {
     const depth = scenePass.getTextureNode('depth');
     const viewZ = scenePass.getViewZNode();
 
-    const { sunUV, sunOnScreen, sunRadiusUV, horizonY, aspect, exposure, stare, camNear, camFar } = this;
+    const { sunUV, sunOnScreen, sunRadiusUV, horizonY, aspect, exposure, stare, camNear, camFar, aoIntensity } = this;
+
+    // Normals are rebuilt from depth (no MRT), at half resolution to keep it cheap.
+    const aoPass = ao(depth, null as unknown as Node, camera);
+    aoPass.resolutionScale = 0.5;
+    aoPass.radius.value = 1.2;
+    aoPass.thickness.value = 1;
+    aoPass.scale.value = 1.5;
+    const aoTex = aoPass.getTextureNode();
 
     // --- Heat haze: vertically stretched, upward-scrolling noise warps the frame near the horizon,
     // only for distant ground (and a thin band of sky just above the horizon, so the sun's lower
@@ -120,7 +131,9 @@ export class Post {
       // sample is itself far away.
       const wDist = perspectiveDepthToViewZ(depth.sample(warped).r, camNear, camFar).negate();
       const keep = smoothstep(15, 30, wDist);
-      return color.sample(mix(p, warped, keep)).rgb;
+      // Ambient occlusion darkens creases (GTAO from the scene depth); the slider scales it.
+      const occl = mix(float(1), aoTex.sample(p).r, aoIntensity);
+      return color.sample(mix(p, warped, keep)).rgb.mul(occl);
     })();
 
     // --- Sandstorms (shared/storm.ts): each is a dust column, a vertical cylinder whose dust fades out
@@ -301,6 +314,10 @@ export class Post {
 
     this.pipeline = new THREE.RenderPipeline(renderer, graded);
     this.pipeline.outputColorTransform = false;
+  }
+
+  setAoIntensity(v: number) {
+    this.aoIntensity.value = v;
   }
 
   /** Project the sun and horizon to screen, run eye adaptation, render. */

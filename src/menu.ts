@@ -6,6 +6,7 @@ import { audio } from './audio';
 import { capture, toggleFullscreen, tools, ui } from './input';
 
 const STATS_KEY = 'dadajam.stats';
+const AO_KEY = 'dadajam.ao';
 
 const css = `
 #menu { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center;
@@ -22,7 +23,7 @@ const css = `
 #menu .row > span:first-child { width: 80px; }
 #menu input[type=range] { flex: 1; accent-color: #ffd9a0; }
 #menu input[type=checkbox] { accent-color: #ffd9a0; margin: 0; }
-#menu .val { width: 36px; text-align: right; opacity: 0.8; }
+#menu .val, #menu .aoval { width: 36px; text-align: right; opacity: 0.8; }
 #menu .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; opacity: 0.85; }
 #menu kbd { font: 600 11px var(--mono); color: #ffd9a0; }
 #menu .foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
@@ -43,7 +44,7 @@ export class Menu {
   private stats = false;
   private lastInfo = '';
 
-  constructor(canvas: HTMLElement) {
+  constructor(canvas: HTMLElement, onAo: (intensity: number) => void) {
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
@@ -57,6 +58,7 @@ export class Menu {
 <h3>Settings</h3>
 <label class="row"><span>Volume</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
 <label class="row"><span>Music</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label>
+<label class="row"><span>Occlusion</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
 <label class="row"><span>Show stats</span><input class="stats" type="checkbox"></label>
 <button class="fs" style="margin-top:8px"></button>
 <h3>Controls</h3><div class="keys">${KEYS.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('')}</div>
@@ -82,6 +84,24 @@ export class Menu {
       audio.setMusicVolume(parseFloat(music.value));
       showMusic();
     });
+    const aoEl = this.el.querySelector<HTMLInputElement>('.ao')!;
+    const aoVal = this.el.querySelector<HTMLElement>('.aoval')!;
+    let aoLevel = 0.7;
+    try {
+      const saved = parseFloat(localStorage.getItem(AO_KEY) ?? '');
+      if (Number.isFinite(saved)) aoLevel = Math.min(Math.max(saved, 0), 1);
+    } catch {}
+    aoEl.value = String(aoLevel);
+    aoVal.textContent = `${Math.round(aoLevel * 100)}%`;
+    onAo(aoLevel);
+    aoEl.addEventListener('input', () => {
+      aoLevel = parseFloat(aoEl.value);
+      aoVal.textContent = `${Math.round(aoLevel * 100)}%`;
+      onAo(aoLevel);
+      try {
+        localStorage.setItem(AO_KEY, String(aoLevel));
+      } catch {}
+    });
     const stats = this.el.querySelector<HTMLInputElement>('.stats')!;
     stats.checked = this.stats;
     stats.addEventListener('change', () => {
@@ -92,7 +112,7 @@ export class Menu {
       } catch {}
     });
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
-    for (const input of [vol, music, stats]) input.addEventListener('change', () => input.blur());
+    for (const input of [vol, music, aoEl, stats]) input.addEventListener('change', () => input.blur());
 
     const fs = this.el.querySelector<HTMLButtonElement>('.fs')!;
     const showFs = () => (fs.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen');
