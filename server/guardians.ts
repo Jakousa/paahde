@@ -15,7 +15,7 @@ import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
 } from '../shared/missiles.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
-import { allBroken, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
+import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
 import { sunElevation } from '../shared/sun.ts';
 import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
 
@@ -82,7 +82,7 @@ type Guardian = {
 };
 
 /** A walker killed by a rifle (`by` the shooter's id), for the server to drop its parts. */
-export type Kill = { kind: Kind; x: number; z: number; by: number };
+export type Kill = { kind: Kind | 'drone'; x: number; z: number; by: number };
 
 type Missile = { id: number; path: MissilePath; launched: number };
 
@@ -103,6 +103,8 @@ type Drone = {
   until: number;
   /** Beam direction (unit), sent to clients. */
   dx: number; dy: number; dz: number;
+  /** Rifle hits taken; shot down when (-1 flying), falling with velocity (vx, vy, vz), on the sand (crashed). */
+  hurt: number; downAt: number; vx: number; vy: number; vz: number; crashed: boolean;
 };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -124,6 +126,8 @@ export class GuardianServer {
   private sites = allCrashSites();
   private nextDrone = 1;
   private nextWalker = 1;
+  /** Shot-down drones that have hit the sand, for crashes(). */
+  private downed: Kill[] = [];
   /** Crash sites (ids) with crawlers out right now. */
   private swarmed = new Set<number>();
   /** Killed guardians come back (server ms), away from (x, z). */
@@ -409,6 +413,10 @@ export class GuardianServer {
     }
     const v = { x: 0, y: 0, z: 0 };
     for (const d of this.drones) {
+      if (d.downAt >= 0) {
+        this.fall(d, dt);
+        continue;
+      }
       if ((!night && now > d.until) || !players.some((p) => Math.hypot(p.x - d.hx, p.z - d.hz) < DRONE_LONELY)) d.leaving = true;
       let speed = DRONE_SPEED, tx = d.tx, tz = d.tz, alt = DRONE_ALT;
       const prey = d.lock >= 0 ? byId.get(d.lock) : undefined;
@@ -488,8 +496,55 @@ export class GuardianServer {
         }
       }
     }
-    this.drones = this.drones.filter((d) => !d.leaving || d.y < heightAt(d.x, d.z) + DRONE_ALT * 4.5);
+    this.drones = this.drones.filter((d) => d.downAt >= 0 ? now - d.downAt < DRONE_WRECK_S * 1000 : !d.leaving || d.y < heightAt(d.x, d.z) + DRONE_ALT * 4.5);
     return lit;
+  }
+
+  /** A shot-down drone: drops, carried on by its speed, until it hits the sand (and lies there). */
+  private fall(d: Drone, dt: number) {
+    if (d.crashed) return;
+    d.vy -= 9.8 * dt;
+    const drag = Math.exp(-dt * 0.4);
+    d.vx *= drag;
+    d.vz *= drag;
+    d.x += d.vx * dt;
+    d.y += d.vy * dt;
+    d.z += d.vz * dt;
+    const g = heightAt(d.x, d.z) + 0.4;
+    if (d.y <= g) {
+      d.y = g;
+      d.crashed = true;
+      this.downed.push({ kind: 'drone', x: d.x, z: d.z, by: -1 });
+    }
+  }
+
+  /** Drones that hit the sand since the last call (their parts are dropped there). */
+  crashes(): Kill[] {
+    return this.downed.splice(0);
+  }
+
+  /**
+   * Player `by` shot from (x, y, z) to (ex, ey, ez) and says it hit drone `id`: plausible (flying, in range, the shot
+   * passing and ending near it), it takes the hit; the last one brings it down. Returns whether it counted.
+   */
+  shootDrone(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number): boolean {
+    const d = this.drones.find((o) => o.id === id);
+    if (!d || d.downAt >= 0) return false;
+    const dx = ex - x, dy = ey - y, dz = ez - z, len = Math.hypot(dx, dy, dz);
+    if (len > RANGE + 5 || len < 0.1) return false;
+    const t = Math.max(0, Math.min(1, ((d.x - x) * dx + (d.y - y) * dy + (d.z - z) * dz) / (len * len)));
+    // The client draws it 250 ms in the past, and it moves up to CHASE_SPEED: slack for that.
+    const slack = DRONE_HIT + 2;
+    if (Math.hypot(x + dx * t - d.x, y + dy * t - d.y, z + dz * t - d.z) > slack || Math.hypot(ex - d.x, ey - d.y, ez - d.z) > slack * 1.5) return false;
+    if (++d.hurt < DRONE_HP) return true;
+    // Down: it drops, still drifting the way it was going, its light out.
+    d.downAt = now;
+    d.lock = -1;
+    const sp = d.leaving ? CHASE_SPEED : DRONE_SPEED * 0.8;
+    d.vx = Math.sin(d.yaw) * sp + dx / len * 3;
+    d.vz = Math.cos(d.yaw) * sp + dz / len * 3;
+    d.vy = 1.5;
+    return true;
   }
 
   /** Debug menu: the nearest guardian walks in from 90 m away, or a drone comes for a minute. */
@@ -570,7 +625,7 @@ export class GuardianServer {
     const z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hz + Math.cos(a) * from));
     const d: Drone = {
       id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
-      hx, hz, tx: hx, tz: hz, site, lock: -1, litAt: 0, leaving: false, lost: -1, lostUntil: 0, dx: 0, dy: -1, dz: 0, until,
+      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, dx: 0, dy: -1, dz: 0, until,
     };
     // First pass: across the site from where it came in.
     d.tx = hx + rand(-30, 30);
@@ -595,7 +650,8 @@ export class GuardianServer {
     }
     for (const o of this.drones) {
       if (Math.hypot(o.x - x, o.z - z) > SEND_R) continue;
-      d.push(o.id, r2(o.x), r2(o.y), r2(o.z), r3(o.yaw), r3(o.dx), r3(o.dy), r3(o.dz), o.lock < 0 ? 0 : o.lock === id ? 2 : 1);
+      d.push(o.id, r2(o.x), r2(o.y), r2(o.z), r3(o.yaw), r3(o.dx), r3(o.dy), r3(o.dz), o.lock < 0 ? 0 : o.lock === id ? 2 : 1,
+        o.hurt, o.downAt < 0 ? 0 : Math.round((time - o.downAt) / 100) / 10 + 0.01);
     }
     return { t: 'bots', time, g, d };
   }

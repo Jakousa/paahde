@@ -64,9 +64,9 @@ export type ClientMsg =
   // Debug menu: bring the nearest guardian 90 m from you, or a searchlight drone over you for a minute (by day too).
   | { t: 'summon'; what: 'guardian' | 'drone' }
   // A laser rifle shot (shared/rifle.ts) from (x, y, z) to where it stopped, (ex, ey, ez). `g`/`i`: the client found it
-  // hit weak point i of walker g. The server checks the rifle is in hand, the rate and that the shot was aimed at that
+  // hit weak point i of walker g; `d`: it hit drone d. The server checks the rifle is in hand, the rate and that the shot was aimed at that
   // walker, breaks the point, and shows the shot to everyone near ('zap').
-  | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number }
+  | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number; d?: number }
   // Debug menu: repaired gear of every kind, Scrap parts (for testing).
   | { t: 'debugGear' }
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
@@ -185,8 +185,10 @@ export type ServerMsg =
   // Guardians and night drones (shared/guardians.ts) within reach, about 10 times a second, at server time `time`.
   // g: [id, kind, legs, x, z, yaw, hunt, ax, ay, az, gun, broken, dead] per walker (kind: shared/guardians.ts KINDS
   // index; (ax, ay, az) where its cannon aims; gun -1 idle, 0 aiming, 1 charging; broken: bit i set once weak point i
-  // is shot (shared/rifle.ts); dead: 0 alive, else seconds since it died + 0.01); d: [id, x, y, z, yaw, dx, dy, dz, lock] per drone ((dx, dy, dz)
-  // the searchlight's unit direction). hunt / lock: 0 nobody, 1 someone else, 2 you.
+  // is shot (shared/rifle.ts); dead: 0 alive, else seconds since it died + 0.01);
+  // d: [id, x, y, z, yaw, dx, dy, dz, lock, hurt, down] per drone ((dx, dy, dz) the searchlight's unit direction; hurt:
+  // rifle hits taken (shared/rifle.ts DRONE_HP); down: 0 flying, else seconds since it was shot down + 0.01).
+  // hunt / lock: 0 nobody, 1 someone else, 2 you.
   | { t: 'bots'; time: number; g: number[]; d: number[] }
   // Guardian `g` fired laser bolt `id` from (x, y, z) along unit (dx, dy, dz) at server time `time`; it flies at
   // BOLT_SPEED (shared/guardians.ts) until it bursts ('boom': on the ground, a player, or out of range).

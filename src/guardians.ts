@@ -49,6 +49,12 @@ export class GuardianFx {
     this.bolts = new Bolts(scene);
     this.missiles = new Missiles(scene);
     this.guardians.onFootfall = (f) => this.footfall(f);
+    // A shot-down drone hitting the sand: a bang and a clatter.
+    this.drones.onCrash = (x, y, z) => {
+      guardianSound.boom(x, y, z, this.ear);
+      rifleSound.slam({ x, y, z }, this.ear, false);
+      this.thump(x, y, z, 0.6, 0, 0, 0);
+    };
     this.guardians.onEvent = (e) => {
       // A weak point shattered (whoever shot it), a dying walker's leg gave out, its hull hit the sand.
       const heavy = e.kind === GUARDIAN;
@@ -124,7 +130,7 @@ export class GuardianFx {
     const ds = dronesAt(net.bots, t);
     this.guardians.update(gs, dt, focus);
     this.drones.update(ds, dt, focus);
-    guardianSound.drones(ds, this.ear);
+    guardianSound.drones(ds.filter((d) => !d.down), this.ear); // shot-down ones are quiet
     // The horn, once, when one starts hunting you; the cannon's whine as it charges.
     for (const g of gs) {
       if (g.gun === 1 && !this.charging.has(g.id) && Math.hypot(g.x - focus.x, g.z - focus.z) < 250) {

@@ -162,7 +162,7 @@ const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
-const rifle = new Rifle(orbit, net, guardianFx.guardians, (out) => viewmodel.muzzle(out));
+const rifle = new Rifle(orbit, net, guardianFx.guardians, guardianFx.drones, (out) => viewmodel.muzzle(out));
 scene.add(zaps.root);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => placedView.sync(placed, net.garden);

@@ -21,6 +21,7 @@ import { aimDown, breathHeld, useHeld } from './input';
 import { playerHands } from './water';
 import type { Net } from './net';
 import type { Guardians } from './world/guardians';
+import type { Drones } from './world/drones';
 import { zaps } from './world/zaps';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
@@ -82,6 +83,7 @@ export class Rifle {
   private view: FirstPersonCamera;
   private net: Net;
   private guardians: Guardians;
+  private drones: Drones;
   /** Where the drawn muzzle is (src/viewmodel.ts), or null. */
   private muzzle: (out: THREE.Vector3) => THREE.Vector3 | null;
   private el = document.createElement('div');
@@ -113,7 +115,8 @@ export class Rifle {
   forceAim = false;
   forceFire = false;
 
-  constructor(view: FirstPersonCamera, net: Net, guardians: Guardians, muzzle: (out: THREE.Vector3) => THREE.Vector3 | null) {
+  constructor(view: FirstPersonCamera, net: Net, guardians: Guardians, drones: Drones, muzzle: (out: THREE.Vector3) => THREE.Vector3 | null) {
+    this.drones = drones;
     this.view = view;
     this.net = net;
     this.guardians = guardians;
@@ -272,13 +275,18 @@ export class Rifle {
     }
     const hit = this.guardians.raycast(_o, _d, dist);
     if (hit) dist = hit.dist;
+    const drone = this.drones.raycast(_o, _d, dist);
+    if (drone) dist = drone.dist;
     _e.copy(_o).addScaledVector(_d, dist);
     // The beam from the drawn muzzle (or just under the eye).
     const m = this.muzzle(_m) ?? _m.copy(_o).addScaledVector(_d, 0.4).add(_u.set(0, -0.08, 0));
     zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z);
     rifleSound.shot();
     rifleSound.recharge(COOLDOWN_MS / 1000 - 0.08);
-    if (hit) {
+    if (drone) {
+      zaps.burst(_e.x, _e.y, _e.z, -_d.x, -_d.y, -_d.z, 16);
+      rifleSound.impact('metal', _e, _o);
+    } else if (hit) {
       zaps.burst(_e.x, _e.y, _e.z, hit.normal.x, hit.normal.y, hit.normal.z, hit.index >= 0 ? 6 : 16);
       if (hit.index >= 0) this.guardians.breakLocal(hit.walker, hit.index);
       rifleSound.impact(hit.index >= 0 ? 'glass' : 'metal', _e, _o);
@@ -287,7 +295,7 @@ export class Rifle {
       for (let i = 0; i < 3; i++) tyreDust.emit(_e.x, _e.y + 0.1, _e.z, (Math.random() - 0.5) * 1.5, 1 + Math.random(), (Math.random() - 0.5) * 1.5, 0.35);
       rifleSound.impact('sand', _e, _o);
     }
-    this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, hit && hit.index >= 0 ? { g: hit.walker, i: hit.index } : undefined);
+    this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, drone ? { d: drone.drone } : hit && hit.index >= 0 ? { g: hit.walker, i: hit.index } : undefined);
     // Recoil: the muzzle climbs (some of it stays: pull it back down), kicks a little sideways; less held to the eye.
     const ads = playerHands.aim;
     const climb = CLIMB * (1.25 - 0.45 * ads) * (0.85 + Math.random() * 0.3);

@@ -2,12 +2,18 @@
 // searchlight: a glare at the lens, a faint haze cone (back faces only, so it also reads from inside, brightest
 // along its axis and near the lamp, soft at the edges) and a bright pool where it meets the sand. Warm white while
 // it sweeps, red once it has locked on to someone. Purely visual: the server decides who is lit.
+//
+// Shot (shared/rifle.ts): hit once it sparks, trails smoke and wobbles, its light stuttering; brought down, the light
+// dies and it drops, tumbling and spinning down on a smoke trail, crashes in a burst of sparks and dust (onCrash) and
+// smokes on the sand until the server clears it. The rifle tests shots against it here (raycast).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { abs, dot, float, length, normalView, positionViewDirection, pow, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { BEAM_HALF, beamGround } from '../../shared/guardians.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import type { DroneFrame } from './botFrames.ts';
+import { zaps } from './zaps.ts';
+import { tyreDust } from '../tyreDust.ts';
 
 const SHOW_R = 900;
 /** The lamp, in the body frame. */
@@ -80,7 +86,12 @@ type View = {
   glare: THREE.Sprite;
   color: THREE.Color;
   model: boolean;
+  /** Hits seen, the tumble while falling (spin, tip), smoke owed, and whether it has hit the sand. */
+  hurt: number; spin: number; tip: number; smoke: number; crashed: boolean;
 };
+
+/** A drone's body, for the hit test (m, about its centre). */
+const HIT_R = 1.25;
 
 const _lamp = new THREE.Vector3(), _dir = new THREE.Vector3(), _hit = { x: 0, y: 0, z: 0 };
 const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3(), _m = new THREE.Matrix4();
@@ -139,7 +150,7 @@ export class Drones {
     root.add(beam, glare);
     this.scene.add(root, pool);
     beam.userData.tint = tint;
-    return { root, rotors, beam, pool, grid, glare, color, model: model !== null };
+    return { root, rotors, beam, pool, grid, glare, color, model: model !== null, hurt: 0, spin: 0, tip: 0, smoke: 0, crashed: false };
   }
 
   update(frames: DroneFrame[], dt: number, focus: { x: number; z: number }) {
@@ -153,10 +164,31 @@ export class Drones {
         this.drop(v);
         v = undefined;
       }
-      if (!v) this.views.set(f.id, (v = this.make()));
+      if (!v) {
+        this.views.set(f.id, (v = this.make()));
+        // Came into view already hit or down: don't replay it.
+        v.hurt = f.hurt;
+        v.crashed = f.down > 0 && f.y - heightAt(f.x, f.z) < 1;
+      }
+      if (f.hurt > v.hurt) {
+        v.hurt = f.hurt;
+        zaps.burst(f.x, f.y, f.z, 0, -0.3, 0, 22, 1.5);
+      }
+      if (f.down > 0) {
+        this.falling(v, f, dt);
+        continue;
+      }
+      // Hit: trailing smoke and sparks, the light stuttering.
+      if (v.hurt > 0) {
+        v.smoke += dt * 6;
+        for (; v.smoke >= 1; v.smoke--) zaps.puff(f.x, f.y + 0.2, f.z, 0.7, 1.5);
+        if (Math.random() < dt * 3) zaps.burst(f.x, f.y, f.z, 0, -1, 0, 5);
+      }
+      const wob = v.hurt > 0 ? 1 : 0;
       // Hovering: a slow bob and a lean into the way it's going.
       v.root.position.set(f.x, f.y + Math.sin(now * 1.3 + f.id) * 0.25, f.z);
-      v.root.rotation.set(0.08, f.yaw, Math.sin(now * 0.9 + f.id) * 0.04, 'YXZ');
+      v.root.rotation.set(0.08 + wob * Math.sin(now * 5.3) * 0.12, f.yaw, Math.sin(now * 0.9 + f.id) * 0.04 + wob * Math.sin(now * 4.1) * 0.15, 'YXZ');
+      v.glare.visible = v.beam.visible = !wob || Math.sin(now * 23) * Math.sin(now * 7) > -0.6;
       v.rotors.forEach((r, i) => (r.rotation.y += (i % 2 ? -1 : 1) * dt * 60));
       v.color.lerp(f.lock ? RED : WARM, 1 - Math.exp(-dt * 6));
       (v.beam.userData.tint as { value: THREE.Color }).value.copy(v.color);
@@ -192,6 +224,58 @@ export class Drones {
       this.views.delete(id);
     }
   }
+
+  /** Shot down: light out, tumbling down on a smoke trail; then a crash and a smoking wreck. */
+  private falling(v: View, f: DroneFrame, dt: number) {
+    v.beam.visible = v.pool.visible = v.glare.visible = false;
+    const ground = heightAt(f.x, f.z);
+    if (!v.crashed && f.y - ground < 0.9 && f.down > 0.15) {
+      v.crashed = true;
+      zaps.burst(f.x, ground + 0.4, f.z, 0, 1, 0, 60, 3);
+      zaps.beam(f.x, ground + 0.5, f.z, f.x, ground + 0.6, f.z); // just the flash
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        tyreDust.emit(f.x, ground + 0.2, f.z, Math.cos(a) * 3, 1 + Math.random() * 1.5, Math.sin(a) * 3, 0.9);
+      }
+      this.onCrash(f.x, ground, f.z);
+    }
+    if (!v.crashed) {
+      // Spinning up as it drops, tipping over.
+      v.spin += dt * Math.min(9, 2 + f.down * 6);
+      v.tip = Math.min(1.1, v.tip + dt * 0.9);
+      v.rotors.forEach((r, i) => (r.rotation.y += (i % 2 ? -1 : 1) * dt * 25 * Math.max(0, 1 - f.down)));
+      v.smoke += dt * 22;
+      for (; v.smoke >= 1; v.smoke--) zaps.puff(f.x, f.y + 0.2, f.z, 0.9, 0.6);
+      if (Math.random() < dt * 12) zaps.burst(f.x, f.y, f.z, 0, 0, 0, 3);
+    } else {
+      // On the sand, on its side, smoking.
+      v.tip = Math.min(1.25, v.tip + dt * 4);
+      v.smoke += dt * 5;
+      for (; v.smoke >= 1; v.smoke--) zaps.puff(f.x + (Math.random() - 0.5), ground + 0.5, f.z + (Math.random() - 0.5), 1.2, 1.8);
+      if (Math.random() < dt * 0.8) zaps.burst(f.x, ground + 0.5, f.z, 0, 1, 0, 6);
+    }
+    v.root.position.set(f.x, v.crashed ? ground + 0.35 : f.y, f.z);
+    v.root.rotation.set(v.tip, f.yaw + v.spin, v.tip * 0.4, 'YXZ');
+  }
+
+  /** The first flying drone the shot from `o` along unit `d` strikes within `max` m: its id, distance, the point. */
+  raycast(o: THREE.Vector3, d: THREE.Vector3, max: number): { drone: number; dist: number; point: THREE.Vector3 } | null {
+    let best: { drone: number; dist: number; point: THREE.Vector3 } | null = null;
+    for (const [id, v] of this.views) {
+      if (v.crashed || !v.beam.visible && v.tip > 0) continue;
+      const c = v.root.position;
+      const ox = o.x - c.x, oy = o.y - c.y, oz = o.z - c.z;
+      const b = ox * d.x + oy * d.y + oz * d.z, disc = b * b - (ox * ox + oy * oy + oz * oz - HIT_R * HIT_R);
+      if (disc < 0) continue;
+      const t = -b - Math.sqrt(disc);
+      if (t < 0 || t > max || (best && t >= best.dist)) continue;
+      best = { drone: id, dist: t, point: o.clone().addScaledVector(d, t) };
+    }
+    return best;
+  }
+
+  /** A shot-down drone hit the sand at (x, y, z) (src/guardians.ts: the bang). */
+  onCrash: (x: number, y: number, z: number) => void = () => {};
 
   private drop(v: View) {
     v.root.removeFromParent();

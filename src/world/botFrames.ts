@@ -8,7 +8,7 @@ type BotsMsg = Extract<ServerMsg, { t: 'bots' }>;
 /** How far behind the server clock (ms) they're drawn: two updates and some jitter. */
 export const BOT_DELAY_MS = 250;
 export const G_STRIDE = 13;
-export const D_STRIDE = 9;
+export const D_STRIDE = 11;
 
 /** gun: -1 idle, 0 aiming at (ax, ay, az), 1 charging. broken: weak points shot (bit mask, shared/rifle.ts); dead: 0
  *  alive, else seconds since it died. */
@@ -16,7 +16,8 @@ export type GuardianFrame = {
   id: number; kind: Kind; legs: 3 | 4; x: number; z: number; yaw: number; hunt: number; ax: number; ay: number; az: number; gun: number;
   broken: number; dead: number;
 };
-export type DroneFrame = { id: number; x: number; y: number; z: number; yaw: number; dx: number; dy: number; dz: number; lock: number };
+/** hurt: rifle hits taken; down: 0 flying, else seconds since it was shot down. */
+export type DroneFrame = { id: number; x: number; y: number; z: number; yaw: number; dx: number; dy: number; dz: number; lock: number; hurt: number; down: number };
 
 const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
 
@@ -68,7 +69,7 @@ export function dronesAt(msgs: readonly BotsMsg[], time: number): DroneFrame[] {
     const p = i === undefined ? d : a.d, k = i === undefined ? j : i;
     const l = (n: number) => p[k + n] + (d[j + n] - p[k + n]) * t;
     const dx = l(5), dy = l(6), dz = l(7), len = Math.hypot(dx, dy, dz) || 1;
-    out.push({ id: d[j], x: l(1), y: l(2), z: l(3), yaw: lerpAngle(p[k + 4], d[j + 4], t), dx: dx / len, dy: dy / len, dz: dz / len, lock: d[j + 8] });
+    out.push({ id: d[j], x: l(1), y: l(2), z: l(3), yaw: lerpAngle(p[k + 4], d[j + 4], t), dx: dx / len, dy: dy / len, dz: dz / len, lock: d[j + 8], hurt: d[j + 9], down: d[j + 10] });
   }
   return out;
 }

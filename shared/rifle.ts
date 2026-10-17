@@ -31,6 +31,12 @@ export function weakPoints(kind: Kind, legs: 3 | 4): WeakPoint[] {
 /** The hit test's radius over the drawn one, by kind (guardian, crawler). */
 export const HIT_PAD = [1.15, 1.6];
 
+/** Drones (shared/guardians.ts) take DRONE_HP hits; the last brings one down: it falls, crashes and burns for
+ *  DRONE_WRECK_S before the server clears it. A shot counts if it passes within DRONE_HIT m of the drone's centre. */
+export const DRONE_HP = 2;
+export const DRONE_WRECK_S = 25;
+export const DRONE_HIT = 2.5;
+
 /** A dead walker's wreck lies where it fell this long (s), by kind (guardian, crawler), then the server clears it; the
  *  client sinks it into the sand over the last WRECK_SINK s. */
 export const WRECK_S = [180, 40];

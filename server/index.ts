@@ -276,6 +276,7 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const wall = Date.now();
   const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
   const r = guardians.tick(dt, now, tod, list);
+  for (const k of guardians.crashes()) dropSpoils(k);
   for (const p of players.values()) {
     if (r.crushed.includes(p.id)) die(p, 'guardian');
     else if (r.shot.includes(p.id)) die(p, 'laser', boltPush(p, r.events, 'boom', BLAST_R));
@@ -312,19 +313,21 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
   if (Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
   const wall = Date.now();
   const by = { id: p.id, x: s.x, y: s.y, z: s.z, safe: wall - p.heat.diedAt < BOT_GRACE_MS };
-  const r = m.g === undefined ? { hit: false, kill: null } : guardians.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.g, m.i, now);
+  const r = m.d !== undefined ? { hit: guardians.shootDrone(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.d, now), kill: null }
+    : m.g === undefined ? { hit: false, kill: null } : guardians.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.g, m.i, now);
   const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit };
   for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
   if (r.kill) dropSpoils(r.kill);
 }
 
-/** What a killed walker leaves: a guardian a few good parts, a crawler now and then a poor one. */
+/** What a killed walker leaves: a guardian a few good parts, a crawler now and then a poor one; a downed drone one. */
 const SPOILS = ['coil', 'battery', 'compute', 'relay', 'motor', 'bearing'] as const;
 function dropSpoils(k: Kill) {
   const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
-  const n = k.kind === GUARDIAN ? 2 + Math.floor(Math.random() * 2) : Math.random() < 0.35 ? 1 : 0;
+  const n = k.kind === GUARDIAN ? 2 + Math.floor(Math.random() * 2) : k.kind === 'drone' || Math.random() < 0.35 ? 1 : 0;
   for (let i = 0; i < n; i++) {
-    const tier = k.kind === GUARDIAN ? pick(['quality', 'quality', 'space'] as const) : pick(['scrap', 'basic'] as const);
+    const tier = k.kind === GUARDIAN ? pick(['quality', 'quality', 'space'] as const)
+      : k.kind === 'drone' ? pick(['basic', 'quality'] as const) : pick(['scrap', 'basic'] as const);
     loot.dropAt(k.x, k.z, partKind(pick(SPOILS), tier));
   }
 }

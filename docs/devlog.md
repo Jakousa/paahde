@@ -17,6 +17,11 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   then it slams down (dust, shake, crash). The eye stutters out, the gun sags, and it smokes until the server clears
   the wreck (3 min guardians, 40 s crawlers; it sinks into the sand first). A killed guardian drops 2–3 Quality or
   Space-grade parts and is replaced 8 minutes later at a far-off site; a crawler sometimes drops a poor part.
+- **Drones** can be shot down too: two hits. The first makes it spark, trail smoke and wobble with its light
+  stuttering; the second kills the light and it drops (the server simulates the fall, drifting on with its speed),
+  tumbling and spinning down on a smoke trail, crashes with a bang, sparks and dust, smokes on the sand for 25 s and
+  leaves a Basic or Quality part. A downed drone stops calling in missiles. Its site gets a new one once the wreck is
+  cleared (it flies in from 220 m).
 - **Shooting** (src/rifle.ts): hitscan from the eye. Right mouse or X raises it (the RifleAim clip is scrubbed by
   the aim, so it follows the button) into a 4× scope (wheel 2.5–7×) with a duplex reticle and a lit red dot. The aim
   sways like a held rifle: breathing (a slow vertical rise and fall), a figure-of-eight arm tremor and a little noise,
