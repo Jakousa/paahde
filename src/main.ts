@@ -50,7 +50,7 @@ const windSound = new WindSound();
 if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound } });
 
 const net = new Net(getBrowserId());
-new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod));
+new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime());
 const digFx = new DigFx(scene);
 // Remote players play their dig clip for a moment after each stroke the server reports.
 const DIG_ANIM_S = 0.5;

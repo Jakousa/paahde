@@ -84,7 +84,14 @@ export function openDb(path: string) {
   const allBeds = db.prepare('SELECT bed, stage, planted_at FROM garden');
   const upsertBed = db.prepare('INSERT OR REPLACE INTO garden (bed, stage, planted_at) VALUES (?, ?, ?)');
 
+  // Key/value settings (the debug menu's shared-clock shift survives server restarts).
+  db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL NOT NULL)');
+  const getSetting = db.prepare('SELECT value FROM settings WHERE key = ?');
+  const putSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+
   return {
+    getSetting: (key: string) => (getSetting.get(key) as { value: number } | undefined)?.value,
+    setSetting: (key: string, value: number) => putSetting.run(key, value),
     loadBeds: () => allBeds.all() as { bed: number; stage: number; planted_at: number }[],
     saveBed: (bed: number, stage: number, plantedAt: number) => upsertBed.run(bed, stage, plantedAt),
     loadTaken: () => allTaken.all() as { ix: number; iz: number; i: number; taken_at: number }[],

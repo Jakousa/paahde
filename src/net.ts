@@ -195,6 +195,11 @@ export class Net {
     this.send({ t: 'setEpoch', epoch: this.epoch });
   }
 
+  /** Debug menu: put the shared clock back to real time. */
+  resetSharedTime() {
+    this.send({ t: 'setEpoch', epoch: null });
+  }
+
   /** Decay the visual error and interpolate remote players for this render frame. */
   frame(dtSeconds: number): RemotePlayer[] {
     const k = Math.exp(-dtSeconds * 15);

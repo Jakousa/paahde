@@ -13,7 +13,8 @@ export type ClientMsg =
   // Plant or harvest greenhouse bed i (shared/garden.ts BEDS).
   | { t: 'tend'; bed: number }
   // Debug menu: move the shared day/night clock by changing the wall-clock epoch. Ignored in production.
-  | { t: 'setEpoch'; epoch: number };
+  // epoch null = back to the real clock.
+  | { t: 'setEpoch'; epoch: number | null };
 
 // pitch: the player's quantized camera pitch (pitchFromQ in shared/dig.ts), so remote avatars can
 // tilt their heads.

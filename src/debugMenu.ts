@@ -9,7 +9,7 @@ export class DebugMenu {
   private panel = document.createElement('div');
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
-  constructor(currentTod: () => number, shareTod: (tod: number) => void) {
+  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void) {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
@@ -61,6 +61,15 @@ export class DebugMenu {
       if (live.checked) timeControl.override = null;
       else hold(currentTod());
     });
+    const real = document.createElement('button');
+    real.textContent = 'Real time';
+    real.title = 'Shared clock back to the real time (needs "Apply to all players")';
+    real.addEventListener('click', () => {
+      timeControl.override = null;
+      live.checked = true;
+      if (share.checked) resetShared();
+    });
+    row.append(real);
     for (const [name, tod] of PRESETS) {
       const b = document.createElement('button');
       b.textContent = name;
