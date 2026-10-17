@@ -5,8 +5,9 @@
 //
 // Air: a smooth diurnal curve, coolest just before sunrise and hottest mid-afternoon (the ground keeps
 // heating the air after noon, so the peak lags the sun by about two hours, as in real deserts). It warms
-// along a half cosine and cools along a squared half cosine, so the evening drops fast after sunset (dry
-// air radiates heat away) and nights are cold. Both halves have zero slope at the ends: no kinks.
+// along an inverted squared half cosine, so the morning warms fast once the sun is up, and cools along a
+// squared half cosine, so the evening drops fast after sunset (dry air radiates heat away) and nights are
+// cold. Both halves have zero slope at the ends: no kinks.
 //
 // Felt: air, plus up to SUN_BONUS in direct sun (scaled by the sun's height, like sunlight per m²). In
 // shade, SHADE_DROP under the air while the sun is up (cool sand, no glare), fading out as it nears the
@@ -37,7 +38,8 @@ export function airTemp(tod: number): number {
   const warm = AIR_MAX_TOD - AIR_MIN_TOD;
   let f: number;
   if (t >= AIR_MIN_TOD && t < AIR_MAX_TOD) {
-    f = (1 - Math.cos((Math.PI * (t - AIR_MIN_TOD)) / warm)) / 2;
+    const c = (1 - Math.cos((Math.PI * (t - AIR_MIN_TOD)) / warm)) / 2;
+    f = 1 - (1 - c) * (1 - c);
   } else {
     const u = (t - AIR_MAX_TOD + 1) % 1 / (1 - warm); // 0 at the peak → 1 at the next minimum
     const c = (1 + Math.cos(Math.PI * u)) / 2;
