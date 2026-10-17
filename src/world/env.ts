@@ -20,9 +20,11 @@ export const time = uniform(0);
 
 // --- Atmosphere palette (linear; THREE.Color converts the sRGB hex values from docs/look.md) ---
 /** Sky straight up: dusky brown-purple. */
-export const zenithColor = uniform(new THREE.Color(0x2a2438).multiplyScalar(0.8));
+export const zenithColor = uniform(new THREE.Color(0x4a3a3a));
 /** Sky a little above the horizon (between the hot band and the zenith). */
-export const midSkyColor = uniform(new THREE.Color(0x5a3a3e));
+export const midSkyColor = uniform(new THREE.Color(0x8a5040));
+/** Overall gain on the sky above the horizon (the horizon itself stays at the haze colour). `?sky=` overrides. */
+export const skyGain = uniform(Number(new URLSearchParams(location.search).get('sky') ?? 1.6));
 /** Hot horizon band away from the sun. */
 export const horizonColor = uniform(new THREE.Color(0xe07b28));
 /** Horizon band towards the sun. */
@@ -63,7 +65,7 @@ const hg = (mu: F, g: number): F => {
 };
 
 /** Mie halo around the sun (wide washed glow + tight aureole), in units of sunColor. */
-const mieHalo = (mu: F): F => hg(mu, 0.7).mul(0.015).add(hg(mu, 0.9).mul(0.005));
+const mieHalo = (mu: F): F => hg(mu, 0.7).mul(0.03).add(hg(mu, 0.9).mul(0.005));
 /** Halo tint relative to sunColor: more saturated orange than the light itself (docs/look.md). */
 const HALO_TINT = vec3(1.0, 0.4, 0.13);
 
@@ -84,12 +86,12 @@ export const skyRadiance = Fn(([dirIn]: [N]) => {
   // Upper sky: hot band → mid → zenith, the band thicker towards the sun.
   const band = mix(horizonColor, horizonSunColor, toward);
   const yUp = max(y, 0);
-  const bandWidth = mix(float(0.12), float(0.3), toward);
+  const bandWidth = mix(float(0.2), float(0.45), toward);
   // Exponential-ish falloff out of the band reads softer than a smoothstep edge.
   const t = float(1).sub(exp(yUp.div(bandWidth).mul(-2.2)));
-  const dusty = mix(band, midSkyColor, 0.55).mul(0.8);
+  const dusty = mix(band, midSkyColor, 0.55);
   const lower = mix(mix(band, dusty, smoothstep(0, 0.5, t)), midSkyColor, smoothstep(0.4, 1, t));
-  const upper = mix(lower, zenithColor, smoothstep(bandWidth.mul(0.8), 0.9, yUp));
+  const upper = mix(lower, zenithColor, smoothstep(bandWidth.mul(0.8), 0.9, yUp)).mul(skyGain);
   // Blend from the haze colour right at the horizon so fogged terrain meets the sky seamlessly.
   const hazeBase = mix(hazeColor, horizonSunColor, toward.mul(0.7));
   const clear = mix(hazeBase, upper, smoothstep(0.0, 0.06, y));
