@@ -50,6 +50,8 @@ export class ScavengerModel {
   private tint: THREE.MeshStandardMaterial[] = [];
   private neck: THREE.Object3D | null = null;
   private head: THREE.Object3D | null = null;
+  private neckBase = new THREE.Quaternion();
+  private headBase = new THREE.Quaternion();
   private color: number;
   private disposed = false;
 
@@ -80,6 +82,8 @@ export class ScavengerModel {
     });
     this.neck = model.getObjectByName('Neck') ?? null;
     this.head = model.getObjectByName('Head') ?? null;
+    if (this.neck) this.neckBase.copy(this.neck.quaternion);
+    if (this.head) this.headBase.copy(this.head.quaternion);
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
     this.root.add(model);
@@ -128,8 +132,18 @@ export class ScavengerModel {
     else if (speed > RUN_ABOVE) this.play('Run', FADE, clamp(speed / RUN_REF, 0.75, 1.6));
     else if (speed > 0.25) this.play('Walk', FADE, clamp(speed / WALK_REF, 0.6, 1.8));
     else this.play('Idle');
+    // The mixer only writes a bone when its animated value changes, so a constant track (Dig's Neck)
+    // leaves last frame's look tilt in place and it would pile up into a full spin. Undo it first.
+    if (this.neck && this.head) {
+      this.neck.quaternion.copy(this.neckBase);
+      this.head.quaternion.copy(this.headBase);
+    }
     this.mixer.update(dt);
     const pitch = clamp(pose.pitch ?? 0, -1.1, 1.1);
+    if (this.neck && this.head) {
+      this.neckBase.copy(this.neck.quaternion);
+      this.headBase.copy(this.head.quaternion);
+    }
     if (pitch !== 0 && this.neck && this.head) {
       this.root.updateMatrixWorld(true);
       tiltAboutRootX(this.root, this.neck, pitch * 0.4);

@@ -53,6 +53,8 @@ net.onDig = (at, pile, _mine, id) => {
 loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
 const me = new Avatar(0xffffff);
 me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
+const myModel = new ScavengerModel();
+myModel.ready.then(() => me.setModel(myModel, net.color), () => myModel.dispose());
 scene.add(me.root, footprints.mesh);
 const remotes = new Map<number, Avatar>();
 const locator = new LocatorBar();
@@ -94,7 +96,8 @@ renderer.setAnimationLoop((time) => {
   me.setColor(net.color);
   const s = net.me;
   me.update(
-    { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), grounded: s.grounded },
+    { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), grounded: s.grounded,
+    digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch },
     frameDt,
   );
 

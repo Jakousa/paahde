@@ -981,8 +981,8 @@ def idle(p):
     }
     arms_down(pose, 17 + 1.5 * br, 18 - 1.5 * br, l_elbow=14, r_elbow=12, l_swing=3, r_swing=-2)
     legs(pose, 3, 4, -1, -2, 2, 0, l_out=3, r_out=4)
-    pose['Hips'] = rot((Y, -2 * math.sin(w)))
-    return pose, (0.01 * math.sin(w), 0, -0.006 + 0.003 * br)
+    # Legs are FK, so the pelvis must stay put or the feet skate: no hip roll/yaw, only the breathing dip.
+    return pose, (0, 0, -0.006 + 0.003 * br)
 
 
 def walk(p):
@@ -1030,7 +1030,7 @@ def jump(p):
 def dig(p):
     w = 2 * math.pi * p
     s, c = math.sin(w), math.cos(w)
-    pose = {'Hips': rot((X, 12 + 2 * s)), 'Spine': rot((X, 16 + 2 * s), (Z, 6 * s)), 'Spine1': rot((X, 14), (Z, 5 * s)),
+    pose = {'Hips': rot((X, 12)), 'Spine': rot((X, 18 + 2 * s), (Z, 6 * s)), 'Spine1': rot((X, 14), (Z, 5 * s)),
             'Spine2': rot((X, 10)), 'Neck': rot((X, 8)), 'Head': rot((X, 14), (Z, -6 * s))}
     # kneel: left foot planted forward, right knee on the ground
     legs(pose, 82, 98, 6, -8, 98, -40, l_out=8, r_out=4)
@@ -1040,7 +1040,7 @@ def dig(p):
               l_out=-14, r_out=-14)
     pose['LeftHand'] = rot((X, -25 + 30 * lr))
     pose['RightHand'] = rot((X, -25 + 30 * rr))
-    return pose, (0.0, 0.02, -0.47 + 0.01 * s)
+    return pose, (0.0, 0.02, -0.47)
 
 
 def slide(p):
