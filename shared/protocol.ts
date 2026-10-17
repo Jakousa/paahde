@@ -38,18 +38,23 @@ export type ClientMsg =
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
   // there, puts it in your bag as an item (of the component's kind) and answers 'items'.
   | { t: 'crashTake'; id: string }
-  // Put a carried machine (item kind) on the workbench to take it apart: uses one up from the bag (checked
-  // against the bench's reach) and answers 'items'.
+  // Put a carried machine (item kind) on the disassembly table to take it apart: if the table is free, uses one
+  // up from the bag (checked against the table's reach), picks the machine's seed and tells everyone ('bench');
+  // answers 'items' either way.
   | { t: 'crashUse'; kind: string }
-  // Large crash sites are worked on together. Join/leave the site's session; hold a lifting eye (it needs
-  // `players` of you holding at once, re-sent about once a second while held); report a step done (a lift is
-  // checked against the holders) or a part taken (first one wins). Step and part numbers are indexes into the
-  // machine the site's seed builds (src/teardown/junk.ts), the same on every client.
+  // Large crash sites, and the table (id 'bench'), are worked on together. Join/leave the session; hold a lifting
+  // eye (it needs `players` of you holding at once, re-sent about once a second while held); report a step done (a
+  // lift is checked against the holders) or take a part (first one wins: its item goes in your bag, answered with
+  // 'siteTook' and 'items'). Step numbers are indexes into the machine the seed builds (src/teardown/junk.ts),
+  // part numbers into machineParts() (shared/machine.ts), the same on every client and the server.
   | { t: 'siteJoin'; id: string }
   | { t: 'siteLeave'; id: string }
   | { t: 'siteHold'; id: string; i: number; players: number; on: boolean }
   | { t: 'siteDone'; id: string; i: number }
   | { t: 'siteTake'; id: string; i: number };
+
+/** The job on the disassembly table: which carried machine, its seed (picked by the server), progress so far. */
+export type BenchJob = { kind: string; seed: number; done: number[]; taken: number[] };
 
 // 0 empty hands, 1 holding the canteen, 2 drinking from it.
 export type Hands = 0 | 1 | 2;
@@ -89,10 +94,22 @@ export type ServerMsg =
   | { t: 'crash'; taken: string[]; back: string[]; reset?: boolean }
   // A shared session was joined: what is already done (step indexes) and taken (part indexes) at that site.
   | { t: 'siteState'; id: string; done: number[]; taken: number[] }
-  // How many players hold lifting eye i right now.
+  // On join, before 'welcome': the progress of every large site's machine that has been worked on. Kept for
+  // good (server/crash.ts machine_progress); siteDone / siteTake keep it up to date, for everyone.
+  | { t: 'sites'; sites: { id: string; done: number[]; taken: number[] }[] }
+  // A site's machine is whole again (dev reset): forget its progress.
+  | { t: 'siteReset'; id: string }
+  // The machine on the base's disassembly table (null: the table is free). On join, and to everyone when a job
+  // starts or its last part is taken. Its steps and takes come as siteDone / siteTake with id 'bench'.
+  | { t: 'bench'; job: BenchJob | null }
+  // Your siteTake was answered: ok, the part's item (`kind`, shared/items.ts) is in your bag ('items' follows);
+  // or refused because your bag is full (the part stays on the machine). Lost races get siteTake instead.
+  | { t: 'siteTook'; id: string; i: number; ok: boolean; reason?: 'full'; kind?: string }
+  // How many players hold lifting eye i right now (to the session's players only).
   | { t: 'siteHolders'; id: string; i: number; n: number }
   | { t: 'siteDone'; id: string; i: number }
-  // Part i went to player `by` (the public id). Whoever is carrying it and isn't `by` has lost it.
+  // Step i is done, part i went to player `by` (the public id; -1 if from before a restart). Sent to everyone.
+  // Whoever is carrying the part and isn't `by` has lost it.
   | { t: 'siteTake'; id: string; i: number; by: number }
   // Growth stage of every greenhouse bed (shared/garden.ts), on join and whenever one changes.
   | { t: 'garden'; beds: number[] }
