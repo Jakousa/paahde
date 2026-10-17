@@ -150,6 +150,19 @@ export class Missiles {
     return out;
   }
 
+  /** The missiles in the air at server time `now` (ms): where each is and its velocity (m/s), for their roar. */
+  heads(now: number): { id: number; x: number; y: number; z: number; vx: number; vy: number; vz: number }[] {
+    const out = [];
+    for (const [id, f] of this.flying) {
+      const t = (now - f.m.time) / 1000;
+      if (t < 0 || t >= f.m.flight) continue;
+      const a = missileAt(f.m, t, { x: 0, y: 0, z: 0 }), b = missileAt(f.m, Math.min(f.m.flight, t + 0.05), { x: 0, y: 0, z: 0 });
+      const k = 1 / (Math.min(f.m.flight, t + 0.05) - t || 1);
+      out.push({ id, ...a, vx: (b.x - a.x) * k, vy: (b.y - a.y) * k, vz: (b.z - a.z) * k });
+    }
+    return out;
+  }
+
   /** Every frame, at server time `now` (ms). */
   update(dt: number, now: number) {
     for (const [id, f] of this.flying) {

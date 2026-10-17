@@ -2,7 +2,7 @@
 // (src/world/botFrames.ts), walks the guardians (src/world/guardians.ts) and flies the drones
 // (src/world/drones.ts), and does what makes them feel big and dangerous: footfall sound, dust and camera shake,
 // the horn when one comes for you, the cannon (src/world/bolts.ts: charge whine, zap, burst), the missiles a drone
-// calls down (src/world/missiles.ts: whistle, blast), a chirp when a drone locks on.
+// calls down (src/world/missiles.ts: jet roar, blast), a chirp when a drone locks on.
 import * as THREE from 'three/webgpu';
 import { BOT_DELAY_MS, dronesAt, guardiansAt } from './world/botFrames';
 import { Drones } from './world/drones';
@@ -103,7 +103,6 @@ export class GuardianFx {
           if (m.ground) this.thump(m.x, m.y, m.z, 2.6, 30, 7, 3.4);
         } else if (m.t === 'missile') {
           this.missiles.launch(m);
-          guardianSound.whistle(m.x1, m.y1, m.z1, m.flight - (net.serverTime() - m.time) / 1000, this.ear);
         } else {
           this.missiles.land(m.id);
           this.bolts.boom(-1, m.x, m.y, m.z, true);
@@ -114,6 +113,7 @@ export class GuardianFx {
     }
     this.bolts.update(dt, net.serverTime());
     this.missiles.update(dt, net.serverTime());
+    guardianSound.missiles(this.missiles.heads(net.serverTime()), this.ear);
     const t = net.serverTime() - BOT_DELAY_MS;
     const gs = guardiansAt(net.bots, t);
     const ds = dronesAt(net.bots, t);
