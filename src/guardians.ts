@@ -43,16 +43,20 @@ export class GuardianFx {
     this.bolts = new Bolts(scene);
     this.missiles = new Missiles(scene);
     this.guardians.onFootfall = (f) => this.footfall(f);
-    // A shot-down drone hitting the sand: a bang and a clatter.
+    // A shot-down drone hitting the sand: a bang, a firework burst and a clatter.
     this.drones.onCrash = (x, y, z) => {
       guardianSound.boom(x, y, z, this.ear);
+      rifleSound.firework({ x, y, z }, this.ear);
       rifleSound.slam({ x, y, z }, this.ear, false);
       this.thump(x, y, z, 0.6, 0, 0, 0);
     };
     this.guardians.onEvent = (e) => {
       // A weak point shattered (whoever shot it), a dying walker's leg gave out, its hull hit the sand.
       const heavy = e.kind === GUARDIAN;
-      if (e.what === 'break') rifleSound.impact('glass', e, this.ear);
+      if (e.what === 'break') {
+        rifleSound.impact('glass', e, this.ear);
+        rifleSound.firework(e, this.ear);
+      }
       else if (e.what === 'fail') rifleSound.fail(e, this.ear, heavy);
       else {
         rifleSound.slam(e, this.ear, heavy);

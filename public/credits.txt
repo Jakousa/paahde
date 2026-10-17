@@ -73,6 +73,13 @@ Pulse laser (sound)
   faded out and levelled to the same loudness.
   Files: audio/laser-1.mp3, audio/laser-2.mp3, audio/laser-3.mp3
 
+Firework Explosion, Firework Explosion 2, 3 and 4 (sounds)
+  By TB0Y298 on Freesound (https://freesound.org/s/254071/, https://freesound.org/s/718961/,
+  https://freesound.org/s/718964/, https://freesound.org/s/719796/), CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/).
+  Mixed to mono, high-passed at 30 Hz, leading silence trimmed, faded out and levelled to the same loudness.
+  Files: audio/firework-1.mp3, audio/firework-2.mp3, audio/firework-3.mp3, audio/firework-4.mp3
+
 Made for this game
 ------------------
 

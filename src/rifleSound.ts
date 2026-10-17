@@ -3,6 +3,9 @@
 //   0.40–0.55 s, each levelled to −18.5 LUFS momentary, true peak ≤ −1.5 dBTP), picked at random and a little
 //   off pitch each time; the pistol plays them higher and lighter. Your own is dry and in your head; another
 //   player's carries across the desert (src/acoustics.ts: late, duller, softer and more reverb with distance).
+// - firework: a weak point shattering, or a shot-down drone hitting the sand, also bursts like a firework: one of
+//   four of TB0Y298's "Firework Explosion" 1–4 (CC BY 4.0; firework-1..4.mp3, mono, each levelled to −18.9 LUFS
+//   momentary max, true peak ≤ −4 dBTP), at random and a little off pitch, carried through src/acoustics.ts.
 // The rest is synthesised:
 // - recharge: the cell whining back up between shots, with a click when it's ready.
 // - impact: where the beam struck: a hiss of sand, a metal ping, or the red glass of a weak point shattering with an
@@ -23,6 +26,10 @@ const PULSES = ['./audio/laser-1.mp3', './audio/laser-2.mp3', './audio/laser-3.m
 const CHARGE_GAIN = 0.035;
 const IMPACT_GAIN = 1.2;
 const DEATH_GAIN = 1.8;
+const FIREWORKS = ['./audio/firework-1.mp3', './audio/firework-2.mp3', './audio/firework-3.mp3', './audio/firework-4.mp3'];
+/** Full level within FIREWORK_REF m. */
+const FIREWORK_GAIN = 1;
+const FIREWORK_REF = 20;
 
 let noiseBuf: AudioBuffer | null = null;
 function noise(ctx: AudioContext) {
@@ -70,6 +77,7 @@ function tone(ctx: AudioContext, to: AudioNode, t: number, len: number, type: Os
 class RifleSound {
   private charge: { osc: OscillatorNode; gain: GainNode } | null = null;
   private pulses: AudioBuffer[] = [];
+  private fireworks: AudioBuffer[] = [];
 
   constructor() {
     audio.onStart((ctx) => {
@@ -78,6 +86,12 @@ class RifleSound {
           .then((r) => r.arrayBuffer())
           .then((d) => ctx.decodeAudioData(d))
           .then((b) => this.pulses.push(b), (e) => console.warn('laser sound failed to load', src, e));
+      }
+      for (const src of FIREWORKS) {
+        fetch(src)
+          .then((r) => r.arrayBuffer())
+          .then((d) => ctx.decodeAudioData(d))
+          .then((b) => this.fireworks.push(b), (e) => console.warn('firework sound failed to load', src, e));
       }
     });
   }
@@ -100,6 +114,18 @@ class RifleSound {
       src.start(t);
       src.onended = () => g.disconnect();
     }
+  }
+
+  /** A firework burst at `at`, heard from `ear`: a weak point shattered or a drone crashed. */
+  firework(at: P, ear: P) {
+    const ctx = audio.ctx, buf = this.fireworks[Math.floor(Math.random() * this.fireworks.length)];
+    const s = buf ? placed(at, ear, FIREWORK_GAIN, FIREWORK_REF, 600) : null;
+    if (!ctx || !s) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = 0.92 + Math.random() * 0.16;
+    src.connect(s.input);
+    src.start(s.t);
   }
 
   /** The cell recharging over `s` seconds, then a click: yours only. */
