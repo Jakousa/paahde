@@ -586,6 +586,11 @@ mouse look slightly, drop and come back up when switching what's held, and dip w
 - **No shadows:** the hands neither cast (the shadow-only body already does) nor receive (they'd sit inside
   that body and always be in its shadow). Downside: they stay sunlit indoors.
 - **Testing:** `?hold=canteen` forces the canteen, `?anim=Drink` loops any clip; `dbg.viewmodel` with ?debug.
+- **Real fingers + grasping (spyglass grip fix):** the viewmodel glove now has 3 bones per finger and a
+  3-bone thumb. Held items are posed by closing the fingers on the object's distance function until they
+  touch (GraspIt!-style), with the spyglass in a Napier power grip: oblique across the palm, thumb over the
+  fingers, wrist in line with the forearm. The old pose pointed it ahead along the forearm, which a fist
+  can't do, and sank it 1 cm into the palm. How-to and the anatomy in `docs/viewmodel-hands.md`.
 
 ## Sandstorms
 
