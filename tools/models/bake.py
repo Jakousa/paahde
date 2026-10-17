@@ -214,6 +214,8 @@ def gltf_output_group():
 def export(rig, meshes, path, extra=None):
     from sclib import select_only
     for m in meshes:
+        if m.type != 'MESH':  # marker empties
+            continue
         uv = m.data.uv_layers.get('Detail')
         if uv and len(m.data.uv_layers) > 1:
             m.data.uv_layers.remove(uv)
