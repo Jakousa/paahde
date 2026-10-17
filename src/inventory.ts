@@ -5,13 +5,14 @@
 // chests, the motorcycle while riding; shared/storage.ts), appearing and disappearing as you move. Grids are
 // Tarkov-like: every item takes w × h cells by its size (shared/items.ts). Drag an item to move it (the cells it
 // would take light up green, or red where it doesn't fit; R turns it) or onto another to swap the two; shift-click
-// sends it across to the other side, and Take all empties a storage box into the bag; drag it out of the panels
+// sends it across to the other side, Take all empties a storage box into the bag and Store all
+// fills it from the bag (all but tools and placeables); drag it out of the panels
 // to drop it on the sand in front of you (shared/loot.ts; anyone can pick it up again). At the workbench, put
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
 import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, partsOf, quality, repaired, slotLabel, tryMove, type Boxes } from '../shared/gear.ts';
-import { findSpot, HOTBAR, ITEMS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
+import { findSpot, HOTBAR, ITEMS, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
@@ -19,6 +20,7 @@ import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { canDropAt } from '../shared/loot.ts';
+import { isPlaceable } from '../shared/placed.ts';
 import { takePickup, ui } from './input';
 import type { Net } from './net';
 import { uiSound } from './uiSound';
@@ -391,7 +393,7 @@ export class InventoryHud {
         html += this.benchHtml(slots[0] ?? null);
         continue;
       }
-      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns"><button data-all="${box}">Take all</button><button data-sort="${box}">Sort</button></span></div>`
+      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns"><button data-store="${box}">Store all</button><button data-all="${box}">Take all</button><button data-sort="${box}">Sort</button></span></div>`
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
     if (!this.storages.length) {
@@ -613,6 +615,8 @@ export class InventoryHud {
     if (sort) return void (this.net.sortBox(sort.dataset.sort!) || this.toast("Can't pack it any tighter"));
     const all = (e.target as HTMLElement).closest<HTMLElement>('[data-all]');
     if (all) return this.takeAll(all.dataset.all!);
+    const store = (e.target as HTMLElement).closest<HTMLElement>('[data-store]');
+    if (store) return this.storeAll(store.dataset.store!);
     const craft = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-craft]');
     if (craft) return void (craft.disabled || this.net.craft(craft.dataset.craft!));
     const at = this.slotAt(e.clientX, e.clientY);
@@ -664,6 +668,17 @@ export class InventoryHud {
     for (let i = slots.length - 1; i >= 0; i--) if (slots[i] && this.net.moveItem(box, i, 'bag', -1)) moved++;
     if (moved) uiSound.plop(moved);
     if (this.net.boxes[box]?.some((it) => it)) this.toast('No room');
+  }
+
+  /** Store all: everything in the bag but tools and placeables into a storage box, as far as it fits. */
+  private storeAll(box: string) {
+    const stays = (it: Item | null) => !it || TOOLS.has(it.kind) || isPlaceable(it.kind);
+    const bag = this.net.boxes.bag;
+    if (!bag) return;
+    let moved = 0;
+    for (let i = bag.length - 1; i >= 0; i--) if (!stays(bag[i]) && this.net.moveItem('bag', i, box, -1)) moved++;
+    if (moved) uiSound.plop(moved);
+    if (this.net.boxes.bag?.some((it) => !stays(it))) this.toast('No room');
   }
 
   /** Shift-click in the bag with no storage open: hotbar ↔ the first spot it fits in the backpack (or the first free hotbar slot). */

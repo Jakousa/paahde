@@ -61,6 +61,9 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
 };
 const ORDER = Object.keys(ITEMS);
 
+/** Used from the hotbar (held in hand): Store all leaves these in the bag. Placeables (shared/placed.ts) stay too. */
+export const TOOLS = new Set(['canteen', 'spyglass', 'shovel', 'metal_detector', 'laser_rifle', 'laser_pistol']);
+
 /** Every item fits a grid this many rows tall once turned (its smaller side): chests keep this many rows empty. */
 export const MAX_SIDE = 3;
 for (const [k, v] of Object.entries(ITEMS)) if (Math.min(...(v.size ?? [1, 1])) > MAX_SIDE) throw new Error(`shared/items.ts: ${k} is too big`);
