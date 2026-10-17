@@ -10,7 +10,8 @@
 // once all of its chunks exist, so there are never holes; built chunks are cached for reuse.
 // Edits (digging) invalidate the fine chunks they touch, which are rebuilt nearest-first.
 import * as THREE from 'three/webgpu';
-import { baseHeight, EDIT_CELL, EDIT_CHUNK, edits, heightAt } from '../../shared/terrain.ts';
+import { baseHeight, EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../shared/terrain.ts';
+import { createSandMaterial, sand } from './sandMaterial.ts';
 
 /** Grid cells per chunk side. */
 const CELLS = 64;
@@ -33,9 +34,9 @@ const CACHE_LIMIT = 500;
 const VERTS = CELLS + 1;
 const SKIRT_VERTS = 4 * VERTS;
 
-/** Terrain material. Swap in the real sand shader here: `return createSandMaterial();`. */
 function createTerrainMaterial(): THREE.Material {
-  return new THREE.MeshStandardNodeMaterial({ color: 0xd9822b, roughness: 0.95, metalness: 0 });
+  sand.wind.value.set(WIND.x, WIND.z); // ripples run perpendicular to the dunes' wind
+  return createSandMaterial();
 }
 
 type Chunk = {
