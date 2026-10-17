@@ -8,8 +8,9 @@
 // looking at the sky and back doesn't pump the resolution up and down every few seconds.
 import type * as THREE from 'three/webgpu';
 
-/** Never render finer than this (retina screens report 2–3). */
-const MAX_RATIO = 1.5;
+/** Never render finer than this (retina screens report 2–3): one pixel per CSS pixel is plenty for
+ *  this look, and it leaves headroom for 60 fps on laptops. */
+const MAX_RATIO = 1;
 const MIN_RATIO = 0.5;
 /** Frame time we aim for, a little under 60 fps so vsync jitter doesn't count as slow. */
 const TARGET_MS = 1000 / 57;

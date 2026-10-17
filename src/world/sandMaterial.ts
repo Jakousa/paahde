@@ -206,16 +206,12 @@ function buildSurface(): SandSurface {
 
   // Albedo: large-scale red/gold patches, slip faces darker, ripple troughs a hair darker.
   const patch = saturate(mx_fractal_noise_float(vec3(p.x.mul(0.006), 0, p.z.mul(0.006)), 3).mul(0.9).add(0.5));
-  // Grain speckle (~1 cm), faded once cells get near pixel size.
-  const gq = p.mul(90);
-  const grainFade = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(gq))));
-  // Second, coarser speckle (~4 cm) keeps mid-distance sand matte and gritty instead of smooth.
+  // Grain speckle (~4 cm) keeps nearby sand matte and gritty instead of smooth, faded once cells get
+  // near pixel size. (A finer ~1 cm layer was dropped: a noise call per pixel for detail few notice.)
   const gq2 = p.mul(24);
   const grainFade2 = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(gq2))));
   // Smooth value noise rather than cell noise: cell noise reads as square pixels up close.
-  const grain = mx_noise_float(gq).mul(0.2).mul(grainFade)
-    .add(mx_noise_float(gq2.add(7.1)).mul(0.12).mul(grainFade2))
-    .add(1);
+  const grain = mx_noise_float(gq2.add(7.1)).mul(0.16).mul(grainFade2).add(1);
   const albedo = mix(sand.albedoRed, sand.albedoGold, patch)
     .mul(grain)
     .mul(float(1).sub(slip.mul(0.12)))
