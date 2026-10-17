@@ -106,6 +106,11 @@ at our scale and the whole team can read and change it. Alternatives, if needs g
   and hides the piece (and its hitbox) at once. The server checks reach from its own view of the player,
   marks it taken, adds it to the player's inventory (SQLite `scrap_taken`, `inventory`) and broadcasts
   `scrap` before the snapshot; a refused pickup gets its piece back. Pieces respawn after 30 minutes.
+- **Survival** (`shared/water.ts`, `server/water.ts`): water and canteen sips are server state outside the
+  sim. The server drains them in its tick loop from the shared clock (`shared/sun.ts`) and sends `water`
+  (~2 Hz while draining, and after every `drink`/`fill`). Drink/fill are requests sent when the client's
+  animation finishes; the server validates and always answers with the real state. A thirst death moves
+  the player on the server and sends `died`; the client snaps its next reconciliation instead of gliding.
 - To get here next: player-vs-player collision, which makes predicted players interact with
   interpolated ones (other players appear 100 ms in the past), so keep interactions forgiving.
 
