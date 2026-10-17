@@ -26,7 +26,9 @@ import { footsteps } from './footsteps';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
+// The frame is bound by shading ground pixels: at a 2x retina ratio it took ~32 ms on the GPU, at 1.5x ~14 ms.
+const MAX_PIXEL_RATIO = 1.5;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
