@@ -13,6 +13,7 @@
 // client and server agree exactly. Edits travel as absolute values (not deltas), so applying the same
 // edit twice is harmless and a client can predict a dig locally and still converge on the server.
 
+import { insideBase, withPad } from './base.ts';
 import { duneHeight } from './dunes.ts';
 export { WIND } from './dunes.ts';
 
@@ -25,9 +26,9 @@ export const EDIT_CELL = 0.5;
 /** Edit vertices per chunk side; chunks are the unit of storage, sync and mesh invalidation. */
 export const EDIT_CHUNK = 32;
 
-/** Procedural dunes before player edits. */
+/** Procedural dunes before player edits, flattened into a pad around the home base (shared/base.ts). */
 export function baseHeight(x: number, z: number): number {
-  return duneHeight(x, z, WORLD_SEED);
+  return withPad(x, z, duneHeight(x, z, WORLD_SEED));
 }
 
 /** Sparse grid of height offsets (millimetres), chunked. One instance per world (see `edits`). */
@@ -47,8 +48,9 @@ export class TerrainEdits {
     return c ? c[(iz - cz * EDIT_CHUNK) * EDIT_CHUNK + (ix - cx * EDIT_CHUNK)] : 0;
   }
 
-  /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. */
+  /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. Not under the base floor. */
   setMm(ix: number, iz: number, mm: number) {
+    if (mm !== 0 && insideBase(ix * EDIT_CELL, iz * EDIT_CELL, 1)) return;
     const cx = Math.floor(ix / EDIT_CHUNK), cz = Math.floor(iz / EDIT_CHUNK);
     const k = TerrainEdits.key(cx, cz);
     let c = this.chunks.get(k);

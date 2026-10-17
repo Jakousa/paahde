@@ -14,7 +14,7 @@ import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { Post } from './post';
 import * as env from './world/env';
-import { addPalms } from './world/palms';
+import { Base } from './world/base';
 import { Scrap } from './world/scrap';
 import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
@@ -36,7 +36,7 @@ const scene = new THREE.Scene();
 const orbit = new FirstPersonCamera(renderer.domElement);
 const sky = new Sky(scene);
 const terrain = new Terrain(scene);
-addPalms(scene);
+const base = new Base(scene);
 const scrap = new Scrap(scene);
 const dust = new Dust(scene);
 const post = new Post(renderer, scene, orbit.camera);
@@ -44,7 +44,7 @@ const blownSand = new BlownSand(scene);
 
 const windSound = new WindSound();
 // Debug handle for screenshots/tuning from the console: open with ?debug.
-if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand, dust, windSound } });
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound } });
 
 const net = new Net(getBrowserId());
 const digFx = new DigFx(scene);
@@ -152,6 +152,7 @@ renderer.setAnimationLoop((time) => {
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
   dust.update(frameDt, orbit.camera.position);
+  base.update(frameDt, wind.storm);
   windSound.update(frameDt, orbit.camera.position, orbit.yaw);
   footsteps.listener(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);

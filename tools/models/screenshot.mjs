@@ -48,7 +48,7 @@ try {
   await send('Page.navigate', { url });
   await sleep(+wait);
   // EVAL='js' runs in the page before the shot (e.g. to turn the camera), then waits a second.
-  if (process.env.EVAL) { await send('Runtime.evaluate', { expression: process.env.EVAL }); await sleep(1000); }
+  if (process.env.EVAL) { await send('Runtime.evaluate', { expression: process.env.EVAL, awaitPromise: true }); await sleep(1000); }
   const info = await send('Runtime.evaluate', { expression: 'document.getElementById("info")?.textContent ?? document.getElementById("label")?.textContent', returnByValue: true });
   console.log('page text:', info?.result?.value);
   const shot = await send('Page.captureScreenshot', { format: 'png' });
