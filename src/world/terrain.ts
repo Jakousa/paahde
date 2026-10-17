@@ -11,6 +11,7 @@
 // Edits (digging) invalidate the fine chunks they touch, which are rebuilt nearest-first.
 import * as THREE from 'three/webgpu';
 import { baseHeight, EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../shared/terrain.ts';
+import { hazeDensity, hazeFar } from './env.ts';
 import { createSandMaterial, sand } from './sandMaterial.ts';
 
 /** Grid cells per chunk side. */
@@ -25,10 +26,13 @@ const SPLIT = 1.0;
 const VIEW_DISTANCE = 4500;
 /** Levels at or below this sample the edit layer and are rebuilt on edits (spacing ≤ 2 m). */
 const EDIT_LEVELS = 2;
+/** Haze extinction per metre for a terrain this large: far dunes fade in layered bands over km. */
+const HAZE_DENSITY = 0.002;
 /** Main-thread milliseconds per frame spent generating chunks (after the first, blocking, build). */
 const FRAME_BUDGET_MS = 3;
-/** If a new layout has waited this long, finish it synchronously rather than keep the old one. */
-const MAX_PENDING_MS = 800;
+/** If a new layout has waited this long, raise the per-frame budget to LATE_BUDGET_MS. */
+const MAX_PENDING_MS = 500;
+const LATE_BUDGET_MS = 10;
 const CACHE_LIMIT = 500;
 
 const VERTS = CELLS + 1;
@@ -92,6 +96,8 @@ export class Terrain {
   private pendingSince = 0;
   private dirty = new Set<string>();
   private frame = 0;
+  private lastX = NaN;
+  private lastZ = NaN;
   // Scratch buffers for generation: heights with a 1-vertex border (for central-difference normals).
   private hbuf = new Float64Array((VERTS + 2) * (VERTS + 2));
 
@@ -100,6 +106,9 @@ export class Terrain {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
+    // Haze must reach total just before the terrain edge, which is at least VIEW_DISTANCE away.
+    hazeFar.value = VIEW_DISTANCE * 0.95;
+    hazeDensity.value = HAZE_DENSITY;
     const prev = edits.onChange;
     edits.onChange = (cx, cz) => {
       prev?.(cx, cz);
@@ -112,15 +121,25 @@ export class Terrain {
     this.frame++;
     const t0 = performance.now();
     this.stats.builtThisFrame = 0;
-    this.computeDesired(focus.x, focus.z);
+    // Re-split only when the focus has moved a little (the finest chunk is 32 m).
+    if (Math.abs(focus.x - this.lastX) + Math.abs(focus.z - this.lastZ) > 0.5 || !this.desired.length) {
+      this.lastX = focus.x;
+      this.lastZ = focus.z;
+      this.computeDesired(focus.x, focus.z);
+    }
 
-    // First frame: build everything synchronously so the world appears complete.
-    const firstBuild = this.shown.size === 0;
-    const deadline = firstBuild ? Infinity : t0 + FRAME_BUDGET_MS;
+    // First frame: build everything synchronously so the world appears complete. If a layout has been
+    // waiting long (very fast movement), spend more time per frame rather than keep the stale one.
+    const late = this.pendingSince > 0 && t0 - this.pendingSince > MAX_PENDING_MS;
+    const deadline = this.shown.size === 0 ? Infinity : t0 + (late ? LATE_BUDGET_MS : FRAME_BUDGET_MS);
 
-    // Rebuild dirty (edited) chunks first, nearest first; the player's own chunk always.
+    // Rebuild dirty (edited) chunks first, nearest first; the chunk under the player always.
     if (this.dirty.size) {
-      const list = [...this.dirty].map((k) => this.cache.get(k)!).filter(Boolean);
+      const list: Chunk[] = [];
+      for (const k of this.dirty) {
+        const c = this.cache.get(k);
+        if (c) list.push(c);
+      }
       list.sort((a, b) => this.chunkDist(a, focus) - this.chunkDist(b, focus));
       for (const c of list) {
         if (performance.now() > deadline && this.chunkDist(c, focus) > 0) break;
@@ -132,12 +151,14 @@ export class Terrain {
     // Build missing chunks of the desired layout (list is sorted nearest first).
     let missing = 0;
     for (const d of this.desired) {
-      if (this.cache.has(d.key)) continue;
-      if (performance.now() > deadline && !(this.pendingSince && t0 - this.pendingSince > MAX_PENDING_MS)) {
+      const c = this.cache.get(d.key);
+      if (c) {
+        c.lastUsed = this.frame;
+      } else if (performance.now() > deadline) {
         missing++;
-        continue;
+      } else {
+        this.create(d.level, d.ix, d.iz);
       }
-      this.create(d.level, d.ix, d.iz);
     }
 
     if (missing === 0) {
@@ -146,7 +167,6 @@ export class Terrain {
     } else if (!this.pendingSince) {
       this.pendingSince = t0;
     }
-    for (const d of this.desired) this.cache.get(d.key)!.lastUsed = this.frame;
     this.evict();
     this.stats.buildMs = performance.now() - t0;
   }
@@ -207,7 +227,9 @@ export class Terrain {
     const mesh = new THREE.Mesh(geo, this.material);
     mesh.position.set(ix * size, 0, iz * size);
     mesh.receiveShadow = true;
-    mesh.castShadow = true;
+    // Not a shadow caster: the sun's shadow map only covers ~±70 m, so dune self-shadowing would end
+    // in a hard rectangle. Slip faces are darkened by the sand shading instead.
+    mesh.castShadow = false;
     mesh.visible = false;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
