@@ -3,12 +3,13 @@
 //   short metal clank, placed at the foot in 3D and heard late by the distance at the speed of sound, duller
 //   further off. Hundreds of metres away you hear them before you see them land; it sells the size.
 // - horn: a guardian starting to hunt you sounds a low brass blare (detuned saws through a low-pass).
-// - drones: the nearest few buzz where they hover (rotor saw + whine); one locked on to you wails a two-tone
-//   siren straight into your ears.
+// - drones: the nearest few buzz where they hover (rotor saw + whine); one locking on to you gives a short
+//   rising double chirp, once (not a siren: the beam and the HUD say the rest).
+// - missiles: a falling whistle at the impact point over the last WHISTLE_S of the flight.
 // The Web Audio listener follows the camera (src/crashSound.ts sets it). Through the shared output in
 // src/audio.ts; levels ramped. Measured at the default volume (OfflineAudioContext + ffmpeg ebur128): a step
 // every 1.2 s ≈ −22 LUFS within 12 m and −27 at 20 m (peaks −4 dBFS close up); one drone at 15 m −31; the
-// siren −25; the horn at 60 m −25.
+// chirp −26 (momentary); the horn at 60 m −25.
 import { audio } from './audio';
 
 const SPEED_OF_SOUND = 343;
@@ -21,7 +22,11 @@ const BUZZ_HEAR = 110;
 const BUZZ_REF = 15;
 const BUZZ_GAIN = 0.16;
 const MAX_BUZZ = 3;
-const SIREN_GAIN = 0.12;
+const CHIRP_GAIN = 0.07;
+/** A missile whistles over the last this many seconds of its fall, heard within WHISTLE_HEAR m of the impact. */
+const WHISTLE_S = 2.2;
+const WHISTLE_HEAR = 150;
+const WHISTLE_GAIN = 0.1;
 const HORN_GAIN = 0.22;
 const CHARGE_GAIN = 0.05;
 /** Crawler feet are heard within this distance (m). */
@@ -55,7 +60,6 @@ function panner(ctx: AudioContext, x: number, y: number, z: number, ref: number)
 
 class GuardianSound {
   private buzz = new Map<number, Buzz>();
-  private siren: { osc: OscillatorNode; gain: GainNode; lfo: OscillatorNode } | null = null;
 
   /** A foot landed at (x, y, z), `weight` 0..1; the listener is at `ear`. */
   footfall(x: number, y: number, z: number, weight: number, ear: { x: number; y: number; z: number }) {
@@ -240,8 +244,49 @@ class GuardianSound {
     }
   }
 
-  /** Every frame: the drones near the listener (lock 2: on you). */
-  drones(list: { id: number; x: number; y: number; z: number; lock: number }[], ear: { x: number; z: number }) {
+  /** A drone just locked on to you: two short rising chirps. */
+  chirp() {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const t0 = ctx.currentTime;
+    for (let i = 0; i < 2; i++) {
+      const t = t0 + i * 0.16;
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(900 + i * 300, t);
+      o.frequency.exponentialRampToValueAtTime(1300 + i * 300, t + 0.1);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(CHIRP_GAIN, t + 0.01);
+      g.gain.setTargetAtTime(0, t + 0.08, 0.02);
+      o.connect(g).connect(out);
+      o.start(t);
+      o.stop(t + 0.25);
+    }
+  }
+
+  /** A missile comes down at (x, y, z) in `s` seconds: whistles over the last WHISTLE_S of it. */
+  whistle(x: number, y: number, z: number, s: number, ear: { x: number; y: number; z: number }) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running || s <= 0.2) return;
+    if (Math.hypot(x - ear.x, z - ear.z) > WHISTLE_HEAR) return;
+    const t1 = ctx.currentTime + s, t0 = Math.max(ctx.currentTime, t1 - WHISTLE_S);
+    // Heard from above the impact: the missile is still up there.
+    const p = panner(ctx, x, y + 30, z, 40);
+    const o = ctx.createOscillator();
+    o.frequency.setValueAtTime(2200, t0);
+    o.frequency.exponentialRampToValueAtTime(500, t1);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(WHISTLE_GAIN, t1 - 0.1);
+    g.gain.linearRampToValueAtTime(0, t1);
+    o.connect(g).connect(p).connect(out);
+    o.start(t0);
+    o.stop(t1 + 0.05);
+  }
+
+  /** Every frame: the drones near the listener. */
+  drones(list: { id: number; x: number; y: number; z: number }[], ear: { x: number; z: number }) {
     const ctx = audio.ctx, out = audio.out;
     if (!ctx || !out || !audio.running) return;
     const now = ctx.currentTime;
@@ -283,35 +328,6 @@ class GuardianSound {
       b.panner.positionX.setTargetAtTime(d.x, now, 0.05);
       b.panner.positionY.setTargetAtTime(d.y, now, 0.05);
       b.panner.positionZ.setTargetAtTime(d.z, now, 0.05);
-    }
-    // The siren: on while one has you.
-    const onMe = list.some((d) => d.lock === 2);
-    if (onMe && !this.siren) {
-      const osc = ctx.createOscillator();
-      osc.type = 'square';
-      osc.frequency.value = 760;
-      // Two tones, 0.35 s each: a square LFO pushing the pitch up and down.
-      const lfo = ctx.createOscillator();
-      lfo.type = 'square';
-      lfo.frequency.value = 1.4;
-      const depth = ctx.createGain();
-      depth.gain.value = 140;
-      lfo.connect(depth).connect(osc.frequency);
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 2200;
-      const gain = ctx.createGain();
-      gain.gain.value = 0;
-      gain.gain.setTargetAtTime(SIREN_GAIN, now, 0.05);
-      osc.connect(lp).connect(gain).connect(out);
-      osc.start();
-      lfo.start();
-      this.siren = { osc, gain, lfo };
-    } else if (!onMe && this.siren) {
-      this.siren.gain.gain.setTargetAtTime(0, now, 0.15);
-      this.siren.osc.stop(now + 1);
-      this.siren.lfo.stop(now + 1);
-      this.siren = null;
     }
   }
 }

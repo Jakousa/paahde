@@ -7,10 +7,13 @@
 import { BASE, inBase } from '../shared/base.ts';
 import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
 import {
-  ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, BURN, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
-  CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, GUARDIAN, gunPivot, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
-  NIGHT_SUN, sweepAt,
+  ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
+  CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, GUARDIAN, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
+  NIGHT_SUN, sweepAt, TRACK_RATE,
 } from '../shared/guardians.ts';
+import {
+  BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
+} from '../shared/missiles.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { sunElevation } from '../shared/sun.ts';
 import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
@@ -64,7 +67,11 @@ type Guardian = {
   prey: number; huntAt: number; px: number; pz: number; knownAt: number; calmUntil: number; bitAt: number;
   /** The cannon: aimed at (ax, ay, az) while it sees its prey; charging since (-1 not), last fired. */
   aiming: boolean; ax: number; ay: number; az: number; chargeAt: number; firedAt: number;
+  /** Last missile launched when. */
+  missileAt: number;
 };
+
+type Missile = { id: number; path: MissilePath; launched: number };
 
 type Bolt = { id: number; x: number; y: number; z: number; dx: number; dy: number; dz: number; flown: number; by: number };
 
@@ -77,6 +84,8 @@ type Drone = {
   hx: number; hz: number; tx: number; tz: number; site: number;
   /** Locked on to this player (-1 none), last lit when. Leaving: flying off before dawn. */
   lock: number; litAt: number; leaving: boolean;
+  /** Lost this player (-1 none): won't lock on to them again until then. */
+  lost: number; lostUntil: number;
   /** Summoned from the debug menu: stays out until then (server ms), day or not. */
   until: number;
   /** Beam direction (unit), sent to clients. */
@@ -92,7 +101,13 @@ export class GuardianServer {
   guardians: Guardian[] = [];
   drones: Drone[] = [];
   bolts: Bolt[] = [];
+  missiles: Missile[] = [];
   private nextBolt = 1;
+  private nextMissile = 1;
+  /** Player id → when a drone's beam last caught them after a spell out of it (the salvo starts FIRST_MS later). */
+  private spottedAt = new Map<number, number>();
+  /** Player positions last tick, for leading the missiles. */
+  private lastPos = new Map<number, { x: number; z: number }>();
   private sites = allCrashSites();
   private nextDrone = 1;
   private nextWalker = 1;
@@ -111,7 +126,7 @@ export class GuardianServer {
     const g: Guardian = {
       id: this.nextWalker++, kind, legs, x, z, yaw: rand(-Math.PI, Math.PI), speed: 0, home,
       tx: home.x, tz: home.z, guardUntil: 0, prey: -1, huntAt: 0, px: 0, pz: 0, knownAt: 0, calmUntil: 0, bitAt: 0,
-      aiming: false, ax: 0, ay: 0, az: 0, chargeAt: -1, firedAt: 0,
+      aiming: false, ax: 0, ay: 0, az: 0, chargeAt: -1, firedAt: 0, missileAt: 0,
     };
     this.patrolPoint(g);
     return g;
@@ -138,24 +153,60 @@ export class GuardianServer {
   }
 
   /**
-   * Advance by dt seconds at server time `now` (ms), wall-clock time of day `tod`. Returns who the drone beams are
-   * burning (player id → heat per second), who was crushed, who was shot, and the bolts fired and burst.
+   * Advance by dt seconds at server time `now` (ms), wall-clock time of day `tod`. Returns who was bitten (player id
+   * → heat), crushed, shot by a bolt or blown up by a missile, and the bolts and missiles fired and burst.
    */
   tick(dt: number, now: number, tod: number, players: BotPlayer[]): {
-    burn: Map<number, number>; bitten: Map<number, number>; crushed: number[]; shot: number[]; events: BoltEvent[];
+    bitten: Map<number, number>; crushed: number[]; shot: number[]; blasted: number[]; events: BoltEvent[];
   } {
-    const burn = new Map<number, number>(), bitten = new Map<number, number>();
-    const crushed: number[] = [], shot: number[] = [], events: BoltEvent[] = [];
+    const bitten = new Map<number, number>();
+    const crushed: number[] = [], shot: number[] = [], blasted: number[] = [], events: BoltEvent[] = [];
     const byId = new Map(players.map((p) => [p.id, p]));
     const exposed = players.filter((p) => !p.safe && !inBase(p.x, p.y, p.z));
     this.swarm(players);
-    this.tickDrones(dt, now, tod, players, exposed, byId, burn);
+    const lit = this.tickDrones(dt, now, tod, players, exposed, byId);
+    this.tickMissiles(dt, now, lit, players, exposed, blasted, events);
     for (const g of this.guardians) {
       this.tickGuardian(g, dt, now, exposed, byId, crushed, bitten);
       if (KINDS[g.kind].gun) this.tickGun(g, now, byId, events);
     }
     this.tickBolts(dt, exposed, shot, events);
-    return { burn, bitten, crushed, shot, events };
+    return { bitten, crushed, shot, blasted, events };
+  }
+
+  /** Missiles: the nearest guardians shell whoever a drone's beam is on; ones that have landed burst. */
+  private tickMissiles(dt: number, now: number, lit: Set<number>, players: BotPlayer[], exposed: BotPlayer[], blasted: number[], events: BoltEvent[]) {
+    for (const id of this.spottedAt.keys()) if (!lit.has(id)) this.spottedAt.delete(id);
+    for (const p of exposed) {
+      if (!lit.has(p.id)) continue;
+      if (!this.spottedAt.has(p.id)) this.spottedAt.set(p.id, now);
+      if (now - this.spottedAt.get(p.id)! < FIRST_MS) continue;
+      const prev = this.lastPos.get(p.id);
+      const vx = prev ? (p.x - prev.x) / dt : 0, vz = prev ? (p.z - prev.z) / dt : 0;
+      const shooters = this.guardians.filter((g) => g.kind === GUARDIAN && Math.hypot(g.x - p.x, g.z - p.z) < MISSILE_R)
+        .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)).slice(0, SHOOTERS);
+      for (const g of shooters) {
+        if (now - g.missileAt < MISSILE_MS) continue;
+        g.missileAt = now;
+        const sc = KINDS[g.kind].scale;
+        const pv = gunPivot(g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, g.yaw, sc, { x: 0, y: 0, z: 0 });
+        const flight = flightTime(Math.hypot(p.x - pv.x, p.z - pv.z));
+        const a = rand(-Math.PI, Math.PI), r = Math.sqrt(Math.random()) * SCATTER;
+        const x1 = p.x + vx * flight * LEAD + Math.sin(a) * r, z1 = p.z + vz * flight * LEAD + Math.cos(a) * r;
+        const m: Missile = { id: this.nextMissile++, launched: now, path: { x0: r2(pv.x), y0: r2(pv.y), z0: r2(pv.z), x1: r2(x1), y1: r2(heightAt(x1, z1)), z1: r2(z1), flight: r3(flight) } };
+        this.missiles.push(m);
+        events.push({ x: x1, z: z1, msg: { t: 'missile', id: m.id, g: g.id, time: now, ...m.path } });
+      }
+    }
+    for (const p of players) this.lastPos.set(p.id, { x: p.x, z: p.z });
+    if (this.lastPos.size > players.length) for (const id of this.lastPos.keys()) if (!players.some((p) => p.id === id)) this.lastPos.delete(id);
+    this.missiles = this.missiles.filter((m) => {
+      if (now - m.launched < m.path.flight * 1000) return true;
+      const { x1: x, y1: y, z1: z } = m.path;
+      for (const p of exposed) if (Math.hypot(p.x - x, p.y + 0.9 - y, p.z - z) < MISSILE_BLAST_R && !blasted.includes(p.id)) blasted.push(p.id);
+      events.push({ x, z, msg: { t: 'blast', id: m.id, x, y, z } });
+      return false;
+    });
   }
 
   /** The cannon: follows the prey it can see, charges, fires. */
@@ -325,7 +376,9 @@ export class GuardianServer {
     }
   }
 
-  private tickDrones(dt: number, now: number, tod: number, players: BotPlayer[], exposed: BotPlayer[], byId: Map<number, BotPlayer>, burn: Map<number, number>) {
+  /** Flies the drones; returns who their beams hold right now. */
+  private tickDrones(dt: number, now: number, tod: number, players: BotPlayer[], exposed: BotPlayer[], byId: Map<number, BotPlayer>): Set<number> {
+    const lit = new Set<number>();
     const night = sunElevation(tod) < NIGHT_SUN;
     // At night, every crash site someone is near has its drones over it.
     if (night) {
@@ -372,13 +425,18 @@ export class GuardianServer {
       }
       const ground = Math.max(heightAt(d.x, d.z), heightAt(d.x + Math.sin(d.yaw) * 15, d.z + Math.cos(d.yaw) * 15));
       d.y += (ground + alt - d.y) * (1 - Math.exp(-dt * (d.leaving ? 0.3 : 1.2)));
-      // Aim the beam: at the prey, or sweeping ahead.
+      // Aim the beam: turning after the prey no faster than TRACK_RATE, or sweeping ahead.
       if (prey) {
         const ax = prey.x - d.x, ay = prey.y + 1.1 - d.y, az = prey.z - d.z, l = Math.hypot(ax, ay, az) || 1;
-        d.dx = ax / l;
-        d.dy = ay / l;
-        d.dz = az / l;
-        d.yaw = wrap(d.yaw + wrap(Math.atan2(ax, az) - d.yaw) * (1 - Math.exp(-dt * 3)));
+        const cos = Math.max(-1, Math.min(1, (d.dx * ax + d.dy * ay + d.dz * az) / l)), ang = Math.acos(cos);
+        const t = ang > 1e-4 ? Math.min(1, (TRACK_RATE * dt) / ang) : 1;
+        // Between the two directions by fraction t of the angle (slerp).
+        const s0 = ang > 1e-4 ? Math.sin((1 - t) * ang) / Math.sin(ang) : 1 - t, s1 = ang > 1e-4 ? Math.sin(t * ang) / Math.sin(ang) : t;
+        const nx = d.dx * s0 + (ax / l) * s1, ny = d.dy * s0 + (ay / l) * s1, nz = d.dz * s0 + (az / l) * s1, nl = Math.hypot(nx, ny, nz) || 1;
+        d.dx = nx / nl;
+        d.dy = ny / nl;
+        d.dz = nz / nl;
+        d.yaw = wrap(d.yaw + wrap(Math.atan2(d.dx, d.dz) - d.yaw) * (1 - Math.exp(-dt * 3)));
       } else {
         beamDir(d.yaw, sweepAt(d.id, now), v);
         d.dx = v.x;
@@ -388,19 +446,24 @@ export class GuardianServer {
       if (d.leaving) continue;
       // Who's in the beam.
       if (prey && inBeam(d.x, d.y, d.z, d.dx, d.dy, d.dz, prey.x, prey.y, prey.z) && !prey.safe) d.litAt = now;
-      else if (d.lock >= 0 && now - d.litAt > LOSE_MS) d.lock = -1;
+      else if (d.lock >= 0 && now - d.litAt > LOSE_MS) {
+        d.lost = d.lock;
+        d.lostUntil = now + IGNORE_MS;
+        d.lock = -1;
+      }
       if (d.lock < 0) {
         for (const p of exposed) {
+          if (p.id === d.lost && now < d.lostUntil) continue;
           if (!inBeam(d.x, d.y, d.z, d.dx, d.dy, d.dz, p.x, p.y, p.z)) continue;
           d.lock = p.id;
           d.litAt = now;
           break;
         }
       }
-      // Burning whoever it has right now, and calling the guardians.
+      // Whoever it has right now: the missiles come for them (tickMissiles), and the guardians near them.
       if (d.lock >= 0 && d.litAt === now) {
         const p = byId.get(d.lock)!;
-        burn.set(p.id, Math.max(burn.get(p.id) ?? 0, BURN));
+        lit.add(p.id);
         for (const g of this.guardians) {
           if (now < g.calmUntil || (g.prey >= 0 && g.prey !== p.id) || g.kind !== GUARDIAN) continue;
           if (Math.hypot(g.x - p.x, g.z - p.z) < ALERT_R) this.hunt(g, p, now);
@@ -408,6 +471,7 @@ export class GuardianServer {
       }
     }
     this.drones = this.drones.filter((d) => !d.leaving || d.y < heightAt(d.x, d.z) + DRONE_ALT * 4.5);
+    return lit;
   }
 
   /** Debug menu: the nearest guardian walks in from 90 m away, or a drone comes for a minute. */
@@ -434,7 +498,7 @@ export class GuardianServer {
     const z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hz + Math.cos(a) * from));
     const d: Drone = {
       id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
-      hx, hz, tx: hx, tz: hz, site, lock: -1, litAt: 0, leaving: false, dx: 0, dy: -1, dz: 0, until,
+      hx, hz, tx: hx, tz: hz, site, lock: -1, litAt: 0, leaving: false, lost: -1, lostUntil: 0, dx: 0, dy: -1, dz: 0, until,
     };
     // First pass: across the site from where it came in.
     d.tx = hx + rand(-30, 30);

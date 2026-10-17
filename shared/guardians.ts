@@ -15,9 +15,11 @@
 // you, kills. Bolts fly straight at BOLT_SPEED: from a distance you can sidestep them.
 //
 // Drones come out at night (sun below NIGHT_SUN): a few hover over every crash site someone is near, sweeping a
-// searchlight over the sand. Step into the beam and it locks on: it follows you, the beam burns (BURN heat per
-// second, shared/water.ts) and every guardian within ALERT_R comes for you. Break its line of sight (behind a
-// dune crest, into the base) or outrun it for LOSE_MS and it gives up.
+// searchlight over the sand. Step into the beam and it locks on: it follows you, every guardian within ALERT_R
+// comes for you and the nearest ones shell you with missiles from afar (shared/missiles.ts). The beam turns after
+// you no faster than TRACK_RATE and the drone flies slower than you walk: sprint sideways out of the light, break
+// its line of sight (behind a dune crest, into the base) or outrun it, and after LOSE_MS in the dark it lets you go
+// and leaves you be for IGNORE_MS.
 import { inBase } from './base.ts';
 import { heightAt } from './terrain.ts';
 
@@ -99,15 +101,16 @@ export const SWEEP_S = 7;
 /** The beam's half-angle (radians) and reach (m). */
 export const BEAM_HALF = 0.15;
 export const BEAM_RANGE = 75;
-/** Drone speeds (m/s): patrolling, and following someone it has locked on (you sprint 11). */
+/** Drone speeds (m/s): patrolling, and following someone it has locked on (you walk 6, sprint 11). */
 export const DRONE_SPEED = 5;
-export const CHASE_SPEED = 6.5;
+export const CHASE_SPEED = 5.5;
+/** Locked on, the beam turns after you at most this fast (rad/s): at chase distance a sprint sideways outruns it. */
+export const TRACK_RATE = 0.22;
 /** Locked on, it hangs this far back from you (m, horizontally). */
 export const CHASE_BACK = 14;
-/** Out of the beam for this long (ms), it lets you go. */
-export const LOSE_MS = 2500;
-/** Heat per second while the beam is on you (shared/water.ts HEAT_MAX 100). */
-export const BURN = 5;
+/** Out of the beam for this long (ms), it lets you go, and won't lock on to you again for IGNORE_MS. */
+export const LOSE_MS = 1200;
+export const IGNORE_MS = 15_000;
 /** Guardians this close (m) to someone a drone has locked on to come for them. */
 export const ALERT_R = 420;
 

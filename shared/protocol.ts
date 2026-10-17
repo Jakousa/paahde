@@ -2,6 +2,7 @@
 import type { PlayerState } from './sim.ts';
 import type { Slots } from './items.ts';
 import type { Loot } from './loot.ts';
+import type { MissilePath } from './missiles.ts';
 import type { Storm } from './storm.ts';
 import type { Placed } from './placed.ts';
 import type { BedState } from './garden.ts';
@@ -170,8 +171,8 @@ export type ServerMsg =
   // You died: you lie where you fell as a ragdoll for DOWN_MS (shared/ragdoll.ts; your input is ignored), then
   // 'respawn' says the server has moved you to BASE_SPAWN (the next snapshot snaps you there) with no heat and a
   // full canteen; a 'water' follows. For the death screen. push: the blast's launch velocity for the body (m/s).
-  // 'heat': heatstroke; 'beam': a drone's searchlight burned you (heat too, shared/guardians.ts); 'guardian': one
-  // walked over you; 'laser': a guardian's cannon got you; 'crawler': bitten once too often.
+  // 'heat': heatstroke; 'guardian': one walked over you; 'laser': a guardian's cannon got you; 'missile': one called
+  // down by a drone's searchlight landed on you (shared/missiles.ts); 'crawler': bitten once too often.
   | { t: 'died'; cause: DeathCause; push?: [number, number, number] }
   | { t: 'respawn' }
   // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time).
@@ -185,6 +186,11 @@ export type ServerMsg =
   // Guardian `g` fired laser bolt `id` from (x, y, z) along unit (dx, dy, dz) at server time `time`; it flies at
   // BOLT_SPEED (shared/guardians.ts) until it bursts ('boom': on the ground, a player, or out of range).
   | { t: 'shot'; id: number; g: number; time: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }
-  | { t: 'boom'; id: number; x: number; y: number; z: number; ground: boolean };
+  | { t: 'boom'; id: number; x: number; y: number; z: number; ground: boolean }
+  // Guardian `g` launched missile `id` at server time `time` on the arc from (x0, y0, z0) to the impact (x1, y1, z1),
+  // landing `flight` seconds later (shared/missiles.ts missileAt); 'blast' when it does. Sent to everyone near the
+  // impact.
+  | ({ t: 'missile'; id: number; g: number; time: number } & MissilePath)
+  | { t: 'blast'; id: number; x: number; y: number; z: number };
 
-export type DeathCause = 'heat' | 'beam' | 'guardian' | 'laser' | 'crawler';
+export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler';

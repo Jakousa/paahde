@@ -1,13 +1,14 @@
 // Guardians and night drones on the client (shared/guardians.ts): interpolates the server's 'bots' messages
 // (src/world/botFrames.ts), walks the guardians (src/world/guardians.ts) and flies the drones
 // (src/world/drones.ts), and does what makes them feel big and dangerous: footfall sound, dust and camera shake,
-// the horn when one comes for you, the cannon (src/world/bolts.ts: charge whine, zap, burst), the drone siren, and a
-// warning line on the HUD.
+// the horn when one comes for you, the cannon (src/world/bolts.ts: charge whine, zap, burst), the missiles a drone
+// calls down (src/world/missiles.ts: whistle, blast), a chirp when a drone locks on, and a warning line on the HUD.
 import * as THREE from 'three/webgpu';
 import { BOT_DELAY_MS, dronesAt, guardiansAt } from './world/botFrames';
 import { Drones } from './world/drones';
 import { Guardians, type Footfall } from './world/guardians';
 import { Bolts } from './world/bolts';
+import { Missiles } from './world/missiles';
 import { CHARGE_MS, CRAWLER, GUARDIAN, KINDS } from '../shared/guardians.ts';
 import { guardianSound } from './guardianSound';
 import { tyreDust } from './tyreDust';
@@ -22,15 +23,16 @@ const css = `
 #botWarn { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); pointer-events: none; z-index: 6;
   font: 700 15px var(--mono, monospace); letter-spacing: 0.12em; text-transform: uppercase; color: #ffd0b0;
   text-shadow: 0 0 8px rgba(255, 40, 10, 0.9), 0 1px 2px #000; opacity: 0; transition: opacity .3s; white-space: nowrap; }
-#botWarn.on { opacity: 1; animation: botBlink 0.7s steps(2, start) infinite; }
-@keyframes botBlink { to { visibility: hidden; } }
+#botWarn.on { opacity: 1; }
 `;
 
 export class GuardianFx {
   readonly guardians: Guardians;
   readonly drones: Drones;
   readonly bolts: Bolts;
+  readonly missiles: Missiles;
   private bound = false;
+  private locked = false;
   private charging = new Set<number>();
   private muzzle = new THREE.Vector3();
   private shake = 0;
@@ -44,6 +46,7 @@ export class GuardianFx {
     this.guardians = new Guardians(scene);
     this.drones = new Drones(scene);
     this.bolts = new Bolts(scene);
+    this.missiles = new Missiles(scene);
     this.guardians.onFootfall = (f) => this.footfall(f);
     const style = document.createElement('style');
     style.textContent = css;
@@ -87,14 +90,23 @@ export class GuardianFx {
           this.bolts.fire(m, muzzle);
           const at = muzzle ?? this.muzzle.set(m.x, m.y, m.z);
           guardianSound.zap(at.x, at.y, at.z, this.ear);
-        } else {
+        } else if (m.t === 'boom') {
           this.bolts.boom(m.id, m.x, m.y, m.z, m.ground);
           guardianSound.boom(m.x, m.y, m.z, this.ear);
           if (m.ground) this.thump(m.x, m.y, m.z, 2.6, 30, 7, 3.4);
+        } else if (m.t === 'missile') {
+          this.missiles.launch(m);
+          guardianSound.whistle(m.x1, m.y1, m.z1, m.flight - (net.serverTime() - m.time) / 1000, this.ear);
+        } else {
+          this.missiles.land(m.id);
+          this.bolts.boom(-1, m.x, m.y, m.z, true);
+          guardianSound.boom(m.x, m.y, m.z, this.ear);
+          this.thump(m.x, m.y, m.z, 2.6, 30, 7, 3.4);
         }
       };
     }
     this.bolts.update(dt, net.serverTime());
+    this.missiles.update(dt, net.serverTime());
     const t = net.serverTime() - BOT_DELAY_MS;
     const gs = guardiansAt(net.bots, t);
     const ds = dronesAt(net.bots, t);
@@ -127,7 +139,10 @@ export class GuardianFx {
     for (const id of this.crawled) if (!gs.some((g) => g.id === id)) this.crawled.delete(id);
     for (const id of this.hunted) if (!gs.some((g) => g.id === id)) this.hunted.delete(id);
     const spotted = ds.some((d) => d.lock === 2);
-    const text = spotted ? 'Spotted — get out of the light' : this.hunted.size ? 'A guardian is coming for you'
+    if (spotted && !this.locked) guardianSound.chirp();
+    this.locked = spotted;
+    const incoming = this.missiles.incoming(focus.x, focus.z, 30, net.serverTime()).length > 0;
+    const text = incoming ? 'Incoming — keep moving' : spotted ? 'Spotted' : this.hunted.size ? 'A guardian is coming for you'
       : this.crawled.size ? 'Crawlers — run' : '';
     if (text) this.warn.textContent = text;
     this.warn.classList.toggle('on', text !== '');

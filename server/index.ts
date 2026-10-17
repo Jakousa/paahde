@@ -15,6 +15,7 @@ import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { BLAST_R, CRATER_MM, CRATER_R } from '../shared/guardians.ts';
+import { BLAST_R as MISSILE_BLAST_R } from '../shared/missiles.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
@@ -60,7 +61,6 @@ const loot = new LootServer(db);
 const storms = new StormServer(performance.now());
 const guardians = new GuardianServer();
 /** Heat per second from drone searchlights by player id, from the last bot tick. */
-let burning = new Map<number, number>();
 
 type Player = {
   id: number;
@@ -234,10 +234,9 @@ function gearChanged(browserId: string) {
 function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const now = Date.now();
   const storm = stormAt(storms.storms, p.state.x, p.state.z, serverNow);
-  const burn = burning.get(p.id) ?? 0;
-  const r = tickHeat(p.heat, dt, p.state, p.input, tod, storm, now, burn);
+  const r = tickHeat(p.heat, dt, p.state, p.input, tod, storm, now);
   if (r === 'died') {
-    die(p, burn > 0 ? 'beam' : 'heat');
+    die(p, 'heat');
   } else if (r === 'send') {
     send(p.ws, waterMsg(p.heat));
   }
@@ -273,25 +272,25 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const wall = Date.now();
   const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
   const r = guardians.tick(dt, now, tod, list);
-  burning = r.burn;
   for (const p of players.values()) {
     if (r.crushed.includes(p.id)) die(p, 'guardian');
-    else if (r.shot.includes(p.id)) die(p, 'laser', boltPush(p, r.events));
+    else if (r.shot.includes(p.id)) die(p, 'laser', boltPush(p, r.events, 'boom', BLAST_R));
+    else if (r.blasted.includes(p.id)) die(p, 'missile', boltPush(p, r.events, 'blast', MISSILE_BLAST_R));
     else if (r.bitten.has(p.id) && bite(p.heat, r.bitten.get(p.id)!)) die(p, 'crawler');
     else if (r.bitten.has(p.id)) send(p.ws, waterMsg(p.heat));
     for (const e of r.events) if (Math.hypot(e.x - p.state.x, e.z - p.state.z) < BOT_SEND_R) send(p.ws, e.msg);
     send(p.ws, guardians.msg(now, p.id, p.state.x, p.state.z));
   }
-  for (const e of r.events) if (e.msg.t === 'boom' && e.msg.ground) terrain.crater(e.msg.x, e.msg.z, CRATER_R, CRATER_MM);
+  for (const e of r.events) if ((e.msg.t === 'boom' && e.msg.ground) || e.msg.t === 'blast') terrain.crater(e.msg.x, e.msg.z, CRATER_R, CRATER_MM);
 }
 
-/** The nearest bolt burst throws a player it killed. */
-function boltPush(p: Player, events: { msg: ServerMsg }[]): [number, number, number] {
-  let best: Extract<ServerMsg, { t: 'boom' }> | null = null;
+/** The nearest bolt burst ('boom') or missile blast throws a player it killed. */
+function boltPush(p: Player, events: { msg: ServerMsg }[], t: 'boom' | 'blast', r: number): [number, number, number] {
+  let best: Extract<ServerMsg, { t: 'boom' | 'blast' }> | null = null;
   for (const { msg: m } of events) {
-    if (m.t === 'boom' && (!best || Math.hypot(m.x - p.state.x, m.z - p.state.z) < Math.hypot(best.x - p.state.x, best.z - p.state.z))) best = m;
+    if (m.t === t && (!best || Math.hypot(m.x - p.state.x, m.z - p.state.z) < Math.hypot(best.x - p.state.x, best.z - p.state.z))) best = m;
   }
-  return best ? blastPush(best.x, best.y, best.z, p.state.x, p.state.y, p.state.z, BLAST_R) : [0, 0, 0];
+  return best ? blastPush(best.x, best.y, best.z, p.state.x, p.state.y, p.state.z, r) : [0, 0, 0];
 }
 
 function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {

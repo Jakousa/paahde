@@ -41,9 +41,9 @@ const TEMP_RED = [255, 92, 60];
 const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
 const DEATH_TEXT: Record<DeathCause, string> = {
   heat: 'You died of heatstroke<small>The sun got you. Back at the base, water bottle refilled.</small>',
-  beam: 'Burned by the searchlight<small>A drone held its beam on you. Stay out of the light at night.</small>',
   guardian: 'A guardian crushed you<small>It walked right over you. Keep your distance from the giants.</small>',
   crawler: 'Eaten by crawlers<small>The little ones swarm the crash sites. Sprint — they can\'t keep up.</small>',
+  missile: 'Shelled<small>A drone had you in its light and called the guardians\' missiles down. Keep moving, get out of the beam.</small>',
   laser: 'Shot by a guardian<small>Its cannon found you. Dodge the bolts, or break its line of sight.</small>',
 };
 const TOAST_MS = 1800;

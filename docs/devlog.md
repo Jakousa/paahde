@@ -2,6 +2,24 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Drones call down missiles; the searchlight is escapable
+
+- **Searchlight look** (src/world/drones.ts): was a solid cream wedge, white even when locked, cut hard at the sand.
+  Now a faint haze cone (back faces only, so it also reads from inside; brightest along the axis, nothing at the
+  silhouette, fading towards the ground), a glare at the lens, and a pool that is a grid laid on the dunes each frame
+  instead of a flat disc slicing through them.
+- **Escapable**: the beam no longer burns. Locked on, it turns after you at most 0.22 rad/s and the drone chases at
+  5.5 m/s (you walk 6). Out of the beam for 1.2 s it lets you go and ignores you for 15 s. Simulated: walking sideways
+  out of the beam takes ~5 s, sprinting sideways ~2 s, sprinting straight away ~11 s; before, nothing escaped.
+- **Missiles** (shared/missiles.ts, server `tickMissiles`, src/world/missiles.ts): while a beam holds you, the two
+  nearest guardians within 1.5 km each launch one at you every 4.5 s (first 1.2 s after you're spotted). They arc
+  high (a Bézier shared by server and client), land 3.5–8 s later where you were heading (85 % lead, 4 m scatter) and
+  kill within 6 m ('missile'). The impact is marked on the sand from launch: a red ring whose disc fills as it comes
+  down, plus a falling whistle over the last 2.2 s. Simulated: standing still or walking in a straight line gets you
+  hit; sprinting or turning doesn't. Guardians are usually 0.8–2 km from a site, so the range is long on purpose.
+- **Alarm**: the looping siren is gone; a drone locking on gives one short double chirp. The HUD line no longer
+  blinks ("Spotted", "Incoming — keep moving").
+
 ## 2026-10-17 — Guardian cannons, crawlers, bigger and rarer guardians
 
 - **Guardians** are now 3 giants (×1.5: body ~20 m up, legs 18 + 24 m) roaming the desert from crash site to crash
