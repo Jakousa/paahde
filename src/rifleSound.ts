@@ -28,8 +28,8 @@ const IMPACT_GAIN = 1.2;
 const DEATH_GAIN = 1.8;
 const FIREWORKS = ['./audio/firework-1.mp3', './audio/firework-2.mp3', './audio/firework-3.mp3', './audio/firework-4.mp3'];
 /** Full level within FIREWORK_REF m. */
-const FIREWORK_GAIN = 1;
-const FIREWORK_REF = 20;
+const FIREWORK_GAIN = 2;
+const FIREWORK_REF = 35;
 
 let noiseBuf: AudioBuffer | null = null;
 function noise(ctx: AudioContext) {
