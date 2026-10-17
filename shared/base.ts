@@ -10,7 +10,7 @@
 // door faces +Z, the greenhouse runs along -X. Dimensions match tools/blender/base/shell.py.
 
 /** Hall centre in world coordinates, and the floor height. */
-export const BASE = { x: -28, z: 120, y: 9.8 };
+export const BASE = { x: -10, z: -216, y: 7.5 };
 /** Where new players appear: in front of the door, looking at it (yaw 0 looks down -Z). */
 export const BASE_SPAWN = { x: BASE.x, z: BASE.z + 16 };
 

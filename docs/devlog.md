@@ -4,8 +4,8 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 
 ## 2026-10-17 — Home base
 
-New goal: plant and grow nature, push back the desert. The players' home is a homestead in a dune pan
-about 130 m behind the old spawn: Tatooine-ish plaster dome crossed with steampunk brass, copper and iron
+New goal: plant and grow nature, push back the desert. The players' home is a homestead in a dune pan at
+(−10, −216), ~60 m from where the team was playing (prod DB positions): Tatooine-ish plaster dome crossed with steampunk brass, copper and iron
 (all original designs). New players spawn at its front door (`BASE_SPAWN`). The palms are gone
 (`tools/blender/palm.py` is kept for growing plants later).
 
