@@ -121,6 +121,11 @@ export class Net {
     }
   }
 
+  /** Server clock in ms (local clock until the first snapshot), for effects all players should share. */
+  serverTime(): number {
+    return performance.now() + (this.clockOffset ?? 0);
+  }
+
   /** Decay the visual error and interpolate remote players for this render frame. */
   frame(dtSeconds: number): RemotePlayer[] {
     const k = Math.exp(-dtSeconds * 15);

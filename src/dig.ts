@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { DIG_RADIUS, digTarget, type Point } from '../shared/dig.ts';
 import { normalAt } from '../shared/terrain.ts';
+import { uAt, ustarFrom10, wind } from './world/wind.ts';
 
 const MAX_PARTICLES = 160;
 const PER_PUFF = 18;
@@ -76,7 +77,11 @@ export class DigFx {
 
     let n = 0;
     this.particles = this.particles.filter((p) => (p.age += dt) < LIFE);
+    // Thrown sand drifts downwind (wind at ~0.5 m, picked up over ~0.5 s).
+    const carry = uAt(ustarFrom10(wind.u10), 0.5);
     for (const p of this.particles) {
+      p.vx += (carry * wind.dx - p.vx) * 2 * dt;
+      p.vz += (carry * wind.dz - p.vz) * 2 * dt;
       p.vy += GRAVITY * dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;

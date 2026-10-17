@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { DT, quantizeYaw } from '../shared/sim.ts';
 import { quantizePitch } from '../shared/dig.ts';
 import { FirstPersonCamera } from './camera';
+import { BlownSand } from './blownSand';
 import { DigFx } from './dig';
 import { footprints } from './footprints';
 import { readInput } from './input';
@@ -14,6 +15,7 @@ import { addPalms } from './world/palms';
 import { Scrap } from './world/scrap';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
+import { wind } from './world/wind';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -29,9 +31,10 @@ const terrain = new Terrain(scene);
 addPalms(scene);
 const scrap = new Scrap(scene);
 const post = new Post(renderer, scene, orbit.camera);
+const blownSand = new BlownSand(scene);
 
 // Debug handle for screenshots/tuning from the console: open with ?debug.
-if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap } });
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand } });
 
 const net = new Net(getBrowserId());
 const digFx = new DigFx(scene);
@@ -99,6 +102,8 @@ renderer.setAnimationLoop((time) => {
   terrain.update(focus);
   scrap.update(focus);
   sky.update(frameDt, focus);
+  wind.update(net.serverTime() / 1000);
+  blownSand.update(frameDt, focus);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
 
   info.textContent = `${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
