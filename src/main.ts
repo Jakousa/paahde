@@ -98,7 +98,7 @@ renderer.setAnimationLoop((time) => {
   me.setColor(net.color);
   const s = net.me;
   me.update(
-    { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded,
+    { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding,
     digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch },
     frameDt,
   );
@@ -119,7 +119,7 @@ renderer.setAnimationLoop((time) => {
         () => model.dispose(),
       );
     }
-    avatar.update({ ...r, digging: (digUntil.get(r.id) ?? 0) > performance.now() }, frameDt);
+    avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, digging: (digUntil.get(r.id) ?? 0) > performance.now() }, frameDt);
   }
   for (const [id, avatar] of remotes) {
     if (!seen.has(id)) {
@@ -130,7 +130,7 @@ renderer.setAnimationLoop((time) => {
   }
 
   focus.copy(me.root.position);
-  orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded }, frameDt);
+  orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding }, frameDt);
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
   scrap.update(focus);

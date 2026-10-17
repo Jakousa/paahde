@@ -17,7 +17,7 @@ export const MAX_FOV = BASE_FOV + SPRINT_FOV_KICK;
 const STRIDE = 1.15; // metres per step (half a bob cycle)
 
 /** What the camera needs from the local player each frame. */
-export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean };
+export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean };
 
 export class FirstPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -27,6 +27,7 @@ export class FirstPersonCamera {
   private eyeY = NaN; // smoothed feet height
   private bobPhase = 0;
   private bobAmount = 0; // 0..1, fades in with walking, out when airborne/stopped
+  private crouch = 0; // 0..1, eased in while sliding: the eye drops and the view rolls a touch
   private dip = 0; // landing dip offset (m), spring back to 0
   private dipVel = 0;
   private roll = 0;
@@ -76,7 +77,7 @@ export class FirstPersonCamera {
     // Past a walk it grows only gently (sprint ≈ 1.1×, its faster step rate is enough), and the vertical shape is sin², which is smooth
     // at footfall where |sin| had a hard cusp.
     const pace = speed / WALK_SPEED;
-    const bobTarget = moving ? (pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15)) : 0;
+    const bobTarget = moving && !p.sliding ? (pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15)) : 0;
     this.bobAmount += (bobTarget - this.bobAmount) * (1 - Math.exp(-dt * 6));
     if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / STRIDE;
     const s = Math.sin(this.bobPhase);
@@ -91,7 +92,8 @@ export class FirstPersonCamera {
 
     const x = p.x + rightX * bobX;
     const z = p.z + rightZ * bobX;
-    let y = this.eyeY + EYE_HEIGHT + bobY + this.dip;
+    this.crouch += ((p.sliding && p.grounded ? 1 : 0) - this.crouch) * (1 - Math.exp(-dt * 12));
+    let y = this.eyeY + EYE_HEIGHT - 0.65 * this.crouch + bobY + this.dip;
     y = Math.max(y, heightAt(x, z) + 0.3); // never look out from under a dune
     this.camera.position.set(x, y, z);
     this.camera.rotation.set(this.pitch + this.dip * 0.12, this.yaw, this.roll + bobX * 0.1);

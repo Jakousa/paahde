@@ -5,7 +5,7 @@
 #   ... -- --tex 1024     atlas size (default 2048 baked, colour kept at 2048, normal/ORM downscaled to 1024)
 #
 # Output: public/models/scavenger.glb (one skinned mesh, materials Scavenger / PlayerTint / Lens,
-# clips Idle, Walk, Run, Jump, Dig, Slide). Faces -Y in Blender = +Z in three.js.
+# clips Idle, Walk, Run, Jump, Dig, Slide, Powerslide). Faces -Y in Blender = +Z in three.js.
 import math
 import os
 import random
@@ -1055,11 +1055,23 @@ def slide(p):
     return pose, (0.03 * s, 0.0, -0.30 + 0.01 * math.sin(2 * w))
 
 
+def powerslide(p):
+    """Intentional (Ctrl) slide: lying back on the hips, one leg driven out forward, the other knee tucked,
+    arms out for balance. The game tilts the whole body to the slope; this clip is the flat-ground pose."""
+    w = 2 * math.pi * p
+    s = math.sin(w)
+    pose = {'Hips': rot((X, -12), (Z, 3 * s)), 'Spine': rot((X, -10), (Z, -4)), 'Spine1': rot((X, -6)),
+            'Spine2': rot((X, -3)), 'Neck': rot((X, 14)), 'Head': rot((X, 8 + s), (Z, 2 * s))}
+    legs(pose, 64, 6 + 2 * s, -22, 40, 118 + 3 * s, 38, l_out=4, r_out=14)
+    arms_down(pose, -30 + 4 * s, -26 - 4 * s, l_swing=48, r_swing=30, l_elbow=28, r_elbow=40, l_out=22, r_out=26)
+    return pose, (0.0, 0.0, -0.62 + 0.008 * math.sin(2 * w))
+
+
 def main():
     body, lens = build_character()
     rig = make_rig([body, lens])
     CLIPS = [('Idle', 90, idle), ('Walk', 34, walk), ('Run', 22, run), ('Jump', 30, jump), ('Dig', 48, dig),
-             ('Slide', 40, slide)]
+             ('Slide', 40, slide), ('Powerslide', 40, powerslide)]
     for name, frames, fn in CLIPS:
         clip(name, frames, fn)
 

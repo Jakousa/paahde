@@ -4,7 +4,7 @@
 // footprints and the name tag. Its visuals are a swappable `AvatarModel`: the simple procedural
 // placeholder below, or the rigged scavenger (src/models/scavenger.ts) with the same interface.
 import * as THREE from 'three/webgpu';
-import { isSlipFace } from '../shared/sim.ts';
+import { isSlipFace, slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { footprints } from './footprints.ts';
 import { SHADOW_ONLY_LAYER } from './world/env.ts';
@@ -12,6 +12,8 @@ import { SHADOW_ONLY_LAYER } from './world/env.ts';
 export type AvatarPose = {
   x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
   sliding?: boolean; digging?: boolean; pitch?: number;
+  /** In an intentional (Ctrl) slide, as opposed to slipping down a slip face (`sliding`). */
+  powerSlide?: boolean;
   /** Ground velocity, for which way the legs walk relative to facing (defaults to straight ahead). */
   vx?: number; vz?: number;
 };
@@ -19,6 +21,10 @@ export type AvatarPose = {
 /** What a model needs each frame; placement is already applied to its parent. */
 export type ModelPose = {
   speed: number; grounded: boolean; digging?: boolean; sliding?: boolean; pitch?: number;
+  /** Intentional (Ctrl) slide: lies back on the sand and follows its slope (tiltPitch / tiltRoll). */
+  powerSlide?: boolean;
+  /** Ground slope along / across the facing (rad): + pitch = uphill ahead, + roll = uphill to the right. */
+  tiltPitch?: number; tiltRoll?: number;
   /** Direction of travel relative to facing (rad): 0 ahead, +π/2 to the right, ±π backwards. */
   heading?: number;
   /** Sand height under the feet, when standing on sand (not scrap): lets the model plant its feet. */
@@ -116,15 +122,28 @@ export class Avatar {
     this.facing += d * (1 - Math.exp(-dt * 18));
     this.root.rotation.y = this.facing;
 
-    const sliding = pose.sliding ?? (pose.grounded && pose.speed > 2 && isSlipFace(pose.x, pose.z));
+    const power = !!pose.powerSlide && pose.grounded;
+    const slip = !power && (pose.sliding ?? (pose.grounded && pose.speed > 2 && isSlipFace(pose.x, pose.z)));
+    const sliding = slip || power;
     // Travel direction in the body frame (facing f looks along (-sin f, -cos f)).
     const vx = pose.vx ?? 0, vz = pose.vz ?? 0;
     const ahead = -vx * Math.sin(this.facing) - vz * Math.cos(this.facing);
     const right = vx * Math.cos(this.facing) - vz * Math.sin(this.facing);
     const heading = pose.vx === undefined ? 0 : Math.atan2(right, ahead);
     const onSand = pose.grounded && Math.abs(pose.y - heightAt(pose.x, pose.z)) < 0.05;
+    let tiltPitch = 0, tiltRoll = 0;
+    if (power && onSand) {
+      // Lie along the ground: the slope's rise along the body's forward and right directions.
+      const g = slopeAt(pose.x, pose.z, tmpSlope);
+      const fx = -Math.sin(this.facing), fz = -Math.cos(this.facing);
+      tiltPitch = Math.atan(g.gx * fx + g.gz * fz);
+      tiltRoll = Math.atan(g.gx * -fz + g.gz * fx);
+    }
     this.model.update(
-      { speed: pose.speed, grounded: pose.grounded, sliding, digging: pose.digging, pitch: pose.pitch, heading, ground: onSand ? heightAt : undefined },
+      {
+        speed: pose.speed, grounded: pose.grounded, sliding: slip, powerSlide: power, tiltPitch, tiltRoll,
+        digging: pose.digging, pitch: pose.pitch, heading, ground: onSand && !power ? heightAt : undefined,
+      },
       dt,
     );
 
@@ -150,6 +169,7 @@ export class Avatar {
 // A small hooded scavenger from primitives: robe cone, pointed hood, dark face, two glowing eyes,
 // a scrap backpack, boots that swing with a walk cycle. Tinted by the player colour. Facing -Z.
 
+const tmpSlope = { gx: 0, gz: 0 };
 const ROBE_BASE = new THREE.Color(0x5a3b24);
 
 export class PlaceholderModel implements AvatarModel {
@@ -246,7 +266,7 @@ export class PlaceholderModel implements AvatarModel {
     const k = (rate: number) => 1 - Math.exp(-dt * rate);
     const run = Math.min(p.speed / 11, 1);
     this.air += ((p.grounded ? 0 : 1) - this.air) * k(10);
-    this.slide += ((p.sliding ? 1 : 0) - this.slide) * k(8);
+    this.slide += ((p.sliding || p.powerSlide ? 1 : 0) - this.slide) * k(8);
     if (p.grounded) this.phase += (p.speed * dt * Math.PI) / STRIDE;
     const walk = Math.min(p.speed / 3, 1) * (1 - this.air) * (1 - this.slide);
     const sw = Math.sin(this.phase);

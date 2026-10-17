@@ -50,7 +50,7 @@ let pitch = 0.12;
 let dist = 11;
 
 const only = params.get('clip') as ScavengerClip | null;
-const clips: ScavengerClip[] = only ? [only] : ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide'];
+const clips: ScavengerClip[] = only ? [only] : ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide', 'Powerslide'];
 const colors = [0xd8452b, 0x2f8fd8, 0xe0b23a, 0x4fae5a, 0xb455c8, 0xe8e2d6];
 if (only) dist = 4;
 if (params.has('yaw')) yaw = Number(params.get('yaw'));
@@ -124,6 +124,7 @@ renderer.setAnimationLoop((time) => {
       grounded: clip !== 'Jump',
       digging: clip === 'Dig',
       sliding: clip === 'Slide',
+      powerSlide: clip === 'Powerslide',
       pitch: clip === 'Idle' ? Math.sin(time / 1500) * 0.5 : 0,
       plant: walking,
       heading: walking ? heading : 0,

@@ -168,7 +168,7 @@ else:
     sc.render.resolution_x = 420
     sc.render.resolution_y = 520
     sc.cycles.samples = 16
-    for name in ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide']:
+    for name in ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide', 'Powerslide']:
         act = bpy.data.actions.get(name)
         if not act:
             # imported glTF actions are named e.g. 'Idle' or 'Idle_Scavenger'

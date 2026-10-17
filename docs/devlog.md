@@ -185,3 +185,17 @@ blended 60/40 with the regional wind so lees are only somewhat quieter, and foll
 - **Direction:** the rush is louder in the windward ear and brighter when facing into the wind.
 - Starts on the first click/key (browser autoplay rules), suspends when the tab is hidden.
   Volume slider in the top-right corner (default 0.4, remembered per browser); `dbg.wind.override` is handy for tuning.
+
+## Ctrl slide
+
+Titanfall-style intentional slide (input bit `SLIDE` = 256, keys Ctrl or C; C because browsers eat Ctrl+W).
+Not to be confused with `sliding` on the avatar/`Slide` clip, which is slipping down a slip face.
+
+- **Sim** (`shared/sim.ts`, state `sliding` + `slideCool`): starts on the ground at ≥ 4.5 m/s, +3 m/s entry
+  burst (capped 14), 50-tick cooldown from the start. While held: 4.5 m/s² friction, 90% of the slope's
+  gravity (downhill gains speed, uphill bleeds it), steering only turns the heading (1.6 rad/s). Ends on
+  release, leaving the ground, or < 2.2 m/s. Jumping out keeps the speed (air control never brakes).
+- **Animation:** `Powerslide` clip (leg driven forward, other knee tucked, leaning back; `tools/models/scavenger.py`).
+  `ScavengerModel` tilts a group between root and model to the slope along/across the facing (`tiltPitch/Roll`),
+  feet IK is off during it. Camera eye drops 0.65 m. Remote players get it from the snapshot's `sliding`.
+- Tuning knobs are the `SLIDE_*` constants at the top of `sim.ts`. Untested with real multiplayer latency.

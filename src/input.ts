@@ -1,4 +1,4 @@
-import { BACK, DIG, FORWARD, JUMP, LEFT, PILE, RIGHT, SPRINT } from '../shared/sim.ts';
+import { BACK, DIG, FORWARD, JUMP, LEFT, PILE, RIGHT, SLIDE, SPRINT } from '../shared/sim.ts';
 
 const keys = new Set<string>();
 let mouseDig = false;
@@ -36,6 +36,8 @@ export function readInput(): number {
   if (keys.has('KeyD') || keys.has('ArrowRight')) input |= RIGHT;
   if (keys.has('Space')) input |= JUMP;
   if (keys.has('ShiftLeft') || keys.has('ShiftRight')) input |= SPRINT;
+  // C is an alias: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
+  if (keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyC')) input |= SLIDE;
   if (mouseDig || keys.has('KeyE')) input |= DIG;
   else if (mousePile || keys.has('KeyQ')) input |= PILE;
   return input;

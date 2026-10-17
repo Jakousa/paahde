@@ -17,7 +17,13 @@ export type ScavengerPose = {
   speed: number;
   grounded: boolean;
   digging?: boolean;
+  /** Slipping down a slip face (clip 'Slide'). */
   sliding?: boolean;
+  /** Intentional Ctrl slide (clip 'Powerslide'); the body tilts to the ground by tiltPitch / tiltRoll
+   *  (rad; + pitch = uphill ahead, + roll = uphill to the right). */
+  powerSlide?: boolean;
+  tiltPitch?: number;
+  tiltRoll?: number;
   /** Look pitch in radians (+ = up); tilts neck and head. */
   pitch?: number;
   /** Direction of travel relative to facing (rad): 0 ahead, +π/2 right, ±π backwards. Turns the hips
@@ -29,7 +35,7 @@ export type ScavengerPose = {
   plant?: boolean;
 };
 
-export type ScavengerClip = 'Idle' | 'Walk' | 'Run' | 'Jump' | 'Dig' | 'Slide';
+export type ScavengerClip = 'Idle' | 'Walk' | 'Run' | 'Jump' | 'Dig' | 'Slide' | 'Powerslide';
 
 const URL = './models/scavenger.glb';
 const FADE = 0.2;
@@ -52,6 +58,8 @@ export function loadScavenger(): Promise<GLTF> {
 export class ScavengerModel {
   /** Add this to the scene and position/rotate it like the placeholder avatar. */
   readonly root = new THREE.Group();
+  /** Between root and model: leans the whole body to the slope while power-sliding. */
+  private tilt = new THREE.Group();
   /** Resolves once the model is in `root` and animating. */
   readonly ready: Promise<void>;
 
@@ -76,6 +84,7 @@ export class ScavengerModel {
   constructor(color = 0xffffff) {
     this.color = color;
     this.root.name = 'Scavenger';
+    this.root.add(this.tilt);
     this.ready = loadScavenger().then((gltf) => this.init(gltf));
   }
 
@@ -112,7 +121,7 @@ export class ScavengerModel {
     for (const b of [this.neck, this.head, this.hips, this.spine, ...legs.flat()]) if (b) this.posed.push({ bone: b, base: b.quaternion.clone() });
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
-    this.root.add(model);
+    this.tilt.add(model);
     this.setColor(this.color);
     this.play('Idle', 0);
   }
@@ -157,7 +166,7 @@ export class ScavengerModel {
     // Backing up plays the stride in reverse; the hips turn toward the travel direction (or away from it
     // when backing up) so diagonal and sideways moves step that way instead of moonwalking.
     const heading = pose.heading ?? 0;
-    const moving = pose.grounded && !pose.sliding && !pose.digging && speed > 0.25;
+    const moving = pose.grounded && !pose.sliding && !pose.powerSlide && !pose.digging && speed > 0.25;
     if (moving) {
       const ahead = Math.cos(heading);
       if (ahead < -0.25) this.backwards = true;
@@ -168,6 +177,7 @@ export class ScavengerModel {
     this.hipYaw += (hipTarget - this.hipYaw) * (1 - Math.exp(-dt * 8));
     const dir = this.backwards ? -1 : 1;
     if (!pose.grounded) this.play('Jump');
+    else if (pose.powerSlide) this.play('Powerslide', 0.12);
     else if (pose.sliding) this.play('Slide');
     else if (pose.digging) this.play('Dig');
     else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(speed / RUN_REF, 0.75, 1.6));
@@ -177,6 +187,11 @@ export class ScavengerModel {
     // its kneeling legs) last frame's look tilt / IK would stay in place and pile up. Undo them first.
     for (const p of this.posed) p.bone.quaternion.copy(p.base);
     this.mixer.update(dt);
+    // Lean to the slope: pitch about the model's X (+ = nose up), roll about Z, pivoting at the feet.
+    const tk = 1 - Math.exp(-dt * 10);
+    const power = !!pose.powerSlide && pose.grounded;
+    this.tilt.rotation.x += ((power ? clamp(pose.tiltPitch ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.x) * tk;
+    this.tilt.rotation.z += ((power ? clamp(pose.tiltRoll ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.z) * tk;
     for (const p of this.posed) p.base.copy(p.bone.quaternion);
 
     this.root.updateMatrixWorld(true);
@@ -192,7 +207,7 @@ export class ScavengerModel {
     }
     // Plant the feet: lock while the clip has them down (not when sliding: the sand moves with you).
     const clip = this.current?.getClip().name ?? '';
-    const lock = pose.grounded && !pose.sliding && pose.plant !== false ? (this.minAnkle.get(clip) ?? null) : null;
+    const lock = pose.grounded && !pose.sliding && !pose.powerSlide && pose.plant !== false ? (this.minAnkle.get(clip) ?? null) : null;
     this.legIk?.update(dt, pose.grounded, lock, pose.ground ?? null);
   }
 

@@ -6,6 +6,8 @@
 // - Slope-aware speed: walking uphill is a slog, downhill is a little quicker.
 // - Slip faces steeper than the angle of repose (~34°) avalanche: you slide down them and can only steer
 //   sideways; trying to climb one just slows the slide.
+// - Ctrl slide (Titanfall-style): sprint into it for a speed burst, then coast on low friction. Downhill
+//   speeds you up, uphill bleeds it off; steering only bends your heading. Jump out of it to keep the speed.
 // - Soft sand: you build up and lose speed a bit slowly (momentum), and hard landings bog you down briefly.
 import { collideScrap } from './scrap.ts';
 import { heightAt, WORLD_HALF } from './terrain.ts';
@@ -40,6 +42,16 @@ const SLIDE_CONTROL = 0.45; // fraction of normal speed you can steer with while
 const SLIDE_ACCEL = 8; // steering accel on a slip face; below the slide pull on anything much steeper than 34°
 const MAX_GROUND_SPEED = 18;
 
+// Intentional slide (Ctrl).
+const SLIDE_MIN_START = 4.5; // m/s needed to start one (a walk-speed jog is enough)
+const SLIDE_MIN_KEEP = 2.2; // the slide ends when you drop below this
+const SLIDE_BOOST = 3; // m/s added on entry
+const SLIDE_START_CAP = 14; // the entry boost never takes you above this
+const SLIDE_COOLDOWN = 50; // ticks from the start of one slide to the next
+const SLIDE_DECEL = 4.5; // flat-sand friction while sliding (m/s²); the slope term adds to it
+const SLIDE_GRAVITY = 0.9; // fraction of gravity along the slope that acts on a slide
+const SLIDE_TURN = 1.6; // rad/s the heading can swing towards the input
+
 // Landing.
 const HARD_LANDING = 13; // impact speed (m/s) above which a landing bogs you down
 const LAND_SLOW = 0.4; // speed factor right after a hard landing, recovering linearly
@@ -59,6 +71,8 @@ export type PlayerState = {
   airJumps: number; // air jumps left; refilled on landing
   jumpHeld: boolean; // jump was down last tick, so an air jump needs a fresh press
   landTicks: number; // ticks of hard-landing recovery left (integer)
+  sliding: boolean; // in an intentional (Ctrl) slide
+  slideCool: number; // ticks until another slide can start (integer)
 };
 
 // Input is a bitmask so it is tiny on the wire and trivially comparable.
@@ -71,7 +85,8 @@ export const SPRINT = 32;
 // Digging changes the world, not the player: step() ignores it; the server applies it to the terrain.
 export const DIG = 64;
 export const PILE = 128; // like DIG, but puts sand back (shared/dig.ts)
-export const INPUT_MASK = 255;
+export const SLIDE = 256; // Ctrl: slide
+export const INPUT_MASK = 511;
 
 // Camera yaw is sent with every input, quantized to 16 bits so client and server agree exactly.
 export const YAW_STEPS = 65536;
@@ -87,6 +102,7 @@ export function spawnState(x = SPAWN.x, z = SPAWN.z): PlayerState {
   return {
     x, y: heightAt(x, z), z, vx: 0, vy: 0, vz: 0, facing: 0,
     grounded: true, airJumps: AIR_JUMPS, jumpHeld: false, landTicks: 0,
+    sliding: false, slideCool: 0,
   };
 }
 
@@ -131,7 +147,50 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
 
   let vx = s.vx;
   let vz = s.vz;
-  if (s.grounded) {
+  // Intentional slide: starts from a run on the ground, lasts while Ctrl is held and speed holds up.
+  const slideDown = (input & SLIDE) !== 0;
+  let slideCool = s.slideCool > 0 ? s.slideCool - 1 : 0;
+  let sliding = s.sliding;
+  const hs0 = Math.hypot(vx, vz);
+  if (sliding && !(slideDown && s.grounded && hs0 >= SLIDE_MIN_KEEP)) sliding = false;
+  if (!sliding && slideDown && s.grounded && slideCool === 0 && hs0 >= SLIDE_MIN_START) {
+    sliding = true;
+    slideCool = SLIDE_COOLDOWN;
+    const boosted = Math.max(hs0, Math.min(hs0 + SLIDE_BOOST, SLIDE_START_CAP));
+    vx *= boosted / hs0;
+    vz *= boosted / hs0;
+  }
+  if (sliding) {
+    const onScrap = s.y > heightAt(s.x, s.z) + 0.02;
+    const g = onScrap ? flatSlope : slopeAt(s.x, s.z, tmpSlope);
+    const steep = Math.hypot(g.gx, g.gz);
+    if (steep > 1e-4) {
+      // Gravity along the slope: speeds you up going down it, bleeds speed going up it.
+      const cos = 1 / Math.sqrt(1 + steep * steep);
+      const pull = -GRAVITY * steep * cos * SLIDE_GRAVITY;
+      vx += (-g.gx / steep) * pull * DT;
+      vz += (-g.gz / steep) * pull * DT;
+    }
+    if (len > 0) {
+      // Steer: swing the heading towards the input, speed untouched.
+      const sp = Math.hypot(vx, vz);
+      const diff = Math.atan2(vx * dz - vz * dx, vx * dx + vz * dz);
+      const turn = clamp(diff, -SLIDE_TURN * DT, SLIDE_TURN * DT);
+      const c = Math.cos(turn), sn = Math.sin(turn);
+      if (sp > 0) [vx, vz] = [vx * c - vz * sn, vx * sn + vz * c];
+    }
+    const sp = Math.hypot(vx, vz);
+    const left = Math.max(0, sp - SLIDE_DECEL * DT);
+    if (sp > 0) {
+      vx *= left / sp;
+      vz *= left / sp;
+    }
+    const cap = Math.hypot(vx, vz);
+    if (cap > MAX_GROUND_SPEED) {
+      vx *= MAX_GROUND_SPEED / cap;
+      vz *= MAX_GROUND_SPEED / cap;
+    }
+  } else if (s.grounded) {
     // Standing on scrap (above the sand) is flat ground: no slope drag, no slip-face slide.
     const onScrap = s.y > heightAt(s.x, s.z) + 0.02;
     const g = onScrap ? flatSlope : slopeAt(s.x, s.z, tmpSlope);
@@ -211,7 +270,7 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
   }
 
   if (grounded) airJumps = AIR_JUMPS;
-  return { x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks };
+  return { x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks, sliding, slideCool };
 }
 
 /** Move the 2D vector (vx, vz) towards (tx, tz) by at most maxDelta (length, not per axis). */

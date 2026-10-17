@@ -20,6 +20,7 @@ const INTERP_MS = 100;
 export type RemotePlayer = {
   id: number; color: number; x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
   vx: number; vz: number;
+  sliding: boolean; // intentional (Ctrl) slide
   pitch: number; // camera pitch in radians (negative = looking down)
 };
 
@@ -228,6 +229,7 @@ export class Net {
     let s: PlayerState = {
       x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
+      sliding: server.sliding, slideCool: server.slideCool,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw);
     this.errorX += this.me.x - s.x;
@@ -254,7 +256,7 @@ export class Net {
       out.push({
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
-        facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded,
+        facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false,
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t,
       });
     }
