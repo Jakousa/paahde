@@ -16,7 +16,8 @@ scene.background = new THREE.Color(0xc9773a);
 scene.fog = new THREE.Fog(0xd98a45, 25, 90);
 scene.add(new THREE.HemisphereLight(0xf2a35a, 0x5a2a14, 0.9));
 const sun = new THREE.DirectionalLight(0xffc68a, 3.2);
-sun.position.set(-8, 3.2, -10); // low sun, ~15° elevation, in front of the default view
+// low sun (~15° elevation) behind the camera's left shoulder; ?backlit puts it in front, as in the game
+sun.position.set(-8, 3.2, new URLSearchParams(location.search).has('backlit') ? -10 : 10);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 0.5, far: 60 });
