@@ -1,4 +1,4 @@
-import { BACK, BIKE, DIG, FORWARD, JUMP, LEFT, PILE, RIGHT, SLIDE, SPRINT } from '../shared/sim.ts';
+import { BACK, BIKE, CROUCH, DIG, FORWARD, JUMP, LEFT, PILE, RIGHT, SLIDE } from '../shared/sim.ts';
 
 const keys = new Set<string>();
 let mouseDig = false;
@@ -90,9 +90,10 @@ export function readInput(): number {
   if (keys.has('KeyA') || keys.has('ArrowLeft')) input |= LEFT;
   if (keys.has('KeyD') || keys.has('ArrowRight')) input |= RIGHT;
   if (keys.has('Space')) input |= JUMP;
-  if (keys.has('ShiftLeft') || keys.has('ShiftRight')) input |= SPRINT;
+  // Shift slides, except with the rifle up: there it holds your breath (breathHeld).
+  if ((keys.has('ShiftLeft') || keys.has('ShiftRight')) && !aimDown()) input |= SLIDE;
   // C is an alias: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
-  if (keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyC')) input |= SLIDE;
+  if (keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyC')) input |= CROUCH;
   if (tools.blocked) return input;
   if (mouseDig || keys.has('KeyE')) input |= DIG;
   else if (mousePile || keys.has('KeyQ')) input |= PILE;

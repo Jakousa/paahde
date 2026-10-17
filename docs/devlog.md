@@ -806,21 +806,27 @@ All sounds now go through `src/audio.ts`: one AudioContext, the volume slider as
 limiter. New sounds connect to `audio.out` (or use `audio.onStart`).
   Volume slider in the top-right corner (default 0.4, remembered per browser); `dbg.wind.override` is handy for tuning.
 
-## Ctrl slide
+## Speed slide (Shift)
 
-Titanfall-style intentional slide (input bit `SLIDE` = 256, keys Ctrl or C; C because browsers eat Ctrl+W).
+Deadshot-style speed slide, replacing sprint (there is no sprint any more; run speed went 6 → 7.5 m/s).
+Input bit `SLIDE` = 256 is Shift; bit 32 (was `SPRINT`) is now `CROUCH`, keys Ctrl or C (C because
+browsers eat Ctrl+W). With the rifle aimed, Shift holds your breath instead of sliding (src/input.ts).
 Not to be confused with `sliding` on the avatar/`Slide` clip, which is slipping down a slip face.
 
-- **Sim** (`shared/sim.ts`, state `sliding` + `slideCool`): starts on the ground at ≥ 4.5 m/s, +3 m/s entry
-  burst (capped 14), 50-tick cooldown from the start. While held: 8 m/s² friction, 90% of the slope's
-  gravity (downhill gains speed, uphill bleeds it), steering only turns the heading (1.6 rad/s). Ends on
-  release, leaving the ground, or < 3.2 m/s. Jumping out keeps the speed (air control never brakes).
+- **Sim** (`shared/sim.ts`, state `sliding`, `slideCool`, `slideSpent`): a fresh Shift press on the ground
+  (or Shift held through a landing) throws you in the held direction at max(15, speed + 3) m/s (cap 18),
+  45-tick cooldown from the start. A tap lasts 36 ticks; holding keeps it going until it slows to run
+  speed. 9 m/s² friction, 90% of the slope's gravity (downhill gains speed, uphill bleeds it), steering
+  only turns the heading (1.6 rad/s). Leaving the ground ends it; jumping out keeps the speed (air control
+  never brakes), so slide → jump → slide on landing chains. Slides heat you up like sprinting did
+  (`server/water.ts`).
 - **Animation:** `Powerslide` clip (leg driven forward, other knee tucked, leaning back; `tools/models/scavenger.py`).
   `ScavengerModel` tilts a group between root and model to the slope along/across the facing (`tiltPitch/Roll`),
   feet IK is off during it. Camera eye drops 0.65 m. Remote players get it from the snapshot's `sliding`.
-- **Crouch:** Ctrl on the ground without sliding (too slow to start one, in cooldown, or the slide ran out)
-  caps speed at 3 m/s (`crouching` in state; clips `Crouch` / `CrouchWalk`, camera drops 0.45 m).
-- Tuning knobs are the `SLIDE_*` constants at the top of `sim.ts`. Untested with real multiplayer latency.
+- **Crouch:** Ctrl / C on the ground caps speed at 3 m/s (`crouching` in state; clips `Crouch` /
+  `CrouchWalk`, camera drops 0.45 m).
+- Tuning knobs are the `SLIDE_*` constants at the top of `sim.ts`. `SPRINT_SPEED` stays only as the
+  reference for "fast" effects (FOV kick in src/camera.ts, getting winded in src/rifle.ts).
 
 ## Performance and network jitter
 

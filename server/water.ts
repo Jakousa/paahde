@@ -6,7 +6,7 @@ import { atPump, inBase } from '../shared/base.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { inSun } from '../shared/shade.ts';
-import { SPRINT, WALK_SPEED, type PlayerState } from '../shared/sim.ts';
+import { type PlayerState } from '../shared/sim.ts';
 import { STORM_TEMP } from '../shared/storm.ts';
 import { feltTemp } from '../shared/temperature.ts';
 import {
@@ -65,7 +65,7 @@ export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod
   }
   t.temp = feltTemp(tod, !t.shade, inside) + (inside ? 0 : STORM_TEMP * storm);
   if (now - t.diedAt < RESPAWN_GRACE_MS) return null;
-  const sprinting = (input & SPRINT) !== 0 && Math.hypot(s.vx, s.vz) > WALK_SPEED + 0.5;
+  const sprinting = s.sliding; // speed slides are the exertion now (there is no sprint)
   const rate = heatPerSecond(t.temp, sprinting);
   const rising = rate > 0;
   const before = t.heat;

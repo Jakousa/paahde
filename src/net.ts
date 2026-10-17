@@ -56,7 +56,7 @@ const JITTER_DECAY = 0.99;
 export type RemotePlayer = {
   id: number; color: number; x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
   vx: number; vz: number;
-  sliding: boolean; // intentional (Ctrl) slide
+  sliding: boolean; // speed (Shift) slide
   crouching: boolean;
   pitch: number; // camera pitch in radians (negative = looking down)
   riding: boolean; // on the sand bike; facing is then the bike's heading
@@ -618,7 +618,7 @@ export class Net {
     let s: PlayerState = {
       x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
-      sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool,
+      sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool, slideSpent: server.slideSpent,
       riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading, bike: server.bike,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag);

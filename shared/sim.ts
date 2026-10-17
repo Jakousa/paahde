@@ -6,8 +6,10 @@
 // - Slope-aware speed: walking uphill is a slog, downhill is a little quicker.
 // - Slip faces steeper than the angle of repose (~34°) avalanche: you slide down them and can only steer
 //   sideways; trying to climb one just slows the slide.
-// - Ctrl slide (Titanfall-style): sprint into it for a speed burst, then coast on low friction. Downhill
-//   speeds you up, uphill bleeds it off; steering only bends your heading. Jump out of it to keep the speed.
+// - No sprint: Shift is a speed slide (Deadshot-style). A press throws you into a fast slide that coasts on
+//   low friction; a tap slides a short way, holding rides it until it slows. Downhill speeds you up, uphill
+//   bleeds it off; steering only bends your heading. Jump out of it to keep the speed, then slide again on
+//   landing (hold Shift in the air to slide the moment you touch down). Ctrl / C crouches.
 // - Soft sand: you build up and lose speed a bit slowly (momentum), and hard landings bog you down briefly.
 // - Sand bike (dev helper, 9 toggles it): see stepBike() below.
 import { BASE_SPAWN, baseCeiling, collideBase, terrainHidden } from './base.ts';
@@ -25,7 +27,8 @@ export const PLAYER_RADIUS = 0.35;
 /** Scrap whose top is at most this far above the feet is stepped onto instead of blocking. */
 const STEP_UP = 0.35;
 const GRAVITY = -25;
-export const WALK_SPEED = 6;
+export const WALK_SPEED = 7.5;
+/** No sprint any more: the speed where "fast" effects (FOV kick, being winded) are in full swing, reached by sliding. */
 export const SPRINT_SPEED = 11;
 const ACCEL = 38; // ground acceleration towards the wanted velocity (m/s²)
 const BRAKE = 28; // ground deceleration with no input: sand lets you skid a little
@@ -46,17 +49,18 @@ const SLIDE_CONTROL = 0.45; // fraction of normal speed you can steer with while
 const SLIDE_ACCEL = 8; // steering accel on a slip face; below the slide pull on anything much steeper than 34°
 const MAX_GROUND_SPEED = 18;
 
-// Intentional slide (Ctrl).
-const SLIDE_MIN_START = 4.5; // m/s needed to start one (a walk-speed jog is enough)
-const SLIDE_MIN_KEEP = 3.2; // the slide ends when you drop below this
-const SLIDE_BOOST = 3; // m/s added on entry
-const SLIDE_START_CAP = 14; // the entry boost never takes you above this
-const SLIDE_COOLDOWN = 50; // ticks from the start of one slide to the next
-const SLIDE_DECEL = 8; // flat-sand friction while sliding (m/s²); steep downhill beats it
+// Speed slide (Shift).
+const SLIDE_MIN_START = 1.5; // m/s needed to start one without a direction held
+const SLIDE_MIN_KEEP = WALK_SPEED; // the slide ends when it slows to a run
+const SLIDE_SPEED = 15; // a slide starts at least this fast...
+const SLIDE_BOOST = 3; // ...or this much faster than you were going (up to MAX_GROUND_SPEED)
+const SLIDE_TAP_TICKS = 36; // a tap slides this long; holding Shift keeps it going until it slows
+const SLIDE_COOLDOWN = 45; // ticks from the start of one slide to the next (>= SLIDE_TAP_TICKS)
+const SLIDE_DECEL = 9; // flat-sand friction while sliding (m/s²); steep downhill beats it
 const SLIDE_GRAVITY = 0.9; // fraction of gravity along the slope that acts on a slide
 const SLIDE_TURN = 1.6; // rad/s the heading can swing towards the input
 
-// Ctrl below slide speed (or after a slide runs out) crouches: slow, no sprint.
+// Ctrl / C crouches: slow.
 const CROUCH_SPEED = 3;
 /** Speed lost on foot at full sandstorm strength (shared/storm.ts). */
 const STORM_SLOW = 0.35;
@@ -81,9 +85,10 @@ export type PlayerState = {
   airJumps: number; // air jumps left; refilled on landing
   jumpHeld: boolean; // jump was down last tick, so an air jump needs a fresh press
   landTicks: number; // ticks of hard-landing recovery left (integer)
-  sliding: boolean; // in an intentional (Ctrl) slide
-  crouching: boolean; // Ctrl held on the ground without sliding
+  sliding: boolean; // in a speed (Shift) slide
+  crouching: boolean; // Ctrl / C held on the ground without sliding
   slideCool: number; // ticks until another slide can start (integer)
+  slideSpent: boolean; // this Shift press already started a slide: the next one needs a fresh press
   riding: boolean; // on the sand bike (stepBike)
   bikeHeld: boolean; // the bike key was down last tick, so mounting needs a fresh press
   heading: number; // the bike's heading (radians, same convention as facing); the body faces it while riding
@@ -96,11 +101,11 @@ export const BACK = 2;
 export const LEFT = 4;
 export const RIGHT = 8;
 export const JUMP = 16;
-export const SPRINT = 32;
+export const CROUCH = 32; // Ctrl / C: crouch
 // Digging changes the world, not the player: step() ignores it; the server applies it to the terrain.
 export const DIG = 64;
 export const PILE = 128; // like DIG, but puts sand back (shared/dig.ts)
-export const SLIDE = 256; // Ctrl: slide
+export const SLIDE = 256; // Shift: speed slide
 export const BIKE = 512; // 9: get on / off the motorcycle (needs a repaired one equipped: PlayerState.bike)
 export const INPUT_MASK = 1023;
 
@@ -123,7 +128,7 @@ export function spawnState(x = SPAWN.x, z = SPAWN.z): PlayerState {
   return {
     x, y: heightAt(x, z), z, vx: 0, vy: 0, vz: 0, facing: 0,
     grounded: true, airJumps: AIR_JUMPS, jumpHeld: false, landTicks: 0,
-    sliding: false, crouching: false, slideCool: 0, riding: false, bikeHeld: false, heading: 0, bike: 0,
+    sliding: false, crouching: false, slideCool: 0, slideSpent: false, riding: false, bikeHeld: false, heading: 0, bike: 0,
   };
 }
 
@@ -170,26 +175,32 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0): Pl
   }
 
   let landTicks = s.landTicks > 0 ? s.landTicks - 1 : 0;
-  let speed = input & SPRINT ? SPRINT_SPEED : WALK_SPEED;
+  let speed = WALK_SPEED;
   if (landTicks > 0) speed *= LAND_SLOW + (1 - LAND_SLOW) * (1 - landTicks / MAX_LAND_TICKS);
   speed *= 1 - STORM_SLOW * storm;
 
   let vx = s.vx;
   let vz = s.vz;
-  // Intentional slide: starts from a run on the ground, lasts while Ctrl is held and speed holds up.
+  // Speed slide: a Shift press on the ground (or held through a landing) throws you forward; a tap
+  // lasts SLIDE_TAP_TICKS, holding keeps it going while the speed holds up. Leaving the ground ends it.
   const slideDown = (input & SLIDE) !== 0;
   let slideCool = s.slideCool > 0 ? s.slideCool - 1 : 0;
+  let slideSpent = slideDown && s.slideSpent;
   let sliding = s.sliding;
   const hs0 = Math.hypot(vx, vz);
-  if (sliding && !(slideDown && s.grounded && hs0 >= SLIDE_MIN_KEEP)) sliding = false;
-  if (!sliding && slideDown && s.grounded && slideCool === 0 && hs0 >= SLIDE_MIN_START) {
+  const slid = SLIDE_COOLDOWN - slideCool; // ticks since the slide started
+  if (sliding && !(s.grounded && hs0 >= SLIDE_MIN_KEEP && (slideDown || slid < SLIDE_TAP_TICKS))) sliding = false;
+  if (!sliding && slideDown && !slideSpent && s.grounded && slideCool === 0 && (len > 0 || hs0 >= SLIDE_MIN_START)) {
     sliding = true;
+    slideSpent = true;
     slideCool = SLIDE_COOLDOWN;
-    const boosted = Math.max(hs0, Math.min(hs0 + SLIDE_BOOST, SLIDE_START_CAP));
-    vx *= boosted / hs0;
-    vz *= boosted / hs0;
+    // Off in the direction held (else the way you were going), at least SLIDE_SPEED.
+    const ux = len > 0 ? dx : vx / hs0, uz = len > 0 ? dz : vz / hs0;
+    const boosted = Math.min(MAX_GROUND_SPEED, Math.max(SLIDE_SPEED, hs0 + SLIDE_BOOST));
+    vx = ux * boosted;
+    vz = uz * boosted;
   }
-  const crouching = slideDown && s.grounded && !sliding;
+  const crouching = (input & CROUCH) !== 0 && s.grounded && !sliding;
   if (crouching) speed = Math.min(speed, CROUCH_SPEED);
   if (sliding) {
     const onScrap = s.y > heightAt(s.x, s.z) + 0.02;
@@ -310,7 +321,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0): Pl
   if (grounded) airJumps = AIR_JUMPS;
   return {
     x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks, sliding, crouching, slideCool,
-    riding: false, bikeHeld: bikeDown, heading: s.heading, bike: s.bike,
+    slideSpent, riding: false, bikeHeld: bikeDown, heading: s.heading, bike: s.bike,
   };
 }
 
@@ -428,7 +439,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState
   h = Math.atan2(Math.sin(h), Math.cos(h));
   return {
     x, y, z, vx, vy, vz, facing: h, grounded, airJumps: AIR_JUMPS, jumpHeld: jumpDown, landTicks,
-    sliding: false, crouching: false, slideCool: s.slideCool, riding: true, bikeHeld: bikeDown, heading: h, bike: s.bike,
+    sliding: false, crouching: false, slideCool: s.slideCool, slideSpent: s.slideSpent, riding: true, bikeHeld: bikeDown, heading: h, bike: s.bike,
   };
 }
 
