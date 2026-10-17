@@ -5,15 +5,30 @@
 // first then came out black at any shadow intensity (both backends, r186), so the sun vanished beyond
 // cascade 0. Here every cascade is sampled unconditionally and the results are blended arithmetically,
 // with a short cross-fade at each cascade's far end so the resolution change doesn't show as a seam.
+//
+// The stock node also snaps each cascade's shadow camera to whole texels in light space measured from
+// the world origin. That stops swimming when the camera moves, but the sun turns a little every frame,
+// and a turn about the origin slides everything ~200 m out (the base) by a third of a texel per frame
+// across the grid, so every shadow edge re-rasterised each frame: the edges crawled and flickered. Here
+// the grid is re-snapped about an anchor near the camera (moved in coarse steps), so a turn slides
+// nearby casters by only (distance from the anchor) x angle.
 import * as THREE from 'three/webgpu';
 import { Fn, float, mix, positionView, saturate, step, uniform, vec3, vec4, viewZToOrthographicDepth } from 'three/tsl';
 import { CSMShadowNode, type CSMShadowNodeData } from 'three/addons/csm/CSMShadowNode.js';
-import type { Node, NodeBuilder } from 'three/webgpu';
+import type { Node, NodeBuilder, NodeFrame } from 'three/webgpu';
 
 type F = Node<'float'>;
 
 /** Fraction of each cascade's depth range spent fading into the next one. */
 const FADE = 0.15;
+/** Spacing (m) of the world grid the snapping anchor sits on. */
+const ANCHOR_STEP = 32;
+
+const _orient = new THREE.Matrix4();
+const _orientInv = new THREE.Matrix4();
+const _anchor = new THREE.Vector3();
+const _p = new THREE.Vector3();
+const _dir = new THREE.Vector3();
 
 /** CSMShadowNode members that its typings leave out. */
 interface CSMInternals {
@@ -26,6 +41,31 @@ interface CSMInternals {
 export class CascadedShadows extends CSMShadowNode {
   constructor(light: THREE.DirectionalLight, data: CSMShadowNodeData) {
     super(light, data);
+  }
+
+  updateBefore(frame: NodeFrame): boolean | undefined {
+    super.updateBefore(frame);
+    const light = this.light as THREE.DirectionalLight;
+    const camera = this.camera as THREE.Camera;
+    _orient.lookAt(light.position, light.target.position, THREE.Object3D.DEFAULT_UP);
+    _orientInv.copy(_orient).invert();
+    _dir.subVectors(light.target.position, light.position).normalize();
+    camera.getWorldPosition(_anchor);
+    _anchor.set(Math.round(_anchor.x / ANCHOR_STEP), Math.round(_anchor.y / ANCHOR_STEP), Math.round(_anchor.z / ANCHOR_STEP));
+    _anchor.multiplyScalar(ANCHOR_STEP).applyMatrix4(_orientInv);
+    for (const lw of this.lights) {
+      const cam = lw.shadow!.camera as THREE.OrthographicCamera;
+      const tw = (cam.right - cam.left) / lw.shadow!.mapSize.width;
+      const th = (cam.top - cam.bottom) / lw.shadow!.mapSize.height;
+      _p.copy(lw.position).applyMatrix4(_orientInv);
+      _p.x = _anchor.x + Math.floor((_p.x - _anchor.x) / tw) * tw;
+      _p.y = _anchor.y + Math.floor((_p.y - _anchor.y) / th) * th;
+      lw.position.copy(_p.applyMatrix4(_orient));
+      lw.target.position.copy(lw.position).add(_dir);
+      lw.updateMatrixWorld();
+      lw.target.updateMatrixWorld();
+    }
+    return undefined;
   }
 
   setup(builder: NodeBuilder) {

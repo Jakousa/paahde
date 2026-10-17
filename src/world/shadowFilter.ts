@@ -6,7 +6,9 @@
 //
 // The noise is pinned to the world, one cell per shadow texel on a plane facing the light, not to screen
 // pixels: screen-space grain reshuffled along every shadow edge whenever the camera moved (or the dynamic
-// resolution changed), which read as the shadows jittering.
+// resolution changed), which read as the shadows jittering. The plane only turns when the light has
+// turned well away from it: the sun moves every frame, and turning the axes with it slid the noise
+// under every pixel (by ~ distance from the origin x angle), reshuffling the grain each frame.
 import * as THREE from 'three/webgpu';
 import { Fn, add, dot, float, interleavedGradientNoise, positionWorld, reference, renderGroup, texture, uniform, vec2, vogelDiskSample } from 'three/tsl';
 
@@ -16,9 +18,14 @@ const SAMPLES = 16;
 export const shadowAxisX = uniform(new THREE.Vector3(1, 0, 0));
 export const shadowAxisY = uniform(new THREE.Vector3(0, 0, 1));
 const _up = new THREE.Vector3();
+const _normal = new THREE.Vector3(0, 1, 0);
+/** Cosine of how far (~10°) the light may turn before the noise plane follows it. */
+const REORIENT_COS = Math.cos(THREE.MathUtils.degToRad(10));
 
 /** Point the noise plane's axes across `lightDir` (unit, towards the light). */
 export function setShadowNoiseAxes(lightDir: THREE.Vector3) {
+  if (_normal.dot(lightDir) > REORIENT_COS) return;
+  _normal.copy(lightDir);
   _up.set(0, Math.abs(lightDir.y) > 0.99 ? 0 : 1, Math.abs(lightDir.y) > 0.99 ? 1 : 0);
   shadowAxisX.value.crossVectors(_up, lightDir).normalize();
   shadowAxisY.value.crossVectors(lightDir, shadowAxisX.value);
