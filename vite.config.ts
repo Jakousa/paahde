@@ -6,5 +6,9 @@ export default defineConfig({
   build: { target: 'es2022' },
   define: { __BUILD_SHA__: JSON.stringify(process.env.BUILD_SHA ?? 'dev') },
   // In dev, the game server runs separately (npm run dev starts both); proxy its WebSocket.
-  server: { proxy: { '/ws': { target: 'ws://localhost:8787', ws: true } } },
+  server: {
+    proxy: { '/ws': { target: 'ws://localhost:8787', ws: true } },
+    // Agent worktrees live under .claude/; their builds shouldn't reload this dev server.
+    watch: { ignored: ['**/.claude/**'] },
+  },
 });
