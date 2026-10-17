@@ -1,12 +1,14 @@
 // Crash-site sounds: the faint electronic chatter of a wreck's half-dead systems (crashSynth.ts), heard
 // within HEAR metres of its beacon and placed there in 3D (HRTF PannerNode; the Web Audio listener follows
 // the camera). Only the nearest MAX_VOICES sites play. Very quiet on purpose: background detail you notice
-// when you stop next to a wreck, about −26 LUFS at 5 m (see docs/devlog.md for the measurement).
+// when you stop next to a wreck, about −26 LUFS at 5 m (see docs/devlog.md for the measurement). A spent site
+// (its large machine stripped, shared/crash.ts crashSpent) has gone quiet.
 //
 // Plays through the shared output in src/audio.ts (volume slider, limiter); every level change is ramped.
 import { audio } from './audio';
 import { CrashVoice } from './crashSynth';
 import { beaconPos, crashSitesNear, type CrashSite } from '../shared/crashsites.ts';
+import { crashSpent } from '../shared/crash.ts';
 
 /** Audible within this distance (m) of the beacon, fading in over the outer FADE metres. */
 const HEAR = 40;
@@ -56,6 +58,7 @@ export class CrashSound {
     // The nearest beacons in earshot.
     const want: { s: CrashSite; d: number }[] = [];
     for (const s of crashSitesNear(cam.x, cam.z, HEAR + 30)) {
+      if (crashSpent.has(s.id)) continue; // stripped: its systems have gone quiet (fades out below)
       const b = beaconPos(s, this.pos);
       const d = Math.hypot(b.x - cam.x, b.y - cam.y, b.z - cam.z);
       if (d < HEAR) want.push({ s, d });

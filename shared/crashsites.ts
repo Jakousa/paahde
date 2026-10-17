@@ -1,6 +1,7 @@
 // Crash sites: crashed spacecraft half-buried in the dunes, with a trail of debris ploughed out behind
-// them. Shared by server physics (collideCrash() in sim.ts step()), the server (later: parts to salvage)
-// and the client (prediction, src/world/crashsites.ts rendering, smoke and src/crashSound.ts).
+// them, and the machines thrown out of them that players take apart (`machines`; shared/crash.ts turns them
+// into machine sites). Shared by server physics (collideCrash() in sim.ts step()), the server and the client
+// (prediction, src/world/crashsites.ts rendering, smoke and src/crashSound.ts).
 //
 // Same determinism rules as shared/scrap.ts: integer hashing and exact IEEE operations only (+ - * /,
 // Math.sqrt, Math.floor, Math.abs, Math.min/max). No trig: directions are rejection-sampled unit vectors,
@@ -9,7 +10,8 @@
 //
 // The world is cut into CRASH_CELL squares; about DENSITY of them hold one site. A site is one main wreck
 // (a CRASH_KINDS entry with main: true) plus DEBRIS_MIN..DEBRIS_MAX debris pieces strewn along the
-// approach line behind it. Everything lies well inside its own cell (centre ≥ CELL_MARGIN from the edges,
+// approach line behind it, one large machine thrown clear of the wreck and 0–2 small ones among the debris
+// (each on a ground-dressing piece: CRASH_KINDS entries with dressing: true). Everything lies well inside its own cell (centre ≥ CELL_MARGIN from the edges,
 // pieces within TRAIL + a few metres), so collision only looks at the player's cell.
 //
 // Piece frame: yaw turns model +Z (the nose) to (dx, dz) and model +X to (dz, -dx), like scrap. Each
@@ -23,8 +25,6 @@ import { baseHeight, heightAt, WORLD_HALF, WORLD_SEED } from './terrain.ts';
 export const CRASH_CELL = 350;
 /** Fraction of cells with a site. */
 const DENSITY = 0.4;
-/** Fraction of sites that still smoulder (smoke column, src/world/crashsites.ts). */
-const SMOKE_CHANCE = 0.6;
 /** A site's centre stays this far inside its cell, so the whole trail fits in the cell. */
 const CELL_MARGIN = 75;
 /** Debris lies up to this far behind the wreck's edge. */
@@ -42,7 +42,19 @@ const MIN_HITBOX = 0.3;
 const STAND_MARGIN = 0.15;
 
 const MAIN_KINDS = CRASH_KINDS.map((k, i) => (k.main ? i : -1)).filter((i) => i >= 0);
-const DEBRIS_KINDS = CRASH_KINDS.map((k, i) => (k.main ? -1 : i)).filter((i) => i >= 0);
+const DEBRIS_KINDS = CRASH_KINDS.map((k, i) => (k.main || k.dressing ? -1 : i)).filter((i) => i >= 0);
+/** Ground dressing under the large machine and the small ones (tools/blender/crashsites.py). */
+const CRADLE = CRASH_KINDS.findIndex((k) => k.node === 'Crash_Cradle');
+const SKID = CRASH_KINDS.findIndex((k) => k.node === 'Crash_Skid');
+/** Players stand this far from a machine's centre to work on it (src/teardown STAND 3.2) plus their radius and a
+ *  little: the large machine keeps this much open ground around it, clear of every tall hitbox. */
+const WALK_RING = 4.2;
+/** How far beyond a capsule's radius a machine's centre stays from any wreck or debris shape (visual overlap). */
+const SMALL_CLEAR = 2.0;
+/** The cradle the large machine fell out of lies this far behind it (towards the wreck). */
+const CRADLE_BACK = 4.5;
+/** Most small machines per site. */
+const SMALL_MAX = 2;
 
 /** A vertical capsule in world xz: segment centre (x, z) ± half·(ax, az), radius r, top h above the piece origin. */
 export type CrashHitbox = { x: number; z: number; ax: number; az: number; half: number; r: number; h: number };
@@ -60,6 +72,10 @@ export type CrashPiece = {
   hitboxes: CrashHitbox[];
 };
 
+/** A machine lying at a site: centre, the direction it was thrown in (its dressing piece's +Z, see CrashPiece),
+ *  large (taken apart on the spot) or small (carried home), and a seed for its kind and contents. */
+export type CrashMachine = { x: number; z: number; dx: number; dz: number; large: boolean; seed: number };
+
 export type CrashSite = {
   /** Stable id: crashSiteId(ix, iz). */
   id: number; ix: number; iz: number;
@@ -67,10 +83,11 @@ export type CrashSite = {
   x: number; z: number;
   /** Unit direction the craft was travelling when it came down (the debris lies behind, at −dir). */
   dirX: number; dirZ: number;
-  /** Still smouldering. */
-  smoke: boolean;
   pieces: CrashPiece[];
-  /** Smoke points in world xz plus height above the piece origin (only if smoke). */
+  /** Machines lying here to take apart: [0] is the large one, then 0–2 small ones (shared/crash.ts). */
+  machines: CrashMachine[];
+  /** Smoke points in world xz plus height above the piece origin. Every site smoulders until its large machine
+   *  has been stripped (spent, shared/crash.ts `crashSpent`). */
   smokePoints: { piece: number; x: number; z: number; y: number }[];
   /** The main wreck's beacon (sound source / glow), world xz plus height above its origin. */
   beacon: { x: number; z: number; y: number };
@@ -91,9 +108,9 @@ export function beaconPos(s: CrashSite, out: { x: number; y: number; z: number }
   return out;
 }
 
-/** Deterministic PRNG seeded from a cell (integer hashing only). */
-function rng(ix: number, iz: number) {
-  let h = Math.imul(ix | 0, 0x2c1b3c6d) ^ Math.imul(iz | 0, 0x297a2d39) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ 0xc4a5;
+/** Deterministic PRNG seeded from a cell (integer hashing only); `salt` gives an independent stream. */
+function rng(ix: number, iz: number, salt = 0xc4a5) {
+  let h = Math.imul(ix | 0, 0x2c1b3c6d) ^ Math.imul(iz | 0, 0x297a2d39) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ salt;
   return () => {
     h = (h + 0x6d2b79f5) | 0;
     let t = Math.imul(h ^ (h >>> 15), 1 | h);
@@ -251,16 +268,14 @@ function generate(ix: number, iz: number): CrashSite | null {
     }
     if (!clash) pieces.push(piece(id, pieces.length, dk, x, z, yx, yz, sink));
   }
-  const smoke = r() < SMOKE_CHANCE;
+  const machines = placeMachines(ix, iz, id, pieces, cx, cz, tx, tz);
   const smokePoints: CrashSite['smokePoints'] = [];
-  if (smoke) {
-    // The wreck's own vents, plus the first debris piece that has one (a burning chunk in the trail).
-    let extra = 1;
-    for (const pc of pieces) {
-      const pts = CRASH_KINDS[pc.kind].smoke;
-      if (!pts.length || (pc.i > 0 && extra-- <= 0)) continue;
-      for (const [lx, ly, lz] of pts) smokePoints.push({ piece: pc.i, x: pc.x + lx * pc.dz + lz * pc.dx, z: pc.z - lx * pc.dx + lz * pc.dz, y: ly });
-    }
+  // The wreck's own vents, plus the first other piece that has one (the scorched ground by the large machine).
+  let extra = 1;
+  for (const pc of pieces) {
+    const pts = CRASH_KINDS[pc.kind].smoke;
+    if (!pts.length || (pc.i > 0 && extra-- <= 0)) continue;
+    for (const [lx, ly, lz] of pts) smokePoints.push({ piece: pc.i, x: pc.x + lx * pc.dz + lz * pc.dx, z: pc.z - lx * pc.dx + lz * pc.dz, y: ly });
   }
   const [bx, by, bz] = K.beacon;
   const main = pieces[0];
@@ -270,9 +285,76 @@ function generate(ix: number, iz: number): CrashSite | null {
     if (d > radius) radius = d;
   }
   return {
-    id, ix, iz, x: cx, z: cz, dirX: tx, dirZ: tz, smoke, pieces, smokePoints,
+    id, ix, iz, x: cx, z: cz, dirX: tx, dirZ: tz, pieces, machines, smokePoints,
     beacon: { x: main.x + bx * main.dz + bz * main.dx, z: main.z - bx * main.dx + bz * main.dz, y: by }, radius,
   };
+}
+
+/** Distance from (x, z) to the nearest capsule surface of any piece (all of each kind's capsules, low ones too),
+ *  counting a tall one (a hitbox) only when `tall` is set. */
+function clearance(pieces: CrashPiece[], x: number, z: number, tall: boolean): number {
+  let best = Infinity;
+  for (const pc of pieces) {
+    const K = CRASH_KINDS[pc.kind];
+    if (K.dressing) continue;
+    for (const c of K.capsules) {
+      if (tall && c.h - pc.sink < MIN_HITBOX) continue;
+      const hx = pc.x + c.x * pc.dz + c.z * pc.dx, hz = pc.z - c.x * pc.dx + c.z * pc.dz;
+      const ax = c.ax * pc.dz + c.az * pc.dx, az = -c.ax * pc.dx + c.az * pc.dz;
+      let t = (x - hx) * ax + (z - hz) * az;
+      t = t < -c.half ? -c.half : t > c.half ? c.half : t;
+      const ex = x - hx - ax * t, ez = z - hz - az * t;
+      const d = Math.sqrt(ex * ex + ez * ez) - c.r;
+      if (d < best) best = d;
+    }
+  }
+  return best;
+}
+
+/**
+ * The machines at a site (an rng stream of their own, so the wreck layout above never changes because of them),
+ * with a dressing piece under each, appended to `pieces`. The large one lies thrown clear of the main wreck, with
+ * WALK_RING of open ground around it and its cradle behind it, towards the wreck; if no spot passes, the one with
+ * the most room is used, so every site has one. Small ones lie beside debris pieces in the trail.
+ */
+function placeMachines(ix: number, iz: number, id: number, pieces: CrashPiece[], cx: number, cz: number, tx: number, tz: number): CrashMachine[] {
+  const r = rng(ix, iz, 0x51ed);
+  const K = CRASH_KINDS[pieces[0].kind];
+  const out: CrashMachine[] = [];
+  let best = -Infinity, bx = 0, bz = 0, bdx = 0, bdz = 1;
+  for (let t = 0; t < 24; t++) {
+    // Mostly off to the sides and ahead (thrown forward out of a cargo bay as the craft ploughed in).
+    const u = unit(r, tmpU);
+    let ux = u.u, uz = u.v;
+    if (ux * tx + uz * tz < -0.4) { ux = -ux; uz = -uz; }
+    const d = K.radius * 0.5 + 5 + 7 * r();
+    const x = cx + ux * d, z = cz + uz * d;
+    // Thrown away from the wreck: its cradle lies behind it, between it and the wreck.
+    const awayX = x - cx, awayZ = z - cz, al = Math.sqrt(awayX * awayX + awayZ * awayZ);
+    const dx = awayX / al, dz = awayZ / al;
+    const ring = clearance(pieces, x, z, true) - WALK_RING;
+    const body = clearance(pieces, x, z, false) - SMALL_CLEAR;
+    const cradle = clearance(pieces, x - dx * CRADLE_BACK, z - dz * CRADLE_BACK, false) - 1;
+    let score = Math.min(ring, body, cradle);
+    if (!flatEnough(x, z, 3) || nearScrap(x, z, 3.5)) score -= 10;
+    if (score > best) { best = score; bx = x; bz = z; bdx = dx; bdz = dz; }
+    if (score >= 0) break;
+  }
+  out.push({ x: bx, z: bz, dx: bdx, dz: bdz, large: true, seed: (r() * 4294967296) >>> 0 });
+  if (CRADLE >= 0) pieces.push(piece(id, pieces.length, CRADLE, bx, bz, bdx, bdz, 0));
+  // Small machines beside trail debris, tumbled along the direction of travel.
+  const want = Math.floor(r() * (SMALL_MAX + 1));
+  const debris = pieces.filter((p) => p.i > 0 && !CRASH_KINDS[p.kind].dressing);
+  for (let t = 0; t < 8 && out.length - 1 < want && debris.length; t++) {
+    const pc = debris[Math.floor(r() * debris.length)];
+    const side = r() < 0.5 ? -1 : 1, off = pc.reach + 1.8 + r();
+    const x = pc.x + tz * side * off, z = pc.z - tx * side * off;
+    if (clearance(pieces, x, z, false) < SMALL_CLEAR || nearScrap(x, z, 2)) continue;
+    if (out.some((m) => (m.x - x) * (m.x - x) + (m.z - z) * (m.z - z) < (m.large ? 7 * 7 : 4 * 4))) continue;
+    out.push({ x, z, dx: tx, dz: tz, large: false, seed: (r() * 4294967296) >>> 0 });
+    if (SKID >= 0) pieces.push(piece(id, pieces.length, SKID, x, z, tx, tz, 0));
+  }
+  return out;
 }
 
 function piece(site: number, i: number, kind: number, x: number, z: number, dx: number, dz: number, sink: number): CrashPiece {

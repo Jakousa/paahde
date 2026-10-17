@@ -22,7 +22,7 @@ import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { HOTBAR, moveItem, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
-import { crashChanged, crashTaken } from '../shared/crash.ts';
+import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
 import type { SiteLink } from './teardown/teardown';
 
 /** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
@@ -397,6 +397,11 @@ export class Net {
       if (msg.reset) crashTaken.clear();
       for (const id of msg.taken) crashTaken.add(id);
       for (const id of msg.back) crashTaken.delete(id);
+      return crashChanged();
+    }
+    if (msg.t === 'crashSpent') {
+      if (msg.reset) crashSpent.clear();
+      for (const id of msg.spent) crashSpent.add(id);
       return crashChanged();
     }
     if (msg.t === 'siteHolders') {

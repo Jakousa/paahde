@@ -146,9 +146,9 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const atBase = spawn === 'base';
   let state = row && !atBase && !overBase(row.x, row.z, 0.5) ? spawnState(row.x, row.z) : spawnState();
   if (spawn === 'crash') {
-    // Dev helper: just off the nose of the nearest wreck.
-    const s = crashSitesNear(state.x, state.z, 3000)[0];
-    if (s) state = spawnState(s.x + s.dirX * (s.pieces[0].reach + 16), s.z + s.dirZ * (s.pieces[0].reach + 16));
+    // Dev helper: 7 m from the large machine of the nearest crash site, on its far side from the wreck.
+    const m = crashSitesNear(state.x, state.z, 3000)[0]?.machines[0];
+    if (m) state = spawnState(m.x + m.dx * 7, m.z + m.dz * 7);
   }
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
@@ -163,6 +163,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, crash.joinMessage());
   send(ws, crash.progressMessage());
   send(ws, crash.benchMessage());
+  send(ws, crash.spentMessage());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
@@ -347,7 +348,7 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   const weather = storms.tick(time, [...players.values()].map((p) => p.state));
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), garden.flush(), weather]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), garden.flush(), weather]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
@@ -379,7 +380,6 @@ setInterval(() => {
   terrain.heal();
   terrain.save();
   scrap.respawn();
-  crash.maintain();
   garden.grow();
 }, SAVE_INTERVAL_MS);
 

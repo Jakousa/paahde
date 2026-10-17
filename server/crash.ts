@@ -1,6 +1,8 @@
-// Server side of the crash sites (shared/crash.ts).
+// Server side of the machine sites (shared/crash.ts) at the crashed spacecraft.
+//  - When every part of a crash site's large machine has been taken, the crash site is spent (persisted with a
+//    timestamp, broadcast as 'crashSpent'): it stops smoking and its machine stays a husk, permanently.
 //  - Small machines are carried home: crashTake validates reach and puts the machine in the player's bag (an item
-//    of the component's kind); the site stays empty until it refills. crashUse takes one out of the bag when it
+//    of the component's kind); the site stays empty for good. crashUse takes one out of the bag when it
 //    is put on the workbench.
 //  - Large machines are worked on by everyone near them through a session per site: which steps are done and
 //    which parts are taken (kept in SQLite, `machine_progress`, and never reset by itself: a stripped machine
@@ -13,7 +15,8 @@
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
-import { BENCH, CARRY_KINDS, crashSiteById, crashTaken, CRASH_REACH, SITE_RANGE } from '../shared/crash.ts';
+import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE } from '../shared/crash.ts';
+import { crashSite } from '../shared/crashsites.ts';
 import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
 import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
 import { COMPONENTS, type ComponentKind } from '../shared/salvage.ts';
@@ -22,8 +25,6 @@ import type { openDb } from './db.ts';
 type Db = ReturnType<typeof openDb>;
 type Feet = { x: number; z: number };
 
-/** Carried-off machines are back after this long. */
-const RESPAWN_MS = 45 * 60 * 1000;
 /** A lifting eye counts as held this long after the last hold message. */
 const HOLD_TTL_MS = 3000;
 const REACH_SLACK = 1.5;
@@ -50,6 +51,7 @@ export class CrashServer {
   private taken = new Map<string, number>();
   private newlyTaken: string[] = [];
   private newlyBack: string[] = [];
+  private newlySpent: number[] = [];
   private sessions = new Map<string, Session>();
   private broadcast: (msg: ServerMsg) => void;
   /** The machine on the disassembly table, or null when it is free. */
@@ -78,7 +80,8 @@ export class CrashServer {
       this.taken.set(r.id, r.taken_at);
       crashTaken.add(r.id);
     }
-    console.log(`crash: ${this.taken.size} sites carried off`);
+    for (const r of db.loadCrashSpent()) if (crashSite(r.site)) crashSpent.add(r.site);
+    console.log(`crash: ${this.taken.size} machines carried off, ${crashSpent.size} sites spent`);
   }
 
   // -- carrying -----------------------------------------------------------------------------------------------
@@ -148,20 +151,27 @@ export class CrashServer {
     this.broadcast({ t: 'siteReset', id });
   }
 
-  /** Bring back small sites carried off more than RESPAWN_MS ago. */
-  maintain() {
-    const now = Date.now();
-    for (const [id, at] of this.taken) {
-      if (now - at < RESPAWN_MS) continue;
-      this.taken.delete(id);
-      crashTaken.delete(id);
-      this.db.respawnCrash(id);
-      this.newlyBack.push(id);
-    }
-  }
-
   joinMessage(): ServerMsg {
     return { t: 'crash', taken: [...this.taken.keys()], back: [], reset: true };
+  }
+
+  spentMessage(): ServerMsg {
+    return { t: 'crashSpent', spent: [...crashSpent], reset: true };
+  }
+
+  flushSpent(): ServerMsg | null {
+    if (!this.newlySpent.length) return null;
+    const msg: ServerMsg = { t: 'crashSpent', spent: this.newlySpent };
+    this.newlySpent = [];
+    return msg;
+  }
+
+  /** The large machine of crash site `wreck` has no parts left: spent for good. */
+  private spend(wreck: number) {
+    if (crashSpent.has(wreck)) return;
+    crashSpent.add(wreck);
+    this.db.spendCrash(wreck, Date.now());
+    this.newlySpent.push(wreck);
   }
 
   flush(): ServerMsg | null {
@@ -175,12 +185,13 @@ export class CrashServer {
   // -- shared sessions ----------------------------------------------------------------------------------------
 
   /** A machine that can be worked on together: a large site, or the table while it holds a job. */
-  private large(id: unknown): { id: string; x: number; z: number; range: number; parts: MachinePart[] } | null {
+  /** A large site's or the table's machine; `wreck` is the crash site a field machine lies at (null: the table). */
+  private large(id: unknown): { id: string; x: number; z: number; range: number; parts: MachinePart[]; wreck: number | null } | null {
     if (id === BENCH_ID) {
-      return this.bench ? { id: BENCH_ID, x: BENCH.x, z: BENCH.z, range: BENCH_REACH, parts: machineParts(this.bench.kind, this.bench.seed) } : null;
+      return this.bench ? { id: BENCH_ID, x: BENCH.x, z: BENCH.z, range: BENCH_REACH, parts: machineParts(this.bench.kind, this.bench.seed), wreck: null } : null;
     }
     const site = crashSiteById(id);
-    return site && !COMPONENTS[site.kind].carry ? { id: site.id, x: site.x, z: site.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed) } : null;
+    return site && !COMPONENTS[site.kind].carry ? { id: site.id, x: site.x, z: site.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed), wreck: site.wreck } : null;
   }
   private newSession(done: number[], taken: number[]): Session {
     return { done: new Set(done), taken: new Map(taken.map((i) => [i, -1])), players: new Set(), holders: new Map(), need: new Map() };
@@ -200,7 +211,7 @@ export class CrashServer {
   /** `pid` (public id) joins the session of large site `id`; returns the state to send them. */
   join(pid: number, feet: Feet, id: unknown): ServerMsg | null {
     const site = this.large(id);
-    if (!site || Math.hypot(site.x - feet.x, site.z - feet.z) > site.range) return null;
+    if (!site || (site.wreck !== null && crashSpent.has(site.wreck)) || Math.hypot(site.x - feet.x, site.z - feet.z) > site.range) return null;
     let s = this.sessions.get(site.id);
     if (!s) this.sessions.set(site.id, (s = this.newSession([], [])));
     s.players.add(pid);
@@ -269,6 +280,7 @@ export class CrashServer {
     });
     if (!ok) return { t: 'siteTook', id: site.id, i, ok: false, reason: 'full' };
     this.broadcast({ t: 'siteTake', id: site.id, i, by: pid });
+    if (site.wreck !== null && s.taken.size >= site.parts.length) this.spend(site.wreck);
     if (site.id === BENCH_ID && s.taken.size >= site.parts.length) {
       // Every part is out: the table is free again.
       this.bench = null;

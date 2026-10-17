@@ -40,6 +40,7 @@ import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
 import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
+import { machinesAt } from '../shared/crash.ts';
 import { COMPONENTS } from '../shared/salvage.ts';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
@@ -66,10 +67,11 @@ const windSound = new WindSound();
 const storm = new StormFx();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
 const teardown = new TeardownView(scene, orbit.camera); // F at a machine site: the character walks up and the disassembly controls take over
+machines.busy = () => teardown.current?.id;
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
-  // crash: every crash site's id, centre, wreck kind and whether it smokes (shared/crashsites.ts).
-  const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, smoke: s.smoke, pieces: s.pieces.length }));
+  // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
+  const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
   Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, teardown } });
 }
 
@@ -177,7 +179,7 @@ renderer.setAnimationLoop((time) => {
   joined = true;
   if (faceCrash) {
     faceCrash = false;
-    const site = crashSitesNear(net.me.x, net.me.z, 200)[0];
+    const site = crashSitesNear(net.me.x, net.me.z, 200)[0]?.machines[0];
     if (site) orbit.yaw = Math.atan2(-(site.x - net.me.x), -(site.z - net.me.z));
   }
   resolution.update(frameDt);

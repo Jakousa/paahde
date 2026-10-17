@@ -353,8 +353,9 @@ class MeshBuilder:
         pts = [a.lerp(b, t) - Vector((0, 0, sag * 4 * t * (1 - t))) for t in (i / n for i in range(n + 1))]
         self.sweep(pts, r, 'CrashDark', col, segs=segs)
 
-    def sand(self, cx, cy, rx, ry, height, yaw=0.0, res=(10, 10), fn=None, sink=0.5):
-        """Sand mound patch (CrashSand) centred on (cx, cy); edges sink below the ground so it never floats."""
+    def sand(self, cx, cy, rx, ry, height, yaw=0.0, res=(10, 10), fn=None, sink=0.5, colfn=None):
+        """Sand mound patch (CrashSand) centred on (cx, cy); edges sink below the ground so it never floats.
+        colfn(u, v) -> sRGB hex tints a face by its patch coords in [-1, 1] (scorched sand)."""
         cs, sn = math.cos(yaw), math.sin(yaw)
         nx, ny = res
         grid = []
@@ -374,8 +375,9 @@ class MeshBuilder:
         faces = []
         for j in range(ny):
             for i in range(nx):
+                c = colfn(-1 + 2 * (i + 0.5) / nx, -1 + 2 * (j + 0.5) / ny) if colfn else None
                 faces.append((self.bm.faces.new([grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]]),
-                              None))
+                              c))
         bmesh.ops.recalc_face_normals(self.bm, faces=[f for f, _ in faces])
         for f, _ in faces:
             if f.normal.z < 0:
@@ -1268,6 +1270,77 @@ def debris_gear(mb, rng):
     mb.pop()
 
 
+# ------------------------------------------------------------------------------------------ dressing
+# Ground dressing around the machines that lie at each site (shared/crashsites.ts `machines`, taken apart in
+# src/teardown). The origin is the machine's centre; the machine was thrown along three.js +Z (Blender -Y), so
+# sand is shoved up ahead of it and what it fell out of lies behind (+Y). Kept clear of the ring where players
+# stand to work on it (3.2 m), and low, so walking across the edges doesn't look wrong. No hitboxes.
+
+def mix_hex(a, b, t):
+    t = max(0.0, min(1.0, t))
+    ca = [(a >> s) & 255 for s in (16, 8, 0)]
+    cb = [(b >> s) & 255 for s in (16, 8, 0)]
+    r, g, bl = (round(x + (y - x) * t) for x, y in zip(ca, cb))
+    return (r << 16) | (g << 8) | bl
+
+
+def strap(mb, pts, w=0.07, col=CABLE_YEL):
+    """Flat cargo strap lying on the ground through pts (x, y): thin boxes end to end."""
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        dx, dy = bx - ax, by - ay
+        mb.box((w, math.hypot(dx, dy) + 0.02, 0.02), ((ax + bx) / 2, (ay + by) / 2, 0.03), 'CrashDark', col,
+               rot=(0, 0, math.atan2(-dx, dy)))
+
+
+def dress_cradle(mb, rng):
+    """Where a big machine landed: a berm shoved up ahead of it, sand thrown out to the sides, and the torn
+    cargo cradle it was strapped into lying behind (~4.5 m out) with snapped straps and ripped-out cables."""
+    # The berm it ploughed up on landing, ahead of it.
+    mb.sand(0.1, -1.65, 1.9, 0.6, 0.42, yaw=0.06, res=(12, 6))
+    mb.sand(-1.9, -0.9, 0.7, 0.45, 0.22, yaw=0.7, res=(6, 5))
+    mb.sand(1.95, -0.8, 0.6, 0.4, 0.2, yaw=-0.6, res=(6, 5))
+    # Torn cargo cradle: two rails with cross members, tipped up on its back edge, one corner post bent over.
+    mb.push(T(0.2, 4.45, 0.02) @ R(x=-0.32, z=0.08))
+    for y in (-0.42, 0.42):
+        mb.box((3.2, 0.14, 0.16), (0, y, 0.08), 'CrashMetal', IRON)
+        mb.box((3.2, 0.05, 0.05), (0, y, 0.19), 'CrashBrass', BRASS_DK)
+    for x in (-1.45, -0.5, 0.5, 1.45):
+        mb.box((0.12, 0.9, 0.1), (x, 0, 0.06), 'CrashMetal', STEEL)
+    for x, y, lean in ((-1.5, -0.42, 0.0), (1.5, -0.42, 0.9), (-1.5, 0.42, 0.25)):
+        mb.box((0.1, 0.1, 0.62), (x, y, 0.45), 'CrashMetal', IRON, rot=(lean, 0, 0))
+    mb.box((0.1, 0.1, 0.2), (1.5, 0.42, 0.25), 'CrashMetal', IRON)  # snapped-off post stub
+    mb.box((0.9, 0.04, 0.5), (-1.0, -0.47, 0.42), 'CrashPaint', RED, rot=(0, 0.05, 0))  # bent side panel
+    mb.box((0.35, 0.03, 0.14), (-1.0, -0.5, 0.5), 'CrashPaint', CREAM)                   # stencil band
+    mb.rivets([Vector((x, -0.5, 0.2)) for x in (-1.3, -0.7, 0.7, 1.3)], [Vector((0, -1, 0))] * 4, 0.03)
+    mb.burn((0.6, 0, 0.3), 1.4, 0.9)
+    mb.pop()
+    # Snapped straps: from the cradle towards the machine, and one still hooked over a rail, flapping loose.
+    strap(mb, [(-1.1, 4.0), (-1.0, 3.5), (-1.25, 3.0), (-1.1, 2.6)])
+    strap(mb, [(1.2, 4.0), (1.35, 3.4), (1.1, 3.1)])
+    strap(mb, [(0.3, 4.9), (0.55, 5.5), (0.4, 6.0)], col=CABLE_RED)
+    mb.box((0.14, 0.1, 0.06), (-1.1, 2.6, 0.05), 'CrashBrass', BRASS, rot=(0, 0, 0.3))  # ratchet buckle
+    # Power and data lines torn out with it, trailing back towards the wreck.
+    mb.sweep([(-0.4, 4.6, 0.25), (-0.7, 5.4, 0.04), (-0.5, 6.4, 0.02), (-1.1, 7.3, 0.02), (-0.9, 7.9, -0.05)],
+             0.04, 'CrashDark', RUBBER, segs=5)
+    mb.sweep([(0.9, 4.7, 0.3), (1.2, 5.6, 0.04), (1.7, 6.5, 0.03), (1.6, 7.2, -0.05)], 0.03, 'CrashDark',
+             CABLE_RED, segs=4)
+    mb.cyl(0.07, 0.05, 0.12, 6, (1.6, 7.2, 0.0), 'CrashBrass', COPPER, rot=(PI / 2, 0, 0.2))  # frayed plug
+    # Bolts and a sheared bracket thrown out on the way.
+    for x, y in ((-2.1, 1.4), (2.3, 2.0), (0.6, 2.4)):
+        mb.cyl(0.05, 0.05, 0.1, 6, (x, y, 0.03), 'CrashMetal', STEEL, rot=(PI / 2, 0, rng(0, PI)))
+    mb.box((0.4, 0.08, 0.3), (2.4, 1.2, 0.1), 'CrashMetal', IRON, rot=(0.6, 0.2, 0.9))
+    # Smouldering: the scorched ground right beside the machine smokes until it is stripped.
+    mb.smoke_at((0.9, -0.4, 0.15))
+
+
+def dress_skid(mb, rng):
+    """Where a small machine came to rest: a furrow mound ahead of it, a snapped strap and a bracket."""
+    mb.sand(0, -1.8, 1.15, 0.45, 0.3, yaw=-0.08, res=(8, 5))
+    strap(mb, [(0.6, 1.4), (0.75, 2.0), (0.55, 2.5)])
+    mb.box((0.35, 0.08, 0.25), (-1.3, 1.6, 0.06), 'CrashMetal', IRON, rot=(0.3, 0.1, 0.7))
+    mb.box((0.12, 0.09, 0.05), (0.55, 2.5, 0.04), 'CrashBrass', BRASS, rot=(0, 0, 0.4))
+
+
 # (node, label, builder, seed, flip). The game wants each wreck's nose (direction of travel) along three.js +Z
 # = Blender -Y; builders that model the nose along +Y are turned 180 degrees about Z after building.
 MAIN = [
@@ -1282,6 +1355,11 @@ DEBRIS = [
     ('Hull plate', debris_plate), ('Bent fin', debris_fin), ('Pipe bundle', debris_pipes),
     ('Burnt seat', debris_seat), ('Porthole ring', debris_porthole), ('Boiler tank', debris_boiler),
     ('Gear housing', debris_gear),
+]
+# Dressing under the machines (never picked as debris). Appended last so the kind indexes above don't move.
+DRESSING = [
+    ('Crash_Cradle', 'Machine landing (large)', dress_cradle, 211),
+    ('Crash_Skid', 'Machine landing (small)', dress_skid, 223),
 ]
 
 
@@ -1364,6 +1442,7 @@ def write_ts(kinds, path):
         '  /** glTF node name in public/models/crashsites.glb */ node: string;',
         '  /** Short human name */ label: string;',
         '  /** true for a main wreck, false for scatter debris */ main: boolean;',
+        '  /** Ground dressing under a machine (shared/crashsites.ts `machines`), never picked as debris */ dressing: boolean;',
         '  /** Horizontal radius (m) enclosing the whole piece */ radius: number;',
         '  capsules: CrashCapsule[];',
         '  /** Where smoke rises from (main wrecks; 1–2 points, e.g. engine, torn hull) */ smoke: [number, number, number][];',
@@ -1380,6 +1459,7 @@ def write_ts(kinds, path):
         lines.append(f"    node: '{k['node']}',")
         lines.append(f"    label: '{k['label']}',")
         lines.append(f"    main: {'true' if k['main'] else 'false'},")
+        lines.append(f"    dressing: {'true' if k['dressing'] else 'false'},")
         lines.append(f"    radius: {fmt(k['radius'])},")
         lines.append(f'    capsules: [{caps}],')
         lines.append(f'    smoke: [{smoke}],')
@@ -1394,9 +1474,10 @@ def write_ts(kinds, path):
 def build_all():
     kinds = []
     objs = []
-    entries = [(n, l, fn, s, True, f) for n, l, fn, s, f in MAIN] + \
-              [(f'Crash_Debris_{i + 1}', l, fn, 101 + i * 7, False, False) for i, (l, fn) in enumerate(DEBRIS)]
-    for name, label, fn, seed, main, flip in entries:
+    entries = [(n, l, fn, s, True, f, False) for n, l, fn, s, f in MAIN] + \
+              [(f'Crash_Debris_{i + 1}', l, fn, 101 + i * 7, False, False, False) for i, (l, fn) in enumerate(DEBRIS)] + \
+              [(n, l, fn, s, False, False, True) for n, l, fn, s in DRESSING]
+    for name, label, fn, seed, main, flip, dressing in entries:
         mb = MeshBuilder()
         fn(mb, Rng(seed))
         if flip:
@@ -1410,8 +1491,8 @@ def build_all():
         obj = make_object(name, mb)
         cd = capsule_data(obj, caps)
         radius = max(math.hypot(v.co.x, v.co.y) for v in obj.data.vertices)
-        kinds.append({'node': name, 'label': label, 'main': main, 'radius': radius, 'caps': cd,
-                      'smoke': smoke if main else [], 'beacon': beacon if main else (0, 0, 0), 'obj': obj})
+        kinds.append({'node': name, 'label': label, 'main': main, 'dressing': dressing, 'radius': radius, 'caps': cd,
+                      'smoke': smoke if main or dressing else [], 'beacon': beacon if main else (0, 0, 0), 'obj': obj})
         objs.append(obj)
     return kinds, objs
 
@@ -1534,12 +1615,53 @@ def render_previews(kinds, out_dir, only=None):
         shoot(os.path.join(out_dir, k['node'] + '.png'))
         look(cam, (0, 0, r * 0.12), math.radians(az + 180), math.radians(24), r * 1.45 + 2.5, lens=35)
         shoot(os.path.join(out_dir, k['node'] + '_back.png'))
+    # Machine landings, each with a grey stand-in box of the machine (pump housing / robot arm size) and a ring
+    # where players stand to work (3.2 m), then the big one beside a wreck as the game places it.
+    stand_mat = bpy.data.materials.new('standin')
+    stand_mat.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value = (0.25, 0.27, 0.3, 1)
+    extra = []
+    for k in kinds:
+        if not k['dressing'] or (only and k['node'] not in only):
+            continue
+        for o in objs + extra:
+            o.hide_render = True
+        k['obj'].hide_render = False
+        big = k['node'] == 'Crash_Cradle'
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.6 if big else 0.55))
+        box = bpy.context.active_object
+        box.scale = (2.8, 0.9, 1.25) if big else (2.0, 2.5, 1.1)
+        box.data.materials.append(stand_mat)
+        bpy.ops.mesh.primitive_torus_add(major_radius=3.2, minor_radius=0.03, location=(0, 0, 0.05))
+        ring = bpy.context.active_object
+        ring.data.materials.append(stand_mat)
+        extra += [box, ring]
+        look(cam, (0, 1.5, 0.3), math.radians(-50), math.radians(28), 13, lens=35)
+        shoot(os.path.join(out_dir, k['node'] + '.png'))
+        look(cam, (0, 1.5, 0.3), math.radians(130), math.radians(24), 13, lens=35)
+        shoot(os.path.join(out_dir, k['node'] + '_back.png'))
+        ring.hide_render = True
+        if big:
+            fighter = next(q for q in kinds if q['node'] == 'Crash_Fighter')
+            fighter['obj'].hide_render = False
+            fighter['obj'].location = (0, 0, 0)
+            # Machine 9 m off the wreck's left side, thrown away from it (its +Y, the cradle side, faces the wreck).
+            for o in (k['obj'], box):
+                o.location = (o.location.x - 9.5, o.location.y, o.location.z)
+                o.rotation_euler = (0, 0, -PI / 2)
+            look(cam, (-5, 0, 0.5), math.radians(-120), math.radians(30), 24, lens=35)
+            shoot(os.path.join(out_dir, 'site_fighter.png'))
+            for o in (k['obj'], box):
+                o.location = (0, 0, o.location.z)
+                o.rotation_euler = (0, 0, 0)
+        box.hide_render = True
+    for k in kinds:
+        k['obj'].hide_render = False
     if only:
         return
     # Debris lineup.
     for o in objs:
         o.hide_render = True
-    deb = [k for k in kinds if not k['main']]
+    deb = [k for k in kinds if not k['main'] and not k['dressing']]
     for i, k in enumerate(deb):
         k['obj'].hide_render = False
         k['obj'].location = (i * 3.2 - (len(deb) - 1) * 1.6, 0, 0)
@@ -1553,8 +1675,8 @@ def render_previews(kinds, out_dir, only=None):
     for i, k in enumerate(deb):
         layout[k['node']] = Vector((i * 4.5 - (len(deb) - 1) * 2.25, -18, 0))
     for k in kinds:
-        k['obj'].hide_render = False
-        k['obj'].location = layout[k['node']]
+        k['obj'].hide_render = k['node'] not in layout
+        k['obj'].location = layout.get(k['node'], Vector((0, 0, 0)))
     look(cam, (0, 4, 0), math.radians(-80), math.radians(32), 66, lens=35)
     shoot(os.path.join(out_dir, 'overview.png'))
     # Low ground: the terrain half a metre below every origin; nothing should float.
@@ -1569,7 +1691,8 @@ def render_previews(kinds, out_dir, only=None):
     wb.inputs['Emission Color'].default_value = (0.1, 1.0, 0.3, 1)
     wb.inputs['Emission Strength'].default_value = 3.0
     for k in kinds:
-        capsule_wire(k, layout[k['node']], wm)
+        if k['node'] in layout:
+            capsule_wire(k, layout[k['node']], wm)
     look(cam, (0, 7, 0), math.radians(-90), math.radians(80), 90, lens=35)
     shoot(os.path.join(out_dir, 'capsules.png'))
     for k in mains:

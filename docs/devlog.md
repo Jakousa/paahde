@@ -67,6 +67,34 @@ Crashed spacecraft half-buried in the dunes, for players to hunt for parts later
   20–40 m it is only ~2.5 dB louder than before. Then +4 dB more (0.2 → 0.32, ~−26 LUFS at 5 m, true peak
   ≤ −9 dBFS) on request: still a background detail, now noticeable.
 - `?spawn=crash` starts you just off the nose of the crash site nearest your saved position, facing it.
+## 2026-10-17 — Machines move into the crash sites; smoke means "not stripped yet"
+
+The machine sites no longer have their own grid or the two starter sites by the base: every crashed spacecraft
+(shared/crashsites.ts) now holds the machines.
+- **Layout** (`placeMachines`, its own rng stream so the wreck layout is unchanged): one **large** machine (pump
+  housing or jet engine) thrown clear of the main wreck, with 4.2 m of open ground around it so you can walk around
+  it, clear of every tall hitbox (all 66 sites pass; the closest is 4.35 m), and 0–2 **small** ones beside trail
+  debris (21/28/17 sites have 0/1/2). Ids are `"<crash site id>:<index>"`, 0 the large one (shared/crash.ts
+  `machinesAt`, `crashSiteById`, `sitesNear`). The nearest site to the spawn is ~356 m out.
+- **Dressing** (Blender, tools/blender/crashsites.py `Crash_Cradle`, `Crash_Skid`; CRASH_KINDS entries with
+  `dressing: true`, never picked as debris): a sand berm the machine shoved up ahead of it, thrown-out sand, the
+  torn cargo cradle it was strapped into lying behind it (towards the wreck) with snapped straps, a ratchet buckle
+  and ripped-out cables trailing back to the wreck; a small furrow mound, strap and bracket under small ones. These
+  are draped over the dunes vertex by vertex and merged per material (src/world/crashsites.ts), and their sand uses
+  the terrain's sand material, so they sit in the ground on slopes instead of sticking out as slabs. The old
+  code-built scorch disc, trench and plates are gone. (A scorch decal was tried and dropped: it vanished under the
+  rendered terrain unless lifted well above it.)
+- **Smoke = not visited**: every site smoulders (a column from the wreck and one from the ground by the large
+  machine) until its large machine has had every part taken. The server counts parts with `rollParts` /
+  `machineParts` (now shared in salvage.ts; junk.ts builds one slot per rolled part, checked for 300 seeds of each
+  kind), marks the crash site **spent** (`crash_spent` table with a timestamp), and sends `crashSpent` (full list on
+  join, then each new one). The client stops feeding that site's columns (puffs born after the stop are not drawn,
+  so the plume drifts off), the beeping goes quiet, and the machine is rebuilt as a stripped husk with no prompt.
+  The server refuses to open a session on a spent site and ignores part indexes past the machine's part count.
+- **Nothing respawns**: spent sites stay spent and carried-off small machines stay gone (the 45 min refill is
+  gone); both keep their timestamps in SQLite in case respawns come back.
+- `?spawn=crash` puts you 7 m from the nearest site's large machine, facing it.
+
 ## 2026-10-17 — Machine sites and disassembly
 
 Wrecked machinery now lies in the desert (shared/crash.ts: deterministic sites, one machine each; two near the
