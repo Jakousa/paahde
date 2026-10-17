@@ -80,8 +80,18 @@ const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
 let accumulator = 0;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
+// FPS for the info line: frames counted over half-second windows.
+let fps = 0;
+let fpsFrames = 0;
+let fpsSince = performance.now();
 
 renderer.setAnimationLoop((time) => {
+  fpsFrames++;
+  if (time - fpsSince >= 500) {
+    fps = Math.round((fpsFrames * 1000) / (time - fpsSince));
+    fpsFrames = 0;
+    fpsSince = time;
+  }
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);
   if (!joined && !net.connected) {
@@ -149,6 +159,6 @@ renderer.setAnimationLoop((time) => {
   hud.setTarget(target);
   if (takePickup() && target) net.pickup(target);
 
-  info.textContent = `${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
+  info.textContent = `${fps} fps · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();
 });
