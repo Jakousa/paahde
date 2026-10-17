@@ -11,7 +11,7 @@ import * as THREE from 'three/webgpu';
 import { hazeColor, horizonColor, horizonSunColor, midSkyColor, moonColor, moonDirection, nightLevel, sunColor, sunDirection, zenithColor } from './env.ts';
 
 /** Real seconds per in-game day (24 h in 30 min). */
-export const DAY_SECONDS = 30 * 60;
+export const DAY_SECONDS = 60; // TEMP: 1 min days for testing; back to 30 * 60
 const LAT = THREE.MathUtils.degToRad(42);
 const DECL = THREE.MathUtils.degToRad(9);
 /** Shifts the cycle against the Unix epoch (fraction of a day). */
