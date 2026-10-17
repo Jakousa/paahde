@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { cameraPosition, fog, min, normalize, positionWorld, vec3 } from 'three/tsl';
 import { MAX_FOV } from '../camera.ts';
 import { CascadedShadows } from './cascades.ts';
-import { hazeColorFor, hazeFactor, SHADOW_ONLY_LAYER, skyRadiance, sunColor, sunDirection, sunDisc, sunLight, time } from './env.ts';
+import { hazeColorFor, hazeFactor, sandStorm, SHADOW_ONLY_LAYER, skyRadiance, sunColor, sunDirection, sunDisc, sunLight, time } from './env.ts';
 
 const SUN_ELEVATION = THREE.MathUtils.degToRad(10);
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-14); // 0 = straight ahead of the start view (-Z)
@@ -85,7 +85,7 @@ export class Sky {
   update(dt: number, focus: THREE.Vector3, camera: THREE.PerspectiveCamera) {
     time.value += dt;
     this.sun.color.copy(sunColor.value);
-    this.sun.intensity = 1;
+    this.sun.intensity = 1 - 0.3 * sandStorm.value; // dust in the air dims the sun
     // Only the direction matters: the cascades place their own shadow cameras.
     this.sun.target.position.copy(focus);
     this.sun.position.copy(focus).add(sunDirection.value);

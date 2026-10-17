@@ -14,6 +14,7 @@ import { Post } from './post';
 import * as env from './world/env';
 import { addPalms } from './world/palms';
 import { Scrap } from './world/scrap';
+import { Dust } from './world/dust';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
@@ -31,11 +32,12 @@ const sky = new Sky(scene);
 const terrain = new Terrain(scene);
 addPalms(scene);
 const scrap = new Scrap(scene);
+const dust = new Dust(scene);
 const post = new Post(renderer, scene, orbit.camera);
 const blownSand = new BlownSand(scene);
 
 // Debug handle for screenshots/tuning from the console: open with ?debug.
-if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand } });
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand, dust } });
 
 const net = new Net(getBrowserId());
 const digFx = new DigFx(scene);
@@ -126,6 +128,7 @@ renderer.setAnimationLoop((time) => {
   sky.update(frameDt, focus, orbit.camera);
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
+  dust.update(frameDt, orbit.camera.position);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
 
   info.textContent = `${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;

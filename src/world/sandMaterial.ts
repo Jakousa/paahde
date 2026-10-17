@@ -6,7 +6,9 @@
 //   - procedural wind ripples as normal perturbation (asymmetric profile, domain-warped, two octaves),
 //     masked off slip faces and faded by screen footprint so they never alias
 //   - ocean-like specular sheen at grazing angles (on the rippled normal) and a backlit rim on crests
-//   - stable per-grain glitter (hashed microfacets in world-space cells, two scales, footprint-faded)
+//   - faint per-grain glitter (hashed microfacets in world-space cells, two scales, footprint-faded),
+//     dulled by wind and dust
+//   - a smooth, paler crest band (per-vertex `crest` from terrain.ts) where the ripples die out
 //   - large-scale colour variation; slip faces slightly darker and smooth
 //   - shadow/ambient fill pushed towards rust/maroon whatever colour the sky light is
 //
@@ -14,6 +16,7 @@
 // Tunables are exported TSL uniforms (`sand.*`): set `.value` at runtime, no recompile needed.
 import * as THREE from 'three/webgpu';
 import {
+  attribute,
   cameraPosition,
   cameraWorldMatrix,
   cos,
@@ -43,7 +46,7 @@ import {
   vec4,
 } from 'three/tsl';
 import type Node from 'three/src/nodes/core/Node.js';
-import { sunColor } from './env.ts';
+import { sandStorm, sunColor, windStrength } from './env.ts';
 
 type F = Node<'float'>;
 type V2 = Node<'vec2'>;
@@ -73,8 +76,10 @@ export const sand = {
   rim: uniform(0.18),
   /** Colour of sheen and rim (warm, so highlights read as hot sand rather than wet white). */
   sheenTint: uniform(new THREE.Color(1.0, 0.62, 0.32)),
-  /** Glitter intensity (HDR; values > 1 feed bloom). */
+  /** Glitter intensity (HDR; values > 1 feed bloom). Dust in the air dulls it further. */
   glitter: uniform(2.5),
+  /** Glitter colour: warm, so grains read as quartz in low sun rather than metal flakes. */
+  glitterTint: uniform(new THREE.Color(1.0, 0.72, 0.42)),
 };
 
 const PI = Math.PI;
@@ -128,6 +133,7 @@ interface SandSurface {
   v: V3; // to camera
   albedo: V3;
   slip: F; // 1 on slip faces
+  dust: F; // 0..1 dust in the air (wind + storm): dulls glitter and sheen
   rippleVis: F; // how resolved the small ripples are here (0 far away / masked)
   dist: F;
 }
@@ -146,7 +152,11 @@ function buildSurface(): SandSurface {
   const steep = smoothstep(0.93, 0.86, n0.y);
   const slip = steep.mul(smoothstep(0.0, 0.5, downwind));
   const flatEnough = smoothstep(0.8, 0.92, n0.y);
-  const rippleMask = flatEnough.mul(float(1).sub(slip));
+  // Crest band: the brink and the few metres behind it are wind-scoured smooth, no ripples.
+  const crest = attribute('crest', 'float') as F;
+  const crestBand = smoothstep(0.35, 0.85, crest);
+
+  const rippleMask = flatEnough.mul(float(1).sub(slip)).mul(float(1).sub(crestBand));
 
   // Domain warp (metres along the wind) so crests meander and bend; gradient by finite differences
   // so the ripple normal follows the bent crest direction.
@@ -192,9 +202,11 @@ function buildSurface(): SandSurface {
   const albedo = mix(sand.albedoRed, sand.albedoGold, patch)
     .mul(grain)
     .mul(float(1).sub(slip.mul(0.12)))
-    .mul(float(1).sub(float(1).sub(h1).mul(f1).mul(0.03)));
+    .mul(float(1).sub(float(1).sub(h1).mul(f1).mul(0.03)))
+    .mul(float(1).add(crestBand.mul(0.06))); // fine, sorted sand on the crest is a touch paler
+  const dust = windStrength.mul(0.35).add(sandStorm.mul(0.65)).min(1);
 
-  return { p, n0, n, nSpec, v, albedo, slip, dist, rippleVis: f1 };
+  return { p, n0, n, nSpec, v, albedo, slip, dust, dist, rippleVis: f1 };
 }
 
 class SandLightingModel extends THREE.LightingModel {
@@ -210,7 +222,7 @@ class SandLightingModel extends THREE.LightingModel {
     const lightColor = input.lightColor as V3;
     const directDiffuse = input.reflectedLight.directDiffuse as V3;
     const directSpecular = input.reflectedLight.directSpecular as V3;
-    const { p, n0, n, nSpec, v, albedo, slip, dist, rippleVis } = this.s;
+    const { p, n0, n, nSpec, v, albedo, slip, dust, dist, rippleVis } = this.s;
     // Light direction arrives in view space; the sand works in world space.
     const l = normalize(cameraWorldMatrix.mul(vec4(lightDirection, 0)).xyz);
     const ndl = dot(n, l);
@@ -237,7 +249,7 @@ class SandLightingModel extends THREE.LightingModel {
       .mul(pow(toSun, 3))
       .mul(saturate(ndl.add(0.35)))
       .mul(sand.rim);
-    const spec = c3(sand.sheenTint).mul(max(ocean, rim));
+    const spec = c3(sand.sheenTint).mul(max(ocean.mul(float(1).sub(dust.mul(0.6))), rim));
 
     // Glitter: only in sunlight, fades out with distance (and per-cell footprint inside the layers).
     const lit = saturate(ndl.mul(5));
@@ -250,9 +262,10 @@ class SandLightingModel extends THREE.LightingModel {
       .mul(near)
       .mul(facing)
       .mul(float(1).sub(slip.mul(0.7)))
+      .mul(float(1).sub(dust.mul(0.7)))
       .mul(sand.glitter);
 
-    directSpecular.addAssign(lightColor.mul(spec.add(g)));
+    directSpecular.addAssign(lightColor.mul(spec.add(c3(sand.glitterTint).mul(g))));
   }
 
   indirect(builder: THREE.NodeBuilder) {

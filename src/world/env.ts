@@ -5,7 +5,7 @@
 // scene fog and any custom material (e.g. a sand mirage reflecting the sky) all agree on colours —
 // if they don't, the horizon line shows.
 import * as THREE from 'three/webgpu';
-import { Fn, cameraPosition, dot, exp, float, max, min, mix, normalize, positionWorld, pow, saturate, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
+import { Fn, cameraPosition, dot, exp, float, max, min, mix, mx_noise_float, normalize, positionWorld, pow, saturate, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 
 type N = Node<'vec3'>;
@@ -35,6 +35,15 @@ export const hazeDensity = uniform(0.006);
 export const hazeFar = uniform(290);
 /** Heat-haze shimmer strength (post). 0 disables, 1 default, >3 looks like water. */
 export const heatHaze = uniform(1);
+// --- Wind, for shaders (fed from wind.ts by dust.ts every frame) ---
+/** Unit xz vector the wind currently blows towards (wobbles a little around the dunes' wind). */
+export const windDir = uniform(new THREE.Vector2(0.3162, 0.9487));
+/** Regional wind, 0 (still) .. 1 (wind.ts at its strongest). */
+export const windStrength = uniform(0.5);
+/** Sandstorm envelope, 0 .. 1: dust in the air, haze, sand lifting off the ground. */
+export const sandStorm = uniform(0);
+/** Integrated wind travel (m, xz): advects streaks and dust so they move with the wind. */
+export const windDrift = uniform(new THREE.Vector2());
 /** Apparent angular radius of the sun disc, radians (cheated huge: real sun is 0.0045). */
 export const sunDiscRadius = uniform(0.06);
 
@@ -83,7 +92,9 @@ export const skyRadiance = Fn(([dirIn]: [N]) => {
   const upper = mix(lower, zenithColor, smoothstep(bandWidth.mul(0.8), 0.9, yUp));
   // Blend from the haze colour right at the horizon so fogged terrain meets the sky seamlessly.
   const hazeBase = mix(hazeColor, horizonSunColor, toward.mul(0.7));
-  const sky = mix(hazeBase, upper, smoothstep(0.0, 0.06, y));
+  const clear = mix(hazeBase, upper, smoothstep(0.0, 0.06, y));
+  // Dust raised by a sandstorm thickens the lower sky towards the haze colour.
+  const sky = mix(clear, hazeBase, sandStorm.mul(0.55).mul(smoothstep(0.5, 0.0, y)));
   return sky.add(HALO_TINT.mul(sunColor).mul(mieHalo(mu)));
 });
 
@@ -96,18 +107,24 @@ export const sunDisc = Fn(([dir]: [N]) => {
   const rim = vec3(1.0, 0.7, 0.35).mul(10);
   const disc = mix(core, rim, smoothstep(0.55, 1.0, r)).mul(smoothstep(1.02, 0.97, r));
   const corona = vec3(1.0, 0.5, 0.16).mul(exp(r.sub(1).max(0).mul(-2.5)).mul(1.8));
-  return disc.add(corona.mul(smoothstep(0.97, 1.02, r)));
+  return disc.add(corona.mul(smoothstep(0.97, 1.02, r))).mul(float(1).sub(sandStorm.mul(0.45)));
 });
 
 /**
  * Fog factor (0 = clear, 1 = fully hazed) for a world position seen from the camera. Valleys are
  * hazier than crests (height falloff), which makes far dunes read as layered silhouettes.
+ *
+ * In a sandstorm the dust is patchy, in plumes that drift downwind, with a thin veil close to the viewer.
  */
 export const hazeFactor = Fn(([worldPos]: [N]) => {
   const d = worldPos.sub(cameraPosition).length();
   const heightFall = exp(max(worldPos.y, 0).mul(-0.012));
-  const f = float(1).sub(exp(d.mul(hazeDensity).mul(heightFall).negate()));
-  return max(f, smoothstep(hazeFar.mul(0.7), hazeFar, d));
+  // blownSand.ts thickens hazeDensity itself in strong wind; here a storm makes it patchy.
+  const plume = mx_noise_float(worldPos.xz.sub(windDrift).mul(0.008)).mul(0.5).add(0.5);
+  const dusty = float(1).add(sandStorm.mul(plume.sub(0.5)).mul(1.2));
+  const f = float(1).sub(exp(d.mul(hazeDensity).mul(dusty).mul(heightFall).negate()));
+  const veil = sandStorm.mul(0.3).mul(plume).mul(float(1).sub(exp(d.mul(-1 / 60))));
+  return max(f.add(veil).min(1), smoothstep(hazeFar.mul(0.7), hazeFar, d));
 });
 
 /** Apply the aerial perspective to a lit colour at `worldPos` (for materials with fog disabled). */

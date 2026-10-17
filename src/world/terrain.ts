@@ -37,6 +37,10 @@ const CACHE_LIMIT = 500;
 
 const VERTS = CELLS + 1;
 const SKIRT_VERTS = 4 * VERTS;
+/** Convexity (−∇²h, 1/m) that counts as a full crest, and the blur radius (vertices) that widens the
+ *  brink line into a band a few metres wide. */
+const CREST_CURVATURE = 0.3;
+const CREST_BLUR = 2;
 
 function createTerrainMaterial(): THREE.Material {
   sand.wind.value.set(WIND.x, WIND.z); // ripples run perpendicular to the dunes' wind
@@ -100,6 +104,8 @@ export class Terrain {
   private lastZ = NaN;
   // Scratch buffers for generation: heights with a 1-vertex border (for central-difference normals).
   private hbuf = new Float64Array((VERTS + 2) * (VERTS + 2));
+  private cbuf = new Float32Array(VERTS * VERTS);
+  private cblur = new Float32Array(VERTS * VERTS);
 
   /** Stats for debugging/perf overlays. */
   readonly stats = { chunks: 0, triangles: 0, builtThisFrame: 0, buildMs: 0, totalBuilt: 0 };
@@ -223,6 +229,7 @@ export class Terrain {
     const n = VERTS * VERTS + SKIRT_VERTS;
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    geo.setAttribute('crest', new THREE.BufferAttribute(new Float32Array(n), 1));
     geo.setIndex(this.index);
     const mesh = new THREE.Mesh(geo, this.material);
     mesh.position.set(ix * size, 0, iz * size);
@@ -273,8 +280,12 @@ export class Terrain {
         nor[v + 2] = -gz * l;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
+        const lap = (h[k + 1] + h[k - 1] + h[k + W] + h[k - W] - 4 * y) / (step * step);
+        this.cbuf[j * VERTS + i] = Math.min(1, Math.max(0, -lap / CREST_CURVATURE));
       }
     }
+    const crest = geo.attributes.crest.array as Float32Array;
+    this.blurCrest(crest);
     // Skirts: copies of the edge vertices, dropped by more than the worst LOD mismatch.
     const drop = 0.5 + step * 1.2;
     const base = VERTS * VERTS;
@@ -288,10 +299,12 @@ export class Terrain {
         nor[s] = nor[g];
         nor[s + 1] = nor[g + 1];
         nor[s + 2] = nor[g + 2];
+        crest[base + e * VERTS + t] = crest[src];
       }
     }
     geo.attributes.position.needsUpdate = true;
     geo.attributes.normal.needsUpdate = true;
+    geo.attributes.crest.needsUpdate = true;
     minY -= drop;
     const bb = (geo.boundingBox ??= new THREE.Box3());
     bb.min.set(0, minY, 0);
@@ -300,6 +313,25 @@ export class Terrain {
     bb.getBoundingSphere(bs);
     this.stats.builtThisFrame++;
     this.stats.totalBuilt++;
+  }
+
+  /** Separable box blur of cbuf (clamped at the chunk edge) into the first VERTS² entries of `out`. */
+  private blurCrest(out: Float32Array) {
+    const src = this.cbuf, tmp = this.cblur, R = CREST_BLUR, norm = 1 / (2 * R + 1);
+    for (let pass = 0; pass < 2; pass++) {
+      const from = pass === 0 ? src : tmp, to = pass === 0 ? tmp : out;
+      for (let j = 0; j < VERTS; j++) {
+        for (let i = 0; i < VERTS; i++) {
+          let sum = 0;
+          for (let d = -R; d <= R; d++) {
+            const a = Math.min(VERTS - 1, Math.max(0, (pass === 0 ? i : j) + d));
+            sum += pass === 0 ? from[j * VERTS + a] : from[a * VERTS + i];
+          }
+          // A short blur dilutes a sharp brink; boost it back so a real crest still reaches ~1.
+          to[j * VERTS + i] = Math.min(1, sum * norm * (pass === 0 ? 1 : 1.8));
+        }
+      }
+    }
   }
 
   /** Edit chunk (cx, cz) changed: mark the fine chunks that sample it for rebuilding. */

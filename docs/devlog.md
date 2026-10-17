@@ -138,3 +138,15 @@ Goal of this session: *I can roam around the desert planet with my friends in th
      `CascadedShadows` samples all cascades and blends them without branches.
 - **Cost:** each lit pixel takes 4 cascades × 5 PCF taps, and the terrain is drawn once more per
   cascade (depth only). Not measured on a real GPU yet.
+
+## Sandstorm dust and smoother crests
+
+Builds on the wind in `src/world/wind.ts` and the grains and plumes in `src/blownSand.ts`.
+
+- **Storm dust** (`src/world/dust.ts`): while `wind.storm` is up, big soft puffs of lifted sand roll
+  downwind near the ground. The haze turns patchy, in plumes drifting with the wind; a thin veil covers
+  the near field; the lower sky turns dusty and the sun dims a little. `dust.ts` also feeds the wind
+  to the shaders (`windDir`, `windStrength`, `sandStorm`, `windDrift` in `env.ts`).
+- **Glitter** is warm-tinted and dulled by dust, so it reads as quartz, not metal flakes.
+- **Crests:** terrain chunks carry a per-vertex `crest` value (blurred convexity). The sand shader keeps
+  a narrow band at the brink smooth and a touch paler, so ripples no longer run into the knife edge.
