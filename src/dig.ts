@@ -1,4 +1,4 @@
-// Dig feedback, client-side only: crosshair + hint, a ground ring where the next stroke would land,
+// Dig feedback, client-side only: crosshair, a ground ring where the next stroke would land,
 // and a sand puff whenever a stroke lands (ours predicted, or another player's from the server).
 import * as THREE from 'three/webgpu';
 import { DIG_RADIUS, digTarget, type Point } from '../shared/dig.ts';
@@ -15,7 +15,6 @@ export class DigFx {
   private ring: THREE.Mesh;
   private grains: THREE.InstancedMesh;
   private particles: Particle[] = [];
-  private hint: HTMLDivElement;
   private dummy = new THREE.Object3D();
   private normal = { x: 0, y: 1, z: 0 };
   private up = new THREE.Vector3(0, 1, 0);
@@ -41,16 +40,11 @@ export class DigFx {
     style.textContent = `
       #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
         border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
-        pointer-events: none; }
-      #dighint { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); color: #fff;
-        font: 13px system-ui, sans-serif; text-shadow: 0 1px 2px rgba(0,0,0,.6); pointer-events: none;
-        opacity: .8; transition: opacity .3s; }`;
+        pointer-events: none; }`;
     document.head.appendChild(style);
     const cross = document.createElement('div');
     cross.id = 'crosshair';
-    this.hint = document.createElement('div');
-    this.hint.id = 'dighint';
-    document.body.append(cross, this.hint);
+    document.body.append(cross);
   }
 
   /** A stroke landed at `at`. */
@@ -79,12 +73,6 @@ export class DigFx {
       this.ring.position.set(target.x, target.y + 0.03, target.z);
       this.ring.quaternion.setFromUnitVectors(this.up, this.n.set(this.normal.x, this.normal.y, this.normal.z));
     }
-    this.hint.textContent = !locked
-      ? 'Click to play'
-      : target
-        ? 'Left click / E: dig · Right click / Q: pile sand'
-        : 'Look at the ground to dig';
-    this.hint.style.opacity = locked && target ? '0.55' : '0.85';
 
     let n = 0;
     this.particles = this.particles.filter((p) => (p.age += dt) < LIFE);
