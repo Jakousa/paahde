@@ -5,6 +5,7 @@ import { readInput } from './input';
 import { getBrowserId, Net } from './net';
 import { Avatar } from './players';
 import { Post } from './post';
+import * as env from './world/env';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 
@@ -22,7 +23,7 @@ const terrain = new Terrain(scene);
 const post = new Post(renderer, scene, orbit.camera);
 
 // Debug handle for screenshots/tuning from the console: open with ?debug.
-if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer } });
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env } });
 
 const net = new Net(getBrowserId());
 const me = new Avatar(0xffffff);

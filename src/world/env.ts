@@ -20,9 +20,9 @@ export const time = uniform(0);
 
 // --- Atmosphere palette (linear; THREE.Color converts the sRGB hex values from docs/look.md) ---
 /** Sky straight up: dusky brown-purple. */
-export const zenithColor = uniform(new THREE.Color(0x2b2226).multiplyScalar(0.7));
+export const zenithColor = uniform(new THREE.Color(0x2a2230).multiplyScalar(0.75));
 /** Sky a little above the horizon (between the hot band and the zenith). */
-export const midSkyColor = uniform(new THREE.Color(0x5e3a36));
+export const midSkyColor = uniform(new THREE.Color(0x523638));
 /** Hot horizon band away from the sun. */
 export const horizonColor = uniform(new THREE.Color(0xe07b28));
 /** Horizon band towards the sun. */
@@ -33,6 +33,8 @@ export const hazeColor = uniform(new THREE.Color(0xd98a45).multiplyScalar(0.85))
 export const hazeDensity = uniform(0.006);
 /** Distance (m) at which the haze becomes total — hides the terrain edge. Set to the terrain radius. */
 export const hazeFar = uniform(290);
+/** Heat-haze shimmer strength (post). 0 disables, 1 default, >3 looks like water. */
+export const heatHaze = uniform(1);
 /** Apparent angular radius of the sun disc, radians (cheated huge: real sun is 0.0045). */
 export const sunDiscRadius = uniform(0.06);
 

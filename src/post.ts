@@ -3,12 +3,12 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, abs, atan, cos, dot, exp, float, length, max, mix, mx_noise_float, pass, pow, renderOutput, saturate,
-  smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin,
+  smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin, perspectiveDepthToViewZ,
 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { heightAt } from '../shared/terrain.ts';
-import { sunDirection, sunDiscRadius, time } from './world/env.ts';
+import { heatHaze, sunDirection, sunDiscRadius, time } from './world/env.ts';
 
 type N = Node<'vec3'>;
 const TONE = new URLSearchParams(location.search).has('agx') ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
@@ -33,6 +33,8 @@ export class Post {
   private exposure = uniform(1);
   /** How directly we are staring into the (unoccluded) sun, 0..1 — drives veiling glare. */
   private stare = uniform(0);
+  private camNear = uniform(0.1);
+  private camFar = uniform(6000);
 
   private lastTime = performance.now();
   private exposureValue = 1;
@@ -51,7 +53,7 @@ export class Post {
     const depth = scenePass.getTextureNode('depth');
     const viewZ = scenePass.getViewZNode();
 
-    const { sunUV, sunOnScreen, sunRadiusUV, horizonY, aspect, exposure, stare } = this;
+    const { sunUV, sunOnScreen, sunRadiusUV, horizonY, aspect, exposure, stare, camNear, camFar } = this;
 
     // --- Heat haze: vertically stretched, upward-scrolling noise warps the frame near the horizon,
     // only for distant ground (and a thin band of sky just above the horizon, so the sun's lower
@@ -63,11 +65,15 @@ export class Post {
       const far = mix(smoothstep(20, 220, dist), float(0.45), isSky);
       const dy = p.y.sub(horizonY); // > 0 below the horizon
       const band = smoothstep(0.22, 0.0, abs(dy)).mul(mix(float(0.35), float(1), step(0, dy)));
-      const mask = far.mul(band);
+      const mask = far.mul(band).mul(heatHaze);
       const q = vec3(p.x.mul(aspect).mul(28), p.y.mul(110).add(time.mul(2.2)), time.mul(0.6));
       const n = vec2(mx_noise_float(q), mx_noise_float(q.add(vec3(13.7, 5.1, 2.3))));
-      const warped = p.add(n.mul(vec2(0.0012, 0.0028)).mul(mask));
-      return color.sample(warped).rgb;
+      const warped = p.add(n.mul(vec2(0.0018, 0.004)).mul(mask));
+      // Don't pull nearby objects (players) into the shimmer: keep the warp only if the warped
+      // sample is itself far away.
+      const wDist = perspectiveDepthToViewZ(depth.sample(warped).r, camNear, camFar).negate();
+      const keep = smoothstep(15, 30, wDist);
+      return color.sample(mix(p, warped, keep)).rgb;
     })();
 
     // --- Bloom (half-res mip chain). Threshold sits just above lit sand so the sun, its halo and
@@ -162,6 +168,8 @@ export class Post {
     cam.updateMatrixWorld();
     const size = this.renderer.getSize(new THREE.Vector2());
     this.aspect.value = size.x / Math.max(size.y, 1);
+    this.camNear.value = cam.near;
+    this.camFar.value = cam.far;
 
     // Sun position on screen (uv: origin top-left).
     const sd = sunDirection.value;
