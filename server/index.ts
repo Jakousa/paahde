@@ -367,6 +367,7 @@ function save(p: Player) {
 
 setInterval(() => {
   players.forEach(save);
+  terrain.heal();
   terrain.save();
   scrap.respawn();
   crash.maintain();

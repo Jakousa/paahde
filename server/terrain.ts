@@ -1,6 +1,6 @@
 // Server side of the terrain edit layer: applies dig strokes, runs sand relaxation, batches changed
 // vertices for broadcast and persists dirty chunks to SQLite.
-import { cellKey, cellX, cellZ, Relaxer, stroke, type Point } from '../shared/dig.ts';
+import { cellKey, cellX, cellZ, heal, Relaxer, stroke, type Point } from '../shared/dig.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { EDIT_CELL, EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import type { openDb } from './db.ts';
@@ -24,6 +24,12 @@ export class TerrainServer {
     this.dirtyChunks.add(TerrainEdits.key(Math.floor(ix / EDIT_CHUNK), Math.floor(iz / EDIT_CHUNK)));
   };
 
+  // Healing flattens, so it never needs relaxing.
+  private onHeal = (ix: number, iz: number) => {
+    this.changed.add(cellKey(ix, iz));
+    this.dirtyChunks.add(TerrainEdits.key(Math.floor(ix / EDIT_CHUNK), Math.floor(iz / EDIT_CHUNK)));
+  };
+
   constructor(db: Db) {
     this.db = db;
     for (const c of db.loadChunks()) {
@@ -40,6 +46,11 @@ export class TerrainServer {
   /** One sand-relaxation pass over recently changed vertices. Cheap when nothing is moving. */
   relax() {
     if (!this.relaxer.idle) this.relaxer.step(edits, RELAX_MAX_CELLS, this.onCell);
+  }
+
+  /** Wind fills holes and flattens piles a little; call every few seconds. */
+  heal() {
+    heal(edits, this.onHeal);
   }
 
   /** Changed vertices since the last call as a terrainEdit message, or null if none. */

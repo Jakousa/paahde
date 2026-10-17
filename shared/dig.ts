@@ -7,11 +7,14 @@
 //   repose shed sand downhill until they are not. Only an active set of recently changed vertices is
 //   processed, never the whole world. It runs on the server only; results are broadcast.
 //
+// - heal() is the wind slowly erasing player marks: every edited vertex creeps back to 0 (the original
+//   dunes). Server only, a few times a minute; results are broadcast like any other edit.
+//
 // The dig point is where the player looks: a ray from the eye along the camera yaw/pitch, marched
 // against heightAt up to DIG_REACH metres. Yaw and pitch travel quantized, so both sides agree.
 import { terrainHidden } from './base.ts';
 import { yawFromQ } from './sim.ts';
-import { baseHeight, EDIT_CELL, heightAt, type TerrainEdits } from './terrain.ts';
+import { baseHeight, EDIT_CELL, EDIT_CHUNK, heightAt, type TerrainEdits } from './terrain.ts';
 
 /** Eye height above the feet (first-person camera). */
 export const EYE_HEIGHT = 1.65;
@@ -31,6 +34,10 @@ export const MAX_EDIT_MM = 3000;
 /** Dug sand lands as a pile this far to the digger's right. */
 export const DEPOSIT_SIDE = 3.2;
 export const DEPOSIT_RADIUS = 1.4;
+
+/** Healing per heal() pass: HEAL_MIN_MM plus 1/2^HEAL_SHIFT of the offset (a 1 m hole fills in ~12 min at 5 s passes). */
+export const HEAL_MIN_MM = 3;
+export const HEAL_SHIFT = 6;
 
 /** Angle of repose for dry sand (~34°) as a max height difference between neighbouring vertices. */
 export const REPOSE_TAN = Math.tan((34 * Math.PI) / 180);
@@ -191,6 +198,21 @@ export function stroke(
     deposit(edits, p.x + Math.cos(yaw) * DEPOSIT_SIDE, p.z - Math.sin(yaw) * DEPOSIT_SIDE, removed, DEPOSIT_RADIUS, sink);
   }
   return p;
+}
+
+/** One healing pass: moves every edited vertex toward 0 (the untouched dunes). Returns the vertices changed. */
+export function heal(edits: TerrainEdits, sink?: CellSink): number {
+  let changed = 0;
+  for (const [cx, cz, c] of edits.entries()) {
+    for (let i = 0; i < c.length; i++) {
+      const v = c[i];
+      if (v === 0) continue;
+      const a = Math.abs(v), q = Math.min(a, HEAL_MIN_MM + (a >> HEAL_SHIFT));
+      set(edits, cx * EDIT_CHUNK + (i % EDIT_CHUNK), cz * EDIT_CHUNK + Math.floor(i / EDIT_CHUNK), v > 0 ? v - q : v + q, sink);
+      changed++;
+    }
+  }
+  return changed;
 }
 
 const NEIGHBOURS: [number, number, number][] = [

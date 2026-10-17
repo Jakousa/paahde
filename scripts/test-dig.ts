@@ -1,7 +1,7 @@
 // Sanity checks for digging + sand relaxation: node scripts/test-dig.ts
 import assert from 'node:assert/strict';
 import {
-  cellKey, cellX, cellZ, digTarget, MIN_EDIT_MM, pitchFromQ, quantizePitch, Relaxer, REPOSE_AXIS_MM, stroke,
+  cellKey, cellX, cellZ, digTarget, heal, MIN_EDIT_MM, pitchFromQ, quantizePitch, Relaxer, REPOSE_AXIS_MM, stroke,
 } from '../shared/dig.ts';
 import { quantizeYaw } from '../shared/sim.ts';
 import { baseHeight, EDIT_CELL, edits, EDIT_CHUNK, TerrainEdits } from '../shared/terrain.ts';
@@ -80,5 +80,12 @@ for (const [cx, cz, c] of edits.entries()) {
 }
 for (const [cx, cz, c] of edits.entries()) assert.deepEqual(copy.chunk(cx, cz), c);
 for (let z = 15; z < 25; z += 0.37) for (let x = 5; x < 15; x += 0.41) assert.equal(copy.sample(x, z), edits.sample(x, z));
+
+// Healing: everything returns to the original dunes, slowly.
+let passes = 0;
+while (heal(copy) > 0) passes++;
+for (const [, , c] of copy.entries()) assert.ok(c.every((v) => v === 0), 'healed back to 0');
+assert.ok(passes > 60, `healing is slow (${passes} passes)`);
+console.log(`healed in ${passes} passes`);
 
 console.log('ok');

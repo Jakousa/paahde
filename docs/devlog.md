@@ -328,6 +328,8 @@ Goal of this session: *I can roam around the desert planet with my friends in th
   - Left click or E digs where you look, up to 4 m away. Right click or Q puts sand back.
   - Hole walls slump to 34°.
   - Holes sync to every player and survive server restarts.
+  - The wind slowly erases them: every 5 s the server moves each edited point 3 mm + 1/64 of its
+    offset back toward the original dunes (`heal` in `shared/dig.ts`). A 1 m hole is gone in ~12 min.
 - **The look** (`docs/look.md`): based on the team's reference images (Dune poster, golden-hour dunes).
   - Sand shader (`src/world/sandMaterial.ts`): Journey-style shading, wind ripples, sparkle, rust shadows.
   - Sky (`src/world/sky.ts`, `src/world/env.ts`): dusky brown-purple top, hot orange horizon.
