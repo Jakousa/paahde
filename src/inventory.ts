@@ -205,8 +205,8 @@ export class InventoryHud {
     this.storages = openBoxes(this.net.me).filter((b) => this.net.boxes[b]);
     const bag = this.net.boxes.bag ?? [];
     let html = `<div class="box"><div class="head"><h3>${boxLabel('bag')}</h3><button data-sort="bag" title="Merge stacks and order them (the hotbar stays)">Sort</button></div>`
-      + `<div class="grid" style="grid-template-columns: repeat(5, 54px)">${this.slotsHtml('bag', bag, 0, HOTBAR)}</div><div class="sep"></div>`
-      + `<div class="grid" style="grid-template-columns: repeat(5, 54px)">${this.slotsHtml('bag', bag, HOTBAR, bag.length)}</div></div>`;
+      + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('bag', bag, 0, HOTBAR)}</div><div class="sep"></div>`
+      + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('bag', bag, HOTBAR, bag.length)}</div></div>`;
     for (const box of this.storages) {
       const slots = this.net.boxes[box];
       html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><button data-sort="${box}" title="Merge stacks and order them">Sort</button></div>`

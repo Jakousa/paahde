@@ -27,9 +27,9 @@ if (SCRAP_ITEMS.length !== SCRAP_KINDS.length) throw new Error('shared/items.ts:
 export type Item = { id: number; kind: string; n: number };
 export type Slots = (Item | null)[];
 
-/** The player's own bag; its first HOTBAR slots are the hotbar (keys 1–4, src/water.ts). */
-export const BAG_SLOTS = 24;
+/** The player's own bag: HOTBAR slots of hotbar (keys 1–4, src/water.ts), then 8 of backpack. */
 export const HOTBAR = 4;
+export const BAG_SLOTS = HOTBAR + 8;
 /** What every new player starts with, in hotbar order. */
 export const STARTER_KIT = ['canteen', 'spyglass'];
 

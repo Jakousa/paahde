@@ -7,7 +7,7 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 - **Items are rows** (`items` table, `server/items.ts`): one row per stack with a stable id, its kind
   (`ITEMS` in `shared/items.ts`, string ids), size, owner (browser ID; `''` for shared boxes), box and slot.
   The old per-kind `inventory` counts are migrated into bag stacks on startup and the table dropped.
-- **Boxes** (`shared/storage.ts`): your **bag** (24 slots; the first 4 are the hotbar, keys 1–4), the
+- **Boxes** (`shared/storage.ts`): your **bag** (the 4-slot hotbar, keys 1–4, plus 8 backpack slots), the
   **sand bike** (8 slots, yours, open while riding) and the **chest** against the bunker room's back wall
   (16 slots, shared by everyone, within 2.5 m). Scrap stacks to 10; canteen and spyglass don't stack.
 - **Starter kit:** new players get the canteen (slot 1) and spyglass (slot 2), once (`starter_kits`), so
