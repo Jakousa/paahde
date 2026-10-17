@@ -3,13 +3,18 @@
 // height(x, z) = baseHeight(x, z)  — procedural dunes, a pure function of position
 //              + edit layer        — player modifications (digging, piling), owned by the server
 //
-// baseHeight must be a pure function of (x, z): no Math.random(), no time, no module state that differs
-// between client and server. Math.sin/cos/exp can differ by an ulp between JS engines; that is fine
-// (reconciliation absorbs it), but avoid anything that amplifies tiny differences (chaotic iteration).
+// baseHeight (shared/dunes.ts) must be a pure function of (x, z): no Math.random(), no time, no module
+// state that differs between client and server. Build it only from exact IEEE operations (+ - * /,
+// Math.sqrt, Math.floor, Math.abs, Math.min/max, Math.imul hashing, polynomial smoothstep). Avoid
+// Math.sin/cos/exp/pow/atan2: their last bits are implementation-defined and differ between V8 (server)
+// and Firefox/Safari (clients). Precomputed trig constants are fine.
 //
 // The edit layer stores absolute height offsets per grid cell, quantized to integer millimetres, so
 // client and server agree exactly. Edits travel as absolute values (not deltas), so applying the same
 // edit twice is harmless and a client can predict a dig locally and still converge on the server.
+
+import { duneHeight } from './dunes.ts';
+export { WIND } from './dunes.ts';
 
 export const WORLD_SEED = 1337;
 /** The playable world is a square of ±WORLD_HALF metres around the origin. */
@@ -22,8 +27,7 @@ export const EDIT_CHUNK = 32;
 
 /** Procedural dunes before player edits. */
 export function baseHeight(x: number, z: number): number {
-  // Placeholder rolling dunes; replaced by the real dune generator.
-  return 6 * Math.sin(x * 0.02) * Math.cos(z * 0.015) + 2 * Math.sin((x + z) * 0.05);
+  return duneHeight(x, z, WORLD_SEED);
 }
 
 /** Sparse grid of height offsets (millimetres), chunked. One instance per world (see `edits`). */
@@ -81,6 +85,17 @@ export class TerrainEdits {
     this.onChange?.(cx, cz);
     this.onChange?.(cx - 1, cz);
     this.onChange?.(cx, cz - 1);
+  }
+  /** Drop a chunk (back to zero offsets), e.g. when the server no longer has it after a reconnect. */
+  deleteChunk(cx: number, cz: number) {
+    if (!this.chunks.delete(TerrainEdits.key(cx, cz))) return;
+    this.onChange?.(cx, cz);
+    this.onChange?.(cx - 1, cz);
+    this.onChange?.(cx, cz - 1);
+  }
+  /** Number of stored chunks. */
+  get size() {
+    return this.chunks.size;
   }
   *entries(): IterableIterator<[number, number, Int32Array]> {
     for (const [k, v] of this.chunks) {

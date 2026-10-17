@@ -387,9 +387,10 @@ approach. That's correct, because the mirage is distance-gated.
 
 ## 6. Other cheap wins
 
-- **Wind-blown sand** off crests: a small `Points`/instanced-quad system, emitting from vertices
-  where `profile p ≈ 0.75` (the brink) and moving downwind. Use additive, HDR-tinted sprites so
-  they catch bloom when back-lit by the sun.
+- **Wind-blown sand** (done: `src/world/wind.ts` for the physics, `src/blownSand.ts` for the
+  particles). Sand only moves above the saltation threshold (~6.3 m/s at 10 m): as streamers near
+  it, as an ankle-deep carpet well above it, and as plumes smoking off brinks in strong gusts.
+  Never on slip faces (sheltered eddy). `?debug` then `dbg.wind.override = 12` pins the wind.
 - **Footprint trails**: a ring-buffer render target in world xz that is stamped under players and
   read in the sand shader as a height offset (normal perturbation only). Visual-only, so it needs
   no determinism.

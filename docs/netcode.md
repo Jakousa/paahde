@@ -95,6 +95,13 @@ at our scale and the whole team can read and change it. Alternatives, if needs g
   in `server/index.ts`).
 - Purely visual effects (particles, squash and stretch, the wasm spin) stay client-side.
 - New message types go in `shared/protocol.ts`.
+- **Terrain edits** (digging, `shared/dig.ts`): the server applies dig/pile strokes from the input bits
+  (aimed by the quantized camera yaw + pitch in each input), runs the angle-of-repose sand relaxation at
+  30 Hz on recently changed vertices only, and broadcasts changed vertices as `terrainEdit` right before
+  each snapshot. Edits are absolute integer millimetres, so they are idempotent. The client predicts its
+  own strokes and holds back server values for predicted vertices until a snapshot acks the input that
+  dug them. Joining clients get all edited chunks (`terrainChunks`) before `welcome`; chunks persist in
+  the `terrain_chunks` SQLite table (saved every 5 s and on shutdown).
 - To get here next: player-vs-player collision, which makes predicted players interact with
   interpolated ones (other players appear 100 ms in the past), so keep interactions forgiving.
 

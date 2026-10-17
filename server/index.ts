@@ -1,20 +1,25 @@
 // Authoritative game server: serves the built client, accepts WebSocket connections on /ws,
 // simulates every player with shared/sim.ts and broadcasts snapshots.
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import sirv from 'sirv';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
+import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
+import { DIG_COOLDOWN_TICKS, PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
+import { TerrainServer } from './terrain.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
-const SNAPSHOT_RATE = 20; // Hz; clients interpolate remote players between snapshots
+const SNAPSHOT_RATE = 20;
+const RELAX_RATE = 30; // Hz; sand avalanche passes (shared/dig.ts Relaxer) // Hz; clients interpolate remote players between snapshots
 const SAVE_INTERVAL_MS = 5000;
 const IDLE_MS = 1000; // no input for this long (e.g. hidden tab) → server keeps simulating with no keys
 const MAX_INPUT_BURST = 15;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const db = openDb(process.env.DB_PATH ?? 'data/dadajam.db');
+const terrain = new TerrainServer(db);
 
 type Player = {
   id: number;
@@ -22,6 +27,8 @@ type Player = {
   color: number;
   state: PlayerState;
   yaw: number; // last quantized camera yaw, reused while idle
+  pitch: number; // last quantized camera pitch (shared/dig.ts)
+  digCooldown: number; // simulated ticks until the next dig/pile stroke may land
   ack: number; // last applied input seq
   tokens: number; // input rate limiter: refills at TICK_RATE/s, so inputs can't speed up time
   lastInputAt: number;
@@ -32,6 +39,14 @@ type Player = {
 
 const players = new Map<WebSocket, Player>();
 let nextId = 1;
+
+const BUILD = (() => {
+  try {
+    return readFileSync('dist/version.txt', 'utf8').trim();
+  } catch {
+    return 'dev';
+  }
+})();
 
 const serveStatic = sirv('dist', {
   etag: true,
@@ -50,6 +65,7 @@ const http = createServer((req, res) => {
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 1024 });
 
 wss.on('connection', (ws) => {
+  send(ws, { t: 'version', build: BUILD });
   ws.on('pong', () => {
     const p = players.get(ws);
     if (p) p.alive = true;
@@ -63,7 +79,7 @@ wss.on('connection', (ws) => {
     }
     const p = players.get(ws);
     if (msg.t === 'hello' && !p) return join(ws, msg.browserId);
-    if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw);
+    if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
   });
   ws.on('close', () => {
     const p = players.get(ws);
@@ -81,29 +97,48 @@ function join(ws: WebSocket, browserId: unknown) {
   const color = row?.color ?? Math.floor(Math.random() * 0xffffff);
   const state = row ? spawnState(row.x, row.z) : spawnState();
   const p: Player = {
-    id: nextId++, browserId, color, state, yaw: 0, ack: 0,
+    id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, ws, alive: true,
   };
   players.set(ws, p);
   save(p);
+  // Terrain first, so the client never sees its spawn without the holes.
+  for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, { t: 'welcome', id: p.id, state, color });
 }
 
-function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown) {
+function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: unknown) {
   if (typeof seq !== 'number' || typeof input !== 'number' || seq <= p.ack) return;
   if (!Number.isInteger(yaw) || (yaw as number) < 0 || (yaw as number) >= YAW_STEPS) return;
+  if (!Number.isInteger(pitch) || (pitch as number) < 0 || (pitch as number) >= PITCH_STEPS) return;
   p.ack = seq;
   p.lastInputAt = Date.now();
   // Over the rate limit: acknowledge but don't simulate, so the client gets corrected.
   if (p.tokens < 1) return;
   p.tokens -= 1;
   p.yaw = yaw as number;
+  p.pitch = pitch as number;
   p.state = step(p.state, input & INPUT_MASK, p.yaw);
+  dig(p, input);
+}
+
+// Dig/pile stroke while the button is held, at most every DIG_COOLDOWN_TICKS simulated ticks.
+// The client runs the same countdown and stroke as a prediction (src/net.ts).
+function dig(p: Player, input: number) {
+  if (p.digCooldown > 0) p.digCooldown--;
+  if (!(input & (DIG | PILE)) || p.digCooldown > 0) return;
+  const pile = (input & DIG) === 0;
+  const at = terrain.stroke(p.state, p.yaw, p.pitch, pile);
+  if (!at) return;
+  p.digCooldown = DIG_COOLDOWN_TICKS;
+  const msg: ServerMsg = { t: 'dug', id: p.id, x: round4(at.x), y: round4(at.y), z: round4(at.z), pile };
+  for (const o of players.values()) if (o !== p) send(o.ws, msg);
 }
 
 // Fixed-rate server loop: refill input tokens, simulate idle players, broadcast snapshots.
 let last = performance.now();
 let snapAccum = 0;
+let relaxAccum = 0;
 setInterval(() => {
   const now = performance.now();
   const elapsed = (now - last) / 1000;
@@ -111,10 +146,18 @@ setInterval(() => {
   for (const p of players.values()) {
     p.tokens = Math.min(MAX_INPUT_BURST, p.tokens + elapsed * TICK_RATE);
     if (Date.now() - p.lastInputAt > IDLE_MS) {
-      for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) p.state = step(p.state, 0, p.yaw);
+      for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
+        p.state = step(p.state, 0, p.yaw);
+        dig(p, 0);
+      }
     } else {
       p.idleAccum = 0;
     }
+  }
+  relaxAccum += elapsed;
+  if (relaxAccum >= 1 / RELAX_RATE) {
+    relaxAccum %= 1 / RELAX_RATE;
+    terrain.relax();
   }
   snapAccum += elapsed;
   if (snapAccum >= 1 / SNAPSHOT_RATE) {
@@ -124,14 +167,21 @@ setInterval(() => {
 }, 1000 / TICK_RATE);
 
 function broadcast(time: number) {
-  const list: PlayerSnap[] = [...players.values()].map((p) => ({ id: p.id, color: p.color, ...round(p.state) }));
+  // Terrain changes go out before the snapshot, so a client seeing ack N has every edit up to N.
+  const edit = terrain.flush();
+  if (edit) {
+    const json = JSON.stringify(edit);
+    for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
+  }
+  const list: PlayerSnap[] = [...players.values()].map((p) => ({ id: p.id, color: p.color, pitch: p.pitch, ...round(p.state) }));
   for (const p of players.values()) send(p.ws, { t: 'snap', time, ack: p.ack, players: list });
 }
 
 // Trim floats on the wire; client reconciliation re-simulates from these values so precision
 // must stay well below anything visible.
+const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
 function round(s: PlayerState): PlayerState {
-  const r = (n: number) => Math.round(n * 1e4) / 1e4;
+  const r = round4;
   return { ...s, x: r(s.x), y: r(s.y), z: r(s.z), vx: r(s.vx), vy: r(s.vy), vz: r(s.vz), facing: r(s.facing) };
 }
 
@@ -143,7 +193,10 @@ function save(p: Player) {
   db.savePlayer({ id: p.browserId, color: p.color, x: p.state.x, z: p.state.z });
 }
 
-setInterval(() => players.forEach(save), SAVE_INTERVAL_MS);
+setInterval(() => {
+  players.forEach(save);
+  terrain.save();
+}, SAVE_INTERVAL_MS);
 
 // Heartbeat: keeps NATs/proxies from dropping idle sockets and terminates dead ones.
 setInterval(() => {
@@ -161,6 +214,7 @@ function shutdown() {
     save(p);
     p.ws.close(1012, 'server restarting');
   }
+  terrain.save();
   db.close();
   http.close();
   process.exit(0);

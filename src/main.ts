@@ -1,12 +1,21 @@
 import * as THREE from 'three/webgpu';
 import { DT, quantizeYaw } from '../shared/sim.ts';
-import { OrbitCamera } from './camera';
+import { quantizePitch } from '../shared/dig.ts';
+import { FirstPersonCamera } from './camera';
+import { BlownSand } from './blownSand';
+import { DigFx } from './dig';
+import { footprints } from './footprints';
 import { readInput } from './input';
+import { LocatorBar } from './locator';
 import { getBrowserId, Net } from './net';
 import { Avatar } from './players';
 import { Post } from './post';
+import * as env from './world/env';
+import { addPalms } from './world/palms';
+import { Scrap } from './world/scrap';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
+import { wind } from './world/wind';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -16,15 +25,25 @@ renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const orbit = new OrbitCamera(renderer.domElement);
+const orbit = new FirstPersonCamera(renderer.domElement);
 const sky = new Sky(scene);
 const terrain = new Terrain(scene);
+addPalms(scene);
+const scrap = new Scrap(scene);
 const post = new Post(renderer, scene, orbit.camera);
+const blownSand = new BlownSand(scene);
+
+// Debug handle for screenshots/tuning from the console: open with ?debug.
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand } });
 
 const net = new Net(getBrowserId());
+const digFx = new DigFx(scene);
+net.onDig = (at, pile) => digFx.puff(at, pile);
 const me = new Avatar(0xffffff);
-scene.add(me.root);
+me.root.visible = false; // first person: only remote players are drawn
+scene.add(me.root, footprints.mesh);
 const remotes = new Map<number, Avatar>();
+const locator = new LocatorBar();
 
 window.addEventListener('resize', () => {
   orbit.resize();
@@ -46,14 +65,13 @@ renderer.setAnimationLoop((time) => {
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
   accumulator += frameDt;
   while (accumulator >= DT) {
-    net.tick(readInput(), quantizeYaw(orbit.yaw));
+    net.tick(readInput(), quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
     accumulator -= DT;
   }
 
   const others = net.frame(frameDt);
 
   me.setColor(net.color);
-  me.root.visible = net.connected;
   const s = net.me;
   me.update(
     { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), grounded: s.grounded },
@@ -66,6 +84,7 @@ renderer.setAnimationLoop((time) => {
     let avatar = remotes.get(r.id);
     if (!avatar) {
       remotes.set(r.id, (avatar = new Avatar(r.color)));
+      avatar.setLabel(`#${r.id}`, r.color);
       scene.add(avatar.root);
     }
     avatar.update(r, frameDt);
@@ -78,9 +97,14 @@ renderer.setAnimationLoop((time) => {
   }
 
   focus.copy(me.root.position);
-  orbit.update(focus);
+  orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded }, frameDt);
+  locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
+  scrap.update(focus);
   sky.update(frameDt, focus);
+  wind.update(net.serverTime() / 1000);
+  blownSand.update(frameDt, focus);
+  digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
 
   info.textContent = `${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();

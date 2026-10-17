@@ -40,3 +40,10 @@ Branch, open a PR (CI checks it builds), merge to `main`. Don't push broken buil
    `127.0.0.1:8086` (`deploy/dadajam.caddy`). The SQLite DB lives in `/opt/dadajam/data` on the server.
 
 The build SHA is shown in the top-left corner, so you can check which commit is live.
+
+## Credits
+
+- "[Junkyard Props](https://sketchfab.com/3d-models/junkyard-props-37343a1b386f4d75879be93319dbb717)" by
+  [haroonimtiaz35](https://sketchfab.com/haroonimtiaz35), licensed under
+  [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) — `public/models/junkyard_props.glb`
+  (texture cropped and downscaled).

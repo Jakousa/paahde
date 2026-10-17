@@ -18,12 +18,14 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 
 - `shared/sim.ts` — deterministic movement/physics, run by **both** client and server
 - `shared/protocol.ts` — WebSocket message types
+- `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`)
 - `server/index.ts` — authoritative game server (static files + `/ws`); `server/db.ts` — SQLite
 - `src/main.ts` — entry: renderer, scene, fixed-step game loop
 - `src/net.ts` — client netcode (prediction, reconciliation, interpolation, reconnect)
 - `src/input.ts` — keyboard → input bitmask
 - `src/wasm.ts` — loads the compiled wasm; use exports as `wasm.<fn>`
 - `assembly/` — AssemblyScript source (compiled to `src/wasm/`, gitignored — never edit `src/wasm/`)
+- `docs/devlog.md` — what's been built and why, known gaps; `docs/look.md` — art direction
 - `public/` — static assets (models, textures, audio), copied as-is into the build
 - `deploy/`, `Dockerfile`, `.github/workflows/` — deployment; see README. Don't change without asking.
 
@@ -53,6 +55,6 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 
 ## Workflow
 
-- Work on a branch and open a PR; CI builds it. Merge to `main` to deploy.
+- Commit and push straight to `main` (no PRs needed); a push to `main` deploys. Run `npm run build` first.
 - Small, focused commits. Pull often — three people are editing a small codebase quickly.
 - The live build SHA is shown in the top-left corner of the game.
