@@ -2,6 +2,27 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Progression: scrap fields, crawler ground, guardian ground
+
+A new player starts with nothing, and the crash sites now lead them on in three rings around the base
+(`shared/crashsites.ts` `SiteLevel`, by the distance of the site's cell from the base, `LEVEL_R` 950 / 1650 m):
+
+- **Scrap fields (level 0):** no walkers and no drones. These are older, smaller junk (`CrashKind.field` wrecks and
+  debris, tools/blender/crashsites.py) with more debris that lies in one of four styles: a trail, a heap, a wide
+  scatter, or a fan spilled out ahead of the wreck. There is no large machine, only 2–3 small starter machines to carry
+  home (`winch`: gear + bearing, `solenoid_valve`: valve + coil, `beacon`: battery + coil; mostly Scrap/Basic). Their
+  machines come back 20 min after being carried off (`STARTER_RESPAWN_MS`, server/crash.ts), because every new player
+  needs them. The broken canteen, telescope and backpack lie here (server/loot.ts `FINDS`). The laser rifle's plank,
+  sheet, coils and battery come from the debris and the beacons. Nothing turns up by the spawn point any more.
+- **Crawler ground (level 1):** crawlers swarm, and the large machine is mostly the pump housing (motor, bearing, valve).
+  The motorcycle, shovel, storm detector, wristpad and metal detector are found here.
+- **Guardian ground (level 2):** the 4 guardians roam only these sites, and the night drones only guard these.
+  The large machines are mostly jet engines, and their parts roll with `LEVEL_TIERS` (much more Quality and Space-grade).
+  Loose Quality/Space-grade parts lie around (`RARE_FINDS`). The warp core salvage wreck only lies out here.
+
+Crash sites are also much rarer: `DENSITY` is 0.14 per cell out in the desert and 0.4 around the base, which makes
+28 sites (7 / 7 / 14) instead of 66. Machine kinds per level are in `LEVEL_KINDS` (shared/crash.ts).
+
 ## 2026-10-17 — Laser rifle: shoot the walkers' weak points
 
 - **Crafted** at the workbench: metal plank + metal sheet + 2 wiring coils + a battery (any tiers). A hotbar item

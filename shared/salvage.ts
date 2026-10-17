@@ -92,14 +92,12 @@ export const SALVAGE: Record<SalvageId, SalvageKind> = {
 };
 
 /** Crash-site components (src/teardown): smaller than the wrecks above, and taken apart on the spot. */
-export type ComponentKind = 'pump_housing' | 'jet_engine' | 'robot_arm' | 'control_cabinet';
+export type ComponentKind = 'pump_housing' | 'jet_engine' | 'robot_arm' | 'control_cabinet' | 'winch' | 'solenoid_valve' | 'beacon';
 
 export interface ComponentSpec {
   label: string;
   yields: SalvageYield[];
   tierWeights: Record<Tier, number>;
-  /** Relative odds of a crash site holding this component. */
-  weight: number;
   /** Small enough to carry home as junk (taken apart at the base workbench); the rest is taken apart where it lies. */
   carry: boolean;
 }
@@ -109,7 +107,6 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
   // cover, check valve in the discharge, a contactor in the motor's terminal box.
   pump_housing: {
     label: 'Pump housing',
-    weight: 3,
     carry: false,
     yields: [
       { part: 'motor', min: 1, max: 1 },
@@ -124,7 +121,6 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
   // igniter coil, fuel valve, shaft bearings.
   jet_engine: {
     label: 'Jet engine',
-    weight: 2,
     carry: false,
     yields: [
       { part: 'motor', min: 1, max: 1 },
@@ -141,7 +137,6 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
   // Robot arm joint: servo motor into a gear stage, slewing bearing under the top cover, driver board on the link.
   robot_arm: {
     label: 'Robot arm joint',
-    weight: 2,
     carry: true,
     yields: [
       { part: 'motor', min: 1, max: 1 },
@@ -158,7 +153,6 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
   // board with a heatsink on its regulator.
   control_cabinet: {
     label: 'Control cabinet',
-    weight: 3,
     carry: true,
     yields: [
       { part: 'relay', min: 1, max: 2 },
@@ -170,7 +164,52 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
     ],
     tierWeights: { scrap: 3, basic: 4, quality: 2, space: 0.3 },
   },
+  // The starter machines of the scrap fields near the base (shared/crash.ts LEVEL_KINDS): small, a few cheap parts
+  // each, between them everything the first gear needs (canteen: valve; telescope: gear, bearing; backpack: gear;
+  // laser rifle: coils, battery).
+  // Hand winch off a cargo hoist: a cable drum on a shaft between two bearing blocks, driven through a gear pair
+  // from the crank, a pawl on the ratchet.
+  winch: {
+    label: 'Cargo winch',
+    carry: true,
+    yields: [
+      { part: 'gear', min: 1, max: 2 },
+      { part: 'bearing', min: 1, max: 1 },
+    ],
+    tierWeights: { scrap: 6, basic: 3, quality: 0.3, space: 0 },
+  },
+  // Coolant line section with a solenoid valve in it: the valve body between two flanges, its coil on top.
+  solenoid_valve: {
+    label: 'Coolant valve',
+    carry: true,
+    yields: [
+      { part: 'valve', min: 1, max: 1 },
+      { part: 'coil', min: 0, max: 1 },
+    ],
+    tierWeights: { scrap: 6, basic: 3, quality: 0.3, space: 0 },
+  },
+  // Emergency locator beacon: a battery pack under the lid, a transmitter coil in the mast's foot.
+  beacon: {
+    label: 'Distress beacon',
+    carry: true,
+    yields: [
+      { part: 'battery', min: 1, max: 1 },
+      { part: 'coil', min: 1, max: 1 },
+    ],
+    tierWeights: { scrap: 6, basic: 3, quality: 0.3, space: 0 },
+  },
 };
+
+/**
+ * Multipliers on a machine's tierWeights by the level of the crash site it lies at (shared/crashsites.ts SiteLevel):
+ * the scrap fields' machines hardly ever hold better than Basic, guardian ground's large machines lean to Quality and
+ * Space-grade. Machines carried home roll at level 1 on the disassembly table.
+ */
+export const LEVEL_TIERS: Record<Tier, number>[] = [
+  { scrap: 1, basic: 1, quality: 0.2, space: 0 },
+  { scrap: 1, basic: 1, quality: 1, space: 1 },
+  { scrap: 0.2, basic: 0.6, quality: 2.5, space: 5 },
+];
 
 /** Anything the disassembly mode can take apart: a crash-site component or a salvage wreck. */
 export type JunkKind = ComponentKind | SalvageId;

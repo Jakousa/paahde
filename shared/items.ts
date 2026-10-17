@@ -43,6 +43,9 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   // The item kind is the component kind.
   robot_arm: { label: 'Robot arm joint', stack: 1, size: [2, 2] },
   control_cabinet: { label: 'Control cabinet', stack: 1, size: [2, 3] },
+  winch: { label: 'Cargo winch', stack: 1, size: [3, 2] },
+  solenoid_valve: { label: 'Coolant valve', stack: 1, size: [3, 2] },
+  beacon: { label: 'Distress beacon', stack: 1, size: [2, 2] },
   // Parts taken out of machines (shared/parts.ts): `<part>_<tier>`, e.g. battery_space.
   ...Object.fromEntries(Object.entries(partItems()).map(([k, v]) => [k, { ...v, size: PART_SIZES[partOf(k)!.part] }])),
   // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
@@ -82,6 +85,14 @@ export const DEBRIS_ITEMS: Record<string, string> = {
   Crash_Debris_5: 'bent_frame', // porthole ring
   Crash_Debris_6: 'rusty_drum', // boiler tank
   Crash_Debris_7: 'gear', // gear housing
+  // Scrap-field junk (CrashKind.field)
+  Crash_Debris_8: 'oil_drum', // toppled oil drum
+  Crash_Debris_9: 'gear', // track sprocket
+  Crash_Debris_10: 'bent_frame', // buckled ladder
+  Crash_Debris_11: 'dented_sheet', // dented crate lid
+  Crash_Debris_12: 'spring', // coil spring
+  Crash_Debris_13: 'metal_plank', // steel planks
+  Crash_Debris_14: 'metal_sheet', // antenna dish
 };
 for (const k of CRASH_KINDS) {
   if (!k.main && !k.dressing && !(DEBRIS_ITEMS[k.node] in ITEMS)) throw new Error(`shared/items.ts: no DEBRIS_ITEMS entry for ${k.node}`);

@@ -182,8 +182,9 @@ const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
 let accumulator = 0;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
-// ?spawn=crash: once joined, turn to face the wreck we were put next to.
-let faceCrash = new URLSearchParams(location.search).get('spawn') === 'crash';
+// ?spawn=crash / field: once joined, turn to face the machine or the scrap field we were put next to.
+const spawnAt = new URLSearchParams(location.search).get('spawn');
+let faceCrash = spawnAt === 'crash' || spawnAt === 'field';
 // FPS for the info line: frames counted over half-second windows.
 let fps = 0;
 let fpsFrames = 0;
@@ -205,7 +206,8 @@ renderer.setAnimationLoop((time) => {
   joined = true;
   if (faceCrash) {
     faceCrash = false;
-    const site = crashSitesNear(net.me.x, net.me.z, 200)[0]?.machines[0];
+    const near = crashSitesNear(net.me.x, net.me.z, 200);
+    const site = spawnAt === 'field' ? near.find((s) => s.level === 0) : near.find((s) => s.level > 0)?.machines[0];
     if (site) orbit.yaw = Math.atan2(-(site.x - net.me.x), -(site.z - net.me.z));
   }
   resolution.update(frameDt);

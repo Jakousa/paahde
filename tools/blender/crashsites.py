@@ -7,7 +7,11 @@ Steampunk crossed with used-future junk: riveted brass/copper panels, faded pain
 olive), exposed pipes, cracked portholes, greebles, torn hulls with ribs showing, soot and bent struts.
 
 public/models/crashsites.glb has one top-level node per variant (Crash_Fighter, Crash_Freighter, Crash_Pod,
-Crash_Nacelle, Crash_Shuttle, Crash_Probe, Crash_Debris_1..7). Every node sits at the scene origin with
+Crash_Nacelle, Crash_Shuttle, Crash_Probe, Crash_Debris_1..7, the Crash_Cradle / Crash_Skid dressing, then the
+scrap-field pieces: Crash_Crawler, Crash_Mast, Crash_Skiff, Crash_CargoPod, Crash_Drill, Crash_Debris_8..14).
+Scrap fields (site level 0, near the base) use only the scrap-field pieces (CrashKind.field); other sites never
+do. Their wrecks are older, smaller and more mundane, and their junk reads as the scrap item it gives (shared/items.ts
+DEBRIS_ITEMS). Every node sits at the scene origin with
 identity transform; its mesh origin is on the ground at the piece's centre. Hulls continue 0.5-1.5 m below
 the origin plane, so the wrecks look dug in and nothing floats when the ground is +-0.5 m off.
 
@@ -1341,6 +1345,612 @@ def dress_skid(mb, rng):
     mb.box((0.12, 0.09, 0.05), (0.55, 2.5, 0.04), 'CrashBrass', BRASS, rot=(0, 0, 0.4))
 
 
+# --------------------------------------------------------------------------------------------- field
+# Scrap fields (site level 0, near the base): older, smaller, more mundane wrecks than the spacecraft, and
+# small junk to carry home. Only scrap fields use these, and they use only these (CrashKind.field).
+
+MINE_YEL = 0xc0902e   # faded mining-equipment yellow
+CANVAS = 0xc9b48a     # sun-bleached tarp / chute fabric
+
+
+def belt(mb, path, w, t, col, grousers=2):
+    """Flat track belt (w wide along X, t thick) through a list of (y, z) points in the local YZ plane, with
+    tread grousers on every `grousers`-th point. A loop is closed by repeating its first point at the end."""
+    n = len(path)
+    rings = []
+    norms = []
+    for i in range(n):
+        y, z = path[i]
+        y0, z0 = path[max(i - 1, 0)]
+        y1, z1 = path[min(i + 1, n - 1)]
+        ln = math.hypot(y1 - y0, z1 - z0) or 1.0
+        ny, nz = (z1 - z0) / ln, -(y1 - y0) / ln
+        norms.append((ny, nz))
+        a, b = Vector((0, y - ny * t / 2, z - nz * t / 2)), Vector((0, y + ny * t / 2, z + nz * t / 2))
+        rings.append([a + Vector((-w / 2, 0, 0)), a + Vector((w / 2, 0, 0)), b + Vector((w / 2, 0, 0)),
+                      b + Vector((-w / 2, 0, 0))])
+    mb.loft(rings, 'CrashDark', col)
+    for i in range(0, n - 1, grousers):
+        (y, z), (ny, nz) = path[i], norms[i]
+        mb.box((w, 0.09, 0.07), (0, y + ny * (t / 2 + 0.03), z + nz * (t / 2 + 0.03)), 'CrashMetal', IRON,
+               rot=(math.atan2(-ny, nz), 0, 0))
+
+
+def stadium(length, r, n_arc=5, n_side=3):
+    """Closed (y, z) loop of a track run: straight bottom and top, half circles at the ends (counter-clockwise)."""
+    pts = []
+    h = length / 2
+    for i in range(n_side):
+        pts.append((-h + length * i / n_side, -r))
+    for i in range(n_arc + 1):
+        a = -PI / 2 + PI * i / n_arc
+        pts.append((h + math.cos(a) * r, math.sin(a) * r))
+    for i in range(1, n_side):
+        pts.append((h - length * i / n_side, r))
+    for i in range(n_arc + 1):
+        a = PI / 2 + PI * i / n_arc
+        pts.append((-h + math.cos(a) * r, math.sin(a) * r))
+    pts.append(pts[0])
+    return pts
+
+
+def corrugated(mb, w, h, ridges, depth, col, mat='CrashPaint', dent=None, colfn=None, rows=3):
+    """Corrugated sheet in the local XZ plane: w along X, h along Z (base at z=0), ridges running along Z.
+    dent(x, z) -> extra Y offset (dents and bends)."""
+    xs = [-w / 2 + w * i / (2 * ridges) for i in range(2 * ridges + 1)]
+    rings = []
+    for j in range(rows + 1):
+        z = h * j / rows
+        rings.append([Vector((x, (depth if i % 2 else 0.0) + (dent(x, z) if dent else 0.0), z))
+                      for i, x in enumerate(xs)])
+    mb.loft(rings, mat, col, closed=False, colfn=colfn)
+
+
+def truss(mb, a, b, w, bays, col, r=0.05, up=(0, 0, 1), bands=None, brace=True):
+    """Triangular lattice mast section from a to b: three legs w from the axis, zigzag bracing per bay.
+    bands: leg colours cycled bay by bay (aviation paint), else the legs are one colour."""
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    t = d.normalized()
+    ref = Vector(up) if abs(t.dot(Vector(up))) < 0.9 else Vector((1, 0, 0))
+    u = (ref - t * ref.dot(t)).normalized()
+    v = t.cross(u)
+    offs = [u * math.cos(q) * w + v * math.sin(q) * w for q in (PI / 2, PI / 2 + 2 * PI / 3, PI / 2 + 4 * PI / 3)]
+    for i in range(bays):
+        p0, p1 = a + d * (i / bays), a + d * ((i + 1) / bays)
+        if bands:
+            for o in offs:
+                mb.tube(p0 + o, p1 + o, r, 'CrashPaint', bands[i % len(bands)], segs=4)
+        if brace:
+            for j in range(3):
+                mb.tube(p0 + offs[j], p1 + offs[(j + 1) % 3], r * 0.6, 'CrashMetal', col, segs=3)
+    if not bands:
+        for o in offs:
+            mb.tube(a + o, b + o, r, 'CrashMetal', col, segs=4)
+
+
+def build_crawler(mb, rng):
+    """Overturned crawler hauler (~6.5 m): a tracked cargo truck rolled onto its side, belly and both tracks
+    showing, a length of broken track and its cargo thrown out behind. Front (cab) towards -Y."""
+    mb.push(T(-0.95, 0.2, 1.5) @ R(z=0.12) @ R(y=1.72, x=0.05))
+    # Hull between the tracks: painted sides, a dark belly plate with cross members, drive shaft and fuel tank.
+    mb.box((1.9, 5.4, 0.8), (0, 0, 1.0), 'CrashPaint', OLIVE)
+    mb.box((1.94, 5.44, 0.16), (0, 0, 1.18), 'CrashPaint', CREAM_DK)                    # stripe round the hull
+    mb.box((1.8, 5.2, 0.08), (0, 0, 0.58), 'CrashMetal', IRON)                          # belly plate
+    for y in (-1.9, -0.6, 0.7, 1.9):
+        mb.box((1.9, 0.18, 0.14), (0, y, 0.5), 'CrashMetal', STEEL)
+    mb.tube((0, -2.0, 0.45), (0, 2.1, 0.45), 0.08, 'CrashMetal', STEEL, segs=6)          # drive shaft
+    mb.cyl(0.26, 0.26, 0.5, 8, (0, 2.1, 0.45), 'CrashMetal', IRON, rot=(PI / 2, 0, 0))  # diff
+    mb.cyl(0.3, 0.3, 1.3, 8, (-0.45, -0.3, 0.32), 'CrashPaint', RED, rot=(PI / 2, 0, 0))  # fuel tank
+    mb.box((1.95, 0.12, 0.3), (0, -2.7, 0.95), 'CrashMetal', IRON)                      # front bumper
+    # Tracks: road wheels, drive sprocket, idler, belt.
+    for sx in (1, -1):
+        x = sx * 1.3
+        for y in (-1.6, -0.55, 0.55, 1.6):
+            mb.cyl(0.42, 0.42, 0.5, 8, (x, y, 0.62), 'CrashMetal', IRON, rot=(0, PI / 2, 0))
+            mb.cyl(0.16, 0.16, 0.56, 6, (x, y, 0.62), 'CrashBrass', BRASS_DK, rot=(0, PI / 2, 0))
+        mb.cyl(0.5, 0.5, 0.42, 10, (x, 2.35, 0.62), 'CrashMetal', STEEL, rot=(0, PI / 2, 0))   # drive sprocket
+        mb.cyl(0.46, 0.46, 0.42, 8, (x, -2.35, 0.62), 'CrashMetal', IRON, rot=(0, PI / 2, 0))  # idler
+        mb.box((0.12, 4.6, 0.14), (sx * 1.0, 0, 0.75), 'CrashMetal', IRON)                     # track frame
+        mb.push(T(x, 0, 0.62))
+        belt(mb, stadium(4.7, 0.6), 0.62, 0.1, RUBBER)
+        mb.pop()
+    # Cab at the front: tapered box, cracked windscreen, roof hatch, dash glowing inside.
+    mb.box((2.1, 1.7, 1.3), (0, -1.75, 2.0), 'CrashPaint', CREAM, taper=(0.92, 0.8))
+    mb.box((2.14, 1.72, 0.18), (0, -1.75, 1.45), 'CrashPaint', RED)                      # stripe
+    mb.box((1.7, 0.06, 0.62), (0, -2.56, 2.15), 'CrashGlass', GLASS, rot=(-0.22, 0, 0))
+    mb.box((0.6, 0.065, 0.3), (0.45, -2.55, 2.25), 'CrashGlass', 0x6e8f8c, rot=(-0.22, 0, 0.0))  # frosted crack
+    for sx in (-1, 1):
+        mb.box((0.06, 1.3, 0.5), (sx * 1.04, -1.8, 2.15), 'CrashGlass', GLASS)          # side windows
+        mb.cyl(0.13, 0.13, 0.12, 8, (sx * 0.75, -2.63, 1.5), 'CrashGlass', 0xc8c090, rot=(PI / 2, 0, 0))
+    mb.box((1.2, 0.3, 0.12), (0, -2.35, 1.9), 'CrashGlow', GLOW, rot=(0.4, 0, 0))          # dash
+    mb.beacon_at((0, -2.3, 1.95))
+    mb.box((0.7, 0.7, 0.08), (0.2, -1.6, 2.68), 'CrashMetal', IRON)                     # roof hatch
+    mb.sweep([(-0.7, -1.0, 1.4), (-0.95, -0.9, 2.2), (-0.95, -0.9, 3.0)], 0.08, 'CrashMetal', STEEL, segs=6)
+    mb.cyl(0.11, 0.09, 0.2, 6, (-0.95, -0.9, 3.1), 'CrashDark', SOOT)                    # exhaust stack
+    # Cargo bed: open box with ribbed side walls and a bent tailgate hanging open.
+    mb.box((2.2, 3.4, 0.1), (0, 0.95, 1.45), 'CrashMetal', IRON)
+    for sx in (-1, 1):
+        mb.box((0.08, 3.4, 0.7), (sx * 1.08, 0.95, 1.85), 'CrashPaint', CREAM_DK)
+        for y in (-0.4, 0.5, 1.4, 2.3):
+            mb.box((0.12, 0.1, 0.72), (sx * 1.1, y, 1.85), 'CrashMetal', IRON)
+    mb.box((2.2, 0.08, 0.7), (0, -0.7, 1.85), 'CrashPaint', CREAM_DK)
+    mb.box((2.1, 0.07, 0.7), (0, 2.75, 1.4), 'CrashPaint', CREAM_DK, rot=(1.25, 0, 0.05))   # tailgate
+    mb.rivets([Vector((1.13, y, 2.1)) for y in (-0.2, 0.7, 1.6)], [Vector((1, 0, 0))] * 3, 0.035)
+    mb.box((0.5, 0.04, 0.3), (-0.5, -2.59, 1.6), 'CrashPaint', CREAM)                    # number plate
+    mb.cap((0.1, -2.4, 1.3), (0.1, 2.4, 1.3), 1.55)
+    mb.pop()
+    # The thrown track: a long strand lying in an S in the sand behind it, and two loose road wheels.
+    mb.push(T(1.4, 3.3, 0.04) @ R(z=1.2))
+    belt(mb, [(y, 0.05 * math.sin(y * 2)) for y in [i * 0.4 for i in range(9)]], 0.56, 0.08, RUBBER)
+    mb.pop()
+    mb.push(T(-1.5, 3.5, 0.06) @ R(z=-0.6))
+    belt(mb, [(y, 0.18 * max(0.0, y - 1.0)) for y in [i * 0.4 for i in range(6)]], 0.56, 0.08, RUBBER)
+    mb.pop()
+    for (x, y, rx) in ((2.6, 2.4, 1.3), (3.2, 0.9, 1.45)):
+        mb.cyl(0.36, 0.36, 0.3, 8, (x, y, 0.15), 'CrashMetal', IRON, rot=(rx, 0, 0.3))
+    crate(mb, Vector((-2.7, 2.8, 0.25)), (0.8, 0.7, 0.6), (0.1, 0.0, 0.5), RED, rng)
+    crate(mb, Vector((-3.5, 1.6, 0.2)), (0.7, 0.6, 0.5), (0.0, 0.35, -0.3), TEAL, rng)
+    mb.burn((0.3, -2.2, 0.8), 1.4, 0.6)
+    mb.cap((1.6, 3.0, 0), (1.2, 4.6, 0), 0.4)
+    mb.cap((-3.4, 1.6, 0), (-2.6, 2.8, 0), 0.55)
+    # Sand banked against the side it rolled onto, and pushed up at the nose.
+    mb.sand(1.5, -0.4, 0.9, 3.6, 0.45, yaw=0.12, res=(6, 14))
+    mb.sand(0.4, -3.6, 1.8, 0.9, 0.35, yaw=0.1, res=(8, 6))
+
+
+def build_mast(mb, rng):
+    """Collapsed relay mast and a caved-in hut (~14 m): the lattice mast snapped above its footing and lies in
+    the sand with its antenna head; the corrugated hut beside it has had its roof brought down by a guy wire."""
+    # Concrete footing and the standing stump, bent over at the top.
+    base = Vector((2.4, -2.2, 0))
+    mb.box((1.3, 1.3, 0.6), base + Vector((0, 0, 0.0)), 'CrashMetal', 0x8a7a66)
+    bands = (RED, CREAM)
+    top = base + Vector((0, 0, 2.8))
+    truss(mb, base + Vector((0, 0, 0.3)), top, 0.38, 3, RUST, bands=bands)
+    # Torn leg ends above the snap, bent every which way; one leg still holds on to the fallen section.
+    offs =[Vector((math.cos(q) * 0.38, math.sin(q) * 0.38, 0)) for q in (PI / 2, PI / 2 + 2 * PI / 3,
+                                                                           PI / 2 + 4 * PI / 3)]
+    mb.sweep([top + offs[0], top + offs[0] + Vector((0.1, -0.1, 0.5)), top + offs[0] + Vector((0.5, -0.2, 0.7))],
+             0.05, 'CrashPaint', RED, segs=4)
+    mb.tube(top + offs[1], top + offs[1] + Vector((-0.2, 0.1, 0.3)), 0.05, 'CrashPaint', RED, segs=4)
+    # Fallen section: lies across the ground away from the footing towards -X/+Y, ends in the antenna head.
+    a = base + Vector((-1.1, 1.2, 0.38))
+    head = Vector((-5.3, 4.1, 0.4))
+    mb.sweep([top + offs[2], top + offs[2] + Vector((-0.4, 0.4, -0.6)), a + Vector((0.1, 0, 0.3))], 0.05,
+             'CrashPaint', RED, segs=4)                                              # twisted leg still joined
+    truss(mb, a, head, 0.36, 6, RUST, bands=bands)
+    # Antenna head: a cross-arm with dipoles, a dish, and the red aviation light (still blinking).
+    d = (head - a).normalized()
+    side = Vector((-d.y, d.x, 0))
+    mb.tube(head - side * 1.0 + Vector((0, 0, 0.1)), head + side * 1.0 + Vector((0, 0, 0.1)), 0.06, 'CrashMetal', STEEL, segs=4)
+    for s in (-1, 1):
+        mb.tube(head + side * s * 0.9 + Vector((0, 0, 0.1)), head + side * s * 0.9 + d * 1.1 + Vector((0, 0, 0.6)),
+                0.03, 'CrashMetal', STEEL, segs=4)
+    dm = aim(head + d * 0.3 + Vector((0, 0, 0.7)), (d.x * 0.5, d.y * 0.5, 1.0))
+    mb.lathe([(0.1, 0.02), (0.45, 0.1), (0.8, 0.3), (0.84, 0.33)], 12, 'CrashPaint', CREAM, m=dm,
+             jag=lambda i, k: (0.15 if i in (2, 3) and k >= 2 else 0.0))
+    mb.tube(head + Vector((0, 0, 0.3)), dm @ Vector((0, 0, 0)), 0.06, 'CrashMetal', IRON, segs=4)
+    mb.cyl(0.12, 0.12, 0.12, 8, (0, 0, 0), 'CrashMetal', IRON, m=aim(head + d * 0.5, d))
+    mb.cyl(0.11, 0.06, 0.18, 8, (0, 0, 0.12), 'CrashGlow', REDLIGHT, m=aim(head + d * 0.5, d))
+    mb.beacon_at(head + d * 0.65)
+    # Guy wires: one still taut to an anchor, one slack in the sand, one torn down across the hut roof.
+    mb.tube(base + Vector((0, 0, 2.6)), (5.2, -4.0, 0.1), 0.02, 'CrashMetal', STEEL, segs=3)
+    mb.cyl(0.15, 0.15, 0.3, 6, (5.2, -4.0, 0.05), 'CrashMetal', 0x8a7a66)
+    mb.sweep([(base.x, base.y, 2.6), (3.8, 0.2, 0.05), (5.0, 1.0, 0.03), (5.4, 2.0, 0.1)], 0.02, 'CrashMetal',
+             STEEL, segs=3)
+    mb.cap(base + Vector((0, 0, 0)), base + Vector((-0.3, 0.2, 0)), 0.85)
+    mb.cap(a, head + d * 0.5, 0.65)
+    mb.cap(head - side * 0.9, head + side * 0.9, 0.5)
+    # The hut: corrugated walls on a slab, one wall buckled inwards, roof sheet slid off to one side.
+    mb.push(T(-0.9, -2.5, 0) @ R(z=-0.25))
+    mb.box((3.3, 2.7, 0.2), (0, 0, 0.0), 'CrashMetal', 0x8a7a66)                     # slab
+    mb.push(T(0, -1.3, 0.1))
+    corrugated(mb, 3.2, 2.2, 8, 0.07, CREAM_DK, colfn=lambda i, k: RUST if (k * 7 + i) % 9 == 0 else None)
+    mb.pop()
+    mb.push(T(0, 1.3, 0.1))
+    corrugated(mb, 3.2, 2.0, 8, 0.07, CREAM_DK, dent=lambda x, z: -0.5 * max(0.0, 1 - abs(x) / 1.4) * math.sin(z / 2.0 * PI))
+    mb.pop()
+    mb.push(T(-1.6, 0, 0.1) @ R(z=PI / 2))
+    corrugated(mb, 2.6, 2.2, 6, 0.07, CREAM_DK, colfn=lambda i, k: TEAL if 4 <= k <= 6 else None)
+    mb.pop()
+    # +X end wall: door frame with a dark doorway, the door hanging.
+    mb.push(T(1.6, 0, 0.1) @ R(z=PI / 2))
+    mb.box((0.9, 0.06, 2.2), (-0.85, 0, 1.1), 'CrashPaint', CREAM_DK)
+    mb.box((0.9, 0.06, 2.2), (0.85, 0, 1.1), 'CrashPaint', CREAM_DK)
+    mb.box((0.8, 0.04, 2.0), (0, 0.05, 1.0), 'CrashDark', SOOT)
+    mb.box((0.78, 0.05, 1.9), (0.9, -0.55, 0.95), 'CrashPaint', TEAL, rot=(0, 0, -1.1))         # door, open
+    mb.pop()
+    # Roof sheet: caved in, its back edge still on the back wall, the front edge down on the floor inside.
+    mb.push(T(0.1, -0.9, 0.35) @ R(x=-math.atan2(2.25, 1.75), y=0.06))
+    corrugated(mb, 3.4, 2.85, 9, 0.08, IRON, mat='CrashMetal', rows=3,
+               dent=lambda x, z: 0.25 * math.sin(z / 2.85 * PI) * (1 - abs(x) / 2.0) + 0.06 * math.sin(x * 3.0))
+    mb.pop()
+    # Inside, under what's left: the relay cabinet, its lamps still lit.
+    mb.box((0.9, 0.5, 1.3), (0.6, 0.8, 0.75), 'CrashMetal', IRON)
+    mb.box((0.6, 0.04, 0.3), (0.6, 0.53, 1.1), 'CrashGlow', GLOW)
+    mb.cap((-1.2, 0, 0), (1.2, 0, 0), 1.45)
+    mb.pop()
+    mb.sand(-0.9, -4.6, 2.4, 0.9, 0.3, yaw=-0.25, res=(10, 5))
+    mb.sand(head.x, head.y, 1.4, 1.1, 0.3, yaw=0.6, res=(7, 6))
+
+
+def build_skiff(mb, rng):
+    """Burnt-out hover skiff (~6.5 m): open flat-bottomed hull, twin ducted fans at the stern, one fan torn off
+    and lying beside it. Still smouldering. Bow towards -Y."""
+    mb.push(T(0.2, 0.0, 0.35) @ R(x=0.08, y=-0.18, z=0.15))
+    segs = 12
+    # (y, w, h, zc): stern transom at +Y, pointed raised bow at -Y.
+    sections = [(3.0, 2.3, 1.0, 0.2), (1.5, 2.5, 1.05, 0.2), (0.0, 2.5, 1.05, 0.2), (-1.5, 2.2, 1.0, 0.25),
+                (-2.6, 1.4, 0.9, 0.4), (-3.3, 0.35, 0.5, 0.65)]
+    rings = [se_ring(y, w, h, segs, zc, n=3.4) for y, w, h, zc in sections]
+    top = {1, 2, 3, 4}  # open deck: the upper faces are left out back to the bow
+
+    def colfn(i, k):
+        if k in (0, 6):
+            return CREAM
+        if i >= 3 and k in (7, 11):
+            return RED
+        return TEAL
+    mb.loft(rings, 'CrashPaint', TEAL, colfn=colfn, skip=lambda i, k: k in top and i < 4)
+    mb.loft([[p for p in r] for r in rings[3:]], 'CrashPaint', CREAM, skip=lambda i, k: k not in top)  # bow deck
+    mb.box((2.0, 4.5, 0.08), (0, 0.6, 0.0), 'CrashMetal', IRON)                       # floor
+    mb.box((2.3, 0.1, 0.8), (0, 3.0, 0.2), 'CrashPaint', CREAM_DK)                    # transom
+    for sx in (-1, 1):                                                               # gunwale rub rail
+        mb.sweep([(sx * 1.26, 3.0, 0.62), (sx * 1.26, 0.0, 0.66), (sx * 1.1, -1.5, 0.7), (sx * 0.7, -2.6, 0.8)],
+                 0.06, 'CrashBrass', BRASS_DK, segs=4)
+    # Console with a wheel and a cracked screen glowing, bench seat behind it.
+    mb.box((0.9, 0.6, 0.9), (0.3, -0.6, 0.45), 'CrashMetal', IRON)
+    mb.box((0.7, 0.06, 0.35), (0.3, -0.92, 0.85), 'CrashGlow', GLOW, rot=(0.5, 0, 0))
+    mb.beacon_at((0.3, -0.9, 0.85))
+    mb.cyl(0.24, 0.24, 0.05, 8, (0.3, -0.45, 1.05), 'CrashDark', RUBBER, rot=(-0.9, 0, 0))
+    mb.box((2.0, 0.55, 0.12), (0, 0.6, 0.45), 'CrashDark', 0x5a3a26)
+    mb.box((2.0, 0.1, 0.5), (0, 0.9, 0.7), 'CrashDark', 0x4a3020, rot=(-0.2, 0, 0))
+    # Twin ducted fans on pylons at the stern: the left one still there, the right one torn off.
+    for sx in (-1, 1):
+        mb.box((0.25, 0.5, 0.9), (sx * 0.85, 2.7, 0.75), 'CrashMetal', IRON)
+    duct = T(-0.85, 3.05, 1.35) @ R(x=PI / 2)
+    mb.lathe([(0.62, -0.32), (0.74, -0.3), (0.72, 0.3), (0.6, 0.32)], 14, 'CrashPaint', CREAM, m=duct, closed=True)
+    mb.cyl(0.14, 0.14, 0.3, 8, (0, 0, 0), 'CrashMetal', STEEL, m=duct)
+    for k in range(5):
+        mb.box((0.11, 0.56, 0.03), (0, 0.33, 0), 'CrashMetal', STEEL, m=duct @ R(z=2 * PI * k / 5 + 0.3) @ R(y=0.5))
+    mb.sweep([(0.85, 2.7, 1.2), (0.95, 2.9, 1.45), (1.2, 3.1, 1.5)], 0.04, 'CrashDark', CABLE_RED, segs=4)
+    # Burnt out amidships and at the stern.
+    mb.burn((0.2, 1.6, 0.4), 1.9, 0.95)
+    mb.burn((0.6, 2.9, 1.0), 1.4, 1.0)
+    mb.smoke_at((0.4, 1.6, 0.4))
+    mb.cap((0, -2.3, 0), (0, 2.5, 0), 1.3)
+    mb.pop()
+    # The torn-off fan duct, lying on its rim in the sand, blades bent.
+    duct2 = T(2.9, 3.5, 0.45) @ R(x=0.6, y=1.2, z=0.3)
+    mb.lathe([(0.62, -0.32), (0.74, -0.3), (0.72, 0.3), (0.6, 0.32)], 14, 'CrashPaint', CREAM, m=duct2, closed=True)
+    mb.cyl(0.14, 0.14, 0.3, 8, (0, 0, 0), 'CrashMetal', STEEL, m=duct2)
+    for k in range(5):
+        mb.box((0.11, 0.56, 0.03), (0, 0.33, 0), 'CrashMetal', STEEL, m=duct2 @ R(z=2 * PI * k / 5) @ R(y=0.5, x=0.3 * (k % 2)))
+    mb.burn((2.9, 3.5, 0.6), 1.0, 0.8)
+    mb.cap((2.9, 3.4, 0), (2.9, 3.6, 0), 0.75)
+    mb.sand(0.0, -3.2, 1.5, 0.9, 0.35, res=(8, 6))
+    mb.sand(-1.2, 0.5, 0.6, 2.6, 0.3, yaw=0.15, res=(5, 10))
+
+
+def container(mb, c, size, rot, col, rng, open_=False):
+    """Ribbed cargo container (corrugated sides), doors at local +Y; open_ leaves the doors hanging."""
+    mb.push(T(c) @ R(*rot))
+    sx, sy, sz = size
+    mb.box((sx, sy, 0.1), (0, 0, -sz / 2 + 0.05), 'CrashMetal', IRON)
+    mb.box((sx, sy, 0.08), (0, 0, sz / 2 - 0.04), 'CrashPaint', col)
+    for s in (-1, 1):
+        mb.push(T(s * sx / 2, 0, -sz / 2) @ R(z=PI / 2 * s))
+        corrugated(mb, sy, sz, max(3, int(sy * 2.2)), 0.05 * s, col, rows=1)
+        mb.pop()
+    mb.push(T(0, -sy / 2, -sz / 2))
+    corrugated(mb, sx, sz, max(2, int(sx * 2.2)), 0.05, col, rows=1)
+    mb.pop()
+    for x in (-sx / 2, sx / 2):                                                   # corner posts
+        for y in (-sy / 2, sy / 2):
+            mb.box((0.12, 0.12, sz), (x, y, 0), 'CrashMetal', IRON)
+    if open_:
+        mb.box((sx * 0.96, 0.06, sz * 0.9), (0, sy / 2 - 0.1, 0), 'CrashDark', SOOT)
+        mb.box((sx / 2, 0.05, sz * 0.92), (-sx / 2 - sx / 4 + 0.05, sy / 2 + 0.2, 0), 'CrashPaint', col,
+               rot=(0, 0, -1.2))
+    else:
+        mb.box((sx, 0.05, sz * 0.92), (0, sy / 2, 0), 'CrashPaint', mix_hex(col, DARK, 0.2))
+        for x in (-sx * 0.25, sx * 0.25):
+            mb.box((0.04, 0.06, sz * 0.85), (x, sy / 2 + 0.03, 0), 'CrashMetal', STEEL)
+    mb.box((sx * 0.4, 0.02, sz * 0.25), (0, -sy / 2 - 0.06, sz * 0.15), 'CrashPaint', CREAM if col != CREAM else RED)
+    mb.pop()
+
+
+def build_cargo_pod(mb, rng):
+    """Spilled cargo pod (~13 m): a dropped cargo canister split open on landing, its containers tumbled out,
+    the drogue chute lying flat in the sand behind it on its lines."""
+    # The canister: a long rounded drum on its side, split along the top, end cap blown off.
+    pm = T(0.0, -0.3, 1.0) @ R(z=0.35) @ R(y=PI / 2) @ R(x=0.0)
+    prof = [(0.0, -2.6), (0.8, -2.5), (1.25, -2.15), (1.4, -1.6), (1.4, 1.8), (1.35, 2.4)]
+    split = {(i, k) for i in (8, 9, 10) for k in (2, 3, 4)} | {(9, 1), (9, 5)}  # facing -Y and up
+    mb.lathe(prof, 14, 'CrashPaint', CREAM, m=pm, skip=lambda i, k: (i, k) in split,
+             colfn=lambda i, k: RED if k == 0 else (TEAL if i in (10, 11) else None))
+    mb.lathe([(1.15, 2.35), (1.15, -1.7)], 10, 'CrashDark', DARK, m=pm)               # dark inside
+    for z in (-1.0, 0.9):  # torn frame ribs still spanning the split
+        a0, a1 = 2 * PI * 7.6 / 14, 2 * PI * 10.6 / 14
+        mb.sweep([pm @ Vector((math.cos(a0 + (a1 - a0) * t / 4) * 1.38, math.sin(a0 + (a1 - a0) * t / 4) * 1.38,
+                               z + (0.25 * t * t / 16 if z > 0 else 0.0))) for t in range(4 if z > 0 else 5)],
+                 0.06, 'CrashMetal', IRON, segs=4)
+    for z in (-1.6, 0.1, 1.8):
+        mb.lathe([(1.4, z - 0.08), (1.48, z - 0.05), (1.48, z + 0.05), (1.4, z + 0.08)], 14, 'CrashMetal', IRON,
+                 m=pm, closed=True, skip=lambda i, k: i in (8, 9, 10))
+    mb.lathe([(0.0, -2.62), (0.35, -2.6)], 8, 'CrashMetal', IRON, m=pm)               # chute mount
+    mb.cyl(0.2, 0.14, 0.3, 8, (0, 0, -2.75), 'CrashMetal', IRON, m=pm)
+    mb.cyl(0.1, 0.08, 0.14, 8, (0.95, 0.0, -2.2), 'CrashGlow', REDLIGHT, m=pm @ R(y=-0.9))
+    mb.beacon_at(pm @ Vector((0.95, 0.0, -2.2)))
+    mb.burn(pm @ Vector((0, 0, 2.5)), 1.6, 0.8)
+    mb.cap(pm @ Vector((0, 0, -2.4)), pm @ Vector((0, 0, 2.1)), 1.4)
+    # The end cap, lying a few metres away.
+    cap_m = T(1.6, 4.3, 0.3) @ R(x=0.3, y=0.25)
+    mb.lathe([(0.0, 0.0), (0.9, -0.1), (1.3, -0.4), (1.35, -0.55)], 12, 'CrashPaint', CREAM, m=cap_m,
+             colfn=lambda i, k: RED if k == 3 else None)
+    mb.cap((1.6, 4.3, 0), (1.6, 4.3, 0), 0.95)
+    # Containers tumbled out of the split, one burst with its small crates spilled.
+    container(mb, Vector((2.3, -2.6, 0.5)), (1.4, 2.4, 1.2), (0.05, 0.0, 0.5), RED, rng)
+    container(mb, Vector((3.7, 0.3, 0.4)), (1.2, 1.9, 1.0), (PI / 2 - 0.1, 0.0, -0.4), TEAL, rng, open_=True)
+    container(mb, Vector((-0.4, 2.6, 0.45)), (1.0, 1.4, 0.9), (0.0, 0.25, 1.9), OLIVE, rng)
+    container(mb, Vector((4.4, -3.8, 0.35)), (0.9, 1.2, 0.8), (0.0, -0.3, 0.9), CREAM_DK, rng)
+    crate(mb, Vector((4.6, 1.8, 0.2)), (0.6, 0.5, 0.45), (0.0, 0.1, 0.6), CREAM, rng)
+    crate(mb, Vector((5.3, 0.9, 0.18)), (0.5, 0.5, 0.4), (0.3, 0.0, -0.2), RED, rng)
+    crate(mb, Vector((4.9, 2.9, 0.15)), (0.5, 0.4, 0.35), (0.0, 0.4, 1.0), CREAM, rng)
+    mb.cap((1.9, -3.3, 0), (2.7, -1.9, 0), 0.85)
+    mb.cap((3.5, 0.3, 0), (4.0, 0.3, 0), 0.9)
+    mb.cap((-0.4, 2.6, 0), (-0.4, 2.6, 0), 0.85)
+    mb.cap((4.4, -3.8, 0), (4.4, -3.8, 0), 0.7)
+    # Drogue chute behind the pod: a big panelled canopy lying flat with wrinkles, lines running back to it.
+    root = pm @ Vector((0, 0, -2.9))
+    cc = Vector((-5.3, -2.7, 0.0))
+    nx, ny = 6, 5
+
+    def chute(u, v):
+        return 0.1 + 0.07 * math.sin(u * 4 + v * 2) + 0.06 * math.cos(v * 4)
+    grid = []
+    for j in range(ny + 1):
+        row = []
+        for i in range(nx + 1):
+            u, v = -1 + 2 * i / nx, -1 + 2 * j / ny
+            row.append(mb.bm.verts.new((cc.x + u * 2.1 + v * 0.35, cc.y + v * 1.7 - u * 0.3 + 0.2 * u * u,
+                                        chute(u, v))))
+        grid.append(row)
+    faces = []
+    for j in range(ny):
+        for i in range(nx):
+            f = mb.bm.faces.new([grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]])
+            faces.append((f, RED if (i // 2) % 2 == 0 else CANVAS))  # gores
+    bmesh.ops.recalc_face_normals(mb.bm, faces=[f for f, _ in faces])
+    for f, _ in faces:
+        if f.normal.z < 0:
+            f.normal_flip()
+    mb._tag(faces, 'CrashDark', CANVAS)
+    for j in (0, ny):
+        for i in (nx,):
+            mb.cable(root, grid[j][i].co, 0.0, 0.015, CANVAS, n=1, segs=3)
+    mb.cable(root, grid[ny // 2][nx].co, 0.0, 0.015, CANVAS, n=1, segs=3)
+    mb.sand(-1.6, -0.6, 3.4, 1.0, 0.45, yaw=0.35, res=(12, 5))
+
+
+def build_drill(mb, rng):
+    """Abandoned mining drill rig (~11 m): skid-mounted engine house half buried, the derrick leaning over with
+    its drill string still in the hole, a spare bit, pipe rack and cable reel."""
+    mb.push(T(0, 0, -0.25) @ R(x=0.06, y=-0.05, z=0.2))
+    # Skids and deck.
+    for x in (-1.1, 1.1):
+        mb.box((0.3, 6.0, 0.4), (x, 0, 0.1), 'CrashMetal', IRON)
+    mb.box((2.8, 5.6, 0.12), (0, 0, 0.36), 'CrashMetal', STEEL)
+    # Engine house at the back: yellow box, radiator grille, exhaust, a crank handle.
+    mb.box((2.2, 2.0, 1.6), (0, 1.6, 1.2), 'CrashPaint', MINE_YEL, taper=(0.95, 0.95))
+    mb.box((2.25, 2.05, 0.15), (0, 1.6, 2.05), 'CrashPaint', DARK)
+    for k in range(6):
+        mb.box((1.6, 0.06, 0.06), (0, 2.63, 0.65 + k * 0.17), 'CrashMetal', IRON)      # grille slats
+    mb.box((1.7, 0.04, 1.1), (0, 2.6, 1.08), 'CrashDark', SOOT)
+    mb.box((0.04, 1.0, 0.6), (1.12, 1.4, 1.3), 'CrashPaint', mix_hex(MINE_YEL, DARK, 0.15), rot=(0, 0, 0.4))  # flapping panel
+    mb.sweep([(-0.6, 1.2, 2.0), (-0.6, 1.2, 2.9), (-0.4, 1.0, 3.2)], 0.1, 'CrashMetal', RUST, segs=6)
+    mb.box((0.5, 0.3, 0.3), (0.0, 0.65, 2.25), 'CrashMetal', IRON)
+    mb.box((0.36, 0.04, 0.14), (0.0, 0.49, 2.28), 'CrashGlow', GLOW)                   # control panel
+    mb.beacon_at((0.0, 0.45, 2.28))
+    # Derrick: four legs tapering to a crown block, leaning over towards -Y on a bent leg.
+    mb.push(T(0, -1.3, 0.42) @ R(x=0.42, y=0.08))
+    h = 6.0
+    feet = [Vector((sx * 1.0, sy * 0.9, 0)) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    tops = [Vector((sx * 0.25, sy * 0.22, h)) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    for f, t_ in zip(feet, tops):
+        mb.tube(f, t_, 0.08, 'CrashPaint', MINE_YEL, segs=4)
+    for lvl in range(4):
+        t0, t1 = lvl / 4, (lvl + 1) / 4
+        for i in range(4):
+            j = (i + 1) % 4
+            a0, b1 = feet[i].lerp(tops[i], t0), feet[j].lerp(tops[j], t1)
+            mb.tube(a0, b1, 0.04, 'CrashMetal', IRON, segs=3)
+            mb.tube(feet[i].lerp(tops[i], t1), feet[j].lerp(tops[j], t1), 0.04, 'CrashMetal', IRON, segs=3)
+    mb.box((0.8, 0.7, 0.4), (0, 0, h + 0.15), 'CrashPaint', MINE_YEL)                # crown block
+    mb.cyl(0.3, 0.3, 0.2, 10, (0, 0, h + 0.45), 'CrashMetal', STEEL, rot=(0, PI / 2, 0))
+    mb.box((0.14, 0.14, 0.2), (0.3, 0.3, h + 0.45), 'CrashGlow', REDLIGHT)
+    mb.cyl(0.1, 0.1, h - 0.4, 6, (0, 0, (h - 0.4) / 2 + 0.2), 'CrashMetal', STEEL)     # drill string
+    mb.cyl(0.24, 0.24, 0.5, 8, (0, 0, h * 0.55), 'CrashMetal', IRON)                  # swivel
+    mb.pop()
+    mb.sweep([(0.0, -1.3, 0.4), (0.0, -1.35, -0.3)], 0.12, 'CrashMetal', STEEL, segs=6)
+    mb.cap((0, -1.3, 0), (0, -3.4, 0), 1.0)
+    mb.cap((0, 0.2, 0), (0, 2.8, 0), 1.45)
+    mb.burn((0.0, 2.7, 1.0), 1.2, 0.5)
+    mb.pop()
+    # Spare drill bit lying on the sand: fluted cone.
+    bm_ = T(3.0, -1.4, 0.3) @ R(y=PI / 2 - 0.1, z=0.5)
+    prof = [(0.0, -0.9), (0.18, -0.7), (0.34, -0.2), (0.36, 0.4), (0.2, 0.5), (0.2, 0.9), (0.0, 0.92)]
+    mb.lathe(prof, 10, 'CrashMetal', STEEL, m=bm_, colfn=lambda i, k: IRON if i % 2 else None)
+
+    def bit_r(z):
+        for (r0, z0), (r1, z1) in zip(prof, prof[1:]):
+            if z0 <= z <= z1:
+                return r0 + (r1 - r0) * (z - z0) / (z1 - z0)
+        return 0.0
+    for k in range(3):  # spiral flutes standing proud of the cone
+        a = 2 * PI * k / 3
+        mb.sweep([bm_ @ Vector((math.cos(a + t * 3.0) * (bit_r(t) + 0.04), math.sin(a + t * 3.0) * (bit_r(t) + 0.04), t))
+                  for t in (-0.75, -0.5, -0.25, 0.0, 0.25)], 0.06, 'CrashBrass', BRASS_DK, segs=4)
+    mb.cap((2.4, -1.3, 0), (3.6, -1.5, 0), 0.45)
+    # Pipe rack: two trestles with drill pipes, some rolled off.
+    for y in (2.2, 3.8):
+        mb.box((0.1, 0.1, 0.7), (-2.9, y, 0.3), 'CrashMetal', IRON, rot=(0, 0.3, 0))
+        mb.box((0.1, 0.1, 0.7), (-2.1, y, 0.3), 'CrashMetal', IRON, rot=(0, -0.3, 0))
+        mb.box((1.2, 0.12, 0.1), (-2.5, y, 0.6), 'CrashMetal', IRON)
+    for k, (x, z, yaw) in enumerate(((-2.8, 0.72, 0.0), (-2.55, 0.72, 0.0), (-2.3, 0.72, 0.02), (-3.6, 0.1, 0.12),
+                                     (-4.0, 0.1, 0.06))):
+        mb.cyl(0.11, 0.11, 3.6, 6, (x, 3.0, z), 'CrashMetal', RUST if k % 2 else STEEL, rot=(PI / 2, 0, yaw))
+    mb.cap((-2.6, 1.3, 0), (-3.4, 4.8, 0), 0.75)
+    # Cable reel on its side with cable trailing to the rig.
+    rm = T(2.6, 2.6, 0.55) @ R(x=PI / 2 + 0.15, z=0.4)
+    mb.cyl(0.65, 0.65, 0.08, 12, (0, 0, -0.4), 'CrashMetal', IRON, m=rm)
+    mb.cyl(0.65, 0.65, 0.08, 12, (0, 0, 0.4), 'CrashMetal', IRON, m=rm)
+    mb.cyl(0.45, 0.45, 0.72, 12, (0, 0, 0), 'CrashDark', RUBBER, m=rm)
+    mb.sweep([rm @ Vector((0.4, 0.2, 0.0)), (1.8, 1.9, 0.05), (1.5, 1.0, 0.3)], 0.04, 'CrashDark', RUBBER, segs=4)
+    mb.cap((2.6, 2.6, 0), (2.6, 2.6, 0), 0.7)
+    # Spoil heap around the hole and drift against the skids.
+    mb.sand(0.2, -3.0, 1.6, 1.0, 0.5, res=(8, 6))
+    mb.sand(-1.6, 0.0, 0.6, 3.2, 0.35, yaw=0.2, res=(5, 12))
+
+
+# Scrap-field junk: small things to carry home, each read as the scrap item it gives (shared/items.ts DEBRIS_ITEMS).
+
+def junk_barrel(mb, rng):
+    """Toppled oil drum, lid dented, a dark oil stain spreading from the bung (~1 m). Gives an oil drum."""
+    mb.lathe([(0.0, 0.01), (0.55, 0.012), (0.75, 0.015)], 10, 'CrashDark', SOOT, m=T(0.35, 0.25, 0))
+    mb.push(T(0, 0, 0.26) @ R(x=PI / 2 - 0.08, z=0.5))
+    mb.cyl(0.32, 0.32, 0.9, 12, (0, 0, 0), 'CrashPaint', RED)
+    for z in (-0.22, 0.22):
+        mb.cyl(0.335, 0.335, 0.05, 12, (0, 0, z), 'CrashPaint', mix_hex(RED, DARK, 0.25))
+    mb.cyl(0.335, 0.335, 0.12, 12, (0, 0, 0.0), 'CrashPaint', CREAM)                 # band
+    for z in (-0.46, 0.46):
+        mb.cyl(0.33, 0.33, 0.04, 12, (0, 0, z), 'CrashMetal', IRON)                    # chimes
+    mb.cyl(0.05, 0.05, 0.04, 6, (0.18, 0.05, 0.47), 'CrashBrass', BRASS)                # bung
+    mb.cap((0, 0, -0.45), (0, 0, 0.45), 0.38)
+    mb.pop()
+
+
+def junk_sprocket(mb, rng):
+    """Track drive sprocket with a few track links still wrapped round it, half sunk (~1.2 m). Gives a gear."""
+    mb.push(T(0, 0, 0.25) @ R(x=1.15, z=0.3))
+    mb.cyl(0.42, 0.42, 0.16, 12, (0, 0, 0), 'CrashMetal', STEEL)
+    for k in range(12):
+        a = 2 * PI * k / 12
+        mb.box((0.16, 0.13, 0.15), (math.cos(a) * 0.47, math.sin(a) * 0.47, 0), 'CrashMetal', STEEL, rot=(0, 0, a))
+    mb.cyl(0.18, 0.18, 0.3, 8, (0, 0, 0), 'CrashBrass', BRASS_DK)                    # hub
+    mb.cyl(0.06, 0.06, 0.6, 6, (0, 0, -0.2), 'CrashMetal', IRON)                      # stub axle
+    for k in range(6):
+        a = 2 * PI * (k + 0.5) / 6
+        mb.cyl(0.05, 0.05, 0.2, 6, (math.cos(a) * 0.29, math.sin(a) * 0.29, 0), 'CrashDark', SOOT)  # lightening holes
+    # Track links wrapped part way round, then trailing off.
+    for k in range(5):
+        a = 0.3 + 0.48 * k
+        rr = 0.62 + 0.06 * max(0, k - 2)
+        mb.box((0.36, 0.2, 0.06), (math.cos(a) * rr, math.sin(a) * rr, 0), 'CrashDark', RUBBER,
+               rot=(PI / 2, 0, a + PI / 2), m=None)
+    mb.cap((0, 0, 0), (0, 0, 0), 0.65)
+    mb.pop()
+
+
+def junk_ladder(mb, rng):
+    """Steel ladder section buckled in the middle into a tent, both ends in the sand, one rail twisted (~2.2 m).
+    Gives a bent frame."""
+    mb.push(T(0, 0, 0.0) @ R(z=0.6))
+    knee, lo, hi = Vector((0, 0.05, 0.62)), Vector((0, -1.0, -0.05)), Vector((0, 1.05, 0.0))
+    for sx, tw in ((-0.24, 0.0), (0.24, 0.12)):
+        mb.sweep([lo + Vector((sx, 0, 0)), lo.lerp(knee, 0.55) + Vector((sx, 0, 0.04)), knee + Vector((sx + tw, 0, 0)),
+                  knee.lerp(hi, 0.45) + Vector((sx + tw, 0, 0.05)), hi + Vector((sx + tw * 1.5, 0, 0))], 0.045,
+                 'CrashMetal', RUST, segs=4)
+    for t in (0.2, 0.45, 0.72):
+        p, q = lo.lerp(knee, t), knee.lerp(hi, t)
+        mb.tube((-0.24, p.y, p.z), (0.24, p.y, p.z), 0.028, 'CrashMetal', STEEL, segs=4)
+        mb.tube((-0.24, q.y, q.z), (0.24 + 0.12, q.y, q.z), 0.028, 'CrashMetal', STEEL, segs=4)
+    mb.box((0.08, 0.3, 0.06), (-0.24, -1.0, 0.03), 'CrashPaint', MINE_YEL)                # rubber feet
+    mb.box((0.08, 0.3, 0.06), (0.24, -1.0, 0.03), 'CrashPaint', MINE_YEL)
+    mb.cap((0, -0.85, 0), (0, 0.9, 0), 0.4)
+    mb.pop()
+
+
+def junk_sheet(mb, rng):
+    """Dented steel crate lid: a framed teal panel with a big dent and a folded corner, leaning back on a little
+    drift (~1.5 m). Gives a dented sheet."""
+    mb.push(R(z=PI - 0.3))
+    mb.sand(0.0, -0.4, 0.85, 0.5, 0.34, res=(6, 4))
+    mb.push(T(0, 0.45, -0.06) @ R(x=0.95))
+    w, h = 1.4, 1.2
+
+    def dent(x, z):
+        d = -0.16 * math.exp(-((x - 0.15) ** 2 + (z - 0.55) ** 2) / 0.08)
+        if z > 0.7 and x < -0.2:  # bent-back corner
+            d += 0.6 * (z - 0.7) * (-0.2 - x)
+        return d
+    xs = [-w / 2 + w * i / 5 for i in range(6)]
+    rings = [[Vector((x, dent(x, h * j / 5), h * j / 5)) for x in xs] for j in range(6)]
+    mb.loft(rings, 'CrashPaint', TEAL, closed=False,
+            colfn=lambda i, k: CREAM if (i, k) in ((1, 3), (1, 4)) else (RUST if (i * 2 + k) % 9 == 0 else None))
+    for z in (0.0, h):                                                                # frame
+        mb.box((w if z == 0 else w * 0.62, 0.06, 0.07), (0.0 if z == 0 else w * 0.19, -0.02, z), 'CrashMetal', IRON)
+    for x in (-w / 2, w / 2):
+        mb.box((0.07, 0.06, h if x > 0 else h * 0.68), (x, -0.02, h / 2 if x > 0 else h * 0.34), 'CrashMetal', IRON)
+    mb.box((0.07, 0.06, h), (0.0, -0.03, h / 2), 'CrashMetal', IRON)                  # stiffener
+    mb.rivets([Vector((x, 0.03, z)) for x, z in ((-0.62, 0.06), (0.62, 0.06), (0.62, 1.14), (0.0, 0.6))],
+              [Vector((0, 1, 0))] * 4, 0.03)
+    mb.cap((-0.55, 0, 0.6), (0.55, 0, 0.6), 0.6)
+    mb.pop()
+    mb.pop()
+
+
+def junk_spring(mb, rng):
+    """Heavy coil spring off a suspension, with its end seats, lying in the sand (~1 m). Gives a spring."""
+    mb.push(T(0, 0, 0.27) @ R(y=PI / 2 - 0.12, z=0.4))
+    turns, n, r, length = 5.5, 44, 0.25, 0.95
+    pts = [(math.cos(2 * PI * turns * i / n) * r, math.sin(2 * PI * turns * i / n) * r, -length / 2 + length * i / n)
+           for i in range(n + 1)]
+    mb.sweep(pts, 0.045, 'CrashMetal', 0x6a4a34, segs=4)
+    for z in (-length / 2 - 0.03, length / 2 + 0.03):
+        mb.cyl(0.3, 0.3, 0.05, 10, (0, 0, z), 'CrashMetal', IRON)
+    mb.cyl(0.07, 0.07, length + 0.3, 6, (0, 0, 0), 'CrashBrass', BRASS_DK)            # damper rod
+    mb.cap((0, 0, -0.45), (0, 0, 0.45), 0.35)
+    mb.pop()
+
+
+def junk_planks(mb, rng):
+    """Three perforated steel walkway planks strapped together, the top one slid askew (~2 m). Gives a plank."""
+    mb.push(T(0, 0, 0.0) @ R(y=0.05, z=-0.25))
+    for k, (dx, z, yaw, col) in enumerate(((0.0, 0.05, 0.0, STEEL), (0.3, 0.05, 0.03, mix_hex(STEEL, RUST, 0.4)),
+                                           (0.12, 0.13, 0.22, MINE_YEL))):
+        mb.push(T(dx - 0.15, 0, z) @ R(z=yaw, x=0.04 * k))
+        mb.box((0.28, 1.9, 0.05), (0, 0, 0), 'CrashMetal' if col != MINE_YEL else 'CrashPaint', col)
+        for s in (-1, 1):
+            mb.box((0.03, 1.9, 0.08), (s * 0.14, 0, -0.03), 'CrashMetal', IRON)
+        for y in (-0.6, 0.0, 0.6):
+            mb.box((0.12, 0.2, 0.06), (0, y, 0.0), 'CrashDark', SOOT)                    # slots
+        mb.pop()
+    for y in (-0.55, 0.55):
+        mb.box((0.72, 0.06, 0.2), (0.0, y, 0.08), 'CrashDark', CABLE_YEL)               # strap
+    mb.cap((0, -0.85, 0), (0, 0.85, 0), 0.35)
+    mb.pop()
+
+
+def junk_dish(mb, rng):
+    """Small cracked antenna dish, its mount arm snapped, propped on its rim in the sand (~1.4 m).
+    Gives a metal sheet."""
+    dm = T(0, 0.0, 0.47) @ R(z=0.3) @ R(x=-1.1)
+    crack = {(3, 2), (4, 2), (4, 1)}
+    mb.lathe([(0.0, 0.0), (0.3, 0.04), (0.55, 0.14), (0.7, 0.24)], 12, 'CrashPaint', CREAM, m=dm,
+             skip=lambda i, k: (i, k) in crack, jag=lambda i, k: (-0.06 if i in (8, 9) and k >= 2 else 0.0),
+             colfn=lambda i, k: RED if k == 2 and i % 4 == 0 else None)
+    mb.lathe([(0.0, -0.02), (0.12, -0.02)], 8, 'CrashMetal', IRON, m=dm)
+    for a in (0.0, 2.1, 4.2):                                                         # feed struts
+        mb.tube(dm @ Vector((math.cos(a) * 0.62, math.sin(a) * 0.62, 0.2)), dm @ Vector((0, 0, 0.55)), 0.015,
+                'CrashMetal', STEEL, segs=3)
+    mb.cyl(0.06, 0.04, 0.12, 6, (0, 0, 0.58), 'CrashBrass', BRASS, m=dm)
+    mb.tube(dm @ Vector((0, 0, -0.02)), dm @ Vector((0.05, -0.1, -0.28)), 0.05, 'CrashMetal', IRON, segs=4)  # snapped arm
+    mb.box((0.2, 0.12, 0.12), (0.05, -0.12, -0.3), 'CrashMetal', IRON, m=dm, rot=(0.4, 0, 0.2))
+    mb.cap(dm @ Vector((0, 0, 0.1)), dm @ Vector((0, 0, 0.1)), 0.65)
+
+
 # (node, label, builder, seed, flip). The game wants each wreck's nose (direction of travel) along three.js +Z
 # = Blender -Y; builders that model the nose along +Y are turned 180 degrees about Z after building.
 MAIN = [
@@ -1360,6 +1970,19 @@ DEBRIS = [
 DRESSING = [
     ('Crash_Cradle', 'Machine landing (large)', dress_cradle, 211),
     ('Crash_Skid', 'Machine landing (small)', dress_skid, 223),
+]
+# Scrap-field pieces (site level 0): appended after everything above so the existing kind indexes don't move.
+FIELD_MAIN = [
+    ('Crash_Crawler', 'Overturned crawler', build_crawler, 307, False),
+    ('Crash_Mast', 'Fallen relay mast', build_mast, 311, False),
+    ('Crash_Skiff', 'Burnt hover skiff', build_skiff, 313, False),
+    ('Crash_CargoPod', 'Spilled cargo pod', build_cargo_pod, 317, False),
+    ('Crash_Drill', 'Old drill rig', build_drill, 331, False),
+]
+FIELD_DEBRIS = [  # node names continue Crash_Debris_N after DEBRIS
+    ('Oil drum', junk_barrel), ('Track sprocket', junk_sprocket), ('Bent ladder', junk_ladder),
+    ('Dented crate lid', junk_sheet), ('Coil spring', junk_spring), ('Steel planks', junk_planks),
+    ('Antenna dish', junk_dish),
 ]
 
 
@@ -1443,6 +2066,7 @@ def write_ts(kinds, path):
         '  /** Short human name */ label: string;',
         '  /** true for a main wreck, false for scatter debris */ main: boolean;',
         '  /** Ground dressing under a machine (shared/crashsites.ts `machines`), never picked as debris */ dressing: boolean;',
+        '  /** Scrap-field piece (site level 0): only scrap fields use it, and they use only these */ field: boolean;',
         '  /** Horizontal radius (m) enclosing the whole piece */ radius: number;',
         '  capsules: CrashCapsule[];',
         '  /** Where smoke rises from (main wrecks; 1–2 points, e.g. engine, torn hull) */ smoke: [number, number, number][];',
@@ -1460,6 +2084,7 @@ def write_ts(kinds, path):
         lines.append(f"    label: '{k['label']}',")
         lines.append(f"    main: {'true' if k['main'] else 'false'},")
         lines.append(f"    dressing: {'true' if k['dressing'] else 'false'},")
+        lines.append(f"    field: {'true' if k['field'] else 'false'},")
         lines.append(f"    radius: {fmt(k['radius'])},")
         lines.append(f'    capsules: [{caps}],')
         lines.append(f'    smoke: [{smoke}],')
@@ -1474,10 +2099,15 @@ def write_ts(kinds, path):
 def build_all():
     kinds = []
     objs = []
-    entries = [(n, l, fn, s, True, f, False) for n, l, fn, s, f in MAIN] + \
-              [(f'Crash_Debris_{i + 1}', l, fn, 101 + i * 7, False, False, False) for i, (l, fn) in enumerate(DEBRIS)] + \
-              [(n, l, fn, s, False, False, True) for n, l, fn, s in DRESSING]
-    for name, label, fn, seed, main, flip, dressing in entries:
+    nd = len(DEBRIS)
+    entries = [(n, l, fn, s, True, f, False, False) for n, l, fn, s, f in MAIN] + \
+              [(f'Crash_Debris_{i + 1}', l, fn, 101 + i * 7, False, False, False, False)
+               for i, (l, fn) in enumerate(DEBRIS)] + \
+              [(n, l, fn, s, False, False, True, False) for n, l, fn, s in DRESSING] + \
+              [(n, l, fn, s, True, f, False, True) for n, l, fn, s, f in FIELD_MAIN] + \
+              [(f'Crash_Debris_{nd + i + 1}', l, fn, 401 + i * 7, False, False, False, True)
+               for i, (l, fn) in enumerate(FIELD_DEBRIS)]
+    for name, label, fn, seed, main, flip, dressing, field in entries:
         mb = MeshBuilder()
         fn(mb, Rng(seed))
         if flip:
@@ -1491,7 +2121,8 @@ def build_all():
         obj = make_object(name, mb)
         cd = capsule_data(obj, caps)
         radius = max(math.hypot(v.co.x, v.co.y) for v in obj.data.vertices)
-        kinds.append({'node': name, 'label': label, 'main': main, 'dressing': dressing, 'radius': radius, 'caps': cd,
+        kinds.append({'node': name, 'label': label, 'main': main, 'dressing': dressing, 'field': field,
+                      'radius': radius, 'caps': cd,
                       'smoke': smoke if main or dressing else [], 'beacon': beacon if main else (0, 0, 0), 'obj': obj})
         objs.append(obj)
     return kinds, objs
@@ -1656,50 +2287,59 @@ def render_previews(kinds, out_dir, only=None):
         box.hide_render = True
     for k in kinds:
         k['obj'].hide_render = False
-    if only:
+    groups = [g for g in (False, True) if not only or ('field' if g else 'space') in only]
+    if only and not groups:
         return
-    # Debris lineup.
-    for o in objs:
-        o.hide_render = True
-    deb = [k for k in kinds if not k['main'] and not k['dressing']]
-    for i, k in enumerate(deb):
-        k['obj'].hide_render = False
-        k['obj'].location = (i * 3.2 - (len(deb) - 1) * 1.6, 0, 0)
-    look(cam, (0, 0, 0.4), math.radians(-90), math.radians(22), 25, lens=45)
-    shoot(os.path.join(out_dir, 'debris.png'))
-    # Overview: mains in a 3x2 grid, debris in a row in front.
-    layout = {}
-    mains = [k for k in kinds if k['main']]
-    for i, k in enumerate(mains):
-        layout[k['node']] = Vector(((i % 3 - 1) * 21, (1 - i // 3) * 22 + 4, 0))
-    for i, k in enumerate(deb):
-        layout[k['node']] = Vector((i * 4.5 - (len(deb) - 1) * 2.25, -18, 0))
-    for k in kinds:
-        k['obj'].hide_render = k['node'] not in layout
-        k['obj'].location = layout.get(k['node'], Vector((0, 0, 0)))
-    look(cam, (0, 4, 0), math.radians(-80), math.radians(32), 66, lens=35)
-    shoot(os.path.join(out_dir, 'overview.png'))
-    # Low ground: the terrain half a metre below every origin; nothing should float.
-    ground.location.z = -0.5
-    look(cam, (0, 4, 0), math.radians(-100), math.radians(14), 66, lens=35)
-    shoot(os.path.join(out_dir, 'overview_lowground.png'))
-    ground.location.z = 0.0
-    # Capsule debug: wireframes over the overview, from above.
     wm = bpy.data.materials.new('wire')
     wb = wm.node_tree.nodes.get('Principled BSDF')
     wb.inputs['Base Color'].default_value = (0.1, 1.0, 0.3, 1)
     wb.inputs['Emission Color'].default_value = (0.1, 1.0, 0.3, 1)
     wb.inputs['Emission Strength'].default_value = 3.0
-    for k in kinds:
-        if k['node'] in layout:
-            capsule_wire(k, layout[k['node']], wm)
-    look(cam, (0, 7, 0), math.radians(-90), math.radians(80), 90, lens=35)
-    shoot(os.path.join(out_dir, 'capsules.png'))
-    for k in mains:
-        if True:
+    # The spacecraft pieces and the scrap-field pieces (CrashKind.field) are shown in separate sets of shots.
+    for field in groups:
+        sfx = '_field' if field else ''
+        group = [k for k in kinds if k['field'] == field]
+        # Debris lineup.
+        for o in objs:
+            o.hide_render = True
+        deb = [k for k in group if not k['main'] and not k['dressing']]
+        for i, k in enumerate(deb):
+            k['obj'].hide_render = False
+            k['obj'].location = (i * 3.2 - (len(deb) - 1) * 1.6, 0, 0)
+        look(cam, (0, 0, 0.4), math.radians(-90), math.radians(22), 25, lens=45)
+        shoot(os.path.join(out_dir, f'debris{sfx}.png'))
+        # Overview: mains in a 3x2 grid, debris in a row in front.
+        layout = {}
+        mains = [k for k in group if k['main']]
+        for i, k in enumerate(mains):
+            layout[k['node']] = Vector(((i % 3 - 1) * 21, (1 - i // 3) * 22 + 4, 0))
+        for i, k in enumerate(deb):
+            layout[k['node']] = Vector((i * 4.5 - (len(deb) - 1) * 2.25, -18, 0))
+        for k in kinds:
+            k['obj'].hide_render = k['node'] not in layout
+            k['obj'].location = layout.get(k['node'], Vector((0, 0, 0)))
+        look(cam, (0, 4, 0), math.radians(-80), math.radians(32), 66, lens=35)
+        shoot(os.path.join(out_dir, f'overview{sfx}.png'))
+        # Low ground: the terrain half a metre below every origin; nothing should float.
+        ground.location.z = -0.5
+        look(cam, (0, 4, 0), math.radians(-100), math.radians(14), 66, lens=35)
+        shoot(os.path.join(out_dir, f'overview{sfx}_lowground.png'))
+        ground.location.z = 0.0
+        if field:  # close-ups of the junk (it is small)
+            for k in deb:
+                p = layout[k['node']]
+                look(cam, p + Vector((0, 0, 0.3)), math.radians(-60), math.radians(28), 3.6, lens=35)
+                shoot(os.path.join(out_dir, 'debris_' + k['node'] + '.png'))
+        # Capsule debug: wireframes over the overview, from above.
+        wires = [capsule_wire(k, layout[k['node']], wm) for k in kinds if k['node'] in layout]
+        look(cam, (0, 7, 0), math.radians(-90), math.radians(80), 90, lens=35)
+        shoot(os.path.join(out_dir, f'capsules{sfx}.png'))
+        for k in mains:
             p = layout[k['node']]
             look(cam, p, math.radians(-60), math.radians(62), k['radius'] * 2.2 + 5, lens=35)
             shoot(os.path.join(out_dir, 'capsules_' + k['node'] + '.png'))
+        for w in wires:
+            w.hide_render = True
     for k in kinds:
         k['obj'].location = (0, 0, 0)
 
@@ -1710,7 +2350,8 @@ def main():
     ap.add_argument('--out', default=os.path.join(ROOT, 'public', 'models', 'crashsites.glb'))
     ap.add_argument('--ts', default=os.path.join(ROOT, 'shared', 'crashKinds.ts'))
     ap.add_argument('--preview', default=None, help='directory for PNG previews')
-    ap.add_argument('--only', default=None, help='comma-separated node names: render just their 3/4 views')
+    ap.add_argument('--only', default=None, help='comma-separated node names: render just their 3/4 views; '
+                    '"field" / "space" also renders that group\'s lineup, overview and capsule shots')
     args = ap.parse_args(argv)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)

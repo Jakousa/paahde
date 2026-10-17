@@ -85,7 +85,7 @@ export class MachineSites {
   private show(v: SiteView) {
     const { site } = v;
     if (!v.junk) {
-      v.junk = buildJunk(site.kind, site.seed);
+      v.junk = buildJunk(site.kind, site.seed, site.level);
       v.junk.root.rotation.y = site.yaw;
       v.husk = spent(site);
       if (v.husk) fastForward(v.junk, v.junk.steps.map((_, i) => i), v.junk.slots.map((s) => s.index));

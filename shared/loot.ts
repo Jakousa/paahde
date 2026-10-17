@@ -15,8 +15,6 @@ export type Loot = {
   /** Metres under the undisturbed sand; 0 once it's on the surface. */
   depth: number;
   src: 'find' | 'cache' | 'drop';
-  /** A find that belongs near the spawn point (it comes back there). */
-  near?: boolean;
 };
 
 /** F picks up loot within this distance of the feet (m, horizontally). */

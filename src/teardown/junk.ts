@@ -1,5 +1,5 @@
-// Crash-site components for the disassembly mode: a pump housing, a jet engine with its electrical box and a
-// robot arm joint. Each is a small machine laid out the way the real thing is, and everything that holds a part
+// Crash-site components for the disassembly mode: a pump housing, a jet engine with its electrical box, a robot
+// arm joint, a control cabinet, and the scrap fields' small starter machines (a winch, a coolant valve, a beacon). Each is a small machine laid out the way the real thing is, and everything that holds a part
 // in is a step you can do: screws (several clicks), bolts (circle the pointer), clips, wires (swipe to cut) and
 // pry tabs. Fasteners follow the engineering: bolt circles on round flanges, corner screws on box lids, a row
 // along a split line, set screws on a coupling hub, supply wires from a cable gland to a terminal block through
@@ -812,11 +812,109 @@ function controlCabinet(k: Kit) {
   if (g >= 2) k.lamps(5, -0.4, 0.65, 0.5, 0.2);
 }
 
+// ---- starter machines (scrap fields) ---------------------------------------------------------------------
+
+/** Hand winch off a cargo hoist, on its base plate: a cable drum on a shaft between two pillow blocks, the -x block's
+ *  bearing under a cap bolted down at each side. On +x, under a screwed guard: the drum gear on the shaft end (a nut)
+ *  and the crank's pinion above it (a clip). */
+function winch(k: Kit) {
+  const g = k.grade;
+  const Y = 0.55, PY = Y + 0.52;
+  k.box(1.8, 0.08, 0.9, 0, 0, 0, 'trim');
+  for (const [x, z] of [[-0.8, -0.36], [0.8, -0.36], [-0.8, 0.36], [0.8, 0.36]]) k.stud(x, 0.1, z, 0.05);
+  // pillow blocks: the -x one split at the shaft (its cap holds the bearing), the +x one tall enough for the crank
+  k.box(0.24, Y - 0.18, 0.5, -0.55, 0.08, 0, 'body');
+  k.box(0.2, PY + 0.12 - 0.08, 0.4, 0.42, 0.08, 0, 'body');
+  // drum with its cable, the shaft through everything
+  k.rod([-0.85, Y, 0], [0.82, Y, 0], 0.045, 'copper');
+  k.cyl(0.24, 0.66, -0.03, Y, 0, 'body', 'x');
+  for (const x of [-0.37, 0.31]) k.cyl(0.34, 0.04, x, Y, 0, 'trim', 'x');
+  for (let i = 0; i < 6; i++) k.ring(0.26, 0.024, -0.29 + i * 0.105, Y, 0, 'dark', 'x');
+  k.cable([[0.0, Y - 0.25, 0.1], [0.1, 0.12, 0.55], [0.5, 0.06, 0.95], [0.9, 0.05, 1.1]], 0.024, 'dark');
+  // ratchet and pawl on the -x flange
+  k.cyl(0.3, 0.05, -0.42, Y, 0, 'dark', 'x', 12);
+  k.box(0.05, 0.06, 0.26, -0.42, Y + 0.24, 0.12, 'yellow');
+  if (g >= 2) k.ring(0.35, 0.015, 0.31, Y, 0, 'accent', 'x');
+
+  const cap = k.group([-0.55, Y - 0.1, 0]);
+  k.mesh(new THREE.BoxGeometry(0.26, 0.4, 0.5), 'trim', 0, 0.2, 0, cap);
+  const capBolts = [-0.18, 0.18].map((z) => k.bolt('Bearing cap bolt', [-0.55, Y + 0.3, z], [0, 1, 0], [], 2));
+  k.cover(cap, capBolts, [0, 1, 0], 0.13);
+  k.mount('bearing', k.ax('bearing', [-0.55, Y, 0], 'x'), () => capBolts);
+
+  // crank shaft and handle
+  k.rod([0.32, PY, 0], [1.08, PY, 0], 0.035, 'copper');
+  k.rod([1.08, PY, 0], [1.08, PY + 0.35, 0], 0.03, 'trim');
+  k.cyl(0.05, 0.22, 1.08, PY + 0.35, 0, 'red', 'x');
+  // gear guard over both gears, four screws on its outer face
+  const guard = k.group([0.72, Y - 0.32, 0]);
+  k.mesh(new THREE.BoxGeometry(0.34, 1.18, 0.66), 'body', 0, 0.59, 0, guard);
+  k.mesh(new THREE.BoxGeometry(0.02, 0.9, 0.06), g >= 1 ? 'accent' : 'trim', 0.18, 0.59, 0, guard);
+  const guardScrews = k.rect('Guard screw', [0.9, Y + 0.27, 0], [1, 0, 0], 0.5, 0.95, 2);
+  k.cover(guard, guardScrews, [1, 0.3, 0], 0.17);
+  k.mount('gear', k.ax('gear', [0.7, Y, 0], 'x'), () => [k.bolt('Drum gear nut', [0.84, Y, 0], [1, 0, 0], guardScrews, 3)]);
+  k.mount('gear', k.ax('gear', [0.7, PY, 0], 'x'), () => [k.clip('Pinion clip', [0.84, PY, 0], [1, 0, 0], 2, guardScrews)]);
+}
+
+/** A cut-off section of coolant line on two saddles with a solenoid valve in it: the valve body sits in the line
+ *  between two flanges (four bolts each), its coil on top, fed by a lead from a junction box (screwed lid). */
+function solenoidValve(k: Kit) {
+  const g = k.grade;
+  const Y = 0.4;
+  k.box(1.7, 0.06, 0.7, 0, 0, 0, 'trim');
+  for (const x of [-0.6, 0.6]) {
+    k.box(0.14, Y - 0.2, 0.32, x, 0.06, 0, 'dark');
+    k.cyl(0.12, 0.48, x * 1.05, Y, 0, 'body', 'x');
+  }
+  // the line's flanges either side of the valve
+  for (const x of [-0.32, 0.32]) k.cyl(0.24, 0.05, x, Y, 0, 'trim', 'x', 24);
+  const flanges = [-0.36, 0.36].flatMap((x) => k.circle('Flange bolt', [x, Y, 0], [Math.sign(x), 0, 0], 0.18, 4, [], 'bolt', Math.PI / 4));
+  if (g >= 2) for (const x of [-0.6, 0.6]) k.ring(0.125, 0.015, x, Y, 0, 'accent', 'x');
+  // junction box on the bracket, a lead up to the coil
+  k.box(0.36, 0.22, 0.3, 0.45, 0.06, 0.48, 'body');
+  const lid = k.group([0.45, 0.3, 0.48]);
+  k.mesh(new THREE.BoxGeometry(0.38, 0.03, 0.32), 'trim', 0, 0, 0, lid);
+  const lidScrews = [-1, 1].map((sx) => k.screw('Junction box screw', [0.45 + sx * 0.14, 0.32, 0.48]));
+  k.cover(lid, lidScrews, [0, 1, 0.3], 0.02);
+  const lead = k.wire('Coil lead', [[0.45, 0.3, 0.48], [0.4, 0.75, 0.2], [0.15, 0.85, -0.25], [0.0, Y + 0.45, -0.47]], 'brown', lidScrews, 0.03);
+  const valve = k.take('valve');
+  if (valve) k.part('valve', valve, [0, Y - 0.25, 0], [...flanges, lead]);
+  else k.cyl(0.12, 0.5, 0, Y - 0.25, 0, 'body'); // plain spool piece
+  // the coil on a shelf bracket behind the valve, bolted down at both ends
+  k.box(0.4, Y + 0.24, 0.05, 0, 0.06, -0.66, 'trim');
+  k.box(0.5, 0.04, 0.36, 0, Y + 0.26, -0.47, 'trim');
+  k.mount('coil', [[0, Y + 0.3, -0.47], [0, 0, 0]], () => [lead, ...[-0.2, 0.2].map((x) => k.bolt('Coil bolt', [x, Y + 0.3, -0.47], [0, 1, 0], [lead], 2))]);
+}
+
+/** A crashed distress beacon lying on its side: a drum-shaped body with the battery pack under a latched, screwed
+ *  lid, and the transmitter coil in the foot of the snapped-off mast, bolted to its flange. */
+function beacon(k: Kit) {
+  const g = k.grade;
+  k.box(1.2, 0.05, 1.3, 0, 0, 0, 'dark'); // scorched skid plate
+  k.box(1.0, 0.45, 1.0, 0, 0.05, 0, 'body');
+  k.box(1.04, 0.06, 0.12, 0, 0.12, -0.45, 'yellow');
+  k.box(1.04, 0.06, 0.12, 0, 0.12, 0.45, 'yellow');
+  // battery bay on top
+  const lid = k.bay(0, -0.05, 0.9, 0.6, 0.5, 0.3, { latch: true });
+  k.mount('battery', [[0, 0.52, -0.05], [0, 0, 0]], () => [...lid.holds, k.clip('Battery strap', [0, 0.82, -0.05], [0, 1, 0], 2, lid.holds)]);
+  // mast foot on +z with the transmitter coil, the mast snapped off and lying alongside
+  k.cyl(0.3, 0.06, 0, 0.5, 0.52, 'trim', 'y', 24);
+  const feed = k.wire('Antenna feed', [[0.3, 0.5, 0.25], [0.4, 0.62, 0.4], [0.2, 0.6, 0.55]], 'red', lid.holds, 0.03);
+  const footBolts = k.circle('Mast foot bolt', [0, 0.57, 0.52], [0, 1, 0], 0.24, 3, [feed]);
+  k.mount('coil', [[0, 0.56, 0.52], [0, 0, 0]], () => [feed, ...footBolts]);
+  k.rod([0.55, 0.06, 0.7], [0.65, 0.06, -0.8], 0.04, 'trim');
+  k.cyl(0.07, 0.08, 0.56, 0.06, 0.62, 'red', 'y', 10);
+  k.lamps(g >= 2 ? 3 : 2, -0.4, 0.5, 0.42, 0.12);
+}
+
 const BUILDERS: Record<JunkKind, (k: Kit) => void> = {
   pump_housing: pumpHousing,
   jet_engine: jetEngine,
   robot_arm: robotArm,
   control_cabinet: controlCabinet,
+  winch,
+  solenoid_valve: solenoidValve,
+  beacon,
   vehicle_frame: vehicleFrame,
   water_jet: waterJet,
   warp_core: warpCore,
@@ -824,20 +922,21 @@ const BUILDERS: Record<JunkKind, (k: Kit) => void> = {
 };
 // The wrecks are built at about twice their models' size (tools/blender/salvage), so they come back to it here.
 const SCALE: Record<JunkKind, number> = {
-  pump_housing: 0.7, jet_engine: 0.7, robot_arm: 0.8, control_cabinet: 0.85,
+  pump_housing: 0.7, jet_engine: 0.7, robot_arm: 0.8, control_cabinet: 0.85, winch: 0.75, solenoid_valve: 0.75, beacon: 0.8,
   vehicle_frame: 0.5, water_jet: 0.8, warp_core: 0.55, ai_control: 0.62,
 };
 export const JUNK_KINDS = Object.keys(BUILDERS) as JunkKind[];
 
 // ---- assembly ----------------------------------------------------------------------------------------------
 
-/** Build a component or salvage wreck of `kind` holding the parts its `seed` rolls (shared/machine.ts). Part models load in the
- *  background. Slots are sorted by part index, so `slots[i].index === i` whenever every rolled part is mounted. */
-export function buildJunk(kind: JunkKind, seed: number): Junk {
+/** Build a component or salvage wreck of `kind` holding the parts its `seed` rolls (shared/machine.ts) at crash-site `level`.
+ *  Part models load in the background. Slots are sorted by part index, so `slots[i].index === i` whenever every rolled part
+ *  is mounted. */
+export function buildJunk(kind: JunkKind, seed: number, level = 1): Junk {
   const spec = junkSpec(kind);
   const rolled: Record<PartId, Roll[]> = { battery: [], motor: [], heatsink: [], compute: [], antimatter: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
   let best = 0;
-  machineParts(kind, seed).forEach(({ part, tier }, index) => {
+  machineParts(kind, seed, level).forEach(({ part, tier }, index) => {
     rolled[part].push({ tier, index });
     best = Math.max(best, TIERS.indexOf(tier));
   });

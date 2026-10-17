@@ -180,8 +180,16 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   let state = row && !atBase && !overBase(row.x, row.z, 0.5) ? spawnState(row.x, row.z) : spawnState();
   if (spawn === 'crash') {
     // Dev helper: 7 m from the large machine of the nearest crash site, on its far side from the wreck.
-    const m = crashSitesNear(state.x, state.z, 3000)[0]?.machines[0];
+    const m = crashSitesNear(state.x, state.z, 3000).find((s) => s.level > 0)?.machines[0];
     if (m) state = spawnState(m.x + m.dx * 7, m.z + m.dz * 7);
+  }
+  if (spawn === 'field') {
+    // Dev helper: just outside the nearest scrap field, on the base's side, looking at it.
+    const s = crashSitesNear(state.x, state.z, 3000).find((o) => o.level === 0);
+    if (s) {
+      const d = Math.hypot(state.x - s.x, state.z - s.z) || 1;
+      state = spawnState(s.x + ((state.x - s.x) / d) * (s.radius + 6), s.z + ((state.z - s.z) / d) * (s.radius + 6));
+    }
   }
   items.setup(browserId);
   state.bike = bikeLevel(items.slots(browserId, 'equip'));

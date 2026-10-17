@@ -6,7 +6,7 @@
 // arithmetic), so every client and the server agree where every wreck is.
 import { BASE_SPAWN, padBlend } from './base.ts';
 import { seeded, sitesNear } from './crash.ts';
-import { crashSitesNear } from './crashsites.ts';
+import { crashSitesNear, siteLevel } from './crashsites.ts';
 import { SALVAGE, type SalvageId } from './salvage.ts';
 import { baseHeight, WORLD_HALF, WORLD_SEED } from './terrain.ts';
 
@@ -70,7 +70,8 @@ function generate(ix: number, iz: number): Wreck | null {
   for (let t = 0; t < 4; t++) {
     const x = (ix + 0.1 + 0.8 * r()) * WRECK_CELL;
     const z = (iz + 0.1 + 0.8 * r()) * WRECK_CELL;
-    if (clear(x, z)) return { id: `w:${ix},${iz}`, x, z, yaw, kind };
+    // The warp core is guardian ground's (shared/crashsites.ts SiteLevel): nearer in, an AI rack lies there instead.
+    if (clear(x, z)) return { id: `w:${ix},${iz}`, x, z, yaw, kind: kind === 'warp_core' && siteLevel(x, z) < 2 ? 'ai_control' : kind };
   }
   return null;
 }

@@ -14,12 +14,12 @@ export interface MachinePart {
 
 const cache = new Map<string, MachinePart[]>();
 
-/** The parts in a machine of `kind` with this seed, in roll order. */
-export function machineParts(kind: JunkKind, seed: number): MachinePart[] {
-  const key = `${kind}:${seed >>> 0}`;
+/** The parts in a machine of `kind` with this seed, in roll order; `level` is its crash site's (default: carried home). */
+export function machineParts(kind: JunkKind, seed: number, level = 1): MachinePart[] {
+  const key = `${kind}:${seed >>> 0}:${level}`;
   let out = cache.get(key);
   if (!out) {
-    out = rollParts(kind, seeded(seed));
+    out = rollParts(kind, seeded(seed), level);
     if (cache.size > 512) cache.clear();
     cache.set(key, out);
   }

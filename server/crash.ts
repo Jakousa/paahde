@@ -2,7 +2,7 @@
 //  - When every part of a crash site's large machine has been taken, the crash site is spent (persisted with a
 //    timestamp, broadcast as 'crashSpent'): it stops smoking and its machine stays a husk, permanently.
 //  - Small machines are carried home: crashTake validates reach and puts the machine in the player's bag (an item
-//    of the component's kind); the site stays empty for good. Salvage wrecks (shared/wrecks.ts, ids "w:...") are
+//    of the component's kind); the site stays empty for good, except at a scrap field (STARTER_RESPAWN_MS). Salvage wrecks (shared/wrecks.ts, ids "w:...") are
 //    carried the same way, and lie out there again WRECK_RESPAWN_MS later. crashUse takes one out of the bag when it
 //    is put on the workbench.
 //  - Large machines are worked on by everyone near them through a session per site: which steps are done and
@@ -65,7 +65,11 @@ function carrySite(id: unknown): { id: string; kind: string; dist: (feet: Feet) 
   const s = crashSiteById(id);
   return s && COMPONENTS[s.kind].carry ? { id: s.id, kind: s.kind, dist: flat(s) } : null;
 }
-const respawnMs = (id: string) => (id.startsWith('w:') ? WRECK_RESPAWN_MS : id.startsWith('d:') ? DEBRIS_RESPAWN_MS : Infinity);
+/** A scrap field's small machines (site level 0, the starter machines every new player needs) are back after this long;
+ *  other small machines stay gone. */
+const STARTER_RESPAWN_MS = 20 * 60 * 1000;
+const respawnMs = (id: string) => id.startsWith('w:') ? WRECK_RESPAWN_MS : id.startsWith('d:') ? DEBRIS_RESPAWN_MS
+  : crashSiteById(id)?.level === 0 ? STARTER_RESPAWN_MS : Infinity;
 
 export class CrashServer {
   private db: Db;
@@ -197,7 +201,8 @@ export class CrashServer {
   }
 
   flush(): ServerMsg | null {
-    // Salvage wrecks and crash debris lie out there again a while after being carried off (small machines stay gone).
+    // Salvage wrecks, crash debris and the scrap fields' machines lie out there again a while after being carried off
+    // (other small machines stay gone).
     const now = Date.now();
     for (const [id, at] of this.taken) {
       if (now - at < respawnMs(id)) continue;
@@ -222,7 +227,7 @@ export class CrashServer {
       return this.bench ? { id: BENCH_ID, x: BENCH.x, z: BENCH.z, range: BENCH_REACH, parts: machineParts(this.bench.kind, this.bench.seed), wreck: null } : null;
     }
     const site = crashSiteById(id);
-    return site && !COMPONENTS[site.kind].carry ? { id: site.id, x: site.x, z: site.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed), wreck: site.wreck } : null;
+    return site && !COMPONENTS[site.kind].carry ? { id: site.id, x: site.x, z: site.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed, site.level), wreck: site.wreck } : null;
   }
   private newSession(done: number[], taken: number[]): Session {
     return { done: new Set(done), taken: new Map(taken.map((i) => [i, -1])), players: new Set(), holders: new Map(), need: new Map() };

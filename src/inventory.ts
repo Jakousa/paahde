@@ -177,6 +177,18 @@ ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.8" y="-10" width=
   control_cabinet: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="3" width="16" height="20" rx="1.5" fill="#7d7a72"/>
 <rect x="5" y="5" width="12" height="16" fill="#5e6a5a"/><circle cx="8" cy="8" r="1.1" fill="#ffb050"/><circle cx="12" cy="8" r="1.1" fill="#74d08a"/>
 <rect x="7" y="12" width="8" height="5" fill="#2a160a"/></g></svg>`,
+  // The scrap fields' starter machines: a winch drum with its crank, a valve in a pipe with its coil, a beacon with its mast.
+  winch: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="2" y="19" width="18" height="3" fill="#6a665e"/>
+<rect x="4" y="10" width="3" height="9" fill="#7a5238"/><rect x="15" y="7" width="3" height="12" fill="#7a5238"/>
+<rect x="6" y="11" width="10" height="7" rx="1.5" fill="#56705e"/><path d="M7 12.5h8M7 14.5h8M7 16.5h8" stroke="#2a160a" stroke-width="0.6"/>
+<path d="M18 8h2v-4" fill="none"/><circle cx="20" cy="4" r="1.2" fill="#b02a20"/></g></svg>`,
+  solenoid_valve: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="1" y="15" width="20" height="4" fill="#7d7a72"/>
+<rect x="6" y="13" width="1.6" height="8" fill="#55575a"/><rect x="14.4" y="13" width="1.6" height="8" fill="#55575a"/>
+<rect x="8" y="12" width="6" height="9" rx="1" fill="#d4a24c"/><rect x="8.5" y="4" width="5" height="7" rx="1" fill="#c87a44"/>
+<path d="M13.5 6c4 0 5 2 5 6" fill="none" stroke="#6b3f1e"/></g></svg>`,
+  beacon: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="12" width="16" height="10" rx="1.5" fill="#e0c060"/>
+<path d="M3 15h16M3 19h16" stroke="#2a160a" stroke-width="0.6"/><rect x="9" y="8" width="4" height="4" fill="#7d7a72"/>
+<path d="M11 8V2" stroke-width="1.2"/><circle cx="11" cy="2.5" r="1.4" fill="#ff5a3a"/></g></svg>`,
   // Laser rifle, muzzle up-right: wood stock, grip and handguard, grey receiver, scope, energy cell, glowing emitter.
   laser_rifle: `<svg viewBox="0 0 22 26"><g transform="translate(11 13.5) rotate(-48) scale(0.8)" stroke="#2a160a" stroke-width="0.8"
 stroke-linejoin="round"><path d="M-13 5Q-3 10 6 1.5" fill="none" stroke="#6e6444" stroke-width="1"/>

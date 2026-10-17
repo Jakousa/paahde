@@ -478,10 +478,10 @@ export class Net {
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'joining';
-      // ?spawn=base / ?spawn=crash: start at the base's door or the nearest crash site (only on the first join;
-      // a reconnect keeps where you are).
+      // ?spawn=base / crash / field: start at the base's door, the nearest crash site or scrap field (only on the
+      // first join; a reconnect keeps where you are).
       const spawn = this.joinedOnce ? null : new URLSearchParams(location.search).get('spawn');
-      this.send(spawn === 'base' || spawn === 'crash' ? { t: 'hello', browserId: this.browserId, spawn } : { t: 'hello', browserId: this.browserId });
+      this.send(spawn === 'base' || spawn === 'crash' || spawn === 'field' ? { t: 'hello', browserId: this.browserId, spawn } : { t: 'hello', browserId: this.browserId });
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
     ws.onclose = () => {

@@ -1,12 +1,13 @@
-// Loot lying in the world (shared/loot.ts): broken gear to find and repair (shared/gear.ts), things buried
-// in the sand that the metal detector hears and a shovel digs up. All shared: the first player to press F
+// Loot lying in the world (shared/loot.ts): broken gear to find and repair (shared/gear.ts) at the crash sites (the
+// starter gear at the scrap fields near the base, the advanced gear on crawler ground, rare loose parts on guardian
+// ground: shared/crashsites.ts SiteLevel), things buried in the sand that the metal detector hears and a shovel digs up. All shared: the first player to press F
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
 // Kept in memory: a restart lays out fresh ones. Items players drop are kept in the DB (`dropped`) and never respawn.
-import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
+import { BASE, overBase } from '../shared/base.ts';
 import { GEAR, GEAR_KINDS } from '../shared/gear.ts';
 import { partKind, SCRAP_ITEMS } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
-import { allCrashSites } from '../shared/crashsites.ts';
+import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
 import { PART_IDS } from '../shared/parts.ts';
 import { TIERS } from '../shared/salvage.ts';
 import { EDIT_CELL, edits, WORLD_HALF } from '../shared/terrain.ts';
@@ -16,13 +17,17 @@ import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
 
-/** How many of each piece of broken gear lie around at once. */
-const FINDS: Record<string, number> = {
-  canteen: 4, shovel: 3, backpack: 3, spyglass: 2, storm_detector: 2, wristpad: 2, metal_detector: 2, motorcycle: 2,
+/** How many of each piece of broken gear lie around at once, and the level of crash site they lie at: a new player
+ *  starts with nothing and finds the canteen, telescope and backpack at the scrap fields. */
+const FINDS: Record<string, { n: number; level: SiteLevel }> = {
+  canteen: { n: 4, level: 0 }, spyglass: { n: 3, level: 0 }, backpack: { n: 4, level: 0 },
+  motorcycle: { n: 3, level: 1 }, shovel: { n: 3, level: 1 }, storm_detector: { n: 2, level: 1 }, wristpad: { n: 2, level: 1 },
+  metal_detector: { n: 2, level: 1 },
 };
-/** Gear that also turns up near the spawn point (one of each), so a new player can make a start. */
-const NEAR_SPAWN = ['canteen', 'shovel'];
-const NEAR_MIN = 25, NEAR_MAX = 110;
+/** Loose Quality / Space-grade parts lying at guardian ground (level 2) at once (RARE_KIND: any such part, anti-matter too). */
+const RARE_FINDS = 10;
+const RARE_KIND = 'rare';
+const RARE_TIERS = [3, 1];
 /** Buried caches at once, how far from the base, and how deep (m). */
 const CACHES = 60;
 const CACHE_MIN_R = 80, CACHE_MAX_R = 1200;
@@ -35,7 +40,7 @@ const TIER_WEIGHTS = [5, 3, 1.2, 0.25];
 const CACHE_ODDS = { part: 0.65, scrap: 0.2 };
 const PARTS = PART_IDS.filter((p) => p !== 'antimatter');
 
-type Spawn = { at: number; what: 'find' | 'cache'; kind?: string; nearSpawn?: boolean };
+type Spawn = { at: number; what: 'find' | 'cache'; kind?: string };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
@@ -61,10 +66,8 @@ export class LootServer {
       this.loot.set(r.id, { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), x: r.x, z: r.z, depth: 0, src: 'drop' });
       this.nextId = Math.max(this.nextId, r.id + 1);
     }
-    for (const [kind, n] of Object.entries(FINDS)) {
-      const near = NEAR_SPAWN.includes(kind);
-      for (let i = 0; i < n; i++) this.spawnFind(kind, near && i === 0);
-    }
+    for (const [kind, f] of Object.entries(FINDS)) for (let i = 0; i < f.n; i++) this.spawnFind(kind);
+    for (let i = 0; i < RARE_FINDS; i++) this.spawnFind(RARE_KIND);
     for (let i = 0; i < CACHES; i++) this.spawnCache();
     this.added = [];
   }
@@ -98,7 +101,8 @@ export class LootServer {
     }
     if (!give(l)) return 'full';
     this.remove(l);
-    this.pending.push({ at: Date.now() + (l.src === 'find' ? FIND_RESPAWN_MS : CACHE_RESPAWN_MS), what: l.src, kind: l.src === 'find' ? l.kind : undefined, nearSpawn: l.near });
+    const kind = l.kind in FINDS ? l.kind : RARE_KIND;
+    this.pending.push({ at: Date.now() + (l.src === 'find' ? FIND_RESPAWN_MS : CACHE_RESPAWN_MS), what: l.src, kind: l.src === 'find' ? kind : undefined });
     return l.kind;
   }
 
@@ -139,7 +143,7 @@ export class LootServer {
     if (!due.length) return;
     this.pending = this.pending.filter((p) => p.at > now);
     for (const p of due) {
-      if (p.what === 'find') this.spawnFind(p.kind!, !!p.nearSpawn);
+      if (p.what === 'find') this.spawnFind(p.kind!);
       else this.spawnCache();
     }
   }
@@ -162,23 +166,22 @@ export class LootServer {
     return parts;
   }
 
-  private spawnFind(kind: string, nearSpawn: boolean) {
+  /** Gear kind `kind` (FINDS) lying at a crash site of its level, among the debris around the wreck; RARE_KIND: a rare part. */
+  private spawnFind(kind: string) {
+    const level = FINDS[kind]?.level ?? 2;
+    const sites = this.sites.filter((s) => s.level === level);
     let x = 0, z = 0;
     for (let tries = 0; tries < 20; tries++) {
-      if (nearSpawn) {
-        const a = rand(0, Math.PI * 2), d = rand(NEAR_MIN, NEAR_MAX);
-        x = BASE_SPAWN.x + Math.sin(a) * d;
-        z = BASE_SPAWN.z + Math.cos(a) * d;
-      } else {
-        // Out at a crash site, lying among the debris around the wreck.
-        const site = pick(this.sites);
-        const a = rand(0, Math.PI * 2), d = rand(site.radius * 0.4, site.radius + 8);
-        x = site.x + Math.sin(a) * d;
-        z = site.z + Math.cos(a) * d;
-      }
+      const site = pick(sites.length ? sites : this.sites);
+      const a = rand(0, Math.PI * 2), d = rand(site.radius * 0.4, site.radius + 8);
+      x = site.x + Math.sin(a) * d;
+      z = site.z + Math.cos(a) * d;
       if (!overBase(x, z, 6)) break;
     }
-    this.add({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, depth: 0, src: 'find', ...(nearSpawn ? { near: true } : {}) });
+    if (kind === RARE_KIND) {
+      const tier = Math.random() * (RARE_TIERS[0] + RARE_TIERS[1]) < RARE_TIERS[0] ? 'quality' : 'space';
+      this.add({ id: this.nextId++, kind: partKind(pick(PART_IDS), tier), x, z, depth: 0, src: 'find' });
+    } else this.add({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, depth: 0, src: 'find' });
   }
 
   private spawnCache() {

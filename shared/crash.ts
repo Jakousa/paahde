@@ -1,10 +1,13 @@
 // Machine sites: the wrecked machinery lying at the crashed spacecraft (shared/crashsites.ts `machines`), one
 // component each (COMPONENTS in salvage.ts) that you take apart where it lies (large) or carry home (small),
-// src/teardown. Every crash site has one large machine next to its wreck and 0–2 small ones in the debris trail.
+// src/teardown. Every crash site has one large machine next to its wreck and 0–2 small ones in the debris trail; a
+// scrap field (site level 0) only 2–3 small ones. Which kinds lie where depends on the site's level (LEVEL_KINDS),
+// and so do the large machines' part tiers (shared/salvage.ts LEVEL_TIERS).
 // The layout is the crash sites' (deterministic, integer hashing), so every client sees the same machines with the
-// same contents. Ids are "<crash site id>:<index>", index 0 the large machine.
+// same contents. Ids are "<crash site id>:<index>", index 0 the large machine (if the site has one).
 import { BASE_SPAWN } from './base.ts';
 import { crashSite, crashSitesNear, crashTaken, type CrashSite as Wreck } from './crashsites.ts';
+import type { SiteLevel } from './crashsites.ts';
 import { COMPONENTS, SALVAGE, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
 import { STATIONS } from './stations.ts';
 
@@ -37,12 +40,14 @@ export function crashChanged() {
 export const CRASH_REACH = 4.5;
 
 export interface CrashSite {
-  /** Unique, stable id: "<crash site id>:<index>", index 0 the large machine. */
+  /** Unique, stable id: "<crash site id>:<index>", index 0 the large machine (if the site has one). */
   id: string;
   /** The crash site (shared/crashsites.ts id) it lies at. */
   wreck: number;
-  /** Index at the crash site: 0 is the large machine, then the small ones. */
+  /** Index at the crash site: 0 is the large machine (if any), then the small ones. */
   index: number;
+  /** The crash site's level (shared/crashsites.ts SiteLevel): its large machine's parts roll by it. */
+  level: SiteLevel;
   x: number;
   z: number;
   /** Heading of the component, radians (three.js rotation.y; the machine lies across its throw direction). */
@@ -63,12 +68,19 @@ export function seeded(seed: number) {
   };
 }
 
-const KINDS = Object.keys(COMPONENTS) as ComponentKind[];
-function pickKind(u: number, carry: boolean): ComponentKind {
-  const ks = KINDS.filter((k) => COMPONENTS[k].carry === carry);
-  let r = u * ks.reduce((s, k) => s + COMPONENTS[k].weight, 0);
-  for (const k of ks) if ((r -= COMPONENTS[k].weight) < 0) return k;
-  return ks[0];
+/** Relative odds of each component at each site level, small (carried) and large ones: scrap fields hold the starter
+ *  machines (the parts for the canteen, telescope, backpack and laser rifle), crawler ground the motorcycle's motor and
+ *  the advanced gear's electronics, guardian ground mostly jet engines (rolled with better tiers there). */
+const LEVEL_KINDS: Record<SiteLevel, Partial<Record<ComponentKind, number>>> = {
+  0: { winch: 3, solenoid_valve: 3, beacon: 3 },
+  1: { control_cabinet: 3, robot_arm: 2, beacon: 1, pump_housing: 3, jet_engine: 1 },
+  2: { robot_arm: 3, control_cabinet: 2, jet_engine: 3, pump_housing: 1 },
+};
+function pickKind(u: number, carry: boolean, level: SiteLevel): ComponentKind {
+  const ks = (Object.entries(LEVEL_KINDS[level]) as [ComponentKind, number][]).filter(([k]) => COMPONENTS[k].carry === carry);
+  let r = u * ks.reduce((s, [, w]) => s + w, 0);
+  for (const [k, w] of ks) if ((r -= w) < 0) return k;
+  return ks[0][0];
 }
 
 const cache = new Map<number, CrashSite[]>();
@@ -79,8 +91,8 @@ export function machinesAt(w: Wreck): CrashSite[] {
   if (out) return out;
   out = w.machines.map((m, index) => {
     const r = seeded(m.seed);
-    const kind = pickKind(r(), !m.large);
-    return { id: `${w.id}:${index}`, wreck: w.id, index, x: m.x, z: m.z, yaw: Math.atan2(m.dx, m.dz), kind, seed: (r() * 4294967296) >>> 0 };
+    const kind = pickKind(r(), !m.large, w.level);
+    return { id: `${w.id}:${index}`, wreck: w.id, index, level: w.level, x: m.x, z: m.z, yaw: Math.atan2(m.dx, m.dz), kind, seed: (r() * 4294967296) >>> 0 };
   });
   cache.set(w.id, out);
   return out;
@@ -94,8 +106,6 @@ export function crashSiteById(id: unknown): CrashSite | null {
   return (w && machinesAt(w)[Number(m![2])]) ?? null;
 }
 
-/** The large machine of crash site `w` (every site has one). */
-export const mainMachine = (w: Wreck): CrashSite => machinesAt(w)[0];
 
 /** Every machine site within `radius` of (x, z). */
 export function sitesNear(x: number, z: number, radius: number): CrashSite[] {
