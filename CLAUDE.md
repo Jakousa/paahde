@@ -19,6 +19,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/sim.ts` — deterministic movement/physics, run by **both** client and server
 - `shared/protocol.ts` — WebSocket message types
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`)
+- `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen
+  tuning, drained and validated in `server/water.ts`, HUD + `playerHands` in `src/water.ts`
 - `shared/base.ts` — home base layout + collision; `shared/garden.ts` — greenhouse beds (stages, look target),
   owned by `server/garden.ts`
 - `server/index.ts` — authoritative game server (static files + `/ws`); `server/db.ts` — SQLite;

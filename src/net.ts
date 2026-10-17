@@ -10,6 +10,8 @@
 // - Terrain: the server owns the edit layer and sends absolute values. Our own dig strokes are predicted
 //   immediately; the server's value for each predicted vertex is held back until a snapshot acks the
 //   input that dug it (terrainEdit always arrives before that snapshot), then applied.
+// - Survival: thirst/canteen state comes from the server ('water'); src/water.ts plays drink/fill and asks.
+//   Dying of thirst moves us to the base on the server; the next reconciliation snaps there.
 // - Scrap: picked-up pieces are hidden (and lose their hitbox) as soon as we ask; the server sends the
 //   piece back to us if it refuses, and our new inventory if it agrees.
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
@@ -17,7 +19,7 @@ import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
-import { shiftToTimeOfDay } from './world/dayNight';
+import { shiftToTimeOfDay } from '../shared/sun.ts';
 
 const INTERP_MS = 100;
 /** Ceiling on the extra interpolation delay added for jitter. */
@@ -45,6 +47,8 @@ export class Net {
   color = 0xffffff;
   /** Predicted local state (authoritative for physics on this client). */
   me: PlayerState = spawnState();
+  /** The predicted state one tick before `me`: view() draws between the two. */
+  private prev: PlayerState = this.me;
   /** Visual offset after a correction, decays to zero so corrections don't look like teleports. */
   errorX = 0;
   errorY = 0;
@@ -63,6 +67,8 @@ export class Net {
   private browserId: string;
   private joinedOnce = false;
   private digCooldown = 0;
+  /** Take the next reconciliation as a teleport (respawn). */
+  private snapNext = false;
   /** Predicted terrain vertices: the server's latest value, and the input seq that last dug there. */
   private predicted = new Map<number, { server: number; seq: number }>();
   /** Chunks we held before a (re)join; whatever the server doesn't resend is dropped. */
@@ -73,6 +79,11 @@ export class Net {
   /** The server sent a new inventory. */
   onInventory?: (items: number[]) => void;
 
+  /** Thirst bar, canteen sips and whether the sun is draining us (server 'water', shared/water.ts). */
+  water = { water: 100, sips: 4, heat: false, at: 0 };
+  onWater?: (w: { water: number; sips: number; heat: boolean }) => void;
+  /** We died (of thirst); the server has already moved us back to the base. */
+  onDied?: () => void;
   /** Greenhouse bed stages (shared/garden.ts), from the server; empty until the first 'garden'. */
   garden: number[] = [];
   onGarden?: (beds: number[]) => void;
@@ -95,6 +106,7 @@ export class Net {
   tick(input: number, yaw: number, pitch: number) {
     if (!this.connected) return;
     this.seq++;
+    this.prev = this.me;
     this.me = step(this.me, input, yaw);
     this.pending.push({ seq: this.seq, input, yaw });
     this.send({ t: 'input', seq: this.seq, input, yaw, pitch });
@@ -107,6 +119,16 @@ export class Net {
     this.send({ t: 'pickup', ix: pc.ix, iz: pc.iz, i: pc.i });
     scrapTaken.add(pc.key);
     scrapChanged();
+  }
+
+  /** One sip finished (src/water.ts); the server answers with 'water'. */
+  drink() {
+    this.send({ t: 'drink' });
+  }
+
+  /** Canteen refill finished at the base; the server answers with 'water'. */
+  fill() {
+    this.send({ t: 'fill' });
   }
 
   /** Plant or harvest a greenhouse bed; the server answers with 'garden' (and 'tended' to us). */
@@ -200,6 +222,22 @@ export class Net {
     this.send({ t: 'setEpoch', epoch: null });
   }
 
+  /**
+   * Where to draw us: `alpha` (the leftover fraction of a tick, 0..1) of the way from the previous predicted
+   * tick to the latest, plus the decaying correction. At 60 Hz ticks and a 120 Hz screen (or a frame that
+   * runs two ticks) drawing the latest tick alone moves in uneven steps, which shows on the bike's 26 m/s.
+   */
+  view(alpha: number) {
+    const a = this.prev, b = this.me;
+    return {
+      x: a.x + (b.x - a.x) * alpha + this.errorX,
+      y: a.y + (b.y - a.y) * alpha + this.errorY,
+      z: a.z + (b.z - a.z) * alpha + this.errorZ,
+      heading: a.riding === b.riding ? lerpAngle(a.heading, b.heading, alpha) : b.heading, // mounting sets it
+      facing: lerpAngle(a.facing, b.facing, alpha),
+    };
+  }
+
   /** Decay the visual error and interpolate remote players for this render frame. */
   frame(dtSeconds: number): RemotePlayer[] {
     const k = Math.exp(-dtSeconds * 15);
@@ -253,6 +291,14 @@ export class Net {
       this.inventory = msg.items;
       return this.onInventory?.(msg.items);
     }
+    if (msg.t === 'water') {
+      this.water = { water: msg.water, sips: msg.sips, heat: msg.heat, at: performance.now() };
+      return this.onWater?.(msg);
+    }
+    if (msg.t === 'died') {
+      this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
+      return this.onDied?.();
+    }
     if (msg.t === 'garden') {
       this.garden = msg.beds;
       return this.onGarden?.(msg.beds);
@@ -267,7 +313,7 @@ export class Net {
       this.joinedOnce = true;
       this.color = msg.color;
       this.epoch = msg.epoch;
-      this.me = msg.state;
+      this.me = this.prev = msg.state;
       this.seq = 0;
       this.retryMs = 500;
       this.status = 'online';
@@ -303,7 +349,11 @@ export class Net {
     this.errorY += this.me.y - s.y;
     this.errorZ += this.me.z - s.z;
     // Big jumps (respawn, long lag) should snap, not glide.
-    if (Math.hypot(this.errorX, this.errorY, this.errorZ) > 3) this.errorX = this.errorY = this.errorZ = 0;
+    if (this.snapNext || Math.hypot(this.errorX, this.errorY, this.errorZ) > 3) this.errorX = this.errorY = this.errorZ = 0;
+    this.snapNext = false;
+    // Move the previous tick with the correction, so view() between them doesn't jump either.
+    const p = this.prev;
+    this.prev = { ...p, x: p.x + s.x - this.me.x, y: p.y + s.y - this.me.y, z: p.z + s.z - this.me.z, heading: p.heading + s.heading - this.me.heading };
     this.me = s;
   }
 

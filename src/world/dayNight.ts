@@ -1,59 +1,33 @@
 // Day/night cycle: one 24 h day every DAY_SECONDS of real time, on the server's wall clock so every
-// player sees the same sky. Visual only (nothing in shared/sim.ts reads it), so Math.sin is fine.
+// player sees the same sky. The clock and the sun's arc live in shared/sun.ts (the server uses them for
+// heat); this file adds the visual overrides (?tod, ?day, debug menu) and the sky palette.
 //
-// The sun runs a real diurnal arc (spherical astronomy, hour angle H at latitude LAT and declination
-// DECL): it rises in the east (+Z), peaks in the south (+X) at 90° − LAT + DECL, and sets a little north
-// of west (−Z), i.e. roughly ahead of the spawn view. The moon is full: opposite the sun.
+// The moon is full: opposite the sun.
 //
 // Sky colours and lighting are keyframed on sun elevation. The golden-hour key (10°) is whatever env.ts
 // and sky.ts start with, so tuning those still tunes the evening; the other keys sit around it.
 import * as THREE from 'three/webgpu';
 import { hazeColor, horizonColor, horizonSunColor, midSkyColor, moonColor, moonDirection, nightLevel, sunColor, sunDirection, zenithColor } from './env.ts';
+import { DAY_SECONDS, DECL, skyVector, sunHourAngle, timeOfDayAt } from '../../shared/sun.ts';
 
-/** Real seconds per in-game day (24 h in 30 min). */
-export const DAY_SECONDS = 30 * 60;
-const LAT = THREE.MathUtils.degToRad(42);
-const DECL = THREE.MathUtils.degToRad(9);
-/** Shifts the cycle against the Unix epoch (fraction of a day). */
-const DAY_OFFSET = 0.3;
+export { clockText, DAY_SECONDS } from '../../shared/sun.ts';
+
 /** Moonlight on the ground at full strength (linear): dim, a little silver, still warm enough to read as sand. */
 const MOONLIGHT = new THREE.Color(0.58, 0.62, 0.78).multiplyScalar(0.4);
 
 const params = new URLSearchParams(location.search);
-/** `?tod=0.75` freezes the clock (0 = midnight, 0.5 = noon); `?day=60` makes a day last 60 s. */
+/** `?tod=0.75` freezes the clock (0 = midnight, 0.5 = noon); `?day=60` makes a day last 60 s. Visual only. */
 const FIXED_TOD = params.has('tod') ? Number(params.get('tod')) : null;
 const DAY_LEN = Number(params.get('day') ?? DAY_SECONDS);
 
 /** Set by the debug menu (src/debugMenu.ts): a time of day in [0, 1) to hold instead of the shared clock. */
 export const timeControl = { override: null as number | null };
 
-/** Time of day in [0, 1): 0 = midnight, 0.25 ≈ sunrise, 0.5 = noon, 0.75 ≈ sunset. */
+/** Time of day in [0, 1) as drawn: the shared clock unless ?tod, ?day or the debug menu override it. */
 export function timeOfDay(unixMs: number): number {
   if (timeControl.override !== null) return timeControl.override;
   if (FIXED_TOD !== null) return ((FIXED_TOD % 1) + 1) % 1;
-  const t = unixMs / 1000 / DAY_LEN + DAY_OFFSET;
-  return t - Math.floor(t);
-}
-
-/** Milliseconds to add to the shared clock at `unixMs` so the time of day becomes `tod` (forward, within one day). */
-export function shiftToTimeOfDay(unixMs: number, tod: number): number {
-  const now = unixMs / 1000 / DAY_LEN + DAY_OFFSET;
-  const ahead = (((tod - now) % 1) + 1) % 1;
-  return ahead * DAY_LEN * 1000;
-}
-
-/** "HH:MM" for a time of day. */
-export function clockText(tod: number): string {
-  const min = Math.floor(tod * 24 * 60);
-  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
-}
-
-/** Unit vector to a body at hour angle h (0 = due south, highest) and declination decl. */
-function skyVector(h: number, decl: number, out: THREE.Vector3): THREE.Vector3 {
-  const up = Math.sin(LAT) * Math.sin(decl) + Math.cos(LAT) * Math.cos(decl) * Math.cos(h);
-  const east = -Math.cos(decl) * Math.sin(h);
-  const north = Math.cos(LAT) * Math.sin(decl) - Math.sin(LAT) * Math.cos(decl) * Math.cos(h);
-  return out.set(-north, up, east).normalize();
+  return timeOfDayAt(unixMs, DAY_LEN);
 }
 
 type Key = {
@@ -107,7 +81,7 @@ export class DayNight {
   /** Move the sun and moon to `unixMs` and blend the sky palette. Writes the env.ts uniforms. */
   update(unixMs: number) {
     this.tod = timeOfDay(unixMs);
-    const h = (this.tod - 0.5) * Math.PI * 2;
+    const h = sunHourAngle(this.tod);
     const sun = skyVector(h, DECL, sunDirection.value);
     skyVector(h + Math.PI, -DECL, moonDirection.value);
     this.elevation = Math.asin(sun.y);

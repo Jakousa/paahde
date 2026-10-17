@@ -5,6 +5,8 @@ const bikeAllowed = import.meta.env.DEV || location.search.includes('debug');
 let mouseDig = false;
 let mousePile = false;
 let pickupPressed = false;
+/** Hands full (src/water.ts holds the canteen): left mouse / E and right mouse / Q don't dig or pile. */
+export const tools = { blocked: false };
 // While the pointer is locked the game owns the keyboard: swallow browser shortcuts (Tab, F-keys, Alt, Ctrl+S...).
 // Esc frees the mouse (the browser does that itself), and then keys behave normally again.
 const captured = () => !!document.pointerLockElement;
@@ -63,11 +65,22 @@ export function readInput(): number {
   if (keys.has('ShiftLeft') || keys.has('ShiftRight')) input |= SPRINT;
   // C is an alias: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
   if (keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyC')) input |= SLIDE;
+  if (tools.blocked) return input;
   if (mouseDig || keys.has('KeyE')) input |= DIG;
   else if (mousePile || keys.has('KeyQ')) input |= PILE;
   // 9: get on / off the sand bike. A dev helper: only in `npm run dev` or with ?debug.
   if (bikeAllowed && keys.has('Digit9')) input |= BIKE;
   return input;
+}
+
+/** Use button (left mouse or E) held down: digs normally, drinks while the canteen is held. */
+export function useHeld(): boolean {
+  return mouseDig || keys.has('KeyE');
+}
+
+/** F held down (pickup / fill). */
+export function interactHeld(): boolean {
+  return keys.has('KeyF');
 }
 
 /** True once per press of the pickup key (F). */

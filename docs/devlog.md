@@ -2,6 +2,37 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Thirst and heat
+
+The first survival mechanic: the sun dries you out, the canteen keeps you going, the base refills it.
+
+- **Water** (0–100, the thirst bar) is server-authoritative (`server/water.ts`), not in `shared/sim.ts`
+  (it never moves you). Saved per browser ID in `players` (`water`, `sips` columns) with the position.
+- **Heat:** while the sun is up and you're outside the base (`insideBase`), water drains at
+  `100 / 300 s × sin(elevation) / sin(57°)`: a full bar lasts **5 min at noon**, longer morning and evening,
+  nothing at night or indoors. Sprinting (Shift held and moving faster than a walk) drains **1.5×**. Over a
+  whole day (16 min of daylight) that's about two bars outdoors.
+- **Shared sun:** the clock and the sun's arc moved from `src/world/dayNight.ts` into `shared/sun.ts`
+  (plain math), so the server's heat matches the drawn sun. The server uses the real shared clock;
+  `?tod`, `?day` and the debug slider stay visual-only (the debug menu's "Apply to all players" moves the
+  server clock and therefore the heat too).
+- **Canteen** (hotbar slot 1, key **1** takes it out/puts it away): 4 sips × 25 water, starts full. With it
+  out, left mouse / E don't dig: hold for 1.2 s to drink one sip (`drink`, server checks sips, a 1 s cooldown
+  and the respawn grace). In the base, **F** refills it in 1.5 s (`fill`, server checks `insideBase` + 2 m
+  slack); scrap pickup keeps F when a piece is targeted. The base's water is endless.
+- **Death:** at 0 you die of thirst: the server moves you to `BASE_SPAWN` with full water and canteen and
+  sends `died`; the client shows "You died of thirst" for 3 s, and the next reconciliation snaps (not
+  glides) to the base. No drain or drinking for those 3 s. Scrap inventory is kept.
+- **HUD** (`src/water.ts`, DOM/CSS): thirst bar bottom-centre (blue → amber → red as it empties) with a sun
+  light that glows while you're draining, the 4-slot hotbar under it (canteen with sip pips), prompts under
+  the crosshair, and below 20% a pulsing bar and a red heat vignette. The bar eases between the ~2 Hz
+  server updates.
+- **Viewmodel hook:** `playerHands` in `src/water.ts` (`held: 'none' | 'canteen'`, `drinking`, `filling`)
+  is what the first-person hands should show. Tuning is at the top of `shared/water.ts`.
+- **Known gaps:** dune and building shadows don't count as shade (only the base's footprint does); no
+  shelter at night is needed (no cold); you can't drink from or share with other players; slots 2–4 are
+  empty; drinking at a full bar is blocked client-side only (the server would accept and waste the sip).
+
 ## 2026-10-17 — Dev helpers: spawn at base, sand bike
 
 - `?spawn=base` puts you in front of the base's door on join, instead of where you logged off (a reconnect
@@ -24,6 +55,28 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   plain painted → bevelled with chrome/copper/orange accents → white/gunmetal with glowing cyan.
 - **Not wired in yet:** the inventory only knows `SCRAP_KINDS`. Needs an item/tier id scheme in
   `shared/` (and in the inventory table/protocol) before the HUD can show these icons.
+
+## 2026-10-17 — Water canteen (first-person)
+
+For the water loop: `public/models/hands.glb` now carries an old military canteen and clips to use it.
+Only the model so far; the game code that plays them is separate.
+
+- **Model** (`tools/models/canteen.py`, built and baked by `tools/models/hands.py`): flattened kidney-shaped
+  steel body in sun-bleached olive-brown enamel, pale washer and dark wooden stopper, khaki webbing cradle
+  with D-rings for a carry strap (left off so nothing swings into the camera). 1.4k tris, own 512 atlas
+  and material `Canteen`. Also exported alone as `public/models/canteen.glb` (origin at the bottom) for
+  world use later.
+- **In hands.glb:** mesh node `Canteen`, child of the `RightHand` bone, gripped like a flask: palm on its
+  right edge, fingers round the back. It is visible by default; toggle `.visible`.
+- **Clips (30 fps):** `CanteenIdle` (3 s loop, held low-right, left arm lowered out of view),
+  `CanteenWalk` (0.73 s loop, same bob as `Walk`), `Drink` (1.2 s: neck to the mouth, tip up, two
+  gulps, lower), `Fill` (1.5 s: lowered forward and tipped, left palm under the bottom). The one-shots
+  start and end on the `CanteenIdle` pose. `Idle`/`Walk`/`Dig` are unchanged. Note the glTF sorts clips
+  by name, so `animations[0]` is now `CanteenIdle`: look clips up by name.
+- **How it's posed:** the canteen clips place the canteen (and the left palm) in view space and solve
+  each arm with analytic two-bone IK, most of the wrist roll going into the forearm so the glove cuff
+  doesn't twist. The canteen gets no closer than 0.12 m to the eye (camera near plane 0.05).
+- The hands were checked in first person and left as they are: they read fine at game scale.
 
 ## 2026-10-17 — Home base
 
@@ -57,7 +110,7 @@ New goal: plant and grow nature, push back the desert. The players' home is a ho
 
 ## 2026-10-17 — Day and night
 
-- **24 h every 30 min** (`src/world/dayNight.ts`), on the server's wall clock (`epoch` in `welcome`,
+- **24 h every 30 min** (`src/world/dayNight.ts`, clock and sun arc now in `shared/sun.ts`), on the server's wall clock (`epoch` in `welcome`,
   `Net.worldTime()`), so everyone shares the same sky and it survives server restarts.
 - The sun follows a real arc: rises east (+Z), peaks at 57° in the south (+X), sets just north of west,
   roughly ahead of the spawn view. A full moon rides opposite it and takes over the shadow light at night.
@@ -330,3 +383,20 @@ dropping haze/flare/grain is an art-direction call (`docs/look.md`).
 made timings swing 4× between identical runs. Headless Chrome (`--enable-gpu --use-angle=metal`, muted) gets
 WebGPU on the Mac without stealing focus. To test the netcode against live without a browser, `src/net.ts`
 runs under Node with `location`, `__BUILD_SHA__` and `localStorage` stubbed on `globalThis`.
+
+## First-person hands
+
+`src/viewmodel.ts` draws `public/models/hands.glb` parented to the camera (the camera is now in the scene so
+its children render). Clips: Idle / Walk / Dig with empty hands; CanteenIdle / CanteenWalk plus one-shot
+Drink / Fill while `playerHands` (`src/water.ts`) says a canteen is held. Missing clips fall back to the
+empty-hand ones and a missing `Canteen` node just means no canteen. Walk clips are phase-locked to the
+camera's step phase instead of a speed-scaled timeScale, so the hands bob with the head. The hands trail
+mouse look slightly, drop and come back up when switching what's held, and dip while sliding.
+
+- **Wall poke-through:** the model is scaled 0.55× about the eye. That leaves the picture unchanged (scaling
+  about the projection centre doesn't move anything on screen) but pulls the hands within ~0.35 m, inside
+  `PLAYER_RADIUS`, so they stay in front of walls the player is pressed against. The camera near plane
+  (0.05 m) is unchanged.
+- **No shadows:** the hands neither cast (the shadow-only body already does) nor receive (they'd sit inside
+  that body and always be in its shadow). Downside: they stay sunlit indoors.
+- **Testing:** `?hold=canteen` forces the canteen, `?anim=Drink` loops any clip; `dbg.viewmodel` with ?debug.

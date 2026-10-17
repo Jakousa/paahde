@@ -21,7 +21,9 @@ const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
 const THIRD_PERSON_KEY = 'dadajam.thirdPerson';
 
 /** What the camera needs from the local player each frame. */
-export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean; crouching?: boolean; riding?: boolean };
+export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean; crouching?: boolean; riding?: boolean;
+  /** The bike's lean into a turn (rad, + = left): the view rolls with part of it. */
+  lean?: number };
 
 export class FirstPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -111,7 +113,7 @@ export class FirstPersonCamera {
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
     const rightX = cy, rightZ = -sy;
     const lateral = p.vx * rightX + p.vz * rightZ;
-    this.roll += (-lateral * 0.0035 - this.roll) * (1 - Math.exp(-dt * 6));
+    this.roll += (-lateral * 0.0035 + (p.lean ?? 0) * 0.4 - this.roll) * (1 - Math.exp(-dt * 6));
 
     const x = p.x + rightX * bobX;
     const z = p.z + rightZ * bobX;
