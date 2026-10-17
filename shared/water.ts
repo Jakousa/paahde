@@ -21,7 +21,7 @@ export const SPRINT_HEAT = 1.5;
 /** Cooling off: this many °C under COMFORT_TEMP (or more)... */
 export const COOL_RANGE = 4;
 /** ...empties a full meter in this long (s); less cool, slower. The base (22 °C) takes twice as long. */
-export const COOL_FULL_BAR_S = 60;
+export const COOL_FULL_BAR_S = 40;
 /** Sips in a full canteen, and how much heat each one takes off. */
 export const CANTEEN_SIPS = 4;
 export const SIP_COOL = 25;
