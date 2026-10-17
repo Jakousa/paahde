@@ -315,7 +315,8 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0): Pl
 }
 
 // --- Sand bike -----------------------------------------------------------------------------------
-// A balloon-tyred dirt bike. W throttle, S brake then reverse, A/D steer, Space hops. The mouse only looks
+// A balloon-tyred dirt bike. W throttle, S brake then reverse, A/D steer, Space
+// held pulls a wheelie (drawn by src/bike.ts), released hops. The mouse only looks
 // around (the client turns the camera with the bike).
 // - Steering is a bicycle model: turn rate = forward speed × tan(steer) / wheelbase, with the steer angle
 //   shrinking at speed. Sideways velocity is bled off by limited tyre grip, so hard turns drift.
@@ -352,7 +353,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState
   let vr = s.vx * rx + s.vz * rz;
   let vy = s.vy;
   let landTicks = s.landTicks > 0 ? s.landTicks - 1 : 0;
-  const hop = s.grounded && jumpDown && !s.jumpHeld;
+  const hop = s.grounded && !jumpDown && s.jumpHeld; // on letting go of the wheelie
 
   if (s.grounded) {
     const onScrap = s.y > heightAt(s.x, s.z) + 0.02;

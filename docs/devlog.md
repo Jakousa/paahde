@@ -408,7 +408,7 @@ The first survival mechanic: the sun dries you out, the canteen keeps you going,
   keeps your position). Sent as `spawn: 'base'` in `hello`.
 - **9 gets on / off a sand bike** (in `npm run dev`, or with `?debug` on the live site). It's the `BIKE` input
   bit, so it goes through prediction like everything else: `stepBike()` in `shared/sim.ts`. W throttle, S
-  brake/reverse, A/D steer, Space hops; the mouse just looks around and the camera turns with the bike.
+  brake/reverse, A/D steer, Space held pulls a wheelie and hops on release; the mouse just looks around and the camera turns with the bike.
   Bicycle-model steering, limited tyre grip (hard turns drift), slope gravity, and it rides the surface until
   the sand falls away faster than gravity can follow, so dune crests at speed throw it into the air.
 - Model: `tools/blender/sandbike.py` → `public/models/sandbike.glb`; drawn by `src/bike.ts` (pitch along the
