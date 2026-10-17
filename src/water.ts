@@ -17,7 +17,6 @@ import { PISTOL, RIFLE } from '../shared/rifle.ts';
 import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
-import type { DeathCause } from '../shared/protocol.ts';
 import { DOWN_MS } from '../shared/ragdoll.ts';
 import { heatstroke } from './world/env.ts';
 import { drinkSound } from './drinkSound';
@@ -45,13 +44,7 @@ const TEMP_BLUE = [120, 196, 255];
 const TEMP_AMBER = [255, 184, 77];
 const TEMP_RED = [255, 92, 60];
 const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
-const DEATH_TEXT: Record<DeathCause, string> = {
-  heat: 'You died of heatstroke',
-  guardian: 'A guardian crushed you',
-  crawler: 'Eaten by crawlers',
-  missile: 'Shelled',
-  laser: 'Shot by a guardian',
-};
+const DEATH_TEXT = 'Desert knows no mercy';
 const TOAST_MS = 1800;
 /** Walking this far (m) out of the pump's reach cancels a refill. Under the server's FILL_SLACK. */
 const FILL_CANCEL_SLACK = 0.5;
@@ -188,7 +181,7 @@ export class Survival {
     this.prompt.id = 'waterPrompt';
     this.toastEl.id = 'waterToast';
     this.death.id = 'deathScreen';
-    this.death.innerHTML = DEATH_TEXT.heat;
+    this.death.innerHTML = DEATH_TEXT;
     document.body.append(this.root, this.heat, this.env, this.prompt, this.toastEl, this.death);
 
     addEventListener('keydown', (e) => {
@@ -199,8 +192,7 @@ export class Survival {
       if (n >= HOTBAR) return;
       this.select(this.selected === n ? -1 : n);
     });
-    net.onDied = (cause) => {
-      this.death.innerHTML = DEATH_TEXT[cause];
+    net.onDied = () => {
       this.deadUntil = performance.now() + DOWN_MS;
       this.cancel();
       this.shown = 0;
