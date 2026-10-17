@@ -1,0 +1,109 @@
+# Multiplayer architecture
+
+How the game keeps players in sync, why it is built this way, and what to keep in mind when changing it.
+Researched October 2026.
+
+## Model: authoritative server + client prediction + interpolation
+
+This is the standard for real-time action games (Valve's Source engine, Gabriel Gambetta's
+[client-server game architecture](https://www.gabrielgambetta.com/client-server-game-architecture.html)).
+
+1. **Clients send inputs, never positions.** Each fixed tick (60 Hz) the client sends
+   `{seq, input}` where `input` is a bitmask (left/right/jump). The server runs the simulation; it is
+   the only source of truth, so clients can't teleport or fly.
+2. **Client-side prediction.** The client runs the *same* `shared/sim.ts` step on its own input
+   immediately, so your square moves with zero perceived latency.
+3. **Reconciliation.** Snapshots tell each client the last input `seq` the server applied (`ack`).
+   The client takes the server's state for itself, drops acknowledged inputs and replays the rest.
+   Any remaining difference is shown as a visual offset that decays over ~100 ms instead of a jump.
+4. **Entity interpolation.** Other players are drawn 100 ms in the past, between the two snapshots
+   around that time. Snapshots come at 20 Hz, so there are always two to blend between.
+
+```
+client                         server
+  tick: input → step() ──seq,input──▶ step() (rate-limited to the tick rate)
+  pending inputs [seq…]               every 50 ms: snapshot {time, ack, players[]}
+  snapshot ◀───────────────────────── 
+  state = server state + replay(pending after ack)
+  remote players = lerp(snapshots, now − 100 ms)
+```
+
+### Why not the alternatives
+
+| Approach | Verdict |
+|---|---|
+| Lockstep (everyone waits for all inputs each tick) | Needs a bit-exact deterministic sim; one slow player stalls everyone; bad with drop-in/drop-out. |
+| Rollback (GGPO) | Great for 2–4 player fighting games. Complex with many players joining and leaving. |
+| CRDT / document sync (Yjs, Automerge) | Built for collaborative editing, not 60 Hz physics. |
+| Clients send positions | Trivial to cheat and players fight over the truth. |
+
+## Transport: WebSocket
+
+- **WebSocket over TLS through Caddy** — works everywhere, no extra ports, proxied with the rest of herkku.org.
+- **WebTransport** (QUIC/UDP, no head-of-line blocking) is now in all major browsers (Safari 26.4,
+  March 2026), but Caddy only gained experimental WebTransport proxying in 2.12, which hasn't shipped yet.
+  Revisit later; the protocol here is transport-agnostic.
+- **WebRTC data channels** (geckos.io) would need UDP ports and ICE/STUN next to Docker. Not worth it for a jam.
+- Head-of-line blocking over TCP only hurts under packet loss; the 100 ms interpolation buffer
+  absorbs most of it at our scale.
+
+## Frameworks considered
+
+We use a small hand-written server (`server/index.ts`, ~200 lines) because the model above is simple
+at our scale and the whole team can read and change it. Alternatives, if needs grow:
+
+- **[Colyseus](https://colyseus.io) 0.18** (MIT): rooms, matchmaking, binary delta-compressed state
+  and, since 0.18, built-in prediction helpers. The natural upgrade if we need rooms/lobbies.
+- **SpacetimeDB 2.x**: database and server in one, with TypeScript modules. BSL licence and a different
+  programming model; no prediction layer.
+- **Nakama**: a full game backend (Go + Postgres). Too heavy for a 4 GB VPS.
+- **PartyKit/PartyServer**: tied to Cloudflare Durable Objects.
+- Hosted: **Playroom**, **Rune** (mobile only). **Hathora** shut down in May 2026.
+
+## Persistence: SQLite
+
+- `node:sqlite` (built into Node 24; no native dependencies), WAL mode, file at `/data/dadajam.db` on
+  a Docker volume (`/opt/dadajam/data` on the server).
+- The table `players` holds browser ID, colour and last position, saved on join and leave, every
+  5 s, and on shutdown.
+- Calls are synchronous: keep queries tiny and out of hot loops.
+
+## Identity
+
+- `localStorage['dadajam.browserId']` is a random UUID. It works like a password: whoever has it *is*
+  that player. It is only ever sent to the server; other players see a per-connection numeric `id`.
+- No accounts. Clearing site data means a new player.
+
+## Robustness
+
+- **Deploys restart the server.** On SIGTERM it saves everyone and closes sockets with code 1012.
+  Clients reconnect with exponential backoff plus jitter and resume from the saved position.
+- **Heartbeat.** The server pings every 25 s and drops dead sockets.
+- **Caddy reloads.** `stream_close_delay 5m` keeps WebSockets open when the host Caddy config reloads.
+- **Speed hacks.** A token bucket allows at most 60 simulated inputs/s (burst 15). Excess inputs are
+  acknowledged but not simulated, so the cheater just gets corrected.
+- **Hidden tabs.** Browsers stop the render loop. After 1 s without input the server keeps
+  simulating that player with no keys pressed, so they land instead of hanging in mid-air.
+- Message size is capped at 1 KB and the browser ID format is validated.
+
+## Rules when changing gameplay
+
+- **All movement or physics that affects position goes in `shared/sim.ts`**, which both sides run.
+  Anything only the client simulates will rubber-band. Keep it deterministic: no `Math.random()`,
+  `Date.now()` or frame-time `dt` inside `step`.
+- Add new inputs as bits in the input bitmask (the server masks unknown bits: update `input & 7`
+  in `server/index.ts`).
+- Purely visual effects (particles, squash and stretch, the wasm spin) stay client-side.
+- New message types go in `shared/protocol.ts`.
+- To get here next: player-vs-player collision, which makes predicted players interact with
+  interpolated ones (other players appear 100 ms in the past), so keep interactions forgiving.
+
+## Sources
+
+- Gabriel Gambetta, *Fast-Paced Multiplayer*: https://www.gabrielgambetta.com/client-server-game-architecture.html
+- Valve, *Source Multiplayer Networking*: https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking
+- Glenn Fiedler, *Networked Physics*: https://gafferongames.com/post/networked_physics_2004/
+- WebKit, Safari 26.4 features: https://webkit.org/blog/17862/webkit-features-for-safari-26-4/
+- Caddy WebTransport PR: https://github.com/caddyserver/caddy/pull/7669
+- Colyseus 0.18: https://colyseus.io/blog/colyseus-018-is-here/
+- Node `node:sqlite`: https://nodejs.org/docs/latest-v24.x/api/sqlite.html

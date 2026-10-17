@@ -1,4 +1,7 @@
 import * as THREE from 'three/webgpu';
+import { DT, PLATFORMS, SIZE } from '../shared/sim.ts';
+import { readInput } from './input';
+import { getBrowserId, Net } from './net';
 import { wasm } from './wasm';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
@@ -8,20 +11,32 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 1.5, 4);
-camera.lookAt(0, 0, 0);
+scene.background = new THREE.Color(0x1b1d2a);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 4, 22);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.5));
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444466, 1.5));
 const sun = new THREE.DirectionalLight(0xffffff, 2);
-sun.position.set(3, 5, 2);
+sun.position.set(4, 10, 6);
 scene.add(sun);
 
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(1, 1, 1),
-  new THREE.MeshStandardNodeMaterial({ color: 0xff6633 }),
-);
-scene.add(cube);
+const platformMat = new THREE.MeshStandardNodeMaterial({ color: 0x556070 });
+for (const p of PLATFORMS) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, 2), platformMat);
+  mesh.position.set(p.x, p.y, 0);
+  scene.add(mesh);
+}
+
+const cubeGeo = new THREE.BoxGeometry(SIZE, SIZE, SIZE);
+function makeCube(color: number) {
+  const mesh = new THREE.Mesh(cubeGeo, new THREE.MeshStandardNodeMaterial({ color }));
+  scene.add(mesh);
+  return mesh;
+}
+
+const net = new Net(getBrowserId());
+const meMesh = makeCube(0xffffff);
+const remoteMeshes = new Map<number, THREE.Mesh>();
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -31,13 +46,48 @@ window.addEventListener('resize', () => {
 
 await renderer.init();
 const backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
-document.getElementById('info')!.textContent = `${backend} · build ${__BUILD_SHA__}`;
+const info = document.getElementById('info')!;
 
 const timer = new THREE.Timer();
+let accumulator = 0;
+let spin = 0;
 renderer.setAnimationLoop((time) => {
   timer.update(time);
-  const dt = timer.getDelta();
-  cube.rotation.y = wasm.spin(cube.rotation.y, dt, 1.2);
-  cube.rotation.x = wasm.spin(cube.rotation.x, dt, 0.5);
+  const frameDt = Math.min(timer.getDelta(), 0.25);
+
+  // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
+  accumulator += frameDt;
+  while (accumulator >= DT) {
+    net.tick(readInput());
+    accumulator -= DT;
+  }
+
+  const remotes = net.frame(frameDt);
+
+  (meMesh.material as THREE.MeshStandardNodeMaterial).color.setHex(net.color);
+  meMesh.visible = net.connected;
+  meMesh.position.set(net.me.x + net.errorX, net.me.y + net.errorY, 0);
+  // Little flourish computed in wasm: spin while airborne.
+  spin = net.me.grounded ? 0 : wasm.spin(spin, frameDt, 8);
+  meMesh.rotation.z = -Math.sign(net.me.vx) * spin;
+
+  const seen = new Set<number>();
+  for (const r of remotes) {
+    seen.add(r.id);
+    let mesh = remoteMeshes.get(r.id);
+    if (!mesh) remoteMeshes.set(r.id, (mesh = makeCube(r.color)));
+    mesh.position.set(r.x, r.y, 0);
+  }
+  for (const [id, mesh] of remoteMeshes) {
+    if (!seen.has(id)) {
+      scene.remove(mesh);
+      remoteMeshes.delete(id);
+    }
+  }
+
+  camera.position.x += (meMesh.position.x - camera.position.x) * Math.min(1, frameDt * 3);
+  camera.lookAt(camera.position.x, 3, 0);
+
+  info.textContent = `${backend} · ${net.status} · ${remotes.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   renderer.render(scene, camera);
 });

@@ -1,24 +1,40 @@
 # dadajam
 
-Public game jam repo, three collaborators. Browser game: three.js + TypeScript + Vite, hot paths in
-WebAssembly via AssemblyScript. Every merge to `main` goes live at https://herkku.org/dadajam/ within
+Public game jam repo, three collaborators. Online multiplayer browser game: three.js + TypeScript + Vite
+client, Node 24 WebSocket game server with SQLite, hot paths in WebAssembly via AssemblyScript. Every merge to `main` goes live at https://herkku.org/dadajam/ within
 a few minutes, so `main` must always build.
 
 ## Commands
 
-- `npm run dev` — compile `assembly/` to wasm, then Vite dev server (http://localhost:5173)
+- `npm run dev` — compile wasm, then run the game server (:8787, auto-restarts) and Vite
+  (http://localhost:5173, proxies `/ws`). Open two tabs to see multiplayer.
 - `npm run asbuild` — recompile wasm only (Vite does not watch `assembly/`)
 - `npm run build` — wasm + `tsc --noEmit` + production build into `dist/`. Run before pushing.
+- `npm run preview` — build, then run the production server (serves `dist/` + `/ws` on :8787).
 
 There are no tests yet; `npm run build` is the check CI runs on PRs.
 
 ## Layout
 
-- `src/main.ts` — entry: renderer, scene, game loop
+- `shared/sim.ts` — deterministic movement/physics, run by **both** client and server
+- `shared/protocol.ts` — WebSocket message types
+- `server/index.ts` — authoritative game server (static files + `/ws`); `server/db.ts` — SQLite
+- `src/main.ts` — entry: renderer, scene, fixed-step game loop
+- `src/net.ts` — client netcode (prediction, reconciliation, interpolation, reconnect)
+- `src/input.ts` — keyboard → input bitmask
 - `src/wasm.ts` — loads the compiled wasm; use exports as `wasm.<fn>`
 - `assembly/` — AssemblyScript source (compiled to `src/wasm/`, gitignored — never edit `src/wasm/`)
 - `public/` — static assets (models, textures, audio), copied as-is into the build
 - `deploy/`, `Dockerfile`, `.github/workflows/` — deployment; see README. Don't change without asking.
+
+## Multiplayer rules (read docs/netcode.md before changing netcode)
+
+- The server is authoritative; clients send only input bitmasks. Anything that moves a player must be in
+  `shared/sim.ts` and deterministic (fixed `DT`, no `Math.random()`/`Date.now()`/frame time), or the
+  client prediction will rubber-band.
+- Server and shared code run with Node's native type stripping: import with `.ts` extensions, and no
+  enums, namespaces or constructor parameter properties (`erasableSyntaxOnly` enforces this).
+- The browser ID is a secret credential: never include it in messages to other clients.
 
 ## Conventions and gotchas
 
