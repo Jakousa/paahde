@@ -47,6 +47,8 @@ export class Net {
   color = 0xffffff;
   /** Predicted local state (authoritative for physics on this client). */
   me: PlayerState = spawnState();
+  /** The predicted state one tick before `me`: view() draws between the two. */
+  private prev: PlayerState = this.me;
   /** Visual offset after a correction, decays to zero so corrections don't look like teleports. */
   errorX = 0;
   errorY = 0;
@@ -104,6 +106,7 @@ export class Net {
   tick(input: number, yaw: number, pitch: number) {
     if (!this.connected) return;
     this.seq++;
+    this.prev = this.me;
     this.me = step(this.me, input, yaw);
     this.pending.push({ seq: this.seq, input, yaw });
     this.send({ t: 'input', seq: this.seq, input, yaw, pitch });
@@ -214,6 +217,22 @@ export class Net {
     this.send({ t: 'setEpoch', epoch: this.epoch });
   }
 
+  /**
+   * Where to draw us: `alpha` (the leftover fraction of a tick, 0..1) of the way from the previous predicted
+   * tick to the latest, plus the decaying correction. At 60 Hz ticks and a 120 Hz screen (or a frame that
+   * runs two ticks) drawing the latest tick alone moves in uneven steps, which shows on the bike's 26 m/s.
+   */
+  view(alpha: number) {
+    const a = this.prev, b = this.me;
+    return {
+      x: a.x + (b.x - a.x) * alpha + this.errorX,
+      y: a.y + (b.y - a.y) * alpha + this.errorY,
+      z: a.z + (b.z - a.z) * alpha + this.errorZ,
+      heading: a.riding === b.riding ? lerpAngle(a.heading, b.heading, alpha) : b.heading, // mounting sets it
+      facing: lerpAngle(a.facing, b.facing, alpha),
+    };
+  }
+
   /** Decay the visual error and interpolate remote players for this render frame. */
   frame(dtSeconds: number): RemotePlayer[] {
     const k = Math.exp(-dtSeconds * 15);
@@ -289,7 +308,7 @@ export class Net {
       this.joinedOnce = true;
       this.color = msg.color;
       this.epoch = msg.epoch;
-      this.me = msg.state;
+      this.me = this.prev = msg.state;
       this.seq = 0;
       this.retryMs = 500;
       this.status = 'online';
@@ -327,6 +346,9 @@ export class Net {
     // Big jumps (respawn, long lag) should snap, not glide.
     if (this.snapNext || Math.hypot(this.errorX, this.errorY, this.errorZ) > 3) this.errorX = this.errorY = this.errorZ = 0;
     this.snapNext = false;
+    // Move the previous tick with the correction, so view() between them doesn't jump either.
+    const p = this.prev;
+    this.prev = { ...p, x: p.x + s.x - this.me.x, y: p.y + s.y - this.me.y, z: p.z + s.z - this.me.z, heading: p.heading + s.heading - this.me.heading };
     this.me = s;
   }
 
