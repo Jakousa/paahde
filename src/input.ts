@@ -82,6 +82,11 @@ export function keyHeld(code: string): boolean {
   return keys.has(code);
 }
 
+/** Right mouse or X (always the same button). */
+function rightHeld(): boolean {
+  return mousePile || keys.has('KeyX');
+}
+
 export function readInput(): number {
   let input = 0;
   if (tools.frozen) return input;
@@ -99,7 +104,7 @@ export function readInput(): number {
   if (keys.has('Digit9')) input |= BIKE;
   if (tools.blocked) return input;
   if (mouseDig || keys.has('KeyE')) input |= DIG;
-  else if (mousePile || keys.has('KeyQ')) input |= PILE;
+  else if (rightHeld() || keys.has('KeyQ')) input |= PILE;
   return input;
 }
 
@@ -108,14 +113,14 @@ export function useHeld(): boolean {
   return !tools.frozen && (mouseDig || keys.has('KeyE'));
 }
 
-/** Any use button held (left/right mouse, E or Q): raises the spyglass while it's out. */
+/** Any use button held (left/right mouse, E, Q or X): raises the spyglass while it's out. */
 export function aimHeld(): boolean {
-  return mouseDig || mousePile || keys.has('KeyE') || keys.has('KeyQ');
+  return mouseDig || rightHeld() || keys.has('KeyE') || keys.has('KeyQ');
 }
 
 /** Aim button held (right mouse or X): the rifle up to the eye. */
 export function aimDown(): boolean {
-  return !tools.frozen && (mousePile || keys.has('KeyX'));
+  return !tools.frozen && rightHeld();
 }
 
 /** Shift held (hold your breath while aiming the rifle). */
