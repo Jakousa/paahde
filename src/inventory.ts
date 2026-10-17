@@ -4,6 +4,8 @@
 // bike while riding; shared/storage.ts), appearing and disappearing as you move. Drag an item onto another
 // slot to move it there or swap the two; shift-click sends it across to the other side. Moves go through Net (applied at once, the server confirms).
 import { HOTBAR, ITEMS, type Item, type Slots } from '../shared/items.ts';
+import { partOf } from '../shared/parts.ts';
+import { RARITY } from '../shared/salvage.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
@@ -54,6 +56,10 @@ const css = `
 #invOverlay .slot .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
 #invOverlay .slot svg, #invGhost svg { width: 30px; height: 34px; }
+#invOverlay .slot img, #invGhost img { width: 46px; height: 46px; pointer-events: none; }
+#invOverlay .slot .tile, #invGhost .tile { font: 700 18px var(--mono); color: var(--c); }
+#invOverlay .slot.rare { box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.12), inset 0 -3px 0 var(--c);
+  background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--c) 22%, transparent), rgba(255, 240, 220, 0.04) 70%); }
 #invOverlay .none { width: 190px; padding: 6px 2px; opacity: 0.55; line-height: 1.45; }
 #invOverlay .help { opacity: 0.55; font-size: 11px; text-shadow: 0 1px 2px #000; }
 #invGhost { position: fixed; z-index: 16; pointer-events: none; width: 54px; height: 54px; display: flex;
@@ -102,8 +108,25 @@ ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.8" y="-10" width=
 stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#a8a294" stroke-width="1.3"/></svg>`,
 };
-export const itemIcon = (kind: string) => ICONS[kind] ?? `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`;
+const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+/** Parts (shared/parts.ts) use their rendered icons, public/icons/items/<part>_<tier>.png (tools/blender/items.py,
+ *  and tools/models/part-icons.ts for the code-built ones); a lettered tile in the rarity colour if one fails. */
+function partIcon(kind: string) {
+  const letter = (ITEMS[kind]?.label.split(' ').pop() ?? '?')[0].toUpperCase();
+  return `<img src="./icons/items/${kind}.png" alt="" draggable="false" onerror="this.outerHTML='<b class=&quot;tile&quot;>${letter}</b>'">`;
+}
+export const itemIcon = (kind: string) => ICONS[kind] ?? (partOf(kind) ? partIcon(kind) : `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`);
 export const itemLabel = (kind: string) => ITEMS[kind]?.label ?? kind;
+/** Rarity colour (shared/salvage.ts RARITY) of an item with a tier, as CSS, or null. */
+const rarityColor = (kind: string) => {
+  const t = ITEMS[kind]?.tier;
+  return t ? hex(RARITY[t].color) : null;
+};
+/** Hover text: the label, and the rarity for items with a tier. */
+const itemTitle = (kind: string) => {
+  const t = ITEMS[kind]?.tier;
+  return t ? `${itemLabel(kind)} · ${RARITY[t].name}` : itemLabel(kind);
+};
 
 type Drag = { box: string; i: number; half: boolean; x0: number; y0: number; moved: boolean };
 
@@ -226,8 +249,9 @@ export class InventoryHud {
     for (let i = from; i < to; i++) {
       const it = slots[i];
       const key = box === 'bag' && i < HOTBAR ? `<span class="key">${i + 1}</span>` : '';
-      const cls = `slot${it ? '' : ' empty'}${key ? ' hot' : ''}`;
-      html += `<div class="${cls}" data-box="${box}" data-i="${i}"${it ? ` title="${itemLabel(it.kind)}"` : ''}>${key}${it ? this.itemHtml(it) : ''}</div>`;
+      const c = it && rarityColor(it.kind);
+      const cls = `slot${it ? '' : ' empty'}${key ? ' hot' : ''}${c ? ' rare' : ''}`;
+      html += `<div class="${cls}" data-box="${box}" data-i="${i}"${c ? ` style="--c:${c}"` : ''}${it ? ` title="${itemTitle(it.kind)}"` : ''}>${key}${it ? this.itemHtml(it) : ''}</div>`;
     }
     return html;
   }
@@ -281,6 +305,7 @@ export class InventoryHud {
       d.moved = true;
       const n = d.half ? Math.ceil(it.n / 2) : it.n;
       this.ghost.innerHTML = `${itemIcon(it.kind)}${n > 1 ? `<span class="n">${n}</span>` : ''}`;
+      this.ghost.style.setProperty('--c', rarityColor(it.kind) ?? '#fff4e4');
       this.ghost.style.display = 'flex';
       this.slotEl(d.box, d.i)?.classList.add('dragging');
     }

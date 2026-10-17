@@ -1,10 +1,13 @@
 // Items: the catalogue, slot containers ("boxes") and the rules for moving stacks between them. The server
 // owns every item (server/items.ts, `items` table, one row per stack with a stable id); the client applies
 // the same moves at once and the server's answer then replaces them (src/net.ts).
+import { partItems } from './parts.ts';
+import type { Tier } from './salvage.ts';
 import { SCRAP_KINDS } from './scrap.ts';
 
-/** Item kind ids as stored in the DB. Never rename one: rows hold them. `stack` is 1 for all: nothing stacks for now. */
-export const ITEMS: Record<string, { label: string; stack: number }> = {
+/** Item kind ids as stored in the DB. Never rename one: rows hold them. `stack` is 1 for all: nothing stacks for now.
+ *  `tier`: the item's quality, which doubles as its rarity (RARITY in shared/salvage.ts); parts have one. */
+export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier }> = {
   canteen: { label: 'Canteen', stack: 1 },
   spyglass: { label: 'Spyglass', stack: 1 },
   oil_drum: { label: 'Oil drum', stack: 1 },
@@ -20,6 +23,8 @@ export const ITEMS: Record<string, { label: string; stack: number }> = {
   // The item kind is the component kind.
   robot_arm: { label: 'Robot arm joint', stack: 1 },
   control_cabinet: { label: 'Control cabinet', stack: 1 },
+  // Parts taken out of machines (shared/parts.ts): `<part>_<tier>`, e.g. battery_space.
+  ...partItems(),
 };
 const ORDER = Object.keys(ITEMS);
 

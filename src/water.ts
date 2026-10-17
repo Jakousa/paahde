@@ -75,6 +75,7 @@ const css = `
 #hotbar .slot.sel { background: rgba(60, 34, 16, 0.6); box-shadow: 0 0 0 2px rgba(255, 233, 204, 0.75); }
 #hotbar .key { position: absolute; left: 4px; top: 2px; font: 600 9px var(--mono); opacity: 0.6; }
 #hotbar svg { width: 22px; height: 26px; margin-top: -4px; }
+#hotbar img { width: 36px; height: 36px; margin-top: -2px; }
 #hotbar .pips { position: absolute; bottom: 4px; left: 6px; right: 6px; display: flex; gap: 2px; }
 #hotbar .pips i { flex: 1; height: 3px; border-radius: 1px; background: rgba(255, 244, 228, 0.18); }
 #hotbar .pips i.on { background: #5cb8ff; }

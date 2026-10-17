@@ -9,6 +9,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { COMPONENTS, RARITY, TIERS, type ComponentKind, type PartId, type Tier } from '../../shared/salvage.ts';
+import { rollParts } from '../../shared/parts.ts';
 import { EXTRA_PARTS, makeExtraPart, THICKNESS } from './parts.ts';
 
 export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift';
@@ -806,26 +807,15 @@ export const JUNK_KINDS = Object.keys(BUILDERS) as ComponentKind[];
 
 // ---- assembly ----------------------------------------------------------------------------------------------
 
-function pickTier(weights: Record<Tier, number>, rand: () => number): Tier {
-  let sum = 0;
-  for (const t of TIERS) sum += weights[t];
-  let r = rand() * sum;
-  for (const t of TIERS) if ((r -= weights[t]) < 0) return t;
-  return 'scrap';
-}
-
 /** Roll what is inside a component of `kind` with `rand`, then build it. Part models load in the background. */
 export function buildJunk(kind: ComponentKind, rand: () => number): Junk {
   const spec = COMPONENTS[kind];
   const rolled: Record<PartId, Tier[]> = { battery: [], motor: [], heatsink: [], compute: [], antimatter: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
   let best = 0;
-  for (const y of spec.yields) {
-    const n = y.min + Math.floor(rand() * (y.max - y.min + 1));
-    for (let i = 0; i < n; i++) {
-      const t = pickTier(spec.tierWeights, rand);
-      rolled[y.part].push(t);
-      best = Math.max(best, TIERS.indexOf(t));
-    }
+  // The same roll the server checks part takes against (shared/parts.ts).
+  for (const { part, tier } of rollParts(kind, rand)) {
+    rolled[part].push(tier);
+    best = Math.max(best, TIERS.indexOf(tier));
   }
 
   const kit = new Kit(best, rolled);
