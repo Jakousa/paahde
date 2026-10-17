@@ -14,7 +14,7 @@ const port = 9400 + Math.floor(Math.random() * 400);
 const chrome = spawn(CHROME, [
   '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${mkdtempSync(join(tmpdir(), 'shot-'))}`,
   `--window-size=${w},${h}`, '--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--use-angle=metal',
-  '--no-first-run', '--hide-scrollbars', 'about:blank',
+  '--no-first-run', '--hide-scrollbars', '--mute-audio', 'about:blank',
 ], { stdio: 'ignore' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -47,6 +47,8 @@ try {
   await send('Emulation.setDeviceMetricsOverride', { width: +w, height: +h, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url });
   await sleep(+wait);
+  // EVAL='js' runs in the page before the shot (e.g. to turn the camera), then waits a second.
+  if (process.env.EVAL) { await send('Runtime.evaluate', { expression: process.env.EVAL }); await sleep(1000); }
   const info = await send('Runtime.evaluate', { expression: 'document.getElementById("info")?.textContent ?? document.getElementById("label")?.textContent', returnByValue: true });
   console.log('page text:', info?.result?.value);
   const shot = await send('Page.captureScreenshot', { format: 'png' });
