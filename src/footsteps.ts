@@ -2,7 +2,7 @@
 // alongside the footprint). Remote players' steps are panned and fade with distance.
 //
 // public/audio/footsteps.mp3 is a sprite of single steps sliced from a recorded walk on a gravel trail
-// (see public/audio/CREDITS.md): SLOTS slots of SLOT seconds, each a step starting near the slot start.
+// (see public/credits.txt): SLOTS slots of SLOT seconds, each a step starting near the slot start.
 // The sprite is levelled so a steady walk at ~2.4 steps/s measures −23 LUFS; GAIN pulls it well under
 // the wind, since in game you take ~5 steps/s.
 import { audio } from './audio';

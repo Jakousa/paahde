@@ -44,7 +44,5 @@ The build SHA is shown in the top-left corner, so you can check which commit is 
 
 ## Credits
 
-- "[Junkyard Props](https://sketchfab.com/3d-models/junkyard-props-37343a1b386f4d75879be93319dbb717)" by
-  [haroonimtiaz35](https://sketchfab.com/haroonimtiaz35), licensed under
-  [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) — `public/models/junkyard_props.glb`
-  (texture cropped and downscaled).
+Third-party assets and their licences are listed in [`public/credits.txt`](public/credits.txt), which ships
+with the game (linked in the top-left corner). Add every downloaded asset there.
