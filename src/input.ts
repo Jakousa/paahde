@@ -8,7 +8,8 @@ let pickupPressed = false;
 /** Hands full (canteen or spyglass out, src/water.ts): left mouse / E and right mouse / Q don't dig or pile. */
 export const tools = { blocked: false };
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
-export const ui = { inventoryOpen: false };
+/** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
+export const ui = { inventoryOpen: false, debugFreed: false };
 // While the pointer is locked the game owns the keyboard: swallow browser shortcuts (Tab, F-keys, Alt, Ctrl+S...).
 // Esc frees the mouse (the browser does that itself), and then keys behave normally again.
 const captured = () => !!document.pointerLockElement;
@@ -16,12 +17,22 @@ const captured = () => !!document.pointerLockElement;
 // only) can take them, so a click that captures the mouse also goes fullscreen and locks the keyboard.
 type KeyboardLock = { lock(codes?: string[]): Promise<void>; unlock(): void };
 const keyboard = (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard;
-// Only clicks on the game canvas capture the mouse (src/camera.ts); a click on the volume slider must not
-// go fullscreen.
+// Only clicks on the game canvas capture the mouse (src/camera.ts) and the Esc menu's Resume; a click on
+// anything else must not go fullscreen.
 addEventListener('click', (e) => {
   if (document.pointerLockElement || !keyboard || !(e.target instanceof HTMLCanvasElement)) return;
-  document.documentElement.requestFullscreen?.().then(() => keyboard.lock(), () => {});
+  fullscreen();
 });
+function fullscreen() {
+  if (keyboard) document.documentElement.requestFullscreen?.().then(() => keyboard.lock(), () => {});
+}
+/** Back into the game from a click outside the canvas (the Esc menu): capture the mouse, go fullscreen. */
+export function capture(canvas: HTMLElement) {
+  if (document.pointerLockElement === canvas) return;
+  // Can be refused (too soon after the browser's own Esc): then a click on the game does it.
+  Promise.resolve(canvas.requestPointerLock()).catch(() => {});
+  fullscreen();
+}
 addEventListener('keydown', (e) => {
   // A locked keyboard hands Esc to the page instead of releasing the mouse, so release it ourselves.
   if (e.code === 'Escape' && captured()) document.exitPointerLock();

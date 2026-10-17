@@ -36,7 +36,7 @@ export function summonLocalStorm() {
 
 const css = `
 #storm { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); padding: 6px 14px; display: none;
-  font: 600 14px system-ui, sans-serif; letter-spacing: .03em; color: #ffd9a0; background: rgba(40, 18, 6, 0.6);
+  font: 600 14px var(--mono); letter-spacing: .03em; color: #ffd9a0; background: rgba(40, 18, 6, 0.6);
   border-radius: 6px; box-shadow: 0 0 0 1px rgba(255, 190, 110, 0.35); text-shadow: 0 1px 2px #000;
   pointer-events: none; white-space: nowrap; }
 #storm.warn { animation: stormPulse 1.25s ease-in-out infinite; }

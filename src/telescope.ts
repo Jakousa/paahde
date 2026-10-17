@@ -14,8 +14,7 @@ const ZOOM_DEFAULT = 6;
 const css = `
 #telescope { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .12s; z-index: 5; }
 #telescope svg { width: 100%; height: 100%; display: block; }
-#telescope .zoom { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); font: 600 12px system-ui,
-  sans-serif; color: #d9b98a; opacity: 0.7; font-variant-numeric: tabular-nums; }
+#telescope .zoom { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); font: 600 12px var(--mono); color: #d9b98a; opacity: 0.7; font-variant-numeric: tabular-nums; }
 body.scoped #crosshair { display: none; }
 `;
 

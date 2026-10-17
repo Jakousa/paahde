@@ -11,6 +11,7 @@ import { footprints, streaks } from './footprints';
 import { InventoryHud } from './inventory';
 import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
+import { Menu } from './menu';
 import { getBrowserId, Net } from './net';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
@@ -112,6 +113,7 @@ const RIDE_EYE_AHEAD = 0.15;
 const locator = new LocatorBar();
 const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
+const menu = new Menu(renderer.domElement);
 const telescope = new Telescope(orbit);
 net.onTended = (what) => hud.toast(what === 'planted' ? 'Seeds planted' : 'Harvested the greens');
 
@@ -122,7 +124,6 @@ window.addEventListener('resize', () => {
 
 await renderer.init();
 const backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
-const info = document.getElementById('info')!;
 
 const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
@@ -145,7 +146,7 @@ renderer.setAnimationLoop((time) => {
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);
   if (!joined && !net.connected) {
-    info.textContent = `${backend} · ${net.status} · build ${__BUILD_SHA__}`;
+    menu.setInfo(`${backend} · ${net.status} · build ${__BUILD_SHA__}`);
     return;
   }
   joined = true;
@@ -264,9 +265,9 @@ renderer.setAnimationLoop((time) => {
     }
   }
   const targeted = use !== null || tend !== null || target !== null;
-  survival.update(frameDt, net.me, targeted, interact && !targeted);
+  survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   hud.update(net.me);
 
-  info.textContent = `${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
+  menu.setInfo(`${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
   post.render();
 });
