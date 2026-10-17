@@ -4,3 +4,4 @@ src/wasm/
 .DS_Store
 .claude/settings.local.json
 data/
+.claude/worktrees/
