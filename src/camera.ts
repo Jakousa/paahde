@@ -58,10 +58,12 @@ export class FirstPersonCamera {
     try {
       this.thirdPerson = localStorage.getItem(THIRD_PERSON_KEY) === '1';
     } catch {}
+    document.body.classList.toggle('third-person', this.thirdPerson);
     addEventListener('keydown', (e) => {
       if (e.code !== 'KeyT' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       this.thirdPerson = !this.thirdPerson;
+      document.body.classList.toggle('third-person', this.thirdPerson);
       try {
         localStorage.setItem(THIRD_PERSON_KEY, this.thirdPerson ? '1' : '0');
       } catch {}
