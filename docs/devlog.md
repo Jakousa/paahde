@@ -176,6 +176,8 @@ From a few metres away real blown sand is a translucent veil streaming over the 
 
 `src/windSound.ts` synthesises wind from filtered noise (no samples), following `wind.sample()` at the
 listener every frame, so dune lees are quieter than crests and passing gusts and streamers are audible.
+The wind is averaged over a 4 m ring around the head (the topographic speed-up steps per 4 m cell),
+blended 60/40 with the regional wind so lees are only somewhat quieter, and followed with a ~1 s lag.
 
 - **Layers:** low rumble (brown noise, buffeting), broadband rush (bandpass rising with speed), two
   narrow aeolian "howl" resonances that only come up in strong wind and slide with gusts (Strouhal),

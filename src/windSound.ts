@@ -13,13 +13,20 @@
 // incommensurate sines, so it never visibly repeats) makes the sound breathe.
 //
 // Browsers only start audio after a user gesture, so the context is created on the first click or key.
-import { uAt, wind, type WindSample } from './world/wind';
+import { uAt, ustarFrom10, wind, type WindSample } from './world/wind';
 
 const NOISE_S = 4;
 /** Ear height above the sand (m). */
 const EAR = 1.7;
 /** Ear-level wind speed (m/s) that counts as "full" for the mix; ~a sandstorm (u10 ≈ 18). */
 const U_FULL = 15;
+/** The wind is averaged over a ring this wide (m) around the head, so 4 m terrain cells don't step. */
+const RING = 4;
+const RING_N = 6;
+/** How much of the local wind (vs the regional one) you hear: < 1 so dune lees are quieter, not silent. */
+const LOCAL = 0.6;
+/** Time constant (s) of the followed wind; about a second to settle. */
+const TAU = 0.6;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const smooth = (a: number, b: number, x: number) => {
@@ -85,7 +92,11 @@ export class WindSound {
   volume = 0.4;
   private g: Graph | null = null;
   private s: WindSample = { dx: 0, dz: 0, ustar: 0, q: 0, emit: 0 };
-  /** Slowly-followed local wind, so the gust term below can be the difference. */
+  /** Smoothed listener wind: shear velocity, transport and streamer weight. */
+  private ustar = -1;
+  private q = 0;
+  private emit = 0;
+  /** Slower-followed ear-level speed, so the gust term below can be the difference. */
   private uSlow = 0;
   private time = 0;
 
@@ -204,14 +215,34 @@ export class WindSound {
   update(dt: number, listener: { x: number; z: number }, yaw: number) {
     const g = this.g;
     if (!g || g.ctx.state !== 'running') return;
-    const s = wind.sample(listener.x, listener.z, this.s);
     this.time += dt;
     const t = this.time;
 
-    // Ear-level speed with fast turbulence on top (intensity ~25% in a gusty surface layer).
-    const u0 = uAt(s.ustar, EAR);
-    const u = u0 * (1 + 0.22 * wobble(t * 0.9, 0) + 0.08 * wobble(t * 3.1, 5));
-    this.uSlow += (u - this.uSlow) * Math.min(1, dt * 0.5);
+    // Average over the head and a ring around it, then lean towards the regional wind.
+    const s = wind.sample(listener.x, listener.z, this.s);
+    let us = s.ustar, q = s.q, emit = s.emit;
+    for (let i = 0; i < RING_N; i++) {
+      const a = (i / RING_N) * Math.PI * 2;
+      wind.sample(listener.x + RING * Math.cos(a), listener.z + RING * Math.sin(a), s);
+      us += s.ustar;
+      q += s.q;
+      emit += s.emit;
+    }
+    const usR = ustarFrom10(wind.u10);
+    const qR = wind.storm * 4;
+    us = LOCAL * (us / (RING_N + 1)) + (1 - LOCAL) * usR;
+    q = LOCAL * (q / (RING_N + 1)) + (1 - LOCAL) * qR;
+    emit /= RING_N + 1;
+    if (this.ustar < 0) this.ustar = us;
+    const k = 1 - Math.exp(-dt / TAU);
+    this.ustar += (us - this.ustar) * k;
+    this.q += (q - this.q) * k;
+    this.emit += (emit - this.emit) * k;
+
+    // Ear-level speed with gentle turbulence on top.
+    const u0 = uAt(this.ustar, EAR);
+    const u = u0 * (1 + 0.12 * wobble(t * 0.7, 0) + 0.04 * wobble(t * 2.3, 5));
+    this.uSlow += (u - this.uSlow) * (1 - Math.exp(-dt / 4));
     const gust = clamp01((u - this.uSlow) / Math.max(2, this.uSlow * 0.5)); // rising edge of a gust
     const x = clamp01(u / U_FULL);
 
@@ -222,31 +253,31 @@ export class WindSound {
     const front = -fromX * sy - fromZ * cy;
 
     const now = g.ctx.currentTime;
-    const set = (p: AudioParam, v: number, tau = 0.12) => p.setTargetAtTime(v, now, tau);
+    const set = (p: AudioParam, v: number, tau = 0.3) => p.setTargetAtTime(v, now, tau);
 
-    set(g.master.gain, this.volume);
+    set(g.master.gain, this.volume, 0.05);
     // A faint floor of moving air even in a calm, so the desert is never dead silent.
-    set(g.rumble.gain, 0.02 + 0.6 * x ** 1.6 * (1 + 0.6 * gust));
-    set(g.rumbleLp.frequency, 70 + 170 * x);
+    set(g.rumble.gain, 0.03 + 0.55 * x ** 1.4 * (1 + 0.4 * gust));
+    set(g.rumbleLp.frequency, 70 + 150 * x);
 
-    const rush = 0.015 + 0.55 * x ** 2 * (1 + 0.5 * gust);
+    const rush = 0.02 + 0.4 * x ** 1.6 * (1 + 0.35 * gust);
     // Facing into the wind is louder and brighter; the windward ear gets more than the lee one.
-    const face = 0.8 + 0.2 * front;
-    set(g.rushL.gain, rush * face * (1 - 0.35 * right));
-    set(g.rushR.gain, rush * face * (1 + 0.35 * right));
-    set(g.rushBp.frequency, 260 + 1100 * x ** 1.3 + 500 * gust);
-    set(g.rushLp.frequency, 1800 + 4500 * x * (0.75 + 0.25 * front));
+    const face = 0.85 + 0.15 * front;
+    set(g.rushL.gain, rush * face * (1 - 0.3 * right));
+    set(g.rushR.gain, rush * face * (1 + 0.3 * right));
+    set(g.rushBp.frequency, 220 + 750 * x ** 1.3 + 300 * gust);
+    set(g.rushLp.frequency, 1300 + 2700 * x * (0.8 + 0.2 * front));
 
     // Strouhal: f = 0.2 · U / d. With d ≈ 2–3 cm of scrap edge, ~8–30 Hz per m/s; keep it musical.
     const howlAmt = smooth(0.45, 0.95, x);
     for (const [i, h] of g.howl.entries()) {
-      set(h.bp.frequency, (180 + 34 * u) * h.ratio, 0.3);
-      set(h.gain.gain, howlAmt * 0.7 * clamp01(0.55 + 0.45 * wobble(t * 0.37, 2 + i * 3)) ** 2, 0.25);
+      set(h.bp.frequency, (180 + 30 * u) * h.ratio, 0.5);
+      set(h.gain.gain, howlAmt * 0.45 * clamp01(0.55 + 0.45 * wobble(t * 0.37, 2 + i * 3)) ** 2, 0.5);
     }
 
     // Sand hiss follows transport, and swells when a streamer sweeps through (emit).
-    const sand = clamp01(s.q / 3);
-    set(g.hiss.gain, 0.12 * sand * (0.4 + 0.6 * s.emit) * (1 + 0.4 * gust));
-    set(g.hissHp.frequency, 3000 + 2500 * sand);
+    const sand = clamp01(this.q / 3);
+    set(g.hiss.gain, 0.07 * sand * (0.5 + 0.5 * this.emit) * (1 + 0.3 * gust));
+    set(g.hissHp.frequency, 3000 + 2000 * sand);
   }
 }
