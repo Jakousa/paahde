@@ -109,7 +109,7 @@ export class Net {
     this.pending = this.pending.filter((p) => p.seq > ack);
     let s: PlayerState = {
       x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
-      grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld,
+      grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw);
     this.errorX += this.me.x - s.x;
