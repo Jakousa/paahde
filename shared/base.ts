@@ -116,13 +116,14 @@ const PAD_Y = BASE.y - 0.06;
  * (src/world/mast.ts).
  */
 export const MAST = {
-  x: 7, z: 0, h: 22, r0: 0.3, r1: 0.13,
+  x: 14, z: 0, h: 22, r0: 0.3, r1: 0.13,
   plinth: { r: 1.2, h: 0.5 },
   fins: { n: 4, reach: 1.05, h: 2.6, t: 0.22 },
   guyY: 15, guyR: 6.5, anchor: { half: 0.45, h: 0.4 },
 };
-/** Guy wire anchors (local x, z): three, 120° apart, the first straight out from the hut. */
-export const MAST_ANCHORS: [number, number][] = [[1, 0], [-0.5, Math.sqrt(3) / 2], [-0.5, -Math.sqrt(3) / 2]].map(
+/** Guy wire anchors (local x, z): three, 120° apart, the first back towards the hut so they stay near the
+ *  pad (the mast stands at its edge). */
+export const MAST_ANCHORS: [number, number][] = [[-1, 0], [0.5, Math.sqrt(3) / 2], [0.5, -Math.sqrt(3) / 2]].map(
   ([c, s]) => [MAST.x + c * MAST.guyR, MAST.z + s * MAST.guyR],
 );
 

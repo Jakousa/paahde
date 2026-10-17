@@ -1,6 +1,5 @@
 // The flag mast by the home base (layout and collision in shared/base.ts MAST): a tall tapered concrete
-// pole on a plinth with buttress fins, guy wires to anchor blocks, a red light on top for the night, and
-// a striped windsock that swings round to the wind and lifts and flutters with it (src/world/wind.ts).
+// pole on a plinth with buttress fins, guy wires to anchor blocks, and a striped windsock that swings round to the wind and lifts and flutters with it (src/world/wind.ts).
 // Built from primitives here; small enough not to need a Blender model.
 import * as THREE from 'three/webgpu';
 import { BASE, MAST, MAST_ANCHORS } from '../../shared/base.ts';
@@ -13,8 +12,6 @@ const SOCK = { r0: 0.36, r1: 0.14, len: 2.6, n: 5, orange: 0xc8501e, white: 0xe6
 const ARM = 0.38;
 /** Wind (m/s at the sock) that holds it straight out; below this it hangs down. */
 const FULL_WIND = 8;
-/** Red top light blink period and lit fraction (s). */
-const BLINK = { period: 1.6, on: 0.25 };
 
 function material(color: number, roughness: number, metalness = 0): THREE.MeshStandardNodeMaterial {
   const m = new THREE.MeshStandardNodeMaterial();
@@ -37,7 +34,6 @@ export class Mast {
   private swivel = new THREE.Group();
   /** The hoop (droops) and one joint per stripe after it (sag and flutter). */
   private joints: THREE.Group[] = [];
-  private lamp: THREE.MeshStandardNodeMaterial;
   private yaw = 0;
   private yawVel = 0;
   private lift = 0;
@@ -109,15 +105,10 @@ export class Mast {
       this.group.add(wire);
     }
 
-    // Top: a steel cap, the warning light, and the swivel with the windsock.
+    // Top: a steel cap, and the swivel with the windsock.
     const top = mesh(new THREE.CylinderGeometry(MAST.r1 + 0.03, MAST.r1 + 0.03, 0.12, 14), steel);
     top.position.y = MAST.h;
     this.group.add(top);
-    this.lamp = material(0x401010, 0.4);
-    this.lamp.emissive.setHex(0xff2010);
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 6), this.lamp);
-    lamp.position.y = MAST.h + 0.15;
-    this.group.add(lamp);
 
     this.swivel.position.y = MAST.h - 0.5;
     this.group.add(this.swivel);
@@ -161,7 +152,7 @@ export class Mast {
     }
   }
 
-  /** Swing the sock to the wind at the top of the pole; blink the light. `dt` in seconds. */
+  /** Swing the sock to the wind at the top of the pole. `dt` in seconds. */
   update(dt: number) {
     dt = Math.min(dt, 0.1);
     const t = wind.t;
@@ -187,7 +178,5 @@ export class Mast {
       if (i > 0) j.rotation.z = -limp * 0.12 + Math.sin(ph * 0.7) * amp * 0.5;
       j.rotation.y = Math.sin(ph) * amp * (0.4 + i * 0.3);
     }
-    // The warning light blinks on the shared clock, so everyone sees the same.
-    this.lamp.emissiveIntensity = (t % BLINK.period) < BLINK.on ? 4 : 0;
   }
 }
