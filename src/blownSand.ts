@@ -1,21 +1,20 @@
 // Wind-blown sand, client-side and purely visual (see world/wind.ts for when and where sand moves).
 //
-// Two particle pools, each drawn as one instanced mesh whose quads are built in the vertex shader from
-// per-instance position/velocity, so the CPU only writes two small arrays per frame:
+// Saltating grains as one instanced mesh whose quads are built in the vertex shader from per-instance
+// position/velocity, so the CPU only writes two small arrays per frame:
 //   - Saltating grains close to the player: faint motion-blurred streaks that hop along the ground in
 //     ballistic arcs (gravity + drag towards the log-law wind at their height), bouncing a few times.
 //     Their emission follows the wind's streamers. They only add fine texture up close; the flowing
 //     sheet of sand seen over the dunes is world/driftSheet.ts.
-//   - Crest plumes: soft wisps blown off dune brinks in strong gusts, stretched downwind, drifting
-//     over and sinking into the sheltered slip face. Brinks are found by random probing.
-// Both scatter the low sun forward a little when backlit, but stay below bloom: dust, not sparks.
+// They scatter the low sun forward a little when backlit, but stay below bloom: dust, not sparks.
+// The sheet also carries the plumes off the crests (continuous along every brink, not emitters).
 import * as THREE from 'three/webgpu';
 import type { Node } from 'three/webgpu';
 import { cameraPosition, cross, dot, float, instancedBufferAttribute, length, max, mix, normalize, pow, saturate, smoothstep, uv, vec3 } from 'three/tsl';
 import { edits, heightAt, normalAt } from '../shared/terrain.ts';
 import { DriftSheet } from './world/driftSheet.ts';
 import { hazeDensity, sunColor, sunDirection } from './world/env.ts';
-import { uAt, USTAR_T, ustarFrom10, wind, type WindSample } from './world/wind.ts';
+import { PEAK_LOCAL, uAt, USTAR_T, ustarFrom10, wind, type WindSample } from './world/wind.ts';
 
 const G = 9.81;
 
@@ -29,12 +28,6 @@ const GROUND_CELLS = 8192; // cached 1 m ground cells (the spawn disc covers ~25
 const SHUTTER = 0.05; // s of motion blur for the streaks
 const GRAIN_WIDTH = 0.012; // m
 
-// Crest plumes
-const PUFFS = 1500;
-const EMITTERS = 250;
-const PLUME_RADIUS = 160; // search and keep brink emitters within this distance (m)
-const PROBES = 30; // random brink probes per frame
-const SETTLE = 0.35; // m/s, fall speed of the fine sand in a plume
 
 type Pool = {
   n: number;
@@ -73,13 +66,8 @@ function grainColor(center: Node<'vec3'>, light: Node<'float'>, albedo: [number,
 
 export class BlownSand {
   private grains = makePool(GRAINS);
-  private puffs = makePool(PUFFS);
   // Per-grain simulation state beyond pos/vel: [ground y0, slope x, slope z, origin x, origin z, u*, age, life]
   private gs = new Float32Array(GRAINS * 8);
-  // Per-puff: [start y, u*, age, life, size0]
-  private ps = new Float32Array(PUFFS * 5);
-  private emitters: { x: number; y: number; z: number; key: number }[] = [];
-  private emitterKeys = new Set<number>();
   private sheet: DriftSheet;
   private sample: WindSample = { dx: 0, dz: 0, ustar: 0, q: 0, emit: 0 };
   private n = { x: 0, y: 1, z: 0 };
@@ -88,7 +76,7 @@ export class BlownSand {
   private groundCache = new Float32Array(GROUND_CELLS * 4);
 
   constructor(scene: THREE.Scene) {
-    scene.add(this.grainMesh(), this.puffMesh());
+    scene.add(this.grainMesh());
     this.sheet = new DriftSheet(scene);
     // Digging changes the ground: forget the cached cells (edits are rare next to grain hops).
     const prev = edits.onChange;
@@ -121,26 +109,6 @@ export class BlownSand {
     return mesh;
   }
 
-  private puffMesh() {
-    const p = vec4Attr(this.puffs.posAttr);
-    const v = vec4Attr(this.puffs.velAttr);
-    const center = p.xyz;
-    // Wisps stretched along their motion (mostly downwind), like sand smoking off a crest.
-    const toCam = normalize(cameraPosition.sub(center));
-    const dir = normalize(v.xyz.add(vec3(0, 1e-4, 0)));
-    const side = normalize(cross(dir, toCam).add(vec3(0, 1e-4, 0)));
-    const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
-    mat.positionNode = center.add(dir.mul(uv().x.sub(0.5).mul(2.6)).add(side.mul(uv().y.sub(0.5))).mul(v.w));
-    const r = length(uv().sub(0.5)).mul(2);
-    mat.opacityNode = p.w.mul(pow(saturate(float(1).sub(smoothstep(0.1, 1, r))), 1.5));
-    // Fine dust is paler than the dune surface and scatters forward more strongly.
-    mat.colorNode = mix(grainColor(center, float(1), [0.85, 0.55, 0.3], 1.5), vec3(0.9, 0.5, 0.25), 0.15);
-    const mesh = new THREE.Mesh(this.puffs.geo, mat);
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 4;
-    return mesh;
-  }
-
   /** Per render frame. `focus` is the local player's feet. */
   update(dt: number, focus: { x: number; y: number; z: number }) {
     if (dt <= 0) return;
@@ -149,12 +117,9 @@ export class BlownSand {
     hazeDensity.value = this.baseHaze * (1 + 1.5 * storm * storm);
 
     // Saltation is only possible somewhere if the strongest gust on the most exposed crest can do it.
-    if (ustarFrom10(wind.u10 * 1.25 * 1.6) > USTAR_T) this.spawnGrains(dt, focus);
+    if (ustarFrom10(wind.u10 * PEAK_LOCAL) > USTAR_T) this.spawnGrains(dt, focus);
     this.stepGrains(dt, focus);
     this.sheet.update(dt, focus);
-    this.findBrinks(focus);
-    this.spawnPuffs(dt, focus);
-    this.stepPuffs(dt);
   }
 
   private spawnGrains(dt: number, focus: { x: number; z: number }) {
@@ -259,75 +224,6 @@ export class BlownSand {
       g.vel[p] = vx;
       g.vel[p + 1] = vy;
       g.vel[p + 2] = vz;
-    }
-    this.upload(g);
-  }
-
-  /** Probe random spots for dune brinks (a sharp drop just downwind of rising ground) to emit plumes from. */
-  private findBrinks(focus: { x: number; z: number }) {
-    for (let k = this.emitters.length - 1; k >= 0; k--) {
-      const e = this.emitters[k];
-      if (Math.hypot(e.x - focus.x, e.z - focus.z) > PLUME_RADIUS * 1.1) {
-        this.emitterKeys.delete(e.key);
-        this.emitters.splice(k, 1);
-      }
-    }
-    if (wind.storm < 0.1) return;
-    const wx = wind.dx, wz = wind.dz;
-    for (let k = 0; k < PROBES && this.emitters.length < EMITTERS; k++) {
-      const a = Math.random() * Math.PI * 2, r = PLUME_RADIUS * Math.sqrt(Math.random());
-      const x = focus.x + Math.cos(a) * r, z = focus.z + Math.sin(a) * r;
-      const key = Math.floor(x / 3) * 65536 + Math.floor(z / 3);
-      if (this.emitterKeys.has(key)) continue;
-      const h = heightAt(x, z);
-      if (h - heightAt(x + 4 * wx, z + 4 * wz) < 1.8 || h - heightAt(x - 4 * wx, z - 4 * wz) < 0.2) continue;
-      this.emitters.push({ x, y: h, z, key });
-      this.emitterKeys.add(key);
-    }
-  }
-
-  private spawnPuffs(dt: number, focus: { x: number; z: number }) {
-    const g = this.puffs, s = this.ps, wx = wind.dx, wz = wind.dz;
-    for (const e of this.emitters) {
-      // Wind just upwind of the brink, on the exposed windward slope.
-      const w = wind.sample(e.x - 3 * wx, e.z - 3 * wz, this.sample);
-      const rate = Math.min(4, 2 * (w.q - 0.8)); // puffs per second
-      if (rate <= 0 || Math.random() >= rate * dt) continue;
-      if (g.n >= PUFFS) break;
-      const i = g.n++;
-      const along = (Math.random() - 0.5) * 3; // spread along the crest
-      const far = Math.hypot(e.x - focus.x, e.z - focus.z) / PLUME_RADIUS;
-      const u = uAt(w.ustar, 1) * 0.7;
-      g.pos.set([e.x - wz * along, e.y + 0.15, e.z + wx * along, 0], i * 4);
-      g.vel.set([wx * u, 0.2 + Math.random() * 0.8, wz * u, 0], i * 4);
-      s[i * 5] = e.y;
-      s[i * 5 + 1] = w.ustar;
-      s[i * 5 + 2] = 0;
-      s[i * 5 + 3] = 2 + Math.random() * 2;
-      s[i * 5 + 4] = (0.5 + Math.random() * 0.5) * (1 + far); // bigger far away so plumes stay readable
-    }
-  }
-
-  private stepPuffs(dt: number) {
-    const g = this.puffs, s = this.ps, dx = wind.dx, dz = wind.dz;
-    for (let i = 0; i < g.n; i++) {
-      const o = i * 5, p = i * 4;
-      const age = (s[o + 2] += dt), life = s[o + 3];
-      if (age >= life) {
-        this.kill(g, s, 5, i--);
-        continue;
-      }
-      const uw = uAt(s[o + 1], Math.max(0.3, g.pos[p + 1] - s[o] + 0.3)) * 0.8;
-      const tau = 0.8;
-      g.vel[p] += ((uw * dx - g.vel[p]) / tau + (Math.random() - 0.5) * 3) * dt;
-      g.vel[p + 1] += ((-SETTLE - g.vel[p + 1]) / 1.5 + (Math.random() - 0.5) * 2) * dt;
-      g.vel[p + 2] += ((uw * dz - g.vel[p + 2]) / tau + (Math.random() - 0.5) * 3) * dt;
-      g.pos[p] += g.vel[p] * dt;
-      g.pos[p + 1] += g.vel[p + 1] * dt;
-      g.pos[p + 2] += g.vel[p + 2] * dt;
-      const t = age / life;
-      g.pos[p + 3] = 0.16 * Math.min(1, age / 0.3) * (1 - t) * (1 - t);
-      g.vel[p + 3] = s[o + 4] * (1 + age * 1.2); // plumes spread as they go
     }
     this.upload(g);
   }

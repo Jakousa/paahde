@@ -18,6 +18,7 @@
 //     crest, so crests start moving first. Past the sharp brink the flow separates: the slip face
 //     sits in a sheltered eddy where almost nothing saltates, and sand thrown off the brink rains
 //     down onto it. In strong wind this shows as plumes "smoking" off the crests.
+//   - Wind also grows with height above the wider dune field, so the high ridges run first.
 import { heightAt, normalAt, WIND } from '../../shared/terrain.ts';
 
 const KAPPA = 0.4;
@@ -26,6 +27,11 @@ export const Z0 = 1e-4;
 /** Fluid threshold shear velocity for 0.25 mm quartz sand (m/s). */
 export const USTAR_T = 0.22;
 const LOG10 = Math.log(10 / Z0);
+/** Gusts scale the local wind between GUST_MIN and GUST_MIN + GUST_RANGE times the regional one. */
+const GUST_MIN = 0.65;
+const GUST_RANGE = 0.8;
+/** Strongest local wind relative to the regional one: the peak gust on the most exposed crest. */
+export const PEAK_LOCAL = (GUST_MIN + GUST_RANGE) * 1.8;
 
 /** Shear velocity from the wind speed at 10 m. */
 export const ustarFrom10 = (u10: number) => (KAPPA * u10) / LOG10;
@@ -89,7 +95,8 @@ class Wind {
       const s = Math.min(1, Math.max(0, (n - 0.2) / 0.7));
       this.u10 = 18 * fade(s);
     }
-    const wobble = (noise(t / 60, 3.5, 303) - 0.5) * 0.35; // ±10°
+    // The wind veers slowly (±25° over minutes) and flickers a few degrees with the gusts.
+    const wobble = (noise(t / 120, 3.5, 303) - 0.5) * 0.9 + (noise(t / 12, 7.5, 404) - 0.5) * 0.15;
     const c = Math.cos(wobble), s = Math.sin(wobble);
     this.dx = WIND.x * c - WIND.z * s;
     this.dz = WIND.x * s + WIND.z * c;
@@ -106,9 +113,12 @@ class Wind {
       const cx = ix * 4 + 2, cz = iz * 4 + 2;
       const wx = WIND.x, wz = WIND.z;
       const h = heightAt(cx, cz);
-      // Height above the ground 30 m up- and downwind: how exposed this spot is.
+      // Height above the ground 30 m up- and downwind: how exposed this spot is (crest speed-up).
       const rel = h - 0.5 * (heightAt(cx - 30 * wx, cz - 30 * wz) + heightAt(cx + 30 * wx, cz + 30 * wz));
-      f = Math.min(1.6, Math.max(0.5, 1 + rel * 0.03));
+      // Altitude over the wider dune field: the high ridges stand in faster air than the corridors.
+      const far = 0.25 * (heightAt(cx - 120 * wx, cz - 120 * wz) + heightAt(cx + 120 * wx, cz + 120 * wz) +
+        heightAt(cx - 120 * wz, cz + 120 * wx) + heightAt(cx + 120 * wz, cz - 120 * wx));
+      f = Math.min(1.8, Math.max(0.5, 1 + rel * 0.03 + (h - far) * 0.008));
       // Slip faces (steep, facing downwind) sit in the separation eddy behind the brink.
       normalAt(cx, cz, this.n);
       const lee = Math.min(1, Math.max(0, (this.n.x * wx + this.n.z * wz - 0.12) / 0.25));
@@ -124,10 +134,11 @@ class Wind {
     const dx = this.dx, dz = this.dz;
     const along = x * dx + z * dz - this.conv * this.t;
     const across = z * dx - x * dz;
-    // Gust patches (~60 m) and streamers (long and narrow, wandering sideways over time).
-    const gust = noise(along / 60, across / 40, 7);
+    // Gust patches (~50 m, racing downwind, lulls between them) and streamers (long and narrow,
+    // wandering sideways over time).
+    const gust = fade(noise(along / 50, across / 35, 7));
     const streak = noise(along / 14, across / 2.5 + this.t * 0.15, 11);
-    const u = this.u10 * (0.75 + 0.5 * gust) * this.topography(x, z);
+    const u = this.u10 * (GUST_MIN + GUST_RANGE * gust) * this.topography(x, z);
     const us = ustarFrom10(u);
     const q = Math.max(0, (us * us - USTAR_T * USTAR_T) / (USTAR_T * USTAR_T));
     // Near the threshold only streamers carry sand; as transport grows they merge into a carpet.

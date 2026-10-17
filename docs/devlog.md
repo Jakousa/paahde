@@ -159,9 +159,18 @@ From a few metres away real blown sand is a translucent veil streaming over the 
 - **Drift sheet** (`src/world/driftSheet.ts`): seven terrain-hugging shells (3–55 cm) on a 96 m grid
   around the player, drawn as one instanced mesh. Streamers are cut from wind-aligned noise advected at
   saltation speed (higher shells slide faster and softer); near the threshold only ribbons move, in a
-  storm they merge. Slip faces stay clear. Lit like the sand with mild forward scattering, below bloom.
+  storm they merge. Slip faces stay clear. Lit by the same sun, sky fill and cascaded shadows as the
+  sand (Lambert with the ground normal), so it darkens on shaded slopes and in dune and palm shadows.
+- **Local wind:** every sheet vertex takes its strength from `wind.sample()` (interleaved over 4 frames),
+  so gusts visibly race downwind as patches of moving sand, crests and high ridges run first, lee
+  slopes stay quiet. `wind.ts` now veers ±25° over minutes with a few degrees of gusty flicker, has
+  deeper lulls between gusts (0.65–1.45×) and adds an altitude term (height over the field ~120 m out).
+- **Crest plumes** are part of the sheet: behind a brink it is carried on at the brink's height,
+  sinking 0.32 m per m, spreading and thinning over ~8 m, fed by the wind at the brink. Continuous along
+  every crest instead of the old per-emitter puffs (removed from `blownSand.ts`).
 - **Grains** now only spawn within 14 m, thinner, much fainter and without the backlit glow: texture up
-  close. **Crest plumes** are stretched downwind into wisps and glow less.
+  close.
+- Cost: ~0.2 ms/frame; ~5 ms when the 96 m grid recentres (every 8 m, heights reused) or the wind veers.
 
 ## Wind sound
 
