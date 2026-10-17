@@ -1,0 +1,25 @@
+dadajam - credits
+=================
+
+Third-party assets
+------------------
+
+Junkyard Props (3D model)
+  This work is based on "Junkyard Props"
+  (https://sketchfab.com/3d-models/junkyard-props-37343a1b386f4d75879be93319dbb717)
+  by haroonimtiaz35 (https://sketchfab.com/haroonimtiaz35)
+  licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/).
+  Texture cropped and downscaled.
+  File: models/junkyard_props.glb
+
+Brisk walk on trail (sound)
+  By freesound_community on Pixabay (#70141), Pixabay Content License
+  (https://pixabay.com/service/license-summary/).
+  Sliced into single steps, high-passed and levelled.
+  File: audio/footsteps.mp3
+
+Made for this game
+------------------
+
+All other models, textures, icons and sounds were made for dadajam: models and icons are generated
+in Blender by the scripts in tools/ of the source repository, and the wind is synthesised in code.
