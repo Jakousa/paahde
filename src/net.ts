@@ -24,6 +24,9 @@ import { HOTBAR, moveItem, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '.
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashTaken } from '../shared/crash.ts';
 import type { SiteLink } from './teardown/teardown';
+
+/** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
+export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' }>;
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
@@ -97,7 +100,7 @@ export class Net {
    *  disassembly mode (src/main.ts hands them to it). */
   private holders = new Map<string, Map<number, number>>();
   private holdTimers = new Map<string, ReturnType<typeof setInterval>>();
-  onSite?: (msg: Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' }>) => void;
+  onSite?: (msg: SiteMsg) => void;
 
   /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
   water = { heat: 0, sips: 4, rising: false, temp: 20, shade: true, at: 0 };
@@ -177,7 +180,7 @@ export class Net {
     if (this.connected) this.send({ t: 'crashUse', kind });
   }
 
-  /** The shared session of a large crash site (see SiteLink in src/teardown/teardown.ts). */
+  /** The shared session of a large crash site, or of the disassembly table ('bench') (see SiteLink in src/teardown/teardown.ts). */
   siteLink(id: string): SiteLink {
     const key = (i: number) => `${id}:${i}`;
     return {
@@ -402,7 +405,7 @@ export class Net {
       m.set(msg.i, msg.n);
       return;
     }
-    if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake') {
+    if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake' || msg.t === 'sites' || msg.t === 'siteReset' || msg.t === 'bench' || msg.t === 'siteTook') {
       if (msg.t === 'siteDone') this.holders.get(msg.id)?.delete(msg.i);
       return this.onSite?.(msg);
     }

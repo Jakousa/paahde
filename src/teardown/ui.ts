@@ -1,6 +1,6 @@
 // DOM for the disassembly mode: a full-screen overlay that takes the pointer (so clicks never reach the game
-// canvas and re-capture the mouse), an info card, a leave button and the parts tray. The tray keeps what you
-// have taken apart so far (kept in this browser only for now).
+// canvas and re-capture the mouse), an info card, a leave button and the parts tray. Taken parts go into the
+// bag on the server (server/crash.ts); the tray just lists what you have collected this session.
 import { RARITY, type PartId, type Tier } from '../../shared/salvage.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
@@ -8,7 +8,6 @@ const NAMES: Record<PartId, string> = {
   battery: 'Battery', motor: 'Motor', heatsink: 'Heatsink', compute: 'Compute unit', antimatter: 'Antimatter cell', coil: 'Coil',
   impeller: 'Impeller', bearing: 'Bearing', gear: 'Gear', valve: 'Valve', relay: 'Relay',
 };
-const STORE_KEY = 'dadajam.tray';
 const KEYS_SMALL = 'Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs · Right-drag: carry a freed part to the tray, or move the machine · Middle-drag / arrows: turn it over (R resets) · W S A D: step closer, further, around · Check every side · Esc: leave';
 const KEYS_LARGE = 'Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs, hold lifting eyes (two players) · Right-drag: carry a freed part to the tray · W S A D: closer, further, around it (too heavy to turn) · Middle-drag: look around (R recentres) · Walk too far to leave · Esc: leave';
 
@@ -66,9 +65,6 @@ export class TeardownUi {
     this.bar = o.querySelector('#tdBar')!;
     o.querySelector('#tdLeave')!.addEventListener('click', onLeave);
 
-    try {
-      for (const [k, n] of Object.entries(JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}') as Record<string, number>)) if (n > 0) this.counts.set(k, n);
-    } catch {}
     this.setPhase('off', '');
     this.renderTray();
   }
@@ -105,9 +101,6 @@ export class TeardownUi {
   addItem(part: PartId, tier: Tier) {
     const k = `${part}_${tier}`;
     this.counts.set(k, (this.counts.get(k) ?? 0) + 1);
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(this.counts)));
-    } catch {}
     this.renderTray();
   }
 

@@ -8,6 +8,7 @@
 // (parts.ts) are mounted inside. Better parts come out of fancier machines.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { machineParts } from '../../shared/machine.ts';
 import { COMPONENTS, RARITY, TIERS, type ComponentKind, type PartId, type Tier } from '../../shared/salvage.ts';
 import { EXTRA_PARTS, makeExtraPart, THICKNESS } from './parts.ts';
 
@@ -46,6 +47,8 @@ export interface Piece {
 export interface Slot {
   part: PartId;
   tier: Tier;
+  /** Which of the machine's parts this is (shared/machine.ts machineParts), the same on every client and the server. */
+  index: number;
   ring: THREE.Mesh;
   taken: boolean;
   /** The part's own holder; free to take once its holds are done. */
@@ -69,6 +72,12 @@ export type Target =
   | { type: 'junk'; junk: Junk }
   | { type: 'step'; step: Step }
   | { type: 'part'; slot: Slot };
+
+/** One rolled part: its tier and its index in machineParts(). */
+interface Roll {
+  tier: Tier;
+  index: number;
+}
 
 export const stepReady = (s: Step) => !s.done && s.after.every((a) => a.done);
 export const slotOpen = (s: Slot) => !s.taken && s.piece.holds.every((h) => h.done);
@@ -150,9 +159,9 @@ class Kit {
   slots: Slot[] = [];
   private mats: Record<MatKey, THREE.MeshStandardNodeMaterial>;
   private dmats: Partial<Record<MatKey, THREE.MeshStandardNodeMaterial>> = {};
-  private queue: Record<PartId, Tier[]>;
+  private queue: Record<PartId, Roll[]>;
 
-  constructor(grade: number, rolled: Record<PartId, Tier[]>) {
+  constructor(grade: number, rolled: Record<PartId, Roll[]>) {
     this.grade = grade;
     this.queue = rolled;
     const p = PALETTE[grade];
@@ -176,8 +185,8 @@ class Kit {
     };
   }
 
-  /** Next rolled tier of `part`, or null when the machine holds no more of them (the mount stays empty). */
-  take(part: PartId): Tier | null {
+  /** Next rolled `part`, or null when the machine holds no more of them (the mount stays empty). */
+  take(part: PartId): Roll | null {
     return this.queue[part].shift() ?? null;
   }
 
@@ -407,7 +416,8 @@ class Kit {
   }
 
   /** A part holder at `pos`, held by `holds`. Its model loads in the background. */
-  part(part: PartId, tier: Tier, pos: V, holds: Step[], rot: V = [0, 0, 0]): Slot {
+  part(part: PartId, roll: Roll, pos: V, holds: Step[], rot: V = [0, 0, 0]): Slot {
+    const { tier, index } = roll;
     const holder = new THREE.Group();
     holder.position.set(...pos);
     holder.rotation.set(...rot);
@@ -420,7 +430,7 @@ class Kit {
     ring.raycast = () => {}; // a marker, never a click target
     ring.userData.ignoreBounds = true;
     holder.add(ring);
-    const slot: Slot = { part, tier, ring, taken: false, piece: { obj: holder, holds, released: false, floorY: 0, pop: [0, 1, 0] } };
+    const slot: Slot = { part, tier, index, ring, taken: false, piece: { obj: holder, holds, released: false, floorY: 0, pop: [0, 1, 0] } };
     holder.userData.target = { type: 'part', slot } satisfies Target;
     this.g.add(holder);
     this.slots.push(slot);
@@ -439,9 +449,9 @@ class Kit {
   }
   /** If the machine holds another `part`: build its hardware (`holds`) and mount it. Null when the mount stays empty. */
   mount(part: PartId, place: [V, V], holds: (tier: Tier) => Step[]): Slot | null {
-    const tier = this.take(part);
-    if (!tier) return null;
-    return this.part(part, tier, place[0], holds(tier), place[1]);
+    const roll = this.take(part);
+    if (!roll) return null;
+    return this.part(part, roll, place[0], holds(roll.tier), place[1]);
   }
 }
 
@@ -806,30 +816,22 @@ export const JUNK_KINDS = Object.keys(BUILDERS) as ComponentKind[];
 
 // ---- assembly ----------------------------------------------------------------------------------------------
 
-function pickTier(weights: Record<Tier, number>, rand: () => number): Tier {
-  let sum = 0;
-  for (const t of TIERS) sum += weights[t];
-  let r = rand() * sum;
-  for (const t of TIERS) if ((r -= weights[t]) < 0) return t;
-  return 'scrap';
-}
-
-/** Roll what is inside a component of `kind` with `rand`, then build it. Part models load in the background. */
-export function buildJunk(kind: ComponentKind, rand: () => number): Junk {
+/** Build a component of `kind` holding the parts its `seed` rolls (shared/machine.ts). Part models load in the
+ *  background. Slots are sorted by part index, so `slots[i].index === i` whenever every rolled part is mounted. */
+export function buildJunk(kind: ComponentKind, seed: number): Junk {
   const spec = COMPONENTS[kind];
-  const rolled: Record<PartId, Tier[]> = { battery: [], motor: [], heatsink: [], compute: [], antimatter: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
+  const rolled: Record<PartId, Roll[]> = { battery: [], motor: [], heatsink: [], compute: [], antimatter: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
   let best = 0;
-  for (const y of spec.yields) {
-    const n = y.min + Math.floor(rand() * (y.max - y.min + 1));
-    for (let i = 0; i < n; i++) {
-      const t = pickTier(spec.tierWeights, rand);
-      rolled[y.part].push(t);
-      best = Math.max(best, TIERS.indexOf(t));
-    }
-  }
+  machineParts(kind, seed).forEach(({ part, tier }, index) => {
+    rolled[part].push({ tier, index });
+    best = Math.max(best, TIERS.indexOf(tier));
+  });
 
   const kit = new Kit(best, rolled);
   BUILDERS[kind](kit);
+  kit.slots.sort((a, b) => a.index - b.index);
+  // Every rolled part needs a mount, or the server waits for a part nobody can take.
+  for (const part of Object.keys(rolled) as PartId[]) if (rolled[part].length) console.error(`teardown: ${kind} has no mount for ${rolled[part].length} ${part}`);
   const root = new THREE.Group();
   const scale = SCALE[kind];
   const box = new THREE.Box3().setFromObject(kit.g);

@@ -39,7 +39,7 @@ import { StormFx } from './storm';
 import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
 import { TeardownView } from './teardown/teardown';
-import { MachineSites } from './world/crash';
+import { BENCH_ID, MachineSites } from './world/crash';
 import { COMPONENTS } from '../shared/salvage.ts';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
@@ -75,15 +75,26 @@ if (location.search.includes('debug')) {
 
 const net = new Net(getBrowserId());
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { net });
-// Shared sessions at large crash sites: other players' steps and part takes arrive here.
+// Machine progress (large sites and the disassembly table), from the server: every machine is kept up to date,
+// and the one being worked on gets it through the disassembly mode, animated.
 net.onSite = (m) => {
   const cur = teardown.current;
-  if (!cur || cur.id !== m.id) return;
+  machines.apply(m, cur?.id ?? null);
+  if (m.t === 'siteTook' && cur?.id === m.id) {
+    teardown.applyTook(m.i, m.ok, m.reason);
+    if (!m.ok && m.reason === 'full') hud.toast('Bag full');
+  }
+  if (!cur || m.t === 'sites' || m.t === 'bench' || m.t === 'siteReset' || m.t === 'siteTook' || cur.id !== m.id) return;
   if (m.t === 'siteState') {
     for (const i of m.done) teardown.applyDone(i, true);
     for (const i of m.taken) teardown.applyTake(i, false);
   } else if (m.t === 'siteDone') teardown.applyDone(m.i);
   else teardown.applyTake(m.i, m.by === net.id);
+};
+// A machine we put on the disassembly table is there (the server picked its seed): start taking it apart.
+machines.bench.onReady = () => {
+  const job = machines.bench.site(net.siteLink(BENCH_ID));
+  if (job && !teardown.active && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 5) teardown.begin(job);
 };
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm());
 const digFx = new DigFx(scene);
@@ -283,8 +294,13 @@ renderer.setAnimationLoop((time) => {
     if (use) {
       if (STATIONS[station].kind === 'workbench') hud.toast('Nothing to craft yet');
       else if (table) {
-        if (!table.resume) net.crashUse(table.kind);
-        teardown.begin(machines.bench.site(table.kind));
+        const job = table.resume ? machines.bench.site(net.siteLink(BENCH_ID)) : null;
+        if (job) teardown.begin(job);
+        else {
+          // The server picks the machine's seed; its 'bench' answer starts the mode (onReady below).
+          machines.bench.ask();
+          net.crashUse(table.kind);
+        }
       } else hud.toast('Carry a small machine here to take it apart');
     } else if (tend) net.tend(bed);
     else if (target) {
