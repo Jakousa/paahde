@@ -64,7 +64,8 @@ Crashed spacecraft half-buried in the dunes, for players to hunt for parts later
   −34.1 to −39.3 LUFS integrated (mean −36.4), true peak ≤ −19 dBFS. Inside 5 m it stays at that level; at the
   default slider (0.4) it is 8 dB lower. Later raised 6 dB (`VOICE_GAIN` 0.1 → 0.2, so ~−30 LUFS at 5 m, true
   peak ≤ −13 dBFS) because it was too subtle up close, with a steeper falloff (`rolloffFactor` 1.6) so at
-  20–40 m it is only ~2.5 dB louder than before.
+  20–40 m it is only ~2.5 dB louder than before. Then +4 dB more (0.2 → 0.32, ~−26 LUFS at 5 m, true peak
+  ≤ −9 dBFS) on request: still a background detail, now noticeable.
 - `?spawn=crash` starts you just off the nose of the crash site nearest your saved position, facing it.
 
 ## 2026-10-17 — Base becomes an underground bunker (issue #12)
