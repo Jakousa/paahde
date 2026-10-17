@@ -4,11 +4,26 @@ const keys = new Set<string>();
 let mouseDig = false;
 let mousePile = false;
 let pickupPressed = false;
+// While the pointer is locked the game owns the keyboard: swallow browser shortcuts (Tab, F-keys, Alt, Ctrl+S...).
+// Esc frees the mouse (the browser does that itself), and then keys behave normally again.
+const captured = () => !!document.pointerLockElement;
+// Ctrl+W/T/N and friends are reserved by the browser; only the Keyboard Lock API (Chromium, fullscreen
+// only) can take them, so a click that captures the mouse also goes fullscreen and locks the keyboard.
+type KeyboardLock = { lock(codes?: string[]): Promise<void>; unlock(): void };
+const keyboard = (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard;
+addEventListener('click', () => {
+  if (document.pointerLockElement || !keyboard) return;
+  document.documentElement.requestFullscreen?.().then(() => keyboard.lock(), () => {});
+});
 addEventListener('keydown', (e) => {
+  if (captured()) e.preventDefault();
   keys.add(e.code);
   if (e.code === 'KeyF' && !e.repeat) pickupPressed = true;
 });
-addEventListener('keyup', (e) => keys.delete(e.code));
+addEventListener('keyup', (e) => {
+  if (captured()) e.preventDefault();
+  keys.delete(e.code);
+});
 addEventListener('blur', () => {
   keys.clear();
   mouseDig = mousePile = false;
@@ -25,7 +40,12 @@ addEventListener('mouseup', (e) => {
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement) mouseDig = mousePile = false;
+  if (!document.pointerLockElement) {
+    mouseDig = mousePile = false;
+    keys.clear();
+    keyboard?.unlock();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
 });
 
 export function readInput(): number {
