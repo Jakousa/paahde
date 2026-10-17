@@ -7,6 +7,7 @@
 import { BASE_SPAWN, padBlend } from './base.ts';
 import { seeded, sitesNear } from './crash.ts';
 import { crashSitesNear, siteLevel } from './crashsites.ts';
+import { rocksNear } from './rocks.ts';
 import { SALVAGE, type SalvageId } from './salvage.ts';
 import { baseHeight, WORLD_HALF, WORLD_SEED } from './terrain.ts';
 
@@ -46,9 +47,9 @@ function flatEnough(x: number, z: number): boolean {
   return gx * gx + gz * gz < MAX_GRAD2;
 }
 
-/** Clear of the base pad, the crash-site machines and the crashed spacecraft. */
+/** Clear of the base pad, rocks, the crash-site machines and the crashed spacecraft. */
 function clear(x: number, z: number): boolean {
-  return Math.abs(x) < WORLD_HALF - 10 && Math.abs(z) < WORLD_HALF - 10 && flatEnough(x, z) && padBlend(x, z) > 0.3 &&
+  return Math.abs(x) < WORLD_HALF - 10 && Math.abs(z) < WORLD_HALF - 10 && flatEnough(x, z) && padBlend(x, z) > 0.3 && !rocksNear(x, z, 4) &&
     sitesNear(x, z, 12).length === 0 && crashSitesNear(x, z, 30).length === 0;
 }
 

@@ -11,6 +11,7 @@ import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
 import { PART_IDS } from '../shared/parts.ts';
 import { PISTOL } from '../shared/rifle.ts';
+import { rocksNear } from '../shared/rocks.ts';
 import { TIERS } from '../shared/salvage.ts';
 import { EDIT_CELL, edits, WORLD_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -216,7 +217,7 @@ export class LootServer {
       const a = rand(0, Math.PI * 2), d = rand(CACHE_MIN_R, CACHE_MAX_R);
       x = Math.round((BASE.x + Math.sin(a) * d) / EDIT_CELL) * EDIT_CELL;
       z = Math.round((BASE.z + Math.cos(a) * d) / EDIT_CELL) * EDIT_CELL;
-      if (Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20 && !overBase(x, z, 10)) break;
+      if (Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20 && !overBase(x, z, 10) && !rocksNear(x, z, 3)) break; // dug up: not under rock
     }
     const r = Math.random();
     let kind: string, parts: (string | null)[] | undefined;

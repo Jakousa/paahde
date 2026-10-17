@@ -11,12 +11,14 @@
 //   bleeds it off; steering only bends your heading. Jump out of it to keep the speed, then slide again on
 //   landing (hold Shift in the air to slide the moment you touch down). Ctrl / C crouches.
 // - Soft sand: you build up and lose speed a bit slowly (momentum), and hard landings bog you down briefly.
+// - Rock (shared/rocks.ts) holds: bare rock up to ROCK_CLIMB_TAN doesn't slide; steeper rock is a wall you
+//   can't walk up, only jump onto. Off its edge you fall or slide.
 // - Sand bike (dev helper, 9 toggles it): see stepBike() below.
 import { BASE_SPAWN, baseCeiling, collideBase, terrainHidden } from './base.ts';
 import { collideCrash } from './crashsites.ts';
 import { bikeEngine, bikeTopSpeed } from './gear.ts';
 import { collideScrap } from './scrap.ts';
-import { heightAt, WORLD_HALF } from './terrain.ts';
+import { heightAt, onRock, WORLD_HALF } from './terrain.ts';
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
@@ -46,6 +48,8 @@ export const SLIP_TAN = 0.58;
 const SLIDE_FRICTION = 0.45; // kinetic friction of a sliding sand layer (lower than the static 0.67)
 const SLIDE_PUSH = 3; // extra downhill shove (m/s²) so a slip face always moves you
 const SLIDE_CONTROL = 0.45; // fraction of normal speed you can steer with while sliding
+/** tan(52°): bare rock up to this steep is scrambled up without sliding; steeper rock is a wall. */
+export const ROCK_CLIMB_TAN = 1.3;
 const SLIDE_ACCEL = 8; // steering accel on a slip face; below the slide pull on anything much steeper than 34°
 const MAX_GROUND_SPEED = 18;
 
@@ -140,10 +144,30 @@ export function slopeAt(x: number, z: number, out: { gx: number; gz: number }) {
   return out;
 }
 
-/** True if standing at (x, z) would slide (ground steeper than the angle of repose). */
+/** True if standing at (x, z) would slide (sand steeper than the angle of repose, or a rock face). */
 export function isSlipFace(x: number, z: number): boolean {
   const g = slopeAt(x, z, tmpSlope);
-  return Math.hypot(g.gx, g.gz) > SLIP_TAN;
+  return Math.hypot(g.gx, g.gz) > (onRock(x, z) ? ROCK_CLIMB_TAN : SLIP_TAN);
+}
+
+/** Would moving from (fx, fz) to (x, z) with feet at `feet` walk into a rock face? */
+function rockWall(fx: number, fz: number, x: number, z: number, feet: number): boolean {
+  const mx = x - fx, mz = z - fz;
+  const run = Math.sqrt(mx * mx + mz * mz);
+  if (run < 1e-6 || heightAt(x, z) < feet + 0.05 || !onRock(x, z)) return false;
+  const g = slopeAt(x, z, tmpSlope);
+  return (g.gx * mx + g.gz * mz) / run > ROCK_CLIMB_TAN;
+}
+
+/** Stop a move from (fx, fz) to c that runs into a rock face: slide along it on one axis if that is free. */
+function blockRock(c: { x: number; z: number; vx: number; vz: number }, fx: number, fz: number, feet: number) {
+  if (!rockWall(fx, fz, c.x, c.z, feet)) return;
+  if (!rockWall(fx, fz, c.x, fz, feet)) { c.z = fz; c.vz = 0; return; }
+  if (!rockWall(fx, fz, fx, c.z, feet)) { c.x = fx; c.vx = 0; return; }
+  c.x = fx;
+  c.z = fz;
+  c.vx = 0;
+  c.vz = 0;
 }
 
 const tmpSlope = { gx: 0, gz: 0 };
@@ -237,7 +261,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0): Pl
     const onScrap = s.y > heightAt(s.x, s.z) + 0.02;
     const g = onScrap ? flatSlope : slopeAt(s.x, s.z, tmpSlope);
     const steep = Math.hypot(g.gx, g.gz);
-    if (steep > SLIP_TAN) {
+    if (steep > (onScrap || !onRock(s.x, s.z) ? SLIP_TAN : ROCK_CLIMB_TAN)) {
       // Slip face: the sand gives way. Gravity along the slope minus kinetic friction pulls you down;
       // input only steers, it can't hold you in place.
       const ux = -g.gx / steep, uz = -g.gz / steep; // downhill unit vector
@@ -290,6 +314,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0): Pl
   c.vz = vz;
   const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP));
   const baseTop = collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP);
+  blockRock(c, s.x, s.z, Math.max(y, s.y));
   vx = c.vx;
   vz = c.vz;
   const x = clamp(c.x, -WORLD_HALF, WORLD_HALF);
@@ -397,6 +422,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
   const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
   const baseTop = collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP);
+  blockRock(c, s.x, s.z, Math.max(airborneY, s.y));
   vx = c.vx;
   vz = c.vz;
   const x = clamp(c.x, -WORLD_HALF, WORLD_HALF);

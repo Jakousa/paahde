@@ -19,6 +19,9 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/sim.ts` — deterministic movement/physics, run by **both** client and server
 - `shared/protocol.ts` — WebSocket message types
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`)
+- `shared/rocks.ts` — rock formations (mesas, buttes, boulders) placed by a rockiness noise; part of `baseHeight`
+  (max with the dunes). Steep rock is a wall in `step()`, digging stops at rock, `rock` attribute paints them in
+  `src/world/sandMaterial.ts`
 - `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen
 - `shared/temperature.ts` — air/felt °C by time of day (drives thirst); `shared/shade.ts` — sun ray march (shade)
   tuning, drained and validated in `server/water.ts`, HUD + `playerHands` in `src/water.ts`

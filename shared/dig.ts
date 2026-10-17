@@ -14,7 +14,7 @@
 // against heightAt up to DIG_REACH metres. Yaw and pitch travel quantized, so both sides agree.
 import { terrainHidden } from './base.ts';
 import { yawFromQ } from './sim.ts';
-import { baseHeight, EDIT_CELL, EDIT_CHUNK, heightAt, type TerrainEdits } from './terrain.ts';
+import { baseHeight, EDIT_CELL, EDIT_CHUNK, heightAt, sandOverRock, type TerrainEdits } from './terrain.ts';
 
 /** Eye height above the feet (first-person camera). */
 export const EYE_HEIGHT = 1.65;
@@ -103,6 +103,12 @@ export function digTarget(feet: { x: number; y: number; z: number }, yawQ: numbe
   return null;
 }
 
+/** Lowest edit at vertex (ix, iz), mm: MIN_EDIT_MM, or less deep where rock lies under the sand
+ *  (0 on bare rock: it can't be dug). */
+export function floorMm(ix: number, iz: number): number {
+  return Math.max(MIN_EDIT_MM, -Math.round(sandOverRock(ix * EDIT_CELL, iz * EDIT_CELL) * 1000));
+}
+
 /** Smooth radial brush weight in [0, 1]: (1 - d²/r²)². */
 function weight(d2: number, r2: number): number {
   if (d2 >= r2) return 0;
@@ -129,7 +135,7 @@ export function strokeDig(edits: TerrainEdits, x: number, z: number, sink?: Cell
       const w = weight(ddx * ddx + ddz * ddz, r2);
       if (w === 0) continue;
       const cur = edits.getMm(ix, iz);
-      const next = Math.max(MIN_EDIT_MM, cur - Math.round(tool.mm * w));
+      const next = Math.max(floorMm(ix, iz), cur - Math.round(tool.mm * w));
       if (next < cur) {
         removed += cur - next;
         set(edits, ix, iz, next, sink);
@@ -232,6 +238,7 @@ export class Relaxer {
   /** Vertices to check next step (keys from cellKey). */
   active = new Set<number>();
   private baseCache = new Map<number, number>();
+  private floorCache = new Map<number, number>();
 
   /** Mark a vertex as changed, e.g. from a dig sink. */
   touch(ix: number, iz: number) {
@@ -251,6 +258,17 @@ export class Relaxer {
       this.baseCache.set(k, b);
     }
     return b;
+  }
+
+  private floorMm(ix: number, iz: number): number {
+    const k = cellKey(ix, iz);
+    let f = this.floorCache.get(k);
+    if (f === undefined) {
+      f = floorMm(ix, iz);
+      if (this.floorCache.size > 200_000) this.floorCache.clear();
+      this.floorCache.set(k, f);
+    }
+    return f;
   }
 
   /**
@@ -279,13 +297,13 @@ export class Relaxer {
         const diff = baseA + eA - (baseB + eB);
         const bd = baseA - baseB;
         if (diff > 0) {
-          const q = transfer(diff - Math.max(limitMm, bd), eA, eB);
+          const q = transfer(diff - Math.max(limitMm, bd), eA - this.floorMm(ax, az), eB);
           if (q > 0) {
             set(edits, ax, az, eA - q, record);
             set(edits, bx, bz, eB + q, record);
           }
         } else if (diff < 0) {
-          const q = transfer(-diff - Math.max(limitMm, -bd), eB, eA);
+          const q = transfer(-diff - Math.max(limitMm, -bd), eB - this.floorMm(bx, bz), eA);
           if (q > 0) {
             set(edits, bx, bz, eB - q, record);
             set(edits, ax, az, eA + q, record);
@@ -294,15 +312,15 @@ export class Relaxer {
       }
     }
     this.active = next;
-    if (next.size === 0) this.baseCache.clear();
+    if (next.size === 0) { this.baseCache.clear(); this.floorCache.clear(); }
     return processed;
   }
 }
 
-/** Sand to move from a vertex with edit `from` to one with edit `to`, given the excess height (mm). */
-function transfer(excess: number, from: number, to: number): number {
+/** Sand to move from a vertex with `avail` mm above its floor to one with edit `to`, given the excess height (mm). */
+function transfer(excess: number, avail: number, to: number): number {
   if (excess <= 0) return 0;
   // A quarter of the excess per pass (half would level the pair): slumps over a second or so.
   const q = (excess + 3) >> 2;
-  return Math.max(0, Math.min(q, from - MIN_EDIT_MM, MAX_EDIT_MM - to));
+  return Math.max(0, Math.min(q, avail, MAX_EDIT_MM - to));
 }

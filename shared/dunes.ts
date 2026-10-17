@@ -45,19 +45,19 @@ const CREST2 = 0.7 * L2;
 const H2_MAX = 3.5;
 const HORN2 = 6;
 
-function hash2(ix: number, iz: number, seed: number): number {
+export function hash2(ix: number, iz: number, seed: number): number {
   let h = Math.imul(ix | 0, 0x27d4eb2d) ^ Math.imul(iz | 0, 0x165667b1) ^ seed;
   h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296; // [0, 1)
 }
 
-function ss(t: number): number {
+export function ss(t: number): number {
   return t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
 }
 
 /** 2D value noise in [0, 1) with quintic fade. */
-function vnoise(x: number, z: number, seed: number): number {
+export function vnoise(x: number, z: number, seed: number): number {
   const ix = Math.floor(x), iz = Math.floor(z);
   let fx = x - ix, fz = z - iz;
   fx = fx * fx * fx * (fx * (fx * 6 - 15) + 10);

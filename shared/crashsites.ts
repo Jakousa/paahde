@@ -23,6 +23,7 @@
 import { BASE, BASE_SPAWN, padBlend } from './base.ts';
 import { CRASH_KINDS, type CrashKind } from './crashKinds.ts';
 import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
+import { rocksNear } from './rocks.ts';
 import { SCRAP_CELL, scrapPieces } from './scrap.ts';
 import { yawFromQ } from './sim.ts';
 import { baseHeight, heightAt, WORLD_HALF, WORLD_SEED } from './terrain.ts';
@@ -199,8 +200,9 @@ function flatEnough(x: number, z: number, radius: number): boolean {
   return hi - lo < 0.2 * radius + 0.8;
 }
 
-/** True if a disc of `radius` at (x, z) comes within SCRAP_CLEAR of a scrap piece. */
+/** True if a disc of `radius` at (x, z) comes within SCRAP_CLEAR of a scrap piece, or reaches a rock. */
 function nearScrap(x: number, z: number, radius: number): boolean {
+  if (rocksNear(x, z, radius + 1)) return true;
   const reach = radius + SCRAP_CLEAR + 1.5; // + a scrap piece's own size
   for (let iz = Math.floor((z - reach) / SCRAP_CELL); iz <= Math.floor((z + reach) / SCRAP_CELL); iz++) {
     for (let ix = Math.floor((x - reach) / SCRAP_CELL); ix <= Math.floor((x + reach) / SCRAP_CELL); ix++) {

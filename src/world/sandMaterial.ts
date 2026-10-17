@@ -11,6 +11,9 @@
 //   - a smooth, paler crest band (per-vertex `crest` from terrain.ts) where the ripples die out
 //   - large-scale colour variation; slip faces slightly darker and smooth
 //   - shadow/ambient fill pushed towards rust/maroon whatever colour the sky light is
+//   - bare rock (per-vertex `rock` from terrain.ts, shared/rocks.ts): rust sandstone in beds, with dark
+//     desert-varnish streaks down the faces, bumped by the same noise, and sand settled on its ledges;
+//     no ripples, sheen or glitter there
 //
 // Everything is a pure function of world position, camera and light, so it is stable when standing still.
 // Tunables are exported TSL uniforms (`sand.*`): set `.value` at runtime, no recompile needed.
@@ -21,6 +24,7 @@ import {
   cameraPosition,
   cameraWorldMatrix,
   cos,
+  cross,
   dot,
   float,
   floor,
@@ -43,6 +47,7 @@ import {
   pow,
   saturate,
   select,
+  sign,
   sin,
   smoothstep,
   uniform,
@@ -92,6 +97,14 @@ export const sand = {
   glitter: uniform(2.5),
   /** Glitter colour: warm, so grains read as quartz in low sun rather than metal flakes. */
   glitterTint: uniform(new THREE.Color(1.0, 0.72, 0.42)),
+  /** Rock albedo: the darker and paler sandstone beds, and the desert varnish streaking the faces. */
+  rockDark: uniform(new THREE.Color(0.3, 0.12, 0.055)),
+  rockLight: uniform(new THREE.Color(0.56, 0.28, 0.13)),
+  varnish: uniform(new THREE.Color(0.12, 0.05, 0.03)),
+  /** Height of one sandstone bed (m). */
+  rockBed: uniform(1.4),
+  /** Bump depth (m) of the rock's streaks and bed joints. */
+  rockBump: uniform(0.25),
 };
 
 const PI = Math.PI;
@@ -145,6 +158,7 @@ interface SandSurface {
   v: V3; // to camera
   albedo: V3;
   slip: F; // 1 on slip faces
+  rock: F; // 1 on bare rock
   dust: F; // 0..1 dust in the air (wind + storm): dulls glitter and sheen
   rippleVis: F; // how resolved the small ripples are here (0 far away / masked)
   dist: F;
@@ -167,8 +181,9 @@ function buildSurface(): SandSurface {
   // Crest band: the brink and the few metres behind it are wind-scoured smooth, no ripples.
   const crest = attribute('crest', 'float') as F;
   const crestBand = smoothstep(0.35, 0.85, crest);
+  const rock = attribute('rock', 'float') as F;
 
-  const rippleMask = flatEnough.mul(float(1).sub(slip)).mul(float(1).sub(crestBand));
+  const rippleMask = flatEnough.mul(float(1).sub(slip)).mul(float(1).sub(crestBand)).mul(float(1).sub(rock));
 
   // Domain warp (metres along the wind) so crests meander and bend. Its gradient makes the ripple
   // normal follow the bent crest direction: taken from screen-space derivatives (the warp varies over
@@ -202,8 +217,26 @@ function buildSurface(): SandSurface {
   // The sheen uses a higher power, so it aliases sooner: its ripples fade out earlier (f^2).
   const slopeSpec = d1.mul(sand.rippleStrength).mul(1.4).mul(f1).mul(f1).add(d2.mul(sand.megaRippleStrength).mul(f2).mul(f2));
   // Heightfield y = h(x,z) has normal (-hx, 1, -hz); apply the ripple gradient on top of the dune normal.
-  const n = normalize(n0.sub(vec3(dir.x, 0, dir.y).mul(slope)));
+  const nSand = normalize(n0.sub(vec3(dir.x, 0, dir.y).mul(slope)));
   const nSpec = normalize(n0.sub(vec3(dir.x, 0, dir.y).mul(slopeSpec)));
+
+  // Rock: one noise, stretched vertically, gives both the varnish streaks and (as a bump) the flutes
+  // that weathering cuts down the faces; it also wobbles the beds so they don't read as ruled lines.
+  const streak = mx_noise_float(vec3(p.x.mul(0.45), p.y.mul(0.09), p.z.mul(0.45)));
+  const bedPos = p.y.div(sand.rockBed).add(streak.mul(0.45));
+  const bed = fract(bedPos);
+  const joint = smoothstep(0.14, 0.0, bed).add(smoothstep(0.88, 1.0, bed)); // groove between beds
+  const layer = mx_cell_noise_float(vec3(floor(bedPos), 0, 0));
+  const face = smoothstep(0.85, 0.5, n0.y); // steep rock
+  // Bump map from screen-space derivatives (Mikkelsen), faded once the pattern nears pixel size.
+  const bump = streak.mul(0.8).sub(joint.mul(0.25)).mul(sand.rockBump);
+  const dpx = dFdx(p), dpy = dFdy(p);
+  const r1 = cross(dpy, n0), r2 = cross(n0, dpx);
+  const bdet = dot(dpx, r1);
+  const grad = r1.mul(dFdx(bump)).add(r2.mul(dFdy(bump))).mul(sign(bdet));
+  const bumpFade = float(1).sub(smoothstep(0.15, 0.6, length(fwidth(p))));
+  const nRock = normalize(abs(bdet).mul(n0).sub(grad.mul(bumpFade)));
+  const n = normalize(mix(nSand, nRock, rock));
 
   // Albedo: large-scale red/gold patches, slip faces darker, ripple troughs a hair darker.
   const patch = saturate(mx_fractal_noise_float(vec3(p.x.mul(0.006), 0, p.z.mul(0.006)), 3).mul(0.9).add(0.5));
@@ -220,7 +253,14 @@ function buildSurface(): SandSurface {
     .mul(float(1).add(crestBand.mul(0.06))); // fine, sorted sand on the crest is a touch paler
   const dust = windStrength.mul(0.35).add(sandStorm.mul(0.65)).min(1);
 
-  return { p, n0, n, nSpec, v, albedo, slip, dust, dist, rippleVis: f1 };
+  const rockAlbedo = mix(c3(sand.rockDark), c3(sand.rockLight), layer.mul(0.65).add(streak.mul(0.2)).add(0.25).clamp(0, 1))
+    .mul(float(1).sub(joint.mul(0.18)))
+    .mul(grain);
+  const varnished = mix(rockAlbedo, c3(sand.varnish), smoothstep(0.05, 0.6, streak).mul(face).mul(0.55));
+  // Wind-blown sand settles on ledges and flat tops.
+  const dusted = mix(varnished, albedo, smoothstep(0.86, 0.97, n0.y).mul(0.7));
+
+  return { p, n0, n, nSpec, v, albedo: mix(albedo, dusted, rock), slip, rock, dust, dist, rippleVis: f1 };
 }
 
 class SandLightingModel extends THREE.LightingModel {
@@ -236,7 +276,7 @@ class SandLightingModel extends THREE.LightingModel {
     const lightColor = input.lightColor as V3;
     const directDiffuse = input.reflectedLight.directDiffuse as V3;
     const directSpecular = input.reflectedLight.directSpecular as V3;
-    const { p, n0, n, nSpec, v, albedo, slip, dust, dist, rippleVis } = this.s;
+    const { p, n0, n, nSpec, v, albedo, slip, rock, dust, dist, rippleVis } = this.s;
     // Light direction arrives in view space; the sand works in world space.
     const l = normalize(cameraWorldMatrix.mul(vec4(lightDirection, 0)).xyz);
     const ndl = dot(n, l);
@@ -263,7 +303,7 @@ class SandLightingModel extends THREE.LightingModel {
       .mul(pow(toSun, 3))
       .mul(saturate(ndl.add(0.35)))
       .mul(sand.rim);
-    const spec = c3(sand.sheenTint).mul(max(ocean.mul(float(1).sub(dust.mul(0.6))), rim));
+    const spec = c3(sand.sheenTint).mul(max(ocean.mul(float(1).sub(dust.mul(0.6))).mul(float(1).sub(rock)), rim));
 
     // Glitter: only in sunlight, fades out with distance (and per-cell footprint inside the layers).
     const lit = saturate(ndl.mul(5));
@@ -276,6 +316,7 @@ class SandLightingModel extends THREE.LightingModel {
       .mul(near)
       .mul(facing)
       .mul(float(1).sub(slip.mul(0.7)))
+      .mul(float(1).sub(rock))
       .mul(float(1).sub(dust.mul(0.7)))
       .mul(sand.glitter);
 

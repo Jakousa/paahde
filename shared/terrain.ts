@@ -15,6 +15,7 @@
 
 import { overBase, withPad } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
+import { rockHeight } from './rocks.ts';
 export { WIND, WORLD_SEED } from './dunes.ts';
 
 /** The playable world is a square of ±WORLD_HALF metres around the origin. */
@@ -25,9 +26,22 @@ export const EDIT_CELL = 0.5;
 /** Edit vertices per chunk side; chunks are the unit of storage, sync and mesh invalidation. */
 export const EDIT_CHUNK = 32;
 
-/** Procedural dunes before player edits, flattened into a pad around the home base (shared/base.ts). */
+/** Procedural dunes and rocks (shared/rocks.ts) before player edits, flattened into a pad around the home
+ *  base (shared/base.ts). */
 export function baseHeight(x: number, z: number): number {
-  return withPad(x, z, duneHeight(x, z, WORLD_SEED));
+  return withPad(x, z, Math.max(duneHeight(x, z, WORLD_SEED), rockHeight(x, z)));
+}
+
+/** How far the dunes would have to be dug to reach rock at (x, z), m: 0 on bare rock, Infinity with no
+ *  rock under the sand. Rocks avoid the base, so the pad never matters here. */
+export function sandOverRock(x: number, z: number): number {
+  const r = rockHeight(x, z);
+  return r === -Infinity ? Infinity : Math.max(0, duneHeight(x, z, WORLD_SEED) - r);
+}
+
+/** True where bare rock is the ground (no dunes or piled sand over it): hard footing, no digging. */
+export function onRock(x: number, z: number): boolean {
+  return sandOverRock(x, z) === 0 && edits.sample(x, z) < 0.05;
 }
 
 /** Sparse grid of height offsets (millimetres), chunked. One instance per world (see `edits`). */

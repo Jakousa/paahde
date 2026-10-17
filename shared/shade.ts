@@ -13,14 +13,16 @@ import { BASE, HUT, ROOM_Z, SKY, W } from './base.ts';
 import { MAX_EDIT_MM } from './dig.ts';
 import { scrapPieces, scrapTaken, SCRAP_CELL, type ScrapPiece } from './scrap.ts';
 import { DECL, skyVector, sunHourAngle, type Vec3 } from './sun.ts';
+import { ROCK_H_MAX } from './rocks.ts';
 import { heightAt } from './terrain.ts';
 
 /** How far towards the sun the ray looks for something in the way (m). */
 const MAX_DIST = 180;
 /** First step, and how much each step grows with distance (step = STEP0 + STEP_GROWTH · t). */
 const STEP0 = 0.2, STEP_GROWTH = 0.05;
-/** No ground is higher than this (m): erg ±12 + big dunes 30 + small 3.5 + piled sand + margin. */
-const GROUND_MAX = 12 + 30 + 3.5 + MAX_EDIT_MM / 1000 + 1;
+/** No ground is higher than this (m): erg ±12 + big dunes 30 + small 3.5 + piled sand + margin, or a
+ *  rock (shared/rocks.ts) standing on top of all that. */
+const GROUND_MAX = 12 + 30 + 3.5 + ROCK_H_MAX + MAX_EDIT_MM / 1000 + 1;
 /** Scrap is tested only this close (m): it is low, so it only shades at a low sun and up close. */
 const SCRAP_DIST = 25;
 /** Sun this close to the horizon (sin of its elevation) counts as set. */
