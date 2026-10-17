@@ -9,6 +9,7 @@ import { DIG_COOLDOWN_TICKS, PITCH_STEPS, quantizePitch } from '../shared/dig.ts
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
+import { GardenServer } from './garden.ts';
 import { ScrapServer } from './scrap.ts';
 import { TerrainServer } from './terrain.ts';
 
@@ -25,6 +26,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const db = openDb(process.env.DB_PATH ?? 'data/dadajam.db');
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
+const garden = new GardenServer(db);
 
 type Player = {
   id: number;
@@ -39,6 +41,7 @@ type Player = {
   lastInputAt: number;
   idleAccum: number;
   lastPickup: { at: number };
+  lastTend: { at: number };
   ws: WebSocket;
   alive: boolean;
 };
@@ -87,6 +90,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'hello' && !p) return join(ws, msg.browserId);
     if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
     if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
+    if (msg.t === 'tend' && p) return onTend(p, msg.bed);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
   });
   ws.on('close', () => {
@@ -106,13 +110,14 @@ function join(ws: WebSocket, browserId: unknown) {
   const state = row ? spawnState(row.x, row.z) : spawnState();
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
-    tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, ws, alive: true,
+    tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, ws, alive: true,
   };
   players.set(ws, p);
   save(p);
   // Terrain first, so the client never sees its spawn without the holes.
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
+  send(ws, garden.joinMessage());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   send(ws, { t: 'inventory', items: scrap.inventory(browserId) });
 }
@@ -124,6 +129,11 @@ function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {
   if (typeof ix === 'number' && typeof iz === 'number' && typeof i === 'number' && !scrapTaken.has(scrapKey(ix, iz, i))) {
     send(p.ws, { t: 'scrap', taken: [], back: [ix, iz, i] });
   }
+}
+
+function onTend(p: Player, bed: unknown) {
+  const what = garden.tend(p.state, bed, p.lastTend);
+  if (what) send(p.ws, { t: 'tended', what });
 }
 
 function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: unknown) {
@@ -198,7 +208,7 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
-  for (const msg of [terrain.flush(), scrap.flush()]) {
+  for (const msg of [terrain.flush(), scrap.flush(), garden.flush()]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
@@ -227,6 +237,7 @@ setInterval(() => {
   players.forEach(save);
   terrain.save();
   scrap.respawn();
+  garden.grow();
 }, SAVE_INTERVAL_MS);
 
 // Heartbeat: keeps NATs/proxies from dropping idle sockets and terminates dead ones.

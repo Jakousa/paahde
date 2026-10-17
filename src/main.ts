@@ -2,6 +2,7 @@ import * as THREE from 'three/webgpu';
 import { DT, quantizeYaw } from '../shared/sim.ts';
 import { quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
+import { bedTarget, EMPTY, GROWN } from '../shared/garden.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { DigFx } from './dig';
@@ -68,6 +69,8 @@ const remotes = new Map<number, Avatar>();
 const locator = new LocatorBar();
 const hud = new InventoryHud();
 net.onInventory = (items) => hud.setItems(items);
+net.onGarden = (beds) => base.setBeds(beds);
+net.onTended = (what) => hud.toast(what === 'planted' ? 'Seeds planted' : 'Harvested the greens');
 
 window.addEventListener('resize', () => {
   orbit.resize();
@@ -160,9 +163,16 @@ renderer.setAnimationLoop((time) => {
   windSound.update(frameDt, orbit.camera.position, orbit.yaw);
   footsteps.listener(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
-  const target = net.connected ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
-  hud.setTarget(target);
-  if (takePickup() && target) net.pickup(target);
+  // F: tend the greenhouse bed in view (planted beds can't be touched while they grow), else pick up scrap.
+  const bed = net.connected ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
+  const stage = net.garden[bed];
+  const tend = stage === EMPTY ? 'Plant seeds' : stage === GROWN ? 'Harvest' : null;
+  const target = net.connected && bed < 0 ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  hud.setTarget(tend ?? target);
+  if (takePickup()) {
+    if (tend) net.tend(bed);
+    else if (target) net.pickup(target);
+  }
 
   info.textContent = `${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();

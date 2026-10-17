@@ -70,6 +70,12 @@ export class Net {
   /** The server sent a new inventory. */
   onInventory?: (items: number[]) => void;
 
+  /** Greenhouse bed stages (shared/garden.ts), from the server; empty until the first 'garden'. */
+  garden: number[] = [];
+  onGarden?: (beds: number[]) => void;
+  /** A bed we tended was planted or harvested. */
+  onTended?: (what: 'planted' | 'harvested') => void;
+
   /** A dig/pile stroke landed: ours (predicted) or another player's. For effects only. */
   onDig?: (at: Point, pile: boolean, mine: boolean, id: number) => void;
 
@@ -98,6 +104,11 @@ export class Net {
     this.send({ t: 'pickup', ix: pc.ix, iz: pc.iz, i: pc.i });
     scrapTaken.add(pc.key);
     scrapChanged();
+  }
+
+  /** Plant or harvest a greenhouse bed; the server answers with 'garden' (and 'tended' to us). */
+  tend(bed: number) {
+    if (this.connected) this.send({ t: 'tend', bed });
   }
 
   private applyScrap(msg: Extract<ServerMsg, { t: 'scrap' }>) {
@@ -232,6 +243,11 @@ export class Net {
       this.inventory = msg.items;
       return this.onInventory?.(msg.items);
     }
+    if (msg.t === 'garden') {
+      this.garden = msg.beds;
+      return this.onGarden?.(msg.beds);
+    }
+    if (msg.t === 'tended') return this.onTended?.(msg.what);
     if (msg.t === 'dug') {
       if (msg.id !== this.id) this.onDig?.({ x: msg.x, y: msg.y, z: msg.z }, msg.pile, false, msg.id);
       return;

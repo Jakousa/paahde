@@ -9,6 +9,8 @@ export type ClientMsg =
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
   // Pick up scrap piece i of cell (ix, iz) (shared/scrap.ts). Sent after the input it was aimed with.
   | { t: 'pickup'; ix: number; iz: number; i: number }
+  // Plant or harvest greenhouse bed i (shared/garden.ts BEDS).
+  | { t: 'tend'; bed: number }
   // Debug menu: move the shared day/night clock by changing the wall-clock epoch. Ignored in production.
   | { t: 'setEpoch'; epoch: number };
 
@@ -39,5 +41,9 @@ export type ServerMsg =
   | { t: 'scrap'; taken: number[]; back: number[]; reset?: boolean }
   // The player's inventory: count per SCRAP_KINDS index. Sent after 'welcome' and on every change.
   | { t: 'inventory'; items: number[] }
+  // Growth stage of every greenhouse bed (shared/garden.ts), on join and whenever one changes.
+  | { t: 'garden'; beds: number[] }
+  // A bed this player tended was planted or harvested, for the HUD toast.
+  | { t: 'tended'; what: 'planted' | 'harvested' }
   // The shared clock's epoch changed (debug menu), or a setEpoch was refused and this is the real one.
   | { t: 'epoch'; epoch: number };

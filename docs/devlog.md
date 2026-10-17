@@ -34,8 +34,13 @@ New goal: plant and grow nature, push back the desert. The players' home is a ho
   `exterior` (machines; `condenser_rotor` and `windpump_rotor` spin faster in wind).
   `src/world/base.ts` loads them: glass is see-through and shadowless (sun and moon patches through the
   portholes are real), two warm point lights light the inside at night.
-- **Next:** make the planters interactive (plant, water, grow through the stages, synced), carry water
-  from the condenser, and let greenery spread outward from the base.
+- **Planters** (`shared/garden.ts`, `server/garden.ts`): the six greenhouse beds are shared and persisted
+  (`garden` table). Look at a bed and press F: an empty bed is planted (sprouts), sprouts grow on their own
+  after `GROW_MS` (6 min), a grown bed is harvested back to soil. The server checks reach and broadcasts every
+  bed's stage (`garden` message); `src/world/base.ts` swaps the three planter models. Harvests give nothing
+  yet, and there is no watering.
+- **Next:** carry water from the condenser and make beds need it, give harvests a use (food, seeds), and
+  let greenery spread outward from the base.
 
 ## 2026-10-17 — Day and night
 
