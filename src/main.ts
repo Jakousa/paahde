@@ -38,6 +38,7 @@ import { WindSound } from './windSound';
 import { EngineSound } from './engineSound';
 import { footsteps } from './footsteps';
 import { music } from './music';
+import { uiSound } from './uiSound';
 import { breathing } from './breathing';
 import { inBase } from '../shared/base.ts';
 import { pickupSound } from './pickupSound';
@@ -168,7 +169,14 @@ const rifle = new Rifle(orbit, net, guardianFx.guardians, guardianFx.drones, (ou
 scene.add(zaps.root);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => placedView.sync(placed, net.garden);
-net.onNotice = (text) => hud.toast(text);
+net.onNotice = (text) => {
+  if (text === 'Bag full') uiSound.full(); // the server refused a find (server/index.ts)
+  hud.toast(text);
+};
+function bagFull() {
+  hud.toast('Bag full');
+  uiSound.full();
+}
 const placer = new Placer(net, placedView);
 
 window.addEventListener('resize', () => {
@@ -383,10 +391,10 @@ renderer.setAnimationLoop((time) => {
     } else if (tend && bed) net.tend(bed.id);
     else if (target) {
       if (net.pickup(target)) pickupSound.play();
-      else hud.toast('Bag full');
+      else bagFull();
     } else if (debris) {
       if (net.debrisTake(debris)) pickupSound.play();
-      else hud.toast('Bag full');
+      else bagFull();
     } else if (find) {
       net.lootTake(find.id);
       pickupSound.play();

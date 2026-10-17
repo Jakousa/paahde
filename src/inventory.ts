@@ -622,7 +622,7 @@ export class InventoryHud {
     const at = this.slotAt(e.clientX, e.clientY);
     if (!at || !this.itemAt(at.box, at.i)) return;
     e.preventDefault();
-    if (e.shiftKey) return void (this.shiftClick(at.box, at.i) && uiSound.plop());
+    if (e.shiftKey) return void (this.shiftClick(at.box, at.i) ? uiSound.plop() : uiSound.full());
     // Held where it was grabbed when it lies in a grid; by its first cell's middle from a single slot.
     const rect = at.el.getBoundingClientRect();
     const inGrid = at.el.classList.contains('item');
@@ -667,7 +667,7 @@ export class InventoryHud {
     let moved = 0;
     for (let i = slots.length - 1; i >= 0; i--) if (slots[i] && this.net.moveItem(box, i, 'bag', -1)) moved++;
     if (moved) uiSound.plop(moved);
-    if (this.net.boxes[box]?.some((it) => it)) this.toast('No room');
+    if (this.net.boxes[box]?.some((it) => it)) this.noRoom();
   }
 
   /** Store all: everything in the bag but tools and placeables into a storage box, as far as it fits. */
@@ -678,7 +678,12 @@ export class InventoryHud {
     let moved = 0;
     for (let i = bag.length - 1; i >= 0; i--) if (!stays(bag[i]) && this.net.moveItem('bag', i, box, -1)) moved++;
     if (moved) uiSound.plop(moved);
-    if (this.net.boxes.bag?.some((it) => !stays(it))) this.toast('No room');
+    if (this.net.boxes.bag?.some((it) => !stays(it))) this.noRoom();
+  }
+
+  private noRoom() {
+    this.toast('No room');
+    uiSound.full();
   }
 
   /** Shift-click in the bag with no storage open: hotbar ↔ the first spot it fits in the backpack (or the first free hotbar slot). */
@@ -769,7 +774,10 @@ export class InventoryHud {
     else if (to === 'bench') this.toast(isGear(it.kind) ? 'Bench in use' : 'Gear only');
     else if (to === 'part') this.toast("That part doesn't go there");
     else if (from === 'equip' && it.kind === 'backpack') this.toast('Empty the backpack first');
-    else this.toast("Doesn't fit there");
+    else {
+      this.toast("Doesn't fit there");
+      uiSound.full();
+    }
   }
 
   private cancelDrag() {

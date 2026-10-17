@@ -20,6 +20,7 @@ import { capture, keyHeld, takePickup, tools, ui } from '../input.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi } from './ui.ts';
+import { uiSound } from '../uiSound.ts';
 
 /** Something to work on: a machine at a crash site, or a carried one on the workbench. */
 export interface WorkSite {
@@ -425,6 +426,7 @@ export class TeardownView {
       s.piece.obj.visible = true;
       s.taken = false;
       this.ui.message(reason === 'full' ? 'Bag full' : reason === 'taken' ? 'Taken' : 'Failed', true);
+      if (reason === 'full') uiSound.full();
     }
     this.refreshCard();
   }
