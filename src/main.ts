@@ -57,10 +57,16 @@ const info = document.getElementById('info')!;
 const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
 let accumulator = 0;
+let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
 
 renderer.setAnimationLoop((time) => {
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);
+  if (!joined && !net.connected) {
+    info.textContent = `${backend} · ${net.status} · build ${__BUILD_SHA__}`;
+    return;
+  }
+  joined = true;
 
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
   accumulator += frameDt;
