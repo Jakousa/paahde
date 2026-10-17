@@ -2,8 +2,8 @@
 // shared/sim.ts, since it never moves the player; the client only draws it (src/water.ts).
 //
 // Heat builds up: the hotter it feels (shared/temperature.ts: air temperature by time of day, plus the
-// sun's bonus unless you're in shade, capped in the base), the faster, from nothing at COMFORT_TEMP up a
-// quartic curve. Below COMFORT_TEMP (the base, nights) you cool off by yourself. Sips from the canteen
+// sun's bonus, or the shade's chill, capped in the base), the faster, from nothing at COMFORT_TEMP up a
+// quadratic curve. Below COMFORT_TEMP (the base, nights) you cool off by yourself. Sips from the canteen
 // (inventory slot 1) bring it down; the pump in the base refills the canteen. A full meter is heatstroke.
 
 /** Full heat meter: heatstroke. */
@@ -13,9 +13,9 @@ export const COMFORT_TEMP = 24;
 /** At this felt temperature (°C; full sun, early afternoon)... */
 export const HOT_TEMP = 54;
 /** ...an empty meter fills in this long walking (s). */
-export const HOT_FULL_BAR_S = 100;
-/** Build-up grows with (felt − COMFORT_TEMP) to this power: shade (~10 °C cooler) is ~5× slower. */
-export const HEAT_POWER = 4;
+export const HOT_FULL_BAR_S = 60;
+/** Build-up grows with (felt − COMFORT_TEMP) to this power: shade (~20 °C cooler than sun) is ~8× slower. */
+export const HEAT_POWER = 2;
 /** Build-up multiplier while sprinting. */
 export const SPRINT_HEAT = 1.5;
 /** Cooling off: this many °C under COMFORT_TEMP (or more)... */

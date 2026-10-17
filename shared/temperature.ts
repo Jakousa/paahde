@@ -8,9 +8,10 @@
 // along a half cosine and cools along a squared half cosine, so the evening drops fast after sunset (dry
 // air radiates heat away) and nights are cold. Both halves have zero slope at the ends: no kinks.
 //
-// Felt: air, plus up to SUN_BONUS in direct sun (scaled by the sun's height, like sunlight per m²);
-// nothing extra in shade. In the base (the hut or the bunker) the thick walls and the sand keep it at
-// most BASE_MAX.
+// Felt: air, plus up to SUN_BONUS in direct sun (scaled by the sun's height, like sunlight per m²). In
+// shade, SHADE_DROP under the air while the sun is up (cool sand, no glare), fading out as it nears the
+// horizon, so a dune's late-afternoon shadow is a real refuge. In the base (the hut or the bunker) the
+// thick walls and the sand keep it at most BASE_MAX.
 import { NOON_ELEVATION, sunElevation } from './sun.ts';
 
 /** Coolest air (°C), at AIR_MIN_TOD, just before sunrise (~05:35 here). */
@@ -23,6 +24,10 @@ export const AIR_MIN_TOD = 5.5 / 24;
 export const AIR_MAX_TOD = 14 / 24;
 /** Extra felt °C standing in direct sun with the sun at its noon height; less when it is lower. */
 export const SUN_BONUS = 12;
+/** Felt °C under the air in shade while the sun is up... */
+export const SHADE_DROP = 10;
+/** ...in full below this sunStrength, fading to none at sunset. */
+const SHADE_FULL_STRENGTH = 0.2;
 /** The base never feels hotter than this (°C): cool enough that you cool off there. */
 export const BASE_MAX = 22;
 
@@ -51,5 +56,6 @@ export function sunStrength(tod: number): number {
 export function feltTemp(tod: number, inSun: boolean, inside: boolean): number {
   const air = airTemp(tod);
   if (inside) return Math.min(air, BASE_MAX);
-  return inSun ? air + SUN_BONUS * sunStrength(tod) : air;
+  const sun = sunStrength(tod);
+  return inSun ? air + SUN_BONUS * sun : air - SHADE_DROP * Math.min(1, sun / SHADE_FULL_STRENGTH);
 }

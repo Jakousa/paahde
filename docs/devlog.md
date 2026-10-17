@@ -89,19 +89,21 @@ entrance hut and scrap piles block the sun.
   early once it is above the highest possible ground. It also slab-tests the hut (with its roof overhang) and
   the skylight collar as boxes, and scrap hitboxes in the first 25 m. ~15–20 µs per check (~80 µs/s per player).
 - **Heat build-up** (`shared/water.ts`; see "Heat meter" above, which replaced the thirst bar): above
-  **24 °C** the meter rises at `100/100 s × ((felt − 24) / 30)⁴`, ×1.5 sprinting. The fourth power makes the
-  hottest hours brutal while mornings and evenings stay mild, and makes shade (~10 °C cooler) worth ~5× in
-  the early afternoon.
+  **24 °C** the meter rises at `100/60 s × ((felt − 24) / 30)²`, ×1.5 sprinting (was `/100 s`, fourth power:
+  too gentle, ~16 min to heatstroke standing in the 17:00 sun). Shade felt is **10 °C under the air** while
+  the sun is up (fading out in its last stretch above the horizon), so behind a dune it feels ~20 °C cooler
+  than the sun next to it, and slows the build-up ~8–15×.
 
   | time | air | sun: felt | empty → full | shade: felt | empty → full |
   |---|---|---|---|---|---|
   | 00:00 | 14.5 | 14.5 | cools | 14.5 | cools |
-  | 06:00 | 12.3 | 13.8 | cools | 12.3 | cools |
-  | 09:00 | 23.6 | 32.5 | ~4 h | 23.6 | cools |
-  | 12:00 | 39.8 | 51.8 | 2.3 min | 39.8 | 22 min |
-  | 13:30 | 43.7 | 54.9 (hottest) | 1.5 min | 43.7 | 9 min |
-  | 15:00 | 43.3 | 52.3 | 2.1 min | 43.3 | 10 min |
-  | 18:00 | 34.8 | 36.3 | 59 min | 34.8 | 1.6 h |
+  | 06:00 | 12.3 | 13.8 | cools | 6.0 | cools |
+  | 09:00 | 23.6 | 32.5 | 12 min | 13.6 | cools |
+  | 12:00 | 39.8 | 51.8 | 70 s | 29.8 | 26 min |
+  | 13:30 | 43.7 | 54.9 (hottest) | 56 s | 33.7 | 9.5 min |
+  | 15:00 | 43.3 | 52.3 | 68 s | 33.3 | 10 min |
+  | 17:00 | 38.5 | 42.7 | 2.6 min | 28.5 | 44 min |
+  | 18:00 | 34.8 | 36.3 | 5.9 min | 28.6 | 43 min |
   | 21:00 | 22.6 | 22.6 | cools | 22.6 | cools |
 
   Real time: a day is 30 min, so 1 in-game hour = 75 s. Real build-up only runs ~11:00–17:00.
