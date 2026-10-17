@@ -16,14 +16,17 @@
 //   piece back to us if it refuses, and our new bag if it agrees.
 // - Items: moves between boxes (shared/items.ts) are applied at once with the server's own rules; its
 //   'items' answer then replaces the boxes, which undoes a refused move.
+// - Parts (shared/parts.ts): a part taken out of a machine in the disassembly mode goes in the bag at once
+//   (predicted, like a move); the server checks it against the machine's roll and answers with the bag, or
+//   'partRefused' (the part goes back in the machine) and the bag.
 // - Hands: what we hold (canteen, drinking) is sent when it changes and relayed in snapshots, cosmetic only.
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
-import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import type { BenchJob, ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
-import { HOTBAR, moveItem, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
+import { addItem, HOTBAR, moveItem, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashTaken } from '../shared/crash.ts';
-import type { SiteLink } from './teardown/teardown';
+import type { BenchLink, SiteLink } from './teardown/teardown';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
@@ -98,6 +101,11 @@ export class Net {
   private holders = new Map<string, Map<number, number>>();
   private holdTimers = new Map<string, ReturnType<typeof setInterval>>();
   onSite?: (msg: Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' }>) => void;
+  /** A part we took did not go in the bag (site id or 'bench', part index; full: no room). */
+  onPartRefused?: (id: string, i: number, full: boolean) => void;
+  /** Our disassembly-table job (server 'bench'): undefined until the server says, null for none. */
+  bench: BenchJob | null | undefined = undefined;
+  onBench?: (job: BenchJob | null) => void;
 
   /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
   water = { heat: 0, sips: 4, rising: false, temp: 20, shade: true, at: 0 };
@@ -177,6 +185,28 @@ export class Net {
     if (this.connected) this.send({ t: 'crashUse', kind });
   }
 
+  /** A part (item kind) taken out of a machine into the bag, predicted now. False (nothing sent) if the bag is full. */
+  private takePart(kind: string, msg: ClientMsg): boolean {
+    const bag = this.boxes.bag;
+    if (!this.connected || !bag || !roomFor(bag, kind)) return false;
+    addItem(bag, kind, 1, () => --this.tempId, HOTBAR);
+    this.send(msg);
+    this.onItems?.('bag');
+    return true;
+  }
+
+  /** Our disassembly-table job's link to the server (see BenchLink in src/teardown/teardown.ts). */
+  benchLink(): BenchLink {
+    return {
+      done: (i) => this.send({ t: 'benchDone', i }),
+      take: (i, kind) => this.takePart(kind, { t: 'benchTake', i, kind }),
+      clear: () => {
+        this.bench = null;
+        this.send({ t: 'benchClear' });
+      },
+    };
+  }
+
   /** The shared session of a large crash site (see SiteLink in src/teardown/teardown.ts). */
   siteLink(id: string): SiteLink {
     const key = (i: number) => `${id}:${i}`;
@@ -188,7 +218,7 @@ export class Net {
         this.send({ t: 'siteLeave', id });
       },
       done: (i) => this.send({ t: 'siteDone', id, i }),
-      take: (i) => this.send({ t: 'siteTake', id, i }),
+      take: (i, kind) => this.takePart(kind, { t: 'siteTake', id, i, kind }),
       hold: (i, players, on) => {
         // The server forgets a hold after a few seconds, so keep saying it while we hold.
         const old = this.holdTimers.get(key(i));
@@ -405,6 +435,11 @@ export class Net {
     if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake') {
       if (msg.t === 'siteDone') this.holders.get(msg.id)?.delete(msg.i);
       return this.onSite?.(msg);
+    }
+    if (msg.t === 'partRefused') return this.onPartRefused?.(msg.id, msg.i, msg.full);
+    if (msg.t === 'bench') {
+      this.bench = msg.job;
+      return this.onBench?.(msg.job);
     }
     if (msg.t === 'water') {
       this.water = { heat: msg.heat, sips: msg.sips, rising: msg.rising, temp: msg.temp, shade: msg.shade, at: performance.now() };

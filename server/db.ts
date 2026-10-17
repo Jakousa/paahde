@@ -4,6 +4,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { addItem, HOTBAR, BAG_SLOTS, SCRAP_ITEMS, type Slots } from '../shared/items.ts';
 
 export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
+/** A disassembly-table job (bench_jobs). */
+export type BenchRow = { kind: string; seed: number; done: number[]; taken: number[]; given: string[] };
 
 export function openDb(path: string) {
   mkdirSync(dirname(path), { recursive: true });
@@ -112,6 +114,21 @@ export function openDb(path: string) {
       taken_at INTEGER NOT NULL               -- ms since epoch
     );
   `);
+  // Disassembly-table jobs (server/crash.ts): the carried machine a player is taking apart, one per player, until
+  // it is empty. `given` lists the part item kinds already put in their bag, checked against what the seed rolls.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS bench_jobs (
+      owner TEXT PRIMARY KEY,                -- browser ID
+      kind  TEXT NOT NULL,                   -- ComponentKind
+      seed  INTEGER NOT NULL,                -- what is inside (shared/parts.ts rollParts)
+      done  TEXT NOT NULL,                   -- JSON step indexes
+      taken TEXT NOT NULL,                   -- JSON part slot indexes
+      given TEXT NOT NULL                    -- JSON item kinds
+    );
+  `);
+  const getBench = db.prepare('SELECT kind, seed, done, taken, given FROM bench_jobs WHERE owner = ?');
+  const putBench = db.prepare('INSERT OR REPLACE INTO bench_jobs (owner, kind, seed, done, taken, given) VALUES (?, ?, ?, ?, ?, ?)');
+  const deleteBench = db.prepare('DELETE FROM bench_jobs WHERE owner = ?');
   const allCrash = db.prepare('SELECT id, taken_at FROM crash_taken');
   const insertCrash = db.prepare('INSERT OR REPLACE INTO crash_taken (id, taken_at) VALUES (?, ?)');
   const deleteCrash = db.prepare('DELETE FROM crash_taken WHERE id = ?');
@@ -185,6 +202,12 @@ export function openDb(path: string) {
     loadCrashTaken: () => allCrash.all() as { id: string; taken_at: number }[],
     takeCrash: (id: string, at: number) => insertCrash.run(id, at),
     respawnCrash: (id: string) => deleteCrash.run(id),
+    loadBench(owner: string): BenchRow | null {
+      const r = getBench.get(owner) as { kind: string; seed: number; done: string; taken: string; given: string } | undefined;
+      return r ? { kind: r.kind, seed: r.seed, done: JSON.parse(r.done), taken: JSON.parse(r.taken), given: JSON.parse(r.given) } : null;
+    },
+    saveBench: (owner: string, j: BenchRow) => putBench.run(owner, j.kind, j.seed, JSON.stringify(j.done), JSON.stringify(j.taken), JSON.stringify(j.given)),
+    clearBench: (owner: string) => deleteBench.run(owner),
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,
     savePlayer: (p: PlayerRow) => upsert.run(p.id, p.color, p.x, p.z, p.heat, p.sips),
     loadChunks(): { cx: number; cz: number; data: Int32Array }[] {

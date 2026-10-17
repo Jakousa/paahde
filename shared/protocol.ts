@@ -39,17 +39,28 @@ export type ClientMsg =
   // there, puts it in your bag as an item (of the component's kind) and answers 'items'.
   | { t: 'crashTake'; id: string }
   // Put a carried machine (item kind) on the workbench to take it apart: uses one up from the bag (checked
-  // against the bench's reach) and answers 'items'.
+  // against the bench's reach), starts your bench job with a seed the server picks, and answers 'items' and
+  // 'bench'. Refused while you have an unfinished job (you get 'bench' back).
   | { t: 'crashUse'; kind: string }
+  // Your bench job (ServerMsg 'bench'): step i done; part slot i taken out, which is item `kind` (shared/parts.ts:
+  // checked against what the job's seed rolls, then put in your bag: 'items' with got, or 'partRefused');
+  // the machine is empty, forget the job.
+  | { t: 'benchDone'; i: number }
+  | { t: 'benchTake'; i: number; kind: string }
+  | { t: 'benchClear' }
   // Large crash sites are worked on together. Join/leave the site's session; hold a lifting eye (it needs
   // `players` of you holding at once, re-sent about once a second while held); report a step done (a lift is
-  // checked against the holders) or a part taken (first one wins). Step and part numbers are indexes into the
-  // machine the site's seed builds (src/teardown/junk.ts), the same on every client.
+  // checked against the holders) or a part taken (first one wins; `kind` is its item kind, shared/parts.ts, checked
+  // against what the site's seed rolls; it goes in your bag, or 'partRefused' if that is full). Step and part numbers
+  // are indexes into the machine the site's seed builds (src/teardown/junk.ts), the same on every client.
   | { t: 'siteJoin'; id: string }
   | { t: 'siteLeave'; id: string }
   | { t: 'siteHold'; id: string; i: number; players: number; on: boolean }
   | { t: 'siteDone'; id: string; i: number }
-  | { t: 'siteTake'; id: string; i: number };
+  | { t: 'siteTake'; id: string; i: number; kind: string };
+
+/** A carried machine being taken apart on the disassembly table. */
+export type BenchJob = { kind: string; seed: number; done: number[]; taken: number[] };
 
 // 0 empty hands, 1 holding the canteen, 2 drinking from it.
 export type Hands = 0 | 1 | 2;
@@ -81,8 +92,8 @@ export type ServerMsg =
   // snapshot, like terrainEdit. A rejected pickup gets its piece back in a message to that player only.
   | { t: 'scrap'; taken: number[]; back: number[]; reset?: boolean }
   // The contents of an item box (shared/storage.ts BoxId): your 'bag' and 'bike' after 'welcome' and when
-  // they change, every 'chest<i>' on join and to everyone when it changes. `got`: a scrap pickup added
-  // this kind (for the HUD toast).
+  // they change, every 'chest<i>' on join and to everyone when it changes. `got`: a pickup (scrap, a
+  // carried machine, a part out of a machine) added this kind (for the HUD toast).
   | { t: 'items'; box: string; slots: Slots; got?: string }
   // Small crash sites whose machine has been carried off (ids), or are back. On join, before 'welcome', with reset:
   // the full taken list.
@@ -94,6 +105,12 @@ export type ServerMsg =
   | { t: 'siteDone'; id: string; i: number }
   // Part i went to player `by` (the public id). Whoever is carrying it and isn't `by` has lost it.
   | { t: 'siteTake'; id: string; i: number; by: number }
+  // A part you took (siteTake / benchTake; id is the site's or 'bench') did not go in your bag: it goes back in the
+  // machine. full: the bag had no room; otherwise the take was invalid.
+  | { t: 'partRefused'; id: string; i: number; full: boolean }
+  // Your disassembly-table job (server/crash.ts): the machine on it (kind, and the seed src/teardown/junk.ts builds it
+  // from) and what is done and taken (step and part indexes), or null. After 'welcome' and whenever a job starts.
+  | { t: 'bench'; job: BenchJob | null }
   // Growth stage of every greenhouse bed (shared/garden.ts), on join and whenever one changes.
   | { t: 'garden'; beds: number[] }
   // A bed this player tended was planted or harvested, for the HUD toast.

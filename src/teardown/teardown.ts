@@ -10,9 +10,13 @@
 // lie and are worked on by everyone near them through a shared session (SiteLink, server/crash.ts); small ones
 // are carried home and taken apart alone on the disassembly table. Loose-piece physics is plain frame-time maths: it is
 // only cosmetic, nothing here moves players (the walk-up goes through the normal input path).
+// A part goes in your backpack the moment you pull it free (WorkSite.take: the server checks it against the
+// machine's roll, shared/parts.ts); with the backpack full it stays in the machine, and a part the server refuses
+// goes back in (applyRefused).
 import * as THREE from 'three/webgpu';
 import { BACK, FORWARD, LEFT, RIGHT } from '../../shared/sim.ts';
-import { RARITY, type ComponentKind, type PartId, type Tier } from '../../shared/salvage.ts';
+import { PART_LABELS, partItem } from '../../shared/parts.ts';
+import { RARITY, type ComponentKind } from '../../shared/salvage.ts';
 import { keyHeld, tools, ui } from '../input.ts';
 import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { TeardownUi } from './ui.ts';
@@ -36,10 +40,19 @@ export interface WorkSite {
   stand?: number;
   /** Shared with other players through the server (large sites); null when working alone. */
   link: SiteLink | null;
+  /** Part slot i (item `kind`) was pulled free: into the backpack (src/net.ts). False if it is full. */
+  take: (i: number, kind: string) => boolean;
   /** The state changed (a step done, a part taken): the workbench saves its job. */
   changed?: () => void;
   /** The mode was left (the workbench tidies its table). */
   closed?: () => void;
+}
+
+/** The disassembly table job's connection to the server (src/net.ts): steps done, parts taken, the machine empty. */
+export interface BenchLink {
+  done(i: number): void;
+  take(i: number, kind: string): boolean;
+  clear(): void;
 }
 
 /** The connection to the server's shared session for a large site (src/net.ts). */
@@ -48,7 +61,8 @@ export interface SiteLink {
   leave(): void;
   /** A step was done here (it is also done for everyone else). */
   done(i: number): void;
-  take(i: number): void;
+  /** Part slot i (item `kind`) taken: first one wins. False (nothing sent) if the backpack is full. */
+  take(i: number, kind: string): boolean;
   /** Holding a lifting eye on step i (or letting go). */
   hold(i: number, players: number, on: boolean): void;
   /** How many players hold step i right now, me included. */
@@ -116,6 +130,8 @@ export class TeardownView {
   /** The distance to hold while strafing. */
   private workDist = 0;
   private farWarned = false;
+  /** Where each detached part sat in the machine, to put it back if the server refuses the take. */
+  private homes = new Map<Slot, { parent: THREE.Object3D; pos: THREE.Vector3; quat: THREE.Quaternion; scale: THREE.Vector3 }>();
 
   /** Left-button interaction with a step. */
   private act: { step: Step; x0: number; y0: number; angle: number; cx: number; cy: number; dist: number } | null = null;
@@ -179,6 +195,8 @@ export class TeardownView {
     this.lookYaw = this.lookPitch = 0;
     this.farWarned = false;
     this.announced.clear();
+    this.homes.clear();
+    this.ui.clearTray();
     for (const s of site.junk.slots) if (slotOpen(s)) this.announced.add(s);
     tools.frozen = true;
     if (document.pointerLockElement) ui.debugFreed = true; // freed on purpose: don't open the Esc menu (src/menu.ts)
@@ -298,6 +316,35 @@ export class TeardownView {
     this.refreshCard();
   }
 
+  /** The server refused part slot i (full: no room in the backpack): it goes back where it was in the machine. */
+  applyRefused(i: number, full: boolean) {
+    const site = this.site;
+    const slot = site?.junk.slots[i];
+    const home = slot && this.homes.get(slot);
+    if (!site || !slot || !slot.taken || !home) return;
+    const l = this.looseOf(slot);
+    if (l) {
+      if (this.drag?.kind === 'part' && this.drag.loose === l) {
+        this.drag = null;
+        this.ui.trayHot(false);
+      }
+      this.loose.splice(this.loose.indexOf(l), 1);
+    } else this.ui.removeItem(slot.part, slot.tier); // already dropped in the tray
+    const o = slot.piece.obj;
+    home.parent.add(o);
+    o.position.copy(home.pos);
+    o.quaternion.copy(home.quat);
+    o.scale.copy(home.scale);
+    this.homes.delete(slot);
+    slot.taken = false;
+    this.announced.add(slot);
+    this.computeRest();
+    this.refreshCard();
+    site.changed?.();
+    const name = PART_LABELS[slot.part].toLowerCase();
+    this.ui.setHint(full ? `Backpack full: the ${name} stays in the machine. Make room (Tab) and take it again` : `Could not take the ${name}`);
+  }
+
   // ---- machine ---------------------------------------------------------------------------------------------
 
   private refreshCard() {
@@ -385,7 +432,7 @@ export class TeardownView {
       case 'part': {
         const s = t.slot;
         const r = RARITY[s.tier];
-        if (slotOpen(s) || this.looseOf(s)) return `${r.name} ${s.part}: right-drag it to the tray`;
+        if (slotOpen(s) || this.looseOf(s)) return `${r.name} ${PART_LABELS[s.part].toLowerCase()}: right-drag it to the tray`;
         return `Still held by ${s.piece.holds.filter((h) => !h.done).length} things`;
       }
       default: return this.site?.movable ? 'Right-drag to move · middle-drag to rotate' : 'Too heavy to move or turn · walk around it, middle-drag to look around';
@@ -656,7 +703,7 @@ export class TeardownView {
     if (how === 'silent') return;
     const fresh = j.slots.filter((x) => slotOpen(x) && !this.announced.has(x));
     for (const x of fresh) this.announced.add(x);
-    this.ui.setHint(fresh.length ? `${RARITY[fresh[0].tier].name} ${fresh[0].part} is free: right-drag it to the tray` : `${s.label} off`);
+    this.ui.setHint(fresh.length ? `${RARITY[fresh[0].tier].name} ${PART_LABELS[fresh[0].part].toLowerCase()} is free: right-drag it to the tray` : `${s.label} off`);
   }
 
   private releasePiece(p: Piece, silent: boolean) {
@@ -671,11 +718,17 @@ export class TeardownView {
     this.release(p.obj, p.floorY, 12, vel, new THREE.Vector3(r() * 2, r() * 2, r() * 2));
   }
 
-  private detachPart(s: Slot): Loose {
+  /** Pull a freed part out: it goes in the backpack now (null, and it stays put, if the backpack is full). */
+  private detachPart(s: Slot): Loose | null {
+    const site = this.site!;
+    if (!site.take(site.junk.slots.indexOf(s), partItem(s.part, s.tier))) {
+      this.ui.setHint(`Backpack full: make room (Tab) to take the ${PART_LABELS[s.part].toLowerCase()}`);
+      return null;
+    }
     s.taken = true;
     s.ring.visible = false;
-    const site = this.site!;
-    site.link?.take(site.junk.slots.indexOf(s));
+    const o = s.piece.obj;
+    if (o.parent) this.homes.set(s, { parent: o.parent, pos: o.position.clone(), quat: o.quaternion.clone(), scale: o.scale.clone() });
     this.refreshCard();
     this.computeRest();
     site.changed?.();
@@ -688,10 +741,10 @@ export class TeardownView {
     this.scene.remove(l.obj);
     const k = this.loose.indexOf(l);
     if (k >= 0) this.loose.splice(k, 1);
-    this.ui.addItem(s.part as PartId, s.tier as Tier);
+    this.ui.addItem(s.part, s.tier);
     if (!say) return;
     const j = this.site?.junk;
-    this.ui.setHint(j && j.slots.every((x) => x.taken && !this.looseOf(x)) ? 'All parts taken.' : `${RARITY[s.tier].name} ${s.part} collected`);
+    this.ui.setHint(j && j.slots.every((x) => x.taken && !this.looseOf(x)) ? 'All parts taken.' : `${RARITY[s.tier].name} ${PART_LABELS[s.part].toLowerCase()} is in your backpack`);
   }
 
   // ---- per frame -------------------------------------------------------------------------------------------

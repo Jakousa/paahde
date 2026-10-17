@@ -1,17 +1,21 @@
 // Server side of the crash sites (shared/crash.ts).
 //  - Small machines are carried home: crashTake validates reach and puts the machine in the player's bag (an item
 //    of the component's kind); the site stays empty until it refills. crashUse takes one out of the bag when it
-//    is put on the workbench.
+//    is put on the workbench and starts the player's bench job: a seed the server picks (so what is inside is
+//    the server's roll), and which steps are done and parts taken, kept in the DB until the machine is empty.
 //  - Large machines are worked on by everyone near them through an in-memory session per site: which steps are
 //    done, which parts are taken, and who is holding which lifting eye right now. A step that needs several
 //    players (a lift) is only accepted while that many are holding. Sessions forget their state after
 //    SESSION_TTL_MS with nobody in them, so the wreck is whole again later.
 // What a step or part index means is up to the client (they are indexes into the machine the site's seed
-// builds), so the server only checks them for range.
-import { BENCH, CARRY_KINDS, crashSiteById, crashTaken, CRASH_REACH, SITE_RANGE } from '../shared/crash.ts';
+// builds), so the server only checks them for range. A taken part goes in the taker's bag as its item kind
+// (shared/parts.ts): the server rolls the machine's contents from the same seed (rollParts) and hands out no
+// more of a kind than were rolled. A full bag refuses the take and the part stays in the machine.
+import { BENCH, CARRY_KINDS, crashSiteById, crashTaken, CRASH_REACH, seeded, SITE_RANGE } from '../shared/crash.ts';
+import { partItem, rollParts } from '../shared/parts.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
-import { COMPONENTS } from '../shared/salvage.ts';
-import type { openDb } from './db.ts';
+import { COMPONENTS, type ComponentKind } from '../shared/salvage.ts';
+import type { BenchRow, openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
 type Feet = { x: number; z: number };
@@ -26,6 +30,24 @@ const BENCH_REACH = 6;
 const MAX_INDEX = 255;
 const COOLDOWN_MS = 200;
 
+/** Item kind → how many of it a machine of `kind` built from `seed` holds. */
+function contents(kind: ComponentKind, seed: number): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const p of rollParts(kind, seeded(seed))) m.set(partItem(p.part, p.tier), (m.get(partItem(p.part, p.tier)) ?? 0) + 1);
+  return m;
+}
+
+/** Can one more `kind` come out of a machine holding `inside`, `given` handed out already? */
+function inStock(inside: Map<string, number>, given: Iterable<string>, kind: unknown): kind is string {
+  if (typeof kind !== 'string') return false;
+  let n = 0;
+  for (const g of given) if (g === kind) n++;
+  return n < (inside.get(kind) ?? 0);
+}
+
+/** Outcome of a part take: in the bag, refused for a full bag, refused as invalid, or someone else was first. */
+export type TakeResult = 'ok' | 'full' | 'bad' | 'late';
+
 interface Session {
   done: Set<number>;
   /** Part index → public id of the player who took it. */
@@ -36,6 +58,9 @@ interface Session {
   holders: Map<number, Map<number, number>>;
   need: Map<number, number>;
   lastActive: number;
+  /** What the machine holds (contents()) and the item kinds handed out so far. */
+  inside: Map<string, number>;
+  given: string[];
 }
 
 export class CrashServer {
@@ -45,6 +70,8 @@ export class CrashServer {
   private newlyTaken: string[] = [];
   private newlyBack: string[] = [];
   private sessions = new Map<string, Session>();
+  /** Bench jobs by browser id (loaded on first use; null: none). */
+  private jobs = new Map<string, BenchRow | null>();
 
   constructor(db: Db, notify: (ids: Iterable<number>, msg: ServerMsg) => void) {
     this.db = db;
@@ -80,11 +107,68 @@ export class CrashServer {
     return site.kind;
   }
 
-  /** Put one carried machine of item `kind` on the workbench; `take()` uses it up from the bag. */
-  use(feet: Feet, kind: unknown, take: () => boolean): boolean {
+  // -- the disassembly table ---------------------------------------------------------------------------------
+
+  private job(owner: string): BenchRow | null {
+    let j = this.jobs.get(owner);
+    if (j === undefined) this.jobs.set(owner, (j = this.db.loadBench(owner)));
+    return j;
+  }
+  private nearBench(feet: Feet) {
+    return Math.hypot(BENCH.x - feet.x, BENCH.z - feet.z) <= BENCH_REACH;
+  }
+
+  /** Put one carried machine of item `kind` on the workbench; `take()` uses it up from the bag. Starts the
+   *  player's job with a fresh seed. Refused while they have one. */
+  use(owner: string, feet: Feet, kind: unknown, take: () => boolean): boolean {
     if (typeof kind !== 'string' || !(CARRY_KINDS as string[]).includes(kind)) return false;
-    if (Math.hypot(BENCH.x - feet.x, BENCH.z - feet.z) > BENCH_REACH) return false;
-    return take();
+    if (!this.nearBench(feet) || this.job(owner)) return false;
+    const job: BenchRow = { kind, seed: Math.floor(Math.random() * 4294967296), done: [], taken: [], given: [] };
+    const ok = this.db.tx(() => {
+      if (!take()) return false;
+      this.db.saveBench(owner, job);
+      return true;
+    });
+    if (ok) this.jobs.set(owner, job);
+    return ok;
+  }
+
+  benchMsg(owner: string): ServerMsg {
+    const j = this.job(owner);
+    return { t: 'bench', job: j && { kind: j.kind, seed: j.seed, done: j.done, taken: j.taken } };
+  }
+
+  benchDone(owner: string, i: unknown) {
+    const j = this.job(owner);
+    if (!j || !this.index(i) || j.done.includes(i)) return;
+    j.done.push(i);
+    this.db.saveBench(owner, j);
+  }
+
+  /** Part slot `i` of the player's bench job, item `kind`, into their bag (`give`). */
+  benchTake(owner: string, feet: Feet, i: unknown, kind: unknown, give: (kind: string) => boolean): TakeResult {
+    const j = this.job(owner);
+    if (!j || !this.index(i) || j.taken.includes(i) || !this.nearBench(feet)) return 'bad';
+    if (!inStock(contents(j.kind as ComponentKind, j.seed), j.given, kind)) return 'bad';
+    return this.db.tx((): TakeResult => {
+      if (!give(kind)) return 'full';
+      j.taken.push(i);
+      j.given.push(kind);
+      this.db.saveBench(owner, j);
+      return 'ok';
+    });
+  }
+
+  /** The machine on the table is empty: the job is over. */
+  benchClear(owner: string) {
+    if (!this.job(owner)) return;
+    this.jobs.set(owner, null);
+    this.db.clearBench(owner);
+  }
+
+  /** Forget a player's cached job once their last connection closes. */
+  forget(owner: string) {
+    this.jobs.delete(owner);
   }
 
   /** Bring back sites carried off more than RESPAWN_MS ago, and forget abandoned sessions. */
@@ -134,7 +218,10 @@ export class CrashServer {
     const site = this.large(id);
     if (!site || Math.hypot(site.x - feet.x, site.z - feet.z) > SITE_RANGE + REACH_SLACK) return null;
     let s = this.sessions.get(site.id);
-    if (!s) this.sessions.set(site.id, (s = { done: new Set(), taken: new Map(), players: new Set(), holders: new Map(), need: new Map(), lastActive: Date.now() }));
+    if (!s) {
+      s = { done: new Set(), taken: new Map(), players: new Set(), holders: new Map(), need: new Map(), lastActive: Date.now(), inside: contents(site.kind, site.seed), given: [] };
+      this.sessions.set(site.id, s);
+    }
     s.players.add(pid);
     s.lastActive = Date.now();
     return { t: 'siteState', id: site.id, done: [...s.done], taken: [...s.taken.keys()] };
@@ -184,20 +271,22 @@ export class CrashServer {
     this.notify(s.players, { t: 'siteDone', id: site.id, i });
   }
 
-  /** First to take part `i` gets it; later askers are told who did. */
-  takePart(pid: number, id: unknown, i: unknown) {
+  /** First to take part `i` (item `kind`) gets it, in their bag (`give`); later askers are told who did. */
+  takePart(pid: number, feet: Feet, id: unknown, i: unknown, kind: unknown, give: (kind: string) => boolean): TakeResult {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
-    if (!site || !s || !s.players.has(pid) || !this.index(i)) return;
+    if (!site || !s || !s.players.has(pid) || !this.index(i)) return 'bad';
     const owner = s.taken.get(i);
-    if (owner !== undefined && owner !== pid) {
-      this.notify([pid], { t: 'siteTake', id: site.id, i, by: owner }); // too late
-      return;
+    if (owner !== undefined) {
+      if (owner !== pid) this.notify([pid], { t: 'siteTake', id: site.id, i, by: owner }); // too late
+      return 'late';
     }
-    if (owner === undefined) {
-      s.taken.set(i, pid);
-      s.lastActive = Date.now();
-      this.notify(s.players, { t: 'siteTake', id: site.id, i, by: pid });
-    }
+    if (Math.hypot(site.x - feet.x, site.z - feet.z) > SITE_RANGE + REACH_SLACK || !inStock(s.inside, s.given, kind)) return 'bad';
+    if (!give(kind)) return 'full';
+    s.taken.set(i, pid);
+    s.given.push(kind);
+    s.lastActive = Date.now();
+    this.notify(s.players, { t: 'siteTake', id: site.id, i, by: pid });
+    return 'ok';
   }
 }

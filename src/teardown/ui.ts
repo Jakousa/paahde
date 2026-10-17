@@ -1,14 +1,10 @@
 // DOM for the disassembly mode: a full-screen overlay that takes the pointer (so clicks never reach the game
-// canvas and re-capture the mouse), an info card, a leave button and the parts tray. The tray keeps what you
-// have taken apart so far (kept in this browser only for now).
+// canvas and re-capture the mouse), an info card, a leave button and the parts tray. The tray lists what you
+// have taken out of this machine on this visit; the parts themselves are in your backpack.
+import { PART_LABELS } from '../../shared/parts.ts';
 import { RARITY, type PartId, type Tier } from '../../shared/salvage.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-const NAMES: Record<PartId, string> = {
-  battery: 'Battery', motor: 'Motor', heatsink: 'Heatsink', compute: 'Compute unit', antimatter: 'Antimatter cell', coil: 'Coil',
-  impeller: 'Impeller', bearing: 'Bearing', gear: 'Gear', valve: 'Valve', relay: 'Relay',
-};
-const STORE_KEY = 'dadajam.tray';
 const KEYS_SMALL = 'Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs · Right-drag: carry a freed part to the tray, or move the machine · Middle-drag / arrows: turn it over (R resets) · W S A D: step closer, further, around · Check every side · Esc: leave';
 const KEYS_LARGE = 'Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs, hold lifting eyes (two players) · Right-drag: carry a freed part to the tray · W S A D: closer, further, around it (too heavy to turn) · Middle-drag: look around (R recentres) · Walk too far to leave · Esc: leave';
 
@@ -38,6 +34,7 @@ export class TeardownUi {
 #tdTray { top: 12px; right: 12px; bottom: 12px; width: 200px; display: flex; flex-direction: column;
   outline: 2px dashed transparent; transition: outline-color .12s, background .12s; }
 #tdTray.over { outline-color: #ffd9a0; background: rgba(70, 36, 16, 0.9); }
+#tdTray .sub { margin: -4px 0 8px; opacity: .55; font-size: 11px; }
 #tdList { overflow-y: auto; flex: 1; }
 #tdList .empty { opacity: .55; line-height: 1.4; }
 #tdList .row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; padding: 4px; border-radius: 6px;
@@ -56,7 +53,7 @@ export class TeardownUi {
     o.id = 'tdOverlay';
     o.innerHTML = `<div class="panel" id="tdBar"><span id="tdTitle"></span><button id="tdLeave">Leave (Esc)</button></div>
 <div class="panel" id="tdCard"></div>
-<div class="panel" id="tdTray"><h4>Parts tray</h4><div id="tdList"></div></div>
+<div class="panel" id="tdTray"><h4>Parts tray</h4><div class="sub">Taken parts go in your backpack</div><div id="tdList"></div></div>
 <div class="panel" id="tdHint"><div class="now"></div><div class="keys">Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs, hold lifting eyes · Right-drag: carry a freed part to the tray · Middle-drag / arrows: turn the machine over (R resets) · Check every side · Esc: leave</div></div>`;
     document.body.append(o);
     this.tray = o.querySelector('#tdTray')!;
@@ -67,7 +64,7 @@ export class TeardownUi {
     o.querySelector('#tdLeave')!.addEventListener('click', onLeave);
 
     try {
-      for (const [k, n] of Object.entries(JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}') as Record<string, number>)) if (n > 0) this.counts.set(k, n);
+      localStorage.removeItem('dadajam.tray'); // the old all-time tray, before parts were items
     } catch {}
     this.setPhase('off', '');
     this.renderTray();
@@ -105,9 +102,21 @@ export class TeardownUi {
   addItem(part: PartId, tier: Tier) {
     const k = `${part}_${tier}`;
     this.counts.set(k, (this.counts.get(k) ?? 0) + 1);
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(this.counts)));
-    } catch {}
+    this.renderTray();
+  }
+
+  /** A part that went back into the machine (the server refused it). */
+  removeItem(part: PartId, tier: Tier) {
+    const k = `${part}_${tier}`;
+    const n = (this.counts.get(k) ?? 0) - 1;
+    if (n > 0) this.counts.set(k, n);
+    else this.counts.delete(k);
+    this.renderTray();
+  }
+
+  /** A new visit starts with an empty tray. */
+  clearTray() {
+    this.counts.clear();
     this.renderTray();
   }
 
@@ -122,9 +131,9 @@ export class TeardownUi {
       .map(([k, n]) => {
         const [part, tier] = k.split('_') as [PartId, Tier];
         const r = RARITY[tier];
-        // Icons exist for the Blender-modelled items; the code-built parts get a lettered tile.
-        const icon = `<img src="./icons/items/${k}.png" alt="" onerror="this.outerHTML='<div class=&quot;tile&quot;>${NAMES[part][0]}</div>'">`;
-        return `<div class="row" style="--c:${hex(r.color)}">${icon}<div>${NAMES[part]}<div class="t">${r.name}</div></div><span class="n">×${n}</span></div>`;
+        // Every part has an icon (tools/blender/items.py, tools/models/part-icons.ts); a lettered tile if one fails.
+        const icon = `<img src="./icons/items/${k}.png" alt="" onerror="this.outerHTML='<div class=&quot;tile&quot;>${PART_LABELS[part][0]}</div>'">`;
+        return `<div class="row" style="--c:${hex(r.color)}">${icon}<div>${PART_LABELS[part]}<div class="t">${r.name}</div></div><span class="n">×${n}</span></div>`;
       })
       .join('');
   }

@@ -18,7 +18,7 @@ import { GardenServer } from './garden.ts';
 import { ItemServer } from './items.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
-import { CrashServer } from './crash.ts';
+import { CrashServer, type TakeResult } from './crash.ts';
 import { TerrainServer } from './terrain.ts';
 import { drink, fill, newHeat, revive, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
@@ -130,7 +130,10 @@ wss.on('connection', (ws) => {
     save(p);
     crash.leaveAll(p.id);
     players.delete(ws);
-    if (![...players.values()].some((o) => o.browserId === p.browserId)) items.forget(p.browserId);
+    if (![...players.values()].some((o) => o.browserId === p.browserId)) {
+      items.forget(p.browserId);
+      crash.forget(p.browserId);
+    }
   });
   // Drop clients that never say hello.
   setTimeout(() => players.has(ws) || ws.close(1008, 'no hello'), 5000);
@@ -165,6 +168,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   items.giveStarterKit(browserId);
   for (const box of ['bag', 'bike', ...CHESTS.map((_, i) => `chest${i}`)]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
+  send(ws, crash.benchMsg(browserId));
 }
 
 // Sips and refills: the client plays the animation, then asks. Refused ones still get the real state.
@@ -241,15 +245,32 @@ function onCrash(p: Player, msg: ClientMsg) {
     if (kind) sendBox(p, 'bag', kind);
     else if (typeof msg.id === 'string' && !crashTaken.has(msg.id)) send(p.ws, { t: 'crash', taken: [], back: [msg.id] });
   } else if (msg.t === 'crashUse') {
-    crash.use(p.state, msg.kind, () => items.take(p.browserId, msg.kind));
+    crash.use(p.browserId, p.state, msg.kind, () => items.take(p.browserId, msg.kind));
     sendBox(p, 'bag');
-  } else if (msg.t === 'siteJoin') {
+    send(p.ws, crash.benchMsg(p.browserId));
+  } else if (msg.t === 'benchDone') crash.benchDone(p.browserId, msg.i);
+  else if (msg.t === 'benchTake') {
+    const r = crash.benchTake(p.browserId, p.state, msg.i, msg.kind, (k) => items.give(p.browserId, k));
+    onPartTaken(p, r, 'bench', msg.i, msg.kind);
+  } else if (msg.t === 'benchClear') crash.benchClear(p.browserId);
+  else if (msg.t === 'siteJoin') {
     const state = crash.join(p.id, p.state, msg.id);
     if (state) send(p.ws, state);
   } else if (msg.t === 'siteLeave') crash.leave(p.id, msg.id);
   else if (msg.t === 'siteHold') crash.hold(p.id, msg.id, msg.i, msg.players, msg.on);
   else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i);
-  else if (msg.t === 'siteTake') crash.takePart(p.id, msg.id, msg.i);
+  else if (msg.t === 'siteTake') {
+    const r = crash.takePart(p.id, p.state, msg.id, msg.i, msg.kind, (k) => items.give(p.browserId, k));
+    onPartTaken(p, r, msg.id, msg.i, msg.kind);
+  }
+}
+
+/** A part taken in the disassembly mode: in the bag (with a toast), or back into the machine. The client predicted
+ *  it in its bag, so it gets the bag either way. */
+function onPartTaken(p: Player, r: TakeResult, id: unknown, i: unknown, kind: unknown) {
+  if (r === 'ok') return sendBox(p, 'bag', kind as string);
+  if (r !== 'late' && typeof id === 'string' && typeof i === 'number') send(p.ws, { t: 'partRefused', id, i, full: r === 'full' });
+  send(p.ws, boxMsg(p.browserId, 'bag'));
 }
 
 function onTend(p: Player, bed: unknown) {

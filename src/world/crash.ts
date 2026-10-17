@@ -4,7 +4,7 @@
 // built when you come within BUILD_R and dropped again when you are far away. The machine is the same object
 // the disassembly mode works on, so a half taken-apart machine stays that way while you are around.
 // Machines you carried home (small ones) are taken apart on the base's disassembly table; the job in progress is
-// kept in this browser until it is finished.
+// kept by the server until it is finished.
 import * as THREE from 'three/webgpu';
 import {
   BENCH, CARRY_KINDS, crashListeners, crashTaken, CRASH_REACH, seeded, sitesNear, type CrashSite,
@@ -13,14 +13,14 @@ import { hasItem, type Slots } from '../../shared/items.ts';
 import { COMPONENTS, type ComponentKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { buildJunk, lowestOffset, type Junk } from '../teardown/junk.ts';
-import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
+import type { BenchJob } from '../../shared/protocol.ts';
+import type { BenchLink, SiteLink, WorkSite } from '../teardown/teardown.ts';
 
 /** Machines are built (a few hundred meshes) when you come this close, and dropped beyond DROP_R. */
 const BUILD_R = 60;
 const DROP_R = 140;
 /** Scorch marks and wreckage are drawn out to here. */
 const SHOW_R = 220;
-const BENCH_KEY = 'dadajam.bench';
 
 interface SiteView {
   site: CrashSite;
@@ -143,11 +143,11 @@ export class MachineSites {
   }
 
   /** The disassembly job for a site: shared with other players when the machine is too big to carry. */
-  workSite(v: SiteView, link: SiteLink | null): WorkSite {
+  workSite(v: SiteView, link: SiteLink): WorkSite {
     const { site } = v;
     return {
       id: site.id, kind: site.kind, label: COMPONENTS[site.kind].label, junk: v.junk!, x: site.x, z: site.z,
-      ground: heightAt, radius: 5, movable: false, link,
+      ground: heightAt, radius: 5, movable: false, link, take: (i, kind) => link.take(i, kind),
     };
   }
 }
@@ -158,20 +158,22 @@ interface Job {
   kind: ComponentKind;
   seed: number;
   junk: Junk;
+  /** Step indexes the server has heard are done. */
+  sent: Set<number>;
 }
 
 /** Machines you carried home are taken apart on the base's disassembly table (shared/stations.ts), alone. A
- *  machine on the table is scaled down to fit it, and you stand closer. The job in progress is kept in this
- *  browser until it is finished. */
+ *  machine on the table is scaled down to fit it, and you stand closer. The job is the server's (server/crash.ts,
+ *  'bench' messages): it picks the seed when the machine goes on the table and keeps what is done and taken until
+ *  the machine is empty, so it carries over between visits, reloads and devices. */
 export class Bench {
   private scene: THREE.Scene;
   private job: Job | null = null;
-  private saved: { kind: ComponentKind; seed: number; done: number[]; taken: number[] } | null = null;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     try {
-      this.saved = JSON.parse(localStorage.getItem(BENCH_KEY) ?? 'null');
+      localStorage.removeItem('dadajam.bench'); // the old browser-only job, before the server kept it
     } catch {}
   }
 
@@ -179,20 +181,20 @@ export class Bench {
   ground = (x: number, z: number) =>
     Math.abs(x - BENCH.x) < BENCH.w / 2 && Math.abs(z - BENCH.z) < BENCH.d / 2 ? BENCH.top : BENCH.floor;
 
-  /** What the table offers: continue a job, or start one from a carried machine in the bag. */
-  offer(bag: Slots | undefined): { label: string; kind: ComponentKind; resume: boolean } | null {
-    const cur = this.job ?? this.saved;
-    if (cur) return { label: `Continue the ${COMPONENTS[cur.kind].label.toLowerCase()}`, kind: cur.kind, resume: true };
+  /** What the table offers: continue the server's job, or start one from a carried machine in the bag. */
+  offer(bag: Slots | undefined, job: BenchJob | null | undefined): { label: string; kind: ComponentKind; resume: boolean } | null {
+    if (job === undefined) return null; // not heard from the server yet
+    if (job) return { label: `Continue the ${COMPONENTS[job.kind as ComponentKind].label.toLowerCase()}`, kind: job.kind as ComponentKind, resume: true };
     const kind = CARRY_KINDS.find((k) => hasItem(bag, k));
     return kind ? { label: `Disassemble ${COMPONENTS[kind].label.toLowerCase()}`, kind, resume: false } : null;
   }
 
-  /** The job for the table: a new machine, or the unfinished one. */
-  site(kind: ComponentKind): WorkSite {
+  /** The table's work site for the server's job: the machine built from its seed, with its progress applied. */
+  site(state: BenchJob, link: BenchLink): WorkSite {
+    const kind = state.kind as ComponentKind;
+    if (this.job && (this.job.seed !== state.seed || this.job.kind !== kind)) this.drop();
     if (!this.job) {
-      const resume = this.saved && this.saved.kind === kind ? this.saved : null;
-      const seed = resume?.seed ?? (Math.random() * 4294967296) >>> 0;
-      const junk = buildJunk(kind, seeded(seed));
+      const junk = buildJunk(kind, seeded(state.seed));
       // Fit the table: its long side is BENCH.d.
       const size = new THREE.Box3().setFromObject(junk.root).getSize(new THREE.Vector3());
       junk.root.scale.setScalar(Math.min(1, (BENCH.d * 0.95) / Math.max(size.x, size.z, 1e-3)));
@@ -200,44 +202,45 @@ export class Bench {
       this.scene.add(junk.root);
       const off = lowestOffset(junk.root);
       if (off !== null) junk.root.position.y += off;
-      this.job = { kind, seed, junk };
-      if (resume) fastForward(junk, resume.done, resume.taken);
+      fastForward(junk, state.done, state.taken);
+      this.job = { kind, seed: state.seed, junk, sent: new Set(state.done) };
     }
     const job = this.job;
     return {
       id: 'bench', kind, label: COMPONENTS[kind].label, junk: job.junk, x: BENCH.x, z: BENCH.z, ground: this.ground,
       radius: 0.9, movable: true, link: null, stand: 2.3,
-      changed: () => this.save(),
-      closed: () => this.closed(),
+      take: (i, k) => link.take(i, k),
+      changed: () => this.changed(link),
+      closed: () => this.closed(link),
     };
   }
 
-  private save() {
+  /** Tell the server about newly done steps. */
+  private changed(link: BenchLink) {
     const job = this.job;
     if (!job) return;
-    const j = job.junk;
-    const finished = j.slots.every((s) => s.taken);
-    try {
-      if (finished) localStorage.removeItem(BENCH_KEY);
-      else {
-        this.saved = {
-          kind: job.kind, seed: job.seed,
-          done: j.steps.flatMap((s, i) => (s.done ? [i] : [])),
-          taken: j.slots.flatMap((s, i) => (s.taken ? [i] : [])),
-        };
-        localStorage.setItem(BENCH_KEY, JSON.stringify(this.saved));
-      }
-    } catch {}
-    if (finished) this.saved = null;
+    job.junk.steps.forEach((s, i) => {
+      if (!s.done || job.sent.has(i)) return;
+      job.sent.add(i);
+      link.done(i);
+    });
   }
 
-  /** Called when the disassembly mode closes on the table: tidy away the machine (an unfinished one is kept saved). */
-  closed() {
+  /** The disassembly mode closed on the table: tidy away the machine, and end the job once it is empty (the
+   *  server's answers to the last takes have had time to come back by now). */
+  private closed(link: BenchLink) {
     const job = this.job;
     if (!job) return;
     this.scene.remove(job.junk.root);
+    if (job.junk.slots.every((s) => s.taken)) {
+      link.clear();
+      this.job = null;
+    }
+  }
+
+  private drop() {
+    if (this.job) this.scene.remove(this.job.junk.root);
     this.job = null;
-    this.save();
   }
 }
 

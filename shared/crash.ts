@@ -1,7 +1,7 @@
 // Crash sites: where wrecked machinery lies in the desert, one component each (COMPONENTS in salvage.ts) that
 // you walk up to and take apart on the spot (src/teardown). Layout is deterministic like shared/scrap.ts,
 // integer hashing and exact arithmetic only, so every client sees the same sites with the same contents.
-// Taking things apart is local for now: nothing about a site changes on the server.
+// The server rolls the same contents from a site's seed (shared/parts.ts rollParts) to check the parts taken out.
 import { BASE_SPAWN, padBlend } from './base.ts';
 import { COMPONENTS, type ComponentKind } from './salvage.ts';
 import { STATIONS } from './stations.ts';

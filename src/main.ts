@@ -85,6 +85,19 @@ net.onSite = (m) => {
   } else if (m.t === 'siteDone') teardown.applyDone(m.i);
   else teardown.applyTake(m.i, m.by === net.id);
 };
+// A part we pulled out didn't go in the bag (full, or refused): back into the machine.
+net.onPartRefused = (id, i, full) => {
+  if (teardown.current?.id === id) teardown.applyRefused(i, full);
+  else hud.toast(full ? 'Backpack full' : 'Could not take that part');
+};
+// The disassembly table: putting a carried machine on it waits for the server's job (it picks the seed).
+let benchWanted = false;
+const benchLink = net.benchLink();
+net.onBench = (job) => {
+  if (!benchWanted) return;
+  benchWanted = false;
+  if (job && !teardown.active) teardown.begin(machines.bench.site(job, benchLink));
+};
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm());
 const digFx = new DigFx(scene);
 // Remote players play their dig clip for a moment after each stroke the server reports.
@@ -275,7 +288,7 @@ renderer.setAnimationLoop((time) => {
   const site = net.connected && !teardown.active && station < 0 && bed < 0 && !target ? machines.nearest(net.me.x, net.me.z) : null;
   const small = site ? COMPONENTS[site.site.kind].carry : false;
   const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`) : null;
-  const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
+  const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag, net.bench) : null;
   const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use disassembly table');
   hud.setTarget(teardown.active ? null : (use ?? tend ?? target ?? sitePrompt));
   const interact = takePickup();
@@ -283,8 +296,11 @@ renderer.setAnimationLoop((time) => {
     if (use) {
       if (STATIONS[station].kind === 'workbench') hud.toast('Nothing to craft yet');
       else if (table) {
-        if (!table.resume) net.crashUse(table.kind);
-        teardown.begin(machines.bench.site(table.kind));
+        if (table.resume && net.bench) teardown.begin(machines.bench.site(net.bench, benchLink));
+        else {
+          benchWanted = true;
+          net.crashUse(table.kind);
+        }
       } else hud.toast('Carry a small machine here to take it apart');
     } else if (tend) net.tend(bed);
     else if (target) {
