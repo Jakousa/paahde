@@ -298,7 +298,7 @@ export class Rifle {
       for (let i = 0; i < 3; i++) tyreDust.emit(_e.x, _e.y + 0.1, _e.z, (Math.random() - 0.5) * 1.5, 1 + Math.random(), (Math.random() - 0.5) * 1.5, 0.35);
       rifleSound.impact('sand', _e, _o);
     }
-    this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, drone ? { d: drone.drone } : hit && hit.index >= 0 ? { g: hit.walker, i: hit.index } : undefined);
+    this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, drone ? { d: drone.drone } : hit ? { g: hit.walker, i: hit.index } : undefined);
     // Recoil: the muzzle climbs (some of it stays: pull it back down), kicks a little sideways; less held to the eye.
     const ads = playerHands.aim;
     const climb = CLIMB * (1.25 - 0.45 * ads) * (0.85 + Math.random() * 0.3);

@@ -64,8 +64,9 @@ export type ClientMsg =
   // Debug menu: bring the nearest guardian 90 m from you, or a searchlight drone over you for a minute (by day too).
   | { t: 'summon'; what: 'guardian' | 'drone' }
   // A laser rifle shot (shared/rifle.ts) from (x, y, z) to where it stopped, (ex, ey, ez). `g`/`i`: the client found it
-  // hit weak point i of walker g; `d`: it hit drone d. The server checks the rifle is in hand, the rate and that the shot was aimed at that
-  // walker, breaks the point, and shows the shot to everyone near ('zap').
+  // hit weak point i of walker g (i -1: just its body, which angers it); `d`: it hit drone d. The server checks the rifle
+  // is in hand, the rate and that the shot was aimed at that walker, breaks the point, and shows the shot to everyone
+  // near ('zap').
   | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number; d?: number }
   // Debug menu: repaired gear of every kind, Scrap parts (for testing).
   | { t: 'debugGear' }

@@ -565,14 +565,16 @@ export class GuardianServer {
   }
 
   /**
-   * Player `by` (feet position) shot from (x, y, z) to (ex, ey, ez) and says it broke weak point `i` of walker `gid`.
-   * Plausible (alive, the point whole, in range, the shot passing and ending at that walker): broken, and the walker
-   * (crawlers: the whole pack) comes for the shooter. Returns whether it counted, and the kill if that was the last one.
+   * Player `by` (feet position) shot from (x, y, z) to (ex, ey, ez) and says it broke weak point `i` of walker `gid`
+   * (-1: hit its body). Plausible (alive, the point whole, in range, the shot passing and ending at that walker): broken,
+   * and the walker (crawlers: the whole pack) comes for the shooter; a body hit does no harm but angers it the same.
+   * Returns whether it broke a point, and the kill if that was the last one.
    */
   shoot(by: BotPlayer, x: number, y: number, z: number, ex: number, ey: number, ez: number, gid: unknown, i: unknown, now: number): { hit: boolean; kill: Kill | null } {
     const miss = { hit: false, kill: null };
     const g = this.guardians.find((o) => o.id === gid);
-    if (!g || g.deadAt >= 0 || !Number.isInteger(i) || (i as number) < 0 || (i as number) >= g.points || g.broken & (1 << (i as number))) return miss;
+    const body = i === -1;
+    if (!g || g.deadAt >= 0 || (!body && (!Number.isInteger(i) || (i as number) < 0 || (i as number) >= g.points || g.broken & (1 << (i as number))))) return miss;
     const sc = KINDS[g.kind].scale;
     const cx = g.x, cy = heightAt(g.x, g.z) + BODY_H * sc, cz = g.z;
     const dx = ex - x, dy = ey - y, dz = ez - z, len = Math.hypot(dx, dy, dz);
@@ -582,8 +584,8 @@ export class GuardianServer {
     const near = Math.hypot(x + dx * t - cx, y + dy * t - cy, z + dz * t - cz);
     const slack = SHOT_SLACK * sc + 2;
     if (near > slack || Math.hypot(ex - cx, ey - cy, ez - cz) > slack * 1.5) return miss;
-    g.broken |= 1 << (i as number);
-    if (allBroken(g.broken, g.points)) {
+    if (!body) g.broken |= 1 << (i as number);
+    if (!body && allBroken(g.broken, g.points)) {
       g.deadAt = now;
       g.prey = -1;
       g.aiming = false;
@@ -591,13 +593,13 @@ export class GuardianServer {
       g.speed = 0;
       return { hit: true, kill: { kind: g.kind, x: g.x, z: g.z, by: by.id } };
     }
-    // Hurt, it turns on whoever did it; a crawler's pack with it.
+    // Hurt (or just hit), it turns on whoever did it; a crawler's pack with it.
     if (!by.safe && !inBase(by.x, by.y, by.z)) {
       g.calmUntil = 0;
       this.hunt(g, by, now);
       if (g.kind === CRAWLER) for (const o of this.guardians) if (o.kind === CRAWLER && o.home === g.home && o.deadAt < 0 && o.prey < 0) this.hunt(o, by, now);
     }
-    return { hit: true, kill: null };
+    return { hit: !body, kill: null };
   }
 
   /** Wrecks cleared away after a while; killed guardians replaced, at a site far from where they fell. */
