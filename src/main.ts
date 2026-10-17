@@ -23,12 +23,11 @@ import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { footsteps } from './footsteps';
+import { DynamicResolution } from './resolution';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
-// The frame is bound by shading ground pixels: at a 2x retina ratio it took ~32 ms on the GPU, at 1.5x ~14 ms.
-const MAX_PIXEL_RATIO = 1.5;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
+const resolution = new DynamicResolution(renderer); // sets the pixel ratio, then keeps it near 60 fps
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
@@ -99,6 +98,7 @@ renderer.setAnimationLoop((time) => {
     return;
   }
   joined = true;
+  resolution.update(frameDt);
 
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
   accumulator += frameDt;
@@ -159,6 +159,6 @@ renderer.setAnimationLoop((time) => {
   hud.setTarget(target);
   if (takePickup() && target) net.pickup(target);
 
-  info.textContent = `${fps} fps · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
+  info.textContent = `${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();
 });
