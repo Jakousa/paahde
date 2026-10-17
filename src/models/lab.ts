@@ -1,5 +1,6 @@
 // Model review page (models-lab.html): every scavenger clip side by side under a warm low sun, plus the
 // first-person hands and props when present. Drag to orbit, wheel to zoom. ?clip=Run shows one clip large.
+// ?walk: the characters walk circles over rolling dunes instead, to check foot planting and leg IK.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ScavengerModel, type ScavengerClip } from './scavenger';
@@ -24,8 +25,17 @@ Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, n
 sun.shadow.bias = -0.0005;
 scene.add(sun);
 
+const params = new URLSearchParams(location.search);
+const walking = params.has('walk');
+const dune = (x: number, z: number) => (walking ? 0.45 * Math.sin(x * 0.55) * Math.cos(z * 0.45) + 0.12 * x : 0);
+const groundGeo = walking ? new THREE.PlaneGeometry(60, 60, 240, 240).rotateX(-Math.PI / 2) : new THREE.CircleGeometry(80, 64).rotateX(-Math.PI / 2);
+if (walking) {
+  const pos = groundGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, dune(pos.getX(i), pos.getZ(i)));
+  groundGeo.computeVertexNormals();
+}
 const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(80, 64).rotateX(-Math.PI / 2),
+  groundGeo,
   new THREE.MeshStandardNodeMaterial({ color: 0xc46a24, roughness: 0.95 }),
 );
 ground.receiveShadow = true;
@@ -37,7 +47,6 @@ let yaw = 0.35;
 let pitch = 0.12;
 let dist = 11;
 
-const params = new URLSearchParams(location.search);
 const only = params.get('clip') as ScavengerClip | null;
 const clips: ScavengerClip[] = only ? [only] : ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide'];
 const colors = [0xd8452b, 0x2f8fd8, 0xe0b23a, 0x4fae5a, 0xb455c8, 0xe8e2d6];
@@ -81,6 +90,7 @@ extras.forEach((name, i) => {
   );
 });
 const mixers: THREE.AnimationMixer[] = [];
+const homes = new Map(models.map(({ m }, i) => [m, { x: (i % 3 - 1) * 6, z: Math.floor(i / 3) * 6 - 3, angle: i }]));
 
 let dragging = false;
 renderer.domElement.addEventListener('pointerdown', () => (dragging = true));
@@ -113,10 +123,22 @@ renderer.setAnimationLoop((time) => {
       digging: clip === 'Dig',
       sliding: clip === 'Slide',
       pitch: clip === 'Idle' ? Math.sin(time / 1500) * 0.5 : 0,
+      plant: walking,
+      ground: walking ? dune : undefined,
     };
+    if (walking) {
+      // walk circles of radius 2.5 around the model's own spot, turning in place for Idle/Dig
+      const home = homes.get(m)!;
+      const a = (home.angle += (pose.speed / 2.5 || 0.6) * dt);
+      const r = pose.speed > 0 ? 2.5 : 0;
+      const x = home.x + r * Math.cos(a), z = home.z + r * Math.sin(a);
+      m.root.position.set(x, dune(x, z) + (clip === 'Jump' ? 0.5 : 0), z);
+      m.root.rotation.y = Math.PI - a;
+    }
     m.update(pose, dt);
   }
   for (const mx of mixers) mx.update(dt);
+  if (walking && only) target.copy(models[0].m.root.position).setY(models[0].m.root.position.y + 0.6);
   camera.position.set(
     target.x + Math.sin(yaw) * Math.cos(pitch) * dist,
     target.y + Math.sin(pitch) * dist,

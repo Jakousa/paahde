@@ -15,7 +15,11 @@ export type AvatarPose = {
 };
 
 /** What a model needs each frame; placement is already applied to its parent. */
-export type ModelPose = { speed: number; grounded: boolean; digging?: boolean; sliding?: boolean; pitch?: number };
+export type ModelPose = {
+  speed: number; grounded: boolean; digging?: boolean; sliding?: boolean; pitch?: number;
+  /** Sand height under the feet, when standing on sand (not scrap): lets the model plant its feet. */
+  ground?: (x: number, z: number) => number;
+};
 
 export interface AvatarModel {
   readonly root: THREE.Object3D;
@@ -109,7 +113,11 @@ export class Avatar {
     this.root.rotation.y = this.facing;
 
     const sliding = pose.sliding ?? (pose.grounded && pose.speed > 2 && isSlipFace(pose.x, pose.z));
-    this.model.update({ speed: pose.speed, grounded: pose.grounded, sliding, digging: pose.digging, pitch: pose.pitch }, dt);
+    const onSand = pose.grounded && Math.abs(pose.y - heightAt(pose.x, pose.z)) < 0.05;
+    this.model.update(
+      { speed: pose.speed, grounded: pose.grounded, sliding, digging: pose.digging, pitch: pose.pitch, ground: onSand ? heightAt : undefined },
+      dt,
+    );
 
     // Footprints: one per stride while walking; a sliding body leaves a smear of prints instead.
     if (!this.footprints || !pose.grounded) return;

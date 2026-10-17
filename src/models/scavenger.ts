@@ -10,6 +10,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { LegIk, lowestAnkles, type Ground } from './legIk';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -19,6 +20,10 @@ export type ScavengerPose = {
   sliding?: boolean;
   /** Look pitch in radians (+ = up); tilts neck and head. */
   pitch?: number;
+  /** Sand height sampler for foot placement; omit when not standing on sand (flat feet). */
+  ground?: Ground;
+  /** Pin planted feet to the world (default true). Off for a model animating in place, e.g. the lab. */
+  plant?: boolean;
 };
 
 export type ScavengerClip = 'Idle' | 'Walk' | 'Run' | 'Jump' | 'Dig' | 'Slide';
@@ -27,10 +32,12 @@ const URL = './models/scavenger.glb';
 const FADE = 0.2;
 // Ground speed (m/s) at which each locomotion clip plays at timeScale 1 without the feet sliding.
 const WALK_REF = 1.3;
-const RUN_REF = 4.5;
+const RUN_REF = 4.7;
 const RUN_ABOVE = 2.8;
 
 let cached: Promise<GLTF> | null = null;
+const ANKLES = ['LeftFoot', 'RightFoot'];
+const lowest = new WeakMap<GLTF, Map<string, number>>();
 
 /** Starts (or reuses) the glb download. Call early to warm the cache. */
 export function loadScavenger(): Promise<GLTF> {
@@ -50,8 +57,11 @@ export class ScavengerModel {
   private tint: THREE.MeshStandardMaterial[] = [];
   private neck: THREE.Object3D | null = null;
   private head: THREE.Object3D | null = null;
-  private neckBase = new THREE.Quaternion();
-  private headBase = new THREE.Quaternion();
+  private legIk: LegIk | null = null;
+  private minAnkle = new Map<string, number>();
+  /** Bones adjusted after the mixer, with their animated rotation (see update()). */
+  private posed: { bone: THREE.Object3D; base: THREE.Quaternion }[] = [];
+  private speed = 0;
   private color: number;
   private disposed = false;
 
@@ -82,8 +92,14 @@ export class ScavengerModel {
     });
     this.neck = model.getObjectByName('Neck') ?? null;
     this.head = model.getObjectByName('Head') ?? null;
-    if (this.neck) this.neckBase.copy(this.neck.quaternion);
-    if (this.head) this.headBase.copy(this.head.quaternion);
+    const bone = (n: string) => model.getObjectByName(n);
+    const legs = ['Left', 'Right'].map((s) => [bone(`${s}UpLeg`), bone(`${s}Leg`), bone(`${s}Foot`)]);
+    if (legs.every((l) => l.every((b) => b))) {
+      this.legIk = new LegIk(this.root, model, legs as [THREE.Object3D, THREE.Object3D, THREE.Object3D][]);
+    }
+    if (!lowest.has(gltf)) lowest.set(gltf, lowestAnkles(gltf.scene, gltf.animations, ANKLES));
+    this.minAnkle = lowest.get(gltf)!;
+    for (const b of [this.neck, this.head, ...legs.flat()]) if (b) this.posed.push({ bone: b, base: b.quaternion.clone() });
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
     this.root.add(model);
@@ -125,30 +141,31 @@ export class ScavengerModel {
   /** Called every render frame. */
   update(pose: ScavengerPose, dt: number) {
     if (!this.mixer) return;
-    const speed = pose.speed;
+    // Remote speeds arrive as 20 Hz steps; smooth them so playback rate (and the feet) don't jitter.
+    this.speed += (pose.speed - this.speed) * (1 - Math.exp(-dt * 10));
+    const speed = this.speed;
     if (!pose.grounded) this.play('Jump');
     else if (pose.sliding) this.play('Slide');
     else if (pose.digging) this.play('Dig');
     else if (speed > RUN_ABOVE) this.play('Run', FADE, clamp(speed / RUN_REF, 0.75, 1.6));
     else if (speed > 0.25) this.play('Walk', FADE, clamp(speed / WALK_REF, 0.6, 1.8));
     else this.play('Idle');
-    // The mixer only writes a bone when its animated value changes, so a constant track (Dig's Neck)
-    // leaves last frame's look tilt in place and it would pile up into a full spin. Undo it first.
-    if (this.neck && this.head) {
-      this.neck.quaternion.copy(this.neckBase);
-      this.head.quaternion.copy(this.headBase);
-    }
+    // The mixer only writes a bone when its animated value changes, so on a constant track (Dig's Neck,
+    // its kneeling legs) last frame's look tilt / IK would stay in place and pile up. Undo them first.
+    for (const p of this.posed) p.bone.quaternion.copy(p.base);
     this.mixer.update(dt);
+    for (const p of this.posed) p.base.copy(p.bone.quaternion);
+
     const pitch = clamp(pose.pitch ?? 0, -1.1, 1.1);
-    if (this.neck && this.head) {
-      this.neckBase.copy(this.neck.quaternion);
-      this.headBase.copy(this.head.quaternion);
-    }
     if (pitch !== 0 && this.neck && this.head) {
       this.root.updateMatrixWorld(true);
       tiltAboutRootX(this.root, this.neck, pitch * 0.4);
       tiltAboutRootX(this.root, this.head, pitch * 0.6);
     }
+    // Plant the feet: lock while the clip has them down (not when sliding: the sand moves with you).
+    const clip = this.current?.getClip().name ?? '';
+    const lock = pose.grounded && !pose.sliding && pose.plant !== false ? (this.minAnkle.get(clip) ?? null) : null;
+    this.legIk?.update(dt, pose.grounded, lock, pose.ground ?? null);
   }
 
   dispose() {
