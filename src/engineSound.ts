@@ -21,14 +21,14 @@
 import { audio } from './audio';
 
 /** Motor frequency (Hz) at a standstill, and how much it rises per m/s of wheel speed. */
-const F_IDLE = 46;
-const F_PER_MS = 13;
+const F_IDLE = 32;
+const F_PER_MS = 7;
 /** The body's harmonics (amplitude of the 1st, 2nd, …): fundamental, octave, fifth, and a faint 6th order. */
-const HARMONICS = [0, 1, 0.55, 0.35, 0.1, 0, 0.14, 0, 0.04];
+const HARMONICS = [0, 1, 0.6, 0.3, 0.08, 0, 0.07, 0, 0.02];
 /** The body's twin sits this many Hz above it: a slow beat, the same rate at any speed. */
 const BEAT_HZ = 1.3;
 /** Inverter carrier (Hz), and its sidebands' offset in multiples of the motor frequency. */
-const CARRIER = 2400;
+const CARRIER = 1500;
 const SIDEBAND = 2;
 /** Speed (m/s) that counts as top speed for the level and the whine. */
 const TOP = 26;
@@ -39,10 +39,10 @@ const AIR_TOP = 34;
 const AIR_DECAY = 1.2;
 const LOAD_TAU = 0.15;
 /** Level at idle, as a fraction of full (top speed, throttle held); how much of the rest is speed (vs load). */
-const IDLE = 0.4;
+const IDLE = 0.45;
 const BY_SPEED = 0.3;
 /** Full level at full slider volume. Measured offline (same graph in numpy, ffmpeg ebur128): about
- *  −37 LUFS idling, −33 coasting at 15 m/s, −27 at 15 m/s on the throttle, −26 at top speed on the throttle
+ *  −39 LUFS idling, −33 coasting at 15 m/s, −27 at 15 m/s on the throttle, −26 at top speed on the throttle
  *  (the inverter whistle alone ~8 dB under that), under the wind at speed. Another rider's bike is as loud
  *  at REF metres. */
 const MIX = 0.091;
@@ -145,7 +145,7 @@ class Motor {
     set(this.mod.frequency, f * SIDEBAND);
     set(this.carrier.frequency, CARRIER * pitch);
     // Brighter under load, and the inverter whistle comes up with it (a faint trace when coasting).
-    set(this.bodyLp.frequency, f * (3 + 3 * this.load) + 200);
+    set(this.bodyLp.frequency, f * (2.5 + 2.5 * this.load) + 150);
     set(this.inverter.gain, 0.12 * (0.15 + 0.85 * this.load) * (0.5 + 0.5 * x) * (1 + 0.25 * wobble(t * 0.6, k + 3)));
 
     // Mounting and dismounting fade rather than click.
