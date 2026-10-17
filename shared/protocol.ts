@@ -12,7 +12,7 @@ export type ClientMsg =
   | { t: 'pickup'; ix: number; iz: number; i: number }
   // Plant or harvest greenhouse bed i (shared/garden.ts BEDS).
   | { t: 'tend'; bed: number }
-  // Debug menu: move the shared day/night clock by changing the wall-clock epoch. Ignored in production.
+  // Debug menu: move the shared day/night clock by changing the wall-clock epoch.
   // epoch null = back to the real clock.
   | { t: 'setEpoch'; epoch: number | null }
   // Survival (shared/water.ts): one sip from the canteen finished (sent when the ~1.2 s drink completes).

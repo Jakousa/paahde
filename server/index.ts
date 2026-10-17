@@ -237,16 +237,15 @@ setInterval(() => {
   }
 }, 1000 / TICK_RATE);
 
-// The wall-clock ms at server time 0 drives the day/night cycle. The debug menu can move it for everyone,
-// but only outside production (or with ALLOW_DEBUG_TIME=1): anyone on the public site could send it.
+// The wall-clock ms at server time 0 drives the day/night cycle. The debug menu (F3) can move it for everyone,
+// in production too (a game jam: the team wants it). Any client can send it, so lock it down if this goes public.
 // The shift from the real clock is stored, since node --watch restarts the server on every code edit.
 const realEpoch = performance.timeOrigin;
 let epoch = realEpoch + (db.getSetting('clockShift') ?? 0);
-const allowDebugTime = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEBUG_TIME === '1';
 
 function onSetEpoch(ws: WebSocket, wanted: unknown) {
   const ok = wanted === null || (typeof wanted === 'number' && Number.isFinite(wanted));
-  if (!allowDebugTime || !ok) return send(ws, { t: 'epoch', epoch });
+  if (!ok) return send(ws, { t: 'epoch', epoch });
   epoch = wanted === null ? realEpoch : (wanted as number);
   db.setSetting('clockShift', epoch - realEpoch);
   for (const p of players.values()) send(p.ws, { t: 'epoch', epoch });

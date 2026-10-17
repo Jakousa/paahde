@@ -1,6 +1,6 @@
 // Debug menu: F3 (or `) toggles a small panel. Opening it frees the mouse so the controls can be clicked.
 // Time of day: a slider that holds the sky at that time (local view only), or, with "Apply to all players",
-// moves the shared server clock (dev servers only; production ignores it).
+// moves the shared server clock for everyone, production included.
 import { clockText, timeControl } from './world/dayNight';
 
 const PRESETS: [string, number][] = [['Dawn', 0.27], ['Noon', 0.5], ['Golden hour', 0.7], ['Dusk', 0.77], ['Midnight', 0]];
