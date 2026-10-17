@@ -8,8 +8,8 @@ const GAP_MIN_MS = 2 * 60_000;
 const GAP_MAX_MS = 6 * 60_000;
 /** A new storm's centre lands this far (m) from the player it was picked for, at most. */
 const OFFSET = 220;
-const R_MIN = 110;
-const R_MAX = 250;
+const R_MIN = 140;
+const R_MAX = 300;
 const MAX_STORMS = 3;
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -50,7 +50,7 @@ export class StormServer {
       x: Math.round(x + Math.cos(a) * d),
       z: Math.round(z + Math.sin(a) * d),
       r: Math.round(rand(R_MIN, R_MAX)),
-      speed: Math.round(rand(1, 4) * 10) / 10,
+      speed: Math.round(rand(2, 5) * 10) / 10,
       start: Math.round(start),
       end: Math.round(start + rand(MIN_LEN_MS, MAX_LEN_MS)),
     });
