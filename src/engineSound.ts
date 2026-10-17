@@ -1,15 +1,21 @@
 // Synthesised electric motors for the sand bikes: a hum whose pitch follows the wheel speed. No samples,
-// a few oscillators per bike in a small Web Audio graph:
-//   - body:  two slightly detuned sawtooths at the motor frequency, lowpassed, so they beat gently.
-//   - hum:   a sine an octave up, the smooth "electric" part of the tone.
-//   - whine: a quiet high sine (the inverter), which comes up under load (throttle).
-// Sitting still on a bike it idles low and quiet; the pitch rises with speed. In the air the wheel spins up
-// freely while the throttle is held and winds down when it is let go.
+// a few oscillators per bike in a small Web Audio graph, after how real EV drives sound:
+//   - body:     the motor's own tone. Electric whine is harmonically sparse, so instead of a sawtooth (every
+//               harmonic, sounds like a petrol engine) a PeriodicWave with a few chosen ones: fundamental,
+//               octave and fifth, and a faint higher "pole" order. A twin a fixed BEAT_HZ above makes a
+//               slow throb at any speed.
+//   - inverter: the motor controller switches at a fixed carrier frequency; its whistle has sidebands at
+//               carrier ± the motor frequency, which spread apart as you speed up (the tram / metro sound).
+//               Here: a fixed sine amplitude-modulated by a sine at the motor frequency.
+// Pitch follows the wheel speed; loudness follows the load (throttle, i.e. torque) more than the speed, so
+// coasting is quiet and opening up brings the whine in. A slow wobble on level and pitch keeps it alive.
+// Sitting still on a bike it idles low and quiet. In the air the wheel spins up freely while the throttle
+// is held and winds down when it is let go.
 //
 // Your own bike plays straight to your ears. Other riders' bikes are placed in 3D (HRTF PannerNode; the
 // Web Audio listener follows the camera, set in src/crashSound.ts) with a little Doppler shift; we don't
-// get their input, so their load is read from how hard they speed up or brake. Only the nearest
-// MAX_REMOTE within HEAR metres play.
+// get their input, so their load is read from how hard they speed up or brake, and from holding a high speed.
+// Only the nearest MAX_REMOTE within HEAR metres play.
 //
 // Plays through the shared output in src/audio.ts (volume slider, limiter); every level change is ramped.
 import { audio } from './audio';
@@ -17,6 +23,13 @@ import { audio } from './audio';
 /** Motor frequency (Hz) at a standstill, and how much it rises per m/s of wheel speed. */
 const F_IDLE = 46;
 const F_PER_MS = 13;
+/** The body's harmonics (amplitude of the 1st, 2nd, …): fundamental, octave, fifth, and a faint 6th order. */
+const HARMONICS = [0, 1, 0.55, 0.35, 0.1, 0, 0.14, 0, 0.04];
+/** The body's twin sits this many Hz above it: a slow beat, the same rate at any speed. */
+const BEAT_HZ = 1.3;
+/** Inverter carrier (Hz), and its sidebands' offset in multiples of the motor frequency. */
+const CARRIER = 2400;
+const SIDEBAND = 2;
 /** Speed (m/s) that counts as top speed for the level and the whine. */
 const TOP = 26;
 /** Free-spinning wheel in the air: spin-up (m/s²) with the throttle held, and its top speed (m/s). */
@@ -25,12 +38,14 @@ const AIR_TOP = 34;
 /** Time constant (s) of the wind-down in the air, and of following the load (throttle). */
 const AIR_DECAY = 1.2;
 const LOAD_TAU = 0.15;
-/** Level at idle, as a fraction of full (top speed, throttle held). */
+/** Level at idle, as a fraction of full (top speed, throttle held); how much of the rest is speed (vs load). */
 const IDLE = 0.4;
+const BY_SPEED = 0.3;
 /** Full level at full slider volume. Measured offline (same graph in numpy, ffmpeg ebur128): about
- *  −38 LUFS idling, −32 cruising at 15 m/s, −26 at top speed on the throttle, under the wind at speed.
- *  Another rider's bike is as loud at REF metres. */
-const MIX = 0.075;
+ *  −37 LUFS idling, −33 coasting at 15 m/s, −27 at 15 m/s on the throttle, −26 at top speed on the throttle
+ *  (the inverter whistle alone ~8 dB under that), under the wind at speed. Another rider's bike is as loud
+ *  at REF metres. */
+const MIX = 0.091;
 /** Other bikes: audible within HEAR metres, fading in over the outer FADE; full level inside REF. */
 const HEAR = 90;
 const FADE = 25;
@@ -39,6 +54,8 @@ const ROLLOFF = 1.2;
 const MAX_REMOTE = 4;
 /** A remote bike's acceleration (m/s², either way) that reads as full throttle or brakes. */
 const REMOTE_LOAD_ACC = 8;
+/** Holding top speed needs the throttle open about this far. */
+const REMOTE_CRUISE_LOAD = 0.8;
 const SOUND_SPEED = 343;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -46,32 +63,39 @@ const smooth = (a: number, b: number, x: number) => {
   const t = clamp01((x - a) / (b - a));
   return t * t * (3 - 2 * t);
 };
+/** Smooth pseudo-noise in about [-1, 1]. */
+const wobble = (t: number, k: number) =>
+  (Math.sin(t * 1.13 + k) + Math.sin(t * 2.71 + 2.3 * k) * 0.6 + Math.sin(t * 5.37 + 4.1 * k) * 0.35) / 1.95;
 
 type Vec = { x: number; y: number; z: number };
 type Vel = { vx: number; vy: number; vz: number };
 /** What a remote rider looks like to us (src/net.ts RemotePlayer). */
 type Rider = Vec & { id: number; riding: boolean; grounded: boolean; vx: number; vy: number; vz: number };
 
+let bodyWave: PeriodicWave | null = null;
+
 /** One bike's motor: its graph and the followed wheel speed and load. */
 class Motor {
   readonly out: GainNode;
   private ctx: AudioContext;
-  private saws: OscillatorNode[];
+  private body: OscillatorNode[];
   private bodyLp: BiquadFilterNode;
-  private hum: OscillatorNode;
-  private humGain: GainNode;
-  private whine: OscillatorNode;
-  private whineGain: GainNode;
+  private carrier: OscillatorNode;
+  private mod: OscillatorNode;
+  private inverter: GainNode;
   /** Wheel speed (m/s) the motor turns at; the ground speed while grounded. */
   private wheel = 0;
   private load = 0;
   private on = false;
+  private time = 0;
+  /** Each motor wobbles differently. */
+  private seed = Math.random() * 100;
 
   constructor(ctx: AudioContext) {
     this.ctx = ctx;
-    const osc = (type: OscillatorType, f: number) => {
+    bodyWave ??= ctx.createPeriodicWave(new Float32Array(HARMONICS.length), Float32Array.from(HARMONICS));
+    const osc = (f: number) => {
       const o = ctx.createOscillator();
-      o.type = type;
       o.frequency.value = f;
       o.start();
       return o;
@@ -84,24 +108,27 @@ class Motor {
     this.out = gain(0);
     this.bodyLp = ctx.createBiquadFilter();
     this.bodyLp.type = 'lowpass';
-    this.bodyLp.Q.value = 0.7;
-    this.bodyLp.frequency.value = 300;
+    this.bodyLp.Q.value = 0.5;
+    this.bodyLp.frequency.value = 400;
     this.bodyLp.connect(gain(0.5)).connect(this.out);
-    this.saws = [1, 1.004].map((r) => {
-      const o = osc('sawtooth', F_IDLE * r);
+    this.body = [0, BEAT_HZ].map((df) => {
+      const o = osc(F_IDLE + df);
+      o.setPeriodicWave(bodyWave!);
       o.connect(this.bodyLp);
       return o;
     });
-    this.hum = osc('sine', F_IDLE * 2);
-    this.humGain = gain(0.5);
-    this.hum.connect(this.humGain).connect(this.out);
-    this.whine = osc('sine', F_IDLE * 6);
-    this.whineGain = gain(0);
-    this.whine.connect(this.whineGain).connect(this.out);
+    // Amplitude modulation: carrier × (1 + mod) gives the carrier and a sideband either side.
+    this.carrier = osc(CARRIER);
+    this.mod = osc(F_IDLE * SIDEBAND);
+    const am = gain(1);
+    this.mod.connect(am.gain);
+    this.inverter = gain(0);
+    this.carrier.connect(am).connect(this.inverter).connect(this.out);
   }
 
   /** `throttle` in [0, 1]; `pitch` scales the frequency (Doppler). */
   update(dt: number, riding: boolean, grounded: boolean, speed: number, throttle: number, pitch = 1) {
+    this.time += dt;
     if (!riding || grounded) this.wheel = speed;
     else if (throttle > 0.5) this.wheel = Math.min(AIR_TOP, this.wheel + AIR_SPIN_UP * dt);
     else this.wheel += (speed - this.wheel) * (1 - Math.exp(-dt / AIR_DECAY));
@@ -109,19 +136,21 @@ class Motor {
 
     const now = this.ctx.currentTime;
     const set = (p: AudioParam, v: number, tau = 0.08) => p.setTargetAtTime(v, now, tau);
+    const t = this.time, k = this.seed;
     const x = clamp01(this.wheel / TOP);
-    const f = (F_IDLE + F_PER_MS * this.wheel) * pitch;
+    const f = (F_IDLE + F_PER_MS * this.wheel) * pitch * (1 + 0.004 * wobble(t * 0.9, k));
 
-    for (const [i, o] of this.saws.entries()) set(o.frequency, f * (i ? 1.004 : 1));
-    set(this.hum.frequency, f * 2);
-    set(this.whine.frequency, f * 6);
-    // Brighter and louder under load and at speed.
-    set(this.bodyLp.frequency, f * (2 + 2 * this.load) + 150);
-    set(this.whineGain.gain, 0.06 * this.load * (0.3 + 0.7 * x));
-    set(this.humGain.gain, 0.4 + 0.2 * this.load);
+    set(this.body[0].frequency, f);
+    set(this.body[1].frequency, f + BEAT_HZ);
+    set(this.mod.frequency, f * SIDEBAND);
+    set(this.carrier.frequency, CARRIER * pitch);
+    // Brighter under load, and the inverter whistle comes up with it (a faint trace when coasting).
+    set(this.bodyLp.frequency, f * (3 + 3 * this.load) + 200);
+    set(this.inverter.gain, 0.12 * (0.15 + 0.85 * this.load) * (0.5 + 0.5 * x) * (1 + 0.25 * wobble(t * 0.6, k + 3)));
 
     // Mounting and dismounting fade rather than click.
-    const level = riding ? MIX * (IDLE + (1 - IDLE) * (0.65 * x + 0.35 * this.load)) : 0;
+    const drive = BY_SPEED * x + (1 - BY_SPEED) * this.load;
+    const level = riding ? MIX * (IDLE + (1 - IDLE) * drive) * (1 + 0.06 * wobble(t * 0.5, k + 7)) : 0;
     set(this.out.gain, level, riding !== this.on ? 0.15 : 0.1);
     this.on = riding;
   }
@@ -130,7 +159,7 @@ class Motor {
   dispose() {
     const now = this.ctx.currentTime;
     this.out.gain.setTargetAtTime(0, now, 0.1);
-    for (const o of [...this.saws, this.hum, this.whine]) o.stop(now + 0.6);
+    for (const o of [...this.body, this.carrier, this.mod]) o.stop(now + 0.6);
     setTimeout(() => this.out.disconnect(), 700);
   }
 }
@@ -192,7 +221,7 @@ export class EngineSound {
       const prev = a.speed;
       a.speed += (speed - a.speed) * (1 - Math.exp(-dt / 0.15));
       a.acc += ((a.speed - prev) / Math.max(dt, 1e-3) - a.acc) * (1 - Math.exp(-dt / 0.2));
-      const throttle = clamp01(Math.abs(a.acc) / REMOTE_LOAD_ACC);
+      const throttle = clamp01(Math.max(Math.abs(a.acc) / REMOTE_LOAD_ACC, REMOTE_CRUISE_LOAD * (a.speed / TOP) ** 2));
 
       // Doppler: how fast the bike closes on us along the line between.
       const inv = 1 / Math.max(d, 0.1);
