@@ -270,7 +270,12 @@ export class Survival {
    */
   /** The heat meter as shown (eased, 0..HEAT_MAX); 0 while dead. */
   get heatLevel() {
-    return performance.now() < this.deadUntil ? 0 : this.shown;
+    return this.dead ? 0 : this.shown;
+  }
+
+  /** Lying dead (the death screen is up). */
+  get dead() {
+    return performance.now() < this.deadUntil;
   }
 
   update(dt: number, pos: { x: number; y: number; z: number }, scrapTargeted: boolean, interact: boolean, clock: string) {

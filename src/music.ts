@@ -38,7 +38,7 @@ const COMBAT_DRUMS: Song = { src: './audio/combat-drums.mp3', gain: 0.55, loopSt
 
 /** Highest priority first. */
 const STATES: { state: MusicState; song: Song | null; enter: number; leave: number }[] = [
-  // Silence: the breathing (src/breathing.ts) has the stage.
+  // Not cued: the breathing (src/breathing.ts) plays over whatever music is on.
   { state: 'heatstroke', song: null, enter: 0, leave: 3 },
   { state: 'combat', song: COMBAT_DRUMS, enter: 0, leave: 8 },
   { state: 'sandstorm', song: null, enter: 1, leave: 4 },

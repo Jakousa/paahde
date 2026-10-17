@@ -7,7 +7,7 @@
 import { audio } from './audio';
 
 /** Heat (0..HEAT_MAX) above which a finished sip gets the sigh. */
-export const SIGH_ABOVE = 70;
+export const SIGH_ABOVE = 50;
 
 const DRINK = { src: './audio/drink.mp3', gain: 0.7 };
 const SIGH = { src: './audio/sigh.mp3', gain: 0.4 };

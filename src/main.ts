@@ -334,14 +334,13 @@ renderer.setAnimationLoop((time) => {
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   footsteps.listener(orbit.camera.position, orbit.yaw);
-  breathing.update(survival.heatLevel);
+  breathing.update(survival.heatLevel, survival.dead);
   const cam = orbit.camera.position;
   music.update(frameDt, {
     riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
     indoors: inBase(cam.x, cam.y, cam.z),
     sandstorm: storm.level > 0.3,
     combat: guardianFx.combat,
-    heatstroke: breathing.on,
   });
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
