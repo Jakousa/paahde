@@ -305,6 +305,7 @@ renderer.setAnimationLoop((time) => {
   base.update();
   windSound.update(frameDt, orbit.camera.position, orbit.yaw, s);
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
+  engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   footsteps.listener(orbit.camera.position, orbit.yaw);
   music.update(frameDt, s);
   crashSound.update(orbit.camera.position, orbit.yaw);
