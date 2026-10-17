@@ -2,6 +2,28 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Parts are items (issues #8–#11, #18–#20)
+
+- **One item kind per part and tier**, `<part>_<tier>` (`battery_space`, `relay_scrap`, …; `shared/parts.ts`,
+  spread into `ITEMS`): the six Blender parts (battery, electric motor, heat sink, compute unit, anti-matter
+  container, wiring coil) and the five code-built ones (impeller, bearing, gear, valve, relay), 44 kinds. Labels
+  read "Space-grade battery"; `ITEMS[kind].tier` is the rarity (`RARITY`), shown in the Tab inventory as a coloured
+  underline and glow, and in the hover text.
+- **Icons:** `public/icons/items/<part>_<tier>.png` for all of them. The code-built parts' icons are rendered from
+  `src/teardown/parts.ts` by `tools/models/part-icons.ts` (headless Chrome via `part-icons.mjs`), matched to the
+  Blender ones (same 3/4 ortho view, suns, outline). The hotbar shows them too.
+- **Taking a part puts it in your backpack** the moment you pull it free (right-drag), at crash sites and on the
+  disassembly table. Predicted on the client (like a move); the server rolls the machine's contents from the same
+  seed (`rollParts`, also what `src/teardown/junk.ts` mounts) and never hands out more of a kind than it holds,
+  checks reach, and answers with the bag (toast "+1 …"). **Full backpack:** the part won't come out ("make room
+  (Tab)"); if the server refuses one anyway (`partRefused`), it goes back into the machine.
+- **The bench job moved to the server** (`bench_jobs` table): putting a carried machine on the table makes the
+  server pick its seed, and steps done / parts taken are kept there until the machine is empty, so the client can't
+  pick a lucky seed and a job carries over reloads and devices. Old browser-only jobs (localStorage) are dropped.
+- The parts tray now lists what you took on this visit (the all-time localStorage tally is gone).
+- **Next:** crafting with parts (the workbench still says "Nothing to craft yet"); stacking parts would help the
+  12-slot backpack; Blender models for the five code-built parts.
+
 ## 2026-10-17 — Items, Tab inventory and storage
 
 - **Items are rows** (`items` table, `server/items.ts`): one row per stack with a stable id, its kind
