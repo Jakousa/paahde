@@ -10,6 +10,8 @@ const GRAVITY = -40;
 const MOVE_SPEED = 8;
 const ACCEL = 60;
 const JUMP_SPEED = 15;
+const AIR_JUMP_SPEED = 13;
+const AIR_JUMPS = 1; // double jump
 const MAX_FALL = -30;
 const KILL_Y = -20;
 
@@ -27,7 +29,15 @@ export const PLATFORMS: Box[] = [
   { x: 0, y: 9.5, w: 2, h: 0.5 },
 ];
 
-export type PlayerState = { x: number; y: number; vx: number; vy: number; grounded: boolean };
+export type PlayerState = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  grounded: boolean;
+  airJumps: number; // air jumps left; refilled on landing
+  jumpHeld: boolean; // jump was down last tick, so an air jump needs a fresh press
+};
 
 // Input is a bitmask so it is tiny on the wire and trivially comparable.
 export const LEFT = 1;
@@ -35,13 +45,23 @@ export const RIGHT = 2;
 export const JUMP = 4;
 
 export function spawnState(): PlayerState {
-  return { x: SPAWN.x, y: SPAWN.y, vx: 0, vy: 0, grounded: false };
+  return { x: SPAWN.x, y: SPAWN.y, vx: 0, vy: 0, grounded: false, airJumps: AIR_JUMPS, jumpHeld: false };
 }
 
 export function step(s: PlayerState, input: number): PlayerState {
   const dir = (input & RIGHT ? 1 : 0) - (input & LEFT ? 1 : 0);
   let vx = approach(s.vx, dir * MOVE_SPEED, ACCEL * DT);
-  let vy = s.grounded && input & JUMP ? JUMP_SPEED : Math.max(s.vy + GRAVITY * DT, MAX_FALL);
+  const jumpDown = (input & JUMP) !== 0;
+  let airJumps = s.airJumps;
+  let vy: number;
+  if (s.grounded && jumpDown) {
+    vy = JUMP_SPEED; // holding jump keeps hopping on landing
+  } else if (!s.grounded && jumpDown && !s.jumpHeld && airJumps > 0) {
+    vy = AIR_JUMP_SPEED;
+    airJumps--;
+  } else {
+    vy = Math.max(s.vy + GRAVITY * DT, MAX_FALL);
+  }
 
   // Resolve each axis separately against the static level.
   let x = s.x + vx * DT;
@@ -67,7 +87,8 @@ export function step(s: PlayerState, input: number): PlayerState {
   }
 
   if (y < KILL_Y) return spawnState();
-  return { x, y, vx, vy, grounded };
+  if (grounded) airJumps = AIR_JUMPS;
+  return { x, y, vx, vy, grounded, airJumps, jumpHeld: jumpDown };
 }
 
 function overlaps(x: number, y: number, p: Box): boolean {

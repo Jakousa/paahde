@@ -129,7 +129,7 @@ function broadcast(time: number) {
 // must stay well below anything visible.
 function round(s: PlayerState): PlayerState {
   const r = (n: number) => Math.round(n * 1e4) / 1e4;
-  return { x: r(s.x), y: r(s.y), vx: r(s.vx), vy: r(s.vy), grounded: s.grounded };
+  return { ...s, x: r(s.x), y: r(s.y), vx: r(s.vx), vy: r(s.vy) };
 }
 
 function send(ws: WebSocket, msg: ServerMsg) {

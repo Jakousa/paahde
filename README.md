@@ -4,7 +4,7 @@ Online multiplayer game jam project. three.js (WebGPU renderer, automatic WebGL2
 a Node WebSocket game server with SQLite, and performance-critical code in WebAssembly via
 [AssemblyScript](https://www.assemblyscript.org/). See [docs/netcode.md](docs/netcode.md) for how syncing works.
 
-Controls: ←/→ or A/D to move, Space/↑/W to jump.
+Controls: ←/→ or A/D to move, Space/↑/W to jump (press again in the air to double jump).
 
 **Live:** https://herkku.org/dadajam/ — every push to `main` deploys automatically (~2–3 min).
 

@@ -103,7 +103,10 @@ export class Net {
 
   private reconcile(server: PlayerState, ack: number) {
     this.pending = this.pending.filter((p) => p.seq > ack);
-    let s: PlayerState = { x: server.x, y: server.y, vx: server.vx, vy: server.vy, grounded: server.grounded };
+    let s: PlayerState = {
+      x: server.x, y: server.y, vx: server.vx, vy: server.vy,
+      grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld,
+    };
     for (const p of this.pending) s = step(s, p.input);
     this.errorX += this.me.x - s.x;
     this.errorY += this.me.y - s.y;
