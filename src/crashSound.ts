@@ -1,7 +1,7 @@
 // Crash-site sounds: the faint electronic chatter of a wreck's half-dead systems (crashSynth.ts), heard
 // within HEAR metres of its beacon and placed there in 3D (HRTF PannerNode; the Web Audio listener follows
 // the camera). Only the nearest MAX_VOICES sites play. Very quiet on purpose: background detail you notice
-// when you stop next to a wreck, about −36 LUFS at 5 m (see docs/devlog.md for the measurement).
+// when you stop next to a wreck, about −30 LUFS at 5 m (see docs/devlog.md for the measurement).
 //
 // Plays through the shared output in src/audio.ts (volume slider, limiter); every level change is ramped.
 import { audio } from './audio';
@@ -13,6 +13,8 @@ const HEAR = 40;
 const FADE = 14;
 /** Full level (before the 1/d falloff) at and inside this distance (m). */
 const REF = 5;
+/** Steeper than 1/d, so the +6 dB close up is only ~+2.5 dB at the edge of earshot. */
+const ROLLOFF = 1.6;
 const MAX_VOICES = 2;
 /** Schedule events this far ahead (s). */
 const LOOKAHEAD = 0.25;
@@ -64,7 +66,7 @@ export class CrashSound {
       let a = this.active.get(s.id);
       if (!a) {
         const panner = new PannerNode(ctx, {
-          panningModel: 'HRTF', distanceModel: 'inverse', refDistance: REF, rolloffFactor: 1, maxDistance: 1000,
+          panningModel: 'HRTF', distanceModel: 'inverse', refDistance: REF, rolloffFactor: ROLLOFF, maxDistance: 1000,
         });
         const fade = ctx.createGain();
         fade.gain.value = 0;

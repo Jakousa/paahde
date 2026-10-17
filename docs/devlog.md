@@ -44,7 +44,9 @@ Crashed spacecraft half-buried in the dunes, for players to hunt for parts later
   HRTF-panned at the wreck's beacon, heard within 40 m, nearest two sites only. Measured with an
   OfflineAudioContext (HRTF panner 5 m in front, slider at 1.0) and `ffmpeg ebur128` over 30 s for four sites:
   −34.1 to −39.3 LUFS integrated (mean −36.4), true peak ≤ −19 dBFS. Inside 5 m it stays at that level; at the
-  default slider (0.4) it is 8 dB lower.
+  default slider (0.4) it is 8 dB lower. Later raised 6 dB (`VOICE_GAIN` 0.1 → 0.2, so ~−30 LUFS at 5 m, true
+  peak ≤ −13 dBFS) because it was too subtle up close, with a steeper falloff (`rolloffFactor` 1.6) so at
+  20–40 m it is only ~2.5 dB louder than before.
 - `?spawn=crash` starts you just off the nose of the crash site nearest your saved position, facing it.
 
 ## 2026-10-17 — Base becomes an underground bunker (issue #12)

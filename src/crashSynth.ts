@@ -11,8 +11,8 @@
 //   - crackle: a scatter of tiny band-passed noise grains (arcing wiring)
 // Each site gets its own root note, scale and tempo, so different wrecks sound slightly different.
 
-/** Output level of a voice before distance: tuned so a voice 5 m away measures about −36 LUFS. */
-export const VOICE_GAIN = 0.1;
+/** Output level of a voice before distance: tuned so a voice 5 m away measures about −30 LUFS. */
+export const VOICE_GAIN = 0.2;
 
 type Rng = () => number;
 function mulberry(seed: number): Rng {
