@@ -161,3 +161,26 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
     tierWeights: { scrap: 3, basic: 4, quality: 2, space: 0.3 },
   },
 };
+
+function pickTier(weights: Record<Tier, number>, rand: () => number): Tier {
+  let sum = 0;
+  for (const t of TIERS) sum += weights[t];
+  let r = rand() * sum;
+  for (const t of TIERS) if ((r -= weights[t]) < 0) return t;
+  return 'scrap';
+}
+
+/** What a component holds, rolled from `rand` (its site's seed): parts in yield order, each with a tier. Shared so
+ *  the server knows how many parts a machine has (src/teardown/junk.ts mounts every one of them). */
+export function rollParts(kind: ComponentKind, rand: () => number): { part: PartId; tier: Tier }[] {
+  const spec = COMPONENTS[kind];
+  const out: { part: PartId; tier: Tier }[] = [];
+  for (const y of spec.yields) {
+    const n = y.min + Math.floor(rand() * (y.max - y.min + 1));
+    for (let i = 0; i < n; i++) out.push({ part: y.part, tier: pickTier(spec.tierWeights, rand) });
+  }
+  return out;
+}
+
+/** How many parts (slots) a component rolled from `rand` holds. */
+export const partCount = (kind: ComponentKind, rand: () => number) => rollParts(kind, rand).length;
