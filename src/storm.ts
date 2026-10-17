@@ -18,9 +18,9 @@ const BEEP_EVERY = 2.5;
 const PIP = 0.09;
 const PIP_GAP = 0.07;
 const PIP_HZ = 1760;
-/** Peak gain of a pip. Measured at the default volume (0.4): a burst peaks at −21.5 LUFS momentary,
- *  true peak −8 dBTP, so the one-shot pokes just above the −23 mix and cuts through the storm's wind. */
-const PIP_GAIN = 1;
+/** Peak gain of a pip. At the default volume (0.4) a burst peaks at −27.5 LUFS momentary, true peak −14 dBTP
+ *  (6 dB under the −21.5 measured at gain 1): a quiet tell under the mix, not an alarm. */
+const PIP_GAIN = 0.5;
 /** Storm strength at the camera above which the locator bar is lost in the dust. */
 const LOST_AT = 0.35;
 /** How fast the felt storm follows where you are (s), so walking out of one doesn't pop. */
