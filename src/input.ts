@@ -11,11 +11,15 @@ const captured = () => !!document.pointerLockElement;
 // only) can take them, so a click that captures the mouse also goes fullscreen and locks the keyboard.
 type KeyboardLock = { lock(codes?: string[]): Promise<void>; unlock(): void };
 const keyboard = (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard;
-addEventListener('click', () => {
-  if (document.pointerLockElement || !keyboard) return;
+// Only clicks on the game canvas capture the mouse (src/camera.ts); a click on the volume slider must not
+// go fullscreen.
+addEventListener('click', (e) => {
+  if (document.pointerLockElement || !keyboard || !(e.target instanceof HTMLCanvasElement)) return;
   document.documentElement.requestFullscreen?.().then(() => keyboard.lock(), () => {});
 });
 addEventListener('keydown', (e) => {
+  // A locked keyboard hands Esc to the page instead of releasing the mouse, so release it ourselves.
+  if (e.code === 'Escape' && captured()) document.exitPointerLock();
   if (captured()) e.preventDefault();
   keys.add(e.code);
   if (e.code === 'KeyF' && !e.repeat) pickupPressed = true;

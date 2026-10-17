@@ -6,8 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { heightAt } from '../shared/terrain.ts';
 import { WALK_SPEED, SPRINT_SPEED } from '../shared/sim.ts';
-
-export const EYE_HEIGHT = 1.65;
+import { EYE_HEIGHT } from '../shared/dig.ts'; // the dig and pickup rays start here too
 const SENSITIVITY = 0.0022;
 const PITCH_LIMIT = (85 * Math.PI) / 180;
 const BASE_FOV = 72;

@@ -13,8 +13,8 @@ import { ScrapServer } from './scrap.ts';
 import { TerrainServer } from './terrain.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
-const SNAPSHOT_RATE = 20;
-const RELAX_RATE = 30; // Hz; sand avalanche passes (shared/dig.ts Relaxer) // Hz; clients interpolate remote players between snapshots
+const SNAPSHOT_RATE = 20; // Hz; clients interpolate remote players between snapshots
+const RELAX_RATE = 30; // Hz; sand avalanche passes (shared/dig.ts Relaxer)
 const SAVE_INTERVAL_MS = 5000;
 const IDLE_MS = 1000; // no input for this long (e.g. hidden tab) → server keeps simulating with no keys
 /** Inputs a client may bank: a network stall delivers its delayed inputs in one burst, and any past this
@@ -220,7 +220,10 @@ setInterval(() => {
 // Heartbeat: keeps NATs/proxies from dropping idle sockets and terminates dead ones.
 setInterval(() => {
   for (const p of players.values()) {
-    if (!p.alive) p.ws.terminate();
+    if (!p.alive) {
+      p.ws.terminate();
+      continue;
+    }
     p.alive = false;
     p.ws.ping();
   }
