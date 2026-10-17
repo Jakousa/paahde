@@ -17,7 +17,7 @@ import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
-import { shiftToTimeOfDay } from './world/dayNight';
+import { shiftToTimeOfDay } from '../shared/sun.ts';
 
 const INTERP_MS = 100;
 /** Ceiling on the extra interpolation delay added for jitter. */
