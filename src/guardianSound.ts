@@ -6,13 +6,14 @@
 // - drones: the nearest few buzz where they hover (rotor saw + whine); one locking on to you gives a short
 //   rising double chirp, once (not a siren: the beam and the HUD say the rest).
 // - missiles: a falling whistle at the impact point over the last WHISTLE_S of the flight.
+// Footfalls (and so the bolts' and missiles' blasts) and the cannon carry across the desert through src/acoustics.ts.
 // The Web Audio listener follows the camera (src/crashSound.ts sets it). Through the shared output in
 // src/audio.ts; levels ramped. Measured at the default volume (OfflineAudioContext + ffmpeg ebur128): a step
 // every 1.2 s ≈ −22 LUFS within 12 m and −27 at 20 m (peaks −4 dBFS close up); one drone at 15 m −31; the
 // chirp −26 (momentary); the horn at 60 m −25.
 import { audio } from './audio';
+import { placed } from './acoustics';
 
-const SPEED_OF_SOUND = 343;
 /** Footfalls are heard within this distance (m); full level at REF. */
 const STEP_HEAR = 500;
 const STEP_REF = 12;
@@ -63,20 +64,9 @@ class GuardianSound {
 
   /** A foot landed at (x, y, z), `weight` 0..1; the listener is at `ear`. */
   footfall(x: number, y: number, z: number, weight: number, ear: { x: number; y: number; z: number }) {
-    const ctx = audio.ctx, out = audio.out;
-    if (!ctx || !out || !audio.running) return;
-    const d = Math.hypot(x - ear.x, y - ear.y, z - ear.z);
-    if (d > STEP_HEAR) return;
-    const t = ctx.currentTime + d / SPEED_OF_SOUND;
-    const fade = 1 - Math.max(0, (d - STEP_HEAR * 0.6) / (STEP_HEAR * 0.4));
-    const p = panner(ctx, x, y, z, STEP_REF);
-    // Air takes the highs off with distance.
-    const air = ctx.createBiquadFilter();
-    air.type = 'lowpass';
-    air.frequency.value = 6000 / (1 + d / 60);
-    const level = ctx.createGain();
-    level.gain.value = STEP_GAIN * weight * fade;
-    air.connect(level).connect(p).connect(out);
+    const ctx = audio.ctx, s = placed({ x, y, z }, ear, STEP_GAIN * weight, STEP_REF, STEP_HEAR);
+    if (!ctx || !s) return;
+    const { input: air, t } = s;
 
     // Thump.
     const o = ctx.createOscillator();
@@ -186,16 +176,13 @@ class GuardianSound {
 
   /** A bolt fired from (x, y, z): a heavy descending zap with a thump, heard late with distance. */
   zap(x: number, y: number, z: number, ear: { x: number; y: number; z: number }) {
-    const ctx = audio.ctx, out = audio.out;
-    if (!ctx || !out || !audio.running) return;
-    const d = Math.hypot(x - ear.x, y - ear.y, z - ear.z);
-    if (d > STEP_HEAR) return;
-    const t = ctx.currentTime + d / SPEED_OF_SOUND;
-    const p = panner(ctx, x, y, z, 25);
+    const ctx = audio.ctx, s = placed({ x, y, z }, ear, ZAP_GAIN, 25, STEP_HEAR);
+    if (!ctx || !s) return;
+    const t = s.t;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(ZAP_GAIN, t);
+    g.gain.setValueAtTime(1, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
-    g.connect(p).connect(out);
+    g.connect(s.input);
     for (const [type, f0, f1] of [['square', 1400, 90], ['sawtooth', 700, 45], ['sine', 120, 30]] as const) {
       const o = ctx.createOscillator();
       o.type = type;
@@ -203,7 +190,7 @@ class GuardianSound {
       o.frequency.exponentialRampToValueAtTime(f1, t + 0.7);
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
-      lp.frequency.value = 2500 / (1 + d / 80);
+      lp.frequency.value = 2500;
       const og = ctx.createGain();
       og.gain.value = type === 'sine' ? 1 : 0.35;
       o.connect(lp).connect(og).connect(g);

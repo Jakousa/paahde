@@ -2,18 +2,20 @@
 // - shot: one of three pulses cut from Defunct3's "Pulse laser" (CC0, public/credits.txt; laser-1..3.mp3, mono,
 //   0.40–0.55 s, each levelled to −18.5 LUFS momentary, true peak ≤ −1.5 dBTP), picked at random and a little
 //   off pitch each time; the pistol plays them higher and lighter. Your own is dry and in your head; another
-//   player's is placed in 3D and heard late by the distance, like the guardians' footfalls.
+//   player's carries across the desert (src/acoustics.ts: late, duller, softer and more reverb with distance).
 // The rest is synthesised:
 // - recharge: the cell whining back up between shots, with a click when it's ready.
 // - impact: where the beam struck: a hiss of sand, a metal ping, or the red glass of a weak point shattering with an
 //   electric fizz.
 // - a dying walker: servos winding down with a clunk as each leg gives out, then the crash of the hull on the sand.
-// Through the shared output (src/audio.ts), every level ramped. Measured at the default volume (OfflineAudioContext +
-// ffmpeg ebur128, integrated): your own shot every 0.5 s ≈ −23 LUFS (peaks −2 dBFS), one shot −27; another player's
-// at 40 m −34; glass shattering at 20 m −28; a guardian dying at 40 m −27, a crawler at 8 m −33.
+// Everything placed in the world goes through src/acoustics.ts, then the shared output (src/audio.ts), every level
+// ramped. Measured at the default volume (OfflineAudioContext + ffmpeg ebur128, momentary max): your own shot −24 LUFS
+// (peaks −10 dBFS); another player's at 45 m −37, 100 m −43, 300 m −51 (mostly tail), 500 m −57. The synthesised
+// ones, before the acoustics (integrated): glass shattering at 20 m −28; a guardian dying at 40 m −27, a crawler at
+// 8 m −33.
 import { audio } from './audio';
+import { placed, type P } from './acoustics';
 
-const SPEED_OF_SOUND = 343;
 const SHOT_GAIN = 0.75;
 /** The pulse samples, on top of SHOT_GAIN: together about 1. */
 const PULSE_GAIN = 1.3;
@@ -22,8 +24,6 @@ const CHARGE_GAIN = 0.035;
 const IMPACT_GAIN = 1.2;
 const DEATH_GAIN = 1.8;
 
-type P = { x: number; y: number; z: number };
-
 let noiseBuf: AudioBuffer | null = null;
 function noise(ctx: AudioContext) {
   if (noiseBuf) return noiseBuf;
@@ -31,29 +31,6 @@ function noise(ctx: AudioContext) {
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   return noiseBuf;
-}
-
-/** A level, placed at `at` in 3D (refDistance `ref`), duller with distance; or dry and centred when `at` is null. */
-function bus(ctx: AudioContext, out: AudioNode, gain: number, at: P | null, ear: P | null, ref: number): AudioNode {
-  const g = ctx.createGain();
-  g.gain.value = gain;
-  if (!at) {
-    g.connect(out);
-    return g;
-  }
-  const d = ear ? Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) : 0;
-  const p = ctx.createPanner();
-  p.panningModel = 'equalpower';
-  p.distanceModel = 'inverse';
-  p.refDistance = ref;
-  p.positionX.value = at.x;
-  p.positionY.value = at.y;
-  p.positionZ.value = at.z;
-  const air = ctx.createBiquadFilter();
-  air.type = 'lowpass';
-  air.frequency.value = 9000 / (1 + d / 50);
-  g.connect(air).connect(p).connect(out);
-  return g;
 }
 
 /** Filtered noise from t for `len` s: attack `a`, exponential decay. */
@@ -108,12 +85,9 @@ class RifleSound {
   /** A shot: yours (`at` null) or someone else's at `at`, heard from `ear`. `pistol`: the laser pistol's, higher,
    *  shorter and lighter. */
   shot(at: P | null = null, ear: P | null = null, pistol = false) {
-    const ctx = audio.ctx, out = audio.out;
-    if (!ctx || !out || !audio.running) return;
-    const d = at && ear ? Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) : 0;
-    if (d > 600) return;
-    const t = ctx.currentTime + d / SPEED_OF_SOUND;
-    const o = bus(ctx, out, SHOT_GAIN * (pistol ? 0.75 : 1), at, ear, 15);
+    const ctx = audio.ctx, s = placed(at, ear, SHOT_GAIN * (pistol ? 0.75 : 1), 15, 600);
+    if (!ctx || !s) return;
+    const { input: o, t } = s;
     // The pistol: up in pitch (so quicker), less body.
     const buf = this.pulses[Math.floor(Math.random() * this.pulses.length)];
     if (buf) {
@@ -155,12 +129,9 @@ class RifleSound {
 
   /** Where the beam struck: sand, metal, or a weak point's glass. */
   impact(what: 'sand' | 'metal' | 'glass', at: P, ear: P) {
-    const ctx = audio.ctx, out = audio.out;
-    if (!ctx || !out || !audio.running) return;
-    const d = Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z);
-    if (d > 400) return;
-    const t = ctx.currentTime + d / SPEED_OF_SOUND;
-    const o = bus(ctx, out, IMPACT_GAIN, at, ear, what === 'sand' ? 4 : 10);
+    const ctx = audio.ctx, s = placed(at, ear, IMPACT_GAIN, what === 'sand' ? 4 : 10, 400);
+    if (!ctx || !s) return;
+    const { input: o, t } = s;
     if (what === 'sand') {
       hiss(ctx, o, t, 0.35, 'bandpass', 1800, 0.8, 0.5);
       tone(ctx, o, t, 0.1, 'sine', 160, 60, 0.4);
@@ -181,13 +152,10 @@ class RifleSound {
 
   /** A walker's leg giving out (`heavy`: a guardian): a servo winding down and a clunk. */
   fail(at: P, ear: P, heavy: boolean) {
-    const ctx = audio.ctx, out = audio.out;
-    if (!ctx || !out || !audio.running) return;
-    const d = Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z);
-    if (d > (heavy ? 500 : 60)) return;
-    const t = ctx.currentTime + d / SPEED_OF_SOUND;
+    const ctx = audio.ctx, s = placed(at, ear, DEATH_GAIN * (heavy ? 1 : 0.4), heavy ? 14 : 3, heavy ? 500 : 60);
+    if (!ctx || !s) return;
+    const { input: o, t } = s;
     const k = heavy ? 1 : 2.6; // small ones higher and quicker
-    const o = bus(ctx, out, DEATH_GAIN * (heavy ? 1 : 0.4), at, ear, heavy ? 14 : 3);
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.frequency.value = 1400 * k;
@@ -200,13 +168,10 @@ class RifleSound {
 
   /** A dead walker's hull hitting the sand. */
   slam(at: P, ear: P, heavy: boolean) {
-    const ctx = audio.ctx, out = audio.out;
-    if (!ctx || !out || !audio.running) return;
-    const d = Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z);
-    if (d > (heavy ? 800 : 80)) return;
-    const t = ctx.currentTime + d / SPEED_OF_SOUND;
+    const ctx = audio.ctx, s = placed(at, ear, DEATH_GAIN * (heavy ? 1.4 : 0.45), heavy ? 16 : 3, heavy ? 800 : 80);
+    if (!ctx || !s) return;
+    const { input: o, t } = s;
     const k = heavy ? 1 : 2.4;
-    const o = bus(ctx, out, DEATH_GAIN * (heavy ? 1.4 : 0.45), at, ear, heavy ? 16 : 3);
     tone(ctx, o, t, 1.4 / k, 'sine', 50 * k, 20 * k, 1, 0.01);
     hiss(ctx, o, t, 1.8 / k, 'lowpass', 300 * k, 0.6, 0.9, 0.01);
     // Plates and struts clattering down after it.
