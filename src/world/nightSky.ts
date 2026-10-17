@@ -106,10 +106,10 @@ const meteors = (dir: N): N => {
     const len2 = max(dot(seg, seg), 1e-8);
     const t = saturate(dot(dir.sub(head), seg).div(len2));
     const d = length(dir.sub(head.add(seg.mul(t))));
-    const width = mix(float(0.0016), float(0.0006), t);
-    const streak = exp(d.div(width).pow(2).negate()).mul(float(1).sub(t).pow(1.6));
-    // Flares as it burns up, then winks out.
-    const life = smoothstep(0, 0.12, p).mul(smoothstep(1, 0.8, p)).mul(float(0.7).add(p.mul(0.8)));
+    const width = mix(float(0.0018), float(0.0008), t);
+    const streak = exp(d.div(width).pow(2).negate()).mul(float(1).sub(t).pow(2));
+    // Fades in as it starts to burn, swells a little, then fades out over the last third.
+    const life = smoothstep(0, 0.3, p).mul(smoothstep(1, 0.65, p)).mul(float(0.8).add(p.mul(0.4)));
     const color = mix(vec3(1.0, 0.98, 0.95), vec3(1.0, 0.85, 0.7), t);
     out = out.add(color.mul(streak.mul(life).mul(b.w)));
   }
@@ -232,7 +232,7 @@ export class NightSky {
       const salt = 200 + i * 50;
       if (hash(w, salt) > 0.25) continue;
       const fireball = hash(w, salt + 1) < 0.08;
-      const dur = fireball ? 2.2 : 0.5 + 0.6 * hash(w, salt + 2);
+      const dur = fireball ? 2.8 : 0.9 + 0.7 * hash(w, salt + 2);
       const start = hash(w, salt + 3) * (METEOR_WINDOW - dur);
       const p = (shifted - w * METEOR_WINDOW - start) / dur;
       if (p < 0 || p > 1) continue;
@@ -247,7 +247,7 @@ export class NightSky {
       _axis.crossVectors(_a, side).normalize();
       _b.copy(_a).applyQuaternion(_q.setFromAxisAngle(_axis, arc));
       meteorFrom[i].value.set(_a.x, _a.y, _a.z, p);
-      meteorTo[i].value.set(_b.x, _b.y, _b.z, (fireball ? 9 : 2.5 + 3 * hash(w, salt + 8)));
+      meteorTo[i].value.set(_b.x, _b.y, _b.z, (fireball ? 3 : 0.8 + 1.2 * hash(w, salt + 8)));
     }
   }
 }
