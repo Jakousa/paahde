@@ -13,9 +13,11 @@ import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
 import { ScrapServer } from './scrap.ts';
+import { StormServer } from './storm.ts';
 import { TerrainServer } from './terrain.ts';
 import { drink, fill, newHeat, revive, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
+import { stormAt } from '../shared/storm.ts';
 import { timeOfDayAt } from '../shared/sun.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -32,6 +34,7 @@ const db = openDb(process.env.DB_PATH ?? 'data/dadajam.db');
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
 const garden = new GardenServer(db);
+const storms = new StormServer(performance.now());
 
 type Player = {
   id: number;
@@ -100,6 +103,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
+    if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'drink' && p) return onDrink(p);
     if (msg.t === 'fill' && p) return onFill(p);
     if (msg.t === 'hands' && p) p.hands = msg.hands === 1 || msg.hands === 2 ? msg.hands : 0;
@@ -137,6 +141,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
   send(ws, garden.joinMessage());
+  send(ws, storms.msg());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   send(ws, { t: 'inventory', items: scrap.inventory(browserId) });
   send(ws, waterMsg(p.heat));
@@ -156,9 +161,10 @@ function onFill(p: Player) {
 // Heat builds up in the sun (server/water.ts); when it's full the player dies of heatstroke and respawns at
 // the base, cooled down.
 // The next snapshot carries the new position, which the client snaps to (src/net.ts reconcile).
-function heat(p: Player, dt: number, tod: number) {
+function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const now = Date.now();
-  const r = tickHeat(p.heat, dt, p.state, p.input, tod, now);
+  const storm = stormAt(storms.storms, p.state.x, p.state.z, serverNow);
+  const r = tickHeat(p.heat, dt, p.state, p.input, tod, storm, now);
   if (r === 'died') {
     p.state = spawnState(BASE_SPAWN.x, BASE_SPAWN.z);
     revive(p.heat, now);
@@ -224,7 +230,7 @@ setInterval(() => {
   const tod = timeOfDayAt(now + epoch);
   for (const p of players.values()) {
     p.tokens = Math.min(MAX_INPUT_BURST, p.tokens + elapsed * TICK_RATE);
-    heat(p, elapsed, tod);
+    heat(p, elapsed, tod, now);
     if (Date.now() - p.lastInputAt > IDLE_MS) {
       p.input = 0;
       for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
@@ -263,7 +269,8 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
-  for (const msg of [terrain.flush(), scrap.flush(), garden.flush()]) {
+  const weather = storms.tick(time, [...players.values()].map((p) => p.state));
+  for (const msg of [terrain.flush(), scrap.flush(), garden.flush(), weather]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);

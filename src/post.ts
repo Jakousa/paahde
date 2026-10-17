@@ -1,14 +1,18 @@
-// Post-processing: heat haze → bloom → sun glare / lens flare → eye adaptation → grade → tone map →
+// Post-processing: heat haze → sandstorm dust → bloom → sun glare / lens flare → eye adaptation → grade → tone map →
 // vignette + grain. One scene pass, a half-res bloom chain, and a single full-screen composite.
 import * as THREE from 'three/webgpu';
 import {
   Fn, abs, atan, cos, dot, exp, float, length, max, mix, mx_noise_float, pass, pow, renderOutput, saturate,
-  smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin, perspectiveDepthToViewZ,
+  smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin, perspectiveDepthToViewZ, If, normalize, sqrt, min,
 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { heightAt } from '../shared/terrain.ts';
-import { heatHaze, sunDirection, sunDiscRadius, time } from './world/env.ts';
+import {
+  hazeColor, hazeColorFor, hazeDensity, heatHaze, stormDiscs, stormGround, sunColor, sunDirection, sunDiscRadius,
+  time, windDrift,
+} from './world/env.ts';
+import { EDGE } from '../shared/storm.ts';
 
 type N = Node<'vec3'>;
 const TONE = new URLSearchParams(location.search).has('agx') ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
@@ -16,6 +20,11 @@ type F = Node<'float'>;
 
 /** Sun tint used for veiling glare and flares (linear). */
 const GLARE_TINT = new THREE.Color(1.0, 0.5, 0.2);
+/** Sandstorm dust: extinction per metre at full strength (~20 m to see 95% lost), how fast it thins
+ *  upwards (m), and march steps through each storm. */
+const STORM_K = 0.15;
+const STORM_H = 60;
+const STORM_STEPS = 6;
 
 export class Post {
   private renderer: THREE.WebGPURenderer;
@@ -35,6 +44,9 @@ export class Post {
   private stare = uniform(0);
   private camNear = uniform(0.1);
   private camFar = uniform(6000);
+  private camWorld = uniform(new THREE.Matrix4());
+  private projInv = uniform(new THREE.Matrix4());
+  private camPos = uniform(new THREE.Vector3());
 
   private lastTime = performance.now();
   private exposureValue = 1;
@@ -75,6 +87,67 @@ export class Post {
       const keep = smoothstep(15, 30, wDist);
       return color.sample(mix(p, warped, keep)).rgb;
     })();
+
+    // --- Sandstorms (shared/storm.ts): each is a dust column, a vertical cylinder whose dust fades out
+    // towards its rim and thins upwards. The view ray through the pixel is clipped to the cylinder and
+    // to the scene depth, and marched in a few jittered steps with a billowing noise, so from outside a
+    // storm reads as a thick rolling wall and from inside as dust fog ~25 m deep. Out: dust colour, and
+    // how much of the scene still shows through.
+    const { camWorld, projInv, camPos } = this;
+    const dusted = Fn(() => {
+      const p = uv();
+      const ndc = vec4(p.x.mul(2).sub(1), float(1).sub(p.y.mul(2)), 1, 1);
+      const v = projInv.mul(ndc);
+      const dv = normalize(v.xyz.div(v.w));
+      const dir = normalize(camWorld.mul(vec4(dv, 0)).xyz);
+      const tScene = viewZ.div(dv.z); // both negative: distance along the ray
+      const tau = float(0).toVar();
+      const lit = float(0).toVar(); // optical-depth-weighted brightness of the dust seen
+      const first = float(1e9).toVar(); // where the dust starts, for the haze in front of it
+      const jitter = fract(sin(dot(p.mul(vec2(911.3, 577.7)), vec2(12.9898, 78.233))).mul(43758.5453));
+      const ground = [stormGround.x, stormGround.y, stormGround.z, stormGround.w];
+      stormDiscs.forEach((disc, i) => {
+        If(disc.w.greaterThan(0), () => {
+          const oc = camPos.xz.sub(disc.xy);
+          const a = max(dot(dir.xz, dir.xz), 1e-6);
+          const b = dot(oc, dir.xz);
+          const c = dot(oc, oc).sub(disc.z.mul(disc.z));
+          const h = b.mul(b).sub(a.mul(c));
+          If(h.greaterThan(0), () => {
+            const sq = sqrt(h);
+            const t0 = max(b.negate().sub(sq).div(a), 0);
+            // Rays climbing out of the dust: stop where it has thinned to ~5% (3 STORM_H up).
+            const top = ground[i].add(STORM_H * 3).sub(camPos.y).div(max(dir.y, 1e-4));
+            const t1 = min(min(b.negate().add(sq).div(a), tScene), top);
+            If(t1.greaterThan(t0), () => {
+              first.assign(min(first, t0));
+              const dt = t1.sub(t0).div(STORM_STEPS);
+              for (let k = 0; k < STORM_STEPS; k++) {
+                const t = t0.add(dt.mul(jitter.add(k)));
+                const q = camPos.add(dir.mul(t));
+                const r = length(q.xz.sub(disc.xy)).div(disc.z);
+                const rim = float(1).sub(smoothstep(EDGE, 1, r));
+                const up = exp(max(q.y.sub(ground[i]), 0).div(-STORM_H));
+                const w = vec3(q.x.sub(windDrift.x.mul(1.5)), q.y.mul(1.6).sub(time.mul(4)), q.z.sub(windDrift.y.mul(1.5)));
+                const n = mx_noise_float(w.mul(0.035));
+                const billow = saturate(n.mul(0.9).add(0.7));
+                const d = disc.w.mul(rim).mul(up).mul(billow).mul(dt);
+                tau.addAssign(d);
+                // Billows catch the light; the low, thick dust at the foot of the wall is in its own shade.
+                lit.addAssign(d.mul(n.mul(0.45).add(0.75)).mul(float(1.25).sub(up.mul(0.6))));
+              }
+            });
+          });
+        });
+      });
+      const trans = exp(tau.mul(-STORM_K));
+      // Lit dust: diffused sun on the sand colour plus the haze; far storms fade into the haze like dunes.
+      const shade = lit.div(max(tau, 1e-4));
+      const dust = (sunColor as unknown as N).mul(vec3(0.5, 0.3, 0.16)).mul(0.17).add((hazeColor as unknown as N).mul(0.15)).mul(shade);
+      const far = float(1).sub(exp(first.mul(hazeDensity).negate()));
+      return vec4(mix(dust, hazeColorFor(dir), far.mul(0.35)), trans);
+    })();
+    const storm = vec4(hazed.mul(dusted.w).add(dusted.xyz.mul(float(1).sub(dusted.w))), dusted.w);
 
     // --- Bloom (half-res mip chain). Threshold sits just above lit sand so the sun, its halo and
     // glints bloom, and bloom bleeds over the dune crests that occlude the sun.
@@ -135,7 +208,8 @@ export class Post {
 
     // --- Composite in linear HDR, then grade and tone map.
     const graded = Fn(() => {
-      let c: N = hazed.add(bloomPass.rgb).add(flare);
+      // Dust in front hides what blooms or flares behind it.
+      let c: N = storm.xyz.add(bloomPass.rgb.add(flare).mul(storm.w));
       c = c.mul(exposure);
       // Warm white balance and a rust lift in the shadows (never grey/blue blacks).
       c = c.mul(vec3(1.06, 0.98, 0.86));
@@ -170,6 +244,9 @@ export class Post {
     this.aspect.value = size.x / Math.max(size.y, 1);
     this.camNear.value = cam.near;
     this.camFar.value = cam.far;
+    this.camWorld.value.copy(cam.matrixWorld);
+    this.projInv.value.copy(cam.projectionMatrixInverse);
+    cam.getWorldPosition(this.camPos.value);
 
     // Sun position on screen (uv: origin top-left).
     const sd = sunDirection.value;

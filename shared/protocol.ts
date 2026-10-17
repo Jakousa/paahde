@@ -1,5 +1,6 @@
 // WebSocket message shapes (JSON). `t` is the message type.
 import type { PlayerState } from './sim.ts';
+import type { Storm } from './storm.ts';
 
 export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
@@ -24,7 +25,9 @@ export type ClientMsg =
   | { t: 'fill' }
   // What's in your hands (Hands below), sent when it changes and after every 'welcome'. Cosmetic: other
   // players see it on your avatar; the drink/fill checks don't depend on it.
-  | { t: 'hands'; hands: Hands };
+  | { t: 'hands'; hands: Hands }
+  // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning.
+  | { t: 'storm' };
 
 // 0 empty hands, 1 holding the canteen, 2 drinking from it.
 export type Hands = 0 | 1 | 2;
@@ -71,4 +74,7 @@ export type ServerMsg =
   | { t: 'water'; heat: number; sips: number; rising: boolean; temp: number; shade: boolean }
   // You died of heatstroke: the server has already moved you to BASE_SPAWN (the next snapshot snaps you
   // there) with no heat and a full canteen; a 'water' follows. For the death screen.
-  | { t: 'died'; cause: 'heat' };
+  | { t: 'died'; cause: 'heat' }
+  // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time).
+  // Sent before 'welcome' on join and to everyone whenever the list changes.
+  | { t: 'storms'; storms: Storm[] };

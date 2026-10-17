@@ -33,6 +33,7 @@ import { WindSound } from './windSound';
 import { footsteps } from './footsteps';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
+import { StormFx } from './storm';
 import { ViewModel } from './viewmodel';
 import { Binoculars } from './binoculars';
 
@@ -57,15 +58,17 @@ const blownSand = new BlownSand(scene);
 const viewmodel = new ViewModel(orbit, scene); // first-person hands, parented to the camera
 
 const windSound = new WindSound();
+const storm = new StormFx();
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and whether it smokes (shared/crashsites.ts).
   const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, smoke: s.smoke, pieces: s.pieces.length }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, viewmodel, crashSites, crashSound, crash, playerHands } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands } });
 }
 
 const net = new Net(getBrowserId());
-new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime());
+if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { net });
+new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm());
 const digFx = new DigFx(scene);
 // Remote players play their dig clip for a moment after each stroke the server reports.
 const DIG_ANIM_S = 0.5;
@@ -224,6 +227,9 @@ renderer.setAnimationLoop((time) => {
   viewmodel.setColor(net.color);
   viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding,
     digging: (input & (DIG | PILE)) !== 0 || (digUntil.get(net.id) ?? 0) > performance.now() });
+  // Before the wind: the storm sets how hard it blows here.
+  storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me);
+  locator.lost = storm.lost;
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
   scrap.update(focus);

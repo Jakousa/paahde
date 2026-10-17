@@ -50,6 +50,12 @@ export const windDir = uniform(new THREE.Vector2(0.3162, 0.9487));
 export const windStrength = uniform(0.5);
 /** Sandstorm envelope, 0 .. 1: dust in the air, haze, sand lifting off the ground. */
 export const sandStorm = uniform(0);
+/** Up to STORM_SLOTS local sandstorms for the post pass's dust volume (post.ts): centre x, z, radius (m)
+ *  and strength envelope 0..1 (0 = not drawn). Written by src/storm.ts every frame. */
+export const STORM_SLOTS = 4;
+export const stormDiscs = Array.from({ length: STORM_SLOTS }, () => uniform(new THREE.Vector4()));
+/** Ground height (m) under each storm's centre: its dust thins out upwards from there. */
+export const stormGround = uniform(new THREE.Vector4());
 /** Integrated wind travel (m, xz): advects streaks and dust so they move with the wind. */
 export const windDrift = uniform(new THREE.Vector2());
 /** Apparent angular radius of the sun disc, radians (cheated huge: real sun is 0.0045). */

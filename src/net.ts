@@ -20,6 +20,7 @@ import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
+import type { Storm } from '../shared/storm.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 
 const INTERP_MS = 100;
@@ -93,6 +94,8 @@ export class Net {
   /** Greenhouse bed stages (shared/garden.ts), from the server; empty until the first 'garden'. */
   garden: number[] = [];
   onGarden?: (beds: number[]) => void;
+  /** Sandstorms announced and not over yet (shared/storm.ts), times on the server clock. */
+  storms: Storm[] = [];
   /** A bed we tended was planted or harvested. */
   onTended?: (what: 'planted' | 'harvested') => void;
 
@@ -235,6 +238,11 @@ export class Net {
     this.send({ t: 'setEpoch', epoch: this.epoch });
   }
 
+  /** Debug menu: a sandstorm where we stand, for everyone. */
+  summonStorm() {
+    this.send({ t: 'storm' });
+  }
+
   /** Debug menu: put the shared clock back to real time. */
   resetSharedTime() {
     this.send({ t: 'setEpoch', epoch: null });
@@ -323,6 +331,10 @@ export class Net {
       return this.onGarden?.(msg.beds);
     }
     if (msg.t === 'tended') return this.onTended?.(msg.what);
+    if (msg.t === 'storms') {
+      this.storms = msg.storms;
+      return;
+    }
     if (msg.t === 'dug') {
       if (msg.id !== this.id) this.onDig?.({ x: msg.x, y: msg.y, z: msg.z }, msg.pile, false, msg.id);
       return;

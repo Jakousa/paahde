@@ -22,6 +22,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen
 - `shared/temperature.ts` — air/felt °C by time of day (drives thirst); `shared/shade.ts` — sun ray march (shade)
   tuning, drained and validated in `server/water.ts`, HUD + `playerHands` in `src/water.ts`
+- `shared/storm.ts` — local sandstorms (path, strength, warning); scheduled by `server/storm.ts`, heat in
+  `server/water.ts`, beep/banner/locator in `src/storm.ts`, dust columns in `src/post.ts`
 - `shared/base.ts` — home base (underground bunker) layout + collision; terrain is its roof, with holes
   (`TERRAIN_HOLES`) over the entrance and skylight. `shared/garden.ts` — planter beds (stages, look target),
   owned by `server/garden.ts`; currently no beds

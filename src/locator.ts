@@ -2,7 +2,7 @@
 // per far-away player at their bearing relative to where you look. The bar spans the horizontal FOV;
 // players behind you pin to its ends, dimmed. Dots shrink with distance, and an arrow marks players
 // well above or below your view. Close players (name tag in view) get no dot. The home base gets a
-// house-shaped marker the same way, so you can always find your way back.
+// house-shaped marker the same way, so you can always find your way back (except in a sandstorm).
 import type * as THREE from 'three/webgpu';
 import { BASE } from '../shared/base.ts';
 
@@ -31,6 +31,8 @@ const css = `
 export class LocatorBar {
   private bar = document.createElement('div');
   private dots = new Map<number, { el: HTMLDivElement; arrow: HTMLDivElement }>();
+  /** Lost in a sandstorm (src/storm.ts): the bar fades out until the dust clears. */
+  lost = false;
 
   constructor() {
     const style = document.createElement('style');
@@ -82,6 +84,6 @@ export class LocatorBar {
       d.el.remove();
       this.dots.delete(id);
     }
-    this.bar.style.opacity = this.dots.size ? '1' : '0';
+    this.bar.style.opacity = this.dots.size && !this.lost ? '1' : '0';
   }
 }

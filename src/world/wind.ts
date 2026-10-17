@@ -33,9 +33,8 @@ const GUST_MIN = 0.65;
 const GUST_RANGE = 0.8;
 /** Strongest local wind relative to the regional one: the peak gust on the most exposed crest. */
 export const PEAK_LOCAL = (GUST_MIN + GUST_RANGE) * 1.8;
-/** Seconds per weather slot; each slot holds a storm with probability STORM_CHANCE. */
-const STORM_SLOT = 900;
-const STORM_CHANCE = 0.5;
+/** Peak 10 m wind in a sandstorm (m/s), before its surges. */
+const STORM_PEAK = 17;
 
 /** Shear velocity from the wind speed at 10 m. */
 export const ustarFrom10 = (u10: number) => (KAPPA * u10) / LOG10;
@@ -81,6 +80,9 @@ class Wind {
   dz = WIND.z;
   /** Set to a number (m/s at 10 m) to pin the wind, e.g. dbg.wind.override = 14 from the console. */
   override: number | null = null;
+  /** Sandstorm strength where we are, 0..1 (shared/storm.ts; set every frame by src/storm.ts). Storms are
+   *  local, so the "regional" wind here is really the wind around the camera. */
+  local = 0;
   /** Speed of the gust pattern drifting downwind (m/s). */
   private conv = 0;
   /** Topographic speed-up per 4 m cell: packed key → factor. Static terrain, so cached. */
@@ -95,10 +97,10 @@ class Wind {
       this.u10 = this.override;
     } else {
       // Weather: mostly calm, a light air wandering below the threshold (only exposed crests stir in
-      // the gusts). Now and then a storm blows through: it builds over a minute or two, holds a few
-      // minutes with surges, and dies down slowly.
+      // the gusts). Inside a sandstorm it blows a gale, with surges.
       const base = 1.5 + 4 * fade(noise(t / 180, 0.5, 101)) ** 2;
-      this.u10 = base + (this.stormWind(t) - base) * this.stormEnvelope(t);
+      const storm = STORM_PEAK * (0.85 + 0.25 * noise(t / 6, 0.5, 202));
+      this.u10 = base + (storm - base) * this.local;
     }
     // The wind veers slowly (±25° over minutes) and flickers a few degrees with the gusts.
     const wobble = (noise(t / 120, 3.5, 303) - 0.5) * 0.9 + (noise(t / 12, 7.5, 404) - 0.5) * 0.15;
@@ -107,26 +109,6 @@ class Wind {
     this.dz = WIND.x * s + WIND.z * c;
     // Gusts are carried with roughly the wind speed at a few metres up.
     this.conv = 0.6 * this.u10;
-  }
-
-  /**
-   * Storm strength at time t, 0..1. Time is cut into STORM_SLOT-long slots; each one holds at most
-   * one storm, with its chance, length and timing hashed from the slot index.
-   */
-  private stormEnvelope(t: number): number {
-    const slot = Math.floor(t / STORM_SLOT);
-    if (hash(slot, 1) > STORM_CHANCE) return 0;
-    const len = 180 + 240 * hash(slot, 2);
-    const start = slot * STORM_SLOT + (STORM_SLOT - len) * hash(slot, 3);
-    const rise = Math.min(1, Math.max(0, (t - start) / 90));
-    const fall = Math.min(1, Math.max(0, (start + len - t) / 150));
-    return fade(rise) * fade(fall);
-  }
-
-  /** Wind inside the current slot's storm: a peak of 13–19 m/s with surges a few tens of seconds long. */
-  private stormWind(t: number): number {
-    const peak = 13 + 6 * hash(Math.floor(t / STORM_SLOT), 4);
-    return peak * (0.8 + 0.2 * noise(t / 25, 0.5, 202));
   }
 
   /** Wind speed-up over the terrain at (x, z): >1 on crests and windward slopes, <1 in the lee. */

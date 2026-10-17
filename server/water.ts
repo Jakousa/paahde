@@ -1,11 +1,13 @@
 // Server side of survival (shared/water.ts): builds up (or cools off) each player's heat meter by the felt
-// temperature (shared/temperature.ts; sun or shade from shared/shade.ts at the player's head), validates
-// sips and canteen refills, and says when a player has died of heatstroke (server/index.ts respawns them).
+// temperature (shared/temperature.ts; sun or shade from shared/shade.ts at the player's head; hotter in a
+// sandstorm, shared/storm.ts), validates sips and canteen refills, and says when a player has died of
+// heatstroke (server/index.ts respawns them).
 import { atPump, inBase } from '../shared/base.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { inSun } from '../shared/shade.ts';
 import { SPRINT, WALK_SPEED, type PlayerState } from '../shared/sim.ts';
+import { STORM_TEMP } from '../shared/storm.ts';
 import { feltTemp } from '../shared/temperature.ts';
 import {
   CANTEEN_SIPS, DRINK_COOLDOWN_MS, FILL_COOLDOWN_MS, FILL_SLACK, HEAT_MAX, heatPerSecond, SIP_COOL,
@@ -51,16 +53,17 @@ export function waterMsg(t: Heat): ServerMsg {
 }
 
 /**
- * Advance one player's heat by `dt` seconds at time of day `tod`. Returns 'died' when the meter is full
- * (the caller respawns and calls revive), 'send' when the client should get a 'water' update, else null.
+ * Advance one player's heat by `dt` seconds at time of day `tod`, `storm` (0..1, shared/storm.ts) the
+ * sandstorm where they stand. Returns 'died' when the meter is full (the caller respawns and calls
+ * revive), 'send' when the client should get a 'water' update, else null.
  */
-export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod: number, now: number): 'died' | 'send' | null {
+export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod: number, storm: number, now: number): 'died' | 'send' | null {
   const inside = inBase(s.x, s.y, s.z);
   if (now - t.shadeAt >= SHADE_MS) {
     t.shadeAt = now;
     t.shade = inside || !inSun(s.x, s.y + EYE_HEIGHT, s.z, tod);
   }
-  t.temp = feltTemp(tod, !t.shade, inside);
+  t.temp = feltTemp(tod, !t.shade, inside) + (inside ? 0 : STORM_TEMP * storm);
   if (now - t.diedAt < RESPAWN_GRACE_MS) return null;
   const sprinting = (input & SPRINT) !== 0 && Math.hypot(s.vx, s.vz) > WALK_SPEED + 0.5;
   const rate = heatPerSecond(t.temp, sprinting);

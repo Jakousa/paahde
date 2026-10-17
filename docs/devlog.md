@@ -521,3 +521,29 @@ mouse look slightly, drop and come back up when switching what's held, and dip w
 - **No shadows:** the hands neither cast (the shadow-only body already does) nor receive (they'd sit inside
   that body and always be in its shadow). Downside: they stay sunlit indoors.
 - **Testing:** `?hold=canteen` forces the canteen, `?anim=Drink` loops any clip; `dbg.viewmodel` with ?debug.
+
+## Sandstorms
+
+Local, short storms instead of the old global one (`wind.ts` used to hash a 3–7 minute storm into every
+15-minute slot, for everybody, purely visual).
+
+- **Where and when** (`server/storm.ts`, `shared/storm.ts`): every 2–6 minutes the server picks a random
+  player and puts a storm within 220 m of them: radius 60–140 m, drifting downwind (the dunes' `WIND`) at
+  1–4 m/s, 15–90 s long with 6 s ramps in and out. Announced 12 s ahead. The list goes to everyone on join
+  and whenever it changes (`storms` message); its times are on the server clock (snapshot time), so client
+  and server work out positions and strength from the same math. In memory only: a restart clears it.
+- **Warning:** a storm whose path will cross where you stand (within 40 m) beeps three pips every 2.5 s
+  and shows a countdown banner, unless you're in the base. The pips peak at −21.5 LUFS momentary at the default
+  volume (true peak −8 dBTP), measured offline with the same waveform.
+- **Inside:** +10 °C felt (`STORM_TEMP`, server/water.ts) on top of sun/shade, so heat builds fast by day
+  and even nights get warm; the base keeps it out. The locator bar (our only map) is lost while the storm
+  at the camera is over 0.35. The storm at the camera also sets `wind.local`, which drives the wind to
+  ~17 m/s, so the grains, drift sheet, dust puffs, sky haze and wind sound all pick it up.
+- **Look** (`src/post.ts`): each storm is a dust cylinder marched in the post pass (6 jittered steps along the
+  view ray, clipped to the cylinder and the scene depth): density full out to 55% of the radius, thinning
+  upwards over 60 m, billowed by 3D noise that drifts with the wind and rises. From outside: a tall rolling
+  brown column (dark against the dusk sky); inside: dust fog ~20 m deep. Not drawn from inside the
+  bunker (it would fog the rooms). Up to 4 at once.
+- **Testing:** F3 → "Sandstorm here" summons one on you, for everyone. With `?debug`, `dbg.net.storms` can
+  be set by hand for a look-only storm (the server doesn't know about it).
+

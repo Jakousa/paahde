@@ -1,6 +1,7 @@
 // Debug menu: F3 (or `) toggles a small panel. Opening it frees the mouse so the controls can be clicked.
 // Time of day: a slider that holds the sky at that time (local view only), or, with "Apply to all players",
-// moves the shared server clock for everyone, production included.
+// moves the shared server clock for everyone, production included. "Sandstorm here" summons one on you
+// (for everyone, after the usual warning).
 import { clockText, timeControl } from './world/dayNight';
 
 const PRESETS: [string, number][] = [['Dawn', 0.27], ['Noon', 0.5], ['Golden hour', 0.7], ['Dusk', 0.77], ['Midnight', 0]];
@@ -9,7 +10,7 @@ export class DebugMenu {
   private panel = document.createElement('div');
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
-  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void) {
+  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void) {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
@@ -31,13 +32,15 @@ export class DebugMenu {
 <input id="dbgTod" type="range" min="0" max="1439" step="1">
 <label><input id="dbgLive" type="checkbox"> Follow shared clock</label>
 <label><input id="dbgShare" type="checkbox"> Apply to all players (server)</label>
-<div class="row"></div>`;
+<div class="row"></div>
+<div class="row"><button id="dbgStorm" title="A sandstorm on you, for everyone, after the 12 s warning">Sandstorm here</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
     const live = p.querySelector<HTMLInputElement>('#dbgLive')!;
     const share = p.querySelector<HTMLInputElement>('#dbgShare')!;
     const label = p.querySelector<HTMLElement>('#dbgTime')!;
     const row = p.querySelector<HTMLElement>('.row')!;
+    p.querySelector('#dbgStorm')!.addEventListener('click', summonStorm);
 
     const show = (tod: number) => {
       slider.value = String(Math.round(tod * 1440) % 1440);
