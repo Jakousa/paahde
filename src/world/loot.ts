@@ -1,9 +1,10 @@
 // Loot on the sand (shared/loot.ts, from the server via src/net.ts): broken gear at crash sites and near the
 // spawn, dug-up caches, things dropped from a full bag. Buried loot isn't drawn (the metal detector hears it,
-// src/detector.ts). Gear is a small model built here from boxes and cylinders, with a faint shimmer column
-// above it so you can spot it from a dune top; parts use the disassembly part models (src/teardown/junk.ts);
+// src/detector.ts). Gear is a small model built here from boxes and cylinders; broken gear has a small warm
+// glow on it so it catches the eye among the crash-site debris; parts use the disassembly part models (src/teardown/junk.ts);
 // anything else is a battered crate. Each sits on the sand where it is (also at the bottom of a hole).
 import * as THREE from 'three/webgpu';
+import { float, length, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { GEAR, isGear, repaired } from '../../shared/gear.ts';
 import { parsePart } from '../../shared/items.ts';
 import { LOOT_REACH, type Loot } from '../../shared/loot.ts';
@@ -13,9 +14,9 @@ import { loadPart } from '../teardown/junk';
 
 /** Drawn within this distance (m). */
 const VIEW = 350;
-/** The shimmer column over gear: height (m) and how far away it shows. */
-const BEAM_H = 9;
-const BEAM_VIEW = 260;
+/** The glow on broken gear: size (m) up close, and how far away it shows (it fades out towards there). */
+const GLOW_SIZE = 1.3;
+const GLOW_VIEW = 160;
 
 const mat = (color: number, rough = 0.8, metal = 0.2) => new THREE.MeshStandardNodeMaterial({ color, roughness: rough, metalness: metal });
 const RUST = mat(0x7a4a2e, 0.9, 0.3);
@@ -24,7 +25,16 @@ const STEEL = mat(0x8a8f86, 0.5, 0.7);
 const CLOTH = mat(0x7a5e3a, 0.95, 0);
 const RED = mat(0xa84a32, 0.6, 0.3);
 const WOOD = mat(0x6b4a2e, 0.9, 0);
-const BEAM = new THREE.MeshBasicNodeMaterial({ color: 0xfff4dc, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide, fog: false });
+const glowPulse = uniform(1);
+/** A soft warm disc, added on top (one material: all of them pulse together). */
+const GLOW = (() => {
+  const m = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  const r = length(uv().sub(0.5));
+  const soft = float(1).sub(smoothstep(0.0, 0.5, r));
+  m.colorNode = vec3(1.0, 0.72, 0.38);
+  m.opacityNode = soft.mul(soft).mul(glowPulse);
+  return m;
+})();
 
 function box(g: THREE.Group, w: number, h: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0, ry = 0, rz = 0) {
   const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
@@ -84,7 +94,7 @@ const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
   },
 };
 
-type Shown = { obj: THREE.Group; beam: THREE.Mesh | null; l: Loot };
+type Shown = { obj: THREE.Group; glow: THREE.Sprite | null; l: Loot };
 
 export class LootView {
   private group = new THREE.Group();
@@ -98,6 +108,7 @@ export class LootView {
   /** Every frame: draw surface loot near the player, drop what's gone or out of view. */
   update(dt: number, loot: Map<number, Loot>, me: { x: number; z: number }) {
     this.t += dt;
+    glowPulse.value = 0.55 + 0.15 * Math.sin(this.t * 2.2);
     for (const [id, s] of this.shown) {
       const l = loot.get(id);
       if (!l || l.depth > 0 || Math.hypot(l.x - me.x, l.z - me.z) > VIEW + 20) {
@@ -118,9 +129,11 @@ export class LootView {
       s.l = l;
       // Follows the sand (it may be dug around, or sit at the bottom of the hole it came out of).
       s.obj.position.set(l.x, heightAt(l.x, l.z) - 0.02, l.z);
-      if (s.beam) {
-        s.beam.visible = d < BEAM_VIEW && d > 6;
-        (s.beam.material as THREE.MeshBasicNodeMaterial).opacity = 0.24 + 0.08 * Math.sin(this.t * 2 + l.id);
+      if (s.glow) {
+        // Grows a little with distance so it stays a few pixels across, fades out before GLOW_VIEW.
+        s.glow.visible = d < GLOW_VIEW;
+        const k = GLOW_SIZE * Math.max(1, d / 35) * Math.min(1, (GLOW_VIEW - d) / 40);
+        s.glow.scale.set(k, k, 1);
       }
     }
   }
@@ -148,15 +161,15 @@ export class LootView {
   private build(l: Loot): Shown {
     const obj = new THREE.Group();
     obj.rotation.y = (l.id * 2.39996) % (Math.PI * 2); // some variety, the same for everyone
-    let beam: THREE.Mesh | null = null;
+    let glow: THREE.Sprite | null = null;
     const part = parsePart(l.kind);
     if (isGear(l.kind)) {
       GEAR_MODELS[l.kind]?.(obj);
-      // Broken gear shimmers; a column of it rising over the dunes.
+      // Broken gear glows faintly.
       if (!repaired({ id: 0, kind: l.kind, n: 1, parts: l.parts })) {
-        beam = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.7, BEAM_H, 12, 1, true), BEAM.clone());
-        beam.position.y = BEAM_H / 2;
-        obj.add(beam);
+        glow = new THREE.Sprite(GLOW);
+        glow.position.y = 0.7;
+        obj.add(glow);
       }
     } else if (part) {
       loadPart(part.part, TIERS[part.tier]).then((m) => {
@@ -169,7 +182,7 @@ export class LootView {
       box(obj, 0.52, 0.05, 0.42, RUST, 0, 0.3, 0);
     }
     this.group.add(obj);
-    return { obj, beam, l };
+    return { obj, glow, l };
   }
 }
 
