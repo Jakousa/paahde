@@ -2,6 +2,48 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Gear: found broken, repaired and upgraded with parts
+
+Instead of crafting tools, you find them broken and fix them. Eight pieces of **gear** (`shared/gear.ts`):
+motorcycle, telescope, water bottle, backpack, storm detector, wrist computer, metal detector, shovel.
+
+- **Part slots:** each has 1–3 slots, mostly tiered parts (motorcycle: motor, battery, bearing; water bottle: valve
+  plus a drum; shovel: a sheet blade plus a motor; ...). An item's `parts` (new `items.parts` column, JSON) lists what's
+  fitted, null where one is missing. Every slot filled = it works. **Quality** is the mean tier of its tiered parts
+  (0 Common .. 3 Legendary) and sets what it does: bike top speed 14→26 m/s, telescope zoom 4→12×, bottle 2→6 sips,
+  backpack 4→12 slots, storm warning 6→20 s ahead (storms are now announced 20 s ahead), locator range for players
+  250→2000 m, detector range 8→22 m, shovel stroke depth/width/rate. A better part dropped on a filled slot swaps in
+  (the old one comes back): that's the upgrade.
+- **Workbench** (F, or just stand by it with Tab open): the Workbench panel has one slot for the item being repaired
+  (the `bench` box, yours) with its part slots under it, and the crafting recipes below. Drag parts onto slots,
+  shift-click sends a part into the first slot it fits. Rules live in `tryMove` / `fitPart` / `unfitPart`, run as a
+  prediction on the client and for real on the server (`fit` / `unfit` messages).
+- **Equipment** (`equip` box: back, wrist, belt, vehicle), at the top of the Tab inventory. Only repaired gear goes in.
+  Telescope, water bottle, metal detector and shovel are used from the hotbar instead.
+- **Bag size:** the hotbar's 4 slots, plus the backpack's. A backpack can't come off (or be swapped for a smaller one)
+  while its slots hold anything; items stranded past a smaller one are shown in red and can only be moved out.
+- **No starter kit.** New players start with nothing. Players from before keep their canteen and spyglass (they
+  get Common parts so they work) and get a backpack with a Rare gear (9 slots) equipped, once (`gear_kits`).
+- **What's gated:** the motorcycle (key 9 for everyone now, but `PlayerState.bike` is 0 without one equipped; the
+  server sets it, quality scales `stepBike`), the clock/temperature box and the locator bar (wrist computer), the
+  storm beep and banner (storm detector), drinking and refilling (`maxSips` in `water`), digging speed (the server
+  digs with the selected hotbar slot, sent with `hands`; bare hands are slow and narrow).
+- **Finds** (`server/loot.ts`, `loot` message): broken gear lies at crash sites (4 water bottles, 3 shovels, 3
+  backpacks, 2 of the rest), a water bottle and a shovel near the spawn. Each comes with some Common/Uncommon parts
+  already in and at least one slot empty. Taken ones turn up somewhere else 3 minutes later. Drawn by
+  `src/world/loot.ts` (small stand-in models, a shimmer column over broken gear), F picks up within 2.5 m.
+- **Buried caches:** 60 within 1.2 km of the base, 0.5–1.1 m down: mostly parts (weighted towards Common), some scrap,
+  sometimes broken gear. The **metal detector** in hand ticks faster and higher the closer the spot you look at is
+  (−37 LUFS at the edge of its range up to −28 LUFS right on top, at the default volume; ffmpeg ebur128 on the same
+  waveform), with a signal meter under the crosshair. Dig there: once the hole within a cell of the cache is as deep
+  as it, it comes up (`LootServer.dug`). About 2.5 s by hand for 0.5 m, 0.5 s with a Common shovel.
+- **Batteries** had no source: control cabinets now hold a backup battery (last in their yields and builder, so saved
+  bench jobs keep their indexes).
+- **Testing:** F3 → "Give gear" puts one of each, repaired with Common parts, in your bag and equipment.
+- Gaps: loot is in server memory (a restart lays out fresh finds); no first-person models for the shovel or metal
+  detector (the hands stay empty); the find models are boxes and cylinders; caches don't show their contents
+  until dug up.
+
 ## 2026-10-17 — Crafting, plant beds and UV lamps (issues #21–#24)
 
 - **Crafting at the workbench** (`shared/crafting.ts`): F at the workbench opens the Tab inventory with a

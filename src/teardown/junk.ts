@@ -793,6 +793,9 @@ function controlCabinet(k: Kit) {
   k.box(0.4, 0.04, 0.4, 0.5, Y, 0.42, 'pcb');
   k.box(0.26, 0.05, 0.26, 0.5, Y + 0.04, 0.42, 'chip');
   k.mount('heatsink', [[0.5, Y + 0.09, 0.42], [0, 0, 0]], () => [k.clip('Spring clip', [0.22, Y + 0.45, 0.42], [0, 1, 0]), k.clip('Spring clip', [0.78, Y + 0.45, 0.42], [0, 1, 0])]);
+  // backup battery for the controller, strapped down in the free corner by the hinges (built last, so the
+  // steps and part slots before it keep their indexes for saved bench jobs)
+  k.mount('battery', [[-0.45, Y, 0.58], [0, 0, 0]], () => [k.clip('Battery strap', [-0.45, Y + 0.28, 0.58], [0, 1, 0], 2)]);
   if (g >= 2) k.lamps(5, -0.4, 0.65, 0.5, 0.2);
 }
 

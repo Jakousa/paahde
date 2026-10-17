@@ -16,14 +16,20 @@
 //   piece back to us if it refuses, and our new bag if it agrees.
 // - Items: moves between boxes (shared/items.ts) are applied at once with the server's own rules; its
 //   'items' answer then replaces the boxes, which undoes a refused move.
+//   Repairs at the workbench (fit / unfit, shared/gear.ts) work the same way.
 // - Parts (shared/parts.ts): a part taken out of a machine in the disassembly mode goes in the bag at once
 //   (predicted, like a move); the server checks it against the machine's roll and answers with the bag, or
 //   'partRefused' (the part goes back in the machine) and the bag.
-// - Hands: what we hold (canteen, drinking) is sent when it changes and relayed in snapshots, cosmetic only.
+// - Loot (shared/loot.ts): what lies in the world, from the server; F asks to take it.
+// - Hands: what we hold (canteen, drinking) is sent when it changes and relayed in snapshots, cosmetic only;
+//   with it the selected hotbar slot, which the server digs with (a shovel digs faster).
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
-import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
-import { addItem, HOTBAR, moveItem, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
+import { cellKey, cellX, cellZ, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
+import { bagSize, digTool, fitPart, tryMove, unfitPart } from '../shared/gear.ts';
+import { addItem, HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
+import type { Loot } from '../shared/loot.ts';
+import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashTaken } from '../shared/crash.ts';
 import type { BenchLink, SiteLink } from './teardown/teardown';
@@ -90,8 +96,13 @@ export class Net {
   /** What's in our hands, and what the server last heard (-1: tell it again, after a (re)join). */
   private hands: Hands = 0;
   private sentHands = -1;
+  private sentSlot = -1;
 
-  /** Item boxes we can see (shared/storage.ts BoxId → slots): bag, bike and chests, from the server. */
+  /** Loot in the world by id (shared/loot.ts), from the server. */
+  loot = new Map<number, Loot>();
+  onLoot?: () => void;
+
+  /** Item boxes we can see (shared/storage.ts BoxId → slots): bag, equip, bench, bike and chests, from the server. */
   boxes: Record<string, Slots> = {};
   /** A box changed (server update or our own predicted move); `got` names a scrap pickup's item kind. */
   onItems?: (box: string, got?: string) => void;
@@ -110,7 +121,7 @@ export class Net {
   onBench?: (job: BenchJob | null) => void;
 
   /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
-  water = { heat: 0, sips: 4, rising: false, temp: 20, shade: true, at: 0 };
+  water = { heat: 0, sips: 0, maxSips: 0, rising: false, temp: 20, shade: true, at: 0 };
   onWater?: (w: { heat: number; sips: number; rising: boolean; temp: number; shade: boolean }) => void;
   /** We died (of heatstroke); the server has already moved us back to the base. */
   onDied?: () => void;
@@ -152,29 +163,60 @@ export class Net {
   /** Pick up a scrap piece: hidden now, confirmed (items) or put back by the server. False if the bag is full. */
   pickup(pc: ScrapPiece): boolean {
     if (!this.connected || scrapTaken.has(pc.key)) return true;
-    if (!roomFor(this.boxes.bag ?? [], SCRAP_ITEMS[pc.kind])) return false;
+    if (!roomFor(this.boxes.bag ?? [], SCRAP_ITEMS[pc.kind], 1, bagSize(this.boxes.equip))) return false;
     this.send({ t: 'pickup', ix: pc.ix, iz: pc.iz, i: pc.i });
     scrapTaken.add(pc.key);
     scrapChanged();
     return true;
   }
 
-  /** Move a stack between boxes (shared/items.ts moveItem): applied now, the server answers with both boxes. */
-  moveItem(from: string, fi: number, to: string, ti: number, n?: number) {
-    const src = this.boxes[from], dst = this.boxes[to];
-    if (!this.connected || !src || !dst || !moveItem(src, fi, dst, ti, n, () => --this.tempId, to === 'bag' ? HOTBAR : 0)) return;
+  /** Move a stack between boxes (shared/gear.ts tryMove): applied now, the server answers with both boxes. False if refused. */
+  moveItem(from: string, fi: number, to: string, ti: number, n?: number): boolean {
+    if (!this.connected || !tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId)) return false;
     this.send({ t: 'move', from, fi, to, ti, ...(n !== undefined ? { n } : {}) });
     this.onItems?.(from);
     if (to !== from) this.onItems?.(to);
+    return true;
   }
 
-  /** Tidy a box (the bag's hotbar stays put). */
+  /** Fit a part into slot `slot` of the item on the workbench (shared/gear.ts fitPart). False if refused. */
+  fit(from: string, fi: number, slot: number): boolean {
+    if (!this.connected || !fitPart(this.boxes, from, fi, slot, () => --this.tempId)) return false;
+    this.send({ t: 'fit', from, fi, slot });
+    for (const box of new Set([from, 'bag', 'bench'])) this.onItems?.(box);
+    return true;
+  }
+
+  /** Take a part out of the workbench item into box `to` slot ti (-1: anywhere). False if refused. */
+  unfit(slot: number, to: string, ti: number): boolean {
+    if (!this.connected || !unfitPart(this.boxes, slot, to, ti, () => --this.tempId)) return false;
+    this.send({ t: 'unfit', slot, to, ti });
+    for (const box of new Set([to, 'bench'])) this.onItems?.(box);
+    return true;
+  }
+
+  /** Tidy a box (the bag's hotbar stays put, and nothing goes past the backpack). */
   sortBox(box: string) {
     const slots = this.boxes[box];
-    if (!this.connected || !slots) return;
-    sortItems(slots, box === 'bag' ? HOTBAR : 0);
+    if (!this.connected || !slots || box === 'equip' || box === 'bench') return;
+    if (box === 'bag') {
+      const size = bagSize(this.boxes.equip);
+      const part = slots.slice(0, size);
+      sortItems(part, HOTBAR);
+      slots.splice(0, size, ...part);
+    } else sortItems(slots);
     this.send({ t: 'sort', box });
     this.onItems?.(box);
+  }
+
+  /** Pick up loot (shared/loot.ts); the server answers with the bag, or a toast if it's full. */
+  lootTake(id: number) {
+    if (this.connected) this.send({ t: 'lootTake', id });
+  }
+
+  /** Debug menu: repaired gear of every kind. */
+  debugGear() {
+    if (this.connected) this.send({ t: 'debugGear' });
   }
 
   /** Carry off the small machine at a crash site: hidden now, confirmed (it lands in the bag) or put back by the server. */
@@ -193,8 +235,9 @@ export class Net {
   /** A part (item kind) taken out of a machine into the bag, predicted now. False (nothing sent) if the bag is full. */
   private takePart(kind: string, msg: ClientMsg): boolean {
     const bag = this.boxes.bag;
-    if (!this.connected || !bag || !roomFor(bag, kind)) return false;
-    addItem(bag, kind, 1, () => --this.tempId, HOTBAR);
+    const size = bagSize(this.boxes.equip);
+    if (!this.connected || !bag || !roomFor(bag, kind, 1, size)) return false;
+    addItem(bag, kind, 1, () => --this.tempId, Math.min(HOTBAR, size - 1), size);
     this.send(msg);
     this.onItems?.('bag');
     return true;
@@ -252,9 +295,10 @@ export class Net {
    */
   setHands(held: 'none' | 'canteen' | 'telescope', drinking: boolean) {
     this.hands = held === 'canteen' ? (drinking ? 2 : 1) : 0;
-    if (this.connected && this.hands !== this.sentHands) {
-      this.send({ t: 'hands', hands: this.hands });
+    if (this.connected && (this.hands !== this.sentHands || tools.slot !== this.sentSlot)) {
+      this.send({ t: 'hands', hands: this.hands, slot: tools.slot });
       this.sentHands = this.hands;
+      this.sentSlot = tools.slot;
     }
   }
 
@@ -294,14 +338,15 @@ export class Net {
     if (!(input & (DIG | PILE)) || this.digCooldown > 0 || this.me.riding) return;
     const pile = (input & DIG) === 0;
     const seq = this.seq;
+    const tool = digTool(tools.slot >= 0 ? this.boxes.bag?.[tools.slot] : null);
     const at = stroke(edits, this.me, yaw, pitch, pile, (ix, iz, prev) => {
       const k = cellKey(ix, iz);
       const p = this.predicted.get(k);
       if (p) p.seq = seq;
       else this.predicted.set(k, { server: prev, seq });
-    });
+    }, tool);
     if (!at) return;
-    this.digCooldown = DIG_COOLDOWN_TICKS;
+    this.digCooldown = tool.cooldown;
     this.onDig?.(at, pile, true, this.id);
   }
 
@@ -440,6 +485,12 @@ export class Net {
       this.boxes[msg.box] = msg.slots;
       return this.onItems?.(msg.box, msg.got);
     }
+    if (msg.t === 'loot') {
+      if (msg.reset) this.loot.clear();
+      for (const id of msg.remove) this.loot.delete(id);
+      for (const l of msg.add) this.loot.set(l.id, l);
+      return this.onLoot?.();
+    }
     if (msg.t === 'crash') {
       if (msg.reset) crashTaken.clear();
       for (const id of msg.taken) crashTaken.add(id);
@@ -462,7 +513,7 @@ export class Net {
       return this.onBench?.(msg.job);
     }
     if (msg.t === 'water') {
-      this.water = { heat: msg.heat, sips: msg.sips, rising: msg.rising, temp: msg.temp, shade: msg.shade, at: performance.now() };
+      this.water = { heat: msg.heat, sips: msg.sips, maxSips: msg.maxSips, rising: msg.rising, temp: msg.temp, shade: msg.shade, at: performance.now() };
       return this.onWater?.(msg);
     }
     if (msg.t === 'died') {
@@ -495,6 +546,7 @@ export class Net {
       this.me = this.prev = msg.state;
       this.seq = 0;
       this.sentHands = -1;
+      this.sentSlot = -1;
       this.retryMs = 500;
       this.status = 'online';
       return;
@@ -522,7 +574,7 @@ export class Net {
       x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
       sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool,
-      riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading,
+      riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading, bike: server.bike,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag);
     this.errorX += this.me.x - s.x;

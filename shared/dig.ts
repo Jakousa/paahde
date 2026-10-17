@@ -24,6 +24,9 @@ export const DIG_REACH = 4;
 export const DIG_RADIUS = 1.2;
 /** Depth removed at the brush centre per dig stroke, mm. */
 export const DIG_STROKE_MM = 220;
+/** How deep and wide one dig stroke goes: bare hands or a shovel (shared/gear.ts digTool). */
+export type DigTool = { mm: number; radius: number; cooldown: number };
+const DEFAULT_TOOL: DigTool = { mm: DIG_STROKE_MM, radius: DIG_RADIUS, cooldown: 12 };
 /** Height added at the brush centre per pile stroke, mm. */
 export const PILE_STROKE_MM = 110;
 /** Ticks between strokes while the button is held (60 Hz → 0.2 s). */
@@ -115,9 +118,9 @@ function set(edits: TerrainEdits, ix: number, iz: number, mm: number, sink?: Cel
 }
 
 /** Lower a soft circle around (x, z). Returns the removed volume in mm·vertices. */
-export function strokeDig(edits: TerrainEdits, x: number, z: number, sink?: CellSink): number {
-  const r2 = DIG_RADIUS * DIG_RADIUS;
-  const n = Math.ceil(DIG_RADIUS / EDIT_CELL);
+export function strokeDig(edits: TerrainEdits, x: number, z: number, sink?: CellSink, tool: DigTool = DEFAULT_TOOL): number {
+  const r2 = tool.radius * tool.radius;
+  const n = Math.ceil(tool.radius / EDIT_CELL);
   const gx = Math.round(x / EDIT_CELL), gz = Math.round(z / EDIT_CELL);
   let removed = 0;
   for (let iz = gz - n; iz <= gz + n; iz++) {
@@ -126,7 +129,7 @@ export function strokeDig(edits: TerrainEdits, x: number, z: number, sink?: Cell
       const w = weight(ddx * ddx + ddz * ddz, r2);
       if (w === 0) continue;
       const cur = edits.getMm(ix, iz);
-      const next = Math.max(MIN_EDIT_MM, cur - Math.round(DIG_STROKE_MM * w));
+      const next = Math.max(MIN_EDIT_MM, cur - Math.round(tool.mm * w));
       if (next < cur) {
         removed += cur - next;
         set(edits, ix, iz, next, sink);
@@ -185,14 +188,14 @@ export function strokePile(edits: TerrainEdits, x: number, z: number, sink?: Cel
  */
 export function stroke(
   edits: TerrainEdits, feet: { x: number; y: number; z: number }, yawQ: number, pitchQ: number, pile: boolean,
-  sink?: CellSink,
+  sink?: CellSink, tool: DigTool = DEFAULT_TOOL,
 ): Point | null {
   const p = digTarget(feet, yawQ, pitchQ);
   if (!p) return null;
   if (pile) {
     strokePile(edits, p.x, p.z, sink);
   } else {
-    const removed = strokeDig(edits, p.x, p.z, sink);
+    const removed = strokeDig(edits, p.x, p.z, sink, tool);
     const yaw = yawFromQ(yawQ);
     // Camera right is (cos yaw, -sin yaw).
     deposit(edits, p.x + Math.cos(yaw) * DEPOSIT_SIDE, p.z - Math.sin(yaw) * DEPOSIT_SIDE, removed, DEPOSIT_RADIUS, sink);

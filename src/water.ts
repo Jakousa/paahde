@@ -1,13 +1,16 @@
 // Survival on the client (shared/water.ts, server/water.ts): the hotbar (the bag's first slots,
-// shared/items.ts; new players start with the canteen in 1 and the spyglass, src/telescope.ts, in 2), drinking and refilling, and the HUD:
-// the body heat meter (bottom left, glowing while heat builds), the clock and felt temperature with a sun/shade
-// icon (top right, shared/temperature.ts), a heat vignette when it's nearly full, and the death screen.
+// shared/items.ts: the water bottle, telescope (src/telescope.ts), shovel and metal detector (src/detector.ts),
+// all found broken and repaired, shared/gear.ts), drinking and refilling, and the HUD: the body heat meter
+// (bottom left, glowing while heat builds), the clock and felt temperature with a sun/shade icon (top right,
+// shared/temperature.ts; only with the wrist computer equipped), a heat vignette when it's nearly full, and the
+// death screen.
 //
 // The server owns the numbers; this only plays the actions and asks. Keys 1–4 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // (no digging while your hands are full, see `tools` in src/input.ts), and F at the base's pump refills it.
 import { atPump } from '../shared/base.ts';
-import { CANTEEN_SIPS, DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
+import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
+import { equipped, repaired } from '../shared/gear.ts';
 import { HOTBAR } from '../shared/items.ts';
 import { isPlaceable } from '../shared/placed.ts';
 import { tools, useHeld } from './input';
@@ -19,8 +22,11 @@ import type { Net } from './net';
  * are true for the whole sip / refill action. Digging is the DIG input bit, as before.
  */
 export type Held = 'none' | 'canteen' | 'telescope';
-/** `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden). */
-export const playerHands = { held: 'none' as Held, drinking: false, filling: false, looking: false, scoped: false };
+/** `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden).
+ *  `tool`: a hand tool with no viewmodel of its own (the hands stay empty): the metal detector or the shovel. */
+export const playerHands = {
+  held: 'none' as Held, tool: 'none' as 'none' | 'shovel' | 'detector', drinking: false, filling: false, looking: false, scoped: false,
+};
 
 /** Heat meter colours: cool, warming up, nearly heatstroke. */
 const BLUE = [78, 170, 255];
@@ -74,6 +80,7 @@ const css = `
 #hotbar .slot { position: relative; width: 44px; height: 44px; border-radius: 6px; background: rgba(20, 10, 5, 0.45);
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.15); display: flex; align-items: center; justify-content: center; }
 #hotbar .slot.sel { background: rgba(60, 34, 16, 0.6); box-shadow: 0 0 0 2px rgba(255, 233, 204, 0.75); }
+#hotbar .slot.broken svg { opacity: 0.45; filter: grayscale(0.8); }
 #hotbar .key { position: absolute; left: 4px; top: 2px; font: 600 9px var(--mono); opacity: 0.6; }
 #hotbar svg { width: 22px; height: 26px; margin-top: -4px; }
 #hotbar img { width: 36px; height: 36px; margin-top: -2px; }
@@ -178,7 +185,7 @@ export class Survival {
     this.toastEl.id = 'waterToast';
     this.vignette.id = 'heatVignette';
     this.death.id = 'deathScreen';
-    this.death.innerHTML = 'You died of heatstroke<small>The sun got you. Back at the base, canteen refilled.</small>';
+    this.death.innerHTML = 'You died of heatstroke<small>The sun got you. Back at the base, water bottle refilled.</small>';
     document.body.append(this.vignette, this.root, this.heat, this.env, this.prompt, this.toastEl, this.death);
 
     addEventListener('keydown', (e) => {
@@ -203,16 +210,20 @@ export class Survival {
   private select(slot: number) {
     if (slot !== this.selected) this.cancel();
     this.selected = slot;
+    tools.slot = slot;
     this.slots.forEach((s, i) => s.classList.toggle('sel', i === slot));
     this.hold();
   }
 
   /** Hands follow the item in the selected slot, also when it's moved away in the inventory. */
   private hold() {
-    const kind = this.net.boxes.bag?.[this.selected]?.kind;
-    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' ? 'telescope' : 'none';
+    const it = this.net.boxes.bag?.[this.selected];
+    const kind = it?.kind;
+    // A broken telescope is just junk in the hand; a broken bottle still shows (it holds no water).
+    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : 'none';
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
+    playerHands.tool = repaired(it) && (kind === 'shovel' || kind === 'metal_detector') ? (kind === 'shovel' ? 'shovel' : 'detector') : 'none';
   }
 
   /** Redraw the hotbar slots whose item changed. */
@@ -221,13 +232,17 @@ export class Survival {
     let changed = false;
     this.slots.forEach((s, i) => {
       const it = bag?.[i];
-      const sig = it ? `${it.kind}:${it.n}` : '';
+      const max = this.net.water.maxSips;
+      const broken = !!it?.parts && !repaired(it);
+      const sig = it ? `${it.kind}:${it.n}:${broken}:${max}` : '';
       if (s.dataset.sig === sig) return;
       changed = true;
       s.dataset.sig = sig;
-      s.title = !it ? '' : it.kind === 'spyglass' ? 'Spyglass — hold the mouse button to look, wheel to zoom' : itemLabel(it.kind);
+      s.classList.toggle('broken', broken);
+      s.title = !it ? '' : broken ? `${itemLabel(it.kind)} (broken: repair it at the workbench in the base)`
+        : it.kind === 'spyglass' ? 'Telescope: hold the mouse button to look, wheel to zoom' : itemLabel(it.kind);
       s.innerHTML = `<span class="key">${i + 1}</span>${it ? itemIcon(it.kind) : ''}`
-        + (it?.kind === 'canteen' ? `<div class="pips">${'<i></i>'.repeat(CANTEEN_SIPS)}</div>` : it && it.n > 1 ? `<span class="n">${it.n}</span>` : '');
+        + (it?.kind === 'canteen' && !broken ? `<div class="pips">${'<i></i>'.repeat(max)}</div>` : it && it.n > 1 ? `<span class="n">${it.n}</span>` : '');
     });
     if (changed) this.pips = [...this.root.querySelectorAll<HTMLElement>('#hotbar .pips i')];
   }
@@ -253,7 +268,10 @@ export class Survival {
     const dead = now < this.deadUntil;
     this.hold();
     this.drawHotbar();
+    // The clock and thermometer come with the wrist computer.
+    this.env.style.display = equipped(this.net.boxes.equip, 'wrist') ? '' : 'none';
     const holding = playerHands.held === 'canteen';
+    const bottle = w.maxSips > 0;
     const atBase = atPump(pos.x, pos.y, pos.z);
     // A placeable in hand (src/placing.ts) takes the use button too.
     tools.blocked = playerHands.held !== 'none' || isPlaceable(this.net.boxes.bag?.[this.selected]?.kind);
@@ -270,7 +288,8 @@ export class Survival {
       }
     } else if (holding && use && !this.needRelease && !playerHands.filling && !dead) {
       this.needRelease = true;
-      if (w.sips <= 0) this.toast(atBase ? 'Canteen empty — press F to fill it' : 'Canteen empty — fill it at the pump in the base');
+      if (!bottle) this.toast('The water bottle is broken: repair it at the workbench in the base');
+      else if (w.sips <= 0) this.toast(atBase ? 'Bottle empty: press F to fill it' : 'Bottle empty: fill it at the pump in the base');
       else {
         playerHands.drinking = true;
         this.actionAt = now;
@@ -284,8 +303,8 @@ export class Survival {
         this.cancel();
         this.net.fill();
       }
-    } else if (interact && holding && atBase && !playerHands.drinking && !dead) {
-      if (w.sips >= CANTEEN_SIPS) this.toast('Canteen is already full');
+    } else if (interact && holding && bottle && atBase && !playerHands.drinking && !dead) {
+      if (w.sips >= w.maxSips) this.toast('The bottle is already full');
       else {
         playerHands.filling = true;
         this.actionAt = now;
@@ -295,10 +314,11 @@ export class Survival {
     // Prompt under the crosshair (the scrap prompt wins when a piece is targeted).
     let html = '';
     if (!scrapTargeted && holding && !dead) {
-      if (playerHands.filling) html = `Filling canteen…<span class="prog"></span>`;
+      if (!bottle) html = 'Broken: repair it at the workbench';
+      else if (playerHands.filling) html = `Filling the bottle…<span class="prog"></span>`;
       else if (playerHands.drinking) html = `Drinking…<span class="prog"></span>`;
-      else if (atBase) html = `<kbd>F</kbd>Fill canteen`;
-      else if (w.sips <= 0) html = 'Canteen empty — fill it at the pump in the base';
+      else if (atBase) html = `<kbd>F</kbd>Fill the bottle`;
+      else if (w.sips <= 0) html = 'Bottle empty: fill it at the pump in the base';
     }
     if (html !== this.promptHtml) {
       this.promptHtml = html;

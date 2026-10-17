@@ -5,10 +5,12 @@ import { createServer } from 'node:http';
 import sirv from 'sirv';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
-import { DIG_COOLDOWN_TICKS, PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
+import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
+import { bikeLevel, bottleSips, digTool, GEAR, GEAR_KINDS } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { SCRAP_ITEMS } from '../shared/items.ts';
-import { boxSize, CHESTS, isShared } from '../shared/storage.ts';
+import { HOTBAR, partKind, SCRAP_ITEMS } from '../shared/items.ts';
+import { TIERS } from '../shared/salvage.ts';
+import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
@@ -17,11 +19,12 @@ import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
 import { ItemServer } from './items.ts';
+import { LootServer } from './loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
 import { CrashServer, type TakeResult } from './crash.ts';
 import { TerrainServer } from './terrain.ts';
-import { drink, fill, newHeat, revive, tickHeat, waterMsg, type Heat } from './water.ts';
+import { drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
 import { stormAt, stormDrag } from '../shared/storm.ts';
 import { timeOfDayAt } from '../shared/sun.ts';
@@ -46,6 +49,8 @@ const crash = new CrashServer(db, (ids, msg) => {
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
 const garden = new GardenServer(db);
+const loot = new LootServer();
+
 const storms = new StormServer(performance.now());
 
 type Player = {
@@ -67,6 +72,7 @@ type Player = {
   ws: WebSocket;
   alive: boolean;
   hands: Hands; // what the client says it holds, relayed in snapshots
+  slot: number; // selected hotbar slot (-1 none): digs with what's in it
 };
 
 const players = new Map<WebSocket, Player>();
@@ -123,8 +129,13 @@ wss.on('connection', (ws) => {
     if (msg.t === 'fill' && p) return onFill(p);
     if (msg.t === 'move' && p) return onMove(p, msg.from, msg.fi, msg.to, msg.ti, msg.n);
     if (msg.t === 'sort' && p) return onSort(p, msg.box);
+    if (msg.t === 'fit' && p) return onFit(p, msg.from, msg.fi, msg.slot);
+    if (msg.t === 'unfit' && p) return onUnfit(p, msg.slot, msg.to, msg.ti);
+    if (msg.t === 'lootTake' && p) return onLootTake(p, msg.id);
+    if (msg.t === 'debugGear' && p) return onDebugGear(p);
     if (msg.t === 'hands' && p) {
       p.hands = msg.hands === 1 || msg.hands === 2 ? msg.hands : 0;
+      p.slot = Number.isInteger(msg.slot) && (msg.slot as number) >= 0 && (msg.slot as number) < HOTBAR ? (msg.slot as number) : -1;
       return;
     }
     if (p) return onCrash(p, msg);
@@ -156,10 +167,12 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
     const s = crashSitesNear(state.x, state.z, 3000)[0];
     if (s) state = spawnState(s.x + s.dirX * (s.pieces[0].reach + 16), s.z + s.dirZ * (s.pieces[0].reach + 16));
   }
+  items.setup(browserId);
+  state.bike = bikeLevel(items.slots(browserId, 'equip'));
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips), ws, alive: true, hands: 0,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1,
   };
   players.set(ws, p);
   save(p);
@@ -170,23 +183,34 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, placedThings.joinMessage());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
+  send(ws, loot.joinMessage());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
-  items.giveStarterKit(browserId);
-  for (const box of ['bag', 'bike', ...CHESTS.map((_, i) => `chest${i}`)]) send(ws, boxMsg(browserId, box));
+  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`)]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
   send(ws, crash.benchMsg(browserId));
 }
 
 // Sips and refills: the client plays the animation, then asks. Refused ones still get the real state.
-// No canteen in the bag (left in a chest), no drinking or filling.
+// No repaired water bottle in the bag (left in a chest, or still broken), no drinking or filling (maxSips 0).
 function onDrink(p: Player) {
-  if (items.has(p.browserId, 'canteen')) drink(p.heat, Date.now());
+  drink(p.heat, Date.now());
   send(p.ws, waterMsg(p.heat));
 }
 
 function onFill(p: Player) {
-  if (items.has(p.browserId, 'canteen')) fill(p.heat, p.state, Date.now());
+  fill(p.heat, p.state, Date.now());
   send(p.ws, waterMsg(p.heat));
+}
+
+/** A player's items changed: the motorcycle they can ride and their water bottle follow, on every connection. */
+function gearChanged(browserId: string) {
+  const bike = bikeLevel(items.slots(browserId, 'equip'));
+  const sips = bottleSips(items.slots(browserId, 'bag'));
+  for (const o of players.values()) {
+    if (o.browserId !== browserId) continue;
+    if (o.state.bike !== bike) o.state = { ...o.state, bike };
+    if (setBottle(o.heat, sips)) send(o.ws, waterMsg(o.heat));
+  }
 }
 
 // Heat builds up in the sun (server/water.ts); when it's full the player dies of heatstroke and respawns at
@@ -236,6 +260,47 @@ function onMove(p: Player, from: unknown, fi: unknown, to: unknown, ti: unknown,
     if (changed) sendBox(p, box);
     else send(p.ws, boxMsg(p.browserId, box));
   }
+  if (changed) gearChanged(p.browserId);
+}
+
+function onFit(p: Player, from: unknown, fi: unknown, slot: unknown) {
+  const changed = items.fit(p.browserId, p.state, from, fi, slot);
+  for (const box of new Set(['bench', 'bag', from])) {
+    if (typeof box !== 'string' || !boxSize(box)) continue;
+    if (changed) sendBox(p, box);
+    else send(p.ws, boxMsg(p.browserId, box));
+  }
+  if (changed) gearChanged(p.browserId);
+}
+
+function onUnfit(p: Player, slot: unknown, to: unknown, ti: unknown) {
+  const changed = items.unfit(p.browserId, p.state, slot, to, ti);
+  for (const box of new Set(['bench', to])) {
+    if (typeof box !== 'string' || !boxSize(box)) continue;
+    if (changed) sendBox(p, box);
+    else send(p.ws, boxMsg(p.browserId, box));
+  }
+  if (changed) gearChanged(p.browserId);
+}
+
+function onLootTake(p: Player, id: unknown) {
+  const kind = loot.take(p.state, id, (l) => items.giveItem(p.browserId, l));
+  if (kind === 'full') send(p.ws, { t: 'notice', text: 'Bag full' });
+  else if (kind) {
+    sendBox(p, 'bag', kind);
+    gearChanged(p.browserId);
+  }
+}
+
+// Debug menu: one of each piece of gear, repaired with Common parts, into the bag (what fits) and the
+// equipment slots (if free).
+function onDebugGear(p: Player) {
+  for (const kind of GEAR_KINDS) {
+    const parts = GEAR[kind].slots.map((s) => ('part' in s ? partKind(s.part, TIERS[0]) : s.scrap[0]));
+    if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
+  }
+  for (const box of ['bag', 'equip']) sendBox(p, box);
+  gearChanged(p.browserId);
 }
 
 function onSort(p: Player, box: unknown) {
@@ -248,12 +313,16 @@ function onSort(p: Player, box: unknown) {
 function onCrash(p: Player, msg: ClientMsg) {
   if (msg.t === 'crashTake') {
     const kind = crash.carry(p.state, msg.id, p.lastPickup, (k) => items.give(p.browserId, k));
-    if (kind) sendBox(p, 'bag', kind);
+    if (kind) {
+      sendBox(p, 'bag', kind);
+      gearChanged(p.browserId);
+    }
     else if (typeof msg.id === 'string' && !crashTaken.has(msg.id)) send(p.ws, { t: 'crash', taken: [], back: [msg.id] });
   } else if (msg.t === 'crashUse') {
     crash.use(p.browserId, p.state, msg.kind, () => items.take(p.browserId, msg.kind));
     sendBox(p, 'bag');
     send(p.ws, crash.benchMsg(p.browserId));
+    gearChanged(p.browserId);
   } else if (msg.t === 'benchDone') crash.benchDone(p.browserId, msg.i);
   else if (msg.t === 'benchTake') {
     const r = crash.benchTake(p.browserId, p.state, msg.i, msg.kind, (k) => items.give(p.browserId, k));
@@ -324,15 +393,18 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   dig(p, input);
 }
 
-// Dig/pile stroke while the button is held, at most every DIG_COOLDOWN_TICKS simulated ticks.
-// The client runs the same countdown and stroke as a prediction (src/net.ts). No digging from the bike.
+// Dig/pile stroke while the button is held, at most every tool.cooldown simulated ticks: bare hands, or a
+// repaired shovel in the selected hotbar slot (shared/gear.ts digTool). The client runs the same countdown and
+// stroke as a prediction (src/net.ts). No digging from the bike. A dig can uncover a buried cache (server/loot.ts).
 function dig(p: Player, input: number) {
   if (p.digCooldown > 0) p.digCooldown--;
   if (!(input & (DIG | PILE)) || p.digCooldown > 0 || p.state.riding) return;
   const pile = (input & DIG) === 0;
-  const at = terrain.stroke(p.state, p.yaw, p.pitch, pile);
+  const tool = digTool(p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot] : null);
+  const at = terrain.stroke(p.state, p.yaw, p.pitch, pile, tool);
   if (!at) return;
-  p.digCooldown = DIG_COOLDOWN_TICKS;
+  p.digCooldown = tool.cooldown;
+  if (!pile) loot.dug(at.x, at.z, tool.radius);
   const msg: ServerMsg = { t: 'dug', id: p.id, x: round4(at.x), y: round4(at.y), z: round4(at.z), pile };
   for (const o of players.values()) if (o !== p) send(o.ws, msg);
 }
@@ -388,7 +460,7 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   const weather = storms.tick(time, [...players.values()].map((p) => p.state));
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), placedThings.flush(), garden.flush(), weather]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), placedThings.flush(), garden.flush(), loot.flush(), weather]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
@@ -420,6 +492,7 @@ setInterval(() => {
   terrain.heal();
   terrain.save();
   scrap.respawn();
+  loot.respawn();
   crash.maintain();
   garden.grow();
 }, SAVE_INTERVAL_MS);

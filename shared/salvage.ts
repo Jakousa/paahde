@@ -157,6 +157,8 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
       { part: 'compute', min: 1, max: 1 },
       { part: 'heatsink', min: 0, max: 1 },
       { part: 'coil', min: 1, max: 1 },
+      // Backup battery for the controller (last, so the rolls before it stay as they were).
+      { part: 'battery', min: 1, max: 1 },
     ],
     tierWeights: { scrap: 3, basic: 4, quality: 2, space: 0.3 },
   },

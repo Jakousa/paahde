@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { DIG, DT, PILE, quantizeYaw } from '../shared/sim.ts';
-import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
+import { digTarget, EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
 import { bedLit, placed } from '../shared/placed.ts';
@@ -9,7 +9,7 @@ import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { DigFx } from './dig';
 import { footprints, streaks } from './footprints';
-import { InventoryHud } from './inventory';
+import { InventoryHud, itemLabel } from './inventory';
 import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
 import { Menu } from './menu';
@@ -44,6 +44,10 @@ import { Telescope } from './telescope';
 import { TeardownView } from './teardown/teardown';
 import { MachineSites } from './world/crash';
 import { COMPONENTS } from '../shared/salvage.ts';
+import { equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS } from '../shared/gear.ts';
+import { LootView, lootName } from './world/loot';
+import { Detector } from './detector';
+import { tools } from './input';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -92,7 +96,7 @@ net.onSite = (m) => {
 // A part we pulled out didn't go in the bag (full, or refused): back into the machine.
 net.onPartRefused = (id, i, full) => {
   if (teardown.current?.id === id) teardown.applyRefused(i, full);
-  else hud.toast(full ? 'Backpack full' : 'Could not take that part');
+  else hud.toast(full ? 'Bag full' : 'Could not take that part');
 };
 // The disassembly table: putting a carried machine on it waits for the server's job (it picks the seed).
 let benchWanted = false;
@@ -102,7 +106,9 @@ net.onBench = (job) => {
   benchWanted = false;
   if (job && !teardown.active) teardown.begin(machines.bench.site(job, benchLink));
 };
-new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm());
+new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear());
+const lootView = new LootView(scene);
+const detector = new Detector();
 const digFx = new DigFx(scene);
 // Remote players play their dig clip for a moment after each stroke the server reports.
 const DIG_ANIM_S = 0.5;
@@ -256,7 +262,14 @@ renderer.setAnimationLoop((time) => {
   if (riding && me.eye(eye)) focus.set(eye.x - Math.sin(v.heading) * RIDE_EYE_AHEAD, eye.y - EYE_HEIGHT, eye.z - Math.cos(v.heading) * RIDE_EYE_AHEAD);
   else if (riding) focus.set(v.x, v.y, v.z);
   else focus.copy(me.root.position);
-  telescope.update(frameDt);
+  // What's in hand (the selected hotbar slot) and worn (shared/gear.ts) sets what the tools can do.
+  const inHand = tools.slot >= 0 ? net.boxes.bag?.[tools.slot] : null;
+  telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
+  // The detector listens where you look (where you'd dig), or a step ahead when you look up.
+  const looked = digTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch))
+    ?? { x: net.me.x - Math.sin(orbit.yaw) * 1.2, z: net.me.z - Math.cos(orbit.yaw) * 1.2 };
+  detector.update(frameDt, inHand?.kind === 'metal_detector' && repaired(inHand) ? quality(inHand) : -1, net.loot, looked);
+  lootView.update(frameDt, net.loot, focus);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
@@ -266,9 +279,13 @@ renderer.setAnimationLoop((time) => {
   viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding,
     digging: (input & (DIG | PILE)) !== 0 || (digUntil.get(net.id) ?? 0) > performance.now() });
   // Before the wind: the storm sets how hard it blows here.
-  storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me);
-  locator.lost = storm.lost;
-  locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
+  const belt = equipped(net.boxes.equip, 'belt');
+  storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me, belt ? stormWarnS(quality(belt)) : 0);
+  // The locator comes with the wrist computer; a better one shows players further away (the base always).
+  const wrist = equipped(net.boxes.equip, 'wrist');
+  const range = wrist ? locatorRange(quality(wrist)) : 0;
+  locator.lost = storm.lost || !wrist;
+  locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range));
   terrain.update(focus);
   scrap.update(focus);
   crashSites.update(focus);
@@ -295,14 +312,16 @@ renderer.setAnimationLoop((time) => {
   // Sprouts grow only under a UV lamp (shared/garden.ts).
   const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>Growing under the lamp · ${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : '<span class="bad">Sprouts need a UV lamp over the bed</span>') : null;
   const target = net.connected && station < 0 && !bed ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  const find = net.connected && station < 0 && !bed && !target && !teardown.active ? lootView.target(net.me, orbit.yaw) : null;
+  const findPrompt = find ? `Pick up ${lootName(find, itemLabel)}` : null;
   // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
   // it lies. A carried one is taken apart on the base's disassembly table.
-  const site = net.connected && !teardown.active && station < 0 && !bed && !target ? machines.nearest(net.me.x, net.me.z) : null;
+  const site = net.connected && !teardown.active && station < 0 && !bed && !target && !find ? machines.nearest(net.me.x, net.me.z) : null;
   const small = site ? COMPONENTS[site.site.kind].carry : false;
   const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`) : null;
   const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag, net.bench) : null;
   const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use disassembly table');
-  const fPrompt = use ?? tend ?? target ?? sitePrompt;
+  const fPrompt = use ?? tend ?? target ?? findPrompt ?? sitePrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `<kbd>F</kbd>${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup();
@@ -319,13 +338,16 @@ renderer.setAnimationLoop((time) => {
     } else if (tend && bed) net.tend(bed.id);
     else if (target) {
       if (net.pickup(target)) pickupSound.play();
-      else hud.toast('Backpack full');
+      else hud.toast('Bag full');
+    } else if (find) {
+      net.lootTake(find.id);
+      pickupSound.play();
     } else if (site) {
       if (small) net.crashTake(site.site.id);
       else teardown.begin(machines.workSite(site, net.siteLink(site.site.id)));
     }
   }
-  const targeted = use !== null || tend !== null || target !== null || sitePrompt !== null;
+  const targeted = use !== null || tend !== null || target !== null || findPrompt !== null || sitePrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   hud.update(net.me);
 

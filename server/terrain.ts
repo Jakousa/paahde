@@ -1,6 +1,6 @@
 // Server side of the terrain edit layer: applies dig strokes, runs sand relaxation, batches changed
 // vertices for broadcast and persists dirty chunks to SQLite.
-import { cellKey, cellX, cellZ, heal, Relaxer, stroke, type Point } from '../shared/dig.ts';
+import { cellKey, cellX, cellZ, heal, Relaxer, stroke, type DigTool, type Point } from '../shared/dig.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { EDIT_CELL, EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import type { openDb } from './db.ts';
@@ -39,8 +39,8 @@ export class TerrainServer {
   }
 
   /** Apply one dig or pile stroke from a player. Returns where it landed, or null if out of reach. */
-  stroke(feet: { x: number; y: number; z: number }, yawQ: number, pitchQ: number, pile: boolean): Point | null {
-    return stroke(edits, feet, yawQ, pitchQ, pile, this.onCell);
+  stroke(feet: { x: number; y: number; z: number }, yawQ: number, pitchQ: number, pile: boolean, tool?: DigTool): Point | null {
+    return stroke(edits, feet, yawQ, pitchQ, pile, this.onCell, tool);
   }
 
   /** One sand-relaxation pass over recently changed vertices. Cheap when nothing is moving. */

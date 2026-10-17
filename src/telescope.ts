@@ -1,15 +1,15 @@
 // Spyglass (a hotbar item, src/water.ts). With it out, hold the use button (left/right mouse, E or Q) to
 // raise it to the eye; once the raise clip (src/viewmodel.ts) has played, the view zooms in behind a round
-// lens mask and the mouse wheel sets the zoom. Letting go lowers it. Client-only: nothing is sent.
+// lens mask and the mouse wheel sets the zoom, up to what its parts allow (shared/gear.ts spyglassZoom).
+// Letting go lowers it. Client-only: nothing is sent.
 import type { FirstPersonCamera } from './camera';
 import { aimHeld } from './input';
 import { playerHands } from './water';
 
 /** Length of the TelescopeRaise clip (s): the view zooms once it's at the eye. */
 const RAISE_S = 0.35;
-const ZOOM_MIN = 3;
-const ZOOM_MAX = 12;
-const ZOOM_DEFAULT = 6;
+const ZOOM_MIN = 2;
+const ZOOM_DEFAULT = 4;
 
 const css = `
 #telescope { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .12s; z-index: 5; }
@@ -34,6 +34,7 @@ export class Telescope {
   private zoomEl: HTMLElement;
   private raised = 0; // seconds at the eye so far
   private zoom = ZOOM_DEFAULT;
+  private max = ZOOM_DEFAULT;
 
   constructor(view: FirstPersonCamera) {
     this.view = view;
@@ -46,11 +47,14 @@ export class Telescope {
     document.body.append(this.el);
     addEventListener('wheel', (e) => {
       if (!playerHands.scoped) return;
-      this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * Math.exp(-e.deltaY * 0.0015)));
+      this.zoom = Math.max(ZOOM_MIN, Math.min(this.max, this.zoom * Math.exp(-e.deltaY * 0.0015)));
     }, { passive: true });
   }
 
-  update(dt: number) {
+  /** `maxZoom`: the strongest zoom of the telescope in hand. */
+  update(dt: number, maxZoom: number) {
+    this.max = maxZoom;
+    this.zoom = Math.min(this.zoom, maxZoom);
     const look = playerHands.held === 'telescope' && aimHeld() && !!document.pointerLockElement;
     this.raised = look ? this.raised + dt : 0;
     const scoped = look && this.raised >= RAISE_S;

@@ -32,7 +32,10 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `tools/blender/crashsites.py`); drawn by `src/world/crashsites.ts`, heard via `src/crashSound.ts`
 - `server/index.ts` — authoritative game server (static files + `/ws`); `server/db.ts` — SQLite;
   `server/scrap.ts` — scrap pickups, respawn;
-  `server/items.ts` — item stacks in boxes (bag, bike, chests: `shared/items.ts`, `shared/storage.ts`), Tab overlay in `src/inventory.ts`
+  `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`, `shared/storage.ts`), Tab overlay in `src/inventory.ts`
+- `shared/gear.ts` — gear found broken and repaired with parts at the workbench (part slots, quality, what each
+  does, move/repair rules for client and server); `shared/loot.ts` + `server/loot.ts` — finds and buried caches in
+  the world, drawn by `src/world/loot.ts`, heard by the metal detector (`src/detector.ts`)
 - `src/main.ts` — entry: renderer, scene, fixed-step game loop
 - `src/net.ts` — client netcode (prediction, reconciliation, interpolation, reconnect)
 - `src/input.ts` — keyboard → input bitmask

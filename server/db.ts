@@ -101,10 +101,14 @@ export function openDb(path: string) {
       UNIQUE (owner, box, slot)
     );
     CREATE TABLE IF NOT EXISTS starter_kits (
-      player_id TEXT PRIMARY KEY,              -- got the canteen and spyglass (STARTER_KIT)
+      player_id TEXT PRIMARY KEY,              -- got the canteen and spyglass (the old starter kit)
       given_at  INTEGER NOT NULL               -- ms since epoch
     );
   `);
+  // v6: gear (shared/gear.ts) records the part fitted in each slot, as JSON (NULL for anything else).
+  if (!(db.prepare('PRAGMA table_info(items)').all() as { name: string }[]).some((c) => c.name === 'parts')) {
+    db.exec('ALTER TABLE items ADD COLUMN parts TEXT');
+  }
 
   // Small crash sites (shared/crash.ts) whose machine was carried off, until they refill. The machine itself
   // is an item in the player's bag, given in the same transaction (server/crash.ts).
@@ -132,15 +136,20 @@ export function openDb(path: string) {
   const allCrash = db.prepare('SELECT id, taken_at FROM crash_taken');
   const insertCrash = db.prepare('INSERT OR REPLACE INTO crash_taken (id, taken_at) VALUES (?, ?)');
   const deleteCrash = db.prepare('DELETE FROM crash_taken WHERE id = ?');
-  const boxRows = db.prepare('SELECT id, kind, n, slot FROM items WHERE owner = ? AND box = ? ORDER BY slot');
+  const boxRows = db.prepare('SELECT id, kind, n, slot, parts FROM items WHERE owner = ? AND box = ? ORDER BY slot');
   const clearBox = db.prepare('DELETE FROM items WHERE owner = ? AND box = ?');
-  const insertItem = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot) VALUES (?, ?, ?, ?, ?, ?)');
+  const insertRow = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot, parts) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const insertItem = (id: number, kind: string, n: number, owner: string, box: string, slot: number, parts?: (string | null)[]) =>
+    insertRow.run(id, kind, n, owner, box, slot, parts ? JSON.stringify(parts) : null);
   const maxItemId = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM items');
+  db.exec('CREATE TABLE IF NOT EXISTS gear_kits (player_id TEXT PRIMARY KEY, given_at INTEGER NOT NULL)');
+  const getGearKit = db.prepare('SELECT 1 FROM gear_kits WHERE player_id = ?');
+  const putGearKit = db.prepare('INSERT OR IGNORE INTO gear_kits (player_id, given_at) VALUES (?, ?)');
   const getStarter = db.prepare('SELECT 1 FROM starter_kits WHERE player_id = ?');
   const putStarter = db.prepare('INSERT OR IGNORE INTO starter_kits (player_id, given_at) VALUES (?, ?)');
   const saveBox = (owner: string, box: string, slots: Slots) => {
     clearBox.run(owner, box);
-    slots.forEach((it, slot) => it && insertItem.run(it.id, it.kind, it.n, owner, box, slot));
+    slots.forEach((it, slot) => it && insertItem(it.id, it.kind, it.n, owner, box, slot, it.parts));
   };
 
   // v5: scrap counts per SCRAP_KINDS index (old `inventory` table) become stacks in the bag, after the hotbar.
@@ -209,15 +218,19 @@ export function openDb(path: string) {
     tx,
     takeScrap: (ix: number, iz: number, i: number, at: number) => insertTaken.run(ix, iz, i, at),
     respawnScrap: (ix: number, iz: number, i: number) => deleteTaken.run(ix, iz, i),
-    loadBox: (owner: string, box: string) => boxRows.all(owner, box) as { id: number; kind: string; n: number; slot: number }[],
+    loadBox: (owner: string, box: string) => (boxRows.all(owner, box) as { id: number; kind: string; n: number; slot: number; parts: string | null }[])
+      .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
     /** Rewrite whole boxes in one transaction (an item moving between them keeps its id). */
     saveBoxes: (boxes: { owner: string; box: string; slots: Slots }[]) => tx(() => {
       for (const b of boxes) clearBox.run(b.owner, b.box);
-      for (const b of boxes) b.slots.forEach((it, slot) => it && insertItem.run(it.id, it.kind, it.n, b.owner, b.box, slot));
+      for (const b of boxes) b.slots.forEach((it, slot) => it && insertItem(it.id, it.kind, it.n, b.owner, b.box, slot, it.parts));
     }),
     maxItemId: () => (maxItemId.get() as { id: number }).id,
     hasStarterKit: (playerId: string) => !!getStarter.get(playerId),
     markStarterKit: (playerId: string) => putStarter.run(playerId, Date.now()),
+    /** Set up for gear (shared/gear.ts): new players get nothing, players from before get a backpack. Once each. */
+    hasGearKit: (playerId: string) => !!getGearKit.get(playerId),
+    markGearKit: (playerId: string) => putGearKit.run(playerId, Date.now()),
     loadCrashTaken: () => allCrash.all() as { id: string; taken_at: number }[],
     takeCrash: (id: string, at: number) => insertCrash.run(id, at),
     respawnCrash: (id: string) => deleteCrash.run(id),

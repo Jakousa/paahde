@@ -60,7 +60,8 @@ export class StormFx {
   }
 
   /** Per render frame: storms from the server, server time `now` (ms), the camera and the player's feet. */
-  update(dt: number, serverStorms: readonly Storm[], now: number, cam: { x: number; y: number; z: number }, me: { x: number; y: number; z: number }) {
+  /** `warnS`: how early the storm detector on your belt warns (s, shared/gear.ts stormWarnS); 0 without one. */
+  update(dt: number, serverStorms: readonly Storm[], now: number, cam: { x: number; y: number; z: number }, me: { x: number; y: number; z: number }, warnS: number) {
     if (summonLocal) {
       summonLocal = false;
       // Already building up, 180 m upwind: you see the wall from outside, then it rolls over you.
@@ -89,10 +90,10 @@ export class StormFx {
     for (let i = n; i < STORM_SLOTS; i++) stormDiscs[i].value.w = 0;
     g.set(ground[0], ground[1], ground[2], ground[3]);
 
-    // Warning: a storm about to start whose path crosses where you stand.
+    // Warning: a storm about to start whose path crosses where you stand, from the storm detector only.
     let coming: Storm | null = null;
     for (const s of storms) {
-      if (now >= s.start || !inStormPath(s, me.x, me.z)) continue;
+      if (now >= s.start || s.start - now > warnS * 1000 || !inStormPath(s, me.x, me.z)) continue;
       if (!coming || s.start < coming.start) coming = s;
     }
     for (const id of this.warned.keys()) if (!storms.some((s) => s.id === id)) this.warned.delete(id);

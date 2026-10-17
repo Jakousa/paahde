@@ -1,15 +1,24 @@
 // Items: the catalogue, slot containers ("boxes") and the rules for moving stacks between them. The server
 // owns every item (server/items.ts, `items` table, one row per stack with a stable id); the client applies
 // the same moves at once and the server's answer then replaces them (src/net.ts).
-import { partItems } from './parts.ts';
-import type { Tier } from './salvage.ts';
+import { partItems, partItem, partOf } from './parts.ts';
+import { TIERS, type PartId, type Tier } from './salvage.ts';
 import { SCRAP_KINDS } from './scrap.ts';
 
-/** Item kind ids as stored in the DB. Never rename one: rows hold them. `stack` is 1 for all: nothing stacks for now.
- *  `tier`: the item's quality, which doubles as its rarity (RARITY in shared/salvage.ts); parts have one. */
+/**
+ * Item kind ids as stored in the DB. Never rename one: rows hold them. `stack` is 1 for all: nothing stacks for now.
+ * `tier`: the item's quality, which doubles as its rarity (RARITY in shared/salvage.ts); parts have one.
+ * Gear (shared/gear.ts: the water bottle, telescope, motorcycle, ...) is found broken and repaired with parts.
+ */
 export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier }> = {
-  canteen: { label: 'Canteen', stack: 1 },
-  spyglass: { label: 'Spyglass', stack: 1 },
+  canteen: { label: 'Water bottle', stack: 1 },
+  spyglass: { label: 'Telescope', stack: 1 },
+  motorcycle: { label: 'Motorcycle', stack: 1 },
+  backpack: { label: 'Backpack', stack: 1 },
+  storm_detector: { label: 'Storm detector', stack: 1 },
+  wristpad: { label: 'Wrist computer', stack: 1 },
+  metal_detector: { label: 'Metal detector', stack: 1 },
+  shovel: { label: 'Shovel', stack: 1 },
   oil_drum: { label: 'Oil drum', stack: 1 },
   rusty_drum: { label: 'Rusty drum', stack: 1 },
   gear: { label: 'Gear', stack: 1 },
@@ -31,29 +40,48 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier }
 };
 const ORDER = Object.keys(ITEMS);
 
+/** Item kind of a part (shared/parts.ts partItem). */
+export const partKind = (part: PartId, tier: Tier) => partItem(part, tier);
+/** A part kind's part and tier index (0 scrap .. 3 space), or null for anything else. */
+export function parsePart(kind: string): { part: PartId; tier: number } | null {
+  const p = partOf(kind);
+  return p ? { part: p.part, tier: TIERS.indexOf(p.tier) } : null;
+}
+
 /** Item kind of each scrap prop, by SCRAP_KINDS index. */
 export const SCRAP_ITEMS = ['oil_drum', 'rusty_drum', 'gear', 'scrap_frame', 'bent_frame', 'metal_plank', 'metal_sheet', 'dented_sheet', 'spring'];
 if (SCRAP_ITEMS.length !== SCRAP_KINDS.length) throw new Error('shared/items.ts: SCRAP_ITEMS out of step with SCRAP_KINDS');
 
-/** One stack. `id` is its DB row id (negative: a client-side guess until the server answers). */
-export type Item = { id: number; kind: string; n: number };
+/**
+ * One stack. `id` is its DB row id (negative: a client-side guess until the server answers). Gear also has
+ * `parts`: the item kind fitted in each of its part slots (shared/gear.ts), null where one is missing.
+ */
+export type Item = { id: number; kind: string; n: number; parts?: (string | null)[] };
 export type Slots = (Item | null)[];
 
-/** The player's own bag: HOTBAR slots of hotbar (keys 1–4, src/water.ts), then 8 of backpack. */
+/**
+ * The player's own bag: HOTBAR slots of hotbar (keys 1–4, src/water.ts), then as many as the equipped
+ * backpack holds (shared/gear.ts bagSize), up to BACKPACK_MAX. The slots array is always BAG_SLOTS long.
+ */
 export const HOTBAR = 4;
-export const BAG_SLOTS = HOTBAR + 8;
-/** What every new player starts with, in hotbar order. */
-export const STARTER_KIT = ['canteen', 'spyglass'];
+export const BACKPACK_MAX = 12;
+export const BAG_SLOTS = HOTBAR + BACKPACK_MAX;
 
 export const stackOf = (kind: string) => ITEMS[kind]?.stack ?? 1;
 
 /** Does `slots` hold an item of this kind? */
 export const hasItem = (slots: Slots | undefined, kind: string) => !!slots?.some((it) => it?.kind === kind);
 
-/** Room for n more of `kind` (stacking first)? */
-export function roomFor(slots: Slots, kind: string, n = 1): boolean {
+/** Can these two stack (same kind, and no gear: every gear item is its own)? */
+const stacks = (a: Item, kind: string) => a.kind === kind && !a.parts;
+
+/** Room for n more of `kind` (stacking first) in the first `size` slots? */
+export function roomFor(slots: Slots, kind: string, n = 1, size = slots.length): boolean {
   let room = 0;
-  for (const it of slots) room += !it ? stackOf(kind) : it.kind === kind ? stackOf(kind) - it.n : 0;
+  for (let i = 0; i < size; i++) {
+    const it = slots[i];
+    room += !it ? stackOf(kind) : stacks(it, kind) ? stackOf(kind) - it.n : 0;
+  }
   return room >= n;
 }
 
@@ -61,17 +89,18 @@ export function roomFor(slots: Slots, kind: string, n = 1): boolean {
  * Put n of `kind` into `slots`: onto stacks of it first, then into empty slots from `from` on (wrapping
  * round, so pickups land in the bag before the hotbar). Mutates; false (and no change) if there's no room.
  */
-export function addItem(slots: Slots, kind: string, n: number, newId: () => number, from = 0): boolean {
-  if (!roomFor(slots, kind, n)) return false;
-  for (const it of slots) {
+export function addItem(slots: Slots, kind: string, n: number, newId: () => number, from = 0, size = slots.length): boolean {
+  if (!roomFor(slots, kind, n, size)) return false;
+  for (let i = 0; i < size; i++) {
+    const it = slots[i];
     if (n === 0) break;
-    if (it?.kind !== kind) continue;
+    if (!it || !stacks(it, kind)) continue;
     const k = Math.min(n, stackOf(kind) - it.n);
     it.n += k;
     n -= k;
   }
-  for (let j = 0; j < slots.length && n > 0; j++) {
-    const i = (from + j) % slots.length;
+  for (let j = 0; j < size && n > 0; j++) {
+    const i = (from + j) % size;
     if (slots[i]) continue;
     const k = Math.min(n, stackOf(kind));
     slots[i] = { id: newId(), kind, n: k };
@@ -86,22 +115,23 @@ export function addItem(slots: Slots, kind: string, n: number, newId: () => numb
  * di = -1 means "anywhere in dst" (shift-click): onto its stacks, then the first empty slot from `from` on.
  * src and dst may be the same array. Mutates; returns whether anything changed.
  */
-export function moveItem(src: Slots, si: number, dst: Slots, di: number, n: number | undefined, newId: () => number, from = 0): boolean {
+export function moveItem(src: Slots, si: number, dst: Slots, di: number, n: number | undefined, newId: () => number, from = 0, size = dst.length): boolean {
   const it = src[si];
   if (!it) return false;
   const k = Math.max(1, Math.min(it.n, n ?? it.n));
   if (di === -1) {
     if (src === dst) return false;
     let left = k;
-    for (const d of dst) {
+    for (let j = 0; j < size; j++) {
+      const d = dst[j];
       if (left === 0) break;
-      if (d?.kind !== it.kind) continue;
+      if (!d || !stacks(d, it.kind) || it.parts) continue;
       const m = Math.min(left, stackOf(it.kind) - d.n);
       d.n += m;
       left -= m;
     }
     let empty = -1;
-    for (let j = 0; j < dst.length && empty < 0; j++) if (!dst[(from + j) % dst.length]) empty = (from + j) % dst.length;
+    for (let j = 0; j < size && empty < 0; j++) if (!dst[(from + j) % size]) empty = (from + j) % size;
     if (left > 0 && empty >= 0) {
       // The rest goes into an empty slot: as the stack itself (keeping its id) when all of it moves.
       if (k === it.n) {
@@ -129,7 +159,7 @@ export function moveItem(src: Slots, si: number, dst: Slots, di: number, n: numb
     }
     return true;
   }
-  if (d.kind === it.kind) {
+  if (stacks(d, it.kind) && !it.parts) {
     const m = Math.min(k, stackOf(it.kind) - d.n);
     if (m === 0) return false;
     d.n += m;
@@ -153,7 +183,7 @@ export function sortItems(slots: Slots, from = 0) {
   for (const it of items) {
     let left = it.n;
     for (const m of merged) {
-      if (m.kind !== it.kind || left === 0) continue;
+      if (!stacks(m, it.kind) || it.parts || left === 0) continue;
       const k = Math.min(left, stackOf(it.kind) - m.n);
       m.n += k;
       left -= k;

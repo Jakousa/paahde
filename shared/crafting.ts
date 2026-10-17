@@ -52,7 +52,7 @@ export function pickIngredients(slots: Slots, recipe: Recipe): number[] | null {
 }
 
 /** Craft `id` in `slots`: use up the ingredients, add what it makes. Mutates; false (no change) if it can't. */
-export function craft(slots: Slots, id: string, newId: () => number): boolean {
+export function craft(slots: Slots, id: string, newId: () => number, size = slots.length): boolean {
   const recipe = RECIPES[id];
   if (!recipe || !(recipe.makes in ITEMS)) return false;
   const pick = pickIngredients(slots, recipe);
@@ -61,5 +61,5 @@ export function craft(slots: Slots, id: string, newId: () => number): boolean {
     const it = slots[i]!;
     if (--it.n <= 0) slots[i] = null;
   }
-  return addItem(slots, recipe.makes, 1, newId, HOTBAR);
+  return addItem(slots, recipe.makes, 1, newId, Math.min(HOTBAR, size - 1), size);
 }

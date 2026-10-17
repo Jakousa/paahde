@@ -3,8 +3,8 @@
 //
 // Heat builds up: the hotter it feels (shared/temperature.ts: air temperature by time of day, plus the
 // sun's bonus, or the shade's chill, capped in the base), the faster, from nothing at COMFORT_TEMP up a
-// quadratic curve. Below COMFORT_TEMP (the base, nights) you cool off by yourself. Sips from the canteen
-// (inventory slot 1) bring it down; the pump in the base refills the canteen. A full meter is heatstroke.
+// quadratic curve. Below COMFORT_TEMP (the base, nights) you cool off by yourself. Sips from the water bottle
+// (found broken and repaired, shared/gear.ts) bring it down; the pump in the base refills it. A full meter is heatstroke.
 
 /** Full heat meter: heatstroke. */
 export const HEAT_MAX = 100;
@@ -22,8 +22,7 @@ export const SPRINT_HEAT = 1.5;
 export const COOL_RANGE = 8;
 /** ...empties a full meter in this long (s); less cool, slower. The base (22 °C) is full speed. */
 export const COOL_FULL_BAR_S = 40;
-/** Sips in a full canteen, and how much heat each one takes off. */
-export const CANTEEN_SIPS = 4;
+/** How much heat one sip takes off. How many sips the bottle holds depends on its parts (shared/gear.ts canteenSips). */
 export const SIP_COOL = 25;
 /** How long one sip and one refill take on the client (the Drink / Fill animation lengths). */
 export const DRINK_MS = 1200;

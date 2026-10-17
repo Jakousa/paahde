@@ -1,13 +1,13 @@
 import { BACK, BIKE, DIG, FORWARD, JUMP, LEFT, PILE, RIGHT, SLIDE, SPRINT } from '../shared/sim.ts';
 
 const keys = new Set<string>();
-const bikeAllowed = import.meta.env.DEV || location.search.includes('debug');
 let mouseDig = false;
 let mousePile = false;
 let pickupPressed = false;
 /** Hands full (canteen or spyglass out, src/water.ts): left mouse / E and right mouse / Q don't dig or pile.
+ *  slot: the selected hotbar slot (-1 none), digging with what's in it (src/net.ts, a shovel).
  *  frozen: the disassembly mode (src/teardown) owns the keyboard and mouse, so the player stands still. */
-export const tools = { blocked: false, frozen: false };
+export const tools = { blocked: false, frozen: false, slot: -1 };
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 /** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
 export const ui = { inventoryOpen: false, debugFreed: false };
@@ -96,8 +96,8 @@ export function readInput(): number {
   if (tools.blocked) return input;
   if (mouseDig || keys.has('KeyE')) input |= DIG;
   else if (mousePile || keys.has('KeyQ')) input |= PILE;
-  // 9: get on / off the sand bike. A dev helper: only in `npm run dev` or with ?debug.
-  if (bikeAllowed && keys.has('Digit9')) input |= BIKE;
+  // 9: get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped).
+  if (keys.has('Digit9')) input |= BIKE;
   return input;
 }
 

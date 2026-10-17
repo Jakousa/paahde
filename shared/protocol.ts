@@ -1,6 +1,7 @@
 // WebSocket message shapes (JSON). `t` is the message type.
 import type { PlayerState } from './sim.ts';
 import type { Slots } from './items.ts';
+import type { Loot } from './loot.ts';
 import type { Storm } from './storm.ts';
 import type { Placed } from './placed.ts';
 import type { BedState } from './garden.ts';
@@ -37,7 +38,9 @@ export type ClientMsg =
   | { t: 'fill' }
   // What's in your hands (Hands below), sent when it changes and after every 'welcome'. Cosmetic: other
   // players see it on your avatar; the drink/fill checks don't depend on it.
-  | { t: 'hands'; hands: Hands }
+  // slot: the selected hotbar slot (-1 none); the server digs with what's in it (a repaired shovel digs
+  // faster, shared/gear.ts digTool).
+  | { t: 'hands'; hands: Hands; slot?: number }
   // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning.
   | { t: 'storm' }
   // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
@@ -46,6 +49,15 @@ export type ClientMsg =
   | { t: 'move'; from: string; fi: number; to: string; ti: number; n?: number }
   // Tidy a box (sortItems; the bag's hotbar stays put).
   | { t: 'sort'; box: string }
+  // Repairs at the workbench (shared/gear.ts fitPart / unfitPart): fit the part at box `from` slot fi into
+  // part slot `slot` of the item on the bench (what was there comes out), or take one out into box `to`
+  // slot ti (-1: anywhere). Answered with 'items' for each box involved.
+  | { t: 'fit'; from: string; fi: number; slot: number }
+  | { t: 'unfit'; slot: number; to: string; ti: number }
+  // Pick up loot (shared/loot.ts) in reach. Answered with 'items' (or a 'notice' when the bag is full).
+  | { t: 'lootTake'; id: number }
+  // Debug menu: repaired gear of every kind, Common parts (for testing).
+  | { t: 'debugGear' }
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
   // there, puts it in your bag as an item (of the component's kind) and answers 'items'.
   | { t: 'crashTake'; id: string }
@@ -106,6 +118,9 @@ export type ServerMsg =
   // they change, every 'chest<i>' on join and to everyone when it changes. `got`: a pickup (scrap, a
   // carried machine, a part out of a machine) added this kind (for the HUD toast).
   | { t: 'items'; box: string; slots: Slots; got?: string }
+  // Loot in the world (shared/loot.ts): added or changed (a cache dug up), and removed (ids). On join, before
+  // 'welcome', with reset: everything there is.
+  | { t: 'loot'; add: Loot[]; remove: number[]; reset?: boolean }
   // Small crash sites whose machine has been carried off (ids), or are back. On join, before 'welcome', with reset:
   // the full taken list.
   | { t: 'crash'; taken: string[]; back: string[]; reset?: boolean }
@@ -138,7 +153,8 @@ export type ServerMsg =
   // whether you're out of direct sun (shade, night or the base; shared/shade.ts). Sent after 'welcome',
   // after every drink/fill (also refused ones, so the client resyncs), when heat starts or stops building
   // or shade flips, when temp moves by 0.5 °C, and about twice a second while the meter moves.
-  | { t: 'water'; heat: number; sips: number; rising: boolean; temp: number; shade: boolean }
+  // maxSips: what the water bottle in your bag holds (shared/gear.ts bottleSips), 0 without one.
+  | { t: 'water'; heat: number; sips: number; maxSips: number; rising: boolean; temp: number; shade: boolean }
   // You died of heatstroke: the server has already moved you to BASE_SPAWN (the next snapshot snaps you
   // there) with no heat and a full canteen; a 'water' follows. For the death screen.
   | { t: 'died'; cause: 'heat' }

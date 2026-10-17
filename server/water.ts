@@ -10,7 +10,7 @@ import { SPRINT, WALK_SPEED, type PlayerState } from '../shared/sim.ts';
 import { STORM_TEMP } from '../shared/storm.ts';
 import { feltTemp } from '../shared/temperature.ts';
 import {
-  CANTEEN_SIPS, DRINK_COOLDOWN_MS, FILL_COOLDOWN_MS, FILL_SLACK, HEAT_MAX, heatPerSecond, SIP_COOL,
+  DRINK_COOLDOWN_MS, FILL_COOLDOWN_MS, FILL_SLACK, HEAT_MAX, heatPerSecond, SIP_COOL,
 } from '../shared/water.ts';
 
 /** While the meter moves, a 'water' update goes out this often (the client eases between them). */
@@ -25,6 +25,7 @@ const RESPAWN_GRACE_MS = 3000;
 export type Heat = {
   heat: number; // the meter, 0..HEAT_MAX
   sips: number;
+  maxSips: number; // what the water bottle in the bag holds (shared/gear.ts bottleSips), 0 without one
   rising: boolean; // heat building up right now
   temp: number; // felt temperature (°C)
   shade: boolean; // no direct sun on the head (also at night and in the base)
@@ -37,11 +38,11 @@ export type Heat = {
   diedAt: number;
 };
 
-export function newHeat(heat = 0, sips = CANTEEN_SIPS): Heat {
+export function newHeat(heat = 0, sips = 0, maxSips = 0): Heat {
   const h = Number.isFinite(heat) ? Math.min(HEAT_MAX, Math.max(0, heat)) : 0;
-  const s = Number.isInteger(sips) ? Math.min(CANTEEN_SIPS, Math.max(0, sips)) : CANTEEN_SIPS;
+  const s = Number.isInteger(sips) ? Math.min(maxSips, Math.max(0, sips)) : 0;
   return {
-    heat: h, sips: s, rising: false, temp: 20, shade: true, shadeAt: -Infinity, sentTemp: 20, sentShade: true,
+    heat: h, sips: s, maxSips, rising: false, temp: 20, shade: true, shadeAt: -Infinity, sentTemp: 20, sentShade: true,
     sentAt: 0, lastDrink: 0, lastFill: 0, diedAt: -Infinity,
   };
 }
@@ -49,7 +50,7 @@ export function newHeat(heat = 0, sips = CANTEEN_SIPS): Heat {
 export function waterMsg(t: Heat): ServerMsg {
   t.sentTemp = t.temp;
   t.sentShade = t.shade;
-  return { t: 'water', heat: Math.round(t.heat * 100) / 100, sips: t.sips, rising: t.rising, temp: Math.round(t.temp * 10) / 10, shade: t.shade };
+  return { t: 'water', heat: Math.round(t.heat * 100) / 100, sips: t.sips, maxSips: t.maxSips, rising: t.rising, temp: Math.round(t.temp * 10) / 10, shade: t.shade };
 }
 
 /**
@@ -82,10 +83,18 @@ export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod
   return null;
 }
 
-/** Cooled right down after dying. */
+/** The bag's water bottle changed: it holds `max` now (what was in a bigger one spills). True if anything changed. */
+export function setBottle(t: Heat, max: number): boolean {
+  if (max === t.maxSips) return false;
+  t.maxSips = max;
+  t.sips = Math.min(t.sips, max);
+  return true;
+}
+
+/** Cooled right down after dying, with a full bottle. */
 export function revive(t: Heat, now: number) {
   t.heat = 0;
-  t.sips = CANTEEN_SIPS;
+  t.sips = t.maxSips;
   t.rising = false;
   t.diedAt = now;
   t.sentAt = now;
@@ -93,7 +102,7 @@ export function revive(t: Heat, now: number) {
 
 /** One sip from the canteen. False (and nothing changes) if empty, too soon or mid-respawn. */
 export function drink(t: Heat, now: number): boolean {
-  if (t.sips <= 0 || now - t.lastDrink < DRINK_COOLDOWN_MS || now - t.diedAt < RESPAWN_GRACE_MS) return false;
+  if (t.sips <= 0 || t.maxSips <= 0 || now - t.lastDrink < DRINK_COOLDOWN_MS || now - t.diedAt < RESPAWN_GRACE_MS) return false;
   t.lastDrink = now;
   t.sips--;
   t.heat = Math.max(0, t.heat - SIP_COOL);
@@ -103,9 +112,9 @@ export function drink(t: Heat, now: number): boolean {
 
 /** Refill the canteen at the base's pump (its supply is endless). False if not at the pump or too soon. */
 export function fill(t: Heat, s: PlayerState, now: number): boolean {
-  if (!atPump(s.x, s.y, s.z, FILL_SLACK) || now - t.lastFill < FILL_COOLDOWN_MS) return false;
+  if (t.maxSips <= 0 || !atPump(s.x, s.y, s.z, FILL_SLACK) || now - t.lastFill < FILL_COOLDOWN_MS) return false;
   t.lastFill = now;
-  t.sips = CANTEEN_SIPS;
+  t.sips = t.maxSips;
   t.sentAt = now;
   return true;
 }

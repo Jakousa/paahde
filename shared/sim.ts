@@ -12,6 +12,7 @@
 // - Sand bike (dev helper, 9 toggles it): see stepBike() below.
 import { BASE_SPAWN, baseCeiling, collideBase, terrainHidden } from './base.ts';
 import { collideCrash } from './crashsites.ts';
+import { bikeEngine, bikeTopSpeed } from './gear.ts';
 import { collideScrap } from './scrap.ts';
 import { heightAt, WORLD_HALF } from './terrain.ts';
 
@@ -86,6 +87,7 @@ export type PlayerState = {
   riding: boolean; // on the sand bike (stepBike)
   bikeHeld: boolean; // the bike key was down last tick, so mounting needs a fresh press
   heading: number; // the bike's heading (radians, same convention as facing); the body faces it while riding
+  bike: number; // the equipped motorcycle (shared/gear.ts bikeLevel): 0 none, else 1 + its quality; set by the server
 };
 
 // Input is a bitmask so it is tiny on the wire and trivially comparable.
@@ -99,7 +101,7 @@ export const SPRINT = 32;
 export const DIG = 64;
 export const PILE = 128; // like DIG, but puts sand back (shared/dig.ts)
 export const SLIDE = 256; // Ctrl: slide
-export const BIKE = 512; // 9: get on / off the sand bike (dev helper)
+export const BIKE = 512; // 9: get on / off the motorcycle (needs a repaired one equipped: PlayerState.bike)
 export const INPUT_MASK = 1023;
 
 // Camera yaw is sent with every input, quantized to 16 bits so client and server agree exactly.
@@ -121,7 +123,7 @@ export function spawnState(x = SPAWN.x, z = SPAWN.z): PlayerState {
   return {
     x, y: heightAt(x, z), z, vx: 0, vy: 0, vz: 0, facing: 0,
     grounded: true, airJumps: AIR_JUMPS, jumpHeld: false, landTicks: 0,
-    sliding: false, crouching: false, slideCool: 0, riding: false, bikeHeld: false, heading: 0,
+    sliding: false, crouching: false, slideCool: 0, riding: false, bikeHeld: false, heading: 0, bike: 0,
   };
 }
 
@@ -150,7 +152,8 @@ const tmpCollide = { x: 0, z: 0, vx: 0, vz: 0 };
 export function step(s: PlayerState, input: number, yawQ: number, storm = 0): PlayerState {
   const yaw = yawFromQ(yawQ);
   const bikeDown = (input & BIKE) !== 0;
-  if (bikeDown && !s.bikeHeld) {
+  if (s.riding && !s.bike) s = { ...s, riding: false }; // unequipped under you
+  if (bikeDown && !s.bikeHeld && (s.riding || s.bike > 0)) {
     // Get on facing where you look, keeping your momentum; get off with the bike's.
     s = s.riding ? { ...s, riding: false } : { ...s, riding: true, heading: yaw, sliding: false, crouching: false };
   }
@@ -307,7 +310,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0): Pl
   if (grounded) airJumps = AIR_JUMPS;
   return {
     x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks, sliding, crouching, slideCool,
-    riding: false, bikeHeld: bikeDown, heading: s.heading,
+    riding: false, bikeHeld: bikeDown, heading: s.heading, bike: s.bike,
   };
 }
 
@@ -320,8 +323,8 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0): Pl
 // - On the ground it rides the surface; where the sand drops away faster than gravity could follow (a dune
 //   crest at speed) it launches and flies ballistically, steering only a little, until it lands.
 export const BIKE_RADIUS = 0.6;
-const BIKE_TOP_SPEED = 26;
-const BIKE_ENGINE = 15; // m/s² at a standstill, fading linearly to 0 at top speed
+// Top speed and engine (m/s² at a standstill, fading linearly to 0 at top speed) come from the motorcycle's
+// quality: bikeTopSpeed / bikeEngine in shared/gear.ts.
 const BIKE_BRAKE = 22;
 const BIKE_REVERSE = 4; // top reverse speed (m/s)
 const BIKE_ROLL = 1.2; // rolling resistance in sand (m/s²)
@@ -338,6 +341,7 @@ const BIKE_LAND_KEEP = 0.92; // horizontal speed kept on a landing
 const BIKE_HARD_LANDING = 16;
 
 function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState {
+  const top = bikeTopSpeed(s.bike - 1), engine = bikeEngine(s.bike - 1);
   const throttle = (input & FORWARD ? 1 : 0) - (input & BACK ? 1 : 0);
   const steer = (input & LEFT ? 1 : 0) - (input & RIGHT ? 1 : 0); // + turns left (heading grows counter-clockwise)
   const jumpDown = (input & JUMP) !== 0;
@@ -359,8 +363,8 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState
     vr += k * (g.gx * rx + g.gz * rz) * DT;
     // Engine and brakes. A hard landing chokes the engine for a moment.
     const power = landTicks > 0 ? 0.4 : 1;
-    if (throttle > 0) vf += (vf < 0 ? BIKE_BRAKE : BIKE_ENGINE * power * Math.max(0, 1 - vf / BIKE_TOP_SPEED)) * DT;
-    else if (throttle < 0) vf = vf > 0 ? Math.max(0, vf - BIKE_BRAKE * DT) : Math.max(-BIKE_REVERSE, vf - BIKE_ENGINE * 0.5 * DT);
+    if (throttle > 0) vf += (vf < 0 ? BIKE_BRAKE : engine * power * Math.max(0, 1 - vf / top)) * DT;
+    else if (throttle < 0) vf = vf > 0 ? Math.max(0, vf - BIKE_BRAKE * DT) : Math.max(-BIKE_REVERSE, vf - engine * 0.5 * DT);
     const resist = (BIKE_ROLL + BIKE_DRAG * vf * vf) * DT;
     vf = vf > 0 ? Math.max(0, vf - resist) : Math.min(0, vf + resist);
     // Tyres: grip pulls the sideways slip towards zero, up to their limit.
@@ -423,7 +427,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState
   h = Math.atan2(Math.sin(h), Math.cos(h));
   return {
     x, y, z, vx, vy, vz, facing: h, grounded, airJumps: AIR_JUMPS, jumpHeld: jumpDown, landTicks,
-    sliding: false, crouching: false, slideCool: s.slideCool, riding: true, bikeHeld: bikeDown, heading: h,
+    sliding: false, crouching: false, slideCool: s.slideCool, riding: true, bikeHeld: bikeDown, heading: h, bike: s.bike,
   };
 }
 

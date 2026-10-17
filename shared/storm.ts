@@ -27,7 +27,7 @@ export type Storm = {
 };
 
 /** Warning before a storm starts (ms). */
-export const WARN_MS = 12_000;
+export const WARN_MS = 20_000; // the best storm detector (shared/gear.ts stormWarnS) warns this early
 /** Build-up and dying down (ms), inside the storm's length. */
 export const RAMP_MS = 6_000;
 export const MIN_LEN_MS = 15_000;
