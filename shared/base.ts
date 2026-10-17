@@ -64,9 +64,9 @@ export const STAIRS = { z: 0.6, n: 36, rise: 0.25, run: 0.3 };
 /** Bunker floor height (local). */
 export const FLOOR = -STAIRS.n * STAIRS.rise;
 /** Hallway ends here, where the room begins; its vault's crown above the floor. */
-export const HALL = { z: -12, h: 3.3 };
+export const HALL = { z: -14.2, h: 3.3 };
 /** Main room, inner: half width, far wall, ceiling height above the floor. */
-export const ROOM = { w: 8, z: -28, h: 6 };
+export const ROOM = { w: 8, z: -30.2, h: 6 };
 /** The room's centre: the pump stands here, under the skylight. */
 export const ROOM_Z = (HALL.z + ROOM.z) / 2;
 /** Skylight shaft: half width of the opening, collar half width (outer) and height above the pad. */
@@ -105,7 +105,7 @@ function vaultAt(ax: number, c: number): number {
 }
 
 /** The pad around the base is this flat, then blends back into the dunes (shared/terrain.ts). */
-const PAD = { x0: -14, x1: 14, z0: -34, z1: 14, blend: 24 };
+const PAD = { x0: -14, x1: 14, z0: -36, z1: 14, blend: 24 };
 /** The pad's sand lies just under the entrance floor so they don't z-fight. */
 const PAD_Y = BASE.y - 0.06;
 
