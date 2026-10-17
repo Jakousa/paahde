@@ -2,6 +2,34 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Crafting, plant beds and UV lamps (issues #21–#24)
+
+- **Crafting at the workbench** (`shared/crafting.ts`): F at the workbench opens the Tab inventory with a
+  Workbench panel next to the bag (it also shows whenever the bench is in reach). Recipes: **plant bed** = 3 metal
+  sheets, **UV lamp** = 2 metal sheets + 1 wiring coil. Ingredients match groups: clean or dented sheets, a coil of
+  any tier (`coil_scrap` … `coil_space`, worst tier used first). The server checks reach and runs the same
+  `craft()` on the real bag (`server/items.ts`); a refusal comes back as a `notice` toast.
+- **Placeables** (`shared/placed.ts`, `server/placed.ts`, `placed` table): `plant_bed` and `uv_lamp` are items.
+  Take one out in the hotbar and a green/red see-through preview follows the crosshair over the bunker floor
+  (0.25 m grid; R turns it 90°, left mouse / E puts it down, G picks a placed thing back up). Only on the main
+  room's floor, clear of the walls, the hallway mouth, the pump, the stations and the chest; nothing overlaps,
+  except that a lamp and a bed share a spot when aligned exactly (the lamp's legs straddle the bed's short ends),
+  and aiming a lamp at a bed snaps it over it. The server re-checks everything (plus nobody standing there), and
+  the list goes out whole before the snapshot. Placed things **collide**: their floor-standing parts become extra
+  capsules in `collideBase` (`setPlacedCapsules`), on both client and server.
+- **Plant beds are the garden** (`shared/garden.ts`, `server/garden.ts`, `beds` table keyed by placed id; the old
+  `garden` table is unused). F plants an empty bed, F harvests a grown one, as before. **Sprouts only grow under a
+  UV lamp** standing over the bed: GROW_MS (6 min) of lamp time and they're grown; without a lamp they wait (the
+  prompt says so), with one it shows "Growing under the lamp · N%". Picking a bed up loses its crop.
+- **Models and icons:** `tools/blender/placeables.py` → `public/models/placeables/{plant_bed,uv_lamp}.glb` and
+  `public/icons/items/{plant_bed,uv_lamp}.png` (the part icons' camera and lights; it imports `items.py`'s helpers,
+  now guarded by `__main__`). The bed is a trough of patchwork scrap sheets with soil and two stage objects
+  (`plant_bed_sprouts`, `plant_bed_grown`); the lamp a scrap gantry with violet `EmitUV` tubes, a ballast box and
+  coiled cable. `src/world/placed.ts` draws them with the bunker's indoor lights plus a violet light pool.
+- **Metal sheet (#21)** was already a scrap pickup with an icon; it's now what crafting runs on.
+- Gaps: placing works only in the base; harvesting yields nothing yet (no food item); the lamp's light is a fake
+  pool, not a real light; growth doesn't count while the server is down.
+
 ## 2026-10-17 — Parts are items (issues #8–#11, #18–#20)
 
 - **One item kind per part and tier**, `<part>_<tier>` (`battery_space`, `relay_scrap`, …; `shared/parts.ts`,
