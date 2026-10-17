@@ -154,7 +154,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'debugGear' && p) return onDebugGear(p);
     if (msg.t === 'chat' && p) return onChat(p, msg.text);
     if (msg.t === 'hands' && p) {
-      p.hands = msg.hands === 1 || msg.hands === 2 ? msg.hands : 0;
+      p.hands = msg.hands === 1 || msg.hands === 2 || msg.hands === 3 ? msg.hands : 0;
       p.slot = Number.isInteger(msg.slot) && (msg.slot as number) >= 0 && (msg.slot as number) < HOTBAR ? (msg.slot as number) : -1;
       return;
     }

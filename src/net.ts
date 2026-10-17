@@ -21,7 +21,7 @@
 //   (predicted, like a move); the server checks it against the machine's roll and answers with the bag, or
 //   'partRefused' (the part goes back in the machine) and the bag.
 // - Loot (shared/loot.ts): what lies in the world, from the server; F asks to take it.
-// - Hands: what we hold (canteen, drinking) is sent when it changes and relayed in snapshots, cosmetic only;
+// - Hands: what we hold (canteen, drinking, filling) is sent when it changes and relayed in snapshots, cosmetic only;
 //   with it the selected hotbar slot, which the server digs with (a shovel digs faster).
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
@@ -68,6 +68,8 @@ export type RemotePlayer = {
   down: [number, number, number] | null;
   gear: number;
   drinking: boolean;
+  /** Filling their canteen at the pump. */
+  filling: boolean;
 };
 
 type Snapshot = { time: number; players: Map<number, PlayerSnap> };
@@ -324,10 +326,10 @@ export class Net {
 
   /**
    * What we're holding, for other players' view of us; sent when it changes. Call every frame. The server
-   * shows others the item in the selected slot; `hands` adds drinking from the canteen.
+   * shows others the item in the selected slot; `hands` adds drinking from the canteen or filling it.
    */
-  setHands(held: string, drinking: boolean) {
-    this.hands = held === 'canteen' ? (drinking ? 2 : 1) : 0;
+  setHands(held: string, drinking: boolean, filling: boolean) {
+    this.hands = held === 'canteen' ? (drinking ? 2 : filling ? 3 : 1) : 0;
     if (this.connected && (this.hands !== this.sentHands || tools.slot !== this.sentSlot)) {
       this.send({ t: 'hands', hands: this.hands, slot: tools.slot });
       this.sentHands = this.hands;
@@ -659,7 +661,7 @@ export class Net {
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
-        riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, drinking: pick.hands === 2,
+        riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3,
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t, down: pb.down ?? null,
       });
     }

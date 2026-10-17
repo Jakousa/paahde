@@ -36,6 +36,7 @@ import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { EngineSound } from './engineSound';
+import { drinkSound } from './drinkSound';
 import { footsteps } from './footsteps';
 import { music } from './music';
 import { uiSound } from './uiSound';
@@ -235,7 +236,7 @@ renderer.setAnimationLoop((time) => {
   }
 
   const others = net.frame(frameDt);
-  net.setHands(playerHands.held, playerHands.drinking);
+  net.setHands(playerHands.held, playerHands.drinking, playerHands.filling);
 
   me.setColor(net.color);
   const s = net.me;
@@ -336,6 +337,7 @@ renderer.setAnimationLoop((time) => {
   windSound.update(frameDt, orbit.camera.position, orbit.yaw, s);
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
+  drinkSound.remotes(others, orbit.camera.position);
   footsteps.listener(orbit.camera.position, orbit.yaw);
   breathing.update(survival.heatLevel, survival.dead);
   audio.setMuffled(survival.dead); // the world goes dull while you lie dead; the music doesn't

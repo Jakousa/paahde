@@ -98,8 +98,8 @@ export const CHAT_MAX = 160;
 /** The job on the disassembly table: which carried machine, its seed (picked by the server), progress so far. */
 export type BenchJob = { kind: string; seed: number; done: number[]; taken: number[] };
 
-// 0 empty hands, 1 holding the canteen, 2 drinking from it.
-export type Hands = 0 | 1 | 2;
+// 0 empty hands, 1 holding the canteen, 2 drinking from it, 3 filling it at the pump.
+export type Hands = 0 | 1 | 2 | 3;
 
 // pitch: the player's quantized camera pitch (pitchFromQ in shared/dig.ts), so remote avatars can
 // tilt their heads.
