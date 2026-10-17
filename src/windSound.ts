@@ -11,6 +11,8 @@
 //             strength q and swells when a streamer passes over you.
 // The regional wind and gust patches change over seconds; on top of that a fast turbulence term (a few
 // incommensurate sines, so it never visibly repeats) makes the sound breathe.
+// What reaches the ears is the apparent wind, the wind minus your own velocity: riding the bike into a
+// calm still roars, and riding downwind with it goes quiet.
 //
 // Plays through the shared output in src/audio.ts (volume slider, limiter).
 import { audio } from './audio';
@@ -31,6 +33,9 @@ const LOCAL = 0.6;
 const BURIED = 0.2;
 /** Time constant (s) of the followed wind; about a second to settle. */
 const TAU = 0.6;
+/** Own speeds (m/s) over which moving through the air fades in: walking adds little, the bike all of it. */
+const OWN_FROM = 4;
+const OWN_FULL = 10;
 /** Wind level at full slider volume. */
 const MIX = 0.7;
 
@@ -161,8 +166,9 @@ export class WindSound {
     return { ctx, master, rumble, rumbleLp, rushL, rushR, rushBp, rushLp, howl, hiss, hissHp };
   }
 
-  /** Follow the wind at the listener. `yaw` is the camera yaw (three.js: forward = (−sin, −cos)). */
-  update(dt: number, listener: { x: number; y: number; z: number }, yaw: number) {
+  /** Follow the wind at the listener. `yaw` is the camera yaw (three.js: forward = (−sin, −cos)); `vel` is
+   *  the listener's own velocity (m/s), on foot or on the bike. */
+  update(dt: number, listener: { x: number; y: number; z: number }, yaw: number, vel: { vx: number; vy: number; vz: number }) {
     const g = this.g;
     if (!g || g.ctx.state !== 'running') return;
     this.time += dt;
@@ -204,10 +210,18 @@ export class WindSound {
     const u = u0 * lull * (1 + turb * wobble(t * 0.7, 0) + 0.04 * wobble(t * 2.3, 5));
     this.uSlow += (u - this.uSlow) * (1 - Math.exp(-dt / 4));
     const gust = clamp01((u - this.uSlow) / Math.max(2, this.uSlow * 0.5)); // rising edge of a gust
-    const x = clamp01(u / U_FULL);
 
-    // Where the wind comes from, in the listener's frame: +1 right/front.
-    const fromX = -s.dx, fromZ = -s.dz;
+    // Apparent wind: the air's velocity minus ours. Our part fades in with speed, so walking about
+    // doesn't sound like a breeze but the bike (and a long fall) does.
+    const own = Math.hypot(vel.vx, vel.vy, vel.vz);
+    const ownK = smooth(OWN_FROM, OWN_FULL, own);
+    const ax = u * s.dx - vel.vx * ownK, az = u * s.dz - vel.vz * ownK, ay = -vel.vy * ownK;
+    const uA = Math.hypot(ax, ay, az);
+    const x = clamp01(uA / U_FULL);
+
+    // Where the apparent wind comes from, in the listener's frame: +1 right/front.
+    const uH = Math.hypot(ax, az);
+    const fromX = uH > 1e-3 ? -ax / uH : -s.dx, fromZ = uH > 1e-3 ? -az / uH : -s.dz;
     const sy = Math.sin(yaw), cy = Math.cos(yaw);
     const right = fromX * cy - fromZ * sy;
     const front = -fromX * sy - fromZ * cy;
@@ -230,7 +244,7 @@ export class WindSound {
     // Strouhal: f = 0.2 · U / d. With d ≈ 2–3 cm of scrap edge, ~8–30 Hz per m/s; keep it musical.
     const howlAmt = smooth(0.45, 0.95, x);
     for (const [i, h] of g.howl.entries()) {
-      set(h.bp.frequency, (180 + 30 * u) * h.ratio, 0.5);
+      set(h.bp.frequency, (180 + 30 * uA) * h.ratio, 0.5);
       set(h.gain.gain, howlAmt * 0.45 * clamp01(0.55 + 0.45 * wobble(t * 0.37, 2 + i * 3)) ** 2, 0.5);
     }
 

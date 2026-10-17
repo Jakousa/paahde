@@ -259,7 +259,7 @@ renderer.setAnimationLoop((time) => {
   dust.update(frameDt, orbit.camera.position);
   tyreDust.update(frameDt);
   base.update();
-  windSound.update(frameDt, orbit.camera.position, orbit.yaw);
+  windSound.update(frameDt, orbit.camera.position, orbit.yaw, s);
   footsteps.listener(orbit.camera.position, orbit.yaw);
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
