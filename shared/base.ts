@@ -26,13 +26,13 @@ export const W = 1.1;
 /** Entrance hut, inner: from the back wall to the door, ceiling height, door half width. */
 export const HUT = { z0: -3.0, z1: 2.0, h: 2.7, door: 0.7 };
 /** Stairs: top edge (the landing ends here), steps (rise, run), bottom = the bunker floor. */
-export const STAIRS = { z: 0.6, n: 22, rise: 0.25, run: 0.3 };
+export const STAIRS = { z: 0.6, n: 32, rise: 0.25, run: 0.3 };
 /** Bunker floor height (local). */
 export const FLOOR = -STAIRS.n * STAIRS.rise;
 /** Hallway ends here, where the room begins; its ceiling height above the floor. */
 export const HALL = { z: -12, h: 2.6 };
 /** Main room, inner: half width, far wall, ceiling height above the floor. */
-export const ROOM = { w: 8, z: -28, h: 4 };
+export const ROOM = { w: 8, z: -28, h: 6 };
 /** The room's centre: the pump stands here, under the skylight. */
 export const ROOM_Z = (HALL.z + ROOM.z) / 2;
 /** Skylight shaft: half width of the opening, collar half width (outer) and height above the pad. */
