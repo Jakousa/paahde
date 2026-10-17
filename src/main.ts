@@ -31,6 +31,7 @@ import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { footsteps } from './footsteps';
+import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
@@ -257,7 +258,10 @@ renderer.setAnimationLoop((time) => {
     // Stations don't do anything yet.
     if (use) hud.toast(STATIONS[station].kind === 'workbench' ? 'Nothing to craft yet' : 'Nothing to take apart yet');
     else if (tend) net.tend(bed);
-    else if (target && !net.pickup(target)) hud.toast('Backpack full');
+    else if (target) {
+      if (net.pickup(target)) pickupSound.play();
+      else hud.toast('Backpack full');
+    }
   }
   const targeted = use !== null || tend !== null || target !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted);

@@ -458,6 +458,10 @@ steps (0.4 s slots) sliced from InspectorJ's "Footsteps, Concrete, A" on Freesou
 quiet and peaky, so at −1.6 dBTP the sprite only reaches −30 LUFS; its gain is 0.45 (vs 0.2) so both
 surfaces walk at about the same loudness.
 
+Picking up scrap plays `public/audio/pickup.mp3` (`src/pickupSound.ts`), a metal latch from Freesound
+(CC0) trimmed to its main hit and levelled to −23 LUFS. Local only, played as you press F; GAIN 0.2
+keeps it quiet, about as loud as your own steps, with ±6% pitch.
+
 All sounds now go through `src/audio.ts`: one AudioContext, the volume slider as master gain, and the
 limiter. New sounds connect to `audio.out` (or use `audio.onStart`).
   Volume slider in the top-right corner (default 0.4, remembered per browser); `dbg.wind.override` is handy for tuning.
