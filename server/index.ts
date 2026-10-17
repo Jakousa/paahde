@@ -3,7 +3,7 @@
 import { createServer } from 'node:http';
 import sirv from 'sirv';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { DT, spawnState, step, TICK_RATE, type PlayerState } from '../shared/sim.ts';
+import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 
@@ -21,6 +21,7 @@ type Player = {
   browserId: string;
   color: number;
   state: PlayerState;
+  yaw: number; // last quantized camera yaw, reused while idle
   ack: number; // last applied input seq
   tokens: number; // input rate limiter: refills at TICK_RATE/s, so inputs can't speed up time
   lastInputAt: number;
@@ -62,7 +63,7 @@ wss.on('connection', (ws) => {
     }
     const p = players.get(ws);
     if (msg.t === 'hello' && !p) return join(ws, msg.browserId);
-    if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input);
+    if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw);
   });
   ws.on('close', () => {
     const p = players.get(ws);
@@ -78,9 +79,9 @@ function join(ws: WebSocket, browserId: unknown) {
   if (typeof browserId !== 'string' || !UUID.test(browserId)) return ws.close(1008, 'bad browserId');
   const row = db.getPlayer(browserId);
   const color = row?.color ?? Math.floor(Math.random() * 0xffffff);
-  const state = row ? { ...spawnState(), x: row.x, y: row.y } : spawnState();
+  const state = row ? spawnState(row.x, row.z) : spawnState();
   const p: Player = {
-    id: nextId++, browserId, color, state, ack: 0,
+    id: nextId++, browserId, color, state, yaw: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, ws, alive: true,
   };
   players.set(ws, p);
@@ -88,14 +89,16 @@ function join(ws: WebSocket, browserId: unknown) {
   send(ws, { t: 'welcome', id: p.id, state, color });
 }
 
-function onInput(p: Player, seq: unknown, input: unknown) {
+function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown) {
   if (typeof seq !== 'number' || typeof input !== 'number' || seq <= p.ack) return;
+  if (!Number.isInteger(yaw) || (yaw as number) < 0 || (yaw as number) >= YAW_STEPS) return;
   p.ack = seq;
   p.lastInputAt = Date.now();
   // Over the rate limit: acknowledge but don't simulate, so the client gets corrected.
   if (p.tokens < 1) return;
   p.tokens -= 1;
-  p.state = step(p.state, input & 7);
+  p.yaw = yaw as number;
+  p.state = step(p.state, input & INPUT_MASK, p.yaw);
 }
 
 // Fixed-rate server loop: refill input tokens, simulate idle players, broadcast snapshots.
@@ -108,7 +111,7 @@ setInterval(() => {
   for (const p of players.values()) {
     p.tokens = Math.min(MAX_INPUT_BURST, p.tokens + elapsed * TICK_RATE);
     if (Date.now() - p.lastInputAt > IDLE_MS) {
-      for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) p.state = step(p.state, 0);
+      for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) p.state = step(p.state, 0, p.yaw);
     } else {
       p.idleAccum = 0;
     }
@@ -129,7 +132,7 @@ function broadcast(time: number) {
 // must stay well below anything visible.
 function round(s: PlayerState): PlayerState {
   const r = (n: number) => Math.round(n * 1e4) / 1e4;
-  return { ...s, x: r(s.x), y: r(s.y), vx: r(s.vx), vy: r(s.vy) };
+  return { ...s, x: r(s.x), y: r(s.y), z: r(s.z), vx: r(s.vx), vy: r(s.vy), vz: r(s.vz), facing: r(s.facing) };
 }
 
 function send(ws: WebSocket, msg: ServerMsg) {
@@ -137,7 +140,7 @@ function send(ws: WebSocket, msg: ServerMsg) {
 }
 
 function save(p: Player) {
-  db.savePlayer({ id: p.browserId, color: p.color, x: p.state.x, y: p.state.y });
+  db.savePlayer({ id: p.browserId, color: p.color, x: p.state.x, z: p.state.z });
 }
 
 setInterval(() => players.forEach(save), SAVE_INTERVAL_MS);

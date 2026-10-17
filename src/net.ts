@@ -9,7 +9,9 @@ import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 
 const INTERP_MS = 100;
 
-export type RemotePlayer = { id: number; color: number; x: number; y: number; vx: number; grounded: boolean };
+export type RemotePlayer = {
+  id: number; color: number; x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
+};
 
 type Snapshot = { time: number; players: Map<number, PlayerSnap> };
 
@@ -22,10 +24,11 @@ export class Net {
   /** Visual offset after a correction, decays to zero so corrections don't look like teleports. */
   errorX = 0;
   errorY = 0;
+  errorZ = 0;
 
   private ws?: WebSocket;
   private seq = 0;
-  private pending: { seq: number; input: number }[] = [];
+  private pending: { seq: number; input: number; yaw: number }[] = [];
   private snapshots: Snapshot[] = [];
   private clockOffset?: number; // serverTime - localTime
   private retryMs = 500;
@@ -40,13 +43,13 @@ export class Net {
     return this.id !== 0;
   }
 
-  /** Called once per fixed tick with the sampled input. */
-  tick(input: number) {
+  /** Called once per fixed tick with the sampled input and quantized camera yaw. */
+  tick(input: number, yaw: number) {
     if (!this.connected) return;
     this.seq++;
-    this.me = step(this.me, input);
-    this.pending.push({ seq: this.seq, input });
-    this.send({ t: 'input', seq: this.seq, input });
+    this.me = step(this.me, input, yaw);
+    this.pending.push({ seq: this.seq, input, yaw });
+    this.send({ t: 'input', seq: this.seq, input, yaw });
   }
 
   /** Decay the visual error and interpolate remote players for this render frame. */
@@ -54,6 +57,7 @@ export class Net {
     const k = Math.exp(-dtSeconds * 15);
     this.errorX *= k;
     this.errorY *= k;
+    this.errorZ *= k;
     return this.interpolate(performance.now() + (this.clockOffset ?? 0) - INTERP_MS);
   }
 
@@ -104,14 +108,15 @@ export class Net {
   private reconcile(server: PlayerState, ack: number) {
     this.pending = this.pending.filter((p) => p.seq > ack);
     let s: PlayerState = {
-      x: server.x, y: server.y, vx: server.vx, vy: server.vy,
+      x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld,
     };
-    for (const p of this.pending) s = step(s, p.input);
+    for (const p of this.pending) s = step(s, p.input, p.yaw);
     this.errorX += this.me.x - s.x;
     this.errorY += this.me.y - s.y;
+    this.errorZ += this.me.z - s.z;
     // Big jumps (respawn, long lag) should snap, not glide.
-    if (Math.hypot(this.errorX, this.errorY) > 3) this.errorX = this.errorY = 0;
+    if (Math.hypot(this.errorX, this.errorY, this.errorZ) > 3) this.errorX = this.errorY = this.errorZ = 0;
     this.me = s;
   }
 
@@ -130,8 +135,8 @@ export class Net {
       const pick = t < 0.5 ? pa : pb; // discrete fields come from the nearer snapshot
       out.push({
         id: pb.id, color: pb.color,
-        x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t,
-        vx: pick.vx, grounded: pick.grounded,
+        x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
+        facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), grounded: pick.grounded,
       });
     }
     return out;
@@ -140,6 +145,11 @@ export class Net {
   private send(msg: ClientMsg) {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
+}
+
+function lerpAngle(a: number, b: number, t: number): number {
+  const d = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  return a + d * t;
 }
 
 export function getBrowserId(): string {
