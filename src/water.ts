@@ -279,8 +279,10 @@ export class Survival {
       this.toastEl.style.opacity = '0';
     }
 
-    // Heat meter: ease towards the server's value (updates come at ~2 Hz while it moves); jump on sips.
-    this.shown = Math.abs(w.heat - this.shown) > 10 ? w.heat : this.shown + (w.heat - this.shown) * (1 - Math.exp(-dt * 3));
+    // Heat meter: ease towards the server's value (updates come at ~2 Hz while it moves). A sip drains
+    // it visibly over about a second; only a big jump up (joining with saved heat) snaps.
+    const drop = this.shown - w.heat;
+    this.shown = drop < -10 ? w.heat : this.shown + (w.heat - this.shown) * (1 - Math.exp(-dt * (drop > 10 ? 4 : 3)));
     const f = Math.max(0, Math.min(1, this.shown / HEAT_MAX));
     this.fillEl.style.transform = `scaleX(${f})`;
     // Cool blue while there's little heat, warming through amber to red as it fills.
