@@ -2,13 +2,17 @@
 // and a sand puff whenever a stroke lands (ours predicted, or another player's from the server).
 import * as THREE from 'three/webgpu';
 import { DIG_RADIUS, digTarget, type Point } from '../shared/dig.ts';
-import { normalAt } from '../shared/terrain.ts';
+import { heightAt } from '../shared/terrain.ts';
 import { uAt, ustarFrom10, wind } from './world/wind.ts';
 
 const MAX_PARTICLES = 160;
 const PER_PUFF = 18;
 const LIFE = 0.9;
 const GRAVITY = -9;
+// The target ring: a thin faint line draped on the sand (a flat disc would cut into curved dunes).
+const RING_SEGS = 48;
+const RING_IN = DIG_RADIUS * 0.95;
+const RING_LIFT = 0.025;
 
 type Particle = { x: number; y: number; z: number; vx: number; vy: number; vz: number; age: number; size: number };
 
@@ -17,16 +21,24 @@ export class DigFx {
   private grains: THREE.InstancedMesh;
   private particles: Particle[] = [];
   private dummy = new THREE.Object3D();
-  private normal = { x: 0, y: 1, z: 0 };
-  private up = new THREE.Vector3(0, 1, 0);
-  private n = new THREE.Vector3();
+  private ringPos: Float32Array;
 
   constructor(scene: THREE.Scene) {
     const ringMat = new THREE.MeshBasicNodeMaterial({
-      color: 0xfff2d0, transparent: true, opacity: 0.45, depthWrite: false,
+      color: 0xfff2d0, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide,
       polygonOffset: true, polygonOffsetFactor: -4,
     });
-    this.ring = new THREE.Mesh(new THREE.RingGeometry(DIG_RADIUS * 0.82, DIG_RADIUS, 40).rotateX(-Math.PI / 2), ringMat);
+    const ringGeo = new THREE.BufferGeometry();
+    this.ringPos = new Float32Array((RING_SEGS + 1) * 2 * 3);
+    ringGeo.setAttribute('position', new THREE.BufferAttribute(this.ringPos, 3).setUsage(THREE.DynamicDrawUsage));
+    const idx: number[] = [];
+    for (let i = 0; i < RING_SEGS; i++) {
+      const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+      idx.push(a, c, b, b, c, d);
+    }
+    ringGeo.setIndex(idx);
+    this.ring = new THREE.Mesh(ringGeo, ringMat);
+    this.ring.frustumCulled = false;
     this.ring.visible = false;
     this.ring.renderOrder = 2;
     scene.add(this.ring);
@@ -71,9 +83,16 @@ export class DigFx {
     const target = locked ? digTarget(feet, yawQ, pitchQ) : null;
     this.ring.visible = target !== null;
     if (target) {
-      normalAt(target.x, target.z, this.normal);
-      this.ring.position.set(target.x, target.y + 0.03, target.z);
-      this.ring.quaternion.setFromUnitVectors(this.up, this.n.set(this.normal.x, this.normal.y, this.normal.z));
+      const pos = this.ringPos;
+      for (let i = 0; i <= RING_SEGS; i++) {
+        const a = (i / RING_SEGS) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+        for (let k = 0; k < 2; k++) {
+          const r = k ? DIG_RADIUS : RING_IN;
+          const x = target.x + c * r, z = target.z + s * r, o = (i * 2 + k) * 3;
+          pos[o] = x; pos[o + 1] = heightAt(x, z) + RING_LIFT; pos[o + 2] = z;
+        }
+      }
+      this.ring.geometry.attributes.position.needsUpdate = true;
     }
 
     let n = 0;
