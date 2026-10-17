@@ -227,3 +227,51 @@ Not to be confused with `sliding` on the avatar/`Slide` clip, which is slipping 
 - **Crouch:** Ctrl on the ground without sliding (too slow to start one, in cooldown, or the slide ran out)
   caps speed at 3 m/s (`crouching` in state; clips `Crouch` / `CrouchWalk`, camera drops 0.45 m).
 - Tuning knobs are the `SLIDE_*` constants at the top of `sim.ts`. Untested with real multiplayer latency.
+
+## Performance and network jitter
+
+"Laggy on live, fine locally" turned out to be two separate problems.
+
+**Network jitter** (`6760e65`). Ping to herkku.org from home Wi-Fi: 11 ms best, 150+ ms spikes. The server
+sends snapshots every ~49 ms like clockwork, but they arrive in bunches with 100–360 ms gaps. The prediction
+itself was fine (zero corrections on a steady link). What broke:
+- The server's input rate limiter only banked 15 inputs (250 ms). After a longer stall, the delayed inputs
+  arrive together and the rest were acked without being simulated, so the client snapped back up to ~1 m.
+  `MAX_INPUT_BURST` is now one second (`TICK_RATE`); the long-run rate is still capped at 60/s.
+- The clock offset averaged jittery arrival times, and remote players were drawn a fixed 100 ms in the past,
+  so every late snapshot froze them and then made them jump (~4% of frames on live, now ~0.2%). The clock
+  now comes from the least-delayed snapshot, and the interpolation delay is 100 ms plus measured jitter
+  (capped at +300 ms, eased so it never jumps).
+- An old browser tab was itself part of "laggy"; a fresh browser helped. Worth trying first.
+
+**GPU** (`feb02e0`, `753232e`, `319f678`, `b022959`). The frame is bound by shading ground pixels: looking at
+the sky runs at 120 fps, looking at the sand ran at 12–25 fps on an M2 Pro with a full-screen retina window.
+Measured GPU time in a 1280×800 window (`trackTimestamp`, best of 3):
+
+| Setting | GPU ms/frame |
+|---|---|
+| 2× retina ratio, MSAA (what we had) | ~32 |
+| 2×, no MSAA | ~20 |
+| 2×, no shadows | ~17 |
+| 1.5× | ~13.5 |
+| 1×, no MSAA | ~8 |
+
+The drift sheet and the CPU side cost next to nothing (the CPU sits ~80% idle). What changed:
+- **Dynamic resolution** (`src/resolution.ts`): the render pixel ratio follows the frame time. When slow it
+  drops to the ratio that should fit (cost ∝ ratio²); when steady it creeps up 10% every 2 s, but never past a
+  ratio that failed recently (that ceiling relaxes over ~1 min), so looking at the sky and back doesn't pump it.
+  Range 0.5–1×. The info line shows it: `60 fps @ 0.91x`.
+- **Lower defaults:** at most 1× (one pixel per CSS pixel), 1024 shadow maps per cascade (was 2048), one
+  sand speckle layer (the ~1 cm one is gone). The look should be stylised, not ultra-realistic.
+- **Sand shader:** the ripple warp's gradient comes from screen-space derivatives (`dFdx`/`dFdy`) instead of
+  two extra warp evaluations, saving four noise calls per ground pixel.
+- An FPS counter is at the start of the top-left info line.
+
+Still expensive per ground pixel, if more is needed: ~10 noise calls in the sand shader, four shadow cascades
+sampled unconditionally (`cascades.ts`), heat haze, lens flare and film grain in `post.ts`. Fewer cascades or
+dropping haze/flare/grain is an art-direction call (`docs/look.md`).
+
+**Measuring:** GPU numbers are only meaningful with no other game tab open; a running tab shares the GPU and
+made timings swing 4× between identical runs. Headless Chrome (`--enable-gpu --use-angle=metal`, muted) gets
+WebGPU on the Mac without stealing focus. To test the netcode against live without a browser, `src/net.ts`
+runs under Node with `location`, `__BUILD_SHA__` and `localStorage` stubbed on `globalThis`.

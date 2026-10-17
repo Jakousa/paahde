@@ -20,7 +20,7 @@ const MOON_TAKES_OVER = THREE.MathUtils.degToRad(-3);
 /** Far end of each cascade (m from the camera). Past the last one the haze is ~95%, so no shadows. */
 const CASCADE_ENDS = [20, 80, 320, 1600];
 const SHADOW_FAR = CASCADE_ENDS[CASCADE_ENDS.length - 1];
-const SHADOW_MAP = 2048;
+const SHADOW_MAP = 1024; // per cascade; 2048 looked crisper but cost GPU time on every frame
 /** How far sunwards of a slice casters are still drawn: a 30 m crest at 10° throws a ~170 m shadow. */
 const LIGHT_MARGIN = 300;
 /** Depth bias and normal offset, in texels of each cascade (normal-offset shadows, Holbert 2011). */

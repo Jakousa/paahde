@@ -9,6 +9,7 @@
 // - Ctrl slide (Titanfall-style): sprint into it for a speed burst, then coast on low friction. Downhill
 //   speeds you up, uphill bleeds it off; steering only bends your heading. Jump out of it to keep the speed.
 // - Soft sand: you build up and lose speed a bit slowly (momentum), and hard landings bog you down briefly.
+import { BASE_SPAWN, baseCeiling, collideBase } from './base.ts';
 import { collideScrap } from './scrap.ts';
 import { heightAt, WORLD_HALF } from './terrain.ts';
 
@@ -60,7 +61,8 @@ const HARD_LANDING = 13; // impact speed (m/s) above which a landing bogs you do
 const LAND_SLOW = 0.4; // speed factor right after a hard landing, recovering linearly
 const MAX_LAND_TICKS = 24;
 
-export const SPAWN = { x: 0, z: 0 };
+/** New players start in front of the home base's door. */
+export const SPAWN = BASE_SPAWN;
 
 export type PlayerState = {
   x: number;
@@ -253,11 +255,18 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
   c.vx = vx;
   c.vz = vz;
   const scrapTop = collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP);
+  const baseTop = collideBase(c, y, s.y, PLAYER_RADIUS, STEP_UP);
   vx = c.vx;
   vz = c.vz;
   const x = clamp(c.x, -WORLD_HALF, WORLD_HALF);
   const z = clamp(c.z, -WORLD_HALF, WORLD_HALF);
-  const ground = Math.max(heightAt(x, z), scrapTop);
+  const ground = Math.max(heightAt(x, z), scrapTop, baseTop);
+  // Under the roof: bump your head.
+  const ceiling = baseCeiling(x, z, PLAYER_HEIGHT);
+  if (y > ceiling) {
+    y = ceiling;
+    if (vy > 0) vy = 0;
+  }
   let grounded = false;
   // Snap to the ground when on or just above it (walking downhill shouldn't launch you).
   // The snap distance grows with speed so sliding/sprinting down a steep face stays glued.

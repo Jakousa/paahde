@@ -14,7 +14,7 @@ import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { Post } from './post';
 import * as env from './world/env';
-import { addPalms } from './world/palms';
+import { Base } from './world/base';
 import { Scrap } from './world/scrap';
 import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
@@ -24,12 +24,11 @@ import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { footsteps } from './footsteps';
+import { DynamicResolution } from './resolution';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
-// The frame is bound by shading ground pixels: at a 2x retina ratio it took ~32 ms on the GPU, at 1.5x ~14 ms.
-const MAX_PIXEL_RATIO = 1.5;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
+const resolution = new DynamicResolution(renderer); // sets the pixel ratio, then keeps it near 60 fps
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
@@ -38,7 +37,7 @@ const scene = new THREE.Scene();
 const orbit = new FirstPersonCamera(renderer.domElement);
 const sky = new Sky(scene);
 const terrain = new Terrain(scene);
-addPalms(scene);
+const base = new Base(scene);
 const scrap = new Scrap(scene);
 const dust = new Dust(scene);
 const post = new Post(renderer, scene, orbit.camera);
@@ -46,7 +45,7 @@ const blownSand = new BlownSand(scene);
 
 const windSound = new WindSound();
 // Debug handle for screenshots/tuning from the console: open with ?debug.
-if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand, dust, windSound } });
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound } });
 
 const net = new Net(getBrowserId());
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod));
@@ -82,8 +81,18 @@ const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
 let accumulator = 0;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
+// FPS for the info line: frames counted over half-second windows.
+let fps = 0;
+let fpsFrames = 0;
+let fpsSince = performance.now();
 
 renderer.setAnimationLoop((time) => {
+  fpsFrames++;
+  if (time - fpsSince >= 500) {
+    fps = Math.round((fpsFrames * 1000) / (time - fpsSince));
+    fpsFrames = 0;
+    fpsSince = time;
+  }
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);
   if (!joined && !net.connected) {
@@ -91,6 +100,7 @@ renderer.setAnimationLoop((time) => {
     return;
   }
   joined = true;
+  resolution.update(frameDt);
 
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
   accumulator += frameDt;
@@ -144,6 +154,7 @@ renderer.setAnimationLoop((time) => {
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
   dust.update(frameDt, orbit.camera.position);
+  base.update(frameDt, wind.storm);
   windSound.update(frameDt, orbit.camera.position, orbit.yaw);
   footsteps.listener(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
@@ -151,6 +162,6 @@ renderer.setAnimationLoop((time) => {
   hud.setTarget(target);
   if (takePickup() && target) net.pickup(target);
 
-  info.textContent = `${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
+  info.textContent = `${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();
 });

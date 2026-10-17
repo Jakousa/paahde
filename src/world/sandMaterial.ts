@@ -16,6 +16,7 @@
 // Tunables are exported TSL uniforms (`sand.*`): set `.value` at runtime, no recompile needed.
 import * as THREE from 'three/webgpu';
 import {
+  abs,
   attribute,
   cameraPosition,
   cameraWorldMatrix,
@@ -24,6 +25,8 @@ import {
   float,
   floor,
   fract,
+  dFdx,
+  dFdy,
   fwidth,
   length,
   max,
@@ -166,14 +169,20 @@ function buildSurface(): SandSurface {
 
   const rippleMask = flatEnough.mul(float(1).sub(slip)).mul(float(1).sub(crestBand));
 
-  // Domain warp (metres along the wind) so crests meander and bend; gradient by finite differences
-  // so the ripple normal follows the bent crest direction.
-  const warpAt = (c: V2): F =>
-    mx_noise_float(c.mul(0.07)).mul(3.2).add(mx_noise_float(c.mul(0.31).add(19.1)).mul(0.55));
-  const e = 0.3;
-  const w0 = warpAt(xz);
-  const wdx = warpAt(xz.add(vec2(e, 0))).sub(w0).div(e);
-  const wdz = warpAt(xz.add(vec2(0, e))).sub(w0).div(e);
+  // Domain warp (metres along the wind) so crests meander and bend. Its gradient makes the ripple
+  // normal follow the bent crest direction: taken from screen-space derivatives (the warp varies over
+  // metres, so it is linear across a pixel quad) instead of two more warp evaluations, which cost four
+  // noise calls per pixel and were the bulk of the sand shader.
+  const w0 = mx_noise_float(xz.mul(0.07)).mul(3.2).add(mx_noise_float(xz.mul(0.31).add(19.1)).mul(0.55));
+  const px = dFdx(xz);
+  const py = dFdy(xz);
+  const wx = dFdx(w0);
+  const wy = dFdy(w0);
+  // Solve [px; py]·∇w = [wx; wy] for the world-space gradient; edge-on (det ≈ 0) falls back to flat.
+  const det = px.x.mul(py.y).sub(px.y.mul(py.x));
+  const safe = select(abs(det).greaterThan(1e-10), det, float(1e10));
+  const wdx = wx.mul(py.y).sub(wy.mul(px.y)).div(safe).clamp(-1, 1);
+  const wdz = px.x.mul(wy).sub(py.x.mul(wx)).div(safe).clamp(-1, 1);
   const along = dot(xz, wind);
   const across = dot(xz, perp);
   const dir = normalize(vec2(wind.x.add(wdx), wind.y.add(wdz)));
@@ -197,16 +206,12 @@ function buildSurface(): SandSurface {
 
   // Albedo: large-scale red/gold patches, slip faces darker, ripple troughs a hair darker.
   const patch = saturate(mx_fractal_noise_float(vec3(p.x.mul(0.006), 0, p.z.mul(0.006)), 3).mul(0.9).add(0.5));
-  // Grain speckle (~1 cm), faded once cells get near pixel size.
-  const gq = p.mul(90);
-  const grainFade = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(gq))));
-  // Second, coarser speckle (~4 cm) keeps mid-distance sand matte and gritty instead of smooth.
+  // Grain speckle (~4 cm) keeps nearby sand matte and gritty instead of smooth, faded once cells get
+  // near pixel size. (A finer ~1 cm layer was dropped: a noise call per pixel for detail few notice.)
   const gq2 = p.mul(24);
   const grainFade2 = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(gq2))));
   // Smooth value noise rather than cell noise: cell noise reads as square pixels up close.
-  const grain = mx_noise_float(gq).mul(0.2).mul(grainFade)
-    .add(mx_noise_float(gq2.add(7.1)).mul(0.12).mul(grainFade2))
-    .add(1);
+  const grain = mx_noise_float(gq2.add(7.1)).mul(0.16).mul(grainFade2).add(1);
   const albedo = mix(sand.albedoRed, sand.albedoGold, patch)
     .mul(grain)
     .mul(float(1).sub(slip.mul(0.12)))

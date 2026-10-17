@@ -16,6 +16,7 @@
 // ground up to h metres above it. Pieces lower than MIN_HITBOX are walked over.
 import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
 import { yawFromQ } from './sim.ts';
+import { BASE_SPAWN, padBlend } from './base.ts';
 import { baseHeight, heightAt, WORLD_HALF, WORLD_SEED } from './terrain.ts';
 
 /** Grid cell size (m); each cell holds at most one pile. */
@@ -95,6 +96,7 @@ function flatEnough(x: number, z: number): boolean {
   return gx * gx + gz * gz < MAX_GRAD2;
 }
 
+const SPAWN_IX = Math.floor(BASE_SPAWN.x / SCRAP_CELL), SPAWN_IZ = Math.floor(BASE_SPAWN.z / SCRAP_CELL);
 const cache = new Map<string, ScrapPiece[]>();
 const NONE: ScrapPiece[] = [];
 
@@ -108,14 +110,14 @@ export function scrapPieces(ix: number, iz: number): ScrapPiece[] {
 
 function generate(ix: number, iz: number): ScrapPiece[] {
   const r = rng(ix, iz);
-  // The spawn cell always gets one, so new players see scrap straight away (≥ 6 m from the spawn).
-  if (r() >= DENSITY && !(ix === 0 && iz === 0)) return NONE;
+  // The spawn cell always gets one, so new players see scrap straight away.
+  if (r() >= DENSITY && !(ix === SPAWN_IX && iz === SPAWN_IZ)) return NONE;
   // A few candidate centres; keep the first on reasonably flat ground (no piles on slip faces).
   let px = 0, pz = 0, ok = false;
   for (let t = 0; t < 4 && !ok; t++) {
     px = (ix + 0.1 + 0.8 * r()) * SCRAP_CELL;
     pz = (iz + 0.1 + 0.8 * r()) * SCRAP_CELL;
-    ok = Math.abs(px) < WORLD_HALF - 10 && Math.abs(pz) < WORLD_HALF - 10 && flatEnough(px, pz);
+    ok = Math.abs(px) < WORLD_HALF - 10 && Math.abs(pz) < WORLD_HALF - 10 && flatEnough(px, pz) && padBlend(px, pz) > 0.3;
   }
   if (!ok) return NONE;
   const out: ScrapPiece[] = [];
