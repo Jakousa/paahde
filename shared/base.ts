@@ -32,7 +32,7 @@ export const FLOOR = -STAIRS.n * STAIRS.rise;
 /** Hallway ends here, where the room begins; its ceiling height above the floor. */
 export const HALL = { z: -12, h: 2.6 };
 /** Main room, inner: half width, far wall, ceiling height above the floor. */
-export const ROOM = { w: 5, z: -22, h: 4 };
+export const ROOM = { w: 8, z: -28, h: 4 };
 /** The room's centre: the pump stands here, under the skylight. */
 export const ROOM_Z = (HALL.z + ROOM.z) / 2;
 /** Skylight shaft: half width of the opening, collar half width (outer) and height above the pad. */
@@ -51,7 +51,7 @@ export function stairY(lz: number): number {
 }
 
 /** The pad around the base is this flat, then blends back into the dunes (shared/terrain.ts). */
-const PAD = { x0: -12, x1: 12, z0: -28, z1: 14, blend: 24 };
+const PAD = { x0: -14, x1: 14, z0: -34, z1: 14, blend: 24 };
 /** The pad's sand lies just under the entrance floor so they don't z-fight. */
 const PAD_Y = BASE.y - 0.06;
 
@@ -126,6 +126,16 @@ export type BasePiece = { glb: string; node: string; x: number; z: number; fx: n
 export const BASE_PIECES: BasePiece[] = [
   { glb: 'bunker', node: 'pump', x: 0, z: ROOM_Z, fx: 0, fz: 1, y: FLOOR, hx: 0.35, hz: 0.35, h: 1.2 },
 ];
+const PUMP = BASE_PIECES[0];
+
+/** The canteen fills only at the pump: feet within this (m, horizontally) of it, down on the bunker floor. */
+export const PUMP_REACH = 1.6;
+
+/** True for someone whose feet are at world (x, y, z) at the pump (+ margin), not on the skylight above it. */
+export function atPump(x: number, y: number, z: number, margin = 0): boolean {
+  const dx = x - BASE.x - PUMP.x, dz = z - BASE.z - PUMP.z, r = PUMP_REACH + margin;
+  return y - BASE.y < FLOOR + 1 + margin && dx * dx + dz * dz < r * r;
+}
 
 /**
  * Vertical capsule in local coordinates: segment centre ± half·(ax, az), radius r, spanning heights

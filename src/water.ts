@@ -4,8 +4,8 @@
 //
 // The server owns the numbers; this only plays the actions and asks. Key 1 takes the canteen out or puts
 // it away (2–4 select the empty slots). With it out, holding left mouse / E for DRINK_MS drinks one sip
-// (no digging while your hands are full, see `tools` in src/input.ts), and F in the base refills it.
-import { inBase } from '../shared/base.ts';
+// (no digging while your hands are full, see `tools` in src/input.ts), and F at the base's pump refills it.
+import { atPump } from '../shared/base.ts';
 import { CANTEEN_SIPS, DRINK_MS, FILL_MS, WATER_LOW, WATER_MAX } from '../shared/water.ts';
 import { tools, useHeld } from './input';
 import type { Net } from './net';
@@ -29,8 +29,8 @@ const TEMP_RED = [255, 92, 60];
 const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
 const DEATH_MS = 3000;
 const TOAST_MS = 1800;
-/** Leaving the base by more than this (m) cancels a refill. Under the server's FILL_SLACK. */
-const FILL_CANCEL_SLACK = 1;
+/** Walking this far (m) out of the pump's reach cancels a refill. Under the server's FILL_SLACK. */
+const FILL_CANCEL_SLACK = 0.5;
 
 const css = `
 #survival { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex;
@@ -201,7 +201,7 @@ export class Survival {
     const w = this.net.water;
     const dead = now < this.deadUntil;
     const holding = playerHands.held === 'canteen';
-    const atBase = inBase(pos.x, pos.y, pos.z);
+    const atBase = atPump(pos.x, pos.y, pos.z);
     tools.blocked = holding;
 
     // Drinking: hold the use button for DRINK_MS; letting go early spills nothing and costs nothing.
@@ -216,7 +216,7 @@ export class Survival {
       }
     } else if (holding && use && !this.needRelease && !playerHands.filling && !dead) {
       this.needRelease = true;
-      if (w.sips <= 0) this.toast(atBase ? 'Canteen empty — press F to fill it' : 'Canteen empty — fill it at the base');
+      if (w.sips <= 0) this.toast(atBase ? 'Canteen empty — press F to fill it' : 'Canteen empty — fill it at the pump in the base');
       else if (w.water >= WATER_MAX - 0.5) this.toast("You're not thirsty");
       else {
         playerHands.drinking = true;
@@ -224,9 +224,9 @@ export class Survival {
       }
     }
 
-    // Refilling: one F press in the base, takes FILL_MS; walking out or putting the canteen away cancels.
+    // Refilling: one F press at the pump, takes FILL_MS; walking out or putting the canteen away cancels.
     if (playerHands.filling) {
-      if (!holding || dead || !inBase(pos.x, pos.y, pos.z, FILL_CANCEL_SLACK)) this.cancel();
+      if (!holding || dead || !atPump(pos.x, pos.y, pos.z, FILL_CANCEL_SLACK)) this.cancel();
       else if (now - this.actionAt >= FILL_MS) {
         this.cancel();
         this.net.fill();
@@ -245,7 +245,7 @@ export class Survival {
       if (playerHands.filling) html = `Filling canteen…<span class="prog"></span>`;
       else if (playerHands.drinking) html = `Drinking…<span class="prog"></span>`;
       else if (atBase) html = `<kbd>F</kbd>Fill canteen`;
-      else if (w.sips <= 0) html = 'Canteen empty — fill it at the base';
+      else if (w.sips <= 0) html = 'Canteen empty — fill it at the pump in the base';
     }
     if (html !== this.promptHtml) {
       this.promptHtml = html;

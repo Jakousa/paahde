@@ -3,7 +3,7 @@
 //
 // Heat drains water: the hotter it feels (shared/temperature.ts: air temperature by time of day, plus the
 // sun's bonus unless you're in shade, capped in the base), the faster, from nothing at COMFORT_TEMP up a
-// quartic curve. Sips from the canteen (inventory slot 1) put it back; the base refills the canteen.
+// quartic curve. Sips from the canteen (inventory slot 1) put it back; the pump in the base refills it.
 
 /** Full thirst bar. */
 export const WATER_MAX = 100;
@@ -26,8 +26,8 @@ export const FILL_MS = 1500;
 /** Server: minimum time between two sips / two refills (a little under the animations, for lag). */
 export const DRINK_COOLDOWN_MS = 1000;
 export const FILL_COOLDOWN_MS = 1200;
-/** Server: how far outside the base's footprint a refill is still accepted (m), for lag. */
-export const FILL_SLACK = 2;
+/** Server: how far beyond the pump's reach (shared/base.ts PUMP_REACH) a refill is still accepted (m), for lag. */
+export const FILL_SLACK = 1;
 /** Below this the HUD pulses and the screen edges glow with heat. */
 export const WATER_LOW = 20;
 

@@ -1,7 +1,7 @@
 // Server side of survival (shared/water.ts): drains each player's thirst bar by the felt temperature
 // (shared/temperature.ts; sun or shade from shared/shade.ts at the player's head), validates sips and
 // canteen refills, and says when a player has died of thirst (server/index.ts respawns them).
-import { inBase } from '../shared/base.ts';
+import { atPump, inBase } from '../shared/base.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { inSun } from '../shared/shade.ts';
@@ -95,9 +95,9 @@ export function drink(t: Thirst, now: number): boolean {
   return true;
 }
 
-/** Refill the canteen at the base (its supply is endless). False if not in the base or too soon. */
+/** Refill the canteen at the base's pump (its supply is endless). False if not at the pump or too soon. */
 export function fill(t: Thirst, s: PlayerState, now: number): boolean {
-  if (!inBase(s.x, s.y, s.z, FILL_SLACK) || now - t.lastFill < FILL_COOLDOWN_MS) return false;
+  if (!atPump(s.x, s.y, s.z, FILL_SLACK) || now - t.lastFill < FILL_COOLDOWN_MS) return false;
   t.lastFill = now;
   t.sips = CANTEEN_SIPS;
   t.sentAt = now;

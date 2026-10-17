@@ -25,7 +25,7 @@ export function outsideTerrainHoles(): Node<'bool'> {
 }
 
 /** Bounce light under the skylight: intensity at full daylight, and how far it reaches. */
-const BOUNCE = { intensity: 10, distance: 16 };
+const BOUNCE = { intensity: 14, distance: 22 };
 /** The bulb over the stairs (local position matches tools/blender/base/bunker.py BULB). */
 const BULB = { x: 0, y: 2.25, z: HUT.z0 + 0.25, intensity: 2, distance: 9 };
 /** Never quite dark: emissive fraction of each surface's own colour. */
