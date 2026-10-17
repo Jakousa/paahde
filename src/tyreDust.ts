@@ -28,7 +28,7 @@ class TyreDust {
     const m = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
     m.positionNode = instancedBufferAttribute(this.posAttr);
     const d = instancedBufferAttribute(this.dataAttr, 'vec2') as unknown as Node<'vec2'>;
-    m.colorNode = dustLight(0.8);
+    m.colorNode = dustLight(0.8).mul(vec3(1.0, 0.8, 0.56)); // tinted sandy, or the sky haze makes it read white
     // Soft, lumpy disc, as the storm puffs; seeded by the size, so it churns as it grows.
     const c = uv().sub(0.5);
     const lump = mx_noise_float(vec3(c.mul(3), d.y.mul(1.7))).mul(0.4).add(0.75);
