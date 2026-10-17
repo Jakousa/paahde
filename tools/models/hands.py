@@ -9,8 +9,8 @@
 #   CanteenWalk (0.73 s loop)  the same hold with the walk bob
 #   Drink (1.2 s one-shot)  raise the neck to the mouth, tip it up, two gulps, lower
 #   Fill (1.5 s one-shot)   canteen lowered forward and tipped, left palm under it, back
-#   TelescopeIdle (3 s loop)  spyglass held low-right in the right hand, objective up and forward, left arm
-#     lowered out of view
+#   TelescopeIdle (3 s loop)  collapsed spyglass held low-right in the right hand, pointing forward, left
+#     arm lowered out of view (the game slides the draw tubes out while raising, see telescope.py)
 #   TelescopeWalk (0.73 s loop)  the same hold with the walk bob
 #   TelescopeRaise (0.35 s one-shot)  from the TelescopeIdle pose up to the eye (play clamped; ends with
 #     the eyepiece ~10 cm ahead of the eye, just past the game's near plane after the viewmodel scale)
@@ -331,14 +331,14 @@ T_HAND = telescope_in_hand()
 
 
 def view_telescope(centre, yaw=0.0, tilt=0.0, roll=0.0):
-    """Telescope world matrix from its grip: roll about the tube, yaw about Z (+ = objective left), tilt
+    """Telescope world matrix from its origin: roll about the tube, yaw about Z (+ = objective left), tilt
     about world X (+ = objective up)."""
     return (Matrix.Translation(V(centre)) @ Matrix.Rotation(math.radians(tilt), 4, 'X') @
             Matrix.Rotation(math.radians(yaw), 4, 'Z') @ Matrix.Rotation(math.radians(roll), 4, 'Y'))
 
 
-# telescope poses: (grip x, y, z, yaw, tilt, roll)
-T_HOLD = (0.16, 0.34, -0.17, 38, 10, 70)
+# telescope poses: (origin x, y, z, yaw, tilt, roll)
+T_HOLD = (0.16, 0.34, -0.17, 22, 16, 30)
 # at the eye: eyepiece ~0.095 m ahead (the game scales the viewmodel 0.55 about the eye, near plane 0.05)
 T_EYE = (0.0, -TS.EYE_Y + 0.095, -0.004, 0, 0, 100)
 
@@ -367,7 +367,7 @@ def telescope_walk(p):
     return telescope_pose(T_HOLD, sway=rot((X, 2.5 * math.sin(2 * w)), (Y, 2.0 * math.sin(w)))), (0, 0, 0)
 
 
-T_RAISE = [(0.0, T_HOLD), (0.5, (0.08, 0.31, -0.10, 14, 12, 90)), (1.0, T_EYE)]
+T_RAISE = [(0.0, T_HOLD), (0.5, (0.08, 0.31, -0.10, 10, 12, 70)), (1.0, T_EYE)]
 
 
 def telescope_raise(p):
@@ -405,7 +405,7 @@ import bake  # noqa: E402
 
 bake.bake_atlas(body, 1024, S.OUT_DIR, tint_name='Tint', small=0, prefix='hands')
 CT.bake_and_export(can, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'canteen.glb'), CAN_AT)
-TS.bake_and_export(tel, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'telescope.glb'), TEL_AT)
+tel_parts = TS.bake_and_export(tel, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'telescope.glb'), TEL_AT)
 bpy.context.view_layer.update()
 can.parent = rig
 can.parent_type = 'BONE'
@@ -417,5 +417,5 @@ tel.parent_type = 'BONE'
 tel.parent_bone = 'RightHand'
 tel.matrix_parent_inverse = Matrix.Identity(4)
 tel.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ T_HAND
-bake.export(rig, [body, can, tel], OUT)
+bake.export(rig, [body, can, *tel_parts], OUT)
 print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can), 'TELESCOPE', tri_count(tel))

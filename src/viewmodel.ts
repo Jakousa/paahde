@@ -9,7 +9,8 @@
 // (the `Canteen` mesh, parented to the right hand bone, is shown only then). Missing clips fall back to the
 // empty-hand ones, a missing Canteen node just means no canteen. Spyglass: TelescopeIdle / TelescopeWalk,
 // and TelescopeRaise (to the eye, played while `playerHands.looking`) on the `Telescope` mesh; once it is
-// at the eye (`scoped`, src/telescope.ts) the hands are hidden behind the lens mask. Walk clips are phase-locked to the camera's
+// at the eye (`scoped`, src/telescope.ts) the hands are hidden behind the lens mask. It is carried
+// collapsed: its `TelescopeDraw1/2` child nodes slide out (DRAW_S) while raising and back in when lowered. Walk clips are phase-locked to the camera's
 // step phase so the hands bob in time with the head.
 //
 // Scaled down about the eye: the picture is identical (scaling about the projection centre doesn't change
@@ -36,6 +37,9 @@ const SWITCH_S = 0.22; // lower (or raise) time when changing what's held
 const WALK_PHASE = 0;
 /** Walk clip cycles per two steps: ½ swings the hands once every four steps, a calmer sway than the head bob. */
 const WALK_RATE = 0.5;
+/** Spyglass draw tubes: glTF z of TelescopeDraw1 / 2 when pushed in (telescope.py COLLAPSED), slide time. */
+const DRAW_IN = [-0.075, -0.14];
+const DRAW_S = 0.3;
 
 const params = new URLSearchParams(location.search);
 const forcedHold = params.get('hold') as Held | null;
@@ -50,6 +54,8 @@ export class ViewModel {
   private current: THREE.AnimationAction | null = null;
   private canteen: THREE.Object3D | null = null;
   private telescope: THREE.Object3D | null = null;
+  private draws: THREE.Object3D[] = [];
+  private drawn = 0; // spyglass draw tubes: 0 = pushed in, 1 = drawn out
   private tint: THREE.MeshStandardMaterial[] = [];
   private shown: Held = 'none';
   private lower = 1; // 0 = up in view, 1 = fully lowered (starts lowered and raises on load)
@@ -91,6 +97,8 @@ export class ViewModel {
     });
     this.canteen = model.getObjectByName('Canteen') ?? null;
     this.telescope = model.getObjectByName('Telescope') ?? null;
+    this.draws = ['TelescopeDraw1', 'TelescopeDraw2'].map((n) => model.getObjectByName(n)).filter((o) => !!o);
+    this.setDrawn(0);
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of clips) this.actions.set(clip.name, this.mixer.clipAction(clip));
     this.sway.add(model);
@@ -112,6 +120,12 @@ export class ViewModel {
   private applyHeld() {
     if (this.canteen) this.canteen.visible = this.shown === 'canteen';
     if (this.telescope) this.telescope.visible = this.shown === 'telescope';
+  }
+
+  private setDrawn(d: number) {
+    this.drawn = d;
+    const e = smooth(d);
+    this.draws.forEach((o, i) => (o.position.z = DRAW_IN[i] * (1 - e)));
   }
 
   private has(name: string) {
@@ -178,6 +192,8 @@ export class ViewModel {
     this.sway.position.set(-swayYaw * 0.04, 0, 0);
 
     if (!this.mixer) return;
+    const draw = this.shown === 'telescope' && playerHands.looking ? 1 : 0;
+    if (draw !== this.drawn) this.setDrawn(clamp(this.drawn + Math.sign(draw - this.drawn) * (dt / DRAW_S), 0, 1));
     const moving = pose.grounded && !pose.sliding && pose.speed > MOVING;
     let walk: string | null = null;
     if (forcedAnim && this.has(forcedAnim)) this.play(forcedAnim);

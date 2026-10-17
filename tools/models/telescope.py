@@ -10,7 +10,11 @@
 #
 # Local frame (Blender): origin on the axis at the grip (middle of the leather), tube along Y with the
 # objective (front) at +Y and the eyepiece at -Y, +Z up. In the exported glTF (Y up) the objective faces -Z
-# and the eyepiece +Z. ~0.33 m long, main barrel ~0.045 m thick.
+# and the eyepiece +Z. ~0.33 m long drawn out, main barrel ~0.045 m thick.
+#
+# The two draw tubes are child nodes `TelescopeDraw1` (wide tube + its collar) and `TelescopeDraw2` (thin
+# tube + eyepiece), modelled drawn out at position 0; moved COLLAPSED[i] along glTF +Z they nest inside the
+# barrel (~0.2 m long). The game slides them (src/viewmodel.ts).
 import math
 import os
 import sys
@@ -32,7 +36,8 @@ COLLAR1 = [(-0.051, 0.0136), (-0.049, 0.0170), (-0.040, 0.0174), (-0.038, 0.0186
 LEATHER = [(-0.030, 0.0196), (0.020, 0.0206), (0.094, 0.0214)]
 OBJECTIVE = [(0.090, 0.0216), (0.093, 0.0232), (0.100, 0.0230), (0.112, 0.0238), (0.124, 0.0252),
              (0.128, 0.0258), (0.130, 0.0246), (0.130, 0.0222), (0.126, 0.0206)]
-BANDS = (-0.018, 0.078)  # thin brass bands round the leather
+BANDS = (-0.018, 0.078)
+COLLAPSED = (-0.075, -0.140)  # glTF z of TelescopeDraw1 / TelescopeDraw2 when pushed in  # thin brass bands round the leather
 GRIP_R = 0.0206  # leather radius at the grip (origin)
 
 
@@ -111,17 +116,23 @@ def _ring(y, r, n=TN):
     return [V((math.cos(2 * math.pi * k / n) * r, y, math.sin(2 * math.pi * k / n) * r)) for k in range(n)]
 
 
+def _tag(obj, group):
+    obj.vertex_groups.new(name=group).add(list(range(len(obj.data.vertices))), 1.0, 'REPLACE')
+    return obj
+
+
 def build(at=V((0, 0, 0))):
     """Build the spyglass (one joined mesh, procedural materials, 'Detail' UVs) centred on `at` with
     identity transform, as the bake expects. Returns the object."""
     M = materials()
     objs = []
-    objs.append(loft('Eyepiece', [_ring(y, r, 14) for y, r in EYEPIECE], M['brass']))
-    objs.append(loft('EyeLens', [_ring(EYEPIECE[0][0], EYEPIECE[0][1] * 1.02, 10),
-                                 _ring(EYEPIECE[0][0] + 0.001, 0.003, 10)], M['glass'], cap_end=True))
-    objs.append(loft('Draw2', [_ring(y, r, 14) for y, r in DRAW2], M['brass']))
-    objs.append(loft('Collar2', [_ring(y, r, 14) for y, r in COLLAR2], M['brass']))
-    objs.append(loft('Draw1', [_ring(y, r) for y, r in DRAW1], M['brass']))
+    objs.append(_tag(loft('Eyepiece', [_ring(y, r, 14) for y, r in EYEPIECE], M['brass']), 'Draw2'))
+    objs.append(_tag(loft('EyeLens', [_ring(EYEPIECE[0][0], EYEPIECE[0][1] * 1.02, 10),
+                                      _ring(EYEPIECE[0][0] + 0.001, 0.003, 10)], M['glass'], cap_end=True),
+                      'Draw2'))
+    objs.append(_tag(loft('Draw2', [_ring(y, r, 14) for y, r in DRAW2], M['brass']), 'Draw2'))
+    objs.append(_tag(loft('Collar2', [_ring(y, r, 14) for y, r in COLLAR2], M['brass']), 'Draw1'))
+    objs.append(_tag(loft('Draw1', [_ring(y, r) for y, r in DRAW1], M['brass']), 'Draw1'))
     objs.append(loft('Collar1', [_ring(y, r) for y, r in COLLAR1], M['brass']))
     objs.append(loft('Leather', [_ring(y, r) for y, r in LEATHER], M['leather']))
     for y in BANDS:
@@ -140,7 +151,8 @@ def build(at=V((0, 0, 0))):
 
 def bake_and_export(tel, out_dir, path, at, size=512):
     """Bake the spyglass's materials into its own small atlas (material 'Telescope'), move the mesh so its
-    origin is the grip (see the local frame above), and export it alone."""
+    origin is the grip (see the local frame above), split off the draw tubes and export it alone. Returns
+    [telescope, draw1, draw2]."""
     import bake
     import bpy
     bake.bake_atlas(tel, size, out_dir, tint_name='__none__', small=0, prefix='telescope')
@@ -153,8 +165,28 @@ def bake_and_export(tel, out_dir, path, at, size=512):
         v.co -= V(at)
     me.update()
     tel.location = (0, 0, 0)
-    bake.export(None, [tel], path)
-    return tel
+    parts = [tel] + [_split(tel, g) for g in ('Draw1', 'Draw2')]
+    bake.export(None, parts, path)
+    return parts
+
+
+def _split(tel, group):
+    """Separate the vertices of `group` into the child node Telescope<group>."""
+    import bpy
+    from sclib import select_only
+    select_only([tel], tel)
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='DESELECT')
+    tel.vertex_groups.active_index = tel.vertex_groups[group].index
+    bpy.ops.object.vertex_group_select()
+    bpy.ops.mesh.separate(type='SELECTED')
+    bpy.ops.object.mode_set(mode='OBJECT')
+    part = next(o for o in bpy.context.selected_objects if o is not tel)
+    part.name = part.data.name = 'Telescope' + group
+    part.parent = tel
+    part.matrix_parent_inverse.identity()
+    part.matrix_basis.identity()
+    return part
 
 
 if __name__ == '__main__':
