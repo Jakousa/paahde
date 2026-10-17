@@ -9,7 +9,7 @@ import { uAt, ustarFrom10, wind } from './world/wind.ts';
 
 const MAX = 512;
 const DRAG = 2.2; // per second: thrown sand slows quickly and is then carried by the wind
-const RISE = 0.5; // m/s the warm, light dust keeps lifting
+const RISE = 0.9; // m/s the warm, light dust keeps slowly lifting
 
 class TyreDust {
   readonly mesh: THREE.Sprite;
