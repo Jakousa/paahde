@@ -24,7 +24,6 @@ npm run build    # production build into dist/
 
 AI agents (Claude Code, Codex, Cursor…): project instructions are in `CLAUDE.md` (also `AGENTS.md`).
 
-
 Branch, open a PR (CI checks it builds), merge to `main`. Don't push broken builds to `main` — it goes live.
 
 ## Deployment
