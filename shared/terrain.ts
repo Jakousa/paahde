@@ -14,10 +14,9 @@
 // edit twice is harmless and a client can predict a dig locally and still converge on the server.
 
 import { overBase, withPad } from './base.ts';
-import { duneHeight } from './dunes.ts';
-export { WIND } from './dunes.ts';
+import { duneHeight, WORLD_SEED } from './dunes.ts';
+export { WIND, WORLD_SEED } from './dunes.ts';
 
-export const WORLD_SEED = 1337;
 /** The playable world is a square of ±WORLD_HALF metres around the origin. */
 export const WORLD_HALF = 2000;
 

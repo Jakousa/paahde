@@ -14,8 +14,41 @@
 // Local frame: origin = the entrance's floor at its doorway centre line, axes = world axes (the base is
 // not rotated). The door faces +Z, the bunker runs down -Z. Dimensions match tools/blender/base/bunker.py.
 
-/** The base origin in world coordinates (the entrance hut's floor). */
-export const BASE = { x: -10, z: -216, y: 7.5 };
+import { duneHeight, WORLD_SEED } from './dunes.ts';
+
+/**
+ * Where the base goes for a seed: the flattest spot of the dunes (least height range over the pad) within
+ * 600 m of the origin, on a 16 m grid, with a slight pull towards the origin; its floor at the mean height
+ * there, so the pad barely cuts or fills. Same pure arithmetic as baseHeight(), so client and server agree.
+ */
+function findBase(seed: number) {
+  let best = { x: 0, z: 0, y: 0 }, bestScore = Infinity;
+  for (let gz = -600; gz <= 600; gz += 16) {
+    for (let gx = -600; gx <= 600; gx += 16) {
+      const d = Math.sqrt(gx * gx + gz * gz);
+      if (d > 600) continue;
+      let lo = Infinity, hi = -Infinity, sum = 0, n = 0;
+      for (let lz = -40; lz <= 20; lz += 10) {
+        for (let lx = -20; lx <= 20; lx += 10) {
+          const h = duneHeight(gx + lx, gz + lz, seed);
+          lo = Math.min(lo, h);
+          hi = Math.max(hi, h);
+          sum += h;
+          n++;
+        }
+      }
+      const score = hi - lo + d * 0.004;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { x: gx, z: gz, y: Math.round((sum / n) * 100) / 100 };
+      }
+    }
+  }
+  return best;
+}
+
+/** The base origin in world coordinates (the entrance hut's floor), picked from the world seed. */
+export const BASE = findBase(WORLD_SEED);
 /** Where new players appear: in front of the door, looking at it (yaw 0 looks down -Z). */
 export const BASE_SPAWN = { x: BASE.x, z: BASE.z + 9 };
 
