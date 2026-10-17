@@ -33,6 +33,8 @@ export type RemotePlayer = {
   sliding: boolean; // intentional (Ctrl) slide
   crouching: boolean;
   pitch: number; // camera pitch in radians (negative = looking down)
+  riding: boolean; // on the sand bike; facing is then the bike's heading
+  vy: number;
 };
 
 type Snapshot = { time: number; players: Map<number, PlayerSnap> };
@@ -59,6 +61,7 @@ export class Net {
   private epoch?: number; // wall-clock ms at server time 0
   private retryMs = 500;
   private browserId: string;
+  private joinedOnce = false;
   private digCooldown = 0;
   /** Predicted terrain vertices: the server's latest value, and the input seq that last dug there. */
   private predicted = new Map<number, { server: number; seq: number }>();
@@ -209,7 +212,9 @@ export class Net {
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'joining';
-      this.send({ t: 'hello', browserId: this.browserId });
+      // ?spawn=base: start at the base's door (only on the first join; a reconnect keeps where you are).
+      const atBase = !this.joinedOnce && new URLSearchParams(location.search).get('spawn') === 'base';
+      this.send(atBase ? { t: 'hello', browserId: this.browserId, spawn: 'base' } : { t: 'hello', browserId: this.browserId });
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
     ws.onclose = () => {
@@ -254,6 +259,7 @@ export class Net {
     }
     if (msg.t === 'welcome') {
       this.id = msg.id;
+      this.joinedOnce = true;
       this.color = msg.color;
       this.epoch = msg.epoch;
       this.me = msg.state;
@@ -285,6 +291,7 @@ export class Net {
       x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
       sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool,
+      riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw);
     this.errorX += this.me.x - s.x;
@@ -312,6 +319,7 @@ export class Net {
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
+        riding: pick.riding ?? false, vy: pick.vy,
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t,
       });
     }

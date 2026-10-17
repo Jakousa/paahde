@@ -3,7 +3,8 @@ import type { PlayerState } from './sim.ts';
 
 export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
-  | { t: 'hello'; browserId: string }
+  // spawn: 'base' starts at the home base's door instead of the saved position (dev helper, ?spawn=base).
+  | { t: 'hello'; browserId: string; spawn?: 'base' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }

@@ -13,6 +13,7 @@ import { LocatorBar } from './locator';
 import { getBrowserId, Net } from './net';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
+import { Bike, ridePose } from './bike';
 import { Post } from './post';
 import * as env from './world/env';
 import { Base } from './world/base';
@@ -66,6 +67,24 @@ const myModel = new ScavengerModel();
 myModel.ready.then(() => me.setModel(myModel, net.color), () => myModel.dispose());
 scene.add(me.root, footprints.mesh);
 const remotes = new Map<number, Avatar>();
+// Sand bikes (9, dev helper), one per riding player: drawn here, simulated in shared/sim.ts.
+const bikes = new Map<number, Bike>();
+let lastHeading = NaN;
+/** Draw player `id`'s bike while they ride (sitting `avatar` on it), and drop it when they get off. */
+function ride(id: number, avatar: Avatar, p: { riding: boolean } & Parameters<Bike['update']>[0], dt: number) {
+  let bike = bikes.get(id);
+  if (!p.riding) {
+    if (bike) {
+      bike.dispose();
+      bikes.delete(id);
+      avatar.root.rotation.set(0, avatar.root.rotation.y, 0);
+    }
+    return;
+  }
+  if (!bike) bikes.set(id, (bike = new Bike(scene)));
+  bike.update(p, dt);
+  bike.seat(avatar.root);
+}
 const locator = new LocatorBar();
 const hud = new InventoryHud();
 net.onInventory = (items) => hud.setItems(items);
@@ -117,11 +136,15 @@ renderer.setAnimationLoop((time) => {
 
   me.setColor(net.color);
   const s = net.me;
+  // On the bike the camera turns with it; the mouse still looks around on top.
+  if (s.riding && Number.isFinite(lastHeading)) orbit.yaw += Math.atan2(Math.sin(s.heading - lastHeading), Math.cos(s.heading - lastHeading));
+  lastHeading = s.riding ? s.heading : NaN;
   me.update(
-    { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
+    s.riding ? ridePose(s) : { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
     digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch },
     frameDt,
   );
+  ride(0, me, { ...s, x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ }, frameDt);
 
   const seen = new Set<number>();
   for (const r of others) {
@@ -139,18 +162,26 @@ renderer.setAnimationLoop((time) => {
         () => model.dispose(),
       );
     }
-    avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching, digging: (digUntil.get(r.id) ?? 0) > performance.now() }, frameDt);
+    avatar.update(
+      r.riding ? ridePose(r) : { ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching, digging: (digUntil.get(r.id) ?? 0) > performance.now() },
+      frameDt,
+    );
+    ride(r.id, avatar, { ...r, heading: r.facing }, frameDt);
   }
   for (const [id, avatar] of remotes) {
     if (!seen.has(id)) {
       avatar.dispose();
       remotes.delete(id);
+      bikes.get(id)?.dispose();
+      bikes.delete(id);
       digUntil.delete(id);
     }
   }
 
-  focus.copy(me.root.position);
-  orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching }, frameDt);
+  // Riding, the eye sits over the bike's ground point (a seated rider's eye is about standing height).
+  if (s.riding) focus.set(s.x + net.errorX, s.y + net.errorY, s.z + net.errorZ);
+  else focus.copy(me.root.position);
+  orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding }, frameDt);
   if (orbit.showBody === bodyHidden) me.setShadowOnly((bodyHidden = !orbit.showBody)); // T: third person
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);

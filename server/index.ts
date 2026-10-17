@@ -87,7 +87,7 @@ wss.on('connection', (ws) => {
       return ws.close(1003, 'bad json');
     }
     const p = players.get(ws);
-    if (msg.t === 'hello' && !p) return join(ws, msg.browserId);
+    if (msg.t === 'hello' && !p) return join(ws, msg.browserId, msg.spawn === 'base');
     if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
     if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
@@ -103,11 +103,11 @@ wss.on('connection', (ws) => {
   setTimeout(() => players.has(ws) || ws.close(1008, 'no hello'), 5000);
 });
 
-function join(ws: WebSocket, browserId: unknown) {
+function join(ws: WebSocket, browserId: unknown, atBase: boolean) {
   if (typeof browserId !== 'string' || !UUID.test(browserId)) return ws.close(1008, 'bad browserId');
   const row = db.getPlayer(browserId);
   const color = row?.color ?? Math.floor(Math.random() * 0xffffff);
-  const state = row ? spawnState(row.x, row.z) : spawnState();
+  const state = row && !atBase ? spawnState(row.x, row.z) : spawnState();
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, ws, alive: true,
@@ -222,7 +222,7 @@ function broadcast(time: number) {
 const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
 function round(s: PlayerState): PlayerState {
   const r = round4;
-  return { ...s, x: r(s.x), y: r(s.y), z: r(s.z), vx: r(s.vx), vy: r(s.vy), vz: r(s.vz), facing: r(s.facing) };
+  return { ...s, x: r(s.x), y: r(s.y), z: r(s.z), vx: r(s.vx), vy: r(s.vy), vz: r(s.vz), facing: r(s.facing), heading: r(s.heading) };
 }
 
 function send(ws: WebSocket, msg: ServerMsg) {
