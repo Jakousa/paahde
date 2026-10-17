@@ -5,11 +5,11 @@
 // chests, the motorcycle while riding; shared/storage.ts), appearing and disappearing as you move. Grids are
 // Tarkov-like: every item takes w × h cells by its size (shared/items.ts). Drag an item to move it (the cells it
 // would take light up green, or red where it doesn't fit; R turns it) or onto another to swap the two; shift-click
-// sends it across to the other side; drag it out of the panels
+// sends it across to the other side, and Take all empties a storage box into the bag; drag it out of the panels
 // to drop it on the sand in front of you (shared/loot.ts; anyone can pick it up again). At the workbench, put
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. Moves go through
-// Net (applied at once, the server confirms).
+// Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
 import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, partsOf, quality, repaired, slotLabel, tryMove, type Boxes } from '../shared/gear.ts';
 import { findSpot, HOTBAR, ITEMS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
@@ -21,6 +21,7 @@ import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { takePickup, ui } from './input';
 import type { Net } from './net';
+import { uiSound } from './uiSound';
 
 const TOAST_MS = 1600;
 /** Pointer travel (px) before a press on a slot becomes a drag. */
@@ -74,6 +75,7 @@ const css = `
   opacity: 0.75; }
 #invOverlay button { font: inherit; font-size: 11px; color: inherit; background: rgba(255, 233, 204, 0.12); border: 0;
   border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+#invOverlay .head .btns { display: flex; gap: 6px; }
 #invOverlay button:hover { background: rgba(255, 233, 204, 0.25); }
 #invOverlay .grid { display: grid; gap: 4px; }
 #invOverlay .sep { height: 6px; }
@@ -389,7 +391,7 @@ export class InventoryHud {
         html += this.benchHtml(slots[0] ?? null);
         continue;
       }
-      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><button data-sort="${box}">Sort</button></div>`
+      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns"><button data-all="${box}">Take all</button><button data-sort="${box}">Sort</button></span></div>`
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
     if (!this.storages.length) {
@@ -609,12 +611,14 @@ export class InventoryHud {
   private press(e: PointerEvent) {
     const sort = (e.target as HTMLElement).closest<HTMLElement>('[data-sort]');
     if (sort) return void (this.net.sortBox(sort.dataset.sort!) || this.toast("Can't pack it any tighter"));
+    const all = (e.target as HTMLElement).closest<HTMLElement>('[data-all]');
+    if (all) return this.takeAll(all.dataset.all!);
     const craft = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-craft]');
     if (craft) return void (craft.disabled || this.net.craft(craft.dataset.craft!));
     const at = this.slotAt(e.clientX, e.clientY);
     if (!at || !this.itemAt(at.box, at.i)) return;
     e.preventDefault();
-    if (e.shiftKey) return this.shiftClick(at.box, at.i);
+    if (e.shiftKey) return void (this.shiftClick(at.box, at.i) && uiSound.plop());
     // Held where it was grabbed when it lies in a grid; by its first cell's middle from a single slot.
     const rect = at.el.getBoundingClientRect();
     const inGrid = at.el.classList.contains('item');
@@ -630,11 +634,11 @@ export class InventoryHud {
    * workbench, gear onto it and parts into the first slot they fit (an empty one first); gear to its equipment
    * slot and back; else across to the nearest storage, or between hotbar and backpack.
    */
-  private shiftClick(box: string, i: number) {
+  private shiftClick(box: string, i: number): boolean {
     const net = this.net;
-    if (box === 'part') return void net.unfit(i, 'bag', -1);
+    if (box === 'part') return net.unfit(i, 'bag', -1);
     const it = net.boxes[box]?.[i];
-    if (!it) return;
+    if (!it) return false;
     const bench = this.storages.includes('bench');
     const target = net.boxes.bench?.[0];
     if (bench && box !== 'bench' && target && !isGear(it.kind)) {
@@ -642,31 +646,41 @@ export class InventoryHud {
       const parts = partsOf(target);
       const fit = slots.findIndex((s, j) => !parts[j] && fitsSlot(s, it.kind));
       const swap = fit >= 0 ? fit : slots.findIndex((s, j) => fitsSlot(s, it.kind) && parts[j] !== it.kind);
-      if (swap >= 0 && net.fit(box, i, swap)) return;
+      if (swap >= 0 && net.fit(box, i, swap)) return true;
     }
-    if (bench && box !== 'bench' && isGear(it.kind) && net.moveItem(box, i, 'bench', 0)) return;
-    if (box === 'equip' || box === 'bench') return void net.moveItem(box, i, 'bag', -1);
-    if (isGear(it.kind) && GEAR[it.kind].equip && repaired(it) && net.moveItem(box, i, 'equip', -1)) return;
+    if (bench && box !== 'bench' && isGear(it.kind) && net.moveItem(box, i, 'bench', 0)) return true;
+    if (box === 'equip' || box === 'bench') return net.moveItem(box, i, 'bag', -1);
+    if (isGear(it.kind) && GEAR[it.kind].equip && repaired(it) && net.moveItem(box, i, 'equip', -1)) return true;
     // Across: bag → the nearest storage; storage → bag. Without storage, between hotbar and backpack.
     const to = box !== 'bag' ? 'bag' : this.storages.find((b) => b !== 'bench');
-    if (to) net.moveItem(box, i, to, -1);
-    else this.hotbarSwap(i);
+    return to ? net.moveItem(box, i, to, -1) : this.hotbarSwap(i);
+  }
+
+  /** Take all: everything in a storage box into the bag, as far as it fits; a plop per item moved. */
+  private takeAll(box: string) {
+    const slots = this.net.boxes[box];
+    if (!slots) return;
+    let moved = 0;
+    for (let i = slots.length - 1; i >= 0; i--) if (slots[i] && this.net.moveItem(box, i, 'bag', -1)) moved++;
+    if (moved) uiSound.plop(moved);
+    if (this.net.boxes[box]?.some((it) => it)) this.toast('No room');
   }
 
   /** Shift-click in the bag with no storage open: hotbar ↔ the first spot it fits in the backpack (or the first free hotbar slot). */
-  private hotbarSwap(i: number) {
+  private hotbarSwap(i: number): boolean {
     const bag = this.net.boxes.bag;
     const it = bag?.[i];
-    if (!bag || !it) return;
+    if (!bag || !it) return false;
     if (i < HOTBAR) {
       const spot = findSpot(bag, bagShape(this.net.boxes.equip), it.kind, !!it.r, [i], false);
-      if (spot) this.net.moveItem('bag', i, 'bag', spot.i, undefined, spot.r);
-      else this.toast('No room');
-      return;
+      if (spot) return this.net.moveItem('bag', i, 'bag', spot.i, undefined, spot.r);
+      this.toast('No room');
+      return false;
     }
     for (let j = 0; j < HOTBAR; j++) {
-      if (!bag[j]) return void this.net.moveItem('bag', i, 'bag', j);
+      if (!bag[j]) return this.net.moveItem('bag', i, 'bag', j);
     }
+    return false;
   }
 
   private dragMove(e: PointerEvent) {
@@ -677,6 +691,7 @@ export class InventoryHud {
       const it = this.itemAt(d.box, d.i);
       if (!it) return this.cancelDrag();
       d.moved = true;
+      uiSound.plop();
       this.drawGhost(d, it);
       this.ghost.style.display = 'flex';
       this.slotEl(d.box, d.i)?.classList.add('dragging');
@@ -715,7 +730,8 @@ export class InventoryHud {
     else if (d.box === 'part') ok = at.box !== 'part' && this.net.unfit(d.i, at.box, at.i);
     else if (at.box === 'part') ok = this.net.fit(d.box, d.i, at.i);
     else ok = this.net.moveItem(d.box, d.i, at.box, at.i, d.half ? Math.ceil(it.n / 2) : undefined, d.r);
-    if (!ok) this.refuse(d.box, it, at.box);
+    if (ok) uiSound.plop();
+    else this.refuse(d.box, it, at.box);
   }
 
   /** Off every panel: on the dimmed backdrop (or out of the window). */
