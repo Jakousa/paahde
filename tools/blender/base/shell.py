@@ -26,6 +26,10 @@ import bmesh
 import bpy
 from mathutils import Vector
 
+sys.dont_write_bytecode = True  # no __pycache__ next to the scripts
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from coplanar import separate_coplanar  # noqa: E402
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 OUT = os.path.join(ROOT, 'public', 'models', 'base', 'shell.glb')
 TAU = 2 * math.pi
@@ -204,6 +208,7 @@ class Part:
         return f
 
     def build(self, parent=None):
+        separate_coplanar(self.bm)
         mesh = bpy.data.meshes.new(self.name)
         if self.fcols:
             lay = self.bm.loops.layers.float_color.new('Col')

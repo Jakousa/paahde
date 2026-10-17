@@ -21,6 +21,10 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
+sys.dont_write_bytecode = True  # no __pycache__ next to the scripts
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from coplanar import separate_coplanar  # noqa: E402
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 # name: (sRGB hex, roughness, metallic, double_sided)
@@ -297,6 +301,7 @@ class MB:
             self.beam(c + o - Vector((0, 0, r * 0.9)), c + o + Vector((0, 0, r * 0.9)), r * 0.12, cage)
 
     def build(self, name, origin=(0, 0, 0)):
+        separate_coplanar(self.bm)
         mesh = bpy.data.meshes.new(name)
         o = Vector(origin)  # geometry is built in local coordinates; origin only places the object
         self.bm.normal_update()
