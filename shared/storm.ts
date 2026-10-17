@@ -77,12 +77,12 @@ export function stormAt(storms: readonly Storm[], x: number, z: number, t: numbe
 
 /** Drones go dark (no light, no aggro) within this many radii of a storm's centre. */
 export const DRONE_DARK_R = 1.5;
-/** Is (x, z) within DRONE_DARK_R radii of a blowing storm's centre at server time `t`? */
-export function nearStorm(storms: readonly Storm[], x: number, z: number, t: number): boolean {
+/** Is (x, z) within `k` radii (default DRONE_DARK_R) of a blowing storm's centre at server time `t`? */
+export function nearStorm(storms: readonly Storm[], x: number, z: number, t: number, k = DRONE_DARK_R): boolean {
   for (const s of storms) {
     if (t < s.start || t > s.end) continue;
     stormCentre(s, t, c);
-    if (Math.hypot(x - c.x, z - c.z) < s.r * DRONE_DARK_R) return true;
+    if (Math.hypot(x - c.x, z - c.z) < s.r * k) return true;
   }
   return false;
 }

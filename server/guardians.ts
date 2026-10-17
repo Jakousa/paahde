@@ -16,6 +16,7 @@ import {
 } from '../shared/guardians.ts';
 import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MIN_R, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
+  missileAt,
 } from '../shared/missiles.ts';
 import { nearStorm, type Storm } from '../shared/storm.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -236,6 +237,8 @@ export class GuardianServer {
       const vx = prev ? (p.x - prev.x) / dt : 0, vz = prev ? (p.z - prev.z) / dt : 0;
       for (const g of shooters) {
         if (now - g.missileAt < MISSILE_MS || Math.hypot(g.x - p.x, g.z - p.z) < MISSILE_MIN_R) continue;
+        // No firing from inside a storm, or at someone in one (it would burst on the way in).
+        if (nearStorm(this.storms, g.x, g.z, now, 1) || nearStorm(this.storms, p.x, p.z, now, 1)) continue;
         g.missileAt = now;
         const sc = KINDS[g.kind].scale;
         const pv = gunPivot(g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, g.yaw, sc, { x: 0, y: 0, z: 0 });
@@ -249,8 +252,15 @@ export class GuardianServer {
     }
     for (const p of players) this.lastPos.set(p.id, { x: p.x, z: p.z });
     if (this.lastPos.size > players.length) for (const id of this.lastPos.keys()) if (!players.some((p) => p.id === id)) this.lastPos.delete(id);
+    const pos = { x: 0, y: 0, z: 0 };
     this.missiles = this.missiles.filter((m) => {
-      if (now - m.launched < m.path.flight * 1000) return true;
+      if (now - m.launched < m.path.flight * 1000) {
+        // Flying into a storm: it bursts in the air, harmlessly.
+        missileAt(m.path, (now - m.launched) / 1000, pos);
+        if (!nearStorm(this.storms, pos.x, pos.z, now, 1)) return true;
+        events.push({ x: pos.x, z: pos.z, msg: { t: 'blast', id: m.id, x: r2(pos.x), y: r2(pos.y), z: r2(pos.z) } });
+        return false;
+      }
       const { x1: x, y1: y, z1: z } = m.path;
       for (const p of exposed) if (Math.hypot(p.x - x, p.y + 0.9 - y, p.z - z) < MISSILE_BLAST_R && !blasted.includes(p.id)) blasted.push(p.id);
       events.push({ x, z, msg: { t: 'blast', id: m.id, x, y, z } });
