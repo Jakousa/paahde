@@ -9,18 +9,18 @@
 /** Full heat meter: heatstroke. */
 export const HEAT_MAX = 100;
 /** Heat neither builds nor fades at this felt temperature (°C). */
-export const COMFORT_TEMP = 24;
+export const COMFORT_TEMP = 30;
 /** At this felt temperature (°C; full sun, early afternoon)... */
 export const HOT_TEMP = 54;
 /** ...an empty meter fills in this long walking (s). */
 export const HOT_FULL_BAR_S = 60;
-/** Build-up grows with (felt − COMFORT_TEMP) to this power: shade (~20 °C cooler than sun) is ~8× slower. */
+/** Build-up grows with (felt − COMFORT_TEMP) to this power: shade (~20 °C cooler than sun) barely builds any. */
 export const HEAT_POWER = 2;
 /** Build-up multiplier while sprinting. */
 export const SPRINT_HEAT = 1.5;
 /** Cooling off: this many °C under COMFORT_TEMP (or more)... */
-export const COOL_RANGE = 4;
-/** ...empties a full meter in this long (s); less cool, slower. The base (22 °C) takes twice as long. */
+export const COOL_RANGE = 8;
+/** ...empties a full meter in this long (s); less cool, slower. The base (22 °C) is full speed. */
 export const COOL_FULL_BAR_S = 40;
 /** Sips in a full canteen, and how much heat each one takes off. */
 export const CANTEEN_SIPS = 4;

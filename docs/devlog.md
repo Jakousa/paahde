@@ -24,9 +24,9 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 
 Thirst became heat: instead of water running out, heat builds up and you keep it under control.
 
-- **Meter** (0–100, `heat`; full = heatstroke): rises above 24 °C felt, on the same curve the drain used
-  (table under "Temperature and shade"). Below 24 °C it falls by itself: full → empty in **60 s** at 20 °C
-  or colder (nights), **120 s** in the base (22 °C). A sip from the canteen takes off **25**; 4 sips per
+- **Meter** (0–100, `heat`; full = heatstroke): rises above 30 °C felt (was 24), on the same curve the drain used
+  (table under "Temperature and shade"). Below 30 °C it falls by itself: full → empty in **40 s** at 22 °C or cooler
+  (the base, nights), slower between 22 and 30 °C. A sip from the canteen takes off **25**; 4 sips per
   canteen, refilled at the pump in the base as before.
 - **Death:** at 100 you die of heatstroke (`died` with `cause: 'heat'`), respawn at the base with 0 heat
   and a full canteen.
@@ -110,7 +110,7 @@ entrance hut and scrap piles block the sun.
   early once it is above the highest possible ground. It also slab-tests the hut (with its roof overhang) and
   the skylight collar as boxes, and scrap hitboxes in the first 25 m. ~15–20 µs per check (~80 µs/s per player).
 - **Heat build-up** (`shared/water.ts`; see "Heat meter" above, which replaced the thirst bar): above
-  **24 °C** the meter rises at `100/60 s × ((felt − 24) / 30)²`, ×1.5 sprinting (was `/100 s`, fourth power:
+  **30 °C** (was 24) the meter rises at `100/60 s × ((felt − 30) / 24)²`, ×1.5 sprinting (was `/100 s`, fourth power:
   too gentle, ~16 min to heatstroke standing in the 17:00 sun). Shade felt is **10 °C under the air** while
   the sun is up (fading out in its last stretch above the horizon), so behind a dune it feels ~20 °C cooler
   than the sun next to it, and slows the build-up ~8–15×.
