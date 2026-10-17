@@ -1,6 +1,7 @@
 // Renders the shared heightfield (shared/terrain.ts). Placeholder: one plane re-centred on the player.
 import * as THREE from 'three/webgpu';
 import { edits, heightAt } from '../../shared/terrain.ts';
+import { createSandMaterial } from './sandMaterial.ts';
 
 const SIZE = 600;
 const SEGMENTS = 200;
@@ -14,7 +15,7 @@ export class Terrain {
   constructor(scene: THREE.Scene) {
     const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEGMENTS, SEGMENTS);
     geo.rotateX(-Math.PI / 2);
-    this.mesh = new THREE.Mesh(geo, new THREE.MeshStandardNodeMaterial({ color: 0xd8b27a, roughness: 0.95 }));
+    this.mesh = new THREE.Mesh(geo, createSandMaterial());
     this.mesh.receiveShadow = true;
     scene.add(this.mesh);
     edits.onChange = () => (this.cx = NaN); // placeholder: rebuild everything on any edit
