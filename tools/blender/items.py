@@ -2,7 +2,7 @@
 
     blender -b --python tools/blender/items.py                              # every item, every tier
     blender -b --python tools/blender/items.py -- --item battery --tier space
-    blender -b --python tools/blender/items.py -- --preview out.png         # also a 4x3 overview render
+    blender -b --python tools/blender/items.py -- --preview out.png         # also a tiers x items overview render
     blender -b --python tools/blender/items.py -- --no-icons                # models only
 
 Writes public/models/items/<item>_<tier>.glb and public/icons/items/<item>_<tier>.png (128x128, transparent,
@@ -30,7 +30,7 @@ from mathutils import Euler, Matrix, Vector
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 TIERS = ['scrap', 'basic', 'quality', 'space']
-ITEMS = ['battery', 'motor', 'heatsink', 'compute']
+ITEMS = ['battery', 'motor', 'heatsink', 'compute', 'coil']
 
 # Materials: name -> (sRGB hex, metallic, roughness, emission strength). Emissive ones glow in their colour.
 MATERIALS = {
@@ -414,7 +414,95 @@ def build_compute(mb, tier, rng):
         edge_connector('gunmetal', 'gold')
 
 
-BUILDERS = {'battery': build_battery, 'motor': build_motor, 'heatsink': build_heatsink, 'compute': build_compute}
+# ------------------------------------------------------------------------------------------------- coil
+
+def wire(mb, pts, r, segs, mat):
+    """A bent wire through `pts`: one thin cylinder per segment, overlapping a little at the bends."""
+    for a, b in zip(pts, pts[1:]):
+        a, b = Vector(a), Vector(b)
+        d = b - a
+        mb.cyl(r, r, d.length + r, segs, (a + b) / 2, mat, rot=d.to_track_quat('Z', 'Y').to_euler())
+
+
+def build_coil(mb, tier, rng):
+    """Spool of copper wire lying on its side (axis along X): two flanges, a wound core, a loose end.
+    About 14 x 16 x 16 cm, handheld."""
+    R, L, FL = 0.08, 0.14, 0.012  # flange radius, length over the flanges, flange thickness
+    cz = R
+    inner = L / 2 - FL  # x of the flanges' inner faces
+    segs = {'scrap': 10, 'basic': 12, 'quality': 16, 'space': 20}[tier]
+
+    def windings(mat, r, n, alt=None, rw=0.0):
+        """n bands of wire across the core; every other band sits a little proud so they read as turns."""
+        w = 2 * inner / n
+        for i in range(n):
+            m = alt if alt and i % 2 else mat
+            rr = r + (0.003 if i % 2 else 0) + (rng(-rw, rw) if rw else 0)
+            yield mb.cyl(rr, rr, w, segs, (-inner + w * (i + 0.5), 0, cz), m, rot=Y90)
+
+    def lead(r, x, mat, wr=0.004, tail=0.07):
+        """Loose end peeling off the front of windings of radius r, dropping down and trailing along the ground
+        towards +X (both in view of the 3/4 camera). Returns the tip."""
+        tip = (x + tail, -R - 0.012, wr)
+        wire(mb, [(x, -r * 0.7, cz + r * 0.7), (x + 0.006, -r - 0.016, cz + 0.005), (x + 0.014, -R - 0.016, 0.03),
+                  (x + 0.03, -R - 0.018, wr), tip], wr, 6, mat)
+        return tip
+
+    if tier == 'scrap':
+        # Rusty steel flange on one side, a dented faded-paint one off another spool on the other.
+        a = mb.cyl(R, R, FL, segs, (inner + FL / 2, 0, cz), 'rust', rot=(0, math.pi / 2, 0.06))
+        mb.jitter(a, rng, 0.004)
+        b = mb.cyl(R * 0.94, R * 0.94, FL, segs, (-inner - FL / 2, 0, cz - R * 0.06), 'paint_faded_blue',
+                   rot=(0.1, math.pi / 2, 0))
+        mb.dent(b, (-inner, 0, cz + R), 0.05, 0.02)
+        mb.cyl(R * 0.3, R * 0.3, L + 0.01, 8, (0, 0, cz), 'steel_dull', rot=Y90)
+        # Half used up and lumpy: oxidised turns patched with green corrosion.
+        for v in windings('copper', R * 0.62, 7, alt='rust_dark', rw=0.006):
+            mb.jitter(v, rng, 0.002)
+        mb.blob(0.018, (0.02, -R * 0.55, cz + R * 0.3), 'corrosion')
+        mb.blob(0.014, (-0.03, -R * 0.4, cz + R * 0.5), 'corrosion')
+        mb.box((0.035, R * 1.35, 0.004), (0.01, 0, cz + R * 0.66), 'tape', rot=(0, 0.1, 0.05))
+        # Tangled loose ends: one sprung up over the top, one slumped down the front with a kink.
+        wire(mb, [(0.025, -R * 0.35, cz + R * 0.5), (0.04, -R * 0.3, cz + R * 1.05), (0.0, 0.0, cz + R * 1.2),
+                  (-0.05, 0.03, cz + R * 1.0), (-0.035, 0.07, cz + R * 1.15)], 0.0035, 5, 'copper')
+        x, y, z = lead(R * 0.62, -0.03, 'copper', tail=0.05)
+        wire(mb, [(x, y, z), (x + 0.015, y - 0.02, z), (x + 0.03, y + 0.005, z)], 0.004, 5, 'copper')
+    elif tier == 'basic':
+        for sx in (1, -1):
+            mb.cyl(R, R, FL, segs, (sx * (inner + FL / 2), 0, cz), 'plastic_black', rot=Y90)
+        mb.cyl(R * 0.22, R * 0.22, L + 0.004, 8, (0, 0, cz), 'plastic_dark', rot=Y90)
+        list(windings('copper', R * 0.78, 6))
+        lead(R * 0.78, 0.0, 'copper')
+        mb.cyl(R * 0.62, R * 0.62, 0.002, segs, (L / 2 + 0.001, 0, cz), 'label', rot=Y90)  # paper label
+        mb.cyl(R * 0.22, R * 0.22, 0.004, 8, (L / 2 + 0.002, 0, cz), 'plastic_dark', rot=Y90)
+    elif tier == 'quality':
+        for sx in (1, -1):
+            mb.cyl(R, R * 0.96, FL, segs, (sx * (inner + FL / 2), 0, cz), 'anodised', rot=(0, sx * math.pi / 2, 0))
+            mb.cyl(R * 1.01, R * 1.01, 0.004, segs, (sx * (inner + 0.002), 0, cz), 'brass', rot=Y90)
+            mb.cyl(R * 0.28, R * 0.24, 0.012, 10, (sx * (L / 2 + 0.006), 0, cz), 'chrome',
+                   rot=(0, sx * math.pi / 2, 0))
+        list(windings('copper', R * 0.82, 9))
+        mb.cyl(R * 0.86, R * 0.86, 0.012, segs, (-inner + 0.025, 0, cz), 'accent_orange', rot=Y90)  # band
+        # Neat lead-out ending in a brass crimp lug.
+        x, y, z = lead(R * 0.82, 0.01, 'copper', tail=0.06)
+        mb.box((0.024, 0.014, 0.004), (x + 0.012, y, 0.002), 'brass', bevel=0.0015)
+    else:  # space
+        for sx in (1, -1):
+            mb.cyl(R, R * 0.9, FL, segs, (sx * (inner + FL / 2), 0, cz), 'white', rot=(0, sx * math.pi / 2, 0))
+            mb.cyl(R * 1.005, R * 1.005, 0.003, segs, (sx * (inner + 0.0015), 0, cz), 'glow', rot=Y90)
+            mb.cyl(R * 0.3, R * 0.3, 0.008, 12, (sx * (L / 2 + 0.002), 0, cz), 'gunmetal', rot=Y90)
+            mb.cyl(R * 0.16, R * 0.16, 0.003, 12, (sx * (L / 2 + 0.0075), 0, cz), 'glow_soft', rot=Y90)
+        # Gold superconductor windings with glowing gaps between the bands.
+        list(windings('gold', R * 0.8, 5))
+        w = 2 * inner / 5
+        for i in range(1, 5):
+            mb.cyl(R * 0.8 + 0.002, R * 0.8 + 0.002, 0.003, segs, (-inner + w * i, 0, cz), 'glow', rot=Y90)
+        x, y, z = lead(R * 0.8, 0.0, 'gold', wr=0.0035, tail=0.06)
+        mb.cyl(0.007, 0.007, 0.014, 10, (x + 0.007, y, 0.007), 'glow', rot=Y90)  # glowing connector tip
+
+
+BUILDERS = {'battery': build_battery, 'motor': build_motor, 'heatsink': build_heatsink, 'compute': build_compute,
+            'coil': build_coil}
 
 
 def build_item(item, tier):
