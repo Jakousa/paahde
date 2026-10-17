@@ -18,6 +18,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 
 - `shared/sim.ts` — deterministic movement/physics, run by **both** client and server
 - `shared/protocol.ts` — WebSocket message types
+- `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`)
 - `server/index.ts` — authoritative game server (static files + `/ws`); `server/db.ts` — SQLite
 - `src/main.ts` — entry: renderer, scene, fixed-step game loop
 - `src/net.ts` — client netcode (prediction, reconciliation, interpolation, reconnect)

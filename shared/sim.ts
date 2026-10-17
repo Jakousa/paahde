@@ -7,12 +7,17 @@
 // - Slip faces steeper than the angle of repose (~34°) avalanche: you slide down them and can only steer
 //   sideways; trying to climb one just slows the slide.
 // - Soft sand: you build up and lose speed a bit slowly (momentum), and hard landings bog you down briefly.
+import { collideScrap } from './scrap.ts';
 import { heightAt, WORLD_HALF } from './terrain.ts';
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
 
 export const PLAYER_HEIGHT = 1.8; // y is the player's feet
+/** Horizontal collision radius against scrap (shared/scrap.ts). */
+export const PLAYER_RADIUS = 0.35;
+/** Scrap whose top is at most this far above the feet is stepped onto instead of blocking. */
+const STEP_UP = 0.35;
 const GRAVITY = -25;
 export const WALK_SPEED = 6;
 export const SPRINT_SPEED = 11;
@@ -100,6 +105,8 @@ export function isSlipFace(x: number, z: number): boolean {
 }
 
 const tmpSlope = { gx: 0, gz: 0 };
+const flatSlope = { gx: 0, gz: 0 };
+const tmpCollide = { x: 0, z: 0, vx: 0, vz: 0 };
 
 /**
  * Advance one tick. `yawQ` is the quantized camera yaw: yaw 0 looks down -Z, and increases
@@ -125,7 +132,9 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
   let vx = s.vx;
   let vz = s.vz;
   if (s.grounded) {
-    const g = slopeAt(s.x, s.z, tmpSlope);
+    // Standing on scrap (above the sand) is flat ground: no slope drag, no slip-face slide.
+    const onScrap = s.y > heightAt(s.x, s.z) + 0.02;
+    const g = onScrap ? flatSlope : slopeAt(s.x, s.z, tmpSlope);
     const steep = Math.hypot(g.gx, g.gz);
     if (steep > SLIP_TAN) {
       // Slip face: the sand gives way. Gravity along the slope minus kinetic friction pulls you down;
@@ -171,10 +180,19 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
     vy = Math.max(s.vy + GRAVITY * DT, MAX_FALL);
   }
 
-  const x = clamp(s.x + vx * DT, -WORLD_HALF, WORLD_HALF);
-  const z = clamp(s.z + vz * DT, -WORLD_HALF, WORLD_HALF);
   let y = s.y + vy * DT;
-  const ground = heightAt(x, z);
+  // Scrap: tall pieces push you out (and absorb the velocity into them), low ones become the ground.
+  const c = tmpCollide;
+  c.x = s.x + vx * DT;
+  c.z = s.z + vz * DT;
+  c.vx = vx;
+  c.vz = vz;
+  const scrapTop = collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP);
+  vx = c.vx;
+  vz = c.vz;
+  const x = clamp(c.x, -WORLD_HALF, WORLD_HALF);
+  const z = clamp(c.z, -WORLD_HALF, WORLD_HALF);
+  const ground = Math.max(heightAt(x, z), scrapTop);
   let grounded = false;
   // Snap to the ground when on or just above it (walking downhill shouldn't launch you).
   // The snap distance grows with speed so sliding/sprinting down a steep face stays glued.
