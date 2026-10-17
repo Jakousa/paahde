@@ -1,4 +1,5 @@
-// Smoke over smouldering crash sites (shared/crashsites.ts `smoke`): a lazy column of puffs rising 40–85 m
+// Smoke over smouldering crash sites (every one whose large machine hasn't been stripped yet, shared/crash.ts
+// `crashSpent`; a site that goes spent while you watch stops feeding its columns and they drift away): a lazy column of puffs rising 40–85 m
 // from each smoke point, bending downwind, spreading and slowly thinning out to nothing, so players can
 // spot a site on the horizon from several hundred metres. Purely visual.
 //
@@ -24,6 +25,8 @@ const CAPACITY = PUFFS * MAX_COLUMNS;
 const LIFE = 48;
 /** Share of the aerial haze the smoke takes on, < 1 so the plumes still read far away. */
 const HAZE = 0.5;
+/** Seconds over which a column's feed tapers off when its site goes spent. */
+export const STOP_TAPER = 10;
 
 const c3 = (u: unknown) => u as Node<'vec3'>;
 const hash = (x: number) => {
@@ -41,12 +44,16 @@ export class CrashSmoke {
   private baseAttr = new THREE.InstancedBufferAttribute(this.base, 3);
   private dataAttr = new THREE.InstancedBufferAttribute(this.data, 4);
   private lookAttr = new THREE.InstancedBufferAttribute(this.look, 4);
+  /** Per puff: the `time` its column stops being fed (puffs born after it are not drawn). */
+  private stop = new Float32Array(CAPACITY);
+  private stopAttr = new THREE.InstancedBufferAttribute(this.stop, 1);
 
   constructor(scene: THREE.Scene) {
     const m = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, fog: false });
     const base = instancedBufferAttribute(this.baseAttr, 'vec3') as unknown as Node<'vec3'>;
     const d = instancedBufferAttribute(this.dataAttr, 'vec4') as unknown as Node<'vec4'>;
     const l = instancedBufferAttribute(this.lookAttr, 'vec4') as unknown as Node<'vec4'>;
+    const stop = instancedBufferAttribute(this.stopAttr, 'float') as unknown as Node<'float'>;
     const seed = d.y, rise = d.z, width = d.w;
     const tone = l.x, density = l.y, ps = l.z, pace = l.w;
     // Age along the column, 0 at the vent → 1 at the top. Each column runs at its own pace.
@@ -83,7 +90,7 @@ export class CrashSmoke {
     const fade = smoothstep(0.0, 0.06, u).mul(pow(float(1).sub(smoothstep(0.25, 1.0, u)), 1.3));
     const puffDensity = fract(ps.mul(3.17)).mul(0.4).add(0.8);
     m.opacityNode = soft.mul(soft.sqrt()).mul(lump).mul(fade).mul(mix(float(0.85), float(0.45), u))
-      .mul(density).mul(puffDensity).mul(strong.mul(0.6).add(0.4)).min(1);
+      .mul(density).mul(puffDensity).mul(strong.mul(0.6).add(0.4)).mul(float(1).sub(smoothstep(stop.sub(STOP_TAPER), stop, born))).min(1);
     // Sooty brown to pale dusty grey, lit by the (golden) sun with a warm haze fill; never blue-grey.
     // Smoke pales as it dilutes on the way up, and lulls come out paler than the belches.
     const t = min(tone.add(u.mul(0.45)).add(float(1).sub(strong).mul(0.25)), 1);
@@ -100,10 +107,13 @@ export class CrashSmoke {
     scene.add(this.sprite);
   }
 
-  /** Rebuild the columns for the sites in view (only smouldering ones have smoke points). */
-  setSites(sites: CrashSite[]) {
+  /** Rebuild the columns for the sites in view. `stopAt(id)` is the `time` a site's smoke stops being fed
+   *  (Infinity: still smouldering, -Infinity: long cold, no columns). */
+  setSites(sites: CrashSite[], stopAt: (id: number) => number) {
     let n = 0;
     for (const s of sites) {
+      const stop = stopAt(s.id);
+      if (stop === -Infinity) continue;
       for (const [k, sp] of s.smokePoints.entries()) {
         if (n + PUFFS > CAPACITY) break;
         const pc = s.pieces[sp.piece];
@@ -130,6 +140,7 @@ export class CrashSmoke {
           this.look[n * 4 + 1] = density;
           this.look[n * 4 + 2] = hash(key + i * 3.71 + 0.5);
           this.look[n * 4 + 3] = pace;
+          this.stop[n] = Math.min(stop, 1e9);
         }
       }
     }
@@ -138,5 +149,6 @@ export class CrashSmoke {
     this.baseAttr.needsUpdate = true;
     this.dataAttr.needsUpdate = true;
     this.lookAttr.needsUpdate = true;
+    this.stopAttr.needsUpdate = true;
   }
 }

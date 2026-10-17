@@ -104,14 +104,22 @@ export function openDb(path: string) {
     );
   `);
 
-  // Small crash sites (shared/crash.ts) whose machine was carried off, until they refill. The machine itself
-  // is an item in the player's bag, given in the same transaction (server/crash.ts).
+  // Small machine sites (shared/crash.ts) whose machine was carried off; they stay empty (taken_at is kept in case
+  // they refill some day). The machine itself is an item in the player's bag, given in the same transaction
+  // (server/crash.ts). crash_spent: crash sites (shared/crashsites.ts ids) whose large machine has been stripped
+  // of every part; they stop smoking for good.
   db.exec(`
     CREATE TABLE IF NOT EXISTS crash_taken (
       id       TEXT PRIMARY KEY,
       taken_at INTEGER NOT NULL               -- ms since epoch
     );
+    CREATE TABLE IF NOT EXISTS crash_spent (
+      site     INTEGER PRIMARY KEY,
+      spent_at INTEGER NOT NULL               -- ms since epoch
+    );
   `);
+  const allSpent = db.prepare('SELECT site, spent_at FROM crash_spent');
+  const insertSpent = db.prepare('INSERT OR IGNORE INTO crash_spent (site, spent_at) VALUES (?, ?)');
   const allCrash = db.prepare('SELECT id, taken_at FROM crash_taken');
   const insertCrash = db.prepare('INSERT OR REPLACE INTO crash_taken (id, taken_at) VALUES (?, ?)');
   const deleteCrash = db.prepare('DELETE FROM crash_taken WHERE id = ?');
@@ -185,6 +193,8 @@ export function openDb(path: string) {
     loadCrashTaken: () => allCrash.all() as { id: string; taken_at: number }[],
     takeCrash: (id: string, at: number) => insertCrash.run(id, at),
     respawnCrash: (id: string) => deleteCrash.run(id),
+    loadCrashSpent: () => allSpent.all() as { site: number; spent_at: number }[],
+    spendCrash: (site: number, at: number) => insertSpent.run(site, at),
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,
     savePlayer: (p: PlayerRow) => upsert.run(p.id, p.color, p.x, p.z, p.heat, p.sips),
     loadChunks(): { cx: number; cz: number; data: Int32Array }[] {

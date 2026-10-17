@@ -87,6 +87,9 @@ export type ServerMsg =
   // Small crash sites whose machine has been carried off (ids), or are back. On join, before 'welcome', with reset:
   // the full taken list.
   | { t: 'crash'; taken: string[]; back: string[]; reset?: boolean }
+  // Crash sites (shared/crashsites.ts ids) whose large machine has been stripped: they stop smoking and stay that
+  // way. On join (with reset: the full list), then each newly spent one.
+  | { t: 'crashSpent'; spent: number[]; reset?: boolean }
   // A shared session was joined: what is already done (step indexes) and taken (part indexes) at that site.
   | { t: 'siteState'; id: string; done: number[]; taken: number[] }
   // How many players hold lifting eye i right now.

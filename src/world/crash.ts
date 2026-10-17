@@ -1,13 +1,14 @@
-// Machine sites in the desert (shared/crash.ts; not the crashed spacecraft of shared/crashsites.ts, which have
-// their own wreck models) and the disassembly table job at the base. Each site is a scorch mark,
-// some twisted plates half buried in the sand and one machine (src/teardown/junk.ts) lying in the middle,
-// built when you come within BUILD_R and dropped again when you are far away. The machine is the same object
-// the disassembly mode works on, so a half taken-apart machine stays that way while you are around.
+// Machine sites at the crashed spacecraft (shared/crash.ts; the wrecks, debris and the Blender-made ground
+// dressing under each machine are drawn by src/world/crashsites.ts) and the disassembly table job at the base.
+// Each machine (src/teardown/junk.ts) is built when you come within BUILD_R and dropped again when you are far
+// away. The machine is the same object the disassembly mode works on, so a half taken-apart machine stays that
+// way while you are around. The large machine of a spent crash site (crashSpent: every part taken) is built as a
+// stripped husk and offers nothing.
 // Machines you carried home (small ones) are taken apart on the base's disassembly table; the job in progress is
 // kept in this browser until it is finished.
 import * as THREE from 'three/webgpu';
 import {
-  BENCH, CARRY_KINDS, crashListeners, crashTaken, CRASH_REACH, seeded, sitesNear, type CrashSite,
+  BENCH, CARRY_KINDS, crashSpent, crashTaken, CRASH_REACH, seeded, sitesNear, type CrashSite,
 } from '../../shared/crash.ts';
 import { hasItem, type Slots } from '../../shared/items.ts';
 import { COMPONENTS, type ComponentKind } from '../../shared/salvage.ts';
@@ -18,99 +19,59 @@ import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
 /** Machines are built (a few hundred meshes) when you come this close, and dropped beyond DROP_R. */
 const BUILD_R = 60;
 const DROP_R = 140;
-/** Scorch marks and wreckage are drawn out to here. */
-const SHOW_R = 220;
 const BENCH_KEY = 'dadajam.bench';
 
 interface SiteView {
   site: CrashSite;
   junk: Junk | null;
-  /** Scorch and wreckage, at the site. */
-  decor: THREE.Group;
+  /** The junk was built as a stripped husk (its crash site was spent). */
+  husk: boolean;
   /** The site's machine is drawn (in the scene). */
   shown: boolean;
 }
 
-const scorchMat = new THREE.MeshBasicNodeMaterial({ color: 0x120a06, transparent: true, opacity: 0.55, depthWrite: false });
-const plateMats = [0x4a3426, 0x5c4a3a, 0x3a2c22].map((c) => new THREE.MeshStandardNodeMaterial({ color: c, metalness: 0.6, roughness: 0.85 }));
-
-function wreckage(site: CrashSite, y: number): THREE.Group {
-  const r = seeded(site.seed ^ 0x5bd1e995);
-  const g = new THREE.Group();
-  g.position.set(site.x, y, site.z);
-  const scorch = new THREE.Mesh(new THREE.CircleGeometry(3.6, 28).rotateX(-Math.PI / 2), scorchMat);
-  scorch.position.y = 0.04;
-  g.add(scorch);
-  // The skid mark the machine ploughed on its way in.
-  const trench = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.08, 9), new THREE.MeshStandardNodeMaterial({ color: 0x2a1a10, roughness: 1 }));
-  trench.position.set(Math.sin(site.yaw) * -6, 0.02, Math.cos(site.yaw) * -6);
-  trench.rotation.y = site.yaw;
-  g.add(trench);
-  const n = 6 + Math.floor(r() * 4);
-  for (let i = 0; i < n; i++) {
-    const a = r() * Math.PI * 2, d = 2.4 + r() * 4.5;
-    const w = 0.4 + r() * 1.0, l = 0.5 + r() * 1.1, t = 0.04 + r() * 0.08;
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(w, t, l), plateMats[i % plateMats.length]);
-    plate.position.set(Math.cos(a) * d, t * 0.5 + r() * 0.1, Math.sin(a) * d);
-    plate.rotation.set((r() - 0.5) * 0.7, r() * Math.PI * 2, (r() - 0.5) * 0.7);
-    plate.castShadow = true;
-    plate.receiveShadow = true;
-    g.add(plate);
-    if (r() < 0.35) {
-      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8 + r() * 1.2, 6), plateMats[0]);
-      strut.position.set(Math.cos(a + 0.4) * (d + 0.5), 0.15, Math.sin(a + 0.4) * (d + 0.5));
-      strut.rotation.set(Math.PI / 2 - r() * 0.5, r() * 3, 0);
-      strut.castShadow = true;
-      g.add(strut);
-    }
-  }
-  return g;
-}
+const spent = (site: CrashSite) => !COMPONENTS[site.kind].carry && crashSpent.has(site.wreck);
 
 export class MachineSites {
   private views = new Map<string, SiteView>();
   private scene: THREE.Scene;
-  private dirty = true;
   readonly bench: Bench;
+  /** Id of the site the disassembly mode is working on (src/teardown): its machine is never swapped under it. */
+  busy: () => string | undefined = () => undefined;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.bench = new Bench(scene);
-    crashListeners.push(() => (this.dirty = true));
   }
 
   /** Every frame with the local player's position. */
   update(focus: THREE.Vector3) {
-    const near = sitesNear(focus.x, focus.z, SHOW_R);
+    const near = sitesNear(focus.x, focus.z, DROP_R);
     const keep = new Set<string>();
     for (const site of near) {
       keep.add(site.id);
       let v = this.views.get(site.id);
-      if (!v) {
-        const y = heightAt(site.x, site.z);
-        const decor = wreckage(site, y);
-        this.scene.add(decor);
-        v = { site, junk: null, decor, shown: false };
-        this.views.set(site.id, v);
-      }
+      if (!v) this.views.set(site.id, (v = { site, junk: null, husk: false, shown: false }));
+      // Spent while we weren't working on it: rebuild as the husk.
+      if (v.junk && v.husk !== spent(site) && this.busy() !== site.id) this.drop(v, true);
       const d = Math.hypot(site.x - focus.x, site.z - focus.z);
       const gone = COMPONENTS[site.kind].carry && crashTaken.has(site.id);
-      if (gone && v.shown && v.junk) {
-        this.scene.remove(v.junk.root);
-        v.shown = false;
-      } else if (!gone && d < BUILD_R && !v.shown) this.show(v);
-      else if (v.shown && d > DROP_R && v.junk) {
-        this.scene.remove(v.junk.root);
-        v.shown = false;
-      }
+      if (gone && v.shown) this.drop(v, false);
+      else if (!gone && d < BUILD_R && !v.shown) this.show(v);
+      else if (v.shown && d > DROP_R) this.drop(v, false);
     }
     for (const [id, v] of this.views) {
       if (keep.has(id)) continue;
-      this.scene.remove(v.decor);
-      if (v.junk && v.shown) this.scene.remove(v.junk.root);
+      this.drop(v, true);
       this.views.delete(id);
     }
-    this.dirty = false;
+  }
+
+  /** Take the machine out of the scene; `forget` also throws the built junk away. */
+  private drop(v: SiteView, forget: boolean) {
+    if (v.junk && v.shown) this.scene.remove(v.junk.root);
+    v.shown = false;
+    if (forget) v.junk = null;
   }
 
   private show(v: SiteView) {
@@ -118,6 +79,8 @@ export class MachineSites {
     if (!v.junk) {
       v.junk = buildJunk(site.kind, seeded(site.seed));
       v.junk.root.rotation.y = site.yaw;
+      v.husk = spent(site);
+      if (v.husk) fastForward(v.junk, v.junk.steps.map((_, i) => i), v.junk.slots.map((_, i) => i));
     }
     const j = v.junk;
     j.root.position.set(site.x, heightAt(site.x, site.z), site.z);
@@ -127,12 +90,12 @@ export class MachineSites {
     v.shown = true;
   }
 
-  /** The site within reach of (x, z) that can be worked on right now. */
+  /** The site within reach of (x, z) that can be worked on right now (not a stripped husk). */
   nearest(x: number, z: number): SiteView | null {
     let best: SiteView | null = null;
     let bd = CRASH_REACH;
     for (const v of this.views.values()) {
-      if (!v.shown || !v.junk) continue;
+      if (!v.shown || !v.junk || v.husk) continue;
       const d = Math.hypot(v.site.x - x, v.site.z - z);
       if (d < bd) {
         bd = d;
