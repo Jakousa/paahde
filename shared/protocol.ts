@@ -2,6 +2,8 @@
 import type { PlayerState } from './sim.ts';
 import type { Slots } from './items.ts';
 import type { Storm } from './storm.ts';
+import type { Placed } from './placed.ts';
+import type { BedState } from './garden.ts';
 
 export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
@@ -13,8 +15,17 @@ export type ClientMsg =
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
   // Pick up scrap piece i of cell (ix, iz) (shared/scrap.ts). Sent after the input it was aimed with.
   | { t: 'pickup'; ix: number; iz: number; i: number }
-  // Plant or harvest greenhouse bed i (shared/garden.ts BEDS).
+  // Plant or harvest the plant bed with this placed id (shared/garden.ts, shared/placed.ts).
   | { t: 'tend'; bed: number }
+  // Put down the placeable item in bag slot `slot` (shared/placed.ts) at floor point (x, z) with turn rot
+  // (0/1). The server checks the item, reach and placeError(), then answers 'items' (bag) and broadcasts
+  // 'placed'; a refusal gets a 'notice'.
+  | { t: 'place'; slot: number; x: number; z: number; rot: number }
+  // Pick a placed thing back up into the bag (reach, room in the bag). A bed's crop is lost.
+  | { t: 'unplace'; id: number }
+  // Craft a recipe at the workbench (shared/crafting.ts RECIPES id): reach checked, ingredients used up from
+  // the bag, answered with 'items' (got: what was made) or a 'notice'.
+  | { t: 'craft'; recipe: string }
   // Debug menu: move the shared day/night clock by changing the wall-clock epoch.
   // epoch null = back to the real clock.
   | { t: 'setEpoch'; epoch: number | null }
@@ -111,8 +122,13 @@ export type ServerMsg =
   // Your disassembly-table job (server/crash.ts): the machine on it (kind, and the seed src/teardown/junk.ts builds it
   // from) and what is done and taken (step and part indexes), or null. After 'welcome' and whenever a job starts.
   | { t: 'bench'; job: BenchJob | null }
-  // Growth stage of every greenhouse bed (shared/garden.ts), on join and whenever one changes.
-  | { t: 'garden'; beds: number[] }
+  // Every placed thing in the base (shared/placed.ts), on join (before 'welcome') and whenever it changes
+  // (before the snapshot, like terrainEdit, so prediction collides with it from the same tick on).
+  | { t: 'placed'; list: Placed[] }
+  // Every plant bed's stage and growth (shared/garden.ts), on join and whenever one changes.
+  | { t: 'garden'; beds: BedState[] }
+  // A short message for this player's HUD toast (a refused place, pickup or craft).
+  | { t: 'notice'; text: string }
   // A bed this player tended was planted or harvested, for the HUD toast.
   | { t: 'tended'; what: 'planted' | 'harvested' }
   // The shared clock's epoch changed (debug menu), or a setEpoch was refused and this is the real one.

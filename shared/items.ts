@@ -25,6 +25,9 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier }
   control_cabinet: { label: 'Control cabinet', stack: 1 },
   // Parts taken out of machines (shared/parts.ts): `<part>_<tier>`, e.g. battery_space.
   ...partItems(),
+  // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
+  plant_bed: { label: 'Plant bed', stack: 1 },
+  uv_lamp: { label: 'UV lamp', stack: 1 },
 };
 const ORDER = Object.keys(ITEMS);
 

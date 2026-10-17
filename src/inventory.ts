@@ -9,6 +9,8 @@ import { RARITY } from '../shared/salvage.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
+import { countMatching, RECIPES } from '../shared/crafting.ts';
+import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import { ui } from './input';
 import type { Net } from './net';
 
@@ -22,6 +24,8 @@ const css = `
   pointer-events: none; white-space: nowrap; display: none; }
 #pickup kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 6px; border-radius: 3px;
   background: #fff4e4; color: #2a160a; }
+#pickup * + kbd { margin-left: 10px; }
+#pickup .bad { color: #ffb08a; }
 #toasts { position: fixed; left: 50%; top: calc(50% + 52px); transform: translateX(-50%); pointer-events: none;
   display: flex; flex-direction: column; align-items: center; gap: 2px; }
 #toasts div { font: 600 13px var(--mono); color: #ffd9a0; text-shadow: 0 1px 2px #000;
@@ -61,6 +65,17 @@ const css = `
 #invOverlay .slot.rare { box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.12), inset 0 -3px 0 var(--c);
   background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--c) 22%, transparent), rgba(255, 240, 220, 0.04) 70%); }
 #invOverlay .none { width: 190px; padding: 6px 2px; opacity: 0.55; line-height: 1.45; }
+#invOverlay .box.bench { box-shadow: 0 0 0 1px rgba(160, 220, 140, 0.35), 0 8px 30px rgba(0, 0, 0, 0.45); }
+#invOverlay .recipe { display: flex; align-items: center; gap: 10px; padding: 6px 4px; width: 250px; }
+#invOverlay .recipe + .recipe { border-top: 1px solid rgba(255, 240, 220, 0.1); }
+#invOverlay .recipe .ico { width: 46px; height: 46px; flex: none; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; background: rgba(255, 240, 220, 0.06); }
+#invOverlay .recipe .what { flex: 1; line-height: 1.5; }
+#invOverlay .recipe .name { font-weight: 600; }
+#invOverlay .recipe .need { font-size: 11px; opacity: 0.85; }
+#invOverlay .recipe .need .short { color: #ff9a7a; }
+#invOverlay .recipe .need .ok { color: #9ad88a; }
+#invOverlay button:disabled { opacity: 0.35; cursor: default; }
 #invOverlay .help { opacity: 0.55; font-size: 11px; text-shadow: 0 1px 2px #000; }
 #invGhost { position: fixed; z-index: 16; pointer-events: none; width: 54px; height: 54px; display: flex;
   align-items: center; justify-content: center; transform: translate(-50%, -50%); filter: drop-shadow(0 4px 6px #000); }
@@ -108,6 +123,10 @@ ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.8" y="-10" width=
 stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#a8a294" stroke-width="1.3"/></svg>`,
 };
+// Rendered icons (public/icons/items/<kind>.png, tools/blender/placeables.py) for the crafted placeables.
+const png = (kind: string) => `<img src="./icons/items/${kind}.png" alt="" draggable="false">`;
+ICONS.plant_bed = png('plant_bed');
+ICONS.uv_lamp = png('uv_lamp');
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 /** Parts (shared/parts.ts) use their rendered icons, public/icons/items/<part>_<tier>.png (tools/blender/items.py,
  *  and tools/models/part-icons.ts for the code-built ones); a lettered tile in the rarity colour if one fails. */
@@ -141,6 +160,8 @@ export class InventoryHud {
   private canvas: HTMLElement;
   /** Storage boxes in reach (shared/storage.ts openBoxes), as last drawn. */
   private storages: string[] = [];
+  /** The workbench is in reach (its recipes are drawn), as last drawn. */
+  private bench = false;
   private drag: Drag | null = null;
   private over: HTMLElement | null = null;
 
@@ -207,14 +228,21 @@ export class InventoryHud {
     if (target === this.shown) return;
     this.shown = target;
     this.prompt.style.display = target ? 'block' : 'none';
-    if (target) this.prompt.innerHTML = `<kbd>F</kbd>${typeof target === 'string' ? target : `Pick up ${SCRAP_KINDS[target.kind].label}`}`;
+    // A label that starts with markup brings its own keys (e.g. "[G] Pick up" alone).
+    if (target) this.prompt.innerHTML = typeof target === 'string' && target.startsWith('<') ? target
+      : `<kbd>F</kbd>${typeof target === 'string' ? target : `Pick up ${SCRAP_KINDS[target.kind].label}`}`;
   }
 
-  /** Every frame: storage boxes come into and out of reach as the player moves. */
+  /** Open the inventory (F at the workbench: its recipes show next to the bag). */
+  open() {
+    this.toggle(true);
+  }
+
+  /** Every frame: storage boxes and the workbench come into and out of reach as the player moves. */
   update(s: PlayerState) {
     if (!ui.inventoryOpen) return;
     const open = openBoxes(s);
-    if (open.join() !== this.storages.join()) this.render();
+    if (open.join() !== this.storages.join() || benchNear(s) !== this.bench) this.render();
   }
 
   toast(text: string) {
@@ -236,12 +264,30 @@ export class InventoryHud {
       html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><button data-sort="${box}" title="Merge stacks and order them">Sort</button></div>`
         + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml(box, slots, 0, slots.length)}</div></div>`;
     }
-    if (!this.storages.length) {
+    this.bench = benchNear(this.net.me);
+    if (this.bench) html += this.benchHtml(bag);
+    if (!this.storages.length && !this.bench) {
       html += `<div class="box"><div class="head"><h3>Storage</h3></div><div class="none">Nothing in reach. Stand by the chest in the base,
         or ride the sand bike, and it opens here.</div></div>`;
     }
     this.boxesEl.innerHTML = html;
     if (this.drag) this.slotEl(this.drag.box, this.drag.i)?.classList.add('dragging');
+  }
+
+  /** The workbench's recipes (shared/crafting.ts): what each needs, what you have, and a Craft button. */
+  private benchHtml(bag: Slots) {
+    let html = `<div class="box bench"><div class="head"><h3>Workbench</h3></div>`;
+    for (const [id, r] of Object.entries(RECIPES)) {
+      let ready = true;
+      const needs = r.needs.map((ing) => {
+        const have = countMatching(bag, ing);
+        ready &&= have >= ing.n;
+        return `<span class="${have >= ing.n ? 'ok' : 'short'}">${ing.label} ${Math.min(have, ing.n)}/${ing.n}</span>`;
+      }).join('<br>');
+      html += `<div class="recipe"><div class="ico">${itemIcon(r.makes)}</div><div class="what"><div class="name">${itemLabel(r.makes)}</div>`
+        + `<div class="need">${needs}</div></div><button data-craft="${id}"${ready ? '' : ' disabled'}>Craft</button></div>`;
+    }
+    return `${html}<div class="none" style="width:250px">Crafted things go in the backpack. Put one in the hotbar (1–4) to place it on the floor here.</div></div>`;
   }
 
   private slotsHtml(box: string, slots: Slots, from: number, to: number) {
@@ -272,6 +318,8 @@ export class InventoryHud {
   private press(e: PointerEvent) {
     const sort = (e.target as HTMLElement).closest<HTMLElement>('[data-sort]');
     if (sort) return this.net.sortBox(sort.dataset.sort!);
+    const craft = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-craft]');
+    if (craft) return void (craft.disabled || this.net.craft(craft.dataset.craft!));
     const at = this.slotAt(e.clientX, e.clientY);
     if (!at || !this.net.boxes[at.box]?.[at.i]) return;
     e.preventDefault();
@@ -338,4 +386,10 @@ export class InventoryHud {
     this.over?.classList.remove('over');
     this.over = null;
   }
+}
+
+/** Is the workbench (shared/stations.ts) in reach of a player at `s`? */
+function benchNear(s: PlayerState): boolean {
+  const i = STATIONS.findIndex((st) => st.kind === 'workbench');
+  return i >= 0 && stationReach(s, i) <= STATION_REACH;
 }

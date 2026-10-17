@@ -9,6 +9,7 @@
 import { atPump } from '../shared/base.ts';
 import { CANTEEN_SIPS, DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
 import { HOTBAR } from '../shared/items.ts';
+import { isPlaceable } from '../shared/placed.ts';
 import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
@@ -194,6 +195,11 @@ export class Survival {
     this.select(-1);
   }
 
+  /** The selected hotbar slot, -1 for empty hands. */
+  get slot() {
+    return this.selected;
+  }
+
   private select(slot: number) {
     if (slot !== this.selected) this.cancel();
     this.selected = slot;
@@ -249,7 +255,8 @@ export class Survival {
     this.drawHotbar();
     const holding = playerHands.held === 'canteen';
     const atBase = atPump(pos.x, pos.y, pos.z);
-    tools.blocked = playerHands.held !== 'none';
+    // A placeable in hand (src/placing.ts) takes the use button too.
+    tools.blocked = playerHands.held !== 'none' || isPlaceable(this.net.boxes.bag?.[this.selected]?.kind);
 
     // Drinking: hold the use button for DRINK_MS; letting go early spills nothing and costs nothing.
     const use = useHeld();

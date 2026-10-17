@@ -127,6 +127,11 @@ export class Base {
     }
   }
 
+  /** A glTF material converted like the bunker's own, lit by its indoor lights (things placed on its floor). */
+  indoorMaterial(src: THREE.Material): THREE.Material {
+    return convert(src as THREE.MeshStandardMaterial, this.lit);
+  }
+
   /** Follow the daylight with the bounce under the skylight. */
   update() {
     const day = THREE.MathUtils.smoothstep(sunDirection.value.y, 0.0, 0.5);

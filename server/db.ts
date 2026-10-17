@@ -164,17 +164,30 @@ export function openDb(path: string) {
     });
   }
 
-  // Greenhouse beds (shared/garden.ts): a row per bed once it has been tended; untouched beds keep their
-  // layout stage.
+  // Placed things (shared/placed.ts, server/placed.ts): items put down on the bunker floor. The old
+  // `garden` table (greenhouse beds by layout index) is unused since beds are placed things.
   db.exec(`
-    CREATE TABLE IF NOT EXISTS garden (
-      bed        INTEGER PRIMARY KEY,        -- BEDS index
-      stage      INTEGER NOT NULL,           -- EMPTY / SPROUTS / GROWN
-      planted_at INTEGER NOT NULL            -- ms since epoch, 0 if empty
+    CREATE TABLE IF NOT EXISTS placed (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind      TEXT NOT NULL,               -- ITEMS key (a PLACEABLES kind)
+      x         REAL NOT NULL,               -- world position of the footprint centre
+      z         REAL NOT NULL,
+      rot       INTEGER NOT NULL,            -- 0: long side along X, 1: along Z
+      owner     TEXT NOT NULL,               -- browser ID of whoever put it down
+      placed_at INTEGER NOT NULL             -- ms since epoch
+    );
+    CREATE TABLE IF NOT EXISTS beds (
+      id     INTEGER PRIMARY KEY,            -- placed id of a plant_bed
+      stage  INTEGER NOT NULL,               -- EMPTY / SPROUTS / GROWN (shared/garden.ts)
+      growth REAL NOT NULL                   -- ms grown under a UV lamp so far
     );
   `);
-  const allBeds = db.prepare('SELECT bed, stage, planted_at FROM garden');
-  const upsertBed = db.prepare('INSERT OR REPLACE INTO garden (bed, stage, planted_at) VALUES (?, ?, ?)');
+  const allPlaced = db.prepare('SELECT id, kind, x, z, rot FROM placed ORDER BY id');
+  const insertPlaced = db.prepare('INSERT INTO placed (kind, x, z, rot, owner, placed_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const deletePlaced = db.prepare('DELETE FROM placed WHERE id = ?');
+  const allBeds = db.prepare('SELECT id, stage, growth FROM beds');
+  const upsertBed = db.prepare('INSERT OR REPLACE INTO beds (id, stage, growth) VALUES (?, ?, ?)');
+  const deleteBed = db.prepare('DELETE FROM beds WHERE id = ?');
 
   // Key/value settings (the debug menu's shared-clock shift survives server restarts).
   db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL NOT NULL)');
@@ -184,8 +197,14 @@ export function openDb(path: string) {
   return {
     getSetting: (key: string) => (getSetting.get(key) as { value: number } | undefined)?.value,
     setSetting: (key: string, value: number) => putSetting.run(key, value),
-    loadBeds: () => allBeds.all() as { bed: number; stage: number; planted_at: number }[],
-    saveBed: (bed: number, stage: number, plantedAt: number) => upsertBed.run(bed, stage, plantedAt),
+    loadPlaced: () => allPlaced.all() as { id: number; kind: string; x: number; z: number; rot: number }[],
+    /** New placed row; returns its id. */
+    insertPlaced: (kind: string, x: number, z: number, rot: number, owner: string) =>
+      Number(insertPlaced.run(kind, x, z, rot, owner, Date.now()).lastInsertRowid),
+    deletePlaced: (id: number) => deletePlaced.run(id),
+    loadBeds: () => allBeds.all() as { id: number; stage: number; growth: number }[],
+    saveBed: (id: number, stage: number, growth: number) => upsertBed.run(id, stage, growth),
+    deleteBed: (id: number) => deleteBed.run(id),
     loadTaken: () => allTaken.all() as { ix: number; iz: number; i: number; taken_at: number }[],
     tx,
     takeScrap: (ix: number, iz: number, i: number, at: number) => insertTaken.run(ix, iz, i, at),

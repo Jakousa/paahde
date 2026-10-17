@@ -2,7 +2,8 @@ import * as THREE from 'three/webgpu';
 import { DIG, DT, PILE, quantizeYaw } from '../shared/sim.ts';
 import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
-import { bedTarget, EMPTY, GROWN } from '../shared/garden.ts';
+import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
+import { bedLit, placed } from '../shared/placed.ts';
 import { STATIONS, stationTarget } from '../shared/stations.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
@@ -20,6 +21,8 @@ import { tyreDust } from './tyreDust';
 import { Post } from './post';
 import * as env from './world/env';
 import { Base } from './world/base';
+import { PlacedView } from './world/placed';
+import { Placer } from './placing';
 import { Scrap } from './world/scrap';
 import { CrashSites } from './world/crashsites';
 import { CrashSound } from './crashSound';
@@ -54,6 +57,7 @@ const orbit = new FirstPersonCamera(renderer.domElement);
 const sky = new Sky(scene);
 const terrain = new Terrain(scene);
 const base = new Base(scene);
+const placedView = new PlacedView(scene, base); // plant beds and UV lamps on the bunker floor
 const scrap = new Scrap(scene);
 const crashSites = new CrashSites(scene);
 const crashSound = new CrashSound();
@@ -70,7 +74,7 @@ const teardown = new TeardownView(scene, orbit.camera); // F at a machine site: 
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and whether it smokes (shared/crashsites.ts).
   const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, smoke: s.smoke, pieces: s.pieces.length }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, teardown } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, teardown, placedView } });
 }
 
 const net = new Net(getBrowserId());
@@ -144,6 +148,9 @@ const survival = new Survival(net);
 const menu = new Menu(renderer.domElement);
 const telescope = new Telescope(orbit);
 net.onTended = (what) => hud.toast(what === 'planted' ? 'Seeds planted' : 'Harvested the greens');
+net.onPlaced = () => placedView.sync(placed, net.garden);
+net.onNotice = (text) => hud.toast(text);
+const placer = new Placer(net, placedView);
 
 window.addEventListener('resize', () => {
   orbit.resize();
@@ -279,22 +286,29 @@ renderer.setAnimationLoop((time) => {
   // F: use the work station in view, else tend the greenhouse bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
-  const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
-  const stage = net.garden[bed];
+  // Placing from the hotbar and G to pick placed things up (src/placing.ts); its prompt goes after F's.
+  const placing = placer.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), !teardown.active, (t) => hud.toast(t));
+  const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), placed) : null;
+  const bedState = bed ? net.garden.get(bed.id) : undefined;
+  const stage = bed ? (bedState?.stage ?? EMPTY) : -1;
   const tend = stage === EMPTY ? 'Plant seeds' : stage === GROWN ? 'Harvest' : null;
-  const target = net.connected && station < 0 && bed < 0 ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  // Sprouts grow only under a UV lamp (shared/garden.ts).
+  const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>Growing under the lamp · ${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : '<span class="bad">Sprouts need a UV lamp over the bed</span>') : null;
+  const target = net.connected && station < 0 && !bed ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
   // it lies. A carried one is taken apart on the base's disassembly table.
-  const site = net.connected && !teardown.active && station < 0 && bed < 0 && !target ? machines.nearest(net.me.x, net.me.z) : null;
+  const site = net.connected && !teardown.active && station < 0 && !bed && !target ? machines.nearest(net.me.x, net.me.z) : null;
   const small = site ? COMPONENTS[site.site.kind].carry : false;
   const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`) : null;
   const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag, net.bench) : null;
   const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use disassembly table');
-  hud.setTarget(teardown.active ? null : (use ?? tend ?? target ?? sitePrompt));
+  const fPrompt = use ?? tend ?? target ?? sitePrompt;
+  const extra = [growing, placing.prompt].filter(Boolean).join(' ');
+  hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `<kbd>F</kbd>${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup();
   if (interact && !teardown.active) {
     if (use) {
-      if (STATIONS[station].kind === 'workbench') hud.toast('Nothing to craft yet');
+      if (STATIONS[station].kind === 'workbench') hud.open();
       else if (table) {
         if (table.resume && net.bench) teardown.begin(machines.bench.site(net.bench, benchLink));
         else {
@@ -302,7 +316,7 @@ renderer.setAnimationLoop((time) => {
           net.crashUse(table.kind);
         }
       } else hud.toast('Carry a small machine here to take it apart');
-    } else if (tend) net.tend(bed);
+    } else if (tend && bed) net.tend(bed.id);
     else if (target) {
       if (net.pickup(target)) pickupSound.play();
       else hud.toast('Backpack full');

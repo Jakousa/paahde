@@ -147,7 +147,7 @@ export function atPump(x: number, y: number, z: number, margin = 0): boolean {
  * Vertical capsule in local coordinates: segment centre ± half·(ax, az), radius r, spanning heights
  * y0..top (local). Players entirely below y0 pass under it; low ones can be stood on.
  */
-type Capsule = { x: number; z: number; ax: number; az: number; half: number; r: number; y0: number; top: number };
+export type Capsule = { x: number; z: number; ax: number; az: number; half: number; r: number; y0: number; top: number };
 /** Walls are taller than any jump. */
 const WALL_H = 100;
 
@@ -212,6 +212,12 @@ for (const p of BASE_PIECES) {
   capsules.push({ x: p.x, z: p.z, ax: alongX ? fz : fx, az: alongX ? -fx : fz, half, r, y0, top: y0 + p.h });
 }
 
+/** Things players placed on the floor (shared/placed.ts setPlaced keeps these in step with its list). */
+let withPlaced: Capsule[] = capsules;
+export function setPlacedCapsules(caps: Capsule[]) {
+  withPlaced = capsules.concat(caps);
+}
+
 /** Floor height at local (lx, lz) — landing, stairs, bunker floor, skylight glass — or -Infinity. */
 function floorAt(lx: number, lz: number, feet: number, stepUp: number): number {
   let best = -Infinity;
@@ -251,7 +257,7 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
   const feet = Math.max(y, prevY) - BASE.y;
   const head = Math.min(y, prevY) - BASE.y + height;
   let support = floorAt(q.x, q.z, feet, stepUp);
-  for (const c of capsules) {
+  for (const c of withPlaced) {
     const reach = c.half + c.r + radius;
     if (Math.abs(q.x - c.x) > reach || Math.abs(q.z - c.z) > reach) continue;
     if (head <= c.y0) continue;

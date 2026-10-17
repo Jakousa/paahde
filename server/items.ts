@@ -4,6 +4,8 @@
 import { addItem, hasItem, stackOf, HOTBAR, moveItem, roomFor, sortItems, STARTER_KIT, type Slots } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, isShared } from '../shared/storage.ts';
+import { craft, RECIPES } from '../shared/crafting.ts';
+import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
@@ -93,6 +95,26 @@ export class ItemServer {
       return true;
     }
     return false;
+  }
+
+  /** Use up one `kind` from bag slot `slot`. False if that slot holds something else. */
+  takeAt(browserId: string, slot: number, kind: string): boolean {
+    const bag = this.slots(browserId, 'bag');
+    const it = bag[slot];
+    if (it?.kind !== kind) return false;
+    if (--it.n <= 0) bag[slot] = null;
+    this.save(browserId, 'bag');
+    return true;
+  }
+
+  /** Craft a recipe (shared/crafting.ts) at the workbench. Returns the item kind made, or why not. */
+  craft(browserId: string, s: PlayerState, recipe: unknown): string | { made: string } {
+    if (typeof recipe !== 'string' || !RECIPES[recipe]) return 'Unknown recipe';
+    const bench = STATIONS.findIndex((st) => st.kind === 'workbench');
+    if (bench < 0 || stationReach(s, bench) > STATION_REACH + REACH_SLACK) return 'Stand at the workbench to craft';
+    if (!craft(this.slots(browserId, 'bag'), recipe, this.newId)) return 'Missing parts';
+    this.save(browserId, 'bag');
+    return { made: RECIPES[recipe].makes };
   }
 
   /** A move from the client. Returns whether anything changed (either way the client gets both boxes back). */

@@ -15,6 +15,7 @@ import { crashSitesNear } from '../shared/crashsites.ts';
 import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
+import { PlacedServer } from './placed.ts';
 import { ItemServer } from './items.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
@@ -43,6 +44,7 @@ const crash = new CrashServer(db, (ids, msg) => {
   const want = new Set(ids);
   for (const p of players.values()) if (want.has(p.id)) send(p.ws, msg);
 });
+const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
 const garden = new GardenServer(db);
 const storms = new StormServer(performance.now());
 
@@ -112,6 +114,9 @@ wss.on('connection', (ws) => {
     if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
     if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
+    if (msg.t === 'place' && p) return onPlace(p, msg.slot, msg.x, msg.z, msg.rot);
+    if (msg.t === 'unplace' && p) return onUnplace(p, msg.id);
+    if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'drink' && p) return onDrink(p);
@@ -162,6 +167,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
   send(ws, crash.joinMessage());
+  send(ws, placedThings.joinMessage());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
@@ -278,6 +284,29 @@ function onTend(p: Player, bed: unknown) {
   if (what) send(p.ws, { t: 'tended', what });
 }
 
+// Placing things from the bag on the bunker floor and picking them up (server/placed.ts), crafting at the
+// workbench (shared/crafting.ts). Refusals get a notice (and the bag back, in case the client guessed).
+function onPlace(p: Player, slot: unknown, x: unknown, z: unknown, rot: unknown) {
+  const r = placedThings.place(p.browserId, p.state, slot, x, z, rot, [...players.values()].map((o) => o.state));
+  if (typeof r === 'string') send(p.ws, { t: 'notice', text: r });
+  sendBox(p, 'bag');
+}
+
+function onUnplace(p: Player, id: unknown) {
+  const r = placedThings.unplace(p.browserId, p.state, id);
+  if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
+  if (r.kind === 'plant_bed') garden.remove(r.id);
+  sendBox(p, 'bag', r.kind);
+}
+
+function onCraft(p: Player, recipe: unknown) {
+  const r = items.craft(p.browserId, p.state, recipe);
+  if (typeof r === 'string') {
+    send(p.ws, { t: 'notice', text: r });
+    send(p.ws, boxMsg(p.browserId, 'bag'));
+  } else sendBox(p, 'bag', r.made);
+}
+
 function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: unknown) {
   if (typeof seq !== 'number' || typeof input !== 'number' || seq <= p.ack) return;
   if (!Number.isInteger(yaw) || (yaw as number) < 0 || (yaw as number) >= YAW_STEPS) return;
@@ -359,7 +388,7 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   const weather = storms.tick(time, [...players.values()].map((p) => p.state));
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), garden.flush(), weather]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), placedThings.flush(), garden.flush(), weather]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
