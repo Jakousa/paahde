@@ -4,7 +4,7 @@
 // bike while riding; shared/storage.ts), appearing and disappearing as you move. Drag an item onto another
 // slot to move it there or swap the two; shift-click sends it across to the other side. Moves go through Net (applied at once, the server confirms).
 import { HOTBAR, ITEMS, PART_ITEMS, type Item, type Slots } from '../shared/items.ts';
-import { RARITY, type PartId } from '../shared/salvage.ts';
+import { RARITY } from '../shared/salvage.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
@@ -152,7 +152,8 @@ export class InventoryHud {
     document.body.append(this.prompt, this.toasts, this.overlay, this.ghost);
 
     net.onItems = (box, got) => {
-      if (got) this.toast(`+1 ${itemLabel(got)}`);
+      // The disassembly mode shows its own "+ Motor · Rare" flying to the hotbar.
+      if (got && !document.body.classList.contains('teardown')) this.toast(`+1 ${itemLabel(got)}`);
       if (box === 'bag' || this.storages.includes(box)) this.render();
     };
 

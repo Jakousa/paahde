@@ -82,7 +82,6 @@ net.onSite = (m) => {
   machines.apply(m, cur?.id ?? null);
   if (m.t === 'siteTook' && cur?.id === m.id) {
     teardown.applyTook(m.i, m.ok, m.reason);
-    if (!m.ok && m.reason === 'full') hud.toast('Bag full');
   }
   if (!cur || m.t === 'sites' || m.t === 'bench' || m.t === 'siteReset' || m.t === 'siteTook' || cur.id !== m.id) return;
   if (m.t === 'siteState') {
@@ -249,6 +248,7 @@ renderer.setAnimationLoop((time) => {
   else focus.copy(me.root.position);
   telescope.update(frameDt);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
+  teardown.placeCamera(frameDt); // at the disassembly table: a fixed view above it
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
   me.setHeadless(riding && !orbit.showBody);

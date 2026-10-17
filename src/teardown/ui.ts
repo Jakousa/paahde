@@ -1,127 +1,258 @@
 // DOM for the disassembly mode: a full-screen overlay that takes the pointer (so clicks never reach the game
-// canvas and re-capture the mouse), an info card, a leave button and the parts tray. Taken parts go into the
-// bag on the server (server/crash.ts); the tray just lists what you have collected this session.
+// canvas and re-capture the mouse). On it, styled like the Esc menu (src/menu.ts):
+//   top panel    the machine, its rarity, steps and parts progress, what to do next, the few keys, Leave
+//   tip          next to the pointer: what is under it and the exact action ("Click ×3", "Circle to unscrew"),
+//                or why it is locked ("Remove the lid screws first")
+//   ring         radial progress drawn around the step being worked (and the guide circle for bolts)
+//   tags         a label over every part that is free to take
+//   message      a short line for events ("Lid off", "Bag full"), fading out
+//   fly          "+ Motor · Rare" flying from the part to the hotbar when a part is taken
 import { RARITY, type PartId, type Tier } from '../../shared/salvage.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-const NAMES: Record<PartId, string> = {
+export const PART_NAMES: Record<PartId, string> = {
   battery: 'Battery', motor: 'Motor', heatsink: 'Heatsink', compute: 'Compute unit', antimatter: 'Antimatter cell', coil: 'Coil',
   impeller: 'Impeller', bearing: 'Bearing', gear: 'Gear', valve: 'Valve', relay: 'Relay',
 };
-const KEYS_SMALL = 'Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs · Right-drag: carry a freed part to the tray, or move the machine · Middle-drag / arrows: turn it over (R resets) · W S A D: step closer, further, around · Check every side · Esc: leave';
-const KEYS_LARGE = 'Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs, hold lifting eyes (two players) · Right-drag: carry a freed part to the tray · W S A D: closer, further, around it (too heavy to turn) · Middle-drag: look around (R recentres) · Walk too far to leave · Esc: leave';
+export const partName = (part: PartId, tier: Tier) => `${PART_NAMES[part]} · ${RARITY[tier].name}`;
+export const rarityColor = (tier: Tier) => hex(RARITY[tier].color);
+
+const MSG_MS = 2600;
+const RING_R = 30;
+const RING_C = 2 * Math.PI * RING_R;
+
+const css = `
+body.teardown #crosshair, body.teardown #pickup { display: none !important; }
+#tdOverlay { position: fixed; inset: 0; z-index: 5; display: none; touch-action: none; user-select: none;
+  -webkit-user-select: none; font: 12px var(--mono); color: #fff4e4; }
+#tdOverlay .panel { position: absolute; background: rgba(28, 15, 7, 0.88); border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.35); }
+#tdOverlay kbd { font: 600 10px var(--mono); padding: 0 4px; border-radius: 3px; background: #ffd9a0; color: #2a160a; }
+#tdTop { top: 12px; left: 50%; transform: translateX(-50%); width: min(460px, calc(100vw - 32px)); padding: 10px 14px 9px; }
+#tdTop .head { display: flex; align-items: baseline; gap: 10px; }
+#tdTop .name { font: 600 13px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: #ffd9a0; }
+#tdTop .tier { font-weight: 600; }
+#tdTop .who { opacity: 0.6; }
+#tdTop button { margin-left: auto; font: 600 11px var(--mono); color: #2a160a; background: #ffd9a0; border: 0;
+  border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+#tdTop button:hover { background: #ffe6bf; }
+#tdTop .meters { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px; align-items: center; margin: 9px 0 7px; }
+#tdTop .meters span { opacity: 0.7; }
+#tdTop .meters b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+#tdTop .bar { height: 5px; border-radius: 3px; background: rgba(255, 240, 220, 0.12); overflow: hidden; }
+#tdTop .bar i { display: block; height: 100%; width: 0; background: #ffd9a0; transition: width .25s; }
+#tdTop .bar.parts i { background: var(--c, #ffd9a0); }
+#tdTop .next { color: #fff4e4; min-height: 1.3em; }
+#tdTop .next::before { content: '▸ '; color: #ffd9a0; }
+#tdTop .keys { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
+  opacity: 0.7; display: flex; flex-wrap: wrap; gap: 3px 12px; }
+#tdTip { position: absolute; padding: 5px 8px; border-radius: 5px; background: rgba(28, 15, 7, 0.92); pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16); white-space: nowrap; display: none; line-height: 1.5; }
+#tdTip .t { font-weight: 600; }
+#tdTip .a { color: #ffd9a0; }
+#tdTip .a kbd { margin-right: 5px; }
+#tdTip.locked .a { color: #ff9c86; }
+#tdTip.locked .a::before { content: '⨯ '; }
+#tdRing { position: absolute; width: ${RING_R * 2 + 12}px; height: ${RING_R * 2 + 12}px; margin: -${RING_R + 6}px 0 0 -${RING_R + 6}px;
+  pointer-events: none; display: none; overflow: visible; }
+#tdRing circle { fill: none; stroke-width: 5; }
+#tdRing .bg { stroke: rgba(28, 15, 7, 0.55); }
+#tdRing .fg { stroke: #ffd9a0; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset .06s; }
+#tdRing.guide .bg { stroke: rgba(255, 217, 160, 0.35); stroke-dasharray: 4 6; }
+#tdTags div { position: absolute; transform: translate(-50%, -100%); padding: 2px 7px; border-radius: 4px; font-weight: 600;
+  background: rgba(28, 15, 7, 0.88); color: var(--c); box-shadow: 0 0 0 1px var(--c); pointer-events: none; white-space: nowrap; }
+#tdTags div::after { content: ' · click'; color: #fff4e4; opacity: 0.6; font-weight: 400; }
+#tdMsg { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); pointer-events: none; display: flex;
+  flex-direction: column; align-items: center; gap: 3px; }
+#tdMsg div { font: 600 13px var(--mono); color: #ffd9a0; text-shadow: 0 1px 2px #000; animation: tdMsg ${MSG_MS}ms ease-out forwards; }
+#tdMsg div.bad { color: #ff9c86; }
+@keyframes tdMsg { 0% { opacity: 0; transform: translateY(6px); } 8% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
+.tdFly { position: fixed; z-index: 6; pointer-events: none; font: 600 13px var(--mono); padding: 3px 8px; border-radius: 4px;
+  background: rgba(28, 15, 7, 0.92); color: var(--c); box-shadow: 0 0 0 1px var(--c); white-space: nowrap;
+  transform: translate(-50%, -50%); transition: left .75s cubic-bezier(.5,0,.8,.4), top .75s cubic-bezier(.4,-0.6,.8,.6), opacity .75s ease-in, scale .75s; }
+`;
+
+export interface Progress {
+  label: string;
+  tier: Tier;
+  stepsDone: number;
+  steps: number;
+  partsTaken: number;
+  parts: number;
+  /** Large sites: shared with others. */
+  shared: boolean;
+}
 
 export class TeardownUi {
   readonly overlay = document.createElement('div');
-  private tray: HTMLElement;
-  private trayList: HTMLElement;
-  private card: HTMLElement;
-  private hint: HTMLElement;
-  private bar: HTMLElement;
-  private counts = new Map<string, number>();
+  private top: HTMLElement;
+  private tipEl: HTMLElement;
+  private ringEl: SVGSVGElement;
+  private tagsEl: HTMLElement;
+  private msgEl: HTMLElement;
+  private nextEl: HTMLElement;
+  private keysEl: HTMLElement;
+  private tagPool: HTMLElement[] = [];
+  private lastTip = '';
+  private lastNext = '';
 
   constructor(onLeave: () => void) {
     const style = document.createElement('style');
-    style.textContent = `
-#tdOverlay { position: fixed; inset: 0; z-index: 5; display: none; touch-action: none; user-select: none;
-  font: 12px system-ui, sans-serif; color: #ffe9cc; }
-#tdOverlay .panel { position: absolute; background: rgba(20, 10, 5, 0.82); border-radius: 8px; padding: 10px 12px;
-  box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.18); }
-#tdOverlay h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; opacity: .7; }
-#tdBar { top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; }
-#tdBar button { font: inherit; color: inherit; background: rgba(255, 233, 204, 0.12); border: 0; border-radius: 4px;
-  padding: 5px 9px; cursor: pointer; }
-#tdBar button:hover { background: rgba(255, 233, 204, 0.25); }
-#tdCard { top: 48px; left: 12px; min-width: 190px; line-height: 1.5; }
-#tdCard b { font-size: 14px; }
-#tdTray { top: 12px; right: 12px; bottom: 12px; width: 200px; display: flex; flex-direction: column;
-  outline: 2px dashed transparent; transition: outline-color .12s, background .12s; }
-#tdTray.over { outline-color: #ffd9a0; background: rgba(70, 36, 16, 0.9); }
-#tdList { overflow-y: auto; flex: 1; }
-#tdList .empty { opacity: .55; line-height: 1.4; }
-#tdList .row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; padding: 4px; border-radius: 6px;
-  background: rgba(255, 233, 204, 0.07); border-left: 3px solid var(--c); }
-#tdList img, #tdList .tile { width: 36px; height: 36px; flex: none; }
-#tdList .tile { display: grid; place-items: center; font: 700 16px system-ui, sans-serif; color: var(--c);
-  background: rgba(255, 233, 204, 0.1); border-radius: 4px; }
-#tdList .t { font-size: 11px; color: var(--c); }
-#tdList .n { margin-left: auto; font-size: 14px; font-weight: 600; }
-#tdHint { bottom: 12px; left: 50%; transform: translateX(-50%); text-align: center; line-height: 1.5; max-width: 62vw; pointer-events: none; }
-#tdHint .now { font-size: 14px; color: #fff4e4; min-height: 1.2em; }
-#tdHint .keys { opacity: .65; }`;
+    style.textContent = css;
     document.head.append(style);
 
     const o = this.overlay;
     o.id = 'tdOverlay';
-    o.innerHTML = `<div class="panel" id="tdBar"><span id="tdTitle"></span><button id="tdLeave">Leave (Esc)</button></div>
-<div class="panel" id="tdCard"></div>
-<div class="panel" id="tdTray"><h4>Parts tray</h4><div id="tdList"></div></div>
-<div class="panel" id="tdHint"><div class="now"></div><div class="keys">Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs, hold lifting eyes · Right-drag: carry a freed part to the tray · Middle-drag / arrows: turn the machine over (R resets) · Check every side · Esc: leave</div></div>`;
+    o.innerHTML = `<div id="tdTags"></div>
+<svg id="tdRing" viewBox="0 0 ${RING_R * 2 + 12} ${RING_R * 2 + 12}"><circle class="bg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}"/><circle class="fg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/></svg>
+<div class="panel" id="tdTop">
+  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button>Leave <kbd>Esc</kbd></button></div>
+  <div class="meters"><span>steps</span><div class="bar steps"><i></i></div><b class="ns"></b><span>parts</span><div class="bar parts"><i></i></div><b class="np"></b></div>
+  <div class="next"></div>
+  <div class="keys"></div>
+</div>
+<div id="tdTip"><div class="t"></div><div class="a"></div></div>
+<div id="tdMsg"></div>`;
     document.body.append(o);
-    this.tray = o.querySelector('#tdTray')!;
-    this.trayList = o.querySelector('#tdList')!;
-    this.card = o.querySelector('#tdCard')!;
-    this.hint = o.querySelector('#tdHint')!;
-    this.bar = o.querySelector('#tdBar')!;
-    o.querySelector('#tdLeave')!.addEventListener('click', onLeave);
-
+    this.top = o.querySelector('#tdTop')!;
+    this.tipEl = o.querySelector('#tdTip')!;
+    this.ringEl = o.querySelector('#tdRing')!;
+    this.tagsEl = o.querySelector('#tdTags')!;
+    this.msgEl = o.querySelector('#tdMsg')!;
+    this.nextEl = this.top.querySelector('.next')!;
+    this.keysEl = this.top.querySelector('.keys')!;
+    this.top.querySelector('button')!.addEventListener('click', onLeave);
     this.setPhase('off', '');
-    this.renderTray();
   }
 
-  /** 'walk': the character is walking up, only a hint shows. 'work': all the panels. */
+  /** 'walk': the character is walking up, only a message shows. 'work': all of it. */
   setPhase(phase: 'off' | 'walk' | 'work', label: string, movable = true) {
     this.overlay.style.display = phase === 'off' ? 'none' : 'block';
-    const work = phase === 'work';
-    for (const el of [this.tray, this.card]) el.style.display = work ? '' : 'none';
-    const keys = this.hint.querySelector<HTMLElement>('.keys')!;
-    keys.style.display = work ? '' : 'none';
-    keys.innerHTML = movable ? KEYS_SMALL : KEYS_LARGE;
-    this.bar.querySelector('#tdTitle')!.textContent = work ? label : '';
-    if (phase === 'walk') this.setHint(`Walking up to the ${label.toLowerCase()}…`);
+    document.body.classList.toggle('teardown', phase !== 'off');
+    this.top.style.display = phase === 'work' ? '' : 'none';
+    if (phase !== 'work') {
+      this.tip(null);
+      this.ring(null);
+      this.tags([]);
+    }
+    const k = (key: string, what: string) => `<span><kbd>${key}</kbd> ${what}</span>`;
+    this.keysEl.innerHTML = movable
+      ? k('LMB', 'work') + k('drag / WASD', 'turn it') + k('wheel', 'zoom') + k('R', 'reset')
+      : k('LMB', 'work') + k('drag', 'look') + k('WASD', 'walk around') + k('R', 'recentre');
+    if (phase === 'walk') this.message(`Walking up to the ${label.toLowerCase()}…`);
   }
 
-  /** The tray's screen rect, for dropping parts on it. */
-  trayRect() {
-    return this.tray.getBoundingClientRect();
-  }
-  trayHot(on: boolean) {
-    this.tray.classList.toggle('over', on);
-  }
-
-  setHint(text: string) {
-    this.hint.querySelector('.now')!.textContent = text;
-  }
-
-  setCard(label: string, tier: Tier, left: number, total: number, steps: number, shared: boolean) {
-    const r = RARITY[tier];
-    this.card.innerHTML = `<h4>${shared ? 'Shared site' : 'On the bench'}</h4><b>${label}</b><br><span style="color:${hex(r.color)}">${r.name}</span> · parts left ${left}/${total}<br>steps left ${steps}${shared ? '<br>others here can help' : ''}`;
+  setProgress(p: Progress) {
+    const t = this.top;
+    t.querySelector('.name')!.textContent = p.label;
+    const tier = t.querySelector<HTMLElement>('.tier')!;
+    tier.textContent = RARITY[p.tier].name;
+    tier.style.color = rarityColor(p.tier);
+    t.querySelector('.who')!.textContent = p.shared ? '· shared site' : '';
+    t.querySelector<HTMLElement>('.steps i')!.style.width = `${p.steps ? (100 * p.stepsDone) / p.steps : 100}%`;
+    t.querySelector<HTMLElement>('.parts i')!.style.width = `${p.parts ? (100 * p.partsTaken) / p.parts : 100}%`;
+    t.querySelector<HTMLElement>('.bar.parts')!.style.setProperty('--c', rarityColor(p.tier));
+    t.querySelector('.ns')!.textContent = `${p.stepsDone}/${p.steps}`;
+    t.querySelector('.np')!.textContent = `${p.partsTaken}/${p.parts}`;
   }
 
-  addItem(part: PartId, tier: Tier) {
-    const k = `${part}_${tier}`;
-    this.counts.set(k, (this.counts.get(k) ?? 0) + 1);
-    this.renderTray();
+  /** The "what to do next" line. */
+  setNext(text: string) {
+    if (text === this.lastNext) return;
+    this.lastNext = text;
+    this.nextEl.textContent = text;
   }
 
-  private renderTray() {
-    if (!this.counts.size) {
-      this.trayList.innerHTML = '<div class="empty">Open it up, free a part, then right-drag it in here.</div>';
+  /** The tip by the pointer at (x, y), or hidden with null. `action` may hold one <kbd>. */
+  tip(t: { x: number; y: number; title: string; action: string; locked?: boolean; color?: string } | null) {
+    const el = this.tipEl;
+    if (!t) {
+      el.style.display = 'none';
+      this.lastTip = '';
       return;
     }
-    // Best first.
-    const rows = [...this.counts].sort((a, b) => tierOf(b[0]) - tierOf(a[0]));
-    this.trayList.innerHTML = rows
-      .map(([k, n]) => {
-        const [part, tier] = k.split('_') as [PartId, Tier];
-        const r = RARITY[tier];
-        // Icons exist for the Blender-modelled items; the code-built parts get a lettered tile.
-        const icon = `<img src="./icons/items/${k}.png" alt="" onerror="this.outerHTML='<div class=&quot;tile&quot;>${NAMES[part][0]}</div>'">`;
-        return `<div class="row" style="--c:${hex(r.color)}">${icon}<div>${NAMES[part]}<div class="t">${r.name}</div></div><span class="n">×${n}</span></div>`;
-      })
-      .join('');
+    const key = `${t.title}|${t.action}|${t.locked}|${t.color}`;
+    if (key !== this.lastTip) {
+      this.lastTip = key;
+      el.classList.toggle('locked', !!t.locked);
+      const title = el.querySelector<HTMLElement>('.t')!;
+      title.textContent = t.title;
+      title.style.color = t.color ?? '';
+      el.querySelector('.a')!.innerHTML = t.action;
+    }
+    el.style.display = 'block';
+    // Beside the pointer, flipped to stay on screen.
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const x = t.x + 18 + w > innerWidth - 8 ? t.x - 14 - w : t.x + 18;
+    const y = t.y + 18 + h > innerHeight - 8 ? t.y - 12 - h : t.y + 18;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+  }
+
+  /** Radial progress at (x, y), 0..1; `guide` draws the dashed circle to follow (bolts). Null hides it. */
+  ring(r: { x: number; y: number; f: number; guide?: boolean } | null) {
+    const el = this.ringEl;
+    if (!r) {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = 'block';
+    el.style.left = `${r.x}px`;
+    el.style.top = `${r.y}px`;
+    el.classList.toggle('guide', !!r.guide);
+    el.style.scale = r.guide ? '1.5' : '1'; // the bolt guide matches the circle to draw
+    el.querySelector<SVGCircleElement>('.fg')!.style.strokeDashoffset = `${RING_C * (1 - Math.min(1, Math.max(0, r.f)))}`;
+  }
+
+  /** Labels over the parts that are free to take. */
+  tags(list: { x: number; y: number; text: string; color: string }[]) {
+    while (this.tagPool.length < list.length) {
+      const d = document.createElement('div');
+      this.tagsEl.append(d);
+      this.tagPool.push(d);
+    }
+    this.tagPool.forEach((d, i) => {
+      const t = list[i];
+      d.style.display = t ? 'block' : 'none';
+      if (!t) return;
+      if (d.textContent !== t.text) d.textContent = t.text;
+      d.style.setProperty('--c', t.color);
+      d.style.left = `${t.x}px`;
+      d.style.top = `${t.y}px`;
+    });
+  }
+
+  /** A short line that fades out; `bad` for refusals. */
+  message(text: string, bad = false) {
+    if (!text) return;
+    // The same line again just restarts.
+    for (const d of this.msgEl.children) if (d.textContent === text) d.remove();
+    const el = document.createElement('div');
+    el.textContent = text;
+    if (bad) el.className = 'bad';
+    this.msgEl.append(el);
+    while (this.msgEl.children.length > 3) this.msgEl.firstElementChild!.remove();
+    setTimeout(() => el.remove(), MSG_MS);
+  }
+
+  /** "+ Motor · Rare" flies from (x, y) down to the hotbar (src/water.ts), where the bag is. */
+  fly(x: number, y: number, part: PartId, tier: Tier) {
+    const el = document.createElement('div');
+    el.className = 'tdFly';
+    el.textContent = `+ ${partName(part, tier)}`;
+    el.style.setProperty('--c', rarityColor(tier));
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    document.body.append(el);
+    const bar = document.getElementById('hotbar')?.getBoundingClientRect();
+    const tx = bar && bar.width ? bar.left + bar.width / 2 : innerWidth / 2;
+    const ty = bar && bar.height ? bar.top + bar.height / 2 : innerHeight - 30;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el.style.left = `${tx}px`;
+      el.style.top = `${ty}px`;
+      el.style.opacity = '0.15';
+      el.style.scale = '0.7';
+    }));
+    setTimeout(() => el.remove(), 900);
   }
 }
-
-const ORDER = ['scrap', 'basic', 'quality', 'space'];
-const tierOf = (key: string) => ORDER.indexOf(key.split('_')[1]);
