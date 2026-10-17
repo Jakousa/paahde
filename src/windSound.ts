@@ -73,9 +73,16 @@ type Graph = {
   hissHp: BiquadFilterNode;
 };
 
+const VOLUME_KEY = 'dadajam.volume';
+const css = `
+#volume { position: fixed; top: 8px; right: 8px; display: flex; align-items: center; gap: 6px; padding: 3px 8px;
+  font: 12px monospace; color: #ccc; background: rgba(20, 10, 5, 0.35); border-radius: 4px; }
+#volume input { width: 90px; accent-color: #ffd9a0; }
+`;
+
 export class WindSound {
-  /** Overall volume, 0..1. dbg.windSound.volume = 0 from the console to silence it. */
-  volume = 0.8;
+  /** Overall volume, 0..1, set by the slider in the top-right corner (remembered per browser). */
+  volume = 0.4;
   private g: Graph | null = null;
   private s: WindSample = { dx: 0, dz: 0, ustar: 0, q: 0, emit: 0 };
   /** Slowly-followed local wind, so the gust term below can be the difference. */
@@ -83,6 +90,11 @@ export class WindSound {
   private time = 0;
 
   constructor() {
+    try {
+      const v = parseFloat(localStorage.getItem(VOLUME_KEY) ?? '');
+      if (v >= 0 && v <= 1) this.volume = v;
+    } catch {}
+    this.slider();
     const start = () => {
       if (!this.g) this.g = this.build();
       if (this.g.ctx.state === 'suspended') void this.g.ctx.resume();
@@ -94,6 +106,32 @@ export class WindSound {
       if (document.hidden) void this.g.ctx.suspend();
       else void this.g.ctx.resume();
     });
+  }
+
+  private slider() {
+    const style = document.createElement('style');
+    style.textContent = css;
+    document.head.appendChild(style);
+    const label = document.createElement('label');
+    label.id = 'volume';
+    label.textContent = 'volume';
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = '0';
+    input.max = '1';
+    input.step = '0.01';
+    input.value = String(this.volume);
+    input.addEventListener('input', () => {
+      this.volume = parseFloat(input.value);
+      try {
+        localStorage.setItem(VOLUME_KEY, input.value);
+      } catch {}
+    });
+    // Drop focus afterwards, or the arrow keys would nudge the slider while walking.
+    input.addEventListener('change', () => input.blur());
+    input.addEventListener('pointerup', () => input.blur());
+    label.appendChild(input);
+    document.body.appendChild(label);
   }
 
   private build(): Graph {

@@ -173,4 +173,4 @@ listener every frame, so dune lees are quieter than crests and passing gusts and
   and a high sand hiss that follows saltation `q` and swells with streamers (`emit`).
 - **Direction:** the rush is louder in the windward ear and brighter when facing into the wind.
 - Starts on the first click/key (browser autoplay rules), suspends when the tab is hidden.
-  `dbg.windSound.volume` and `dbg.wind.override` are handy for tuning.
+  Volume slider in the top-right corner (default 0.4, remembered per browser); `dbg.wind.override` is handy for tuning.
