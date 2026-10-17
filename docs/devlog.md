@@ -84,10 +84,22 @@ above (shared/crashsites.ts) and share only the idea; the names overlap, so the 
   the station from shared/stations.ts) and take them apart alone, scaled to fit the table; an unfinished job is
   kept in this browser.
 
-Controls: **left mouse only interacts** (click screws and clips, circle the pointer around big bolts, swipe across
-wires to cut them, drag pry tabs, hold lifting eyes), **right-drag** carries a freed part to the tray (and moves a
-carried machine on the table), **middle-drag** or arrow keys turn the machine over, R resets, Esc leaves.
-`?debug` lets one player do the two-player lifts.
+Controls, all on the **left mouse**: on a step it works it (click screws and clips, hold and circle big bolts, hold
+and swipe across wires, drag pry tabs, hold lifting eyes); on a freed part a **click takes it** (it flies to the
+bag); anywhere else a drag turns the machine over (on the table) or looks around (at a large machine). Middle-drag
+does the same turn / look, right-drag moves a machine about the table. On the table **W A S D / arrows** turn the
+machine and the wheel zooms; at a large machine W / S step closer and further and A / D walk around it. R resets,
+Esc (or the Leave button) leaves. `?debug` lets one player do the two-player lifts.
+
+The UI (redone after "confusing, hard to use"): one panel at the top with the machine, its rarity, steps and parts
+progress bars, a **"Next:"** line (take the freed part / the most common ready step on the side you look at / "turn
+it over: 3 more on another side") and the four keys that matter. A tip by the pointer names the thing under it and
+the exact action ("click ×3 to unscrew", "hold and circle to unscrew"), or why it is locked ("Remove the lid screw
+×4 first"), and the blockers light up white on the machine. A radial ring shows a step's progress (a dashed guide
+circle for bolts), freed parts carry a rarity-coloured tag, events are a short line above the hotbar. At the
+**disassembly table the camera swings to a fixed three-quarter view above the table** (0.7 s ease in and out,
+pointer rays use it) instead of the first-person walk-up view; large machines keep the walk-around view. The parts
+tray and its localStorage store are gone: taken parts go to the bag (`TeardownView.onTake` / `applyTook`).
 
 Code: `src/teardown/junk.ts` builds the machines and their steps, `parts.ts` the code-built parts, `teardown.ts`
 the mode (walk-up, input, loose-piece physics, session link), `ui.ts` the panels, `src/world/crash.ts` the
