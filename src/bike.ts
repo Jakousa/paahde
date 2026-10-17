@@ -3,8 +3,8 @@
 // leaning into turns, wheels spinning with the ground speed, the bars turned with the steering, a tyre
 // track behind it, the front wheel up while Space is held (a wheelie; letting go hops). The rider (an Avatar) sits in the bike's tilted frame; rider() says where its hips, hands
 // and feet go (the hands follow the bars), and how it leans into turns, twists with the bars, and tucks
-// forward (rocking back as it accelerates). After dark its headlight comes on: a spotlight from the lamp that
-// turns with the bars, and the lens glows.
+// forward (rocking back as it accelerates). After dark its headlight comes on: a shadow-casting spotlight from
+// the lamp that turns with the bars, and the lens glows.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { slopeAt } from '../shared/sim.ts';
@@ -12,7 +12,7 @@ import { heightAt } from '../shared/terrain.ts';
 import { footprints } from './footprints.ts';
 import { tyreDust } from './tyreDust.ts';
 import type { RidePose } from './players.ts';
-import { nightLevel } from './world/env.ts';
+import { nightLevel, SHADOW_ONLY_LAYER } from './world/env.ts';
 
 // Rider contact points, in the bike's frame (origin on the ground between the tyres, forward is -z), from
 // tools/blender/sandbike.py: hips over the front of the seat (top 0.86), ankles over the pegs (0.2, 0.34, 0.12).
@@ -33,6 +33,8 @@ const WHEELIE = 0.45; // rad the nose comes up, about the rear tyre's contact
 const LAMP = new THREE.Vector3(0, 0.076, -0.25);
 const AIM = new THREE.Vector3(0, -0.06, -1);
 const HEADLIGHT = { color: 0xffe4bc, intensity: 30, distance: 45, angle: 0.5, penumbra: 0.8, decay: 1.2, glow: 6 };
+/** Its shadow map: the near plane clears the lamp housing around the lens, so the bike only shadows what's ahead. */
+const HEADLIGHT_SHADOW = { map: 1024, near: 0.3, bias: -0.0005, normalBias: 0.03 };
 /** Headlights are a fixed pool that stays in the scene (adding or removing a light recompiles every material);
  *  a bike that finds none free rides without one. */
 const POOL = 3;
@@ -80,6 +82,14 @@ export class Bike {
       for (let i = 0; i < POOL; i++) {
         const h = HEADLIGHT;
         const light = new THREE.SpotLight(h.color, 0, h.distance, h.angle, h.penumbra, h.decay);
+        const s = HEADLIGHT_SHADOW;
+        light.castShadow = true; // always on (toggling recompiles too), but the map only renders while lit
+        light.shadow.autoUpdate = false;
+        light.shadow.mapSize.set(s.map, s.map);
+        light.shadow.camera.near = s.near;
+        light.shadow.camera.layers.enable(SHADOW_ONLY_LAYER); // the local rider's own body
+        light.shadow.bias = s.bias;
+        light.shadow.normalBias = s.normalBias;
         scene.add(light, light.target);
         headlights.push({ light, used: false });
       }
@@ -177,6 +187,7 @@ export class Bike {
     const h = this.headlight?.light;
     if (!h) return;
     h.intensity = this.bars ? HEADLIGHT.intensity * this.glow : 0;
+    h.shadow.autoUpdate = h.intensity > 0;
     if (!h.intensity) return;
     this.root.updateMatrixWorld(true);
     this.bars!.localToWorld(h.position.copy(LAMP));
@@ -233,6 +244,7 @@ export class Bike {
     this.root.removeFromParent();
     if (this.headlight) {
       this.headlight.light.intensity = 0;
+      this.headlight.light.shadow.autoUpdate = false;
       this.headlight.used = false;
     }
   }
