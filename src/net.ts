@@ -10,6 +10,8 @@
 // - Terrain: the server owns the edit layer and sends absolute values. Our own dig strokes are predicted
 //   immediately; the server's value for each predicted vertex is held back until a snapshot acks the
 //   input that dug it (terrainEdit always arrives before that snapshot), then applied.
+// - Survival: thirst/canteen state comes from the server ('water'); src/water.ts plays drink/fill and asks.
+//   Dying of thirst moves us to the base on the server; the next reconciliation snaps there.
 // - Scrap: picked-up pieces are hidden (and lose their hitbox) as soon as we ask; the server sends the
 //   piece back to us if it refuses, and our new inventory if it agrees.
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
@@ -60,6 +62,8 @@ export class Net {
   private retryMs = 500;
   private browserId: string;
   private digCooldown = 0;
+  /** Take the next reconciliation as a teleport (respawn). */
+  private snapNext = false;
   /** Predicted terrain vertices: the server's latest value, and the input seq that last dug there. */
   private predicted = new Map<number, { server: number; seq: number }>();
   /** Chunks we held before a (re)join; whatever the server doesn't resend is dropped. */
@@ -69,6 +73,12 @@ export class Net {
   inventory: number[] = [];
   /** The server sent a new inventory. */
   onInventory?: (items: number[]) => void;
+
+  /** Thirst bar, canteen sips and whether the sun is draining us (server 'water', shared/water.ts). */
+  water = { water: 100, sips: 4, heat: false, at: 0 };
+  onWater?: (w: { water: number; sips: number; heat: boolean }) => void;
+  /** We died (of thirst); the server has already moved us back to the base. */
+  onDied?: () => void;
 
   /** A dig/pile stroke landed: ours (predicted) or another player's. For effects only. */
   onDig?: (at: Point, pile: boolean, mine: boolean, id: number) => void;
@@ -98,6 +108,16 @@ export class Net {
     this.send({ t: 'pickup', ix: pc.ix, iz: pc.iz, i: pc.i });
     scrapTaken.add(pc.key);
     scrapChanged();
+  }
+
+  /** One sip finished (src/water.ts); the server answers with 'water'. */
+  drink() {
+    this.send({ t: 'drink' });
+  }
+
+  /** Canteen refill finished at the base; the server answers with 'water'. */
+  fill() {
+    this.send({ t: 'fill' });
   }
 
   private applyScrap(msg: Extract<ServerMsg, { t: 'scrap' }>) {
@@ -232,6 +252,14 @@ export class Net {
       this.inventory = msg.items;
       return this.onInventory?.(msg.items);
     }
+    if (msg.t === 'water') {
+      this.water = { water: msg.water, sips: msg.sips, heat: msg.heat, at: performance.now() };
+      return this.onWater?.(msg);
+    }
+    if (msg.t === 'died') {
+      this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
+      return this.onDied?.();
+    }
     if (msg.t === 'dug') {
       if (msg.id !== this.id) this.onDig?.({ x: msg.x, y: msg.y, z: msg.z }, msg.pile, false, msg.id);
       return;
@@ -275,7 +303,8 @@ export class Net {
     this.errorY += this.me.y - s.y;
     this.errorZ += this.me.z - s.z;
     // Big jumps (respawn, long lag) should snap, not glide.
-    if (Math.hypot(this.errorX, this.errorY, this.errorZ) > 3) this.errorX = this.errorY = this.errorZ = 0;
+    if (this.snapNext || Math.hypot(this.errorX, this.errorY, this.errorZ) > 3) this.errorX = this.errorY = this.errorZ = 0;
+    this.snapNext = false;
     this.me = s;
   }
 
