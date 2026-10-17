@@ -14,7 +14,7 @@
 //   16 bars (1333418 samples), loops whole, from the top each fight.
 // - "Death" (death.mp3, by Veikko Suhonen), once when you die: 9.56 s (421707 samples), the last 1.2 s faded
 //   out. It cuts whatever was playing (quick fade) and plays to its end, through the respawn; then the music
-//   picks up again.
+//   picks up again from a clean slate (no combat carried over from before you died).
 //
 // Everything plays through `audio.music` (music slider, then the volume slider and limiter).
 import { audio } from './audio';
@@ -107,8 +107,16 @@ class Music {
   update(dt: number, cues: MusicCues) {
     const ctx = audio.ctx;
     if (!ctx || !audio.music || !audio.running) return;
-    if (cues.dead && !this.wasDead) this.deathUntil = ctx.currentTime + DEATH.loopEnd;
+    if (cues.dead && !this.wasDead) {
+      this.deathUntil = ctx.currentTime + DEATH.loopEnd;
+      // Dying resets the context: no state holds over (combat's `leave` would bring the drums back after).
+      this.on.fill(false);
+      this.held.fill(0);
+      this.gone.fill(0);
+    }
     this.wasDead = !!cues.dead;
+    // The dead aren't in a fight, whatever the walkers still think.
+    if (cues.dead) cues = { ...cues, combat: false };
     const quiet = !STATES.some((s) => s.state !== 'peaceful' && s.state !== 'dead' && cues[s.state as keyof MusicCues]);
     let top = -1;
     STATES.forEach((s, i) => {
