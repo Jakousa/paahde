@@ -20,9 +20,9 @@ export const BASE = { x: -10, z: -216, y: 7.5 };
 export const BASE_SPAWN = { x: BASE.x, z: BASE.z + 9 };
 
 /** Wall thickness everywhere. */
-const WT = 0.3;
+export const WT = 0.3;
 /** Half inner width of the entrance, the stairs and the hallway. */
-const W = 1.1;
+export const W = 1.1;
 /** Entrance hut, inner: from the back wall to the door, ceiling height, door half width. */
 export const HUT = { z0: -3.0, z1: 2.0, h: 2.7, door: 0.7 };
 /** Stairs: top edge (the landing ends here), steps (rise, run), bottom = the bunker floor. */

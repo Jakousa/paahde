@@ -1,0 +1,55 @@
+// Temperature: the desert's air temperature over the day, and how hot it feels to a player in the sun,
+// in the shade (shared/shade.ts) or in the base. Thirst drains by the felt temperature (shared/water.ts).
+// Plain math on the shared clock (shared/sun.ts), so the server and the client agree. Server-authoritative:
+// the server sends the felt temperature in its 'water' message; the client only shows it.
+//
+// Air: a smooth diurnal curve, coolest just before sunrise and hottest mid-afternoon (the ground keeps
+// heating the air after noon, so the peak lags the sun by about two hours, as in real deserts). It warms
+// along a half cosine and cools along a squared half cosine, so the evening drops fast after sunset (dry
+// air radiates heat away) and nights are cold. Both halves have zero slope at the ends: no kinks.
+//
+// Felt: air, plus up to SUN_BONUS in direct sun (scaled by the sun's height, like sunlight per m²);
+// nothing extra in shade. In the base (the hut or the bunker) the thick walls and the sand keep it at
+// most BASE_MAX.
+import { NOON_ELEVATION, sunElevation } from './sun.ts';
+
+/** Coolest air (°C), at AIR_MIN_TOD, just before sunrise (~05:35 here). */
+export const AIR_MIN = 12;
+/** Hottest air (°C), at AIR_MAX_TOD, mid-afternoon. */
+export const AIR_MAX = 44;
+/** Time of day of the coolest air: 05:30. */
+export const AIR_MIN_TOD = 5.5 / 24;
+/** Time of day of the hottest air: 14:00 (two hours after noon). */
+export const AIR_MAX_TOD = 14 / 24;
+/** Extra felt °C standing in direct sun with the sun at its noon height; less when it is lower. */
+export const SUN_BONUS = 12;
+/** The base never feels hotter than this (°C): cool enough that nothing drains there. */
+export const BASE_MAX = 22;
+
+/** Air temperature (°C) at a time of day in [0, 1). */
+export function airTemp(tod: number): number {
+  const t = tod - Math.floor(tod);
+  const warm = AIR_MAX_TOD - AIR_MIN_TOD;
+  let f: number;
+  if (t >= AIR_MIN_TOD && t < AIR_MAX_TOD) {
+    f = (1 - Math.cos((Math.PI * (t - AIR_MIN_TOD)) / warm)) / 2;
+  } else {
+    const u = (t - AIR_MAX_TOD + 1) % 1 / (1 - warm); // 0 at the peak → 1 at the next minimum
+    const c = (1 + Math.cos(Math.PI * u)) / 2;
+    f = c * c;
+  }
+  return AIR_MIN + (AIR_MAX - AIR_MIN) * f;
+}
+
+/** Direct sun's share at a time of day, 0..1: sin(elevation) relative to noon, 0 below the horizon. */
+export function sunStrength(tod: number): number {
+  const s = Math.sin(sunElevation(tod));
+  return s <= 0 ? 0 : Math.min(1, s / Math.sin(NOON_ELEVATION));
+}
+
+/** Felt temperature (°C) at a time of day, in direct sun or not, inside the base or not. */
+export function feltTemp(tod: number, inSun: boolean, inside: boolean): number {
+  const air = airTemp(tod);
+  if (inside) return Math.min(air, BASE_MAX);
+  return inSun ? air + SUN_BONUS * sunStrength(tod) : air;
+}

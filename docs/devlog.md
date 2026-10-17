@@ -27,13 +27,56 @@ middle, under a gridded glass skylight.
   boom would be under the sand), and the wind sound drops to a draught.
 - **Garden:** the bed code and protocol stay, but there are no beds now (`BEDS` is empty).
 - **Next:** make the pump do something (fill a canteen, water plants), and let players build the base out.
+## 2026-10-17 — Temperature and shade
+
+Thirst now follows a **felt temperature** instead of the sun's elevation, and shade is real: dunes, the
+entrance hut and scrap piles block the sun.
+
+- **Air temperature** (`shared/temperature.ts`, plain math on the shared clock): 12 °C at 05:30 (just before
+  sunrise), 44 °C at 14:00 (the peak lags noon by two hours, as in real deserts). It warms along a half
+  cosine and cools along a squared half cosine, so evenings drop fast: ~35 °C at 18:00, ~23 °C at 21:00,
+  ~15 °C at midnight.
+- **Felt temperature** = air + up to **+12 °C in direct sun** (× sin(elevation)/sin(noon elevation)); no
+  bonus in shade or at night. In the base (`inBase`: hut or bunker) it is `min(air, 22 °C)`.
+- **Shade** (`shared/shade.ts`, run by the server every 250 ms per player): a ray from the head (feet +
+  `EYE_HEIGHT`) towards the sun (`skyVector`, the same direction the client's light and shadows use),
+  marched over `heightAt` (dunes, pad, digs) with steps of 0.2 m + 5% of the distance, up to 180 m, stopping
+  early once it is above the highest possible ground. It also slab-tests the hut (with its roof overhang) and
+  the skylight collar as boxes, and scrap hitboxes in the first 25 m. ~15–20 µs per check (~80 µs/s per player).
+- **Drain** (`shared/water.ts`): none at or below **24 °C**, then `100/255 s × ((felt − 24) / 30)³`, ×1.5
+  sprinting. The cube is what makes shade (~10 °C cooler) worth ~3.5× in the early afternoon.
+
+  | time | air | sun: felt | full bar | shade: felt | full bar |
+  |---|---|---|---|---|---|
+  | 00:00 | 14.5 | 14.5 | — | 14.5 | — |
+  | 06:00 | 12.3 | 13.8 | — | 12.3 | — |
+  | 09:00 | 23.6 | 32.5 | ~3 h | 23.6 | — |
+  | 12:00 | 39.8 | 51.8 | 5.3 min | 39.8 | 29 min |
+  | 13:30 | 43.7 | 54.9 (hottest) | 3.9 min | 43.7 | 15 min |
+  | 15:00 | 43.3 | 52.3 | 5.1 min | 43.3 | 16 min |
+  | 18:00 | 34.8 | 36.3 | 61 min | 34.8 | 91 min |
+  | 21:00 | 22.6 | 22.6 | — | 22.6 | — |
+
+  Real time: a day is 30 min, so 1 in-game hour = 75 s. Standing in the sun all day costs ~1.5 bars, in
+  shade ~0.4. Real drain only runs ~11:00–17:00; mornings and evenings are mild.
+- **Protocol/HUD:** `water` gains `temp` (felt °C, 0.1) and `shade` (no direct sun: shade, night or base).
+  It is also sent when shade flips or temp moves 0.5 °C, so the thermometer stays live at night. Next to the
+  thirst bar: a sun or shade icon and the eased °C, blue (≤18) → amber (34) → red (≥50).
+- **Where to find shade:** in the afternoon the sun is too high for slip faces (32°) to throw much
+  shadow; the hut's lee works, and from ~17:00 the slip faces facing the base's pan put it in shade.
+  Mornings the shade is on the windward side of crests (sun from the east, slip faces face +Z, downwind).
+- **Gaps:** the shade check is one point (the head), so half in shade counts as sun; the far march is
+  coarse (steps ~9 m at 180 m) and can miss a thin crest at grazing angles; other players and the bike cast
+  no shade; no cold at night (nothing below 24 °C does anything); temperature doesn't vary with altitude
+  or wind; the client doesn't predict the icon (it lags up to ~250 ms + latency).
+
 ## 2026-10-17 — Thirst and heat
 
 The first survival mechanic: the sun dries you out, the canteen keeps you going, the base refills it.
 
 - **Water** (0–100, the thirst bar) is server-authoritative (`server/water.ts`), not in `shared/sim.ts`
   (it never moves you). Saved per browser ID in `players` (`water`, `sips` columns) with the position.
-- **Heat:** while the sun is up and you're outside the base (`inBase`: the hut or down in the bunker), water drains at
+- **Heat:** (superseded by "Temperature and shade" above) while the sun is up and you're outside the base (`inBase`: the hut or down in the bunker), water drains at
   `100 / 300 s × sin(elevation) / sin(57°)`: a full bar lasts **5 min at noon**, longer morning and evening,
   nothing at night or indoors. Sprinting (Shift held and moving faster than a walk) drains **1.5×**. Over a
   whole day (16 min of daylight) that's about two bars outdoors.

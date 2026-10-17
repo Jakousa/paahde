@@ -1,5 +1,6 @@
 // Survival on the client (shared/water.ts, server/water.ts): the hotbar (slot 1 = canteen), drinking and
-// refilling, and the HUD: thirst bar with a sun/heat light, a heat vignette when low, and the death screen.
+// refilling, and the HUD: thirst bar with a sun/heat light, the felt temperature with a sun/shade icon
+// (shared/temperature.ts), a heat vignette when low, and the death screen.
 //
 // The server owns the numbers; this only plays the actions and asks. Key 1 takes the canteen out or puts
 // it away (2–4 select the empty slots). With it out, holding left mouse / E for DRINK_MS drinks one sip
@@ -21,6 +22,11 @@ const SLOTS = 4;
 const BLUE = [78, 170, 255];
 const AMBER = [236, 158, 52];
 const RED = [222, 62, 34];
+/** Thermometer colours by felt °C: cool blue up to TEMP_COOL, amber at TEMP_WARM, red from TEMP_HOT. */
+const TEMP_BLUE = [120, 196, 255];
+const TEMP_AMBER = [255, 184, 77];
+const TEMP_RED = [255, 92, 60];
+const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
 const DEATH_MS = 3000;
 const TOAST_MS = 1800;
 /** Leaving the base by more than this (m) cancels a refill. Under the server's FILL_SLACK. */
@@ -38,6 +44,13 @@ const css = `
   background: rgba(255, 244, 228, 0.12); }
 #thirst .fill { position: absolute; inset: 0; transform-origin: left; border-radius: 4px; }
 #thirst .num { width: 26px; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.85; }
+#thirst .temp { display: flex; align-items: center; gap: 4px; margin-left: 2px; padding-left: 8px;
+  border-left: 1px solid rgba(255, 240, 220, 0.15); }
+#thirst .temp svg { width: 15px; height: 15px; }
+#thirst .temp .shadeIcon, #thirst .temp.shade .sunIcon { display: none; }
+#thirst .temp.shade .shadeIcon { display: block; }
+#thirst .deg { min-width: 36px; font-weight: 600; font-variant-numeric: tabular-nums; transition: color .6s;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
 #thirst.low .bar { animation: thirstPulse 1.1s ease-in-out infinite; }
 @keyframes thirstPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 90, 40, 0); }
   50% { box-shadow: 0 0 0 2px rgba(255, 90, 40, 0.75); } }
@@ -74,6 +87,12 @@ const css = `
 
 const SUN_SVG = `<svg class="sun" viewBox="0 0 16 16" fill="none" stroke="#ffc46b" stroke-width="1.6" stroke-linecap="round">
 <circle cx="8" cy="8" r="3.2" fill="#ffc46b"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9 13 13M3 13l1.1-1.1M11.9 4.1 13 3"/></svg>`;
+/** Direct sun, and shade (the sun behind a dune). */
+const SUN_ICON = `<svg class="sunIcon" viewBox="0 0 16 16" fill="none" stroke="#ffc46b" stroke-width="1.6" stroke-linecap="round">
+<circle cx="8" cy="8" r="3" fill="#ffc46b"/><path d="M8 1.2v1.5M8 13.3v1.5M1.2 8h1.5M13.3 8h1.5M3.2 3.2l1 1M11.8 11.8l1 1M3.2 12.8l1-1M11.8 4.2l1-1"/></svg>`;
+const SHADE_ICON = `<svg class="shadeIcon" viewBox="0 0 16 16"><title>In shade</title>
+<circle cx="10" cy="6.5" r="3" fill="#ffc46b" opacity="0.45"/><path d="M10 1.4v1.3M14.6 6.5h-1.3M13.3 3.2l-.9.9M6.7 3.2l.9.9" stroke="#ffc46b" stroke-width="1.4" stroke-linecap="round" opacity="0.45"/>
+<path d="M0.5 14.5C3 8.5 6 7 9 8.6c2.2 1.2 4.4 3.6 6.5 5.9z" fill="#7a5a3e" stroke="#2a160a" stroke-width="0.8"/></svg>`;
 const CANTEEN_SVG = `<svg viewBox="0 0 22 26"><rect x="8" y="0.5" width="6" height="4" rx="1" fill="#6b4a2e"/>
 <ellipse cx="11" cy="15" rx="9.5" ry="9.5" fill="#8a8f86" stroke="#2a160a" stroke-width="1"/>
 <ellipse cx="11" cy="15" rx="6.5" ry="6.5" fill="none" stroke="#5e6a5a" stroke-width="2.2"/>
@@ -85,6 +104,8 @@ export class Survival {
   private thirst = document.createElement('div');
   private fillEl!: HTMLElement;
   private numEl!: HTMLElement;
+  private tempEl!: HTMLElement;
+  private degEl!: HTMLElement;
   private slots: HTMLElement[] = [];
   private pips: HTMLElement[] = [];
   private prompt = document.createElement('div');
@@ -100,6 +121,9 @@ export class Survival {
   private toastUntil = 0;
   private promptHtml = '';
   private lastNum = -1;
+  private shownTemp = NaN; // eased felt temperature
+  private lastDeg = NaN;
+  private lastShade: boolean | null = null;
 
   constructor(net: Net) {
     this.net = net;
@@ -109,9 +133,12 @@ export class Survival {
 
     this.root.id = 'survival';
     this.thirst.id = 'thirst';
-    this.thirst.innerHTML = `${SUN_SVG}<div class="bar"><div class="fill"></div></div><span class="num"></span>`;
+    this.thirst.innerHTML = `${SUN_SVG}<div class="bar"><div class="fill"></div></div><span class="num"></span>`
+      + `<span class="temp" title="Felt temperature">${SUN_ICON}${SHADE_ICON}<span class="deg"></span></span>`;
     this.fillEl = this.thirst.querySelector('.fill')!;
     this.numEl = this.thirst.querySelector('.num')!;
+    this.tempEl = this.thirst.querySelector('.temp')!;
+    this.degEl = this.thirst.querySelector('.deg')!;
     const hotbar = document.createElement('div');
     hotbar.id = 'hotbar';
     for (let i = 0; i < SLOTS; i++) {
@@ -244,6 +271,22 @@ export class Survival {
     if (num !== this.lastNum) {
       this.lastNum = num;
       this.numEl.textContent = String(num);
+    }
+    // Thermometer: ease towards the server's felt temperature, cool blue → amber → red.
+    this.shownTemp = Number.isNaN(this.shownTemp) ? w.temp : this.shownTemp + (w.temp - this.shownTemp) * (1 - Math.exp(-dt * 2));
+    const deg = Math.round(this.shownTemp);
+    if (deg !== this.lastDeg) {
+      this.lastDeg = deg;
+      this.degEl.textContent = `${deg} °C`;
+      const [c0, c1, k] = deg < TEMP_WARM
+        ? [TEMP_BLUE, TEMP_AMBER, Math.max(0, (deg - TEMP_COOL) / (TEMP_WARM - TEMP_COOL))]
+        : [TEMP_AMBER, TEMP_RED, Math.min(1, (deg - TEMP_WARM) / (TEMP_HOT - TEMP_WARM))];
+      this.degEl.style.color = `rgb(${c0.map((c, i) => Math.round(c + (c1[i] - c) * k)).join(',')})`;
+    }
+    if (w.shade !== this.lastShade) {
+      this.lastShade = w.shade;
+      this.tempEl.classList.toggle('shade', w.shade);
+      this.tempEl.title = w.shade ? 'Felt temperature — out of the sun' : 'Felt temperature — in direct sun';
     }
     const low = this.shown < WATER_LOW && !dead;
     this.thirst.classList.toggle('heat', w.heat && !dead);

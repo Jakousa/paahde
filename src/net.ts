@@ -79,9 +79,9 @@ export class Net {
   /** The server sent a new inventory. */
   onInventory?: (items: number[]) => void;
 
-  /** Thirst bar, canteen sips and whether the sun is draining us (server 'water', shared/water.ts). */
-  water = { water: 100, sips: 4, heat: false, at: 0 };
-  onWater?: (w: { water: number; sips: number; heat: boolean }) => void;
+  /** Thirst bar, canteen sips, whether the heat is draining us, felt °C and shade (server 'water', shared/water.ts). */
+  water = { water: 100, sips: 4, heat: false, temp: 20, shade: true, at: 0 };
+  onWater?: (w: { water: number; sips: number; heat: boolean; temp: number; shade: boolean }) => void;
   /** We died (of thirst); the server has already moved us back to the base. */
   onDied?: () => void;
   /** Greenhouse bed stages (shared/garden.ts), from the server; empty until the first 'garden'. */
@@ -292,7 +292,7 @@ export class Net {
       return this.onInventory?.(msg.items);
     }
     if (msg.t === 'water') {
-      this.water = { water: msg.water, sips: msg.sips, heat: msg.heat, at: performance.now() };
+      this.water = { water: msg.water, sips: msg.sips, heat: msg.heat, temp: msg.temp, shade: msg.shade, at: performance.now() };
       return this.onWater?.(msg);
     }
     if (msg.t === 'died') {

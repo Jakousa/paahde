@@ -55,10 +55,12 @@ export type ServerMsg =
   | { t: 'tended'; what: 'planted' | 'harvested' }
   // The shared clock's epoch changed (debug menu), or a setEpoch was refused and this is the real one.
   | { t: 'epoch'; epoch: number }
-  // Your thirst bar (0..WATER_MAX, rounded to 0.01), canteen sips left (0..CANTEEN_SIPS) and whether the
-  // sun is draining you right now. Sent after 'welcome', after every drink/fill (also refused ones, so the
-  // client resyncs), when heat starts or stops, and about twice a second while draining.
-  | { t: 'water'; water: number; sips: number; heat: boolean }
+  // Your thirst bar (0..WATER_MAX, rounded to 0.01), canteen sips left (0..CANTEEN_SIPS), whether the
+  // heat is draining you right now, the felt temperature (°C, 0.1; shared/temperature.ts) and whether
+  // you're out of direct sun (shade, night or the base; shared/shade.ts). Sent after 'welcome', after every
+  // drink/fill (also refused ones, so the client resyncs), when heat starts or stops or shade flips, when
+  // temp moves by 0.5 °C, and about twice a second while draining.
+  | { t: 'water'; water: number; sips: number; heat: boolean; temp: number; shade: boolean }
   // You died of thirst: the server has already moved you to BASE_SPAWN (the next snapshot snaps you
   // there) with full water and a full canteen; a 'water' follows. For the death screen.
   | { t: 'died'; cause: 'thirst' };
