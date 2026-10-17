@@ -4,6 +4,7 @@
 // footprints, footstep sounds and the name tag. Its visuals are a swappable `AvatarModel`: the simple procedural
 // placeholder below, or the rigged scavenger (src/models/scavenger.ts) with the same interface.
 import * as THREE from 'three/webgpu';
+import { terrainHidden } from '../shared/base.ts';
 import { isSlipFace, slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, footprints, streaks } from './footprints.ts';
@@ -197,12 +198,14 @@ export class Avatar {
       dt,
     );
 
-    // Footprints: one per stride while walking; a sliding body draws a continuous streak instead.
-    if (!this.footprints || !pose.grounded || !sliding) this.streakX = NaN;
+    // Footprints: one per stride while walking; a sliding body draws a continuous streak instead. Only on the sand
+    // itself: on the bunker's stairs and floors the print would hang at the sand's height overhead.
+    const prints = this.footprints && onSand && !terrainHidden(pose.x, pose.z, pose.y);
+    if (!prints || !sliding) this.streakX = NaN;
     if (!this.footprints || !pose.grounded) return;
     if (sliding) {
       this.stepDist = 0;
-      this.streak(pose.x, pose.z);
+      if (prints) this.streak(pose.x, pose.z);
       return;
     }
     this.stepDist += pose.speed * dt;
@@ -211,7 +214,7 @@ export class Avatar {
     this.foot = -this.foot;
     const side = 0.13 * this.foot;
     const fx = pose.x + Math.cos(this.facing) * side, fz = pose.z - Math.sin(this.facing) * side;
-    footprints.add(fx, heightAt(fx, fz), fz, this.facing);
+    if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing);
     footsteps.step(fx, fz, pose.speed);
   }
 
