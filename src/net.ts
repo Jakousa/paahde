@@ -219,6 +219,18 @@ export class Net {
     this.onItems?.(box);
   }
 
+  /** Drop one of the item at `box`[slot] on the sand (applied now; the server answers with the box and the loot). */
+  dropItem(box: string, slot: number): boolean {
+    const slots = this.boxes[box];
+    const it = slots?.[slot];
+    if (!this.connected || !it || box === 'equip' || box === 'bench') return false;
+    slots[slot] = it.n > 1 ? { ...it, n: it.n - 1 } : null;
+    this.growChests(box);
+    this.send({ t: 'drop', box, slot });
+    this.onItems?.(box);
+    return true;
+  }
+
   /** Pick up loot (shared/loot.ts); the server answers with the bag, or a toast if it's full. */
   lootTake(id: number) {
     if (this.connected) this.send({ t: 'lootTake', id });

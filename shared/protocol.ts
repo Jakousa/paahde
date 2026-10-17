@@ -54,6 +54,9 @@ export type ClientMsg =
   // slot ti (-1: anywhere). Answered with 'items' for each box involved.
   | { t: 'fit'; from: string; fi: number; slot: number }
   | { t: 'unfit'; slot: number; to: string; ti: number }
+  // Drop one of the item in box `box` slot `slot` (not 'equip' or 'bench') on the sand in front of you: it becomes
+  // loot (src 'drop') anyone can pick up. Answered with 'items' for the box (and a 'notice' if refused, e.g. in the base).
+  | { t: 'drop'; box: string; slot: number }
   // Pick up loot (shared/loot.ts) in reach. Answered with 'items' (or a 'notice' when the bag is full).
   | { t: 'lootTake'; id: number }
   // Debug menu: repaired gear of every kind, Common parts (for testing).

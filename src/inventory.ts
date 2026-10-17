@@ -3,7 +3,8 @@
 // belt, vehicle: shared/gear.ts), the bag (its first row is the hotbar, keys 1–4; the rest is as big as the
 // backpack you wear) and, next to it, every box in reach right now (the workbench in the base, chests, the
 // motorcycle while riding; shared/storage.ts), appearing and disappearing as you move. Drag an item onto another
-// slot to move it there or swap the two; shift-click sends it across to the other side. At the workbench, put
+// slot to move it there or swap the two; shift-click sends it across to the other side; drag it out of the panels
+// to drop it on the sand in front of you (shared/loot.ts; anyone can pick it up again). At the workbench, put
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. Moves go through
 // Net (applied at once, the server confirms).
@@ -15,6 +16,7 @@ import { countMatching, RECIPES } from '../shared/crafting.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
+import { canDropAt } from '../shared/loot.ts';
 import { ui } from './input';
 import type { Net } from './net';
 
@@ -84,6 +86,8 @@ const css = `
 #invOverlay .help { opacity: 0.55; font-size: 11px; text-shadow: 0 1px 2px #000; }
 #invGhost { position: fixed; z-index: 16; pointer-events: none; width: 54px; height: 54px; display: flex;
   align-items: center; justify-content: center; transform: translate(-50%, -50%); filter: drop-shadow(0 4px 6px #000); }
+#invGhost.drop::after { content: 'Drop'; position: absolute; top: 100%; font: 600 11px var(--mono); color: #fff4e4;
+  text-shadow: 0 1px 2px #000; }
 #invGhost .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono); color: #fff4e4;
   text-shadow: 0 1px 2px #000; }
 #invOverlay .slot .bad { position: absolute; right: 3px; top: 1px; font: 700 10px var(--mono); color: #ff8a66; }
@@ -228,7 +232,7 @@ export class InventoryHud {
     this.boxesEl.className = 'boxes';
     const help = document.createElement('div');
     help.className = 'help';
-    help.textContent = 'Drag to move · shift-click sends across · Tab or Esc closes';
+    help.textContent = 'Drag to move · shift-click sends across · drag out to drop · Tab or Esc closes';
     this.overlay.append(this.boxesEl, help);
     this.ghost.id = 'invGhost';
     this.ghost.style.display = 'none';
@@ -504,6 +508,7 @@ export class InventoryHud {
     this.ghost.style.left = `${e.clientX}px`;
     this.ghost.style.top = `${e.clientY}px`;
     const at = this.slotAt(e.clientX, e.clientY);
+    this.ghost.classList.toggle('drop', this.outside(e.clientX, e.clientY));
     if (this.over !== (at?.el ?? null)) {
       this.over?.classList.remove('over');
       this.over = at?.el ?? null;
@@ -516,6 +521,7 @@ export class InventoryHud {
     if (!d) return;
     this.cancelDrag();
     if (!d.moved) return;
+    if (this.outside(e.clientX, e.clientY)) return this.drop(d.box, d.i);
     const at = this.slotAt(e.clientX, e.clientY);
     if (!at || (at.box === d.box && at.i === d.i)) return;
     const it = this.itemAt(d.box, d.i);
@@ -525,6 +531,20 @@ export class InventoryHud {
     else if (at.box === 'part') ok = this.net.fit(d.box, d.i, at.i);
     else ok = this.net.moveItem(d.box, d.i, at.box, at.i, d.half ? Math.ceil(it.n / 2) : undefined);
     if (!ok) this.refuse(d.box, it, at.box);
+  }
+
+  /** Off every panel: on the dimmed backdrop (or out of the window). */
+  private outside(x: number, y: number) {
+    const el = document.elementFromPoint(x, y);
+    return !el || el === this.overlay || el === this.boxesEl;
+  }
+
+  /** Dragged out of the panels: drop it on the sand in front of you. */
+  private drop(box: string, i: number) {
+    if (box === 'part') return this.toast('Take it off the item first');
+    if (box === 'equip' || box === 'bench') return this.toast('Take it off first');
+    if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast("Can't drop things in the base: use the chest");
+    this.net.dropItem(box, i);
   }
 
   /** Say why a drop didn't go through. */
@@ -540,6 +560,7 @@ export class InventoryHud {
     if (this.drag) this.slotEl(this.drag.box, this.drag.i)?.classList.remove('dragging');
     this.drag = null;
     this.ghost.style.display = 'none';
+    this.ghost.classList.remove('drop');
     this.over?.classList.remove('over');
     this.over = null;
     for (const el of this.boxesEl.querySelectorAll('.slot.fits')) el.classList.remove('fits');

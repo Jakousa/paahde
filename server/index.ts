@@ -20,6 +20,7 @@ import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
 import { ItemServer } from './items.ts';
 import { LootServer } from './loot.ts';
+import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
 import { CrashServer } from './crash.ts';
@@ -51,7 +52,7 @@ const crash = new CrashServer(db, (ids, msg) => {
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
 const garden = new GardenServer(db);
-const loot = new LootServer();
+const loot = new LootServer(db);
 
 const storms = new StormServer(performance.now());
 
@@ -134,6 +135,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'fit' && p) return onFit(p, msg.from, msg.fi, msg.slot);
     if (msg.t === 'unfit' && p) return onUnfit(p, msg.slot, msg.to, msg.ti);
     if (msg.t === 'lootTake' && p) return onLootTake(p, msg.id);
+    if (msg.t === 'drop' && p) return onDrop(p, msg.box, msg.slot);
     if (msg.t === 'debugGear' && p) return onDebugGear(p);
     if (msg.t === 'hands' && p) {
       p.hands = msg.hands === 1 || msg.hands === 2 ? msg.hands : 0;
@@ -293,6 +295,24 @@ function onLootTake(p: Player, id: unknown) {
     sendBox(p, 'bag', kind);
     gearChanged(p.browserId);
   }
+}
+
+// Drop an item on the sand (shared/loot.ts canDropAt: not in the base).
+function onDrop(p: Player, box: unknown, slot: unknown) {
+  if (typeof box !== 'string' || !boxSize(box)) return;
+  const s = p.state;
+  const inside = !canDropAt(s.x, s.z);
+  const item = inside ? null : db.tx(() => {
+    const it = items.drop(p.browserId, s, box, slot);
+    if (it) loot.drop(s, it);
+    return it;
+  });
+  if (!item) {
+    if (inside) send(p.ws, { t: 'notice', text: "Can't drop things in the base: use the chest" });
+    return send(p.ws, boxMsg(p.browserId, box));
+  }
+  sendBox(p, box);
+  gearChanged(p.browserId);
 }
 
 // Debug menu: one of each piece of gear, repaired with Common parts, into the bag (what fits) and the

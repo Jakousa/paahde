@@ -194,6 +194,21 @@ export class ItemServer {
     return true;
   }
 
+  /**
+   * Take one of the item at `box`[slot] out to drop it on the sand (not from the equipment or the workbench:
+   * take it off first). Returns what came out, or null if refused. Call inside the drop's transaction.
+   */
+  drop(browserId: string, s: PlayerState, box: unknown, slot: unknown): { kind: string; parts?: (string | null)[] } | null {
+    if (typeof box !== 'string' || !boxSize(box) || box === 'equip' || box === 'bench' || !canOpen(s, box, REACH_SLACK)) return null;
+    const slots = this.slots(browserId, box);
+    if (!Number.isInteger(slot) || (slot as number) < 0 || (slot as number) >= slots.length) return null;
+    const it = slots[slot as number];
+    if (!it) return null;
+    if (--it.n <= 0) slots[slot as number] = null;
+    this.save(browserId, box);
+    return { kind: it.kind, ...(it.parts ? { parts: it.parts } : {}) };
+  }
+
   /** Fit the part at `from`[fi] into slot `slot` of the item on the workbench (swapping out what was there). */
   fit(browserId: string, s: PlayerState, from: unknown, fi: unknown, slot: unknown): boolean {
     if (typeof from !== 'string' || !boxSize(from) || !canOpen(s, from, REACH_SLACK) || !canOpen(s, 'bench', REACH_SLACK)) return false;

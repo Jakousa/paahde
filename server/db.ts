@@ -217,6 +217,22 @@ export function openDb(path: string) {
   const upsertBed = db.prepare('INSERT OR REPLACE INTO beds (id, stage, growth) VALUES (?, ?, ?)');
   const deleteBed = db.prepare('DELETE FROM beds WHERE id = ?');
 
+  // Items dropped on the sand (shared/loot.ts, src 'drop'): they lie there until someone picks them up, across
+  // restarts (the rest of the loot is laid out fresh). id is the loot id.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS dropped (
+      id         INTEGER PRIMARY KEY,
+      kind       TEXT NOT NULL,              -- ITEMS key
+      parts      TEXT,                       -- gear: JSON part kinds per slot (shared/gear.ts), else NULL
+      x          REAL NOT NULL,
+      z          REAL NOT NULL,
+      dropped_at INTEGER NOT NULL            -- ms since epoch
+    );
+  `);
+  const allDropped = db.prepare('SELECT id, kind, parts, x, z FROM dropped ORDER BY id');
+  const insertDropped = db.prepare('INSERT INTO dropped (id, kind, parts, x, z, dropped_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const deleteDropped = db.prepare('DELETE FROM dropped WHERE id = ?');
+
   // Key/value settings (the debug menu's shared-clock shift survives server restarts).
   db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL NOT NULL)');
   const getSetting = db.prepare('SELECT value FROM settings WHERE key = ?');
@@ -230,6 +246,11 @@ export function openDb(path: string) {
     insertPlaced: (kind: string, x: number, z: number, rot: number, owner: string) =>
       Number(insertPlaced.run(kind, x, z, rot, owner, Date.now()).lastInsertRowid),
     deletePlaced: (id: number) => deletePlaced.run(id),
+    loadDropped: () => (allDropped.all() as { id: number; kind: string; parts: string | null; x: number; z: number }[])
+      .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
+    insertDropped: (id: number, kind: string, parts: (string | null)[] | undefined, x: number, z: number) =>
+      insertDropped.run(id, kind, parts ? JSON.stringify(parts) : null, x, z, Date.now()),
+    deleteDropped: (id: number) => deleteDropped.run(id),
     loadBeds: () => allBeds.all() as { id: number; stage: number; growth: number }[],
     saveBed: (id: number, stage: number, growth: number) => upsertBed.run(id, stage, growth),
     deleteBed: (id: number) => deleteBed.run(id),

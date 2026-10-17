@@ -1,17 +1,20 @@
 // Loot lying in the world (shared/loot.ts): broken gear to find and repair (shared/gear.ts), things buried
 // in the sand that the metal detector hears and a shovel digs up. All shared: the first player to press F
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
-// Kept in memory: a restart lays out fresh ones.
+// Kept in memory: a restart lays out fresh ones. Items players drop are kept in the DB (`dropped`) and never respawn.
 import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
 import { GEAR, GEAR_KINDS } from '../shared/gear.ts';
 import { partKind, SCRAP_ITEMS } from '../shared/items.ts';
-import { lootReach, type Loot } from '../shared/loot.ts';
+import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { allCrashSites } from '../shared/crashsites.ts';
 import { PART_IDS } from '../shared/parts.ts';
 import { TIERS } from '../shared/salvage.ts';
 import { EDIT_CELL, edits, WORLD_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
+import type { openDb } from './db.ts';
+
+type Db = ReturnType<typeof openDb>;
 
 /** How many of each piece of broken gear lie around at once. */
 const FINDS: Record<string, number> = {
@@ -49,8 +52,15 @@ export class LootServer {
   private added: Loot[] = [];
   private removed: number[] = [];
   private sites = allCrashSites();
+  private db: Db;
 
-  constructor() {
+  constructor(db: Db) {
+    this.db = db;
+    // Dropped items keep their ids; everything else is numbered after them.
+    for (const r of db.loadDropped()) {
+      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), x: r.x, z: r.z, depth: 0, src: 'drop' });
+      this.nextId = Math.max(this.nextId, r.id + 1);
+    }
     for (const [kind, n] of Object.entries(FINDS)) {
       const near = NEAR_SPAWN.includes(kind);
       for (let i = 0; i < n; i++) this.spawnFind(kind, near && i === 0);
@@ -81,10 +91,25 @@ export class LootServer {
   take(s: PlayerState, id: unknown, give: (l: Loot) => boolean): string | null {
     const l = typeof id === 'number' ? this.loot.get(id) : undefined;
     if (!l || l.depth > 0 || !lootReach(s, l, 1.5)) return null;
+    if (l.src === 'drop') {
+      if (!this.db.tx(() => give(l) && (this.db.deleteDropped(l.id), true))) return 'full';
+      this.remove(l);
+      return l.kind;
+    }
     if (!give(l)) return 'full';
     this.remove(l);
     this.pending.push({ at: Date.now() + (l.src === 'find' ? FIND_RESPAWN_MS : CACHE_RESPAWN_MS), what: l.src, kind: l.src === 'find' ? l.kind : undefined, nearSpawn: l.near });
     return l.kind;
+  }
+
+  /** An item a player dropped: it lands on the sand just in front of them. Call inside the transaction that takes it out of their box. */
+  drop(s: PlayerState, item: { kind: string; parts?: (string | null)[] }) {
+    const a = s.riding ? s.heading : s.facing;
+    const x = s.x - Math.sin(a) * DROP_AHEAD + rand(-0.2, 0.2);
+    const z = s.z - Math.cos(a) * DROP_AHEAD + rand(-0.2, 0.2);
+    const l: Loot = { id: this.nextId++, kind: item.kind, ...(item.parts ? { parts: [...item.parts] } : {}), x, z, depth: 0, src: 'drop' };
+    this.db.insertDropped(l.id, l.kind, l.parts, x, z);
+    this.add(l);
   }
 
   /** After a dig stroke at (x, z) with radius r: caches the hole has reached (anywhere within a cell of them) come up. */
