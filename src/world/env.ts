@@ -43,6 +43,8 @@ export const hazeDensity = uniform(0.006);
 export const hazeFar = uniform(290);
 /** Heat-haze shimmer strength (post). 0 disables, 1 default, >3 looks like water. */
 export const heatHaze = uniform(1);
+/** Heatstroke coming on, 0 (heat meter at 60% or less) .. 1 (full); set by the HUD (water.ts), drawn by post. */
+export const heatstroke = uniform(0);
 // --- Wind, for shaders (fed from wind.ts by dust.ts every frame) ---
 /** Unit xz vector the wind currently blows towards (wobbles a little around the dunes' wind). */
 export const windDir = uniform(new THREE.Vector2(0.3162, 0.9487));

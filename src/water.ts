@@ -2,7 +2,7 @@
 // shared/items.ts: the water bottle, telescope (src/telescope.ts), shovel and metal detector (src/detector.ts),
 // all found broken and repaired, shared/gear.ts), drinking and refilling, and the HUD: the body heat meter
 // (bottom left, glowing while heat builds), the clock and felt temperature with a sun/shade icon (top right,
-// shared/temperature.ts; only with the wrist computer equipped), a heat vignette when it's nearly full, and the
+// shared/temperature.ts; only with the wrist computer equipped), a heatstroke vignette and swimming view (post.ts) past 60%, and the
 // death screen.
 //
 // The server owns the numbers; this only plays the actions and asks. Keys 1–4 take out what's in that
@@ -19,6 +19,7 @@ import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 import type { DeathCause } from '../shared/protocol.ts';
 import { DOWN_MS } from '../shared/ragdoll.ts';
+import { heatstroke } from './world/env.ts';
 
 /**
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
@@ -107,11 +108,6 @@ const css = `
 #waterToast { position: fixed; left: 50%; top: calc(50% + 52px); transform: translateX(-50%); pointer-events: none;
   font: 600 13px var(--mono); color: #ffd9a0; text-shadow: 0 1px 2px #000; opacity: 0;
   transition: opacity .25s; white-space: nowrap; }
-#heatVignette { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .6s;
-  box-shadow: inset 0 0 18vmin 4vmin rgba(150, 30, 0, 0.75);
-  background: radial-gradient(ellipse closest-side, rgba(0, 0, 0, 0) 70%, rgba(170, 45, 10, 0.3) 100%); }
-#heatVignette.pulse { animation: heatPulse 1.6s ease-in-out infinite; }
-@keyframes heatPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.6); } }
 #deathScreen { position: fixed; inset: 0; z-index: 20; pointer-events: none; display: none; flex-direction: column;
   align-items: center; justify-content: flex-start; padding-top: 14vh; gap: 10px; background: radial-gradient(ellipse
   closest-side, rgba(40, 8, 2, 0) 55%, rgba(40, 8, 2, 0.75) 100%); color: #ffe2c4; font: 600 34px var(--mono);
@@ -145,7 +141,6 @@ export class Survival {
   private pips: HTMLElement[] = [];
   private prompt = document.createElement('div');
   private toastEl = document.createElement('div');
-  private vignette = document.createElement('div');
   private death = document.createElement('div');
 
   private selected = -1; // hotbar slot, -1 = empty hands
@@ -192,10 +187,9 @@ export class Survival {
     this.root.append(hotbar);
     this.prompt.id = 'waterPrompt';
     this.toastEl.id = 'waterToast';
-    this.vignette.id = 'heatVignette';
     this.death.id = 'deathScreen';
     this.death.innerHTML = DEATH_TEXT.heat;
-    document.body.append(this.vignette, this.root, this.heat, this.env, this.prompt, this.toastEl, this.death);
+    document.body.append(this.root, this.heat, this.env, this.prompt, this.toastEl, this.death);
 
     addEventListener('keydown', (e) => {
       if (e.repeat || !/^Digit[1-9]$/.test(e.code)) return;
@@ -384,8 +378,8 @@ export class Survival {
       this.trendEl.style.color = trend === 'up' ? '#ff7a4a' : '#7cc4ff';
       this.heat.title = 'Heat: collapse at 100%';
     }
-    this.vignette.style.opacity = high ? String(0.35 + 0.65 * (this.shown - HEAT_HIGH) / (HEAT_MAX - HEAT_HIGH)) : '0';
-    this.vignette.classList.toggle('pulse', high && w.rising);
+    // Heatstroke vignette and swimming view (post.ts), from 60% to full.
+    heatstroke.value = dead ? 0 : Math.min(1, Math.max(0, (this.shown - 0.6 * HEAT_MAX) / (0.4 * HEAT_MAX)));
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
   }

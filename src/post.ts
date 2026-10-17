@@ -10,7 +10,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  hazeColor, hazeColorFor, hazeDensity, heatHaze, stormDiscs, stormGround, stormHere, sunColor, sunDirection,
+  hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, stormDiscs, stormGround, stormHere, sunColor, sunDirection,
   sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
 import { EDGE } from '../shared/storm.ts';
@@ -120,7 +120,13 @@ export class Post {
     // only for distant ground (and a thin band of sky just above the horizon, so the sun's lower
     // edge and far crests wobble).
     const hazed = Fn(() => {
-      const p = uv();
+      // Heatstroke: the whole view swims, near things too: a slow, broad warp and a drunken sway.
+      const p0 = uv();
+      const hs = heatstroke.mul(heatstroke);
+      const hq = vec3(p0.x.mul(aspect).mul(2.2), p0.y.mul(2.6).add(time.mul(0.35)), time.mul(0.45));
+      const hn = vec2(mx_noise_float(hq), mx_noise_float(hq.add(vec3(7.3, 1.9, 4.1))));
+      const sway = vec2(sin(time.mul(0.9)), sin(time.mul(0.67).add(1.3))).mul(0.006);
+      const p = p0.add(hn.mul(0.022).add(sway).mul(hs));
       const isSky = step(0.99999, depth.sample(p).r);
       const dist = viewZ.negate();
       // Starts at 25 m: past ~150 m the haze has washed the ground flat, so there is nothing left to warp.
@@ -310,6 +316,15 @@ export class Post {
       const p = uv();
       const v = length(p.sub(0.5).mul(vec2(aspect.mul(0.8), 1)));
       o = o.mul(mix(float(1), float(0.72), smoothstep(0.45, 1.05, v)));
+      // Heatstroke: colour drains towards a hot red and a pulsing blood-red vignette closes in, the
+      // pulse quickening as the meter fills.
+      const hs = heatstroke;
+      const beat = pow(abs(sin(time.mul(hs.mul(2.2).add(2.6)))), 6);
+      const ol = dot(o, vec3(0.2126, 0.7152, 0.0722));
+      o = mix(o, vec3(ol).mul(vec3(1.25, 0.72, 0.55)), hs.mul(0.4));
+      const ragged = v.add(mx_noise_float(vec3(p.sub(0.5).mul(vec2(aspect, 1)).mul(2.5), time.mul(0.4))).mul(0.06));
+      const edge = smoothstep(mix(float(0.62), float(0.18), hs), 1.0, ragged);
+      o = mix(o, vec3(0.32, 0.015, 0.005), saturate(edge.mul(hs).mul(beat.mul(0.25).add(0.8)).mul(1.15)));
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
       o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(0.028)));
