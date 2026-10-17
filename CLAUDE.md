@@ -98,5 +98,6 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 ## Workflow
 
 - Commit and push straight to `main` (no PRs needed); a push to `main` deploys. Run `npm run build` first.
+- Agents: always push after committing — don't stop at a local commit or ask before pushing.
 - Small, focused commits. Pull often — three people are editing a small codebase quickly.
 - The live build SHA is shown at the bottom of the Esc menu (and in the top-left stats line if "Show stats" is on).
