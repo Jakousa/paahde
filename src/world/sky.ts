@@ -6,7 +6,7 @@ import { hazeColorFor, hazeFactor, skyRadiance, sunColor, sunDirection, sunDisc,
 
 const SUN_ELEVATION = THREE.MathUtils.degToRad(10);
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-14); // 0 = straight ahead of the start view (-Z)
-const SHADOW_EXTENT = 45; // half-size of the shadow frustum (m)
+const SHADOW_EXTENT = 70; // half-size of the shadow frustum (m)
 const SHADOW_MAP = 2048;
 const SHADOW_DISTANCE = 300; // light distance from focus along the sun direction
 

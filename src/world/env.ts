@@ -20,9 +20,9 @@ export const time = uniform(0);
 
 // --- Atmosphere palette (linear; THREE.Color converts the sRGB hex values from docs/look.md) ---
 /** Sky straight up: dusky brown-purple. */
-export const zenithColor = uniform(new THREE.Color(0x2a2230).multiplyScalar(0.75));
+export const zenithColor = uniform(new THREE.Color(0x2a2438).multiplyScalar(0.8));
 /** Sky a little above the horizon (between the hot band and the zenith). */
-export const midSkyColor = uniform(new THREE.Color(0x523638));
+export const midSkyColor = uniform(new THREE.Color(0x5a3a3e));
 /** Hot horizon band away from the sun. */
 export const horizonColor = uniform(new THREE.Color(0xe07b28));
 /** Horizon band towards the sun. */
@@ -73,8 +73,11 @@ export const skyRadiance = Fn(([dirIn]: [N]) => {
   const band = mix(horizonColor, horizonSunColor, toward);
   const yUp = max(y, 0);
   const bandWidth = mix(float(0.12), float(0.3), toward);
-  const lower = mix(band, midSkyColor, smoothstep(0, bandWidth, yUp));
-  const upper = mix(lower, zenithColor, smoothstep(bandWidth.mul(0.6), 0.85, yUp));
+  // Exponential-ish falloff out of the band reads softer than a smoothstep edge.
+  const t = float(1).sub(exp(yUp.div(bandWidth).mul(-2.2)));
+  const dusty = mix(band, midSkyColor, 0.55).mul(0.8);
+  const lower = mix(mix(band, dusty, smoothstep(0, 0.5, t)), midSkyColor, smoothstep(0.4, 1, t));
+  const upper = mix(lower, zenithColor, smoothstep(bandWidth.mul(0.8), 0.9, yUp));
   // Blend from the haze colour right at the horizon so fogged terrain meets the sky seamlessly.
   const hazeBase = mix(hazeColor, horizonSunColor, toward.mul(0.7));
   const sky = mix(hazeBase, upper, smoothstep(0.0, 0.06, y));
