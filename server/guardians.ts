@@ -12,7 +12,7 @@ import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
 import {
   ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
   CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, GUARDIAN, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
-  NIGHT_SUN, REST_R, sweepAt, TRACK_RATE,
+  NIGHT_SUN, NOTICE_R, REST_R, SEEK_GIVE_UP, SEEK_RATE, sweepAt, TRACK_RATE,
 } from '../shared/guardians.ts';
 import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MIN_R, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
@@ -111,6 +111,8 @@ type Drone = {
   lock: number; litAt: number; leaving: boolean;
   /** Lost this player (-1 none): won't lock on to them again until then. */
   lost: number; lostUntil: number;
+  /** Noticed this player (-1 none) and searching them out with the beam, last saw them when. */
+  seek: number; seenAt: number;
   /** Summoned from the debug menu or roaming: stays out until then (server ms), day or not (roaming: no longer). */
   until: number;
   /** Beam direction (unit), sent to clients. */
@@ -444,18 +446,22 @@ export class GuardianServer {
       if ((now > d.until && (!night || d.site === ROAM)) || !players.some((p) => Math.hypot(p.x - d.hx, p.z - d.hz) < DRONE_LONELY)) d.leaving = true;
       let speed = DRONE_SPEED, tx = d.tx, tz = d.tz, alt = DRONE_ALT;
       const prey = d.lock >= 0 ? byId.get(d.lock) : undefined;
+      if (prey || d.leaving) d.seek = -1;
+      if (!prey && !d.leaving) this.notice(d, now, exposed);
+      const sought = d.seek >= 0 ? byId.get(d.seek) : undefined;
+      const target = prey ?? sought;
       if (d.leaving) {
         d.lock = -1;
         alt = DRONE_ALT * 5;
         speed = CHASE_SPEED;
         tx = d.x + Math.sin(d.yaw) * 100;
         tz = d.z + Math.cos(d.yaw) * 100;
-      } else if (prey) {
-        // Hang back from them, beam on them.
-        const hx = d.x - prey.x, hz = d.z - prey.z, h = Math.hypot(hx, hz) || 1;
-        tx = prey.x + (hx / h) * CHASE_BACK;
-        tz = prey.z + (hz / h) * CHASE_BACK;
-        speed = CHASE_SPEED;
+      } else if (target) {
+        // Hang back from them, beam on them (searching them out: at patrol speed).
+        const hx = d.x - target.x, hz = d.z - target.z, h = Math.hypot(hx, hz) || 1;
+        tx = target.x + (hx / h) * CHASE_BACK;
+        tz = target.z + (hz / h) * CHASE_BACK;
+        if (prey) speed = CHASE_SPEED;
       } else if (Math.hypot(tx - d.x, tz - d.z) < 5) {
         this.dronePoint(d);
       }
@@ -465,7 +471,7 @@ export class GuardianServer {
         const step = Math.min(dist, speed * dt);
         d.x += (dx / dist) * step;
         d.z += (dz / dist) * step;
-        if (!prey) d.yaw = wrap(d.yaw + wrap(Math.atan2(dx, dz) - d.yaw) * (1 - Math.exp(-dt * 1.5)));
+        if (!target) d.yaw = wrap(d.yaw + wrap(Math.atan2(dx, dz) - d.yaw) * (1 - Math.exp(-dt * 1.5)));
       }
       const bd = Math.hypot(d.x - BASE.x, d.z - BASE.z), keep = d.site === ROAM && !prey ? ROAM_BASE_KEEP_OUT : DRONE_BASE_KEEP_OUT;
       if (bd < keep && !d.leaving) {
@@ -475,11 +481,11 @@ export class GuardianServer {
       }
       const ground = Math.max(heightAt(d.x, d.z), heightAt(d.x + Math.sin(d.yaw) * 15, d.z + Math.cos(d.yaw) * 15));
       d.y += (ground + alt - d.y) * (1 - Math.exp(-dt * (d.leaving ? 0.3 : 1.2)));
-      // Aim the beam: turning after the prey no faster than TRACK_RATE, or sweeping ahead.
-      if (prey) {
-        const ax = prey.x - d.x, ay = prey.y + 1.1 - d.y, az = prey.z - d.z, l = Math.hypot(ax, ay, az) || 1;
+      // Aim the beam: turning after the prey no faster than TRACK_RATE (SEEK_RATE onto someone noticed), or sweeping ahead.
+      if (target) {
+        const ax = target.x - d.x, ay = target.y + 1.1 - d.y, az = target.z - d.z, l = Math.hypot(ax, ay, az) || 1;
         const cos = Math.max(-1, Math.min(1, (d.dx * ax + d.dy * ay + d.dz * az) / l)), ang = Math.acos(cos);
-        const t = ang > 1e-4 ? Math.min(1, (TRACK_RATE * dt) / ang) : 1;
+        const t = ang > 1e-4 ? Math.min(1, ((prey ? TRACK_RATE : SEEK_RATE) * dt) / ang) : 1;
         // Between the two directions by fraction t of the angle (slerp).
         const s0 = ang > 1e-4 ? Math.sin((1 - t) * ang) / Math.sin(ang) : 1 - t, s1 = ang > 1e-4 ? Math.sin(t * ang) / Math.sin(ang) : t;
         const nx = d.dx * s0 + (ax / l) * s1, ny = d.dy * s0 + (ay / l) * s1, nz = d.dz * s0 + (az / l) * s1, nl = Math.hypot(nx, ny, nz) || 1;
@@ -507,6 +513,7 @@ export class GuardianServer {
           if (!inBeam(d.x, d.y, d.z, d.dx, d.dy, d.dz, p.x, p.y, p.z)) continue;
           d.lock = p.id;
           d.litAt = now;
+          d.seek = -1;
           break;
         }
       }
@@ -522,6 +529,26 @@ export class GuardianServer {
     }
     this.drones = this.drones.filter((d) => d.downAt >= 0 ? now - d.downAt < DRONE_WRECK_S * 1000 : !d.leaving || d.y < heightAt(d.x, d.z) + DRONE_ALT * 4.5);
     return lit;
+  }
+
+  /** Searching someone out (d.seek): keeps at it while they're in sight and near, else notices whoever is. */
+  private notice(d: Drone, now: number, exposed: BotPlayer[]) {
+    const sees = (p: BotPlayer, r: number) => Math.hypot(p.x - d.x, p.z - d.z) < r && lineOfSight(d.x, d.y, d.z, p.x, p.y + 1.1, p.z);
+    if (d.seek >= 0) {
+      const p = exposed.find((o) => o.id === d.seek);
+      if (p && sees(p, NOTICE_R * SEEK_GIVE_UP)) d.seenAt = now;
+      else if (!p || now - d.seenAt > LOSE_MS) d.seek = -1;
+      if (d.seek >= 0) return;
+    }
+    let best = NOTICE_R;
+    for (const p of exposed) {
+      if (p.id === d.lost && now < d.lostUntil) continue;
+      const h = Math.hypot(p.x - d.x, p.z - d.z);
+      if (h >= best || !sees(p, NOTICE_R)) continue;
+      best = h;
+      d.seek = p.id;
+      d.seenAt = now;
+    }
   }
 
   /** A shot-down drone: drops, carried on by its speed, until it hits the sand (and lies there). */
@@ -652,7 +679,7 @@ export class GuardianServer {
     const z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hz + Math.cos(a) * from));
     const d: Drone = {
       id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
-      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, dx: 0, dy: -1, dz: 0, until,
+      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, dx: 0, dy: -1, dz: 0, until,
     };
     // First pass: across the site from where it came in.
     d.tx = hx + rand(-30, 30);

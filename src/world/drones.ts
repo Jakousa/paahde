@@ -21,7 +21,7 @@ const LAMP = new THREE.Vector3(0, -0.4, 0.55);
 const WARM = new THREE.Color(1.0, 0.86, 0.62);
 const RED = new THREE.Color(1.0, 0.16, 0.08);
 /** Haze brightness (HDR, before bloom), the pool's, and the lens glare's (and its size, m). */
-const BEAM_GAIN = 0.32;
+const BEAM_GAIN = 0.17;
 const POOL_GAIN = 1.2;
 const GLARE_GAIN = 2.5;
 const GLARE_SIZE = 1.1;
