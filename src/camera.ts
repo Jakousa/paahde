@@ -22,6 +22,7 @@ export const MAX_FOV = BASE_FOV + SPRINT_FOV_KICK;
 const STRIDE = 1.15; // metres per step (half a bob cycle)
 const BOOM = 4.5; // third-person distance behind the eye (m)
 const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
+const SPRING_DT = 1 / 120; // the landing dip's longest step (s): a slow frame taken whole would make it swing ever harder
 const THIRD_PERSON_KEY = 'dadajam.thirdPerson';
 
 /** What the camera needs from the local player each frame. */
@@ -131,8 +132,10 @@ export class FirstPersonCamera {
     this.wasGrounded = p.grounded;
     this.lastVy = p.vy;
     const k = 120, c = 16;
-    this.dipVel += (-k * this.dip - c * this.dipVel) * dt;
-    this.dip = Math.max(-0.45, this.dip + this.dipVel * dt);
+    for (let n = Math.ceil(dt / SPRING_DT), h = dt / n; n > 0; n--) {
+      this.dipVel += (-k * this.dip - c * this.dipVel) * h;
+      this.dip = Math.max(-0.45, this.dip + this.dipVel * h);
+    }
 
     // Head bob tied to distance travelled.
     const moving = p.grounded && speed > 0.5;

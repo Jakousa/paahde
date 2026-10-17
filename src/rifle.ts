@@ -43,6 +43,8 @@ const BREATH_HZ = 0.24, TREMOR_HZ = 0.55;
 const HOLD_S = 4, GASP_S = 2.5;
 /** Recoil: the share of the muzzle climb that stays. */
 const CLIMB_STAYS = 0.35;
+/** The recoil spring's longest step (s); stable well past this. */
+const SPRING_DT = 1 / 120;
 
 /**
  * How each gun handles. `scope`: aimed, the view goes through a scope; else `sight` is the zoom on the iron sights.
@@ -221,11 +223,14 @@ export class Rifle {
     this.swayYaw = k * u * (TREMOR * Math.sin(f) + JITTER * wobble(this.time, 5.3));
     this.spread = playerHands.aim > 0.95 ? 0 : feel.hip + feel.move * Math.min(1, pace / 2) * (1 - playerHands.aim);
     // The recoil spring (rad): kicked on firing, pulled back (slightly under-damped: a little bounce past rest).
+    // Stepped in short substeps: a whole slow frame (a hitch, low fps) at once would make it swing up and down ever harder.
     const kk = 160, cc = 17;
-    this.recoilVP += (-kk * this.recoilPitch - cc * this.recoilVP) * dt;
-    this.recoilVY += (-kk * this.recoilYaw - cc * this.recoilVY) * dt;
-    this.recoilPitch += this.recoilVP * dt;
-    this.recoilYaw += this.recoilVY * dt;
+    for (let n = Math.ceil(dt / SPRING_DT), h = dt / n; n > 0; n--) {
+      this.recoilVP += (-kk * this.recoilPitch - cc * this.recoilVP) * h;
+      this.recoilVY += (-kk * this.recoilYaw - cc * this.recoilVY) * h;
+      this.recoilPitch += this.recoilVP * h;
+      this.recoilYaw += this.recoilVY * h;
+    }
     playerHands.kick = Math.max(0, playerHands.kick - dt * 5);
 
     const charge = Math.min(1, 1 - (this.readyAt - performance.now()) / GUNS[feel.kind].cooldown);

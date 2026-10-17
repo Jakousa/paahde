@@ -47,6 +47,8 @@ const WALK_RATE = 0.5;
 /** Spyglass draw tubes: glTF z of TelescopeDraw1 / 2 when pushed in (telescope.py COLLAPSED), slide time. */
 const DRAW_IN = [-0.075, -0.14];
 const DRAW_S = 0.3;
+/** The recoil spring's longest step (s): a slow frame taken whole would make it swing ever harder. */
+const SPRING_DT = 1 / 120;
 
 const params = new URLSearchParams(location.search);
 const forcedHold = params.get('hold') as Held | null;
@@ -225,8 +227,10 @@ export class ViewModel {
     // Recoil: kicked back and up on firing, sprung back with a little overshoot.
     if (playerHands.kick > this.lastKick + 0.5) this.kickV += 9;
     this.lastKick = playerHands.kick;
-    this.kickV += (-260 * this.kick - 24 * this.kickV) * dt;
-    this.kick += this.kickV * dt;
+    for (let n = Math.ceil(dt / SPRING_DT), h = dt / n; n > 0; n--) {
+      this.kickV += (-260 * this.kick - 24 * this.kickV) * h;
+      this.kick += this.kickV * h;
+    }
     // Aiming down the sights: the sights follow the view, not trail it.
     const steady = 1 - 0.8 * playerHands.aim;
     this.slide += ((pose.sliding && pose.grounded ? 1 : 0) - this.slide) * (1 - Math.exp(-dt * 10));
