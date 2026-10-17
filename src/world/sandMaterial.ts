@@ -128,6 +128,7 @@ interface SandSurface {
   v: V3; // to camera
   albedo: V3;
   slip: F; // 1 on slip faces
+  rippleVis: F; // how resolved the small ripples are here (0 far away / masked)
   dist: F;
 }
 
@@ -186,7 +187,7 @@ function buildSurface(): SandSurface {
     .mul(float(1).sub(slip.mul(0.12)))
     .mul(float(1).sub(float(1).sub(h1).mul(f1).mul(0.08)));
 
-  return { p, n0, n, nSpec, v, albedo, slip, dist };
+  return { p, n0, n, nSpec, v, albedo, slip, dist, rippleVis: f1 };
 }
 
 class SandLightingModel extends THREE.LightingModel {
@@ -202,7 +203,7 @@ class SandLightingModel extends THREE.LightingModel {
     const lightColor = input.lightColor as V3;
     const directDiffuse = input.reflectedLight.directDiffuse as V3;
     const directSpecular = input.reflectedLight.directSpecular as V3;
-    const { p, n0, n, nSpec, v, albedo, slip, dist } = this.s;
+    const { p, n0, n, nSpec, v, albedo, slip, dist, rippleVis } = this.s;
     // Light direction arrives in view space; the sand works in world space.
     const l = normalize(cameraWorldMatrix.mul(vec4(lightDirection, 0)).xyz);
     const ndl = dot(n, l);
@@ -222,7 +223,7 @@ class SandLightingModel extends THREE.LightingModel {
     const grazing = pow(float(1).sub(saturate(dot(n0, v))), 2).mul(0.7).add(0.3);
     // Forward-scattering: it lives on the sun side of the view.
     const sunSide = smoothstep(-0.3, 0.5, dot(v.negate(), l));
-    const ocean = pow(saturate(dot(nSpec, h)), 90).mul(grazing).mul(sunSide).mul(sand.sheen).mul(float(1).sub(slip.mul(0.6)));
+    const ocean = pow(saturate(dot(nSpec, h)), 90).mul(grazing).mul(sunSide).mul(rippleVis.mul(0.8).add(0.2)).mul(sand.sheen).mul(float(1).sub(slip.mul(0.6)));
     // Backlit rim: silhouettes/crests seen against the sun glow (forward scatter through edge grains).
     const toSun = saturate(dot(v.negate(), l));
     const rim = pow(float(1).sub(saturate(dot(n0, v))), 4)
