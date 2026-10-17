@@ -20,6 +20,12 @@ const SHAKE_R = 90;
 const SHAKE = 0.35;
 const DUST_R = 600;
 
+/** Firework bursts (rifleSound.firework) besides a guardian's weak point: a crawler's and a crashing drone's softer
+ *  (×level), a missile's blast lower (pitch) to sound bigger. */
+const CRAWLER_FIREWORK = 0.4;
+const DRONE_FIREWORK = 0.5;
+const MISSILE_FIREWORK_PITCH = 0.8;
+
 export class GuardianFx {
   readonly guardians: Guardians;
   readonly drones: Drones;
@@ -45,9 +51,9 @@ export class GuardianFx {
     this.guardians.onFootfall = (f) => this.footfall(f);
     // A shot hitting a drone: a lighter bang than its crash (each one counts, so no firework like a weak point's).
     this.drones.onHit = (x, y, z) => guardianSound.footfall(x, y, z, 0.7, this.ear);
-    // A shot-down drone hitting the sand: a bang and a clatter.
+    // A shot-down drone hitting the sand: a softer firework than a weak point's, and a clatter.
     this.drones.onCrash = (x, y, z) => {
-      guardianSound.boom(x, y, z, this.ear);
+      rifleSound.firework({ x, y, z }, this.ear, DRONE_FIREWORK);
       rifleSound.slam({ x, y, z }, this.ear, false);
       this.thump(x, y, z, 0.6, 0, 0, 0);
     };
@@ -56,7 +62,7 @@ export class GuardianFx {
       const heavy = e.kind === GUARDIAN;
       if (e.what === 'break') {
         rifleSound.impact('glass', e, this.ear);
-        rifleSound.firework(e, this.ear);
+        rifleSound.firework(e, this.ear, heavy ? 1 : CRAWLER_FIREWORK);
       }
       else if (e.what === 'fail') rifleSound.fail(e, this.ear, heavy);
       else {
@@ -112,6 +118,7 @@ export class GuardianFx {
           this.missiles.land(m.id);
           this.bolts.boom(-1, m.x, m.y, m.z, true);
           guardianSound.boom(m.x, m.y, m.z, this.ear);
+          rifleSound.firework(m, this.ear, 1, MISSILE_FIREWORK_PITCH);
           this.thump(m.x, m.y, m.z, 2.6, 30, 7, 3.4);
         }
       };

@@ -3,7 +3,8 @@
 //   0.40–0.55 s, each levelled to −18.5 LUFS momentary, true peak ≤ −1.5 dBTP), picked at random and a little
 //   off pitch each time; the pistol plays them higher and lighter. Your own is dry and in your head; another
 //   player's carries across the desert (src/acoustics.ts: late, duller, softer and more reverb with distance).
-// - firework: a weak point shattering also bursts like a firework: one of
+// - firework: a weak point shattering (a crawler's softer), a shot-down drone crashing (softer) and a missile's blast
+//   (lower) burst like a firework: one of
 //   four of TB0Y298's "Firework Explosion" 1–4 (CC BY 4.0; firework-1..4.mp3, mono, each levelled to −18.9 LUFS
 //   momentary max, true peak ≤ −4 dBTP), at random and a little off pitch, carried through src/acoustics.ts.
 // The rest is synthesised:
@@ -116,14 +117,14 @@ class RifleSound {
     }
   }
 
-  /** A firework burst at `at`, heard from `ear`: a weak point shattered. */
-  firework(at: P, ear: P) {
+  /** A firework burst at `at`, heard from `ear`, at `level` × FIREWORK_GAIN and `pitch` (about 1, lower is bigger). */
+  firework(at: P, ear: P, level = 1, pitch = 1) {
     const ctx = audio.ctx, buf = this.fireworks[Math.floor(Math.random() * this.fireworks.length)];
-    const s = buf ? placed(at, ear, FIREWORK_GAIN, FIREWORK_REF, 600) : null;
+    const s = buf ? placed(at, ear, FIREWORK_GAIN * level, FIREWORK_REF, 600) : null;
     if (!ctx || !s) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.playbackRate.value = 0.92 + Math.random() * 0.16;
+    src.playbackRate.value = pitch * (0.92 + Math.random() * 0.16);
     src.connect(s.input);
     src.start(s.t);
   }
