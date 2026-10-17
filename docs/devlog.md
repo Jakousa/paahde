@@ -89,7 +89,7 @@ wires to cut them, drag pry tabs, hold lifting eyes), **right-drag** carries a f
 carried machine on the table), **middle-drag** or arrow keys turn the machine over, R resets, Esc leaves.
 `?debug` lets one player do the two-player lifts.
 
-Code: `src/teardown/junk.ts` builds the machines and their steps, `parts.ts` the code-built parts, `teardown.ts`
+Code: `src/teardown/junk.ts` builds the machines and their steps, `teardown.ts`
 the mode (walk-up, input, loose-piece physics, session link), `ui.ts` the panels, `src/world/crash.ts` the
 sites, wreckage and the table job. Netcode: `crash*`/`site*` messages in shared/protocol.ts.
 
@@ -101,7 +101,8 @@ sites, wreckage and the table job. Netcode: `crash*`/`site*` messages in shared/
   for parts the machine actually rolled, so nothing is a decoy.
 - **Rarity** = part tier (`RARITY` in shared/salvage.ts). Each machine rolls its parts from `COMPONENTS` using its
   `tierWeights`, seeded by the site, so every player sees the same contents; the best part sets how fancy it looks.
-- **New parts** with no Blender model yet (impeller, bearing, gear, valve, relay) are built in code, four tiers.
+- **Mechanical parts** (impeller, bearing, gear, valve, relay) are Blender models in `tools/blender/items.py` like
+  the other items, four tiers each; they lie with their axis along +y so `Kit.ax` can mount them on a shaft.
 - Not done: collected parts sit in a local tray (localStorage), not in the server inventory (needs an item/tier id
   scheme in shared/); large-site progress lives in server memory and resets 30 min after the last player leaves;
   the server trusts the client's step/part indexes (it only checks lifts against the holders).

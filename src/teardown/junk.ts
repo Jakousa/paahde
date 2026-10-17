@@ -4,12 +4,11 @@
 // pry tabs. Fasteners follow the engineering: bolt circles on round flanges, corner screws on box lids, a row
 // along a split line, set screws on a coupling hub, supply wires from a cable gland to a terminal block through
 // a contactor. Steps sit on different faces, so the machine has to be turned over and around.
-// The real item models (public/models/items/<part>_<tier>.glb) and the code-built mechanical parts
-// (parts.ts) are mounted inside. Better parts come out of fancier machines.
+// The real item models (public/models/items/<part>_<tier>.glb, tools/blender/items.py) are mounted inside.
+// Better parts come out of fancier machines.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { COMPONENTS, RARITY, TIERS, type ComponentKind, type PartId, type Tier } from '../../shared/salvage.ts';
-import { EXTRA_PARTS, makeExtraPart, THICKNESS } from './parts.ts';
 
 export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift';
 export interface Step {
@@ -90,12 +89,15 @@ export function lowestOffset(root: THREE.Object3D): number | null {
 // ---- part models -------------------------------------------------------------------------------------------
 
 const PART_SIZE = 0.5;
+/** Parts drawn smaller than PART_SIZE across. */
+const SIZE: Partial<Record<PartId, number>> = { relay: 0.3 };
+/** Height along the axis (model +y) of the parts that sit on a shaft, once scaled: where their centre is. */
+const THICKNESS: Partial<Record<PartId, number>> = { bearing: 0.144, gear: 0.152, impeller: 0.175, valve: 0.5 };
 const loader = new GLTFLoader();
 const partCache = new Map<string, Promise<THREE.Object3D>>();
 
 /** A part model scaled to PART_SIZE with its base centre at the origin; one clone per call. */
 export async function loadPart(part: PartId, tier: Tier): Promise<THREE.Object3D> {
-  if (EXTRA_PARTS.includes(part)) return makeExtraPart(part, tier);
   const key = `${part}_${tier}`;
   let p = partCache.get(key);
   if (!p) {
@@ -104,7 +106,7 @@ export async function loadPart(part: PartId, tier: Tier): Promise<THREE.Object3D
       const box = new THREE.Box3().setFromObject(inner);
       const size = box.getSize(new THREE.Vector3());
       const c = box.getCenter(new THREE.Vector3());
-      const s = PART_SIZE / Math.max(size.x, size.y, size.z, 1e-3);
+      const s = (SIZE[part] ?? PART_SIZE) / Math.max(size.x, size.y, size.z, 1e-3);
       inner.scale.setScalar(s);
       inner.position.set(-c.x * s, -box.min.y * s, -c.z * s);
       inner.traverse((o) => { o.castShadow = true; });
@@ -430,7 +432,7 @@ class Kit {
     );
     return slot;
   }
-  /** Placement for a code-built part whose axis is `axis`, centred on `c` (its origin is at the base). */
+  /** Placement for a shaft-mounted part whose axis is `axis`, centred on `c` (its origin is at the base). */
   ax(part: PartId, c: V, axis: 'x' | 'y' | 'z'): [V, V] {
     const h = (THICKNESS[part] ?? 0.5) / 2;
     if (axis === 'x') return [[c[0] - h, c[1], c[2]], [0, 0, -Math.PI / 2]];
