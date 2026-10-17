@@ -22,8 +22,10 @@ export default defineConfig({
   ],
   // In dev, the game server runs separately (npm run dev starts both); proxy its WebSocket.
   server: {
+    // Docker dev (docker-compose.yml): listen on all interfaces and poll for changes on the bind mount.
+    host: process.env.DEV_DOCKER ? true : undefined,
     proxy: { '/ws': { target: 'ws://localhost:8787', ws: true } },
     // Agent worktrees live under .claude/; their builds shouldn't reload this dev server.
-    watch: { ignored: ['**/.claude/**'] },
+    watch: { ignored: ['**/.claude/**'], usePolling: !!process.env.DEV_DOCKER },
   },
 });

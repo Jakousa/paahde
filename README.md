@@ -15,6 +15,7 @@ Node 24+.
 ```sh
 npm install
 npm run dev      # wasm + game server + Vite on http://localhost:5173 (open two tabs)
+docker compose up   # same thing in a container (no local Node needed); stop with: docker compose down
 npm run build    # production build into dist/
 ```
 

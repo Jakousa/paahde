@@ -1,0 +1,23 @@
+# Dev environment: `docker compose up` runs `npm run dev` (wasm build, game server on :8787, Vite on :5173).
+# Open http://localhost:5173. Source is bind-mounted, so edits hot-reload; node_modules lives in a named volume
+# (the host's would hold Windows/macOS native binaries). Run `docker compose run --rm dev npm run build` to check a build.
+services:
+  dev:
+    image: node:24-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev"
+    ports:
+      - "5173:5173"
+      - "8787:8787"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - dev_data:/data
+    environment:
+      DB_PATH: /data/dadajam.db
+      # Makes Vite listen on all interfaces and poll (bind mounts from Windows/macOS hosts give no file events).
+      # The game server restarts on edits only where Node's file watching works; otherwise `docker compose restart`.
+      DEV_DOCKER: "1"
+volumes:
+  node_modules:
+  dev_data:
