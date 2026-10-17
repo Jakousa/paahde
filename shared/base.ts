@@ -125,6 +125,9 @@ export type BasePiece = { glb: string; node: string; x: number; z: number; fx: n
 
 export const BASE_PIECES: BasePiece[] = [
   { glb: 'bunker', node: 'pump', x: 0, z: ROOM_Z, fx: 0, fz: 1, y: FLOOR, hx: 0.35, hz: 0.35, h: 1.2 },
+  // Against the side walls, facing into the room (shared/stations.ts makes them interactable).
+  { glb: 'bunker', node: 'workbench', x: -ROOM.w + 0.42, z: ROOM_Z, fx: 1, fz: 0, y: FLOOR, hx: 1.0, hz: 0.4, h: 0.95 },
+  { glb: 'bunker', node: 'disassembly', x: ROOM.w - 0.47, z: ROOM_Z, fx: -1, fz: 0, y: FLOOR, hx: 0.8, hz: 0.45, h: 0.92 },
 ];
 const PUMP = BASE_PIECES[0];
 

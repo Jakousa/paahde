@@ -3,6 +3,7 @@ import { DIG, DT, PILE, quantizeYaw } from '../shared/sim.ts';
 import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { bedTarget, EMPTY, GROWN } from '../shared/garden.ts';
+import { STATIONS, stationTarget } from '../shared/stations.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { DigFx } from './dig';
@@ -234,19 +235,24 @@ renderer.setAnimationLoop((time) => {
   footsteps.listener(orbit.camera.position, orbit.yaw);
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
-  // F: tend the greenhouse bed in view (planted beds can't be touched while they grow), else pick up scrap,
-  // else (canteen out, in the base) fill the canteen.
-  const bed = net.connected ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
+  // F: use the work station in view, else tend the greenhouse bed in view (planted beds can't be touched
+  // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
+  const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
+  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : 'Use disassembly table';
+  const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
   const stage = net.garden[bed];
   const tend = stage === EMPTY ? 'Plant seeds' : stage === GROWN ? 'Harvest' : null;
-  const target = net.connected && bed < 0 ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
-  hud.setTarget(tend ?? target);
+  const target = net.connected && station < 0 && bed < 0 ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  hud.setTarget(use ?? tend ?? target);
   const interact = takePickup();
   if (interact) {
-    if (tend) net.tend(bed);
+    // Stations don't do anything yet.
+    if (use) hud.toast(STATIONS[station].kind === 'workbench' ? 'Nothing to craft yet' : 'Nothing to take apart yet');
+    else if (tend) net.tend(bed);
     else if (target) net.pickup(target);
   }
-  survival.update(frameDt, net.me, tend !== null || target !== null, interact && !tend && !target);
+  const targeted = use !== null || tend !== null || target !== null;
+  survival.update(frameDt, net.me, targeted, interact && !targeted);
 
   info.textContent = `${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();

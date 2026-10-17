@@ -7,6 +7,8 @@ Top-level nodes (origin = the entrance hut's floor on the doorway's centre line,
     hut     outside of the small entrance hut on the surface, the skylight's collar + glass (lit by the sky)
     bunker  everything indoors: the hut's inside, stairs, tunnel, hallway, main room, skylight shaft
     pump    hand water pump, origin at its base centre (placed in the room's middle by shared/base.ts)
+    workbench    crafting bench with a pegboard behind it, origin at its base centre, front +Z
+    disassembly  steel disassembly table with a vise and a scrap bin, origin at its base centre, front +Z
 
 Every dimension mirrors shared/base.ts (the physics): change both together.
 Blender is Z-up; the exporter converts to Y-up. Game +Z ("front") = Blender -Y. Units are metres.
@@ -54,6 +56,10 @@ MATERIALS = {
     'Rust': (0x7a3d1e, 0.95, 0.0, False),
     'PumpPaint': (0x3f5a48, 0.6, 0.1, False),
     'Water': (0x3f7f8c, 0.1, 0.0, False),
+    'Wood': (0x8a5a34, 0.85, 0.0, False),
+    'WoodDark': (0x5a3a22, 0.9, 0.0, False),
+    'Peg': (0xa08868, 0.9, 0.0, False),
+    'Hazard': (0xd8a028, 0.7, 0.1, False),
 }
 EMIT = {'EmitWarm': 0xffb060}
 
@@ -363,6 +369,83 @@ def build_pump():
     return mb.build('pump')
 
 
+def build_workbench():
+    """2 x 0.8 m wooden bench (top at 0.92) with a shelf, a pegboard on the wall behind and a few tools."""
+    mb = MB()
+    hx, hz, top = 1.0, 0.4, 0.92
+    mb.box(-hx, hx, top - 0.08, top, -hz + 0.04, hz, 'Wood')
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            x, z = sx * (hx - 0.1), sz * (hz - 0.1) + 0.02
+            mb.box(x - 0.05, x + 0.05, 0, top - 0.08, z - 0.05, z + 0.05, 'WoodDark')
+        mb.box(sx * (hx - 0.1) - 0.04, sx * (hx - 0.1) + 0.04, 0.18, 0.24, -hz + 0.1, hz - 0.06, 'WoodDark')
+    mb.box(-hx + 0.05, hx - 0.05, 0.24, 0.28, -hz + 0.1, hz - 0.06, 'Wood')  # shelf
+    mb.box(-0.7, -0.2, 0.28, 0.5, -0.15, 0.2, 'Rust')  # a crate of parts on it
+    mb.box(0.2, 0.6, 0.28, 0.4, -0.1, 0.15, 'Steel')
+    # Pegboard on two uprights behind the top, tools hanging on it.
+    mb.box(-hx, hx, top, 2.0, -hz, -hz + 0.03, 'Peg')
+    for sx in (-1, 1):
+        mb.box(sx * hx - 0.04, sx * hx + 0.04, top, 2.05, -hz, -hz + 0.05, 'WoodDark')
+    mb.beam((-0.7, 1.75, -hz + 0.06), (-0.7, 1.35, -hz + 0.06), 0.03, 'WoodDark')  # hammer
+    mb.box(-0.78, -0.62, 1.72, 1.79, -hz + 0.03, -hz + 0.09, 'Iron')
+    mb.beam((-0.35, 1.75, -hz + 0.06), (-0.3, 1.4, -hz + 0.06), 0.025, 'Steel')  # wrench
+    mb.box(0.0, 0.5, 1.55, 1.6, -hz + 0.03, -hz + 0.08, 'Iron')  # shelf for jars
+    for k in range(4):
+        x = 0.06 + k * 0.12
+        mb.cyl((x, 1.6, -hz + 0.055), (x, 1.72, -hz + 0.055), 0.04, 'Glass' if k % 2 else 'Rust', seg=8)
+    mb.cyl((0.75, 1.3, -hz + 0.06), (0.75, 1.75, -hz + 0.06), 0.012, 'Steel', seg=6)  # screwdriver
+    mb.cyl((0.75, 1.3, -hz + 0.06), (0.75, 1.42, -hz + 0.06), 0.025, 'Hazard', seg=6)
+    # On the top: a lamp, a half-built gadget, a coil of wire.
+    mb.cyl((0.75, top, -0.25), (0.75, top + 0.03, -0.25), 0.09, 'Iron', seg=10)
+    mb.beam((0.75, top + 0.03, -0.25), (0.7, top + 0.45, -0.15), 0.025, 'Iron')
+    mb.cyl((0.7, top + 0.45, -0.15), (0.62, top + 0.38, 0.0), 0.04, 'Iron', r1=0.1, seg=10)
+    mb.cyl((0.63, top + 0.385, -0.02), (0.62, top + 0.38, 0.0), 0.06, 'EmitWarm', seg=10)
+    mb.box(-0.2, 0.2, top, top + 0.12, -0.05, 0.2, 'Steel')
+    mb.cyl((-0.05, top + 0.12, 0.08), (-0.05, top + 0.2, 0.08), 0.04, 'Rust', seg=8)
+    mb.cyl((-0.6, top, 0.1), (-0.6, top + 0.06, 0.1), 0.12, 'Rust', seg=12)
+    return mb.build('workbench')
+
+
+def build_disassembly():
+    """1.8 x 1 m steel table (top at 0.9) with a slatted top, a vise, a grinder and a scrap bin beside it."""
+    mb = MB()
+    hx, hz, top = 0.8, 0.45, 0.9
+    mb.box(-hx, hx, top - 0.06, top - 0.03, -hz, hz, 'Iron')  # frame under the slats
+    for k in range(9):
+        z = -hz + 0.05 + k * (2 * hz - 0.1) / 8
+        mb.box(-hx, hx, top - 0.03, top, z - 0.035, z + 0.035, 'Steel')
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            x, z = sx * (hx - 0.05), sz * (hz - 0.05)
+            mb.box(x - 0.04, x + 0.04, 0, top - 0.06, z - 0.04, z + 0.04, 'Iron')
+        mb.box(sx * (hx - 0.05) - 0.03, sx * (hx - 0.05) + 0.03, 0.15, 0.2, -hz + 0.05, hz - 0.05, 'Iron')
+    mb.box(-hx + 0.05, hx - 0.05, 0.15, 0.2, -0.03, 0.03, 'Iron')
+    # Hazard stripes along the front edge.
+    for k in range(8):
+        x = -hx + 0.1 + k * 0.2
+        mb.box(x - 0.05, x + 0.05, top - 0.08, top - 0.02, hz, hz + 0.01, 'Hazard')
+    # Bench vise on the front left corner.
+    vx, vz = -hx + 0.2, hz - 0.12
+    mb.box(vx - 0.1, vx + 0.1, top, top + 0.05, vz - 0.15, vz + 0.05, 'PumpPaint')
+    mb.box(vx - 0.1, vx + 0.1, top + 0.05, top + 0.2, vz - 0.12, vz - 0.04, 'PumpPaint')
+    mb.box(vx - 0.1, vx + 0.1, top + 0.05, top + 0.2, vz + 0.02, vz + 0.1, 'PumpPaint')
+    mb.cyl((vx, top + 0.1, vz + 0.1), (vx, top + 0.1, vz + 0.3), 0.015, 'Steel', seg=6)
+    mb.cyl((vx - 0.12, top + 0.1, vz + 0.3), (vx + 0.12, top + 0.1, vz + 0.3), 0.012, 'Steel', seg=6)
+    # A gutted machine being taken apart, an angle grinder, loose bolts.
+    mb.box(0.0, 0.45, top, top + 0.25, -0.3, 0.05, 'Steel')
+    mb.box(0.05, 0.4, top + 0.25, top + 0.27, -0.25, 0.0, 'Rust')
+    mb.box(0.5, 0.65, top, top + 0.02, -0.3, -0.05, 'Steel')  # its lid, off
+    mb.cyl((-0.25, top + 0.04, 0.2), (0.05, top + 0.04, 0.25), 0.04, 'Hazard', seg=8)
+    mb.cyl((0.05, top + 0.04, 0.25), (0.1, top + 0.04, 0.26), 0.05, 'Iron', seg=8)
+    mb.cyl((0.12, top, 0.26), (0.12, top + 0.1, 0.26), 0.07, 'Steel', seg=12)
+    for x, z in ((0.3, 0.25), (0.36, 0.3), (0.42, 0.22), (0.27, 0.33)):
+        mb.cyl((x, top, z), (x, top + 0.02, z), 0.015, 'Iron', seg=6)
+    # Scrap bin under the right end.
+    mb.cyl((0.4, 0.0, 0.0), (0.4, 0.55, 0.0), 0.25, 'Rust', r1=0.28, seg=12)
+    mb.box(0.25, 0.5, 0.45, 0.62, -0.1, 0.12, 'Steel')
+    return mb.build('disassembly')
+
+
 # =================================================================================================
 def tri_count(obj):
     return sum(len(p.vertices) - 2 for p in obj.data.polygons)
@@ -391,9 +474,13 @@ def look_at(cam, target):
 
 
 def render_preview(objs, path):
-    """Shots: the surface from the front, a cutaway from above, inside the room, down the stairs."""
-    hut, bunker, pump = objs
+    """Shots: the surface from the front, a cutaway from above, inside the room, down the stairs, the benches."""
+    hut, bunker, pump, bench, dis = objs
     pump.location = G(0, FLOOR, ROOM_Z)
+    bench.location = G(-ROOM_W + 0.42, FLOOR, ROOM_Z)
+    bench.rotation_euler = (0, 0, math.pi / 2)
+    dis.location = G(ROOM_W - 0.47, FLOOR, ROOM_Z)
+    dis.rotation_euler = (0, 0, -math.pi / 2)
     scene = bpy.context.scene
     cam_data = bpy.data.cameras.new('cam')
     cam = bpy.data.objects.new('cam', cam_data)
@@ -452,6 +539,10 @@ def render_preview(objs, path):
     shot('room', G(3.8, FLOOR + 1.65, HALL_Z - 1.0), G(0, FLOOR + 0.8, ROOM_Z), lens=20)
     shot('stairs', G(0, 1.65, 1.8), G(0, FLOOR + 1.0, -9), lens=22)
     shot('pump', G(1.2, FLOOR + 1.3, ROOM_Z + 1.4), G(0, FLOOR + 0.7, ROOM_Z), lens=35)
+    bg.inputs['Strength'].default_value = 0.6
+    hut.hide_render = bunker.hide_render = sand.hide_render = True
+    shot('bench', G(-ROOM_W + 3.2, FLOOR + 1.7, ROOM_Z + 1.6), G(-ROOM_W + 0.4, FLOOR + 1.0, ROOM_Z), lens=28)
+    shot('disassembly', G(ROOM_W - 3.0, FLOOR + 1.7, ROOM_Z - 1.6), G(ROOM_W - 0.4, FLOOR + 0.9, ROOM_Z), lens=28)
 
 
 def main():
@@ -463,7 +554,7 @@ def main():
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     make_materials()
-    objs = [build_hut(), build_bunker(), build_pump()]
+    objs = [build_hut(), build_bunker(), build_pump(), build_workbench(), build_disassembly()]
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     export(objs, args.out)
     for o in objs:
