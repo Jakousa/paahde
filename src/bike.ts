@@ -3,7 +3,8 @@
 // leaning into turns, wheels spinning with the ground speed, the bars turned with the steering, a tyre
 // track behind it, the front wheel up while Space is held (a wheelie; letting go hops). The rider (an Avatar) sits in the bike's tilted frame; rider() says where its hips, hands
 // and feet go (the hands follow the bars), and how it leans into turns, twists with the bars, and tucks
-// forward (rocking back as it accelerates).
+// forward (rocking back as it accelerates). After dark its headlight comes on: a spotlight from the lamp that
+// turns with the bars, and the lens glows.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { slopeAt } from '../shared/sim.ts';
@@ -11,6 +12,7 @@ import { heightAt } from '../shared/terrain.ts';
 import { footprints } from './footprints.ts';
 import { tyreDust } from './tyreDust.ts';
 import type { RidePose } from './players.ts';
+import { nightLevel } from './world/env.ts';
 
 // Rider contact points, in the bike's frame (origin on the ground between the tyres, forward is -z), from
 // tools/blender/sandbike.py: hips over the front of the seat (top 0.86), ankles over the pegs (0.2, 0.34, 0.12).
@@ -26,6 +28,15 @@ const MAX_LEAN = 0.6;
 const MAX_STEER = 0.5;
 const TRACK_STEP = 0.5; // metres between tyre-track marks
 const WHEELIE = 0.45; // rad the nose comes up, about the rear tyre's contact
+/** The headlight lens in the Handlebar node's frame (tools/blender/sandbike.py lamp_c), and where the beam
+ *  aims from there: ahead and a little down, so it pools on the sand ~15 m out. */
+const LAMP = new THREE.Vector3(0, 0.076, -0.25);
+const AIM = new THREE.Vector3(0, -0.06, -1);
+const HEADLIGHT = { color: 0xffe4bc, intensity: 30, distance: 45, angle: 0.5, penumbra: 0.8, decay: 1.2, glow: 6 };
+/** Headlights are a fixed pool that stays in the scene (adding or removing a light recompiles every material);
+ *  a bike that finds none free rides without one. */
+const POOL = 3;
+const headlights: { light: THREE.SpotLight; used: boolean }[] = [];
 
 let shared: Promise<GLTF> | undefined;
 const load = () => (shared ??= new GLTFLoader().loadAsync('./models/sandbike.glb'));
@@ -51,6 +62,9 @@ export class Bike {
   private grounded = true;
   private dustOwed = 0; // puffs owed to tyreDust (fractional)
   private disposed = false;
+  private headlight?: (typeof headlights)[number];
+  private lens: THREE.MeshStandardMaterial[] = [];
+  private glow = 0; // 0..1, the headlight ramping on and off
   private readonly pose: RidePose = {
     seat: new THREE.Vector3(),
     grips: [new THREE.Vector3(), new THREE.Vector3()],
@@ -62,12 +76,33 @@ export class Bike {
     this.tilt.rotation.order = 'YXZ';
     this.root.add(this.tilt);
     scene.add(this.root);
+    if (!headlights.length) {
+      for (let i = 0; i < POOL; i++) {
+        const h = HEADLIGHT;
+        const light = new THREE.SpotLight(h.color, 0, h.distance, h.angle, h.penumbra, h.decay);
+        scene.add(light, light.target);
+        headlights.push({ light, used: false });
+      }
+    }
+    this.headlight = headlights.find((h) => !h.used);
+    if (this.headlight) this.headlight.used = true;
     load().then(
       (gltf) => {
         if (this.disposed) return;
         const model = gltf.scene.clone(true);
         model.traverse((o) => {
-          if ((o as THREE.Mesh).isMesh) o.castShadow = o.receiveShadow = true;
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          m.castShadow = m.receiveShadow = true;
+          // The lens gets its own material (clones share the model's), so each bike's glow is its own.
+          const mat = m.material as THREE.MeshStandardMaterial;
+          if (mat.name === 'lamp') {
+            const lens = mat.clone();
+            lens.emissive.setHex(HEADLIGHT.color);
+            lens.emissiveIntensity = 0;
+            m.material = lens;
+            this.lens.push(lens);
+          }
         });
         this.front = model.getObjectByName('FrontWheel');
         this.rear = model.getObjectByName('RearWheel');
@@ -121,6 +156,7 @@ export class Bike {
     const spin = (forward * dt) / WHEEL_R;
     if (this.front) this.front.rotation.x -= spin;
     if (this.rear) this.rear.rotation.x -= spin;
+    this.lights(dt);
 
     // Tyre track and dust on the sand.
     if (!p.grounded || p.y > heightAt(p.x, p.z) + 0.05) return;
@@ -130,6 +166,23 @@ export class Bike {
     this.track %= TRACK_STEP;
     const tx = p.x - fx * WHEELBASE * 0.5, tz = p.z - fz * WHEELBASE * 0.5;
     footprints.add(tx, heightAt(tx, tz), tz, p.heading, 2.2);
+  }
+
+  /** The headlight: on once it is dark (the sun a couple of degrees under), with a quick ramp so it doesn't pop. */
+  private lights(dt: number) {
+    const on = nightLevel.value > 0.05 ? 1 : 0;
+    this.glow += (on - this.glow) * (1 - Math.exp(-dt * 12));
+    if (this.glow < 1e-3) this.glow = 0;
+    for (const m of this.lens) m.emissiveIntensity = HEADLIGHT.glow * this.glow;
+    const h = this.headlight?.light;
+    if (!h) return;
+    h.intensity = this.bars ? HEADLIGHT.intensity * this.glow : 0;
+    if (!h.intensity) return;
+    this.root.updateMatrixWorld(true);
+    this.bars!.localToWorld(h.position.copy(LAMP));
+    this.bars!.localToWorld(h.target.position.copy(LAMP).add(AIM));
+    h.updateMatrixWorld();
+    h.target.updateMatrixWorld();
   }
 
   /** Sand off the back tyre: with speed, more when the back slides sideways, a burst on landing. */
@@ -178,6 +231,10 @@ export class Bike {
   dispose() {
     this.disposed = true;
     this.root.removeFromParent();
+    if (this.headlight) {
+      this.headlight.light.intensity = 0;
+      this.headlight.used = false;
+    }
   }
 }
 
