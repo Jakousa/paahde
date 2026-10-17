@@ -329,7 +329,7 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
   if (Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
   const wall = Date.now();
   const by = { id: p.id, x: s.x, y: s.y, z: s.z, safe: wall - p.heat.diedAt < BOT_GRACE_MS };
-  const r = m.d !== undefined ? { hit: guardians.shootDrone(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.d, now), kill: null }
+  const r = m.d !== undefined ? { hit: guardians.shootDrone(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.d, now, p.id), kill: null }
     : m.g === undefined ? { hit: false, kill: null } : guardians.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.g, m.i, now);
   const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
   for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);

@@ -54,6 +54,8 @@ const DRONES_PER_SITE = 2;
 const MAX_DRONES = 16;
 const DRONE_FROM = 220;
 const DRONE_AREA = 110;
+/** A drone hit from any distance heads for the shooter this long (ms), renewed by every hit. */
+const HUNT_MS = 45_000;
 /** A drone with nobody within this distance (m) leaves. */
 const DRONE_LONELY = 600;
 /** Drones keep this far (m) from the base. */
@@ -114,6 +116,8 @@ type Drone = {
   lost: number; lostUntil: number;
   /** Noticed this player (-1 none) and searching them out with the beam, last saw them when. */
   seek: number; seenAt: number;
+  /** Shot by this player (-1 none) from wherever: flies to where they are now until then (server ms). */
+  hunt: number; huntUntil: number;
   /** Summoned from the debug menu or roaming: stays out until then (server ms), day or not (roaming: no longer). */
   until: number;
   /** Beam direction (unit), sent to clients. */
@@ -450,11 +454,15 @@ export class GuardianServer {
       // Near a storm the light is off and it notices nobody (the client darkens it by the same rule).
       const dark = nearStorm(this.storms, d.x, d.z, now);
       if (dark) d.lock = d.seek = -1;
+      if (dark || d.leaving || now > d.huntUntil) d.hunt = -1;
       let speed = DRONE_SPEED, tx = d.tx, tz = d.tz, alt = DRONE_ALT;
       const prey = d.lock >= 0 ? byId.get(d.lock) : undefined;
       if (prey || d.leaving) d.seek = -1;
+      if (prey) d.hunt = -1;
       if (!prey && !d.leaving && !dark) this.notice(d, now, exposed);
-      const sought = d.seek >= 0 ? byId.get(d.seek) : undefined;
+      const hunted = d.hunt >= 0 ? exposed.find((o) => o.id === d.hunt) : undefined;
+      if (d.hunt >= 0 && !hunted) d.hunt = -1;
+      const sought = d.seek >= 0 ? byId.get(d.seek) : hunted;
       const target = prey ?? sought;
       if (d.leaving) {
         d.lock = -1;
@@ -467,7 +475,7 @@ export class GuardianServer {
         const hx = d.x - target.x, hz = d.z - target.z, h = Math.hypot(hx, hz) || 1;
         tx = target.x + (hx / h) * CHASE_BACK;
         tz = target.z + (hz / h) * CHASE_BACK;
-        if (prey) speed = CHASE_SPEED;
+        if (prey || (hunted && d.seek < 0)) speed = CHASE_SPEED;
       } else if (Math.hypot(tx - d.x, tz - d.z) < 5) {
         this.dronePoint(d);
       }
@@ -584,7 +592,7 @@ export class GuardianServer {
    * Player `by` shot from (x, y, z) to (ex, ey, ez) and says it hit drone `id`: plausible (flying, in range, the shot
    * passing and ending near it), it takes the hit; the last one brings it down. Returns whether it counted.
    */
-  shootDrone(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number): boolean {
+  shootDrone(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number, by = -1): boolean {
     const d = this.drones.find((o) => o.id === id);
     if (!d || d.downAt >= 0) return false;
     const dx = ex - x, dy = ey - y, dz = ez - z, len = Math.hypot(dx, dy, dz);
@@ -593,7 +601,14 @@ export class GuardianServer {
     // The client draws it 250 ms in the past, and it moves up to CHASE_SPEED: slack for that.
     const slack = DRONE_HIT + 2;
     if (Math.hypot(x + dx * t - d.x, y + dy * t - d.y, z + dz * t - d.z) > slack || Math.hypot(ex - d.x, ey - d.y, ez - d.z) > slack * 1.5) return false;
-    if (++d.hurt < DRONE_HP) return true;
+    if (++d.hurt < DRONE_HP) {
+      // Hit from anywhere: it comes for where the shooter is now.
+      if (by >= 0 && !d.leaving) {
+        d.hunt = by;
+        d.huntUntil = now + HUNT_MS;
+      }
+      return true;
+    }
     // Down: it drops, still drifting the way it was going, its light out.
     d.downAt = now;
     d.lock = -1;
@@ -685,7 +700,7 @@ export class GuardianServer {
     const z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hz + Math.cos(a) * from));
     const d: Drone = {
       id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
-      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, dx: 0, dy: -1, dz: 0, until,
+      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until,
     };
     // First pass: across the site from where it came in.
     d.tx = hx + rand(-30, 30);
