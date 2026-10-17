@@ -3,7 +3,8 @@
 // the hotbar, keys 1–4) and, next to it, every storage box in reach right now (chests in the base, the sand
 // bike while riding; shared/storage.ts), appearing and disappearing as you move. Drag an item onto another
 // slot to move it there or swap the two; shift-click sends it across to the other side. Moves go through Net (applied at once, the server confirms).
-import { HOTBAR, ITEMS, type Item, type Slots } from '../shared/items.ts';
+import { HOTBAR, ITEMS, PART_ITEMS, type Item, type Slots } from '../shared/items.ts';
+import { RARITY, type PartId } from '../shared/salvage.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
@@ -102,6 +103,34 @@ ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.8" y="-10" width=
 stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#a8a294" stroke-width="1.3"/></svg>`,
 };
+// Parts out of machines (shared/items.ts PART_ITEMS): the rendered icon where tools/blender/items.py made one
+// (public/icons/items/<part>_<tier>.png), a drawn one for the code-built parts; framed in the tier's rarity colour.
+const PART_PNG = new Set<PartId>(['battery', 'motor', 'heatsink', 'compute', 'antimatter', 'coil']);
+const PART_SVG: Partial<Record<PartId, string>> = {
+  impeller: `<svg viewBox="0 0 22 26"><g transform="translate(11 13)" stroke="#2a160a" stroke-width="0.9" fill="#9a968c">
+${[0, 60, 120, 180, 240, 300].map((a) => `<path d="M0 -2C3 -5 4 -8 2 -10C-1 -8 -2 -5 0 -2z" transform="rotate(${a})"/>`).join('')}
+<circle r="3" fill="#6a665e"/><circle r="1.1" fill="#2a160a"/></g></svg>`,
+  bearing: `<svg viewBox="0 0 22 26"><g transform="translate(11 13)" stroke="#2a160a" stroke-width="0.9">
+<circle r="9" fill="#9a968c"/><circle r="6.6" fill="#4a463e"/>${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<circle cx="0" cy="-5.2" r="1.3" fill="#d8d4c8" transform="rotate(${a})"/>`).join('')}
+<circle r="3.6" fill="#9a968c"/><circle r="2" fill="#2a160a"/></g></svg>`,
+  valve: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="2" y="15" width="18" height="5" rx="1" fill="#8a7f6a"/>
+<path d="M7 20l-2 3h12l-2-3z" fill="#6a665e"/><rect x="9.5" y="7" width="3" height="8" fill="#6a665e"/>
+<ellipse cx="11" cy="6" rx="7" ry="2" fill="#b02a20"/></g></svg>`,
+  relay: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="4" y="5" width="14" height="16" rx="1.5" fill="#5e6a5a"/>
+<rect x="6" y="8" width="10" height="6" fill="#2a160a"/><circle cx="8" cy="18" r="1.2" fill="#d8a820"/><circle cx="14" cy="18" r="1.2" fill="#d8a820"/>
+<path d="M7 21v3M11 21v3M15 21v3" stroke-width="1.4"/></g></svg>`,
+};
+function partIcon(kind: string): string | undefined {
+  const p = PART_ITEMS[kind];
+  if (!p) return undefined;
+  const c = `#${RARITY[p.tier].color.toString(16).padStart(6, '0')}`;
+  const inner = PART_PNG.has(p.part)
+    ? `<img src="./icons/items/${kind}.png" alt="" draggable="false" style="width:100%;height:100%;object-fit:contain">`
+    : (PART_SVG[p.part] ?? ICONS.gear);
+  return `<span style="display:flex;align-items:center;justify-content:center;width:84%;height:84%;border-radius:6px;box-shadow:inset 0 0 0 2px ${c};background:${c}22">${inner}</span>`;
+}
+for (const kind of Object.keys(PART_ITEMS)) ICONS[kind] = partIcon(kind)!;
+
 export const itemIcon = (kind: string) => ICONS[kind] ?? `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`;
 export const itemLabel = (kind: string) => ITEMS[kind]?.label ?? kind;
 
