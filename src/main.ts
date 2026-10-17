@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { DT, quantizeYaw } from '../shared/sim.ts';
+import { quantizePitch } from '../shared/dig.ts';
 import { OrbitCamera } from './camera';
+import { DigFx } from './dig';
 import { readInput } from './input';
 import { getBrowserId, Net } from './net';
 import { Avatar } from './players';
@@ -22,6 +24,8 @@ const terrain = new Terrain(scene);
 const post = new Post(renderer, scene, orbit.camera);
 
 const net = new Net(getBrowserId());
+const digFx = new DigFx(scene);
+net.onDig = (at, pile) => digFx.puff(at, pile);
 const me = new Avatar(0xffffff);
 scene.add(me.root);
 const remotes = new Map<number, Avatar>();
@@ -46,7 +50,7 @@ renderer.setAnimationLoop((time) => {
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
   accumulator += frameDt;
   while (accumulator >= DT) {
-    net.tick(readInput(), quantizeYaw(orbit.yaw));
+    net.tick(readInput(), quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
     accumulator -= DT;
   }
 
@@ -81,6 +85,7 @@ renderer.setAnimationLoop((time) => {
   orbit.update(focus);
   terrain.update(focus);
   sky.update(frameDt, focus);
+  digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
 
   info.textContent = `${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();
