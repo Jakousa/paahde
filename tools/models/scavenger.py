@@ -1006,8 +1006,9 @@ def run(p):
     w = 2 * math.pi * p
     c, s = math.cos(w), math.sin(w)
     lt, rt = 12 + 42 * c, 12 - 42 * c
-    lk = 22 + 95 * pos(-math.sin(w + 0.35)) ** 1.2 + 12 * pos(math.sin(w + 0.35))
-    rk = 22 + 95 * pos(math.sin(w + 0.35)) ** 1.2 + 12 * pos(-math.sin(w + 0.35))
+    # Heel kick peaks at ~90° knee flex (shin about level behind) with the thigh near vertical.
+    lk = 22 + 68 * pos(-math.sin(w + 0.35)) ** 1.2 + 12 * pos(math.sin(w + 0.35))
+    rk = 22 + 68 * pos(math.sin(w + 0.35)) ** 1.2 + 12 * pos(-math.sin(w + 0.35))
     lf = 10 + 25 * pos(-math.sin(w - 0.4)) - 12 * pos(c)
     rf = 10 + 25 * pos(math.sin(w - 0.4)) - 12 * pos(-c)
     pose = {'Hips': rot((X, 8), (Z, -9 * c)), 'Spine': rot((X, 6), (Z, 5 * c)), 'Spine1': rot((X, 2), (Z, 5 * c)),
