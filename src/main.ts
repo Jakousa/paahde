@@ -19,6 +19,9 @@ import { Post } from './post';
 import * as env from './world/env';
 import { Base } from './world/base';
 import { Scrap } from './world/scrap';
+import { CrashSites } from './world/crashsites';
+import { CrashSound } from './crashSound';
+import { allCrashSites, crashSitesNear } from '../shared/crashsites.ts';
 import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
 import { DebugMenu } from './debugMenu.ts';
@@ -44,6 +47,8 @@ const sky = new Sky(scene);
 const terrain = new Terrain(scene);
 const base = new Base(scene);
 const scrap = new Scrap(scene);
+const crashSites = new CrashSites(scene);
+const crashSound = new CrashSound();
 const dust = new Dust(scene);
 const post = new Post(renderer, scene, orbit.camera);
 const blownSand = new BlownSand(scene);
@@ -51,7 +56,11 @@ const viewmodel = new ViewModel(orbit, scene); // first-person hands, parented t
 
 const windSound = new WindSound();
 // Debug handle for screenshots/tuning from the console: open with ?debug.
-if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, viewmodel } });
+if (location.search.includes('debug')) {
+  // crash: every crash site's id, centre, wreck kind and whether it smokes (shared/crashsites.ts).
+  const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, smoke: s.smoke, pieces: s.pieces.length }));
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, viewmodel, crashSites, crashSound, crash } });
+}
 
 const net = new Net(getBrowserId());
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime());
@@ -113,6 +122,8 @@ const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
 let accumulator = 0;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
+// ?spawn=crash: once joined, turn to face the wreck we were put next to.
+let faceCrash = new URLSearchParams(location.search).get('spawn') === 'crash';
 // FPS for the info line: frames counted over half-second windows.
 let fps = 0;
 let fpsFrames = 0;
@@ -132,6 +143,11 @@ renderer.setAnimationLoop((time) => {
     return;
   }
   joined = true;
+  if (faceCrash) {
+    faceCrash = false;
+    const site = crashSitesNear(net.me.x, net.me.z, 200)[0];
+    if (site) orbit.yaw = Math.atan2(-(site.x - net.me.x), -(site.z - net.me.z));
+  }
   resolution.update(frameDt);
 
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
@@ -206,6 +222,7 @@ renderer.setAnimationLoop((time) => {
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
   scrap.update(focus);
+  crashSites.update(focus);
   sky.update(frameDt, focus, orbit.camera, net.worldTime());
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
@@ -214,6 +231,7 @@ renderer.setAnimationLoop((time) => {
   base.update();
   windSound.update(frameDt, orbit.camera.position, orbit.yaw);
   footsteps.listener(orbit.camera.position, orbit.yaw);
+  crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
   // F: tend the greenhouse bed in view (planted beds can't be touched while they grow), else pick up scrap,
   // else (canteen out, in the base) fill the canteen.

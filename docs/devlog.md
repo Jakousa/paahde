@@ -2,6 +2,33 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Crash sites
+
+Crashed spacecraft half-buried in the dunes, for players to hunt for parts later (salvage isn't built yet).
+- **Layout** (`shared/crashsites.ts`, deterministic like scrap: integer hashing, no trig): 350 m cells, ~40%
+  hold a site → **66 sites** in the world (34 smouldering). Each has one main wreck (fighter, freighter, pod,
+  nacelle, shuttle or probe) and 3–8 debris pieces strewn along the ploughed approach line behind it, a few
+  thrown ahead. Sites sit on flat-enough ground, ≥ 220 m from the base and spawn, clear of scrap piles, and fit
+  inside their cell. Stable ids (`crashSiteId(ix, iz)`); query with `crashSitesNear()`, `crashSite(id)`,
+  `allCrashSites()`. `?debug` lists them in `dbg.crash`.
+- **Collision:** `collideCrash()` (vertical capsules, same rules as `collideScrap`) runs in `step()` and
+  `stepBike()`; you can climb onto wrecks. Pieces sit at the (dug) ground height at their centre, sunk a little.
+- **Models:** `public/models/crashsites.glb` from `tools/blender/crashsites.py`, which also writes
+  `shared/crashKinds.ts` (node names, hitbox capsules, smoke and beacon points). Model +Z is the nose.
+  Until the glb exists, each kind is drawn as grey boxes around its capsules with a glowing beacon cube.
+  Drawn within 1 km (`src/world/crashsites.ts`), one InstancedMesh per kind and material; the `CrashGlow`
+  material flickers irregularly, each site on its own phase.
+- **Smoke** (`src/world/crashSmoke.ts`): a thin dark-brown column per smoke point of smouldering sites,
+  rising 25–40 m and bending downwind, lit by the sun colour. One instanced sprite (one draw call); all motion
+  is in the shader. Puffs swell with distance so the plume still reads over a crest at ~400 m.
+- **Sound** (`src/crashSound.ts`, `src/crashSynth.ts`): sparse synthesised beeps, chirps, data blips, a
+  dying-console warble, a servo whine and electrical crackle, with a root note, scale and tempo per site.
+  HRTF-panned at the wreck's beacon, heard within 40 m, nearest two sites only. Measured with an
+  OfflineAudioContext (HRTF panner 5 m in front, slider at 1.0) and `ffmpeg ebur128` over 30 s for four sites:
+  −34.1 to −39.3 LUFS integrated (mean −36.4), true peak ≤ −19 dBFS. Inside 5 m it stays at that level; at the
+  default slider (0.4) it is 8 dB lower.
+- `?spawn=crash` starts you just off the nose of the crash site nearest your saved position, facing it.
+
 ## 2026-10-17 — Base becomes an underground bunker (issue #12)
 
 The dome hall, greenhouse and outdoor machines are gone (their scripts and models are in git history). The base

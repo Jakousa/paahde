@@ -11,6 +11,7 @@
 // - Soft sand: you build up and lose speed a bit slowly (momentum), and hard landings bog you down briefly.
 // - Sand bike (dev helper, 9 toggles it): see stepBike() below.
 import { BASE_SPAWN, baseCeiling, collideBase, terrainHidden } from './base.ts';
+import { collideCrash } from './crashsites.ts';
 import { collideScrap } from './scrap.ts';
 import { heightAt, WORLD_HALF } from './terrain.ts';
 
@@ -264,13 +265,13 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
   }
 
   let y = s.y + vy * DT;
-  // Scrap: tall pieces push you out (and absorb the velocity into them), low ones become the ground.
+  // Scrap and crash-site wrecks: tall pieces push you out (and absorb the velocity into them), low ones become the ground.
   const c = tmpCollide;
   c.x = s.x + vx * DT;
   c.z = s.z + vz * DT;
   c.vx = vx;
   c.vz = vz;
-  const scrapTop = collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP);
+  const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP));
   const baseTop = collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP);
   vx = c.vx;
   vz = c.vz;
@@ -375,7 +376,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState
   c.vx = vx;
   c.vz = vz;
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
-  const scrapTop = collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP);
+  const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
   const baseTop = collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP);
   vx = c.vx;
   vz = c.vz;

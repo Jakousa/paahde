@@ -22,4 +22,4 @@ Made for this game
 ------------------
 
 All other models, textures, icons and sounds were made for dadajam: models and icons are generated
-in Blender by the scripts in tools/ of the source repository, and the wind is synthesised in code.
+in Blender by the scripts in tools/ of the source repository, and the wind and the crash-site electronics are synthesised in code.

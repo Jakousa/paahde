@@ -255,9 +255,10 @@ export class Net {
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'joining';
-      // ?spawn=base: start at the base's door (only on the first join; a reconnect keeps where you are).
-      const atBase = !this.joinedOnce && new URLSearchParams(location.search).get('spawn') === 'base';
-      this.send(atBase ? { t: 'hello', browserId: this.browserId, spawn: 'base' } : { t: 'hello', browserId: this.browserId });
+      // ?spawn=base / ?spawn=crash: start at the base's door or the nearest crash site (only on the first join;
+      // a reconnect keeps where you are).
+      const spawn = this.joinedOnce ? null : new URLSearchParams(location.search).get('spawn');
+      this.send(spawn === 'base' || spawn === 'crash' ? { t: 'hello', browserId: this.browserId, spawn } : { t: 'hello', browserId: this.browserId });
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
     ws.onclose = () => {
