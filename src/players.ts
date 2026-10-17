@@ -9,6 +9,7 @@ import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, footprints, streaks } from './footprints.ts';
 import { footsteps } from './footsteps.ts';
 import { SHADOW_ONLY_LAYER } from './world/env.ts';
+import type { Held } from './water.ts';
 
 export type AvatarPose = {
   x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
@@ -20,6 +21,9 @@ export type AvatarPose = {
   vx?: number; vz?: number;
   /** Seated on a sand bike: the caller has already placed the root (Bike.seat), so x/y/z/facing are ignored. */
   ride?: RidePose;
+  /** What's in the hands, and drinking from it. */
+  held?: Held;
+  drinking?: boolean;
 };
 
 /** A seated rider's contact points and body English, in the avatar root's space (forward is -z). */
@@ -49,6 +53,8 @@ export type ModelPose = {
   /** Sand height under the feet, when standing on sand (not scrap): lets the model plant its feet. */
   ground?: (x: number, z: number) => number;
   ride?: RidePose;
+  held?: Held;
+  drinking?: boolean;
 };
 
 export interface AvatarModel {
@@ -186,7 +192,7 @@ export class Avatar {
     this.model.update(
       {
         speed: pose.speed, grounded: pose.grounded, sliding: slip, powerSlide: power, crouching: pose.crouching, tiltPitch, tiltRoll,
-        digging: pose.digging, pitch: pose.pitch, heading, ground: onSand && !power ? heightAt : undefined,
+        digging: pose.digging, pitch: pose.pitch, heading, held: pose.held, drinking: pose.drinking, ground: onSand && !power ? heightAt : undefined,
       },
       dt,
     );

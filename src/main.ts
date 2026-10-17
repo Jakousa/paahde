@@ -31,7 +31,7 @@ import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { footsteps } from './footsteps';
 import { DynamicResolution } from './resolution';
-import { Survival } from './water';
+import { playerHands, Survival } from './water';
 import { ViewModel } from './viewmodel';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
@@ -59,7 +59,7 @@ const windSound = new WindSound();
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and whether it smokes (shared/crashsites.ts).
   const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, smoke: s.smoke, pieces: s.pieces.length }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, viewmodel, crashSites, crashSound, crash } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, viewmodel, crashSites, crashSound, crash, playerHands } });
 }
 
 const net = new Net(getBrowserId());
@@ -159,6 +159,7 @@ renderer.setAnimationLoop((time) => {
   }
 
   const others = net.frame(frameDt);
+  net.setHands(playerHands.held, playerHands.drinking);
 
   me.setColor(net.color);
   const s = net.me;
@@ -171,7 +172,7 @@ renderer.setAnimationLoop((time) => {
   if (!riding) {
     me.update(
       { x: v.x, y: v.y, z: v.z, facing: v.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
-      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch },
+      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, held: playerHands.held, drinking: playerHands.drinking },
       frameDt,
     );
   }

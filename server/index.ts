@@ -9,7 +9,7 @@ import { DIG_COOLDOWN_TICKS, PITCH_STEPS, quantizePitch } from '../shared/dig.ts
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
-import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
 import { ScrapServer } from './scrap.ts';
@@ -51,6 +51,7 @@ type Player = {
   lastTend: { at: number };
   ws: WebSocket;
   alive: boolean;
+  hands: Hands; // what the client says it holds, relayed in snapshots
 };
 
 const players = new Map<WebSocket, Player>();
@@ -101,6 +102,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
     if (msg.t === 'drink' && p) return onDrink(p);
     if (msg.t === 'fill' && p) return onFill(p);
+    if (msg.t === 'hands' && p) p.hands = msg.hands === 1 || msg.hands === 2 ? msg.hands : 0;
   });
   ws.on('close', () => {
     const p = players.get(ws);
@@ -127,7 +129,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    thirst: newThirst(row?.water, row?.sips), ws, alive: true,
+    thirst: newThirst(row?.water, row?.sips), ws, alive: true, hands: 0,
   };
   players.set(ws, p);
   save(p);
@@ -265,7 +267,9 @@ function broadcast(time: number) {
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
   }
-  const list: PlayerSnap[] = [...players.values()].map((p) => ({ id: p.id, color: p.color, pitch: p.pitch, ...round(p.state) }));
+  const list: PlayerSnap[] = [...players.values()].map((p) => ({
+    id: p.id, color: p.color, pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}),
+  }));
   for (const p of players.values()) send(p.ws, { t: 'snap', time, ack: p.ack, players: list });
 }
 

@@ -21,11 +21,18 @@ export type ClientMsg =
   | { t: 'drink' }
   // Refill the canteen at the base (sent when the ~1.5 s fill completes). The server checks you are in
   // the base (inBase with FILL_SLACK) and answers 'water'.
-  | { t: 'fill' };
+  | { t: 'fill' }
+  // What's in your hands (Hands below), sent when it changes and after every 'welcome'. Cosmetic: other
+  // players see it on your avatar; the drink/fill checks don't depend on it.
+  | { t: 'hands'; hands: Hands };
+
+// 0 empty hands, 1 holding the canteen, 2 drinking from it.
+export type Hands = 0 | 1 | 2;
 
 // pitch: the player's quantized camera pitch (pitchFromQ in shared/dig.ts), so remote avatars can
 // tilt their heads.
-export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number };
+// hands: what they're holding (Hands), omitted when empty.
+export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands };
 
 export type ServerMsg =
   // First message on every connection: the build the server is serving (dist/version.txt, 'dev' if

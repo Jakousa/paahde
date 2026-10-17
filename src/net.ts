@@ -14,8 +14,9 @@
 //   Dying of thirst moves us to the base on the server; the next reconciliation snaps there.
 // - Scrap: picked-up pieces are hidden (and lose their hitbox) as soon as we ask; the server sends the
 //   piece back to us if it refuses, and our new inventory if it agrees.
+// - Hands: what we hold (canteen, drinking) is sent when it changes and relayed in snapshots, cosmetic only.
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
-import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
@@ -37,6 +38,8 @@ export type RemotePlayer = {
   pitch: number; // camera pitch in radians (negative = looking down)
   riding: boolean; // on the sand bike; facing is then the bike's heading
   vy: number;
+  held: 'none' | 'canteen';
+  drinking: boolean;
 };
 
 type Snapshot = { time: number; players: Map<number, PlayerSnap> };
@@ -73,6 +76,9 @@ export class Net {
   private predicted = new Map<number, { server: number; seq: number }>();
   /** Chunks we held before a (re)join; whatever the server doesn't resend is dropped. */
   private staleChunks = new Set<string>();
+  /** What's in our hands, and what the server last heard (-1: tell it again, after a (re)join). */
+  private hands: Hands = 0;
+  private sentHands = -1;
 
   /** Scrap count per SCRAP_KINDS index, from the server. */
   inventory: number[] = [];
@@ -129,6 +135,15 @@ export class Net {
   /** Canteen refill finished at the base; the server answers with 'water'. */
   fill() {
     this.send({ t: 'fill' });
+  }
+
+  /** What we're holding, for other players' view of us; sent when it changes. Call every frame. */
+  setHands(held: 'none' | 'canteen', drinking: boolean) {
+    this.hands = held === 'canteen' ? (drinking ? 2 : 1) : 0;
+    if (this.connected && this.hands !== this.sentHands) {
+      this.send({ t: 'hands', hands: this.hands });
+      this.sentHands = this.hands;
+    }
   }
 
   /** Plant or harvest a greenhouse bed; the server answers with 'garden' (and 'tended' to us). */
@@ -316,6 +331,7 @@ export class Net {
       this.epoch = msg.epoch;
       this.me = this.prev = msg.state;
       this.seq = 0;
+      this.sentHands = -1;
       this.retryMs = 500;
       this.status = 'online';
       return;
@@ -375,7 +391,7 @@ export class Net {
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
-        riding: pick.riding ?? false, vy: pick.vy,
+        riding: pick.riding ?? false, vy: pick.vy, held: pick.hands ? 'canteen' : 'none', drinking: pick.hands === 2,
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t,
       });
     }

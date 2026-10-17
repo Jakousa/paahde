@@ -12,6 +12,7 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { LegIk, lowestAnkles, type Ground } from './legIk';
 import type { RidePose } from '../players';
+import type { Held } from '../water';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -38,6 +39,10 @@ export type ScavengerPose = {
   plant?: boolean;
   /** Seated on a bike: hips on the seat, hands on the grips and feet on the pegs by IK, over the Idle clip. */
   ride?: RidePose;
+  /** What's in the right hand (the canteen, public/models/canteen.glb): carried in front at the waist. */
+  held?: Held;
+  /** Drinking from the canteen: raised to the mouth and tipped up. */
+  drinking?: boolean;
 };
 
 export type ScavengerClip = 'Idle' | 'Walk' | 'Run' | 'Jump' | 'Dig' | 'Slide' | 'Powerslide' | 'Crouch' | 'CrouchWalk';
@@ -51,7 +56,19 @@ const CROUCH_REF = 1.0;
 const RUN_ABOVE = 2.8;
 const MAX_HIP_YAW = 1.0; // rad; strafing beyond this shows as a crab-walk rather than hips turned further
 
+const CANTEEN_URL = './models/canteen.glb';
+/** Carried canteen, root space (forward -Z, right +X): where its bottom sits and its forward tip (rad). */
+const CARRY_AT = new THREE.Vector3(0.32, 0.88, -0.2);
+const CARRY_TIP = -0.15;
+/** Drinking: tipped back, neck at the mouth (head-bone space, glTF: face +Z). */
+const DRINK_TIP = 1.9;
+const MOUTH = new THREE.Vector3(0, 0.02, 0.13);
+const CANTEEN_HEIGHT = 0.21;
+/** Where the fist grips it, up from the bottom. */
+const GRIP_UP = 0.1;
+
 let cached: Promise<GLTF> | null = null;
+let canteenCached: Promise<GLTF> | null = null;
 const ANKLES = ['LeftFoot', 'RightFoot'];
 const lowest = new WeakMap<GLTF, Map<string, number>>();
 
@@ -89,6 +106,9 @@ export class ScavengerModel {
   /** Thigh, shin, foot, toes (left, right). */
   private legs: THREE.Object3D[][] = [];
   private headless = false;
+  private canteen: THREE.Object3D | null = null;
+  private held: Held = 'none';
+  private sip = 0; // 0 carried .. 1 at the mouth
   private color: number;
   private disposed = false;
 
@@ -142,6 +162,18 @@ export class ScavengerModel {
     this.tilt.add(model);
     this.setColor(this.color);
     this.play('Idle', 0);
+    // The canteen lives in the root (not the hand bone), placed each frame; the right arm reaches for it.
+    canteenCached ??= new GLTFLoader().loadAsync(CANTEEN_URL);
+    canteenCached.then((c) => {
+      if (this.disposed) return;
+      const can = c.scene.clone();
+      can.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) o.castShadow = o.receiveShadow = true;
+      });
+      can.visible = false;
+      this.root.add(can);
+      this.canteen = can;
+    }, (e) => console.warn('canteen model failed to load', e));
   }
 
   setColor(hex: number) {
@@ -188,6 +220,7 @@ export class ScavengerModel {
 
   /** Called every render frame. */
   update(pose: ScavengerPose, dt: number) {
+    this.held = pose.held ?? 'none';
     if (!this.mixer) return;
     // Remote speeds arrive as 20 Hz steps; smooth them so playback rate (and the feet) don't jitter.
     this.speed += (pose.speed - this.speed) * (1 - Math.exp(-dt * 10));
@@ -239,11 +272,45 @@ export class ScavengerModel {
       rotateAboutRoot(this.root, this.head, X_AXIS, pitch * 0.6);
     }
     this.head?.scale.setScalar(this.headless ? 1e-3 : 1);
+    this.sip += ((pose.drinking ? 1 : 0) - this.sip) * (1 - Math.exp(-dt * 8));
+    if (this.canteen) this.canteen.visible = this.held === 'canteen' && !pose.ride;
+    if (this.canteen?.visible) this.holdCanteen(this.canteen, !pose.grounded || !!pose.sliding || !!pose.powerSlide);
     if (pose.ride) return this.ride(pose.ride);
     // Plant the feet: lock while the clip has them down (not when sliding: the sand moves with you).
     const clip = this.current?.getClip().name ?? '';
     const lock = pose.grounded && !pose.sliding && !pose.powerSlide && pose.plant !== false ? (this.minAnkle.get(clip) ?? null) : null;
     this.legIk?.update(dt, pose.grounded, lock, pose.ground ?? null);
+  }
+
+  /** Place the canteen (carried, or at the mouth while drinking) and reach the right hand to it; `loose` (in
+   *  the air, sliding) leaves the arm to the clip and the canteen follows the hand. */
+  private holdCanteen(can: THREE.Object3D, loose: boolean) {
+    const arm = this.arms[1];
+    if (!arm) return;
+    this.root.updateMatrixWorld(true);
+    if (loose) {
+      this.root.worldToLocal(arm[2].getWorldPosition(can.position));
+      can.position.y -= GRIP_UP;
+      can.rotation.set(0, 0, 0);
+      return;
+    }
+    const tip = CARRY_TIP + (DRINK_TIP - CARRY_TIP) * this.sip;
+    can.rotation.set(tip, 0, 0);
+    _t.copy(CARRY_AT);
+    if (this.sip > 1e-3 && this.head) {
+      // Neck at the mouth: bottom = mouth - (rotated up axis × height).
+      this.root.worldToLocal(_p.copy(MOUTH).applyMatrix4(this.head.matrixWorld));
+      _p.y -= Math.cos(tip) * CANTEEN_HEIGHT;
+      _p.z -= Math.sin(tip) * CANTEEN_HEIGHT;
+      _t.lerp(_p, this.sip);
+    }
+    can.position.copy(_t);
+    // Fist round the middle, a little to the outside; elbow out and back.
+    _t.x += 0.05;
+    _t.y += Math.cos(tip) * GRIP_UP;
+    _t.z += Math.sin(tip) * GRIP_UP;
+    this.root.localToWorld(_t);
+    reach(arm[0], arm[1], arm[2], _t, _pole.set(0.6, -0.5, 0.6).transformDirection(this.root.matrixWorld));
   }
 
   /** Sit on the bike: move the body so the hips are on the seat, bend the upper body, then reach the hands and feet. */
