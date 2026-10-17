@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { DT, quantizeYaw } from '../shared/sim.ts';
+import { DIG, DT, PILE, quantizeYaw } from '../shared/sim.ts';
 import { quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { FirstPersonCamera } from './camera';
@@ -25,6 +25,7 @@ import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { footsteps } from './footsteps';
 import { DynamicResolution } from './resolution';
+import { ViewModel } from './viewmodel';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -42,10 +43,11 @@ const scrap = new Scrap(scene);
 const dust = new Dust(scene);
 const post = new Post(renderer, scene, orbit.camera);
 const blownSand = new BlownSand(scene);
+const viewmodel = new ViewModel(orbit, scene); // first-person hands, parented to the camera
 
 const windSound = new WindSound();
 // Debug handle for screenshots/tuning from the console: open with ?debug.
-if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound } });
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, viewmodel } });
 
 const net = new Net(getBrowserId());
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod));
@@ -104,8 +106,9 @@ renderer.setAnimationLoop((time) => {
 
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
   accumulator += frameDt;
+  const input = readInput();
   while (accumulator >= DT) {
-    net.tick(readInput(), quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
+    net.tick(input, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
     accumulator -= DT;
   }
 
@@ -147,6 +150,9 @@ renderer.setAnimationLoop((time) => {
 
   focus.copy(me.root.position);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching }, frameDt);
+  viewmodel.setColor(net.color);
+  viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding,
+    digging: (input & (DIG | PILE)) !== 0 || (digUntil.get(net.id) ?? 0) > performance.now() });
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
   scrap.update(focus);

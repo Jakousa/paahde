@@ -300,3 +300,20 @@ dropping haze/flare/grain is an art-direction call (`docs/look.md`).
 made timings swing 4× between identical runs. Headless Chrome (`--enable-gpu --use-angle=metal`, muted) gets
 WebGPU on the Mac without stealing focus. To test the netcode against live without a browser, `src/net.ts`
 runs under Node with `location`, `__BUILD_SHA__` and `localStorage` stubbed on `globalThis`.
+
+## First-person hands
+
+`src/viewmodel.ts` draws `public/models/hands.glb` parented to the camera (the camera is now in the scene so
+its children render). Clips: Idle / Walk / Dig with empty hands; CanteenIdle / CanteenWalk plus one-shot
+Drink / Fill while `playerHands` (`src/water.ts`) says a canteen is held. Missing clips fall back to the
+empty-hand ones and a missing `Canteen` node just means no canteen. Walk clips are phase-locked to the
+camera's step phase instead of a speed-scaled timeScale, so the hands bob with the head. The hands trail
+mouse look slightly, drop and come back up when switching what's held, and dip while sliding.
+
+- **Wall poke-through:** the model is scaled 0.55× about the eye. That leaves the picture unchanged (scaling
+  about the projection centre doesn't move anything on screen) but pulls the hands within ~0.35 m, inside
+  `PLAYER_RADIUS`, so they stay in front of walls the player is pressed against. The camera near plane
+  (0.05 m) is unchanged.
+- **No shadows:** the hands neither cast (the shadow-only body already does) nor receive (they'd sit inside
+  that body and always be in its shadow). Downside: they stay sunlit indoors.
+- **Testing:** `?hold=canteen` forces the canteen, `?anim=Drink` loops any clip; `dbg.viewmodel` with ?debug.
