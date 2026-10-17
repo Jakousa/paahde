@@ -191,10 +191,10 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
 }
 
 // Dig/pile stroke while the button is held, at most every DIG_COOLDOWN_TICKS simulated ticks.
-// The client runs the same countdown and stroke as a prediction (src/net.ts).
+// The client runs the same countdown and stroke as a prediction (src/net.ts). No digging from the bike.
 function dig(p: Player, input: number) {
   if (p.digCooldown > 0) p.digCooldown--;
-  if (!(input & (DIG | PILE)) || p.digCooldown > 0) return;
+  if (!(input & (DIG | PILE)) || p.digCooldown > 0 || p.state.riding) return;
   const pile = (input & DIG) === 0;
   const at = terrain.stroke(p.state, p.yaw, p.pitch, pile);
   if (!at) return;

@@ -149,7 +149,7 @@ export class Net {
   // Same countdown and stroke as the server's dig() in server/index.ts.
   private predictDig(input: number, yaw: number, pitch: number) {
     if (this.digCooldown > 0) this.digCooldown--;
-    if (!(input & (DIG | PILE)) || this.digCooldown > 0) return;
+    if (!(input & (DIG | PILE)) || this.digCooldown > 0 || this.me.riding) return;
     const pile = (input & DIG) === 0;
     const seq = this.seq;
     const at = stroke(edits, this.me, yaw, pitch, pile, (ix, iz, prev) => {
