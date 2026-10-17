@@ -33,9 +33,12 @@ const LOCAL = 0.6;
 const BURIED = 0.2;
 /** Time constant (s) of the followed wind; about a second to settle. */
 const TAU = 0.6;
-/** Own speeds (m/s) over which moving through the air fades in: walking adds little, the bike all of it. */
-const OWN_FROM = 4;
-const OWN_FULL = 10;
+/** Own speeds (m/s) over which moving through the air fades in: running adds little, sliding some, the
+ *  bike the most. */
+const OWN_FROM = 8;
+const OWN_FULL = 22;
+/** How much of our own speed counts at most, so riding into a calm is loud but not a sandstorm. */
+const OWN = 0.75;
 /** Wind level at full slider volume. */
 const MIX = 0.7;
 
@@ -212,9 +215,9 @@ export class WindSound {
     const gust = clamp01((u - this.uSlow) / Math.max(2, this.uSlow * 0.5)); // rising edge of a gust
 
     // Apparent wind: the air's velocity minus ours. Our part fades in with speed, so walking about
-    // doesn't sound like a breeze but the bike (and a long fall) does.
+    // or running doesn't sound like a breeze but the bike (and a long fall) does.
     const own = Math.hypot(vel.vx, vel.vy, vel.vz);
-    const ownK = smooth(OWN_FROM, OWN_FULL, own);
+    const ownK = OWN * smooth(OWN_FROM, OWN_FULL, own);
     const ax = u * s.dx - vel.vx * ownK, az = u * s.dz - vel.vz * ownK, ay = -vel.vy * ownK;
     const uA = Math.hypot(ax, ay, az);
     const x = clamp01(uA / U_FULL);

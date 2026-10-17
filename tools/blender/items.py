@@ -1264,4 +1264,6 @@ def main():
         render_preview(objs_by_item, os.path.abspath(args.preview))
 
 
-main()
+# Guarded so tools/blender/placeables.py can import the helpers above.
+if __name__ == '__main__':
+    main()

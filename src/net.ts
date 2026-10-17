@@ -16,11 +16,14 @@
 //   piece back to us if it refuses, and our new bag if it agrees.
 // - Items: moves between boxes (shared/items.ts) are applied at once with the server's own rules; its
 //   'items' answer then replaces the boxes, which undoes a refused move.
+// - Parts (shared/parts.ts): a part taken out of a machine in the disassembly mode goes in the bag at once
+//   (predicted, like a move); the server checks it against the machine's roll and answers with the bag, or
+//   'partRefused' (the part goes back in the machine) and the bag.
 // - Hands: what we hold (canteen, drinking) is sent when it changes and relayed in snapshots, cosmetic only.
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
-import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import type { BenchJob, ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
-import { HOTBAR, moveItem, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
+import { addItem, HOTBAR, moveItem, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
 import type { SiteLink } from './teardown/teardown';
@@ -30,6 +33,8 @@ export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTa
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
+import { setPlaced } from '../shared/placed.ts';
+import type { BedState } from '../shared/garden.ts';
 
 const INTERP_MS = 100;
 /** Ceiling on the extra interpolation delay added for jitter. */
@@ -107,9 +112,12 @@ export class Net {
   onWater?: (w: { heat: number; sips: number; rising: boolean; temp: number; shade: boolean }) => void;
   /** We died (of heatstroke); the server has already moved us back to the base. */
   onDied?: () => void;
-  /** Greenhouse bed stages (shared/garden.ts), from the server; empty until the first 'garden'. */
-  garden: number[] = [];
-  onGarden?: (beds: number[]) => void;
+  /** Plant bed stages and growth by placed id (shared/garden.ts), from the server. Beds without one are empty. */
+  garden = new Map<number, BedState>();
+  /** Placed things changed (shared/placed.ts keeps the list), or a bed's stage did. */
+  onPlaced?: () => void;
+  /** A short message from the server for the HUD (a refused place, pickup or craft). */
+  onNotice?: (text: string) => void;
   /** Sandstorms announced and not over yet (shared/storm.ts), times on the server clock. */
   storms: Storm[] = [];
   /** A bed we tended was planted or harvested. */
@@ -226,9 +234,24 @@ export class Net {
     }
   }
 
-  /** Plant or harvest a greenhouse bed; the server answers with 'garden' (and 'tended' to us). */
+  /** Plant or harvest a plant bed (its placed id); the server answers with 'garden' (and 'tended' to us). */
   tend(bed: number) {
     if (this.connected) this.send({ t: 'tend', bed });
+  }
+
+  /** Put down the placeable in bag slot `slot` (shared/placed.ts); the server answers 'placed' or a notice. */
+  place(slot: number, x: number, z: number, rot: number) {
+    if (this.connected) this.send({ t: 'place', slot, x, z, rot });
+  }
+
+  /** Pick a placed thing back up into the bag. */
+  unplace(id: number) {
+    if (this.connected) this.send({ t: 'unplace', id });
+  }
+
+  /** Craft at the workbench (shared/crafting.ts); the bag comes back with what was made, or a notice. */
+  craft(recipe: string) {
+    if (this.connected) this.send({ t: 'craft', recipe });
   }
 
   private applyScrap(msg: Extract<ServerMsg, { t: 'scrap' }>) {
@@ -422,10 +445,15 @@ export class Net {
       this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
       return this.onDied?.();
     }
-    if (msg.t === 'garden') {
-      this.garden = msg.beds;
-      return this.onGarden?.(msg.beds);
+    if (msg.t === 'placed') {
+      setPlaced(msg.list);
+      return this.onPlaced?.();
     }
+    if (msg.t === 'garden') {
+      this.garden = new Map(msg.beds.map((b) => [b.id, b]));
+      return this.onPlaced?.();
+    }
+    if (msg.t === 'notice') return this.onNotice?.(msg.text);
     if (msg.t === 'tended') return this.onTended?.(msg.what);
     if (msg.t === 'storms') {
       this.storms = msg.storms;

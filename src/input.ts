@@ -64,11 +64,18 @@ document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement) {
     mouseDig = mousePile = false;
     keys.clear();
-    if (ui.inventoryOpen) return;
-    keyboard?.unlock();
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    // Fullscreen and the keyboard lock stay on, so Esc only opens the menu; its button leaves fullscreen.
   }
 });
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) keyboard?.unlock();
+});
+
+/** Menu button: enter or leave fullscreen (leaving also releases the keyboard lock). */
+export function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else document.documentElement.requestFullscreen?.().then(() => keyboard?.lock(), () => {});
+}
 
 /** Is this key down right now (for the disassembly mode, which reads A / D itself while the player is frozen)? */
 export function keyHeld(code: string): boolean {

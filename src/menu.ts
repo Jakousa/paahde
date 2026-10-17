@@ -3,7 +3,7 @@
 // the stats line in the top-left corner; below them the controls, the build/connection line and credits.
 // The game keeps running behind it: it's multiplayer, nothing pauses.
 import { audio } from './audio';
-import { capture, tools, ui } from './input';
+import { capture, toggleFullscreen, tools, ui } from './input';
 
 const STATS_KEY = 'dadajam.stats';
 
@@ -57,6 +57,7 @@ export class Menu {
 <h3>Settings</h3>
 <label class="row"><span>Volume</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
 <label class="row"><span>Show stats</span><input class="stats" type="checkbox"></label>
+<button class="fs" style="margin-top:8px"></button>
 <h3>Controls</h3><div class="keys">${KEYS.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('')}</div>
 <div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">credits</a></div></div>`;
     document.body.append(this.el);
@@ -82,6 +83,15 @@ export class Menu {
     });
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
     for (const input of [vol, stats]) input.addEventListener('change', () => input.blur());
+
+    const fs = this.el.querySelector<HTMLButtonElement>('.fs')!;
+    const showFs = () => (fs.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen');
+    showFs();
+    document.addEventListener('fullscreenchange', showFs);
+    fs.addEventListener('click', () => {
+      toggleFullscreen();
+      fs.blur();
+    });
 
     const resume = () => {
       this.toggle(false);

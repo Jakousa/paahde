@@ -3,11 +3,14 @@
 // the hotbar, keys 1–4) and, next to it, every storage box in reach right now (chests in the base, the sand
 // bike while riding; shared/storage.ts), appearing and disappearing as you move. Drag an item onto another
 // slot to move it there or swap the two; shift-click sends it across to the other side. Moves go through Net (applied at once, the server confirms).
-import { HOTBAR, ITEMS, PART_ITEMS, type Item, type Slots } from '../shared/items.ts';
+import { HOTBAR, ITEMS, type Item, type Slots } from '../shared/items.ts';
+import { partOf } from '../shared/parts.ts';
 import { RARITY } from '../shared/salvage.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
+import { countMatching, RECIPES } from '../shared/crafting.ts';
+import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import { ui } from './input';
 import type { Net } from './net';
 
@@ -21,6 +24,8 @@ const css = `
   pointer-events: none; white-space: nowrap; display: none; }
 #pickup kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 6px; border-radius: 3px;
   background: #fff4e4; color: #2a160a; }
+#pickup * + kbd { margin-left: 10px; }
+#pickup .bad { color: #ffb08a; }
 #toasts { position: fixed; left: 50%; top: calc(50% + 52px); transform: translateX(-50%); pointer-events: none;
   display: flex; flex-direction: column; align-items: center; gap: 2px; }
 #toasts div { font: 600 13px var(--mono); color: #ffd9a0; text-shadow: 0 1px 2px #000;
@@ -55,7 +60,22 @@ const css = `
 #invOverlay .slot .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
 #invOverlay .slot svg, #invGhost svg { width: 30px; height: 34px; }
+#invOverlay .slot img, #invGhost img, #invOverlay .recipe .ico img { width: 46px; height: 46px; pointer-events: none; }
+#invOverlay .slot .tile, #invGhost .tile { font: 700 18px var(--mono); color: var(--c); }
+#invOverlay .slot.rare { box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.12), inset 0 -3px 0 var(--c);
+  background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--c) 22%, transparent), rgba(255, 240, 220, 0.04) 70%); }
 #invOverlay .none { width: 190px; padding: 6px 2px; opacity: 0.55; line-height: 1.45; }
+#invOverlay .box.bench { box-shadow: 0 0 0 1px rgba(160, 220, 140, 0.35), 0 8px 30px rgba(0, 0, 0, 0.45); }
+#invOverlay .recipe { display: flex; align-items: center; gap: 10px; padding: 6px 4px; width: 250px; }
+#invOverlay .recipe + .recipe { border-top: 1px solid rgba(255, 240, 220, 0.1); }
+#invOverlay .recipe .ico { width: 46px; height: 46px; flex: none; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; background: rgba(255, 240, 220, 0.06); }
+#invOverlay .recipe .what { flex: 1; line-height: 1.5; }
+#invOverlay .recipe .name { font-weight: 600; }
+#invOverlay .recipe .need { font-size: 11px; opacity: 0.85; }
+#invOverlay .recipe .need .short { color: #ff9a7a; }
+#invOverlay .recipe .need .ok { color: #9ad88a; }
+#invOverlay button:disabled { opacity: 0.35; cursor: default; }
 #invOverlay .help { opacity: 0.55; font-size: 11px; text-shadow: 0 1px 2px #000; }
 #invGhost { position: fixed; z-index: 16; pointer-events: none; width: 54px; height: 54px; display: flex;
   align-items: center; justify-content: center; transform: translate(-50%, -50%); filter: drop-shadow(0 4px 6px #000); }
@@ -103,19 +123,28 @@ ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.8" y="-10" width=
 stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#a8a294" stroke-width="1.3"/></svg>`,
 };
-// Parts out of machines (shared/items.ts PART_ITEMS): the icon tools/blender/items.py rendered
-// (public/icons/items/<part>_<tier>.png), framed in the tier's rarity colour.
-function partIcon(kind: string): string | undefined {
-  const p = PART_ITEMS[kind];
-  if (!p) return undefined;
-  const c = `#${RARITY[p.tier].color.toString(16).padStart(6, '0')}`;
-  const inner = `<img src="./icons/items/${kind}.png" alt="" draggable="false" style="width:100%;height:100%;object-fit:contain">`;
-  return `<span style="display:flex;align-items:center;justify-content:center;width:84%;height:84%;border-radius:6px;box-shadow:inset 0 0 0 2px ${c};background:${c}22">${inner}</span>`;
+// Rendered icons (public/icons/items/<kind>.png, tools/blender/placeables.py) for the crafted placeables.
+const png = (kind: string) => `<img src="./icons/items/${kind}.png" alt="" draggable="false">`;
+ICONS.plant_bed = png('plant_bed');
+ICONS.uv_lamp = png('uv_lamp');
+const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+/** Parts (shared/parts.ts) use their rendered icons, public/icons/items/<part>_<tier>.png (tools/blender/items.py); a lettered tile in the rarity colour if one fails. */
+function partIcon(kind: string) {
+  const letter = (ITEMS[kind]?.label.split(' ').pop() ?? '?')[0].toUpperCase();
+  return `<img src="./icons/items/${kind}.png" alt="" draggable="false" onerror="this.outerHTML='<b class=&quot;tile&quot;>${letter}</b>'">`;
 }
-for (const kind of Object.keys(PART_ITEMS)) ICONS[kind] = partIcon(kind)!;
-
-export const itemIcon = (kind: string) => ICONS[kind] ?? `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`;
+export const itemIcon = (kind: string) => ICONS[kind] ?? (partOf(kind) ? partIcon(kind) : `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`);
 export const itemLabel = (kind: string) => ITEMS[kind]?.label ?? kind;
+/** Rarity colour (shared/salvage.ts RARITY) of an item with a tier, as CSS, or null. */
+const rarityColor = (kind: string) => {
+  const t = ITEMS[kind]?.tier;
+  return t ? hex(RARITY[t].color) : null;
+};
+/** Hover text: the label, and the rarity for items with a tier. */
+const itemTitle = (kind: string) => {
+  const t = ITEMS[kind]?.tier;
+  return t ? `${itemLabel(kind)} · ${RARITY[t].name}` : itemLabel(kind);
+};
 
 type Drag = { box: string; i: number; half: boolean; x0: number; y0: number; moved: boolean };
 
@@ -130,6 +159,8 @@ export class InventoryHud {
   private canvas: HTMLElement;
   /** Storage boxes in reach (shared/storage.ts openBoxes), as last drawn. */
   private storages: string[] = [];
+  /** The workbench is in reach (its recipes are drawn), as last drawn. */
+  private bench = false;
   private drag: Drag | null = null;
   private over: HTMLElement | null = null;
 
@@ -197,14 +228,21 @@ export class InventoryHud {
     if (target === this.shown) return;
     this.shown = target;
     this.prompt.style.display = target ? 'block' : 'none';
-    if (target) this.prompt.innerHTML = `<kbd>F</kbd>${typeof target === 'string' ? target : `Pick up ${SCRAP_KINDS[target.kind].label}`}`;
+    // A label that starts with markup brings its own keys (e.g. "[G] Pick up" alone).
+    if (target) this.prompt.innerHTML = typeof target === 'string' && target.startsWith('<') ? target
+      : `<kbd>F</kbd>${typeof target === 'string' ? target : `Pick up ${SCRAP_KINDS[target.kind].label}`}`;
   }
 
-  /** Every frame: storage boxes come into and out of reach as the player moves. */
+  /** Open the inventory (F at the workbench: its recipes show next to the bag). */
+  open() {
+    this.toggle(true);
+  }
+
+  /** Every frame: storage boxes and the workbench come into and out of reach as the player moves. */
   update(s: PlayerState) {
     if (!ui.inventoryOpen) return;
     const open = openBoxes(s);
-    if (open.join() !== this.storages.join()) this.render();
+    if (open.join() !== this.storages.join() || benchNear(s) !== this.bench) this.render();
   }
 
   toast(text: string) {
@@ -226,7 +264,9 @@ export class InventoryHud {
       html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><button data-sort="${box}" title="Merge stacks and order them">Sort</button></div>`
         + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml(box, slots, 0, slots.length)}</div></div>`;
     }
-    if (!this.storages.length) {
+    this.bench = benchNear(this.net.me);
+    if (this.bench) html += this.benchHtml(bag);
+    if (!this.storages.length && !this.bench) {
       html += `<div class="box"><div class="head"><h3>Storage</h3></div><div class="none">Nothing in reach. Stand by the chest in the base,
         or ride the sand bike, and it opens here.</div></div>`;
     }
@@ -234,13 +274,30 @@ export class InventoryHud {
     if (this.drag) this.slotEl(this.drag.box, this.drag.i)?.classList.add('dragging');
   }
 
+  /** The workbench's recipes (shared/crafting.ts): what each needs, what you have, and a Craft button. */
+  private benchHtml(bag: Slots) {
+    let html = `<div class="box bench"><div class="head"><h3>Workbench</h3></div>`;
+    for (const [id, r] of Object.entries(RECIPES)) {
+      let ready = true;
+      const needs = r.needs.map((ing) => {
+        const have = countMatching(bag, ing);
+        ready &&= have >= ing.n;
+        return `<span class="${have >= ing.n ? 'ok' : 'short'}">${ing.label} ${Math.min(have, ing.n)}/${ing.n}</span>`;
+      }).join('<br>');
+      html += `<div class="recipe"><div class="ico">${itemIcon(r.makes)}</div><div class="what"><div class="name">${itemLabel(r.makes)}</div>`
+        + `<div class="need">${needs}</div></div><button data-craft="${id}"${ready ? '' : ' disabled'}>Craft</button></div>`;
+    }
+    return `${html}<div class="none" style="width:250px">Crafted things go in the backpack. Put one in the hotbar (1–4) to place it on the floor here.</div></div>`;
+  }
+
   private slotsHtml(box: string, slots: Slots, from: number, to: number) {
     let html = '';
     for (let i = from; i < to; i++) {
       const it = slots[i];
       const key = box === 'bag' && i < HOTBAR ? `<span class="key">${i + 1}</span>` : '';
-      const cls = `slot${it ? '' : ' empty'}${key ? ' hot' : ''}`;
-      html += `<div class="${cls}" data-box="${box}" data-i="${i}"${it ? ` title="${itemLabel(it.kind)}"` : ''}>${key}${it ? this.itemHtml(it) : ''}</div>`;
+      const c = it && rarityColor(it.kind);
+      const cls = `slot${it ? '' : ' empty'}${key ? ' hot' : ''}${c ? ' rare' : ''}`;
+      html += `<div class="${cls}" data-box="${box}" data-i="${i}"${c ? ` style="--c:${c}"` : ''}${it ? ` title="${itemTitle(it.kind)}"` : ''}>${key}${it ? this.itemHtml(it) : ''}</div>`;
     }
     return html;
   }
@@ -261,6 +318,8 @@ export class InventoryHud {
   private press(e: PointerEvent) {
     const sort = (e.target as HTMLElement).closest<HTMLElement>('[data-sort]');
     if (sort) return this.net.sortBox(sort.dataset.sort!);
+    const craft = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-craft]');
+    if (craft) return void (craft.disabled || this.net.craft(craft.dataset.craft!));
     const at = this.slotAt(e.clientX, e.clientY);
     if (!at || !this.net.boxes[at.box]?.[at.i]) return;
     e.preventDefault();
@@ -294,6 +353,7 @@ export class InventoryHud {
       d.moved = true;
       const n = d.half ? Math.ceil(it.n / 2) : it.n;
       this.ghost.innerHTML = `${itemIcon(it.kind)}${n > 1 ? `<span class="n">${n}</span>` : ''}`;
+      this.ghost.style.setProperty('--c', rarityColor(it.kind) ?? '#fff4e4');
       this.ghost.style.display = 'flex';
       this.slotEl(d.box, d.i)?.classList.add('dragging');
     }
@@ -326,4 +386,10 @@ export class InventoryHud {
     this.over?.classList.remove('over');
     this.over = null;
   }
+}
+
+/** Is the workbench (shared/stations.ts) in reach of a player at `s`? */
+function benchNear(s: PlayerState): boolean {
+  const i = STATIONS.findIndex((st) => st.kind === 'workbench');
+  return i >= 0 && stationReach(s, i) <= STATION_REACH;
 }
