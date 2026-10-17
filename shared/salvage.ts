@@ -15,7 +15,7 @@ export interface SalvageYield {
 export interface SalvageKind {
   /** Inventory label. */
   label: string;
-  /** Model under public/models/salvage/, built by tools/blender/salvage/<id>.py. */
+  /** Model path relative to public/models/ (salvage/<id>.glb), built by tools/blender/salvage/<id>.py. */
   model: string;
   yields: SalvageYield[];
 }
