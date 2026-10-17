@@ -11,6 +11,9 @@ import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { ScrapServer } from './scrap.ts';
 import { TerrainServer } from './terrain.ts';
+import { drink, fill, newThirst, revive, tickThirst, waterMsg, type Thirst } from './water.ts';
+import { BASE_SPAWN } from '../shared/base.ts';
+import { timeOfDayAt } from '../shared/sun.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const SNAPSHOT_RATE = 20; // Hz; clients interpolate remote players between snapshots
@@ -39,6 +42,8 @@ type Player = {
   lastInputAt: number;
   idleAccum: number;
   lastPickup: { at: number };
+  input: number; // last input bitmask (0 while idle), for sprint drain
+  thirst: Thirst; // server/water.ts
   ws: WebSocket;
   alive: boolean;
 };
@@ -88,6 +93,8 @@ wss.on('connection', (ws) => {
     if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
     if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
+    if (msg.t === 'drink' && p) return onDrink(p);
+    if (msg.t === 'fill' && p) return onFill(p);
   });
   ws.on('close', () => {
     const p = players.get(ws);
@@ -106,7 +113,8 @@ function join(ws: WebSocket, browserId: unknown) {
   const state = row ? spawnState(row.x, row.z) : spawnState();
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
-    tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, ws, alive: true,
+    tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, input: 0,
+    thirst: newThirst(row?.water, row?.sips), ws, alive: true,
   };
   players.set(ws, p);
   save(p);
@@ -115,6 +123,34 @@ function join(ws: WebSocket, browserId: unknown) {
   send(ws, scrap.joinMessage());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   send(ws, { t: 'inventory', items: scrap.inventory(browserId) });
+  send(ws, waterMsg(p.thirst));
+}
+
+// Sips and refills: the client plays the animation, then asks. Refused ones still get the real state.
+function onDrink(p: Player) {
+  drink(p.thirst, Date.now());
+  send(p.ws, waterMsg(p.thirst));
+}
+
+function onFill(p: Player) {
+  fill(p.thirst, p.state, Date.now());
+  send(p.ws, waterMsg(p.thirst));
+}
+
+// Thirst drains in the sun (server/water.ts); at zero the player dies and respawns at the base, full again.
+// The next snapshot carries the new position, which the client snaps to (src/net.ts reconcile).
+function thirst(p: Player, dt: number, tod: number) {
+  const now = Date.now();
+  const r = tickThirst(p.thirst, dt, p.state, p.input, tod, now);
+  if (r === 'died') {
+    p.state = spawnState(BASE_SPAWN.x, BASE_SPAWN.z);
+    revive(p.thirst, now);
+    save(p);
+    send(p.ws, { t: 'died', cause: 'thirst' });
+    send(p.ws, waterMsg(p.thirst));
+  } else if (r === 'send') {
+    send(p.ws, waterMsg(p.thirst));
+  }
 }
 
 function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {
@@ -137,6 +173,7 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.tokens -= 1;
   p.yaw = yaw as number;
   p.pitch = pitch as number;
+  p.input = input & INPUT_MASK;
   p.state = step(p.state, input & INPUT_MASK, p.yaw);
   dig(p, input);
 }
@@ -162,9 +199,12 @@ setInterval(() => {
   const now = performance.now();
   const elapsed = (now - last) / 1000;
   last = now;
+  const tod = timeOfDayAt(now + epoch);
   for (const p of players.values()) {
     p.tokens = Math.min(MAX_INPUT_BURST, p.tokens + elapsed * TICK_RATE);
+    thirst(p, elapsed, tod);
     if (Date.now() - p.lastInputAt > IDLE_MS) {
+      p.input = 0;
       for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
         p.state = step(p.state, 0, p.yaw);
         dig(p, 0);
@@ -220,7 +260,7 @@ function send(ws: WebSocket, msg: ServerMsg) {
 }
 
 function save(p: Player) {
-  db.savePlayer({ id: p.browserId, color: p.color, x: p.state.x, z: p.state.z });
+  db.savePlayer({ id: p.browserId, color: p.color, x: p.state.x, z: p.state.z, water: p.thirst.water, sips: p.thirst.sips });
 }
 
 setInterval(() => {

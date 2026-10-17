@@ -2,6 +2,37 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Thirst and heat
+
+The first survival mechanic: the sun dries you out, the canteen keeps you going, the base refills it.
+
+- **Water** (0–100, the thirst bar) is server-authoritative (`server/water.ts`), not in `shared/sim.ts`
+  (it never moves you). Saved per browser ID in `players` (`water`, `sips` columns) with the position.
+- **Heat:** while the sun is up and you're outside the base (`insideBase`), water drains at
+  `100 / 300 s × sin(elevation) / sin(57°)`: a full bar lasts **5 min at noon**, longer morning and evening,
+  nothing at night or indoors. Sprinting (Shift held and moving faster than a walk) drains **1.5×**. Over a
+  whole day (16 min of daylight) that's about two bars outdoors.
+- **Shared sun:** the clock and the sun's arc moved from `src/world/dayNight.ts` into `shared/sun.ts`
+  (plain math), so the server's heat matches the drawn sun. The server uses the real shared clock;
+  `?tod`, `?day` and the debug slider stay visual-only (the debug menu's "Apply to all players" moves the
+  server clock and therefore the heat too).
+- **Canteen** (hotbar slot 1, key **1** takes it out/puts it away): 4 sips × 25 water, starts full. With it
+  out, left mouse / E don't dig: hold for 1.2 s to drink one sip (`drink`, server checks sips, a 1 s cooldown
+  and the respawn grace). In the base, **F** refills it in 1.5 s (`fill`, server checks `insideBase` + 2 m
+  slack); scrap pickup keeps F when a piece is targeted. The base's water is endless.
+- **Death:** at 0 you die of thirst: the server moves you to `BASE_SPAWN` with full water and canteen and
+  sends `died`; the client shows "You died of thirst" for 3 s, and the next reconciliation snaps (not
+  glides) to the base. No drain or drinking for those 3 s. Scrap inventory is kept.
+- **HUD** (`src/water.ts`, DOM/CSS): thirst bar bottom-centre (blue → amber → red as it empties) with a sun
+  light that glows while you're draining, the 4-slot hotbar under it (canteen with sip pips), prompts under
+  the crosshair, and below 20% a pulsing bar and a red heat vignette. The bar eases between the ~2 Hz
+  server updates.
+- **Viewmodel hook:** `playerHands` in `src/water.ts` (`held: 'none' | 'canteen'`, `drinking`, `filling`)
+  is what the first-person hands should show. Tuning is at the top of `shared/water.ts`.
+- **Known gaps:** dune and building shadows don't count as shade (only the base's footprint does); no
+  shelter at night is needed (no cold); you can't drink from or share with other players; slots 2–4 are
+  empty; drinking at a full bar is blocked client-side only (the server would accept and waste the sip).
+
 ## 2026-10-17 — Item models and icons (issue #8)
 
 - `tools/blender/items.py` builds battery, electric motor and heat sink in four tiers (`scrap`, `basic`,
@@ -39,7 +70,7 @@ New goal: plant and grow nature, push back the desert. The players' home is a ho
 
 ## 2026-10-17 — Day and night
 
-- **24 h every 30 min** (`src/world/dayNight.ts`), on the server's wall clock (`epoch` in `welcome`,
+- **24 h every 30 min** (`src/world/dayNight.ts`, clock and sun arc now in `shared/sun.ts`), on the server's wall clock (`epoch` in `welcome`,
   `Net.worldTime()`), so everyone shares the same sky and it survives server restarts.
 - The sun follows a real arc: rises east (+Z), peaks at 57° in the south (+X), sets just north of west,
   roughly ahead of the spawn view. A full moon rides opposite it and takes over the shadow light at night.

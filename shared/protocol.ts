@@ -10,7 +10,13 @@ export type ClientMsg =
   // Pick up scrap piece i of cell (ix, iz) (shared/scrap.ts). Sent after the input it was aimed with.
   | { t: 'pickup'; ix: number; iz: number; i: number }
   // Debug menu: move the shared day/night clock by changing the wall-clock epoch. Ignored in production.
-  | { t: 'setEpoch'; epoch: number };
+  | { t: 'setEpoch'; epoch: number }
+  // Survival (shared/water.ts): one sip from the canteen finished (sent when the ~1.2 s drink completes).
+  // The server checks sips > 0, the drink cooldown and that you are not mid-respawn, then answers 'water'.
+  | { t: 'drink' }
+  // Refill the canteen at the base (sent when the ~1.5 s fill completes). The server checks you are in
+  // the base (insideBase with FILL_SLACK) and answers 'water'.
+  | { t: 'fill' };
 
 // pitch: the player's quantized camera pitch (pitchFromQ in shared/dig.ts), so remote avatars can
 // tilt their heads.
@@ -40,4 +46,11 @@ export type ServerMsg =
   // The player's inventory: count per SCRAP_KINDS index. Sent after 'welcome' and on every change.
   | { t: 'inventory'; items: number[] }
   // The shared clock's epoch changed (debug menu), or a setEpoch was refused and this is the real one.
-  | { t: 'epoch'; epoch: number };
+  | { t: 'epoch'; epoch: number }
+  // Your thirst bar (0..WATER_MAX, rounded to 0.01), canteen sips left (0..CANTEEN_SIPS) and whether the
+  // sun is draining you right now. Sent after 'welcome', after every drink/fill (also refused ones, so the
+  // client resyncs), when heat starts or stops, and about twice a second while draining.
+  | { t: 'water'; water: number; sips: number; heat: boolean }
+  // You died of thirst: the server has already moved you to BASE_SPAWN (the next snapshot snaps you
+  // there) with full water and a full canteen; a 'water' follows. For the death screen.
+  | { t: 'died'; cause: 'thirst' };

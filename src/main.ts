@@ -25,6 +25,7 @@ import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { footsteps } from './footsteps';
 import { DynamicResolution } from './resolution';
+import { Survival } from './water';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -68,6 +69,7 @@ const remotes = new Map<number, Avatar>();
 const locator = new LocatorBar();
 const hud = new InventoryHud();
 net.onInventory = (items) => hud.setItems(items);
+const survival = new Survival(net);
 
 window.addEventListener('resize', () => {
   orbit.resize();
@@ -162,7 +164,9 @@ renderer.setAnimationLoop((time) => {
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
   const target = net.connected ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   hud.setTarget(target);
-  if (takePickup() && target) net.pickup(target);
+  const interact = takePickup();
+  if (interact && target) net.pickup(target);
+  survival.update(frameDt, net.me, target !== null, interact && !target);
 
   info.textContent = `${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();
