@@ -45,11 +45,11 @@ const TEMP_AMBER = [255, 184, 77];
 const TEMP_RED = [255, 92, 60];
 const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
 const DEATH_TEXT: Record<DeathCause, string> = {
-  heat: 'You died of heatstroke<small>The sun got you. Back at the base, water bottle refilled.</small>',
-  guardian: 'A guardian crushed you<small>It walked right over you. Keep your distance from the giants.</small>',
-  crawler: 'Eaten by crawlers<small>The little ones swarm the crash sites. Sprint — they can\'t keep up.</small>',
-  missile: 'Shelled<small>A drone had you in its light and called the guardians\' missiles down. Keep moving, get out of the beam.</small>',
-  laser: 'Shot by a guardian<small>Its cannon found you. Dodge the bolts, or break its line of sight.</small>',
+  heat: 'You died of heatstroke',
+  guardian: 'A guardian crushed you',
+  crawler: 'Eaten by crawlers',
+  missile: 'Shelled',
+  laser: 'Shot by a guardian',
 };
 const TOAST_MS = 1800;
 /** Walking this far (m) out of the pump's reach cancels a refill. Under the server's FILL_SLACK. */
@@ -112,7 +112,6 @@ const css = `
   align-items: center; justify-content: flex-start; padding-top: 14vh; gap: 10px; background: radial-gradient(ellipse
   closest-side, rgba(40, 8, 2, 0) 55%, rgba(40, 8, 2, 0.75) 100%); color: #ffe2c4; font: 600 34px var(--mono);
   letter-spacing: 0.04em; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); animation: deathIn 0.6s ease-out; }
-#deathScreen small { font: 13px var(--mono); letter-spacing: 0.02em; opacity: 0.7; }
 @keyframes deathIn { from { opacity: 0; } to { opacity: 1; } }
 `;
 

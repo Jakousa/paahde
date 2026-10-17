@@ -162,8 +162,8 @@ export class GuardianFx {
     if (spotted && !this.locked) guardianSound.chirp();
     this.locked = spotted;
     const incoming = this.missiles.incoming(focus.x, focus.z, 30, net.serverTime()).length > 0;
-    const text = incoming ? 'Incoming — keep moving' : spotted ? 'Spotted' : this.hunted.size ? 'A guardian is coming for you'
-      : this.crawled.size ? 'Crawlers — run' : '';
+    const text = incoming ? 'Incoming' : spotted ? 'Spotted' : this.hunted.size ? 'Guardian'
+      : this.crawled.size ? 'Crawlers' : '';
     this.combat = text !== '';
     if (text) this.warn.textContent = text;
     this.warn.classList.toggle('on', text !== '');

@@ -204,7 +204,7 @@ export class ItemServer {
   craft(browserId: string, s: PlayerState, recipe: unknown): string | { made: string } {
     if (typeof recipe !== 'string' || !RECIPES[recipe]) return 'Unknown recipe';
     const bench = STATIONS.findIndex((st) => st.kind === 'workbench');
-    if (bench < 0 || stationReach(s, bench) > STATION_REACH + REACH_SLACK) return 'Stand at the workbench to craft';
+    if (bench < 0 || stationReach(s, bench) > STATION_REACH + REACH_SLACK) return 'Too far';
     if (!craft(this.slots(browserId, 'bag'), recipe, this.newId, this.bagShape(browserId))) return 'Missing parts';
     this.save(browserId, 'bag');
     return { made: RECIPES[recipe].makes };

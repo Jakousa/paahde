@@ -389,7 +389,7 @@ export class InventoryHud {
         html += this.benchHtml(slots[0] ?? null);
         continue;
       }
-      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><button data-sort="${box}" title="Pack it tight, biggest first">Sort</button></div>`
+      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><button data-sort="${box}">Sort</button></div>`
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
     if (!this.storages.length) {
@@ -726,8 +726,8 @@ export class InventoryHud {
 
   /** Dragged out of the panels: drop it on the sand in front of you. */
   private drop(box: string, i: number) {
-    if (box === 'part') return this.toast('Take it off the item first');
-    if (box === 'equip' || box === 'bench') return this.toast('Take it off first');
+    if (box === 'part') return this.toast('Take it off');
+    if (box === 'equip' || box === 'bench') return this.toast('Take it off');
     if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast("Can't drop here");
     this.net.dropItem(box, i);
   }

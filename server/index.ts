@@ -416,7 +416,7 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
     return it;
   });
   if (!item) {
-    if (inside) send(p.ws, { t: 'notice', text: "Can't drop things in the base: use the chest" });
+    if (inside) send(p.ws, { t: 'notice', text: "Can't drop here" });
     return send(p.ws, boxMsg(p.browserId, box));
   }
   sendBox(p, box);
