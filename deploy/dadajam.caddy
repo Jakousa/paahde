@@ -1,7 +1,11 @@
 # Host Caddy snippet on maukass (/etc/caddy/dadajam.caddy), imported into the herkku.org block.
+# reverse_proxy upgrades WebSockets automatically. stream_close_delay keeps game connections open
+# through Caddy config reloads (otherwise every reload disconnects all players at once).
 (dadajam_route) {
 	redir /dadajam /dadajam/ 308
 	handle_path /dadajam/* {
-		reverse_proxy 127.0.0.1:8086
+		reverse_proxy 127.0.0.1:8086 {
+			stream_close_delay 5m
+		}
 	}
 }
