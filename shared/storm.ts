@@ -75,6 +75,18 @@ export function stormAt(storms: readonly Storm[], x: number, z: number, t: numbe
   return k;
 }
 
+/** Drones go dark (no light, no aggro) within this many radii of a storm's centre. */
+export const DRONE_DARK_R = 1.5;
+/** Is (x, z) within DRONE_DARK_R radii of a blowing storm's centre at server time `t`? */
+export function nearStorm(storms: readonly Storm[], x: number, z: number, t: number): boolean {
+  for (const s of storms) {
+    if (t < s.start || t > s.end) continue;
+    stormCentre(s, t, c);
+    if (Math.hypot(x - c.x, z - c.z) < s.r * DRONE_DARK_R) return true;
+  }
+  return false;
+}
+
 /** Storm strength slowing a player standing at (x, y, z) (feet): none in the base. Fed to step() by
  *  the server per input and by the client per predicted tick (kept for replays), shared/sim.ts. */
 export function stormDrag(storms: readonly Storm[], x: number, y: number, z: number, t: number): number {

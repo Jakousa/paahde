@@ -130,7 +130,7 @@ export class GuardianFx {
     const gs = guardiansAt(net.bots, t);
     const ds = dronesAt(net.bots, t);
     this.guardians.update(gs, dt, focus);
-    this.drones.update(ds, dt, focus);
+    this.drones.update(ds, dt, focus, net.storms, t);
     guardianSound.drones(ds.filter((d) => !d.down), this.ear); // shot-down ones are quiet
     // The horn, once, when one starts hunting you; the cannon's whine as it charges.
     for (const g of gs) {

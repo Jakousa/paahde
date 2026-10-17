@@ -17,6 +17,7 @@ import {
 import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MIN_R, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
 } from '../shared/missiles.ts';
+import { nearStorm, type Storm } from '../shared/storm.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
 import { sunElevation } from '../shared/sun.ts';
@@ -129,6 +130,8 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
 export class GuardianServer {
   guardians: Guardian[] = [];
   drones: Drone[] = [];
+  /** Sandstorms right now (set by the server before each tick), shared/storm.ts. */
+  storms: readonly Storm[] = [];
   bolts: Bolt[] = [];
   missiles: Missile[] = [];
   private nextBolt = 1;
@@ -444,10 +447,13 @@ export class GuardianServer {
         d.hz = d.z;
       }
       if ((now > d.until && (!night || d.site === ROAM)) || !players.some((p) => Math.hypot(p.x - d.hx, p.z - d.hz) < DRONE_LONELY)) d.leaving = true;
+      // Near a storm the light is off and it notices nobody (the client darkens it by the same rule).
+      const dark = nearStorm(this.storms, d.x, d.z, now);
+      if (dark) d.lock = d.seek = -1;
       let speed = DRONE_SPEED, tx = d.tx, tz = d.tz, alt = DRONE_ALT;
       const prey = d.lock >= 0 ? byId.get(d.lock) : undefined;
       if (prey || d.leaving) d.seek = -1;
-      if (!prey && !d.leaving) this.notice(d, now, exposed);
+      if (!prey && !d.leaving && !dark) this.notice(d, now, exposed);
       const sought = d.seek >= 0 ? byId.get(d.seek) : undefined;
       const target = prey ?? sought;
       if (d.leaving) {
@@ -499,7 +505,7 @@ export class GuardianServer {
         d.dy = v.y;
         d.dz = v.z;
       }
-      if (d.leaving) continue;
+      if (d.leaving || dark) continue;
       // Who's in the beam.
       if (prey && inBeam(d.x, d.y, d.z, d.dx, d.dy, d.dz, prey.x, prey.y, prey.z) && !prey.safe) d.litAt = now;
       else if (d.lock >= 0 && now - d.litAt > LOSE_MS) {

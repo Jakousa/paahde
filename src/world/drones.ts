@@ -10,6 +10,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { abs, dot, float, length, normalView, positionViewDirection, pow, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { BEAM_HALF, beamGround } from '../../shared/guardians.ts';
+import { nearStorm, type Storm } from '../../shared/storm.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import type { DroneFrame } from './botFrames.ts';
 import { zaps } from './zaps.ts';
@@ -153,7 +154,7 @@ export class Drones {
     return { root, rotors, beam, pool, grid, glare, color, model: model !== null, hurt: 0, spin: 0, tip: 0, smoke: 0, crashed: false };
   }
 
-  update(frames: DroneFrame[], dt: number, focus: { x: number; z: number }) {
+  update(frames: DroneFrame[], dt: number, focus: { x: number; z: number }, storms: readonly Storm[], t: number) {
     const seen = new Set<number>();
     const now = performance.now() / 1000;
     for (const f of frames) {
@@ -189,7 +190,9 @@ export class Drones {
       // Hovering: a slow bob and a lean into the way it's going.
       v.root.position.set(f.x, f.y + Math.sin(now * 1.3 + f.id) * 0.25, f.z);
       v.root.rotation.set(0.08 + wob * Math.sin(now * 5.3) * 0.12, f.yaw, Math.sin(now * 0.9 + f.id) * 0.04 + wob * Math.sin(now * 4.1) * 0.15, 'YXZ');
-      v.glare.visible = v.beam.visible = !wob || Math.sin(now * 23) * Math.sin(now * 7) > -0.6;
+      // Light out near a storm (the server has it ignore everyone there).
+      const lit = !nearStorm(storms, f.x, f.z, t);
+      v.glare.visible = v.beam.visible = lit && (!wob || Math.sin(now * 23) * Math.sin(now * 7) > -0.6);
       v.rotors.forEach((r, i) => (r.rotation.y += (i % 2 ? -1 : 1) * dt * 60));
       v.color.lerp(f.lock ? RED : WARM, 1 - Math.exp(-dt * 6));
       (v.beam.userData.tint as { value: THREE.Color }).value.copy(v.color);
@@ -218,7 +221,7 @@ export class Drones {
         pos.setXYZ(i, x, heightAt(x, z) + POOL_LIFT, z);
       }
       pos.needsUpdate = true;
-      v.pool.visible = len < 74;
+      v.pool.visible = lit && len < 74;
     }
     for (const [id, v] of this.views) if (!seen.has(id)) {
       this.drop(v);

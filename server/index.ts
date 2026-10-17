@@ -286,6 +286,7 @@ function tickBots(elapsed: number, now: number, tod: number) {
   botAccum = 0;
   const wall = Date.now();
   const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
+  guardians.storms = storms.storms;
   const r = guardians.tick(dt, now, tod, list);
   for (const k of guardians.crashes()) dropSpoils(k);
   for (const p of players.values()) {
