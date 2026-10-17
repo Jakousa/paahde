@@ -28,6 +28,38 @@ const STORM_STEPS = 6;
 /** The dust frays out to this many storm radii (the gameplay strength ends at 1). */
 const STORM_OUTER = 1.3;
 
+/** How much sunlight gets through the sandstorms along the sun ray from `o`, 0..1: the shader's dust
+ *  (dusted in Post) marched on the CPU, with the billows averaged out. */
+function sunThroughDust(o: THREE.Vector3, sd: THREE.Vector3): number {
+  const ground = stormGround.value;
+  const gs = [ground.x, ground.y, ground.z, ground.w];
+  let tau = 0;
+  stormDiscs.forEach((u, i) => {
+    const disc = u.value;
+    if (disc.w <= 0) return;
+    const R = disc.z * STORM_OUTER;
+    const ox = o.x - disc.x, oz = o.z - disc.y;
+    const a = Math.max(sd.x * sd.x + sd.z * sd.z, 1e-6);
+    const b = ox * sd.x + oz * sd.z;
+    const h = b * b - a * (ox * ox + oz * oz - R * R);
+    if (h <= 0) return;
+    const t0 = Math.max((-b - Math.sqrt(h)) / a, 0);
+    const top = (gs[i] + STORM_H * 3 - o.y) / Math.max(sd.y, 1e-4);
+    const t1 = Math.min((-b + Math.sqrt(h)) / a, top);
+    if (t1 <= t0) return;
+    const n = 16, dt = (t1 - t0) / n;
+    for (let k = 0; k < n; k++) {
+      const t = t0 + dt * (k + 0.5);
+      const r = Math.hypot(ox + sd.x * t, oz + sd.z * t) / disc.z;
+      const fade = 1 - THREE.MathUtils.smoothstep(r, EDGE * 0.45, STORM_OUTER);
+      const hh = Math.max(o.y + sd.y * t - gs[i], 0);
+      const up = Math.exp(-hh / STORM_H) * (1 - THREE.MathUtils.smoothstep(hh, STORM_H, STORM_H * 3));
+      tau += disc.w * fade * fade * up * 0.7 * dt;
+    }
+  });
+  return Math.exp(-STORM_K * tau);
+}
+
 export class Post {
   private renderer: THREE.WebGPURenderer;
   private camera: THREE.PerspectiveCamera;
@@ -293,7 +325,9 @@ export class Post {
     this.sunUV.value.set(this.ndc.x * 0.5 + 0.5, 0.5 - this.ndc.y * 0.5);
     const off = Math.max(Math.abs(this.ndc.x), Math.abs(this.ndc.y));
     const sunUp = THREE.MathUtils.smoothstep(sd.y, -0.03, 0.02); // no glare once it has set
-    this.sunOnScreen.value = facing > 0 ? (1 - THREE.MathUtils.smoothstep(off, 0.95, 1.35)) * sunUp : 0;
+    // A sandstorm between us and the sun swallows its glare and flares like the disc itself.
+    const clear = sunThroughDust(cam.position, sd);
+    this.sunOnScreen.value = facing > 0 ? (1 - THREE.MathUtils.smoothstep(off, 0.95, 1.35)) * sunUp * clear : 0;
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
     this.sunRadiusUV.value = (Math.tan(sunDiscRadius.value) / tanHalf) * 0.5;
 
@@ -314,7 +348,7 @@ export class Post {
         break;
       }
     }
-    const look = THREE.MathUtils.smoothstep(facing, 0.55, 0.995) * visible * sunUp;
+    const look = THREE.MathUtils.smoothstep(facing, 0.55, 0.995) * visible * sunUp * clear;
     const k = 1 - Math.exp(-dt * 1.5);
     this.stareValue += (look - this.stareValue) * k;
     this.exposureValue += (1 + 0.18 * look - this.exposureValue) * k;
