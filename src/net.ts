@@ -64,6 +64,8 @@ export type RemotePlayer = {
   vy: number;
   /** Kind of the item in their hand (selected hotbar slot), null for none; the gear they wear (wornGear bits). */
   item: string | null;
+  /** Dead, lying as a ragdoll thrown by this push (m/s); null when alive. */
+  down: [number, number, number] | null;
   gear: number;
   drinking: boolean;
 };
@@ -127,8 +129,10 @@ export class Net {
   /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
   water = { heat: 0, sips: 0, maxSips: 0, rising: false, temp: 20, shade: true, at: 0 };
   onWater?: (w: { heat: number; sips: number; rising: boolean; temp: number; shade: boolean }) => void;
-  /** We died (heatstroke, a drone's beam or a guardian); the server has already moved us back to the base. */
+  /** We died (heatstroke, a drone's beam or a guardian): we lie where we fell until the server respawns us. */
   onDied?: (cause: DeathCause) => void;
+  /** Dead and lying as a ragdoll: the push (m/s) that threw the body (shared/ragdoll.ts); null when alive. */
+  down: [number, number, number] | null = null;
   /** Plant bed stages and growth by placed id (shared/garden.ts), from the server. Beds without one are empty. */
   garden = new Map<number, BedState>();
   /** Placed things changed (shared/placed.ts keeps the list), or a bed's stage did. */
@@ -159,7 +163,7 @@ export class Net {
 
   /** Called once per fixed tick with the sampled input and quantized camera yaw and pitch. */
   tick(input: number, yaw: number, pitch: number) {
-    if (!this.connected) return;
+    if (!this.connected || this.down) return; // the server ignores input while we lie dead
     this.seq++;
     this.prev = this.me;
     const drag = stormDrag(this.storms, this.me.x, this.me.y, this.me.z, this.serverTime());
@@ -536,8 +540,14 @@ export class Net {
       return this.onWater?.(msg);
     }
     if (msg.t === 'died') {
-      this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
+      this.down = msg.push ?? [0, 0, 0];
+      this.pending = []; // the server drops whatever we sent after dying, so don't replay it
       return this.onDied?.(msg.cause);
+    }
+    if (msg.t === 'respawn') {
+      this.down = null;
+      this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
+      return;
     }
     if (msg.t === 'placed') {
       setPlaced(msg.list);
@@ -566,6 +576,7 @@ export class Net {
     if (msg.t === 'welcome') {
       this.id = msg.id;
       this.joinedOnce = true;
+      this.down = null;
       this.color = msg.color;
       this.epoch = msg.epoch;
       this.me = this.prev = msg.state;
@@ -632,7 +643,7 @@ export class Net {
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
         riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, drinking: pick.hands === 2,
-        pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t,
+        pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t, down: pb.down ?? null,
       });
     }
     return out;

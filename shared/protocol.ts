@@ -93,7 +93,8 @@ export type Hands = 0 | 1 | 2;
 // hands: what they're holding (Hands), omitted when empty.
 // item: the kind of the item in their selected hotbar slot (drawn in their hand), omitted when empty.
 // gear: the gear they wear (shared/gear.ts wornGear bits), omitted when none.
-export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; item?: string; gear?: number };
+// down: dead, lying as a ragdoll until the respawn (shared/ragdoll.ts); the push (m/s) that threw the body, [0, 0, 0] if none.
+export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; item?: string; gear?: number; down?: [number, number, number] };
 
 export type ServerMsg =
   // First message on every connection: the build the server is serving (dist/version.txt, 'dev' if
@@ -166,11 +167,13 @@ export type ServerMsg =
   // or shade flips, when temp moves by 0.5 °C, and about twice a second while the meter moves.
   // maxSips: what the water bottle in your bag holds (shared/gear.ts bottleSips), 0 without one.
   | { t: 'water'; heat: number; sips: number; maxSips: number; rising: boolean; temp: number; shade: boolean }
-  // You died of heatstroke: the server has already moved you to BASE_SPAWN (the next snapshot snaps you
-  // there) with no heat and a full canteen; a 'water' follows. For the death screen.
-  // 'beam': a drone's searchlight burned you (heat too, shared/guardians.ts); 'guardian': one walked over you;
-  // 'laser': a guardian's cannon got you; 'crawler': bitten once too often.
-  | { t: 'died'; cause: DeathCause }
+  // You died: you lie where you fell as a ragdoll for DOWN_MS (shared/ragdoll.ts; your input is ignored), then
+  // 'respawn' says the server has moved you to BASE_SPAWN (the next snapshot snaps you there) with no heat and a
+  // full canteen; a 'water' follows. For the death screen. push: the blast's launch velocity for the body (m/s).
+  // 'heat': heatstroke; 'beam': a drone's searchlight burned you (heat too, shared/guardians.ts); 'guardian': one
+  // walked over you; 'laser': a guardian's cannon got you; 'crawler': bitten once too often.
+  | { t: 'died'; cause: DeathCause; push?: [number, number, number] }
+  | { t: 'respawn' }
   // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time).
   // Sent before 'welcome' on join and to everyone whenever the list changes.
   | { t: 'storms'; storms: Storm[] }

@@ -231,7 +231,7 @@ renderer.setAnimationLoop((time) => {
   if (!riding) {
     me.update(
       { x: v.x, y: v.y, z: v.z, facing: v.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
-      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, drinking: playerHands.drinking },
+      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, drinking: playerHands.drinking, down: net.down },
       frameDt,
     );
   }
@@ -271,7 +271,10 @@ renderer.setAnimationLoop((time) => {
   // shoulders and hood are behind it in first person: you see your hands on the grips. The camera adds EYE_HEIGHT.
   if (riding && me.eye(eye)) focus.set(eye.x - Math.sin(v.heading) * RIDE_EYE_AHEAD, eye.y - EYE_HEIGHT, eye.z - Math.cos(v.heading) * RIDE_EYE_AHEAD);
   else if (riding) focus.set(v.x, v.y, v.z);
+  // Dead: the camera backs off to third person and follows the body as it falls (the pivot a little above it).
+  else if (me.downAt(focus)) focus.y += 0.5 - EYE_HEIGHT;
   else focus.copy(me.root.position);
+  if (orbit.down !== (net.down !== null)) document.body.classList.toggle('down', (orbit.down = net.down !== null));
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
   // The detector listens where you look (where you'd dig), or a step ahead when you look up.
   const looked = digTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch))

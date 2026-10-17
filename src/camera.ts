@@ -51,6 +51,8 @@ export class FirstPersonCamera {
   private lastVy = 0;
   /** Third-person view on (T toggles it, remembered per browser). */
   thirdPerson = false;
+  /** Lying dead (shared/ragdoll.ts): third person whatever the T setting, looking at the body. */
+  down = false;
   private boom = 0; // current boom length (m), eased toward BOOM or 0
   private rideHeading = NaN; // set while riding in first person: the view is limited to a neck's range of it
 
@@ -152,7 +154,8 @@ export class FirstPersonCamera {
     const pitch = this.pitch + this.dip * 0.12;
     const cp = Math.cos(pitch);
     const bx = sy * cp, by = -Math.sin(pitch), bz = cy * cp; // unit vector pointing behind the view
-    let reach = this.thirdPerson ? BOOM : 0;
+    const third = this.thirdPerson || this.down;
+    let reach = third ? BOOM : 0;
     for (let i = 1; i <= 12 && reach > 0; i++) {
       const d = (BOOM * i) / 12;
       if (d > reach) break;
@@ -160,7 +163,7 @@ export class FirstPersonCamera {
       if (y + by * d < heightAt(px, pz) + BOOM_CLEARANCE) reach = Math.max(0, d - BOOM / 12);
     }
     // Ease out smoothly, but snap in when terrain cuts the boom short.
-    this.boom = reach < this.boom && this.thirdPerson ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * 8));
+    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * 8));
     if (this.boom < 0.01) this.boom = 0;
     this.camera.position.set(x + bx * this.boom, y + by * this.boom, z + bz * this.boom);
     this.camera.rotation.set(pitch, this.yaw, this.roll + bobX * 0.1);

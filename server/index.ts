@@ -14,7 +14,7 @@ import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
-import { CRATER_MM, CRATER_R } from '../shared/guardians.ts';
+import { BLAST_R, CRATER_MM, CRATER_R } from '../shared/guardians.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
@@ -29,6 +29,7 @@ import { CrashServer } from './crash.ts';
 import { TerrainServer } from './terrain.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
+import { blastPush, DOWN_MS } from '../shared/ragdoll.ts';
 import { stormAt, stormDrag } from '../shared/storm.ts';
 import { timeOfDayAt } from '../shared/sun.ts';
 
@@ -81,6 +82,8 @@ type Player = {
   alive: boolean;
   hands: Hands; // what the client says it holds, relayed in snapshots
   slot: number; // selected hotbar slot (-1 none): digs with what's in it
+  /** Dead and lying where they fell until `until` (Date.now ms), thrown by `push` (shared/ragdoll.ts). */
+  down: { until: number; push: [number, number, number] } | null;
 };
 
 const players = new Map<WebSocket, Player>();
@@ -181,7 +184,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, down: null,
   };
   players.set(ws, p);
   save(p);
@@ -199,6 +202,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`)]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
+
 }
 
 // Sips and refills: the client plays the animation, then asks. Refused ones still get the real state.
@@ -239,12 +243,22 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
   }
 }
 
+/** Drop where they stand (off the bike, stopped) for DOWN_MS, as a ragdoll thrown by `push`; then respawn(). */
+function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 0, 0]) {
+  if (p.down) return;
+  p.down = { until: Date.now() + DOWN_MS, push };
+  p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, sliding: false, crouching: false };
+  revive(p.heat, Date.now());
+  send(p.ws, { t: 'died', cause, push });
+}
+
 /** Back to the base, cooled down, with a full canteen. */
-function die(p: Player, cause: DeathCause) {
+function respawn(p: Player) {
+  p.down = null;
   p.state = { ...spawnState(BASE_SPAWN.x, BASE_SPAWN.z), bike: p.state.bike };
   revive(p.heat, Date.now());
   save(p);
-  send(p.ws, { t: 'died', cause });
+  send(p.ws, { t: 'respawn' });
   send(p.ws, waterMsg(p.heat));
 }
 
@@ -257,18 +271,27 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const dt = Math.min(botAccum, 0.5);
   botAccum = 0;
   const wall = Date.now();
-  const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: wall - p.heat.diedAt < BOT_GRACE_MS }));
+  const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
   const r = guardians.tick(dt, now, tod, list);
   burning = r.burn;
   for (const p of players.values()) {
     if (r.crushed.includes(p.id)) die(p, 'guardian');
-    else if (r.shot.includes(p.id)) die(p, 'laser');
+    else if (r.shot.includes(p.id)) die(p, 'laser', boltPush(p, r.events));
     else if (r.bitten.has(p.id) && bite(p.heat, r.bitten.get(p.id)!)) die(p, 'crawler');
     else if (r.bitten.has(p.id)) send(p.ws, waterMsg(p.heat));
     for (const e of r.events) if (Math.hypot(e.x - p.state.x, e.z - p.state.z) < BOT_SEND_R) send(p.ws, e.msg);
     send(p.ws, guardians.msg(now, p.id, p.state.x, p.state.z));
   }
   for (const e of r.events) if (e.msg.t === 'boom' && e.msg.ground) terrain.crater(e.msg.x, e.msg.z, CRATER_R, CRATER_MM);
+}
+
+/** The nearest bolt burst throws a player it killed. */
+function boltPush(p: Player, events: { msg: ServerMsg }[]): [number, number, number] {
+  let best: Extract<ServerMsg, { t: 'boom' }> | null = null;
+  for (const { msg: m } of events) {
+    if (m.t === 'boom' && (!best || Math.hypot(m.x - p.state.x, m.z - p.state.z) < Math.hypot(best.x - p.state.x, best.z - p.state.z))) best = m;
+  }
+  return best ? blastPush(best.x, best.y, best.z, p.state.x, p.state.y, p.state.z, BLAST_R) : [0, 0, 0];
 }
 
 function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {
@@ -428,6 +451,7 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   if (!Number.isInteger(pitch) || (pitch as number) < 0 || (pitch as number) >= PITCH_STEPS) return;
   p.ack = seq;
   p.lastInputAt = Date.now();
+  if (p.down) return; // lying dead: acknowledged, not simulated
   // Over the rate limit: acknowledge but don't simulate, so the client gets corrected.
   if (p.tokens < 1) return;
   p.tokens -= 1;
@@ -466,6 +490,10 @@ setInterval(() => {
   const tod = timeOfDayAt(now + epoch);
   for (const p of players.values()) {
     p.tokens = Math.min(MAX_INPUT_BURST, p.tokens + elapsed * TICK_RATE);
+    if (p.down) {
+      if (Date.now() >= p.down.until) respawn(p);
+      continue;
+    }
     heat(p, elapsed, tod, now);
     if (Date.now() - p.lastInputAt > IDLE_MS) {
       p.input = 0;
@@ -517,7 +545,7 @@ function broadcast(time: number) {
     const gear = wornGear(items.slots(p.browserId, 'equip'));
     return {
       id: p.id, color: p.color, pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}),
-      ...(item ? { item } : {}), ...(gear ? { gear } : {}),
+      ...(item ? { item } : {}), ...(gear ? { gear } : {}), ...(p.down ? { down: p.down.push } : {}),
     };
   });
   for (const p of players.values()) send(p.ws, { t: 'snap', time, ack: p.ack, players: list });
@@ -536,7 +564,9 @@ function send(ws: WebSocket, msg: ServerMsg) {
 }
 
 function save(p: Player) {
-  db.savePlayer({ id: p.browserId, color: p.color, x: p.state.x, z: p.state.z, heat: p.heat.heat, sips: p.heat.sips });
+  // Lying dead: they come back at the base.
+  const at = p.down ? BASE_SPAWN : p.state;
+  db.savePlayer({ id: p.browserId, color: p.color, x: at.x, z: at.z, heat: p.heat.heat, sips: p.heat.sips });
 }
 
 setInterval(() => {

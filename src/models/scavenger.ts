@@ -13,6 +13,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { LegIk, lowestAnkles, type Ground } from './legIk';
+import { Ragdoll, type RagdollGround } from './ragdoll';
 import type { RidePose } from '../players';
 import { wornBit } from '../../shared/gear.ts';
 import { beltModel, disposeModel, heldModel, wristModel } from './outfit';
@@ -118,6 +119,8 @@ export class ScavengerModel {
   /** Meshes were added since the last setOutfit (it tells the Avatar). */
   private added = false;
   private sip = 0; // 0 carried .. 1 at the mouth
+  /** Dead: the body is a ragdoll (src/models/ragdoll.ts) instead of the clips. */
+  private doll: Ragdoll | null = null;
   private color: number;
   private disposed = false;
 
@@ -246,6 +249,28 @@ export class ScavengerModel {
     return true;
   }
 
+  /** Go limp, thrown by `push` (m/s, world), from the pose the body is in now; null gets back up (the clips take
+   *  over again). False if the model can't (not loaded yet). */
+  ragdoll(push: THREE.Vector3 | null, ground: RagdollGround): boolean {
+    if (!push) {
+      this.doll?.restore();
+      this.doll = null;
+      return true;
+    }
+    if (!this.mixer) return false;
+    this.doll ??= Ragdoll.from(this.tilt, push, ground);
+    if (!this.doll) return false;
+    for (const o of [this.held, this.canteen]) if (o) o.visible = false; // dropped
+    return true;
+  }
+
+  /** The ragdoll's pelvis (world), while down. */
+  ragdollCenter(out: THREE.Vector3): boolean {
+    if (!this.doll) return false;
+    this.doll.center(out);
+    return true;
+  }
+
   /** Clip names available once loaded. */
   get clips(): string[] {
     return [...this.actions.keys()];
@@ -278,6 +303,7 @@ export class ScavengerModel {
     if (this.wrist) this.wrist.visible = (this.gear & WRIST) !== 0;
     if (this.belt) this.belt.visible = (this.gear & BELT) !== 0;
     if (!this.mixer) return;
+    if (this.doll) return this.doll.update(dt);
     // Remote speeds arrive as 20 Hz steps; smooth them so playback rate (and the feet) don't jitter.
     this.speed += (pose.speed - this.speed) * (1 - Math.exp(-dt * 10));
     const speed = this.speed;

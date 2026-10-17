@@ -17,6 +17,7 @@ import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 import type { DeathCause } from '../shared/protocol.ts';
+import { DOWN_MS } from '../shared/ragdoll.ts';
 
 /**
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
@@ -38,7 +39,6 @@ const TEMP_BLUE = [120, 196, 255];
 const TEMP_AMBER = [255, 184, 77];
 const TEMP_RED = [255, 92, 60];
 const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
-const DEATH_MS = 3000;
 const DEATH_TEXT: Record<DeathCause, string> = {
   heat: 'You died of heatstroke<small>The sun got you. Back at the base, water bottle refilled.</small>',
   beam: 'Burned by the searchlight<small>A drone held its beam on you. Stay out of the light at night.</small>',
@@ -109,9 +109,9 @@ const css = `
 #heatVignette.pulse { animation: heatPulse 1.6s ease-in-out infinite; }
 @keyframes heatPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.6); } }
 #deathScreen { position: fixed; inset: 0; z-index: 20; pointer-events: none; display: none; flex-direction: column;
-  align-items: center; justify-content: center; gap: 10px; background: radial-gradient(ellipse at center,
-  rgba(60, 14, 4, 0.82), rgba(15, 4, 0, 0.95)); color: #ffe2c4; font: 600 34px var(--mono);
-  letter-spacing: 0.04em; animation: deathIn 0.6s ease-out; }
+  align-items: center; justify-content: flex-start; padding-top: 14vh; gap: 10px; background: radial-gradient(ellipse
+  closest-side, rgba(40, 8, 2, 0) 55%, rgba(40, 8, 2, 0.75) 100%); color: #ffe2c4; font: 600 34px var(--mono);
+  letter-spacing: 0.04em; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); animation: deathIn 0.6s ease-out; }
 #deathScreen small { font: 13px var(--mono); letter-spacing: 0.02em; opacity: 0.7; }
 @keyframes deathIn { from { opacity: 0; } to { opacity: 1; } }
 `;
@@ -201,7 +201,7 @@ export class Survival {
     });
     net.onDied = (cause) => {
       this.death.innerHTML = DEATH_TEXT[cause];
-      this.deadUntil = performance.now() + DEATH_MS;
+      this.deadUntil = performance.now() + DOWN_MS;
       this.cancel();
       this.shown = 0;
     };

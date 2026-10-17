@@ -24,6 +24,8 @@ export type AvatarPose = {
   ride?: RidePose;
   /** Drinking from the canteen in hand (see setOutfit). */
   drinking?: boolean;
+  /** Dead: a ragdoll thrown by this push (m/s, world; shared/ragdoll.ts). Placement stays where it fell. */
+  down?: [number, number, number] | null;
 };
 
 /** A seated rider's contact points and body English, in the avatar root's space (forward is -z). */
@@ -66,6 +68,10 @@ export interface AvatarModel {
   setHeadless?(on: boolean): void;
   /** The eyes' world position, once posed (riding in first person, the camera sits there). */
   eye?(out: THREE.Vector3): boolean;
+  /** Go limp as a ragdoll thrown by `push`, or get back up (null). False if it can't (then the Avatar tips it over). */
+  ragdoll?(push: THREE.Vector3 | null, ground: (x: number, z: number) => number): boolean;
+  /** The ragdoll's middle (world), while it is one. */
+  ragdollCenter?(out: THREE.Vector3): boolean;
   dispose(): void;
 }
 
@@ -86,6 +92,9 @@ export class Avatar {
   /** Leave footprints even when the root is hidden (the local first-person player). */
   footprints = true;
   private shadowOnly = false;
+  /** Dead (AvatarPose.down): the model is a ragdoll, or (`tipped`) a model without one lies tipped over. */
+  private down = false;
+  private tipped = false;
 
   constructor(color: number, model: AvatarModel = new PlaceholderModel()) {
     this.model = model;
@@ -164,8 +173,38 @@ export class Avatar {
     this.root.add(this.label);
   }
 
+  /** Where the body lies while down (the ragdoll's middle, else just above the feet); false when not down. */
+  downAt(out: THREE.Vector3): boolean {
+    if (!this.down) return false;
+    if (!this.model.ragdollCenter?.(out)) out.copy(this.root.position).setY(this.root.position.y + 0.3);
+    return true;
+  }
+
+  /** Dead or alive (AvatarPose.down): fall as a ragdoll where it stands, or get back up. True while down. */
+  private fall(pose: AvatarPose, dt: number): boolean {
+    if (pose.down && !this.down) {
+      this.down = true;
+      this.streakX = NaN;
+      if (!pose.ride) this.root.position.set(pose.x, pose.y, pose.z); // first frame we see them: already dead
+      // In the base the bunker floor is under the feet, not the sand overhead.
+      const y = this.root.position.y;
+      const ground = (x: number, z: number) => (terrainHidden(x, z, y) ? y : heightAt(x, z));
+      this.tipped = !this.model.ragdoll?.(_push.fromArray(pose.down), ground);
+    } else if (!pose.down && this.down) {
+      this.down = false;
+      this.model.ragdoll?.(null, heightAt);
+      this.root.rotation.x = 0;
+      this.facing = pose.facing;
+    }
+    if (!this.down) return false;
+    if (this.tipped) this.root.rotation.x += (-Math.PI / 2 - this.root.rotation.x) * (1 - Math.exp(-dt * 6));
+    this.model.update({ speed: 0, grounded: true }, dt);
+    return true;
+  }
+
   /** Called every render frame. */
   update(pose: AvatarPose, dt: number) {
+    if (this.fall(pose, dt)) return;
     if (pose.ride) {
       this.facing = pose.facing; // so getting off turns from here, not from where we got on
       this.streakX = NaN;
@@ -254,6 +293,7 @@ export class Avatar {
 // a scrap backpack, boots that swing with a walk cycle. Tinted by the player colour. Facing -Z.
 
 const tmpSlope = { gx: 0, gz: 0 };
+const _push = new THREE.Vector3();
 const ROBE_BASE = new THREE.Color(0x5a3b24);
 
 export class PlaceholderModel implements AvatarModel {
