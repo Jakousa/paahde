@@ -193,6 +193,8 @@ export class Survival {
 
     addEventListener('keydown', (e) => {
       if (e.repeat || !/^Digit[1-9]$/.test(e.code)) return;
+      // 9 gets on the bike (src/input.ts): put away what's in hand.
+      if (e.code === 'Digit9' && !net.me.riding && net.me.bike > 0 && !tools.frozen) return this.select(-1);
       const n = Number(e.code.slice(5)) - 1;
       if (n >= HOTBAR) return;
       this.select(this.selected === n ? -1 : n);

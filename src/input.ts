@@ -94,11 +94,12 @@ export function readInput(): number {
   if ((keys.has('ShiftLeft') || keys.has('ShiftRight')) && !aimDown()) input |= SLIDE;
   // C is an alias: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
   if (keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyC')) input |= CROUCH;
+  // 9: get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped), whatever's in hand
+  // (getting on puts it away, src/water.ts).
+  if (keys.has('Digit9')) input |= BIKE;
   if (tools.blocked) return input;
   if (mouseDig || keys.has('KeyE')) input |= DIG;
   else if (mousePile || keys.has('KeyQ')) input |= PILE;
-  // 9: get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped).
-  if (keys.has('Digit9')) input |= BIKE;
   return input;
 }
 
