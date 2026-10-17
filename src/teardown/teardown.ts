@@ -13,7 +13,7 @@
 import * as THREE from 'three/webgpu';
 import { BACK, FORWARD, LEFT, RIGHT } from '../../shared/sim.ts';
 import { RARITY, type ComponentKind, type PartId, type Tier } from '../../shared/salvage.ts';
-import { keyHeld, tools } from '../input.ts';
+import { keyHeld, tools, ui } from '../input.ts';
 import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { TeardownUi } from './ui.ts';
 
@@ -181,6 +181,7 @@ export class TeardownView {
     this.announced.clear();
     for (const s of site.junk.slots) if (slotOpen(s)) this.announced.add(s);
     tools.frozen = true;
+    if (document.pointerLockElement) ui.debugFreed = true; // freed on purpose: don't open the Esc menu (src/menu.ts)
     document.exitPointerLock();
     this.ui.setPhase('walk', site.label, site.movable);
     site.link?.join();

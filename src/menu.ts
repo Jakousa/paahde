@@ -3,7 +3,7 @@
 // the stats line in the top-left corner; below them the controls, the build/connection line and credits.
 // The game keeps running behind it: it's multiplayer, nothing pauses.
 import { audio } from './audio';
-import { capture, ui } from './input';
+import { capture, tools, ui } from './input';
 
 const STATS_KEY = 'dadajam.stats';
 
@@ -95,7 +95,7 @@ export class Menu {
     // Capture phase, so this sees the inventory still open when its own Esc handler is about to close it.
     addEventListener('keydown', (e) => {
       if (e.code === 'Tab' && this.open) this.toggle(false);
-      if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen) return;
+      if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
       this.toggle(!this.open);
     }, true);
     document.addEventListener('pointerlockchange', () => {
