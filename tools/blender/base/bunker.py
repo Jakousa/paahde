@@ -34,17 +34,20 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 # --- layout (shared/base.ts) ---------------------------------------------------------------------
 WT = 0.3
 W = 1.1
-HUT_Z0, HUT_Z1, HUT_H, DOOR, DOOR_H = -3.0, 2.0, 2.3, 0.7, 1.95
+HUT_Z0, HUT_Z1, HUT_H, DOOR, DOOR_H = -4.0, 2.0, 2.3, 0.7, 1.95
 HUT_T, HUT_TOP = 0.6, 2.75  # the entrance's wall thickness and outer height (shared/base.ts HUT.t, HUT.top)
 HUT_FILLET = 0.4  # its rounded-over top edge
 ST_Z, ST_N, ST_RISE, ST_RUN = 0.6, 32, 0.25, 0.3
 FLOOR = -ST_N * ST_RISE
-HALL_Z, HALL_H = -12.0, 2.6
+HALL_Z, HALL_H = -12.0, 3.3  # HALL_H: the hallway vault's crown above the floor
 ROOM_W, ROOM_Z0, ROOM_H = 8.0, -28.0, 6.0
 ROOM_Z = (HALL_Z + ROOM_Z0) / 2
 SKY_W, SKY_COLLAR, SKY_H = 1.4, 1.8, 0.5
 HUT_R, SKY_R = 0.8, 0.6  # outer corner radii of the hut and the skylight collar (shared/base.ts HUT_R, SKY_R)
-TUNNEL_HEADROOM, TUNNEL_TOP = 2.5, -0.6
+ROOM_R = 1.5  # the room's inside corners (shared/base.ts ROOM_R)
+VAULT_HEADROOM, VAULT_K = 3.3, 1.5  # crown over the stair line, softening of its bends (shared/base.ts VAULT)
+COVE, SKIRT = 0.9, 0.12  # the room's rounded wall-ceiling and wall-floor junctions
+SMOOTH_ANGLE = math.radians(40)  # edges sharper than this stay hard; gentler ones are shaded smooth
 BURIED_TOP = -0.3
 CEIL = FLOOR + ROOM_H
 BULB = (0, 1.95, HUT_Z0 + 0.25)  # the hut's bulb (src/world/base.ts puts a light there)
@@ -123,6 +126,7 @@ class MB:
     def __init__(self):
         self.bm = bmesh.new()
         self.mats = []
+        self.fixed = set()  # open surfaces wound by hand: recalc_face_normals would guess their side
 
     def mi(self, mat):
         if mat not in self.mats:
@@ -191,6 +195,29 @@ class MB:
         for f in fs:
             f.material_index = idx
             f.smooth = False
+        return fs
+
+    def sweep(self, rings, mat):
+        """Open tube through closed rings [[(x, y, z), ...], ...] of equal length; faces [a_i, a_j, b_j, b_i]
+        (their side is kept as wound)."""
+        rings = [[self.bm.verts.new(G(*p)) for p in r] for r in rings]
+        idx = self.mi(mat)
+        n = len(rings[0])
+        for a, b in zip(rings, rings[1:]):
+            for i in range(n):
+                j = (i + 1) % n
+                f = self.bm.faces.new([a[i], a[j], b[j], b[i]])
+                f.material_index = idx
+                self.fixed.add(f)
+
+    def poly(self, pts, mat, normal):
+        """One flat face through game points [(x, y, z), ...], turned to face game direction `normal`."""
+        f = self.bm.faces.new([self.bm.verts.new(G(*p)) for p in pts])
+        f.normal_update()
+        if f.normal.dot(G(*normal)) < 0:
+            f.normal_flip()
+        f.material_index = self.mi(mat)
+        self.fixed.add(f)
 
     def corner(self, ix, iz, ox, oz, r, y0, y1, sx, sz, zc, mat, seg=6):
         """Rounded outer corner of a wall ring: fills the quadrant (sx, sz) between the inner corner
@@ -202,8 +229,13 @@ class MB:
         self.profile_y([(sx * x, zc + sz * z) for x, z in pts], y0, y1, mat)
 
     def build(self, name):
-        bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces)
+        bmesh.ops.recalc_face_normals(self.bm, faces=[f for f in self.bm.faces if f not in self.fixed])
         separate_coplanar(self.bm)
+        # Shade smooth across gentle bends (round corners, vaults, coves, cylinders); box edges stay hard.
+        for f in self.bm.faces:
+            f.smooth = True
+        for e in self.bm.edges:
+            e.smooth = len(e.link_faces) == 2 and e.calc_face_angle(math.pi) < SMOOTH_ANGLE
         mesh = bpy.data.meshes.new(name)
         self.bm.normal_update()
         self.bm.to_mesh(mesh)
@@ -219,6 +251,29 @@ def stair_y(z):
     """Physics ramp (shared/base.ts stairY)."""
     y = -(ST_Z - z) * (ST_RISE / ST_RUN) - ST_RISE / 2
     return 0.0 if z >= ST_Z else max(FLOOR, min(0.0, y))
+
+
+def smax(a, b, k):
+    h = max(k - abs(a - b), 0) / k
+    return max(a, b) + h * h * k / 4
+
+
+def crown(z):
+    """The vault's crown over the stairs and the hallway (shared/base.ts vaultCrown)."""
+    line = -(ST_Z - z) * (ST_RISE / ST_RUN) - ST_RISE / 2 + VAULT_HEADROOM
+    return smax(line, FLOOR + HALL_H, VAULT_K)
+
+
+def arch(r, spring, seg=12, a0=0.0, a1=math.pi):
+    """Half circle [(x, y), ...] of radius r over the springing line, from angle a0 to a1."""
+    return [(r * math.cos(a0 + (a1 - a0) * k / seg), spring + r * math.sin(a0 + (a1 - a0) * k / seg)) for k in range(seg + 1)]
+
+
+def arch_wall(mb, z, top, normal, mat='Concrete'):
+    """A wall across the tunnel at z, from the vault's springing line up to `top`, with the arch cut out."""
+    spring = crown(z) - W
+    pts = [(x, y, z) for x, y in arch(W, spring)] + [(-W, top, z), (W, top, z)]
+    mb.poly(pts, mat, normal)
 
 
 def rounded_rect(hx, hz, r, zc, seg=6):
@@ -304,7 +359,7 @@ def build_bunker():
         mb.box(s * (W - li), s * W, BURIED_TOP, HUT_H, HUT_Z0, HUT_Z1, 'Concrete')
         mb.box(s * DOOR, s * (W - li), BURIED_TOP, HUT_H, HUT_Z1 - li, HUT_Z1, 'Concrete')
     mb.box(-DOOR, DOOR, DOOR_H, HUT_H, HUT_Z1 - li, HUT_Z1, 'Concrete')
-    mb.box(-W + li, W - li, TUNNEL_TOP, HUT_H, HUT_Z0, HUT_Z0 + li, 'Concrete')
+    arch_wall(mb, HUT_Z0 + li, HUT_H, (0, 0, 1))
     mb.box(-W, W, HUT_H, HUT_H + 0.3, HUT_Z0, HUT_Z1, 'Concrete')
     mb.cyl((0, BULB[1], HUT_Z0), (0, BULB[1], HUT_Z0 + 0.1), 0.06, 'Iron', seg=8)
     mb.cyl((0, BULB[1], HUT_Z0 + 0.1), (0, BULB[1], HUT_Z0 + 0.22), 0.05, 'EmitWarm', seg=8)
@@ -326,29 +381,53 @@ def build_bunker():
     mb.cyl((W - 0.1, rail(za), za), (W - 0.1, rail(zb), zb), 0.03, 'Steel', seg=8)
     for zz in (za, zb):
         mb.box(W - 0.13, W, rail(zz) - 0.03, rail(zz) + 0.03, zz - 0.03, zz + 0.03, 'Steel')
-    # Tunnel ceiling: from the hut's back wall down along the stairs, then flat over the hallway.
-    lo, t = FLOOR + HALL_H, 0.3
-    ceil_y = lambda z: max(lo, min(TUNNEL_TOP, stair_y(z) + TUNNEL_HEADROOM))  # noqa: E731
-    ze = ST_Z - (TUNNEL_HEADROOM - ST_RISE / 2 - lo) * ST_RUN / ST_RISE
-    pts = [(HUT_Z0, ceil_y(HUT_Z0)), (ze, lo), (hz, lo), (hz, lo + t), (ze, lo + t), (HUT_Z0, ceil_y(HUT_Z0) + t)]
-    mb.profile_x(pts, -xo, xo, 'Concrete')
+    # Barrel vault over the stairs and the hallway, following the stair line down and easing into the flat.
+    z0, n = HUT_Z0 + li, 40
+    rings = []
+    for k in range(n + 1):
+        z = z0 + (HALL_Z - z0) * k / n
+        spring = crown(z) - W
+        ring = [(x, y, z) for x, y in arch(W, spring)]
+        ring += [(x, y, z) for x, y in arch(W + WT, spring, a0=math.pi, a1=0.0)]
+        rings.append(ring)
+    mb.sweep(rings, 'Concrete')
     # Hallway and room floors.
     mb.box(-W, W, under, FLOOR, hz, ST_Z - ST_RUN * ST_N, 'ConcreteDark')
     rx, rz = ROOM_W + WT, ROOM_Z0 - WT
     mb.box(-rx, rx, under, FLOOR, rz, hz, 'ConcreteDark')
-    # Room walls; the front one opens onto the hallway.
-    ct = CEIL + 0.3
-    mb.box(-rx, rx, under, ct, rz, ROOM_Z0, 'Concrete')
-    for s in (-1, 1):
-        mb.box(s * ROOM_W, s * rx, under, ct, ROOM_Z0, hz, 'Concrete')
-        mb.box(s * W, s * ROOM_W, under, ct, HALL_Z, hz, 'Concrete')
-    mb.box(-W, W, lo, ct, HALL_Z, hz, 'Concrete')
-    # Ceiling round the skylight, and the shaft up to the collar.
+    # Room shell: solid walls and ceiling round the skylight, their insides a hair behind the lining below.
+    ct, e = CEIL + 0.3, 0.01
     w, z = SKY_W, ROOM_Z
-    mb.box(-ROOM_W, ROOM_W, CEIL, ct, ROOM_Z0, z - w, 'Concrete')
-    mb.box(-ROOM_W, ROOM_W, CEIL, ct, z + w, HALL_Z, 'Concrete')
-    mb.box(-ROOM_W, -w, CEIL, ct, z - w, z + w, 'Concrete')
-    mb.box(w, ROOM_W, CEIL, ct, z - w, z + w, 'Concrete')
+    mb.box(-rx, rx, under, ct, rz, ROOM_Z0 - e, 'Concrete')
+    for s in (-1, 1):
+        mb.box(s * (ROOM_W + e), s * rx, under, ct, ROOM_Z0, hz, 'Concrete')
+        mb.box(s * W, s * ROOM_W, under, ct, HALL_Z, hz, 'Concrete')
+    mb.box(-ROOM_W, ROOM_W, CEIL + e, ct, ROOM_Z0, z - w, 'Concrete')
+    mb.box(-ROOM_W, ROOM_W, CEIL + e, ct, z + w, HALL_Z, 'Concrete')
+    mb.box(-ROOM_W, -w, CEIL + e, ct, z - w, z + w, 'Concrete')
+    mb.box(w, ROOM_W, CEIL + e, ct, z - w, z + w, 'Concrete')
+    # Lining: rounded corners, a cove into the ceiling and a small one into the floor, the ceiling running
+    # into the skylight. Its front wall is left out (the hallway arch is cut into it below).
+    hd, seg = (HALL_Z - ROOM_Z0) / 2, 6
+    ring = lambda d: rounded_rect(ROOM_W - d, hd - d, ROOM_R - d, ROOM_Z, seg)  # noqa: E731
+    loops = []
+    for k in range(seg + 1):
+        a = math.pi / 2 * k / seg
+        loops.append((ring(SKIRT - SKIRT * math.sin(a)), FLOOR + SKIRT - SKIRT * math.cos(a)))
+    for k in range(seg + 1):
+        a = math.pi / 2 * k / seg
+        loops.append((ring(COVE - COVE * math.cos(a)), CEIL - COVE + COVE * math.sin(a)))
+    loops.append((rounded_rect(w, w, 1e-3, ROOM_Z, seg), CEIL))
+    mb.fixed.update(mb.loft(loops, 'Concrete', bottom=False, top=False, skip={(k, seg) for k in range(seg + 1)}))
+    # The front wall round the hallway's arch, and the floor's cove along it.
+    ex, wt = ROOM_W - ROOM_R, CEIL - COVE
+    for s in (-1, 1):
+        mb.poly([(s * ex, FLOOR, HALL_Z), (s * ex, wt, HALL_Z), (s * W, wt, HALL_Z), (s * W, FLOOR, HALL_Z)],
+                'Concrete', (0, 0, -1))
+        cove = [(HALL_Z - SKIRT + SKIRT * math.sin(a), FLOOR + SKIRT - SKIRT * math.cos(a))
+                for a in (math.pi / 2 * k / seg for k in range(seg + 1))]
+        mb.profile_x([(HALL_Z, FLOOR)] + cove, s * W, s * ex, 'Concrete')
+    arch_wall(mb, HALL_Z, wt, (0, 0, -1))
     sw = w + WT
     mb.box(-sw, sw, ct, BURIED_TOP, z - sw, z - w, 'Concrete')
     mb.box(-sw, sw, ct, BURIED_TOP, z + w, z + sw, 'Concrete')
@@ -561,7 +640,7 @@ def render_preview(objs, path):
     # A sand slab as the pad, with holes where the game cuts them (entrance, skylight).
     bm = bmesh.new()
     for x0, x1, z0, z1 in ((-14, -1.25, -34, 14), (1.25, 14, -34, 14), (-1.25, 1.25, 2.15, 14),
-                           (-1.25, 1.25, ROOM_Z + 1.6, -3.15), (-1.25, 1.25, -34, ROOM_Z - 1.6)):
+                           (-1.25, 1.25, ROOM_Z + 1.6, HUT_Z0 - 0.15), (-1.25, 1.25, -34, ROOM_Z - 1.6)):
         m = Matrix.Translation(G((x0 + x1) / 2, -0.06, (z0 + z1) / 2)) @ Matrix.Diagonal((x1 - x0, z1 - z0, 0.001, 1))
         bmesh.ops.create_cube(bm, size=1.0, matrix=m)
     sand_mesh = bpy.data.meshes.new('sand')

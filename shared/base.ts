@@ -25,13 +25,13 @@ export const WT = 0.3;
 export const W = 1.1;
 /** Entrance hut, inner: from the back wall to the door, ceiling height, door half width; its thick walls
  *  (t) and outer height (top): a squat concrete block like a WW2 bunker. */
-export const HUT = { z0: -3.0, z1: 2.0, h: 2.3, door: 0.7, t: 0.6, top: 2.75 };
+export const HUT = { z0: -4.0, z1: 2.0, h: 2.3, door: 0.7, t: 0.6, top: 2.75 };
 /** Stairs: top edge (the landing ends here), steps (rise, run), bottom = the bunker floor. */
 export const STAIRS = { z: 0.6, n: 32, rise: 0.25, run: 0.3 };
 /** Bunker floor height (local). */
 export const FLOOR = -STAIRS.n * STAIRS.rise;
-/** Hallway ends here, where the room begins; its ceiling height above the floor. */
-export const HALL = { z: -12, h: 2.6 };
+/** Hallway ends here, where the room begins; its vault's crown above the floor. */
+export const HALL = { z: -12, h: 3.3 };
 /** Main room, inner: half width, far wall, ceiling height above the floor. */
 export const ROOM = { w: 8, z: -28, h: 6 };
 /** The room's centre: the pump stands here, under the skylight. */
@@ -40,8 +40,11 @@ export const ROOM_Z = (HALL.z + ROOM.z) / 2;
 export const SKY = { w: 1.4, collar: 1.8, h: 0.5 };
 /** Outer corner radii of the entrance hut and the skylight collar (rounded like a poured bunker). */
 const HUT_R = 0.8, SKY_R = 0.6;
-/** Tunnel over the stairs: headroom above the stair line, and its highest point (under the pad). */
-const TUNNEL = { headroom: 2.5, top: -0.6 };
+/** The main room's corners are rounded inside with this radius. */
+export const ROOM_R = 1.5;
+/** The stairs and the hallway are vaulted: walls up to the springing line, then a half circle of radius W.
+ *  `headroom` is the crown above the stair line; `k` softens the bends where the slope meets the hallway. */
+const VAULT = { headroom: 3.3, k: 1.5 };
 /** Underground walls end just under the sand. */
 const BURIED_TOP = -0.3;
 
@@ -49,6 +52,23 @@ const BURIED_TOP = -0.3;
 export function stairY(lz: number): number {
   const y = -(STAIRS.z - lz) * (STAIRS.rise / STAIRS.run) - STAIRS.rise / 2;
   return lz >= STAIRS.z ? 0 : Math.max(FLOOR, Math.min(0, y));
+}
+
+/** Smooth max: max(a, b), rounded off where they are within k of each other. */
+function smax(a: number, b: number, k: number): number {
+  const h = Math.max(k - Math.abs(a - b), 0) / k;
+  return Math.max(a, b) + h * h * k / 4;
+}
+
+/** Height (local) of the vault's crown over the stairs and the hallway at local z. */
+export function vaultCrown(lz: number): number {
+  const line = -(STAIRS.z - lz) * (STAIRS.rise / STAIRS.run) - STAIRS.rise / 2 + VAULT.headroom;
+  return smax(line, FLOOR + HALL.h, VAULT.k);
+}
+
+/** The vault's underside at |x| = ax under a crown at height c. */
+function vaultAt(ax: number, c: number): number {
+  return c - W + Math.sqrt(Math.max(0, W * W - ax * ax));
 }
 
 /** The pad around the base is this flat, then blends back into the dunes (shared/terrain.ts). */
@@ -169,7 +189,7 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
 {
   const xs = W + WT / 2, back = HUT.z0 - WT / 2;
   // Entrance hut: thick walls (their inner faces are the stairwell's too, all the way down), the doorway
-  // in front, and the back wall stops over the tunnel. Its outer corners are rounded.
+  // in front, and the back wall stops over the tunnel's vault. Its outer corners are rounded.
   const r = HUT.t / 2, xh = W + r, fh = HUT.z1 + r, bh = HUT.z0 - r;
   const cx = W + HUT.t - HUT_R, rc = HUT_R - r;
   const cf = HUT.z1 + HUT.t - HUT_R, cb = HUT.z0 - HUT.t + HUT_R;
@@ -177,7 +197,7 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
   wall(xh, cb, xh, cf, -Infinity, WALL_H, r);
   wall(-cx, fh, -HUT.door - r, fh, -Infinity, WALL_H, r);
   wall(HUT.door + r, fh, cx, fh, -Infinity, WALL_H, r);
-  wall(-cx, bh, cx, bh, TUNNEL.top, WALL_H, r);
+  wall(-cx, bh, cx, bh, vaultCrown(HUT.z0), WALL_H, r);
   for (const s of [-1, 1]) {
     arc(s * cx, cf, rc, s, 1, -Infinity, WALL_H, r);
     arc(s * cx, cb, rc, s, -1, -Infinity, WALL_H, r);
@@ -186,12 +206,17 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
   const hz = HALL.z + WT / 2, rx = ROOM.w + WT / 2, rz = ROOM.z - WT / 2;
   wall(-xs, back, -xs, hz, -Infinity, BURIED_TOP);
   wall(xs, back, xs, hz, -Infinity, BURIED_TOP);
-  // Main room, opening onto the hallway.
-  wall(-rx, hz, -xs, hz, -Infinity, BURIED_TOP);
-  wall(xs, hz, rx, hz, -Infinity, BURIED_TOP);
-  wall(-rx, rz, rx, rz, -Infinity, BURIED_TOP);
-  wall(-rx, hz, -rx, rz, -Infinity, BURIED_TOP);
-  wall(rx, hz, rx, rz, -Infinity, BURIED_TOP);
+  // Main room, opening onto the hallway, its corners rounded.
+  const ex = ROOM.w - ROOM_R, ef = HALL.z - ROOM_R, eb = ROOM.z + ROOM_R, rr = ROOM_R + WT / 2;
+  wall(-ex, hz, -xs, hz, -Infinity, BURIED_TOP);
+  wall(xs, hz, ex, hz, -Infinity, BURIED_TOP);
+  wall(-ex, rz, ex, rz, -Infinity, BURIED_TOP);
+  wall(-rx, ef, -rx, eb, -Infinity, BURIED_TOP);
+  wall(rx, ef, rx, eb, -Infinity, BURIED_TOP);
+  for (const s of [-1, 1]) {
+    arc(s * ex, ef, rr, s, 1, -Infinity, BURIED_TOP);
+    arc(s * ex, eb, rr, s, -1, -Infinity, BURIED_TOP);
+  }
   // Skylight collar on the surface (its glass is a floor, below), outer corners rounded.
   const c = (SKY.collar + SKY.w) / 2, cr = (SKY.collar - SKY.w) / 2, k = SKY.collar - SKY_R;
   wall(-k, ROOM_Z - c, k, ROOM_Z - c, ROOM.h + FLOOR, SKY.h, cr);
@@ -283,9 +308,7 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
 function ceilingAt(lx: number, lz: number): number {
   const ax = Math.abs(lx);
   if (ax < W + WT && lz >= HUT.z0 && lz < HUT.z1 + WT) return HUT.h;
-  if (ax < W + WT && lz > HALL.z && lz < HUT.z0) {
-    return Math.max(FLOOR + HALL.h, Math.min(TUNNEL.top, stairY(lz) + TUNNEL.headroom));
-  }
+  if (ax < W + WT && lz > HALL.z && lz < HUT.z0) return vaultAt(ax, vaultCrown(lz));
   if (ax < ROOM.w + WT && lz > ROOM.z - WT && lz <= HALL.z) {
     return ax < SKY.w && Math.abs(lz - ROOM_Z) < SKY.w ? SKY.h - 0.1 : FLOOR + ROOM.h;
   }

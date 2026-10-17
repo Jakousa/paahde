@@ -12,7 +12,7 @@ import * as THREE from 'three/webgpu';
 import { bool, lights, positionWorld } from 'three/tsl';
 import type { LightsNode, Node } from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BASE, BASE_PIECES, FLOOR, HALL, HUT, ROOM, ROOM_Z, STAIRS, TERRAIN_HOLES } from '../../shared/base.ts';
+import { BASE, BASE_PIECES, FLOOR, HALL, HUT, ROOM, ROOM_Z, STAIRS, TERRAIN_HOLES, vaultCrown } from '../../shared/base.ts';
 import { moonColor, sunColor, sunDirection, sunLight } from './env.ts';
 
 /** False inside the holes cut in the terrain (shared/base.ts TERRAIN_HOLES): use as a material's maskNode. */
@@ -31,8 +31,9 @@ const BOUNCE = { intensity: 14, distance: 22 };
 const BULB = { x: 0, y: 1.95, z: HUT.z0 + 0.25, intensity: 2, distance: 9 };
 /** Ceiling lamps (local x, z; they hang from the ceiling there): the hallway, over the work tables, by the
  *  room's front and back walls. Each has a warm point light at its bulb. */
+const HALL_LAMP_Z = (STAIRS.z - STAIRS.n * STAIRS.run + HALL.z) / 2;
 const LAMPS = [
-  { x: 0, z: (STAIRS.z - STAIRS.n * STAIRS.run + HALL.z) / 2, ceil: HALL.h, intensity: 0.8 },
+  { x: 0, z: HALL_LAMP_Z, ceil: vaultCrown(HALL_LAMP_Z) - FLOOR, intensity: 0.8 },
   { x: -ROOM.w + 1.4, z: ROOM_Z, ceil: ROOM.h, intensity: 5.5 },
   { x: ROOM.w - 1.4, z: ROOM_Z, ceil: ROOM.h, intensity: 5.5 },
   { x: 0, z: HALL.z - 3, ceil: ROOM.h, intensity: 5.5 },
