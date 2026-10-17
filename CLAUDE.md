@@ -24,6 +24,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `src/input.ts` — keyboard → input bitmask
 - `src/wasm.ts` — loads the compiled wasm; use exports as `wasm.<fn>`
 - `assembly/` — AssemblyScript source (compiled to `src/wasm/`, gitignored — never edit `src/wasm/`)
+- `docs/devlog.md` — what's been built and why, known gaps; `docs/look.md` — art direction
 - `public/` — static assets (models, textures, audio), copied as-is into the build
 - `deploy/`, `Dockerfile`, `.github/workflows/` — deployment; see README. Don't change without asking.
 
