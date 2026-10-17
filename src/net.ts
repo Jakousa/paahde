@@ -155,6 +155,7 @@ export class Net {
   }
 
   private onMessage(msg: ServerMsg) {
+    if (msg.t === 'version') return reloadIfStale(msg.build);
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);
     if (msg.t === 'dug') {
@@ -244,4 +245,18 @@ export function getBrowserId(): string {
   } catch {
     return crypto.randomUUID(); // storage blocked: play as a fresh guest
   }
+}
+
+// A deploy restarts the server, so every client reconnects and hears the new build here. Reload to
+// pick it up (position is kept server-side by browserId). Dev builds never reload, and we try each
+// build only once per tab in case a cache still hands us the old page.
+function reloadIfStale(build: string) {
+  if (build === __BUILD_SHA__ || build === 'dev' || __BUILD_SHA__ === 'dev') return;
+  try {
+    if (sessionStorage.getItem('reloadedFor') === build) return;
+    sessionStorage.setItem('reloadedFor', build);
+  } catch {
+    return;
+  }
+  location.reload();
 }

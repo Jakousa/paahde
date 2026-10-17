@@ -1,5 +1,6 @@
 // Authoritative game server: serves the built client, accepts WebSocket connections on /ws,
 // simulates every player with shared/sim.ts and broadcasts snapshots.
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import sirv from 'sirv';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -39,6 +40,14 @@ type Player = {
 const players = new Map<WebSocket, Player>();
 let nextId = 1;
 
+const BUILD = (() => {
+  try {
+    return readFileSync('dist/version.txt', 'utf8').trim();
+  } catch {
+    return 'dev';
+  }
+})();
+
 const serveStatic = sirv('dist', {
   etag: true,
   setHeaders: (res, path) => {
@@ -56,6 +65,7 @@ const http = createServer((req, res) => {
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 1024 });
 
 wss.on('connection', (ws) => {
+  send(ws, { t: 'version', build: BUILD });
   ws.on('pong', () => {
     const p = players.get(ws);
     if (p) p.alive = true;

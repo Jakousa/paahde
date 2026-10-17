@@ -13,6 +13,9 @@ export type ClientMsg =
 export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number };
 
 export type ServerMsg =
+  // First message on every connection: the build the server is serving (dist/version.txt, 'dev' if
+  // none). A client built from another SHA reloads the page to pick up the new build.
+  | { t: 'version'; build: string }
   // id is a public per-connection id; the browserId is never sent to other players.
   | { t: 'welcome'; id: number; state: PlayerState; color: number }
   // ack = last input seq the server applied for *this* client; time = server clock in ms.
