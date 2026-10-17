@@ -12,6 +12,9 @@ from mathutils import Vector
 ARGS = sys.argv[sys.argv.index('--') + 1:]
 SRC, PREFIX = ARGS[0], ARGS[1]
 CLIPS = '--clips' in ARGS
+FP = '--fp' in ARGS
+DIST = float(ARGS[ARGS.index('--dist') + 1]) if '--dist' in ARGS else 4.6
+TZ = float(ARGS[ARGS.index('--tz') + 1]) if '--tz' in ARGS else 0.95
 SAMPLES = int(ARGS[ARGS.index('--samples') + 1]) if '--samples' in ARGS else 48
 SIZE = int(ARGS[ARGS.index('--size') + 1]) if '--size' in ARGS else 900
 os.makedirs(os.path.dirname(os.path.abspath(PREFIX)), exist_ok=True)
@@ -91,7 +94,10 @@ def light(mode):
         sun.rotation_euler = (math.radians(40), 0, math.radians(30))
 
 
-def shot(path, az, dist=4.6, height=1.05, target_z=0.95, lens=None):
+def shot(path, az, dist=None, height=None, target_z=None, lens=None):
+    dist = DIST if dist is None else dist
+    target_z = TZ if target_z is None else target_z
+    height = target_z + 0.1 + dist * 0.12 if height is None else height
     a = math.radians(az)
     # character faces -Y in Blender (imported glTF: also -Y after Y-up conversion)
     cam.location = (math.sin(a) * dist, -math.cos(a) * dist, height)
@@ -124,7 +130,30 @@ if arm and arm.animation_data:
         pb.rotation_quaternion = (1, 0, 0, 0)
         pb.location = (0, 0, 0)
 
-if not CLIPS:
+if FP:  # first-person viewmodel: camera at the origin looking along glTF -Z (= Blender +Y)
+    ground.location.z = -1.7
+    light('desert')
+    sun.rotation_euler = (math.radians(70), 0, math.radians(200))
+    cam.location = (0, 0, 0)
+    cam.rotation_euler = (math.radians(90), 0, 0)
+    cam_data.sensor_fit = 'VERTICAL'
+    cam_data.sensor_height = 20.25
+    cam_data.lens = 17.5  # 60° vertical FOV like the game camera
+    cam_data.clip_start = 0.02
+    sc.render.resolution_x, sc.render.resolution_y = 960, 540
+    arm.animation_data.action = None
+    for pb in arm.pose.bones:
+        pb.rotation_quaternion = (1, 0, 0, 0)
+    sc.render.filepath = f'{PREFIX}_rest.png'
+    bpy.ops.render.render(write_still=True)
+    for name in ['Idle', 'Dig']:
+        act = next((a for a in bpy.data.actions if a.name.startswith(name)), None)
+        f0, f1 = act.frame_range
+        for k in range(2 if name == 'Idle' else 3):
+            set_action(act.name, int(f0 + (f1 - f0) * k / 3))
+            sc.render.filepath = f'{PREFIX}_{name}_{k}.png'
+            bpy.ops.render.render(write_still=True)
+elif not CLIPS:
     set_action('Idle', 0)
     light('desert')
     shot(PREFIX + '_front34.png', -30)

@@ -92,7 +92,7 @@ def pack_uvs(obj, margin=0.003):
     bpy.ops.object.mode_set(mode='OBJECT')
 
 
-def bake_atlas(obj, size, out_dir, tint_name='Tint', small=1024):
+def bake_atlas(obj, size, out_dir, tint_name='Tint', small=1024, prefix='scavenger'):
     from sclib import select_only
     _cycles(16)
     pack_uvs(obj)
@@ -140,13 +140,13 @@ def bake_atlas(obj, size, out_dir, tint_name='Tint', small=1024):
     col[..., :3] = np.clip(col[..., :3], 0, 1)
     col[..., 3] = 1
     # byte images: Blender encodes the (linear) float pixels to the image's colour space on write
-    final_col = _image('scavenger_color', size, False, float_buffer=False)
+    final_col = _image(prefix + '_color', size, False, float_buffer=False)
     _set_px(final_col, col)
     orm = np.ones_like(col)
     orm[..., 0], orm[..., 1], orm[..., 2] = ao[..., 0], np.clip(rough[..., 0], 0.05, 1), np.clip(metal[..., 0], 0, 1)
-    final_orm = _image('scavenger_orm', size, True, float_buffer=False)
+    final_orm = _image(prefix + '_orm', size, True, float_buffer=False)
     _set_px(final_orm, orm)
-    final_nrm = _image('scavenger_normal', size, True, float_buffer=False)
+    final_nrm = _image(prefix + '_normal', size, True, float_buffer=False)
     _set_px(final_nrm, _px(imgs['normal']))
     for img in (final_orm, final_nrm):
         if small and small < size:
@@ -187,7 +187,7 @@ def bake_atlas(obj, size, out_dir, tint_name='Tint', small=1024):
         m.use_backface_culling = False  # robes/hood are single-sided cloth
         return m
 
-    sc_mat, tint_mat = make('Scavenger'), make('PlayerTint')
+    sc_mat, tint_mat = make(prefix.capitalize()), make('PlayerTint')
     obj.data.materials.clear()
     obj.data.materials.append(sc_mat)
     obj.data.materials.append(tint_mat)

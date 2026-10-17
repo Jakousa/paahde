@@ -37,7 +37,7 @@ M = {
     'cape': scmats.cloth('Cape', '#6a4430', '#3a2418', dust=0.9, bleach='#8a6448', bleach_amt=0.3, wrinkle=0.6),
     'wrap': scmats.cloth('Wrap', '#7d705e', '#4a4035', dust=0.8, weave=0.7, wrinkle=0.3, bleach='#a39581', bleach_amt=0.3),
     'trousers': scmats.cloth('Trousers', '#4a3e33', '#2b231c', dust=1.2, bleach='#7a6a58', bleach_amt=0.25),
-    'tint': scmats.cloth('Tint', '#e2dbd0', '#a9a197', dust=0.55, stains=0.3, bleach='#f0ebe2', bleach_amt=0.2,
+    'tint': scmats.cloth('Tint', '#cfc6b8', '#958c80', dust=0.55, stains=0.3, bleach='#f0ebe2', bleach_amt=0.2,
                          wrinkle=0.7),
     'leather': scmats.leather('Leather', '#4a3020', '#24160d', rough=0.52),
     'leather2': scmats.leather('LeatherTan', '#7a5534', '#3f2a19', scuff='#a8845e', rough=0.6),
@@ -496,7 +496,7 @@ def build_glove(sign):
         pts = [P(u, 0.002, 0.088)]
         d = a.copy()
         for k, bend in enumerate((8, 16, 16)):
-            d = Quaternion(t, math.radians(-bend) * 1.0) @ d  # curl towards palm
+            d = Quaternion(t, math.radians(-bend) * sign) @ d  # curl towards palm (mirrored frame flips sense)
             pts.append(pts[-1] + d * (ln / 3))
         fp = catmull(pts, 2)
         fobjs.append(sweep('Finger', fp, circle_profile(r, 7), M['leather'],
@@ -505,7 +505,7 @@ def build_glove(sign):
     d = (t * 0.55 + pn * 0.45 + a * 0.70).normalized()
     for bend in (10, 25):
         th.append(th[-1] + d * 0.032)
-        d = Quaternion(pn.cross(d).normalized(), math.radians(bend)) @ d
+        d = Quaternion(pn.cross(d).normalized(), math.radians(bend) * sign) @ d
     thumb = sweep('Thumb', catmull(th, 2), circle_profile(0.011, 7), M['leather'],
                   scale_fn=lambda i, f: (1 - 0.2 * f, 1 - 0.2 * f))
     # brass rivets on the cuff
@@ -933,8 +933,8 @@ def arms_down(pose, l_down=18, r_down=18, l_swing=0, r_swing=0, l_elbow=12, r_el
     pose['RightForeArm'] = rot((X, -r_elbow))
     pose['LeftHandIndex1'] = rot((V(hand_frame(1)[2]), -15))
     pose['LeftHandIndex2'] = rot((V(hand_frame(1)[2]), -15))
-    pose['RightHandIndex1'] = rot((V(hand_frame(-1)[2]), -15))
-    pose['RightHandIndex2'] = rot((V(hand_frame(-1)[2]), -15))
+    pose['RightHandIndex1'] = rot((V(hand_frame(-1)[2]), 15))
+    pose['RightHandIndex2'] = rot((V(hand_frame(-1)[2]), 15))
 
 
 def legs(pose, lt, lk, lf, rt, rk, rf, l_out=0.0, r_out=0.0):
