@@ -1,4 +1,5 @@
-// Guardian missiles: what a drone's searchlight calls down. While a night drone has someone locked in its beam
+// Guardian missiles: what a hunting guardian fires at its prey (unless they're within MISSILE_MIN_R of it) and what a
+// drone's searchlight calls down. While a night drone has someone locked in its beam
 // (shared/guardians.ts), the SHOOTERS nearest guardians within MISSILE_R of them each launch a missile at them every
 // MISSILE_MS (server/guardians.ts), from far off: a guardian is usually a kilometre or more away. A missile climbs
 // out of the guardian's cannon, arcs high over the dunes and comes down on where its target was heading (a little ahead of them, a little scattered) after a flight of FLIGHT_MIN to
@@ -11,6 +12,8 @@
 /** The SHOOTERS nearest guardians within this distance (m) of someone a drone has locked on fire at them. */
 export const MISSILE_R = 1500;
 export const SHOOTERS = 2;
+/** A guardian hunting someone shells them too, beam or not, unless they're within this distance (m) of it. */
+export const MISSILE_MIN_R = 40;
 /** Each guardian fires one every this long (ms) while the beam holds someone; the first after FIRST_MS. */
 export const MISSILE_MS = 4500;
 export const FIRST_MS = 1200;

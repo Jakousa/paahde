@@ -12,7 +12,7 @@ import {
   NIGHT_SUN, REST_R, sweepAt, TRACK_RATE,
 } from '../shared/guardians.ts';
 import {
-  BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
+  BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MIN_R, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
 } from '../shared/missiles.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
@@ -196,19 +196,23 @@ export class GuardianServer {
     return { bitten, crushed, shot, blasted, events };
   }
 
-  /** Missiles: the nearest guardians shell whoever a drone's beam is on; ones that have landed burst. */
+  /** Missiles: guardians shell their prey, and the nearest ones whoever a drone's beam is on; ones that have landed burst. */
   private tickMissiles(dt: number, now: number, lit: Set<number>, players: BotPlayer[], exposed: BotPlayer[], blasted: number[], events: BoltEvent[]) {
     for (const id of this.spottedAt.keys()) if (!lit.has(id)) this.spottedAt.delete(id);
     for (const p of exposed) {
-      if (!lit.has(p.id)) continue;
-      if (!this.spottedAt.has(p.id)) this.spottedAt.set(p.id, now);
-      if (now - this.spottedAt.get(p.id)! < FIRST_MS) continue;
+      if (lit.has(p.id) && !this.spottedAt.has(p.id)) this.spottedAt.set(p.id, now);
+      const spotted = lit.has(p.id) && now - this.spottedAt.get(p.id)! >= FIRST_MS;
+      const alive = this.guardians.filter((g) => g.kind === GUARDIAN && g.deadAt < 0);
+      const shooters = new Set(alive.filter((g) => g.prey === p.id && now - g.huntAt >= FIRST_MS));
+      if (spotted) {
+        for (const g of alive.filter((g) => Math.hypot(g.x - p.x, g.z - p.z) < MISSILE_R)
+          .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)).slice(0, SHOOTERS)) shooters.add(g);
+      }
+      if (!shooters.size) continue;
       const prev = this.lastPos.get(p.id);
       const vx = prev ? (p.x - prev.x) / dt : 0, vz = prev ? (p.z - prev.z) / dt : 0;
-      const shooters = this.guardians.filter((g) => g.kind === GUARDIAN && g.deadAt < 0 && Math.hypot(g.x - p.x, g.z - p.z) < MISSILE_R)
-        .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)).slice(0, SHOOTERS);
       for (const g of shooters) {
-        if (now - g.missileAt < MISSILE_MS) continue;
+        if (now - g.missileAt < MISSILE_MS || Math.hypot(g.x - p.x, g.z - p.z) < MISSILE_MIN_R) continue;
         g.missileAt = now;
         const sc = KINDS[g.kind].scale;
         const pv = gunPivot(g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, g.yaw, sc, { x: 0, y: 0, z: 0 });
