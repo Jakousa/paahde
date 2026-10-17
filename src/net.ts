@@ -9,7 +9,7 @@ import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 
 const INTERP_MS = 100;
 
-export type RemotePlayer = { id: number; color: number; x: number; y: number };
+export type RemotePlayer = { id: number; color: number; x: number; y: number; vx: number; grounded: boolean };
 
 type Snapshot = { time: number; players: Map<number, PlayerSnap> };
 
@@ -124,7 +124,12 @@ export class Net {
     for (const pb of b.players.values()) {
       if (pb.id === this.id) continue;
       const pa = a.players.get(pb.id) ?? pb;
-      out.push({ id: pb.id, color: pb.color, x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t });
+      const pick = t < 0.5 ? pa : pb; // discrete fields come from the nearer snapshot
+      out.push({
+        id: pb.id, color: pb.color,
+        x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t,
+        vx: pick.vx, grounded: pick.grounded,
+      });
     }
     return out;
   }

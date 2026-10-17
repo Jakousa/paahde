@@ -50,7 +50,15 @@ const info = document.getElementById('info')!;
 
 const timer = new THREE.Timer();
 let accumulator = 0;
-let spin = 0;
+
+// Little flourish computed in wasm: spin while airborne. Purely visual, so each client
+// animates every player locally from the grounded/vx it already knows.
+function animateSpin(mesh: THREE.Mesh, grounded: boolean, vx: number, dt: number) {
+  const spin: number = grounded ? 0 : wasm.spin(mesh.userData.spin ?? 0, dt, 8);
+  mesh.userData.spin = spin;
+  if (Math.abs(vx) > 0.01) mesh.userData.dir = Math.sign(vx);
+  mesh.rotation.z = -(mesh.userData.dir ?? 1) * spin;
+}
 renderer.setAnimationLoop((time) => {
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);
@@ -67,9 +75,7 @@ renderer.setAnimationLoop((time) => {
   (meMesh.material as THREE.MeshStandardNodeMaterial).color.setHex(net.color);
   meMesh.visible = net.connected;
   meMesh.position.set(net.me.x + net.errorX, net.me.y + net.errorY, 0);
-  // Little flourish computed in wasm: spin while airborne.
-  spin = net.me.grounded ? 0 : wasm.spin(spin, frameDt, 8);
-  meMesh.rotation.z = -Math.sign(net.me.vx) * spin;
+  animateSpin(meMesh, net.me.grounded, net.me.vx, frameDt);
 
   const seen = new Set<number>();
   for (const r of remotes) {
@@ -77,6 +83,7 @@ renderer.setAnimationLoop((time) => {
     let mesh = remoteMeshes.get(r.id);
     if (!mesh) remoteMeshes.set(r.id, (mesh = makeCube(r.color)));
     mesh.position.set(r.x, r.y, 0);
+    animateSpin(mesh, r.grounded, r.vx, frameDt);
   }
   for (const [id, mesh] of remoteMeshes) {
     if (!seen.has(id)) {
