@@ -8,8 +8,8 @@ const GAP_MIN_MS = 2 * 60_000;
 const GAP_MAX_MS = 6 * 60_000;
 /** A new storm's centre lands this far (m) from the player it was picked for, at most. */
 const OFFSET = 220;
-const R_MIN = 80;
-const R_MAX = 190;
+const R_MIN = 110;
+const R_MAX = 250;
 const MAX_STORMS = 3;
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);

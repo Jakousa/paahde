@@ -34,7 +34,7 @@ const GUST_RANGE = 0.8;
 /** Strongest local wind relative to the regional one: the peak gust on the most exposed crest. */
 export const PEAK_LOCAL = (GUST_MIN + GUST_RANGE) * 1.8;
 /** Peak 10 m wind in a sandstorm (m/s), before its surges. */
-const STORM_PEAK = 17;
+const STORM_PEAK = 23;
 
 /** Shear velocity from the wind speed at 10 m. */
 export const ustarFrom10 = (u10: number) => (KAPPA * u10) / LOG10;

@@ -8,8 +8,9 @@
 // dies down over the last RAMP_MS. Its strength at a point is the envelope times a radial falloff: full
 // out to EDGE·r, nothing past r.
 //
-// Gameplay: inside one it's hotter (STORM_TEMP on the felt temperature, server/water.ts), you walk
-// slower against it (STORM_SLOW, shared/sim.ts) and the locator bar is lost in the dust (src/storm.ts). The base keeps it out.
+// Gameplay: inside one it's hotter (STORM_TEMP on the felt temperature, server/water.ts), you walk slower and
+// it pushes you downwind (STORM_SLOW, STORM_PUSH, shared/sim.ts), and the locator bar is lost in the dust
+// (src/storm.ts). The base keeps it out.
 import { inBase } from './base.ts';
 import { WIND } from './dunes.ts';
 

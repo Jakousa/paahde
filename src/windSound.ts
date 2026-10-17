@@ -22,7 +22,7 @@ import { heightAt } from '../shared/terrain.ts';
 const NOISE_S = 4;
 /** Ear height above the sand (m). */
 const EAR = 1.7;
-/** Ear-level wind speed (m/s) that counts as "full" for the mix; ~a sandstorm (u10 ≈ 18). */
+/** Ear-level wind speed (m/s) that counts as "full" for the mix; a sandstorm (u10 ≈ 23) is past it. */
 const U_FULL = 15;
 /** The wind is averaged over a ring this wide (m) around the head, so 4 m terrain cells don't step. */
 const RING = 4;
