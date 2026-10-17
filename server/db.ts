@@ -47,7 +47,47 @@ export function openDb(path: string) {
     ON CONFLICT (cx, cz) DO UPDATE SET data = excluded.data, updated_at = datetime('now')
   `);
 
+  // Scrap (shared/scrap.ts): picked-up pieces until they respawn, and each player's inventory.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS scrap_taken (
+      ix       INTEGER NOT NULL,
+      iz       INTEGER NOT NULL,
+      i        INTEGER NOT NULL,
+      taken_at INTEGER NOT NULL,              -- ms since epoch
+      PRIMARY KEY (ix, iz, i)
+    );
+    CREATE TABLE IF NOT EXISTS inventory (
+      player_id TEXT NOT NULL,                -- browser ID
+      kind      INTEGER NOT NULL,             -- SCRAP_KINDS index
+      count     INTEGER NOT NULL,
+      PRIMARY KEY (player_id, kind)
+    );
+  `);
+  const allTaken = db.prepare('SELECT ix, iz, i, taken_at FROM scrap_taken');
+  const insertTaken = db.prepare('INSERT OR REPLACE INTO scrap_taken (ix, iz, i, taken_at) VALUES (?, ?, ?, ?)');
+  const deleteTaken = db.prepare('DELETE FROM scrap_taken WHERE ix = ? AND iz = ? AND i = ?');
+  const getInventory = db.prepare('SELECT kind, count FROM inventory WHERE player_id = ?');
+  const addInventory = db.prepare(`
+    INSERT INTO inventory (player_id, kind, count) VALUES (?, ?, 1)
+    ON CONFLICT (player_id, kind) DO UPDATE SET count = count + 1
+  `);
+
   return {
+    loadTaken: () => allTaken.all() as { ix: number; iz: number; i: number; taken_at: number }[],
+    /** Mark a piece taken and give it to a player, atomically. */
+    takeScrap(playerId: string, ix: number, iz: number, i: number, kind: number, at: number) {
+      db.exec('BEGIN');
+      try {
+        insertTaken.run(ix, iz, i, at);
+        addInventory.run(playerId, kind);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+    },
+    respawnScrap: (ix: number, iz: number, i: number) => deleteTaken.run(ix, iz, i),
+    getInventory: (playerId: string) => getInventory.all(playerId) as { kind: number; count: number }[],
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,
     savePlayer: (p: PlayerRow) => upsert.run(p.id, p.color, p.x, p.z),
     loadChunks(): { cx: number; cz: number; data: Int32Array }[] {

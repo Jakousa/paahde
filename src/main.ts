@@ -1,11 +1,13 @@
 import * as THREE from 'three/webgpu';
 import { DT, quantizeYaw } from '../shared/sim.ts';
 import { quantizePitch } from '../shared/dig.ts';
+import { scrapTarget } from '../shared/scrap.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { DigFx } from './dig';
 import { footprints } from './footprints';
-import { readInput } from './input';
+import { InventoryHud } from './inventory';
+import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
 import { getBrowserId, Net } from './net';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
@@ -54,6 +56,8 @@ me.setShadowOnly(true); // first person: your body casts a shadow but is not dra
 scene.add(me.root, footprints.mesh);
 const remotes = new Map<number, Avatar>();
 const locator = new LocatorBar();
+const hud = new InventoryHud();
+net.onInventory = (items) => hud.setItems(items);
 
 window.addEventListener('resize', () => {
   orbit.resize();
@@ -130,6 +134,9 @@ renderer.setAnimationLoop((time) => {
   blownSand.update(frameDt, focus);
   dust.update(frameDt, orbit.camera.position);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
+  const target = net.connected ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  hud.setTarget(target);
+  if (takePickup() && target) net.pickup(target);
 
   info.textContent = `${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();

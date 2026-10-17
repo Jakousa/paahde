@@ -9,8 +9,13 @@
 // (centre ≥ 0.1·CELL from the edges, pieces within PILE_RADIUS + ~1.5 m), so collision only has to look
 // at the cell the player is in.
 //
+// Pieces can be picked up (server/scrap.ts): taken pieces are in `scrapTaken`, keyed by scrapKey(), and
+// have no hitbox until they respawn.
+//
 // Hitboxes are vertical capsules: a segment in xz (centre ± half·axis) swept by radius r, from the
 // ground up to h metres above it. Pieces lower than MIN_HITBOX are walked over.
+import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
+import { yawFromQ } from './sim.ts';
 import { baseHeight, heightAt, WORLD_HALF, WORLD_SEED } from './terrain.ts';
 
 /** Grid cell size (m); each cell holds at most one pile. */
@@ -29,19 +34,19 @@ const STAND_MARGIN = 0.15;
 export type ScrapPose = 'flat' | 'upright' | 'side' | 'stuck';
 
 /**
- * Prop kinds: glTF node name (as authored; GLTFLoader sanitizes them), scale to real size, half extents
- * after scaling (x, y, z; Y up, measured from public/models/junkyard_props.glb), and how they tend to lie.
+ * Prop kinds: glTF node name (as authored; GLTFLoader sanitizes them), inventory label, scale to real size,
+ * half extents after scaling (x, y, z; Y up, measured from public/models/junkyard_props.glb), and how they tend to lie.
  */
-export const SCRAP_KINDS: { node: string; scale: number; half: [number, number, number]; weight: number; poses: [ScrapPose, number][] }[] = [
-  { node: 'Barrel v1 ', scale: 0.28, half: [0.294, 0.44, 0.293], weight: 3, poses: [['upright', 0.5], ['side', 0.4], ['stuck', 0.1]] },
-  { node: 'Barrel v2.001', scale: 0.28, half: [0.293, 0.451, 0.291], weight: 2, poses: [['upright', 0.4], ['side', 0.5], ['stuck', 0.1]] },
-  { node: 'Gear v1.001', scale: 0.35, half: [0.39, 0.04, 0.39], weight: 1.5, poses: [['flat', 0.6], ['stuck', 0.4]] },
-  { node: 'Metal peice 2 v1.001', scale: 0.45, half: [0.644, 0.036, 0.909], weight: 2, poses: [['flat', 0.5], ['stuck', 0.5]] },
-  { node: 'Metal peice 2 v2.001', scale: 0.45, half: [0.655, 0.158, 0.905], weight: 2, poses: [['flat', 0.5], ['stuck', 0.5]] },
-  { node: 'Metal plank v1.001', scale: 0.35, half: [1.423, 0.124, 0.082], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
-  { node: 'Metal sheet v1.001', scale: 0.75, half: [0.75, 0.015, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
-  { node: 'Metal sheet v2.001', scale: 0.75, half: [0.765, 0.146, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
-  { node: 'Metal spring v1.001', scale: 0.3, half: [0.708, 0.234, 0.236], weight: 1, poses: [['flat', 1]] },
+export const SCRAP_KINDS: { node: string; label: string; scale: number; half: [number, number, number]; weight: number; poses: [ScrapPose, number][] }[] = [
+  { node: 'Barrel v1 ', label: 'Oil drum', scale: 0.28, half: [0.294, 0.44, 0.293], weight: 3, poses: [['upright', 0.5], ['side', 0.4], ['stuck', 0.1]] },
+  { node: 'Barrel v2.001', label: 'Rusty drum', scale: 0.28, half: [0.293, 0.451, 0.291], weight: 2, poses: [['upright', 0.4], ['side', 0.5], ['stuck', 0.1]] },
+  { node: 'Gear v1.001', label: 'Gear', scale: 0.35, half: [0.39, 0.04, 0.39], weight: 1.5, poses: [['flat', 0.6], ['stuck', 0.4]] },
+  { node: 'Metal peice 2 v1.001', label: 'Scrap frame', scale: 0.45, half: [0.644, 0.036, 0.909], weight: 2, poses: [['flat', 0.5], ['stuck', 0.5]] },
+  { node: 'Metal peice 2 v2.001', label: 'Bent frame', scale: 0.45, half: [0.655, 0.158, 0.905], weight: 2, poses: [['flat', 0.5], ['stuck', 0.5]] },
+  { node: 'Metal plank v1.001', label: 'Metal plank', scale: 0.35, half: [1.423, 0.124, 0.082], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
+  { node: 'Metal sheet v1.001', label: 'Metal sheet', scale: 0.75, half: [0.75, 0.015, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
+  { node: 'Metal sheet v2.001', label: 'Dented sheet', scale: 0.75, half: [0.765, 0.146, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
+  { node: 'Metal spring v1.001', label: 'Spring', scale: 0.3, half: [0.708, 0.234, 0.236], weight: 1, poses: [['flat', 1]] },
 ];
 const TOTAL_WEIGHT = SCRAP_KINDS.reduce((s, k) => s + k.weight, 0);
 
@@ -54,6 +59,8 @@ export type ScrapHitbox = { ax: number; az: number; half: number; r: number; h: 
  * `sink` is the fraction of its support depth pushed into the sand.
  */
 export type ScrapPiece = {
+  /** Unique id: scrapKey(cell ix, cell iz, index in the cell). */
+  key: string; ix: number; iz: number; i: number;
   kind: number; pose: ScrapPose; x: number; z: number; dx: number; dz: number;
   tc: number; ts: number; roll: number; sink: number; scale: number; hitbox: ScrapHitbox | null;
 };
@@ -116,12 +123,12 @@ function generate(ix: number, iz: number): ScrapPiece[] {
   for (let i = 0; i < n; i++) {
     // Pieces bunch towards the middle of the pile.
     const p = disc(r, tmpDisc), d = PILE_RADIUS * (0.4 + 0.6 * r());
-    out.push(piece(px + p.u * d, pz + p.v * d, r));
+    out.push(piece(ix, iz, i, px + p.u * d, pz + p.v * d, r));
   }
   return out;
 }
 
-function piece(x: number, z: number, r: () => number): ScrapPiece {
+function piece(ix: number, iz: number, i: number, x: number, z: number, r: () => number): ScrapPiece {
   let w = r() * TOTAL_WEIGHT, kind = 0;
   while (kind < SCRAP_KINDS.length - 1 && (w -= SCRAP_KINDS[kind].weight) >= 0) kind++;
   const K = SCRAP_KINDS[kind];
@@ -143,7 +150,7 @@ function piece(x: number, z: number, r: () => number): ScrapPiece {
   const tc = Math.sqrt(1 - ts * ts);
   const roll = (r() - 0.5) * (pose === 'stuck' ? 0.6 : pose === 'side' ? 0 : 0.2);
   const scale = 0.85 + 0.3 * r();
-  return { kind, pose, x, z, dx, dz, tc, ts, roll, sink, scale, hitbox: hitbox(K.half, pose, dx, dz, tc, ts, sink, scale) };
+  return { key: scrapKey(ix, iz, i), ix, iz, i, kind, pose, x, z, dx, dz, tc, ts, roll, sink, scale, hitbox: hitbox(K.half, pose, dx, dz, tc, ts, sink, scale) };
 }
 
 function hitbox(half: [number, number, number], pose: ScrapPose, dx: number, dz: number, tc: number, ts: number, sink: number, s: number): ScrapHitbox | null {
@@ -175,7 +182,7 @@ export function collideScrap(p: { x: number; z: number; vx: number; vz: number }
   const feet = Math.max(y, prevY);
   for (const pc of pieces) {
     const b = pc.hitbox;
-    if (!b) continue;
+    if (!b || scrapTaken.has(pc.key)) continue;
     const reach = b.half + b.r + radius;
     if (Math.abs(p.x - pc.x) > reach || Math.abs(p.z - pc.z) > reach) continue;
     // Closest point on the capsule's segment.
@@ -198,4 +205,71 @@ export function collideScrap(p: { x: number; z: number; vx: number; vz: number }
     if (vn < 0) { p.vx -= vn * ex; p.vz -= vn * ez; }
   }
   return support;
+}
+
+/** Id of piece i in cell (ix, iz). */
+export function scrapKey(ix: number, iz: number, i: number): string {
+  return `${ix},${iz},${i}`;
+}
+
+/** The piece with this id, if it exists (ids come from the network: validate them with this). */
+export function scrapPiece(ix: number, iz: number, i: number): ScrapPiece | undefined {
+  if (!Number.isInteger(ix) || !Number.isInteger(iz) || !Number.isInteger(i)) return undefined;
+  if (Math.abs(ix * SCRAP_CELL) > WORLD_HALF + SCRAP_CELL || Math.abs(iz * SCRAP_CELL) > WORLD_HALF + SCRAP_CELL) return undefined;
+  return scrapPieces(ix, iz)[i];
+}
+
+/** Picked-up pieces (keys), mirrored from the server. Call scrapChanged() after changing it. */
+export const scrapTaken = new Set<string>();
+/** Listeners for scrapTaken changes (e.g. the renderer rebuilding its instances). */
+export const scrapListeners: (() => void)[] = [];
+export function scrapChanged() {
+  for (const f of scrapListeners) f();
+}
+
+/** How far from the eye a piece can be picked up, metres. */
+export const PICKUP_REACH = 3.5;
+
+/** Centre height above the ground and radius of a piece's pickup sphere. */
+function pickSphere(pc: ScrapPiece): [number, number] {
+  const [hx, hy, hz] = SCRAP_KINDS[pc.kind].half;
+  const r = Math.max(hx, hy, hz) * pc.scale;
+  return [pc.hitbox ? pc.hitbox.h / 2 : 0.1, pc.hitbox ? Math.max(pc.hitbox.r + pc.hitbox.half, pc.hitbox.h / 2) : r * 0.8];
+}
+
+/**
+ * The piece the player is looking at (nearest pickup sphere hit by the look ray within PICKUP_REACH),
+ * or null. Same eye and look ray as digging (shared/dig.ts).
+ */
+export function scrapTarget(feet: { x: number; y: number; z: number }, yawQ: number, pitchQ: number): ScrapPiece | null {
+  const yaw = yawFromQ(yawQ), pitch = pitchFromQ(pitchQ);
+  const cp = Math.cos(pitch);
+  const dx = -Math.sin(yaw) * cp, dy = Math.sin(pitch), dz = -Math.cos(yaw) * cp;
+  const ex = feet.x, ey = feet.y + EYE_HEIGHT, ez = feet.z;
+  let best: ScrapPiece | null = null, bestT = Infinity;
+  const r = PICKUP_REACH + 2;
+  for (let iz = Math.floor((ez - r) / SCRAP_CELL); iz <= Math.floor((ez + r) / SCRAP_CELL); iz++) {
+    for (let ix = Math.floor((ex - r) / SCRAP_CELL); ix <= Math.floor((ex + r) / SCRAP_CELL); ix++) {
+      for (const pc of scrapPieces(ix, iz)) {
+        if (scrapTaken.has(pc.key) || Math.abs(pc.x - ex) > r || Math.abs(pc.z - ez) > r) continue;
+        const [cy, rad] = pickSphere(pc);
+        // Ray vs sphere: closest approach along the ray.
+        const ox = pc.x - ex, oy = heightAt(pc.x, pc.z) + cy - ey, oz = pc.z - ez;
+        const t = ox * dx + oy * dy + oz * dz;
+        const d2 = ox * ox + oy * oy + oz * oz - t * t;
+        if (d2 > rad * rad) continue;
+        const hit = t - Math.sqrt(rad * rad - d2); // entry point (negative: the eye is inside)
+        if (hit > PICKUP_REACH || t < 0) continue;
+        if (hit < bestT) { bestT = hit; best = pc; }
+      }
+    }
+  }
+  return best;
+}
+
+/** Distance from the eye to a piece's pickup sphere (0 inside it). For server-side reach checks. */
+export function scrapReach(feet: { x: number; y: number; z: number }, pc: ScrapPiece): number {
+  const [cy, rad] = pickSphere(pc);
+  const d = Math.hypot(pc.x - feet.x, heightAt(pc.x, pc.z) + cy - (feet.y + EYE_HEIGHT), pc.z - feet.z);
+  return Math.max(0, d - rad);
 }

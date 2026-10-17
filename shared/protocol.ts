@@ -6,7 +6,9 @@ export type ClientMsg =
   | { t: 'hello'; browserId: string }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
-  | { t: 'input'; seq: number; input: number; yaw: number; pitch: number };
+  | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
+  // Pick up scrap piece i of cell (ix, iz) (shared/scrap.ts). Sent after the input it was aimed with.
+  | { t: 'pickup'; ix: number; iz: number; i: number };
 
 // pitch: the player's quantized camera pitch (pitchFromQ in shared/dig.ts), so remote avatars can
 // tilt their heads.
@@ -27,4 +29,10 @@ export type ServerMsg =
   | { t: 'terrainChunks'; chunks: { cx: number; cz: number; mm: number[] }[]; reset?: boolean; done?: boolean }
   | { t: 'terrainEdit'; cells: number[] }
   // Another player dug (pile = false) or piled sand at (x, y, z): for particle effects only.
-  | { t: 'dug'; id: number; x: number; y: number; z: number; pile: boolean };
+  | { t: 'dug'; id: number; x: number; y: number; z: number; pile: boolean }
+  // Scrap pieces picked up (taken) or respawned (back), as flat [ix, iz, i, ...] triples. On join, before
+  // 'welcome', with reset: the full taken list, replacing whatever the client had. Sent before the
+  // snapshot, like terrainEdit. A rejected pickup gets its piece back in a message to that player only.
+  | { t: 'scrap'; taken: number[]; back: number[]; reset?: boolean }
+  // The player's inventory: count per SCRAP_KINDS index. Sent after 'welcome' and on every change.
+  | { t: 'inventory'; items: number[] };

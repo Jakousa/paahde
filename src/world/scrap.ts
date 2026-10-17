@@ -4,13 +4,14 @@
 // this only turns each piece into an instance matrix.
 //
 // Only cells within VIEW_CELLS of the player are drawn; each prop kind is one InstancedMesh, rebuilt
-// when the player crosses into another cell or the ground under a pile is dug.
+// when the player crosses into another cell, the ground under a pile is dug, or a piece is picked up
+// or respawns.
 //
 // Model: "Junkyard Props" by haroonimtiaz35, CC-BY-4.0
 // https://sketchfab.com/3d-models/junkyard-props-37343a1b386f4d75879be93319dbb717
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { SCRAP_CELL, SCRAP_KINDS, scrapPieces, type ScrapPiece } from '../../shared/scrap.ts';
+import { SCRAP_CELL, SCRAP_KINDS, scrapListeners, scrapPieces, scrapTaken, type ScrapPiece } from '../../shared/scrap.ts';
 import { EDIT_CELL, EDIT_CHUNK, edits, heightAt, normalAt } from '../../shared/terrain.ts';
 
 const MODEL_URL = './models/junkyard_props.glb';
@@ -42,6 +43,7 @@ export class Scrap {
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
+    scrapListeners.push(() => (this.dirty = true)); // picked up or respawned
     new GLTFLoader().load(MODEL_URL, (gltf) => this.init(gltf.scene), undefined, (err) => console.warn('scrap: failed to load', err));
     const prev = edits.onChange;
     edits.onChange = (cx, cz) => {
@@ -108,7 +110,7 @@ export class Scrap {
 
   private place(pc: ScrapPiece) {
     const kind = this.kinds[pc.kind];
-    if (!kind || kind.count >= CAPACITY) return;
+    if (!kind || kind.count >= CAPACITY || scrapTaken.has(pc.key)) return;
     _qb.setFromEuler(_e.set(Math.atan2(pc.ts, pc.tc), Math.atan2(pc.dx, pc.dz), pc.roll));
     // Lean with the ground, a little: props rest on dune slopes instead of poking out. Pieces with a
     // hitbox stay upright so their top matches where players stand.

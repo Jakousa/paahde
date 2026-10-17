@@ -102,6 +102,10 @@ at our scale and the whole team can read and change it. Alternatives, if needs g
   own strokes and holds back server values for predicted vertices until a snapshot acks the input that
   dug them. Joining clients get all edited chunks (`terrainChunks`) before `welcome`; chunks persist in
   the `terrain_chunks` SQLite table (saved every 5 s and on shutdown).
+- **Scrap pickups** (`shared/scrap.ts`, `server/scrap.ts`): the client sends `pickup` with the piece id
+  and hides the piece (and its hitbox) at once. The server checks reach from its own view of the player,
+  marks it taken, adds it to the player's inventory (SQLite `scrap_taken`, `inventory`) and broadcasts
+  `scrap` before the snapshot; a refused pickup gets its piece back. Pieces respawn after 30 minutes.
 - To get here next: player-vs-player collision, which makes predicted players interact with
   interpolated ones (other players appear 100 ms in the past), so keep interactions forgiving.
 

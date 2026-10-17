@@ -3,7 +3,11 @@ import { BACK, DIG, FORWARD, JUMP, LEFT, PILE, RIGHT, SPRINT } from '../shared/s
 const keys = new Set<string>();
 let mouseDig = false;
 let mousePile = false;
-addEventListener('keydown', (e) => keys.add(e.code));
+let pickupPressed = false;
+addEventListener('keydown', (e) => {
+  keys.add(e.code);
+  if (e.code === 'KeyF' && !e.repeat) pickupPressed = true;
+});
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => {
   keys.clear();
@@ -35,4 +39,11 @@ export function readInput(): number {
   if (mouseDig || keys.has('KeyE')) input |= DIG;
   else if (mousePile || keys.has('KeyQ')) input |= PILE;
   return input;
+}
+
+/** True once per press of the pickup key (F). */
+export function takePickup(): boolean {
+  const p = pickupPressed;
+  pickupPressed = false;
+  return p;
 }

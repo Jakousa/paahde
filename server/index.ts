@@ -6,8 +6,10 @@ import sirv from 'sirv';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { DIG_COOLDOWN_TICKS, PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
+import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
+import { ScrapServer } from './scrap.ts';
 import { TerrainServer } from './terrain.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -20,6 +22,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const db = openDb(process.env.DB_PATH ?? 'data/dadajam.db');
 const terrain = new TerrainServer(db);
+const scrap = new ScrapServer(db);
 
 type Player = {
   id: number;
@@ -33,6 +36,7 @@ type Player = {
   tokens: number; // input rate limiter: refills at TICK_RATE/s, so inputs can't speed up time
   lastInputAt: number;
   idleAccum: number;
+  lastPickup: { at: number };
   ws: WebSocket;
   alive: boolean;
 };
@@ -80,6 +84,7 @@ wss.on('connection', (ws) => {
     const p = players.get(ws);
     if (msg.t === 'hello' && !p) return join(ws, msg.browserId);
     if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
+    if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
   });
   ws.on('close', () => {
     const p = players.get(ws);
@@ -98,13 +103,24 @@ function join(ws: WebSocket, browserId: unknown) {
   const state = row ? spawnState(row.x, row.z) : spawnState();
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
-    tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, ws, alive: true,
+    tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, ws, alive: true,
   };
   players.set(ws, p);
   save(p);
   // Terrain first, so the client never sees its spawn without the holes.
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
+  send(ws, scrap.joinMessage());
   send(ws, { t: 'welcome', id: p.id, state, color });
+  send(ws, { t: 'inventory', items: scrap.inventory(browserId) });
+}
+
+function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {
+  const items = scrap.pickup(p.browserId, p.state, ix, iz, i, p.lastPickup);
+  if (items) return send(p.ws, { t: 'inventory', items });
+  // Refused: the client already hid the piece. If it is still there, tell this client to show it again.
+  if (typeof ix === 'number' && typeof iz === 'number' && typeof i === 'number' && !scrapTaken.has(scrapKey(ix, iz, i))) {
+    send(p.ws, { t: 'scrap', taken: [], back: [ix, iz, i] });
+  }
 }
 
 function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: unknown) {
@@ -167,10 +183,10 @@ setInterval(() => {
 }, 1000 / TICK_RATE);
 
 function broadcast(time: number) {
-  // Terrain changes go out before the snapshot, so a client seeing ack N has every edit up to N.
-  const edit = terrain.flush();
-  if (edit) {
-    const json = JSON.stringify(edit);
+  // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
+  for (const msg of [terrain.flush(), scrap.flush()]) {
+    if (!msg) continue;
+    const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
   }
   const list: PlayerSnap[] = [...players.values()].map((p) => ({ id: p.id, color: p.color, pitch: p.pitch, ...round(p.state) }));
@@ -196,6 +212,7 @@ function save(p: Player) {
 setInterval(() => {
   players.forEach(save);
   terrain.save();
+  scrap.respawn();
 }, SAVE_INTERVAL_MS);
 
 // Heartbeat: keeps NATs/proxies from dropping idle sockets and terminates dead ones.

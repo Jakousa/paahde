@@ -7,9 +7,12 @@
 // - Terrain: the server owns the edit layer and sends absolute values. Our own dig strokes are predicted
 //   immediately; the server's value for each predicted vertex is held back until a snapshot acks the
 //   input that dug it (terrainEdit always arrives before that snapshot), then applied.
+// - Scrap: picked-up pieces are hidden (and lose their hitbox) as soon as we ask; the server sends the
+//   piece back to us if it refuses, and our new inventory if it agrees.
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
+import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 
 const INTERP_MS = 100;
@@ -45,6 +48,11 @@ export class Net {
   /** Chunks we held before a (re)join; whatever the server doesn't resend is dropped. */
   private staleChunks = new Set<string>();
 
+  /** Scrap count per SCRAP_KINDS index, from the server. */
+  inventory: number[] = [];
+  /** The server sent a new inventory. */
+  onInventory?: (items: number[]) => void;
+
   /** A dig/pile stroke landed: ours (predicted) or another player's. For effects only. */
   onDig?: (at: Point, pile: boolean, mine: boolean, id: number) => void;
 
@@ -65,6 +73,24 @@ export class Net {
     this.pending.push({ seq: this.seq, input, yaw });
     this.send({ t: 'input', seq: this.seq, input, yaw, pitch });
     this.predictDig(input, yaw, pitch);
+  }
+
+  /** Pick up a scrap piece: hidden now, confirmed (inventory) or put back by the server. */
+  pickup(pc: ScrapPiece) {
+    if (!this.connected || scrapTaken.has(pc.key)) return;
+    this.send({ t: 'pickup', ix: pc.ix, iz: pc.iz, i: pc.i });
+    scrapTaken.add(pc.key);
+    scrapChanged();
+  }
+
+  private applyScrap(msg: Extract<ServerMsg, { t: 'scrap' }>) {
+    if (msg.reset) scrapTaken.clear();
+    for (let i = 0; i + 2 < msg.taken.length; i += 3) {
+      const pc = scrapPiece(msg.taken[i], msg.taken[i + 1], msg.taken[i + 2]);
+      if (pc) scrapTaken.add(pc.key);
+    }
+    for (let i = 0; i + 2 < msg.back.length; i += 3) scrapTaken.delete(scrapKey(msg.back[i], msg.back[i + 1], msg.back[i + 2]));
+    scrapChanged();
   }
 
   // Same countdown and stroke as the server's dig() in server/index.ts.
@@ -163,6 +189,11 @@ export class Net {
     if (msg.t === 'version') return reloadIfStale(msg.build);
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);
+    if (msg.t === 'scrap') return this.applyScrap(msg);
+    if (msg.t === 'inventory') {
+      this.inventory = msg.items;
+      return this.onInventory?.(msg.items);
+    }
     if (msg.t === 'dug') {
       if (msg.id !== this.id) this.onDig?.({ x: msg.x, y: msg.y, z: msg.z }, msg.pile, false, msg.id);
       return;
