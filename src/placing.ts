@@ -55,7 +55,7 @@ export class Placer {
       return { prompt: pickHint, target };
     }
     const at = placeAim(feet, yaw, pitch, kind, this.rot, placed);
-    const why = at ? placeError(kind, at.x, at.z, at.rot, placed, [feet]) : 'Aim at the floor of the base';
+    const why = at ? placeError(kind, at.x, at.z, at.rot, placed, [feet]) : 'Aim at the floor';
     this.view.preview(kind, at, !why);
     if (pressed) {
       if (why) toast(why);

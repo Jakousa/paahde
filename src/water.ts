@@ -63,8 +63,6 @@ const css = `
 /* Ten segments, like a thermometer scale. */
 #heat .bar::after { content: ''; position: absolute; inset: 0;
   background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(20, 10, 5, 0.7) calc(10% - 1px) 10%); }
-#heat .hint { display: none; margin-top: 5px; font-size: 11px; color: #ff8a66; }
-#heat.high .hint { display: block; }
 #heat.high { animation: heatGlow 1.1s ease-in-out infinite; }
 @keyframes heatGlow { 0%, 100% { box-shadow: 0 0 0 1px rgba(255, 90, 40, 0.3); }
   50% { box-shadow: 0 0 0 2px rgba(255, 90, 40, 0.85); } }
@@ -160,9 +158,8 @@ export class Survival {
 
     this.root.id = 'survival';
     this.heat.id = 'heat';
-    this.heat.innerHTML = `<div class="head">${THERMO_SVG}<span class="label">Body heat</span><span class="trend"></span>`
-      + `<span class="num"></span></div><div class="bar"><div class="fill"></div></div>`
-      + `<div class="hint">Overheating — drink or find shade</div>`;
+    this.heat.innerHTML = `<div class="head">${THERMO_SVG}<span class="label">Heat</span><span class="trend"></span>`
+      + `<span class="num"></span></div><div class="bar"><div class="fill"></div></div>`;
     this.env.id = 'env';
     this.env.innerHTML = `<span class="clock" title="Time of day"></span>`
       + `<span class="temp" title="Felt temperature">${SUN_ICON}${SHADE_ICON}<span class="deg"></span></span>`;
@@ -185,7 +182,7 @@ export class Survival {
     this.toastEl.id = 'waterToast';
     this.vignette.id = 'heatVignette';
     this.death.id = 'deathScreen';
-    this.death.innerHTML = 'You died of heatstroke<small>The sun got you. Back at the base, water bottle refilled.</small>';
+    this.death.innerHTML = 'Heatstroke';
     document.body.append(this.vignette, this.root, this.heat, this.env, this.prompt, this.toastEl, this.death);
 
     addEventListener('keydown', (e) => {
@@ -239,8 +236,8 @@ export class Survival {
       changed = true;
       s.dataset.sig = sig;
       s.classList.toggle('broken', broken);
-      s.title = !it ? '' : broken ? `${itemLabel(it.kind)} (broken: repair it at the workbench in the base)`
-        : it.kind === 'spyglass' ? 'Telescope: hold the mouse button to look, wheel to zoom' : itemLabel(it.kind);
+      s.title = !it ? '' : broken ? `${itemLabel(it.kind)} (broken)`
+        : itemLabel(it.kind);
       s.innerHTML = `<span class="key">${i + 1}</span>${it ? itemIcon(it.kind) : ''}`
         + (it?.kind === 'canteen' && !broken ? `<div class="pips">${'<i></i>'.repeat(max)}</div>` : it && it.n > 1 ? `<span class="n">${it.n}</span>` : '');
     });
@@ -288,8 +285,8 @@ export class Survival {
       }
     } else if (holding && use && !this.needRelease && !playerHands.filling && !dead) {
       this.needRelease = true;
-      if (!bottle) this.toast('The water bottle is broken: repair it at the workbench in the base');
-      else if (w.sips <= 0) this.toast(atBase ? 'Bottle empty: press F to fill it' : 'Bottle empty: fill it at the pump in the base');
+      if (!bottle) this.toast('Broken');
+      else if (w.sips <= 0) this.toast('Empty');
       else {
         playerHands.drinking = true;
         this.actionAt = now;
@@ -304,7 +301,7 @@ export class Survival {
         this.net.fill();
       }
     } else if (interact && holding && bottle && atBase && !playerHands.drinking && !dead) {
-      if (w.sips >= w.maxSips) this.toast('The bottle is already full');
+      if (w.sips >= w.maxSips) this.toast('Full');
       else {
         playerHands.filling = true;
         this.actionAt = now;
@@ -314,11 +311,11 @@ export class Survival {
     // Prompt under the crosshair (the scrap prompt wins when a piece is targeted).
     let html = '';
     if (!scrapTargeted && holding && !dead) {
-      if (!bottle) html = 'Broken: repair it at the workbench';
-      else if (playerHands.filling) html = `Filling the bottle…<span class="prog"></span>`;
-      else if (playerHands.drinking) html = `Drinking…<span class="prog"></span>`;
-      else if (atBase) html = `<kbd>F</kbd>Fill the bottle`;
-      else if (w.sips <= 0) html = 'Bottle empty: fill it at the pump in the base';
+      if (!bottle) html = 'Broken';
+      else if (playerHands.filling) html = `<span class="prog"></span>`;
+      else if (playerHands.drinking) html = `<span class="prog"></span>`;
+      else if (atBase) html = `<kbd>F</kbd>Fill`;
+      else if (w.sips <= 0) html = 'Empty';
     }
     if (html !== this.promptHtml) {
       this.promptHtml = html;
@@ -361,7 +358,7 @@ export class Survival {
     if (w.shade !== this.lastShade) {
       this.lastShade = w.shade;
       this.tempEl.classList.toggle('shade', w.shade);
-      this.tempEl.title = w.shade ? 'Felt temperature — out of the sun' : 'Felt temperature — in direct sun';
+      this.tempEl.title = w.shade ? 'Shade' : 'Sun';
     }
     const high = this.shown > HEAT_HIGH && !dead;
     this.heat.classList.toggle('rising', w.rising && !dead);
@@ -372,7 +369,7 @@ export class Survival {
       this.lastTrend = trend;
       this.trendEl.textContent = trend === 'up' ? '▲' : trend === 'down' ? '▼' : '';
       this.trendEl.style.color = trend === 'up' ? '#ff7a4a' : '#7cc4ff';
-      this.heat.title = trend === 'up' ? 'Body heat — rising: drink to cool down, at 100% you collapse' : 'Body heat — at 100% you collapse';
+      this.heat.title = 'Heat: collapse at 100%';
     }
     this.vignette.style.opacity = high ? String(0.35 + 0.65 * (this.shown - HEAT_HIGH) / (HEAT_MAX - HEAT_HIGH)) : '0';
     this.vignette.classList.toggle('pulse', high && w.rising);

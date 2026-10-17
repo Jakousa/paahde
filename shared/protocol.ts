@@ -60,7 +60,7 @@ export type ClientMsg =
   | { t: 'drop'; box: string; slot: number }
   // Pick up loot (shared/loot.ts) in reach. Answered with 'items' (or a 'notice' when the bag is full).
   | { t: 'lootTake'; id: number }
-  // Debug menu: repaired gear of every kind, Common parts (for testing).
+  // Debug menu: repaired gear of every kind, Scrap parts (for testing).
   | { t: 'debugGear' }
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
   // there, puts it in your bag as an item (of the component's kind) and answers 'items'.

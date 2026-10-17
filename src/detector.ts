@@ -62,7 +62,7 @@ export class Detector {
     this.el.style.display = 'flex';
     const lit = signal > 0 ? Math.max(1, Math.ceil(signal * BARS)) : 0;
     this.bars.forEach((b, i) => b.classList.toggle('on', i < lit));
-    this.text.textContent = near < ON_TOP ? 'Right there: dig' : signal > 0 ? 'Signal' : 'Nothing';
+    this.text.textContent = near < ON_TOP ? 'Dig' : signal > 0 ? 'Signal' : 'Nothing';
     if (signal <= 0) {
       this.next = 0;
       return;

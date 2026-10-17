@@ -158,7 +158,6 @@ const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
-net.onTended = (what) => hud.toast(what === 'planted' ? 'Seeds planted' : 'Harvested the greens');
 net.onPlaced = () => placedView.sync(placed, net.garden);
 net.onNotice = (text) => hud.toast(text);
 const placer = new Placer(net, placedView);
@@ -322,7 +321,7 @@ renderer.setAnimationLoop((time) => {
   const stage = bed ? (bedState?.stage ?? EMPTY) : -1;
   const tend = stage === EMPTY ? 'Plant seeds' : stage === GROWN ? 'Harvest' : null;
   // Sprouts grow only under a UV lamp (shared/garden.ts).
-  const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>Growing under the lamp · ${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : '<span class="bad">Sprouts need a UV lamp over the bed</span>') : null;
+  const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : '<span class="bad">Needs UV lamp</span>') : null;
   const target = net.connected && station < 0 && !bed ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   // Debris at the crash sites (hull plates, pipes, ...) is picked up like scrap, as a scrap item (shared/items.ts DEBRIS_ITEMS).
   const debris = net.connected && station < 0 && !bed && !target && !teardown.active ? debrisTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
@@ -338,7 +337,7 @@ renderer.setAnimationLoop((time) => {
   const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`)
     : wreck ? `Pick up ${SALVAGE[wreck.kind].label.toLowerCase()}` : null;
   const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
-  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use disassembly table');
+  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use table');
   const fPrompt = use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `<kbd>F</kbd>${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
@@ -354,7 +353,7 @@ renderer.setAnimationLoop((time) => {
           machines.bench.ask();
           net.crashUse(table.kind);
         }
-      } else hud.toast('Carry a small machine or a wreck here to take it apart');
+      } else hud.toast('Nothing to take apart');
     } else if (tend && bed) net.tend(bed.id);
     else if (target) {
       if (net.pickup(target)) pickupSound.play();

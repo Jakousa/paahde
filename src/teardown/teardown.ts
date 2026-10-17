@@ -19,7 +19,7 @@ import { type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
 import { keyHeld, tools, ui } from '../input.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
-import { partName, PART_NAMES, rarityColor, TeardownUi } from './ui.ts';
+import { partName, rarityColor, TeardownUi } from './ui.ts';
 
 /** Something to work on: a machine at a crash site, or a carried one on the workbench. */
 export interface WorkSite {
@@ -115,7 +115,6 @@ const KEY_TURN = 2.2;
 const SOLO = new URLSearchParams(location.search).has('debug');
 
 type Phase = 'idle' | 'walk' | 'work';
-const kbd = (k: string) => `<kbd>${k}</kbd>`;
 
 const HOVER_MAT = new THREE.MeshBasicNodeMaterial({ color: 0xffffff });
 
@@ -244,7 +243,7 @@ export class TeardownView {
     tools.frozen = true;
     if (document.pointerLockElement) ui.debugFreed = true; // freed on purpose: don't open the Esc menu (src/menu.ts)
     document.exitPointerLock();
-    this.ui.setPhase('walk', site.label, site.movable);
+    this.ui.setPhase('walk');
     site.link?.join();
     if (!site.junk.root.parent) this.scene.add(site.junk.root);
     this.home.set(site.x, site.ground(site.x, site.z), site.z);
@@ -275,7 +274,7 @@ export class TeardownView {
     this.hover = null;
     this.phase = 'idle';
     tools.frozen = false;
-    this.ui.setPhase('off', '');
+    this.ui.setPhase('off');
   }
 
   /** Called every frame before the input is read. Walks the character to the machine, eases the view onto it,
@@ -318,7 +317,7 @@ export class TeardownView {
       if (fwd || back) this.workDist = d;
       else if (bits && Math.abs(this.lookYaw) < 0.3) bits |= d > this.workDist + 0.25 ? FORWARD : d < this.workDist - 0.25 ? BACK : 0; // keep the circle
       const far = d > leave - 1.2;
-      if (far && !this.farWarned) this.ui.message('Step back any further and you leave', true);
+      if (far && !this.farWarned) this.ui.message('Too far', true);
       this.farWarned = far;
       return bits;
     }
@@ -326,7 +325,7 @@ export class TeardownView {
     if ((d <= stand + 0.15 && d >= stand - 0.5) || this.walkFor > WALK_TIMEOUT) {
       this.phase = 'work';
       this.workDist = d;
-      this.ui.setPhase('work', site.label, site.movable);
+      this.ui.setPhase('work');
       this.refreshCard();
       this.nextAt = 0;
       return 0;
@@ -411,13 +410,12 @@ export class TeardownView {
       s.piece.obj.visible = true;
       this.ui.fly(p.x, p.y, s.part as PartId, s.tier as Tier);
       const j = site.junk;
-      if (j.slots.every((x) => x.taken)) this.ui.message('All parts taken: Esc to leave');
       site.changed?.();
       this.computeRest();
     } else {
       s.piece.obj.visible = true;
       s.taken = false;
-      this.ui.message(reason === 'full' ? 'Bag full: make room, then take it again' : reason === 'taken' ? 'Someone else got that part first' : 'Could not take that', true);
+      this.ui.message(reason === 'full' ? 'Bag full' : reason === 'taken' ? 'Taken' : 'Failed', true);
     }
     this.refreshCard();
   }
@@ -435,24 +433,12 @@ export class TeardownView {
     this.nextAt = 0;
   }
 
-  /** "What next": a freed part, else the ready steps on the side you look at, else turn it / walk around. */
+  /** Only when nothing is left on the side you look at: how many steps wait on another side. */
   private nextHint(): string {
-    const site = this.site!;
-    const j = site.junk;
-    const free = j.slots.filter((s) => slotOpen(s) && !this.pendingSlot(s));
-    if (free.length) return `Take the ${PART_NAMES[free[0].part as PartId].toLowerCase()}: click it`;
-    if (j.slots.every((s) => s.taken)) return 'Every part is out. Esc to leave';
+    const j = this.site!.junk;
+    if (j.slots.some((s) => slotOpen(s) && !this.pendingSlot(s))) return '';
     const ready = j.steps.filter(stepReady);
-    if (!ready.length) return 'Nothing left to undo here';
-    const facing = ready.filter((s) => this.faces(s));
-    if (!facing.length) {
-      const n = ready.length;
-      return site.movable ? `Turn it over: ${n} more on another side` : `Walk around it: ${n} more on another side`;
-    }
-    const by = new Map<string, number>();
-    for (const s of facing) by.set(s.label, (by.get(s.label) ?? 0) + 1);
-    const [label, n] = [...by].sort((a, b) => b[1] - a[1])[0];
-    return `Next: ${label.toLowerCase()}${n > 1 ? ` ×${n}` : ''}`;
+    return ready.length && !ready.some((s) => this.faces(s)) ? `${ready.length} on another side` : '';
   }
 
   private pendingSlot(s: Slot) {
@@ -560,16 +546,16 @@ export class TeardownView {
     if (t.type === 'step') {
       const s = t.step;
       const b = s.after.filter((a) => !a.done);
-      if (b.length) return { title: s.label, action: `Remove the ${this.listSteps(b)} first`, locked: true };
+      if (b.length) return { title: s.label, action: `after ${this.listSteps(b)}`, locked: true };
       switch (s.kind) {
-        case 'screw': return { title: s.label, action: `${kbd('LMB')}click ×${s.need - Math.floor(s.progress)} to unscrew` };
-        case 'clip': return { title: s.label, action: `${kbd('LMB')}click${s.need > 1 ? ` ×${s.need - Math.floor(s.progress)}` : ''} to unclip` };
-        case 'bolt': return { title: s.label, action: `${kbd('LMB')}hold and circle to unscrew` };
-        case 'wire': return { title: s.label, action: `${kbd('LMB')}hold and swipe across to cut` };
-        case 'pry': return { title: s.label, action: `${kbd('LMB')}drag away to pry open` };
+        case 'screw': return { title: s.label, action: `×${s.need - Math.floor(s.progress)}` };
+        case 'clip': return { title: s.label, action: s.need > 1 ? `×${s.need - Math.floor(s.progress)}` : '' };
+        case 'bolt': return { title: s.label, action: 'circle' };
+        case 'wire': return { title: s.label, action: 'swipe' };
+        case 'pry': return { title: s.label, action: 'pry' };
         case 'lift': {
           const n = SOLO ? s.players : this.holders(s);
-          return { title: s.label, action: `${kbd('LMB')}hold with ${s.players - 1 === 1 ? 'a second player' : `${s.players - 1} more players`} (${n}/${s.players})` };
+          return { title: s.label, action: `${n}/${s.players} players` };
         }
       }
     }
@@ -577,8 +563,8 @@ export class TeardownView {
       const s = t.slot;
       const title = partName(s.part as PartId, s.tier as Tier);
       const color = rarityColor(s.tier as Tier);
-      if (slotOpen(s)) return { title, color, action: `${kbd('LMB')}click to take` };
-      return { title, color, action: `Held by ${this.listSteps(s.piece.holds)}`, locked: true };
+      if (slotOpen(s)) return { title, color, action: '' };
+      return { title, color, action: this.listSteps(s.piece.holds), locked: true };
     }
     return null;
   }
@@ -823,8 +809,6 @@ export class TeardownView {
     if (how === 'silent') return;
     const fresh = j.slots.filter((x) => slotOpen(x) && !this.announced.has(x));
     for (const x of fresh) this.announced.add(x);
-    if (fresh.length) this.ui.message(`${partName(fresh[0].part as PartId, fresh[0].tier as Tier)} is free: click it to take it`);
-    else if (freed.length) this.ui.message('Cover off');
   }
 
   private releasePiece(p: Piece, silent: boolean) {

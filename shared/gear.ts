@@ -76,7 +76,7 @@ export function repaired(it: Item | null | undefined): boolean {
 }
 
 /**
- * How good a repaired item is: the mean tier of its tiered parts, 0 (all Common) .. 3 (all Legendary).
+ * How good a repaired item is: the mean tier of its tiered parts, 0 (all Scrap) .. 3 (all Space-grade).
  * -1 when it's broken (or not gear).
  */
 export function quality(it: Item | null | undefined): number {

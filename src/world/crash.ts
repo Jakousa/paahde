@@ -188,9 +188,9 @@ export class Bench {
   /** What the table offers: work on the machine on it, or put a carried one from the bag on it. */
   offer(bag: Slots | undefined): { label: string; kind: JunkKind; resume: boolean } | null {
     const cur = this.job;
-    if (cur) return { label: `Disassemble the ${junkSpec(cur.kind).label.toLowerCase()}`, kind: cur.kind, resume: true };
+    if (cur) return { label: `Disassemble ${junkSpec(cur.kind).label.toLowerCase()}`, kind: cur.kind, resume: true };
     const kind = CARRY_KINDS.find((k) => hasItem(bag, k));
-    return kind ? { label: `Put the ${junkSpec(kind).label.toLowerCase()} on the table`, kind, resume: false } : null;
+    return kind ? { label: `Place ${junkSpec(kind).label.toLowerCase()}`, kind, resume: false } : null;
   }
 
   /** We sent crashUse: the server's 'bench' answer starts the mode (onReady). */

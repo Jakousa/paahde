@@ -113,7 +113,7 @@ export function placeError(kind: string, x: number, z: number, rot: number, list
   const f = footprint(kind, x, z, rot);
   const m = 0.05;
   if (f[0] < BASE.x - ROOM.w + m || f[2] > BASE.x + ROOM.w - m || f[1] < BASE.z + ROOM.z + m || f[3] > BASE.z + HALL.z - m) {
-    return 'Only on the floor of the base';
+    return 'Floor only';
   }
   for (const k of KEEP_CLEAR) if (overlap(f, k.r)) return `Too close to ${k.what}`;
   if (list.length >= MAX_PLACED) return 'The base is full';
@@ -124,7 +124,7 @@ export function placeError(kind: string, x: number, z: number, rot: number, list
   }
   const fp = footprint(kind, x, z, rot, 0.4);
   for (const s of players) {
-    if (s.y < PLACE_FLOOR_Y + 2.5 && s.x > fp[0] && s.x < fp[2] && s.z > fp[1] && s.z < fp[3]) return 'Someone is standing there';
+    if (s.y < PLACE_FLOOR_Y + 2.5 && s.x > fp[0] && s.x < fp[2] && s.z > fp[1] && s.z < fp[3]) return 'Blocked';
   }
   return null;
 }

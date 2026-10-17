@@ -315,7 +315,7 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
   gearChanged(p.browserId);
 }
 
-// Debug menu: one of each piece of gear, repaired with Common parts, into the bag (what fits) and the
+// Debug menu: one of each piece of gear, repaired with Scrap parts, into the bag (what fits) and the
 // equipment slots (if free).
 function onDebugGear(p: Player) {
   for (const kind of GEAR_KINDS) {

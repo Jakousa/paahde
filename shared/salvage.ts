@@ -19,10 +19,10 @@ export const TIERS = ['scrap', 'basic', 'quality', 'space'] as const;
 export type Tier = (typeof TIERS)[number];
 
 export const RARITY: Record<Tier, { name: string; color: number }> = {
-  scrap: { name: 'Common', color: 0xb08a62 },
-  basic: { name: 'Uncommon', color: 0x74d08a },
-  quality: { name: 'Rare', color: 0xff9a3c },
-  space: { name: 'Legendary', color: 0x3ff0ff },
+  scrap: { name: 'Scrap', color: 0xb08a62 },
+  basic: { name: 'Basic', color: 0x74d08a },
+  quality: { name: 'Quality', color: 0xff9a3c },
+  space: { name: 'Space-grade', color: 0x3ff0ff },
 };
 
 export interface SalvageKind {

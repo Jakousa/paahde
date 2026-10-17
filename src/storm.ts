@@ -104,7 +104,7 @@ export class StormFx {
         beep();
       }
       const secs = Math.ceil((coming.start - now) / 1000);
-      this.show(`⚠ Sandstorm detected · ${secs} s`, true);
+      this.show(`⚠ Sandstorm · ${secs} s`, true);
     } else {
       this.show('', false);
     }

@@ -1,12 +1,12 @@
 // DOM for the disassembly mode: a full-screen overlay that takes the pointer (so clicks never reach the game
 // canvas and re-capture the mouse). On it, styled like the Esc menu (src/menu.ts):
-//   top panel    the machine, its rarity, steps and parts progress, what to do next, the few keys, Leave
-//   tip          next to the pointer: what is under it and the exact action ("Click ×3", "Circle to unscrew"),
-//                or why it is locked ("Remove the lid screws first")
+//   top panel    the machine, its rarity, steps and parts progress, Leave; "3 on another side" when stuck
+//   tip          next to the pointer: what is under it and a terse action ("×3", "circle"),
+//                or what it waits on ("after lid screw ×4")
 //   ring         radial progress drawn around the step being worked (and the guide circle for bolts)
 //   tags         a label over every part that is free to take
-//   message      a short line for events ("Lid off", "Bag full"), fading out
-//   fly          "+ Motor · Rare" flying from the part to the hotbar when a part is taken
+//   message      a short line for events ("Bag full"), fading out
+//   fly          "+ Motor · Quality" flying from the part to the hotbar when a part is taken
 import { RARITY, type PartId, type Tier } from '../../shared/salvage.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
@@ -42,10 +42,9 @@ body.teardown #crosshair, body.teardown #pickup { display: none !important; }
 #tdTop .bar { height: 5px; border-radius: 3px; background: rgba(255, 240, 220, 0.12); overflow: hidden; }
 #tdTop .bar i { display: block; height: 100%; width: 0; background: #ffd9a0; transition: width .25s; }
 #tdTop .bar.parts i { background: var(--c, #ffd9a0); }
-#tdTop .next { color: #fff4e4; min-height: 1.3em; }
+#tdTop .next { color: #fff4e4; }
+#tdTop .next:empty, #tdTip .a:empty { display: none; }
 #tdTop .next::before { content: '▸ '; color: #ffd9a0; }
-#tdTop .keys { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
-  opacity: 0.7; display: flex; flex-wrap: wrap; gap: 3px 12px; }
 #tdTip { position: absolute; padding: 5px 8px; border-radius: 5px; background: rgba(28, 15, 7, 0.92); pointer-events: none;
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16); white-space: nowrap; display: none; line-height: 1.5; }
 #tdTip .t { font-weight: 600; }
@@ -61,7 +60,6 @@ body.teardown #crosshair, body.teardown #pickup { display: none !important; }
 #tdRing.guide .bg { stroke: rgba(255, 217, 160, 0.35); stroke-dasharray: 4 6; }
 #tdTags div { position: absolute; transform: translate(-50%, -100%); padding: 2px 7px; border-radius: 4px; font-weight: 600;
   background: rgba(28, 15, 7, 0.88); color: var(--c); box-shadow: 0 0 0 1px var(--c); pointer-events: none; white-space: nowrap; }
-#tdTags div::after { content: ' · click'; color: #fff4e4; opacity: 0.6; font-weight: 400; }
 #tdMsg { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); pointer-events: none; display: flex;
   flex-direction: column; align-items: center; gap: 3px; }
 #tdMsg div { font: 600 13px var(--mono); color: #ffd9a0; text-shadow: 0 1px 2px #000; animation: tdMsg ${MSG_MS}ms ease-out forwards; }
@@ -91,7 +89,6 @@ export class TeardownUi {
   private tagsEl: HTMLElement;
   private msgEl: HTMLElement;
   private nextEl: HTMLElement;
-  private keysEl: HTMLElement;
   private tagPool: HTMLElement[] = [];
   private lastTip = '';
   private lastNext = '';
@@ -106,10 +103,9 @@ export class TeardownUi {
     o.innerHTML = `<div id="tdTags"></div>
 <svg id="tdRing" viewBox="0 0 ${RING_R * 2 + 12} ${RING_R * 2 + 12}"><circle class="bg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}"/><circle class="fg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/></svg>
 <div class="panel" id="tdTop">
-  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button>Leave <kbd>Esc</kbd></button></div>
+  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button><kbd>Esc</kbd></button></div>
   <div class="meters"><span>steps</span><div class="bar steps"><i></i></div><b class="ns"></b><span>parts</span><div class="bar parts"><i></i></div><b class="np"></b></div>
   <div class="next"></div>
-  <div class="keys"></div>
 </div>
 <div id="tdTip"><div class="t"></div><div class="a"></div></div>
 <div id="tdMsg"></div>`;
@@ -120,13 +116,12 @@ export class TeardownUi {
     this.tagsEl = o.querySelector('#tdTags')!;
     this.msgEl = o.querySelector('#tdMsg')!;
     this.nextEl = this.top.querySelector('.next')!;
-    this.keysEl = this.top.querySelector('.keys')!;
     this.top.querySelector('button')!.addEventListener('click', onLeave);
-    this.setPhase('off', '');
+    this.setPhase('off');
   }
 
-  /** 'walk': the character is walking up, only a message shows. 'work': all of it. */
-  setPhase(phase: 'off' | 'walk' | 'work', label: string, movable = true) {
+  /** 'walk': the character is walking up, nothing shows yet. 'work': all of it. */
+  setPhase(phase: 'off' | 'walk' | 'work') {
     this.overlay.style.display = phase === 'off' ? 'none' : 'block';
     document.body.classList.toggle('teardown', phase !== 'off');
     this.top.style.display = phase === 'work' ? '' : 'none';
@@ -135,11 +130,6 @@ export class TeardownUi {
       this.ring(null);
       this.tags([]);
     }
-    const k = (key: string, what: string) => `<span><kbd>${key}</kbd> ${what}</span>`;
-    this.keysEl.innerHTML = movable
-      ? k('LMB', 'work') + k('drag / WASD', 'turn it') + k('wheel', 'zoom') + k('R', 'reset')
-      : k('LMB', 'work') + k('drag', 'look') + k('WASD', 'walk around') + k('R', 'recentre');
-    if (phase === 'walk') this.message(`Walking up to the ${label.toLowerCase()}…`);
   }
 
   setProgress(p: Progress) {
@@ -148,7 +138,7 @@ export class TeardownUi {
     const tier = t.querySelector<HTMLElement>('.tier')!;
     tier.textContent = RARITY[p.tier].name;
     tier.style.color = rarityColor(p.tier);
-    t.querySelector('.who')!.textContent = p.shared ? '· shared site' : '';
+    t.querySelector('.who')!.textContent = p.shared ? '· shared' : '';
     t.querySelector<HTMLElement>('.steps i')!.style.width = `${p.steps ? (100 * p.stepsDone) / p.steps : 100}%`;
     t.querySelector<HTMLElement>('.parts i')!.style.width = `${p.parts ? (100 * p.partsTaken) / p.parts : 100}%`;
     t.querySelector<HTMLElement>('.bar.parts')!.style.setProperty('--c', rarityColor(p.tier));
@@ -235,7 +225,7 @@ export class TeardownUi {
     setTimeout(() => el.remove(), MSG_MS);
   }
 
-  /** "+ Motor · Rare" flies from (x, y) down to the hotbar (src/water.ts), where the bag is. */
+  /** "+ Motor · Quality" flies from (x, y) down to the hotbar (src/water.ts), where the bag is. */
   fly(x: number, y: number, part: PartId, tier: Tier) {
     const el = document.createElement('div');
     el.className = 'tdFly';

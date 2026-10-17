@@ -2,7 +2,7 @@
 // Time of day: a slider that holds the sky at that time (local view only), or, with "Apply to all players",
 // moves the shared server clock for everyone, production included. "Sandstorm here" summons one on you
 // (for everyone, after the usual warning); "Local sandstorm" sends one at you from just upwind at once, seen only by you.
-// "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Common parts, in your bag and equipment.
+// "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, in your bag and equipment.
 import { ui } from './input';
 import { summonLocalStorm } from './storm';
 import { clockText, timeControl } from './world/dayNight';
@@ -38,7 +38,7 @@ export class DebugMenu {
 <div class="row"></div>
 <div class="row"><button id="dbgStorm" title="A sandstorm on you, for everyone, after the 20 s warning">Sandstorm here</button>
 <button id="dbgLocalStorm" title="A sandstorm rolling in from upwind right now, only you see it (no heat)">Local sandstorm</button></div>
-<div class="row"><button id="dbgGear" title="One of every piece of gear, repaired with Common parts (what doesn't fit the bag is skipped)">Give gear</button></div>`;
+<div class="row"><button id="dbgGear" title="One of every piece of gear, repaired with Scrap parts (what doesn't fit the bag is skipped)">Give gear</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
     const live = p.querySelector<HTMLInputElement>('#dbgLive')!;

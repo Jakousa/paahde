@@ -45,7 +45,7 @@ export class ItemServer {
       this.boxes.set(key, slots);
       let changed = false;
       for (const it of [...slots]) {
-        // Gear from before repairs existed (the old starter canteen and spyglass) works: Common parts in every slot.
+        // Gear from before repairs existed (the old starter canteen and spyglass) works: Scrap parts in every slot.
         if (it && isGear(it.kind) && !it.parts) {
           it.parts = GEAR[it.kind].slots.map((s) => ('part' in s ? partKind(s.part, 'scrap') : s.scrap[s.scrap.length - 1]));
           changed = true;
@@ -78,7 +78,7 @@ export class ItemServer {
 
   /**
    * Once per player: there's no starter kit any more (the water bottle and the rest are found broken, see
-   * server/loot.ts). Players from before keep what they had, and get a backpack with a Rare gear (9 slots) so
+   * server/loot.ts). Players from before keep what they had, and get a backpack with a Quality gear (9 slots) so
    * their bag keeps its 8; if its slot is taken, it goes past the end of the bag.
    */
   setup(browserId: string) {

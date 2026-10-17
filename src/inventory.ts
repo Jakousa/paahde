@@ -103,7 +103,6 @@ const css = `
 #invOverlay .recipe .need .short { color: #ff9a7a; }
 #invOverlay .recipe .need .ok { color: #9ad88a; }
 #invOverlay button:disabled { opacity: 0.35; cursor: default; }
-#invOverlay .help { opacity: 0.55; font-size: 11px; text-shadow: 0 1px 2px #000; }
 #invGhost { position: fixed; z-index: 16; pointer-events: none; display: flex; align-items: center; justify-content: center;
   border-radius: 6px; background: rgba(66, 44, 26, 0.55); filter: drop-shadow(0 4px 6px #000); }
 #invGhost.drop::after { content: 'Drop'; position: absolute; top: 100%; font: 600 11px var(--mono); color: #fff4e4;
@@ -198,7 +197,7 @@ export const itemIcon = (kind: string) =>
   ICONS[kind] ?? (partOf(kind) ? partIcon(kind) : kind in SALVAGE ? salvageIcon(kind) : `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`);
 export const itemLabel = (kind: string) => ITEMS[kind]?.label ?? kind;
 
-/** Quality as a rarity name (rounded down: three Common parts and one Rare is still Common... ish). */
+/** Quality as a rarity name (rounded down: three Scrap parts and one Quality is still Scrap... ish). */
 function qualityName(q: number) {
   return RARITY[TIERS[Math.max(0, Math.min(3, Math.floor(q + 1e-6)))]].name;
 }
@@ -218,10 +217,9 @@ export function itemTitle(it: Item): string {
   const parts = partsOf(it);
   if (!repaired(it)) {
     const missing = spec.slots.filter((_, i) => !parts[i]).map(slotLabel);
-    return `${itemLabel(it.kind)} (broken)\nNeeds: ${missing.join(', ')}\nRepair it at the workbench in the base.`;
+    return `${itemLabel(it.kind)} (broken)\nNeeds: ${missing.join(', ')}`;
   }
-  return `${itemLabel(it.kind)} · ${qualityName(quality(it))} (${quality(it).toFixed(1)} / 3)\n${spec.use}\nBetter parts: ${spec.better}.`
-    + (spec.equip ? `\nEquip it on your ${EQUIP_LABELS[spec.equip].toLowerCase()} (Tab).` : '');
+  return `${itemLabel(it.kind)} · ${qualityName(quality(it))} (${quality(it).toFixed(1)} / 3)\n${spec.use}`;
 }
 
 /**
@@ -259,16 +257,13 @@ export class InventoryHud {
     this.toasts.id = 'toasts';
     this.overlay.id = 'invOverlay';
     this.boxesEl.className = 'boxes';
-    const help = document.createElement('div');
-    help.className = 'help';
-    help.textContent = 'Drag to move · R turns while dragging · shift-click sends across · drag out to drop · Tab or Esc closes';
-    this.overlay.append(this.boxesEl, help);
+    this.overlay.append(this.boxesEl);
     this.ghost.id = 'invGhost';
     this.ghost.style.display = 'none';
     document.body.append(this.prompt, this.toasts, this.overlay, this.ghost);
 
     net.onItems = (box, got) => {
-      // The disassembly mode shows its own "+ Motor · Rare" flying to the hotbar.
+      // The disassembly mode shows its own "+ Motor · Quality" flying to the hotbar.
       if (got && !document.body.classList.contains('teardown')) this.toast(`+1 ${itemLabel(got)}`);
       if (box === 'bag' || box === 'equip' || this.storages.includes(box)) this.render();
     };
@@ -349,8 +344,7 @@ export class InventoryHud {
       + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('equip', equip, 0, EQUIP_SLOTS.length)}</div>`
       + `<div class="sep"></div><div class="head"><h3>${boxLabel('bag')}</h3><button data-sort="bag" title="Pack it tight, biggest first (the hotbar stays)">Sort</button></div>`
       + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('bag', bag, 0, HOTBAR)}</div><div class="sep"></div>`;
-    if (!shape.rows) html += `<div class="none">No backpack: just the hotbar. Find one, repair it at the workbench and wear it for room.</div>`;
-    if (bag.some((_, i) => strandedAt(bag, shape, i))) html += `<div class="none">Doesn't fit your backpack any more: move the red ones out.</div>`;
+    if (!shape.rows) html += `<div class="none">No backpack</div>`;
     html += this.gridHtml('bag', bag, shape) + '</div>';
     for (const box of this.storages) {
       const slots = this.net.boxes[box];
@@ -362,8 +356,7 @@ export class InventoryHud {
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
     if (!this.storages.length) {
-      html += `<div class="box"><div class="head"><h3>Storage</h3></div><div class="none">Nothing in reach. Stand by the workbench or the
-        chest in the base, or ride the motorcycle, and it opens here.</div></div>`;
+      html += `<div class="box"><div class="head"><h3>Storage</h3></div><div class="none">Nothing in reach</div></div>`;
     }
     // Re-rendering resets scrolling: keep each long chest where it was.
     const scrolled = new Map<string, number>();
@@ -386,14 +379,14 @@ export class InventoryHud {
   private repairHtml(it: Item | null) {
     let html = `<div class="top">` + this.slotsHtml('bench', [it], 0, 1);
     if (!it) {
-      return html + `<div class="state">Put broken gear here, then drag parts onto its slots. A better part on a filled slot upgrades it.</div></div>`;
+      return html + `<div class="state">Broken gear</div></div>`;
     }
     const ok = repaired(it);
     const spec = GEAR[it.kind];
     const parts = partsOf(it);
     const missing = spec.slots.filter((_, i) => !parts[i]).map(slotLabel);
     html += `<div><div class="name">${itemLabel(it.kind)}</div><div class="state ${ok ? 'ok' : 'no'}">`
-      + (ok ? `Works · ${qualityName(quality(it))}<br><span style="color:#fff4e4;opacity:.7">Better parts: ${spec.better}</span>` : `Needs ${missing.join(', ')}`)
+      + (ok ? `Works · ${qualityName(quality(it))}` : `Needs ${missing.join(', ')}`)
       + `</div></div></div><div class="parts">`;
     const held = this.drag ? this.net.boxes[this.drag.box]?.[this.drag.i] : null;
     spec.slots.forEach((slot, i) => {
@@ -419,7 +412,7 @@ export class InventoryHud {
       html += `<div class="recipe"><div class="ico">${itemIcon(r.makes)}</div><div class="what"><div class="name">${itemLabel(r.makes)}</div>`
         + `<div class="need">${needs}</div></div><button data-craft="${id}"${ready ? '' : ' disabled'}>Craft</button></div>`;
     }
-    return `${html}<div class="none" style="width:230px">Crafted things go in the bag. Put one in the hotbar (1–4) to place it on the floor here.</div>`;
+    return html;
   }
 
   private slotsHtml(box: string, slots: Slots, from: number, to: number, dead = false) {
@@ -462,7 +455,7 @@ export class InventoryHud {
     }
     html = rows ? `<div class="grid" data-grid="${box}" data-free="${shape.free}" data-cols="${shape.cols}" data-rows="${rows}" style="grid-template-columns: repeat(${shape.cols}, ${CELL}px); grid-auto-rows: ${CELL}px">${html}</div>` : '';
     if (slots.length > end && slots.slice(end).some((it) => it)) {
-      html += `<div class="sep"></div><div class="none">No room for these: move them out.</div>`
+      html += `<div class="sep"></div><div class="none">No room</div>`
         + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml(box, slots, end, slots.length, true)}</div>`;
     }
     return html;
@@ -631,7 +624,7 @@ export class InventoryHud {
     if (i < HOTBAR) {
       const spot = findSpot(bag, bagShape(this.net.boxes.equip), it.kind, !!it.r, [i], false);
       if (spot) this.net.moveItem('bag', i, 'bag', spot.i, undefined, spot.r);
-      else this.toast('No room in the backpack');
+      else this.toast('No room');
       return;
     }
     for (let j = 0; j < HOTBAR; j++) {
@@ -698,14 +691,14 @@ export class InventoryHud {
   private drop(box: string, i: number) {
     if (box === 'part') return this.toast('Take it off the item first');
     if (box === 'equip' || box === 'bench') return this.toast('Take it off first');
-    if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast("Can't drop things in the base: use the chest");
+    if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast("Can't drop here");
     this.net.dropItem(box, i);
   }
 
   /** Say why a drop didn't go through. */
   private refuse(from: string, it: Item, to: string) {
-    if (to === 'equip') this.toast(isGear(it.kind) && GEAR[it.kind].equip ? (repaired(it) ? 'That slot is for something else' : 'Repair it first') : 'Not something you wear');
-    else if (to === 'bench') this.toast(isGear(it.kind) ? 'Take the item on the bench off first' : 'Only gear goes on the workbench');
+    if (to === 'equip') this.toast(isGear(it.kind) && GEAR[it.kind].equip ? (repaired(it) ? 'Wrong slot' : 'Broken') : "Can't wear");
+    else if (to === 'bench') this.toast(isGear(it.kind) ? 'Bench in use' : 'Gear only');
     else if (to === 'part') this.toast("That part doesn't go there");
     else if (from === 'equip' && it.kind === 'backpack') this.toast('Empty the backpack first');
     else this.toast("Doesn't fit there");
