@@ -6,7 +6,7 @@ import { bedTarget, EMPTY, GROWN } from '../shared/garden.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { DigFx } from './dig';
-import { footprints } from './footprints';
+import { footprints, streaks } from './footprints';
 import { InventoryHud } from './inventory';
 import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
@@ -65,7 +65,7 @@ me.setShadowOnly(true); // first person: your body casts a shadow but is not dra
 let bodyHidden = true;
 const myModel = new ScavengerModel();
 myModel.ready.then(() => me.setModel(myModel, net.color), () => myModel.dispose());
-scene.add(me.root, footprints.mesh);
+scene.add(me.root, footprints.mesh, streaks.mesh);
 const remotes = new Map<number, Avatar>();
 // Sand bikes (9, dev helper), one per riding player: drawn here, simulated in shared/sim.ts.
 const bikes = new Map<number, Bike>();
