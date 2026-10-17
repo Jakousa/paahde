@@ -7,7 +7,7 @@ import type { Node } from 'three/webgpu';
 import { dustLight } from './world/dust.ts';
 import { uAt, ustarFrom10, wind } from './world/wind.ts';
 
-const MAX = 256;
+const MAX = 512;
 const DRAG = 2.2; // per second: thrown sand slows quickly and is then carried by the wind
 const RISE = 0.5; // m/s the warm, light dust keeps lifting
 
@@ -47,7 +47,7 @@ class TyreDust {
     this.pos.set([x, y, z], i * 3);
     this.vel.set([vx, vy, vz], i * 3);
     this.age[i] = 0;
-    this.life[i] = 1.1 + Math.random() * 1.2;
+    this.life[i] = 2.2 + Math.random() * 2.0;
     this.size[i] = size;
     this.live = Math.max(this.live, i + 1);
   }
@@ -72,9 +72,9 @@ class TyreDust {
       this.pos[v] += this.vel[v] * dt;
       this.pos[v + 1] += this.vel[v + 1] * dt;
       this.pos[v + 2] += this.vel[v + 2] * dt;
-      // Quick to appear, slow to thin out, growing all the while.
-      this.data[i * 2] = 0.65 * Math.min(1, t * 8) * (1 - t) * (1 - t);
-      this.data[i * 2 + 1] = this.size[i] * (1 + 3 * Math.sqrt(t));
+      // Quick to appear, slow to thin out, billowing out to several times its size.
+      this.data[i * 2] = 0.6 * Math.min(1, t * 10) * (1 - t) * Math.sqrt(1 - t);
+      this.data[i * 2 + 1] = this.size[i] * (1 + 6 * Math.sqrt(t));
     }
     this.live = last;
     this.mesh.count = last;

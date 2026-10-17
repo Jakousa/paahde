@@ -132,7 +132,7 @@ export class Bike {
       const side = (Math.random() - 0.5) * 0.4;
       const x = p.x - fx * WHEELBASE * 0.5 - fz * side, z = p.z - fz * WHEELBASE * 0.5 + fx * side;
       const back = throwBack * (0.4 + Math.random()), spread = (Math.random() - 0.5) * 2;
-      tyreDust.emit(x, heightAt(x, z) + 0.15, z, -fx * back - fz * spread, 0.8 + Math.random() * 1.6, -fz * back + fx * spread, 0.5 + Math.random() * 0.4 + hs * 0.025);
+      tyreDust.emit(x, heightAt(x, z) + 0.15, z, -fx * back - fz * spread, 0.8 + Math.random() * 1.6, -fz * back + fx * spread, 0.8 + Math.random() * 0.6 + hs * 0.045);
     }
   }
 
