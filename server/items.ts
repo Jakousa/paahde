@@ -6,7 +6,7 @@ import { addItem, findSpot, hasItem, HOTBAR, partKind, roomFor, settle, sortItem
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, growChest, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { craft, RECIPES } from '../shared/crafting.ts';
-import { PISTOL, RIFLE } from '../shared/rifle.ts';
+import { RIFLE } from '../shared/rifle.ts';
 import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
 
@@ -84,7 +84,6 @@ export class ItemServer {
    */
   setup(browserId: string) {
     this.rifleGift(browserId);
-    this.pistolGift(browserId);
     if (this.db.hasGearKit(browserId)) return;
     this.db.tx(() => {
       if (this.db.hasStarterKit(browserId)) {
@@ -108,11 +107,6 @@ export class ItemServer {
    */
   private rifleGift(browserId: string) {
     this.slotGift(browserId, 'rifle', RIFLE, HOTBAR - 1, this.db.hasGearKit(browserId));
-  }
-
-  /** Once, to every player, old and new: a laser pistol (shared/rifle.ts) in the 3rd hotbar slot. */
-  private pistolGift(browserId: string) {
-    this.slotGift(browserId, 'pistol', PISTOL, 2, true);
   }
 
   /**

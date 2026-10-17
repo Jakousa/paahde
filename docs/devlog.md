@@ -4,8 +4,8 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 
 ## 2026-10-17 — Laser pistol: the cheap gun
 
-- **Getting one**: every player, old and new, gets one once in the 3rd hotbar slot (server/items.ts `pistolGift`, the
-  `grants` table; what was there moves into the bag). After that: crafted at the workbench from a metal sheet and a
+- **Getting one**: no longer handed out to everyone (the `pistolGift` was dropped for the playtest reset):
+  crafted at the workbench from a metal sheet and a
   wiring coil (any tiers, no battery or plank), and 4% of buried caches hold one. `laser_pistol`, 2×1; the debug gear
   button gives one too.
 - **Model** (tools/models/pistol.py → public/models/pistol.glb): a Ruger-pattern .22 rebuilt as a blaster after a
