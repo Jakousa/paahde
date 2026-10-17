@@ -37,6 +37,8 @@ export const ROOM = { w: 5, z: -22, h: 4 };
 export const ROOM_Z = (HALL.z + ROOM.z) / 2;
 /** Skylight shaft: half width of the opening, collar half width (outer) and height above the pad. */
 export const SKY = { w: 1.4, collar: 1.8, h: 0.5 };
+/** Outer corner radii of the entrance hut and the skylight collar (rounded like a poured bunker). */
+const HUT_R = 0.5, SKY_R = 0.6;
 /** Tunnel over the stairs: headroom above the stair line, and its highest point (under the pad). */
 const TUNNEL = { headroom: 2.5, top: -0.6 };
 /** Underground walls end just under the sand. */
@@ -139,16 +141,30 @@ function wall(x0: number, z0: number, x1: number, z1: number, y0: number, top: n
   const dx = x1 - x0, dz = z1 - z0, len = Math.sqrt(dx * dx + dz * dz);
   capsules.push({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, ax: dx / len, az: dz / len, half: len / 2, r, y0, top });
 }
-{
+/** Unit quarter circle in three segments (0°, 30°, 60°, 90°), without trig. */
+const QUARTER = [[1, 0], [Math.sqrt(3) / 2, 0.5], [0.5, Math.sqrt(3) / 2], [0, 1]];
+/** Rounded corner of a wall ring: its centre line is a quarter circle of radius rc around (cx, cz), towards (sx, sz). */
+function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: number, top: number, r = WT / 2) {
+  for (let i = 0; i < 3; i++) {
+    const [a, b] = QUARTER[i], [c, d] = QUARTER[i + 1];
+    wall(cx + sx * rc * a, cz + sz * rc * b, cx + sx * rc * c, cz + sz * rc * d, y0, top, r);
+  }
+}{
   const xs = W + WT / 2, r = WT / 2;
   const front = HUT.z1 + WT / 2, back = HUT.z0 - WT / 2;
   // Entrance hut: side walls go all the way down (they are the stairwell's too), the doorway in front,
-  // and the back wall stops over the tunnel.
-  wall(-xs, back, -xs, front, -Infinity, WALL_H);
-  wall(xs, back, xs, front, -Infinity, WALL_H);
-  wall(-xs, front, -HUT.door - r, front, -Infinity, WALL_H);
-  wall(HUT.door + r, front, xs, front, -Infinity, WALL_H);
-  wall(-xs, back, xs, back, TUNNEL.top, WALL_H);
+  // and the back wall stops over the tunnel. Its outer corners are rounded.
+  const cx = W + WT - HUT_R, rc = HUT_R - r;
+  const cf = HUT.z1 + WT - HUT_R, cb = HUT.z0 - WT + HUT_R;
+  wall(-xs, cb, -xs, cf, -Infinity, WALL_H);
+  wall(xs, cb, xs, cf, -Infinity, WALL_H);
+  wall(-cx, front, -HUT.door - r, front, -Infinity, WALL_H);
+  wall(HUT.door + r, front, cx, front, -Infinity, WALL_H);
+  wall(-cx, back, cx, back, TUNNEL.top, WALL_H);
+  for (const s of [-1, 1]) {
+    arc(s * cx, cf, rc, s, 1, -Infinity, WALL_H);
+    arc(s * cx, cb, rc, s, -1, -Infinity, WALL_H);
+  }
   // Tunnel and hallway under the sand, into the room's front wall.
   const hz = HALL.z + WT / 2, rx = ROOM.w + WT / 2, rz = ROOM.z - WT / 2;
   wall(-xs, back, -xs, hz, -Infinity, BURIED_TOP);
@@ -159,12 +175,15 @@ function wall(x0: number, z0: number, x1: number, z1: number, y0: number, top: n
   wall(-rx, rz, rx, rz, -Infinity, BURIED_TOP);
   wall(-rx, hz, -rx, rz, -Infinity, BURIED_TOP);
   wall(rx, hz, rx, rz, -Infinity, BURIED_TOP);
-  // Skylight collar on the surface (its glass is a floor, below).
-  const c = (SKY.collar + SKY.w) / 2, cr = (SKY.collar - SKY.w) / 2;
-  wall(-c, ROOM_Z - c, c, ROOM_Z - c, ROOM.h + FLOOR, SKY.h, cr);
-  wall(-c, ROOM_Z + c, c, ROOM_Z + c, ROOM.h + FLOOR, SKY.h, cr);
-  wall(-c, ROOM_Z - c, -c, ROOM_Z + c, ROOM.h + FLOOR, SKY.h, cr);
-  wall(c, ROOM_Z - c, c, ROOM_Z + c, ROOM.h + FLOOR, SKY.h, cr);
+  // Skylight collar on the surface (its glass is a floor, below), outer corners rounded.
+  const c = (SKY.collar + SKY.w) / 2, cr = (SKY.collar - SKY.w) / 2, k = SKY.collar - SKY_R;
+  wall(-k, ROOM_Z - c, k, ROOM_Z - c, ROOM.h + FLOOR, SKY.h, cr);
+  wall(-k, ROOM_Z + c, k, ROOM_Z + c, ROOM.h + FLOOR, SKY.h, cr);
+  wall(-c, ROOM_Z - k, -c, ROOM_Z + k, ROOM.h + FLOOR, SKY.h, cr);
+  wall(c, ROOM_Z - k, c, ROOM_Z + k, ROOM.h + FLOOR, SKY.h, cr);
+  for (const s of [-1, 1]) {
+    for (const t of [-1, 1]) arc(s * k, ROOM_Z + t * k, SKY_R - cr, s, t, ROOM.h + FLOOR, SKY.h, cr);
+  }
 }
 for (const p of BASE_PIECES) {
   if (!p.hx || !p.hz || !p.h) continue;

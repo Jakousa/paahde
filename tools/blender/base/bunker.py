@@ -38,6 +38,7 @@ HALL_Z, HALL_H = -12.0, 2.6
 ROOM_W, ROOM_Z0, ROOM_H = 5.0, -22.0, 4.0
 ROOM_Z = (HALL_Z + ROOM_Z0) / 2
 SKY_W, SKY_COLLAR, SKY_H = 1.4, 1.8, 0.5
+HUT_R, SKY_R = 0.5, 0.6  # outer corner radii of the hut and the skylight collar (shared/base.ts HUT_R, SKY_R)
 TUNNEL_HEADROOM, TUNNEL_TOP = 2.5, -0.6
 BURIED_TOP = -0.3
 CEIL = FLOOR + ROOM_H
@@ -158,6 +159,33 @@ class MB:
             f.material_index = idx
             f.smooth = False
 
+    def profile_y(self, pts, y0, y1, mat):
+        """Prism: polygon [(x, z), ...] in the game XZ plane, extruded from height y0 to y1."""
+        self.loft([(pts, y0), (pts, y1)], mat)
+
+    def loft(self, loops, mat):
+        """Solid through loops [([(x, z), ...], y), ...] of equal length, bottom to top, capped."""
+        rings = [[self.bm.verts.new(G(x, y, z)) for x, z in pts] for pts, y in loops]
+        idx = self.mi(mat)
+        fs = [self.bm.faces.new(rings[0]), self.bm.faces.new(list(reversed(rings[-1])))]
+        n = len(rings[0])
+        for a, b in zip(rings, rings[1:]):
+            for i in range(n):
+                j = (i + 1) % n
+                fs.append(self.bm.faces.new([a[i], a[j], b[j], b[i]]))
+        for f in fs:
+            f.material_index = idx
+            f.smooth = False
+
+    def corner(self, ix, iz, ox, oz, r, y0, y1, sx, sz, zc, mat, seg=6):
+        """Rounded outer corner of a wall ring: fills the quadrant (sx, sz) between the inner corner
+        (ix, iz) and the outer corner (ox, oz), rounded with radius r (>= the wall thickness), around zc."""
+        cx, cz = ox - r, oz - r
+        pts = [(cx, iz), (ix, iz), (ix, cz), (ox, cz)]
+        pts += [(cx + r * math.cos(a), cz + r * math.sin(a)) for a in (math.pi / 2 * k / seg for k in range(1, seg))]
+        pts.append((cx, oz))
+        self.profile_y([(sx * x, zc + sz * z) for x, z in pts], y0, y1, mat)
+
     def build(self, name):
         bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces)
         separate_coplanar(self.bm)
@@ -178,6 +206,16 @@ def stair_y(z):
     return 0.0 if z >= ST_Z else max(FLOOR, min(0.0, y))
 
 
+def rounded_rect(hx, hz, r, zc, seg=6):
+    """Outline [(x, z), ...] of a rectangle (half extents hx, hz, centred on x 0, z zc), corners rounded."""
+    pts = []
+    for cx, cz, a0 in ((hx - r, hz - r, 0), (r - hx, hz - r, 1), (r - hx, r - hz, 2), (hx - r, r - hz, 3)):
+        for k in range(seg + 1):
+            a = math.pi / 2 * (a0 + k / seg)
+            pts.append((cx + r * math.cos(a), zc + cz + r * math.sin(a)))
+    return pts
+
+
 # =================================================================================================
 def build_hut():
     mb = MB()
@@ -186,22 +224,31 @@ def build_hut():
     top = HUT_H + 0.3
     base = -0.3  # walls go a little under the sand
     # Side walls.
+    # Rounded outer corners, like a poured bunker; the straight walls run between them.
+    zc, hz = (front + back) / 2, (front - back) / 2
+    cx, cz = xo - HUT_R, hz + WT - HUT_R
     for s in (-1, 1):
-        mb.box(s * W, s * xo, base, top, back - WT, front + WT, 'Plaster')
+        mb.box(s * W, s * xo, base, top, zc - cz, zc + cz, 'Plaster')
+        for t in (-1, 1):
+            mb.corner(W, hz, xo, hz + WT, HUT_R, TUNNEL_TOP, top, s, t, zc, 'Plaster')
     # Front wall with the doorway, and a steel frame round it.
-    mb.box(-xo, -DOOR, base, top, front, front + WT, 'Plaster')
-    mb.box(DOOR, xo, base, top, front, front + WT, 'Plaster')
+    mb.box(-cx, -DOOR, base, top, front, front + WT, 'Plaster')
+    mb.box(DOOR, cx, base, top, front, front + WT, 'Plaster')
     mb.box(-DOOR, DOOR, DOOR_H, top, front, front + WT, 'Plaster')
     f = 0.06
     for s in (-1, 1):
         mb.box(s * DOOR - f / 2, s * DOOR + f / 2, 0, DOOR_H + f, front - 0.02, front + WT + 0.02, 'Steel')
     mb.box(-DOOR - f / 2, DOOR + f / 2, DOOR_H, DOOR_H + f, front - 0.02, front + WT + 0.02, 'Steel')
     # Back wall: stops over the tunnel's ceiling.
-    mb.box(-W, W, TUNNEL_TOP, top, back - WT, back, 'Plaster')
-    # Roof: slab with a small overhang and a lip, a vent pipe.
-    mb.box(-xo - 0.12, xo + 0.12, top, top + 0.18, back - WT - 0.12, front + WT + 0.12, 'Plaster')
-    mb.cyl((0.6, top + 0.18, back + 0.4), (0.6, top + 0.75, back + 0.4), 0.09, 'Rust', seg=8)
-    mb.cyl((0.6, top + 0.75, back + 0.4), (0.6, top + 0.82, back + 0.4), 0.14, 'Rust', seg=8)
+    mb.box(-cx, cx, TUNNEL_TOP, top, back - WT, back, 'Plaster')
+    # Roof: slab with a small overhang, its top edge rounded over, a vent pipe.
+    o, th, f = 0.12, 0.25, 0.12
+    rt = top + th
+    prof = [(o, top), (o, rt - f)] + [(o - f + f * math.cos(a), rt - f + f * math.sin(a))
+                                      for a in (math.pi / 2 * k / 4 for k in range(1, 5))]
+    mb.loft([(rounded_rect(xo + d, hz + WT + d, HUT_R + d, zc), y) for d, y in prof], 'Plaster')
+    mb.cyl((0.6, rt, back + 0.4), (0.6, rt + 0.57, back + 0.4), 0.09, 'Rust', seg=8)
+    mb.cyl((0.6, rt + 0.57, back + 0.4), (0.6, rt + 0.64, back + 0.4), 0.14, 'Rust', seg=8)
     # Landing floor and a steel threshold.
     mb.box(-W, W, -0.25, 0, ST_Z, front, 'Concrete')
     mb.box(-DOOR, DOOR, -0.25, 0.01, front, front + WT, 'Steel')
@@ -209,10 +256,12 @@ def build_hut():
     # Skylight collar on the room's centre, glass and a steel grid over it.
     c, w = SKY_COLLAR, SKY_W
     z = ROOM_Z
-    mb.box(-c, c, BURIED_TOP, SKY_H, z - c, z - w, 'Concrete')
-    mb.box(-c, c, BURIED_TOP, SKY_H, z + w, z + c, 'Concrete')
-    mb.box(-c, -w, BURIED_TOP, SKY_H, z - w, z + w, 'Concrete')
-    mb.box(w, c, BURIED_TOP, SKY_H, z - w, z + w, 'Concrete')
+    k = c - SKY_R
+    for s in (-1, 1):
+        mb.box(-k, k, BURIED_TOP, SKY_H, z + s * w, z + s * c, 'Concrete')
+        mb.box(s * w, s * c, BURIED_TOP, SKY_H, z - k, z + k, 'Concrete')
+        for t in (-1, 1):
+            mb.corner(w, w, c, c, SKY_R, BURIED_TOP, SKY_H, s, t, z, 'Concrete')
     mb.box(-w, w, SKY_H - 0.07, SKY_H - 0.05, z - w, z + w, 'Glass')
     for k in (-2, -1, 0, 1, 2):
         t = k * w / 3
