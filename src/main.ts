@@ -26,7 +26,8 @@ import { Placer } from './placing';
 import { Scrap } from './world/scrap';
 import { CrashSites } from './world/crashsites';
 import { CrashSound } from './crashSound';
-import { allCrashSites, crashSitesNear } from '../shared/crashsites.ts';
+import { allCrashSites, crashSitesNear, debrisTarget } from '../shared/crashsites.ts';
+import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
 import { DebugMenu } from './debugMenu.ts';
@@ -320,19 +321,22 @@ renderer.setAnimationLoop((time) => {
   // Sprouts grow only under a UV lamp (shared/garden.ts).
   const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>Growing under the lamp · ${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : '<span class="bad">Sprouts need a UV lamp over the bed</span>') : null;
   const target = net.connected && station < 0 && !bed ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
-  const find = net.connected && station < 0 && !bed && !target && !teardown.active ? lootView.target(net.me, orbit.yaw) : null;
+  // Debris at the crash sites (hull plates, pipes, ...) is picked up like scrap, as a scrap item (shared/items.ts DEBRIS_ITEMS).
+  const debris = net.connected && station < 0 && !bed && !target && !teardown.active ? debrisTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  const debrisPrompt = debris ? `Pick up ${CRASH_KINDS[debris.kind].label}` : null;
+  const find = net.connected && station < 0 && !bed && !target && !debris && !teardown.active ? lootView.target(net.me, orbit.yaw) : null;
   const findPrompt = find ? `Pick up ${lootName(find, itemLabel)}` : null;
   // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
   // it lies. A carried one is taken apart on the base's disassembly table.
-  const site = net.connected && !teardown.active && station < 0 && !bed && !target && !find ? machines.nearest(net.me.x, net.me.z) : null;
+  const site = net.connected && !teardown.active && station < 0 && !bed && !target && !debris && !find ? machines.nearest(net.me.x, net.me.z) : null;
   const small = site ? COMPONENTS[site.site.kind].carry : false;
   // Salvage wrecks (src/world/wrecks.ts) are always carried home.
-  const wreck = net.connected && !teardown.active && station < 0 && !bed && !target && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
+  const wreck = net.connected && !teardown.active && station < 0 && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
   const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`)
     : wreck ? `Pick up ${SALVAGE[wreck.kind].label.toLowerCase()}` : null;
   const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
   const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use disassembly table');
-  const fPrompt = use ?? tend ?? target ?? findPrompt ?? sitePrompt;
+  const fPrompt = use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `<kbd>F</kbd>${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup();
@@ -352,6 +356,9 @@ renderer.setAnimationLoop((time) => {
     else if (target) {
       if (net.pickup(target)) pickupSound.play();
       else hud.toast('Bag full');
+    } else if (debris) {
+      if (net.debrisTake(debris)) pickupSound.play();
+      else hud.toast('Bag full');
     } else if (find) {
       net.lootTake(find.id);
       pickupSound.play();
@@ -360,7 +367,7 @@ renderer.setAnimationLoop((time) => {
       else teardown.begin(machines.workSite(site, net.siteLink(site.site.id)));
     } else if (wreck) net.crashTake(wreck.id);
   }
-  const targeted = use !== null || tend !== null || target !== null || findPrompt !== null || sitePrompt !== null;
+  const targeted = use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   hud.update(net.me);
 

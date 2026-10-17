@@ -3,6 +3,7 @@
 // the same moves at once and the server's answer then replaces them (src/net.ts).
 import { partItems, partItem, partOf } from './parts.ts';
 import { SALVAGE, TIERS, type PartId, type Tier } from './salvage.ts';
+import { CRASH_KINDS } from './crashKinds.ts';
 import { SCRAP_KINDS } from './scrap.ts';
 
 /**
@@ -56,6 +57,20 @@ export function parsePart(kind: string): { part: PartId; tier: number } | null {
 /** Item kind of each scrap prop, by SCRAP_KINDS index. */
 export const SCRAP_ITEMS = ['oil_drum', 'rusty_drum', 'gear', 'scrap_frame', 'bent_frame', 'metal_plank', 'metal_sheet', 'dented_sheet', 'spring'];
 if (SCRAP_ITEMS.length !== SCRAP_KINDS.length) throw new Error('shared/items.ts: SCRAP_ITEMS out of step with SCRAP_KINDS');
+
+/** The scrap item a crash-site debris piece (shared/crashsites.ts) gives when picked up, by CRASH_KINDS node name. */
+export const DEBRIS_ITEMS: Record<string, string> = {
+  Crash_Debris_1: 'metal_sheet', // hull plate
+  Crash_Debris_2: 'dented_sheet', // bent fin
+  Crash_Debris_3: 'metal_plank', // pipe bundle
+  Crash_Debris_4: 'scrap_frame', // burnt seat
+  Crash_Debris_5: 'bent_frame', // porthole ring
+  Crash_Debris_6: 'rusty_drum', // boiler tank
+  Crash_Debris_7: 'gear', // gear housing
+};
+for (const k of CRASH_KINDS) {
+  if (!k.main && !k.dressing && !(DEBRIS_ITEMS[k.node] in ITEMS)) throw new Error(`shared/items.ts: no DEBRIS_ITEMS entry for ${k.node}`);
+}
 
 /**
  * One stack. `id` is its DB row id (negative: a client-side guess until the server answers). Gear also has

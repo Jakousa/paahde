@@ -4,7 +4,7 @@
 // The layout is the crash sites' (deterministic, integer hashing), so every client sees the same machines with the
 // same contents. Ids are "<crash site id>:<index>", index 0 the large machine.
 import { BASE_SPAWN } from './base.ts';
-import { crashSite, crashSitesNear, type CrashSite as Wreck } from './crashsites.ts';
+import { crashSite, crashSitesNear, crashTaken, type CrashSite as Wreck } from './crashsites.ts';
 import { COMPONENTS, SALVAGE, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
 import { STATIONS } from './stations.ts';
 
@@ -23,8 +23,8 @@ export const BENCH = TABLE
 /** How far (m) from a large site you may be to work on it with others. */
 export const SITE_RANGE = 14;
 
-/** Small sites whose component, and wrecks (shared/wrecks.ts), that have been carried off, kept in step with the server ('crash' messages). */
-export const crashTaken = new Set<string>();
+/** Small sites whose component, wrecks (shared/wrecks.ts) and crash debris that have been carried off (shared/crashsites.ts). */
+export { crashTaken };
 export const crashListeners: (() => void)[] = [];
 /** Crash sites (numeric shared/crashsites.ts ids) whose large machine has been stripped of every part: no smoke,
  *  no beeping, the machine stays a husk. Kept in step with the server ('crashSpent' messages). */

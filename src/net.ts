@@ -27,11 +27,13 @@ import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts'
 import type { BenchJob, ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { bagSize, digTool, fitPart, tryMove, unfitPart } from '../shared/gear.ts';
-import { HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
+import { DEBRIS_ITEMS, HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
+import { CRASH_KINDS } from '../shared/crashKinds.ts';
+import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
 
 /** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
@@ -223,6 +225,14 @@ export class Net {
     this.send({ t: 'crashTake', id });
     crashTaken.add(id);
     crashChanged();
+  }
+
+  /** Pick up a crash debris piece (shared/crashsites.ts), the same way as a wreck. False if the bag is full. */
+  debrisTake(pc: CrashPiece): boolean {
+    if (!this.connected || !pc.id || crashTaken.has(pc.id)) return true;
+    if (!roomFor(this.boxes.bag ?? [], DEBRIS_ITEMS[CRASH_KINDS[pc.kind].node], 1, bagSize(this.boxes.equip))) return false;
+    this.crashTake(pc.id);
+    return true;
   }
 
   /** Put a carried machine (its item kind) on the workbench; the server uses one up and answers with the bag. */

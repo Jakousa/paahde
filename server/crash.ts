@@ -17,7 +17,9 @@
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
 import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE } from '../shared/crash.ts';
-import { crashSite } from '../shared/crashsites.ts';
+import { CRASH_KINDS } from '../shared/crashKinds.ts';
+import { crashSite, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
+import { DEBRIS_ITEMS } from '../shared/items.ts';
 import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
 import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
 import { COMPONENTS, type JunkKind } from '../shared/salvage.ts';
@@ -25,7 +27,7 @@ import { wreckById } from '../shared/wrecks.ts';
 import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
-type Feet = { x: number; z: number };
+type Feet = { x: number; y: number; z: number };
 
 /** A lifting eye counts as held this long after the last hold message. */
 const HOLD_TTL_MS = 3000;
@@ -49,14 +51,21 @@ interface Session {
 
 /** Carried-off salvage wrecks (shared/wrecks.ts) are back after this long. */
 const WRECK_RESPAWN_MS = 45 * 60 * 1000;
+/** Picked-up crash debris (ids "d:...") lies there again after this long, like scrap (server/scrap.ts). */
+const DEBRIS_RESPAWN_MS = 30 * 60 * 1000;
 
-/** A small crash-site machine or a salvage wreck (shared/wrecks.ts, ids "w:..."): something carried off whole. */
-function carrySite(id: unknown): { id: string; x: number; z: number; kind: string } | null {
+/** A small crash-site machine, a salvage wreck (shared/wrecks.ts, ids "w:...") or a crash debris piece (shared/crashsites.ts,
+ *  ids "d:..."): something carried off whole. `kind` is the item it becomes; `dist` how far the player is from its reach. */
+function carrySite(id: unknown): { id: string; kind: string; dist: (feet: Feet) => number } | null {
+  const flat = (s: { x: number; z: number }) => (f: Feet) => Math.hypot(s.x - f.x, s.z - f.z) - CRASH_REACH;
   const w = wreckById(id);
-  if (w) return w;
+  if (w) return { id: w.id, kind: w.kind, dist: flat(w) };
+  const d = debrisById(id);
+  if (d) return { id: d.id!, kind: DEBRIS_ITEMS[CRASH_KINDS[d.kind].node], dist: (f) => debrisReach(f, d) - DEBRIS_REACH };
   const s = crashSiteById(id);
-  return s && COMPONENTS[s.kind].carry ? s : null;
+  return s && COMPONENTS[s.kind].carry ? { id: s.id, kind: s.kind, dist: flat(s) } : null;
 }
+const respawnMs = (id: string) => (id.startsWith('w:') ? WRECK_RESPAWN_MS : id.startsWith('d:') ? DEBRIS_RESPAWN_MS : Infinity);
 
 export class CrashServer {
   private db: Db;
@@ -105,7 +114,7 @@ export class CrashServer {
     const site = carrySite(id);
     const now = Date.now();
     if (!site || crashTaken.has(site.id) || now - last.at < COOLDOWN_MS) return null;
-    if (Math.hypot(site.x - feet.x, site.z - feet.z) > CRASH_REACH + REACH_SLACK) return null;
+    if (site.dist(feet) > REACH_SLACK) return null;
     last.at = now;
     const ok = this.db.tx(() => {
       if (!give(site.kind)) return false;
@@ -188,10 +197,10 @@ export class CrashServer {
   }
 
   flush(): ServerMsg | null {
-    // Salvage wrecks lie out there again WRECK_RESPAWN_MS after being carried off (small machines stay gone).
+    // Salvage wrecks and crash debris lie out there again a while after being carried off (small machines stay gone).
     const now = Date.now();
     for (const [id, at] of this.taken) {
-      if (!id.startsWith('w:') || now - at < WRECK_RESPAWN_MS) continue;
+      if (now - at < respawnMs(id)) continue;
       this.taken.delete(id);
       crashTaken.delete(id);
       this.db.respawnCrash(id);

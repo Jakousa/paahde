@@ -2,6 +2,19 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Crash-site debris can be picked up
+
+The debris strewn along each crash trail (hull plates, bent fins, pipe bundles, burnt seats, porthole rings, boiler
+tanks, gear housings: 372 pieces over 66 sites) looked like scrap but couldn't be taken. Now F picks it up, aimed with
+the look ray like junk-pile scrap (`debrisTarget` in shared/crashsites.ts, 3.5 m reach), and it goes in the bag as
+the scrap material it is closest to (`DEBRIS_ITEMS` in shared/items.ts: hull plate → metal sheet, boiler tank →
+rusty drum, gear housing → gear, ...), so it counts for gear slots and crafting straight away.
+- Same path as the wrecks: ids `d:<site>:<i>` (`CrashPiece.id`, null for the main wreck and dressing), `crashTake`,
+  `CrashServer.carry` (reach checked against the piece's pickup sphere), `crashTaken` / `crash_taken`. A taken piece
+  isn't drawn and has no hitbox (`collideCrash`), and lies there again 30 min later, like scrap.
+- `crashTaken` moved to shared/crashsites.ts (re-exported from shared/crash.ts) so the collision can see it
+  without an import cycle.
+
 ## 2026-10-17 — Salvage wrecks in the desert (#13–#17)
 
 The salvage models (`public/models/salvage/*.glb`) are now in the game. `shared/wrecks.ts` lays them out

@@ -14,11 +14,16 @@
 // (each on a ground-dressing piece: CRASH_KINDS entries with dressing: true). Everything lies well inside its own cell (centre ≥ CELL_MARGIN from the edges,
 // pieces within TRAIL + a few metres), so collision only looks at the player's cell.
 //
+// Debris can be picked up (server/crash.ts, like the salvage wrecks): a piece carried off is in `crashTaken`, keyed
+// by its `id`, and has no hitbox until it lies there again.
+//
 // Piece frame: yaw turns model +Z (the nose) to (dx, dz) and model +X to (dz, -dx), like scrap. Each
 // piece's origin sits at heightAt(x, z) − sink; capsule tops are origin + h.
 import { BASE, BASE_SPAWN, padBlend } from './base.ts';
 import { CRASH_KINDS, type CrashKind } from './crashKinds.ts';
+import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
 import { SCRAP_CELL, scrapPieces } from './scrap.ts';
+import { yawFromQ } from './sim.ts';
 import { baseHeight, heightAt, WORLD_HALF, WORLD_SEED } from './terrain.ts';
 
 /** Grid cell size (m); each cell holds at most one site. */
@@ -62,6 +67,8 @@ export type CrashHitbox = { x: number; z: number; ax: number; az: number; half: 
 export type CrashPiece = {
   /** Site id and index in the site (0 is the main wreck). */
   site: number; i: number;
+  /** Debris only (it can be picked up): debrisId(site, i). Null for the main wreck and dressing. */
+  id: string | null;
   kind: number; x: number; z: number;
   /** World yaw vector: model +Z turns to (dx, dz). */
   dx: number; dz: number;
@@ -94,6 +101,21 @@ export type CrashSite = {
   /** Bounding radius (m) of all pieces around the centre. */
   radius: number;
 };
+
+/** Machines (shared/crash.ts), salvage wrecks (shared/wrecks.ts) and debris pieces (`CrashPiece.id`) that have been
+ *  carried off, by id; kept in step with the server ('crash' messages). Call crashChanged() (shared/crash.ts) after changing it. */
+export const crashTaken = new Set<string>();
+
+/** Id of debris piece i of site `site`. Never clashes with machine ("<site>:<i>") or wreck ("w:...") ids. */
+export const debrisId = (site: number, i: number) => `d:${site}:${i}`;
+
+/** The debris piece with this id, or null. Ids may come from the network: this validates them. */
+export function debrisById(id: unknown): CrashPiece | null {
+  if (typeof id !== 'string') return null;
+  const m = /^d:(\d{1,6}):(\d{1,2})$/.exec(id);
+  const pc = m ? crashSite(Number(m[1]))?.pieces[Number(m[2])] : undefined;
+  return pc && pc.id === id ? pc : null;
+}
 
 /** Ground height of a piece's origin (its model sits here). */
 export function pieceY(pc: CrashPiece): number {
@@ -370,7 +392,8 @@ function piece(site: number, i: number, kind: number, x: number, z: number, dx: 
     const d = Math.sqrt((hx - x) * (hx - x) + (hz - z) * (hz - z)) + c.half + c.r;
     if (d > reach) reach = d;
   }
-  return { site, i, kind, x, z, dx, dz, sink, reach: Math.max(reach, K.radius), hitboxes };
+  const id = K.main || K.dressing ? null : debrisId(site, i);
+  return { site, i, id, kind, x, z, dx, dz, sink, reach: Math.max(reach, K.radius), hitboxes };
 }
 
 /**
@@ -388,7 +411,7 @@ export function collideCrash(p: { x: number; z: number; vx: number; vz: number }
   const feet = Math.max(y, prevY);
   for (const pc of s.pieces) {
     const pr = pc.reach + radius;
-    if (!pc.hitboxes.length || Math.abs(p.x - pc.x) > pr || Math.abs(p.z - pc.z) > pr) continue;
+    if (!pc.hitboxes.length || (pc.id && crashTaken.has(pc.id)) || Math.abs(p.x - pc.x) > pr || Math.abs(p.z - pc.z) > pr) continue;
     const base = pieceY(pc);
     for (const b of pc.hitboxes) {
       const reach = b.half + b.r + radius;
@@ -413,4 +436,49 @@ export function collideCrash(p: { x: number; z: number; vx: number; vz: number }
     }
   }
   return support;
+}
+
+/** How far from the eye a debris piece can be picked up, metres (like scrap, shared/scrap.ts PICKUP_REACH). */
+export const DEBRIS_REACH = 3.5;
+
+/** Centre height above the ground and radius of a debris piece's pickup sphere. */
+function pickSphere(pc: CrashPiece): [number, number] {
+  const K = CRASH_KINDS[pc.kind];
+  let top = 0;
+  for (const c of K.capsules) top = Math.max(top, c.h - pc.sink);
+  return [Math.max(0.15, top / 2), Math.max(0.75 * K.radius, top / 2)];
+}
+
+/**
+ * The debris piece the player is looking at (nearest pickup sphere hit by the look ray within DEBRIS_REACH), or
+ * null. Same eye and look ray as digging and scrap (shared/scrap.ts scrapTarget).
+ */
+export function debrisTarget(feet: { x: number; y: number; z: number }, yawQ: number, pitchQ: number): CrashPiece | null {
+  const s = crashSiteAt(Math.floor(feet.x / CRASH_CELL), Math.floor(feet.z / CRASH_CELL));
+  const yaw = yawFromQ(yawQ), pitch = pitchFromQ(pitchQ);
+  const cp = Math.cos(pitch);
+  const dx = -Math.sin(yaw) * cp, dy = Math.sin(pitch), dz = -Math.cos(yaw) * cp;
+  const ex = feet.x, ey = feet.y + EYE_HEIGHT, ez = feet.z;
+  if (!s || Math.hypot(s.x - ex, s.z - ez) > s.radius + DEBRIS_REACH) return null;
+  let best: CrashPiece | null = null, bestT = Infinity;
+  for (const pc of s.pieces) {
+    if (!pc.id || crashTaken.has(pc.id) || Math.abs(pc.x - ex) > pc.reach + DEBRIS_REACH || Math.abs(pc.z - ez) > pc.reach + DEBRIS_REACH) continue;
+    const [cy, rad] = pickSphere(pc);
+    // Ray vs sphere: closest approach along the ray.
+    const ox = pc.x - ex, oy = heightAt(pc.x, pc.z) + cy - ey, oz = pc.z - ez;
+    const t = ox * dx + oy * dy + oz * dz;
+    const d2 = ox * ox + oy * oy + oz * oz - t * t;
+    if (d2 > rad * rad) continue;
+    const hit = t - Math.sqrt(rad * rad - d2); // entry point (negative: the eye is inside)
+    if (hit > DEBRIS_REACH || t < 0) continue;
+    if (hit < bestT) { bestT = hit; best = pc; }
+  }
+  return best;
+}
+
+/** Distance from the eye to a debris piece's pickup sphere (0 inside it). For server-side reach checks. */
+export function debrisReach(feet: { x: number; y: number; z: number }, pc: CrashPiece): number {
+  const [cy, rad] = pickSphere(pc);
+  const d = Math.hypot(pc.x - feet.x, heightAt(pc.x, pc.z) + cy - (feet.y + EYE_HEIGHT), pc.z - feet.z);
+  return Math.max(0, d - rad);
 }

@@ -6,8 +6,8 @@
 // turns pieces into instance matrices.
 //
 // Each glb node (one per CRASH_KINDS entry) becomes one InstancedMesh per mesh/material in it, filled with
-// every piece of that kind within VIEW of the player. Rebuilt when the player has moved REBUILD metres or
-// the sand under a piece is dug. Wrecks are big landmarks, so the view distance is long.
+// every piece of that kind within VIEW of the player. Rebuilt when the player has moved REBUILD metres, the
+// sand under a piece is dug, or a debris piece is picked up (crashTaken) or lies there again. Wrecks are big landmarks, so the view distance is long.
 //
 // Dressing pieces (the sand berms, cradle, straps and cables under each machine) are draped over the dunes
 // instead: their vertices are lifted to the terrain under each one and every piece in view is merged into one
@@ -22,7 +22,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { color, float, instancedBufferAttribute, mx_noise_float, smoothstep, texture, vec2 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { CRASH_KINDS, type CrashKind } from '../../shared/crashKinds.ts';
-import { crashListeners, crashSpent } from '../../shared/crash.ts';
+import { crashListeners, crashSpent, crashTaken } from '../../shared/crash.ts';
 import { crashSitesNear, pieceY, type CrashPiece, type CrashSite } from '../../shared/crashsites.ts';
 import { EDIT_CELL, EDIT_CHUNK, edits, heightAt } from '../../shared/terrain.ts';
 import { createSandMaterial } from './sandMaterial.ts';
@@ -271,7 +271,7 @@ export class CrashSites {
 
   private place(pc: CrashPiece, phase: number) {
     const kind = this.kinds[pc.kind];
-    if (!kind || kind.count >= kind.capacity) return;
+    if (!kind || kind.count >= kind.capacity || (pc.id && crashTaken.has(pc.id))) return;
     _q.setFromEuler(_e.set(0, Math.atan2(pc.dx, pc.dz), 0));
     if (pc.i > 0 && !CRASH_KINDS[pc.kind].dressing) {
       // Debris lies a little askew (visual only; its hitbox stays upright).
