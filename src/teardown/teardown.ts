@@ -17,6 +17,7 @@ import * as THREE from 'three/webgpu';
 import { BACK, FORWARD, LEFT, RIGHT } from '../../shared/sim.ts';
 import { type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
 import { keyHeld, tools, ui } from '../input.ts';
+import { teardownSound } from '../teardownSound.ts';
 import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, PART_NAMES, rarityColor, TeardownUi } from './ui.ts';
 
@@ -632,6 +633,7 @@ export class TeardownView {
       s.progress++;
       this.show(s);
       if (s.progress >= s.need) this.complete(s);
+      else teardownSound.hit(s.kind === 'screw' ? 'tink' : 'clink', 0.8);
     }
   }
 
@@ -687,6 +689,7 @@ export class TeardownView {
       dA = Math.atan2(Math.sin(dA), Math.cos(dA));
       a.angle = ang;
       s.progress += Math.abs(dA) / Math.PI;
+      if (dA) teardownSound.turn();
     } else if (s.kind === 'wire') {
       // Only strokes that actually cross the wire count.
       const t = this.pick(e.clientX, e.clientY);
@@ -698,6 +701,7 @@ export class TeardownView {
     this.show(s);
     if (s.progress >= s.need) {
       this.act = null;
+      teardownSound.stop();
       this.complete(s);
     }
   }
@@ -713,6 +717,7 @@ export class TeardownView {
     const a = this.act;
     if (a) {
       const s = a.step;
+      if (s.kind === 'bolt') teardownSound.stop();
       if (s.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(s), s.players, false);
       // A half-cut wire, half-pried tab or half-lifted weight falls back; a half-turned bolt stays where it is.
       if (!s.done && (s.kind === 'wire' || s.kind === 'pry' || s.kind === 'lift')) {
@@ -727,6 +732,7 @@ export class TeardownView {
   private endInteraction() {
     const a = this.act;
     if (a?.step.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(a.step), a.step.players, false);
+    teardownSound.stop();
     this.drag = null;
     this.act = null;
     this.button = -1;
@@ -805,6 +811,12 @@ export class TeardownView {
     const j = this.site!.junk;
     const freed = j.pieces.filter((p) => !p.released && p.holds.every((h) => h.done));
     for (const p of freed) this.releasePiece(p, how === 'silent');
+    if (how !== 'silent') {
+      // The fastener comes off; a cover it was holding drops off with a clang.
+      const level = how === 'remote' ? 0.6 : 1;
+      teardownSound.hit(s.kind === 'pry' || s.kind === 'wire' ? 'soft' : 'clink', level);
+      if (freed.length || s.kind === 'lift') teardownSound.hit('clang', level);
+    }
     this.computeRest();
     this.refreshCard();
     this.site!.changed?.();

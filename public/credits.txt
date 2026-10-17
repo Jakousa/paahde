@@ -30,6 +30,18 @@ Metal Latch Sound Effect 2 (sound)
   Trimmed to the main hit, high-passed, faded out and converted to mono.
   File: audio/pickup.mp3
 
+Metallic / mechanical sound (Clings and Clangs) (sound)
+  By Breviceps on Freesound (https://freesound.org/s/505669/), CC0
+  (http://creativecommons.org/publicdomain/zero/1.0/).
+  Sliced into four single hits, high-passed, faded out, levelled and converted to mono.
+  File: audio/teardown-clang.mp3
+
+ring around metallic shower hose 2 (sound)
+  By beskhu on Freesound (https://freesound.org/s/273914/), CC0
+  (http://creativecommons.org/publicdomain/zero/1.0/).
+  Trimmed to the first second, high-passed, faded out and levelled.
+  File: audio/teardown-bolt.mp3
+
 Made for this game
 ------------------
 
