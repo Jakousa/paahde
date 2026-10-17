@@ -63,6 +63,10 @@ export type ClientMsg =
   | { t: 'lootTake'; id: number }
   // Debug menu: bring the nearest guardian 90 m from you, or a searchlight drone over you for a minute (by day too).
   | { t: 'summon'; what: 'guardian' | 'drone' }
+  // A laser rifle shot (shared/rifle.ts) from (x, y, z) to where it stopped, (ex, ey, ez). `g`/`i`: the client found it
+  // hit weak point i of walker g. The server checks the rifle is in hand, the rate and that the shot was aimed at that
+  // walker, breaks the point, and shows the shot to everyone near ('zap').
+  | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number }
   // Debug menu: repaired gear of every kind, Scrap parts (for testing).
   | { t: 'debugGear' }
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
@@ -179,8 +183,9 @@ export type ServerMsg =
   // Sent before 'welcome' on join and to everyone whenever the list changes.
   | { t: 'storms'; storms: Storm[] }
   // Guardians and night drones (shared/guardians.ts) within reach, about 10 times a second, at server time `time`.
-  // g: [id, kind, legs, x, z, yaw, hunt, ax, ay, az, gun] per walker (kind: shared/guardians.ts KINDS index;
-  // (ax, ay, az) where its cannon aims; gun -1 idle, 0 aiming, 1 charging); d: [id, x, y, z, yaw, dx, dy, dz, lock] per drone ((dx, dy, dz)
+  // g: [id, kind, legs, x, z, yaw, hunt, ax, ay, az, gun, broken, dead] per walker (kind: shared/guardians.ts KINDS
+  // index; (ax, ay, az) where its cannon aims; gun -1 idle, 0 aiming, 1 charging; broken: bit i set once weak point i
+  // is shot (shared/rifle.ts); dead: 0 alive, else seconds since it died + 0.01); d: [id, x, y, z, yaw, dx, dy, dz, lock] per drone ((dx, dy, dz)
   // the searchlight's unit direction). hunt / lock: 0 nobody, 1 someone else, 2 you.
   | { t: 'bots'; time: number; g: number[]; d: number[] }
   // Guardian `g` fired laser bolt `id` from (x, y, z) along unit (dx, dy, dz) at server time `time`; it flies at
@@ -191,6 +196,8 @@ export type ServerMsg =
   // landing `flight` seconds later (shared/missiles.ts missileAt); 'blast' when it does. Sent to everyone near the
   // impact.
   | ({ t: 'missile'; id: number; g: number; time: number } & MissilePath)
-  | { t: 'blast'; id: number; x: number; y: number; z: number };
+  | { t: 'blast'; id: number; x: number; y: number; z: number }
+  // Player `by` fired a laser rifle from (x, y, z) to (ex, ey, ez); `hit`: it broke a weak point there.
+  | { t: 'zap'; by: number; x: number; y: number; z: number; ex: number; ey: number; ez: number; hit: boolean };
 
 export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler';

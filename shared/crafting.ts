@@ -21,11 +21,17 @@ const tierRank = (kind: string) => {
 const sheet: Ingredient['match'] = (k) => k === 'metal_sheet' || k === 'dented_sheet';
 /** The wiring coil part, any tier. */
 const coil: Ingredient['match'] = (k) => partOf(k)?.part === 'coil' && k in ITEMS;
+const battery: Ingredient['match'] = (k) => partOf(k)?.part === 'battery' && k in ITEMS;
 
 /** Recipe id → what it makes and needs. The id is the item kind it makes. */
 export const RECIPES: Record<string, Recipe> = {
   plant_bed: { makes: 'plant_bed', needs: [{ label: 'Metal sheet', n: 3, match: sheet }] },
   uv_lamp: { makes: 'uv_lamp', needs: [{ label: 'Metal sheet', n: 2, match: sheet }, { label: 'Wiring coil', n: 1, match: coil }] },
+  // The one weapon (shared/rifle.ts): a plank for the barrel, a sheet for the body, coils to focus the beam, a cell.
+  laser_rifle: { makes: 'laser_rifle', needs: [
+    { label: 'Metal plank', n: 1, match: (k) => k === 'metal_plank' }, { label: 'Metal sheet', n: 1, match: sheet },
+    { label: 'Wiring coil', n: 2, match: coil }, { label: 'Battery', n: 1, match: battery },
+  ] },
 };
 
 /** How many items in `slots` match an ingredient. */

@@ -44,6 +44,8 @@ import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
 import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
+import { Rifle } from './rifle';
+import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { machinesAt } from '../shared/crash.ts';
@@ -160,6 +162,9 @@ const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
+const rifle = new Rifle(orbit, net, guardianFx.guardians, (out) => viewmodel.muzzle(out));
+scene.add(zaps.root);
+if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => placedView.sync(placed, net.garden);
 net.onNotice = (text) => hud.toast(text);
 const placer = new Placer(net, placedView);
@@ -276,6 +281,7 @@ renderer.setAnimationLoop((time) => {
   else focus.copy(me.root.position);
   if (orbit.down !== (net.down !== null)) document.body.classList.toggle('down', (orbit.down = net.down !== null));
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
+  const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, !s.riding && !teardown.active && !net.down);
   // The detector listens where you look (where you'd dig), or a step ahead when you look up.
   const looked = digTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch))
     ?? { x: net.me.x - Math.sin(orbit.yaw) * 1.2, z: net.me.z - Math.cos(orbit.yaw) * 1.2 };
@@ -284,6 +290,8 @@ renderer.setAnimationLoop((time) => {
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
   teardown.placeCamera(frameDt); // at the disassembly table: a fixed view above it
   guardianFx.update(net, frameDt, orbit.camera, focus);
+  rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
+  zaps.update(frameDt);
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
   me.setHeadless(riding && !orbit.showBody);

@@ -17,6 +17,11 @@
 // what projects where) but the hands sit inside the player's collision radius, so they don't poke through
 // walls the camera is pressed against.
 //
+// Laser rifle (src/rifle.ts): RifleIdle / RifleWalk with both hands on it, RifleAim (to the eye, played clamped
+// while `playerHands.aim` rises; once there the scope view takes over and the hands hide) on the `Rifle` mesh. Firing
+// kicks it back into the shoulder and up on a spring (`playerHands.kick`); its `RifleGlow` material dims as the cell
+// empties and brightens as it recharges. While aiming the mouse-look sway is mostly taken out, so the sights stay on.
+//
 // Debug (with ?debug, `dbg.viewmodel`): ?hold=canteen|telescope forces what's held, ?anim=Drink loops one clip.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -54,6 +59,13 @@ export class ViewModel {
   private current: THREE.AnimationAction | null = null;
   private canteen: THREE.Object3D | null = null;
   private telescope: THREE.Object3D | null = null;
+  private rifle: THREE.Object3D | null = null;
+  private rifleMuzzle: THREE.Object3D | null = null;
+  private rifleGlow: THREE.MeshStandardMaterial[] = [];
+  /** Recoil kick on a spring: offset and velocity. */
+  private kick = 0;
+  private kickV = 0;
+  private lastKick = 0;
   private draws: THREE.Object3D[] = [];
   private drawn = 0; // spyglass draw tubes: 0 = pushed in, 1 = drawn out
   private tint: THREE.MeshStandardMaterial[] = [];
@@ -97,6 +109,18 @@ export class ViewModel {
     });
     this.canteen = model.getObjectByName('Canteen') ?? null;
     this.telescope = model.getObjectByName('Telescope') ?? null;
+    this.rifle = model.getObjectByName('Rifle') ?? null;
+    this.rifleMuzzle = model.getObjectByName('RifleMuzzle') ?? null;
+    this.rifle?.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        if (m.name === 'RifleGlow') {
+          m.userData.base = (m as THREE.MeshStandardMaterial).emissiveIntensity || 1;
+          this.rifleGlow.push(m as THREE.MeshStandardMaterial);
+        }
+      }
+    });
     this.draws = ['TelescopeDraw1', 'TelescopeDraw2'].map((n) => model.getObjectByName(n)).filter((o) => !!o);
     this.setDrawn(0);
     this.mixer = new THREE.AnimationMixer(model);
@@ -120,6 +144,14 @@ export class ViewModel {
   private applyHeld() {
     if (this.canteen) this.canteen.visible = this.shown === 'canteen';
     if (this.telescope) this.telescope.visible = this.shown === 'telescope';
+    if (this.rifle) this.rifle.visible = this.shown === 'rifle';
+  }
+
+  /** The rifle's muzzle in world space (as drawn: scaled about the eye like the rest), or null if it isn't out. */
+  muzzle(out: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.rifleMuzzle || this.shown !== 'rifle' || !this.root.visible) return null;
+    this.rifleMuzzle.updateWorldMatrix(true, false);
+    return this.rifleMuzzle.getWorldPosition(out);
   }
 
   private setDrawn(d: number) {
@@ -181,15 +213,24 @@ export class ViewModel {
         this.lower = Math.max(0, this.lower - dt / SWITCH_S);
       }
     }
-    this.sway.visible = this.lower < 1 && !playerHands.scoped;
+    this.sway.visible = this.lower < 1 && !playerHands.scoped && !playerHands.rifleScoped;
+    // Recoil: kicked back and up on firing, sprung back with a little overshoot.
+    if (playerHands.kick > this.lastKick + 0.5) this.kickV += 9;
+    this.lastKick = playerHands.kick;
+    this.kickV += (-260 * this.kick - 24 * this.kickV) * dt;
+    this.kick += this.kickV * dt;
+    // Aiming down the sights: the sights follow the view, not trail it.
+    const steady = 1 - 0.8 * playerHands.aim;
     this.slide += ((pose.sliding && pose.grounded ? 1 : 0) - this.slide) * (1 - Math.exp(-dt * 10));
     const l = smooth(this.lower);
+    const rest = REST_PITCH * (1 - playerHands.aim);
     this.sway.rotation.set(
-      REST_PITCH - swayPitch * 0.5 - l * 0.9 - this.slide * 0.25,
-      -swayYaw * 0.6,
-      -swayYaw * 0.35,
+      rest - swayPitch * 0.5 * steady - l * 0.9 - this.slide * 0.25 + this.kick * 0.09,
+      -swayYaw * 0.6 * steady,
+      -swayYaw * 0.35 * steady + this.kick * 0.02,
     );
-    this.sway.position.set(-swayYaw * 0.04, 0, 0);
+    this.sway.position.set(-swayYaw * 0.04 * steady, -this.kick * 0.01, this.kick * 0.09);
+    for (const g of this.rifleGlow) g.emissiveIntensity = (g.userData.base as number) * (0.15 + 0.85 * playerHands.charge ** 3 + 4 * playerHands.kick);
 
     if (!this.mixer) return;
     const draw = this.shown === 'telescope' && playerHands.looking ? 1 : 0;
@@ -206,6 +247,15 @@ export class ViewModel {
       if (playerHands.looking && this.has('TelescopeRaise')) this.play('TelescopeRaise', 0.1, true);
       else if (moving) this.play((walk = this.has('TelescopeWalk') ? 'TelescopeWalk' : 'Walk'));
       else this.play(this.has('TelescopeIdle') ? 'TelescopeIdle' : 'Idle');
+    } else if (this.shown === 'rifle') {
+      if (playerHands.aim > 0 && this.has('RifleAim')) {
+        // Scrubbed by the aim (raising and lowering), not played: it follows the button exactly.
+        this.play('RifleAim', 0.08);
+        const a = this.current!;
+        a.timeScale = 0;
+        a.time = smooth(playerHands.aim) * a.getClip().duration * 0.999;
+      } else if (moving) this.play((walk = this.has('RifleWalk') ? 'RifleWalk' : 'Walk'));
+      else this.play(this.has('RifleIdle') ? 'RifleIdle' : 'Idle');
     } else if (pose.digging) this.play('Dig', 0.12);
     else if (moving) this.play((walk = 'Walk'));
     else this.play('Idle');

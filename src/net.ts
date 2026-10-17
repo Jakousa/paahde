@@ -146,6 +146,8 @@ export class Net {
   bots: Extract<ServerMsg, { t: 'bots' }>[] = [];
   /** A guardian's laser bolt was fired or burst (src/world/bolts.ts). */
   onBolt?: (msg: Extract<ServerMsg, { t: 'shot' | 'boom' | 'missile' | 'blast' }>) => void;
+  /** Another player's laser rifle shot (src/rifle.ts draws it). */
+  onZap?: (msg: Extract<ServerMsg, { t: 'zap' }>) => void;
   /** A bed we tended was planted or harvested. */
   onTended?: (what: 'planted' | 'harvested') => void;
 
@@ -302,6 +304,12 @@ export class Net {
     this.send({ t: 'drink' });
   }
 
+  /** A laser rifle shot from (x, y, z) to (ex, ey, ez); `hit`: weak point i of walker g, as we saw it (shared/rifle.ts). */
+  fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number }) {
+    const r = (n: number) => Math.round(n * 100) / 100;
+    this.send({ t: 'fire', x: r(x), y: r(y), z: r(z), ex: r(ex), ey: r(ey), ez: r(ez), ...(hit ? { g: hit.g, i: hit.i } : {}) });
+  }
+
   /** Canteen refill finished at the base; the server answers with 'water'. */
   fill() {
     this.send({ t: 'fill' });
@@ -311,7 +319,7 @@ export class Net {
    * What we're holding, for other players' view of us; sent when it changes. Call every frame. The server
    * shows others the item in the selected slot; `hands` adds drinking from the canteen.
    */
-  setHands(held: 'none' | 'canteen' | 'telescope', drinking: boolean) {
+  setHands(held: string, drinking: boolean) {
     this.hands = held === 'canteen' ? (drinking ? 2 : 1) : 0;
     if (this.connected && (this.hands !== this.sentHands || tools.slot !== this.sentSlot)) {
       this.send({ t: 'hands', hands: this.hands, slot: tools.slot });
@@ -564,6 +572,7 @@ export class Net {
       return;
     }
     if (msg.t === 'shot' || msg.t === 'boom' || msg.t === 'missile' || msg.t === 'blast') return this.onBolt?.(msg);
+    if (msg.t === 'zap') return this.onZap?.(msg);
     if (msg.t === 'bots') {
       this.bots.push(msg);
       if (this.bots.length > 12) this.bots.shift();

@@ -111,6 +111,16 @@ export function aimHeld(): boolean {
   return mouseDig || mousePile || keys.has('KeyE') || keys.has('KeyQ');
 }
 
+/** Aim button held (right mouse or X): the rifle up to the eye. */
+export function aimDown(): boolean {
+  return !tools.frozen && (mousePile || keys.has('KeyX'));
+}
+
+/** Shift held (hold your breath while aiming the rifle). */
+export function breathHeld(): boolean {
+  return keys.has('ShiftLeft') || keys.has('ShiftRight');
+}
+
 /** F held down (pickup / fill). */
 export function interactHeld(): boolean {
   return keys.has('KeyF');

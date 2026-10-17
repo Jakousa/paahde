@@ -11,6 +11,7 @@ import { Bolts } from './world/bolts';
 import { Missiles } from './world/missiles';
 import { CHARGE_MS, CRAWLER, GUARDIAN, KINDS } from '../shared/guardians.ts';
 import { guardianSound } from './guardianSound';
+import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
 import type { Net } from './net';
 
@@ -48,6 +49,17 @@ export class GuardianFx {
     this.bolts = new Bolts(scene);
     this.missiles = new Missiles(scene);
     this.guardians.onFootfall = (f) => this.footfall(f);
+    this.guardians.onEvent = (e) => {
+      // A weak point shattered (whoever shot it), a dying walker's leg gave out, its hull hit the sand.
+      const heavy = e.kind === GUARDIAN;
+      if (e.what === 'break') rifleSound.impact('glass', e, this.ear);
+      else if (e.what === 'fail') rifleSound.fail(e, this.ear, heavy);
+      else {
+        rifleSound.slam(e, this.ear, heavy);
+        if (heavy) this.thump(e.x, e.y, e.z, 2.4, 28, 6, 3.2);
+        else this.thump(e.x, e.y, e.z, 0.3, 5, 1, 0.4);
+      }
+    };
     const style = document.createElement('style');
     style.textContent = css;
     this.warn.id = 'botWarn';

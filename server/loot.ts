@@ -112,6 +112,13 @@ export class LootServer {
     this.add(l);
   }
 
+  /** Something left on the sand at (x, z) (a killed walker's parts, server/guardians.ts), kept like a dropped item. */
+  dropAt(x: number, z: number, kind: string) {
+    const l: Loot = { id: this.nextId++, kind, x: x + rand(-0.8, 0.8), z: z + rand(-0.8, 0.8), depth: 0, src: 'drop' };
+    this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z);
+    this.add(l);
+  }
+
   /** After a dig stroke at (x, z) with radius r: caches the hole has reached (anywhere within a cell of them) come up. */
   dug(x: number, z: number, r: number) {
     for (const l of this.loot.values()) {

@@ -9,12 +9,13 @@ import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
 import {
   ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
   CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, GUARDIAN, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
-  NIGHT_SUN, sweepAt, TRACK_RATE,
+  NIGHT_SUN, REST_R, sweepAt, TRACK_RATE,
 } from '../shared/guardians.ts';
 import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
 } from '../shared/missiles.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
+import { allBroken, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
 import { sunElevation } from '../shared/sun.ts';
 import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
 
@@ -56,6 +57,13 @@ const DRONE_AREA = 110;
 const DRONE_LONELY = 600;
 /** Drones keep this far (m) from the base. */
 const DRONE_BASE_KEEP_OUT = 60;
+/** A dead walker's wreck lies where it fell this long (ms), by kind; a dead guardian is replaced after GUARDIAN_BACK_MS
+ *  by a new one at a site far from where it died. */
+const WRECK_MS: Record<Kind, number> = { [GUARDIAN]: WRECK_S[GUARDIAN] * 1000, [CRAWLER]: WRECK_S[CRAWLER] * 1000 };
+const GUARDIAN_BACK_MS = 8 * 60_000;
+const GUARDIAN_BACK_FAR = 900;
+/** A rifle shot counts against a walker if it passes and ends within this far (m, × scale) of the body's centre. */
+const SHOT_SLACK = REST_R + 6;
 
 /** What the bots need to know about a player (feet position; `safe` = just respawned, can't be hurt). */
 export type BotPlayer = { id: number; x: number; y: number; z: number; safe: boolean };
@@ -69,7 +77,12 @@ type Guardian = {
   aiming: boolean; ax: number; ay: number; az: number; chargeAt: number; firedAt: number;
   /** Last missile launched when. */
   missileAt: number;
+  /** Weak points (shared/rifle.ts): how many, which are shot (bit mask); died when (-1 alive). */
+  points: number; broken: number; deadAt: number;
 };
+
+/** A walker killed by a rifle (`by` the shooter's id), for the server to drop its parts. */
+export type Kill = { kind: Kind; x: number; z: number; by: number };
 
 type Missile = { id: number; path: MissilePath; launched: number };
 
@@ -113,6 +126,8 @@ export class GuardianServer {
   private nextWalker = 1;
   /** Crash sites (ids) with crawlers out right now. */
   private swarmed = new Set<number>();
+  /** Killed guardians come back (server ms), away from (x, z). */
+  private comeback: { at: number; x: number; z: number }[] = [];
 
   constructor() {
     const near = [...this.sites].sort((a, b) => Math.hypot(a.x - BASE.x, a.z - BASE.z) - Math.hypot(b.x - BASE.x, b.z - BASE.z));
@@ -127,6 +142,7 @@ export class GuardianServer {
       id: this.nextWalker++, kind, legs, x, z, yaw: rand(-Math.PI, Math.PI), speed: 0, home,
       tx: home.x, tz: home.z, guardUntil: 0, prey: -1, huntAt: 0, px: 0, pz: 0, knownAt: 0, calmUntil: 0, bitAt: 0,
       aiming: false, ax: 0, ay: 0, az: 0, chargeAt: -1, firedAt: 0, missileAt: 0,
+      points: weakPoints(kind, legs).length, broken: 0, deadAt: -1,
     };
     this.patrolPoint(g);
     return g;
@@ -164,9 +180,11 @@ export class GuardianServer {
     const byId = new Map(players.map((p) => [p.id, p]));
     const exposed = players.filter((p) => !p.safe && !inBase(p.x, p.y, p.z));
     this.swarm(players);
+    this.wrecks(now);
     const lit = this.tickDrones(dt, now, tod, players, exposed, byId);
     this.tickMissiles(dt, now, lit, players, exposed, blasted, events);
     for (const g of this.guardians) {
+      if (g.deadAt >= 0) continue;
       this.tickGuardian(g, dt, now, exposed, byId, crushed, bitten);
       if (KINDS[g.kind].gun) this.tickGun(g, now, byId, events);
     }
@@ -183,7 +201,7 @@ export class GuardianServer {
       if (now - this.spottedAt.get(p.id)! < FIRST_MS) continue;
       const prev = this.lastPos.get(p.id);
       const vx = prev ? (p.x - prev.x) / dt : 0, vz = prev ? (p.z - prev.z) / dt : 0;
-      const shooters = this.guardians.filter((g) => g.kind === GUARDIAN && Math.hypot(g.x - p.x, g.z - p.z) < MISSILE_R)
+      const shooters = this.guardians.filter((g) => g.kind === GUARDIAN && g.deadAt < 0 && Math.hypot(g.x - p.x, g.z - p.z) < MISSILE_R)
         .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)).slice(0, SHOOTERS);
       for (const g of shooters) {
         if (now - g.missileAt < MISSILE_MS) continue;
@@ -282,7 +300,7 @@ export class GuardianServer {
           this.hunt(g, p, now);
           // One crawler sees you, the whole site's pack comes (bar any backing off after a bite).
           if (g.kind === CRAWLER) {
-            for (const o of this.guardians) if (o !== g && o.kind === CRAWLER && o.home === g.home && o.prey < 0 && now >= o.calmUntil) this.hunt(o, p, now);
+            for (const o of this.guardians) if (o !== g && o.kind === CRAWLER && o.home === g.home && o.prey < 0 && now >= o.calmUntil && o.deadAt < 0) this.hunt(o, p, now);
           }
         }
       }
@@ -465,7 +483,7 @@ export class GuardianServer {
         const p = byId.get(d.lock)!;
         lit.add(p.id);
         for (const g of this.guardians) {
-          if (now < g.calmUntil || (g.prey >= 0 && g.prey !== p.id) || g.kind !== GUARDIAN) continue;
+          if (now < g.calmUntil || (g.prey >= 0 && g.prey !== p.id) || g.kind !== GUARDIAN || g.deadAt >= 0) continue;
           if (Math.hypot(g.x - p.x, g.z - p.z) < ALERT_R) this.hunt(g, p, now);
         }
       }
@@ -477,7 +495,7 @@ export class GuardianServer {
   /** Debug menu: the nearest guardian walks in from 90 m away, or a drone comes for a minute. */
   summon(what: unknown, p: BotPlayer, now: number) {
     if (what === 'drone') return this.spawnDrone(p.x, p.z, -1, now + 60_000, 70);
-    const big = this.guardians.filter((g) => g.kind === GUARDIAN);
+    const big = this.guardians.filter((g) => g.kind === GUARDIAN && g.deadAt < 0);
     if (what !== 'guardian' || !big.length) return;
     const g = big.reduce((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) < Math.hypot(b.x - p.x, b.z - p.z) ? a : b));
     const a = rand(-Math.PI, Math.PI);
@@ -489,6 +507,60 @@ export class GuardianServer {
     g.prey = -1;
     g.guardUntil = 0;
     g.calmUntil = 0;
+  }
+
+  /**
+   * Player `by` (feet position) shot from (x, y, z) to (ex, ey, ez) and says it broke weak point `i` of walker `gid`.
+   * Plausible (alive, the point whole, in range, the shot passing and ending at that walker): broken, and the walker
+   * (crawlers: the whole pack) comes for the shooter. Returns whether it counted, and the kill if that was the last one.
+   */
+  shoot(by: BotPlayer, x: number, y: number, z: number, ex: number, ey: number, ez: number, gid: unknown, i: unknown, now: number): { hit: boolean; kill: Kill | null } {
+    const miss = { hit: false, kill: null };
+    const g = this.guardians.find((o) => o.id === gid);
+    if (!g || g.deadAt >= 0 || !Number.isInteger(i) || (i as number) < 0 || (i as number) >= g.points || g.broken & (1 << (i as number))) return miss;
+    const sc = KINDS[g.kind].scale;
+    const cx = g.x, cy = heightAt(g.x, g.z) + BODY_H * sc, cz = g.z;
+    const dx = ex - x, dy = ey - y, dz = ez - z, len = Math.hypot(dx, dy, dz);
+    if (len > RANGE + 5 || len < 0.1) return miss;
+    // Closest approach of the shot to the body's centre, and where it ended.
+    const t = Math.max(0, Math.min(1, ((cx - x) * dx + (cy - y) * dy + (cz - z) * dz) / (len * len)));
+    const near = Math.hypot(x + dx * t - cx, y + dy * t - cy, z + dz * t - cz);
+    const slack = SHOT_SLACK * sc + 2;
+    if (near > slack || Math.hypot(ex - cx, ey - cy, ez - cz) > slack * 1.5) return miss;
+    g.broken |= 1 << (i as number);
+    if (allBroken(g.broken, g.points)) {
+      g.deadAt = now;
+      g.prey = -1;
+      g.aiming = false;
+      g.chargeAt = -1;
+      g.speed = 0;
+      return { hit: true, kill: { kind: g.kind, x: g.x, z: g.z, by: by.id } };
+    }
+    // Hurt, it turns on whoever did it; a crawler's pack with it.
+    if (!by.safe && !inBase(by.x, by.y, by.z)) {
+      g.calmUntil = 0;
+      this.hunt(g, by, now);
+      if (g.kind === CRAWLER) for (const o of this.guardians) if (o.kind === CRAWLER && o.home === g.home && o.deadAt < 0 && o.prey < 0) this.hunt(o, by, now);
+    }
+    return { hit: true, kill: null };
+  }
+
+  /** Wrecks cleared away after a while; killed guardians replaced, at a site far from where they fell. */
+  private wrecks(now: number) {
+    this.guardians = this.guardians.filter((g) => {
+      if (g.deadAt < 0 || now - g.deadAt < WRECK_MS[g.kind]) return true;
+      if (g.kind === GUARDIAN) this.comeback.push({ at: g.deadAt + GUARDIAN_BACK_MS, x: g.x, z: g.z });
+      return false;
+    });
+    this.comeback = this.comeback.filter((c) => {
+      if (now < c.at) return true;
+      const far = this.sites.filter((s) => Math.hypot(s.x - c.x, s.z - c.z) > GUARDIAN_BACK_FAR
+        && Math.hypot(s.x - BASE.x, s.z - BASE.z) > BASE_KEEP_OUT + PATROL[GUARDIAN][1]
+        && !this.guardians.some((o) => o.kind === GUARDIAN && o.home === s));
+      const home = far.length ? far[Math.floor(Math.random() * far.length)] : this.sites[Math.floor(Math.random() * this.sites.length)];
+      this.guardians.push(this.walker(GUARDIAN, Math.random() < 0.34 ? 3 : 4, home, home.x + 50, home.z));
+      return false;
+    });
   }
 
   /** A drone coming in from `from` m away to patrol around (hx, hz), over crash site `site` (-1: summoned). */
@@ -518,7 +590,8 @@ export class GuardianServer {
     for (const o of this.guardians) {
       if (Math.hypot(o.x - x, o.z - z) > (o.kind === CRAWLER ? CRAWLER_SEND_R : SEND_R)) continue;
       g.push(o.id, o.kind, o.legs, r2(o.x), r2(o.z), r3(o.yaw), o.prey < 0 ? 0 : o.prey === id ? 2 : 1,
-        o.aiming ? r2(o.ax) : 0, o.aiming ? r2(o.ay) : 0, o.aiming ? r2(o.az) : 0, o.chargeAt >= 0 ? 1 : o.aiming ? 0 : -1);
+        o.aiming ? r2(o.ax) : 0, o.aiming ? r2(o.ay) : 0, o.aiming ? r2(o.az) : 0, o.chargeAt >= 0 ? 1 : o.aiming ? 0 : -1,
+        o.broken, o.deadAt < 0 ? 0 : Math.round((time - o.deadAt) / 100) / 10 + 0.01);
     }
     for (const o of this.drones) {
       if (Math.hypot(o.x - x, o.z - z) > SEND_R) continue;

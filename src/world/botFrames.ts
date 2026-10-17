@@ -7,11 +7,15 @@ type BotsMsg = Extract<ServerMsg, { t: 'bots' }>;
 
 /** How far behind the server clock (ms) they're drawn: two updates and some jitter. */
 export const BOT_DELAY_MS = 250;
-export const G_STRIDE = 11;
+export const G_STRIDE = 13;
 export const D_STRIDE = 9;
 
-/** gun: -1 idle, 0 aiming at (ax, ay, az), 1 charging. */
-export type GuardianFrame = { id: number; kind: Kind; legs: 3 | 4; x: number; z: number; yaw: number; hunt: number; ax: number; ay: number; az: number; gun: number };
+/** gun: -1 idle, 0 aiming at (ax, ay, az), 1 charging. broken: weak points shot (bit mask, shared/rifle.ts); dead: 0
+ *  alive, else seconds since it died. */
+export type GuardianFrame = {
+  id: number; kind: Kind; legs: 3 | 4; x: number; z: number; yaw: number; hunt: number; ax: number; ay: number; az: number; gun: number;
+  broken: number; dead: number;
+};
 export type DroneFrame = { id: number; x: number; y: number; z: number; yaw: number; dx: number; dy: number; dz: number; lock: number };
 
 const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
@@ -48,7 +52,7 @@ export function guardiansAt(msgs: readonly BotsMsg[], time: number): GuardianFra
       ax: p[k + 10] >= 0 ? p[k + 7] + (g[j + 7] - p[k + 7]) * t : g[j + 7],
       ay: p[k + 10] >= 0 ? p[k + 8] + (g[j + 8] - p[k + 8]) * t : g[j + 8],
       az: p[k + 10] >= 0 ? p[k + 9] + (g[j + 9] - p[k + 9]) * t : g[j + 9],
-      gun: g[j + 10],
+      gun: g[j + 10], broken: g[j + 11], dead: g[j + 12],
     });
   }
   return out;

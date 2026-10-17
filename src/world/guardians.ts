@@ -17,6 +17,12 @@
 // - The cannon hangs under the body: the turret yaws and the gun pitches (slewing, not snapping) towards the
 //   point the server says it aims at, droops forward when idle, glows up as it charges and kicks back on firing.
 //
+// - Weak points (shared/rifle.ts): red glowing lenses on the knees (guardians) or flanks (crawlers), pulsing. The
+//   local rifle tests its shots against them as drawn here (raycast); a shot one shatters (glass, sparks, a flinch) and
+//   keeps smoking. With all of them broken the walker dies: it twitches, then its legs give out one after another in
+//   jerky servo steps, feet skidding out, and the body sinks in stages to the sand, tipping towards the legs that went
+//   first, and slams down; its eye flickers out and it smokes, then sinks into the sand before the server clears it.
+//
 // Models: public/models/guardian.glb (tools/blender/guardians.py), one separate node per part with its origin
 // at its joint; boxes stand in until it has loaded.
 import * as THREE from 'three/webgpu';
@@ -24,7 +30,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ANKLE, BODY_H, CRAWLER, FEMUR, GUN_MOUNT, GUN_PIVOT, KINDS, MUZZLE, REST_R, SOCKETS, TIBIA } from '../../shared/guardians.ts';
 import { heightAt, normalAt } from '../../shared/terrain.ts';
+import { HIT_PAD, weakPoints, WRECK_S, WRECK_SINK, type WeakPoint } from '../../shared/rifle.ts';
 import type { GuardianFrame } from './botFrames.ts';
+import { zaps } from './zaps.ts';
 
 /** Drawn within this distance (m), by kind. Lengths and times below are for scale 1; a walker of scale s uses
  *  lengths × s and times × √s (dynamic similarity: small legs swing quicker). */
@@ -41,6 +49,33 @@ const SPRING_K = 9, SPRING_C = 4.5, LAND_DIP = 0.9;
 const MAX_TILT = 0.2;
 
 export type Footfall = { x: number; y: number; z: number; /** 0..1 how hard */ weight: number; /** KINDS index */ kind: number };
+/** Something happened to a walker at (x, y, z): a weak point shattered, a leg gave out while dying, it hit the sand. */
+export type WalkerEvent = { what: 'break' | 'fail' | 'slam'; x: number; y: number; z: number; kind: number };
+/** What a shot struck: a weak point (`walker`, `index`), or just a walker's metal (index -1). */
+export type ShotHit = { walker: number; index: number; dist: number; point: THREE.Vector3; normal: THREE.Vector3 };
+
+/** Dying (seconds × √scale): twitching for TWITCH, then a leg gives out every LEG_GAP (± a little), each in FAIL_S. */
+const TWITCH = 0.7, LEG_GAP = 0.55, FAIL_S = 0.75;
+/** Dead, the body's centre rests this high (× scale) over the sand (the hull's belly on it), feet skidded out by
+ *  SPLAY × REST_R, tipped by up to TIP rad towards the legs that went first. */
+const BODY_REST = 2.5, SPLAY = 0.85, TIP = 0.22;
+/** Smoke puffs per second from a broken weak point, and from a wreck's body. */
+const SMOKE_RATE = 7, WRECK_SMOKE = 5;
+
+/** A servo giving up: three quick jerks with holds between, 0..1. */
+function jerky(x: number) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const n = 3, k = Math.floor(x * n), f = Math.min(1, ((x * n - k) / 0.35));
+  return (k + f * f * (3 - 2 * f)) / n;
+}
+
+const lensGeo = new THREE.SphereGeometry(1, 16, 12);
+const rimGeo = new THREE.TorusGeometry(1.02, 0.22, 6, 16);
+const lensMat = new THREE.MeshStandardNodeMaterial({ color: 0x500000, roughness: 0.2, metalness: 0.1, emissive: 0xff0800, emissiveIntensity: 2.4 });
+const brokenMat = new THREE.MeshStandardNodeMaterial({ color: 0x140c0a, roughness: 0.9, metalness: 0.3 });
+const rimMat = new THREE.MeshStandardNodeMaterial({ color: 0x2a2624, roughness: 0.5, metalness: 0.8 });
+type Target = { wp: WeakPoint; lens: THREE.Mesh; group: THREE.Group; broken: boolean; smoke: number };
 
 type Part = 'body3' | 'body4' | 'hip' | 'femur' | 'tibia' | 'foot' | 'turret' | 'gun';
 const NODES: Record<Part, string> = {
@@ -193,6 +228,7 @@ const _v = new THREE.Vector3(), _h = new THREE.Vector3(), _a = new THREE.Vector3
 const _d = new THREE.Vector3(), _p = new THREE.Vector3(), _x = new THREE.Vector3(), _y = new THREE.Vector3();
 const _z = new THREE.Vector3(), _n = { x: 0, y: 1, z: 0 }, _m = new THREE.Matrix4(), _r = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+const _w = new THREE.Vector3(), _o = new THREE.Vector3();
 
 /** Point `o` along +Z from `from` to `to`, its +Y towards `pole` (perpendicular part), at `from`. */
 function aim(o: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3, pole: THREE.Vector3) {
@@ -204,6 +240,32 @@ function aim(o: THREE.Object3D, from: THREE.Vector3, to: THREE.Vector3, pole: TH
   _m.makeBasis(_x, _y, _z);
   o.quaternion.setFromRotationMatrix(_m);
   o.position.copy(from);
+}
+
+/** Distance along unit ray (o, d) to sphere (c, r), or null if it misses (0 if o is inside). */
+function sphere(o: THREE.Vector3, d: THREE.Vector3, c: THREE.Vector3, r: number): number | null {
+  const ox = o.x - c.x, oy = o.y - c.y, oz = o.z - c.z;
+  const b = ox * d.x + oy * d.y + oz * d.z, cc = ox * ox + oy * oy + oz * oz - r * r;
+  const disc = b * b - cc;
+  if (disc < 0) return null;
+  const t = -b - Math.sqrt(disc);
+  return t >= 0 ? t : cc < 0 ? 0 : null;
+}
+
+const _ca = new THREE.Vector3(), _cb = new THREE.Vector3();
+/** Distance along unit ray (o, d) to the capsule a–b of radius r (where it passes closest, stepped back), or null. */
+function capsule(o: THREE.Vector3, d: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, r: number): number | null {
+  // Closest points between the ray and the segment.
+  const u = _ca.subVectors(b, a), w = _cb.subVectors(o, a);
+  const uu = u.dot(u), ud = u.dot(d), uw = u.dot(w), dw = d.dot(w);
+  const den = uu - ud * ud;
+  let sc = den > 1e-6 ? (uw - ud * dw) / den : 0;
+  sc = Math.max(0, Math.min(1, sc));
+  const tc = Math.max(0, sc * ud - dw);
+  const px = a.x + u.x * sc - (o.x + d.x * tc), py = a.y + u.y * sc - (o.y + d.y * tc), pz = a.z + u.z * sc - (o.z + d.z * tc);
+  const miss = Math.hypot(px, py, pz);
+  if (miss > r) return null;
+  return Math.max(0, tc - Math.sqrt(r * r - miss * miss));
 }
 
 class Walker {
@@ -234,8 +296,25 @@ class Walker {
   private ts: number;
   readonly kind: number;
   private noShadows = false;
+  readonly id: number;
+  targets: Target[] = [];
+  /** Broken weak points as drawn (server mask, plus local shots not confirmed yet: bit → when). */
+  private shown = 0;
+  private predicted = new Map<number, number>();
+  private flinch = 0;
+  private flinchX = 0;
+  private flinchZ = 0;
+  /** Dying: seconds since death (-1 alive), the body's height then, when each leg gives out, what has played. */
+  dead = -1;
+  private y0 = 0;
+  private failAt: number[] = [];
+  private went: boolean[] = [];
+  private slammed = false;
+  private wreckSmoke = 0;
+  onEvent: (e: WalkerEvent) => void = () => {};
 
   constructor(f: GuardianFrame, scene: THREE.Scene, p: Record<Part, THREE.Object3D>, onFootfall: (f: Footfall) => void) {
+    this.id = f.id;
     this.onFootfall = onFootfall;
     this.kind = f.kind;
     this.s = KINDS[f.kind].scale;
@@ -269,8 +348,120 @@ class Walker {
       this.root.add(leg.hip, leg.femur, leg.tibia, leg.footObj);
       this.legs.push(leg);
     });
+    // Weak points: a red lens in a dark rim, on its knee (guardians) or the body (crawlers).
+    for (const wp of weakPoints(f.kind, f.legs)) {
+      const group = new THREE.Group();
+      const lens = new THREE.Mesh(lensGeo, lensMat);
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      group.add(lens, rim);
+      group.position.set(wp.x, wp.y, wp.z);
+      group.scale.setScalar(wp.r);
+      // The rim stands across the lens, facing out of the knee or the flank.
+      if (wp.on === 'body') rim.rotation.y = Math.PI / 2;
+      else rim.rotation.x = Math.PI / 2;
+      (wp.on === 'body' ? this.body : this.legs[wp.leg].tibia).add(group);
+      this.targets.push({ wp, lens, group, broken: false, smoke: Math.random() });
+    }
     if (this.noShadows) this.root.traverse((o) => (o.castShadow = false));
     scene.add(this.root);
+    this.setBroken(f.broken, true);
+  }
+
+  /** Weak point `i` shot here and now (the server hears of it; if it never agrees, the lens comes back). */
+  breakLocal(i: number) {
+    this.predicted.set(i, performance.now());
+    this.setBroken(this.shown | (1 << i), false);
+  }
+
+  /** Show weak points by mask; newly broken ones shatter (unless `quiet`: already broken when it came into view). */
+  private setBroken(mask: number, quiet: boolean) {
+    this.targets.forEach((t, i) => {
+      const b = (mask & (1 << i)) !== 0;
+      if (b === t.broken) return;
+      t.broken = b;
+      t.lens.material = b ? brokenMat : lensMat;
+      t.lens.scale.setScalar(b ? 0.7 : 1);
+      if (!b || quiet) return;
+      t.group.getWorldPosition(_w);
+      _o.subVectors(_w, _v.set(this.x, this.y, this.z)).normalize();
+      zaps.shatter(_w.x, _w.y, _w.z, _o.x, _o.y, _o.z, t.wp.r * this.s);
+      this.onEvent({ what: 'break', x: _w.x, y: _w.y, z: _w.z, kind: this.kind });
+      // Flinch away from the hit, and the hurt leg buckles a moment.
+      this.flinch = 1;
+      this.flinchX = _o.x;
+      this.flinchZ = _o.z;
+      this.vy -= 2.5 * this.ts;
+    });
+    this.shown = mask;
+  }
+
+  /** Server mask plus unconfirmed local breaks (dropped after a second and a half if the server never agrees). */
+  private syncBroken(server: number) {
+    let mask = server;
+    const now = performance.now();
+    for (const [i, at] of this.predicted) {
+      if (server & (1 << i) || now - at > 1500) this.predicted.delete(i);
+      else mask |= 1 << i;
+    }
+    if (mask !== this.shown) this.setBroken(mask, false);
+  }
+
+  /** Smoke and the odd spark out of broken weak points (and the body of a wreck). */
+  private smoulder(dt: number) {
+    for (const t of this.targets) {
+      if (!t.broken) continue;
+      t.smoke += dt * SMOKE_RATE;
+      if (t.smoke < 1) continue;
+      t.smoke -= 1;
+      t.group.getWorldPosition(_w);
+      zaps.puff(_w.x, _w.y, _w.z, Math.max(0.4, t.wp.r * this.s * 1.4), 1.2 + this.s);
+      if (Math.random() < 0.08) zaps.burst(_w.x, _w.y, _w.z, 0, 1, 0, 4, this.s);
+    }
+    if (this.dead < 0) return;
+    this.wreckSmoke += dt * WRECK_SMOKE;
+    while (this.wreckSmoke >= 1) {
+      this.wreckSmoke -= 1;
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 2.5 * this.s;
+      zaps.puff(this.x + Math.cos(a) * r, this.y + 2 * this.s, this.z + Math.sin(a) * r, 1.8 * this.s + 0.6, 1.5 + this.s);
+    }
+  }
+
+  /** Where the shot from `o` along unit `d` first strikes this walker, within `max` m (weak points padded). */
+  raycast(o: THREE.Vector3, d: THREE.Vector3, max: number): ShotHit | null {
+    let best: ShotHit | null = null;
+    const pad = HIT_PAD[this.kind];
+    // A weak point just behind the metal the ray clips first (they sit in it) still counts: the lens wins within `lee`.
+    let lee = 0;
+    const take = (dist: number, index: number, cx: number, cy: number, cz: number) => {
+      if (dist < 0 || dist > max) return;
+      if (best && (index < 0 ? dist >= best.dist - (best.index >= 0 ? lee : 0) : best.index >= 0 ? dist >= best.dist : dist > best.dist + lee)) return;
+      const point = o.clone().addScaledVector(d, dist);
+      best = { walker: this.id, index, dist, point, normal: point.clone().sub(_v.set(cx, cy, cz)).normalize() };
+    };
+    this.targets.forEach((t, i) => {
+      if (t.broken) return;
+      t.group.getWorldPosition(_w);
+      const r = t.wp.r * this.s;
+      lee = Math.max(lee, 3 * r * pad);
+      // Hits the padded sphere: lands on the drawn one's surface (or its nearest point).
+      const along = sphere(o, d, _w, r * pad);
+      if (along !== null) take(Math.max(0, sphere(o, d, _w, r) ?? along), i, _w.x, _w.y, _w.z);
+    });
+    // The hull and the legs: metal (sparks, no harm).
+    const hull = sphere(o, d, _w.set(this.x, this.y + 0.8 * this.s, this.z), 3.6 * this.s);
+    if (hull !== null) take(hull, -1, this.x, this.y + 0.8 * this.s, this.z);
+    for (const leg of this.legs) {
+      for (const [a, b, r] of [[leg.femur, leg.tibia, 1], [leg.tibia, leg.footObj, 0.7]] as const) {
+        const hit = capsule(o, d, a.position, _k.copy(b.position).addScaledVector(UP, b === leg.footObj ? ANKLE * this.s : 0), r * this.s);
+        if (hit !== null) {
+          _p.copy(o).addScaledVector(d, hit);
+          const t = Math.max(0, Math.min(1, _a.subVectors(_p, a.position).dot(_r.subVectors(_k, a.position)) / _r.lengthSq()));
+          _a.copy(a.position).addScaledVector(_r, t);
+          take(hit, -1, _a.x, _a.y, _a.z);
+        }
+      }
+    }
+    return best;
   }
 
   /** Leg's rest spot on the ground, led `lead` seconds ahead along the body's velocity, into `out`. */
@@ -285,6 +476,9 @@ class Walker {
 
   update(f: GuardianFrame, dt: number) {
     if (dt <= 0) return;
+    this.syncBroken(f.broken);
+    this.smoulder(dt);
+    if (f.dead > 0) return this.die(f, dt);
     // Velocity from the interpolated track, smoothed (the server sends 10 Hz).
     const k = 1 - Math.exp(-dt * 3);
     this.vx += ((f.x - this.x) / dt - this.vx) * k;
@@ -387,8 +581,12 @@ class Walker {
     this.y += this.vy * dt;
     if (Math.abs(target - this.y) > 6 * S) this.y = target;
 
-    this.body.position.set(this.x, this.y, this.z);
-    this.body.rotation.set(this.pitch, this.yaw, this.roll, 'YXZ');
+    // A flinch: jolted away from a shot, settling back.
+    this.flinch = Math.max(0, this.flinch - dt * 2.5 / T);
+    const jolt = Math.sin(this.flinch * Math.PI) * 0.12 * this.flinch;
+    const fz = this.flinchX * s + this.flinchZ * c, fx = this.flinchX * c - this.flinchZ * s;
+    this.body.position.set(this.x + this.flinchX * jolt * 2 * S, this.y, this.z + this.flinchZ * jolt * 2 * S);
+    this.body.rotation.set(this.pitch - fz * jolt, this.yaw, this.roll + fx * jolt, 'YXZ');
     this.body.updateMatrixWorld();
     for (const leg of this.legs) this.pose(leg, dt);
 
@@ -397,6 +595,78 @@ class Walker {
     const pulse = this.glow * (0.6 + 0.4 * Math.sin(performance.now() / 120));
     for (const e of this.eyes) e.emissiveIntensity = (e.userData.base as number) * (1 + 3 * pulse);
     this.aimGun(f, dt);
+  }
+
+  /**
+   * Dead: twitches, then the legs give out one by one in servo jerks (feet skidding out), the body sinking in stages
+   * towards the sand and tipping towards the legs that failed first, and a slam at the end. A function of the time
+   * since death, so a wreck that comes into view lies as it fell.
+   */
+  private die(f: GuardianFrame, dt: number) {
+    const S = this.s, T = this.ts;
+    if (this.dead < 0) {
+      // Late (came into view dead, or a long frame): start as far in as the server says.
+      this.dead = f.dead;
+      this.y0 = f.dead < 0.5 ? this.y : heightAt(this.x, this.z) + BODY_H * S;
+      for (const leg of this.legs) leg.t = -1;
+      // The legs give out in a shuffled order.
+      const order = this.legs.map((_, i) => i).sort(() => Math.random() - 0.5);
+      this.failAt = this.legs.map((_, i) => (TWITCH + order.indexOf(i) * LEG_GAP + Math.random() * 0.2) * T);
+      this.went = this.failAt.map((a) => a <= this.dead);
+      this.slammed = this.dead > Math.max(...this.failAt) + FAIL_S * T + 0.3;
+    } else this.dead += dt;
+    const t = this.dead;
+    const fail = this.failAt.map((a) => jerky((t - a) / (FAIL_S * T)));
+    const n = this.legs.length;
+    const sink = fail.reduce((a, b) => a + b, 0) / n;
+    // Feet skid out as their legs go, and stay put on the sand.
+    const c = Math.cos(this.yaw), s = Math.sin(this.yaw);
+    let tx = 0, tz = 0;
+    this.legs.forEach((leg, i) => {
+      this.rest(leg, 0, _p);
+      const out = 1 + SPLAY * fail[i];
+      leg.foot.set(this.x + (_p.x - this.x) * out, 0, this.z + (_p.z - this.z) * out);
+      leg.foot.y = heightAt(leg.foot.x, leg.foot.z);
+      tx += leg.ox * fail[i] * (1.2 - i / n);
+      tz += leg.oz * fail[i] * (1.2 - i / n);
+      if (!this.went[i] && t > this.failAt[i]) {
+        // This leg just went: a clunk at its knee.
+        this.went[i] = true;
+        leg.tibia.getWorldPosition(_w);
+        this.onEvent({ what: 'fail', x: _w.x, y: _w.y, z: _w.z, kind: this.kind });
+      }
+    });
+    const ground = heightAt(this.x, this.z);
+    const rest = ground + BODY_REST * S;
+    const end = Math.max(...this.failAt) + FAIL_S * T;
+    // Twitching first (servos fighting), a little shudder as each stage drops; after the slam a short bounce.
+    const twitch = t < TWITCH * T ? Math.sin(t * 61) * 0.06 * S * (1 - t / (TWITCH * T)) : 0;
+    const bounce = t > end ? Math.sin((t - end) * 14) * Math.exp(-(t - end) * 5) * 0.2 * S : 0;
+    this.y = this.y0 + (rest - this.y0) * Math.pow(sink, 1.3) + twitch + bounce;
+    if (!this.slammed && t >= end) {
+      this.slammed = true;
+      this.onEvent({ what: 'slam', x: this.x, y: ground, z: this.z, kind: this.kind });
+    }
+    // Tipped towards the legs that went first (their side drops), in the body frame.
+    const lz = tx * s + tz * c, lx = tx * c - tz * s;
+    const tip = Math.min(1, sink * 1.5) * TIP;
+    this.pitch += (-lz * tip - this.pitch) * Math.min(1, dt * 6);
+    this.roll += (lx * tip - this.roll) * Math.min(1, dt * 6);
+    const jx = twitch ? Math.sin(t * 47) * 0.03 : 0;
+    this.body.position.set(this.x, this.y, this.z);
+    this.body.rotation.set(this.pitch + jx, this.yaw + twitch * 0.2, this.roll, 'YXZ');
+    this.body.updateMatrixWorld();
+    for (const leg of this.legs) this.pose(leg, dt);
+    // The eye stutters and goes out; the gun sags.
+    const flick = t < end ? (Math.sin(t * 37) * Math.sin(t * 13) > 0.2 ? 1 : 0.15) * (1 - t / end) : 0;
+    for (const e of this.eyes) e.emissiveIntensity = (e.userData.base as number) * flick;
+    for (const g of this.glows) g.emissiveIntensity = 0;
+    this.gunPitch += (1.3 - this.gunPitch) * Math.min(1, dt * 1.5);
+    // Before the server clears the wreck, it sinks into the sand.
+    const gone = Math.max(0, (t - (WRECK_S[this.kind] - WRECK_SINK)) / WRECK_SINK);
+    this.root.position.y = -gone * gone * (BODY_REST + 4) * S;
+    this.turret.rotation.set(0, this.gunYaw, 0);
+    this.gun.rotation.set(this.gunPitch, 0, 0);
   }
 
   /** Turret and gun towards the aim point (in the body's frame, so it follows the body's tilt). */
@@ -471,6 +741,7 @@ class Walker {
 
   dispose() {
     this.root.removeFromParent();
+    this.targets.length = 0;
     for (const e of [...this.eyes, ...this.glows]) e.dispose();
   }
 }
@@ -479,6 +750,8 @@ export class Guardians {
   private walkers = new Map<number, Walker>();
   /** Every foot that lands (src/guardianSound.ts, dust, shake). */
   onFootfall: (f: Footfall) => void = () => {};
+  /** Weak points shattering, legs giving out, wrecks hitting the sand (src/guardians.ts: sound, dust). */
+  onEvent: (e: WalkerEvent) => void = () => {};
 
   private scene: THREE.Scene;
 
@@ -501,6 +774,7 @@ export class Guardians {
         }
         const p = parts ? (f.kind === CRAWLER ? flatParts! : parts) : (this.fallback ??= placeholders());
         this.walkers.set(f.id, (w = new Walker(f, this.scene, p, (e) => this.onFootfall(e))));
+        w.onEvent = (e) => this.onEvent(e);
         w.usesModel = parts !== null;
       } else if (!w.usesModel && parts) {
         // The model arrived: swap the boxes out.
@@ -511,11 +785,32 @@ export class Guardians {
       }
       w.update(f, dt);
     }
+    // Weak points breathe, all together.
+    lensMat.emissiveIntensity = 2.2 + 0.9 * Math.sin(performance.now() / 260);
     for (const [id, w] of this.walkers) {
       if (seen.has(id)) continue;
       w.dispose();
       this.walkers.delete(id);
     }
+  }
+
+  /** The first thing on any drawn walker the shot from `o` along unit `d` strikes within `max` m. */
+  raycast(o: THREE.Vector3, d: THREE.Vector3, max: number): ShotHit | null {
+    let best: ShotHit | null = null;
+    for (const w of this.walkers.values()) {
+      // Cheap reject: the ray passes nowhere near it.
+      _v.set(w.x, w.y, w.z).sub(o);
+      const along = _v.dot(d);
+      if (along < -20 * w.s || along > max + 30 * w.s || _v.addScaledVector(d, -along).length() > (REST_R + FEMUR) * w.s * 1.3) continue;
+      const hit = w.raycast(o, d, best?.dist ?? max);
+      if (hit && (!best || hit.dist < best.dist)) best = hit;
+    }
+    return best;
+  }
+
+  /** Weak point `i` of walker `id` shot by us: shatter it now. */
+  breakLocal(id: number, i: number) {
+    this.walkers.get(id)?.breakLocal(i);
   }
 
   /** Guardian `id` fired: its gun recoils; its muzzle (world) into `out`, or null if it isn't drawn. */
@@ -525,7 +820,7 @@ export class Guardians {
 
   /** Bodies, for sound and the locator: position, height, whether it hunts you. */
   *bodies(): Generator<{ x: number; y: number; z: number; hunt: number; speed: number; kind: number }> {
-    for (const w of this.walkers.values()) yield { x: w.x, y: w.y, z: w.z, hunt: w.hunt, speed: Math.hypot(w.vx, w.vz), kind: w.kind };
+    for (const w of this.walkers.values()) yield { x: w.x, y: w.y, z: w.z, hunt: w.dead >= 0 ? 0 : w.hunt, speed: w.dead >= 0 ? 0 : Math.hypot(w.vx, w.vz), kind: w.kind };
   }
 
   private fallback?: Record<Part, THREE.Object3D>;

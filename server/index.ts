@@ -14,8 +14,10 @@ import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
-import { BLAST_R, CRATER_MM, CRATER_R } from '../shared/guardians.ts';
+import { BLAST_R, CRATER_MM, CRATER_R, GUARDIAN } from '../shared/guardians.ts';
 import { BLAST_R as MISSILE_BLAST_R } from '../shared/missiles.ts';
+import { COOLDOWN_MS as RIFLE_COOLDOWN_MS, RIFLE } from '../shared/rifle.ts';
+import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
@@ -25,7 +27,7 @@ import { LootServer } from './loot.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
-import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ } from './guardians.ts';
+import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
 import { TerrainServer } from './terrain.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
@@ -84,6 +86,7 @@ type Player = {
   slot: number; // selected hotbar slot (-1 none): digs with what's in it
   /** Dead and lying where they fell until `until` (Date.now ms), thrown by `push` (shared/ragdoll.ts). */
   down: { until: number; push: [number, number, number] } | null;
+  firedAt: number; // last laser rifle shot (performance.now() ms)
 };
 
 const players = new Map<WebSocket, Player>();
@@ -137,6 +140,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'summon' && p) return guardians.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
+    if (msg.t === 'fire' && p) return onFire(p, msg);
     if (msg.t === 'drink' && p) return onDrink(p);
     if (msg.t === 'fill' && p) return onFill(p);
     if (msg.t === 'move' && p) return onMove(p, msg.from, msg.fi, msg.to, msg.ti, msg.n, msg.r);
@@ -184,7 +188,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, down: null,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, down: null, firedAt: 0,
   };
   players.set(ws, p);
   save(p);
@@ -293,6 +297,38 @@ function boltPush(p: Player, events: { msg: ServerMsg }[], t: 'boom' | 'blast', 
   return best ? blastPush(best.x, best.y, best.z, p.state.x, p.state.y, p.state.z, r) : [0, 0, 0];
 }
 
+/** A shot may start this far (m) from the eye: the third-person camera backs off up to 4.5 m along the view ray. */
+const SHOT_FROM = 6;
+/** A rifle shot (shared/rifle.ts): the rifle in hand and charged, from the shooter's eye. Shown to everyone near. */
+function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
+  const now = performance.now();
+  const nums = [m.x, m.y, m.z, m.ex, m.ey, m.ez];
+  if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v))) return;
+  if (p.down || p.slot < 0 || items.slots(p.browserId, 'bag')[p.slot]?.kind !== RIFLE) return;
+  // A little slack for network jitter bunching two clicks together.
+  if (now - p.firedAt < RIFLE_COOLDOWN_MS * 0.8) return;
+  p.firedAt = now;
+  const s = p.state;
+  if (Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
+  const wall = Date.now();
+  const by = { id: p.id, x: s.x, y: s.y, z: s.z, safe: wall - p.heat.diedAt < BOT_GRACE_MS };
+  const r = m.g === undefined ? { hit: false, kill: null } : guardians.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.g, m.i, now);
+  const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit };
+  for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
+  if (r.kill) dropSpoils(r.kill);
+}
+
+/** What a killed walker leaves: a guardian a few good parts, a crawler now and then a poor one. */
+const SPOILS = ['coil', 'battery', 'compute', 'relay', 'motor', 'bearing'] as const;
+function dropSpoils(k: Kill) {
+  const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
+  const n = k.kind === GUARDIAN ? 2 + Math.floor(Math.random() * 2) : Math.random() < 0.35 ? 1 : 0;
+  for (let i = 0; i < n; i++) {
+    const tier = k.kind === GUARDIAN ? pick(['quality', 'quality', 'space'] as const) : pick(['scrap', 'basic'] as const);
+    loot.dropAt(k.x, k.z, partKind(pick(SPOILS), tier));
+  }
+}
+
 function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {
   const kind = scrap.pickup(p.state, ix, iz, i, p.lastPickup, (k) => items.give(p.browserId, SCRAP_ITEMS[k]));
   if (kind !== null) return sendBox(p, 'bag', SCRAP_ITEMS[kind]);
@@ -379,6 +415,7 @@ function onDebugGear(p: Player) {
     const parts = GEAR[kind].slots.map((s) => ('part' in s ? partKind(s.part, TIERS[0]) : s.scrap[0]));
     if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
   }
+  if (!items.slots(p.browserId, 'bag').some((it) => it?.kind === RIFLE)) items.giveItem(p.browserId, { kind: RIFLE });
   for (const box of ['bag', 'equip']) sendBox(p, box);
   gearChanged(p.browserId);
 }

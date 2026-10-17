@@ -38,6 +38,9 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `src/guardians.ts`, `src/guardianSound.ts`
 - `shared/ragdoll.ts` — dying: you lie where you fell for `DOWN_MS` (input ignored, third-person camera) as a
   Verlet ragdoll (`src/models/ragdoll.ts`) thrown by the killing blast's push (`blastPush`), then respawn
+- `shared/rifle.ts` — the crafted laser rifle and the walkers' red weak points (all shot: it dies); aim, sway, recoil,
+  scope and the hitscan in `src/rifle.ts`, beam/sparks/smoke `src/world/zaps.ts`, sounds `src/rifleSound.ts`, targets
+  and the collapse in `src/world/guardians.ts`, checked by `GuardianServer.shoot` (server/guardians.ts)
 - `server/index.ts` — authoritative game server (static files + `/ws`); `server/db.ts` — SQLite;
   `server/scrap.ts` — scrap pickups, respawn;
   `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`, `shared/storage.ts`), Tab overlay in `src/inventory.ts`
