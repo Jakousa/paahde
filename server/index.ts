@@ -23,10 +23,10 @@ import { LootServer } from './loot.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
-import { GuardianServer, TICK_HZ as BOT_HZ } from './guardians.ts';
+import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ } from './guardians.ts';
 import { CrashServer } from './crash.ts';
 import { TerrainServer } from './terrain.ts';
-import { drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
+import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
 import { stormAt, stormDrag } from '../shared/storm.ts';
 import { timeOfDayAt } from '../shared/sun.ts';
@@ -261,6 +261,10 @@ function tickBots(elapsed: number, now: number, tod: number) {
   burning = r.burn;
   for (const p of players.values()) {
     if (r.crushed.includes(p.id)) die(p, 'guardian');
+    else if (r.shot.includes(p.id)) die(p, 'laser');
+    else if (r.bitten.has(p.id) && bite(p.heat, r.bitten.get(p.id)!)) die(p, 'crawler');
+    else if (r.bitten.has(p.id)) send(p.ws, waterMsg(p.heat));
+    for (const e of r.events) if (Math.hypot(e.x - p.state.x, e.z - p.state.z) < BOT_SEND_R) send(p.ws, e.msg);
     send(p.ws, guardians.msg(now, p.id, p.state.x, p.state.z));
   }
 }

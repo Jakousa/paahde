@@ -1,15 +1,17 @@
 // Guardians and drones between server updates ('bots', ~10 Hz, shared/guardians.ts): drawn BOT_DELAY_MS in the
 // past and interpolated between the two messages around that time, like remote players (src/net.ts).
 import type { ServerMsg } from '../../shared/protocol.ts';
+import { CRAWLER, GUARDIAN, type Kind } from '../../shared/guardians.ts';
 
 type BotsMsg = Extract<ServerMsg, { t: 'bots' }>;
 
 /** How far behind the server clock (ms) they're drawn: two updates and some jitter. */
 export const BOT_DELAY_MS = 250;
-export const G_STRIDE = 6;
+export const G_STRIDE = 11;
 export const D_STRIDE = 9;
 
-export type GuardianFrame = { id: number; legs: 3 | 4; x: number; z: number; yaw: number; hunt: number };
+/** gun: -1 idle, 0 aiming at (ax, ay, az), 1 charging. */
+export type GuardianFrame = { id: number; kind: Kind; legs: 3 | 4; x: number; z: number; yaw: number; hunt: number; ax: number; ay: number; az: number; gun: number };
 export type DroneFrame = { id: number; x: number; y: number; z: number; yaw: number; dx: number; dy: number; dz: number; lock: number };
 
 const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
@@ -39,8 +41,14 @@ export function guardiansAt(msgs: readonly BotsMsg[], time: number): GuardianFra
     const g = b.g, i = ia.get(g[j]);
     const p = i === undefined ? g : a.g, k = i === undefined ? j : i;
     out.push({
-      id: g[j], legs: g[j + 1] === 3 ? 3 : 4, x: p[k + 2] + (g[j + 2] - p[k + 2]) * t, z: p[k + 3] + (g[j + 3] - p[k + 3]) * t,
-      yaw: lerpAngle(p[k + 4], g[j + 4], t), hunt: g[j + 5],
+      id: g[j], kind: g[j + 1] === CRAWLER ? CRAWLER : GUARDIAN, legs: g[j + 2] === 3 ? 3 : 4,
+      x: p[k + 3] + (g[j + 3] - p[k + 3]) * t, z: p[k + 4] + (g[j + 4] - p[k + 4]) * t,
+      yaw: lerpAngle(p[k + 5], g[j + 5], t), hunt: g[j + 6],
+      // The aim point only blends while it aims in both.
+      ax: p[k + 10] >= 0 ? p[k + 7] + (g[j + 7] - p[k + 7]) * t : g[j + 7],
+      ay: p[k + 10] >= 0 ? p[k + 8] + (g[j + 8] - p[k + 8]) * t : g[j + 8],
+      az: p[k + 10] >= 0 ? p[k + 9] + (g[j + 9] - p[k + 9]) * t : g[j + 9],
+      gun: g[j + 10],
     });
   }
   return out;

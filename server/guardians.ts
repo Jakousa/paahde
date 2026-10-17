@@ -1,43 +1,54 @@
-// Server side of the guardians and night drones (shared/guardians.ts): where they walk and fly, who they see, who
-// gets burned or crushed. In memory only: a restart puts every guardian back at its post. Ticked at TICK_HZ;
-// every player gets the ones within SEND_R of them ('bots').
+// Server side of the walkers (guardians, crawlers) and night drones (shared/guardians.ts): where they walk and fly,
+// who they see, who gets burned, bitten, shot or crushed. In memory only: a restart puts every guardian back at its
+// post. Ticked at TICK_HZ; every player gets the ones near them ('bots').
+//
+// Guardians are few and roam the whole desert from site to site. Crawlers and drones belong to a crash site: they
+// turn up there when someone comes near (crawlers any time, drones at night) and go when everyone has left.
 import { BASE, inBase } from '../shared/base.ts';
 import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
 import {
-  ALERT_R, beamDir, BURN, CHASE_BACK, CHASE_SPEED, CRUSH_R, DRONE_ALT, DRONE_SPEED, HUNT_SPEED, HUNT_TURN_RATE, inBeam,
-  LOSE_MS, NIGHT_SUN, PATROL_SPEED, SIGHT, sweepAt, TURN_RATE,
+  ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, BURN, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
+  CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, GUARDIAN, gunPivot, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
+  NIGHT_SUN, sweepAt,
 } from '../shared/guardians.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { sunElevation } from '../shared/sun.ts';
 import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
 
 export const TICK_HZ = 10;
-/** Players get the machines within this distance (m). */
-const SEND_R = 900;
-/** How many guardians, posted at the crash sites nearest the base (one each). */
-const GUARDIANS = 8;
-/** Guardians never come this close (m) to the base: it's safe ground. */
-const BASE_KEEP_OUT = 170;
-/** Patrol waypoints lie this far (m) from the site's centre. */
-const PATROL_MIN = 25, PATROL_MAX = 60;
-/** At a waypoint: the chance to stand guard for a while (GUARD_MIN..MAX ms), and to wander off to the next site. */
-const GUARD_CHANCE = 0.35;
-const GUARD_MIN = 8_000, GUARD_MAX = 25_000;
-const WANDER_CHANCE = 0.15;
+/** Players get guardians and drones within this distance (m), crawlers within CRAWLER_SEND_R. */
+export const SEND_R = 1200;
+const CRAWLER_SEND_R = 300;
+/** How many guardians roam the desert, starting at crash sites this many places apart in the list nearest the base,
+ *  from the GUARDIAN_FIRST'th (the closest ones are the first a new player visits: leave those to the crawlers). */
+const GUARDIANS = 3;
+const GUARDIAN_SPREAD = 5;
+const GUARDIAN_FIRST = 3;
+/** Walkers never come this close (m) to the base: it's safe ground. */
+const BASE_KEEP_OUT = 200;
+/** Patrol waypoints lie this far (m) from the site's centre, by kind. */
+const PATROL: Record<Kind, [number, number]> = { [GUARDIAN]: [30, 80], [CRAWLER]: [6, 34] };
+/** At a waypoint: the chance to stand guard for a while (GUARD_MIN..MAX ms), and (guardians) to move on to another site. */
+const GUARD_CHANCE: Record<Kind, number> = { [GUARDIAN]: 0.3, [CRAWLER]: 0.45 };
+const GUARD_MIN = 4_000, GUARD_MAX = 20_000;
+const WANDER_CHANCE = 0.4;
 /** The next site is at most this far (m). */
-const WANDER_R = 1000;
-/** A hunt ends this long (ms) after the guardian last knew where you are, or once you're this far (m). */
+const WANDER_R = 1500;
+/** A hunt ends this long (ms) after the walker last knew where you are, or once you're this far (m) from it (crawlers:
+ *  from their site). */
 const HUNT_FORGET = 15_000;
-const HUNT_GIVE_UP_R = 160;
+const HUNT_GIVE_UP_R: Record<Kind, number> = { [GUARDIAN]: 200, [CRAWLER]: 70 };
 /** After crushing someone, a guardian ignores everyone for this long (ms). */
 const CALM_MS = 20_000;
-/** Drones per player out in the desert at night, all drones at most, and how often (ms) one more may come. */
-const DRONES_PER_PLAYER = 2;
+/** Crawlers come to a site when someone is this close (m) and leave when nobody is within SITE_LEAVE_R. */
+const SITE_NEAR_R = 300;
+const SITE_LEAVE_R = 450;
+const CRAWLERS_MIN = 3, CRAWLERS_MAX = 6;
+/** Drones over a site at night, all drones at most; they come in from DRONE_FROM (m) and patrol within DRONE_AREA. */
+const DRONES_PER_SITE = 2;
 const MAX_DRONES = 16;
-const DRONE_EVERY = 15_000;
-/** New drones come in from this far (m) and patrol within PATROL_AREA (m) of where their player was. */
-const DRONE_FROM = 260;
-const DRONE_AREA = 170;
+const DRONE_FROM = 220;
+const DRONE_AREA = 110;
 /** A drone with nobody within this distance (m) leaves. */
 const DRONE_LONELY = 600;
 /** Drones keep this far (m) from the base. */
@@ -47,16 +58,23 @@ const DRONE_BASE_KEEP_OUT = 60;
 export type BotPlayer = { id: number; x: number; y: number; z: number; safe: boolean };
 
 type Guardian = {
-  id: number; legs: 3 | 4; x: number; z: number; yaw: number; speed: number;
+  id: number; kind: Kind; legs: 3 | 4; x: number; z: number; yaw: number; speed: number;
   home: CrashSite; tx: number; tz: number; guardUntil: number;
-  /** Hunting this player id (-1 none), last known where, when; calm until. */
-  prey: number; px: number; pz: number; knownAt: number; calmUntil: number;
+  /** Hunting this player id (-1 none) since when, last known where, when; calm until; last bite. */
+  prey: number; huntAt: number; px: number; pz: number; knownAt: number; calmUntil: number; bitAt: number;
+  /** The cannon: aimed at (ax, ay, az) while it sees its prey; charging since (-1 not), last fired. */
+  aiming: boolean; ax: number; ay: number; az: number; chargeAt: number; firedAt: number;
 };
+
+type Bolt = { id: number; x: number; y: number; z: number; dx: number; dy: number; dz: number; flown: number; by: number };
+
+/** A bolt fired or burst (shared/protocol.ts 'shot' / 'boom'), where. */
+export type BoltEvent = { msg: ServerMsg; x: number; z: number };
 
 type Drone = {
   id: number; x: number; y: number; z: number; yaw: number;
-  /** Patrol area centre, current waypoint. */
-  hx: number; hz: number; tx: number; tz: number;
+  /** Patrol area centre, current waypoint; the crash site it guards (-1: summoned). */
+  hx: number; hz: number; tx: number; tz: number; site: number;
   /** Locked on to this player (-1 none), last lit when. Leaving: flying off before dawn. */
   lock: number; litAt: number; leaving: boolean;
   /** Summoned from the debug menu: stays out until then (server ms), day or not. */
@@ -73,78 +91,191 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
 export class GuardianServer {
   guardians: Guardian[] = [];
   drones: Drone[] = [];
+  bolts: Bolt[] = [];
+  private nextBolt = 1;
   private sites = allCrashSites();
   private nextDrone = 1;
-  private droneAt = new Map<number, number>(); // player id → when a drone last came for them
+  private nextWalker = 1;
+  /** Crash sites (ids) with crawlers out right now. */
+  private swarmed = new Set<number>();
 
   constructor() {
     const near = [...this.sites].sort((a, b) => Math.hypot(a.x - BASE.x, a.z - BASE.z) - Math.hypot(b.x - BASE.x, b.z - BASE.z));
-    for (let i = 0; i < Math.min(GUARDIANS, near.length); i++) {
-      const home = near[i];
-      const g: Guardian = {
-        id: i + 1, legs: i % 3 === 2 ? 3 : 4, x: home.x + 40, z: home.z, yaw: rand(-Math.PI, Math.PI), speed: 0, home,
-        tx: home.x, tz: home.z, guardUntil: 0, prey: -1, px: 0, pz: 0, knownAt: 0, calmUntil: 0,
-      };
-      this.patrolPoint(g);
-      this.guardians.push(g);
+    for (let i = 0; i < GUARDIANS && GUARDIAN_FIRST + i * GUARDIAN_SPREAD < near.length; i++) {
+      const home = near[GUARDIAN_FIRST + i * GUARDIAN_SPREAD];
+      this.guardians.push(this.walker(GUARDIAN, i % 3 === 2 ? 3 : 4, home, home.x + 50, home.z));
+    }
+  }
+
+  private walker(kind: Kind, legs: 3 | 4, home: CrashSite, x: number, z: number): Guardian {
+    const g: Guardian = {
+      id: this.nextWalker++, kind, legs, x, z, yaw: rand(-Math.PI, Math.PI), speed: 0, home,
+      tx: home.x, tz: home.z, guardUntil: 0, prey: -1, huntAt: 0, px: 0, pz: 0, knownAt: 0, calmUntil: 0, bitAt: 0,
+      aiming: false, ax: 0, ay: 0, az: 0, chargeAt: -1, firedAt: 0,
+    };
+    this.patrolPoint(g);
+    return g;
+  }
+
+  /** Crawlers out at the sites someone is near, gone from the ones everyone has left. */
+  private swarm(players: BotPlayer[]) {
+    const near = (s: CrashSite, r: number) => players.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < r);
+    for (const id of this.swarmed) {
+      const s = this.sites.find((o) => o.id === id)!;
+      if (near(s, SITE_LEAVE_R)) continue;
+      this.swarmed.delete(id);
+      this.guardians = this.guardians.filter((g) => g.kind !== CRAWLER || g.home !== s);
+    }
+    for (const s of this.sites) {
+      if (this.swarmed.has(s.id) || !near(s, SITE_NEAR_R)) continue;
+      this.swarmed.add(s.id);
+      const n = CRAWLERS_MIN + Math.floor(Math.random() * (CRAWLERS_MAX - CRAWLERS_MIN + 1));
+      for (let i = 0; i < n; i++) {
+        const a = rand(-Math.PI, Math.PI), r = rand(...PATROL[CRAWLER]);
+        this.guardians.push(this.walker(CRAWLER, 4, s, s.x + Math.sin(a) * r, s.z + Math.cos(a) * r));
+      }
     }
   }
 
   /**
    * Advance by dt seconds at server time `now` (ms), wall-clock time of day `tod`. Returns who the drone beams are
-   * burning (player id → heat per second) and who was crushed.
+   * burning (player id → heat per second), who was crushed, who was shot, and the bolts fired and burst.
    */
-  tick(dt: number, now: number, tod: number, players: BotPlayer[]): { burn: Map<number, number>; crushed: number[] } {
-    const burn = new Map<number, number>();
-    const crushed: number[] = [];
+  tick(dt: number, now: number, tod: number, players: BotPlayer[]): {
+    burn: Map<number, number>; bitten: Map<number, number>; crushed: number[]; shot: number[]; events: BoltEvent[];
+  } {
+    const burn = new Map<number, number>(), bitten = new Map<number, number>();
+    const crushed: number[] = [], shot: number[] = [], events: BoltEvent[] = [];
     const byId = new Map(players.map((p) => [p.id, p]));
     const exposed = players.filter((p) => !p.safe && !inBase(p.x, p.y, p.z));
+    this.swarm(players);
     this.tickDrones(dt, now, tod, players, exposed, byId, burn);
-    for (const g of this.guardians) this.tickGuardian(g, dt, now, exposed, byId, crushed);
-    return { burn, crushed };
+    for (const g of this.guardians) {
+      this.tickGuardian(g, dt, now, exposed, byId, crushed, bitten);
+      if (KINDS[g.kind].gun) this.tickGun(g, now, byId, events);
+    }
+    this.tickBolts(dt, exposed, shot, events);
+    return { burn, bitten, crushed, shot, events };
   }
 
-  private tickGuardian(g: Guardian, dt: number, now: number, exposed: BotPlayer[], byId: Map<number, BotPlayer>, crushed: number[]) {
+  /** The cannon: follows the prey it can see, charges, fires. */
+  private tickGun(g: Guardian, now: number, byId: Map<number, BotPlayer>, events: BoltEvent[]) {
+    const p = g.prey >= 0 ? byId.get(g.prey) : undefined;
+    const sc = KINDS[g.kind].scale;
+    const pv = gunPivot(g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, g.yaw, sc, { x: 0, y: 0, z: 0 });
+    const cy = p ? p.y + 1.1 : 0;
+    g.aiming = !!p && !p.safe && !inBase(p.x, p.y, p.z) && Math.hypot(p.x - pv.x, cy - pv.y, p.z - pv.z) < FIRE_R
+      && lineOfSight(pv.x, pv.y, pv.z, p.x, cy, p.z);
+    if (!g.aiming || !p) {
+      g.chargeAt = -1;
+      return;
+    }
+    g.ax = p.x;
+    g.ay = cy;
+    g.az = p.z;
+    // It sees them: keeps after them.
+    g.px = p.x;
+    g.pz = p.z;
+    g.knownAt = now;
+    if (g.chargeAt < 0) {
+      if (now - g.firedAt >= FIRE_MS) g.chargeAt = now;
+      return;
+    }
+    if (now - g.chargeAt < CHARGE_MS) return;
+    g.chargeAt = -1;
+    g.firedAt = now;
+    const dx = p.x - pv.x, dy = cy - pv.y, dz = p.z - pv.z, l = Math.hypot(dx, dy, dz);
+    const b: Bolt = {
+      id: this.nextBolt++, x: pv.x + (dx / l) * MUZZLE * sc, y: pv.y + (dy / l) * MUZZLE * sc, z: pv.z + (dz / l) * MUZZLE * sc,
+      dx: dx / l, dy: dy / l, dz: dz / l, flown: 0, by: g.id,
+    };
+    this.bolts.push(b);
+    events.push({ x: b.x, z: b.z, msg: { t: 'shot', id: b.id, g: g.id, time: now, x: r2(b.x), y: r2(b.y), z: r2(b.z), dx: r3(b.dx), dy: r3(b.dy), dz: r3(b.dz) } });
+  }
+
+  /** Bolts fly on; one that meets a player or the ground bursts there and kills whoever is within BLAST_R. */
+  private tickBolts(dt: number, exposed: BotPlayer[], shot: number[], events: BoltEvent[]) {
+    const step = BOLT_SPEED * dt;
+    this.bolts = this.bolts.filter((b) => {
+      // Along this tick's segment in short steps: the first player or sand it touches.
+      const n = Math.ceil(step / 1.5);
+      for (let i = 1; i <= n; i++) {
+        const t = (step * i) / n;
+        const x = b.x + b.dx * t, y = b.y + b.dy * t, z = b.z + b.dz * t;
+        const hit = exposed.find((p) => Math.hypot(p.x - x, p.z - z) < BOLT_R + 0.35 && y > p.y - BOLT_R && y < p.y + 1.8 + BOLT_R);
+        const ground = y < heightAt(x, z);
+        if (hit || ground || b.flown + t >= BOLT_RANGE) {
+          for (const p of exposed) {
+            if (p === hit || Math.hypot(p.x - x, p.y + 0.9 - y, p.z - z) < BLAST_R) if (!shot.includes(p.id)) shot.push(p.id);
+          }
+          events.push({ x, z, msg: { t: 'boom', id: b.id, x: r2(x), y: r2(ground ? heightAt(x, z) : y), z: r2(z), ground } });
+          return false;
+        }
+      }
+      b.x += b.dx * step;
+      b.y += b.dy * step;
+      b.z += b.dz * step;
+      b.flown += step;
+      return true;
+    });
+  }
+
+  private tickGuardian(g: Guardian, dt: number, now: number, exposed: BotPlayer[], byId: Map<number, BotPlayer>, crushed: number[], bitten: Map<number, number>) {
+    const k = KINDS[g.kind];
     // Notice anyone close by.
     if (now >= g.calmUntil) {
       for (const p of exposed) {
-        if (Math.hypot(p.x - g.x, p.z - g.z) > SIGHT) continue;
+        if (Math.hypot(p.x - g.x, p.z - g.z) > k.sight) continue;
         if (g.prey < 0 || g.prey === p.id) this.hunt(g, p, now);
       }
     }
     if (g.prey >= 0) {
       const p = byId.get(g.prey);
-      const gone = !p || p.safe || inBase(p.x, p.y, p.z) || now - g.knownAt > HUNT_FORGET || Math.hypot(g.px - g.x, g.pz - g.z) > HUNT_GIVE_UP_R;
+      // Crawlers keep to their site; guardians give up once you've got far from them.
+      const far = g.kind === CRAWLER ? Math.hypot(g.px - g.home.x, g.pz - g.home.z) : Math.hypot(g.px - g.x, g.pz - g.z);
+      const tired = g.kind === CRAWLER && now - g.huntAt > CRAWLER_CHASE_MS;
+      const gone = !p || p.safe || inBase(p.x, p.y, p.z) || now - g.knownAt > HUNT_FORGET || far > HUNT_GIVE_UP_R[g.kind] || tired;
+      if (tired) g.calmUntil = now + CRAWLER_CALM_MS;
       if (gone) {
         g.prey = -1;
         this.patrolPoint(g);
       } else {
         g.tx = g.px;
         g.tz = g.pz;
-        if (Math.hypot(p.x - g.x, p.z - g.z) < CRUSH_R) {
-          crushed.push(p.id);
-          g.prey = -1;
-          g.calmUntil = now + CALM_MS;
-          g.guardUntil = now + GUARD_MIN;
+        if (Math.hypot(p.x - g.x, p.z - g.z) < k.reach) {
+          if (g.kind === GUARDIAN) {
+            crushed.push(p.id);
+            g.prey = -1;
+            g.calmUntil = now + CALM_MS;
+            g.guardUntil = now + GUARD_MIN;
+          } else if (now - g.bitAt >= BITE_MS) {
+            // Bites, and backs off.
+            g.bitAt = now;
+            bitten.set(p.id, (bitten.get(p.id) ?? 0) + BITE_HEAT);
+            g.prey = -1;
+            g.calmUntil = now + CRAWLER_CALM_MS;
+            this.patrolPoint(g);
+          }
         }
       }
     }
     const hunting = g.prey >= 0;
     const dx = g.tx - g.x, dz = g.tz - g.z, dist = Math.hypot(dx, dz);
     let want = 0;
+    const near = g.kind === CRAWLER ? 0.6 : 6, ease = g.kind === CRAWLER ? 0.25 : 1.5;
     if (now < g.guardUntil && !hunting) {
       // Standing guard: slowly looking around.
-      g.yaw = wrap(g.yaw + Math.sin(now / 4000 + g.id) * 0.08 * dt);
-    } else if (dist < (hunting ? 1 : 6)) {
+      g.yaw = wrap(g.yaw + Math.sin(now / 4000 + g.id) * 0.08 * k.turn * 4 * dt);
+    } else if (dist < (hunting ? Math.min(1, k.reach * 0.5) : near)) {
       if (!hunting) this.arrive(g, now);
     } else {
       const turn = wrap(Math.atan2(dx, dz) - g.yaw);
-      const rate = (hunting ? HUNT_TURN_RATE : TURN_RATE) * dt;
+      const rate = (hunting ? k.huntTurn : k.turn) * dt;
       g.yaw = wrap(g.yaw + Math.max(-rate, Math.min(rate, turn)));
       // Walks on while roughly facing the way; turns on the spot when it isn't. Slows down to arrive.
-      want = (hunting ? HUNT_SPEED : PATROL_SPEED) * Math.max(0, Math.cos(turn)) ** 2 * Math.min(1, dist / 8);
+      want = (hunting ? k.hunt : k.patrol) * Math.max(0, Math.cos(turn)) ** 2 * Math.min(1, dist / (near + 2));
     }
-    g.speed += (want - g.speed) * (1 - Math.exp(-dt / 1.5));
+    g.speed += (want - g.speed) * (1 - Math.exp(-dt / ease));
     let nx = g.x + Math.sin(g.yaw) * g.speed * dt, nz = g.z + Math.cos(g.yaw) * g.speed * dt;
     // The base is out of bounds: stopped at the edge (and it gives up the hunt there).
     const bd = Math.hypot(nx - BASE.x, nz - BASE.z);
@@ -158,6 +289,7 @@ export class GuardianServer {
   }
 
   private hunt(g: Guardian, p: BotPlayer, now: number) {
+    if (g.prey !== p.id) g.huntAt = now;
     g.prey = p.id;
     g.px = p.x;
     g.pz = p.z;
@@ -167,11 +299,11 @@ export class GuardianServer {
 
   /** Reached a waypoint: stand guard, wander off to another site, or on to the next point around this one. */
   private arrive(g: Guardian, now: number) {
-    if (Math.random() < GUARD_CHANCE) g.guardUntil = now + rand(GUARD_MIN, GUARD_MAX);
-    if (Math.random() < WANDER_CHANCE) {
+    if (Math.random() < GUARD_CHANCE[g.kind]) g.guardUntil = now + rand(GUARD_MIN, GUARD_MAX) * (g.kind === CRAWLER ? 0.4 : 1);
+    if (g.kind === GUARDIAN && Math.random() < WANDER_CHANCE) {
       const next = this.sites.filter((s) => s !== g.home && Math.hypot(s.x - g.home.x, s.z - g.home.z) < WANDER_R
-        && Math.hypot(s.x - BASE.x, s.z - BASE.z) > BASE_KEEP_OUT + PATROL_MAX
-        && !this.guardians.some((o) => o !== g && o.home === s));
+        && Math.hypot(s.x - BASE.x, s.z - BASE.z) > BASE_KEEP_OUT + PATROL[GUARDIAN][1]
+        && !this.guardians.some((o) => o !== g && o.kind === GUARDIAN && o.home === s));
       if (next.length) g.home = next[Math.floor(Math.random() * next.length)];
     }
     this.patrolPoint(g);
@@ -179,7 +311,7 @@ export class GuardianServer {
 
   private patrolPoint(g: Guardian) {
     for (let i = 0; i < 10; i++) {
-      const a = rand(-Math.PI, Math.PI), r = rand(PATROL_MIN, PATROL_MAX);
+      const a = rand(-Math.PI, Math.PI), r = rand(...PATROL[g.kind]);
       g.tx = g.home.x + Math.sin(a) * r;
       g.tz = g.home.z + Math.cos(a) * r;
       if (Math.hypot(g.tx - BASE.x, g.tz - BASE.z) > BASE_KEEP_OUT + 10) return;
@@ -188,20 +320,18 @@ export class GuardianServer {
 
   private tickDrones(dt: number, now: number, tod: number, players: BotPlayer[], exposed: BotPlayer[], byId: Map<number, BotPlayer>, burn: Map<number, number>) {
     const night = sunElevation(tod) < NIGHT_SUN;
-    // Bring drones to whoever is out in the dark without enough of them around.
+    // At night, every crash site someone is near has its drones over it.
     if (night) {
-      for (const p of exposed) {
+      for (const s of this.sites) {
         if (this.drones.length >= MAX_DRONES) break;
-        if (now - (this.droneAt.get(p.id) ?? -Infinity) < DRONE_EVERY) continue;
-        const around = this.drones.filter((d) => !d.leaving && Math.hypot(d.x - p.x, d.z - p.z) < DRONE_AREA * 1.5).length;
-        if (around >= DRONES_PER_PLAYER) continue;
-        this.droneAt.set(p.id, now);
-        this.spawnDrone(p, 0);
+        if (!exposed.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_NEAR_R)) continue;
+        let have = this.drones.filter((d) => !d.leaving && d.site === s.id).length;
+        for (; have < DRONES_PER_SITE && this.drones.length < MAX_DRONES; have++) this.spawnDrone(s.x, s.z, s.id, 0, DRONE_FROM);
       }
     }
     const v = { x: 0, y: 0, z: 0 };
     for (const d of this.drones) {
-      if ((!night && now > d.until) || !players.some((p) => Math.hypot(p.x - d.x, p.z - d.z) < DRONE_LONELY)) d.leaving = true;
+      if ((!night && now > d.until) || !players.some((p) => Math.hypot(p.x - d.hx, p.z - d.hz) < DRONE_LONELY)) d.leaving = true;
       let speed = DRONE_SPEED, tx = d.tx, tz = d.tz, alt = DRONE_ALT;
       const prey = d.lock >= 0 ? byId.get(d.lock) : undefined;
       if (d.leaving) {
@@ -265,7 +395,7 @@ export class GuardianServer {
         const p = byId.get(d.lock)!;
         burn.set(p.id, Math.max(burn.get(p.id) ?? 0, BURN));
         for (const g of this.guardians) {
-          if (now < g.calmUntil || (g.prey >= 0 && g.prey !== p.id)) continue;
+          if (now < g.calmUntil || (g.prey >= 0 && g.prey !== p.id) || g.kind !== GUARDIAN) continue;
           if (Math.hypot(g.x - p.x, g.z - p.z) < ALERT_R) this.hunt(g, p, now);
         }
       }
@@ -275,9 +405,10 @@ export class GuardianServer {
 
   /** Debug menu: the nearest guardian walks in from 90 m away, or a drone comes for a minute. */
   summon(what: unknown, p: BotPlayer, now: number) {
-    if (what === 'drone') return this.spawnDrone(p, now + 60_000, 70);
-    if (what !== 'guardian' || !this.guardians.length) return;
-    const g = this.guardians.reduce((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) < Math.hypot(b.x - p.x, b.z - p.z) ? a : b));
+    if (what === 'drone') return this.spawnDrone(p.x, p.z, -1, now + 60_000, 70);
+    const big = this.guardians.filter((g) => g.kind === GUARDIAN);
+    if (what !== 'guardian' || !big.length) return;
+    const g = big.reduce((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) < Math.hypot(b.x - p.x, b.z - p.z) ? a : b));
     const a = rand(-Math.PI, Math.PI);
     g.x = p.x + Math.sin(a) * 90;
     g.z = p.z + Math.cos(a) * 90;
@@ -289,17 +420,18 @@ export class GuardianServer {
     g.calmUntil = 0;
   }
 
-  private spawnDrone(p: BotPlayer, until: number, from = DRONE_FROM) {
+  /** A drone coming in from `from` m away to patrol around (hx, hz), over crash site `site` (-1: summoned). */
+  private spawnDrone(hx: number, hz: number, site: number, until: number, from: number) {
     const a = rand(-Math.PI, Math.PI);
-    const x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, p.x + Math.sin(a) * from));
-    const z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, p.z + Math.cos(a) * from));
+    const x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hx + Math.sin(a) * from));
+    const z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hz + Math.cos(a) * from));
     const d: Drone = {
-      id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(p.x - x, p.z - z),
-      hx: p.x, hz: p.z, tx: p.x, tz: p.z, lock: -1, litAt: 0, leaving: false, dx: 0, dy: -1, dz: 0, until,
+      id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
+      hx, hz, tx: hx, tz: hz, site, lock: -1, litAt: 0, leaving: false, dx: 0, dy: -1, dz: 0, until,
     };
-    // First pass: through the player's area from where it came in.
-    d.tx = p.x + rand(-40, 40);
-    d.tz = p.z + rand(-40, 40);
+    // First pass: across the site from where it came in.
+    d.tx = hx + rand(-30, 30);
+    d.tz = hz + rand(-30, 30);
     this.drones.push(d);
   }
 
@@ -313,8 +445,9 @@ export class GuardianServer {
   msg(time: number, id: number, x: number, z: number): ServerMsg {
     const g: number[] = [], d: number[] = [];
     for (const o of this.guardians) {
-      if (Math.hypot(o.x - x, o.z - z) > SEND_R) continue;
-      g.push(o.id, o.legs, r2(o.x), r2(o.z), r3(o.yaw), o.prey < 0 ? 0 : o.prey === id ? 2 : 1);
+      if (Math.hypot(o.x - x, o.z - z) > (o.kind === CRAWLER ? CRAWLER_SEND_R : SEND_R)) continue;
+      g.push(o.id, o.kind, o.legs, r2(o.x), r2(o.z), r3(o.yaw), o.prey < 0 ? 0 : o.prey === id ? 2 : 1,
+        o.aiming ? r2(o.ax) : 0, o.aiming ? r2(o.ay) : 0, o.aiming ? r2(o.az) : 0, o.chargeAt >= 0 ? 1 : o.aiming ? 0 : -1);
     }
     for (const o of this.drones) {
       if (Math.hypot(o.x - x, o.z - z) > SEND_R) continue;

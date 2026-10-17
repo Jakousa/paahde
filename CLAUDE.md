@@ -32,9 +32,10 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `tools/blender/crashsites.py`); drawn by `src/world/crashsites.ts`, heard via `src/crashSound.ts`. Each site
   holds machines to take apart (`machines`): `shared/crash.ts` gives them ids/kinds, `server/crash.ts` sessions and
   spent sites (`crash_spent`), `src/world/crash.ts` + `src/teardown/` the disassembly
-- `shared/guardians.ts` — giant walkers patrolling crash sites + night searchlight drones (constants, beam test);
-  simulated in `server/guardians.ts`, legs are client IK in `src/world/guardians.ts`, drones `src/world/drones.ts`,
-  glue/sound/shake in `src/guardians.ts`, `src/guardianSound.ts`
+- `shared/guardians.ts` — walkers (rare giant guardians with cannons, player-sized crawlers at crash sites) + night
+  searchlight drones (constants, beam test); simulated in `server/guardians.ts`, legs are client IK in
+  `src/world/guardians.ts`, bolts `src/world/bolts.ts`, drones `src/world/drones.ts`, glue/sound/shake in
+  `src/guardians.ts`, `src/guardianSound.ts`
 - `server/index.ts` — authoritative game server (static files + `/ws`); `server/db.ts` — SQLite;
   `server/scrap.ts` — scrap pickups, respawn;
   `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`, `shared/storage.ts`), Tab overlay in `src/inventory.ts`

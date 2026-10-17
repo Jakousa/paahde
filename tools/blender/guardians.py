@@ -16,6 +16,12 @@ export, so the glTF exporter's Y-up conversion gives back exactly these numbers.
   Guardian_Tibia   origin = knee joint (pitch axis = local X), runs along +Z to the ankle at (0, 0, 16);
                    +Y is the back/outside face.
   Guardian_Foot    origin = ground contact centre, sole on y = 0, +Y up; ankle ball centred at (0, 1.2, 0).
+  Guardian_Turret  laser turret (yaw part). Origin = mount point, placed at body-local (0, -2.4, 0.6) on both
+                   bodies (a collar sits there) and rotated about Y. Hangs down; the gun's pitch axis is
+                   local X through (0, -1.3, 0).
+  Guardian_Gun     laser cannon (pitch part). Origin = pitch pivot, placed at turret (0, -1.3, 0) and rotated
+                   about local X; barrel along +Z, muzzle at (0, 0, 5.0). Clears the yoke for pitch -80..+20
+                   degrees. Coil rings + muzzle lip use GuardianGunGlow (intensity animated by the game).
 
 public/models/drone.glb:
 
@@ -49,6 +55,7 @@ MATERIALS = {
     'GuardianHazard': (0xc8641e, 0.3, 0.6, None),     # faded hazard orange
     'GuardianDark': (0x14100e, 0.2, 0.85, None),      # cables, hoses, recesses, eye sockets
     'GuardianEye': (0xff4a14, 0.0, 0.4, 8.0),         # sensor eyes + glowing slits
+    'GuardianGunGlow': (0xff4a14, 0.0, 0.4, 4.0),     # laser coil rings / muzzle lip (game animates intensity)
     'DroneIron': (0x2c2622, 0.6, 0.55, None),
     'DroneSteel': (0x6a6158, 0.7, 0.4, None),
     'DroneCeramic': (0xc9b48f, 0.1, 0.65, None),
@@ -501,11 +508,11 @@ def build_body(name, sockets, base_fn, seed, rear_reactor):
         segs = 8 if r > 0.3 else 6
         mb.lathe([(r * 1.5, -0.1), (r * 1.05, 0.09)], segs, 'GuardianDark', M=M)
         mb.cyl(M @ Vector((0, 0, -0.05)), M @ Vector((0, 0, r * 0.55)), r, 0, segs, 'GuardianEye', cap0=False)
-    # mandibles / chelicerae: hooked prongs under the head
+    # mandibles / chelicerae: hooked prongs under the head, forward of the laser cannon's reach
     for s in (-1, 1):
-        a = Vector((s * 0.65, -1.05, hz + 1.6))
-        b = Vector((s * 0.55, -1.9, hz + 2.9))
-        c = Vector((s * 0.25, -2.6, hz + 3.15))
+        a = Vector((s * 0.65, -0.95, hz + 2.45))
+        b = Vector((s * 0.55, -1.75, hz + 3.25))
+        c = Vector((s * 0.25, -2.4, hz + 3.45))
         mb.sweep([a, b, c], 0.0, 'GuardianCeramic', 4, radii=[0.3, 0.2, 0.02])
         mb.cyl(a + Vector((0, 0.1, -0.4)), a + Vector((0, 0.05, 0.3)), 0.36, 0.3, 6, 'GuardianIron')
 
@@ -541,39 +548,129 @@ def build_body(name, sockets, base_fn, seed, rear_reactor):
             dd = Vector((math.sin(lc + s), 0, math.cos(lc + s)))
             mb.beam(dd * 0.9 + Vector((0, yb - 0.15, 0)), dd * (rad(lc + s) * 0.78) + Vector((0, -1.3, 0)), 0.3,
                     0.4, 'GuardianIron')
-    # ventral pod + gun turret
-    mb.push(T(0, yb + 0.05, 0.2) @ Rx(PI / 2))
-    mb.loft([oct_ring(0.0, 2.7, 2.7, 0.8), oct_ring(0.6, 2.4, 2.4, 0.7), oct_ring(1.1, 1.6, 1.6, 0.45)],
+    # ventral pod ending in the laser turret's mount collar (Guardian_Turret hangs from TURRET_MOUNT)
+    mx, my, mz = TURRET_MOUNT
+    mb.push(T(0, yb + 0.05, mz) @ Rx(PI / 2))
+    mb.loft([oct_ring(0.0, 2.8, 2.8, 0.8), oct_ring(0.3, 2.55, 2.55, 0.72)],
             'GuardianIron', cap1=True, capmat='GuardianRust',
-            matfn=lambda i, k: 'GuardianHazard' if (i == 0 and k % 4 == 0) else 'GuardianIron')
+            matfn=lambda i, k: 'GuardianHazard' if k % 4 == 0 else 'GuardianIron')
     mb.pop()
-    ty = yb - 1.45
-    mb.sphere((0, ty, 0.55), 0.75, 'GuardianIron', 6, 4)
-    mb.cyl((0, ty - 0.15, 0.4), (0, ty - 0.15, 1.35), 0.55, 0.45, 8, 'GuardianCeramic', cap0=False)
-    for s in (-1, 1):
-        a = Vector((s * 0.26, ty - 0.1, 1.2))
-        b = Vector((s * 0.26, ty - 0.45, 3.6))
-        mb.cyl(a, b, 0.13, 0.11, 5, 'GuardianSteel', cap0=False, cap1=False)
-        mb.cyl(b - (b - a).normalized() * 0.5, b, 0.19, 0.19, 6, 'GuardianIron', cap0=False)
-    mb.glow_slit((0, ty + 0.05, 1.32), (0.5, 0.08, 0.06))
-    # tanks and greebles
+    mb.lathe([(0.9, 0.0), (1.3, 0.0), (1.38, 0.08), (1.24, 0.18), (1.18, 0.3)], 12, 'GuardianIron',
+             M=T(mx, my, mz) @ Rx(-PI / 2), phase=PI / 12,
+             matfn=lambda k: 'GuardianDark' if k == 0 else ('GuardianRust' if k == 1 else 'GuardianSteel'))
+    mb.disc((mx, my + 0.02, mz), (0, -1, 0), 0.95, 12, 'GuardianDark')
+    for i in range(8):
+        a = 2 * PI * (i + 0.5) / 8
+        mb.rivet((mx + 1.2 * math.sin(a), my + 0.12, mz + 1.2 * math.cos(a)),
+                 (math.sin(a), -0.6, math.cos(a)), 0.08)
+    # tanks and greebles (kept tight up under the hull, clear of the turret's sweep)
     for s in (-1, 1):
         mb.cyl((s * 1.7, yb + 0.15, -1.1), (s * 1.7, yb + 0.15, 0.9), 0.38, None, 6, 'GuardianHazard')
-        mb.box((s * 0.9, yb - 0.2, -1.6), (0.7, 0.5, 0.9), 'GuardianIron')
-        mb.box((s * 0.9, yb - 0.46, -1.6), (0.4, 0.04, 0.08), 'GuardianEye')
-    # sagging cable bundles and dangling hoses (seen from below a lot)
+        mb.box((s * 0.9, yb + 0.25, -1.7), (0.7, 0.4, 0.9), 'GuardianIron')
+        mb.box((s * 0.9, yb + 0.04, -1.7), (0.4, 0.04, 0.08), 'GuardianEye')
+    # cable bundles slung under each lobe and a short loose hose (above the cannon's reach)
     for lc, half in lobes:
         d = Vector((math.sin(lc), 0, math.cos(lc)))
         side = Vector((0, 1, 0)).cross(d)
         for k, s in enumerate((-0.4, 0.4)):
             a = d * (rad(lc) * 0.62) + side * s + Vector((0, -1.45, 0))
-            b = d * 0.9 + side * s * 1.5 + Vector((0, yb - 0.4, 0))
-            mb.cable(a, b, 0.9 + 0.5 * k + rng(0, 0.3), 0.13, 'GuardianDark', 4, 3)
-        # one loose hose hanging down from each lobe
+            b = d * 1.6 + side * s * 1.5 + Vector((0, yb + 0.1, 0))
+            mb.cable(a, b, 0.15 + 0.1 * k + rng(0, 0.08), 0.13, 'GuardianDark', 4, 3)
         a = d * (rad(lc) * 0.7) + side * 0.8 + Vector((0, -1.2, 0))
-        mb.sweep([a, a + Vector((0, -1.2, 0)) - d * 0.15, a + Vector((0, -2.4, 0)) + d * 0.3 + side * 0.2],
+        mb.sweep([a, a + Vector((0, -0.3, 0)) - d * 0.2, a + Vector((0, -0.15, 0)) + d * 0.25 + side * 0.3],
                  0.1, 'GuardianDark', 3)
     return finish(mb, name)
+
+
+# laser cannon: turret hangs from TURRET_MOUNT (body-local), gun pitches about turret-local GUN_PIVOT
+TURRET_MOUNT = (0.0, -2.4, 0.6)
+GUN_PIVOT = (0.0, -1.3, 0.0)
+GUN_MUZZLE = 5.0
+
+
+def build_turret():
+    """Yaw part. Origin = mount point on the body's underside; hangs down; pitch axis = X through GUN_PIVOT."""
+    mb = MB()
+    py = GUN_PIVOT[1]
+    # slewing ring (top sits against the body's collar)
+    mb.lathe([(0.95, 0.0), (1.1, 0.05), (1.1, 0.18), (1.04, 0.22), (1.04, 0.3), (0.85, 0.42), (0.0, 0.42)], 12,
+             'GuardianIron', M=Rx(PI / 2), phase=PI / 12,
+             matfn=lambda k: ['GuardianSteel', 'GuardianRust', 'GuardianDark', 'GuardianIron', 'GuardianIron',
+                              'GuardianDark'][k])
+    # hazard ticks on the rust band so the yaw reads
+    for i in range(4):
+        a = 2 * PI * i / 4 + PI / 4
+        mb.box((0, 0, 0), (0.3, 0.12, 0.05), 'GuardianHazard', M=T(1.11 * math.sin(a), -0.12, 1.11 * math.cos(a)) @
+               Ry(a))
+    # yoke cheeks, round about the pitch axis
+    poly = [(-0.3, -0.75)] + [(py - 0.62 * math.sin(a), -0.62 * math.cos(a))
+                              for a in (PI * i / 6 for i in range(7))] + [(-0.3, 0.75)]
+    for s in (-1, 1):
+        mb.prism_x(poly, s * 0.8, s * 1.02, 'GuardianIron')
+        # ceramic cheek plate + hazard edge
+        mb.box((s * 1.06, -0.78, -0.05), (0.06, 0.62, 1.15), 'GuardianCeramic')
+        mb.box((s * 1.06, -0.78, 0.6), (0.07, 0.62, 0.12), 'GuardianHazard')
+        # trunnion bearing caps
+        mb.cyl((s * 1.02, py, 0), (s * 1.16, py, 0), 0.44, 0.4, 8, 'GuardianSteel', cap0=False, phase=PI / 8)
+        mb.cyl((s * 1.16, py, 0), (s * 1.22, py, 0), 0.22, 0.18, 6, 'GuardianRust', cap0=False)
+        # hoses from the ring down the back of each cheek into the bearing
+        mb.sweep([(s * 0.9, -0.36, -0.75), (s * 1.12, -0.7, -0.85), (s * 1.17, py + 0.15, -0.42)], 0.08,
+                 'GuardianDark', 4)
+    # targeting eye on the +X cheek
+    mb.box((1.13, -0.62, 0.5), (0.16, 0.26, 0.34), 'GuardianIron')
+    mb.cyl((1.13, -0.62, 0.62), (1.13, -0.62, 0.74), 0.09, 0.07, 6, 'GuardianEye', cap0=False)
+    return finish(mb, 'Guardian_Turret')
+
+
+def build_gun():
+    """Pitch part. Origin = pitch pivot, barrel along +Z, muzzle face at z = GUN_MUZZLE.
+    Everything stays within |x| < 0.78 (between the yoke cheeks) and keeps under the slewing ring
+    for pitch -80..+20 degrees."""
+    mb = MB()
+    G = 'GuardianGunGlow'
+    # trunnion drum (the breech's heavy core), rust end bands, axle stubs into the bearings
+    mb.cyl((-0.58, 0, 0), (0.58, 0, 0), 0.75, None, 10, 'GuardianIron', phase=PI / 10)
+    for s in (-1, 1):
+        mb.cyl((s * 0.58, 0, 0), (s * 0.76, 0, 0), 0.72, 0.66, 10, 'GuardianRust', cap0=False, phase=PI / 10)
+        mb.cyl((s * 0.76, 0, 0), (s * 0.79, 0, 0), 0.3, None, 6, 'GuardianSteel', cap0=False)
+    # capacitor housing, sloped down on top so it slips under the ring when the gun looks up
+    rings = [oct_ring(0.3, 1.3, 1.2, 0.3, cy=-0.12), oct_ring(0.9, 1.36, 1.22, 0.32, cy=-0.15),
+             oct_ring(1.9, 1.1, 0.98, 0.28, cy=-0.15), oct_ring(2.15, 0.78, 0.74, 0.2, cy=-0.05)]
+    mb.loft(rings, 'GuardianIron', cap1=True, capmat='GuardianDark',
+            matfn=lambda i, k: 'GuardianCeramic' if k in (5, 6, 7) and i < 2 else (
+                'GuardianRust' if k in (1, 2, 3) else 'GuardianIron'))
+    for s in (-1, 1):
+        for y in (0.05, -0.25):
+            mb.box((s * 0.66, y, 1.25), (0.04, 0.08, 0.75), G)
+        # capacitor tanks slung under the housing
+        mb.cyl((s * 0.34, -0.74, 0.35), (s * 0.34, -0.74, 1.75), 0.2, None, 6, 'GuardianHazard')
+        mb.cyl((s * 0.34, -0.74, 1.75), (s * 0.34, -0.6, 2.4), 0.07, None, 4, 'GuardianDark', cap0=False)
+    # barrel: steel core, coil pack (glowing rings between iron heat-sink discs), four long cooling fins
+    mb.cyl((0, 0, 2.1), (0, 0, 4.35), 0.3, 0.27, 8, 'GuardianSteel', cap0=False, cap1=False, phase=PI / 8)
+    for i in range(5):
+        z = 2.35 + i * 0.36
+        mb.cyl((0, 0, z), (0, 0, z + 0.12), 0.43, None, 8, G, phase=PI / 8)
+        mb.cyl((0, 0, z + 0.18), (0, 0, z + 0.24), 0.52, None, 8, 'GuardianIron', phase=PI / 8)
+    for k in range(4):
+        mb.box((0.39, 0, 3.25), (0.24, 0.06, 2.2), 'GuardianIron' if k % 2 else 'GuardianRust',
+               M=Rz(PI / 4 + k * PI / 2))
+    # muzzle shroud: flared collar, hot inner lip, dark bore
+    mb.lathe([(0.27, 4.2), (0.5, 4.32), (0.6, 4.78), (0.56, GUN_MUZZLE), (0.42, GUN_MUZZLE), (0.33, 4.86)], 10,
+             'GuardianIron', phase=PI / 10,
+             matfn=lambda k: ['GuardianRust', 'GuardianIron', 'GuardianSteel', G, G][k])
+    mb.disc((0, 0, 4.86), (0, 0, 1), 0.33, 10, 'GuardianDark')
+    for k in range(3):
+        a = PI / 2 + k * 2 * PI / 3
+        mb.box((0, 0, 0), (0.1, 0.1, 0.4), 'GuardianHazard',
+               M=T(0.55 * math.cos(a), 0.55 * math.sin(a), 4.55) @ Rz(a))
+    # counterweight slung low behind the breech (low enough to clear the ring at -80 degrees)
+    mb.beam((0, -0.25, -0.3), (0, -1.15, -0.78), 1.1, 0.62, 'GuardianIron', up=(0, 0.47, -0.88))
+    mb.beam((0, -1.1, -0.74), (0, -1.36, -0.88), 1.16, 0.7, 'GuardianRust', up=(0, 0.47, -0.88))
+    for s in (-1, 1):
+        mb.box((s * 0.3, -0.9, -0.9), (0.18, 0.4, 0.06), 'GuardianHazard', M=Matrix.Identity(4),
+               rot=(-0.5, 0, 0))
+        mb.sweep([(s * 0.45, -0.5, -0.45), (s * 0.55, -0.8, 0.0), (s * 0.5, -0.6, 0.45)], 0.07, 'GuardianDark', 4)
+    return finish(mb, 'Guardian_Gun')
 
 
 def build_hip():
@@ -840,6 +937,53 @@ def export_glb(objs, path):
     )
 
 
+def cannon_pose(body_M, yaw, pitch):
+    """three.js matrices for turret and gun; pitch in radians, negative = muzzle down."""
+    Mt = body_M @ T(TURRET_MOUNT) @ Ry(yaw)
+    return Mt, Mt @ T(GUN_PIVOT) @ Rx(-pitch)
+
+
+def cannon_aim(body_M, target):
+    """yaw, pitch that put the barrel axis through target (three.js world point)."""
+    p = body_M @ T(TURRET_MOUNT) @ Vector(GUN_PIVOT)
+    d = Vector(target) - p
+    return math.atan2(d.x, d.z), math.atan2(d.y, math.hypot(d.x, d.z))
+
+
+def bvh(obj, M):
+    from mathutils.bvhtree import BVHTree
+    Ci = C.inverted()
+    verts = [M @ (Ci @ v.co) for v in obj.data.vertices]
+    return BVHTree.FromPolygons(verts, [list(p.vertices) for p in obj.data.polygons])
+
+
+def check_cannon(parts):
+    """Print any mesh overlaps of the gun against the turret over its pitch range, and of turret/gun against
+    each body over a yaw sweep (pitch -80..+20)."""
+    I = Matrix.Identity(4)
+    tur, gun = parts['Guardian_Turret'], parts['Guardian_Gun']
+    bad = []
+    for pd in range(-80, 21, 5):
+        Mt, Mg = cannon_pose(I, 0, math.radians(pd))
+        if bvh(gun, Mg).overlap(bvh(tur, Mt)):
+            bad.append(f'gun/turret @ pitch {pd}')
+    for bn in ('Guardian_Body4', 'Guardian_Body3'):
+        tb = bvh(parts[bn], I)
+        for yd in range(0, 360, 5):
+            Mt, _ = cannon_pose(T(0, -0.02, 0), math.radians(yd), 0)  # (its top face sits on the collar)
+            if tb.overlap(bvh(tur, Mt)):
+                bad.append(f'{bn}/turret @ yaw {yd}')
+            for pd in range(-80, 21, 10):
+                _, Mg = cannon_pose(I, math.radians(yd), math.radians(pd))
+                ov = tb.overlap(bvh(gun, Mg))
+                if ov:
+                    bp = parts[bn].data.polygons[ov[0][0]].center
+                    gp = gun.data.polygons[ov[0][1]].center
+                    bad.append(f'{bn}/gun @ yaw {yd} pitch {pd} [{tuple(round(c, 2) for c in C.inverted() @ bp)} '
+                               f'{tuple(round(c, 2) for c in C.inverted() @ gp)}]')
+    print('cannon clearance: ' + ('OK' if not bad else f'{len(bad)} clashes: ' + ', '.join(bad)))
+
+
 # ================================================================================================= preview
 
 def leg_pose(sock, body_y, foot_dist):
@@ -921,10 +1065,13 @@ def render_previews(parts, drone, rotors, out_dir):
     hm = bpy.data.materials.new('human')
     hm.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value = (0.05, 0.15, 0.6, 1)
 
-    def assemble(body, sockets, body_y, foot_dist):
+    def assemble(body, sockets, body_y, foot_dist, yaw=0.0, pitch=0.0):
         coll = bpy.data.collections.new(body.name + '_rig')
         scene.collection.children.link(coll)
         place(body, T(0, body_y, 0), coll)
+        Mt, Mg = cannon_pose(T(0, body_y, 0), yaw, pitch)
+        place(parts['Guardian_Turret'], Mt, coll)
+        place(parts['Guardian_Gun'], Mg, coll)
         knees = []
         for s in sockets:
             Ms, knee = leg_pose(s, body_y, foot_dist)
@@ -936,13 +1083,16 @@ def render_previews(parts, drone, rotors, out_dir):
 
     S4 = [(2.3, 0, 2.3), (-2.3, 0, 2.3), (2.3, 0, -2.3), (-2.3, 0, -2.3)]
     S3 = [(2.6, 0, 1.5), (-2.6, 0, 1.5), (0, 0, -3.0)]
-    rig4 = assemble(parts['Guardian_Body4'], S4, 13.0, 15.0)
-    # human-sized box next to the front-left foot
+    # human-sized box next to the front-left foot; the laser cannon aims at it
     fd = Vector((1, 0, 1)).normalized() * 15.0
+    hp = Vector((fd.x - 2.6, 0.9, fd.z + 0.6))
+    yaw, pitch = cannon_aim(T(0, 13.0, 0), hp)
+    print(f'preview cannon aim: yaw {math.degrees(yaw):.1f} pitch {math.degrees(pitch):.1f}')
+    rig4 = assemble(parts['Guardian_Body4'], S4, 13.0, 15.0, yaw, pitch)
     bpy.ops.mesh.primitive_cube_add(size=1)
     human = bpy.context.active_object
     human.scale = (0.5, 0.35, 1.8)
-    human.location = C @ Vector((fd.x - 2.6, 0.9, fd.z + 0.6))
+    human.location = C @ hp
     human.data.materials.append(hm)
 
     look((fd.x - 6, 1.6, fd.z + 14), (0, 11, 0), 20)
@@ -957,6 +1107,11 @@ def render_previews(parts, drone, rotors, out_dir):
     shoot('guardian_body_close.png')
     look((fd.x + 5, 2.2, fd.z - 3), (fd.x, 1.6, fd.z), 30)
     shoot('guardian_foot_close.png')
+    look((24, 2.0, -6), (4, 6, 6), 24)
+    shoot('cannon_aim.png')
+    pv = T(0, 13.0, 0) @ T(TURRET_MOUNT) @ Vector(GUN_PIVOT)
+    look(pv + Vector((-6, -1.5, 7)), pv + Vector((0.8, -0.6, 1.4)), 30)
+    shoot('cannon_close.png')
     # dusk silhouette
     bg.inputs['Color'].default_value = (*lin(0xf7a440), 1)
     bg.inputs['Strength'].default_value = 1.3
@@ -969,7 +1124,19 @@ def render_previews(parts, drone, rotors, out_dir):
     rig4.hide_render = True
     human.hide_render = True
 
-    rig3 = assemble(parts['Guardian_Body3'], S3, 13.0, 15.0)
+    # cannon pitch limits: body + turret + gun at -80 and +20 degrees, seen from the side
+    for pd in (-80, 20):
+        coll = bpy.data.collections.new(f'cannon_{pd}')
+        scene.collection.children.link(coll)
+        place(parts['Guardian_Body4'], T(0, 13.0, 0), coll)
+        Mt, Mg = cannon_pose(T(0, 13.0, 0), 0, math.radians(pd))
+        place(parts['Guardian_Turret'], Mt, coll)
+        place(parts['Guardian_Gun'], Mg, coll)
+        look(pv + Vector((16, -1.0, 1.5)), pv + Vector((0, 0.3, 1.5)), 30)
+        shoot(f'cannon_pitch{pd:+d}.png')
+        coll.hide_render = True
+
+    rig3 = assemble(parts['Guardian_Body3'], S3, 13.0, 15.0, math.radians(-30), math.radians(-10))
     look((26, 16, 30), (0, 8, 0), 30)
     shoot('guardian3_34.png')
     look((5, 20, 9), (0, 13.5, 0), 30)
@@ -1023,6 +1190,8 @@ def main():
     parts['Guardian_Femur'] = build_femur()
     parts['Guardian_Tibia'] = build_tibia()
     parts['Guardian_Foot'] = build_foot()
+    parts['Guardian_Turret'] = build_turret()
+    parts['Guardian_Gun'] = build_gun()
     drone, rotors = build_drone()
 
     os.makedirs(args.out, exist_ok=True)
@@ -1039,6 +1208,8 @@ def main():
     print(f'assembled 4-leg guardian tris: {tri_count(parts["Guardian_Body4"]) + 4 * leg}')
     print(f'assembled 3-leg guardian tris: {tri_count(parts["Guardian_Body3"]) + 3 * leg}')
     print(f'drone tris: {tri_count(drone) + sum(tri_count(r) for r in rotors)}')
+    print(f'laser turret + gun tris: {tri_count(parts["Guardian_Turret"]) + tri_count(parts["Guardian_Gun"])}')
+    check_cannon(parts)
 
     if args.preview:
         render_previews(parts, drone, rotors, os.path.abspath(args.preview))

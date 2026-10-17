@@ -2,11 +2,19 @@
 // second ('bots', shared/protocol.ts) and drawn by src/world/guardians.ts (the legs are client-side IK) and
 // src/world/drones.ts.
 //
-// Guardians are giant three- or four-legged walkers that patrol around crash sites, now and then wander to the
-// next one, and stand guard for a while. Come within SIGHT of one (or get caught in a drone's searchlight near
-// one) and it hunts you, slower than you can walk; if it gets over you, you're crushed.
+// Two kinds of walker (KINDS), built from the same parts at different scales:
+// - Guardians: a few rare giants roaming from crash site to crash site, standing guard now and then. Come within
+//   sight of one (or get caught in a drone's searchlight near one) and it hunts you, slower than you can walk; if it
+//   gets over you, you're crushed.
+// - Crawlers: player-sized spiders swarming every crash site someone is near. Faster than you walk (sprint away),
+//   they bite (BITE_HEAT on the heat meter, shared/water.ts), then scuttle off for a while; they give up after a short
+//   chase or once you're well away from their site.
 //
-// Drones come out at night (sun below NIGHT_SUN): a few hover around every player out in the open, sweeping a
+// While it hunts you and sees you, a guardian's cannon (hung under its body, turning to follow you) charges for
+// CHARGE_MS and fires a big slow laser bolt at where you are, every FIRE_MS. A hit, or a blast within BLAST_R of
+// you, kills. Bolts fly straight at BOLT_SPEED: from a distance you can sidestep them.
+//
+// Drones come out at night (sun below NIGHT_SUN): a few hover over every crash site someone is near, sweeping a
 // searchlight over the sand. Step into the beam and it locks on: it follows you, the beam burns (BURN heat per
 // second, shared/water.ts) and every guardian within ALERT_R comes for you. Break its line of sight (behind a
 // dune crest, into the base) or outrun it for LOSE_MS and it gives up.
@@ -15,7 +23,7 @@ import { heightAt } from './terrain.ts';
 
 // --- Guardian body and legs (metres; must match tools/blender/guardians.py) ---
 
-/** Hip height above the ground the feet stand on. */
+/** Hip height above the ground the feet stand on (at scale 1: see KINDS). */
 export const BODY_H = 13;
 /** Upper and lower leg, knee to ankle. */
 export const FEMUR = 12;
@@ -30,15 +38,48 @@ export const SOCKETS: Record<3 | 4, [number, number][]> = {
 /** A foot at rest stands this far out from the body's centre, along its socket's direction. */
 export const REST_R = 14;
 
-/** Walking speeds (m/s) and how fast they turn (rad/s). A player walks 6 m/s. */
-export const PATROL_SPEED = 1.8;
-export const HUNT_SPEED = 4.4;
-export const TURN_RATE = 0.22;
-export const HUNT_TURN_RATE = 0.45;
-/** A guardian notices a player out in the open this close (m), from any side. */
-export const SIGHT = 42;
-/** Under the body this close (m, horizontally) while it hunts you: crushed. */
-export const CRUSH_R = 5;
+/**
+ * The walker kinds. `scale` multiplies every length above (the model is built at 1). Speeds in m/s (a player walks
+ * 6, sprints 11), turn rates in rad/s; `sight`: notices someone out in the open this close (m), from any side;
+ * `reach`: gets you this close (m, horizontally): a guardian crushes, a crawler bites; `gun`: has the cannon.
+ */
+export const KINDS = [
+  { name: 'guardian', scale: 1.5, patrol: 2.8, hunt: 5.2, turn: 0.3, huntTurn: 0.6, sight: 65, reach: 7.5, gun: true },
+  { name: 'crawler', scale: 0.11, patrol: 2.6, hunt: 7.4, turn: 3, huntTurn: 7, sight: 12, reach: 1.5, gun: false },
+] as const;
+export const GUARDIAN = 0, CRAWLER = 1;
+export type Kind = typeof GUARDIAN | typeof CRAWLER;
+/** A crawler's bite: heat added (HEAT_MAX 100), at most every BITE_MS. After a bite, or chasing for CRAWLER_CHASE_MS,
+ *  it backs off for CRAWLER_CALM_MS: a nuisance at the sites rather than a wall (you can't fight back). */
+export const BITE_HEAT = 14;
+export const BITE_MS = 1500;
+export const CRAWLER_CHASE_MS = 7000;
+export const CRAWLER_CALM_MS = 9000;
+
+// --- The cannon (tools/blender/guardians.py Guardian_Turret, Guardian_Gun) ---
+
+/** Turret mount on the body (body frame), the gun's pitch pivot below it (turret frame), and the muzzle along the
+ *  gun's +Z. */
+export const GUN_MOUNT = { y: -2.4, z: 0.6 };
+export const GUN_PIVOT = -1.3;
+export const MUZZLE = 5;
+/** Fires at people within this distance (m) it can see, every FIRE_MS, after charging for CHARGE_MS. */
+export const FIRE_R = 120;
+export const FIRE_MS = 3200;
+export const CHARGE_MS = 1000;
+/** Bolt speed (m/s), how far it flies (m), its radius for hits (m), and the blast where it lands. */
+export const BOLT_SPEED = 38;
+export const BOLT_RANGE = 180;
+export const BOLT_R = 0.9;
+export const BLAST_R = 2.2;
+
+/** The cannon's pivot, world, for a body of `scale` at (x, bodyY, z) facing `yaw` (level body). */
+export function gunPivot<T extends { x: number; y: number; z: number }>(x: number, bodyY: number, z: number, yaw: number, scale: number, out: T): T {
+  out.x = x + Math.sin(yaw) * GUN_MOUNT.z * scale;
+  out.y = bodyY + (GUN_MOUNT.y + GUN_PIVOT) * scale;
+  out.z = z + Math.cos(yaw) * GUN_MOUNT.z * scale;
+  return out;
+}
 
 // --- Drones ---
 

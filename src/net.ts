@@ -140,6 +140,8 @@ export class Net {
   /** Recent 'bots' messages (guardians and drones, shared/guardians.ts), oldest first; src/world/botFrames.ts
    *  interpolates them. */
   bots: Extract<ServerMsg, { t: 'bots' }>[] = [];
+  /** A guardian's laser bolt was fired or burst (src/world/bolts.ts). */
+  onBolt?: (msg: Extract<ServerMsg, { t: 'shot' | 'boom' }>) => void;
   /** A bed we tended was planted or harvested. */
   onTended?: (what: 'planted' | 'harvested') => void;
 
@@ -551,6 +553,7 @@ export class Net {
       this.storms = msg.storms;
       return;
     }
+    if (msg.t === 'shot' || msg.t === 'boom') return this.onBolt?.(msg);
     if (msg.t === 'bots') {
       this.bots.push(msg);
       if (this.bots.length > 12) this.bots.shift();

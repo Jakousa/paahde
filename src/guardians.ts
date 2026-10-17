@@ -1,11 +1,14 @@
 // Guardians and night drones on the client (shared/guardians.ts): interpolates the server's 'bots' messages
 // (src/world/botFrames.ts), walks the guardians (src/world/guardians.ts) and flies the drones
 // (src/world/drones.ts), and does what makes them feel big and dangerous: footfall sound, dust and camera shake,
-// the horn when one comes for you, the drone siren, and a warning line on the HUD.
+// the horn when one comes for you, the cannon (src/world/bolts.ts: charge whine, zap, burst), the drone siren, and a
+// warning line on the HUD.
 import * as THREE from 'three/webgpu';
 import { BOT_DELAY_MS, dronesAt, guardiansAt } from './world/botFrames';
 import { Drones } from './world/drones';
 import { Guardians, type Footfall } from './world/guardians';
+import { Bolts } from './world/bolts';
+import { CHARGE_MS, CRAWLER, GUARDIAN, KINDS } from '../shared/guardians.ts';
 import { guardianSound } from './guardianSound';
 import { tyreDust } from './tyreDust';
 import type { Net } from './net';
@@ -26,14 +29,21 @@ const css = `
 export class GuardianFx {
   readonly guardians: Guardians;
   readonly drones: Drones;
+  readonly bolts: Bolts;
+  private bound = false;
+  private charging = new Set<number>();
+  private muzzle = new THREE.Vector3();
   private shake = 0;
   private hunted = new Set<number>();
+  private crawled = new Set<number>();
+  private bitAt = 0;
   private warn = document.createElement('div');
   private ear = new THREE.Vector3();
 
   constructor(scene: THREE.Scene) {
     this.guardians = new Guardians(scene);
     this.drones = new Drones(scene);
+    this.bolts = new Bolts(scene);
     this.guardians.onFootfall = (f) => this.footfall(f);
     const style = document.createElement('style');
     style.textContent = css;
@@ -43,13 +53,25 @@ export class GuardianFx {
   }
 
   private footfall(f: Footfall) {
+    if (f.kind === CRAWLER) {
+      guardianSound.tick(f.x, f.y, f.z, this.ear);
+      if (Math.random() < 0.3 && Math.hypot(f.x - this.ear.x, f.z - this.ear.z) < 60) {
+        tyreDust.emit(f.x, f.y + 0.05, f.z, (Math.random() - 0.5) * 0.6, 0.2, (Math.random() - 0.5) * 0.6, 0.25);
+      }
+      return;
+    }
     guardianSound.footfall(f.x, f.y, f.z, f.weight, this.ear);
-    const d = Math.hypot(f.x - this.ear.x, f.z - this.ear.z);
-    if (d < SHAKE_R) this.shake = Math.max(this.shake, SHAKE * f.weight * (1 - d / SHAKE_R) ** 2);
+    this.thump(f.x, f.y, f.z, f.weight, 9, 2.5 * KINDS[GUARDIAN].scale, 1.6 * KINDS[GUARDIAN].scale);
+  }
+
+  /** Shake and dust for something heavy at (x, y, z). */
+  private thump(x: number, y: number, z: number, weight: number, puffs: number, speed: number, size: number) {
+    const d = Math.hypot(x - this.ear.x, z - this.ear.z);
+    if (d < SHAKE_R) this.shake = Math.max(this.shake, SHAKE * weight * (1 - d / SHAKE_R) ** 2);
     if (d < DUST_R) {
-      for (let i = 0; i < 9; i++) {
-        const a = (i / 9) * Math.PI * 2 + Math.random() * 0.5, v = 2.5 + Math.random() * 2.5;
-        tyreDust.emit(f.x + Math.cos(a) * 1.2, f.y + 0.3, f.z + Math.sin(a) * 1.2, Math.cos(a) * v, 0.6 + Math.random(), Math.sin(a) * v, 1.6);
+      for (let i = 0; i < puffs; i++) {
+        const a = (i / puffs) * Math.PI * 2 + Math.random() * 0.5, v = speed + Math.random() * speed;
+        tyreDust.emit(x + Math.cos(a) * 1.2, y + 0.3, z + Math.sin(a) * 1.2, Math.cos(a) * v, 0.6 + Math.random() * speed * 0.5, Math.sin(a) * v, size);
       }
     }
   }
@@ -57,20 +79,56 @@ export class GuardianFx {
   /** Every frame, after the camera has been placed: draws them and shakes the camera. */
   update(net: Net, dt: number, camera: THREE.Camera, focus: { x: number; z: number }) {
     this.ear.copy(camera.position);
+    if (!this.bound) {
+      this.bound = true;
+      net.onBolt = (m) => {
+        if (m.t === 'shot') {
+          const muzzle = this.guardians.fire(m.g, this.muzzle);
+          this.bolts.fire(m, muzzle);
+          const at = muzzle ?? this.muzzle.set(m.x, m.y, m.z);
+          guardianSound.zap(at.x, at.y, at.z, this.ear);
+        } else {
+          this.bolts.boom(m.id, m.x, m.y, m.z);
+          guardianSound.boom(m.x, m.y, m.z, this.ear);
+          if (m.ground) this.thump(m.x, m.y, m.z, 1.6, 16, 5, 2.4);
+        }
+      };
+    }
+    this.bolts.update(dt, net.serverTime());
     const t = net.serverTime() - BOT_DELAY_MS;
     const gs = guardiansAt(net.bots, t);
     const ds = dronesAt(net.bots, t);
     this.guardians.update(gs, dt, focus);
     this.drones.update(ds, dt, focus);
     guardianSound.drones(ds, this.ear);
-    // The horn, once, when one starts hunting you.
+    // The horn, once, when one starts hunting you; the cannon's whine as it charges.
     for (const g of gs) {
+      if (g.gun === 1 && !this.charging.has(g.id) && Math.hypot(g.x - focus.x, g.z - focus.z) < 250) {
+        guardianSound.charge(g.x, camera.position.y + 10, g.z, (CHARGE_MS - BOT_DELAY_MS) / 1000);
+      }
+      if (g.gun === 1) this.charging.add(g.id);
+      else this.charging.delete(g.id);
+      if (g.kind === CRAWLER) {
+        // Crawlers chitter when they come for you, and snap when they get you (the server's bite lands about then).
+        const d = Math.hypot(g.x - focus.x, g.z - focus.z);
+        if (g.hunt === 2 && !this.crawled.has(g.id)) guardianSound.chitter(g.x, camera.position.y - 1, g.z, false);
+        if (g.hunt === 2 && d < KINDS[CRAWLER].reach + 0.8 && performance.now() - this.bitAt > 1000) {
+          this.bitAt = performance.now();
+          guardianSound.chitter(g.x, camera.position.y - 1, g.z, true);
+        }
+        if (g.hunt === 2) this.crawled.add(g.id);
+        else this.crawled.delete(g.id);
+        continue;
+      }
       if (g.hunt === 2 && !this.hunted.has(g.id)) guardianSound.horn(g.x, camera.position.y + 12, g.z);
       if (g.hunt === 2) this.hunted.add(g.id);
       else this.hunted.delete(g.id);
     }
+    for (const id of this.crawled) if (!gs.some((g) => g.id === id)) this.crawled.delete(id);
+    for (const id of this.hunted) if (!gs.some((g) => g.id === id)) this.hunted.delete(id);
     const spotted = ds.some((d) => d.lock === 2);
-    const text = spotted ? 'Spotted — get out of the light' : this.hunted.size ? 'A guardian is coming for you' : '';
+    const text = spotted ? 'Spotted — get out of the light' : this.hunted.size ? 'A guardian is coming for you'
+      : this.crawled.size ? 'Crawlers — run' : '';
     if (text) this.warn.textContent = text;
     this.warn.classList.toggle('on', text !== '');
     if (this.shake > 0.001) {

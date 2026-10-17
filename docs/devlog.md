@@ -2,6 +2,24 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Guardian cannons, crawlers, bigger and rarer guardians
+
+- **Guardians** are now 3 giants (×1.5: body ~20 m up, legs 18 + 24 m) roaming the desert from crash site to crash
+  site, starting away from the sites nearest the base. Faster: 2.8 m/s patrol, 5.2 hunting (you walk 6). Sight 65 m.
+- **Cannon**: `Guardian_Turret` + `Guardian_Gun` (tools/blender/guardians.py) hang under the body. While a guardian
+  hunts you and has line of sight within 120 m, the turret yaws and the gun pitches after you (slewing, so a quick
+  sidestep gets ahead of it), the coils glow up over a 1 s charge (with a rising whine), and it fires a big slow bolt
+  (38 m/s) every 3.2 s. A hit or a burst within 2.2 m kills ('laser'). Server-simulated straight-line bolts
+  (`tickBolts`), announced as 'shot' / 'boom'; the client draws them from its own muzzle easing onto the server's
+  line (src/world/bolts.ts). Strafing works: a simulated player zig-zagging away dodged 7 shots before it closed in.
+- **Crawlers**: the same rig at ×0.11 (player-sized), 3–6 per crash site, turning up when someone comes within 300 m
+  and gone when everyone has left. Faster than you walk (7.4 m/s, sprint away), they notice you within 12 m, bite
+  (+14 heat), then back off for 9 s; they give up after a 7 s chase or 70 m from their site. Tuned as a nuisance at
+  the sites, not a wall, since you can't fight back yet. Crawlers use merged parts (one or two draw calls per part,
+  no shadows), and only those within 300 m are sent.
+- **Drones** now belong to crash sites: at night, two over every site someone is near; the open desert is dark and
+  quiet.
+
 ## 2026-10-17 — Guardians and night drones
 
 Giant spider-like walkers ("guardians") patrol the crash sites, and at night searchlight drones hunt players who are

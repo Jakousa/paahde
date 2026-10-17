@@ -168,14 +168,20 @@ export type ServerMsg =
   | { t: 'water'; heat: number; sips: number; maxSips: number; rising: boolean; temp: number; shade: boolean }
   // You died of heatstroke: the server has already moved you to BASE_SPAWN (the next snapshot snaps you
   // there) with no heat and a full canteen; a 'water' follows. For the death screen.
-  // 'beam': a drone's searchlight burned you (heat too, shared/guardians.ts); 'guardian': one walked over you.
+  // 'beam': a drone's searchlight burned you (heat too, shared/guardians.ts); 'guardian': one walked over you;
+  // 'laser': a guardian's cannon got you; 'crawler': bitten once too often.
   | { t: 'died'; cause: DeathCause }
   // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time).
   // Sent before 'welcome' on join and to everyone whenever the list changes.
   | { t: 'storms'; storms: Storm[] }
   // Guardians and night drones (shared/guardians.ts) within reach, about 10 times a second, at server time `time`.
-  // g: [id, legs, x, z, yaw, hunt] per guardian; d: [id, x, y, z, yaw, dx, dy, dz, lock] per drone ((dx, dy, dz)
+  // g: [id, kind, legs, x, z, yaw, hunt, ax, ay, az, gun] per walker (kind: shared/guardians.ts KINDS index;
+  // (ax, ay, az) where its cannon aims; gun -1 idle, 0 aiming, 1 charging); d: [id, x, y, z, yaw, dx, dy, dz, lock] per drone ((dx, dy, dz)
   // the searchlight's unit direction). hunt / lock: 0 nobody, 1 someone else, 2 you.
-  | { t: 'bots'; time: number; g: number[]; d: number[] };
+  | { t: 'bots'; time: number; g: number[]; d: number[] }
+  // Guardian `g` fired laser bolt `id` from (x, y, z) along unit (dx, dy, dz) at server time `time`; it flies at
+  // BOLT_SPEED (shared/guardians.ts) until it bursts ('boom': on the ground, a player, or out of range).
+  | { t: 'shot'; id: number; g: number; time: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }
+  | { t: 'boom'; id: number; x: number; y: number; z: number; ground: boolean };
 
-export type DeathCause = 'heat' | 'beam' | 'guardian';
+export type DeathCause = 'heat' | 'beam' | 'guardian' | 'laser' | 'crawler';

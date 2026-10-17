@@ -23,6 +23,12 @@ const BUZZ_GAIN = 0.16;
 const MAX_BUZZ = 3;
 const SIREN_GAIN = 0.12;
 const HORN_GAIN = 0.22;
+const CHARGE_GAIN = 0.05;
+/** Crawler feet are heard within this distance (m). */
+const TICK_HEAR = 30;
+const TICK_GAIN = 0.12;
+const CHITTER_GAIN = 0.05;
+const ZAP_GAIN = 0.35;
 
 type Buzz = { id: number; osc: OscillatorNode; whine: OscillatorNode; gain: GainNode; panner: PannerNode };
 
@@ -106,6 +112,106 @@ class GuardianSound {
     c.connect(bp).connect(cg).connect(air);
     c.start(t + 0.04, Math.random());
     c.stop(t + 0.5);
+  }
+
+  /** A crawler's foot at (x, y, z): a dry little tick of claw on sand and metal, heard within TICK_HEAR. */
+  tick(x: number, y: number, z: number, ear: { x: number; y: number; z: number }) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    if (Math.hypot(x - ear.x, y - ear.y, z - ear.z) > TICK_HEAR) return;
+    const t = ctx.currentTime;
+    const n = ctx.createBufferSource();
+    n.buffer = noise(ctx);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 2500 + Math.random() * 2500;
+    bp.Q.value = 6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(TICK_GAIN, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    n.connect(bp).connect(g).connect(panner(ctx, x, y, z, 3)).connect(out);
+    n.start(t, Math.random());
+    n.stop(t + 0.05);
+  }
+
+  /** A crawler at (x, y, z) goes for you (`bite`: and gets you): a rattling chitter, a snap of mandibles. */
+  chitter(x: number, y: number, z: number, bite: boolean) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const t = ctx.currentTime;
+    const p = panner(ctx, x, y, z, 4);
+    p.connect(out);
+    const n = bite ? 3 : 9;
+    for (let i = 0; i < n; i++) {
+      const at = t + i * (bite ? 0.05 : 0.035) + Math.random() * 0.01;
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.setValueAtTime(bite ? 900 : 1800 + Math.random() * 900, at);
+      o.frequency.exponentialRampToValueAtTime(bite ? 200 : 700, at + 0.03);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(CHITTER_GAIN * (bite ? 2 : 1), at);
+      g.gain.exponentialRampToValueAtTime(0.001, at + 0.03);
+      o.connect(g).connect(p);
+      o.start(at);
+      o.stop(at + 0.04);
+    }
+  }
+
+  /** A guardian's cannon at (x, y, z) starts charging: a rising whine over `s` seconds. */
+  charge(x: number, y: number, z: number, s: number) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const t = ctx.currentTime;
+    const p = panner(ctx, x, y, z, 30);
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(880, t + s);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(400, t);
+    lp.frequency.exponentialRampToValueAtTime(3000, t + s);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(CHARGE_GAIN, t + s);
+    g.gain.linearRampToValueAtTime(0, t + s + 0.05);
+    o.connect(lp).connect(g).connect(p).connect(out);
+    o.start(t);
+    o.stop(t + s + 0.1);
+  }
+
+  /** A bolt fired from (x, y, z): a heavy descending zap with a thump, heard late with distance. */
+  zap(x: number, y: number, z: number, ear: { x: number; y: number; z: number }) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const d = Math.hypot(x - ear.x, y - ear.y, z - ear.z);
+    if (d > STEP_HEAR) return;
+    const t = ctx.currentTime + d / SPEED_OF_SOUND;
+    const p = panner(ctx, x, y, z, 25);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(ZAP_GAIN, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
+    g.connect(p).connect(out);
+    for (const [type, f0, f1] of [['square', 1400, 90], ['sawtooth', 700, 45], ['sine', 120, 30]] as const) {
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(f1, t + 0.7);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 2500 / (1 + d / 80);
+      const og = ctx.createGain();
+      og.gain.value = type === 'sine' ? 1 : 0.35;
+      o.connect(lp).connect(og).connect(g);
+      o.start(t);
+      o.stop(t + 1);
+    }
+  }
+
+  /** A bolt burst at (x, y, z): a footfall's boom, twice over, with a crackle. */
+  boom(x: number, y: number, z: number, ear: { x: number; y: number; z: number }) {
+    this.footfall(x, y, z, 1, ear);
+    this.footfall(x, y, z, 0.8, ear);
   }
 
   /** A guardian at (x, y, z) has started hunting you. */
