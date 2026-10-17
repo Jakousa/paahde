@@ -17,7 +17,9 @@ const SNAPSHOT_RATE = 20;
 const RELAX_RATE = 30; // Hz; sand avalanche passes (shared/dig.ts Relaxer) // Hz; clients interpolate remote players between snapshots
 const SAVE_INTERVAL_MS = 5000;
 const IDLE_MS = 1000; // no input for this long (e.g. hidden tab) → server keeps simulating with no keys
-const MAX_INPUT_BURST = 15;
+/** Inputs a client may bank: a network stall delivers its delayed inputs in one burst, and any past this
+ *  are acked unsimulated (the client snaps back). One second, like IDLE_MS; the long-run rate stays TICK_RATE. */
+const MAX_INPUT_BURST = TICK_RATE;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const db = openDb(process.env.DB_PATH ?? 'data/dadajam.db');
