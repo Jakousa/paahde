@@ -109,6 +109,29 @@ const PAD = { x0: -14, x1: 14, z0: -36, z1: 14, blend: 24 };
 /** The pad's sand lies just under the entrance floor so they don't z-fight. */
 const PAD_Y = BASE.y - 0.06;
 
+/**
+ * Flag mast beside the entrance hut, seen from afar: a tapered concrete pole (foot radius r0, top r1, height
+ * h) on a round plinth (radius, height), braced by fins at its foot (count, reach, height) and guy wires from
+ * a collar (guyY) down to concrete anchor blocks (half size, height) `guyR` out. A windsock swings on top
+ * (src/world/mast.ts).
+ */
+export const MAST = {
+  x: 7, z: 0, h: 22, r0: 0.3, r1: 0.13,
+  plinth: { r: 1.2, h: 0.5 },
+  fins: { n: 4, reach: 1.05, h: 2.6, t: 0.22 },
+  guyY: 15, guyR: 6.5, anchor: { half: 0.45, h: 0.4 },
+};
+/** Guy wire anchors (local x, z): three, 120° apart, the first straight out from the hut. */
+export const MAST_ANCHORS: [number, number][] = [[1, 0], [-0.5, Math.sqrt(3) / 2], [-0.5, -Math.sqrt(3) / 2]].map(
+  ([c, s]) => [MAST.x + c * MAST.guyR, MAST.z + s * MAST.guyR],
+);
+
+/** Local point within the mast's guy wires (+ margin). */
+function nearMast(lx: number, lz: number, m: number): boolean {
+  const dx = lx - MAST.x, dz = lz - MAST.z, r = MAST.guyR + 1 + m;
+  return dx * dx + dz * dz < r * r;
+}
+
 /** Blend weight of the dunes at world (x, z): 0 on the pad, 1 away from it. */
 export function padBlend(x: number, z: number): number {
   const lx = x - BASE.x, lz = z - BASE.z;
@@ -132,9 +155,11 @@ function inFootprint(lx: number, lz: number, m: number): boolean {
   return Math.abs(lx) < ROOM.w + WT + m && lz > ROOM.z - WT - m && lz < HALL.z + WT + m;
 }
 
-/** True over the bunker's footprint + margin (no digging: it would cut into the rooms). */
+/** True over the bunker's footprint or around the mast + margin (no digging: it would cut into the rooms
+ *  or undermine the mast). */
 export function overBase(x: number, z: number, margin = 0): boolean {
-  return inFootprint(x - BASE.x, z - BASE.z, margin);
+  const lx = x - BASE.x, lz = z - BASE.z;
+  return inFootprint(lx, lz, margin) || nearMast(lx, lz, margin);
 }
 
 /** True where a building stands on the surface (the entrance hut, the skylight's collar) + margin. */
@@ -260,6 +285,16 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
     for (const t of [-1, 1]) arc(s * k, ROOM_Z + t * k, SKY_R - cr, s, t, ROOM.h + FLOOR, SKY.h, cr);
   }
 }
+{
+  // The mast: its plinth can be climbed onto, the fins and the pole can't; the anchor blocks are low.
+  const { plinth, fins, anchor } = MAST;
+  capsules.push({ x: MAST.x, z: MAST.z, ax: 1, az: 0, half: 0, r: plinth.r, y0: -Infinity, top: plinth.h });
+  capsules.push({ x: MAST.x, z: MAST.z, ax: 1, az: 0, half: 0, r: MAST.r0, y0: plinth.h, top: WALL_H });
+  for (const [ax, az] of [[1, 0], [0, 1]]) {
+    capsules.push({ x: MAST.x, z: MAST.z, ax, az, half: fins.reach, r: fins.t / 2 + 0.05, y0: plinth.h, top: plinth.h + fins.h });
+  }
+  for (const [x, z] of MAST_ANCHORS) capsules.push({ x, z, ax: 1, az: 0, half: 0, r: anchor.half, y0: -Infinity, top: anchor.h });
+}
 for (const p of BASE_PIECES) {
   if (!p.hx || !p.hz || !p.h) continue;
   const fl = Math.sqrt(p.fx * p.fx + p.fz * p.fz), fx = p.fx / fl, fz = p.fz / fl;
@@ -308,7 +343,7 @@ const local = { x: 0, z: 0, vx: 0, vz: 0 };
  */
 export function collideBase(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, height: number, stepUp: number): number {
   const lx0 = p.x - BASE.x, lz0 = p.z - BASE.z;
-  if (!inFootprint(lx0, lz0, 1)) return -Infinity;
+  if (!inFootprint(lx0, lz0, 1) && !nearMast(lx0, lz0, 0)) return -Infinity;
   const q = local;
   q.x = lx0; q.z = lz0; q.vx = p.vx; q.vz = p.vz;
 

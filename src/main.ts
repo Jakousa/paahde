@@ -61,6 +61,7 @@ import { Detector } from './detector';
 import { Chat } from './chat';
 import { tools } from './input';
 import { Wrecks } from './world/wrecks';
+import { Mast } from './world/mast';
 import { GuardianFx } from './guardians';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
@@ -75,6 +76,7 @@ const orbit = new FirstPersonCamera(renderer.domElement);
 const sky = new Sky(scene);
 const terrain = new Terrain(scene);
 const base = new Base(scene);
+const mast = new Mast(scene); // flag mast with a windsock by the entrance
 const placedView = new PlacedView(scene, base); // plant beds and UV lamps on the bunker floor
 const scrap = new Scrap(scene);
 const crashSites = new CrashSites(scene);
@@ -96,7 +98,7 @@ machines.busy = () => teardown.current?.id;
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
   const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, mast, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx } });
 }
 
 const net = new Net(getBrowserId());
@@ -334,6 +336,7 @@ renderer.setAnimationLoop((time) => {
   dust.update(frameDt, orbit.camera.position);
   tyreDust.update(frameDt);
   base.update();
+  mast.update(frameDt);
   windSound.update(frameDt, orbit.camera.position, orbit.yaw, s);
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
