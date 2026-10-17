@@ -266,6 +266,11 @@ export class Survival {
    * Every render frame. `pos` is the predicted player position, `scrapTargeted` whether the scrap prompt
    * owns the crosshair (and F), `interact` a fresh F press that scrap pickup didn't take, `clock` the time of day.
    */
+  /** The heat meter as shown (eased, 0..HEAT_MAX); 0 while dead. */
+  get heatLevel() {
+    return performance.now() < this.deadUntil ? 0 : this.shown;
+  }
+
   update(dt: number, pos: { x: number; y: number; z: number }, scrapTargeted: boolean, interact: boolean, clock: string) {
     const now = performance.now();
     if (clock !== this.lastClock) this.clockEl.textContent = this.lastClock = clock;

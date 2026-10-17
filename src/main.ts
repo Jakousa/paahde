@@ -38,6 +38,7 @@ import { WindSound } from './windSound';
 import { EngineSound } from './engineSound';
 import { footsteps } from './footsteps';
 import { music } from './music';
+import { breathing } from './breathing';
 import { inBase } from '../shared/base.ts';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
@@ -325,13 +326,14 @@ renderer.setAnimationLoop((time) => {
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   footsteps.listener(orbit.camera.position, orbit.yaw);
-  // Heatstroke isn't cued yet (no song for it either).
+  breathing.update(survival.heatLevel);
   const cam = orbit.camera.position;
   music.update(frameDt, {
     riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
     indoors: inBase(cam.x, cam.y, cam.z),
     sandstorm: storm.level > 0.3,
     combat: guardianFx.combat,
+    heatstroke: breathing.on,
   });
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);

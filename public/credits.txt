@@ -48,6 +48,12 @@ cinematic_drum_loop_ares_127 (music)
   Levelled to -23 LUFS and encoded to MP3; plays as the combat music.
   File: audio/combat-drums.mp3
 
+Breathing - Slow, Distraught, Tired (sound)
+  By TomchikRec on Freesound (https://freesound.org/s/372241/), CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/).
+  Trimmed to 1.0-57.72 s, mixed to mono, high-passed at 70 Hz and levelled to -1 dBTP.
+  File: audio/breathing.mp3
+
 Made for this game
 ------------------
 
