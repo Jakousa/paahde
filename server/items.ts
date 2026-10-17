@@ -1,7 +1,7 @@
 // Server side of items (shared/items.ts): every box's slots, cached from the `items` table, the starter
 // kit, scrap pickups landing in the bag, and validated moves and sorts between the boxes a player can
 // open (shared/storage.ts).
-import { addItem, hasItem, HOTBAR, moveItem, roomFor, sortItems, STARTER_KIT, type Slots } from '../shared/items.ts';
+import { addItem, hasItem, stackOf, HOTBAR, moveItem, roomFor, sortItems, STARTER_KIT, type Slots } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, isShared } from '../shared/storage.ts';
 import type { openDb } from './db.ts';
@@ -37,6 +37,17 @@ export class ItemServer {
       slots = new Array(Math.max(boxSize(box), ...rows.map((r) => r.slot + 1))).fill(null);
       for (const r of rows) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n };
       this.boxes.set(key, slots);
+      // Stacks bigger than their kind allows now (stacking was turned off): one item per slot, the rest
+      // into empty slots and then past the end, so nothing is lost.
+      let split = false;
+      for (const it of [...slots]) {
+        for (; it && it.n > stackOf(it.kind); it.n--) {
+          const i = slots.indexOf(null);
+          slots[i < 0 ? slots.length : i] = { id: this.newId(), kind: it.kind, n: 1 };
+          split = true;
+        }
+      }
+      if (split) this.save(browserId, box);
     }
     return slots;
   }

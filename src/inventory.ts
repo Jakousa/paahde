@@ -1,9 +1,8 @@
 // Items HUD: "[F] Pick up …" under the crosshair when looking at a piece in reach, a short "+1 …" toast
 // whenever a pickup lands in the bag, and the Tab inventory: an overlay with the backpack (its first row is
 // the hotbar, keys 1–4) and, next to it, every storage box in reach right now (chests in the base, the sand
-// bike while riding; shared/storage.ts), appearing and disappearing as you move. Drag a stack onto another
-// slot to move, merge or swap it; drag with the right button to move half; shift-click sends it across to
-// the other side. Moves go through Net (applied at once, the server confirms).
+// bike while riding; shared/storage.ts), appearing and disappearing as you move. Drag an item onto another
+// slot to move it there or swap the two; shift-click sends it across to the other side. Moves go through Net (applied at once, the server confirms).
 import { HOTBAR, ITEMS, type Item, type Slots } from '../shared/items.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -132,7 +131,7 @@ export class InventoryHud {
     this.boxesEl.className = 'boxes';
     const help = document.createElement('div');
     help.className = 'help';
-    help.textContent = 'Drag to move · right-drag moves half · shift-click sends across · Tab or Esc closes';
+    help.textContent = 'Drag to move · shift-click sends across · Tab or Esc closes';
     this.overlay.append(this.boxesEl, help);
     this.ghost.id = 'invGhost';
     this.ghost.style.display = 'none';

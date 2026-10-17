@@ -126,8 +126,8 @@ export function openDb(path: string) {
         if (!kind) continue;
         let bag = bags.get(r.player_id);
         if (!bag) bags.set(r.player_id, (bag = new Array(BAG_SLOTS).fill(null)));
-        // Can't fit (more than a bag of scrap): keep what fits, a stack at a time.
-        for (let n = r.count; n > 0 && addItem(bag, kind, Math.min(n, 10), () => ++id, HOTBAR); n -= 10);
+        // Can't fit (more than a bag of scrap): keep what fits, one item per slot.
+        for (let n = r.count; n > 0 && addItem(bag, kind, 1, () => ++id, HOTBAR); n--);
       }
       for (const [player, bag] of bags) saveBox(player, 'bag', bag);
       db.exec('DROP TABLE inventory');
