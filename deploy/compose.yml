@@ -1,0 +1,20 @@
+# Lives at /opt/dadajam/compose.yml on maukass. `docker compose up -d` once; Watchtower does the rest.
+services:
+  web:
+    image: ghcr.io/woltsu/dadajam:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8086:80"
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  watchtower:
+    # Maintained fork; containrrr/watchtower is archived and too old for Docker 29's API.
+    image: nickfedor/watchtower:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"   # only touch containers labelled above
+      WATCHTOWER_POLL_INTERVAL: "60"
+      WATCHTOWER_CLEANUP: "true"

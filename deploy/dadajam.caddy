@@ -1,0 +1,7 @@
+# Host Caddy snippet on maukass (/etc/caddy/dadajam.caddy), imported into the herkku.org block.
+(dadajam_route) {
+	redir /dadajam /dadajam/ 308
+	handle_path /dadajam/* {
+		reverse_proxy 127.0.0.1:8086
+	}
+}
