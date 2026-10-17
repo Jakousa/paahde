@@ -3,12 +3,15 @@ import type { PlayerState } from './sim.ts';
 
 export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
-  | { t: 'hello'; browserId: string }
+  // spawn: 'base' starts at the home base's door instead of the saved position (dev helper, ?spawn=base).
+  | { t: 'hello'; browserId: string; spawn?: 'base' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
   // Pick up scrap piece i of cell (ix, iz) (shared/scrap.ts). Sent after the input it was aimed with.
   | { t: 'pickup'; ix: number; iz: number; i: number }
+  // Plant or harvest greenhouse bed i (shared/garden.ts BEDS).
+  | { t: 'tend'; bed: number }
   // Debug menu: move the shared day/night clock by changing the wall-clock epoch. Ignored in production.
   | { t: 'setEpoch'; epoch: number }
   // Survival (shared/water.ts): one sip from the canteen finished (sent when the ~1.2 s drink completes).
@@ -45,6 +48,10 @@ export type ServerMsg =
   | { t: 'scrap'; taken: number[]; back: number[]; reset?: boolean }
   // The player's inventory: count per SCRAP_KINDS index. Sent after 'welcome' and on every change.
   | { t: 'inventory'; items: number[] }
+  // Growth stage of every greenhouse bed (shared/garden.ts), on join and whenever one changes.
+  | { t: 'garden'; beds: number[] }
+  // A bed this player tended was planted or harvested, for the HUD toast.
+  | { t: 'tended'; what: 'planted' | 'harvested' }
   // The shared clock's epoch changed (debug menu), or a setEpoch was refused and this is the real one.
   | { t: 'epoch'; epoch: number }
   // Your thirst bar (0..WATER_MAX, rounded to 0.01), canteen sips left (0..CANTEEN_SIPS) and whether the

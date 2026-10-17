@@ -1,6 +1,7 @@
-import { BACK, DIG, FORWARD, JUMP, LEFT, PILE, RIGHT, SLIDE, SPRINT } from '../shared/sim.ts';
+import { BACK, BIKE, DIG, FORWARD, JUMP, LEFT, PILE, RIGHT, SLIDE, SPRINT } from '../shared/sim.ts';
 
 const keys = new Set<string>();
+const bikeAllowed = import.meta.env.DEV || location.search.includes('debug');
 let mouseDig = false;
 let mousePile = false;
 let pickupPressed = false;
@@ -67,6 +68,8 @@ export function readInput(): number {
   if (tools.blocked) return input;
   if (mouseDig || keys.has('KeyE')) input |= DIG;
   else if (mousePile || keys.has('KeyQ')) input |= PILE;
+  // 9: get on / off the sand bike. A dev helper: only in `npm run dev` or with ?debug.
+  if (bikeAllowed && keys.has('Digit9')) input |= BIKE;
   return input;
 }
 

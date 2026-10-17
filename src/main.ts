@@ -2,16 +2,18 @@ import * as THREE from 'three/webgpu';
 import { DIG, DT, PILE, quantizeYaw } from '../shared/sim.ts';
 import { quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
+import { bedTarget, EMPTY, GROWN } from '../shared/garden.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { DigFx } from './dig';
-import { footprints } from './footprints';
+import { footprints, streaks } from './footprints';
 import { InventoryHud } from './inventory';
 import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
 import { getBrowserId, Net } from './net';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
+import { Bike, ridePose } from './bike';
 import { Post } from './post';
 import * as env from './world/env';
 import { Base } from './world/base';
@@ -66,12 +68,32 @@ me.setShadowOnly(true); // first person: your body casts a shadow but is not dra
 let bodyHidden = true;
 const myModel = new ScavengerModel();
 myModel.ready.then(() => me.setModel(myModel, net.color), () => myModel.dispose());
-scene.add(me.root, footprints.mesh);
+scene.add(me.root, footprints.mesh, streaks.mesh);
 const remotes = new Map<number, Avatar>();
+// Sand bikes (9, dev helper), one per riding player: drawn here, simulated in shared/sim.ts.
+const bikes = new Map<number, Bike>();
+let lastHeading = NaN;
+/** Draw player `id`'s bike while they ride (sitting `avatar` on it), and drop it when they get off. */
+function ride(id: number, avatar: Avatar, p: { riding: boolean } & Parameters<Bike['update']>[0], dt: number) {
+  let bike = bikes.get(id);
+  if (!p.riding) {
+    if (bike) {
+      bike.dispose();
+      bikes.delete(id);
+      avatar.root.rotation.set(0, avatar.root.rotation.y, 0);
+    }
+    return;
+  }
+  if (!bike) bikes.set(id, (bike = new Bike(scene)));
+  bike.update(p, dt);
+  bike.seat(avatar.root);
+}
 const locator = new LocatorBar();
 const hud = new InventoryHud();
 net.onInventory = (items) => hud.setItems(items);
 const survival = new Survival(net);
+net.onGarden = (beds) => base.setBeds(beds);
+net.onTended = (what) => hud.toast(what === 'planted' ? 'Seeds planted' : 'Harvested the greens');
 
 window.addEventListener('resize', () => {
   orbit.resize();
@@ -119,11 +141,15 @@ renderer.setAnimationLoop((time) => {
 
   me.setColor(net.color);
   const s = net.me;
+  // On the bike the camera turns with it; the mouse still looks around on top.
+  if (s.riding && Number.isFinite(lastHeading)) orbit.yaw += Math.atan2(Math.sin(s.heading - lastHeading), Math.cos(s.heading - lastHeading));
+  lastHeading = s.riding ? s.heading : NaN;
   me.update(
-    { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
+    s.riding ? ridePose(s) : { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
     digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch },
     frameDt,
   );
+  ride(0, me, { ...s, x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ }, frameDt);
 
   const seen = new Set<number>();
   for (const r of others) {
@@ -141,20 +167,28 @@ renderer.setAnimationLoop((time) => {
         () => model.dispose(),
       );
     }
-    avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching, digging: (digUntil.get(r.id) ?? 0) > performance.now() }, frameDt);
+    avatar.update(
+      r.riding ? ridePose(r) : { ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching, digging: (digUntil.get(r.id) ?? 0) > performance.now() },
+      frameDt,
+    );
+    ride(r.id, avatar, { ...r, heading: r.facing }, frameDt);
   }
   for (const [id, avatar] of remotes) {
     if (!seen.has(id)) {
       avatar.dispose();
       remotes.delete(id);
+      bikes.get(id)?.dispose();
+      bikes.delete(id);
       digUntil.delete(id);
     }
   }
 
-  focus.copy(me.root.position);
-  orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching }, frameDt);
+  // Riding, the eye sits over the bike's ground point (a seated rider's eye is about standing height).
+  if (s.riding) focus.set(s.x + net.errorX, s.y + net.errorY, s.z + net.errorZ);
+  else focus.copy(me.root.position);
+  orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding }, frameDt);
   if (orbit.showBody === bodyHidden) me.setShadowOnly((bodyHidden = !orbit.showBody)); // T: third person
-  viewmodel.root.visible = bodyHidden;
+  viewmodel.root.visible = bodyHidden && !s.riding;
   viewmodel.setColor(net.color);
   viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding,
     digging: (input & (DIG | PILE)) !== 0 || (digUntil.get(net.id) ?? 0) > performance.now() });
@@ -169,11 +203,19 @@ renderer.setAnimationLoop((time) => {
   windSound.update(frameDt, orbit.camera.position, orbit.yaw);
   footsteps.listener(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
-  const target = net.connected ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
-  hud.setTarget(target);
+  // F: tend the greenhouse bed in view (planted beds can't be touched while they grow), else pick up scrap,
+  // else (canteen out, in the base) fill the canteen.
+  const bed = net.connected ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
+  const stage = net.garden[bed];
+  const tend = stage === EMPTY ? 'Plant seeds' : stage === GROWN ? 'Harvest' : null;
+  const target = net.connected && bed < 0 ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  hud.setTarget(tend ?? target);
   const interact = takePickup();
-  if (interact && target) net.pickup(target);
-  survival.update(frameDt, net.me, target !== null, interact && !target);
+  if (interact) {
+    if (tend) net.tend(bed);
+    else if (target) net.pickup(target);
+  }
+  survival.update(frameDt, net.me, tend !== null || target !== null, interact && !tend && !target);
 
   info.textContent = `${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();

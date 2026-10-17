@@ -4,9 +4,11 @@
 //
 // Glass is see-through and casts no shadow, so the sun reaches the greenhouse beds and the dome's
 // oculus. Warm point lights keep the inside readable at night. Rotors on the condenser and wind pump turn.
+// Each greenhouse bed holds all three planter models and shows the one for its stage (shared/garden.ts).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { BASE, BASE_PIECES } from '../../shared/base.ts';
+import { BEDS, STAGE_NODES } from '../../shared/garden.ts';
 
 const GLBS = ['shell', 'hall', 'greenhouse', 'exterior'] as const;
 
@@ -19,6 +21,9 @@ const LIGHTS: [number, number, number, number, number, number][] = [
 export class Base {
   readonly group = new THREE.Group();
   private rotors: { obj: THREE.Object3D; axis: 'y' | 'z'; speed: number }[] = [];
+  /** Per bed, one model per stage. */
+  private beds: THREE.Object3D[][] = [];
+  private stages = BEDS.map((b) => b.initial);
 
   constructor(scene: THREE.Scene) {
     this.group.position.set(BASE.x, BASE.y, BASE.z);
@@ -47,6 +52,17 @@ export class Base {
     }
     for (const p of BASE_PIECES) {
       if (p.glb !== glb) continue;
+      if (STAGE_NODES.includes(p.node)) {
+        const models = STAGE_NODES.map((n) => root.getObjectByName(n)?.clone() ?? new THREE.Object3D());
+        for (const o of models) {
+          o.position.set(p.x, 0, p.z);
+          o.rotation.set(0, Math.atan2(p.fx, p.fz), 0);
+          this.group.add(o);
+        }
+        this.beds.push(models);
+        this.showBed(this.beds.length - 1);
+        continue;
+      }
       const src = root.getObjectByName(p.node);
       if (!src) {
         console.warn(`base: no node ${p.node} in ${glb}.glb`);
@@ -61,6 +77,16 @@ export class Base {
         if (c.name.endsWith('windpump_rotor')) this.rotors.push({ obj: c, axis: 'z', speed: 1.4 });
       });
     }
+  }
+
+  /** New bed stages from the server. */
+  setBeds(stages: number[]) {
+    this.stages = stages.slice();
+    this.beds.forEach((_, i) => this.showBed(i));
+  }
+
+  private showBed(i: number) {
+    this.beds[i].forEach((o, stage) => (o.visible = stage === this.stages[i]));
   }
 
   /** Spin the rotors; `windiness` 0..1 speeds them up. */

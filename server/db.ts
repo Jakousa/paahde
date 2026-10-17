@@ -76,7 +76,21 @@ export function openDb(path: string) {
     ON CONFLICT (player_id, kind) DO UPDATE SET count = count + 1
   `);
 
+  // Greenhouse beds (shared/garden.ts): a row per bed once it has been tended; untouched beds keep their
+  // layout stage.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS garden (
+      bed        INTEGER PRIMARY KEY,        -- BEDS index
+      stage      INTEGER NOT NULL,           -- EMPTY / SPROUTS / GROWN
+      planted_at INTEGER NOT NULL            -- ms since epoch, 0 if empty
+    );
+  `);
+  const allBeds = db.prepare('SELECT bed, stage, planted_at FROM garden');
+  const upsertBed = db.prepare('INSERT OR REPLACE INTO garden (bed, stage, planted_at) VALUES (?, ?, ?)');
+
   return {
+    loadBeds: () => allBeds.all() as { bed: number; stage: number; planted_at: number }[],
+    saveBed: (bed: number, stage: number, plantedAt: number) => upsertBed.run(bed, stage, plantedAt),
     loadTaken: () => allTaken.all() as { ix: number; iz: number; i: number; taken_at: number }[],
     /** Mark a piece taken and give it to a player, atomically. */
     takeScrap(playerId: string, ix: number, iz: number, i: number, kind: number, at: number) {

@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { isSlipFace, slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
-import { footprints } from './footprints.ts';
+import { END_FADE, footprints, streaks } from './footprints.ts';
 import { footsteps } from './footsteps.ts';
 import { SHADOW_ONLY_LAYER } from './world/env.ts';
 
@@ -43,6 +43,8 @@ export interface AvatarModel {
 }
 
 const STRIDE = 1.15; // metres per footstep, matches the first-person head bob
+const STREAK_STEP = 0.3; // metres per slide-streak segment
+const STREAK_WIDTH = 0.42;
 
 export class Avatar {
   readonly root = new THREE.Group();
@@ -50,6 +52,9 @@ export class Avatar {
   private facing = NaN;
   private stepDist = 0;
   private foot = 1;
+  // Where the current slide streak last ended; NaN when not sliding.
+  private streakX = NaN;
+  private streakZ = NaN;
   private label?: THREE.Sprite;
   /** Leave footprints even when the root is hidden (the local first-person player). */
   footprints = true;
@@ -151,17 +156,41 @@ export class Avatar {
       dt,
     );
 
-    // Footprints: one per stride while walking; a sliding body leaves a smear of prints instead.
+    // Footprints: one per stride while walking; a sliding body draws a continuous streak instead.
+    if (!this.footprints || !pose.grounded || !sliding) this.streakX = NaN;
     if (!this.footprints || !pose.grounded) return;
+    if (sliding) {
+      this.stepDist = 0;
+      this.streak(pose.x, pose.z);
+      return;
+    }
     this.stepDist += pose.speed * dt;
-    const stride = sliding ? 0.6 : STRIDE;
-    if (this.stepDist < stride) return;
-    this.stepDist %= stride;
+    if (this.stepDist < STRIDE) return;
+    this.stepDist %= STRIDE;
     this.foot = -this.foot;
-    const side = sliding ? 0 : 0.13 * this.foot;
+    const side = 0.13 * this.foot;
     const fx = pose.x + Math.cos(this.facing) * side, fz = pose.z - Math.sin(this.facing) * side;
-    footprints.add(fx, heightAt(fx, fz), fz, this.facing, sliding ? 2.2 : 1);
-    if (!sliding) footsteps.step(fx, fz, pose.speed);
+    footprints.add(fx, heightAt(fx, fz), fz, this.facing);
+    footsteps.step(fx, fz, pose.speed);
+  }
+
+  /** Extend the slide streak to (x, z): a strip from where it last ended, once it is long enough. */
+  private streak(x: number, z: number) {
+    if (Number.isNaN(this.streakX)) {
+      this.streakX = x;
+      this.streakZ = z;
+      return;
+    }
+    const dx = x - this.streakX, dz = z - this.streakZ;
+    const len = Math.hypot(dx, dz);
+    if (len < STREAK_STEP) return;
+    if (len < 3) {
+      const mx = this.streakX + dx / 2, mz = this.streakZ + dz / 2;
+      // Stretched so each end fade overlaps the neighbouring strip's, and the joins blend.
+      streaks.add(mx, heightAt(mx, mz), mz, Math.atan2(-dx, -dz), STREAK_WIDTH, len / (1 - END_FADE));
+    } // else a teleport or snapshot jump: start afresh
+    this.streakX = x;
+    this.streakZ = z;
   }
 
   dispose() {

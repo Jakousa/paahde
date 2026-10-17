@@ -29,7 +29,7 @@ export class InventoryHud {
   private prompt = document.createElement('div');
   private panel = document.createElement('div');
   private toasts = document.createElement('div');
-  private shown: ScrapPiece | null = null;
+  private shown: ScrapPiece | string | null = null;
   private items: number[] | null = null;
 
   constructor() {
@@ -42,15 +42,15 @@ export class InventoryHud {
     document.body.append(this.prompt, this.panel, this.toasts);
   }
 
-  /** The piece under the crosshair (or null), every frame. */
-  setTarget(pc: ScrapPiece | null) {
-    if (pc === this.shown) return;
-    this.shown = pc;
-    this.prompt.style.display = pc ? 'block' : 'none';
-    if (pc) this.prompt.innerHTML = `<kbd>F</kbd>Pick up ${SCRAP_KINDS[pc.kind].label}`;
+  /** The piece under the crosshair, or another F action's label (e.g. "Plant seeds"), or null; every frame. */
+  setTarget(target: ScrapPiece | string | null) {
+    if (target === this.shown) return;
+    this.shown = target;
+    this.prompt.style.display = target ? 'block' : 'none';
+    if (target) this.prompt.innerHTML = `<kbd>F</kbd>${typeof target === 'string' ? target : `Pick up ${SCRAP_KINDS[target.kind].label}`}`;
   }
 
-  /** New inventory from the server; toasts what was added since the last one (not on the first). */
+    /** New inventory from the server; toasts what was added since the last one (not on the first). */
   setItems(items: number[]) {
     if (this.items) {
       items.forEach((n, k) => {
@@ -64,7 +64,7 @@ export class InventoryHud {
     this.panel.innerHTML = `<h3>Junk</h3>${rows}`;
   }
 
-  private toast(text: string) {
+  toast(text: string) {
     const el = document.createElement('div');
     el.textContent = text;
     this.toasts.appendChild(el);

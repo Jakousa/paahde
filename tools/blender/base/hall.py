@@ -21,6 +21,10 @@ import bmesh
 import bpy
 from mathutils import Euler, Matrix, Vector
 
+sys.dont_write_bytecode = True  # no __pycache__ next to the scripts
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from coplanar import separate_coplanar  # noqa: E402
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 TAU = 2 * math.pi
 
@@ -373,6 +377,7 @@ class MB:
         self.face([self.v(base), self.v(r), self.v(tip), self.v(l)], mat)
 
     def finish(self, name):
+        separate_coplanar(self.bm)
         mesh = bpy.data.meshes.new(name)
         self.bm.normal_update()
         self.bm.to_mesh(mesh)

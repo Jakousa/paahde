@@ -10,7 +10,7 @@
 import * as THREE from 'three/webgpu';
 import { Fn, add, dot, float, interleavedGradientNoise, positionWorld, reference, renderGroup, texture, uniform, vec2, vogelDiskSample } from 'three/tsl';
 
-const SAMPLES = 12;
+const SAMPLES = 16;
 
 /** Two axes across the shadow-casting light's direction (sky.ts sets them from the sun or moon). */
 export const shadowAxisX = uniform(new THREE.Vector3(1, 0, 0));

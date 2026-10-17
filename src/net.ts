@@ -35,6 +35,8 @@ export type RemotePlayer = {
   sliding: boolean; // intentional (Ctrl) slide
   crouching: boolean;
   pitch: number; // camera pitch in radians (negative = looking down)
+  riding: boolean; // on the sand bike; facing is then the bike's heading
+  vy: number;
 };
 
 type Snapshot = { time: number; players: Map<number, PlayerSnap> };
@@ -61,6 +63,7 @@ export class Net {
   private epoch?: number; // wall-clock ms at server time 0
   private retryMs = 500;
   private browserId: string;
+  private joinedOnce = false;
   private digCooldown = 0;
   /** Take the next reconciliation as a teleport (respawn). */
   private snapNext = false;
@@ -79,6 +82,11 @@ export class Net {
   onWater?: (w: { water: number; sips: number; heat: boolean }) => void;
   /** We died (of thirst); the server has already moved us back to the base. */
   onDied?: () => void;
+  /** Greenhouse bed stages (shared/garden.ts), from the server; empty until the first 'garden'. */
+  garden: number[] = [];
+  onGarden?: (beds: number[]) => void;
+  /** A bed we tended was planted or harvested. */
+  onTended?: (what: 'planted' | 'harvested') => void;
 
   /** A dig/pile stroke landed: ours (predicted) or another player's. For effects only. */
   onDig?: (at: Point, pile: boolean, mine: boolean, id: number) => void;
@@ -118,6 +126,11 @@ export class Net {
   /** Canteen refill finished at the base; the server answers with 'water'. */
   fill() {
     this.send({ t: 'fill' });
+  }
+
+  /** Plant or harvest a greenhouse bed; the server answers with 'garden' (and 'tended' to us). */
+  tend(bed: number) {
+    if (this.connected) this.send({ t: 'tend', bed });
   }
 
   private applyScrap(msg: Extract<ServerMsg, { t: 'scrap' }>) {
@@ -218,7 +231,9 @@ export class Net {
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'joining';
-      this.send({ t: 'hello', browserId: this.browserId });
+      // ?spawn=base: start at the base's door (only on the first join; a reconnect keeps where you are).
+      const atBase = !this.joinedOnce && new URLSearchParams(location.search).get('spawn') === 'base';
+      this.send(atBase ? { t: 'hello', browserId: this.browserId, spawn: 'base' } : { t: 'hello', browserId: this.browserId });
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
     ws.onclose = () => {
@@ -260,12 +275,18 @@ export class Net {
       this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
       return this.onDied?.();
     }
+    if (msg.t === 'garden') {
+      this.garden = msg.beds;
+      return this.onGarden?.(msg.beds);
+    }
+    if (msg.t === 'tended') return this.onTended?.(msg.what);
     if (msg.t === 'dug') {
       if (msg.id !== this.id) this.onDig?.({ x: msg.x, y: msg.y, z: msg.z }, msg.pile, false, msg.id);
       return;
     }
     if (msg.t === 'welcome') {
       this.id = msg.id;
+      this.joinedOnce = true;
       this.color = msg.color;
       this.epoch = msg.epoch;
       this.me = msg.state;
@@ -297,6 +318,7 @@ export class Net {
       x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
       sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool,
+      riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw);
     this.errorX += this.me.x - s.x;
@@ -325,6 +347,7 @@ export class Net {
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
+        riding: pick.riding ?? false, vy: pick.vy,
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t,
       });
     }
