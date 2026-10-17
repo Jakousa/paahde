@@ -24,7 +24,7 @@ const smooth = (a: number, b: number, x: number) => {
 const c3 = (u: unknown) => u as Node<'vec3'>;
 
 /** Lit colour of airborne sand: a share of the sun on the sand albedo plus some haze. */
-const dustLight = (amount: number) =>
+export const dustLight = (amount: number) =>
   c3(sunColor).mul(vec3(0.55, 0.32, 0.17)).mul(amount).add(c3(hazeColor).mul(0.35));
 
 export class Dust {

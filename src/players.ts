@@ -18,6 +18,21 @@ export type AvatarPose = {
   crouching?: boolean;
   /** Ground velocity, for which way the legs walk relative to facing (defaults to straight ahead). */
   vx?: number; vz?: number;
+  /** Seated on a sand bike: the caller has already placed the root (Bike.seat), so x/y/z/facing are ignored. */
+  ride?: RidePose;
+};
+
+/** A seated rider's contact points and body English, in the avatar root's space (forward is -z). */
+export type RidePose = {
+  /** Where the hips go. */
+  seat: THREE.Vector3;
+  /** Left and right hands (wrists aim here, fingers round the grip) and feet. */
+  grips: [THREE.Vector3, THREE.Vector3];
+  pegs: [THREE.Vector3, THREE.Vector3];
+  /** Upper body roll (rad, + = to the left), yaw (+ = turned left) and forward tuck (+ = bent over the bars). */
+  lean: number;
+  twist: number;
+  tuck: number;
 };
 
 /** What a model needs each frame; placement is already applied to its parent. */
@@ -33,12 +48,17 @@ export type ModelPose = {
   heading?: number;
   /** Sand height under the feet, when standing on sand (not scrap): lets the model plant its feet. */
   ground?: (x: number, z: number) => number;
+  ride?: RidePose;
 };
 
 export interface AvatarModel {
   readonly root: THREE.Object3D;
   setColor(hex: number): void;
   update(pose: ModelPose, dt: number): void;
+  /** First person on the bike: draw the body (hands on the bars) but not the head the camera is in. */
+  setHeadless?(on: boolean): void;
+  /** The eyes' world position, once posed (riding in first person, the camera sits there). */
+  eye?(out: THREE.Vector3): boolean;
   dispose(): void;
 }
 
@@ -96,6 +116,15 @@ export class Avatar {
     this.model.setColor(color);
   }
 
+  setHeadless(on: boolean) {
+    this.model.setHeadless?.(on);
+  }
+
+  /** The eyes' world position as last drawn; false if the model can't tell (placeholder). */
+  eye(out: THREE.Vector3): boolean {
+    return this.model.eye?.(out) ?? false;
+  }
+
   /** Floating tag over the head (remote players). */
   setLabel(text: string, color: number) {
     this.label?.removeFromParent();
@@ -124,6 +153,12 @@ export class Avatar {
 
   /** Called every render frame. */
   update(pose: AvatarPose, dt: number) {
+    if (pose.ride) {
+      this.facing = pose.facing; // so getting off turns from here, not from where we got on
+      this.streakX = NaN;
+      this.model.update({ speed: 0, grounded: true, pitch: pose.pitch, ride: pose.ride }, dt);
+      return;
+    }
     this.root.position.set(pose.x, pose.y, pose.z);
     // Facing comes from 20 Hz snapshots (remote) or the mouse (local): smooth it a little.
     if (!Number.isFinite(this.facing)) this.facing = pose.facing;

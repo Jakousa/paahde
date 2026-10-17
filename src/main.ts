@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { DT, quantizeYaw } from '../shared/sim.ts';
-import { quantizePitch } from '../shared/dig.ts';
+import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { bedTarget, EMPTY, GROWN } from '../shared/garden.ts';
 import { FirstPersonCamera } from './camera';
@@ -13,7 +13,8 @@ import { LocatorBar } from './locator';
 import { getBrowserId, Net } from './net';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
-import { Bike, ridePose } from './bike';
+import { Bike } from './bike';
+import { tyreDust } from './tyreDust';
 import { Post } from './post';
 import * as env from './world/env';
 import { Base } from './world/base';
@@ -65,13 +66,14 @@ me.setShadowOnly(true); // first person: your body casts a shadow but is not dra
 let bodyHidden = true;
 const myModel = new ScavengerModel();
 myModel.ready.then(() => me.setModel(myModel, net.color), () => myModel.dispose());
-scene.add(me.root, footprints.mesh, streaks.mesh);
+scene.add(me.root, footprints.mesh, streaks.mesh, tyreDust.mesh);
 const remotes = new Map<number, Avatar>();
 // Sand bikes (9, dev helper), one per riding player: drawn here, simulated in shared/sim.ts.
 const bikes = new Map<number, Bike>();
 let lastHeading = NaN;
-/** Draw player `id`'s bike while they ride (sitting `avatar` on it), and drop it when they get off. */
-function ride(id: number, avatar: Avatar, p: { riding: boolean } & Parameters<Bike['update']>[0], dt: number) {
+/** Draw player `id`'s bike while they ride, with `avatar` seated on it, and drop it when they get off.
+ *  False when not riding: then the caller updates the avatar on foot. */
+function ride(id: number, avatar: Avatar, p: { riding: boolean; pitch?: number } & Parameters<Bike['update']>[0], dt: number): boolean {
   let bike = bikes.get(id);
   if (!p.riding) {
     if (bike) {
@@ -79,12 +81,16 @@ function ride(id: number, avatar: Avatar, p: { riding: boolean } & Parameters<Bi
       bikes.delete(id);
       avatar.root.rotation.set(0, avatar.root.rotation.y, 0);
     }
-    return;
+    return false;
   }
   if (!bike) bikes.set(id, (bike = new Bike(scene)));
   bike.update(p, dt);
   bike.seat(avatar.root);
+  avatar.update({ x: p.x, y: p.y, z: p.z, facing: p.heading, speed: 0, grounded: true, pitch: p.pitch, ride: bike.rider() }, dt);
+  return true;
 }
+const eye = new THREE.Vector3();
+const RIDE_EYE_AHEAD = 0.15;
 const locator = new LocatorBar();
 const hud = new InventoryHud();
 net.onInventory = (items) => hud.setItems(items);
@@ -136,15 +142,19 @@ renderer.setAnimationLoop((time) => {
 
   me.setColor(net.color);
   const s = net.me;
+  // Drawn between the last two ticks (the leftover accumulator), so motion is even at any frame rate.
+  const v = net.view(accumulator / DT);
   // On the bike the camera turns with it; the mouse still looks around on top.
-  if (s.riding && Number.isFinite(lastHeading)) orbit.yaw += Math.atan2(Math.sin(s.heading - lastHeading), Math.cos(s.heading - lastHeading));
-  lastHeading = s.riding ? s.heading : NaN;
-  me.update(
-    s.riding ? ridePose(s) : { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
-    digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch },
-    frameDt,
-  );
-  ride(0, me, { ...s, x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ }, frameDt);
+  if (s.riding && Number.isFinite(lastHeading)) orbit.yaw += Math.atan2(Math.sin(v.heading - lastHeading), Math.cos(v.heading - lastHeading));
+  lastHeading = s.riding ? v.heading : NaN;
+  const riding = ride(0, me, { ...s, x: v.x, y: v.y, z: v.z, heading: v.heading, pitch: orbit.pitch }, frameDt);
+  if (!riding) {
+    me.update(
+      { x: v.x, y: v.y, z: v.z, facing: v.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
+      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch },
+      frameDt,
+    );
+  }
 
   const seen = new Set<number>();
   for (const r of others) {
@@ -162,11 +172,9 @@ renderer.setAnimationLoop((time) => {
         () => model.dispose(),
       );
     }
-    avatar.update(
-      r.riding ? ridePose(r) : { ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching, digging: (digUntil.get(r.id) ?? 0) > performance.now() },
-      frameDt,
-    );
-    ride(r.id, avatar, { ...r, heading: r.facing }, frameDt);
+    if (!ride(r.id, avatar, { ...r, heading: r.facing }, frameDt)) {
+      avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching, digging: (digUntil.get(r.id) ?? 0) > performance.now() }, frameDt);
+    }
   }
   for (const [id, avatar] of remotes) {
     if (!seen.has(id)) {
@@ -178,11 +186,15 @@ renderer.setAnimationLoop((time) => {
     }
   }
 
-  // Riding, the eye sits over the bike's ground point (a seated rider's eye is about standing height).
-  if (s.riding) focus.set(s.x + net.errorX, s.y + net.errorY, s.z + net.errorZ);
+  // Riding, the eye is the rider's (it leans and tucks with them), moved forward over the bars so the
+  // shoulders and hood are behind it in first person: you see your hands on the grips. The camera adds EYE_HEIGHT.
+  if (riding && me.eye(eye)) focus.set(eye.x - Math.sin(v.heading) * RIDE_EYE_AHEAD, eye.y - EYE_HEIGHT, eye.z - Math.cos(v.heading) * RIDE_EYE_AHEAD);
+  else if (riding) focus.set(v.x, v.y, v.z);
   else focus.copy(me.root.position);
-  orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding }, frameDt);
-  if (orbit.showBody === bodyHidden) me.setShadowOnly((bodyHidden = !orbit.showBody)); // T: third person
+  orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, lean: bikes.get(0)?.leanAngle }, frameDt);
+  // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
+  if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
+  me.setHeadless(riding && !orbit.showBody);
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
   scrap.update(focus);
@@ -190,6 +202,7 @@ renderer.setAnimationLoop((time) => {
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
   dust.update(frameDt, orbit.camera.position);
+  tyreDust.update(frameDt);
   base.update(frameDt, wind.storm);
   windSound.update(frameDt, orbit.camera.position, orbit.yaw);
   footsteps.listener(orbit.camera.position, orbit.yaw);

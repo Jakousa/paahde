@@ -11,6 +11,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { LegIk, lowestAnkles, type Ground } from './legIk';
+import type { RidePose } from '../players';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -35,6 +36,8 @@ export type ScavengerPose = {
   ground?: Ground;
   /** Pin planted feet to the world (default true). Off for a model animating in place, e.g. the lab. */
   plant?: boolean;
+  /** Seated on a bike: hips on the seat, hands on the grips and feet on the pegs by IK, over the Idle clip. */
+  ride?: RidePose;
 };
 
 export type ScavengerClip = 'Idle' | 'Walk' | 'Run' | 'Jump' | 'Dig' | 'Slide' | 'Powerslide' | 'Crouch' | 'CrouchWalk';
@@ -81,6 +84,11 @@ export class ScavengerModel {
   private hipYaw = 0;
   private hips: THREE.Object3D | null = null;
   private spine: THREE.Object3D | null = null;
+  /** Upper arm, forearm, hand, index finger (left, right). */
+  private arms: THREE.Object3D[][] = [];
+  /** Thigh, shin, foot, toes (left, right). */
+  private legs: THREE.Object3D[][] = [];
+  private headless = false;
   private color: number;
   private disposed = false;
 
@@ -121,7 +129,14 @@ export class ScavengerModel {
     this.minAnkle = lowest.get(gltf)!;
     this.hips = bone('Hips') ?? null;
     this.spine = bone('Spine') ?? null;
-    for (const b of [this.neck, this.head, this.hips, this.spine, ...legs.flat()]) if (b) this.posed.push({ bone: b, base: b.quaternion.clone() });
+    const chain = (names: string[]) => names.map(bone).filter((b) => b !== undefined);
+    const arms = ['Left', 'Right'].map((s) => chain([`${s}Arm`, `${s}ForeArm`, `${s}Hand`, `${s}HandIndex1`]));
+    const feet = ['Left', 'Right'].map((s) => chain([`${s}UpLeg`, `${s}Leg`, `${s}Foot`, `${s}ToeBase`]));
+    if (arms.every((a) => a.length === 4)) this.arms = arms;
+    if (feet.every((l) => l.length === 4)) this.legs = feet;
+    for (const b of [this.neck, this.head, this.hips, this.spine, ...legs.flat(), ...this.arms.flat(), ...this.legs.flat()]) {
+      if (b && !this.posed.some((p) => p.bone === b)) this.posed.push({ bone: b, base: b.quaternion.clone() });
+    }
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
     this.tilt.add(model);
@@ -132,6 +147,17 @@ export class ScavengerModel {
   setColor(hex: number) {
     this.color = hex;
     for (const m of this.tint) m.color.setHex(hex);
+  }
+
+  setHeadless(on: boolean) {
+    this.headless = on;
+  }
+
+  /** The eyes' world position (between them, a little forward of the head bone), once loaded. */
+  eye(out: THREE.Vector3): boolean {
+    if (!this.head) return false;
+    out.set(0, 0.09, 0.08).applyMatrix4(this.head.matrixWorld); // glTF space: the face is +Z
+    return true;
   }
 
   /** Clip names available once loaded. */
@@ -169,7 +195,7 @@ export class ScavengerModel {
     // Backing up plays the stride in reverse; the hips turn toward the travel direction (or away from it
     // when backing up) so diagonal and sideways moves step that way instead of moonwalking.
     const heading = pose.heading ?? 0;
-    const moving = pose.grounded && !pose.sliding && !pose.powerSlide && !pose.digging && speed > 0.25;
+    const moving = !pose.ride && pose.grounded && !pose.sliding && !pose.powerSlide && !pose.digging && speed > 0.25;
     if (moving) {
       const ahead = Math.cos(heading);
       if (ahead < -0.25) this.backwards = true;
@@ -179,7 +205,8 @@ export class ScavengerModel {
     const hipTarget = moving ? clamp(legDir, -MAX_HIP_YAW, MAX_HIP_YAW) : 0;
     this.hipYaw += (hipTarget - this.hipYaw) * (1 - Math.exp(-dt * 8));
     const dir = this.backwards ? -1 : 1;
-    if (!pose.grounded) this.play('Jump');
+    if (pose.ride) this.play('Idle');
+    else if (!pose.grounded) this.play('Jump');
     else if (pose.powerSlide) this.play('Powerslide', 0.12);
     else if (pose.sliding) this.play('Slide');
     else if (pose.digging) this.play('Dig');
@@ -194,7 +221,8 @@ export class ScavengerModel {
     this.mixer.update(dt);
     // Lean to the slope: pitch about the model's X (+ = nose up), roll about Z, pivoting at the feet.
     const tk = 1 - Math.exp(-dt * 10);
-    const power = !!pose.powerSlide && pose.grounded;
+    const power = !!pose.powerSlide && pose.grounded && !pose.ride;
+    this.tilt.position.set(0, 0, 0);
     this.tilt.rotation.x += ((power ? clamp(pose.tiltPitch ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.x) * tk;
     this.tilt.rotation.z += ((power ? clamp(pose.tiltRoll ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.z) * tk;
     for (const p of this.posed) p.base.copy(p.bone.quaternion);
@@ -210,10 +238,44 @@ export class ScavengerModel {
       rotateAboutRoot(this.root, this.neck, X_AXIS, pitch * 0.4);
       rotateAboutRoot(this.root, this.head, X_AXIS, pitch * 0.6);
     }
+    this.head?.scale.setScalar(this.headless ? 1e-3 : 1);
+    if (pose.ride) return this.ride(pose.ride);
     // Plant the feet: lock while the clip has them down (not when sliding: the sand moves with you).
     const clip = this.current?.getClip().name ?? '';
     const lock = pose.grounded && !pose.sliding && !pose.powerSlide && pose.plant !== false ? (this.minAnkle.get(clip) ?? null) : null;
     this.legIk?.update(dt, pose.grounded, lock, pose.ground ?? null);
+  }
+
+  /** Sit on the bike: move the body so the hips are on the seat, bend the upper body, then reach the hands and feet. */
+  private ride(r: RidePose) {
+    if (!this.hips || !this.spine) return;
+    this.tilt.rotation.set(0, 0, 0);
+    this.root.updateMatrixWorld(true);
+    this.tilt.position.add(_t.copy(r.seat).sub(this.root.worldToLocal(this.hips.getWorldPosition(_p))));
+    this.root.updateMatrixWorld(true);
+    rotateAboutRoot(this.root, this.spine, Z_AXIS, r.lean);
+    rotateAboutRoot(this.root, this.spine, Y_AXIS, r.twist);
+    rotateAboutRoot(this.root, this.spine, X_AXIS, -r.tuck);
+    // Keep looking ahead over the bars.
+    if (this.neck) rotateAboutRoot(this.root, this.neck, X_AXIS, r.tuck * 0.8);
+    this.root.updateMatrixWorld(true);
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1;
+      const arm = this.arms[i];
+      if (arm) {
+        // Wrist a hand's width behind and above the grip; elbows out and down; fingers forward round the bar.
+        this.root.localToWorld(_t.copy(r.grips[i]).add(_o.set(-side * 0.02, 0.04, 0.07)));
+        reach(arm[0], arm[1], arm[2], _t, _pole.set(side, -0.6, 0.4).transformDirection(this.root.matrixWorld));
+        aim(arm[2], arm[3], this.root.localToWorld(_t.copy(r.grips[i]).add(_o.set(0, -0.03, -0.05))));
+      }
+      const leg = this.legs[i];
+      if (leg) {
+        // Knees forward and a little out, toes forward and down off the peg.
+        this.root.localToWorld(_t.copy(r.pegs[i]));
+        reach(leg[0], leg[1], leg[2], _t, _pole.set(side * 0.35, 0.3, -1).transformDirection(this.root.matrixWorld));
+        aim(leg[2], leg[3], this.root.localToWorld(_t.copy(r.pegs[i]).add(_o.set(0, -0.12, -0.12))));
+      }
+    }
   }
 
   dispose() {
@@ -240,6 +302,47 @@ const _qa = new THREE.Quaternion();
 
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
+const _t = new THREE.Vector3();
+const _p = new THREE.Vector3();
+const _o = new THREE.Vector3();
+const _pole = new THREE.Vector3();
+const _s = new THREE.Vector3();
+const _e = new THREE.Vector3();
+const _w = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _bend = new THREE.Vector3();
+const _from = new THREE.Vector3();
+const _wq = new THREE.Quaternion();
+const _pq = new THREE.Quaternion();
+
+/** Two-bone IK: turn `upper` and `lower` so `end` (the lower bone's child) reaches `target`, the middle joint
+ *  bending towards `pole` (world directions and points). */
+function reach(upper: THREE.Object3D, lower: THREE.Object3D, end: THREE.Object3D, target: THREE.Vector3, pole: THREE.Vector3) {
+  upper.getWorldPosition(_s);
+  lower.getWorldPosition(_e);
+  end.getWorldPosition(_w);
+  const a = _s.distanceTo(_e), b = _e.distanceTo(_w);
+  _dir.subVectors(target, _s);
+  const d = clamp(_dir.length(), Math.abs(a - b) + 1e-3, a + b - 1e-3);
+  _dir.normalize();
+  const along = (a * a - b * b + d * d) / (2 * d);
+  _bend.copy(pole).addScaledVector(_dir, -pole.dot(_dir)).normalize();
+  _e.copy(_s).addScaledVector(_dir, along).addScaledVector(_bend, Math.sqrt(Math.max(0, a * a - along * along)));
+  aim(upper, lower, _e);
+  aim(lower, end, target);
+}
+
+/** Turn `bone` (the shortest way) so its child `child` lies on the line towards `target` (world). */
+function aim(bone: THREE.Object3D, child: THREE.Object3D, target: THREE.Vector3) {
+  bone.getWorldPosition(_p);
+  _from.subVectors(child.getWorldPosition(_w), _p).normalize();
+  _q.setFromUnitVectors(_from, _w.subVectors(target, _p).normalize());
+  bone.getWorldQuaternion(_wq);
+  bone.parent!.getWorldQuaternion(_pq);
+  bone.quaternion.copy(_pq.invert().multiply(_q).multiply(_wq));
+  bone.updateMatrixWorld(true);
+}
 
 /** Rotate `bone` by `angle` about one of the root's local axes (about X, + = look up for a model facing -Z). */
 function rotateAboutRoot(root: THREE.Object3D, bone: THREE.Object3D, axis: THREE.Vector3, angle: number) {
