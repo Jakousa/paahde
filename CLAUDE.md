@@ -54,6 +54,18 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   scene graph, input, UI and loading stay in TypeScript.
 - Strict TypeScript; keep it compiling with no errors.
 
+## Audio loudness
+
+- Level sounds by loudness (LUFS, ITU-R BS.1770 / EBU R128), not by peak or by ear. Target the full mix at
+  about **−23 LUFS integrated (±2)** at default volume, with **true peak ≤ −1 dBTP**. Set each sound
+  relative to that: ambience beds sit well under it, short one-shots can briefly poke above.
+- Measure before committing: `ffmpeg -i in.wav -af ebur128=peak=true -f null -`. Normalise files in
+  `public/` to the target; for synthesised audio, render a few seconds through an `OfflineAudioContext`
+  and measure that.
+- Route every source through a master gain and a limiter before `ctx.destination` (see
+  `src/windSound.ts`), and ramp gain (`setTargetAtTime`) on start, stop and volume changes to avoid clicks.
+- Volume sliders only attenuate: 1.0 is the reference level, never a boost.
+
 ## Workflow
 
 - Commit and push straight to `main` (no PRs needed); a push to `main` deploys. Run `npm run build` first.
