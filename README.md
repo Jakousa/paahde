@@ -16,10 +16,14 @@ npm run build    # production build into dist/
 ```
 
 - `src/` — game code (TypeScript, three.js). Import three from `three/webgpu`.
+- `public/` — static assets (models, textures, audio); reference them with relative paths.
 - `assembly/` — AssemblyScript compiled to `src/wasm/game.wasm`; exported functions are available as
   `wasm.<name>` via `src/wasm.ts`. Rerun `npm run asbuild` (or restart `dev`) after changing it.
 
 ## Workflow
+
+AI agents (Claude Code, Codex, Cursor…): project instructions are in `CLAUDE.md` (also `AGENTS.md`).
+
 
 Branch, open a PR (CI checks it builds), merge to `main`. Don't push broken builds to `main` — it goes live.
 
