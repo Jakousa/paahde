@@ -18,6 +18,7 @@ import { addPalms } from './world/palms';
 import { Scrap } from './world/scrap';
 import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
+import { DebugMenu } from './debugMenu.ts';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
@@ -46,6 +47,8 @@ const blownSand = new BlownSand(scene);
 const windSound = new WindSound();
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand, dust, windSound } });
+
+new DebugMenu(() => sky.day.tod);
 
 const net = new Net(getBrowserId());
 const digFx = new DigFx(scene);

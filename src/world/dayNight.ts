@@ -24,8 +24,12 @@ const params = new URLSearchParams(location.search);
 const FIXED_TOD = params.has('tod') ? Number(params.get('tod')) : null;
 const DAY_LEN = Number(params.get('day') ?? DAY_SECONDS);
 
+/** Set by the debug menu (src/debugMenu.ts): a time of day in [0, 1) to hold instead of the shared clock. */
+export const timeControl = { override: null as number | null };
+
 /** Time of day in [0, 1): 0 = midnight, 0.25 ≈ sunrise, 0.5 = noon, 0.75 ≈ sunset. */
 export function timeOfDay(unixMs: number): number {
+  if (timeControl.override !== null) return timeControl.override;
   if (FIXED_TOD !== null) return ((FIXED_TOD % 1) + 1) % 1;
   const t = unixMs / 1000 / DAY_LEN + DAY_OFFSET;
   return t - Math.floor(t);
