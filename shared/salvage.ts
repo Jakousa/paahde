@@ -41,4 +41,14 @@ export const SALVAGE: Record<string, SalvageKind> = {
       { part: 'motor', min: 1, max: 2 },
     ],
   },
+  // #16: rare, the valuable one. A starship's reactor column: compute racks, coolant fins, anti-matter bottles.
+  warp_core: {
+    label: 'Warp drive core',
+    model: 'salvage/warp_core.glb',
+    yields: [
+      { part: 'compute', min: 1, max: 3 },
+      { part: 'heatsink', min: 2, max: 3 },
+      { part: 'antimatter', min: 1, max: 2 },
+    ],
+  },
 };
