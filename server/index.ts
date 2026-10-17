@@ -240,7 +240,7 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
 
 /** Back to the base, cooled down, with a full canteen. */
 function die(p: Player, cause: DeathCause) {
-  p.state = spawnState(BASE_SPAWN.x, BASE_SPAWN.z);
+  p.state = { ...spawnState(BASE_SPAWN.x, BASE_SPAWN.z), bike: p.state.bike };
   revive(p.heat, Date.now());
   save(p);
   send(p.ws, { t: 'died', cause });
