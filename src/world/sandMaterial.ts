@@ -56,25 +56,25 @@ export const sand = {
   /** Unit xz vector the wind blows towards. Ripple crests run perpendicular to it; slip faces face it. */
   wind: uniform(new THREE.Vector2(0.8, 0.6).normalize()),
   /** Albedo of the redder / more golden sand patches (large-scale variation mixes between them). */
-  albedoRed: uniform(new THREE.Color(0.62, 0.17, 0.04)),
-  albedoGold: uniform(new THREE.Color(0.8, 0.32, 0.07)),
+  albedoRed: uniform(new THREE.Color(0.66, 0.3, 0.12)),
+  albedoGold: uniform(new THREE.Color(0.8, 0.46, 0.2)),
   /** Ambient (sky irradiance) is desaturated and re-tinted by this, so shadows stay rust, never blue. */
   shadowTint: uniform(new THREE.Color(1.0, 0.42, 0.26)),
   /** Fraction of the sun colour bounced into shadows by surrounding lit dunes. */
   bounce: uniform(0.05),
   /** Diffuse terminator: I = saturate(N·L * contrast + offset). */
-  contrast: uniform(2.6),
+  contrast: uniform(2.1),
   offset: uniform(0.12),
   /** Max normal slope of the small and large ripples. */
-  rippleStrength: uniform(0.42),
+  rippleStrength: uniform(0.28),
   megaRippleStrength: uniform(0.14),
   /** Ocean specular and rim strengths. */
-  sheen: uniform(0.2),
-  rim: uniform(0.6),
+  sheen: uniform(0.035),
+  rim: uniform(0.18),
   /** Colour of sheen and rim (warm, so highlights read as hot sand rather than wet white). */
   sheenTint: uniform(new THREE.Color(1.0, 0.62, 0.32)),
   /** Glitter intensity (HDR; values > 1 feed bloom). */
-  glitter: uniform(30),
+  glitter: uniform(14),
 };
 
 const PI = Math.PI;
@@ -181,7 +181,12 @@ function buildSurface(): SandSurface {
   // Grain speckle (~1 cm), faded once cells get near pixel size.
   const gq = p.mul(90);
   const grainFade = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(gq))));
-  const grain = mx_cell_noise_float(gq).sub(0.5).mul(0.22).mul(grainFade).add(1);
+  // Second, coarser speckle (~4 cm) keeps mid-distance sand matte and gritty instead of smooth.
+  const gq2 = p.mul(24);
+  const grainFade2 = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(gq2))));
+  const grain = mx_cell_noise_float(gq).sub(0.5).mul(0.34).mul(grainFade)
+    .add(mx_cell_noise_float(gq2.add(7.1)).sub(0.5).mul(0.16).mul(grainFade2))
+    .add(1);
   const albedo = mix(sand.albedoRed, sand.albedoGold, patch)
     .mul(grain)
     .mul(float(1).sub(slip.mul(0.12)))
