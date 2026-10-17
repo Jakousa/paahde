@@ -65,7 +65,8 @@ export const JUMP = 16;
 export const SPRINT = 32;
 // Digging changes the world, not the player: step() ignores it; the server applies it to the terrain.
 export const DIG = 64;
-export const INPUT_MASK = 127;
+export const PILE = 128; // like DIG, but puts sand back (shared/dig.ts)
+export const INPUT_MASK = 255;
 
 // Camera yaw is sent with every input, quantized to 16 bits so client and server agree exactly.
 export const YAW_STEPS = 65536;

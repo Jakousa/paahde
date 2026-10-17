@@ -82,6 +82,17 @@ export class TerrainEdits {
     this.onChange?.(cx - 1, cz);
     this.onChange?.(cx, cz - 1);
   }
+  /** Drop a chunk (back to zero offsets), e.g. when the server no longer has it after a reconnect. */
+  deleteChunk(cx: number, cz: number) {
+    if (!this.chunks.delete(TerrainEdits.key(cx, cz))) return;
+    this.onChange?.(cx, cz);
+    this.onChange?.(cx - 1, cz);
+    this.onChange?.(cx, cz - 1);
+  }
+  /** Number of stored chunks. */
+  get size() {
+    return this.chunks.size;
+  }
   *entries(): IterableIterator<[number, number, Int32Array]> {
     for (const [k, v] of this.chunks) {
       const [cx, cz] = k.split(',').map(Number);
