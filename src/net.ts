@@ -20,7 +20,7 @@ import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
-import type { Storm } from '../shared/storm.ts';
+import { stormDrag, type Storm } from '../shared/storm.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 
 const INTERP_MS = 100;
@@ -60,7 +60,7 @@ export class Net {
 
   private ws?: WebSocket;
   private seq = 0;
-  private pending: { seq: number; input: number; yaw: number }[] = [];
+  private pending: { seq: number; input: number; yaw: number; drag: number }[] = [];
   private snapshots: Snapshot[] = [];
   private clockOffset?: number; // serverTime - localTime
   /** Recent worst snapshot delay beyond the best one (ms), and the eased interpolation delay. */
@@ -116,8 +116,9 @@ export class Net {
     if (!this.connected) return;
     this.seq++;
     this.prev = this.me;
-    this.me = step(this.me, input, yaw);
-    this.pending.push({ seq: this.seq, input, yaw });
+    const drag = stormDrag(this.storms, this.me.x, this.me.y, this.me.z, this.serverTime());
+    this.me = step(this.me, input, yaw, drag);
+    this.pending.push({ seq: this.seq, input, yaw, drag });
     this.send({ t: 'input', seq: this.seq, input, yaw, pitch });
     this.predictDig(input, yaw, pitch);
   }
@@ -376,7 +377,7 @@ export class Net {
       sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool,
       riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading,
     };
-    for (const p of this.pending) s = step(s, p.input, p.yaw);
+    for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag);
     this.errorX += this.me.x - s.x;
     this.errorY += this.me.y - s.y;
     this.errorZ += this.me.z - s.z;

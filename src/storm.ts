@@ -9,7 +9,7 @@ import { RAMP_MS, inStormPath, stormAt, stormCentre, stormEnvelope, type Storm }
 import { WIND } from '../shared/dunes.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { audio } from './audio';
-import { STORM_SLOTS, stormDiscs, stormGround } from './world/env';
+import { STORM_SLOTS, stormDiscs, stormGround, stormHere } from './world/env';
 import { wind } from './world/wind';
 
 /** Seconds between beep bursts while a storm you're in the path of is on its way. */
@@ -74,6 +74,7 @@ export class StormFx {
     const here = indoors ? 0 : stormAt(storms, cam.x, cam.z, now);
     this.level += (here - this.level) * (1 - Math.exp(-dt / TAU));
     wind.local = this.level;
+    stormHere.value = this.level;
 
     const g = stormGround.value;
     const ground = [0, 0, 0, 0];
@@ -102,9 +103,7 @@ export class StormFx {
         beep();
       }
       const secs = Math.ceil((coming.start - now) / 1000);
-      this.show(`⚠ Sandstorm in ${secs} s — take cover`, true);
-    } else if (this.level > LOST_AT) {
-      this.show('Sandstorm — locator lost', false);
+      this.show(`⚠ Sandstorm detected · ${secs} s`, true);
     } else {
       this.show('', false);
     }

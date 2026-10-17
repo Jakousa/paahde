@@ -3,14 +3,14 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, abs, atan, cos, dot, exp, float, length, max, mix, mx_noise_float, pass, pow, renderOutput, saturate,
-  smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin, perspectiveDepthToViewZ, If, normalize, sqrt, min,
+  smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin, perspectiveDepthToViewZ, If, normalize, sqrt, min, log,
 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  hazeColor, hazeColorFor, hazeDensity, heatHaze, stormDiscs, stormGround, sunColor, sunDirection, sunDiscRadius,
-  time, windDrift,
+  hazeColor, hazeColorFor, hazeDensity, heatHaze, stormDiscs, stormGround, stormHere, sunColor, sunDirection,
+  sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
 import { EDGE } from '../shared/storm.ts';
 
@@ -96,6 +96,7 @@ export class Post {
     // storm reads as a thick rolling wall and from inside as dust fog ~25 m deep. Out: dust colour, and
     // how much of the scene still shows through.
     const { camWorld, projInv, camPos } = this;
+    const dustLit: N = (sunColor as unknown as N).mul(vec3(0.5, 0.3, 0.16)).mul(0.17).add((hazeColor as unknown as N).mul(0.15));
     const dusted = Fn(() => {
       const p = uv();
       const ndc = vec4(p.x.mul(2).sub(1), float(1).sub(p.y.mul(2)), 1, 1);
@@ -151,7 +152,7 @@ export class Post {
       const trans = exp(tau.mul(-STORM_K));
       // Lit dust: diffused sun on the sand colour plus the haze; far storms fade into the haze like dunes.
       const shade = lit.div(max(tau, 1e-4));
-      const dust = (sunColor as unknown as N).mul(vec3(0.5, 0.3, 0.16)).mul(0.17).add((hazeColor as unknown as N).mul(0.15)).mul(shade);
+      const dust = dustLit.mul(shade);
       const far = float(1).sub(exp(first.mul(hazeDensity).negate()));
       return vec4(mix(dust, hazeColorFor(dir), far.mul(0.35)), trans);
     })();
@@ -214,10 +215,38 @@ export class Post {
       return tint.mul(veil.mul(1.4)).add(local).mul(sunVis);
     })();
 
+    // --- In a sandstorm: grit flying past the eye, and sand caked on the edges of the view. Streaks run
+    // across the screen with the crosswind and burst out from the centre when facing into it.
+    const grit = Fn(() => {
+      const s = stormHere;
+      const p = uv();
+      const q = p.sub(0.5).mul(vec2(aspect, 1));
+      const right = camWorld.mul(vec4(1, 0, 0, 0)).xz;
+      const back = camWorld.mul(vec4(0, 0, 1, 0)).xz;
+      const side = dot(windDir, normalize(right));
+      const into = saturate(dot(windDir, normalize(back)));
+      // Crosswind: long thin streaks sliding sideways, two layers at different depths.
+      const t = time;
+      const lat = mx_noise_float(vec3(q.x.mul(2.5).sub(t.mul(side).mul(9)), q.y.mul(70), t.mul(1.5)))
+        .max(mx_noise_float(vec3(q.x.mul(1.2).sub(t.mul(side).mul(5)), q.y.mul(35).add(9), t)).mul(0.8));
+      // Headwind: streaks rushing outwards from the middle.
+      const r = length(q).max(1e-3);
+      const a = q.div(r);
+      const rad = mx_noise_float(vec3(a.x.mul(32), a.y.mul(32), log(r).mul(2.5).sub(t.mul(5))));
+      const radW = into.mul(smoothstep(0.1, 0.5, r));
+      const streak = smoothstep(0.55, 0.9, lat).mul(abs(side).mul(0.8).add(0.2)).max(smoothstep(0.45, 0.85, rad).mul(radW));
+      // Caked edges, slowly shifting.
+      const v = length(p.sub(0.5).mul(vec2(aspect.mul(0.8), 1)));
+      const cake = smoothstep(0.45, 1.1, v.add(mx_noise_float(vec3(q.mul(3), t.mul(0.3))).mul(0.12)));
+      const w = saturate(streak.mul(0.38).add(cake.mul(0.45))).mul(s);
+      return vec4(dustLit.mul(mix(float(0.7), float(1.3), streak)), w);
+    })();
+
     // --- Composite in linear HDR, then grade and tone map.
     const graded = Fn(() => {
       // Dust in front hides what blooms or flares behind it.
       let c: N = storm.xyz.add(bloomPass.rgb.add(flare).mul(storm.w));
+      c = mix(c, grit.xyz, grit.w);
       c = c.mul(exposure);
       // Warm white balance and a rust lift in the shadows (never grey/blue blacks).
       c = c.mul(vec3(1.06, 0.98, 0.86));
@@ -233,7 +262,7 @@ export class Post {
       o = o.mul(mix(float(1), float(0.72), smoothstep(0.45, 1.05, v)));
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
-      o = o.add(g.sub(0.5).mul(0.028));
+      o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(0.028)));
       return vec4(o, 1);
     })();
 

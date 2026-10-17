@@ -57,6 +57,8 @@ const SLIDE_TURN = 1.6; // rad/s the heading can swing towards the input
 
 // Ctrl below slide speed (or after a slide runs out) crouches: slow, no sprint.
 const CROUCH_SPEED = 3;
+/** Speed lost on foot at full sandstorm strength (shared/storm.ts). */
+const STORM_SLOW = 0.35;
 
 // Landing.
 const HARD_LANDING = 13; // impact speed (m/s) above which a landing bogs you down
@@ -145,7 +147,7 @@ const tmpCollide = { x: 0, z: 0, vx: 0, vz: 0 };
  * Advance one tick. `yawQ` is the quantized camera yaw: yaw 0 looks down -Z, and increases
  * counter-clockwise seen from above (three.js camera rotation.y convention).
  */
-export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
+export function step(s: PlayerState, input: number, yawQ: number, storm = 0): PlayerState {
   const yaw = yawFromQ(yawQ);
   const bikeDown = (input & BIKE) !== 0;
   if (bikeDown && !s.bikeHeld) {
@@ -167,6 +169,7 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
   let landTicks = s.landTicks > 0 ? s.landTicks - 1 : 0;
   let speed = input & SPRINT ? SPRINT_SPEED : WALK_SPEED;
   if (landTicks > 0) speed *= LAND_SLOW + (1 - LAND_SLOW) * (1 - landTicks / MAX_LAND_TICKS);
+  speed *= 1 - STORM_SLOW * storm;
 
   let vx = s.vx;
   let vz = s.vz;

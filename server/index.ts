@@ -17,7 +17,7 @@ import { StormServer } from './storm.ts';
 import { TerrainServer } from './terrain.ts';
 import { drink, fill, newHeat, revive, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
-import { stormAt } from '../shared/storm.ts';
+import { stormAt, stormDrag } from '../shared/storm.ts';
 import { timeOfDayAt } from '../shared/sun.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -202,7 +202,8 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.yaw = yaw as number;
   p.pitch = pitch as number;
   p.input = input & INPUT_MASK;
-  p.state = step(p.state, input & INPUT_MASK, p.yaw);
+  const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
+  p.state = step(p.state, input & INPUT_MASK, p.yaw, drag);
   dig(p, input);
 }
 
