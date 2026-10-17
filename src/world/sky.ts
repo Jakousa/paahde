@@ -13,6 +13,7 @@ import { MAX_FOV } from '../camera.ts';
 import { CascadedShadows } from './cascades.ts';
 import { setShadowNoiseAxes, wideShadowFilter } from './shadowFilter.ts';
 import { DayNight } from './dayNight.ts';
+import { NightSky, nightSky } from './nightSky.ts';
 import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm, SHADOW_ONLY_LAYER, skyRadiance, sunColor, sunDirection, sunDisc, sunLight, time } from './env.ts';
 
 /** Sun elevation (radians) below which the moon is the shadow-casting light. Both are ~dark here. */
@@ -39,6 +40,7 @@ export class Sky {
   private csm: CascadedShadows;
   private fittedAspect = NaN;
   readonly day: DayNight;
+  readonly night = new NightSky();
 
   constructor(scene: THREE.Scene) {
     // Golden-hour sun (10°) through dusty air: warm, a little reddened. dayNight.ts keys the rest of the day off it.
@@ -48,7 +50,7 @@ export class Sky {
     // for sky pixels (post uses that to tell sky from ground).
     const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false });
     const dir = normalize(positionWorld.sub(cameraPosition));
-    mat.colorNode = skyRadiance(dir).add(sunDisc(dir)).add(moonDisc(dir));
+    mat.colorNode = skyRadiance(dir).add(sunDisc(dir)).add(moonDisc(dir)).add(nightSky(dir));
     this.dome = new THREE.Mesh(new THREE.SphereGeometry(4000, 48, 24), mat);
     this.dome.frustumCulled = false;
     this.dome.renderOrder = -1000;
@@ -90,6 +92,7 @@ export class Sky {
   update(dt: number, focus: THREE.Vector3, camera: THREE.PerspectiveCamera, unixMs: number) {
     time.value += dt;
     this.day.update(unixMs);
+    this.night.update(unixMs);
     const moonlit = this.day.elevation < MOON_TAKES_OVER;
     this.sun.color.copy(moonlit ? moonColor.value : sunColor.value);
     this.sun.intensity = 1 - 0.3 * sandStorm.value; // dust in the air dims the sun
