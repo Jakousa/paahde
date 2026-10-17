@@ -30,7 +30,8 @@ from mathutils import Euler, Matrix, Vector
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 TIERS = ['scrap', 'basic', 'quality', 'space']
-ITEMS = ['battery', 'motor', 'heatsink', 'compute', 'coil', 'antimatter']
+ITEMS = ['battery', 'motor', 'heatsink', 'compute', 'coil', 'antimatter', 'impeller', 'bearing', 'gear', 'valve',
+         'relay']
 
 # Materials: name -> (sRGB hex, metallic, roughness, emission strength). Emissive ones glow in their colour.
 MATERIALS = {
@@ -118,15 +119,69 @@ class MeshBuilder:
             self.mats.append(name)
         return self.mats.index(name)
 
-    def _place(self, verts, mat, loc, rot):
+    def _place(self, verts, mat, loc, rot, smooth=False):
         m = Matrix.Translation(Vector(loc)) @ Euler(rot).to_matrix().to_4x4()
         bmesh.ops.transform(self.bm, matrix=m, verts=verts)
         faces = {f for v in verts for f in v.link_faces}
         idx = self.mat(mat)
         for f in faces:
             f.material_index = idx
-            f.smooth = False
+            f.smooth = smooth
         return verts
+
+    def lathe(self, profile, segs, loc, mat, rot=(0, 0, 0), smooth=False, arc=2 * math.pi, phase=0.0):
+        """Revolve a closed (r, z) profile loop about local Z (a race, flange, hub, shroud, torus...).
+        Points on the axis (r = 0) are welded, so solid discs and domes work too."""
+        n = len(profile)
+        rings = []
+        for i in range(segs):
+            a = phase + arc * i / segs
+            rings.append([self.bm.verts.new((r * math.cos(a), r * math.sin(a), z)) for r, z in profile])
+        for i in range(segs):
+            a, b = rings[i], rings[(i + 1) % segs]
+            for j in range(n):
+                k = (j + 1) % n
+                self.bm.faces.new((a[j], b[j], b[k], a[k]))
+        verts = [v for ring in rings for v in ring]
+        axis = [v for v in verts if v.co.xy.length < 1e-7]
+        if axis:
+            bmesh.ops.remove_doubles(self.bm, verts=axis, dist=1e-6)
+            verts = [v for v in verts if v.is_valid]
+        return self._place(verts, mat, loc, rot, smooth)
+
+    def torus(self, R, r, segs, tube_segs, loc, mat, rot=(0, 0, 0), smooth=True):
+        prof = [(R + r * math.cos(2 * math.pi * j / tube_segs), r * math.sin(2 * math.pi * j / tube_segs))
+                for j in range(tube_segs)]
+        return self.lathe(prof, segs, loc, mat, rot, smooth)
+
+    def ring_prism(self, outer, inner, z0, z1, mat, loc=(0, 0, 0), rot=(0, 0, 0)):
+        """Flat plate between two closed (x, y) loops with the same point count (a gear rim, a bored disc),
+        extruded from z0 to z1."""
+        n = len(outer)
+        o0 = [self.bm.verts.new((x, y, z0)) for x, y in outer]
+        o1 = [self.bm.verts.new((x, y, z1)) for x, y in outer]
+        i0 = [self.bm.verts.new((x, y, z0)) for x, y in inner]
+        i1 = [self.bm.verts.new((x, y, z1)) for x, y in inner]
+        for j in range(n):
+            k = (j + 1) % n
+            self.bm.faces.new((o1[j], o1[k], i1[k], i1[j]))
+            self.bm.faces.new((o0[j], i0[j], i0[k], o0[k]))
+            self.bm.faces.new((o0[j], o0[k], o1[k], o1[j]))
+            self.bm.faces.new((i0[j], i1[j], i1[k], i0[k]))
+        return self._place(o0 + o1 + i0 + i1, mat, loc, rot)
+
+    def loft(self, sections, mat, loc=(0, 0, 0), rot=(0, 0, 0)):
+        """Solid through a run of closed cross-sections (lists of points, same count each), capped at both
+        ends: a curved impeller vane, a bent strap."""
+        rows = [[self.bm.verts.new(p) for p in sec] for sec in sections]
+        n = len(rows[0])
+        for a, b in zip(rows, rows[1:]):
+            for j in range(n):
+                k = (j + 1) % n
+                self.bm.faces.new((a[j], b[j], b[k], a[k]))
+        self.bm.faces.new(list(reversed(rows[0])))
+        self.bm.faces.new(rows[-1])
+        return self._place([v for r in rows for v in r], mat, loc, rot)
 
     def box(self, size, loc, mat, rot=(0, 0, 0), bevel=0.0, cuts=0):
         before = set(self.bm.verts)
@@ -152,6 +207,10 @@ class MeshBuilder:
     def blob(self, r, loc, mat):
         verts = bmesh.ops.create_icosphere(self.bm, subdivisions=1, radius=r)['verts']
         return self._place(verts, mat, loc, (0, 0, 0))
+
+    def ball(self, r, loc, mat, u=10, v=6):
+        verts = bmesh.ops.create_uvsphere(self.bm, u_segments=u, v_segments=v, radius=r)['verts']
+        return self._place(verts, mat, loc, (0, 0, 0), smooth=True)
 
     def dent(self, verts, center, radius, depth):
         """Push verts near `center` inwards (towards the part's centroid) - crude dents for scrap."""
@@ -599,8 +658,421 @@ def build_antimatter(mb, tier, rng):
         mb.box((0.102, 0.016, 0.012), (0, 0, H + 0.038), 'gold', bevel=0.003)
 
 
+# ------------------------------------------------------------------------------------------------ bearing
+# The mechanical and switching parts below come out of the crash-site machines in the disassembly mode. Each lies
+# with its axis along Z (the game mounts it on a shaft by that axis) and keeps the same bounding-box proportions
+# across its tiers, since the game scales every model to the same size.
+
+def build_bearing(mb, tier, rng):
+    """Open deep-groove ball bearing lying flat: outer and inner race with their ball grooves, a ring of balls in
+    the gap kept apart by cage bridges. 9 cm across, 2.6 cm wide."""
+    OD, W = 0.045, 0.026  # outer radius, width
+    RO, RI, BORE = 0.0375, 0.0215, 0.015  # outer race's inside face, inner race's outside face, bore radius
+    RB, BR, N = 0.0295, 0.0083, 8  # ball circle, ball radius, ball count
+    segs = {'scrap': 16, 'basic': 20, 'quality': 24, 'space': 28}[tier]
+
+    def races(outer, inner):
+        c = 0.0012
+        o = mb.lathe([(RO, 0), (OD - c, 0), (OD, c), (OD, W - c), (OD - c, W), (RO, W), (RO + 0.0005, W * 0.78),
+                      (RO + 0.0022, W * 0.5), (RO + 0.0005, W * 0.22)], segs, (0, 0, 0), outer)
+        i = mb.lathe([(BORE + c, 0), (RI, 0), (RI - 0.0005, W * 0.22), (RI - 0.0022, W * 0.5), (RI - 0.0005, W * 0.78),
+                      (RI, W), (BORE + c, W), (BORE, W - c), (BORE, c)], segs, (0, 0, 0), inner)
+        return o, i
+
+    def balls(mat, skip=(), alt=None):
+        for k in range(N):
+            if k in skip:
+                continue
+            a = 2 * math.pi * k / N
+            mb.ball(BR, (RB * math.cos(a), RB * math.sin(a), W / 2), alt if alt and k % 3 == 1 else mat, u=8)
+
+    def cage(mat, skip=(), rivet=None):
+        for k in range(N):
+            if k in skip:
+                continue
+            a = 2 * math.pi * (k + 0.5) / N
+            x, y = RB * math.cos(a), RB * math.sin(a)
+            mb.box((0.005, 0.0052, 0.013), (x, y, W / 2), mat, rot=(0, 0, a))
+            if rivet:
+                mb.cyl(0.0016, 0.0016, 0.0145, 6, (x, y, W / 2), rivet)
+
+    def face_ring(r0, r1, mat, z=W):
+        """A thin band flush with a face (marking, seal lip, light strip)."""
+        mb.lathe([(r0, z - 0.0004), (r1, z - 0.0004), (r1, z + 0.0004), (r0, z + 0.0004)], segs, (0, 0, 0), mat)
+
+    if tier == 'scrap':
+        o, i = races('rust', 'steel_dull')
+        mb.jitter(o, rng, 0.0006)
+        mb.dent(o, (OD, 0, W * 0.7), 0.02, 0.003)
+        # A ball gone, some pitted, cage bridges broken out; grit and corrosion packed in the gap.
+        balls('steel_dull', skip=(3,), alt='rust_dark')
+        cage('rust_dark', skip=(2, 3, 6))
+        mb.blob(0.005, (RB * math.cos(2.3), RB * math.sin(2.3), W * 0.62), 'corrosion')
+        mb.blob(0.004, (RB * math.cos(5.0), RB * math.sin(5.0), W * 0.6), 'rust_dark')
+    elif tier == 'basic':
+        races('steel', 'steel')
+        balls('steel')
+        cage('plastic_black')
+    elif tier == 'quality':
+        races('chrome', 'chrome')
+        balls('chrome')
+        cage('brass', rivet='brass')
+        face_ring(RO + 0.003, RO + 0.0055, 'accent_orange')
+        face_ring(BORE + 0.002, BORE + 0.0035, 'brass')
+    else:  # space
+        races('white', 'gunmetal')
+        balls('gold')
+        cage('glow')
+        face_ring(RO + 0.0025, RO + 0.0045, 'glow')
+        face_ring(OD - 0.002, OD - 0.0008, 'gunmetal')
+
+
+# ------------------------------------------------------------------------------------------------- gear
+
+def gear_outline(n, ra, rp, rf, broken=(), worn=0.0):
+    """Closed (x, y) outline of a spur gear: n teeth with tapered, slightly curved (involute-like) flanks.
+    Broken teeth are snapped off near the root; `worn` rounds the tips down."""
+    p = 2 * math.pi / n
+    pts = []
+    for i in range(n):
+        c = i * p
+        tip = rf + (ra - rf) * 0.2 if i in broken else ra - worn
+        mid = min(rp, tip)
+        for r, f in ((rf, -0.31), (mid, -0.235), (tip, -0.13), (tip, 0.13), (mid, 0.235), (rf, 0.31), (rf, 0.5)):
+            pts.append((r * math.cos(c + f * p), r * math.sin(c + f * p)))
+    return pts
+
+
+def build_gear(mb, tier, rng):
+    """Spur gear lying flat: 16 teeth on a rim, a web (or spokes) to a hub that stands proud on top, with a bore.
+    11 cm across, 3.4 cm tall over the hub."""
+    N, RP = 16, 0.05
+    m = 2 * RP / N
+    RA, RF, RIM = RP + m, RP - 1.25 * m, 0.036  # tip, root, rim's inside radius
+    F, HUB_R, BORE, HUB_H = 0.022, 0.017, 0.009, 0.034  # face width, hub, bore, hub height
+    segs = {'scrap': 16, 'basic': 20, 'quality': 24, 'space': 28}[tier]
+
+    def rim(mat, broken=(), worn=0.0):
+        outer = gear_outline(N, RA, RP, RF, broken, worn)
+        inner = [(RIM * math.cos(math.atan2(y, x)), RIM * math.sin(math.atan2(y, x))) for x, y in outer]
+        return mb.ring_prism(outer, inner, 0, F, mat)
+
+    def hub(mat):
+        c = 0.0012
+        return mb.lathe([(BORE, 0), (HUB_R, 0), (HUB_R, HUB_H - c), (HUB_R - c, HUB_H), (BORE, HUB_H)], segs,
+                        (0, 0, 0), mat)
+
+    def web(mat):
+        return mb.lathe([(HUB_R - 0.001, F * 0.3), (RIM + 0.001, F * 0.3), (RIM + 0.001, F * 0.7),
+                         (HUB_R - 0.001, F * 0.7)], segs, (0, 0, 0), mat)
+
+    def spokes(mat, n=5):
+        L = RIM - HUB_R + 0.002
+        for k in range(n):
+            a = 2 * math.pi * (k + 0.25) / n
+            r = (RIM + HUB_R) / 2
+            mb.box((L, 0.008, F * 0.55), (r * math.cos(a), r * math.sin(a), F / 2), mat, rot=(0, 0, a))
+
+    def set_screw(mat):
+        mb.cyl(0.0032, 0.0032, 0.004, 8, (HUB_R + 0.0012, 0, F + (HUB_H - F) / 2), mat, rot=Y90)
+
+    def face_ring(r0, r1, z, mat):
+        mb.lathe([(r0, z - 0.0004), (r1, z - 0.0004), (r1, z + 0.0004), (r0, z + 0.0004)], segs, (0, 0, 0), mat)
+
+    if tier == 'scrap':
+        v = rim('rust', broken=(4, 5, 11), worn=0.0012)
+        mb.jitter(v, rng, 0.0005)
+        web('rust_dark')
+        h = hub('steel_dull')
+        mb.jitter(h, rng, 0.0004)
+        mb.blob(0.006, (0.026 * math.cos(1.2), 0.026 * math.sin(1.2), F * 0.75), 'corrosion')
+        mb.blob(0.005, (0.03 * math.cos(3.6), 0.03 * math.sin(3.6), F * 0.72), 'rust')
+    elif tier == 'basic':
+        rim('steel')  # machined teeth, painted cast body
+        web('paint_blue')
+        hub('paint_blue')
+        face_ring(BORE, BORE + 0.0025, HUB_H, 'steel')
+        set_screw('steel_dull')
+    elif tier == 'quality':
+        rim('chrome')
+        spokes('anodised')
+        hub('brass')
+        face_ring(RIM + 0.0005, RIM + 0.003, F, 'accent_orange')
+        set_screw('chrome')
+    else:  # space
+        rim('gunmetal')
+        web('white')
+        hub('gold')
+        face_ring(0.024, 0.0275, F * 0.7, 'glow')
+        face_ring(BORE, BORE + 0.002, HUB_H, 'glow')
+        face_ring(RIM + 0.0008, RIM + 0.002, F, 'glow_soft')
+
+
+# ---------------------------------------------------------------------------------------------- impeller
+
+def build_impeller(mb, tier, rng):
+    """Semi-open centrifugal pump impeller lying flat: a dished back shroud, six backward-curved vanes sweeping
+    out from the eye, tall at the eye and tapering to the rim, a hub with its nut on top. 16 cm across."""
+    R = 0.08
+    NV, R0, R1, SWEEP = 6, 0.021, 0.0775, 1.15
+    segs = {'scrap': 18, 'basic': 24, 'quality': 28, 'space': 32}[tier]
+    shroud_top = [(0.012, 0.014), (0.02, 0.014), (0.05, 0.008), (R, 0.0045)]
+
+    def top_at(r):
+        for (ra, za), (rb, zb) in zip(shroud_top, shroud_top[1:]):
+            if r <= rb:
+                return za + (zb - za) * (r - ra) / (rb - ra)
+        return shroud_top[-1][1]
+
+    def shroud(mat):
+        return mb.lathe([(0.012, 0), (R, 0)] + list(reversed(shroud_top))[:-1] + [(0.012, 0.014)], segs, (0, 0, 0),
+                        mat)
+
+    def hub(mat, h=0.048):
+        return mb.lathe([(0.008, 0), (0.019, 0), (0.019, h - 0.006), (0.016, h), (0.008, h)], segs, (0, 0, 0), mat)
+
+    def vane(k, mat, upto=1.0, t=0.0024, cap=None):
+        """Vane k as a loft of quad sections along a backward-curved arc, its top dropping from eye to rim."""
+        th0 = 2 * math.pi * k / NV
+        n = 9
+        secs, tops = [], []
+        for j in range(n):
+            s = upto * j / (n - 1)
+            r = R0 + (R1 - R0) * s
+            a = th0 - SWEEP * s ** 0.85
+            c = Vector((r * math.cos(a), r * math.sin(a), 0))
+            s2 = s + 0.01  # tangent from a nearby sample
+            r2 = R0 + (R1 - R0) * s2
+            a2 = th0 - SWEEP * s2 ** 0.85
+            d = (Vector((r2 * math.cos(a2), r2 * math.sin(a2), 0)) - c).normalized()
+            nrm = Vector((-d.y, d.x, 0))
+            tt = t * (1.3 - 0.4 * s)
+            z0 = top_at(r) - 0.0015
+            z1 = 0.04 - 0.022 * s ** 0.9
+            secs.append([c - nrm * tt + Vector((0, 0, z0)), c + nrm * tt + Vector((0, 0, z0)),
+                         c + nrm * tt + Vector((0, 0, z1)), c - nrm * tt + Vector((0, 0, z1))])
+            tops.append((c, nrm, tt, z1))
+        v = mb.loft(secs, mat)
+        if cap:  # a light strip along the vane's top edge
+            mb.loft([[c - nrm * tt * 0.7 + Vector((0, 0, z1 - 0.0005)), c + nrm * tt * 0.7 + Vector((0, 0, z1 - 0.0005)),
+                      c + nrm * tt * 0.7 + Vector((0, 0, z1 + 0.0009)), c - nrm * tt * 0.7 + Vector((0, 0, z1 + 0.0009))]
+                     for c, nrm, tt, z1 in tops], cap)
+        return v
+
+    def nut(mat, z=0.048):
+        mb.cyl(0.0125, 0.0125, 0.008, 6, (0, 0, z + 0.004), mat)
+        mb.cyl(0.0075, 0.0075, 0.0085, 10, (0, 0, z + 0.004), 'plastic_black')  # shaft end in the nut
+
+    def rim_band(mat):
+        mb.lathe([(R - 0.0006, -0.0003), (R + 0.0003, -0.0003), (R + 0.0003, 0.0035), (R - 0.0006, 0.0035)], segs,
+                 (0, 0, 0), mat)
+
+    if tier == 'scrap':
+        s = shroud('rust')
+        mb.jitter(s, rng, 0.0008)
+        mb.dent(s, (R, 0.01, 0.003), 0.025, 0.004)
+        for k in range(NV):
+            v = vane(k, 'rust', upto=0.55 if k == 2 else 1.0)  # one vane snapped off half way
+            mb.jitter(v, rng, 0.0006)
+        hub('steel_dull')
+        nut('steel_dull')
+        mb.blob(0.006, (0.045 * math.cos(1.0), 0.045 * math.sin(1.0), 0.012), 'corrosion')
+        mb.blob(0.005, (0.06 * math.cos(4.1), 0.06 * math.sin(4.1), 0.009), 'rust_dark')
+    elif tier == 'basic':
+        shroud('alu')
+        for k in range(NV):
+            vane(k, 'alu')
+        hub('alu')
+        nut('steel')
+    elif tier == 'quality':
+        shroud('brass')  # cast bronze
+        for k in range(NV):
+            vane(k, 'brass')
+        hub('brass')
+        nut('chrome')
+        rim_band('accent_orange')
+    else:  # space
+        shroud('white')
+        for k in range(NV):
+            vane(k, 'gunmetal', cap='glow')
+        hub('gold')
+        nut('gunmetal')
+        mb.lathe([(0.0205, 0.0138), (0.024, 0.0132), (0.024, 0.0148), (0.0205, 0.0152)], segs, (0, 0, 0), 'glow')
+
+
+# ------------------------------------------------------------------------------------------------- valve
+
+def build_valve(mb, tier, rng):
+    """Flanged gate valve, flow along Z (it stands in a vertical pipe run): flanged ends with studs and nuts, a
+    bulging body, and the bonnet, gland and stem out to +X ending in a spoked handwheel. 22 cm flange to flange."""
+    L, FR, FT, RB = 0.22, 0.09, 0.018, 0.031  # length, flange radius, flange thickness, bore
+    ZC = L / 2
+    segs = {'scrap': 12, 'basic': 16, 'quality': 18, 'space': 20}[tier]
+    WX, WR, WT = 0.096, 0.046, 0.0055  # handwheel centre x, radius, rim thickness
+
+    def flanges(bottom, top):
+        c = 0.0015
+        prof = [(RB, 0), (FR - c, 0), (FR, c), (FR, FT - c), (FR - c, FT), (RB, FT)]
+        f0 = mb.lathe(prof, segs, (0, 0, 0), bottom)
+        f1 = mb.lathe(prof, segs, (0, 0, L - FT), top)
+        for z in (FT + 0.002, L - FT - 0.002):  # dark bore, so the pipe reads hollow
+            mb.cyl(RB, RB, 0.002, segs, (0, 0, z), 'plastic_black')
+        return f0, f1
+
+    def body(mat):
+        return mb.lathe([(RB, FT - 0.001), (0.045, FT - 0.001), (0.045, 0.05), (0.06, 0.068), (0.067, ZC),
+                         (0.06, L - 0.068), (0.045, L - 0.05), (0.045, L - FT + 0.001), (RB, L - FT + 0.001)],
+                        segs, (0, 0, 0), mat, smooth=True)
+
+    def studs(nut_mat, skip=()):
+        for k in range(4):
+            a = math.pi / 4 + k * math.pi / 2
+            x, y = 0.07 * math.cos(a), 0.07 * math.sin(a)
+            for z, side in ((FT, 1), (L - FT, -1)):
+                if (k, side) in skip:
+                    continue
+                mb.cyl(0.0075, 0.0075, 0.007, 6, (x, y, z + side * 0.0035), nut_mat)
+                mb.cyl(0.0038, 0.0038, 0.012, 6, (x, y, z + side * 0.008), nut_mat)
+
+    def bonnet(mat, flange_mat, gland_mat, stem_mat, bolts=None):
+        mb.cyl(0.03, 0.026, 0.04, segs, (0.05, 0, ZC), mat, rot=Y90)
+        mb.cyl(0.035, 0.035, 0.007, segs, (0.072, 0, ZC), flange_mat, rot=Y90)
+        mb.cyl(0.016, 0.016, 0.011, 6, (0.081, 0, ZC), gland_mat, rot=Y90)
+        mb.cyl(0.0055, 0.0055, 0.018, 8, (0.093, 0, ZC), stem_mat, rot=Y90)
+        if bolts:
+            for k in range(4):
+                a = math.pi / 4 + k * math.pi / 2
+                mb.cyl(0.0035, 0.0035, 0.004, 6, (0.0765, 0.027 * math.cos(a), ZC + 0.027 * math.sin(a)), bolts,
+                       rot=Y90)
+
+    def wheel(rim_mat, spoke_mat, hub_mat, spokes=3, skip=(), tilt=0.0):
+        mb.torus(WR, WT, segs + 4, 6, (WX, 0, ZC), rim_mat, rot=(tilt, math.pi / 2, 0))
+        mb.cyl(0.011, 0.011, 0.012, 8, (WX, 0, ZC), hub_mat, rot=Y90)
+        for k in range(spokes):
+            if k in skip:
+                continue
+            a = math.pi / 2 + 2 * math.pi * k / spokes
+            r = (WR + 0.009) / 2
+            mb.box((0.005, WR - 0.008, 0.006), (WX, r * math.cos(a), ZC + r * math.sin(a)), spoke_mat,
+                   rot=(a - math.pi / 2, 0, 0))
+
+    if tier == 'scrap':
+        b = body('rust')
+        mb.jitter(b, rng, 0.0008)
+        f0, f1 = flanges('rust_dark', 'paint_faded')  # top flange off another valve
+        mb.jitter(f1, rng, 0.0006)
+        studs('steel_dull', skip={(1, 1), (2, -1)})
+        bonnet('rust', 'rust_dark', 'steel_dull', 'steel_dull')
+        mb.cyl(0.033, 0.033, 0.018, 10, (0.045, 0, ZC), 'tape', rot=(0.15, math.pi / 2, 0))  # taped-up leak
+        wheel('rust_dark', 'rust_dark', 'steel_dull', skip=(1,))
+        mb.blob(0.007, (0.064, -0.02, ZC - 0.02), 'corrosion')
+        mb.blob(0.006, (0.045, 0.03, L - FT - 0.008), 'corrosion')
+    elif tier == 'basic':
+        body('paint_blue')
+        flanges('paint_blue', 'paint_blue')
+        studs('steel')
+        bonnet('paint_blue', 'paint_blue', 'steel', 'steel')
+        wheel('term_red', 'term_red', 'term_red')
+    elif tier == 'quality':
+        body('navy')
+        flanges('chrome', 'chrome')
+        studs('brass')
+        bonnet('chrome', 'chrome', 'brass', 'chrome', bolts='brass')
+        wheel('accent_orange', 'chrome', 'chrome', spokes=4)
+        mb.lathe([(0.0675, ZC - 0.004), (0.069, ZC - 0.004), (0.069, ZC + 0.004), (0.0675, ZC + 0.004)], segs,
+                 (0, 0, 0), 'chrome')  # body seam band
+    else:  # space
+        body('white')
+        flanges('gunmetal', 'gunmetal')
+        studs('gunmetal')
+        for z in (FT, L):  # light rings on the flange faces
+            mb.lathe([(0.048, z - 0.0004), (0.054, z - 0.0004), (0.054, z + 0.0004), (0.048, z + 0.0004)], segs,
+                     (0, 0, 0), 'glow')
+        bonnet('white', 'gunmetal', 'gold', 'gold')
+        wheel('glow', 'gunmetal', 'gold', spokes=4)
+        mb.lathe([(0.0675, ZC - 0.003), (0.0685, ZC - 0.003), (0.0685, ZC + 0.003), (0.0675, ZC + 0.003)], segs,
+                 (0, 0, 0), 'glow_soft')
+
+
+# ------------------------------------------------------------------------------------------------- relay
+
+def build_relay(mb, tier, rng):
+    """Electromechanical contactor (a big relay) as it sits on a DIN rail, front face up: a stepped moulded body,
+    three main poles with screw terminals on a shelf at each end (line in, load out), the coil terminals A1/A2
+    and the contact carrier showing through a window on top. 5.4 x 8 x 8 cm."""
+    WX, DY, H = 0.054, 0.08, 0.076
+    SH = 0.05  # shelf height (terminal level)
+    UY = 0.044  # raised middle's depth
+
+    def body(low, high, bevel=0.0):
+        lo = mb.box((WX, DY, SH), (0, 0, SH / 2), low, bevel=bevel)
+        hi = mb.box((WX, UY, H - SH), (0, 0, SH + (H - SH) / 2), high, bevel=bevel)
+        return lo, hi
+
+    def terminals(head, plate=None, skip=(), bad=None):
+        for side in (1, -1):
+            y = side * (UY / 2 + (DY - UY) / 4)
+            for k, x in enumerate((-0.017, 0.0, 0.017)):
+                mb.box((0.012, 0.012, 0.0012), (x, y, SH + 0.0004), 'plastic_black')  # recess
+                mb.box((0.007, 0.0012, 0.006), (x, side * (DY / 2 + 0.0002), SH - 0.006), 'plastic_black')  # wire entry
+                if (side, k) in skip:
+                    continue
+                if plate:
+                    mb.box((0.01, 0.01, 0.0012), (x, y, SH + 0.0012), plate)
+                m = bad if bad and (side, k) == (1, 2) else head
+                mb.cyl(0.0042, 0.0042, 0.0025, 10, (x, y, SH + 0.0025), m)
+                mb.box((0.0075, 0.0012, 0.0008), (x, y, SH + 0.0039), 'plastic_black', rot=(0, 0, 0.6))  # slot
+
+    def coil_terminals(head):
+        for x in (-0.0175, 0.0175):
+            mb.box((0.011, 0.011, 0.0012), (x, -UY / 2 + 0.008, H + 0.0004), 'plastic_black')
+            mb.cyl(0.0038, 0.0038, 0.0022, 10, (x, -UY / 2 + 0.008, H + 0.0011), head)
+
+    def window(mat, label=None):
+        mb.box((0.022, 0.014, 0.0014), (0, 0.004, H + 0.0004), 'plastic_black')
+        mb.box((0.016, 0.009, 0.002), (0, 0.004, H + 0.0006), mat)
+        if label:
+            mb.box((0.04, 0.007, 0.0008), (0, UY / 2 - 0.006, H + 0.0002), label)
+
+    if tier == 'scrap':
+        lo, hi = body('plastic_dark', 'label')
+        mb.jitter(hi, rng, 0.0006)
+        mb.dent(hi, (WX / 2, UY / 2, H), 0.012, 0.005)  # cracked corner
+        terminals('steel_dull', skip={(-1, 0)}, bad='corrosion')
+        coil_terminals('steel_dull')
+        window('rust_dark')
+        # Scorched, melted pole: a burnt patch down the side and a slumped lump by the terminal.
+        mb.box((0.0012, 0.03, 0.03), (WX / 2 + 0.0002, 0.018, 0.028), 'plastic_black', rot=(0.2, 0, 0))
+        mb.blob(0.006, (0.018, 0.032, SH + 0.002), 'plastic_black')
+        mb.box((0.003, 0.03, 0.022), (-0.012, 0, H - 0.008), 'tape', rot=(0, 0.05, 0.1))
+        wire(mb, [(0.0, -0.031, SH + 0.002), (0.004, -0.036, SH + 0.012), (0.012, -0.034, SH + 0.022)], 0.0022, 5,
+             'wire_red')
+        wire(mb, [(0.017, 0.031, SH + 0.002), (0.02, 0.034, SH + 0.014), (0.014, 0.038, SH + 0.02)], 0.0022, 5,
+             'copper')
+    elif tier == 'basic':
+        body('plastic_dark', 'label', bevel=0.001)
+        terminals('steel')
+        coil_terminals('steel')
+        window('plastic_black', label='paint_blue')
+    elif tier == 'quality':
+        body('anodised', 'navy', bevel=0.0015)
+        terminals('brass', plate='chrome')
+        coil_terminals('brass')
+        window('accent_orange', label='label')
+        mb.cyl(0.0022, 0.0022, 0.002, 8, (0.019, 0.004, H + 0.0008), 'led_green')
+    else:  # space
+        body('gunmetal', 'white', bevel=0.002)
+        terminals('gold')
+        coil_terminals('gold')
+        window('glow')
+        for sx in (1, -1):  # light seam along the waist
+            mb.box((0.0008, UY - 0.008, 0.003), (sx * WX / 2, 0, SH + 0.006), 'glow_soft')
+        mb.box((0.03, 0.002, 0.0008), (0, UY / 2 - 0.006, H + 0.0002), 'glow')
+
+
 BUILDERS = {'battery': build_battery, 'motor': build_motor, 'heatsink': build_heatsink, 'compute': build_compute,
-            'coil': build_coil, 'antimatter': build_antimatter}
+            'coil': build_coil, 'antimatter': build_antimatter, 'impeller': build_impeller, 'bearing': build_bearing,
+            'gear': build_gear, 'valve': build_valve, 'relay': build_relay}
 
 
 def build_item(item, tier):
