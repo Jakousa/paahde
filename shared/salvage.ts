@@ -51,4 +51,14 @@ export const SALVAGE: Record<string, SalvageKind> = {
       { part: 'antimatter', min: 1, max: 2 },
     ],
   },
+  // #15: broken rack computer that once ran some big machine; finned side cooler + a stack of modules.
+  ai_control: {
+    label: 'AI control system',
+    model: 'salvage/ai_control.glb',
+    yields: [
+      { part: 'heatsink', min: 1, max: 3 },
+      { part: 'compute', min: 2, max: 4 },
+      { part: 'coil', min: 0, max: 1 },
+    ],
+  },
 };
