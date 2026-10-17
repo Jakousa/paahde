@@ -14,14 +14,14 @@ so you can go looking.
 
 - **Same flow as the small crash-site machines**, no parallel one: F says "Pick up …", `crashTake` with the wreck's
   id (`w:ix,iz`), the server's `CrashServer.carry` (now for small sites and wrecks) puts an item of the wreck's kind
-  in the bag, the wreck vanishes for everyone (`crashTaken`, `crash_taken` table) and respawns after 45 min. Item
+  in the bag, the wreck vanishes for everyone (`crashTaken`, `crash_taken` table) and lies there again 45 min later (unlike small machines, which stay gone). Item
   kinds = salvage ids (`vehicle_frame`, `water_jet`, `warp_core`, `ai_control` in shared/items.ts, labels from
   `SALVAGE`, icons the Blender-rendered `public/icons/salvage/*.png`).
-- **Disassembly table**: `CARRY_KINDS` includes the salvage ids, so the table offers "Disassemble broken vehicle
-  frame" and the job runs through the same `Bench` / teardown code, parts rolled from `SALVAGE` yields and
+- **Disassembly table**: `CARRY_KINDS` includes the salvage ids, so the table offers "Put the broken vehicle
+  frame on the table" and the job runs through the same `Bench` / teardown code, parts rolled from `SALVAGE` yields and
   `tierWeights` by `buildJunk` (now taking any `JunkKind` = component or salvage id; `junkSpec()` gives either's
-  spec). Parts come out through the same path as the crash-site machines: the server picks the bench seed,
-  rolls the wreck's contents with `rollParts` (now any `JunkKind`) and puts each taken part in the bag as its item.
+  spec). Parts come out through the same path as the crash-site machines: the server picks the table job's seed,
+  `machineParts` / `rollParts` (now any `JunkKind`) give the wreck's part list, and part i goes in the taker's bag.
 - **Disassembly structure per wreck** (`src/teardown/wrecks.ts`), laid out like each model: the buggy's battery
   tray (lid, cell straps and leads), seat pan over the chokes (choke bolts from underneath), controller heat sinks,
   hub motors on axle nuts facing out; the jet ski's seat as the bay lid over batteries and the drive motor (its shaft
