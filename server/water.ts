@@ -1,0 +1,80 @@
+// Server side of survival (shared/water.ts): drains each player's thirst bar in the sun, validates
+// sips and canteen refills, and says when a player has died of thirst (server/index.ts respawns them).
+import { insideBase } from '../shared/base.ts';
+import type { ServerMsg } from '../shared/protocol.ts';
+import { SPRINT, WALK_SPEED, type PlayerState } from '../shared/sim.ts';
+import {
+  CANTEEN_SIPS, drainPerSecond, DRINK_COOLDOWN_MS, FILL_COOLDOWN_MS, FILL_SLACK, SIP_WATER, WATER_MAX,
+} from '../shared/water.ts';
+
+/** While draining, a 'water' update goes out this often (the client eases between them). */
+const SEND_MS = 500;
+/** After a death, no drain and no drink/fill for this long (the client shows the death screen). */
+const RESPAWN_GRACE_MS = 3000;
+
+export type Thirst = {
+  water: number;
+  sips: number;
+  heat: boolean; // draining right now
+  sentAt: number;
+  lastDrink: number;
+  lastFill: number;
+  diedAt: number;
+};
+
+export function newThirst(water = WATER_MAX, sips = CANTEEN_SIPS): Thirst {
+  const w = Number.isFinite(water) ? Math.min(WATER_MAX, Math.max(0, water)) : WATER_MAX;
+  const s = Number.isInteger(sips) ? Math.min(CANTEEN_SIPS, Math.max(0, sips)) : CANTEEN_SIPS;
+  return { water: w, sips: s, heat: false, sentAt: 0, lastDrink: 0, lastFill: 0, diedAt: -Infinity };
+}
+
+export function waterMsg(t: Thirst): ServerMsg {
+  return { t: 'water', water: Math.round(t.water * 100) / 100, sips: t.sips, heat: t.heat };
+}
+
+/**
+ * Advance one player's thirst by `dt` seconds at time of day `tod`. Returns 'died' when the bar runs out
+ * (the caller respawns and calls revive), 'send' when the client should get a 'water' update, else null.
+ */
+export function tickThirst(t: Thirst, dt: number, s: PlayerState, input: number, tod: number, now: number): 'died' | 'send' | null {
+  if (now - t.diedAt < RESPAWN_GRACE_MS) return null;
+  const sprinting = (input & SPRINT) !== 0 && Math.hypot(s.vx, s.vz) > WALK_SPEED + 0.5;
+  const rate = drainPerSecond(tod, insideBase(s.x, s.z), sprinting);
+  const heat = rate > 0;
+  t.water = Math.max(0, t.water - rate * dt);
+  if (t.water <= 0) return 'died';
+  if (heat !== t.heat || (heat && now - t.sentAt >= SEND_MS)) {
+    t.heat = heat;
+    t.sentAt = now;
+    return 'send';
+  }
+  return null;
+}
+
+/** Back to full after dying. */
+export function revive(t: Thirst, now: number) {
+  t.water = WATER_MAX;
+  t.sips = CANTEEN_SIPS;
+  t.heat = false;
+  t.diedAt = now;
+  t.sentAt = now;
+}
+
+/** One sip from the canteen. False (and nothing changes) if empty, too soon or mid-respawn. */
+export function drink(t: Thirst, now: number): boolean {
+  if (t.sips <= 0 || now - t.lastDrink < DRINK_COOLDOWN_MS || now - t.diedAt < RESPAWN_GRACE_MS) return false;
+  t.lastDrink = now;
+  t.sips--;
+  t.water = Math.min(WATER_MAX, t.water + SIP_WATER);
+  t.sentAt = now;
+  return true;
+}
+
+/** Refill the canteen at the base (its supply is endless). False if not in the base or too soon. */
+export function fill(t: Thirst, s: PlayerState, now: number): boolean {
+  if (!insideBase(s.x, s.z, FILL_SLACK) || now - t.lastFill < FILL_COOLDOWN_MS) return false;
+  t.lastFill = now;
+  t.sips = CANTEEN_SIPS;
+  t.sentAt = now;
+  return true;
+}
