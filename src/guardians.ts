@@ -2,7 +2,7 @@
 // (src/world/botFrames.ts), walks the guardians (src/world/guardians.ts) and flies the drones
 // (src/world/drones.ts), and does what makes them feel big and dangerous: footfall sound, dust and camera shake,
 // the horn when one comes for you, the cannon (src/world/bolts.ts: charge whine, zap, burst), the missiles a drone
-// calls down (src/world/missiles.ts: whistle, blast), a chirp when a drone locks on, and a warning line on the HUD.
+// calls down (src/world/missiles.ts: whistle, blast), a chirp when a drone locks on.
 import * as THREE from 'three/webgpu';
 import { BOT_DELAY_MS, dronesAt, guardiansAt } from './world/botFrames';
 import { Drones } from './world/drones';
@@ -20,13 +20,6 @@ const SHAKE_R = 90;
 const SHAKE = 0.35;
 const DUST_R = 600;
 
-const css = `
-#botWarn { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); pointer-events: none; z-index: 6;
-  font: 700 15px var(--mono, monospace); letter-spacing: 0.12em; text-transform: uppercase; color: #ffd0b0;
-  text-shadow: 0 0 8px rgba(255, 40, 10, 0.9), 0 1px 2px #000; opacity: 0; transition: opacity .3s; white-space: nowrap; }
-#botWarn.on { opacity: 1; }
-`;
-
 export class GuardianFx {
   readonly guardians: Guardians;
   readonly drones: Drones;
@@ -42,7 +35,6 @@ export class GuardianFx {
   combat = false;
   private crawled = new Set<number>();
   private bitAt = 0;
-  private warn = document.createElement('div');
   private ear = new THREE.Vector3();
 
   constructor(scene: THREE.Scene) {
@@ -68,11 +60,6 @@ export class GuardianFx {
         else this.thump(e.x, e.y, e.z, 0.3, 5, 1, 0.4);
       }
     };
-    const style = document.createElement('style');
-    style.textContent = css;
-    this.warn.id = 'botWarn';
-    document.head.append(style);
-    document.body.append(this.warn);
   }
 
   private footfall(f: Footfall) {
@@ -162,11 +149,7 @@ export class GuardianFx {
     if (spotted && !this.locked) guardianSound.chirp();
     this.locked = spotted;
     const incoming = this.missiles.incoming(focus.x, focus.z, 30, net.serverTime()).length > 0;
-    const text = incoming ? 'Incoming' : spotted ? 'Spotted' : this.hunted.size ? 'Guardian'
-      : this.crawled.size ? 'Crawlers' : '';
-    this.combat = text !== '';
-    if (text) this.warn.textContent = text;
-    this.warn.classList.toggle('on', text !== '');
+    this.combat = incoming || spotted || this.hunted.size > 0 || this.crawled.size > 0;
     if (this.shake > 0.001) {
       const s = this.shake;
       camera.position.x += (Math.random() - 0.5) * s;
