@@ -2,6 +2,27 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Laser pistol: the cheap gun
+
+- **Getting one**: every player, old and new, gets one once in the 3rd hotbar slot (server/items.ts `pistolGift`, the
+  `grants` table; what was there moves into the bag). After that: crafted at the workbench from a metal sheet and a
+  wiring coil (any tiers, no battery or plank), and 4% of buried caches hold one. `laser_pistol`, 2×1; the debug gear
+  button gives one too.
+- **Model** (tools/models/pistol.py → public/models/pistol.glb): a Ruger-pattern .22 rebuilt as a blaster after a
+  reference the team picked: black upper with a knurled bolt cap, steeply raked grip with checkered brown panels and a
+  medallion, ribbed shroud with a glowing red tip, a silver cell tube on top, a long focusing rod down the right side, a
+  charge window, iron sights. Baked like the rifle; `PistolGlow` pulses with the charge.
+- **Held** one-handed (tools/models/hands.py, `gun_in_right` now shared with the rifle): PistolIdle / PistolWalk low
+  right with the bore on the crosshair, PistolAim out at arm's length with the sights exactly on the view axis
+  (`P_RELIEF` 0.38, the build checks it), left arm lowered out of view.
+- **Feel** (src/rifle.ts `FEEL`): no scope, a 1.3× zoom on the sights, the crosshair hidden while aimed; sways 1.7× the
+  rifle (one hand), wider hip cone, harder kick; recharges in 280 ms (rifle 420) but reaches only 100 m (rifle 260,
+  a guardian's cannon 180), so it's for crawlers and drones or a close, risky fight. Hits break weak points and drones
+  as the rifle's do. Higher, shorter, quieter zap (`rifleSound.shot(…, pistol)`; others hear it via `zap.pistol`).
+- **Server** (server/index.ts onFire): any gun in `GUNS` (shared/rifle.ts) in hand, its own cooldown and reach.
+- Known gap: aimed, the forearm comes up the bottom middle of the view (it's how a one-handed sight picture looks);
+  the sights and everything above them stay clear.
+
 ## 2026-10-17 — Progression: scrap fields, crawler ground, guardian ground
 
 A new player starts with nothing, and the crash sites now lead them on in three rings around the base

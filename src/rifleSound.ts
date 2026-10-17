@@ -88,30 +88,33 @@ function tone(ctx: AudioContext, to: AudioNode, t: number, len: number, type: Os
 class RifleSound {
   private charge: { osc: OscillatorNode; gain: GainNode } | null = null;
 
-  /** A shot: yours (`at` null) or someone else's at `at`, heard from `ear`. */
-  shot(at: P | null = null, ear: P | null = null) {
+  /** A shot: yours (`at` null) or someone else's at `at`, heard from `ear`. `pistol`: the laser pistol's, higher,
+   *  shorter and lighter. */
+  shot(at: P | null = null, ear: P | null = null, pistol = false) {
     const ctx = audio.ctx, out = audio.out;
     if (!ctx || !out || !audio.running) return;
     const d = at && ear ? Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) : 0;
     if (d > 600) return;
     const t = ctx.currentTime + d / SPEED_OF_SOUND;
-    const o = bus(ctx, out, SHOT_GAIN, at, ear, 15);
+    const o = bus(ctx, out, SHOT_GAIN * (pistol ? 0.75 : 1), at, ear, 15);
+    // The pistol: up in pitch, quicker, less body.
+    const f = pistol ? 1.6 : 1, len = pistol ? 0.6 : 1;
     // Crack.
-    hiss(ctx, o, t, 0.05, 'highpass', 2500, 0.7, 0.9, 0.001);
+    hiss(ctx, o, t, 0.05 * len, 'highpass', 2500 * f, 0.7, 0.9, 0.001);
     // The laser: a bright zap falling away, a sub-octave buzz under it.
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(9000, t);
-    lp.frequency.exponentialRampToValueAtTime(600, t + 0.22);
+    lp.frequency.setValueAtTime(9000 * Math.min(f, 1.3), t);
+    lp.frequency.exponentialRampToValueAtTime(600 * f, t + 0.22 * len);
     lp.Q.value = 4;
     lp.connect(o);
-    tone(ctx, lp, t, 0.22, 'sawtooth', 2600, 160, 0.45);
-    tone(ctx, lp, t, 0.16, 'square', 1300, 90, 0.18);
+    tone(ctx, lp, t, 0.22 * len, 'sawtooth', 2600 * f, 160 * f, 0.45);
+    tone(ctx, lp, t, 0.16 * len, 'square', 1300 * f, 90 * f, 0.18);
     // Punch.
-    tone(ctx, o, t, 0.14, 'sine', 120, 38, 0.9, 0.002);
+    tone(ctx, o, t, 0.14 * len, 'sine', 120 * f, 38 * f, pistol ? 0.5 : 0.9, 0.002);
     // The dunes answer: a dull slap and a tail.
-    hiss(ctx, o, t + 0.16 + Math.random() * 0.08, 0.7, 'lowpass', 900, 0.5, 0.16, 0.02);
-    hiss(ctx, o, t + 0.42 + Math.random() * 0.15, 0.9, 'lowpass', 600, 0.5, 0.07, 0.04);
+    hiss(ctx, o, t + 0.16 + Math.random() * 0.08, 0.7 * len, 'lowpass', 900, 0.5, 0.16 * len, 0.02);
+    hiss(ctx, o, t + 0.42 + Math.random() * 0.15, 0.9 * len, 'lowpass', 600, 0.5, 0.07 * len, 0.04);
   }
 
   /** The cell recharging over `s` seconds, then a click: yours only. */

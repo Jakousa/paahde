@@ -52,6 +52,7 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   plant_bed: { label: 'Plant bed', stack: 1, size: [3, 2] },
   uv_lamp: { label: 'UV lamp', stack: 1, size: [1, 2] },
   laser_rifle: { label: 'Laser rifle', stack: 1, size: [4, 1] },
+  laser_pistol: { label: 'Laser pistol', stack: 1, size: [2, 1] },
   // Salvage wrecks carried home from the desert (shared/wrecks.ts), taken apart on the disassembly table too.
   vehicle_frame: { label: SALVAGE.vehicle_frame.label, stack: 1, size: [4, 3] },
   water_jet: { label: SALVAGE.water_jet.label, stack: 1, size: [3, 2] },

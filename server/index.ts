@@ -16,7 +16,7 @@ import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { BLAST_R, CRATER_MM, CRATER_R, GUARDIAN } from '../shared/guardians.ts';
 import { BLAST_R as MISSILE_BLAST_R } from '../shared/missiles.ts';
-import { COOLDOWN_MS as RIFLE_COOLDOWN_MS, RIFLE } from '../shared/rifle.ts';
+import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
@@ -308,14 +308,18 @@ function boltPush(p: Player, events: { msg: ServerMsg }[], t: 'boom' | 'blast', 
 
 /** A shot may start this far (m) from the eye: the third-person camera backs off up to 4.5 m along the view ray. */
 const SHOT_FROM = 6;
-/** A rifle shot (shared/rifle.ts): the rifle in hand and charged, from the shooter's eye. Shown to everyone near. */
+/** A rifle or pistol shot (shared/rifle.ts): the gun in hand and charged, within its reach, from the shooter's eye.
+ *  Shown to everyone near. */
 function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
   const now = performance.now();
   const nums = [m.x, m.y, m.z, m.ex, m.ey, m.ez];
   if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v))) return;
-  if (p.down || p.slot < 0 || items.slots(p.browserId, 'bag')[p.slot]?.kind !== RIFLE) return;
+  const kind = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot]?.kind;
+  const gun = kind ? GUNS[kind] : undefined;
+  if (p.down || !gun) return;
   // A little slack for network jitter bunching two clicks together.
-  if (now - p.firedAt < RIFLE_COOLDOWN_MS * 0.8) return;
+  if (now - p.firedAt < gun.cooldown * 0.8) return;
+  if (Math.hypot(m.ex - m.x, m.ey - m.y, m.ez - m.z) > gun.range + 5) return;
   p.firedAt = now;
   const s = p.state;
   if (Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
@@ -323,7 +327,7 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
   const by = { id: p.id, x: s.x, y: s.y, z: s.z, safe: wall - p.heat.diedAt < BOT_GRACE_MS };
   const r = m.d !== undefined ? { hit: guardians.shootDrone(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.d, now), kill: null }
     : m.g === undefined ? { hit: false, kill: null } : guardians.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.g, m.i, now);
-  const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit };
+  const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
   for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
   if (r.kill) dropSpoils(r.kill);
 }
@@ -426,7 +430,7 @@ function onDebugGear(p: Player) {
     const parts = GEAR[kind].slots.map((s) => ('part' in s ? partKind(s.part, TIERS[0]) : s.scrap[0]));
     if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
   }
-  if (!items.slots(p.browserId, 'bag').some((it) => it?.kind === RIFLE)) items.giveItem(p.browserId, { kind: RIFLE });
+  for (const gun of [RIFLE, PISTOL]) if (!items.slots(p.browserId, 'bag').some((it) => it?.kind === gun)) items.giveItem(p.browserId, { kind: gun });
   for (const box of ['bag', 'equip']) sendBox(p, box);
   gearChanged(p.browserId);
 }

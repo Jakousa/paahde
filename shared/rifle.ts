@@ -14,6 +14,22 @@ export const COOLDOWN_MS = 420;
 export const RANGE = 260;
 
 /**
+ * The laser pistol: the cheap one (two common parts at the workbench, shared/crafting.ts; also turns up in buried
+ * caches). One-handed, iron sights, no scope; it breaks weak points and drones just as the rifle does, but recharges
+ * faster and only reaches PISTOL_RANGE: under a guardian's cannon (BOLT_RANGE, shared/guardians.ts), so it's for
+ * crawlers and drones, or for a brave close fight.
+ */
+export const PISTOL = 'laser_pistol';
+export const PISTOL_COOLDOWN_MS = 280;
+export const PISTOL_RANGE = 100;
+
+/** The guns by item kind: cooldown (ms) and reach (m). */
+export const GUNS: Record<string, { cooldown: number; range: number }> = {
+  [RIFLE]: { cooldown: COOLDOWN_MS, range: RANGE },
+  [PISTOL]: { cooldown: PISTOL_COOLDOWN_MS, range: PISTOL_RANGE },
+};
+
+/**
  * A walker's weak points. Guardians: one on every knee (in the tibia's frame, origin at the knee, +Z down the shin,
  * +Y towards the bend's outside). Crawlers: two on the flanks of the body (body frame, +Z forward). Positions and radii
  * at the model's scale 1 (multiplied by KINDS scale); `hit` pads the radius for the hit test (small, quick crawlers).

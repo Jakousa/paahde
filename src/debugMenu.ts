@@ -3,7 +3,7 @@
 // moves the shared server clock for everyone, production included. "Sandstorm here" summons one on you
 // (for everyone, after the usual warning); "Local sandstorm" sends one at you from just upwind at once, seen only by you.
 // "Guardian here" / "Drone here" bring the nearest guardian, or a drone (by day too), to you, for everyone.
-// "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, and a laser rifle in your bag and equipment.
+// "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, and a laser rifle and pistol in your bag and equipment.
 import { ui } from './input';
 import { summonLocalStorm } from './storm';
 import { clockText, timeControl } from './world/dayNight';
@@ -41,7 +41,7 @@ export class DebugMenu {
 <button id="dbgLocalStorm" title="A sandstorm rolling in from upwind right now, only you see it (no heat)">Local sandstorm</button></div>
 <div class="row"><button id="dbgGuardian" title="The nearest guardian, brought 90 m from you (for everyone)">Guardian here</button>
 <button id="dbgDrone" title="A searchlight drone over you for a minute, even by day (for everyone)">Drone here</button></div>
-<div class="row"><button id="dbgGear" title="One of every piece of gear, repaired with Scrap parts, and a laser rifle (what doesn't fit the bag is skipped)">Give gear</button></div>`;
+<div class="row"><button id="dbgGear" title="One of every piece of gear, repaired with Scrap parts, a laser rifle and a laser pistol (what doesn't fit the bag is skipped)">Give gear</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
     const live = p.querySelector<HTMLInputElement>('#dbgLive')!;

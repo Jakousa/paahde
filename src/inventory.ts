@@ -199,6 +199,16 @@ stroke-linejoin="round"><path d="M-13 5Q-3 10 6 1.5" fill="none" stroke="#6e6444
 <path d="M12.3 -1.6V1.4M13.4 -1.6V1.4" stroke="#ff6a2a" stroke-width="0.6"/><circle cx="15.6" cy="-0.1" r="1.6" fill="#ff7a32" stroke="none" opacity="0.45"/>
 <circle cx="15.2" cy="-0.1" r="0.9" fill="#ffb066" stroke="none"/><rect x="-1.6" y="-3.2" width="1.2" height="1.2" fill="#2e2a26"/>
 <rect x="-5.6" y="-5" width="7.4" height="2" rx="1" fill="#4a4a48"/><path d="M-11 0.3L-10 2.8" stroke="#3a3a36" stroke-width="1.4"/></g></svg>`,
+  // Laser pistol, muzzle right: black upper with the silver bolt cap and cell tube, raked brown grip, ribbed shroud, red tip.
+  laser_pistol: `<svg viewBox="0 0 22 26"><g transform="translate(11 13) scale(0.85)" stroke="#120c08" stroke-width="0.7" stroke-linejoin="round">
+<path d="M-6.5 -1.2L-1.6 -1.2L-3.6 9.2Q-4 10.4 -5.4 10.2L-8.6 9.6Q-9.6 9.3 -9.2 8.2z" fill="#6a3a22"/>
+<path d="M-7 1.2L-4.6 1.6M-7.6 4L-5 4.4M-8.2 6.8L-5.6 7.2" stroke="#3a1e10" stroke-width="0.5"/>
+<path d="M-1.4 -0.6Q-1 3.2 2.2 3.2Q3.4 3.2 3.4 -0.6" fill="none" stroke="#2a2a2a" stroke-width="0.9"/>
+<rect x="-9" y="-4.4" width="12.6" height="4.2" rx="0.7" fill="#2e2f31"/><rect x="-10.6" y="-3.6" width="1.8" height="2.6" rx="0.6" fill="#a9aaa6"/>
+<rect x="-7" y="-6" width="8" height="1.5" rx="0.7" fill="#c4c5c0"/><rect x="3.4" y="-3" width="2.4" height="1.6" fill="#2e2f31"/>
+<rect x="5.6" y="-3.6" width="4.4" height="2.8" rx="0.4" fill="#1e1c1b"/><path d="M6.6 -3.6V-0.8M7.7 -3.6V-0.8M8.8 -3.6V-0.8" stroke="#3a3836" stroke-width="0.5"/>
+<rect x="9.8" y="-3.5" width="1.4" height="2.6" rx="0.4" fill="#ff3a1a" stroke="none"/><circle cx="11" cy="-2.2" r="1.8" fill="#ff5a2a" stroke="none" opacity="0.35"/>
+<rect x="-3.6" y="-3" width="3" height="0.9" fill="#ff3a1a" stroke="none" opacity="0.85"/></g></svg>`,
   spring: `<svg viewBox="0 0 22 26"><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#a8a294" stroke-width="1.3"/></svg>`,

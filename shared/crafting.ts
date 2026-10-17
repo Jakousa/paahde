@@ -32,6 +32,8 @@ export const RECIPES: Record<string, Recipe> = {
     { label: 'Metal plank', n: 1, match: (k) => k === 'metal_plank' }, { label: 'Metal sheet', n: 1, match: sheet },
     { label: 'Wiring coil', n: 2, match: coil }, { label: 'Battery', n: 1, match: battery },
   ] },
+  // The cheap gun (shared/rifle.ts PISTOL): a sheet for the body and a coil, no cell to find.
+  laser_pistol: { makes: 'laser_pistol', needs: [{ label: 'Metal sheet', n: 1, match: sheet }, { label: 'Wiring coil', n: 1, match: coil }] },
 };
 
 /** How many items in `slots` match an ingredient. */

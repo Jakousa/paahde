@@ -1,8 +1,8 @@
 // What a player avatar holds and wears, beyond the scavenger glb (src/models/scavenger.ts): stand-in models
 // for the item in the hand (the selected hotbar slot) and for the wrist computer and storm detector when
 // equipped (the backpack is part of the glb). Small boxes and cylinders, like the loot on the sand
-// (src/world/loot.ts); parts use the disassembly part models (src/teardown/junk.ts). The laser rifle uses its own
-// model (public/models/rifle.glb, tools/models/rifle.py).
+// (src/world/loot.ts); parts use the disassembly part models (src/teardown/junk.ts). The laser rifle and pistol use
+// their own models (public/models/rifle.glb, pistol.glb; tools/models/rifle.py, pistol.py).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { parsePart } from '../../shared/items.ts';
@@ -90,24 +90,30 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
   motorcycle: () => crate(0.36, RED),
   // Carried at the hip in the right hand, muzzle forward and a little down, the stock back under the arm.
   laser_rifle: (loaded) => {
-    const g = rifleModel(loaded);
+    const g = gunModel('./models/rifle.glb', loaded);
     g.rotation.set(-0.25, Math.PI, 0); // the model's muzzle is +Z
+    return g;
+  },
+  // In the right hand, muzzle forward and down.
+  laser_pistol: (loaded) => {
+    const g = gunModel('./models/pistol.glb', loaded);
+    g.rotation.set(-0.45, Math.PI, 0);
     return g;
   },
 };
 
-const RIFLE_URL = './models/rifle.glb';
-let rifleSrc: Promise<THREE.Object3D> | null = null;
+const gunSrc = new Map<string, Promise<THREE.Object3D>>();
 
 /**
- * The laser rifle (public/models/rifle.glb): origin at the pistol grip, muzzle +Z, up +Y, materials 'Rifle'
- * and the emissive 'RifleGlow'. Empty until loaded (then `loaded` is called); each copy has its own
+ * The laser rifle or pistol (public/models/rifle.glb, pistol.glb): origin at the grip, muzzle +Z, up +Y, materials
+ * 'Rifle' / 'Pistol' and the emissive glow. Empty until loaded (then `loaded` is called); each copy has its own
  * geometry, so disposeModel() can free it.
  */
-export function rifleModel(loaded?: () => void): THREE.Group {
+function gunModel(url: string, loaded?: () => void): THREE.Group {
   const g = new THREE.Group();
-  rifleSrc ??= new GLTFLoader().loadAsync(RIFLE_URL).then((gltf) => gltf.scene);
-  rifleSrc.then(
+  let src = gunSrc.get(url);
+  if (!src) gunSrc.set(url, (src = new GLTFLoader().loadAsync(url).then((gltf) => gltf.scene)));
+  src.then(
     (src) => {
       const m = src.clone(true);
       m.traverse((o) => {
@@ -118,7 +124,7 @@ export function rifleModel(loaded?: () => void): THREE.Group {
       shadows(g);
       loaded?.();
     },
-    (e) => console.warn('rifle model failed to load', e),
+    (e) => console.warn(`${url} failed to load`, e),
   );
   return g;
 }

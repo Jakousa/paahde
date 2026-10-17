@@ -6,7 +6,7 @@ import { addItem, findSpot, hasItem, HOTBAR, partKind, roomFor, settle, sortItem
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, growChest, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { craft, RECIPES } from '../shared/crafting.ts';
-import { RIFLE } from '../shared/rifle.ts';
+import { PISTOL, RIFLE } from '../shared/rifle.ts';
 import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
 
@@ -84,6 +84,7 @@ export class ItemServer {
    */
   setup(browserId: string) {
     this.rifleGift(browserId);
+    this.pistolGift(browserId);
     if (this.db.hasGearKit(browserId)) return;
     this.db.tx(() => {
       if (this.db.hasStarterKit(browserId)) {
@@ -102,19 +103,30 @@ export class ItemServer {
   }
 
   /**
-   * Once, to the players from before the laser rifle (shared/rifle.ts): one in the 4th hotbar slot. Whatever was there
-   * moves to the first free spot in the bag (past its end if there's none). New players craft their own.
+   * Once, to the players from before the laser rifle (shared/rifle.ts): one in the 4th hotbar slot. New players craft
+   * their own.
    */
   private rifleGift(browserId: string) {
-    if (this.db.hasGrant(browserId, 'rifle')) return;
-    const existing = this.db.hasGearKit(browserId);
+    this.slotGift(browserId, 'rifle', RIFLE, HOTBAR - 1, this.db.hasGearKit(browserId));
+  }
+
+  /** Once, to every player, old and new: a laser pistol (shared/rifle.ts) in the 3rd hotbar slot. */
+  private pistolGift(browserId: string) {
+    this.slotGift(browserId, 'pistol', PISTOL, 2, true);
+  }
+
+  /**
+   * Grant `grant`, once: if `give`, a `kind` into bag slot `slot`. Whatever was there moves to the first free spot in
+   * the bag (past its end if there's none).
+   */
+  private slotGift(browserId: string, grant: string, kind: string, slot: number, give: boolean) {
+    if (this.db.hasGrant(browserId, grant)) return;
     this.db.tx(() => {
-      this.db.markGrant(browserId, 'rifle');
-      if (!existing) return;
+      this.db.markGrant(browserId, grant);
+      if (!give) return;
       const bag = this.slots(browserId, 'bag');
-      const slot = HOTBAR - 1;
       const was = bag[slot];
-      bag[slot] = { id: this.newId(), kind: RIFLE, n: 1 };
+      bag[slot] = { id: this.newId(), kind, n: 1 };
       if (was) {
         const spot = findSpot(bag, this.bagShape(browserId), was.kind, !!was.r, [slot]);
         if (spot) {

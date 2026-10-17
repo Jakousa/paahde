@@ -1,4 +1,7 @@
-// The laser rifle in your hands (shared/rifle.ts): aiming, the shot, and the feel of it.
+// The laser rifle in your hands (shared/rifle.ts): aiming, the shot, and the feel of it. The laser pistol works the same
+// way with its own feel (FEEL): no scope, aimed it comes up at arm's length onto the iron sights (src/viewmodel.ts
+// PistolAim) with a slight zoom; it sways more (one hand), spreads more from the hip and kicks harder, but recharges
+// faster; and it reaches only PISTOL_RANGE.
 //
 // - Aim: right mouse or X raises it to the eye (src/viewmodel.ts plays RifleAim); once it is there the view goes
 //   through the scope: a round eyepiece with a duplex reticle and a lit red dot, ZOOM× (the mouse wheel sets it). Let
@@ -25,7 +28,7 @@ import type { Drones } from './world/drones';
 import { zaps } from './world/zaps';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
-import { COOLDOWN_MS, RANGE } from '../shared/rifle.ts';
+import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { SPRINT_SPEED, WALK_SPEED } from '../shared/sim.ts';
 
@@ -38,10 +41,20 @@ const BREATH = 0.0026, TREMOR = 0.0014, JITTER = 0.0006;
 const BREATH_HZ = 0.24, TREMOR_HZ = 0.55;
 /** Hold your breath this long (s), then gasp for GASP_S. */
 const HOLD_S = 4, GASP_S = 2.5;
-/** Hip fire: the shot lands within this cone (rad) standing, more on the move. */
-const HIP_SPREAD = 0.022, MOVE_SPREAD = 0.05;
-/** Recoil: muzzle climb (rad) per shot, the share that stays, sideways kick (rad, either way). */
-const CLIMB = 0.028, CLIMB_STAYS = 0.35, KICK_SIDE = 0.007;
+/** Recoil: the share of the muzzle climb that stays. */
+const CLIMB_STAYS = 0.35;
+
+/**
+ * How each gun handles. `scope`: aimed, the view goes through a scope; else `sight` is the zoom on the iron sights.
+ * `sway`: × the aim's sway. Hip fire lands within a cone of `hip` rad standing, up to `move` more on the move. Recoil:
+ * muzzle climb `climb` rad per shot, sideways kick up to `side` rad either way.
+ */
+const FEEL = {
+  rifle: { kind: RIFLE, scope: true, sight: 1, sway: 1, hip: 0.022, move: 0.05, climb: 0.028, side: 0.007 },
+  pistol: { kind: PISTOL, scope: false, sight: 1.3, sway: 1.7, hip: 0.035, move: 0.06, climb: 0.045, side: 0.012 },
+};
+type Gun = keyof typeof FEEL;
+const isGun = (h: string): h is Gun => h in FEEL;
 
 const css = `
 #rifleScope { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .08s; z-index: 5; }
@@ -54,6 +67,7 @@ body.rifleScoped #crosshair, body.rifleScoped #pickup { display: none !important
 #rifleHip i { position: absolute; background: rgba(255, 244, 228, 0.75); box-shadow: 0 0 2px #000; }
 body.rifleHip #rifleHip { display: block; }
 body.rifleHip #crosshair { display: none; }
+body.gunSights #crosshair { display: none; }
 `;
 
 // The scope: everything outside the eyepiece black, a soft edge, a faint green-grey lens tint and vignette, and a
@@ -109,8 +123,10 @@ export class Rifle {
   private recoilYaw = 0;
   private recoilVP = 0;
   private recoilVY = 0;
-  private spread = HIP_SPREAD;
+  private spread = FEEL.rifle.hip;
   private scoped = false;
+  /** The gun in hand (or last in hand). */
+  private gun: Gun = 'rifle';
   /** Debug (?debug, `dbg.rifle`): hold the aim / fire buttons without the mouse captured. */
   forceAim = false;
   forceFire = false;
@@ -145,7 +161,7 @@ export class Rifle {
       _o.set(m.x, m.y - 0.15, m.z).addScaledVector(_d, 0.8);
       const ear = this.view.camera.position;
       zaps.beam(_o.x, _o.y, _o.z, m.ex, m.ey, m.ez, _o.distanceTo(ear) < 60);
-      rifleSound.shot(_o, ear);
+      rifleSound.shot(_o, ear, !!m.pistol);
       zaps.burst(m.ex, m.ey, m.ez, -_d.x, -_d.y, -_d.z, 10);
       rifleSound.impact(m.hit ? 'glass' : heightAt(m.ex, m.ez) > m.ey - 0.3 ? 'sand' : 'metal', _e.set(m.ex, m.ey, m.ez), ear);
     };
@@ -157,12 +173,14 @@ export class Rifle {
    */
   update(dt: number, pose: { speed: number; grounded: boolean; crouching: boolean }, can: boolean) {
     this.time += dt;
-    const holding = playerHands.held === 'rifle' && can;
+    if (isGun(playerHands.held)) this.gun = playerHands.held;
+    const feel = FEEL[this.gun];
+    const holding = isGun(playerHands.held) && can;
     const aiming = holding && ((aimDown() && !!document.pointerLockElement) || this.forceAim);
     playerHands.aim = Math.max(0, Math.min(1, playerHands.aim + (aiming ? dt : -dt * 1.4) / ADS_S));
     // In third person aiming brings the view in to the eye (src/camera.ts); the scope only once it's there.
     this.view.aimIn = aiming;
-    const scoped = aiming && playerHands.aim >= 1 && this.view.boomLength < 0.05;
+    const scoped = aiming && playerHands.aim >= 1 && feel.scope && this.view.boomLength < 0.05;
     if (scoped !== this.scoped) {
       this.scoped = scoped;
       this.el.style.opacity = scoped ? '1' : '0';
@@ -170,8 +188,9 @@ export class Rifle {
     }
     playerHands.rifleScoped = scoped;
     document.body.classList.toggle('rifleHip', holding && !aiming);
+    document.body.classList.toggle('gunSights', holding && !feel.scope && playerHands.aim > 0.5);
     if (scoped) this.view.zoom = this.zoom;
-    else if (playerHands.held === 'rifle') this.view.zoom = 1;
+    else if (isGun(playerHands.held)) this.view.zoom = 1 + (feel.sight - 1) * playerHands.aim;
 
     // How unsteady: the stance and pace now, being out of breath, holding it or gasping.
     const pace = pose.grounded ? pose.speed / WALK_SPEED : 2.5;
@@ -193,14 +212,14 @@ export class Rifle {
     const stance = pose.crouching ? 0.6 : 1;
     const want = stance * (1 + 2.2 * Math.min(2, pace) + 2.5 * this.winded) * gasp * (this.held > 0 ? 0.18 : 1);
     this.unsteady += (want - this.unsteady) * (1 - Math.exp(-dt * 2));
-    const u = this.unsteady;
+    const u = this.unsteady * feel.sway;
     const b = Math.sin(this.time * BREATH_HZ * Math.PI * 2 * (1 + this.winded * 1.5));
     const f = this.time * TREMOR_HZ * Math.PI * 2;
     // Breath shows most when held to the eye; from the hip the arms just bob a little.
     const k = 0.35 + 0.65 * playerHands.aim;
     this.swayPitch = k * u * (BREATH * b * (this.held > 0 ? 0.2 : 1) + TREMOR * 0.6 * Math.sin(2 * f) + JITTER * wobble(this.time, 1.7));
     this.swayYaw = k * u * (TREMOR * Math.sin(f) + JITTER * wobble(this.time, 5.3));
-    this.spread = playerHands.aim > 0.95 ? 0 : HIP_SPREAD + MOVE_SPREAD * Math.min(1, pace / 2) * (1 - playerHands.aim);
+    this.spread = playerHands.aim > 0.95 ? 0 : feel.hip + feel.move * Math.min(1, pace / 2) * (1 - playerHands.aim);
     // The recoil spring (rad): kicked on firing, pulled back (slightly under-damped: a little bounce past rest).
     const kk = 160, cc = 17;
     this.recoilVP += (-kk * this.recoilPitch - cc * this.recoilVP) * dt;
@@ -209,7 +228,7 @@ export class Rifle {
     this.recoilYaw += this.recoilVY * dt;
     playerHands.kick = Math.max(0, playerHands.kick - dt * 5);
 
-    const charge = Math.min(1, 1 - (this.readyAt - performance.now()) / COOLDOWN_MS);
+    const charge = Math.min(1, 1 - (this.readyAt - performance.now()) / GUNS[feel.kind].cooldown);
     playerHands.charge = charge;
     if (scoped) {
       this.zoomEl.textContent = `${this.zoom.toFixed(1)}×`;
@@ -227,7 +246,7 @@ export class Rifle {
    */
   afterCamera(fire: boolean) {
     const cam = this.view.camera;
-    if (playerHands.held !== 'rifle' && !playerHands.aim) return;
+    if (!isGun(playerHands.held) && !playerHands.aim) return;
     // Through the scope the eye's shadow slides about with the sway and the kick.
     if (this.scoped) {
       const px = innerHeight * 3;
@@ -249,7 +268,8 @@ export class Rifle {
 
   private shoot() {
     const cam = this.view.camera;
-    this.readyAt = performance.now() + COOLDOWN_MS;
+    const feel = FEEL[this.gun], { cooldown, range } = GUNS[feel.kind];
+    this.readyAt = performance.now() + cooldown;
     // From the eye along the aim (sway included), scattered within the cone from the hip. In third person the
     // camera is behind the eye on the view ray, so this still goes where the crosshair is.
     _o.copy(this.view.eye);
@@ -262,8 +282,8 @@ export class Rifle {
       _d.addScaledVector(_r, Math.cos(a) * r).addScaledVector(_u, Math.sin(a) * r).normalize();
     }
     // The sand first, then anything of a walker before it.
-    let dist = RANGE, ground = false;
-    for (let t = 0.5; t <= RANGE; t += 0.75) {
+    let dist = range, ground = false;
+    for (let t = 0.5; t <= range; t += 0.75) {
       if (_o.y + _d.y * t > heightAt(_o.x + _d.x * t, _o.z + _d.z * t)) continue;
       // Refine between the last two samples.
       let lo = t - 0.75, hi = t;
@@ -283,9 +303,12 @@ export class Rifle {
     _e.copy(_o).addScaledVector(_d, dist);
     // The beam from the drawn muzzle, or (third person: the rifle isn't drawn in the hands) from about where it'd be.
     const m = this.muzzle(_m) ?? _m.copy(_o).addScaledVector(_d, 0.6).addScaledVector(_r.set(1, 0, 0).applyQuaternion(_q), 0.2).add(_u.set(0, -0.25, 0));
+    // Down the iron sights the beam runs straight away from the eye: start it a few metres out, or the inside of its
+    // glow fills the view.
+    if (!feel.scope && playerHands.aim > 0.5 && dist > 6) m.addScaledVector(_d, 4);
     zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z);
-    rifleSound.shot();
-    rifleSound.recharge(COOLDOWN_MS / 1000 - 0.08);
+    rifleSound.shot(null, null, this.gun === 'pistol');
+    rifleSound.recharge(cooldown / 1000 - 0.08);
     if (drone) {
       zaps.burst(_e.x, _e.y, _e.z, -_d.x, -_d.y, -_d.z, 16);
       rifleSound.impact('metal', _e, _o);
@@ -301,8 +324,8 @@ export class Rifle {
     this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, drone ? { d: drone.drone } : hit ? { g: hit.walker, i: hit.index } : undefined);
     // Recoil: the muzzle climbs (some of it stays: pull it back down), kicks a little sideways; less held to the eye.
     const ads = playerHands.aim;
-    const climb = CLIMB * (1.25 - 0.45 * ads) * (0.85 + Math.random() * 0.3);
-    const side = (Math.random() - 0.5) * 2 * KICK_SIDE;
+    const climb = feel.climb * (1.25 - 0.45 * ads) * (0.85 + Math.random() * 0.3);
+    const side = (Math.random() - 0.5) * 2 * feel.side;
     this.view.pitch = Math.min(1.4, this.view.pitch + climb * CLIMB_STAYS);
     this.view.yaw += side * CLIMB_STAYS;
     this.recoilVP += climb * (1 - CLIMB_STAYS) * 30;

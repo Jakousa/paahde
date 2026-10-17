@@ -9,6 +9,7 @@ import { partKind, SCRAP_ITEMS } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
 import { PART_IDS } from '../shared/parts.ts';
+import { PISTOL } from '../shared/rifle.ts';
 import { TIERS } from '../shared/salvage.ts';
 import { EDIT_CELL, edits, WORLD_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -35,9 +36,9 @@ const CACHE_DEPTH = [0.5, 1.1];
 /** A taken find / cache is replaced this long after (ms). */
 const FIND_RESPAWN_MS = 3 * 60_000;
 const CACHE_RESPAWN_MS = 60_000;
-/** Cache contents: part tiers, and the odds of a part / a piece of scrap / broken gear. */
+/** Cache contents: part tiers, and the odds of a part / a piece of scrap / a laser pistol / broken gear. */
 const TIER_WEIGHTS = [5, 3, 1.2, 0.25];
-const CACHE_ODDS = { part: 0.65, scrap: 0.2 };
+const CACHE_ODDS = { part: 0.65, scrap: 0.2, pistol: 0.04 };
 const PARTS = PART_IDS.filter((p) => p !== 'antimatter');
 
 type Spawn = { at: number; what: 'find' | 'cache'; kind?: string };
@@ -196,6 +197,7 @@ export class LootServer {
     let kind: string, parts: (string | null)[] | undefined;
     if (r < CACHE_ODDS.part) kind = partKind(pick(PARTS), TIERS[pickTier()]);
     else if (r < CACHE_ODDS.part + CACHE_ODDS.scrap) kind = pick(SCRAP_ITEMS);
+    else if (r < CACHE_ODDS.part + CACHE_ODDS.scrap + CACHE_ODDS.pistol) kind = PISTOL;
     else {
       kind = pick(GEAR_KINDS);
       parts = this.brokenParts(kind);
