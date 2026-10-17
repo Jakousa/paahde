@@ -5,7 +5,8 @@
 //
 // In the dust you lose the locator bar (src/locator.ts): no bearings on the base or the others.
 import { inBase } from '../shared/base.ts';
-import { inStormPath, stormAt, stormCentre, stormEnvelope, type Storm } from '../shared/storm.ts';
+import { RAMP_MS, inStormPath, stormAt, stormCentre, stormEnvelope, type Storm } from '../shared/storm.ts';
+import { WIND } from '../shared/dunes.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { audio } from './audio';
 import { STORM_SLOTS, stormDiscs, stormGround } from './world/env';
@@ -24,6 +25,14 @@ const PIP_GAIN = 1;
 const LOST_AT = 0.35;
 /** How fast the felt storm follows where you are (s), so walking out of one doesn't pop. */
 const TAU = 0.8;
+
+/** Debug menu: storms only this client sees, merged into the server's (no heat, no one else). */
+const localStorms: Storm[] = [];
+let summonLocal = false;
+/** A storm rolling in from upwind right now, seen only by you, to look at the dust (debug menu). */
+export function summonLocalStorm() {
+  summonLocal = true;
+}
 
 const css = `
 #storm { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); padding: 6px 14px; display: none;
@@ -51,7 +60,15 @@ export class StormFx {
   }
 
   /** Per render frame: storms from the server, server time `now` (ms), the camera and the player's feet. */
-  update(dt: number, storms: readonly Storm[], now: number, cam: { x: number; y: number; z: number }, me: { x: number; y: number; z: number }) {
+  update(dt: number, serverStorms: readonly Storm[], now: number, cam: { x: number; y: number; z: number }, me: { x: number; y: number; z: number }) {
+    if (summonLocal) {
+      summonLocal = false;
+      // Already building up, 180 m upwind: you see the wall from outside, then it rolls over you.
+      localStorms.push({ id: -1 - localStorms.length, x: me.x - WIND.x * 180, z: me.z - WIND.z * 180, r: 100, speed: 4,
+        start: now - RAMP_MS / 2, end: now + 90_000 });
+    }
+    for (let i = localStorms.length - 1; i >= 0; i--) if (localStorms[i].end <= now) localStorms.splice(i, 1);
+    const storms = localStorms.length ? [...serverStorms, ...localStorms] : serverStorms;
     // The bunker keeps the dust out, and the columns aren't drawn from in there (they'd fog the rooms).
     const indoors = inBase(cam.x, cam.y, cam.z);
     const here = indoors ? 0 : stormAt(storms, cam.x, cam.z, now);

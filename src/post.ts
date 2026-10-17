@@ -25,6 +25,8 @@ const GLARE_TINT = new THREE.Color(1.0, 0.5, 0.2);
 const STORM_K = 0.15;
 const STORM_H = 60;
 const STORM_STEPS = 6;
+/** The dust frays out to this many storm radii (the gameplay strength ends at 1). */
+const STORM_OUTER = 1.3;
 
 export class Post {
   private renderer: THREE.WebGPURenderer;
@@ -111,7 +113,8 @@ export class Post {
           const oc = camPos.xz.sub(disc.xy);
           const a = max(dot(dir.xz, dir.xz), 1e-6);
           const b = dot(oc, dir.xz);
-          const c = dot(oc, oc).sub(disc.z.mul(disc.z));
+          const R = disc.z.mul(STORM_OUTER);
+          const c = dot(oc, oc).sub(R.mul(R));
           const h = b.mul(b).sub(a.mul(c));
           If(h.greaterThan(0), () => {
             const sq = sqrt(h);
@@ -125,11 +128,16 @@ export class Post {
               for (let k = 0; k < STORM_STEPS; k++) {
                 const t = t0.add(dt.mul(jitter.add(k)));
                 const q = camPos.add(dir.mul(t));
-                const r = length(q.xz.sub(disc.xy)).div(disc.z);
-                const rim = float(1).sub(smoothstep(EDGE, 1, r));
-                const up = exp(max(q.y.sub(ground[i]), 0).div(-STORM_H));
                 const w = vec3(q.x.sub(windDrift.x.mul(1.5)), q.y.mul(1.6).sub(time.mul(4)), q.z.sub(windDrift.y.mul(1.5)));
                 const n = mx_noise_float(w.mul(0.035));
+                // Soft, ragged rim: density tapers from well inside the core out past the radius (the
+                // billows push the edge in and out), so the column frays into the air instead of ending.
+                const r = length(q.xz.sub(disc.xy)).div(disc.z).add(n.mul(0.18));
+                const fade = float(1).sub(smoothstep(EDGE * 0.45, STORM_OUTER, r));
+                const rim = fade.mul(fade);
+                // Thins upwards, and the last of it fades out before the march stops at the top.
+                const h = max(q.y.sub(ground[i]), 0);
+                const up = exp(h.div(-STORM_H)).mul(float(1).sub(smoothstep(STORM_H, STORM_H * 3, h.mul(n.mul(0.25).add(1)))));
                 const billow = saturate(n.mul(0.9).add(0.7));
                 const d = disc.w.mul(rim).mul(up).mul(billow).mul(dt);
                 tau.addAssign(d);

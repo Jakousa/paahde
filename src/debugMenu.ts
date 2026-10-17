@@ -1,7 +1,8 @@
 // Debug menu: F3 (or `) toggles a small panel. Opening it frees the mouse so the controls can be clicked.
 // Time of day: a slider that holds the sky at that time (local view only), or, with "Apply to all players",
 // moves the shared server clock for everyone, production included. "Sandstorm here" summons one on you
-// (for everyone, after the usual warning).
+// (for everyone, after the usual warning); "Local sandstorm" sends one at you from just upwind at once, seen only by you.
+import { summonLocalStorm } from './storm';
 import { clockText, timeControl } from './world/dayNight';
 
 const PRESETS: [string, number][] = [['Dawn', 0.27], ['Noon', 0.5], ['Golden hour', 0.7], ['Dusk', 0.77], ['Midnight', 0]];
@@ -33,7 +34,8 @@ export class DebugMenu {
 <label><input id="dbgLive" type="checkbox"> Follow shared clock</label>
 <label><input id="dbgShare" type="checkbox"> Apply to all players (server)</label>
 <div class="row"></div>
-<div class="row"><button id="dbgStorm" title="A sandstorm on you, for everyone, after the 12 s warning">Sandstorm here</button></div>`;
+<div class="row"><button id="dbgStorm" title="A sandstorm on you, for everyone, after the 12 s warning">Sandstorm here</button>
+<button id="dbgLocalStorm" title="A sandstorm rolling in from upwind right now, only you see it (no heat)">Local sandstorm</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
     const live = p.querySelector<HTMLInputElement>('#dbgLive')!;
@@ -41,6 +43,7 @@ export class DebugMenu {
     const label = p.querySelector<HTMLElement>('#dbgTime')!;
     const row = p.querySelector<HTMLElement>('.row')!;
     p.querySelector('#dbgStorm')!.addEventListener('click', summonStorm);
+    p.querySelector('#dbgLocalStorm')!.addEventListener('click', summonLocalStorm);
 
     const show = (tod: number) => {
       slider.value = String(Math.round(tod * 1440) % 1440);
