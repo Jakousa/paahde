@@ -38,6 +38,7 @@ import { WindSound } from './windSound';
 import { EngineSound } from './engineSound';
 import { footsteps } from './footsteps';
 import { music } from './music';
+import { inBase } from '../shared/base.ts';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
@@ -322,7 +323,13 @@ renderer.setAnimationLoop((time) => {
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   footsteps.listener(orbit.camera.position, orbit.yaw);
-  music.update(frameDt, s);
+  // Combat and heatstroke aren't cued yet (no songs for them either).
+  const cam = orbit.camera.position;
+  music.update(frameDt, {
+    riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
+    indoors: inBase(cam.x, cam.y, cam.z),
+    sandstorm: storm.level > 0.3,
+  });
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
