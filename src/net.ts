@@ -10,8 +10,8 @@
 // - Terrain: the server owns the edit layer and sends absolute values. Our own dig strokes are predicted
 //   immediately; the server's value for each predicted vertex is held back until a snapshot acks the
 //   input that dug it (terrainEdit always arrives before that snapshot), then applied.
-// - Survival: thirst/canteen state comes from the server ('water'); src/water.ts plays drink/fill and asks.
-//   Dying of thirst moves us to the base on the server; the next reconciliation snaps there.
+// - Survival: heat/canteen state comes from the server ('water'); src/water.ts plays drink/fill and asks.
+//   Dying of heatstroke moves us to the base on the server; the next reconciliation snaps there.
 // - Scrap: picked-up pieces are hidden (and lose their hitbox) as soon as we ask; the server sends the
 //   piece back to us if it refuses, and our new inventory if it agrees.
 // - Hands: what we hold (canteen, drinking) is sent when it changes and relayed in snapshots, cosmetic only.
@@ -85,10 +85,10 @@ export class Net {
   /** The server sent a new inventory. */
   onInventory?: (items: number[]) => void;
 
-  /** Thirst bar, canteen sips, whether the heat is draining us, felt °C and shade (server 'water', shared/water.ts). */
-  water = { water: 100, sips: 4, heat: false, temp: 20, shade: true, at: 0 };
-  onWater?: (w: { water: number; sips: number; heat: boolean; temp: number; shade: boolean }) => void;
-  /** We died (of thirst); the server has already moved us back to the base. */
+  /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
+  water = { heat: 0, sips: 4, rising: false, temp: 20, shade: true, at: 0 };
+  onWater?: (w: { heat: number; sips: number; rising: boolean; temp: number; shade: boolean }) => void;
+  /** We died (of heatstroke); the server has already moved us back to the base. */
   onDied?: () => void;
   /** Greenhouse bed stages (shared/garden.ts), from the server; empty until the first 'garden'. */
   garden: number[] = [];
@@ -308,7 +308,7 @@ export class Net {
       return this.onInventory?.(msg.items);
     }
     if (msg.t === 'water') {
-      this.water = { water: msg.water, sips: msg.sips, heat: msg.heat, temp: msg.temp, shade: msg.shade, at: performance.now() };
+      this.water = { heat: msg.heat, sips: msg.sips, rising: msg.rising, temp: msg.temp, shade: msg.shade, at: performance.now() };
       return this.onWater?.(msg);
     }
     if (msg.t === 'died') {

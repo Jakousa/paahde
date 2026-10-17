@@ -1,12 +1,12 @@
 // Survival on the client (shared/water.ts, server/water.ts): the hotbar (slot 1 = canteen), drinking and
-// refilling, and the HUD: thirst bar with a sun/heat light, the felt temperature with a sun/shade icon
-// (shared/temperature.ts), a heat vignette when low, and the death screen.
+// refilling, and the HUD: heat meter with a sun light while heat builds, the felt temperature with a
+// sun/shade icon (shared/temperature.ts), a heat vignette when it's nearly full, and the death screen.
 //
 // The server owns the numbers; this only plays the actions and asks. Key 1 takes the canteen out or puts
 // it away (2–4 select the empty slots). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // (no digging while your hands are full, see `tools` in src/input.ts), and F at the base's pump refills it.
 import { atPump } from '../shared/base.ts';
-import { CANTEEN_SIPS, DRINK_MS, FILL_MS, WATER_LOW, WATER_MAX } from '../shared/water.ts';
+import { CANTEEN_SIPS, DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
 import { tools, useHeld } from './input';
 import type { Net } from './net';
 
@@ -18,7 +18,7 @@ export type Held = 'none' | 'canteen';
 export const playerHands = { held: 'none' as Held, drinking: false, filling: false };
 
 const SLOTS = 4;
-/** Thirst bar colours: full, getting low, nearly empty. */
+/** Heat meter colours: cool, warming up, nearly heatstroke. */
 const BLUE = [78, 170, 255];
 const AMBER = [236, 158, 52];
 const RED = [222, 62, 34];
@@ -51,7 +51,7 @@ const css = `
 #thirst .temp.shade .shadeIcon { display: block; }
 #thirst .deg { min-width: 36px; font-weight: 600; font-variant-numeric: tabular-nums; transition: color .6s;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
-#thirst.low .bar { animation: thirstPulse 1.1s ease-in-out infinite; }
+#thirst.high .bar { animation: thirstPulse 1.1s ease-in-out infinite; }
 @keyframes thirstPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 90, 40, 0); }
   50% { box-shadow: 0 0 0 2px rgba(255, 90, 40, 0.75); } }
 #hotbar { display: flex; gap: 4px; }
@@ -114,7 +114,7 @@ export class Survival {
   private death = document.createElement('div');
 
   private selected = -1; // hotbar slot, -1 = empty hands
-  private shown = WATER_MAX; // eased bar value
+  private shown = 0; // eased meter value
   private actionAt = 0; // performance.now() when the current sip / refill started
   private needRelease = false; // one sip per press: let go before the next
   private deadUntil = 0;
@@ -133,6 +133,7 @@ export class Survival {
 
     this.root.id = 'survival';
     this.thirst.id = 'thirst';
+    this.thirst.title = 'Heat — drink to cool down';
     this.thirst.innerHTML = `${SUN_SVG}<div class="bar"><div class="fill"></div></div><span class="num"></span>`
       + `<span class="temp" title="Felt temperature">${SUN_ICON}${SHADE_ICON}<span class="deg"></span></span>`;
     this.fillEl = this.thirst.querySelector('.fill')!;
@@ -158,7 +159,7 @@ export class Survival {
     this.toastEl.id = 'waterToast';
     this.vignette.id = 'heatVignette';
     this.death.id = 'deathScreen';
-    this.death.innerHTML = 'You died of thirst<small>The sun got you. Back at the base, canteen refilled.</small>';
+    this.death.innerHTML = 'You died of heatstroke<small>The sun got you. Back at the base, canteen refilled.</small>';
     document.body.append(this.vignette, this.root, this.prompt, this.toastEl, this.death);
 
     addEventListener('keydown', (e) => {
@@ -170,7 +171,7 @@ export class Survival {
     net.onDied = () => {
       this.deadUntil = performance.now() + DEATH_MS;
       this.cancel();
-      this.shown = WATER_MAX;
+      this.shown = 0;
     };
     this.select(-1);
   }
@@ -217,7 +218,7 @@ export class Survival {
     } else if (holding && use && !this.needRelease && !playerHands.filling && !dead) {
       this.needRelease = true;
       if (w.sips <= 0) this.toast(atBase ? 'Canteen empty — press F to fill it' : 'Canteen empty — fill it at the pump in the base');
-      else if (w.water >= WATER_MAX - 0.5) this.toast("You're not thirsty");
+      else if (w.heat <= 0.5) this.toast("You're cool enough");
       else {
         playerHands.drinking = true;
         this.actionAt = now;
@@ -259,15 +260,15 @@ export class Survival {
       this.toastEl.style.opacity = '0';
     }
 
-    // Thirst bar: ease towards the server's value (updates come at ~2 Hz while draining); jump on sips.
-    this.shown = Math.abs(w.water - this.shown) > 10 ? w.water : this.shown + (w.water - this.shown) * (1 - Math.exp(-dt * 3));
-    const f = Math.max(0, Math.min(1, this.shown / WATER_MAX));
+    // Heat meter: ease towards the server's value (updates come at ~2 Hz while it moves); jump on sips.
+    this.shown = Math.abs(w.heat - this.shown) > 10 ? w.heat : this.shown + (w.heat - this.shown) * (1 - Math.exp(-dt * 3));
+    const f = Math.max(0, Math.min(1, this.shown / HEAT_MAX));
     this.fillEl.style.transform = `scaleX(${f})`;
-    // Water blue while comfortable, warming through amber to red as it runs out.
-    const warm = Math.max(0, Math.min(1, (0.6 - f) / 0.6));
+    // Cool blue while there's little heat, warming through amber to red as it fills.
+    const warm = Math.max(0, Math.min(1, (f - 0.4) / 0.6));
     const [a, b, t] = warm < 0.5 ? [BLUE, AMBER, warm * 2] : [AMBER, RED, warm * 2 - 1];
     this.fillEl.style.background = `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * t)).join(',')})`;
-    const num = Math.ceil(this.shown);
+    const num = Math.floor(this.shown);
     if (num !== this.lastNum) {
       this.lastNum = num;
       this.numEl.textContent = String(num);
@@ -288,11 +289,11 @@ export class Survival {
       this.tempEl.classList.toggle('shade', w.shade);
       this.tempEl.title = w.shade ? 'Felt temperature — out of the sun' : 'Felt temperature — in direct sun';
     }
-    const low = this.shown < WATER_LOW && !dead;
-    this.thirst.classList.toggle('heat', w.heat && !dead);
-    this.thirst.classList.toggle('low', low);
-    this.vignette.style.opacity = low ? String(0.35 + 0.65 * (1 - this.shown / WATER_LOW)) : '0';
-    this.vignette.classList.toggle('pulse', low && w.heat);
+    const high = this.shown > HEAT_HIGH && !dead;
+    this.thirst.classList.toggle('heat', w.rising && !dead);
+    this.thirst.classList.toggle('high', high);
+    this.vignette.style.opacity = high ? String(0.35 + 0.65 * (this.shown - HEAT_HIGH) / (HEAT_MAX - HEAT_HIGH)) : '0';
+    this.vignette.classList.toggle('pulse', high && w.rising);
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
   }

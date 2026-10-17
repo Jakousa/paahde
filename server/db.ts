@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-export type PlayerRow = { id: string; color: number; x: number; z: number; water: number; sips: number };
+export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
 
 export function openDb(path: string) {
   mkdirSync(dirname(path), { recursive: true });
@@ -26,11 +26,13 @@ export function openDb(path: string) {
   // v3 (survival, shared/water.ts): thirst bar and canteen sips.
   if (!cols.some((c) => c.name === 'water')) db.exec('ALTER TABLE players ADD COLUMN water REAL NOT NULL DEFAULT 100');
   if (!cols.some((c) => c.name === 'sips')) db.exec('ALTER TABLE players ADD COLUMN sips INTEGER NOT NULL DEFAULT 4');
+  // v4: the thirst bar became a heat meter (0 = cool); `water` is unused from here on.
+  if (!cols.some((c) => c.name === 'heat')) db.exec('ALTER TABLE players ADD COLUMN heat REAL NOT NULL DEFAULT 0');
 
-  const get = db.prepare('SELECT id, color, x, z, water, sips FROM players WHERE id = ?');
+  const get = db.prepare('SELECT id, color, x, z, heat, sips FROM players WHERE id = ?');
   const upsert = db.prepare(`
-    INSERT INTO players (id, color, x, y, z, water, sips) VALUES (?, ?, ?, 0, ?, ?, ?)
-    ON CONFLICT (id) DO UPDATE SET x = excluded.x, z = excluded.z, water = excluded.water, sips = excluded.sips,
+    INSERT INTO players (id, color, x, y, z, heat, sips) VALUES (?, ?, ?, 0, ?, ?, ?)
+    ON CONFLICT (id) DO UPDATE SET x = excluded.x, z = excluded.z, heat = excluded.heat, sips = excluded.sips,
       last_seen = datetime('now')
   `);
 
@@ -114,7 +116,7 @@ export function openDb(path: string) {
     respawnScrap: (ix: number, iz: number, i: number) => deleteTaken.run(ix, iz, i),
     getInventory: (playerId: string) => getInventory.all(playerId) as { kind: number; count: number }[],
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,
-    savePlayer: (p: PlayerRow) => upsert.run(p.id, p.color, p.x, p.z, p.water, p.sips),
+    savePlayer: (p: PlayerRow) => upsert.run(p.id, p.color, p.x, p.z, p.heat, p.sips),
     loadChunks(): { cx: number; cz: number; data: Int32Array }[] {
       return (allChunks.all() as { cx: number; cz: number; data: Uint8Array }[]).map((r) => ({
         cx: r.cx,

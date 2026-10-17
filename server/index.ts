@@ -14,7 +14,7 @@ import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
 import { ScrapServer } from './scrap.ts';
 import { TerrainServer } from './terrain.ts';
-import { drink, fill, newThirst, revive, tickThirst, waterMsg, type Thirst } from './water.ts';
+import { drink, fill, newHeat, revive, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
 import { timeOfDayAt } from '../shared/sun.ts';
 
@@ -47,7 +47,7 @@ type Player = {
   idleAccum: number;
   lastPickup: { at: number };
   input: number; // last input bitmask (0 while idle), for sprint drain
-  thirst: Thirst; // server/water.ts
+  heat: Heat; // server/water.ts
   lastTend: { at: number };
   ws: WebSocket;
   alive: boolean;
@@ -129,7 +129,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    thirst: newThirst(row?.water, row?.sips), ws, alive: true, hands: 0,
+    heat: newHeat(row?.heat, row?.sips), ws, alive: true, hands: 0,
   };
   players.set(ws, p);
   save(p);
@@ -139,33 +139,34 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, garden.joinMessage());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   send(ws, { t: 'inventory', items: scrap.inventory(browserId) });
-  send(ws, waterMsg(p.thirst));
+  send(ws, waterMsg(p.heat));
 }
 
 // Sips and refills: the client plays the animation, then asks. Refused ones still get the real state.
 function onDrink(p: Player) {
-  drink(p.thirst, Date.now());
-  send(p.ws, waterMsg(p.thirst));
+  drink(p.heat, Date.now());
+  send(p.ws, waterMsg(p.heat));
 }
 
 function onFill(p: Player) {
-  fill(p.thirst, p.state, Date.now());
-  send(p.ws, waterMsg(p.thirst));
+  fill(p.heat, p.state, Date.now());
+  send(p.ws, waterMsg(p.heat));
 }
 
-// Thirst drains in the sun (server/water.ts); at zero the player dies and respawns at the base, full again.
+// Heat builds up in the sun (server/water.ts); when it's full the player dies of heatstroke and respawns at
+// the base, cooled down.
 // The next snapshot carries the new position, which the client snaps to (src/net.ts reconcile).
-function thirst(p: Player, dt: number, tod: number) {
+function heat(p: Player, dt: number, tod: number) {
   const now = Date.now();
-  const r = tickThirst(p.thirst, dt, p.state, p.input, tod, now);
+  const r = tickHeat(p.heat, dt, p.state, p.input, tod, now);
   if (r === 'died') {
     p.state = spawnState(BASE_SPAWN.x, BASE_SPAWN.z);
-    revive(p.thirst, now);
+    revive(p.heat, now);
     save(p);
-    send(p.ws, { t: 'died', cause: 'thirst' });
-    send(p.ws, waterMsg(p.thirst));
+    send(p.ws, { t: 'died', cause: 'heat' });
+    send(p.ws, waterMsg(p.heat));
   } else if (r === 'send') {
-    send(p.ws, waterMsg(p.thirst));
+    send(p.ws, waterMsg(p.heat));
   }
 }
 
@@ -223,7 +224,7 @@ setInterval(() => {
   const tod = timeOfDayAt(now + epoch);
   for (const p of players.values()) {
     p.tokens = Math.min(MAX_INPUT_BURST, p.tokens + elapsed * TICK_RATE);
-    thirst(p, elapsed, tod);
+    heat(p, elapsed, tod);
     if (Date.now() - p.lastInputAt > IDLE_MS) {
       p.input = 0;
       for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
@@ -286,7 +287,7 @@ function send(ws: WebSocket, msg: ServerMsg) {
 }
 
 function save(p: Player) {
-  db.savePlayer({ id: p.browserId, color: p.color, x: p.state.x, z: p.state.z, water: p.thirst.water, sips: p.thirst.sips });
+  db.savePlayer({ id: p.browserId, color: p.color, x: p.state.x, z: p.state.z, heat: p.heat.heat, sips: p.heat.sips });
 }
 
 setInterval(() => {

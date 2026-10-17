@@ -1,5 +1,5 @@
 // Temperature: the desert's air temperature over the day, and how hot it feels to a player in the sun,
-// in the shade (shared/shade.ts) or in the base. Thirst drains by the felt temperature (shared/water.ts).
+// in the shade (shared/shade.ts) or in the base. Heat builds up by the felt temperature (shared/water.ts).
 // Plain math on the shared clock (shared/sun.ts), so the server and the client agree. Server-authoritative:
 // the server sends the felt temperature in its 'water' message; the client only shows it.
 //
@@ -23,7 +23,7 @@ export const AIR_MIN_TOD = 5.5 / 24;
 export const AIR_MAX_TOD = 14 / 24;
 /** Extra felt °C standing in direct sun with the sun at its noon height; less when it is lower. */
 export const SUN_BONUS = 12;
-/** The base never feels hotter than this (°C): cool enough that nothing drains there. */
+/** The base never feels hotter than this (°C): cool enough that you cool off there. */
 export const BASE_MAX = 22;
 
 /** Air temperature (°C) at a time of day in [0, 1). */
