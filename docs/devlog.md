@@ -70,22 +70,23 @@ entrance hut and scrap piles block the sun.
   marched over `heightAt` (dunes, pad, digs) with steps of 0.2 m + 5% of the distance, up to 180 m, stopping
   early once it is above the highest possible ground. It also slab-tests the hut (with its roof overhang) and
   the skylight collar as boxes, and scrap hitboxes in the first 25 m. ~15–20 µs per check (~80 µs/s per player).
-- **Drain** (`shared/water.ts`): none at or below **24 °C**, then `100/255 s × ((felt − 24) / 30)³`, ×1.5
-  sprinting. The cube is what makes shade (~10 °C cooler) worth ~3.5× in the early afternoon.
+- **Drain** (`shared/water.ts`): none at or below **24 °C**, then `100/100 s × ((felt − 24) / 30)⁴`, ×1.5
+  sprinting. The fourth power makes the hottest hours brutal (was a cube over 255 s; peak sun now drains ~2.6×
+  faster) while mornings and evenings stay mild, and makes shade (~10 °C cooler) worth ~5× in the early afternoon.
 
   | time | air | sun: felt | full bar | shade: felt | full bar |
   |---|---|---|---|---|---|
   | 00:00 | 14.5 | 14.5 | — | 14.5 | — |
   | 06:00 | 12.3 | 13.8 | — | 12.3 | — |
-  | 09:00 | 23.6 | 32.5 | ~3 h | 23.6 | — |
-  | 12:00 | 39.8 | 51.8 | 5.3 min | 39.8 | 29 min |
-  | 13:30 | 43.7 | 54.9 (hottest) | 3.9 min | 43.7 | 15 min |
-  | 15:00 | 43.3 | 52.3 | 5.1 min | 43.3 | 16 min |
-  | 18:00 | 34.8 | 36.3 | 61 min | 34.8 | 91 min |
+  | 09:00 | 23.6 | 32.5 | ~4 h | 23.6 | — |
+  | 12:00 | 39.8 | 51.8 | 2.3 min | 39.8 | 22 min |
+  | 13:30 | 43.7 | 54.9 (hottest) | 1.5 min | 43.7 | 9 min |
+  | 15:00 | 43.3 | 52.3 | 2.1 min | 43.3 | 10 min |
+  | 18:00 | 34.8 | 36.3 | 59 min | 34.8 | 1.6 h |
   | 21:00 | 22.6 | 22.6 | — | 22.6 | — |
 
-  Real time: a day is 30 min, so 1 in-game hour = 75 s. Standing in the sun all day costs ~1.5 bars, in
-  shade ~0.4. Real drain only runs ~11:00–17:00; mornings and evenings are mild.
+  Real time: a day is 30 min, so 1 in-game hour = 75 s. Standing in the sun all day costs ~3.5 bars, in
+  shade ~0.6. Real drain only runs ~11:00–17:00; mornings and evenings are mild.
 - **Protocol/HUD:** `water` gains `temp` (felt °C, 0.1) and `shade` (no direct sun: shade, night or base).
   It is also sent when shade flips or temp moves 0.5 °C, so the thermometer stays live at night. Next to the
   thirst bar: a sun or shade icon and the eased °C, blue (≤18) → amber (34) → red (≥50).

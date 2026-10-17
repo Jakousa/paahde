@@ -3,7 +3,7 @@
 //
 // Heat drains water: the hotter it feels (shared/temperature.ts: air temperature by time of day, plus the
 // sun's bonus unless you're in shade, capped in the base), the faster, from nothing at COMFORT_TEMP up a
-// cubic curve. Sips from the canteen (inventory slot 1) put it back; the base refills the canteen.
+// quartic curve. Sips from the canteen (inventory slot 1) put it back; the base refills the canteen.
 
 /** Full thirst bar. */
 export const WATER_MAX = 100;
@@ -12,7 +12,7 @@ export const COMFORT_TEMP = 24;
 /** At this felt temperature (°C; full sun, early afternoon)... */
 export const HOT_TEMP = 54;
 /** ...a full bar lasts this long walking (s). */
-export const HOT_FULL_BAR_S = 255;
+export const HOT_FULL_BAR_S = 100;
 /** Drain grows with (felt − COMFORT_TEMP) to this power: shade (~10 °C cooler) drains ~3.5× slower. */
 export const DRAIN_POWER = 3;
 /** Drain multiplier while sprinting. */
