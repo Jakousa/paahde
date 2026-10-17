@@ -16,6 +16,10 @@ import type { Net } from './net';
 export const playerHands = { held: 'none' as 'none' | 'canteen', drinking: false, filling: false };
 
 const SLOTS = 4;
+/** Thirst bar colours: full, getting low, nearly empty. */
+const BLUE = [78, 170, 255];
+const AMBER = [236, 158, 52];
+const RED = [222, 62, 34];
 const DEATH_MS = 3000;
 const TOAST_MS = 1800;
 /** Leaving the base by more than this (m) cancels a refill. Under the server's FILL_SLACK. */
@@ -55,7 +59,8 @@ const css = `
   font: 600 13px system-ui, sans-serif; color: #ffd9a0; text-shadow: 0 1px 2px #000; opacity: 0;
   transition: opacity .25s; white-space: nowrap; }
 #heatVignette { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .6s;
-  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(170, 50, 10, 0.35) 85%, rgba(120, 20, 0, 0.6) 100%); }
+  box-shadow: inset 0 0 18vmin 4vmin rgba(150, 30, 0, 0.75);
+  background: radial-gradient(ellipse closest-side, rgba(0, 0, 0, 0) 70%, rgba(170, 45, 10, 0.3) 100%); }
 #heatVignette.pulse { animation: heatPulse 1.6s ease-in-out infinite; }
 @keyframes heatPulse { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.6); } }
 #deathScreen { position: fixed; inset: 0; z-index: 20; pointer-events: none; display: none; flex-direction: column;
@@ -232,7 +237,8 @@ export class Survival {
     this.fillEl.style.transform = `scaleX(${f})`;
     // Water blue while comfortable, warming through amber to red as it runs out.
     const warm = Math.max(0, Math.min(1, (0.6 - f) / 0.6));
-    this.fillEl.style.background = `hsl(${205 - 197 * warm}, ${70 + 15 * warm}%, ${58 - 6 * warm}%)`;
+    const [a, b, t] = warm < 0.5 ? [BLUE, AMBER, warm * 2] : [AMBER, RED, warm * 2 - 1];
+    this.fillEl.style.background = `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * t)).join(',')})`;
     const num = Math.ceil(this.shown);
     if (num !== this.lastNum) {
       this.lastNum = num;
