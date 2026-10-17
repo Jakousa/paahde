@@ -43,6 +43,28 @@ The first survival mechanic: the sun dries you out, the canteen keeps you going,
 - **Not wired in yet:** the inventory only knows `SCRAP_KINDS`. Needs an item/tier id scheme in
   `shared/` (and in the inventory table/protocol) before the HUD can show these icons.
 
+## 2026-10-17 — Water canteen (first-person)
+
+For the water loop: `public/models/hands.glb` now carries an old military canteen and clips to use it.
+Only the model so far; the game code that plays them is separate.
+
+- **Model** (`tools/models/canteen.py`, built and baked by `tools/models/hands.py`): flattened kidney-shaped
+  steel body in sun-bleached olive-brown enamel, pale washer and dark wooden stopper, khaki webbing cradle
+  with D-rings for a carry strap (left off so nothing swings into the camera). 1.4k tris, own 512 atlas
+  and material `Canteen`. Also exported alone as `public/models/canteen.glb` (origin at the bottom) for
+  world use later.
+- **In hands.glb:** mesh node `Canteen`, child of the `RightHand` bone, gripped like a flask: palm on its
+  right edge, fingers round the back. It is visible by default; toggle `.visible`.
+- **Clips (30 fps):** `CanteenIdle` (3 s loop, held low-right, left arm lowered out of view),
+  `CanteenWalk` (0.73 s loop, same bob as `Walk`), `Drink` (1.2 s: neck to the mouth, tip up, two
+  gulps, lower), `Fill` (1.5 s: lowered forward and tipped, left palm under the bottom). The one-shots
+  start and end on the `CanteenIdle` pose. `Idle`/`Walk`/`Dig` are unchanged. Note the glTF sorts clips
+  by name, so `animations[0]` is now `CanteenIdle`: look clips up by name.
+- **How it's posed:** the canteen clips place the canteen (and the left palm) in view space and solve
+  each arm with analytic two-bone IK, most of the wrist roll going into the forearm so the glove cuff
+  doesn't twist. The canteen gets no closer than 0.12 m to the eye (camera near plane 0.05).
+- The hands were checked in first person and left as they are: they read fine at game scale.
+
 ## 2026-10-17 — Home base
 
 New goal: plant and grow nature, push back the desert. The players' home is a homestead in a dune pan at

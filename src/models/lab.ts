@@ -69,7 +69,7 @@ clips.forEach((clip, i) => {
 
 // optional extras (first-person hands, props) laid out behind the characters
 const loader = new GLTFLoader();
-const extras = ['hands', 'debris', 'crate', 'console'];
+const extras = ['hands', 'debris', 'crate', 'console', 'canteen'];
 extras.forEach((name, i) => {
   loader.load(
     `./models/${name}.glb`,
