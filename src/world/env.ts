@@ -5,7 +5,7 @@
 // scene fog and any custom material (e.g. a sand mirage reflecting the sky) all agree on colours —
 // if they don't, the horizon line shows.
 import * as THREE from 'three/webgpu';
-import { Fn, cameraPosition, dot, exp, float, max, min, mix, mx_noise_float, normalize, positionWorld, pow, saturate, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
+import { Fn, cameraPosition, dot, floor, fract, length, mx_cell_noise_float, exp, float, max, min, mix, mx_noise_float, normalize, positionWorld, pow, saturate, smoothstep, sqrt, uniform, vec3 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 
 type N = Node<'vec3'>;
@@ -15,14 +15,22 @@ type F = Node<'float'>;
 export const sunDirection = uniform(new THREE.Vector3(0.3, 0.5, -0.8).normalize());
 /** Linear sun radiance colour (can exceed 1). This is what lights the ground. */
 export const sunColor = uniform(new THREE.Color(1, 0.95, 0.85).multiplyScalar(3));
+/** Unit vector pointing from the ground towards the (full) moon. dayNight.ts moves it with the sun. */
+export const moonDirection = uniform(new THREE.Vector3(-0.3, -0.5, 0.8).normalize());
+/** Linear moonlight on the ground (0 by day). sky.ts swaps the shadow-casting light to it at night. */
+export const moonColor = uniform(new THREE.Color(0, 0, 0));
+/** 0 by day, 1 at full night: stars and the moon disc come out. */
+export const nightLevel = uniform(0);
 /** Elapsed seconds, for animated shaders (heat haze, sparkle). */
 export const time = uniform(0);
 
 // --- Atmosphere palette (linear; THREE.Color converts the sRGB hex values from docs/look.md) ---
 /** Sky straight up: dusky brown-purple. */
-export const zenithColor = uniform(new THREE.Color(0x2a2438).multiplyScalar(0.8));
+export const zenithColor = uniform(new THREE.Color(0x4a3a3a));
 /** Sky a little above the horizon (between the hot band and the zenith). */
-export const midSkyColor = uniform(new THREE.Color(0x5a3a3e));
+export const midSkyColor = uniform(new THREE.Color(0x8a5040));
+/** Overall gain on the sky above the horizon (the horizon itself stays at the haze colour). `?sky=` overrides. */
+export const skyGain = uniform(Number(new URLSearchParams(location.search).get('sky') ?? 1.6));
 /** Hot horizon band away from the sun. */
 export const horizonColor = uniform(new THREE.Color(0xe07b28));
 /** Horizon band towards the sun. */
@@ -63,7 +71,7 @@ const hg = (mu: F, g: number): F => {
 };
 
 /** Mie halo around the sun (wide washed glow + tight aureole), in units of sunColor. */
-const mieHalo = (mu: F): F => hg(mu, 0.7).mul(0.015).add(hg(mu, 0.9).mul(0.005));
+const mieHalo = (mu: F): F => hg(mu, 0.7).mul(0.03).add(hg(mu, 0.9).mul(0.005));
 /** Halo tint relative to sunColor: more saturated orange than the light itself (docs/look.md). */
 const HALO_TINT = vec3(1.0, 0.4, 0.13);
 
@@ -84,18 +92,50 @@ export const skyRadiance = Fn(([dirIn]: [N]) => {
   // Upper sky: hot band → mid → zenith, the band thicker towards the sun.
   const band = mix(horizonColor, horizonSunColor, toward);
   const yUp = max(y, 0);
-  const bandWidth = mix(float(0.12), float(0.3), toward);
+  const bandWidth = mix(float(0.2), float(0.45), toward);
   // Exponential-ish falloff out of the band reads softer than a smoothstep edge.
   const t = float(1).sub(exp(yUp.div(bandWidth).mul(-2.2)));
-  const dusty = mix(band, midSkyColor, 0.55).mul(0.8);
+  const dusty = mix(band, midSkyColor, 0.55);
   const lower = mix(mix(band, dusty, smoothstep(0, 0.5, t)), midSkyColor, smoothstep(0.4, 1, t));
-  const upper = mix(lower, zenithColor, smoothstep(bandWidth.mul(0.8), 0.9, yUp));
+  const upper = mix(lower, zenithColor, smoothstep(bandWidth.mul(0.8), 0.9, yUp)).mul(skyGain);
   // Blend from the haze colour right at the horizon so fogged terrain meets the sky seamlessly.
   const hazeBase = mix(hazeColor, horizonSunColor, toward.mul(0.7));
   const clear = mix(hazeBase, upper, smoothstep(0.0, 0.06, y));
   // Dust raised by a sandstorm thickens the lower sky towards the haze colour.
   const sky = mix(clear, hazeBase, sandStorm.mul(0.55).mul(smoothstep(0.5, 0.0, y)));
-  return sky.add(HALO_TINT.mul(sunColor).mul(mieHalo(mu)));
+  return sky.add(HALO_TINT.mul(sunColor).mul(mieHalo(mu))).add(stars(dir)).add(moonGlow(dir));
+});
+
+/** Star field: one star in a few hundred direction cells, varied brightness and a slow twinkle. */
+const stars = Fn(([dir]: [N]) => {
+  const p = dir.mul(260);
+  const cell = floor(p);
+  const pick = mx_cell_noise_float(cell);
+  const spot = float(1).sub(smoothstep(0.08, 0.28, length(fract(p).sub(0.5))));
+  const bright = pick.sub(0.985).div(0.015).max(0).pow(2).mul(3);
+  const twinkle = mx_noise_float(cell.add(time.mul(0.7))).mul(0.35).add(0.75);
+  // Thin out towards the horizon, where the dust hides them.
+  return vec3(1.0, 0.93, 0.85).mul(bright.mul(spot).mul(twinkle).mul(nightLevel).mul(smoothstep(0.02, 0.3, dir.y)));
+});
+
+/** Faint pale glow around the moon, in the sky everywhere it is up. */
+const moonGlow = Fn(([dir]: [N]) => {
+  const mu = dot(dir, moonDirection);
+  return vec3(0.5, 0.48, 0.55).mul(hg(mu, 0.85).mul(0.004)).mul(nightLevel).mul(smoothstep(-0.05, 0.05, moonDirection.y));
+});
+
+/** Moon disc for a view direction (sky dome only): pale, mottled with maria, bright enough to bloom a little. */
+export const moonDisc = Fn(([dirIn]: [N]) => {
+  const dir = normalize(dirIn);
+  const mu = dot(dir, moonDirection);
+  const ang = sqrt(max(float(2).mul(float(1).sub(mu)), 0));
+  const r = ang.div(0.035);
+  const maria = mx_noise_float(dir.mul(90)).mul(0.5).add(mx_noise_float(dir.mul(220)).mul(0.2)).add(0.5);
+  const albedo = mix(float(0.62), float(1), smoothstep(0.35, 0.7, maria));
+  const disc = vec3(1.0, 0.97, 0.9).mul(albedo).mul(2.2).mul(smoothstep(1.0, 0.94, r));
+  // Hidden under the horizon and washed out by daylight.
+  const vis = mix(float(0.15), float(1), nightLevel).mul(smoothstep(-0.02, 0.02, dir.y));
+  return disc.mul(vis).mul(float(1).sub(sandStorm.mul(0.6)));
 });
 
 /** HDR sun disc + corona for a view direction (sky dome only). */
@@ -107,7 +147,9 @@ export const sunDisc = Fn(([dir]: [N]) => {
   const rim = vec3(1.0, 0.7, 0.35).mul(10);
   const disc = mix(core, rim, smoothstep(0.55, 1.0, r)).mul(smoothstep(1.02, 0.97, r));
   const corona = vec3(1.0, 0.5, 0.16).mul(exp(r.sub(1).max(0).mul(-2.5)).mul(1.8));
-  return disc.add(corona.mul(smoothstep(0.97, 1.02, r))).mul(float(1).sub(sandStorm.mul(0.45)));
+  // Sets behind the horizon (the terrain doesn't reach it everywhere) and fades as it goes down.
+  const up = smoothstep(-0.06, 0.0, sunDirection.y).mul(smoothstep(-0.03, 0.01, normalize(dir).y));
+  return disc.add(corona.mul(smoothstep(0.97, 1.02, r))).mul(float(1).sub(sandStorm.mul(0.45))).mul(up);
 });
 
 /**

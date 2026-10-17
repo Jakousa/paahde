@@ -12,7 +12,8 @@
 // The regional wind and gust patches change over seconds; on top of that a fast turbulence term (a few
 // incommensurate sines, so it never visibly repeats) makes the sound breathe.
 //
-// Browsers only start audio after a user gesture, so the context is created on the first click or key.
+// Plays through the shared output in src/audio.ts (volume slider, limiter).
+import { audio } from './audio';
 import { uAt, ustarFrom10, wind, type WindSample } from './world/wind';
 
 const NOISE_S = 4;
@@ -27,6 +28,8 @@ const RING_N = 6;
 const LOCAL = 0.6;
 /** Time constant (s) of the followed wind; about a second to settle. */
 const TAU = 0.6;
+/** Wind level at full slider volume. */
+const MIX = 0.7;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const smooth = (a: number, b: number, x: number) => {
@@ -80,16 +83,7 @@ type Graph = {
   hissHp: BiquadFilterNode;
 };
 
-const VOLUME_KEY = 'dadajam.volume';
-const css = `
-#volume { position: fixed; top: 8px; right: 8px; display: flex; align-items: center; gap: 6px; padding: 3px 8px;
-  font: 12px monospace; color: #ccc; background: rgba(20, 10, 5, 0.35); border-radius: 4px; }
-#volume input { width: 90px; accent-color: #ffd9a0; }
-`;
-
 export class WindSound {
-  /** Overall volume, 0..1, set by the slider in the top-right corner (remembered per browser). */
-  volume = 0.4;
   private g: Graph | null = null;
   private s: WindSample = { dx: 0, dz: 0, ustar: 0, q: 0, emit: 0 };
   /** Smoothed listener wind: shear velocity, transport and streamer weight. */
@@ -101,60 +95,13 @@ export class WindSound {
   private time = 0;
 
   constructor() {
-    try {
-      const v = parseFloat(localStorage.getItem(VOLUME_KEY) ?? '');
-      if (v >= 0 && v <= 1) this.volume = v;
-    } catch {}
-    this.slider();
-    const start = () => {
-      if (!this.g) this.g = this.build();
-      if (this.g.ctx.state === 'suspended') void this.g.ctx.resume();
-    };
-    addEventListener('pointerdown', start);
-    addEventListener('keydown', start);
-    document.addEventListener('visibilitychange', () => {
-      if (!this.g) return;
-      if (document.hidden) void this.g.ctx.suspend();
-      else void this.g.ctx.resume();
-    });
+    audio.onStart((ctx, out) => (this.g = this.build(ctx, out)));
   }
 
-  private slider() {
-    const style = document.createElement('style');
-    style.textContent = css;
-    document.head.appendChild(style);
-    const label = document.createElement('label');
-    label.id = 'volume';
-    label.textContent = 'volume';
-    const input = document.createElement('input');
-    input.type = 'range';
-    input.min = '0';
-    input.max = '1';
-    input.step = '0.01';
-    input.value = String(this.volume);
-    input.addEventListener('input', () => {
-      this.volume = parseFloat(input.value);
-      try {
-        localStorage.setItem(VOLUME_KEY, input.value);
-      } catch {}
-    });
-    // Drop focus afterwards, or the arrow keys would nudge the slider while walking.
-    input.addEventListener('change', () => input.blur());
-    input.addEventListener('pointerup', () => input.blur());
-    label.appendChild(input);
-    document.body.appendChild(label);
-  }
-
-  private build(): Graph {
-    const ctx = new AudioContext();
+  private build(ctx: AudioContext, out: GainNode): Graph {
     const master = ctx.createGain();
     master.gain.value = 0;
-    // Gentle limiter: the layers stack up in a storm gust and should squash, not clip.
-    const limit = ctx.createDynamicsCompressor();
-    limit.threshold.value = -10;
-    limit.knee.value = 6;
-    limit.ratio.value = 8;
-    master.connect(limit).connect(ctx.destination);
+    master.connect(out);
     const pink = noiseBuffer(ctx, false);
     const brown = noiseBuffer(ctx, true);
     // Each layer reads the loop from a different offset so they stay uncorrelated.
@@ -207,7 +154,7 @@ export class WindSound {
     const hiss = gain();
     source(pink, 3.2).connect(hissHp).connect(hiss).connect(master);
 
-    master.gain.setTargetAtTime(1, ctx.currentTime, 1.5); // fade in rather than pop on the first click
+    master.gain.setTargetAtTime(MIX, ctx.currentTime, 1.5); // fade in rather than pop on the first click
     return { ctx, master, rumble, rumbleLp, rushL, rushR, rushBp, rushLp, howl, hiss, hissHp };
   }
 
@@ -239,9 +186,14 @@ export class WindSound {
     this.q += (q - this.q) * k;
     this.emit += (emit - this.emit) * k;
 
-    // Ear-level speed with gentle turbulence on top.
+    // Ear-level speed. A light wind comes in puffs with near-calm lulls between them; a strong wind
+    // blows steadily, with only gentle turbulence on top.
     const u0 = uAt(this.ustar, EAR);
-    const u = u0 * (1 + 0.12 * wobble(t * 0.7, 0) + 0.04 * wobble(t * 2.3, 5));
+    const steady = smooth(0.25, 0.85, u0 / U_FULL);
+    const puff = clamp01(0.5 + 0.8 * wobble(t * 0.4, 7));
+    const lull = 1 - 0.95 * (1 - steady) * (1 - puff);
+    const turb = 0.18 - 0.1 * steady;
+    const u = u0 * lull * (1 + turb * wobble(t * 0.7, 0) + 0.04 * wobble(t * 2.3, 5));
     this.uSlow += (u - this.uSlow) * (1 - Math.exp(-dt / 4));
     const gust = clamp01((u - this.uSlow) / Math.max(2, this.uSlow * 0.5)); // rising edge of a gust
     const x = clamp01(u / U_FULL);
@@ -255,7 +207,6 @@ export class WindSound {
     const now = g.ctx.currentTime;
     const set = (p: AudioParam, v: number, tau = 0.3) => p.setTargetAtTime(v, now, tau);
 
-    set(g.master.gain, this.volume, 0.05);
     // A faint floor of moving air even in a calm, so the desert is never dead silent.
     set(g.rumble.gain, 0.03 + 0.55 * x ** 1.4 * (1 + 0.4 * gust));
     set(g.rumbleLp.frequency, 70 + 150 * x);

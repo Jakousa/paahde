@@ -33,7 +33,9 @@ import {
   mx_fractal_noise_float,
   mx_noise_float,
   normalize,
+  normalLocal,
   normalWorldGeometry,
+  positionLocal,
   positionWorld,
   pow,
   saturate,
@@ -53,6 +55,12 @@ type V2 = Node<'vec2'>;
 type V3 = Node<'vec3'>;
 /** Colour uniforms are vec3 in the shader; the typings just don't mix them with vec3 math. */
 const c3 = (u: unknown) => u as V3;
+
+/** How far (m) the dunes sink along their normal when drawn into the shadow map. The 0.5 m mesh's flat
+ *  facets put the brink's self-shadow edge on triangle edges, which a 10° sun stretches into big saw
+ *  teeth; sunk this far, a crest only shadows slope already past the smooth diffuse terminator, so that
+ *  terminator draws the edge. Costs cast dune shadows ~0.15 / tan(10°) ≈ 0.9 m of length. */
+const CASTER_SINK = 0.15;
 
 /** Runtime tunables. Colours are linear. */
 export const sand = {
@@ -293,6 +301,7 @@ class SandNodeMaterial extends THREE.NodeMaterial {
     // Fog/shadow still come from the scene; colour is computed in the lighting model. vec4: the shadow
     // pass takes the caster's alpha from colorNode.a, and a vec3 there keeps the dunes out of the map.
     this.colorNode = vec4(this.surface.albedo, 1);
+    this.castShadowPositionNode = positionLocal.sub(normalLocal.mul(CASTER_SINK));
   }
 
   setupLightingModel() {

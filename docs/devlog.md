@@ -2,6 +2,16 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Day and night
+
+- **24 h every 30 min** (`src/world/dayNight.ts`), on the server's wall clock (`epoch` in `welcome`,
+  `Net.worldTime()`), so everyone shares the same sky and it survives server restarts.
+- The sun follows a real arc: rises east (+Z), peaks at 57° in the south (+X), sets just north of west,
+  roughly ahead of the spawn view. A full moon rides opposite it and takes over the shadow light at night.
+- Sky, haze, sun colour and ambient are keyframed on sun elevation; the 10° key is the tuned golden
+  hour from `env.ts`/`sky.ts`, so tuning those still tunes the evening. Stars and a mottled moon at night.
+- The clock shows top-left. `?tod=0.75` freezes the time (0 midnight, 0.5 noon); `?day=60` makes a day 60 s.
+
 ## 2026-10-17 — Desert planet (PR #4)
 
 Jam theme: **old tech**. We went with a **scavenger game**, in the spirit of the scrappers in Star Wars
@@ -178,12 +188,28 @@ From a few metres away real blown sand is a translucent veil streaming over the 
 listener every frame, so dune lees are quieter than crests and passing gusts and streamers are audible.
 The wind is averaged over a 4 m ring around the head (the topographic speed-up steps per 4 m cell),
 blended 60/40 with the regional wind so lees are only somewhat quieter, and followed with a ~1 s lag.
+A light wind comes in puffs with near-calm lulls (a few seconds each); a strong wind blows steadily.
+Measured at the default volume (0.4), rendered offline in Chrome while walking: about −46 LUFS in a calm,
+−36 in a breeze (u10 = 8), −32 at 12 m/s, −26 in a sandstorm; true peak ≤ −8 dBTP. It is an ambience bed,
+so it stays under the −23 LUFS mix target. (Measure in Chrome: node-web-audio-api mis-renders this graph.)
 
 - **Layers:** low rumble (brown noise, buffeting), broadband rush (bandpass rising with speed), two
   narrow aeolian "howl" resonances that only come up in strong wind and slide with gusts (Strouhal),
   and a high sand hiss that follows saltation `q` and swells with streamers (`emit`).
 - **Direction:** the rush is louder in the windward ear and brighter when facing into the wind.
 - Starts on the first click/key (browser autoplay rules), suspends when the tab is hidden.
+
+## Footsteps
+
+`src/footsteps.ts` plays one step from `public/audio/footsteps.mp3` each time an avatar plants a foot
+(the same stride that leaves a footprint; none while sliding). The file is a sprite of 8 single steps
+(0.4 s slots) sliced from a Pixabay recording of a brisk walk on a gravel trail, levelled so a
+steady 2.4 steps/s walk is −23 LUFS. In game (~5 steps/s, GAIN 0.2, default volume 0.4) the local
+player's walking is roughly −42 LUFS: under a breeze, above a calm. Random step (no immediate repeat),
+±8% pitch, ±15% level; remote players' steps are panned and fall off as 1/d beyond 2.5 m, silent past 30 m.
+
+All sounds now go through `src/audio.ts`: one AudioContext, the volume slider as master gain, and the
+limiter. New sounds connect to `audio.out` (or use `audio.onStart`).
   Volume slider in the top-right corner (default 0.4, remembered per browser); `dbg.wind.override` is handy for tuning.
 
 ## Ctrl slide

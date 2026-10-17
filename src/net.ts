@@ -3,7 +3,10 @@
 //   send it with a sequence number and keep it as "pending". When a snapshot arrives we take the
 //   server's state for us, drop the inputs it has acknowledged and replay the rest (reconciliation).
 // - Remote players: entity interpolation. We render them INTERP_MS in the past, between the two
-//   snapshots that surround that time, so their motion is smooth despite 20 Hz updates.
+//   snapshots that surround that time, so their motion is smooth despite 20 Hz updates. INTERP_MS
+//   grows by the measured network jitter, so late snapshots don't freeze them and then make them jump.
+// - Clock: the server's time is taken from the least-delayed snapshot (the largest offset seen), not an
+//   average, so the shared clock (wind, interpolation) doesn't wobble with jitter.
 // - Terrain: the server owns the edit layer and sends absolute values. Our own dig strokes are predicted
 //   immediately; the server's value for each predicted vertex is held back until a snapshot acks the
 //   input that dug it (terrainEdit always arrives before that snapshot), then applied.
@@ -16,6 +19,12 @@ import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from 
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 
 const INTERP_MS = 100;
+/** Ceiling on the extra interpolation delay added for jitter. */
+const MAX_JITTER_MS = 300;
+/** Per snapshot, the clock offset creeps down this much (1 ms/s, to follow drift or a slower route)… */
+const OFFSET_DECAY_MS = 0.05;
+/** …and the jitter estimate decays by this factor (a ~5 s time constant at 20 Hz). */
+const JITTER_DECAY = 0.99;
 
 export type RemotePlayer = {
   id: number; color: number; x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
@@ -42,6 +51,10 @@ export class Net {
   private pending: { seq: number; input: number; yaw: number }[] = [];
   private snapshots: Snapshot[] = [];
   private clockOffset?: number; // serverTime - localTime
+  /** Recent worst snapshot delay beyond the best one (ms), and the eased interpolation delay. */
+  private jitter = 0;
+  private interpMs = INTERP_MS;
+  private epoch?: number; // wall-clock ms at server time 0
   private retryMs = 500;
   private browserId: string;
   private digCooldown = 0;
@@ -154,13 +167,21 @@ export class Net {
     return performance.now() + (this.clockOffset ?? 0);
   }
 
+  /** Shared wall clock (Unix ms) on the server's time, for the day/night cycle. Local clock until welcome. */
+  worldTime(): number {
+    return this.epoch === undefined || this.clockOffset === undefined ? Date.now() : this.serverTime() + this.epoch;
+  }
+
   /** Decay the visual error and interpolate remote players for this render frame. */
   frame(dtSeconds: number): RemotePlayer[] {
     const k = Math.exp(-dtSeconds * 15);
     this.errorX *= k;
     this.errorY *= k;
     this.errorZ *= k;
-    return this.interpolate(performance.now() + (this.clockOffset ?? 0) - INTERP_MS);
+    // Ease towards the target delay so remote players slow down or speed up a little instead of jumping.
+    const target = INTERP_MS + Math.min(this.jitter, MAX_JITTER_MS);
+    this.interpMs += (target - this.interpMs) * (1 - Math.exp(-dtSeconds * 2));
+    return this.interpolate(performance.now() + (this.clockOffset ?? 0) - this.interpMs);
   }
 
   private connect() {
@@ -175,6 +196,8 @@ export class Net {
       this.id = 0;
       this.pending = [];
       this.snapshots = [];
+      this.clockOffset = undefined; // a restarted server has a new clock
+      this.jitter = 0;
       // Predicted vertices go back to the last server value; the rejoin resends all chunks anyway.
       for (const [k, p] of this.predicted) edits.setMm(cellX(k), cellZ(k), p.server);
       this.predicted.clear();
@@ -203,6 +226,7 @@ export class Net {
     if (msg.t === 'welcome') {
       this.id = msg.id;
       this.color = msg.color;
+      this.epoch = msg.epoch;
       this.me = msg.state;
       this.seq = 0;
       this.retryMs = 500;
@@ -210,9 +234,11 @@ export class Net {
       return;
     }
     if (msg.t === 'snap') {
+      // A snapshot can arrive late but never early: the largest offset is the least-delayed one. Creep
+      // down slowly so clock drift and a slower route are still followed.
       const offset = msg.time - performance.now();
-      // Smooth the clock offset; the first sample sets it directly.
-      this.clockOffset = this.clockOffset === undefined ? offset : this.clockOffset + (offset - this.clockOffset) * 0.1;
+      this.clockOffset = this.clockOffset === undefined ? offset : Math.max(offset, this.clockOffset - OFFSET_DECAY_MS);
+      this.jitter = Math.max(this.clockOffset - offset, this.jitter * JITTER_DECAY);
 
       const players = new Map(msg.players.map((p) => [p.id, p]));
       this.snapshots.push({ time: msg.time, players });

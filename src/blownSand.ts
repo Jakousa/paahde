@@ -13,7 +13,7 @@ import type { Node } from 'three/webgpu';
 import { cameraPosition, cross, dot, float, instancedBufferAttribute, length, max, mix, normalize, pow, saturate, smoothstep, uv, vec3 } from 'three/tsl';
 import { edits, heightAt, normalAt } from '../shared/terrain.ts';
 import { DriftSheet } from './world/driftSheet.ts';
-import { hazeDensity, sunColor, sunDirection } from './world/env.ts';
+import { hazeDensity, nightLevel, sunColor, sunDirection } from './world/env.ts';
 import { PEAK_LOCAL, uAt, USTAR_T, ustarFrom10, wind, type WindSample } from './world/wind.ts';
 
 const G = 9.81;
@@ -61,7 +61,7 @@ const floatAttr = (a: THREE.InstancedBufferAttribute) => instancedBufferAttribut
 function grainColor(center: Node<'vec3'>, light: Node<'float'>, albedo: [number, number, number], forward: number) {
   const mu = dot(normalize(center.sub(cameraPosition)), sunDirection);
   const phase = pow(saturate(mu), 8).mul(forward).add(0.45);
-  return vec3(...albedo).mul(sunColor).mul(phase).mul(light).add(vec3(0.12, 0.05, 0.025));
+  return vec3(...albedo).mul(sunColor).mul(phase).mul(light).add(vec3(0.12, 0.05, 0.025).mul(float(1).sub(nightLevel.mul(0.85))));
 }
 
 export class BlownSand {

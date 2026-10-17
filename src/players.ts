@@ -1,12 +1,13 @@
 // Player avatars (local + remote).
 //
 // `Avatar` owns placement (position, smoothed facing, terrain), derived motion state (sliding),
-// footprints and the name tag. Its visuals are a swappable `AvatarModel`: the simple procedural
+// footprints, footstep sounds and the name tag. Its visuals are a swappable `AvatarModel`: the simple procedural
 // placeholder below, or the rigged scavenger (src/models/scavenger.ts) with the same interface.
 import * as THREE from 'three/webgpu';
 import { isSlipFace, slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { footprints } from './footprints.ts';
+import { footsteps } from './footsteps.ts';
 import { SHADOW_ONLY_LAYER } from './world/env.ts';
 
 export type AvatarPose = {
@@ -157,6 +158,7 @@ export class Avatar {
     const side = sliding ? 0 : 0.13 * this.foot;
     const fx = pose.x + Math.cos(this.facing) * side, fz = pose.z - Math.sin(this.facing) * side;
     footprints.add(fx, heightAt(fx, fz), fz, this.facing, sliding ? 2.2 : 1);
+    if (!sliding) footsteps.step(fx, fz, pose.speed);
   }
 
   dispose() {
