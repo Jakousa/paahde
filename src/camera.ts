@@ -16,7 +16,7 @@ export const MAX_FOV = BASE_FOV + SPRINT_FOV_KICK;
 const STRIDE = 1.15; // metres per step (half a bob cycle)
 
 /** What the camera needs from the local player each frame. */
-export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean };
+export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean; crouching?: boolean };
 
 export class FirstPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -26,7 +26,7 @@ export class FirstPersonCamera {
   private eyeY = NaN; // smoothed feet height
   private bobPhase = 0;
   private bobAmount = 0; // 0..1, fades in with walking, out when airborne/stopped
-  private crouch = 0; // 0..1, eased in while sliding: the eye drops and the view rolls a touch
+  private crouch = 0; // 0..1, eased in while sliding (crouching: 0.7): the eye drops and the view rolls a touch
   private dip = 0; // landing dip offset (m), spring back to 0
   private dipVel = 0;
   private roll = 0;
@@ -91,7 +91,7 @@ export class FirstPersonCamera {
 
     const x = p.x + rightX * bobX;
     const z = p.z + rightZ * bobX;
-    this.crouch += ((p.sliding && p.grounded ? 1 : 0) - this.crouch) * (1 - Math.exp(-dt * 12));
+    this.crouch += ((p.grounded ? (p.sliding ? 1 : p.crouching ? 0.7 : 0) : 0) - this.crouch) * (1 - Math.exp(-dt * 12));
     let y = this.eyeY + EYE_HEIGHT - 0.65 * this.crouch + bobY + this.dip;
     y = Math.max(y, heightAt(x, z) + 0.3); // never look out from under a dune
     this.camera.position.set(x, y, z);

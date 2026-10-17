@@ -44,13 +44,16 @@ const MAX_GROUND_SPEED = 18;
 
 // Intentional slide (Ctrl).
 const SLIDE_MIN_START = 4.5; // m/s needed to start one (a walk-speed jog is enough)
-const SLIDE_MIN_KEEP = 2.2; // the slide ends when you drop below this
+const SLIDE_MIN_KEEP = 3.2; // the slide ends when you drop below this
 const SLIDE_BOOST = 3; // m/s added on entry
 const SLIDE_START_CAP = 14; // the entry boost never takes you above this
 const SLIDE_COOLDOWN = 50; // ticks from the start of one slide to the next
-const SLIDE_DECEL = 4.5; // flat-sand friction while sliding (m/s²); the slope term adds to it
+const SLIDE_DECEL = 8; // flat-sand friction while sliding (m/s²); steep downhill beats it
 const SLIDE_GRAVITY = 0.9; // fraction of gravity along the slope that acts on a slide
 const SLIDE_TURN = 1.6; // rad/s the heading can swing towards the input
+
+// Ctrl below slide speed (or after a slide runs out) crouches: slow, no sprint.
+const CROUCH_SPEED = 3;
 
 // Landing.
 const HARD_LANDING = 13; // impact speed (m/s) above which a landing bogs you down
@@ -72,6 +75,7 @@ export type PlayerState = {
   jumpHeld: boolean; // jump was down last tick, so an air jump needs a fresh press
   landTicks: number; // ticks of hard-landing recovery left (integer)
   sliding: boolean; // in an intentional (Ctrl) slide
+  crouching: boolean; // Ctrl held on the ground without sliding
   slideCool: number; // ticks until another slide can start (integer)
 };
 
@@ -102,7 +106,7 @@ export function spawnState(x = SPAWN.x, z = SPAWN.z): PlayerState {
   return {
     x, y: heightAt(x, z), z, vx: 0, vy: 0, vz: 0, facing: 0,
     grounded: true, airJumps: AIR_JUMPS, jumpHeld: false, landTicks: 0,
-    sliding: false, slideCool: 0,
+    sliding: false, crouching: false, slideCool: 0,
   };
 }
 
@@ -160,6 +164,8 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
     vx *= boosted / hs0;
     vz *= boosted / hs0;
   }
+  const crouching = slideDown && s.grounded && !sliding;
+  if (crouching) speed = Math.min(speed, CROUCH_SPEED);
   if (sliding) {
     const onScrap = s.y > heightAt(s.x, s.z) + 0.02;
     const g = onScrap ? flatSlope : slopeAt(s.x, s.z, tmpSlope);
@@ -270,7 +276,7 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
   }
 
   if (grounded) airJumps = AIR_JUMPS;
-  return { x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks, sliding, slideCool };
+  return { x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks, sliding, crouching, slideCool };
 }
 
 /** Move the 2D vector (vx, vz) towards (tx, tz) by at most maxDelta (length, not per axis). */

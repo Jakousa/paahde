@@ -5,7 +5,7 @@
 #   ... -- --tex 1024     atlas size (default 2048 baked, colour kept at 2048, normal/ORM downscaled to 1024)
 #
 # Output: public/models/scavenger.glb (one skinned mesh, materials Scavenger / PlayerTint / Lens,
-# clips Idle, Walk, Run, Jump, Dig, Slide, Powerslide). Faces -Y in Blender = +Z in three.js.
+# clips Idle, Walk, Run, Jump, Dig, Slide, Powerslide, Crouch, CrouchWalk). Faces -Y in Blender = +Z in three.js.
 import math
 import os
 import random
@@ -1055,6 +1055,32 @@ def slide(p):
     return pose, (0.03 * s, 0.0, -0.30 + 0.01 * math.sin(2 * w))
 
 
+def crouch(p):
+    """Ctrl held at a standstill/slow: knees bent, torso forward, arms ready."""
+    w = 2 * math.pi * p
+    br = math.sin(w * 2)
+    pose = {'Hips': rot((X, 10)), 'Spine': rot((X, 10 + 0.5 * br)), 'Spine1': rot((X, 6)), 'Spine2': rot((X, 2)),
+            'Neck': rot((X, -14)), 'Head': rot((X, -6 + 2 * math.sin(w * 2 + 1)), (Z, 5 * math.sin(w + 0.3)))}
+    legs(pose, 52, 104, -14, 46, 98, -14, l_out=7, r_out=7)
+    arms_down(pose, 20, 20, l_swing=14, r_swing=10, l_elbow=40, r_elbow=36)
+    return pose, (0, 0, -0.33 + 0.003 * br)
+
+
+def crouchwalk(p):
+    w = 2 * math.pi * p
+    c, s = math.cos(w), math.sin(w)
+    lt, rt = 52 + 20 * c, 52 - 20 * c
+    lk = 104 + 30 * pos(-s) ** 1.3
+    rk = 98 + 30 * pos(s) ** 1.3
+    lf = -14 - lt * 0.15 + 10 * pos(-s)
+    rf = -14 - rt * 0.15 + 10 * pos(s)
+    pose = {'Hips': rot((X, 10), (Z, -4 * c)), 'Spine': rot((X, 10), (Z, 3 * c)), 'Spine1': rot((X, 6), (Z, 2 * c)),
+            'Spine2': rot((X, 2)), 'Neck': rot((X, -14)), 'Head': rot((X, -6), (Z, -2 * c))}
+    legs(pose, lt, lk, lf, rt, rk, rf, l_out=7, r_out=7)
+    arms_down(pose, 20, 20, l_swing=14 - 14 * c, r_swing=10 + 14 * c, l_elbow=40, r_elbow=36)
+    return pose, (0, 0, -0.33 - 0.012 * math.cos(2 * w))
+
+
 def powerslide(p):
     """Intentional (Ctrl) slide: lying back on the hips, one leg driven out forward, the other knee tucked,
     arms out for balance. The game tilts the whole body to the slope; this clip is the flat-ground pose."""
@@ -1071,7 +1097,8 @@ def main():
     body, lens = build_character()
     rig = make_rig([body, lens])
     CLIPS = [('Idle', 90, idle), ('Walk', 34, walk), ('Run', 22, run), ('Jump', 30, jump), ('Dig', 48, dig),
-             ('Slide', 40, slide), ('Powerslide', 40, powerslide)]
+             ('Slide', 40, slide), ('Powerslide', 40, powerslide),
+             ('Crouch', 90, crouch), ('CrouchWalk', 34, crouchwalk)]
     for name, frames, fn in CLIPS:
         clip(name, frames, fn)
 

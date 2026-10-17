@@ -218,10 +218,12 @@ Titanfall-style intentional slide (input bit `SLIDE` = 256, keys Ctrl or C; C be
 Not to be confused with `sliding` on the avatar/`Slide` clip, which is slipping down a slip face.
 
 - **Sim** (`shared/sim.ts`, state `sliding` + `slideCool`): starts on the ground at ≥ 4.5 m/s, +3 m/s entry
-  burst (capped 14), 50-tick cooldown from the start. While held: 4.5 m/s² friction, 90% of the slope's
+  burst (capped 14), 50-tick cooldown from the start. While held: 8 m/s² friction, 90% of the slope's
   gravity (downhill gains speed, uphill bleeds it), steering only turns the heading (1.6 rad/s). Ends on
-  release, leaving the ground, or < 2.2 m/s. Jumping out keeps the speed (air control never brakes).
+  release, leaving the ground, or < 3.2 m/s. Jumping out keeps the speed (air control never brakes).
 - **Animation:** `Powerslide` clip (leg driven forward, other knee tucked, leaning back; `tools/models/scavenger.py`).
   `ScavengerModel` tilts a group between root and model to the slope along/across the facing (`tiltPitch/Roll`),
   feet IK is off during it. Camera eye drops 0.65 m. Remote players get it from the snapshot's `sliding`.
+- **Crouch:** Ctrl on the ground without sliding (too slow to start one, in cooldown, or the slide ran out)
+  caps speed at 3 m/s (`crouching` in state; clips `Crouch` / `CrouchWalk`, camera drops 0.45 m).
 - Tuning knobs are the `SLIDE_*` constants at the top of `sim.ts`. Untested with real multiplayer latency.

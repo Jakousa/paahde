@@ -22,6 +22,8 @@ export type ScavengerPose = {
   /** Intentional Ctrl slide (clip 'Powerslide'); the body tilts to the ground by tiltPitch / tiltRoll
    *  (rad; + pitch = uphill ahead, + roll = uphill to the right). */
   powerSlide?: boolean;
+  /** Crouched ('Crouch' standing, 'CrouchWalk' moving). */
+  crouching?: boolean;
   tiltPitch?: number;
   tiltRoll?: number;
   /** Look pitch in radians (+ = up); tilts neck and head. */
@@ -35,13 +37,14 @@ export type ScavengerPose = {
   plant?: boolean;
 };
 
-export type ScavengerClip = 'Idle' | 'Walk' | 'Run' | 'Jump' | 'Dig' | 'Slide' | 'Powerslide';
+export type ScavengerClip = 'Idle' | 'Walk' | 'Run' | 'Jump' | 'Dig' | 'Slide' | 'Powerslide' | 'Crouch' | 'CrouchWalk';
 
 const URL = './models/scavenger.glb';
 const FADE = 0.2;
 // Ground speed (m/s) at which each locomotion clip plays at timeScale 1 without the feet sliding.
 const WALK_REF = 1.3;
 const RUN_REF = 4.7;
+const CROUCH_REF = 1.0;
 const RUN_ABOVE = 2.8;
 const MAX_HIP_YAW = 1.0; // rad; strafing beyond this shows as a crab-walk rather than hips turned further
 
@@ -180,6 +183,8 @@ export class ScavengerModel {
     else if (pose.powerSlide) this.play('Powerslide', 0.12);
     else if (pose.sliding) this.play('Slide');
     else if (pose.digging) this.play('Dig');
+    else if (pose.crouching && speed > 0.25) this.play('CrouchWalk', FADE, dir * clamp(speed / CROUCH_REF, 0.6, 2.2));
+    else if (pose.crouching) this.play('Crouch');
     else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(speed / RUN_REF, 0.75, 1.6));
     else if (speed > 0.25) this.play('Walk', FADE, dir * clamp(speed / WALK_REF, 0.6, 1.8));
     else this.play('Idle');
@@ -222,7 +227,7 @@ export class ScavengerModel {
 
 function isLocomotion(a: THREE.AnimationAction) {
   const n = a.getClip().name;
-  return n === 'Walk' || n === 'Run';
+  return n === 'Walk' || n === 'Run' || n === 'CrouchWalk';
 }
 
 function clamp(x: number, lo: number, hi: number) {

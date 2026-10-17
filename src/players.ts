@@ -15,6 +15,7 @@ export type AvatarPose = {
   sliding?: boolean; digging?: boolean; pitch?: number;
   /** In an intentional (Ctrl) slide, as opposed to slipping down a slip face (`sliding`). */
   powerSlide?: boolean;
+  crouching?: boolean;
   /** Ground velocity, for which way the legs walk relative to facing (defaults to straight ahead). */
   vx?: number; vz?: number;
 };
@@ -24,6 +25,8 @@ export type ModelPose = {
   speed: number; grounded: boolean; digging?: boolean; sliding?: boolean; pitch?: number;
   /** Intentional (Ctrl) slide: lies back on the sand and follows its slope (tiltPitch / tiltRoll). */
   powerSlide?: boolean;
+  /** Ctrl held without sliding: crouched, slow. */
+  crouching?: boolean;
   /** Ground slope along / across the facing (rad): + pitch = uphill ahead, + roll = uphill to the right. */
   tiltPitch?: number; tiltRoll?: number;
   /** Direction of travel relative to facing (rad): 0 ahead, +π/2 to the right, ±π backwards. */
@@ -142,7 +145,7 @@ export class Avatar {
     }
     this.model.update(
       {
-        speed: pose.speed, grounded: pose.grounded, sliding: slip, powerSlide: power, tiltPitch, tiltRoll,
+        speed: pose.speed, grounded: pose.grounded, sliding: slip, powerSlide: power, crouching: pose.crouching, tiltPitch, tiltRoll,
         digging: pose.digging, pitch: pose.pitch, heading, ground: onSand && !power ? heightAt : undefined,
       },
       dt,
