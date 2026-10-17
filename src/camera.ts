@@ -12,6 +12,9 @@ import { EYE_HEIGHT } from '../shared/dig.ts'; // the dig and pickup rays start 
 import { terrainHidden } from '../shared/base.ts';
 const SENSITIVITY = 0.0022;
 const PITCH_LIMIT = (85 * Math.PI) / 180;
+// Riding in first person the rider's body is drawn (headless) around the eye: a neck's range keeps the view out of it.
+const RIDE_YAW_LIMIT = (100 * Math.PI) / 180; // either side of the bike's heading
+const RIDE_PITCH_DOWN = (55 * Math.PI) / 180; // looking ahead over the bars; less over a shoulder (see limitRide)
 const BASE_FOV = 72;
 const SPRINT_FOV_KICK = 9;
 /** Widest the view gets (sprinting); the sun's shadow cascades are fitted to it. */
@@ -24,7 +27,9 @@ const THIRD_PERSON_KEY = 'dadajam.thirdPerson';
 /** What the camera needs from the local player each frame. */
 export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean; crouching?: boolean; riding?: boolean;
   /** The bike's lean into a turn (rad, + = left): the view rolls with part of it. */
-  lean?: number };
+  lean?: number;
+  /** The bike's heading while riding (rad), for the neck limits. */
+  heading?: number };
 
 export class FirstPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -47,6 +52,7 @@ export class FirstPersonCamera {
   /** Third-person view on (T toggles it, remembered per browser). */
   thirdPerson = false;
   private boom = 0; // current boom length (m), eased toward BOOM or 0
+  private rideHeading = NaN; // set while riding in first person: the view is limited to a neck's range of it
 
   constructor(dom: HTMLElement) {
     try {
@@ -70,7 +76,17 @@ export class FirstPersonCamera {
       const s = SENSITIVITY / this.zoomShown; // zoomed in, the same hand movement turns the view less
       this.yaw -= e.movementX * s;
       this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - e.movementY * s));
+      if (Number.isFinite(this.rideHeading)) this.limitRide(1);
     });
+  }
+
+  /** Pull yaw/pitch back inside the riding neck limits, all the way (t = 1) or part of it (easing in on mounting). */
+  private limitRide(t: number) {
+    const d = Math.atan2(Math.sin(this.yaw - this.rideHeading), Math.cos(this.yaw - this.rideHeading));
+    const turn = d + (Math.max(-RIDE_YAW_LIMIT, Math.min(RIDE_YAW_LIMIT, d)) - d) * t;
+    this.yaw += turn - d;
+    const down = RIDE_PITCH_DOWN * (1 - (0.6 * Math.abs(turn)) / RIDE_YAW_LIMIT);
+    if (this.pitch < -down) this.pitch += (-down - this.pitch) * t;
   }
 
   /** Step phase in radians (one step per π), so hands/footsteps can sync to the bob. */
@@ -86,6 +102,9 @@ export class FirstPersonCamera {
   /** Place the eye at the player's feet position `p` (predicted state + visual error offset). */
   update(p: ViewPose, dt: number) {
     const speed = Math.hypot(p.vx, p.vz);
+    // On the bike in first person, keep the view to a neck's range (eased, so mounting or leaving third person doesn't snap).
+    this.rideHeading = p.riding && !this.thirdPerson && p.heading !== undefined ? p.heading : NaN;
+    if (Number.isFinite(this.rideHeading)) this.limitRide(1 - Math.exp(-dt * 8));
 
     // Eye height: follow the feet quickly but smoothly; snap if far (respawn/teleport) or airborne.
     if (!Number.isFinite(this.eyeY) || Math.abs(p.y - this.eyeY) > 3) this.eyeY = p.y;
