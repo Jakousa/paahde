@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, abs, atan, cos, dot, exp, float, length, max, mix, mx_noise_float, pass, pow, renderOutput, saturate,
-  smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin, perspectiveDepthToViewZ, If, normalize, sqrt, min, log,
+  smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin, perspectiveDepthToViewZ, If, normalize, sqrt, min, log, rtt,
 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
@@ -104,8 +104,12 @@ export class Post {
 
     const { sunUV, sunOnScreen, sunRadiusUV, horizonY, aspect, exposure, stare, camNear, camFar, aoIntensity } = this;
 
-    // Normals are rebuilt from depth (no MRT), at half resolution to keep it cheap.
-    const aoPass = ao(depth, null as unknown as Node, camera);
+    // Normals are rebuilt from depth (no MRT), at half resolution to keep it cheap. GTAO gathers from its
+    // depth, which WGSL can't do on the multisampled (antialiased) depth buffer, so it reads a plain copy.
+    const depthCopy = rtt(depth.r, null, null, {
+      type: THREE.FloatType, format: THREE.RedFormat, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false,
+    });
+    const aoPass = ao(depthCopy, null as unknown as Node, camera);
     aoPass.resolutionScale = 0.5;
     aoPass.radius.value = 1.2;
     aoPass.thickness.value = 1;

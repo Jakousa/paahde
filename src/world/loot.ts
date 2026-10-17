@@ -49,7 +49,8 @@ const POOL = (() => {
   m.polygonOffsetFactor = -2;
   return m;
 })();
-const POOL_GEO = new THREE.PlaneGeometry(POOL_R * 2, POOL_R * 2).rotateX(-Math.PI / 2);
+/** Laid over the sand vertex by vertex (drape()): a flat disc would sink into a slope and show a hard edge. */
+const POOL_GEO = new THREE.PlaneGeometry(POOL_R * 2, POOL_R * 2, 8, 8).rotateX(-Math.PI / 2);
 
 function box(g: THREE.Group, w: number, h: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0, ry = 0, rz = 0) {
   const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
@@ -109,7 +110,15 @@ const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
   },
 };
 
-type Shown = { obj: THREE.Group; glint: THREE.Sprite | null; pool: THREE.Mesh | null; l: Loot };
+type Shown = { obj: THREE.Group; glint: THREE.Sprite | null; pool: THREE.Mesh | null; poolY: number; l: Loot };
+
+/** Lay the pool's vertices just above the sand around (x, z), wherever it has been dug. */
+function drape(pool: THREE.Mesh, x: number, z: number) {
+  const pos = pool.geometry.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, heightAt(x + pos.getX(i), z + pos.getZ(i)) + 0.04);
+  pos.needsUpdate = true;
+  pool.geometry.computeBoundingSphere();
+}
 
 export class LootView {
   private group = new THREE.Group();
@@ -128,7 +137,11 @@ export class LootView {
       const l = loot.get(id);
       if (!l || l.depth > 0 || Math.hypot(l.x - me.x, l.z - me.z) > VIEW + 20) {
         this.group.remove(s.obj);
-        s.obj.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry !== POOL_GEO && (o as THREE.Mesh).geometry.dispose());
+        s.obj.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
+        if (s.pool) {
+          this.group.remove(s.pool);
+          s.pool.geometry.dispose();
+        }
         this.shown.delete(id);
       }
     }
@@ -151,7 +164,13 @@ export class LootView {
         const k = GLINT_SIZE * tw * Math.max(1, d / 18) * Math.min(1, (GLINT_VIEW - d) / 40);
         s.glint.scale.set(k, k, 1);
       }
-      if (s.pool) s.pool.visible = d < POOL_VIEW;
+      if (s.pool) {
+        s.pool.visible = d < POOL_VIEW;
+        if (s.pool.visible && s.poolY !== s.obj.position.y) {
+          s.poolY = s.obj.position.y;
+          drape(s.pool, l.x, l.z);
+        }
+      }
     }
   }
 
@@ -189,10 +208,11 @@ export class LootView {
         glint = new THREE.Sprite(GLINT);
         glint.position.set((b.min.x + b.max.x) / 2, b.max.y + 0.03, (b.min.z + b.max.z) / 2);
         obj.add(glint);
-        pool = new THREE.Mesh(POOL_GEO, POOL);
-        pool.position.y = 0.04;
+        // In the loot group, not the turned model: its vertices follow the sand (drape()).
+        pool = new THREE.Mesh(POOL_GEO.clone(), POOL);
+        pool.position.set(l.x, 0, l.z);
         pool.renderOrder = 1;
-        obj.add(pool);
+        this.group.add(pool);
       }
     } else if (part) {
       loadPart(part.part, TIERS[part.tier]).then((m) => {
@@ -206,7 +226,7 @@ export class LootView {
     }
     obj.rotation.y = (l.id * 2.39996) % (Math.PI * 2); // some variety, the same for everyone
     this.group.add(obj);
-    return { obj, glint, pool, l };
+    return { obj, glint, pool, poolY: NaN, l };
   }
 }
 
