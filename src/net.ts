@@ -17,6 +17,7 @@ import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
+import { shiftToTimeOfDay } from './world/dayNight';
 
 const INTERP_MS = 100;
 /** Ceiling on the extra interpolation delay added for jitter. */
@@ -173,6 +174,13 @@ export class Net {
     return this.epoch === undefined || this.clockOffset === undefined ? Date.now() : this.serverTime() + this.epoch;
   }
 
+  /** Debug menu: move the shared clock so the time of day becomes `tod` for everyone (the server may refuse). */
+  shareTimeOfDay(tod: number) {
+    if (this.epoch === undefined) return;
+    this.epoch += shiftToTimeOfDay(this.worldTime(), tod);
+    this.send({ t: 'setEpoch', epoch: this.epoch });
+  }
+
   /** Decay the visual error and interpolate remote players for this render frame. */
   frame(dtSeconds: number): RemotePlayer[] {
     const k = Math.exp(-dtSeconds * 15);
@@ -212,6 +220,10 @@ export class Net {
   }
 
   private onMessage(msg: ServerMsg) {
+    if (msg.t === 'epoch') {
+      this.epoch = msg.epoch;
+      return;
+    }
     if (msg.t === 'version') return reloadIfStale(msg.build);
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);

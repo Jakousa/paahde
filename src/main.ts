@@ -48,9 +48,8 @@ const windSound = new WindSound();
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand, dust, windSound } });
 
-new DebugMenu(() => sky.day.tod);
-
 const net = new Net(getBrowserId());
+new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod));
 const digFx = new DigFx(scene);
 // Remote players play their dig clip for a moment after each stroke the server reports.
 const DIG_ANIM_S = 0.5;

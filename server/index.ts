@@ -87,6 +87,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'hello' && !p) return join(ws, msg.browserId);
     if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
     if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
+    if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
   });
   ws.on('close', () => {
     const p = players.get(ws);
@@ -112,7 +113,7 @@ function join(ws: WebSocket, browserId: unknown) {
   // Terrain first, so the client never sees its spawn without the holes.
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
-  send(ws, { t: 'welcome', id: p.id, state, color, epoch: performance.timeOrigin });
+  send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   send(ws, { t: 'inventory', items: scrap.inventory(browserId) });
 }
 
@@ -183,6 +184,17 @@ setInterval(() => {
     broadcast(now);
   }
 }, 1000 / TICK_RATE);
+
+// The wall-clock ms at server time 0 drives the day/night cycle. The debug menu can move it for everyone,
+// but only outside production (or with ALLOW_DEBUG_TIME=1): anyone on the public site could send it.
+let epoch = performance.timeOrigin;
+const allowDebugTime = process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEBUG_TIME === '1';
+
+function onSetEpoch(ws: WebSocket, wanted: unknown) {
+  if (!allowDebugTime || typeof wanted !== 'number' || !Number.isFinite(wanted)) return send(ws, { t: 'epoch', epoch });
+  epoch = wanted;
+  for (const p of players.values()) send(p.ws, { t: 'epoch', epoch });
+}
 
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.

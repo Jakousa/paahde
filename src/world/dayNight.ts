@@ -35,6 +35,13 @@ export function timeOfDay(unixMs: number): number {
   return t - Math.floor(t);
 }
 
+/** Milliseconds to add to the shared clock at `unixMs` so the time of day becomes `tod` (forward, within one day). */
+export function shiftToTimeOfDay(unixMs: number, tod: number): number {
+  const now = unixMs / 1000 / DAY_LEN + DAY_OFFSET;
+  const ahead = (((tod - now) % 1) + 1) % 1;
+  return ahead * DAY_LEN * 1000;
+}
+
 /** "HH:MM" for a time of day. */
 export function clockText(tod: number): string {
   const min = Math.floor(tod * 24 * 60);

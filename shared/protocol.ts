@@ -8,7 +8,9 @@ export type ClientMsg =
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
   // Pick up scrap piece i of cell (ix, iz) (shared/scrap.ts). Sent after the input it was aimed with.
-  | { t: 'pickup'; ix: number; iz: number; i: number };
+  | { t: 'pickup'; ix: number; iz: number; i: number }
+  // Debug menu: move the shared day/night clock by changing the wall-clock epoch. Ignored in production.
+  | { t: 'setEpoch'; epoch: number };
 
 // pitch: the player's quantized camera pitch (pitchFromQ in shared/dig.ts), so remote avatars can
 // tilt their heads.
@@ -36,4 +38,6 @@ export type ServerMsg =
   // snapshot, like terrainEdit. A rejected pickup gets its piece back in a message to that player only.
   | { t: 'scrap'; taken: number[]; back: number[]; reset?: boolean }
   // The player's inventory: count per SCRAP_KINDS index. Sent after 'welcome' and on every change.
-  | { t: 'inventory'; items: number[] };
+  | { t: 'inventory'; items: number[] }
+  // The shared clock's epoch changed (debug menu), or a setEpoch was refused and this is the real one.
+  | { t: 'epoch'; epoch: number };
