@@ -1,11 +1,12 @@
 // Night drones (shared/guardians.ts): the hovering body (public/models/drone.glb, rotors spinning) and its
-// searchlight, a soft additive cone from the lamp to where it meets the sand plus a bright pool there. Warm white
-// while it sweeps, red once it has locked on to someone. Purely visual: the server decides who is lit.
+// searchlight: a glare at the lens, a faint haze cone (back faces only, so it also reads from inside, brightest
+// along its axis and near the lamp, soft at the edges) and a bright pool where it meets the sand. Warm white while
+// it sweeps, red once it has locked on to someone. Purely visual: the server decides who is lit.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { abs, dot, float, length, normalView, positionViewDirection, pow, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { BEAM_HALF, beamGround } from '../../shared/guardians.ts';
-import { normalAt } from '../../shared/terrain.ts';
+import { heightAt } from '../../shared/terrain.ts';
 import type { DroneFrame } from './botFrames.ts';
 
 const SHOW_R = 900;
@@ -13,9 +14,11 @@ const SHOW_R = 900;
 const LAMP = new THREE.Vector3(0, -0.4, 0.55);
 const WARM = new THREE.Color(1.0, 0.86, 0.62);
 const RED = new THREE.Color(1.0, 0.16, 0.08);
-/** Beam brightness (HDR, before bloom) and the pool's. */
-const BEAM_GAIN = 0.8;
-const POOL_GAIN = 2.2;
+/** Haze brightness (HDR, before bloom), the pool's, and the lens glare's (and its size, m). */
+const BEAM_GAIN = 0.32;
+const POOL_GAIN = 1.2;
+const GLARE_GAIN = 2.5;
+const GLARE_SIZE = 1.1;
 
 let model: { body: THREE.Object3D; rotors: THREE.Object3D[] } | null = null;
 let loading = false;
@@ -63,18 +66,23 @@ const coneGeo = (() => {
   g.rotateX(-Math.PI / 2);
   return g;
 })();
-const poolGeo = new THREE.CircleGeometry(1, 32).rotateX(-Math.PI / 2);
+/** The pool is a grid laid on the sand every frame (POOL_N × POOL_N cells), so it follows the dunes. */
+const POOL_N = 12;
+const POOL_LIFT = 0.08;
 
 type View = {
   root: THREE.Group;
   rotors: THREE.Object3D[];
   beam: THREE.Mesh;
   pool: THREE.Mesh;
+  /** The pool grid's own (across, along) coordinates, -1..1, per vertex. */
+  grid: Float32Array;
+  glare: THREE.Sprite;
   color: THREE.Color;
   model: boolean;
 };
 
-const _lamp = new THREE.Vector3(), _dir = new THREE.Vector3(), _hit = { x: 0, y: 0, z: 0 }, _n = { x: 0, y: 1, z: 0 };
+const _lamp = new THREE.Vector3(), _dir = new THREE.Vector3(), _hit = { x: 0, y: 0, z: 0 };
 const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3(), _m = new THREE.Matrix4();
 
 export class Drones {
@@ -100,26 +108,38 @@ export class Drones {
     root.traverse((o) => (o.castShadow = true));
     const color = WARM.clone();
     const tint = uniform(color);
-    // Brightest along the axis (facing us) and near the lamp, fading out towards the far end.
-    const beamMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-    const facing = pow(abs(dot(normalView, positionViewDirection)), float(1.5));
+    // Brightest along the axis (where the surface faces us, i.e. through the most haze) and near the lamp, nothing
+    // at the silhouette, fading towards the far end.
+    const beamMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide });
+    const facing = pow(abs(dot(normalView, positionViewDirection)), float(3));
     const along = uv().y; // 1 at the lamp, 0 at the far end
     beamMat.colorNode = tint.mul(BEAM_GAIN);
-    beamMat.opacityNode = facing.mul(pow(along, float(0.7))).mul(0.5).add(along.mul(along).mul(0.25));
+    beamMat.opacityNode = facing.mul(pow(along, float(1.6)).mul(0.8).add(0.2)).mul(smoothstep(0, 0.15, along));
     const beam = new THREE.Mesh(coneGeo, beamMat);
     beam.frustumCulled = false;
     const poolMat = new THREE.MeshBasicNodeMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4, side: THREE.DoubleSide,
     });
     const r = length(uv().sub(0.5)).mul(2);
     poolMat.colorNode = tint.mul(POOL_GAIN).mul(vec3(1, 0.95, 0.9));
-    poolMat.opacityNode = float(1).sub(smoothstep(0.35, 1.0, r)).mul(0.8);
+    poolMat.opacityNode = float(1).sub(smoothstep(0.1, 1.0, r)).pow(1.5);
+    const poolGeo = new THREE.PlaneGeometry(2, 2, POOL_N, POOL_N);
+    const grid = new Float32Array(poolGeo.attributes.position.count * 2);
+    for (let i = 0; i < grid.length / 2; i++) grid.set([poolGeo.attributes.position.getX(i), poolGeo.attributes.position.getY(i)], i * 2);
+    (poolGeo.attributes.position as THREE.BufferAttribute).setUsage(THREE.DynamicDrawUsage);
     const pool = new THREE.Mesh(poolGeo, poolMat);
     pool.frustumCulled = false;
-    root.add(beam);
+    const glareMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const g = float(1).sub(smoothstep(0, 1, length(uv().sub(0.5)).mul(2)));
+    glareMat.colorNode = tint.mul(GLARE_GAIN);
+    glareMat.opacityNode = g.mul(g).mul(g);
+    const glare = new THREE.Sprite(glareMat);
+    glare.position.copy(LAMP);
+    glare.scale.setScalar(GLARE_SIZE);
+    root.add(beam, glare);
     this.scene.add(root, pool);
     beam.userData.tint = tint;
-    return { root, rotors, beam, pool, color, model: model !== null };
+    return { root, rotors, beam, pool, grid, glare, color, model: model !== null };
   }
 
   update(frames: DroneFrame[], dt: number, focus: { x: number; z: number }) {
@@ -155,16 +175,16 @@ export class Drones {
       _y.crossVectors(_z, _x);
       _m.makeBasis(_x.multiplyScalar(rad), _y.multiplyScalar(rad), _z.multiplyScalar(len)).setPosition(_lamp);
       v.beam.matrix.copy(v.root.matrixWorld).invert().multiply(_m);
-      // The pool: an ellipse stretched along the beam the flatter it comes in, on the sand.
-      normalAt(_hit.x, _hit.z, _n);
-      const flat = Math.max(0.25, Math.abs(f.dy));
-      _y.set(_n.x, _n.y, _n.z);
-      _z.set(f.dx, 0, f.dz).normalize();
-      _x.crossVectors(_y, _z).normalize();
-      _z.crossVectors(_x, _y);
-      _m.makeBasis(_x.multiplyScalar(rad * 1.15), _y, _z.multiplyScalar((rad * 1.15) / flat)).setPosition(_hit.x, _hit.y + 0.05, _hit.z);
-      v.pool.matrixAutoUpdate = false;
-      v.pool.matrix.copy(_m);
+      // The pool: an ellipse stretched along the beam the flatter it comes in, its grid dropped onto the sand.
+      const flat = Math.max(0.25, Math.abs(f.dy)), hl = Math.hypot(f.dx, f.dz) || 1;
+      const ax = f.dx / hl, az = f.dz / hl, across = rad * 1.15, along = across / flat;
+      const pos = v.pool.geometry.attributes.position as THREE.BufferAttribute, grid = v.grid;
+      for (let i = 0; i < pos.count; i++) {
+        const u = grid[i * 2], w = grid[i * 2 + 1]; // -1..1 across and along (the ellipse is inscribed)
+        const x = _hit.x + az * u * across + ax * w * along, z = _hit.z - ax * u * across + az * w * along;
+        pos.setXYZ(i, x, heightAt(x, z) + POOL_LIFT, z);
+      }
+      pos.needsUpdate = true;
       v.pool.visible = len < 74;
     }
     for (const [id, v] of this.views) if (!seen.has(id)) {
@@ -178,5 +198,7 @@ export class Drones {
     v.pool.removeFromParent();
     (v.beam.material as THREE.Material).dispose();
     (v.pool.material as THREE.Material).dispose();
+    v.pool.geometry.dispose();
+    v.glare.material.dispose();
   }
 }
