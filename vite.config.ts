@@ -5,7 +5,11 @@ const BUILD_SHA = process.env.BUILD_SHA ?? 'dev';
 export default defineConfig({
   // Relative asset URLs so the build works under any path (served at herkku.org/dadajam/).
   base: './',
-  build: { target: 'es2022' },
+  build: {
+    target: 'es2022',
+    // models-lab.html: model review page (src/models/lab.ts), served at ./models-lab.html
+    rollupOptions: { input: { main: 'index.html', lab: 'models-lab.html' } },
+  },
   define: { __BUILD_SHA__: JSON.stringify(BUILD_SHA) },
   // The server reads dist/version.txt and tells clients, which reload when they're out of date.
   plugins: [

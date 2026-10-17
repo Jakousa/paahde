@@ -8,6 +8,7 @@ import { footprints } from './footprints';
 import { readInput } from './input';
 import { LocatorBar } from './locator';
 import { getBrowserId, Net } from './net';
+import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { Post } from './post';
 import * as env from './world/env';
@@ -38,7 +39,14 @@ if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky
 
 const net = new Net(getBrowserId());
 const digFx = new DigFx(scene);
-net.onDig = (at, pile) => digFx.puff(at, pile);
+// Remote players play their dig clip for a moment after each stroke the server reports.
+const DIG_ANIM_S = 0.5;
+const digUntil = new Map<number, number>();
+net.onDig = (at, pile, _mine, id) => {
+  digFx.puff(at, pile);
+  digUntil.set(id, performance.now() + DIG_ANIM_S * 1000);
+};
+loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
 const me = new Avatar(0xffffff);
 me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
 scene.add(me.root, footprints.mesh);
@@ -89,16 +97,24 @@ renderer.setAnimationLoop((time) => {
     seen.add(r.id);
     let avatar = remotes.get(r.id);
     if (!avatar) {
-      remotes.set(r.id, (avatar = new Avatar(r.color)));
-      avatar.setLabel(`#${r.id}`, r.color);
-      scene.add(avatar.root);
+      const a = (avatar = new Avatar(r.color));
+      remotes.set(r.id, a);
+      a.setLabel(`#${r.id}`, r.color);
+      scene.add(a.root);
+      // Placeholder until the rigged scavenger has loaded, then swap it in.
+      const model = new ScavengerModel(r.color);
+      model.ready.then(
+        () => (remotes.get(r.id) === a ? a.setModel(model, r.color) : model.dispose()),
+        () => model.dispose(),
+      );
     }
-    avatar.update(r, frameDt);
+    avatar.update({ ...r, digging: (digUntil.get(r.id) ?? 0) > performance.now() }, frameDt);
   }
   for (const [id, avatar] of remotes) {
     if (!seen.has(id)) {
       avatar.dispose();
       remotes.delete(id);
+      digUntil.delete(id);
     }
   }
 
