@@ -68,7 +68,7 @@ export const GUN_PIVOT = -1.3;
 export const MUZZLE = 5;
 /** Fires at people within this distance (m) it can see, every FIRE_MS, after charging for CHARGE_MS. */
 export const FIRE_R = 120;
-export const FIRE_MS = 2200;
+export const FIRE_MS = 2900;
 export const CHARGE_MS = 800;
 /** Bolt speed (m/s), how far it flies (m), its radius for hits (m), and the blast where it lands. */
 export const BOLT_SPEED = 38;

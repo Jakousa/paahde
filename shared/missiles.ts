@@ -15,7 +15,7 @@ export const SHOOTERS = 2;
 /** A guardian hunting someone shells them too, beam or not, unless they're within this distance (m) of it. */
 export const MISSILE_MIN_R = 40;
 /** Each guardian fires one every this long (ms) while the beam holds someone; the first after FIRST_MS. */
-export const MISSILE_MS = 4500;
+export const MISSILE_MS = 6000;
 export const FIRST_MS = 1200;
 /** Flight time (s): distance / CRUISE, between these. */
 export const CRUISE = 160;

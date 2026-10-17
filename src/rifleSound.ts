@@ -3,8 +3,8 @@
 //   0.40–0.55 s, each levelled to −18.5 LUFS momentary, true peak ≤ −1.5 dBTP), picked at random and a little
 //   off pitch each time; the pistol plays them higher and lighter. Your own is dry and in your head; another
 //   player's carries across the desert (src/acoustics.ts: late, duller, softer and more reverb with distance). A
-//   guardian's cannon fires the same pulses an octave down (CANNON_PITCH), slower and heavier: −18 LUFS momentary
-//   max within CANNON_REF, true peak ≤ −1.5 dBTP.
+//   guardian's cannon fires the same pulses an octave down (CANNON_PITCH), slower and heavier: −12 LUFS momentary
+//   max within CANNON_REF (peaks over 0 dBFS: the limiter takes them), −18 at 80 m.
 // - firework: a weak point shattering (a crawler's softer), a shot-down drone crashing (softer) and a missile's blast
 //   (lower) burst like a firework: one of
 //   four of TB0Y298's "Firework Explosion" 1–4 (CC BY 4.0; firework-1..4.mp3, mono, each levelled to −18.9 LUFS
@@ -28,8 +28,8 @@ const PULSE_GAIN = 1.3;
 const PULSES = ['./audio/laser-1.mp3', './audio/laser-2.mp3', './audio/laser-3.mp3'];
 /** A guardian's cannon: the pulses at this pitch (lower: slower, heavier), level and full-level distance (m). */
 const CANNON_PITCH = 0.5;
-const CANNON_GAIN = 1;
-const CANNON_REF = 25;
+const CANNON_GAIN = 2;
+const CANNON_REF = 40;
 const CHARGE_GAIN = 0.035;
 const IMPACT_GAIN = 1.2;
 const DEATH_GAIN = 1.8;
