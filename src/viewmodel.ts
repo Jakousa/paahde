@@ -4,6 +4,7 @@
 //   const vm = new ViewModel(orbit, scene);
 //   vm.update(dt, { speed, grounded, digging, sliding });  // every render frame, after orbit.update()
 //
+// Empty hands are lowered out of view (hidden); the clips Idle / Walk / Dig still run under them.
 // Clips: Idle / Walk / Dig with empty hands; CanteenIdle / CanteenWalk / Drink / Fill with the canteen
 // (the `Canteen` mesh, parented to the right hand bone, is shown only then). Missing clips fall back to the
 // empty-hand ones, a missing Canteen node just means no canteen. Walk clips are phase-locked to the camera's
@@ -31,6 +32,8 @@ const REST_PITCH = -0.05;
 const SWITCH_S = 0.22; // lower (or raise) time when changing what's held
 /** Walk clip phase offset (fraction of a cycle) against the camera bob. */
 const WALK_PHASE = 0;
+/** Walk clip cycles per two steps: ½ swings the hands once every four steps, a calmer sway than the head bob. */
+const WALK_RATE = 0.5;
 
 const params = new URLSearchParams(location.search);
 const forcedHold = params.get('hold') as Held | null;
@@ -146,9 +149,10 @@ export class ViewModel {
     // Swap what's held behind a quick lower/raise.
     const want = forcedHold ?? playerHands.held;
     if (this.mixer) {
-      if (want !== this.shown) {
+      // Empty hands stay lowered out of view; only something held brings them up.
+      if (want !== this.shown || want === 'none') {
         this.lower = Math.min(1, this.lower + dt / SWITCH_S);
-        if (this.lower >= 1) {
+        if (this.lower >= 1 && want !== this.shown) {
           this.shown = want;
           this.applyHeld();
           this.current?.stop();
@@ -158,6 +162,7 @@ export class ViewModel {
         this.lower = Math.max(0, this.lower - dt / SWITCH_S);
       }
     }
+    this.sway.visible = this.lower < 1;
     this.slide += ((pose.sliding && pose.grounded ? 1 : 0) - this.slide) * (1 - Math.exp(-dt * 10));
     const l = smooth(this.lower);
     this.sway.rotation.set(
@@ -180,11 +185,12 @@ export class ViewModel {
     else if (moving) this.play((walk = 'Walk'));
     else this.play('Idle');
 
-    // Walk clips hold two steps per cycle; lock them to the head bob (one step per π of stepPhase).
+    // Walk clips hold two steps per cycle; lock them to the head bob (one step per π of stepPhase), at
+    // WALK_RATE cycles per two steps so running and sprinting don't shake the hands.
     if (walk && this.current) {
       const a = this.current;
       a.timeScale = 0;
-      const f = view.stepPhase / (2 * Math.PI) + WALK_PHASE;
+      const f = (view.stepPhase / (2 * Math.PI)) * WALK_RATE + WALK_PHASE;
       a.time = (f - Math.floor(f)) * a.getClip().duration;
     }
     this.mixer.update(dt);
