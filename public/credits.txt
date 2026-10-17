@@ -54,6 +54,12 @@ Breathing - Slow, Distraught, Tired (sound)
   Trimmed to 1.0-57.72 s, mixed to mono, high-passed at 70 Hz and levelled to -1 dBTP.
   File: audio/breathing.mp3
 
+Liquid Drink (sound)
+  By SilverIllusionist on Freesound (https://freesound.org/s/411172/), CC BY 4.0
+  (https://creativecommons.org/licenses/by/4.0/).
+  Cut into the gulps and the sigh after them, mixed to mono, high-passed at 60 Hz and levelled.
+  Files: audio/drink.mp3, audio/sigh.mp3
+
 Made for this game
 ------------------
 

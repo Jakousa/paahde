@@ -20,6 +20,7 @@ import type { Net } from './net';
 import type { DeathCause } from '../shared/protocol.ts';
 import { DOWN_MS } from '../shared/ragdoll.ts';
 import { heatstroke } from './world/env.ts';
+import { drinkSound } from './drinkSound';
 
 /**
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
@@ -253,6 +254,7 @@ export class Survival {
   }
 
   private cancel() {
+    if (playerHands.drinking) drinkSound.stop();
     playerHands.drinking = playerHands.filling = false;
   }
 
@@ -292,6 +294,7 @@ export class Survival {
     if (playerHands.drinking) {
       if (!use || !holding || dead) this.cancel();
       else if (now - this.actionAt >= DRINK_MS) {
+        drinkSound.done(w.heat); // the sigh, if you were overheating
         this.cancel();
         this.net.drink();
         this.needRelease = true;
@@ -303,6 +306,7 @@ export class Survival {
       else {
         playerHands.drinking = true;
         this.actionAt = now;
+        drinkSound.drink();
       }
     }
 
