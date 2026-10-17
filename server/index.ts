@@ -14,6 +14,7 @@ import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
+import { CRATER_MM, CRATER_R } from '../shared/guardians.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
@@ -267,6 +268,7 @@ function tickBots(elapsed: number, now: number, tod: number) {
     for (const e of r.events) if (Math.hypot(e.x - p.state.x, e.z - p.state.z) < BOT_SEND_R) send(p.ws, e.msg);
     send(p.ws, guardians.msg(now, p.id, p.state.x, p.state.z));
   }
+  for (const e of r.events) if (e.msg.t === 'boom' && e.msg.ground) terrain.crater(e.msg.x, e.msg.z, CRATER_R, CRATER_MM);
 }
 
 function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {

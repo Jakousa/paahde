@@ -1,6 +1,6 @@
 // Server side of the terrain edit layer: applies dig strokes, runs sand relaxation, batches changed
 // vertices for broadcast and persists dirty chunks to SQLite.
-import { cellKey, cellX, cellZ, heal, Relaxer, stroke, type DigTool, type Point } from '../shared/dig.ts';
+import { cellKey, cellX, cellZ, deposit, heal, Relaxer, stroke, strokeDig, type DigTool, type Point } from '../shared/dig.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { EDIT_CELL, EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import type { openDb } from './db.ts';
@@ -41,6 +41,16 @@ export class TerrainServer {
   /** Apply one dig or pile stroke from a player. Returns where it landed, or null if out of reach. */
   stroke(feet: { x: number; y: number; z: number }, yawQ: number, pitchQ: number, pile: boolean, tool?: DigTool): Point | null {
     return stroke(edits, feet, yawQ, pitchQ, pile, this.onCell, tool);
+  }
+
+  /** A blast crater at (x, z): a bowl `radius` wide and `mm` deep, the sand thrown out into a rim around it. */
+  crater(x: number, z: number, radius: number, mm: number) {
+    const removed = strokeDig(edits, x, z, this.onCell, { mm, radius, cooldown: 0 });
+    const n = 10;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      deposit(edits, x + Math.cos(a) * radius * 1.15, z + Math.sin(a) * radius * 1.15, (removed * 0.6) / n, radius * 0.5, this.onCell);
+    }
   }
 
   /** One sand-relaxation pass over recently changed vertices. Cheap when nothing is moving. */

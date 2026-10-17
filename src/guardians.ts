@@ -88,9 +88,9 @@ export class GuardianFx {
           const at = muzzle ?? this.muzzle.set(m.x, m.y, m.z);
           guardianSound.zap(at.x, at.y, at.z, this.ear);
         } else {
-          this.bolts.boom(m.id, m.x, m.y, m.z);
+          this.bolts.boom(m.id, m.x, m.y, m.z, m.ground);
           guardianSound.boom(m.x, m.y, m.z, this.ear);
-          if (m.ground) this.thump(m.x, m.y, m.z, 1.6, 16, 5, 2.4);
+          if (m.ground) this.thump(m.x, m.y, m.z, 2.6, 30, 7, 3.4);
         }
       };
     }

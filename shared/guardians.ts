@@ -65,13 +65,17 @@ export const GUN_PIVOT = -1.3;
 export const MUZZLE = 5;
 /** Fires at people within this distance (m) it can see, every FIRE_MS, after charging for CHARGE_MS. */
 export const FIRE_R = 120;
-export const FIRE_MS = 3200;
-export const CHARGE_MS = 1000;
+export const FIRE_MS = 2200;
+export const CHARGE_MS = 800;
 /** Bolt speed (m/s), how far it flies (m), its radius for hits (m), and the blast where it lands. */
 export const BOLT_SPEED = 38;
 export const BOLT_RANGE = 180;
 export const BOLT_R = 0.9;
-export const BLAST_R = 2.2;
+export const BLAST_R = 3;
+/** A bolt that hits the sand blows a crater this wide (radius, m) and deep (mm) into it (server/terrain.ts), which
+ *  the wind fills in again like any hole. */
+export const CRATER_R = 3.2;
+export const CRATER_MM = 1400;
 
 /** The cannon's pivot, world, for a body of `scale` at (x, bodyY, z) facing `yaw` (level body). */
 export function gunPivot<T extends { x: number; y: number; z: number }>(x: number, bodyY: number, z: number, yaw: number, scale: number, out: T): T {
