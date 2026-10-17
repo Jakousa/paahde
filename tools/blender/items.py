@@ -30,7 +30,7 @@ from mathutils import Euler, Matrix, Vector
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 TIERS = ['scrap', 'basic', 'quality', 'space']
-ITEMS = ['battery', 'motor', 'heatsink', 'compute', 'coil']
+ITEMS = ['battery', 'motor', 'heatsink', 'compute', 'coil', 'antimatter']
 
 # Materials: name -> (sRGB hex, metallic, roughness, emission strength). Emissive ones glow in their colour.
 MATERIALS = {
@@ -69,6 +69,10 @@ MATERIALS = {
     'gold': (0xe6b54a, 1.0, 0.22, 0),
     'glow': (0x3ff0ff, 0.0, 0.3, 6),
     'glow_soft': (0x7ad8ff, 0.0, 0.3, 2.5),
+    # antimatter core (every tier): a violet glow, dimmer and sickly when scrap
+    'am_core': (0xc04dff, 0.0, 0.3, 2.2),
+    'am_core_dim': (0x9a5cc8, 0.0, 0.5, 1.0),
+    'hazard_yellow': (0xe0b52a, 0.1, 0.55, 0),
 }
 
 
@@ -501,8 +505,102 @@ def build_coil(mb, tier, rng):
         mb.cyl(0.007, 0.007, 0.014, 10, (x + 0.007, y, 0.007), 'glow', rot=Y90)  # glowing connector tip
 
 
+# ------------------------------------------------------------------------------------------- anti-matter
+
+def build_antimatter(mb, tier, rng):
+    """Anti-matter container: a magnetic bottle about 15 cm across and 26 cm tall. Two heavy end caps joined
+    by rods, a glowing violet core floating inside, held by containment rings round the waist, handle on top."""
+    R, CAP, H = 0.075, 0.035, 0.26
+    segs = {'scrap': 8, 'basic': 10, 'quality': 12, 'space': 16}[tier]
+    mid = H / 2
+    rod_r = R * 0.82
+
+    def rods(n, mat, r=0.008, phase=math.pi / 4, skip=(), lean=None):
+        for i in range(n):
+            if i in skip:
+                continue
+            a = phase + 2 * math.pi * i / n
+            rot = (lean.get(i, 0), 0, 0) if lean else (0, 0, 0)
+            yield mb.cyl(r, r, H - 2 * CAP, 6, (rod_r * math.cos(a), rod_r * math.sin(a), mid), mat,
+                         rot=(rot[0], 0, a) if lean else (0, 0, 0))
+
+    def ring(r, t, z, mat, n=None, tilt=0.0):
+        """Open hoop of n box segments (a low-poly torus) so the core stays visible through it."""
+        n = n or segs
+        seg = 2 * math.pi * r / n * 1.08
+        for i in range(n):
+            a = 2 * math.pi * (i + 0.5) / n
+            p = Euler((tilt, 0, 0)).to_matrix() @ Vector((r * math.cos(a), r * math.sin(a), 0))
+            rot = (Euler((tilt, 0, 0)).to_matrix() @ Euler((0, 0, a)).to_matrix()).to_euler()
+            mb.box((t, seg, t), (p.x, p.y, z + p.z), mat, rot=tuple(rot))
+
+    def handle(mat, z):
+        for sx in (1, -1):
+            mb.box((0.012, 0.014, 0.04), (sx * 0.045, 0, z + 0.02), mat)
+        mb.box((0.102, 0.016, 0.014), (0, 0, z + 0.044), mat)
+
+    if tier == 'scrap':
+        # Mismatched caps: a rusty base, a faded blue top off something else, sitting crooked.
+        base = mb.cyl(R, R * 0.97, CAP, segs, (0, 0, CAP / 2), 'rust')
+        mb.jitter(base, rng, 0.003)
+        top = mb.cyl(R * 0.95, R * 1.02, CAP, segs, (0.004, 0, H - CAP / 2), 'paint_faded_blue', rot=(0.05, -0.03, 0))
+        mb.dent(top, (R, -0.02, H - CAP / 2), 0.05, 0.012)
+        # Three rods left of four; one bent.
+        for v in rods(4, 'steel_dull', skip=(2,), lean={1: 0.12}):
+            mb.jitter(v, rng, 0.002)
+        # One crooked containment hoop; the core is dim and lumpy, a strip of tape across the gap.
+        ring(R * 0.62, 0.012, mid - 0.01, 'rust_dark', tilt=0.15)
+        core = mb.blob(0.04, (0, 0, mid), 'am_core_dim')
+        mb.jitter(core, rng, 0.005)
+        mb.box((0.022, R * 2.05, 0.04), (0.03, 0, H - CAP - 0.03), 'tape', rot=(0.1, -0.1, -0.4))
+        mb.cyl(0.005, 0.005, H * 0.7, 5, (R * 0.9, -R * 0.4, mid + 0.01), 'wire_red', rot=(0.25, 0.1, 0))
+        mb.cyl(0.005, 0.005, H * 0.55, 5, (-R * 0.5, -R * 0.85, mid - 0.02), 'wire_yellow', rot=(-0.2, -0.15, 0))
+        # A bent strap for a handle.
+        mb.box((0.012, 0.014, 0.04), (0.045, 0, H + 0.016), 'steel_dull', rot=(0, 0.2, 0))
+        mb.box((0.012, 0.014, 0.03), (-0.045, 0, H + 0.012), 'steel_dull', rot=(0, -0.1, 0))
+        mb.box((0.105, 0.016, 0.012), (0, 0, H + 0.036), 'steel_dull', rot=(0, 0.12, 0.05))
+    elif tier == 'basic':
+        mb.cyl(R, R, CAP, segs, (0, 0, CAP / 2), 'plastic_dark')
+        mb.cyl(R, R, CAP, segs, (0, 0, H - CAP / 2), 'plastic_dark')
+        for z in (CAP / 2, H - CAP / 2):  # hazard bands round both caps
+            mb.cyl(R * 1.02, R * 1.02, 0.012, segs, (0, 0, z), 'hazard_yellow')
+        list(rods(4, 'steel'))
+        ring(R * 0.6, 0.012, mid, 'steel')
+        mb.blob(0.042, (0, 0, mid), 'am_core')
+        mb.box((0.05, 0.004, 0.016), (0, -R - 0.002, H - CAP / 2 - 0.001), 'label', rot=(0, 0, 0))
+        handle('plastic_black', H)
+    elif tier == 'quality':
+        mb.cyl(R, R * 0.92, CAP, segs, (0, 0, CAP / 2), 'anodised', rot=(math.pi, 0, 0))
+        mb.cyl(R, R * 0.92, CAP, segs, (0, 0, H - CAP / 2), 'anodised')
+        for z in (CAP + 0.004, H - CAP - 0.004):
+            mb.cyl(R * 1.03, R * 1.03, 0.008, segs, (0, 0, z), 'chrome')
+        list(rods(6, 'brass', r=0.007, phase=0))
+        # Copper containment coils above and below the core, orange band at the base.
+        for dz, rr in ((-0.045, 0.5), (0, 0.66), (0.045, 0.5)):
+            ring(R * rr, 0.01, mid + dz, 'copper')
+        mb.blob(0.04, (0, 0, mid), 'am_core')
+        mb.cyl(R * 1.01, R * 1.01, 0.01, segs, (0, 0, CAP * 0.4), 'accent_orange')
+        mb.cyl(0.007, 0.007, 0.006, 6, (0, -R * 0.6, H + 0.002), 'led_green')
+        handle('chrome', H)
+    else:  # space
+        mb.cyl(R, R * 0.8, CAP, segs, (0, 0, CAP / 2), 'white', rot=(math.pi, 0, 0))
+        mb.cyl(R, R * 0.8, CAP, segs, (0, 0, H - CAP / 2), 'white')
+        for z in (CAP + 0.003, H - CAP - 0.003):
+            mb.cyl(R * 0.96, R * 0.96, 0.006, segs, (0, 0, z), 'gunmetal')
+        list(rods(3, 'gunmetal', r=0.009, phase=math.pi / 2))
+        # Floating glowing containment hoops, the middle one tilted like a gyroscope.
+        ring(R * 0.55, 0.007, mid - 0.05, 'glow', n=12)
+        ring(R * 0.55, 0.007, mid + 0.05, 'glow', n=12)
+        ring(R * 0.68, 0.007, mid, 'glow_soft', n=16, tilt=0.5)
+        mb.blob(0.04, (0, 0, mid), 'am_core')
+        mb.cyl(R * 0.4, R * 0.4, 0.004, 12, (0, 0, H + 0.001), 'glow')
+        for sx in (1, -1):
+            mb.box((0.012, 0.014, 0.034), (sx * 0.045, 0, H + 0.017), 'gunmetal', bevel=0.003)
+        mb.box((0.102, 0.016, 0.012), (0, 0, H + 0.038), 'gold', bevel=0.003)
+
+
 BUILDERS = {'battery': build_battery, 'motor': build_motor, 'heatsink': build_heatsink, 'compute': build_compute,
-            'coil': build_coil}
+            'coil': build_coil, 'antimatter': build_antimatter}
 
 
 def build_item(item, tier):
