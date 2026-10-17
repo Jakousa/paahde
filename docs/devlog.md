@@ -162,3 +162,15 @@ From a few metres away real blown sand is a translucent veil streaming over the 
   storm they merge. Slip faces stay clear. Lit like the sand with mild forward scattering, below bloom.
 - **Grains** now only spawn within 14 m, thinner, much fainter and without the backlit glow: texture up
   close. **Crest plumes** are stretched downwind into wisps and glow less.
+
+## Wind sound
+
+`src/windSound.ts` synthesises wind from filtered noise (no samples), following `wind.sample()` at the
+listener every frame, so dune lees are quieter than crests and passing gusts and streamers are audible.
+
+- **Layers:** low rumble (brown noise, buffeting), broadband rush (bandpass rising with speed), two
+  narrow aeolian "howl" resonances that only come up in strong wind and slide with gusts (Strouhal),
+  and a high sand hiss that follows saltation `q` and swells with streamers (`emit`).
+- **Direction:** the rush is louder in the windward ear and brighter when facing into the wind.
+- Starts on the first click/key (browser autoplay rules), suspends when the tab is hidden.
+  `dbg.windSound.volume` and `dbg.wind.override` are handy for tuning.

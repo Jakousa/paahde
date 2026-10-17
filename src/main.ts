@@ -20,6 +20,7 @@ import { Dust } from './world/dust';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
+import { WindSound } from './windSound';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -38,8 +39,9 @@ const dust = new Dust(scene);
 const post = new Post(renderer, scene, orbit.camera);
 const blownSand = new BlownSand(scene);
 
+const windSound = new WindSound();
 // Debug handle for screenshots/tuning from the console: open with ?debug.
-if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand, dust } });
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand, dust, windSound } });
 
 const net = new Net(getBrowserId());
 const digFx = new DigFx(scene);
@@ -136,6 +138,7 @@ renderer.setAnimationLoop((time) => {
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
   dust.update(frameDt, orbit.camera.position);
+  windSound.update(frameDt, orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
   const target = net.connected ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   hud.setTarget(target);
