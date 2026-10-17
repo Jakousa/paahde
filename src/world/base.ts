@@ -5,13 +5,14 @@
 // entrance and the skylight (colour and shadow), so the sun shines down the shaft onto the pump.
 // Indoors the sky's hemisphere fill is wrong, so indoor surfaces are lit only by the sun (through the door
 // and the skylight, shadowed by everything else), a bounce light under the skylight that follows the
-// daylight, the bulb over the stairs, and a faint glow so the corners are never pitch black. Those lights
-// are kept out of the scene so they don't shine through the walls onto the sand outside.
+// daylight, the bulb over the stairs, ceiling lamps (public/models/base/lamp.glb, tools/blender/base/lamp.py)
+// in the hallway and the room, and a faint glow so the corners are never pitch black. Those lights are kept
+// out of the scene so they don't shine through the walls onto the sand outside.
 import * as THREE from 'three/webgpu';
 import { bool, lights, positionWorld } from 'three/tsl';
 import type { LightsNode, Node } from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BASE, BASE_PIECES, FLOOR, HUT, ROOM, ROOM_Z, TERRAIN_HOLES } from '../../shared/base.ts';
+import { BASE, BASE_PIECES, FLOOR, HALL, HUT, ROOM, ROOM_Z, STAIRS, TERRAIN_HOLES } from '../../shared/base.ts';
 import { moonColor, sunColor, sunDirection, sunLight } from './env.ts';
 
 /** False inside the holes cut in the terrain (shared/base.ts TERRAIN_HOLES): use as a material's maskNode. */
@@ -28,6 +29,17 @@ export function outsideTerrainHoles(): Node<'bool'> {
 const BOUNCE = { intensity: 14, distance: 22 };
 /** The bulb over the stairs (local position matches tools/blender/base/bunker.py BULB). */
 const BULB = { x: 0, y: 2.25, z: HUT.z0 + 0.25, intensity: 2, distance: 9 };
+/** Ceiling lamps (local x, z; they hang from the ceiling there): the hallway, over the work tables, by the
+ *  room's front and back walls. Each has a warm point light at its bulb. */
+const LAMPS = [
+  { x: 0, z: (STAIRS.z - STAIRS.n * STAIRS.run + HALL.z) / 2, ceil: HALL.h, intensity: 0.8 },
+  { x: -ROOM.w + 1.4, z: ROOM_Z, ceil: ROOM.h, intensity: 5.5 },
+  { x: ROOM.w - 1.4, z: ROOM_Z, ceil: ROOM.h, intensity: 5.5 },
+  { x: 0, z: HALL.z - 3, ceil: ROOM.h, intensity: 5.5 },
+  { x: 0, z: ROOM.z + 3, ceil: ROOM.h, intensity: 5.5 },
+];
+/** The lamp's bulb below its ceiling mount (tools/blender/base/lamp.py BULB_Y), and its light's reach. */
+const LAMP = { bulbY: -0.26, distance: 10, decay: 1.5 };
 /** Never quite dark: emissive fraction of each surface's own colour. */
 const GLOW = 0.03;
 
@@ -35,6 +47,7 @@ export class Base {
   readonly group = new THREE.Group();
   private bounce = new THREE.PointLight(0xffffff, 0, BOUNCE.distance, 1.2);
   private bulb = new THREE.PointLight(0xffb060, BULB.intensity, BULB.distance, 1.5);
+  private lamps = LAMPS.map((l) => new THREE.PointLight(0xffb060, l.intensity, LAMP.distance, LAMP.decay));
   private tint = new THREE.Color();
 
   constructor(scene: THREE.Scene) {
@@ -44,16 +57,29 @@ export class Base {
     this.bulb.position.set(BASE.x + BULB.x, BASE.y + BULB.y, BASE.z + BULB.z);
     this.bounce.updateMatrixWorld();
     this.bulb.updateMatrixWorld();
-    new GLTFLoader().load(
+    LAMPS.forEach((l, i) => {
+      this.lamps[i].position.set(BASE.x + l.x, BASE.y + FLOOR + l.ceil + LAMP.bulbY, BASE.z + l.z);
+      this.lamps[i].updateMatrixWorld();
+    });
+    const loader = new GLTFLoader();
+    loader.load(
       './models/base/bunker.glb',
       (gltf) => this.place(gltf.scene),
       undefined,
       (err) => console.warn('base: failed to load bunker.glb', err),
     );
+    loader.load(
+      './models/base/lamp.glb',
+      (gltf) => this.hangLamps(gltf.scene),
+      undefined,
+      (err) => console.warn('base: failed to load lamp.glb', err),
+    );
   }
 
+  private lit = lights([sunLight, this.bounce, this.bulb, ...this.lamps]);
+
   private place(root: THREE.Object3D) {
-    const lit = lights([sunLight, this.bounce, this.bulb]);
+    const lit = this.lit;
     // The hut's outside keeps the scene's lights; everything indoors gets the bunker's.
     const hut = root.getObjectByName('hut');
     root.traverse((o) => {
@@ -81,6 +107,22 @@ export class Base {
       const o = src.clone();
       o.position.set(p.x, p.y ?? 0, p.z);
       o.rotation.set(0, Math.atan2(p.fx, p.fz), 0);
+      this.group.add(o);
+    }
+  }
+
+  private hangLamps(root: THREE.Object3D) {
+    const lamp = root.getObjectByName('lamp');
+    if (!lamp) return console.warn('base: no node lamp in lamp.glb');
+    lamp.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      m.receiveShadow = true;
+      m.material = convert(m.material as THREE.MeshStandardMaterial, this.lit);
+    });
+    for (const l of LAMPS) {
+      const o = lamp.clone();
+      o.position.set(l.x, FLOOR + l.ceil, l.z);
       this.group.add(o);
     }
   }
