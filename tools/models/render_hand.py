@@ -34,6 +34,7 @@ for spec in A[2].split(','):
     for o in sc.objects:
         if o.name.startswith('Canteen'): o.hide_render = not (name.startswith('Canteen') or name in ('Drink', 'Fill'))
         if o.name.startswith('Telescope'): o.hide_render = not name.startswith('Telescope')
+        if o.name.startswith('Rifle'): o.hide_render = not name.startswith('Rifle')
     sc.frame_set(int(fr)); bpy.context.view_layer.update()
     h = hand_pos()
     views = {'fp': None, 'eye': Vector((-0.15, -0.2, 0.1)), 'above': Vector((0.02, 0.0, 0.25)), 'out': Vector((0.25, -0.05, 0.05)), 'front': Vector((-0.05, 0.28, 0.0)), 'low': Vector((0.12, 0.12, -0.2))}

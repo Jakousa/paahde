@@ -23,6 +23,16 @@
 # follow every clip; both are visible by default, the game toggles `.visible`. The script also writes the
 # standalone public/models/canteen.glb (origin at the bottom centre, front +Z) and
 # public/models/telescope.glb (origin at the grip on the axis, objective -Z, eyepiece +Z).
+# Laser rifle (tools/models/rifle.py), held in both hands:
+#   RifleIdle (3 s loop)  low ready: right hand on the pistol grip (index on the trigger), left hand under the
+#     handguard, rifle low right pointing forward and a little in
+#   RifleWalk (0.73 s loop)  the same hold with the walk bob
+#   RifleAim (0.27 s one-shot)  from the RifleIdle frame-0 pose up to the eye (play clamped): the scope's axis
+#     ends exactly on the view axis with the eye EYE_RELIEF behind the eyepiece (the build prints the check)
+# Mesh node `Rifle` (materials 'Rifle' and the emissive 'RifleGlow') is a child of the `RightHand` bone,
+# visible by default; its child nodes `RifleMuzzle` (tip of the emitter on the bore) and `RifleEye` (on the
+# scope axis, where the eye goes) have the rifle's orientation: their +Z points along the bore to the
+# muzzle. Also writes public/models/rifle.glb (origin at the pistol grip, muzzle +Z, up +Y).
 import math
 import os
 import sys
@@ -673,6 +683,215 @@ def clip_once(name, frames, fn):
 for name, frames, fn in (('TelescopeIdle', 90, telescope_idle), ('TelescopeWalk', 22, telescope_walk)):
     S.clip(name, frames, fn)
 clip_once('TelescopeRaise', 10, telescope_raise)  # 11 keys, 0.33 s
+
+# ============================================================================== rifle clips
+# Two-handed. The right hand holds the pistol grip in a power grip like the spyglass (the grip lies
+# obliquely across the palm, its top by the thumb), the index finger closing on the trigger; with the
+# grip raked forward that leaves the bore running along the back of the hand, so the forearm stays roughly
+# in line with it. The left hand supports the handguard from below in a second power grip, palm up and a
+# little to the left, thumb forward along it. Each pose places the RIFLE (in view space); both hands follow
+# it through fixed hand-relative placements (R_HAND, L_HAND), so one solved grip per hand serves every
+# frame. Rifle matrices here are in rifle.py's natural frame (+Y muzzle, +Z up); the mesh is turned by
+# RF.FLIP.
+import rifle as RF  # noqa: E402
+
+R_OBLIQUE = 20  # grip angle off square across the palm (deg), as the spyglass
+R_YAW = 0  # rifle turned about the grip axis relative to the hand (deg); searched below
+EYE_RELIEF = 0.125  # eye behind the eyepiece at full aim (model units; ×0.55 in game = 6.9 cm, past the 5 cm near
+# plane, and far enough that the near plane (0.091 model units ahead) only cuts the stock, below the view)
+L_GRIP_Y = 0.215  # where the support hand holds the handguard (natural y)
+L_TWIST = 0.95  # the support hand is turned palm up: the forearm, not the wrist, takes that roll
+
+
+def box_sdf(lo, hi):
+    lo, hi = V(lo), V(hi)
+    c, h = (lo + hi) / 2, (hi - lo) / 2
+
+    def f(p):
+        q = V([abs(p[i] - c[i]) - h[i] for i in range(3)])
+        out = V([max(x, 0.0) for x in q]).length
+        return out + min(max(q.x, q.y, q.z), 0.0)
+    return f
+
+
+def rifle_sdf_nat():
+    """Rough natural-frame sdf of what the hands can touch: pistol grip, trigger, receiver, handguard."""
+    g = capsule_sdf(RF.GRIP_AXIS * RF.GRIP_BOT, RF.GRIP_AXIS * RF.GRIP_TOP, RF.GRIP_R)
+    trig = capsule_sdf(V(RF.TRIGGER[0]), V(RF.TRIGGER[-1]), 0.003)
+    rec = box_sdf((-RF.REC_W / 2, RF.REC_Y0, RF.REC_Z0), (RF.REC_W / 2, RF.REC_Y1, RF.REC_Z1))
+    hg = capsule_sdf(V((0, RF.HG_Y0, RF.HG_Z)), V((0, RF.HG_Y1, RF.HG_Z)), RF.HG_R)
+    return lambda p: min(g(p), trig(p), rec(p), hg(p))
+
+
+R_NAT_SDF = rifle_sdf_nat()
+
+
+def in_rest(m_nat, f):
+    """sdf in rest armature space of a natural-frame sdf, for a rifle at m_nat (rest armature space)."""
+    inv = m_nat.inverted()
+    return lambda p: f(inv @ p)
+
+
+def rifle_in_right(yaw=R_YAW):
+    """Rifle (natural frame) relative to the RightHand bone, plus its sdf in rest armature space. The grip
+    axis lies obliquely across the palm (top by the thumb), pushed in until it presses the glove; the bore
+    is the hand's finger direction squared to the raked grip, turned `yaw` about the grip axis."""
+    a, pn, t = hand_frame(-1)
+    W = V(S.B['RightHand'][0])
+    b = math.radians(R_OBLIQUE)
+    u = (t * math.cos(b) + a * math.sin(b)).normalized()  # grip axis, towards the receiver
+    fp = (a - u * a.dot(u)).normalized()
+    fp = Quaternion(u, math.radians(yaw)) @ fp
+    r = math.radians(RF.RAKE)
+    U = u * math.cos(r) - fp * math.sin(r)
+    F = fp * math.cos(r) + u * math.sin(r)
+    R = F.cross(U)
+
+    def place(v):
+        m = frame_cols(R, F, U).to_4x4()
+        m.translation = W + a * 0.058 + pn * v
+        return m
+
+    v = 0.05
+    for _ in range(6):
+        g = in_rest(place(v), capsule_sdf(RF.GRIP_AXIS * RF.GRIP_BOT, RF.GRIP_AXIS * RF.GRIP_TOP, RF.GRIP_R))
+        v -= min(g(p) for p in PALMS['Right']) + 0.002
+    m = place(v)
+    print('RIFLE right palm offset', round(v, 4), 'right·palm', round(R.dot(pn), 2))
+    return BONES['RightHand'].matrix_local.inverted() @ m, in_rest(m, R_NAT_SDF), u
+
+
+def rifle_in_left(alpha):
+    """Rifle (natural frame) relative to the LeftHand bone: the handguard lies obliquely across the left
+    palm with the muzzle end by the thumb, the palm facing up and `alpha` degrees towards the rifle's
+    right (the hand cups it from below-left)."""
+    a, pn, t = hand_frame(1)
+    W = V(S.B['LeftHand'][0])
+    b = math.radians(R_OBLIQUE)
+    F = (t * math.cos(b) + a * math.sin(b)).normalized()
+    pp = (pn - F * pn.dot(F)).normalized()
+    U = Quaternion(F, math.radians(-alpha)) @ pp
+    R = F.cross(U)
+    hg = capsule_sdf(V((0, RF.HG_Y0, RF.HG_Z)), V((0, RF.HG_Y1, RF.HG_Z)), RF.HG_R)
+
+    def place(v):
+        m = frame_cols(R, F, U).to_4x4()
+        m.translation = W + a * 0.058 + pn * v - F * L_GRIP_Y - U * RF.HG_Z
+        return m
+
+    v = 0.05
+    for _ in range(6):
+        g = in_rest(place(v), hg)
+        v -= min(g(p) for p in PALMS['Left']) + 0.002
+    m = place(v)
+    return BONES['LeftHand'].matrix_local.inverted() @ m, in_rest(m, R_NAT_SDF), F
+
+
+def rifle_world(at, yaw=0.0, pitch=0.0, roll=0.0):
+    """Rifle matrix (natural frame) in view space: grip origin at `at`, yaw about Z (+ = muzzle left),
+    pitch about X (+ = muzzle up), roll about the bore (+ = top to the right)."""
+    return (Matrix.Translation(V(at)) @ Matrix.Rotation(math.radians(yaw), 4, 'Z') @
+            Matrix.Rotation(math.radians(pitch), 4, 'X') @ Matrix.Rotation(math.radians(roll), 4, 'Y'))
+
+
+# aim: scope axis on the view axis, the eye EYE_RELIEF behind the eyepiece
+R_AIM = Matrix.Translation(-RF.eye_local(EYE_RELIEF))
+# low ready: grip low right, muzzle forward, a little down and in, canted a touch
+R_READY = rifle_world((0.165, 0.29, -0.175), yaw=7, pitch=-3, roll=-3)
+
+
+def wrist_bend_of(pose, pre):
+    q = pose[pre + 'Hand']
+    return math.degrees(2 * math.acos(min(1.0, abs(q.w))))
+
+
+def pole_dirs():
+    out = []
+    for el in range(-80, 41, 15):
+        for az in range(0, 360, 20):
+            e, z = math.radians(el), math.radians(az)
+            out.append(V((math.cos(e) * math.cos(z), math.cos(e) * math.sin(z), math.sin(e))))
+    return out
+
+
+POLE_DIRS = pole_dirs()
+
+
+def best_pole(pre, hand, twist):
+    """Elbow pole (view space point) that leaves the wrist straightest, the elbow kept below the hand."""
+    sh = MW @ V(S.B[pre + 'Arm'][0])
+
+    def cost(d):
+        b = wrist_bend_of(solve_arm(pre, hand, sh + d, twist), pre)
+        return b + (200 if ELBOW[pre].z > hand.translation.z - 0.03 else 0)
+    d = min(POLE_DIRS, key=cost)
+    return tuple(sh + d), cost(d)
+
+
+def right_cost(yaw):
+    rh = rifle_in_right(yaw)[0]
+    return sum(best_pole('Right', rw @ rh.inverted(), 0.75)[1] for rw in (R_READY, R_AIM))
+
+
+R_YAW = min(range(-40, 41, 5), key=right_cost)
+R_HAND, R_SDF, R_AXIS = rifle_in_right(R_YAW)
+print('RIFLE right yaw', R_YAW)
+R_GRIP = grasp('Right', R_SDF, wrap=R_AXIS)
+RR_POLE = best_pole('Right', R_READY @ R_HAND.inverted(), 0.75)[0]
+RR_POLE_AIM = best_pole('Right', R_AIM @ R_HAND.inverted(), 0.75)[0]
+
+
+def left_cost(alpha):
+    lh = rifle_in_left(alpha)[0]
+    return sum(best_pole('Left', rw @ lh.inverted(), L_TWIST)[1] for rw in (R_READY, R_AIM))
+
+
+L_ALPHA = min(range(0, 61, 10), key=left_cost)  # palm up, turned towards the rifle's right
+L_HAND, L_SDF, L_AXIS = rifle_in_left(L_ALPHA)
+print('RIFLE left alpha', L_ALPHA)
+L_GRIP = grasp('Left', L_SDF, wrap=L_AXIS)
+RL_POLE = best_pole('Left', R_READY @ L_HAND.inverted(), L_TWIST)[0]
+RL_POLE_AIM = best_pole('Left', R_AIM @ L_HAND.inverted(), L_TWIST)[0]
+print('RIFLE poles', [tuple(round(x, 2) for x in p) for p in (RR_POLE, RR_POLE_AIM, RL_POLE, RL_POLE_AIM)])
+
+
+def rifle_pose(rw, rpole=None, lpole=None, sway=None):
+    rpole, lpole = rpole or RR_POLE, lpole or RL_POLE
+    pose = solve_arm('Right', rw @ R_HAND.inverted(), rpole)
+    pose.update(solve_arm('Left', rw @ L_HAND.inverted(), lpole, twist=L_TWIST))
+    pose.update(R_GRIP)
+    pose.update(L_GRIP)
+    if sway:
+        pose['Root'] = sway
+    return pose
+
+
+def rifle_idle(p):
+    w = 2 * math.pi * p
+    return rifle_pose(R_READY, sway=rot((X, 0.9 * math.sin(w)), (Z, 0.6 * math.sin(w + 1)))), (0, 0, 0)
+
+
+def rifle_walk(p):
+    w = 2 * math.pi * p
+    return rifle_pose(R_READY, sway=rot((X, 2.5 * math.sin(2 * w)), (Y, 2.0 * math.sin(w)))), (0, 0, 0)
+
+
+def rifle_aim(p):
+    f = p * p * (3 - 2 * p)
+    rw = mat_lerp(R_READY, R_AIM, f)
+    rw.translation += V((0, 0.02, 0.0)) * math.sin(math.pi * p)  # push forward a little so the stock clears
+    rp = V(RR_POLE).lerp(V(RR_POLE_AIM), f)
+    lp = V(RL_POLE).lerp(V(RL_POLE_AIM), f)
+    return rifle_pose(rw, rp, lp, rot((Z, 0.6 * math.sin(1) * (1 - p)))), (0, 0, 0)
+
+
+for nm, rw, rp, lp in (('rifle ready', R_READY, RR_POLE, RL_POLE), ('rifle aim', R_AIM, RR_POLE_AIM, RL_POLE_AIM)):
+    ps = rifle_pose(rw, rp, lp)
+    print('WRIST', nm, 'right', round(wrist_bend_of(ps, 'Right')), 'left', round(wrist_bend_of(ps, 'Left')))
+
+for name, frames, fn in (('RifleIdle', 90, rifle_idle), ('RifleWalk', 22, rifle_walk)):
+    S.clip(name, frames, fn)
+clip_once('RifleAim', 8, rifle_aim)  # 9 keys, 0.27 s
 for pb in rig.pose.bones:
     pb.rotation_quaternion = Quaternion()
 
@@ -682,12 +901,15 @@ CAN_AT = V((5.0, 0.0, 0.9))
 can = CT.build(CAN_AT)
 TEL_AT = V((-5.0, 0.0, 0.9))
 tel = TS.build(TEL_AT)
+RIF_AT = V((0.0, 5.0, 0.9))
+rif, rif_glow = RF.build(RIF_AT)
 
 import bake  # noqa: E402
 
 bake.bake_atlas(body, 1024, S.OUT_DIR, tint_name='Tint', small=0, prefix='hands')
 CT.bake_and_export(can, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'canteen.glb'), CAN_AT)
 tel_parts = TS.bake_and_export(tel, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'telescope.glb'), TEL_AT)
+rif = RF.bake_and_export(rif, rif_glow, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'rifle.glb'), RIF_AT)
 bpy.context.view_layer.update()
 can.parent = rig
 can.parent_type = 'BONE'
@@ -699,5 +921,47 @@ tel.parent_type = 'BONE'
 tel.parent_bone = 'RightHand'
 tel.matrix_parent_inverse = Matrix.Identity(4)
 tel.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ T_HAND
-bake.export(rig, [body, can, *tel_parts], OUT)
-print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can), 'TELESCOPE', tri_count(tel))
+rif.parent = rig
+rif.parent_type = 'BONE'
+rif.parent_bone = 'RightHand'
+rif.matrix_parent_inverse = Matrix.Identity(4)
+rif.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ R_HAND @ RF.FLIP
+# marker nodes on the rifle (mesh frame = natural turned by FLIP; identity rotation, so their glTF +Z is
+# the bore direction, towards the muzzle)
+marks = []
+for nm, p in (('RifleMuzzle', RF.muzzle_local()), ('RifleEye', RF.eye_local(EYE_RELIEF))):
+    e = bpy.data.objects.new(nm, None)
+    bpy.context.scene.collection.objects.link(e)
+    e.parent = rif
+    e.matrix_parent_inverse = Matrix.Identity(4)
+    e.matrix_basis = Matrix.Translation(RF.FLIP.to_3x3() @ p)
+    marks.append(e)
+
+
+def check_aim():
+    """Where RifleEye and the bore end up in the last RifleAim frame (view space: eye at the origin, +Y
+    forward)."""
+    act = bpy.data.actions['RifleAim']
+    rig.animation_data.action = act
+    if hasattr(rig.animation_data, 'action_slot') and act.slots:
+        rig.animation_data.action_slot = act.slots[0]
+    for t in rig.animation_data.nla_tracks:
+        t.mute = True
+    bpy.context.scene.frame_set(int(act.frame_range[1]))
+    bpy.context.view_layer.update()
+    eye = marks[1].matrix_world.translation
+    fwd = (marks[1].matrix_world.to_3x3() @ V((0, -1, 0))).normalized()  # mesh -Y = muzzle
+    ang = math.degrees(fwd.angle(V((0, 1, 0))))
+    print('RIFLE AIM eye offset (model m) right %.4f up %.4f fwd %.4f  lateral %.1f mm  scope axis vs view %.3f deg'
+          % (eye.x, eye.z, eye.y, math.hypot(eye.x, eye.z) * 1000, ang))
+    mz = marks[0].matrix_world.translation
+    print('RIFLE AIM muzzle at', tuple(round(x, 3) for x in mz))
+    rig.animation_data.action = None
+    for pb in rig.pose.bones:
+        pb.rotation_quaternion = Quaternion()
+    bpy.context.view_layer.update()
+
+
+check_aim()
+bake.export(rig, [body, can, *tel_parts, rif, *marks], OUT)
+print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can), 'TELESCOPE', tri_count(tel), 'RIFLE', tri_count(rif))
