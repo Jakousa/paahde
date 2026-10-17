@@ -103,6 +103,18 @@ export function openDb(path: string) {
       given_at  INTEGER NOT NULL               -- ms since epoch
     );
   `);
+
+  // Small crash sites (shared/crash.ts) whose machine was carried off, until they refill. The machine itself
+  // is an item in the player's bag, given in the same transaction (server/crash.ts).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS crash_taken (
+      id       TEXT PRIMARY KEY,
+      taken_at INTEGER NOT NULL               -- ms since epoch
+    );
+  `);
+  const allCrash = db.prepare('SELECT id, taken_at FROM crash_taken');
+  const insertCrash = db.prepare('INSERT OR REPLACE INTO crash_taken (id, taken_at) VALUES (?, ?)');
+  const deleteCrash = db.prepare('DELETE FROM crash_taken WHERE id = ?');
   const boxRows = db.prepare('SELECT id, kind, n, slot FROM items WHERE owner = ? AND box = ? ORDER BY slot');
   const clearBox = db.prepare('DELETE FROM items WHERE owner = ? AND box = ?');
   const insertItem = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot) VALUES (?, ?, ?, ?, ?, ?)');
@@ -170,6 +182,9 @@ export function openDb(path: string) {
     maxItemId: () => (maxItemId.get() as { id: number }).id,
     hasStarterKit: (playerId: string) => !!getStarter.get(playerId),
     markStarterKit: (playerId: string) => putStarter.run(playerId, Date.now()),
+    loadCrashTaken: () => allCrash.all() as { id: string; taken_at: number }[],
+    takeCrash: (id: string, at: number) => insertCrash.run(id, at),
+    respawnCrash: (id: string) => deleteCrash.run(id),
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,
     savePlayer: (p: PlayerRow) => upsert.run(p.id, p.color, p.x, p.z, p.heat, p.sips),
     loadChunks(): { cx: number; cz: number; data: Int32Array }[] {

@@ -5,8 +5,9 @@ const bikeAllowed = import.meta.env.DEV || location.search.includes('debug');
 let mouseDig = false;
 let mousePile = false;
 let pickupPressed = false;
-/** Hands full (canteen or spyglass out, src/water.ts): left mouse / E and right mouse / Q don't dig or pile. */
-export const tools = { blocked: false };
+/** Hands full (canteen or spyglass out, src/water.ts): left mouse / E and right mouse / Q don't dig or pile.
+ *  frozen: the disassembly mode (src/teardown) owns the keyboard and mouse, so the player stands still. */
+export const tools = { blocked: false, frozen: false };
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 export const ui = { inventoryOpen: false };
 // While the pointer is locked the game owns the keyboard: swallow browser shortcuts (Tab, F-keys, Alt, Ctrl+S...).
@@ -60,6 +61,7 @@ document.addEventListener('pointerlockchange', () => {
 
 export function readInput(): number {
   let input = 0;
+  if (tools.frozen) return input;
   if (keys.has('KeyW') || keys.has('ArrowUp')) input |= FORWARD;
   if (keys.has('KeyS') || keys.has('ArrowDown')) input |= BACK;
   if (keys.has('KeyA') || keys.has('ArrowLeft')) input |= LEFT;
@@ -78,7 +80,7 @@ export function readInput(): number {
 
 /** Use button (left mouse or E) held down: digs normally, drinks while the canteen is held. */
 export function useHeld(): boolean {
-  return mouseDig || keys.has('KeyE');
+  return !tools.frozen && (mouseDig || keys.has('KeyE'));
 }
 
 /** Any use button held (left/right mouse, E or Q): raises the spyglass while it's out. */

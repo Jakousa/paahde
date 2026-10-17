@@ -34,7 +34,22 @@ export type ClientMsg =
   // you can open both, applies moveItem() and answers with 'items' for each box that changed.
   | { t: 'move'; from: string; fi: number; to: string; ti: number; n?: number }
   // Tidy a box (sortItems; the bag's hotbar stays put).
-  | { t: 'sort'; box: string };
+  | { t: 'sort'; box: string }
+  // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
+  // there, puts it in your bag as an item (of the component's kind) and answers 'items'.
+  | { t: 'crashTake'; id: string }
+  // Put a carried machine (item kind) on the workbench to take it apart: uses one up from the bag (checked
+  // against the bench's reach) and answers 'items'.
+  | { t: 'crashUse'; kind: string }
+  // Large crash sites are worked on together. Join/leave the site's session; hold a lifting eye (it needs
+  // `players` of you holding at once, re-sent about once a second while held); report a step done (a lift is
+  // checked against the holders) or a part taken (first one wins). Step and part numbers are indexes into the
+  // machine the site's seed builds (src/teardown/junk.ts), the same on every client.
+  | { t: 'siteJoin'; id: string }
+  | { t: 'siteLeave'; id: string }
+  | { t: 'siteHold'; id: string; i: number; players: number; on: boolean }
+  | { t: 'siteDone'; id: string; i: number }
+  | { t: 'siteTake'; id: string; i: number };
 
 // 0 empty hands, 1 holding the canteen, 2 drinking from it.
 export type Hands = 0 | 1 | 2;
@@ -69,6 +84,16 @@ export type ServerMsg =
   // they change, every 'chest<i>' on join and to everyone when it changes. `got`: a scrap pickup added
   // this kind (for the HUD toast).
   | { t: 'items'; box: string; slots: Slots; got?: string }
+  // Small crash sites whose machine has been carried off (ids), or are back. On join, before 'welcome', with reset:
+  // the full taken list.
+  | { t: 'crash'; taken: string[]; back: string[]; reset?: boolean }
+  // A shared session was joined: what is already done (step indexes) and taken (part indexes) at that site.
+  | { t: 'siteState'; id: string; done: number[]; taken: number[] }
+  // How many players hold lifting eye i right now.
+  | { t: 'siteHolders'; id: string; i: number; n: number }
+  | { t: 'siteDone'; id: string; i: number }
+  // Part i went to player `by` (the public id). Whoever is carrying it and isn't `by` has lost it.
+  | { t: 'siteTake'; id: string; i: number; by: number }
   // Growth stage of every greenhouse bed (shared/garden.ts), on join and whenever one changes.
   | { t: 'garden'; beds: number[] }
   // A bed this player tended was planted or harvested, for the HUD toast.

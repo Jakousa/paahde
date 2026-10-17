@@ -66,6 +66,45 @@ Crashed spacecraft half-buried in the dunes, for players to hunt for parts later
   peak ≤ −13 dBFS) because it was too subtle up close, with a steeper falloff (`rolloffFactor` 1.6) so at
   20–40 m it is only ~2.5 dB louder than before.
 - `?spawn=crash` starts you just off the nose of the crash site nearest your saved position, facing it.
+## 2026-10-17 — Machine sites and disassembly
+
+Wrecked machinery now lies in the desert (shared/crash.ts: deterministic sites, one machine each; two near the
+base so there is something to try straight away). These are separate from the crashed spacecraft of the entry
+above (shared/crashsites.ts) and share only the idea; the names overlap, so the machine sites live in
+`shared/crash.ts`, `server/crash.ts` and `MachineSites` in `src/world/crash.ts`. Walk up and press **F**:
+
+- **Large machines** (pump housing, jet engine) stay where they are. F says "Disassemble": the character walks up to
+  3.2 m through the normal input path, the keyboard goes quiet and the disassembly controls take over, in the world,
+  no separate scene. Everyone near the site shares one session (server/crash.ts): steps done, parts taken, and
+  **lifts** that need two players holding the mouse button at once (pump motor, jet engine casing). First to take a
+  part gets it.
+- **Small machines** (robot arm joint, control cabinet) are picked up with F and land in the bag as items (kinds
+  `robot_arm`, `control_cabinet` in shared/items.ts). Carry them to the **disassembly table** in the bunker (F at it,
+  the station from shared/stations.ts) and take them apart alone, scaled to fit the table; an unfinished job is
+  kept in this browser.
+
+Controls: **left mouse only interacts** (click screws and clips, circle the pointer around big bolts, swipe across
+wires to cut them, drag pry tabs, hold lifting eyes), **right-drag** carries a freed part to the tray (and moves a
+carried machine on the table), **middle-drag** or arrow keys turn the machine over, R resets, Esc leaves.
+`?debug` lets one player do the two-player lifts.
+
+Code: `src/teardown/junk.ts` builds the machines and their steps, `parts.ts` the code-built parts, `teardown.ts`
+the mode (walk-up, input, loose-piece physics, session link), `ui.ts` the panels, `src/world/crash.ts` the
+sites, wreckage and the table job. Netcode: `crash*`/`site*` messages in shared/protocol.ts.
+
+- **Fasteners follow the engineering**: bolt circles on round flanges (pump suction cover, robot top cover), corner
+  screws on box lids (mids on long ones), a row down each side of the jet engine's split casing, set screws on
+  coupling hubs, a supply cable through a gland to a terminal block via a contactor (live in, live to motor, neutral,
+  earth, coil), harness cables from round connectors to the starter, valve and igniter. Prerequisites make sense:
+  drain the pump before opening it, cut wires before the mount bolts, guard before coupling. Hardware is only built
+  for parts the machine actually rolled, so nothing is a decoy.
+- **Rarity** = part tier (`RARITY` in shared/salvage.ts). Each machine rolls its parts from `COMPONENTS` using its
+  `tierWeights`, seeded by the site, so every player sees the same contents; the best part sets how fancy it looks.
+- **New parts** with no Blender model yet (impeller, bearing, gear, valve, relay) are built in code, four tiers.
+- Not done: collected parts sit in a local tray (localStorage), not in the server inventory (needs an item/tier id
+  scheme in shared/); large-site progress lives in server memory and resets 30 min after the last player leaves;
+  the server trusts the client's step/part indexes (it only checks lifts against the holders).
+- Idea taken from the Godot DOHOJAM teardown: parts stay locked until the earlier steps are done.
 
 ## 2026-10-17 — Base becomes an underground bunker (issue #12)
 

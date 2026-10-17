@@ -94,6 +94,13 @@ ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.8" y="-10" width=
 <circle cx="6" cy="16.6" r="0.9" fill="#2a160a"/><circle cx="16" cy="7.8" r="0.9" fill="#2a160a"/></svg>`,
   metal_sheet: sheet(''),
   dented_sheet: sheet('M8 14c2-2 4 1 6-1'),
+  // Carried crash-site machines: a joint with its arm stub, and a cabinet with a door and lamps.
+  robot_arm: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="18" width="16" height="4" rx="1" fill="#6a665e"/>
+<rect x="5" y="9" width="9" height="10" rx="2" fill="#d4a24c"/><rect x="12" y="4" width="7" height="4" rx="1" fill="#b8873a" transform="rotate(30 12 6)"/>
+<circle cx="9.5" cy="14" r="2.2" fill="#2a160a"/></g></svg>`,
+  control_cabinet: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="3" width="16" height="20" rx="1.5" fill="#7d7a72"/>
+<rect x="5" y="5" width="12" height="16" fill="#5e6a5a"/><circle cx="8" cy="8" r="1.1" fill="#ffb050"/><circle cx="12" cy="8" r="1.1" fill="#74d08a"/>
+<rect x="7" y="12" width="8" height="5" fill="#2a160a"/></g></svg>`,
   spring: `<svg viewBox="0 0 22 26"><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#a8a294" stroke-width="1.3"/></svg>`,

@@ -16,6 +16,10 @@ export const ITEMS: Record<string, { label: string; stack: number }> = {
   metal_sheet: { label: 'Metal sheet', stack: 10 },
   dented_sheet: { label: 'Dented sheet', stack: 10 },
   spring: { label: 'Spring', stack: 10 },
+  // Small crash-site machines carried home to the workbench (COMPONENTS with carry: true, shared/salvage.ts).
+  // The item kind is the component kind.
+  robot_arm: { label: 'Robot arm joint', stack: 1 },
+  control_cabinet: { label: 'Control cabinet', stack: 1 },
 };
 const ORDER = Object.keys(ITEMS);
 

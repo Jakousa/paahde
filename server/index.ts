@@ -9,6 +9,7 @@ import { DIG_COOLDOWN_TICKS, PITCH_STEPS, quantizePitch } from '../shared/dig.ts
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { SCRAP_ITEMS } from '../shared/items.ts';
 import { boxSize, CHESTS, isShared } from '../shared/storage.ts';
+import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
@@ -17,6 +18,7 @@ import { GardenServer } from './garden.ts';
 import { ItemServer } from './items.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
+import { CrashServer } from './crash.ts';
 import { TerrainServer } from './terrain.ts';
 import { drink, fill, newHeat, revive, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
@@ -37,6 +39,10 @@ const db = openDb(process.env.DB_PATH ?? 'data/dadajam.db');
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
 const items = new ItemServer(db);
+const crash = new CrashServer(db, (ids, msg) => {
+  const want = new Set(ids);
+  for (const p of players.values()) if (want.has(p.id)) send(p.ws, msg);
+});
 const garden = new GardenServer(db);
 const storms = new StormServer(performance.now());
 
@@ -112,12 +118,17 @@ wss.on('connection', (ws) => {
     if (msg.t === 'fill' && p) return onFill(p);
     if (msg.t === 'move' && p) return onMove(p, msg.from, msg.fi, msg.to, msg.ti, msg.n);
     if (msg.t === 'sort' && p) return onSort(p, msg.box);
-    if (msg.t === 'hands' && p) p.hands = msg.hands === 1 || msg.hands === 2 ? msg.hands : 0;
+    if (msg.t === 'hands' && p) {
+      p.hands = msg.hands === 1 || msg.hands === 2 ? msg.hands : 0;
+      return;
+    }
+    if (p) return onCrash(p, msg);
   });
   ws.on('close', () => {
     const p = players.get(ws);
     if (!p) return;
     save(p);
+    crash.leaveAll(p.id);
     players.delete(ws);
     if (![...players.values()].some((o) => o.browserId === p.browserId)) items.forget(p.browserId);
   });
@@ -147,6 +158,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   // Terrain first, so the client never sees its spawn without the holes.
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
+  send(ws, crash.joinMessage());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
@@ -219,6 +231,25 @@ function onMove(p: Player, from: unknown, fi: unknown, to: unknown, ti: unknown,
 function onSort(p: Player, box: unknown) {
   if (items.sort(p.browserId, p.state, box)) sendBox(p, box as string);
   else if (typeof box === 'string' && boxSize(box)) send(p.ws, boxMsg(p.browserId, box));
+}
+
+// Crash sites (shared/crash.ts): carry a small machine home (it becomes an item in the bag), put it on the
+// workbench (the item is used up), and the shared sessions of large sites.
+function onCrash(p: Player, msg: ClientMsg) {
+  if (msg.t === 'crashTake') {
+    const kind = crash.carry(p.state, msg.id, p.lastPickup, (k) => items.give(p.browserId, k));
+    if (kind) sendBox(p, 'bag', kind);
+    else if (typeof msg.id === 'string' && !crashTaken.has(msg.id)) send(p.ws, { t: 'crash', taken: [], back: [msg.id] });
+  } else if (msg.t === 'crashUse') {
+    crash.use(p.state, msg.kind, () => items.take(p.browserId, msg.kind));
+    sendBox(p, 'bag');
+  } else if (msg.t === 'siteJoin') {
+    const state = crash.join(p.id, p.state, msg.id);
+    if (state) send(p.ws, state);
+  } else if (msg.t === 'siteLeave') crash.leave(p.id, msg.id);
+  else if (msg.t === 'siteHold') crash.hold(p.id, msg.id, msg.i, msg.players, msg.on);
+  else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i);
+  else if (msg.t === 'siteTake') crash.takePart(p.id, msg.id, msg.i);
 }
 
 function onTend(p: Player, bed: unknown) {
@@ -307,7 +338,7 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   const weather = storms.tick(time, [...players.values()].map((p) => p.state));
-  for (const msg of [terrain.flush(), scrap.flush(), garden.flush(), weather]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), garden.flush(), weather]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
@@ -338,6 +369,7 @@ setInterval(() => {
   players.forEach(save);
   terrain.save();
   scrap.respawn();
+  crash.maintain();
   garden.grow();
 }, SAVE_INTERVAL_MS);
 

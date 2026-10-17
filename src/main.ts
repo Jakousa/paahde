@@ -36,6 +36,9 @@ import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
 import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
+import { TeardownView } from './teardown/teardown';
+import { MachineSites } from './world/crash';
+import { COMPONENTS } from '../shared/salvage.ts';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -59,15 +62,27 @@ const viewmodel = new ViewModel(orbit, scene); // first-person hands, parented t
 
 const windSound = new WindSound();
 const storm = new StormFx();
+const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
+const teardown = new TeardownView(scene, orbit.camera); // F at a machine site: the character walks up and the disassembly controls take over
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and whether it smokes (shared/crashsites.ts).
   const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, smoke: s.smoke, pieces: s.pieces.length }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, teardown } });
 }
 
 const net = new Net(getBrowserId());
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { net });
+// Shared sessions at large crash sites: other players' steps and part takes arrive here.
+net.onSite = (m) => {
+  const cur = teardown.current;
+  if (!cur || cur.id !== m.id) return;
+  if (m.t === 'siteState') {
+    for (const i of m.done) teardown.applyDone(i, true);
+    for (const i of m.taken) teardown.applyTake(i, false);
+  } else if (m.t === 'siteDone') teardown.applyDone(m.i);
+  else teardown.applyTake(m.i, m.by === net.id);
+};
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm());
 const digFx = new DigFx(scene);
 // Remote players play their dig clip for a moment after each stroke the server reports.
@@ -157,7 +172,9 @@ renderer.setAnimationLoop((time) => {
 
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
   accumulator += frameDt;
-  const input = readInput();
+  // Disassembly walks the character up to the machine with the normal input bits, then the keyboard goes quiet.
+  const walk = teardown.drive(orbit, net.me, frameDt);
+  const input = teardown.active ? walk : readInput();
   while (accumulator >= DT) {
     net.tick(input, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
     accumulator -= DT;
@@ -222,7 +239,7 @@ renderer.setAnimationLoop((time) => {
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
   me.setHeadless(riding && !orbit.showBody);
-  viewmodel.root.visible = bodyHidden;
+  viewmodel.root.visible = bodyHidden && !teardown.active;
   viewmodel.setColor(net.color);
   viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding,
     digging: (input & (DIG | PILE)) !== 0 || (digUntil.get(net.id) ?? 0) > performance.now() });
@@ -233,6 +250,7 @@ renderer.setAnimationLoop((time) => {
   terrain.update(focus);
   scrap.update(focus);
   crashSites.update(focus);
+  machines.update(focus);
   sky.update(frameDt, focus, orbit.camera, net.worldTime());
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
@@ -246,23 +264,39 @@ renderer.setAnimationLoop((time) => {
   // F: use the work station in view, else tend the greenhouse bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
-  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : 'Use disassembly table';
   const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
   const stage = net.garden[bed];
   const tend = stage === EMPTY ? 'Plant seeds' : stage === GROWN ? 'Harvest' : null;
   const target = net.connected && station < 0 && bed < 0 ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
-  hud.setTarget(use ?? tend ?? target);
+  // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
+  // it lies. A carried one is taken apart on the base's disassembly table.
+  const site = net.connected && !teardown.active && station < 0 && bed < 0 && !target ? machines.nearest(net.me.x, net.me.z) : null;
+  const small = site ? COMPONENTS[site.site.kind].carry : false;
+  const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`) : null;
+  const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
+  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use disassembly table');
+  hud.setTarget(teardown.active ? null : (use ?? tend ?? target ?? sitePrompt));
   const interact = takePickup();
-  if (interact) {
-    // Stations don't do anything yet.
-    if (use) hud.toast(STATIONS[station].kind === 'workbench' ? 'Nothing to craft yet' : 'Nothing to take apart yet');
-    else if (tend) net.tend(bed);
-    else if (target && !net.pickup(target)) hud.toast('Backpack full');
+  if (interact && !teardown.active) {
+    if (use) {
+      if (STATIONS[station].kind === 'workbench') hud.toast('Nothing to craft yet');
+      else if (table) {
+        if (!table.resume) net.crashUse(table.kind);
+        teardown.begin(machines.bench.site(table.kind));
+      } else hud.toast('Carry a small machine here to take it apart');
+    } else if (tend) net.tend(bed);
+    else if (target) {
+      if (!net.pickup(target)) hud.toast('Backpack full');
+    } else if (site) {
+      if (small) net.crashTake(site.site.id);
+      else teardown.begin(machines.workSite(site, net.siteLink(site.site.id)));
+    }
   }
-  const targeted = use !== null || tend !== null || target !== null;
+  const targeted = use !== null || tend !== null || target !== null || sitePrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted);
   hud.update(net.me);
 
   info.textContent = `${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
+  teardown.update(frameDt);
   post.render();
 });

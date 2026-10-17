@@ -22,6 +22,8 @@ import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { HOTBAR, moveItem, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
+import { crashChanged, crashTaken } from '../shared/crash.ts';
+import type { SiteLink } from './teardown/teardown';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
@@ -91,6 +93,12 @@ export class Net {
   /** Ids for stacks split off by a predicted move, until the server's answer brings the real ones. */
   private tempId = 0;
 
+  /** Shared large-site sessions: lifting eye holders by site and step (server 'siteHolders'), and the events for the
+   *  disassembly mode (src/main.ts hands them to it). */
+  private holders = new Map<string, Map<number, number>>();
+  private holdTimers = new Map<string, ReturnType<typeof setInterval>>();
+  onSite?: (msg: Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' }>) => void;
+
   /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
   water = { heat: 0, sips: 4, rising: false, temp: 20, shade: true, at: 0 };
   onWater?: (w: { heat: number; sips: number; rising: boolean; temp: number; shade: boolean }) => void;
@@ -154,6 +162,43 @@ export class Net {
     sortItems(slots, box === 'bag' ? HOTBAR : 0);
     this.send({ t: 'sort', box });
     this.onItems?.(box);
+  }
+
+  /** Carry off the small machine at a crash site: hidden now, confirmed (it lands in the bag) or put back by the server. */
+  crashTake(id: string) {
+    if (!this.connected || crashTaken.has(id)) return;
+    this.send({ t: 'crashTake', id });
+    crashTaken.add(id);
+    crashChanged();
+  }
+
+  /** Put a carried machine (its item kind) on the workbench; the server uses one up and answers with the bag. */
+  crashUse(kind: string) {
+    if (this.connected) this.send({ t: 'crashUse', kind });
+  }
+
+  /** The shared session of a large crash site (see SiteLink in src/teardown/teardown.ts). */
+  siteLink(id: string): SiteLink {
+    const key = (i: number) => `${id}:${i}`;
+    return {
+      join: () => this.send({ t: 'siteJoin', id }),
+      leave: () => {
+        for (const [k, t] of this.holdTimers) if (k.startsWith(`${id}:`)) { clearInterval(t); this.holdTimers.delete(k); }
+        this.holders.delete(id);
+        this.send({ t: 'siteLeave', id });
+      },
+      done: (i) => this.send({ t: 'siteDone', id, i }),
+      take: (i) => this.send({ t: 'siteTake', id, i }),
+      hold: (i, players, on) => {
+        // The server forgets a hold after a few seconds, so keep saying it while we hold.
+        const old = this.holdTimers.get(key(i));
+        if (old) clearInterval(old);
+        this.holdTimers.delete(key(i));
+        this.send({ t: 'siteHold', id, i, players, on });
+        if (on) this.holdTimers.set(key(i), setInterval(() => this.send({ t: 'siteHold', id, i, players, on: true }), 1000));
+      },
+      holders: (i) => this.holders.get(id)?.get(i) ?? 0,
+    };
   }
 
   /** One sip finished (src/water.ts); the server answers with 'water'. */
@@ -323,6 +368,7 @@ export class Net {
       for (const [k, p] of this.predicted) edits.setMm(cellX(k), cellZ(k), p.server);
       this.predicted.clear();
       this.digCooldown = 0;
+      this.holders.clear();
       this.status = 'reconnecting';
       // Reconnect with backoff; deploys restart the server, so this is expected to happen.
       // Jitter spreads everyone's reconnects out after a restart.
@@ -343,6 +389,22 @@ export class Net {
     if (msg.t === 'items') {
       this.boxes[msg.box] = msg.slots;
       return this.onItems?.(msg.box, msg.got);
+    }
+    if (msg.t === 'crash') {
+      if (msg.reset) crashTaken.clear();
+      for (const id of msg.taken) crashTaken.add(id);
+      for (const id of msg.back) crashTaken.delete(id);
+      return crashChanged();
+    }
+    if (msg.t === 'siteHolders') {
+      let m = this.holders.get(msg.id);
+      if (!m) this.holders.set(msg.id, (m = new Map()));
+      m.set(msg.i, msg.n);
+      return;
+    }
+    if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake') {
+      if (msg.t === 'siteDone') this.holders.get(msg.id)?.delete(msg.i);
+      return this.onSite?.(msg);
     }
     if (msg.t === 'water') {
       this.water = { heat: msg.heat, sips: msg.sips, rising: msg.rising, temp: msg.temp, shade: msg.shade, at: performance.now() };

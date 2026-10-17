@@ -71,6 +71,19 @@ export class ItemServer {
     return true;
   }
 
+  /** Use up one `kind` from the bag (the last stack that has one). False if there is none. */
+  take(browserId: string, kind: string): boolean {
+    const bag = this.slots(browserId, 'bag');
+    for (let i = bag.length - 1; i >= 0; i--) {
+      const it = bag[i];
+      if (it?.kind !== kind) continue;
+      if (--it.n <= 0) bag[i] = null;
+      this.save(browserId, 'bag');
+      return true;
+    }
+    return false;
+  }
+
   /** A move from the client. Returns whether anything changed (either way the client gets both boxes back). */
   move(browserId: string, s: PlayerState, from: unknown, fi: unknown, to: unknown, ti: unknown, n: unknown): boolean {
     if (typeof from !== 'string' || typeof to !== 'string' || !boxSize(from) || !boxSize(to)) return false;
