@@ -28,6 +28,8 @@ const STEEL = mat(0x8a8f86, 0.5, 0.7);
 const CLOTH = mat(0x7a5e3a, 0.95, 0);
 const RED = mat(0xa84a32, 0.6, 0.3);
 const WOOD = mat(0x6b4a2e, 0.9, 0);
+const STOCK = mat(0x7e3a20, 0.6, 0);
+const GLOW = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(1, 0.35, 0.12).multiplyScalar(2) });
 const glowPulse = uniform(1);
 /** A small hot point with a soft falloff, added on top; each one twinkles by its scale. */
 const GLINT = (() => {
@@ -107,6 +109,19 @@ const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
   shovel: (g) => {
     cyl(g, 0.02, 1.0, WOOD, 0, 0.03, 0, Math.PI / 2, 0);
     box(g, 0.24, 0.03, 0.3, STEEL, 0, 0.03, 0.6);
+  },
+  laser_rifle: (g) => {
+    // Lying on its left side: muzzle +X, the scope towards -Z, grip and cell towards +Z (tools/models/rifle.py sizes).
+    const along = Math.PI / 2;
+    box(g, 0.23, 0.034, 0.06, STOCK, -0.22, 0.02, 0.015, 0, 0);
+    box(g, 0.27, 0.034, 0.068, STEEL, 0.035, 0.02, -0.01);
+    box(g, 0.03, 0.026, 0.1, STOCK, -0.01, 0.016, 0.07, 0.35);
+    box(g, 0.05, 0.03, 0.09, DARK, 0.13, 0.017, 0.08, -0.3);
+    cyl(g, 0.021, 0.19, STOCK, 0.265, 0.022, -0.004, 0, along);
+    cyl(g, 0.009, 0.12, DARK, 0.41, 0.022, -0.004, 0, along);
+    cyl(g, 0.026, 0.1, DARK, 0.52, 0.027, -0.004, 0, along);
+    cyl(g, 0.0275, 0.012, GLOW, 0.54, 0.027, -0.004, 0, along).castShadow = false;
+    cyl(g, 0.017, 0.22, DARK, 0.04, 0.018, -0.07, 0, along);
   },
 };
 

@@ -1,8 +1,10 @@
 // What a player avatar holds and wears, beyond the scavenger glb (src/models/scavenger.ts): stand-in models
 // for the item in the hand (the selected hotbar slot) and for the wrist computer and storm detector when
 // equipped (the backpack is part of the glb). Small boxes and cylinders, like the loot on the sand
-// (src/world/loot.ts); parts use the disassembly part models (src/teardown/junk.ts).
+// (src/world/loot.ts); parts use the disassembly part models (src/teardown/junk.ts). The laser rifle uses its own
+// model (public/models/rifle.glb, tools/models/rifle.py).
 import * as THREE from 'three/webgpu';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { parsePart } from '../../shared/items.ts';
 import { TIERS } from '../../shared/salvage.ts';
 import { loadPart } from '../teardown/junk';
@@ -41,9 +43,10 @@ function tool(tip: number, build: (g: THREE.Group) => void) {
 
 /**
  * Held items in the avatar root's space (forward -Z, right +X, up +Y) with the origin at the fist; tipped
- * and carried by the caller. The canteen isn't here: it has its own model and drinking pose.
+ * and carried by the caller. The canteen isn't here: it has its own model and drinking pose. `loaded` is for
+ * models that arrive later.
  */
-const HELD: Record<string, () => THREE.Object3D> = {
+const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
   shovel: () => tool(0.45, (g) => {
     cyl(g, 0.017, 1.0, WOOD, 0, -0.3, 0);
     box(g, 0.12, 0.03, 0.03, WOOD, 0, 0.2, 0); // T grip
@@ -85,7 +88,40 @@ const HELD: Record<string, () => THREE.Object3D> = {
     return g;
   },
   motorcycle: () => crate(0.36, RED),
+  // Carried at the hip in the right hand, muzzle forward and a little down, the stock back under the arm.
+  laser_rifle: (loaded) => {
+    const g = rifleModel(loaded);
+    g.rotation.set(-0.25, Math.PI, 0); // the model's muzzle is +Z
+    return g;
+  },
 };
+
+const RIFLE_URL = './models/rifle.glb';
+let rifleSrc: Promise<THREE.Object3D> | null = null;
+
+/**
+ * The laser rifle (public/models/rifle.glb): origin at the pistol grip, muzzle +Z, up +Y, materials 'Rifle'
+ * and the emissive 'RifleGlow'. Empty until loaded (then `loaded` is called); each copy has its own
+ * geometry, so disposeModel() can free it.
+ */
+export function rifleModel(loaded?: () => void): THREE.Group {
+  const g = new THREE.Group();
+  rifleSrc ??= new GLTFLoader().loadAsync(RIFLE_URL).then((gltf) => gltf.scene);
+  rifleSrc.then(
+    (src) => {
+      const m = src.clone(true);
+      m.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) mesh.geometry = mesh.geometry.clone();
+      });
+      g.add(m);
+      shadows(g);
+      loaded?.();
+    },
+    (e) => console.warn('rifle model failed to load', e),
+  );
+  return g;
+}
 
 /** A battered crate hanging from the hand: scrap, carried machines, anything without a model of its own. */
 function crate(size = 0.28, lid: THREE.Material = RUST) {
@@ -101,7 +137,7 @@ const PART_HELD = 0.22;
 /** The model of `kind` held in the hand (see HELD); `loaded` is called if a part model arrives later. */
 export function heldModel(kind: string, loaded: () => void): THREE.Object3D {
   const make = HELD[kind];
-  if (make) return shadows(make());
+  if (make) return shadows(make(loaded));
   const part = parsePart(kind);
   if (!part) return shadows(crate());
   const g = new THREE.Group();

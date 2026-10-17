@@ -177,6 +177,16 @@ ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.8" y="-10" width=
   control_cabinet: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="3" width="16" height="20" rx="1.5" fill="#7d7a72"/>
 <rect x="5" y="5" width="12" height="16" fill="#5e6a5a"/><circle cx="8" cy="8" r="1.1" fill="#ffb050"/><circle cx="12" cy="8" r="1.1" fill="#74d08a"/>
 <rect x="7" y="12" width="8" height="5" fill="#2a160a"/></g></svg>`,
+  // Laser rifle, muzzle up-right: wood stock, grip and handguard, grey receiver, scope, energy cell, glowing emitter.
+  laser_rifle: `<svg viewBox="0 0 22 26"><g transform="translate(11 13.5) rotate(-48) scale(0.8)" stroke="#2a160a" stroke-width="0.8"
+stroke-linejoin="round"><path d="M-13 5Q-3 10 6 1.5" fill="none" stroke="#6e6444" stroke-width="1"/>
+<path d="M-15.5 -0.6L-6.6 -1.7V1.4L-15.5 4.6z" fill="#8e4426"/><path d="M-4.4 1.2L-6 5.6H-3.8L-2.6 1.2z" fill="#7e3a20"/>
+<path d="M-0.6 1.2H2.4L3.3 5.4H0.4z" fill="#6a6648"/><path d="M1 2.2L1.6 4.5" stroke="#ff6a2a" stroke-width="0.9"/>
+<rect x="-7" y="-2.1" width="9.6" height="3.5" rx="0.6" fill="#8d8f8a"/><rect x="2.4" y="-1.7" width="6.4" height="3" rx="1.1" fill="#8e4426"/>
+<rect x="8.6" y="-0.75" width="3" height="1.3" fill="#55575a"/><rect x="11.4" y="-2" width="3.4" height="3.8" rx="0.5" fill="#3a3a38"/>
+<path d="M12.3 -1.6V1.4M13.4 -1.6V1.4" stroke="#ff6a2a" stroke-width="0.6"/><circle cx="15.6" cy="-0.1" r="1.6" fill="#ff7a32" stroke="none" opacity="0.45"/>
+<circle cx="15.2" cy="-0.1" r="0.9" fill="#ffb066" stroke="none"/><rect x="-1.6" y="-3.2" width="1.2" height="1.2" fill="#2e2a26"/>
+<rect x="-5.6" y="-5" width="7.4" height="2" rx="1" fill="#4a4a48"/><path d="M-11 0.3L-10 2.8" stroke="#3a3a36" stroke-width="1.4"/></g></svg>`,
   spring: `<svg viewBox="0 0 22 26"><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#a8a294" stroke-width="1.3"/></svg>`,
