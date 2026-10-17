@@ -2,6 +2,13 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Roaming drones
+
+- A few drones now roam the open desert day and night (server/guardians.ts `roam`, site `ROAM`): at most 4 out at
+  once; someone out in the open with none within 900 m gets one drifting in from 300–420 m about every 100 s. It flies
+  long legs (120–350 m) ahead-ish, keeps 250 m from the base unless chasing, and leaves after 3–6 minutes. Otherwise
+  it's a normal drone: the searchlight locks on, calls the guardians and missiles, and can be shot down for parts.
+
 ## 2026-10-17 — Laser pistol: the cheap gun
 
 - **Getting one**: no longer handed out to everyone (the `pistolGift` was dropped for the playtest reset):

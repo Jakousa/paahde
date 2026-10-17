@@ -5,7 +5,8 @@
 // Guardians are few and roam guardian ground (crash sites of level 2, shared/crashsites.ts SiteLevel) from site to
 // site. Crawlers and drones belong to a crash site: they turn up there when someone comes near (crawlers any time at
 // crawler and guardian ground, drones at night there too) and go when everyone has left. The scrap fields
-// (level 0) near the base have none.
+// (level 0) near the base have none. A few more drones roam the open desert day and night (ROAMERS), drifting in
+// near someone now and then on long legs, and flying off again after a few minutes.
 import { BASE, inBase } from '../shared/base.ts';
 import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
 import {
@@ -56,6 +57,17 @@ const DRONE_AREA = 110;
 const DRONE_LONELY = 600;
 /** Drones keep this far (m) from the base. */
 const DRONE_BASE_KEEP_OUT = 60;
+/** Roaming drones (site ROAM): at most ROAMERS out at once. Someone out in the open with none within ROAM_NEAR (m)
+ *  gets one about every ROAM_EVERY_S seconds, coming in from ROAM_FROM (m); it stays ROAM_MIN..MAX ms, flying legs of
+ *  ROAM_LEG (m), and keeps ROAM_BASE_KEEP_OUT (m) from the base. */
+const ROAM = -2;
+const ROAMERS = 4;
+const ROAM_NEAR = 900;
+const ROAM_EVERY_S = 100;
+const ROAM_FROM: [number, number] = [300, 420];
+const ROAM_MIN = 3 * 60_000, ROAM_MAX = 6 * 60_000;
+const ROAM_LEG: [number, number] = [120, 350];
+const ROAM_BASE_KEEP_OUT = 250;
 /** A dead walker's wreck lies where it fell this long (ms), by kind; a dead guardian is replaced after GUARDIAN_BACK_MS
  *  by a new one at a site far from where it died. */
 const WRECK_MS: Record<Kind, number> = { [GUARDIAN]: WRECK_S[GUARDIAN] * 1000, [CRAWLER]: WRECK_S[CRAWLER] * 1000 };
@@ -92,13 +104,13 @@ export type BoltEvent = { msg: ServerMsg; x: number; z: number };
 
 type Drone = {
   id: number; x: number; y: number; z: number; yaw: number;
-  /** Patrol area centre, current waypoint; the crash site it guards (-1: summoned). */
+  /** Patrol area centre, current waypoint; the crash site it guards (-1: summoned, ROAM: roaming). */
   hx: number; hz: number; tx: number; tz: number; site: number;
   /** Locked on to this player (-1 none), last lit when. Leaving: flying off before dawn. */
   lock: number; litAt: number; leaving: boolean;
   /** Lost this player (-1 none): won't lock on to them again until then. */
   lost: number; lostUntil: number;
-  /** Summoned from the debug menu: stays out until then (server ms), day or not. */
+  /** Summoned from the debug menu or roaming: stays out until then (server ms), day or not (roaming: no longer). */
   until: number;
   /** Beam direction (unit), sent to clients. */
   dx: number; dy: number; dz: number;
@@ -417,13 +429,18 @@ export class GuardianServer {
         for (; have < DRONES_PER_SITE && this.drones.length < MAX_DRONES; have++) this.spawnDrone(s.x, s.z, s.id, 0, DRONE_FROM);
       }
     }
+    this.roam(dt, now, exposed);
     const v = { x: 0, y: 0, z: 0 };
     for (const d of this.drones) {
       if (d.downAt >= 0) {
         this.fall(d, dt);
         continue;
       }
-      if ((!night && now > d.until) || !players.some((p) => Math.hypot(p.x - d.hx, p.z - d.hz) < DRONE_LONELY)) d.leaving = true;
+      if (d.site === ROAM) {
+        d.hx = d.x;
+        d.hz = d.z;
+      }
+      if ((now > d.until && (!night || d.site === ROAM)) || !players.some((p) => Math.hypot(p.x - d.hx, p.z - d.hz) < DRONE_LONELY)) d.leaving = true;
       let speed = DRONE_SPEED, tx = d.tx, tz = d.tz, alt = DRONE_ALT;
       const prey = d.lock >= 0 ? byId.get(d.lock) : undefined;
       if (d.leaving) {
@@ -449,10 +466,10 @@ export class GuardianServer {
         d.z += (dz / dist) * step;
         if (!prey) d.yaw = wrap(d.yaw + wrap(Math.atan2(dx, dz) - d.yaw) * (1 - Math.exp(-dt * 1.5)));
       }
-      const bd = Math.hypot(d.x - BASE.x, d.z - BASE.z);
-      if (bd < DRONE_BASE_KEEP_OUT && !d.leaving) {
-        d.x = BASE.x + ((d.x - BASE.x) / bd) * DRONE_BASE_KEEP_OUT;
-        d.z = BASE.z + ((d.z - BASE.z) / bd) * DRONE_BASE_KEEP_OUT;
+      const bd = Math.hypot(d.x - BASE.x, d.z - BASE.z), keep = d.site === ROAM && !prey ? ROAM_BASE_KEEP_OUT : DRONE_BASE_KEEP_OUT;
+      if (bd < keep && !d.leaving) {
+        d.x = BASE.x + ((d.x - BASE.x) / bd) * keep;
+        d.z = BASE.z + ((d.z - BASE.z) / bd) * keep;
         this.dronePoint(d);
       }
       const ground = Math.max(heightAt(d.x, d.z), heightAt(d.x + Math.sin(d.yaw) * 15, d.z + Math.cos(d.yaw) * 15));
@@ -643,9 +660,35 @@ export class GuardianServer {
   }
 
   private dronePoint(d: Drone) {
+    if (d.site === ROAM) {
+      // A long leg somewhere ahead-ish, inside the world and clear of the base.
+      for (let i = 0; i < 8; i++) {
+        const a = d.yaw + rand(-1.6, 1.6), r = rand(...ROAM_LEG);
+        d.tx = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, d.x + Math.sin(a) * r));
+        d.tz = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, d.z + Math.cos(a) * r));
+        if (Math.hypot(d.tx - BASE.x, d.tz - BASE.z) > ROAM_BASE_KEEP_OUT + 20) return;
+      }
+      return;
+    }
     const a = rand(-Math.PI, Math.PI), r = rand(20, DRONE_AREA);
     d.tx = d.hx + Math.sin(a) * r;
     d.tz = d.hz + Math.cos(a) * r;
+  }
+
+  /** Now and then a roaming drone drifts in near someone out in the open with none around. */
+  private roam(dt: number, now: number, exposed: BotPlayer[]) {
+    let out = this.drones.filter((d) => d.site === ROAM && !d.leaving).length;
+    for (const p of exposed) {
+      if (out >= ROAMERS || this.drones.length >= MAX_DRONES) return;
+      if (Math.random() > dt / ROAM_EVERY_S) continue;
+      if (this.drones.some((d) => d.site === ROAM && Math.hypot(d.x - p.x, d.z - p.z) < ROAM_NEAR)) continue;
+      // Passing by: it heads for somewhere near them, then wanders on.
+      const a = rand(-Math.PI, Math.PI), r = rand(40, 120);
+      const hx = p.x + Math.sin(a) * r, hz = p.z + Math.cos(a) * r;
+      if (Math.hypot(hx - BASE.x, hz - BASE.z) < ROAM_BASE_KEEP_OUT) continue;
+      this.spawnDrone(hx, hz, ROAM, now + rand(ROAM_MIN, ROAM_MAX), rand(...ROAM_FROM));
+      out++;
+    }
   }
 
   /** The 'bots' message for a player at (x, z): guardians and drones within SEND_R, flagged when after them. */
