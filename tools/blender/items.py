@@ -30,7 +30,7 @@ from mathutils import Euler, Matrix, Vector
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 TIERS = ['scrap', 'basic', 'quality', 'space']
-ITEMS = ['battery', 'motor', 'heatsink']
+ITEMS = ['battery', 'motor', 'heatsink', 'compute']
 
 # Materials: name -> (sRGB hex, metallic, roughness, emission strength). Emissive ones glow in their colour.
 MATERIALS = {
@@ -44,6 +44,7 @@ MATERIALS = {
     'corrosion': (0xb8d6b0, 0.0, 0.9, 0),
     'wire_red': (0xa83224, 0.0, 0.6, 0),
     'wire_yellow': (0xc9a12e, 0.0, 0.6, 0),
+    'pcb': (0x2f6b3a, 0.0, 0.6, 0),
     # basic
     'plastic_dark': (0x3a3c40, 0.0, 0.6, 0),
     'plastic_black': (0x1e1f22, 0.0, 0.55, 0),
@@ -332,7 +333,88 @@ def build_heatsink(mb, tier, rng):
             mb.box((W * 0.92, 0.007, 0.005), (0, y, BASE + h), 'glow')
 
 
-BUILDERS = {'battery': build_battery, 'motor': build_motor, 'heatsink': build_heatsink}
+# ------------------------------------------------------------------------------------------- compute unit
+
+def build_compute(mb, tier, rng):
+    """Chunky compute module: a flat casing about 24 x 16 x 7 cm with a cooling fan on top, status lights
+    on the front (-Y) and a circuit board edge connector sticking out of the +X end."""
+    W, D, H = 0.24, 0.16, 0.07
+    FX, FR = -0.04, 0.05  # fan centre (x) and radius
+    segs = {'scrap': 10, 'basic': 12, 'quality': 16, 'space': 20}[tier]
+
+    def edge_connector(board_mat, pin_mat, skip=()):
+        mb.box((0.04, D * 0.6, 0.006), (W / 2 + 0.018, 0, H * 0.45), board_mat)
+        for i in range(6):
+            if i in skip:
+                continue
+            y = -D * 0.25 + i * D * 0.1
+            for sz in (1, -1):
+                mb.box((0.026, 0.008, 0.002), (W / 2 + 0.024, y, H * 0.45 + sz * 0.0035), pin_mat)
+
+    def fan(ring_mat, blade_mat, hub_mat, z, blades=5, twist=0.5):
+        mb.cyl(FR + 0.008, FR + 0.008, 0.006, segs, (FX, 0, z), ring_mat)
+        mb.cyl(FR, FR, 0.004, segs, (FX, 0, z + 0.003), 'plastic_black')
+        for i in range(blades):
+            a = 2 * math.pi * i / blades
+            mb.box((FR * 0.8, 0.018, 0.003), (FX + math.cos(a) * FR * 0.5, math.sin(a) * FR * 0.5, z + 0.006),
+                   blade_mat, rot=(twist, 0, a))
+        mb.cyl(FR * 0.3, FR * 0.3, 0.008, 10, (FX, 0, z + 0.007), hub_mat)
+
+    if tier == 'scrap':
+        body = mb.box((W, D, H * 0.75), (0, 0, H * 0.375), 'rust', cuts=2)
+        mb.dent(body, (W / 2, -D / 2, H * 0.5), 0.07, 0.015)
+        mb.jitter(body, rng, 0.002)
+        # Half the lid is gone: the green board shows, with chips and a fat capacitor.
+        mb.box((W * 0.55, D * 1.02, 0.008), (-W * 0.22, 0.002, H * 0.75 + 0.004), 'paint_faded_blue',
+               rot=(0.02, -0.03, 0.04))
+        mb.box((W * 0.44, D * 0.92, 0.004), (W * 0.27, 0, H * 0.75 - 0.002), 'pcb')
+        mb.box((0.04, 0.04, 0.008), (W * 0.24, -0.03, H * 0.75 + 0.004), 'plastic_black', rot=(0, 0, 0.1))
+        mb.box((0.025, 0.018, 0.006), (W * 0.36, 0.04, H * 0.75 + 0.003), 'plastic_black')
+        mb.cyl(0.011, 0.011, 0.03, 8, (W * 0.38, -0.035, H * 0.75 + 0.015), 'steel_dull', rot=(0.25, 0, 0))
+        fan('rust_dark', 'steel_dull', 'steel_dull', H * 0.75 + 0.008, blades=4, twist=0.3)
+        mb.box((0.035, D + 0.012, 0.03), (FX - 0.07, 0, H * 0.6), 'tape', rot=(0, 0.06, 0))
+        mb.cyl(0.004, 0.004, 0.07, 5, (W * 0.15, 0.03, H * 0.75 + 0.03), 'wire_red', rot=(0.9, 0.5, 0))
+        mb.cyl(0.004, 0.004, 0.06, 5, (W * 0.18, 0.05, H * 0.75 + 0.025), 'wire_yellow', rot=(-0.7, 0.8, 0))
+        edge_connector('pcb', 'steel_dull', skip=(1, 4))
+    elif tier == 'basic':
+        mb.box((W, D, H), (0, 0, H / 2), 'plastic_dark')
+        mb.box((W + 0.006, D + 0.006, 0.008), (0, 0, H + 0.004), 'alu')
+        fan('plastic_black', 'plastic_dark', 'alu', H + 0.008)
+        for i in range(5):  # vent slots
+            mb.box((0.008, D * 0.6, 0.003), (W * 0.12 + i * 0.016, 0, H + 0.009), 'plastic_black')
+        mb.box((W * 0.3, 0.004, H * 0.45), (-W * 0.2, -D / 2 - 0.002, H * 0.5), 'label')
+        mb.cyl(0.005, 0.005, 0.004, 8, (W * 0.35, -D / 2 - 0.002, H * 0.6), 'term_red', rot=X90)
+        edge_connector('pcb', 'copper')
+    elif tier == 'quality':
+        mb.box((W, D, H), (0, 0, H / 2), 'anodised', bevel=0.008)
+        mb.box((W - 0.01, D - 0.01, 0.008), (0, 0, H + 0.003), 'chrome', bevel=0.003)
+        mb.box((W + 0.004, D + 0.004, 0.008), (0, 0, H * 0.25), 'accent_orange')
+        fan('brass', 'anodised', 'chrome', H + 0.007, blades=7)
+        # Copper heat pipes running from the fan to a fin stack.
+        for y in (-0.03, 0.03):
+            mb.cyl(0.006, 0.006, 0.1, 8, (0.045, y, H + 0.012), 'copper', rot=Y90)
+        for i in range(6):
+            mb.box((0.004, D * 0.7, 0.022), (0.065 + i * 0.01, 0, H + 0.018), 'alu')
+        for i in range(3):
+            mb.box((0.012, 0.004, 0.006), (W * 0.22 + i * 0.02, -D / 2 - 0.002, H * 0.6), 'led_green')
+        edge_connector('navy', 'brass')
+    else:  # space
+        mb.box((W, D, H), (0, 0, H / 2), 'white', bevel=0.018)
+        mb.box((W - 0.03, D - 0.03, 0.01), (0, 0, H + 0.001), 'gunmetal', bevel=0.004)
+        mb.cyl(FR + 0.014, FR + 0.014, 0.004, segs, (FX, 0, H + 0.006), 'glow')
+        fan('gunmetal', 'white', 'gold', H + 0.008, blades=7)
+        # Glowing core window and data-light strip on the front, light seam all round.
+        mb.box((0.06, 0.06, 0.004), (0.06, 0, H + 0.008), 'glow_soft')
+        for i in range(5):
+            mb.box((0.014, 0.004, 0.008), (-W * 0.25 + i * 0.022, -D / 2 - 0.001, H * 0.55), 'glow')
+        for sy in (1, -1):
+            mb.box((W - 0.04, 0.004, 0.006), (0, sy * D / 2, H * 0.2), 'glow_soft')
+        for sx in (1, -1):
+            mb.box((0.004, D - 0.04, 0.006), (sx * W / 2, 0, H * 0.2), 'glow_soft')
+        edge_connector('gunmetal', 'gold')
+
+
+BUILDERS = {'battery': build_battery, 'motor': build_motor, 'heatsink': build_heatsink, 'compute': build_compute}
 
 
 def build_item(item, tier):
@@ -481,12 +563,13 @@ def render_preview(objs_by_item, path):
     bpy.ops.mesh.primitive_plane_add(size=20, location=(0, 0, 0))
     ground = bpy.context.active_object
     ground.data.materials.append(make_material('ground', 0xd9a066, 0, 0.9, 0))
+    rows = len(objs_by_item)
     for row, (item, objs) in enumerate(objs_by_item.items()):
         for col, obj in enumerate(objs):
-            obj.location = ((col - 1.5) * 0.45, (row - 1) * 0.45, 0)
+            obj.location = ((col - (len(objs) - 1) / 2) * 0.45, (row - (rows - 1) / 2) * 0.45, 0)
     cam.data.type = 'PERSP'
     cam.data.lens = 50
-    aim(cam, Vector((0, 0, 0.05)), 3.6)
+    aim(cam, Vector((0, 0, 0.05)), 3.6 * max(1.0, rows / 3) ** 0.8)
     scene.render.filepath = path
     bpy.ops.render.render(write_still=True)
 
