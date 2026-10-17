@@ -32,4 +32,13 @@ export const SALVAGE: Record<string, SalvageKind> = {
       { part: 'coil', min: 0, max: 2 },
     ],
   },
+  // #17: a stranded jet ski; its battery bay and drive motor are still in there, plus the bilge pump motor.
+  water_jet: {
+    label: 'Broken water jet',
+    model: 'salvage/water_jet.glb',
+    yields: [
+      { part: 'battery', min: 1, max: 2 },
+      { part: 'motor', min: 1, max: 2 },
+    ],
+  },
 };
