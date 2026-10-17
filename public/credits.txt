@@ -72,6 +72,7 @@ Made for this game
 
 "Dune riding" (audio/dune-riding.mp3), the music on the bike, is by Veikko Suhonen, made for dadajam.
 "Desert ambience" (audio/desert-ambience.mp3), the music outdoors, is by Veikko Suhonen, made for dadajam.
+"Death" (audio/death.mp3), the music when you die, is by Veikko Suhonen, made for dadajam.
 
 All other models, textures, icons and sounds were made for dadajam: models and icons are generated
 in Blender by the scripts in tools/ of the source repository, and the wind and the crash-site electronics are synthesised in code.

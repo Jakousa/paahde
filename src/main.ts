@@ -341,6 +341,7 @@ renderer.setAnimationLoop((time) => {
     indoors: inBase(cam.x, cam.y, cam.z),
     sandstorm: storm.level > 0.3,
     combat: guardianFx.combat,
+    dead: survival.dead,
   });
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
