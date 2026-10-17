@@ -1,7 +1,7 @@
 // Crash-site sounds: the faint electronic chatter of a wreck's half-dead systems (crashSynth.ts), heard
 // within HEAR metres of its beacon and placed there in 3D (HRTF PannerNode; the Web Audio listener follows
 // the camera). Only the nearest MAX_VOICES sites play. Very quiet on purpose: background detail you notice
-// when you stop next to a wreck, about −30 LUFS at 5 m (see docs/devlog.md for the measurement).
+// when you stop next to a wreck, about −26 LUFS at 5 m (see docs/devlog.md for the measurement).
 //
 // Plays through the shared output in src/audio.ts (volume slider, limiter); every level change is ramped.
 import { audio } from './audio';

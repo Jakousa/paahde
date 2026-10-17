@@ -6,15 +6,17 @@
     <title>dadajam</title>
     <link rel="icon" href="data:," />
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #111; }
+      /* Every bit of text in the game is monospace. */
+      :root { --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #111; font-family: var(--mono); }
       canvas { display: block; }
-      #info { position: fixed; top: 8px; left: 8px; color: #ccc; font: 12px monospace; }
-      #credits { position: fixed; top: 24px; left: 8px; color: #999; font: 12px monospace; }
+      /* Stats line: off unless "Show stats" is ticked in the Esc menu (src/menu.ts). */
+      #info { position: fixed; top: 8px; left: 8px; color: #ccc; font: 12px var(--mono); display: none;
+        pointer-events: none; text-shadow: 0 1px 2px #000; }
     </style>
   </head>
   <body>
     <div id="info"></div>
-    <a id="credits" href="./credits.txt" target="_blank" rel="noopener">credits</a>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

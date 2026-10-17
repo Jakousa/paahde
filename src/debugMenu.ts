@@ -2,6 +2,7 @@
 // Time of day: a slider that holds the sky at that time (local view only), or, with "Apply to all players",
 // moves the shared server clock for everyone, production included. "Sandstorm here" summons one on you
 // (for everyone, after the usual warning); "Local sandstorm" sends one at you from just upwind at once, seen only by you.
+import { ui } from './input';
 import { summonLocalStorm } from './storm';
 import { clockText, timeControl } from './world/dayNight';
 
@@ -15,7 +16,7 @@ export class DebugMenu {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
-  font: 12px system-ui, sans-serif; color: #ffe9cc; background: rgba(20, 10, 5, 0.82); border-radius: 8px;
+  font: 12px var(--mono); color: #ffe9cc; background: rgba(20, 10, 5, 0.82); border-radius: 8px;
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.18); z-index: 10; }
 #debugMenu h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; opacity: .7; }
 #debugMenu input[type=range] { width: 100%; }
@@ -95,6 +96,7 @@ export class DebugMenu {
       const open = p.style.display !== 'block';
       p.style.display = open ? 'block' : 'none';
       if (open) {
+        if (document.pointerLockElement) ui.debugFreed = true;
         document.exitPointerLock();
         if (live.checked) show(currentTod());
       }

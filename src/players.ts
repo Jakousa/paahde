@@ -139,7 +139,7 @@ export class Avatar {
     canvas.width = 256;
     canvas.height = 64;
     const g = canvas.getContext('2d')!;
-    g.font = 'bold 34px system-ui, sans-serif';
+    g.font = 'bold 34px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillStyle = 'rgba(20, 10, 5, 0.55)';

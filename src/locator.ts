@@ -16,12 +16,12 @@ const BASE_ID = -1; // player ids are positive
 const BASE_TARGET: LocatorTarget = { id: BASE_ID, color: 0xf2e6c8, x: BASE.x, y: BASE.y, z: BASE.z };
 
 const css = `
-#locator { position: fixed; left: 50%; bottom: 28px; width: min(480px, 70vw); height: 6px;
+#locator { position: fixed; left: 50%; bottom: 70px; width: min(480px, 70vw); height: 6px;
   transform: translateX(-50%); background: rgba(20, 10, 5, 0.45); border-radius: 3px;
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.18); pointer-events: none; transition: opacity 0.3s; }
 #locator .dot { position: absolute; top: 50%; border-radius: 50%; transform: translate(-50%, -50%);
   box-shadow: 0 0 0 1.5px rgba(20, 10, 5, 0.8); }
-#locator .arrow { position: absolute; left: 50%; transform: translateX(-50%); font: bold 9px system-ui;
+#locator .arrow { position: absolute; left: 50%; transform: translateX(-50%); font: bold 9px var(--mono);
   line-height: 1; color: inherit; text-shadow: 0 0 2px #000; }
 #locator .dot.base { border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 1px rgba(20, 10, 5, 0.9)); }
 #locator .dot.base::before { content: ''; position: absolute; inset: 0; background: currentColor;

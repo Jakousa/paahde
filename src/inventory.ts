@@ -16,20 +16,18 @@ const DRAG_START = 4;
 
 const css = `
 #pickup { position: fixed; left: 50%; top: calc(50% + 22px); transform: translateX(-50%); padding: 3px 8px;
-  font: 13px system-ui, sans-serif; color: #fff4e4; background: rgba(20, 10, 5, 0.55); border-radius: 4px;
+  font: 13px var(--mono); color: #fff4e4; background: rgba(20, 10, 5, 0.55); border-radius: 4px;
   pointer-events: none; white-space: nowrap; display: none; }
-#pickup kbd, #invHint kbd { font: bold 11px monospace; padding: 0 4px; margin-right: 6px; border-radius: 3px;
+#pickup kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 6px; border-radius: 3px;
   background: #fff4e4; color: #2a160a; }
-#invHint { position: fixed; right: 12px; bottom: 12px; font: 12px system-ui, sans-serif; color: #fff4e4;
-  opacity: 0.6; pointer-events: none; text-shadow: 0 1px 2px #000; }
 #toasts { position: fixed; left: 50%; top: calc(50% + 52px); transform: translateX(-50%); pointer-events: none;
   display: flex; flex-direction: column; align-items: center; gap: 2px; }
-#toasts div { font: 600 13px system-ui, sans-serif; color: #ffd9a0; text-shadow: 0 1px 2px #000;
+#toasts div { font: 600 13px var(--mono); color: #ffd9a0; text-shadow: 0 1px 2px #000;
   animation: toast ${TOAST_MS}ms ease-out forwards; }
 @keyframes toast { 0% { opacity: 0; transform: translateY(6px); } 12% { opacity: 1; transform: none; }
   70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
 #invOverlay { position: fixed; inset: 0; z-index: 15; display: none; align-items: center; justify-content: center;
-  flex-direction: column; gap: 10px; background: rgba(12, 6, 2, 0.45); font: 12px system-ui, sans-serif;
+  flex-direction: column; gap: 10px; background: rgba(12, 6, 2, 0.45); font: 12px var(--mono);
   color: #fff4e4; user-select: none; -webkit-user-select: none; }
 #invOverlay.open { display: flex; }
 #invOverlay .boxes { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; justify-content: center;
@@ -38,7 +36,7 @@ const css = `
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.45); }
 #invOverlay .box.storage { box-shadow: 0 0 0 1px rgba(255, 200, 120, 0.35), 0 8px 30px rgba(0, 0, 0, 0.45); }
 #invOverlay .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-#invOverlay h3 { margin: 0; font: 600 11px system-ui, sans-serif; letter-spacing: 0.08em; text-transform: uppercase;
+#invOverlay h3 { margin: 0; font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
   opacity: 0.75; }
 #invOverlay button { font: inherit; font-size: 11px; color: inherit; background: rgba(255, 233, 204, 0.12); border: 0;
   border-radius: 4px; padding: 2px 8px; cursor: pointer; }
@@ -52,15 +50,15 @@ const css = `
 #invOverlay .slot.hot { background: rgba(255, 240, 220, 0.1); }
 #invOverlay .slot.over { box-shadow: inset 0 0 0 2px rgba(255, 210, 140, 0.9); background: rgba(255, 210, 140, 0.14); }
 #invOverlay .slot.dragging > :not(.key) { opacity: 0.3; }
-#invOverlay .slot .key { position: absolute; left: 4px; top: 2px; font: 600 9px system-ui, sans-serif; opacity: 0.55; }
-#invOverlay .slot .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px system-ui, sans-serif;
+#invOverlay .slot .key { position: absolute; left: 4px; top: 2px; font: 600 9px var(--mono); opacity: 0.55; }
+#invOverlay .slot .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
 #invOverlay .slot svg, #invGhost svg { width: 30px; height: 34px; }
 #invOverlay .none { width: 190px; padding: 6px 2px; opacity: 0.55; line-height: 1.45; }
 #invOverlay .help { opacity: 0.55; font-size: 11px; text-shadow: 0 1px 2px #000; }
 #invGhost { position: fixed; z-index: 16; pointer-events: none; width: 54px; height: 54px; display: flex;
   align-items: center; justify-content: center; transform: translate(-50%, -50%); filter: drop-shadow(0 4px 6px #000); }
-#invGhost .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px system-ui, sans-serif; color: #fff4e4;
+#invGhost .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono); color: #fff4e4;
   text-shadow: 0 1px 2px #000; }
 `;
 
@@ -112,7 +110,6 @@ type Drag = { box: string; i: number; half: boolean; x0: number; y0: number; mov
 export class InventoryHud {
   private prompt = document.createElement('div');
   private toasts = document.createElement('div');
-  private hint = document.createElement('div');
   private overlay = document.createElement('div');
   private boxesEl = document.createElement('div');
   private ghost = document.createElement('div');
@@ -132,8 +129,6 @@ export class InventoryHud {
     document.head.appendChild(style);
     this.prompt.id = 'pickup';
     this.toasts.id = 'toasts';
-    this.hint.id = 'invHint';
-    this.hint.innerHTML = '<kbd>Tab</kbd>Inventory';
     this.overlay.id = 'invOverlay';
     this.boxesEl.className = 'boxes';
     const help = document.createElement('div');
@@ -142,7 +137,7 @@ export class InventoryHud {
     this.overlay.append(this.boxesEl, help);
     this.ghost.id = 'invGhost';
     this.ghost.style.display = 'none';
-    document.body.append(this.prompt, this.toasts, this.hint, this.overlay, this.ghost);
+    document.body.append(this.prompt, this.toasts, this.overlay, this.ghost);
 
     net.onItems = (box, got) => {
       if (got) this.toast(`+1 ${itemLabel(got)}`);
