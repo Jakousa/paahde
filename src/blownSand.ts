@@ -2,17 +2,18 @@
 //
 // Two particle pools, each drawn as one instanced mesh whose quads are built in the vertex shader from
 // per-instance position/velocity, so the CPU only writes two small arrays per frame:
-//   - Saltating grains around the player: short motion-blurred streaks that hop along the ground in
+//   - Saltating grains close to the player: faint motion-blurred streaks that hop along the ground in
 //     ballistic arcs (gravity + drag towards the log-law wind at their height), bouncing a few times.
-//     Their emission follows the wind's streamers, so near the threshold sand snakes across the dunes
-//     and in strong wind the whole surface flows ankle-deep.
-//   - Crest plumes: soft puffs blown off dune brinks in strong gusts, drifting over and sinking into
-//     the sheltered slip face. Brinks are found by random probing and kept as emitters.
-// Grains glow when backlit by the low sun (forward scattering), so they catch the bloom.
+//     Their emission follows the wind's streamers. They only add fine texture up close; the flowing
+//     sheet of sand seen over the dunes is world/driftSheet.ts.
+//   - Crest plumes: soft wisps blown off dune brinks in strong gusts, stretched downwind, drifting
+//     over and sinking into the sheltered slip face. Brinks are found by random probing.
+// Both scatter the low sun forward a little when backlit, but stay below bloom: dust, not sparks.
 import * as THREE from 'three/webgpu';
 import type { Node } from 'three/webgpu';
 import { cameraPosition, cross, dot, float, instancedBufferAttribute, length, max, mix, normalize, pow, saturate, smoothstep, uv, vec3 } from 'three/tsl';
 import { edits, heightAt, normalAt } from '../shared/terrain.ts';
+import { DriftSheet } from './world/driftSheet.ts';
 import { hazeDensity, sunColor, sunDirection } from './world/env.ts';
 import { uAt, USTAR_T, ustarFrom10, wind, type WindSample } from './world/wind.ts';
 
@@ -20,13 +21,13 @@ const G = 9.81;
 
 // Saltation
 const GRAINS = 20000;
-const RADIUS = 28; // grains spawn within this distance of the player (m)
+const RADIUS = 14; // grains spawn within this distance of the player (m)
 const SPAWN_DENSITY = 6; // grains per m² per second at full emission (each streak stands for many real grains)
 const DRAG_TAU = 0.35; // s, how fast a grain picks up the wind speed
 const REBOUND = 0.85; // chance a landing grain bounces on instead of settling
 const GROUND_CELLS = 8192; // cached 1 m ground cells (the spawn disc covers ~2500)
 const SHUTTER = 0.05; // s of motion blur for the streaks
-const GRAIN_WIDTH = 0.02; // m
+const GRAIN_WIDTH = 0.012; // m
 
 // Crest plumes
 const PUFFS = 1500;
@@ -79,6 +80,7 @@ export class BlownSand {
   private ps = new Float32Array(PUFFS * 5);
   private emitters: { x: number; y: number; z: number; key: number }[] = [];
   private emitterKeys = new Set<number>();
+  private sheet: DriftSheet;
   private sample: WindSample = { dx: 0, dz: 0, ustar: 0, q: 0, emit: 0 };
   private n = { x: 0, y: 1, z: 0 };
   private baseHaze = hazeDensity.value;
@@ -87,6 +89,7 @@ export class BlownSand {
 
   constructor(scene: THREE.Scene) {
     scene.add(this.grainMesh(), this.puffMesh());
+    this.sheet = new DriftSheet(scene);
     // Digging changes the ground: forget the cached cells (edits are rare next to grain hops).
     const prev = edits.onChange;
     edits.onChange = (cx, cz) => {
@@ -111,7 +114,7 @@ export class BlownSand {
     const along = uv().x.mul(2).sub(1), across = uv().y.mul(2).sub(1);
     const shape = saturate(float(1).sub(along.mul(along))).mul(saturate(float(1).sub(across.mul(across))));
     mat.opacityNode = p.w.mul(v.w.div(width)).mul(shape);
-    mat.colorNode = grainColor(center, floatAttr(this.grains.lightAttr), [1.0, 0.7, 0.42], 4);
+    mat.colorNode = grainColor(center, floatAttr(this.grains.lightAttr), [0.9, 0.62, 0.38], 0.8);
     const mesh = new THREE.Mesh(this.grains.geo, mat);
     mesh.frustumCulled = false;
     mesh.renderOrder = 3;
@@ -122,15 +125,16 @@ export class BlownSand {
     const p = vec4Attr(this.puffs.posAttr);
     const v = vec4Attr(this.puffs.velAttr);
     const center = p.xyz;
+    // Wisps stretched along their motion (mostly downwind), like sand smoking off a crest.
     const toCam = normalize(cameraPosition.sub(center));
-    const side = normalize(cross(vec3(0, 1, 0), toCam));
-    const up = cross(toCam, side);
+    const dir = normalize(v.xyz.add(vec3(0, 1e-4, 0)));
+    const side = normalize(cross(dir, toCam).add(vec3(0, 1e-4, 0)));
     const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
-    mat.positionNode = center.add(side.mul(uv().x.sub(0.5)).add(up.mul(uv().y.sub(0.5))).mul(v.w));
+    mat.positionNode = center.add(dir.mul(uv().x.sub(0.5).mul(2.6)).add(side.mul(uv().y.sub(0.5))).mul(v.w));
     const r = length(uv().sub(0.5)).mul(2);
     mat.opacityNode = p.w.mul(pow(saturate(float(1).sub(smoothstep(0.1, 1, r))), 1.5));
-    // Fine dust is paler than the dune surface and scatters forward even more strongly.
-    mat.colorNode = mix(grainColor(center, float(1), [0.85, 0.55, 0.3], 6), vec3(0.9, 0.5, 0.25), 0.15);
+    // Fine dust is paler than the dune surface and scatters forward more strongly.
+    mat.colorNode = mix(grainColor(center, float(1), [0.85, 0.55, 0.3], 1.5), vec3(0.9, 0.5, 0.25), 0.15);
     const mesh = new THREE.Mesh(this.puffs.geo, mat);
     mesh.frustumCulled = false;
     mesh.renderOrder = 4;
@@ -147,6 +151,7 @@ export class BlownSand {
     // Saltation is only possible somewhere if the strongest gust on the most exposed crest can do it.
     if (ustarFrom10(wind.u10 * 1.25 * 1.6) > USTAR_T) this.spawnGrains(dt, focus);
     this.stepGrains(dt, focus);
+    this.sheet.update(dt, focus);
     this.findBrinks(focus);
     this.spawnPuffs(dt, focus);
     this.stepPuffs(dt);
@@ -250,7 +255,7 @@ export class BlownSand {
       g.pos[p] = x;
       g.pos[p + 1] = y;
       g.pos[p + 2] = z;
-      g.pos[p + 3] = 0.5 * edge * Math.min(1, age / 0.1, (life - age) / 0.25);
+      g.pos[p + 3] = 0.12 * edge * Math.min(1, age / 0.1, (life - age) / 0.25);
       g.vel[p] = vx;
       g.vel[p + 1] = vy;
       g.vel[p + 2] = vz;

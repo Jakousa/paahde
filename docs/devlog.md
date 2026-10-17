@@ -150,3 +150,15 @@ Builds on the wind in `src/world/wind.ts` and the grains and plumes in `src/blow
 - **Glitter** is warm-tinted and dulled by dust, so it reads as quartz, not metal flakes.
 - **Crests:** terrain chunks carry a per-vertex `crest` value (blurred convexity). The sand shader keeps
   a narrow band at the brink smooth and a touch paler, so ripples no longer run into the knife edge.
+
+## Blown sand as a sheet, not sparks
+
+The saltation streaks read as glowing metal sparks (bright HDR lines catching the bloom when backlit).
+From a few metres away real blown sand is a translucent veil streaming over the surface, not grains.
+
+- **Drift sheet** (`src/world/driftSheet.ts`): seven terrain-hugging shells (3–55 cm) on a 96 m grid
+  around the player, drawn as one instanced mesh. Streamers are cut from wind-aligned noise advected at
+  saltation speed (higher shells slide faster and softer); near the threshold only ribbons move, in a
+  storm they merge. Slip faces stay clear. Lit like the sand with mild forward scattering, below bloom.
+- **Grains** now only spawn within 14 m, thinner, much fainter and without the backlit glow: texture up
+  close. **Crest plumes** are stretched downwind into wisps and glow less.
