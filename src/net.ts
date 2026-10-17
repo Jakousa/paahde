@@ -61,7 +61,9 @@ export type RemotePlayer = {
   pitch: number; // camera pitch in radians (negative = looking down)
   riding: boolean; // on the sand bike; facing is then the bike's heading
   vy: number;
-  held: 'none' | 'canteen';
+  /** Kind of the item in their hand (selected hotbar slot), null for none; the gear they wear (wornGear bits). */
+  item: string | null;
+  gear: number;
   drinking: boolean;
 };
 
@@ -296,8 +298,8 @@ export class Net {
   }
 
   /**
-   * What we're holding, for other players' view of us; sent when it changes. Call every frame. Only the
-   * canteen is shown to others for now (the spyglass reads as empty hands).
+   * What we're holding, for other players' view of us; sent when it changes. Call every frame. The server
+   * shows others the item in the selected slot; `hands` adds drinking from the canteen.
    */
   setHands(held: 'none' | 'canteen' | 'telescope', drinking: boolean) {
     this.hands = held === 'canteen' ? (drinking ? 2 : 1) : 0;
@@ -612,7 +614,7 @@ export class Net {
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
-        riding: pick.riding ?? false, vy: pick.vy, held: pick.hands ? 'canteen' : 'none', drinking: pick.hands === 2,
+        riding: pick.riding ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, drinking: pick.hands === 2,
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t,
       });
     }

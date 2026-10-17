@@ -7,12 +7,15 @@
 // The root faces -Z (same as the placeholder avatar: facing 0 looks down -Z) with its origin at the feet.
 // The glb is fetched once and shared; each instance gets its own skeleton (SkeletonUtils.clone) and its
 // own copy of the `PlayerTint` material (scarf, face mask, sash, armband), which setColor() recolours.
+// setOutfit() says what's in the hand (carried at the right hip, src/models/outfit.ts) and which gear is worn:
+// the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { LegIk, lowestAnkles, type Ground } from './legIk';
 import type { RidePose } from '../players';
-import type { Held } from '../water';
+import { wornBit } from '../../shared/gear.ts';
+import { beltModel, disposeModel, heldModel, wristModel } from './outfit';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -39,9 +42,7 @@ export type ScavengerPose = {
   plant?: boolean;
   /** Seated on a bike: hips on the seat, hands on the grips and feet on the pegs by IK, over the Idle clip. */
   ride?: RidePose;
-  /** What's in the right hand (the canteen, public/models/canteen.glb): carried in front at the waist. */
-  held?: Held;
-  /** Drinking from the canteen: raised to the mouth and tipped up. */
+  /** Drinking from the canteen in hand (setOutfit): raised to the mouth and tipped up. */
   drinking?: boolean;
 };
 
@@ -107,7 +108,15 @@ export class ScavengerModel {
   private legs: THREE.Object3D[][] = [];
   private headless = false;
   private canteen: THREE.Object3D | null = null;
-  private held: Held = 'none';
+  /** In hand (an item kind) and its model (not for the canteen), and the worn gear bits (shared/gear.ts wornGear). */
+  private item: string | null = null;
+  private held: THREE.Object3D | null = null;
+  private gear = 0;
+  private pack: THREE.Object3D | null = null;
+  private wrist: THREE.Object3D | null = null;
+  private belt: THREE.Object3D | null = null;
+  /** Meshes were added since the last setOutfit (it tells the Avatar). */
+  private added = false;
   private sip = 0; // 0 carried .. 1 at the mouth
   private color: number;
   private disposed = false;
@@ -157,6 +166,8 @@ export class ScavengerModel {
     for (const b of [this.neck, this.head, this.hips, this.spine, ...legs.flat(), ...this.arms.flat(), ...this.legs.flat()]) {
       if (b && !this.posed.some((p) => p.bone === b)) this.posed.push({ bone: b, base: b.quaternion.clone() });
     }
+    this.pack = model.getObjectByName('Scavenger_Backpack') ?? null;
+    this.wearGear(model);
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
     this.tilt.add(model);
@@ -173,7 +184,50 @@ export class ScavengerModel {
       can.visible = false;
       this.root.add(can);
       this.canteen = can;
+      this.added = true;
     }, (e) => console.warn('canteen model failed to load', e));
+    this.added = true;
+  }
+
+  /** The wrist computer round the left forearm and the storm detector on the belt's left side, placed in the
+   *  rest pose (glTF space: face +Z, the character's left +X) and parented to their bones; hidden until worn. */
+  private wearGear(model: THREE.Object3D) {
+    model.updateMatrixWorld(true);
+    const at = (o: THREE.Object3D) => model.worldToLocal(o.getWorldPosition(new THREE.Vector3()));
+    const fore = model.getObjectByName('LeftForeArm'), hand = model.getObjectByName('LeftHand');
+    const hips = model.getObjectByName('Hips');
+    if (fore && hand) {
+      const a = at(fore), b = at(hand);
+      const y = b.clone().sub(a).normalize();
+      // Screen up (the back of the hand in the rest pose), square to the forearm.
+      const z = new THREE.Vector3(0, 1, 0).addScaledVector(y, -y.y).normalize();
+      const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(y, z), y, z));
+      this.wrist = attach(model, fore, wristModel(), a.lerp(b, 0.78), q);
+    }
+    if (hips) {
+      this.belt = attach(model, hips, beltModel(), new THREE.Vector3(0.215, 0.93, -0.06), new THREE.Quaternion().setFromAxisAngle(Y_AXIS, 0.37));
+    }
+    for (const o of [this.wrist, this.belt]) if (o) o.visible = false;
+  }
+
+  /** What's in the hand (an item kind, null for none) and the worn gear (wornGear bits). True when meshes were
+   *  added since the last call (the Avatar puts them on its layers). */
+  setOutfit(item: string | null, gear: number): boolean {
+    let added = this.added;
+    this.added = false;
+    this.gear = gear;
+    if (item !== this.item) {
+      this.item = item;
+      if (this.held) disposeModel(this.held);
+      this.held = null;
+      if (item && item !== 'canteen') {
+        this.held = heldModel(item, () => (this.added = true));
+        this.held.visible = false;
+        this.root.add(this.held);
+        added = true;
+      }
+    }
+    return added;
   }
 
   setColor(hex: number) {
@@ -220,7 +274,9 @@ export class ScavengerModel {
 
   /** Called every render frame. */
   update(pose: ScavengerPose, dt: number) {
-    this.held = pose.held ?? 'none';
+    if (this.pack) this.pack.visible = (this.gear & BACK) !== 0;
+    if (this.wrist) this.wrist.visible = (this.gear & WRIST) !== 0;
+    if (this.belt) this.belt.visible = (this.gear & BELT) !== 0;
     if (!this.mixer) return;
     // Remote speeds arrive as 20 Hz steps; smooth them so playback rate (and the feet) don't jitter.
     this.speed += (pose.speed - this.speed) * (1 - Math.exp(-dt * 10));
@@ -273,8 +329,12 @@ export class ScavengerModel {
     }
     this.head?.scale.setScalar(this.headless ? 1e-3 : 1);
     this.sip += ((pose.drinking ? 1 : 0) - this.sip) * (1 - Math.exp(-dt * 8));
-    if (this.canteen) this.canteen.visible = this.held === 'canteen' && !pose.ride;
-    if (this.canteen?.visible) this.holdCanteen(this.canteen, !pose.grounded || !!pose.sliding || !!pose.powerSlide);
+    const loose = !pose.grounded || !!pose.sliding || !!pose.powerSlide;
+    if (this.canteen) this.canteen.visible = this.item === 'canteen' && !pose.ride;
+    if (this.canteen?.visible) this.holdCanteen(this.canteen, loose);
+    if (this.held) this.held.visible = !pose.ride;
+    // Digging, the clip swings the arms: the tool goes with the hand.
+    if (this.held?.visible) this.holdItem(this.held, loose || !!pose.digging);
     if (pose.ride) return this.ride(pose.ride);
     // Plant the feet: lock while the clip has them down (not when sliding: the sand moves with you).
     const clip = this.current?.getClip().name ?? '';
@@ -313,6 +373,21 @@ export class ScavengerModel {
     reach(arm[0], arm[1], arm[2], _t, _pole.set(0.6, -0.5, 0.6).transformDirection(this.root.matrixWorld));
   }
 
+  /** Carry a held item at the right hip (its origin is the fist) and reach the right hand to it; `loose`: the
+   *  arm stays with the clip and the item follows the hand. */
+  private holdItem(o: THREE.Object3D, loose: boolean) {
+    const arm = this.arms[1];
+    if (!arm) return;
+    this.root.updateMatrixWorld(true);
+    if (loose) {
+      this.root.worldToLocal(arm[2].getWorldPosition(o.position));
+      return;
+    }
+    o.position.copy(CARRY_AT).add(_o.set(0.05, GRIP_UP, 0));
+    this.root.localToWorld(_t.copy(o.position));
+    reach(arm[0], arm[1], arm[2], _t, _pole.set(0.6, -0.5, 0.6).transformDirection(this.root.matrixWorld));
+  }
+
   /** Sit on the bike: move the body so the hips are on the seat, bend the upper body, then reach the hands and feet. */
   private ride(r: RidePose) {
     if (!this.hips || !this.spine) return;
@@ -347,11 +422,24 @@ export class ScavengerModel {
 
   dispose() {
     this.disposed = true;
+    if (this.held) disposeModel(this.held);
+    for (const o of [this.wrist, this.belt]) if (o) disposeModel(o);
     this.mixer?.stopAllAction();
     this.mixer?.uncacheRoot(this.mixer.getRoot());
     for (const m of this.tint) m.dispose();
     this.root.removeFromParent();
   }
+}
+
+const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt');
+
+/** Parent `o` to `bone`, placed at `p` / `q` in `model`'s space (as it is posed now). */
+function attach(model: THREE.Object3D, bone: THREE.Object3D, o: THREE.Object3D, p: THREE.Vector3, q: THREE.Quaternion) {
+  const m = new THREE.Matrix4().copy(bone.matrixWorld).invert().multiply(model.matrixWorld)
+    .multiply(new THREE.Matrix4().compose(p, q, new THREE.Vector3(1, 1, 1)));
+  m.decompose(o.position, o.quaternion, o.scale);
+  bone.add(o);
+  return o;
 }
 
 function isLocomotion(a: THREE.AnimationAction) {

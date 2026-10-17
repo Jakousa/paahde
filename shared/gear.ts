@@ -128,6 +128,16 @@ export function equipped(equip: Slots | undefined, slot: EquipSlot): Item | null
   return it && repaired(it) ? it : null;
 }
 
+/** The repaired gear equipped, as bits (wornBit): what others see worn. */
+export function wornGear(equip: Slots | undefined): number {
+  let bits = 0;
+  for (const s of EQUIP_SLOTS) if (equipped(equip, s)) bits |= wornBit(s);
+  return bits;
+}
+
+/** An equipment slot's bit in wornGear (by EQUIP_SLOTS index: back 1, wrist 2, belt 4, vehicle 8). */
+export const wornBit = (slot: EquipSlot) => 1 << EQUIP_SLOTS.indexOf(slot);
+
 /** The bag's layout: the hotbar, then the grid with as many rows open as the backpack's (none without one). */
 export function bagShape(equip: Slots | undefined): Shape {
   const pack = equipped(equip, 'back');

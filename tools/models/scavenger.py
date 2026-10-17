@@ -4,7 +4,7 @@
 #   ... -- --fast        skip baking (procedural materials, no export), save tools/models/out/scavenger_fast.blend
 #   ... -- --tex 1024     atlas size (default 2048 baked, colour kept at 2048, normal/ORM downscaled to 1024)
 #
-# Output: public/models/scavenger.glb (one skinned mesh, materials Scavenger / PlayerTint / Lens,
+# Output: public/models/scavenger.glb (skinned meshes Scavenger_Body and Scavenger_Backpack (hidden without one), materials Scavenger / PlayerTint / Lens,
 # clips Idle, Walk, Run, Jump, Dig, Slide, Powerslide, Crouch, CrouchWalk). Faces -Y in Blender = +Z in three.js.
 import math
 import os
@@ -97,6 +97,7 @@ def seg_dist(p, a, b):
 
 
 PARTS = []  # (obj, weight spec)
+BACK_GEAR = []  # backpack pieces, split into their own mesh (shown only with a backpack equipped)
 
 
 def part(obj, bones=None, rigid=None, fn=None, bias=None, power=4.0):
@@ -709,6 +710,7 @@ def build_straps():
     pts = [V((x, env_front(x, z, CAPE_T, 0.018), z)) for x in [0.125 - 0.25 * k / 8 for k in range(9)]]
     objs.append(sweep('Sternum', pts, rect_profile(0.025, 0.006), M['leather'], up=V((0, 0, 1))))
     st = join(objs, 'Straps')
+    BACK_GEAR.append(st)
     part(st, bones=['Spine1', 'Spine2', 'LeftShoulder', 'RightShoulder'], bias={'Spine2': 2.5}, power=3)
     # chest pressure gauge on the left strap (the hose ends here)
     gx, gz = 0.125, 1.33
@@ -717,7 +719,7 @@ def build_straps():
     gd = V((0.15, -1, 0.25)).normalized()
     g = [cylinder('Gauge', gc, gc + gd * 0.022, 0.029, M['brass'], n=16, rings_extra=[(0.8, 1.0), (0.9, 0.9)]),
          cylinder('GaugeFace', gc + gd * 0.019, gc + gd * 0.023, 0.023, M['steel'], n=16)]
-    part(join(g, 'Gauge'), rigid='Spine2')
+    BACK_GEAR.append(part(join(g, 'Gauge'), rigid='Spine2'))
 
 
 def build_backpack():
@@ -815,7 +817,10 @@ def build_backpack():
         objs.append(cylinder('ShovelStrap', c - hd * 0.012, c + hd * 0.012, 0.022, M['leather2'], n=8))
     pack = join(objs, 'Backpack')
     part(pack, rigid='Spine2')
-    return join(lens, 'PackTubes')
+    BACK_GEAR.append(pack)
+    tubes = join(lens, 'PackTubes')
+    BACK_GEAR.append(tubes)
+    return tubes
 
 
 # ====================================================================================== BUILD ALL
@@ -846,6 +851,10 @@ def build_character():
     # lens objects: goggles → Head, hip tube → Hips, pack tubes → Spine2
     for lo, bone in zip(lens_objs, ['Head', 'Hips', 'Spine2']):
         apply_weights(lo, dict(bones=None, rigid=bone, fn=None, bias={}, power=4))
+
+    # tag the backpack's vertices, to split them off after the joins (main)
+    for o in BACK_GEAR:
+        o.vertex_groups.new(name='GearBack').add(list(range(len(o.data.vertices))), 1.0, 'REPLACE')
 
     body_parts = [o for o, _ in PARTS]
     total = sum(tri_count(o) for o in body_parts) + sum(tri_count(o) for o in lens_objs)
@@ -1094,6 +1103,23 @@ def powerslide(p):
     return pose, (0.0, 0.0, -0.62 + 0.008 * math.sin(2 * w))
 
 
+def split_group(obj, group, name):
+    """Move the vertices in vertex group `group` of `obj` into a new mesh object `name`; drop the group."""
+    select_only([obj], obj)
+    obj.vertex_groups.active_index = obj.vertex_groups[group].index
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_mode(type='VERT')
+    bpy.ops.mesh.select_all(action='DESELECT')
+    bpy.ops.object.vertex_group_select()
+    bpy.ops.mesh.separate(type='SELECTED')
+    bpy.ops.object.mode_set(mode='OBJECT')
+    new = next(o for o in bpy.context.selected_objects if o is not obj)
+    new.name = new.data.name = name
+    for o in (obj, new):
+        o.vertex_groups.remove(o.vertex_groups[group])
+    return new
+
+
 def main():
     body, lens = build_character()
     rig = make_rig([body, lens])
@@ -1121,10 +1147,12 @@ def main():
     lens.modifiers.clear()
     body.modifiers.clear()
     body = join([body, lens], 'Scavenger_Body')
-    mod = body.modifiers.new('Armature', 'ARMATURE')
-    mod.object = rig
+    pack = split_group(body, 'GearBack', 'Scavenger_Backpack')
+    for m in (body, pack):
+        mod = m.modifiers.new('Armature', 'ARMATURE')
+        mod.object = rig
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT_DIR, 'scavenger.blend'))
-    bake.export(rig, [body], OUT_GLB)
+    bake.export(rig, [body, pack], OUT_GLB)
     print('TRIS_FINAL', tri_count(body))
 
 

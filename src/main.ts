@@ -48,7 +48,7 @@ import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { machinesAt } from '../shared/crash.ts';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
-import { equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS } from '../shared/gear.ts';
+import { equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootName } from './world/loot';
 import { Detector } from './detector';
 import { tools } from './input';
@@ -223,11 +223,14 @@ renderer.setAnimationLoop((time) => {
   // On the bike the camera turns with it; the mouse still looks around on top.
   if (s.riding && Number.isFinite(lastHeading)) orbit.yaw += Math.atan2(Math.sin(v.heading - lastHeading), Math.cos(v.heading - lastHeading));
   lastHeading = s.riding ? v.heading : NaN;
+  // What's in hand (the selected hotbar slot) and worn (shared/gear.ts): drawn on the body, and sets what the tools can do.
+  const inHand = tools.slot >= 0 ? net.boxes.bag?.[tools.slot] : null;
+  me.setOutfit(inHand?.kind ?? null, wornGear(net.boxes.equip));
   const riding = ride(0, me, { ...s, x: v.x, y: v.y, z: v.z, heading: v.heading, pitch: orbit.pitch }, frameDt);
   if (!riding) {
     me.update(
       { x: v.x, y: v.y, z: v.z, facing: v.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
-      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, held: playerHands.held, drinking: playerHands.drinking },
+      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, drinking: playerHands.drinking },
       frameDt,
     );
   }
@@ -248,6 +251,7 @@ renderer.setAnimationLoop((time) => {
         () => model.dispose(),
       );
     }
+    avatar.setOutfit(r.item, r.gear);
     if (!ride(r.id, avatar, { ...r, heading: r.facing }, frameDt)) {
       avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching, digging: (digUntil.get(r.id) ?? 0) > performance.now() }, frameDt);
     }
@@ -267,8 +271,6 @@ renderer.setAnimationLoop((time) => {
   if (riding && me.eye(eye)) focus.set(eye.x - Math.sin(v.heading) * RIDE_EYE_AHEAD, eye.y - EYE_HEIGHT, eye.z - Math.cos(v.heading) * RIDE_EYE_AHEAD);
   else if (riding) focus.set(v.x, v.y, v.z);
   else focus.copy(me.root.position);
-  // What's in hand (the selected hotbar slot) and worn (shared/gear.ts) sets what the tools can do.
-  const inHand = tools.slot >= 0 ? net.boxes.bag?.[tools.slot] : null;
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
   // The detector listens where you look (where you'd dig), or a step ahead when you look up.
   const looked = digTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch))

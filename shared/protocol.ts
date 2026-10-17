@@ -89,7 +89,9 @@ export type Hands = 0 | 1 | 2;
 // pitch: the player's quantized camera pitch (pitchFromQ in shared/dig.ts), so remote avatars can
 // tilt their heads.
 // hands: what they're holding (Hands), omitted when empty.
-export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands };
+// item: the kind of the item in their selected hotbar slot (drawn in their hand), omitted when empty.
+// gear: the gear they wear (shared/gear.ts wornGear bits), omitted when none.
+export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; item?: string; gear?: number };
 
 export type ServerMsg =
   // First message on every connection: the build the server is serving (dist/version.txt, 'dev' if

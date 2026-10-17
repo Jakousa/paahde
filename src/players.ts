@@ -6,11 +6,11 @@
 import * as THREE from 'three/webgpu';
 import { inBase, terrainHidden } from '../shared/base.ts';
 import { isSlipFace, slopeAt } from '../shared/sim.ts';
+import { wornBit } from '../shared/gear.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, footprints, streaks } from './footprints.ts';
 import { footsteps } from './footsteps.ts';
 import { SHADOW_ONLY_LAYER } from './world/env.ts';
-import type { Held } from './water.ts';
 
 export type AvatarPose = {
   x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
@@ -22,8 +22,7 @@ export type AvatarPose = {
   vx?: number; vz?: number;
   /** Seated on a sand bike: the caller has already placed the root (Bike.seat), so x/y/z/facing are ignored. */
   ride?: RidePose;
-  /** What's in the hands, and drinking from it. */
-  held?: Held;
+  /** Drinking from the canteen in hand (see setOutfit). */
   drinking?: boolean;
 };
 
@@ -54,7 +53,6 @@ export type ModelPose = {
   /** Sand height under the feet, when standing on sand (not scrap): lets the model plant its feet. */
   ground?: (x: number, z: number) => number;
   ride?: RidePose;
-  held?: Held;
   drinking?: boolean;
 };
 
@@ -62,6 +60,8 @@ export interface AvatarModel {
   readonly root: THREE.Object3D;
   setColor(hex: number): void;
   update(pose: ModelPose, dt: number): void;
+  /** What's in the hand (an item kind, null for none) and the gear worn (shared/gear.ts wornGear bits). */
+  setOutfit?(item: string | null, gear: number): boolean;
   /** First person on the bike: draw the body (hands on the bars) but not the head the camera is in. */
   setHeadless?(on: boolean): void;
   /** The eyes' world position, once posed (riding in first person, the camera sits there). */
@@ -125,6 +125,12 @@ export class Avatar {
 
   setHeadless(on: boolean) {
     this.model.setHeadless?.(on);
+  }
+
+  /** What's in hand and worn (see AvatarModel.setOutfit); call every frame, it's cheap when nothing changed. */
+  setOutfit(item: string | null, gear: number) {
+    // New meshes (an item taken out, a model loaded) get the layers too.
+    if (this.model.setOutfit?.(item, gear)) this.attach(this.model);
   }
 
   /** The eyes' world position as last drawn; false if the model can't tell (placeholder). */
@@ -193,7 +199,7 @@ export class Avatar {
     this.model.update(
       {
         speed: pose.speed, grounded: pose.grounded, sliding: slip, powerSlide: power, crouching: pose.crouching, tiltPitch, tiltRoll,
-        digging: pose.digging, pitch: pose.pitch, heading, held: pose.held, drinking: pose.drinking, ground: onSand && !power ? heightAt : undefined,
+        digging: pose.digging, pitch: pose.pitch, heading, drinking: pose.drinking, ground: onSand && !power ? heightAt : undefined,
       },
       dt,
     );
@@ -255,6 +261,7 @@ export class PlaceholderModel implements AvatarModel {
   private robeMat = new THREE.MeshStandardNodeMaterial({ roughness: 0.95 });
   private sashMat = new THREE.MeshStandardNodeMaterial({ roughness: 0.8 });
   private body = new THREE.Group(); // bobs and leans
+  private pack = new THREE.Group();
   private legs: THREE.Group[] = [];
   private arms: THREE.Group[] = [];
   private robe: THREE.Mesh;
@@ -295,17 +302,19 @@ export class PlaceholderModel implements AvatarModel {
       head.add(e);
     }
     head.add(hood, face);
-    // Sash in full player colour, and a scrap backpack.
+    // Sash in full player colour, and a scrap backpack (shown with one equipped).
     const sash = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.035, 6, 16), this.sashMat);
     sash.position.y = 0.95;
     sash.rotation.x = Math.PI / 2;
-    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.42, 0.18), dark);
-    pack.position.set(0, 1.08, 0.3);
+    const bag = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.42, 0.18), dark);
+    bag.position.set(0, 1.08, 0.3);
     const can = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 8), metal);
     can.position.set(0.2, 1.12, 0.33);
     const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.6, 4), metal);
     antenna.position.set(-0.12, 1.5, 0.32);
-    this.body.add(this.robe, head, sash, pack, can, antenna);
+    this.pack.add(bag, can, antenna);
+    this.pack.visible = false;
+    this.body.add(this.robe, head, sash, this.pack);
 
     // Arms: sleeves pivoting at the shoulder.
     for (const s of [-1, 1]) {
@@ -332,6 +341,11 @@ export class PlaceholderModel implements AvatarModel {
       this.root.add(leg);
     }
     this.root.add(this.body);
+  }
+
+  setOutfit(_item: string | null, gear: number) {
+    this.pack.visible = (gear & wornBit('back')) !== 0;
+    return false;
   }
 
   setColor(hex: number) {
