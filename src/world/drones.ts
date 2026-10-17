@@ -173,6 +173,7 @@ export class Drones {
       if (f.hurt > v.hurt) {
         v.hurt = f.hurt;
         zaps.burst(f.x, f.y, f.z, 0, -0.3, 0, 22, 1.5);
+        this.onHit(f.x, f.y, f.z);
       }
       if (f.down > 0) {
         this.falling(v, f, dt);
@@ -276,6 +277,8 @@ export class Drones {
 
   /** A shot-down drone hit the sand at (x, y, z) (src/guardians.ts: the bang). */
   onCrash: (x: number, y: number, z: number) => void = () => {};
+  /** A shot hit a drone (every hit counts, the last brings it down). */
+  onHit: (x: number, y: number, z: number) => void = () => {};
 
   private drop(v: View) {
     v.root.removeFromParent();

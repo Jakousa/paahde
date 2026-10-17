@@ -3,7 +3,7 @@
 //   0.40–0.55 s, each levelled to −18.5 LUFS momentary, true peak ≤ −1.5 dBTP), picked at random and a little
 //   off pitch each time; the pistol plays them higher and lighter. Your own is dry and in your head; another
 //   player's carries across the desert (src/acoustics.ts: late, duller, softer and more reverb with distance).
-// - firework: a weak point shattering, or a shot-down drone hitting the sand, also bursts like a firework: one of
+// - firework: a weak point shattering also bursts like a firework: one of
 //   four of TB0Y298's "Firework Explosion" 1–4 (CC BY 4.0; firework-1..4.mp3, mono, each levelled to −18.9 LUFS
 //   momentary max, true peak ≤ −4 dBTP), at random and a little off pitch, carried through src/acoustics.ts.
 // The rest is synthesised:
@@ -116,7 +116,7 @@ class RifleSound {
     }
   }
 
-  /** A firework burst at `at`, heard from `ear`: a weak point shattered or a drone crashed. */
+  /** A firework burst at `at`, heard from `ear`: a weak point shattered. */
   firework(at: P, ear: P) {
     const ctx = audio.ctx, buf = this.fireworks[Math.floor(Math.random() * this.fireworks.length)];
     const s = buf ? placed(at, ear, FIREWORK_GAIN, FIREWORK_REF, 600) : null;

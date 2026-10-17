@@ -43,10 +43,11 @@ export class GuardianFx {
     this.bolts = new Bolts(scene);
     this.missiles = new Missiles(scene);
     this.guardians.onFootfall = (f) => this.footfall(f);
-    // A shot-down drone hitting the sand: a bang, a firework burst and a clatter.
+    // A shot hitting a drone: a lighter bang than its crash (each one counts, so no firework like a weak point's).
+    this.drones.onHit = (x, y, z) => guardianSound.footfall(x, y, z, 0.7, this.ear);
+    // A shot-down drone hitting the sand: a bang and a clatter.
     this.drones.onCrash = (x, y, z) => {
       guardianSound.boom(x, y, z, this.ear);
-      rifleSound.firework({ x, y, z }, this.ear);
       rifleSound.slam({ x, y, z }, this.ear, false);
       this.thump(x, y, z, 0.6, 0, 0, 0);
     };
