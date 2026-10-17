@@ -66,15 +66,15 @@ export const sand = {
   contrast: uniform(1.6),
   offset: uniform(0.2),
   /** Max normal slope of the small and large ripples. */
-  rippleStrength: uniform(0.22),
-  megaRippleStrength: uniform(0.12),
+  rippleStrength: uniform(0.085),
+  megaRippleStrength: uniform(0.03),
   /** Ocean specular and rim strengths. */
-  sheen: uniform(0.035),
+  sheen: uniform(0.02),
   rim: uniform(0.18),
   /** Colour of sheen and rim (warm, so highlights read as hot sand rather than wet white). */
   sheenTint: uniform(new THREE.Color(1.0, 0.62, 0.32)),
   /** Glitter intensity (HDR; values > 1 feed bloom). */
-  glitter: uniform(8),
+  glitter: uniform(2.5),
 };
 
 const PI = Math.PI;
@@ -95,7 +95,7 @@ function rippleProfile(s: F, a: number): [F, F] {
 
 /** Fade for a periodic pattern whose phase (in cycles) is `s`: 1 when well resolved, 0 near Nyquist. */
 function footprintFade(s: F): F {
-  return float(1).sub(smoothstep(0.08, 0.3, fwidth(s)));
+  return float(1).sub(smoothstep(0.04, 0.16, fwidth(s)));
 }
 
 // --- Glitter ---------------------------------------------------------------------------------------
@@ -160,13 +160,14 @@ function buildSurface(): SandSurface {
   const across = dot(xz, perp);
   const dir = normalize(vec2(wind.x.add(wdx), wind.y.add(wdz)));
 
-  // Small ripples (~0.3 m) and megaripples (~1.2 m, warped differently).
-  const s1 = along.add(w0).div(0.16);
-  const [h1, d1] = rippleProfile(s1, 0.72);
+  // Small ripples (~10 cm) and faint megaripples (~0.9 m, warped differently).
+  const s1 = along.add(w0).div(0.11);
+  const [h1, d1] = rippleProfile(s1, 0.66);
   const s2 = along.add(w0.mul(1.6)).add(mx_noise_float(vec2(across.mul(0.05), along.mul(0.02))).mul(2.5)).div(0.9);
   const [, d2] = rippleProfile(s2, 0.68);
-  // Crest strength varies a little so the pattern isn't mechanical.
-  const vary = mx_noise_float(xz.mul(0.15).add(5.3)).mul(0.35).add(0.8);
+  // Crest strength varies, so ripple fields fade in and out instead of tiling the whole dune.
+  const vary = saturate(mx_noise_float(xz.mul(0.12).add(5.3)).mul(0.9).add(0.65))
+    .mul(mx_noise_float(xz.mul(0.9).add(2.1)).mul(0.25).add(0.85));
   const f1 = footprintFade(s1).mul(rippleMask).mul(vary);
   const f2 = footprintFade(s2).mul(rippleMask);
   const slope = d1.mul(sand.rippleStrength).mul(f1).add(d2.mul(sand.megaRippleStrength).mul(f2));
@@ -240,11 +241,11 @@ class SandLightingModel extends THREE.LightingModel {
 
     // Glitter: only in sunlight, fades out with distance (and per-cell footprint inside the layers).
     const lit = saturate(ndl.mul(5));
-    const near = float(1).sub(smoothstep(25, 70, dist));
+    const near = float(1).sub(smoothstep(6, 25, dist));
     // Anisotropic masking (Journey): at grazing views a flake's footprint smears into a horizontal streak.
     const facing = smoothstep(0.12, 0.35, dot(n0, v));
-    const g = glitterLayer(p, n0, h, 55, 0.35, 0.75, 0.012, 0)
-      .add(glitterLayer(p, n0, h, 18, 0.25, 0.6, 0.006, 101).mul(0.4))
+    const g = glitterLayer(p, n0, h, 55, 0.1, 0.75, 0.008, 0)
+      .add(glitterLayer(p, n0, h, 18, 0.06, 0.6, 0.005, 101).mul(0.3))
       .mul(lit)
       .mul(near)
       .mul(facing)
