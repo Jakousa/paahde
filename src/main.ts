@@ -60,6 +60,7 @@ net.onDig = (at, pile, _mine, id) => {
 loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
 const me = new Avatar(0xffffff);
 me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
+let bodyHidden = true;
 const myModel = new ScavengerModel();
 myModel.ready.then(() => me.setModel(myModel, net.color), () => myModel.dispose());
 scene.add(me.root, footprints.mesh);
@@ -147,6 +148,7 @@ renderer.setAnimationLoop((time) => {
 
   focus.copy(me.root.position);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching }, frameDt);
+  if (orbit.showBody === bodyHidden) me.setShadowOnly((bodyHidden = !orbit.showBody)); // T: third person
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
   scrap.update(focus);

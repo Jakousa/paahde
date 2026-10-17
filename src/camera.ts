@@ -3,6 +3,8 @@
 //
 // Feel: the eye height is smoothed a little so slopes don't jitter, the head bobs with stride, hard
 // landings dip the view on a spring, strafing rolls it slightly, and sprinting kicks the FOV out.
+// T toggles a third-person view: the camera backs off along the view ray from the eye, so the screen centre
+// (crosshair) still aims where the dig/pickup rays go, and the boom shortens so it never sinks into a dune.
 import * as THREE from 'three/webgpu';
 import { heightAt } from '../shared/terrain.ts';
 import { WALK_SPEED, SPRINT_SPEED } from '../shared/sim.ts';
@@ -14,6 +16,9 @@ const SPRINT_FOV_KICK = 9;
 /** Widest the view gets (sprinting); the sun's shadow cascades are fitted to it. */
 export const MAX_FOV = BASE_FOV + SPRINT_FOV_KICK;
 const STRIDE = 1.15; // metres per step (half a bob cycle)
+const BOOM = 4.5; // third-person distance behind the eye (m)
+const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
+const THIRD_PERSON_KEY = 'dadajam.thirdPerson';
 
 /** What the camera needs from the local player each frame. */
 export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean; crouching?: boolean };
@@ -33,8 +38,22 @@ export class FirstPersonCamera {
   private fov = BASE_FOV;
   private wasGrounded = true;
   private lastVy = 0;
+  /** Third-person view on (T toggles it, remembered per browser). */
+  thirdPerson = false;
+  private boom = 0; // current boom length (m), eased toward BOOM or 0
 
   constructor(dom: HTMLElement) {
+    try {
+      this.thirdPerson = localStorage.getItem(THIRD_PERSON_KEY) === '1';
+    } catch {}
+    addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyT' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      this.thirdPerson = !this.thirdPerson;
+      try {
+        localStorage.setItem(THIRD_PERSON_KEY, this.thirdPerson ? '1' : '0');
+      } catch {}
+    });
     this.camera = new THREE.PerspectiveCamera(BASE_FOV, innerWidth / innerHeight, 0.05, 6000);
     this.camera.rotation.order = 'YXZ';
     dom.addEventListener('click', () => {
@@ -50,6 +69,11 @@ export class FirstPersonCamera {
   /** Step phase in radians (one step per π), so hands/footsteps can sync to the bob. */
   get stepPhase() {
     return this.bobPhase;
+  }
+
+  /** Draw the local body: the camera is far enough behind the head not to be inside it. */
+  get showBody() {
+    return this.boom > 0.9;
   }
 
   /** Place the eye at the player's feet position `p` (predicted state + visual error offset). */
@@ -94,8 +118,23 @@ export class FirstPersonCamera {
     this.crouch += ((p.grounded ? (p.sliding ? 1 : p.crouching ? 0.7 : 0) : 0) - this.crouch) * (1 - Math.exp(-dt * 12));
     let y = this.eyeY + EYE_HEIGHT - 0.65 * this.crouch + bobY + this.dip;
     y = Math.max(y, heightAt(x, z) + 0.3); // never look out from under a dune
-    this.camera.position.set(x, y, z);
-    this.camera.rotation.set(this.pitch + this.dip * 0.12, this.yaw, this.roll + bobX * 0.1);
+
+    // Third person: back off along the view ray, shortening the boom where it would dip under the sand.
+    const pitch = this.pitch + this.dip * 0.12;
+    const cp = Math.cos(pitch);
+    const bx = sy * cp, by = -Math.sin(pitch), bz = cy * cp; // unit vector pointing behind the view
+    let reach = this.thirdPerson ? BOOM : 0;
+    for (let i = 1; i <= 12 && reach > 0; i++) {
+      const d = (BOOM * i) / 12;
+      if (d > reach) break;
+      const px = x + bx * d, pz = z + bz * d;
+      if (y + by * d < heightAt(px, pz) + BOOM_CLEARANCE) reach = Math.max(0, d - BOOM / 12);
+    }
+    // Ease out smoothly, but snap in when terrain cuts the boom short.
+    this.boom = reach < this.boom && this.thirdPerson ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * 8));
+    if (this.boom < 0.01) this.boom = 0;
+    this.camera.position.set(x + bx * this.boom, y + by * this.boom, z + bz * this.boom);
+    this.camera.rotation.set(pitch, this.yaw, this.roll + bobX * 0.1);
 
     // FOV kick when moving faster than a walk (sprint, slides).
     const t = Math.max(0, Math.min(1, (speed - WALK_SPEED - 0.5) / (SPRINT_SPEED - WALK_SPEED - 1)));

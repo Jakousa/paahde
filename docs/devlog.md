@@ -48,7 +48,9 @@ Goal of this session: *I can roam around the desert planet with my friends in th
 ### What shipped
 
 - **First person.** Eye height 1.65 m, pointer-lock mouse look, head bob, landing dip, strafe roll, FOV
-  kick when sprinting (`src/camera.ts`).
+  kick when sprinting (`src/camera.ts`). **T** toggles a third-person view (remembered per browser): the
+  camera backs 4.5 m off along the view ray, so the crosshair still aims where digging and pickup go, and
+  the boom shortens rather than going under a dune.
 - **Movement on sand** (`shared/sim.ts`, deterministic):
   - Slower uphill (about half speed on steep ground), a bit faster downhill.
   - You slide down slopes steeper than 30° and can't climb them.
