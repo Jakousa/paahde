@@ -2,6 +2,36 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Salvage wrecks in the desert (#13–#17)
+
+The salvage models (`public/models/salvage/*.glb`) are now in the game. `shared/wrecks.ts` lays them out
+deterministically, one per 300 m cell at most (about 100 over the map), the kind picked by a new `weight` in
+`SALVAGE` (shared/salvage.ts): vehicle frames and AI racks are common, jet skis less so, the **warp drive core is
+rare** (~7 on the map). They keep clear of the base pad, the machine sites and the crashed spacecraft, and one
+vehicle frame (`w:start`) lies ~50 m from the spawn. `src/world/wrecks.ts` draws them with their models out to
+450 m and puts a **diamond on the locator bar** (src/locator.ts, needs the wrist computer) for each one within 450 m,
+so you can go looking.
+
+- **Same flow as the small crash-site machines**, no parallel one: F says "Pick up …", `crashTake` with the wreck's
+  id (`w:ix,iz`), the server's `CrashServer.carry` (now for small sites and wrecks) puts an item of the wreck's kind
+  in the bag, the wreck vanishes for everyone (`crashTaken`, `crash_taken` table) and respawns after 45 min. Item
+  kinds = salvage ids (`vehicle_frame`, `water_jet`, `warp_core`, `ai_control` in shared/items.ts, labels from
+  `SALVAGE`, icons the Blender-rendered `public/icons/salvage/*.png`).
+- **Disassembly table**: `CARRY_KINDS` includes the salvage ids, so the table offers "Disassemble broken vehicle
+  frame" and the job runs through the same `Bench` / teardown code, parts rolled from `SALVAGE` yields and
+  `tierWeights` by `buildJunk` (now taking any `JunkKind` = component or salvage id; `junkSpec()` gives either's
+  spec). Parts come out through the same path as the crash-site machines: the server picks the bench seed,
+  rolls the wreck's contents with `rollParts` (now any `JunkKind`) and puts each taken part in the bag as its item.
+- **Disassembly structure per wreck** (`src/teardown/wrecks.ts`), laid out like each model: the buggy's battery
+  tray (lid, cell straps and leads), seat pan over the chokes (choke bolts from underneath), controller heat sinks,
+  hub motors on axle nuts facing out; the jet ski's seat as the bay lid over batteries and the drive motor (its shaft
+  coupling only through the intake grate under the hull), a stern hatch over the bilge pump motor; the warp core's
+  shrouded fin bank, the compute rack behind a door (rack bolts underneath) and the anti-matter bottles behind a
+  field vent; the AI rack's module faceplates, side heat sinks on one coolant loop and the PSU choke under the roof
+  hood. Everything is one-player (no lifts) and was checked with a ray replay: every step and part is reachable.
+- **Open:** wrecks have no collision (like the small machines, they can be taken, and sim.ts would need that state);
+  a carried wreck is just an item (nothing is drawn in your hands).
+
 ## 2026-10-17 — Gear: found broken, repaired and upgraded with parts
 
 Instead of crafting tools, you find them broken and fix them. Eight pieces of **gear** (`shared/gear.ts`):
