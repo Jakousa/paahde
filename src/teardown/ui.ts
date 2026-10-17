@@ -9,6 +9,8 @@ const NAMES: Record<PartId, string> = {
   impeller: 'Impeller', bearing: 'Bearing', gear: 'Gear', valve: 'Valve', relay: 'Relay',
 };
 const STORE_KEY = 'dadajam.tray';
+const KEYS_SMALL = 'Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs · Right-drag: carry a freed part to the tray, or move the machine · Middle-drag / arrows: turn it over (R resets) · W S A D: step closer, further, around · Check every side · Esc: leave';
+const KEYS_LARGE = 'Left: click screws &amp; clips, circle big bolts, swipe wires, drag pry tabs, hold lifting eyes (two players) · Right-drag: carry a freed part to the tray · W S A D: closer, further, around it (too heavy to turn) · Middle-drag: look around (R recentres) · Walk too far to leave · Esc: leave';
 
 export class TeardownUi {
   readonly overlay = document.createElement('div');
@@ -72,11 +74,13 @@ export class TeardownUi {
   }
 
   /** 'walk': the character is walking up, only a hint shows. 'work': all the panels. */
-  setPhase(phase: 'off' | 'walk' | 'work', label: string) {
+  setPhase(phase: 'off' | 'walk' | 'work', label: string, movable = true) {
     this.overlay.style.display = phase === 'off' ? 'none' : 'block';
     const work = phase === 'work';
     for (const el of [this.tray, this.card]) el.style.display = work ? '' : 'none';
-    this.hint.querySelector<HTMLElement>('.keys')!.style.display = work ? '' : 'none';
+    const keys = this.hint.querySelector<HTMLElement>('.keys')!;
+    keys.style.display = work ? '' : 'none';
+    keys.innerHTML = movable ? KEYS_SMALL : KEYS_LARGE;
     this.bar.querySelector('#tdTitle')!.textContent = work ? label : '';
     if (phase === 'walk') this.setHint(`Walking up to the ${label.toLowerCase()}…`);
   }

@@ -3,15 +3,17 @@
 //   Left mouse   interact: click screws and clips, circle the pointer around big bolts, swipe across wires to cut
 //                them, drag pry tabs away, hold a lifting eye (heavy things need two players holding together).
 //   Right mouse  drag: carry a freed part to the tray; with a carried (small) machine, move it about the bench.
-//   Middle mouse drag: rotate the machine (also arrow keys; R resets, wheel zooms the view).
-// Steps sit on every face, so the machine has to be turned over and around. Large machines stay where they
+//   Middle mouse drag: look around (a small machine on the table is turned over instead, also with the arrow keys).
+//   W / S / A / D: step closer, further, and around. Walk too far and the mode ends.
+// Steps sit on every face, so a small machine has to be turned over and around. Large machines are too heavy to
+// turn or move: you walk around them instead, and none of their steps faces down. They stay where they
 // lie and are worked on by everyone near them through a shared session (SiteLink, server/crash.ts); small ones
-// are carried home and taken apart alone at the workbench. Loose-piece physics is plain frame-time maths: it is
+// are carried home and taken apart alone on the disassembly table. Loose-piece physics is plain frame-time maths: it is
 // only cosmetic, nothing here moves players (the walk-up goes through the normal input path).
 import * as THREE from 'three/webgpu';
-import { BACK, FORWARD } from '../../shared/sim.ts';
+import { BACK, FORWARD, LEFT, RIGHT } from '../../shared/sim.ts';
 import { RARITY, type ComponentKind, type PartId, type Tier } from '../../shared/salvage.ts';
-import { tools } from '../input.ts';
+import { keyHeld, tools } from '../input.ts';
 import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { TeardownUi } from './ui.ts';
 
@@ -70,6 +72,11 @@ const PART_HOVER = 0.7;
 /** Distance from the machine at which you work. */
 const STAND = 3.2;
 const WALK_TIMEOUT = 6;
+/** Closest you can step to a machine (m); further than STAND + LEAVE_MARGIN ends the mode. */
+const MIN_DIST = 1.3;
+const LEAVE_MARGIN = 3.5;
+/** Radians per pixel of a look-around drag. */
+const LOOK_SENS = 0.003;
 /** Pointer travel for one decisive wire cut / pry, in pixels. */
 const CUT_PX = 90;
 const PRY_PX = 110;
@@ -101,12 +108,21 @@ export class TeardownView {
   private pulse = 0;
   private announced = new Set<Slot>();
   private home = new THREE.Vector3();
+  /** The camera's yaw / pitch (src/camera.ts), seen from drive(); middle-drag turns it directly. */
+  private look: { yaw: number; pitch: number } | null = null;
+  /** How far you have looked away from the machine, added to the easing target so the view stays there. */
+  private lookYaw = 0;
+  private lookPitch = 0;
+  /** The distance to hold while strafing. */
+  private workDist = 0;
+  private farWarned = false;
 
   /** Left-button interaction with a step. */
   private act: { step: Step; x0: number; y0: number; angle: number; cx: number; cy: number; dist: number } | null = null;
   private drag:
     | { kind: 'junk'; offset: THREE.Vector3 }
     | { kind: 'rotate'; x: number; y: number }
+    | { kind: 'look'; x: number; y: number }
     | { kind: 'part'; loose: Loose }
     | null = null;
   private button = -1;
@@ -130,8 +146,12 @@ export class TeardownView {
     addEventListener('keydown', (e) => {
       if (this.phase === 'idle' || e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement) return;
       if (e.code === 'Escape') this.end();
-      if (this.phase !== 'work') return;
-      if (e.code === 'KeyR') this.resetRotation();
+      if (this.phase !== 'work' || !this.site) return;
+      if (e.code === 'KeyR') {
+        if (this.site.movable) this.resetRotation();
+        else this.lookYaw = this.lookPitch = 0;
+      }
+      if (!this.site.movable) return;
       const k = 0.18;
       if (e.code === 'ArrowLeft') this.spinJunk(-k, 0);
       if (e.code === 'ArrowRight') this.spinJunk(k, 0);
@@ -156,11 +176,13 @@ export class TeardownView {
     this.site = site;
     this.phase = 'walk';
     this.walkFor = 0;
+    this.lookYaw = this.lookPitch = 0;
+    this.farWarned = false;
     this.announced.clear();
     for (const s of site.junk.slots) if (slotOpen(s)) this.announced.add(s);
     tools.frozen = true;
     document.exitPointerLock();
-    this.ui.setPhase('walk', site.label);
+    this.ui.setPhase('walk', site.label, site.movable);
     site.link?.join();
     if (!site.junk.root.parent) this.scene.add(site.junk.root);
     this.home.set(site.x, site.ground(site.x, site.z), site.z);
@@ -174,6 +196,9 @@ export class TeardownView {
     const site = this.site;
     if (!site) return;
     this.endInteraction();
+    // Nothing of the mode stays on screen: no markers, no part rings.
+    for (const s of site.junk.steps) s.marker.visible = false;
+    for (const s of site.junk.slots) s.ring.visible = false;
     for (const l of [...this.loose]) {
       if (l.slot) this.collect(l, false);
       else this.scene.remove(l.obj);
@@ -196,21 +221,42 @@ export class TeardownView {
     const dx = site.x - me.x, dz = site.z - me.z;
     const d = Math.hypot(dx, dz);
     const stand = site.stand ?? STAND;
-    if (d > stand + 8) {
-      this.end(); // died, teleported or wandered off
+    const leave = stand + LEAVE_MARGIN;
+    if (d > leave) {
+      this.end(); // walked away, died or teleported
       return 0;
     }
+    this.look = look;
     const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
     const eased = 1 - Math.exp(-dt * 7);
-    look.yaw += wrap(Math.atan2(-dx, -dz) - look.yaw) * eased;
+    look.yaw += wrap(Math.atan2(-dx, -dz) + this.lookYaw - look.yaw) * eased;
     const eye = this.camera.position;
     const wantPitch = Math.atan2(this.home.y + 0.5 - eye.y, Math.max(d, 0.5));
-    look.pitch += (wantPitch - look.pitch) * eased;
-    if (this.phase === 'work') return 0;
+    look.pitch += (wantPitch + this.lookPitch - look.pitch) * eased;
+    if (this.phase === 'work') {
+      // W / S step closer and further, A / D around (the arrow keys too, except where they turn a small machine).
+      const arrows = !site.movable;
+      const left = keyHeld('KeyA') || (arrows && keyHeld('ArrowLeft'));
+      const right = keyHeld('KeyD') || (arrows && keyHeld('ArrowRight'));
+      const fwd = keyHeld('KeyW') || (arrows && keyHeld('ArrowUp'));
+      const back = keyHeld('KeyS') || (arrows && keyHeld('ArrowDown'));
+      let bits = 0;
+      if (left) bits |= LEFT;
+      if (right) bits |= RIGHT;
+      if (fwd && d > MIN_DIST) bits |= FORWARD;
+      else if (back) bits |= BACK;
+      if (fwd || back) this.workDist = d;
+      else if (bits && Math.abs(this.lookYaw) < 0.3) bits |= d > this.workDist + 0.25 ? FORWARD : d < this.workDist - 0.25 ? BACK : 0; // keep the circle
+      const far = d > leave - 1.2;
+      if (far && !this.farWarned) this.ui.setHint('Step back any further and you leave the disassembly');
+      this.farWarned = far;
+      return bits;
+    }
     this.walkFor += dt;
     if ((d <= stand + 0.15 && d >= stand - 0.5) || this.walkFor > WALK_TIMEOUT) {
       this.phase = 'work';
-      this.ui.setPhase('work', site.label);
+      this.workDist = d;
+      this.ui.setPhase('work', site.label, site.movable);
       this.ui.setHint(`${site.label}: ${RARITY[site.junk.tier].name}. ${this.firstHint()}`);
       return 0;
     }
@@ -341,7 +387,7 @@ export class TeardownView {
         if (slotOpen(s) || this.looseOf(s)) return `${r.name} ${s.part}: right-drag it to the tray`;
         return `Still held by ${s.piece.holds.filter((h) => !h.done).length} things`;
       }
-      default: return this.site?.movable ? 'Right-drag to move · middle-drag to rotate' : 'Too heavy to move · middle-drag to turn it over';
+      default: return this.site?.movable ? 'Right-drag to move · middle-drag to rotate' : 'Too heavy to move or turn · walk around it, middle-drag to look around';
     }
   }
 
@@ -352,6 +398,11 @@ export class TeardownView {
     this.ui.overlay.setPointerCapture(e.pointerId);
     this.button = e.button;
     if (e.button === 1) {
+      if (!this.site.movable) {
+        this.drag = { kind: 'look', x: e.clientX, y: e.clientY };
+        this.ui.overlay.style.cursor = 'move';
+        return;
+      }
       this.drag = { kind: 'rotate', x: e.clientX, y: e.clientY };
       this.ui.overlay.style.cursor = 'move';
       return;
@@ -408,6 +459,18 @@ export class TeardownView {
       this.spinJunk((e.clientX - d.x) * 0.01, (e.clientY - d.y) * 0.01);
       d.x = e.clientX;
       d.y = e.clientY;
+      return;
+    }
+    if (d?.kind === 'look') {
+      const dx = e.clientX - d.x, dy = e.clientY - d.y;
+      d.x = e.clientX;
+      d.y = e.clientY;
+      this.lookYaw = THREE.MathUtils.clamp(this.lookYaw - dx * LOOK_SENS, -1.6, 1.6);
+      this.lookPitch = THREE.MathUtils.clamp(this.lookPitch - dy * LOOK_SENS, -1.0, 1.0);
+      if (this.look) {
+        this.look.yaw -= dx * LOOK_SENS; // at once, the easing follows
+        this.look.pitch = THREE.MathUtils.clamp(this.look.pitch - dy * LOOK_SENS, -1.45, 1.45);
+      }
       return;
     }
     if (d?.kind === 'part') {
@@ -660,12 +723,13 @@ export class TeardownView {
     const y = j.root.position.y;
     j.root.position.y = y + (this.restY + this.lift - y) * Math.min(1, dt * (held ? 14 : 9));
     const wob = 1 + 0.18 * Math.sin(this.pulse * 6);
+    const working = this.phase === 'work'; // markers and rings only once you are at the machine
     for (const s of j.steps) {
-      s.marker.visible = stepReady(s);
+      s.marker.visible = working && stepReady(s);
       s.marker.scale.setScalar(wob);
     }
     for (const s of j.slots) {
-      s.ring.visible = slotOpen(s);
+      s.ring.visible = working && slotOpen(s);
       s.ring.scale.setScalar(1 + 0.08 * Math.sin(this.pulse * 5));
     }
 

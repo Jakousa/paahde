@@ -59,6 +59,11 @@ document.addEventListener('pointerlockchange', () => {
   }
 });
 
+/** Is this key down right now (for the disassembly mode, which reads A / D itself while the player is frozen)? */
+export function keyHeld(code: string): boolean {
+  return keys.has(code);
+}
+
 export function readInput(): number {
   let input = 0;
   if (tools.frozen) return input;

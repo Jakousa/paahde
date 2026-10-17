@@ -465,7 +465,8 @@ function pumpHousing(k: Kit) {
   k.box(0.5, 0.14, 0.5, -0.75, 0.15, 0, 'trim'); // foot
   if (g >= 2) k.ring(0.43, 0.025, -0.52, SY, 0, 'accent', 'x');
   if (g >= 3) k.ring(0.43, 0.02, -0.98, SY, 0, 'glow', 'x');
-  const drain = k.bolt('Drain plug', [-0.75, SY - 0.42, 0], [0, -1, 0], [], 2);
+  // On the casing's flank, low down: the big machines can't be turned over, so every step faces somewhere you can walk to.
+  const drain = k.bolt('Drain plug', [-0.75, SY - 0.2, 0.37], [0, 0, 1], [], 2);
 
   // suction cover: disc, suction nozzle, inlet flange
   const cov = k.group([-1.03, SY, 0]);
@@ -614,7 +615,7 @@ function jetEngine(k: Kit) {
   k.rod([0.75, 0.64, 0.65], [0.75, 1.0, 0.65], 0.03, 'copper');
   k.rod([0.75, 0.14, 0.65], [1.4, 0.14, 0.65], 0.03, 'copper');
   const valveLead = k.wire('Solenoid lead', [[0.78, 0.45, 0.65], [0.4, 0.2, 0.75], [-0.4, 0.3, 0.72]], 'brown', [], 0.03);
-  k.mount('valve', [[0.75, 0.14, 0.65], [0, 0, 0]], () => [valveLead, k.bolt('Union nut', [0.75, 0.68, 0.65], [0, 1, 0], [valveLead], 2), k.bolt('Union nut', [0.75, 0.12, 0.65], [0, -1, 0], [valveLead], 2)]);
+  k.mount('valve', [[0.75, 0.14, 0.65], [0, 0, 0]], () => [valveLead, k.bolt('Union nut', [0.75, 0.68, 0.65], [0, 1, 0], [valveLead], 2), k.bolt('Union nut', [1.05, 0.17, 0.65], [0, 1, 0], [valveLead], 2)]);
 
   // accessory gearbox under the front: open towards +z, closed by a cover; starter flanged on the -z side
   const gb = [-0.45, 0.365, 0] as V;
