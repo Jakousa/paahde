@@ -9,7 +9,7 @@ import { Drones } from './world/drones';
 import { Guardians, type Footfall } from './world/guardians';
 import { Bolts } from './world/bolts';
 import { Missiles } from './world/missiles';
-import { CHARGE_MS, CRAWLER, GUARDIAN, KINDS } from '../shared/guardians.ts';
+import { CHARGE_MS, CRAWLER, FOOT_CRUSH_R, GUARDIAN, KINDS } from '../shared/guardians.ts';
 import { guardianSound } from './guardianSound';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
@@ -42,6 +42,9 @@ export class GuardianFx {
   private crawled = new Set<number>();
   private bitAt = 0;
   private ear = new THREE.Vector3();
+  private net: Net | null = null;
+  /** When we last told the server a foot came down on us (ms). */
+  private stompedAt = 0;
 
   constructor(scene: THREE.Scene) {
     this.guardians = new Guardians(scene);
@@ -81,6 +84,13 @@ export class GuardianFx {
       }
       return;
     }
+    // Came down on us: crushed (the server checks it; the feet are only animated here).
+    const me = this.net?.me;
+    const r = FOOT_CRUSH_R * KINDS[GUARDIAN].scale;
+    if (me && Math.hypot(me.x - f.x, me.z - f.z) < r && Math.abs(me.y - f.y) < r && performance.now() - this.stompedAt > 1000) {
+      this.stompedAt = performance.now();
+      this.net!.stomped(f.id);
+    }
     guardianSound.footfall(f.x, f.y, f.z, f.weight, this.ear);
     this.thump(f.x, f.y, f.z, f.weight, 9, 2.5 * KINDS[GUARDIAN].scale, 1.6 * KINDS[GUARDIAN].scale);
   }
@@ -99,6 +109,7 @@ export class GuardianFx {
 
   /** Every frame, after the camera has been placed: draws them and shakes the camera. */
   update(net: Net, dt: number, camera: THREE.Camera, focus: { x: number; z: number }) {
+    this.net = net;
     this.ear.copy(camera.position);
     if (!this.bound) {
       this.bound = true;

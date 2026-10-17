@@ -68,6 +68,9 @@ export type ClientMsg =
   // found it hit weak point i of walker g (i -1: just its body, which angers it); `d`: it hit drone d. The server checks
   // the gun is in hand, its reach, the rate and that the shot was aimed at that walker, breaks the point, and shows the
   // shot to everyone near ('zap').
+  // A guardian's foot (client IK) came down on you (shared/guardians.ts FOOT_CRUSH_R); the server checks guardian `g`
+  // is alive and near enough, and kills you ('died', cause 'guardian').
+  | { t: 'stomped'; g: number }
   | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number; d?: number }
   // Debug menu: repaired gear of every kind, Scrap parts (for testing).
   | { t: 'debugGear' }

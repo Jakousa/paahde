@@ -28,7 +28,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ANKLE, BODY_H, CRAWLER, FEMUR, GUN_MOUNT, GUN_PIVOT, KINDS, MUZZLE, REST_R, SOCKETS, TIBIA } from '../../shared/guardians.ts';
+import { ANKLE, BODY_H, CRAWLER, FEMUR, GUN_MOUNT, GUN_PIVOT, KINDS, MUZZLE, REST_R, SOCKETS, STEP_DIST, TIBIA } from '../../shared/guardians.ts';
 import { heightAt, normalAt } from '../../shared/terrain.ts';
 import { HIT_PAD, weakPoints, WRECK_S, WRECK_SINK, type WeakPoint } from '../../shared/rifle.ts';
 import type { GuardianFrame } from './botFrames.ts';
@@ -37,8 +37,7 @@ import { zaps } from './zaps.ts';
 /** Drawn within this distance (m), by kind. Lengths and times below are for scale 1; a walker of scale s uses
  *  lengths × s and times × √s (dynamic similarity: small legs swing quicker). */
 const SHOW_R = [2000, 260];
-/** A planted foot steps once its rest spot is this far away (m); a stopped body settles feet off by SETTLE. */
-const STEP_DIST = 9;
+/** A planted foot steps once its rest spot is STEP_DIST away (m, shared/guardians.ts); a stopped body settles feet off by SETTLE. */
 const SETTLE = 1.2;
 /** Swing time bounds (s) and the lift (m) for a step of length d: LIFT + LIFT_K·d. */
 const STEP_MIN = 0.6, STEP_MAX = 1.5;
@@ -48,7 +47,7 @@ const SPRING_K = 9, SPRING_C = 4.5, LAND_DIP = 0.9;
 /** Body tilt limit (radians). */
 const MAX_TILT = 0.2;
 
-export type Footfall = { x: number; y: number; z: number; /** 0..1 how hard */ weight: number; /** KINDS index */ kind: number };
+export type Footfall = { x: number; y: number; z: number; /** 0..1 how hard */ weight: number; /** KINDS index */ kind: number; /** the walker */ id: number };
 /** Something happened to a walker at (x, y, z): a weak point shattered, a leg gave out while dying, it hit the sand. */
 export type WalkerEvent = { what: 'break' | 'fail' | 'slam'; x: number; y: number; z: number; kind: number };
 /** What a shot struck: a weak point (`walker`, `index`), or just a walker's metal (index -1). */
@@ -524,7 +523,7 @@ class Walker {
         leg.t = -1;
         leg.foot.copy(_p);
         this.vy -= LAND_DIP * T * Math.min(1, span / (STEP_DIST * S) + 0.3);
-        this.onFootfall({ x: _p.x, y: _p.y, z: _p.z, weight: Math.min(1, 0.4 + span / (STEP_DIST * S)), kind: this.kind });
+        this.onFootfall({ x: _p.x, y: _p.y, z: _p.z, weight: Math.min(1, 0.4 + span / (STEP_DIST * S)), kind: this.kind, id: this.id });
       }
     }
     // Who steps next: the planted foot furthest from its rest spot, if the gait allows.

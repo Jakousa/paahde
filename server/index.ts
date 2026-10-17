@@ -143,6 +143,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'summon' && p) return guardians.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'fire' && p) return onFire(p, msg);
+    if (msg.t === 'stomped' && p) return onStomped(p, msg.g);
     if (msg.t === 'drink' && p) return onDrink(p);
     if (msg.t === 'fill' && p) return onFill(p);
     if (msg.t === 'move' && p) return onMove(p, msg.from, msg.fi, msg.to, msg.ti, msg.n, msg.r);
@@ -266,6 +267,12 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   send(p.ws, { t: 'died', cause, push });
 }
 
+/** The client saw a guardian's foot come down on it (the feet are client IK). */
+function onStomped(p: Player, g: number) {
+  const s = p.state;
+  if (!p.down && guardians.stomp(g, { id: p.id, x: s.x, y: s.y, z: s.z, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }, performance.now())) die(p, 'guardian');
+}
+
 /** Back to the base, cooled down, with a full canteen. */
 function respawn(p: Player) {
   p.down = null;
@@ -290,8 +297,7 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const r = guardians.tick(dt, now, tod, list);
   for (const k of guardians.crashes()) dropSpoils(k);
   for (const p of players.values()) {
-    if (r.crushed.includes(p.id)) die(p, 'guardian');
-    else if (r.shot.includes(p.id)) die(p, 'laser', boltPush(p, r.events, 'boom', BLAST_R));
+    if (r.shot.includes(p.id)) die(p, 'laser', boltPush(p, r.events, 'boom', BLAST_R));
     else if (r.blasted.includes(p.id)) die(p, 'missile', boltPush(p, r.events, 'blast', MISSILE_BLAST_R));
     else if (r.bitten.has(p.id) && bite(p.heat, r.bitten.get(p.id)!)) die(p, 'crawler');
     else if (r.bitten.has(p.id)) send(p.ws, waterMsg(p.heat));

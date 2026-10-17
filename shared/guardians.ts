@@ -4,8 +4,8 @@
 //
 // Two kinds of walker (KINDS), built from the same parts at different scales:
 // - Guardians: a few rare giants roaming from crash site to crash site, standing guard now and then. Come within
-//   sight of one (or get caught in a drone's searchlight near one) and it hunts you, slower than you can walk; if it
-//   gets over you, you're crushed.
+//   sight of one (or get caught in a drone's searchlight near one) and it hunts you, slower than you can walk; if one
+//   of its feet comes down on you, you're crushed (FOOT_CRUSH_R; under its body, between the legs, you're safe).
 // - Crawlers: player-sized spiders swarming every crash site someone is near. Faster than you walk (sprint away),
 //   they bite (BITE_HEAT on the heat meter, shared/water.ts), then scuttle off for a while; they give up after a short
 //   chase or once you're well away from their site.
@@ -40,11 +40,18 @@ export const SOCKETS: Record<3 | 4, [number, number][]> = {
 };
 /** A foot at rest stands this far out from the body's centre, along its socket's direction. */
 export const REST_R = 14;
+/** A planted foot steps once its rest spot is this far away (src/world/guardians.ts). */
+export const STEP_DIST = 9;
+/** A guardian's foot landing within this (m, horizontally, × scale) of you crushes you. The feet are client IK, so
+ *  your client tells the server ('stomped'); it checks the guardian is alive and that one of its feet could reach you
+ *  (within (REST_R + STEP_DIST) × scale + CRUSH_SLACK of its centre). */
+export const FOOT_CRUSH_R = 1.5;
+export const CRUSH_SLACK = 8;
 
 /**
  * The walker kinds. `scale` multiplies every length above (the model is built at 1). Speeds in m/s (a player walks
  * 6, sprints 11), turn rates in rad/s; `sight`: notices someone out in the open this close (m), from any side;
- * `reach`: gets you this close (m, horizontally): a guardian crushes, a crawler bites; `gun`: has the cannon.
+ * `reach`: gets this close (m, horizontally) to its prey: a crawler bites, a guardian stands over you; `gun`: has the cannon.
  */
 export const KINDS = [
   { name: 'guardian', scale: 1.5, patrol: 2.8, hunt: 5.2, turn: 0.3, huntTurn: 0.6, sight: 65, reach: 7.5, gun: true },

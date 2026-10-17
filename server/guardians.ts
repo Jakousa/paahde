@@ -11,8 +11,8 @@ import { BASE, inBase } from '../shared/base.ts';
 import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
 import {
   ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
-  CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, GUARDIAN, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
-  NIGHT_SUN, NOTICE_R, REST_R, SEEK_GIVE_UP, SEEK_RATE, sweepAt, TRACK_RATE,
+  CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, CRUSH_SLACK, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, GUARDIAN, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
+  NIGHT_SUN, NOTICE_R, REST_R, SEEK_GIVE_UP, STEP_DIST, SEEK_RATE, sweepAt, TRACK_RATE,
 } from '../shared/guardians.ts';
 import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MIN_R, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
@@ -198,13 +198,13 @@ export class GuardianServer {
 
   /**
    * Advance by dt seconds at server time `now` (ms), wall-clock time of day `tod`. Returns who was bitten (player id
-   * → heat), crushed, shot by a bolt or blown up by a missile, and the bolts and missiles fired and burst.
+   * → heat), shot by a bolt or blown up by a missile, and the bolts and missiles fired and burst.
    */
   tick(dt: number, now: number, tod: number, players: BotPlayer[]): {
-    bitten: Map<number, number>; crushed: number[]; shot: number[]; blasted: number[]; events: BoltEvent[];
+    bitten: Map<number, number>; shot: number[]; blasted: number[]; events: BoltEvent[];
   } {
     const bitten = new Map<number, number>();
-    const crushed: number[] = [], shot: number[] = [], blasted: number[] = [], events: BoltEvent[] = [];
+    const shot: number[] = [], blasted: number[] = [], events: BoltEvent[] = [];
     const byId = new Map(players.map((p) => [p.id, p]));
     const exposed = players.filter((p) => !p.safe && !inBase(p.x, p.y, p.z));
     this.swarm(players);
@@ -213,11 +213,11 @@ export class GuardianServer {
     this.tickMissiles(dt, now, lit, players, exposed, blasted, events);
     for (const g of this.guardians) {
       if (g.deadAt >= 0) continue;
-      this.tickGuardian(g, dt, now, exposed, byId, crushed, bitten);
+      this.tickGuardian(g, dt, now, exposed, byId, bitten);
       if (KINDS[g.kind].gun) this.tickGun(g, now, byId, events);
     }
     this.tickBolts(dt, exposed, shot, events);
-    return { bitten, crushed, shot, blasted, events };
+    return { bitten, shot, blasted, events };
   }
 
   /** Missiles: guardians shell their prey, and the nearest ones whoever a drone's beam is on; ones that have landed burst. */
@@ -330,7 +330,7 @@ export class GuardianServer {
     });
   }
 
-  private tickGuardian(g: Guardian, dt: number, now: number, exposed: BotPlayer[], byId: Map<number, BotPlayer>, crushed: number[], bitten: Map<number, number>) {
+  private tickGuardian(g: Guardian, dt: number, now: number, exposed: BotPlayer[], byId: Map<number, BotPlayer>, bitten: Map<number, number>) {
     const k = KINDS[g.kind];
     // Notice anyone close by.
     if (now >= g.calmUntil) {
@@ -359,13 +359,9 @@ export class GuardianServer {
       } else {
         g.tx = g.px;
         g.tz = g.pz;
-        if (Math.hypot(p.x - g.x, p.z - g.z) < k.reach) {
-          if (g.kind === GUARDIAN) {
-            crushed.push(p.id);
-            g.prey = -1;
-            g.calmUntil = now + CALM_MS;
-            g.guardUntil = now + GUARD_MIN;
-          } else if (now - g.bitAt >= BITE_MS) {
+        // A guardian over you only crushes you if a foot comes down on you (stomp); a crawler bites.
+        if (g.kind === CRAWLER && Math.hypot(p.x - g.x, p.z - g.z) < k.reach) {
+          if (now - g.bitAt >= BITE_MS) {
             // Bites, and backs off.
             g.bitAt = now;
             bitten.set(p.id, (bitten.get(p.id) ?? 0) + BITE_HEAT);
@@ -602,6 +598,20 @@ export class GuardianServer {
    * Player `by` shot from (x, y, z) to (ex, ey, ez) and says it hit drone `id`: plausible (flying, in range, the shot
    * passing and ending near it), it takes the hit; the last one brings it down. Returns whether it counted.
    */
+  /** Player `p`'s client says guardian `id`'s foot came down on them: crushed, if it's alive and a foot could reach
+   *  them. The one hunting them calms down after. */
+  stomp(id: unknown, p: BotPlayer, now: number): boolean {
+    const g = this.guardians.find((o) => o.id === id);
+    if (!g || g.kind !== GUARDIAN || g.deadAt >= 0 || p.safe || inBase(p.x, p.y, p.z)) return false;
+    if (Math.hypot(p.x - g.x, p.z - g.z) > (REST_R + STEP_DIST) * KINDS[GUARDIAN].scale + CRUSH_SLACK) return false;
+    if (g.prey === p.id) {
+      g.prey = -1;
+      g.calmUntil = now + CALM_MS;
+      g.guardUntil = now + GUARD_MIN;
+    }
+    return true;
+  }
+
   shootDrone(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number, by = -1): boolean {
     const d = this.drones.find((o) => o.id === id);
     if (!d || d.downAt >= 0) return false;

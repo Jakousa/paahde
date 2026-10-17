@@ -319,6 +319,11 @@ export class Net {
     this.send({ t: 'fire', x: r(x), y: r(y), z: r(z), ex: r(ex), ey: r(ey), ez: r(ez), ...hit });
   }
 
+  /** Guardian `g`'s foot came down on us (src/guardians.ts). */
+  stomped(g: number) {
+    this.send({ t: 'stomped', g });
+  }
+
   /** Canteen refill finished at the base; the server answers with 'water'. */
   fill() {
     this.send({ t: 'fill' });
