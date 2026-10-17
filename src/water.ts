@@ -13,7 +13,8 @@ import type { Net } from './net';
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
  * are true for the whole sip / refill action. Digging is the DIG input bit, as before.
  */
-export const playerHands = { held: 'none' as 'none' | 'canteen', drinking: false, filling: false };
+export type Held = 'none' | 'canteen';
+export const playerHands = { held: 'none' as Held, drinking: false, filling: false };
 
 const SLOTS = 4;
 /** Thirst bar colours: full, getting low, nearly empty. */
