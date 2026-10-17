@@ -57,13 +57,14 @@ const DRONE_AREA = 110;
 const DRONE_LONELY = 600;
 /** Drones keep this far (m) from the base. */
 const DRONE_BASE_KEEP_OUT = 60;
-/** Roaming drones (site ROAM): at most ROAMERS out at once. Someone out in the open with none within ROAM_NEAR (m)
- *  gets one about every ROAM_EVERY_S seconds, coming in from ROAM_FROM (m); it stays ROAM_MIN..MAX ms, flying legs of
+/** Roaming drones (site ROAM): at most ROAMERS out at once. Someone out in the open with fewer than ROAM_EACH within
+ *  ROAM_NEAR (m) gets one about every ROAM_EVERY_S seconds, coming in from ROAM_FROM (m); it stays ROAM_MIN..MAX ms, flying legs of
  *  ROAM_LEG (m), and keeps ROAM_BASE_KEEP_OUT (m) from the base. */
 const ROAM = -2;
-const ROAMERS = 4;
-const ROAM_NEAR = 900;
-const ROAM_EVERY_S = 100;
+const ROAMERS = 6;
+const ROAM_NEAR = 800;
+const ROAM_EACH = 2;
+const ROAM_EVERY_S = 60;
 const ROAM_FROM: [number, number] = [300, 420];
 const ROAM_MIN = 3 * 60_000, ROAM_MAX = 6 * 60_000;
 const ROAM_LEG: [number, number] = [120, 350];
@@ -675,13 +676,13 @@ export class GuardianServer {
     d.tz = d.hz + Math.cos(a) * r;
   }
 
-  /** Now and then a roaming drone drifts in near someone out in the open with none around. */
+  /** Now and then a roaming drone drifts in near someone out in the open with few around. */
   private roam(dt: number, now: number, exposed: BotPlayer[]) {
     let out = this.drones.filter((d) => d.site === ROAM && !d.leaving).length;
     for (const p of exposed) {
       if (out >= ROAMERS || this.drones.length >= MAX_DRONES) return;
       if (Math.random() > dt / ROAM_EVERY_S) continue;
-      if (this.drones.some((d) => d.site === ROAM && Math.hypot(d.x - p.x, d.z - p.z) < ROAM_NEAR)) continue;
+      if (this.drones.filter((d) => d.site === ROAM && Math.hypot(d.x - p.x, d.z - p.z) < ROAM_NEAR).length >= ROAM_EACH) continue;
       // Passing by: it heads for somewhere near them, then wanders on.
       const a = rand(-Math.PI, Math.PI), r = rand(40, 120);
       const hx = p.x + Math.sin(a) * r, hz = p.z + Math.cos(a) * r;
