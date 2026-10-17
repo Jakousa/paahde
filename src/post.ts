@@ -178,7 +178,8 @@ export class Post {
     const facing = this.fwd.dot(sd);
     this.sunUV.value.set(this.ndc.x * 0.5 + 0.5, 0.5 - this.ndc.y * 0.5);
     const off = Math.max(Math.abs(this.ndc.x), Math.abs(this.ndc.y));
-    this.sunOnScreen.value = facing > 0 ? 1 - THREE.MathUtils.smoothstep(off, 0.95, 1.35) : 0;
+    const sunUp = THREE.MathUtils.smoothstep(sd.y, -0.03, 0.02); // no glare once it has set
+    this.sunOnScreen.value = facing > 0 ? (1 - THREE.MathUtils.smoothstep(off, 0.95, 1.35)) * sunUp : 0;
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);
     this.sunRadiusUV.value = (Math.tan(sunDiscRadius.value) / tanHalf) * 0.5;
 
@@ -199,7 +200,7 @@ export class Post {
         break;
       }
     }
-    const look = THREE.MathUtils.smoothstep(facing, 0.55, 0.995) * visible;
+    const look = THREE.MathUtils.smoothstep(facing, 0.55, 0.995) * visible * sunUp;
     const k = 1 - Math.exp(-dt * 1.5);
     this.stareValue += (look - this.stareValue) * k;
     this.exposureValue += (1 + 0.18 * look - this.exposureValue) * k;

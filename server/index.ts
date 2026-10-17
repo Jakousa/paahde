@@ -110,7 +110,7 @@ function join(ws: WebSocket, browserId: unknown) {
   // Terrain first, so the client never sees its spawn without the holes.
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
-  send(ws, { t: 'welcome', id: p.id, state, color });
+  send(ws, { t: 'welcome', id: p.id, state, color, epoch: performance.timeOrigin });
   send(ws, { t: 'inventory', items: scrap.inventory(browserId) });
 }
 

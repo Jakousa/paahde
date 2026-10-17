@@ -41,6 +41,7 @@ export class Net {
   private pending: { seq: number; input: number; yaw: number }[] = [];
   private snapshots: Snapshot[] = [];
   private clockOffset?: number; // serverTime - localTime
+  private epoch?: number; // wall-clock ms at server time 0
   private retryMs = 500;
   private browserId: string;
   private digCooldown = 0;
@@ -153,6 +154,11 @@ export class Net {
     return performance.now() + (this.clockOffset ?? 0);
   }
 
+  /** Shared wall clock (Unix ms) on the server's time, for the day/night cycle. Local clock until welcome. */
+  worldTime(): number {
+    return this.epoch === undefined || this.clockOffset === undefined ? Date.now() : this.serverTime() + this.epoch;
+  }
+
   /** Decay the visual error and interpolate remote players for this render frame. */
   frame(dtSeconds: number): RemotePlayer[] {
     const k = Math.exp(-dtSeconds * 15);
@@ -202,6 +208,7 @@ export class Net {
     if (msg.t === 'welcome') {
       this.id = msg.id;
       this.color = msg.color;
+      this.epoch = msg.epoch;
       this.me = msg.state;
       this.seq = 0;
       this.retryMs = 500;

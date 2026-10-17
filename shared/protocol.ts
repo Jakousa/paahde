@@ -19,7 +19,8 @@ export type ServerMsg =
   // none). A client built from another SHA reloads the page to pick up the new build.
   | { t: 'version'; build: string }
   // id is a public per-connection id; the browserId is never sent to other players.
-  | { t: 'welcome'; id: number; state: PlayerState; color: number }
+  // epoch = wall-clock ms (Unix) at server time 0, so the time of day survives server restarts.
+  | { t: 'welcome'; id: number; state: PlayerState; color: number; epoch: number }
   // ack = last input seq the server applied for *this* client; time = server clock in ms.
   // Sent right after the tick's terrainEdit, so terrain changes up to `ack` have already arrived.
   | { t: 'snap'; time: number; ack: number; players: PlayerSnap[] }

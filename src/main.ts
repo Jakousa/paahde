@@ -17,6 +17,7 @@ import * as env from './world/env';
 import { addPalms } from './world/palms';
 import { Scrap } from './world/scrap';
 import { Dust } from './world/dust';
+import { clockText } from './world/dayNight';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
@@ -134,7 +135,7 @@ renderer.setAnimationLoop((time) => {
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
   scrap.update(focus);
-  sky.update(frameDt, focus, orbit.camera);
+  sky.update(frameDt, focus, orbit.camera, net.worldTime());
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
   dust.update(frameDt, orbit.camera.position);
@@ -144,6 +145,6 @@ renderer.setAnimationLoop((time) => {
   hud.setTarget(target);
   if (takePickup() && target) net.pickup(target);
 
-  info.textContent = `${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
+  info.textContent = `${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();
 });

@@ -2,6 +2,16 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Day and night
+
+- **24 h every 30 min** (`src/world/dayNight.ts`), on the server's wall clock (`epoch` in `welcome`,
+  `Net.worldTime()`), so everyone shares the same sky and it survives server restarts.
+- The sun follows a real arc: rises east (+Z), peaks at 57° in the south (+X), sets just north of west,
+  roughly ahead of the spawn view. A full moon rides opposite it and takes over the shadow light at night.
+- Sky, haze, sun colour and ambient are keyframed on sun elevation; the 10° key is the tuned golden
+  hour from `env.ts`/`sky.ts`, so tuning those still tunes the evening. Stars and a mottled moon at night.
+- The clock shows top-left. `?tod=0.75` freezes the time (0 midnight, 0.5 noon); `?day=60` makes a day 60 s.
+
 ## 2026-10-17 — Desert planet (PR #4)
 
 Jam theme: **old tech**. We went with a **scavenger game**, in the spirit of the scrappers in Star Wars
