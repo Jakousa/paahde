@@ -28,7 +28,7 @@ const DEPTH_BIAS_TEXELS = 1;
 const NORMAL_BIAS_TEXELS = 2;
 /** PCF filter radius in texels per cascade: at a 10° sun each texel stretches ~6x along the ground, so
  *  soften the coarse cascades' steps; the nearest one is fine enough (~3 cm) to stay crisp. */
-const PCF_RADIUS_TEXELS = [1.5, 3, 4, 4];
+const PCF_RADIUS_TEXELS = [1.5, 2.5, 3, 3];
 
 export class Sky {
   readonly sun = sunLight;
