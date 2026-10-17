@@ -2,6 +2,16 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Item models and icons (issue #8)
+
+- `tools/blender/items.py` builds battery, electric motor and heat sink in four tiers (`scrap`, `basic`,
+  `quality`, `space`) → `public/models/items/<item>_<tier>.glb` (real metres, origin at the base centre,
+  120–710 tris) and `public/icons/items/<item>_<tier>.png` (128 px, transparent, same 3/4 ortho camera,
+  thin dark outline). Each item keeps its silhouette; tiers change finish: rusty/dented/taped →
+  plain painted → bevelled with chrome/copper/orange accents → white/gunmetal with glowing cyan.
+- **Not wired in yet:** the inventory only knows `SCRAP_KINDS`. Needs an item/tier id scheme in
+  `shared/` (and in the inventory table/protocol) before the HUD can show these icons.
+
 ## 2026-10-17 — Home base
 
 New goal: plant and grow nature, push back the desert. The players' home is a homestead in a dune pan at
