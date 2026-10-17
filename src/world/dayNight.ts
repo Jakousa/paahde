@@ -7,8 +7,9 @@
 // Sky colours and lighting are keyframed on sun elevation. The golden-hour key (10°) is whatever env.ts
 // and sky.ts start with, so tuning those still tunes the evening; the other keys sit around it.
 import * as THREE from 'three/webgpu';
-import { hazeColor, horizonColor, horizonSunColor, midSkyColor, moonColor, moonDirection, nightLevel, sunColor, sunDirection, zenithColor } from './env.ts';
+import { hazeColor, heatHaze, horizonColor, horizonSunColor, midSkyColor, moonColor, moonDirection, nightLevel, sunColor, sunDirection, zenithColor } from './env.ts';
 import { DAY_SECONDS, DECL, skyVector, sunHourAngle, timeOfDayAt } from '../../shared/sun.ts';
+import { airTemp, sunStrength } from '../../shared/temperature.ts';
 
 export { clockText, DAY_SECONDS } from '../../shared/sun.ts';
 
@@ -110,5 +111,7 @@ export class DayNight {
     // The moon lights the ground once it is clear of the horizon and the sun has gone.
     const moonUp = THREE.MathUtils.smoothstep(moonDirection.value.y, 0.03, 0.25);
     moonColor.value.copy(MOONLIGHT).multiplyScalar(moonUp * nightLevel.value);
+    // Shimmer needs hot air over sun-baked sand: none in the cool night and morning, full in the afternoon.
+    heatHaze.value = THREE.MathUtils.smoothstep(airTemp(this.tod), 26, 38) * THREE.MathUtils.smoothstep(sunStrength(this.tod), 0, 0.4);
   }
 }
