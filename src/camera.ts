@@ -21,7 +21,7 @@ const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
 const THIRD_PERSON_KEY = 'dadajam.thirdPerson';
 
 /** What the camera needs from the local player each frame. */
-export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean; crouching?: boolean };
+export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean; crouching?: boolean; riding?: boolean };
 
 export class FirstPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
@@ -100,7 +100,7 @@ export class FirstPersonCamera {
     // Past a walk it grows only gently (sprint ≈ 1.1×, its faster step rate is enough), and the vertical shape is sin², which is smooth
     // at footfall where |sin| had a hard cusp.
     const pace = speed / WALK_SPEED;
-    const bobTarget = moving && !p.sliding ? (pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15)) : 0;
+    const bobTarget = moving && !p.sliding && !p.riding ? (pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15)) : 0;
     this.bobAmount += (bobTarget - this.bobAmount) * (1 - Math.exp(-dt * 6));
     if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / STRIDE;
     const s = Math.sin(this.bobPhase);

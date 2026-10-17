@@ -9,6 +9,7 @@
 // - Ctrl slide (Titanfall-style): sprint into it for a speed burst, then coast on low friction. Downhill
 //   speeds you up, uphill bleeds it off; steering only bends your heading. Jump out of it to keep the speed.
 // - Soft sand: you build up and lose speed a bit slowly (momentum), and hard landings bog you down briefly.
+// - Sand bike (dev helper, 9 toggles it): see stepBike() below.
 import { BASE_SPAWN, baseCeiling, collideBase } from './base.ts';
 import { collideScrap } from './scrap.ts';
 import { heightAt, WORLD_HALF } from './terrain.ts';
@@ -79,6 +80,9 @@ export type PlayerState = {
   sliding: boolean; // in an intentional (Ctrl) slide
   crouching: boolean; // Ctrl held on the ground without sliding
   slideCool: number; // ticks until another slide can start (integer)
+  riding: boolean; // on the sand bike (stepBike)
+  bikeHeld: boolean; // the bike key was down last tick, so mounting needs a fresh press
+  heading: number; // the bike's heading (radians, same convention as facing); the body faces it while riding
 };
 
 // Input is a bitmask so it is tiny on the wire and trivially comparable.
@@ -92,7 +96,8 @@ export const SPRINT = 32;
 export const DIG = 64;
 export const PILE = 128; // like DIG, but puts sand back (shared/dig.ts)
 export const SLIDE = 256; // Ctrl: slide
-export const INPUT_MASK = 511;
+export const BIKE = 512; // 9: get on / off the sand bike (dev helper)
+export const INPUT_MASK = 1023;
 
 // Camera yaw is sent with every input, quantized to 16 bits so client and server agree exactly.
 export const YAW_STEPS = 65536;
@@ -108,7 +113,7 @@ export function spawnState(x = SPAWN.x, z = SPAWN.z): PlayerState {
   return {
     x, y: heightAt(x, z), z, vx: 0, vy: 0, vz: 0, facing: 0,
     grounded: true, airJumps: AIR_JUMPS, jumpHeld: false, landTicks: 0,
-    sliding: false, crouching: false, slideCool: 0,
+    sliding: false, crouching: false, slideCool: 0, riding: false, bikeHeld: false, heading: 0,
   };
 }
 
@@ -136,6 +141,12 @@ const tmpCollide = { x: 0, z: 0, vx: 0, vz: 0 };
  */
 export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
   const yaw = yawFromQ(yawQ);
+  const bikeDown = (input & BIKE) !== 0;
+  if (bikeDown && !s.bikeHeld) {
+    // Get on facing where you look, keeping your momentum; get off with the bike's.
+    s = s.riding ? { ...s, riding: false } : { ...s, riding: true, heading: yaw, sliding: false, crouching: false };
+  }
+  if (s.riding) return stepBike(s, input, bikeDown);
   const fwd = (input & FORWARD ? 1 : 0) - (input & BACK ? 1 : 0);
   const strafe = (input & RIGHT ? 1 : 0) - (input & LEFT ? 1 : 0);
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
@@ -285,7 +296,126 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
   }
 
   if (grounded) airJumps = AIR_JUMPS;
-  return { x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks, sliding, crouching, slideCool };
+  return {
+    x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks, sliding, crouching, slideCool,
+    riding: false, bikeHeld: bikeDown, heading: s.heading,
+  };
+}
+
+// --- Sand bike -----------------------------------------------------------------------------------
+// A balloon-tyred dirt bike. W throttle, S brake then reverse, A/D steer, Space hops. The mouse only looks
+// around (the client turns the camera with the bike).
+// - Steering is a bicycle model: turn rate = forward speed × tan(steer) / wheelbase, with the steer angle
+//   shrinking at speed. Sideways velocity is bled off by limited tyre grip, so hard turns drift.
+// - Gravity along the slope speeds it up downhill and slows it uphill; the engine fades towards top speed.
+// - On the ground it rides the surface; where the sand drops away faster than gravity could follow (a dune
+//   crest at speed) it launches and flies ballistically, steering only a little, until it lands.
+export const BIKE_RADIUS = 0.6;
+const BIKE_TOP_SPEED = 26;
+const BIKE_ENGINE = 15; // m/s² at a standstill, fading linearly to 0 at top speed
+const BIKE_BRAKE = 22;
+const BIKE_REVERSE = 4; // top reverse speed (m/s)
+const BIKE_ROLL = 1.2; // rolling resistance in sand (m/s²)
+const BIKE_DRAG = 0.006; // air drag (per m, times v²)
+const BIKE_GRIP = 26; // sideways tyre grip (m/s²): above this the back steps out
+const BIKE_WHEELBASE = 1.36;
+const BIKE_STEER = 0.55; // max steer angle (rad) at a standstill…
+const BIKE_STEER_FADE = 9; // …divided by (1 + speed / this)
+const BIKE_SLOPE_G = 0.75; // fraction of gravity that acts along the slope (tyres sink in, the rest is lost)
+const BIKE_AIR_SPIN = 1.4; // rad/s of heading change in the air
+const BIKE_HOP = 6.5;
+const BIKE_LAUNCH_EPS = 0.03; // the ground must fall this far below the ballistic path to leave it
+const BIKE_LAND_KEEP = 0.92; // horizontal speed kept on a landing
+const BIKE_HARD_LANDING = 16;
+
+function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState {
+  const throttle = (input & FORWARD ? 1 : 0) - (input & BACK ? 1 : 0);
+  const steer = (input & LEFT ? 1 : 0) - (input & RIGHT ? 1 : 0); // + turns left (heading grows counter-clockwise)
+  const jumpDown = (input & JUMP) !== 0;
+  let h = s.heading;
+  const fx = -Math.sin(h), fz = -Math.cos(h); // forward
+  const rx = Math.cos(h), rz = -Math.sin(h); // right
+  let vf = s.vx * fx + s.vz * fz;
+  let vr = s.vx * rx + s.vz * rz;
+  let vy = s.vy;
+  let landTicks = s.landTicks > 0 ? s.landTicks - 1 : 0;
+  const hop = s.grounded && jumpDown && !s.jumpHeld;
+
+  if (s.grounded) {
+    const onScrap = s.y > heightAt(s.x, s.z) + 0.02;
+    const g = onScrap ? flatSlope : slopeAt(s.x, s.z, tmpSlope);
+    // Gravity along the slope (its horizontal part), split into forward and sideways.
+    const k = (GRAVITY * BIKE_SLOPE_G) / (1 + g.gx * g.gx + g.gz * g.gz);
+    vf += k * (g.gx * fx + g.gz * fz) * DT;
+    vr += k * (g.gx * rx + g.gz * rz) * DT;
+    // Engine and brakes. A hard landing chokes the engine for a moment.
+    const power = landTicks > 0 ? 0.4 : 1;
+    if (throttle > 0) vf += (vf < 0 ? BIKE_BRAKE : BIKE_ENGINE * power * Math.max(0, 1 - vf / BIKE_TOP_SPEED)) * DT;
+    else if (throttle < 0) vf = vf > 0 ? Math.max(0, vf - BIKE_BRAKE * DT) : Math.max(-BIKE_REVERSE, vf - BIKE_ENGINE * 0.5 * DT);
+    const resist = (BIKE_ROLL + BIKE_DRAG * vf * vf) * DT;
+    vf = vf > 0 ? Math.max(0, vf - resist) : Math.min(0, vf + resist);
+    // Tyres: grip pulls the sideways slip towards zero, up to their limit.
+    vr = vr > 0 ? Math.max(0, vr - BIKE_GRIP * DT) : Math.min(0, vr + BIKE_GRIP * DT);
+    h += (vf * Math.tan((steer * BIKE_STEER) / (1 + Math.abs(vf) / BIKE_STEER_FADE)) / BIKE_WHEELBASE) * DT;
+  } else {
+    h += steer * BIKE_AIR_SPIN * DT;
+  }
+  let vx = vf * fx + vr * rx;
+  let vz = vf * fz + vr * rz;
+
+  // Collide like a fat player: scrap and base walls push the bike out and eat the speed into them.
+  const c = tmpCollide;
+  c.x = s.x + vx * DT;
+  c.z = s.z + vz * DT;
+  c.vx = vx;
+  c.vz = vz;
+  const airborneY = s.y + (vy + GRAVITY * DT) * DT;
+  const scrapTop = collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP);
+  const baseTop = collideBase(c, airborneY, s.y, BIKE_RADIUS, STEP_UP);
+  vx = c.vx;
+  vz = c.vz;
+  const x = clamp(c.x, -WORLD_HALF, WORLD_HALF);
+  const z = clamp(c.z, -WORLD_HALF, WORLD_HALF);
+  const ground = Math.max(heightAt(x, z), scrapTop, baseTop);
+  const hs = Math.hypot(vx, vz);
+
+  let y: number;
+  let grounded: boolean;
+  const ballisticVy = Math.max(vy + GRAVITY * DT, MAX_FALL);
+  if (s.grounded && !hop && ground >= s.y + ballisticVy * DT - BIKE_LAUNCH_EPS) {
+    // Riding the surface: climb with it. Capped so a step onto scrap doesn't fire the bike into the sky.
+    vy = Math.min((ground - s.y) / DT, hs * 0.8 + 1);
+    y = ground;
+    grounded = true;
+  } else {
+    // Leaving the ground keeps the climb rate it had (that's what throws it off a crest); a hop adds to it.
+    vy = hop ? Math.max(vy, 0) + BIKE_HOP : ballisticVy;
+    y = s.y + vy * DT;
+    grounded = false;
+    if (y <= ground) {
+      // Landing: what goes into the sand is the speed across the slope, not the fall speed, so touching down
+      // on a down-slope along the flight path is smooth. A hard one costs speed and bogs the engine down.
+      const g = ground > heightAt(x, z) + 0.02 ? flatSlope : slopeAt(x, z, tmpSlope);
+      const impact = g.gx * vx + g.gz * vz - vy;
+      if (impact > BIKE_HARD_LANDING) landTicks = Math.min(MAX_LAND_TICKS, Math.round(impact - BIKE_HARD_LANDING) * 2 + 8);
+      const keep = impact > 4 ? BIKE_LAND_KEEP : 1;
+      vx *= keep;
+      vz *= keep;
+      y = ground;
+      vy = 0;
+      grounded = true;
+    }
+  }
+  const ceiling = baseCeiling(x, z, PLAYER_HEIGHT);
+  if (y > ceiling) {
+    y = ceiling;
+    if (vy > 0) vy = 0;
+  }
+  h = Math.atan2(Math.sin(h), Math.cos(h));
+  return {
+    x, y, z, vx, vy, vz, facing: h, grounded, airJumps: AIR_JUMPS, jumpHeld: jumpDown, landTicks,
+    sliding: false, crouching: false, slideCool: s.slideCool, riding: true, bikeHeld: bikeDown, heading: h,
+  };
 }
 
 /** Move the 2D vector (vx, vz) towards (tx, tz) by at most maxDelta (length, not per axis). */

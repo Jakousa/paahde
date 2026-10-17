@@ -2,6 +2,19 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Dev helpers: spawn at base, sand bike
+
+- `?spawn=base` puts you in front of the base's door on join, instead of where you logged off (a reconnect
+  keeps your position). Sent as `spawn: 'base'` in `hello`.
+- **9 gets on / off a sand bike** (in `npm run dev`, or with `?debug` on the live site). It's the `BIKE` input
+  bit, so it goes through prediction like everything else: `stepBike()` in `shared/sim.ts`. W throttle, S
+  brake/reverse, A/D steer, Space hops; the mouse just looks around and the camera turns with the bike.
+  Bicycle-model steering, limited tyre grip (hard turns drift), slope gravity, and it rides the surface until
+  the sand falls away faster than gravity can follow, so dune crests at speed throw it into the air.
+- Model: `tools/blender/sandbike.py` → `public/models/sandbike.glb`; drawn by `src/bike.ts` (pitch along the
+  sand or flight path, lean into turns, spinning wheels, turning bars, tyre track). The rider is the crouched
+  avatar sat on the pegs. Getting off makes the bike vanish; it isn't a world object, and isn't saved.
+
 ## 2026-10-17 — Item models and icons (issue #8)
 
 - `tools/blender/items.py` builds battery, electric motor and heat sink in four tiers (`scrap`, `basic`,
@@ -34,8 +47,13 @@ New goal: plant and grow nature, push back the desert. The players' home is a ho
   `exterior` (machines; `condenser_rotor` and `windpump_rotor` spin faster in wind).
   `src/world/base.ts` loads them: glass is see-through and shadowless (sun and moon patches through the
   portholes are real), two warm point lights light the inside at night.
-- **Next:** make the planters interactive (plant, water, grow through the stages, synced), carry water
-  from the condenser, and let greenery spread outward from the base.
+- **Planters** (`shared/garden.ts`, `server/garden.ts`): the six greenhouse beds are shared and persisted
+  (`garden` table). Look at a bed and press F: an empty bed is planted (sprouts), sprouts grow on their own
+  after `GROW_MS` (6 min), a grown bed is harvested back to soil. The server checks reach and broadcasts every
+  bed's stage (`garden` message); `src/world/base.ts` swaps the three planter models. Harvests give nothing
+  yet, and there is no watering.
+- **Next:** carry water from the condenser and make beds need it, give harvests a use (food, seeds), and
+  let greenery spread outward from the base.
 
 ## 2026-10-17 — Day and night
 

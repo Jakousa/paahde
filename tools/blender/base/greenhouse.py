@@ -26,6 +26,10 @@ import bmesh
 import bpy
 from mathutils import Euler, Matrix, Vector
 
+sys.dont_write_bytecode = True  # no __pycache__ next to the scripts
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from coplanar import separate_coplanar  # noqa: E402
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
 # name: (sRGB hex, roughness, metallic)
@@ -328,6 +332,7 @@ class MB:
         self._tag(res['verts'], heart)
 
     def finish(self, name):
+        separate_coplanar(self.bm)
         mesh = bpy.data.meshes.new(name)
         # Triangulate here (not in the exporter) so the output is byte-identical between runs.
         bmesh.ops.triangulate(self.bm, faces=self.bm.faces[:], quad_method='FIXED', ngon_method='EAR_CLIP')
