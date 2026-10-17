@@ -45,6 +45,8 @@ const css = `
 #invOverlay .box { padding: 10px 12px 12px; border-radius: 8px; background: rgba(28, 15, 7, 0.88);
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.45); }
 #invOverlay .box.storage { box-shadow: 0 0 0 1px rgba(255, 200, 120, 0.35), 0 8px 30px rgba(0, 0, 0, 0.45); }
+/* Chests grow without end (shared/storage.ts growChest): past ~6 rows they scroll. */
+#invOverlay .box.storage .grid { max-height: 346px; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
 #invOverlay .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 #invOverlay h3 { margin: 0; font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
   opacity: 0.75; }
@@ -334,7 +336,17 @@ export class InventoryHud {
       html += `<div class="box"><div class="head"><h3>Storage</h3></div><div class="none">Nothing in reach. Stand by the workbench or the
         chest in the base, or ride the motorcycle, and it opens here.</div></div>`;
     }
+    // Re-rendering resets scrolling: keep each long chest where it was.
+    const scrolled = new Map<string, number>();
+    for (const el of this.boxesEl.querySelectorAll<HTMLElement>('.storage .grid')) {
+      const box = el.querySelector<HTMLElement>('[data-box]')?.dataset.box;
+      if (box) scrolled.set(box, el.scrollTop);
+    }
     this.boxesEl.innerHTML = html;
+    for (const el of this.boxesEl.querySelectorAll<HTMLElement>('.storage .grid')) {
+      const top = scrolled.get(el.querySelector<HTMLElement>('[data-box]')?.dataset.box ?? '');
+      if (top) el.scrollTop = top;
+    }
     if (this.drag) this.slotEl(this.drag.box, this.drag.i)?.classList.add('dragging');
   }
 

@@ -32,6 +32,7 @@ import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
+import { growChest, isShared } from '../shared/storage.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
@@ -173,6 +174,7 @@ export class Net {
   /** Move a stack between boxes (shared/gear.ts tryMove): applied now, the server answers with both boxes. False if refused. */
   moveItem(from: string, fi: number, to: string, ti: number, n?: number): boolean {
     if (!this.connected || !tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId)) return false;
+    this.growChests(from, to);
     this.send({ t: 'move', from, fi, to, ti, ...(n !== undefined ? { n } : {}) });
     this.onItems?.(from);
     if (to !== from) this.onItems?.(to);
@@ -182,6 +184,7 @@ export class Net {
   /** Fit a part into slot `slot` of the item on the workbench (shared/gear.ts fitPart). False if refused. */
   fit(from: string, fi: number, slot: number): boolean {
     if (!this.connected || !fitPart(this.boxes, from, fi, slot, () => --this.tempId)) return false;
+    this.growChests(from);
     this.send({ t: 'fit', from, fi, slot });
     for (const box of new Set([from, 'bag', 'bench'])) this.onItems?.(box);
     return true;
@@ -190,9 +193,15 @@ export class Net {
   /** Take a part out of the workbench item into box `to` slot ti (-1: anywhere). False if refused. */
   unfit(slot: number, to: string, ti: number): boolean {
     if (!this.connected || !unfitPart(this.boxes, slot, to, ti, () => --this.tempId)) return false;
+    this.growChests(to);
     this.send({ t: 'unfit', slot, to, ti });
     for (const box of new Set([to, 'bench'])) this.onItems?.(box);
     return true;
+  }
+
+  /** Chests are endless (shared/storage.ts growChest): resize the ones a predicted change touched, like the server does. */
+  private growChests(...boxes: string[]) {
+    for (const b of boxes) if (isShared(b) && this.boxes[b]) growChest(this.boxes[b]);
   }
 
   /** Tidy a box (the bag's hotbar stays put, and nothing goes past the backpack). */
@@ -205,6 +214,7 @@ export class Net {
       sortItems(part, HOTBAR);
       slots.splice(0, size, ...part);
     } else sortItems(slots);
+    this.growChests(box);
     this.send({ t: 'sort', box });
     this.onItems?.(box);
   }

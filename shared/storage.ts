@@ -1,15 +1,18 @@
 // Storage: the item boxes a player can reach besides their bag (shared/items.ts). Chests stand in the
-// base (the 'chest' pieces in shared/base.ts) and are shared by everyone; the sand bike has a few slots of
+// base (the 'chest' pieces in shared/base.ts) and are shared by everyone, and never fill up (growChest); the sand bike has a few slots of
 // its own, reachable while riding it. Every player also has their equipment ('equip', shared/gear.ts),
 // always open, and a slot on the workbench ('bench') for the item they are repairing, open beside it. The client lists whatever is open next to the bag in the Tab
 // inventory (src/inventory.ts); the server checks the same thing, with slack, before every move.
 import { BASE, BASE_PIECES } from './base.ts';
 import { EQUIP_SLOTS } from './gear.ts';
-import { BAG_SLOTS } from './items.ts';
+import { BAG_SLOTS, type Slots } from './items.ts';
 import type { PlayerState } from './sim.ts';
 import { STATION_REACH, STATIONS, stationReach } from './stations.ts';
 
+/** A chest's size when (nearly) empty; it grows a row at a time as it fills (growChest). */
 export const CHEST_SLOTS = 16;
+/** Slots per row in the inventory overlay. */
+const CHEST_ROW = 4;
 export const BIKE_SLOTS = 8;
 /** A chest opens when your feet are this close (m, horizontally) to its centre, on its floor. */
 export const STORAGE_REACH = 2.5;
@@ -32,6 +35,19 @@ export function boxSize(box: string): number {
   if (box === 'bench') return 1;
   if (box === 'bike') return BIKE_SLOTS;
   return chestIndex(box) >= 0 ? CHEST_SLOTS : 0;
+}
+
+/**
+ * Chests are endless: resize a chest's slots to one empty row past its last item (at least CHEST_SLOTS), in place.
+ * Run after anything changes one, on the server and in the client's prediction alike, so both agree on its size.
+ */
+export function growChest(slots: Slots) {
+  let used = slots.length;
+  while (used > 0 && !slots[used - 1]) used--;
+  const n = Math.max(CHEST_SLOTS, (Math.ceil(used / CHEST_ROW) + 1) * CHEST_ROW);
+  const old = slots.length;
+  slots.length = n;
+  if (n > old) slots.fill(null, old);
 }
 
 /** Chest index from a box id, or -1. */

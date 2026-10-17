@@ -4,7 +4,7 @@
 import { bagSize, EQUIP_SLOTS, fitPart, GEAR, isGear, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import { addItem, hasItem, HOTBAR, partKind, sortItems, stackOf, type Item, type Slots } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
-import { boxSize, canOpen, isShared, OWN_BOXES } from '../shared/storage.ts';
+import { boxSize, canOpen, growChest, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { craft, RECIPES } from '../shared/crafting.ts';
 import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
@@ -39,6 +39,7 @@ export class ItemServer {
       const rows = this.db.loadBox(owner, box);
       slots = new Array(Math.max(boxSize(box), ...rows.map((r) => r.slot + 1))).fill(null);
       for (const r of rows) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n, ...(r.parts ? { parts: r.parts } : {}) };
+      if (isShared(box)) growChest(slots);
       this.boxes.set(key, slots);
       let changed = false;
       for (const it of [...slots]) {
@@ -61,6 +62,7 @@ export class ItemServer {
   }
 
   private save(browserId: string, ...boxes: string[]) {
+    for (const box of boxes) if (isShared(box)) growChest(this.slots(browserId, box));
     this.db.saveBoxes([...new Set(boxes)].map((box) => ({ owner: this.ownerOf(browserId, box), box, slots: this.slots(browserId, box) })));
   }
 
