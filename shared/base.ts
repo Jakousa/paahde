@@ -23,8 +23,9 @@ export const BASE_SPAWN = { x: BASE.x, z: BASE.z + 9 };
 export const WT = 0.3;
 /** Half inner width of the entrance, the stairs and the hallway. */
 export const W = 1.1;
-/** Entrance hut, inner: from the back wall to the door, ceiling height, door half width. */
-export const HUT = { z0: -3.0, z1: 2.0, h: 2.7, door: 0.7 };
+/** Entrance hut, inner: from the back wall to the door, ceiling height, door half width; its thick walls
+ *  (t) and outer height (top): a squat concrete block like a WW2 bunker. */
+export const HUT = { z0: -3.0, z1: 2.0, h: 2.3, door: 0.7, t: 0.6, top: 2.75 };
 /** Stairs: top edge (the landing ends here), steps (rise, run), bottom = the bunker floor. */
 export const STAIRS = { z: 0.6, n: 32, rise: 0.25, run: 0.3 };
 /** Bunker floor height (local). */
@@ -38,7 +39,7 @@ export const ROOM_Z = (HALL.z + ROOM.z) / 2;
 /** Skylight shaft: half width of the opening, collar half width (outer) and height above the pad. */
 export const SKY = { w: 1.4, collar: 1.8, h: 0.5 };
 /** Outer corner radii of the entrance hut and the skylight collar (rounded like a poured bunker). */
-const HUT_R = 0.5, SKY_R = 0.6;
+const HUT_R = 0.8, SKY_R = 0.6;
 /** Tunnel over the stairs: headroom above the stair line, and its highest point (under the pad). */
 const TUNNEL = { headroom: 2.5, top: -0.6 };
 /** Underground walls end just under the sand. */
@@ -74,7 +75,7 @@ export function withPad(x: number, z: number, h: number): number {
 
 /** Local point inside the bunker's footprint (entrance, tunnel, hallway, room, walls included) + margin. */
 function inFootprint(lx: number, lz: number, m: number): boolean {
-  if (Math.abs(lx) < W + WT + m && lz > HALL.z - WT - m && lz < HUT.z1 + WT + m) return true;
+  if (Math.abs(lx) < W + HUT.t + m && lz > HALL.z - WT - m && lz < HUT.z1 + HUT.t + m) return true;
   return Math.abs(lx) < ROOM.w + WT + m && lz > ROOM.z - WT - m && lz < HALL.z + WT + m;
 }
 
@@ -86,7 +87,7 @@ export function overBase(x: number, z: number, margin = 0): boolean {
 /** True where a building stands on the surface (the entrance hut, the skylight's collar) + margin. */
 export function insideBase(x: number, z: number, margin = 0): boolean {
   const lx = x - BASE.x, lz = z - BASE.z;
-  if (Math.abs(lx) < W + WT + margin && lz > HUT.z0 - WT - margin && lz < HUT.z1 + WT + margin) return true;
+  if (Math.abs(lx) < W + HUT.t + margin && lz > HUT.z0 - HUT.t - margin && lz < HUT.z1 + HUT.t + margin) return true;
   return Math.abs(lx) < SKY.collar + margin && Math.abs(lz - ROOM_Z) < SKY.collar + margin;
 }
 
@@ -96,7 +97,7 @@ export function insideBase(x: number, z: number, margin = 0): boolean {
  */
 export function inBase(x: number, y: number, z: number, margin = 0): boolean {
   const lx = x - BASE.x, lz = z - BASE.z, ly = y - BASE.y;
-  if (Math.abs(lx) < W + WT + margin && lz > HUT.z0 - WT - margin && lz < HUT.z1 + WT + margin) return ly < HUT.h;
+  if (Math.abs(lx) < W + HUT.t + margin && lz > HUT.z0 - HUT.t - margin && lz < HUT.z1 + HUT.t + margin) return ly < HUT.h;
   return ly < BURIED_TOP && inFootprint(lx, lz, margin);
 }
 
@@ -162,21 +163,22 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
     const [a, b] = QUARTER[i], [c, d] = QUARTER[i + 1];
     wall(cx + sx * rc * a, cz + sz * rc * b, cx + sx * rc * c, cz + sz * rc * d, y0, top, r);
   }
-}{
-  const xs = W + WT / 2, r = WT / 2;
-  const front = HUT.z1 + WT / 2, back = HUT.z0 - WT / 2;
-  // Entrance hut: side walls go all the way down (they are the stairwell's too), the doorway in front,
-  // and the back wall stops over the tunnel. Its outer corners are rounded.
-  const cx = W + WT - HUT_R, rc = HUT_R - r;
-  const cf = HUT.z1 + WT - HUT_R, cb = HUT.z0 - WT + HUT_R;
-  wall(-xs, cb, -xs, cf, -Infinity, WALL_H);
-  wall(xs, cb, xs, cf, -Infinity, WALL_H);
-  wall(-cx, front, -HUT.door - r, front, -Infinity, WALL_H);
-  wall(HUT.door + r, front, cx, front, -Infinity, WALL_H);
-  wall(-cx, back, cx, back, TUNNEL.top, WALL_H);
+}
+{
+  const xs = W + WT / 2, back = HUT.z0 - WT / 2;
+  // Entrance hut: thick walls (their inner faces are the stairwell's too, all the way down), the doorway
+  // in front, and the back wall stops over the tunnel. Its outer corners are rounded.
+  const r = HUT.t / 2, xh = W + r, fh = HUT.z1 + r, bh = HUT.z0 - r;
+  const cx = W + HUT.t - HUT_R, rc = HUT_R - r;
+  const cf = HUT.z1 + HUT.t - HUT_R, cb = HUT.z0 - HUT.t + HUT_R;
+  wall(-xh, cb, -xh, cf, -Infinity, WALL_H, r);
+  wall(xh, cb, xh, cf, -Infinity, WALL_H, r);
+  wall(-cx, fh, -HUT.door - r, fh, -Infinity, WALL_H, r);
+  wall(HUT.door + r, fh, cx, fh, -Infinity, WALL_H, r);
+  wall(-cx, bh, cx, bh, TUNNEL.top, WALL_H, r);
   for (const s of [-1, 1]) {
-    arc(s * cx, cf, rc, s, 1, -Infinity, WALL_H);
-    arc(s * cx, cb, rc, s, -1, -Infinity, WALL_H);
+    arc(s * cx, cf, rc, s, 1, -Infinity, WALL_H, r);
+    arc(s * cx, cb, rc, s, -1, -Infinity, WALL_H, r);
   }
   // Tunnel and hallway under the sand, into the room's front wall.
   const hz = HALL.z + WT / 2, rx = ROOM.w + WT / 2, rz = ROOM.z - WT / 2;

@@ -9,7 +9,7 @@
 // Deterministic (no time, no randomness), but it uses the sun's trig, so it is not bit-exact across JS
 // engines: fine, since only the server decides. Cost: ~80 heightAt calls worst case (~20 µs), usually far
 // fewer, since the ray stops as soon as it rises above the highest possible ground.
-import { BASE, HUT, ROOM_Z, SKY, W, WT } from './base.ts';
+import { BASE, HUT, ROOM_Z, SKY, W } from './base.ts';
 import { MAX_EDIT_MM } from './dig.ts';
 import { scrapPieces, scrapTaken, SCRAP_CELL, type ScrapPiece } from './scrap.ts';
 import { DECL, skyVector, sunHourAngle, type Vec3 } from './sun.ts';
@@ -26,12 +26,11 @@ const SCRAP_DIST = 25;
 /** Sun this close to the horizon (sin of its elevation) counts as set. */
 const MIN_SUN_Y = 0.01;
 
-/** Boxes that cast shade (world x0, x1, y0, y1, z0, z1): the entrance hut with its roof's overhang, and
- *  the skylight's collar. Match tools/blender/base/bunker.py build_hut(). */
-const ROOF = 0.12;
+/** Boxes that cast shade (world x0, x1, y0, y1, z0, z1): the entrance hut and the skylight's collar.
+ *  Match tools/blender/base/bunker.py build_hut(). */
 const BOXES: [number, number, number, number, number, number][] = [
-  [BASE.x - W - WT - ROOF, BASE.x + W + WT + ROOF, BASE.y - 0.3, BASE.y + HUT.h + 0.48,
-    BASE.z + HUT.z0 - WT - ROOF, BASE.z + HUT.z1 + WT + ROOF],
+  [BASE.x - W - HUT.t, BASE.x + W + HUT.t, BASE.y - 0.3, BASE.y + HUT.top,
+    BASE.z + HUT.z0 - HUT.t, BASE.z + HUT.z1 + HUT.t],
   [BASE.x - SKY.collar, BASE.x + SKY.collar, BASE.y - 0.3, BASE.y + SKY.h,
     BASE.z + ROOM_Z - SKY.collar, BASE.z + ROOM_Z + SKY.collar],
 ];

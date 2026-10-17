@@ -33,22 +33,25 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 # --- layout (shared/base.ts) ---------------------------------------------------------------------
 WT = 0.3
 W = 1.1
-HUT_Z0, HUT_Z1, HUT_H, DOOR, DOOR_H = -3.0, 2.0, 2.7, 0.7, 2.2
+HUT_Z0, HUT_Z1, HUT_H, DOOR, DOOR_H = -3.0, 2.0, 2.3, 0.7, 1.95
+HUT_T, HUT_TOP = 0.6, 2.75  # the entrance's wall thickness and outer height (shared/base.ts HUT.t, HUT.top)
+HUT_FILLET = 0.4  # its rounded-over top edge
 ST_Z, ST_N, ST_RISE, ST_RUN = 0.6, 32, 0.25, 0.3
 FLOOR = -ST_N * ST_RISE
 HALL_Z, HALL_H = -12.0, 2.6
 ROOM_W, ROOM_Z0, ROOM_H = 8.0, -28.0, 6.0
 ROOM_Z = (HALL_Z + ROOM_Z0) / 2
 SKY_W, SKY_COLLAR, SKY_H = 1.4, 1.8, 0.5
-HUT_R, SKY_R = 0.5, 0.6  # outer corner radii of the hut and the skylight collar (shared/base.ts HUT_R, SKY_R)
+HUT_R, SKY_R = 0.8, 0.6  # outer corner radii of the hut and the skylight collar (shared/base.ts HUT_R, SKY_R)
 TUNNEL_HEADROOM, TUNNEL_TOP = 2.5, -0.6
 BURIED_TOP = -0.3
 CEIL = FLOOR + ROOM_H
-BULB = (0, 2.25, HUT_Z0 + 0.25)  # the hut's bulb (src/world/base.ts puts a light there)
+BULB = (0, 1.95, HUT_Z0 + 0.25)  # the hut's bulb (src/world/base.ts puts a light there)
 
 # name: (sRGB hex, roughness, metallic, double_sided)
 MATERIALS = {
-    'Plaster': (0xc9a77c, 0.95, 0.0, False),
+    'Bunker': (0xb09f86, 0.97, 0.0, False),
+    'BunkerDark': (0x8c7c66, 0.97, 0.0, False),
     'Concrete': (0x9a8f80, 0.92, 0.0, False),
     'ConcreteDark': (0x6f675d, 0.95, 0.0, False),
     'Steel': (0x5c5a56, 0.5, 0.6, False),
@@ -169,14 +172,19 @@ class MB:
         """Prism: polygon [(x, z), ...] in the game XZ plane, extruded from height y0 to y1."""
         self.loft([(pts, y0), (pts, y1)], mat)
 
-    def loft(self, loops, mat):
-        """Solid through loops [([(x, z), ...], y), ...] of equal length, bottom to top, capped."""
+    def loft(self, loops, mat, bottom=True, top=True, skip=()):
+        """Solid through loops [([(x, z), ...], y), ...] of equal length, bottom to top, capped on top (and
+        bottom). `skip` leaves holes: (k, i) is the face between loops k and k+1 from point i to i+1."""
         rings = [[self.bm.verts.new(G(x, y, z)) for x, z in pts] for pts, y in loops]
         idx = self.mi(mat)
-        fs = [self.bm.faces.new(rings[0]), self.bm.faces.new(list(reversed(rings[-1])))]
+        fs = [self.bm.faces.new(list(reversed(rings[-1])))] if top else []
+        if bottom:
+            fs.append(self.bm.faces.new(rings[0]))
         n = len(rings[0])
-        for a, b in zip(rings, rings[1:]):
+        for k, (a, b) in enumerate(zip(rings, rings[1:])):
             for i in range(n):
+                if (k, i) in skip:
+                    continue
                 j = (i + 1) % n
                 fs.append(self.bm.faces.new([a[i], a[j], b[j], b[i]]))
         for f in fs:
@@ -223,42 +231,51 @@ def rounded_rect(hx, hz, r, zc, seg=6):
 
 
 # =================================================================================================
+def front_ring(hx, hz, r, zc, door):
+    """rounded_rect() with two more points on its front (+Z) edge at x = ±door; returns it and the index of
+    its doorway edge (from +door to -door)."""
+    pts = rounded_rect(hx, hz, r, zc)
+    seg = len(pts) // 4 - 1
+    pts[seg + 1:seg + 1] = [(door, zc + hz), (-door, zc + hz)]
+    return pts, seg + 1
+
+
 def build_hut():
+    """The entrance: one squat block of poured concrete, thick walls, rounded corners and top edge, the
+    doorway sunk into its front wall. Hollow and open at the bottom (the stairs go down inside)."""
     mb = MB()
-    xo = W + WT  # outer half width
     front, back = HUT_Z1, HUT_Z0
-    top = HUT_H + 0.3
-    base = -0.3  # walls go a little under the sand
-    # Side walls.
-    # Rounded outer corners, like a poured bunker; the straight walls run between them.
-    zc, hz = (front + back) / 2, (front - back) / 2
-    cx, cz = xo - HUT_R, hz + WT - HUT_R
+    zc, hz = (front + back) / 2, (front - back) / 2 + HUT_T
+    xo, fo = W + HUT_T, front + HUT_T  # outer half width, outer front
+    base = -0.3  # a little under the sand
+    f = HUT_FILLET
+    prof = [(0, base), (0, 0), (0, DOOR_H), (0, HUT_TOP - f)]
+    prof += [(-f + f * math.cos(a), HUT_TOP - f + f * math.sin(a)) for a in (math.pi / 2 * k / 5 for k in range(1, 6))]
+    loops = []
+    for d, y in prof:
+        pts, door = front_ring(xo + d, hz + d, HUT_R + d, zc, DOOR)
+        loops.append((pts, y))
+    mb.loft(loops, 'Bunker', bottom=False, skip={(1, door)})
+    # Formwork seams round it (broken by the doorway), and a vision slit in each side.
+    for y in (0.85, 1.7):
+        band = [front_ring(xo + 0.008, hz + 0.008, HUT_R + 0.008, zc, DOOR)[0]]
+        mb.loft([(band[0], y), (band[0], y + 0.03)], 'BunkerDark', bottom=False, top=False, skip={(0, door)})
     for s in (-1, 1):
-        mb.box(s * W, s * xo, base, top, zc - cz, zc + cz, 'Plaster')
-        for t in (-1, 1):
-            mb.corner(W, hz, xo, hz + WT, HUT_R, TUNNEL_TOP, top, s, t, zc, 'Plaster')
-    # Front wall with the doorway, and a steel frame round it.
-    mb.box(-cx, -DOOR, base, top, front, front + WT, 'Plaster')
-    mb.box(DOOR, cx, base, top, front, front + WT, 'Plaster')
-    mb.box(-DOOR, DOOR, DOOR_H, top, front, front + WT, 'Plaster')
-    f = 0.06
+        mb.box(s * (xo - 0.02), s * (xo + 0.01), 1.3, 1.4, zc - 0.5, zc + 0.5, 'Iron')
+    # The doorway's reveal through the wall (faces just inside the shell, so they don't z-fight it).
+    e = 0.005
     for s in (-1, 1):
-        mb.box(s * DOOR - f / 2, s * DOOR + f / 2, 0, DOOR_H + f, front - 0.02, front + WT + 0.02, 'Steel')
-    mb.box(-DOOR - f / 2, DOOR + f / 2, DOOR_H, DOOR_H + f, front - 0.02, front + WT + 0.02, 'Steel')
-    # Back wall: stops over the tunnel's ceiling.
-    mb.box(-cx, cx, TUNNEL_TOP, top, back - WT, back, 'Plaster')
-    # Roof: slab with a small overhang, its top edge rounded over, a vent pipe.
-    o, th, f = 0.12, 0.25, 0.12
-    rt = top + th
-    prof = [(o, top), (o, rt - f)] + [(o - f + f * math.cos(a), rt - f + f * math.sin(a))
-                                      for a in (math.pi / 2 * k / 4 for k in range(1, 5))]
-    mb.loft([(rounded_rect(xo + d, hz + WT + d, HUT_R + d, zc), y) for d, y in prof], 'Plaster')
-    mb.cyl((0.6, rt, back + 0.4), (0.6, rt + 0.57, back + 0.4), 0.09, 'Rust', seg=8)
-    mb.cyl((0.6, rt + 0.57, back + 0.4), (0.6, rt + 0.64, back + 0.4), 0.14, 'Rust', seg=8)
-    # Landing floor and a steel threshold.
+        mb.box(s * W, s * DOOR, 0, DOOR_H, front, fo - e, 'Bunker')
+    mb.box(-DOOR, DOOR, DOOR_H, HUT_H, front, fo - e, 'Bunker')
+    # Steel frame round the outside of the doorway, a steel threshold through it.
+    g = 0.07
+    for s in (-1, 1):
+        mb.box(s * DOOR - g / 2, s * DOOR + g / 2, 0, DOOR_H + g, fo - 0.05, fo + 0.02, 'Steel')
+    mb.box(-DOOR - g / 2, DOOR + g / 2, DOOR_H, DOOR_H + g, fo - 0.05, fo + 0.02, 'Steel')
+    # Landing floor, the threshold, and the nosing of the top step.
     mb.box(-W, W, -0.25, 0, ST_Z, front, 'Concrete')
-    mb.box(-DOOR, DOOR, -0.25, 0.01, front, front + WT, 'Steel')
-    mb.box(-W, W, -0.06, 0.005, ST_Z, ST_Z + 0.05, 'Steel')  # nosing of the top step
+    mb.box(-DOOR, DOOR, -0.25, 0.01, front, fo, 'Steel')
+    mb.box(-W, W, -0.06, 0.005, ST_Z, ST_Z + 0.05, 'Steel')
     # Skylight collar on the room's centre, glass and a steel grid over it.
     c, w = SKY_COLLAR, SKY_W
     z = ROOM_Z

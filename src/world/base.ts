@@ -28,7 +28,7 @@ export function outsideTerrainHoles(): Node<'bool'> {
 /** Bounce light under the skylight: intensity at full daylight, and how far it reaches. */
 const BOUNCE = { intensity: 14, distance: 22 };
 /** The bulb over the stairs (local position matches tools/blender/base/bunker.py BULB). */
-const BULB = { x: 0, y: 2.25, z: HUT.z0 + 0.25, intensity: 2, distance: 9 };
+const BULB = { x: 0, y: 1.95, z: HUT.z0 + 0.25, intensity: 2, distance: 9 };
 /** Ceiling lamps (local x, z; they hang from the ceiling there): the hallway, over the work tables, by the
  *  room's front and back walls. Each has a warm point light at its bulb. */
 const LAMPS = [
