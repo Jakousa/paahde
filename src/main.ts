@@ -283,7 +283,7 @@ renderer.setAnimationLoop((time) => {
   footsteps.listener(orbit.camera.position, orbit.yaw);
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
-  // F: use the work station in view, else tend the greenhouse bed in view (planted beds can't be touched
+  // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
   // Placing from the hotbar and G to pick placed things up (src/placing.ts); its prompt goes after F's.

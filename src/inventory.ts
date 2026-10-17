@@ -60,7 +60,7 @@ const css = `
 #invOverlay .slot .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
 #invOverlay .slot svg, #invGhost svg { width: 30px; height: 34px; }
-#invOverlay .slot img, #invGhost img { width: 46px; height: 46px; pointer-events: none; }
+#invOverlay .slot img, #invGhost img, #invOverlay .recipe .ico img { width: 46px; height: 46px; pointer-events: none; }
 #invOverlay .slot .tile, #invGhost .tile { font: 700 18px var(--mono); color: var(--c); }
 #invOverlay .slot.rare { box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.12), inset 0 -3px 0 var(--c);
   background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--c) 22%, transparent), rgba(255, 240, 220, 0.04) 70%); }

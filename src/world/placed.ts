@@ -116,6 +116,6 @@ export class PlacedView {
 function poolMaterial() {
   const m = new THREE.MeshBasicNodeMaterial({ color: 0xb04dff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const q = uv().sub(0.5).abs().mul(2);
-  m.opacityNode = float(0.3).mul(float(1).sub(smoothstep(0.55, 1, q.x))).mul(float(1).sub(smoothstep(0.1, 1, q.y)));
+  m.opacityNode = float(0.18).mul(float(1).sub(smoothstep(0.55, 1, q.x))).mul(float(1).sub(smoothstep(0.1, 1, q.y)));
   return m;
 }
