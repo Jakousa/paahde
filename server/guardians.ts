@@ -4,7 +4,7 @@
 //
 // Guardians are few and roam guardian ground (crash sites of level 2, shared/crashsites.ts SiteLevel) from site to
 // site. Crawlers and drones belong to a crash site: they turn up there when someone comes near (crawlers any time at
-// crawler and guardian ground, drones at night at guardian ground) and go when everyone has left. The scrap fields
+// crawler and guardian ground, drones at night there too) and go when everyone has left. The scrap fields
 // (level 0) near the base have none.
 import { BASE, inBase } from '../shared/base.ts';
 import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
@@ -123,7 +123,7 @@ export class GuardianServer {
   /** Player positions last tick, for leading the missiles. */
   private lastPos = new Map<number, { x: number; z: number }>();
   private sites = allCrashSites();
-  /** Guardian ground: the sites guardians roam and drones guard. */
+  /** Guardian ground: the sites guardians roam. */
   private ground = this.sites.filter((s) => s.level === 2);
   private nextDrone = 1;
   private nextWalker = 1;
@@ -407,9 +407,10 @@ export class GuardianServer {
   private tickDrones(dt: number, now: number, tod: number, players: BotPlayer[], exposed: BotPlayer[], byId: Map<number, BotPlayer>): Set<number> {
     const lit = new Set<number>();
     const night = sunElevation(tod) < NIGHT_SUN;
-    // At night, every guardian-ground site someone is near has its drones over it.
+    // At night, every crawler- or guardian-ground site someone is near has its drones over it (not the scrap fields).
     if (night) {
-      for (const s of this.ground) {
+      for (const s of this.sites) {
+        if (s.level === 0) continue;
         if (this.drones.length >= MAX_DRONES) break;
         if (!exposed.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_NEAR_R)) continue;
         let have = this.drones.filter((d) => !d.leaving && d.site === s.id).length;

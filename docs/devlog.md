@@ -14,9 +14,11 @@ A new player starts with nothing, and the crash sites now lead them on in three 
   machines come back 20 min after being carried off (`STARTER_RESPAWN_MS`, server/crash.ts), because every new player
   needs them. The broken canteen, telescope and backpack lie here (server/loot.ts `FINDS`). The laser rifle's plank,
   sheet, coils and battery come from the debris and the beacons. Nothing turns up by the spawn point any more.
-- **Crawler ground (level 1):** crawlers swarm, and the large machine is mostly the pump housing (motor, bearing, valve).
+- **Crawler ground (level 1):** crawlers swarm, and at night drones search here too: as everywhere, their searchlight
+  calls in guardians within `ALERT_R` and missiles from guardians within `MISSILE_R` (shared/missiles.ts), which
+  reach in from guardian ground. The large machine is mostly the pump housing (motor, bearing, valve).
   The motorcycle, shovel, storm detector, wristpad and metal detector are found here.
-- **Guardian ground (level 2):** the 4 guardians roam only these sites, and the night drones only guard these.
+- **Guardian ground (level 2):** the 4 guardians roam only these sites, and a drone's searchlight brings them.
   The large machines are mostly jet engines, and their parts roll with `LEVEL_TIERS` (much more Quality and Space-grade).
   Loose Quality/Space-grade parts lie around (`RARE_FINDS`). The warp core salvage wreck only lies out here.
 
