@@ -1,7 +1,10 @@
-// Sounds of the laser rifle (src/rifle.ts) and of what it does to the walkers, synthesised:
-// - shot: a sharp crack, the laser's falling zap, a low punch you feel in the shoulder, and the desert answering
-//   with a dull slap off the dunes a moment later. Your own is dry and in your head; another player's is placed in
-//   3D and heard late by the distance, like the guardians' footfalls.
+// Sounds of the laser rifle (src/rifle.ts) and of what it does to the walkers:
+// - shot: one of three pulses cut from Defunct3's "Pulse laser" (CC0, public/credits.txt; laser-1..3.mp3, mono,
+//   0.40–0.55 s, each levelled to −18.5 LUFS momentary, true peak ≤ −1.5 dBTP), picked at random and a little
+//   off pitch each time; the pistol plays them higher and lighter. Then the desert answers, synthesised: a dull
+//   slap off the dunes a moment later. Your own is dry and in your head; another player's is placed in 3D and
+//   heard late by the distance, like the guardians' footfalls.
+// The rest is synthesised:
 // - recharge: the cell whining back up between shots, with a click when it's ready.
 // - impact: where the beam struck: a hiss of sand, a metal ping, or the red glass of a weak point shattering with an
 //   electric fizz.
@@ -13,6 +16,9 @@ import { audio } from './audio';
 
 const SPEED_OF_SOUND = 343;
 const SHOT_GAIN = 0.75;
+/** The pulse samples, on top of SHOT_GAIN: together about 1. */
+const PULSE_GAIN = 1.3;
+const PULSES = ['./audio/laser-1.mp3', './audio/laser-2.mp3', './audio/laser-3.mp3'];
 const CHARGE_GAIN = 0.035;
 const IMPACT_GAIN = 1.2;
 const DEATH_GAIN = 1.8;
@@ -87,6 +93,18 @@ function tone(ctx: AudioContext, to: AudioNode, t: number, len: number, type: Os
 
 class RifleSound {
   private charge: { osc: OscillatorNode; gain: GainNode } | null = null;
+  private pulses: AudioBuffer[] = [];
+
+  constructor() {
+    audio.onStart((ctx) => {
+      for (const src of PULSES) {
+        fetch(src)
+          .then((r) => r.arrayBuffer())
+          .then((d) => ctx.decodeAudioData(d))
+          .then((b) => this.pulses.push(b), (e) => console.warn('laser sound failed to load', src, e));
+      }
+    });
+  }
 
   /** A shot: yours (`at` null) or someone else's at `at`, heard from `ear`. `pistol`: the laser pistol's, higher,
    *  shorter and lighter. */
@@ -97,21 +115,19 @@ class RifleSound {
     if (d > 600) return;
     const t = ctx.currentTime + d / SPEED_OF_SOUND;
     const o = bus(ctx, out, SHOT_GAIN * (pistol ? 0.75 : 1), at, ear, 15);
-    // The pistol: up in pitch, quicker, less body.
-    const f = pistol ? 1.6 : 1, len = pistol ? 0.6 : 1;
-    // Crack.
-    hiss(ctx, o, t, 0.05 * len, 'highpass', 2500 * f, 0.7, 0.9, 0.001);
-    // The laser: a bright zap falling away, a sub-octave buzz under it.
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(9000 * Math.min(f, 1.3), t);
-    lp.frequency.exponentialRampToValueAtTime(600 * f, t + 0.22 * len);
-    lp.Q.value = 4;
-    lp.connect(o);
-    tone(ctx, lp, t, 0.22 * len, 'sawtooth', 2600 * f, 160 * f, 0.45);
-    tone(ctx, lp, t, 0.16 * len, 'square', 1300 * f, 90 * f, 0.18);
-    // Punch.
-    tone(ctx, o, t, 0.14 * len, 'sine', 120 * f, 38 * f, pistol ? 0.5 : 0.9, 0.002);
+    // The pistol: up in pitch (so quicker), less body.
+    const len = pistol ? 0.6 : 1;
+    const buf = this.pulses[Math.floor(Math.random() * this.pulses.length)];
+    if (buf) {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = (pistol ? 1.35 : 1) * (0.96 + Math.random() * 0.08);
+      const g = ctx.createGain();
+      g.gain.value = PULSE_GAIN;
+      src.connect(g).connect(o);
+      src.start(t);
+      src.onended = () => g.disconnect();
+    }
     // The dunes answer: a dull slap and a tail.
     hiss(ctx, o, t + 0.16 + Math.random() * 0.08, 0.7 * len, 'lowpass', 900, 0.5, 0.16 * len, 0.02);
     hiss(ctx, o, t + 0.42 + Math.random() * 0.15, 0.9 * len, 'lowpass', 600, 0.5, 0.07 * len, 0.04);

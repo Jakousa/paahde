@@ -60,6 +60,13 @@ Liquid Drink (sound)
   Cut into the gulps and the sigh after them, mixed to mono, high-passed at 60 Hz and levelled.
   Files: audio/drink.mp3, audio/sigh.mp3
 
+Pulse laser (sound)
+  By Defunct3 on Freesound (https://freesound.org/s/77172/), CC0
+  (http://creativecommons.org/publicdomain/zero/1.0/).
+  Three shots cut out (the first two before their second pulse), mixed to mono, high-passed at 40 Hz,
+  faded out and levelled to the same loudness.
+  Files: audio/laser-1.mp3, audio/laser-2.mp3, audio/laser-3.mp3
+
 Made for this game
 ------------------
 
