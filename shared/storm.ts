@@ -4,7 +4,7 @@
 // storm is and how strong.
 //
 // A storm is a column of dust drifting downwind (the dunes' WIND). It's announced WARN_MS before it
-// starts (players in its path hear a warning beep), builds over RAMP_MS, blows for 15–90 s in all, and
+// starts (players in its path hear a warning beep), builds over RAMP_MS, blows for 30–150 s in all, and
 // dies down over the last RAMP_MS. Its strength at a point is the envelope times a radial falloff: full
 // out to EDGE·r, nothing past r.
 //
@@ -30,8 +30,8 @@ export type Storm = {
 export const WARN_MS = 20_000; // the best storm detector (shared/gear.ts stormWarnS) warns this early
 /** Build-up and dying down (ms), inside the storm's length. */
 export const RAMP_MS = 6_000;
-export const MIN_LEN_MS = 15_000;
-export const MAX_LEN_MS = 90_000;
+export const MIN_LEN_MS = 30_000;
+export const MAX_LEN_MS = 150_000;
 /** Full strength out to this fraction of the radius, fading to nothing at the radius. */
 export const EDGE = 0.55;
 /** Felt °C added at full strength (outside the base). */
