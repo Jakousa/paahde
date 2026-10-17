@@ -60,6 +60,8 @@ export type ClientMsg =
   | { t: 'drop'; box: string; slot: number }
   // Pick up loot (shared/loot.ts) in reach. Answered with 'items' (or a 'notice' when the bag is full).
   | { t: 'lootTake'; id: number }
+  // Debug menu: bring the nearest guardian 90 m from you, or a searchlight drone over you for a minute (by day too).
+  | { t: 'summon'; what: 'guardian' | 'drone' }
   // Debug menu: repaired gear of every kind, Scrap parts (for testing).
   | { t: 'debugGear' }
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
@@ -166,7 +168,14 @@ export type ServerMsg =
   | { t: 'water'; heat: number; sips: number; maxSips: number; rising: boolean; temp: number; shade: boolean }
   // You died of heatstroke: the server has already moved you to BASE_SPAWN (the next snapshot snaps you
   // there) with no heat and a full canteen; a 'water' follows. For the death screen.
-  | { t: 'died'; cause: 'heat' }
+  // 'beam': a drone's searchlight burned you (heat too, shared/guardians.ts); 'guardian': one walked over you.
+  | { t: 'died'; cause: DeathCause }
   // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time).
   // Sent before 'welcome' on join and to everyone whenever the list changes.
-  | { t: 'storms'; storms: Storm[] };
+  | { t: 'storms'; storms: Storm[] }
+  // Guardians and night drones (shared/guardians.ts) within reach, about 10 times a second, at server time `time`.
+  // g: [id, legs, x, z, yaw, hunt] per guardian; d: [id, x, y, z, yaw, dx, dy, dz, lock] per drone ((dx, dy, dz)
+  // the searchlight's unit direction). hunt / lock: 0 nobody, 1 someone else, 2 you.
+  | { t: 'bots'; time: number; g: number[]; d: number[] };
+
+export type DeathCause = 'heat' | 'beam' | 'guardian';

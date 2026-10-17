@@ -2,6 +2,37 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Guardians and night drones
+
+Giant spider-like walkers ("guardians") patrol the crash sites, and at night searchlight drones hunt players who are
+out in the open.
+- **Server** (`server/guardians.ts`, constants in `shared/guardians.ts`): 8 guardians, one posted at each of the crash
+  sites nearest the base. They walk loops 25–60 m around their site at 1.8 m/s, sometimes stand guard (turning slowly)
+  and sometimes wander to another site within 1 km; they never come within 170 m of the base. Get within 42 m of
+  one and it hunts you at 4.4 m/s (you walk 6); if its body gets within 5 m of you, you're crushed (`died`
+  cause 'guardian'). At night (sun < −3.4°) up to 2 drones per player out in the desert come in from 260 m, patrol
+  20 m up and sweep a searchlight (±37°, 8.6° half-angle). The beam's cone, range and a terrain line-of-sight march
+  decide who's lit (`inBeam`). Locked on, it follows you at 6.5 m/s, burns 5 heat/s (`tickHeat` burn → cause
+  'beam') and calls every guardian within 420 m. Out of the beam (over a dune crest, into the base, or outrun it)
+  for 2.5 s and it lets go. In memory only; ticked at 10 Hz, sent per player as `bots` (within 900 m).
+- **Legs** (`src/world/guardians.ts`): client-side procedural IK, the classic multi-legged recipe: each foot has a
+  rest spot (14 m out along its hip socket, turned with the body, led by the velocity); a planted foot never moves
+  until its spot is 9 m away; then it swings on a sine arc to a point ahead of the rest spot (half the swing's
+  travel), following it as the body moves, and lands. Four legs walk one foot at a time (heavy wave gait) and in
+  diagonal pairs when hunting; tripods one at a time. Swing time comes from speed so they keep up (0.6–1.5 s). The
+  body rides 13 m over the feet's average height on a spring that dips on each landing, tilted to their plane.
+  Two-bone IK, knee bent up and out. References: the Spider Walker Blender add-on's step-threshold approach and
+  the Vulkan tutorial's foot-placement notes.
+- **Feel**: each footfall is a 55→24 Hz thump + rumble + clank, placed in 3D and *delayed by distance at the speed
+  of sound* (you hear far steps after you see them), dust puffs, and camera shake within 90 m. A brass horn when one
+  starts hunting you; drones buzz; a siren while one has you; a blinking HUD warning.
+- **Models**: `tools/blender/guardians.py` → `public/models/guardian.glb` (body ×2, hip, femur, tibia, foot, each
+  origin at its joint) and `drone.glb`. Boxes stand in if they fail to load.
+- Debug menu (F3): "Guardian here" brings the nearest one 90 m from you; "Drone here" sends a drone for a minute, by
+  day too. Drones by night need the shared clock at night ("Apply to all players").
+- Gaps: legs pass through wrecks and players (no collision with legs, only the crush under the body); feet stand on
+  sand only; guardians don't avoid each other.
+
 ## 2026-10-17 — Crash-site debris can be picked up
 
 The debris strewn along each crash trail (hull plates, bent fins, pipe bundles, burnt seats, porthole rings, boiler

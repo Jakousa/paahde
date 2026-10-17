@@ -2,6 +2,7 @@
 // Time of day: a slider that holds the sky at that time (local view only), or, with "Apply to all players",
 // moves the shared server clock for everyone, production included. "Sandstorm here" summons one on you
 // (for everyone, after the usual warning); "Local sandstorm" sends one at you from just upwind at once, seen only by you.
+// "Guardian here" / "Drone here" bring the nearest guardian, or a drone (by day too), to you, for everyone.
 // "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, in your bag and equipment.
 import { ui } from './input';
 import { summonLocalStorm } from './storm';
@@ -13,7 +14,7 @@ export class DebugMenu {
   private panel = document.createElement('div');
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
-  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: () => void) {
+  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: () => void, summonBot: (what: 'guardian' | 'drone') => void) {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
@@ -38,6 +39,8 @@ export class DebugMenu {
 <div class="row"></div>
 <div class="row"><button id="dbgStorm" title="A sandstorm on you, for everyone, after the 20 s warning">Sandstorm here</button>
 <button id="dbgLocalStorm" title="A sandstorm rolling in from upwind right now, only you see it (no heat)">Local sandstorm</button></div>
+<div class="row"><button id="dbgGuardian" title="The nearest guardian, brought 90 m from you (for everyone)">Guardian here</button>
+<button id="dbgDrone" title="A searchlight drone over you for a minute, even by day (for everyone)">Drone here</button></div>
 <div class="row"><button id="dbgGear" title="One of every piece of gear, repaired with Scrap parts (what doesn't fit the bag is skipped)">Give gear</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
@@ -48,6 +51,8 @@ export class DebugMenu {
     p.querySelector('#dbgStorm')!.addEventListener('click', summonStorm);
     p.querySelector('#dbgLocalStorm')!.addEventListener('click', summonLocalStorm);
     p.querySelector('#dbgGear')!.addEventListener('click', giveGear);
+    p.querySelector('#dbgGuardian')!.addEventListener('click', () => summonBot('guardian'));
+    p.querySelector('#dbgDrone')!.addEventListener('click', () => summonBot('drone'));
 
     const show = (tod: number) => {
       slider.value = String(Math.round(tod * 1440) % 1440);

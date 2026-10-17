@@ -24,7 +24,7 @@
 // - Hands: what we hold (canteen, drinking) is sent when it changes and relayed in snapshots, cosmetic only;
 //   with it the selected hotbar slot, which the server digs with (a shovel digs faster).
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
-import type { BenchJob, ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import type { BenchJob, ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { bagShape, boxShape, digTool, fitPart, tryMove, unfitPart } from '../shared/gear.ts';
 import { DEBRIS_ITEMS, HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
@@ -127,8 +127,8 @@ export class Net {
   /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
   water = { heat: 0, sips: 0, maxSips: 0, rising: false, temp: 20, shade: true, at: 0 };
   onWater?: (w: { heat: number; sips: number; rising: boolean; temp: number; shade: boolean }) => void;
-  /** We died (of heatstroke); the server has already moved us back to the base. */
-  onDied?: () => void;
+  /** We died (heatstroke, a drone's beam or a guardian); the server has already moved us back to the base. */
+  onDied?: (cause: DeathCause) => void;
   /** Plant bed stages and growth by placed id (shared/garden.ts), from the server. Beds without one are empty. */
   garden = new Map<number, BedState>();
   /** Placed things changed (shared/placed.ts keeps the list), or a bed's stage did. */
@@ -137,6 +137,9 @@ export class Net {
   onNotice?: (text: string) => void;
   /** Sandstorms announced and not over yet (shared/storm.ts), times on the server clock. */
   storms: Storm[] = [];
+  /** Recent 'bots' messages (guardians and drones, shared/guardians.ts), oldest first; src/world/botFrames.ts
+   *  interpolates them. */
+  bots: Extract<ServerMsg, { t: 'bots' }>[] = [];
   /** A bed we tended was planted or harvested. */
   onTended?: (what: 'planted' | 'harvested') => void;
 
@@ -413,6 +416,11 @@ export class Net {
     this.send({ t: 'setEpoch', epoch: this.epoch });
   }
 
+  /** Debug menu: the nearest guardian, or a drone, brought to us (shared/guardians.ts). */
+  summonBot(what: 'guardian' | 'drone') {
+    this.send({ t: 'summon', what });
+  }
+
   /** Debug menu: a sandstorm where we stand, for everyone. */
   summonStorm() {
     this.send({ t: 'storm' });
@@ -527,7 +535,7 @@ export class Net {
     }
     if (msg.t === 'died') {
       this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
-      return this.onDied?.();
+      return this.onDied?.(msg.cause);
     }
     if (msg.t === 'placed') {
       setPlaced(msg.list);
@@ -541,6 +549,11 @@ export class Net {
     if (msg.t === 'tended') return this.onTended?.(msg.what);
     if (msg.t === 'storms') {
       this.storms = msg.storms;
+      return;
+    }
+    if (msg.t === 'bots') {
+      this.bots.push(msg);
+      if (this.bots.length > 12) this.bots.shift();
       return;
     }
     if (msg.t === 'dug') {

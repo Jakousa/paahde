@@ -1,0 +1,62 @@
+// Guardians and drones between server updates ('bots', ~10 Hz, shared/guardians.ts): drawn BOT_DELAY_MS in the
+// past and interpolated between the two messages around that time, like remote players (src/net.ts).
+import type { ServerMsg } from '../../shared/protocol.ts';
+
+type BotsMsg = Extract<ServerMsg, { t: 'bots' }>;
+
+/** How far behind the server clock (ms) they're drawn: two updates and some jitter. */
+export const BOT_DELAY_MS = 250;
+export const G_STRIDE = 6;
+export const D_STRIDE = 9;
+
+export type GuardianFrame = { id: number; legs: 3 | 4; x: number; z: number; yaw: number; hunt: number };
+export type DroneFrame = { id: number; x: number; y: number; z: number; yaw: number; dx: number; dy: number; dz: number; lock: number };
+
+const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
+
+function index(arr: number[], stride: number) {
+  const m = new Map<number, number>();
+  for (let i = 0; i < arr.length; i += stride) m.set(arr[i], i);
+  return m;
+}
+
+/** The two messages around `time` and how far between them (both the latest when it's past the end). */
+function around(msgs: readonly BotsMsg[], time: number): [BotsMsg, BotsMsg, number] | null {
+  if (!msgs.length) return null;
+  for (let i = msgs.length - 1; i > 0; i--) {
+    const a = msgs[i - 1], b = msgs[i];
+    if (a.time <= time) return [a, b, Math.min(1, Math.max(0, (time - a.time) / Math.max(1, b.time - a.time)))];
+  }
+  return [msgs[0], msgs[0], 0];
+}
+
+export function guardiansAt(msgs: readonly BotsMsg[], time: number): GuardianFrame[] {
+  const ab = around(msgs, time);
+  if (!ab) return [];
+  const [a, b, t] = ab;
+  const ia = index(a.g, G_STRIDE), out: GuardianFrame[] = [];
+  for (let j = 0; j < b.g.length; j += G_STRIDE) {
+    const g = b.g, i = ia.get(g[j]);
+    const p = i === undefined ? g : a.g, k = i === undefined ? j : i;
+    out.push({
+      id: g[j], legs: g[j + 1] === 3 ? 3 : 4, x: p[k + 2] + (g[j + 2] - p[k + 2]) * t, z: p[k + 3] + (g[j + 3] - p[k + 3]) * t,
+      yaw: lerpAngle(p[k + 4], g[j + 4], t), hunt: g[j + 5],
+    });
+  }
+  return out;
+}
+
+export function dronesAt(msgs: readonly BotsMsg[], time: number): DroneFrame[] {
+  const ab = around(msgs, time);
+  if (!ab) return [];
+  const [a, b, t] = ab;
+  const ia = index(a.d, D_STRIDE), out: DroneFrame[] = [];
+  for (let j = 0; j < b.d.length; j += D_STRIDE) {
+    const d = b.d, i = ia.get(d[j]);
+    const p = i === undefined ? d : a.d, k = i === undefined ? j : i;
+    const l = (n: number) => p[k + n] + (d[j + n] - p[k + n]) * t;
+    const dx = l(5), dy = l(6), dz = l(7), len = Math.hypot(dx, dy, dz) || 1;
+    out.push({ id: d[j], x: l(1), y: l(2), z: l(3), yaw: lerpAngle(p[k + 4], d[j + 4], t), dx: dx / len, dy: dy / len, dz: dz / len, lock: d[j + 8] });
+  }
+  return out;
+}

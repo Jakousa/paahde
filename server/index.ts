@@ -14,7 +14,7 @@ import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
-import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
@@ -23,6 +23,7 @@ import { LootServer } from './loot.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
+import { GuardianServer, TICK_HZ as BOT_HZ } from './guardians.ts';
 import { CrashServer } from './crash.ts';
 import { TerrainServer } from './terrain.ts';
 import { drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
@@ -55,6 +56,9 @@ const garden = new GardenServer(db);
 const loot = new LootServer(db);
 
 const storms = new StormServer(performance.now());
+const guardians = new GuardianServer();
+/** Heat per second from drone searchlights by player id, from the last bot tick. */
+let burning = new Map<number, number>();
 
 type Player = {
   id: number;
@@ -128,6 +132,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
+    if (msg.t === 'summon' && p) return guardians.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'drink' && p) return onDrink(p);
     if (msg.t === 'fill' && p) return onFill(p);
     if (msg.t === 'move' && p) return onMove(p, msg.from, msg.fi, msg.to, msg.ti, msg.n, msg.r);
@@ -224,15 +229,39 @@ function gearChanged(browserId: string) {
 function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const now = Date.now();
   const storm = stormAt(storms.storms, p.state.x, p.state.z, serverNow);
-  const r = tickHeat(p.heat, dt, p.state, p.input, tod, storm, now);
+  const burn = burning.get(p.id) ?? 0;
+  const r = tickHeat(p.heat, dt, p.state, p.input, tod, storm, now, burn);
   if (r === 'died') {
-    p.state = spawnState(BASE_SPAWN.x, BASE_SPAWN.z);
-    revive(p.heat, now);
-    save(p);
-    send(p.ws, { t: 'died', cause: 'heat' });
-    send(p.ws, waterMsg(p.heat));
+    die(p, burn > 0 ? 'beam' : 'heat');
   } else if (r === 'send') {
     send(p.ws, waterMsg(p.heat));
+  }
+}
+
+/** Back to the base, cooled down, with a full canteen. */
+function die(p: Player, cause: DeathCause) {
+  p.state = spawnState(BASE_SPAWN.x, BASE_SPAWN.z);
+  revive(p.heat, Date.now());
+  save(p);
+  send(p.ws, { t: 'died', cause });
+  send(p.ws, waterMsg(p.heat));
+}
+
+/** Respawned this recently (ms): the guardians and drones leave you alone. */
+const BOT_GRACE_MS = 5000;
+let botAccum = 0;
+function tickBots(elapsed: number, now: number, tod: number) {
+  botAccum += elapsed;
+  if (botAccum < 1 / BOT_HZ) return;
+  const dt = Math.min(botAccum, 0.5);
+  botAccum = 0;
+  const wall = Date.now();
+  const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: wall - p.heat.diedAt < BOT_GRACE_MS }));
+  const r = guardians.tick(dt, now, tod, list);
+  burning = r.burn;
+  for (const p of players.values()) {
+    if (r.crushed.includes(p.id)) die(p, 'guardian');
+    send(p.ws, guardians.msg(now, p.id, p.state.x, p.state.z));
   }
 }
 
@@ -442,6 +471,7 @@ setInterval(() => {
       p.idleAccum = 0;
     }
   }
+  tickBots(elapsed, now, tod);
   relaxAccum += elapsed;
   if (relaxAccum >= 1 / RELAX_RATE) {
     relaxAccum %= 1 / RELAX_RATE;

@@ -16,6 +16,7 @@ import { isPlaceable } from '../shared/placed.ts';
 import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
+import type { DeathCause } from '../shared/protocol.ts';
 
 /**
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
@@ -38,6 +39,11 @@ const TEMP_AMBER = [255, 184, 77];
 const TEMP_RED = [255, 92, 60];
 const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
 const DEATH_MS = 3000;
+const DEATH_TEXT: Record<DeathCause, string> = {
+  heat: 'You died of heatstroke<small>The sun got you. Back at the base, water bottle refilled.</small>',
+  beam: 'Burned by the searchlight<small>A drone held its beam on you. Stay out of the light at night.</small>',
+  guardian: 'A guardian crushed you<small>It walked right over you. Keep your distance from the giants.</small>',
+};
 const TOAST_MS = 1800;
 /** Walking this far (m) out of the pump's reach cancels a refill. Under the server's FILL_SLACK. */
 const FILL_CANCEL_SLACK = 0.5;
@@ -182,7 +188,7 @@ export class Survival {
     this.toastEl.id = 'waterToast';
     this.vignette.id = 'heatVignette';
     this.death.id = 'deathScreen';
-    this.death.innerHTML = 'Heatstroke';
+    this.death.innerHTML = DEATH_TEXT.heat;
     document.body.append(this.vignette, this.root, this.heat, this.env, this.prompt, this.toastEl, this.death);
 
     addEventListener('keydown', (e) => {
@@ -191,7 +197,8 @@ export class Survival {
       if (n >= HOTBAR) return;
       this.select(this.selected === n ? -1 : n);
     });
-    net.onDied = () => {
+    net.onDied = (cause) => {
+      this.death.innerHTML = DEATH_TEXT[cause];
       this.deadUntil = performance.now() + DEATH_MS;
       this.cancel();
       this.shown = 0;

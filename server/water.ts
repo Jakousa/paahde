@@ -55,10 +55,10 @@ export function waterMsg(t: Heat): ServerMsg {
 
 /**
  * Advance one player's heat by `dt` seconds at time of day `tod`, `storm` (0..1, shared/storm.ts) the
- * sandstorm where they stand. Returns 'died' when the meter is full (the caller respawns and calls
+ * sandstorm where they stand, `burn` extra heat per second (a drone's searchlight, shared/guardians.ts). Returns 'died' when the meter is full (the caller respawns and calls
  * revive), 'send' when the client should get a 'water' update, else null.
  */
-export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod: number, storm: number, now: number): 'died' | 'send' | null {
+export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod: number, storm: number, now: number, burn = 0): 'died' | 'send' | null {
   const inside = inBase(s.x, s.y, s.z);
   if (now - t.shadeAt >= SHADE_MS) {
     t.shadeAt = now;
@@ -67,7 +67,7 @@ export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod
   t.temp = feltTemp(tod, !t.shade, inside) + (inside ? 0 : STORM_TEMP * storm);
   if (now - t.diedAt < RESPAWN_GRACE_MS) return null;
   const sprinting = (input & SPRINT) !== 0 && Math.hypot(s.vx, s.vz) > WALK_SPEED + 0.5;
-  const rate = heatPerSecond(t.temp, sprinting);
+  const rate = heatPerSecond(t.temp, sprinting) + burn;
   const rising = rate > 0;
   const before = t.heat;
   t.heat = Math.min(HEAT_MAX, Math.max(0, t.heat + rate * dt));
