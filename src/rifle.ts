@@ -160,7 +160,9 @@ export class Rifle {
     const holding = playerHands.held === 'rifle' && can;
     const aiming = holding && ((aimDown() && !!document.pointerLockElement) || this.forceAim);
     playerHands.aim = Math.max(0, Math.min(1, playerHands.aim + (aiming ? dt : -dt * 1.4) / ADS_S));
-    const scoped = aiming && playerHands.aim >= 1;
+    // In third person aiming brings the view in to the eye (src/camera.ts); the scope only once it's there.
+    this.view.aimIn = aiming;
+    const scoped = aiming && playerHands.aim >= 1 && this.view.boomLength < 0.05;
     if (scoped !== this.scoped) {
       this.scoped = scoped;
       this.el.style.opacity = scoped ? '1' : '0';
@@ -248,8 +250,9 @@ export class Rifle {
   private shoot() {
     const cam = this.view.camera;
     this.readyAt = performance.now() + COOLDOWN_MS;
-    // From the eye along the aim (sway included), scattered within the cone from the hip.
-    cam.getWorldPosition(_o);
+    // From the eye along the aim (sway included), scattered within the cone from the hip. In third person the
+    // camera is behind the eye on the view ray, so this still goes where the crosshair is.
+    _o.copy(this.view.eye);
     cam.getWorldQuaternion(_q);
     _d.set(0, 0, -1).applyQuaternion(_q);
     if (this.spread > 0) {
@@ -278,8 +281,8 @@ export class Rifle {
     const drone = this.drones.raycast(_o, _d, dist);
     if (drone) dist = drone.dist;
     _e.copy(_o).addScaledVector(_d, dist);
-    // The beam from the drawn muzzle (or just under the eye).
-    const m = this.muzzle(_m) ?? _m.copy(_o).addScaledVector(_d, 0.4).add(_u.set(0, -0.08, 0));
+    // The beam from the drawn muzzle, or (third person: the rifle isn't drawn in the hands) from about where it'd be.
+    const m = this.muzzle(_m) ?? _m.copy(_o).addScaledVector(_d, 0.6).addScaledVector(_r.set(1, 0, 0).applyQuaternion(_q), 0.2).add(_u.set(0, -0.25, 0));
     zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z);
     rifleSound.shot();
     rifleSound.recharge(COOLDOWN_MS / 1000 - 0.08);

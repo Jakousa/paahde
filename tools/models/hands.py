@@ -25,7 +25,8 @@
 # public/models/telescope.glb (origin at the grip on the axis, objective -Z, eyepiece +Z).
 # Laser rifle (tools/models/rifle.py), held in both hands:
 #   RifleIdle (3 s loop)  low ready: right hand on the pistol grip (index on the trigger), left hand under the
-#     handguard, rifle low right pointing forward and a little in
+#     handguard, rifle low and a little right with its bore on the crosshair (so a hip shot's beam leaves along
+#     the barrel)
 #   RifleWalk (0.73 s loop)  the same hold with the walk bob
 #   RifleAim (0.27 s one-shot)  from the RifleIdle frame-0 pose up to the eye (play clamped): the scope's axis
 #     ends exactly on the view axis with the eye EYE_RELIEF behind the eyepiece (the build prints the check)
@@ -699,7 +700,7 @@ R_OBLIQUE = 20  # grip angle off square across the palm (deg), as the spyglass
 R_YAW = 0  # rifle turned about the grip axis relative to the hand (deg); searched below
 EYE_RELIEF = 0.125  # eye behind the eyepiece at full aim (model units; ×0.55 in game = 6.9 cm, past the 5 cm near
 # plane, and far enough that the near plane (0.091 model units ahead) only cuts the stock, below the view)
-L_GRIP_Y = 0.215  # where the support hand holds the handguard (natural y)
+L_GRIP_Y = 0.235  # where the support hand holds the handguard (natural y)
 L_TWIST = 0.95  # the support hand is turned palm up: the forearm, not the wrist, takes that roll
 
 
@@ -796,8 +797,25 @@ def rifle_world(at, yaw=0.0, pitch=0.0, roll=0.0):
 
 # aim: scope axis on the view axis, the eye EYE_RELIEF behind the eyepiece
 R_AIM = Matrix.Translation(-RF.eye_local(EYE_RELIEF))
-# low ready: grip low right, muzzle forward, a little down and in, canted a touch
-R_READY = rifle_world((0.165, 0.29, -0.175), yaw=7, pitch=-3, roll=-3)
+
+
+def rifle_ready(at, roll, dist=45.0):
+    """Rifle at the hip with its bore on the crosshair: the line through the muzzle passes `dist` model units
+    (×0.55 in game, ~25 m) ahead on the view axis, so a shot's beam (src/rifle.ts: from the drawn muzzle to
+    where the crosshair hits) leaves along the barrel. Allows for the game's REST_PITCH (src/viewmodel.ts), which
+    tips the whole viewmodel down about the eye."""
+    rest = 0.05  # -REST_PITCH
+    T = V((0, dist * math.cos(rest), dist * math.sin(rest)))
+    rw = rifle_world(at, roll=roll)
+    for _ in range(4):
+        d = (T - rw @ RF.muzzle_local()).normalized()
+        rw = rifle_world(at, math.degrees(math.atan2(-d.x, d.y)), math.degrees(math.asin(d.z)), roll)
+    return rw
+
+
+# hip / low ready: grip low right, bore on the crosshair, canted a touch; close enough in that the left arm
+# reaches the handguard with the elbow still bent (further out it stops short, under it)
+R_READY = rifle_ready((0.09, 0.16, -0.21), roll=-3)
 
 
 def wrist_bend_of(pose, pre):

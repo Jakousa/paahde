@@ -53,6 +53,10 @@ export class FirstPersonCamera {
   thirdPerson = false;
   /** Lying dead (shared/ragdoll.ts): third person whatever the T setting, looking at the body. */
   down = false;
+  /** Aiming the rifle (src/rifle.ts): the view comes in to the eye whatever the T setting, quickly. */
+  aimIn = false;
+  /** Where the eye is (the view ray passes through it; in third person the camera is behind it on that ray). */
+  readonly eye = new THREE.Vector3();
   private boom = 0; // current boom length (m), eased toward BOOM or 0
   private rideHeading = NaN; // set while riding in first person: the view is limited to a neck's range of it
 
@@ -101,6 +105,11 @@ export class FirstPersonCamera {
   /** Draw the local body: the camera is far enough behind the head not to be inside it. */
   get showBody() {
     return this.boom > 0.9;
+  }
+
+  /** The camera's distance behind the eye (m): 0 in first person. */
+  get boomLength() {
+    return this.boom;
   }
 
   /** Place the eye at the player's feet position `p` (predicted state + visual error offset). */
@@ -154,7 +163,7 @@ export class FirstPersonCamera {
     const pitch = this.pitch + this.dip * 0.12;
     const cp = Math.cos(pitch);
     const bx = sy * cp, by = -Math.sin(pitch), bz = cy * cp; // unit vector pointing behind the view
-    const third = this.thirdPerson || this.down;
+    const third = (this.thirdPerson && !this.aimIn) || this.down;
     let reach = third ? BOOM : 0;
     for (let i = 1; i <= 12 && reach > 0; i++) {
       const d = (BOOM * i) / 12;
@@ -163,8 +172,9 @@ export class FirstPersonCamera {
       if (y + by * d < heightAt(px, pz) + BOOM_CLEARANCE) reach = Math.max(0, d - BOOM / 12);
     }
     // Ease out smoothly, but snap in when terrain cuts the boom short.
-    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * 8));
+    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (this.aimIn ? 16 : 8)));
     if (this.boom < 0.01) this.boom = 0;
+    this.eye.set(x, y, z);
     this.camera.position.set(x + bx * this.boom, y + by * this.boom, z + bz * this.boom);
     this.camera.rotation.set(pitch, this.yaw, this.roll + bobX * 0.1);
 

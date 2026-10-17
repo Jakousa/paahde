@@ -3,7 +3,7 @@
 # over the receiver, a stubby curved energy cell where the magazine was, and a heavy finned emitter with a
 # copper focusing coil instead of the muzzle and front sight. Scuffed and repaired: tape round the stock
 # wrist and the handguard, a red and a black cable run from the cell along the handguard to the emitter,
-# a canvas sling hangs under it. ~0.92 m long, stylised.
+# a canvas sling is tied up along the stock. ~0.92 m long, stylised.
 #
 # Used by hands.py (held in both hands of the first-person viewmodel, node `Rifle`, a child of the right
 # hand bone), which also bakes it and exports public/models/rifle.glb. Standalone (bake + rifle.glb only):
@@ -341,19 +341,17 @@ def build_parts(M):
         objs.append(loft('Tie', [yring(y + d, 0.003, BZ - 0.003 if y > 0.4 else HG_Z, 0.0235 if y < 0.4 else 0.0225,
                                        0.0245 if y < 0.4 else 0.0135, 2.2, 14) for d in (-0.002, 0.002)],
                          M['black'], closed=True))
-    # ---- sling: swivels on the left of the gas block and the stock, strap hanging under the rifle
-    a = V((-REC_W / 2 - 0.004, 0.150, 0.058))
-    bpt = V((-0.022, -0.290, -0.016))
+    # ---- sling: tied up tight along the left side of the stock (swivels behind the wrist tape and by the butt), so it
+    # stays clear of both hands
     sl = []
-    for k in range(13):
-        f = k / 12
-        p = a.lerp(bpt, f)
-        p.z -= 0.075 * math.sin(math.pi * f) ** 0.9
-        p.x -= 0.016 * math.sin(math.pi * f)
-        sl.append(p)
-    objs.append(sweep('Sling', sl, rect_profile(0.0028, 0.024), M['sling'], up_fn=lambda i: V((1, 0, 0.25))))
-    for p in (a, bpt):
-        objs.append(rounded_box('Swivel', p + V((0.002, 0, 0.004)), (0.007, 0.018, 0.010), M['steel'], bevel=0.002, segments=1))
+    for k in range(9):
+        f = k / 8
+        y = -0.165 + (-0.312 + 0.165) * f
+        top, bot, hw = lerp_prof(STOCK, y)
+        sl.append(V((-hw - 0.0035 - 0.0025 * math.sin(math.pi * f), y, bot + 0.38 * (top - bot) - 0.004 * math.sin(math.pi * f))))
+    objs.append(sweep('Sling', sl, rect_profile(0.0028, 0.024), M['sling'], up_fn=lambda i: V((1, 0, 0))))
+    for p in (sl[0], sl[-1]):
+        objs.append(rounded_box('Swivel', p + V((0.0015, 0, 0)), (0.006, 0.010, 0.026), M['steel'], bevel=0.002, segments=1))
     return objs, glows
 
 
