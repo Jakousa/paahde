@@ -15,7 +15,7 @@
 // the normal input path).
 import * as THREE from 'three/webgpu';
 import { BACK, FORWARD, LEFT, RIGHT } from '../../shared/sim.ts';
-import { type ComponentKind, type PartId, type Tier } from '../../shared/salvage.ts';
+import { type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
 import { keyHeld, tools, ui } from '../input.ts';
 import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, PART_NAMES, rarityColor, TeardownUi } from './ui.ts';
@@ -23,7 +23,7 @@ import { partName, PART_NAMES, rarityColor, TeardownUi } from './ui.ts';
 /** Something to work on: a machine at a crash site, or a carried one on the workbench. */
 export interface WorkSite {
   id: string;
-  kind: ComponentKind;
+  kind: JunkKind;
   label: string;
   junk: Junk;
   /** Where the machine lies on the ground (its centre). */

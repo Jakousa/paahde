@@ -5,14 +5,14 @@
 // way while you are around. The large machine of a spent crash site (crashSpent: every part taken) is built as a
 // stripped husk and offers nothing.
 // How far each machine has been taken apart is the server's (server/crash.ts): every step and take arrives here
-// for every machine, and a machine built later is fast-forwarded to it. Machines you carried home (small ones)
+// for every machine, and a machine built later is fast-forwarded to it. Machines you carried home (small ones, and the salvage wrecks of src/world/wrecks.ts)
 // are taken apart on the base's disassembly table, whose job is the server's too and is seen by everyone.
 import * as THREE from 'three/webgpu';
 import {
   BENCH, CARRY_KINDS, crashSpent, crashTaken, CRASH_REACH, seeded, sitesNear, type CrashSite,
 } from '../../shared/crash.ts';
 import { hasItem, type Slots } from '../../shared/items.ts';
-import { COMPONENTS, type ComponentKind } from '../../shared/salvage.ts';
+import { COMPONENTS, junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { buildJunk, lowestOffset, type Junk } from '../teardown/junk.ts';
 import type { SiteMsg } from '../net.ts';
@@ -159,7 +159,7 @@ export class MachineSites {
 // ---- disassembly table -------------------------------------------------------------------------------------
 
 interface Job {
-  kind: ComponentKind;
+  kind: JunkKind;
   seed: number;
   junk: Junk;
 }
@@ -186,11 +186,11 @@ export class Bench {
     Math.abs(x - BENCH.x) < BENCH.w / 2 && Math.abs(z - BENCH.z) < BENCH.d / 2 ? BENCH.top : BENCH.floor;
 
   /** What the table offers: work on the machine on it, or put a carried one from the bag on it. */
-  offer(bag: Slots | undefined): { label: string; kind: ComponentKind; resume: boolean } | null {
+  offer(bag: Slots | undefined): { label: string; kind: JunkKind; resume: boolean } | null {
     const cur = this.job;
-    if (cur) return { label: `Disassemble the ${COMPONENTS[cur.kind].label.toLowerCase()}`, kind: cur.kind, resume: true };
+    if (cur) return { label: `Disassemble the ${junkSpec(cur.kind).label.toLowerCase()}`, kind: cur.kind, resume: true };
     const kind = CARRY_KINDS.find((k) => hasItem(bag, k));
-    return kind ? { label: `Put the ${COMPONENTS[kind].label.toLowerCase()} on the table`, kind, resume: false } : null;
+    return kind ? { label: `Put the ${junkSpec(kind).label.toLowerCase()} on the table`, kind, resume: false } : null;
   }
 
   /** We sent crashUse: the server's 'bench' answer starts the mode (onReady). */
@@ -209,7 +209,7 @@ export class Bench {
     }
     if (!job || !(CARRY_KINDS as string[]).includes(job.kind)) return;
     if (!this.job) {
-      const kind = job.kind as ComponentKind;
+      const kind = job.kind as JunkKind;
       const junk = buildJunk(kind, job.seed);
       // Fit the table: its long side is BENCH.d.
       const size = new THREE.Box3().setFromObject(junk.root).getSize(new THREE.Vector3());
@@ -249,7 +249,7 @@ export class Bench {
     const job = this.job;
     if (!job) return null;
     return {
-      id: BENCH_ID, kind: job.kind, label: COMPONENTS[job.kind].label, junk: job.junk, x: BENCH.x, z: BENCH.z, ground: this.ground,
+      id: BENCH_ID, kind: job.kind, label: junkSpec(job.kind).label, junk: job.junk, x: BENCH.x, z: BENCH.z, ground: this.ground,
       radius: 0.9, movable: true, link, stand: 2.3,
       closed: () => this.closed(),
     };

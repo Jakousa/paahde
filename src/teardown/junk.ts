@@ -9,7 +9,8 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { machineParts } from '../../shared/machine.ts';
-import { COMPONENTS, RARITY, TIERS, type ComponentKind, type PartId, type Tier } from '../../shared/salvage.ts';
+import { junkSpec, RARITY, TIERS, type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
+import { aiControl, vehicleFrame, warpCore, waterJet } from './wrecks.ts';
 
 export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift';
 export interface Step {
@@ -54,7 +55,7 @@ export interface Slot {
   piece: Piece;
 }
 export interface Junk {
-  kind: ComponentKind;
+  kind: JunkKind;
   label: string;
   /** The best part inside: the machine's rarity. */
   tier: Tier;
@@ -131,7 +132,7 @@ export async function loadPart(part: PartId, tier: Tier): Promise<THREE.Object3D
 // ---- kit ---------------------------------------------------------------------------------------------------
 
 type MatKey = 'body' | 'trim' | 'accent' | 'glow' | 'dark' | 'red' | 'blue' | 'yellow' | 'copper' | 'pcb' | 'chip' | 'brown' | 'black' | 'green';
-type V = [number, number, number];
+export type V = [number, number, number];
 const PALETTE = [
   { body: 0x7a5238, trim: 0x3b2616, accent: 0xa04a20, glow: 0x000000, metal: 0.55, rough: 0.9 }, // rusted
   { body: 0x56705e, trim: 0x2b3a30, accent: 0xe0c060, glow: 0x000000, metal: 0.5, rough: 0.7 }, // painted
@@ -153,7 +154,8 @@ interface BayOpts {
   mids?: boolean;
 }
 
-class Kit {
+/** Builds one machine: geometry, steps, covers and part mounts. The salvage wrecks' builders are in wrecks.ts. */
+export class Kit {
   g = new THREE.Group();
   grade: number;
   steps: Step[] = [];
@@ -810,21 +812,29 @@ function controlCabinet(k: Kit) {
   if (g >= 2) k.lamps(5, -0.4, 0.65, 0.5, 0.2);
 }
 
-const BUILDERS: Record<ComponentKind, (k: Kit) => void> = {
+const BUILDERS: Record<JunkKind, (k: Kit) => void> = {
   pump_housing: pumpHousing,
   jet_engine: jetEngine,
   robot_arm: robotArm,
   control_cabinet: controlCabinet,
+  vehicle_frame: vehicleFrame,
+  water_jet: waterJet,
+  warp_core: warpCore,
+  ai_control: aiControl,
 };
-const SCALE: Record<ComponentKind, number> = { pump_housing: 0.7, jet_engine: 0.7, robot_arm: 0.8, control_cabinet: 0.85 };
-export const JUNK_KINDS = Object.keys(BUILDERS) as ComponentKind[];
+// The wrecks are built at about twice their models' size (tools/blender/salvage), so they come back to it here.
+const SCALE: Record<JunkKind, number> = {
+  pump_housing: 0.7, jet_engine: 0.7, robot_arm: 0.8, control_cabinet: 0.85,
+  vehicle_frame: 0.5, water_jet: 0.8, warp_core: 0.55, ai_control: 0.62,
+};
+export const JUNK_KINDS = Object.keys(BUILDERS) as JunkKind[];
 
 // ---- assembly ----------------------------------------------------------------------------------------------
 
-/** Build a component of `kind` holding the parts its `seed` rolls (shared/machine.ts). Part models load in the
+/** Build a component or salvage wreck of `kind` holding the parts its `seed` rolls (shared/machine.ts). Part models load in the
  *  background. Slots are sorted by part index, so `slots[i].index === i` whenever every rolled part is mounted. */
-export function buildJunk(kind: ComponentKind, seed: number): Junk {
-  const spec = COMPONENTS[kind];
+export function buildJunk(kind: JunkKind, seed: number): Junk {
+  const spec = junkSpec(kind);
   const rolled: Record<PartId, Roll[]> = { battery: [], motor: [], heatsink: [], compute: [], antimatter: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
   let best = 0;
   machineParts(kind, seed).forEach(({ part, tier }, index) => {
