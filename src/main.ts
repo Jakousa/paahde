@@ -11,6 +11,7 @@ import { Avatar } from './players';
 import { Post } from './post';
 import * as env from './world/env';
 import { addPalms } from './world/palms';
+import { Scrap } from './world/scrap';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 
@@ -26,10 +27,11 @@ const orbit = new FirstPersonCamera(renderer.domElement);
 const sky = new Sky(scene);
 const terrain = new Terrain(scene);
 addPalms(scene);
+const scrap = new Scrap(scene);
 const post = new Post(renderer, scene, orbit.camera);
 
 // Debug handle for screenshots/tuning from the console: open with ?debug.
-if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env } });
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap } });
 
 const net = new Net(getBrowserId());
 const digFx = new DigFx(scene);
@@ -95,6 +97,7 @@ renderer.setAnimationLoop((time) => {
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded }, frameDt);
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
+  scrap.update(focus);
   sky.update(frameDt, focus);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
 
