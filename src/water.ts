@@ -254,7 +254,7 @@ export class Survival {
   }
 
   private cancel() {
-    if (playerHands.drinking) drinkSound.stop();
+    if (playerHands.drinking || playerHands.filling) drinkSound.stop();
     playerHands.drinking = playerHands.filling = false;
   }
 
@@ -319,6 +319,7 @@ export class Survival {
     if (playerHands.filling) {
       if (!holding || dead || !atPump(pos.x, pos.y, pos.z, FILL_CANCEL_SLACK)) this.cancel();
       else if (now - this.actionAt >= FILL_MS) {
+        drinkSound.filled();
         this.cancel();
         this.net.fill();
       }
@@ -327,6 +328,7 @@ export class Survival {
       else {
         playerHands.filling = true;
         this.actionAt = now;
+        drinkSound.fill();
       }
     }
 
