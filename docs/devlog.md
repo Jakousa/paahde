@@ -2,6 +2,40 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Laser rifle: shoot the walkers' weak points
+
+- **Crafted** at the workbench: metal plank + metal sheet + 2 wiring coils + a battery (any tiers). A hotbar item
+  (`laser_rifle`, 4×1); the debug gear button gives one. Every player from before got one, once, in the 4th hotbar
+  slot (server/items.ts `rifleGift`, the new `grants` table); what was there moved into the bag.
+- **Weak points** (shared/rifle.ts): red glowing lenses, one on every knee of a guardian and one on each flank of a
+  crawler, all pulsing together. A hit shatters the lens (glass chips, sparks, an electric fizz), the walker flinches
+  and turns on the shooter (a crawler's whole pack with it), and the broken point keeps smoking. All of them broken:
+  it dies.
+- **Death** (src/world/guardians.ts `die`): a pure function of the time since death, so a wreck that comes into view
+  lies as it fell. The servos twitch, then the legs give out one at a time in three quick jerks each (a winding-down
+  whine and a clunk), feet skidding outwards, the hull sinking in stages and tipping towards the legs that went first,
+  then it slams down (dust, shake, crash). The eye stutters out, the gun sags, and it smokes until the server clears
+  the wreck (3 min guardians, 40 s crawlers; it sinks into the sand first). A killed guardian drops 2–3 Quality or
+  Space-grade parts and is replaced 8 minutes later at a far-off site; a crawler sometimes drops a poor part.
+- **Shooting** (src/rifle.ts): hitscan from the eye. Right mouse or X raises it (the RifleAim clip is scrubbed by
+  the aim, so it follows the button) into a 4× scope (wheel 2.5–7×) with a duplex reticle and a lit red dot. The aim
+  sways like a held rifle: breathing (a slow vertical rise and fall), a figure-of-eight arm tremor and a little noise,
+  more on the move and after sprinting, settling when still; Shift held still holds your breath for 4 s, then you
+  gasp. The sway moves the camera itself (not the networked yaw/pitch), so the reticle stays centred and the world
+  swims under it. Hip fire scatters within a cone (wider on the move; four ticks show it). One shot per click, then
+  0.42 s to recharge (a rising whine, a click). Recoil: the muzzle climbs (35 % of it stays: pull it back down) with a
+  random sideways kick, the view jolts on an under-damped spring, the rifle kicks back into the shoulder, and through
+  the scope the eyepiece shadow jumps.
+- **Netcode**: hits are found by the shooter's client against the walkers as it draws them (their legs are
+  client-side IK, so only it knows where a knee is); `fire` tells the server, which checks the rifle is in hand, the
+  rate, that the shot starts at the eye and passes and ends near that walker, then breaks the point (`bots` carries
+  a broken mask and the time since death) and shows the beam to everyone near (`zap`). The shooter's own shatter
+  shows at once and is undone after 1.5 s if the server never agrees.
+- **Tactics**: a guardian's cannon reaches 120 m and the rifle 260 m, so snipe from range; up close you trade shots
+  with its cannon and usually lose. Crawlers are quick and their lenses small: from the hip you'll miss.
+- Levels measured (OfflineAudioContext + ebur128): own shots −23 LUFS rapid fire, −27 one; glass at 20 m −28; a
+  guardian dying at 40 m −27.
+
 ## 2026-10-17 — Drones call down missiles; the searchlight is escapable
 
 - **Searchlight look** (src/world/drones.ts): was a solid cream wedge, white even when locked, cut hard at the sand.

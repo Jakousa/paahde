@@ -2,10 +2,11 @@
 // setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
 import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
-import { addItem, findSpot, hasItem, partKind, roomFor, settle, sortItems, stackOf, type Item, type Slots } from '../shared/items.ts';
+import { addItem, findSpot, hasItem, HOTBAR, partKind, roomFor, settle, sortItems, stackOf, type Item, type Slots } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, growChest, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { craft, RECIPES } from '../shared/crafting.ts';
+import { RIFLE } from '../shared/rifle.ts';
 import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
 
@@ -82,6 +83,7 @@ export class ItemServer {
    * their bag keeps its 8; if its slot is taken, it goes past the end of the bag.
    */
   setup(browserId: string) {
+    this.rifleGift(browserId);
     if (this.db.hasGearKit(browserId)) return;
     this.db.tx(() => {
       if (this.db.hasStarterKit(browserId)) {
@@ -96,6 +98,34 @@ export class ItemServer {
         this.save(browserId, 'equip', 'bag');
       } else this.db.markStarterKit(browserId);
       this.db.markGearKit(browserId);
+    });
+  }
+
+  /**
+   * Once, to the players from before the laser rifle (shared/rifle.ts): one in the 4th hotbar slot. Whatever was there
+   * moves to the first free spot in the bag (past its end if there's none). New players craft their own.
+   */
+  private rifleGift(browserId: string) {
+    if (this.db.hasGrant(browserId, 'rifle')) return;
+    const existing = this.db.hasGearKit(browserId);
+    this.db.tx(() => {
+      this.db.markGrant(browserId, 'rifle');
+      if (!existing) return;
+      const bag = this.slots(browserId, 'bag');
+      const slot = HOTBAR - 1;
+      const was = bag[slot];
+      bag[slot] = { id: this.newId(), kind: RIFLE, n: 1 };
+      if (was) {
+        const spot = findSpot(bag, this.bagShape(browserId), was.kind, !!was.r, [slot]);
+        if (spot) {
+          const moved: Item = { ...was };
+          if (spot.r) moved.r = true;
+          else delete moved.r;
+          bag[spot.i] = moved;
+        }
+        else bag.push(was);
+      }
+      this.save(browserId, 'bag');
     });
   }
 
