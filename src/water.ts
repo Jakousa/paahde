@@ -218,7 +218,6 @@ export class Survival {
     } else if (holding && use && !this.needRelease && !playerHands.filling && !dead) {
       this.needRelease = true;
       if (w.sips <= 0) this.toast(atBase ? 'Canteen empty — press F to fill it' : 'Canteen empty — fill it at the pump in the base');
-      else if (w.heat <= 0.5) this.toast("You're cool enough");
       else {
         playerHands.drinking = true;
         this.actionAt = now;
