@@ -31,13 +31,15 @@ const BOUNCE = { intensity: 14, distance: 22 };
 const BULB = { x: 0, y: 1.95, z: HUT.z0 + 0.25, intensity: 2, distance: 9 };
 /** Ceiling lamps (local x, z; they hang from the ceiling there): the hallway, over the work tables, by the
  *  room's front and back walls. Each has a warm point light at its bulb. */
+/** Room lamps hang on rods from the ceiling, their mounts this high above the floor (shade bottom about 2.5 m). */
+const LAMP_MOUNT = 2.8;
 const HALL_LAMP_Z = (STAIRS.z - STAIRS.n * STAIRS.run + HALL.z) / 2;
 const LAMPS = [
   { x: 0, z: HALL_LAMP_Z, ceil: vaultCrown(HALL_LAMP_Z) - FLOOR, intensity: 0.8 },
-  { x: -ROOM.w + 1.4, z: ROOM_Z, ceil: ROOM.h, intensity: 5.5 },
-  { x: ROOM.w - 1.4, z: ROOM_Z, ceil: ROOM.h, intensity: 5.5 },
-  { x: 0, z: HALL.z - 3, ceil: ROOM.h, intensity: 5.5 },
-  { x: 0, z: ROOM.z + 3, ceil: ROOM.h, intensity: 5.5 },
+  { x: -ROOM.w + 1.4, z: ROOM_Z, ceil: LAMP_MOUNT, intensity: 5.5 },
+  { x: ROOM.w - 1.4, z: ROOM_Z, ceil: LAMP_MOUNT, intensity: 5.5 },
+  { x: 0, z: HALL.z - 3, ceil: LAMP_MOUNT, intensity: 5.5 },
+  { x: 0, z: ROOM.z + 3, ceil: LAMP_MOUNT, intensity: 5.5 },
 ];
 /** The lamp's bulb below its ceiling mount (tools/blender/base/lamp.py BULB_Y), and its light's reach. */
 const LAMP = { bulbY: -0.26, distance: 10, decay: 1.5 };
@@ -121,10 +123,17 @@ export class Base {
       m.receiveShadow = true;
       m.material = convert(m.material as THREE.MeshStandardMaterial, this.lit);
     });
+    const rodMat = convert(new THREE.MeshStandardMaterial({ color: 0x3a3430, roughness: 0.7, metalness: 0.3 }), this.lit);
     for (const l of LAMPS) {
       const o = lamp.clone();
       o.position.set(l.x, FLOOR + l.ceil, l.z);
       this.group.add(o);
+      const rod = l.ceil < ROOM.h ? ROOM.h - l.ceil : 0;
+      if (rod > 0) {
+        const r = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, rod, 6), rodMat);
+        r.position.set(l.x, FLOOR + l.ceil + rod / 2, l.z);
+        this.group.add(r);
+      }
     }
   }
 

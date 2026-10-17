@@ -60,7 +60,7 @@ export const W = 1.1;
  *  (t) and outer height (top): a squat concrete block like a WW2 bunker. */
 export const HUT = { z0: -4.0, z1: 2.0, h: 2.3, door: 0.7, t: 0.6, top: 2.75 };
 /** Stairs: top edge (the landing ends here), steps (rise, run), bottom = the bunker floor. */
-export const STAIRS = { z: 0.6, n: 32, rise: 0.25, run: 0.3 };
+export const STAIRS = { z: 0.6, n: 36, rise: 0.25, run: 0.3 };
 /** Bunker floor height (local). */
 export const FLOOR = -STAIRS.n * STAIRS.rise;
 /** Hallway ends here, where the room begins; its vault's crown above the floor. */
