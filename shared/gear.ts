@@ -102,7 +102,7 @@ export const bikeEngine = (q: number) => by(q, 9, 15);
 /** Telescope's strongest zoom. */
 export const spyglassZoom = (q: number) => by(q, 4, 12);
 /** Sips in a full water bottle. */
-export const canteenSips = (q: number) => Math.round(by(q, 2, 6));
+export const canteenSips = (q: number) => Math.round(by(q, 5, 10));
 /** Backpack rows of bag grid (BAG_COLS wide, past the hotbar). */
 export const backpackRows = (q: number) => Math.round(by(q, 2, BAG_ROWS));
 /** Storm detector: warns this long before a storm reaches you (s). */
