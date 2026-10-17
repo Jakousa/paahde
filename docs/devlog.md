@@ -2,6 +2,31 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Home base
+
+New goal: plant and grow nature, push back the desert. The players' home is a homestead in a dune pan
+about 130 m behind the old spawn: Tatooine-ish plaster dome crossed with steampunk brass, copper and iron
+(all original designs). New players spawn at its front door (`BASE_SPAWN`). The palms are gone
+(`tools/blender/palm.py` is kept for growing plants later).
+
+- **Layout** (`shared/base.ts`): domed hall (r 7 m, oculus skylight) with the front door facing +Z, a
+  glass greenhouse wing along −X with a rear door, and machines outside (dew condenser, cistern tank, wind
+  pump, solar stills, signpost, wind-break fence). `BASE_PIECES` places every model and gives it a hitbox.
+- **Physics:** `collideBase()` in `step()`: the hall wall is an annulus with two openings (trig-free, so it
+  matches on every engine), greenhouse walls and furniture are capsules, floors are a support height, and
+  `baseCeiling()` stops jumps at the roof. Low furniture can be jumped onto.
+- **Terrain:** `baseHeight` flattens a pad around the base (`withPad`), no digging under the floor
+  (`TerrainEdits.setMm` refuses it), no scrap piles on the pad. The wind drops to 15% indoors, so there's
+  no blown sand inside and the wind sound goes quiet.
+- **Models** (`tools/blender/base/*.py` → `public/models/base/*.glb`, made by four parallel agents):
+  `shell` (building), `hall` (workbench, shelf, stove, table, bunk, chest, radio, rug, chandelier),
+  `greenhouse` (planters in three growth stages, tree, trellis, seed cabinet, cistern, grow lamps…),
+  `exterior` (machines; `condenser_rotor` and `windpump_rotor` spin faster in wind).
+  `src/world/base.ts` loads them: glass is see-through and shadowless (sun and moon patches through the
+  portholes are real), two warm point lights light the inside at night.
+- **Next:** make the planters interactive (plant, water, grow through the stages, synced), carry water
+  from the condenser, and let greenery spread outward from the base.
+
 ## 2026-10-17 — Day and night
 
 - **24 h every 30 min** (`src/world/dayNight.ts`), on the server's wall clock (`epoch` in `welcome`,

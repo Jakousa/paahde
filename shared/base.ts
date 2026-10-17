@@ -111,7 +111,7 @@ export const BASE_PIECES: BasePiece[] = [
   { glb: 'exterior', node: 'solar_still', x: -11, z: 6, fx: 0, fz: 1, hx: 1, hz: 0.5, h: 0.6 },
   { glb: 'exterior', node: 'solar_still', x: -14, z: 6, fx: 0, fz: 1, hx: 1, hz: 0.5, h: 0.6 },
   { glb: 'exterior', node: 'solar_still', x: -17, z: 6, fx: 0, fz: 1, hx: 1, hz: 0.5, h: 0.6 },
-  { glb: 'exterior', node: 'signpost', x: 2.6, z: 11.5, fx: 0, fz: 1, hx: 0.15, hz: 0.15, h: 2.6 },
+  { glb: 'exterior', node: 'signpost', x: 3.4, z: 11.5, fx: 0, fz: 1, hx: 0.15, hz: 0.15, h: 2.6 },
   ...[-19.5, -16.5, -13.5, -10.5, -4.5, -1.5, 1.5, 4.5].map((x): BasePiece => (
     { glb: 'exterior', node: 'fence', x, z: -11, fx: 0, fz: 1, hx: 1.5, hz: 0.08, h: 1.6 }
   )),
