@@ -432,6 +432,11 @@ steady 2.4 steps/s walk is −23 LUFS. In game (~5 steps/s, GAIN 0.2, default vo
 player's walking is roughly −42 LUFS: under a breeze, above a calm. Random step (no immediate repeat),
 ±8% pitch, ±15% level; remote players' steps are panned and fall off as 1/d beyond 2.5 m, silent past 30 m.
 
+Inside the base (`inBase` at the foot) steps come from `public/audio/footsteps-concrete.mp3` instead: 10
+steps (0.4 s slots) sliced from InspectorJ's "Footsteps, Concrete, A" on Freesound. The recording is
+quiet and peaky, so at −1.6 dBTP the sprite only reaches −30 LUFS; its gain is 0.45 (vs 0.2) so both
+surfaces walk at about the same loudness.
+
 All sounds now go through `src/audio.ts`: one AudioContext, the volume slider as master gain, and the
 limiter. New sounds connect to `audio.out` (or use `audio.onStart`).
   Volume slider in the top-right corner (default 0.4, remembered per browser); `dbg.wind.override` is handy for tuning.

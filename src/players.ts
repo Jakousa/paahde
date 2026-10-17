@@ -4,7 +4,7 @@
 // footprints, footstep sounds and the name tag. Its visuals are a swappable `AvatarModel`: the simple procedural
 // placeholder below, or the rigged scavenger (src/models/scavenger.ts) with the same interface.
 import * as THREE from 'three/webgpu';
-import { terrainHidden } from '../shared/base.ts';
+import { inBase, terrainHidden } from '../shared/base.ts';
 import { isSlipFace, slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, footprints, streaks } from './footprints.ts';
@@ -215,7 +215,7 @@ export class Avatar {
     const side = 0.13 * this.foot;
     const fx = pose.x + Math.cos(this.facing) * side, fz = pose.z - Math.sin(this.facing) * side;
     if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing);
-    footsteps.step(fx, fz, pose.speed);
+    footsteps.step(fx, fz, pose.speed, inBase(fx, pose.y, fz) ? 'concrete' : 'sand');
   }
 
   /** Extend the slide streak to (x, z): a strip from where it last ended, once it is long enough. */

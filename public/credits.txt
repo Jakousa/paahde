@@ -18,6 +18,12 @@ Brisk walk on trail (sound)
   Sliced into single steps, high-passed and levelled.
   File: audio/footsteps.mp3
 
+Footsteps, Concrete, A (sound)
+  By InspectorJ (https://freesound.org/s/336598/), licensed under CC-BY-4.0
+  (http://creativecommons.org/licenses/by/4.0/).
+  Sliced into single steps, high-passed, levelled and converted to mono.
+  File: audio/footsteps-concrete.mp3
+
 Made for this game
 ------------------
 
