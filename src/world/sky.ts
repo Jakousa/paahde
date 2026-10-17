@@ -27,8 +27,10 @@ const LIGHT_MARGIN = 300;
 const DEPTH_BIAS_TEXELS = 1;
 const NORMAL_BIAS_TEXELS = 2;
 /** PCF filter radius in texels per cascade: at a 10° sun each texel stretches ~6x along the ground, so
- *  soften the coarse cascades' steps; the nearest one is fine enough (~3 cm) to stay crisp. */
-const PCF_RADIUS_TEXELS = [1.5, 2.5, 3, 3];
+ *  a dune's shadow edge is a staircase whose steps survive any filter narrower than the step length
+ *  (they showed as a saw along the edge). The coarse cascades therefore blur wide; the nearest one is
+ *  fine enough (~3 cm) to stay crisp. */
+const PCF_RADIUS_TEXELS = [2, 6, 8, 8];
 
 export class Sky {
   readonly sun = sunLight;
