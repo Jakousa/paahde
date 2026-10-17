@@ -85,6 +85,9 @@ export class Bike {
         const s = HEADLIGHT_SHADOW;
         light.castShadow = true; // always on (toggling recompiles too), but the map only renders while lit
         light.shadow.autoUpdate = false;
+        // Render the map once up front: if materials sample it before its first render, that render
+        // recreates the depth texture under their cached bind groups ("Destroyed texture used in a submit").
+        light.shadow.needsUpdate = true;
         light.shadow.mapSize.set(s.map, s.map);
         light.shadow.camera.near = s.near;
         light.shadow.camera.layers.enable(SHADOW_ONLY_LAYER); // the local rider's own body
