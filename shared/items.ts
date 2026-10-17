@@ -2,7 +2,7 @@
 // owns every item (server/items.ts, `items` table, one row per stack with a stable id); the client applies
 // the same moves at once and the server's answer then replaces them (src/net.ts).
 import { partItems, partItem, partOf } from './parts.ts';
-import { TIERS, type PartId, type Tier } from './salvage.ts';
+import { SALVAGE, TIERS, type PartId, type Tier } from './salvage.ts';
 import { SCRAP_KINDS } from './scrap.ts';
 
 /**
@@ -37,6 +37,11 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier }
   // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
   plant_bed: { label: 'Plant bed', stack: 1 },
   uv_lamp: { label: 'UV lamp', stack: 1 },
+  // Salvage wrecks carried home from the desert (shared/wrecks.ts), taken apart on the disassembly table too.
+  vehicle_frame: { label: SALVAGE.vehicle_frame.label, stack: 1 },
+  water_jet: { label: SALVAGE.water_jet.label, stack: 1 },
+  warp_core: { label: SALVAGE.warp_core.label, stack: 1 },
+  ai_control: { label: SALVAGE.ai_control.label, stack: 1 },
 };
 const ORDER = Object.keys(ITEMS);
 

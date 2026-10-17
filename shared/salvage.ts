@@ -33,9 +33,14 @@ export interface SalvageKind {
   yields: SalvageYield[];
   /** Relative odds of each part coming out at each tier: better wrecks hold better parts. */
   tierWeights: Record<Tier, number>;
+  /** Relative odds of a wreck site in the desert holding this kind (shared/wrecks.ts): the warp core is rare. */
+  weight: number;
 }
 
-export const SALVAGE: Record<string, SalvageKind> = {
+/** Salvage kinds; each is also an inventory item of the same id (shared/items.ts) once carried. */
+export type SalvageId = 'vehicle_frame' | 'water_jet' | 'warp_core' | 'ai_control';
+
+export const SALVAGE: Record<SalvageId, SalvageKind> = {
   // #14: rusted buggy chassis with a cracked battery tray, rear hub motor and a finned controller.
   vehicle_frame: {
     label: 'Broken vehicle frame',
@@ -47,6 +52,7 @@ export const SALVAGE: Record<string, SalvageKind> = {
       { part: 'coil', min: 0, max: 2 },
     ],
     tierWeights: { scrap: 3, basic: 4, quality: 2, space: 0.2 },
+    weight: 4,
   },
   // #17: a stranded jet ski; its battery bay and drive motor are still in there, plus the bilge pump motor.
   water_jet: {
@@ -57,6 +63,7 @@ export const SALVAGE: Record<string, SalvageKind> = {
       { part: 'motor', min: 1, max: 2 },
     ],
     tierWeights: { scrap: 6, basic: 3, quality: 0.5, space: 0 },
+    weight: 3,
   },
   // #16: rare, the valuable one. A starship's reactor column: compute racks, coolant fins, anti-matter bottles.
   warp_core: {
@@ -68,6 +75,7 @@ export const SALVAGE: Record<string, SalvageKind> = {
       { part: 'antimatter', min: 1, max: 2 },
     ],
     tierWeights: { scrap: 0, basic: 1, quality: 4, space: 6 },
+    weight: 0.6,
   },
   // #15: broken rack computer that once ran some big machine; finned side cooler + a stack of modules.
   ai_control: {
@@ -79,6 +87,7 @@ export const SALVAGE: Record<string, SalvageKind> = {
       { part: 'coil', min: 0, max: 1 },
     ],
     tierWeights: { scrap: 1, basic: 3, quality: 4, space: 1.5 },
+    weight: 2,
   },
 };
 
@@ -162,3 +171,11 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
     tierWeights: { scrap: 3, basic: 4, quality: 2, space: 0.3 },
   },
 };
+
+/** Anything the disassembly mode can take apart: a crash-site component or a salvage wreck. */
+export type JunkKind = ComponentKind | SalvageId;
+
+/** What a junk kind holds, and whether it can be carried home (every salvage wreck can). */
+export function junkSpec(kind: JunkKind): { label: string; yields: SalvageYield[]; tierWeights: Record<Tier, number>; carry: boolean } {
+  return kind in SALVAGE ? { ...SALVAGE[kind as SalvageId], carry: true } : COMPONENTS[kind as ComponentKind];
+}

@@ -3,7 +3,7 @@
 // (public/icons/items/<part>_<tier>.png). They come out of machines in the disassembly mode (src/teardown) and
 // land in the bag through the server (server/crash.ts), which rolls the same contents from the same seed as the
 // client (rollParts) and never hands out more of a kind than the machine holds.
-import { COMPONENTS, TIERS, type ComponentKind, type PartId, type Tier } from './salvage.ts';
+import { junkSpec, TIERS, type JunkKind, type PartId, type Tier } from './salvage.ts';
 
 export const PART_LABELS: Record<PartId, string> = {
   battery: 'Battery',
@@ -50,10 +50,10 @@ export function pickTier(weights: Record<Tier, number>, rand: () => number): Tie
   return 'scrap';
 }
 
-/** What is inside a component of `kind`, rolled with `rand` (shared/crash.ts seeded(seed)): every part and its
+/** What is inside a component or salvage wreck of `kind`, rolled with `rand` (shared/crash.ts seeded(seed)): every part and its
  *  tier, in roll order. src/teardown/junk.ts mounts these; the server checks takes against them. */
-export function rollParts(kind: ComponentKind, rand: () => number): { part: PartId; tier: Tier }[] {
-  const spec = COMPONENTS[kind];
+export function rollParts(kind: JunkKind, rand: () => number): { part: PartId; tier: Tier }[] {
+  const spec = junkSpec(kind);
   const out: { part: PartId; tier: Tier }[] = [];
   for (const y of spec.yields) {
     const n = y.min + Math.floor(rand() * (y.max - y.min + 1));

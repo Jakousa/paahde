@@ -5,11 +5,15 @@
 // same contents. Ids are "<crash site id>:<index>", index 0 the large machine.
 import { BASE_SPAWN } from './base.ts';
 import { crashSite, crashSitesNear, type CrashSite as Wreck } from './crashsites.ts';
-import { COMPONENTS, type ComponentKind } from './salvage.ts';
+import { COMPONENTS, SALVAGE, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
 import { STATIONS } from './stations.ts';
 
-/** Components small enough to carry; each is an item of the same kind (shared/items.ts) in the bag. */
-export const CARRY_KINDS = (Object.keys(COMPONENTS) as ComponentKind[]).filter((k) => COMPONENTS[k].carry);
+/** Components small enough to carry, and the salvage wrecks (shared/wrecks.ts); each is an item of the same kind
+ *  (shared/items.ts) in the bag, taken apart on the disassembly table. */
+export const CARRY_KINDS: JunkKind[] = [
+  ...(Object.keys(COMPONENTS) as ComponentKind[]).filter((k) => COMPONENTS[k].carry),
+  ...(Object.keys(SALVAGE) as SalvageId[]),
+];
 /** Where carried components are taken apart: the disassembly table in the base (shared/stations.ts). `top` is the
  *  tabletop's height, `floor` the room's. */
 const TABLE = STATIONS.find((s) => s.kind === 'disassembly');
@@ -19,7 +23,7 @@ export const BENCH = TABLE
 /** How far (m) from a large site you may be to work on it with others. */
 export const SITE_RANGE = 14;
 
-/** Small sites whose component has been carried off, kept in step with the server ('crash' messages). */
+/** Small sites whose component, and wrecks (shared/wrecks.ts), that have been carried off, kept in step with the server ('crash' messages). */
 export const crashTaken = new Set<string>();
 export const crashListeners: (() => void)[] = [];
 /** Crash sites (numeric shared/crashsites.ts ids) whose large machine has been stripped of every part: no smoke,

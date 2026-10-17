@@ -2,7 +2,8 @@
 //  - When every part of a crash site's large machine has been taken, the crash site is spent (persisted with a
 //    timestamp, broadcast as 'crashSpent'): it stops smoking and its machine stays a husk, permanently.
 //  - Small machines are carried home: crashTake validates reach and puts the machine in the player's bag (an item
-//    of the component's kind); the site stays empty for good. crashUse takes one out of the bag when it
+//    of the component's kind); the site stays empty for good. Salvage wrecks (shared/wrecks.ts, ids "w:...") are
+//    carried the same way, and lie out there again WRECK_RESPAWN_MS later. crashUse takes one out of the bag when it
 //    is put on the workbench.
 //  - Large machines are worked on by everyone near them through a session per site: which steps are done and
 //    which parts are taken (kept in SQLite, `machine_progress`, and never reset by itself: a stripped machine
@@ -19,7 +20,8 @@ import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH,
 import { crashSite } from '../shared/crashsites.ts';
 import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
 import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
-import { COMPONENTS, type ComponentKind } from '../shared/salvage.ts';
+import { COMPONENTS, type JunkKind } from '../shared/salvage.ts';
+import { wreckById } from '../shared/wrecks.ts';
 import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
@@ -45,6 +47,17 @@ interface Session {
   need: Map<number, number>;
 }
 
+/** Carried-off salvage wrecks (shared/wrecks.ts) are back after this long. */
+const WRECK_RESPAWN_MS = 45 * 60 * 1000;
+
+/** A small crash-site machine or a salvage wreck (shared/wrecks.ts, ids "w:..."): something carried off whole. */
+function carrySite(id: unknown): { id: string; x: number; z: number; kind: string } | null {
+  const w = wreckById(id);
+  if (w) return w;
+  const s = crashSiteById(id);
+  return s && COMPONENTS[s.kind].carry ? s : null;
+}
+
 export class CrashServer {
   private db: Db;
   private notify: (ids: Iterable<number>, msg: ServerMsg) => void;
@@ -55,7 +68,7 @@ export class CrashServer {
   private sessions = new Map<string, Session>();
   private broadcast: (msg: ServerMsg) => void;
   /** The machine on the disassembly table, or null when it is free. */
-  private bench: { kind: ComponentKind; seed: number } | null = null;
+  private bench: { kind: JunkKind; seed: number } | null = null;
 
   constructor(db: Db, notify: (ids: Iterable<number>, msg: ServerMsg) => void, broadcast: (msg: ServerMsg) => void) {
     this.db = db;
@@ -63,7 +76,7 @@ export class CrashServer {
     this.broadcast = broadcast;
     const job = db.loadBench();
     if (job && (CARRY_KINDS as string[]).includes(job.kind)) {
-      this.bench = { kind: job.kind as ComponentKind, seed: job.seed };
+      this.bench = { kind: job.kind as JunkKind, seed: job.seed };
       console.log(`crash: ${job.kind} on the disassembly table`);
     }
     for (const r of db.loadProgress()) {
@@ -75,8 +88,8 @@ export class CrashServer {
     if (this.bench && !this.sessions.has(BENCH_ID)) this.sessions.set(BENCH_ID, this.newSession([], []));
     console.log(`crash: ${this.sessions.size} machines worked on`);
     for (const r of db.loadCrashTaken()) {
-      const s = crashSiteById(r.id);
-      if (!s || !COMPONENTS[s.kind].carry) continue; // the layout changed since: forget it
+      const s = carrySite(r.id);
+      if (!s) continue; // the layout changed since: forget it
       this.taken.set(r.id, r.taken_at);
       crashTaken.add(r.id);
     }
@@ -89,9 +102,9 @@ export class CrashServer {
   /** A player carries off the machine at small site `id`. `give(kind)` puts it in their bag (false: no room).
    *  Returns the item kind, or null if refused (unknown or taken site, out of reach, too soon, bag full). */
   carry(feet: Feet, id: unknown, last: { at: number }, give: (kind: string) => boolean): string | null {
-    const site = crashSiteById(id);
+    const site = carrySite(id);
     const now = Date.now();
-    if (!site || !COMPONENTS[site.kind].carry || crashTaken.has(site.id) || now - last.at < COOLDOWN_MS) return null;
+    if (!site || crashTaken.has(site.id) || now - last.at < COOLDOWN_MS) return null;
     if (Math.hypot(site.x - feet.x, site.z - feet.z) > CRASH_REACH + REACH_SLACK) return null;
     last.at = now;
     const ok = this.db.tx(() => {
@@ -119,7 +132,7 @@ export class CrashServer {
       return true;
     });
     if (!ok) return false;
-    this.bench = { kind: kind as ComponentKind, seed };
+    this.bench = { kind: kind as JunkKind, seed };
     this.sessions.set(BENCH_ID, this.newSession([], []));
     this.broadcast(this.benchMessage());
     return true;
@@ -175,6 +188,15 @@ export class CrashServer {
   }
 
   flush(): ServerMsg | null {
+    // Salvage wrecks lie out there again WRECK_RESPAWN_MS after being carried off (small machines stay gone).
+    const now = Date.now();
+    for (const [id, at] of this.taken) {
+      if (!id.startsWith('w:') || now - at < WRECK_RESPAWN_MS) continue;
+      this.taken.delete(id);
+      crashTaken.delete(id);
+      this.db.respawnCrash(id);
+      this.newlyBack.push(id);
+    }
     if (!this.newlyTaken.length && !this.newlyBack.length) return null;
     const msg: ServerMsg = { t: 'crash', taken: this.newlyTaken, back: this.newlyBack };
     this.newlyTaken = [];
