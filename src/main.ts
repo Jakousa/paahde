@@ -10,6 +10,7 @@ import { getBrowserId, Net } from './net';
 import { Avatar } from './players';
 import { Post } from './post';
 import * as env from './world/env';
+import { addPalms } from './world/palms';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 
@@ -24,6 +25,7 @@ const scene = new THREE.Scene();
 const orbit = new FirstPersonCamera(renderer.domElement);
 const sky = new Sky(scene);
 const terrain = new Terrain(scene);
+addPalms(scene);
 const post = new Post(renderer, scene, orbit.camera);
 
 // Debug handle for screenshots/tuning from the console: open with ?debug.
