@@ -107,7 +107,7 @@ export class GuardianFx {
           const muzzle = this.guardians.fire(m.g, this.muzzle);
           this.bolts.fire(m, muzzle);
           const at = muzzle ?? this.muzzle.set(m.x, m.y, m.z);
-          guardianSound.zap(at.x, at.y, at.z, this.ear);
+          rifleSound.cannon(at, this.ear);
         } else if (m.t === 'boom') {
           this.bolts.boom(m.id, m.x, m.y, m.z, m.ground);
           guardianSound.boom(m.x, m.y, m.z, this.ear);

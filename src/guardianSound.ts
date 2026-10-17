@@ -42,7 +42,6 @@ const CHARGE_GAIN = 0.05;
 const TICK_HEAR = 30;
 const TICK_GAIN = 0.12;
 const CHITTER_GAIN = 0.05;
-const ZAP_GAIN = 0.35;
 
 type Buzz = { id: number; osc: OscillatorNode; whine: OscillatorNode; gain: GainNode; panner: PannerNode };
 type Roar = { srcs: AudioBufferSourceNode[]; gain: GainNode; hiss: GainNode; air: BiquadFilterNode; panner: PannerNode };
@@ -182,31 +181,6 @@ class GuardianSound {
     o.connect(lp).connect(g).connect(p).connect(out);
     o.start(t);
     o.stop(t + s + 0.1);
-  }
-
-  /** A bolt fired from (x, y, z): a heavy descending zap with a thump, heard late with distance. */
-  zap(x: number, y: number, z: number, ear: { x: number; y: number; z: number }) {
-    const ctx = audio.ctx, s = placed({ x, y, z }, ear, ZAP_GAIN, 25, STEP_HEAR);
-    if (!ctx || !s) return;
-    const t = s.t;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(1, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
-    g.connect(s.input);
-    for (const [type, f0, f1] of [['square', 1400, 90], ['sawtooth', 700, 45], ['sine', 120, 30]] as const) {
-      const o = ctx.createOscillator();
-      o.type = type;
-      o.frequency.setValueAtTime(f0, t);
-      o.frequency.exponentialRampToValueAtTime(f1, t + 0.7);
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 2500;
-      const og = ctx.createGain();
-      og.gain.value = type === 'sine' ? 1 : 0.35;
-      o.connect(lp).connect(og).connect(g);
-      o.start(t);
-      o.stop(t + 1);
-    }
   }
 
   /** A bolt burst at (x, y, z): a footfall's boom, twice over, with a crackle. */
