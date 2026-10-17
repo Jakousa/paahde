@@ -1,16 +1,24 @@
 // Footprints in the sand: a client-side, purely visual ring buffer of small dark decals that fade out.
 // Avatars call `footprints.add()` when a foot plants; one InstancedMesh draws them all.
+// Prints whose ground gets dug or piled are erased, so they never float over a hole.
 import * as THREE from 'three/webgpu';
 import { clamp, float, instancedBufferAttribute } from 'three/tsl';
-import { normalAt } from '../shared/terrain.ts';
+import { EDIT_CELL, EDIT_CHUNK, edits, heightAt, normalAt } from '../shared/terrain.ts';
 import { time } from './world/env.ts';
 
 const MAX = 1024;
 const LIFE = 90; // seconds until a print has fully faded
+const CHUNK_M = EDIT_CHUNK * EDIT_CELL;
+const ERASE_DY = 0.03; // ground moved more than this under a print → erase it
 
 class Footprints {
   readonly mesh: THREE.InstancedMesh;
   private spawn = new Float32Array(MAX).fill(-1e6);
+  // Where each print sits (ground height at placement), to erase it if the ground changes.
+  private px = new Float32Array(MAX);
+  private py = new Float32Array(MAX).fill(NaN);
+  private pz = new Float32Array(MAX);
+  private dirty = new Set<string>();
   private spawnAttr: THREE.InstancedBufferAttribute;
   private next = 0;
   private m = new THREE.Matrix4();
@@ -39,6 +47,31 @@ class Footprints {
     this.m.makeScale(0, 0, 0);
     for (let i = 0; i < MAX; i++) this.mesh.setMatrixAt(i, this.m);
     this.mesh.renderOrder = 1;
+
+    // Edits fire per vertex; collect the touched chunks and check prints once per batch.
+    const prev = edits.onChange;
+    edits.onChange = (cx, cz) => {
+      prev?.(cx, cz);
+      if (this.dirty.size === 0) queueMicrotask(() => this.eraseDisturbed());
+      this.dirty.add(`${cx},${cz}`);
+    };
+  }
+
+  private eraseDisturbed() {
+    let changed = false;
+    for (let i = 0; i < MAX; i++) {
+      const y = this.py[i];
+      if (Number.isNaN(y)) continue;
+      const x = this.px[i], z = this.pz[i];
+      if (!this.dirty.has(`${Math.floor(x / CHUNK_M)},${Math.floor(z / CHUNK_M)}`)) continue;
+      if (Math.abs(heightAt(x, z) - y) <= ERASE_DY) continue;
+      this.py[i] = NaN;
+      this.m.makeScale(0, 0, 0);
+      this.mesh.setMatrixAt(i, this.m);
+      changed = true;
+    }
+    this.dirty.clear();
+    if (changed) this.mesh.instanceMatrix.needsUpdate = true;
   }
 
   /** A foot planted at ground point (x, y, z) facing yaw `facing` (0 = -Z). */
@@ -56,6 +89,9 @@ class Footprints {
     this.mesh.setMatrixAt(i, this.m);
     this.mesh.instanceMatrix.needsUpdate = true;
     this.spawn[i] = time.value;
+    this.px[i] = x;
+    this.py[i] = y;
+    this.pz[i] = z;
     this.spawnAttr.needsUpdate = true;
   }
 }
