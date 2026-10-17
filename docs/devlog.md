@@ -81,8 +81,10 @@ above (shared/crashsites.ts) and share only the idea; the names overlap, so the 
   part gets it.
 - **Small machines** (robot arm joint, control cabinet) are picked up with F and land in the bag as items (kinds
   `robot_arm`, `control_cabinet` in shared/items.ts). Carry them to the **disassembly table** in the bunker (F at it,
-  the station from shared/stations.ts) and take them apart alone, scaled to fit the table; an unfinished job is
-  kept in this browser.
+  the station from shared/stations.ts) and take them apart there, scaled to fit the table. The table is the
+  server's: the job (kind, a seed the server picks, steps done, parts taken) is in SQLite (`bench_job` +
+  `machine_progress`), everyone sees the machine on the table and its progress live, anyone at it can help, and
+  the table is free again once the last part is out.
 
 Controls: **left mouse only interacts** (click screws and clips, circle the pointer around big bolts, swipe across
 wires to cut them, drag pry tabs, hold lifting eyes), **right-drag** carries a freed part to the tray (and moves a
@@ -103,9 +105,18 @@ sites, wreckage and the table job. Netcode: `crash*`/`site*` messages in shared/
   `tierWeights`, seeded by the site, so every player sees the same contents; the best part sets how fancy it looks.
 - **Mechanical parts** (impeller, bearing, gear, valve, relay) are Blender models in `tools/blender/items.py` like
   the other items, four tiers each; they lie with their axis along +y so `Kit.ax` can mount them on a shaft.
-- Not done: collected parts sit in a local tray (localStorage), not in the server inventory (needs an item/tier id
-  scheme in shared/); large-site progress lives in server memory and resets 30 min after the last player leaves;
-  the server trusts the client's step/part indexes (it only checks lifts against the holders).
+- **Parts are items.** `shared/machine.ts` `machineParts(kind, seed)` rolls a machine's parts (no three.js), so
+  the client mounts part i as the slot with `index` i and the server knows what part i is. The first to take a
+  part gets item `${part}_${tier}` (e.g. `motor_basic`, "Motor (Uncommon)", shared/items.ts `PART_ITEMS`) in their
+  bag, in one DB transaction; with a full bag it is refused ('siteTook' ok: false) and goes back on the machine.
+  Inventory icons: the rendered PNGs, framed in the tier colour.
+- **Progress never resets.** Every machine's steps done and parts taken (large sites and the table) are kept in
+  SQLite for good and sent to everyone: 'sites' on join, then siteDone / siteTake to all players, so a machine
+  you walk up to later is fast-forwarded to it. `CrashServer.resetSite(id)` makes one whole again (dev/admin
+  only; nothing calls it).
+- Not done: the server checks part indexes against its own part list but not whether a part's holds are done
+  (step indexes are only range-checked; lifts are checked against the holders). The tray only lists this
+  session's takes (the items are in the bag).
 - Idea taken from the Godot DOHOJAM teardown: parts stay locked until the earlier steps are done.
 
 ## 2026-10-17 — Base becomes an underground bunker (issue #12)

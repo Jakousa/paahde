@@ -36,13 +36,22 @@ export interface WorkSite {
   stand?: number;
   /** Shared with other players through the server (large sites); null when working alone. */
   link: SiteLink | null;
-  /** The state changed (a step done, a part taken): the workbench saves its job. */
+  /** The state changed (a step done, a part taken). */
   changed?: () => void;
   /** The mode was left (the workbench tidies its table). */
   closed?: () => void;
 }
 
-/** The connection to the server's shared session for a large site (src/net.ts). */
+/** The server's answer to taking a part (SiteLink.take): ok, its item is in the bag; or refused ('full': the bag
+ *  has no room, so the part went back on the machine; 'taken': someone else got it first). */
+export interface TakeResult {
+  part: PartId;
+  tier: Tier;
+  ok: boolean;
+  reason?: 'full' | 'taken';
+}
+
+/** The connection to the server's shared session for a large site or the table (src/net.ts). */
 export interface SiteLink {
   join(): void;
   leave(): void;
@@ -116,6 +125,10 @@ export class TeardownView {
   /** The distance to hold while strafing. */
   private workDist = 0;
   private farWarned = false;
+  /** Where each part we have taken off (and not had confirmed) sat in the machine, to put it back if refused. */
+  private pending = new Map<Slot, { parent: THREE.Object3D; pos: THREE.Vector3; quat: THREE.Quaternion; scale: THREE.Vector3 }>();
+  /** Every answer to a part we took (for the panel: "Bag full", a list of what was collected, ...). */
+  onTake?: (r: TakeResult) => void;
 
   /** Left-button interaction with a step. */
   private act: { step: Step; x0: number; y0: number; angle: number; cx: number; cy: number; dist: number } | null = null;
@@ -179,6 +192,7 @@ export class TeardownView {
     this.lookYaw = this.lookPitch = 0;
     this.farWarned = false;
     this.announced.clear();
+    this.pending.clear();
     for (const s of site.junk.slots) if (slotOpen(s)) this.announced.add(s);
     tools.frozen = true;
     if (document.pointerLockElement) ui.debugFreed = true; // freed on purpose: don't open the Esc menu (src/menu.ts)
@@ -277,10 +291,11 @@ export class TeardownView {
     const s = this.site?.junk.steps[i];
     if (s && !s.done) this.finish(s, silent ? 'silent' : 'remote');
   }
-  /** Part slot i was taken by `mine` or someone else. */
+  /** Part i (Slot.index) was taken by `mine` or someone else. */
   applyTake(i: number, mine: boolean) {
-    const slot = this.site?.junk.slots[i];
+    const slot = this.site?.junk.slots.find((s) => s.index === i);
     if (!slot) return;
+    if (!mine && this.pending.delete(slot)) this.onTake?.({ part: slot.part, tier: slot.tier, ok: false, reason: 'taken' });
     if (mine && slot.taken) return;
     const l = this.looseOf(slot);
     if (l && !mine) {
@@ -298,13 +313,43 @@ export class TeardownView {
     this.refreshCard();
   }
 
+  /** The server answered our take of part i: keep it (its item is in the bag), or put it back on the machine. */
+  applyTook(i: number, ok: boolean, reason?: 'full') {
+    const slot = this.site?.junk.slots.find((s) => s.index === i);
+    if (!slot) return;
+    const home = this.pending.get(slot);
+    this.pending.delete(slot);
+    this.onTake?.({ part: slot.part, tier: slot.tier, ok, reason });
+    if (ok) {
+      this.ui.addItem(slot.part, slot.tier);
+      return;
+    }
+    // Refused: back where it was, free for anyone to take.
+    const l = this.looseOf(slot);
+    if (l) {
+      if (this.drag?.kind === 'part' && this.drag.loose === l) this.drag = null;
+      this.loose.splice(this.loose.indexOf(l), 1);
+    }
+    if (home) {
+      const o = slot.piece.obj;
+      home.parent.add(o);
+      o.position.copy(home.pos);
+      o.quaternion.copy(home.quat);
+      o.scale.copy(home.scale);
+    }
+    slot.taken = false;
+    this.refreshCard();
+    this.computeRest();
+    if (reason === 'full') this.ui.setHint('Bag full: make room, then take it again');
+  }
+
   // ---- machine ---------------------------------------------------------------------------------------------
 
   private refreshCard() {
     const j = this.site?.junk;
     if (!j) return;
     const left = j.steps.filter((s) => !s.done).length;
-    this.ui.setCard(this.site!.label, j.tier, j.slots.filter((s) => !s.taken).length, j.slots.length, left, !!this.site!.link);
+    this.ui.setCard(this.site!.label, j.tier, j.slots.filter((s) => !s.taken).length, j.slots.length, left, !!this.site!.link && !this.site!.movable);
   }
 
   /** Height at which the machine rests on the ground in its current orientation. */
@@ -675,7 +720,9 @@ export class TeardownView {
     s.taken = true;
     s.ring.visible = false;
     const site = this.site!;
-    site.link?.take(site.junk.slots.indexOf(s));
+    const o = s.piece.obj;
+    if (o.parent) this.pending.set(s, { parent: o.parent, pos: o.position.clone(), quat: o.quaternion.clone(), scale: o.scale.clone() });
+    site.link?.take(s.index);
     this.refreshCard();
     this.computeRest();
     site.changed?.();
@@ -688,7 +735,6 @@ export class TeardownView {
     this.scene.remove(l.obj);
     const k = this.loose.indexOf(l);
     if (k >= 0) this.loose.splice(k, 1);
-    this.ui.addItem(s.part as PartId, s.tier as Tier);
     if (!say) return;
     const j = this.site?.junk;
     this.ui.setHint(j && j.slots.every((x) => x.taken && !this.looseOf(x)) ? 'All parts taken.' : `${RARITY[s.tier].name} ${s.part} collected`);

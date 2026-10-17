@@ -42,6 +42,8 @@ const items = new ItemServer(db);
 const crash = new CrashServer(db, (ids, msg) => {
   const want = new Set(ids);
   for (const p of players.values()) if (want.has(p.id)) send(p.ws, msg);
+}, (msg) => {
+  for (const p of players.values()) send(p.ws, msg);
 });
 const garden = new GardenServer(db);
 const storms = new StormServer(performance.now());
@@ -159,6 +161,8 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
   send(ws, crash.joinMessage());
+  send(ws, crash.progressMessage());
+  send(ws, crash.benchMessage());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
@@ -234,7 +238,7 @@ function onSort(p: Player, box: unknown) {
 }
 
 // Crash sites (shared/crash.ts): carry a small machine home (it becomes an item in the bag), put it on the
-// workbench (the item is used up), and the shared sessions of large sites.
+// disassembly table (the item is used up), and the shared sessions of large sites and the table.
 function onCrash(p: Player, msg: ClientMsg) {
   if (msg.t === 'crashTake') {
     const kind = crash.carry(p.state, msg.id, p.lastPickup, (k) => items.give(p.browserId, k));
@@ -243,13 +247,18 @@ function onCrash(p: Player, msg: ClientMsg) {
   } else if (msg.t === 'crashUse') {
     crash.use(p.state, msg.kind, () => items.take(p.browserId, msg.kind));
     sendBox(p, 'bag');
+    send(p.ws, crash.benchMessage()); // refused (the table was taken): what is on it
   } else if (msg.t === 'siteJoin') {
     const state = crash.join(p.id, p.state, msg.id);
     if (state) send(p.ws, state);
   } else if (msg.t === 'siteLeave') crash.leave(p.id, msg.id);
   else if (msg.t === 'siteHold') crash.hold(p.id, msg.id, msg.i, msg.players, msg.on);
   else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i);
-  else if (msg.t === 'siteTake') crash.takePart(p.id, msg.id, msg.i);
+  else if (msg.t === 'siteTake') {
+    const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.give(p.browserId, kind));
+    if (answer) send(p.ws, answer);
+    if (answer?.t === 'siteTook' && answer.ok) sendBox(p, 'bag', answer.kind);
+  }
 }
 
 function onTend(p: Player, bed: unknown) {

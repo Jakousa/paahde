@@ -115,6 +115,34 @@ export function openDb(path: string) {
   const allCrash = db.prepare('SELECT id, taken_at FROM crash_taken');
   const insertCrash = db.prepare('INSERT OR REPLACE INTO crash_taken (id, taken_at) VALUES (?, ?)');
   const deleteCrash = db.prepare('DELETE FROM crash_taken WHERE id = ?');
+  // Machines being taken apart (server/crash.ts): steps done and parts taken (JSON arrays of indexes) per large
+  // site id, or 'bench' for the disassembly table, whose machine (kind + seed) is in bench_job while it has one.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS machine_progress (
+      id    TEXT PRIMARY KEY,
+      done  TEXT NOT NULL,                  -- JSON [step index, ...]
+      taken TEXT NOT NULL                   -- JSON [part index, ...] (shared/machine.ts machineParts)
+    );
+    CREATE TABLE IF NOT EXISTS bench_job (
+      id   INTEGER PRIMARY KEY CHECK (id = 1),
+      kind TEXT NOT NULL,                   -- component kind (shared/salvage.ts)
+      seed INTEGER NOT NULL
+    );
+  `);
+  const allProgress = db.prepare('SELECT id, done, taken FROM machine_progress');
+  const putProgress = db.prepare('INSERT OR REPLACE INTO machine_progress (id, done, taken) VALUES (?, ?, ?)');
+  const deleteProgress = db.prepare('DELETE FROM machine_progress WHERE id = ?');
+  const getBench = db.prepare('SELECT kind, seed FROM bench_job WHERE id = 1');
+  const putBench = db.prepare('INSERT OR REPLACE INTO bench_job (id, kind, seed) VALUES (1, ?, ?)');
+  const deleteBench = db.prepare('DELETE FROM bench_job');
+  const nums = (json: string): number[] => {
+    try {
+      const a = JSON.parse(json);
+      return Array.isArray(a) ? a.filter((n) => typeof n === 'number') : [];
+    } catch {
+      return [];
+    }
+  };
   const boxRows = db.prepare('SELECT id, kind, n, slot FROM items WHERE owner = ? AND box = ? ORDER BY slot');
   const clearBox = db.prepare('DELETE FROM items WHERE owner = ? AND box = ?');
   const insertItem = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot) VALUES (?, ?, ?, ?, ?, ?)');
@@ -185,6 +213,12 @@ export function openDb(path: string) {
     loadCrashTaken: () => allCrash.all() as { id: string; taken_at: number }[],
     takeCrash: (id: string, at: number) => insertCrash.run(id, at),
     respawnCrash: (id: string) => deleteCrash.run(id),
+    loadProgress: () => (allProgress.all() as { id: string; done: string; taken: string }[]).map((r) => ({ id: r.id, done: nums(r.done), taken: nums(r.taken) })),
+    saveProgress: (id: string, done: number[], taken: number[]) => putProgress.run(id, JSON.stringify(done), JSON.stringify(taken)),
+    clearProgress: (id: string) => deleteProgress.run(id),
+    loadBench: () => getBench.get() as { kind: string; seed: number } | undefined,
+    saveBench: (kind: string, seed: number) => putBench.run(kind, seed),
+    clearBench: () => deleteBench.run(),
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,
     savePlayer: (p: PlayerRow) => upsert.run(p.id, p.color, p.x, p.z, p.heat, p.sips),
     loadChunks(): { cx: number; cz: number; data: Int32Array }[] {

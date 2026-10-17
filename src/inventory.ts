@@ -3,7 +3,8 @@
 // the hotbar, keys 1–4) and, next to it, every storage box in reach right now (chests in the base, the sand
 // bike while riding; shared/storage.ts), appearing and disappearing as you move. Drag an item onto another
 // slot to move it there or swap the two; shift-click sends it across to the other side. Moves go through Net (applied at once, the server confirms).
-import { HOTBAR, ITEMS, type Item, type Slots } from '../shared/items.ts';
+import { HOTBAR, ITEMS, PART_ITEMS, type Item, type Slots } from '../shared/items.ts';
+import { RARITY, type PartId } from '../shared/salvage.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
@@ -102,6 +103,17 @@ ${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.8" y="-10" width=
 stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#a8a294" stroke-width="1.3"/></svg>`,
 };
+// Parts out of machines (shared/items.ts PART_ITEMS): the icon tools/blender/items.py rendered
+// (public/icons/items/<part>_<tier>.png), framed in the tier's rarity colour.
+function partIcon(kind: string): string | undefined {
+  const p = PART_ITEMS[kind];
+  if (!p) return undefined;
+  const c = `#${RARITY[p.tier].color.toString(16).padStart(6, '0')}`;
+  const inner = `<img src="./icons/items/${kind}.png" alt="" draggable="false" style="width:100%;height:100%;object-fit:contain">`;
+  return `<span style="display:flex;align-items:center;justify-content:center;width:84%;height:84%;border-radius:6px;box-shadow:inset 0 0 0 2px ${c};background:${c}22">${inner}</span>`;
+}
+for (const kind of Object.keys(PART_ITEMS)) ICONS[kind] = partIcon(kind)!;
+
 export const itemIcon = (kind: string) => ICONS[kind] ?? `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`;
 export const itemLabel = (kind: string) => ITEMS[kind]?.label ?? kind;
 

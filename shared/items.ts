@@ -1,7 +1,14 @@
 // Items: the catalogue, slot containers ("boxes") and the rules for moving stacks between them. The server
 // owns every item (server/items.ts, `items` table, one row per stack with a stable id); the client applies
 // the same moves at once and the server's answer then replaces them (src/net.ts).
+import { RARITY, TIERS, type PartId, type Tier } from './salvage.ts';
 import { SCRAP_KINDS } from './scrap.ts';
+
+/** Display names of the craftable parts (shared/salvage.ts PartId). */
+export const PART_NAMES: Record<PartId, string> = {
+  battery: 'Battery', motor: 'Motor', heatsink: 'Heatsink', compute: 'Compute unit', antimatter: 'Antimatter cell', coil: 'Coil',
+  impeller: 'Impeller', bearing: 'Bearing', gear: 'Gear', valve: 'Valve', relay: 'Relay',
+};
 
 /** Item kind ids as stored in the DB. Never rename one: rows hold them. `stack` is 1 for all: nothing stacks for now. */
 export const ITEMS: Record<string, { label: string; stack: number }> = {
@@ -21,6 +28,17 @@ export const ITEMS: Record<string, { label: string; stack: number }> = {
   robot_arm: { label: 'Robot arm joint', stack: 1 },
   control_cabinet: { label: 'Control cabinet', stack: 1 },
 };
+/** Parts taken out of machines (src/teardown, server/crash.ts): one kind per part and tier, `${part}_${tier}`
+ *  (shared/machine.ts partItem), e.g. `motor_basic`, labelled with the tier's rarity. `gear_scrap` is not the
+ *  scrap pile's `gear`. */
+export const PART_ITEMS: Record<string, { part: PartId; tier: Tier }> = {};
+for (const part of Object.keys(PART_NAMES) as PartId[]) {
+  for (const tier of TIERS) {
+    const kind = `${part}_${tier}`;
+    ITEMS[kind] = { label: `${PART_NAMES[part]} (${RARITY[tier].name})`, stack: 1 };
+    PART_ITEMS[kind] = { part, tier };
+  }
+}
 const ORDER = Object.keys(ITEMS);
 
 /** Item kind of each scrap prop, by SCRAP_KINDS index. */
