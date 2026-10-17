@@ -71,10 +71,15 @@ export class FirstPersonCamera {
 
     // Head bob tied to distance travelled.
     const moving = p.grounded && speed > 0.5;
-    this.bobAmount += ((moving ? Math.min(speed / WALK_SPEED, 1.6) : 0) - this.bobAmount) * (1 - Math.exp(-dt * 8));
+    // Past a walk it grows only gently (sprint ≈ 1.1×, its faster step rate is enough), and the vertical shape is sin², which is smooth
+    // at footfall where |sin| had a hard cusp.
+    const pace = speed / WALK_SPEED;
+    const bobTarget = moving ? (pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15)) : 0;
+    this.bobAmount += (bobTarget - this.bobAmount) * (1 - Math.exp(-dt * 6));
     if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / STRIDE;
-    const bobY = -Math.abs(Math.sin(this.bobPhase)) * 0.055 * this.bobAmount + 0.0275 * this.bobAmount;
-    const bobX = Math.sin(this.bobPhase) * 0.03 * this.bobAmount;
+    const s = Math.sin(this.bobPhase);
+    const bobY = (0.5 - s * s) * 0.03 * this.bobAmount;
+    const bobX = s * 0.015 * this.bobAmount;
 
     // Camera basis on the ground plane.
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
@@ -87,7 +92,7 @@ export class FirstPersonCamera {
     let y = this.eyeY + EYE_HEIGHT + bobY + this.dip;
     y = Math.max(y, heightAt(x, z) + 0.3); // never look out from under a dune
     this.camera.position.set(x, y, z);
-    this.camera.rotation.set(this.pitch + this.dip * 0.12, this.yaw, this.roll + bobX * 0.15);
+    this.camera.rotation.set(this.pitch + this.dip * 0.12, this.yaw, this.roll + bobX * 0.1);
 
     // FOV kick when moving faster than a walk (sprint, slides).
     const t = Math.max(0, Math.min(1, (speed - WALK_SPEED - 0.5) / (SPRINT_SPEED - WALK_SPEED - 1)));
