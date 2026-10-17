@@ -33,7 +33,8 @@ A new player starts with nothing, and the crash sites now lead them on in three 
   scatter, or a fan spilled out ahead of the wreck. There is no large machine, only 2–3 small starter machines to carry
   home (`winch`: gear + bearing, `solenoid_valve`: valve + coil, `beacon`: battery + coil; mostly Scrap/Basic). Their
   machines come back 20 min after being carried off (`STARTER_RESPAWN_MS`, server/crash.ts), because every new player
-  needs them. The broken canteen, telescope and backpack lie here (server/loot.ts `FINDS`). The laser rifle's plank,
+  needs them. The broken canteen, telescope and backpack lie here (server/loot.ts `FINDS`), and almost half of them
+  (`PILE_ODDS`) among the scrap piles within 600 m of the base instead. The laser rifle's plank,
   sheet, coils and battery come from the debris and the beacons. Nothing turns up by the spawn point any more.
 - **Crawler ground (level 1):** crawlers swarm, and at night drones search here too: as everywhere, their searchlight
   calls in guardians within `ALERT_R` and missiles from guardians within `MISSILE_R` (shared/missiles.ts), which

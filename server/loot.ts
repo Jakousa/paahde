@@ -8,6 +8,7 @@ import { GEAR, GEAR_KINDS } from '../shared/gear.ts';
 import { partKind, SCRAP_ITEMS } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
+import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
 import { PART_IDS } from '../shared/parts.ts';
 import { PISTOL } from '../shared/rifle.ts';
 import { TIERS } from '../shared/salvage.ts';
@@ -19,12 +20,15 @@ import type { openDb } from './db.ts';
 type Db = ReturnType<typeof openDb>;
 
 /** How many of each piece of broken gear lie around at once, and the level of crash site they lie at: a new player
- *  starts with nothing and finds the canteen, telescope and backpack at the scrap fields. */
+ *  starts with nothing and finds the canteen, telescope and backpack at the scrap fields (or a scrap pile). */
 const FINDS: Record<string, { n: number; level: SiteLevel }> = {
-  canteen: { n: 4, level: 0 }, spyglass: { n: 3, level: 0 }, backpack: { n: 4, level: 0 },
+  canteen: { n: 7, level: 0 }, spyglass: { n: 5, level: 0 }, backpack: { n: 7, level: 0 },
   motorcycle: { n: 3, level: 1 }, shovel: { n: 3, level: 1 }, storm_detector: { n: 2, level: 1 }, wristpad: { n: 2, level: 1 },
   metal_detector: { n: 2, level: 1 },
 };
+/** The odds a level-0 find lies at a scrap pile (shared/scrap.ts) within PILE_FIND_R m of the base instead of a crash site. */
+const PILE_ODDS = 0.45;
+const PILE_FIND_R = 600;
 /** Loose Quality / Space-grade parts lying at guardian ground (level 2) at once (RARE_KIND: any such part, anti-matter too). */
 const RARE_FINDS = 10;
 const RARE_KIND = 'rare';
@@ -51,6 +55,20 @@ function pickTier(): number {
   return 0;
 }
 
+/** The scrap piles within PILE_FIND_R of the base: centre and how far their pieces reach. */
+function nearPiles() {
+  const out: { x: number; z: number; r: number }[] = [];
+  const lo = (c: number) => Math.floor((c - PILE_FIND_R) / SCRAP_CELL), hi = (c: number) => Math.floor((c + PILE_FIND_R) / SCRAP_CELL);
+  for (let iz = lo(BASE.z); iz <= hi(BASE.z); iz++) for (let ix = lo(BASE.x); ix <= hi(BASE.x); ix++) {
+    const ps = scrapPieces(ix, iz);
+    if (!ps.length) continue;
+    const x = ps.reduce((a, p) => a + p.x, 0) / ps.length, z = ps.reduce((a, p) => a + p.z, 0) / ps.length;
+    if (Math.hypot(x - BASE.x, z - BASE.z) > PILE_FIND_R || overBase(x, z, 6)) continue;
+    out.push({ x, z, r: Math.max(...ps.map((p) => Math.hypot(p.x - x, p.z - z))) });
+  }
+  return out;
+}
+
 export class LootServer {
   readonly loot = new Map<number, Loot>();
   private nextId = 1;
@@ -58,6 +76,7 @@ export class LootServer {
   private added: Loot[] = [];
   private removed: number[] = [];
   private sites = allCrashSites();
+  private piles = nearPiles();
   private db: Db;
 
   constructor(db: Db) {
@@ -172,7 +191,13 @@ export class LootServer {
     const level = FINDS[kind]?.level ?? 2;
     const sites = this.sites.filter((s) => s.level === level);
     let x = 0, z = 0;
-    for (let tries = 0; tries < 20; tries++) {
+    if (level === 0 && this.piles.length && Math.random() < PILE_ODDS) {
+      // Among the pieces of a scrap pile near the base.
+      const p = pick(this.piles);
+      const a = rand(0, Math.PI * 2), d = rand(1, p.r + 1.5);
+      x = p.x + Math.sin(a) * d;
+      z = p.z + Math.cos(a) * d;
+    } else for (let tries = 0; tries < 20; tries++) {
       const site = pick(sites.length ? sites : this.sites);
       const a = rand(0, Math.PI * 2), d = rand(site.radius * 0.4, site.radius + 8);
       x = site.x + Math.sin(a) * d;
