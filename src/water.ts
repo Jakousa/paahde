@@ -1,10 +1,10 @@
-// Survival on the client (shared/water.ts, server/water.ts): the hotbar (slot 1 = canteen, 2 = binoculars
-// in src/binoculars.ts), drinking and refilling, and the HUD: heat meter with a sun light while heat builds,
+// Survival on the client (shared/water.ts, server/water.ts): the hotbar (slot 1 = canteen, 2 = spyglass
+// in src/telescope.ts), drinking and refilling, and the HUD: heat meter with a sun light while heat builds,
 // the felt temperature with a sun/shade icon (shared/temperature.ts), a heat vignette when it's nearly full,
 // and the death screen.
 //
 // The server owns the numbers; this only plays the actions and asks. Key 1 takes the canteen out or puts
-// it away (2 the binoculars, 3–4 select the empty slots). With it out, holding left mouse / E for DRINK_MS drinks one sip
+// it away (2 the spyglass, 3–4 select the empty slots). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // (no digging while your hands are full, see `tools` in src/input.ts), and F at the base's pump refills it.
 import { atPump } from '../shared/base.ts';
 import { CANTEEN_SIPS, DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
@@ -15,8 +15,8 @@ import type { Net } from './net';
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
  * are true for the whole sip / refill action. Digging is the DIG input bit, as before.
  */
-export type Held = 'none' | 'canteen' | 'binoculars';
-/** `looking`: binoculars being raised or at the eyes; `scoped`: at the eyes, view zoomed (hands hidden). */
+export type Held = 'none' | 'canteen' | 'telescope';
+/** `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden). */
 export const playerHands = { held: 'none' as Held, drinking: false, filling: false, looking: false, scoped: false };
 
 const SLOTS = 4;
@@ -99,12 +99,9 @@ const CANTEEN_SVG = `<svg viewBox="0 0 22 26"><rect x="8" y="0.5" width="6" heig
 <ellipse cx="11" cy="15" rx="9.5" ry="9.5" fill="#8a8f86" stroke="#2a160a" stroke-width="1"/>
 <ellipse cx="11" cy="15" rx="6.5" ry="6.5" fill="none" stroke="#5e6a5a" stroke-width="2.2"/>
 <path d="M2 11h18" stroke="#6b4a2e" stroke-width="2"/></svg>`;
-const BINOCULARS_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.8">
-<rect x="2.6" y="3.5" width="5.8" height="4" rx="1.4" fill="#b8873a"/><rect x="13.6" y="3.5" width="5.8" height="4" rx="1.4" fill="#b8873a"/>
-<rect x="1" y="7" width="9" height="15.5" rx="2" fill="#6a3626"/><rect x="12" y="7" width="9" height="15.5" rx="2" fill="#6a3626"/>
-<rect x="9.5" y="9.5" width="3" height="4.5" fill="#d4a24c"/>
-<rect x="0.5" y="19" width="10" height="4.5" rx="1.2" fill="#d4a24c"/><rect x="11.5" y="19" width="10" height="4.5" rx="1.2" fill="#d4a24c"/></g>
-<path d="M1.5 12h8M12.5 12h8" stroke="#d4a24c" stroke-width="1"/></svg>`;
+const TELESCOPE_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.8" transform="rotate(-45 11 13)">
+<rect x="-1" y="11.6" width="5" height="2.8" rx="0.8" fill="#d4a24c"/><rect x="3.5" y="11" width="5" height="4" fill="#b8873a"/>
+<rect x="8.5" y="10.2" width="10" height="5.6" rx="0.6" fill="#6a3626"/><rect x="18" y="9.6" width="4" height="6.8" rx="1" fill="#d4a24c"/></g></svg>`;
 
 export class Survival {
   private net: Net;
@@ -159,8 +156,8 @@ export class Survival {
         s.insertAdjacentHTML('beforeend', `${CANTEEN_SVG}<div class="pips">${'<i></i>'.repeat(CANTEEN_SIPS)}</div>`);
         this.pips = [...s.querySelectorAll<HTMLElement>('.pips i')];
       } else if (i === 1) {
-        s.title = 'Binoculars — hold the mouse button to look, wheel to zoom';
-        s.insertAdjacentHTML('beforeend', BINOCULARS_SVG);
+        s.title = 'Spyglass — hold the mouse button to look, wheel to zoom';
+        s.insertAdjacentHTML('beforeend', TELESCOPE_SVG);
       }
       this.slots.push(s);
       hotbar.append(s);
@@ -190,7 +187,7 @@ export class Survival {
   private select(slot: number) {
     if (slot !== this.selected) this.cancel();
     this.selected = slot;
-    playerHands.held = slot === 0 ? 'canteen' : slot === 1 ? 'binoculars' : 'none';
+    playerHands.held = slot === 0 ? 'canteen' : slot === 1 ? 'telescope' : 'none';
     this.slots.forEach((s, i) => s.classList.toggle('sel', i === slot));
   }
 

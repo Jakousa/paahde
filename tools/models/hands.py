@@ -9,17 +9,18 @@
 #   CanteenWalk (0.73 s loop)  the same hold with the walk bob
 #   Drink (1.2 s one-shot)  raise the neck to the mouth, tip it up, two gulps, lower
 #   Fill (1.5 s one-shot)   canteen lowered forward and tipped, left palm under it, back
-#   BinocularsIdle (3 s loop)  binoculars held in both hands at lower chest height, eyepieces to the eye
-#   BinocularsWalk (0.73 s loop)  the same hold with the walk bob
-#   BinocularsRaise (0.35 s one-shot)  from the BinocularsIdle pose up to the eyes (play clamped; ends with
-#     the eyepieces ~10 cm ahead of the eye, just past the game's near plane after the viewmodel scale)
+#   TelescopeIdle (3 s loop)  spyglass held low-right in the right hand, objective up and forward, left arm
+#     lowered out of view
+#   TelescopeWalk (0.73 s loop)  the same hold with the walk bob
+#   TelescopeRaise (0.35 s one-shot)  from the TelescopeIdle pose up to the eye (play clamped; ends with
+#     the eyepiece ~10 cm ahead of the eye, just past the game's near plane after the viewmodel scale)
 # The canteen one-shots start and end on the CanteenIdle pose (frame 0) so they cross-fade cleanly;
-# BinocularsRaise starts on the BinocularsIdle frame-0 pose.
-# Mesh nodes `Canteen` (tools/models/canteen.py, own material 'Canteen') and `Binoculars`
-# (tools/models/binoculars.py, own material 'Binoculars') are children of the `RightHand` bone, so they
+# TelescopeRaise starts on the TelescopeIdle frame-0 pose.
+# Mesh nodes `Canteen` (tools/models/canteen.py, own material 'Canteen') and `Telescope`
+# (tools/models/telescope.py, own material 'Telescope') are children of the `RightHand` bone, so they
 # follow every clip; both are visible by default, the game toggles `.visible`. The script also writes the
 # standalone public/models/canteen.glb (origin at the bottom centre, front +Z) and
-# public/models/binoculars.glb (origin at the centre, objectives -Z, eyepieces +Z).
+# public/models/telescope.glb (origin at the grip on the axis, objective -Z, eyepiece +Z).
 import math
 import os
 import sys
@@ -307,88 +308,71 @@ for name, frames, fn in (('CanteenIdle', 90, canteen_idle), ('CanteenWalk', 22, 
                          ('Fill', 45, fill)):
     S.clip(name, frames, fn)
 
-# ============================================================================== binocular clips
-# Held like opera glasses: each hand round the outside of its barrel, palm low on the outer side, fingers
-# wrapping up and over the top, thumbs underneath. The binoculars ride on the right hand (like the
-# canteen); the left hand is placed on the mirrored grip on the left barrel.
-import binoculars as BN  # noqa: E402
-
-B_GRIP_R = BN.leather_r(0.0) + 0.007  # barrel axis → palm centre (leather + glove)
-B_GRIP_Y = -0.004  # grip point along the barrel (local y, between the two bands)
-B_PHI = math.radians(32)  # palm this far below the barrel's side, fingers wrapping up over the top
+# ============================================================================== telescope clips
+# The spyglass is held in the right fist like the canteen, the main barrel across the palm with the
+# eyepiece by the thumb; the left arm stays lowered out of view.
+import telescope as TS  # noqa: E402
 
 
-def binoculars_grip(sign):
-    """Palm centre, finger direction and palm normal in the binoculars' local frame for the right (sign = 1)
-    or left (sign = -1) hand."""
-    c, s_ = math.cos(B_PHI), math.sin(B_PHI)
-    palm = V((sign * (BN.BX + B_GRIP_R * c), B_GRIP_Y, -B_GRIP_R * s_))
-    return palm, V((sign * s_, 0, c)), V((-sign * c, 0, s_))
 
-
-def binoculars_in_hand():
-    """Binoculars matrix relative to the RightHand bone (head origin)."""
+def telescope_in_hand():
+    """Telescope matrix relative to the RightHand bone (head origin)."""
     a, pn, t = hand_frame(-1)
     W = V(S.B['RightHand'][0])
-    palm_l, a_l, n_l = binoculars_grip(1)
-    c, s_ = math.cos(B_PHI), math.sin(B_PHI)
-    xb, zb = -c * pn + s_ * a, s_ * pn + c * a  # from n_l = (-c, 0, s), a_l = (s, 0, c)
-    yb = zb.cross(xb)
-    print('BINO forward·thumb', round(yb.dot(t), 3))
-    m = frame_cols(xb, yb, zb).to_4x4()
-    m.translation = (W + a * 0.045 + pn * 0.028) - m.to_3x3() @ palm_l
+    yt = -t  # objective out past the little finger, eyepiece by the thumb
+    zt = (-pn - yt * (-pn).dot(yt)).normalized()
+    xt = yt.cross(zt)
+    m = frame_cols(xt, yt, zt).to_4x4()
+    m.translation = W + a * 0.07 + pn * 0.034  # in the curl of the fingers
     return BONES['RightHand'].matrix_local.inverted() @ m
 
 
-B_HAND = binoculars_in_hand()
+T_HAND = telescope_in_hand()
 
 
-def view_binoculars(centre, yaw=0.0, tilt=0.0, roll=0.0):
-    """Binoculars world matrix from their centre: roll about the barrels (+ = right side down), yaw about
-    Z, tilt about world X (+ = objectives up)."""
+def view_telescope(centre, yaw=0.0, tilt=0.0, roll=0.0):
+    """Telescope world matrix from its grip: roll about the tube, yaw about Z (+ = objective left), tilt
+    about world X (+ = objective up)."""
     return (Matrix.Translation(V(centre)) @ Matrix.Rotation(math.radians(tilt), 4, 'X') @
             Matrix.Rotation(math.radians(yaw), 4, 'Z') @ Matrix.Rotation(math.radians(roll), 4, 'Y'))
 
 
-# binocular poses: (centre x, y, z, yaw, tilt, roll)
-B_HOLD = (0.0, 0.36, -0.17, 0, -4, 0)
-# up to the eyes: eyepieces ~0.095 m ahead (the game scales the viewmodel 0.55 about the eye, near plane 0.05)
-B_EYES = (0.0, -BN.EYE_Y + 0.095, -0.012, 0, 0, 0)
-B_R_POLE = (0.6, -0.1, -0.5)
-B_L_POLE = (-0.6, -0.1, -0.5)
+# telescope poses: (grip x, y, z, yaw, tilt, roll)
+T_HOLD = (0.16, 0.34, -0.17, 38, 10, 70)
+# at the eye: eyepiece ~0.095 m ahead (the game scales the viewmodel 0.55 about the eye, near plane 0.05)
+T_EYE = (0.0, -TS.EYE_Y + 0.095, -0.004, 0, 0, 100)
 
 
-def binoculars_pose(bpose, curl=58, sway=None):
-    bm = view_binoculars(bpose[:3], *bpose[3:])
-    pose = solve_arm('Right', bm @ B_HAND.inverted(), B_R_POLE)
-    palm, fing, nrm = binoculars_grip(-1)
-    r3 = bm.to_3x3()
-    pose.update(solve_arm('Left', left_hand_world(bm @ palm, r3 @ fing, r3 @ nrm), B_L_POLE, twist=0.6))
-    for pre, sign in (('Left', 1), ('Right', -1)):
+def telescope_pose(tpose, curl=70, sway=None):
+    tm = view_telescope(tpose[:3], *tpose[3:])
+    pose = solve_arm('Right', tm @ T_HAND.inverted(), R_POLE)
+    pose.update(solve_arm('Left', left_hand_world(*L_LOW), L_POLE, twist=0.6))
+    for pre, sign, c in (('Left', 1, 12), ('Right', -1, curl)):
         t = V(hand_frame(sign)[2])
-        pose[pre + 'HandIndex1'] = rot((t, -curl * sign))
-        pose[pre + 'HandIndex2'] = rot((t, -curl * 1.1 * sign))
+        pose[pre + 'HandIndex1'] = rot((t, -c * sign))
+        pose[pre + 'HandIndex2'] = rot((t, -c * 1.1 * sign))
+    pose['RightHandThumb1'] = rot((V(hand_frame(-1)[0]), 10))
     if sway:
         pose['Root'] = sway
     return pose
 
 
-def binoculars_idle(p):
+def telescope_idle(p):
     w = 2 * math.pi * p
-    return binoculars_pose(B_HOLD, sway=rot((X, 0.9 * math.sin(w)), (Z, 0.6 * math.sin(w + 1)))), (0, 0, 0)
+    return telescope_pose(T_HOLD, sway=rot((X, 0.9 * math.sin(w)), (Z, 0.6 * math.sin(w + 1)))), (0, 0, 0)
 
 
-def binoculars_walk(p):
+def telescope_walk(p):
     w = 2 * math.pi * p
-    return binoculars_pose(B_HOLD, sway=rot((X, 2.5 * math.sin(2 * w)), (Y, 2.0 * math.sin(w)))), (0, 0, 0)
+    return telescope_pose(T_HOLD, sway=rot((X, 2.5 * math.sin(2 * w)), (Y, 2.0 * math.sin(w)))), (0, 0, 0)
 
 
-B_RAISE = [(0.0, B_HOLD), (0.45, (0.0, 0.25, -0.075, 0, 5, 0)), (1.0, B_EYES)]
+T_RAISE = [(0.0, T_HOLD), (0.5, (0.08, 0.31, -0.10, 14, 12, 90)), (1.0, T_EYE)]
 
 
-def binoculars_raise(p):
-    sway = rot((Z, 0.6 * math.sin(1) * (1 - p)))  # BinocularsIdle frame 0 → still
-    return binoculars_pose(keys(B_RAISE, p), sway=sway), (0, 0, 0)
+def telescope_raise(p):
+    sway = rot((Z, 0.6 * math.sin(1) * (1 - p)))  # TelescopeIdle frame 0 → still
+    return telescope_pose(keys(T_RAISE, p), sway=sway), (0, 0, 0)
 
 
 def clip_once(name, frames, fn):
@@ -404,9 +388,9 @@ def clip_once(name, frames, fn):
     rig.animation_data.action = None
 
 
-for name, frames, fn in (('BinocularsIdle', 90, binoculars_idle), ('BinocularsWalk', 22, binoculars_walk)):
+for name, frames, fn in (('TelescopeIdle', 90, telescope_idle), ('TelescopeWalk', 22, telescope_walk)):
     S.clip(name, frames, fn)
-clip_once('BinocularsRaise', 10, binoculars_raise)  # 11 keys, 0.33 s
+clip_once('TelescopeRaise', 10, telescope_raise)  # 11 keys, 0.33 s
 for pb in rig.pose.bones:
     pb.rotation_quaternion = Quaternion()
 
@@ -414,24 +398,24 @@ for pb in rig.pose.bones:
 # the 'PlayerTint' material name, exported alone, then parented to the right hand.
 CAN_AT = V((5.0, 0.0, 0.9))
 can = CT.build(CAN_AT)
-BINO_AT = V((-5.0, 0.0, 0.9))
-bino = BN.build(BINO_AT)
+TEL_AT = V((-5.0, 0.0, 0.9))
+tel = TS.build(TEL_AT)
 
 import bake  # noqa: E402
 
 bake.bake_atlas(body, 1024, S.OUT_DIR, tint_name='Tint', small=0, prefix='hands')
 CT.bake_and_export(can, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'canteen.glb'), CAN_AT)
-BN.bake_and_export(bino, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'binoculars.glb'), BINO_AT)
+TS.bake_and_export(tel, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'telescope.glb'), TEL_AT)
 bpy.context.view_layer.update()
 can.parent = rig
 can.parent_type = 'BONE'
 can.parent_bone = 'RightHand'
 can.matrix_parent_inverse = Matrix.Identity(4)
 can.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ C_HAND  # bone parent space = tail
-bino.parent = rig
-bino.parent_type = 'BONE'
-bino.parent_bone = 'RightHand'
-bino.matrix_parent_inverse = Matrix.Identity(4)
-bino.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ B_HAND
-bake.export(rig, [body, can, bino], OUT)
-print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can), 'BINOCULARS', tri_count(bino))
+tel.parent = rig
+tel.parent_type = 'BONE'
+tel.parent_bone = 'RightHand'
+tel.matrix_parent_inverse = Matrix.Identity(4)
+tel.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ T_HAND
+bake.export(rig, [body, can, tel], OUT)
+print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can), 'TELESCOPE', tri_count(tel))

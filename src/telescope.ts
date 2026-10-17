@@ -1,39 +1,39 @@
-// Binoculars (hotbar slot 2, src/water.ts). With them out, hold the use button (left/right mouse, E or Q)
-// to raise them to the eyes; once the raise clip (src/viewmodel.ts) has played, the view zooms in behind a
-// two-lens mask and the mouse wheel sets the zoom. Letting go lowers them. Client-only: nothing is sent.
+// Spyglass (hotbar slot 2, src/water.ts). With it out, hold the use button (left/right mouse, E or Q) to
+// raise it to the eye; once the raise clip (src/viewmodel.ts) has played, the view zooms in behind a round
+// lens mask and the mouse wheel sets the zoom. Letting go lowers it. Client-only: nothing is sent.
 import type { FirstPersonCamera } from './camera';
 import { aimHeld } from './input';
 import { playerHands } from './water';
 
-/** Length of the BinocularsRaise clip (s): the view zooms once they're at the eyes. */
+/** Length of the TelescopeRaise clip (s): the view zooms once it's at the eye. */
 const RAISE_S = 0.35;
 const ZOOM_MIN = 3;
 const ZOOM_MAX = 12;
 const ZOOM_DEFAULT = 6;
 
 const css = `
-#binoculars { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .12s; z-index: 5; }
-#binoculars svg { width: 100%; height: 100%; display: block; }
-#binoculars .zoom { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); font: 600 12px system-ui,
+#telescope { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .12s; z-index: 5; }
+#telescope svg { width: 100%; height: 100%; display: block; }
+#telescope .zoom { position: absolute; left: 50%; bottom: 9%; transform: translateX(-50%); font: 600 12px system-ui,
   sans-serif; color: #d9b98a; opacity: 0.7; font-variant-numeric: tabular-nums; }
 body.scoped #crosshair { display: none; }
 `;
 
-// Two overlapping lens circles cut out of black with soft edges, a faint warm rim inside each lens.
+// One lens circle cut out of black with a soft edge, a faint warm rim inside it.
 const SVG = `<svg viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
 <defs><filter id="bnBlur" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="14"/></filter>
 <mask id="bnMask"><rect width="1600" height="1000" fill="white"/>
-<g fill="black" filter="url(#bnBlur)"><circle cx="595" cy="500" r="385"/><circle cx="1005" cy="500" r="385"/></g></mask>
+<circle cx="800" cy="500" r="430" fill="black" filter="url(#bnBlur)"/></mask>
 <radialGradient id="bnRim"><stop offset="0.8" stop-color="#3a1e0a" stop-opacity="0"/>
 <stop offset="1" stop-color="#3a1e0a" stop-opacity="0.55"/></radialGradient></defs>
-<circle cx="595" cy="500" r="385" fill="url(#bnRim)"/><circle cx="1005" cy="500" r="385" fill="url(#bnRim)"/>
+<circle cx="800" cy="500" r="430" fill="url(#bnRim)"/>
 <rect width="1600" height="1000" fill="#050302" mask="url(#bnMask)"/></svg>`;
 
-export class Binoculars {
+export class Telescope {
   private view: FirstPersonCamera;
   private el = document.createElement('div');
   private zoomEl: HTMLElement;
-  private raised = 0; // seconds at the eyes so far
+  private raised = 0; // seconds at the eye so far
   private zoom = ZOOM_DEFAULT;
 
   constructor(view: FirstPersonCamera) {
@@ -41,7 +41,7 @@ export class Binoculars {
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
-    this.el.id = 'binoculars';
+    this.el.id = 'telescope';
     this.el.innerHTML = `${SVG}<span class="zoom"></span>`;
     this.zoomEl = this.el.querySelector('.zoom')!;
     document.body.append(this.el);
@@ -52,7 +52,7 @@ export class Binoculars {
   }
 
   update(dt: number) {
-    const look = playerHands.held === 'binoculars' && aimHeld() && !!document.pointerLockElement;
+    const look = playerHands.held === 'telescope' && aimHeld() && !!document.pointerLockElement;
     this.raised = look ? this.raised + dt : 0;
     const scoped = look && this.raised >= RAISE_S;
     playerHands.looking = look;

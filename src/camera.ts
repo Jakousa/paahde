@@ -39,7 +39,7 @@ export class FirstPersonCamera {
   private dipVel = 0;
   private roll = 0;
   private fov = BASE_FOV;
-  /** Magnification (binoculars, src/binoculars.ts); 1 = none. The view eases towards it. */
+  /** Magnification (spyglass, src/telescope.ts); 1 = none. The view eases towards it. */
   zoom = 1;
   private zoomShown = 1;
   private wasGrounded = true;

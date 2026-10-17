@@ -1,5 +1,5 @@
 // First-person viewmodel: the local player's gloved hands (public/models/hands.glb, tools/models/hands.py),
-// optionally holding the canteen or the binoculars. Parented to the camera, so it is drawn in view space.
+// optionally holding the canteen or the spyglass. Parented to the camera, so it is drawn in view space.
 //
 //   const vm = new ViewModel(orbit, scene);
 //   vm.update(dt, { speed, grounded, digging, sliding });  // every render frame, after orbit.update()
@@ -7,16 +7,16 @@
 // Empty hands are lowered out of view (hidden); the clips Idle / Walk / Dig still run under them.
 // Clips: Idle / Walk / Dig with empty hands; CanteenIdle / CanteenWalk / Drink / Fill with the canteen
 // (the `Canteen` mesh, parented to the right hand bone, is shown only then). Missing clips fall back to the
-// empty-hand ones, a missing Canteen node just means no canteen. Binoculars: BinocularsIdle / BinocularsWalk,
-// and BinocularsRaise (to the eyes, played while `playerHands.looking`) on the `Binoculars` mesh; once they
-// are at the eyes (`scoped`, src/binoculars.ts) the hands are hidden behind the lens mask. Walk clips are phase-locked to the camera's
+// empty-hand ones, a missing Canteen node just means no canteen. Spyglass: TelescopeIdle / TelescopeWalk,
+// and TelescopeRaise (to the eye, played while `playerHands.looking`) on the `Telescope` mesh; once it is
+// at the eye (`scoped`, src/telescope.ts) the hands are hidden behind the lens mask. Walk clips are phase-locked to the camera's
 // step phase so the hands bob in time with the head.
 //
 // Scaled down about the eye: the picture is identical (scaling about the projection centre doesn't change
 // what projects where) but the hands sit inside the player's collision radius, so they don't poke through
 // walls the camera is pressed against.
 //
-// Debug (with ?debug, `dbg.viewmodel`): ?hold=canteen|binoculars forces what's held, ?anim=Drink loops one clip.
+// Debug (with ?debug, `dbg.viewmodel`): ?hold=canteen|telescope forces what's held, ?anim=Drink loops one clip.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { FirstPersonCamera } from './camera';
@@ -49,7 +49,7 @@ export class ViewModel {
   private actions = new Map<string, THREE.AnimationAction>();
   private current: THREE.AnimationAction | null = null;
   private canteen: THREE.Object3D | null = null;
-  private binoculars: THREE.Object3D | null = null;
+  private telescope: THREE.Object3D | null = null;
   private tint: THREE.MeshStandardMaterial[] = [];
   private shown: Held = 'none';
   private lower = 1; // 0 = up in view, 1 = fully lowered (starts lowered and raises on load)
@@ -90,7 +90,7 @@ export class ViewModel {
       mesh.material = Array.isArray(mesh.material) ? own : own[0];
     });
     this.canteen = model.getObjectByName('Canteen') ?? null;
-    this.binoculars = model.getObjectByName('Binoculars') ?? null;
+    this.telescope = model.getObjectByName('Telescope') ?? null;
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of clips) this.actions.set(clip.name, this.mixer.clipAction(clip));
     this.sway.add(model);
@@ -111,7 +111,7 @@ export class ViewModel {
 
   private applyHeld() {
     if (this.canteen) this.canteen.visible = this.shown === 'canteen';
-    if (this.binoculars) this.binoculars.visible = this.shown === 'binoculars';
+    if (this.telescope) this.telescope.visible = this.shown === 'telescope';
   }
 
   private has(name: string) {
@@ -186,10 +186,10 @@ export class ViewModel {
       else if (playerHands.drinking && this.has('Drink')) this.play('Drink', 0.15, true);
       else if (moving) this.play((walk = this.has('CanteenWalk') ? 'CanteenWalk' : 'Walk'));
       else this.play(this.has('CanteenIdle') ? 'CanteenIdle' : 'Idle');
-    } else if (this.shown === 'binoculars') {
-      if (playerHands.looking && this.has('BinocularsRaise')) this.play('BinocularsRaise', 0.1, true);
-      else if (moving) this.play((walk = this.has('BinocularsWalk') ? 'BinocularsWalk' : 'Walk'));
-      else this.play(this.has('BinocularsIdle') ? 'BinocularsIdle' : 'Idle');
+    } else if (this.shown === 'telescope') {
+      if (playerHands.looking && this.has('TelescopeRaise')) this.play('TelescopeRaise', 0.1, true);
+      else if (moving) this.play((walk = this.has('TelescopeWalk') ? 'TelescopeWalk' : 'Walk'));
+      else this.play(this.has('TelescopeIdle') ? 'TelescopeIdle' : 'Idle');
     } else if (pose.digging) this.play('Dig', 0.12);
     else if (moving) this.play((walk = 'Walk'));
     else this.play('Idle');
