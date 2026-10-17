@@ -9,10 +9,17 @@
 #   CanteenWalk (0.73 s loop)  the same hold with the walk bob
 #   Drink (1.2 s one-shot)  raise the neck to the mouth, tip it up, two gulps, lower
 #   Fill (1.5 s one-shot)   canteen lowered forward and tipped, left palm under it, back
-# The one-shots start and end on the CanteenIdle pose (frame 0) so they cross-fade cleanly.
-# Mesh node `Canteen` (tools/models/canteen.py, own material 'Canteen') is a child of the `RightHand`
-# bone, so it follows every clip; it is visible by default, the game toggles `.visible`. The script also
-# writes the standalone public/models/canteen.glb (origin at the bottom centre, front +Z).
+#   BinocularsIdle (3 s loop)  binoculars held in both hands at lower chest height, eyepieces to the eye
+#   BinocularsWalk (0.73 s loop)  the same hold with the walk bob
+#   BinocularsRaise (0.35 s one-shot)  from the BinocularsIdle pose up to the eyes (play clamped; ends with
+#     the eyepieces ~10 cm ahead of the eye, just past the game's near plane after the viewmodel scale)
+# The canteen one-shots start and end on the CanteenIdle pose (frame 0) so they cross-fade cleanly;
+# BinocularsRaise starts on the BinocularsIdle frame-0 pose.
+# Mesh nodes `Canteen` (tools/models/canteen.py, own material 'Canteen') and `Binoculars`
+# (tools/models/binoculars.py, own material 'Binoculars') are children of the `RightHand` bone, so they
+# follow every clip; both are visible by default, the game toggles `.visible`. The script also writes the
+# standalone public/models/canteen.glb (origin at the bottom centre, front +Z) and
+# public/models/binoculars.glb (origin at the centre, objectives -Z, eyepieces +Z).
 import math
 import os
 import sys
@@ -299,6 +306,107 @@ def fill(p):
 for name, frames, fn in (('CanteenIdle', 90, canteen_idle), ('CanteenWalk', 22, canteen_walk), ('Drink', 36, drink),
                          ('Fill', 45, fill)):
     S.clip(name, frames, fn)
+
+# ============================================================================== binocular clips
+# Held like opera glasses: each hand round the outside of its barrel, palm low on the outer side, fingers
+# wrapping up and over the top, thumbs underneath. The binoculars ride on the right hand (like the
+# canteen); the left hand is placed on the mirrored grip on the left barrel.
+import binoculars as BN  # noqa: E402
+
+B_GRIP_R = BN.leather_r(0.0) + 0.007  # barrel axis → palm centre (leather + glove)
+B_GRIP_Y = -0.004  # grip point along the barrel (local y, between the two bands)
+B_PHI = math.radians(32)  # palm this far below the barrel's side, fingers wrapping up over the top
+
+
+def binoculars_grip(sign):
+    """Palm centre, finger direction and palm normal in the binoculars' local frame for the right (sign = 1)
+    or left (sign = -1) hand."""
+    c, s_ = math.cos(B_PHI), math.sin(B_PHI)
+    palm = V((sign * (BN.BX + B_GRIP_R * c), B_GRIP_Y, -B_GRIP_R * s_))
+    return palm, V((sign * s_, 0, c)), V((-sign * c, 0, s_))
+
+
+def binoculars_in_hand():
+    """Binoculars matrix relative to the RightHand bone (head origin)."""
+    a, pn, t = hand_frame(-1)
+    W = V(S.B['RightHand'][0])
+    palm_l, a_l, n_l = binoculars_grip(1)
+    c, s_ = math.cos(B_PHI), math.sin(B_PHI)
+    xb, zb = -c * pn + s_ * a, s_ * pn + c * a  # from n_l = (-c, 0, s), a_l = (s, 0, c)
+    yb = zb.cross(xb)
+    print('BINO forward·thumb', round(yb.dot(t), 3))
+    m = frame_cols(xb, yb, zb).to_4x4()
+    m.translation = (W + a * 0.045 + pn * 0.028) - m.to_3x3() @ palm_l
+    return BONES['RightHand'].matrix_local.inverted() @ m
+
+
+B_HAND = binoculars_in_hand()
+
+
+def view_binoculars(centre, yaw=0.0, tilt=0.0, roll=0.0):
+    """Binoculars world matrix from their centre: roll about the barrels (+ = right side down), yaw about
+    Z, tilt about world X (+ = objectives up)."""
+    return (Matrix.Translation(V(centre)) @ Matrix.Rotation(math.radians(tilt), 4, 'X') @
+            Matrix.Rotation(math.radians(yaw), 4, 'Z') @ Matrix.Rotation(math.radians(roll), 4, 'Y'))
+
+
+# binocular poses: (centre x, y, z, yaw, tilt, roll)
+B_HOLD = (0.0, 0.36, -0.17, 0, -4, 0)
+# up to the eyes: eyepieces ~0.095 m ahead (the game scales the viewmodel 0.55 about the eye, near plane 0.05)
+B_EYES = (0.0, -BN.EYE_Y + 0.095, -0.012, 0, 0, 0)
+B_R_POLE = (0.6, -0.1, -0.5)
+B_L_POLE = (-0.6, -0.1, -0.5)
+
+
+def binoculars_pose(bpose, curl=58, sway=None):
+    bm = view_binoculars(bpose[:3], *bpose[3:])
+    pose = solve_arm('Right', bm @ B_HAND.inverted(), B_R_POLE)
+    palm, fing, nrm = binoculars_grip(-1)
+    r3 = bm.to_3x3()
+    pose.update(solve_arm('Left', left_hand_world(bm @ palm, r3 @ fing, r3 @ nrm), B_L_POLE, twist=0.6))
+    for pre, sign in (('Left', 1), ('Right', -1)):
+        t = V(hand_frame(sign)[2])
+        pose[pre + 'HandIndex1'] = rot((t, -curl * sign))
+        pose[pre + 'HandIndex2'] = rot((t, -curl * 1.1 * sign))
+    if sway:
+        pose['Root'] = sway
+    return pose
+
+
+def binoculars_idle(p):
+    w = 2 * math.pi * p
+    return binoculars_pose(B_HOLD, sway=rot((X, 0.9 * math.sin(w)), (Z, 0.6 * math.sin(w + 1)))), (0, 0, 0)
+
+
+def binoculars_walk(p):
+    w = 2 * math.pi * p
+    return binoculars_pose(B_HOLD, sway=rot((X, 2.5 * math.sin(2 * w)), (Y, 2.0 * math.sin(w)))), (0, 0, 0)
+
+
+B_RAISE = [(0.0, B_HOLD), (0.45, (0.0, 0.25, -0.075, 0, 5, 0)), (1.0, B_EYES)]
+
+
+def binoculars_raise(p):
+    sway = rot((Z, 0.6 * math.sin(1) * (1 - p)))  # BinocularsIdle frame 0 → still
+    return binoculars_pose(keys(B_RAISE, p), sway=sway), (0, 0, 0)
+
+
+def clip_once(name, frames, fn):
+    """Like scavenger.clip, but a one-shot that ends on p = 1 (clip() wraps its last key back to p = 0)."""
+    S.clip(name, frames, lambda p: fn(1.0))  # creates the action + NLA strip; keys rewritten below
+    act = bpy.data.actions[name]
+    rig.animation_data.action = act
+    if hasattr(rig.animation_data, 'action_slot') and act.slots:
+        rig.animation_data.action_slot = act.slots[0]
+    for f in range(frames + 1):
+        pose, hips = fn(f / frames)
+        S.key_pose(f, pose, hips)
+    rig.animation_data.action = None
+
+
+for name, frames, fn in (('BinocularsIdle', 90, binoculars_idle), ('BinocularsWalk', 22, binoculars_walk)):
+    S.clip(name, frames, fn)
+clip_once('BinocularsRaise', 10, binoculars_raise)  # 11 keys, 0.33 s
 for pb in rig.pose.bones:
     pb.rotation_quaternion = Quaternion()
 
@@ -306,16 +414,24 @@ for pb in rig.pose.bones:
 # the 'PlayerTint' material name, exported alone, then parented to the right hand.
 CAN_AT = V((5.0, 0.0, 0.9))
 can = CT.build(CAN_AT)
+BINO_AT = V((-5.0, 0.0, 0.9))
+bino = BN.build(BINO_AT)
 
 import bake  # noqa: E402
 
 bake.bake_atlas(body, 1024, S.OUT_DIR, tint_name='Tint', small=0, prefix='hands')
 CT.bake_and_export(can, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'canteen.glb'), CAN_AT)
+BN.bake_and_export(bino, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'binoculars.glb'), BINO_AT)
 bpy.context.view_layer.update()
 can.parent = rig
 can.parent_type = 'BONE'
 can.parent_bone = 'RightHand'
 can.matrix_parent_inverse = Matrix.Identity(4)
 can.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ C_HAND  # bone parent space = tail
-bake.export(rig, [body, can], OUT)
-print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can))
+bino.parent = rig
+bino.parent_type = 'BONE'
+bino.parent_bone = 'RightHand'
+bino.matrix_parent_inverse = Matrix.Identity(4)
+bino.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ B_HAND
+bake.export(rig, [body, can, bino], OUT)
+print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can), 'BINOCULARS', tri_count(bino))

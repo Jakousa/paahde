@@ -34,6 +34,7 @@ import { footsteps } from './footsteps';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
 import { ViewModel } from './viewmodel';
+import { Binoculars } from './binoculars';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -108,6 +109,7 @@ const locator = new LocatorBar();
 const hud = new InventoryHud();
 net.onInventory = (items) => hud.setItems(items);
 const survival = new Survival(net);
+const binoculars = new Binoculars(orbit);
 net.onTended = (what) => hud.toast(what === 'planted' ? 'Seeds planted' : 'Harvested the greens');
 
 window.addEventListener('resize', () => {
@@ -213,6 +215,7 @@ renderer.setAnimationLoop((time) => {
   if (riding && me.eye(eye)) focus.set(eye.x - Math.sin(v.heading) * RIDE_EYE_AHEAD, eye.y - EYE_HEIGHT, eye.z - Math.cos(v.heading) * RIDE_EYE_AHEAD);
   else if (riding) focus.set(v.x, v.y, v.z);
   else focus.copy(me.root.position);
+  binoculars.update(frameDt);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, lean: bikes.get(0)?.leanAngle }, frameDt);
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));

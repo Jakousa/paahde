@@ -137,8 +137,11 @@ export class Net {
     this.send({ t: 'fill' });
   }
 
-  /** What we're holding, for other players' view of us; sent when it changes. Call every frame. */
-  setHands(held: 'none' | 'canteen', drinking: boolean) {
+  /**
+   * What we're holding, for other players' view of us; sent when it changes. Call every frame. Only the
+   * canteen is shown to others for now (binoculars read as empty hands).
+   */
+  setHands(held: 'none' | 'canteen' | 'binoculars', drinking: boolean) {
     this.hands = held === 'canteen' ? (drinking ? 2 : 1) : 0;
     if (this.connected && this.hands !== this.sentHands) {
       this.send({ t: 'hands', hands: this.hands });

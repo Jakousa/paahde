@@ -5,7 +5,7 @@ const bikeAllowed = import.meta.env.DEV || location.search.includes('debug');
 let mouseDig = false;
 let mousePile = false;
 let pickupPressed = false;
-/** Hands full (src/water.ts holds the canteen): left mouse / E and right mouse / Q don't dig or pile. */
+/** Hands full (canteen or binoculars out, src/water.ts): left mouse / E and right mouse / Q don't dig or pile. */
 export const tools = { blocked: false };
 // While the pointer is locked the game owns the keyboard: swallow browser shortcuts (Tab, F-keys, Alt, Ctrl+S...).
 // Esc frees the mouse (the browser does that itself), and then keys behave normally again.
@@ -76,6 +76,11 @@ export function readInput(): number {
 /** Use button (left mouse or E) held down: digs normally, drinks while the canteen is held. */
 export function useHeld(): boolean {
   return mouseDig || keys.has('KeyE');
+}
+
+/** Any use button held (left/right mouse, E or Q): raises the binoculars while they're out. */
+export function aimHeld(): boolean {
+  return mouseDig || mousePile || keys.has('KeyE') || keys.has('KeyQ');
 }
 
 /** F held down (pickup / fill). */

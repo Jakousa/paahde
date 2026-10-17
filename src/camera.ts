@@ -39,6 +39,9 @@ export class FirstPersonCamera {
   private dipVel = 0;
   private roll = 0;
   private fov = BASE_FOV;
+  /** Magnification (binoculars, src/binoculars.ts); 1 = none. The view eases towards it. */
+  zoom = 1;
+  private zoomShown = 1;
   private wasGrounded = true;
   private lastVy = 0;
   /** Third-person view on (T toggles it, remembered per browser). */
@@ -64,8 +67,9 @@ export class FirstPersonCamera {
     });
     addEventListener('mousemove', (e) => {
       if (document.pointerLockElement !== dom) return;
-      this.yaw -= e.movementX * SENSITIVITY;
-      this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - e.movementY * SENSITIVITY));
+      const s = SENSITIVITY / this.zoomShown; // zoomed in, the same hand movement turns the view less
+      this.yaw -= e.movementX * s;
+      this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - e.movementY * s));
     });
   }
 
@@ -144,8 +148,11 @@ export class FirstPersonCamera {
     const t = Math.max(0, Math.min(1, (speed - WALK_SPEED - 0.5) / (SPRINT_SPEED - WALK_SPEED - 1)));
     const target = BASE_FOV + SPRINT_FOV_KICK * t;
     this.fov += (target - this.fov) * (1 - Math.exp(-dt * 5));
-    if (Math.abs(this.camera.fov - this.fov) > 0.01) {
-      this.camera.fov = this.fov;
+    // Zoom narrows the view by the magnification (tan of the half-angle), snapping back out when it ends.
+    this.zoomShown = this.zoom <= 1 ? 1 : this.zoomShown + (this.zoom - this.zoomShown) * (1 - Math.exp(-dt * 12));
+    const fov = this.zoomShown > 1 ? (360 / Math.PI) * Math.atan(Math.tan((this.fov * Math.PI) / 360) / this.zoomShown) : this.fov;
+    if (Math.abs(this.camera.fov - fov) > 0.01) {
+      this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
     }
   }

@@ -1,7 +1,8 @@
 # Render preview images of a model under the game's warm low sun (and a neutral overcast light).
 #
 #   Blender -b --factory-startup -P tools/models/render_preview.py -- <model.glb|.blend> <out_prefix> [options]
-#   options: --clips (render a contact strip per animation clip)  --samples N  --size N
+#   options: --clips (render a contact strip per animation clip)  --fp [--names A,B] (first-person viewmodel,
+#   first/middle/last frame of each named clip; --hide Canteen hides held props named that)  --samples N  --size N
 import math
 import os
 import sys
@@ -13,6 +14,8 @@ ARGS = sys.argv[sys.argv.index('--') + 1:]
 SRC, PREFIX = ARGS[0], ARGS[1]
 CLIPS = '--clips' in ARGS
 FP = '--fp' in ARGS
+HIDE = ARGS[ARGS.index('--hide') + 1].split(',') if '--hide' in ARGS else []
+NAMES = ARGS[ARGS.index('--names') + 1].split(',') if '--names' in ARGS else None
 DIST = float(ARGS[ARGS.index('--dist') + 1]) if '--dist' in ARGS else 4.6
 TZ = float(ARGS[ARGS.index('--tz') + 1]) if '--tz' in ARGS else 0.95
 SAMPLES = int(ARGS[ARGS.index('--samples') + 1]) if '--samples' in ARGS else 48
@@ -130,6 +133,10 @@ if arm and arm.animation_data:
         pb.rotation_quaternion = (1, 0, 0, 0)
         pb.location = (0, 0, 0)
 
+for o in bpy.data.objects:
+    if any(o.name.startswith(h) for h in HIDE):
+        o.hide_render = True
+
 if FP:  # first-person viewmodel: camera at the origin looking along glTF -Z (= Blender +Y)
     ground.location.z = -1.7
     light('desert')
@@ -146,11 +153,11 @@ if FP:  # first-person viewmodel: camera at the origin looking along glTF -Z (= 
         pb.rotation_quaternion = (1, 0, 0, 0)
     sc.render.filepath = f'{PREFIX}_rest.png'
     bpy.ops.render.render(write_still=True)
-    for name in ['Idle', 'Dig']:
+    for name in NAMES or ['Idle', 'Dig']:
         act = next((a for a in bpy.data.actions if a.name.startswith(name)), None)
         f0, f1 = act.frame_range
-        for k in range(2 if name == 'Idle' else 3):
-            set_action(act.name, int(f0 + (f1 - f0) * k / 3))
+        for k in range(3 if NAMES else 2 if name == 'Idle' else 3):
+            set_action(act.name, int(f0 + (f1 - f0) * k / (2 if NAMES else 3)))
             sc.render.filepath = f'{PREFIX}_{name}_{k}.png'
             bpy.ops.render.render(write_still=True)
 elif not CLIPS:
