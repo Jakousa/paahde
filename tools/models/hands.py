@@ -2,8 +2,17 @@
 #
 #   /Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup -P tools/models/hands.py
 #
-# Output public/models/hands.glb: clips Idle, Dig, Walk (bob). Parent it to the camera at the origin; it
-# extends along the camera's -Z (forward) with the hands ~0.45 m in front, below the eye line.
+# Output public/models/hands.glb. Parent it to the camera at the origin; it extends along the camera's -Z
+# (forward) with the hands ~0.45 m in front, below the eye line. 30 fps clips:
+#   Idle (3 s loop), Walk (0.73 s loop, bob), Dig (1.2 s loop)
+#   CanteenIdle (3 s loop)  canteen held low-right in the right hand, left arm lowered out of view
+#   CanteenWalk (0.73 s loop)  the same hold with the walk bob
+#   Drink (1.2 s one-shot)  raise the neck to the mouth, tip it up, two gulps, lower
+#   Fill (1.5 s one-shot)   canteen lowered forward and tipped, left palm under it, back
+# The one-shots start and end on the CanteenIdle pose (frame 0) so they cross-fade cleanly.
+# Mesh node `Canteen` (tools/models/canteen.py, own material 'Canteen') is a child of the `RightHand`
+# bone, so it follows every clip; it is visible by default, the game toggles `.visible`. The script also
+# writes the standalone public/models/canteen.glb (origin at the bottom centre, front +Z).
 import math
 import os
 import sys
@@ -109,11 +118,204 @@ def dig(p):
 
 for name, frames, fn in (('Idle', 90, idle), ('Walk', 22, walk), ('Dig', 36, dig)):
     S.clip(name, frames, fn)
+
+# ============================================================================== canteen clips
+# Posed by placing the canteen (and the left palm) in view space and solving each arm with analytic
+# two-bone IK. View space = the viewmodel's space in Blender: eye at the origin, +Y forward, +Z up,
+# +X right. Rig space is that turned 180° about Z. Pose deltas are armature-space rotations relative to
+# the parent's (see scavenger.key_pose), so the IK result is converted with q = D_parent⁻¹ · D_bone.
+import canteen as CT  # noqa: E402
+
+bpy.context.view_layer.update()
+MW = rig.matrix_world.copy()
+MWi = MW.inverted()
+BONES = rig.data.bones
+CAN_MID = 0.085  # grip height on the canteen body (from its bottom)
+GRIP = (0.034, 0.086, 0.0)  # canteen grip centre from the wrist: along the fingers, off the palm, to the thumb
+
+
+def frame_cols(a, b, c):
+    return Matrix((a, b, c)).transposed()
+
+
+def canteen_in_hand():
+    """Canteen matrix relative to the RightHand bone (head origin), held like a flask: palm against its
+    right edge, fingers reaching back and curling round the back face, thumb up by the shoulder."""
+    a, pn, t = hand_frame(-1)
+    W = V(S.B['RightHand'][0])
+    xc, yc = -pn, a  # width axis (palm on the +X edge), thickness axis (fingers towards the back)
+    zc = xc.cross(yc)
+    print('GRIP neck·thumb', round(zc.dot(t), 3))
+    centre = W + a * GRIP[0] + pn * GRIP[1] + t * GRIP[2]
+    m = frame_cols(xc, yc, zc).to_4x4()
+    m.translation = centre - zc * CAN_MID
+    return BONES['RightHand'].matrix_local.inverted() @ m
+
+
+C_HAND = canteen_in_hand()
+
+
+def view_canteen(centre, yaw=0.0, tilt=0.0, roll=0.0, pitch=0.0):
+    """Canteen world matrix from its grip centre: roll about its thickness axis, yaw about Z (0 = front
+    faces the eye), tilt about world X (+ = neck towards the eye), pitch about world Y (+ = top right)."""
+    r = (Matrix.Rotation(math.radians(pitch), 4, 'Y') @ Matrix.Rotation(math.radians(tilt), 4, 'X') @
+         Matrix.Rotation(math.radians(yaw), 4, 'Z') @ Matrix.Rotation(math.radians(roll), 4, 'Y'))
+    return Matrix.Translation(V(centre)) @ r @ Matrix.Translation((0, 0, -CAN_MID))
+
+
+def twist_angle(q, axis):
+    d = V((q.x, q.y, q.z)).dot(axis)
+    a = 2 * math.atan2(d, q.w)
+    return (a + math.pi) % (2 * math.pi) - math.pi
+
+
+def solve_arm(pre, hand_world, pole_world, twist=0.75):
+    """Pose deltas for <pre>Arm/ForeArm/Hand so the hand bone ends at `hand_world` (view space, head
+    origin). The elbow bends towards `pole_world`; `twist` of the roll about the forearm goes to the forearm
+    (the rest stays in the wrist), so the glove cuff doesn't candy-wrap."""
+    Hr = MWi @ hand_world
+    sh, el, wr = V(S.B[pre + 'Arm'][0]), V(S.B[pre + 'ForeArm'][0]), V(S.B[pre + 'Hand'][0])
+    l1, l2 = (el - sh).length, (wr - el).length
+    dv = Hr.translation - sh
+    if dv.length > (l1 + l2) * 0.999:
+        print('WARN out of reach', pre, round(dv.length, 3), round(l1 + l2, 3))
+    d = min(dv.length, (l1 + l2) * 0.999)
+    dv.normalize()
+    a1 = (l1 * l1 + d * d - l2 * l2) / (2 * d)
+    h = math.sqrt(max(0.0, l1 * l1 - a1 * a1))
+    pole = MWi @ V(pole_world) - sh
+    perp = (pole - dv * pole.dot(dv)).normalized()
+    e2 = sh + dv * a1 + perp * h
+    w2 = sh + dv * d
+    d_arm = (el - sh).rotation_difference(e2 - sh)
+    d_fore = (d_arm @ (wr - el)).rotation_difference(w2 - e2) @ d_arm
+    d_hand = Hr.to_quaternion() @ BONES[pre + 'Hand'].matrix_local.to_quaternion().inverted()
+    ax = (wr - el).normalized()
+    d_fore = d_fore @ Quaternion(ax, twist_angle(d_fore.inverted() @ d_hand, ax) * twist)
+    return {pre + 'Arm': d_arm, pre + 'ForeArm': d_arm.inverted() @ d_fore, pre + 'Hand': d_fore.inverted() @ d_hand}
+
+
+def left_hand_world(palm, fingers, palm_normal):
+    """Left hand bone matrix (view space) from the palm centre, the finger direction and the way the palm
+    faces."""
+    a0, pn0, t0 = hand_frame(1)
+    k = 1 if t0.dot(a0.cross(pn0)) > 0 else -1
+    a = V(fingers).normalized()
+    pn = (V(palm_normal) - a * V(palm_normal).dot(a)).normalized()
+    m3 = MW.to_3x3()
+    rest = frame_cols(m3 @ a0, m3 @ pn0, m3 @ (a0.cross(pn0) * k))
+    want = frame_cols(a, pn, a.cross(pn) * k)
+    r3 = want @ rest.inverted()
+    m = r3.to_4x4() @ MW @ BONES['LeftHand'].matrix_local
+    m.translation = V(palm) - r3 @ m3 @ (a0 * 0.045 + pn0 * 0.028)  # palm centre relative to the wrist
+    return m
+
+
+def lerp(a, b, f):
+    return [x + (y - x) * f for x, y in zip(a, b)]
+
+
+def keys(track, p):
+    """Smooth (Catmull-Rom / Hermite) interpolation of parameter tuples through track = [(p, values), ...],
+    starting and ending at rest so one-shots blend cleanly with the hold pose."""
+    n = len(track)
+
+    def tangent(i):
+        if i == 0 or i == n - 1:
+            return [0.0] * len(track[i][1])
+        (pa, va), (pb, vb) = track[i - 1], track[i + 1]
+        return [(b - a) / (pb - pa) for a, b in zip(va, vb)]
+
+    for i in range(n - 1):
+        (p0, v0), (p1, v1) = track[i], track[i + 1]
+        if p <= p1:
+            h = p1 - p0
+            u = max(0.0, min(1.0, (p - p0) / h))
+            h00, h10, h01, h11 = 2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u, -2 * u ** 3 + 3 * u ** 2, u ** 3 - u ** 2
+            return [h00 * a + h10 * h * ma + h01 * b + h11 * h * mb
+                    for a, b, ma, mb in zip(v0, v1, tangent(i), tangent(i + 1))]
+    return list(track[-1][1])
+
+
+# canteen poses: (grip centre x, y, z, yaw, tilt, roll, pitch)
+HOLD = (0.18, 0.40, -0.19, -28, 0, 0, -6)
+R_POLE = (0.7, -0.05, -0.35)
+L_LOW = ((-0.20, 0.22, -0.62), (0.15, 0.6, -0.5), (0.6, 0.0, 0.1))  # palm, fingers, palm normal: out of view
+L_POLE = (-0.7, -0.05, -0.35)
+
+
+def canteen_pose(cpose, lhand=L_LOW, r_curl=48, l_curl=12, sway=None):
+    cm = view_canteen(cpose[:3], *cpose[3:])
+    pose = solve_arm('Right', cm @ C_HAND.inverted(), R_POLE)
+    pose.update(solve_arm('Left', left_hand_world(*lhand), L_POLE, twist=0.6))
+    for pre, sign, curl in (('Left', 1, l_curl), ('Right', -1, r_curl)):
+        t = V(hand_frame(sign)[2])
+        pose[pre + 'HandIndex1'] = rot((t, -curl * sign))
+        pose[pre + 'HandIndex2'] = rot((t, -curl * 1.1 * sign))
+    pose['RightHandThumb1'] = rot((V(hand_frame(-1)[0]), 10))
+    if sway:
+        pose['Root'] = sway
+    return pose
+
+
+def canteen_idle(p):
+    w = 2 * math.pi * p
+    return canteen_pose(HOLD, sway=rot((X, 0.9 * math.sin(w)), (Z, 0.6 * math.sin(w + 1)))), (0, 0, 0)
+
+
+def canteen_walk(p):
+    w = 2 * math.pi * p
+    return canteen_pose(HOLD, sway=rot((X, 2.5 * math.sin(2 * w)), (Y, 2.0 * math.sin(w)))), (0, 0, 0)
+
+
+# drink: raise the neck to the mouth (below the eye, ≥ 12 cm from it), tip it up, two gulps, lower
+DRINK = [(0.0, HOLD), (0.13, (0.11, 0.31, -0.11, -18, 50, 0, 0)), (0.30, (0.01, 0.232, -0.05, -10, 108, 0, 0)),
+         (0.45, (0.0, 0.215, -0.045, -10, 118, 0, 0)), (0.55, (0.0, 0.218, -0.048, -10, 114, 0, 0)),
+         (0.70, (0.0, 0.215, -0.045, -10, 120, 0, 0)), (0.84, (0.13, 0.33, -0.18, -22, 45, 0, 0)), (1.0, HOLD)]
+
+
+def drink(p):
+    curl = keys([(0, (48,)), (0.3, (55,)), (0.75, (55,)), (1, (48,))], p)[0]
+    return canteen_pose(keys(DRINK, p), r_curl=curl), (0, 0, 0)
+
+
+# fill: canteen lowered and forward, neck tipped forward under a tap, left palm under the bottom
+FILL = [(0.0, HOLD), (0.28, (0.01, 0.44, -0.11, -10, -30, 0, -10)), (0.72, (0.01, 0.442, -0.12, -10, -34, 0, -10)),
+        (1.0, HOLD)]
+
+
+def fill_left(cpose):
+    cm = view_canteen(cpose[:3], *cpose[3:])
+    return cm @ V((0, 0, -0.012)), cm.to_3x3() @ V((1, 0, 0)), cm.to_3x3() @ V((0, 0, 1))
+
+
+def fill(p):
+    c = keys(FILL, p)
+    lw = keys([(0, (0,)), (0.3, (1,)), (0.7, (1,)), (1, (0,))], p)[0]
+    lh = [lerp(lo, f, lw) for lo, f in zip(L_LOW, fill_left(c))]
+    return canteen_pose(c, lhand=lh, l_curl=12 + 18 * lw), (0, 0, 0)
+
+
+for name, frames, fn in (('CanteenIdle', 90, canteen_idle), ('CanteenWalk', 22, canteen_walk), ('Drink', 36, drink),
+                         ('Fill', 45, fill)):
+    S.clip(name, frames, fn)
 for pb in rig.pose.bones:
     pb.rotation_quaternion = Quaternion()
+
+# canteen: built far from the hands so neither bake shades the other, baked after the hands so they keep
+# the 'PlayerTint' material name, exported alone, then parented to the right hand.
+CAN_AT = V((5.0, 0.0, 0.9))
+can = CT.build(CAN_AT)
 
 import bake  # noqa: E402
 
 bake.bake_atlas(body, 1024, S.OUT_DIR, tint_name='Tint', small=0, prefix='hands')
-bake.export(rig, [body], OUT)
-print('TRIS_FINAL', tri_count(body))
+CT.bake_and_export(can, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'canteen.glb'), CAN_AT)
+bpy.context.view_layer.update()
+can.parent = rig
+can.parent_type = 'BONE'
+can.parent_bone = 'RightHand'
+can.matrix_parent_inverse = Matrix.Identity(4)
+can.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ C_HAND  # bone parent space = tail
+bake.export(rig, [body, can], OUT)
+print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can))
