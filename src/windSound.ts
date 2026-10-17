@@ -27,6 +27,8 @@ const RING_N = 6;
 const LOCAL = 0.6;
 /** Time constant (s) of the followed wind; about a second to settle. */
 const TAU = 0.6;
+/** Overall level at full slider volume. */
+const MIX = 0.7;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const smooth = (a: number, b: number, x: number) => {
@@ -239,9 +241,14 @@ export class WindSound {
     this.q += (q - this.q) * k;
     this.emit += (emit - this.emit) * k;
 
-    // Ear-level speed with gentle turbulence on top.
+    // Ear-level speed. A light wind comes in puffs with near-calm lulls between them; a strong wind
+    // blows steadily, with only gentle turbulence on top.
     const u0 = uAt(this.ustar, EAR);
-    const u = u0 * (1 + 0.12 * wobble(t * 0.7, 0) + 0.04 * wobble(t * 2.3, 5));
+    const steady = smooth(0.25, 0.85, u0 / U_FULL);
+    const puff = clamp01(0.5 + 0.8 * wobble(t * 0.4, 7));
+    const lull = 1 - 0.95 * (1 - steady) * (1 - puff);
+    const turb = 0.18 - 0.1 * steady;
+    const u = u0 * lull * (1 + turb * wobble(t * 0.7, 0) + 0.04 * wobble(t * 2.3, 5));
     this.uSlow += (u - this.uSlow) * (1 - Math.exp(-dt / 4));
     const gust = clamp01((u - this.uSlow) / Math.max(2, this.uSlow * 0.5)); // rising edge of a gust
     const x = clamp01(u / U_FULL);
@@ -255,7 +262,7 @@ export class WindSound {
     const now = g.ctx.currentTime;
     const set = (p: AudioParam, v: number, tau = 0.3) => p.setTargetAtTime(v, now, tau);
 
-    set(g.master.gain, this.volume, 0.05);
+    set(g.master.gain, MIX * this.volume, 0.05);
     // A faint floor of moving air even in a calm, so the desert is never dead silent.
     set(g.rumble.gain, 0.03 + 0.55 * x ** 1.4 * (1 + 0.4 * gust));
     set(g.rumbleLp.frequency, 70 + 150 * x);

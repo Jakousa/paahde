@@ -178,6 +178,10 @@ From a few metres away real blown sand is a translucent veil streaming over the 
 listener every frame, so dune lees are quieter than crests and passing gusts and streamers are audible.
 The wind is averaged over a 4 m ring around the head (the topographic speed-up steps per 4 m cell),
 blended 60/40 with the regional wind so lees are only somewhat quieter, and followed with a ~1 s lag.
+A light wind comes in puffs with near-calm lulls (a few seconds each); a strong wind blows steadily.
+Measured at the default volume (0.4), rendered offline in Chrome while walking: about −46 LUFS in a calm,
+−36 in a breeze (u10 = 8), −32 at 12 m/s, −26 in a sandstorm; true peak ≤ −8 dBTP. It is an ambience bed,
+so it stays under the −23 LUFS mix target. (Measure in Chrome: node-web-audio-api mis-renders this graph.)
 
 - **Layers:** low rumble (brown noise, buffeting), broadband rush (bandpass rising with speed), two
   narrow aeolian "howl" resonances that only come up in strong wind and slide with gusts (Strouhal),
