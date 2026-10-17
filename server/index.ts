@@ -7,11 +7,14 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { DIG_COOLDOWN_TICKS, PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
+import { SCRAP_ITEMS } from '../shared/items.ts';
+import { boxSize, CHESTS, isShared } from '../shared/storage.ts';
 import { overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
+import { ItemServer } from './items.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
 import { TerrainServer } from './terrain.ts';
@@ -33,6 +36,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const db = openDb(process.env.DB_PATH ?? 'data/dadajam.db');
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
+const items = new ItemServer(db);
 const garden = new GardenServer(db);
 const storms = new StormServer(performance.now());
 
@@ -106,6 +110,8 @@ wss.on('connection', (ws) => {
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'drink' && p) return onDrink(p);
     if (msg.t === 'fill' && p) return onFill(p);
+    if (msg.t === 'move' && p) return onMove(p, msg.from, msg.fi, msg.to, msg.ti, msg.n);
+    if (msg.t === 'sort' && p) return onSort(p, msg.box);
     if (msg.t === 'hands' && p) p.hands = msg.hands === 1 || msg.hands === 2 ? msg.hands : 0;
   });
   ws.on('close', () => {
@@ -113,6 +119,7 @@ wss.on('connection', (ws) => {
     if (!p) return;
     save(p);
     players.delete(ws);
+    if (![...players.values()].some((o) => o.browserId === p.browserId)) items.forget(p.browserId);
   });
   // Drop clients that never say hello.
   setTimeout(() => players.has(ws) || ws.close(1008, 'no hello'), 5000);
@@ -143,18 +150,20 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
-  send(ws, { t: 'inventory', items: scrap.inventory(browserId) });
+  items.giveStarterKit(browserId);
+  for (const box of ['bag', 'bike', ...CHESTS.map((_, i) => `chest${i}`)]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
 }
 
 // Sips and refills: the client plays the animation, then asks. Refused ones still get the real state.
+// No canteen in the bag (left in a chest), no drinking or filling.
 function onDrink(p: Player) {
-  drink(p.heat, Date.now());
+  if (items.has(p.browserId, 'canteen')) drink(p.heat, Date.now());
   send(p.ws, waterMsg(p.heat));
 }
 
 function onFill(p: Player) {
-  fill(p.heat, p.state, Date.now());
+  if (items.has(p.browserId, 'canteen')) fill(p.heat, p.state, Date.now());
   send(p.ws, waterMsg(p.heat));
 }
 
@@ -177,12 +186,39 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
 }
 
 function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {
-  const items = scrap.pickup(p.browserId, p.state, ix, iz, i, p.lastPickup);
-  if (items) return send(p.ws, { t: 'inventory', items });
+  const kind = scrap.pickup(p.state, ix, iz, i, p.lastPickup, (k) => items.give(p.browserId, SCRAP_ITEMS[k]));
+  if (kind !== null) return sendBox(p, 'bag', SCRAP_ITEMS[kind]);
   // Refused: the client already hid the piece. If it is still there, tell this client to show it again.
   if (typeof ix === 'number' && typeof iz === 'number' && typeof i === 'number' && !scrapTaken.has(scrapKey(ix, iz, i))) {
     send(p.ws, { t: 'scrap', taken: [], back: [ix, iz, i] });
   }
+}
+
+function boxMsg(browserId: string, box: string, got?: string): ServerMsg {
+  return { t: 'items', box, slots: items.slots(browserId, box), ...(got !== undefined ? { got } : {}) };
+}
+
+/** A box changed: shared ones go to everyone, a player's own to each of their connections. */
+function sendBox(p: Player, box: string, got?: string) {
+  const json = JSON.stringify(boxMsg(p.browserId, box, got));
+  for (const o of players.values()) {
+    if ((isShared(box) || o.browserId === p.browserId) && o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+  }
+}
+
+// Moves and sorts: the client already applied its guess, so it always gets the boxes back.
+function onMove(p: Player, from: unknown, fi: unknown, to: unknown, ti: unknown, n: unknown) {
+  const changed = items.move(p.browserId, p.state, from, fi, to, ti, n);
+  for (const box of new Set([from, to])) {
+    if (typeof box !== 'string' || !boxSize(box)) continue;
+    if (changed) sendBox(p, box);
+    else send(p.ws, boxMsg(p.browserId, box));
+  }
+}
+
+function onSort(p: Player, box: unknown) {
+  if (items.sort(p.browserId, p.state, box)) sendBox(p, box as string);
+  else if (typeof box === 'string' && boxSize(box)) send(p.ws, boxMsg(p.browserId, box));
 }
 
 function onTend(p: Player, bed: unknown) {

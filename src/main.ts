@@ -109,8 +109,7 @@ function ride(id: number, avatar: Avatar, p: { riding: boolean; pitch?: number }
 const eye = new THREE.Vector3();
 const RIDE_EYE_AHEAD = 0.15;
 const locator = new LocatorBar();
-const hud = new InventoryHud();
-net.onInventory = (items) => hud.setItems(items);
+const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
 const telescope = new Telescope(orbit);
 net.onTended = (what) => hud.toast(what === 'planted' ? 'Seeds planted' : 'Harvested the greens');
@@ -258,10 +257,11 @@ renderer.setAnimationLoop((time) => {
     // Stations don't do anything yet.
     if (use) hud.toast(STATIONS[station].kind === 'workbench' ? 'Nothing to craft yet' : 'Nothing to take apart yet');
     else if (tend) net.tend(bed);
-    else if (target) net.pickup(target);
+    else if (target && !net.pickup(target)) hud.toast('Backpack full');
   }
   const targeted = use !== null || tend !== null || target !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted);
+  hud.update(net.me);
 
   info.textContent = `${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`;
   post.render();

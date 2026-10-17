@@ -9,6 +9,7 @@ Top-level nodes (origin = the entrance hut's floor on the doorway's centre line,
     pump    hand water pump, origin at its base centre (placed in the room's middle by shared/base.ts)
     workbench    crafting bench with a pegboard behind it, origin at its base centre, front +Z
     disassembly  steel disassembly table with a vise and a scrap bin, origin at its base centre, front +Z
+    chest        iron-banded wooden storage chest (shared/storage.ts), origin at its base centre, front +Z
 
 Every dimension mirrors shared/base.ts (the physics): change both together.
 Blender is Z-up; the exporter converts to Y-up. Game +Z ("front") = Blender -Y. Units are metres.
@@ -463,6 +464,36 @@ def build_disassembly():
     return mb.build('disassembly')
 
 
+def build_chest():
+    """1.2 x 0.7 m plank chest (0.62 tall, lid from 0.45) with iron bands, corner caps, side handles and a hasp."""
+    mb = MB()
+    hx, hz, lid, top = 0.6, 0.35, 0.45, 0.62
+    # Body planks: three courses with dark gaps between them, and the lid in two.
+    for k, (y0, y1) in enumerate(((0.04, 0.17), (0.18, 0.31), (0.32, lid))):
+        mb.box(-hx, hx, y0, y1, -hz, hz, 'Wood' if k % 2 == 0 else 'WoodDark')
+    mb.box(-hx + 0.02, hx - 0.02, 0, 0.04, -hz + 0.02, hz - 0.02, 'WoodDark')
+    mb.box(-hx + 0.01, hx - 0.01, lid, lid + 0.01, -hz + 0.01, hz - 0.01, 'Iron')  # the lid's seam
+    mb.box(-hx - 0.01, hx + 0.01, lid + 0.01, top - 0.07, -hz - 0.01, hz + 0.01, 'Wood')
+    mb.box(-hx - 0.01, hx + 0.01, top - 0.07, top, -hz + 0.03, hz - 0.03, 'WoodDark')
+    # Iron bands wrapping body and lid, and corner caps.
+    for x in (-hx + 0.18, hx - 0.18):
+        mb.box(x - 0.035, x + 0.035, 0.02, lid, -hz - 0.012, hz + 0.012, 'Iron')
+        mb.box(x - 0.035, x + 0.035, lid + 0.01, top + 0.008, -hz - 0.022, hz + 0.022, 'Iron')
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            x, z = sx * hx, sz * hz
+            mb.box(min(x, x - sx * 0.08) - 0.012, max(x, x - sx * 0.08) + 0.012, 0, top - 0.06,
+                   min(z, z - sz * 0.08) - 0.012, max(z, z - sz * 0.08) + 0.012, 'Iron')
+        # Rope-grip handle on each end.
+        mb.box(sx * (hx + 0.012) - 0.015, sx * (hx + 0.012) + 0.015, 0.27, 0.32, -0.12, 0.12, 'Iron')
+        mb.cyl((sx * (hx + 0.06), 0.24, -0.1), (sx * (hx + 0.06), 0.24, 0.1), 0.018, 'Steel', seg=6)
+    # Brass hasp and lock on the front.
+    mb.box(-0.06, 0.06, lid - 0.05, top - 0.04, hz + 0.012, hz + 0.03, 'Hazard')
+    mb.box(-0.05, 0.05, lid - 0.16, lid - 0.04, hz, hz + 0.04, 'Hazard')
+    mb.cyl((0, lid - 0.1, hz + 0.04), (0, lid - 0.1, hz + 0.045), 0.015, 'Iron', seg=6)
+    return mb.build('chest')
+
+
 # =================================================================================================
 def tri_count(obj):
     return sum(len(p.vertices) - 2 for p in obj.data.polygons)
@@ -492,7 +523,8 @@ def look_at(cam, target):
 
 def render_preview(objs, path):
     """Shots: the surface from the front, a cutaway from above, inside the room, down the stairs, the benches."""
-    hut, bunker, pump, bench, dis = objs
+    hut, bunker, pump, bench, dis, chest = objs
+    chest.location = G(0, FLOOR, ROOM_Z0 + 0.5)
     pump.location = G(0, FLOOR, ROOM_Z)
     bench.location = G(-ROOM_W + 0.42, FLOOR, ROOM_Z)
     bench.rotation_euler = (0, 0, math.pi / 2)
@@ -560,6 +592,7 @@ def render_preview(objs, path):
     hut.hide_render = bunker.hide_render = sand.hide_render = True
     shot('bench', G(-ROOM_W + 3.2, FLOOR + 1.7, ROOM_Z + 1.6), G(-ROOM_W + 0.4, FLOOR + 1.0, ROOM_Z), lens=28)
     shot('disassembly', G(ROOM_W - 3.0, FLOOR + 1.7, ROOM_Z - 1.6), G(ROOM_W - 0.4, FLOOR + 0.9, ROOM_Z), lens=28)
+    shot('chest', G(1.4, FLOOR + 1.4, ROOM_Z0 + 2.4), G(0, FLOOR + 0.35, ROOM_Z0 + 0.5), lens=35)
 
 
 def main():
@@ -571,7 +604,7 @@ def main():
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     make_materials()
-    objs = [build_hut(), build_bunker(), build_pump(), build_workbench(), build_disassembly()]
+    objs = [build_hut(), build_bunker(), build_pump(), build_workbench(), build_disassembly(), build_chest()]
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     export(objs, args.out)
     for o in objs:

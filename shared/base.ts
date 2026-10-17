@@ -129,6 +129,8 @@ export const BASE_PIECES: BasePiece[] = [
   // Against the side walls, facing into the room (shared/stations.ts makes them interactable).
   { glb: 'bunker', node: 'workbench', x: -ROOM.w + 0.42, z: ROOM_Z, fx: 1, fz: 0, y: FLOOR, hx: 1.0, hz: 0.4, h: 0.95 },
   { glb: 'bunker', node: 'disassembly', x: ROOM.w - 0.47, z: ROOM_Z, fx: -1, fz: 0, y: FLOOR, hx: 0.8, hz: 0.45, h: 0.92 },
+  // Storage chest against the back wall (shared/storage.ts).
+  { glb: 'bunker', node: 'chest', x: 0, z: ROOM.z + 0.5, fx: 0, fz: 1, y: FLOOR, hx: 0.62, hz: 0.37, h: 0.62 },
 ];
 const PUMP = BASE_PIECES[0];
 

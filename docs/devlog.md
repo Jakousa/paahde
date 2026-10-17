@@ -2,6 +2,24 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Items, Tab inventory and storage
+
+- **Items are rows** (`items` table, `server/items.ts`): one row per stack with a stable id, its kind
+  (`ITEMS` in `shared/items.ts`, string ids), size, owner (browser ID; `''` for shared boxes), box and slot.
+  The old per-kind `inventory` counts are migrated into bag stacks on startup and the table dropped.
+- **Boxes** (`shared/storage.ts`): your **bag** (24 slots; the first 4 are the hotbar, keys 1–4), the
+  **sand bike** (8 slots, yours, open while riding) and the **chest** against the bunker room's back wall
+  (16 slots, shared by everyone, within 2.5 m). Scrap stacks to 10; canteen and spyglass don't stack.
+- **Starter kit:** new players get the canteen (slot 1) and spyglass (slot 2), once (`starter_kits`), so
+  leaving them in the chest doesn't conjure new ones. No canteen in the bag → the server refuses sips and refills.
+  The hotbar now shows whatever is in the bag's first four slots, and the keys take that out.
+- **Tab** opens the inventory overlay (frees the mouse, stays fullscreen): backpack on the left, every box in
+  reach on the right, appearing and vanishing as you walk. Drag to move/merge/swap, right-drag for half a
+  stack, shift-click to send a stack across, Sort merges and orders (the hotbar stays). The client applies
+  `moveItem()` at once; the server re-checks reach, applies the same function and answers with the boxes.
+- Pickups land in the bag after the hotbar; a full bag says "Backpack full" and leaves the piece.
+- **Next:** dropping items in the world, crafting/disassembly using them, more storage (crates at crash sites?).
+
 ## 2026-10-17 — Heat meter (replaces the thirst bar)
 
 Thirst became heat: instead of water running out, heat builds up and you keep it under control.

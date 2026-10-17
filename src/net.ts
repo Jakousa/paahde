@@ -13,11 +13,14 @@
 // - Survival: heat/canteen state comes from the server ('water'); src/water.ts plays drink/fill and asks.
 //   Dying of heatstroke moves us to the base on the server; the next reconciliation snaps there.
 // - Scrap: picked-up pieces are hidden (and lose their hitbox) as soon as we ask; the server sends the
-//   piece back to us if it refuses, and our new inventory if it agrees.
+//   piece back to us if it refuses, and our new bag if it agrees.
+// - Items: moves between boxes (shared/items.ts) are applied at once with the server's own rules; its
+//   'items' answer then replaces the boxes, which undoes a refused move.
 // - Hands: what we hold (canteen, drinking) is sent when it changes and relayed in snapshots, cosmetic only.
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, DIG_COOLDOWN_TICKS, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
+import { HOTBAR, moveItem, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
@@ -81,10 +84,12 @@ export class Net {
   private hands: Hands = 0;
   private sentHands = -1;
 
-  /** Scrap count per SCRAP_KINDS index, from the server. */
-  inventory: number[] = [];
-  /** The server sent a new inventory. */
-  onInventory?: (items: number[]) => void;
+  /** Item boxes we can see (shared/storage.ts BoxId → slots): bag, bike and chests, from the server. */
+  boxes: Record<string, Slots> = {};
+  /** A box changed (server update or our own predicted move); `got` names a scrap pickup's item kind. */
+  onItems?: (box: string, got?: string) => void;
+  /** Ids for stacks split off by a predicted move, until the server's answer brings the real ones. */
+  private tempId = 0;
 
   /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
   water = { heat: 0, sips: 4, rising: false, temp: 20, shade: true, at: 0 };
@@ -123,12 +128,32 @@ export class Net {
     this.predictDig(input, yaw, pitch);
   }
 
-  /** Pick up a scrap piece: hidden now, confirmed (inventory) or put back by the server. */
-  pickup(pc: ScrapPiece) {
-    if (!this.connected || scrapTaken.has(pc.key)) return;
+  /** Pick up a scrap piece: hidden now, confirmed (items) or put back by the server. False if the bag is full. */
+  pickup(pc: ScrapPiece): boolean {
+    if (!this.connected || scrapTaken.has(pc.key)) return true;
+    if (!roomFor(this.boxes.bag ?? [], SCRAP_ITEMS[pc.kind])) return false;
     this.send({ t: 'pickup', ix: pc.ix, iz: pc.iz, i: pc.i });
     scrapTaken.add(pc.key);
     scrapChanged();
+    return true;
+  }
+
+  /** Move a stack between boxes (shared/items.ts moveItem): applied now, the server answers with both boxes. */
+  moveItem(from: string, fi: number, to: string, ti: number, n?: number) {
+    const src = this.boxes[from], dst = this.boxes[to];
+    if (!this.connected || !src || !dst || !moveItem(src, fi, dst, ti, n, () => --this.tempId, to === 'bag' ? HOTBAR : 0)) return;
+    this.send({ t: 'move', from, fi, to, ti, ...(n !== undefined ? { n } : {}) });
+    this.onItems?.(from);
+    if (to !== from) this.onItems?.(to);
+  }
+
+  /** Tidy a box (the bag's hotbar stays put). */
+  sortBox(box: string) {
+    const slots = this.boxes[box];
+    if (!this.connected || !slots) return;
+    sortItems(slots, box === 'bag' ? HOTBAR : 0);
+    this.send({ t: 'sort', box });
+    this.onItems?.(box);
   }
 
   /** One sip finished (src/water.ts); the server answers with 'water'. */
@@ -315,9 +340,9 @@ export class Net {
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);
     if (msg.t === 'scrap') return this.applyScrap(msg);
-    if (msg.t === 'inventory') {
-      this.inventory = msg.items;
-      return this.onInventory?.(msg.items);
+    if (msg.t === 'items') {
+      this.boxes[msg.box] = msg.slots;
+      return this.onItems?.(msg.box, msg.got);
     }
     if (msg.t === 'water') {
       this.water = { heat: msg.heat, sips: msg.sips, rising: msg.rising, temp: msg.temp, shade: msg.shade, at: performance.now() };

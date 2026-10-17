@@ -1,14 +1,16 @@
-// Survival on the client (shared/water.ts, server/water.ts): the hotbar (slot 1 = canteen, 2 = spyglass
-// in src/telescope.ts), drinking and refilling, and the HUD: heat meter with a sun light while heat builds,
+// Survival on the client (shared/water.ts, server/water.ts): the hotbar (the bag's first slots,
+// shared/items.ts; new players start with the canteen in 1 and the spyglass, src/telescope.ts, in 2), drinking and refilling, and the HUD: heat meter with a sun light while heat builds,
 // the felt temperature with a sun/shade icon (shared/temperature.ts), a heat vignette when it's nearly full,
 // and the death screen.
 //
-// The server owns the numbers; this only plays the actions and asks. Key 1 takes the canteen out or puts
-// it away (2 the spyglass, 3–4 select the empty slots). With it out, holding left mouse / E for DRINK_MS drinks one sip
+// The server owns the numbers; this only plays the actions and asks. Keys 1–4 take out what's in that
+// hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // (no digging while your hands are full, see `tools` in src/input.ts), and F at the base's pump refills it.
 import { atPump } from '../shared/base.ts';
 import { CANTEEN_SIPS, DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
+import { HOTBAR } from '../shared/items.ts';
 import { tools, useHeld } from './input';
+import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 
 /**
@@ -19,7 +21,6 @@ export type Held = 'none' | 'canteen' | 'telescope';
 /** `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden). */
 export const playerHands = { held: 'none' as Held, drinking: false, filling: false, looking: false, scoped: false };
 
-const SLOTS = 4;
 /** Heat meter colours: cool, warming up, nearly heatstroke. */
 const BLUE = [78, 170, 255];
 const AMBER = [236, 158, 52];
@@ -65,6 +66,7 @@ const css = `
 #hotbar .pips { position: absolute; bottom: 4px; left: 6px; right: 6px; display: flex; gap: 2px; }
 #hotbar .pips i { flex: 1; height: 3px; border-radius: 1px; background: rgba(255, 244, 228, 0.18); }
 #hotbar .pips i.on { background: #5cb8ff; }
+#hotbar .n { position: absolute; right: 4px; bottom: 2px; font: 600 10px system-ui, sans-serif; text-shadow: 0 1px 2px #000; }
 #waterPrompt { position: fixed; left: 50%; top: calc(50% + 22px); transform: translateX(-50%); padding: 3px 8px;
   font: 13px system-ui, sans-serif; color: #fff4e4; background: rgba(20, 10, 5, 0.55); border-radius: 4px;
   pointer-events: none; white-space: nowrap; display: none; }
@@ -95,14 +97,6 @@ const SUN_ICON = `<svg class="sunIcon" viewBox="0 0 16 16" fill="none" stroke="#
 const SHADE_ICON = `<svg class="shadeIcon" viewBox="0 0 16 16"><title>In shade</title>
 <circle cx="10" cy="6.5" r="3" fill="#ffc46b" opacity="0.45"/><path d="M10 1.4v1.3M14.6 6.5h-1.3M13.3 3.2l-.9.9M6.7 3.2l.9.9" stroke="#ffc46b" stroke-width="1.4" stroke-linecap="round" opacity="0.45"/>
 <path d="M0.5 14.5C3 8.5 6 7 9 8.6c2.2 1.2 4.4 3.6 6.5 5.9z" fill="#7a5a3e" stroke="#2a160a" stroke-width="0.8"/></svg>`;
-const CANTEEN_SVG = `<svg viewBox="0 0 22 26"><rect x="8" y="0.5" width="6" height="4" rx="1" fill="#6b4a2e"/>
-<ellipse cx="11" cy="15" rx="9.5" ry="9.5" fill="#8a8f86" stroke="#2a160a" stroke-width="1"/>
-<ellipse cx="11" cy="15" rx="6.5" ry="6.5" fill="none" stroke="#5e6a5a" stroke-width="2.2"/>
-<path d="M2 11h18" stroke="#6b4a2e" stroke-width="2"/></svg>`;
-const TELESCOPE_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.8" transform="rotate(-45 11 13)">
-<rect x="-1" y="11.6" width="5" height="2.8" rx="0.8" fill="#d4a24c"/><rect x="3.5" y="11" width="5" height="4" fill="#b8873a"/>
-<rect x="8.5" y="10.2" width="10" height="5.6" rx="0.6" fill="#6a3626"/><rect x="18" y="9.6" width="4" height="6.8" rx="1" fill="#d4a24c"/></g></svg>`;
-
 export class Survival {
   private net: Net;
   private root = document.createElement('div');
@@ -147,18 +141,9 @@ export class Survival {
     this.degEl = this.thirst.querySelector('.deg')!;
     const hotbar = document.createElement('div');
     hotbar.id = 'hotbar';
-    for (let i = 0; i < SLOTS; i++) {
+    for (let i = 0; i < HOTBAR; i++) {
       const s = document.createElement('div');
       s.className = 'slot';
-      s.innerHTML = `<span class="key">${i + 1}</span>`;
-      if (i === 0) {
-        s.title = 'Canteen';
-        s.insertAdjacentHTML('beforeend', `${CANTEEN_SVG}<div class="pips">${'<i></i>'.repeat(CANTEEN_SIPS)}</div>`);
-        this.pips = [...s.querySelectorAll<HTMLElement>('.pips i')];
-      } else if (i === 1) {
-        s.title = 'Spyglass — hold the mouse button to look, wheel to zoom';
-        s.insertAdjacentHTML('beforeend', TELESCOPE_SVG);
-      }
       this.slots.push(s);
       hotbar.append(s);
     }
@@ -173,7 +158,7 @@ export class Survival {
     addEventListener('keydown', (e) => {
       if (e.repeat || !/^Digit[1-9]$/.test(e.code)) return;
       const n = Number(e.code.slice(5)) - 1;
-      if (n >= SLOTS) return;
+      if (n >= HOTBAR) return;
       this.select(this.selected === n ? -1 : n);
     });
     net.onDied = () => {
@@ -187,8 +172,33 @@ export class Survival {
   private select(slot: number) {
     if (slot !== this.selected) this.cancel();
     this.selected = slot;
-    playerHands.held = slot === 0 ? 'canteen' : slot === 1 ? 'telescope' : 'none';
     this.slots.forEach((s, i) => s.classList.toggle('sel', i === slot));
+    this.hold();
+  }
+
+  /** Hands follow the item in the selected slot, also when it's moved away in the inventory. */
+  private hold() {
+    const kind = this.net.boxes.bag?.[this.selected]?.kind;
+    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' ? 'telescope' : 'none';
+    if (held !== playerHands.held) this.cancel();
+    playerHands.held = held;
+  }
+
+  /** Redraw the hotbar slots whose item changed. */
+  private drawHotbar() {
+    const bag = this.net.boxes.bag;
+    let changed = false;
+    this.slots.forEach((s, i) => {
+      const it = bag?.[i];
+      const sig = it ? `${it.kind}:${it.n}` : '';
+      if (s.dataset.sig === sig) return;
+      changed = true;
+      s.dataset.sig = sig;
+      s.title = !it ? '' : it.kind === 'spyglass' ? 'Spyglass — hold the mouse button to look, wheel to zoom' : itemLabel(it.kind);
+      s.innerHTML = `<span class="key">${i + 1}</span>${it ? itemIcon(it.kind) : ''}`
+        + (it?.kind === 'canteen' ? `<div class="pips">${'<i></i>'.repeat(CANTEEN_SIPS)}</div>` : it && it.n > 1 ? `<span class="n">${it.n}</span>` : '');
+    });
+    if (changed) this.pips = [...this.root.querySelectorAll<HTMLElement>('#hotbar .pips i')];
   }
 
   private cancel() {
@@ -209,6 +219,8 @@ export class Survival {
     const now = performance.now();
     const w = this.net.water;
     const dead = now < this.deadUntil;
+    this.hold();
+    this.drawHotbar();
     const holding = playerHands.held === 'canteen';
     const atBase = atPump(pos.x, pos.y, pos.z);
     tools.blocked = playerHands.held !== 'none';

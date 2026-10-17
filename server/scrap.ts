@@ -1,7 +1,8 @@
-// Server side of scrap pickups: validates pickup requests, keeps the taken set (shared/scrap.ts) and
-// inventories in SQLite, respawns pieces after RESPAWN_MS and batches changes for broadcast.
+// Server side of scrap pickups: validates pickup requests, keeps the taken set (shared/scrap.ts) in
+// SQLite, respawns pieces after RESPAWN_MS and batches changes for broadcast. The piece goes into the
+// player's bag (server/items.ts) in the same transaction.
 import type { ServerMsg } from '../shared/protocol.ts';
-import { PICKUP_REACH, SCRAP_KINDS, scrapChanged, scrapPiece, scrapReach, scrapTaken } from '../shared/scrap.ts';
+import { PICKUP_REACH, scrapChanged, scrapPiece, scrapReach, scrapTaken } from '../shared/scrap.ts';
 import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
@@ -33,28 +34,27 @@ export class ScrapServer {
   }
 
   /**
-   * A player asks to pick up piece i of cell (ix, iz). Returns the player's new inventory, or null if
-   * refused (unknown piece, already taken, out of reach, too soon).
+   * A player asks to pick up piece i of cell (ix, iz). `give(kind)` puts it in their bag (false: no room).
+   * Returns the SCRAP_KINDS index taken, or null if refused (unknown piece, already taken, out of reach,
+   * too soon, bag full).
    */
-  pickup(playerId: string, feet: { x: number; y: number; z: number }, ix: unknown, iz: unknown, i: unknown, last: { at: number }): number[] | null {
+  pickup(feet: { x: number; y: number; z: number }, ix: unknown, iz: unknown, i: unknown, last: { at: number }, give: (kind: number) => boolean): number | null {
     const pc = scrapPiece(ix as number, iz as number, i as number);
     const now = Date.now();
     if (!pc || scrapTaken.has(pc.key) || now - last.at < PICKUP_COOLDOWN_MS) return null;
     if (scrapReach(feet, pc) > PICKUP_REACH + REACH_SLACK) return null;
     last.at = now;
-    this.db.takeScrap(playerId, pc.ix, pc.iz, pc.i, pc.kind, now);
+    const ok = this.db.tx(() => {
+      if (!give(pc.kind)) return false;
+      this.db.takeScrap(pc.ix, pc.iz, pc.i, now);
+      return true;
+    });
+    if (!ok) return null;
     this.taken.set(pc.key, [pc.ix, pc.iz, pc.i, now]);
     scrapTaken.add(pc.key);
     scrapChanged();
     this.newlyTaken.push(pc.ix, pc.iz, pc.i);
-    return this.inventory(playerId);
-  }
-
-  /** Count per SCRAP_KINDS index. */
-  inventory(playerId: string): number[] {
-    const items = SCRAP_KINDS.map(() => 0);
-    for (const r of this.db.getInventory(playerId)) if (r.kind >= 0 && r.kind < items.length) items[r.kind] = r.count;
-    return items;
+    return pc.kind;
   }
 
   /** Respawn pieces taken more than RESPAWN_MS ago. */

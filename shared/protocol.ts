@@ -1,5 +1,6 @@
 // WebSocket message shapes (JSON). `t` is the message type.
 import type { PlayerState } from './sim.ts';
+import type { Slots } from './items.ts';
 import type { Storm } from './storm.ts';
 
 export type ClientMsg =
@@ -27,7 +28,13 @@ export type ClientMsg =
   // players see it on your avatar; the drink/fill checks don't depend on it.
   | { t: 'hands'; hands: Hands }
   // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning.
-  | { t: 'storm' };
+  | { t: 'storm' }
+  // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
+  // to box `to` slot ti (ti -1: anywhere in it). Boxes: 'bag', 'bike', 'chest<i>'. The server checks
+  // you can open both, applies moveItem() and answers with 'items' for each box that changed.
+  | { t: 'move'; from: string; fi: number; to: string; ti: number; n?: number }
+  // Tidy a box (sortItems; the bag's hotbar stays put).
+  | { t: 'sort'; box: string };
 
 // 0 empty hands, 1 holding the canteen, 2 drinking from it.
 export type Hands = 0 | 1 | 2;
@@ -58,8 +65,10 @@ export type ServerMsg =
   // 'welcome', with reset: the full taken list, replacing whatever the client had. Sent before the
   // snapshot, like terrainEdit. A rejected pickup gets its piece back in a message to that player only.
   | { t: 'scrap'; taken: number[]; back: number[]; reset?: boolean }
-  // The player's inventory: count per SCRAP_KINDS index. Sent after 'welcome' and on every change.
-  | { t: 'inventory'; items: number[] }
+  // The contents of an item box (shared/storage.ts BoxId): your 'bag' and 'bike' after 'welcome' and when
+  // they change, every 'chest<i>' on join and to everyone when it changes. `got`: a scrap pickup added
+  // this kind (for the HUD toast).
+  | { t: 'items'; box: string; slots: Slots; got?: string }
   // Growth stage of every greenhouse bed (shared/garden.ts), on join and whenever one changes.
   | { t: 'garden'; beds: number[] }
   // A bed this player tended was planted or harvested, for the HUD toast.

@@ -1,4 +1,4 @@
-// Spyglass (hotbar slot 2, src/water.ts). With it out, hold the use button (left/right mouse, E or Q) to
+// Spyglass (a hotbar item, src/water.ts). With it out, hold the use button (left/right mouse, E or Q) to
 // raise it to the eye; once the raise clip (src/viewmodel.ts) has played, the view zooms in behind a round
 // lens mask and the mouse wheel sets the zoom. Letting go lowers it. Client-only: nothing is sent.
 import type { FirstPersonCamera } from './camera';

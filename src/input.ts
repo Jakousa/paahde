@@ -7,6 +7,8 @@ let mousePile = false;
 let pickupPressed = false;
 /** Hands full (canteen or spyglass out, src/water.ts): left mouse / E and right mouse / Q don't dig or pile. */
 export const tools = { blocked: false };
+/** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
+export const ui = { inventoryOpen: false };
 // While the pointer is locked the game owns the keyboard: swallow browser shortcuts (Tab, F-keys, Alt, Ctrl+S...).
 // Esc frees the mouse (the browser does that itself), and then keys behave normally again.
 const captured = () => !!document.pointerLockElement;
@@ -50,6 +52,7 @@ document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement) {
     mouseDig = mousePile = false;
     keys.clear();
+    if (ui.inventoryOpen) return;
     keyboard?.unlock();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }
