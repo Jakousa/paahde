@@ -227,9 +227,9 @@ export class Terrain {
     const mesh = new THREE.Mesh(geo, this.material);
     mesh.position.set(ix * size, 0, iz * size);
     mesh.receiveShadow = true;
-    // Not a shadow caster: the sun's shadow map only covers ~±70 m, so dune self-shadowing would end
-    // in a hard rectangle. Slip faces are darkened by the sand shading instead.
-    mesh.castShadow = false;
+    // Dunes shadow each other and the players: the sun's cascades reach ~1.6 km (sky.ts). The shadow
+    // pass draws back faces, so lit slopes never self-shadow (only faces turned from the sun can).
+    mesh.castShadow = true;
     mesh.visible = false;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();

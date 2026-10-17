@@ -75,7 +75,7 @@ Goal of this session: *I can roam around the desert planet with my friends in th
   Most of the caramel look came from the ripple shape: wide smooth crests split by thin dark grooves.
 - **Slide threshold lowered from 34° to 30°** (`SLIP_TAN`), so players slide on the dunes' 32° slip faces.
 - **Terrain doesn't cast shadows.** The sun's shadow map covers only about ±70 m and ended in a
-  visible hard rectangle. Slip faces are darkened by the sand shading instead.
+  visible hard rectangle. Slip faces are darkened by the sand shading instead. *(Superseded: see Shadows.)*
 - **ACES tone mapping over AgX.** AgX washed out the oranges. `?agx` in the URL compares them.
 
 ### How we worked
@@ -113,9 +113,28 @@ Goal of this session: *I can roam around the desert planet with my friends in th
   - Maybe first-person hands and props as well.
 - **Untested in a real browser:** rebuilding the terrain mesh after a dig, and the WebGL2 fallback
   with the new terrain.
-- **No long dune shadows.** Needs a wide, low-resolution shadow (cascades or a baked horizon map).
 - **Remote heads don't tilt yet.** Pitch is already in the snapshots.
 - **Shallow digging from standing.** A 4 m reach from eye height only gets you about 1 m below your
   feet; step into the hole to go deeper.
 - **Gameplay:** wrecks to salvage, the trader, scrap items, carrying and stealing (the design pitch:
   walk, pick up, carry, steal, sell).
+
+## Shadows: cascades, dunes cast, your own shadow
+
+- **Cascaded shadow maps** (`src/world/sky.ts`, `src/world/cascades.ts`): four 2048² maps for 0–20,
+  20–80, 80–320 and 320–1600 m, fitted to the widest sprint FOV so the FOV kick doesn't make shadows
+  swim. Bias, normal offset and PCF radius are set per cascade from its texel size. Shadows fade out
+  over the last cascade, where the haze is ~95%.
+- **Terrain casts.** A 30 m crest at the 10° sun throws a ~170 m shadow across the corridor. The shadow
+  pass draws back faces, so lit slopes can't self-shadow.
+- **Your own shadow:** the local body is on a shadow-only layer (`SHADOW_ONLY_LAYER`), drawn into the
+  shadow maps but not the view. Every avatar part casts now (legs and head were missing), and avatars
+  darken when standing in dune shadow.
+- **Two three.js r186 pitfalls**, both found with headless-Chrome probes:
+  1. A material whose `colorNode` is a `vec3` never reaches the shadow map: the shadow pass reads
+     `colorNode.a`. The sand's colour is now a `vec4`.
+  2. `CSMShadowNode` picks the cascade inside a per-pixel `If`. Every cascade after the first came out
+     black at any shadow intensity, on both backends, so beyond 20 m the sun disappeared entirely.
+     `CascadedShadows` samples all cascades and blends them without branches.
+- **Cost:** each lit pixel takes 4 cascades × 5 PCF taps, and the terrain is drawn once more per
+  cascade (depth only). Not measured on a real GPU yet.

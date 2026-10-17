@@ -44,6 +44,9 @@ export const sunDiscRadius = uniform(0.06);
  */
 export const sunLight = new THREE.DirectionalLight(0xffffff, 1);
 
+/** Layer for objects that cast sun shadows but are not drawn (the local first-person body). */
+export const SHADOW_ONLY_LAYER = 1;
+
 /** Henyey-Greenstein phase, normalised so that 4π·HG integrates to 1 → returns 4π·HG. */
 const hg = (mu: F, g: number): F => {
   const g2 = g * g;

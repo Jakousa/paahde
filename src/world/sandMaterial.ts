@@ -277,8 +277,9 @@ class SandNodeMaterial extends THREE.NodeMaterial {
   constructor() {
     super();
     this.lights = true;
-    // Fog/shadow still come from the scene; colour is computed in the lighting model.
-    this.colorNode = this.surface.albedo;
+    // Fog/shadow still come from the scene; colour is computed in the lighting model. vec4: the shadow
+    // pass takes the caster's alpha from colorNode.a, and a vec3 there keeps the dunes out of the map.
+    this.colorNode = vec4(this.surface.albedo, 1);
   }
 
   setupLightingModel() {

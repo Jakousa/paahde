@@ -7,6 +7,7 @@ import * as THREE from 'three/webgpu';
 import { isSlipFace } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { footprints } from './footprints.ts';
+import { SHADOW_ONLY_LAYER } from './world/env.ts';
 
 export type AvatarPose = {
   x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
@@ -34,10 +35,11 @@ export class Avatar {
   private label?: THREE.Sprite;
   /** Leave footprints even when the root is hidden (the local first-person player). */
   footprints = true;
+  private shadowOnly = false;
 
   constructor(color: number, model: AvatarModel = new PlaceholderModel()) {
     this.model = model;
-    this.root.add(model.root);
+    this.attach(model);
     this.model.setColor(color);
   }
 
@@ -45,8 +47,26 @@ export class Avatar {
   setModel(model: AvatarModel, color: number) {
     this.model.dispose();
     this.model = model;
-    this.root.add(model.root);
+    this.attach(model);
     model.setColor(color);
+  }
+
+  /** Cast a sun shadow but don't draw the body (the local first-person player). */
+  setShadowOnly(on: boolean) {
+    this.shadowOnly = on;
+    this.attach(this.model);
+  }
+
+  /** Every mesh casts a full silhouette (legs and head too) and darkens in dune shadow. */
+  private attach(model: AvatarModel) {
+    this.root.add(model.root);
+    model.root.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      o.castShadow = true;
+      o.receiveShadow = !this.shadowOnly;
+      if (this.shadowOnly) o.layers.set(SHADOW_ONLY_LAYER);
+      else o.layers.set(0);
+    });
   }
 
   setColor(color: number) {
@@ -136,7 +156,6 @@ export class PlaceholderModel implements AvatarModel {
     const boot = new THREE.MeshStandardNodeMaterial({ color: 0x2c1d14, roughness: 0.85 });
     const metal = new THREE.MeshStandardNodeMaterial({ color: 0x6d6a62, roughness: 0.5, metalness: 0.7 });
     const eye = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(1, 0.75, 0.2).multiplyScalar(6) });
-    const shadow = <T extends THREE.Mesh>(m: T) => ((m.castShadow = true), m);
 
     // Robe: a flared lathe from shoulders (1.35 m) to hem (0.35 m).
     const pts = [
@@ -144,12 +163,12 @@ export class PlaceholderModel implements AvatarModel {
       new THREE.Vector2(0.3, 0.9), new THREE.Vector2(0.37, 0.5), new THREE.Vector2(0.42, 0.32),
     ];
     // Pivot at the shoulders so the hem swings.
-    this.robe = shadow(new THREE.Mesh(new THREE.LatheGeometry(pts, 14).translate(0, -1.4, 0), this.robeMat));
+    this.robe = new THREE.Mesh(new THREE.LatheGeometry(pts, 14).translate(0, -1.4, 0), this.robeMat);
     this.robe.position.y = 1.4;
     // Hood: a pointed cone over a head sphere, tip flopping back.
     const head = new THREE.Group();
     head.position.y = 1.5;
-    const hood = shadow(new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.62, 14, 1, true), this.robeMat));
+    const hood = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.62, 14, 1, true), this.robeMat);
     hood.position.set(0, 0.12, 0.04);
     hood.rotation.x = 0.28;
     hood.material.side = THREE.DoubleSide;
@@ -162,12 +181,12 @@ export class PlaceholderModel implements AvatarModel {
     }
     head.add(hood, face);
     // Sash in full player colour, and a scrap backpack.
-    const sash = shadow(new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.035, 6, 16), this.sashMat));
+    const sash = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.035, 6, 16), this.sashMat);
     sash.position.y = 0.95;
     sash.rotation.x = Math.PI / 2;
-    const pack = shadow(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.42, 0.18), dark));
+    const pack = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.42, 0.18), dark);
     pack.position.set(0, 1.08, 0.3);
-    const can = shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 8), metal));
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 8), metal);
     can.position.set(0.2, 1.12, 0.33);
     const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.6, 4), metal);
     antenna.position.set(-0.12, 1.5, 0.32);
@@ -177,7 +196,7 @@ export class PlaceholderModel implements AvatarModel {
     for (const s of [-1, 1]) {
       const arm = new THREE.Group();
       arm.position.set(0.28 * s, 1.3, 0);
-      const sleeve = shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.55, 8), this.robeMat));
+      const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.55, 8), this.robeMat);
       sleeve.position.y = -0.27;
       const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), dark);
       hand.position.y = -0.58;
@@ -191,7 +210,7 @@ export class PlaceholderModel implements AvatarModel {
       leg.position.set(0.12 * s, 0.75, 0);
       const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.7, 6), dark);
       shin.position.y = -0.38;
-      const b = shadow(new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.12, 0.26), boot));
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.12, 0.26), boot);
       b.position.set(0, -0.7, -0.04);
       leg.add(shin, b);
       this.legs.push(leg);

@@ -40,7 +40,7 @@ const net = new Net(getBrowserId());
 const digFx = new DigFx(scene);
 net.onDig = (at, pile) => digFx.puff(at, pile);
 const me = new Avatar(0xffffff);
-me.root.visible = false; // first person: only remote players are drawn
+me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
 scene.add(me.root, footprints.mesh);
 const remotes = new Map<number, Avatar>();
 const locator = new LocatorBar();
@@ -101,7 +101,7 @@ renderer.setAnimationLoop((time) => {
   locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, others);
   terrain.update(focus);
   scrap.update(focus);
-  sky.update(frameDt, focus);
+  sky.update(frameDt, focus, orbit.camera);
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);

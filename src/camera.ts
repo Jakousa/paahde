@@ -12,6 +12,8 @@ const SENSITIVITY = 0.0022;
 const PITCH_LIMIT = (85 * Math.PI) / 180;
 const BASE_FOV = 72;
 const SPRINT_FOV_KICK = 9;
+/** Widest the view gets (sprinting); the sun's shadow cascades are fitted to it. */
+export const MAX_FOV = BASE_FOV + SPRINT_FOV_KICK;
 const STRIDE = 1.15; // metres per step (half a bob cycle)
 
 /** What the camera needs from the local player each frame. */
