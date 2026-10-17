@@ -21,6 +21,9 @@ const sky = new Sky(scene);
 const terrain = new Terrain(scene);
 const post = new Post(renderer, scene, orbit.camera);
 
+// Debug handle for screenshots/tuning from the console: open with ?debug.
+if (location.search.includes('debug')) Object.assign(window, { dbg: { orbit, sky, post, scene, renderer } });
+
 const net = new Net(getBrowserId());
 const me = new Avatar(0xffffff);
 scene.add(me.root);
