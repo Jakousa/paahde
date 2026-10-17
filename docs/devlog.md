@@ -198,4 +198,16 @@ so it stays under the −23 LUFS mix target. (Measure in Chrome: node-web-audio-
   and a high sand hiss that follows saltation `q` and swells with streamers (`emit`).
 - **Direction:** the rush is louder in the windward ear and brighter when facing into the wind.
 - Starts on the first click/key (browser autoplay rules), suspends when the tab is hidden.
+
+## Footsteps
+
+`src/footsteps.ts` plays one step from `public/audio/footsteps.mp3` each time an avatar plants a foot
+(the same stride that leaves a footprint; none while sliding). The file is a sprite of 8 single steps
+(0.4 s slots) sliced from a Pixabay recording of a brisk walk on a gravel trail, levelled so a
+steady 2.4 steps/s walk is −23 LUFS. In game (~5 steps/s, GAIN 0.2, default volume 0.4) the local
+player's walking is roughly −42 LUFS: under a breeze, above a calm. Random step (no immediate repeat),
+±8% pitch, ±15% level; remote players' steps are panned and fall off as 1/d beyond 2.5 m, silent past 30 m.
+
+All sounds now go through `src/audio.ts`: one AudioContext, the volume slider as master gain, and the
+limiter. New sounds connect to `audio.out` (or use `audio.onStart`).
   Volume slider in the top-right corner (default 0.4, remembered per browser); `dbg.wind.override` is handy for tuning.

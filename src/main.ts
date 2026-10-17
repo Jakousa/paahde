@@ -22,6 +22,7 @@ import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
 import { WindSound } from './windSound';
+import { footsteps } from './footsteps';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -140,6 +141,7 @@ renderer.setAnimationLoop((time) => {
   blownSand.update(frameDt, focus);
   dust.update(frameDt, orbit.camera.position);
   windSound.update(frameDt, orbit.camera.position, orbit.yaw);
+  footsteps.listener(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
   const target = net.connected ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   hud.setTarget(target);
