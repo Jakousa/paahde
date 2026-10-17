@@ -161,8 +161,7 @@ const png = (kind: string) => `<img src="./icons/items/${kind}.png" alt="" dragg
 ICONS.plant_bed = png('plant_bed');
 ICONS.uv_lamp = png('uv_lamp');
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-/** Parts (shared/parts.ts) use their rendered icons, public/icons/items/<part>_<tier>.png (tools/blender/items.py,
- *  and tools/models/part-icons.ts for the code-built ones); a lettered tile in the rarity colour if one fails. */
+/** Parts (shared/parts.ts) use their rendered icons, public/icons/items/<part>_<tier>.png (tools/blender/items.py); a lettered tile in the rarity colour if one fails. */
 function partIcon(kind: string) {
   const letter = (ITEMS[kind]?.label.split(' ').pop() ?? '?')[0].toUpperCase();
   return `<img src="./icons/items/${kind}.png" alt="" draggable="false" onerror="this.outerHTML='<b class=&quot;tile&quot;>${letter}</b>'">`;
@@ -231,7 +230,8 @@ export class InventoryHud {
     document.body.append(this.prompt, this.toasts, this.overlay, this.ghost);
 
     net.onItems = (box, got) => {
-      if (got) this.toast(`+1 ${itemLabel(got)}`);
+      // The disassembly mode shows its own "+ Motor · Rare" flying to the hotbar.
+      if (got && !document.body.classList.contains('teardown')) this.toast(`+1 ${itemLabel(got)}`);
       if (box === 'bag' || box === 'equip' || this.storages.includes(box)) this.render();
     };
 

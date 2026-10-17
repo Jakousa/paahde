@@ -1,11 +1,12 @@
-// Crash sites: where wrecked machinery lies in the desert, one component each (COMPONENTS in salvage.ts) that
-// you walk up to and take apart on the spot (src/teardown). Layout is deterministic like shared/scrap.ts,
-// integer hashing and exact arithmetic only, so every client sees the same sites with the same contents.
-// The server rolls the same contents from a site's seed (shared/parts.ts rollParts) to check the parts taken out.
-import { BASE_SPAWN, padBlend } from './base.ts';
+// Machine sites: the wrecked machinery lying at the crashed spacecraft (shared/crashsites.ts `machines`), one
+// component each (COMPONENTS in salvage.ts) that you take apart where it lies (large) or carry home (small),
+// src/teardown. Every crash site has one large machine next to its wreck and 0–2 small ones in the debris trail.
+// The layout is the crash sites' (deterministic, integer hashing), so every client sees the same machines with the
+// same contents. Ids are "<crash site id>:<index>", index 0 the large machine.
+import { BASE_SPAWN } from './base.ts';
+import { crashSite, crashSitesNear, type CrashSite as Wreck } from './crashsites.ts';
 import { COMPONENTS, type ComponentKind } from './salvage.ts';
 import { STATIONS } from './stations.ts';
-import { baseHeight, WORLD_HALF, WORLD_SEED } from './terrain.ts';
 
 /** Components small enough to carry; each is an item of the same kind (shared/items.ts) in the bag. */
 export const CARRY_KINDS = (Object.keys(COMPONENTS) as ComponentKind[]).filter((k) => COMPONENTS[k].carry);
@@ -21,26 +22,29 @@ export const SITE_RANGE = 14;
 /** Small sites whose component has been carried off, kept in step with the server ('crash' messages). */
 export const crashTaken = new Set<string>();
 export const crashListeners: (() => void)[] = [];
+/** Crash sites (numeric shared/crashsites.ts ids) whose large machine has been stripped of every part: no smoke,
+ *  no beeping, the machine stays a husk. Kept in step with the server ('crashSpent' messages). */
+export const crashSpent = new Set<number>();
 export function crashChanged() {
   for (const f of crashListeners) f();
 }
 
-/** Grid cell size (m); each cell holds at most one site. */
-export const CRASH_CELL = 240;
-const DENSITY = 0.4;
 /** How close you must be (m) for the "Disassemble" prompt. */
 export const CRASH_REACH = 4.5;
-const MAX_GRAD2 = 1 / (0.92 * 0.92) - 1;
 
 export interface CrashSite {
-  /** Unique, stable id (cell "ix,iz", or "start" / "start2" near the base). */
+  /** Unique, stable id: "<crash site id>:<index>", index 0 the large machine. */
   id: string;
+  /** The crash site (shared/crashsites.ts id) it lies at. */
+  wreck: number;
+  /** Index at the crash site: 0 is the large machine, then the small ones. */
+  index: number;
   x: number;
   z: number;
-  /** Heading of the component, radians. */
+  /** Heading of the component, radians (three.js rotation.y; the machine lies across its throw direction). */
   yaw: number;
   kind: ComponentKind;
-  /** Seeds what is inside (tiers) and the scattered wreckage. */
+  /** Seeds what is inside (tiers). */
   seed: number;
 }
 
@@ -55,88 +59,45 @@ export function seeded(seed: number) {
   };
 }
 
-function flatEnough(x: number, z: number): boolean {
-  const e = 0.5;
-  const gx = (baseHeight(x + e, z) - baseHeight(x - e, z)) / (2 * e);
-  const gz = (baseHeight(x, z + e) - baseHeight(x, z - e)) / (2 * e);
-  return gx * gx + gz * gz < MAX_GRAD2;
-}
-
 const KINDS = Object.keys(COMPONENTS) as ComponentKind[];
-const TOTAL = KINDS.reduce((s, k) => s + COMPONENTS[k].weight, 0);
-function pickKind(u: number): ComponentKind {
-  let r = u * TOTAL;
-  for (const k of KINDS) if ((r -= COMPONENTS[k].weight) < 0) return k;
-  return KINDS[0];
+function pickKind(u: number, carry: boolean): ComponentKind {
+  const ks = KINDS.filter((k) => COMPONENTS[k].carry === carry);
+  let r = u * ks.reduce((s, k) => s + COMPONENTS[k].weight, 0);
+  for (const k of ks) if ((r -= COMPONENTS[k].weight) < 0) return k;
+  return ks[0];
 }
 
-function make(id: string, x: number, z: number, r: () => number, kind?: ComponentKind): CrashSite {
-  return { id, x, z, yaw: r() * 6.2831853, kind: kind ?? pickKind(r()), seed: (r() * 4294967296) >>> 0 };
+const cache = new Map<number, CrashSite[]>();
+
+/** The machine sites at crash site `w`. */
+export function machinesAt(w: Wreck): CrashSite[] {
+  let out = cache.get(w.id);
+  if (out) return out;
+  out = w.machines.map((m, index) => {
+    const r = seeded(m.seed);
+    const kind = pickKind(r(), !m.large);
+    return { id: `${w.id}:${index}`, wreck: w.id, index, x: m.x, z: m.z, yaw: Math.atan2(m.dx, m.dz), kind, seed: (r() * 4294967296) >>> 0 };
+  });
+  cache.set(w.id, out);
+  return out;
 }
 
-function cellRng(ix: number, iz: number) {
-  return seeded(Math.imul(ix | 0, 0x2545f491) ^ Math.imul(iz | 0, 0x4f1bbcdd) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ 0x7ac3);
-}
-
-const cache = new Map<string, CrashSite | null>();
-
-/** The site in cell (ix, iz), or null. */
-export function crashSiteAt(ix: number, iz: number): CrashSite | null {
-  const k = `${ix},${iz}`;
-  let s = cache.get(k);
-  if (s === undefined) cache.set(k, (s = generate(ix, iz)));
-  return s;
-}
-
-function generate(ix: number, iz: number): CrashSite | null {
-  const r = cellRng(ix, iz);
-  if (r() >= DENSITY) return null;
-  for (let t = 0; t < 4; t++) {
-    const x = (ix + 0.1 + 0.8 * r()) * CRASH_CELL;
-    const z = (iz + 0.1 + 0.8 * r()) * CRASH_CELL;
-    if (Math.abs(x) < WORLD_HALF - 10 && Math.abs(z) < WORLD_HALF - 10 && flatEnough(x, z) && padBlend(x, z) > 0.3) return make(`${ix},${iz}`, x, z, r);
-  }
-  return null;
-}
-
-/** A site close to where new players start, so there is something to take apart straight away. */
-const STARTER_OFFSETS: [number, number][] = [[24, 10], [-24, 10], [10, 26], [-10, 26], [30, 0], [-30, 0], [18, -24], [-18, -24], [0, 34], [36, 14], [-36, 14], [0, -36]];
-let starters: CrashSite[] | undefined;
-/** Two near the base: a large one (taken apart where it lies) and a small one (carry it home). */
-function starterSites(): CrashSite[] {
-  if (starters) return starters;
-  starters = [];
-  const kinds: [string, ComponentKind][] = [['start', 'pump_housing'], ['start2', 'control_cabinet']];
-  for (const [dx, dz] of STARTER_OFFSETS) {
-    const x = BASE_SPAWN.x + dx, z = BASE_SPAWN.z + dz;
-    if (!flatEnough(x, z) || padBlend(x, z) <= 0.3) continue;
-    if (starters.some((s) => Math.hypot(s.x - x, s.z - z) < 14)) continue;
-    const [id, kind] = kinds[starters.length];
-    starters.push(make(id, x, z, cellRng(7, 7 + starters.length), kind));
-    if (starters.length === kinds.length) break;
-  }
-  return starters;
-}
-
-/** The site with this id ("start" or "ix,iz"), or null. */
+/** The site with this id ("<crash site id>:<index>"), or null. Ids may come from the network: this validates them. */
 export function crashSiteById(id: unknown): CrashSite | null {
   if (typeof id !== 'string') return null;
-  if (id === 'start' || id === 'start2') return starterSites().find((s) => s.id === id) ?? null;
-  const m = /^(-?\d{1,5}),(-?\d{1,5})$/.exec(id);
-  return m ? crashSiteAt(Number(m[1]), Number(m[2])) : null;
+  const m = /^(\d{1,6}):(\d)$/.exec(id);
+  const w = m ? crashSite(Number(m[1])) : undefined;
+  return (w && machinesAt(w)[Number(m![2])]) ?? null;
 }
 
-/** Every site within `radius` of (x, z). */
+/** The large machine of crash site `w` (every site has one). */
+export const mainMachine = (w: Wreck): CrashSite => machinesAt(w)[0];
+
+/** Every machine site within `radius` of (x, z). */
 export function sitesNear(x: number, z: number, radius: number): CrashSite[] {
   const out: CrashSite[] = [];
-  for (const s0 of starterSites()) if (Math.hypot(s0.x - x, s0.z - z) <= radius) out.push(s0);
-  const n = Math.ceil(radius / CRASH_CELL);
-  const cx = Math.floor(x / CRASH_CELL), cz = Math.floor(z / CRASH_CELL);
-  for (let iz = cz - n; iz <= cz + n; iz++) {
-    for (let ix = cx - n; ix <= cx + n; ix++) {
-      const s = crashSiteAt(ix, iz);
-      if (s && Math.hypot(s.x - x, s.z - z) <= radius) out.push(s);
-    }
+  for (const w of crashSitesNear(x, z, radius + 40)) {
+    for (const s of machinesAt(w)) if (Math.hypot(s.x - x, s.z - z) <= radius) out.push(s);
   }
   return out;
 }

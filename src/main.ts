@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { DIG, DT, PILE, quantizeYaw } from '../shared/sim.ts';
+import { BACK, DIG, DT, FORWARD, PILE, quantizeYaw } from '../shared/sim.ts';
 import { digTarget, EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
@@ -34,7 +34,9 @@ import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
 import { WindSound } from './windSound';
+import { EngineSound } from './engineSound';
 import { footsteps } from './footsteps';
+import { music } from './music';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
@@ -42,7 +44,8 @@ import { StormFx } from './storm';
 import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
 import { TeardownView } from './teardown/teardown';
-import { MachineSites } from './world/crash';
+import { BENCH_ID, MachineSites } from './world/crash';
+import { machinesAt } from '../shared/crash.ts';
 import { COMPONENTS } from '../shared/salvage.ts';
 import { equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS } from '../shared/gear.ts';
 import { LootView, lootName } from './world/loot';
@@ -71,40 +74,39 @@ const blownSand = new BlownSand(scene);
 const viewmodel = new ViewModel(orbit, scene); // first-person hands, parented to the camera
 
 const windSound = new WindSound();
+const engineSound = new EngineSound();
 const storm = new StormFx();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
 const teardown = new TeardownView(scene, orbit.camera); // F at a machine site: the character walks up and the disassembly controls take over
+machines.busy = () => teardown.current?.id;
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
-  // crash: every crash site's id, centre, wreck kind and whether it smokes (shared/crashsites.ts).
-  const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, smoke: s.smoke, pieces: s.pieces.length }));
+  // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
+  const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
   Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, teardown, placedView } });
 }
 
 const net = new Net(getBrowserId());
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { net });
-// Shared sessions at large crash sites: other players' steps and part takes arrive here.
+// Machine progress (large sites and the disassembly table), from the server: every machine is kept up to date,
+// and the one being worked on gets it through the disassembly mode, animated.
 net.onSite = (m) => {
   const cur = teardown.current;
-  if (!cur || cur.id !== m.id) return;
+  machines.apply(m, cur?.id ?? null);
+  if (m.t === 'siteTook' && cur?.id === m.id) {
+    teardown.applyTook(m.i, m.ok, m.reason);
+  }
+  if (!cur || m.t === 'sites' || m.t === 'bench' || m.t === 'siteReset' || m.t === 'siteTook' || cur.id !== m.id) return;
   if (m.t === 'siteState') {
     for (const i of m.done) teardown.applyDone(i, true);
     for (const i of m.taken) teardown.applyTake(i, false);
   } else if (m.t === 'siteDone') teardown.applyDone(m.i);
   else teardown.applyTake(m.i, m.by === net.id);
 };
-// A part we pulled out didn't go in the bag (full, or refused): back into the machine.
-net.onPartRefused = (id, i, full) => {
-  if (teardown.current?.id === id) teardown.applyRefused(i, full);
-  else hud.toast(full ? 'Bag full' : 'Could not take that part');
-};
-// The disassembly table: putting a carried machine on it waits for the server's job (it picks the seed).
-let benchWanted = false;
-const benchLink = net.benchLink();
-net.onBench = (job) => {
-  if (!benchWanted) return;
-  benchWanted = false;
-  if (job && !teardown.active) teardown.begin(machines.bench.site(job, benchLink));
+// A machine we put on the disassembly table is there (the server picked its seed): start taking it apart.
+machines.bench.onReady = () => {
+  const job = machines.bench.site(net.siteLink(BENCH_ID));
+  if (job && !teardown.active && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 5) teardown.begin(job);
 };
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear());
 const lootView = new LootView(scene);
@@ -193,7 +195,7 @@ renderer.setAnimationLoop((time) => {
   joined = true;
   if (faceCrash) {
     faceCrash = false;
-    const site = crashSitesNear(net.me.x, net.me.z, 200)[0];
+    const site = crashSitesNear(net.me.x, net.me.z, 200)[0]?.machines[0];
     if (site) orbit.yaw = Math.atan2(-(site.x - net.me.x), -(site.z - net.me.z));
   }
   resolution.update(frameDt);
@@ -271,6 +273,7 @@ renderer.setAnimationLoop((time) => {
   detector.update(frameDt, inHand?.kind === 'metal_detector' && repaired(inHand) ? quality(inHand) : -1, net.loot, looked);
   lootView.update(frameDt, net.loot, focus);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
+  teardown.placeCamera(frameDt); // at the disassembly table: a fixed view above it
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
   me.setHeadless(riding && !orbit.showBody);
@@ -297,7 +300,9 @@ renderer.setAnimationLoop((time) => {
   tyreDust.update(frameDt);
   base.update();
   windSound.update(frameDt, orbit.camera.position, orbit.yaw, s);
+  engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   footsteps.listener(orbit.camera.position, orbit.yaw);
+  music.update(frameDt, s);
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
@@ -319,7 +324,7 @@ renderer.setAnimationLoop((time) => {
   const site = net.connected && !teardown.active && station < 0 && !bed && !target && !find ? machines.nearest(net.me.x, net.me.z) : null;
   const small = site ? COMPONENTS[site.site.kind].carry : false;
   const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`) : null;
-  const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag, net.bench) : null;
+  const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
   const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use disassembly table');
   const fPrompt = use ?? tend ?? target ?? findPrompt ?? sitePrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
@@ -329,9 +334,11 @@ renderer.setAnimationLoop((time) => {
     if (use) {
       if (STATIONS[station].kind === 'workbench') hud.open();
       else if (table) {
-        if (table.resume && net.bench) teardown.begin(machines.bench.site(net.bench, benchLink));
+        const job = table.resume ? machines.bench.site(net.siteLink(BENCH_ID)) : null;
+        if (job) teardown.begin(job);
         else {
-          benchWanted = true;
+          // The server picks the machine's seed; its 'bench' answer starts the mode (onReady below).
+          machines.bench.ask();
           net.crashUse(table.kind);
         }
       } else hud.toast('Carry a small machine here to take it apart');

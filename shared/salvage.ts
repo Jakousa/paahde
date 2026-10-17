@@ -4,8 +4,7 @@
 
 /** Craftable part ids, matching tools/blender/items.py (public/models/items/<id>_<tier>.glb). */
 export type PartId = 'battery' | 'motor' | 'heatsink' | 'compute' | 'antimatter' | 'coil'
-  // Mechanical and switching parts that come out of the smaller crash-site components. No Blender models yet:
-  // src/teardown/parts.ts builds them in code, in the same four tiers.
+  // Mechanical and switching parts that come out of the smaller crash-site components.
   | 'impeller' | 'bearing' | 'gear' | 'valve' | 'relay';
 
 export interface SalvageYield {

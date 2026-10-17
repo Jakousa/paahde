@@ -93,6 +93,11 @@ motorcycle, telescope, water bottle, backpack, storm detector, wrist computer, m
 - The parts tray now lists what you took on this visit (the all-time localStorage tally is gone).
 - **Next:** crafting with parts (the workbench still says "Nothing to craft yet"); stacking parts would help the
   12-slot backpack; Blender models for the five code-built parts.
+- **Superseded the same day** (merged with the disassembly rework, see "Machines move into the crash sites"): the
+  five code-built parts are Blender models now (`tools/blender/items.py`, icons rendered there, `part-icons` tool
+  gone); you take a part with a left click and the server answers (`siteTook`) instead of predicting it; the table's
+  job is one shared session (`bench_job`, id 'bench') that everyone in the base sees and anyone can work on, not a
+  per-player `bench_jobs` row (that table is left unused); the tray is gone.
 
 ## 2026-10-17 — Items, Tab inventory and storage
 
@@ -159,6 +164,34 @@ Crashed spacecraft half-buried in the dunes, for players to hunt for parts later
   20–40 m it is only ~2.5 dB louder than before. Then +4 dB more (0.2 → 0.32, ~−26 LUFS at 5 m, true peak
   ≤ −9 dBFS) on request: still a background detail, now noticeable.
 - `?spawn=crash` starts you just off the nose of the crash site nearest your saved position, facing it.
+## 2026-10-17 — Machines move into the crash sites; smoke means "not stripped yet"
+
+The machine sites no longer have their own grid or the two starter sites by the base: every crashed spacecraft
+(shared/crashsites.ts) now holds the machines.
+- **Layout** (`placeMachines`, its own rng stream so the wreck layout is unchanged): one **large** machine (pump
+  housing or jet engine) thrown clear of the main wreck, with 4.2 m of open ground around it so you can walk around
+  it, clear of every tall hitbox (all 66 sites pass; the closest is 4.35 m), and 0–2 **small** ones beside trail
+  debris (21/28/17 sites have 0/1/2). Ids are `"<crash site id>:<index>"`, 0 the large one (shared/crash.ts
+  `machinesAt`, `crashSiteById`, `sitesNear`). The nearest site to the spawn is ~356 m out.
+- **Dressing** (Blender, tools/blender/crashsites.py `Crash_Cradle`, `Crash_Skid`; CRASH_KINDS entries with
+  `dressing: true`, never picked as debris): a sand berm the machine shoved up ahead of it, thrown-out sand, the
+  torn cargo cradle it was strapped into lying behind it (towards the wreck) with snapped straps, a ratchet buckle
+  and ripped-out cables trailing back to the wreck; a small furrow mound, strap and bracket under small ones. These
+  are draped over the dunes vertex by vertex and merged per material (src/world/crashsites.ts), and their sand uses
+  the terrain's sand material, so they sit in the ground on slopes instead of sticking out as slabs. The old
+  code-built scorch disc, trench and plates are gone. (A scorch decal was tried and dropped: it vanished under the
+  rendered terrain unless lifted well above it.)
+- **Smoke = not visited**: every site smoulders (a column from the wreck and one from the ground by the large
+  machine) until its large machine has had every part taken. The server counts parts with `rollParts` /
+  `machineParts` (now shared in salvage.ts; junk.ts builds one slot per rolled part, checked for 300 seeds of each
+  kind), marks the crash site **spent** (`crash_spent` table with a timestamp), and sends `crashSpent` (full list on
+  join, then each new one). The client stops feeding that site's columns (puffs born after the stop are not drawn,
+  so the plume drifts off), the beeping goes quiet, and the machine is rebuilt as a stripped husk with no prompt.
+  The server refuses to open a session on a spent site and ignores part indexes past the machine's part count.
+- **Nothing respawns**: spent sites stay spent and carried-off small machines stay gone (the 45 min refill is
+  gone); both keep their timestamps in SQLite in case respawns come back.
+- `?spawn=crash` puts you 7 m from the nearest site's large machine, facing it.
+
 ## 2026-10-17 — Machine sites and disassembly
 
 Wrecked machinery now lies in the desert (shared/crash.ts: deterministic sites, one machine each; two near the
@@ -173,15 +206,29 @@ above (shared/crashsites.ts) and share only the idea; the names overlap, so the 
   part gets it.
 - **Small machines** (robot arm joint, control cabinet) are picked up with F and land in the bag as items (kinds
   `robot_arm`, `control_cabinet` in shared/items.ts). Carry them to the **disassembly table** in the bunker (F at it,
-  the station from shared/stations.ts) and take them apart alone, scaled to fit the table; an unfinished job is
-  kept in this browser.
+  the station from shared/stations.ts) and take them apart there, scaled to fit the table. The table is the
+  server's: the job (kind, a seed the server picks, steps done, parts taken) is in SQLite (`bench_job` +
+  `machine_progress`), everyone sees the machine on the table and its progress live, anyone at it can help, and
+  the table is free again once the last part is out.
 
-Controls: **left mouse only interacts** (click screws and clips, circle the pointer around big bolts, swipe across
-wires to cut them, drag pry tabs, hold lifting eyes), **right-drag** carries a freed part to the tray (and moves a
-carried machine on the table), **middle-drag** or arrow keys turn the machine over, R resets, Esc leaves.
-`?debug` lets one player do the two-player lifts.
+Controls, all on the **left mouse**: on a step it works it (click screws and clips, hold and circle big bolts, hold
+and swipe across wires, drag pry tabs, hold lifting eyes); on a freed part a **click takes it** (it flies to the
+bag); anywhere else a drag turns the machine over (on the table) or looks around (at a large machine). Middle-drag
+does the same turn / look, right-drag moves a machine about the table. On the table **W A S D / arrows** turn the
+machine and the wheel zooms; at a large machine W / S step closer and further and A / D walk around it. R resets,
+Esc (or the Leave button) leaves. `?debug` lets one player do the two-player lifts.
 
-Code: `src/teardown/junk.ts` builds the machines and their steps, `parts.ts` the code-built parts, `teardown.ts`
+The UI (redone after "confusing, hard to use"): one panel at the top with the machine, its rarity, steps and parts
+progress bars, a **"Next:"** line (take the freed part / the most common ready step on the side you look at / "turn
+it over: 3 more on another side") and the four keys that matter. A tip by the pointer names the thing under it and
+the exact action ("click ×3 to unscrew", "hold and circle to unscrew"), or why it is locked ("Remove the lid screw
+×4 first"), and the blockers light up white on the machine. A radial ring shows a step's progress (a dashed guide
+circle for bolts), freed parts carry a rarity-coloured tag, events are a short line above the hotbar. At the
+**disassembly table the camera swings to a fixed three-quarter view above the table** (0.7 s ease in and out,
+pointer rays use it) instead of the first-person walk-up view; large machines keep the walk-around view. The parts
+tray and its localStorage store are gone: taken parts go to the bag (`TeardownView.onTake` / `applyTook`).
+
+Code: `src/teardown/junk.ts` builds the machines and their steps, `teardown.ts`
 the mode (walk-up, input, loose-piece physics, session link), `ui.ts` the panels, `src/world/crash.ts` the
 sites, wreckage and the table job. Netcode: `crash*`/`site*` messages in shared/protocol.ts.
 
@@ -193,10 +240,20 @@ sites, wreckage and the table job. Netcode: `crash*`/`site*` messages in shared/
   for parts the machine actually rolled, so nothing is a decoy.
 - **Rarity** = part tier (`RARITY` in shared/salvage.ts). Each machine rolls its parts from `COMPONENTS` using its
   `tierWeights`, seeded by the site, so every player sees the same contents; the best part sets how fancy it looks.
-- **New parts** with no Blender model yet (impeller, bearing, gear, valve, relay) are built in code, four tiers.
-- Not done: collected parts sit in a local tray (localStorage), not in the server inventory (needs an item/tier id
-  scheme in shared/); large-site progress lives in server memory and resets 30 min after the last player leaves;
-  the server trusts the client's step/part indexes (it only checks lifts against the holders).
+- **Mechanical parts** (impeller, bearing, gear, valve, relay) are Blender models in `tools/blender/items.py` like
+  the other items, four tiers each; they lie with their axis along +y so `Kit.ax` can mount them on a shaft.
+- **Parts are items.** `shared/machine.ts` `machineParts(kind, seed)` rolls a machine's parts (no three.js), so
+  the client mounts part i as the slot with `index` i and the server knows what part i is. The first to take a
+  part gets item `${part}_${tier}` (e.g. `motor_basic`, "Motor (Uncommon)", shared/items.ts `PART_ITEMS`) in their
+  bag, in one DB transaction; with a full bag it is refused ('siteTook' ok: false) and goes back on the machine.
+  Inventory icons: the rendered PNGs, framed in the tier colour.
+- **Progress never resets.** Every machine's steps done and parts taken (large sites and the table) are kept in
+  SQLite for good and sent to everyone: 'sites' on join, then siteDone / siteTake to all players, so a machine
+  you walk up to later is fast-forwarded to it. `CrashServer.resetSite(id)` makes one whole again (dev/admin
+  only; nothing calls it).
+- Not done: the server checks part indexes against its own part list but not whether a part's holds are done
+  (step indexes are only range-checked; lifts are checked against the holders). The tray only lists this
+  session's takes (the items are in the bag).
 - Idea taken from the Godot DOHOJAM teardown: parts stay locked until the earlier steps are done.
 
 ## 2026-10-17 — Base becomes an underground bunker (issue #12)

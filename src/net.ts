@@ -27,12 +27,15 @@ import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts'
 import type { BenchJob, ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { bagSize, digTool, fitPart, tryMove, unfitPart } from '../shared/gear.ts';
-import { addItem, HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
+import { HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
-import { crashChanged, crashTaken } from '../shared/crash.ts';
-import type { BenchLink, SiteLink } from './teardown/teardown';
+import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
+import type { SiteLink } from './teardown/teardown';
+
+/** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
+export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' }>;
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
@@ -113,12 +116,7 @@ export class Net {
    *  disassembly mode (src/main.ts hands them to it). */
   private holders = new Map<string, Map<number, number>>();
   private holdTimers = new Map<string, ReturnType<typeof setInterval>>();
-  onSite?: (msg: Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' }>) => void;
-  /** A part we took did not go in the bag (site id or 'bench', part index; full: no room). */
-  onPartRefused?: (id: string, i: number, full: boolean) => void;
-  /** Our disassembly-table job (server 'bench'): undefined until the server says, null for none. */
-  bench: BenchJob | null | undefined = undefined;
-  onBench?: (job: BenchJob | null) => void;
+  onSite?: (msg: SiteMsg) => void;
 
   /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
   water = { heat: 0, sips: 0, maxSips: 0, rising: false, temp: 20, shade: true, at: 0 };
@@ -232,30 +230,7 @@ export class Net {
     if (this.connected) this.send({ t: 'crashUse', kind });
   }
 
-  /** A part (item kind) taken out of a machine into the bag, predicted now. False (nothing sent) if the bag is full. */
-  private takePart(kind: string, msg: ClientMsg): boolean {
-    const bag = this.boxes.bag;
-    const size = bagSize(this.boxes.equip);
-    if (!this.connected || !bag || !roomFor(bag, kind, 1, size)) return false;
-    addItem(bag, kind, 1, () => --this.tempId, Math.min(HOTBAR, size - 1), size);
-    this.send(msg);
-    this.onItems?.('bag');
-    return true;
-  }
-
-  /** Our disassembly-table job's link to the server (see BenchLink in src/teardown/teardown.ts). */
-  benchLink(): BenchLink {
-    return {
-      done: (i) => this.send({ t: 'benchDone', i }),
-      take: (i, kind) => this.takePart(kind, { t: 'benchTake', i, kind }),
-      clear: () => {
-        this.bench = null;
-        this.send({ t: 'benchClear' });
-      },
-    };
-  }
-
-  /** The shared session of a large crash site (see SiteLink in src/teardown/teardown.ts). */
+  /** The shared session of a large crash site, or of the disassembly table ('bench') (see SiteLink in src/teardown/teardown.ts). */
   siteLink(id: string): SiteLink {
     const key = (i: number) => `${id}:${i}`;
     return {
@@ -266,7 +241,7 @@ export class Net {
         this.send({ t: 'siteLeave', id });
       },
       done: (i) => this.send({ t: 'siteDone', id, i }),
-      take: (i, kind) => this.takePart(kind, { t: 'siteTake', id, i, kind }),
+      take: (i) => this.send({ t: 'siteTake', id, i }),
       hold: (i, players, on) => {
         // The server forgets a hold after a few seconds, so keep saying it while we hold.
         const old = this.holdTimers.get(key(i));
@@ -497,20 +472,20 @@ export class Net {
       for (const id of msg.back) crashTaken.delete(id);
       return crashChanged();
     }
+    if (msg.t === 'crashSpent') {
+      if (msg.reset) crashSpent.clear();
+      for (const id of msg.spent) crashSpent.add(id);
+      return crashChanged();
+    }
     if (msg.t === 'siteHolders') {
       let m = this.holders.get(msg.id);
       if (!m) this.holders.set(msg.id, (m = new Map()));
       m.set(msg.i, msg.n);
       return;
     }
-    if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake') {
+    if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake' || msg.t === 'sites' || msg.t === 'siteReset' || msg.t === 'bench' || msg.t === 'siteTook') {
       if (msg.t === 'siteDone') this.holders.get(msg.id)?.delete(msg.i);
       return this.onSite?.(msg);
-    }
-    if (msg.t === 'partRefused') return this.onPartRefused?.(msg.id, msg.i, msg.full);
-    if (msg.t === 'bench') {
-      this.bench = msg.job;
-      return this.onBench?.(msg.job);
     }
     if (msg.t === 'water') {
       this.water = { heat: msg.heat, sips: msg.sips, maxSips: msg.maxSips, rising: msg.rising, temp: msg.temp, shade: msg.shade, at: performance.now() };

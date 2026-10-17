@@ -1,52 +1,38 @@
-// Server side of the crash sites (shared/crash.ts).
+// Server side of the machine sites (shared/crash.ts) at the crashed spacecraft.
+//  - When every part of a crash site's large machine has been taken, the crash site is spent (persisted with a
+//    timestamp, broadcast as 'crashSpent'): it stops smoking and its machine stays a husk, permanently.
 //  - Small machines are carried home: crashTake validates reach and puts the machine in the player's bag (an item
-//    of the component's kind); the site stays empty until it refills. crashUse takes one out of the bag when it
-//    is put on the workbench and starts the player's bench job: a seed the server picks (so what is inside is
-//    the server's roll), and which steps are done and parts taken, kept in the DB until the machine is empty.
-//  - Large machines are worked on by everyone near them through an in-memory session per site: which steps are
-//    done, which parts are taken, and who is holding which lifting eye right now. A step that needs several
-//    players (a lift) is only accepted while that many are holding. Sessions forget their state after
-//    SESSION_TTL_MS with nobody in them, so the wreck is whole again later.
-// What a step or part index means is up to the client (they are indexes into the machine the site's seed
-// builds), so the server only checks them for range. A taken part goes in the taker's bag as its item kind
-// (shared/parts.ts): the server rolls the machine's contents from the same seed (rollParts) and hands out no
-// more of a kind than were rolled. A full bag refuses the take and the part stays in the machine.
-import { BENCH, CARRY_KINDS, crashSiteById, crashTaken, CRASH_REACH, seeded, SITE_RANGE } from '../shared/crash.ts';
-import { partItem, rollParts } from '../shared/parts.ts';
-import type { ServerMsg } from '../shared/protocol.ts';
+//    of the component's kind); the site stays empty for good. crashUse takes one out of the bag when it
+//    is put on the workbench.
+//  - Large machines are worked on by everyone near them through a session per site: which steps are done and
+//    which parts are taken (kept in SQLite, `machine_progress`, and never reset by itself: a stripped machine
+//    stays stripped), and who is holding which lifting eye right now (memory only). A step that needs several
+//    players (a lift) is only accepted while that many are holding. Every player is told about every step and
+//    take ('sites' on join, then siteDone / siteTake), so a machine looks the same to everyone, worked on or not.
+//  - The base's disassembly table is the same kind of session, with id BENCH_ID: crashUse puts a carried machine
+//    on it with a seed picked here, and the job (kind, seed in `bench_job`, progress like a site's) is kept until
+//    its last part is taken; then the table is free.
+// A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
+// seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
+// (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
+import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE } from '../shared/crash.ts';
+import { crashSite } from '../shared/crashsites.ts';
+import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
+import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
 import { COMPONENTS, type ComponentKind } from '../shared/salvage.ts';
-import type { BenchRow, openDb } from './db.ts';
+import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
 type Feet = { x: number; z: number };
 
-/** Carried-off machines are back after this long. */
-const RESPAWN_MS = 45 * 60 * 1000;
-const SESSION_TTL_MS = 30 * 60 * 1000;
 /** A lifting eye counts as held this long after the last hold message. */
 const HOLD_TTL_MS = 3000;
 const REACH_SLACK = 1.5;
 const BENCH_REACH = 6;
 const MAX_INDEX = 255;
 const COOLDOWN_MS = 200;
-
-/** Item kind → how many of it a machine of `kind` built from `seed` holds. */
-function contents(kind: ComponentKind, seed: number): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const p of rollParts(kind, seeded(seed))) m.set(partItem(p.part, p.tier), (m.get(partItem(p.part, p.tier)) ?? 0) + 1);
-  return m;
-}
-
-/** Can one more `kind` come out of a machine holding `inside`, `given` handed out already? */
-function inStock(inside: Map<string, number>, given: Iterable<string>, kind: unknown): kind is string {
-  if (typeof kind !== 'string') return false;
-  let n = 0;
-  for (const g of given) if (g === kind) n++;
-  return n < (inside.get(kind) ?? 0);
-}
-
-/** Outcome of a part take: in the bag, refused for a full bag, refused as invalid, or someone else was first. */
-export type TakeResult = 'ok' | 'full' | 'bad' | 'late';
+/** Session id of the base's disassembly table. */
+export const BENCH_ID = 'bench';
 
 interface Session {
   done: Set<number>;
@@ -57,10 +43,6 @@ interface Session {
   /** Lifting eye → (player → time of last hold message). */
   holders: Map<number, Map<number, number>>;
   need: Map<number, number>;
-  lastActive: number;
-  /** What the machine holds (contents()) and the item kinds handed out so far. */
-  inside: Map<string, number>;
-  given: string[];
 }
 
 export class CrashServer {
@@ -69,20 +51,37 @@ export class CrashServer {
   private taken = new Map<string, number>();
   private newlyTaken: string[] = [];
   private newlyBack: string[] = [];
+  private newlySpent: number[] = [];
   private sessions = new Map<string, Session>();
-  /** Bench jobs by browser id (loaded on first use; null: none). */
-  private jobs = new Map<string, BenchRow | null>();
+  private broadcast: (msg: ServerMsg) => void;
+  /** The machine on the disassembly table, or null when it is free. */
+  private bench: { kind: ComponentKind; seed: number } | null = null;
 
-  constructor(db: Db, notify: (ids: Iterable<number>, msg: ServerMsg) => void) {
+  constructor(db: Db, notify: (ids: Iterable<number>, msg: ServerMsg) => void, broadcast: (msg: ServerMsg) => void) {
     this.db = db;
     this.notify = notify;
+    this.broadcast = broadcast;
+    const job = db.loadBench();
+    if (job && (CARRY_KINDS as string[]).includes(job.kind)) {
+      this.bench = { kind: job.kind as ComponentKind, seed: job.seed };
+      console.log(`crash: ${job.kind} on the disassembly table`);
+    }
+    for (const r of db.loadProgress()) {
+      const m = this.large(r.id);
+      if (!m) continue; // the layout changed since (or the table is free): forget it
+      const ok = (i: number) => Number.isInteger(i) && i >= 0 && i <= MAX_INDEX;
+      this.sessions.set(m.id, this.newSession(r.done.filter(ok), r.taken.filter((i) => ok(i) && i < m.parts.length)));
+    }
+    if (this.bench && !this.sessions.has(BENCH_ID)) this.sessions.set(BENCH_ID, this.newSession([], []));
+    console.log(`crash: ${this.sessions.size} machines worked on`);
     for (const r of db.loadCrashTaken()) {
       const s = crashSiteById(r.id);
       if (!s || !COMPONENTS[s.kind].carry) continue; // the layout changed since: forget it
       this.taken.set(r.id, r.taken_at);
       crashTaken.add(r.id);
     }
-    console.log(`crash: ${this.taken.size} sites carried off`);
+    for (const r of db.loadCrashSpent()) if (crashSite(r.site)) crashSpent.add(r.site);
+    console.log(`crash: ${this.taken.size} machines carried off, ${crashSpent.size} sites spent`);
   }
 
   // -- carrying -----------------------------------------------------------------------------------------------
@@ -107,85 +106,72 @@ export class CrashServer {
     return site.kind;
   }
 
-  // -- the disassembly table ---------------------------------------------------------------------------------
-
-  private job(owner: string): BenchRow | null {
-    let j = this.jobs.get(owner);
-    if (j === undefined) this.jobs.set(owner, (j = this.db.loadBench(owner)));
-    return j;
-  }
-  private nearBench(feet: Feet) {
-    return Math.hypot(BENCH.x - feet.x, BENCH.z - feet.z) <= BENCH_REACH;
-  }
-
-  /** Put one carried machine of item `kind` on the workbench; `take()` uses it up from the bag. Starts the
-   *  player's job with a fresh seed. Refused while they have one. */
-  use(owner: string, feet: Feet, kind: unknown, take: () => boolean): boolean {
-    if (typeof kind !== 'string' || !(CARRY_KINDS as string[]).includes(kind)) return false;
-    if (!this.nearBench(feet) || this.job(owner)) return false;
-    const job: BenchRow = { kind, seed: Math.floor(Math.random() * 4294967296), done: [], taken: [], given: [] };
+  /** Put one carried machine of item `kind` on the disassembly table (if it is free); `take()` uses it up from
+   *  the bag. Everyone is told about the new job. */
+  use(feet: Feet, kind: unknown, take: () => boolean): boolean {
+    if (typeof kind !== 'string' || !(CARRY_KINDS as string[]).includes(kind) || this.bench) return false;
+    if (Math.hypot(BENCH.x - feet.x, BENCH.z - feet.z) > BENCH_REACH) return false;
+    const seed = (Math.random() * 4294967296) >>> 0;
     const ok = this.db.tx(() => {
       if (!take()) return false;
-      this.db.saveBench(owner, job);
+      this.db.saveBench(kind, seed);
+      this.db.saveProgress(BENCH_ID, [], []);
       return true;
     });
-    if (ok) this.jobs.set(owner, job);
-    return ok;
+    if (!ok) return false;
+    this.bench = { kind: kind as ComponentKind, seed };
+    this.sessions.set(BENCH_ID, this.newSession([], []));
+    this.broadcast(this.benchMessage());
+    return true;
   }
 
-  benchMsg(owner: string): ServerMsg {
-    const j = this.job(owner);
-    return { t: 'bench', job: j && { kind: j.kind, seed: j.seed, done: j.done, taken: j.taken } };
+  /** The table's job as it stands, for joining players and after every change of job. */
+  benchMessage(): ServerMsg {
+    const s = this.sessions.get(BENCH_ID);
+    const job: BenchJob | null = this.bench && s ? { ...this.bench, done: [...s.done], taken: [...s.taken.keys()] } : null;
+    return { t: 'bench', job };
   }
 
-  benchDone(owner: string, i: unknown) {
-    const j = this.job(owner);
-    if (!j || !this.index(i) || j.done.includes(i)) return;
-    j.done.push(i);
-    this.db.saveBench(owner, j);
+  /** Steps done and parts taken at every machine worked on (not the table: 'bench' carries that), for joining players. */
+  progressMessage(): ServerMsg {
+    const sites = [...this.sessions].filter(([id, s]) => id !== BENCH_ID && (s.done.size || s.taken.size))
+      .map(([id, s]) => ({ id, done: [...s.done], taken: [...s.taken.keys()] }));
+    return { t: 'sites', sites };
   }
 
-  /** Part slot `i` of the player's bench job, item `kind`, into their bag (`give`). */
-  benchTake(owner: string, feet: Feet, i: unknown, kind: unknown, give: (kind: string) => boolean): TakeResult {
-    const j = this.job(owner);
-    if (!j || !this.index(i) || j.taken.includes(i) || !this.nearBench(feet)) return 'bad';
-    if (!inStock(contents(j.kind as ComponentKind, j.seed), j.given, kind)) return 'bad';
-    return this.db.tx((): TakeResult => {
-      if (!give(kind)) return 'full';
-      j.taken.push(i);
-      j.given.push(kind);
-      this.db.saveBench(owner, j);
-      return 'ok';
-    });
+  private save(id: string, s: Session) {
+    this.db.saveProgress(id, [...s.done], [...s.taken.keys()]);
   }
 
-  /** The machine on the table is empty: the job is over. */
-  benchClear(owner: string) {
-    if (!this.job(owner)) return;
-    this.jobs.set(owner, null);
-    this.db.clearBench(owner);
-  }
-
-  /** Forget a player's cached job once their last connection closes. */
-  forget(owner: string) {
-    this.jobs.delete(owner);
-  }
-
-  /** Bring back sites carried off more than RESPAWN_MS ago, and forget abandoned sessions. */
-  maintain() {
-    const now = Date.now();
-    for (const [id, at] of this.taken) {
-      if (now - at < RESPAWN_MS) continue;
-      this.taken.delete(id);
-      crashTaken.delete(id);
-      this.db.respawnCrash(id);
-      this.newlyBack.push(id);
-    }
-    for (const [id, s] of this.sessions) if (s.players.size === 0 && now - s.lastActive > SESSION_TTL_MS) this.sessions.delete(id);
+  /** Make a site's machine whole again: forget its progress (dev/admin helper; nothing calls it on its own). */
+  resetSite(id: string) {
+    if (id === BENCH_ID || !this.sessions.has(id)) return;
+    this.sessions.delete(id);
+    this.db.clearProgress(id);
+    this.broadcast({ t: 'siteReset', id });
   }
 
   joinMessage(): ServerMsg {
     return { t: 'crash', taken: [...this.taken.keys()], back: [], reset: true };
+  }
+
+  spentMessage(): ServerMsg {
+    return { t: 'crashSpent', spent: [...crashSpent], reset: true };
+  }
+
+  flushSpent(): ServerMsg | null {
+    if (!this.newlySpent.length) return null;
+    const msg: ServerMsg = { t: 'crashSpent', spent: this.newlySpent };
+    this.newlySpent = [];
+    return msg;
+  }
+
+  /** The large machine of crash site `wreck` has no parts left: spent for good. */
+  private spend(wreck: number) {
+    if (crashSpent.has(wreck)) return;
+    crashSpent.add(wreck);
+    this.db.spendCrash(wreck, Date.now());
+    this.newlySpent.push(wreck);
   }
 
   flush(): ServerMsg | null {
@@ -198,10 +184,19 @@ export class CrashServer {
 
   // -- shared sessions ----------------------------------------------------------------------------------------
 
-  private large(id: unknown) {
+  /** A machine that can be worked on together: a large site, or the table while it holds a job. */
+  /** A large site's or the table's machine; `wreck` is the crash site a field machine lies at (null: the table). */
+  private large(id: unknown): { id: string; x: number; z: number; range: number; parts: MachinePart[]; wreck: number | null } | null {
+    if (id === BENCH_ID) {
+      return this.bench ? { id: BENCH_ID, x: BENCH.x, z: BENCH.z, range: BENCH_REACH, parts: machineParts(this.bench.kind, this.bench.seed), wreck: null } : null;
+    }
     const site = crashSiteById(id);
-    return site && !COMPONENTS[site.kind].carry ? site : null;
+    return site && !COMPONENTS[site.kind].carry ? { id: site.id, x: site.x, z: site.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed), wreck: site.wreck } : null;
   }
+  private newSession(done: number[], taken: number[]): Session {
+    return { done: new Set(done), taken: new Map(taken.map((i) => [i, -1])), players: new Set(), holders: new Map(), need: new Map() };
+  }
+
   private index(i: unknown): i is number {
     return typeof i === 'number' && Number.isInteger(i) && i >= 0 && i <= MAX_INDEX;
   }
@@ -216,14 +211,10 @@ export class CrashServer {
   /** `pid` (public id) joins the session of large site `id`; returns the state to send them. */
   join(pid: number, feet: Feet, id: unknown): ServerMsg | null {
     const site = this.large(id);
-    if (!site || Math.hypot(site.x - feet.x, site.z - feet.z) > SITE_RANGE + REACH_SLACK) return null;
+    if (!site || (site.wreck !== null && crashSpent.has(site.wreck)) || Math.hypot(site.x - feet.x, site.z - feet.z) > site.range) return null;
     let s = this.sessions.get(site.id);
-    if (!s) {
-      s = { done: new Set(), taken: new Map(), players: new Set(), holders: new Map(), need: new Map(), lastActive: Date.now(), inside: contents(site.kind, site.seed), given: [] };
-      this.sessions.set(site.id, s);
-    }
+    if (!s) this.sessions.set(site.id, (s = this.newSession([], [])));
     s.players.add(pid);
-    s.lastActive = Date.now();
     return { t: 'siteState', id: site.id, done: [...s.done], taken: [...s.taken.keys()] };
   }
 
@@ -231,7 +222,6 @@ export class CrashServer {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
     if (!site || !s || !s.players.delete(pid)) return;
-    s.lastActive = Date.now();
     for (const [i, h] of s.holders) {
       if (h.delete(pid)) this.notify(s.players, { t: 'siteHolders', id: site.id, i, n: this.live(s, i) });
     }
@@ -247,7 +237,6 @@ export class CrashServer {
     const s = site && this.sessions.get(site.id);
     if (!site || !s || !s.players.has(pid) || !this.index(i)) return;
     if (typeof players !== 'number' || !Number.isInteger(players) || players < 1 || players > 8) return;
-    s.lastActive = Date.now();
     s.need.set(i, players);
     let h = s.holders.get(i);
     if (!h) s.holders.set(i, (h = new Map()));
@@ -267,26 +256,41 @@ export class CrashServer {
     if (need > 1 && (this.live(s, i) < need || !s.holders.get(i)?.has(pid))) return; // not enough hands
     s.done.add(i);
     s.holders.delete(i);
-    s.lastActive = Date.now();
-    this.notify(s.players, { t: 'siteDone', id: site.id, i });
+    this.save(site.id, s);
+    this.broadcast({ t: 'siteDone', id: site.id, i });
   }
 
-  /** First to take part `i` (item `kind`) gets it, in their bag (`give`); later askers are told who did. */
-  takePart(pid: number, feet: Feet, id: unknown, i: unknown, kind: unknown, give: (kind: string) => boolean): TakeResult {
+  /** First to take part `i` gets it: `give(kind)` puts its item in their bag (false: the bag is full, and the part
+   *  stays on the machine for someone else). Later askers are told who did. Returns the answer for the taker, or
+   *  null when there is nothing to say (bad message, or they already have it). */
+  takePart(pid: number, id: unknown, i: unknown, give: (kind: string) => boolean): ServerMsg | null {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
-    if (!site || !s || !s.players.has(pid) || !this.index(i)) return 'bad';
+    if (!site || !s || !s.players.has(pid) || !this.index(i) || i >= site.parts.length) return null;
     const owner = s.taken.get(i);
-    if (owner !== undefined) {
-      if (owner !== pid) this.notify([pid], { t: 'siteTake', id: site.id, i, by: owner }); // too late
-      return 'late';
+    if (owner === pid) return null;
+    if (owner !== undefined) return { t: 'siteTake', id: site.id, i, by: owner }; // too late
+    const { part, tier } = site.parts[i];
+    const kind = partItem(part, tier);
+    const ok = this.db.tx(() => {
+      if (!give(kind)) return false;
+      s.taken.set(i, pid);
+      this.save(site.id, s);
+      return true;
+    });
+    if (!ok) return { t: 'siteTook', id: site.id, i, ok: false, reason: 'full' };
+    this.broadcast({ t: 'siteTake', id: site.id, i, by: pid });
+    if (site.wreck !== null && s.taken.size >= site.parts.length) this.spend(site.wreck);
+    if (site.id === BENCH_ID && s.taken.size >= site.parts.length) {
+      // Every part is out: the table is free again.
+      this.bench = null;
+      this.sessions.delete(BENCH_ID);
+      this.db.tx(() => {
+        this.db.clearBench();
+        this.db.clearProgress(BENCH_ID);
+      });
+      this.broadcast(this.benchMessage());
     }
-    if (Math.hypot(site.x - feet.x, site.z - feet.z) > SITE_RANGE + REACH_SLACK || !inStock(s.inside, s.given, kind)) return 'bad';
-    if (!give(kind)) return 'full';
-    s.taken.set(i, pid);
-    s.given.push(kind);
-    s.lastActive = Date.now();
-    this.notify(s.players, { t: 'siteTake', id: site.id, i, by: pid });
-    return 'ok';
+    return { t: 'siteTook', id: site.id, i, ok: true, kind };
   }
 }

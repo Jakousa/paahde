@@ -4,13 +4,12 @@
 // pry tabs. Fasteners follow the engineering: bolt circles on round flanges, corner screws on box lids, a row
 // along a split line, set screws on a coupling hub, supply wires from a cable gland to a terminal block through
 // a contactor. Steps sit on different faces, so the machine has to be turned over and around.
-// The real item models (public/models/items/<part>_<tier>.glb) and the code-built mechanical parts
-// (parts.ts) are mounted inside. Better parts come out of fancier machines.
+// The real item models (public/models/items/<part>_<tier>.glb, tools/blender/items.py) are mounted inside.
+// Better parts come out of fancier machines.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { machineParts } from '../../shared/machine.ts';
 import { COMPONENTS, RARITY, TIERS, type ComponentKind, type PartId, type Tier } from '../../shared/salvage.ts';
-import { rollParts } from '../../shared/parts.ts';
-import { EXTRA_PARTS, makeExtraPart, THICKNESS } from './parts.ts';
 
 export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift';
 export interface Step {
@@ -47,6 +46,8 @@ export interface Piece {
 export interface Slot {
   part: PartId;
   tier: Tier;
+  /** Which of the machine's parts this is (shared/machine.ts machineParts), the same on every client and the server. */
+  index: number;
   ring: THREE.Mesh;
   taken: boolean;
   /** The part's own holder; free to take once its holds are done. */
@@ -71,6 +72,12 @@ export type Target =
   | { type: 'step'; step: Step }
   | { type: 'part'; slot: Slot };
 
+/** One rolled part: its tier and its index in machineParts(). */
+interface Roll {
+  tier: Tier;
+  index: number;
+}
+
 export const stepReady = (s: Step) => !s.done && s.after.every((a) => a.done);
 export const slotOpen = (s: Slot) => !s.taken && s.piece.holds.every((h) => h.done);
 
@@ -91,12 +98,15 @@ export function lowestOffset(root: THREE.Object3D): number | null {
 // ---- part models -------------------------------------------------------------------------------------------
 
 const PART_SIZE = 0.5;
+/** Parts drawn smaller than PART_SIZE across. */
+const SIZE: Partial<Record<PartId, number>> = { relay: 0.3 };
+/** Height along the axis (model +y) of the parts that sit on a shaft, once scaled: where their centre is. */
+const THICKNESS: Partial<Record<PartId, number>> = { bearing: 0.144, gear: 0.152, impeller: 0.175, valve: 0.5 };
 const loader = new GLTFLoader();
 const partCache = new Map<string, Promise<THREE.Object3D>>();
 
 /** A part model scaled to PART_SIZE with its base centre at the origin; one clone per call. */
 export async function loadPart(part: PartId, tier: Tier): Promise<THREE.Object3D> {
-  if (EXTRA_PARTS.includes(part)) return makeExtraPart(part, tier);
   const key = `${part}_${tier}`;
   let p = partCache.get(key);
   if (!p) {
@@ -105,7 +115,7 @@ export async function loadPart(part: PartId, tier: Tier): Promise<THREE.Object3D
       const box = new THREE.Box3().setFromObject(inner);
       const size = box.getSize(new THREE.Vector3());
       const c = box.getCenter(new THREE.Vector3());
-      const s = PART_SIZE / Math.max(size.x, size.y, size.z, 1e-3);
+      const s = (SIZE[part] ?? PART_SIZE) / Math.max(size.x, size.y, size.z, 1e-3);
       inner.scale.setScalar(s);
       inner.position.set(-c.x * s, -box.min.y * s, -c.z * s);
       inner.traverse((o) => { o.castShadow = true; });
@@ -151,9 +161,9 @@ class Kit {
   slots: Slot[] = [];
   private mats: Record<MatKey, THREE.MeshStandardNodeMaterial>;
   private dmats: Partial<Record<MatKey, THREE.MeshStandardNodeMaterial>> = {};
-  private queue: Record<PartId, Tier[]>;
+  private queue: Record<PartId, Roll[]>;
 
-  constructor(grade: number, rolled: Record<PartId, Tier[]>) {
+  constructor(grade: number, rolled: Record<PartId, Roll[]>) {
     this.grade = grade;
     this.queue = rolled;
     const p = PALETTE[grade];
@@ -177,8 +187,8 @@ class Kit {
     };
   }
 
-  /** Next rolled tier of `part`, or null when the machine holds no more of them (the mount stays empty). */
-  take(part: PartId): Tier | null {
+  /** Next rolled `part`, or null when the machine holds no more of them (the mount stays empty). */
+  take(part: PartId): Roll | null {
     return this.queue[part].shift() ?? null;
   }
 
@@ -408,7 +418,8 @@ class Kit {
   }
 
   /** A part holder at `pos`, held by `holds`. Its model loads in the background. */
-  part(part: PartId, tier: Tier, pos: V, holds: Step[], rot: V = [0, 0, 0]): Slot {
+  part(part: PartId, roll: Roll, pos: V, holds: Step[], rot: V = [0, 0, 0]): Slot {
+    const { tier, index } = roll;
     const holder = new THREE.Group();
     holder.position.set(...pos);
     holder.rotation.set(...rot);
@@ -421,7 +432,7 @@ class Kit {
     ring.raycast = () => {}; // a marker, never a click target
     ring.userData.ignoreBounds = true;
     holder.add(ring);
-    const slot: Slot = { part, tier, ring, taken: false, piece: { obj: holder, holds, released: false, floorY: 0, pop: [0, 1, 0] } };
+    const slot: Slot = { part, tier, index, ring, taken: false, piece: { obj: holder, holds, released: false, floorY: 0, pop: [0, 1, 0] } };
     holder.userData.target = { type: 'part', slot } satisfies Target;
     this.g.add(holder);
     this.slots.push(slot);
@@ -431,7 +442,7 @@ class Kit {
     );
     return slot;
   }
-  /** Placement for a code-built part whose axis is `axis`, centred on `c` (its origin is at the base). */
+  /** Placement for a shaft-mounted part whose axis is `axis`, centred on `c` (its origin is at the base). */
   ax(part: PartId, c: V, axis: 'x' | 'y' | 'z'): [V, V] {
     const h = (THICKNESS[part] ?? 0.5) / 2;
     if (axis === 'x') return [[c[0] - h, c[1], c[2]], [0, 0, -Math.PI / 2]];
@@ -440,9 +451,9 @@ class Kit {
   }
   /** If the machine holds another `part`: build its hardware (`holds`) and mount it. Null when the mount stays empty. */
   mount(part: PartId, place: [V, V], holds: (tier: Tier) => Step[]): Slot | null {
-    const tier = this.take(part);
-    if (!tier) return null;
-    return this.part(part, tier, place[0], holds(tier), place[1]);
+    const roll = this.take(part);
+    if (!roll) return null;
+    return this.part(part, roll, place[0], holds(roll.tier), place[1]);
   }
 }
 
@@ -810,19 +821,22 @@ export const JUNK_KINDS = Object.keys(BUILDERS) as ComponentKind[];
 
 // ---- assembly ----------------------------------------------------------------------------------------------
 
-/** Roll what is inside a component of `kind` with `rand`, then build it. Part models load in the background. */
-export function buildJunk(kind: ComponentKind, rand: () => number): Junk {
+/** Build a component of `kind` holding the parts its `seed` rolls (shared/machine.ts). Part models load in the
+ *  background. Slots are sorted by part index, so `slots[i].index === i` whenever every rolled part is mounted. */
+export function buildJunk(kind: ComponentKind, seed: number): Junk {
   const spec = COMPONENTS[kind];
-  const rolled: Record<PartId, Tier[]> = { battery: [], motor: [], heatsink: [], compute: [], antimatter: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
+  const rolled: Record<PartId, Roll[]> = { battery: [], motor: [], heatsink: [], compute: [], antimatter: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
   let best = 0;
-  // The same roll the server checks part takes against (shared/parts.ts).
-  for (const { part, tier } of rollParts(kind, rand)) {
-    rolled[part].push(tier);
+  machineParts(kind, seed).forEach(({ part, tier }, index) => {
+    rolled[part].push({ tier, index });
     best = Math.max(best, TIERS.indexOf(tier));
-  }
+  });
 
   const kit = new Kit(best, rolled);
   BUILDERS[kind](kit);
+  kit.slots.sort((a, b) => a.index - b.index);
+  // Every rolled part needs a mount, or the server waits for a part nobody can take.
+  for (const part of Object.keys(rolled) as PartId[]) if (rolled[part].length) console.error(`teardown: ${kind} has no mount for ${rolled[part].length} ${part}`);
   const root = new THREE.Group();
   const scale = SCALE[kind];
   const box = new THREE.Box3().setFromObject(kit.g);

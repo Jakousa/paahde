@@ -22,7 +22,7 @@ import { ItemServer } from './items.ts';
 import { LootServer } from './loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
-import { CrashServer, type TakeResult } from './crash.ts';
+import { CrashServer } from './crash.ts';
 import { TerrainServer } from './terrain.ts';
 import { drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
@@ -46,6 +46,8 @@ const items = new ItemServer(db);
 const crash = new CrashServer(db, (ids, msg) => {
   const want = new Set(ids);
   for (const p of players.values()) if (want.has(p.id)) send(p.ws, msg);
+}, (msg) => {
+  for (const p of players.values()) send(p.ws, msg);
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
 const garden = new GardenServer(db);
@@ -148,7 +150,6 @@ wss.on('connection', (ws) => {
     players.delete(ws);
     if (![...players.values()].some((o) => o.browserId === p.browserId)) {
       items.forget(p.browserId);
-      crash.forget(p.browserId);
     }
   });
   // Drop clients that never say hello.
@@ -163,9 +164,9 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const atBase = spawn === 'base';
   let state = row && !atBase && !overBase(row.x, row.z, 0.5) ? spawnState(row.x, row.z) : spawnState();
   if (spawn === 'crash') {
-    // Dev helper: just off the nose of the nearest wreck.
-    const s = crashSitesNear(state.x, state.z, 3000)[0];
-    if (s) state = spawnState(s.x + s.dirX * (s.pieces[0].reach + 16), s.z + s.dirZ * (s.pieces[0].reach + 16));
+    // Dev helper: 7 m from the large machine of the nearest crash site, on its far side from the wreck.
+    const m = crashSitesNear(state.x, state.z, 3000)[0]?.machines[0];
+    if (m) state = spawnState(m.x + m.dx * 7, m.z + m.dz * 7);
   }
   items.setup(browserId);
   state.bike = bikeLevel(items.slots(browserId, 'equip'));
@@ -180,6 +181,9 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
   send(ws, crash.joinMessage());
+  send(ws, crash.progressMessage());
+  send(ws, crash.benchMessage());
+  send(ws, crash.spentMessage());
   send(ws, placedThings.joinMessage());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
@@ -187,7 +191,6 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`)]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
-  send(ws, crash.benchMsg(browserId));
 }
 
 // Sips and refills: the client plays the animation, then asks. Refused ones still get the real state.
@@ -309,7 +312,7 @@ function onSort(p: Player, box: unknown) {
 }
 
 // Crash sites (shared/crash.ts): carry a small machine home (it becomes an item in the bag), put it on the
-// workbench (the item is used up), and the shared sessions of large sites.
+// disassembly table (the item is used up), and the shared sessions of large sites and the table.
 function onCrash(p: Player, msg: ClientMsg) {
   if (msg.t === 'crashTake') {
     const kind = crash.carry(p.state, msg.id, p.lastPickup, (k) => items.give(p.browserId, k));
@@ -319,33 +322,21 @@ function onCrash(p: Player, msg: ClientMsg) {
     }
     else if (typeof msg.id === 'string' && !crashTaken.has(msg.id)) send(p.ws, { t: 'crash', taken: [], back: [msg.id] });
   } else if (msg.t === 'crashUse') {
-    crash.use(p.browserId, p.state, msg.kind, () => items.take(p.browserId, msg.kind));
+    crash.use(p.state, msg.kind, () => items.take(p.browserId, msg.kind));
     sendBox(p, 'bag');
-    send(p.ws, crash.benchMsg(p.browserId));
+    send(p.ws, crash.benchMessage()); // refused (the table was taken): what is on it
     gearChanged(p.browserId);
-  } else if (msg.t === 'benchDone') crash.benchDone(p.browserId, msg.i);
-  else if (msg.t === 'benchTake') {
-    const r = crash.benchTake(p.browserId, p.state, msg.i, msg.kind, (k) => items.give(p.browserId, k));
-    onPartTaken(p, r, 'bench', msg.i, msg.kind);
-  } else if (msg.t === 'benchClear') crash.benchClear(p.browserId);
-  else if (msg.t === 'siteJoin') {
+  } else if (msg.t === 'siteJoin') {
     const state = crash.join(p.id, p.state, msg.id);
     if (state) send(p.ws, state);
   } else if (msg.t === 'siteLeave') crash.leave(p.id, msg.id);
   else if (msg.t === 'siteHold') crash.hold(p.id, msg.id, msg.i, msg.players, msg.on);
   else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i);
   else if (msg.t === 'siteTake') {
-    const r = crash.takePart(p.id, p.state, msg.id, msg.i, msg.kind, (k) => items.give(p.browserId, k));
-    onPartTaken(p, r, msg.id, msg.i, msg.kind);
+    const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.give(p.browserId, kind));
+    if (answer) send(p.ws, answer);
+    if (answer?.t === 'siteTook' && answer.ok) sendBox(p, 'bag', answer.kind);
   }
-}
-
-/** A part taken in the disassembly mode: in the bag (with a toast), or back into the machine. The client predicted
- *  it in its bag, so it gets the bag either way. */
-function onPartTaken(p: Player, r: TakeResult, id: unknown, i: unknown, kind: unknown) {
-  if (r === 'ok') return sendBox(p, 'bag', kind as string);
-  if (r !== 'late' && typeof id === 'string' && typeof i === 'number') send(p.ws, { t: 'partRefused', id, i, full: r === 'full' });
-  send(p.ws, boxMsg(p.browserId, 'bag'));
 }
 
 function onTend(p: Player, bed: unknown) {
@@ -460,7 +451,7 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   const weather = storms.tick(time, [...players.values()].map((p) => p.state));
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), placedThings.flush(), garden.flush(), loot.flush(), weather]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), placedThings.flush(), garden.flush(), loot.flush(), weather]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
@@ -493,7 +484,6 @@ setInterval(() => {
   terrain.save();
   scrap.respawn();
   loot.respawn();
-  crash.maintain();
   garden.grow();
 }, SAVE_INTERVAL_MS);
 
