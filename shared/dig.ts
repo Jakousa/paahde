@@ -9,6 +9,7 @@
 //
 // The dig point is where the player looks: a ray from the eye along the camera yaw/pitch, marched
 // against heightAt up to DIG_REACH metres. Yaw and pitch travel quantized, so both sides agree.
+import { terrainHidden } from './base.ts';
 import { yawFromQ } from './sim.ts';
 import { baseHeight, EDIT_CELL, heightAt, type TerrainEdits } from './terrain.ts';
 
@@ -63,7 +64,8 @@ export type CellSink = (ix: number, iz: number, prevMm: number) => void;
 export type Point = { x: number; y: number; z: number };
 
 /**
- * Where the look ray from the eye hits the ground, or null if nothing is within DIG_REACH.
+ * Where the look ray from the eye hits the ground, or null if nothing is within DIG_REACH or the sand it hits
+ * is not the ground for this player (the bunker's roof seen from inside, the hole over the entrance).
  * `feet` is the player's position; yaw 0 looks down -Z (see sim.ts).
  */
 export function digTarget(feet: { x: number; y: number; z: number }, yawQ: number, pitchQ: number): Point | null {
@@ -83,7 +85,8 @@ export function digTarget(feet: { x: number; y: number; z: number }, yawQ: numbe
         if (ey + dy * m <= heightAt(ex + dx * m, ez + dz * m)) hi = m;
         else lo = m;
       }
-      return { x: ex + dx * hi, y: ey + dy * hi, z: ez + dz * hi };
+      const hx = ex + dx * hi, hz = ez + dz * hi;
+      return terrainHidden(hx, hz, feet.y) ? null : { x: hx, y: ey + dy * hi, z: hz };
     }
     prev = t;
   }
