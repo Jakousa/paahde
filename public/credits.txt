@@ -42,6 +42,12 @@ ring around metallic shower hose 2 (sound)
   Trimmed to the first second, high-passed, faded out and levelled.
   File: audio/teardown-bolt.mp3
 
+cinematic_drum_loop_ares_127 (music)
+  By harrisonlace on Freesound (https://freesound.org/s/873168/), CC0
+  (http://creativecommons.org/publicdomain/zero/1.0/).
+  Levelled to -23 LUFS and encoded to MP3; plays as the combat music.
+  File: audio/combat-drums.mp3
+
 Made for this game
 ------------------
 

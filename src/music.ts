@@ -4,12 +4,14 @@
 // seconds and off after it has been gone for `leave`, so a short stop or a trip down the stairs doesn't cut
 // the music.
 //
-// Songs (both by Veikko Suhonen, public/credits.txt), levelled to −23 LUFS, with gapless LAME headers:
+// Songs (public/credits.txt), levelled to −23 LUFS, with gapless LAME headers:
 // - "Dune riding" (dune-riding.mp3), on the bike: 120 bpm in 4/4 (2 s a bar), 32 bars, trimmed to exactly
 //   64 s. Bars 1–4 are the fade-in, played once from the top; after that it loops from the end of bar 32
 //   back to the start of bar 5.
 // - "Desert ambience" (desert-ambience.mp3), outdoors when nothing else is going on: exactly 112 s, loops
 //   whole, and picks up where it left off when you come back to it.
+// - "Cinematic drum loop Ares 127" (combat-drums.mp3, harrisonlace, CC0), while something is after you: 127 bpm,
+//   16 bars (1333418 samples), loops whole, from the top each fight.
 //
 // Everything plays through `audio.music` (music slider, then the volume slider and limiter).
 import { audio } from './audio';
@@ -32,11 +34,12 @@ interface Song {
 const BAR = 2;
 const DUNE_RIDING: Song = { src: './audio/dune-riding.mp3', gain: 0.5, loopStart: 4 * BAR, loopEnd: 32 * BAR, resume: false };
 const DESERT_AMBIENCE: Song = { src: './audio/desert-ambience.mp3', gain: 0.45, loopStart: 0, loopEnd: 112, resume: true };
+const COMBAT_DRUMS: Song = { src: './audio/combat-drums.mp3', gain: 0.55, loopStart: 0, loopEnd: 1333418 / 44100, resume: false };
 
 /** Highest priority first. */
 const STATES: { state: MusicState; song: Song | null; enter: number; leave: number }[] = [
   { state: 'heatstroke', song: null, enter: 0, leave: 3 },
-  { state: 'combat', song: null, enter: 0, leave: 8 },
+  { state: 'combat', song: COMBAT_DRUMS, enter: 0, leave: 8 },
   { state: 'sandstorm', song: null, enter: 1, leave: 4 },
   // Under the mix: the wind roars while riding.
   { state: 'riding', song: DUNE_RIDING, enter: 5, leave: 4 },

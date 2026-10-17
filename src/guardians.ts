@@ -38,6 +38,8 @@ export class GuardianFx {
   private muzzle = new THREE.Vector3();
   private shake = 0;
   private hunted = new Set<number>();
+  /** Something is after you: a guardian or crawlers hunting you, a drone's light on you, or a missile coming down. */
+  combat = false;
   private crawled = new Set<number>();
   private bitAt = 0;
   private warn = document.createElement('div');
@@ -162,6 +164,7 @@ export class GuardianFx {
     const incoming = this.missiles.incoming(focus.x, focus.z, 30, net.serverTime()).length > 0;
     const text = incoming ? 'Incoming — keep moving' : spotted ? 'Spotted' : this.hunted.size ? 'A guardian is coming for you'
       : this.crawled.size ? 'Crawlers — run' : '';
+    this.combat = text !== '';
     if (text) this.warn.textContent = text;
     this.warn.classList.toggle('on', text !== '');
     if (this.shake > 0.001) {

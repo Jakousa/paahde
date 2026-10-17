@@ -325,12 +325,13 @@ renderer.setAnimationLoop((time) => {
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   footsteps.listener(orbit.camera.position, orbit.yaw);
-  // Combat and heatstroke aren't cued yet (no songs for them either).
+  // Heatstroke isn't cued yet (no song for it either).
   const cam = orbit.camera.position;
   music.update(frameDt, {
     riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
     indoors: inBase(cam.x, cam.y, cam.z),
     sandstorm: storm.level > 0.3,
+    combat: guardianFx.combat,
   });
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
