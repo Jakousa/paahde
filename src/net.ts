@@ -26,7 +26,7 @@
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
-import { bagSize, digTool, fitPart, tryMove, unfitPart } from '../shared/gear.ts';
+import { bagShape, boxShape, digTool, fitPart, tryMove, unfitPart } from '../shared/gear.ts';
 import { DEBRIS_ITEMS, HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
@@ -164,18 +164,21 @@ export class Net {
   /** Pick up a scrap piece: hidden now, confirmed (items) or put back by the server. False if the bag is full. */
   pickup(pc: ScrapPiece): boolean {
     if (!this.connected || scrapTaken.has(pc.key)) return true;
-    if (!roomFor(this.boxes.bag ?? [], SCRAP_ITEMS[pc.kind], 1, bagSize(this.boxes.equip))) return false;
+    if (!roomFor(this.boxes.bag ?? [], SCRAP_ITEMS[pc.kind], bagShape(this.boxes.equip))) return false;
     this.send({ t: 'pickup', ix: pc.ix, iz: pc.iz, i: pc.i });
     scrapTaken.add(pc.key);
     scrapChanged();
     return true;
   }
 
-  /** Move a stack between boxes (shared/gear.ts tryMove): applied now, the server answers with both boxes. False if refused. */
-  moveItem(from: string, fi: number, to: string, ti: number, n?: number): boolean {
-    if (!this.connected || !tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId)) return false;
+  /**
+   * Move a stack between boxes (shared/gear.ts tryMove), turned if `r` (default: as it lies): applied now, the
+   * server answers with both boxes. False if refused.
+   */
+  moveItem(from: string, fi: number, to: string, ti: number, n?: number, r?: boolean): boolean {
+    if (!this.connected || !tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId, r)) return false;
     this.growChests(from, to);
-    this.send({ t: 'move', from, fi, to, ti, ...(n !== undefined ? { n } : {}) });
+    this.send({ t: 'move', from, fi, to, ti, ...(n !== undefined ? { n } : {}), ...(r !== undefined ? { r } : {}) });
     this.onItems?.(from);
     if (to !== from) this.onItems?.(to);
     return true;
@@ -204,19 +207,15 @@ export class Net {
     for (const b of boxes) if (isShared(b) && this.boxes[b]) growChest(this.boxes[b]);
   }
 
-  /** Tidy a box (the bag's hotbar stays put, and nothing goes past the backpack). */
-  sortBox(box: string) {
+  /** Tidy a box's grid (the bag's hotbar stays put). False if it wouldn't all fit packed again (nothing changes). */
+  sortBox(box: string): boolean {
     const slots = this.boxes[box];
-    if (!this.connected || !slots || box === 'equip' || box === 'bench') return;
-    if (box === 'bag') {
-      const size = bagSize(this.boxes.equip);
-      const part = slots.slice(0, size);
-      sortItems(part, HOTBAR);
-      slots.splice(0, size, ...part);
-    } else sortItems(slots);
+    if (!this.connected || !slots || box === 'equip' || box === 'bench') return false;
+    if (!sortItems(slots, boxShape(box, this.boxes))) return false;
     this.growChests(box);
     this.send({ t: 'sort', box });
     this.onItems?.(box);
+    return true;
   }
 
   /** Drop one of the item at `box`[slot] on the sand (applied now; the server answers with the box and the loot). */
@@ -252,7 +251,7 @@ export class Net {
   /** Pick up a crash debris piece (shared/crashsites.ts), the same way as a wreck. False if the bag is full. */
   debrisTake(pc: CrashPiece): boolean {
     if (!this.connected || !pc.id || crashTaken.has(pc.id)) return true;
-    if (!roomFor(this.boxes.bag ?? [], DEBRIS_ITEMS[CRASH_KINDS[pc.kind].node], 1, bagSize(this.boxes.equip))) return false;
+    if (!roomFor(this.boxes.bag ?? [], DEBRIS_ITEMS[CRASH_KINDS[pc.kind].node], bagShape(this.boxes.equip))) return false;
     this.crashTake(pc.id);
     return true;
   }

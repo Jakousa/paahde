@@ -130,7 +130,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'drink' && p) return onDrink(p);
     if (msg.t === 'fill' && p) return onFill(p);
-    if (msg.t === 'move' && p) return onMove(p, msg.from, msg.fi, msg.to, msg.ti, msg.n);
+    if (msg.t === 'move' && p) return onMove(p, msg.from, msg.fi, msg.to, msg.ti, msg.n, msg.r);
     if (msg.t === 'sort' && p) return onSort(p, msg.box);
     if (msg.t === 'fit' && p) return onFit(p, msg.from, msg.fi, msg.slot);
     if (msg.t === 'unfit' && p) return onUnfit(p, msg.slot, msg.to, msg.ti);
@@ -258,8 +258,8 @@ function sendBox(p: Player, box: string, got?: string) {
 }
 
 // Moves and sorts: the client already applied its guess, so it always gets the boxes back.
-function onMove(p: Player, from: unknown, fi: unknown, to: unknown, ti: unknown, n: unknown) {
-  const changed = items.move(p.browserId, p.state, from, fi, to, ti, n);
+function onMove(p: Player, from: unknown, fi: unknown, to: unknown, ti: unknown, n: unknown, r: unknown) {
+  const changed = items.move(p.browserId, p.state, from, fi, to, ti, n, r);
   for (const box of new Set([from, to])) {
     if (typeof box !== 'string' || !boxSize(box)) continue;
     if (changed) sendBox(p, box);

@@ -46,7 +46,8 @@ export type ClientMsg =
   // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
   // to box `to` slot ti (ti -1: anywhere in it). Boxes: 'bag', 'bike', 'chest<i>'. The server checks
   // you can open both, applies moveItem() and answers with 'items' for each box that changed.
-  | { t: 'move'; from: string; fi: number; to: string; ti: number; n?: number }
+  // `r`: lay it down turned 90° (shared/items.ts Item.r); left out, as it lies.
+  | { t: 'move'; from: string; fi: number; to: string; ti: number; n?: number; r?: boolean }
   // Tidy a box (sortItems; the bag's hotbar stays put).
   | { t: 'sort'; box: string }
   // Repairs at the workbench (shared/gear.ts fitPart / unfitPart): fit the part at box `from` slot fi into

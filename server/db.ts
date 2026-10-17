@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { addItem, HOTBAR, BAG_SLOTS, SCRAP_ITEMS, type Slots } from '../shared/items.ts';
+import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, SCRAP_ITEMS, type Item, type Slots } from '../shared/items.ts';
 
 export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
 
@@ -107,6 +107,10 @@ export function openDb(path: string) {
   if (!(db.prepare('PRAGMA table_info(items)').all() as { name: string }[]).some((c) => c.name === 'parts')) {
     db.exec('ALTER TABLE items ADD COLUMN parts TEXT');
   }
+  // v7: items lie in grids (shared/items.ts Shape), turned 90° when r = 1.
+  if (!(db.prepare('PRAGMA table_info(items)').all() as { name: string }[]).some((c) => c.name === 'r')) {
+    db.exec('ALTER TABLE items ADD COLUMN r INTEGER NOT NULL DEFAULT 0');
+  }
 
   // Small machine sites (shared/crash.ts) whose machine was carried off; they stay empty (taken_at is kept in case
   // they refill some day). The machine itself is an item in the player's bag, given in the same transaction
@@ -155,11 +159,11 @@ export function openDb(path: string) {
       return [];
     }
   };
-  const boxRows = db.prepare('SELECT id, kind, n, slot, parts FROM items WHERE owner = ? AND box = ? ORDER BY slot');
+  const boxRows = db.prepare('SELECT id, kind, n, slot, parts, r FROM items WHERE owner = ? AND box = ? ORDER BY slot');
   const clearBox = db.prepare('DELETE FROM items WHERE owner = ? AND box = ?');
-  const insertRow = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot, parts) VALUES (?, ?, ?, ?, ?, ?, ?)');
-  const insertItem = (id: number, kind: string, n: number, owner: string, box: string, slot: number, parts?: (string | null)[]) =>
-    insertRow.run(id, kind, n, owner, box, slot, parts ? JSON.stringify(parts) : null);
+  const insertRow = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot, parts, r) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const insertItem = (it: Item, owner: string, box: string, slot: number) =>
+    insertRow.run(it.id, it.kind, it.n, owner, box, slot, it.parts ? JSON.stringify(it.parts) : null, it.r ? 1 : 0);
   const maxItemId = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM items');
   db.exec('CREATE TABLE IF NOT EXISTS gear_kits (player_id TEXT PRIMARY KEY, given_at INTEGER NOT NULL)');
   const getGearKit = db.prepare('SELECT 1 FROM gear_kits WHERE player_id = ?');
@@ -168,7 +172,7 @@ export function openDb(path: string) {
   const putStarter = db.prepare('INSERT OR IGNORE INTO starter_kits (player_id, given_at) VALUES (?, ?)');
   const saveBox = (owner: string, box: string, slots: Slots) => {
     clearBox.run(owner, box);
-    slots.forEach((it, slot) => it && insertItem(it.id, it.kind, it.n, owner, box, slot, it.parts));
+    slots.forEach((it, slot) => it && insertItem(it, owner, box, slot));
   };
 
   // v5: scrap counts per SCRAP_KINDS index (old `inventory` table) become stacks in the bag, after the hotbar.
@@ -184,7 +188,7 @@ export function openDb(path: string) {
         let bag = bags.get(r.player_id);
         if (!bag) bags.set(r.player_id, (bag = new Array(BAG_SLOTS).fill(null)));
         // Can't fit (more than a bag of scrap): keep what fits, one item per slot.
-        for (let n = r.count; n > 0 && addItem(bag, kind, 1, () => ++id, HOTBAR); n--);
+        for (let n = r.count; n > 0 && addItem(bag, kind, 1, () => ++id, { free: HOTBAR, cols: BAG_COLS, rows: BAG_ROWS, grid: BAG_ROWS }); n--);
       }
       for (const [player, bag] of bags) saveBox(player, 'bag', bag);
       db.exec('DROP TABLE inventory');
@@ -258,12 +262,12 @@ export function openDb(path: string) {
     tx,
     takeScrap: (ix: number, iz: number, i: number, at: number) => insertTaken.run(ix, iz, i, at),
     respawnScrap: (ix: number, iz: number, i: number) => deleteTaken.run(ix, iz, i),
-    loadBox: (owner: string, box: string) => (boxRows.all(owner, box) as { id: number; kind: string; n: number; slot: number; parts: string | null }[])
-      .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
+    loadBox: (owner: string, box: string) => (boxRows.all(owner, box) as { id: number; kind: string; n: number; slot: number; parts: string | null; r: number }[])
+      .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined, r: r.r === 1 })),
     /** Rewrite whole boxes in one transaction (an item moving between them keeps its id). */
     saveBoxes: (boxes: { owner: string; box: string; slots: Slots }[]) => tx(() => {
       for (const b of boxes) clearBox.run(b.owner, b.box);
-      for (const b of boxes) b.slots.forEach((it, slot) => it && insertItem(it.id, it.kind, it.n, b.owner, b.box, slot, it.parts));
+      for (const b of boxes) b.slots.forEach((it, slot) => it && insertItem(it, b.owner, b.box, slot));
     }),
     maxItemId: () => (maxItemId.get() as { id: number }).id,
     hasStarterKit: (playerId: string) => !!getStarter.get(playerId),

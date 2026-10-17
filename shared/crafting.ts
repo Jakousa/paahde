@@ -5,7 +5,7 @@
 // Ingredients match groups of item kinds, so any tier of a part will do: wiring is the coil part in any
 // tier (coil_scrap … coil_space, shared/parts.ts), metal sheets are clean or dented. The worst matching item
 // (lowest tier) is used first.
-import { addItem, HOTBAR, ITEMS, type Slots } from './items.ts';
+import { addItem, HOTBAR, ITEMS, type Shape, type Slots } from './items.ts';
 import { partOf } from './parts.ts';
 import { TIERS } from './salvage.ts';
 
@@ -52,14 +52,18 @@ export function pickIngredients(slots: Slots, recipe: Recipe): number[] | null {
 }
 
 /** Craft `id` in `slots`: use up the ingredients, add what it makes. Mutates; false (no change) if it can't. */
-export function craft(slots: Slots, id: string, newId: () => number, size = slots.length): boolean {
+export function craft(slots: Slots, id: string, newId: () => number, shape: Shape): boolean {
   const recipe = RECIPES[id];
   if (!recipe || !(recipe.makes in ITEMS)) return false;
   const pick = pickIngredients(slots, recipe);
   if (!pick) return false;
+  // Used up first, so what it makes can go where they were; on no room, nothing is used up.
+  const s = slots.map((it) => it && { ...it });
   for (const i of pick) {
-    const it = slots[i]!;
-    if (--it.n <= 0) slots[i] = null;
+    const it = s[i]!;
+    if (--it.n <= 0) s[i] = null;
   }
-  return addItem(slots, recipe.makes, 1, newId, Math.min(HOTBAR, size - 1), size);
+  if (!addItem(s, recipe.makes, 1, newId, shape)) return false;
+  slots.splice(0, slots.length, ...s);
+  return true;
 }

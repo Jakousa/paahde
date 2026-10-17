@@ -1,15 +1,17 @@
 // Items HUD: "[F] Pick up …" under the crosshair when looking at a piece in reach, a short "+1 …" toast
 // whenever a pickup lands in the bag, and the Tab inventory: an overlay with your equipment (back, wrist,
-// belt, vehicle: shared/gear.ts), the bag (its first row is the hotbar, keys 1–4; the rest is as big as the
-// backpack you wear) and, next to it, every box in reach right now (the workbench in the base, chests, the
-// motorcycle while riding; shared/storage.ts), appearing and disappearing as you move. Drag an item onto another
-// slot to move it there or swap the two; shift-click sends it across to the other side; drag it out of the panels
+// belt, vehicle: shared/gear.ts), the bag (its first row is the hotbar, keys 1–4; below it a grid with as many
+// rows as the backpack you wear opens) and, next to it, every box in reach right now (the workbench in the base,
+// chests, the motorcycle while riding; shared/storage.ts), appearing and disappearing as you move. Grids are
+// Tarkov-like: every item takes w × h cells by its size (shared/items.ts). Drag an item to move it (the cells it
+// would take light up green, or red where it doesn't fit; R turns it) or onto another to swap the two; shift-click
+// sends it across to the other side; drag it out of the panels
 // to drop it on the sand in front of you (shared/loot.ts; anyone can pick it up again). At the workbench, put
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. Moves go through
 // Net (applied at once, the server confirms).
-import { bagSize, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, partsOf, quality, repaired, slotLabel } from '../shared/gear.ts';
-import { HOTBAR, ITEMS, type Item, type Slots } from '../shared/items.ts';
+import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, partsOf, quality, repaired, slotLabel, tryMove, type Boxes } from '../shared/gear.ts';
+import { findSpot, HOTBAR, ITEMS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
@@ -23,6 +25,13 @@ import type { Net } from './net';
 const TOAST_MS = 1600;
 /** Pointer travel (px) before a press on a slot becomes a drag. */
 const DRAG_START = 4;
+/** A grid cell (px) and the gap between cells: one step is CELL + GAP. */
+const CELL = 54;
+const GAP = 4;
+/** Size (px) of an item w × h cells big. */
+const span = (n: number) => n * CELL + (n - 1) * GAP;
+/** Icon scale for an item w × h cells big: by its short side, and a little more for long ones (SVGs; images stay square). */
+const iconScale = (w: number, h: number) => `--s: ${Math.min(w, h)}; --sv: ${Math.min(w, h) + (w !== h ? 0.4 : 0)}`;
 
 const css = `
 #pickup { position: fixed; left: 50%; top: calc(50% + 22px); transform: translateX(-50%); padding: 3px 8px;
@@ -49,6 +58,17 @@ const css = `
 #invOverlay .box.storage { box-shadow: 0 0 0 1px rgba(255, 200, 120, 0.35), 0 8px 30px rgba(0, 0, 0, 0.45); }
 /* Chests grow without end (shared/storage.ts growChest): past ~6 rows they scroll. */
 #invOverlay .box.storage .grid { max-height: 346px; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
+#invOverlay .cell { width: 54px; height: 54px; border-radius: 6px; background: rgba(255, 240, 220, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.12); }
+#invOverlay .cell.dead { background: rgba(222, 62, 34, 0.12); box-shadow: inset 0 0 0 1px rgba(222, 62, 34, 0.5); }
+/* Items in a grid span their cells, over the empty-cell backdrop. */
+#invOverlay .slot.item { width: auto; height: auto; z-index: 1; background: rgba(66, 44, 26, 0.96); }
+#invOverlay .slot.item svg, #invGhost svg { width: calc(30px * var(--sv, 1)); height: calc(34px * var(--sv, 1)); }
+#invOverlay .slot.item img, #invGhost img { width: calc(46px * var(--s, 1)); height: calc(46px * var(--s, 1)); }
+#invOverlay .slot.turned > svg, #invOverlay .slot.turned > img, #invGhost.turned > svg, #invGhost.turned > img { transform: rotate(90deg); }
+#invOverlay .hint { z-index: 2; pointer-events: none; border-radius: 6px; }
+#invOverlay .hint.ok { background: rgba(140, 220, 150, 0.22); box-shadow: inset 0 0 0 2px rgba(140, 220, 150, 0.85); }
+#invOverlay .hint.no { background: rgba(222, 62, 34, 0.22); box-shadow: inset 0 0 0 2px rgba(222, 62, 34, 0.85); }
 #invOverlay .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 #invOverlay h3 { margin: 0; font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase;
   opacity: 0.75; }
@@ -84,8 +104,8 @@ const css = `
 #invOverlay .recipe .need .ok { color: #9ad88a; }
 #invOverlay button:disabled { opacity: 0.35; cursor: default; }
 #invOverlay .help { opacity: 0.55; font-size: 11px; text-shadow: 0 1px 2px #000; }
-#invGhost { position: fixed; z-index: 16; pointer-events: none; width: 54px; height: 54px; display: flex;
-  align-items: center; justify-content: center; transform: translate(-50%, -50%); filter: drop-shadow(0 4px 6px #000); }
+#invGhost { position: fixed; z-index: 16; pointer-events: none; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; background: rgba(66, 44, 26, 0.55); filter: drop-shadow(0 4px 6px #000); }
 #invGhost.drop::after { content: 'Drop'; position: absolute; top: 100%; font: 600 11px var(--mono); color: #fff4e4;
   text-shadow: 0 1px 2px #000; }
 #invGhost .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono); color: #fff4e4;
@@ -204,7 +224,13 @@ export function itemTitle(it: Item): string {
     + (spec.equip ? `\nEquip it on your ${EQUIP_LABELS[spec.equip].toLowerCase()} (Tab).` : '');
 }
 
-type Drag = { box: string; i: number; half: boolean; x0: number; y0: number; moved: boolean };
+/**
+ * An item being dragged: from where, half the stack (right button), turned (R), and where the pointer holds it
+ * (px from its top-left corner, as drawn now).
+ */
+type Drag = { box: string; i: number; half: boolean; x0: number; y0: number; moved: boolean; r: boolean; gx: number; gy: number };
+/** Where a drag would land: a slot (free slot, workbench part slot) or a grid cell for the item's top-left corner. */
+type Target = { box: string; i: number; el?: HTMLElement; grid?: HTMLElement };
 
 export class InventoryHud {
   private prompt = document.createElement('div');
@@ -219,6 +245,9 @@ export class InventoryHud {
   private storages: string[] = [];
   private drag: Drag | null = null;
   private over: HTMLElement | null = null;
+  /** The cells a drag would take, lit green or red. */
+  private hint = document.createElement('div');
+  private hintAt = '';
 
   constructor(net: Net, canvas: HTMLElement) {
     this.net = net;
@@ -232,7 +261,7 @@ export class InventoryHud {
     this.boxesEl.className = 'boxes';
     const help = document.createElement('div');
     help.className = 'help';
-    help.textContent = 'Drag to move · shift-click sends across · drag out to drop · Tab or Esc closes';
+    help.textContent = 'Drag to move · R turns while dragging · shift-click sends across · drag out to drop · Tab or Esc closes';
     this.overlay.append(this.boxesEl, help);
     this.ghost.id = 'invGhost';
     this.ghost.style.display = 'none';
@@ -249,6 +278,7 @@ export class InventoryHud {
         e.preventDefault(); // never the browser's focus cycling
         if (!e.repeat) this.toggle(!ui.inventoryOpen);
       } else if (e.code === 'Escape' && ui.inventoryOpen) this.toggle(false);
+      else if (e.code === 'KeyR' && !e.repeat && this.drag?.moved) this.turn();
     });
     // A click on the dimmed backdrop closes it, back into the game.
     this.overlay.addEventListener('pointerdown', (e) => {
@@ -313,28 +343,23 @@ export class InventoryHud {
     this.storages = openBoxes(this.net.me).filter((b) => this.net.boxes[b]);
     const bag = this.net.boxes.bag ?? [];
     const equip = this.net.boxes.equip ?? [];
-    const size = bagSize(equip);
-    // Equipment, then the bag: hotbar row, backpack rows, and anything stranded past a smaller backpack.
+    const shape = bagShape(equip);
+    // Equipment, then the bag: hotbar row, the backpack's grid (with any rows it no longer opens), and overflow.
     let html = `<div class="box"><div class="head"><h3>${boxLabel('equip')}</h3></div>`
       + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('equip', equip, 0, EQUIP_SLOTS.length)}</div>`
-      + `<div class="sep"></div><div class="head"><h3>${boxLabel('bag')}</h3><button data-sort="bag" title="Merge stacks and order them (the hotbar stays)">Sort</button></div>`
+      + `<div class="sep"></div><div class="head"><h3>${boxLabel('bag')}</h3><button data-sort="bag" title="Pack it tight, biggest first (the hotbar stays)">Sort</button></div>`
       + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('bag', bag, 0, HOTBAR)}</div><div class="sep"></div>`;
-    if (size > HOTBAR) html += `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('bag', bag, HOTBAR, size)}</div>`;
-    else html += `<div class="none">No backpack: just the hotbar. Find one, repair it at the workbench and wear it for more slots.</div>`;
-    const stranded = bag.some((it, i) => it && i >= size);
-    if (stranded) {
-      html += `<div class="sep"></div><div class="none">Doesn't fit your backpack any more: move these out.</div>`
-        + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('bag', bag, size, bag.length, true)}</div>`;
-    }
-    html += '</div>';
+    if (!shape.rows) html += `<div class="none">No backpack: just the hotbar. Find one, repair it at the workbench and wear it for room.</div>`;
+    if (bag.some((_, i) => strandedAt(bag, shape, i))) html += `<div class="none">Doesn't fit your backpack any more: move the red ones out.</div>`;
+    html += this.gridHtml('bag', bag, shape) + '</div>';
     for (const box of this.storages) {
       const slots = this.net.boxes[box];
       if (box === 'bench') {
         html += this.benchHtml(slots[0] ?? null);
         continue;
       }
-      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><button data-sort="${box}" title="Merge stacks and order them">Sort</button></div>`
-        + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml(box, slots, 0, slots.length)}</div></div>`;
+      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><button data-sort="${box}" title="Pack it tight, biggest first">Sort</button></div>`
+        + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
     if (!this.storages.length) {
       html += `<div class="box"><div class="head"><h3>Storage</h3></div><div class="none">Nothing in reach. Stand by the workbench or the
@@ -342,15 +367,13 @@ export class InventoryHud {
     }
     // Re-rendering resets scrolling: keep each long chest where it was.
     const scrolled = new Map<string, number>();
-    for (const el of this.boxesEl.querySelectorAll<HTMLElement>('.storage .grid')) {
-      const box = el.querySelector<HTMLElement>('[data-box]')?.dataset.box;
-      if (box) scrolled.set(box, el.scrollTop);
-    }
+    for (const el of this.boxesEl.querySelectorAll<HTMLElement>('[data-grid]')) scrolled.set(el.dataset.grid!, el.scrollTop);
     this.boxesEl.innerHTML = html;
-    for (const el of this.boxesEl.querySelectorAll<HTMLElement>('.storage .grid')) {
-      const top = scrolled.get(el.querySelector<HTMLElement>('[data-box]')?.dataset.box ?? '');
+    for (const el of this.boxesEl.querySelectorAll<HTMLElement>('[data-grid]')) {
+      const top = scrolled.get(el.dataset.grid!);
       if (top) el.scrollTop = top;
     }
+    this.hintAt = '';
     if (this.drag) this.slotEl(this.drag.box, this.drag.i)?.classList.add('dragging');
   }
 
@@ -413,6 +436,46 @@ export class InventoryHud {
     return html;
   }
 
+  /**
+   * A box's grid: a backdrop of empty cells (red in rows a smaller backpack no longer opens, shown only while
+   * something lies there), the items on top spanning their cells, then anything past the end as single slots.
+   */
+  private gridHtml(box: string, slots: Slots, shape: Shape) {
+    const end = shape.free + shape.cols * shape.grid;
+    let rows = shape.rows;
+    for (let i = shape.free; i < Math.min(end, slots.length); i++) {
+      const it = slots[i];
+      if (it) rows = Math.max(rows, Math.floor((i - shape.free) / shape.cols) + sizeOf(it.kind, it.r)[1]);
+    }
+    rows = Math.min(rows, shape.grid);
+    let html = '';
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < shape.cols; x++) html += `<div class="cell${y >= shape.rows ? ' dead' : ''}" style="grid-area: ${y + 1} / ${x + 1}"></div>`;
+    }
+    for (let i = shape.free; i < Math.min(end, slots.length); i++) {
+      const it = slots[i];
+      if (!it) continue;
+      const [w, h] = sizeOf(it.kind, it.r);
+      const x = (i - shape.free) % shape.cols, y = Math.floor((i - shape.free) / shape.cols);
+      html += this.slotHtml(box, i, it, `grid-area: ${y + 1} / ${x + 1} / span ${h} / span ${w}; ${iconScale(w, h)}`,
+        strandedAt(slots, shape, i));
+    }
+    html = rows ? `<div class="grid" data-grid="${box}" data-free="${shape.free}" data-cols="${shape.cols}" data-rows="${rows}" style="grid-template-columns: repeat(${shape.cols}, ${CELL}px); grid-auto-rows: ${CELL}px">${html}</div>` : '';
+    if (slots.length > end && slots.slice(end).some((it) => it)) {
+      html += `<div class="sep"></div><div class="none">No room for these: move them out.</div>`
+        + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml(box, slots, end, slots.length, true)}</div>`;
+    }
+    return html;
+  }
+
+  /** One item lying in a grid, spanning its cells (`style`). */
+  private slotHtml(box: string, i: number, it: Item, style: string, dead: boolean) {
+    const broken = isGear(it.kind) && !repaired(it);
+    const c = rarityColor(it.kind);
+    const cls = `slot item${broken ? ' broken' : ''}${dead ? ' dead' : ''}${c ? ' rare' : ''}${it.r ? ' turned' : ''}`;
+    return `<div class="${cls}" data-box="${box}" data-i="${i}" style="${style}${c ? `; --c:${c}` : ''}" title="${itemTitle(it)}">${this.itemHtml(it)}</div>`;
+  }
+
   private itemHtml(it: Item) {
     const broken = isGear(it.kind) && !repaired(it);
     return `${itemIcon(it.kind)}${it.n > 1 ? `<span class="n">${it.n}</span>` : ''}${broken ? '<span class="bad">✕</span>' : ''}`;
@@ -427,6 +490,83 @@ export class InventoryHud {
     return el ? { el, box: el.dataset.box!, i: Number(el.dataset.i) } : null;
   }
 
+  /**
+   * Where the drag would land: over a grid, the cell under the dragged item's top-left corner (so it goes where
+   * the ghost shows it); elsewhere the slot under the pointer.
+   */
+  private targetAt(x: number, y: number, d: Drag): Target | null {
+    const under = document.elementFromPoint(x, y);
+    const grid = under?.closest<HTMLElement>('[data-grid]');
+    if (grid) {
+      const rect = grid.getBoundingClientRect();
+      const cx = Math.round((x - d.gx - rect.left) / (CELL + GAP));
+      const cy = Math.round((y - d.gy - rect.top + grid.scrollTop) / (CELL + GAP));
+      const cols = Number(grid.dataset.cols);
+      if (cx < 0 || cy < 0 || cx >= cols) return { box: grid.dataset.grid!, i: -2, grid };
+      return { box: grid.dataset.grid!, i: Number(grid.dataset.free) + cy * cols + cx, grid };
+    }
+    const at = this.slotAt(x, y);
+    return at && { box: at.box, i: at.i, el: at.el };
+  }
+
+  /** The dragged item as it would land (turned or not). */
+  private dragged(d: Drag): Item | null {
+    const it = this.itemAt(d.box, d.i);
+    return it && { ...it, r: d.r };
+  }
+
+  /** Light the cells the drag would take over a grid: green if the move would go through, red if not. */
+  private showHint(t: Target | null, d: Drag) {
+    const it = this.dragged(d);
+    const key = t?.grid && it ? `${t.box}:${t.i}:${d.r}` : '';
+    if (key === this.hintAt) return;
+    this.hintAt = key;
+    if (!key || !t?.grid || !it) return void this.hint.remove();
+    const cols = Number(t.grid.dataset.cols), rows = Number(t.grid.dataset.rows), free = Number(t.grid.dataset.free);
+    const [w, h] = sizeOf(it.kind, d.r);
+    // Off an edge: shown clamped inside the grid (it never grows it), red.
+    const c = Math.max(0, t.i - free);
+    const x = t.i < 0 ? 0 : c % cols, y = Math.min(rows - 1, t.i < 0 ? 0 : Math.floor(c / cols));
+    this.hint.style.gridArea = `${y + 1} / ${x + 1} / span ${Math.min(h, rows - y)} / span ${Math.min(w, cols - x)}`;
+    this.hint.className = `hint ${t.i >= 0 && this.wouldMove(d, t) ? 'ok' : 'no'}`;
+    t.grid.appendChild(this.hint);
+  }
+
+  /** Would dropping here go through? Tried on copies of the boxes involved. */
+  private wouldMove(d: Drag, t: Target): boolean {
+    const b: Boxes = { ...this.net.boxes };
+    for (const id of new Set([d.box, t.box])) b[id] = b[id]?.map((it) => it && { ...it });
+    if (d.box === 'part') return true;
+    const it = this.itemAt(d.box, d.i);
+    return !!it && tryMove(b, d.box, d.i, t.box, t.i, d.half ? Math.ceil(it.n / 2) : undefined, () => -1, d.r);
+  }
+
+  /** Draw the ghost for the dragged item at its size, turned or not. */
+  private drawGhost(d: Drag, it: Item) {
+    const n = d.half ? Math.ceil(it.n / 2) : it.n;
+    const [w, h] = sizeOf(it.kind, d.r);
+    this.ghost.innerHTML = `${itemIcon(it.kind)}${n > 1 ? `<span class="n">${n}</span>` : ''}`;
+    this.ghost.setAttribute('style', `${iconScale(w, h)}; --c: ${rarityColor(it.kind) ?? '#fff4e4'}`);
+    this.ghost.style.width = `${span(w)}px`;
+    this.ghost.style.height = `${span(h)}px`;
+    this.ghost.classList.toggle('turned', d.r);
+    this.ghost.style.display = 'flex';
+  }
+
+  /** R while dragging: turn the item 90°, held by its top-left cell. */
+  private turn() {
+    const d = this.drag;
+    const it = d && this.itemAt(d.box, d.i);
+    if (!d || !it) return;
+    d.r = !d.r;
+    d.gx = d.gy = CELL / 2;
+    this.drawGhost(d, it);
+    this.ghost.style.left = `${d.x0 - d.gx}px`;
+    this.ghost.style.top = `${d.y0 - d.gy}px`;
+    this.hintAt = '';
+    this.showHint(this.targetAt(d.x0, d.y0, d), d);
+  }
+
   /** What's in a slot; 'part' slots are the workbench item's fitted parts. */
   private itemAt(box: string, i: number): Item | null {
     if (box === 'part') {
@@ -438,14 +578,21 @@ export class InventoryHud {
 
   private press(e: PointerEvent) {
     const sort = (e.target as HTMLElement).closest<HTMLElement>('[data-sort]');
-    if (sort) return this.net.sortBox(sort.dataset.sort!);
+    if (sort) return void (this.net.sortBox(sort.dataset.sort!) || this.toast("Can't pack it any tighter"));
     const craft = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-craft]');
     if (craft) return void (craft.disabled || this.net.craft(craft.dataset.craft!));
     const at = this.slotAt(e.clientX, e.clientY);
     if (!at || !this.itemAt(at.box, at.i)) return;
     e.preventDefault();
     if (e.shiftKey) return this.shiftClick(at.box, at.i);
-    this.drag = { box: at.box, i: at.i, half: e.button === 2, x0: e.clientX, y0: e.clientY, moved: false };
+    // Held where it was grabbed when it lies in a grid; by its first cell's middle from a single slot.
+    const rect = at.el.getBoundingClientRect();
+    const inGrid = at.el.classList.contains('item');
+    const it = this.itemAt(at.box, at.i)!;
+    this.drag = {
+      box: at.box, i: at.i, half: e.button === 2, x0: e.clientX, y0: e.clientY, moved: false, r: !!it.r,
+      gx: inGrid ? e.clientX - rect.left : CELL / 2, gy: inGrid ? e.clientY - rect.top : CELL / 2,
+    };
   }
 
   /**
@@ -476,12 +623,18 @@ export class InventoryHud {
     else this.hotbarSwap(i);
   }
 
-  /** Shift-click in the bag with no storage open: hotbar ↔ first free backpack slot (or the first free hotbar slot). */
+  /** Shift-click in the bag with no storage open: hotbar ↔ the first spot it fits in the backpack (or the first free hotbar slot). */
   private hotbarSwap(i: number) {
     const bag = this.net.boxes.bag;
-    if (!bag) return;
-    const range = i < HOTBAR ? [HOTBAR, bagSize(this.net.boxes.equip)] : [0, HOTBAR];
-    for (let j = range[0]; j < range[1]; j++) {
+    const it = bag?.[i];
+    if (!bag || !it) return;
+    if (i < HOTBAR) {
+      const spot = findSpot(bag, bagShape(this.net.boxes.equip), it.kind, !!it.r, [i], false);
+      if (spot) this.net.moveItem('bag', i, 'bag', spot.i, undefined, spot.r);
+      else this.toast('No room in the backpack');
+      return;
+    }
+    for (let j = 0; j < HOTBAR; j++) {
       if (!bag[j]) return void this.net.moveItem('bag', i, 'bag', j);
     }
   }
@@ -494,9 +647,7 @@ export class InventoryHud {
       const it = this.itemAt(d.box, d.i);
       if (!it) return this.cancelDrag();
       d.moved = true;
-      const n = d.half ? Math.ceil(it.n / 2) : it.n;
-      this.ghost.innerHTML = `${itemIcon(it.kind)}${n > 1 ? `<span class="n">${n}</span>` : ''}`;
-      this.ghost.style.setProperty('--c', rarityColor(it.kind) ?? '#fff4e4');
+      this.drawGhost(d, it);
       this.ghost.style.display = 'flex';
       this.slotEl(d.box, d.i)?.classList.add('dragging');
       // Light up the workbench slots this part fits.
@@ -505,9 +656,13 @@ export class InventoryHud {
         GEAR[target.kind].slots.forEach((s, j) => this.slotEl('part', j)?.classList.toggle('fits', fitsSlot(s, it.kind)));
       }
     }
-    this.ghost.style.left = `${e.clientX}px`;
-    this.ghost.style.top = `${e.clientY}px`;
-    const at = this.slotAt(e.clientX, e.clientY);
+    // Remembered for R, which turns it where the pointer is.
+    d.x0 = e.clientX;
+    d.y0 = e.clientY;
+    this.ghost.style.left = `${e.clientX - d.gx}px`;
+    this.ghost.style.top = `${e.clientY - d.gy}px`;
+    const at = this.targetAt(e.clientX, e.clientY, d);
+    this.showHint(at, d);
     this.ghost.classList.toggle('drop', this.outside(e.clientX, e.clientY));
     if (this.over !== (at?.el ?? null)) {
       this.over?.classList.remove('over');
@@ -522,14 +677,14 @@ export class InventoryHud {
     this.cancelDrag();
     if (!d.moved) return;
     if (this.outside(e.clientX, e.clientY)) return this.drop(d.box, d.i);
-    const at = this.slotAt(e.clientX, e.clientY);
-    if (!at || (at.box === d.box && at.i === d.i)) return;
+    const at = this.targetAt(e.clientX, e.clientY, d);
     const it = this.itemAt(d.box, d.i);
-    if (!it) return;
+    if (!at || !it || (at.box === d.box && at.i === d.i && d.r === !!it.r)) return;
     let ok: boolean;
-    if (d.box === 'part') ok = at.box !== 'part' && this.net.unfit(d.i, at.box, at.i);
+    if (at.i < 0) ok = false;
+    else if (d.box === 'part') ok = at.box !== 'part' && this.net.unfit(d.i, at.box, at.i);
     else if (at.box === 'part') ok = this.net.fit(d.box, d.i, at.i);
-    else ok = this.net.moveItem(d.box, d.i, at.box, at.i, d.half ? Math.ceil(it.n / 2) : undefined);
+    else ok = this.net.moveItem(d.box, d.i, at.box, at.i, d.half ? Math.ceil(it.n / 2) : undefined, d.r);
     if (!ok) this.refuse(d.box, it, at.box);
   }
 
@@ -553,7 +708,7 @@ export class InventoryHud {
     else if (to === 'bench') this.toast(isGear(it.kind) ? 'Take the item on the bench off first' : 'Only gear goes on the workbench');
     else if (to === 'part') this.toast("That part doesn't go there");
     else if (from === 'equip' && it.kind === 'backpack') this.toast('Empty the backpack first');
-    else if (to === 'bag') this.toast('No room there');
+    else this.toast("Doesn't fit there");
   }
 
   private cancelDrag() {
@@ -561,6 +716,8 @@ export class InventoryHud {
     this.drag = null;
     this.ghost.style.display = 'none';
     this.ghost.classList.remove('drop');
+    this.hint.remove();
+    this.hintAt = '';
     this.over?.classList.remove('over');
     this.over = null;
     for (const el of this.boxesEl.querySelectorAll('.slot.fits')) el.classList.remove('fits');

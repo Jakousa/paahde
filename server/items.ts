@@ -1,8 +1,8 @@
 // Server side of items (shared/items.ts): every box's slots, cached from the `items` table, the one-time gear
 // setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
-import { bagSize, EQUIP_SLOTS, fitPart, GEAR, isGear, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
-import { addItem, hasItem, HOTBAR, partKind, sortItems, stackOf, type Item, type Slots } from '../shared/items.ts';
+import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
+import { addItem, findSpot, hasItem, partKind, roomFor, settle, sortItems, stackOf, type Item, type Slots } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, growChest, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { craft, RECIPES } from '../shared/crafting.ts';
@@ -30,7 +30,10 @@ export class ItemServer {
     return isShared(box) ? '' : browserId;
   }
 
-  /** A box's slots (loaded on first use). Rows past its size (a box that shrank) are kept at the end. */
+  /**
+   * A box's slots (loaded on first use). Items that don't fit where they lie (the grid changed, or item sizes did)
+   * are laid out again (shared/items.ts settle); what doesn't fit at all is kept past the end.
+   */
   slots(browserId: string, box: string): Slots {
     const owner = this.ownerOf(browserId, box);
     const key = `${owner}|${box}`;
@@ -38,8 +41,7 @@ export class ItemServer {
     if (!slots) {
       const rows = this.db.loadBox(owner, box);
       slots = new Array(Math.max(boxSize(box), ...rows.map((r) => r.slot + 1))).fill(null);
-      for (const r of rows) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n, ...(r.parts ? { parts: r.parts } : {}) };
-      if (isShared(box)) growChest(slots);
+      for (const r of rows) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n, ...(r.parts ? { parts: r.parts } : {}), ...(r.r ? { r: true } : {}) };
       this.boxes.set(key, slots);
       let changed = false;
       for (const it of [...slots]) {
@@ -48,14 +50,15 @@ export class ItemServer {
           it.parts = GEAR[it.kind].slots.map((s) => ('part' in s ? partKind(s.part, 'scrap') : s.scrap[s.scrap.length - 1]));
           changed = true;
         }
-        // Stacks bigger than their kind allows now: one item per slot, the rest into empty slots and then
-        // past the end, so nothing is lost.
+        // Stacks bigger than their kind allows now: one item per stack, the rest past the end for settle() to place.
         for (; it && it.n > stackOf(it.kind); it.n--) {
-          const i = slots.indexOf(null);
-          slots[i < 0 ? slots.length : i] = { id: this.newId(), kind: it.kind, n: 1 };
+          slots.push({ id: this.newId(), kind: it.kind, n: 1 });
           changed = true;
         }
       }
+      // The bag's own rows past the backpack are kept (stranded) rather than moved: settle with the backpack's shape.
+      if (settle(slots, boxShape(box, this.view(browserId, box)), isShared(box))) changed = true;
+      if (isShared(box)) growChest(slots);
       if (changed) this.save(browserId, box);
     }
     return slots;
@@ -100,42 +103,31 @@ export class ItemServer {
     return hasItem(this.slots(browserId, 'bag'), kind);
   }
 
-  /** Usable bag slots right now (the equipped backpack's). */
-  bagSize(browserId: string) {
-    return bagSize(this.slots(browserId, 'equip'));
+  /** The bag's layout right now (the equipped backpack opens its rows). */
+  bagShape(browserId: string) {
+    return bagShape(this.slots(browserId, 'equip'));
   }
 
   roomFor(browserId: string, kind: string) {
-    const bag = this.slots(browserId, 'bag');
-    const size = this.bagSize(browserId);
-    for (let i = 0; i < size; i++) {
-      const it = bag[i];
-      if (!it || (it.kind === kind && !it.parts && it.n < stackOf(kind))) return true;
-    }
-    return false;
+    return roomFor(this.slots(browserId, 'bag'), kind, this.bagShape(browserId));
   }
 
-  /** One `kind` into the bag (past the hotbar first). False if it's full. Call inside the pickup's transaction. */
+  /** One `kind` into the bag (the backpack first, then the hotbar). False if it's full. Call inside the pickup's transaction. */
   give(browserId: string, kind: string): boolean {
-    const size = this.bagSize(browserId);
-    if (!addItem(this.slots(browserId, 'bag'), kind, 1, this.newId, Math.min(HOTBAR, size - 1), size)) return false;
+    if (!addItem(this.slots(browserId, 'bag'), kind, 1, this.newId, this.bagShape(browserId))) return false;
     this.save(browserId, 'bag');
     return true;
   }
 
-  /** A whole item (gear with its parts) into the first free bag slot. False if there is none. */
+  /** A whole item (gear with its parts) into the first spot it fits in the bag. False if there is none. */
   giveItem(browserId: string, item: { kind: string; parts?: (string | null)[] }): boolean {
     if (!item.parts) return this.give(browserId, item.kind);
     const bag = this.slots(browserId, 'bag');
-    const size = this.bagSize(browserId);
-    for (let j = 0; j < size; j++) {
-      const i = (Math.min(HOTBAR, size - 1) + j) % size;
-      if (bag[i]) continue;
-      bag[i] = { id: this.newId(), kind: item.kind, n: 1, parts: [...item.parts] };
-      this.save(browserId, 'bag');
-      return true;
-    }
-    return false;
+    const spot = findSpot(bag, this.bagShape(browserId), item.kind);
+    if (!spot) return false;
+    bag[spot.i] = { id: this.newId(), kind: item.kind, n: 1, parts: [...item.parts], ...(spot.r ? { r: true } : {}) };
+    this.save(browserId, 'bag');
+    return true;
   }
 
   /** Repaired gear straight into its equipment slot, if it has one and that's free. */
@@ -177,19 +169,20 @@ export class ItemServer {
     if (typeof recipe !== 'string' || !RECIPES[recipe]) return 'Unknown recipe';
     const bench = STATIONS.findIndex((st) => st.kind === 'workbench');
     if (bench < 0 || stationReach(s, bench) > STATION_REACH + REACH_SLACK) return 'Stand at the workbench to craft';
-    if (!craft(this.slots(browserId, 'bag'), recipe, this.newId, this.bagSize(browserId))) return 'Missing parts';
+    if (!craft(this.slots(browserId, 'bag'), recipe, this.newId, this.bagShape(browserId))) return 'Missing parts';
     this.save(browserId, 'bag');
     return { made: RECIPES[recipe].makes };
   }
 
   /** A move from the client. Returns whether anything changed (either way the client gets both boxes back). */
-  move(browserId: string, s: PlayerState, from: unknown, fi: unknown, to: unknown, ti: unknown, n: unknown): boolean {
+  move(browserId: string, s: PlayerState, from: unknown, fi: unknown, to: unknown, ti: unknown, n: unknown, r: unknown): boolean {
     if (typeof from !== 'string' || typeof to !== 'string' || !boxSize(from) || !boxSize(to)) return false;
     if (!canOpen(s, from, REACH_SLACK) || !canOpen(s, to, REACH_SLACK)) return false;
     if (!Number.isInteger(fi) || (fi as number) < 0 || (fi as number) >= this.slots(browserId, from).length) return false;
     if (!Number.isInteger(ti) || (ti as number) < -1 || (ti as number) >= this.slots(browserId, to).length) return false;
     if (n !== undefined && (!Number.isInteger(n) || (n as number) < 1)) return false;
-    if (!tryMove(this.view(browserId, from, to), from, fi as number, to, ti as number, n as number | undefined, this.newId)) return false;
+    if (r !== undefined && typeof r !== 'boolean') return false;
+    if (!tryMove(this.view(browserId, from, to), from, fi as number, to, ti as number, n as number | undefined, this.newId, r)) return false;
     this.save(browserId, from, to);
     return true;
   }
@@ -229,14 +222,7 @@ export class ItemServer {
 
   sort(browserId: string, s: PlayerState, box: unknown): boolean {
     if (typeof box !== 'string' || !boxSize(box) || box === 'equip' || box === 'bench' || !canOpen(s, box, REACH_SLACK)) return false;
-    const slots = this.slots(browserId, box);
-    if (box === 'bag') {
-      // Only the usable part: nothing may land past the backpack.
-      const size = this.bagSize(browserId);
-      const part = slots.slice(0, size);
-      sortItems(part, HOTBAR);
-      slots.splice(0, size, ...part);
-    } else sortItems(slots);
+    if (!sortItems(this.slots(browserId, box), boxShape(box, this.view(browserId, box)))) return false;
     this.save(browserId, box);
     return true;
   }

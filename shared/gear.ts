@@ -6,9 +6,12 @@
 //
 // Moves between boxes go through tryMove(), on the client as a prediction and on the server for real, so
 // both apply the same rules: gear only into its equipment slot (and only once repaired), nothing past the
-// bag's size (the backpack sets it), and parts only into the workbench item's matching slots (fitPart).
+// bag's open rows (the backpack sets them) and only where it fits in a grid, and parts only into the workbench item's matching slots (fitPart).
 import type { DigTool } from './dig.ts';
-import { BAG_SLOTS, HOTBAR, moveItem, parsePart, type Item, type Slots } from './items.ts';
+import {
+  BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, sizeOf, strandedAt,
+  type Item, type Shape, type Slots,
+} from './items.ts';
 import { PART_LABELS } from './parts.ts';
 import type { PartId } from './salvage.ts';
 
@@ -36,8 +39,8 @@ export const GEAR: Record<string, GearSpec> = {
   spyglass: { slots: [P('gear'), P('bearing')], better: 'zoom', use: 'Hold the mouse button to look, wheel to zoom.' },
   canteen: { slots: [P('valve'), { scrap: ['oil_drum', 'rusty_drum'], label: 'Drum' }], better: 'how many sips it holds',
     use: 'Hold the mouse button to drink; fill it at the pump in the base.' },
-  backpack: { slots: [{ scrap: ['scrap_frame', 'bent_frame'], label: 'Frame' }, P('gear')], equip: 'back', better: 'slots',
-    use: 'More bag slots past the hotbar.' },
+  backpack: { slots: [{ scrap: ['scrap_frame', 'bent_frame'], label: 'Frame' }, P('gear')], equip: 'back', better: 'room (rows)',
+    use: 'Bag room past the hotbar.' },
   storm_detector: { slots: [P('coil'), P('relay')], equip: 'belt', better: 'how early it warns',
     use: 'Beeps before a sandstorm reaches you.' },
   wristpad: { slots: [P('compute'), P('battery')], equip: 'wrist', better: 'how far away players show on the locator',
@@ -100,8 +103,8 @@ export const bikeEngine = (q: number) => by(q, 9, 15);
 export const spyglassZoom = (q: number) => by(q, 4, 12);
 /** Sips in a full water bottle. */
 export const canteenSips = (q: number) => Math.round(by(q, 2, 6));
-/** Backpack slots (past the hotbar). */
-export const backpackSlots = (q: number) => Math.round(by(q, 4, 12));
+/** Backpack rows of bag grid (BAG_COLS wide, past the hotbar). */
+export const backpackRows = (q: number) => Math.round(by(q, 2, BAG_ROWS));
 /** Storm detector: warns this long before a storm reaches you (s). */
 export const stormWarnS = (q: number) => by(q, 6, 20);
 /** Wrist computer: other players show on the locator this far away (m). The base always does. */
@@ -125,10 +128,10 @@ export function equipped(equip: Slots | undefined, slot: EquipSlot): Item | null
   return it && repaired(it) ? it : null;
 }
 
-/** Usable bag slots: the hotbar, plus the backpack's. */
-export function bagSize(equip: Slots | undefined): number {
+/** The bag's layout: the hotbar, then the grid with as many rows open as the backpack's (none without one). */
+export function bagShape(equip: Slots | undefined): Shape {
   const pack = equipped(equip, 'back');
-  return HOTBAR + (pack ? Math.min(BAG_SLOTS - HOTBAR, backpackSlots(quality(pack))) : 0);
+  return { free: HOTBAR, cols: BAG_COLS, rows: pack ? Math.min(BAG_ROWS, backpackRows(quality(pack))) : 0, grid: BAG_ROWS };
 }
 
 /** Water bottle sips for a bag holding `canteen` (its best repaired one), 0 without. */
@@ -147,6 +150,15 @@ export function bikeLevel(equip: Slots | undefined): number {
 /** Which box ids hold what: 'equip' is the player's EQUIP_SLOTS, 'bench' the workbench's one slot. */
 export type Boxes = Record<string, Slots | undefined>;
 
+/** A box's layout (shared/items.ts Shape): the bag's depends on the backpack, a chest's on how far it has grown. */
+export function boxShape(box: string, boxes: Boxes): Shape {
+  if (box === 'bag') return bagShape(boxes.equip);
+  if (box === 'equip') return freeSlots(EQUIP_SLOTS.length);
+  if (box === 'bench') return freeSlots(1);
+  if (box === 'bike') return gridShape(BIKE_COLS, BIKE_ROWS);
+  return gridShape(CHEST_COLS, Math.floor((boxes[box]?.length ?? 0) / CHEST_COLS));
+}
+
 /** Copy boxes deeply enough that a move can be tried and thrown away. */
 function cloneBoxes(boxes: Boxes, ids: string[]): Boxes {
   const out: Boxes = { ...boxes };
@@ -158,24 +170,26 @@ function cloneBoxes(boxes: Boxes, ids: string[]): Boxes {
 function allowed(box: string, i: number, it: Item, boxes: Boxes): boolean {
   if (box === 'equip') return GEAR[it.kind]?.equip === EQUIP_SLOTS[i] && repaired(it);
   if (box === 'bench') return isGear(it.kind);
-  if (box === 'bag') return i < bagSize(boxes.equip);
   return true;
 }
 
-/** Items in bag slots the backpack doesn't cover (they can only be moved out). */
+/** Items in bag rows the backpack doesn't open (they can only be moved out). */
 function stranded(boxes: Boxes): number {
   const bag = boxes.bag;
   if (!bag) return 0;
+  const shape = bagShape(boxes.equip);
   let n = 0;
-  for (let i = bagSize(boxes.equip); i < bag.length; i++) if (bag[i]) n++;
+  for (let i = 0; i < bag.length; i++) if (strandedAt(bag, shape, i)) n++;
   return n;
 }
 
 /**
- * Move n (default all) of `from`[fi] to `to`[ti] (ti -1: anywhere it may go), by the rules above. Applies
- * to `boxes` only if the result is allowed; returns whether it did. `from`/`to` must both be in `boxes`.
+ * Move n (default all) of `from`[fi] to `to`[ti] (ti -1: anywhere it may go), turned if `r` (default: as it
+ * lies), by the rules above. Applies to `boxes` only if the result is allowed; returns whether it did.
+ * `from`/`to` must both be in `boxes`.
  */
-export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: number, n: number | undefined, newId: () => number): boolean {
+export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: number, n: number | undefined, newId: () => number,
+  r?: boolean): boolean {
   const src0 = boxes[from], dst0 = boxes[to];
   const it = src0?.[fi];
   if (!src0 || !dst0 || !it) return false;
@@ -188,9 +202,7 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
   const ids = [...new Set([from, to])];
   const b = cloneBoxes(boxes, ids);
   const src = b[from]!, dst = b[to]!;
-  const size = to === 'bag' ? bagSize(boxes.equip) : dst.length;
-  if (ti >= size) return false;
-  if (!moveItem(src, fi, dst, ti, n, newId, to === 'bag' ? Math.min(HOTBAR, size - 1) : 0, size)) return false;
+  if (!moveItem(src, fi, boxShape(from, boxes), dst, ti, boxShape(to, boxes), n, newId, r)) return false;
   // Every slot that changed must allow what's in it now.
   for (const id of ids) {
     const slots = b[id]!;
@@ -204,7 +216,7 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
   return true;
 }
 
-const sameItem = (a: Item, b: Item | null | undefined) => !!b && a.id === b.id && a.kind === b.kind && a.n === b.n;
+const sameItem = (a: Item, b: Item | null | undefined) => !!b && a.id === b.id && a.kind === b.kind && a.n === b.n && !!a.r === !!b.r;
 
 /**
  * Fit the part at `from`[fi] into slot `slot` of the workbench item. A part already there comes out into
@@ -227,7 +239,10 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
     p.n--;
     if (old && !giveBack(b, old, newId)) return false;
   } else {
-    s[fi] = old ? { id: newId(), kind: old, n: 1 } : null;
+    // The old part lies down where the new one was (the same part, so the same size), else anywhere in the bag.
+    s[fi] = null;
+    if (old && fitsAt(s, boxShape(from, b), fi, ...sizeOf(old, p.r))) s[fi] = { id: newId(), kind: old, n: 1, ...(p.r ? { r: true } : {}) };
+    else if (old && !giveBack(b, old, newId)) return false;
   }
   parts[slot] = part.kind;
   b.bench![0] = { ...b.bench![0]!, parts };
@@ -244,17 +259,18 @@ export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, ne
   if (!kind) return false;
   const b = cloneBoxes(boxes, [...new Set([to, 'bench'])]);
   const dst = b[to]!;
-  const size = to === 'bag' ? bagSize(boxes.equip) : dst.length;
   const tmp: Slots = [{ id: newId(), kind, n: 1 }];
-  if (ti >= size || !moveItem(tmp, 0, dst, ti, undefined, newId, to === 'bag' ? Math.min(HOTBAR, size - 1) : 0, size) || tmp[0]) return false;
+  if (!moveItem(tmp, 0, ONE, dst, ti, boxShape(to, b), undefined, newId) || tmp[0]) return false;
   parts[slot] = null;
   b.bench![0] = { ...b.bench![0]!, parts };
   for (const id of new Set([to, 'bench'])) boxes[id]!.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }
 
+/** A lone item, handed between boxes. */
+const ONE: Shape = { free: 1, cols: 1, rows: 0, grid: 0 };
+
 function giveBack(b: Boxes, kind: string, newId: () => number): boolean {
   const tmp: Slots = [{ id: newId(), kind, n: 1 }];
-  const size = bagSize(b.equip);
-  return !!b.bag && moveItem(tmp, 0, b.bag, -1, undefined, newId, Math.min(HOTBAR, size - 1), size) && !tmp[0];
+  return !!b.bag && moveItem(tmp, 0, ONE, b.bag, -1, bagShape(b.equip), undefined, newId) && !tmp[0];
 }
