@@ -11,6 +11,7 @@ import * as THREE from 'three/webgpu';
 import { cameraPosition, fog, min, normalize, positionWorld, vec3 } from 'three/tsl';
 import { MAX_FOV } from '../camera.ts';
 import { CascadedShadows } from './cascades.ts';
+import { wideShadowFilter } from './shadowFilter.ts';
 import { DayNight } from './dayNight.ts';
 import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm, SHADOW_ONLY_LAYER, skyRadiance, sunColor, sunDirection, sunDisc, sunLight, time } from './env.ts';
 
@@ -27,7 +28,7 @@ const DEPTH_BIAS_TEXELS = 1;
 const NORMAL_BIAS_TEXELS = 2;
 /** PCF filter radius in texels per cascade: at a 10° sun each texel stretches ~6x along the ground, so
  *  soften the coarse cascades' steps; the nearest one is fine enough (~3 cm) to stay crisp. */
-const PCF_RADIUS_TEXELS = [1, 2, 2, 2];
+const PCF_RADIUS_TEXELS = [1.5, 3, 4, 4];
 
 export class Sky {
   readonly sun = sunLight;
@@ -123,6 +124,7 @@ export class Sky {
       shadow.bias = (-DEPTH_BIAS_TEXELS * texel) / (cam.far - cam.near); // depth bias is in [0, 1] depth units
       shadow.normalBias = NORMAL_BIAS_TEXELS * texel;
       shadow.radius = PCF_RADIUS_TEXELS[i];
+      (shadow as unknown as { filterNode: unknown }).filterNode = wideShadowFilter; // wider than the stock 5-tap PCF
     });
   }
 }
