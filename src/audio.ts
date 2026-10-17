@@ -1,12 +1,19 @@
 // Shared Web Audio output: one context, a master gain that follows the volume slider (Esc menu,
-// src/menu.ts; remembered per browser), and a limiter in front of the speakers. Every sound connects to `audio.out`;
-// music connects to `audio.music`, a gain under its own slider that feeds `out`.
+// src/menu.ts; remembered per browser), and a limiter in front of the speakers. Every sound connects to `audio.out`,
+// which goes through a muffle low-pass (`setMuffled`: dull and quieter while you lie dead) to the master; music
+// connects to `audio.music`, a gain under its own slider that feeds the master directly, so it is never muffled.
 //
 // Browsers only start audio after a user gesture, so the context is created on the first click or key;
 // `onStart` callbacks run then (or immediately, if it is already running).
 
 const VOLUME_KEY = 'dadajam.volume';
 const MUSIC_KEY = 'dadajam.musicVolume';
+/** Muffled: low-pass cutoff (Hz) and level; open cutoff; time constants (s) in and back out. */
+const MUFFLE_HZ = 350;
+const MUFFLE_GAIN = 0.5;
+const MUFFLE_OFF_HZ = 20000;
+const MUFFLE_IN = 0.15;
+const MUFFLE_OUT = 0.8;
 
 function stored(key: string, fallback: number) {
   try {
@@ -27,6 +34,9 @@ class AudioOut {
   /** Connect music here. */
   music: GainNode | null = null;
   private starters: ((ctx: AudioContext, out: GainNode) => void)[] = [];
+  private master: GainNode | null = null;
+  private muffle: { lp: BiquadFilterNode; duck: GainNode } | null = null;
+  private muffled = false;
 
   constructor() {
     const start = () => {
@@ -54,18 +64,27 @@ class AudioOut {
 
   private build() {
     const ctx = new AudioContext();
-    const out = ctx.createGain();
-    out.gain.value = this.volume;
+    const master = ctx.createGain();
+    master.gain.value = this.volume;
     // Gentle limiter: layers stack up in a storm gust and should squash, not clip.
     const limit = ctx.createDynamicsCompressor();
     limit.threshold.value = -10;
     limit.knee.value = 6;
     limit.ratio.value = 8;
-    out.connect(limit).connect(ctx.destination);
+    master.connect(limit).connect(ctx.destination);
+    const out = ctx.createGain();
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = MUFFLE_OFF_HZ;
+    lp.Q.value = 0.707;
+    const duck = ctx.createGain();
+    out.connect(lp).connect(duck).connect(master);
     const music = ctx.createGain();
     music.gain.value = this.musicVolume;
-    music.connect(out);
+    music.connect(master);
     this.ctx = ctx;
+    this.master = master;
+    this.muffle = { lp, duck };
     this.out = out;
     this.music = music;
     for (const f of this.starters) f(ctx, out);
@@ -75,10 +94,22 @@ class AudioOut {
   /** From the menu's slider: follow it (ramped, no clicks) and remember it. */
   setVolume(v: number) {
     this.volume = v;
-    if (this.ctx && this.out) this.out.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+    if (this.ctx && this.master) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
     try {
       localStorage.setItem(VOLUME_KEY, String(v));
     } catch {}
+  }
+
+  /** Muffle every sound but the music (dying), or bring it back: quickly in, slowly out. */
+  setMuffled(on: boolean) {
+    if (on === this.muffled || !this.ctx || !this.muffle) return;
+    this.muffled = on;
+    const now = this.ctx.currentTime, tau = on ? MUFFLE_IN : MUFFLE_OUT;
+    const { lp, duck } = this.muffle;
+    lp.frequency.cancelScheduledValues(now);
+    lp.frequency.setTargetAtTime(on ? MUFFLE_HZ : MUFFLE_OFF_HZ, now, tau);
+    duck.gain.cancelScheduledValues(now);
+    duck.gain.setTargetAtTime(on ? MUFFLE_GAIN : 1, now, tau);
   }
 
   /** From the menu's music slider, likewise. */

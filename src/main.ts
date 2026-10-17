@@ -40,6 +40,7 @@ import { footsteps } from './footsteps';
 import { music } from './music';
 import { uiSound } from './uiSound';
 import { breathing } from './breathing';
+import { audio } from './audio';
 import { inBase } from '../shared/base.ts';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
@@ -337,6 +338,7 @@ renderer.setAnimationLoop((time) => {
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   footsteps.listener(orbit.camera.position, orbit.yaw);
   breathing.update(survival.heatLevel, survival.dead);
+  audio.setMuffled(survival.dead); // the world goes dull while you lie dead; the music doesn't
   const cam = orbit.camera.position;
   music.update(frameDt, {
     riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
