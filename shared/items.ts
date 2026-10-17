@@ -3,20 +3,20 @@
 // the same moves at once and the server's answer then replaces them (src/net.ts).
 import { SCRAP_KINDS } from './scrap.ts';
 
-/** Item kind ids as stored in the DB. Never rename one: rows hold them. */
+/** Item kind ids as stored in the DB. Never rename one: rows hold them. `stack` is 1 for all: nothing stacks for now. */
 export const ITEMS: Record<string, { label: string; stack: number }> = {
   canteen: { label: 'Canteen', stack: 1 },
   spyglass: { label: 'Spyglass', stack: 1 },
-  oil_drum: { label: 'Oil drum', stack: 10 },
-  rusty_drum: { label: 'Rusty drum', stack: 10 },
-  gear: { label: 'Gear', stack: 10 },
-  scrap_frame: { label: 'Scrap frame', stack: 10 },
-  bent_frame: { label: 'Bent frame', stack: 10 },
-  metal_plank: { label: 'Metal plank', stack: 10 },
-  metal_sheet: { label: 'Metal sheet', stack: 10 },
-  dented_sheet: { label: 'Dented sheet', stack: 10 },
-  spring: { label: 'Spring', stack: 10 },
-  // Small crash-site machines carried home to the workbench (COMPONENTS with carry: true, shared/salvage.ts).
+  oil_drum: { label: 'Oil drum', stack: 1 },
+  rusty_drum: { label: 'Rusty drum', stack: 1 },
+  gear: { label: 'Gear', stack: 1 },
+  scrap_frame: { label: 'Scrap frame', stack: 1 },
+  bent_frame: { label: 'Bent frame', stack: 1 },
+  metal_plank: { label: 'Metal plank', stack: 1 },
+  metal_sheet: { label: 'Metal sheet', stack: 1 },
+  dented_sheet: { label: 'Dented sheet', stack: 1 },
+  spring: { label: 'Spring', stack: 1 },
+  // Small crash-site machines carried home to the disassembly table (COMPONENTS with carry: true, shared/salvage.ts).
   // The item kind is the component kind.
   robot_arm: { label: 'Robot arm joint', stack: 1 },
   control_cabinet: { label: 'Control cabinet', stack: 1 },

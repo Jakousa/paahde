@@ -24,6 +24,12 @@ Footsteps, Concrete, A (sound)
   Sliced into single steps, high-passed, levelled and converted to mono.
   File: audio/footsteps-concrete.mp3
 
+Metal Latch Sound Effect 2 (sound)
+  By deleted_user_7146007 on Freesound (https://freesound.org/s/383800/), CC0
+  (http://creativecommons.org/publicdomain/zero/1.0/).
+  Trimmed to the main hit, high-passed, faded out and converted to mono.
+  File: audio/pickup.mp3
+
 Made for this game
 ------------------
 

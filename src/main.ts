@@ -31,6 +31,7 @@ import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { footsteps } from './footsteps';
+import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
@@ -286,7 +287,8 @@ renderer.setAnimationLoop((time) => {
       } else hud.toast('Carry a small machine here to take it apart');
     } else if (tend) net.tend(bed);
     else if (target) {
-      if (!net.pickup(target)) hud.toast('Backpack full');
+      if (net.pickup(target)) pickupSound.play();
+      else hud.toast('Backpack full');
     } else if (site) {
       if (small) net.crashTake(site.site.id);
       else teardown.begin(machines.workSite(site, net.siteLink(site.site.id)));

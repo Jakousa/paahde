@@ -108,8 +108,8 @@ export class Post {
       const p = uv();
       const isSky = step(0.99999, depth.sample(p).r);
       const dist = viewZ.negate();
-      // Starts close: past ~150 m the haze has washed the ground flat, so there is nothing left to warp.
-      const far = mix(smoothstep(8, 70, dist), float(0.45), isSky);
+      // Starts at 25 m: past ~150 m the haze has washed the ground flat, so there is nothing left to warp.
+      const far = mix(smoothstep(25, 130, dist), float(0.45), isSky);
       const dy = p.y.sub(horizonY); // > 0 below the horizon
       const band = smoothstep(0.22, 0.0, abs(dy)).mul(mix(float(0.35), float(1), step(0, dy)));
       const mask = far.mul(band).mul(heatHaze);
@@ -119,7 +119,7 @@ export class Post {
       // Don't pull nearby objects (players) into the shimmer: keep the warp only if the warped
       // sample is itself far away.
       const wDist = perspectiveDepthToViewZ(depth.sample(warped).r, camNear, camFar).negate();
-      const keep = smoothstep(6, 14, wDist);
+      const keep = smoothstep(15, 30, wDist);
       return color.sample(mix(p, warped, keep)).rgb;
     })();
 

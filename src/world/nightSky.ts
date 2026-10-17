@@ -238,9 +238,13 @@ export class NightSky {
       if (p < 0 || p > 1) continue;
       // Starts high, falls a little towards the horizon on a random heading.
       skyDir(hash(w, salt + 4), hash(w, salt + 5), 0.5, 1.3, _a);
-      const heading = hash(w, salt + 6) * Math.PI * 2;
       const arc = (fireball ? 0.45 : 0.16 + 0.2 * hash(w, salt + 7));
-      _axis.set(Math.cos(heading), -0.6, Math.sin(heading)).cross(_a).normalize();
+      // Heading on the sky at the start: a random amount sideways, always some way down. Rotating the start
+      // about start × heading carries it that way.
+      const up = _b.set(0, 1, 0).addScaledVector(_a, -_a.y).normalize(); // "up" along the sky at the start
+      const side = _axis.crossVectors(_a, up);
+      side.multiplyScalar(hash(w, salt + 6) * 2 - 1).addScaledVector(up, -0.6);
+      _axis.crossVectors(_a, side).normalize();
       _b.copy(_a).applyQuaternion(_q.setFromAxisAngle(_axis, arc));
       meteorFrom[i].value.set(_a.x, _a.y, _a.z, p);
       meteorTo[i].value.set(_b.x, _b.y, _b.z, (fireball ? 9 : 2.5 + 3 * hash(w, salt + 8)));

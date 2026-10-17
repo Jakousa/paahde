@@ -9,13 +9,13 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   The old per-kind `inventory` counts are migrated into bag stacks on startup and the table dropped.
 - **Boxes** (`shared/storage.ts`): your **bag** (the 4-slot hotbar, keys 1–4, plus 8 backpack slots), the
   **sand bike** (8 slots, yours, open while riding) and the **chest** against the bunker room's back wall
-  (16 slots, shared by everyone, within 2.5 m). Scrap stacks to 10; canteen and spyglass don't stack.
+  (16 slots, shared by everyone, within 2.5 m). Nothing stacks: one item per slot (bigger stacks from before are split on load).
 - **Starter kit:** new players get the canteen (slot 1) and spyglass (slot 2), once (`starter_kits`), so
   leaving them in the chest doesn't conjure new ones. No canteen in the bag → the server refuses sips and refills.
   The hotbar now shows whatever is in the bag's first four slots, and the keys take that out.
 - **Tab** opens the inventory overlay (frees the mouse, stays fullscreen): backpack on the left, every box in
-  reach on the right, appearing and vanishing as you walk. Drag to move/merge/swap, right-drag for half a
-  stack, shift-click to send a stack across, Sort merges and orders (the hotbar stays). The client applies
+  reach on the right, appearing and vanishing as you walk. Drag to move/swap, shift-click to send an item
+  across, Sort orders (the hotbar stays). The client applies
   `moveItem()` at once; the server re-checks reach, applies the same function and answers with the boxes.
 - Pickups land in the bag after the hotbar; a full bag says "Backpack full" and leaves the piece.
 - **Next:** dropping items in the world, crafting/disassembly using them, more storage (crates at crash sites?).
@@ -24,9 +24,9 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 
 Thirst became heat: instead of water running out, heat builds up and you keep it under control.
 
-- **Meter** (0–100, `heat`; full = heatstroke): rises above 24 °C felt, on the same curve the drain used
-  (table under "Temperature and shade"). Below 24 °C it falls by itself: full → empty in **60 s** at 20 °C
-  or colder (nights), **120 s** in the base (22 °C). A sip from the canteen takes off **25**; 4 sips per
+- **Meter** (0–100, `heat`; full = heatstroke): rises above 30 °C felt (was 24), on the same curve the drain used
+  (table under "Temperature and shade"). Below 30 °C it falls by itself: full → empty in **40 s** at 22 °C or cooler
+  (the base, nights), slower between 22 and 30 °C. A sip from the canteen takes off **25**; 4 sips per
   canteen, refilled at the pump in the base as before.
 - **Death:** at 100 you die of heatstroke (`died` with `cause: 'heat'`), respawn at the base with 0 heat
   and a full canteen.
@@ -149,7 +149,7 @@ entrance hut and scrap piles block the sun.
   early once it is above the highest possible ground. It also slab-tests the hut (with its roof overhang) and
   the skylight collar as boxes, and scrap hitboxes in the first 25 m. ~15–20 µs per check (~80 µs/s per player).
 - **Heat build-up** (`shared/water.ts`; see "Heat meter" above, which replaced the thirst bar): above
-  **24 °C** the meter rises at `100/60 s × ((felt − 24) / 30)²`, ×1.5 sprinting (was `/100 s`, fourth power:
+  **30 °C** (was 24) the meter rises at `100/60 s × ((felt − 30) / 24)²`, ×1.5 sprinting (was `/100 s`, fourth power:
   too gentle, ~16 min to heatstroke standing in the 17:00 sun). Shade felt is **10 °C under the air** while
   the sun is up (fading out in its last stretch above the horizon), so behind a dune it feels ~20 °C cooler
   than the sun next to it, and slows the build-up ~8–15×.
@@ -496,6 +496,10 @@ Inside the base (`inBase` at the foot) steps come from `public/audio/footsteps-c
 steps (0.4 s slots) sliced from InspectorJ's "Footsteps, Concrete, A" on Freesound. The recording is
 quiet and peaky, so at −1.6 dBTP the sprite only reaches −30 LUFS; its gain is 0.45 (vs 0.2) so both
 surfaces walk at about the same loudness.
+
+Picking up scrap plays `public/audio/pickup.mp3` (`src/pickupSound.ts`), a metal latch from Freesound
+(CC0) trimmed to its main hit and levelled to −23 LUFS. Local only, played as you press F; GAIN 0.2
+keeps it quiet, about as loud as your own steps, with ±6% pitch.
 
 All sounds now go through `src/audio.ts`: one AudioContext, the volume slider as master gain, and the
 limiter. New sounds connect to `audio.out` (or use `audio.onStart`).
