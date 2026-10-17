@@ -36,6 +36,7 @@ import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { EngineSound } from './engineSound';
 import { footsteps } from './footsteps';
+import { music } from './music';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
@@ -68,8 +69,8 @@ const blownSand = new BlownSand(scene);
 const viewmodel = new ViewModel(orbit, scene); // first-person hands, parented to the camera
 
 const windSound = new WindSound();
-const storm = new StormFx();
 const engineSound = new EngineSound();
+const storm = new StormFx();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
 const teardown = new TeardownView(scene, orbit.camera); // F at a machine site: the character walks up and the disassembly controls take over
 // Debug handle for screenshots/tuning from the console: open with ?debug.
@@ -282,8 +283,9 @@ renderer.setAnimationLoop((time) => {
   tyreDust.update(frameDt);
   base.update();
   windSound.update(frameDt, orbit.camera.position, orbit.yaw, s);
-  footsteps.listener(orbit.camera.position, orbit.yaw);
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
+  footsteps.listener(orbit.camera.position, orbit.yaw);
+  music.update(frameDt, s);
   crashSound.update(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched

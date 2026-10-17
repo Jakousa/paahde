@@ -1,5 +1,5 @@
 // Esc menu: opens whenever the game lets go of the mouse (Esc, alt-tab) unless the inventory or the F3
-// panel took it. Resume (or a click on the backdrop) goes back in. Settings: volume (src/audio.ts) and
+// panel took it. Resume (or a click on the backdrop) goes back in. Settings: volume and music volume (src/audio.ts) and
 // the stats line in the top-left corner; below them the controls, the build/connection line and credits.
 // The game keeps running behind it: it's multiplayer, nothing pauses.
 import { audio } from './audio';
@@ -56,6 +56,7 @@ export class Menu {
     this.el.innerHTML = `<div class="panel"><h2>dadajam</h2><button class="resume">Resume</button>
 <h3>Settings</h3>
 <label class="row"><span>Volume</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
+<label class="row"><span>Music</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label>
 <label class="row"><span>Show stats</span><input class="stats" type="checkbox"></label>
 <button class="fs" style="margin-top:8px"></button>
 <h3>Controls</h3><div class="keys">${KEYS.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('')}</div>
@@ -72,6 +73,15 @@ export class Menu {
       audio.setVolume(parseFloat(vol.value));
       showVol();
     });
+    const music = this.el.querySelector<HTMLInputElement>('.music')!;
+    const musicVal = this.el.querySelector<HTMLElement>('.musicVal')!;
+    const showMusic = () => (musicVal.textContent = `${Math.round(audio.musicVolume * 100)}%`);
+    music.value = String(audio.musicVolume);
+    showMusic();
+    music.addEventListener('input', () => {
+      audio.setMusicVolume(parseFloat(music.value));
+      showMusic();
+    });
     const stats = this.el.querySelector<HTMLInputElement>('.stats')!;
     stats.checked = this.stats;
     stats.addEventListener('change', () => {
@@ -82,7 +92,7 @@ export class Menu {
       } catch {}
     });
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
-    for (const input of [vol, stats]) input.addEventListener('change', () => input.blur());
+    for (const input of [vol, music, stats]) input.addEventListener('change', () => input.blur());
 
     const fs = this.el.querySelector<HTMLButtonElement>('.fs')!;
     const showFs = () => (fs.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen');
