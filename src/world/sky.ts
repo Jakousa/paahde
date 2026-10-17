@@ -11,7 +11,7 @@ import * as THREE from 'three/webgpu';
 import { cameraPosition, fog, min, normalize, positionWorld, vec3 } from 'three/tsl';
 import { MAX_FOV } from '../camera.ts';
 import { CascadedShadows } from './cascades.ts';
-import { wideShadowFilter } from './shadowFilter.ts';
+import { setShadowNoiseAxes, wideShadowFilter } from './shadowFilter.ts';
 import { DayNight } from './dayNight.ts';
 import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm, SHADOW_ONLY_LAYER, skyRadiance, sunColor, sunDirection, sunDisc, sunLight, time } from './env.ts';
 
@@ -95,6 +95,7 @@ export class Sky {
     this.sun.target.position.copy(focus);
     this.sun.position.copy(focus).add(moonlit ? moonDirection.value : sunDirection.value);
     this.sun.target.updateMatrixWorld();
+    setShadowNoiseAxes(moonlit ? moonDirection.value : sunDirection.value);
     this.fitCascades(camera);
   }
 
@@ -124,6 +125,7 @@ export class Sky {
       shadow.bias = (-DEPTH_BIAS_TEXELS * texel) / (cam.far - cam.near); // depth bias is in [0, 1] depth units
       shadow.normalBias = NORMAL_BIAS_TEXELS * texel;
       shadow.radius = PCF_RADIUS_TEXELS[i];
+      (shadow as unknown as { texelWorld: number }).texelWorld = texel; // sizes the filter's world-pinned noise
       (shadow as unknown as { filterNode: unknown }).filterNode = wideShadowFilter; // wider than the stock 5-tap PCF
     });
   }
