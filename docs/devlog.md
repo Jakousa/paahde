@@ -2,13 +2,38 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Base becomes an underground bunker (issue #12)
+
+The dome hall, greenhouse and outdoor machines are gone (their scripts and models are in git history). The base
+is now a minimal bunker under the pad at (−10, −216): a small plaster entrance hut on the surface, stairs
+going down straight from its door, a hallway, and a 10 × 10 m concrete room with a hand water pump in the
+middle, under a gridded glass skylight.
+
+- **Layout + physics** (`shared/base.ts`): the heightfield stays where it is and is the bunker's roof.
+  `terrainHidden()` tells `step()` where the sand isn't the ground (inside the hut, and anywhere over the
+  bunker for feet that were already below the sand), so the stairs, hallway and room floors take over.
+  Walls are capsules with a height range (`y0..top`), so the buried ones don't block people walking over
+  them, and ceilings only count for players under them. The stairs are a ramp half a step under the nosings.
+  No digging over the bunker (`overBase`); players who left over it rejoin at the door.
+- **Terrain holes:** `TERRAIN_HOLES` (hut floor, skylight shaft) are cut out of the sand and the drift sheet
+  with a `maskNode` (`outsideTerrainHoles()`), which also drops them from the sun's shadow map, so the sun
+  shines down the shaft and draws the skylight's grid on the floor; the patch moves through the day.
+- **Lighting indoors** (`src/world/base.ts`): indoor materials use their own `lightsNode`: the sun, a bounce
+  light under the skylight that follows the daylight, the bulb over the stairs, and a 3% glow. No hemisphere
+  fill, so it's dark away from the light. Those lights aren't in the scene, so they don't leak onto the sand.
+- **Model:** `tools/blender/base/bunker.py` → `public/models/base/bunker.glb` (`hut`, `bunker`, `pump`,
+  ~1.9k tris). Dimensions mirror `shared/base.ts`.
+- Underground, the camera skips its stay-above-the-sand clamp, third person falls back to first person (the
+  boom would be under the sand), and the wind sound drops to a draught.
+- **Garden:** the bed code and protocol stay, but there are no beds now (`BEDS` is empty).
+- **Next:** make the pump do something (fill a canteen, water plants), and let players build the base out.
 ## 2026-10-17 — Thirst and heat
 
 The first survival mechanic: the sun dries you out, the canteen keeps you going, the base refills it.
 
 - **Water** (0–100, the thirst bar) is server-authoritative (`server/water.ts`), not in `shared/sim.ts`
   (it never moves you). Saved per browser ID in `players` (`water`, `sips` columns) with the position.
-- **Heat:** while the sun is up and you're outside the base (`insideBase`), water drains at
+- **Heat:** while the sun is up and you're outside the base (`inBase`: the hut or down in the bunker), water drains at
   `100 / 300 s × sin(elevation) / sin(57°)`: a full bar lasts **5 min at noon**, longer morning and evening,
   nothing at night or indoors. Sprinting (Shift held and moving faster than a walk) drains **1.5×**. Over a
   whole day (16 min of daylight) that's about two bars outdoors.
@@ -18,7 +43,7 @@ The first survival mechanic: the sun dries you out, the canteen keeps you going,
   server clock and therefore the heat too).
 - **Canteen** (hotbar slot 1, key **1** takes it out/puts it away): 4 sips × 25 water, starts full. With it
   out, left mouse / E don't dig: hold for 1.2 s to drink one sip (`drink`, server checks sips, a 1 s cooldown
-  and the respawn grace). In the base, **F** refills it in 1.5 s (`fill`, server checks `insideBase` + 2 m
+  and the respawn grace). In the base, **F** refills it in 1.5 s (`fill`, server checks `inBase` + 2 m
   slack); scrap pickup keeps F when a piece is targeted. The base's water is endless.
 - **Death:** at 0 you die of thirst: the server moves you to `BASE_SPAWN` with full water and canteen and
   sends `died`; the client shows "You died of thirst" for 3 s, and the next reconciliation snaps (not

@@ -15,6 +15,7 @@
 // Plays through the shared output in src/audio.ts (volume slider, limiter).
 import { audio } from './audio';
 import { uAt, ustarFrom10, wind, type WindSample } from './world/wind';
+import { heightAt } from '../shared/terrain.ts';
 
 const NOISE_S = 4;
 /** Ear height above the sand (m). */
@@ -26,6 +27,8 @@ const RING = 4;
 const RING_N = 6;
 /** How much of the local wind (vs the regional one) you hear: < 1 so dune lees are quieter, not silent. */
 const LOCAL = 0.6;
+/** Friction velocity left underground (the base's bunker), as a fraction of the surface's. */
+const BURIED = 0.2;
 /** Time constant (s) of the followed wind; about a second to settle. */
 const TAU = 0.6;
 /** Wind level at full slider volume. */
@@ -159,7 +162,7 @@ export class WindSound {
   }
 
   /** Follow the wind at the listener. `yaw` is the camera yaw (three.js: forward = (−sin, −cos)). */
-  update(dt: number, listener: { x: number; z: number }, yaw: number) {
+  update(dt: number, listener: { x: number; y: number; z: number }, yaw: number) {
     const g = this.g;
     if (!g || g.ctx.state !== 'running') return;
     this.time += dt;
@@ -179,6 +182,11 @@ export class WindSound {
     const qR = wind.storm * 4;
     us = LOCAL * (us / (RING_N + 1)) + (1 - LOCAL) * usR;
     q = LOCAL * (q / (RING_N + 1)) + (1 - LOCAL) * qR;
+    // Down in the bunker the wind is a faint draught from the skylight and the stairs.
+    if (listener.y < heightAt(listener.x, listener.z) - 0.5) {
+      us *= BURIED;
+      q = 0;
+    }
     emit /= RING_N + 1;
     if (this.ustar < 0) this.ustar = us;
     const k = 1 - Math.exp(-dt / TAU);

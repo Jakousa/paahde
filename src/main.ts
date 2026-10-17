@@ -98,7 +98,6 @@ const locator = new LocatorBar();
 const hud = new InventoryHud();
 net.onInventory = (items) => hud.setItems(items);
 const survival = new Survival(net);
-net.onGarden = (beds) => base.setBeds(beds);
 net.onTended = (what) => hud.toast(what === 'planted' ? 'Seeds planted' : 'Harvested the greens');
 
 window.addEventListener('resize', () => {
@@ -212,7 +211,7 @@ renderer.setAnimationLoop((time) => {
   blownSand.update(frameDt, focus);
   dust.update(frameDt, orbit.camera.position);
   tyreDust.update(frameDt);
-  base.update(frameDt, wind.storm);
+  base.update();
   windSound.update(frameDt, orbit.camera.position, orbit.yaw);
   footsteps.listener(orbit.camera.position, orbit.yaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);

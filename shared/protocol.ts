@@ -19,7 +19,7 @@ export type ClientMsg =
   // The server checks sips > 0, the drink cooldown and that you are not mid-respawn, then answers 'water'.
   | { t: 'drink' }
   // Refill the canteen at the base (sent when the ~1.5 s fill completes). The server checks you are in
-  // the base (insideBase with FILL_SLACK) and answers 'water'.
+  // the base (inBase with FILL_SLACK) and answers 'water'.
   | { t: 'fill' };
 
 // pitch: the player's quantized camera pitch (pitchFromQ in shared/dig.ts), so remote avatars can

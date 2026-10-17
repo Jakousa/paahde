@@ -1,4 +1,5 @@
-// The greenhouse planter beds: which beds there are (the planter pieces in shared/base.ts), their growth
+// Planter beds: which beds there are (the planter pieces in shared/base.ts; none since the base became a
+// bunker with just a pump, the greenhouse models are in git history before issue #12), their growth
 // stages, and which bed the player is looking at. The server owns the stages (server/garden.ts): F on an
 // empty bed plants it, sprouts grow on their own after GROW_MS, F on a grown bed harvests it back to soil.
 import { BASE, BASE_PIECES } from './base.ts';

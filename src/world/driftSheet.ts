@@ -18,6 +18,7 @@ import { attribute, cameraPosition, dot, exp, float, instancedBufferAttribute, l
 import { EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../shared/terrain.ts';
 import { time } from './env.ts';
 import { PEAK_LOCAL, ustarFrom10, USTAR_T, wind, type WindSample } from './wind.ts';
+import { outsideTerrainHoles } from './base.ts';
 
 const HALF = 48; // grid half-width (m)
 const STEP = 1; // grid spacing (m)
@@ -104,6 +105,7 @@ export class DriftSheet {
     const mat = new THREE.MeshLambertNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
     const h = shell.mul(spread);
     mat.positionNode = pos.add(nor.mul(h));
+    mat.maskNode = outsideTerrainHoles();
 
     const wp = varying(pos.add(nor.mul(h)));
     const hk = varying(shell);

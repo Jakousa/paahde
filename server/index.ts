@@ -7,6 +7,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { DIG_COOLDOWN_TICKS, PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
+import { overBase } from '../shared/base.ts';
 import type { ClientMsg, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
@@ -114,7 +115,8 @@ function join(ws: WebSocket, browserId: unknown, atBase: boolean) {
   if (typeof browserId !== 'string' || !UUID.test(browserId)) return ws.close(1008, 'bad browserId');
   const row = db.getPlayer(browserId);
   const color = row?.color ?? Math.floor(Math.random() * 0xffffff);
-  const state = row && !atBase ? spawnState(row.x, row.z) : spawnState();
+  // Heights aren't saved: someone who left over the bunker (or in it) starts at its door instead.
+  const state = row && !atBase && !overBase(row.x, row.z, 0.5) ? spawnState(row.x, row.z) : spawnState();
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,

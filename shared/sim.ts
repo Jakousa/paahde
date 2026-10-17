@@ -10,7 +10,7 @@
 //   speeds you up, uphill bleeds it off; steering only bends your heading. Jump out of it to keep the speed.
 // - Soft sand: you build up and lose speed a bit slowly (momentum), and hard landings bog you down briefly.
 // - Sand bike (dev helper, 9 toggles it): see stepBike() below.
-import { BASE_SPAWN, baseCeiling, collideBase } from './base.ts';
+import { BASE_SPAWN, baseCeiling, collideBase, terrainHidden } from './base.ts';
 import { collideScrap } from './scrap.ts';
 import { heightAt, WORLD_HALF } from './terrain.ts';
 
@@ -107,6 +107,11 @@ export function quantizeYaw(yaw: number): number {
 }
 export function yawFromQ(q: number): number {
   return (q / YAW_STEPS) * Math.PI * 2;
+}
+
+/** The sand's height as ground for feet that were at `prevY`: none inside the base's entrance and bunker. */
+function sandAt(x: number, z: number, prevY: number): number {
+  return terrainHidden(x, z, prevY) ? -Infinity : heightAt(x, z);
 }
 
 export function spawnState(x = SPAWN.x, z = SPAWN.z): PlayerState {
@@ -266,14 +271,14 @@ export function step(s: PlayerState, input: number, yawQ: number): PlayerState {
   c.vx = vx;
   c.vz = vz;
   const scrapTop = collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP);
-  const baseTop = collideBase(c, y, s.y, PLAYER_RADIUS, STEP_UP);
+  const baseTop = collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP);
   vx = c.vx;
   vz = c.vz;
   const x = clamp(c.x, -WORLD_HALF, WORLD_HALF);
   const z = clamp(c.z, -WORLD_HALF, WORLD_HALF);
-  const ground = Math.max(heightAt(x, z), scrapTop, baseTop);
+  const ground = Math.max(sandAt(x, z, s.y), scrapTop, baseTop);
   // Under the roof: bump your head.
-  const ceiling = baseCeiling(x, z, PLAYER_HEIGHT);
+  const ceiling = baseCeiling(x, z, s.y, PLAYER_HEIGHT);
   if (y > ceiling) {
     y = ceiling;
     if (vy > 0) vy = 0;
@@ -371,12 +376,12 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState
   c.vz = vz;
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
   const scrapTop = collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP);
-  const baseTop = collideBase(c, airborneY, s.y, BIKE_RADIUS, STEP_UP);
+  const baseTop = collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP);
   vx = c.vx;
   vz = c.vz;
   const x = clamp(c.x, -WORLD_HALF, WORLD_HALF);
   const z = clamp(c.z, -WORLD_HALF, WORLD_HALF);
-  const ground = Math.max(heightAt(x, z), scrapTop, baseTop);
+  const ground = Math.max(sandAt(x, z, s.y), scrapTop, baseTop);
   const hs = Math.hypot(vx, vz);
 
   let y: number;
@@ -406,7 +411,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean): PlayerState
       grounded = true;
     }
   }
-  const ceiling = baseCeiling(x, z, PLAYER_HEIGHT);
+  const ceiling = baseCeiling(x, z, s.y, PLAYER_HEIGHT);
   if (y > ceiling) {
     y = ceiling;
     if (vy > 0) vy = 0;
