@@ -1,10 +1,11 @@
-// Footprints in the sand: a client-side, purely visual ring buffer of small dark decals that fade out.
+// Footprints in the sand: a client-side, purely visual ring buffer of small darkening decals that fade out.
+// They multiply the already-lit sand beneath them (no lighting of their own), so they read right by day and night.
 // Avatars call `footprints.add()` when a foot plants; one InstancedMesh draws them all.
 // Prints whose ground gets dug or piled are erased, so they never float over a hole.
 import * as THREE from 'three/webgpu';
-import { clamp, float, instancedBufferAttribute } from 'three/tsl';
+import { clamp, float, instancedBufferAttribute, mix, positionWorld, vec3, vec4 } from 'three/tsl';
 import { EDIT_CELL, EDIT_CHUNK, edits, heightAt, normalAt } from '../shared/terrain.ts';
-import { time } from './world/env.ts';
+import { hazeFactor, time } from './world/env.ts';
 
 const MAX = 1024;
 const LIFE = 90; // seconds until a print has fully faded
@@ -37,8 +38,15 @@ class Footprints {
     geo.scale(0.15, 1, 0.3);
     this.spawnAttr = new THREE.InstancedBufferAttribute(this.spawn, 1);
     const age = time.sub(instancedBufferAttribute(this.spawnAttr, 'float'));
-    const mat = new THREE.MeshBasicNodeMaterial({ color: 0x3a1a0a, transparent: true, depthWrite: false });
-    mat.opacityNode = float(0.32).mul(clamp(float(1).sub(age.div(LIFE)), 0, 1));
+    const fade = clamp(float(1).sub(age.div(LIFE)), 0, 1).mul(float(1).sub(hazeFactor(positionWorld)));
+    // Pressed sand: a bit darker and warmer than the surface around it. Output is the multiply factor.
+    const factor = mix(vec3(1), vec3(0.66, 0.6, 0.55), fade);
+    const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, fog: false, toneMapped: false });
+    mat.outputNode = vec4(factor, 1);
+    mat.blending = THREE.CustomBlending;
+    mat.blendEquation = THREE.AddEquation;
+    mat.blendSrc = THREE.ZeroFactor;
+    mat.blendDst = THREE.SrcColorFactor;
     mat.polygonOffset = true;
     mat.polygonOffsetFactor = -2;
     mat.polygonOffsetUnits = -2;

@@ -10,7 +10,7 @@
 // door faces +Z, the greenhouse runs along -X. Dimensions match tools/blender/base/shell.py.
 
 /** Hall centre in world coordinates, and the floor height. */
-export const BASE = { x: -28, z: 120, y: 9.8 };
+export const BASE = { x: -10, z: -216, y: 7.5 };
 /** Where new players appear: in front of the door, looking at it (yaw 0 looks down -Z). */
 export const BASE_SPAWN = { x: BASE.x, z: BASE.z + 16 };
 
@@ -111,7 +111,7 @@ export const BASE_PIECES: BasePiece[] = [
   { glb: 'exterior', node: 'solar_still', x: -11, z: 6, fx: 0, fz: 1, hx: 1, hz: 0.5, h: 0.6 },
   { glb: 'exterior', node: 'solar_still', x: -14, z: 6, fx: 0, fz: 1, hx: 1, hz: 0.5, h: 0.6 },
   { glb: 'exterior', node: 'solar_still', x: -17, z: 6, fx: 0, fz: 1, hx: 1, hz: 0.5, h: 0.6 },
-  { glb: 'exterior', node: 'signpost', x: 2.6, z: 11.5, fx: 0, fz: 1, hx: 0.15, hz: 0.15, h: 2.6 },
+  { glb: 'exterior', node: 'signpost', x: 3.4, z: 11.5, fx: 0, fz: 1, hx: 0.15, hz: 0.15, h: 2.6 },
   ...[-19.5, -16.5, -13.5, -10.5, -4.5, -1.5, 1.5, 4.5].map((x): BasePiece => (
     { glb: 'exterior', node: 'fence', x, z: -11, fx: 0, fz: 1, hx: 1.5, hz: 0.08, h: 1.6 }
   )),

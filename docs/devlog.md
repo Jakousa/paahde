@@ -2,6 +2,41 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-17 — Item models and icons (issue #8)
+
+- `tools/blender/items.py` builds battery, electric motor and heat sink in four tiers (`scrap`, `basic`,
+  `quality`, `space`) → `public/models/items/<item>_<tier>.glb` (real metres, origin at the base centre,
+  120–710 tris) and `public/icons/items/<item>_<tier>.png` (128 px, transparent, same 3/4 ortho camera,
+  thin dark outline). Each item keeps its silhouette; tiers change finish: rusty/dented/taped →
+  plain painted → bevelled with chrome/copper/orange accents → white/gunmetal with glowing cyan.
+- **Not wired in yet:** the inventory only knows `SCRAP_KINDS`. Needs an item/tier id scheme in
+  `shared/` (and in the inventory table/protocol) before the HUD can show these icons.
+
+## 2026-10-17 — Home base
+
+New goal: plant and grow nature, push back the desert. The players' home is a homestead in a dune pan at
+(−10, −216), ~60 m from where the team was playing (prod DB positions): Tatooine-ish plaster dome crossed with steampunk brass, copper and iron
+(all original designs). New players spawn at its front door (`BASE_SPAWN`). The palms are gone
+(`tools/blender/palm.py` is kept for growing plants later).
+
+- **Layout** (`shared/base.ts`): domed hall (r 7 m, oculus skylight) with the front door facing +Z, a
+  glass greenhouse wing along −X with a rear door, and machines outside (dew condenser, cistern tank, wind
+  pump, solar stills, signpost, wind-break fence). `BASE_PIECES` places every model and gives it a hitbox.
+- **Physics:** `collideBase()` in `step()`: the hall wall is an annulus with two openings (trig-free, so it
+  matches on every engine), greenhouse walls and furniture are capsules, floors are a support height, and
+  `baseCeiling()` stops jumps at the roof. Low furniture can be jumped onto.
+- **Terrain:** `baseHeight` flattens a pad around the base (`withPad`), no digging under the floor
+  (`TerrainEdits.setMm` refuses it), no scrap piles on the pad. The wind drops to 15% indoors, so there's
+  no blown sand inside and the wind sound goes quiet.
+- **Models** (`tools/blender/base/*.py` → `public/models/base/*.glb`, made by four parallel agents):
+  `shell` (building), `hall` (workbench, shelf, stove, table, bunk, chest, radio, rug, chandelier),
+  `greenhouse` (planters in three growth stages, tree, trellis, seed cabinet, cistern, grow lamps…),
+  `exterior` (machines; `condenser_rotor` and `windpump_rotor` spin faster in wind).
+  `src/world/base.ts` loads them: glass is see-through and shadowless (sun and moon patches through the
+  portholes are real), two warm point lights light the inside at night.
+- **Next:** make the planters interactive (plant, water, grow through the stages, synced), carry water
+  from the condenser, and let greenery spread outward from the base.
+
 ## 2026-10-17 — Day and night
 
 - **24 h every 30 min** (`src/world/dayNight.ts`), on the server's wall clock (`epoch` in `welcome`,
@@ -23,7 +58,9 @@ Goal of this session: *I can roam around the desert planet with my friends in th
 ### What shipped
 
 - **First person.** Eye height 1.65 m, pointer-lock mouse look, head bob, landing dip, strafe roll, FOV
-  kick when sprinting (`src/camera.ts`).
+  kick when sprinting (`src/camera.ts`). **T** toggles a third-person view (remembered per browser): the
+  camera backs 4.5 m off along the view ray, so the crosshair still aims where digging and pickup go, and
+  the boom shortens rather than going under a dune.
 - **Movement on sand** (`shared/sim.ts`, deterministic):
   - Slower uphill (about half speed on steep ground), a bit faster downhill.
   - You slide down slopes steeper than 30° and can't climb them.

@@ -10,10 +10,10 @@ import { BASE, BASE_PIECES } from '../../shared/base.ts';
 
 const GLBS = ['shell', 'hall', 'greenhouse', 'exterior'] as const;
 
-/** Interior lights, local to the hall centre: [x, y, z, intensity, distance]. */
-const LIGHTS: [number, number, number, number, number][] = [
-  [0, 4.6, 0, 6, 12], // chandelier
-  [-13.6, 3.4, 0, 4, 10], // grow lamps
+/** Interior lights, local to the hall centre: [x, y, z, colour, intensity, distance]. */
+const LIGHTS: [number, number, number, number, number, number][] = [
+  [0, 4.4, 0, 0xffc080, 16, 16], // chandelier
+  [-13.6, 3.2, 0, 0xffe6b0, 10, 14], // grow lamps
 ];
 
 export class Base {
@@ -23,8 +23,8 @@ export class Base {
   constructor(scene: THREE.Scene) {
     this.group.position.set(BASE.x, BASE.y, BASE.z);
     scene.add(this.group);
-    for (const [x, y, z, intensity, distance] of LIGHTS) {
-      const l = new THREE.PointLight(0xffb36a, intensity, distance, 1.5);
+    for (const [x, y, z, colour, intensity, distance] of LIGHTS) {
+      const l = new THREE.PointLight(colour, intensity, distance, 1.5);
       l.position.set(x, y, z);
       this.group.add(l);
     }
