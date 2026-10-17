@@ -12,7 +12,7 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   (38 m/s) every 3.2 s. A hit or a burst within 2.2 m kills ('laser'). Server-simulated straight-line bolts
   (`tickBolts`), announced as 'shot' / 'boom'; the client draws them from its own muzzle easing onto the server's
   line (src/world/bolts.ts). Strafing works: a simulated player zig-zagging away dodged 7 shots before it closed in.
-- **Crawlers**: the same rig at ×0.11 (player-sized), 3–6 per crash site, turning up when someone comes within 300 m
+- **Crawlers**: the same rig at ×0.11 (player-sized), 1–4 per crash site (one sees you, the pack comes), turning up when someone comes within 300 m
   and gone when everyone has left. Faster than you walk (7.4 m/s, sprint away), they notice you within 12 m, bite
   (+14 heat), then back off for 9 s; they give up after a 7 s chase or 70 m from their site. Tuned as a nuisance at
   the sites, not a wall, since you can't fight back yet. Crawlers use merged parts (one or two draw calls per part,

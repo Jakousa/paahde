@@ -43,7 +43,7 @@ const CALM_MS = 20_000;
 /** Crawlers come to a site when someone is this close (m) and leave when nobody is within SITE_LEAVE_R. */
 const SITE_NEAR_R = 300;
 const SITE_LEAVE_R = 450;
-const CRAWLERS_MIN = 3, CRAWLERS_MAX = 6;
+const CRAWLERS_MIN = 1, CRAWLERS_MAX = 4;
 /** Drones over a site at night, all drones at most; they come in from DRONE_FROM (m) and patrol within DRONE_AREA. */
 const DRONES_PER_SITE = 2;
 const MAX_DRONES = 16;
@@ -226,7 +226,14 @@ export class GuardianServer {
     if (now >= g.calmUntil) {
       for (const p of exposed) {
         if (Math.hypot(p.x - g.x, p.z - g.z) > k.sight) continue;
-        if (g.prey < 0 || g.prey === p.id) this.hunt(g, p, now);
+        if (g.prey === p.id) this.hunt(g, p, now);
+        else if (g.prey < 0) {
+          this.hunt(g, p, now);
+          // One crawler sees you, the whole site's pack comes (bar any backing off after a bite).
+          if (g.kind === CRAWLER) {
+            for (const o of this.guardians) if (o !== g && o.kind === CRAWLER && o.home === g.home && o.prey < 0 && now >= o.calmUntil) this.hunt(o, p, now);
+          }
+        }
       }
     }
     if (g.prey >= 0) {
