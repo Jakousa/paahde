@@ -63,18 +63,18 @@ export const sand = {
   /** Fraction of the sun colour bounced into shadows by surrounding lit dunes. */
   bounce: uniform(0.05),
   /** Diffuse terminator: I = saturate(N·L * contrast + offset). */
-  contrast: uniform(2.1),
-  offset: uniform(0.12),
+  contrast: uniform(1.6),
+  offset: uniform(0.2),
   /** Max normal slope of the small and large ripples. */
-  rippleStrength: uniform(0.28),
-  megaRippleStrength: uniform(0.14),
+  rippleStrength: uniform(0.22),
+  megaRippleStrength: uniform(0.12),
   /** Ocean specular and rim strengths. */
   sheen: uniform(0.035),
   rim: uniform(0.18),
   /** Colour of sheen and rim (warm, so highlights read as hot sand rather than wet white). */
   sheenTint: uniform(new THREE.Color(1.0, 0.62, 0.32)),
   /** Glitter intensity (HDR; values > 1 feed bloom). */
-  glitter: uniform(14),
+  glitter: uniform(8),
 };
 
 const PI = Math.PI;
@@ -161,9 +161,9 @@ function buildSurface(): SandSurface {
   const dir = normalize(vec2(wind.x.add(wdx), wind.y.add(wdz)));
 
   // Small ripples (~0.3 m) and megaripples (~1.2 m, warped differently).
-  const s1 = along.add(w0).div(0.3);
+  const s1 = along.add(w0).div(0.16);
   const [h1, d1] = rippleProfile(s1, 0.72);
-  const s2 = along.add(w0.mul(1.6)).add(mx_noise_float(vec2(across.mul(0.05), along.mul(0.02))).mul(2.5)).div(1.2);
+  const s2 = along.add(w0.mul(1.6)).add(mx_noise_float(vec2(across.mul(0.05), along.mul(0.02))).mul(2.5)).div(0.9);
   const [, d2] = rippleProfile(s2, 0.68);
   // Crest strength varies a little so the pattern isn't mechanical.
   const vary = mx_noise_float(xz.mul(0.15).add(5.3)).mul(0.35).add(0.8);
@@ -184,13 +184,14 @@ function buildSurface(): SandSurface {
   // Second, coarser speckle (~4 cm) keeps mid-distance sand matte and gritty instead of smooth.
   const gq2 = p.mul(24);
   const grainFade2 = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(gq2))));
-  const grain = mx_cell_noise_float(gq).sub(0.5).mul(0.34).mul(grainFade)
-    .add(mx_cell_noise_float(gq2.add(7.1)).sub(0.5).mul(0.16).mul(grainFade2))
+  // Smooth value noise rather than cell noise: cell noise reads as square pixels up close.
+  const grain = mx_noise_float(gq).mul(0.2).mul(grainFade)
+    .add(mx_noise_float(gq2.add(7.1)).mul(0.12).mul(grainFade2))
     .add(1);
   const albedo = mix(sand.albedoRed, sand.albedoGold, patch)
     .mul(grain)
     .mul(float(1).sub(slip.mul(0.12)))
-    .mul(float(1).sub(float(1).sub(h1).mul(f1).mul(0.08)));
+    .mul(float(1).sub(float(1).sub(h1).mul(f1).mul(0.03)));
 
   return { p, n0, n, nSpec, v, albedo, slip, dist, rippleVis: f1 };
 }
