@@ -16,7 +16,7 @@
 import * as THREE from 'three/webgpu';
 import { BACK, FORWARD, LEFT, RIGHT } from '../../shared/sim.ts';
 import { type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
-import { keyHeld, tools, ui } from '../input.ts';
+import { capture, keyHeld, takePickup, tools, ui } from '../input.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi } from './ui.ts';
@@ -178,10 +178,12 @@ export class TeardownView {
 
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
+  private canvas: HTMLElement;
 
-  constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
+  constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, canvas: HTMLElement) {
     this.scene = scene;
     this.camera = camera;
+    this.canvas = canvas;
     this.ui = new TeardownUi(() => this.end());
     const o = this.ui.overlay;
     o.addEventListener('pointerdown', (e) => this.onDown(e));
@@ -199,6 +201,13 @@ export class TeardownView {
     }, { passive: false });
     addEventListener('keydown', (e) => {
       if (this.phase === 'idle' || e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement) return;
+      // F leaves (as it came in), straight back into the game; Esc too, leaving the mouse free.
+      if (e.code === 'KeyF' && !e.repeat) {
+        takePickup(); // the same press doesn't start it again
+        this.end();
+        capture(this.canvas);
+        return;
+      }
       if (e.code === 'Escape') {
         e.stopImmediatePropagation(); // Esc here only leaves: never also the Esc menu (src/menu.ts)
         this.end();

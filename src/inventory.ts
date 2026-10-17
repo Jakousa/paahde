@@ -19,7 +19,7 @@ import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { canDropAt } from '../shared/loot.ts';
-import { ui } from './input';
+import { takePickup, ui } from './input';
 import type { Net } from './net';
 
 const TOAST_MS = 1600;
@@ -305,6 +305,11 @@ export class InventoryHud {
         e.preventDefault(); // never the browser's focus cycling
         if (!e.repeat) this.toggle(!ui.inventoryOpen);
       } else if (e.code === 'Escape' && ui.inventoryOpen) this.toggle(false);
+      else if (e.code === 'KeyF' && !e.repeat && ui.inventoryOpen) {
+        // F closes it too (the workbench opens with F); the same press doesn't open it again.
+        takePickup();
+        this.toggle(false);
+      }
       else if (e.code === 'KeyR' && !e.repeat && this.drag?.moved) this.turn();
     });
     // A click on the dimmed backdrop closes it, back into the game.

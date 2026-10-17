@@ -85,7 +85,7 @@ const storm = new StormFx();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
 const wrecks = new Wrecks(scene); // salvage wrecks out in the desert, carried home to the disassembly table
 const guardianFx = new GuardianFx(scene); // the giant walkers around the crash sites, and the night drones
-const teardown = new TeardownView(scene, orbit.camera); // F at a machine site: the character walks up and the disassembly controls take over
+const teardown = new TeardownView(scene, orbit.camera, renderer.domElement); // F at a machine site: the character walks up and the disassembly controls take over
 machines.busy = () => teardown.current?.id;
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {

@@ -103,7 +103,7 @@ export class TeardownUi {
     o.innerHTML = `<div id="tdTags"></div>
 <svg id="tdRing" viewBox="0 0 ${RING_R * 2 + 12} ${RING_R * 2 + 12}"><circle class="bg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}"/><circle class="fg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/></svg>
 <div class="panel" id="tdTop">
-  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button><kbd>Esc</kbd></button></div>
+  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button><kbd>F</kbd></button></div>
   <div class="meters"><span>steps</span><div class="bar steps"><i></i></div><b class="ns"></b><span>parts</span><div class="bar parts"><i></i></div><b class="np"></b></div>
   <div class="next"></div>
 </div>
