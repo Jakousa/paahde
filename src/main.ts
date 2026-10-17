@@ -56,6 +56,7 @@ import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
 import { equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootName } from './world/loot';
 import { Detector } from './detector';
+import { Chat } from './chat';
 import { tools } from './input';
 import { Wrecks } from './world/wrecks';
 import { GuardianFx } from './guardians';
@@ -119,6 +120,7 @@ machines.bench.onReady = () => {
   if (job && !teardown.active && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 5) teardown.begin(job);
 };
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear(), (what) => net.summonBot(what));
+new Chat(net);
 const lootView = new LootView(scene);
 const detector = new Detector();
 const digFx = new DigFx(scene);

@@ -1,0 +1,103 @@
+// Chat: Enter opens a line at the bottom left, Enter sends it (Esc or an empty line just closes). Lines from
+// everyone show above it for a while, each behind a swatch of the speaker's avatar colour; while typing, the
+// recent ones all come back. The input keeps the keys to itself, so typing doesn't walk, dig or open menus.
+import { CHAT_MAX } from '../shared/protocol.ts';
+import type { Net } from './net';
+import { tools, ui } from './input';
+
+/** How long a line stays up (ms), fading out over the last second. */
+const SHOW_MS = 12000;
+/** Lines kept (shown while typing). */
+const KEEP = 12;
+
+const css = `
+#chat { position: fixed; left: 16px; bottom: 110px; width: min(380px, calc(100vw - 32px)); z-index: 6;
+  pointer-events: none; font: 13px var(--mono); color: #f2e6d6; }
+#chat .log { display: flex; flex-direction: column; gap: 2px; }
+#chat .line { padding: 2px 6px; border-radius: 4px; background: rgba(20, 14, 10, 0.45); text-shadow: 0 1px 2px #000;
+  overflow-wrap: anywhere; animation: chatFade ${SHOW_MS}ms linear forwards; }
+#chat .line i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; }
+#chat .line.gone { animation: none; opacity: 0; visibility: hidden; }
+#chat.open .line { animation: none; opacity: 1; visibility: visible; }
+@keyframes chatFade { 0%, 92% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
+#chat input { display: none; box-sizing: border-box; width: 100%; margin-top: 4px; padding: 5px 7px; border-radius: 4px;
+  border: 1px solid rgba(255, 240, 220, 0.25); background: rgba(20, 14, 10, 0.75); color: #fff4e4;
+  font: 13px var(--mono); outline: none; pointer-events: auto; }
+#chat.open input { display: block; }
+`;
+
+export class Chat {
+  private el = document.createElement('div');
+  private log = document.createElement('div');
+  private input = document.createElement('input');
+
+  constructor(net: Net) {
+    const style = document.createElement('style');
+    style.textContent = css;
+    document.head.appendChild(style);
+    this.el.id = 'chat';
+    this.log.className = 'log';
+    this.input.maxLength = CHAT_MAX;
+    this.input.autocomplete = 'off';
+    this.input.spellcheck = false;
+    this.el.append(this.log, this.input);
+    document.body.append(this.el);
+
+    net.onChat = (m) => this.add(m.color, m.text);
+
+    // Only from the game itself: not over the inventory, the Esc menu or the disassembly.
+    addEventListener('keydown', (e) => {
+      if (e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
+      if (e.repeat || this.open || !document.pointerLockElement || ui.inventoryOpen || tools.frozen) return;
+      e.preventDefault(); // or the same press lands in the input
+      this.toggle(true);
+    });
+    // Every key stays in the input: the game's own listeners are on window, past this one.
+    this.input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+        e.preventDefault();
+        const text = this.input.value.trim();
+        if (text) net.chat(text);
+        this.toggle(false);
+      } else if (e.code === 'Escape') {
+        e.preventDefault();
+        this.toggle(false);
+      }
+    });
+    // Clicking back into the game (or anywhere else) drops the line.
+    this.input.addEventListener('blur', () => this.toggle(false));
+  }
+
+  get open() {
+    return this.el.classList.contains('open');
+  }
+
+  private toggle(open: boolean) {
+    if (open === this.open) return;
+    this.el.classList.toggle('open', open);
+    if (open) this.input.focus();
+    else {
+      this.input.value = '';
+      this.input.blur();
+      // Each line fades on from where its own time is up to, not from the start.
+      const now = performance.now();
+      for (const line of this.log.children as HTMLCollectionOf<HTMLElement>) {
+        const age = now - Number(line.dataset.at);
+        line.classList.toggle('gone', age >= SHOW_MS);
+        line.style.animationDelay = `${-age}ms`;
+      }
+    }
+  }
+
+  private add(color: number, text: string) {
+    const line = document.createElement('div');
+    line.className = 'line';
+    line.dataset.at = String(performance.now());
+    const swatch = document.createElement('i');
+    swatch.style.background = `#${color.toString(16).padStart(6, '0')}`;
+    line.append(swatch, text);
+    this.log.append(line);
+    while (this.log.children.length > KEEP) this.log.firstElementChild!.remove();
+  }
+}

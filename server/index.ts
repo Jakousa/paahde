@@ -19,6 +19,7 @@ import { BLAST_R as MISSILE_BLAST_R } from '../shared/missiles.ts';
 import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import { CHAT_MAX } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
@@ -87,6 +88,7 @@ type Player = {
   /** Dead and lying where they fell until `until` (Date.now ms), thrown by `push` (shared/ragdoll.ts). */
   down: { until: number; push: [number, number, number] } | null;
   firedAt: number; // last laser rifle shot (performance.now() ms)
+  chatAt: number; // last chat line (performance.now() ms)
 };
 
 const players = new Map<WebSocket, Player>();
@@ -150,6 +152,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'lootTake' && p) return onLootTake(p, msg.id);
     if (msg.t === 'drop' && p) return onDrop(p, msg.box, msg.slot);
     if (msg.t === 'debugGear' && p) return onDebugGear(p);
+    if (msg.t === 'chat' && p) return onChat(p, msg.text);
     if (msg.t === 'hands' && p) {
       p.hands = msg.hands === 1 || msg.hands === 2 ? msg.hands : 0;
       p.slot = Number.isInteger(msg.slot) && (msg.slot as number) >= 0 && (msg.slot as number) < HOTBAR ? (msg.slot as number) : -1;
@@ -196,7 +199,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, down: null, firedAt: 0,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, down: null, firedAt: 0, chatAt: 0,
   };
   players.set(ws, p);
   save(p);
@@ -330,6 +333,20 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
   const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
   for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
   if (r.kill) dropSpoils(r.kill);
+}
+
+/** Chat lines no closer together than this (ms). */
+const CHAT_GAP_MS = 400;
+/** A chat line: one line of printable text, at most CHAT_MAX long, to everyone. */
+function onChat(p: Player, text: unknown) {
+  if (typeof text !== 'string') return;
+  const now = performance.now();
+  if (now - p.chatAt < CHAT_GAP_MS) return;
+  const clean = text.replace(/[\p{Cc}\p{Cf}]/gu, ' ').trim().slice(0, CHAT_MAX);
+  if (!clean) return;
+  p.chatAt = now;
+  const json = JSON.stringify({ t: 'chat', id: p.id, color: p.color, text: clean } satisfies ServerMsg);
+  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
 }
 
 /** What a killed walker leaves: a guardian a few good parts, a crawler now and then a poor one; a downed drone one. */

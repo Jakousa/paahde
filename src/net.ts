@@ -146,6 +146,8 @@ export class Net {
   bots: Extract<ServerMsg, { t: 'bots' }>[] = [];
   /** A guardian's laser bolt was fired or burst (src/world/bolts.ts). */
   onBolt?: (msg: Extract<ServerMsg, { t: 'shot' | 'boom' | 'missile' | 'blast' }>) => void;
+  /** A chat line from player `id` (us too), src/chat.ts. */
+  onChat?: (msg: Extract<ServerMsg, { t: 'chat' }>) => void;
   /** Another player's laser rifle shot (src/rifle.ts draws it). */
   onZap?: (msg: Extract<ServerMsg, { t: 'zap' }>) => void;
   /** A bed we tended was planted or harvested. */
@@ -297,6 +299,11 @@ export class Net {
       },
       holders: (i) => this.holders.get(id)?.get(i) ?? 0,
     };
+  }
+
+  /** Say something in chat; it comes back as 'chat' to everyone. */
+  chat(text: string) {
+    if (this.connected) this.send({ t: 'chat', text });
   }
 
   /** One sip finished (src/water.ts); the server answers with 'water'. */
@@ -573,6 +580,7 @@ export class Net {
     }
     if (msg.t === 'shot' || msg.t === 'boom' || msg.t === 'missile' || msg.t === 'blast') return this.onBolt?.(msg);
     if (msg.t === 'zap') return this.onZap?.(msg);
+    if (msg.t === 'chat') return this.onChat?.(msg);
     if (msg.t === 'bots') {
       this.bots.push(msg);
       if (this.bots.length > 12) this.bots.shift();

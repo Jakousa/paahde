@@ -87,7 +87,13 @@ export type ClientMsg =
   | { t: 'siteLeave'; id: string }
   | { t: 'siteHold'; id: string; i: number; players: number; on: boolean }
   | { t: 'siteDone'; id: string; i: number }
-  | { t: 'siteTake'; id: string; i: number };
+  | { t: 'siteTake'; id: string; i: number }
+  // A chat line (Enter, src/chat.ts). The server trims it to CHAT_MAX, drops empty ones and rate-limits, then sends
+  // it to everyone as 'chat'.
+  | { t: 'chat'; text: string };
+
+/** Longest chat line (characters). */
+export const CHAT_MAX = 160;
 
 /** The job on the disassembly table: which carried machine, its seed (picked by the server), progress so far. */
 export type BenchJob = { kind: string; seed: number; done: number[]; taken: number[] };
@@ -202,6 +208,8 @@ export type ServerMsg =
   | ({ t: 'missile'; id: number; g: number; time: number } & MissilePath)
   | { t: 'blast'; id: number; x: number; y: number; z: number }
   // Player `by` fired a laser rifle (or the pistol: `pistol`) from (x, y, z) to (ex, ey, ez); `hit`: it broke a weak point there.
+  // Player `id` (public id; `color` their avatar's) said `text` in chat, to everyone (also back to the sender).
+  | { t: 'chat'; id: number; color: number; text: string }
   | { t: 'zap'; by: number; x: number; y: number; z: number; ex: number; ey: number; ez: number; hit: boolean; pistol?: true };
 
 export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler';
