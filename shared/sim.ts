@@ -27,8 +27,8 @@ const MAX_FALL = -50;
 // Slopes. `rise` is the slope (tan of the angle) along the movement direction.
 const UPHILL_DRAG = 1.6; // speed factor uphill = 1 / (1 + UPHILL_DRAG * rise)
 const DOWNHILL_BOOST = 0.35; // speed factor downhill = 1 + DOWNHILL_BOOST * min(-rise, 0.6)
-/** tan(34°): the angle of repose of dry sand. Steeper ground is a slip face. */
-export const SLIP_TAN = 0.6745;
+/** tan(30°): just under the dunes' 32° slip faces (shared/dunes.ts), so they slide. Steeper ground is a slip face. */
+export const SLIP_TAN = 0.58;
 const SLIDE_FRICTION = 0.45; // kinetic friction of a sliding sand layer (lower than the static 0.67)
 const SLIDE_PUSH = 3; // extra downhill shove (m/s²) so a slip face always moves you
 const SLIDE_CONTROL = 0.45; // fraction of normal speed you can steer with while sliding
