@@ -98,8 +98,9 @@ Thirst now follows a **felt temperature** instead of the sun's elevation, and sh
 entrance hut and scrap piles block the sun.
 
 - **Air temperature** (`shared/temperature.ts`, plain math on the shared clock): 12 °C at 05:30 (just before
-  sunrise), 44 °C at 14:00 (the peak lags noon by two hours, as in real deserts). It warms along a half
-  cosine and cools along a squared half cosine, so evenings drop fast: ~35 °C at 18:00, ~23 °C at 21:00,
+  sunrise), 44 °C at 14:00 (the peak lags noon by two hours, as in real deserts). It warms along an
+  inverted squared half cosine, so mornings warm fast (~17 °C at 07:00, ~31 °C at 09:00), and cools along a
+  squared half cosine, so evenings drop fast: ~35 °C at 18:00, ~23 °C at 21:00,
   ~15 °C at midnight.
 - **Felt temperature** = air + up to **+12 °C in direct sun** (× sin(elevation)/sin(noon elevation)); no
   bonus in shade or at night. In the base (`inBase`: hut or bunker) it is `min(air, 22 °C)`.
