@@ -938,13 +938,14 @@ def arms_down(pose, l_down=18, r_down=18, l_swing=0, r_swing=0, l_elbow=12, r_el
 
 
 def legs(pose, lt, lk, lf, rt, rk, rf, l_out=0.0, r_out=0.0):
-    """Thigh forward angle (deg, + = forward), knee flex (+ = bend), foot (+ = toes down)."""
-    pose['LeftUpLeg'] = rot((X, -lt), (Y, l_out))
-    pose['RightUpLeg'] = rot((X, -rt), (Y, -r_out))
+    """Thigh forward angle (deg, + = forward), knee flex (+ = bend), foot (+ = toes down),
+    thigh spread (deg, + = away from the other leg; the foot rolls back so the sole stays flat)."""
+    pose['LeftUpLeg'] = rot((X, -lt), (Y, -l_out))
+    pose['RightUpLeg'] = rot((X, -rt), (Y, r_out))
     pose['LeftLeg'] = rot((X, lk))
     pose['RightLeg'] = rot((X, rk))
-    pose['LeftFoot'] = rot((X, lf))
-    pose['RightFoot'] = rot((X, rf))
+    pose['LeftFoot'] = rot((X, lf), (Y, l_out))
+    pose['RightFoot'] = rot((X, rf), (Y, -r_out))
 
 
 def pos(x):
@@ -980,7 +981,7 @@ def idle(p):
         'Head': rot((X, 2 + 2 * math.sin(w * 2 + 1)), (Z, 8 * math.sin(w + 0.3))),
     }
     arms_down(pose, 17 + 1.5 * br, 18 - 1.5 * br, l_elbow=14, r_elbow=12, l_swing=3, r_swing=-2)
-    legs(pose, 3, 4, -1, -2, 2, 0, l_out=3, r_out=4)
+    legs(pose, 3, 4, -1, -2, 2, 0, l_out=2.5, r_out=3)
     # Legs are FK, so the pelvis must stay put or the feet skate: no hip roll/yaw, only the breathing dip.
     return pose, (0, 0, -0.006 + 0.003 * br)
 
@@ -996,7 +997,7 @@ def walk(p):
     pose = {'Hips': rot((Z, -6 * c), (Y, 2.5 * math.sin(2 * w))),
             'Spine': rot((X, 4), (Z, 3 * c)), 'Spine1': rot((Z, 3 * c)), 'Spine2': rot((Z, 2 * c), (X, 2)),
             'Neck': rot((X, -2)), 'Head': rot((Z, -2 * c), (X, 1))}
-    legs(pose, lt, lk, lf, rt, rk, rf)
+    legs(pose, lt, lk, lf, rt, rk, rf, l_out=2, r_out=2)
     arms_down(pose, 19, 19, l_swing=-20 * c, r_swing=20 * c, l_elbow=16 + 10 * pos(-c), r_elbow=16 + 10 * pos(c))
     return pose, (0, 0, -0.025 - 0.018 * math.cos(2 * w))
 
@@ -1011,7 +1012,7 @@ def run(p):
     rf = 10 + 25 * pos(math.sin(w - 0.4)) - 12 * pos(-c)
     pose = {'Hips': rot((X, 8), (Z, -9 * c)), 'Spine': rot((X, 6), (Z, 5 * c)), 'Spine1': rot((X, 2), (Z, 5 * c)),
             'Spine2': rot((Z, 3 * c)), 'Neck': rot((X, -8)), 'Head': rot((X, -4), (Z, -3 * c))}
-    legs(pose, lt, lk, lf, rt, rk, rf)
+    legs(pose, lt, lk, lf, rt, rk, rf, l_out=2.5, r_out=2.5)
     arms_down(pose, 22, 22, l_swing=-42 * c + 10, r_swing=42 * c + 10, l_elbow=75 + 15 * c, r_elbow=75 - 15 * c,
               l_out=-8, r_out=-8)
     return pose, (0, -0.04, -0.07 + 0.035 * math.cos(2 * w + 0.7))
@@ -1022,7 +1023,7 @@ def jump(p):
     s = math.sin(w)
     pose = {'Hips': rot((X, -6)), 'Spine': rot((X, 8 + s)), 'Spine1': rot((X, 4)), 'Neck': rot((X, -6)),
             'Head': rot((X, -4))}
-    legs(pose, 55 + 3 * s, 85 + 4 * s, 25, 25 - 3 * s, 70 - 4 * s, 30, l_out=6, r_out=6)
+    legs(pose, 55 + 3 * s, 85 + 4 * s, 25, 25 - 3 * s, 70 - 4 * s, 30, l_out=4, r_out=4)
     arms_down(pose, -15 + 4 * s, -15 - 4 * s, l_swing=25, r_swing=10, l_elbow=40, r_elbow=55, l_out=10, r_out=10)
     return pose, (0, 0, 0.12)
 
@@ -1033,7 +1034,7 @@ def dig(p):
     pose = {'Hips': rot((X, 12)), 'Spine': rot((X, 18 + 2 * s), (Z, 6 * s)), 'Spine1': rot((X, 14), (Z, 5 * s)),
             'Spine2': rot((X, 10)), 'Neck': rot((X, 8)), 'Head': rot((X, 14), (Z, -6 * s))}
     # kneel: left foot planted forward, right knee on the ground
-    legs(pose, 82, 98, 6, -8, 98, -40, l_out=8, r_out=4)
+    legs(pose, 82, 98, 6, -8, 98, -40, l_out=5, r_out=3)
     # alternating scooping: hand reaches forward-down then pulls sand back between the knees
     lr, rr = 0.5 + 0.5 * math.sin(w), 0.5 + 0.5 * math.sin(w + math.pi)
     arms_down(pose, 6, 6, l_swing=35 + 45 * lr, r_swing=35 + 45 * rr, l_elbow=40 - 30 * lr, r_elbow=40 - 30 * rr,
@@ -1049,7 +1050,7 @@ def slide(p):
     pose = {'Hips': rot((Z, 28 + 3 * s), (X, 6)), 'Spine': rot((Z, -14), (X, 12 + 2 * s), (Y, 4 * s)),
             'Spine1': rot((Z, -10), (X, 6)), 'Spine2': rot((Z, -4)), 'Neck': rot((Z, -10), (X, -6)),
             'Head': rot((Z, -6 - 3 * s), (X, -4))}
-    legs(pose, 48, 78 + 3 * s, 25, -6, 48 - 3 * s, 32, l_out=10, r_out=12)
+    legs(pose, 48, 78 + 3 * s, 25, -6, 48 - 3 * s, 32, l_out=6, r_out=7)
     arms_down(pose, -38 + 6 * s, -32 - 6 * s, l_swing=18, r_swing=-10, l_elbow=30, r_elbow=24, l_out=-10, r_out=12)
     return pose, (0.03 * s, 0.0, -0.30 + 0.01 * math.sin(2 * w))
 

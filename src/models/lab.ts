@@ -1,6 +1,7 @@
 // Model review page (models-lab.html): every scavenger clip side by side under a warm low sun, plus the
 // first-person hands and props when present. Drag to orbit, wheel to zoom. ?clip=Run shows one clip large.
-// ?walk: the characters walk circles over rolling dunes instead, to check foot planting and leg IK.
+// ?walk: the characters walk circles over rolling dunes instead, to check foot planting and leg IK;
+// &heading=1.57 strafes right, 3.14 backs up (travel direction relative to facing).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ScavengerModel, type ScavengerClip } from './scavenger';
@@ -27,6 +28,7 @@ scene.add(sun);
 
 const params = new URLSearchParams(location.search);
 const walking = params.has('walk');
+const heading = Number(params.get('heading') ?? 0);
 const dune = (x: number, z: number) => (walking ? 0.45 * Math.sin(x * 0.55) * Math.cos(z * 0.45) + 0.12 * x : 0);
 const groundGeo = walking ? new THREE.PlaneGeometry(60, 60, 240, 240).rotateX(-Math.PI / 2) : new THREE.CircleGeometry(80, 64).rotateX(-Math.PI / 2);
 if (walking) {
@@ -124,6 +126,7 @@ renderer.setAnimationLoop((time) => {
       sliding: clip === 'Slide',
       pitch: clip === 'Idle' ? Math.sin(time / 1500) * 0.5 : 0,
       plant: walking,
+      heading: walking ? heading : 0,
       ground: walking ? dune : undefined,
     };
     if (walking) {
@@ -133,7 +136,7 @@ renderer.setAnimationLoop((time) => {
       const r = pose.speed > 0 ? 2.5 : 0;
       const x = home.x + r * Math.cos(a), z = home.z + r * Math.sin(a);
       m.root.position.set(x, dune(x, z) + (clip === 'Jump' ? 0.5 : 0), z);
-      m.root.rotation.y = Math.PI - a;
+      m.root.rotation.y = Math.PI - a + (pose.speed > 0 ? heading : 0);
     }
     m.update(pose, dt);
   }

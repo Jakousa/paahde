@@ -12,11 +12,15 @@ import { SHADOW_ONLY_LAYER } from './world/env.ts';
 export type AvatarPose = {
   x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
   sliding?: boolean; digging?: boolean; pitch?: number;
+  /** Ground velocity, for which way the legs walk relative to facing (defaults to straight ahead). */
+  vx?: number; vz?: number;
 };
 
 /** What a model needs each frame; placement is already applied to its parent. */
 export type ModelPose = {
   speed: number; grounded: boolean; digging?: boolean; sliding?: boolean; pitch?: number;
+  /** Direction of travel relative to facing (rad): 0 ahead, +π/2 to the right, ±π backwards. */
+  heading?: number;
   /** Sand height under the feet, when standing on sand (not scrap): lets the model plant its feet. */
   ground?: (x: number, z: number) => number;
 };
@@ -113,9 +117,14 @@ export class Avatar {
     this.root.rotation.y = this.facing;
 
     const sliding = pose.sliding ?? (pose.grounded && pose.speed > 2 && isSlipFace(pose.x, pose.z));
+    // Travel direction in the body frame (facing f looks along (-sin f, -cos f)).
+    const vx = pose.vx ?? 0, vz = pose.vz ?? 0;
+    const ahead = -vx * Math.sin(this.facing) - vz * Math.cos(this.facing);
+    const right = vx * Math.cos(this.facing) - vz * Math.sin(this.facing);
+    const heading = pose.vx === undefined ? 0 : Math.atan2(right, ahead);
     const onSand = pose.grounded && Math.abs(pose.y - heightAt(pose.x, pose.z)) < 0.05;
     this.model.update(
-      { speed: pose.speed, grounded: pose.grounded, sliding, digging: pose.digging, pitch: pose.pitch, ground: onSand ? heightAt : undefined },
+      { speed: pose.speed, grounded: pose.grounded, sliding, digging: pose.digging, pitch: pose.pitch, heading, ground: onSand ? heightAt : undefined },
       dt,
     );
 

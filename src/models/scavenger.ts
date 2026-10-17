@@ -20,6 +20,9 @@ export type ScavengerPose = {
   sliding?: boolean;
   /** Look pitch in radians (+ = up); tilts neck and head. */
   pitch?: number;
+  /** Direction of travel relative to facing (rad): 0 ahead, +π/2 right, ±π backwards. Turns the hips
+   *  toward it (the torso keeps facing ahead) and plays the stride in reverse when backing up. */
+  heading?: number;
   /** Sand height sampler for foot placement; omit when not standing on sand (flat feet). */
   ground?: Ground;
   /** Pin planted feet to the world (default true). Off for a model animating in place, e.g. the lab. */
@@ -34,6 +37,7 @@ const FADE = 0.2;
 const WALK_REF = 1.3;
 const RUN_REF = 4.7;
 const RUN_ABOVE = 2.8;
+const MAX_HIP_YAW = 1.0; // rad; strafing beyond this shows as a crab-walk rather than hips turned further
 
 let cached: Promise<GLTF> | null = null;
 const ANKLES = ['LeftFoot', 'RightFoot'];
@@ -62,6 +66,10 @@ export class ScavengerModel {
   /** Bones adjusted after the mixer, with their animated rotation (see update()). */
   private posed: { bone: THREE.Object3D; base: THREE.Quaternion }[] = [];
   private speed = 0;
+  private backwards = false;
+  private hipYaw = 0;
+  private hips: THREE.Object3D | null = null;
+  private spine: THREE.Object3D | null = null;
   private color: number;
   private disposed = false;
 
@@ -99,7 +107,9 @@ export class ScavengerModel {
     }
     if (!lowest.has(gltf)) lowest.set(gltf, lowestAnkles(gltf.scene, gltf.animations, ANKLES));
     this.minAnkle = lowest.get(gltf)!;
-    for (const b of [this.neck, this.head, ...legs.flat()]) if (b) this.posed.push({ bone: b, base: b.quaternion.clone() });
+    this.hips = bone('Hips') ?? null;
+    this.spine = bone('Spine') ?? null;
+    for (const b of [this.neck, this.head, this.hips, this.spine, ...legs.flat()]) if (b) this.posed.push({ bone: b, base: b.quaternion.clone() });
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
     this.root.add(model);
@@ -144,11 +154,24 @@ export class ScavengerModel {
     // Remote speeds arrive as 20 Hz steps; smooth them so playback rate (and the feet) don't jitter.
     this.speed += (pose.speed - this.speed) * (1 - Math.exp(-dt * 10));
     const speed = this.speed;
+    // Backing up plays the stride in reverse; the hips turn toward the travel direction (or away from it
+    // when backing up) so diagonal and sideways moves step that way instead of moonwalking.
+    const heading = pose.heading ?? 0;
+    const moving = pose.grounded && !pose.sliding && !pose.digging && speed > 0.25;
+    if (moving) {
+      const ahead = Math.cos(heading);
+      if (ahead < -0.25) this.backwards = true;
+      else if (ahead > 0.1) this.backwards = false;
+    }
+    const legDir = this.backwards ? Math.atan2(-Math.sin(heading), -Math.cos(heading)) : heading;
+    const hipTarget = moving ? clamp(legDir, -MAX_HIP_YAW, MAX_HIP_YAW) : 0;
+    this.hipYaw += (hipTarget - this.hipYaw) * (1 - Math.exp(-dt * 8));
+    const dir = this.backwards ? -1 : 1;
     if (!pose.grounded) this.play('Jump');
     else if (pose.sliding) this.play('Slide');
     else if (pose.digging) this.play('Dig');
-    else if (speed > RUN_ABOVE) this.play('Run', FADE, clamp(speed / RUN_REF, 0.75, 1.6));
-    else if (speed > 0.25) this.play('Walk', FADE, clamp(speed / WALK_REF, 0.6, 1.8));
+    else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(speed / RUN_REF, 0.75, 1.6));
+    else if (speed > 0.25) this.play('Walk', FADE, dir * clamp(speed / WALK_REF, 0.6, 1.8));
     else this.play('Idle');
     // The mixer only writes a bone when its animated value changes, so on a constant track (Dig's Neck,
     // its kneeling legs) last frame's look tilt / IK would stay in place and pile up. Undo them first.
@@ -156,11 +179,16 @@ export class ScavengerModel {
     this.mixer.update(dt);
     for (const p of this.posed) p.base.copy(p.bone.quaternion);
 
+    this.root.updateMatrixWorld(true);
+    if (Math.abs(this.hipYaw) > 1e-3 && this.hips && this.spine) {
+      // +heading is to the right, which is a negative turn about +Y; the spine turns back to face ahead.
+      rotateAboutRoot(this.root, this.hips, Y_AXIS, -this.hipYaw);
+      rotateAboutRoot(this.root, this.spine, Y_AXIS, this.hipYaw);
+    }
     const pitch = clamp(pose.pitch ?? 0, -1.1, 1.1);
     if (pitch !== 0 && this.neck && this.head) {
-      this.root.updateMatrixWorld(true);
-      tiltAboutRootX(this.root, this.neck, pitch * 0.4);
-      tiltAboutRootX(this.root, this.head, pitch * 0.6);
+      rotateAboutRoot(this.root, this.neck, X_AXIS, pitch * 0.4);
+      rotateAboutRoot(this.root, this.head, X_AXIS, pitch * 0.6);
     }
     // Plant the feet: lock while the clip has them down (not when sliding: the sand moves with you).
     const clip = this.current?.getClip().name ?? '';
@@ -190,9 +218,12 @@ const _axis = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _qa = new THREE.Quaternion();
 
-/** Rotate `bone` by `angle` about the root's local X axis (+ = look up for a model facing -Z). */
-function tiltAboutRootX(root: THREE.Object3D, bone: THREE.Object3D, angle: number) {
-  _axis.set(1, 0, 0).transformDirection(root.matrixWorld);
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+
+/** Rotate `bone` by `angle` about one of the root's local axes (about X, + = look up for a model facing -Z). */
+function rotateAboutRoot(root: THREE.Object3D, bone: THREE.Object3D, axis: THREE.Vector3, angle: number) {
+  _axis.copy(axis).transformDirection(root.matrixWorld);
   bone.getWorldQuaternion(_q);
   _axis.applyQuaternion(_q.invert());
   bone.quaternion.multiply(_qa.setFromAxisAngle(_axis, angle));

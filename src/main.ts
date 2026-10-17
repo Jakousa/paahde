@@ -98,7 +98,7 @@ renderer.setAnimationLoop((time) => {
   me.setColor(net.color);
   const s = net.me;
   me.update(
-    { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), grounded: s.grounded,
+    { x: s.x + net.errorX, y: s.y + net.errorY, z: s.z + net.errorZ, facing: s.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded,
     digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch },
     frameDt,
   );

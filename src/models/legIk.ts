@@ -14,7 +14,8 @@ import * as THREE from 'three/webgpu';
 export type Ground = (x: number, z: number) => number;
 
 const LOCK_ON = 0.03; // ankle within this of the clip's lowest ankle = planted (m)
-const SWING = 0.4; // ...and not moving forward faster than this relative to the body (m/s): a swinging foot comes in low
+const SWING = 0.4; // ...and not moving along the travel direction faster than this relative to the body (m/s):
+// a swinging foot comes in low, and a planted one moves against the travel (forwards when backing up)
 const DRAG_RELEASE = 0.2; // a locked foot let go when the animated foot is this far away (m)
 const TWIST_RELEASE = 0.6; // ...or when the body has turned this much since it planted (rad; staggered per leg)
 const RELEASE_HALF_LIFE = 0.06; // s
@@ -42,6 +43,7 @@ const _qf = new THREE.Quaternion();
 const _qi = new THREE.Quaternion();
 const _qr = new THREE.Quaternion();
 const _qs = new THREE.Quaternion();
+const _m = new THREE.Matrix4();
 
 class Leg {
   locked = false;
@@ -66,6 +68,7 @@ export class LegIk {
   private drop = 0;
   private weight = 0;
   private last = new THREE.Vector3(NaN, NaN, NaN);
+  private travel = new THREE.Vector3();
 
   /** `body` is moved down for the pelvis drop (the animated model under the placement root). */
   constructor(root: THREE.Object3D, body: THREE.Object3D, legs: [THREE.Object3D, THREE.Object3D, THREE.Object3D][]) {
@@ -82,6 +85,10 @@ export class LegIk {
     const k = (rate: number) => 1 - Math.exp(-dt * rate);
     this.root.getWorldPosition(_v);
     if (!(this.last.distanceTo(_v) < TELEPORT)) for (const l of this.legs) this.release(l, true);
+    // Travel direction in root space (zero when standing).
+    const travel = this.travel.subVectors(_v, this.last);
+    if (!(travel.lengthSq() > (0.3 * dt) ** 2)) travel.set(0, 0, 0);
+    travel.transformDirection(_m.copy(this.root.matrixWorld).invert());
     this.last.copy(_v);
     const rootX = _v.x, rootY = _v.y, rootZ = _v.z;
     const g0 = ground ? ground(rootX, rootZ) : 0;
@@ -105,9 +112,9 @@ export class LegIk {
       const l = this.legs[i];
       const anim = l.ankle.getWorldPosition(new THREE.Vector3());
       const local = this.root.worldToLocal(_n.copy(anim));
-      const forward = (l.prevLocal.z - local.z) / Math.max(dt, 1e-4); // root faces -Z
+      const along = _ca.subVectors(local, l.prevLocal).dot(travel) / Math.max(dt, 1e-4);
       l.prevLocal.copy(local);
-      const planted = minAnkle !== null && anim.y - rootY < minAnkle + LOCK_ON && !(forward > SWING);
+      const planted = minAnkle !== null && anim.y - rootY < minAnkle + LOCK_ON && !(along > SWING);
       // After a release, step back under the body before planting again (else it re-pins in place).
       if (planted && !l.locked && l.offset.lengthSq() < RELOCK * RELOCK) {
         l.locked = true;
