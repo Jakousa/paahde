@@ -46,7 +46,7 @@ export class Net {
   private staleChunks = new Set<string>();
 
   /** A dig/pile stroke landed: ours (predicted) or another player's. For effects only. */
-  onDig?: (at: Point, pile: boolean, mine: boolean) => void;
+  onDig?: (at: Point, pile: boolean, mine: boolean, id: number) => void;
 
   constructor(browserId: string) {
     this.browserId = browserId;
@@ -81,7 +81,7 @@ export class Net {
     });
     if (!at) return;
     this.digCooldown = DIG_COOLDOWN_TICKS;
-    this.onDig?.(at, pile, true);
+    this.onDig?.(at, pile, true, this.id);
   }
 
   private applyTerrainEdit(cells: number[]) {
@@ -164,7 +164,7 @@ export class Net {
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);
     if (msg.t === 'dug') {
-      if (msg.id !== this.id) this.onDig?.({ x: msg.x, y: msg.y, z: msg.z }, msg.pile, false);
+      if (msg.id !== this.id) this.onDig?.({ x: msg.x, y: msg.y, z: msg.z }, msg.pile, false, msg.id);
       return;
     }
     if (msg.t === 'welcome') {
