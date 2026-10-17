@@ -1,9 +1,8 @@
 // Sounds of the laser rifle (src/rifle.ts) and of what it does to the walkers:
 // - shot: one of three pulses cut from Defunct3's "Pulse laser" (CC0, public/credits.txt; laser-1..3.mp3, mono,
 //   0.40–0.55 s, each levelled to −18.5 LUFS momentary, true peak ≤ −1.5 dBTP), picked at random and a little
-//   off pitch each time; the pistol plays them higher and lighter. Then the desert answers, synthesised: a dull
-//   slap off the dunes a moment later. Your own is dry and in your head; another player's is placed in 3D and
-//   heard late by the distance, like the guardians' footfalls.
+//   off pitch each time; the pistol plays them higher and lighter. Your own is dry and in your head; another
+//   player's is placed in 3D and heard late by the distance, like the guardians' footfalls.
 // The rest is synthesised:
 // - recharge: the cell whining back up between shots, with a click when it's ready.
 // - impact: where the beam struck: a hiss of sand, a metal ping, or the red glass of a weak point shattering with an
@@ -116,7 +115,6 @@ class RifleSound {
     const t = ctx.currentTime + d / SPEED_OF_SOUND;
     const o = bus(ctx, out, SHOT_GAIN * (pistol ? 0.75 : 1), at, ear, 15);
     // The pistol: up in pitch (so quicker), less body.
-    const len = pistol ? 0.6 : 1;
     const buf = this.pulses[Math.floor(Math.random() * this.pulses.length)];
     if (buf) {
       const src = ctx.createBufferSource();
@@ -128,9 +126,6 @@ class RifleSound {
       src.start(t);
       src.onended = () => g.disconnect();
     }
-    // The dunes answer: a dull slap and a tail.
-    hiss(ctx, o, t + 0.16 + Math.random() * 0.08, 0.7 * len, 'lowpass', 900, 0.5, 0.16 * len, 0.02);
-    hiss(ctx, o, t + 0.42 + Math.random() * 0.15, 0.9 * len, 'lowpass', 600, 0.5, 0.07 * len, 0.04);
   }
 
   /** The cell recharging over `s` seconds, then a click: yours only. */
