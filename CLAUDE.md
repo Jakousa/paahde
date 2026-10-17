@@ -85,6 +85,13 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   scene graph, input, UI and loading stay in TypeScript.
 - Strict TypeScript; keep it compiling with no errors.
 
+## Game design
+
+- Show as little game state and text as possible; the player learns the mechanics by trying things.
+  No tutorials, tooltips explaining rules, numeric readouts or meters unless the game can't be played
+  without them. Prefer telling through the world: sound, animation, the hands, the screen, the body.
+- Keep any text that must appear terse: a label or a few words, not a sentence of explanation.
+
 ## Audio loudness
 
 - Level sounds by loudness (LUFS, ITU-R BS.1770 / EBU R128), not by peak or by ear. Target the full mix at
