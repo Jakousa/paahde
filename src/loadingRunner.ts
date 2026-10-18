@@ -947,7 +947,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
           return;
         }
         // each end of the wire: a ring that jerks to and fro across the wire between two arrowheads
-        const sh = Math.sin(clock * 15) * 5;
+        const sh = Math.sin(clock * 11) * 3;
         g.save();
         g.translate(ex, ey);
         g.rotate(across);
@@ -955,28 +955,28 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
         g.lineWidth = 2;
         g.lineCap = 'round';
         g.beginPath();
-        g.moveTo(-16, 0);
-        g.lineTo(16, 0);
+        g.moveTo(-10, 0);
+        g.lineTo(10, 0);
         g.stroke();
         for (const sgn of [-1, 1]) {
           g.beginPath();
-          g.moveTo(sgn * 21, 0);
-          g.lineTo(sgn * 14, -4.5);
-          g.lineTo(sgn * 14, 4.5);
+          g.moveTo(sgn * 14, 0);
+          g.lineTo(sgn * 9, -3.5);
+          g.lineTo(sgn * 9, 3.5);
           g.fill();
         }
         g.fillStyle = 'rgba(28, 15, 7, 0.55)';
         g.beginPath();
-        g.arc(sh, 0, 7, 0, 7);
+        g.arc(sh, 0, 5.5, 0, 7);
         g.fill();
         g.strokeStyle = c;
-        g.lineWidth = 2.2;
+        g.lineWidth = 2;
         g.beginPath();
-        g.arc(sh, 0, 7, 0, 7);
+        g.arc(sh, 0, 5.5, 0, 7);
         g.stroke();
         g.fillStyle = c;
         g.beginPath();
-        g.arc(sh, 0, 2.4, 0, 7);
+        g.arc(sh, 0, 1.9, 0, 7);
         g.fill();
         g.restore();
       });

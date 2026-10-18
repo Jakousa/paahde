@@ -9,6 +9,7 @@
 // The real item models (public/models/items/<part>_<tier>.glb, tools/blender/items.py) are mounted inside.
 // Better parts come out of fancier machines.
 import * as THREE from 'three/webgpu';
+import { Rope } from './rope.ts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { machineParts } from '../../shared/machine.ts';
 import { junkSpec, RARITY, TIERS, type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
@@ -43,6 +44,10 @@ export interface Step {
   mat?: THREE.MeshStandardNodeMaterial;
   /** Wires: the two ends, each shaken loose on its own (src/teardown/teardown.ts). */
   ends?: WireEnd[];
+  /** Wires: the cable as a rope that moves when shaken and goes floppy once an end is off (src/teardown/rope.ts), and the
+   *  two lugs on its ends. */
+  rope?: Rope;
+  lugs?: THREE.Mesh[];
 }
 /** A wire shorter than this (m) is one pull: a single shake rips the whole cable out. */
 export const SHORT_WIRE = 0.55;
@@ -181,8 +186,8 @@ const ARC_GEO = new THREE.TorusGeometry(0.13, 0.014, 6, 24, Math.PI * 1.5);
 const HEAD_GEO = new THREE.ConeGeometry(0.045, 0.1, 8).rotateZ(-Math.PI / 2).translate(0, -0.13, 0);
 const SHAFT_GEO = new THREE.BoxGeometry(0.2, 0.014, 0.014);
 const HEAD_X_GEO = new THREE.ConeGeometry(0.04, 0.08, 8);
-const GRIP_RING_GEO = new THREE.TorusGeometry(0.075, 0.012, 6, 20);
-const GRIP_DOT_GEO = new THREE.SphereGeometry(0.025, 8, 6);
+const GRIP_RING_GEO = new THREE.TorusGeometry(0.055, 0.01, 6, 20);
+const GRIP_DOT_GEO = new THREE.SphereGeometry(0.018, 8, 6);
 const PRY_SHAFT_GEO = new THREE.BoxGeometry(0.014, 0.014, 0.14);
 const UP_SHAFT_GEO = new THREE.BoxGeometry(0.014, 0.1, 0.014).translate(0, 0.05, 0);
 
@@ -220,9 +225,9 @@ function makeMarker(kind: StepKind, need: number, players: number): THREE.Group 
     const ends: THREE.Group[] = [];
     for (let i = 0; i < 2; i++) {
       const eg = new THREE.Group();
-      markerMesh(eg, SHAFT_GEO, 0, 0, 0, MARKER_TOP_MAT).scale.x = 1.9;
-      markerMesh(eg, HEAD_X_GEO, 0.2, 0, 0, MARKER_TOP_MAT).rotation.z = -Math.PI / 2;
-      markerMesh(eg, HEAD_X_GEO, -0.2, 0, 0, MARKER_TOP_MAT).rotation.z = Math.PI / 2;
+      markerMesh(eg, SHAFT_GEO, 0, 0, 0, MARKER_TOP_MAT).scale.x = 1.1;
+      markerMesh(eg, HEAD_X_GEO, 0.125, 0, 0, MARKER_TOP_MAT).scale.setScalar(0.7);
+      markerMesh(eg, HEAD_X_GEO, -0.125, 0, 0, MARKER_TOP_MAT).scale.setScalar(0.7);
       const ring = new THREE.Group();
       markerMesh(ring, GRIP_RING_GEO, 0, 0, 0, MARKER_TOP_MAT);
       markerMesh(ring, GRIP_DOT_GEO, 0, 0, 0, MARKER_TOP_MAT);
@@ -286,8 +291,8 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
       const end = step.ends![i]; // a short wire has just the one
       eg.visible = !!end && !end.done;
       eg.quaternion.copy(_wq);
-      eg.scale.setScalar(lit ? 1.25 : 1 + 0.08 * Math.sin(t * 6));
-      (eg.userData.ring as THREE.Group).position.x = Math.sin(t * 15) * 0.07;
+      eg.scale.setScalar(lit ? 1.1 : 1);
+      (eg.userData.ring as THREE.Group).position.x = Math.sin(t * 11) * 0.03;
     });
     m.scale.setScalar(1); // the markers are placed on the lugs: scaling the group would move them off
   }
@@ -486,13 +491,27 @@ export class Kit {
     const g = new THREE.Group();
     g.position.copy(mid);
     const mat = this.mats[key].clone();
-    this.add(new THREE.Mesh(new THREE.TubeGeometry(rel, 28, r, 6), mat), g);
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(rel, 28, r, 6), mat);
+    this.add(tube, g);
     const ends: WireEnd[] = [];
+    const lugs: THREE.Mesh[] = [];
     for (const t of [0, 1]) {
       const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.025, 10), this.mats.copper);
       lug.position.copy(rel.getPoint(t));
       this.add(lug, g);
+      lugs.push(lug);
       if (!short) ends.push({ lug, base: lug.position.clone(), swings: 0, done: false });
+      // What it is fastened to: a terminal block with a stud up through the lug, and a nut on it.
+      const at = lug.position;
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.16), this.mats.dark);
+      block.position.set(at.x, at.y - 0.045, at.z);
+      const stud = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.1, 8), this.mats.copper);
+      stud.position.set(at.x, at.y - 0.005, at.z);
+      const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.022, 6), this.mats.copper);
+      nut.position.set(at.x, at.y + 0.024, at.z);
+      this.add(block, g);
+      this.add(stud, g);
+      this.add(nut, g);
     }
     if (short) {
       // one shake, in the middle, takes the whole cable
@@ -504,6 +523,8 @@ export class Kit {
     g.add(spin);
     const step = this.reg('wire', label, g, spin, new THREE.TubeGeometry(rel, 12, Math.max(0.1, r * 2), 5), 1, after, 0.03, mat, 1);
     step.ends = ends;
+    step.lugs = lugs;
+    step.rope = new Rope(rel, tube, step.hit, r);
     // The markers sit on the lugs themselves, wherever the wire runs.
     step.marker.position.set(0, 0, 0);
     (step.marker.userData.ends as THREE.Group[]).forEach((eg, i) => eg.position.copy((ends[i] ?? ends[0]).base));

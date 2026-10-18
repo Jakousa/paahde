@@ -104,6 +104,11 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   still only hears the step done.
   A short cable (under `SHORT_WIRE`, 0.55 m in the game, 50 px in the minigame) is one pull: a single shake point in its
   middle, and one shake rips the whole cable out.
+  Cables are fastened to something now (a terminal block, a stud through the lug and a nut at each end, `Kit.wire`) and
+  are ropes (`src/teardown/rope.ts`, a Verlet chain along the modelled curve, rebuilt into the tube while it moves):
+  shaking pulls the held end about and the whole cable swings, and once an end is off the cable hangs from the other,
+  floppy, and the loose lug rides its end; one that is still with both ends held goes back to the modelled tube.
+  Not yet seen in the game (no browser here): the stiffness/gravity numbers are in `TeardownView.updateRope`.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.

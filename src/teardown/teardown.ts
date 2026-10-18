@@ -18,6 +18,7 @@ import { type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
 import { capture, actionHeld, takePickup, tools, ui } from '../input.ts';
 import { isBound } from '../bindings.ts';
 import { teardownSound } from '../teardownSound.ts';
+import { Rope } from './rope.ts';
 import { animateMarker, lowestOffset, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi } from './ui.ts';
 import { uiSound } from '../uiSound.ts';
@@ -669,6 +670,69 @@ export class TeardownView {
     if (this.site) this.hover = this.pick(e.clientX, e.clientY);
   }
 
+  private ropeG = new THREE.Vector3();
+  private ropeU = new THREE.Vector3();
+  private ropeR = new THREE.Vector3();
+  private ropeD = new THREE.Vector3();
+  private ropeQ = new THREE.Quaternion();
+  private ropeQ2 = new THREE.Quaternion();
+  private ropePin = [new THREE.Vector3(), new THREE.Vector3()];
+
+  /** A cable moves while it is shaken (the held end is pulled about and the rest follows) and once an end has come off it
+   *  hangs from the other and swings, floppy; one that has stopped moving with both ends held is the modelled tube again. */
+  private updateRope(s: Step, dt: number) {
+    const r = s.rope!, ends = s.ends!, lugs = s.lugs!;
+    const a = this.act;
+    const held = a?.step === s && performance.now() - a.lastMove < 150;
+    const short = ends.length === 1; // one pull takes the whole cable: both ends hold until then
+    const attached: [boolean, boolean] = [short || !ends[0].done, short || !ends[ends.length - 1].done];
+    const both = attached[0] && attached[1];
+    if (!r.active) {
+      if (!held && both) return;
+      r.active = true;
+    }
+    // Weight and the camera's right, in the cable's own frame.
+    s.obj.getWorldQuaternion(this.ropeQ).invert();
+    const scale = s.obj.getWorldScale(this.ropeD).x || 1;
+    this.ropeU.set(0, 1, 0).applyQuaternion(this.ropeQ);
+    this.ropeG.set(0, -7, 0).applyQuaternion(this.ropeQ).divideScalar(scale);
+    this.camera.getWorldQuaternion(this.ropeQ2);
+    this.ropeR.set(1, 0, 0).applyQuaternion(this.ropeQ2).applyQuaternion(this.ropeQ).divideScalar(scale);
+    // An end that has just come off is shoved away.
+    for (const i of [0, 1] as const) {
+      if (r.wasAttached[i] && !attached[i]) r.kick(i, this.tmpA.copy(this.ropeU).multiplyScalar(0.05 / scale));
+      r.wasAttached[i] = attached[i];
+    }
+    const pins = [null, null] as (THREE.Vector3 | null)[];
+    for (const i of [0, 1] as const) {
+      if (!attached[i]) continue;
+      const pin = this.ropePin[i].copy(i === 0 ? r.rest[0] : r.rest[Rope.N - 1]);
+      if (held && (short || a!.end === i)) {
+        pin.addScaledVector(this.ropeR, Math.sin(this.pulse * 55) * 0.03);
+        pin.addScaledVector(this.ropeU, Math.abs(Math.sin(this.pulse * 40)) * 0.012);
+      }
+      pins[i] = pin;
+    }
+    // Held at both ends it is stiff and light; with one end off it is limp and its weight takes it.
+    r.step(dt, pins[0], pins[1], this.ropeG.multiplyScalar(both ? 0.15 : 1), both ? 120 : 1.5);
+    r.rebuild();
+    // The lugs ride the ends: pulled about with a held end, hanging from a loose one.
+    for (const i of [0, 1] as const) {
+      const idx = i === 0 ? 0 : Rope.N - 1;
+      lugs[i].position.copy(r.pts[idx]);
+      if (attached[i]) lugs[i].quaternion.identity();
+      else lugs[i].quaternion.setFromUnitVectors(this.ropeU.set(0, 1, 0), this.ropeD.copy(r.pts[idx]).sub(r.pts[i === 0 ? 1 : Rope.N - 2]).normalize());
+    }
+    // Still, with both ends holding: back to the tube as modelled.
+    if (!held && both && r.calm > 40) {
+      r.reset();
+      lugs.forEach((l, i) => {
+        l.position.copy(i === 0 ? r.rest[0] : r.rest[Rope.N - 1]);
+        l.quaternion.identity();
+      });
+    }
+  }
+
   /** The pointer moved while a wire is held: shake the end it is nearest. A swing is a stroke the pointer turns back from. */
   private shake(s: Step, a: NonNullable<TeardownView['act']>, e: PointerEvent) {
     const ends = s.ends!;
@@ -761,15 +825,6 @@ export class TeardownView {
         if (s.mat) {
           s.mat.emissive.setHex(0xff7a20);
           s.mat.emissiveIntensity = Math.min(f, 1) * 3;
-        }
-        // An end that has come loose lifts off its terminal and tilts.
-        for (const end of s.ends ?? []) {
-          end.lug.position.copy(end.base);
-          end.lug.rotation.z = 0;
-          if (end.done) {
-            end.lug.position.y += 0.05;
-            end.lug.rotation.z = 0.6;
-          }
         }
         break;
     }
@@ -889,16 +944,8 @@ export class TeardownView {
       s.marker.visible = working && !s.done && (stepReady(s) || lit);
       if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);
     }
-    // The end being shaken rattles on its terminal.
-    const held = this.act;
-    if (held?.step.kind === 'wire' && held.end >= 0 && performance.now() - held.lastMove < 120) {
-      const end = held.step.ends![held.end];
-      if (!end.done) {
-        end.lug.position.copy(end.base);
-        end.lug.position.x += Math.sin(this.pulse * 60) * 0.02;
-        end.lug.position.y += Math.abs(Math.sin(this.pulse * 45)) * 0.015;
-      }
-    }
+    // Cables that are being shaken, or have an end off, move.
+    for (const s of j.steps) if (s.rope && !s.done) this.updateRope(s, dt);
     const hoverSlot = focus?.type === 'part' ? focus.slot : null;
     for (const s of j.slots) {
       const open = slotOpen(s);
