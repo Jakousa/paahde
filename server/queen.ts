@@ -10,13 +10,23 @@
 // - Modes (shared/queen.ts): ROAM (wander round its crash site, pausing now and then) → HUNT (charge) → REAR (front
 //   legs up, REAR_MS) → slam → RECOVER (stands, RECOVER_MS: the window to run or shoot) → HUNT. It gives up past
 //   GIVE_UP or after CHASE_MS, and leaves that player be for a while. LEAVE: walks away from everyone, out of sight.
+// - The brood: while it fights, every so often its sac opens (BIRTH_MS) and a clutch of spiderlings drops out from
+//   under it. They run at whoever is out in the open (spread over everyone), crouch close by, then spring at where
+//   their prey will be: a sidestep while they crouch, or a sprint, gets you out of it. They run down after SP_LIFE and
+//   when it dies. Their bites, like the stabs, are worked out as the drawn spiderling lands (DRAW_DELAY).
+// - A crowd (server/bossCrowd.ts: everyone within CROWD_R) makes it harder: a quicker rear, a shorter stand after
+//   the slam, a slightly faster charge, and more spiderlings out at once, in bigger clutches, more often. One player
+//   is the baseline.
 import { crashSitesNear } from '../shared/crashsites.ts';
 import {
-  BODY_H, CHARGE, CHASE_MS, DEATH_HOLE, FRONT, GIVE_UP, GROUP, HUNT, HUNT_TURN, LEAVE, LEGS, REAR, REAR_CONE, REAR_MS, REAR_R, RECOVER,
-  RECOVER_MS, restSpot, ROAM, SETTLE, SETTLE_S, SIGHT, SLAM_HOLE, SLAM_R, slamPoints, STAB_HOLE, STAB_R, stabY, swingTime, TURN, WALK,
+  BIRTH_MS, BIRTH_Y, BIRTH_Z, BODY_H, BROOD_CAP, CHARGE, CHASE_MS, CROUCH_MS, DEATH_HOLE, DIE_MS, DROP_MS, FRONT, GIVE_UP, GROUP, HUNT,
+  HUNT_TURN, LEAP_HIT, LEAP_MAX, LEAP_MS, LEAP_R, LEAVE, LEGS, REAR, REAR_CONE, REAR_MS, REAR_R, RECOVER, RECOVER_MS, REST_MS, restSpot,
+  ROAM, SETTLE, SETTLE_S, SIGHT, SLAM_HOLE, SLAM_R, slamPoints, SP_DIE, SP_DROP, SP_LEAP, SP_LIFE, SP_REST, SP_RUN, SP_CROUCH, SP_SPEED,
+  STAB_HOLE, STAB_R, stabY, swingTime, TURN, WALK,
 } from '../shared/queen.ts';
 import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt } from '../shared/terrain.ts';
+import { crowd, scaled } from './bossCrowd.ts';
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 
 /** The client draws bosses this far (ms) behind the server (src/world/botFrames.ts BOT_DELAY_MS). */
@@ -38,6 +48,15 @@ const IGNORE_MS = 25_000;
 const ANGRY_R = 400;
 /** Acceleration and braking (m/s²). */
 const ACCEL = 3, BRAKE = 6, REAR_BRAKE = 14;
+/** Against n people (bossCrowd.ts scaled: × (1 + per × (n − 1))): the rear and the stand after the slam shrink by
+ *  these, the charge grows by CHARGE_PER (kept under a walk). */
+const REAR_PER = 0.1, RECOVER_PER = 0.25, CHARGE_PER = 0.015;
+/** The brood against n people: at most BROOD_MAX out (+BROOD_PER each), clutches of CLUTCH (+CLUTCH_PER), one every
+ *  CLUTCH_MS (÷ by CLUTCH_FASTER), the first FIRST_CLUTCH_MS into a fight. */
+const BROOD_MAX = 4, BROOD_PER = 0.5, CLUTCH = 2, CLUTCH_PER = 0.5, CLUTCH_MS = 15_000, CLUTCH_FASTER = 0.3, FIRST_CLUTCH_MS = 3000;
+/** Spiderlings go for people within SP_SIGHT (m) of them; each one already after someone counts as SP_SHARE m more
+ *  to them, so a crowd gets spread out; they turn at SP_TURN (rad/s) and keep SP_GAP (m) apart. */
+const SP_SIGHT = 160, SP_SHARE = 12, SP_TURN = 7, SP_GAP = 1.6;
 
 type Foot = { x: number; y: number; z: number; left: number; up: boolean };
 type Pending = { at: number; slam: boolean; hole: boolean; x: number; y: number; z: number; x2: number; z2: number };
@@ -46,6 +65,18 @@ type St = {
   mode: number; modeAt: number; prey: number; huntAt: number;
   homeX: number; homeZ: number; tx: number; tz: number; waitUntil: number; leaveAt: number;
   ignore: Map<number, number>; pending: Pending[]; holes: number;
+  /** The rear in hand (ms); when the sac last began to open (0 never) and whether a clutch is due out of it; when
+   *  the next one may come. */
+  rearMs: number; birthAt: number; due: boolean; nextBirth: number;
+  brood: Ling[]; nextLing: number;
+  /** Players' velocities (smoothed), for leading the leaps. */
+  vel: Map<number, { x: number; z: number; vx: number; vz: number }>;
+};
+/** A spiderling: where, which way, state (shared/queen.ts SP_*) since when, its prey (-1 none), born when; crouched
+ *  or leaping, where it's springing to (from where); landed, when its bite is worked out (0 done). */
+type Ling = {
+  id: number; x: number; z: number; yaw: number; st: number; stAt: number; prey: number; born: number;
+  ax: number; az: number; fx: number; fz: number; biteAt: number;
 };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -83,6 +114,7 @@ export const queen: Brain = {
       feet, speed: 0, lastYaw: b.yaw, next: 0, mode: ROAM, modeAt: now, prey: -1, huntAt: 0,
       homeX: site && !summoned ? site.x : b.x, homeZ: site && !summoned ? site.z : b.z, tx: b.x, tz: b.z, waitUntil: now + 1500, leaveAt: 0,
       ignore: new Map(), pending: [], holes: HOLES_MAX,
+      rearMs: REAR_MS, birthAt: 0, due: false, nextBirth: 0, brood: [], nextLing: 1, vel: new Map(),
     };
     wander(st);
     b.st = st;
@@ -91,6 +123,9 @@ export const queen: Brain = {
   tick(b, dt, now, players, out) {
     const st = b.st as St;
     land(b, st, now, players, out);
+    const n = crowd(b, players);
+    track(st, dt, players);
+    brood(b, st, dt, now, n, players, out);
     let want = 0, heading = b.yaw, turn = TURN;
 
     if (b.leaving && st.mode !== LEAVE && st.mode !== REAR) {
@@ -123,6 +158,7 @@ export const queen: Brain = {
           st.prey = prey;
           st.huntAt = now;
           setMode(st, HUNT, now);
+          st.nextBirth = Math.max(st.nextBirth, now + FIRST_CLUTCH_MS);
         }
       }
       const p = st.prey >= 0 ? players.find((o) => o.id === st.prey) : undefined;
@@ -140,14 +176,15 @@ export const queen: Brain = {
           const off = Math.abs(wrap(heading - b.yaw));
           turn = HUNT_TURN;
           // Turning hard, it slows to come round tighter.
-          want = off > 1 ? WALK : CHARGE;
+          want = off > 1 ? WALK : scaled(CHARGE, n, CHARGE_PER);
           if (d < REAR_R && off < REAR_CONE) {
             setMode(st, REAR, now);
+            st.rearMs = Math.round(REAR_MS / scaled(1, n, REAR_PER));
             for (const i of FRONT) st.feet[i].up = true, st.feet[i].left = 0;
           }
         }
       }
-      if (st.mode === REAR && now - st.modeAt >= REAR_MS) {
+      if (st.mode === REAR && now - st.modeAt >= st.rearMs) {
         // Slam: the front feet come down ahead; holes and deaths as the drawn ones land.
         const [x0, z0, x1, z1] = slamPoints(b.x, b.z, b.yaw);
         FRONT.forEach((i, k) => {
@@ -161,7 +198,7 @@ export const queen: Brain = {
         st.pending.push({ at: now + DRAW_DELAY, slam: true, hole: true, x: x0, y: heightAt(x0, z0), z: z0, x2: x1, z2: z1 });
         setMode(st, RECOVER, now);
       }
-      if (st.mode === RECOVER && now - st.modeAt >= RECOVER_MS) setMode(st, st.prey >= 0 ? HUNT : ROAM, now);
+      if (st.mode === RECOVER && now - st.modeAt >= RECOVER_MS / scaled(1, n, RECOVER_PER)) setMode(st, st.prey >= 0 ? HUNT : ROAM, now);
       if (st.mode === ROAM) {
         if (now < st.waitUntil) want = 0;
         else {
@@ -201,14 +238,24 @@ export const queen: Brain = {
     const st = b.st as St;
     const s = [st.mode, Math.round(st.modeAt)];
     for (const f of st.feet) s.push(r2(f.x), r2(f.y), r2(f.z), f.up ? -1 : r2(f.left));
+    s.push(st.rearMs, Math.round(st.birthAt));
+    for (const l of st.brood) s.push(l.id, r2(l.x), r2(l.z), Math.round(l.yaw * 1000) / 1000, l.st, Math.round(l.stAt));
     return s;
   },
 
-  die(b, _now, out) {
+  die(b, now, out) {
     const st = b.st as St;
     st.pending.length = 0;
     st.speed = 0;
+    // The brood runs down with her.
+    st.due = false;
+    for (const l of st.brood) if (l.st !== SP_DIE) ling(l, SP_DIE, now);
     out.craters.push({ x: b.x, z: b.z, r: DEATH_HOLE.r, mm: DEATH_HOLE.mm });
+  },
+
+  wreck(b, _dt, now) {
+    const st = b.st as St;
+    if (st.brood.length) st.brood = st.brood.filter((l) => now - l.stAt < DIE_MS);
   },
 };
 
@@ -284,4 +331,168 @@ function land(b: Boss, st: St, now: number, players: BossPlayer[], out: BossOut)
     }
     return false;
   });
+}
+
+function ling(l: Ling, s: number, now: number) {
+  l.st = s;
+  l.stAt = now;
+}
+
+/** Everyone's velocity, smoothed, for leading the spiderlings' leaps. */
+function track(st: St, dt: number, players: BossPlayer[]) {
+  const k = 1 - Math.exp(-dt * 6);
+  const seen = new Set<number>();
+  for (const p of players) {
+    seen.add(p.id);
+    const v = st.vel.get(p.id);
+    if (!v) {
+      st.vel.set(p.id, { x: p.x, z: p.z, vx: 0, vz: 0 });
+      continue;
+    }
+    let vx = (p.x - v.x) / dt, vz = (p.z - v.z) / dt;
+    if (Math.hypot(vx, vz) > 25) vx = vz = 0; // respawned
+    v.vx += (vx - v.vx) * k;
+    v.vz += (vz - v.vz) * k;
+    v.x = p.x;
+    v.z = p.z;
+  }
+  for (const id of st.vel.keys()) if (!seen.has(id)) st.vel.delete(id);
+}
+
+/** The brood (see the top of the file): clutches out of the sac, and every spiderling's run, crouch, leap and bite. */
+function brood(b: Boss, st: St, dt: number, now: number, n: number, players: BossPlayer[], out: BossOut) {
+  let alive = 0;
+  for (const l of st.brood) if (l.st !== SP_DIE) alive++;
+  const cap = Math.min(BROOD_CAP, Math.round(scaled(BROOD_MAX, n, BROOD_PER)));
+  const fighting = !b.leaving && (st.mode === HUNT || st.mode === REAR || st.mode === RECOVER);
+  if (fighting && !st.due && now >= st.nextBirth && alive < cap) {
+    st.birthAt = now;
+    st.due = true;
+    st.nextBirth = now + CLUTCH_MS / scaled(1, n, CLUTCH_FASTER);
+  }
+  if (st.due && now - st.birthAt >= BIRTH_MS) {
+    // Out from under the sac, one after another.
+    st.due = false;
+    const k = Math.min(cap - alive, Math.round(scaled(CLUTCH, n, CLUTCH_PER)));
+    const fx = Math.sin(b.yaw), fz = Math.cos(b.yaw);
+    for (let i = 0; i < k; i++) {
+      const side = (i - (k - 1) / 2) * 0.9 + rand(-0.3, 0.3), along = BIRTH_Z + rand(-1, 1);
+      const x = b.x + fx * along + fz * side, z = b.z + fz * along - fx * side, at = now + i * 140;
+      st.brood.push({
+        id: st.nextLing++, x, z, yaw: wrap(b.yaw + Math.PI + rand(-1.2, 1.2)), st: SP_DROP, stAt: at, prey: -1, born: at,
+        ax: x, az: z, fx: x, fz: z, biteAt: 0,
+      });
+    }
+  }
+
+  const chasing = new Map<number, number>();
+  for (const l of st.brood) if (l.prey >= 0 && l.st !== SP_DIE) chasing.set(l.prey, (chasing.get(l.prey) ?? 0) + 1);
+  const killed = new Set(out.kills.map((k) => k.id));
+  st.brood = st.brood.filter((l) => {
+    const since = now - l.stAt;
+    if (l.st === SP_DIE) return since < DIE_MS;
+    if (now - l.born > SP_LIFE) {
+      ling(l, SP_DIE, now);
+      return true;
+    }
+    if (l.st === SP_DROP) {
+      if (since >= DROP_MS) ling(l, SP_RUN, now);
+      return true;
+    }
+    if (l.st === SP_RUN) {
+      let p = l.prey >= 0 ? players.find((o) => o.id === l.prey) : undefined;
+      if (!p || p.safe || Math.hypot(p.x - l.x, p.z - l.z) > SP_SIGHT) {
+        // Someone else: the nearest, counting those already chased as further.
+        if (l.prey >= 0) chasing.set(l.prey, (chasing.get(l.prey) ?? 1) - 1);
+        l.prey = -1;
+        p = undefined;
+        let best = Infinity;
+        for (const o of players) {
+          const d = Math.hypot(o.x - l.x, o.z - l.z);
+          if (o.safe || d > SP_SIGHT) continue;
+          const cost = d + SP_SHARE * (chasing.get(o.id) ?? 0);
+          if (cost < best) (best = cost), (p = o);
+        }
+        if (p) {
+          l.prey = p.id;
+          chasing.set(p.id, (chasing.get(p.id) ?? 0) + 1);
+        }
+      }
+      let want: number, heading: number;
+      if (p) {
+        const d = Math.hypot(p.x - l.x, p.z - l.z);
+        // Where they'll be when it lands (as they see it: drawn DRAW_DELAY late). In reach of that (or right on
+        // them): crouch, aimed there. So walking away only puts it off; a sprint, or a sidestep as it crouches, doesn't.
+        const v = st.vel.get(p.id), lead = (CROUCH_MS + LEAP_MS + DRAW_DELAY) / 1000;
+        const ax = p.x + (v ? v.vx * lead : 0) - l.x, az = p.z + (v ? v.vz * lead : 0) - l.z, len = Math.hypot(ax, az);
+        if (len <= LEAP_MAX || d < LEAP_R) {
+          const k = Math.min(1, LEAP_MAX / Math.max(len, 1e-3));
+          l.fx = l.x;
+          l.fz = l.z;
+          l.ax = l.x + ax * k;
+          l.az = l.z + az * k;
+          if (len > 0.1) l.yaw = Math.atan2(ax, az);
+          ling(l, SP_CROUCH, now);
+          return true;
+        }
+        // Cutting them off: headed for where they're going, more so further off.
+        const cut = Math.min(1.5, (0.6 * d) / SP_SPEED);
+        heading = Math.atan2(p.x + (v ? v.vx * cut : 0) - l.x, p.z + (v ? v.vz * cut : 0) - l.z);
+        // Zigzagging in, further off.
+        if (d > 10) heading += Math.sin(now * 0.006 + l.id * 1.7) * 0.35;
+        want = SP_SPEED;
+      } else if (Math.hypot(b.x - l.x, b.z - l.z) > 25) {
+        // Nobody: back to her, milling about under her.
+        heading = Math.atan2(b.x - l.x, b.z - l.z);
+        want = 3;
+      } else {
+        heading = l.yaw + Math.sin(now * 0.002 + l.id) * 1.5;
+        want = 1.5;
+      }
+      l.yaw = wrap(l.yaw + Math.max(-SP_TURN * dt, Math.min(SP_TURN * dt, wrap(heading - l.yaw))));
+      l.x += Math.sin(l.yaw) * want * dt;
+      l.z += Math.cos(l.yaw) * want * dt;
+      return true;
+    }
+    if (l.st === SP_CROUCH) {
+      if (since >= CROUCH_MS) ling(l, SP_LEAP, now);
+      return true;
+    }
+    if (l.st === SP_LEAP) {
+      const t = Math.min(1, since / LEAP_MS);
+      l.x = l.fx + (l.ax - l.fx) * t;
+      l.z = l.fz + (l.az - l.fz) * t;
+      if (t >= 1) {
+        ling(l, SP_REST, now);
+        l.biteAt = now + DRAW_DELAY;
+      }
+      return true;
+    }
+    // Landed: the bite as the drawn one comes down, then up and after them again.
+    if (l.biteAt && now >= l.biteAt) {
+      l.biteAt = 0;
+      const y = heightAt(l.x, l.z);
+      for (const p of players) {
+        if (p.safe || killed.has(p.id) || Math.hypot(p.x - l.x, p.z - l.z) > LEAP_HIT || Math.abs(p.y - y) > 2.5) continue;
+        killed.add(p.id);
+        out.kills.push({ id: p.id, cause: 'crawler', push: blastPush(l.x, y, l.z, p.x, p.y, p.z, LEAP_HIT * 3) });
+      }
+    }
+    if (since >= REST_MS) ling(l, SP_RUN, now);
+    return true;
+  });
+
+  // Running ones keep a little apart.
+  const run = st.brood.filter((l) => l.st === SP_RUN);
+  for (let i = 0; i < run.length; i++) {
+    for (let j = i + 1; j < run.length; j++) {
+      const a = run[i], c = run[j], dx = c.x - a.x, dz = c.z - a.z, d = Math.hypot(dx, dz);
+      if (d >= SP_GAP || d < 1e-4) continue;
+      const k = (SP_GAP - d) / d / 2;
+      a.x -= dx * k;
+      a.z -= dz * k;
+      c.x += dx * k;
+      c.z += dz * k;
+    }
+  }
 }

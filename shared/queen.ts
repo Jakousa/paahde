@@ -89,3 +89,37 @@ export function slamPoints(x: number, z: number, yaw: number): [number, number, 
   const cx = x + fx * SLAM_FWD, cz = z + fz * SLAM_FWD;
   return [cx + sx * SLAM_SIDE, cz + sz * SLAM_SIDE, cx - sx * SLAM_SIDE, cz - sz * SLAM_SIDE];
 }
+
+// --- The brood: spiderlings it drops from its sac while it fights (server/queen.ts simulates them) ---
+
+/** After the feet, BossSnap.s[S_BROOD] is the rear's length (ms, shorter against a crowd), s[S_BROOD + 1] when its
+ *  sac last began to open (server ms, 0 never), then BROOD_N numbers per spiderling: id, x, z, yaw, state, since
+ *  (server ms). */
+export const S_BROOD = S_FEET + LEGS * 4;
+export const BROOD_N = 6;
+/** Never more than this many out at once, however many people. */
+export const BROOD_CAP = 16;
+/** Spiderling states: dropping out of the sac, running, crouched to spring, in the air, landed (getting up), dying. */
+export const SP_DROP = 0, SP_RUN = 1, SP_CROUCH = 2, SP_LEAP = 3, SP_REST = 4, SP_DIE = 5;
+/** The sac opens for BIRTH_MS (glowing, pulsing), then the clutch drops out from under it (body frame: BIRTH_Z
+ *  along, BIRTH_Y down from the thorax centre), each falling for DROP_MS. */
+export const BIRTH_MS = 1400;
+export const BIRTH_Z = -13;
+export const BIRTH_Y = -2.2;
+export const DROP_MS = 650;
+/** Running speed (m/s): faster than a walk (7.5), slower than a sprint (11). */
+export const SP_SPEED = 8.4;
+/** Once where its prey will be is within LEAP_MAX (m) (or the prey is within LEAP_R), it crouches CROUCH_MS (a sharp
+ *  rattle), then springs there in LEAP_MS: whoever is within LEAP_HIT (m) of where it lands dies. Then it gets up
+ *  for REST_MS. */
+export const LEAP_R = 2.5;
+export const LEAP_MAX = 9;
+export const LEAP_HIT = 1.5;
+export const CROUCH_MS = 380;
+export const LEAP_MS = 340;
+export const REST_MS = 900;
+/** It runs down for good after SP_LIFE (ms) (and when its mother dies), curling up over DIE_MS. */
+export const SP_LIFE = 26_000;
+export const DIE_MS = 1400;
+/** Body height over the sand (m). */
+export const SP_BODY_Y = 0.55;

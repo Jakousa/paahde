@@ -59,7 +59,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   points): brain `server/carrier.ts`, view `src/world/carrier.ts`, sound `src/carrierSound.ts`, model
   `tools/blender/carrier.py`
 - `shared/queen.ts` — the brood queen boss (giant eight-legged spider; gait, rear-and-slam numbers); brain
-  `server/queen.ts` (steps the feet), view + leg IK `src/world/queen.ts`, `src/queenSound.ts`, model `tools/blender/queen.py`
+  `server/queen.ts` (steps the feet, simulates the spiderlings it drops from its sac), view + leg IK `src/world/queen.ts` (spiderlings `src/world/brood.ts`), `src/queenSound.ts`, model `tools/blender/queen.py`
 - `shared/colossus.ts` — the colossus boss (67 m biped: rig sizes, gait, stomps, snapshot layout); brain
   `server/colossus.ts` (server feet, footprint craters, big stomp, fall furrow), view `src/world/colossus.ts` (leg IK,
   death topple), `src/colossusSound.ts`, model `tools/blender/colossus.py`

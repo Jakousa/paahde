@@ -14,17 +14,21 @@
 // - Dying: it twitches, its legs give out one by one in servo jerks with the feet skidding out, the body sinks in
 //   stages and crashes onto the sand, the sac splits open along its seam glowing inside, and it smokes; before the
 //   server clears it, it sinks into the sand.
+// - The brood (src/world/brood.ts): when the server opens the sac (BossSnap.s[S_BROOD + 1]) its halves part a little,
+//   pulsing, glowing inside, with a groan and scrabbling, and the spiderlings tumble out from under it.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BOSSES, type BossSnap } from '../../shared/bosses.ts';
 import {
-  ABD_PITCH, BODY_H, FEMUR, FRONT, HUNT, LEGS, PEDICEL, REAR, REAR_MS, RECOVER, restSpot, ROAM, S_FEET, SOCKETS, TARSUS, TARSUS_LEAN, TIBIA,
+  ABD_PITCH, BIRTH_MS, BODY_H, FEMUR, FRONT, HUNT, LEGS, PEDICEL, REAR, REAR_MS, RECOVER, restSpot, ROAM, S_BROOD, S_FEET, SOCKETS, TARSUS,
+  TARSUS_LEAN, TIBIA,
 } from '../../shared/queen.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { queenSound } from '../queenSound';
 import { rifleSound } from '../rifleSound';
 import { weakPoint, type BossCtx, type BossView } from './bossParts';
+import { Brood } from './brood';
 import { zaps } from './zaps';
 
 /** Hidden past this distance (m). */
@@ -42,6 +46,10 @@ const RAISED = new THREE.Vector3(5, 7.5, 12.5);
 const TWITCH = 0.8, LEG_GAP = 0.32, FAIL_S = 0.6, DEAD_REST = 2.2, SPLIT = 0.38;
 /** The wreck sinks into the sand over its last SINK_S seconds. */
 const SINK_S = 20;
+/** Giving birth: the sac's halves part this far (rad), pulsing; it closes over CLOSE_MS after the clutch is out. */
+const BIRTH_SPLIT = 0.11, CLOSE_MS = 900;
+/** Where the spiderlings drop from (the sac's frame: its underside). */
+const DROP_AT = new THREE.Vector3(0, -1.2, -11);
 /** Weak points (index = BOSSES.queen.points order): where on the model (thorax frame, or the sac's unpitched
  *  frame), facing which way, how big (tools/blender/queen.py prints them). */
 const POINTS: { on: 'thorax' | 'sac'; p: [number, number, number]; n: [number, number, number]; r: number }[] = [
@@ -211,6 +219,8 @@ export class QueenView implements BossView {
   private went: boolean[] = [];
   private crashed = false;
   private smoke = 0;
+  private brood: Brood;
+  private born = 0;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -242,6 +252,7 @@ export class QueenView implements BossView {
     this.usesModel = geos !== null;
     if (!geos) void load();
     scene.add(this.root);
+    this.brood = new Brood(scene);
   }
 
   /** Fill the part groups with meshes from `g`. */
@@ -280,9 +291,13 @@ export class QueenView implements BossView {
     }
     const far = !ctx.me || Math.hypot(s.x - ctx.me.x, s.z - ctx.me.z) > SHOW_R;
     this.root.visible = !far;
-    const mode = s.s[0], modeAt = s.s[1];
+    const mode = s.s[0], modeAt = s.s[1], rearMs = s.s[S_BROOD] || REAR_MS, birthAt = s.s[S_BROOD + 1] || 0;
     if (!this.placed || Math.hypot(s.x - this.x, s.z - this.z) > 40) this.place(s);
-    if (s.dead > 0) return this.die(s, ctx);
+    if (s.dead > 0) {
+      this.die(s, ctx);
+      this.brood.update(s.s, ctx, far, this.dropAt);
+      return;
+    }
     // Velocity from the interpolated track (smoothed), turn rate.
     const k = 1 - Math.exp(-dt * 3);
     this.vx += ((s.x - this.x) / dt - this.vx) * k;
@@ -297,13 +312,13 @@ export class QueenView implements BossView {
     const since = ctx.time - modeAt;
     if (modeAt !== this.lastModeAt) {
       const fresh = since < 800;
-      if (mode === REAR && fresh) queenSound.screech(this.headPos(_w), ctx.ear, REAR_MS / 1000);
+      if (mode === REAR && fresh) queenSound.screech(this.headPos(_w), ctx.ear, rearMs / 1000);
       if (mode === HUNT && this.lastMode === ROAM && fresh) queenSound.chitter(this.headPos(_w), ctx.ear);
       this.lastMode = mode;
       this.lastModeAt = modeAt;
     }
     let raise: number;
-    if (mode === REAR) raise = since < 0 ? 0 : smooth(Math.min(1, since / (REAR_MS * 0.55)));
+    if (mode === REAR) raise = since < 0 ? 0 : smooth(Math.min(1, since / (rearMs * 0.55)));
     else if (mode === RECOVER) raise = since < 0 ? 1 : 1 - Math.pow(Math.min(1, since / (SLAM_S * 1000)), 2);
     else raise = this.raise * Math.exp(-dt * 3);
     this.raise = raise;
@@ -344,8 +359,16 @@ export class QueenView implements BossView {
     // The sac: kept low while rearing, swinging out on turns, breathing.
     const breathe = Math.sin(ctx.time * 0.0021) * 0.025;
     this.sacPivot.rotation.set(raise * REAR_PITCH * 0.8 + breathe, Math.max(-0.15, Math.min(0.15, -this.turnRate * 0.25)), 0, 'YXZ');
-    this.sacL.rotation.set(0, 0, 0);
-    this.sacR.rotation.set(0, 0, 0);
+    // Giving birth: the halves part, pulsing, glowing inside.
+    const bs = ctx.time - birthAt;
+    if (birthAt && birthAt !== this.born && bs >= 0) {
+      this.born = birthAt;
+      if (!far && bs < 800) queenSound.birth(this.dropAt(_w), ctx.ear, BIRTH_MS / 1000);
+    }
+    const open = !birthAt || bs < 0 ? 0 : bs < BIRTH_MS ? smooth(bs / BIRTH_MS) : 1 - smooth((bs - BIRTH_MS - 400) / CLOSE_MS);
+    const split = open * BIRTH_SPLIT * (0.75 + 0.25 * Math.sin(ctx.time * 0.025));
+    this.sacL.rotation.set(0, -split * 0.3, split, 'YXZ');
+    this.sacR.rotation.set(0, split * 0.3, -split, 'YXZ');
     // Cutters: working while it hunts, wide when it rears.
     const jaw = 0.08 + this.hunt * 0.18 * (0.5 + 0.5 * Math.sin(ctx.time * 0.012)) + raise * 0.35;
     this.mandL.rotation.y = -jaw;
@@ -355,10 +378,14 @@ export class QueenView implements BossView {
     // Glow: eyes hotter while hunting, white-hot reared; the sac's slits breathe.
     const pulse = 0.5 + 0.5 * Math.sin(ctx.time * 0.008);
     this.glow.eyes.color.setScalar(1 + this.hunt * (0.6 + 0.6 * pulse) + raise * 1.5);
-    this.glow.sac.color.setScalar(0.75 + 0.35 * Math.sin(ctx.time * 0.0021) + raise * 0.6);
+    this.glow.sac.color.setScalar(0.75 + 0.35 * Math.sin(ctx.time * 0.0021) + raise * 0.6 + open * (1.2 + 0.6 * Math.sin(ctx.time * 0.025)));
     this.glow.legs.color.setScalar(1);
-    this.gutMat.color.setScalar(0);
+    this.gutMat.color.setScalar(open * 0.9);
+    this.brood.update(s.s, ctx, far, this.dropAt);
   }
+
+  /** Under the sac, where the spiderlings drop from (world). */
+  private dropAt = (out: THREE.Vector3) => out.copy(DROP_AT).applyMatrix4(this.sacFrame[0].matrixWorld);
 
   /** Stand it where the snapshot says, feet where the server has them (came into view, or moved far). */
   private place(s: BossSnap) {
@@ -575,6 +602,7 @@ export class QueenView implements BossView {
 
   dispose() {
     this.scene.remove(this.root);
+    this.brood.dispose();
     for (const m of [...Object.values(this.glow), this.gutMat]) m.dispose();
   }
 }
