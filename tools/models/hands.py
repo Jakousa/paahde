@@ -942,7 +942,7 @@ clip_once('RifleAim', 8, rifle_aim)  # 9 keys, 0.27 s
 # space and the hand follows. Aimed, the arm is out straight and the iron sights sit on the view axis.
 import pistol as PS  # noqa: E402
 
-P_RELIEF = 0.38  # eye behind the rear sight at full aim (model units; ×0.55 in game = 21 cm)
+P_RELIEF = 0.42  # eye behind the rear sight at full aim (model units; ×0.55 in game = 23 cm; about the arm's reach)
 
 
 def pistol_sdf_nat():
@@ -968,10 +968,10 @@ def pistol_ready(at, roll, dist=45.0):
     return pw
 
 
-# aim: the sight line on the view axis, the eye P_RELIEF behind the rear sight, canted P_CANT about the sight line
-# (top to the left), so the hand under it sits off to the right and the forearm runs out of the bottom right corner
-# instead of up the middle of the view
-P_CANT = -35
+# aim: the sight line on the view axis, the eye P_RELIEF behind the rear sight, upright but for a slight
+# cant P_CANT (top to the left), as a straight arm from the right shoulder holds it; the forearm runs off to the
+# bottom right (a bigger cant read as a sideways gangsta hold)
+P_CANT = -10
 P_AIM = Matrix.Rotation(math.radians(P_CANT), 4, 'Y') @ Matrix.Translation(-PS.eye_local(P_RELIEF))
 # ready: low right, forearm forward, canted a touch inwards
 P_READY = pistol_ready((0.15, 0.30, -0.16), roll=-6)
