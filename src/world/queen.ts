@@ -191,7 +191,7 @@ export class QueenView implements BossView {
   readonly points: THREE.Object3D[] = [];
   readonly snapS = true;
   private scene: THREE.Scene;
-  private root = new THREE.Group();
+  readonly root = new THREE.Group();
   private body = new THREE.Group();
   private sacPivot = new THREE.Group();
   private sacL = new THREE.Group();
@@ -257,7 +257,8 @@ export class QueenView implements BossView {
 
   /** Fill the part groups with meshes from `g`. */
   private build(g: Record<Part, Geo>) {
-    const fill = (o: THREE.Object3D, geo: Geo, glow: Glow) => {
+    // `shadow` false: a small part whose shadow nobody misses (each caster is drawn again into every cascade).
+    const fill = (o: THREE.Object3D, geo: Geo, glow: Glow, shadow = true) => {
       for (const c of [...o.children]) if ((c as THREE.Mesh).isMesh) o.remove(c);
       const add = (geom: THREE.BufferGeometry | null, mat: THREE.Material, shadow: boolean) => {
         if (!geom) return;
@@ -265,7 +266,7 @@ export class QueenView implements BossView {
         m.castShadow = shadow;
         o.add(m);
       };
-      add(geo.lit, litMat, true);
+      add(geo.lit, litMat, shadow);
       add(geo.glow, this.glow[glow], false);
       add(geo.gut, this.gutMat, false);
     };
@@ -275,10 +276,10 @@ export class QueenView implements BossView {
     fill(this.sacL, g.abdL, 'sac');
     fill(this.sacR, g.abdR, 'sac');
     for (const l of this.legs) {
-      fill(l.coxa, g.coxa, 'legs');
+      fill(l.coxa, g.coxa, 'legs', false);
       fill(l.femur, g.femur, 'legs');
       fill(l.tibia, g.tibia, 'legs');
-      fill(l.tarsus, g.tarsus, 'legs');
+      fill(l.tarsus, g.tarsus, 'legs', false);
     }
   }
 

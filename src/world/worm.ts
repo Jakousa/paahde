@@ -18,7 +18,7 @@ import { WRECK_SINK } from '../../shared/rifle.ts';
 import { indoors } from '../../shared/shelters.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { HEAD_R, MODE_AIR, MODE_HUNT, MODE_LUNGE, MODE_RISE, POINT_R, POINT_SEGS, RADIUS, SEG_LEN, SEGS, segScale, TELL } from '../../shared/worm.ts';
-import { weakPoint, type BossCtx, type BossFxMsg, type BossView } from './bossParts';
+import { mergePart, weakPoint, type BossCtx, type BossFxMsg, type BossView } from './bossParts';
 import { tyreDust } from '../tyreDust';
 import { rifleSound } from '../rifleSound';
 import { wormSound } from '../wormSound';
@@ -109,7 +109,7 @@ export class WormView implements BossView {
   readonly points: THREE.Object3D[] = [];
   readonly snapS = false;
   private scene: THREE.Scene;
-  private root = new THREE.Group();
+  readonly root = new THREE.Group();
   private built: 'model' | 'stand-in' | null = null;
   private segMeshes: THREE.InstancedMesh[] = [];
   private head = new THREE.Group();
@@ -156,8 +156,8 @@ export class WormView implements BossView {
       this.root.add(im);
     }
     this.head = new THREE.Group();
-    this.head.add(m.head.clone());
-    this.grinder = m.grinder.clone();
+    this.head.add(mergePart(m.head));
+    this.grinder = mergePart(m.grinder);
     this.head.add(this.grinder);
     this.jaws = [0, 1, 2].map((k) => {
       // Turned about the axis to its place on the rim, then hinged about its own X.
@@ -165,13 +165,12 @@ export class WormView implements BossView {
       holder.rotation.z = (k * 2 * Math.PI) / 3;
       const hinge = new THREE.Group();
       hinge.position.set(0, 4.3, 2.0);
-      hinge.add(m.jaw.clone());
+      hinge.add(mergePart(m.jaw));
       holder.add(hinge);
       this.head.add(holder);
       return hinge;
     });
-    this.tail = m.tail.clone();
-    for (const o of [this.head, this.tail]) o.traverse((c) => (c.castShadow = true));
+    this.tail = mergePart(m.tail);
     this.root.add(this.head, this.tail);
     this.built = what;
   }

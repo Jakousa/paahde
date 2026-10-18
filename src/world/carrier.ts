@@ -29,7 +29,7 @@ import { carrierSound } from '../carrierSound';
 import { guardianSound } from '../guardianSound';
 import { rifleSound } from '../rifleSound';
 import { tyreDust } from '../tyreDust';
-import { weakPoint, type BossCtx, type BossFxMsg, type BossView } from './bossParts';
+import { mergePart, weakPoint, type BossCtx, type BossFxMsg, type BossView } from './bossParts';
 import { timeOfDay } from './dayNight';
 import { zaps } from './zaps';
 
@@ -149,7 +149,7 @@ const _o = new THREE.Vector3(), _r = new THREE.Vector3();
 export class CarrierView implements BossView {
   readonly points: THREE.Object3D[] = [];
   private scene: THREE.Scene;
-  private root = new THREE.Group();
+  readonly root = new THREE.Group();
   /** Per fan: the tilting group (duct, rotor, hub lens) and its rotor; spin speed now. */
   private fans: THREE.Group[] = [];
   private rotors: (THREE.Object3D | null)[] = [null, null, null, null];
@@ -209,10 +209,12 @@ export class CarrierView implements BossView {
     this.built = true;
     if (this.placeholder) this.root.remove(this.placeholder);
     this.placeholder = null;
-    this.root.add(model.hull.clone());
+    // Merged (src/world/bossParts.ts): a few shadow casters instead of one per material; the nav lamps stay apart.
+    const nav = (m: THREE.Material) => m.name === 'CarrierNavRed' || m.name === 'CarrierNavWhite';
+    this.root.add(mergePart(model.hull, nav));
     this.fans.forEach((g, i) => {
-      g.add(model!.duct.clone());
-      const r = model!.rotor.clone();
+      g.add(mergePart(model!.duct, nav));
+      const r = mergePart(model!.rotor, nav);
       r.rotation.y = i * 0.7;
       g.add(r);
       this.rotors[i] = r;

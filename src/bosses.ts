@@ -29,10 +29,16 @@ const VIEWS: Record<BossKind, (scene: THREE.Scene) => BossView> = {
 const SMOKE_RATE = 6;
 /** The health bar shows the nearest live boss within this (m). */
 const BAR_R = 700;
+/** A boss casts sun shadows only this close (m) to the camera. Each casting part is drawn again into every shadow
+ *  cascade it reaches (four, out to 1600 m: src/world/sky.ts), and a far boss reaches the big ones: four bosses in
+ *  view were ~600 extra draw calls a frame. Past this its shadow would only land in the coarse outer cascade. */
+const SHADOW_R = 350;
+/** Re-check the parts for new meshes (a model that finished loading) this often (frames). */
+const SHADOW_RECHECK = 60;
 /** A shot weak point stays broken here this long (ms) waiting for the server to agree. */
 const PREDICT_MS = 1500;
 
-type Shown = { view: BossView; kind: BossKind; shown: number; predicted: Map<number, number>; smoke: number[]; dead: boolean };
+type Shown = { view: BossView; kind: BossKind; shown: number; predicted: Map<number, number>; smoke: number[]; dead: boolean; shadows: boolean; frames: number };
 
 /** What a shot struck: weak point `index` of boss `boss` (-1: just its metal). */
 export type BossHit = { boss: number; index: number; dist: number; point: THREE.Vector3; normal: THREE.Vector3 };
@@ -72,10 +78,11 @@ export class BossFx {
       let v = this.shown.get(s.id);
       if (!v) {
         const view = VIEWS[s.k](this.scene);
-        this.shown.set(s.id, (v = { view, kind: s.k, shown: 0, predicted: new Map(), smoke: view.points.map(() => Math.random()), dead: s.dead > 0 }));
+        this.shown.set(s.id, (v = { view, kind: s.k, shown: 0, predicted: new Map(), smoke: view.points.map(() => Math.random()), dead: s.dead > 0, shadows: true, frames: 0 }));
         this.setBroken(v, s.br, true);
       }
       v.view.update(s, c);
+      this.shadows(v, Math.hypot(s.x - c.ear.x, s.z - c.ear.z) < SHADOW_R);
       this.syncBroken(v, s.br);
       this.smoulder(v, dt);
       if (s.dead > 0 && !v.dead) rifleSound.firework(s, c.ear, 1.4, 0.6);
@@ -93,6 +100,16 @@ export class BossFx {
       v.view.dispose();
       this.shown.delete(id);
     }
+  }
+
+  /** Shadows on or off for a boss's parts (the ones its view made casters: remembered on first sight). */
+  private shadows(v: Shown, on: boolean) {
+    if (on === v.shadows && ++v.frames % SHADOW_RECHECK) return;
+    v.shadows = on;
+    v.view.root.traverse((o) => {
+      if (o.userData.casts === undefined) o.userData.casts = o.castShadow;
+      o.castShadow = on && o.userData.casts;
+    });
   }
 
   /** The bosses at server time `t`, between the two messages around it. */

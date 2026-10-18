@@ -205,7 +205,7 @@ export class ColossusView implements BossView {
   readonly snapS = true;
   private scene: THREE.Scene;
   /** Everything; `fall` tips it all over when it dies. */
-  private root = new THREE.Group();
+  readonly root = new THREE.Group();
   private fall = new THREE.Group();
   private parts = {} as Record<'pelvis' | 'torso' | 'head', THREE.Group>;
   private arms: { upper: THREE.Group; fore: THREE.Group }[] = [];

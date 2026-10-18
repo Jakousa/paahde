@@ -1,6 +1,7 @@
 // What every boss view (src/world/<kind>.ts, drawn by src/bosses.ts) is made of: the interface it implements and
 // the glowing weak point lens they all carry, the same red glass in a dark rim as the walkers' (src/world/guardians.ts).
 import * as THREE from 'three/webgpu';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { BossSnap } from '../../shared/bosses.ts';
 import type { ServerMsg } from '../../shared/protocol.ts';
 
@@ -23,6 +24,8 @@ export type BossCtx = {
 };
 
 export interface BossView {
+  /** Everything of it that stays in the scene (src/bosses.ts turns its shadows off when it's far). */
+  readonly root: THREE.Object3D;
   /** Weak point i is points[i], a weakPoint() group placed on the model (its world scale is the lens radius, m);
    *  src/bosses.ts shatters it and tests shots against it. A hidden one (or one under the sand) can't be hit. */
   readonly points: THREE.Object3D[];
@@ -39,6 +42,48 @@ export interface BossView {
   minion?(o: THREE.Vector3, d: THREE.Vector3, max: number): { index: number; dist: number } | null;
   /** Gone from view: take everything out of the scene. */
   dispose(): void;
+}
+
+const mergedLit = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.5 });
+const mergedGlow = new THREE.MeshBasicNodeMaterial({ vertexColors: true });
+
+/**
+ * A rigid part of a model as few meshes as it can be: everything lit merged into one mesh (the materials' colours as
+ * vertex colours), everything glowing into another (unlit, no shadow), and the meshes whose material `keep` picks
+ * left as they are (lamps animated by their material; no shadow). A glTF part comes in one mesh per material, and
+ * every mesh is drawn again into each shadow cascade it reaches: one caster instead of a dozen.
+ */
+export function mergePart(o: THREE.Object3D, keep: (m: THREE.Material) => boolean = () => false): THREE.Group {
+  const lit: THREE.BufferGeometry[] = [], glow: THREE.BufferGeometry[] = [], out = new THREE.Group();
+  o.updateMatrixWorld(true);
+  const inv = o.matrixWorld.clone().invert();
+  o.traverse((c) => {
+    const mesh = c as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    const local = inv.clone().multiply(mesh.matrixWorld);
+    if (keep(mat)) {
+      const k = new THREE.Mesh(mesh.geometry, mat);
+      k.applyMatrix4(local);
+      out.add(k);
+      return;
+    }
+    const g = mesh.geometry.clone().applyMatrix4(local);
+    for (const a of Object.keys(g.attributes)) if (a !== 'position' && a !== 'normal') g.deleteAttribute(a);
+    const n = g.attributes.position.count, col = new Float32Array(n * 3);
+    const emissive = (mat.emissiveIntensity ?? 0) > 0 && mat.emissive && mat.emissive.getHex() !== 0;
+    const c3 = emissive ? mat.emissive.clone().multiplyScalar(Math.min(3, mat.emissiveIntensity)) : (mat.color ?? new THREE.Color(0.3, 0.3, 0.3));
+    for (let i = 0; i < n; i++) col.set([c3.r, c3.g, c3.b], i * 3);
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    (emissive ? glow : lit).push(g.index ? g.toNonIndexed() : g);
+  });
+  if (lit.length) {
+    const m = new THREE.Mesh(mergeGeometries(lit)!, mergedLit);
+    m.castShadow = true;
+    out.add(m);
+  }
+  if (glow.length) out.add(new THREE.Mesh(mergeGeometries(glow)!, mergedGlow));
+  return out;
 }
 
 export const lensGeo = new THREE.SphereGeometry(1, 16, 12);
