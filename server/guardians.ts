@@ -58,7 +58,8 @@ const CRAWLERS_MIN = 1, CRAWLERS_MAX = 4;
 const CRAWLER_R = 0.8;
 /** A crawler after you keeps track of you this close (m); this close it stops flanking and comes straight in. */
 const CHASE_SIGHT = 45, CLOSE_IN = 6;
-/** Drones over a site at night, all drones at most; they come in from DRONE_FROM (m) and patrol within DRONE_AREA. */
+/** Drones over a site at night, all drones at most; they come in from DRONE_FROM (m) and patrol within DRONE_AREA.
+ *  Shot down, they aren't replaced until everyone has left the site (SITE_LEAVE_R) or the night is over. */
 const DRONES_PER_SITE = 2;
 const MAX_DRONES = 16;
 const DRONE_FROM = 220;
@@ -76,7 +77,7 @@ const ROAM = -2;
 const ROAMERS = 6;
 const ROAM_NEAR = 800;
 const ROAM_EACH = 2;
-const ROAM_EVERY_S = 60;
+const ROAM_EVERY_S = 90;
 const ROAM_FROM: [number, number] = [300, 420];
 const ROAM_MIN = 3 * 60_000, ROAM_MAX = 6 * 60_000;
 const ROAM_LEG: [number, number] = [120, 350];
@@ -181,6 +182,8 @@ export class GuardianServer {
   private downed: Kill[] = [];
   /** Crash sites (ids) with crawlers out right now. */
   private swarmed = new Set<number>();
+  /** Crash site id → drones sent to it this night while someone has stayed near it. */
+  private sent = new Map<number, number>();
   /** Debug menu packs: their made-up home (where they were summoned), gone like a site's once everyone has left it. */
   private summoned: CrashSite[] = [];
   private nextSummon = 1;
@@ -634,14 +637,19 @@ export class GuardianServer {
     const night = sunElevation(tod) < NIGHT_SUN;
     // At night, every crawler- or guardian-ground site someone is near has its drones over it (not the scrap fields).
     if (night) {
+      for (const id of this.sent.keys()) {
+        const s = this.sites.find((o) => o.id === id)!;
+        if (!players.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_LEAVE_R)) this.sent.delete(id);
+      }
       for (const s of this.sites) {
         if (s.level === 0) continue;
         if (this.drones.length >= MAX_DRONES) break;
         if (!exposed.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_NEAR_R)) continue;
-        let have = this.drones.filter((d) => !d.leaving && d.site === s.id).length;
-        for (; have < DRONES_PER_SITE && this.drones.length < MAX_DRONES; have++) this.spawnDrone(s.x, s.z, s.id, 0, DRONE_FROM);
+        let sent = this.sent.get(s.id) ?? 0;
+        for (; sent < DRONES_PER_SITE && this.drones.length < MAX_DRONES; sent++) this.spawnDrone(s.x, s.z, s.id, 0, DRONE_FROM);
+        this.sent.set(s.id, sent);
       }
-    }
+    } else this.sent.clear();
     this.roam(dt, now, exposed);
     const v = { x: 0, y: 0, z: 0 };
     for (const d of this.drones) {
