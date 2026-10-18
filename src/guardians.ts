@@ -23,6 +23,8 @@ import type { Net } from './net';
 const SHAKE_R = 90;
 const SHAKE = 0.35;
 const DUST_R = 600;
+/** A crawler's bite jolts the camera this much (m). */
+const BITE_SHAKE = 0.18;
 
 /** Firework bursts (rifleSound.firework) besides a guardian's weak point: a crawler's and a crashing drone's softer
  *  (×level), a missile's blast lower (pitch) to sound bigger. */
@@ -194,6 +196,7 @@ export class GuardianFx {
         if (g.hunt === 2 && d < KINDS[CRAWLER].reach + 0.8 && performance.now() - this.bitAt > 1000) {
           this.bitAt = performance.now();
           guardianSound.chitter(g.x, camera.position.y - 1, g.z, true);
+          this.shake = Math.max(this.shake, BITE_SHAKE);
         }
         if (g.hunt === 2) this.crawled.add(g.id);
         else this.crawled.delete(g.id);

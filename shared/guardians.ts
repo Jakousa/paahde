@@ -60,11 +60,11 @@ export const KINDS = [
 export const GUARDIAN = 0, CRAWLER = 1;
 export type Kind = typeof GUARDIAN | typeof CRAWLER;
 /** A crawler's bite: heat added (HEAT_MAX 100), at most every BITE_MS. After a bite, or chasing for CRAWLER_CHASE_MS,
- *  it backs off for CRAWLER_CALM_MS: a nuisance at the sites rather than a wall (you can't fight back). */
-export const BITE_HEAT = 14;
+ *  it backs off for CRAWLER_CALM_MS. Hard enough that a pack left to bite kills you (cooling drains ~2.5/s). */
+export const BITE_HEAT = 30;
 export const BITE_MS = 1500;
 export const CRAWLER_CHASE_MS = 7000;
-export const CRAWLER_CALM_MS = 9000;
+export const CRAWLER_CALM_MS = 5000;
 
 // --- The cannon (tools/blender/guardians.py Guardian_Turret, Guardian_Gun) ---
 
