@@ -10,8 +10,8 @@ import { bikeLevel, bottleSips, carriedGear, equipped, gearTiers, GEAR_KINDS, sh
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
-import { BOSS_SPOILS, JET_RELIC_ODDS, JET_SCRAP, JET_SOFT_EXTRA, JET_SPOILS, KILL_SPOILS, RELIC_DROPS } from '../shared/tables.ts';
-import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
+import { BOSS_SPOILS, JET_RELIC_ODDS, JET_SCRAP, JET_SOFT_EXTRA, JET_SPOILS, KILL_SPOILS, RECEIVER_DROPS, RELIC_DROPS } from '../shared/tables.ts';
+import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, RECEIVERS, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
@@ -627,11 +627,15 @@ function sendName(p: Player) {
   for (const o of players.values()) if (o !== p && o.ws.readyState === o.ws.OPEN) o.ws.send(json);
 }
 
+/** A random boss receiver kind (shared/bosses.ts RECEIVERS). */
+const randomReceiver = () => { const r = Object.values(RECEIVERS); return r[Math.floor(Math.random() * r.length)]; };
+
 /** What a killed walker or downed drone leaves on the sand (shared/tables.ts KILL_SPOILS). */
 function dropSpoils(k: Kill) {
   const kind = k.kind === GUARDIAN ? 'guardian' : k.kind === 'drone' ? 'drone' : 'crawler';
   const sp = KILL_SPOILS[kind];
   if (Math.random() < RELIC_DROPS[kind].odds) loot.dropAt(k.x, k.z, RELIC_DROPS[kind].kind);
+  if (Math.random() < RECEIVER_DROPS[kind]) loot.dropBroken(k.x, k.z, randomReceiver());
   const n = Math.random() < sp.odds ? sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1)) : 0;
   for (let i = 0; i < n; i++) {
     const part = sp.parts[Math.floor(Math.random() * sp.parts.length)];
@@ -650,6 +654,7 @@ function dropJetSpoils(w: { x: number; z: number; yaw: number; soft: boolean }) 
   const n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1)) + (w.soft ? JET_SOFT_EXTRA : 0);
   for (let i = 0; i < n; i++) at(partKind(sp.parts[Math.floor(Math.random() * sp.parts.length)], pickTier(sp.tierWeights, Math.random)));
   if (Math.random() < JET_RELIC_ODDS) at(RELIC_DROPS.drone.kind);
+  if (Math.random() < RECEIVER_DROPS.jet) loot.dropBroken(w.x + bx * 4, w.z + bz * 4, randomReceiver(), 4);
   const scrapN = JET_SCRAP.min + Math.floor(Math.random() * (JET_SCRAP.max - JET_SCRAP.min + 1));
   for (let i = 0; i < scrapN; i++) at(SCRAP);
 }

@@ -181,8 +181,8 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   // The jammer (shared/jammer.ts): out where the roaming drones and the jets first come after you.
   jammer: { n: 3, level: 1 },
   // The receivers that call the bosses (shared/bosses.ts): out on guardian ground.
-  receiver_carrier: { n: 3, level: 2 }, receiver_queen: { n: 3, level: 2 }, receiver_colossus: { n: 3, level: 2 },
-  receiver_worm: { n: 3, level: 2 },
+  receiver_carrier: { n: 1, level: 2 }, receiver_queen: { n: 1, level: 2 }, receiver_colossus: { n: 1, level: 2 },
+  receiver_worm: { n: 1, level: 2 },
 };
 
 /** One broken motorcycle always lies on the sand in front of the base door (server/loot.ts homeBikeSpot), so a bike is
@@ -199,10 +199,11 @@ export const RARE_FINDS = { n: 10, noParts: ['impeller'] as PartId[], tierWeight
 export const BROKEN_GEAR = { filled: 0.5, tierWeights: { scrap: 7, basic: 3 } satisfies TierWeights };
 
 /** Caches lying out in the desert: how many at once, and what is inside
- *  (relative odds: a part, some scrap, some cloth, a broken laser pistol, a piece of other broken gear). */
+ *  (relative odds: a part, some scrap, some cloth, a broken laser pistol, a piece of other broken gear, a broken boss
+ *  receiver: any of shared/bosses.ts RECEIVERS). */
 export const CACHES = {
   n: 60,
-  contents: { part: 0.6, scrap: 0.15, cloth: 0.1, pistol: 0.04, gear: 0.11 },
+  contents: { part: 0.6, scrap: 0.15, cloth: 0.1, pistol: 0.04, gear: 0.11, receiver: 0.01 },
   /** A cache part: any part but these, at these tiers. */
   noParts: ['uranium', 'impeller'] as PartId[],
   tierWeights: { scrap: 5, basic: 3, quality: 1.2, space: 0.25 } satisfies TierWeights,
@@ -212,7 +213,7 @@ export const CACHES = {
  *  shelter; a taken one comes back in another), and what they are, like CACHES but richer. */
 export const SHELTER_STASHES = {
   n: 6,
-  contents: { part: 0.45, scrap: 0.1, cloth: 0.15, pistol: 0.08, gear: 0.22 },
+  contents: { part: 0.45, scrap: 0.1, cloth: 0.15, pistol: 0.08, gear: 0.22, receiver: 0.05 },
   tierWeights: { scrap: 3, basic: 3, quality: 1.5, space: 0.3 } satisfies TierWeights,
 };
 
@@ -242,6 +243,11 @@ export const RELIC_DROPS: Record<'guardian' | 'crawler' | 'drone', { kind: strin
   guardian: { kind: 'servo_heart', odds: 0.5 },
   crawler: { kind: 'brood_gland', odds: 0.1 },
   drone: { kind: 'drone_transponder', odds: 0.1 },
+};
+
+/** Odds a killed enemy (or a downed jet) also leaves a broken boss receiver, any of shared/bosses.ts RECEIVERS. */
+export const RECEIVER_DROPS: Record<'guardian' | 'crawler' | 'drone' | 'jet', number> = {
+  guardian: 0.1, crawler: 0.03, drone: 0, jet: 0.05,
 };
 
 /** A killed boss (shared/bosses.ts): min..max parts scattered over its wreck (`odds` unused: always), a uranium cell

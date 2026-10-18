@@ -9,7 +9,7 @@ import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
 import { overShelter, shelterAt, shelterLootSpot, sheltersNear } from '../shared/shelters.ts';
 import { GEAR, GEAR_KINDS, isGear, refit, scrapParts } from '../shared/gear.ts';
 import { JAMMER } from '../shared/jammer.ts';
-import { receiverBoss } from '../shared/bosses.ts';
+import { RECEIVERS, receiverBoss } from '../shared/bosses.ts';
 import { CLOTH, partKind, RETIRED, SCRAP } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { coreCrashSites, type SiteLevel } from '../shared/crashsites.ts';
@@ -232,6 +232,13 @@ export class LootServer {
     this.add(l);
   }
 
+  /** A piece of broken gear left on the sand at (x, z), like dropAt. */
+  dropBroken(x: number, z: number, kind: string, spread = 0.8) {
+    const l: Loot = { id: this.nextId++, kind, parts: this.brokenParts(kind), x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
+    this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z);
+    this.add(l);
+  }
+
   /** Every few seconds: put back what was taken a while ago. */
   respawn() {
     const now = Date.now();
@@ -331,12 +338,12 @@ export class LootServer {
   }
 
   /** What a cache or stash holds, picked by its table's odds. */
-  private contents(t: { contents: Record<'part' | 'scrap' | 'cloth' | 'pistol' | 'gear', number>; tierWeights: TierWeights }) {
+  private contents(t: { contents: Record<'part' | 'scrap' | 'cloth' | 'pistol' | 'gear' | 'receiver', number>; tierWeights: TierWeights }) {
     const what = pickOdds(t.contents);
     if (what === 'part') return { kind: partKind(pick(CACHE_PARTS), pickTier(t.tierWeights, Math.random)) };
     if (what === 'scrap') return { kind: SCRAP };
     if (what === 'cloth') return { kind: CLOTH };
-    const kind = what === 'pistol' ? PISTOL : pick(CACHE_GEAR);
+    const kind = what === 'pistol' ? PISTOL : what === 'receiver' ? pick(Object.values(RECEIVERS)) : pick(CACHE_GEAR);
     return { kind, parts: this.brokenParts(kind) };
   }
 
