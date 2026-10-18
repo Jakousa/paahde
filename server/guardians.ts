@@ -64,7 +64,7 @@ const DRONES_PER_SITE = 2;
 const MAX_DRONES = 16;
 const DRONE_FROM = 220;
 const DRONE_AREA = 110;
-const REFILL_MS = 2 * 60_000;
+const REFILL_MS = 60_000;
 /** A drone hit from any distance heads for the shooter this long (ms), renewed by every hit. */
 const HUNT_MS = 45_000;
 /** A drone with nobody within this distance (m) leaves. */
