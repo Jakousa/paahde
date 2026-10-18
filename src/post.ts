@@ -36,10 +36,10 @@ export const TONE_CURVES = ['aces', 'agx', 'filmic'] as const;
 export type ToneCurve = (typeof TONE_CURVES)[number];
 const toneIndex = uniform(0);
 
-/** Tone curve, switchable live (debug menu); starts from `?tone=aces|agx|filmic` (`?agx` still works) and
- *  `?white=` (the filmic white point). */
+/** Tone curve, switchable live (debug menu). Filmic by default; `?tone=aces|agx` (or `?agx`) starts on
+ *  another, `?white=` sets the filmic white point. */
 export const toneControl: { curve: ToneCurve; white: number; set(curve: ToneCurve, white?: number): void } = {
-  curve: 'aces',
+  curve: 'filmic',
   white: 2,
   set(curve, white = toneControl.white) {
     toneControl.curve = curve;
@@ -50,8 +50,8 @@ export const toneControl: { curve: ToneCurve; white: number; set(curve: ToneCurv
 };
 {
   const params = new URLSearchParams(location.search);
-  const name = params.get('tone') ?? (params.has('agx') ? 'agx' : 'aces');
-  toneControl.set((TONE_CURVES as readonly string[]).includes(name) ? (name as ToneCurve) : 'aces', Number(params.get('white') ?? 2));
+  const name = params.get('tone') ?? (params.has('agx') ? 'agx' : 'filmic');
+  toneControl.set((TONE_CURVES as readonly string[]).includes(name) ? (name as ToneCurve) : 'filmic', Number(params.get('white') ?? 2));
 }
 
 /** Sun tint used for veiling glare and flares (linear). */
