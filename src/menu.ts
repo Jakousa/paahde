@@ -43,8 +43,40 @@ const css = `
 #menu .foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
   opacity: 0.6; line-height: 1.5; word-break: break-all; }
 #menu .foot a { color: inherit; }
+/* The minigame: a button of its own in the corner, a machine that glints and pulses to be noticed. */
+#menu button.mini { position: absolute; right: 22px; bottom: 22px; width: 64px; height: 64px; padding: 0; border-radius: 13px;
+  display: grid; place-items: center; overflow: hidden; background: rgba(28, 15, 7, 0.92);
+  box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.35), 0 8px 24px rgba(0, 0, 0, 0.5); animation: miniPulse 2.6s ease-out infinite;
+  transition: transform .15s; }
+#menu button.mini:hover { background: rgba(58, 32, 14, 0.95); transform: scale(1.07); }
+#menu .panel.sub ~ button.mini { display: none; }
+#menu button.mini svg { width: 44px; height: 44px; overflow: visible; }
+#menu button.mini svg * { transform-box: fill-box; transform-origin: center; }
+#menu button.mini::after { content: ''; position: absolute; inset: -30%; pointer-events: none; transform: translateX(-130%);
+  background: linear-gradient(105deg, transparent 42%, rgba(255, 240, 200, 0.6) 50%, transparent 58%); animation: miniShine 3.4s ease-in-out infinite; }
+#menu button.mini .gear { animation: miniSpin 6s linear infinite; }
+#menu button.mini .lid { animation: miniLid 3.4s ease-in-out infinite; }
+#menu button.mini .tag { animation: miniTag 1.6s ease-in-out infinite; }
+@keyframes miniPulse {
+  0% { box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.35), 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 0 rgba(255, 176, 80, 0.55); }
+  70%, 100% { box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.35), 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 18px rgba(255, 176, 80, 0); }
+}
+@keyframes miniShine { 0%, 55% { transform: translateX(-130%); } 85%, 100% { transform: translateX(130%); } }
+@keyframes miniSpin { to { transform: rotate(360deg); } }
+@keyframes miniLid { 0%, 62%, 100% { transform: none; } 74% { transform: translateY(-2.5px) rotate(-1.5deg); } 86% { transform: none; } }
+@keyframes miniTag { 50% { opacity: 0.4; } }
+@media (prefers-reduced-motion: reduce) { #menu button.mini, #menu button.mini::after, #menu button.mini * { animation: none !important; } }
 `;
 
+/** One of the minigame's machines (src/loadingRunner.ts): a rust crate with an accent stripe, a rarity tag and two screws,
+ *  and a gear of its parts poking out over the lid. */
+const MACHINE_ICON = `<svg viewBox="0 0 44 44" aria-hidden="true">
+<g class="gear"><circle cx="22" cy="9" r="5.6" fill="none" stroke="#ff9a3c" stroke-width="3" stroke-dasharray="2.1 2.1"/><circle cx="22" cy="9" r="3.6" fill="#ff9a3c"/><circle cx="22" cy="9" r="1.4" fill="#1c0f07"/></g>
+<rect x="4" y="15" width="36" height="25" rx="4" fill="#251509" stroke="#3b2616" stroke-width="2"/>
+<g class="lid"><rect x="6" y="16" width="32" height="21" rx="3" fill="#7a5238" stroke="#3b2616" stroke-width="2"/>
+<rect x="10" y="23" width="24" height="5" fill="#a04a20"/><rect class="tag" x="10" y="23" width="5" height="5" fill="#3ff0ff"/>
+<circle cx="10" cy="20" r="2" fill="#8a8f93" stroke="#3b2616"/><circle cx="34" cy="33" r="2" fill="#8a8f93" stroke="#3b2616"/>
+<path d="M17 33h2M22 33h2M27 33h2" stroke="#3b2616" stroke-width="1.4"/></g></svg>`;
 
 export class Menu {
   private el = document.createElement('div');
@@ -72,11 +104,11 @@ export class Menu {
 <button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>
 <button class="ctl" style="margin-top:8px">${TEXT.menu.controls}</button>
-<button class="mini" style="margin-top:8px">${TEXT.menu.minigame}</button>
 <div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
 <div class="controls"><h2>${TEXT.controls.title}</h2><button class="back">${TEXT.controls.back}</button>
 <h3>${TEXT.controls.how}</h3><div class="binds"></div><div class="note"></div>
-<button class="reset">${TEXT.controls.reset}</button><div class="foot">${TEXT.controls.fixed}</div></div></div>`;
+<button class="reset">${TEXT.controls.reset}</button><div class="foot">${TEXT.controls.fixed}</div></div></div>
+<button class="mini" title="${TEXT.menu.minigame}" aria-label="${TEXT.menu.minigame}">${MACHINE_ICON}</button>`;
     document.body.append(this.el);
     this.footEl = this.el.querySelector('.info')!;
     // The world's URL (shared/world.ts), without dev flags: anyone opening it joins this world.

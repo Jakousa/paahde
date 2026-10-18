@@ -86,6 +86,8 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 - Picking a game opens its records first (your best on top, the top 10, Start); Esc/Leave from a run or result goes back
   there. Games are 5 / 10 / 20 machines and Endless (the first speedrun sizes were 10 / 20 / 30; old `30` rows in
   `data/minigame.db` are just never shown).
+- The Esc menu's minigame button is its own icon in the bottom-right corner (a small crate machine with a gear poking
+  out; glint sweep, pulsing ring, lid that lifts, spinning gear; still under reduced-motion), not a row in the panel.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.
