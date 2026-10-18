@@ -59,11 +59,12 @@ const CRAWLER_R = 0.8;
 /** A crawler after you keeps track of you this close (m); this close it stops flanking and comes straight in. */
 const CHASE_SIGHT = 45, CLOSE_IN = 6;
 /** Drones over a site at night, all drones at most; they come in from DRONE_FROM (m) and patrol within DRONE_AREA.
- *  Shot down, they aren't replaced until everyone has left the site (SITE_LEAVE_R) or the night is over. */
+ *  One shot down (or gone) is replaced, one at a time, REFILL_MS later. */
 const DRONES_PER_SITE = 2;
 const MAX_DRONES = 16;
 const DRONE_FROM = 220;
 const DRONE_AREA = 110;
+const REFILL_MS = 2 * 60_000;
 /** A drone hit from any distance heads for the shooter this long (ms), renewed by every hit. */
 const HUNT_MS = 45_000;
 /** A drone with nobody within this distance (m) leaves. */
@@ -182,8 +183,9 @@ export class GuardianServer {
   private downed: Kill[] = [];
   /** Crash sites (ids) with crawlers out right now. */
   private swarmed = new Set<number>();
-  /** Crash site id → drones sent to it this night while someone has stayed near it. */
-  private sent = new Map<number, number>();
+  /** Crash site id → when its next replacement drone comes (server ms; 0 none due); a site not in it gets all its drones
+   *  at once. Forgotten once everyone has left the site (SITE_LEAVE_R) or the night is over. */
+  private refill = new Map<number, number>();
   /** Debug menu packs: their made-up home (where they were summoned), gone like a site's once everyone has left it. */
   private summoned: CrashSite[] = [];
   private nextSummon = 1;
@@ -637,19 +639,27 @@ export class GuardianServer {
     const night = sunElevation(tod) < NIGHT_SUN;
     // At night, every crawler- or guardian-ground site someone is near has its drones over it (not the scrap fields).
     if (night) {
-      for (const id of this.sent.keys()) {
+      for (const id of this.refill.keys()) {
         const s = this.sites.find((o) => o.id === id)!;
-        if (!players.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_LEAVE_R)) this.sent.delete(id);
+        if (!players.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_LEAVE_R)) this.refill.delete(id);
       }
       for (const s of this.sites) {
         if (s.level === 0) continue;
         if (this.drones.length >= MAX_DRONES) break;
         if (!exposed.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_NEAR_R)) continue;
-        let sent = this.sent.get(s.id) ?? 0;
-        for (; sent < DRONES_PER_SITE && this.drones.length < MAX_DRONES; sent++) this.spawnDrone(s.x, s.z, s.id, 0, DRONE_FROM);
-        this.sent.set(s.id, sent);
+        let have = this.drones.filter((d) => !d.leaving && d.downAt < 0 && d.site === s.id).length;
+        const at = this.refill.get(s.id);
+        if (at === undefined) {
+          for (; have < DRONES_PER_SITE && this.drones.length < MAX_DRONES; have++) this.spawnDrone(s.x, s.z, s.id, 0, DRONE_FROM);
+          this.refill.set(s.id, 0);
+        } else if (have >= DRONES_PER_SITE) this.refill.set(s.id, 0);
+        else if (at === 0) this.refill.set(s.id, now + REFILL_MS);
+        else if (now >= at) {
+          this.spawnDrone(s.x, s.z, s.id, 0, DRONE_FROM);
+          this.refill.set(s.id, have + 1 < DRONES_PER_SITE ? now + REFILL_MS : 0);
+        }
       }
-    } else this.sent.clear();
+    } else this.refill.clear();
     this.roam(dt, now, exposed);
     const v = { x: 0, y: 0, z: 0 };
     for (const d of this.drones) {
