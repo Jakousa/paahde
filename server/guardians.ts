@@ -24,7 +24,7 @@ import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK
 import { sunElevation } from '../shared/sun.ts';
 import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
 import { indoors } from '../shared/shelters.ts';
-import { flank } from './pack.ts';
+import { flank, keepOut, skirt, type Skirt } from './pack.ts';
 
 export const TICK_HZ = 10;
 /** Players get guardians and drones within this distance (m), crawlers within CRAWLER_SEND_R. */
@@ -54,6 +54,8 @@ const CALM_MS = 20_000;
 const SITE_NEAR_R = 300;
 const SITE_LEAVE_R = 450;
 const CRAWLERS_MIN = 1, CRAWLERS_MAX = 4;
+/** A crawler's body, for keeping it out of wrecks and scrap (m). */
+const CRAWLER_R = 0.8;
 /** Drones over a site at night, all drones at most; they come in from DRONE_FROM (m) and patrol within DRONE_AREA. */
 const DRONES_PER_SITE = 2;
 const MAX_DRONES = 16;
@@ -107,6 +109,8 @@ type Guardian = {
   points: number; broken: number; deadAt: number;
   /** Guardians' feet (crawlers' are only drawn, src/world/guardians.ts); yaw last tick; standing still for (s). */
   feet: Foot[] | null; lastYaw: number; still: number;
+  /** Crawlers: which way round what's in its way (server/pack.ts). */
+  skirt: Skirt;
 };
 
 /** A guardian's foot: planted at (x, y, z), or swinging there with `left` s to go of `dur`. */
@@ -191,7 +195,7 @@ export class GuardianServer {
       id: this.nextWalker++, kind, legs, x, z, yaw: rand(-Math.PI, Math.PI), speed: 0, home,
       tx: home.x, tz: home.z, guardUntil: 0, prey: -1, huntAt: 0, px: 0, pz: 0, knownAt: 0, calmUntil: 0, shotUntil: 0, bitAt: 0,
       aiming: false, ax: 0, ay: 0, az: 0, chargeAt: -1, firedAt: 0, missileAt: 0,
-      points: weakPoints(kind, legs).length, broken: 0, deadAt: -1, feet: null, lastYaw: 0, still: 0,
+      points: weakPoints(kind, legs).length, broken: 0, deadAt: -1, feet: null, lastYaw: 0, still: 0, skirt: { side: 0, until: 0 },
     };
     g.lastYaw = g.yaw;
     if (kind === GUARDIAN) this.plantFeet(g);
@@ -535,7 +539,10 @@ export class GuardianServer {
       if (!hunting) this.arrive(g, now);
     } else {
       const sw = hunting ? SEP_HUNT_W : SEP_W;
-      const turn = wrap(Math.atan2(dx / dist + ax * sw, dz / dist + az * sw) - g.yaw);
+      let head = Math.atan2(dx / dist + ax * sw, dz / dist + az * sw);
+      // Crawlers go round wrecks and scrap, not over them.
+      if (g.kind === CRAWLER) head = skirt(g.x, g.z, head, CRAWLER_R, g.skirt, now);
+      const turn = wrap(head - g.yaw);
       const rate = (hunting ? k.huntTurn : k.turn) * dt;
       g.yaw = wrap(g.yaw + Math.max(-rate, Math.min(rate, turn)));
       // Walks on while roughly facing the way; turns on the spot when it isn't. Slows down to arrive.
@@ -550,6 +557,7 @@ export class GuardianServer {
       nz = BASE.z + ((nz - BASE.z) / bd) * BASE_KEEP_OUT;
       if (!hunting) this.patrolPoint(g);
     }
+    if (g.kind === CRAWLER) [nx, nz] = keepOut(nx, nz, CRAWLER_R);
     g.x = nx;
     g.z = nz;
   }
@@ -590,6 +598,8 @@ export class GuardianServer {
       const a = rand(-Math.PI, Math.PI), r = rand(...PATROL[g.kind]);
       g.tx = g.home.x + Math.sin(a) * r;
       g.tz = g.home.z + Math.cos(a) * r;
+      // Not inside a wreck (a crawler would walk round it for ever).
+      if (g.kind === CRAWLER) [g.tx, g.tz] = keepOut(g.tx, g.tz, CRAWLER_R + 0.5);
       if (Math.hypot(g.tx - BASE.x, g.tz - BASE.z) <= BASE_KEEP_OUT + 10) continue;
       // Not where another of its kind stands or is heading (guardians: crawlers swarm).
       const sep = SEP_R * KINDS[g.kind].scale;

@@ -30,7 +30,7 @@ import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
-import { flank } from './pack.ts';
+import { flank, keepOut, skirt, type Skirt } from './pack.ts';
 
 /** The client draws bosses this far (ms) behind the server (src/world/botFrames.ts BOT_DELAY_MS). */
 const DRAW_DELAY = 250;
@@ -63,6 +63,8 @@ const SP_SIGHT = 160, SP_SHARE = 12, SP_TURN = 8, SP_GAP = 1.6;
 /** In leaping range, a spiderling waits its turn: not within SP_TURNS ms of another on the same prey crouching, and
  *  circles them meanwhile (unless they're right on it). SP_WIDE: how far out (m) the pack fans to come at them. */
 const SP_TURNS = 500, SP_WIDE = 10;
+/** A spiderling's body, for keeping it out of wrecks and scrap (m). */
+const SP_R = 0.5;
 
 type Foot = { x: number; y: number; z: number; left: number; up: boolean };
 type Pending = { at: number; slam: boolean; hole: boolean; x: number; y: number; z: number; x2: number; z2: number };
@@ -85,6 +87,8 @@ type St = {
 type Ling = {
   id: number; x: number; z: number; yaw: number; st: number; stAt: number; prey: number; born: number;
   ax: number; az: number; fx: number; fz: number; biteAt: number;
+  /** Which way round what's in its way (server/pack.ts). */
+  skirt: Skirt;
 };
 
 /** Calm this long (ms: not hunting anyone), the brood runs down: a spiderling curls up every FADE_MS. */
@@ -411,7 +415,7 @@ function brood(b: Boss, st: St, dt: number, now: number, n: number, players: Bos
       const x = b.x + fx * along + fz * side, z = b.z + fz * along - fx * side, at = now + i * 140;
       st.brood.push({
         id: st.nextLing++, x, z, yaw: wrap(b.yaw + Math.PI + rand(-1.2, 1.2)), st: SP_DROP, stAt: at, prey: -1, born: at,
-        ax: x, az: z, fx: x, fz: z, biteAt: 0,
+        ax: x, az: z, fx: x, fz: z, biteAt: 0, skirt: { side: 0, until: 0 },
       });
     }
   }
@@ -492,9 +496,10 @@ function brood(b: Boss, st: St, dt: number, now: number, n: number, players: Bos
         heading = l.yaw + Math.sin(now * 0.002 + l.id) * 1.5;
         want = 1.5;
       }
+      // Round wrecks and scrap, not through them.
+      heading = skirt(l.x, l.z, heading, SP_R, l.skirt, now);
       l.yaw = wrap(l.yaw + Math.max(-SP_TURN * dt, Math.min(SP_TURN * dt, wrap(heading - l.yaw))));
-      l.x += Math.sin(l.yaw) * want * dt;
-      l.z += Math.cos(l.yaw) * want * dt;
+      [l.x, l.z] = keepOut(l.x + Math.sin(l.yaw) * want * dt, l.z + Math.cos(l.yaw) * want * dt, SP_R);
       return true;
     }
     if (l.st === SP_CROUCH) {
