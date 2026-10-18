@@ -1,52 +1,37 @@
 // The loading screen's game (src/loadingRunner.ts) on the #cover from index.html, started from src/entry.ts before
 // the big game bundle has downloaded and stopped by src/main.ts when the cover leaves. The main thread is blocked for
 // long stretches while the world builds, so the game and the bar are drawn by a worker into an OffscreenCanvas; only
-// the key and mouse events come through the busy page. Without OffscreenCanvas it runs on the page instead.
+// the pointer events come through the page. Without OffscreenCanvas it runs on the page instead.
 import { createRunner, H, W } from './loadingRunner';
-
-const BEST_KEY = 'dadajam.runner';
-const KEYS = ['Space', 'ArrowUp', 'KeyW'];
 
 let canvas: HTMLCanvasElement | null = null;
 let off: (() => void) | null = null;
 let progress: (p: number) => void = () => {};
-
-function best(): number {
-  try {
-    return Number(localStorage.getItem(BEST_KEY)) || 0;
-  } catch {
-    return 0;
-  }
-}
-function saveBest(n: number) {
-  try {
-    localStorage.setItem(BEST_KEY, String(n));
-  } catch {}
-}
 
 function start() {
   const cover = document.getElementById('cover');
   if (!cover || canvas) return;
   const c = (canvas = document.createElement('canvas'));
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  c.style.cssText = `width:min(${W}px,92vw);aspect-ratio:${W}/${H};touch-action:manipulation;cursor:pointer;`;
+  c.style.cssText = `width:min(${W}px,94vw);aspect-ratio:${W}/${H};touch-action:none;user-select:none;`;
   cover.prepend(c);
   cover.classList.add('play'); // hides the plain bar: the canvas draws its own
   cover.style.pointerEvents = 'auto';
 
-  let press = () => {};
-  let release = () => {};
+  let down = (_x: number, _y: number) => {};
+  let move = (_x: number, _y: number) => {};
+  let up = () => {};
   let stop = () => {};
   let worker: Worker | null = null;
   if (typeof c.transferControlToOffscreen === 'function' && typeof Worker !== 'undefined') {
     try {
       worker = new Worker(new URL('./loadingWorker.ts', import.meta.url), { type: 'module' });
       const offscreen = c.transferControlToOffscreen();
-      worker.postMessage({ t: 'init', canvas: offscreen, dpr, best: best() }, [offscreen]);
-      worker.onmessage = (e) => e.data.t === 'best' && saveBest(e.data.n);
+      worker.postMessage({ t: 'init', canvas: offscreen, dpr }, [offscreen]);
       const w = worker;
-      press = () => w.postMessage({ t: 'press' });
-      release = () => w.postMessage({ t: 'release' });
+      down = (x, y) => w.postMessage({ t: 'down', x, y });
+      move = (x, y) => w.postMessage({ t: 'move', x, y });
+      up = () => w.postMessage({ t: 'up' });
       progress = (p) => w.postMessage({ t: 'progress', p });
       stop = () => w.postMessage({ t: 'stop' });
     } catch {
@@ -56,7 +41,7 @@ function start() {
   if (!worker) {
     c.width = W * dpr;
     c.height = H * dpr;
-    const run = createRunner(c.getContext('2d')!, dpr, best(), saveBest);
+    const run = createRunner(c.getContext('2d')!, dpr);
     let raf = 0;
     let last = performance.now();
     const frame = (now: number) => {
@@ -65,33 +50,35 @@ function start() {
       last = now;
     };
     raf = requestAnimationFrame(frame);
-    press = run.press;
-    release = run.release;
+    down = run.down;
+    move = run.move;
+    up = run.up;
     progress = run.progress;
     stop = () => cancelAnimationFrame(raf);
   }
 
-  const onKey = (e: KeyboardEvent) => {
-    if (!KEYS.includes(e.code)) return;
-    e.preventDefault();
-    if (!e.repeat) press();
+  // Canvas pixels in the game's own units (W x H).
+  const at = (e: PointerEvent): [number, number] => {
+    const r = c.getBoundingClientRect();
+    return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
   };
-  const onKeyUp = (e: KeyboardEvent) => KEYS.includes(e.code) && release();
   const onDown = (e: PointerEvent) => {
+    if (e.button !== 0) return;
     e.preventDefault();
-    press();
+    down(...at(e));
   };
-  const onUp = () => release();
-  addEventListener('keydown', onKey);
-  addEventListener('keyup', onKeyUp);
-  cover.addEventListener('pointerdown', onDown);
+  const onMove = (e: PointerEvent) => move(...at(e));
+  const onUp = () => up();
+  c.addEventListener('pointerdown', onDown);
+  addEventListener('pointermove', onMove);
   addEventListener('pointerup', onUp);
+  addEventListener('pointercancel', onUp);
   off = () => {
     stop();
-    removeEventListener('keydown', onKey);
-    removeEventListener('keyup', onKeyUp);
+    c.removeEventListener('pointerdown', onDown);
+    removeEventListener('pointermove', onMove);
     removeEventListener('pointerup', onUp);
-    cover.removeEventListener('pointerdown', onDown);
+    removeEventListener('pointercancel', onUp);
   };
 }
 

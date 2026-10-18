@@ -85,6 +85,7 @@ import { setTrophies } from '../shared/trophies.ts';
 import { Mast } from './world/mast';
 import { GuardianFx } from './guardians';
 import { update } from './update';
+import { LOADING_FRAME_MS, slice } from './yield';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -95,30 +96,54 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const orbit = new FirstPersonCamera(renderer.domElement);
+await slice();
 const sky = new Sky(scene);
+await slice();
 const terrain = new Terrain(scene);
+await slice();
 const base = new Base(scene);
+await slice();
 const mast = new Mast(scene); // flag mast with a windsock by the entrance
+await slice();
 const trophies = new Trophies(scene); // a big piece of each beaten boss round the base
+await slice();
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
+await slice();
 const placedView = new PlacedView(scene, base); // plant beds and UV lamps on the bunker floor
+await slice();
 const scrap = new Scrap(scene);
+await slice();
 const crashSites = new CrashSites(scene);
+await slice();
 const crashSound = new CrashSound();
+await slice();
 const dust = new Dust(scene);
+await slice();
 const post = new Post(renderer, scene, orbit.camera);
+await slice();
 const blownSand = new BlownSand(scene);
+await slice();
 const baseSand = new BaseSand(scene);
+await slice();
 const viewmodel = new ViewModel(orbit, scene); // first-person hands, parented to the camera
+await slice();
 
 const windSound = new WindSound();
+await slice();
 const engineSound = new EngineSound();
+await slice();
 const storm = new StormFx();
+await slice();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
+await slice();
 const wrecks = new Wrecks(scene); // salvage wrecks out in the desert, carried home to the disassembly table
+await slice();
 const guardianFx = new GuardianFx(scene); // the giant walkers around the crash sites, and the night drones
+await slice();
 const bossFx = new BossFx(scene, (...a) => guardianFx.thump(...a), (s) => guardianFx.jolt(s)); // the worm, carrier, colossus and queen (shared/bosses.ts)
+await slice();
 const teardown = new TeardownView(scene, orbit.camera, renderer.domElement); // F at a machine site: the character walks up and the disassembly controls take over
+await slice();
 machines.busy = () => teardown.current?.id;
 machines.bench.indoors = (root) => base.lightIndoors(root);
 // Debug handle for screenshots/tuning from the console: open with ?debug.
@@ -267,11 +292,15 @@ window.addEventListener('resize', () => {
 });
 
 await renderer.init();
+// Compile the shaders of what is built so far off the main thread, so the first frames don't stall the page.
+await Promise.race([renderer.compileAsync(scene, orbit.camera).catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
+await slice();
 const backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
 
 const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
 let accumulator = 0;
+let lastLoadFrame = 0;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
 // ?spawn=crash / field: once joined, turn to face the machine or the scrap field we were put next to.
 const spawnAt = new URLSearchParams(location.search).get('spawn');
@@ -297,6 +326,9 @@ renderer.setAnimationLoop((time) => {
   }
   joined = true;
   loaded ||= coverTimedOut || (bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)));
+  // Behind the loading screen, draw at about 15 fps so the page has time for the game on it (src/yield.ts).
+  if (!loaded && time - lastLoadFrame < LOADING_FRAME_MS) return;
+  lastLoadFrame = time;
   if (loaded && coverFrames < 3 && ++coverFrames === 3) {
     cover.style.opacity = '0';
     setTimeout(() => (loading.stop(), cover.remove()), 500);

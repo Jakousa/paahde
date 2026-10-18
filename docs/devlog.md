@@ -4,9 +4,13 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 
 ## 2026-10-18 — Loading screen, then name, then you exist
 
-- Joining shows the loading cover with a one-button runner on it (`src/loadingGame.ts`; game and loading bar are drawn in a worker, `src/loadingWorker.ts`, since the main thread is blocked while the world builds; started from `src/entry.ts`
-  so it plays while the bundle downloads). When the cover leaves, the game stays blurred behind the name box
-  (`src/name.ts`, asked only if the world doesn't have a name yet), and the player stands still.
+- Joining shows the loading cover with a tiny disassembly game on it (`src/loadingRunner.ts`): the same moves as the
+  real one (click screws, circle bolts, swipe wires, drag pry tabs, take the freed part into the bag), introduced one
+  at a time, with the game's step markers and rarity colours. Game and loading bar are drawn in a worker
+  (`src/loadingWorker.ts`), pointer events forwarded by `src/loadingGame.ts`, started from `src/entry.ts`.
+- The world build yields to the browser (`src/yield.ts` `slice()`, between the constructors in `src/main.ts`), shaders
+  compile with `compileAsync`, and the loop draws at ~15 fps until loaded, so no stretch of the main thread runs much
+  past 66 ms and clicks on the loading game get through. Not measured yet: module evaluation and model parsing can't be sliced.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.
