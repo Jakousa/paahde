@@ -24,6 +24,12 @@ export class TerrainServer {
     this.dirtyChunks.add(TerrainEdits.key(Math.floor(ix / EDIT_CHUNK), Math.floor(iz / EDIT_CHUNK)));
   };
 
+  // A stamped crater (a boss's footprint) is sent and saved but left as dug: no avalanche to work through.
+  private onStamp = (ix: number, iz: number) => {
+    this.changed.add(cellKey(ix, iz));
+    this.dirtyChunks.add(TerrainEdits.key(Math.floor(ix / EDIT_CHUNK), Math.floor(iz / EDIT_CHUNK)));
+  };
+
   // Healing flattens, so it never needs relaxing; nor sending: every client heals its own copy ('terrainHeal').
   private onHeal = (ix: number, iz: number) => {
     this.dirtyChunks.add(TerrainEdits.key(Math.floor(ix / EDIT_CHUNK), Math.floor(iz / EDIT_CHUNK)));
@@ -42,13 +48,16 @@ export class TerrainServer {
     return stroke(edits, feet, yawQ, pitchQ, pile, this.onCell, tool);
   }
 
-  /** A blast crater at (x, z): a bowl `radius` wide and `mm` deep, the sand thrown out into a rim around it. */
-  crater(x: number, z: number, radius: number, mm: number) {
-    const removed = strokeDig(edits, x, z, this.onCell, { mm, radius, cooldown: 0 });
+  /** A blast crater at (x, z): a bowl `radius` wide and `mm` deep, the sand thrown out into a rim around it.
+   *  `settle` false (the bosses' big ones): the walls stay as dug instead of slumping to the angle of repose. A
+   *  boss's steep 10 m bowl would otherwise avalanche for seconds, sending ~10 000 vertices per footstep. */
+  crater(x: number, z: number, radius: number, mm: number, settle = true) {
+    const sink = settle ? this.onCell : this.onStamp;
+    const removed = strokeDig(edits, x, z, sink, { mm, radius, cooldown: 0 });
     const n = 10;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2;
-      deposit(edits, x + Math.cos(a) * radius * 1.15, z + Math.sin(a) * radius * 1.15, (removed * 0.6) / n, radius * 0.5, this.onCell);
+      deposit(edits, x + Math.cos(a) * radius * 1.15, z + Math.sin(a) * radius * 1.15, (removed * 0.6) / n, radius * 0.5, sink);
     }
   }
 

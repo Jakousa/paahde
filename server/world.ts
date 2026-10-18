@@ -442,7 +442,7 @@ function recall(p: Player) {
 
 /** The sand marks and one-off effects of the bosses (server/bosses.ts). */
 function bossOut(b: BossOut) {
-  for (const c of b.craters) terrain.crater(c.x, c.z, c.r, c.mm);
+  for (const c of b.craters) terrain.crater(c.x, c.z, c.r, c.mm, false);
   for (const e of b.events) {
     const json = JSON.stringify(e.msg);
     for (const p of players.values()) if (Math.hypot(e.x - p.state.x, e.z - p.state.z) < BOSS_SEND_R && p.ws.readyState === p.ws.OPEN) p.ws.send(json);
