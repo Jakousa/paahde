@@ -458,6 +458,11 @@ export const carrier: Brain = {
     return Math.hypot(x - b.x, z - b.z) < 62 && Math.abs(y - b.y) < 25;
   },
 
+  prey(b) {
+    const st = b.st as St;
+    return [st.target, ...st.drones.map((d) => d.target)];
+  },
+
   snap(b) {
     const st = b.st as St;
     const s = new Array<number>(CS_ALL).fill(0);

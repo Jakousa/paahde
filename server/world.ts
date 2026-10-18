@@ -435,7 +435,7 @@ function tickBots(elapsed: number, now: number, tod: number) {
   for (const p of players.values()) {
     const k = b.kills.find((o) => o.id === p.id);
     if (k) die(p, k.cause, k.push);
-    send(p.ws, bosses.msg(now, p.state.x, p.state.z));
+    send(p.ws, bosses.msg(now, p.id, p.state.x, p.state.z));
   }
   bossOut(b);
   if (now - whereSentAt > 1000) {

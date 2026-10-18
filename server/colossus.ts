@@ -283,6 +283,11 @@ export const colossus: Brain = {
     return Math.hypot(x - b.x, z - b.z, dy) < 38;
   },
 
+  prey(b) {
+    const st = b.st as St;
+    return [st.prey, ...st.salvoTargets.slice(st.salvoFired)];
+  },
+
   snap(b) {
     const st = b.st as St;
     const s: number[] = [];

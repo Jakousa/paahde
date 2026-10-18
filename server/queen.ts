@@ -251,6 +251,11 @@ export const queen: Brain = {
     return Math.hypot(x - (b.x + fx * along), y - b.y, z - (b.z + fz * along)) < 16;
   },
 
+  prey(b) {
+    const st = b.st as St;
+    return [st.prey, ...st.brood.map((l) => l.prey)];
+  },
+
   snap(b) {
     const st = b.st as St;
     const s = [st.mode, Math.round(st.modeAt)];

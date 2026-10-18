@@ -27,8 +27,6 @@ const VIEWS: Record<BossKind, (scene: THREE.Scene) => BossView> = {
 
 /** Smoke puffs per second out of a broken weak point. */
 const SMOKE_RATE = 6;
-/** The health bar shows the nearest live boss within this (m). */
-const BAR_R = 700;
 /** A boss casts sun shadows only this close (m) to the camera. Each casting part is drawn again into every shadow
  *  cascade it reaches (four, out to 1600 m: src/world/sky.ts), and a far boss reaches the big ones: four bosses in
  *  view were ~600 extra draw calls a frame. Past this its shadow would only land in the coarse outer cascade. */
@@ -52,7 +50,7 @@ export class BossFx {
   private ctx: BossCtx;
   /** Something is after us: a boss within FIGHT_R. */
   combat = false;
-  /** The nearest live boss within BAR_R, for the health bar (src/bossBar.ts); null if none. */
+  /** The nearest live boss we're in a fight with (BossSnap.f), for the health bar (src/bossBar.ts); null if none. */
   bar: { kind: BossKind; hp: number } | null = null;
 
   constructor(scene: THREE.Scene, thump: BossCtx['thump'], shake: BossCtx['shake']) {
@@ -71,7 +69,7 @@ export class BossFx {
     for (const m of net.bossFx.splice(0)) this.shown.get(m.id)?.view.fx?.(m, c);
     const snaps = this.at(net.bosses, c.time);
     const seen = new Set<number>();
-    let near = false, barD = BAR_R;
+    let near = false, barD = Infinity;
     this.bar = null;
     for (const s of snaps) {
       seen.add(s.id);
@@ -89,7 +87,7 @@ export class BossFx {
       v.dead = s.dead > 0;
       const d = c.me ? Math.hypot(s.x - c.me.x, s.z - c.me.z) : Infinity;
       if (!v.dead && d < 250) near = true;
-      if (!v.dead && d < barD) {
+      if (!v.dead && s.f && d < barD) {
         barD = d;
         this.bar = { kind: s.k, hp: s.hp };
       }

@@ -24,6 +24,9 @@ export type Boss = {
   called: boolean;
   /** Shot by this player (-1 none) until then: its brain may turn on them. */
   angry: number; angryUntil: number;
+  /** Who it's fighting: player id → until when (server ms). Its prey, whatever its brood is after, whoever shot it;
+   *  each stays in the fight FOE_MS after the last time (it turns on one after another). */
+  foes: Map<number, number>;
   /** The brain's own state. */
   st: any;
 };
@@ -44,6 +47,8 @@ export type Brain = {
   tick(b: Boss, dt: number, now: number, players: BossPlayer[], out: BossOut): boolean;
   /** Could a shot ending at (x, y, z) have hit it (generous: lag, its size)? */
   near(b: Boss, x: number, y: number, z: number): boolean;
+  /** The players it's after right now (its prey, its minions' targets; -1s are skipped). */
+  prey(b: Boss): number[];
   /** The kind's own numbers for BossSnap.s (rounded). */
   snap(b: Boss): number[];
   /** All its weak points broken, at `now`: stop, fall, whatever it does when it dies (optional). */
@@ -56,6 +61,9 @@ export type Brain = {
 };
 
 const BRAINS: Record<BossKind, Brain> = { worm, carrier, colossus, queen };
+
+/** Someone it turned on (or who shot it) is still in the fight this long after (ms). */
+const FOE_MS = 30_000;
 
 /** A summoned boss stays this long (ms). */
 const SUMMON_STAY = 10 * 60_000;
@@ -91,7 +99,7 @@ export class BossServer {
 
   private spawn(kind: BossKind, x: number, z: number, summoned: boolean, now: number, until: number, called: boolean, hp = BOSSES[kind].hp) {
     const b: Boss = {
-      id: this.nextId++, kind, x, y: 0, z, yaw: 0, broken: 0, regrow: [], hp, deadAt: -1, until, leaving: false, called, angry: -1, angryUntil: 0, st: null,
+      id: this.nextId++, kind, x, y: 0, z, yaw: 0, broken: 0, regrow: [], hp, deadAt: -1, until, leaving: false, called, angry: -1, angryUntil: 0, foes: new Map(), st: null,
     };
     BRAINS[kind].spawn(b, x, z, summoned, now);
     this.bosses.push(b);
@@ -108,7 +116,12 @@ export class BossServer {
       }
       if (!b.leaving && now > b.until) b.leaving = true;
       for (let i = 0; i < BOSSES[b.kind].points; i++) if (b.broken & (1 << i) && now >= b.regrow[i]) b.broken &= ~(1 << i);
-      return !BRAINS[b.kind].tick(b, dt, now, ps, out);
+      const killed = out.kills.length;
+      const gone = BRAINS[b.kind].tick(b, dt, now, ps, out);
+      for (const id of BRAINS[b.kind].prey(b)) if (id >= 0) b.foes.set(id, now + FOE_MS);
+      for (const k of out.kills.slice(killed)) b.foes.set(k.id, now + FOE_MS);
+      for (const [id, until] of b.foes) if (now > until) b.foes.delete(id);
+      return !gone;
     });
     return out;
   }
@@ -134,6 +147,7 @@ export class BossServer {
       b.angry = by.id;
       b.angryUntil = now + 30_000;
     }
+    b.foes.set(by.id, now + FOE_MS);
     if (b.hp > 0) return { hit: true, kill: null, boss: b };
     b.broken = allPoints(b.kind);
     b.deadAt = now;
@@ -146,14 +160,15 @@ export class BossServer {
     return { t: 'called', b: this.bosses.filter((o) => o.deadAt < 0).map((o) => ({ k: o.kind, x: Math.round(o.x), z: Math.round(o.z) })) };
   }
 
-  /** The bosses near (x, z), for one player. */
-  msg(now: number, x: number, z: number): ServerMsg {
+  /** The bosses near (x, z), for player `me`. */
+  msg(now: number, me: number, x: number, z: number): ServerMsg {
     const b: BossSnap[] = [];
     for (const o of this.bosses) {
       if (Math.hypot(o.x - x, o.z - z) > BOSS_SEND_R) continue;
       b.push({
         id: o.id, k: o.kind, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: Math.round(o.yaw * 1e4) / 1e4, br: o.broken, hp: r2(o.hp / BOSSES[o.kind].hp),
         dead: o.deadAt < 0 ? 0 : Math.round((now - o.deadAt) / 10) / 100 + 0.01, s: BRAINS[o.kind].snap(o),
+        ...(o.deadAt < 0 && o.foes.has(me) ? { f: 1 } : {}),
       });
     }
     return { t: 'bosses', time: Math.round(now), b };

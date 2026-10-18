@@ -42,9 +42,10 @@ export const MINION = 32;
  * One boss in a 'bosses' message. (x, y, z): its centre of interest (the worm's head, the carrier's hull, the
  * colossus's hips, the queen's body), yaw (three.js: forward = (sin, cos)). br: weak points broken now (bit i: point
  * i; they regrow). hp: health left, 0..1. dead: 0 alive, else seconds since it died + 0.01. s: the kind's own numbers (its brain's `snap`, its view
- * reads them; interpolated element by element between messages unless the view says otherwise).
+ * reads them; interpolated element by element between messages unless the view says otherwise). f: 1 when it's in a
+ * fight with the player the message is for (it turned on them, or they shot it, lately): only then their health bar.
  */
-export type BossSnap = { id: number; k: BossKind; x: number; y: number; z: number; yaw: number; br: number; hp: number; dead: number; s: number[] };
+export type BossSnap = { id: number; k: BossKind; x: number; y: number; z: number; yaw: number; br: number; hp: number; dead: number; s: number[]; f?: 1 };
 
 /** Players get bosses within this distance (m). */
 export const BOSS_SEND_R = 3000;

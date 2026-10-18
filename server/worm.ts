@@ -439,6 +439,10 @@ export const worm: Brain = {
     return false;
   },
 
+  prey(b) {
+    return [(b.st as Worm).prey];
+  },
+
   snap(b) {
     const w = b.st as Worm, s = [w.mode];
     for (let i = 0; i < w.segs.length; i += 3) {

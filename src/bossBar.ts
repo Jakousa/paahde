@@ -1,5 +1,5 @@
 // The boss health bar (shared/bosses.ts: health goes down a hit at a time on the weak points): the nearest live boss's
-// name and a bar across the top of the screen while one is within reach (src/bosses.ts BossFx.bar). It eases down as
+// name and a bar across the top of the screen while it's in a fight with us (it turned on us, or we shot it) (src/bosses.ts BossFx.bar). It eases down as
 // hits land, a pale trail sliding down after it showing the last ones.
 import { BOSSES, type BossKind } from '../shared/bosses.ts';
 
