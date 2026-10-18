@@ -1321,10 +1321,12 @@ Crafted at the workbench from a compute unit, a wiring coil and a battery (any t
   since the last word, capped at 1.5× the send interval so a client can't run it ahead; any longer gap bleeds the
   lock at 0.5×; a new target starts over. At `JAM_MS` (3.5 s; was 5 s with a 0.2 rad, 400 m cone: too hard on jets)
   it goes down.
-- **Jammed jet:** `down.soft`: a flat spin (yaw winding up to 2.6 rad/s over 2 s, nose dipped, wings see-sawing),
-  drifting on at 0.3× speed and falling 1:1 (~6 s from cruise height), a thin trail corkscrewing off the tail, the
-  roar cut; then whole on its belly where the spin left it, a slam and dust, no blast and no smoke. (It used to glide
-  in at 9:1 and skid: too slow, and it didn't read as jammed.) **Jammed drone:** light out,
+- **Jammed jet:** `down.soft`: it falls like a plane out of control (`jetSpin`, closed form so both sides agree): its
+  way along its heading bleeds from full speed to 0.25× (2.5 s), it sinks faster and faster towards 45 m/s (3 s, like
+  falling with drag) and spins flat, tightening with the sink to 2.8 rad/s, nose dipped, wings see-sawing (~6 s
+  from cruise height), a thin trail corkscrewing off the tail, the roar cut; the server marches it to the sand in
+  50 ms steps. Then whole on its belly where the spin left it, a slam and dust, no blast and no smoke. (It used to
+  glide in at 9:1 and skid: too slow, it didn't read as jammed; then a 1:1 drop at 0.3× speed: it stopped dead.) **Jammed drone:** light out,
   sinking at 2.5 m/s while it drifts to a stop, rotors winding down, settling upright (`jammed` field in 'bots',
   drone stride 12). Its parts drop as if shot down.
 - **Feel, no HUD:** the hands raise it (JammerAim since 2026-10-18, before the pistol's clips: the model

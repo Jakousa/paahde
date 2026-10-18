@@ -1,7 +1,7 @@
 // Server side of the fixed-wing drones (shared/jets.ts): now and then one flies past a random player, in a straight
 // pass or a big circle around them, and the list goes out to everyone whenever it changes. Shot (shoot) JET_HP times,
 // one glides down to the sand. In memory only.
-import { GLIDE, GLIDE_SPEED, SPIN_GLIDE, SPIN_SPEED, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
+import { GLIDE, GLIDE_SPEED, jetSpin, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
 import { baseHeight } from '../shared/terrain.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 
@@ -121,12 +121,20 @@ export class JetServer {
     this.bringDown(j, now, true);
   }
 
-  /** Engine dead (or jammed: `soft`): it glides on along its heading until that line meets the sand (marched, then
-   *  halved down to 1 m). */
+  /** Engine dead: it glides on along its heading until that line meets the sand (marched, then halved down to 1 m).
+   *  Jammed (`soft`): it falls (shared/jets.ts jetSpin) until it meets the sand, marched in 50 ms steps. */
   private bringDown(j: Jet, now: number, soft = false) {
     jetAt(j, now, _p);
-    const glide = soft ? SPIN_GLIDE : GLIDE;
-    const sx = Math.sin(_p.yaw), sz = Math.cos(_p.yaw), above = (f: number) => _p.y - f / glide - baseHeight(_p.x + sx * f, _p.z + sz * f);
+    const sx = Math.sin(_p.yaw), sz = Math.cos(_p.yaw), r = (v: number) => Math.round(v * 100) / 100;
+    if (soft) {
+      let s = 0, m = jetSpin(j.speed, 0);
+      while (s < 60 && _p.y - m.drop > baseHeight(_p.x + sx * m.fwd, _p.z + sz * m.fwd)) m = jetSpin(j.speed, (s += 0.05));
+      const lx = _p.x + sx * m.fwd, lz = _p.z + sz * m.fwd, land = Math.round(now + s * 1000);
+      j.down = { at: Math.round(now), x: r(_p.x), y: r(_p.y), z: r(_p.z), yaw: r(_p.yaw), land, lx: r(lx), ly: r(baseHeight(lx, lz)), lz: r(lz), soft: true };
+      j.end = land + WRECK_MS;
+      return;
+    }
+    const above = (f: number) => _p.y - f / GLIDE - baseHeight(_p.x + sx * f, _p.z + sz * f);
     let lo = 0, hi = 20;
     while (above(hi) > 0 && hi < 5000) [lo, hi] = [hi, hi + 20];
     while (hi - lo > 1) {
@@ -134,10 +142,9 @@ export class JetServer {
       if (above(mid) > 0) lo = mid;
       else hi = mid;
     }
-    const land = Math.round(now + (hi / (j.speed * (soft ? SPIN_SPEED : GLIDE_SPEED))) * 1000);
+    const land = Math.round(now + (hi / (j.speed * GLIDE_SPEED)) * 1000);
     const lx = _p.x + sx * hi, lz = _p.z + sz * hi;
-    const r = (v: number) => Math.round(v * 100) / 100;
-    j.down = { at: Math.round(now), x: r(_p.x), y: r(_p.y), z: r(_p.z), yaw: r(_p.yaw), land, lx: r(lx), ly: r(baseHeight(lx, lz)), lz: r(lz), ...(soft ? { soft: true as const } : {}) };
+    j.down = { at: Math.round(now), x: r(_p.x), y: r(_p.y), z: r(_p.z), yaw: r(_p.yaw), land, lx: r(lx), ly: r(baseHeight(lx, lz)), lz: r(lz) };
     j.end = land + WRECK_MS;
   }
 

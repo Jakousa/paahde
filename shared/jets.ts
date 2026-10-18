@@ -40,12 +40,25 @@ export const JET_HP = 3;
 /** Shot down: it glides at this share of its speed, dropping 1 m for every GLIDE m forward. */
 export const GLIDE_SPEED = 0.8;
 export const GLIDE = 5;
-/** Jammed: a flat spin, drifting on at this share of its speed and dropping 1 m for every SPIN_GLIDE m forward; the
- *  spin winds up to SPIN_RATE rad/s over SPIN_RAMP s. */
-export const SPIN_SPEED = 0.3;
-export const SPIN_GLIDE = 1;
-const SPIN_RATE = 2.6;
-const SPIN_RAMP = 2;
+/** Jammed: it falls like a plane that's lost its controls. Its way along its heading bleeds off from full speed to
+ *  SPIN_KEEP of it (time constant SPIN_SLOW s), it sinks faster and faster towards SPIN_SINK m/s (SPIN_FALL s, like
+ *  falling with drag), and it spins flat, the spin tightening with the sink up to SPIN_RATE rad/s. */
+const SPIN_KEEP = 0.25;
+const SPIN_SLOW = 2.5;
+const SPIN_SINK = 45;
+const SPIN_FALL = 3;
+const SPIN_RATE = 2.8;
+/** How far along its heading (m), how far down (m) and how far round (rad) a jammed jet is `s` seconds on. */
+export function jetSpin(speed: number, s: number) {
+  const ease = (k: number) => s - k * (1 - Math.exp(-s / k));
+  return {
+    fwd: speed * (SPIN_KEEP * s + (1 - SPIN_KEEP) * (s - ease(SPIN_SLOW))),
+    drop: SPIN_SINK * ease(SPIN_FALL),
+    turn: SPIN_RATE * ease(SPIN_FALL),
+    v: speed * (SPIN_KEEP + (1 - SPIN_KEEP) * Math.exp(-s / SPIN_SLOW)),
+    w: 1 - Math.exp(-s / SPIN_FALL),
+  };
+}
 /** The wreck lies on the sand this long (ms) before it's cleared. */
 export const WRECK_MS = 90_000;
 
@@ -117,10 +130,14 @@ function downAt(j: Jet, t: number, out: JetPose): boolean {
   out.yaw = d.yaw;
   const s = (t - d.at) / 1000;
   if (d.soft) {
-    // Jammed: it yaws round faster and faster in a flat spin, nose dipping and wings see-sawing, sinking steeply;
-    // then it sits on the sand whole, on its belly, facing wherever the spin left it.
-    const f = Math.min(s, (d.land - d.at) / 1000), r = Math.min(f, SPIN_RAMP);
-    out.yaw = d.yaw + (j.id % 2 ? 1 : -1) * SPIN_RATE * ((r * r) / (2 * SPIN_RAMP) + (f - r));
+    // Jammed: it carries on along its heading, slowing, while it drops faster and faster and spins flat, tighter as
+    // it falls, nose dipping and wings see-sawing; then it sits on the sand whole, on its belly, facing wherever the
+    // spin left it.
+    const f = Math.min(s, (d.land - d.at) / 1000), m = jetSpin(j.speed, f);
+    out.x = d.x + Math.sin(d.yaw) * m.fwd;
+    out.z = d.z + Math.cos(d.yaw) * m.fwd;
+    out.y = d.y - m.drop;
+    out.yaw = d.yaw + (j.id % 2 ? 1 : -1) * m.turn;
     if (u >= 1) {
       out.y = baseHeight(out.x, out.z) + 0.6;
       out.bank = 0;
@@ -129,11 +146,11 @@ function downAt(j: Jet, t: number, out: JetPose): boolean {
       out.state = 2;
       return true;
     }
-    // Wound up over SPIN_RAMP, levelling off over the last half second so it sits down flat.
-    const w = Math.min(1, s / SPIN_RAMP, (d.land - t) / 500);
+    // Wound up with the fall, levelling off over the last half second so it sits down flat.
+    const w = Math.min(m.w * 1.5, 1, (d.land - t) / 500);
     out.bank = w * (0.25 + 0.2 * Math.sin(s * 5 + j.id));
-    out.pitch = -w * (0.35 + 0.1 * Math.sin(s * 3.7));
-    const v = j.speed * SPIN_SPEED;
+    out.pitch = -w * (0.45 + 0.1 * Math.sin(s * 3.7));
+    const v = m.v;
     out.vx = Math.sin(d.yaw) * v;
     out.vz = Math.cos(d.yaw) * v;
     out.state = 1;
