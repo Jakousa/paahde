@@ -289,6 +289,8 @@ export class Bike {
   dispose() {
     this.disposed = true;
     this.root.removeFromParent();
+    this.root.traverse((o) => o.dispose()); // bindings are per bike; geometry and tier materials are shared
+    for (const material of this.lens) material.dispose();
     if (this.headlight) {
       this.headlight.light.intensity = 0;
       this.headlight.light.shadow.autoUpdate = false;
