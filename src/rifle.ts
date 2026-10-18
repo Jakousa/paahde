@@ -27,6 +27,7 @@ import type { Guardians } from './world/guardians';
 import type { Drones } from './world/drones';
 import type { Jets } from './world/jets';
 import { bossFx } from './bosses';
+import { MINION } from '../shared/bosses.ts';
 import { zaps } from './world/zaps';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
@@ -330,9 +331,10 @@ export class Rifle {
     rifleSound.shot(null, null, this.gun === 'pistol');
     rifleSound.recharge(cooldown / 1000 - 0.08);
     if (boss) {
-      zaps.burst(_e.x, _e.y, _e.z, boss.normal.x, boss.normal.y, boss.normal.z, boss.index >= 0 ? 6 : 16, 1.4);
-      if (boss.index >= 0) bossFx!.breakLocal(boss.boss, boss.index);
-      rifleSound.impact(boss.index >= 0 ? 'glass' : 'metal', _e, _o);
+      const lens = boss.index >= 0 && boss.index < MINION;
+      zaps.burst(_e.x, _e.y, _e.z, boss.normal.x, boss.normal.y, boss.normal.z, lens ? 6 : 16, 1.4);
+      if (lens) bossFx!.breakLocal(boss.boss, boss.index);
+      rifleSound.impact(lens ? 'glass' : 'metal', _e, _o);
     } else if (drone || jet) {
       zaps.burst(_e.x, _e.y, _e.z, -_d.x, -_d.y, -_d.z, jet ? 24 : 16, jet ? 1.6 : 1);
       rifleSound.impact('metal', _e, _o);

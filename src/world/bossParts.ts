@@ -34,6 +34,9 @@ export interface BossView {
   fx?(m: BossFxMsg, ctx: BossCtx): void;
   /** Where the shot from o along unit d first meets its metal within max (m), or null: sparks, no harm. */
   hull?(o: THREE.Vector3, d: THREE.Vector3, max: number): number | null;
+  /** Where the shot from o along unit d first meets one of its minions within max (m), and which (its id or slot:
+   *  sent as weak point MINION + index), or null. */
+  minion?(o: THREE.Vector3, d: THREE.Vector3, max: number): { index: number; dist: number } | null;
   /** Gone from view: take everything out of the scene. */
   dispose(): void;
 }

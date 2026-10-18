@@ -26,6 +26,8 @@ const FOOT_Z = [1.0, 0.4, -0.25, -0.85];
 const HIP_X = 0.22, FOOT_X = 1.0;
 /** Gait: radians of step per metre run, stride swing (m), lift (m). */
 const STEP_PER_M = 6.5, SWING = 0.3, LIFT = 0.25;
+/** A shot this close (m) to its body's centre hits it. */
+const HIT_R = 0.9;
 /** Leap arc height (m). */
 const ARC = 1.1;
 /** Running ones are heard this close (m); a tick every TICK_S (± a little). */
@@ -81,6 +83,20 @@ export class Brood {
     }
     this.bodies.castShadow = this.legs.castShadow = true;
     for (let i = 0; i < BROOD_CAP; i++) this.glows.setColorAt(i, GLOW);
+  }
+
+  /** Where the shot from o along unit d first meets a live spiderling within max (m), and its id, or null. */
+  ray(o: THREE.Vector3, d: THREE.Vector3, max: number): { index: number; dist: number } | null {
+    let best: { index: number; dist: number } | null = null;
+    for (const [id, l] of this.lings) {
+      if (l.st === SP_DIE) continue;
+      const cx = l.x - o.x, cy = l.y - o.y, cz = l.z - o.z;
+      const along = cx * d.x + cy * d.y + cz * d.z, miss2 = cx * cx + cy * cy + cz * cz - along * along;
+      if (along < 0 || miss2 > HIT_R * HIT_R) continue;
+      const t = Math.max(0, along - Math.sqrt(HIT_R * HIT_R - miss2));
+      if (t <= max && (!best || t < best.dist)) best = { index: id, dist: t };
+    }
+    return best;
   }
 
   /**

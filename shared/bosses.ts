@@ -34,6 +34,9 @@ export const BOSSES: Record<BossKind, { points: number; hp: number; wreckS: numb
 
 /** A broken weak point grows back after this long (ms). */
 export const REGROW_MS = 20_000;
+/** A shot at one of a boss's minions (the carrier's gun drones, the queen's spiderlings) names it as weak point
+ *  MINION + its id (slot): they die to one hit and leave the boss's health alone. */
+export const MINION = 32;
 
 /**
  * One boss in a 'bosses' message. (x, y, z): its centre of interest (the worm's head, the carrier's hull, the

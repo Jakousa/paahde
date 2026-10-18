@@ -12,8 +12,8 @@
 //   GIVE_UP or after CHASE_MS, and leaves that player be for a while. LEAVE: walks away from everyone, out of sight.
 // - The brood: while it fights, every so often its sac opens (BIRTH_MS) and a clutch of spiderlings drops out from
 //   under it. They run at whoever is out in the open (spread over everyone), crouch close by, then spring at where
-//   their prey will be: a sidestep while they crouch, or a sprint, gets you out of it. They run down after SP_LIFE and
-//   when it dies. Their bites, like the stabs, are worked out as the drawn spiderling lands (DRAW_DELAY).
+//   their prey will be: a sidestep while they crouch, or a sprint, gets you out of it. They last until they're shot
+//   (one hit: shared/bosses.ts MINION) or it dies. Their bites, like the stabs, are worked out as the drawn spiderling lands (DRAW_DELAY).
 // - A crowd (server/bossCrowd.ts: everyone within CROWD_R) makes it harder: a quicker rear, a shorter stand after
 //   the slam, a slightly faster charge, and more spiderlings out at once, in bigger clutches, more often. One player
 //   is the baseline.
@@ -21,7 +21,7 @@ import { crashSitesNear } from '../shared/crashsites.ts';
 import {
   BIRTH_MS, BIRTH_Y, BIRTH_Z, BODY_H, BROOD_CAP, CHARGE, CHASE_MS, CROUCH_MS, DEATH_HOLE, DIE_MS, DROP_MS, FRONT, GIVE_UP, GROUP, HUNT,
   HUNT_TURN, LEAP_HIT, LEAP_MAX, LEAP_MS, LEAP_R, LEAVE, LEGS, REAR, REAR_CONE, REAR_MS, REAR_R, RECOVER, RECOVER_MS, REST_MS, restSpot,
-  ROAM, SETTLE, SETTLE_S, SIGHT, SLAM_HOLE, SLAM_R, slamPoints, SP_DIE, SP_DROP, SP_LEAP, SP_LIFE, SP_REST, SP_RUN, SP_CROUCH, SP_SPEED,
+  ROAM, SETTLE, SETTLE_S, SIGHT, SLAM_HOLE, SLAM_R, slamPoints, SP_DIE, SP_DROP, SP_LEAP, SP_REST, SP_RUN, SP_CROUCH, SP_SPEED,
   STAB_HOLE, STAB_R, stabY, swingTime, TURN, WALK,
 } from '../shared/queen.ts';
 import { blastPush } from '../shared/ragdoll.ts';
@@ -78,6 +78,9 @@ type Ling = {
   id: number; x: number; z: number; yaw: number; st: number; stAt: number; prey: number; born: number;
   ax: number; az: number; fx: number; fz: number; biteAt: number;
 };
+
+/** A shot ending this close (m, flat) to a spiderling hits it. */
+const LING_HIT = 4;
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -243,6 +246,15 @@ export const queen: Brain = {
     return s;
   },
 
+  hitMinion(b, i, x, y, z, now) {
+    // The shot ended near it (the view draws it DRAW_DELAY behind, running: some slack).
+    const l = (b.st as St).brood.find((o) => o.id === i && o.st !== SP_DIE);
+    if (!l || Math.hypot(l.x - x, l.z - z) > LING_HIT || Math.abs(y - heightAt(l.x, l.z)) > 7) return false;
+    l.biteAt = 0;
+    ling(l, SP_DIE, now);
+    return true;
+  },
+
   die(b, now, out) {
     const st = b.st as St;
     st.pending.length = 0;
@@ -391,10 +403,6 @@ function brood(b: Boss, st: St, dt: number, now: number, n: number, players: Bos
   st.brood = st.brood.filter((l) => {
     const since = now - l.stAt;
     if (l.st === SP_DIE) return since < DIE_MS;
-    if (now - l.born > SP_LIFE) {
-      ling(l, SP_DIE, now);
-      return true;
-    }
     if (l.st === SP_DROP) {
       if (since >= DROP_MS) ling(l, SP_RUN, now);
       return true;

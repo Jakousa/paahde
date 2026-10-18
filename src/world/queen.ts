@@ -584,6 +584,10 @@ export class QueenView implements BossView {
     }
   }
 
+  minion(o: THREE.Vector3, d: THREE.Vector3, max: number): { index: number; dist: number } | null {
+    return this.brood.ray(o, d, max);
+  }
+
   hull(o: THREE.Vector3, d: THREE.Vector3, max: number): number | null {
     if (!this.root.visible) return null;
     let best: number | null = null;

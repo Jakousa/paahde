@@ -10,8 +10,9 @@
 //
 // Gun drones (shared/carrier.ts DRONE_*) drop out of the bay while anyone is about: each picks the person fewest of
 // them are on, circles them low, and every few seconds hovers, aims ('daim': the spot where they stand) and after
-// DRONE_CHARGE fires there ('dshot'): still standing there, they're dead. Spent (DRONE_SHOTS, DRONE_LIFE) or with
-// nobody left, it flies home into the bay. The carrier dying drops them all.
+// DRONE_CHARGE fires there ('dshot'): still standing there, they're dead. It keeps at it until it's shot down
+// (one hit: shared/bosses.ts MINION, hitMinion); with nobody left, it flies home into the bay. The carrier dying drops
+// them all.
 //
 // A crowd (server/bossCrowd.ts) makes it harder: bombs come more often, a run bombs several people at once (and lays a
 // second bomb where its target stands, for those who stop), and more drones are out, launched sooner.
@@ -21,7 +22,7 @@ import { crowd, scaled } from './bossCrowd.ts';
 import {
   BAY, bayAt, BOMB_CRATER_MM, BOMB_CRATER_R, BOMB_GAP, BOMB_KILL_R, BOMB_REACH, bombFall, CARRIER_ALT, CHASE, CRASH_FAN_MM, CRASH_FAN_R,
   CRASH_KILL_R, CRASH_MM, CRASH_R, CRUISE, CS_ALL, CS_LEN, CS_LOCK, CS_OX, CS_OY, CS_OZ, CS_FALL, CS_PITCH, CS_ROLL, CS_SPIN, CS_TX, CS_TZ,
-  CS_VX, CS_VZ, DRONE_CHARGE, DRONE_HIT_R, DRONE_LIFE, DRONE_SHOTS, DRONE_SLOTS, DS_LEN, DS_ON, DS_X, DS_Y, DS_Z, FALL_G, FANS, fanAt,
+  CS_VX, CS_VZ, DRONE_CHARGE, DRONE_HIT_R, DRONE_SLOTS, DS_LEN, DS_ON, DS_X, DS_Y, DS_Z, FALL_G, FANS, fanAt,
   HULL, SCOUR_MM, SCOUR_R, SCOUR_STEP, SEE_R, SINK_PER_FAN, TURN_RATE,
 } from '../shared/carrier.ts';
 import { lineOfSight } from '../shared/guardians.ts';
@@ -69,6 +70,8 @@ const DRONE_REACH = 50;
 const DRONE_RELOAD: [number, number] = [3.5, 5.5];
 /** An emptied slot stays empty this long (ms), so the view sees one drone go before the next takes its slot. */
 const SLOT_REST = 1500;
+/** A shot ending this close (m) to a gun drone hits it (it's drawn a little behind, flying: some slack). */
+const DRONE_HIT = 4;
 
 type Track = { x: number; z: number; vx: number; vz: number };
 type Bomb = { at: number; x: number; y: number; z: number };
@@ -205,7 +208,7 @@ function tickDrones(b: Boss, st: St, dt: number, now: number, players: BossPlaye
     if (prey && (prey.safe || Math.hypot(prey.x - b.x, prey.z - b.z) > DRONE_SEEK_R * 1.4)) prey = null;
     if (d.phase === 'out' && now >= d.until) d.phase = 'hunt';
     if (d.phase === 'hunt') {
-      if (b.leaving || d.shots >= DRONE_SHOTS || now - d.born > DRONE_LIFE * 1000) d.phase = 'home';
+      if (b.leaving) d.phase = 'home';
       else if (!prey) {
         prey = pickPrey(b, st, d, players);
         d.target = prey ? prey.id : -1;
@@ -223,7 +226,7 @@ function tickDrones(b: Boss, st: St, dt: number, now: number, players: BossPlaye
       }
       out.events.push({ msg: { t: 'bossFx', id: b.id, e: 'dshot', time: Math.round(now), x: r3(d.lx), y: r3(d.ly), z: r3(d.lz), a: [d.slot, r3(d.x), r3(d.y), r3(d.z)] }, x: d.x, z: d.z });
       d.shots++;
-      d.phase = d.shots >= DRONE_SHOTS ? 'home' : 'hunt';
+      d.phase = 'hunt';
       d.until = now + rand(DRONE_RELOAD[0], DRONE_RELOAD[1]) * 1000;
     }
 
@@ -441,6 +444,16 @@ export const carrier: Brain = {
       s[o + DS_Z] = r1(d.z);
     }
     return s;
+  },
+
+  hitMinion(b, i, x, y, z, now, out) {
+    // A gun drone shot down (one hit): it drops tumbling where it was (the view, from 'ddown'); its slot rests.
+    const st = b.st as St, d = st.drones.find((o) => o.slot === i);
+    if (!d || Math.hypot(d.x - x, d.y - y, d.z - z) > DRONE_HIT) return false;
+    st.drones = st.drones.filter((o) => o !== d);
+    st.slotFree[d.slot] = now + SLOT_REST * 2;
+    out.events.push({ msg: { t: 'bossFx', id: b.id, e: 'ddown', time: Math.round(now), x: r3(d.x), y: r3(d.y), z: r3(d.z), a: [d.slot, r3(d.vx), r3(d.vy), r3(d.vz)] }, x: d.x, z: d.z });
+    return true;
   },
 
   die(b, now) {

@@ -113,6 +113,8 @@ const eyeMat = new THREE.MeshStandardNodeMaterial({ color: 0x3a0400, roughness: 
 const tubeGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.5);
 /** Thread and beam radii (m), how long a shot's beam lasts (s); a falling dead drone's gravity (m/s²). */
 const THREAD_R = 0.025;
+/** A gun drone is hit by a shot within this (m) of its centre. */
+const DRONE_SHOT_R = 1.3;
 const SHOT_R = 0.12;
 const SHOT_S = 0.22;
 const DRONE_FALL_G = 12;
@@ -165,6 +167,9 @@ export class CarrierView implements BossView {
   private seenAlive = false;
   private t = Math.random() * 100;
   private drones: (DroneView | null)[] = new Array(DRONE_SLOTS).fill(null);
+  /** Slots whose drone was shot down ('ddown', ahead of the drawn time): how it was flying. It drops once it's gone
+   *  from the drawn snapshot. */
+  private downed: ([number, number, number] | null)[] = new Array(DRONE_SLOTS).fill(null);
   /** Drone aims and shots waiting for their server time to come round (the snapshot is drawn a little late). */
   private pending: BossFxMsg[] = [];
   private shots: Shot[] = [];
@@ -374,18 +379,26 @@ export class CarrierView implements BossView {
       if (on && !v.on) {
         v.on = true;
         v.g.visible = true;
+        this.downed[i] = null;
         (v.x = x), (v.y = y), (v.z = z), (v.vx = v.vy = v.vz = 0);
         if (this.seenAlive) carrierSound.launch(_v.set(x, y, z));
       } else if (!on && v.on) {
         v.on = false;
         v.aim = null;
         v.thread.visible = v.dot.visible = false;
-        // Docked (it's at the bay): gone. The carrier dead: it drops where it was.
-        if (dead && this.seenAlive) {
+        // Docked (it's at the bay): gone. Shot down, or the carrier dead: it drops where it was.
+        const down = this.downed[i];
+        this.downed[i] = null;
+        if ((dead || down) && this.seenAlive) {
           v.falling = true;
           v.spinX = (Math.random() - 0.5) * 6;
           v.spinZ = (Math.random() - 0.5) * 8;
+          if (down) [v.vx, v.vy, v.vz] = down;
           v.vy = Math.max(v.vy, 2);
+          if (down) {
+            zaps.burst(v.x, v.y, v.z, 0, 1, 0, 14, 1.2);
+            rifleSound.impact('metal', v.g.position, ctx.ear);
+          }
         } else v.g.visible = false;
         continue;
       }
@@ -431,6 +444,16 @@ export class CarrierView implements BossView {
       list.push({ id: i, at: v.g.position });
     }
     carrierSound.drones(list, ctx.ear);
+  }
+
+  minion(o: THREE.Vector3, d: THREE.Vector3, max: number): { index: number; dist: number } | null {
+    let best: { index: number; dist: number } | null = null;
+    this.drones.forEach((v, i) => {
+      if (!v || !v.on || v.falling) return;
+      const t = sphereHit(o, d, v.g.position, DRONE_SHOT_R);
+      if (t !== null && t <= max && (!best || t < best.dist)) best = { index: i, dist: t };
+    });
+    return best;
   }
 
   /** A dead carrier's drone dropping, tumbling and smoking, bursting on the sand. */
@@ -659,6 +682,10 @@ export class CarrierView implements BossView {
   }
 
   fx(m: BossFxMsg) {
+    if (m.e === 'ddown' && m.a && m.a[0] >= 0 && m.a[0] < DRONE_SLOTS) {
+      this.downed[m.a[0]] = [m.a[1] ?? 0, m.a[2] ?? 0, m.a[3] ?? 0];
+      return;
+    }
     if ((m.e === 'daim' || m.e === 'dshot') && m.a && m.a[0] >= 0 && m.a[0] < DRONE_SLOTS) {
       this.pending.push(m);
       return;
@@ -802,6 +829,14 @@ export class CarrierView implements BossView {
     this.fireMat.dispose();
     carrierSound.stop();
   }
+}
+
+/** Where the ray from o along unit d enters the sphere (c, r), or null. */
+function sphereHit(o: THREE.Vector3, d: THREE.Vector3, c: THREE.Vector3, r: number): number | null {
+  const along = (c.x - o.x) * d.x + (c.y - o.y) * d.y + (c.z - o.z) * d.z;
+  const miss2 = o.distanceToSquared(c) - along * along;
+  if (along < 0 || miss2 > r * r) return null;
+  return Math.max(0, along - Math.sqrt(r * r - miss2));
 }
 
 function smooth01(v: number) {

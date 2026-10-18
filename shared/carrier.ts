@@ -8,8 +8,9 @@
 // its snapshot carries (BossSnap.s, CS_*).
 //
 // It also launches small gun drones out of the bay (DRONE_*): each flies out to someone, circles them, and every few
-// seconds stops, paints a red aim on where they stand (DRONE_CHARGE s) and fires: anyone still there is killed. A
-// few shots or DRONE_LIFE s and it flies home to the bay; all of them fall when the carrier does. More of them, and
+// seconds stops, paints a red aim on where they stand (DRONE_CHARGE s) and fires: anyone still there is killed. It
+// keeps at it until it's shot down (one hit) or there's nobody about (then it flies home to the bay); all of them
+// fall when the carrier does. More of them, and
 // more often, with more people about (server/bossCrowd.ts).
 
 /** Hover height over the highest sand under it (m), and how much lower it sinks per broken fan. */
@@ -68,11 +69,9 @@ export const DS_LEN = 4;
 export const CS_ALL = CS_LEN + DRONE_SLOTS * DS_LEN;
 
 /** A gun drone: aims this long (s) at a spot before it fires there (the 'daim' bossFx), and kills anyone whose chest
- *  is within DRONE_HIT_R m of the spot when it does ('dshot'). Lives at most DRONE_LIFE s / DRONE_SHOTS shots. */
+ *  is within DRONE_HIT_R m of the spot when it does ('dshot'). */
 export const DRONE_CHARGE = 0.9;
 export const DRONE_HIT_R = 1.7;
-export const DRONE_LIFE = 45;
-export const DRONE_SHOTS = 3;
 /** Its body's radius (m), for the view. */
 export const DRONE_R = 0.9;
 

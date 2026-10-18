@@ -3,7 +3,7 @@
 // points (shattering, smoking, the rifle's hit test, raycast), the bang when one dies, and the server's one-offs
 // ('bossFx') handed to the view.
 import * as THREE from 'three/webgpu';
-import type { BossKind, BossSnap } from '../shared/bosses.ts';
+import { MINION, type BossKind, type BossSnap } from '../shared/bosses.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { brokenLensMat, lensMat, type BossCtx, type BossView } from './world/bossParts';
@@ -190,7 +190,9 @@ export class BossFx {
         const point = o.clone().addScaledVector(d, dist);
         lens = { boss: id, index: i, dist, point, normal: point.clone().sub(_w).normalize() };
       });
-      const hit: BossHit | null = lens ?? (metal !== null ? { boss: id, index: -1, dist: metal, point: o.clone().addScaledVector(d, metal), normal: d.clone().negate() } : null);
+      let hit: BossHit | null = lens ?? (metal !== null ? { boss: id, index: -1, dist: metal, point: o.clone().addScaledVector(d, metal), normal: d.clone().negate() } : null);
+      const m = v.view.minion?.(o, d, hit ? hit.dist : max) ?? null;
+      if (m) hit = { boss: id, index: MINION + m.index, dist: m.dist, point: o.clone().addScaledVector(d, m.dist), normal: d.clone().negate() };
       if (hit && (!best || hit.dist < best.dist)) best = hit;
     }
     return best;
@@ -199,7 +201,7 @@ export class BossFx {
   /** Weak point `i` of boss `id` shot here and now (the server hears of it; if it never agrees, it comes back). */
   breakLocal(id: number, i: number) {
     const v = this.shown.get(id);
-    if (!v) return;
+    if (!v || i >= MINION) return;
     v.predicted.set(i, performance.now());
     this.setBroken(v, v.shown | (1 << i), false);
   }

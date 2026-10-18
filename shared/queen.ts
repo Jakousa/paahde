@@ -118,8 +118,7 @@ export const LEAP_HIT = 1.5;
 export const CROUCH_MS = 380;
 export const LEAP_MS = 340;
 export const REST_MS = 900;
-/** It runs down for good after SP_LIFE (ms) (and when its mother dies), curling up over DIE_MS. */
-export const SP_LIFE = 26_000;
+/** Shot (one hit) or its mother dead, it curls up over DIE_MS. Nothing else ends it. */
 export const DIE_MS = 1400;
 /** Body height over the sand (m). */
 export const SP_BODY_Y = 0.55;

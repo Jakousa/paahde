@@ -1,6 +1,6 @@
 // Server side of the bosses (shared/bosses.ts): spawns them (called by a receiver, or from the debug menu), ticks each kind's brain (server/<kind>.ts), checks rifle hits, and hands the deaths, sand marks and one-off
 // effects back to server/index.ts. In memory only: a restart sends them all away.
-import { allPoints, BOSS_KINDS, BOSS_SEND_R, BOSSES, REGROW_MS, type BossKind, type BossSnap } from '../shared/bosses.ts';
+import { allPoints, BOSS_KINDS, BOSS_SEND_R, BOSSES, MINION, REGROW_MS, type BossKind, type BossSnap } from '../shared/bosses.ts';
 import type { DeathCause, ServerMsg } from '../shared/protocol.ts';
 import { RANGE } from '../shared/rifle.ts';
 import { indoors } from '../shared/shelters.ts';
@@ -48,6 +48,9 @@ export type Brain = {
   snap(b: Boss): number[];
   /** All its weak points broken, at `now`: stop, fall, whatever it does when it dies (optional). */
   die?(b: Boss, now: number, out: BossOut): void;
+  /** A shot ending at (x, y, z) says it hit minion `i` (shared/bosses.ts MINION): down it if that's plausible, and
+   *  say so (optional: kinds without minions). */
+  hitMinion?(b: Boss, i: number, x: number, y: number, z: number, now: number, out: BossOut): boolean;
   /** Dead, while its wreck lies: anything still to come of the death (a fall's impact) (optional). */
   wreck?(b: Boss, dt: number, now: number, players: BossPlayer[], out: BossOut): void;
 };
@@ -116,7 +119,12 @@ export class BossServer {
   shoot(by: BossPlayer, x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, i: unknown, now: number, out: BossOut): { hit: boolean; kill: BossKill | null; boss?: Boss } {
     const miss = { hit: false, kill: null };
     const b = this.bosses.find((o) => o.id === id);
-    if (!b || b.deadAt >= 0 || !Number.isInteger(i) || (i as number) < 0 || (i as number) >= BOSSES[b.kind].points) return miss;
+    if (!b || b.deadAt >= 0 || !Number.isInteger(i) || (i as number) < 0) return miss;
+    if ((i as number) >= MINION) {
+      if (Math.hypot(ex - x, ey - y, ez - z) > RANGE + 5) return miss;
+      return { hit: BRAINS[b.kind].hitMinion?.(b, (i as number) - MINION, ex, ey, ez, now, out) ?? false, kill: null };
+    }
+    if ((i as number) >= BOSSES[b.kind].points) return miss;
     if (b.broken & (1 << (i as number))) return miss;
     if (Math.hypot(ex - x, ey - y, ez - z) > RANGE + 5 || !BRAINS[b.kind].near(b, ex, ey, ez)) return miss;
     b.broken |= 1 << (i as number);
