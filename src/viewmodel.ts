@@ -174,7 +174,7 @@ export class ViewModel {
   /** The gun's muzzle in world space (as drawn: scaled about the eye like the rest), or null if it isn't out. */
   muzzle(out: THREE.Vector3): THREE.Vector3 | null {
     const m = this.shown === 'rifle' ? this.rifleMuzzle : this.shown === 'pistol' ? this.pistolMuzzle : null;
-    if (!m || !this.root.visible) return null;
+    if (!m || !this.root.visible || !this.sway.visible) return null; // hidden behind the scope: not drawn
     m.updateWorldMatrix(true, false);
     return m.getWorldPosition(out);
   }

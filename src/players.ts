@@ -68,6 +68,8 @@ export interface AvatarModel {
   setHeadless?(on: boolean): void;
   /** The eyes' world position, once posed (riding in first person, the camera sits there). */
   eye?(out: THREE.Vector3): boolean;
+  /** The held gun's muzzle (world), if there is one in hand and drawn. */
+  muzzle?(out: THREE.Vector3): boolean;
   /** Go limp as a ragdoll thrown by `push`, or get back up (null). False if it can't (then the Avatar tips it over). */
   ragdoll?(push: THREE.Vector3 | null, ground: (x: number, z: number) => number): boolean;
   /** The ragdoll's middle (world), while it is one. */
@@ -145,6 +147,11 @@ export class Avatar {
   /** The eyes' world position as last drawn; false if the model can't tell (placeholder). */
   eye(out: THREE.Vector3): boolean {
     return this.model.eye?.(out) ?? false;
+  }
+
+  /** The held gun's muzzle (world) as last drawn; false if none is drawn. */
+  muzzle(out: THREE.Vector3): boolean {
+    return this.root.visible && (this.model.muzzle?.(out) ?? false);
   }
 
   /** Floating tag over the head (remote players). */

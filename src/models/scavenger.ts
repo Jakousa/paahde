@@ -16,7 +16,7 @@ import { LegIk, lowestAnkles, type Ground } from './legIk';
 import { Ragdoll, type RagdollGround } from './ragdoll';
 import type { RidePose } from '../players';
 import { wornBit } from '../../shared/gear.ts';
-import { beltModel, disposeModel, heldModel, wristModel } from './outfit';
+import { beltModel, disposeModel, heldModel, heldMuzzle, wristModel } from './outfit';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -247,6 +247,11 @@ export class ScavengerModel {
     if (!this.head) return false;
     out.set(0, 0.09, 0.08).applyMatrix4(this.head.matrixWorld); // glTF space: the face is +Z
     return true;
+  }
+
+  /** The held gun's muzzle (world), if a gun is in hand and drawn. */
+  muzzle(out: THREE.Vector3): boolean {
+    return !!this.held?.visible && heldMuzzle(this.held, out) !== null;
   }
 
   /** Go limp, thrown by `push` (m/s, world), from the pose the body is in now; null gets back up (the clips take
