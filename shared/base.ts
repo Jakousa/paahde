@@ -110,26 +110,19 @@ const PAD = { x0: -14, x1: 14, z0: -36, z1: 14, blend: 24 };
 const PAD_Y = BASE.y - 0.06;
 
 /**
- * Flag mast beside the entrance hut, seen from afar: a tapered concrete pole (foot radius r0, top r1, height
- * h) on a round plinth (radius, height), braced by fins at its foot (count, reach, height) and guy wires from
- * a collar (guyY) down to concrete anchor blocks (half size, height) `guyR` out. A windsock swings on top
- * (src/world/mast.ts).
+ * Flag mast behind and beside the entrance hut, seen from afar: a tapered concrete pole (foot radius r0, top r1,
+ * height h) on a round plinth (radius, height), held up by wide, tall buttress fins at its foot (count, reach,
+ * height, thickness). A windsock swings on top (src/world/mast.ts).
  */
 export const MAST = {
-  x: 14, z: 0, h: 22, r0: 0.3, r1: 0.13,
+  x: 14, z: -14, h: 22, r0: 0.3, r1: 0.13,
   plinth: { r: 1.2, h: 0.5 },
-  fins: { n: 4, reach: 1.05, h: 2.6, t: 0.22 },
-  guyY: 15, guyR: 6.5, anchor: { half: 0.45, h: 0.4 },
+  fins: { n: 4, reach: 2.6, h: 7, t: 0.45 },
 };
-/** Guy wire anchors (local x, z): three, 120° apart, the first back towards the hut so they stay near the
- *  pad (the mast stands at its edge). */
-export const MAST_ANCHORS: [number, number][] = [[-1, 0], [0.5, Math.sqrt(3) / 2], [0.5, -Math.sqrt(3) / 2]].map(
-  ([c, s]) => [MAST.x + c * MAST.guyR, MAST.z + s * MAST.guyR],
-);
 
-/** Local point within the mast's guy wires (+ margin). */
+/** Local point within the mast's fins (+ margin). */
 function nearMast(lx: number, lz: number, m: number): boolean {
-  const dx = lx - MAST.x, dz = lz - MAST.z, r = MAST.guyR + 1 + m;
+  const dx = lx - MAST.x, dz = lz - MAST.z, r = MAST.fins.reach + 1 + m;
   return dx * dx + dz * dz < r * r;
 }
 
@@ -287,14 +280,13 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
   }
 }
 {
-  // The mast: its plinth can be climbed onto, the fins and the pole can't; the anchor blocks are low.
-  const { plinth, fins, anchor } = MAST;
+  // The mast: its plinth can be climbed onto, the fins and the pole can't.
+  const { plinth, fins } = MAST;
   capsules.push({ x: MAST.x, z: MAST.z, ax: 1, az: 0, half: 0, r: plinth.r, y0: -Infinity, top: plinth.h });
   capsules.push({ x: MAST.x, z: MAST.z, ax: 1, az: 0, half: 0, r: MAST.r0, y0: plinth.h, top: WALL_H });
   for (const [ax, az] of [[1, 0], [0, 1]]) {
-    capsules.push({ x: MAST.x, z: MAST.z, ax, az, half: fins.reach, r: fins.t / 2 + 0.05, y0: plinth.h, top: plinth.h + fins.h });
+    capsules.push({ x: MAST.x, z: MAST.z, ax, az, half: fins.reach, r: fins.t / 2 + 0.05, y0: -Infinity, top: plinth.h + fins.h });
   }
-  for (const [x, z] of MAST_ANCHORS) capsules.push({ x, z, ax: 1, az: 0, half: 0, r: anchor.half, y0: -Infinity, top: anchor.h });
 }
 for (const p of BASE_PIECES) {
   if (!p.hx || !p.hz || !p.h) continue;

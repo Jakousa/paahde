@@ -1,8 +1,8 @@
 // The flag mast by the home base (layout and collision in shared/base.ts MAST): a tall tapered concrete
-// pole on a plinth with buttress fins, guy wires to anchor blocks, and a striped windsock that swings round to the wind and lifts and flutters with it (src/world/wind.ts).
+// pole on a plinth with big buttress fins, and a striped windsock that swings round to the wind and lifts and flutters with it (src/world/wind.ts).
 // Built from primitives here; small enough not to need a Blender model.
 import * as THREE from 'three/webgpu';
-import { BASE, MAST, MAST_ANCHORS } from '../../shared/base.ts';
+import { BASE, MAST } from '../../shared/base.ts';
 import { uAt, wind, type WindSample } from './wind.ts';
 
 const CONCRETE = 0x9a8f80, CONCRETE_DARK = 0x6f675d, STEEL = 0x3a3430;
@@ -43,7 +43,7 @@ export class Mast {
     this.group.position.set(BASE.x + MAST.x, BASE.y, BASE.z + MAST.z);
     scene.add(this.group);
     const concrete = material(CONCRETE, 0.92), dark = material(CONCRETE_DARK, 0.95), steel = material(STEEL, 0.6, 0.6);
-    const { plinth, fins, anchor } = MAST;
+    const { plinth, fins } = MAST;
 
     // Plinth, sunk a little into the sand, with a chamfered cap.
     const base = mesh(new THREE.CylinderGeometry(plinth.r, plinth.r + 0.05, plinth.h + 0.3, 12), dark);
@@ -65,11 +65,11 @@ export class Mast {
       this.group.add(ring);
     }
 
-    // Buttress fins: right triangles against the pole, sloping out to the plinth's edge.
+    // Buttress fins: right triangles against the pole, sloping out past the plinth, sunk into the sand.
     const tri = new THREE.Shape();
-    tri.moveTo(0, 0);
-    tri.lineTo(fins.reach, 0);
-    tri.lineTo(fins.reach, 0.18);
+    tri.moveTo(0, -0.4);
+    tri.lineTo(fins.reach, -0.4);
+    tri.lineTo(fins.reach, 0.25);
     tri.lineTo(0, fins.h);
     const finGeo = new THREE.ExtrudeGeometry(tri, { depth: fins.t, bevelEnabled: false });
     finGeo.translate(0, 0, -fins.t / 2);
@@ -78,31 +78,6 @@ export class Mast {
       f.position.y = plinth.h;
       f.rotation.y = (i / fins.n) * Math.PI * 2;
       this.group.add(f);
-    }
-
-    // Guy wires from a steel collar to the anchor blocks, each with a turnbuckle eye.
-    const collar = mesh(new THREE.CylinderGeometry(radiusAt(MAST.guyY) + 0.04, radiusAt(MAST.guyY) + 0.04, 0.2, 14), steel);
-    collar.position.y = MAST.guyY;
-    this.group.add(collar);
-    const up = new THREE.Vector3(0, 1, 0);
-    for (const [ax, az] of MAST_ANCHORS) {
-      const lx = ax - MAST.x, lz = az - MAST.z;
-      const block = mesh(new THREE.BoxGeometry(anchor.half * 2, anchor.h + 0.3, anchor.half * 2), dark);
-      block.position.set(lx, (anchor.h - 0.3) / 2, lz);
-      block.rotation.y = Math.atan2(lx, lz);
-      this.group.add(block);
-      const eye = mesh(new THREE.TorusGeometry(0.07, 0.018, 6, 12), steel);
-      eye.position.set(lx, anchor.h + 0.06, lz);
-      eye.rotation.y = Math.atan2(lx, lz) + Math.PI / 2;
-      this.group.add(eye);
-      const r = radiusAt(MAST.guyY) + 0.04;
-      const from = new THREE.Vector3(lx, anchor.h + 0.1, lz);
-      const to = new THREE.Vector3(lx, 0, lz).normalize().multiplyScalar(r).setY(MAST.guyY);
-      const d = to.clone().sub(from);
-      const wire = mesh(new THREE.CylinderGeometry(0.014, 0.014, d.length(), 5), steel);
-      wire.position.copy(from).addScaledVector(d, 0.5);
-      wire.quaternion.setFromUnitVectors(up, d.normalize());
-      this.group.add(wire);
     }
 
     // Top: a steel cap, and the swivel with the windsock.
