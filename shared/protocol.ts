@@ -115,7 +115,9 @@ export type ClientMsg =
   // it to everyone as 'chat'.
   | { t: 'chat'; text: string }
   // Your name in this world (src/name.ts), asked once after the first 'welcome' (blank: no name). Trimmed to NAME_MAX.
-  | { t: 'name'; name: string };
+  | { t: 'name'; name: string }
+  // Loaded and named: visible to others and mortal from now on (src/name.ts). Sent again after every 'welcome'.
+  | { t: 'ready' };
 
 /** A death, as chat shows it (ServerMsg 'obituary'). */
 export type Obituary = { t: 'obituary'; id: number; color: number; name: string; cause: DeathCause; at: number };

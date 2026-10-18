@@ -76,7 +76,8 @@ import { LootView, lootName } from './world/loot';
 import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
 import { Chat } from './chat';
-import { askName } from './name';
+import { nameGate } from './name';
+import { loading } from './loadingGame';
 import { tools } from './input';
 import { Wrecks } from './world/wrecks';
 import { Trophies } from './world/trophies';
@@ -171,7 +172,7 @@ machines.bench.onReady = () => {
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
   (mode) => trophies.show(mode));
 new Chat(net);
-askName(net, renderer.domElement);
+const names = nameGate(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
 update.busy = () => guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
 const lootView = new LootView(scene);
@@ -296,7 +297,8 @@ renderer.setAnimationLoop((time) => {
   loaded ||= coverTimedOut || (bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)));
   if (loaded && coverFrames < 3 && ++coverFrames === 3) {
     cover.style.opacity = '0';
-    setTimeout(() => cover.remove(), 500);
+    setTimeout(() => (loading.stop(), cover.remove()), 500);
+    names.loaded();
   }
   if (faceCrash) {
     faceCrash = false;
@@ -310,7 +312,7 @@ renderer.setAnimationLoop((time) => {
   accumulator += frameDt;
   // Disassembly walks the character up to the machine with the normal input bits, then the keyboard goes quiet.
   const walk = teardown.drive(orbit, net.me, frameDt);
-  const input = teardown.active ? walk : readInput();
+  const input = !net.isReady ? 0 : teardown.active ? walk : readInput(); // standing still until named
   while (accumulator >= DT) {
     net.tick(input, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
     accumulator -= DT;

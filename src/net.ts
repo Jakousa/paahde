@@ -188,8 +188,10 @@ export class Net {
   onChat?: (msg: Extract<ServerMsg, { t: 'chat' }>) => void;
   /** Other players' names by public id ('' unnamed), for the tags over their heads. */
   names = new Map<number, string>();
-  /** Joined a world you haven't been asked your name in yet (src/name.ts). */
-  onAskName?: () => void;
+  /** The welcome said this world hasn't asked our name yet. */
+  nameAsked = false;
+  /** Loaded and named: the server shows us to others and lets us die. Resent after every reconnect's welcome. */
+  isReady = false;
   onObituary?: (msg: Obituary) => void;
   /** The world's latest deaths, oldest first, as we join (src/chat.ts). */
   onObituaries?: (list: Obituary[]) => void;
@@ -365,6 +367,12 @@ export class Net {
   /** Your name in this world ('' none), asked once (src/name.ts). */
   setName(name: string) {
     if (this.connected) this.send({ t: 'name', name });
+  }
+
+  /** The game is loaded and the name chosen: become visible and mortal (src/name.ts). */
+  ready() {
+    this.isReady = true;
+    if (this.connected) this.send({ t: 'ready' });
   }
 
   /** One sip finished (src/water.ts); the server answers with 'water'. */
@@ -712,7 +720,8 @@ export class Net {
       this.sentSlot = -1;
       this.retryMs = 500;
       this.status = 'online';
-      if (msg.name === null) this.onAskName?.();
+      this.nameAsked = msg.name === null;
+      if (this.isReady) this.send({ t: 'ready' });
       return;
     }
     if (msg.t === 'snap') {

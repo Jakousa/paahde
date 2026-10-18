@@ -2,6 +2,16 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — Loading screen, then name, then you exist
+
+- Joining shows the loading cover with a one-button runner on it (`src/loadingGame.ts`, started from `src/entry.ts`
+  so it plays while the bundle downloads). When the cover leaves, the game stays blurred behind the name box
+  (`src/name.ts`, asked only if the world doesn't have a name yet), and the player stands still.
+- Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
+  Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
+  no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.
+- Known gap: no ready timeout, so a client that never answers stays unhurtable (and invisible) till it leaves.
+
 ## 2026-10-18 — The world has no edge
 
 - The ±2000 m clamp is gone: you can walk and ride forever. Terrain, rocks, scrap, wrecks, crash sites and shelters

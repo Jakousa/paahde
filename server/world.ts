@@ -119,6 +119,8 @@ type Player = {
   firedAt: number; // last laser rifle shot or throw (performance.now() ms)
   chatAt: number; // last chat line (performance.now() ms)
   name: string; // shown in chat ('' none; db.getName null until asked)
+  /** Loaded the game and chose a name ('ready', src/name.ts): until then unseen by others, unhurtable and out of the heat. */
+  ready: boolean;
   /** The jammer's lock (shared/jammer.ts): on which target, built up how far (ms), last told when (performance.now). */
   jam: { kind: 'jet' | 'drone'; id: number; acc: number; at: number } | null;
 };
@@ -192,6 +194,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'debugHit' && p) return die(p, 'laser', [0, 3, 6]);
     if (msg.t === 'chat' && p) return onChat(p, msg.text);
     if (msg.t === 'name' && p) return onName(p, msg.name);
+    if (msg.t === 'ready' && p) return onReady(p);
     if (msg.t === 'hands' && p) {
       p.hands = msg.hands === 1 || msg.hands === 2 || msg.hands === 3 ? msg.hands : 0;
       p.aim = msg.aim === true;
@@ -251,7 +254,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, name: '', jam: null,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, name: '', ready: false, jam: null,
   };
   players.set(ws, p);
   save(p);
@@ -270,8 +273,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, jets.msg());
   send(ws, loot.joinMessage(browserId));
   send(ws, { t: 'welcome', id: p.id, state, color, epoch, name });
-  send(ws, { t: 'names', names: [...players.values()].map((o) => [o.id, o.name]), reset: true });
-  sendName(p);
+  send(ws, { t: 'names', names: [...players.values()].filter((o) => o.ready).map((o) => [o.id, o.name]), reset: true });
   send(ws, { t: 'obituaries', list: db.lastObituaries(OBITUARY_KEEP) });
   recall(p);
   send(ws, corpses.joinMessage());
@@ -316,7 +318,7 @@ function shadeCasters(now: number): Caster[] {
   casters = [];
   for (const o of players.values()) {
     const s = o.state;
-    if (o.down) continue;
+    if (o.down || !o.ready) continue;
     casters.push({ x: s.x, z: s.z, ax: 1, az: 0, half: 0, r: 0.28, y0: s.y, y1: s.y + (s.crouching ? 1.2 : 1.8), id: o.id });
     if (s.riding) casters.push({ x: s.x, z: s.z, ax: -Math.sin(s.heading), az: -Math.cos(s.heading), half: 0.55, r: 0.35, y0: s.y, y1: s.y + 1, id: o.id });
   }
@@ -343,7 +345,7 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
 /** Drop where they stand (off the bike, stopped) for DOWN_MS, as a ragdoll thrown by `push`; then respawn().
  *  `bolt`: the guardian's bolt that did it, which the client lets reach them first. */
 function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 0, 0], bolt?: number) {
-  if (p.down || lives <= 0) return;
+  if (p.down || !p.ready || lives <= 0) return;
   if (cause !== 'heat' && shielded(p, push)) return;
   p.down = { until: Date.now() + DOWN_MS, push };
   p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, mounting: 0, sliding: false, crouching: false };
@@ -399,7 +401,7 @@ function gameOver() {
 /** The client saw a guardian's foot come down on it (the feet are client IK). */
 function onStomped(p: Player, g: number) {
   const s = p.state;
-  if (!p.down && guardians.stomp(g, { id: p.id, x: s.x, y: s.y, z: s.z, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }, performance.now())) die(p, 'guardian');
+  if (!p.down && p.ready && guardians.stomp(g, { id: p.id, x: s.x, y: s.y, z: s.z, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }, performance.now())) die(p, 'guardian');
 }
 
 /** Back to the base, cooled down, with a full canteen. */
@@ -421,7 +423,7 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const dt = Math.min(botAccum, 0.5);
   botAccum = 0;
   const wall = Date.now();
-  const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
+  const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !p.ready || !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
   guardians.storms = storms.storms;
   const r = guardians.tick(dt, now, tod, list);
   for (const k of guardians.crashes()) dropSpoils(k);
@@ -624,6 +626,13 @@ function onName(p: Player, name: unknown) {
   if (typeof name !== 'string') return;
   p.name = name.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
   db.setName(p.browserId, p.name);
+  if (p.ready) sendName(p);
+}
+
+/** The client has loaded and chosen a name: from now on others see them and they can die. */
+function onReady(p: Player) {
+  if (p.ready) return;
+  p.ready = true;
   sendName(p);
 }
 
@@ -876,7 +885,7 @@ setInterval(() => {
       if (Date.now() >= p.down.until) respawn(p);
       continue;
     }
-    heat(p, elapsed, tod, now);
+    if (p.ready) heat(p, elapsed, tod, now);
     if (Date.now() - p.lastInputAt > IDLE_MS) {
       p.input = 0;
       for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
@@ -926,16 +935,22 @@ function broadcast(time: number) {
   }
   const lootMsg = loot.flush(); // per player: the home bike is hidden from whoever has had theirs
   if (lootMsg) for (const p of players.values()) send(p.ws, loot.seenBy(lootMsg, p.browserId));
-  const list: PlayerSnap[] = [...players.values()].map((p) => {
+  const all = [...players.values()].map((p) => {
     const item = p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot]?.kind : undefined;
     const gear = wornGear(items.slots(p.browserId, 'equip')) | carriedGear(items.slots(p.browserId, 'bag'), p.slot);
     const tiers = gearTiers(items.slots(p.browserId, 'equip'), items.slots(p.browserId, 'bag'), p.slot);
-    return {
+    const snap: PlayerSnap = {
       id: p.id, color: p.color, pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}), ...(p.aim ? { aim: 1 as const } : {}),
       ...(item ? { item } : {}), ...(gear ? { gear } : {}), ...(tiers ? { tiers } : {}), ...(p.down ? { down: p.down.push } : {}),
     };
+    return { snap, ready: p.ready };
   });
-  for (const p of players.values()) send(p.ws, { t: 'snap', time, ack: p.ack, players: list });
+  // Players still loading are seen only by themselves.
+  const seen = all.filter((o) => o.ready).map((o) => o.snap);
+  for (const p of players.values()) {
+    const list = p.ready ? seen : [...seen, all.find((o) => o.snap.id === p.id)!.snap];
+    send(p.ws, { t: 'snap', time, ack: p.ack, players: list });
+  }
 }
 
 // Trim floats on the wire; client reconciliation re-simulates from these values so precision

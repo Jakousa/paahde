@@ -1,6 +1,7 @@
-// Your name, asked once per world: the first 'welcome' there (net.onAskName) brings up a small box over the game,
-// filled with the name you gave last time anywhere. Enter or the button keeps it, Esc or Skip goes without one;
-// either way the server stores the answer and doesn't ask again. Names show in chat (src/chat.ts).
+// Your name, asked once per world, once the game has loaded (nameGate().loaded(), src/main.ts): a small box over the
+// blurred game, filled with the name you gave last time anywhere. Enter or the button keeps it, Esc or Skip goes
+// without one; either way the server stores the answer and doesn't ask again. Names show in chat (src/chat.ts).
+// Until that answer (or at once, if the world already has one) the server keeps us invisible and mortal-proof: net.ready().
 import { NAME_MAX } from '../shared/protocol.ts';
 import type { Net } from './net';
 import { capture } from './input';
@@ -8,8 +9,8 @@ import { capture } from './input';
 const NAME_KEY = 'dadajam.name';
 
 const css = `
-#name { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; background: rgba(17, 10, 6, 0.55);
-  font-family: var(--mono); }
+#name { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; background: rgba(17, 10, 6, 0.35);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-family: var(--mono); }
 #name form { display: grid; gap: 10px; justify-items: center; }
 #name .link { display: flex; }
 #name input { font: 15px var(--mono); width: min(64vw, 260px); padding: 10px 12px; border: 0; border-radius: 2px 0 0 2px;
@@ -22,8 +23,11 @@ const css = `
 #name .skip:hover { background: none; opacity: 1; }
 `;
 
-export function askName(net: Net, canvas: HTMLElement) {
-  net.onAskName = () => {
+/** Returns the gate main.ts opens with `loaded()` when the world is drawn and the loading cover is leaving. */
+export function nameGate(net: Net, canvas: HTMLElement) {
+  return { loaded };
+  function loaded() {
+    if (!net.nameAsked) return net.ready();
     if (document.getElementById('name')) return;
     const style = document.createElement('style');
     style.textContent = css;
@@ -45,6 +49,7 @@ spellcheck="false"><button>Go</button></div><button type="button" class="skip">s
     const done = (name: string) => {
       name = name.trim();
       net.setName(name);
+      net.ready();
       if (name) {
         try {
           localStorage.setItem(NAME_KEY, name);
@@ -67,5 +72,5 @@ spellcheck="false"><button>Go</button></div><button type="button" class="skip">s
         done('');
       }
     });
-  };
+  }
 }

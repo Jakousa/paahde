@@ -13,10 +13,12 @@
       /* Stats line: off unless "Show stats" is ticked in the Esc menu (src/menu.ts). */
       #info { position: fixed; top: 8px; left: 8px; color: #ccc; font: 12px var(--mono); display: none;
         pointer-events: none; text-shadow: 0 1px 2px #000; }
-      /* Loading cover: up from the first paint until the bunker and player model are in (src/main.ts). The bar
+      /* Loading cover: up from the first paint until the bunker and player model are in (src/main.ts), with a small
+         game on it (src/loadingGame.ts). The bar
          fills as models load; --p is set from the loading manager. */
       #cover { position: fixed; inset: 0; z-index: 25; background: #111; pointer-events: none; transition: opacity .4s;
-        display: grid; place-items: center; }
+        display: flex; flex-direction: column; gap: 22px; align-items: center; justify-content: center;
+        user-select: none; -webkit-user-select: none; }
       #cover i { display: block; width: 160px; height: 2px; background: #2a2622; overflow: hidden; }
       #cover i::after { content: ''; display: block; height: 100%; width: calc(var(--p, 0) * 100%); background: #c9a878;
         transition: width .2s; }
