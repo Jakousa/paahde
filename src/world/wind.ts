@@ -98,7 +98,7 @@ class Wind {
     } else {
       // Weather: mostly calm, a light air wandering below the threshold (only exposed crests stir in
       // the gusts). Inside a sandstorm it blows a gale, with surges.
-      const base = 1.5 + 4 * fade(noise(t / 180, 0.5, 101)) ** 2;
+      const base = 1.5 + 4.5 * fade(noise(t / 180, 0.5, 101)) ** 2;
       const storm = STORM_PEAK * (0.85 + 0.25 * noise(t / 6, 0.5, 202));
       this.u10 = base + (storm - base) * this.local;
     }
