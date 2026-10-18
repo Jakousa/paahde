@@ -2,7 +2,17 @@
 // the big game bundle has downloaded and stopped by src/main.ts when the cover leaves. The main thread is blocked for
 // long stretches while the world builds, so the game and the bar are drawn by a worker into an OffscreenCanvas; only
 // the pointer events come through the page. Without OffscreenCanvas it runs on the page instead.
-import { createRunner, H, W } from './loadingRunner';
+import { createRunner, H, W, type Sound } from './loadingRunner';
+import { teardownSound } from './teardownSound';
+import { uiSound } from './uiSound';
+
+/** The real teardown's sounds (src/teardownSound.ts) for what the game asks for; audio lives on the page, not in the worker. */
+function play(s: Sound) {
+  if (s === 'turn') teardownSound.turn();
+  else if (s === 'stop') teardownSound.stop();
+  else if (s === 'take') uiSound.plop(1);
+  else teardownSound.hit(s, s === 'tink' ? 0.8 : 1);
+}
 
 let canvas: HTMLCanvasElement | null = null;
 let off: (() => void) | null = null;
@@ -33,6 +43,7 @@ function start(host?: HTMLElement) {
       worker = new Worker(new URL('./loadingWorker.ts', import.meta.url), { type: 'module' });
       const offscreen = c.transferControlToOffscreen();
       worker.postMessage({ t: 'init', canvas: offscreen, dpr, bar }, [offscreen]);
+      worker.onmessage = (e) => e.data.t === 'sound' && play(e.data.s);
       const w = worker;
       down = (x, y) => w.postMessage({ t: 'down', x, y });
       move = (x, y) => w.postMessage({ t: 'move', x, y });
@@ -46,7 +57,7 @@ function start(host?: HTMLElement) {
   if (!worker) {
     c.width = W * dpr;
     c.height = H * dpr;
-    const run = createRunner(c.getContext('2d')!, dpr, bar);
+    const run = createRunner(c.getContext('2d')!, dpr, bar, play);
     let raf = 0;
     let last = performance.now();
     const frame = (now: number) => {

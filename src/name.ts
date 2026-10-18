@@ -27,7 +27,11 @@ const css = `
 export function nameGate(net: Net, canvas: HTMLElement) {
   return { loaded };
   function loaded() {
-    if (!net.nameAsked) return net.ready();
+    if (!net.nameAsked) {
+      net.ready();
+      capture(canvas); // straight into the game (works while the last click on the loading game is fresh)
+      return;
+    }
     if (document.getElementById('name')) return;
     const style = document.createElement('style');
     style.textContent = css;

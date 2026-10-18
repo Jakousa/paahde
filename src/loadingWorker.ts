@@ -6,7 +6,7 @@ type In =
   | { t: 'down' | 'move'; x: number; y: number }
   | { t: 'up' | 'stop' }
   | { t: 'progress'; p: number };
-const ctx = self as unknown as { onmessage: ((e: MessageEvent<In>) => void) | null; close(): void };
+const ctx = self as unknown as { onmessage: ((e: MessageEvent<In>) => void) | null; postMessage(m: unknown): void; close(): void };
 
 let run: ReturnType<typeof createRunner> | null = null;
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -15,7 +15,7 @@ ctx.onmessage = (e) => {
   if (m.t === 'init') {
     m.canvas.width = W * m.dpr;
     m.canvas.height = H * m.dpr;
-    run = createRunner(m.canvas.getContext('2d')!, m.dpr, m.bar);
+    run = createRunner(m.canvas.getContext('2d')!, m.dpr, m.bar, (s) => ctx.postMessage({ t: 'sound', s }));
     let last = performance.now();
     timer = setInterval(() => {
       const now = performance.now();

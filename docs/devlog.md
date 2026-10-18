@@ -53,6 +53,10 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   white when hovered): a ring of dots round screws, a turning arc for bolts; for wires and pry tabs a pointer ring
   that presses and slides along the way (the grab). The real wire marker (`makeMarker` in `src/teardown/junk.ts`) got
   the same pointer ring instead of the swinging double arrow.
+- Minigame: taking a part swaps the machines in 0.18 s (old out left, new in right at once; the part flies to the bag in
+  0.3 s) and it plays the real teardown sounds (`teardownSound`, `uiSound.plop`): the worker asks, `src/loadingGame.ts`
+  plays, since a worker has no audio. When the loading cover lifts and the world already has our name, `capture()` puts
+  the mouse straight in the game (the browser only grants it while the last click is fresh, so it works after playing).
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.

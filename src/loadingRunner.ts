@@ -23,6 +23,10 @@ const CY = 105;
 const BAG_Y = 236;
 const BAG_N = 8;
 const BAG_GAP = 32;
+/** The swap of one machine for the next, and the part's trip to the bag (s); the slide starts this far off screen. */
+const SWAP_S = 0.18;
+const FLY_S = 0.3;
+const SLIDE_FROM = 420;
 const CUT_PX = 70;
 const PRY_PX = 80;
 
@@ -56,7 +60,11 @@ const LID_SCREWS: [number, number][] = [[162, 67], [358, 67], [162, 143], [358, 
 const ready = (s: Step) => !s.done && s.after.every((a) => a.done);
 
 /** `bar`: draw the loading bar under the game (the loading screen; not when played from the menu). */
-export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D, dpr: number, bar = true) {
+/** What it asks to have played (src/loadingGame.ts plays them: audio isn't there in a worker): the real teardown's metal
+ *  hits (src/teardownSound.ts), the bolt's ring while it's turned and when it stops, and a part going into the bag. */
+export type Sound = 'tink' | 'clink' | 'soft' | 'clang' | 'turn' | 'stop' | 'take';
+
+export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D, dpr: number, bar = true, sound: (s: Sound) => void = () => {}) {
   g.scale(dpr, dpr);
   let target = 0; // loading progress asked for, and the eased value drawn
   let shown = 0;
@@ -66,9 +74,12 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
 
   let n = 0; // machines so far
   let m = make(0);
-  let phase: 'in' | 'work' | 'out' = 'in';
-  let slide = 420; // the machine's x offset while it comes in and goes out
+  let slide = 420; // the machine's x offset while it comes in (the first one slides in, the rest swap with the old one)
+  let old: Machine | null = null; // the machine just taken apart, on its way out
+  let oldSlide = 0;
+  let swap = 0; // 0..1: the swap of old for new (the first machine comes in the same way)
   let fly = -1; // seconds into the part's trip to the bag, -1 when not flying
+  let flyItem = { part: 0, tier: 0 };
   const bag: { part: number; tier: number }[] = [];
   let act: Act | null = null;
   let hover: Step | null = null;
@@ -109,7 +120,10 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   const finish = (s: Step) => {
     s.done = true;
     s.progress = s.need;
+    sound(s.kind === 'pry' || s.kind === 'wire' ? 'soft' : 'clink');
+    if (s.kind === 'bolt') sound('stop');
     if (m.lidHolds.every((h) => h.done) && !m.lid.released) {
+      sound('clang'); // the cover drops
       m.lid.released = true;
       m.lid.vx = 90;
       m.lid.vy = -300;
@@ -120,11 +134,18 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   function down(x: number, y: number) {
     px = x;
     py = y;
-    if (phase !== 'work') return;
     x -= slide;
     if (partFree() && Math.hypot(x - CX, y - CY) < 30) {
+      // Into the bag, and at once the next machine comes in as this one goes out.
       m.taken = true;
+      flyItem = { part: m.part, tier: m.tier };
       fly = 0;
+      sound('take');
+      old = m;
+      oldSlide = slide;
+      m = make(++n);
+      swap = 0;
+      act = null;
       return;
     }
     const s = stepAt(x, y);
@@ -133,6 +154,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       s.progress++;
       flash = 0.12;
       if (s.progress >= s.need) finish(s);
+      else sound('tink');
     } else {
       act = { step: s, x0: x, y0: y, prev: Math.atan2(y - s.y, x - s.x), total: 0 };
     }
@@ -143,7 +165,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     py = y;
     x -= slide;
     if (!act) {
-      hover = phase === 'work' ? stepAt(x, y) : null;
+      hover = stepAt(x, y);
       return;
     }
     const s = act.step;
@@ -153,7 +175,10 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       if (d > Math.PI) d -= 2 * Math.PI;
       if (d < -Math.PI) d += 2 * Math.PI;
       act.prev = a;
-      if (Math.hypot(x - s.x, y - s.y) > 12) act.total += Math.abs(d);
+      if (Math.hypot(x - s.x, y - s.y) > 12) {
+        act.total += Math.abs(d);
+        if (d) sound('turn');
+      }
       s.progress = Math.min(1, act.total / (2 * Math.PI));
     } else if (s.kind === 'wire') {
       s.progress = Math.min(1, Math.hypot(x - act.x0, y - act.y0) / CUT_PX);
@@ -167,6 +192,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   }
 
   function up() {
+    if (act?.step.kind === 'bolt') sound('stop');
     if (act) act.step.progress = 0; // let go early: it springs back
     act = null;
   }
@@ -182,25 +208,19 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       L.y += L.vy * dt;
       L.rot += L.vr * dt;
     }
-    if (phase === 'in') {
-      slide = Math.max(0, slide - dt * 900 * Math.max(0.15, slide / 420));
-      if (slide === 0) phase = 'work';
-    } else if (phase === 'out') {
-      slide -= dt * 1100;
-      if (slide < -420) {
-        m = make(++n);
-        slide = 420;
-        phase = 'in';
-        act = null;
-      }
+    if (swap < 1) {
+      swap = Math.min(1, swap + dt / SWAP_S);
+      const e = 1 - Math.pow(1 - swap, 3);
+      slide = SLIDE_FROM * (1 - e);
+      oldSlide = -SLIDE_FROM * e;
+      if (swap >= 1) old = null;
     }
     if (fly >= 0) {
       fly += dt;
-      if (fly >= 0.6) {
+      if (fly >= FLY_S) {
         fly = -1;
-        bag.push({ part: m.part, tier: m.tier });
+        bag.push(flyItem);
         if (bag.length > BAG_N) bag.shift();
-        phase = 'out';
       }
     }
   }
@@ -573,21 +593,26 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
 
   function draw() {
     g.clearRect(0, 0, W, H);
-    g.fillStyle = 'rgba(0, 0, 0, 0.35)';
-    g.beginPath();
-    g.ellipse(CX + slide, CY + 70, 140, 9, 0, 0, 7);
-    g.fill();
-    g.save();
-    g.translate(slide, 0);
-    drawMachine();
-    g.restore();
+    const cur = m;
+    for (const [mach, at] of old ? [[old, oldSlide], [cur, slide]] as const : [[cur, slide]] as const) {
+      m = mach; // drawMachine() draws the current one
+      g.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      g.beginPath();
+      g.ellipse(CX + at, CY + 70, 140, 9, 0, 0, 7);
+      g.fill();
+      g.save();
+      g.translate(at, 0);
+      drawMachine();
+      g.restore();
+    }
+    m = cur;
 
     // a part on its way to the bag
     if (fly >= 0) {
-      const t = Math.min(1, fly / 0.6);
+      const t = Math.min(1, fly / FLY_S);
       const e = t * t;
       const to = bagAt(Math.min(bag.length, BAG_N - 1));
-      glyph(m.part, CX + (to.x - CX) * e, CY + (to.y - CY) * e - Math.sin(t * Math.PI) * 30, 1.1 - 0.6 * e, TIER_COLORS[m.tier]);
+      glyph(flyItem.part, CX + (to.x - CX) * e, CY + (to.y - CY) * e - Math.sin(t * Math.PI) * 30, 1.1 - 0.6 * e, TIER_COLORS[flyItem.tier]);
     }
     // the bag
     for (let i = 0; i < BAG_N; i++) {
