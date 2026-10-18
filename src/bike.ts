@@ -40,6 +40,30 @@ const HEADLIGHT_SHADOW = { map: 1024, near: 0.3, bias: -0.0005, normalBias: 0.03
 const POOL = 3;
 const headlights: { light: THREE.SpotLight; used: boolean }[] = [];
 
+/** Put the headlight pool in the scene at startup, behind the loading cover: done on the first ride instead,
+ *  the recompile froze the game for a moment. Also starts loading the model. */
+export function addHeadlights(scene: THREE.Scene) {
+  load();
+  if (headlights.length) return;
+  for (let i = 0; i < POOL; i++) {
+    const h = HEADLIGHT;
+    const light = new THREE.SpotLight(h.color, 0, h.distance, h.angle, h.penumbra, h.decay);
+    const s = HEADLIGHT_SHADOW;
+    light.castShadow = true; // always on (toggling recompiles too), but the map only renders while lit
+    light.shadow.autoUpdate = false;
+    // Render the map once up front: if materials sample it before its first render, that render
+    // recreates the depth texture under their cached bind groups ("Destroyed texture used in a submit").
+    light.shadow.needsUpdate = true;
+    light.shadow.mapSize.set(s.map, s.map);
+    light.shadow.camera.near = s.near;
+    light.shadow.camera.layers.enable(SHADOW_ONLY_LAYER); // the local rider's own body
+    light.shadow.bias = s.bias;
+    light.shadow.normalBias = s.normalBias;
+    scene.add(light, light.target);
+    headlights.push({ light, used: false });
+  }
+}
+
 let shared: Promise<GLTF> | undefined;
 const load = () => (shared ??= new GLTFLoader().loadAsync('./models/sandbike.glb'));
 /** The sand bike model (shared by every clone: don't change its materials), also drawn lying broken on the sand (src/world/loot.ts). */
@@ -83,25 +107,7 @@ export class Bike {
     this.tilt.rotation.order = 'YXZ';
     this.root.add(this.tilt);
     scene.add(this.root);
-    if (!headlights.length) {
-      for (let i = 0; i < POOL; i++) {
-        const h = HEADLIGHT;
-        const light = new THREE.SpotLight(h.color, 0, h.distance, h.angle, h.penumbra, h.decay);
-        const s = HEADLIGHT_SHADOW;
-        light.castShadow = true; // always on (toggling recompiles too), but the map only renders while lit
-        light.shadow.autoUpdate = false;
-        // Render the map once up front: if materials sample it before its first render, that render
-        // recreates the depth texture under their cached bind groups ("Destroyed texture used in a submit").
-        light.shadow.needsUpdate = true;
-        light.shadow.mapSize.set(s.map, s.map);
-        light.shadow.camera.near = s.near;
-        light.shadow.camera.layers.enable(SHADOW_ONLY_LAYER); // the local rider's own body
-        light.shadow.bias = s.bias;
-        light.shadow.normalBias = s.normalBias;
-        scene.add(light, light.target);
-        headlights.push({ light, used: false });
-      }
-    }
+    addHeadlights(scene);
     this.headlight = headlights.find((h) => !h.used);
     if (this.headlight) this.headlight.used = true;
     load().then(

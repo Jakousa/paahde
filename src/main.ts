@@ -17,7 +17,7 @@ import { Menu } from './menu';
 import { getBrowserId, Net } from './net';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
-import { Bike } from './bike';
+import { addHeadlights, Bike } from './bike';
 import { tyreDust } from './tyreDust';
 import { Post } from './post';
 import * as env from './world/env';
@@ -173,6 +173,7 @@ scene.add(me.root, footprints.mesh, tyreprints.mesh, streaks.mesh, tyreDust.mesh
 const remotes = new Map<number, Avatar>();
 // Sand bikes (9, dev helper), one per riding player: drawn here, simulated in shared/sim.ts.
 const bikes = new Map<number, Bike>();
+addHeadlights(scene);
 let lastHeading = NaN;
 /** Draw player `id`'s bike while they ride, with `avatar` seated on it, and drop it when they get off.
  *  False when not riding: then the caller updates the avatar on foot. */
