@@ -72,6 +72,7 @@ body.rifleScoped #crosshair, body.rifleScoped #pickup { display: none !important
 #rifleHip { position: fixed; left: 50%; top: 50%; pointer-events: none; z-index: 4; display: none; }
 #rifleHip i { position: absolute; background: rgba(255, 244, 228, 0.75); box-shadow: 0 0 2px #000; }
 body.rifleHip #rifleHip { display: block; }
+body.third-person #rifleHip { display: none; }
 body.rifleHip #crosshair { display: none; }
 body.gunSights #crosshair { display: none; }
 `;
