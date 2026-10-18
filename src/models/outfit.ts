@@ -65,20 +65,22 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
   },
   backpack: () => {
     const g = new THREE.Group();
-    box(g, 0.3, 0.36, 0.14, CLOTH, 0, -0.2, 0);
-    box(g, 0.03, 0.04, 0.03, WOOD, 0, -0.01, 0);
+    box(g, 0.3, 0.36, 0.14, CLOTH, 0, -0.22, 0);
+    handle(g, -0.04, 0.08);
     return g;
   },
   storm_detector: () => {
     const g = new THREE.Group();
-    box(g, 0.12, 0.16, 0.08, STEEL, 0, -0.04, 0);
-    cyl(g, 0.006, 0.25, DARK, 0.04, 0.16, 0);
+    box(g, 0.12, 0.16, 0.08, STEEL, 0, -0.13, 0);
+    cyl(g, 0.006, 0.25, DARK, -0.045, 0.07, 0.025);
+    handle(g, -0.05, 0.05);
     return g;
   },
   wristpad: () => {
     const g = new THREE.Group();
-    box(g, 0.08, 0.03, 0.16, CLOTH, 0, -0.02, 0);
-    box(g, 0.07, 0.02, 0.07, DARK, 0, 0.005, 0);
+    // On edge, its top edge in the fist.
+    box(g, 0.03, 0.08, 0.16, CLOTH, 0, -0.03, 0);
+    box(g, 0.02, 0.07, 0.07, DARK, -0.012, -0.035, 0);
     return g;
   },
   motorcycle: () => crate(0.36, RED),
@@ -160,12 +162,19 @@ export function heldMuzzle(held: THREE.Object3D, out: THREE.Vector3): THREE.Vect
   return m.getWorldPosition(out);
 }
 
-/** A battered crate hanging from the hand: scrap, carried machines, anything without a model of its own. */
+/** A battered crate hanging from the hand by a rope handle: scrap, carried machines, anything without a model of its own. */
 function crate(size = 0.28, lid: THREE.Material = RUST) {
   const g = new THREE.Group();
-  box(g, size, size * 0.8, size * 0.85, WOOD, 0, -size * 0.45, 0);
-  box(g, size * 1.04, 0.03, size * 0.9, lid, 0, -size * 0.08, 0);
+  box(g, size, size * 0.8, size * 0.85, WOOD, 0, -size * 0.45 - 0.04, 0);
+  box(g, size * 1.04, 0.03, size * 0.9, lid, 0, -size * 0.08 - 0.04, 0);
+  handle(g, -size * 0.065 - 0.04, Math.min(0.12, size * 0.5));
   return g;
+}
+
+/** A rope handle in the fist (the origin, running fore and aft), tied down to `top` at either end, `span` apart. */
+function handle(g: THREE.Object3D, top: number, span: number) {
+  box(g, 0.022, 0.022, span + 0.03, CLOTH);
+  for (const z of [-span / 2, span / 2]) box(g, 0.016, -top, 0.016, CLOTH, 0, top / 2, z);
 }
 
 /** Size (m) parts are shrunk to in the hand. */
@@ -182,8 +191,11 @@ export function heldModel(kind: string, loaded: () => void): THREE.Object3D {
     const b = new THREE.Box3().setFromObject(m);
     const s = PART_HELD / Math.max(...b.getSize(new THREE.Vector3()).toArray(), 1e-3);
     m.scale.multiplyScalar(s);
-    m.position.y = -PART_HELD * 0.8;
+    // Centred under the fist, tied to a rope handle.
+    const c = b.getCenter(new THREE.Vector3()).multiplyScalar(s);
+    m.position.set(-c.x, -0.05 - b.max.y * s, -c.z);
     g.add(m);
+    handle(g, -0.05, Math.min(0.1, b.getSize(new THREE.Vector3()).z * s * 0.6));
     shadows(g);
     loaded();
   }, () => {

@@ -83,15 +83,16 @@ const SHIELD_URL = './models/finds/shield.glb';
 /** Where its middle sits on the chest (glTF rest pose: face +Z, up +Y), tipped back with the chest. */
 const SHIELD_AT = new THREE.Vector3(-0.015, 1.315, 0.192);
 const SHIELD_TILT = -0.12;
-/** Carried canteen, root space (forward -Z, right +X): where its bottom sits and its forward tip (rad). */
-const CARRY_AT = new THREE.Vector3(0.32, 0.88, -0.2);
-const CARRY_TIP = -0.15;
+/** Carried canteen, root space (forward -Z, right +X): where its bottom sits (in front of the right hip, the forearm
+ *  forward) and its forward tip (rad). */
+const CARRY_AT = new THREE.Vector3(0.17, 0.86, -0.27);
+const CARRY_TIP = -0.1;
 /** Drinking: tipped back, neck at the mouth (head-bone space, glTF: face +Z). */
 const DRINK_TIP = 1.9;
 const MOUTH = new THREE.Vector3(0, 0.02, 0.13);
 const CANTEEN_HEIGHT = 0.21;
-/** Where the fist grips it, up from the bottom. */
-const GRIP_UP = 0.1;
+/** Any other held item (outfit.ts heldModel, origin in the fist) is carried here, root space, at the right hip. */
+const HOLD_AT = new THREE.Vector3(0.37, 0.98, -0.2);
 
 let cached: Promise<GLTF> | null = null;
 let canteenCached: Promise<GLTF> | null = null;
@@ -135,6 +136,9 @@ export class ScavengerModel {
   private spine: THREE.Object3D | null = null;
   /** Upper arm, forearm, hand, index finger (left, right). */
   private arms: THREE.Object3D[][] = [];
+  /** The hands (left, right), measured in the rest pose: the fingers' and thumb's directions in the hand bone's frame,
+   *  and the finger bones (two finger joints, the thumb) with the axis each curls about towards the palm (its own frame). */
+  private hands: { a: THREE.Vector3; t: THREE.Vector3; fingers: THREE.Object3D[]; curl: THREE.Vector3[] }[] = [];
   /** Thigh, shin, foot, toes (left, right). */
   private legs: THREE.Object3D[][] = [];
   private headless = false;
@@ -206,7 +210,9 @@ export class ScavengerModel {
     const feet = ['Left', 'Right'].map((s) => chain([`${s}UpLeg`, `${s}Leg`, `${s}Foot`, `${s}ToeBase`]));
     if (arms.every((a) => a.length === 4)) this.arms = arms;
     if (feet.every((l) => l.length === 4)) this.legs = feet;
-    for (const b of [this.neck, this.head, this.hips, this.spine, ...legs.flat(), ...this.arms.flat(), ...this.legs.flat()]) {
+    this.measureHands(model);
+    const fingers = this.hands.flatMap((h) => h.fingers);
+    for (const b of [this.neck, this.head, this.hips, this.spine, ...legs.flat(), ...this.arms.flat(), ...this.legs.flat(), ...fingers]) {
       if (b && !this.posed.some((p) => p.bone === b)) this.posed.push({ bone: b, base: b.quaternion.clone() });
     }
     this.pack = model.getObjectByName('Scavenger_Backpack') ?? null;
@@ -250,6 +256,29 @@ export class ScavengerModel {
       this.added = true;
     }, (e) => console.warn('canteen model failed to load', e));
     this.added = true;
+  }
+
+  /** Each hand's frame (this.hands), from the rest pose: fingers from the wrist to the knuckles, thumb side
+   *  square to that, palm towards the body (tools/models/scavenger.py hand_frame). */
+  private measureHands(model: THREE.Object3D) {
+    model.updateMatrixWorld(true);
+    const at = (o: THREE.Object3D) => o.getWorldPosition(new THREE.Vector3());
+    const local = (v: THREE.Vector3, o: THREE.Object3D) => v.clone().applyQuaternion(o.getWorldQuaternion(new THREE.Quaternion()).invert());
+    const spine = model.getObjectByName('Spine');
+    for (const s of ['Left', 'Right']) {
+      const [hand, i1, i2, th] = ['Hand', 'HandIndex1', 'HandIndex2', 'HandThumb1'].map((n) => model.getObjectByName(s + n));
+      if (!hand || !i1 || !i2 || !th || !spine) return void (this.hands = []);
+      const a = at(i1).sub(at(hand)).normalize();
+      const t = at(th).sub(at(hand));
+      t.addScaledVector(a, -t.dot(a)).normalize();
+      const palm = new THREE.Vector3().crossVectors(a, t);
+      if (palm.dot(at(spine).sub(at(hand))) < 0) palm.negate();
+      const axis = new THREE.Vector3().crossVectors(a, palm).normalize(); // turns the fingers towards the palm
+      // The thumb (along its bone's +Y) folds across the palm.
+      const thumb = new THREE.Vector3(0, 1, 0).applyQuaternion(th.getWorldQuaternion(new THREE.Quaternion()));
+      const fold = new THREE.Vector3().crossVectors(palm, thumb).normalize();
+      this.hands.push({ a: local(a, hand), t: local(t, hand), fingers: [i1, i2, th], curl: [local(axis, i1), local(axis, i2), local(fold, th)] });
+    }
   }
 
   /** The wrist computer round the left forearm and the storm detector on the belt's left side, placed in the
@@ -599,50 +628,58 @@ export class ScavengerModel {
     t.timeScale = (run.timeScale * td) / rd;
   }
 
-  /** Place the canteen (carried, or at the mouth while drinking) and reach the right hand to it; `loose` (in
-   *  the air, sliding) leaves the arm to the clip and the canteen follows the hand. */
+  /** Place the canteen (carried, or at the mouth while drinking) and grip it in the right hand; `loose` (in the
+   *  air, sliding) leaves the arm to the clip and the canteen follows the hand. */
   private holdCanteen(can: THREE.Object3D, loose: boolean) {
-    const arm = this.arms[1];
-    if (!arm) return;
-    this.root.updateMatrixWorld(true);
-    if (loose) {
-      this.root.worldToLocal(arm[2].getWorldPosition(can.position));
-      can.position.y -= GRIP_UP;
-      can.rotation.set(0, 0, 0);
-      return;
-    }
     const tip = CARRY_TIP + (DRINK_TIP - CARRY_TIP) * this.sip;
     can.rotation.set(tip, 0, 0);
     _t.copy(CARRY_AT);
     if (this.sip > 1e-3 && this.head) {
       // Neck at the mouth: bottom = mouth - (rotated up axis × height).
+      this.root.updateMatrixWorld(true);
       this.root.worldToLocal(_p.copy(MOUTH).applyMatrix4(this.head.matrixWorld));
       _p.y -= Math.cos(tip) * CANTEEN_HEIGHT;
       _p.z -= Math.sin(tip) * CANTEEN_HEIGHT;
       _t.lerp(_p, this.sip);
     }
     can.position.copy(_t);
-    // Fist round the middle, a little to the outside; elbow out and back.
-    _t.x += 0.05;
-    _t.y += Math.cos(tip) * GRIP_UP;
-    _t.z += Math.sin(tip) * GRIP_UP;
-    this.root.localToWorld(_t);
-    reach(arm[0], arm[1], arm[2], _t, _pole.set(0.6, -0.5, 0.6).transformDirection(this.root.matrixWorld));
+    this.grip(can, CANTEEN_GRIP, loose, _pole.set(0.6, -0.8, 0.5));
   }
 
-  /** Carry a held item at the right hip (its origin is the fist) and reach the right hand to it; `loose`: the
-   *  arm stays with the clip and the item follows the hand. */
+  /** Carry a held item at the right hip, hanging from the fist (its origin); `loose`: it follows the hand. */
   private holdItem(o: THREE.Object3D, loose: boolean) {
-    const arm = this.arms[1];
-    if (!arm) return;
+    o.position.copy(HOLD_AT);
+    o.quaternion.identity();
+    this.grip(o, FIST, loose, _pole.set(0.6, -0.5, 0.6));
+  }
+
+  /** Close hand `side` (0 left, 1 right): the two finger joints and the thumb turn this far (rad) over the clip. */
+  private close(side: number, curl: number[]) {
+    const hand = this.hands[side];
+    if (!hand) return;
+    for (let i = 0; i < 3; i++) hand.fingers[i].quaternion.multiply(_gq.setFromAxisAngle(hand.curl[i], curl[i]));
+    hand.fingers[0].parent!.updateMatrixWorld(true);
+  }
+
+  /** Hold `o` in the right hand by `g`. Unless `loose`, the arm reaches to where `o` was put (root space) with the
+   *  elbow towards `pole` (root space); the hand turns to the grip (so `o` keeps the turn it was given, hanging
+   *  upright from the fist when loose) and the fingers close, then `o` goes where the hand really is, so it stays in
+   *  the fist when the arm falls short or is left to the clip. */
+  private grip(o: THREE.Object3D, g: Grip, loose: boolean, pole: THREE.Vector3) {
+    const arm = this.arms[1], hand = this.hands[1];
+    if (!arm || !hand) return;
     this.root.updateMatrixWorld(true);
-    if (loose) {
-      this.root.worldToLocal(arm[2].getWorldPosition(o.position));
-      return;
-    }
-    o.position.copy(CARRY_AT).add(_o.set(0.05, GRIP_UP, 0));
-    this.root.localToWorld(_t.copy(o.position));
-    reach(arm[0], arm[1], arm[2], _t, _pole.set(0.6, -0.5, 0.6).transformDirection(this.root.matrixWorld));
+    _gm.compose(o.position, o.quaternion, ONE).premultiply(this.root.matrixWorld);
+    if (!loose) reach(arm[0], arm[1], arm[2], _t.copy(g.wrist).applyMatrix4(_gm), pole.transformDirection(this.root.matrixWorld));
+    orient(arm[2], hand.a, hand.t, _ga.copy(g.a).transformDirection(_gm), _gt.copy(g.t).transformDirection(_gm));
+    this.close(1, g.curl);
+    // o = hand frame × grip frame⁻¹.
+    arm[2].getWorldQuaternion(_gq);
+    _ga.copy(hand.a).applyQuaternion(_gq);
+    _gt.copy(hand.t).applyQuaternion(_gq);
+    _gm.makeBasis(_ga, _gt, _gc.crossVectors(_ga, _gt)).setPosition(arm[2].getWorldPosition(_t));
+    _gm.multiply(g.frame).premultiply(_gm2.copy(this.root.matrixWorld).invert());
+    _gm.decompose(o.position, o.quaternion, _t);
   }
 
   /** A gun in hand (GUN_HOLD): carried at the low ready, or raised along the look `pitch` as `aimT` goes to 1. The
@@ -681,6 +718,7 @@ export class ScavengerModel {
     reach(arm[0], arm[1], arm[2], _t, _pole.copy(g.elbow).lerp(g.aimElbow, k).transformDirection(this.root.matrixWorld));
     _t.copy(o.position).addScaledVector(_fwd, 0.04).addScaledVector(_up, -0.03).addScaledVector(_right, -0.01);
     aim(arm[2], arm[3], this.root.localToWorld(_t));
+    this.close(1, GUN_FIST);
     // Left hand under the handguard, wrist to the left of it, fingers round under it to the right.
     const left = this.arms[0];
     if (g.support && left) {
@@ -689,6 +727,7 @@ export class ScavengerModel {
       reach(left[0], left[1], left[2], _t, _pole.set(-0.5, -1, 0.2).transformDirection(this.root.matrixWorld));
       _t.copy(o.position).addScaledVector(_fwd, g.support + 0.03).addScaledVector(_up, 0.05).addScaledVector(_right, 0.03);
       aim(left[2], left[3], this.root.localToWorld(_t));
+      this.close(0, GUN_FIST);
     }
   }
 
@@ -724,6 +763,7 @@ export class ScavengerModel {
     this.root.localToWorld(_t);
     reach(arm[0], arm[1], arm[2], _t, _pole.set(0.6, -0.5, 0.6).lerp(_o.set(1, -0.8, 0.1), k).transformDirection(this.root.matrixWorld));
     aim(arm[2], arm[3], this.root.localToWorld(_t.copy(o.position).addScaledVector(_fwd, 0.04).addScaledVector(_up, 0.01)));
+    this.close(1, GUN_FIST);
     // Left hand cupped under the objective, coming up with it.
     const left = this.arms[0];
     if (left && k > 1e-3) {
@@ -785,6 +825,25 @@ export class ScavengerModel {
     this.root.removeFromParent();
   }
 }
+
+/** How a held thing sits in the right hand, in the thing's own frame: the fingers' direction (wrist to knuckles),
+ *  the thumb side, where the wrist is, and how far the two finger joints and the thumb close round it (rad, over
+ *  the clip's). */
+type Grip = { a: THREE.Vector3; t: THREE.Vector3; wrist: THREE.Vector3; curl: number[]; frame: THREE.Matrix4 };
+function makeGrip(a: THREE.Vector3, t: THREE.Vector3, wrist: THREE.Vector3, curl: [number, number, number]): Grip {
+  a.normalize();
+  t.addScaledVector(a, -t.dot(a)).normalize();
+  const frame = new THREE.Matrix4().makeBasis(a, t, new THREE.Vector3().crossVectors(a, t)).setPosition(wrist).invert();
+  return { a, t, wrist, curl, frame };
+}
+/** The canteen (canteen.glb: origin at the bottom, up +Y, width X, front +Z) held by its outer edge: palm on the
+ *  edge, thumb up, fingers forward over the front, the body inboard of the hand. */
+const CANTEEN_GRIP = makeGrip(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0.09, 0.09, 0.06), [0.8, 0.6, 0.5]);
+/** A fist round a handle at the origin, running fore and aft (thumb forward), fingers down. */
+const FIST = makeGrip(new THREE.Vector3(-0.2, -1, 0), new THREE.Vector3(0, 0, -1), new THREE.Vector3(0.044, 0.068, 0), [1.1, 1.0, 1.2]);
+const ONE = new THREE.Vector3(1, 1, 1);
+/** Fingers and thumb round a gun's grip or the spyglass's barrel. */
+const GUN_FIST = [0.9, 0.8, 0.7];
 
 /** The carried spyglass (root space): objective down and a little forward, its up, and the grip from the right
  *  shoulder joint (down by the thigh). Raised: the grip is SCOPE_EYE ahead of the eye (the drawn-out eyepiece). */
@@ -899,6 +958,13 @@ const RUN_TWIST = 0.12;
 const RUN_UPPER = 0.29;
 const RUN_FORE = 0.26;
 const _pq = new THREE.Quaternion();
+const _ga = new THREE.Vector3();
+const _gt = new THREE.Vector3();
+const _gc = new THREE.Vector3();
+const _gm = new THREE.Matrix4();
+const _gm2 = new THREE.Matrix4();
+const _gq = new THREE.Quaternion();
+const _gq2 = new THREE.Quaternion();
 
 /** Two-bone IK: turn `upper` and `lower` so `end` (the lower bone's child) reaches `target`, the middle joint
  *  bending towards `pole` (world directions and points). */
@@ -915,6 +981,16 @@ function reach(upper: THREE.Object3D, lower: THREE.Object3D, end: THREE.Object3D
   _e.copy(_s).addScaledVector(_dir, along).addScaledVector(_bend, Math.sqrt(Math.max(0, a * a - along * along)));
   aim(upper, lower, _e);
   aim(lower, end, target);
+}
+
+/** Turn `bone` so its own directions `a` and `t` (its frame, square to each other) point along `A` and `T` (world). */
+function orient(bone: THREE.Object3D, a: THREE.Vector3, t: THREE.Vector3, A: THREE.Vector3, T: THREE.Vector3) {
+  T.addScaledVector(A.normalize(), -T.dot(A)).normalize();
+  _gq.setFromRotationMatrix(_gm2.makeBasis(a, t, _gc.crossVectors(a, t))).invert();
+  _gq2.setFromRotationMatrix(_gm2.makeBasis(A, T, _gc.crossVectors(A, T))).multiply(_gq);
+  bone.parent!.getWorldQuaternion(_pq);
+  bone.quaternion.copy(_pq.invert().multiply(_gq2));
+  bone.updateMatrixWorld(true);
 }
 
 /** Turn `bone` (the shortest way) so its child `child` lies on the line towards `target` (world). */

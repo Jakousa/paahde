@@ -3,6 +3,7 @@
 // ?walk: the characters walk circles over rolling dunes instead, to check foot planting and leg IK;
 // &heading=1.57 strafes right, 3.14 backs up (travel direction relative to facing).
 // ?item=laser_rifle puts that item in every hand; &aim raises it to aim (&pitch=0.3 aims up).
+// &target=x,y,z: where the camera looks (default 0,1,0).
 // ?gear=255 wears and carries that gear (shared/gear.ts wornGear | carriedGear bits).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -55,6 +56,7 @@ let dist = 11;
 const item = params.get('item');
 const gear = Number(params.get('gear') ?? 0);
 const aiming = params.has('aim');
+const drinking = params.has('drink'); // ?item=canteen&drink: at the mouth
 const aimPitch = Number(params.get('pitch') ?? 0);
 const only = params.get('clip') as ScavengerClip | null;
 const clips: ScavengerClip[] = only ? [only] : ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide', 'Powerslide', 'Crouch', 'CrouchWalk'];
@@ -62,6 +64,7 @@ const colors = [0xd8452b, 0x2f8fd8, 0xe0b23a, 0x4fae5a, 0xb455c8, 0xe8e2d6];
 if (only) dist = 4;
 if (params.has('yaw')) yaw = Number(params.get('yaw'));
 if (params.has('dist')) dist = Number(params.get('dist'));
+if (params.has('target')) target.fromArray(params.get('target')!.split(',').map(Number)); // e.g. &target=0.3,0.95,0 to look at a hand
 
 const models: { m: ScavengerModel; clip: ScavengerClip }[] = [];
 clips.forEach((clip, i) => {
@@ -139,6 +142,7 @@ renderer.setAnimationLoop((time) => {
       crouching: clip === 'Crouch' || clip === 'CrouchWalk',
       pitch: aiming ? aimPitch : clip === 'Idle' && !item ? Math.sin(time / 1500) * 0.5 : 0,
       aiming,
+      drinking,
       plant: walking,
       heading: walking ? heading : 0,
       ground: walking ? dune : undefined,
