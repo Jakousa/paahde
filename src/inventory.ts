@@ -14,7 +14,7 @@
 import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
 import { findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
-import { RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
+import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
 import type { ScrapPiece } from '../shared/scrap.ts';
 import { Hints } from './hints';
@@ -67,6 +67,17 @@ const css = `
 #invOverlay .cell { width: 54px; height: 54px; border-radius: 6px; background: rgba(255, 240, 220, 0.06);
   box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.12); }
 #invOverlay .cell.dead { background: rgba(222, 62, 34, 0.12); box-shadow: inset 0 0 0 1px rgba(222, 62, 34, 0.5); }
+/* Junk to take apart at the disassembly table (carried machines, wrecks): a dashed inner frame with bolted corners. */
+#invOverlay .slot.item.junk { box-shadow: inset 0 0 0 2px rgba(20, 12, 6, 0.9), inset 0 0 0 3px rgba(190, 170, 140, 0.55);
+  background: linear-gradient(135deg, rgba(88, 74, 58, 0.96), rgba(56, 42, 30, 0.96)); }
+#invOverlay .slot.item.junk::before { content: ''; position: absolute; inset: 5px; border-radius: 3px; pointer-events: none;
+  border: 1px dashed rgba(190, 170, 140, 0.4); }
+#invOverlay .slot.item.junk::after { content: ''; position: absolute; inset: 2px; pointer-events: none; border-radius: 4px;
+  background:
+    radial-gradient(circle at 4px 4px, rgba(210, 190, 160, 0.85) 1.5px, transparent 2px),
+    radial-gradient(circle at calc(100% - 4px) 4px, rgba(210, 190, 160, 0.85) 1.5px, transparent 2px),
+    radial-gradient(circle at 4px calc(100% - 4px), rgba(210, 190, 160, 0.85) 1.5px, transparent 2px),
+    radial-gradient(circle at calc(100% - 4px) calc(100% - 4px), rgba(210, 190, 160, 0.85) 1.5px, transparent 2px); }
 /* Items in a grid span their cells, over the empty-cell backdrop. */
 #invOverlay .slot.item { width: auto; height: auto; z-index: 1; background: rgba(66, 44, 26, 0.96); }
 #invOverlay .slot.item svg, #invGhost svg { width: calc(30px * var(--sv, 1)); height: calc(34px * var(--sv, 1)); }
@@ -498,7 +509,7 @@ export class InventoryHud {
   private slotHtml(box: string, i: number, it: Item, style: string, dead: boolean) {
     const broken = isGear(it.kind) && !repaired(it);
     const c = itemColor(it);
-    const cls = `slot item${broken ? ' broken' : ''}${dead ? ' dead' : ''}${c ? ' rare' : ''}${it.r ? ' turned' : ''}`;
+    const cls = `slot item${broken ? ' broken' : ''}${dead ? ' dead' : ''}${c ? ' rare' : ''}${it.kind in SALVAGE || it.kind in COMPONENTS ? ' junk' : ''}${it.r ? ' turned' : ''}`;
     return `<div class="${cls}" data-box="${box}" data-i="${i}" style="${style}${c ? `; --c:${c}` : ''}">${this.itemHtml(it)}</div>`;
   }
 
