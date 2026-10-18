@@ -2,14 +2,17 @@
 // first frame needs all of them: 1.5-2 s in one go, in which the page can't take a click. three's compileAsync does not
 // build the same ones the real render asks for, so instead the loading screen draws real frames, a few materials at a
 // time: everything drawn is hidden but one object per distinct material and geometry layout, and the batch grows while
-// frames stay quick. Each step() is one real render (shadows, post passes and all), so what it builds is exactly what
+// frames stay quick. Each round is one real render (shadows, post passes and all), so what it builds is exactly what
 // the first visible frame would have built. Done, everything is put back.
 import * as THREE from 'three/webgpu';
 
 type Drawn = THREE.Object3D & { material?: THREE.Material | THREE.Material[]; geometry?: THREE.BufferGeometry };
 
-const FAST_MS = 25;
-const SLOW_MS = 70;
+/** Round time (draw + GPU) to aim for: grow the batch below FAST_MS, shrink it above SLOW_MS. */
+const FAST_MS = 60;
+const SLOW_MS = 200;
+/** Rest between rounds so the splash gets drawn. */
+const PAUSE_MS = 30;
 
 export class Warmup {
   private queue: THREE.Object3D[] = [];
@@ -26,8 +29,23 @@ export class Warmup {
     this.render = render;
   }
 
-  /** Draws the next few materials. True once everything is built (and put back). */
-  step(): boolean {
+  /** Draws the next few materials, one batch per round, and waits for the GPU between rounds (`settle`). The GPU compiles
+   *  the pipelines in its own process, on the thread that also puts the loading screen on the display, so one big
+   *  batch freezes that too; waiting for the GPU to finish a batch before sending the next lets the screen update in
+   *  between and gives the batch size the real time it cost, not just the page's share. */
+  async run(settle: () => Promise<void>): Promise<void> {
+    for (;;) {
+      const t0 = performance.now();
+      if (this.draw()) return;
+      await settle();
+      const ms = performance.now() - t0;
+      this.batch = ms < FAST_MS ? this.batch * 2 : ms > SLOW_MS ? Math.max(1, this.batch >> 1) : this.batch;
+      await new Promise((r) => setTimeout(r, PAUSE_MS));
+    }
+  }
+
+  /** One real render with the next batch showing. True once everything is built (and put back). */
+  private draw(): boolean {
     if (this.done) return true;
     if (!this.started) this.collect();
     if (!this.queue.length) return this.finish();
@@ -37,10 +55,7 @@ export class Warmup {
       o.visible = true;
       o.frustumCulled = false; // built even when it is behind the camera
     }
-    const t0 = performance.now();
     this.render();
-    const ms = performance.now() - t0;
-    this.batch = ms < FAST_MS ? this.batch * 2 : ms > SLOW_MS ? Math.max(1, this.batch >> 1) : this.batch;
     return false;
   }
 
