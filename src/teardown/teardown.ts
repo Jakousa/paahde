@@ -206,11 +206,10 @@ export class TeardownView {
     }, { passive: false });
     addEventListener('keydown', (e) => {
       if (this.phase === 'idle' || e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement) return;
-      // F leaves (as it came in), straight back into the game; Esc too, leaving the mouse free.
+      // F and Esc leave (end() gives the mouse back to the game).
       if (isBound('interact', e.code) && !e.repeat) {
         takePickup(); // the same press doesn't start it again
         this.end();
-        capture(this.canvas);
         return;
       }
       if (e.code === 'Escape') {
@@ -302,6 +301,8 @@ export class TeardownView {
     this.phase = 'idle';
     tools.frozen = false;
     this.ui.setPhase('off');
+    // However it ended, the mouse goes straight back to the game (begin() freed it).
+    if (!ui.inventoryOpen) capture(this.canvas);
   }
 
   /** Called every frame before the input is read. Walks the character to the machine, eases the view onto it,
