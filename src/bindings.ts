@@ -3,6 +3,7 @@
 // two slots and always keeps at least one: binding a key another action holds takes it from there (the two swap if
 // that would leave the other empty), and the last key of an action can't be cleared. Saved in localStorage.
 // Not rebindable: Esc (the browser frees the mouse with it; also cancels a rebind) and Meta keys.
+import { TEXT } from '../shared/text.ts';
 
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'sprint' | 'crouch' | 'use' | 'aim' | 'spyglass'
@@ -14,32 +15,32 @@ export const HOTBAR_ACTIONS: Action[] = ['slot1', 'slot2', 'slot3', 'slot4', 'sl
 
 type Slots = [string, string];
 
-/** In menu order; `label` is the action's name there. '' is an empty slot. */
-export const ACTIONS: { id: Action; label: string; keys: Slots }[] = [
-  { id: 'forward', label: 'forward', keys: ['KeyW', 'ArrowUp'] },
-  { id: 'back', label: 'back', keys: ['KeyS', 'ArrowDown'] },
-  { id: 'left', label: 'left', keys: ['KeyA', 'ArrowLeft'] },
-  { id: 'right', label: 'right', keys: ['KeyD', 'ArrowRight'] },
-  { id: 'jump', label: 'jump', keys: ['Space', ''] },
-  { id: 'sprint', label: 'slide · hold breath', keys: ['ShiftLeft', ''] },
-  { id: 'crouch', label: 'crouch', keys: ['ControlLeft', 'KeyC'] },
-  { id: 'use', label: 'use · throw', keys: ['Mouse0', 'KeyE'] },
-  { id: 'aim', label: 'aim', keys: ['Mouse2', 'KeyX'] },
-  { id: 'spyglass', label: 'spyglass', keys: ['KeyQ', ''] },
-  { id: 'interact', label: 'pick up · interact', keys: ['KeyF', ''] },
-  { id: 'bike', label: 'motorcycle', keys: ['KeyZ', 'Digit9'] },
-  { id: 'slot1', label: 'hotbar 1', keys: ['Digit1', ''] },
-  { id: 'slot2', label: 'hotbar 2', keys: ['Digit2', ''] },
-  { id: 'slot3', label: 'hotbar 3', keys: ['Digit3', ''] },
-  { id: 'slot4', label: 'hotbar 4', keys: ['Digit4', ''] },
-  { id: 'slot5', label: 'hotbar 5', keys: ['Digit5', ''] },
-  { id: 'inventory', label: 'inventory', keys: ['Tab', ''] },
-  { id: 'thirdPerson', label: 'third person', keys: ['KeyT', ''] },
-  { id: 'freeLook', label: 'look around', keys: ['AltLeft', ''] },
-  { id: 'rotate', label: 'rotate', keys: ['KeyR', ''] },
-  { id: 'pickPlaced', label: 'pick up placed', keys: ['KeyG', ''] },
-  { id: 'chat', label: 'chat', keys: ['Enter', 'NumpadEnter'] },
-  { id: 'debug', label: 'debug panel', keys: ['F3', 'Backquote'] },
+/** In menu order (their names: shared/text.ts controls.actions). '' is an empty slot. */
+export const ACTIONS: { id: Action; keys: Slots }[] = [
+  { id: 'forward', keys: ['KeyW', 'ArrowUp'] },
+  { id: 'back', keys: ['KeyS', 'ArrowDown'] },
+  { id: 'left', keys: ['KeyA', 'ArrowLeft'] },
+  { id: 'right', keys: ['KeyD', 'ArrowRight'] },
+  { id: 'jump', keys: ['Space', ''] },
+  { id: 'sprint', keys: ['ShiftLeft', ''] },
+  { id: 'crouch', keys: ['ControlLeft', 'KeyC'] },
+  { id: 'use', keys: ['Mouse0', 'KeyE'] },
+  { id: 'aim', keys: ['Mouse2', 'KeyX'] },
+  { id: 'spyglass', keys: ['KeyQ', ''] },
+  { id: 'interact', keys: ['KeyF', ''] },
+  { id: 'bike', keys: ['KeyZ', 'Digit9'] },
+  { id: 'slot1', keys: ['Digit1', ''] },
+  { id: 'slot2', keys: ['Digit2', ''] },
+  { id: 'slot3', keys: ['Digit3', ''] },
+  { id: 'slot4', keys: ['Digit4', ''] },
+  { id: 'slot5', keys: ['Digit5', ''] },
+  { id: 'inventory', keys: ['Tab', ''] },
+  { id: 'thirdPerson', keys: ['KeyT', ''] },
+  { id: 'freeLook', keys: ['AltLeft', ''] },
+  { id: 'rotate', keys: ['KeyR', ''] },
+  { id: 'pickPlaced', keys: ['KeyG', ''] },
+  { id: 'chat', keys: ['Enter', 'NumpadEnter'] },
+  { id: 'debug', keys: ['F3', 'Backquote'] },
 ];
 
 const KEY = 'dadajam.bindings3';
@@ -117,7 +118,7 @@ export function bind(a: Action, slot: 0 | 1, code: string): string | undefined {
   const old = mine[slot];
   if (code === old) return;
   if (!code) {
-    if (!mine[other]) return 'needs a key';
+    if (!mine[other]) return TEXT.controls.needsKey;
     mine[slot] = '';
     save();
     return;
@@ -131,8 +132,8 @@ export function bind(a: Action, slot: 0 | 1, code: string): string | undefined {
     const j = (1 - i) as 0 | 1;
     if (s[j]) s[i] = '';
     else if (old) s[i] = old; // would be left with nothing: swap
-    else return `${keyName(code)} is ${o.label}'s only key`;
-    note = `${keyName(code)} taken from ${o.label}`;
+    else return TEXT.controls.onlyKey(keyName(code), TEXT.controls.actions[o.id]);
+    note = TEXT.controls.takenFrom(keyName(code), TEXT.controls.actions[o.id]);
   }
   // Moving a key between this action's own slots just empties the other one.
   if (mine[other] === code) mine[other] = '';
@@ -170,18 +171,14 @@ let layout: { get(code: string): string | undefined } | undefined;
     changed();
   }, () => {});
 
-const NAMES: Record<string, string> = {
-  Space: 'Space', ShiftLeft: 'Shift', ControlLeft: 'Ctrl', AltLeft: 'Alt', Tab: 'Tab', CapsLock: 'Caps',
-  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Backspace: 'Bksp',
-};
-
-const MOUSE: Record<string, string> = { Mouse0: 'LMB', Mouse1: 'MMB', Mouse2: 'RMB' };
 
 export function keyName(code: string): string {
-  if (!code) return '—';
-  if (code.startsWith('Mouse')) return MOUSE[code] ?? `Mouse ${Number(code.slice(5)) + 1}`;
-  if (NAMES[code]) return NAMES[code];
+  const T = TEXT.controls;
+  if (!code) return T.noKey;
+  if (T.keys[code]) return T.keys[code];
+  if (code.startsWith('Mouse')) return T.mouse(Number(code.slice(5)) + 1);
   const l = layout?.get(code);
   if (l) return l.length === 1 ? l.toUpperCase() : l;
-  return code.replace(/^(Key|Digit)/, '').replace(/^Numpad/, 'Num ');
+  const key = code.replace(/^(Key|Digit)/, '');
+  return key.startsWith('Numpad') ? T.numpad(key.slice(6)) : key;
 }

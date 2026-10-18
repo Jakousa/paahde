@@ -52,6 +52,7 @@ import { stormAt, stormDrag } from '../shared/storm.ts';
 import { sunElevation, timeOfDayAt } from '../shared/sun.ts';
 import { setTrophies } from '../shared/trophies.ts';
 import { LIVES, WORLD_ID } from '../shared/world.ts';
+import { TEXT } from '../shared/text.ts';
 
 /** Nobody on for this long: the world saves and exits until someone comes back. */
 const EMPTY_EXIT_MS = 10 * 60_000;
@@ -755,8 +756,8 @@ function onUnfit(p: Player, slot: unknown, to: unknown, ti: unknown) {
 
 function onLootTake(p: Player, id: unknown) {
   const kind = loot.take(p.state, p.browserId, id, (l) => items.giveItem(p.browserId, l));
-  if (kind === 'full') send(p.ws, { t: 'notice', text: 'Bag full' });
-  else if (kind === 'had') send(p.ws, { t: 'notice', text: 'Already had one' });
+  if (kind === 'full') send(p.ws, { t: 'notice', text: TEXT.notice.bagFull });
+  else if (kind === 'had') send(p.ws, { t: 'notice', text: TEXT.notice.alreadyHad });
   else if (kind) {
     sendBox(p, 'bag', kind);
     gearChanged(p.browserId);
@@ -774,7 +775,7 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
     return it;
   });
   if (!item) {
-    if (inside) send(p.ws, { t: 'notice', text: "Can't drop here" });
+    if (inside) send(p.ws, { t: 'notice', text: TEXT.notice.cantDropHere });
     return send(p.ws, boxMsg(p.browserId, box));
   }
   sendBox(p, box);

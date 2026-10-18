@@ -8,6 +8,7 @@
 import { partItems, partItem, partOf } from './parts.ts';
 import { SALVAGE, TIERS, type PartId, type Tier } from './salvage.ts';
 import { SCRAP_KINDS } from './scrap.ts';
+import { TEXT } from './text.ts';
 
 type Size = [number, number];
 
@@ -22,44 +23,44 @@ const PART_SIZES: Partial<Record<PartId, Size>> = { battery: [1, 2], motor: [2, 
  * Gear (shared/gear.ts: the water bottle, telescope, motorcycle, ...) is found broken and repaired with parts.
  */
 export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; size?: Size }> = {
-  canteen: { label: 'Water bottle', stack: 1, size: [1, 2] },
-  spyglass: { label: 'Telescope', stack: 1, size: [2, 1] },
-  motorcycle: { label: 'Motorcycle', stack: 1, size: [4, 2] },
-  backpack: { label: 'Backpack', stack: 1, size: [2, 2] },
-  storm_detector: { label: 'Storm detector', stack: 1, size: [1, 2] },
-  wristpad: { label: 'Wrist computer', stack: 1 },
-  shield: { label: 'Shield plate', stack: 1, size: [2, 2] },
+  canteen: { label: TEXT.items.canteen, stack: 1, size: [1, 2] },
+  spyglass: { label: TEXT.items.spyglass, stack: 1, size: [2, 1] },
+  motorcycle: { label: TEXT.items.motorcycle, stack: 1, size: [4, 2] },
+  backpack: { label: TEXT.items.backpack, stack: 1, size: [2, 2] },
+  storm_detector: { label: TEXT.items.storm_detector, stack: 1, size: [1, 2] },
+  wristpad: { label: TEXT.items.wristpad, stack: 1 },
+  shield: { label: TEXT.items.shield, stack: 1, size: [2, 2] },
   // Every piece of junk picked up (scrap piles, crash-site debris) is just scrap: the crafting and repair metal.
-  scrap: { label: 'Scrap', stack: 20 },
+  scrap: { label: TEXT.items.scrap, stack: 20 },
   // The other basic material: tarps, sacks and seat covers (cloth bundles in the scrap piles, burnt seats at crash sites).
-  cloth: { label: 'Cloth', stack: 20 },
+  cloth: { label: TEXT.items.cloth, stack: 20 },
   // Small crash-site machines carried home to the disassembly table (COMPONENTS with carry: true, shared/salvage.ts).
   // The item kind is the component kind.
-  robot_arm: { label: 'Robot arm joint', stack: 1, size: [2, 2] },
-  control_cabinet: { label: 'Control cabinet', stack: 1, size: [2, 3] },
-  winch: { label: 'Cargo winch', stack: 1, size: [3, 2] },
-  solenoid_valve: { label: 'Coolant valve', stack: 1, size: [3, 2] },
-  beacon: { label: 'Distress beacon', stack: 1, size: [2, 2] },
+  robot_arm: { label: TEXT.machines.robot_arm, stack: 1, size: [2, 2] },
+  control_cabinet: { label: TEXT.machines.control_cabinet, stack: 1, size: [2, 3] },
+  winch: { label: TEXT.machines.winch, stack: 1, size: [3, 2] },
+  solenoid_valve: { label: TEXT.machines.solenoid_valve, stack: 1, size: [3, 2] },
+  beacon: { label: TEXT.machines.beacon, stack: 1, size: [2, 2] },
   // Parts taken out of machines (shared/parts.ts): `<part>_<tier>`, e.g. battery_space.
   ...Object.fromEntries(Object.entries(partItems()).map(([k, v]) => [k, { ...v, size: PART_SIZES[partOf(k)!.part] }])),
   // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
-  plant_bed: { label: 'Plant bed', stack: 1, size: [3, 2] },
-  uv_lamp: { label: 'UV lamp', stack: 1, size: [1, 2] },
+  plant_bed: { label: TEXT.items.plant_bed, stack: 1, size: [3, 2] },
+  uv_lamp: { label: TEXT.items.uv_lamp, stack: 1, size: [1, 2] },
   // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.
-  laser_rifle: { label: 'Laser rifle', stack: 1, size: [4, 1] },
-  laser_pistol: { label: 'Laser pistol', stack: 1, size: [2, 1] },
-  jammer: { label: 'Jammer', stack: 1, size: [2, 1] },
+  laser_rifle: { label: TEXT.items.laser_rifle, stack: 1, size: [4, 1] },
+  laser_pistol: { label: TEXT.items.laser_pistol, stack: 1, size: [2, 1] },
+  jammer: { label: TEXT.items.jammer, stack: 1, size: [2, 1] },
   // The receivers that call the bosses (shared/bosses.ts RECEIVERS), and the enemies' and bosses' own parts they take.
-  receiver_carrier: { label: 'Hive receiver', stack: 1, size: [2, 1] },
-  receiver_queen: { label: 'Brood receiver', stack: 1, size: [2, 1] },
-  receiver_colossus: { label: 'Iron receiver', stack: 1, size: [2, 1] },
-  receiver_worm: { label: 'Deep receiver', stack: 1, size: [2, 1] },
-  drone_transponder: { label: 'Drone transponder', stack: 1 },
-  brood_gland: { label: 'Brood gland', stack: 1 },
-  servo_heart: { label: 'Walker servo', stack: 1 },
-  hive_core: { label: 'Hive core', stack: 1 },
-  queen_eye: { label: "Queen's eye", stack: 1 },
-  furnace_heart: { label: 'Furnace heart', stack: 1 },
+  receiver_carrier: { label: TEXT.items.receiver_carrier, stack: 1, size: [2, 1] },
+  receiver_queen: { label: TEXT.items.receiver_queen, stack: 1, size: [2, 1] },
+  receiver_colossus: { label: TEXT.items.receiver_colossus, stack: 1, size: [2, 1] },
+  receiver_worm: { label: TEXT.items.receiver_worm, stack: 1, size: [2, 1] },
+  drone_transponder: { label: TEXT.items.drone_transponder, stack: 1 },
+  brood_gland: { label: TEXT.items.brood_gland, stack: 1 },
+  servo_heart: { label: TEXT.items.servo_heart, stack: 1 },
+  hive_core: { label: TEXT.items.hive_core, stack: 1 },
+  queen_eye: { label: TEXT.items.queen_eye, stack: 1 },
+  furnace_heart: { label: TEXT.items.furnace_heart, stack: 1 },
   // Salvage wrecks carried home from the desert (shared/wrecks.ts), taken apart on the disassembly table too.
   vehicle_frame: { label: SALVAGE.vehicle_frame.label, stack: 1, size: [4, 2] },
   water_jet: { label: SALVAGE.water_jet.label, stack: 1, size: [3, 2] },

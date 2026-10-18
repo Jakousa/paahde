@@ -10,6 +10,7 @@ import { ui, useHeld } from './input';
 import { itemLabel } from './inventory';
 import type { Net } from './net';
 import type { PlacedView } from './world/placed';
+import { TEXT } from '../shared/text.ts';
 
 export class Placer {
   private net: Net;
@@ -49,24 +50,22 @@ export class Placer {
 
     const target = placedTarget(feet, yaw, pitch, placed);
     if (pick && target) this.net.unplace(target.id);
-    const pickHint = target ? `${kbd('pickPlaced')}Pick up ${lower(itemLabel(target.kind))}` : null;
+    const pickHint = target ? `${kbd('pickPlaced')}${TEXT.prompt.pickUp(itemLabel(target.kind))}` : null;
 
     if (!kind || !isPlaceable(kind)) {
       this.view.preview(null, null, false);
       return { prompt: pickHint, target };
     }
     const at = placeAim(feet, yaw, pitch, kind, this.rot, placed);
-    const why = at ? placeError(kind, at.x, at.z, at.rot, placed, [feet]) : 'Aim at the floor';
+    const why = at ? placeError(kind, at.x, at.z, at.rot, placed, [feet]) : TEXT.prompt.aimAtFloor;
     this.view.preview(kind, at, !why);
     if (pressed) {
       if (why) toast(why);
       else this.net.place(slot, at!.x, at!.z, at!.rot);
     }
-    const label = lower(itemLabel(kind));
-    const prompt = why ? `<span class="bad">${why}</span> ${kbd('rotate')}Turn` : `${kbd('use')}Place ${label} ${kbd('rotate')}Turn`;
+    const prompt = why ? `<span class="bad">${why}</span> ${kbd('rotate')}${TEXT.prompt.turn}` : `${kbd('use')}${TEXT.prompt.place(itemLabel(kind))} ${kbd('rotate')}${TEXT.prompt.turn}`;
     return { prompt: `${prompt}${pickHint ? ` ${pickHint}` : ''}`, target };
   }
 }
 
 /** "Plant bed" → "plant bed", but "UV lamp" stays. */
-const lower = (label: string) => (/^[A-Z]{2}/.test(label) ? label : label[0].toLowerCase() + label.slice(1));

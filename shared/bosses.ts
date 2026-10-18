@@ -18,6 +18,7 @@
 // Each kind's first death is kept in the world (`beaten`, server/world.ts), gives the world BOSS_LIVES more lives and
 // puts its trophy up at the base (src/world/trophies.ts); with every kind beaten the world is won (src/landing.ts
 // victory), and play goes on.
+import { TEXT } from './text.ts';
 
 /** The boss kinds, in the order of their debug menu buttons. */
 export const BOSS_KINDS = ['worm', 'carrier', 'colossus', 'queen'] as const;
@@ -26,10 +27,10 @@ export type BossKind = (typeof BOSS_KINDS)[number];
 /** Per kind: weak points, health (weak-point hits to kill it), how long the wreck lies (s), and its name (the health
  *  bar, the debug button). */
 export const BOSSES: Record<BossKind, { points: number; hp: number; wreckS: number; label: string }> = {
-  worm: { points: 6, hp: 18, wreckS: 240, label: 'Worm' },
-  carrier: { points: 4, hp: 16, wreckS: 240, label: 'Carrier' },
-  colossus: { points: 5, hp: 15, wreckS: 300, label: 'Colossus' },
-  queen: { points: 6, hp: 22, wreckS: 240, label: 'Queen' },
+  worm: { points: 6, hp: 18, wreckS: 240, label: TEXT.bosses.worm },
+  carrier: { points: 4, hp: 16, wreckS: 240, label: TEXT.bosses.carrier },
+  colossus: { points: 5, hp: 15, wreckS: 300, label: TEXT.bosses.colossus },
+  queen: { points: 6, hp: 22, wreckS: 240, label: TEXT.bosses.queen },
 };
 
 /** A broken weak point grows back after this long (ms). */

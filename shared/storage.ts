@@ -9,6 +9,7 @@ import { EQUIP_SLOTS } from './gear.ts';
 import { BAG_SLOTS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, CHEST_ROWS, coverage, gridShape, MAX_SIDE, type Slots } from './items.ts';
 import type { PlayerState } from './sim.ts';
 import { STATION_REACH, STATIONS, stationReach } from './stations.ts';
+import { TEXT } from './text.ts';
 
 /** A chest opens when your feet are this close (m, horizontally) to its centre, on its floor. */
 export const STORAGE_REACH = 2.5;
@@ -60,12 +61,12 @@ export function chestIndex(box: string): number {
 export const isShared = (box: string) => chestIndex(box) >= 0 || corpseId(box) >= 0;
 
 export function boxLabel(box: string): string {
-  if (box === 'bag') return 'Inventory';
-  if (box === 'equip') return 'Equipment';
-  if (box === 'bench') return 'Workbench';
-  if (box === 'bike') return 'Motorcycle';
-  if (corpseId(box) >= 0) return 'Left behind';
-  return CHESTS.length > 1 ? `Chest ${chestIndex(box) + 1}` : 'Chest';
+  if (box === 'bag') return TEXT.boxes.bag;
+  if (box === 'equip') return TEXT.boxes.equip;
+  if (box === 'bench') return TEXT.boxes.bench;
+  if (box === 'bike') return TEXT.boxes.bike;
+  if (corpseId(box) >= 0) return TEXT.boxes.corpse;
+  return CHESTS.length > 1 ? TEXT.boxes.chestN(chestIndex(box) + 1) : TEXT.boxes.chest;
 }
 
 /** Boxes open to a player standing at `s` besides the bag, nearest chest first. */

@@ -4,6 +4,7 @@
 // world plays on. The landing page plays the desert guitar (the game's outdoor music, src/music.ts) once
 // the browser lets it, after the first click or key.
 import { audio } from './audio';
+import { TEXT } from '../shared/text.ts';
 
 const css = `
 #landing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; color: #e8d2ae;
@@ -45,8 +46,8 @@ export function landing(why?: 'over' | 'missing') {
   const el = document.createElement('div');
   el.id = 'landing';
   if (why) el.className = 'over';
-  const line = why === 'over' ? 'Game over' : why === 'missing' ? 'No such world' : '';
-  el.innerHTML = `${why ? '' : '<div class="bg"></div><div class="shade"></div>'}<div class="panel"><h1>hiekka</h1>${line ? `<p>${line}</p>` : ''}<button>Start a new game</button></div>`;
+  const line = why === 'over' ? TEXT.landing.gameOver : why === 'missing' ? TEXT.landing.noSuchWorld : '';
+  el.innerHTML = `${why ? '' : '<div class="bg"></div><div class="shade"></div>'}<div class="panel"><h1>${TEXT.game.name}</h1>${line ? `<p>${line}</p>` : ''}<button>${TEXT.landing.start}</button></div>`;
   document.body.append(el);
   if (!why) music(el);
   const button = el.querySelector('button')!;
@@ -101,9 +102,9 @@ function shareLink(el: HTMLElement, url: string) {
   p?.remove();
   const row = document.createElement('div');
   row.className = 'link';
-  row.innerHTML = '<input readonly><button>Copy</button>';
+  row.innerHTML = `<input readonly><button>${TEXT.landing.copy}</button>`;
   const join = document.createElement('button');
-  join.textContent = 'Join';
+  join.textContent = TEXT.landing.join;
   el.querySelector('.panel')!.append(row, join);
   const input = row.querySelector('input')!;
   const copy = row.querySelector('button')!;
@@ -117,7 +118,7 @@ function shareLink(el: HTMLElement, url: string) {
     } catch {
       document.execCommand('copy');
     }
-    copy.textContent = 'Copied';
+    copy.textContent = TEXT.landing.copied;
   });
   join.addEventListener('click', () => location.assign(url));
 }
@@ -137,7 +138,7 @@ export function victory(world: string) {
   const el = document.createElement('div');
   el.id = 'landing';
   el.className = 'over';
-  el.innerHTML = '<div class="panel"><h1>hiekka</h1><p>The desert is yours</p><button>Play on</button></div>';
+  el.innerHTML = `<div class="panel"><h1>${TEXT.game.name}</h1><p>${TEXT.landing.won}</p><button>${TEXT.landing.playOn}</button></div>`;
   document.body.append(el);
   el.querySelector('button')!.addEventListener('click', () => {
     el.remove();

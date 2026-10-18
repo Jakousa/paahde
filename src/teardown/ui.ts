@@ -10,13 +10,10 @@
 //   fly          "+ Motor · Quality" flying from the part to the hotbar when a part is taken
 import { kbd } from '../bindings';
 import { RARITY, type PartId, type Tier } from '../../shared/salvage.ts';
+import { TEXT } from '../../shared/text.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-export const PART_NAMES: Record<PartId, string> = {
-  battery: 'Battery', motor: 'Motor', heatsink: 'Heatsink', compute: 'Compute unit', uranium: 'Uranium cell', coil: 'Coil',
-  impeller: 'Impeller', bearing: 'Bearing', gear: 'Gear', valve: 'Valve', relay: 'Relay',
-};
-export const partName = (part: PartId, tier: Tier) => `${PART_NAMES[part]} · ${RARITY[tier].name}`;
+export const partName = (part: PartId, tier: Tier) => TEXT.partTaken(TEXT.parts[part], RARITY[tier].name);
 export const rarityColor = (tier: Tier) => hex(RARITY[tier].color);
 
 const MSG_MS = 2600;
@@ -113,8 +110,8 @@ export class TeardownUi {
     o.innerHTML = `<div id="tdTags"></div>
 <svg id="tdRing" viewBox="0 0 ${RING_R * 2 + 12} ${RING_R * 2 + 12}"><circle class="bg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}"/><circle class="fg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/></svg>
 <div class="panel" id="tdTop">
-  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button class="scrap">Scrap</button><button class="leave">${kbd('interact')}</button></div>
-  <div class="meters"><span>steps</span><div class="bar steps"><i></i></div><b class="ns"></b><span>parts</span><div class="bar parts"><i></i></div><b class="np"></b></div>
+  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button class="scrap">${TEXT.teardown.scrap}</button><button class="leave">${kbd('interact')}</button></div>
+  <div class="meters"><span>${TEXT.teardown.steps}</span><div class="bar steps"><i></i></div><b class="ns"></b><span>${TEXT.teardown.parts}</span><div class="bar parts"><i></i></div><b class="np"></b></div>
   <div class="next"></div>
 </div>
 <div id="tdTip"><div class="t"></div><div class="a"></div></div>
@@ -136,7 +133,7 @@ export class TeardownUi {
         return;
       }
       this.scrapEl.classList.add('sure');
-      this.scrapEl.textContent = 'Scrap it?';
+      this.scrapEl.textContent = TEXT.teardown.scrapSure;
       clearTimeout(this.sureTimer);
       this.sureTimer = window.setTimeout(() => this.setScrap(true), 3000);
     });
@@ -159,7 +156,7 @@ export class TeardownUi {
   setScrap(on: boolean) {
     clearTimeout(this.sureTimer);
     this.scrapEl.classList.remove('sure');
-    this.scrapEl.textContent = 'Scrap';
+    this.scrapEl.textContent = TEXT.teardown.scrap;
     this.scrapEl.style.display = on ? '' : 'none';
   }
 
@@ -169,7 +166,7 @@ export class TeardownUi {
     const tier = t.querySelector<HTMLElement>('.tier')!;
     tier.textContent = RARITY[p.tier].name;
     tier.style.color = rarityColor(p.tier);
-    t.querySelector('.who')!.textContent = p.shared ? '· shared' : '';
+    t.querySelector('.who')!.textContent = p.shared ? TEXT.teardown.shared : '';
     t.querySelector<HTMLElement>('.steps i')!.style.width = `${p.steps ? (100 * p.stepsDone) / p.steps : 100}%`;
     t.querySelector<HTMLElement>('.parts i')!.style.width = `${p.parts ? (100 * p.partsTaken) / p.parts : 100}%`;
     t.querySelector<HTMLElement>('.bar.parts')!.style.setProperty('--c', rarityColor(p.tier));

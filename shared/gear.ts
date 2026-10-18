@@ -14,10 +14,11 @@ import {
 } from './items.ts';
 import { PART_LABELS } from './parts.ts';
 import type { PartId, Tier } from './salvage.ts';
+import { TEXT } from './text.ts';
 
 export const EQUIP_SLOTS = ['back', 'wrist', 'belt', 'vehicle', 'armor'] as const;
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
-export const EQUIP_LABELS: Record<EquipSlot, string> = { back: 'Back', wrist: 'Wrist', belt: 'Belt', vehicle: 'Vehicle', armor: 'Armor' };
+export const EQUIP_LABELS: Record<EquipSlot, string> = TEXT.equip;
 
 /** A part slot: a tiered part from disassembly, or a basic material (shared/items.ts SCRAP or CLOTH; no tier: it holds
  *  things together), or one of the kinds `scrap` lists (an enemy's or boss's own part: no tier either). `rare`: never
@@ -35,36 +36,36 @@ export type GearSpec = {
 
 const P = (part: PartId): PartSlot => ({ part });
 /** The basic materials (shared/items.ts): a piece of scrap metal, a piece of cloth. */
-const SCRAP: PartSlot = { scrap: ['scrap'], label: 'Scrap' };
-const CLOTH: PartSlot = { scrap: ['cloth'], label: 'Cloth' };
+const SCRAP: PartSlot = { scrap: ['scrap'], label: TEXT.items.scrap };
+const CLOTH: PartSlot = { scrap: ['cloth'], label: TEXT.items.cloth };
 /** The receivers' slots: the uranium cell that drives the call, and an enemy's or boss's own part. */
 const CELL: PartSlot = { part: 'uranium', rare: true };
-const own = (kind: string): PartSlot => ({ scrap: [kind], label: ITEMS[kind].label, rare: true });
-const RECEIVER = { better: 'how steady its needle', use: 'Left mouse sends the signal. The needle points to what answers.' };
+const own = (kind: keyof typeof TEXT.items): PartSlot => ({ scrap: [kind], label: TEXT.items[kind], rare: true });
+const RECEIVER = { better: 'how steady its needle', use: TEXT.gearUse.receiver };
 
 export const GEAR: Record<string, GearSpec> = {
   motorcycle: { slots: [P('motor'), P('battery'), P('bearing')], equip: 'vehicle', better: 'top speed and acceleration',
-    use: 'Press 9 to get on and off.' },
-  spyglass: { slots: [P('gear'), P('bearing')], better: 'zoom', use: 'Hold the mouse button to look, wheel to zoom.' },
+    use: TEXT.gearUse.motorcycle },
+  spyglass: { slots: [P('gear'), P('bearing')], better: 'zoom', use: TEXT.gearUse.spyglass },
   canteen: { slots: [P('valve'), CLOTH], better: 'how many sips it holds',
-    use: 'Hold the mouse button to drink; fill it at the pump in the base.' },
+    use: TEXT.gearUse.canteen },
   backpack: { slots: [CLOTH, SCRAP, P('gear')], equip: 'back', better: 'room (rows)',
-    use: 'Bag room past the hotbar.' },
+    use: TEXT.gearUse.backpack },
   storm_detector: { slots: [P('coil'), P('relay')], equip: 'belt', better: 'how early it warns',
-    use: 'Beeps before a sandstorm reaches you.' },
+    use: TEXT.gearUse.storm_detector },
   wristpad: { slots: [P('compute'), P('battery')], equip: 'wrist', better: 'how far away players show on the locator',
-    use: 'Shows the clock, the temperature and the locator bar.' },
+    use: TEXT.gearUse.wristpad },
   // The guns (shared/rifle.ts): a coil focuses the beam; the rifle also needs a cell and a heatsink.
-  laser_pistol: { slots: [P('coil'), SCRAP], better: 'how fast it recharges', use: 'Left mouse to fire, right mouse to aim.' },
+  laser_pistol: { slots: [P('coil'), SCRAP], better: 'how fast it recharges', use: TEXT.gearUse.laser_pistol },
   laser_rifle: { slots: [P('coil'), P('battery'), P('heatsink'), SCRAP], better: 'how fast it recharges',
-    use: 'Left mouse to fire, right mouse to look through the scope.' },
+    use: TEXT.gearUse.laser_rifle },
   // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
   jammer: { slots: [P('compute'), P('coil'), P('battery')], better: 'how fast it locks on',
-    use: 'Hold the mouse button on a drone or jet until it drops.' },
+    use: TEXT.gearUse.jammer },
   // The shield plate (server/world.ts die): a hull plate over cloth padding, and an emitter (coil, cell) that throws a
   // field round you as a killing blow lands. It takes that blow and breaks: the cell burns out and the plate cracks.
   shield: { slots: [P('coil'), P('battery'), SCRAP, CLOTH], equip: 'armor', better: 'how long you stay safe after it breaks',
-    use: 'Takes one killing blow, then breaks.' },
+    use: TEXT.gearUse.shield },
   // The receivers (shared/bosses.ts RECEIVERS): each calls its boss, spending the cell. Tuned by a part from the boss's
   // kin (shared/tables.ts RELIC_DROPS); the worm's by a part from each of the other bosses.
   receiver_carrier: { slots: [CELL, own('drone_transponder'), P('compute')], ...RECEIVER },

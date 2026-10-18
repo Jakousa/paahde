@@ -6,24 +6,13 @@
 import { junkSpec, TIERS, type JunkKind, type PartId, type Tier } from './salvage.ts';
 import { LEVEL_TIERS, type TierWeights } from './tables.ts';
 import type { SiteLevel } from './crashsites.ts';
+import { TEXT } from './text.ts';
 
-export const PART_LABELS: Record<PartId, string> = {
-  battery: 'Battery',
-  motor: 'Electric motor',
-  heatsink: 'Heat sink',
-  compute: 'Compute unit',
-  uranium: 'Uranium cell',
-  coil: 'Wiring coil',
-  impeller: 'Impeller',
-  bearing: 'Bearing',
-  gear: 'Gear',
-  valve: 'Valve',
-  relay: 'Relay',
-};
+export const PART_LABELS: Record<PartId, string> = TEXT.parts;
 export const PART_IDS = Object.keys(PART_LABELS) as PartId[];
 
 /** Quality word in front of the part's name. */
-export const TIER_LABELS: Record<Tier, string> = { scrap: 'Scrap', basic: 'Basic', quality: 'Quality', space: 'Space-grade' };
+export const TIER_LABELS: Record<Tier, string> = TEXT.tiers;
 
 /** Item kind of a part. */
 export const partItem = (part: PartId, tier: Tier) => `${part}_${tier}`;
@@ -39,7 +28,7 @@ export function partOf(kind: string): { part: PartId; tier: Tier } | null {
 export function partItems(): Record<string, { label: string; stack: number; tier: Tier }> {
   const out: Record<string, { label: string; stack: number; tier: Tier }> = {};
   for (const part of PART_IDS) {
-    for (const tier of TIERS) out[partItem(part, tier)] = { label: `${TIER_LABELS[tier]} ${PART_LABELS[part].toLowerCase()}`, stack: 1, tier };
+    for (const tier of TIERS) out[partItem(part, tier)] = { label: TEXT.partItem(TIER_LABELS[tier], PART_LABELS[part]), stack: 1, tier };
   }
   return out;
 }

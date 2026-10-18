@@ -11,6 +11,7 @@
 // already taken back in place. Fine between sessions; just be aware.
 import type { SiteLevel } from './crashsites.ts';
 import type { ComponentKind, PartId, SalvageId, SalvageYield, Tier } from './salvage.ts';
+import { TEXT } from './text.ts';
 
 export type TierWeights = Partial<Record<Tier, number>>;
 type Loot = { yields: SalvageYield[]; tierWeights: TierWeights };
@@ -21,8 +22,8 @@ type Loot = { yields: SalvageYield[]; tierWeights: TierWeights };
 
 export type IngredientSpec = { label: string; n: number } & ({ part: PartId } | { kinds: string[] });
 
-const SCRAP = (n: number): IngredientSpec => ({ label: 'Scrap', n, kinds: ['scrap'] });
-const CLOTH = (n: number): IngredientSpec => ({ label: 'Cloth', n, kinds: ['cloth'] });
+const SCRAP = (n: number): IngredientSpec => ({ label: TEXT.items.scrap, n, kinds: ['scrap'] });
+const CLOTH = (n: number): IngredientSpec => ({ label: TEXT.items.cloth, n, kinds: ['cloth'] });
 
 export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   // (The plant bed and UV lamp aren't crafted for now: growing doesn't fit the game yet. Their code is still in

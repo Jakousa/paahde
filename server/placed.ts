@@ -6,6 +6,7 @@ import { isPlaceable, PLACE_FLOOR_Y, PLACE_REACH, PLACED_REACH, placeError, plac
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';
 import type { ItemServer } from './items.ts';
+import { TEXT } from '../shared/text.ts';
 
 type Db = ReturnType<typeof openDb>;
 
@@ -30,17 +31,17 @@ export class PlacedServer {
   place(browserId: string, feet: { x: number; y: number; z: number }, slot: unknown, x: unknown, z: unknown, rot: unknown,
     players: { x: number; y: number; z: number }[]): Placed | string {
     const kind = Number.isInteger(slot) ? this.items.slots(browserId, 'bag')[slot as number]?.kind : undefined;
-    if (!kind || !isPlaceable(kind)) return "That can't be placed";
-    if (typeof x !== 'number' || typeof z !== 'number' || typeof rot !== 'number') return 'Bad spot';
+    if (!kind || !isPlaceable(kind)) return TEXT.notice.cantPlace;
+    if (typeof x !== 'number' || typeof z !== 'number' || typeof rot !== 'number') return TEXT.notice.badSpot;
     const dy = PLACE_FLOOR_Y - feet.y - EYE_HEIGHT;
-    if (Math.hypot(x - feet.x, dy, z - feet.z) > PLACE_REACH + REACH_SLACK) return 'Too far away';
+    if (Math.hypot(x - feet.x, dy, z - feet.z) > PLACE_REACH + REACH_SLACK) return TEXT.notice.tooFar;
     const why = placeError(kind, x, z, rot, placed, players);
     if (why) return why;
     const p = this.db.tx(() => {
       if (!this.items.takeAt(browserId, slot as number, kind)) return null;
       return { id: this.db.insertPlaced(kind, x, z, rot, browserId), kind, x, z, rot };
     });
-    if (!p) return "That can't be placed";
+    if (!p) return TEXT.notice.cantPlace;
     setPlaced([...placed, p]);
     this.changed = true;
     return p;
@@ -49,15 +50,15 @@ export class PlacedServer {
   /** Pick placed thing `id` back up into the bag. Returns it, or why not. */
   unplace(browserId: string, feet: { x: number; y: number; z: number }, id: unknown): Placed | string {
     const p = placed.find((q) => q.id === id);
-    if (!p) return 'Already gone';
-    if (placedReach(feet, p) > PLACED_REACH + REACH_SLACK) return 'Too far away';
-    if (!this.items.roomFor(browserId, p.kind)) return 'Backpack full';
+    if (!p) return TEXT.notice.alreadyGone;
+    if (placedReach(feet, p) > PLACED_REACH + REACH_SLACK) return TEXT.notice.tooFar;
+    if (!this.items.roomFor(browserId, p.kind)) return TEXT.notice.bagFull;
     const ok = this.db.tx(() => {
       if (!this.items.give(browserId, p.kind)) return false;
       this.db.deletePlaced(p.id);
       return true;
     });
-    if (!ok) return 'Backpack full';
+    if (!ok) return TEXT.notice.bagFull;
     setPlaced(placed.filter((q) => q !== p));
     this.changed = true;
     return p;

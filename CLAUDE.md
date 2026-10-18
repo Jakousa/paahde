@@ -97,8 +97,10 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `src/wasm.ts` — loads the compiled wasm; use exports as `wasm.<fn>`
 - `assembly/` — AssemblyScript source (compiled to `src/wasm/`, gitignored — never edit `src/wasm/`)
 - `docs/devlog.md` — what's been built and why, known gaps; `docs/look.md` — art direction
-- `src/speech.ts`, `src/speechLines.ts` — the character's subtitled remarks: engine + lines as data (event, condition,
-  once/again); guidelines in `docs/speech.md`
+- `shared/text.ts` — **every player-visible text** (`TEXT`): names of things, prompts, notices, menus, hints, step
+  labels, speech; rules in `docs/text.md`
+- `src/speech.ts`, `src/speechLines.ts` — the character's subtitled remarks: engine + when each line is said (event,
+  condition, once/again; the words are in `TEXT.speech`); guidelines in `docs/speech.md`
 - `tools/models/hands.py` — first-person hands + held-item clips; read `docs/viewmodel-hands.md` before
   posing hands or adding a held item (grip anatomy, grasp solver, how to check)
 - `public/` — static assets (models, textures, audio), copied as-is into the build. Every third-party
@@ -135,10 +137,14 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   No tutorials, tooltips explaining rules, numeric readouts or meters unless the game can't be played
   without them. Prefer telling through the world: sound, animation, the hands, the screen, the body.
 - Keep any text that must appear terse: a label or a few words, not a sentence of explanation.
+- Every player-visible text lives in `shared/text.ts` (`TEXT`), never inline in code or data tables (server notices
+  too). Reuse an existing text before adding one; texts with values are functions (`TEXT.prompt.pickUp(label)`),
+  never concatenated in code; casing (`lower()`) happens there. Rules and exceptions (dev-only UI, numbers and
+  symbols): `docs/text.md`.
 - The character's own voice is the exception that guides: subtitled lines when something matters (a water bottle
   when you have none, overheating, a storm coming). First person, one short plain sentence, sometimes dryly funny,
   pointing at what to do without explaining rules, and right for the moment (day/night, what you carry). Rules
-  and how to add lines: `docs/speech.md`; lines and their conditions are data in `src/speechLines.ts`.
+  and how to add lines: `docs/speech.md`; the words are in `TEXT.speech`, when they're said in `src/speechLines.ts`.
 
 ## Audio loudness
 

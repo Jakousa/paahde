@@ -7,6 +7,7 @@ import { audio } from './audio';
 import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
 import { capture, toggleFullscreen, tools, ui } from './input';
 import { loading } from './loadingGame';
+import { TEXT } from '../shared/text.ts';
 
 const STATS_KEY = 'dadajam.stats';
 const AO_KEY = 'dadajam.ao';
@@ -67,28 +68,28 @@ export class Menu {
     this.infoEl.style.display = this.stats ? 'block' : 'none';
 
     this.el.id = 'menu';
-    this.el.innerHTML = `<div class="panel"><div class="main"><h2>hiekka</h2><button class="resume">Resume</button>
-<h3>Settings</h3>
-<label class="row"><span>Volume</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
-<label class="row"><span>Music</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label>
-<label class="row"><span>Occlusion</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
-<label class="row"><span>Show stats</span><input class="stats" type="checkbox"></label>
+    this.el.innerHTML = `<div class="panel"><div class="main"><h2>${TEXT.game.name}</h2><button class="resume">${TEXT.menu.resume}</button>
+<h3>${TEXT.menu.settings}</h3>
+<label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
+<label class="row"><span>${TEXT.menu.music}</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label>
+<label class="row"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
+<label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label>
 <button class="fs" style="margin-top:8px"></button>
-<button class="invite" style="margin-top:8px">Copy invite link</button>
-<button class="ctl" style="margin-top:8px">Controls</button>
-<button class="mini" style="margin-top:8px">Play minigame</button>
-<div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">credits</a></div></div>
-<div class="controls"><h2>Controls</h2><button class="back">Back</button>
-<h3>Click a key, then press the new one</h3><div class="binds"></div><div class="note"></div>
-<button class="reset">Reset controls</button><div class="foot">Esc: menu · cancel (fixed)</div></div></div>`;
+<button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>
+<button class="ctl" style="margin-top:8px">${TEXT.menu.controls}</button>
+<button class="mini" style="margin-top:8px">${TEXT.menu.minigame}</button>
+<div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
+<div class="controls"><h2>${TEXT.controls.title}</h2><button class="back">${TEXT.controls.back}</button>
+<h3>${TEXT.controls.how}</h3><div class="binds"></div><div class="note"></div>
+<button class="reset">${TEXT.controls.reset}</button><div class="foot">${TEXT.controls.fixed}</div></div></div>`;
     document.body.append(this.el);
     this.footEl = this.el.querySelector('.info')!;
     // The world's URL (shared/world.ts), without dev flags: anyone opening it joins this world.
     const invite = this.el.querySelector<HTMLButtonElement>('.invite')!;
     invite.addEventListener('click', () => {
       const url = `${location.origin}${location.pathname}?w=${WORLD_ID}`;
-      navigator.clipboard?.writeText(url).then(() => (invite.textContent = 'Copied'), () => (invite.textContent = url));
-      setTimeout(() => (invite.textContent = 'Copy invite link'), 2500);
+      navigator.clipboard?.writeText(url).then(() => (invite.textContent = TEXT.menu.copied), () => (invite.textContent = url));
+      setTimeout(() => (invite.textContent = TEXT.menu.copyInvite), 2500);
     });
 
     const vol = this.el.querySelector<HTMLInputElement>('.vol')!;
@@ -142,7 +143,7 @@ export class Menu {
     for (const input of [vol, music, aoEl, stats]) input.addEventListener('change', () => input.blur());
 
     const fs = this.el.querySelector<HTMLButtonElement>('.fs')!;
-    const showFs = () => (fs.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Enter fullscreen');
+    const showFs = () => (fs.textContent = document.fullscreenElement ? TEXT.menu.exitFullscreen : TEXT.menu.enterFullscreen);
     showFs();
     document.addEventListener('fullscreenchange', showFs);
     fs.addEventListener('click', () => {
@@ -181,7 +182,7 @@ export class Menu {
   private playMinigame() {
     const o = document.createElement('div');
     o.id = 'play';
-    o.innerHTML = '<button class="leave">Leave</button>';
+    o.innerHTML = `<button class="leave">${TEXT.menu.leave}</button>`;
     document.body.append(o);
     loading.start(o);
     this.el.style.visibility = 'hidden';
@@ -204,7 +205,7 @@ export class Menu {
   /** The rebinding rows: click a key, press the new one (Esc cancels, Backspace clears). */
   private bindControls() {
     const grid = this.el.querySelector<HTMLElement>('.binds')!;
-    grid.innerHTML = ACTIONS.map((a) => `<span>${a.label}</span><button data-a="${a.id}" data-s="0"></button><button data-a="${a.id}" data-s="1"></button>`).join('')
+    grid.innerHTML = ACTIONS.map((a) => `<span>${TEXT.controls.actions[a.id]}</span><button data-a="${a.id}" data-s="0"></button><button data-a="${a.id}" data-s="1"></button>`).join('')
       ;
     const note = this.el.querySelector<HTMLElement>('.controls .note')!;
     const panel = this.el.querySelector<HTMLElement>('.panel')!;
@@ -273,7 +274,7 @@ export class Menu {
       if (!b || ignoreClick) return;
       b.blur();
       listening = listening === b ? undefined : b;
-      note.textContent = listening ? 'press a key or button · Esc cancels · Backspace clears' : '';
+      note.textContent = listening ? TEXT.controls.listening : '';
       show();
     });
     this.el.querySelector('.reset')!.addEventListener('click', (e) => {

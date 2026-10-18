@@ -4,8 +4,9 @@ The player character sometimes says a line out loud, shown as a subtitle at the 
 the game guides without tutorials: the character notices what matters and reacts the way a person stuck in a
 desert would. That lets us drop explanatory UI text.
 
-Code: lines and their conditions in `src/speechLines.ts` (plain data, tune there), the engine and subtitle in
-`src/speech.ts`, fed each frame from `src/main.ts`.
+Code: the words in `shared/text.ts` `TEXT.speech` (with every other text in the game, docs/text.md), when each is
+said in `src/speechLines.ts` (plain data, tune there), the engine and subtitle in `src/speech.ts`, fed each frame
+from `src/main.ts`.
 
 ## How a line is written
 
@@ -40,9 +41,11 @@ Code: lines and their conditions in `src/speechLines.ts` (plain data, tune there
 
 1. Need a new trigger? Add the event to `SpeechEvents` in `src/speechLines.ts` and call `speech.event(...)` from where it
    happens. Need new state for a condition? Add a field to `SpeechState` and fill it in `src/main.ts`.
-2. Add the line to `LINES`. Lines that share an `id` are variants of one remark: the first whose `when` holds is
+2. Write the words in `TEXT.speech` (a string, or a list to pick from at random; read the neighbours so it fits),
+   then add the line to `LINES` pointing at them. Lines that share an `id` are variants of one remark: the first whose `when` holds is
    said, and they share one once/again memory.
-   Every item kind should have a first-`got` line, worded by whether it's broken or working (`firstGot`): picking a
+   Every item kind should have a first-`got` line, worded by whether it's broken or working (`firstGot`, words in
+   `TEXT.speech.got`): picking a
    thing up for the first time is when the player most wonders what it's for.
 3. Read it aloud. If it sounds like a tooltip, rewrite it.
 

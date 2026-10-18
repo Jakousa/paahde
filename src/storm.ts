@@ -12,6 +12,7 @@ import { heightAt } from '../shared/terrain.ts';
 import { audio } from './audio';
 import { indoorHutMax, indoorHutMin, indoorSurface, STORM_SLOTS, stormDiscs, stormGround, stormHere, stormIndoors } from './world/env';
 import { wind } from './world/wind';
+import { TEXT } from '../shared/text.ts';
 
 /** Seconds between beep bursts while a storm you're in the path of is on its way. */
 const BEEP_EVERY = 2.5;
@@ -136,7 +137,7 @@ export class StormFx {
         this.warned.set(coming.id, now);
         beep();
       }
-      this.show('⚠ Sandstorm', true);
+      this.show(TEXT.hud.sandstorm, true);
     } else {
       this.show('', false);
     }

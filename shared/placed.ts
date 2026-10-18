@@ -13,6 +13,7 @@
 // Math.min/max only.
 import { BASE, BASE_PIECES, FLOOR, HALL, ROOM, setPlacedCapsules, W, type Capsule } from './base.ts';
 import { EYE_HEIGHT } from './dig.ts';
+import { TEXT } from './text.ts';
 
 /** A placed thing: DB id, item kind, world position of its footprint centre on the floor, and its turn
  *  (0: long side along X, 1: along Z). */
@@ -98,9 +99,10 @@ const KEEP_CLEAR: { what: string; r: number[] }[] = [
     const m = p.node === 'pump' ? 0.9 : 0.5; // room to reach the pump and to stand at a station
     const hx = (sideways ? p.hz! : p.hx!) + m, hz = (sideways ? p.hx! : p.hz!) + m;
     const x = BASE.x + p.x, z = BASE.z + p.z;
-    return { what: p.node === 'pump' ? 'the pump' : p.node === 'chest' ? 'the chest' : `the ${p.node === 'workbench' ? 'workbench' : 'disassembly table'}`, r: [x - hx, z - hz, x + hx, z + hz] };
+    const spots = TEXT.baseSpots;
+    return { what: p.node === 'pump' ? spots.pump : p.node === 'chest' ? spots.chest : p.node === 'workbench' ? spots.workbench : spots.table, r: [x - hx, z - hz, x + hx, z + hz] };
   }),
-  { what: 'the doorway', r: [BASE.x - W - 0.4, BASE.z + HALL.z - 1.2, BASE.x + W + 0.4, BASE.z + HALL.z + 1] },
+  { what: TEXT.baseSpots.doorway, r: [BASE.x - W - 0.4, BASE.z + HALL.z - 1.2, BASE.x + W + 0.4, BASE.z + HALL.z + 1] },
 ];
 
 /**
@@ -108,23 +110,23 @@ const KEEP_CLEAR: { what: string; r: number[] }[] = [
  * everyone around (nobody gets boxed in by a new hitbox).
  */
 export function placeError(kind: string, x: number, z: number, rot: number, list: Placed[], players: { x: number; y: number; z: number }[] = []): string | null {
-  if (!isPlaceable(kind)) return "That can't be placed";
-  if (!Number.isFinite(x) || !Number.isFinite(z) || (rot !== 0 && rot !== 1)) return 'Bad spot';
+  if (!isPlaceable(kind)) return TEXT.notice.cantPlace;
+  if (!Number.isFinite(x) || !Number.isFinite(z) || (rot !== 0 && rot !== 1)) return TEXT.notice.badSpot;
   const f = footprint(kind, x, z, rot);
   const m = 0.05;
   if (f[0] < BASE.x - ROOM.w + m || f[2] > BASE.x + ROOM.w - m || f[1] < BASE.z + ROOM.z + m || f[3] > BASE.z + HALL.z - m) {
-    return 'Floor only';
+    return TEXT.notice.floorOnly;
   }
-  for (const k of KEEP_CLEAR) if (overlap(f, k.r)) return `Too close to ${k.what}`;
-  if (list.length >= MAX_PLACED) return 'The base is full';
+  for (const k of KEEP_CLEAR) if (overlap(f, k.r)) return TEXT.notice.tooClose(k.what);
+  if (list.length >= MAX_PLACED) return TEXT.notice.baseFull;
   for (const p of list) {
     if (!overlap(f, footprint(p.kind, p.x, p.z, p.rot))) continue;
     if (PARTNERS[kind] === p.kind && aligned(p, { x, z, rot })) continue;
-    return p.kind === PARTNERS[kind] ? `Line it up with the ${p.kind === 'plant_bed' ? 'bed' : 'lamp'}` : 'Something is in the way';
+    return p.kind === PARTNERS[kind] ? TEXT.notice.lineUp(p.kind === 'plant_bed' ? 'bed' : 'lamp') : TEXT.notice.inTheWay;
   }
   const fp = footprint(kind, x, z, rot, 0.4);
   for (const s of players) {
-    if (s.y < PLACE_FLOOR_Y + 2.5 && s.x > fp[0] && s.x < fp[2] && s.z > fp[1] && s.z < fp[3]) return 'Blocked';
+    if (s.y < PLACE_FLOOR_Y + 2.5 && s.x > fp[0] && s.x < fp[2] && s.z > fp[1] && s.z < fp[3]) return TEXT.notice.blocked;
   }
   return null;
 }

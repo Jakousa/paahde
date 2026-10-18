@@ -7,6 +7,7 @@ import { CHAT_MAX, type DeathCause, type Obituary } from '../shared/protocol.ts'
 import type { Net } from './net';
 import { isBound } from './bindings';
 import { tools, ui } from './input';
+import { TEXT } from '../shared/text.ts';
 
 /** How long a line stays up (ms), fading out over the last second. */
 const SHOW_MS = 12000;
@@ -14,17 +15,7 @@ const SHOW_MS = 12000;
 const KEEP = 12;
 
 /** A death in chat, after the dead player's swatch, in their colour. */
-const OBITUARY: Record<DeathCause, string> = {
-  heat: 'died of the heat',
-  guardian: 'stepped on by a guardian',
-  laser: 'shot down',
-  missile: 'blown up',
-  crawler: 'bitten to death',
-  worm: 'eaten by the worm',
-  stomp: 'crushed by the colossus',
-  bomb: 'bombed by the carrier',
-  queen: 'killed by the queen',
-};
+const OBITUARY: Record<DeathCause, string> = TEXT.obituary;
 
 const css = `
 #chat { position: fixed; left: 16px; bottom: 110px; width: min(380px, calc(100vw - 32px)); z-index: 6;

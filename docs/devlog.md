@@ -14,6 +14,17 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 - No trig: "angle round a rock" for gullies and arêtes is noise sampled on the unit vector out from its centre.
 - Every world's rock layout changed (shelters, crash sites and scrap re-place around them).
 
+## 2026-10-18 — One registry for all text
+
+- Every player-visible text moved to `shared/text.ts` (`TEXT`, rules in `docs/text.md`): item, part, machine, boss,
+  slot and box names, prompts, toasts and server notices, the Tab overlay, HUD, Esc menu, controls and key names,
+  landing page, name gate, obituaries, disassembly UI and its 81 step labels, hints and speech. Data tables
+  (`ITEMS`, `SALVAGE`, `COMPONENTS`, `GEAR`, `BOSSES`, ...) point at it. `Texts` is the shape a translation would fill.
+- Made consistent on the way: one set of part names (the disassembly mode had its own: "Motor", "Heatsink"),
+  "Backpack full"/"Too far away" from the server are now "Bag full"/"Too far", and every "Pick up …" lowercases the
+  name the same way (`lower()`, acronyms kept).
+- Known gaps: server notices are still English strings (send keys for translation); dev-only UI stays inline.
+
 ## 2026-10-18 — The character speaks
 
 - Subtitled remarks from the player character to guide without tutorials (`src/speech.ts`, lines as data in

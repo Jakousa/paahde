@@ -27,6 +27,7 @@ import { isBound, kbd } from './bindings';
 import { takePickup, ui } from './input';
 import type { Net } from './net';
 import { uiSound } from './uiSound';
+import { TEXT } from '../shared/text.ts';
 
 const TOAST_MS = 1600;
 /** Pointer travel (px) before a press on a slot becomes a drag. */
@@ -135,7 +136,7 @@ img.fit { object-fit: contain; }
 #invTip .use { margin-top: 4px; opacity: 0.85; }
 #invGhost { position: fixed; z-index: 16; pointer-events: none; display: flex; align-items: center; justify-content: center;
   border-radius: 6px; background: rgba(66, 44, 26, 0.55); filter: drop-shadow(0 4px 6px #000); }
-#invGhost.drop::after { content: 'Drop'; position: absolute; top: 100%; font: 600 11px var(--mono); color: #fff4e4;
+#invGhost.drop::after { content: '${TEXT.inventory.drop}'; position: absolute; top: 100%; font: 600 11px var(--mono); color: #fff4e4;
   text-shadow: 0 1px 2px #000; }
 #invGhost .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono); color: #fff4e4;
   text-shadow: 0 1px 2px #000; }
@@ -235,12 +236,12 @@ function tipHtml(it: Item): string {
   if (!isGear(it.kind)) return html;
   const ok = repaired(it);
   const parts = partsOf(it);
-  html += `<div class="sub">${ok ? qualityName(quality(it)) : '<span class="miss">Broken</span>'}</div><div class="parts">`;
+  html += `<div class="sub">${ok ? qualityName(quality(it)) : `<span class="miss">${TEXT.inventory.broken}</span>`}</div><div class="parts">`;
   GEAR[it.kind].slots.forEach((slot, i) => {
     const p = parts[i];
     const pc = p && rarityColor(p);
     html += `<span class="k">${slotLabel(slot)}</span>`
-      + (p ? `<span${pc ? ` style="color:${pc}"` : ''}>${itemLabel(p)}</span>` : '<span class="miss">missing</span>');
+      + (p ? `<span${pc ? ` style="color:${pc}"` : ''}>${itemLabel(p)}</span>` : `<span class="miss">${TEXT.inventory.missing}</span>`);
   });
   html += '</div>';
   if (ok) html += `<div class="use">${GEAR[it.kind].use}</div>`;
@@ -295,7 +296,7 @@ export class InventoryHud {
 
     net.onItems = (box, got) => {
       // The disassembly mode shows its own "+ Motor · Quality" flying to the hotbar.
-      if (got && !document.body.classList.contains('teardown')) this.toast(`+1 ${itemLabel(got)}`);
+      if (got && !document.body.classList.contains('teardown')) this.toast(TEXT.notice.got(1, itemLabel(got)));
       this.hints.onItems(net.boxes, box, got);
       if (box === 'bag' || box === 'equip' || this.storages.includes(box)) this.render();
     };
@@ -353,7 +354,7 @@ export class InventoryHud {
     this.prompt.style.display = target ? 'block' : 'none';
     // A label that starts with markup brings its own keys (e.g. "[G] Pick up" alone).
     if (target) this.prompt.innerHTML = typeof target === 'string' && target.startsWith('<') ? target
-      : `${kbd('interact')}${typeof target === 'string' ? target : `Pick up ${itemLabel(scrapItem(target.kind))}`}`;
+      : `${kbd('interact')}${typeof target === 'string' ? target : TEXT.prompt.pickUp(itemLabel(scrapItem(target.kind)))}`;
   }
 
   /** Every frame: storage boxes come into and out of reach as the player moves. */
@@ -384,9 +385,9 @@ export class InventoryHud {
     // Equipment, then the bag: hotbar row, the backpack's grid (with any rows it no longer opens), and overflow.
     let html = `<div class="box"><div class="head"><h3>${boxLabel('equip')}</h3></div>`
       + `<div class="grid" style="grid-template-columns: repeat(${EQUIP_SLOTS.length}, 54px)">${this.slotsHtml('equip', equip, 0, EQUIP_SLOTS.length)}</div>`
-      + `<div class="sep"></div><div class="head"><h3>${boxLabel('bag')}</h3><button data-sort="bag" title="Pack it tight, biggest first (the hotbar stays)">Sort</button></div>`
+      + `<div class="sep"></div><div class="head"><h3>${boxLabel('bag')}</h3><button data-sort="bag" title="${TEXT.inventory.sortTip}">${TEXT.inventory.sort}</button></div>`
       + `<div class="grid" style="grid-template-columns: repeat(5, 54px)">${this.slotsHtml('bag', bag, 0, HOTBAR)}</div><div class="sep"></div>`;
-    if (!shape.rows) html += `<div class="none">No backpack</div>`;
+    if (!shape.rows) html += `<div class="none">${TEXT.inventory.noBackpack}</div>`;
     html += this.gridHtml('bag', bag, shape) + '</div>';
     for (const box of this.storages) {
       const slots = this.net.boxes[box];
@@ -394,11 +395,11 @@ export class InventoryHud {
         html += this.benchHtml(slots[0] ?? null);
         continue;
       }
-      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns">${isCorpseBox(box) ? '' : `<button data-store="${box}">Store all</button>`}<button data-all="${box}">Take all</button><button data-sort="${box}">Sort</button></span></div>`
+      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns">${isCorpseBox(box) ? '' : `<button data-store="${box}">${TEXT.inventory.storeAll}</button>`}<button data-all="${box}">${TEXT.inventory.takeAll}</button><button data-sort="${box}">${TEXT.inventory.sort}</button></span></div>`
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
     if (!this.storages.length) {
-      html += `<div class="box"><div class="head"><h3>Storage</h3></div><div class="none">Nothing in reach</div></div>`;
+      html += `<div class="box"><div class="head"><h3>${TEXT.boxes.storage}</h3></div><div class="none">${TEXT.inventory.nothingInReach}</div></div>`;
     }
     // Re-rendering resets scrolling: keep each long chest where it was.
     const scrolled = new Map<string, number>();
@@ -417,27 +418,27 @@ export class InventoryHud {
   /** The workbench: the item being repaired, its part slots and what it still needs, then the recipes. */
   private benchHtml(it: Item | null) {
     return `<div class="box bench"><div class="head"><h3>${boxLabel('bench')}</h3></div>${this.repairHtml(it)}`
-      + `<div class="sep"></div><div class="head"><h3>Craft</h3></div>${this.recipesHtml(this.net.boxes.bag ?? [])}</div>`;
+      + `<div class="sep"></div><div class="head"><h3>${TEXT.inventory.craft}</h3></div>${this.recipesHtml(this.net.boxes.bag ?? [])}</div>`;
   }
 
   private repairHtml(it: Item | null) {
     let html = `<div class="top">` + this.slotsHtml('bench', [it], 0, 1);
     if (!it) {
-      return html + `<div class="state">Broken gear</div></div>`;
+      return html + `<div class="state">${TEXT.inventory.brokenGear}</div></div>`;
     }
     const ok = repaired(it);
     const spec = GEAR[it.kind];
     const parts = partsOf(it);
     const missing = spec.slots.filter((_, i) => !parts[i]).map(slotLabel);
     html += `<div><div class="name">${itemLabel(it.kind)}</div><div class="state ${ok ? 'ok' : 'no'}">`
-      + (ok ? `Works · ${qualityName(quality(it))}` : `Needs ${missing.join(', ')}`)
+      + (ok ? TEXT.inventory.works(qualityName(quality(it))) : TEXT.inventory.needs(missing))
       + `</div></div></div><div class="parts">`;
     const held = this.drag ? this.net.boxes[this.drag.box]?.[this.drag.i] : null;
     spec.slots.forEach((slot, i) => {
       const kind = parts[i];
       const fits = held && fitsSlot(slot, held.kind) ? ' fits' : '';
       const c = kind && rarityColor(kind);
-      html += `<div><div class="slot${kind ? '' : ' empty'}${fits}${c ? ' rare' : ''}" data-box="part" data-i="${i}"${c ? ` style="--c:${c}"` : ''} data-tip="${kind ? '' : `Needs a ${slotLabel(slot).toLowerCase()}`}">`
+      html += `<div><div class="slot${kind ? '' : ' empty'}${fits}${c ? ' rare' : ''}" data-box="part" data-i="${i}"${c ? ` style="--c:${c}"` : ''} data-tip="${kind ? '' : TEXT.inventory.needsA(slotLabel(slot))}">`
         + (kind ? itemIcon(kind) : `<span class="ph">+</span>`) + `</div><div class="pl">${slotLabel(slot)}</div></div>`;
     });
     return html + '</div>';
@@ -454,7 +455,7 @@ export class InventoryHud {
         return `<span class="${have >= ing.n ? 'ok' : 'short'}">${ing.label} ${Math.min(have, ing.n)}/${ing.n}</span>`;
       }).join('<br>');
       html += `<div class="recipe"><div class="ico">${itemIcon(r.makes)}</div><div class="what"><div class="name">${itemLabel(r.makes)}</div>`
-        + `<div class="need">${needs}</div></div><button data-craft="${id}"${ready ? '' : ' disabled'}>Craft</button></div>`;
+        + `<div class="need">${needs}</div></div><button data-craft="${id}"${ready ? '' : ' disabled'}>${TEXT.inventory.craft}</button></div>`;
     }
     return html;
   }
@@ -499,7 +500,7 @@ export class InventoryHud {
     }
     html = rows ? `<div class="grid" data-grid="${box}" data-free="${shape.free}" data-cols="${shape.cols}" data-rows="${rows}" style="grid-template-columns: repeat(${shape.cols}, ${CELL}px); grid-auto-rows: ${CELL}px">${html}</div>` : '';
     if (slots.length > end && slots.slice(end).some((it) => it)) {
-      html += `<div class="sep"></div><div class="none">No room</div>`
+      html += `<div class="sep"></div><div class="none">${TEXT.inventory.noRoom}</div>`
         + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml(box, slots, end, slots.length, true)}</div>`;
     }
     return html;
@@ -615,7 +616,7 @@ export class InventoryHud {
 
   private press(e: PointerEvent) {
     const sort = (e.target as HTMLElement).closest<HTMLElement>('[data-sort]');
-    if (sort) return void (this.net.sortBox(sort.dataset.sort!) || this.toast("Can't pack it any tighter"));
+    if (sort) return void (this.net.sortBox(sort.dataset.sort!) || this.toast(TEXT.notice.cantPackTighter));
     const all = (e.target as HTMLElement).closest<HTMLElement>('[data-all]');
     if (all) return this.takeAll(all.dataset.all!);
     const store = (e.target as HTMLElement).closest<HTMLElement>('[data-store]');
@@ -689,7 +690,7 @@ export class InventoryHud {
   }
 
   private noRoom() {
-    this.toast('No room');
+    this.toast(TEXT.notice.noRoom);
     uiSound.full();
   }
 
@@ -701,7 +702,7 @@ export class InventoryHud {
     if (i < HOTBAR) {
       const spot = findSpot(bag, bagShape(this.net.boxes.equip), it.kind, !!it.r, [i], false);
       if (spot) return this.net.moveItem('bag', i, 'bag', spot.i, undefined, spot.r);
-      this.toast('No room');
+      this.toast(TEXT.notice.noRoom);
       return false;
     }
     for (let j = 0; j < HOTBAR; j++) {
@@ -790,22 +791,22 @@ export class InventoryHud {
 
   /** Dragged out of the panels: drop it on the sand in front of you. */
   private drop(box: string, i: number) {
-    if (box === 'part') return this.toast('Take it off');
-    if (this.net.me.riding && lockedWhileRiding(box, i)) return this.toast('Get off first');
-    if (holdsCargo(this.net.boxes, box, i)) return this.toast('Empty it first');
-    if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast("Can't drop here");
+    if (box === 'part') return this.toast(TEXT.notice.takeItOff);
+    if (this.net.me.riding && lockedWhileRiding(box, i)) return this.toast(TEXT.notice.getOffFirst);
+    if (holdsCargo(this.net.boxes, box, i)) return this.toast(TEXT.notice.emptyItFirst);
+    if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast(TEXT.notice.cantDropHere);
     this.net.dropItem(box, i);
   }
 
   /** Say why a drop didn't go through. */
   private refuse(from: string, fi: number, it: Item, to: string) {
-    if (this.net.me.riding && lockedWhileRiding(from, fi)) this.toast('Get off first');
-    else if (holdsCargo(this.net.boxes, from, fi)) this.toast('Empty it first');
-    else if (to === 'equip') this.toast(isGear(it.kind) && GEAR[it.kind].equip ? (repaired(it) ? 'Wrong slot' : 'Broken') : "Can't wear");
-    else if (to === 'bench') this.toast(isGear(it.kind) ? 'Bench in use' : 'Gear only');
-    else if (to === 'part') this.toast("That part doesn't go there");
+    if (this.net.me.riding && lockedWhileRiding(from, fi)) this.toast(TEXT.notice.getOffFirst);
+    else if (holdsCargo(this.net.boxes, from, fi)) this.toast(TEXT.notice.emptyItFirst);
+    else if (to === 'equip') this.toast(isGear(it.kind) && GEAR[it.kind].equip ? (repaired(it) ? TEXT.notice.wrongSlot : TEXT.notice.broken) : TEXT.notice.cantWear);
+    else if (to === 'bench') this.toast(isGear(it.kind) ? TEXT.notice.benchInUse : TEXT.notice.gearOnly);
+    else if (to === 'part') this.toast(TEXT.notice.partDoesntGo);
     else {
-      this.toast("Doesn't fit there");
+      this.toast(TEXT.notice.doesntFit);
       uiSound.full();
     }
   }

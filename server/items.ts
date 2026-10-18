@@ -12,6 +12,7 @@ import { craft, RECIPES } from '../shared/crafting.ts';
 import { RIFLE } from '../shared/rifle.ts';
 import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
+import { TEXT } from '../shared/text.ts';
 
 type Db = ReturnType<typeof openDb>;
 
@@ -251,10 +252,10 @@ export class ItemServer {
 
   /** Craft a recipe (shared/crafting.ts) at the workbench. Returns the item kind made, or why not. */
   craft(browserId: string, s: PlayerState, recipe: unknown): string | { made: string } {
-    if (typeof recipe !== 'string' || !RECIPES[recipe]) return 'Unknown recipe';
+    if (typeof recipe !== 'string' || !RECIPES[recipe]) return TEXT.notice.unknownRecipe;
     const bench = STATIONS.findIndex((st) => st.kind === 'workbench');
-    if (bench < 0 || stationReach(s, bench) > STATION_REACH + REACH_SLACK) return 'Too far';
-    if (!craft(this.slots(browserId, 'bag'), recipe, this.newId, this.bagShape(browserId))) return 'Missing parts';
+    if (bench < 0 || stationReach(s, bench) > STATION_REACH + REACH_SLACK) return TEXT.notice.tooFar;
+    if (!craft(this.slots(browserId, 'bag'), recipe, this.newId, this.bagShape(browserId))) return TEXT.notice.missingParts;
     this.save(browserId, 'bag');
     return { made: RECIPES[recipe].makes };
   }

@@ -21,6 +21,7 @@ import { teardownSound } from '../teardownSound.ts';
 import { animateMarker, lowestOffset, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi } from './ui.ts';
 import { uiSound } from '../uiSound.ts';
+import { lower, TEXT } from '../../shared/text.ts';
 
 /** Something to work on: a machine at a crash site, or a carried one on the workbench. */
 export interface WorkSite {
@@ -231,7 +232,7 @@ export class TeardownView {
     const site = this.site;
     if (!site?.scrap || this.phase !== 'work') return;
     if (!site.scrap()) {
-      this.ui.message('Bag full', true);
+      this.ui.message(TEXT.notice.bagFull, true);
       uiSound.full();
       return;
     }
@@ -296,7 +297,7 @@ export class TeardownView {
       if (fwd || back) this.workDist = d;
       else if (bits && Math.abs(this.lookYaw) < 0.3) bits |= d > this.workDist + 0.25 ? FORWARD : d < this.workDist - 0.25 ? BACK : 0; // keep the circle
       const far = d > leave - 1.2;
-      if (far && !this.farWarned) this.ui.message('Too far', true);
+      if (far && !this.farWarned) this.ui.message(TEXT.notice.tooFar, true);
       this.farWarned = far;
       return bits;
     }
@@ -371,7 +372,7 @@ export class TeardownView {
     } else {
       s.piece.obj.visible = true;
       s.taken = false;
-      this.ui.message(reason === 'full' ? 'Bag full' : reason === 'taken' ? 'Taken' : 'Failed', true);
+      this.ui.message(reason === 'full' ? TEXT.notice.bagFull : reason === 'taken' ? TEXT.notice.taken : TEXT.notice.failed, true);
       if (reason === 'full') uiSound.full();
     }
     this.refreshCard();
@@ -395,7 +396,7 @@ export class TeardownView {
     const j = this.site!.junk;
     if (j.slots.some((s) => slotOpen(s) && !this.pendingSlot(s))) return '';
     const ready = j.steps.filter(stepReady);
-    return ready.length && !ready.some((s) => this.faces(s)) ? `${ready.length} on another side` : '';
+    return ready.length && !ready.some((s) => this.faces(s)) ? TEXT.teardown.otherSide(ready.length) : '';
   }
 
   private pendingSlot(s: Slot) {
@@ -501,7 +502,7 @@ export class TeardownView {
   /** "Lid screw ×4, rear latch": the undone steps in `steps`, grouped. */
   private listSteps(steps: Step[]) {
     const by = new Map<string, number>();
-    for (const s of steps) if (!s.done) by.set(s.label.toLowerCase(), (by.get(s.label.toLowerCase()) ?? 0) + 1);
+    for (const s of steps) if (!s.done) by.set(lower(s.label), (by.get(lower(s.label)) ?? 0) + 1);
     return [...by].map(([l, n]) => (n > 1 ? `${l} ×${n}` : l)).join(', ');
   }
 
@@ -511,16 +512,16 @@ export class TeardownView {
     if (t.type === 'step') {
       const s = t.step;
       const b = s.after.filter((a) => !a.done);
-      if (b.length) return { title: s.label, action: `after ${this.listSteps(b)}`, locked: true };
+      if (b.length) return { title: s.label, action: TEXT.teardown.after(this.listSteps(b)), locked: true };
       switch (s.kind) {
         case 'screw': return { title: s.label, action: `×${s.need - Math.floor(s.progress)}` };
         case 'clip': return { title: s.label, action: s.need > 1 ? `×${s.need - Math.floor(s.progress)}` : '' };
-        case 'bolt': return { title: s.label, action: 'circle' };
-        case 'wire': return { title: s.label, action: 'swipe' };
-        case 'pry': return { title: s.label, action: 'pry' };
+        case 'bolt': return { title: s.label, action: TEXT.teardown.circle };
+        case 'wire': return { title: s.label, action: TEXT.teardown.swipe };
+        case 'pry': return { title: s.label, action: TEXT.teardown.pry };
         case 'lift': {
           const n = SOLO ? s.players : this.holders(s);
-          return { title: s.label, action: `${n}/${s.players} players` };
+          return { title: s.label, action: TEXT.teardown.players(n, s.players) };
         }
       }
     }

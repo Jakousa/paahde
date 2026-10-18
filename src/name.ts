@@ -5,6 +5,7 @@
 import { NAME_MAX } from '../shared/protocol.ts';
 import type { Net } from './net';
 import { capture } from './input';
+import { TEXT } from '../shared/text.ts';
 
 const NAME_KEY = 'dadajam.name';
 
@@ -37,9 +38,9 @@ export function nameGate(net: Net, canvas: HTMLElement) {
     style.textContent = css;
     const el = document.createElement('div');
     el.id = 'name';
-    el.innerHTML = `<form><div class="link"><input placeholder="your name" maxlength="${NAME_MAX}" autocomplete="off"
+    el.innerHTML = `<form><div class="link"><input placeholder="${TEXT.name.placeholder}" maxlength="${NAME_MAX}" autocomplete="off"
 data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"
-spellcheck="false"><button>Go</button></div><button type="button" class="skip">skip</button></form>`;
+spellcheck="false"><button>${TEXT.name.go}</button></div><button type="button" class="skip">${TEXT.name.skip}</button></form>`;
     document.head.append(style);
     document.body.append(el);
     document.exitPointerLock?.();

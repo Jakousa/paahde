@@ -73,7 +73,7 @@ import { BENCH_ID, MachineSites } from './world/crash';
 import { machinesAt } from '../shared/crash.ts';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
 import { bagShape, carriedGear, equipped, gearTiers, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
-import { LootView, lootName } from './world/loot';
+import { LootView, lootPrompt } from './world/loot';
 import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
 import { openBoxes } from '../shared/storage.ts';
@@ -89,6 +89,7 @@ import { GuardianFx } from './guardians';
 import { update } from './update';
 import { LOADING_FRAME_MS, slice } from './yield';
 import { Warmup } from './warmup';
+import { TEXT } from '../shared/text.ts';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -189,7 +190,7 @@ const scrapBench = () => {
   if (!addItem([...(net.boxes.bag ?? [])], SCRAP, n, () => 0, bagShape(net.boxes.equip))) return false;
   net.benchScrap();
   pickupSound.play();
-  hud.toast(`+${n} ${itemLabel(SCRAP)}`);
+  hud.toast(TEXT.notice.got(n, itemLabel(SCRAP)));
   return true;
 };
 // A machine we put on the disassembly table is there (the server picked its seed): start taking it apart.
@@ -287,14 +288,14 @@ thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one 
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => placedView.sync(placed, net.garden);
 net.onNotice = (text) => {
-  if (text === 'Bag full') { // the server refused a find (server/world.ts)
+  if (text === TEXT.notice.bagFull) { // the server refused a find (server/world.ts)
     uiSound.full();
     speech.event('bagFull', undefined);
   }
   hud.toast(text);
 };
 function bagFull() {
-  hud.toast('Bag full');
+  hud.toast(TEXT.notice.bagFull);
   uiSound.full();
   speech.event('bagFull', undefined);
 }
@@ -514,32 +515,32 @@ baseSand.update(frameDt, storm.atBase);
   const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), placed) : null;
   const bedState = bed ? net.garden.get(bed.id) : undefined;
   const stage = bed ? (bedState?.stage ?? EMPTY) : -1;
-  const tend = stage === EMPTY ? 'Plant seeds' : stage === GROWN ? 'Harvest' : null;
+  const tend = stage === EMPTY ? TEXT.prompt.plantSeeds : stage === GROWN ? TEXT.prompt.harvest : null;
   // Sprouts grow only under a UV lamp (shared/garden.ts).
-  const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : '<span class="bad">Needs UV lamp</span>') : null;
+  const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : `<span class="bad">${TEXT.prompt.needsUvLamp}</span>`) : null;
   const target = net.connected && station < 0 && !bed ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   // Debris at the crash sites (hull plates, pipes, ...) is picked up as what it gives: scrap or cloth (shared/items.ts debrisItem).
   const debris = net.connected && station < 0 && !bed && !target && !teardown.active ? debrisTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
-  const debrisPrompt = debris ? `Pick up ${itemLabel(debrisItem(CRASH_KINDS[debris.kind].node))}` : null;
+  const debrisPrompt = debris ? TEXT.prompt.pickUp(itemLabel(debrisItem(CRASH_KINDS[debris.kind].node))) : null;
   const find = net.connected && station < 0 && !bed && !target && !debris && !teardown.active ? lootView.target(net.me, orbit.yaw) : null;
-  const findPrompt = find ? `Pick up ${lootName(find, itemLabel)}` : null;
+  const findPrompt = find ? lootPrompt(find, itemLabel) : null;
   // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
   // it lies. A carried one is taken apart on the base's disassembly table.
   const site = net.connected && !teardown.active && station < 0 && !bed && !target && !debris && !find ? machines.nearest(net.me.x, net.me.z) : null;
   const small = site ? COMPONENTS[site.site.kind].carry : false;
   // Salvage wrecks (src/world/wrecks.ts) are always carried home.
   const wreck = net.connected && !teardown.active && station < 0 && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
-  const sitePrompt = site ? (small ? `Pick up ${COMPONENTS[site.site.kind].label.toLowerCase()}` : `Disassemble ${COMPONENTS[site.site.kind].label.toLowerCase()}`)
-    : wreck ? `Pick up ${SALVAGE[wreck.kind].label.toLowerCase()}` : null;
+  const sitePrompt = site ? (small ? TEXT.prompt.pickUp(COMPONENTS[site.site.kind].label) : TEXT.prompt.disassemble(COMPONENTS[site.site.kind].label))
+    : wreck ? TEXT.prompt.pickUp(SALVAGE[wreck.kind].label) : null;
   const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
-  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use table');
+  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? TEXT.prompt.useWorkbench : (table?.label ?? TEXT.prompt.useTable);
   // A dead player's pack (shared/corpse.ts) lying here: F opens it next to the bag, like a chest.
   const pack = net.connected && !net.down && !teardown.active && station < 0 && !bed && !target && !debris && !find && !site && !wreck
     && corpsesNear(net.me).some((b) => net.boxes[b]);
   // The base's chest in reach (shared/storage.ts): F opens it next to the bag.
   const chest = net.connected && !net.down && !teardown.active && station < 0 && !bed && !target && !debris && !find && !site && !wreck && !pack
     && openBoxes(net.me).some((b) => b.startsWith('chest') && net.boxes[b]);
-  const packPrompt = pack ? 'Open pack' : chest ? 'Open chest' : null;
+  const packPrompt = pack ? TEXT.prompt.openPack : chest ? TEXT.prompt.openChest : null;
   const fPrompt = use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
@@ -555,7 +556,7 @@ baseSand.update(frameDt, storm.atBase);
           machines.bench.ask();
           net.crashUse(table.kind);
         }
-      } else hud.toast('Nothing to take apart');
+      } else hud.toast(TEXT.notice.nothingToTakeApart);
     } else if (tend && bed) net.tend(bed.id);
     else if (target) {
       if (net.pickup(target)) pickupSound.play();

@@ -1,5 +1,6 @@
 // One-time hints: a short banner the first time you do something new (repair a piece of gear, craft a thing,
-// carry home your first machine) saying how to use it, then never again on this browser (localStorage).
+// carry home your first machine) saying how to use it, then never again on this browser (localStorage). The texts are
+// shared/text.ts `hints`, keyed by the gear or recipe (or 'part', 'broken', 'machine').
 // Fed from the inventory's box updates (src/inventory.ts).
 import { actionKey } from './bindings';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
@@ -7,29 +8,7 @@ import { isGear, repaired } from '../shared/gear.ts';
 import { partOf } from '../shared/parts.ts';
 import { RECIPES } from '../shared/crafting.ts';
 import type { Slots } from '../shared/items.ts';
-
-/** Shown the first time each piece of gear is repaired at the workbench, or each recipe crafted. */
-const TEXTS: Record<string, string> = {
-  motorcycle: 'Motorcycle: {inventory}, into the Vehicle slot. {bike} to ride.',
-  backpack: 'Backpack: {inventory}, into the Back slot.',
-  storm_detector: 'Storm detector: {inventory}, into the Belt slot. Beeps before a storm.',
-  wristpad: 'Wrist computer: {inventory}, into the Wrist slot.',
-  shield: 'Shield plate: {inventory}, into the Armor slot. Takes one killing blow.',
-  canteen: 'Water bottle: on the hotbar, hold mouse to drink. Fill at a pump.',
-  spyglass: 'Telescope: on the hotbar, hold mouse to look, wheel to zoom.',
-  laser_pistol: 'Laser pistol: on the hotbar. Left mouse fires, right aims.',
-  laser_rifle: 'Laser rifle: on the hotbar. Left mouse fires, right scopes.',
-  jammer: 'Jammer: on the hotbar, hold mouse on a drone until it drops.',
-  receiver_carrier: 'Receiver: on the hotbar. Left mouse sends the signal.',
-  receiver_queen: 'Receiver: on the hotbar. Left mouse sends the signal.',
-  receiver_colossus: 'Receiver: on the hotbar. Left mouse sends the signal.',
-  receiver_worm: 'Receiver: on the hotbar. Left mouse sends the signal.',
-  plant_bed: 'Plant bed: on the hotbar, click to put it down in the bunker.',
-  uv_lamp: 'UV lamp: put it down over a plant bed.',
-  part: 'Parts repair gear on the workbench.',
-  broken: 'Broken. Repair it at the workbench in the base.',
-  machine: 'Take it apart at the disassembly table in the base.',
-};
+import { TEXT } from '../shared/text.ts';
 
 const KEY = 'dadajam.hints';
 const SHOW_MS = 7000;
@@ -91,21 +70,21 @@ export class Hints {
   }
 
   private show(key: string) {
-    if (!TEXTS[key] || this.seen.has(key)) return;
+    if (!TEXT.hints[key] || this.seen.has(key)) return;
     this.seen.add(key);
     try {
       localStorage.setItem(KEY, JSON.stringify([...this.seen]));
     } catch { /* not kept */ }
-    this.queue.push(TEXTS[key]);
+    this.queue.push(key);
     this.next();
   }
 
   private next() {
     if (this.busy) return;
-    const text = this.queue.shift();
-    if (!text) return;
+    const key = this.queue.shift();
+    if (!key) return;
     this.busy = true;
-    this.el.textContent = text.replace('{inventory}', actionKey('inventory')).replace('{bike}', actionKey('bike'));
+    this.el.textContent = TEXT.hints[key]({ inventory: actionKey('inventory'), bike: actionKey('bike') });
     this.el.classList.add('on');
     setTimeout(() => {
       this.el.classList.remove('on');

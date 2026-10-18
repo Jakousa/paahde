@@ -17,6 +17,7 @@ import { heightAt } from '../../shared/terrain.ts';
 import { shelterFloorY } from '../../shared/shelters.ts';
 import { loadPart } from '../teardown/junk';
 import { loadBikeModel } from '../bike';
+import { TEXT } from '../../shared/text.ts';
 
 /** The broken motorcycle lies over on its side by this much (rad), its low side this far (m) above the sand origin. */
 const BIKE_ROLL = 1.3;
@@ -309,10 +310,9 @@ export class LootView {
   }
 }
 
-/** How a piece of loot is named in the F prompt. */
-export function lootName(l: Loot, label: (kind: string) => string): string {
-  if (!isGear(l.kind)) return label(l.kind);
-  const n = GEAR[l.kind].slots.length;
+/** The F prompt for a piece of loot: gear with parts missing says how many it has. */
+export function lootPrompt(l: Loot, label: (kind: string) => string): string {
+  const n = isGear(l.kind) ? GEAR[l.kind].slots.length : 0;
   const have = (l.parts ?? []).filter(Boolean).length;
-  return have === n ? label(l.kind) : `broken ${label(l.kind).toLowerCase()} (${have}/${n} parts)`;
+  return have < n ? TEXT.prompt.pickUpBroken(label(l.kind), have, n) : TEXT.prompt.pickUp(label(l.kind));
 }
