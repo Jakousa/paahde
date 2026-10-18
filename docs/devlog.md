@@ -2,7 +2,7 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
-## 2026-10-18 — One scrap; guns are found broken and repaired
+## 2026-10-18 — Two basic materials: scrap and cloth; guns are found broken and repaired
 
 - **Scrap is one item.** The nine junk kinds (metal sheet/plank, dented sheet, oil/rusty drum, scrap/bent frame,
   gear, spring) are now just `scrap` (shared/items.ts `SCRAP`), 1×1 and stacking to 20. Every scrap-pile piece and
@@ -10,6 +10,17 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   Gear scrap slots (bottle, backpack, shovel) take a piece of scrap ("Scrap"), recipes cost N scrap (plant bed 4, UV
   lamp 2 + coil; the jammer is unchanged), caches hold scrap, and thrown scrap flies as one of the pile pieces.
   New inventory icon: a sheet, a plank and a cog.
+- **Cloth** (shared/items.ts `CLOTH`, stacks to 20) is the other basic material: a new scrap-pile kind, a lumpy
+  tied-up tarp drawn procedurally (shared/scrap.ts `item: 'cloth'`, src/world/scrap.ts `clothGeometry`, ~11% of
+  pile pieces; the pile layout reshuffled its kinds once), the burnt-seat debris at crash sites (`debrisItem`), and
+  buried caches. The bottle's second slot is cloth (its strap, was a drum), the backpack is cloth + scrap + gear,
+  the plant bed is 2 scrap + 2 cloth. Gear whose slots changed is refitted on load (shared/gear.ts `refit`: each
+  slot takes the first old part that fits; gear that worked gets the missing material for free).
+- **Every equipment item and both guns are finds** (shared/tables.ts FINDS): bottle, telescope, backpack, pistol at
+  the scrap fields; motorcycle, shovel, storm detector, wrist computer, metal detector, rifle on crawler ground;
+  plus the home bike at the door. Only the plant bed, UV lamp and jammer are crafted.
+- **Home bike** is once per player now (grant `home_bike`): someone who has taken one gets "Already had one", so it
+  can't be farmed for its motor; it still lies there for everyone else and comes back 3 min after it's taken.
 - **Migration** (server/db.ts v8, every start, idempotent): old kinds in `items` and `dropped` become `scrap`, also
   inside gear `parts` JSON; when a box loads, the stacks of one are merged (server/items.ts `mergeStacks`).
 - **Guns are gear** (shared/gear.ts): the laser pistol (coil + scrap) and the laser rifle (coil, battery, heatsink,

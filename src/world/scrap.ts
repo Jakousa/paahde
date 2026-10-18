@@ -21,6 +21,31 @@ const VIEW_CELLS = 4;
 /** Instance capacity per kind: enough for every piece in view to be that kind. */
 const CAPACITY = (2 * VIEW_CELLS + 1) ** 2 * 8;
 
+/** The cloth bundle (SCRAP_KINDS entry with no model): a lumpy tied-up tarp, faded canvas. */
+const CLOTH_MATERIAL = new THREE.MeshStandardNodeMaterial({ color: 0xffffff, vertexColors: true, roughness: 1, metalness: 0 });
+function clothGeometry(half: [number, number, number]): THREE.BufferGeometry {
+  const geo = new THREE.IcosahedronGeometry(1, 3);
+  const p = geo.attributes.position;
+  const col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    // Folds and lumps, a flat bottom, and a pinch around the middle where it's tied.
+    const lump = 1 + 0.12 * Math.sin(5 * x + 3 * z) * Math.cos(4 * z - 2 * y) + 0.06 * Math.sin(11 * x * z);
+    const tie = 1 - 0.18 * Math.exp(-((x * 6) ** 2));
+    p.setXYZ(i, x * half[0] * lump, Math.max(y, -0.55) * half[1] * lump * tie, z * half[2] * lump * tie);
+    // Faded olive canvas, darker in the folds, the cord a dark brown band.
+    const cord = Math.abs(x) < 0.1;
+    const k = cord ? 1 : 0.82 + 0.18 * Math.sin(9 * z + 4 * x);
+    col.set(cord ? [0.16 * k, 0.09 * k, 0.04 * k] : [0.24 * k, 0.24 * k, 0.16 * k], i * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  geo.computeBoundingBox();
+  const c = geo.boundingBox!.getCenter(new THREE.Vector3());
+  geo.translate(-c.x, -c.y, -c.z);
+  return geo;
+}
+
 type Kind = { mesh: THREE.InstancedMesh; half: THREE.Vector3; count: number };
 
 const _n = new THREE.Vector3();
@@ -59,6 +84,7 @@ export class Scrap {
     root.updateMatrixWorld(true);
     let material: THREE.Material | undefined;
     this.kinds = SCRAP_KINDS.map((kind) => {
+      if (!kind.node) return this.add(clothGeometry(kind.half), CLOTH_MATERIAL);
       const node = root.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(kind.node));
       let src: THREE.Mesh | undefined;
       node?.traverse((o) => { if (!src && (o as THREE.Mesh).isMesh) src = o as THREE.Mesh; });
@@ -76,14 +102,22 @@ export class Scrap {
         const map = (material as THREE.MeshStandardMaterial).map;
         if (map) map.anisotropy = 8;
       }
-      const mesh = new THREE.InstancedMesh(geo, material, CAPACITY);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.count = 0;
-      this.group.add(mesh);
-      return { mesh, half, count: 0 };
+      return this.add(geo, material!, half);
     });
     this.dirty = true;
+  }
+
+  private add(geo: THREE.BufferGeometry, material: THREE.Material, half?: THREE.Vector3): Kind {
+    if (!half) {
+      geo.computeBoundingBox();
+      half = geo.boundingBox!.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+    }
+    const mesh = new THREE.InstancedMesh(geo, material, CAPACITY);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.count = 0;
+    this.group.add(mesh);
+    return { mesh, half, count: 0 };
   }
 
   /** A lone mesh of scrap kind `kind` (SCRAP_KINDS index), centred on its middle, for junk in flight

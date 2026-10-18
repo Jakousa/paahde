@@ -7,6 +7,7 @@
 // turned it. An item sits in the slot of its top-left cell; the other cells it covers stay null in the array.
 import { partItems, partItem, partOf } from './parts.ts';
 import { SALVAGE, TIERS, type PartId, type Tier } from './salvage.ts';
+import { SCRAP_KINDS } from './scrap.ts';
 
 type Size = [number, number];
 
@@ -31,6 +32,8 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   shovel: { label: 'Shovel', stack: 1, size: [1, 3] },
   // Every piece of junk picked up (scrap piles, crash-site debris) is just scrap: the crafting and repair metal.
   scrap: { label: 'Scrap', stack: 20 },
+  // The other basic material: tarps, sacks and seat covers (cloth bundles in the scrap piles, burnt seats at crash sites).
+  cloth: { label: 'Cloth', stack: 20 },
   // Small crash-site machines carried home to the disassembly table (COMPONENTS with carry: true, shared/salvage.ts).
   // The item kind is the component kind.
   robot_arm: { label: 'Robot arm joint', stack: 1, size: [2, 2] },
@@ -70,8 +73,14 @@ export function parsePart(kind: string): { part: PartId; tier: number } | null {
   return p ? { part: p.part, tier: TIERS.indexOf(p.tier) } : null;
 }
 
-/** The scrap item: what every scrap pile piece (shared/scrap.ts) and crash-site debris piece gives when picked up. */
+/** The two basic materials: scrap (most scrap-pile pieces and crash-site debris) and cloth (cloth bundles in the
+ *  piles, burnt seats at crash sites). */
 export const SCRAP = 'scrap';
+export const CLOTH = 'cloth';
+/** What scrap-pile piece kind `kind` (SCRAP_KINDS index) gives. */
+export const scrapItem = (kind: number) => SCRAP_KINDS[kind]?.item ?? SCRAP;
+/** What a crash-site debris piece (CRASH_KINDS node name) gives: the burnt seat is cloth, the rest scrap. */
+export const debrisItem = (node: string) => (node === 'Crash_Debris_4' ? CLOTH : SCRAP);
 /** Scrap kinds from before they were all one SCRAP (old DB rows; old `inventory` table indexes = SCRAP_KINDS order). */
 export const OLD_SCRAP = ['oil_drum', 'rusty_drum', 'gear', 'scrap_frame', 'bent_frame', 'metal_plank', 'metal_sheet', 'dented_sheet', 'spring'];
 

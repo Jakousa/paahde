@@ -20,7 +20,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   drops, workbench recipes) as plain data; tune drops and recipes there
 - `shared/sim.ts` — deterministic movement/physics, run by **both** client and server
 - `shared/protocol.ts` — WebSocket message types
-- `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`)
+- `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`);
+  pieces give one of the two basic materials, `scrap` or `cloth` (shared/items.ts `SCRAP`/`CLOTH`)
 - `shared/rocks.ts` — rock formations (mesas, buttes, boulders) placed by a rockiness noise; part of `baseHeight`
   (max with the dunes). Steep rock is a wall in `step()`, digging stops at rock, `rock` attribute paints them in
   `src/world/sandMaterial.ts`

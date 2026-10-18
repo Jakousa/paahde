@@ -22,9 +22,11 @@ type Loot = { yields: SalvageYield[]; tierWeights: TierWeights };
 export type IngredientSpec = { label: string; n: number } & ({ part: PartId } | { kinds: string[] });
 
 const SCRAP = (n: number): IngredientSpec => ({ label: 'Scrap', n, kinds: ['scrap'] });
+const CLOTH = (n: number): IngredientSpec => ({ label: 'Cloth', n, kinds: ['cloth'] });
 
 export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
-  plant_bed: [SCRAP(4)],
+  // A grow bag on a scrap frame.
+  plant_bed: [SCRAP(2), CLOTH(2)],
   uv_lamp: [SCRAP(2), { label: 'Wiring coil', n: 1, part: 'coil' }],
   // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
   // (The guns aren't crafted: they're found broken and repaired, shared/gear.ts.)
@@ -188,10 +190,10 @@ export const RARE_FINDS = { n: 10, tierWeights: { quality: 3, space: 1 } satisfi
 export const BROKEN_GEAR = { filled: 0.5, tierWeights: { scrap: 7, basic: 3 } satisfies TierWeights };
 
 /** Buried caches, dug up with the shovel after the metal detector finds them: how many at once, and what is inside
- *  (relative odds: a part, some scrap, a broken laser pistol, a piece of other broken gear). */
+ *  (relative odds: a part, some scrap, some cloth, a broken laser pistol, a piece of other broken gear). */
 export const CACHES = {
   n: 60,
-  contents: { part: 0.65, scrap: 0.2, pistol: 0.04, gear: 0.11 },
+  contents: { part: 0.6, scrap: 0.15, cloth: 0.1, pistol: 0.04, gear: 0.11 },
   /** A cache part: any part but these, at these tiers. */
   noParts: ['antimatter'] as PartId[],
   tierWeights: { scrap: 5, basic: 3, quality: 1.2, space: 0.25 } satisfies TierWeights,

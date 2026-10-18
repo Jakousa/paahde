@@ -8,7 +8,7 @@ import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bikeLevel, bottleSips, digTool, GEAR_KINDS, gunCooldown, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { HOTBAR, partKind, SCRAP } from '../shared/items.ts';
+import { HOTBAR, partKind, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
 import { KILL_SPOILS } from '../shared/tables.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
@@ -455,8 +455,8 @@ function dropSpoils(k: Kill) {
 }
 
 function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {
-  const kind = scrap.pickup(p.state, ix, iz, i, p.lastPickup, () => items.give(p.browserId, SCRAP));
-  if (kind !== null) return sendBox(p, 'bag', SCRAP);
+  const kind = scrap.pickup(p.state, ix, iz, i, p.lastPickup, (k) => items.give(p.browserId, scrapItem(k)));
+  if (kind !== null) return sendBox(p, 'bag', scrapItem(kind));
   // Refused: the client already hid the piece. If it is still there, tell this client to show it again.
   if (typeof ix === 'number' && typeof iz === 'number' && typeof i === 'number' && !scrapTaken.has(scrapKey(ix, iz, i))) {
     send(p.ws, { t: 'scrap', taken: [], back: [ix, iz, i] });
@@ -509,8 +509,9 @@ function onUnfit(p: Player, slot: unknown, to: unknown, ti: unknown) {
 }
 
 function onLootTake(p: Player, id: unknown) {
-  const kind = loot.take(p.state, id, (l) => items.giveItem(p.browserId, l));
+  const kind = loot.take(p.state, p.browserId, id, (l) => items.giveItem(p.browserId, l));
   if (kind === 'full') send(p.ws, { t: 'notice', text: 'Bag full' });
+  else if (kind === 'had') send(p.ws, { t: 'notice', text: 'Already had one' });
   else if (kind) {
     sendBox(p, 'bag', kind);
     gearChanged(p.browserId);

@@ -4,8 +4,8 @@
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
 // Kept in memory: a restart lays out fresh ones. Items players drop are kept in the DB (`dropped`) and never respawn.
 import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
-import { GEAR, GEAR_KINDS } from '../shared/gear.ts';
-import { partKind, SCRAP } from '../shared/items.ts';
+import { GEAR, GEAR_KINDS, refit } from '../shared/gear.ts';
+import { CLOTH, partKind, SCRAP } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
@@ -98,7 +98,8 @@ export class LootServer {
     this.db = db;
     // Dropped items keep their ids; everything else is numbered after them.
     for (const r of db.loadDropped()) {
-      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), x: r.x, z: r.z, depth: 0, src: 'drop' });
+      const parts = r.parts && (refit(r.kind, r.parts) ?? r.parts); // gear whose slots changed since (shared/gear.ts)
+      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, depth: 0, src: 'drop' });
       this.nextId = Math.max(this.nextId, r.id + 1);
     }
     for (const [kind, f] of Object.entries(FINDS)) for (let i = 0; i < f.n; i++) this.spawnFind(kind);
@@ -124,12 +125,20 @@ export class LootServer {
   }
 
   /**
-   * A player takes loot `id`: it must be on the surface and in reach. `give` puts it in their bag (false:
-   * no room). Returns the item's kind, 'full' if the bag was full, or null if refused.
+   * A player (browser id `who`) takes loot `id`: it must be on the surface and in reach. `give` puts it in their bag
+   * (false: no room). Returns the item's kind, 'full' if the bag was full, 'had' if it's the home bike and they've
+   * had one (one each, so it can't be farmed for motors), or null if refused.
    */
-  take(s: PlayerState, id: unknown, give: (l: Loot) => boolean): string | null {
+  take(s: PlayerState, who: string, id: unknown, give: (l: Loot) => boolean): string | null {
     const l = typeof id === 'number' ? this.loot.get(id) : undefined;
     if (!l || l.depth > 0 || !lootReach(s, l, 1.5)) return null;
+    if (l.id === this.homeBikeId) {
+      if (this.db.hasGrant(who, HOME_KIND)) return 'had';
+      if (!this.db.tx(() => give(l) && (this.db.markGrant(who, HOME_KIND), true))) return 'full';
+      this.remove(l);
+      this.pending.push({ at: Date.now() + FIND_RESPAWN_MS, what: 'find', kind: HOME_KIND });
+      return l.kind;
+    }
     if (l.src === 'drop') {
       if (!this.db.tx(() => give(l) && (this.db.deleteDropped(l.id), true))) return 'full';
       this.remove(l);
@@ -137,7 +146,7 @@ export class LootServer {
     }
     if (!give(l)) return 'full';
     this.remove(l);
-    const kind = l.id === this.homeBikeId ? HOME_KIND : l.kind in FINDS ? l.kind : RARE_KIND;
+    const kind = l.kind in FINDS ? l.kind : RARE_KIND;
     this.pending.push({ at: Date.now() + (l.src === 'find' ? FIND_RESPAWN_MS : CACHE_RESPAWN_MS), what: l.src, kind: l.src === 'find' ? kind : undefined });
     return l.kind;
   }
@@ -245,6 +254,7 @@ export class LootServer {
     let kind: string, parts: (string | null)[] | undefined;
     if (what === 'part') kind = partKind(pick(CACHE_PARTS), pickTier(CACHES.tierWeights, Math.random));
     else if (what === 'scrap') kind = SCRAP;
+    else if (what === 'cloth') kind = CLOTH;
     else {
       kind = what === 'pistol' ? PISTOL : pick(CACHE_GEAR);
       parts = this.brokenParts(kind);

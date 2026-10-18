@@ -85,7 +85,7 @@ export class Thrower {
 
   private add(id: number, n: number, mine: boolean, path: TossPath): Toss {
     // Scrap is all one item: it flies as one of the scrap piles' pieces, picked by the thrower's count (the same for everyone).
-    const mesh = this.scrap.mesh(n % SCRAP_KINDS.length);
+    const mesh = this.scrap.mesh(n % SCRAP_KINDS.filter((k) => !k.item).length);
     if (mesh) this.root.add(mesh);
     const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     const t: Toss = { id, n, mine, path, mesh, off: new THREE.Vector3(), axis, spin: 6 + Math.random() * 8, landedAt: 0 };

@@ -1,9 +1,9 @@
 // Server side of items (shared/items.ts): every box's slots, cached from the `items` table, the one-time gear
 // setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
-import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, lockedWhileRiding, scrapParts, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
+import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, lockedWhileRiding, refit, scrapParts, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
-  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, roomFor, SCRAP, settle, sizeOf, sortItems, stackOf,
+  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, roomFor, CLOTH, SCRAP, settle, sizeOf, sortItems, stackOf,
   type Item, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -74,6 +74,12 @@ export class ItemServer {
           it.parts = scrapParts(it.kind);
           changed = true;
         }
+        // Gear whose slots changed since (shared/gear.ts refit).
+        const re = it?.parts && refit(it.kind, it.parts);
+        if (it && re) {
+          it.parts = re;
+          changed = true;
+        }
         // Stacks bigger than their kind allows now: one item per stack, the rest past the end for settle() to place.
         for (; it && it.n > stackOf(it.kind); it.n--) {
           slots.push({ id: this.newId(), kind: it.kind, n: 1 });
@@ -113,7 +119,7 @@ export class ItemServer {
     this.db.tx(() => {
       if (this.db.hasStarterKit(browserId)) {
         const equip = this.slots(browserId, 'equip');
-        const pack: Item = { id: this.newId(), kind: 'backpack', n: 1, parts: [SCRAP, partKind('gear', 'quality')] };
+        const pack: Item = { id: this.newId(), kind: 'backpack', n: 1, parts: [CLOTH, SCRAP, partKind('gear', 'quality')] };
         const back = EQUIP_SLOTS.indexOf('back');
         if (!equip[back]) equip[back] = pack;
         else {

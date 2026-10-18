@@ -20,7 +20,8 @@ export const EQUIP_SLOTS = ['back', 'wrist', 'belt', 'vehicle'] as const;
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
 export const EQUIP_LABELS: Record<EquipSlot, string> = { back: 'Back', wrist: 'Wrist', belt: 'Belt', vehicle: 'Vehicle' };
 
-/** A part slot: a tiered part from disassembly, or a piece of scrap (shared/items.ts SCRAP; no tier: it holds things together). */
+/** A part slot: a tiered part from disassembly, or a basic material (shared/items.ts SCRAP or CLOTH; no tier: it holds
+ *  things together). */
 export type PartSlot = { part: PartId } | { scrap: string[]; label: string };
 
 export type GearSpec = {
@@ -33,15 +34,17 @@ export type GearSpec = {
 };
 
 const P = (part: PartId): PartSlot => ({ part });
+/** The basic materials (shared/items.ts): a piece of scrap metal, a piece of cloth. */
 const SCRAP: PartSlot = { scrap: ['scrap'], label: 'Scrap' };
+const CLOTH: PartSlot = { scrap: ['cloth'], label: 'Cloth' };
 
 export const GEAR: Record<string, GearSpec> = {
   motorcycle: { slots: [P('motor'), P('battery'), P('bearing')], equip: 'vehicle', better: 'top speed and acceleration',
     use: 'Press 9 to get on and off.' },
   spyglass: { slots: [P('gear'), P('bearing')], better: 'zoom', use: 'Hold the mouse button to look, wheel to zoom.' },
-  canteen: { slots: [P('valve'), SCRAP], better: 'how many sips it holds',
+  canteen: { slots: [P('valve'), CLOTH], better: 'how many sips it holds',
     use: 'Hold the mouse button to drink; fill it at the pump in the base.' },
-  backpack: { slots: [SCRAP, P('gear')], equip: 'back', better: 'room (rows)',
+  backpack: { slots: [CLOTH, SCRAP, P('gear')], equip: 'back', better: 'room (rows)',
     use: 'Bag room past the hotbar.' },
   storm_detector: { slots: [P('coil'), P('relay')], equip: 'belt', better: 'how early it warns',
     use: 'Beeps before a sandstorm reaches you.' },
@@ -79,6 +82,27 @@ export function partsOf(it: Item): (string | null)[] {
 /** Gear `kind` in working order with the worst parts (Scrap tier) in every slot. */
 export function scrapParts(kind: string): string[] {
   return GEAR[kind].slots.map((s) => ('part' in s ? partKind(s.part, 'scrap') : s.scrap[0]));
+}
+
+/**
+ * Parts fitted under an older slot list (GEAR changed since: e.g. the backpack got a cloth slot), laid onto `kind`'s
+ * slots as they are now: each slot takes the first old part that fits it, and what fits nowhere is gone. Gear that
+ * worked keeps working: a slot nothing fits gets its Scrap-tier part or material. Null if nothing needs to change.
+ */
+export function refit(kind: string, parts: (string | null)[]): (string | null)[] | null {
+  const slots = GEAR[kind]?.slots;
+  if (!slots) return null;
+  if (parts.length === slots.length && parts.every((p, i) => p === null || fitsSlot(slots[i], p))) return null;
+  const worked = parts.every((p) => p !== null);
+  const left = [...parts];
+  const fallback = scrapParts(kind);
+  return slots.map((s, i) => {
+    const j = left.findIndex((p) => p !== null && fitsSlot(s, p));
+    if (j < 0) return worked ? fallback[i] : null;
+    const p = left[j];
+    left[j] = null;
+    return p;
+  });
 }
 
 /** Every slot filled. */

@@ -12,11 +12,11 @@
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
 import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tryMove, type Boxes } from '../shared/gear.ts';
-import { findSpot, HOTBAR, ITEMS, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
+import { findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
-import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
+import type { ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { isCorpseBox } from '../shared/corpse.ts';
@@ -143,6 +143,11 @@ const SCRAP_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.
 <path d="M5 12l9-2c-1 2 1 3-1 4" fill="none" stroke="#c9c4b8" opacity="0.8"/><path d="M3 21L17 9l1.8 2.2L4.8 23z" fill="#7d7a72"/>
 <g transform="translate(14 7.5)" fill="#8a7f6a">${[0, 60, 120, 180, 240, 300].map((a) => `<rect x="-1.4" y="-5.6" width="2.8" height="2.6" transform="rotate(${a})"/>`).join('')}
 <circle r="3.8"/><circle r="1.4" fill="#2a160a"/></g></g></svg>`;
+// Cloth: a folded tarp, tied with a cord.
+const CLOTH_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9" stroke-linejoin="round">
+<path d="M3 9c3-2 13-2 16 0v9c-3 2-13 2-16 0z" fill="#b89a6a"/><path d="M3 13.5c3 2 13 2 16 0" fill="none" stroke="#7a6040"/>
+<path d="M5 9.4c0 3 1 6 0 9.4M17 9.4c0 3-1 6 0 9.4" fill="none" stroke="#8a7048" stroke-width="0.7"/>
+<path d="M11 7.6v12.8" stroke="#5a3a1e" stroke-width="1.6"/><path d="M11 7.6c-2-2-4-1-3 0.6M11 7.6c2-2 4-1 3 0.6" fill="none" stroke="#5a3a1e" stroke-width="1"/></g></svg>`;
 const g = (body: string) => `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9">${body}</g></svg>`;
 const ICONS: Record<string, string> = {
   canteen: CANTEEN_SVG,
@@ -163,6 +168,7 @@ const ICONS: Record<string, string> = {
   shovel: g(`<path d="M15.5 2l-6 13" stroke-width="2.6"/><path d="M15.5 2l-6 13" stroke="#8a6a3e" stroke-width="1.4"/>
 <path d="M13 1h5" stroke-width="2.4"/><path d="M7 14l5 2.3-2.5 6.2c-1 2-4.5.5-5.5-1-1-1.5-.3-3.5 3-7.5z" fill="#9a968c"/>`),
   scrap: SCRAP_SVG,
+  cloth: CLOTH_SVG,
   // Carried crash-site machines: a joint with its arm stub, and a cabinet with a door and lamps.
   robot_arm: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="18" width="16" height="4" rx="1" fill="#6a665e"/>
 <rect x="5" y="9" width="9" height="10" rx="2" fill="#d4a24c"/><rect x="12" y="4" width="7" height="4" rx="1" fill="#b8873a" transform="rotate(30 12 6)"/>
@@ -349,7 +355,7 @@ export class InventoryHud {
     this.prompt.style.display = target ? 'block' : 'none';
     // A label that starts with markup brings its own keys (e.g. "[G] Pick up" alone).
     if (target) this.prompt.innerHTML = typeof target === 'string' && target.startsWith('<') ? target
-      : `<kbd>F</kbd>${typeof target === 'string' ? target : `Pick up ${SCRAP_KINDS[target.kind].label}`}`;
+      : `<kbd>F</kbd>${typeof target === 'string' ? target : `Pick up ${itemLabel(scrapItem(target.kind))}`}`;
   }
 
   /** Every frame: storage boxes come into and out of reach as the player moves. */
