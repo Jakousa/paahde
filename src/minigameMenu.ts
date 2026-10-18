@@ -4,7 +4,7 @@
 //   Endless                 as many machines as you can in one go, scored by how many
 // Pick one and see its records (and your best) before starting; play it (src/loadingGame.ts runs the game), then put
 // your name to the result and see where it ranks.
-// Esc steps back: out of a run to the records, out of the records to the choice, out of the choice to the menu.
+// Esc steps back: out of a run to the records, out of the records and the result to the choice, out of the choice to the menu.
 import { NAME_MAX } from '../shared/protocol.ts';
 import { loading } from './loadingGame';
 import type { Mode, RunResult } from './loadingRunner';
@@ -106,7 +106,7 @@ export function openMinigame(onClose: () => void) {
     e.preventDefault();
     e.stopPropagation();
     if (screen === 'pick') close();
-    else if (screen === 'run' || screen === 'result') intro(current);
+    else if (screen === 'run') intro(current);
     else pick();
   };
   addEventListener('keydown', onKey, true);
@@ -176,10 +176,9 @@ export function openMinigame(onClose: () => void) {
     } catch {}
     o.innerHTML = `<div class="panel result"><h2>${m.title}</h2><div class="big"><small>${r.mode === 'endless' ? 'machines' : 'time'}</small>${scoreText(r.mode, score)}</div>
 <form class="row"><input maxlength="${NAME_MAX}" placeholder="your name" value="${esc(saved)}" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true"><button>Submit</button></form>
-<div class="board"></div></div><div class="row"><button class="again">Again</button><button class="quiet modes">Modes</button><button class="quiet leave">Leave</button></div>`;
+<div class="board"></div></div><div class="row"><button class="again">Again</button><button class="quiet back">Back</button></div>`;
     o.querySelector('.again')!.addEventListener('click', () => play(m));
-    o.querySelector('.modes')!.addEventListener('click', pick);
-    o.querySelector('.leave')!.addEventListener('click', close);
+    o.querySelector('.back')!.addEventListener('click', pick);
     const board = o.querySelector<HTMLElement>('.board')!;
     const form = o.querySelector<HTMLFormElement>('form')!;
     const input = form.querySelector('input')!;
