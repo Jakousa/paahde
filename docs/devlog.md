@@ -1328,7 +1328,7 @@ Crafted at the workbench from a compute unit, a wiring coil and a battery (any t
   halved to the ms; the wreck sits as it hit, ploughed `BURY` m on, nose in, tail up (`jetWreck`). Impact: fireball
   (bolts.boom), sparks and shards thrown the way it was going, smoke, dust ring, big shake, bang + slam. Jammed: a
   thin trail and a light smoulder instead of smoke. Its wreck drops loot (`JET_SPOILS`, server `wrecks()`): 2–3
-  avionics/engine parts (basic/quality, a little space-grade; +1 jammed), its drone transponder 60%, 2–4 scrap,
+  avionics/engine parts (basic/quality, a little space-grade; +1 jammed), its drone transponder 20%, 2–4 scrap,
   strewn back along its heading. (Before: a 9:1 glide and a belly skid; then a flat spin like a drone's.) **Jammed drone:** light out,
   sinking at 2.5 m/s while it drifts to a stop, rotors winding down, settling upright (`jammed` field in 'bots',
   drone stride 12). Its parts drop as if shot down.

@@ -234,7 +234,7 @@ export const KILL_SPOILS: Record<'guardian' | 'crawler' | 'drone', Spoils> = {
  *  receiver takes) with JET_RELIC_ODDS, and some scrap off the airframe. */
 export const JET_SPOILS: Spoils = { odds: 1, min: 2, max: 3, parts: ['compute', 'coil', 'battery', 'relay', 'motor', 'heatsink', 'bearing', 'uranium'], tierWeights: { basic: 2, quality: 2, space: 0.4 } };
 export const JET_SOFT_EXTRA = 1;
-export const JET_RELIC_ODDS = 0.6;
+export const JET_RELIC_ODDS = 0.2;
 export const JET_SCRAP = { min: 2, max: 4 };
 
 /** Besides its spoils, a killed enemy leaves its own part with these odds: what its boss's receiver takes (shared/gear.ts). */

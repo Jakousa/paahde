@@ -72,9 +72,10 @@ export class GuardianFx {
     // was going, a ring of dust and a big shake, a bang and a slam.
     this.jets.onCrash = (x, y, z, dx, dy, dz) => {
       this.bolts.boom(-1, x, y, z, true);
-      zaps.burst(x, y + 1, z, dx * 0.6, 0.8, dz * 0.6, 70, 8);
-      zaps.shatter(x, y + 1.5, z, dx * 0.8, 0.6 - dy * 0.3, dz * 0.8, 4);
-      for (let i = 0; i < 8; i++) zaps.puff(x + (Math.random() - 0.5) * 8, y + Math.random() * 4, z + (Math.random() - 0.5) * 8, 6 + Math.random() * 4, 4);
+      zaps.burst(x, y + 1, z, dx * 0.6, 0.8, dz * 0.6, 90, 10);
+      zaps.shatter(x, y + 1.5, z, dx * 0.8, 0.6 - dy * 0.3, dz * 0.8, 6);
+      for (let i = 0; i < 16; i++) zaps.puff(x + (Math.random() - 0.5) * 12, y + Math.random() * 6, z + (Math.random() - 0.5) * 12, 8 + Math.random() * 8, 5 + Math.random() * 4);
+      this.thump(x, y, z, 0, 40, 22, 7);
       guardianSound.boom(x, y, z, this.ear);
       rifleSound.firework({ x, y, z }, this.ear, 1, MISSILE_FIREWORK_PITCH);
       rifleSound.slam({ x, y, z }, this.ear, true);
