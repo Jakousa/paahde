@@ -87,7 +87,6 @@ export const COMPONENT_LOOT: Record<ComponentKind, Loot> = {
   pump_housing: {
     yields: [
       { part: 'motor', min: 1, max: 1 },
-      { part: 'impeller', min: 1, max: 1 },
       { part: 'bearing', min: 1, max: 2 },
       { part: 'valve', min: 0, max: 1 },
       { part: 'relay', min: 0, max: 1 },
@@ -189,7 +188,8 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
 /** Loose rare parts (any part, anti-matter too) lying at guardian ground at once, and their tiers. */
-export const RARE_FINDS = { n: 10, tierWeights: { quality: 3, space: 1 } satisfies TierWeights };
+/** `noParts`: never found this way. The impeller isn't dropped anywhere: nothing uses it. */
+export const RARE_FINDS = { n: 10, noParts: ['impeller'] as PartId[], tierWeights: { quality: 3, space: 1 } satisfies TierWeights };
 
 /** Broken gear (finds and caches): each part slot is filled with these odds, by a part of these tiers (or scrap that
  *  fits); at least one slot is always left empty. */
@@ -201,7 +201,7 @@ export const CACHES = {
   n: 60,
   contents: { part: 0.6, scrap: 0.15, cloth: 0.1, pistol: 0.04, gear: 0.11 },
   /** A cache part: any part but these, at these tiers. */
-  noParts: ['antimatter'] as PartId[],
+  noParts: ['antimatter', 'impeller'] as PartId[],
   tierWeights: { scrap: 5, basic: 3, quality: 1.2, space: 0.25 } satisfies TierWeights,
 };
 

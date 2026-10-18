@@ -41,6 +41,7 @@ const CACHE_DEPTH = [0.5, 1.1];
 const FIND_RESPAWN_MS = 3 * 60_000;
 const CACHE_RESPAWN_MS = 60_000;
 const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
+const RARE_PARTS = PART_IDS.filter((p) => !RARE_FINDS.noParts.includes(p));
 /** Broken gear a cache can hold (not the jammer; the guns have their own odds: only the pistol, CACHES.contents.pistol). */
 const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS) && k !== JAMMER);
 
@@ -308,7 +309,7 @@ export class LootServer {
       if (!overBase(x, z, 6) && !overShelter(x, z, 6)) break;
     }
     if (kind === RARE_KIND) {
-      this.place({ id: this.nextId++, kind: partKind(pick(PART_IDS), pickTier(RARE_FINDS.tierWeights, Math.random)), x, z, depth: 0, src: 'find' }, kind);
+      this.place({ id: this.nextId++, kind: partKind(pick(RARE_PARTS), pickTier(RARE_FINDS.tierWeights, Math.random)), x, z, depth: 0, src: 'find' }, kind);
     } else this.place({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, depth: 0, src: 'find' }, kind);
   }
 
