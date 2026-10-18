@@ -15,8 +15,8 @@ export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
   // spawn: 'base' starts at the home base's door instead of the saved position, 'crash' next to the nearest
   // crash site with a large machine, 'field' at the edge of the nearest scrap field, 'shelter' outside the nearest
-  // shelter's door (dev helpers, ?spawn=base / ?spawn=crash / ?spawn=field / ?spawn=shelter).
-  | { t: 'hello'; browserId: string; spawn?: 'base' | 'crash' | 'field' | 'shelter' }
+  // shelter's door, 'yard' in front of the dev machine yard (dev helpers, ?spawn=base / ?spawn=crash / ?spawn=field / ?spawn=shelter / ?spawn=yard).
+  | { t: 'hello'; browserId: string; spawn?: 'base' | 'crash' | 'field' | 'shelter' | 'yard' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }

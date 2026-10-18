@@ -26,9 +26,9 @@ const css = `
 
 /** Returns the gate main.ts opens with `loaded()` when the world is drawn and the loading cover is leaving. */
 export function nameGate(net: Net, canvas: HTMLElement) {
-  return { loaded };
   /** The Esc menu or the minigame is open: the loading screen ending must not take the mouse or put a box over them. */
   const busy = () => !!document.querySelector('#menu.open, #play');
+  return { loaded };
   function loaded() {
     if (!net.nameAsked) {
       net.ready();
