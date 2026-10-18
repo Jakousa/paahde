@@ -101,7 +101,7 @@ export function restSpot<T extends { x: number; z: number }>(x: number, z: numbe
  */
 export const KINDS = [
   { name: 'guardian', scale: 1.5, patrol: 2.8, hunt: 5.2, turn: 0.3, huntTurn: 0.6, sight: 65, reach: 7.5, gun: true },
-  { name: 'crawler', scale: 0.11, patrol: 2.6, hunt: 11, turn: 3, huntTurn: 9, sight: 12, reach: 1.5, gun: false },
+  { name: 'crawler', scale: 0.11, patrol: 2.6, hunt: 9.5, turn: 3, huntTurn: 9, sight: 12, reach: 1.5, gun: false },
 ] as const;
 export const GUARDIAN = 0, CRAWLER = 1;
 export type Kind = typeof GUARDIAN | typeof CRAWLER;

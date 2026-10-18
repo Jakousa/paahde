@@ -107,8 +107,8 @@ export const BIRTH_MS = 1400;
 export const BIRTH_Z = -13;
 export const BIRTH_Y = -2.2;
 export const DROP_MS = 650;
-/** Running speed (m/s): faster than a run (7.5), slower than a slide (15). */
-export const SP_SPEED = 11.5;
+/** Running speed (m/s): faster than a run (7.5), slower than slides one after another (about 11 on average). */
+export const SP_SPEED = 9.5;
 /** Once where its prey will be is within LEAP_MAX (m) (or the prey is within LEAP_R), it crouches CROUCH_MS (a sharp
  *  rattle), then springs there in LEAP_MS: whoever is within LEAP_HIT (m) of where it lands dies. Then it gets up
  *  for REST_MS. */
