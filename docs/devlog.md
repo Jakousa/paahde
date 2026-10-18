@@ -51,7 +51,7 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 - The loading game can also be played from the Esc menu ("Play minigame", `Menu.playMinigame`): same game, no loading
   bar, over the world with a see-through backdrop; Leave or Esc returns. Its step markers copy the game's (orange,
   white when hovered): a ring of dots round screws, a turning arc for bolts; for wires and pry tabs a pointer ring
-  that presses and slides along the way (the grab). The real wire marker (`makeMarker` in `src/teardown/junk.ts`) got
+  that presses on the thing and drags the way to go (the grab; the wire one starts ON the wire). The real wire marker (`makeMarker` in `src/teardown/junk.ts`) got
   the same pointer ring instead of the swinging double arrow.
 - Minigame: taking a part swaps the machines in 0.18 s (old out left, new in right at once; the part flies to the bag in
   0.3 s) and it plays the real teardown sounds (`teardownSound`, `uiSound.plop`): the worker asks, `src/loadingGame.ts`

@@ -153,7 +153,7 @@ const MARKER_HOT_MAT = new THREE.MeshBasicNodeMaterial({ color: 0xffffff });
 
 // ---- step markers ------------------------------------------------------------------------------------------
 // Small, and each kind of action reads differently: beads for clicks (one per click left, they tap), a turning
-// arc with an arrowhead for bolts, a pointer ring that presses beside the wire and slides across it for wires (the grab), an arrow pulling away for pry tabs,
+// arc with an arrowhead for bolts, a pointer ring that presses on the wire and drags away from it for wires (the grab), an arrow pulling away for pry tabs,
 // arrows rising for lifts (one per player needed).
 
 const BEAD_GEO = new THREE.SphereGeometry(0.03, 8, 6);
@@ -195,10 +195,11 @@ function makeMarker(kind: StepKind, need: number, players: number): THREE.Group 
     g.userData.turn = turn;
   } else if (kind === 'wire') {
     const sweep = new THREE.Group();
-    markerMesh(sweep, SHAFT_GEO);
-    markerMesh(sweep, HEAD_X_GEO, 0.12, 0, 0).rotation.z = -Math.PI / 2;
-    markerMesh(sweep, HEAD_X_GEO, -0.12, 0, 0).rotation.z = Math.PI / 2;
-    // The pointer: a ring with a dot that lands on one side, slides across the wire and lets go.
+    // One way only, from the wire outwards: the pointer presses ON the wire and drags away; it is not something to
+    // take hold of in the middle.
+    markerMesh(sweep, SHAFT_GEO, 0.1, 0, 0);
+    markerMesh(sweep, HEAD_X_GEO, 0.22, 0, 0).rotation.z = -Math.PI / 2;
+    // The pointer: a ring with a dot that lands on the wire, slides away from it and lets go.
     const grip = new THREE.Group();
     markerMesh(grip, GRIP_RING_GEO);
     markerMesh(grip, GRIP_DOT_GEO);
@@ -259,11 +260,11 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
     const ang = Math.atan2(_sb.y - _sa.y, (_sb.x - _sa.x) * (cam as THREE.PerspectiveCamera).aspect) + Math.PI / 2;
     m.parent!.getWorldQuaternion(_wq).invert().multiply(cam.getWorldQuaternion(new THREE.Quaternion()));
     m.quaternion.copy(_wq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), ang));
-    // Press at one end of the shaft, slide to the other, vanish, again.
+    // Press on the wire (the marker's origin), slide to the arrowhead, vanish, again.
     const ph = (t * 0.85) % 1;
     const k = ph < 0.7 ? (1 - Math.cos((ph / 0.7) * Math.PI)) / 2 : 1;
     const grip = u.grip as THREE.Group;
-    grip.position.x = -0.1 + 0.2 * k;
+    grip.position.x = 0.2 * k;
     grip.scale.setScalar(Math.min(ph / 0.1, 1, (1 - ph) / 0.15) * (ph < 0.7 ? 0.85 : 1));
     m.scale.setScalar(lit ? 1.25 : 1);
   }

@@ -348,6 +348,15 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     g.beginPath();
     g.arc(x, y, ph < 0.7 ? 3.5 : 2.5, 0, 7);
     g.fill();
+    // an arrowhead where the drag ends, so it reads as a direction rather than a thing to take hold of in the middle
+    g.fillStyle = c;
+    g.globalAlpha = fade * 0.9;
+    const ang = Math.atan2(y1 - y0, x1 - x0);
+    g.beginPath();
+    g.moveTo(x1 + Math.cos(ang) * 8, y1 + Math.sin(ang) * 8);
+    g.lineTo(x1 + Math.cos(ang + 2.4) * 7, y1 + Math.sin(ang + 2.4) * 7);
+    g.lineTo(x1 + Math.cos(ang - 2.4) * 7, y1 + Math.sin(ang - 2.4) * 7);
+    g.fill();
     g.restore();
   }
 
@@ -470,7 +479,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
           g.moveTo(act.x0, act.y0);
           g.lineTo(px - slide, py);
           g.stroke();
-        } else if (on) dragCue(s.x - 38, s.y + 4, s.x + 38, s.y - 4, lit); // press beside the wire and swipe through it
+        } else if (on) dragCue(s.x, s.y, s.x + 52, s.y, lit); // press ON the wire and drag away from it
       }
     } else {
       if (s.done) return;
