@@ -56,6 +56,8 @@ export class StormFx {
   outside = 0;
   /** Storm strength over the base, eased, 0..1: the sand sifting in (src/world/baseSand.ts). */
   atBase = 0;
+  /** The storm detector is warning of a storm on its way here. */
+  warning = false;
   private banner = document.createElement('div');
   private warned = new Map<number, number>(); // storm id → server ms of the last beep burst
   private c = { x: 0, z: 0 };
@@ -127,7 +129,8 @@ export class StormFx {
       if (!coming || s.start < coming.start) coming = s;
     }
     for (const id of this.warned.keys()) if (!storms.some((s) => s.id === id)) this.warned.delete(id);
-    if (coming && !indoors(me.x, me.y, me.z)) {
+    this.warning = !!coming && !indoors(me.x, me.y, me.z);
+    if (coming && this.warning) {
       const last = this.warned.get(coming.id);
       if (last === undefined || now - last >= BEEP_EVERY * 1000) {
         this.warned.set(coming.id, now);

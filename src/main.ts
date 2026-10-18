@@ -59,6 +59,7 @@ import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
+import { Speech } from './speech';
 import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
 import { Rifle } from './rifle';
@@ -262,6 +263,9 @@ const RIDE_EYE_AHEAD = 0.15;
 const locator = new LocatorBar();
 const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
+const speech = new Speech();
+/** The find last looked at, so the character remarks on it once per look (src/lines.ts 'see'). */
+let seenFind: number | null = null;
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
 const jammer = new Jammer(orbit, net, guardianFx.jets, guardianFx.drones);
@@ -419,7 +423,10 @@ renderer.setAnimationLoop((time) => {
   // Dead: the camera backs off to third person and follows the body as it falls (the pivot a little above it).
   else if (me.downAt(focus)) focus.y += 0.5 - EYE_HEIGHT;
   else focus.copy(me.root.position);
-  if (orbit.down !== (net.down !== null)) document.body.classList.toggle('down', (orbit.down = net.down !== null));
+  if (orbit.down !== (net.down !== null)) {
+    document.body.classList.toggle('down', (orbit.down = net.down !== null));
+    if (!orbit.down) speech.event('respawn', undefined);
+  }
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
   const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, !s.riding && !teardown.active && !net.down);
   lootView.update(frameDt, net.loot, focus);
@@ -553,6 +560,14 @@ baseSand.update(frameDt, storm.atBase);
   }
   const targeted = use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
+  const w = net.water;
+  speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(net.me.x, net.me.y, net.me.z), heat: survival.heatLevel,
+    rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips, storm: storm.level, stormWarning: storm.warning,
+    bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null });
+  if ((find?.id ?? null) !== seenFind) {
+    seenFind = find?.id ?? null;
+    if (find) speech.event('see', find);
+  }
   hud.update(net.me);
 
   menu.setInfo(`${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);

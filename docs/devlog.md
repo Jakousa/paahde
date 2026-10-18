@@ -2,6 +2,17 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — The character speaks
+
+- Subtitled remarks from the player character to guide without tutorials (`src/speech.ts`, lines as data in
+  `src/lines.ts`, writing rules in `docs/speech.md`). A line has an event (`see` a find in reach, `respawn`, or
+  the polled `tick`) and a condition on `SpeechState` (day, indoors, heat, bottle sips, storm, bag). Lines sharing
+  an id are variants (day/night). Without `again` a line is said once per browser, otherwise at most once per `again`.
+  One line at a time with a pause after it.
+- First lines: a water bottle in sight while you carry none (worded by day or by night), overheating (shade, or
+  a sip), an empty bottle, the storm detector's warning, being in a storm, the first night out, and respawning.
+- Known gap: `hints.ts` still shows its how-to banners; some of them could become lines.
+
 ## 2026-10-18 — Loading screen, then name, then you exist
 
 - Joining shows the loading cover with a tiny disassembly game on it (`src/loadingRunner.ts`): the same moves as the
