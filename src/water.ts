@@ -44,6 +44,9 @@ const TEMP_BLUE = [120, 196, 255];
 const TEMP_AMBER = [255, 184, 77];
 const TEMP_RED = [255, 92, 60];
 const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
+/** Fade to black before the respawn, and back in after it (ms). */
+const FADE_OUT_MS = 1500;
+const FADE_IN_MS = 1800;
 const DEATH_TEXT = 'Desert knows no mercy';
 const TOAST_MS = 1800;
 /** Walking this far (m) out of the pump's reach cancels a refill. Under the server's FILL_SLACK. */
@@ -107,6 +110,7 @@ const css = `
   closest-side, rgba(40, 8, 2, 0) 55%, rgba(40, 8, 2, 0.75) 100%); color: #ffe2c4; font: 600 34px var(--mono);
   letter-spacing: 0.04em; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); animation: deathIn 0.6s ease-out; }
 @keyframes deathIn { from { opacity: 0; } to { opacity: 1; } }
+#deathFade { position: fixed; inset: 0; z-index: 21; pointer-events: none; background: #000; opacity: 0; display: none; }
 `;
 
 /** Thermometer for the body heat meter. */
@@ -135,6 +139,7 @@ export class Survival {
   private prompt = document.createElement('div');
   private toastEl = document.createElement('div');
   private death = document.createElement('div');
+  private fade = document.createElement('div');
 
   private selected = -1; // hotbar slot, -1 = empty hands
   private shown = 0; // eased meter value
@@ -182,7 +187,8 @@ export class Survival {
     this.toastEl.id = 'waterToast';
     this.death.id = 'deathScreen';
     this.death.innerHTML = DEATH_TEXT;
-    document.body.append(this.root, this.heat, this.env, this.prompt, this.toastEl, this.death);
+    this.fade.id = 'deathFade';
+    document.body.append(this.root, this.heat, this.env, this.prompt, this.toastEl, this.death, this.fade);
 
     addEventListener('keydown', (e) => {
       if (e.repeat || !/^Digit[1-9]$/.test(e.code)) return;
@@ -391,5 +397,10 @@ export class Survival {
     heatstroke.value = dead ? 0 : Math.min(1, Math.max(0, (this.shown - 0.6 * HEAT_MAX) / (0.4 * HEAT_MAX)));
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
+    // Black out over the last stretch of lying dead, then fade back in on the base after the respawn.
+    const toEnd = this.deadUntil - now;
+    const black = toEnd > 0 ? 1 - Math.min(1, toEnd / FADE_OUT_MS) : Math.max(0, 1 + toEnd / FADE_IN_MS);
+    this.fade.style.display = black > 0 && this.deadUntil > 0 ? 'block' : 'none';
+    this.fade.style.opacity = String(black);
   }
 }

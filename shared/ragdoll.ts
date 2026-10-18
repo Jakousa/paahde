@@ -3,7 +3,7 @@
 // the launch velocity (m/s) the server sends with the death ('died' and the snapshot's `down`).
 
 /** How long a dead player lies there before respawning (ms). */
-export const DOWN_MS = 4000;
+export const DOWN_MS = 7000;
 
 /** Launch speed at the centre of a blast that kills (m/s), falling off to a quarter at its edge. */
 const BLAST_PUSH = 14;
