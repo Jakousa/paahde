@@ -153,7 +153,7 @@ const MARKER_HOT_MAT = new THREE.MeshBasicNodeMaterial({ color: 0xffffff });
 
 // ---- step markers ------------------------------------------------------------------------------------------
 // Small, and each kind of action reads differently: beads for clicks (one per click left, they tap), a turning
-// arc with an arrowhead for bolts, a double arrow sweeping across for wires, an arrow pulling away for pry tabs,
+// arc with an arrowhead for bolts, a pointer ring that presses beside the wire and slides across it for wires (the grab), an arrow pulling away for pry tabs,
 // arrows rising for lifts (one per player needed).
 
 const BEAD_GEO = new THREE.SphereGeometry(0.03, 8, 6);
@@ -161,6 +161,8 @@ const ARC_GEO = new THREE.TorusGeometry(0.13, 0.014, 6, 24, Math.PI * 1.5);
 const HEAD_GEO = new THREE.ConeGeometry(0.045, 0.1, 8).rotateZ(-Math.PI / 2).translate(0, -0.13, 0);
 const SHAFT_GEO = new THREE.BoxGeometry(0.2, 0.014, 0.014);
 const HEAD_X_GEO = new THREE.ConeGeometry(0.04, 0.08, 8);
+const GRIP_RING_GEO = new THREE.TorusGeometry(0.05, 0.011, 6, 20);
+const GRIP_DOT_GEO = new THREE.SphereGeometry(0.02, 8, 6);
 const PRY_SHAFT_GEO = new THREE.BoxGeometry(0.014, 0.014, 0.14);
 const UP_SHAFT_GEO = new THREE.BoxGeometry(0.014, 0.1, 0.014).translate(0, 0.05, 0);
 
@@ -196,8 +198,14 @@ function makeMarker(kind: StepKind, need: number, players: number): THREE.Group 
     markerMesh(sweep, SHAFT_GEO);
     markerMesh(sweep, HEAD_X_GEO, 0.12, 0, 0).rotation.z = -Math.PI / 2;
     markerMesh(sweep, HEAD_X_GEO, -0.12, 0, 0).rotation.z = Math.PI / 2;
+    // The pointer: a ring with a dot that lands on one side, slides across the wire and lets go.
+    const grip = new THREE.Group();
+    markerMesh(grip, GRIP_RING_GEO);
+    markerMesh(grip, GRIP_DOT_GEO);
+    sweep.add(grip);
     g.add(sweep);
     g.userData.sweep = sweep;
+    g.userData.grip = grip;
   } else if (kind === 'pry') {
     const pull = new THREE.Group();
     markerMesh(pull, PRY_SHAFT_GEO, 0, 0, 0.07);
@@ -251,7 +259,12 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
     const ang = Math.atan2(_sb.y - _sa.y, (_sb.x - _sa.x) * (cam as THREE.PerspectiveCamera).aspect) + Math.PI / 2;
     m.parent!.getWorldQuaternion(_wq).invert().multiply(cam.getWorldQuaternion(new THREE.Quaternion()));
     m.quaternion.copy(_wq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), ang));
-    (u.sweep as THREE.Group).position.x = Math.sin(t * 7) * 0.06;
+    // Press at one end of the shaft, slide to the other, vanish, again.
+    const ph = (t * 0.85) % 1;
+    const k = ph < 0.7 ? (1 - Math.cos((ph / 0.7) * Math.PI)) / 2 : 1;
+    const grip = u.grip as THREE.Group;
+    grip.position.x = -0.1 + 0.2 * k;
+    grip.scale.setScalar(Math.min(ph / 0.1, 1, (1 - ph) / 0.15) * (ph < 0.7 ? 0.85 : 1));
     m.scale.setScalar(lit ? 1.25 : 1);
   }
 }

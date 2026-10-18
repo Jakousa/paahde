@@ -8,15 +8,20 @@ let canvas: HTMLCanvasElement | null = null;
 let off: (() => void) | null = null;
 let progress: (p: number) => void = () => {};
 
-function start() {
-  const cover = document.getElementById('cover');
+/** On the loading cover (no arguments), or inside `host` without the loading bar (played from the Esc menu, src/menu.ts). */
+function start(host?: HTMLElement) {
+  const cover = host ?? document.getElementById('cover');
   if (!cover || canvas) return;
+  const bar = !host;
   const c = (canvas = document.createElement('canvas'));
+  c.dataset.nofs = '1'; // clicks on it don't go fullscreen (src/input.ts)
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   c.style.cssText = `width:min(${W}px,94vw);aspect-ratio:${W}/${H};touch-action:none;user-select:none;`;
   cover.prepend(c);
-  cover.classList.add('play'); // hides the plain bar: the canvas draws its own
-  cover.style.pointerEvents = 'auto';
+  if (bar) {
+    cover.classList.add('play'); // hides the plain bar: the canvas draws its own
+    cover.style.pointerEvents = 'auto';
+  }
 
   let down = (_x: number, _y: number) => {};
   let move = (_x: number, _y: number) => {};
@@ -27,7 +32,7 @@ function start() {
     try {
       worker = new Worker(new URL('./loadingWorker.ts', import.meta.url), { type: 'module' });
       const offscreen = c.transferControlToOffscreen();
-      worker.postMessage({ t: 'init', canvas: offscreen, dpr }, [offscreen]);
+      worker.postMessage({ t: 'init', canvas: offscreen, dpr, bar }, [offscreen]);
       const w = worker;
       down = (x, y) => w.postMessage({ t: 'down', x, y });
       move = (x, y) => w.postMessage({ t: 'move', x, y });
@@ -41,7 +46,7 @@ function start() {
   if (!worker) {
     c.width = W * dpr;
     c.height = H * dpr;
-    const run = createRunner(c.getContext('2d')!, dpr);
+    const run = createRunner(c.getContext('2d')!, dpr, bar);
     let raf = 0;
     let last = performance.now();
     const frame = (now: number) => {

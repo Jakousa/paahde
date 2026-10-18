@@ -48,6 +48,11 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   `createRenderPipeline` is wrapped to use `createRenderPipelineAsync` (background threads) and `draw` skips pipelines
   not yet ready; slow rounds (>0.5 s) are logged to the console as `[warmup] slow round ...` with the materials in them.
   Still seen after loading: shadow-pass materials built on the first frames that the warm-up didn't reach.
+- The loading game can also be played from the Esc menu ("Play minigame", `Menu.playMinigame`): same game, no loading
+  bar, over the world with a see-through backdrop; Leave or Esc returns. Its step markers copy the game's (orange,
+  white when hovered): a ring of dots round screws, a turning arc for bolts; for wires and pry tabs a pointer ring
+  that presses and slides along the way (the grab). The real wire marker (`makeMarker` in `src/teardown/junk.ts`) got
+  the same pointer ring instead of the swinging double arrow.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.

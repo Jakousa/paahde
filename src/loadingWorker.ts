@@ -2,7 +2,7 @@
 import { createRunner, H, W } from './loadingRunner';
 
 type In =
-  | { t: 'init'; canvas: OffscreenCanvas; dpr: number }
+  | { t: 'init'; canvas: OffscreenCanvas; dpr: number; bar: boolean }
   | { t: 'down' | 'move'; x: number; y: number }
   | { t: 'up' | 'stop' }
   | { t: 'progress'; p: number };
@@ -15,7 +15,7 @@ ctx.onmessage = (e) => {
   if (m.t === 'init') {
     m.canvas.width = W * m.dpr;
     m.canvas.height = H * m.dpr;
-    run = createRunner(m.canvas.getContext('2d')!, m.dpr);
+    run = createRunner(m.canvas.getContext('2d')!, m.dpr, m.bar);
     let last = performance.now();
     timer = setInterval(() => {
       const now = performance.now();

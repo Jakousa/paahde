@@ -12,6 +12,7 @@ const BAR_Y = 262;
 const BAR_W = 160;
 
 const HI = '#ffd9a0'; // the disassembly UI's highlight
+const MARK = '#ffb050'; // the step markers' orange (src/teardown/junk.ts)
 const BODY = '#7a5238';
 const TRIM = '#3b2616';
 const STEEL = '#8a8f93';
@@ -54,7 +55,8 @@ interface Act {
 const LID_SCREWS: [number, number][] = [[162, 67], [358, 67], [162, 143], [358, 143]];
 const ready = (s: Step) => !s.done && s.after.every((a) => a.done);
 
-export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D, dpr: number) {
+/** `bar`: draw the loading bar under the game (the loading screen; not when played from the menu). */
+export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D, dpr: number, bar = true) {
   g.scale(dpr, dpr);
   let target = 0; // loading progress asked for, and the eased value drawn
   let shown = 0;
@@ -99,7 +101,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       if (!ready(s)) continue;
       if (s.kind === 'wire') {
         if (Math.abs(x - s.x) < 13 && y > s.y - 40 && y < s.y + 40) return s;
-      } else if (Math.hypot(x - s.x - (s.kind === 'pry' ? 10 : 0), y - s.y) < (s.kind === 'bolt' ? 22 : 17)) return s;
+      } else if (Math.hypot(x - s.x - (s.kind === 'pry' ? 13 : 0), y - s.y) < (s.kind === 'bolt' ? 22 : 17)) return s;
     }
     return null;
   };
@@ -262,24 +264,6 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     g.restore();
   }
 
-  function arrow(x0: number, y0: number, x1: number, y1: number, alpha: number) {
-    const a = Math.atan2(y1 - y0, x1 - x0);
-    g.strokeStyle = g.fillStyle = HI;
-    g.globalAlpha = alpha;
-    g.lineWidth = 3;
-    g.lineCap = 'round';
-    g.beginPath();
-    g.moveTo(x0, y0);
-    g.lineTo(x1, y1);
-    g.stroke();
-    g.beginPath();
-    g.moveTo(x1 + Math.cos(a) * 6, y1 + Math.sin(a) * 6);
-    g.lineTo(x1 + Math.cos(a + 2.5) * 8, y1 + Math.sin(a + 2.5) * 8);
-    g.lineTo(x1 + Math.cos(a - 2.5) * 8, y1 + Math.sin(a - 2.5) * 8);
-    g.fill();
-    g.globalAlpha = 1;
-  }
-
   function ring(x: number, y: number, r: number, f: number) {
     g.lineWidth = 5;
     g.lineCap = 'round';
@@ -293,9 +277,64 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     g.stroke();
   }
 
+  // Step markers, as in the game (src/teardown/junk.ts makeMarker): orange, white under the pointer. Screws get a
+  // ring of dots that tap in turn and go as the clicks are done, bolts a turning three-quarter arc with an
+  // arrowhead; wires and pry tabs show the grab: a pointer ring presses on the thing and slides along the way to
+  // go, leaving a trail.
+  const markColor = (lit: boolean) => (lit ? '#ffffff' : MARK);
+
+  /** The grab cue: press at (x0, y0), slide to (x1, y1), let go, repeat. `k` is the pointer's progress 0..1. */
+  function dragCue(x0: number, y0: number, x1: number, y1: number, lit: boolean) {
+    const ph = (clock * 0.85) % 1;
+    const k = ph < 0.7 ? (1 - Math.cos((ph / 0.7) * Math.PI)) / 2 : 1;
+    const fade = ph < 0.1 ? ph / 0.1 : ph > 0.85 ? Math.max(0, (1 - ph) / 0.15) : 1;
+    const x = x0 + (x1 - x0) * k;
+    const y = y0 + (y1 - y0) * k;
+    const c = markColor(lit);
+    g.save();
+    g.globalAlpha = fade;
+    g.lineCap = 'round';
+    // the trail
+    const trail = g.createLinearGradient(x0, y0, x1, y1);
+    trail.addColorStop(0, 'rgba(255, 176, 80, 0)');
+    trail.addColorStop(1, c);
+    g.strokeStyle = trail;
+    g.lineWidth = 4;
+    g.beginPath();
+    g.moveTo(x0, y0);
+    g.lineTo(x, y);
+    g.stroke();
+    // the press: a ring that spreads out from where it lands
+    if (ph < 0.25) {
+      g.strokeStyle = c;
+      g.globalAlpha = fade * (1 - ph / 0.25);
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(x0, y0, 7 + (ph / 0.25) * 12, 0, 7);
+      g.stroke();
+      g.globalAlpha = fade;
+    }
+    // the pointer: a ring with a dot, pressed in a little while it's held down
+    g.fillStyle = 'rgba(28, 15, 7, 0.55)';
+    g.beginPath();
+    g.arc(x, y, 8, 0, 7);
+    g.fill();
+    g.strokeStyle = c;
+    g.lineWidth = 2.5;
+    g.beginPath();
+    g.arc(x, y, 8, 0, 7);
+    g.stroke();
+    g.fillStyle = c;
+    g.beginPath();
+    g.arc(x, y, ph < 0.7 ? 3.5 : 2.5, 0, 7);
+    g.fill();
+    g.restore();
+  }
+
   function drawStep(s: Step) {
     const on = ready(s);
     const lit = hover === s || act?.step === s;
+    const c = markColor(lit);
     g.globalAlpha = on ? 1 : 0.4;
     if (s.kind === 'screw') {
       if (s.done) return;
@@ -312,18 +351,18 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       g.moveTo(s.x - Math.cos(a) * 7, s.y - Math.sin(a) * 7);
       g.lineTo(s.x + Math.cos(a) * 7, s.y + Math.sin(a) * 7);
       g.stroke();
-      if (lit) {
-        g.strokeStyle = HI;
-        g.beginPath();
-        g.arc(s.x, s.y, 14, 0, 7);
-        g.stroke();
-      }
-      // a bead per click, filled as they are done
-      for (let i = 0; i < s.need; i++) {
-        g.fillStyle = i < s.progress ? HI : 'rgba(255, 217, 160, 0.3)';
-        g.beginPath();
-        g.arc(s.x + (i - (s.need - 1) / 2) * 9, s.y - 22, 3, 0, 7);
-        g.fill();
+      // a dot per click still to do, in a ring round the screw, tapping one after another
+      if (on) {
+        const left = Math.max(0, s.need - Math.floor(s.progress));
+        const pulse = lit ? 1.25 : 1 + 0.08 * Math.sin(clock * 6);
+        for (let i = 0; i < left; i++) {
+          const ang = (i / s.need) * Math.PI * 2 - Math.PI / 2;
+          const tap = 1 + 0.7 * Math.pow(Math.max(0, Math.sin(clock * 7 - i * 0.9)), 4);
+          g.fillStyle = c;
+          g.beginPath();
+          g.arc(s.x + Math.cos(ang) * 19 * pulse, s.y + Math.sin(ang) * 19 * pulse, 3.2 * tap, 0, 7);
+          g.fill();
+        }
       }
     } else if (s.kind === 'bolt') {
       g.fillStyle = s.done ? '#1c0f07' : STEEL;
@@ -340,85 +379,135 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
         g.beginPath();
         g.arc(s.x, s.y, 5, 0, 7);
         g.fill();
-        // the circle to follow, with the turning arrow
-        g.setLineDash([4, 6]);
-        g.strokeStyle = 'rgba(255, 217, 160, 0.4)';
-        g.lineWidth = 3;
-        g.beginPath();
-        g.arc(s.x, s.y, 34, 0, 7);
-        g.stroke();
-        g.setLineDash([]);
-        if (act?.step === s) ring(s.x, s.y, 34, s.progress);
-        else {
-          const a = clock * 2.2;
-          const tx = s.x + Math.cos(a) * 34;
-          const ty = s.y + Math.sin(a) * 34;
-          g.fillStyle = HI;
+        if (act?.step === s) {
+          // while turning it: the circle to follow and how far round you are
+          g.setLineDash([4, 6]);
+          g.strokeStyle = 'rgba(255, 217, 160, 0.4)';
+          g.lineWidth = 3;
           g.beginPath();
-          g.moveTo(tx - Math.sin(a) * 9, ty + Math.cos(a) * 9);
-          g.lineTo(tx + Math.cos(a) * 6, ty + Math.sin(a) * 6);
-          g.lineTo(tx + Math.sin(a) * 9, ty - Math.cos(a) * 9);
+          g.arc(s.x, s.y, 34, 0, 7);
+          g.stroke();
+          g.setLineDash([]);
+          ring(s.x, s.y, 34, s.progress);
+        } else {
+          // the marker: a three-quarter arc turning round with an arrowhead on its end
+          const a0 = clock * 3.2;
+          const a1 = a0 + Math.PI * 1.5;
+          const r = 24 * (lit ? 1.25 : 1);
+          g.strokeStyle = c;
+          g.lineWidth = 3;
+          g.lineCap = 'round';
+          g.beginPath();
+          g.arc(s.x, s.y, r, a0, a1);
+          g.stroke();
+          const tx = s.x + Math.cos(a1) * r;
+          const ty = s.y + Math.sin(a1) * r;
+          g.fillStyle = c;
+          g.beginPath();
+          g.moveTo(tx - Math.sin(a1) * 8, ty + Math.cos(a1) * 8);
+          g.lineTo(tx + Math.cos(a1 + 0.5) * 3 + Math.sin(a1) * 8, ty + Math.sin(a1 + 0.5) * 3 - Math.cos(a1) * 8);
+          g.lineTo(tx + Math.cos(a1) * 9, ty + Math.sin(a1) * 9);
+          g.closePath();
           g.fill();
         }
       }
     } else if (s.kind === 'wire') {
-      g.strokeStyle = COPPER;
-      g.lineWidth = 5;
-      g.lineCap = 'round';
-      g.beginPath();
+      const top = s.y - 40;
+      const bot = s.y + 40;
       if (s.done) {
-        g.moveTo(s.x, s.y - 40);
+        g.strokeStyle = COPPER;
+        g.lineWidth = 5;
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(s.x, top);
         g.lineTo(s.x - 2, s.y - 9);
-        g.moveTo(s.x, s.y + 40);
+        g.moveTo(s.x, bot);
         g.lineTo(s.x + 3, s.y + 10);
+        g.stroke();
       } else {
-        g.moveTo(s.x, s.y - 40);
-        g.lineTo(s.x, s.y + 40);
-      }
-      g.stroke();
-      if (!s.done) {
-        if (lit) {
-          g.strokeStyle = HI;
-          g.lineWidth = 2;
+        // a glow round the wire says it's the thing to grab
+        if (on) {
+          g.strokeStyle = lit ? 'rgba(255, 255, 255, 0.35)' : `rgba(255, 176, 80, ${0.22 + 0.12 * Math.sin(clock * 5)})`;
+          g.lineWidth = 13;
+          g.lineCap = 'round';
           g.beginPath();
-          g.moveTo(s.x, s.y - 40);
-          g.lineTo(s.x, s.y + 40);
+          g.moveTo(s.x, top);
+          g.lineTo(s.x, bot);
           g.stroke();
         }
-        // a sweeping arrow across it
-        const k = act?.step === s ? s.progress : (clock * 0.9) % 1;
-        const x1 = s.x - 36 + k * 72;
-        arrow(x1 - 24, s.y, x1, s.y, act?.step === s ? 1 : Math.sin(k * Math.PI));
+        g.strokeStyle = COPPER;
+        g.lineWidth = 5;
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(s.x, top);
+        g.lineTo(s.x, bot);
+        g.stroke();
         if (act?.step === s) {
-          g.strokeStyle = HI;
+          // being swiped: the cut line from where you pressed to the pointer
+          g.strokeStyle = '#ffffff';
           g.lineWidth = 2;
           g.beginPath();
           g.moveTo(act.x0, act.y0);
           g.lineTo(px - slide, py);
           g.stroke();
-        }
+        } else if (on) dragCue(s.x - 38, s.y + 4, s.x + 38, s.y - 4, lit); // press beside the wire and swipe through it
       }
     } else {
       if (s.done) return;
       const off = s.progress * PRY_PX;
+      const tx = s.x + off;
+      if (on && act?.step !== s) {
+        // the way it comes out: a track to the end of the pull, with chevrons running along it
+        g.setLineDash([3, 5]);
+        g.strokeStyle = 'rgba(255, 176, 80, 0.45)';
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(s.x + 24, s.y);
+        g.lineTo(s.x + PRY_PX + 14, s.y);
+        g.stroke();
+        g.setLineDash([]);
+        g.strokeStyle = c;
+        g.lineWidth = 3;
+        g.beginPath();
+        g.moveTo(s.x + PRY_PX + 14, s.y - 9);
+        g.lineTo(s.x + PRY_PX + 14, s.y + 9);
+        g.stroke();
+        for (let i = 0; i < 3; i++) {
+          const q = ((clock * 1.1 + i / 3) % 1);
+          const cx = s.x + 28 + q * (PRY_PX - 18);
+          g.globalAlpha = Math.sin(q * Math.PI) * 0.9;
+          g.beginPath();
+          g.moveTo(cx - 4, s.y - 6);
+          g.lineTo(cx + 3, s.y);
+          g.lineTo(cx - 4, s.y + 6);
+          g.stroke();
+        }
+        g.globalAlpha = on ? 1 : 0.4;
+      }
+      // the panel tab: a plate with a lip and grip ridges
       g.fillStyle = STEEL;
       g.strokeStyle = TRIM;
       g.lineWidth = 2;
       g.beginPath();
-      g.roundRect(s.x + off, s.y - 14, 22, 28, 3);
+      g.roundRect(tx, s.y - 15, 26, 30, 3);
       g.fill();
       g.stroke();
-      g.fillStyle = '#2b2622';
-      g.beginPath();
-      g.arc(s.x + off + 11, s.y, 4, 0, 7);
-      g.fill();
-      if (lit) {
-        g.strokeStyle = HI;
-        g.strokeRect(s.x + off - 3, s.y - 17, 28, 34);
+      g.fillStyle = '#6c7175';
+      g.fillRect(tx + 22, s.y - 17, 6, 34); // the lip to take hold of
+      g.strokeStyle = '#2b2622';
+      g.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        g.beginPath();
+        g.moveTo(tx + 6 + i * 5, s.y - 9);
+        g.lineTo(tx + 6 + i * 5, s.y + 9);
+        g.stroke();
       }
-      // a pulling arrow
-      const k = act?.step === s ? 1 : (clock * 1.1) % 1;
-      arrow(s.x + 34 + off, s.y, s.x + 34 + off + 14 + k * 14, s.y, act?.step === s ? 1 : Math.sin(k * Math.PI));
+      if (lit) {
+        g.strokeStyle = '#ffffff';
+        g.lineWidth = 2;
+        g.strokeRect(tx - 3, s.y - 19, 35, 38);
+      }
+      if (on && act?.step !== s) dragCue(s.x + 18, s.y, s.x + 18 + PRY_PX, s.y, lit); // grab the lip and pull
     }
     g.globalAlpha = 1;
   }
@@ -521,6 +610,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     }
 
     // the loading bar, drawn here so it keeps moving while the page is busy
+    if (!bar) return;
     const bx = (W - BAR_W) / 2;
     g.fillStyle = '#2a2622';
     g.fillRect(bx, BAR_Y, BAR_W, 2);

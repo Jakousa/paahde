@@ -6,6 +6,7 @@ import { WORLD_ID } from '../shared/world.ts';
 import { audio } from './audio';
 import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
 import { capture, toggleFullscreen, tools, ui } from './input';
+import { loading } from './loadingGame';
 
 const STATS_KEY = 'dadajam.stats';
 const AO_KEY = 'dadajam.ao';
@@ -41,6 +42,11 @@ const css = `
 #menu .foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
   opacity: 0.6; line-height: 1.5; word-break: break-all; }
 #menu .foot a { color: inherit; }
+#play { position: fixed; inset: 0; z-index: 31; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; background: rgba(12, 6, 2, 0.3); font: 12px var(--mono); user-select: none; -webkit-user-select: none; }
+#play button { padding: 8px 26px; font: 600 13px var(--mono); letter-spacing: 0.08em; color: #2a160a; background: #ffd9a0;
+  border: 0; border-radius: 5px; cursor: pointer; }
+#play button:hover { background: #ffe6bf; }
 `;
 
 
@@ -70,6 +76,7 @@ export class Menu {
 <button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">Copy invite link</button>
 <button class="ctl" style="margin-top:8px">Controls</button>
+<button class="mini" style="margin-top:8px">Play minigame</button>
 <div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">credits</a></div></div>
 <div class="controls"><h2>Controls</h2><button class="back">Back</button>
 <h3>Click a key, then press the new one</h3><div class="binds"></div><div class="note"></div>
@@ -130,6 +137,7 @@ export class Menu {
       } catch {}
     });
     this.bindControls();
+    this.el.querySelector('.mini')!.addEventListener('click', () => this.playMinigame());
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
     for (const input of [vol, music, aoEl, stats]) input.addEventListener('change', () => input.blur());
 
@@ -155,7 +163,7 @@ export class Menu {
     addEventListener('keydown', (e) => {
       if (e.code === 'Tab' && this.open) this.toggle(false);
       if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
-      if (document.getElementById('name')) return; // Esc there skips the name (src/name.ts)
+      if (document.getElementById('name') || document.getElementById('play')) return; // Esc there skips the name (src/name.ts) or leaves the minigame
       this.toggle(!this.open);
     }, true);
     document.addEventListener('pointerlockchange', () => {
@@ -167,6 +175,30 @@ export class Menu {
       }
       this.toggle(true);
     });
+  }
+
+  /** The loading screen's game (src/loadingGame.ts) over the world, which stays visible behind it; Leave or Esc comes back. */
+  private playMinigame() {
+    const o = document.createElement('div');
+    o.id = 'play';
+    o.innerHTML = '<button class="leave">Leave</button>';
+    document.body.append(o);
+    loading.start(o);
+    this.el.style.visibility = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      leave();
+    };
+    const leave = () => {
+      removeEventListener('keydown', onKey, true);
+      loading.stop();
+      o.remove();
+      this.el.style.visibility = '';
+    };
+    addEventListener('keydown', onKey, true);
+    o.querySelector('.leave')!.addEventListener('click', leave);
   }
 
   /** The rebinding rows: click a key, press the new one (Esc cancels, Backspace clears). */

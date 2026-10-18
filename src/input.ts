@@ -19,7 +19,7 @@ const keyboard = (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard
 // Only clicks on the game canvas capture the mouse (src/camera.ts) and the Esc menu's Resume; a click on
 // anything else must not go fullscreen.
 addEventListener('click', (e) => {
-  if (document.pointerLockElement || !keyboard || !(e.target instanceof HTMLCanvasElement)) return;
+  if (document.pointerLockElement || !keyboard || !(e.target instanceof HTMLCanvasElement) || e.target.dataset.nofs) return; // not the minigame's (src/loadingGame.ts)
   fullscreen();
 });
 function fullscreen() {
