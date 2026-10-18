@@ -1,3 +1,4 @@
+import { isBound, norm, slots, type Action } from './bindings';
 import { BACK, BIKE, CROUCH, FORWARD, JUMP, LEFT, RIGHT, SLIDE } from '../shared/sim.ts';
 
 const keys = new Set<string>();
@@ -37,12 +38,12 @@ addEventListener('keydown', (e) => {
   // A locked keyboard hands Esc to the page instead of releasing the mouse, so release it ourselves.
   if (e.code === 'Escape' && captured()) document.exitPointerLock();
   if (captured()) e.preventDefault();
-  keys.add(e.code);
-  if (e.code === 'KeyF' && !e.repeat) pickupPressed = true;
+  keys.add(norm(e.code));
+  if (isBound('interact', e.code) && !e.repeat) pickupPressed = true;
 });
 addEventListener('keyup', (e) => {
   if (captured()) e.preventDefault();
-  keys.delete(e.code);
+  keys.delete(norm(e.code));
 });
 addEventListener('blur', () => {
   keys.clear();
@@ -78,42 +79,48 @@ export function toggleFullscreen() {
 
 /** Is this key down right now (for the disassembly mode, which reads A / D itself while the player is frozen)? */
 export function keyHeld(code: string): boolean {
-  return keys.has(code);
+  return keys.has(norm(code));
+}
+
+/** Is any key bound to this action down right now? */
+export function actionHeld(a: Action): boolean {
+  const [x, y] = slots(a);
+  return keys.has(x) || keys.has(y);
 }
 
 /** Right mouse or X (always the same button). */
 function rightHeld(): boolean {
-  return mouseAim || keys.has('KeyX');
+  return mouseAim || actionHeld('aim');
 }
 
 export function readInput(): number {
   let input = 0;
   if (tools.frozen) return input;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) input |= FORWARD;
-  if (keys.has('KeyS') || keys.has('ArrowDown')) input |= BACK;
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) input |= LEFT;
-  if (keys.has('KeyD') || keys.has('ArrowRight')) input |= RIGHT;
-  if (keys.has('Space')) input |= JUMP;
+  if (actionHeld('forward')) input |= FORWARD;
+  if (actionHeld('back')) input |= BACK;
+  if (actionHeld('left')) input |= LEFT;
+  if (actionHeld('right')) input |= RIGHT;
+  if (actionHeld('jump')) input |= JUMP;
   // Shift slides, except with the rifle up: there it holds your breath (breathHeld).
-  if ((keys.has('ShiftLeft') || keys.has('ShiftRight')) && !aimDown()) input |= SLIDE;
-  // C is an alias: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
-  if (keys.has('ControlLeft') || keys.has('ControlRight') || keys.has('KeyC')) input |= CROUCH;
-  // Z (or 9): get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped), whatever's in hand
+  if (actionHeld('sprint') && !aimDown()) input |= SLIDE;
+  // Ctrl has C as an alias by default: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
+  if (actionHeld('crouch')) input |= CROUCH;
+  // The bike key (Z by default, or 9): get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped), whatever's in hand
   // (getting on puts it away, src/water.ts).
-  if (keys.has('KeyZ') || keys.has('Digit9')) input |= BIKE;
+  if (actionHeld('bike') || keys.has('Digit9')) input |= BIKE;
   // A repaired motorcycle in hand (src/water.ts): the use button gets on and off it instead.
-  if (tools.bike && (mouseUse || keys.has('KeyE'))) input |= BIKE;
+  if (tools.bike && (mouseUse || actionHeld('use'))) input |= BIKE;
   return input;
 }
 
 /** Use button (left mouse or E) held down: drinks while the canteen is held, fires a gun, throws scrap... */
 export function useHeld(): boolean {
-  return !tools.frozen && (mouseUse || keys.has('KeyE'));
+  return !tools.frozen && (mouseUse || actionHeld('use'));
 }
 
 /** Any use button held (left/right mouse, E, Q or X): raises the spyglass while it's out. */
 export function aimHeld(): boolean {
-  return mouseUse || rightHeld() || keys.has('KeyE') || keys.has('KeyQ');
+  return mouseUse || rightHeld() || actionHeld('use') || actionHeld('spyglass');
 }
 
 /** Aim button held (right mouse or X): the rifle up to the eye. */
@@ -123,12 +130,12 @@ export function aimDown(): boolean {
 
 /** Shift held (hold your breath while aiming the rifle). */
 export function breathHeld(): boolean {
-  return keys.has('ShiftLeft') || keys.has('ShiftRight');
+  return actionHeld('sprint');
 }
 
 /** F held down (pickup / fill). */
 export function interactHeld(): boolean {
-  return keys.has('KeyF');
+  return actionHeld('interact');
 }
 
 /** True once per press of the pickup key (F). */

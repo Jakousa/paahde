@@ -4,6 +4,7 @@
 // The game keeps running behind it: it's multiplayer, nothing pauses.
 import { WORLD_ID } from '../shared/world.ts';
 import { audio } from './audio';
+import { ACTIONS, bind, canBind, keyName, onChange, resetAll, slots } from './bindings';
 import { capture, toggleFullscreen, tools, ui } from './input';
 
 const STATS_KEY = 'dadajam.stats';
@@ -25,17 +26,24 @@ const css = `
 #menu input[type=range] { flex: 1; accent-color: #ffd9a0; }
 #menu input[type=checkbox] { accent-color: #ffd9a0; margin: 0; }
 #menu .val, #menu .aoval { width: 36px; text-align: right; opacity: 0.8; }
+#menu .panel { max-height: calc(100vh - 32px); overflow-y: auto; }
 #menu .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; opacity: 0.85; }
+#menu .binds { display: grid; grid-template-columns: 1fr 64px 64px; gap: 4px 6px; align-items: center; }
+#menu .binds button { padding: 3px 0; font: 600 11px var(--mono); letter-spacing: 0; background: rgba(255, 217, 160, 0.14); color: #ffd9a0; }
+#menu .binds button:hover { background: rgba(255, 217, 160, 0.28); }
+#menu .binds button.listening { background: #ffd9a0; color: #2a160a; }
+#menu .binds .note { grid-column: 1 / -1; min-height: 14px; opacity: 0.6; font-size: 11px; }
+#menu button.reset { margin-top: 8px; background: transparent; color: #ffd9a0; box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.3); }
 #menu kbd { font: 600 11px var(--mono); color: #ffd9a0; }
 #menu .foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
   opacity: 0.6; line-height: 1.5; word-break: break-all; }
 #menu .foot a { color: inherit; }
 `;
 
+// Not rebindable (src/bindings.ts).
 const KEYS: [string, string][] = [
-  ['WASD', 'move'], ['Space', 'jump'], ['Shift', 'sprint'], ['Ctrl / C', 'slide'],
-  ['LMB / E', 'use item · throw scrap'], ['RMB', 'aim'], ['F', 'pick up · interact'],
-  ['1–4', 'hotbar'], ['Z', 'motorcycle on · off'], ['Tab', 'inventory'], ['T', 'third person'], ['Enter', 'chat'], ['Esc', 'this menu'],
+  ['LMB', 'use item · throw scrap'], ['RMB', 'aim'], ['1–4', 'hotbar'], ['9', 'motorcycle on · off'], ['Alt', 'look around'],
+  ['Enter', 'chat'], ['Esc', 'this menu'],
 ];
 
 export class Menu {
@@ -63,7 +71,8 @@ export class Menu {
 <label class="row"><span>Show stats</span><input class="stats" type="checkbox"></label>
 <button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">Copy invite link</button>
-<h3>Controls</h3><div class="keys">${KEYS.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('')}</div>
+<h3>Controls</h3><div class="binds"></div><button class="reset">Reset controls</button>
+<h3>Fixed</h3><div class="keys">${KEYS.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('')}</div>
 <div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">credits</a></div></div>`;
     document.body.append(this.el);
     this.footEl = this.el.querySelector('.info')!;
@@ -120,6 +129,7 @@ export class Menu {
         localStorage.setItem(STATS_KEY, this.stats ? '1' : '0');
       } catch {}
     });
+    this.bindControls();
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
     for (const input of [vol, music, aoEl, stats]) input.addEventListener('change', () => input.blur());
 
@@ -156,6 +166,73 @@ export class Menu {
         return;
       }
       this.toggle(true);
+    });
+  }
+
+  /** The rebinding rows: click a key, press the new one (Esc cancels, Backspace clears). */
+  private bindControls() {
+    const grid = this.el.querySelector<HTMLElement>('.binds')!;
+    grid.innerHTML = ACTIONS.map((a) => `<span>${a.label}</span><button data-a="${a.id}" data-s="0"></button><button data-a="${a.id}" data-s="1"></button>`).join('')
+      + '<div class="note"></div>';
+    const note = grid.querySelector<HTMLElement>('.note')!;
+    const buttons = [...grid.querySelectorAll<HTMLButtonElement>('button')];
+    let listening: HTMLButtonElement | undefined;
+    const show = () => {
+      for (const b of buttons) {
+        const s = slots(b.dataset.a as never);
+        b.textContent = b === listening ? '…' : keyName(s[Number(b.dataset.s)]);
+        b.classList.toggle('listening', b === listening);
+      }
+    };
+    onChange(show);
+    show();
+    // Capture phase on window and registered first: while listening, no other handler sees the key.
+    addEventListener('keydown', (e) => {
+      if (!listening) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.repeat) return;
+      // Modifier keys bind on release, so a chord isn't taken as the modifier alone.
+      if (/^(Shift|Control|Alt)/.test(e.code)) {
+        pendingMod = e.code;
+        return;
+      }
+      pendingMod = '';
+      finish(e.code);
+    }, true);
+    let pendingMod = '';
+    addEventListener('keyup', (e) => {
+      if (!listening || e.code !== pendingMod) return;
+      e.stopImmediatePropagation();
+      pendingMod = '';
+      finish(e.code);
+    }, true);
+    const finish = (code: string) => {
+      const b = listening!;
+      listening = undefined;
+      note.textContent = '';
+      if (code === 'Escape') return show();
+      if (code === 'Backspace' || code === 'Delete') bind(b.dataset.a as never, Number(b.dataset.s) as 0 | 1, '');
+      else if (!canBind(code)) note.textContent = `${keyName(code)} is reserved`;
+      else {
+        const taken = bind(b.dataset.a as never, Number(b.dataset.s) as 0 | 1, code);
+        if (taken) note.textContent = `${keyName(code)} taken from ${taken}`;
+      }
+      show();
+    };
+    grid.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button');
+      if (!b) return;
+      b.blur();
+      listening = listening === b ? undefined : b;
+      note.textContent = listening ? 'press a key · Esc cancels · Backspace clears' : '';
+      show();
+    });
+    this.el.querySelector('.reset')!.addEventListener('click', (e) => {
+      listening = undefined;
+      note.textContent = '';
+      resetAll();
+      (e.currentTarget as HTMLElement).blur();
     });
   }
 

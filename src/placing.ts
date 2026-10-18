@@ -5,6 +5,7 @@
 import { isPlaceable, placeAim, placed, placedTarget, placeError, type Placed } from '../shared/placed.ts';
 import { pitchFromQ } from '../shared/dig.ts';
 import { yawFromQ } from '../shared/sim.ts';
+import { isBound } from './bindings';
 import { ui, useHeld } from './input';
 import { itemLabel } from './inventory';
 import type { Net } from './net';
@@ -22,8 +23,8 @@ export class Placer {
     this.view = view;
     addEventListener('keydown', (e) => {
       if (ui.inventoryOpen || e.repeat || e.ctrlKey || e.metaKey) return;
-      if (e.code === 'KeyR') this.rot ^= 1;
-      if (e.code === 'KeyG') this.pickPressed = true;
+      if (isBound('rotate', e.code)) this.rot ^= 1;
+      if (isBound('pickPlaced', e.code)) this.pickPressed = true;
     });
   }
 

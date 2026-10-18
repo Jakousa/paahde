@@ -15,6 +15,7 @@ import { PISTOL, RIFLE } from '../shared/rifle.ts';
 import { JAMMER } from '../shared/jammer.ts';
 import { receiverBoss, type BossKind } from '../shared/bosses.ts';
 import { THROWABLE } from '../shared/throw.ts';
+import { isBound } from './bindings';
 import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
@@ -199,11 +200,12 @@ export class Survival {
     document.body.append(this.root, this.heat, this.env, this.prompt, this.toastEl, this.death, this.fade);
 
     addEventListener('keydown', (e) => {
-      if (e.repeat || !/^(Digit[1-9]|KeyZ)$/.test(e.code)) return;
-      // Z or 9 gets on the bike (src/input.ts): put away what's in hand.
+      const bikeKey = isBound('bike', e.code);
+      if (e.repeat || !(bikeKey || /^Digit[1-9]$/.test(e.code))) return;
+      // The bike key or 9 gets on the bike (src/input.ts): put away what's in hand.
       // (Not a motorcycle in hand: that's the one you'd ride.)
-      if ((e.code === 'KeyZ' || e.code === 'Digit9') && !net.me.riding && net.me.bike > 0 && !tools.frozen && !tools.bike) return this.select(-1);
-      if (e.code === 'KeyZ') return;
+      if ((bikeKey || e.code === 'Digit9') && !net.me.riding && net.me.bike > 0 && !tools.frozen && !tools.bike) return this.select(-1);
+      if (bikeKey) return;
       const n = Number(e.code.slice(5)) - 1;
       if (n >= HOTBAR) return;
       this.select(this.selected === n ? -1 : n);

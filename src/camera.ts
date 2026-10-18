@@ -8,6 +8,7 @@
 // Holding Alt (Option) looks around freely: the mouse turns only the view (freeYaw / freePitch on top of yaw / pitch),
 // so you keep running or sliding the way you were going; letting go swings the view back.
 import * as THREE from 'three/webgpu';
+import { isBound } from './bindings';
 import { heightAt } from '../shared/terrain.ts';
 import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, slopeAt } from '../shared/sim.ts';
 import { CROUCH_CYCLE } from './models/crouchGait';
@@ -89,7 +90,7 @@ export class FirstPersonCamera {
     } catch {}
     document.body.classList.toggle('third-person', this.thirdPerson);
     addEventListener('keydown', (e) => {
-      if (e.code !== 'KeyT' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!isBound('thirdPerson', e.code) ||e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       this.thirdPerson = !this.thirdPerson;
       document.body.classList.toggle('third-person', this.thirdPerson);

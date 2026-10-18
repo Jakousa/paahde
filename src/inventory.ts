@@ -23,6 +23,7 @@ import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { isCorpseBox } from '../shared/corpse.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { isPlaceable } from '../shared/placed.ts';
+import { isBound } from './bindings';
 import { takePickup, ui } from './input';
 import type { Net } from './net';
 import { uiSound } from './uiSound';
@@ -269,16 +270,16 @@ export class InventoryHud {
     };
 
     addEventListener('keydown', (e) => {
-      if (e.code === 'Tab') {
+      if (isBound('inventory', e.code)) {
         e.preventDefault(); // never the browser's focus cycling
         if (!e.repeat) this.toggle(!ui.inventoryOpen);
       } else if (e.code === 'Escape' && ui.inventoryOpen) this.toggle(false);
-      else if (e.code === 'KeyF' && !e.repeat && ui.inventoryOpen) {
+      else if (isBound('interact', e.code) && !e.repeat && ui.inventoryOpen) {
         // F closes it too (the workbench opens with F); the same press doesn't open it again.
         takePickup();
         this.toggle(false);
       }
-      else if (e.code === 'KeyR' && !e.repeat && this.drag?.moved) this.turn();
+      else if (isBound('rotate', e.code) &&!e.repeat && this.drag?.moved) this.turn();
     });
     // A click on the dimmed backdrop closes it, back into the game.
     this.overlay.addEventListener('pointerdown', (e) => {

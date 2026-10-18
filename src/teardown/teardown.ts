@@ -16,7 +16,8 @@
 import * as THREE from 'three/webgpu';
 import { BACK, FORWARD, LEFT, RIGHT } from '../../shared/sim.ts';
 import { type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
-import { capture, keyHeld, takePickup, tools, ui } from '../input.ts';
+import { capture, actionHeld, takePickup, tools, ui } from '../input.ts';
+import { isBound, type Action } from '../bindings.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi } from './ui.ts';
@@ -205,7 +206,7 @@ export class TeardownView {
     addEventListener('keydown', (e) => {
       if (this.phase === 'idle' || e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement) return;
       // F leaves (as it came in), straight back into the game; Esc too, leaving the mouse free.
-      if (e.code === 'KeyF' && !e.repeat) {
+      if (isBound('interact', e.code) && !e.repeat) {
         takePickup(); // the same press doesn't start it again
         this.end();
         capture(this.canvas);
@@ -217,7 +218,7 @@ export class TeardownView {
         return;
       }
       if (this.phase !== 'work' || !this.site) return;
-      if (e.code === 'KeyR') {
+      if (isBound('rotate', e.code)) {
         if (this.site.movable) {
           this.resetRotation();
           this.zoom = 1;
@@ -330,10 +331,10 @@ export class TeardownView {
       // At the table the keys turn the machine (update()); you stay where you are.
       if (site.movable) return 0;
       // W / S step closer and further, A / D around (the arrow keys too).
-      const left = keyHeld('KeyA') || keyHeld('ArrowLeft');
-      const right = keyHeld('KeyD') || keyHeld('ArrowRight');
-      const fwd = keyHeld('KeyW') || keyHeld('ArrowUp');
-      const back = keyHeld('KeyS') || keyHeld('ArrowDown');
+      const left = actionHeld('left');
+      const right = actionHeld('right');
+      const fwd = actionHeld('forward');
+      const back = actionHeld('back');
       let bits = 0;
       if (left) bits |= LEFT;
       if (right) bits |= RIGHT;
@@ -868,9 +869,9 @@ export class TeardownView {
 
     // On the table the keys turn the machine.
     if (working && site.movable) {
-      const h = (a: string, b: string) => (keyHeld(a) || keyHeld(b) ? 1 : 0);
-      const yaw = h('KeyD', 'ArrowRight') - h('KeyA', 'ArrowLeft');
-      const pitch = h('KeyS', 'ArrowDown') - h('KeyW', 'ArrowUp');
+      const h = (a: Action) => (actionHeld(a) ? 1 : 0);
+      const yaw = h('right') - h('left');
+      const pitch = h('back') - h('forward');
       if (yaw || pitch) this.spinJunk(yaw * KEY_TURN * dt, pitch * KEY_TURN * dt);
     }
 
