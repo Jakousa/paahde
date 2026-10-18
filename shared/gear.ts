@@ -155,7 +155,7 @@ export const spyglassZoom = (q: number) => by(q, 4, 12);
 /** Sips in a full water bottle. */
 export const canteenSips = (q: number) => Math.round(by(q, 5, 10));
 /** Backpack rows of bag grid (BAG_COLS wide, past the hotbar). */
-export const backpackRows = (q: number) => Math.round(by(q, 2, BAG_ROWS));
+export const backpackRows = (q: number) => Math.round(by(q, 3, BAG_ROWS));
 /** Storm detector: warns this long before a storm reaches you (s). */
 export const stormWarnS = (q: number) => by(q, 6, 20);
 /** Wrist computer: other players show on the locator this far away (m). The base always does. */

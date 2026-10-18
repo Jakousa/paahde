@@ -5,7 +5,7 @@
 // shared/temperature.ts; only with the wrist computer equipped), a heatstroke vignette and swimming view (post.ts) past 60%, and the
 // death screen.
 //
-// The server owns the numbers; this only plays the actions and asks. Keys 1–4 take out what's in that
+// The server owns the numbers; this only plays the actions and asks. Keys 1–5 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // and F at a pump (the base's, some shelters') refills it.
 import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';

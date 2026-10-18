@@ -7,10 +7,10 @@
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'sprint' | 'crouch' | 'use' | 'aim' | 'spyglass'
   | 'interact' | 'bike' | 'inventory' | 'thirdPerson' | 'rotate' | 'pickPlaced' | 'freeLook' | 'chat' | 'debug'
-  | 'slot1' | 'slot2' | 'slot3' | 'slot4';
+  | 'slot1' | 'slot2' | 'slot3' | 'slot4' | 'slot5';
 
-/** The hotbar's slots in order (shared/items.ts HOTBAR = 4). */
-export const HOTBAR_ACTIONS: Action[] = ['slot1', 'slot2', 'slot3', 'slot4'];
+/** The hotbar's slots in order (shared/items.ts HOTBAR = 5). */
+export const HOTBAR_ACTIONS: Action[] = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5'];
 
 type Slots = [string, string];
 
@@ -32,6 +32,7 @@ export const ACTIONS: { id: Action; label: string; keys: Slots }[] = [
   { id: 'slot2', label: 'hotbar 2', keys: ['Digit2', ''] },
   { id: 'slot3', label: 'hotbar 3', keys: ['Digit3', ''] },
   { id: 'slot4', label: 'hotbar 4', keys: ['Digit4', ''] },
+  { id: 'slot5', label: 'hotbar 5', keys: ['Digit5', ''] },
   { id: 'inventory', label: 'inventory', keys: ['Tab', ''] },
   { id: 'thirdPerson', label: 'third person', keys: ['KeyT', ''] },
   { id: 'freeLook', label: 'look around', keys: ['AltLeft', ''] },

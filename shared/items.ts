@@ -108,13 +108,13 @@ export type Item = { id: number; kind: string; n: number; parts?: (string | null
 export type Slots = (Item | null)[];
 
 /**
- * The player's own bag: HOTBAR free slots of hotbar (keys 1–4, src/water.ts), then a BAG_COLS wide grid of which
+ * The player's own bag: HOTBAR free slots of hotbar (keys 1–5, src/water.ts), then a BAG_COLS wide grid of which
  * the equipped backpack opens some rows (shared/gear.ts bagShape), up to BAG_ROWS. The slots array is always
  * at least BAG_SLOTS long; items past it (or in rows the backpack doesn't open) are stranded: only moved out.
  */
-export const HOTBAR = 4;
+export const HOTBAR = 5;
 export const BAG_COLS = 6;
-export const BAG_ROWS = 5;
+export const BAG_ROWS = 6;
 export const BAG_SLOTS = HOTBAR + BAG_COLS * BAG_ROWS;
 /** The motorcycle's cargo grid. */
 export const BIKE_COLS = 6;

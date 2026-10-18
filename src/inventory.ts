@@ -1,6 +1,6 @@
 // Items HUD: "[F] Pick up …" under the crosshair when looking at a piece in reach, a short "+1 …" toast
 // whenever a pickup lands in the bag, and the Tab inventory: an overlay with your equipment (back, wrist,
-// belt, vehicle: shared/gear.ts), the bag (its first row is the hotbar, keys 1–4; below it a grid with as many
+// belt, vehicle: shared/gear.ts), the bag (its first row is the hotbar, keys 1–5; below it a grid with as many
 // rows as the backpack you wear opens) and, next to it, every box in reach right now (the workbench in the base,
 // chests, the motorcycle while riding; shared/storage.ts), appearing and disappearing as you move. Grids are
 // Tarkov-like: every item takes w × h cells by its size (shared/items.ts). Drag an item to move it (the cells it
@@ -385,7 +385,7 @@ export class InventoryHud {
     let html = `<div class="box"><div class="head"><h3>${boxLabel('equip')}</h3></div>`
       + `<div class="grid" style="grid-template-columns: repeat(${EQUIP_SLOTS.length}, 54px)">${this.slotsHtml('equip', equip, 0, EQUIP_SLOTS.length)}</div>`
       + `<div class="sep"></div><div class="head"><h3>${boxLabel('bag')}</h3><button data-sort="bag" title="Pack it tight, biggest first (the hotbar stays)">Sort</button></div>`
-      + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('bag', bag, 0, HOTBAR)}</div><div class="sep"></div>`;
+      + `<div class="grid" style="grid-template-columns: repeat(5, 54px)">${this.slotsHtml('bag', bag, 0, HOTBAR)}</div><div class="sep"></div>`;
     if (!shape.rows) html += `<div class="none">No backpack</div>`;
     html += this.gridHtml('bag', bag, shape) + '</div>';
     for (const box of this.storages) {

@@ -1,4 +1,4 @@
-// Putting things down and picking them up (shared/placed.ts). Select a placeable item in the hotbar (1–4) and
+// Putting things down and picking them up (shared/placed.ts). Select a placeable item in the hotbar (1–5) and
 // a see-through preview follows the crosshair over the bunker floor: green where it fits, red where it
 // doesn't; R turns it, left mouse / E puts it down (the server checks it again). Looking at a placed thing,
 // G picks it back up into the bag. A UV lamp aimed at a bed snaps over it (and a bed under a lone lamp).
