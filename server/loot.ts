@@ -175,7 +175,7 @@ export class LootServer {
   /**
    * A player (browser id `who`) takes loot `id`: it must be on the surface and in reach. `give` puts it in their bag
    * (false: no room). Returns the item's kind, 'full' if the bag was full, 'had' if it's the home bike and they've
-   * had one (one each, so it can't be farmed for motors), or null if refused.
+   * had one (one each, so it can't be farmed for motors; another lies there at once), or null if refused.
    */
   take(s: PlayerState, who: string, id: unknown, give: (l: Loot) => boolean): string | null {
     const l = typeof id === 'number' ? this.loot.get(id) : undefined;

@@ -184,7 +184,7 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
 
 /** One broken motorcycle always lies on the sand in front of the base door (server/loot.ts homeBikeSpot), so a bike is
  *  in sight from the first step out: it has these slots fitted (scrap tier) and the rest are parts the scrap fields'
- *  starter machines give (battery: beacon, bearing: winch). Taken, another lies there FIND_RESPAWN_MS later. */
+ *  starter machines give (battery: beacon, bearing: winch). Taken, another lies there at once. */
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
 /** Loose rare parts (any part, anti-matter too) lying at guardian ground at once, and their tiers. */
