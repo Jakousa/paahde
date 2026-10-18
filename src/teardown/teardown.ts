@@ -675,7 +675,7 @@ export class TeardownView {
     let best = -1;
     // within reach of an end, but never so far that a short wire's other end counts too
     const q = ends.map((end) => this.screen(end.lug));
-    const span = q[0] && q[1] ? Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y) : SHAKE_REACH;
+    const span = q[0] && q[1] ? Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y) : SHAKE_REACH / 0.45;
     let bd = Math.max(22, Math.min(SHAKE_REACH, span * 0.45));
     ends.forEach((end, i) => {
       if (end.done) return;

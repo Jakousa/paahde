@@ -41,6 +41,8 @@ const SLIDE_FROM = 420;
 const SWINGS = 5;
 const SWING_PX = 9;
 const SHAKE_REACH = 50;
+/** A wire shorter than this (canvas px) is one pull. */
+const SHORT_WIRE = 50;
 const PRY_PX = 64;
 /** Where a component's terminals are from its centre, along its axis. */
 const TERM = 27;
@@ -87,7 +89,8 @@ interface Wire {
   pts: P[];
   color: string;
   cut: Step;
-  /** Its two ends (first and last point), each shaken loose on its own. */
+  /** Short: one pull takes the whole cable, so one shake point (in the middle); else its two ends, each shaken loose. */
+  short: boolean;
   ends: { swings: number; done: boolean }[];
 }
 interface Slot {
@@ -146,6 +149,25 @@ function segDist(px: number, py: number, a: P, b: P): number {
   const vx = b[0] - a[0], vy = b[1] - a[1];
   const t = Math.max(0, Math.min(1, ((px - a[0]) * vx + (py - a[1]) * vy) / (vx * vx + vy * vy || 1)));
   return Math.hypot(px - a[0] - vx * t, py - a[1] - vy * t);
+}
+
+/** Where a wire is shaken: its two ends, or for a short one the middle; with the angle across the wire there. */
+function wireSpots(w: Wire): { x: number; y: number; across: number }[] {
+  const pts = w.pts;
+  const across = (a: P, b: P) => Math.atan2(b[1] - a[1], b[0] - a[0]) + Math.PI / 2;
+  if (w.short) {
+    let at = 0, best = Infinity;
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const d = segDist(w.cut.x, w.cut.y, pts[k], pts[k + 1]);
+      if (d < best) (best = d), (at = k);
+    }
+    return [{ x: w.cut.x, y: w.cut.y, across: across(pts[at], pts[at + 1]) }];
+  }
+  const n = pts.length - 1;
+  return [
+    { x: pts[0][0], y: pts[0][1], across: across(pts[0], pts[1]) },
+    { x: pts[n][0], y: pts[n][1], across: across(pts[n - 1], pts[n]) },
+  ];
 }
 
 /** A right-angled run from a to b: straight if they line up, else across, over and across (or the other way round). */
@@ -223,7 +245,10 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
     const p = pts[bi], q = pts[bi + 1];
     const horiz = Math.abs(q[0] - p[0]) >= Math.abs(q[1] - p[1]);
     const s = step('wire', p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, { under, dx: horiz ? 0 : 1, dy: horiz ? -1 : 0 });
-    const w: Wire = { pts, color: WIRE_COLORS[Math.floor(rnd() * WIRE_COLORS.length)], cut: s, ends: [{ swings: 0, done: false }, { swings: 0, done: false }] };
+    let len = 0;
+    for (let k = 0; k + 1 < pts.length; k++) len += Math.hypot(pts[k + 1][0] - pts[k][0], pts[k + 1][1] - pts[k][1]);
+    const short = len < SHORT_WIRE;
+    const w: Wire = { pts, color: WIRE_COLORS[Math.floor(rnd() * WIRE_COLORS.length)], cut: s, short, ends: short ? [{ swings: 0, done: false }] : [{ swings: 0, done: false }, { swings: 0, done: false }] };
     s.wire = w;
     M.wires.push(w);
     return s;
@@ -562,11 +587,11 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     } else if (s.kind === 'wire') {
       // Shake the end the pointer is at: strokes it keeps turning back from.
       const w = s.wire!;
-      const ends: P[] = [w.pts[0], w.pts[w.pts.length - 1]];
-      const d = ends.map((p, k) => (w.ends[k].done ? Infinity : Math.hypot(lx - p[0], ly - p[1])));
-      const k = d[0] <= d[1] ? 0 : 1;
-      // close to an end: within reach, but never so far that a short wire's other end counts too
-      const reach = Math.max(14, Math.min(SHAKE_REACH, Math.hypot(ends[1][0] - ends[0][0], ends[1][1] - ends[0][1]) * 0.45));
+      const spots = wireSpots(w);
+      const d = spots.map((p, k) => (w.ends[k].done ? Infinity : Math.hypot(lx - p.x, ly - p.y)));
+      const k = d.length > 1 && d[1] < d[0] ? 1 : 0;
+      // close to an end: within reach, but never so far that a wire's other end counts too
+      const reach = spots.length > 1 ? Math.max(14, Math.min(SHAKE_REACH, Math.hypot(spots[1].x - spots[0].x, spots[1].y - spots[0].y) * 0.45)) : SHAKE_REACH;
       const mx = lx - act.lx, my = ly - act.ly;
       act.lx = lx;
       act.ly = ly;
@@ -913,8 +938,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       }
     } else if (s.kind === 'wire') {
       const w = s.wire!;
-      const at: P[] = [w.pts[0], w.pts[w.pts.length - 1]];
-      at.forEach(([ex, ey], k) => {
+      wireSpots(w).forEach(({ x: ex, y: ey, across }, k) => {
         const end = w.ends[k];
         if (end.done) return;
         if (act?.step === s) {
@@ -923,8 +947,6 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
           return;
         }
         // each end of the wire: a ring that jerks to and fro across the wire between two arrowheads
-        const seg = k === 0 ? [w.pts[0], w.pts[1]] : [w.pts[w.pts.length - 2], w.pts[w.pts.length - 1]];
-        const across = Math.atan2(seg[1][1] - seg[0][1], seg[1][0] - seg[0][0]) + Math.PI / 2;
         const sh = Math.sin(clock * 15) * 5;
         g.save();
         g.translate(ex, ey);
@@ -998,7 +1020,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     const lit = hover === w.cut || act?.step === w.cut;
     const last = w.pts.length - 1;
     // An end that has come loose lifts off its terminal; a wire that is loose at both is gone.
-    const pts = w.pts.map((p, k): P => ((k === 0 && w.ends[0].done) || (k === last && w.ends[1].done) ? [p[0], p[1] - 5] : p));
+    const pts = w.pts.map((p, k): P => (!w.short && ((k === 0 && w.ends[0].done) || (k === last && w.ends[1].done)) ? [p[0], p[1] - 5] : p));
     g.lineCap = 'round';
     g.lineJoin = 'round';
     if (!w.cut.done) {
@@ -1023,7 +1045,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     [w.pts[0], w.pts[last]].forEach((p, k) => {
       g.beginPath();
       g.arc(p[0], p[1], 3.2, 0, 7);
-      if (w.cut.done || w.ends[k].done) {
+      if (w.cut.done || (!w.short && w.ends[k].done)) {
         g.strokeStyle = '#d9b66a';
         g.lineWidth = 1.5;
         g.stroke();

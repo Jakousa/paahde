@@ -44,9 +44,13 @@ export interface Step {
   /** Wires: the two ends, each shaken loose on its own (src/teardown/teardown.ts). */
   ends?: WireEnd[];
 }
+/** A wire shorter than this (m) is one pull: a single shake rips the whole cable out. */
+export const SHORT_WIRE = 0.55;
+
 /** One end of a wire: its lug, how many swings of the shake it has had, and whether it has come loose. */
 export interface WireEnd {
-  lug: THREE.Mesh;
+  /** The lug at that end (a short wire has one shake point, in its middle: an empty anchor there). */
+  lug: THREE.Object3D;
   base: THREE.Vector3;
   swings: number;
   done: boolean;
@@ -279,8 +283,8 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
     // Each end of the wire that is still holding: the marker faces the camera, so the shake reads left-right on screen.
     m.getWorldQuaternion(_wq).invert().multiply(cam.getWorldQuaternion(_cq));
     (u.ends as THREE.Group[]).forEach((eg, i) => {
-      const end = step.ends![i];
-      eg.visible = !end.done;
+      const end = step.ends![i]; // a short wire has just the one
+      eg.visible = !!end && !end.done;
       eg.quaternion.copy(_wq);
       eg.scale.setScalar(lit ? 1.25 : 1 + 0.08 * Math.sin(t * 6));
       (eg.userData.ring as THREE.Group).position.x = Math.sin(t * 15) * 0.07;
@@ -477,6 +481,7 @@ export class Kit {
   wire(label: string, pts: V[], key: MatKey = 'red', after: Step[] = [], r = 0.035): Step {
     const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p)));
     const mid = curve.getPoint(0.5);
+    const short = curve.getLength() < SHORT_WIRE;
     const rel = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p).sub(mid)));
     const g = new THREE.Group();
     g.position.copy(mid);
@@ -487,7 +492,13 @@ export class Kit {
       const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.025, 10), this.mats.copper);
       lug.position.copy(rel.getPoint(t));
       this.add(lug, g);
-      ends.push({ lug, base: lug.position.clone(), swings: 0, done: false });
+      if (!short) ends.push({ lug, base: lug.position.clone(), swings: 0, done: false });
+    }
+    if (short) {
+      // one shake, in the middle, takes the whole cable
+      const anchor = new THREE.Object3D();
+      g.add(anchor);
+      ends.push({ lug: anchor, base: anchor.position.clone(), swings: 0, done: false });
     }
     const spin = new THREE.Group();
     g.add(spin);
@@ -495,7 +506,7 @@ export class Kit {
     step.ends = ends;
     // The markers sit on the lugs themselves, wherever the wire runs.
     step.marker.position.set(0, 0, 0);
-    (step.marker.userData.ends as THREE.Group[]).forEach((eg, i) => eg.position.copy(ends[i].base));
+    (step.marker.userData.ends as THREE.Group[]).forEach((eg, i) => eg.position.copy((ends[i] ?? ends[0]).base));
     return step;
   }
 
