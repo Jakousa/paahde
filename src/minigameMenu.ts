@@ -66,6 +66,8 @@ const css = `
 @keyframes tipSpin { to { transform: rotate(360deg); } }
 .tipSlide { animation: tipSlide 1.2s ease-in-out infinite; }
 @keyframes tipSlide { 0% { transform: translateX(0); opacity: 0; } 15% { opacity: 1; } 70%, 100% { transform: translateX(11px); opacity: 1; } 90% { opacity: 0.2; } }
+.tipShake { animation: tipShake 0.35s ease-in-out infinite; }
+@keyframes tipShake { 0%, 100% { transform: translateX(-5px); } 50% { transform: translateX(5px); } }
 .tipGlow { animation: tipGlow 1.2s ease-in-out infinite; }
 @keyframes tipGlow { 50% { transform: scale(1.3); opacity: 0.6; } }
 `;
@@ -74,7 +76,7 @@ const css = `
 const TIP_ICONS: Record<Hint, string> = {
   screw: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="5" fill="#8a8f93"/><g fill="#ffb050"><circle class="tipDot" cx="16" cy="5" r="2.6"/><circle class="tipDot" style="animation-delay:.2s" cx="25.5" cy="21.5" r="2.6"/><circle class="tipDot" style="animation-delay:.4s" cx="6.5" cy="21.5" r="2.6"/></g></svg>`,
   bolt: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="5" fill="#8a8f93"/><g class="tipSpin" style="transform-box:view-box;transform-origin:16px 16px"><path d="M16 4a12 12 0 1 1-12 12" fill="none" stroke="#ffb050" stroke-width="2.6" stroke-linecap="round"/><path d="M4 6.5l5.5 8.5h-11z" fill="#ffb050"/></g></svg>`,
-  wire: `<svg viewBox="0 0 32 32"><path d="M8 3v26" stroke="#c47a3a" stroke-width="4" stroke-linecap="round"/><g class="tipSlide"><circle cx="8" cy="16" r="5" fill="rgba(28,15,7,.6)" stroke="#ffb050" stroke-width="2.2"/><circle cx="8" cy="16" r="1.8" fill="#ffb050"/></g><path d="M25 12l4 4-4 4" fill="none" stroke="#ffb050" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  wire: `<svg viewBox="0 0 32 32"><path d="M3 16h26" stroke="#c47a3a" stroke-width="4" stroke-linecap="round"/><path d="M4 9l-3 3 3 3M28 9l3 3-3 3" transform="translate(0 4)" fill="none" stroke="#ffb050" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><g class="tipShake"><circle cx="16" cy="16" r="5.5" fill="rgba(28,15,7,.6)" stroke="#ffb050" stroke-width="2.2"/><circle cx="16" cy="16" r="1.8" fill="#ffb050"/></g></svg>`,
   pry: `<svg viewBox="0 0 32 32"><rect x="3" y="9" width="9" height="14" rx="2" fill="#8a8f93" stroke="#3b2616" stroke-width="1.5"/><path d="M6 12v8M9 12v8" stroke="#2b2622" stroke-width="1.6"/><g class="tipSlide"><circle cx="8" cy="16" r="5" fill="rgba(28,15,7,.6)" stroke="#ffb050" stroke-width="2.2"/><circle cx="8" cy="16" r="1.8" fill="#ffb050"/></g><path d="M25 12l4 4-4 4" fill="none" stroke="#ffb050" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   part: `<svg viewBox="0 0 32 32"><defs><radialGradient id="tg"><stop offset="0" stop-color="#ff9a3c" stop-opacity=".8"/><stop offset="1" stop-color="#ff9a3c" stop-opacity="0"/></radialGradient></defs><circle class="tipGlow" cx="16" cy="16" r="15" fill="url(#tg)"/><circle cx="16" cy="16" r="7" fill="#ff9a3c"/><circle cx="16" cy="16" r="2.6" fill="#1c0f07"/></svg>`,
 };

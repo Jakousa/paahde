@@ -299,7 +299,7 @@ const en = {
     hint: {
       screw: 'Click it, again and again',
       bolt: 'Spin it: circle the pointer',
-      wire: 'Press on the wire and drag',
+      wire: 'Shake it loose at both ends',
       pry: 'Grab the tab and pull',
       part: 'Take the glowing part',
     },
@@ -316,7 +316,7 @@ const en = {
     otherSide: (n: number) => `${n} on another side`,
     after: (steps: string) => `after ${steps}`,
     circle: 'circle',
-    swipe: 'swipe',
+    shake: 'shake',
     pry: 'pry',
     players: (have: number, need: number) => `${have}/${need} players`,
   },

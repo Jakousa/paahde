@@ -1,7 +1,7 @@
 // Disassembly mode. At a machine site you press F: the character walks up to a set distance, the normal controls
 // give way to the disassembly ones, and the machine in front of you comes apart right there in the world.
-//   Left mouse   on a step: work it (click screws and clips, circle the pointer around big bolts, swipe across
-//                wires to cut them, drag pry tabs away, hold a lifting eye: heavy things need two players holding
+//   Left mouse   on a step: work it (click screws and clips, circle the pointer around big bolts, shake wires
+//                loose at both ends, drag pry tabs away, hold a lifting eye: heavy things need two players holding
 //                together). On a freed part: take it (it goes to the bag). Anywhere else: drag to look around.
 //   Middle mouse drag: look around.
 //   Right mouse drag: turn the machine over (a small one on the table; trackball centred on it).
@@ -99,8 +99,12 @@ const MIN_DIST = 1.3;
 const LEAVE_MARGIN = 3.5;
 /** Radians per pixel of a look-around drag. */
 const LOOK_SENS = 0.003;
-/** Pointer travel for one decisive wire cut / pry, in pixels. */
-const CUT_PX = 90;
+/** A wire comes loose at an end after this many swings of the shake there (a swing: a stroke of at least SWING_PX that
+ *  the pointer then turns back from), the pointer within SHAKE_REACH px of that end on screen. */
+const SWINGS = 6;
+const SWING_PX = 16;
+const SHAKE_REACH = 130;
+/** Pointer travel for one decisive pry, in pixels. */
 const PRY_PX = 110;
 /** Pointer travel (px) before a left press on the machine becomes a turn instead of a click. */
 const DRAG_PX = 4;
@@ -144,7 +148,7 @@ export class TeardownView {
   private lit = new Set<Step>();
 
   /** Left-button interaction with a step. */
-  private act: { step: Step; x0: number; y0: number; angle: number; cx: number; cy: number; dist: number } | null = null;
+  private act: { step: Step; x0: number; y0: number; angle: number; cx: number; cy: number; dist: number; end: number; sx: number; sy: number; lastMove: number } | null = null;
   private drag:
     | { kind: 'rotate'; x: number; y: number; moved: boolean }
     | { kind: 'look'; x: number; y: number; moved: boolean }
@@ -517,7 +521,7 @@ export class TeardownView {
         case 'screw': return { title: s.label, action: `×${s.need - Math.floor(s.progress)}` };
         case 'clip': return { title: s.label, action: s.need > 1 ? `×${s.need - Math.floor(s.progress)}` : '' };
         case 'bolt': return { title: s.label, action: TEXT.teardown.circle };
-        case 'wire': return { title: s.label, action: TEXT.teardown.swipe };
+        case 'wire': return { title: s.label, action: TEXT.teardown.shake };
         case 'pry': return { title: s.label, action: TEXT.teardown.pry };
         case 'lift': {
           const n = SOLO ? s.players : this.holders(s);
@@ -572,7 +576,7 @@ export class TeardownView {
     s.obj.getWorldPosition(v).project(this.camera);
     const cx = ((v.x + 1) / 2) * innerWidth;
     const cy = ((1 - v.y) / 2) * innerHeight;
-    this.act = { step: s, x0: e.clientX, y0: e.clientY, angle: Math.atan2(e.clientY - cy, e.clientX - cx), cx, cy, dist: 0 };
+    this.act = { step: s, x0: e.clientX, y0: e.clientY, angle: Math.atan2(e.clientY - cy, e.clientX - cx), cx, cy, dist: 0, end: -1, sx: 0, sy: 0, lastMove: 0 };
     if (s.kind === 'lift') {
       this.site!.link?.hold(this.site!.junk.steps.indexOf(s), s.players, true);
       return;
@@ -628,10 +632,7 @@ export class TeardownView {
       s.progress += Math.abs(dA) / Math.PI;
       if (dA) teardownSound.turn();
     } else if (s.kind === 'wire') {
-      // Only strokes that actually cross the wire count.
-      const t = this.pick(e.clientX, e.clientY);
-      if (t?.type === 'step' && t.step === s) a.dist += Math.hypot(e.movementX, e.movementY);
-      s.progress = Math.min(s.need, (a.dist / CUT_PX) * s.need);
+      this.shake(s, a, e);
     } else if (s.kind === 'pry') {
       s.progress = Math.min(s.need, (Math.hypot(e.clientX - a.x0, e.clientY - a.y0) / PRY_PX) * s.need);
     } else return;
@@ -656,8 +657,10 @@ export class TeardownView {
       const s = a.step;
       if (s.kind === 'bolt') teardownSound.stop();
       if (s.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(s), s.players, false);
-      // A half-cut wire, half-pried tab or half-lifted weight falls back; a half-turned bolt stays where it is.
-      if (!s.done && (s.kind === 'wire' || s.kind === 'pry' || s.kind === 'lift')) {
+      // A half-pried tab or half-lifted weight falls back, and a half-shaken wire end goes still (an end that has come
+      // loose stays loose); a half-turned bolt stays where it is.
+      if (!s.done && s.kind === 'wire') this.stillWire(s);
+      else if (!s.done && (s.kind === 'pry' || s.kind === 'lift')) {
         s.progress = 0;
         this.show(s);
       }
@@ -666,8 +669,63 @@ export class TeardownView {
     if (this.site) this.hover = this.pick(e.clientX, e.clientY);
   }
 
+  /** The pointer moved while a wire is held: shake the end it is nearest. A swing is a stroke the pointer turns back from. */
+  private shake(s: Step, a: NonNullable<TeardownView['act']>, e: PointerEvent) {
+    const ends = s.ends!;
+    let best = -1;
+    // within reach of an end, but never so far that a short wire's other end counts too
+    const q = ends.map((end) => this.screen(end.lug));
+    const span = q[0] && q[1] ? Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y) : SHAKE_REACH;
+    let bd = Math.max(22, Math.min(SHAKE_REACH, span * 0.45));
+    ends.forEach((end, i) => {
+      if (end.done) return;
+      const p = this.screen(end.lug);
+      const d = p ? Math.hypot(p.x - e.clientX, p.y - e.clientY) : Infinity;
+      if (d < bd) (bd = d), (best = i);
+    });
+    if (best < 0) return;
+    if (best !== a.end) {
+      a.end = best;
+      a.sx = a.sy = 0;
+    }
+    const mx = e.movementX, my = e.movementY;
+    if (Math.hypot(mx, my) < 1) return;
+    a.lastMove = performance.now();
+    if (a.sx * mx + a.sy * my < 0) {
+      // turned back: it counts if the stroke before was long enough
+      if (Math.hypot(a.sx, a.sy) >= SWING_PX) {
+        const end = ends[best];
+        end.swings++;
+        if (end.swings >= SWINGS) {
+          end.done = true;
+          teardownSound.hit('clink', 0.8);
+        } else teardownSound.hit('tink', 0.5);
+      }
+      a.sx = mx;
+      a.sy = my;
+    } else {
+      a.sx += mx;
+      a.sy += my;
+    }
+    this.wireProgress(s);
+  }
+
+  /** A wire's progress is how loose its two ends are, together. */
+  private wireProgress(s: Step) {
+    const sum = s.ends!.reduce((n, end) => n + (end.done ? 1 : end.swings / SWINGS), 0);
+    s.progress = (sum / s.ends!.length) * s.need;
+  }
+
+  /** The wire is let go of: an end that was part-way stops, and a loose one stays loose. */
+  private stillWire(s: Step) {
+    for (const end of s.ends!) if (!end.done) end.swings = 0;
+    this.wireProgress(s);
+    this.show(s);
+  }
+
   private endInteraction() {
     const a = this.act;
+    if (a?.step.kind === 'wire' && !a.step.done) this.stillWire(a.step);
     if (a?.step.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(a.step), a.step.players, false);
     teardownSound.stop();
     this.drag = null;
@@ -703,6 +761,15 @@ export class TeardownView {
         if (s.mat) {
           s.mat.emissive.setHex(0xff7a20);
           s.mat.emissiveIntensity = Math.min(f, 1) * 3;
+        }
+        // An end that has come loose lifts off its terminal and tilts.
+        for (const end of s.ends ?? []) {
+          end.lug.position.copy(end.base);
+          end.lug.rotation.z = 0;
+          if (end.done) {
+            end.lug.position.y += 0.05;
+            end.lug.rotation.z = 0.6;
+          }
         }
         break;
     }
@@ -821,6 +888,16 @@ export class TeardownView {
       const lit = this.lit.has(s);
       s.marker.visible = working && !s.done && (stepReady(s) || lit);
       if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);
+    }
+    // The end being shaken rattles on its terminal.
+    const held = this.act;
+    if (held?.step.kind === 'wire' && held.end >= 0 && performance.now() - held.lastMove < 120) {
+      const end = held.step.ends![held.end];
+      if (!end.done) {
+        end.lug.position.copy(end.base);
+        end.lug.position.x += Math.sin(this.pulse * 60) * 0.02;
+        end.lug.position.y += Math.abs(Math.sin(this.pulse * 45)) * 0.015;
+      }
     }
     const hoverSlot = focus?.type === 'part' ? focus.slot : null;
     for (const s of j.slots) {

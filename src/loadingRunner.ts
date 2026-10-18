@@ -1,7 +1,7 @@
 // The loading screen's game: a tiny version of the disassembly mode (src/teardown). A machine slides in; take it apart
 // with the same moves as in the world, then take the freed parts and they go to the bag.
 //   screws    click them (the dots round them count the clicks)    bolts     circle the pointer around them
-//   wires     press on the wire and drag across it                 pry tabs  grab the lip and pull
+//   wires     shake them loose at both ends                       pry tabs  grab the lip and pull
 // Machines are laid out like simple engineering diagrams: components sit on rails and meet at terminals, wires run
 // between terminals in right angles, and what holds a thing is what it would be in real life: lids and plates by
 // screws, bolts or a tab, a component by bolts through its base and by the wires on its terminals. Covers nest (a
@@ -36,7 +36,11 @@ const BAG_GAP = 30;
 const SWAP_S = 0.18;
 const FLY_S = 0.3;
 const SLIDE_FROM = 420;
-const CUT_PX = 60;
+/** A wire end comes loose after this many swings of the shake (a stroke of SWING_PX the pointer turns back from) with the
+ *  pointer within SHAKE_REACH of it, as in the real game (src/teardown/teardown.ts). */
+const SWINGS = 5;
+const SWING_PX = 9;
+const SHAKE_REACH = 50;
 const PRY_PX = 64;
 /** Where a component's terminals are from its centre, along its axis. */
 const TERM = 27;
@@ -83,6 +87,8 @@ interface Wire {
   pts: P[];
   color: string;
   cut: Step;
+  /** Its two ends (first and last point), each shaken loose on its own. */
+  ends: { swings: number; done: boolean }[];
 }
 interface Slot {
   part: number; // which glyph: 0 gear, 1 battery, 2 motor, 3 coil
@@ -121,6 +127,11 @@ interface Act {
   y0: number;
   prev: number;
   total: number;
+  /** The shake: the stroke so far, and the pointer where it was. */
+  sx: number;
+  sy: number;
+  lx: number;
+  ly: number;
 }
 
 export const visible = (u: Cover | null) => !u || u.released;
@@ -200,7 +211,7 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
     return s;
   };
   const term = (s: Slot, side: 1 | -1): P => [s.x + Math.round(Math.cos(s.rot)) * side * TERM, s.y + Math.round(Math.sin(s.rot)) * side * TERM];
-  /** A wire between two terminals; cutting it frees whatever holds it. `at`: where along its longest run to swipe. */
+  /** A wire between two terminals; shaking both its ends loose frees whatever holds it. */
   const wire = (a: P, b: P, under: Cover | null, o: { vertical?: boolean; at?: number } = {}): Step => {
     const pts = route(a, b, !!o.vertical);
     let bi = 0, bl = -1;
@@ -212,7 +223,7 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
     const p = pts[bi], q = pts[bi + 1];
     const horiz = Math.abs(q[0] - p[0]) >= Math.abs(q[1] - p[1]);
     const s = step('wire', p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, { under, dx: horiz ? 0 : 1, dy: horiz ? -1 : 0 });
-    const w: Wire = { pts, color: WIRE_COLORS[Math.floor(rnd() * WIRE_COLORS.length)], cut: s };
+    const w: Wire = { pts, color: WIRE_COLORS[Math.floor(rnd() * WIRE_COLORS.length)], cut: s, ends: [{ swings: 0, done: false }, { swings: 0, done: false }] };
     s.wire = w;
     M.wires.push(w);
     return s;
@@ -523,7 +534,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       if (s.progress >= s.need) finish(s);
       else sound('tink');
     } else {
-      act = { step: s, x0: lx, y0: ly, prev: Math.atan2(ly - s.y, lx - s.x), total: 0 };
+      act = { step: s, x0: lx, y0: ly, prev: Math.atan2(ly - s.y, lx - s.x), total: 0, sx: 0, sy: 0, lx, ly };
     }
   }
 
@@ -549,7 +560,30 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       }
       s.progress = Math.min(1, act.total / (2 * Math.PI * s.need)); // `need` turns
     } else if (s.kind === 'wire') {
-      s.progress = Math.min(1, Math.hypot(lx - act.x0, ly - act.y0) / CUT_PX);
+      // Shake the end the pointer is at: strokes it keeps turning back from.
+      const w = s.wire!;
+      const ends: P[] = [w.pts[0], w.pts[w.pts.length - 1]];
+      const d = ends.map((p, k) => (w.ends[k].done ? Infinity : Math.hypot(lx - p[0], ly - p[1])));
+      const k = d[0] <= d[1] ? 0 : 1;
+      // close to an end: within reach, but never so far that a short wire's other end counts too
+      const reach = Math.max(14, Math.min(SHAKE_REACH, Math.hypot(ends[1][0] - ends[0][0], ends[1][1] - ends[0][1]) * 0.45));
+      const mx = lx - act.lx, my = ly - act.ly;
+      act.lx = lx;
+      act.ly = ly;
+      if (d[k] <= reach && Math.hypot(mx, my) > 0.4) {
+        if (act.sx * mx + act.sy * my < 0) {
+          if (Math.hypot(act.sx, act.sy) >= SWING_PX && ++w.ends[k].swings >= SWINGS) {
+            w.ends[k].done = true;
+            sound('clink');
+          } else sound('tink');
+          act.sx = mx;
+          act.sy = my;
+        } else {
+          act.sx += mx;
+          act.sy += my;
+        }
+      }
+      s.progress = wireProgress(w);
     } else {
       s.progress = Math.min(1, Math.max(0, (lx - act.x0) * s.dx + (ly - act.y0) * s.dy) / PRY_PX);
     }
@@ -559,9 +593,16 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     }
   }
 
+  /** How loose a wire is: its two ends together. */
+  const wireProgress = (w: Wire) => w.ends.reduce((n, e) => n + (e.done ? 1 : e.swings / SWINGS), 0) / w.ends.length;
+
   function up() {
     if (act?.step.kind === 'bolt') sound('stop');
-    if (act) act.step.progress = 0; // let go early: it springs back
+    if (act?.step.wire) {
+      // a part-shaken end goes still; one that is loose stays loose
+      for (const e of act.step.wire.ends) if (!e.done) e.swings = 0;
+      act.step.progress = wireProgress(act.step.wire);
+    } else if (act) act.step.progress = 0; // let go early: it springs back
     act = null;
   }
 
@@ -871,15 +912,52 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
         g.fill();
       }
     } else if (s.kind === 'wire') {
-      if (act?.step === s) {
-        // being swiped: the cut line from where you pressed to the pointer
-        g.strokeStyle = '#ffffff';
+      const w = s.wire!;
+      const at: P[] = [w.pts[0], w.pts[w.pts.length - 1]];
+      at.forEach(([ex, ey], k) => {
+        const end = w.ends[k];
+        if (end.done) return;
+        if (act?.step === s) {
+          // while shaking: how far each end is
+          ring(ex, ey, 14, end.swings / SWINGS);
+          return;
+        }
+        // each end of the wire: a ring that jerks to and fro across the wire between two arrowheads
+        const seg = k === 0 ? [w.pts[0], w.pts[1]] : [w.pts[w.pts.length - 2], w.pts[w.pts.length - 1]];
+        const across = Math.atan2(seg[1][1] - seg[0][1], seg[1][0] - seg[0][0]) + Math.PI / 2;
+        const sh = Math.sin(clock * 15) * 5;
+        g.save();
+        g.translate(ex, ey);
+        g.rotate(across);
+        g.strokeStyle = g.fillStyle = c;
         g.lineWidth = 2;
+        g.lineCap = 'round';
         g.beginPath();
-        g.moveTo(act.x0, act.y0);
-        g.lineTo(px - slide - CX, py - CY);
+        g.moveTo(-16, 0);
+        g.lineTo(16, 0);
         g.stroke();
-      } else dragCue(s.x, s.y, s.x + s.dx * CUT_PX, s.y + s.dy * CUT_PX, lit); // press ON the wire and drag across it
+        for (const sgn of [-1, 1]) {
+          g.beginPath();
+          g.moveTo(sgn * 21, 0);
+          g.lineTo(sgn * 14, -4.5);
+          g.lineTo(sgn * 14, 4.5);
+          g.fill();
+        }
+        g.fillStyle = 'rgba(28, 15, 7, 0.55)';
+        g.beginPath();
+        g.arc(sh, 0, 7, 0, 7);
+        g.fill();
+        g.strokeStyle = c;
+        g.lineWidth = 2.2;
+        g.beginPath();
+        g.arc(sh, 0, 7, 0, 7);
+        g.stroke();
+        g.fillStyle = c;
+        g.beginPath();
+        g.arc(sh, 0, 2.4, 0, 7);
+        g.fill();
+        g.restore();
+      });
     } else if (act?.step !== s) {
       // the way it comes out: a track to the end of the pull, with chevrons running along it, and the grab on the lip
       g.save();
@@ -916,49 +994,44 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   }
 
   function drawWire(w: Wire) {
-    const cut = w.cut.done;
     const on = ready(w.cut);
     const lit = hover === w.cut || act?.step === w.cut;
-    const trace = (pts: P[]) => {
-      g.beginPath();
-      g.moveTo(pts[0][0], pts[0][1]);
-      for (let k = 1; k < pts.length; k++) g.lineTo(pts[k][0], pts[k][1]);
-      g.stroke();
-    };
-    let runs: P[][] = [w.pts];
-    if (cut) {
-      // the run is broken in the middle of the cut segment: two ends hanging
-      let at = 0;
-      let best = Infinity;
-      for (let k = 0; k + 1 < w.pts.length; k++) {
-        const d = segDist(w.cut.x, w.cut.y, w.pts[k], w.pts[k + 1]);
-        if (d < best) (best = d), (at = k);
-      }
-      const p = w.pts[at], q = w.pts[at + 1];
-      const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
-      const ux = (q[0] - p[0]) / len, uy = (q[1] - p[1]) / len;
-      const gx = w.cut.x, gy = w.cut.y;
-      runs = [[...w.pts.slice(0, at + 1), [gx - ux * 8, gy - uy * 8]], [[gx + ux * 8, gy + uy * 8], ...w.pts.slice(at + 1)]];
-    }
+    const last = w.pts.length - 1;
+    // An end that has come loose lifts off its terminal; a wire that is loose at both is gone.
+    const pts = w.pts.map((p, k): P => ((k === 0 && w.ends[0].done) || (k === last && w.ends[1].done) ? [p[0], p[1] - 5] : p));
     g.lineCap = 'round';
     g.lineJoin = 'round';
-    if (on) {
-      // a glow round the wire says it's the thing to grab
-      g.strokeStyle = lit ? 'rgba(255, 255, 255, 0.35)' : `rgba(255, 176, 80, ${0.22 + 0.12 * Math.sin(clock * 5)})`;
-      g.lineWidth = 13;
-      for (const r of runs) trace(r);
+    if (!w.cut.done) {
+      const trace = () => {
+        g.beginPath();
+        g.moveTo(pts[0][0], pts[0][1]);
+        for (let k = 1; k < pts.length; k++) g.lineTo(pts[k][0], pts[k][1]);
+        g.stroke();
+      };
+      if (on) {
+        // a glow round the wire says it's the thing to work
+        g.strokeStyle = lit ? 'rgba(255, 255, 255, 0.35)' : `rgba(255, 176, 80, ${0.22 + 0.12 * Math.sin(clock * 5)})`;
+        g.lineWidth = 13;
+        trace();
+      }
+      g.strokeStyle = w.color;
+      g.lineWidth = 5;
+      trace();
     }
-    g.strokeStyle = w.color;
-    g.lineWidth = 5;
-    for (const r of runs) trace(r);
     g.lineJoin = 'miter';
-    // solder dots at the terminals
-    g.fillStyle = '#d9b66a';
-    for (const p of [w.pts[0], w.pts[w.pts.length - 1]]) {
+    // the terminals: a solder dot where the wire still holds, an empty ring where it has come loose
+    [w.pts[0], w.pts[last]].forEach((p, k) => {
       g.beginPath();
       g.arc(p[0], p[1], 3.2, 0, 7);
-      g.fill();
-    }
+      if (w.cut.done || w.ends[k].done) {
+        g.strokeStyle = '#d9b66a';
+        g.lineWidth = 1.5;
+        g.stroke();
+      } else {
+        g.fillStyle = '#d9b66a';
+        g.fill();
+      }
+    });
   }
 
   function drawSlot(sl: Slot) {

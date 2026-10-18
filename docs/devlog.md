@@ -94,6 +94,14 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   drag", "Grab the tab and pull", "Take the glowing part"). A dim "Hide tips" line under the box turns them off (kept in
   localStorage). A free part comes first, the rest take turns every 4 s, each kind goes after four of it (parts: three).
   The minigame's own words are in `TEXT.minigame` too.
+- Wires are shaken loose, not swiped (`Kit.wire` in `src/teardown/junk.ts`, `TeardownView.shake` in
+  `src/teardown/teardown.ts`, and the same in the minigame): hold the mouse at an end of the wire and shake it (six
+  swings, a swing being a stroke of 16 px the pointer turns back from, within reach of that end, which shrinks with the wire's
+  length so a short wire's ends don't both count); an end that is loose lifts off its terminal and stays loose, a
+  part-shaken one goes still when you let go, and the wire is free when both ends are. The markers are a ring jerking
+  between two arrowheads *on each lug* (turned to face the camera, drawn over what's in front), replacing the one marker
+  0.1 above the curve's midpoint that could float off a wire running up or away. Nothing new goes to the server: it
+  still only hears the step done.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.
