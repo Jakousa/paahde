@@ -326,8 +326,11 @@ export class Rifle {
     const jet = this.jets.raycast(_o, _d, dist);
     if (jet) dist = jet.dist;
     _e.copy(_o).addScaledVector(_d, dist);
-    // The beam from the drawn muzzle (first or third person), or (through the scope, no gun drawn) from about where it'd be.
-    const m = this.muzzle(_m) ?? _m.copy(_o).addScaledVector(_d, 0.6).addScaledVector(_r.set(1, 0, 0).applyQuaternion(_q), 0.2).add(_u.set(0, -0.25, 0));
+    // The beam from the drawn muzzle (first or third person). Through the scope no gun is drawn: from the barrel just
+    // under it, a little ahead of the eye, so it rises from the bottom of the scope to the crosshair.
+    const m = this.muzzle(_m) ?? (this.scoped
+      ? _m.copy(_o).addScaledVector(_d, 0.8).addScaledVector(_u.set(0, 1, 0).applyQuaternion(_q), -0.07)
+      : _m.copy(_o).addScaledVector(_d, 0.6).addScaledVector(_r.set(1, 0, 0).applyQuaternion(_q), 0.2).add(_u.set(0, -0.25, 0)));
     // It starts at the drawn muzzle as the gun kicks and the view climbs.
     zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z, true, this.muzzle);
     rifleSound.shot(null, null, this.gun === 'pistol');
