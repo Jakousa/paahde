@@ -12,7 +12,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { abs, dot, float, length, normalView, positionViewDirection, pow, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { BEAM_HALF, beamGround } from '../../shared/guardians.ts';
 import { nearStorm, type Storm } from '../../shared/storm.ts';
+import { sunElevation } from '../../shared/sun.ts';
 import { heightAt } from '../../shared/terrain.ts';
+import { timeOfDay } from './dayNight';
 import type { DroneFrame } from './botFrames.ts';
 import { zaps } from './zaps.ts';
 import { tyreDust } from '../tyreDust.ts';
@@ -22,11 +24,13 @@ const SHOW_R = 900;
 const LAMP = new THREE.Vector3(0, -0.4, 0.55);
 const WARM = new THREE.Color(1.0, 0.86, 0.62);
 const RED = new THREE.Color(1.0, 0.16, 0.08);
-/** Haze brightness (HDR, before bloom), the pool's, and the lens glare's (and its size, m). */
+/** Haze brightness (HDR, before bloom), the pool's, and the lens glare's (and its size, m), at night; by day the
+ *  haze and pool are scaled down to DAY_GAIN (the glare to halfway), as a lamp is lost in sunlight. */
 const BEAM_GAIN = 0.17;
 const POOL_GAIN = 1.2;
 const GLARE_GAIN = 2.5;
 const GLARE_SIZE = 1.1;
+const DAY_GAIN = 0.12;
 
 let model: { body: THREE.Object3D; rotors: THREE.Object3D[] } | null = null;
 let loading = false;
@@ -122,7 +126,8 @@ export class Drones {
     } else root.add(placeholder());
     root.traverse((o) => (o.castShadow = true));
     const color = WARM.clone();
-    const tint = uniform(color);
+    const tint = uniform(color.clone());
+    const gtint = uniform(color.clone());
     // Brightest along the axis (where the surface faces us, i.e. through the most haze) and near the lamp, nothing
     // at the silhouette, fading towards the far end.
     const beamMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide });
@@ -146,7 +151,7 @@ export class Drones {
     pool.frustumCulled = false;
     const glareMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const g = float(1).sub(smoothstep(0, 1, length(uv().sub(0.5)).mul(2)));
-    glareMat.colorNode = tint.mul(GLARE_GAIN);
+    glareMat.colorNode = gtint.mul(GLARE_GAIN);
     glareMat.opacityNode = g.mul(g).mul(g);
     const glare = new THREE.Sprite(glareMat);
     glare.position.copy(LAMP);
@@ -154,12 +159,15 @@ export class Drones {
     root.add(beam, glare);
     this.scene.add(root, pool);
     beam.userData.tint = tint;
+    glare.userData.tint = gtint;
     return { root, rotors, beam, pool, grid, glare, color, model: model !== null, hurt: 0, spin: 0, tip: 0, smoke: 0, crashed: false, down: false };
   }
 
   update(frames: DroneFrame[], dt: number, focus: { x: number; z: number }, storms: readonly Storm[], t: number) {
     const seen = new Set<number>();
     const now = performance.now() / 1000;
+    const night = smooth01((0.08 - sunElevation(timeOfDay(Date.now()))) / 0.14);
+    const gain = DAY_GAIN + (1 - DAY_GAIN) * night;
     for (const f of frames) {
       if (Math.hypot(f.x - focus.x, f.z - focus.z) > SHOW_R) continue;
       seen.add(f.id);
@@ -201,7 +209,8 @@ export class Drones {
       v.glare.visible = v.beam.visible = lit && (!wob || Math.sin(now * 23) * Math.sin(now * 7) > -0.6);
       v.rotors.forEach((r, i) => (r.rotation.y += (i % 2 ? -1 : 1) * dt * 60));
       v.color.lerp(f.lock ? RED : WARM, 1 - Math.exp(-dt * 6));
-      (v.beam.userData.tint as { value: THREE.Color }).value.copy(v.color);
+      (v.beam.userData.tint as { value: THREE.Color }).value.copy(v.color).multiplyScalar(gain);
+      (v.glare.userData.tint as { value: THREE.Color }).value.copy(v.color).multiplyScalar(0.5 + 0.5 * gain);
       // Beam from the lamp to the sand (world space; the cone is a child of the body, so undo its transform).
       v.root.updateMatrixWorld();
       _lamp.copy(LAMP).applyMatrix4(v.root.matrixWorld);
@@ -326,4 +335,9 @@ export class Drones {
     v.pool.geometry.dispose();
     v.glare.material.dispose();
   }
+}
+
+function smooth01(v: number) {
+  const t = Math.min(1, Math.max(0, v));
+  return t * t * (3 - 2 * t);
 }
