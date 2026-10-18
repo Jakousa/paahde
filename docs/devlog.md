@@ -2,6 +2,30 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — Hands for the shovel, metal detector, scrap and jammer
+
+- **Shovel** (tools/models/handtools.py, wooden shaft with a T grip, painted steel blade): carried in the right fist
+  under the T, the blade out ahead low in the view; digging or piling sand (ShovelDig, 1.2 s loop) brings it in close
+  in both hands, the left underhand down the shaft: drive it in, lever, lift the scoop into view, flick it left.
+- **Metal detector** (raked grip under an olive control box, shaft with a coiled cable, racetrack coil): held by its
+  grip like the pistol, the coil low across the middle of the view, swept side to side (two sweeps per 3 s idle, one
+  per walk cycle). Digging with it in hand, the right hand holds it up out of the way and the left scoops.
+- **Scrap**: a bent angle-iron offcut in the fist. Throwing now winds up: the hand cocks back by the ear and lets go
+  over the top (ScrapThrow, 0.5 s); the throw leaves 210 ms after the press, from where the hand lets go, and the
+  piece in flight (yours and others') is that same offcut instead of a full-size pile prop.
+- **Jammer**: its own clips. Carried low right; jamming, both hands bring it up in front at chest height, the left
+  palm under its body, the antenna on the crosshair. Others now see a raised jammer's lamp blink and hear its
+  searching static from where you stand (the 'hands' aim flag already sent for guns; no new messages): the same voice
+  at the searching level (−38 LUFS) at 2 m, 1/d past it, not past 60 m.
+- **Pistol aim** is canted 35° inwards about the sight line, so the forearm leaves the view at the bottom right
+  instead of standing up the middle under the sights (still in view, a one-handed sight picture has the arm under it).
+- All grips solved on the objects (`bar_in_hand` for shafts and bodies, `gun_in_right` for the raked grips), wrists
+  under 46°. hands.glb 1.4 → 1.8 MB (three small atlases and 12 clips). `HANDS_FAST=1` builds skip the bakes for quick
+  pose checks (docs/viewmodel-hands.md).
+- Gaps: the shovel's blade is mostly edge-on or out of view while carried (it points away); the jammer's lock isn't
+  shown to others, only that it's jamming; the remote static's level is the measured searching voice through a
+  panner, not measured itself.
+
 ## 2026-10-18 — Partial shade, shade from wrecks and people, cold nights
 
 - **Body shade** (shared/shade.ts `sunOnBody`): four rays instead of one, from the head, both shoulders (±0.22 m
@@ -190,8 +214,8 @@ steps (`src/teardown/junk.ts`, `wrecks.ts`; nothing in Blender changed, the mach
   a guardian's cannon 180), so it's for crawlers and drones or a close, risky fight. Hits break weak points and drones
   as the rifle's do. Higher, shorter, quieter zap (`rifleSound.shot(…, pistol)`; others hear it via `zap.pistol`).
 - **Server** (server/index.ts onFire): any gun in `GUNS` (shared/rifle.ts) in hand, its own cooldown and reach.
-- Known gap: aimed, the forearm comes up the bottom middle of the view (it's how a one-handed sight picture looks);
-  the sights and everything above them stay clear.
+- Aimed, it's canted 35° inwards about the sight line (2026-10-18), so the forearm runs out of the bottom right
+  corner instead of up the middle of the view.
 
 ## 2026-10-17 — Progression: scrap fields, crawler ground, guardian ground
 
@@ -405,8 +429,8 @@ motorcycle, telescope, water bottle, backpack, storm detector, wrist computer, m
 - **Batteries** had no source: control cabinets now hold a backup battery (last in their yields and builder, so saved
   bench jobs keep their indexes).
 - **Testing:** F3 → "Give gear" puts one of each, repaired with Common parts, in your bag and equipment.
-- Gaps: ~~loot is in server memory~~ (kept in SQLite since 2026-10-18); no first-person models for the shovel or metal
-  detector (the hands stay empty); the find models are boxes and cylinders; caches don't show their contents
+- Gaps: ~~loot is in server memory~~ (kept in SQLite since 2026-10-18); the find models are boxes and cylinders;
+  caches don't show their contents
   until dug up.
 
 ## 2026-10-17 — Crafting, plant beds and UV lamps (issues #21–#24)
@@ -1159,11 +1183,10 @@ thrown with left mouse / E (`src/throw.ts`, `shared/throw.ts`).
   flying drone it counts as one rifle hit (`DRONE_HP` 2: two throws bring one down, and it comes for you after
   the first) and glances back, hitting nothing more. Where it lands it becomes dropped loot to pick up again; over
   the base it goes back into the thrower's bag. In memory only: a restart mid-flight loses it.
-- **Client:** your throw shows at once from the hand, flying on our clock's guess of the server's arc; others'
-  come from the server ('toss', again with `hit` when it bounces, 'tossEnd' where it lands). Drawn with the scrap
-  props' meshes (`Scrap.mesh`), tumbling. A swish on the throw, a clank and sparks off a drone, a sand thump.
-- **Gaps:** no throw pose in the hands (the junk isn't drawn in hand at all); it only hits drones (not walkers or
-  players); a bag-full return over the base loses the item. The swish/clank levels are by analogy with the beam's
+- **Client:** your throw shows from the hand as it lets go, flying on our clock's guess of the server's arc; others'
+  come from the server ('toss', again with `hit` when it bounces, 'tossEnd' where it lands). Drawn as the piece held
+  in the hands (2026-10-18; before, full-size scrap props), tumbling. A swish on the throw, a clank and sparks off a drone, a sand thump.
+- **Gaps:** it only hits drones (not walkers or players); a bag-full return over the base loses the item. The swish/clank levels are by analogy with the beam's
   impact sounds, not measured.
 
 
@@ -1209,9 +1232,9 @@ Crafted at the workbench from a compute unit, a wiring coil and a battery (any t
   stop over 3 s (on `baseHeight`), throwing sand; a slam and dust, no blast and no smoke. **Jammed drone:** light out,
   sinking at 2.5 m/s while it drifts to a stop, rotors winding down, settling upright (`jammed` field in 'bots',
   drone stride 12). Its parts drop as if shot down.
-- **Feel, no HUD:** the hand raises it (PistolAim, the pistol's clips: the model `src/models/jammer.ts` is built in
-  the pistol's frame and sits in its place); the lamp on top glows while searching and blinks faster as the lock
+- **Feel, no HUD:** the hands raise it (JammerAim since 2026-10-18, before the pistol's clips: the model
+  `src/models/jammer.ts` is built in the pistol's frame); the lamp on top glows while searching and blinks faster as the lock
   builds; the target twitches (only for the jammer's user); a warbling static climbs in pitch and speed as the lock
   builds, a falling chirp when it drops. Levels measured: searching −38 LUFS, lock −32 → −27, chirp −26.
-- **Gaps:** no viewmodel-specific clips (the pistol's grip and aim); others see the tool in your hand but not the
-  jamming (no sound or effect for them); the lock bar is only felt, so the 5 s are learned by trying.
+- **Gaps:** others see and hear that you're jamming (lamp, static) but not the lock building; the lock bar is only
+  felt, so the 5 s are learned by trying.
