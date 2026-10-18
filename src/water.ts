@@ -14,6 +14,7 @@ import { equipped, repaired } from '../shared/gear.ts';
 import { HOTBAR } from '../shared/items.ts';
 import { isPlaceable } from '../shared/placed.ts';
 import { PISTOL, RIFLE } from '../shared/rifle.ts';
+import { THROWABLE } from '../shared/throw.ts';
 import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
@@ -288,8 +289,9 @@ export class Survival {
     const holding = playerHands.held === 'canteen';
     const bottle = w.maxSips > 0;
     const atBase = atPump(pos.x, pos.y, pos.z);
-    // A placeable in hand (src/placing.ts) takes the use button too.
-    tools.blocked = playerHands.held !== 'none' || isPlaceable(this.net.boxes.bag?.[this.selected]?.kind);
+    // A placeable in hand (src/placing.ts) takes the use button too, and so does junk to throw (src/throw.ts).
+    const kind = this.net.boxes.bag?.[this.selected]?.kind;
+    tools.blocked = playerHands.held !== 'none' || isPlaceable(kind) || (!!kind && THROWABLE.has(kind));
 
     // Drinking: hold the use button for DRINK_MS; letting go early spills nothing and costs nothing.
     const use = useHeld();

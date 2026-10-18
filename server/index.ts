@@ -12,11 +12,12 @@ import { HOTBAR, partKind, SCRAP_ITEMS } from '../shared/items.ts';
 import { TIERS } from '../shared/salvage.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
-import { overBase } from '../shared/base.ts';
+import { inBase, overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { BLAST_R, CRATER_MM, CRATER_R, GUARDIAN } from '../shared/guardians.ts';
 import { BLAST_R as MISSILE_BLAST_R } from '../shared/missiles.ts';
 import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
+import { THROW_MS, THROWABLE } from '../shared/throw.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { CHAT_MAX } from '../shared/protocol.ts';
@@ -30,6 +31,7 @@ import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
 import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
+import { ThrowServer, type TossEvent } from './throws.ts';
 import { TerrainServer } from './terrain.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
 import { BASE_SPAWN } from '../shared/base.ts';
@@ -63,6 +65,7 @@ const loot = new LootServer(db);
 
 const storms = new StormServer(performance.now());
 const guardians = new GuardianServer();
+const throws = new ThrowServer(guardians);
 /** Heat per second from drone searchlights by player id, from the last bot tick. */
 
 type Player = {
@@ -87,7 +90,7 @@ type Player = {
   slot: number; // selected hotbar slot (-1 none): digs with what's in it
   /** Dead and lying where they fell until `until` (Date.now ms), thrown by `push` (shared/ragdoll.ts). */
   down: { until: number; push: [number, number, number] } | null;
-  firedAt: number; // last laser rifle shot (performance.now() ms)
+  firedAt: number; // last laser rifle shot or throw (performance.now() ms)
   chatAt: number; // last chat line (performance.now() ms)
 };
 
@@ -143,6 +146,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'summon' && p) return guardians.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'fire' && p) return onFire(p, msg);
+    if (msg.t === 'throw' && p) return onThrow(p, msg);
     if (msg.t === 'stomped' && p) return onStomped(p, msg.g);
     if (msg.t === 'drink' && p) return onDrink(p);
     if (msg.t === 'fill' && p) return onFill(p);
@@ -340,6 +344,44 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
   const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
   for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
   if (r.kill) dropSpoils(r.kill);
+}
+
+/** Thrown scrap (shared/throw.ts): a throwable in that hotbar slot, not too soon after the last, from the thrower's
+ *  eye and out in the open. It leaves the bag and flies (server/throws.ts), shown to everyone near. */
+function onThrow(p: Player, m: Extract<ClientMsg, { t: 'throw' }>) {
+  const now = performance.now();
+  const nums = [m.x, m.y, m.z, m.dx, m.dy, m.dz];
+  if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v)) || !Number.isInteger(m.n)) return;
+  if (!Number.isInteger(m.slot) || m.slot < 0 || m.slot >= HOTBAR || p.down) return;
+  const s = p.state, len = Math.hypot(m.dx, m.dy, m.dz);
+  if (s.riding || len < 0.5 || now - p.firedAt < THROW_MS * 0.8 || inBase(s.x, s.y, s.z)) return;
+  if (Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
+  const kind = items.slots(p.browserId, 'bag')[m.slot]?.kind;
+  if (!kind || !THROWABLE.has(kind) || !db.tx(() => items.takeAt(p.browserId, m.slot, kind))) return sendBox(p, 'bag');
+  p.firedAt = now;
+  sendBox(p, 'bag');
+  tossEvents([throws.launch(p.id, p.browserId, m.n, kind, m.x, m.y, m.z, m.dx / len, m.dy / len, m.dz / len, now)]);
+}
+
+/** Thrown scrap launched, bouncing or landed: to everyone near it. */
+function tossEvents(events: TossEvent[]) {
+  for (const e of events) {
+    const json = JSON.stringify(e.msg);
+    for (const o of players.values()) if (Math.hypot(o.state.x - e.x, o.state.z - e.z) < BOT_SEND_R && o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+  }
+}
+
+/** Fly the thrown scrap on; what lands lies there (or, over the base, goes back to the thrower). */
+function tickThrows(dt: number, now: number) {
+  const r = throws.tick(dt, now);
+  tossEvents(r.events);
+  for (const l of r.landed) {
+    if (l.ok) loot.dropAt(l.x, l.z, l.kind, 0.1);
+    else if (items.give(l.owner, l.kind)) {
+      const p = [...players.values()].find((o) => o.browserId === l.owner);
+      if (p) sendBox(p, 'bag');
+    }
+  }
 }
 
 /** Chat lines no closer together than this (ms). */
@@ -581,6 +623,7 @@ setInterval(() => {
     }
   }
   tickBots(elapsed, now, tod);
+  tickThrows(elapsed, now);
   relaxAccum += elapsed;
   if (relaxAccum >= 1 / RELAX_RATE) {
     relaxAccum %= 1 / RELAX_RATE;

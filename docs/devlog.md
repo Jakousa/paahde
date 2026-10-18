@@ -975,3 +975,21 @@ Local, short storms instead of the old global one (`wind.ts` used to hash a 3–
 - **Testing:** F3 → "Sandstorm here" summons one on you, for everyone. With `?debug`, `dbg.net.storms` can
   be set by hand for a look-only storm (the server doesn't know about it).
 
+
+## Throwing scrap
+
+So someone with no gun can still fight a drone: any scrap item (`SCRAP_ITEMS`) taken out from the hotbar is
+thrown with left mouse / E (`src/throw.ts`, `shared/throw.ts`).
+
+- **Flight** (`server/throws.ts`): the server checks the junk is in that slot, the rate (`THROW_MS`), that the
+  throw starts at your eye and you're out of the bunker, takes it out of the bag and flies it on a plain arc
+  (30 m/s, gravity 13.5: straight up it climbs ~33 m, over a drone's 20 m). Passing within `THROW_HIT` (3 m) of a
+  flying drone it counts as one rifle hit (`DRONE_HP` 2: two throws bring one down, and it comes for you after
+  the first) and glances back, hitting nothing more. Where it lands it becomes dropped loot to pick up again; over
+  the base it goes back into the thrower's bag. In memory only: a restart mid-flight loses it.
+- **Client:** your throw shows at once from the hand, flying on our clock's guess of the server's arc; others'
+  come from the server ('toss', again with `hit` when it bounces, 'tossEnd' where it lands). Drawn with the scrap
+  props' meshes (`Scrap.mesh`), tumbling. A swish on the throw, a clank and sparks off a drone, a sand thump.
+- **Gaps:** no throw pose in the hands (the junk isn't drawn in hand at all); it only hits drones (not walkers or
+  players); a bag-full return over the base loses the item. The swish/clank levels are by analogy with the beam's
+  impact sounds, not measured.

@@ -13,6 +13,7 @@
 // - recharge: the cell whining back up between shots, with a click when it's ready.
 // - impact: where the beam struck: a hiss of sand, a metal ping, or the red glass of a weak point shattering with an
 //   electric fizz.
+// - thrown scrap (src/throw.ts): the swish of the throw, and a dull clank as it strikes a drone.
 // - a dying walker: servos winding down with a clunk as each leg gives out, then the crash of the hull on the sand.
 // Everything placed in the world goes through src/acoustics.ts, then the shared output (src/audio.ts), every level
 // ramped. Measured at the default volume (OfflineAudioContext + ffmpeg ebur128, momentary max): your own shot −24 LUFS
@@ -193,6 +194,26 @@ class RifleSound {
     fizz.frequency.setValueAtTime(6000, t);
     fizz.frequency.exponentialRampToValueAtTime(1500, t + 0.9);
     tone(ctx, o, t, 0.6, 'square', 110, 55, 0.08, 0.01);
+  }
+
+  /** Something thrown: a short swish of air, yours (`at` null) or someone else's. */
+  swish(at: P | null = null, ear: P | null = null) {
+    const ctx = audio.ctx, s = placed(at, ear, IMPACT_GAIN * 0.5, 4, 80);
+    if (!ctx || !s) return;
+    const bp = hiss(ctx, s.input, s.t, 0.28, 'bandpass', 700, 1.4, 0.45, 0.06);
+    bp.frequency.setValueAtTime(500, s.t);
+    bp.frequency.exponentialRampToValueAtTime(1600, s.t + 0.12);
+    bp.frequency.exponentialRampToValueAtTime(700, s.t + 0.28);
+  }
+
+  /** Thrown junk striking a drone: a heavy clank, lower and duller than a beam's ping. */
+  clank(at: P, ear: P) {
+    const ctx = audio.ctx, s = placed(at, ear, IMPACT_GAIN, 12, 400);
+    if (!ctx || !s) return;
+    const { input: o, t } = s;
+    tone(ctx, o, t, 0.12, 'triangle', 190, 90, 0.5);
+    for (const [f, a] of [[640, 0.22], [1130, 0.14], [1790, 0.08]] as const) tone(ctx, o, t, 0.35 + Math.random() * 0.2, 'sine', f * (0.94 + Math.random() * 0.12), f * 0.97, a);
+    hiss(ctx, o, t, 0.1, 'bandpass', 2200, 0.9, 0.45);
   }
 
   /** A walker's leg giving out (`heavy`: a guardian): a servo winding down and a clunk. */

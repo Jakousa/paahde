@@ -137,9 +137,10 @@ export class LootServer {
     this.add(l);
   }
 
-  /** Something left on the sand at (x, z) (a killed walker's parts, server/guardians.ts), kept like a dropped item. */
-  dropAt(x: number, z: number, kind: string) {
-    const l: Loot = { id: this.nextId++, kind, x: x + rand(-0.8, 0.8), z: z + rand(-0.8, 0.8), depth: 0, src: 'drop' };
+  /** Something left on the sand within `spread` m of (x, z) (a killed walker's parts, server/guardians.ts; thrown
+   *  scrap, server/throws.ts), kept like a dropped item. */
+  dropAt(x: number, z: number, kind: string, spread = 0.8) {
+    const l: Loot = { id: this.nextId++, kind, x: x + rand(-spread, spread), z: z + rand(-spread, spread), depth: 0, src: 'drop' };
     this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z);
     this.add(l);
   }

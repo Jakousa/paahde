@@ -4,6 +4,7 @@ import type { Slots } from './items.ts';
 import type { Loot } from './loot.ts';
 import type { MissilePath } from './missiles.ts';
 import type { Storm } from './storm.ts';
+import type { TossPath } from './throw.ts';
 import type { Placed } from './placed.ts';
 import type { BedState } from './garden.ts';
 
@@ -72,6 +73,9 @@ export type ClientMsg =
   // is alive and near enough, and kills you ('died', cause 'guardian').
   | { t: 'stomped'; g: number }
   | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number; d?: number }
+  // Throw the scrap item in hotbar slot `slot` (shared/throw.ts) from the eye (x, y, z) along unit (dx, dy, dz). `n`:
+  // the client's count of its throws, echoed in the 'toss' so it can tie its own flying junk to the server's.
+  | { t: 'throw'; slot: number; n: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }
   // Debug menu: repaired gear of every kind, Scrap parts (for testing).
   | { t: 'debugGear' }
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
@@ -213,6 +217,11 @@ export type ServerMsg =
   // Player `by` fired a laser rifle (or the pistol: `pistol`) from (x, y, z) to (ex, ey, ez); `hit`: it broke a weak point there.
   // Player `id` (public id; `color` their avatar's) said `text` in chat, to everyone (also back to the sender).
   | { t: 'chat'; id: number; color: number; text: string }
-  | { t: 'zap'; by: number; x: number; y: number; z: number; ex: number; ey: number; ez: number; hit: boolean; pistol?: true };
+  | { t: 'zap'; by: number; x: number; y: number; z: number; ex: number; ey: number; ez: number; hit: boolean; pistol?: true }
+  // Thrown scrap `id` (shared/throw.ts tossAt), item `kind`, thrown by player `by` (their throw `n`), flying from
+  // (x, y, z) with velocity (vx, vy, vz) at server time `time`; sent again with `hit` as it bounces off a drone, and
+  // 'tossEnd' where it lands (it becomes loot there) or is lost.
+  | ({ t: 'toss'; id: number; by: number; n: number; kind: string; hit?: true } & TossPath)
+  | { t: 'tossEnd'; id: number; x: number; y: number; z: number };
 
 export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler';

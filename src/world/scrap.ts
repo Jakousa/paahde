@@ -86,6 +86,16 @@ export class Scrap {
     this.dirty = true;
   }
 
+  /** A lone mesh of scrap kind `kind` (SCRAP_KINDS index), centred on its middle, for junk in flight
+   *  (src/throw.ts); null until the model has loaded. */
+  mesh(kind: number): THREE.Mesh | null {
+    const k = this.kinds[kind];
+    if (!k) return null;
+    const m = new THREE.Mesh(k.mesh.geometry, k.mesh.material);
+    m.castShadow = true;
+    return m;
+  }
+
   /** Called every frame with the local player's position. */
   update(focus: THREE.Vector3) {
     if (!this.kinds.length) return;

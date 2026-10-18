@@ -152,6 +152,8 @@ export class Net {
   onChat?: (msg: Extract<ServerMsg, { t: 'chat' }>) => void;
   /** Another player's laser rifle shot (src/rifle.ts draws it). */
   onZap?: (msg: Extract<ServerMsg, { t: 'zap' }>) => void;
+  /** Thrown scrap flying, bouncing off a drone or landed (src/throw.ts). */
+  onToss?: (msg: Extract<ServerMsg, { t: 'toss' | 'tossEnd' }>) => void;
   /** A bed we tended was planted or harvested. */
   onTended?: (what: 'planted' | 'harvested') => void;
 
@@ -317,6 +319,12 @@ export class Net {
   fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number } | { d: number }) {
     const r = (n: number) => Math.round(n * 100) / 100;
     this.send({ t: 'fire', x: r(x), y: r(y), z: r(z), ex: r(ex), ey: r(ey), ez: r(ez), ...hit });
+  }
+
+  /** Throw the scrap in hotbar slot `slot` from (x, y, z) along unit (dx, dy, dz); `n` our count of throws. */
+  throwScrap(slot: number, n: number, x: number, y: number, z: number, dx: number, dy: number, dz: number) {
+    const r = (v: number) => Math.round(v * 1000) / 1000;
+    this.send({ t: 'throw', slot, n, x: r(x), y: r(y), z: r(z), dx: r(dx), dy: r(dy), dz: r(dz) });
   }
 
   /** Guardian `g`'s foot came down on us (src/guardians.ts). */
@@ -587,6 +595,7 @@ export class Net {
     }
     if (msg.t === 'shot' || msg.t === 'boom' || msg.t === 'missile' || msg.t === 'blast') return this.onBolt?.(msg);
     if (msg.t === 'zap') return this.onZap?.(msg);
+    if (msg.t === 'toss' || msg.t === 'tossEnd') return this.onToss?.(msg);
     if (msg.t === 'chat') return this.onChat?.(msg);
     if (msg.t === 'bots') {
       this.bots.push(msg);

@@ -621,22 +621,38 @@ export class GuardianServer {
     // The client draws it 250 ms in the past, and it moves up to CHASE_SPEED: slack for that.
     const slack = DRONE_HIT + 2;
     if (Math.hypot(x + dx * t - d.x, y + dy * t - d.y, z + dz * t - d.z) > slack || Math.hypot(ex - d.x, ey - d.y, ez - d.z) > slack * 1.5) return false;
+    this.hurt(d, dx / len, dz / len, now, by);
+    return true;
+  }
+
+  /** The first flying drone within `r` m of (x, y, z), or -1 (thrown scrap, server/throws.ts). */
+  droneNear(x: number, y: number, z: number, r: number): number {
+    return this.drones.find((d) => d.downAt < 0 && Math.hypot(d.x - x, d.y - y, d.z - z) < r)?.id ?? -1;
+  }
+
+  /** Something thrown by player `by` struck drone `id` going along (dx, dz) (unit): a hit, as from a rifle. */
+  strikeDrone(id: number, dx: number, dz: number, now: number, by: number) {
+    const d = this.drones.find((o) => o.id === id);
+    if (d && d.downAt < 0) this.hurt(d, dx, dz, now, by);
+  }
+
+  /** Drone `d` takes a hit along unit (dx, dz) from player `by`; the last one brings it down. */
+  private hurt(d: Drone, dx: number, dz: number, now: number, by: number) {
     if (++d.hurt < DRONE_HP) {
       // Hit from anywhere: it comes for where the shooter is now.
       if (by >= 0 && !d.leaving) {
         d.hunt = by;
         d.huntUntil = now + HUNT_MS;
       }
-      return true;
+      return;
     }
     // Down: it drops, still drifting the way it was going, its light out.
     d.downAt = now;
     d.lock = -1;
     const sp = d.leaving ? CHASE_SPEED : DRONE_SPEED * 0.8;
-    d.vx = Math.sin(d.yaw) * sp + dx / len * 3;
-    d.vz = Math.cos(d.yaw) * sp + dz / len * 3;
+    d.vx = Math.sin(d.yaw) * sp + dx * 3;
+    d.vz = Math.cos(d.yaw) * sp + dz * 3;
     d.vy = 1.5;
-    return true;
   }
 
   /** Debug menu: the nearest guardian walks in from 90 m away, or a drone comes for a minute. */
