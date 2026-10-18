@@ -13,7 +13,7 @@
 // - The brood: while it fights, every so often its sac opens (BIRTH_MS) and a clutch of spiderlings drops out from
 //   under it. They run at whoever is out in the open (spread over everyone), crouch close by, then spring at where
 //   their prey will be: a sidestep while they crouch, or a sprint, gets you out of it. They last until they're shot
-//   (one hit: shared/bosses.ts MINION) or it dies. Their bites, like the stabs, are worked out as the drawn spiderling lands (DRAW_DELAY).
+//   (one hit: shared/bosses.ts MINION) or it dies; once it has lost everyone (CALM_MS) they curl up one by one. Their bites, like the stabs, are worked out as the drawn spiderling lands (DRAW_DELAY).
 // - A crowd (server/bossCrowd.ts: everyone within CROWD_R) makes it harder: a quicker rear, a shorter stand after
 //   the slam, a slightly faster charge, and more spiderlings out at once, in bigger clutches, more often. One player
 //   is the baseline.
@@ -69,6 +69,8 @@ type St = {
    *  the next one may come. */
   rearMs: number; birthAt: number; due: boolean; nextBirth: number;
   brood: Ling[]; nextLing: number;
+  /** When it last fought (hunt, rear, recover), and when the next spiderling may curl up while it's calm. */
+  fightAt: number; fadeAt: number;
   /** Players' velocities (smoothed), for leading the leaps. */
   vel: Map<number, { x: number; z: number; vx: number; vz: number }>;
 };
@@ -79,6 +81,8 @@ type Ling = {
   ax: number; az: number; fx: number; fz: number; biteAt: number;
 };
 
+/** Calm this long (ms: not hunting anyone), the brood runs down: a spiderling curls up every FADE_MS. */
+const CALM_MS = 12_000, FADE_MS = 2500;
 /** A shot ending this close (m, flat) to a spiderling hits it. */
 const LING_HIT = 4;
 
@@ -117,7 +121,7 @@ export const queen: Brain = {
       feet, speed: 0, lastYaw: b.yaw, next: 0, mode: ROAM, modeAt: now, prey: -1, huntAt: 0,
       homeX: site && !summoned ? site.x : b.x, homeZ: site && !summoned ? site.z : b.z, tx: b.x, tz: b.z, waitUntil: now + 1500, leaveAt: 0,
       ignore: new Map(), pending: [], holes: HOLES_MAX,
-      rearMs: REAR_MS, birthAt: 0, due: false, nextBirth: 0, brood: [], nextLing: 1, vel: new Map(),
+      rearMs: REAR_MS, birthAt: 0, due: false, nextBirth: 0, brood: [], nextLing: 1, fightAt: now, fadeAt: 0, vel: new Map(),
     };
     wander(st);
     b.st = st;
@@ -377,6 +381,15 @@ function brood(b: Boss, st: St, dt: number, now: number, n: number, players: Bos
   for (const l of st.brood) if (l.st !== SP_DIE) alive++;
   const cap = Math.min(BROOD_CAP, Math.round(scaled(BROOD_MAX, n, BROOD_PER)));
   const fighting = !b.leaving && (st.mode === HUNT || st.mode === REAR || st.mode === RECOVER);
+  // Calm (lost them) for CALM_MS: the brood runs down, one spiderling every FADE_MS.
+  if (fighting) st.fightAt = now;
+  else if (alive && now - st.fightAt > CALM_MS && now >= st.fadeAt) {
+    const l = st.brood.find((o) => o.st === SP_RUN || o.st === SP_REST);
+    if (l) {
+      ling(l, SP_DIE, now);
+      st.fadeAt = now + FADE_MS;
+    }
+  }
   if (fighting && !st.due && now >= st.nextBirth && alive < cap) {
     st.birthAt = now;
     st.due = true;

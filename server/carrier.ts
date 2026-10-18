@@ -11,7 +11,8 @@
 // Gun drones (shared/carrier.ts DRONE_*) drop out of the bay while anyone is about: each picks the person fewest of
 // them are on, circles them low, and every few seconds hovers, aims ('daim': the spot where they stand) and after
 // DRONE_CHARGE fires there ('dshot'): still standing there, they're dead. It keeps at it until it's shot down
-// (one hit: shared/bosses.ts MINION, hitMinion); with nobody left, it flies home into the bay. The carrier dying drops
+// (one hit: shared/bosses.ts MINION, hitMinion); with nobody left, or once the carrier has
+// lost everyone (CALM_S, one by one), it flies home into the bay. The carrier dying drops
 // them all.
 //
 // A crowd (server/bossCrowd.ts) makes it harder: bombs come more often, a run bombs several people at once (and lays a
@@ -70,6 +71,8 @@ const DRONE_REACH = 50;
 const DRONE_RELOAD: [number, number] = [3.5, 5.5];
 /** An emptied slot stays empty this long (ms), so the view sees one drone go before the next takes its slot. */
 const SLOT_REST = 1500;
+/** Without a target this long (s), its drones are called home, one every RECALL_S. */
+const CALM_S = 12, RECALL_S = 3;
 /** A shot ending this close (m) to a gun drone hits it (it's drawn a little behind, flying: some slack). */
 const DRONE_HIT = 4;
 
@@ -93,6 +96,8 @@ type St = {
   crowd: number;
   /** Gun drones out, the next launch, and per snapshot slot when it's free again (-1: taken). */
   drones: Drone[]; nextLaunch: number; slotFree: number[];
+  /** When it last had a target, and when the next drone may be called home while it has none. */
+  fightAt: number; recallAt: number;
   /** Dead: where it lands, when, and the fall (see CS_*). */
   crashAt: number; crashed: boolean; ox: number; oy: number; oz: number; fall: number; spin: number;
 };
@@ -188,7 +193,7 @@ function pickPrey(b: Boss, st: St, d: Drone, players: BossPlayer[]): BossPlayer 
 function tickDrones(b: Boss, st: St, dt: number, now: number, players: BossPlayer[], out: BossOut) {
   const n = st.crowd;
   const bay = bayAt(b.x, b.y, b.z, b.yaw);
-  const about = !b.leaving && players.some((p) => !p.safe && Math.hypot(p.x - b.x, p.z - b.z) < DRONE_SEEK_R);
+  const about = !b.leaving && now - st.fightAt <= CALM_S * 1000 && players.some((p) => !p.safe && Math.hypot(p.x - b.x, p.z - b.z) < DRONE_SEEK_R);
   const cap = Math.min(DRONE_SLOTS, Math.round(scaled(DRONE_CAP, n, DRONE_CAP_PER)));
   if (!about) st.nextLaunch = Math.max(st.nextLaunch, now + DRONE_FIRST * 1000);
   else if (now >= st.nextLaunch && st.drones.length < cap) {
@@ -200,6 +205,16 @@ function tickDrones(b: Boss, st: St, dt: number, now: number, players: BossPlaye
         orbit: Math.random() * Math.PI * 2, turn: Math.random() < 0.5 ? -1 : 1, lx: 0, ly: 0, lz: 0,
       });
       st.nextLaunch = now + (rand(DRONE_GAP[0], DRONE_GAP[1]) * 1000) / scaled(1, n, DRONE_GAP_PER);
+    }
+  }
+
+  // No target for CALM_S: the drones come home one by one, one every RECALL_S.
+  if (st.target >= 0) st.fightAt = now;
+  else if (now - st.fightAt > CALM_S * 1000 && now >= st.recallAt) {
+    const d = st.drones.find((o) => o.phase === 'hunt');
+    if (d) {
+      d.phase = 'home';
+      st.recallAt = now + RECALL_S * 1000;
     }
   }
 
@@ -289,7 +304,7 @@ export const carrier: Brain = {
       wx: x + Math.sin(a + Math.PI) * 300, wz: z + Math.cos(a + Math.PI) * 300, ax: x, az: z,
       scourX: b.x, scourZ: b.z, target: -1, tx: 0, tz: 0, nextBomb: now + 4000,
       tracks: new Map(), bombs: [], leaveAt: -1, crowd: 1,
-      drones: [], nextLaunch: now + DRONE_FIRST * 1000, slotFree: new Array<number>(DRONE_SLOTS).fill(0),
+      drones: [], fightAt: now, recallAt: 0, nextLaunch: now + DRONE_FIRST * 1000, slotFree: new Array<number>(DRONE_SLOTS).fill(0),
       crashAt: -1, crashed: false, ox: 0, oy: 0, oz: 0, fall: 0, spin: 1,
     };
     b.st = st;
