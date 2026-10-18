@@ -142,9 +142,10 @@ const by = (q: number, lo: number, hi: number) => lo + ((hi - lo) * q) / 3;
 // What each piece of gear does at quality q (0..3).
 /** Receiver: how far its needle wanders off the true bearing (rad). */
 export const receiverWobble = (q: number) => by(q, 0.35, 0.05);
-/** Motorcycle top speed (m/s) and engine (m/s² from a standstill). */
-export const bikeTopSpeed = (q: number) => by(q, 22, 30);
-export const bikeEngine = (q: number) => by(q, 16, 20);
+/** Motorcycle top speed (m/s) and engine (m/s² from a standstill). With the sand's drag (shared/sim.ts stepBike) it
+ *  cruises at about 16 m/s on Scrap parts (a bit over a sprint), 23 on Basic, 29.5 on Quality and 35 on Space-grade. */
+export const bikeTopSpeed = (q: number) => by(q, 20, 50);
+export const bikeEngine = (q: number) => by(q, 13, 30);
 /** Telescope's strongest zoom. */
 export const spyglassZoom = (q: number) => by(q, 4, 12);
 /** Sips in a full water bottle. */
@@ -156,8 +157,9 @@ export const stormWarnS = (q: number) => by(q, 6, 20);
 /** Wrist computer: other players show on the locator this far away (m). The base always does. */
 export const locatorRange = (q: number) => by(q, 250, 2000);
 
-/** A gun's recharge (ms) at quality q: a fifth slower than its base at Scrap parts, a quarter faster at Space-grade. */
-export const gunCooldown = (base: number, q: number) => base * by(q, 1.2, 0.75);
+/** A gun's recharge (ms) at quality q: its base at Scrap parts (a gun is a gun), down a fifth of it per tier to 40% at
+ *  Space-grade (two and a half times the fire rate). */
+export const gunCooldown = (base: number, q: number) => base * by(q, 1, 0.4);
 
 /** The jammer's lock time (ms) at quality q: from its base (shared/jammer.ts JAM_MS) at Scrap parts down to 60% at Space-grade. */
 export const jamMs = (base: number, q: number) => base * by(q, 1, 0.6);
