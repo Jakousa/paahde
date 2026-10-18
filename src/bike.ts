@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
-import { footprints } from './footprints.ts';
+import { tyreprints } from './footprints.ts';
 import { tyreDust } from './tyreDust.ts';
 import type { RidePose } from './players.ts';
 import { nightLevel, SHADOW_ONLY_LAYER } from './world/env.ts';
@@ -178,7 +178,7 @@ export class Bike {
     if (this.track < TRACK_STEP) return;
     this.track %= TRACK_STEP;
     const tx = p.x - fx * WHEELBASE * 0.5, tz = p.z - fz * WHEELBASE * 0.5;
-    footprints.add(tx, heightAt(tx, tz), tz, p.heading, 2.2);
+    tyreprints.add(tx, heightAt(tx, tz), tz, p.heading, 2.2);
   }
 
   /** The headlight: on once it is dark (the sun a couple of degrees under), with a quick ramp so it doesn't pop. */

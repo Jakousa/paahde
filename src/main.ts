@@ -8,7 +8,7 @@ import { STATIONS, stationTarget } from '../shared/stations.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { DigFx } from './dig';
-import { footprints, streaks } from './footprints';
+import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
 import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
@@ -143,7 +143,7 @@ me.setShadowOnly(true); // first person: your body casts a shadow but is not dra
 let bodyHidden = true;
 const myModel = new ScavengerModel();
 myModel.ready.then(() => me.setModel(myModel, net.color), () => myModel.dispose());
-scene.add(me.root, footprints.mesh, streaks.mesh, tyreDust.mesh);
+scene.add(me.root, footprints.mesh, tyreprints.mesh, streaks.mesh, tyreDust.mesh);
 const remotes = new Map<number, Avatar>();
 // Sand bikes (9, dev helper), one per riding player: drawn here, simulated in shared/sim.ts.
 const bikes = new Map<number, Bike>();

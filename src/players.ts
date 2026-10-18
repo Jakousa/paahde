@@ -259,7 +259,8 @@ export class Avatar {
     this.foot = -this.foot;
     const side = 0.13 * this.foot;
     const fx = pose.x + Math.cos(this.facing) * side, fz = pose.z - Math.sin(this.facing) * side;
-    if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing);
+    // Toes turned out a little; the boot print mirrors per foot.
+    if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing - this.foot * 0.08, 1, 1, this.foot);
     footsteps.step(fx, fz, pose.speed, inBase(fx, pose.y, fz) ? 'concrete' : 'sand');
   }
 
