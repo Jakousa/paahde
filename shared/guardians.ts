@@ -109,8 +109,8 @@ export type Kind = typeof GUARDIAN | typeof CRAWLER;
  *  it backs off for CRAWLER_CALM_MS. One bite kills. */
 export const BITE_HEAT = HEAT_MAX;
 export const BITE_MS = 1500;
-export const CRAWLER_CHASE_MS = 7000;
-export const CRAWLER_CALM_MS = 5000;
+export const CRAWLER_CHASE_MS = 10_000;
+export const CRAWLER_CALM_MS = 2500;
 
 // --- The cannon (tools/blender/guardians.py Guardian_Turret, Guardian_Gun) ---
 

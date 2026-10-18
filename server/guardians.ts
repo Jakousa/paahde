@@ -56,6 +56,8 @@ const SITE_LEAVE_R = 450;
 const CRAWLERS_MIN = 1, CRAWLERS_MAX = 4;
 /** A crawler's body, for keeping it out of wrecks and scrap (m). */
 const CRAWLER_R = 0.8;
+/** A crawler after you keeps track of you this close (m); this close it stops flanking and comes straight in. */
+const CHASE_SIGHT = 45, CLOSE_IN = 6;
 /** Drones over a site at night, all drones at most; they come in from DRONE_FROM (m) and patrol within DRONE_AREA. */
 const DRONES_PER_SITE = 2;
 const MAX_DRONES = 16;
@@ -487,7 +489,10 @@ export class GuardianServer {
       if (shot && p && !p.safe && !indoors(p.x, p.y, p.z)) this.hunt(g, p, now);
       // Crawlers keep to their site; guardians give up once you've got far from them.
       const far = g.kind === CRAWLER ? Math.hypot(g.px - g.home.x, g.pz - g.home.z) : Math.hypot(g.px - g.x, g.pz - g.z);
-      const tired = g.kind === CRAWLER && now - g.huntAt > CRAWLER_CHASE_MS;
+      // Once after you, a crawler keeps track of you within CHASE_SIGHT (not just its sight).
+      if (g.kind === CRAWLER && p && !p.safe && !indoors(p.x, p.y, p.z) && Math.hypot(p.x - g.x, p.z - g.z) < CHASE_SIGHT) this.hunt(g, p, now);
+      // Tires after a chase (each a little sooner or later, so the pack doesn't all stop at once).
+      const tired = g.kind === CRAWLER && now - g.huntAt > CRAWLER_CHASE_MS * (0.75 + ((g.id * 0.618) % 1) * 0.5);
       const gone = !p || p.safe || indoors(p.x, p.y, p.z) || now - g.knownAt > HUNT_FORGET || (far > HUNT_GIVE_UP_R[g.kind] && !shot) || tired;
       if (tired) g.calmUntil = now + CRAWLER_CALM_MS;
       if (gone) {
@@ -498,7 +503,9 @@ export class GuardianServer {
           // The pack on the same prey fans out round them, heading them off (server/pack.ts).
           const pack = this.guardians.filter((o) => o.kind === CRAWLER && o.deadAt < 0 && o.prey === g.prey).sort((a, b) => a.id - b.id);
           const v = this.vel.get(g.prey);
-          [g.tx, g.tz] = flank(g.x, g.z, g.px, g.pz, v?.vx ?? 0, v?.vz ?? 0, k.hunt, pack.indexOf(g), pack.length, 8, 1);
+          // Right on them: straight in, just ahead of them; further off, heading them off from its own side.
+          if (Math.hypot(g.px - g.x, g.pz - g.z) < CLOSE_IN) (g.tx = g.px + (v?.vx ?? 0) * 0.2), (g.tz = g.pz + (v?.vz ?? 0) * 0.2);
+          else [g.tx, g.tz] = flank(g.x, g.z, g.px, g.pz, v?.vx ?? 0, v?.vz ?? 0, k.hunt, pack.indexOf(g), pack.length, 8, 1);
         } else {
           g.tx = g.px;
           g.tz = g.pz;
@@ -543,7 +550,7 @@ export class GuardianServer {
     if (now < g.guardUntil && !hunting) {
       // Standing guard: slowly looking around.
       g.yaw = wrap(g.yaw + Math.sin(now / 4000 + g.id) * 0.08 * k.turn * 4 * dt);
-    } else if (dist < (hunting ? Math.min(1, k.reach * 0.5) : near)) {
+    } else if (hunting ? g.kind !== CRAWLER && dist < Math.min(1, k.reach * 0.5) : dist < near) {
       if (!hunting) this.arrive(g, now);
     } else {
       const sw = hunting ? SEP_HUNT_W : SEP_W;
@@ -553,8 +560,11 @@ export class GuardianServer {
       const turn = wrap(head - g.yaw);
       const rate = (hunting ? k.huntTurn : k.turn) * dt;
       g.yaw = wrap(g.yaw + Math.max(-rate, Math.min(rate, turn)));
-      // Walks on while roughly facing the way; turns on the spot when it isn't. Slows down to arrive.
-      want = (hunting ? k.hunt : k.patrol) * Math.max(0, Math.cos(turn)) ** 2 * Math.min(1, dist / (near + 2));
+      // Walks on while roughly facing the way; turns on the spot when it isn't. Slows down to arrive. A hunting
+      // crawler runs on through its turns, and right through to you.
+      want = hunting && g.kind === CRAWLER
+        ? k.hunt * Math.max(0.4, Math.cos(turn))
+        : (hunting ? k.hunt : k.patrol) * Math.max(0, Math.cos(turn)) ** 2 * Math.min(1, dist / (near + 2));
     }
     g.speed += (want - g.speed) * (1 - Math.exp(-dt / ease));
     let nx = g.x + Math.sin(g.yaw) * g.speed * dt, nz = g.z + Math.cos(g.yaw) * g.speed * dt;
