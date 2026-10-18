@@ -37,6 +37,7 @@ const SLIP = 0.62; // tan(32°), slip-face slope in world space
 const L1 = 260; // period along the (warped) wind axis
 const CREST1 = 0.6 * L1; // crest position within the period
 const H1_MIN = 12, H1_MAX = 30;
+const MEGA = 1.0; // in rare megadune regions big crests grow by up to this fraction (to ~60 m)
 const HORN1 = 70; // how far low crest ends are pushed downwind
 const WARP1 = 110; // domain-warp amplitude (m)
 // Small dunes
@@ -155,7 +156,9 @@ export function duneHeight(x: number, z: number, seed: number): number {
     // Crest height along the crest: breaks into separate crescents where the noise is low.
     const n = vnoise1(across * (1 / 260) + seedK * 64, k, S + 4) * 0.85 + vnoise1(across * (1 / 90), k, S + 5) * 0.15;
     const c = ss((n - 0.22) * (1 / 0.5));
-    const hk = (H1_MIN + (H1_MAX - H1_MIN) * seedK) * c * big;
+    // Rare megadune regions: a slow noise lifts every crest there, up to twice as high.
+    const mega = ss((vnoise(x * (1 / 600), z * (1 / 600), S + 14) - 0.7) * (1 / 0.15));
+    const hk = (H1_MIN + (H1_MAX - H1_MIN) * seedK) * (1 + MEGA * mega) * c * big;
     const sp = s - HORN1 * (1 - c) * (1 - c); // low parts lag downwind: barchan horns
     const slip = SLIP / grad;
     // Cap by a slope ending at the period's end so a long slip face never cuts into the next dune.
