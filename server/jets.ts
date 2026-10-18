@@ -106,10 +106,10 @@ export class JetServer {
     return true;
   }
 
-  /** Where flying jet `id` was a moment ago (the jammer's client sees it on its guess of the server clock), or null. */
-  where(id: number, now: number): { x: number; y: number; z: number } | null {
+  /** Where flying jet `id` was `ago` ms back (the jammer's client sees it on its guess of the server clock), or null. */
+  where(id: number, now: number, ago = 150): { x: number; y: number; z: number } | null {
     const j = this.jets.find((o) => o.id === id);
-    if (!j || j.down || !jetAt(j, now - 150, _p)) return null;
+    if (!j || j.down || !jetAt(j, now - ago, _p)) return null;
     return { x: _p.x, y: _p.y, z: _p.z };
   }
 

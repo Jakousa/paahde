@@ -9,14 +9,14 @@
 
 export const JAMMER = 'jammer';
 /** Held on one target this long (ms) brings it down, with Scrap parts (better parts: shared/gear.ts jamMs). */
-export const JAM_MS = 5000;
-/** The cone's half angle (rad) and its reach (m): enough for a jet passing high overhead. */
-export const JAM_CONE = 0.2;
-export const JAM_RANGE = 400;
+export const JAM_MS = 3500;
+/** The cone's half angle (rad) and its reach (m): enough to pick up a jet well before it's overhead. */
+export const JAM_CONE = 0.3;
+export const JAM_RANGE = 700;
 /** The client says it's still jamming about this often (ms). */
 export const JAM_SEND_MS = 200;
-/** Out of the cone (or let go), the lock fades this many times as fast as it built. */
-export const JAM_BLEED = 2;
+/** Out of the cone (or let go), the lock fades at this share of the rate it built: a slip doesn't lose it. */
+export const JAM_BLEED = 0.5;
 
 /** Whether (tx, ty, tz) is within the cone from (x, y, z) along unit (dx, dy, dz), widened by `slack` rad. */
 export function inCone(x: number, y: number, z: number, dx: number, dy: number, dz: number, tx: number, ty: number, tz: number, slack = 0): boolean {

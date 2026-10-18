@@ -24,7 +24,7 @@ import { inCone, JAM_BLEED, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer
 import { THROW_MS, THROWABLE } from '../shared/throw.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
-import { CHAT_MAX } from '../shared/protocol.ts';
+import { CHAT_MAX, NAME_MAX } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
@@ -114,6 +114,7 @@ type Player = {
   down: { until: number; push: [number, number, number] } | null;
   firedAt: number; // last laser rifle shot or throw (performance.now() ms)
   chatAt: number; // last chat line (performance.now() ms)
+  name: string; // shown in chat ('' none; db.getName null until asked)
   /** The jammer's lock (shared/jammer.ts): on which target, built up how far (ms), last told when (performance.now). */
   jam: { kind: 'jet' | 'drone'; id: number; acc: number; at: number } | null;
 };
@@ -179,6 +180,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'drop' && p) return onDrop(p, msg.box, msg.slot);
     if (msg.t === 'debugGear' && p) return onDebugGear(p);
     if (msg.t === 'chat' && p) return onChat(p, msg.text);
+    if (msg.t === 'name' && p) return onName(p, msg.name);
     if (msg.t === 'hands' && p) {
       p.hands = msg.hands === 1 || msg.hands === 2 || msg.hands === 3 ? msg.hands : 0;
       p.aim = msg.aim === true;
@@ -238,10 +240,12 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, firedAt: 0, chatAt: 0, jam: null,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, firedAt: 0, chatAt: 0, name: '', jam: null,
   };
   players.set(ws, p);
   save(p);
+  const name = db.getName(browserId);
+  p.name = name ?? '';
   // Terrain first, so the client never sees its spawn without the holes.
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
@@ -254,7 +258,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, storms.msg());
   send(ws, jets.msg());
   send(ws, loot.joinMessage(browserId));
-  send(ws, { t: 'welcome', id: p.id, state, color, epoch });
+  send(ws, { t: 'welcome', id: p.id, state, color, epoch, name });
   recall(p);
   send(ws, corpses.joinMessage());
   for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes()]) send(ws, boxMsg(browserId, box));
@@ -329,7 +333,7 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, sliding: false, crouching: false };
   revive(p.heat, Date.now());
   send(p.ws, { t: 'died', cause, push });
-  for (const o of players.values()) send(o.ws, { t: 'obituary', id: p.id, color: p.color, cause });
+  for (const o of players.values()) send(o.ws, { t: 'obituary', id: p.id, color: p.color, name: p.name, cause });
   // The bag past the hotbar stays where they fell (shared/corpse.ts).
   const pack = corpses.leave(p.browserId, p.color, p.state.x, p.state.z);
   if (pack) {
@@ -507,8 +511,9 @@ function onJam(p: Player, m: Extract<ClientMsg, { t: 'jam' }>) {
   const held = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot];
   const s = p.state, len = Math.hypot(m.dx, m.dy, m.dz);
   if (held?.kind !== JAMMER || !repaired(held) || p.down || len < 0.5 || Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
-  const at = m.kind === 'jet' ? jets.where(m.id, now) : guardians.droneAt(m.id);
-  if (!at || !inCone(m.x, m.y, m.z, m.dx / len, m.dy / len, m.dz / len, at.x, at.y, at.z, 0.1)) return;
+  // A jet moves fast: the client sees it where it was some ping ago, so any of the last half second will do.
+  const seen = (at: { x: number; y: number; z: number } | null) => !!at && inCone(m.x, m.y, m.z, m.dx / len, m.dy / len, m.dz / len, at.x, at.y, at.z, 0.1);
+  if (m.kind === 'jet' ? ![0, 150, 300, 500].some((ago) => seen(jets.where(m.id, now, ago))) : !seen(guardians.droneAt(m.id))) return;
   const j = p.jam && p.jam.kind === m.kind && p.jam.id === m.id ? p.jam : (p.jam = { kind: m.kind, id: m.id, acc: 0, at: now });
   const gap = now - j.at, step = Math.min(gap, JAM_SEND_MS * 1.5);
   j.acc = Math.max(0, j.acc - (gap - step) * JAM_BLEED) + step;
@@ -567,8 +572,15 @@ function onChat(p: Player, text: unknown) {
   const clean = text.replace(/[\p{Cc}\p{Cf}]/gu, ' ').trim().slice(0, CHAT_MAX);
   if (!clean) return;
   p.chatAt = now;
-  const json = JSON.stringify({ t: 'chat', id: p.id, color: p.color, text: clean } satisfies ServerMsg);
+  const json = JSON.stringify({ t: 'chat', id: p.id, color: p.color, name: p.name, text: clean } satisfies ServerMsg);
   for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+}
+
+/** Their name in this world, cleaned like a chat line; blank is fine (asked once, src/name.ts). */
+function onName(p: Player, name: unknown) {
+  if (typeof name !== 'string') return;
+  p.name = name.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
+  db.setName(p.browserId, p.name);
 }
 
 /** What a killed walker or downed drone leaves on the sand (shared/tables.ts KILL_SPOILS). */
