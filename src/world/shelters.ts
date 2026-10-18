@@ -5,11 +5,13 @@
 // Like the base (src/world/base.ts) the sand stays on top as the roof, and the hut's floor is cut out of it: the
 // HOLES nearest shelters' huts go to the sand's mask (outsideTerrainHoles). Indoors only the sun (through the door,
 // shadowed) and a dim fill in the nearest shelter's room light the concrete, and a faint glow keeps it from black.
+// Shelters with a pump get the base's (the `pump` node of public/models/base/bunker.glb).
 import * as THREE from 'three/webgpu';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { lights, uniform } from 'three/tsl';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
-  S_HALL_H, S_HUT, S_STAIRS, S_W, S_WT, SHELTER_KINDS, sheltersNear, shelterHole, stairCeiling, type Shelter, type ShelterKind,
+  S_HALL_H, S_HUT, S_STAIRS, S_W, S_WT, SHELTER_KINDS, sheltersNear, shelterHole, shelterPump, stairCeiling, type Shelter, type ShelterKind,
   type ShelterLayout,
 } from '../../shared/shelters.ts';
 import { moonColor, sunColor, sunDirection, sunLight } from './env.ts';
@@ -108,9 +110,27 @@ export class Shelters {
   private tint = new THREE.Color();
   private nearest: Shelter[] = [];
   private lastScan = new THREE.Vector3(Infinity, 0, 0);
+  private pump: THREE.Object3D | null = null;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
+    new GLTFLoader().loadAsync('./models/base/bunker.glb').then((gltf) => {
+      const pump = gltf.scene.getObjectByName('pump');
+      if (!pump) return console.warn('shelters: no node pump in bunker.glb');
+      pump.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.castShadow = m.receiveShadow = true;
+        const src = m.material as THREE.MeshStandardMaterial;
+        const c = new THREE.MeshStandardNodeMaterial({ color: src.color, roughness: src.roughness, metalness: src.metalness });
+        c.vertexColors = src.vertexColors;
+        c.lightsNode = this.lit;
+        c.emissive.copy(src.color).multiplyScalar(GLOW);
+        m.material = c;
+      });
+      this.pump = pump;
+      for (const g of this.shown.values()) this.addPump(g);
+    }, (err) => console.warn('shelters: failed to load bunker.glb', err));
     const mat = (hex: number, roughness: number, metalness: number, indoor: boolean) => {
       const m = new THREE.MeshStandardNodeMaterial({ color: hex, roughness, metalness });
       if (indoor) {
@@ -151,10 +171,23 @@ export class Shelters {
     }
     g.position.set(s.x, s.y, s.z);
     g.rotation.y = Math.atan2(s.dx, s.dz);
-    g.updateMatrixWorld(true);
-    g.matrixAutoUpdate = false;
-    for (const c of g.children) c.matrixAutoUpdate = false;
+    g.userData.shelter = s;
+    this.addPump(g);
     return g;
+  }
+
+  /** The pump in a shelter that has one (once the model is in), facing the stairs; then fix the matrices. */
+  private addPump(g: THREE.Group) {
+    const s = g.userData.shelter as Shelter;
+    if (s.pump && this.pump) {
+      const p = shelterPump(s.L), o = this.pump.clone();
+      o.position.set(p.x, s.L.floor, p.z);
+      o.rotation.set(0, 0, 0);
+      g.add(o);
+    }
+    g.matrixAutoUpdate = true;
+    g.updateMatrixWorld(true);
+    g.traverse((c) => (c.matrixAutoUpdate = false));
   }
 
   update(cam: THREE.Vector3) {

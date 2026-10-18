@@ -1,11 +1,12 @@
 // Loot lying in the world (shared/loot.ts): broken gear to find and repair (shared/gear.ts) at the crash sites (the
 // starter gear at the scrap fields near the base, the advanced gear on crawler ground, rare loose parts on guardian
-// ground: shared/crashsites.ts SiteLevel; and one broken motorcycle always in front of the base door, HOME_BIKE), things buried in the sand that the metal detector hears and a shovel digs up. All shared: the first player to press F
+// ground: shared/crashsites.ts SiteLevel; and one broken motorcycle always in front of the base door, HOME_BIKE), stashes
+// on the shelters' floors (SHELTER_STASHES), things buried in the sand that the metal detector hears and a shovel digs up. All shared: the first player to press F
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
 // Kept in the DB (`world_loot`, `loot_pending`, written on change), so a restart keeps what was taken and dug. Items
 // players drop are kept in `dropped` and never respawn.
 import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
-import { overShelter } from '../shared/shelters.ts';
+import { overShelter, shelterAt, shelterLootSpot, sheltersNear } from '../shared/shelters.ts';
 import { GEAR, GEAR_KINDS, isGear, refit, scrapParts } from '../shared/gear.ts';
 import { JAMMER } from '../shared/jammer.ts';
 import { CLOTH, partKind, SCRAP } from '../shared/items.ts';
@@ -15,7 +16,7 @@ import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
 import { PART_IDS, pickTier } from '../shared/parts.ts';
 import { GUNS, PISTOL } from '../shared/rifle.ts';
 import { rocksNear } from '../shared/rocks.ts';
-import { BROKEN_GEAR, CACHES, FINDS, HOME_BIKE, RARE_FINDS } from '../shared/tables.ts';
+import { BROKEN_GEAR, CACHES, FINDS, HOME_BIKE, RARE_FINDS, SHELTER_STASHES, type TierWeights } from '../shared/tables.ts';
 import { EDIT_CELL, edits, WORLD_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -31,6 +32,8 @@ const PILE_FIND_R = 600;
 const RARE_KIND = 'rare';
 /** The pending-spawn key for the motorcycle in front of the base door (HOME_BIKE). */
 const HOME_KIND = 'home_bike';
+/** The pending-spawn key for a stash on a shelter's floor (SHELTER_STASHES). */
+const STASH_KIND = 'shelter';
 /** How far from the base buried caches lie, and how deep (m). */
 const CACHE_MIN_R = 80, CACHE_MAX_R = 1200;
 const CACHE_DEPTH = [0.5, 1.1];
@@ -96,6 +99,7 @@ export class LootServer {
   private piles = nearPiles();
   private homeBike = homeBikeSpot();
   private homeBikeId = -1;
+  private shelters = sheltersNear(0, 0, WORLD_HALF * 1.5);
   /** What each lying find stands in for (FINDS key, RARE_KIND, HOME_KIND); caches aren't in it. */
   private spawnKey = new Map<number, string>();
   private db: Db;
@@ -124,6 +128,7 @@ export class LootServer {
       const want = new Map<string, number>(Object.entries(FINDS).map(([k, f]) => [k, f.n]));
       want.set(RARE_KIND, RARE_FINDS.n);
       want.set(HOME_KIND, 1);
+      want.set(STASH_KIND, this.shelters.length ? SHELTER_STASHES.n : 0);
       const lying = new Map<string, number[]>();
       for (const [id, k] of this.spawnKey) lying.set(k, [...(lying.get(k) ?? []), id]);
       lying.set('', [...this.loot.values()].filter((l) => l.src === 'cache').map((l) => l.id));
@@ -279,6 +284,7 @@ export class LootServer {
 
   /** Gear kind `kind` (FINDS) lying at a crash site of its level, among the debris around the wreck; RARE_KIND: a rare part. */
   private spawnFind(kind: string) {
+    if (kind === STASH_KIND) return this.spawnStash();
     if (kind === HOME_KIND) {
       const parts = GEAR.motorcycle.slots.map((s) => ('part' in s && HOME_BIKE.fitted.includes(s.part) ? partKind(s.part, 'scrap') : null));
       this.homeBikeId = this.nextId++;
@@ -306,6 +312,28 @@ export class LootServer {
     } else this.place({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, depth: 0, src: 'find' }, kind);
   }
 
+  /** A stash on the floor of a shelter that has none lying in it yet. */
+  private spawnStash() {
+    const taken = new Set<number>();
+    for (const [id, k] of this.spawnKey) {
+      const l = this.loot.get(id);
+      if (k === STASH_KIND && l) taken.add(shelterAt(l.x, l.z)?.id ?? -1);
+    }
+    const free = this.shelters.filter((s) => !taken.has(s.id));
+    const { x, z } = shelterLootSpot(pick(free.length ? free : this.shelters), Math.random);
+    this.place({ id: this.nextId++, ...this.contents(SHELTER_STASHES), x, z, depth: 0, src: 'find' }, STASH_KIND);
+  }
+
+  /** What a cache or stash holds, picked by its table's odds. */
+  private contents(t: { contents: Record<'part' | 'scrap' | 'cloth' | 'pistol' | 'gear', number>; tierWeights: TierWeights }) {
+    const what = pickOdds(t.contents);
+    if (what === 'part') return { kind: partKind(pick(CACHE_PARTS), pickTier(t.tierWeights, Math.random)) };
+    if (what === 'scrap') return { kind: SCRAP };
+    if (what === 'cloth') return { kind: CLOTH };
+    const kind = what === 'pistol' ? PISTOL : pick(CACHE_GEAR);
+    return { kind, parts: this.brokenParts(kind) };
+  }
+
   private spawnCache() {
     let x = 0, z = 0;
     for (let tries = 0; tries < 20; tries++) {
@@ -314,15 +342,6 @@ export class LootServer {
       z = Math.round((BASE.z + Math.cos(a) * d) / EDIT_CELL) * EDIT_CELL;
       if (Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20 && !overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break; // dug up: not under rock
     }
-    const what = pickOdds(CACHES.contents);
-    let kind: string, parts: (string | null)[] | undefined;
-    if (what === 'part') kind = partKind(pick(CACHE_PARTS), pickTier(CACHES.tierWeights, Math.random));
-    else if (what === 'scrap') kind = SCRAP;
-    else if (what === 'cloth') kind = CLOTH;
-    else {
-      kind = what === 'pistol' ? PISTOL : pick(CACHE_GEAR);
-      parts = this.brokenParts(kind);
-    }
-    this.place({ id: this.nextId++, kind, ...(parts ? { parts } : {}), x, z, depth: rand(CACHE_DEPTH[0], CACHE_DEPTH[1]), src: 'cache' }, null);
+    this.place({ id: this.nextId++, ...this.contents(CACHES), x, z, depth: rand(CACHE_DEPTH[0], CACHE_DEPTH[1]), src: 'cache' }, null);
   }
 }

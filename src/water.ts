@@ -8,8 +8,7 @@
 //
 // The server owns the numbers; this only plays the actions and asks. Keys 1–4 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
-// (no digging while your hands are full, see `tools` in src/input.ts), and F at the base's pump refills it.
-import { atPump } from '../shared/base.ts';
+// (no digging while your hands are full, see `tools` in src/input.ts), and F at a pump (the base's, some shelters') refills it.
 import { CHILL_MAX, DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
 import { equipped, repaired } from '../shared/gear.ts';
 import { HOTBAR } from '../shared/items.ts';
@@ -23,7 +22,7 @@ import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
 import { frost, heatstroke } from './world/env.ts';
 import { drinkSound } from './drinkSound';
-import { indoors } from '../shared/shelters.ts';
+import { atWater, indoors } from '../shared/shelters.ts';
 
 /**
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
@@ -304,7 +303,7 @@ export class Survival {
     this.env.style.display = equipped(this.net.boxes.equip, 'wrist') ? '' : 'none';
     const holding = playerHands.held === 'canteen';
     const bottle = w.maxSips > 0;
-    const atBase = atPump(pos.x, pos.y, pos.z);
+    const byPump = atWater(pos.x, pos.y, pos.z);
     // A placeable in hand (src/placing.ts) takes the use button too, and so does junk to throw (src/throw.ts).
     const kind = this.net.boxes.bag?.[this.selected]?.kind;
     tools.blocked = playerHands.held !== 'none' || isPlaceable(kind) || (!!kind && THROWABLE.has(kind));
@@ -333,13 +332,13 @@ export class Survival {
 
     // Refilling: one F press at the pump, takes FILL_MS; walking out or putting the canteen away cancels.
     if (playerHands.filling) {
-      if (!holding || dead || !atPump(pos.x, pos.y, pos.z, FILL_CANCEL_SLACK)) this.cancel();
+      if (!holding || dead || !atWater(pos.x, pos.y, pos.z, FILL_CANCEL_SLACK)) this.cancel();
       else if (now - this.actionAt >= FILL_MS) {
         drinkSound.filled();
         this.cancel();
         this.net.fill();
       }
-    } else if (interact && holding && bottle && atBase && !playerHands.drinking && !dead) {
+    } else if (interact && holding && bottle && byPump && !playerHands.drinking && !dead) {
       if (w.sips >= w.maxSips) this.toast('Full');
       else {
         playerHands.filling = true;
@@ -354,7 +353,7 @@ export class Survival {
       if (!bottle) html = 'Broken';
       else if (playerHands.filling) html = `<span class="prog"></span>`;
       else if (playerHands.drinking) html = `<span class="prog"></span>`;
-      else if (atBase) html = `<kbd>F</kbd>Fill`;
+      else if (byPump) html = `<kbd>F</kbd>Fill`;
       else if (w.sips <= 0) html = 'Empty';
     }
     // Junk in hand (src/throw.ts): it can be thrown, out of the bunker.

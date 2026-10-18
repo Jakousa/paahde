@@ -3,8 +3,7 @@
 // players and bikes as shade casters; hotter in a sandstorm, shared/storm.ts; cold at night unless sheltered,
 // wrapped in cloth or by a smouldering wreck), validates sips and canteen refills, and says when a player has died
 // of heatstroke or cold (server/index.ts respawns them).
-import { atPump } from '../shared/base.ts';
-import { indoors } from '../shared/shelters.ts';
+import { atWater, indoors } from '../shared/shelters.ts';
 import { crashSpent } from '../shared/crash.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -157,9 +156,9 @@ export function drink(t: Heat, now: number): boolean {
   return true;
 }
 
-/** Refill the canteen at the base's pump (its supply is endless). False if not at the pump or too soon. */
+/** Refill the canteen at the base's pump or a shelter's (their supply is endless). False if not at the pump or too soon. */
 export function fill(t: Heat, s: PlayerState, now: number): boolean {
-  if (t.maxSips <= 0 || !atPump(s.x, s.y, s.z, FILL_SLACK) || now - t.lastFill < FILL_COOLDOWN_MS) return false;
+  if (t.maxSips <= 0 || !atWater(s.x, s.y, s.z, FILL_SLACK) || now - t.lastFill < FILL_COOLDOWN_MS) return false;
   t.lastFill = now;
   t.sips = t.maxSips;
   t.sentAt = now;

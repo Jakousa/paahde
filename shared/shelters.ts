@@ -4,6 +4,8 @@
 // - small: a short flight down into a little room;
 // - deep: a long flight down to a room far under the sand;
 // - long: a short flight, then a long low corridor to a narrow gallery.
+// Some have a hand pump in the middle of the room, like the base's (the deeper, the likelier: PUMP_ODDS), where the
+// canteen fills. Server/loot.ts leaves stashes on their floors now and then (shelterLootSpot).
 // Shared by server physics and client prediction (collideShelter() etc. in sim.ts), the terrain (the pad in
 // baseHeight, no digging over them, the hut's floor cut out of the sand) and the renderer (src/world/shelters.ts
 // builds them from this layout).
@@ -20,7 +22,7 @@
 // down local -Z (like the base). It is turned by a multiple of 90° (exact): local +Z points along world (dx, dz),
 // local +X along (dz, -dx).
 
-import { BASE, inBase, terrainHidden, type Capsule } from './base.ts';
+import { atPump, BASE, inBase, PUMP_REACH, terrainHidden, type Capsule } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockiness, rocksNear } from './rocks.ts';
 
@@ -63,7 +65,17 @@ export type Shelter = {
   /** Where the door faces (a world axis). */
   dx: number; dz: number;
   L: ShelterLayout;
+  /** A hand pump stands in the middle of the room (shelterPump). */
+  pump: boolean;
 };
+
+/** The odds a shelter of each kind has a pump. */
+const PUMP_ODDS: Record<ShelterKind, number> = { small: 0.15, deep: 0.7, long: 0.35 };
+
+/** Where a shelter's pump stands (local; on the room's floor), whether or not it has one. */
+export function shelterPump(L: ShelterLayout): { x: number; z: number } {
+  return { x: 0, z: (L.hall + L.room.z) / 2 };
+}
 
 /** Height (local) of the stairs (a ramp half a step under the nosings) at local z, clamped to the landing/floor. */
 export function shelterStairY(L: ShelterLayout, lz: number): number {
@@ -164,7 +176,8 @@ function cellShelter(ix: number, iz: number): Shelter | null {
       }
     }
     if (hi - lo > MAX_RANGE) continue;
-    return { id: (ix + 64) * 128 + (iz + 64), kind, x, y: Math.round((sum / n) * 100) / 100, z, dx, dz, L };
+    const pump = r() < PUMP_ODDS[kind];
+    return { id: (ix + 64) * 128 + (iz + 64), kind, x, y: Math.round((sum / n) * 100) / 100, z, dx, dz, L, pump };
   }
   return null;
 }
@@ -317,6 +330,14 @@ const CAPSULES: Record<ShelterKind, Capsule[]> = {
   deep: kindCapsules(SHELTER_KINDS.deep),
   long: kindCapsules(SHELTER_KINDS.long),
 };
+/** The same with the pump (the base's pump hitbox: 0.35 m round, 1.2 m tall). */
+const WITH_PUMP: Record<ShelterKind, Capsule[]> = {
+  small: [], deep: [], long: [],
+};
+for (const k of Object.keys(CAPSULES) as ShelterKind[]) {
+  const L = SHELTER_KINDS[k], p = shelterPump(L);
+  WITH_PUMP[k] = [...CAPSULES[k], { x: p.x, z: p.z, ax: 1, az: 0, half: 0, r: 0.35, y0: L.floor, top: L.floor + 1.2 }];
+}
 
 /** Floor height (local) at local (lx, lz) — landing, stairs, corridor, room — or -Infinity. */
 function floorAt(L: ShelterLayout, lx: number, lz: number): number {
@@ -354,7 +375,7 @@ export function collideShelter(p: { x: number; z: number; vx: number; vz: number
   const feet = Math.max(y, prevY) - s.y;
   const head = Math.min(y, prevY) - s.y + height;
   let support = floorAt(s.L, q.x, q.z);
-  for (const c of CAPSULES[s.kind]) {
+  for (const c of (s.pump ? WITH_PUMP : CAPSULES)[s.kind]) {
     const reach = c.half + c.r + radius;
     if (Math.abs(q.x - c.x) > reach || Math.abs(q.z - c.z) > reach) continue;
     if (head <= c.y0) continue;
@@ -409,6 +430,50 @@ export function shelterSolid(x: number, y: number, z: number): boolean | null {
 /** Within `m` of a shelter's footprint (shots step finely there). */
 export function nearShelter(x: number, z: number, m: number): boolean {
   return overShelter(x, z, m);
+}
+
+// --- Pumps and loot ---
+
+/** World position of local (lx, lz) in shelter s. */
+export function shelterToWorld(s: Shelter, lx: number, lz: number): { x: number; z: number } {
+  const [ox, oz] = toWorld(s.dx, s.dz, lx, lz);
+  return { x: s.x + ox, z: s.z + oz };
+}
+
+/** True for someone whose feet are at world (x, y, z) by a shelter's pump (+ margin), down on its floor. */
+export function atShelterPump(x: number, y: number, z: number, margin = 0): boolean {
+  const s = shelterAt(x, z);
+  if (!s || !s.pump) return false;
+  const p = shelterPump(s.L), dx = localX(s, x, z) - p.x, dz = localZ(s, x, z) - p.z, r = PUMP_REACH + margin;
+  return y - s.y < s.L.floor + 1 + margin && dx * dx + dz * dz < r * r;
+}
+
+/** By a pump the canteen fills at: the base's or a shelter's. */
+export function atWater(x: number, y: number, z: number, margin = 0): boolean {
+  return atPump(x, y, z, margin) || atShelterPump(x, y, z, margin);
+}
+
+/** The height (world) of the floor something lies on at (x, z) inside a shelter's room or corridor, or null outside
+ *  them (it lies on the sand). */
+export function shelterFloorY(x: number, z: number): number | null {
+  const s = shelterAt(x, z);
+  if (!s) return null;
+  const L = s.L, lx = localX(s, x, z), lz = localZ(s, x, z), ax = Math.abs(lx);
+  const inRoom = ax < L.room.w && lz > L.room.z && lz <= L.hall;
+  const inHall = ax < S_W && lz > L.hall && lz < S_HUT.z1;
+  return inRoom || inHall ? s.y + (inRoom ? L.floor : shelterStairY(L, lz)) : null;
+}
+
+/** A random spot on a shelter's room floor, clear of the walls and the pump, for a stash (`rand` 0..1). */
+export function shelterLootSpot(s: Shelter, rand: () => number): { x: number; z: number } {
+  const L = s.L, p = shelterPump(L);
+  let lx = 0, lz = 0;
+  for (let i = 0; i < 12; i++) {
+    lx = (rand() * 2 - 1) * (L.room.w - 0.5);
+    lz = L.room.z + 0.5 + rand() * (L.hall - L.room.z - 1);
+    if (!s.pump || Math.hypot(lx - p.x, lz - p.z) > 1.2) break;
+  }
+  return shelterToWorld(s, lx, lz);
 }
 
 // --- The base and the shelters together ---

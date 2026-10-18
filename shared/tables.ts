@@ -199,6 +199,14 @@ export const CACHES = {
   tierWeights: { scrap: 5, basic: 3, quality: 1.2, space: 0.25 } satisfies TierWeights,
 };
 
+/** Stashes left on the floors of the shelters (shared/shelters.ts): how many lie at once (each in a different
+ *  shelter; a taken one comes back in another), and what they are, like CACHES but richer. */
+export const SHELTER_STASHES = {
+  n: 6,
+  contents: { part: 0.45, scrap: 0.1, cloth: 0.15, pistol: 0.08, gear: 0.22 },
+  tierWeights: { scrap: 3, basic: 3, quality: 1.5, space: 0.3 } satisfies TierWeights,
+};
+
 // ---------------------------------------------------------------------------------------------------------------
 // What a killed enemy leaves on the sand (server/index.ts dropSpoils): with `odds`, min..max parts, each a random
 // one of `parts` at a tier from tierWeights.

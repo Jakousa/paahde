@@ -8,9 +8,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { cameraPosition, float, length, max, modelPosition, normalLocal, positionLocal, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { GEAR, isGear, repaired } from '../../shared/gear.ts';
 import { parsePart } from '../../shared/items.ts';
-import { LOOT_REACH, type Loot } from '../../shared/loot.ts';
+import { lootReach, lootY, type Loot } from '../../shared/loot.ts';
 import { TIERS } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
+import { shelterFloorY } from '../../shared/shelters.ts';
 import { loadPart } from '../teardown/junk';
 import { loadBikeModel } from '../bike';
 
@@ -176,7 +177,8 @@ type Shown = { obj: THREE.Group; rims: THREE.Mesh[] | null; pool: THREE.Mesh | n
 /** Lay the pool's vertices just above the sand around (x, z), wherever it has been dug. */
 function drape(pool: THREE.Mesh, x: number, z: number) {
   const pos = pool.geometry.getAttribute('position') as THREE.BufferAttribute;
-  for (let i = 0; i < pos.count; i++) pos.setY(i, heightAt(x + pos.getX(i), z + pos.getZ(i)) + 0.04);
+  const floor = shelterFloorY(x, z);
+  for (let i = 0; i < pos.count; i++) pos.setY(i, (floor ?? heightAt(x + pos.getX(i), z + pos.getZ(i))) + 0.04);
   pos.needsUpdate = true;
   pool.geometry.computeBoundingSphere();
 }
@@ -217,8 +219,8 @@ export class LootView {
         this.shown.set(l.id, s);
       }
       s.l = l;
-      // Follows the sand (it may be dug around, or sit at the bottom of the hole it came out of).
-      s.obj.position.set(l.x, heightAt(l.x, l.z) - 0.02, l.z);
+      // Follows the sand (it may be dug around, or sit at the bottom of the hole it came out of), or a shelter's floor.
+      s.obj.position.set(l.x, lootY(l) - 0.02, l.z);
       if (s.rims) {
         const on = d < RIM_VIEW;
         for (const r of s.rims) r.visible = on;
@@ -234,14 +236,14 @@ export class LootView {
   }
 
   /** The surface loot in reach that the player looks most nearly at (the F target), or null. */
-  target(me: { x: number; z: number }, yaw: number): Loot | null {
+  target(me: { x: number; y: number; z: number }, yaw: number): Loot | null {
     const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     let best: Loot | null = null, bestScore = -Infinity;
     for (const s of this.shown.values()) {
       const l = s.l;
       const dx = l.x - me.x, dz = l.z - me.z;
       const d = Math.hypot(dx, dz);
-      if (d >= LOOT_REACH) continue;
+      if (!lootReach(me, l)) continue;
       const facing = d < 0.6 ? 1 : (dx * fx + dz * fz) / d;
       if (facing < 0.3) continue;
       const score = facing - d * 0.3;
