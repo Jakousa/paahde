@@ -14,7 +14,7 @@ import { airTemp, sunStrength } from '../../shared/temperature.ts';
 export { clockText, DAY_SECONDS } from '../../shared/sun.ts';
 
 /** Moonlight on the ground at full strength (linear): dim, a little silver, still warm enough to read as sand. */
-const MOONLIGHT = new THREE.Color(0.58, 0.62, 0.78).multiplyScalar(0.4);
+const MOONLIGHT = new THREE.Color(0.58, 0.62, 0.78).multiplyScalar(0.55);
 
 const params = new URLSearchParams(location.search);
 /** `?tod=0.75` freezes the clock (0 = midnight, 0.5 = noon); `?day=60` makes a day last 60 s. Visual only. */
@@ -65,7 +65,7 @@ export class DayNight {
     });
     this.keys = [
       { el: -16, sun: rgb(0, 0, 0), zenith: hex(0x0a0a14), mid: hex(0x13111e), horizon: hex(0x1e1822), horizonSun: hex(0x231a22),
-        haze: hex(0x15141c), ambSky: hex(0x4a5070), ambGround: hex(0x1c1412), amb: 0.1 },
+        haze: hex(0x15141c), ambSky: hex(0x5a6284), ambGround: hex(0x2a1e18), amb: 0.2 },
       { el: -6, sun: rgb(0, 0, 0), zenith: hex(0x1a1630), mid: hex(0x3a2438), horizon: hex(0x6a3024), horizonSun: hex(0x9a4418),
         haze: hex(0x4a2c2a), ambSky: hex(0x7a4a5a), ambGround: hex(0x2e1a12), amb: 0.25 },
       { el: 0, sun: rgb(1, 0.45, 0.2, 1.6), zenith: golden.zenith.clone().multiplyScalar(0.55), mid: golden.mid.clone().multiplyScalar(0.6),
@@ -109,7 +109,7 @@ export class DayNight {
     this.ambient.intensity = c.amb;
     nightLevel.value = 1 - THREE.MathUtils.smoothstep(el, -12, -2);
     // The moon lights the ground once it is clear of the horizon and the sun has gone.
-    const moonUp = THREE.MathUtils.smoothstep(moonDirection.value.y, 0.03, 0.25);
+    const moonUp = THREE.MathUtils.smoothstep(moonDirection.value.y, -0.02, 0.2);
     moonColor.value.copy(MOONLIGHT).multiplyScalar(moonUp * nightLevel.value);
     // Shimmer needs hot air over sun-baked sand: none in the cool night and morning, full in the afternoon.
     heatHaze.value = THREE.MathUtils.smoothstep(airTemp(this.tod), 26, 38) * THREE.MathUtils.smoothstep(sunStrength(this.tod), 0, 0.4);
