@@ -52,6 +52,9 @@ const LAMPS = [
 ];
 /** The lamp's bulb below its ceiling mount (tools/blender/base/lamp.py BULB_Y), and its light's reach. */
 const LAMP = { bulbY: -0.26, distance: 10, decay: 1.5 };
+/** A work light at your eye while you take a machine apart on the table, so the face you are looking at is lit
+ *  however it is turned (the lamp overhead only lights the top). Lights only the machine. */
+const VIEW_LIGHT = { intensity: 7, distance: 8, decay: 1.2 };
 /** Never quite dark: emissive fraction of each surface's own colour. */
 const GLOW = 0.03;
 
@@ -61,6 +64,7 @@ export class Base {
   private bulb = new THREE.PointLight(0xffb060, BULB.intensity, BULB.distance, 1.5);
   private lamps = LAMPS.map((l) => new THREE.PointLight(0xffb060, l.intensity, LAMP.distance, LAMP.decay));
   private tint = new THREE.Color();
+  private view = new THREE.PointLight(0xfff0dc, 0, VIEW_LIGHT.distance, VIEW_LIGHT.decay);
 
   constructor(scene: THREE.Scene) {
     this.group.position.set(BASE.x, BASE.y, BASE.z);
@@ -90,6 +94,8 @@ export class Base {
   readonly ready: Promise<void>;
 
   private lit = lights([sunLight, this.bounce, this.bulb, ...this.lamps]);
+  /** The bunker's lights and the work light at your eye, for the machine on the table. */
+  private machineLit = lights([sunLight, this.bounce, this.bulb, ...this.lamps, this.view]);
 
   private place(root: THREE.Object3D) {
     const lit = this.lit;
@@ -161,19 +167,27 @@ export class Base {
     return convert(src as THREE.MeshStandardMaterial, this.lit);
   }
 
-  /** Light a thing indoors (a machine on the disassembly table) with the bunker's lights instead of the
-   *  scene's, so the work lamps reach it at night. Changes its node materials in place. */
+  /** Light a machine on the disassembly table with the bunker's lights instead of the scene's, so the work
+   *  lamps reach it at night, and with the work light at your eye (viewFrom). Changes its node materials in place. */
   lightIndoors(root: THREE.Object3D) {
     root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
       for (const mt of Array.isArray(m.material) ? m.material : [m.material]) {
         if ((mt as THREE.MeshStandardNodeMaterial).isMeshStandardNodeMaterial) {
-          (mt as THREE.MeshStandardNodeMaterial).lightsNode = this.lit;
+          (mt as THREE.MeshStandardNodeMaterial).lightsNode = this.machineLit;
           mt.needsUpdate = true;
         }
       }
     });
+  }
+
+  /** Put the work light at the eye while working at the table (`at` null: off). */
+  viewFrom(at: THREE.Vector3 | null) {
+    this.view.intensity = at ? VIEW_LIGHT.intensity : 0;
+    if (!at) return;
+    this.view.position.copy(at);
+    this.view.updateMatrixWorld();
   }
 
   /** Follow the daylight with the bounce under the skylight. */

@@ -425,6 +425,7 @@ renderer.setAnimationLoop((time) => {
 baseSand.update(frameDt, storm.atBase);
   tyreDust.update(frameDt);
   base.update();
+  base.viewFrom(teardown.current?.id === BENCH_ID ? orbit.camera.position : null);
   shelters.update(orbit.camera.position);
   mast.update(frameDt);
   windSound.update(frameDt, orbit.camera.position, orbit.viewYaw, s);
