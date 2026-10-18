@@ -861,9 +861,12 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
         const ty = s.y + Math.sin(a1) * r;
         g.fillStyle = c;
         g.beginPath();
-        g.moveTo(tx - Math.sin(a1) * 8, ty + Math.cos(a1) * 8);
-        g.lineTo(tx + Math.cos(a1 + 0.5) * 3 + Math.sin(a1) * 8, ty + Math.sin(a1 + 0.5) * 3 - Math.cos(a1) * 8);
-        g.lineTo(tx + Math.cos(a1) * 9, ty + Math.sin(a1) * 9);
+        // pointing the way the arc goes (along its tangent), wide across the arc
+        const tnx = -Math.sin(a1), tny = Math.cos(a1);
+        const rdx = Math.cos(a1), rdy = Math.sin(a1);
+        g.moveTo(tx + tnx * 9, ty + tny * 9);
+        g.lineTo(tx - tnx * 2 + rdx * 5.5, ty - tny * 2 + rdy * 5.5);
+        g.lineTo(tx - tnx * 2 - rdx * 5.5, ty - tny * 2 - rdy * 5.5);
         g.closePath();
         g.fill();
       }
