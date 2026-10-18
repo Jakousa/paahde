@@ -50,6 +50,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/carrier.ts` — the hive carrier boss (huge four-fan drone that bombs from its belly, fan hubs are its weak
   points): brain `server/carrier.ts`, view `src/world/carrier.ts`, sound `src/carrierSound.ts`, model
   `tools/blender/carrier.py`
+- `shared/queen.ts` — the brood queen boss (giant eight-legged spider; gait, rear-and-slam numbers); brain
+  `server/queen.ts` (steps the feet), view + leg IK `src/world/queen.ts`, `src/queenSound.ts`, model `tools/blender/queen.py`
 - `shared/jets.ts` — fixed-wing drones: high fast flyovers (straight or big circles), day and night; 3 rifle hits and it glides down; scheduled by
   `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts` (`jets`)
 - `shared/ragdoll.ts` — dying: you lie where you fell for `DOWN_MS` (input ignored, third-person camera) as a

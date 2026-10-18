@@ -49,6 +49,19 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   it turns away from it, and anyone on rock or thin sand over it is out of reach; it keeps 380 m from the base.
   Weak points: six lenses on its back, shootable only while out of the sand. Dead, whatever was out falls onto the sand
   segment by segment and lies there for 4 min.
+- **The brood queen** (shared/queen.ts, server/queen.ts, src/world/queen.ts, src/queenSound.ts, tools/blender/queen.py):
+  the crawlers' mother, a low eight-legged spider machine ~31 m long (thorax 7 m off the sand, knees high over it like
+  a harvestman's, a fat ribbed brood sac with amber slits behind), same parts and palette as the guardians. Roams
+  round the nearest crawler/guardian site (walk 4 m/s), charges anyone in the open within 120 m at 6.8 m/s (you can
+  outwalk it), gives up past 190 m or after a minute. Feet are server-stepped (alternating tetrapod, two groups of
+  four) and each landing within 2.5 m of you kills; landings punch small holes (r 1.2 m, 650 mm), rationed by a
+  bucket (1.2/s, 6 banked) so a charge leaves rows of holes and ambling every few steps one. Prey within 23 m in front:
+  it rears up on its back legs (1.1 s, screech, cutters wide), then slams its front legs down 15 m ahead: everyone
+  within 9 m dies, two holes r 4 m 1.5 m deep, booms, dust, shake; then it stands 2.6 s. Kills and holes wait the
+  250 ms the client draws behind, so they land with the drawn foot. Weak points (6): the eye cluster, two under the
+  thorax, three on the sac (two on top, one at the tail). Dead: its legs give out one by one in servo jerks, the body
+  crashes into a hole, the sac splits open glowing and smokes. Model ~9.5k triangles, merged to a lit and a glow mesh
+  per part.
 - **Terrain healing is local now**: the wind's heal pass touched every edited vertex every 5 s and the server sent
   them all, so a boss's craters would have cost every client megabytes a pass. The server now sends `terrainHeal`
   and each client runs the same deterministic heal() on its copy (docs/netcode.md).
