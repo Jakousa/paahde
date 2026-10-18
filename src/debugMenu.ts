@@ -3,7 +3,7 @@
 // moves the shared server clock for everyone, production included. "Sandstorm here" summons one on you
 // (for everyone, after the usual warning); "Local sandstorm" sends one at you from just upwind at once, seen only by you.
 // "Guardian here" / "Drone here" bring the nearest guardian, or a drone (by day too), to you, for everyone; "Jet here"
-// sends a fixed-wing drone over you.
+// sends a fixed-wing drone over you; "Crawlers here" sets a pack of crawlers on you.
 // "Tone" switches the tone curve live (post.ts toneControl); "white" is the filmic curve's white point.
 // "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, and a laser rifle, pistol and jammer in your bag and equipment.
 import { ui } from './input';
@@ -18,7 +18,7 @@ export class DebugMenu {
   private panel = document.createElement('div');
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
-  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | BossKind) => void) {
+  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) => void) {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
@@ -47,7 +47,8 @@ export class DebugMenu {
 <button id="dbgLocalStorm" title="A sandstorm rolling in from upwind right now, only you see it (no heat)">Local sandstorm</button></div>
 <div class="row"><button id="dbgGuardian" title="The nearest guardian, brought 90 m from you (for everyone)">Guardian here</button>
 <button id="dbgDrone" title="A searchlight drone over you for a minute, even by day (for everyone)">Drone here</button>
-<button id="dbgJet" title="A fixed-wing drone flying over you in about 15 s (for everyone)">Jet here</button></div>
+<button id="dbgJet" title="A fixed-wing drone flying over you in about 15 s (for everyone)">Jet here</button>
+<button id="dbgCrawlers" title="A pack of six crawlers 30 m off, coming for you (for everyone)">Crawlers here</button></div>
 <div class="row">${BOSS_KINDS.map((k) => `<button data-boss="${k}" title="The ${k} boss near you for ten minutes (for everyone)">${BOSSES[k].label}</button>`).join('')}</div>
 <label>Tone <select id="dbgTone">${TONE_CURVES.map((c) => `<option>${c}</option>`).join('')}</select></label>
 <label id="dbgWhiteRow">White <input id="dbgWhite" type="range" min="1" max="8" step="0.25"> <b id="dbgWhiteVal"></b></label>
@@ -64,6 +65,7 @@ export class DebugMenu {
     p.querySelector('#dbgGuardian')!.addEventListener('click', () => summonBot('guardian'));
     p.querySelector('#dbgDrone')!.addEventListener('click', () => summonBot('drone'));
     p.querySelector('#dbgJet')!.addEventListener('click', () => summonBot('jet'));
+    p.querySelector('#dbgCrawlers')!.addEventListener('click', () => summonBot('crawlers'));
     for (const b of p.querySelectorAll<HTMLElement>('[data-boss]')) b.addEventListener('click', () => summonBot(b.dataset.boss as BossKind));
 
     const tone = p.querySelector<HTMLSelectElement>('#dbgTone')!;

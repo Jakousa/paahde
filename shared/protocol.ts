@@ -68,7 +68,7 @@ export type ClientMsg =
   | { t: 'lootTake'; id: number }
   // Debug menu: bring the nearest guardian 90 m from you, a searchlight drone over you for a minute (by day too), or
   // a fixed-wing drone past you in about 15 s, or a boss (shared/bosses.ts) near you.
-  | { t: 'summon'; what: 'guardian' | 'drone' | 'jet' | BossKind }
+  | { t: 'summon'; what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind }
   // A laser rifle or pistol shot (shared/rifle.ts) from (x, y, z) to where it stopped, (ex, ey, ez). `g`/`i`: the client
   // found it hit weak point i of walker g (i -1: just its body, which angers it); `d`: it hit drone d; `j`: fixed-wing
   // drone j (shared/jets.ts); `b`/`bi`: weak point bi of boss b (shared/bosses.ts). The server checks

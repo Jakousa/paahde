@@ -478,7 +478,7 @@ export class Net {
   }
 
   /** Debug menu: the nearest guardian, or a drone, brought to us (shared/guardians.ts). */
-  summonBot(what: 'guardian' | 'drone' | 'jet' | BossKind) {
+  summonBot(what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) {
     this.send({ t: 'summon', what });
   }
 

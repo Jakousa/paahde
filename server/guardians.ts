@@ -179,6 +179,9 @@ export class GuardianServer {
   private downed: Kill[] = [];
   /** Crash sites (ids) with crawlers out right now. */
   private swarmed = new Set<number>();
+  /** Debug menu packs: their made-up home (where they were summoned), gone like a site's once everyone has left it. */
+  private summoned: CrashSite[] = [];
+  private nextSummon = 1;
   /** Killed guardians come back (server ms), away from (x, z). */
   private comeback: { at: number; x: number; z: number }[] = [];
 
@@ -284,6 +287,11 @@ export class GuardianServer {
       this.swarmed.delete(id);
       this.guardians = this.guardians.filter((g) => g.kind !== CRAWLER || g.home !== s);
     }
+    this.summoned = this.summoned.filter((s) => {
+      if (near(s, SITE_LEAVE_R)) return true;
+      this.guardians = this.guardians.filter((g) => g.home !== s);
+      return false;
+    });
     for (const s of this.sites) {
       if (s.level === 0 || this.swarmed.has(s.id) || !near(s, SITE_NEAR_R)) continue;
       this.swarmed.add(s.id);
@@ -853,9 +861,29 @@ export class GuardianServer {
     d.vy = 1.5;
   }
 
-  /** Debug menu: the nearest guardian walks in from 90 m away, or a drone comes for a minute. */
+  /** Debug menu: the nearest guardian walks in from 90 m away, a drone comes for a minute, or a pack of crawlers turns
+   *  up 30 m off and comes for you (they keep to where they were summoned, like a site's). */
   summon(what: unknown, p: BotPlayer, now: number) {
     if (what === 'drone') return this.spawnDrone(p.x, p.z, -1, now + 60_000, 70);
+    if (what === 'crawlers') {
+      const home: CrashSite = { ...this.sites[0], id: -this.nextSummon++, x: p.x, z: p.z };
+      this.summoned.push(home);
+      const a0 = rand(-Math.PI, Math.PI);
+      let first: Guardian | null = null;
+      for (let i = 0; i < 6; i++) {
+        const a = a0 + rand(-0.9, 0.9);
+        const [x, z] = keepOut(p.x + Math.sin(a) * rand(26, 34), p.z + Math.cos(a) * rand(26, 34), CRAWLER_R);
+        const g = this.walker(CRAWLER, 4, home, x, z);
+        g.yaw = g.lastYaw = Math.atan2(p.x - x, p.z - z);
+        this.guardians.push(g);
+        first ??= g;
+      }
+      if (first && !p.safe && !indoors(p.x, p.y, p.z)) {
+        this.hunt(first, p, now);
+        this.rouse(first, p, now);
+      }
+      return;
+    }
     const big = this.guardians.filter((g) => g.kind === GUARDIAN && g.deadAt < 0);
     if (what !== 'guardian' || !big.length) return;
     const g = big.reduce((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) < Math.hypot(b.x - p.x, b.z - p.z) ? a : b));
