@@ -1,10 +1,13 @@
-// Fixed-wing drones (shared/jets.ts): a long-winged unmanned plane built from primitives: a slim fuselage with a
-// sensor-domed nose, an intake hump over the back feeding a jet nozzle at the tail, straight tapered wings and a V
-// tail. Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and the server clock,
-// rolled into its turns. Shot, it trails smoke (more with each hit); brought down it dives in rolling over on a heavy
-// trail, ploughs in nose first (onCrash) and smoulders, tail in the air. Jammed (shared/jammer.ts) it dives the same,
-// rolling harder, a thin trail corkscrewing off its tail. The rifle tests shots against it here (raycast).
+// Fixed-wing drones (shared/jets.ts): a long-winged unmanned recon/strike plane (public/models/jet.glb, made by
+// tools/blender/jet.py; a primitive stand-in until it has loaded): a slim fuselage with a satcom bulge and a sensor
+// ball under the chin, an intake hump over the back feeding a jet nozzle at the tail, straight wings with missiles
+// under them and a V tail. Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and
+// the server clock, rolled into its turns. Shot, it trails smoke (more with each hit); brought down it dives in
+// rolling over on a heavy trail, ploughs in nose first (onCrash) and smoulders, tail in the air. Jammed
+// (shared/jammer.ts) it dives the same, rolling harder, a thin trail corkscrewing off its tail. The rifle tests shots
+// against it here (raycast).
 import * as THREE from 'three/webgpu';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { JET_SPAN, jetAt, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { zaps } from './zaps';
 
@@ -26,8 +29,8 @@ function panel(len: number, root: number, tip: number, sweep: number, t: number)
   return g;
 }
 
-function build(): THREE.Group {
-  const k = JET_SPAN / 18; // modelled for an 18 m span
+/** The stand-in built from primitives, shown until jet.glb has loaded (and if it fails). */
+function primitive(): THREE.Group {
   // Double sided: the left wing and fin are the right ones mirrored (negative scale).
   const hull = new THREE.MeshStandardNodeMaterial({ color: 0x3a332d, roughness: 0.55, metalness: 0.5, side: THREE.DoubleSide });
   const dark = new THREE.MeshStandardNodeMaterial({ color: 0x15110f, roughness: 0.4, metalness: 0.7, side: THREE.DoubleSide });
@@ -72,7 +75,45 @@ function build(): THREE.Group {
     f.scale.x = side;
     g.add(f);
   }
-  g.scale.setScalar(k);
+  return g;
+}
+
+/** jet.glb's scene (an 18 m span, metres, nose +Z, the nozzle exit at its `Tail` empty), once loaded. */
+let model: THREE.Object3D | null = null;
+/** Planes made while it was still loading: they get the model when it comes in. */
+const pending = new Set<THREE.Group>();
+
+/** The prototype: its clones (one per jet in view) note themselves while the model is still loading. */
+class JetProto extends THREE.Group {
+  clone(recursive?: boolean): this {
+    const c = super.clone(recursive);
+    if (!model) pending.add(c);
+    return c;
+  }
+}
+
+function fill(g: THREE.Group) {
+  g.clear();
+  g.add(model ? model.clone() : primitive());
+}
+
+function build(): THREE.Group {
+  const g = new JetProto();
+  g.scale.setScalar(JET_SPAN / 18); // modelled for an 18 m span
+  fill(g);
+  pending.add(g);
+  new GLTFLoader().loadAsync('./models/jet.glb').then(
+    (gltf) => {
+      if (!gltf.scene.getObjectByName('Jet_Body')) throw new Error('jet.glb has no Jet_Body');
+      model = gltf.scene;
+      for (const p of pending) fill(p);
+      pending.clear();
+    },
+    (e) => {
+      pending.clear();
+      console.warn('jets: model failed, using primitives', e);
+    },
+  );
   return g;
 }
 
@@ -83,7 +124,7 @@ const BOXES = [
   { h: new THREE.Vector3(0.8, 0.9, 5.6), c: new THREE.Vector3(0, 0.2, 0) },
   { h: new THREE.Vector3(9.2, 0.5, 1.1), c: new THREE.Vector3(0, 0.15, 0.1) },
 ];
-/** The nozzle, where the smoke streams from (body frame). */
+/** The nozzle, where the smoke streams from (body frame; jet.glb's `Tail` empty). */
 const TAIL = new THREE.Vector3(0, 0.5, -5.8);
 const _inv = new THREE.Matrix4(), _o = new THREE.Vector3(), _d = new THREE.Vector3(), _t = new THREE.Vector3();
 
