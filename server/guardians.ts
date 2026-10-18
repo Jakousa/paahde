@@ -43,6 +43,8 @@ const WANDER_R = 1500;
 /** A hunt ends this long (ms) after the walker last knew where you are, or once you're this far (m) from it (crawlers:
  *  from their site). */
 const HUNT_FORGET = 15_000;
+/** Shot from any distance, a walker keeps tracking the shooter this long (ms), however far, renewed by every hit. */
+const SHOT_TRACK_MS = 20_000;
 const HUNT_GIVE_UP_R: Record<Kind, number> = { [GUARDIAN]: 200, [CRAWLER]: 70 };
 /** After crushing someone, a guardian ignores everyone for this long (ms). */
 const CALM_MS = 20_000;
@@ -88,7 +90,7 @@ type Guardian = {
   id: number; kind: Kind; legs: 3 | 4; x: number; z: number; yaw: number; speed: number;
   home: CrashSite; tx: number; tz: number; guardUntil: number;
   /** Hunting this player id (-1 none) since when, last known where, when; calm until; last bite. */
-  prey: number; huntAt: number; px: number; pz: number; knownAt: number; calmUntil: number; bitAt: number;
+  prey: number; huntAt: number; px: number; pz: number; knownAt: number; calmUntil: number; shotUntil: number; bitAt: number;
   /** The cannon: aimed at (ax, ay, az) while it sees its prey; charging since (-1 not), last fired. */
   aiming: boolean; ax: number; ay: number; az: number; chargeAt: number; firedAt: number;
   /** Last missile launched when. */
@@ -168,7 +170,7 @@ export class GuardianServer {
   private walker(kind: Kind, legs: 3 | 4, home: CrashSite, x: number, z: number): Guardian {
     const g: Guardian = {
       id: this.nextWalker++, kind, legs, x, z, yaw: rand(-Math.PI, Math.PI), speed: 0, home,
-      tx: home.x, tz: home.z, guardUntil: 0, prey: -1, huntAt: 0, px: 0, pz: 0, knownAt: 0, calmUntil: 0, bitAt: 0,
+      tx: home.x, tz: home.z, guardUntil: 0, prey: -1, huntAt: 0, px: 0, pz: 0, knownAt: 0, calmUntil: 0, shotUntil: 0, bitAt: 0,
       aiming: false, ax: 0, ay: 0, az: 0, chargeAt: -1, firedAt: 0, missileAt: 0,
       points: weakPoints(kind, legs).length, broken: 0, deadAt: -1,
     };
@@ -348,10 +350,12 @@ export class GuardianServer {
     }
     if (g.prey >= 0) {
       const p = byId.get(g.prey);
+      const shot = now < g.shotUntil;
+      if (shot && p && !p.safe && !inBase(p.x, p.y, p.z)) this.hunt(g, p, now);
       // Crawlers keep to their site; guardians give up once you've got far from them.
       const far = g.kind === CRAWLER ? Math.hypot(g.px - g.home.x, g.pz - g.home.z) : Math.hypot(g.px - g.x, g.pz - g.z);
       const tired = g.kind === CRAWLER && now - g.huntAt > CRAWLER_CHASE_MS;
-      const gone = !p || p.safe || inBase(p.x, p.y, p.z) || now - g.knownAt > HUNT_FORGET || far > HUNT_GIVE_UP_R[g.kind] || tired;
+      const gone = !p || p.safe || inBase(p.x, p.y, p.z) || now - g.knownAt > HUNT_FORGET || (far > HUNT_GIVE_UP_R[g.kind] && !shot) || tired;
       if (tired) g.calmUntil = now + CRAWLER_CALM_MS;
       if (gone) {
         g.prey = -1;
@@ -704,6 +708,7 @@ export class GuardianServer {
     // Hurt (or just hit), it turns on whoever did it; a crawler's pack with it.
     if (!by.safe && !inBase(by.x, by.y, by.z)) {
       g.calmUntil = 0;
+      g.shotUntil = now + SHOT_TRACK_MS;
       this.hunt(g, by, now);
       if (g.kind === CRAWLER) for (const o of this.guardians) if (o.kind === CRAWLER && o.home === g.home && o.deadAt < 0 && o.prey < 0) this.hunt(o, by, now);
     }
