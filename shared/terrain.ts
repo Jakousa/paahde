@@ -48,8 +48,21 @@ export function onRock(x: number, z: number): boolean {
 /** Sparse grid of height offsets (millimetres), chunked. One instance per world (see `edits`). */
 export class TerrainEdits {
   private chunks = new Map<string, Int32Array>();
-  /** Called with the chunk key after any change, so renderers can rebuild affected meshes. */
+  /** Called with the chunk key after any change, so renderers can rebuild affected meshes. Once per chunk per
+   *  batch of vertex changes (a dig stroke, an edit message, a heal pass), not once per vertex: a heal pass over a
+   *  few big craters changes ~100 000 vertices. Listeners only mark work for later. */
   onChange?: (cx: number, cz: number) => void;
+  /** Chunks already reported in the current batch (cleared on the next microtask). */
+  private told = new Set<number>();
+
+  private changed(cx: number, cz: number) {
+    if (!this.onChange) return;
+    const k = cx * 0x100000 + cz;
+    if (this.told.has(k)) return;
+    if (this.told.size === 0) queueMicrotask(() => this.told.clear());
+    this.told.add(k);
+    this.onChange(cx, cz);
+  }
 
   static key(cx: number, cz: number) {
     return `${cx},${cz}`;
@@ -75,10 +88,10 @@ export class TerrainEdits {
     const i = (iz - cz * EDIT_CHUNK) * EDIT_CHUNK + (ix - cx * EDIT_CHUNK);
     if (c[i] === mm) return;
     c[i] = Math.round(mm);
-    this.onChange?.(cx, cz);
+    this.changed(cx, cz);
     // Vertices on a chunk's low edge are also sampled by the neighbouring chunk's mesh.
-    if (ix - cx * EDIT_CHUNK === 0) this.onChange?.(cx - 1, cz);
-    if (iz - cz * EDIT_CHUNK === 0) this.onChange?.(cx, cz - 1);
+    if (ix - cx * EDIT_CHUNK === 0) this.changed(cx - 1, cz);
+    if (iz - cz * EDIT_CHUNK === 0) this.changed(cx, cz - 1);
   }
 
   /** Bilinearly interpolated offset in metres at world (x, z). */

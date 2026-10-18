@@ -92,8 +92,12 @@ export class DriftSheet {
     edits.onChange = (cx, cz) => {
       prev?.(cx, cz);
       // Digging changed the ground: refresh that chunk's heights and re-trace next frame.
-      const size = EDIT_CHUNK * EDIT_CELL;
-      this.dirty.push({ x0: cx * size, z0: cz * size, x1: (cx + 1) * size, z1: (cz + 1) * size });
+      const size = EDIT_CHUNK * EDIT_CELL, x0 = cx * size, z0 = cz * size;
+      // Only chunks the cached grid covers, once each.
+      const gx1 = this.gx + BIG * STEP, gz1 = this.gz + BIG * STEP;
+      if (x0 + size < this.gx || x0 > gx1 || z0 + size < this.gz || z0 > gz1) return;
+      if (this.dirty.some((r) => r.x0 === x0 && r.z0 === z0)) return;
+      this.dirty.push({ x0, z0, x1: x0 + size, z1: z0 + size });
     };
   }
 
