@@ -68,6 +68,7 @@ import { tools } from './input';
 import { Wrecks } from './world/wrecks';
 import { Mast } from './world/mast';
 import { GuardianFx } from './guardians';
+import { update } from './update';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -131,6 +132,8 @@ machines.bench.onReady = () => {
 };
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear(), (what) => net.summonBot(what));
 new Chat(net);
+// New builds wait for a quiet moment to reload (src/update.ts).
+update.busy = () => guardianFx.combat || net.me.riding || teardown.active || !!net.down;
 const lootView = new LootView(scene);
 const corpseView = new CorpseView(scene);
 const detector = new Detector();
@@ -143,8 +146,8 @@ net.onDig = (at, pile, _mine, id) => {
   digUntil.set(id, performance.now() + DIG_ANIM_S * 1000);
 };
 loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
-// Dark until the bunker you spawn in and the player model have loaded, so the first frames show neither a
-// half-built room nor placeholder bodies; after 20 s, whatever has loaded.
+// Dark until the player model has loaded, and the bunker too if you spawn in it, so the first frames show
+// neither a half-built room nor placeholder bodies; after 20 s, whatever has loaded.
 const cover = document.getElementById('cover')!; // in index.html, so it is up before this script has loaded
 // The bar counts every model and texture through three's default loading manager; never runs backwards as
 // more loads are queued.
@@ -155,7 +158,12 @@ THREE.DefaultLoadingManager.onProgress = (_url, done, total) => {
 };
 let loaded = false;
 let coverFrames = 0; // frames drawn behind the cover once loaded (lets shaders compile)
-Promise.race([Promise.allSettled([base.ready, loadScavenger()]), new Promise((r) => setTimeout(r, 20_000))]).then(() => (loaded = true));
+let baseLoaded = false;
+let bodyLoaded = false;
+let coverTimedOut = false;
+base.ready.then(() => (baseLoaded = true), () => (baseLoaded = true));
+loadScavenger().then(() => (bodyLoaded = true), () => (bodyLoaded = true));
+setTimeout(() => (coverTimedOut = true), 20_000);
 const me = new Avatar(0xffffff);
 me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
 let bodyHidden = true;
@@ -246,6 +254,7 @@ renderer.setAnimationLoop((time) => {
     return;
   }
   joined = true;
+  loaded ||= coverTimedOut || (bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)));
   if (loaded && coverFrames < 3 && ++coverFrames === 3) {
     cover.style.opacity = '0';
     setTimeout(() => cover.remove(), 500);

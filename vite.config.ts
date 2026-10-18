@@ -8,7 +8,12 @@ export default defineConfig({
   build: {
     target: 'es2022',
     // models-lab.html: model review page (src/models/lab.ts), served at ./models-lab.html
-    rollupOptions: { input: { main: 'index.html', lab: 'models-lab.html' } },
+    rollupOptions: {
+      input: { main: 'index.html', lab: 'models-lab.html' },
+      // three and the other libraries in a chunk of their own: its hash only changes when they do, so a
+      // deploy of game code leaves it in the browser's cache.
+      output: { codeSplitting: { groups: [{ name: 'vendor', test: /node_modules/ }] } },
+    },
   },
   define: { __BUILD_SHA__: JSON.stringify(BUILD_SHA) },
   // The server reads dist/version.txt and tells clients, which reload when they're out of date.

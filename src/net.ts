@@ -37,6 +37,7 @@ import { corpseBox, CORPSES } from '../shared/corpse.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
+import { serverBuild } from './update';
 
 /** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
 export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' }>;
@@ -559,7 +560,7 @@ export class Net {
       this.epoch = msg.epoch;
       return;
     }
-    if (msg.t === 'version') return reloadIfStale(msg.build);
+    if (msg.t === 'version') return serverBuild(msg.build);
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);
     if (msg.t === 'scrap') return this.applyScrap(msg);
@@ -752,18 +753,4 @@ export function getBrowserId(): string {
   } catch {
     return crypto.randomUUID(); // storage blocked: play as a fresh guest
   }
-}
-
-// A deploy restarts the server, so every client reconnects and hears the new build here. Reload to
-// pick it up (position is kept server-side by browserId). Dev builds never reload, and we try each
-// build only once per tab in case a cache still hands us the old page.
-function reloadIfStale(build: string) {
-  if (build === __BUILD_SHA__ || build === 'dev' || __BUILD_SHA__ === 'dev') return;
-  try {
-    if (sessionStorage.getItem('reloadedFor') === build) return;
-    sessionStorage.setItem('reloadedFor', build);
-  } catch {
-    return;
-  }
-  location.reload();
 }
