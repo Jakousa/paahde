@@ -53,7 +53,7 @@ const ACCEL = 3, BRAKE = 6, REAR_BRAKE = 14;
 const REAR_PER = 0.1, RECOVER_PER = 0.25, CHARGE_PER = 0.015;
 /** The brood against n people: at most BROOD_MAX out (+BROOD_PER each), clutches of CLUTCH (+CLUTCH_PER), one every
  *  CLUTCH_MS (÷ by CLUTCH_FASTER), the first FIRST_CLUTCH_MS into a fight. */
-const BROOD_MAX = 4, BROOD_PER = 0.5, CLUTCH = 2, CLUTCH_PER = 0.5, CLUTCH_MS = 15_000, CLUTCH_FASTER = 0.3, FIRST_CLUTCH_MS = 3000;
+const BROOD_MAX = 6, BROOD_PER = 0.5, CLUTCH = 3, CLUTCH_PER = 0.5, CLUTCH_MS = 10_000, CLUTCH_FASTER = 0.3, FIRST_CLUTCH_MS = 3000;
 /** Spiderlings go for people within SP_SIGHT (m) of them; each one already after someone counts as SP_SHARE m more
  *  to them, so a crowd gets spread out; they turn at SP_TURN (rad/s) and keep SP_GAP (m) apart. */
 const SP_SIGHT = 160, SP_SHARE = 12, SP_TURN = 7, SP_GAP = 1.6;
@@ -183,7 +183,7 @@ export const queen: Brain = {
           const off = Math.abs(wrap(heading - b.yaw));
           turn = HUNT_TURN;
           // Turning hard, it slows to come round tighter.
-          want = off > 1 ? WALK : scaled(CHARGE, n, CHARGE_PER);
+          want = off > 1 ? WALK : Math.min(7.4, scaled(CHARGE, n, CHARGE_PER));
           if (d < REAR_R && off < REAR_CONE) {
             setMode(st, REAR, now);
             st.rearMs = Math.round(REAR_MS / scaled(1, n, REAR_PER));

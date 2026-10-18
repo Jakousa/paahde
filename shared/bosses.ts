@@ -27,9 +27,9 @@ export type BossKind = (typeof BOSS_KINDS)[number];
  *  bar, the debug button). */
 export const BOSSES: Record<BossKind, { points: number; hp: number; wreckS: number; label: string }> = {
   worm: { points: 6, hp: 18, wreckS: 240, label: 'Worm' },
-  carrier: { points: 4, hp: 12, wreckS: 240, label: 'Carrier' },
+  carrier: { points: 4, hp: 16, wreckS: 240, label: 'Carrier' },
   colossus: { points: 5, hp: 15, wreckS: 300, label: 'Colossus' },
-  queen: { points: 6, hp: 18, wreckS: 240, label: 'Queen' },
+  queen: { points: 6, hp: 22, wreckS: 240, label: 'Queen' },
 };
 
 /** A broken weak point grows back after this long (ms). */

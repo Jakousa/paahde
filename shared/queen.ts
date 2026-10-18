@@ -34,12 +34,12 @@ export const ABD_PITCH = -0.25;
 
 /** Speeds (m/s; a player walks 7.5, so a charge can be outwalked) and turn rates (rad/s). */
 export const WALK = 4;
-export const CHARGE = 6.8;
+export const CHARGE = 7.2;
 export const TURN = 0.5;
 export const HUNT_TURN = 1.1;
 /** Notices people out in the open this close (m); gives up past GIVE_UP or after CHASE_MS without getting them. */
-export const SIGHT = 120;
-export const GIVE_UP = 190;
+export const SIGHT = 160;
+export const GIVE_UP = 260;
 export const CHASE_MS = 60_000;
 /** A stab within this (m, horizontally) of you kills. */
 export const STAB_R = 2.5;
@@ -50,12 +50,12 @@ export const STAB_HOLE = { r: 1.2, mm: 650 };
  *  the point between them dies, two big holes. Then it stands for RECOVER_MS. */
 export const REAR_R = 23;
 export const REAR_CONE = 0.6;
-export const REAR_MS = 1100;
+export const REAR_MS = 900;
 export const SLAM_FWD = 15;
 export const SLAM_SIDE = 3.6;
 export const SLAM_R = 9;
 export const SLAM_HOLE = { r: 4, mm: 1500 };
-export const RECOVER_MS = 2600;
+export const RECOVER_MS = 1800;
 /** Dead: its body comes down in a hole this big. */
 export const DEATH_HOLE = { r: 7, mm: 800 };
 

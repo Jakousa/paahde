@@ -18,13 +18,13 @@ export const CARRIER_ALT = 74;
 export const SINK_PER_FAN = 7;
 /** Drift and chase speeds (m/s), and how fast it can turn (rad/s). */
 export const CRUISE = 3.5;
-export const CHASE = 4.6;
+export const CHASE = 6.2;
 export const TURN_RATE = 0.07;
 /** Sees players in the open within this horizontal distance (m); bombs when one is within BOMB_REACH. */
-export const SEE_R = 200;
-export const BOMB_REACH = 110;
+export const SEE_R = 260;
+export const BOMB_REACH = 160;
 /** A bomb every BOMB_GAP s (random within); kills within BOMB_KILL_R m; its crater (radius m, depth mm). */
-export const BOMB_GAP: [number, number] = [2.6, 3.8];
+export const BOMB_GAP: [number, number] = [1.8, 2.8];
 export const BOMB_KILL_R = 7;
 export const BOMB_CRATER_R = 5;
 export const BOMB_CRATER_MM = 1500;

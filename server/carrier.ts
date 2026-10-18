@@ -2,7 +2,8 @@
 // the next across the desert at CRUISE, CARRIER_ALT over the highest sand under it, its downwash scouring a bowl
 // every SCOUR_STEP m. Anyone out in the open within SEE_R it can see from its belly (lineOfSight) it turns after
 // (CHASE: still slower than a run) and, once they're within BOMB_REACH, bombs every few seconds: each bomb falls from
-// the bay aimed at where they'll be when it lands (a little lead: running straight on at a walk still gets out from under it), and bursts there at the time bombFall gives
+// the bay aimed at where they'll be when it lands (a little lead: running straight on at a walk still gets out from under it), with a
+// second where they stand (stopping doesn't save them either: a sidestep does), and bursts there at the time bombFall gives
 // (the view draws the same fall from the 'bomb' bossFx). Shooting it makes it come for the shooter from further off.
 //
 // Each broken fan hub (a weak point) slows it, sinks it SINK_PER_FAN lower and lists it toward the dead fan. All four
@@ -16,7 +17,7 @@
 // them all.
 //
 // A crowd (server/bossCrowd.ts) makes it harder: bombs come more often, a run bombs several people at once (and lays a
-// second bomb where its target stands, for those who stop), and more drones are out, launched sooner.
+// third bomb on its target), and more drones are out, launched sooner.
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { BOSS_SEND_R } from '../shared/bosses.ts';
 import { crowd, scaled } from './bossCrowd.ts';
@@ -47,18 +48,18 @@ const SCATTER = 2.5;
 /** A player track's velocity is smoothed over this (s). */
 const TRACK_TAU = 0.6;
 /** Crowd: the bomb gap is divided by scaled(1, n, BOMB_GAP_PER); a run bombs 1 + floor((n − 1) / BOMB_MARK_PER)
- *  people; from STICK_N people a second bomb lands where the target stands (no lead). */
+ *  people; from STICK_N people a third bomb lands on its target, with full lead. */
 const BOMB_GAP_PER = 0.15;
 const BOMB_MARK_PER = 2;
 const STICK_N = 5;
 
 /** Drones: out at once (scaled by the crowd), a launch every DRONE_GAP s (divided by the crowd's scale), the first
  *  DRONE_FIRST s after someone's about; they go for people within DRONE_SEEK_R m of the carrier. */
-const DRONE_CAP = 2;
+const DRONE_CAP = 3;
 const DRONE_CAP_PER = 0.5;
-const DRONE_GAP: [number, number] = [9, 14];
+const DRONE_GAP: [number, number] = [6, 9];
 const DRONE_GAP_PER = 0.3;
-const DRONE_FIRST = 6;
+const DRONE_FIRST = 4;
 const DRONE_SEEK_R = 260;
 /** Drone flight: top speeds (m/s) hunting and going home, acceleration (m/s²), circling radius (m) and height over
  *  the sand (m), the reach it aims from (m), and the wait between shots (s). */
@@ -68,7 +69,7 @@ const DRONE_ACC = 16;
 const DRONE_ORBIT = 20;
 const DRONE_HEIGHT = 9;
 const DRONE_REACH = 50;
-const DRONE_RELOAD: [number, number] = [3.5, 5.5];
+const DRONE_RELOAD: [number, number] = [2.5, 4];
 /** An emptied slot stays empty this long (ms), so the view sees one drone go before the next takes its slot. */
 const SLOT_REST = 1500;
 /** Without a target this long (s), its drones are called home, one every RECALL_S. */
@@ -412,8 +413,9 @@ export const carrier: Brain = {
         marks.push(...others.slice(0, more));
       }
       for (const p of marks) dropBomb(b, st, bay, p, LEAD, now, out);
-      // A second where the target stands: stopping doesn't save them either.
-      if (n >= STICK_N) dropBomb(b, st, bay, target, 0, now, out);
+      // A second where the target stands: stopping doesn't save them either; a crowd's third where they'd run to.
+      dropBomb(b, st, bay, target, 0, now, out);
+      if (n >= STICK_N) dropBomb(b, st, bay, target, 1.1, now, out);
     }
 
     tickDrones(b, st, dt, now, players, out);
