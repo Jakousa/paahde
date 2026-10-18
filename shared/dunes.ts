@@ -127,8 +127,8 @@ export function duneHeight(x: number, z: number, seed: number): number {
 
   // Regional sand supply: 0 = flat pan, 1 = full dune field.
   const supply = vnoise(x * (1 / 1100), z * (1 / 1100), S + 11) * 0.7 + vnoise(x * (1 / 430), z * (1 / 430), S + 12) * 0.3;
-  const big = ss((supply - 0.2) * (1 / 0.3));
-  const small = ss((supply - 0.18) * (1 / 0.25));
+  const big = ss((supply - 0.08) * (1 / 0.3));
+  const small = ss((supply - 0.06) * (1 / 0.25));
   // Very gentle erg undulation.
   let h = (vnoise(x * (1 / 1600), z * (1 / 1600), S + 13) - 0.5) * 24;
 
