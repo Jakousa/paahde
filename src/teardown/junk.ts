@@ -239,7 +239,7 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
       p.visible = i < left;
       p.scale.setScalar(1 + 0.7 * Math.pow(Math.max(0, Math.sin(t * 7 - i * 0.9)), 4));
     });
-  } else if (u.turn) u.turn.rotation.z = -t * 3.2;
+  } else if (u.turn) u.turn.rotation.z = t * 3.2;
   else if (u.pull) u.pull.position.z = tap * 0.1;
   else if (u.up) u.up.position.y = tap * 0.08;
   else if (u.sweep) {
