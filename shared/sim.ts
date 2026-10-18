@@ -122,7 +122,7 @@ export const SLIDE = 256; // Shift: speed slide
 export const BIKE = 512; // 9: get on / off the motorcycle (needs a repaired one equipped: PlayerState.bike)
 export const INPUT_MASK = 1023;
 /** Getting on the bike takes this long, standing still; the bike key again stops it. Getting off is at once. */
-export const MOUNT_TICKS = 3 * TICK_RATE;
+export const MOUNT_TICKS = 2 * TICK_RATE;
 const MOVE_KEYS = FORWARD | BACK | LEFT | RIGHT | JUMP | CROUCH | SLIDE;
 
 // Camera yaw is sent with every input, quantized to 16 bits so client and server agree exactly.
