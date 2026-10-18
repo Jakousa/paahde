@@ -20,7 +20,6 @@ const STEEL = mat(0x8a8f86, 0.5, 0.7);
 const CLOTH = mat(0x7a5e3a, 0.95, 0);
 const WOOD = mat(0x6b4a2e, 0.9, 0);
 const RED = mat(0xa84a32, 0.6, 0.3);
-const BRASS = mat(0xc09040, 0.45, 0.8);
 const SCREEN = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(0.35, 1, 0.75).multiplyScalar(1.6) });
 
 function box(g: THREE.Object3D, w: number, h: number, d: number, m: THREE.Material, x = 0, y = 0, z = 0) {
@@ -66,11 +65,17 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
       coil.rotation.x = -tip;
     });
   })(),
-  spyglass: () => {
-    const g = new THREE.Group();
-    cyl(g, 0.03, 0.42, BRASS, 0, 0, -0.06).rotation.x = Math.PI / 2;
-    cyl(g, 0.038, 0.12, WOOD, 0, 0, 0.08).rotation.x = Math.PI / 2;
-    g.rotation.x = -0.35; // eyepiece up a little
+  // The first-person spyglass (public/models/telescope.glb; objective -Z, origin at the grip), carried collapsed: the
+  // avatar places it and draws the tubes out as it's raised to the eye (scavenger.ts holdScope, userData.draws).
+  spyglass: (loaded) => {
+    const g = glbModel('./models/telescope.glb', () => {
+      g.userData.draws = ['TelescopeDraw1', 'TelescopeDraw2'].map((n, i) => {
+        const d = g.getObjectByName(n);
+        if (d) d.position.z = DRAW_IN[i];
+        return d;
+      }).filter((d) => !!d);
+      loaded();
+    });
     return g;
   },
   backpack: () => {
@@ -130,11 +135,20 @@ const gunSrc = new Map<string, Promise<THREE.Object3D>>();
  * rifle.py / pistol.py BZ, MUZZLE_Y), where its shots start (heldMuzzle).
  */
 function gunModel(url: string, loaded: (() => void) | undefined, bore: number, tip: number): THREE.Group {
-  const g = new THREE.Group();
+  const g = glbModel(url, loaded);
   const muzzle = new THREE.Object3D();
   muzzle.name = 'Muzzle';
   muzzle.position.set(0, bore, tip);
   g.add(muzzle);
+  return g;
+}
+
+/** Spyglass draw tubes: glTF z of TelescopeDraw1 / 2 when pushed in (telescope.py COLLAPSED). */
+export const DRAW_IN = [-0.075, -0.14];
+
+/** A copy of the glb at `url` (fetched once), with its own geometry; empty until loaded, then `loaded` is called. */
+function glbModel(url: string, loaded: (() => void) | undefined): THREE.Group {
+  const g = new THREE.Group();
   let src = gunSrc.get(url);
   if (!src) gunSrc.set(url, (src = new GLTFLoader().loadAsync(url).then((gltf) => gltf.scene)));
   src.then(

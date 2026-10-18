@@ -315,8 +315,8 @@ renderer.setAnimationLoop((time) => {
   }
 
   const others = net.frame(frameDt);
-  // The gun raised (or just fired): others see it shouldered (src/models/scavenger.ts).
-  const aiming = playerHands.aim > 0.5;
+  // The gun raised (or just fired), or the spyglass: others see it shouldered, or at the eye (src/models/scavenger.ts).
+  const aiming = playerHands.aim > 0.5 || playerHands.looking;
   net.setHands(playerHands.held, playerHands.drinking, playerHands.filling, aiming);
 
   me.setColor(net.color);

@@ -19,7 +19,7 @@ import { Ragdoll, type RagdollGround } from './ragdoll';
 import { CrouchGait } from './crouchGait';
 import type { RidePose } from '../players';
 import { carriedBit, wornBit } from '../../shared/gear.ts';
-import { beltModel, disposeModel, heldModel, heldMuzzle, wristModel } from './outfit';
+import { beltModel, disposeModel, DRAW_IN, heldModel, heldMuzzle, wristModel } from './outfit';
 import { LAMP_ON } from './jammer';
 import { RECEIVERS } from '../../shared/bosses.ts';
 
@@ -440,6 +440,7 @@ export class ScavengerModel {
     // Digging, the clip swings the arms: the tool goes with the hand.
     const gun = this.item ? GUN_HOLD[this.item] : undefined;
     if (this.held?.visible && gun) this.holdGun(this.held, gun, loose || !!pose.digging, pitch);
+    else if (this.held?.visible && this.item === 'spyglass') this.holdScope(this.held, loose || !!pose.digging, pitch);
     else if (this.held?.visible) this.holdItem(this.held, loose || !!pose.digging);
     if (pose.ride) return this.ride(pose.ride);
     // Plant the feet: lock while the clip has them down (not when sliding: the sand moves with you).
@@ -648,6 +649,57 @@ export class ScavengerModel {
     }
   }
 
+  /** The spyglass: carried collapsed in the right hand down by the thigh, objective down; raised (`aimT`, while
+   *  looking through it) the eyepiece goes to the right eye along the look `pitch`, the tubes drawn out, and the left
+   *  hand steadies it under the objective. `loose`: it follows the hand. */
+  private holdScope(o: THREE.Object3D, loose: boolean, pitch: number) {
+    const arm = this.arms[1];
+    if (!arm) return;
+    const k = this.aimT;
+    for (const [i, d] of ((o.userData.draws ?? []) as THREE.Object3D[]).entries()) d.position.z = DRAW_IN[i] * (1 - k);
+    const p = clamp(pitch, -0.9, 0.9);
+    _fwd.copy(SCOPE_READY).lerp(_t.set(0, Math.sin(p), -Math.cos(p)), k).normalize();
+    _up.copy(SCOPE_READY_UP).lerp(_t.set(0, Math.cos(p), Math.sin(p)), k);
+    _right.crossVectors(_fwd, _up).normalize();
+    _up.crossVectors(_right, _fwd);
+    // glTF: objective -Z, up +Y, right +X.
+    o.quaternion.setFromRotationMatrix(_m.makeBasis(_right, _up, _t.copy(_fwd).negate()));
+    this.root.updateMatrixWorld(true);
+    if (loose) {
+      this.root.worldToLocal(arm[2].getWorldPosition(o.position));
+      return;
+    }
+    this.root.worldToLocal(arm[0].getWorldPosition(_s0));
+    o.position.copy(_s0).add(SCOPE_READY_AT);
+    if (k > 1e-3 && this.head) {
+      // Eyepiece (drawn out, SCOPE_EYE behind the grip) just in front of the right eye.
+      this.root.worldToLocal(_p.set(0, 0.09, 0.1).applyMatrix4(this.head.matrixWorld)); // glTF space: the face is +Z
+      o.position.lerp(_p.addScaledVector(_right, 0.032).addScaledVector(_fwd, SCOPE_EYE), k);
+    }
+    // Right fist round the barrel: wrist behind and under it, knuckles forward.
+    _t.copy(o.position).addScaledVector(_fwd, -0.06).addScaledVector(_up, -0.02).addScaledVector(_right, 0.025);
+    this.root.localToWorld(_t);
+    reach(arm[0], arm[1], arm[2], _t, _pole.set(0.6, -0.5, 0.6).lerp(_o.set(1, -0.8, 0.1), k).transformDirection(this.root.matrixWorld));
+    aim(arm[2], arm[3], this.root.localToWorld(_t.copy(o.position).addScaledVector(_fwd, 0.04).addScaledVector(_up, 0.01)));
+    // Left hand cupped under the objective, coming up with it.
+    const left = this.arms[0];
+    if (left && k > 1e-3) {
+      _q0.copy(left[0].quaternion);
+      _q1.copy(left[1].quaternion);
+      _wq.copy(left[2].quaternion);
+      _t.copy(o.position).addScaledVector(_fwd, 0.09).addScaledVector(_up, -0.045).addScaledVector(_right, -0.03);
+      this.root.localToWorld(_t);
+      reach(left[0], left[1], left[2], _t, _pole.set(-0.4, -1, 0.1).transformDirection(this.root.matrixWorld));
+      aim(left[2], left[3], this.root.localToWorld(_t.copy(o.position).addScaledVector(_fwd, 0.12).addScaledVector(_up, -0.01).addScaledVector(_right, 0.02)));
+      if (k < 0.999) {
+        left[0].quaternion.slerpQuaternions(_q0, _q.copy(left[0].quaternion), k);
+        left[1].quaternion.slerpQuaternions(_q1, _q.copy(left[1].quaternion), k);
+        left[2].quaternion.slerpQuaternions(_wq, _q.copy(left[2].quaternion), k);
+        left[0].updateMatrixWorld(true);
+      }
+    }
+  }
+
   /** Sit on the bike: move the body so the hips are on the seat, bend the upper body, then reach the hands and feet. */
   private ride(r: RidePose) {
     if (!this.hips || !this.spine) return;
@@ -690,6 +742,13 @@ export class ScavengerModel {
     this.root.removeFromParent();
   }
 }
+
+/** The carried spyglass (root space): objective down and a little forward, its up, and the grip from the right
+ *  shoulder joint (down by the thigh). Raised: the grip is SCOPE_EYE ahead of the eye (the drawn-out eyepiece). */
+const SCOPE_READY = new THREE.Vector3(0.05, -0.9, -0.35).normalize();
+const SCOPE_READY_UP = new THREE.Vector3(0, 0.35, -0.9);
+const SCOPE_READY_AT = new THREE.Vector3(0.06, -0.52, -0.1);
+const SCOPE_EYE = 0.215;
 
 /** How a gun is held (root space: forward -Z, right +X, up +Y). */
 type GunHold = {
