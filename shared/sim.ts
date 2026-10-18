@@ -14,7 +14,7 @@
 // - Rock (shared/rocks.ts) holds: bare rock up to ROCK_CLIMB_TAN doesn't slide; steeper rock is a wall you
 //   can't walk up, only jump onto. Off its edge you fall or slide.
 // - Sand bike (dev helper, 9 toggles it): see stepBike() below.
-import { BASE_SPAWN, baseCeiling, collideBase, terrainHidden } from './base.ts';
+import { BUNKER_SPAWN, baseCeiling, collideBase, terrainHidden } from './base.ts';
 import { collideCrash } from './crashsites.ts';
 import { bikeEngine, bikeTopSpeed } from './gear.ts';
 import { collideScrap } from './scrap.ts';
@@ -82,7 +82,7 @@ const LAND_SLOW = 0.4; // speed factor right after a hard landing, recovering li
 const MAX_LAND_TICKS = 24;
 
 /** New players start in front of the home base's door. */
-export const SPAWN = BASE_SPAWN;
+export const SPAWN = BUNKER_SPAWN;
 
 export type PlayerState = {
   x: number;
@@ -135,9 +135,9 @@ function sandAt(x: number, z: number, prevY: number): number {
   return terrainHidden(x, z, prevY) ? -Infinity : heightAt(x, z);
 }
 
-export function spawnState(x = SPAWN.x, z = SPAWN.z): PlayerState {
+export function spawnState(x = SPAWN.x, z = SPAWN.z, y = x === SPAWN.x && z === SPAWN.z ? SPAWN.y : heightAt(x, z)): PlayerState {
   return {
-    x, y: heightAt(x, z), z, vx: 0, vy: 0, vz: 0, facing: 0,
+    x, y, z, vx: 0, vy: 0, vz: 0, facing: 0,
     grounded: true, airJumps: AIR_JUMPS, jumpHeld: false, landTicks: 0,
     sliding: false, crouching: false, slideCool: 0, slideSpent: false, riding: false, bikeHeld: false, heading: 0, bike: 0,
   };

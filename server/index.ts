@@ -38,7 +38,7 @@ import { CrashServer } from './crash.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
 import { TerrainServer } from './terrain.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
-import { BASE_SPAWN } from '../shared/base.ts';
+import { BUNKER_SPAWN } from '../shared/base.ts';
 import { blastPush, DOWN_MS } from '../shared/ragdoll.ts';
 import { stormAt, stormDrag } from '../shared/storm.ts';
 import { sunElevation, timeOfDayAt } from '../shared/sun.ts';
@@ -192,7 +192,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   if (typeof browserId !== 'string' || !UUID.test(browserId)) return ws.close(1008, 'bad browserId');
   const row = db.getPlayer(browserId);
   const color = row?.color ?? Math.floor(Math.random() * 0xffffff);
-  // Heights aren't saved: someone who left over the bunker (or in it) starts at its door instead.
+  // Heights aren't saved: someone who left over the bunker (or in it) starts down in it.
   const atBase = spawn === 'base';
   let state = row && !atBase && !overBase(row.x, row.z, 0.5) ? spawnState(row.x, row.z) : spawnState();
   if (spawn === 'crash') {
@@ -290,7 +290,7 @@ function onStomped(p: Player, g: number) {
 /** Back to the base, cooled down, with a full canteen. */
 function respawn(p: Player) {
   p.down = null;
-  p.state = { ...spawnState(BASE_SPAWN.x, BASE_SPAWN.z), bike: p.state.bike };
+  p.state = { ...spawnState(), bike: p.state.bike };
   revive(p.heat, Date.now());
   save(p);
   send(p.ws, { t: 'respawn' });
@@ -715,7 +715,7 @@ function send(ws: WebSocket, msg: ServerMsg) {
 
 function save(p: Player) {
   // Lying dead: they come back at the base.
-  const at = p.down ? BASE_SPAWN : p.state;
+  const at = p.down ? BUNKER_SPAWN : p.state;
   db.savePlayer({ id: p.browserId, color: p.color, x: at.x, z: at.z, heat: p.heat.heat, sips: p.heat.sips });
 }
 

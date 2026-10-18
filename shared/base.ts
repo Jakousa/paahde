@@ -49,7 +49,8 @@ function findBase(seed: number) {
 
 /** The base origin in world coordinates (the entrance hut's floor), picked from the world seed. */
 export const BASE = findBase(WORLD_SEED);
-/** Where new players appear: in front of the door, looking at it (yaw 0 looks down -Z). */
+/** In front of the door (yaw 0 looks down -Z, at it). World layout (scrap, wrecks, crash sites) is seeded
+ *  around this, so it stays put; players appear at BUNKER_SPAWN. */
 export const BASE_SPAWN = { x: BASE.x, z: BASE.z + 9 };
 
 /** Wall thickness everywhere. */
@@ -69,6 +70,9 @@ export const HALL = { z: -14.2, h: 3.3 };
 export const ROOM = { w: 8, z: -30.2, h: 6 };
 /** The room's centre: the pump stands here, under the skylight. */
 export const ROOM_Z = (HALL.z + ROOM.z) / 2;
+/** Where players appear (new, respawned, or back after leaving in or over the bunker): down in the main
+ *  room, just in from the hallway, looking at the pump. World coordinates, `y` = the floor. */
+export const BUNKER_SPAWN = { x: BASE.x, y: BASE.y + FLOOR, z: BASE.z + HALL.z - 3 };
 /** Skylight shaft: half width of the opening, collar half width (outer) and height above the pad. */
 export const SKY = { w: 1.4, collar: 1.8, h: 0.5 };
 /** Outer corner radii of the entrance hut and the skylight collar (rounded like a poured bunker). */

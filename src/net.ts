@@ -508,7 +508,7 @@ export class Net {
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'joining';
-      // ?spawn=base / crash / field: start at the base's door, the nearest crash site or scrap field (only on the
+      // ?spawn=base / crash / field: start down in the bunker, the nearest crash site or scrap field (only on the
       // first join; a reconnect keeps where you are).
       const spawn = this.joinedOnce ? null : new URLSearchParams(location.search).get('spawn');
       this.send(spawn === 'base' || spawn === 'crash' || spawn === 'field' ? { t: 'hello', browserId: this.browserId, spawn } : { t: 'hello', browserId: this.browserId });
