@@ -8,13 +8,14 @@
 import { NAME_MAX } from '../shared/protocol.ts';
 import { loading } from './loadingGame';
 import type { Mode, RunResult } from './loadingRunner';
+import { TEXT } from '../shared/text.ts';
 
 const NAME_KEY = 'dadajam.name'; // the same name as in the world (src/name.ts)
 const MODES: { mode: Mode; key: string; title: string }[] = [
-  { mode: 5, key: '5', title: '5 machines' },
-  { mode: 10, key: '10', title: '10 machines' },
-  { mode: 20, key: '20', title: '20 machines' },
-  { mode: 'endless', key: 'endless', title: 'Endless' },
+  { mode: 5, key: '5', title: TEXT.minigame.machines(5) },
+  { mode: 10, key: '10', title: TEXT.minigame.machines(10) },
+  { mode: 20, key: '20', title: TEXT.minigame.machines(20) },
+  { mode: 'endless', key: 'endless', title: TEXT.minigame.endless },
 ];
 
 type Entry = { name: string; score: number; machines: number };
@@ -74,8 +75,8 @@ async function fetchTop(key: string): Promise<Entry[] | null> {
 }
 
 function list(mode: Mode, top: Entry[] | null, me?: string, limit = 10): string {
-  if (!top) return '<div class="none">offline</div>';
-  if (!top.length) return '<div class="none">nobody yet</div>';
+  if (!top) return `<div class="none">${TEXT.minigame.offline}</div>`;
+  if (!top.length) return `<div class="none">${TEXT.minigame.nobody}</div>`;
   return `<ol>${top.slice(0, limit).map((e, i) => `<li class="${e.name === me ? 'me' : ''}"><i>${i + 1}</i><span>${esc(e.name)}</span><b>${scoreText(mode, e.score)}</b></li>`).join('')}</ol>`;
 }
 
@@ -114,10 +115,10 @@ export function openMinigame(onClose: () => void) {
   function pick() {
     screen = 'pick';
     loading.stop();
-    o.innerHTML = `<div class="panel"><h2>Teardown</h2><div class="modes">${MODES.map((m) => {
+    o.innerHTML = `<div class="panel"><h2>${TEXT.minigame.title}</h2><div class="modes">${MODES.map((m) => {
       const best = myBest(m.key);
-      return `<button class="card" data-m="${m.key}"><b>${m.title}</b><div class="best">${best ? `your best ${scoreText(m.mode, best)}` : ''}</div><div class="top" data-top="${m.key}"></div></button>`;
-    }).join('')}</div></div><button class="leave">Leave</button>`;
+      return `<button class="card" data-m="${m.key}"><b>${m.title}</b><div class="best">${best ? `${TEXT.minigame.yourBest} ${scoreText(m.mode, best)}` : ''}</div><div class="top" data-top="${m.key}"></div></button>`;
+    }).join('')}</div></div><button class="leave">${TEXT.menu.leave}</button>`;
     o.querySelector('.leave')!.addEventListener('click', close);
     for (const card of o.querySelectorAll<HTMLElement>('.card')) {
       card.addEventListener('click', () => intro(MODES.find((m) => m.key === card.dataset.m)!));
@@ -136,8 +137,8 @@ export function openMinigame(onClose: () => void) {
     screen = 'intro';
     loading.stop();
     const best = myBest(m.key);
-    o.innerHTML = `<div class="panel result"><h2>${m.title}</h2>${best ? `<div class="big"><small>your best</small>${scoreText(m.mode, best)}</div>` : ''}<div class="board"><div class="none">…</div></div></div>
-<div class="row"><button class="start">Start</button><button class="quiet back">Back</button></div>`;
+    o.innerHTML = `<div class="panel result"><h2>${m.title}</h2>${best ? `<div class="big"><small>${TEXT.minigame.yourBest}</small>${scoreText(m.mode, best)}</div>` : ''}<div class="board"><div class="none">…</div></div></div>
+<div class="row"><button class="start">${TEXT.minigame.start}</button><button class="quiet back">${TEXT.minigame.back}</button></div>`;
     o.querySelector('.start')!.addEventListener('click', () => play(m));
     o.querySelector('.back')!.addEventListener('click', pick);
     let me: string | undefined;
@@ -152,7 +153,7 @@ export function openMinigame(onClose: () => void) {
     current = m;
     screen = 'run';
     loading.stop();
-    o.innerHTML = `<div class="stage"></div><div class="row"><button class="leave quiet">Leave</button>${m.mode === 'endless' ? '<button class="finish">Finish</button>' : ''}</div>`;
+    o.innerHTML = `<div class="stage"></div><div class="row"><button class="leave quiet">${TEXT.menu.leave}</button>${m.mode === 'endless' ? `<button class="finish">${TEXT.minigame.finish}</button>` : ''}</div>`;
     o.querySelector('.leave')!.addEventListener('click', () => intro(m));
     o.querySelector('.finish')?.addEventListener('click', () => loading.finishNow());
     loading.start(o.querySelector<HTMLElement>('.stage')!, m.mode, (r) => alive && screen === 'run' && result(r));
@@ -174,9 +175,9 @@ export function openMinigame(onClose: () => void) {
     try {
       saved = localStorage.getItem(NAME_KEY) ?? '';
     } catch {}
-    o.innerHTML = `<div class="panel result"><h2>${m.title}</h2><div class="big"><small>${r.mode === 'endless' ? 'machines' : 'time'}</small>${scoreText(r.mode, score)}</div>
-<form class="row"><input maxlength="${NAME_MAX}" placeholder="your name" value="${esc(saved)}" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true"><button>Submit</button></form>
-<div class="board"></div></div><div class="row"><button class="again">Again</button><button class="quiet back">Back</button></div>`;
+    o.innerHTML = `<div class="panel result"><h2>${m.title}</h2><div class="big"><small>${r.mode === 'endless' ? TEXT.minigame.machinesLabel : TEXT.minigame.timeLabel}</small>${scoreText(r.mode, score)}</div>
+<form class="row"><input maxlength="${NAME_MAX}" placeholder="${TEXT.name.placeholder}" value="${esc(saved)}" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true"><button>${TEXT.minigame.submit}</button></form>
+<div class="board"></div></div><div class="row"><button class="again">${TEXT.minigame.again}</button><button class="quiet back">${TEXT.minigame.back}</button></div>`;
     o.querySelector('.again')!.addEventListener('click', () => play(m));
     o.querySelector('.back')!.addEventListener('click', pick);
     const board = o.querySelector<HTMLElement>('.board')!;
@@ -205,10 +206,10 @@ export function openMinigame(onClose: () => void) {
         const out = (await res.json()) as { top: Entry[]; rank: number; name: string };
         if (alive) {
           form.style.display = 'none';
-          board.innerHTML = `${list(m.mode, out.top, out.name)}${out.rank > 10 ? `<div class="none">you are #${out.rank}</div>` : ''}`;
+          board.innerHTML = `${list(m.mode, out.top, out.name)}${out.rank > 10 ? `<div class="none">${TEXT.minigame.rank(out.rank)}</div>` : ''}`;
         }
       } catch {
-        if (alive) board.innerHTML = '<div class="none">couldn’t reach the board</div>';
+        if (alive) board.innerHTML = `<div class="none">${TEXT.minigame.unreachable}</div>`;
       }
     });
   }

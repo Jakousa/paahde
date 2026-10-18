@@ -22,7 +22,7 @@ writes player-facing words inline. Two reasons:
   the function lowercases it with `lower()`, which keeps acronyms ("AI control system", "UV lamp"). Don't
   call `.toLowerCase()` on a label in code.
 - **Group by where it appears**, not by which file uses it: `prompt` (under the crosshair), `notice` (toasts),
-  `inventory`, `hud`, `menu`, `controls`, `landing`, `teardown`, `steps`, `hints`, `speech`, and the names of things
+  `inventory`, `hud`, `menu`, `controls`, `landing`, `teardown`, `minigame`, `steps`, `hints`, `speech`, and the names of things
   (`items`, `parts`, `tiers`, `machines`, `bosses`, `equip`, `boxes`).
 - **Keys are stable names for the meaning**, not the English words: `notice.cantWear`, not `notice.cantWearIt`
   copied from the text. Item, part and machine sections are keyed by their item kind ids.

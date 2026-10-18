@@ -88,6 +88,11 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   `data/minigame.db` are just never shown).
 - The Esc menu's minigame button is just the machine (a small crate, no frame) in the bottom-right corner, with a light
   that is always shining from under it and swells now and then, and a lid that lifts; still under reduced-motion.
+- Minigame hints (`TEXT.minigame.hint`, drawn by `hintIcon` in `src/loadingRunner.ts`): under the machine, a small moving
+  picture of the move and a few words for whatever can be worked now ("Click it, again and again", "Spin it: circle the
+  pointer", "Press on the wire and drag", "Grab the tab and pull", "Take the glowing part"); a free part comes first, the
+  rest take turns every 4 s, and each kind goes once you've done it four times (parts: three). The minigame's own words
+  moved into `TEXT.minigame` too.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.

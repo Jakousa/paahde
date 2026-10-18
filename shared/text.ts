@@ -274,6 +274,34 @@ const en = {
   },
   name: { placeholder: 'your name', go: 'Go', skip: 'skip' },
 
+  // ---- The teardown minigame (src/minigameMenu.ts, src/loadingRunner.ts) ---------------------------------------------
+
+  minigame: {
+    title: 'Teardown',
+    machines: (n: number) => `${n} machines`,
+    endless: 'Endless',
+    yourBest: 'your best',
+    start: 'Start',
+    back: 'Back',
+    again: 'Again',
+    finish: 'Finish',
+    submit: 'Submit',
+    machinesLabel: 'machines',
+    timeLabel: 'time',
+    offline: 'offline',
+    nobody: 'nobody yet',
+    rank: (n: number) => `you are #${n}`,
+    unreachable: 'couldn’t reach the board',
+    /** Under the machine while that kind of step can be worked, until you've done it a few times. */
+    hint: {
+      screw: 'Click it, again and again',
+      bolt: 'Spin it: circle the pointer',
+      wire: 'Press on the wire and drag',
+      pry: 'Grab the tab and pull',
+      part: 'Take the glowing part',
+    },
+  },
+
   // ---- Disassembly mode (src/teardown) -----------------------------------------------------------------------------
 
   teardown: {

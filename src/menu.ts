@@ -43,27 +43,23 @@ const css = `
 #menu .foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
   opacity: 0.6; line-height: 1.5; word-break: break-all; }
 #menu .foot a { color: inherit; }
-/* The minigame: just the machine, in the corner, with a light that is always shining from under it and swells now and then. */
+/* The minigame: just the machine, in the corner, with an even glow all round it that swells now and then. */
 #menu button.mini { position: absolute; right: 26px; bottom: 26px; width: 72px; height: 54px; padding: 0; border-radius: 0;
   display: grid; place-items: center; background: none; box-shadow: none; transition: transform .15s; }
 #menu button.mini:hover { background: none; transform: scale(1.08); }
 #menu .panel.sub ~ button.mini { display: none; }
 #menu button.mini svg { position: relative; width: 72px; height: 50px; overflow: visible; }
 #menu button.mini svg * { transform-box: fill-box; transform-origin: center; }
-#menu button.mini::before { content: ''; position: absolute; left: -26px; right: -26px; bottom: -18px; height: 58px; pointer-events: none;
-  background: radial-gradient(ellipse at 50% 55%, rgba(255, 190, 90, 0.95), rgba(255, 150, 60, 0.45) 40%, rgba(255, 140, 50, 0) 70%);
-  filter: blur(3px); opacity: 0.6; animation: miniGlow 3.4s ease-in-out infinite; }
-#menu button.mini svg { filter: drop-shadow(0 5px 5px rgba(255, 170, 70, 0.55)); animation: miniShine 3.4s ease-in-out infinite; }
+#menu button.mini svg { filter: drop-shadow(0 0 4px rgba(255, 170, 70, 0.55)) drop-shadow(0 0 9px rgba(255, 140, 50, 0.35)); animation: miniShine 3.4s ease-in-out infinite; }
 #menu button.mini .lid { animation: miniLid 3.4s ease-in-out infinite; }
 #menu button.mini .tag { animation: miniTag 1.6s ease-in-out infinite; }
-@keyframes miniGlow { 0%, 100% { opacity: 0.6; transform: scale(1); } 40% { opacity: 1; transform: scale(1.18); } 70% { opacity: 0.75; transform: scale(1.05); } }
 @keyframes miniShine {
-  0%, 100% { filter: drop-shadow(0 5px 5px rgba(255, 170, 70, 0.45)); }
-  40% { filter: drop-shadow(0 7px 9px rgba(255, 190, 90, 0.95)); }
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(255, 170, 70, 0.5)) drop-shadow(0 0 9px rgba(255, 140, 50, 0.3)); }
+  40% { filter: drop-shadow(0 0 6px rgba(255, 205, 110, 1)) drop-shadow(0 0 16px rgba(255, 160, 60, 0.85)); }
 }
 @keyframes miniLid { 0%, 36%, 100% { transform: none; } 48% { transform: translateY(-2.5px) rotate(-1.5deg); } 60% { transform: none; } }
 @keyframes miniTag { 50% { opacity: 0.4; } }
-@media (prefers-reduced-motion: reduce) { #menu button.mini::before, #menu button.mini svg, #menu button.mini * { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { #menu button.mini svg, #menu button.mini * { animation: none !important; } }
 `;
 
 /** One of the minigame's machines (src/loadingRunner.ts): a rust crate with an accent stripe, a rarity tag and two screws. */

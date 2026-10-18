@@ -10,6 +10,8 @@
 // apart (with some luck either way), and the parts behind more work are better grades. The step markers look like the game's. Plain
 // canvas 2D, and it knows nothing of the page: it runs in a worker (src/loadingWorker.ts, src/loadingGame.ts)
 // because the main thread is busy building the world while this is up. The loading bar is drawn here too.
+import { TEXT } from '../shared/text.ts';
+
 export const W = 520;
 export const H = 270;
 const BAR_Y = 262;
@@ -400,6 +402,13 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   let t0 = 0; // performance.now() at the first click, 0 before it
   let finished = false;
   let lastMs = 0;
+  // Hints under the machine, loading-screen style: what to do with whatever can be worked now, with a small picture of
+  // it; each goes once you've done its thing a few times.
+  type Hint = keyof typeof TEXT.minigame.hint;
+  const learned: Record<Hint, number> = { screw: 0, bolt: 0, wire: 0, pry: 0, part: 0 };
+  const LEARNED = 4;
+  let hintKey: Hint | null = null;
+  let hintA = 0;
   let target = 0; // loading progress asked for, and the eased value drawn
   let shown = 0;
   let clock = 0;
@@ -459,6 +468,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   const finish = (s: Step) => {
     s.done = true;
     s.progress = s.need;
+    learned[s.kind]++;
     sound(s.kind === 'pry' || s.kind === 'wire' ? 'soft' : 'clink');
     if (s.kind === 'bolt') sound('stop');
     for (const c of m.covers) {
@@ -490,6 +500,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       if (!free(sl) || Math.hypot(lx - sl.x, ly - sl.y) > 30) continue;
       // Into the bag; when the last part is out the next machine comes in as this one goes out.
       sl.taken = true;
+      learned.part++;
       const to = stacks(sl).findIndex((b) => b.part === sl.part && b.tier === sl.tier);
       flights.push({ t: 0, part: sl.part, tier: sl.tier, x: CX + slide + sl.x, y: CY + sl.y, to: Math.min(to, BAG_N - 1) });
       sound('take');
@@ -553,8 +564,22 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     act = null;
   }
 
+  /** The hint for now: a free part first (the next thing to do), else the kinds of step that can be worked, in turn. */
+  function wantedHint(): Hint | null {
+    if (finished) return null;
+    const list: Hint[] = [];
+    if (learned.part < 3 && m.slots.some(free)) list.push('part');
+    else for (const k of ['screw', 'bolt', 'wire', 'pry'] as const) if (learned[k] < LEARNED && m.steps.some((s) => s.kind === k && ready(s))) list.push(k);
+    return list.length ? list[Math.floor(clock / 4) % list.length] : null;
+  }
+
   function update(dt: number) {
     clock += dt;
+    const want = wantedHint();
+    if (want !== hintKey) {
+      hintA = Math.max(0, hintA - dt * 6); // out, then the next one in
+      if (hintA === 0) hintKey = want;
+    } else hintA = Math.min(1, hintA + dt * 4);
     for (const mm of old ? [m, old] : [m]) {
       for (const c of mm.covers) {
         if (!c.released) continue;
@@ -886,6 +911,85 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     }
   }
 
+  /** The hint's picture: the step's marker in miniature, moving the way the move goes. */
+  function hintIcon(kind: Hint, x: number, y: number) {
+    g.save();
+    g.translate(x, y);
+    g.lineCap = 'round';
+    g.fillStyle = g.strokeStyle = MARK;
+    if (kind === 'screw') {
+      g.fillStyle = STEEL;
+      g.beginPath();
+      g.arc(0, 0, 3.2, 0, 7);
+      g.fill();
+      g.fillStyle = MARK;
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
+        const tap = 1 + 0.7 * Math.pow(Math.max(0, Math.sin(clock * 7 - i * 0.9)), 4);
+        g.beginPath();
+        g.arc(Math.cos(a) * 8.5, Math.sin(a) * 8.5, 1.9 * tap, 0, 7);
+        g.fill();
+      }
+    } else if (kind === 'bolt') {
+      const a0 = clock * 3.2;
+      const a1 = a0 + Math.PI * 1.5;
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(0, 0, 7.5, a0, a1);
+      g.stroke();
+      const tx = Math.cos(a1) * 7.5, ty = Math.sin(a1) * 7.5;
+      g.beginPath();
+      g.moveTo(tx - Math.sin(a1) * 4, ty + Math.cos(a1) * 4);
+      g.lineTo(tx + Math.cos(a1) * 5, ty + Math.sin(a1) * 5);
+      g.lineTo(tx + Math.sin(a1) * 4, ty - Math.cos(a1) * 4);
+      g.fill();
+    } else if (kind === 'wire' || kind === 'pry') {
+      // a pointer ring that presses on the thing and drags it along
+      const k = ((clock * 0.85) % 1) < 0.7 ? (1 - Math.cos((((clock * 0.85) % 1) / 0.7) * Math.PI)) / 2 : 1;
+      if (kind === 'wire') {
+        g.strokeStyle = WIRE_COLORS[0];
+        g.lineWidth = 3;
+        g.beginPath();
+        g.moveTo(-6, -8);
+        g.lineTo(-6, 8);
+        g.stroke();
+      } else {
+        g.fillStyle = STEEL;
+        g.fillRect(-9, -4.5, 6, 9);
+        g.fillStyle = MARK;
+      }
+      const px = -6 + k * 13;
+      g.strokeStyle = MARK;
+      g.lineWidth = 1.8;
+      g.beginPath();
+      g.arc(px, 0, 3.6, 0, 7);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(8, -3.5);
+      g.lineTo(12, 0);
+      g.lineTo(8, 3.5);
+      g.stroke();
+    } else {
+      // a part in its rarity glow
+      const grad = g.createRadialGradient(0, 0, 1, 0, 0, 10);
+      grad.addColorStop(0, '#ff9a3caa');
+      grad.addColorStop(1, '#ff9a3c00');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(0, 0, 10 + Math.sin(clock * 5), 0, 7);
+      g.fill();
+      g.fillStyle = '#ff9a3c';
+      g.beginPath();
+      g.arc(0, 0, 4.2, 0, 7);
+      g.fill();
+      g.fillStyle = '#1c0f07';
+      g.beginPath();
+      g.arc(0, 0, 1.6, 0, 7);
+      g.fill();
+    }
+    g.restore();
+  }
+
   function drawWire(w: Wire) {
     const cut = w.cut.done;
     const on = ready(w.cut);
@@ -1133,6 +1237,21 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
         g.textBaseline = 'alphabetic';
         g.fillText(String(it.count), b.x + 12, b.y + 11);
       }
+    }
+
+    // the hint: a small picture of the move, and what to do
+    if (hintKey && hintA > 0) {
+      const text = TEXT.minigame.hint[hintKey];
+      g.font = '12px ui-monospace, Menlo, Consolas, monospace';
+      const x0 = CX - (26 + g.measureText(text).width) / 2;
+      g.globalAlpha = hintA * 0.92;
+      hintIcon(hintKey, x0 + 9, 206);
+      g.fillStyle = '#fff4e4';
+      g.textAlign = 'left';
+      g.textBaseline = 'middle';
+      g.fillText(text, x0 + 26, 206);
+      g.textBaseline = 'alphabetic';
+      g.globalAlpha = 1;
     }
 
     // the run's clock and count
