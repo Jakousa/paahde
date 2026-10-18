@@ -107,7 +107,7 @@ export const BIKE_COLS = 6;
 export const BIKE_ROWS = 4;
 /** Chests are this wide and grow downwards (shared/storage.ts growChest), at least CHEST_ROWS. */
 export const CHEST_COLS = 8;
-export const CHEST_ROWS = 6;
+export const CHEST_ROWS = 10;
 
 /**
  * A box's layout: `free` slots (one item of any size each), then a grid `cols` wide and `grid` rows long of

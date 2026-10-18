@@ -61,8 +61,8 @@ const css = `
 #invOverlay .box { padding: 10px 12px 12px; border-radius: 8px; background: rgba(28, 15, 7, 0.88);
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.45); }
 #invOverlay .box.storage { box-shadow: 0 0 0 1px rgba(255, 200, 120, 0.35), 0 8px 30px rgba(0, 0, 0, 0.45); }
-/* Chests grow without end (shared/storage.ts growChest): past ~6 rows they scroll. */
-#invOverlay .box.storage .grid { max-height: 346px; overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
+/* Chests grow without end (shared/storage.ts growChest): past ~10 rows they scroll. */
+#invOverlay .box.storage .grid { max-height: min(578px, calc(100vh - 120px)); overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
 #invOverlay .cell { width: 54px; height: 54px; border-radius: 6px; background: rgba(255, 240, 220, 0.06);
   box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.12); }
 #invOverlay .cell.dead { background: rgba(222, 62, 34, 0.12); box-shadow: inset 0 0 0 1px rgba(222, 62, 34, 0.5); }
