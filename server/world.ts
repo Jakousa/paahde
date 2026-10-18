@@ -340,14 +340,15 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
   }
 }
 
-/** Drop where they stand (off the bike, stopped) for DOWN_MS, as a ragdoll thrown by `push`; then respawn(). */
-function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 0, 0]) {
+/** Drop where they stand (off the bike, stopped) for DOWN_MS, as a ragdoll thrown by `push`; then respawn().
+ *  `bolt`: the guardian's bolt that did it, which the client lets reach them first. */
+function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 0, 0], bolt?: number) {
   if (p.down || lives <= 0) return;
   if (cause !== 'heat' && shielded(p, push)) return;
   p.down = { until: Date.now() + DOWN_MS, push };
   p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, mounting: 0, sliding: false, crouching: false };
   revive(p.heat, Date.now());
-  send(p.ws, { t: 'died', cause, push });
+  send(p.ws, { t: 'died', cause, push, ...(bolt !== undefined ? { bolt } : {}) });
   const obit: Obituary = { t: 'obituary', id: p.id, color: p.color, name: p.name, cause, at: Date.now() };
   db.putObituary(obit);
   for (const o of players.values()) send(o.ws, obit);
@@ -424,13 +425,18 @@ function tickBots(elapsed: number, now: number, tod: number) {
   guardians.storms = storms.storms;
   const r = guardians.tick(dt, now, tod, list);
   for (const k of guardians.crashes()) dropSpoils(k);
+  // The bolts go out before the deaths they cause, so the client has the bolt to hold the death for (src/net.ts).
   for (const p of players.values()) {
-    if (r.shot.includes(p.id)) die(p, 'laser', boltPush(p, r.events, 'boom', BLAST_R));
-    else if (r.blasted.includes(p.id)) die(p, 'missile', boltPush(p, r.events, 'blast', MISSILE_BLAST_R));
-    else if (r.bitten.has(p.id) && bite(p.heat, r.bitten.get(p.id)!)) die(p, 'crawler');
-    else if (r.bitten.has(p.id)) send(p.ws, waterMsg(p.heat));
     for (const e of r.events) if (Math.hypot(e.x - p.state.x, e.z - p.state.z) < BOT_SEND_R) send(p.ws, e.msg);
     send(p.ws, guardians.msg(now, p.id, p.state.x, p.state.z));
+  }
+  for (const p of players.values()) {
+    if (r.shot.includes(p.id)) {
+      const hit = boltPush(p, r.events, 'boom', BLAST_R);
+      die(p, 'laser', hit.push, hit.id);
+    } else if (r.blasted.includes(p.id)) die(p, 'missile', boltPush(p, r.events, 'blast', MISSILE_BLAST_R).push);
+    else if (r.bitten.has(p.id) && bite(p.heat, r.bitten.get(p.id)!)) die(p, 'crawler');
+    else if (r.bitten.has(p.id)) send(p.ws, waterMsg(p.heat));
   }
   for (const e of r.events) if ((e.msg.t === 'boom' && e.msg.ground) || e.msg.t === 'blast') terrain.crater(e.msg.x, e.msg.z, CRATER_R, CRATER_MM);
   const b = bosses.tick(dt, now, list);
@@ -491,13 +497,13 @@ function bossOut(b: BossOut) {
   }
 }
 
-/** The nearest bolt burst ('boom') or missile blast throws a player it killed. */
-function boltPush(p: Player, events: { msg: ServerMsg }[], t: 'boom' | 'blast', r: number): [number, number, number] {
+/** The nearest bolt burst ('boom') or missile blast throws a player it killed; `id` is that bolt's or missile's. */
+function boltPush(p: Player, events: { msg: ServerMsg }[], t: 'boom' | 'blast', r: number): { push: [number, number, number]; id?: number } {
   let best: Extract<ServerMsg, { t: 'boom' | 'blast' }> | null = null;
   for (const { msg: m } of events) {
     if (m.t === t && (!best || Math.hypot(m.x - p.state.x, m.z - p.state.z) < Math.hypot(best.x - p.state.x, best.z - p.state.z))) best = m;
   }
-  return best ? blastPush(best.x, best.y, best.z, p.state.x, p.state.y, p.state.z, r) : [0, 0, 0];
+  return best ? { push: blastPush(best.x, best.y, best.z, p.state.x, p.state.y, p.state.z, r), id: best.id } : { push: [0, 0, 0] };
 }
 
 /** A shot may start this far (m) from the eye: the third-person camera backs off up to 4.5 m along the view ray. */

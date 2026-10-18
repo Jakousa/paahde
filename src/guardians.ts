@@ -71,7 +71,7 @@ export class GuardianFx {
     // Nose first into the sand (shot or jammed): a fireball, a spray of sparks and torn panels thrown on the way it
     // was going, a ring of dust and a big shake, a bang and a slam.
     this.jets.onCrash = (x, y, z, dx, dy, dz) => {
-      this.bolts.boom(-1, x, y, z, true);
+      this.bolts.burst(x, y, z, true);
       zaps.burst(x, y + 1, z, dx * 0.6, 0.8, dz * 0.6, 90, 10);
       zaps.shatter(x, y + 1.5, z, dx * 0.8, 0.6 - dy * 0.3, dz * 0.8, 6);
       for (let i = 0; i < 16; i++) zaps.puff(x + (Math.random() - 0.5) * 12, y + Math.random() * 6, z + (Math.random() - 0.5) * 12, 8 + Math.random() * 8, 5 + Math.random() * 4);
@@ -163,6 +163,13 @@ export class GuardianFx {
     this.ear.copy(camera.position);
     if (!this.bound) {
       this.bound = true;
+      // A bolt that killed us comes late after a stall: we fall when it gets here on screen (src/net.ts).
+      net.holdDeath = (id) => this.bolts.flying(id);
+      this.bolts.onBurst = (id, x, y, z, ground) => {
+        guardianSound.boom(x, y, z, this.ear);
+        if (ground) this.thump(x, y, z, 2.6, 30, 7, 3.4);
+        net.boltArrived(id);
+      };
       net.onBolt = (m) => {
         if (m.t === 'shot') {
           const muzzle = this.guardians.fire(m.g, this.muzzle);
@@ -171,13 +178,11 @@ export class GuardianFx {
           rifleSound.cannon(at, this.ear);
         } else if (m.t === 'boom') {
           this.bolts.boom(m.id, m.x, m.y, m.z, m.ground);
-          guardianSound.boom(m.x, m.y, m.z, this.ear);
-          if (m.ground) this.thump(m.x, m.y, m.z, 2.6, 30, 7, 3.4);
         } else if (m.t === 'missile') {
           this.missiles.launch(m);
         } else {
           this.missiles.land(m.id);
-          this.bolts.boom(-1, m.x, m.y, m.z, true);
+          this.bolts.burst(m.x, m.y, m.z, true);
           guardianSound.boom(m.x, m.y, m.z, this.ear);
           rifleSound.firework(m, this.ear, MISSILE_FIREWORK, MISSILE_FIREWORK_PITCH);
           this.thump(m.x, m.y, m.z, 2.6, 30, 7, 3.4);

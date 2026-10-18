@@ -52,6 +52,8 @@ import type { BedState } from '../shared/garden.ts';
 const INTERP_MS = 100;
 /** Ceiling on the extra interpolation delay added for jitter. */
 const MAX_JITTER_MS = 300;
+/** A death by a bolt still flying on screen waits for it at most this long (ms). */
+const DEATH_HOLD_MS = 1500;
 /** After a shot, a player's gun stays raised this long (ms), even fired from the hip. */
 const SHOT_RAISED_MS = 1500;
 /** Per snapshot, the clock offset creeps down this much (1 ms/s, to follow drift or a slower route)… */
@@ -155,6 +157,11 @@ export class Net {
   onEnded?: (why: 'over' | 'missing') => void;
   /** Dead and lying as a ragdoll: the push (m/s) that threw the body (shared/ragdoll.ts); null when alive. */
   down: [number, number, number] | null = null;
+  /** True if guardian bolt `id` is still flying on screen (src/world/bolts.ts): a death by it waits for boltArrived. */
+  holdDeath?: (id: number) => boolean;
+  /** A death held for its bolt to arrive, and the timer that lets it happen anyway. */
+  private dying: Extract<ServerMsg, { t: 'died' }> | null = null;
+  private dyingTimer?: ReturnType<typeof setTimeout>;
   /** Plant bed stages and growth by placed id (shared/garden.ts), from the server. Beds without one are empty. */
   garden = new Map<number, BedState>();
   /** Placed things changed (shared/placed.ts keeps the list), or a bed's stage did. */
@@ -554,6 +561,8 @@ export class Net {
       this.clockOffset = undefined; // a restarted server has a new clock
       this.jitter = 0;
       this.holders.clear();
+      this.dying = null; // the server's welcome says whether we're alive
+      clearTimeout(this.dyingTimer);
       this.status = 'reconnecting';
       // Game over or no such world (server/world.ts, server/index.ts): nothing to come back to.
       if (e.code === 4410 || e.code === 4404) return this.onEnded?.(e.code === 4410 ? 'over' : 'missing');
@@ -623,11 +632,16 @@ export class Net {
       return this.onWater?.(msg);
     }
     if (msg.t === 'died') {
-      this.down = msg.push ?? [0, 0, 0];
-      this.pending = []; // the server drops whatever we sent after dying, so don't replay it
-      return this.onDied?.(msg.cause);
+      // Killed by a bolt still flying on our screen (late after a stall): fall when it gets here, not before.
+      if (msg.bolt !== undefined && this.holdDeath?.(msg.bolt)) {
+        this.dying = msg;
+        this.dyingTimer = setTimeout(() => this.boltArrived(msg.bolt!), DEATH_HOLD_MS);
+        return;
+      }
+      return this.fall(msg);
     }
     if (msg.t === 'respawn') {
+      if (this.dying) this.fall(this.dying);
       this.down = null;
       this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
       return;
@@ -715,6 +729,19 @@ export class Net {
       const server = players.get(this.id);
       if (server) this.reconcile(server, msg.ack);
     }
+  }
+
+  /** The bolt `id` reached us on screen (src/world/bolts.ts): a death it caused, held till now, happens. */
+  boltArrived(id: number) {
+    if (this.dying?.bolt === id) this.fall(this.dying);
+  }
+
+  private fall(msg: Extract<ServerMsg, { t: 'died' }>) {
+    this.dying = null;
+    clearTimeout(this.dyingTimer);
+    this.down = msg.push ?? [0, 0, 0];
+    this.pending = []; // the server drops whatever we sent after dying, so don't replay it
+    this.onDied?.(msg.cause);
   }
 
   private reconcile(server: PlayerState, ack: number) {

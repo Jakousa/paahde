@@ -227,7 +227,8 @@ export type ServerMsg =
   // full canteen; a 'water' follows. For the death screen. push: the blast's launch velocity for the body (m/s).
   // 'heat': heatstroke; 'guardian': one walked over you; 'laser': a guardian's cannon got you; 'missile': one called
   // down by a drone's searchlight landed on you (shared/missiles.ts); 'crawler': bitten once too often.
-  | { t: 'died'; cause: DeathCause; push?: [number, number, number] }
+  /** `bolt`: the guardian's bolt ('shot' id) that killed, which the client draws reaching you before you fall. */
+  | { t: 'died'; cause: DeathCause; push?: [number, number, number]; bolt?: number }
   | { t: 'respawn' }
   // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time).
   // Sent before 'welcome' on join and to everyone whenever the list changes.
