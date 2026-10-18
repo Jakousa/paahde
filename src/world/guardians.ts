@@ -33,7 +33,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  ANKLE, BODY_H, CRAWLER, FEMUR, footTop, GUN_MOUNT, GUN_PIVOT, KINDS, MUZZLE, REST_R, SETTLE, SOCKETS, STEP_DIST, STEP_MAX, STEP_MIN, TIBIA,
+  ANKLE, BODY_H, CRAWLER, FEMUR, footTop, GUN_DEPRESS, GUN_MOUNT, GUN_PIVOT, KINDS, MUZZLE, REST_R, SETTLE, SOCKETS, STEP_DIST, STEP_MAX, STEP_MIN, TIBIA,
 } from '../../shared/guardians.ts';
 import { heightAt, normalAt } from '../../shared/terrain.ts';
 import { HIT_PAD, weakPoints, WRECK_S, WRECK_SINK, type WeakPoint } from '../../shared/rifle.ts';
@@ -741,7 +741,7 @@ class Walker {
       return from + Math.max(-rate * dt, Math.min(rate * dt, d));
     };
     this.gunYaw = slew(this.gunYaw, yaw, TURRET_RATE);
-    this.gunPitch = slew(this.gunPitch, Math.max(-0.35, Math.min(1.4, pitch)), GUN_RATE);
+    this.gunPitch = slew(this.gunPitch, Math.max(-0.35, Math.min(GUN_DEPRESS, pitch)), GUN_RATE);
     this.turret.rotation.set(0, this.gunYaw, 0);
     this.recoil = Math.max(0, this.recoil - RECOIL_BACK * dt);
     this.gun.rotation.set(this.gunPitch, 0, 0);

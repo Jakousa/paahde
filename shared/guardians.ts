@@ -119,6 +119,9 @@ export const CRAWLER_CALM_MS = 5000;
 export const GUN_MOUNT = { y: -2.4, z: 0.6 };
 export const GUN_PIVOT = -1.3;
 export const MUZZLE = 5;
+/** The gun pitches down at most this far (radians below level): someone under the body (closer in than about
+ *  11 m) it can't shoot at all. */
+export const GUN_DEPRESS = 0.9;
 /** Fires at people within this distance (m) it can see, every FIRE_MS, after charging for CHARGE_MS. */
 export const FIRE_R = 120;
 export const FIRE_MS = 2900;

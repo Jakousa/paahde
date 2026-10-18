@@ -11,7 +11,7 @@ import { BASE } from '../shared/base.ts';
 import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
 import {
   ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
-  CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, CRUSH_SLACK, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, footTop, GUARDIAN, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
+  CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, CRUSH_SLACK, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, footTop, GUARDIAN, GUN_DEPRESS, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
   NIGHT_SUN, NOTICE_R, REST_R, restSpot, SEEK_GIVE_UP, SETTLE, STEP_DIST, STEP_MAX, STEP_MIN, SEEK_RATE, sweepAt, TRACK_RATE,
 } from '../shared/guardians.ts';
 import {
@@ -369,6 +369,7 @@ export class GuardianServer {
     const pv = gunPivot(g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, g.yaw, sc, { x: 0, y: 0, z: 0 });
     const cy = p ? p.y + 1.1 : 0;
     g.aiming = !!p && !p.safe && !indoors(p.x, p.y, p.z) && Math.hypot(p.x - pv.x, cy - pv.y, p.z - pv.z) < FIRE_R
+      && Math.atan2(pv.y - cy, Math.hypot(p.x - pv.x, p.z - pv.z)) < GUN_DEPRESS
       && lineOfSight(pv.x, pv.y, pv.z, p.x, cy, p.z);
     if (!g.aiming || !p) {
       g.chargeAt = -1;
