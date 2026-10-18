@@ -37,7 +37,7 @@ import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type
 import { BASE_SPAWN } from '../shared/base.ts';
 import { blastPush, DOWN_MS } from '../shared/ragdoll.ts';
 import { stormAt, stormDrag } from '../shared/storm.ts';
-import { timeOfDayAt } from '../shared/sun.ts';
+import { sunElevation, timeOfDayAt } from '../shared/sun.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const SNAPSHOT_RATE = 20; // Hz; clients interpolate remote players between snapshots
@@ -652,7 +652,7 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
-  const weather = storms.tick(time, [...players.values()].map((p) => p.state));
+  const weather = storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
   for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), placedThings.flush(), garden.flush(), loot.flush(), weather]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);

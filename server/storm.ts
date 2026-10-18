@@ -4,8 +4,10 @@ import { MAX_LEN_MS, MIN_LEN_MS, WARN_MS, type Storm } from '../shared/storm.ts'
 import type { ServerMsg } from '../shared/protocol.ts';
 
 /** Quiet time between one storm's announcement and the next (ms). */
-const GAP_MIN_MS = 2 * 60_000;
-const GAP_MAX_MS = 6 * 60_000;
+const GAP_MIN_MS = 4 * 60_000;
+const GAP_MAX_MS = 10 * 60_000;
+/** The gap is this many times longer when the sun is down (storms are rarer at night). */
+const NIGHT_GAP = 2.5;
 /** A new storm's centre lands this far (m) from the player it was picked for, at most. */
 const OFFSET = 220;
 const R_MIN = 140;
@@ -25,14 +27,14 @@ export class StormServer {
   }
 
   /** Server time `now` (ms) and where the players are. Returns a 'storms' message when the list changed. */
-  tick(now: number, players: { x: number; z: number }[]): ServerMsg | null {
+  tick(now: number, players: { x: number; z: number }[], night = false): ServerMsg | null {
     const live = this.storms.filter((s) => s.end > now);
     if (live.length !== this.storms.length) {
       this.storms = live;
       this.changed = true;
     }
     if (now >= this.nextAt) {
-      this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS);
+      this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS) * (night ? NIGHT_GAP : 1);
       const p = players[Math.floor(Math.random() * players.length)];
       if (p && this.storms.length < MAX_STORMS) this.spawn(p.x, p.z, OFFSET, now);
     }
