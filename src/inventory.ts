@@ -23,7 +23,7 @@ import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { isCorpseBox } from '../shared/corpse.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { isPlaceable } from '../shared/placed.ts';
-import { isBound } from './bindings';
+import { isBound, kbd } from './bindings';
 import { takePickup, ui } from './input';
 import type { Net } from './net';
 import { uiSound } from './uiSound';
@@ -317,7 +317,7 @@ export class InventoryHud {
     this.prompt.style.display = target ? 'block' : 'none';
     // A label that starts with markup brings its own keys (e.g. "[G] Pick up" alone).
     if (target) this.prompt.innerHTML = typeof target === 'string' && target.startsWith('<') ? target
-      : `<kbd>F</kbd>${typeof target === 'string' ? target : `Pick up ${itemLabel(scrapItem(target.kind))}`}`;
+      : `${kbd('interact')}${typeof target === 'string' ? target : `Pick up ${itemLabel(scrapItem(target.kind))}`}`;
   }
 
   /** Every frame: storage boxes come into and out of reach as the player moves. */

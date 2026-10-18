@@ -94,9 +94,9 @@ export function readInput(): number {
   if (actionHeld('sprint') && !aimDown()) input |= SLIDE;
   // Ctrl has C as an alias by default: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
   if (actionHeld('crouch')) input |= CROUCH;
-  // The bike key (Z by default, or 9): get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped), whatever's in hand
+  // The bike key (Z or 9 by default): get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped), whatever's in hand
   // (getting on puts it away, src/water.ts).
-  if (actionHeld('bike') || keys.has('Digit9')) input |= BIKE;
+  if (actionHeld('bike')) input |= BIKE;
   // A repaired motorcycle in hand (src/water.ts): the use button gets on and off it instead.
   if (tools.bike && actionHeld('use')) input |= BIKE;
   return input;

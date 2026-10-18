@@ -104,7 +104,7 @@ export class FirstPersonCamera {
       if (document.pointerLockElement !== dom) dom.requestPointerLock();
     });
     const alt = (e: KeyboardEvent) => {
-      if (e.code === 'AltLeft' || e.code === 'AltRight') this.freeLook = e.type === 'keydown';
+      if (isBound('freeLook', e.code)) this.freeLook = e.type === 'keydown';
     };
     addEventListener('keydown', alt);
     addEventListener('keyup', alt);

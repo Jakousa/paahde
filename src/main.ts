@@ -16,6 +16,7 @@ import { ShieldFx } from './shieldFx';
 import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
 import { addItem, debrisItem, SCRAP } from '../shared/items.ts';
+import { kbd } from './bindings';
 import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
 import { Menu } from './menu';
@@ -476,7 +477,7 @@ baseSand.update(frameDt, storm.atBase);
   const packPrompt = pack ? 'Open pack' : null;
   const fPrompt = use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
-  hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `<kbd>F</kbd>${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
+  hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup();
   if (interact && !teardown.active) {
     if (use) {

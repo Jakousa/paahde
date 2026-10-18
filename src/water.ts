@@ -15,7 +15,7 @@ import { PISTOL, RIFLE } from '../shared/rifle.ts';
 import { JAMMER } from '../shared/jammer.ts';
 import { receiverBoss, type BossKind } from '../shared/bosses.ts';
 import { THROWABLE } from '../shared/throw.ts';
-import { isBound } from './bindings';
+import { HOTBAR_ACTIONS, isBound, kbd } from './bindings';
 import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
@@ -201,13 +201,12 @@ export class Survival {
 
     addEventListener('keydown', (e) => {
       const bikeKey = isBound('bike', e.code);
-      if (e.repeat || !(bikeKey || /^Digit[1-9]$/.test(e.code))) return;
-      // The bike key or 9 gets on the bike (src/input.ts): put away what's in hand.
+      const n = HOTBAR_ACTIONS.findIndex((a) => isBound(a, e.code));
+      if (e.repeat || !(bikeKey || n >= 0)) return;
+      // The bike key gets on the bike (src/input.ts): put away what's in hand.
       // (Not a motorcycle in hand: that's the one you'd ride.)
-      if ((bikeKey || e.code === 'Digit9') && !net.me.riding && net.me.bike > 0 && !tools.frozen && !tools.bike) return this.select(-1);
+      if (bikeKey && !net.me.riding && net.me.bike > 0 && !tools.frozen && !tools.bike) return this.select(-1);
       if (bikeKey) return;
-      const n = Number(e.code.slice(5)) - 1;
-      if (n >= HOTBAR) return;
       this.select(this.selected === n ? -1 : n);
     });
     net.onDied = () => {
@@ -347,11 +346,11 @@ export class Survival {
       if (!bottle) html = 'Broken';
       else if (playerHands.filling) html = `<span class="prog"></span>`;
       else if (playerHands.drinking) html = `<span class="prog"></span>`;
-      else if (byPump) html = `<kbd>F</kbd>Fill`;
+      else if (byPump) html = `${kbd('interact')}Fill`;
       else if (w.sips <= 0) html = 'Empty';
     }
     // Junk in hand (src/throw.ts): it can be thrown, out of the bunker.
-    if (!scrapTargeted && !dead && kind && THROWABLE.has(kind) && !indoors(pos.x, pos.y, pos.z)) html = `<kbd>LMB</kbd>Throw`;
+    if (!scrapTargeted && !dead && kind && THROWABLE.has(kind) && !indoors(pos.x, pos.y, pos.z)) html = `${kbd('use')}Throw`;
     if (html !== this.promptHtml) {
       this.promptHtml = html;
       this.prompt.innerHTML = html;

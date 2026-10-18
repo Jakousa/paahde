@@ -8,6 +8,7 @@
 //   tags         a label over every part that is free to take
 //   message      a short line for events ("Bag full"), fading out
 //   fly          "+ Motor · Quality" flying from the part to the hotbar when a part is taken
+import { kbd } from '../bindings';
 import { RARITY, type PartId, type Tier } from '../../shared/salvage.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
@@ -112,7 +113,7 @@ export class TeardownUi {
     o.innerHTML = `<div id="tdTags"></div>
 <svg id="tdRing" viewBox="0 0 ${RING_R * 2 + 12} ${RING_R * 2 + 12}"><circle class="bg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}"/><circle class="fg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/></svg>
 <div class="panel" id="tdTop">
-  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button class="scrap">Scrap</button><button class="leave"><kbd>F</kbd></button></div>
+  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button class="scrap">Scrap</button><button class="leave">${kbd('interact')}</button></div>
   <div class="meters"><span>steps</span><div class="bar steps"><i></i></div><b class="ns"></b><span>parts</span><div class="bar parts"><i></i></div><b class="np"></b></div>
   <div class="next"></div>
 </div>

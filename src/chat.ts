@@ -5,6 +5,7 @@
 // to itself, so typing doesn't walk or open menus.
 import { CHAT_MAX, type DeathCause, type Obituary } from '../shared/protocol.ts';
 import type { Net } from './net';
+import { isBound } from './bindings';
 import { tools, ui } from './input';
 
 /** How long a line stays up (ms), fading out over the last second. */
@@ -71,7 +72,7 @@ export class Chat {
 
     // Only from the game itself: not over the inventory, the Esc menu or the disassembly.
     addEventListener('keydown', (e) => {
-      if (e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
+      if (!isBound('chat', e.code)) return;
       if (e.repeat || this.open || !document.pointerLockElement || ui.inventoryOpen || tools.frozen) return;
       e.preventDefault(); // or the same press lands in the input
       this.toggle(true);

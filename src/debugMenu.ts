@@ -8,6 +8,7 @@
 // "Trophies" shows the boss trophies at the base (src/world/trophies.ts) for the kinds beaten, all or none (local
 // view, looks only: walking into them still follows the kinds beaten).
 // "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, and a laser rifle, pistol and jammer in your bag and equipment.
+import { isBound } from './bindings';
 import { ui } from './input';
 import { BOSS_KINDS, BOSSES, type BossKind } from '../shared/bosses.ts';
 import { TONE_CURVES, toneControl, type ToneCurve } from './post';
@@ -137,7 +138,7 @@ export class DebugMenu {
     }, 500);
 
     addEventListener('keydown', (e) => {
-      if (e.code !== 'F3' && e.code !== 'Backquote') return;
+      if (!isBound('debug', e.code)) return;
       e.preventDefault();
       const open = p.style.display !== 'block';
       p.style.display = open ? 'block' : 'none';

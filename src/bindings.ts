@@ -1,11 +1,16 @@
-// Rebindable keys and mouse buttons. Bindings are physical keys (KeyboardEvent.code) or 'Mouse<button>', so WASD stays under the left hand on AZERTY /
-// Dvorak; labels shown to the player come from the layout map. Each action has two slots; binding a key that another
-// action holds takes it from there. Saved in localStorage. Fixed (not rebindable): Esc, Enter (chat),
-// 1–9 (hotbar, 9 = bike), F3 / ` (debug panel), Meta keys.
+// Rebindable keys and mouse buttons. Bindings are physical keys (KeyboardEvent.code) or 'Mouse<button>', so WASD
+// stays under the left hand on AZERTY / Dvorak; labels shown to the player come from the layout map. Each action has
+// two slots and always keeps at least one: binding a key another action holds takes it from there (the two swap if
+// that would leave the other empty), and the last key of an action can't be cleared. Saved in localStorage.
+// Not rebindable: Esc (the browser frees the mouse with it; also cancels a rebind) and Meta keys.
 
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'sprint' | 'crouch' | 'use' | 'aim' | 'spyglass'
-  | 'interact' | 'bike' | 'inventory' | 'thirdPerson' | 'rotate' | 'pickPlaced';
+  | 'interact' | 'bike' | 'inventory' | 'thirdPerson' | 'rotate' | 'pickPlaced' | 'freeLook' | 'chat' | 'debug'
+  | 'slot1' | 'slot2' | 'slot3' | 'slot4';
+
+/** The hotbar's slots in order (shared/items.ts HOTBAR = 4). */
+export const HOTBAR_ACTIONS: Action[] = ['slot1', 'slot2', 'slot3', 'slot4'];
 
 type Slots = [string, string];
 
@@ -22,15 +27,22 @@ export const ACTIONS: { id: Action; label: string; keys: Slots }[] = [
   { id: 'aim', label: 'aim', keys: ['Mouse2', 'KeyX'] },
   { id: 'spyglass', label: 'spyglass', keys: ['KeyQ', ''] },
   { id: 'interact', label: 'pick up · interact', keys: ['KeyF', ''] },
-  { id: 'bike', label: 'motorcycle', keys: ['KeyZ', ''] },
+  { id: 'bike', label: 'motorcycle', keys: ['KeyZ', 'Digit9'] },
+  { id: 'slot1', label: 'hotbar 1', keys: ['Digit1', ''] },
+  { id: 'slot2', label: 'hotbar 2', keys: ['Digit2', ''] },
+  { id: 'slot3', label: 'hotbar 3', keys: ['Digit3', ''] },
+  { id: 'slot4', label: 'hotbar 4', keys: ['Digit4', ''] },
   { id: 'inventory', label: 'inventory', keys: ['Tab', ''] },
   { id: 'thirdPerson', label: 'third person', keys: ['KeyT', ''] },
+  { id: 'freeLook', label: 'look around', keys: ['AltLeft', ''] },
   { id: 'rotate', label: 'rotate', keys: ['KeyR', ''] },
   { id: 'pickPlaced', label: 'pick up placed', keys: ['KeyG', ''] },
+  { id: 'chat', label: 'chat', keys: ['Enter', 'NumpadEnter'] },
+  { id: 'debug', label: 'debug panel', keys: ['F3', 'Backquote'] },
 ];
 
-const KEY = 'dadajam.bindings2';
-const RESERVED = /^(Escape|Enter|NumpadEnter|F3|Backquote|Digit[1-9]|Meta.*|ContextMenu)$/;
+const KEY = 'dadajam.bindings3';
+const RESERVED = /^(Escape|Meta.*|ContextMenu)$/;
 
 /** Left and right Shift / Ctrl / Alt are one key to the game. */
 export function norm(code: string): string {
@@ -48,12 +60,23 @@ function load() {
   defaults();
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Record<string, unknown>;
+    const next = new Map<Action, Slots>();
     for (const a of ACTIONS) {
       const s = saved[a.id];
-      if (Array.isArray(s) && s.length === 2 && s.every((c) => typeof c === 'string' && !RESERVED.test(c))) {
-        map.set(a.id, [norm(s[0]), norm(s[1])]);
+      if (!Array.isArray(s) || s.length !== 2 || !s.every((c) => typeof c === 'string' && !RESERVED.test(c))) continue;
+      const pair: Slots = [norm(s[0]), norm(s[1])];
+      if (pair[0] || pair[1]) next.set(a.id, pair);
+    }
+    // Take the saved set only if nothing ends up bound twice; otherwise keep the defaults.
+    const used = new Set<string>();
+    for (const a of ACTIONS) {
+      for (const c of next.get(a.id) ?? a.keys) {
+        if (!c) continue;
+        if (used.has(c)) return;
+        used.add(c);
       }
     }
+    for (const [a, s] of next) map.set(a, s);
   } catch {}
 }
 load();
@@ -62,6 +85,11 @@ function save() {
   try {
     localStorage.setItem(KEY, JSON.stringify(Object.fromEntries(map)));
   } catch {}
+  changed();
+}
+
+function changed() {
+  for (const el of document.querySelectorAll<HTMLElement>('kbd[data-act]')) el.textContent = actionKey(el.dataset.act as Action);
   for (const l of listeners) l();
 }
 
@@ -80,23 +108,47 @@ export function canBind(code: string): boolean {
   return !RESERVED.test(code);
 }
 
-/** Bind `code` to a slot ('' clears it). Returns the label of the action it was taken from, if any. */
+/** Bind `code` to a slot ('' clears it). Returns a short note for the menu when something happened besides the bind. */
 export function bind(a: Action, slot: 0 | 1, code: string): string | undefined {
   code = norm(code);
-  let taken: string | undefined;
-  if (code) {
-    for (const o of ACTIONS) {
-      const s = map.get(o.id)!;
-      for (const i of [0, 1] as const) {
-        if (s[i] !== code || (o.id === a && i === slot)) continue;
-        s[i] = '';
-        if (o.id !== a) taken = o.label;
-      }
-    }
+  const mine = map.get(a)!;
+  const other = (1 - slot) as 0 | 1;
+  const old = mine[slot];
+  if (code === old) return;
+  if (!code) {
+    if (!mine[other]) return 'needs a key';
+    mine[slot] = '';
+    save();
+    return;
   }
-  map.get(a)![slot] = code;
+  let note: string | undefined;
+  for (const o of ACTIONS) {
+    if (o.id === a) continue;
+    const s = map.get(o.id)!;
+    const i = s[0] === code ? 0 : s[1] === code ? 1 : undefined;
+    if (i === undefined) continue;
+    const j = (1 - i) as 0 | 1;
+    if (s[j]) s[i] = '';
+    else if (old) s[i] = old; // would be left with nothing: swap
+    else return `${keyName(code)} is ${o.label}'s only key`;
+    note = `${keyName(code)} taken from ${o.label}`;
+  }
+  // Moving a key between this action's own slots just empties the other one.
+  if (mine[other] === code) mine[other] = '';
+  mine[slot] = code;
   save();
-  return taken;
+  return note;
+}
+
+/** The key to show in prompts for an action: its first set slot. */
+export function actionKey(a: Action): string {
+  const s = map.get(a)!;
+  return keyName(s[0] || s[1]);
+}
+
+/** `<kbd>` markup for HUD prompts; follows rebinding. */
+export function kbd(a: Action): string {
+  return `<kbd data-act="${a}">${actionKey(a)}</kbd>`;
 }
 
 export function resetAll() {
@@ -114,7 +166,7 @@ let layout: { get(code: string): string | undefined } | undefined;
   ?.getLayoutMap?.()
   .then((m) => {
     layout = m;
-    for (const l of listeners) l();
+    changed();
   }, () => {});
 
 const NAMES: Record<string, string> = {

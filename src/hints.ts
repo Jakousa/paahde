@@ -1,6 +1,7 @@
 // One-time hints: a short banner the first time you do something new (repair a piece of gear, craft a thing,
 // carry home your first machine) saying how to use it, then never again on this browser (localStorage).
 // Fed from the inventory's box updates (src/inventory.ts).
+import { actionKey } from './bindings';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
 import { isGear, repaired } from '../shared/gear.ts';
 import { partOf } from '../shared/parts.ts';
@@ -9,11 +10,11 @@ import type { Slots } from '../shared/items.ts';
 
 /** Shown the first time each piece of gear is repaired at the workbench, or each recipe crafted. */
 const TEXTS: Record<string, string> = {
-  motorcycle: 'Motorcycle: Tab, into the Vehicle slot. 9 to ride.',
-  backpack: 'Backpack: Tab, into the Back slot.',
-  storm_detector: 'Storm detector: Tab, into the Belt slot. Beeps before a storm.',
-  wristpad: 'Wrist computer: Tab, into the Wrist slot.',
-  shield: 'Shield plate: Tab, into the Armor slot. Takes one killing blow.',
+  motorcycle: 'Motorcycle: {inventory}, into the Vehicle slot. {bike} to ride.',
+  backpack: 'Backpack: {inventory}, into the Back slot.',
+  storm_detector: 'Storm detector: {inventory}, into the Belt slot. Beeps before a storm.',
+  wristpad: 'Wrist computer: {inventory}, into the Wrist slot.',
+  shield: 'Shield plate: {inventory}, into the Armor slot. Takes one killing blow.',
   canteen: 'Water bottle: on the hotbar, hold mouse to drink. Fill at a pump.',
   spyglass: 'Telescope: on the hotbar, hold mouse to look, wheel to zoom.',
   laser_pistol: 'Laser pistol: on the hotbar. Left mouse fires, right aims.',
@@ -104,7 +105,7 @@ export class Hints {
     const text = this.queue.shift();
     if (!text) return;
     this.busy = true;
-    this.el.textContent = text;
+    this.el.textContent = text.replace('{inventory}', actionKey('inventory')).replace('{bike}', actionKey('bike'));
     this.el.classList.add('on');
     setTimeout(() => {
       this.el.classList.remove('on');

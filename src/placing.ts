@@ -5,7 +5,7 @@
 import { isPlaceable, placeAim, placed, placedTarget, placeError, type Placed } from '../shared/placed.ts';
 import { pitchFromQ } from '../shared/dig.ts';
 import { yawFromQ } from '../shared/sim.ts';
-import { isBound } from './bindings';
+import { isBound, kbd } from './bindings';
 import { ui, useHeld } from './input';
 import { itemLabel } from './inventory';
 import type { Net } from './net';
@@ -49,7 +49,7 @@ export class Placer {
 
     const target = placedTarget(feet, yaw, pitch, placed);
     if (pick && target) this.net.unplace(target.id);
-    const pickHint = target ? `<kbd>G</kbd>Pick up ${lower(itemLabel(target.kind))}` : null;
+    const pickHint = target ? `${kbd('pickPlaced')}Pick up ${lower(itemLabel(target.kind))}` : null;
 
     if (!kind || !isPlaceable(kind)) {
       this.view.preview(null, null, false);
@@ -63,7 +63,7 @@ export class Placer {
       else this.net.place(slot, at!.x, at!.z, at!.rot);
     }
     const label = lower(itemLabel(kind));
-    const prompt = why ? `<span class="bad">${why}</span> <kbd>R</kbd>Turn` : `<kbd>LMB</kbd>Place ${label} <kbd>R</kbd>Turn`;
+    const prompt = why ? `<span class="bad">${why}</span> ${kbd('rotate')}Turn` : `${kbd('use')}Place ${label} ${kbd('rotate')}Turn`;
     return { prompt: `${prompt}${pickHint ? ` ${pickHint}` : ''}`, target };
   }
 }

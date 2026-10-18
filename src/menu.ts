@@ -4,7 +4,7 @@
 // The game keeps running behind it: it's multiplayer, nothing pauses.
 import { WORLD_ID } from '../shared/world.ts';
 import { audio } from './audio';
-import { ACTIONS, bind, canBind, keyName, onChange, resetAll, slots } from './bindings';
+import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
 import { capture, toggleFullscreen, tools, ui } from './input';
 
 const STATS_KEY = 'dadajam.stats';
@@ -32,7 +32,10 @@ const css = `
 #menu .binds button { padding: 3px 0; font: 600 11px var(--mono); letter-spacing: 0; background: rgba(255, 217, 160, 0.14); color: #ffd9a0; }
 #menu .binds button:hover { background: rgba(255, 217, 160, 0.28); }
 #menu .binds button.listening { background: #ffd9a0; color: #2a160a; }
-#menu .binds .note { grid-column: 1 / -1; min-height: 14px; opacity: 0.6; font-size: 11px; }
+#menu .note { min-height: 16px; margin-top: 6px; opacity: 0.7; font-size: 11px; }
+#menu .controls { display: none; }
+#menu .panel.sub .controls { display: block; }
+#menu .panel.sub .main { display: none; }
 #menu button.reset { margin-top: 8px; background: transparent; color: #ffd9a0; box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.3); }
 #menu kbd { font: 600 11px var(--mono); color: #ffd9a0; }
 #menu .foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
@@ -40,11 +43,6 @@ const css = `
 #menu .foot a { color: inherit; }
 `;
 
-// Not rebindable (src/bindings.ts).
-const KEYS: [string, string][] = [
-  ['1–4', 'hotbar'], ['9', 'motorcycle on · off'], ['Alt', 'look around'],
-  ['Enter', 'chat'], ['Esc', 'this menu'],
-];
 
 export class Menu {
   private el = document.createElement('div');
@@ -63,7 +61,7 @@ export class Menu {
     this.infoEl.style.display = this.stats ? 'block' : 'none';
 
     this.el.id = 'menu';
-    this.el.innerHTML = `<div class="panel"><h2>hiekka</h2><button class="resume">Resume</button>
+    this.el.innerHTML = `<div class="panel"><div class="main"><h2>hiekka</h2><button class="resume">Resume</button>
 <h3>Settings</h3>
 <label class="row"><span>Volume</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
 <label class="row"><span>Music</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label>
@@ -71,9 +69,11 @@ export class Menu {
 <label class="row"><span>Show stats</span><input class="stats" type="checkbox"></label>
 <button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">Copy invite link</button>
-<h3>Controls</h3><div class="binds"></div><button class="reset">Reset controls</button>
-<h3>Fixed</h3><div class="keys">${KEYS.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('')}</div>
-<div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">credits</a></div></div>`;
+<button class="ctl" style="margin-top:8px">Controls</button>
+<div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">credits</a></div></div>
+<div class="controls"><h2>Controls</h2><button class="back">Back</button>
+<h3>Click a key, then press the new one</h3><div class="binds"></div><div class="note"></div>
+<button class="reset">Reset controls</button><div class="foot">Esc: menu · cancel (fixed)</div></div></div>`;
     document.body.append(this.el);
     this.footEl = this.el.querySelector('.info')!;
     // The world's URL (shared/world.ts), without dev flags: anyone opening it joins this world.
@@ -173,8 +173,17 @@ export class Menu {
   private bindControls() {
     const grid = this.el.querySelector<HTMLElement>('.binds')!;
     grid.innerHTML = ACTIONS.map((a) => `<span>${a.label}</span><button data-a="${a.id}" data-s="0"></button><button data-a="${a.id}" data-s="1"></button>`).join('')
-      + '<div class="note"></div>';
-    const note = grid.querySelector<HTMLElement>('.note')!;
+      ;
+    const note = this.el.querySelector<HTMLElement>('.controls .note')!;
+    const panel = this.el.querySelector<HTMLElement>('.panel')!;
+    const sub = (on: boolean) => {
+      panel.classList.toggle('sub', on);
+      listening = undefined;
+      note.textContent = '';
+      show();
+    };
+    this.el.querySelector('.ctl')!.addEventListener('click', () => sub(true));
+    this.el.querySelector('.back')!.addEventListener('click', () => sub(false));
     const buttons = [...grid.querySelectorAll<HTMLButtonElement>('button')];
     let listening: HTMLButtonElement | undefined;
     const show = () => {
@@ -222,12 +231,9 @@ export class Menu {
       listening = undefined;
       note.textContent = '';
       if (code === 'Escape') return show();
-      if (code === 'Backspace' || code === 'Delete') bind(b.dataset.a as never, Number(b.dataset.s) as 0 | 1, '');
-      else if (!canBind(code)) note.textContent = `${keyName(code)} is reserved`;
-      else {
-        const taken = bind(b.dataset.a as never, Number(b.dataset.s) as 0 | 1, code);
-        if (taken) note.textContent = `${keyName(code)} taken from ${taken}`;
-      }
+      const a = b.dataset.a as never;
+      const slot = Number(b.dataset.s) as 0 | 1;
+      note.textContent = (code === 'Backspace' || code === 'Delete' ? bind(a, slot, '') : bind(a, slot, code)) ?? '';
       show();
     };
     grid.addEventListener('click', (e) => {
