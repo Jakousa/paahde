@@ -1,7 +1,9 @@
 // The landing page (no world in the URL) and the end screens over the game (game over, unknown world):
 // a title and one button that makes a new world (server/index.ts /api/worlds) and shows its link to copy
 // and share, and to join from. Also the victory screen (every boss beaten), which goes away again: the
-// world plays on.
+// world plays on. The landing page plays the desert guitar (the game's outdoor music, src/music.ts) once
+// the browser lets it, after the first click or key.
+import { audio } from './audio';
 
 const css = `
 #landing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; color: #e8d2ae;
@@ -47,7 +49,10 @@ export function landing(why?: 'over' | 'missing') {
   const line = why === 'over' ? 'Game over' : why === 'missing' ? 'No such world' : '';
   el.innerHTML = `${why ? '' : '<div class="bg"></div><div class="shade"></div>'}<div class="panel"><h1>hiekka</h1>${line ? `<p>${line}</p>` : ''}<button>Start a new game</button></div>`;
   document.body.append(el);
-  if (!why) blowingSand(el);
+  if (!why) {
+    blowingSand(el);
+    music(el);
+  }
   const button = el.querySelector('button')!;
   button.addEventListener('click', async () => {
     button.disabled = true;
@@ -141,6 +146,37 @@ function blowingSand(el: HTMLElement) {
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+/** "Desert ambience" (src/music.ts DESERT_AMBIENCE: exactly 112 s, loops whole) through the music slider,
+ * faded in; it fades out if the page goes away without leaving (the victory screen's Play on). */
+function music(el: HTMLElement) {
+  const LENGTH = 112;
+  /** Decoder delay (s) when the browser ignores the LAME header, as in src/music.ts. */
+  const MP3_DELAY = 1105 / 44100;
+  const buffer = fetch('./audio/desert-ambience.mp3').then((r) => r.arrayBuffer());
+  audio.onStart(async (ctx) => {
+    const buf = await ctx.decodeAudioData(await buffer);
+    if (!el.isConnected || !audio.music) return;
+    const lead = buf.duration > LENGTH + 0.001 ? Math.min(buf.duration - LENGTH, MP3_DELAY) : 0;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.loopStart = lead;
+    src.loopEnd = lead + LENGTH;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.gain.setTargetAtTime(0.45, ctx.currentTime, 1.5);
+    src.connect(gain).connect(audio.music);
+    src.start(ctx.currentTime, lead);
+    const gone = new MutationObserver(() => {
+      if (el.isConnected) return;
+      gone.disconnect();
+      gain.gain.setTargetAtTime(0, ctx.currentTime, 0.5);
+      src.stop(ctx.currentTime + 3);
+    });
+    gone.observe(document.body, { childList: true });
+  });
 }
 
 /** The new world's link in place of the button: copy it to share, Join to go there yourself. */
