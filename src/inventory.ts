@@ -113,6 +113,15 @@ img.fit { object-fit: contain; }
 #invOverlay .recipe .need .short { color: #ff9a7a; }
 #invOverlay .recipe .need .ok { color: #9ad88a; }
 #invOverlay button:disabled { opacity: 0.35; cursor: default; }
+#invTip { position: fixed; z-index: 17; pointer-events: none; display: none; max-width: 280px; padding: 7px 10px;
+  border-radius: 6px; background: rgba(20, 10, 4, 0.95); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.2), 0 6px 18px rgba(0, 0, 0, 0.5);
+  font: 12px var(--mono); color: #fff4e4; line-height: 1.45; }
+#invTip .name { font-weight: 600; }
+#invTip .sub { opacity: 0.7; }
+#invTip .parts { margin-top: 4px; display: grid; grid-template-columns: auto auto; gap: 0 10px; }
+#invTip .parts .k { opacity: 0.6; }
+#invTip .miss { color: #ff8a66; }
+#invTip .use { margin-top: 4px; opacity: 0.85; }
 #invGhost { position: fixed; z-index: 16; pointer-events: none; display: flex; align-items: center; justify-content: center;
   border-radius: 6px; background: rgba(66, 44, 26, 0.55); filter: drop-shadow(0 4px 6px #000); }
 #invGhost.drop::after { content: 'Drop'; position: absolute; top: 100%; font: 600 11px var(--mono); color: #fff4e4;
@@ -207,18 +216,24 @@ const rarityColor = (kind: string) => {
 /** An item's rarity colour: a part's tier, or repaired gear's (shared/gear.ts tierOf: what it looks like, src/tierLook.ts). */
 const itemColor = (it: Item) => (isGear(it.kind) && repaired(it) ? hex(RARITY[TIERS[tierOf(it)]].color) : rarityColor(it.kind));
 
-/** Tooltip for an item: the rarity for items with a tier; gear says what it needs or how good it is. */
-export function itemTitle(it: Item): string {
-  const t = ITEMS[it.kind]?.tier;
-  if (t) return `${itemLabel(it.kind)} · ${RARITY[t].name}`;
-  if (!isGear(it.kind)) return itemLabel(it.kind);
-  const spec = GEAR[it.kind];
+/** Tooltip for an item: its name in its rarity colour; gear says how good it is, the part in each slot (or what's
+ *  missing) and how to use it. */
+function tipHtml(it: Item): string {
+  const c = itemColor(it);
+  let html = `<div class="name"${c ? ` style="color:${c}"` : ''}>${itemLabel(it.kind)}${it.n > 1 ? ` ×${it.n}` : ''}</div>`;
+  if (!isGear(it.kind)) return html;
+  const ok = repaired(it);
   const parts = partsOf(it);
-  if (!repaired(it)) {
-    const missing = spec.slots.filter((_, i) => !parts[i]).map(slotLabel);
-    return `${itemLabel(it.kind)} (broken)\nNeeds: ${missing.join(', ')}`;
-  }
-  return `${itemLabel(it.kind)} · ${qualityName(quality(it))} (${quality(it).toFixed(1)} / 3)\n${spec.use}`;
+  html += `<div class="sub">${ok ? qualityName(quality(it)) : '<span class="miss">Broken</span>'}</div><div class="parts">`;
+  GEAR[it.kind].slots.forEach((slot, i) => {
+    const p = parts[i];
+    const pc = p && rarityColor(p);
+    html += `<span class="k">${slotLabel(slot)}</span>`
+      + (p ? `<span${pc ? ` style="color:${pc}"` : ''}>${itemLabel(p)}</span>` : '<span class="miss">missing</span>');
+  });
+  html += '</div>';
+  if (ok) html += `<div class="use">${GEAR[it.kind].use}</div>`;
+  return html;
 }
 
 /**
@@ -235,6 +250,10 @@ export class InventoryHud {
   private overlay = document.createElement('div');
   private boxesEl = document.createElement('div');
   private ghost = document.createElement('div');
+  private tip = document.createElement('div');
+  /** The slot the tooltip is for, and the pointer, for redrawing it after a render. */
+  private tipAt: HTMLElement | null = null;
+  private pointer = { x: 0, y: 0 };
   private shown: ScrapPiece | string | null = null;
   private net: Net;
   private canvas: HTMLElement;
@@ -260,7 +279,8 @@ export class InventoryHud {
     this.overlay.append(this.boxesEl);
     this.ghost.id = 'invGhost';
     this.ghost.style.display = 'none';
-    document.body.append(this.prompt, this.toasts, this.overlay, this.ghost);
+    this.tip.id = 'invTip';
+    document.body.append(this.prompt, this.toasts, this.overlay, this.ghost, this.tip);
 
     net.onItems = (box, got) => {
       // The disassembly mode shows its own "+ Motor · Quality" flying to the hotbar.
@@ -287,7 +307,11 @@ export class InventoryHud {
     });
     this.overlay.addEventListener('contextmenu', (e) => e.preventDefault());
     this.boxesEl.addEventListener('pointerdown', (e) => this.press(e));
-    addEventListener('pointermove', (e) => this.dragMove(e));
+    addEventListener('pointermove', (e) => {
+      this.pointer = { x: e.clientX, y: e.clientY };
+      this.dragMove(e);
+      this.showTip();
+    });
     addEventListener('pointerup', (e) => this.release(e));
     // Taking the mouse back (a click on the game) closes it too.
     document.addEventListener('pointerlockchange', () => {
@@ -300,6 +324,7 @@ export class InventoryHud {
     if (open === ui.inventoryOpen) return;
     ui.inventoryOpen = open;
     this.overlay.classList.toggle('open', open);
+    this.showTip();
     this.cancelDrag();
     if (open) {
       document.exitPointerLock();
@@ -368,6 +393,8 @@ export class InventoryHud {
     const scrolled = new Map<string, number>();
     for (const el of this.boxesEl.querySelectorAll<HTMLElement>('[data-grid]')) scrolled.set(el.dataset.grid!, el.scrollTop);
     this.boxesEl.innerHTML = html;
+    this.tipAt = null;
+    this.showTip();
     for (const el of this.boxesEl.querySelectorAll<HTMLElement>('[data-grid]')) {
       const top = scrolled.get(el.dataset.grid!);
       if (top) el.scrollTop = top;
@@ -399,7 +426,7 @@ export class InventoryHud {
       const kind = parts[i];
       const fits = held && fitsSlot(slot, held.kind) ? ' fits' : '';
       const c = kind && rarityColor(kind);
-      html += `<div><div class="slot${kind ? '' : ' empty'}${fits}${c ? ' rare' : ''}" data-box="part" data-i="${i}"${c ? ` style="--c:${c}"` : ''} title="${kind ? itemLabel(kind) : `Needs a ${slotLabel(slot).toLowerCase()}`}">`
+      html += `<div><div class="slot${kind ? '' : ' empty'}${fits}${c ? ' rare' : ''}" data-box="part" data-i="${i}"${c ? ` style="--c:${c}"` : ''} data-tip="${kind ? '' : `Needs a ${slotLabel(slot).toLowerCase()}`}">`
         + (kind ? itemIcon(kind) : `<span class="ph">+</span>`) + `</div><div class="pl">${slotLabel(slot)}</div></div>`;
     });
     return html + '</div>';
@@ -430,7 +457,7 @@ export class InventoryHud {
       const broken = it && isGear(it.kind) && !repaired(it);
       const c = it && itemColor(it);
       const cls = `slot${it ? '' : ' empty'}${key ? ' hot' : ''}${broken ? ' broken' : ''}${dead ? ' dead' : ''}${c ? ' rare' : ''}`;
-      html += `<div class="${cls}" data-box="${box}" data-i="${i}"${c ? ` style="--c:${c}"` : ''}${it ? ` title="${itemTitle(it)}"` : ''}>${key}${ph}${it ? this.itemHtml(it) : ''}</div>`;
+      html += `<div class="${cls}" data-box="${box}" data-i="${i}"${c ? ` style="--c:${c}"` : ''}>${key}${ph}${it ? this.itemHtml(it) : ''}</div>`;
     }
     return html;
   }
@@ -472,7 +499,7 @@ export class InventoryHud {
     const broken = isGear(it.kind) && !repaired(it);
     const c = itemColor(it);
     const cls = `slot item${broken ? ' broken' : ''}${dead ? ' dead' : ''}${c ? ' rare' : ''}${it.r ? ' turned' : ''}`;
-    return `<div class="${cls}" data-box="${box}" data-i="${i}" style="${style}${c ? `; --c:${c}` : ''}" title="${itemTitle(it)}">${this.itemHtml(it)}</div>`;
+    return `<div class="${cls}" data-box="${box}" data-i="${i}" style="${style}${c ? `; --c:${c}` : ''}">${this.itemHtml(it)}</div>`;
   }
 
   private itemHtml(it: Item) {
@@ -666,6 +693,27 @@ export class InventoryHud {
       if (!bag[j]) return this.net.moveItem('bag', i, 'bag', j);
     }
     return false;
+  }
+
+  /** The custom tooltip, at once, for the slot under the pointer (none while dragging or closed). */
+  private showTip() {
+    const hit = ui.inventoryOpen && !this.drag?.moved ? document.elementFromPoint(this.pointer.x, this.pointer.y) : null;
+    const el = hit?.closest<HTMLElement>('[data-box][data-i]') ?? null;
+    if (el !== this.tipAt) {
+      this.tipAt = el;
+      const it = el && this.itemAt(el.dataset.box!, +el.dataset.i!);
+      const html = it ? tipHtml(it) : el?.dataset.tip ? `<div class="sub">${el.dataset.tip}</div>` : '';
+      this.tip.innerHTML = html;
+      this.tip.style.display = html ? 'block' : 'none';
+    }
+    if (this.tip.style.display === 'none') return;
+    // Below-right of the pointer, flipped to stay on screen.
+    const w = this.tip.offsetWidth, h = this.tip.offsetHeight;
+    let x = this.pointer.x + 14, y = this.pointer.y + 18;
+    if (x + w > innerWidth - 8) x = this.pointer.x - w - 10;
+    if (y + h > innerHeight - 8) y = this.pointer.y - h - 10;
+    this.tip.style.left = `${Math.max(8, x)}px`;
+    this.tip.style.top = `${Math.max(8, y)}px`;
   }
 
   private dragMove(e: PointerEvent) {
