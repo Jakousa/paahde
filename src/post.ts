@@ -11,7 +11,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  frost, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
+  hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
   sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
 import { EDGE } from '../shared/storm.ts';
@@ -382,19 +382,6 @@ export class Post {
       const ragged = v.add(mx_noise_float(vec3(p.sub(0.5).mul(vec2(aspect, 1)).mul(2.5), time.mul(0.4))).mul(0.06));
       const edge = smoothstep(mix(float(0.62), float(0.18), hs), 1.0, ragged);
       o = mix(o, vec3(0.32, 0.015, 0.005), saturate(edge.mul(hs).mul(beat.mul(0.25).add(0.8)).mul(1.15)));
-      // Cold: the colour drains to a pale blue-grey and frost grows in from the edges and corners, its rim ragged
-      // and veined like rime on glass (still: frost doesn't crawl), creeping further in as the chill deepens.
-      const fz = frost;
-      o = mix(o, vec3(ol).mul(vec3(0.86, 0.95, 1.12)), fz.mul(0.4));
-      const fq = p.sub(0.5).mul(vec2(aspect, 1));
-      const fern = mx_noise_float(vec3(fq.mul(7), 3.1)).mul(0.6).add(mx_noise_float(vec3(fq.mul(23), 7.7)).mul(0.3));
-      const warp = vec2(mx_noise_float(vec3(fq.mul(3), 5.2)), mx_noise_float(vec3(fq.mul(3), 9.4))).mul(0.25);
-      const veins = pow(saturate(float(1).sub(abs(mx_noise_float(vec3(fq.add(warp).mul(22), 1.3))))), float(18));
-      const rim = v.add(fern.mul(0.14));
-      // Milky towards the edges (denser the further out), with bright crystal veins inside the rime.
-      const rime = smoothstep(mix(float(0.8), float(0.3), fz), mix(float(1.05), float(0.75), fz), rim).mul(smoothstep(0, 0.12, fz));
-      o = mix(o, vec3(0.74, 0.83, 0.92), saturate(rime.mul(0.8)));
-      o = o.add(vec3(0.85, 0.93, 1).mul(veins.mul(rime).mul(0.2)));
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
       o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(0.028)));

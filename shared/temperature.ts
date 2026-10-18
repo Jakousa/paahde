@@ -12,13 +12,8 @@
 // Felt: air, plus up to SUN_BONUS in direct sun (scaled by the sun's height, like sunlight per m²). In
 // shade, SHADE_DROP under the air while the sun is up (cool sand, no glare), fading out as it nears the
 // horizon, so a dune's late-afternoon shadow is a real refuge. Partly in shade (shared/shade.ts sunOnBody), it is
-// the mix of the two by how much of the body the sun reaches.
-//
-// Night: out under the open sky the body radiates its heat away and the night wind takes the rest, so outside it
-// feels NIGHT_CHILL under the air once the sun is down (fading in over its first NIGHT_FULL_ELEV below the
-// horizon): ~6 °C at midnight, ~4 °C before dawn, cold enough to chill you (shared/water.ts). Cloth carried in
-// the bag is wrapped around you and keeps up to WRAP_MAX of that off (clothWrap). In the base (the hut or the
-// bunker) the thick walls and the sand keep it between BASE_MIN and BASE_MAX, day and night.
+// the mix of the two by how much of the body the sun reaches. In the base (the hut or the bunker) the thick walls
+// and the sand keep it at most BASE_MAX.
 import { NOON_ELEVATION, sunElevation } from './sun.ts';
 
 /** Coolest air (°C), at AIR_MIN_TOD, just before sunrise (~05:35 here). */
@@ -37,16 +32,6 @@ export const SHADE_DROP = 10;
 const SHADE_FULL_STRENGTH = 0.2;
 /** The base never feels hotter than this (°C): cool enough that you cool off there. */
 export const BASE_MAX = 22;
-/** ...nor colder than this (°C): the sand around the bunker keeps the day's warmth through the night. */
-export const BASE_MIN = 16;
-/** Felt °C under the air outside at night (radiating to the clear sky, the night wind)... */
-export const NIGHT_CHILL = 8;
-/** ...in full once the sun is this far below the horizon (radians), none at sunset. */
-const NIGHT_FULL_ELEV = (6 * Math.PI) / 180;
-/** Cloth in the bag keeps this share of the night's chill off at most... */
-export const WRAP_MAX = 0.8;
-/** ...with this many pieces (fewer, less). */
-export const WRAP_CLOTH = 4;
 
 /** Air temperature (°C) at a time of day in [0, 1). */
 export function airTemp(tod: number): number {
@@ -70,26 +55,15 @@ export function sunStrength(tod: number): number {
   return s <= 0 ? 0 : Math.min(1, s / Math.sin(NOON_ELEVATION));
 }
 
-/** How deep into the night it is, 0 (sun up) .. 1 (sun NIGHT_FULL_ELEV or more below the horizon). */
-export function nightDepth(tod: number): number {
-  const e = sunElevation(tod);
-  return e >= 0 ? 0 : Math.min(1, -e / NIGHT_FULL_ELEV);
-}
-
-/** How much of the night's chill `cloth` pieces of cloth carried in the bag keep off, 0..WRAP_MAX. */
-export function clothWrap(cloth: number): number {
-  return (WRAP_MAX * Math.min(Math.max(0, cloth), WRAP_CLOTH)) / WRAP_CLOTH;
-}
-
 /**
  * Felt temperature (°C) at a time of day with `sun` (0..1, shared/shade.ts sunOnBody) of the body in direct sun,
- * inside the base or not, `wrap` (clothWrap) of the night's chill kept off.
+ * inside the base or not.
  */
-export function feltTemp(tod: number, sun: number, inside: boolean, wrap = 0): number {
+export function feltTemp(tod: number, sun: number, inside: boolean): number {
   const air = airTemp(tod);
-  if (inside) return Math.min(Math.max(air, BASE_MIN), BASE_MAX);
+  if (inside) return Math.min(air, BASE_MAX);
   const strength = sunStrength(tod);
   const lit = air + SUN_BONUS * strength;
   const shaded = air - SHADE_DROP * Math.min(1, strength / SHADE_FULL_STRENGTH);
-  return shaded + (lit - shaded) * sun - NIGHT_CHILL * nightDepth(tod) * (1 - wrap);
+  return shaded + (lit - shaded) * sun;
 }

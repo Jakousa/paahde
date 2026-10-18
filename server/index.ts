@@ -8,7 +8,7 @@ import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bikeLevel, bottleSips, digTool, GEAR_KINDS, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { CLOTH, HOTBAR, partKind, scrapItem } from '../shared/items.ts';
+import { HOTBAR, partKind, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
 import { KILL_SPOILS } from '../shared/tables.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
@@ -306,24 +306,15 @@ function shadeCasters(now: number): Caster[] {
   return casters;
 }
 
-/** Pieces of cloth in a player's bag: wrapped around them against the night's cold (shared/temperature.ts). */
-function clothIn(browserId: string): number {
-  let n = 0;
-  for (const it of items.slots(browserId, 'bag')) if (it?.kind === CLOTH) n += it.n;
-  return n;
-}
-
-// Heat builds up in the sun, chill out in the night (server/water.ts); when either is full the player dies of
-// heatstroke or cold and respawns at the base, recovered.
+// Heat builds up in the sun (server/water.ts); when the meter is full the player dies of heatstroke and respawns
+// at the base, recovered.
 // The next snapshot carries the new position, which the client snaps to (src/net.ts reconcile).
 function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const now = Date.now();
   const storm = stormAt(storms.storms, p.state.x, p.state.z, serverNow);
-  const r = tickHeat(p.heat, dt, p.state, p.input, tod, storm, now, { casters: shadeCasters(now), self: p.id, cloth: () => clothIn(p.browserId) });
+  const r = tickHeat(p.heat, dt, p.state, p.input, tod, storm, now, { casters: shadeCasters(now), self: p.id });
   if (r === 'died') {
     die(p, 'heat');
-  } else if (r === 'froze') {
-    die(p, 'cold');
   } else if (r === 'send') {
     send(p.ws, waterMsg(p.heat));
   }

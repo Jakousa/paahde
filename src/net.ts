@@ -143,8 +143,8 @@ export class Net {
   private holdTimers = new Map<string, ReturnType<typeof setInterval>>();
   onSite?: (msg: SiteMsg) => void;
 
-  /** Heat meter, chill (cold), canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
-  water = { heat: 0, chill: 0, sips: 0, maxSips: 0, rising: false, temp: 20, shade: true, at: 0 };
+  /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
+  water = { heat: 0, sips: 0, maxSips: 0, rising: false, temp: 20, shade: true, at: 0 };
   onWater?: (w: { heat: number; sips: number; rising: boolean; temp: number; shade: boolean }) => void;
   /** We died (heatstroke, a drone's beam or a guardian): we lie where we fell until the server respawns us. */
   onDied?: (cause: DeathCause) => void;
@@ -611,7 +611,7 @@ export class Net {
       return this.onSite?.(msg);
     }
     if (msg.t === 'water') {
-      this.water = { heat: msg.heat, chill: msg.chill ?? 0, sips: msg.sips, maxSips: msg.maxSips, rising: msg.rising, temp: msg.temp, shade: msg.shade, at: performance.now() };
+      this.water = { heat: msg.heat, sips: msg.sips, maxSips: msg.maxSips, rising: msg.rising, temp: msg.temp, shade: msg.shade, at: performance.now() };
       return this.onWater?.(msg);
     }
     if (msg.t === 'died') {

@@ -357,12 +357,6 @@ renderer.setAnimationLoop((time) => {
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
   teardown.placeCamera(frameDt); // at the disassembly table: a fixed view above it
   guardianFx.update(net, frameDt, orbit.camera, focus);
-  if (playerHands.shiver > 0) {
-    // Shivering with cold (src/water.ts): the view trembles a little too.
-    const sh = playerHands.shiver ** 2, tt = performance.now() / 1000;
-    orbit.camera.rotation.x += sh * 0.0022 * (Math.sin(tt * 57) + 0.5 * Math.sin(tt * 83 + 1.1));
-    orbit.camera.rotation.z += sh * 0.0018 * Math.sin(tt * 67 + 2.3);
-  }
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
   thrower.update(frameDt, !s.riding && !teardown.active && !net.down);
   jammer.update(frameDt, !s.riding && !teardown.active && !net.down);

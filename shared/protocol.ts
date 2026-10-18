@@ -197,13 +197,12 @@ export type ServerMsg =
   // whether you're out of direct sun (shade, night or the base; shared/shade.ts). Sent after 'welcome',
   // after every drink/fill (also refused ones, so the client resyncs), when heat starts or stops building
   // or shade flips, when temp moves by 0.5 °C, and about twice a second while the meter moves.
-  // maxSips: what the water bottle in your bag holds (shared/gear.ts bottleSips), 0 without one. chill: the cold
-  // (0..CHILL_MAX, shared/water.ts), shown only as frost and shaking hands; sent like heat while it moves.
-  | { t: 'water'; heat: number; chill: number; sips: number; maxSips: number; rising: boolean; temp: number; shade: boolean }
+  // maxSips: what the water bottle in your bag holds (shared/gear.ts bottleSips), 0 without one.
+  | { t: 'water'; heat: number; sips: number; maxSips: number; rising: boolean; temp: number; shade: boolean }
   // You died: you lie where you fell as a ragdoll for DOWN_MS (shared/ragdoll.ts; your input is ignored), then
   // 'respawn' says the server has moved you to BUNKER_SPAWN (the next snapshot snaps you there) with no heat and a
   // full canteen; a 'water' follows. For the death screen. push: the blast's launch velocity for the body (m/s).
-  // 'heat': heatstroke; 'cold': froze out in the night; 'guardian': one walked over you; 'laser': a guardian's cannon got you; 'missile': one called
+  // 'heat': heatstroke; 'guardian': one walked over you; 'laser': a guardian's cannon got you; 'missile': one called
   // down by a drone's searchlight landed on you (shared/missiles.ts); 'crawler': bitten once too often.
   | { t: 'died'; cause: DeathCause; push?: [number, number, number] }
   | { t: 'respawn' }
@@ -243,4 +242,4 @@ export type ServerMsg =
   | ({ t: 'toss'; id: number; by: number; n: number; kind: string; hit?: true } & TossPath)
   | { t: 'tossEnd'; id: number; x: number; y: number; z: number };
 
-export type DeathCause = 'heat' | 'cold' | 'guardian' | 'laser' | 'missile' | 'crawler';
+export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler';

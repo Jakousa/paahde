@@ -281,17 +281,12 @@ export class ViewModel {
     this.slide += ((pose.sliding && pose.grounded ? 1 : 0) - this.slide) * (1 - Math.exp(-dt * 10));
     const l = smooth(this.lower);
     const rest = REST_PITCH * (1 - playerHands.aim);
-    // Shivering with cold (playerHands.shiver): a fast, uneven tremor, ~8–12 Hz, that even aiming can't hold still.
-    const sh = playerHands.shiver * (0.4 + 0.6 * playerHands.shiver);
-    const tt = performance.now() / 1000;
-    const tremX = sh * (Math.sin(tt * 61) + 0.6 * Math.sin(tt * 47 + 1.3) + 0.4 * Math.sin(tt * 79 + 0.4));
-    const tremY = sh * (Math.sin(tt * 53 + 2.1) + 0.6 * Math.sin(tt * 71 + 0.7));
     this.sway.rotation.set(
-      rest - swayPitch * 0.5 * steady - l * 0.9 - this.slide * 0.25 + this.kick * 0.09 + tremX * 0.012,
-      -swayYaw * 0.6 * steady + tremY * 0.01,
-      -swayYaw * 0.35 * steady + this.kick * 0.02 + tremY * 0.008,
+      rest - swayPitch * 0.5 * steady - l * 0.9 - this.slide * 0.25 + this.kick * 0.09,
+      -swayYaw * 0.6 * steady,
+      -swayYaw * 0.35 * steady + this.kick * 0.02,
     );
-    this.sway.position.set(-swayYaw * 0.04 * steady + tremY * 0.002, -this.kick * 0.01 + tremX * 0.0025, this.kick * 0.09);
+    this.sway.position.set(-swayYaw * 0.04 * steady, -this.kick * 0.01, this.kick * 0.09);
     for (const g of this.rifleGlow) g.emissiveIntensity = (g.userData.base as number) * (0.15 + 0.85 * playerHands.charge ** 3 + 4 * playerHands.kick);
 
     if (!this.mixer) return;
