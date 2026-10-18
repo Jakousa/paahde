@@ -25,9 +25,8 @@ const SCRAP = (n: number): IngredientSpec => ({ label: 'Scrap', n, kinds: ['scra
 const CLOTH = (n: number): IngredientSpec => ({ label: 'Cloth', n, kinds: ['cloth'] });
 
 export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
-  // A grow bag on a scrap frame.
-  plant_bed: [SCRAP(2), CLOTH(2)],
-  uv_lamp: [SCRAP(2), { label: 'Wiring coil', n: 1, part: 'coil' }],
+  // (The plant bed and UV lamp aren't crafted for now: growing doesn't fit the game yet. Their code is still in
+  // shared/garden.ts; to bring them back: plant_bed: [SCRAP(2), CLOTH(2)], uv_lamp: [SCRAP(2), coil 1].)
   // The plain metal parts, hammered out of scrap: Scrap tier only, so better ones still come from salvage. The
   // electrics (motor, battery, coil, relay, compute, uranium) can't be made.
   gear_scrap: [SCRAP(3)],
