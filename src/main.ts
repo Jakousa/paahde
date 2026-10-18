@@ -75,6 +75,7 @@ import { bagShape, carriedGear, equipped, gearTiers, locatorRange, quality, repa
 import { LootView, lootName } from './world/loot';
 import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
+import { openBoxes } from '../shared/storage.ts';
 import { Chat } from './chat';
 import { nameGate } from './name';
 import { loading } from './loadingGame';
@@ -510,7 +511,10 @@ baseSand.update(frameDt, storm.atBase);
   // A dead player's pack (shared/corpse.ts) lying here: F opens it next to the bag, like a chest.
   const pack = net.connected && !net.down && !teardown.active && station < 0 && !bed && !target && !debris && !find && !site && !wreck
     && corpsesNear(net.me).some((b) => net.boxes[b]);
-  const packPrompt = pack ? 'Open pack' : null;
+  // The base's chest in reach (shared/storage.ts): F opens it next to the bag.
+  const chest = net.connected && !net.down && !teardown.active && station < 0 && !bed && !target && !debris && !find && !site && !wreck && !pack
+    && openBoxes(net.me).some((b) => b.startsWith('chest') && net.boxes[b]);
+  const packPrompt = pack ? 'Open pack' : chest ? 'Open chest' : null;
   const fPrompt = use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
@@ -541,7 +545,7 @@ baseSand.update(frameDt, storm.atBase);
       if (small) net.crashTake(site.site.id);
       else teardown.begin(machines.workSite(site, net.siteLink(site.site.id)));
     } else if (wreck) net.crashTake(wreck.id);
-    else if (pack) hud.open();
+    else if (pack || chest) hud.open();
   }
   const targeted = use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
