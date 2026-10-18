@@ -44,6 +44,7 @@ export class Bolts {
     mesh.add(new THREE.Mesh(coreGeo, coreMat), new THREE.Mesh(glowGeo, glowMat));
     mesh.lookAt(shot.dx, shot.dy, shot.dz); // +Z along the flight (from the origin)
     const off = muzzle ? muzzle.clone().sub(_p.set(shot.x, shot.y, shot.z)) : new THREE.Vector3();
+    this.bolts.get(shot.id)?.mesh.removeFromParent(); // a restarted server counts ids from 0 again
     this.scene.add(mesh);
     this.bolts.set(shot.id, { shot, mesh, off, age: 0 });
   }
@@ -71,7 +72,8 @@ export class Bolts {
     for (const [id, b] of this.bolts) {
       const s = b.shot;
       const d = (BOLT_SPEED * Math.max(0, now - s.time)) / 1000;
-      if (d > BOLT_RANGE + 20) {
+      // Also by the local clock: after a reconnect to a restarted server, `now` starts over and `d` would stay 0.
+      if (d > BOLT_RANGE + 20 || b.age > (BOLT_RANGE + 20) / BOLT_SPEED + 1) {
         b.mesh.removeFromParent();
         this.bolts.delete(id);
         continue;

@@ -29,7 +29,7 @@ const MARK_GAIN = 2.2;
 const headGeo = new THREE.SphereGeometry(HEAD_R, 10, 8);
 const headMat = new THREE.MeshBasicNodeMaterial({ color: HEAD });
 
-type Flying = { m: Launch; head: THREE.Group; mark: THREE.Mesh; fill: { value: number }; last: THREE.Vector3; started: boolean };
+type Flying = { m: Launch; head: THREE.Group; mark: THREE.Mesh; fill: { value: number }; last: THREE.Vector3; started: boolean; age: number };
 
 const _p = new THREE.Vector3();
 
@@ -119,6 +119,7 @@ export class Missiles {
   }
 
   launch(m: Launch) {
+    this.land(m.id); // a restarted server counts ids from 0 again
     const head = new THREE.Group();
     const glowMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const g = float(1).sub(smoothstep(0, 1, length(uv().sub(0.5)).mul(2)));
@@ -130,7 +131,7 @@ export class Missiles {
     head.visible = false;
     const { mesh: mark, fill } = markerMesh(m);
     this.scene.add(head, mark);
-    this.flying.set(m.id, { m, head, mark, fill, last: new THREE.Vector3(m.x0, m.y0, m.z0), started: false });
+    this.flying.set(m.id, { m, head, mark, fill, last: new THREE.Vector3(m.x0, m.y0, m.z0), started: false, age: 0 });
   }
 
   /** Missile `id` landed: gone (the burst is drawn by the caller). */
@@ -167,8 +168,10 @@ export class Missiles {
   update(dt: number, now: number) {
     for (const [id, f] of this.flying) {
       const t = (now - f.m.time) / 1000;
-      // Overdue by a while: the 'blast' never came (out of range by then); let it go.
-      if (t > f.m.flight + 2) {
+      // Overdue by a while: the 'blast' never came (out of range by then); let it go. Also by the local clock: after
+      // a reconnect to a restarted server the server clock starts over and the launch time lies far in the future.
+      f.age += dt;
+      if (t > f.m.flight + 2 || f.age > f.m.flight + 2) {
         this.land(id);
         continue;
       }
