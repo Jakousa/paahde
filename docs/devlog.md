@@ -62,6 +62,22 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   thorax, three on the sac (two on top, one at the tail). Dead: its legs give out one by one in servo jerks, the body
   crashes into a hole, the sac splits open glowing and smokes. Model ~9.5k triangles, merged to a lit and a glow mesh
   per part.
+- **The colossus** (shared/colossus.ts, server/colossus.ts, src/world/colossus.ts, src/colossusSound.ts,
+  tools/blender/colossus.py): a 67 m iron biped (Liberty Prime / Fel Reaver), a furnace glowing in its chest, a burning
+  eye slit, spiked pauldrons, hydraulic shins, 11 m feet; ~5.5k triangles, two draw calls per part. It roams between
+  far waypoints at 3.6 m/s (well under a walking player's 7.5) and walks at anyone in the open within 250 m (a shooter
+  from 700 m), never near the base. Feet are the server's (planted spots, a step when the rest spot is 11 m behind,
+  2.3 s swings, ~24 m strides, the feet taking turns); the client swings them with heel lift and toe roll, two-bone
+  IK, hips bobbing on a spring and swaying over the planted foot, torso twisting, arms swinging, head tracking its
+  prey. Every footfall kills within 12 m and digs a 9.5 m / 2.8 m crater (only within 1.2 km of someone), so it
+  leaves a trail of footprints; booms out to 1.5 km and shakes the camera (felt through the ground before heard).
+  Within 26 m of its prey: the big stomp, a foot raised 15 m over them (aiming while it rises), held 1.6 s with a
+  steam shriek and the furnace flaring, slammed: 14 m kill, 12 m / 3.5 m crater, a dust shockwave and a long shake;
+  from the moment the spot is set, walking gets you 15 m. Footfalls happen on the server 250 ms after the server's
+  step (SEEN_LAG_MS) so they line up with what clients draw. Weak points: the chest core, both kneecaps, the two
+  exhaust stacks on its back (get behind it). Dead: knees buckle, it topples like a tower and slams down 4.8 s
+  later, the server digging a furrow of four craters where it lands (and crushing anyone under it, from the brain's
+  `wreck` tick); it smokes, and sinks in over its last 40 s.
 - **Terrain healing is local now**: the wind's heal pass touched every edited vertex every 5 s and the server sent
   them all, so a boss's craters would have cost every client megabytes a pass. The server now sends `terrainHeal`
   and each client runs the same deterministic heal() on its copy (docs/netcode.md).
