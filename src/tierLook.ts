@@ -26,6 +26,9 @@ const GUNMETAL = color(0x3b4048);
 const LAMP = [color(0xb0703a), null, color(0xff9a3c), color(0x3ff0ff)];
 /** The model's own colour: colour × map (a vec4 when there's a map: everything here wants its rgb). */
 const BASE = materialColor.rgb;
+/** How far each tier's look goes from the model as made (colour, roughness, metalness, edge sheen; lamps take their
+ *  tier's colour whatever this is): 1 the full look, 0 none. */
+const STRENGTH = 0.6;
 /** Rust patches per metre of the model. */
 const RUST_SCALE = 11;
 
@@ -83,27 +86,27 @@ function make(src: Std, tier: number): THREE.Material {
     // Cloth: faded towards a drab grey-tan, with grimy stains.
     const drab = mix(BASE, vec3(lum).mul(vec3(1.05, 1.0, 0.88)), 0.45).mul(0.85);
     const grimy = mix(drab, drab.mul(0.55), smoothstep(0.54, 0.6, n.add(fine.sub(0.5).mul(0.3))).mul(0.7));
-    m.colorNode = mix(grimy, rusty, hard);
+    m.colorNode = mix(BASE, mix(grimy, rusty, hard), STRENGTH);
     const wear = blotch.mul(hard);
-    m.roughnessNode = max(materialRoughness, mix(float(0.78), float(0.95), wear));
-    m.metalnessNode = materialMetalness.mul(float(1).sub(wear.mul(0.85)));
+    m.roughnessNode = mix(materialRoughness, max(materialRoughness, mix(float(0.78), float(0.95), wear)), STRENGTH);
+    m.metalnessNode = mix(materialMetalness, materialMetalness.mul(float(1).sub(wear.mul(0.85))), STRENGTH);
     if (glows) m.emissiveNode = lampEmissive.mul(0.45);
   } else if (tier === 2) {
     // Metal polished and brass-warm; cloth a little richer and darker (new, oiled leather, dyed canvas).
     const rich = mix(vec3(lum), BASE, 1.3).mul(1.05);
     const brassy = BRASS.mul(lum.div(BRASS_LUM)); // brass at the surface's own brightness
-    m.colorNode = mix(mix(rich, BASE, hard), brassy, metal.mul(0.5));
-    m.roughnessNode = mix(materialRoughness.mul(0.92), materialRoughness.mul(0.6), hard);
-    m.metalnessNode = mix(materialMetalness, float(1), metal.mul(0.5));
-    m.emissiveNode = glows ? lampEmissive : vec3(1, 0.55, 0.2).mul(edge.mul(hard).mul(0.1));
+    m.colorNode = mix(BASE, mix(mix(rich, BASE, hard), brassy, metal.mul(0.5)), STRENGTH);
+    m.roughnessNode = mix(materialRoughness, mix(materialRoughness.mul(0.92), materialRoughness.mul(0.6), hard), STRENGTH);
+    m.metalnessNode = mix(materialMetalness, mix(materialMetalness, float(1), metal.mul(0.5)), STRENGTH);
+    m.emissiveNode = glows ? lampEmissive : vec3(1, 0.55, 0.2).mul(edge.mul(hard).mul(0.1 * STRENGTH));
   } else {
     // Hard parts: light ones pale, dark ones gunmetal. Cloth: an off-white technical weave. A cold sheen along it all.
     const panel = mix(GUNMETAL, PALE, smoothstep(0.08, 0.3, lum)).mul(0.6).add(BASE.mul(0.4));
     const weave = mix(BASE, PALE.mul(0.8), 0.4);
-    m.colorNode = mix(weave, panel, hard);
-    m.roughnessNode = mix(materialRoughness.mul(0.85), clamp(materialRoughness.mul(0.5).add(0.08), 0, 1), hard);
-    m.metalnessNode = mix(materialMetalness, float(0.6), hard.mul(0.5));
-    const sheen = vec3(0.25, 0.94, 1).mul(edge.mul(0.35));
+    m.colorNode = mix(BASE, mix(weave, panel, hard), STRENGTH);
+    m.roughnessNode = mix(materialRoughness, mix(materialRoughness.mul(0.85), clamp(materialRoughness.mul(0.5).add(0.08), 0, 1), hard), STRENGTH);
+    m.metalnessNode = mix(materialMetalness, mix(materialMetalness, float(0.6), hard.mul(0.5)), STRENGTH);
+    const sheen = vec3(0.25, 0.94, 1).mul(edge.mul(0.35 * STRENGTH));
     m.emissiveNode = glows ? lampEmissive.mul(1.3).add(sheen) : sheen;
   }
   return m;
