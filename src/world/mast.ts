@@ -12,6 +12,8 @@ const SOCK = { r0: 0.36, r1: 0.14, len: 2.6, n: 5, orange: 0xc8501e, white: 0xe6
 const ARM = 0.38;
 /** Wind (m/s at the sock) that holds it straight out; below this it hangs down. */
 const FULL_WIND = 8;
+/** How far the fins reach below the sand surface. */
+const FIN_DEPTH = 3;
 
 function material(color: number, roughness: number, metalness = 0): THREE.MeshStandardNodeMaterial {
   const m = new THREE.MeshStandardNodeMaterial();
@@ -67,8 +69,8 @@ export class Mast {
 
     // Buttress fins: right triangles against the pole, sloping out past the plinth, sunk into the sand.
     const tri = new THREE.Shape();
-    tri.moveTo(0, -0.6);
-    tri.lineTo(fins.reach, -0.6);
+    tri.moveTo(0, -FIN_DEPTH);
+    tri.lineTo(fins.reach, -FIN_DEPTH);
     tri.lineTo(fins.reach, 0.25);
     tri.lineTo(0, fins.h);
     const finGeo = new THREE.ExtrudeGeometry(tri, { depth: fins.t, bevelEnabled: false });

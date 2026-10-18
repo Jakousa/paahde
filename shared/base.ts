@@ -115,7 +115,7 @@ const PAD_Y = BASE.y - 0.06;
  * height, thickness). A windsock swings on top (src/world/mast.ts).
  */
 export const MAST = {
-  x: 14, z: -14, h: 22, r0: 0.3, r1: 0.13,
+  x: 14, z: -14, h: 22, r0: 0.55, r1: 0.25,
   plinth: { r: 1.2, h: 0.5 },
   fins: { n: 4, reach: 2.6, h: 11, t: 0.45 },
 };
