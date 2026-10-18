@@ -2,9 +2,10 @@
 // give way to the disassembly ones, and the machine in front of you comes apart right there in the world.
 //   Left mouse   on a step: work it (click screws and clips, circle the pointer around big bolts, swipe across
 //                wires to cut them, drag pry tabs away, hold a lifting eye: heavy things need two players holding
-//                together). On a freed part: take it (it goes to the bag). Anywhere else: drag to turn the machine
-//                over (on the table) or to look around (at a large machine).
-//   Middle mouse drag: the same turn / look. Right mouse drag: move a machine about the table.
+//                together). On a freed part: take it (it goes to the bag). Anywhere else: drag to look around (at a
+//                large machine); on the table it does nothing.
+//   Middle mouse drag: turn the machine over (on the table) or look around (at a large machine).
+//   Right mouse drag: move a machine about the table.
 //   On the table: W A S D / arrows turn the machine, the wheel zooms. At a large machine: W / S step closer and
 //   further, A / D walk around it; walk too far and the mode ends.
 // Steps sit on every face, so a small machine has to be turned over and around. Large machines are too heavy to
@@ -629,7 +630,7 @@ export class TeardownView {
       else this.ui.message(this.describe(target)!.action, true);
       return;
     }
-    turn();
+    if (!this.site.movable) turn(); // on a movable part only the middle button turns it
   }
 
   private startStep(s: Step, e: PointerEvent) {

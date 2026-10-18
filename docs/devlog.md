@@ -694,8 +694,8 @@ above (shared/crashsites.ts) and share only the idea; the names overlap, so the 
 
 Controls, all on the **left mouse**: on a step it works it (click screws and clips, hold and circle big bolts, hold
 and swipe across wires, drag pry tabs, hold lifting eyes); on a freed part a **click takes it** (it flies to the
-bag); anywhere else a drag turns the machine over (on the table) or looks around (at a large machine). Middle-drag
-does the same turn / look, right-drag moves a machine about the table. On the table **W A S D / arrows** turn the
+bag); anywhere else a drag looks around (at a large machine; on the table it does nothing). Only middle-drag turns
+the machine over on the table, right-drag moves it about. On the table **W A S D / arrows** turn the
 machine and the wheel zooms; at a large machine W / S step closer and further and A / D walk around it. R resets,
 Esc (or the Leave button) leaves. `?debug` lets one player do the two-player lifts.
 
