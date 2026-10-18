@@ -23,7 +23,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/protocol.ts` — WebSocket message types
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`);
   pieces give one of the two basic materials, `scrap` or `cloth` (shared/items.ts `SCRAP`/`CLOTH`)
-- `shared/rocks.ts` — rock formations (mesas, buttes, boulders) placed by a rockiness noise; part of `baseHeight`
+- `shared/rocks.ts` — rock formations (mesas, buttes, pillar fields, carved hills, jagged peaks, boulders; now and then a
+  giant) placed by a rockiness noise, the kind by a regional style noise; part of `baseHeight`
   (max with the dunes). Steep rock is a wall in `step()`, craters stop at rock, `rock` attribute paints them in
   `src/world/sandMaterial.ts`
 - `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen

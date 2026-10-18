@@ -2,6 +2,18 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — More kinds of rock
+
+- `shared/rocks.ts` grew from mesas and boulders to five kinds: mesas (some long escarpments), pillar fields
+  (spires and stout buttes whose tops sit near an old plateau level, lower towards the edge), broad hills carved by
+  meandering gullies (gentle enough to climb, tors on top), and jagged peaks (concave cones with arêtes, sub-summits
+  lined up into little ranges). A slow "style" noise picks which kinds dominate a region, so rocky country has
+  character and blends between them. About 6% of rocky cells hold a giant (×1.6–2.3): cliffs 50–90 m, peaks to
+  ~100 m, hills ~280 m across. A per-cell footprint budget keeps rock cover where it was (~8% of the world).
+- Giants reach two cells out, so `rocksIn` searches ±2 cells; `ROCK_H_MAX` (shade march ceiling) is 130.
+- No trig: "angle round a rock" for gullies and arêtes is noise sampled on the unit vector out from its centre.
+- Every world's rock layout changed (shelters, crash sites and scrap re-place around them).
+
 ## 2026-10-18 — The character speaks
 
 - Subtitled remarks from the player character to guide without tutorials (`src/speech.ts`, lines as data in
