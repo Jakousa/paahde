@@ -5,6 +5,8 @@
 //   and goes), duller further off, and thinner with every dead fan.
 // - whistle: a falling bomb's whistle, dropping in pitch and swelling until it lands (the burst is the walkers' boom).
 // - bombs and the crash reuse guardianSound.boom, rifleSound.firework and rifleSound.slam.
+// - its gun drones: a launch clunk out of the bay, a waspish buzz each (the nearest few), the rising whine while
+//   one aims, and the crack of its shot.
 // Through the shared output (src/audio.ts: master gain and limiter); every level ramped. Levels set against the jets'
 // roar (src/guardianSound.ts): right under it the thrum is a little under a low jet pass, a bomb's whistle a short
 // one-shot over it.
@@ -21,8 +23,33 @@ const CHOP_HZ = 11;
 const CHOP_SPREAD = 0.35;
 const WHISTLE_GAIN = 0.05;
 const WHISTLE_REF = 15;
+/** Gun drones: buzz heard within BUZZ_HEAR m (the nearest MAX_BUZZ of them), full level within BUZZ_REF; the aim's
+ *  whine, the shot's crack and the launch clunk (levels against the searchlight drones' buzz and a walker's charge,
+ *  src/guardianSound.ts: a buzz a little under theirs, the whine like a cannon's charge, the crack a short one-shot). */
+const BUZZ_HEAR = 120;
+const BUZZ_REF = 12;
+const BUZZ_GAIN = 0.11;
+const MAX_BUZZ = 3;
+const AIM_GAIN = 0.035;
+const AIM_REF = 18;
+const CRACK_GAIN = 0.14;
+const CRACK_REF = 20;
+const CLUNK_GAIN = 0.12;
+const CLUNK_REF = 40;
 
 type P = { x: number; y: number; z: number };
+type Buzz = { osc: OscillatorNode; whine: OscillatorNode; trem: OscillatorNode; gain: GainNode; panner: PannerNode };
+
+function panner(ctx: AudioContext, at: P, ref: number) {
+  const p = ctx.createPanner();
+  p.panningModel = 'equalpower';
+  p.distanceModel = 'inverse';
+  p.refDistance = ref;
+  p.positionX.value = at.x;
+  p.positionY.value = at.y;
+  p.positionZ.value = at.z;
+  return p;
+}
 
 let noiseBuf: AudioBuffer | null = null;
 function noise(ctx: AudioContext) {
@@ -41,6 +68,7 @@ type Voice = {
 
 export class CarrierSound {
   private v: Voice | null = null;
+  private buzz = new Map<number, Buzz>();
 
   /** Every frame: the carrier at `at` with fan i alive while bit i of `alive` is set (dead: 0), heard from `ear`. */
   thrum(at: P, alive: number, ear: P) {
@@ -69,10 +97,173 @@ export class CarrierSound {
     if (d > HEAR + 200 || (!n && v.gain.gain.value < 1e-4)) this.stop();
   }
 
+  /** Every frame: the gun drones out (by slot), heard from `ear`; the nearest few buzz. */
+  drones(list: { id: number; at: P }[], ear: P) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const now = ctx.currentTime;
+    const near = list.map((d) => ({ d, r: Math.hypot(d.at.x - ear.x, d.at.y - ear.y, d.at.z - ear.z) })).filter((o) => o.r < BUZZ_HEAR)
+      .sort((a, b) => a.r - b.r).slice(0, MAX_BUZZ);
+    const keep = new Set(near.map((o) => o.d.id));
+    for (const [id, b] of this.buzz) {
+      if (keep.has(id)) continue;
+      this.dropBuzz(b, now);
+      this.buzz.delete(id);
+    }
+    for (const { d, r } of near) {
+      let b = this.buzz.get(d.id);
+      if (!b) {
+        // A rasping saw through a band-pass, trembling fast (the little rotors), and a thin whine over it.
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.value = 165 + d.id * 7;
+        const band = ctx.createBiquadFilter();
+        band.type = 'bandpass';
+        band.frequency.value = 1100;
+        band.Q.value = 0.8;
+        const whine = ctx.createOscillator();
+        whine.frequency.value = 2100 + d.id * 45;
+        const wg = ctx.createGain();
+        wg.gain.value = 0.05;
+        const am = ctx.createGain();
+        am.gain.value = 0.7;
+        const trem = ctx.createOscillator();
+        trem.frequency.value = 38 + d.id * 1.3;
+        const depth = ctx.createGain();
+        depth.gain.value = 0.3;
+        trem.connect(depth).connect(am.gain);
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        const p = panner(ctx, d.at, BUZZ_REF);
+        osc.connect(band).connect(am);
+        whine.connect(wg).connect(am);
+        am.connect(gain).connect(p).connect(out);
+        osc.start();
+        whine.start();
+        trem.start();
+        this.buzz.set(d.id, (b = { osc, whine, trem, gain, panner: p }));
+      }
+      const fade = 1 - Math.max(0, (r - BUZZ_HEAR * 0.7) / (BUZZ_HEAR * 0.3));
+      b.gain.gain.setTargetAtTime(BUZZ_GAIN * fade, now, 0.15);
+      b.panner.positionX.setTargetAtTime(d.at.x, now, 0.05);
+      b.panner.positionY.setTargetAtTime(d.at.y, now, 0.05);
+      b.panner.positionZ.setTargetAtTime(d.at.z, now, 0.05);
+    }
+  }
+
+  private dropBuzz(b: Buzz, now: number) {
+    b.gain.gain.setTargetAtTime(0, now, 0.15);
+    b.osc.stop(now + 1);
+    b.whine.stop(now + 1);
+    b.trem.stop(now + 1);
+  }
+
+  /** A drone out of the bay at `at`: a heavy latch letting go. */
+  launch(at: P) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.25);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(CLUNK_GAIN, t + 0.005);
+    g.gain.setTargetAtTime(0, t + 0.02, 0.07);
+    const n = ctx.createBufferSource();
+    n.buffer = noise(ctx);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'bandpass';
+    hp.frequency.value = 2400;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(CLUNK_GAIN * 0.8, t + 0.003);
+    ng.gain.setTargetAtTime(0, t + 0.01, 0.02);
+    const p = panner(ctx, at, CLUNK_REF);
+    o.connect(g).connect(p);
+    n.connect(hp).connect(ng).connect(p);
+    p.connect(out);
+    o.start(t);
+    o.stop(t + 0.6);
+    n.start(t, Math.random());
+    n.stop(t + 0.2);
+  }
+
+  /** A drone at `at` aiming for `s` seconds: a whine climbing to the shot, pulsing faster. */
+  aim(at: P, s: number) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.setValueAtTime(520, t);
+    o.frequency.exponentialRampToValueAtTime(2200, t + s);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2600;
+    const pulse = ctx.createGain();
+    pulse.gain.value = 0.5;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'square';
+    lfo.frequency.setValueAtTime(5, t);
+    lfo.frequency.exponentialRampToValueAtTime(24, t + s);
+    const depth = ctx.createGain();
+    depth.gain.value = 0.5;
+    lfo.connect(depth).connect(pulse.gain);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(AIM_GAIN * 0.5, t + 0.04);
+    g.gain.linearRampToValueAtTime(AIM_GAIN, t + s);
+    g.gain.setTargetAtTime(0, t + s, 0.01);
+    const p = panner(ctx, at, AIM_REF);
+    o.connect(lp).connect(pulse).connect(g).connect(p).connect(out);
+    o.start(t);
+    lfo.start(t);
+    o.stop(t + s + 0.15);
+    lfo.stop(t + s + 0.15);
+  }
+
+  /** A drone's shot ending at `at`: a sharp crack and a falling zap. */
+  shot(at: P) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const t = ctx.currentTime;
+    const n = ctx.createBufferSource();
+    n.buffer = noise(ctx);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1800;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(CRACK_GAIN, t + 0.002);
+    ng.gain.setTargetAtTime(0, t + 0.01, 0.03);
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(2400, t);
+    o.frequency.exponentialRampToValueAtTime(160, t + 0.18);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 3500;
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0, t);
+    og.gain.linearRampToValueAtTime(CRACK_GAIN * 0.5, t + 0.004);
+    og.gain.setTargetAtTime(0, t + 0.05, 0.05);
+    const p = panner(ctx, at, CRACK_REF);
+    n.connect(hp).connect(ng).connect(p);
+    o.connect(lp).connect(og).connect(p);
+    p.connect(out);
+    n.start(t, Math.random());
+    n.stop(t + 0.3);
+    o.start(t);
+    o.stop(t + 0.4);
+  }
+
   /** Out of view: fade out and let go. */
   stop() {
     const ctx = audio.ctx, v = this.v;
     this.v = null;
+    if (ctx) for (const b of this.buzz.values()) this.dropBuzz(b, ctx.currentTime);
+    this.buzz.clear();
     if (!ctx || !v) return;
     v.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.4);
     setTimeout(() => v.stop.forEach((f) => f()), 2500);

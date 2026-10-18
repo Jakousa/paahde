@@ -6,6 +6,11 @@
 // Shared here: the layout (where the fans and the bay are on the hull, for the brain's list and the view), the
 // bomb's fall (the brain resolves the impact at the time this gives, the view draws the same path) and the numbers
 // its snapshot carries (BossSnap.s, CS_*).
+//
+// It also launches small gun drones out of the bay (DRONE_*): each flies out to someone, circles them, and every few
+// seconds stops, paints a red aim on where they stand (DRONE_CHARGE s) and fires: anyone still there is killed. A
+// few shots or DRONE_LIFE s and it flies home to the bay; all of them fall when the carrier does. More of them, and
+// more often, with more people about (server/bossCrowd.ts).
 
 /** Hover height over the highest sand under it (m), and how much lower it sinks per broken fan. */
 export const CARRIER_ALT = 74;
@@ -55,6 +60,27 @@ export const HULL: [number, number, number] = [18, 5.5, 30];
 export const CS_ROLL = 0, CS_PITCH = 1, CS_VX = 2, CS_VZ = 3, CS_TX = 4, CS_TZ = 5, CS_LOCK = 6;
 export const CS_OX = 7, CS_OY = 8, CS_OZ = 9, CS_FALL = 10, CS_SPIN = 11;
 export const CS_LEN = 12;
+/** The gun drones out, after CS_LEN: DRONE_SLOTS slots of DS_LEN numbers each (out 1 or 0, position). An empty slot
+ *  sits at the bay, so a new drone comes out of it in the view (positions are interpolated). */
+export const DRONE_SLOTS = 8;
+export const DS_ON = 0, DS_X = 1, DS_Y = 2, DS_Z = 3;
+export const DS_LEN = 4;
+export const CS_ALL = CS_LEN + DRONE_SLOTS * DS_LEN;
+
+/** A gun drone: aims this long (s) at a spot before it fires there (the 'daim' bossFx), and kills anyone whose chest
+ *  is within DRONE_HIT_R m of the spot when it does ('dshot'). Lives at most DRONE_LIFE s / DRONE_SHOTS shots. */
+export const DRONE_CHARGE = 0.9;
+export const DRONE_HIT_R = 1.7;
+export const DRONE_LIFE = 45;
+export const DRONE_SHOTS = 3;
+/** Its body's radius (m), for the view. */
+export const DRONE_R = 0.9;
+
+/** The bay's centre in the world for a hull at (x, y, z) turned `yaw` (lean ignored). */
+export function bayAt(x: number, y: number, z: number, yaw: number): { x: number; y: number; z: number } {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  return { x: x + BAY[0] * c + BAY[2] * s, y: y + BAY[1], z: z - BAY[0] * s + BAY[2] * c };
+}
 
 /** A bomb dropped at (x, y, z) with horizontal velocity (vx, vz), t s later (falls from rest vertically). */
 export function bombAt(x: number, y: number, z: number, vx: number, vz: number, t: number, out: { x: number; y: number; z: number }) {

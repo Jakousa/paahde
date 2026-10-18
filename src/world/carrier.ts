@@ -9,13 +9,19 @@
 // whistling, and burst on the sand when the server's do (fire, sparks, dust, shake, boom). Dead (s.dead), it falls
 // from where it died to where it lands (CS_OX..: the snapshot is already there), tumbling on a smoke trail, slams
 // into the sand in a huge burst, and the wreck burns and sinks slowly until it goes.
+//
+// Its gun drones (CS_LEN.. slots) are small dark discs on four rotors with a red eye, buzzing; one drops out of the
+// bay with a clunk when its slot fills, goes back in when it empties. Aiming ('daim') the eye swells and a flickering
+// red thread runs from it to a dot on the spot it will fire at, whining up; then the shot ('dshot'): a hot red beam,
+// sparks and a crack. The carrier dying, they drop out of the sky, trailing smoke, and burst on the sand.
 import * as THREE from 'three/webgpu';
 import type { Node } from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { abs, dot, float, length, normalView, positionViewDirection, pow, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { BOSSES, type BossSnap } from '../../shared/bosses.ts';
 import {
-  bombAt, CS_FALL, CS_LOCK, CS_OX, CS_OY, CS_OZ, CS_PITCH, CS_ROLL, CS_SPIN, CS_TX, CS_TZ, CS_VX, CS_VZ, FANS, HULL,
+  bombAt, CS_ALL, CS_FALL, CS_LEN, CS_LOCK, CS_OX, CS_OY, CS_OZ, CS_PITCH, CS_ROLL, CS_SPIN, CS_TX, CS_TZ, CS_VX, CS_VZ, DRONE_R,
+  DRONE_SLOTS, DS_LEN, DS_ON, DS_X, DS_Y, DS_Z, FANS, HULL,
 } from '../../shared/carrier.ts';
 import { sunElevation } from '../../shared/sun.ts';
 import { heightAt } from '../../shared/terrain.ts';
@@ -93,6 +99,24 @@ const bombGeo = (() => {
 const finGeo = new THREE.BoxGeometry(1.4, 0.08, 0.5).translate(0, 0, -1.1);
 const bombMat = new THREE.MeshStandardNodeMaterial({ color: 0x2a221d, roughness: 0.5, metalness: 0.6 });
 
+/** Gun drone parts: a flattened disc body, a crossed pair of arms, a blurred rotor disc at each arm's end, the eye
+ *  under its nose (forward +Z). */
+const droneBodyGeo = new THREE.SphereGeometry(DRONE_R, 14, 8).scale(1, 0.42, 1.1);
+const droneArmGeo = new THREE.BoxGeometry(DRONE_R * 2.9, 0.1, 0.2);
+const droneRotorGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.02, 14);
+const droneEyeGeo = new THREE.SphereGeometry(0.2, 10, 8);
+const DRONE_EYE = new THREE.Vector3(0, -0.22, DRONE_R * 0.9);
+const DRONE_ROTORS = [[1, 1], [-1, 1], [-1, -1], [1, -1]].map(([x, z]) => new THREE.Vector3(x * DRONE_R * 1.02, 0.12, z * DRONE_R * 1.02));
+const rotorMat = new THREE.MeshBasicNodeMaterial({ color: 0x15100c, transparent: true, opacity: 0.4, depthWrite: false });
+const eyeMat = new THREE.MeshStandardNodeMaterial({ color: 0x3a0400, roughness: 0.25, metalness: 0.1, emissive: 0xff2a08, emissiveIntensity: 2 });
+/** Unit tube along +Z from z = 0 to 1: the aim thread and the shot's beam. */
+const tubeGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true).rotateX(Math.PI / 2).translate(0, 0, 0.5);
+/** Thread and beam radii (m), how long a shot's beam lasts (s); a falling dead drone's gravity (m/s²). */
+const THREAD_R = 0.025;
+const SHOT_R = 0.12;
+const SHOT_S = 0.22;
+const DRONE_FALL_G = 12;
+
 function glowMat(color: THREE.Color | Node<'vec3'>, soft = 1) {
   const m = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const g = float(1).sub(smoothstep(0, 1, length(uv().sub(0.5)).mul(2)));
@@ -104,6 +128,17 @@ function glowMat(color: THREE.Color | Node<'vec3'>, soft = 1) {
 type Beam = { cone: THREE.Mesh; pool: THREE.Mesh; grid: Float32Array; glare: THREE.Sprite; tint: { value: THREE.Color }; gtint: { value: THREE.Color }; color: THREE.Color; aim: THREE.Vector3 };
 type Bomb = { t0: number; x: number; y: number; z: number; vx: number; vz: number; T: number; mesh: THREE.Group; lamp: THREE.Sprite; whistle: ((p: THREE.Vector3) => void) | null; started: boolean };
 type Burst = { sprite: THREE.Sprite; fade: { value: number }; age: number; size: number; life: number };
+/** A gun drone slot as drawn: its group, out or not, where it is (and how fast it's going, from frame to frame),
+ *  facing, what it's aiming at (server time it started, s it lasts, the spot) or null, its thread and dot, and once
+ *  the carrier died, its fall. */
+type DroneView = {
+  g: THREE.Group; on: boolean; x: number; y: number; z: number; vx: number; vy: number; vz: number; yaw: number;
+  eye: THREE.Sprite; eyeTint: { value: THREE.Color };
+  aim: { t0: number; T: number; x: number; y: number; z: number; heard: boolean } | null;
+  thread: THREE.Mesh; threadFade: { value: number }; dot: THREE.Sprite; dotTint: { value: THREE.Color };
+  falling: boolean; spinX: number; spinZ: number;
+};
+type Shot = { mesh: THREE.Mesh; fade: { value: number }; age: number };
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _d = new THREE.Vector3(), _m = new THREE.Matrix4(), _inv = new THREE.Matrix4();
 const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3(), _p = { x: 0, y: 0, z: 0 };
@@ -129,6 +164,10 @@ export class CarrierView implements BossView {
   private crashed = false;
   private seenAlive = false;
   private t = Math.random() * 100;
+  private drones: (DroneView | null)[] = new Array(DRONE_SLOTS).fill(null);
+  /** Drone aims and shots waiting for their server time to come round (the snapshot is drawn a little late). */
+  private pending: BossFxMsg[] = [];
+  private shots: Shot[] = [];
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -272,6 +311,214 @@ export class CarrierView implements BossView {
     if (dead) this.death(s, ctx, x, y, z, fall);
     this.updateBombs(ctx);
     this.updateBursts(dt);
+    this.updateDrones(s, ctx, dead);
+    this.updatePending(ctx);
+    this.updateShots(dt);
+  }
+
+  private makeDrone(): DroneView {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(droneBodyGeo, bombMat));
+    const a1 = new THREE.Mesh(droneArmGeo, bombMat), a2 = new THREE.Mesh(droneArmGeo, bombMat);
+    a1.rotation.y = Math.PI / 4;
+    a2.rotation.y = -Math.PI / 4;
+    g.add(a1, a2);
+    for (const p of DRONE_ROTORS) {
+      const r = new THREE.Mesh(droneRotorGeo, rotorMat);
+      r.position.copy(p);
+      g.add(r);
+    }
+    const lens = new THREE.Mesh(droneEyeGeo, eyeMat);
+    lens.position.copy(DRONE_EYE);
+    g.add(lens);
+    g.traverse((o) => (o.castShadow = true));
+    const eyeTint = uniform(new THREE.Color());
+    const eye = new THREE.Sprite(glowMat(eyeTint as unknown as Node<'vec3'>));
+    eye.position.copy(DRONE_EYE);
+    eye.scale.setScalar(0.9);
+    g.add(eye);
+    g.visible = false;
+    this.scene.add(g);
+    const threadFade = uniform(0);
+    const tm = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    tm.colorNode = vec3(3.2, 0.22, 0.06).mul(threadFade);
+    const thread = new THREE.Mesh(tubeGeo, tm);
+    thread.frustumCulled = false;
+    thread.visible = false;
+    const dotTint = uniform(new THREE.Color());
+    const dot = new THREE.Sprite(glowMat(dotTint as unknown as Node<'vec3'>));
+    dot.visible = false;
+    this.scene.add(thread, dot);
+    return {
+      g, on: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, eye, eyeTint: eyeTint as unknown as { value: THREE.Color }, aim: null,
+      thread, threadFade: threadFade as unknown as { value: number }, dot, dotTint: dotTint as unknown as { value: THREE.Color },
+      falling: false, spinX: 0, spinZ: 0,
+    };
+  }
+
+  /** The gun drones: out of the bay, flying where the server says, aiming, and falling once the carrier is dead. */
+  private updateDrones(s: BossSnap, ctx: BossCtx, dead: boolean) {
+    const dt = ctx.dt, list: { id: number; at: THREE.Vector3 }[] = [];
+    for (let i = 0; i < DRONE_SLOTS; i++) {
+      const o = CS_LEN + i * DS_LEN;
+      // Out only while both messages around now have it (positions mid-way between a slot's drone and the bay aren't).
+      const on = !dead && s.s.length >= CS_ALL && s.s[o + DS_ON] >= 0.999;
+      let v = this.drones[i];
+      if (on && !v) v = this.drones[i] = this.makeDrone();
+      if (!v) continue;
+      if (v.falling) {
+        this.fallDrone(v, ctx);
+        continue;
+      }
+      const x = s.s[o + DS_X], y = s.s[o + DS_Y], z = s.s[o + DS_Z];
+      if (on && !v.on) {
+        v.on = true;
+        v.g.visible = true;
+        (v.x = x), (v.y = y), (v.z = z), (v.vx = v.vy = v.vz = 0);
+        if (this.seenAlive) carrierSound.launch(_v.set(x, y, z));
+      } else if (!on && v.on) {
+        v.on = false;
+        v.aim = null;
+        v.thread.visible = v.dot.visible = false;
+        // Docked (it's at the bay): gone. The carrier dead: it drops where it was.
+        if (dead && this.seenAlive) {
+          v.falling = true;
+          v.spinX = (Math.random() - 0.5) * 6;
+          v.spinZ = (Math.random() - 0.5) * 8;
+          v.vy = Math.max(v.vy, 2);
+        } else v.g.visible = false;
+        continue;
+      }
+      if (!v.on) continue;
+      // Velocity from frame to frame, smoothed (the snapshots come ~10 a second).
+      if (dt > 0) {
+        const k = 1 - Math.exp(-dt / 0.25);
+        v.vx += ((x - v.x) / dt - v.vx) * k;
+        v.vy += ((y - v.y) / dt - v.vy) * k;
+        v.vz += ((z - v.z) / dt - v.vz) * k;
+      }
+      (v.x = x), (v.y = y), (v.z = z);
+      // Faces where it's going, or (aiming) the spot; leans into its speed.
+      const aiming = v.aim && ctx.time >= v.aim.t0 ? v.aim : null;
+      const sp = Math.hypot(v.vx, v.vz);
+      let want = v.yaw;
+      if (aiming) want = Math.atan2(aiming.x - x, aiming.z - z);
+      else if (sp > 0.8) want = Math.atan2(v.vx, v.vz);
+      v.yaw += Math.atan2(Math.sin(want - v.yaw), Math.cos(want - v.yaw)) * (1 - Math.exp(-dt * (aiming ? 10 : 4)));
+      const fwd = v.vx * Math.sin(v.yaw) + v.vz * Math.cos(v.yaw), side = v.vx * Math.cos(v.yaw) - v.vz * Math.sin(v.yaw);
+      v.g.position.set(x, y + Math.sin(this.t * 3.1 + i * 1.7) * 0.18, z);
+      v.g.rotation.set(Math.min(0.5, fwd * 0.03), v.yaw, Math.max(-0.4, Math.min(0.4, -side * 0.03)) + Math.sin(this.t * 2.3 + i) * 0.04, 'YXZ');
+      v.g.updateMatrixWorld(true);
+      // The eye: a dull red glow, swelling and flickering as it aims; the thread and the dot on the spot.
+      const u = aiming ? Math.min(1, (ctx.time - aiming.t0) / (aiming.T * 1000)) : 0;
+      const flick = 0.85 + 0.15 * Math.sin(this.t * 60 + i);
+      v.eyeTint.value.setRGB(1.6, 0.12, 0.03).multiplyScalar((aiming ? 1.5 + 5 * u * u : 0.7 + 0.3 * Math.sin(this.t * 2 + i)) * flick);
+      v.eye.scale.setScalar(aiming ? 0.9 + 1.4 * u : 0.9);
+      if (aiming && u < 1) {
+        if (!aiming.heard) {
+          aiming.heard = true;
+          carrierSound.aim(v.g.position, aiming.T * (1 - u));
+        }
+        v.eye.getWorldPosition(_o);
+        this.tube(v.thread, _o, _w.set(aiming.x, aiming.y, aiming.z), THREAD_R * (1 + u));
+        v.thread.visible = true;
+        v.threadFade.value = (0.25 + 0.75 * u) * (Math.random() < 0.15 ? 0.3 : 1);
+        v.dot.visible = true;
+        v.dot.position.set(aiming.x, aiming.y, aiming.z);
+        v.dot.scale.setScalar(0.8 + 1.6 * u + 0.3 * Math.sin(this.t * (8 + 30 * u)));
+        v.dotTint.value.setRGB(2.4, 0.2, 0.05).multiplyScalar(0.5 + u);
+      } else v.thread.visible = v.dot.visible = false;
+      list.push({ id: i, at: v.g.position });
+    }
+    carrierSound.drones(list, ctx.ear);
+  }
+
+  /** A dead carrier's drone dropping, tumbling and smoking, bursting on the sand. */
+  private fallDrone(v: DroneView, ctx: BossCtx) {
+    const dt = ctx.dt;
+    v.vy -= DRONE_FALL_G * dt;
+    v.x += v.vx * dt;
+    v.y += v.vy * dt;
+    v.z += v.vz * dt;
+    v.g.position.set(v.x, v.y, v.z);
+    v.g.rotation.x += v.spinX * dt;
+    v.g.rotation.z += v.spinZ * dt;
+    v.eyeTint.value.multiplyScalar(Math.exp(-dt * 3));
+    if (Math.random() < dt * 14) zaps.puff(v.x, v.y, v.z, 0.9, 1);
+    const g = heightAt(v.x, v.z);
+    if (v.y > g + 0.3) return;
+    v.falling = false;
+    v.g.visible = false;
+    zaps.burst(v.x, g + 0.4, v.z, 0, 1, 0, 24, 1.6);
+    for (let i = 0; i < 4; i++) zaps.puff(v.x + (Math.random() - 0.5) * 2, g + 1 + i * 0.7, v.z + (Math.random() - 0.5) * 2, 2, 2);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2, s = 3 + Math.random() * 3;
+      tyreDust.emit(v.x, g + 0.3, v.z, Math.cos(a) * s, 1 + Math.random() * 2, Math.sin(a) * s, 1.5 + Math.random(), 2);
+    }
+    _v.set(v.x, g + 0.5, v.z);
+    rifleSound.impact('metal', _v, ctx.ear);
+    rifleSound.firework(_v, ctx.ear, 0.5, 1.4);
+  }
+
+  /** Lay a unit tube from a to b, r m across. */
+  private tube(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3, r: number) {
+    const len = Math.max(0.01, a.distanceTo(b));
+    m.position.copy(a);
+    m.lookAt(b);
+    m.scale.set(r, r, len);
+  }
+
+  /** Drone aims and shots whose time has come. */
+  private updatePending(ctx: BossCtx) {
+    this.pending = this.pending.filter((m) => {
+      if (ctx.time < m.time) return true;
+      const late = ctx.time - m.time > 1500;
+      const v = this.drones[m.a![0]];
+      if (m.e === 'daim') {
+        if (v && !late) v.aim = { t0: m.time, T: m.a![1], x: m.x, y: m.y, z: m.z, heard: false };
+        return false;
+      }
+      // 'dshot': from the drone (where it's drawn, else where the server had it) to the spot.
+      if (v) v.aim = null;
+      if (late) return false;
+      if (v && v.on) v.eye.getWorldPosition(_o);
+      else _o.set(m.a![1], m.a![2], m.a![3]);
+      _w.set(m.x, m.y, m.z);
+      // The beam carries on a little past the spot (into the sand if it gets there first).
+      _d.copy(_w).sub(_o).normalize();
+      for (let i = 0; i < 8; i++) {
+        _w.addScaledVector(_d, 0.5);
+        if (_w.y < heightAt(_w.x, _w.z)) break;
+      }
+      const fade = uniform(1);
+      const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+      mat.colorNode = vec3(4.5, 0.9, 0.2).mul(fade);
+      const mesh = new THREE.Mesh(tubeGeo, mat);
+      mesh.frustumCulled = false;
+      this.tube(mesh, _o, _w, SHOT_R);
+      this.scene.add(mesh);
+      this.shots.push({ mesh, fade: fade as unknown as { value: number }, age: 0 });
+      zaps.burst(_w.x, _w.y, _w.z, -_d.x, -_d.y, -_d.z, 18, 1.2);
+      zaps.burst(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, 4, 0.6);
+      zaps.puff(_w.x, _w.y, _w.z, 0.8, 1.5);
+      carrierSound.shot(_w);
+      return false;
+    });
+  }
+
+  private updateShots(dt: number) {
+    this.shots = this.shots.filter((s) => {
+      s.age += dt;
+      if (s.age >= SHOT_S) {
+        s.mesh.removeFromParent();
+        (s.mesh.material as THREE.Material).dispose();
+        return false;
+      }
+      const u = s.age / SHOT_S;
+      s.fade.value = (1 - u) * (1 - u);
+      s.mesh.scale.x = s.mesh.scale.y = SHOT_R * (1 + u);
+      return true;
+    });
   }
 
   /** Nav lamps: the red ones pulse slowly, the white ones double-flash. */
@@ -412,6 +659,10 @@ export class CarrierView implements BossView {
   }
 
   fx(m: BossFxMsg) {
+    if ((m.e === 'daim' || m.e === 'dshot') && m.a && m.a[0] >= 0 && m.a[0] < DRONE_SLOTS) {
+      this.pending.push(m);
+      return;
+    }
     if (m.e !== 'bomb' || !m.a) return;
     const mesh = new THREE.Group();
     mesh.add(new THREE.Mesh(bombGeo, bombMat));
@@ -535,6 +786,19 @@ export class CarrierView implements BossView {
     }
     for (const b of this.bombs) b.mesh.removeFromParent();
     for (const b of this.bursts) b.sprite.removeFromParent();
+    for (const v of this.drones) {
+      if (!v) continue;
+      v.g.removeFromParent();
+      v.thread.removeFromParent();
+      v.dot.removeFromParent();
+      v.eye.material.dispose();
+      v.dot.material.dispose();
+      (v.thread.material as THREE.Material).dispose();
+    }
+    for (const s of this.shots) {
+      s.mesh.removeFromParent();
+      (s.mesh.material as THREE.Material).dispose();
+    }
     this.fireMat.dispose();
     carrierSound.stop();
   }
