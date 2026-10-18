@@ -263,6 +263,16 @@ const en = {
     won: 'The desert is yours',
     playOn: 'Play on',
   },
+  /** The loading cover's prologue (src/prologueRunner.ts): paragraphs, then the place and time. */
+  prologue: {
+    lines: [
+      'The rain stopped. The cities sent their machines out into the sand to find water.',
+      'The cities are gone. The machines are still out there, still searching. They kill anything that moves.',
+      'A handful of scavengers remain. They strip the wrecks for parts, drink what they can find, and stay out of the sun.',
+    ],
+    place: 'The deep sand',
+    time: 'Forty-one years after the last rain',
+  },
   name: { placeholder: 'your name', go: 'Go', skip: 'skip' },
 
   // ---- Disassembly mode (src/teardown) -----------------------------------------------------------------------------

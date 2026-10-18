@@ -79,7 +79,7 @@ import { corpsesNear } from '../shared/corpse.ts';
 import { openBoxes } from '../shared/storage.ts';
 import { Chat } from './chat';
 import { nameGate } from './name';
-import { loading } from './loadingGame';
+import { prologue } from './prologue';
 import { tools } from './input';
 import { Wrecks } from './world/wrecks';
 import { Trophies } from './world/trophies';
@@ -218,8 +218,7 @@ const cover = document.getElementById('cover')!; // in index.html, so it is up b
 let coverP = 0;
 THREE.DefaultLoadingManager.onProgress = (_url, done, total) => {
   coverP = Math.max(coverP, done / total);
-  cover.style.setProperty('--p', String(coverP));
-  loading.progress(coverP);
+  prologue.progress(coverP);
 };
 let loaded = false;
 let coverFrames = 0; // frames drawn behind the cover once loaded (lets shaders compile)
@@ -355,7 +354,7 @@ renderer.setAnimationLoop((time) => {
   lastLoadFrame = time;
   if (loaded && coverFrames < 3 && ++coverFrames === 3) {
     cover.style.opacity = '0';
-    setTimeout(() => (loading.stop(), cover.remove()), 500);
+    setTimeout(() => (prologue.stop(), cover.remove()), 500);
     names.loaded();
   }
   if (faceCrash) {
@@ -605,10 +604,10 @@ baseSand.update(frameDt, storm.atBase);
     post.render();
   } else if (modelsIn && !warming) {
     // Everything sliceable is in: build the first frame's shaders, post passes included, a few materials per round
-    // (src/warmup.ts) while the game on the loading screen keeps going.
+    // (src/warmup.ts) while the prologue on the loading screen keeps going.
     warming = true;
     warm.run(gpuIdle).then(() => {
-      loading.progress(1);
+      prologue.progress(1);
       warmed = true;
     });
   }
