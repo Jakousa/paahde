@@ -7,6 +7,7 @@
 // Moves between boxes go through tryMove(), on the client as a prediction and on the server for real, so
 // both apply the same rules: gear only into its equipment slot (and only once repaired), nothing past the
 // bag's open rows (the backpack sets them) and only where it fits in a grid, and parts only into the workbench item's matching slots (fitPart).
+import { isCorpseBox } from './corpse.ts';
 import type { DigTool } from './dig.ts';
 import {
   BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, sizeOf, strandedAt,
@@ -203,6 +204,8 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
   const src0 = boxes[from], dst0 = boxes[to];
   const it = src0?.[fi];
   if (!src0 || !dst0 || !it) return false;
+  // A dead player's pack (shared/corpse.ts) is only taken from.
+  if (to !== from && isCorpseBox(to)) return false;
   // Anywhere in equip: the item's own slot.
   if (to === 'equip' && ti === -1) {
     const slot = GEAR[it.kind]?.equip;
@@ -263,7 +266,7 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
 /** Take the part in slot `slot` of the workbench item out into `to`[ti] (-1: anywhere in it). */
 export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, newId: () => number): boolean {
   const target = boxes.bench?.[0];
-  if (!target || !boxes[to]) return false;
+  if (!target || !boxes[to] || isCorpseBox(to)) return false;
   const parts = partsOf(target);
   const kind = parts[slot];
   if (!kind) return false;

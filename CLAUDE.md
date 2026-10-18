@@ -47,6 +47,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts` (`jets`)
 - `shared/ragdoll.ts` — dying: you lie where you fell for `DOWN_MS` (input ignored, third-person camera) as a
   Verlet ragdoll (`src/models/ragdoll.ts`) thrown by the killing blast's push (`blastPush`), then respawn
+- `shared/corpse.ts` — dying leaves the bag past the hotbar in a pack where you fell (shared box `corpse<id>`, take-only,
+  30 min); `server/corpses.ts` makes/expires them, `src/world/corpses.ts` draws the bundle and rag flag
 - `shared/rifle.ts` — the crafted laser rifle and the cheaper one-handed laser pistol (`GUNS`; model `tools/models/pistol.py`), the walkers' red weak points (all shot: it dies) and drone hits; aim, sway, recoil,
   scope and the hitscan in `src/rifle.ts`, beam/sparks/smoke `src/world/zaps.ts`, sounds `src/rifleSound.ts`, targets
   and the collapse in `src/world/guardians.ts`, checked by `GuardianServer.shoot` (server/guardians.ts)

@@ -33,6 +33,7 @@ import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
 import { growChest, isShared } from '../shared/storage.ts';
+import { corpseBox, CORPSES } from '../shared/corpse.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
@@ -115,6 +116,9 @@ export class Net {
   /** Loot in the world by id (shared/loot.ts), from the server. */
   loot = new Map<number, Loot>();
   onLoot?: () => void;
+
+  /** The packs left by the dead changed (shared/corpse.ts CORPSES). */
+  onCorpses?: () => void;
 
   /** Item boxes we can see (shared/storage.ts BoxId → slots): bag, equip, bench, bike and chests, from the server. */
   boxes: Record<string, Slots> = {};
@@ -545,6 +549,18 @@ export class Net {
     if (msg.t === 'items') {
       this.boxes[msg.box] = msg.slots;
       return this.onItems?.(msg.box, msg.got);
+    }
+    if (msg.t === 'corpses') {
+      if (msg.reset) {
+        for (const id of CORPSES.keys()) delete this.boxes[corpseBox(id)];
+        CORPSES.clear();
+      }
+      for (const id of msg.remove) {
+        CORPSES.delete(id);
+        delete this.boxes[corpseBox(id)];
+      }
+      for (const c of msg.add) CORPSES.set(c.id, c);
+      return this.onCorpses?.();
     }
     if (msg.t === 'loot') {
       if (msg.reset) this.loot.clear();

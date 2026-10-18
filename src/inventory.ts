@@ -19,6 +19,7 @@ import { countMatching, RECIPES } from '../shared/crafting.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
+import { isCorpseBox } from '../shared/corpse.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { isPlaceable } from '../shared/placed.ts';
 import { takePickup, ui } from './input';
@@ -401,7 +402,7 @@ export class InventoryHud {
         html += this.benchHtml(slots[0] ?? null);
         continue;
       }
-      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns"><button data-store="${box}">Store all</button><button data-all="${box}">Take all</button><button data-sort="${box}">Sort</button></span></div>`
+      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns">${isCorpseBox(box) ? '' : `<button data-store="${box}">Store all</button>`}<button data-all="${box}">Take all</button><button data-sort="${box}">Sort</button></span></div>`
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
     if (!this.storages.length) {

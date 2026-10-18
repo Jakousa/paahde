@@ -59,6 +59,8 @@ import { machinesAt } from '../shared/crash.ts';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
 import { equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootName } from './world/loot';
+import { CorpseView } from './world/corpses';
+import { corpsesNear } from '../shared/corpse.ts';
 import { Detector } from './detector';
 import { Chat } from './chat';
 import { tools } from './input';
@@ -128,6 +130,7 @@ machines.bench.onReady = () => {
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear(), (what) => net.summonBot(what));
 new Chat(net);
 const lootView = new LootView(scene);
+const corpseView = new CorpseView(scene);
 const detector = new Detector();
 const digFx = new DigFx(scene);
 // Remote players play their dig clip for a moment after each stroke the server reports.
@@ -310,6 +313,7 @@ renderer.setAnimationLoop((time) => {
     ?? { x: net.me.x - Math.sin(orbit.yaw) * 1.2, z: net.me.z - Math.cos(orbit.yaw) * 1.2 };
   detector.update(frameDt, inHand?.kind === 'metal_detector' && repaired(inHand) ? quality(inHand) : -1, net.loot, looked);
   lootView.update(frameDt, net.loot, focus);
+  corpseView.update(frameDt, focus);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
   teardown.placeCamera(frameDt); // at the disassembly table: a fixed view above it
   guardianFx.update(net, frameDt, orbit.camera, focus);
@@ -388,7 +392,11 @@ renderer.setAnimationLoop((time) => {
     : wreck ? `Pick up ${SALVAGE[wreck.kind].label.toLowerCase()}` : null;
   const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
   const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? 'Use workbench' : (table?.label ?? 'Use table');
-  const fPrompt = use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt;
+  // A dead player's pack (shared/corpse.ts) lying here: F opens it next to the bag, like a chest.
+  const pack = net.connected && !net.down && !teardown.active && station < 0 && !bed && !target && !debris && !find && !site && !wreck
+    && corpsesNear(net.me).some((b) => net.boxes[b]);
+  const packPrompt = pack ? 'Open pack' : null;
+  const fPrompt = use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `<kbd>F</kbd>${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup();
@@ -418,8 +426,9 @@ renderer.setAnimationLoop((time) => {
       if (small) net.crashTake(site.site.id);
       else teardown.begin(machines.workSite(site, net.siteLink(site.site.id)));
     } else if (wreck) net.crashTake(wreck.id);
+    else if (pack) hud.open();
   }
-  const targeted = use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null;
+  const targeted = use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   hud.update(net.me);
 

@@ -2,6 +2,7 @@
 import type { PlayerState } from './sim.ts';
 import type { Slots } from './items.ts';
 import type { Loot } from './loot.ts';
+import type { Corpse } from './corpse.ts';
 import type { MissilePath } from './missiles.ts';
 import type { Storm } from './storm.ts';
 import type { Jet } from './jets.ts';
@@ -150,6 +151,9 @@ export type ServerMsg =
   // Loot in the world (shared/loot.ts): added or changed (a cache dug up), and removed (ids). On join, before
   // 'welcome', with reset: everything there is.
   | { t: 'loot'; add: Loot[]; remove: number[]; reset?: boolean }
+  // Packs left where players died (shared/corpse.ts): new ones, and ones emptied or gone (ids), to everyone. On join,
+  // with reset: all of them, each one's contents following as 'items' (box 'corpse<id>').
+  | { t: 'corpses'; add: Corpse[]; remove: number[]; reset?: boolean }
   // Small crash sites whose machine has been carried off (ids), or are back. On join, before 'welcome', with reset:
   // the full taken list.
   | { t: 'crash'; taken: string[]; back: string[]; reset?: boolean }

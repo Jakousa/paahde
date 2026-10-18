@@ -2,6 +2,21 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — Dying leaves your pack behind
+
+- **The penalty** (shared/corpse.ts): dying out in the desert empties the bag past the hotbar (the backpack's grid and
+  anything stranded past it) into a pack lying where you fell. The 4 hotbar slots, the equipment (backpack, bike…)
+  and the bike's cargo stay with you. Dying in or over the base, or with nothing past the hotbar, leaves nothing.
+- **Getting it back**: anyone can open it like a chest (Tab beside it, or F: "Open pack"), box `corpse<id>` shown as
+  "Left behind"; things only come out (shared/gear.ts tryMove / unfitPart refuse anything going in, so no "Store all").
+  It's gone once empty, or after 30 min (`CORPSE_MS`) with what's still in it.
+- **Server** (server/corpses.ts): the pack row (`corpses` table) and the move of the items (same ids, bag and pack
+  saved together) are one transaction; while lying dead you can't move, drop or sort items (so nothing races the
+  pack). Emptied packs are dropped after any move, fit or drop out of them; expired ones on the 5 s save tick.
+  Clients keep `CORPSES` from 'corpses' messages, so shared/storage.ts can say what's in reach on both sides.
+- **Seen from afar** (src/world/corpses.ts): a tied canvas bundle with a slanted stick and a flapping rag in the dead
+  player's colour, drawn out to 700 m.
+
 ## 2026-10-18 — A motorcycle in front of the door
 
 - **Before**: the only motorcycles were 3 broken ones lying at random crawler-ground sites (950–1650 m out), drawn as a

@@ -4,6 +4,7 @@
 // always open, and a slot on the workbench ('bench') for the item they are repairing, open beside it. The client lists whatever is open next to the bag in the Tab
 // inventory (src/inventory.ts); the server checks the same thing, with slack, before every move.
 import { BASE, BASE_PIECES } from './base.ts';
+import { corpseId, corpsesNear } from './corpse.ts';
 import { EQUIP_SLOTS } from './gear.ts';
 import { BAG_SLOTS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, CHEST_ROWS, coverage, gridShape, MAX_SIDE, type Slots } from './items.ts';
 import type { PlayerState } from './sim.ts';
@@ -17,8 +18,9 @@ export const CHESTS = BASE_PIECES.filter((p) => p.node === 'chest').map((p) => (
   x: BASE.x + p.x, y: BASE.y + (p.y ?? 0), z: BASE.z + p.z,
 }));
 
-/** Box ids: 'bag', 'equip', 'bench' and 'bike' are the player's own, 'chest<i>' are shared. */
-export type BoxId = 'bag' | 'equip' | 'bench' | 'bike' | `chest${number}`;
+/** Box ids: 'bag', 'equip', 'bench' and 'bike' are the player's own, 'chest<i>' and the packs left by the dead
+ *  ('corpse<id>', shared/corpse.ts) are shared. */
+export type BoxId = 'bag' | 'equip' | 'bench' | 'bike' | `chest${number}` | `corpse${number}`;
 /** The player's own boxes. */
 export const OWN_BOXES = ['bag', 'equip', 'bench', 'bike'];
 
@@ -29,7 +31,7 @@ export function boxSize(box: string): number {
   if (box === 'equip') return EQUIP_SLOTS.length;
   if (box === 'bench') return 1;
   if (box === 'bike') return BIKE_COLS * BIKE_ROWS;
-  return chestIndex(box) >= 0 ? CHEST_COLS * CHEST_ROWS : 0;
+  return chestIndex(box) >= 0 || corpseId(box) >= 0 ? CHEST_COLS * CHEST_ROWS : 0;
 }
 
 /**
@@ -55,13 +57,14 @@ export function chestIndex(box: string): number {
 }
 
 /** Shared boxes are owned by nobody (''); the others by the player. */
-export const isShared = (box: string) => chestIndex(box) >= 0;
+export const isShared = (box: string) => chestIndex(box) >= 0 || corpseId(box) >= 0;
 
 export function boxLabel(box: string): string {
   if (box === 'bag') return 'Inventory';
   if (box === 'equip') return 'Equipment';
   if (box === 'bench') return 'Workbench';
   if (box === 'bike') return 'Motorcycle';
+  if (corpseId(box) >= 0) return 'Left behind';
   return CHESTS.length > 1 ? `Chest ${chestIndex(box) + 1}` : 'Chest';
 }
 
@@ -74,6 +77,7 @@ export function openBoxes(s: PlayerState, slack = 0): BoxId[] {
     .filter((c) => c.d < STORAGE_REACH + slack && c.dy < 1.5 + slack)
     .sort((a, b) => a.d - b.d);
   for (const c of near) out.push(`chest${c.i}`);
+  for (const b of corpsesNear(s, slack)) out.push(b as BoxId);
   return out;
 }
 
