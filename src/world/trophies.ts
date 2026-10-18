@@ -103,10 +103,16 @@ const BUILD: Record<BossKind, (p: Parts) => THREE.Object3D> = {
   },
 };
 
+/** Which trophies show: the kinds beaten (the game), or all or none of them (the debug menu; looks only, the
+ *  collision still follows the kinds beaten). */
+export type TrophyShow = 'won' | 'all' | 'none';
+
 export class Trophies {
-  private up = new Set<BossKind>();
+  private built = new Map<BossKind, THREE.Object3D>();
   private models = new Map<string, Promise<Parts>>();
   private scene: THREE.Scene;
+  private beaten = 0;
+  private mode: TrophyShow = 'won';
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -131,18 +137,40 @@ export class Trophies {
     return m;
   }
 
-  /** The kinds beaten (shared/bosses.ts bossBit mask): set up the ones not yet up. */
+  /** The kinds beaten (shared/bosses.ts bossBit mask). */
   set(beaten: number) {
+    this.beaten = beaten;
+    this.update();
+  }
+
+  /** Debug: show the kinds beaten, all of them or none. */
+  show(mode: TrophyShow) {
+    this.mode = mode;
+    this.update();
+  }
+
+  private shown(kind: BossKind) {
+    return this.mode === 'all' || (this.mode === 'won' && !!(this.beaten & bossBit(kind)));
+  }
+
+  /** Build the ones to show that aren't yet (once each), and show or hide each built one. */
+  private update() {
     for (const kind of BOSS_KINDS) {
-      if (!(beaten & bossBit(kind)) || this.up.has(kind)) continue;
-      this.up.add(kind);
+      const o = this.built.get(kind);
+      if (o) {
+        o.visible = this.shown(kind);
+        continue;
+      }
+      if (!this.shown(kind)) continue;
+      const g = new THREE.Group(), p = TROPHY_PLACES[kind];
+      g.position.set(p.x, p.y, p.z);
+      g.rotation.y = Math.atan2(p.fx, p.fz);
+      this.built.set(kind, g);
+      this.scene.add(g);
       const { glb, nodes } = MODELS[kind];
       this.load(glb).then((parts) => {
         for (const n of nodes) if (!parts[n]) throw new Error(`${glb}.glb has no ${n}`);
-        const o = BUILD[kind](parts), p = TROPHY_PLACES[kind];
-        o.position.set(p.x, p.y, p.z);
-        o.rotation.y = Math.atan2(p.fx, p.fz);
-        this.scene.add(o);
+        g.add(BUILD[kind](parts));
       }).catch((e) => console.warn(`trophy ${kind} failed`, e));
     }
   }

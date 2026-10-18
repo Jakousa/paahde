@@ -5,12 +5,15 @@
 // "Guardian here" / "Drone here" bring the nearest guardian, or a drone (by day too), to you, for everyone; "Jet here"
 // sends a fixed-wing drone over you; "Crawlers here" sets a pack of crawlers on you.
 // "Tone" switches the tone curve live (post.ts toneControl); "white" is the filmic curve's white point.
+// "Trophies" shows the boss trophies at the base (src/world/trophies.ts) for the kinds beaten, all or none (local
+// view, looks only: walking into them still follows the kinds beaten).
 // "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, and a laser rifle, pistol and jammer in your bag and equipment.
 import { ui } from './input';
 import { BOSS_KINDS, BOSSES, type BossKind } from '../shared/bosses.ts';
 import { TONE_CURVES, toneControl, type ToneCurve } from './post';
 import { summonLocalStorm } from './storm';
 import { clockText, timeControl } from './world/dayNight';
+import type { TrophyShow } from './world/trophies';
 
 const PRESETS: [string, number][] = [['Dawn', 0.27], ['Noon', 0.5], ['Golden hour', 0.7], ['Dusk', 0.77], ['Midnight', 0]];
 
@@ -18,7 +21,8 @@ export class DebugMenu {
   private panel = document.createElement('div');
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
-  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) => void) {
+  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) => void,
+    showTrophies: (mode: TrophyShow) => void) {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
@@ -50,6 +54,7 @@ export class DebugMenu {
 <button id="dbgJet" title="A fixed-wing drone flying over you in about 15 s (for everyone)">Jet here</button>
 <button id="dbgCrawlers" title="A pack of six crawlers 30 m off, coming for you (for everyone)">Crawlers here</button></div>
 <div class="row">${BOSS_KINDS.map((k) => `<button data-boss="${k}" title="The ${k} boss near you for ten minutes (for everyone)">${BOSSES[k].label}</button>`).join('')}</div>
+<label title="Boss trophies at the base, local view (walking into them still follows the bosses beaten)">Trophies <select id="dbgTrophies"><option value="won">as won</option><option value="all">all</option><option value="none">none</option></select></label>
 <label>Tone <select id="dbgTone">${TONE_CURVES.map((c) => `<option>${c}</option>`).join('')}</select></label>
 <label id="dbgWhiteRow">White <input id="dbgWhite" type="range" min="1" max="8" step="0.25"> <b id="dbgWhiteVal"></b></label>
 <div class="row"><button id="dbgGear" title="One of every piece of gear, repaired with Scrap parts, a laser rifle, a laser pistol and a jammer (what doesn't fit the bag is skipped)">Give gear</button></div>`;
@@ -67,6 +72,9 @@ export class DebugMenu {
     p.querySelector('#dbgJet')!.addEventListener('click', () => summonBot('jet'));
     p.querySelector('#dbgCrawlers')!.addEventListener('click', () => summonBot('crawlers'));
     for (const b of p.querySelectorAll<HTMLElement>('[data-boss]')) b.addEventListener('click', () => summonBot(b.dataset.boss as BossKind));
+
+    const trophies = p.querySelector<HTMLSelectElement>('#dbgTrophies')!;
+    trophies.addEventListener('change', () => showTrophies(trophies.value as TrophyShow));
 
     const tone = p.querySelector<HTMLSelectElement>('#dbgTone')!;
     const white = p.querySelector<HTMLInputElement>('#dbgWhite')!;

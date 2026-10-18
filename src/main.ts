@@ -166,7 +166,8 @@ machines.bench.onReady = () => {
   const job = machines.bench.site(net.siteLink(BENCH_ID), scrapBench);
   if (job && !teardown.active && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 5) teardown.begin(job);
 };
-new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear(), (what) => net.summonBot(what));
+new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear(), (what) => net.summonBot(what),
+  (mode) => trophies.show(mode));
 new Chat(net);
 askName(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
