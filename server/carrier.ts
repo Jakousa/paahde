@@ -46,9 +46,9 @@ const SCATTER = 2.5;
 const TRACK_TAU = 0.6;
 /** Crowd: the bomb gap is divided by scaled(1, n, BOMB_GAP_PER); a run bombs 1 + floor((n − 1) / BOMB_MARK_PER)
  *  people; from STICK_N people a second bomb lands where the target stands (no lead). */
-const BOMB_GAP_PER = 0.25;
+const BOMB_GAP_PER = 0.15;
 const BOMB_MARK_PER = 2;
-const STICK_N = 4;
+const STICK_N = 5;
 
 /** Drones: out at once (scaled by the crowd), a launch every DRONE_GAP s (divided by the crowd's scale), the first
  *  DRONE_FIRST s after someone's about; they go for people within DRONE_SEEK_R m of the carrier. */
