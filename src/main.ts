@@ -352,7 +352,7 @@ renderer.setAnimationLoop((time) => {
   // Behind the loading screen, draw at about 15 fps so the page has time for the game on it (src/yield.ts).
   if (!loaded && time - lastLoadFrame < LOADING_FRAME_MS) return;
   lastLoadFrame = time;
-  if (loaded && coverFrames < 3 && ++coverFrames === 3) {
+  if (loaded && prologue.told() && coverFrames < 3 && ++coverFrames === 3) {
     cover.style.opacity = '0';
     setTimeout(() => (prologue.stop(), cover.remove()), 500);
     names.loaded();

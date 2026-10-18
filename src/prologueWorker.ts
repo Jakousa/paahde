@@ -2,7 +2,7 @@
 import { createPrologue } from './prologueRunner';
 
 type In =
-  | { t: 'init'; canvas: OffscreenCanvas; w: number; h: number; dpr: number }
+  | { t: 'init'; canvas: OffscreenCanvas; w: number; h: number; dpr: number; full: boolean }
   | { t: 'size'; w: number; h: number; dpr: number }
   | { t: 'progress'; p: number }
   | { t: 'stop' };
@@ -13,7 +13,7 @@ let timer: ReturnType<typeof setInterval> | undefined;
 ctx.onmessage = (e) => {
   const m = e.data;
   if (m.t === 'init') {
-    run = createPrologue(m.canvas.getContext('2d')!, (w, h) => new OffscreenCanvas(w, h));
+    run = createPrologue(m.canvas.getContext('2d')!, (w, h) => new OffscreenCanvas(w, h), m.full);
     run.resize(m.w, m.h, m.dpr);
     let last = performance.now();
     timer = setInterval(() => {

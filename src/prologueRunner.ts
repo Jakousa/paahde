@@ -1,5 +1,6 @@
 // The loading cover's picture: sand dust blown through a slowly turning flow field on the dark, the prologue's
-// paragraphs fading in over it a letter at a time, then the place and time card, and a hairline loading bar.
+// paragraphs fading in over it a letter at a time, then the title card, and a hairline loading bar. On a reload
+// in the same tab (src/prologue.ts) only the title comes up.
 // Plain canvas 2D that knows nothing of the page: it runs in a worker (src/prologueWorker.ts, src/prologue.ts)
 // because the main thread is busy building the world while this is up.
 import { TEXT } from '../shared/text.ts';
@@ -11,22 +12,26 @@ const INK = '236, 228, 210'; // the prologue's warm white (rgb, for alpha)
 const GOLD = '217, 178, 106';
 /** Dust colours: whites, pale golds, yellows and ochres; the far layer is dim, the near one bright. */
 const LAYERS = [
-  { share: 0.56, speed: 34, width: 0.7, colors: ['rgba(122,92,48,.55)', 'rgba(150,118,62,.5)', 'rgba(104,80,46,.6)', 'rgba(170,150,120,.4)'] },
-  { share: 0.33, speed: 70, width: 1, colors: ['rgba(214,170,84,.6)', 'rgba(232,196,110,.55)', 'rgba(190,138,62,.6)', 'rgba(240,226,196,.45)'] },
-  { share: 0.11, speed: 135, width: 1.5, colors: ['rgba(246,214,128,.75)', 'rgba(255,240,206,.7)', 'rgba(228,180,92,.75)', 'rgba(255,250,236,.65)'] },
+  { share: 0.56, speed: 11, width: 0.45, colors: ['rgba(122,92,48,.55)', 'rgba(150,118,62,.5)', 'rgba(104,80,46,.6)', 'rgba(170,150,120,.4)'] },
+  { share: 0.33, speed: 22, width: 0.65, colors: ['rgba(214,170,84,.6)', 'rgba(232,196,110,.55)', 'rgba(190,138,62,.6)', 'rgba(240,226,196,.45)'] },
+  { share: 0.11, speed: 40, width: 0.9, colors: ['rgba(246,214,128,.75)', 'rgba(255,240,206,.7)', 'rgba(228,180,92,.75)', 'rgba(255,250,236,.65)'] },
 ];
 const MAX_PIXELS = 4.2e6; // the visible canvas's backing store, at most (about 2560x1600)
 const TRAIL_PIXELS = 2.2e6; // the dust's own canvas: soft anyway, so cheaper
-const FADE = 0.14; // how much of the dust's trails fades per frame (at 60 fps)
+const FADE = 0.1; // how much of the dust's trails fades per frame (at 60 fps)
 
 // The prologue's timeline (s): each paragraph starts, then they all go and the card comes up and stays.
-const PARA_AT = [1.2, 5.8, 10.6];
-const OUT_AT = 17;
-const CARD_AT = 18.8;
+const PARA_AT = [1, 5.4, 10];
+const OUT_AT = 16;
+const CARD_AT = 17.6;
+/** When the full prologue has been told: the cover stays up at least this long on a tab's first load. */
+export const PROLOGUE_S = CARD_AT + 4;
+const TITLE_AT = 0.4; // the title alone, on a reload
 const CHAR_S = 0.022; // the letters' stagger
 const LETTER_S = 0.9; // one letter's fade in
 
-export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => OffscreenCanvas | HTMLCanvasElement) {
+/** `full`: the whole prologue; otherwise only the title. */
+export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => OffscreenCanvas | HTMLCanvasElement, full = true) {
   let w = 1;
   let h = 1;
   let dpr = 1;
@@ -197,7 +202,7 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
     // a near grain catching the light
     tg.fillStyle = 'rgba(255,248,226,.9)';
     for (const i of buckets[buckets.length - 1]) {
-      if (Math.sin(twinkle[i] + clock * 3.1) * Math.sin(twinkle[i] * 1.7 + clock * 1.3) > 0.97) tg.fillRect(px[i] - 1, py[i] - 1, 2, 2);
+      if (Math.sin(twinkle[i] + clock * 3.1) * Math.sin(twinkle[i] * 1.7 + clock * 1.3) > 0.97) tg.fillRect(px[i] - 0.75, py[i] - 0.75, 1.5, 1.5);
     }
   }
 
@@ -216,7 +221,7 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
 
   function text() {
     const out = 1 - ramp((clock - OUT_AT) / 1.6);
-    if (out > 0 && clock > PARA_AT[0]) {
+    if (full && out > 0 && clock > PARA_AT[0]) {
       // a soft dark bed so the dust doesn't eat the letters
       const cy = (blockTop + blockBottom) / 2;
       const rx = Math.min(w * 0.6, (w - 2 * blockX) * 0.75 + 80);
@@ -241,12 +246,12 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
         });
       });
     }
-    if (clock > CARD_AT) {
-      const place = TEXT.prologue.place.toUpperCase();
+    const at = full ? CARD_AT : TITLE_AT;
+    if (clock > at) {
+      const title = TEXT.game.title.toUpperCase();
       const time = TEXT.prologue.time.toUpperCase();
-      const big = Math.round(size * 1.35);
+      const big = Math.round(size * 1.8);
       g.textBaseline = 'middle';
-      g.font = `${big}px ${MONO}`;
       // spaced wide, and centred on the letters rather than on their spacing
       const card = (s: string, y: number, spacing: number, t0: number, rgb: string, a: number) => {
         const m = g.measureText('M').width;
@@ -254,9 +259,10 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
         letters(s, Math.round((w - (s.length - 1) * step - m) / 2), y, step, t0, 0, rgb, a);
       };
       g.font = `${big}px ${MONO}`;
-      card(place, h * 0.47 - big * 0.7, 1.5, CARD_AT, GOLD, 1);
+      card(title, full ? h * 0.47 - big * 0.6 : h * 0.47, 1.6, at, GOLD, 1);
+      if (!full) return;
       g.font = `${size}px ${MONO}`;
-      card(time, h * 0.47 + big * 0.9, 1.25, CARD_AT + 1.4, INK, 0.7);
+      card(time, h * 0.47 + big * 0.8, 1.25, at + 1.4, INK, 0.7);
     }
   }
 
