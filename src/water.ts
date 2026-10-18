@@ -106,6 +106,7 @@ const css = `
 #waterPrompt kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 6px; border-radius: 3px;
   background: #fff4e4; color: #2a160a; }
 #waterPrompt .prog { display: block; height: 2px; margin-top: 3px; background: #5cb8ff; transform-origin: left; }
+#waterPrompt.bare { background: none; width: 40px; padding: 0; }
 #waterToast { position: fixed; left: 50%; top: calc(50% + 52px); transform: translateX(-50%); pointer-events: none;
   font: 600 13px var(--mono); color: #ffd9a0; text-shadow: 0 1px 2px #000; opacity: 0;
   transition: opacity .25s; white-space: nowrap; }
@@ -350,6 +351,8 @@ export class Survival {
       this.promptHtml = html;
       this.prompt.innerHTML = html;
       this.prompt.style.display = html ? 'block' : 'none';
+      // Drinking/filling: just the progress line, no label box behind it.
+      this.prompt.classList.toggle('bare', html.startsWith('<span class="prog"'));
     }
     const prog = this.prompt.querySelector<HTMLElement>('.prog');
     if (prog) prog.style.transform = `scaleX(${Math.min(1, (now - this.actionAt) / (playerHands.filling ? FILL_MS : DRINK_MS))})`;
