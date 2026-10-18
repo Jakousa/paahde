@@ -81,8 +81,8 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 - **Terrain healing is local now**: the wind's heal pass touched every edited vertex every 5 s and the server sent
   them all, so a boss's craters would have cost every client megabytes a pass. The server now sends `terrainHeal`
   and each client runs the same deterministic heal() on its copy (docs/netcode.md).
-- Gaps: the boss sounds are levelled against the guardians' measured footfalls, not measured themselves yet; boss
-  fights don't start the epic battle music yet.
+- Gaps: the boss sounds are levelled against the guardians' measured footfalls, not measured themselves yet.
+
 ## 2026-10-18 — Shade cools you off
 
 - In full shade (a rock, a dune's lee, a wreck, a hut) the felt temperature is never above `SHADE_MAX` (26 °C,
