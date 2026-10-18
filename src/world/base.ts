@@ -31,8 +31,8 @@ const BOUNCE = { intensity: 14, distance: 22 };
 const BULB = { x: 0, y: 1.95, z: HUT.z0 + 0.25, intensity: 2, distance: 9 };
 /** Ceiling lamps (local x, z; they hang from the ceiling there): the hallway, over the work tables, by the
  *  room's front and back walls. Each has a warm point light at its bulb. */
-/** Room lamps hang on rods from the ceiling, their mounts this high above the floor (shade bottom about 2.5 m). */
-const LAMP_MOUNT = 2.8;
+/** Room lamps hang on rods from the ceiling, their mounts this high above the floor (shade bottom about 3.9 m). */
+const LAMP_MOUNT = 4.3;
 const HALL_LAMP_Z = (STAIRS.z - STAIRS.n * STAIRS.run + HALL.z) / 2;
 const LAMPS = [
   { x: 0, z: HALL_LAMP_Z, ceil: vaultCrown(HALL_LAMP_Z) - FLOOR, intensity: 0.8 },
