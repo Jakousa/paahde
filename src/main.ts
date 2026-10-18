@@ -293,15 +293,14 @@ window.addEventListener('resize', () => {
 });
 
 await renderer.init();
-// Compile the shaders of what is built so far off the main thread, so the first frames don't stall the page.
-await Promise.race([renderer.compileAsync(scene, orbit.camera).catch(() => {}), new Promise((r) => setTimeout(r, 8000))]);
-await slice();
 const backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
 
 const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
 let accumulator = 0;
 let lastLoadFrame = 0;
+let warmStarted = false;
+let warmed = false;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
 // ?spawn=crash / field: once joined, turn to face the machine or the scrap field we were put next to.
 const spawnAt = new URLSearchParams(location.search).get('spawn');
@@ -326,7 +325,13 @@ renderer.setAnimationLoop((time) => {
     return;
   }
   joined = true;
-  loaded ||= coverTimedOut || (bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)));
+  // Once the models are in, build every shader one object at a time (the first frame would take seconds for all of
+  // them at once and freeze the page); nothing is drawn until that is done.
+  if (!warmStarted && (bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)))) {
+    warmStarted = true;
+    Promise.race([post.compileAsync().catch(() => {}), new Promise((r) => setTimeout(r, 15_000))]).then(() => (warmed = true));
+  }
+  loaded ||= coverTimedOut || warmed;
   // Behind the loading screen, draw at about 15 fps so the page has time for the game on it (src/yield.ts).
   if (!loaded && time - lastLoadFrame < LOADING_FRAME_MS) return;
   lastLoadFrame = time;
@@ -553,5 +558,5 @@ baseSand.update(frameDt, storm.atBase);
 
   menu.setInfo(`${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
   teardown.update(frameDt);
-  post.render();
+  if (loaded) post.render();
 });

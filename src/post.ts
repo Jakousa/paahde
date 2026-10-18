@@ -106,6 +106,7 @@ export class Post {
   private renderer: THREE.WebGPURenderer;
   private camera: THREE.PerspectiveCamera;
   private pipeline: THREE.RenderPipeline;
+  private scenePass: ReturnType<typeof pass>;
 
   // Per-frame uniforms written on the CPU.
   private sunUV = uniform(new THREE.Vector2(0.5, 0.3));
@@ -139,6 +140,7 @@ export class Post {
     renderer.toneMappingExposure = 1;
 
     const scenePass = pass(scene, camera);
+    this.scenePass = scenePass;
     const color = scenePass.getTextureNode('output');
     const depth = scenePass.getTextureNode('depth');
     const viewZ = scenePass.getViewZNode();
@@ -390,6 +392,12 @@ export class Post {
 
     this.pipeline = new THREE.RenderPipeline(renderer, graded);
     this.pipeline.outputColorTransform = false;
+  }
+
+  /** Build the scene's shaders for the pass's own render target, one object at a time with the browser getting turns
+   *  in between (three's compileAsync), so the first frame doesn't have to build them all at once. */
+  compileAsync(): Promise<void> {
+    return (this.scenePass as unknown as { compileAsync(r: THREE.WebGPURenderer): Promise<void> }).compileAsync(this.renderer);
   }
 
   setAoIntensity(v: number) {
