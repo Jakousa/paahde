@@ -1,6 +1,7 @@
 // The players' home base: an underground bunker under a flat pad in a dune pan. On the surface there is
 // only a small entrance hut; inside its door a staircase goes straight down, then a short hallway leads
-// into the main room, lit from above by a skylight, with a hand water pump in the middle.
+// into the main room, lit from above by a skylight, with the disassembly table in the middle and a hand water
+// pump against the east wall.
 // Shared by server physics and client prediction (collideBase() in sim.ts step()), the terrain (the pad
 // in baseHeight, no digging over the bunker, holes cut in the sand) and the renderer (src/world/base.ts
 // places the models from tools/blender/base/bunker.py with this layout).
@@ -69,10 +70,10 @@ export const FLOOR = -STAIRS.n * STAIRS.rise;
 export const HALL = { z: -14.2, h: 3.3 };
 /** Main room, inner: half width, far wall, ceiling height above the floor. */
 export const ROOM = { w: 8, z: -30.2, h: 6 };
-/** The room's centre: the pump stands here, under the skylight. */
+/** The room's centre: the disassembly table stands here, under the skylight. */
 export const ROOM_Z = (HALL.z + ROOM.z) / 2;
 /** Where players appear (new, respawned, or back after leaving in or over the bunker): down in the main
- *  room, just in from the hallway, looking at the pump. World coordinates, `y` = the floor. */
+ *  room, just in from the hallway, looking at the table. World coordinates, `y` = the floor. */
 export const BUNKER_SPAWN = { x: BASE.x, y: BASE.y + FLOOR, z: BASE.z + HALL.z - 3 };
 /** Skylight shaft: half width of the opening, collar half width (outer) and height above the pad. */
 export const SKY = { w: 1.4, collar: 1.8, h: 0.5 };
@@ -216,15 +217,17 @@ export function terrainHidden(x: number, z: number, y: number): boolean {
 /**
  * A placed model: node name in its glb, position (local), facing (fx, fz): the model's front (+Z)
  * turns towards it. `y` lifts it. Things that block get a capsule hitbox: half extents (hx, hz) of their
- * footprint (before turning) and height h above `y`.
+ * footprint (before turning) and height h above `y`; `square` makes the hitbox a square, not a rounded stadium.
  */
-export type BasePiece = { glb: string; node: string; x: number; z: number; fx: number; fz: number; y?: number; hx?: number; hz?: number; h?: number };
+export type BasePiece = { glb: string; node: string; x: number; z: number; fx: number; fz: number; y?: number; hx?: number; hz?: number; h?: number; square?: boolean };
 
 export const BASE_PIECES: BasePiece[] = [
-  { glb: 'bunker', node: 'pump', x: 0, z: ROOM_Z, fx: 0, fz: 1, y: FLOOR, hx: 0.35, hz: 0.35, h: 1.2 },
-  // Against the side walls, facing into the room (shared/stations.ts makes them interactable).
+  // Against the east wall, facing into the room (its drain grate is in tools/blender/base/bunker.py, PUMP_X).
+  { glb: 'bunker', node: 'pump', x: ROOM.w - 1.0, z: ROOM_Z, fx: -1, fz: 0, y: FLOOR, hx: 0.35, hz: 0.35, h: 1.2 },
+  // The workbench against the west wall, facing into the room; the disassembly table square in the middle, its tools
+  // round its sides (shared/stations.ts makes them interactable).
   { glb: 'bunker', node: 'workbench', x: -ROOM.w + 0.42, z: ROOM_Z, fx: 1, fz: 0, y: FLOOR, hx: 1.0, hz: 0.4, h: 0.95 },
-  { glb: 'bunker', node: 'disassembly', x: ROOM.w - 0.47, z: ROOM_Z, fx: -1, fz: 0, y: FLOOR, hx: 0.8, hz: 0.45, h: 0.92 },
+  { glb: 'bunker', node: 'disassembly', x: 0, z: ROOM_Z, fx: 0, fz: 1, y: FLOOR, hx: 0.8, hz: 0.8, h: 0.92, square: true },
   // Storage chest against the back wall (shared/storage.ts).
   { glb: 'bunker', node: 'chest', x: 0, z: ROOM.z + 0.5, fx: 0, fz: 1, y: FLOOR, hx: 0.62, hz: 0.37, h: 0.62 },
 ];
@@ -316,9 +319,18 @@ for (const p of BASE_PIECES) {
   if (!p.hx || !p.hz || !p.h) continue;
   const fl = Math.sqrt(p.fx * p.fx + p.fz * p.fz), fx = p.fx / fl, fz = p.fz / fl;
   // Local +X turns to (fz, -fx), +Z to (fx, fz). The capsule runs along the longer side.
+  const y0 = p.y ?? 0;
+  if (p.square) {
+    // Four slim capsules side by side along local X, so the corners are not cut off.
+    const r = p.hz / 4;
+    for (let k = 0; k < 4; k++) {
+      const o = -p.hz + r + k * (p.hz - r) * 2 / 3;
+      capsules.push({ x: p.x + fx * o, z: p.z + fz * o, ax: fz, az: -fx, half: p.hx - r, r, y0, top: y0 + p.h });
+    }
+    continue;
+  }
   const alongX = p.hx >= p.hz;
   const r = alongX ? p.hz : p.hx, half = (alongX ? p.hx : p.hz) - r;
-  const y0 = p.y ?? 0;
   capsules.push({ x: p.x, z: p.z, ax: alongX ? fz : fx, az: alongX ? -fx : fz, half, r, y0, top: y0 + p.h });
 }
 

@@ -1420,3 +1420,14 @@ drawn by `src/world/shelters.ts`).
   −1.3 dBTP); the wearer gets a jolt and a flash over the screen.
 - **Debug (F3):** *Give gear* at any tier, *Hit me* (a killing blow).
 
+
+## Disassembly table in the middle of the room
+
+- **Layout** (`BASE_PIECES`): the disassembly table now stands square in the middle of the main room, under the
+  skylight, 1.6 m square (`square: true` makes its hitbox four capsules, so the corner legs can't be walked into); the
+  water pump moved to the east wall (`PUMP_X` in tools/blender/base/bunker.py, its drain grate with it). A lamp hangs
+  over the table (a little high, clear of the table camera), one over the pump.
+- **Clear top:** the old table had a half-stripped machine, a vise, a grinder and bolts on it, which the machine
+  being taken apart overlapped. The top is bare now; the tools sit round the sides, none more than ~0.3 m out (a
+  player is 0.35 m wide): vise and bolt tray on the west side, grinder on a bracket and the scrap bin on the east, a
+  tool rail on the back, hazard stripes on the front.

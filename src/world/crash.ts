@@ -254,7 +254,7 @@ export class Bench {
     if (!job) return null;
     return {
       id: BENCH_ID, kind: job.kind, label: junkSpec(job.kind).label, junk: job.junk, x: BENCH.x, z: BENCH.z, ground: this.ground,
-      radius: 0.9, movable: true, link, stand: 2.3,
+      radius: 0.8, movable: true, link, stand: 2.3,
       closed: () => this.closed(),
       scrap,
     };

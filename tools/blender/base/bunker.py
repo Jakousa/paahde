@@ -701,10 +701,16 @@ def render_preview(objs, path):
     shot('cutaway', G(14, 16, 6), G(0, FLOOR, -10), lens=28)
     sand.hide_render = False
     bg.inputs['Strength'].default_value = 0.0
+    lamp_data = bpy.data.lights.new('room lamp', 'POINT')  # the skylight's sun doesn't reach the whole room
+    lamp_data.energy = 1500
+    lamp = bpy.data.objects.new('room lamp', lamp_data)
+    lamp.location = G(0, FLOOR + 3.5, ROOM_Z)
+    scene.collection.objects.link(lamp)
     shot('room', G(3.8, FLOOR + 1.65, HALL_Z - 1.0), G(0, FLOOR + 0.8, ROOM_Z), lens=20)
     shot('stairs', G(0, 1.65, 1.8), G(0, FLOOR + 1.0, -9), lens=22)
     shot('pump', G(PUMP_X - 2.2, FLOOR + 1.3, ROOM_Z + 1.4), G(PUMP_X, FLOOR + 0.7, ROOM_Z), lens=35)
     bg.inputs['Strength'].default_value = 0.6
+    lamp.hide_render = True
     hut.hide_render = bunker.hide_render = sand.hide_render = True
     shot('bench', G(-ROOM_W + 3.2, FLOOR + 1.7, ROOM_Z + 1.6), G(-ROOM_W + 0.4, FLOOR + 1.0, ROOM_Z), lens=28)
     shot('disassembly', G(-2.6, FLOOR + 1.9, ROOM_Z + 2.4), G(0, FLOOR + 0.5, ROOM_Z), lens=28)
