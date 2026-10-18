@@ -10,7 +10,7 @@ const SHOW_MS = 12000;
 /** Lines kept (shown while typing). */
 const KEEP = 12;
 
-/** A death in chat, after the dead player's swatch. */
+/** A death in chat, after the dead player's swatch, in their colour. */
 const OBITUARY: Record<DeathCause, string> = {
   heat: 'died of the heat',
   guardian: 'stepped on by a guardian',
@@ -29,7 +29,7 @@ const css = `
 #chat .log { display: flex; flex-direction: column; gap: 2px; }
 #chat .line { padding: 2px 6px; border-radius: 4px; background: rgba(20, 14, 10, 0.45); text-shadow: 0 1px 2px #000;
   overflow-wrap: anywhere; animation: chatFade ${SHOW_MS}ms linear forwards; }
-#chat .line.death { font-style: italic; color: #e8a090; }
+#chat .line.death { font-style: italic; }
 #chat .line b { font-weight: 600; margin-right: 6px; }
 #chat .line i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; }
 #chat .line.gone { animation: none; opacity: 0; visibility: hidden; }
@@ -110,8 +110,10 @@ export class Chat {
     const line = document.createElement('div');
     line.className = kind ? `line ${kind}` : 'line';
     line.dataset.at = String(performance.now());
+    const hex = `#${color.toString(16).padStart(6, '0')}`;
+    if (kind === 'death') line.style.color = hex; // in the dead player's colour
     const swatch = document.createElement('i');
-    swatch.style.background = `#${color.toString(16).padStart(6, '0')}`;
+    swatch.style.background = hex;
     line.append(swatch);
     if (name) {
       const who = document.createElement('b');
