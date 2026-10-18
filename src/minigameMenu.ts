@@ -7,10 +7,11 @@
 // Esc steps back: out of a run to the records, out of the records and the result to the choice, out of the choice to the menu.
 import { NAME_MAX } from '../shared/protocol.ts';
 import { loading } from './loadingGame';
-import type { Mode, RunResult } from './loadingRunner';
+import type { Hint, Mode, RunResult } from './loadingRunner';
 import { TEXT } from '../shared/text.ts';
 
 const NAME_KEY = 'dadajam.name'; // the same name as in the world (src/name.ts)
+const TIPS_KEY = 'dadajam.mini.tips'; // '0' once tips are hidden
 const MODES: { mode: Mode; key: string; title: string }[] = [
   { mode: 5, key: '5', title: TEXT.minigame.machines(5) },
   { mode: 10, key: '10', title: TEXT.minigame.machines(10) },
@@ -49,7 +50,34 @@ const css = `
 #play .result { width: 280px; }
 #play .result .row { margin: 12px 0; }
 #play .none { opacity: 0.5; }
+#play .tip { position: relative; box-sizing: border-box; width: min(360px, 94vw); height: 52px; padding: 0 16px; display: flex; align-items: center;
+  gap: 12px; border-radius: 8px; background: rgba(28, 15, 7, 0.88); box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.22); font-size: 13px;
+  transition: opacity .25s; }
+#play .tip.off { opacity: 0; }
+#play .tip .label { position: absolute; top: -7px; left: 10px; padding: 0 6px; border-radius: 3px; background: #2a160a;
+  font: 600 10px var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: #ffd9a0; }
+#play .tip svg { flex: none; width: 32px; height: 32px; overflow: visible; }
+#play .tip svg * { transform-box: fill-box; transform-origin: center; }
+#play button.tipsw { margin-top: -10px; padding: 2px 8px; background: none; color: #fff4e4; opacity: 0.4; font: 11px var(--mono); letter-spacing: 0; }
+#play button.tipsw:hover { background: none; opacity: 0.75; }
+.tipDot { animation: tipTap 1s ease-in-out infinite; }
+@keyframes tipTap { 0%, 60%, 100% { transform: scale(1); } 25% { transform: scale(1.7); } }
+.tipSpin { animation: tipSpin 1.1s linear infinite; }
+@keyframes tipSpin { to { transform: rotate(360deg); } }
+.tipSlide { animation: tipSlide 1.2s ease-in-out infinite; }
+@keyframes tipSlide { 0% { transform: translateX(0); opacity: 0; } 15% { opacity: 1; } 70%, 100% { transform: translateX(11px); opacity: 1; } 90% { opacity: 0.2; } }
+.tipGlow { animation: tipGlow 1.2s ease-in-out infinite; }
+@keyframes tipGlow { 50% { transform: scale(1.3); opacity: 0.6; } }
 `;
+
+/** The tip's picture: the step's marker in miniature, moving the way the move goes (as in src/loadingRunner.ts). */
+const TIP_ICONS: Record<Hint, string> = {
+  screw: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="5" fill="#8a8f93"/><g fill="#ffb050"><circle class="tipDot" cx="16" cy="5" r="2.6"/><circle class="tipDot" style="animation-delay:.2s" cx="25.5" cy="21.5" r="2.6"/><circle class="tipDot" style="animation-delay:.4s" cx="6.5" cy="21.5" r="2.6"/></g></svg>`,
+  bolt: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="5" fill="#8a8f93"/><g class="tipSpin"><path d="M16 4a12 12 0 1 1-12 12" fill="none" stroke="#ffb050" stroke-width="2.6" stroke-linecap="round"/><path d="M-1 12l7 4-7 4z" transform="translate(5 0)" fill="#ffb050"/></g></svg>`,
+  wire: `<svg viewBox="0 0 32 32"><path d="M8 3v26" stroke="#c47a3a" stroke-width="4" stroke-linecap="round"/><g class="tipSlide"><circle cx="8" cy="16" r="5" fill="rgba(28,15,7,.6)" stroke="#ffb050" stroke-width="2.2"/><circle cx="8" cy="16" r="1.8" fill="#ffb050"/></g><path d="M25 12l4 4-4 4" fill="none" stroke="#ffb050" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  pry: `<svg viewBox="0 0 32 32"><rect x="3" y="9" width="9" height="14" rx="2" fill="#8a8f93" stroke="#3b2616" stroke-width="1.5"/><path d="M6 12v8M9 12v8" stroke="#2b2622" stroke-width="1.6"/><g class="tipSlide"><circle cx="8" cy="16" r="5" fill="rgba(28,15,7,.6)" stroke="#ffb050" stroke-width="2.2"/><circle cx="8" cy="16" r="1.8" fill="#ffb050"/></g><path d="M25 12l4 4-4 4" fill="none" stroke="#ffb050" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  part: `<svg viewBox="0 0 32 32"><defs><radialGradient id="tg"><stop offset="0" stop-color="#ff9a3c" stop-opacity=".8"/><stop offset="1" stop-color="#ff9a3c" stop-opacity="0"/></radialGradient></defs><circle class="tipGlow" cx="16" cy="16" r="15" fill="url(#tg)"/><circle cx="16" cy="16" r="7" fill="#ff9a3c"/><circle cx="16" cy="16" r="2.6" fill="#1c0f07"/></svg>`,
+};
 
 /** m:ss.cc */
 const timeText = (ms: number) => `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(2).padStart(5, '0')}`;
@@ -153,10 +181,37 @@ export function openMinigame(onClose: () => void) {
     current = m;
     screen = 'run';
     loading.stop();
-    o.innerHTML = `<div class="stage"></div><div class="row"><button class="leave quiet">${TEXT.menu.leave}</button>${m.mode === 'endless' ? `<button class="finish">${TEXT.minigame.finish}</button>` : ''}</div>`;
+    let tips = true;
+    try {
+      tips = localStorage.getItem(TIPS_KEY) !== '0';
+    } catch {}
+    o.innerHTML = `<div class="tip off"><span class="label">${TEXT.minigame.tip}</span></div><button class="tipsw"></button><div class="stage"></div><div class="row"><button class="leave quiet">${TEXT.menu.leave}</button>${m.mode === 'endless' ? `<button class="finish">${TEXT.minigame.finish}</button>` : ''}</div>`;
     o.querySelector('.leave')!.addEventListener('click', () => intro(m));
     o.querySelector('.finish')?.addEventListener('click', () => loading.finishNow());
-    loading.start(o.querySelector<HTMLElement>('.stage')!, m.mode, (r) => alive && screen === 'run' && result(r));
+    // The tip box above the game, and the dim line under it that hides the tips (kept for next time).
+    const tip = o.querySelector<HTMLElement>('.tip')!;
+    const sw = o.querySelector<HTMLElement>('.tipsw')!;
+    let now: Hint | null = null;
+    const showTip = () => {
+      tip.querySelectorAll('svg, .text').forEach((e) => e.remove());
+      if (now && tips) {
+        tip.insertAdjacentHTML('beforeend', `${TIP_ICONS[now]}<span class="text">${TEXT.minigame.hint[now]}</span>`);
+        tip.classList.remove('off');
+      } else tip.classList.add('off');
+      sw.textContent = tips ? TEXT.minigame.hideTips : TEXT.minigame.showTips;
+    };
+    showTip();
+    sw.addEventListener('click', () => {
+      tips = !tips;
+      try {
+        localStorage.setItem(TIPS_KEY, tips ? '1' : '0');
+      } catch {}
+      showTip();
+    });
+    loading.start(o.querySelector<HTMLElement>('.stage')!, m.mode, (r) => alive && screen === 'run' && result(r), (k) => {
+      now = k;
+      showTip();
+    });
   }
 
   function result(r: RunResult) {

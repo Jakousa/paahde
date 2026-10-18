@@ -2,7 +2,7 @@
 // the big game bundle has downloaded and stopped by src/main.ts when the cover leaves. The main thread is blocked for
 // long stretches while the world builds, so the game and the bar are drawn by a worker into an OffscreenCanvas; only
 // the pointer events come through the page. Without OffscreenCanvas it runs on the page instead.
-import { createRunner, H, W, type Mode, type RunResult, type Sound } from './loadingRunner';
+import { createRunner, H, W, type Hint, type Mode, type RunResult, type Sound } from './loadingRunner';
 import { teardownSound } from './teardownSound';
 import { uiSound } from './uiSound';
 
@@ -20,8 +20,8 @@ let progress: (p: number) => void = () => {};
 let finishNow: () => void = () => {};
 
 /** On the loading cover (no arguments), or inside `host` without the loading bar (played from the Esc menu, src/minigameMenu.ts)
- *  in a `mode`, which calls `onFinish` when the run is over. */
-function start(host?: HTMLElement, mode: Mode = 'free', onFinish: (r: RunResult) => void = () => {}) {
+ *  in a `mode`, which calls `onFinish` when the run is over and `onHint` when the tip to show changes. */
+function start(host?: HTMLElement, mode: Mode = 'free', onFinish: (r: RunResult) => void = () => {}, onHint: (k: Hint | null) => void = () => {}) {
   const cover = host ?? document.getElementById('cover');
   if (!cover || canvas) return;
   const bar = !host;
@@ -48,6 +48,7 @@ function start(host?: HTMLElement, mode: Mode = 'free', onFinish: (r: RunResult)
       worker.onmessage = (e) => {
         if (e.data.t === 'sound') play(e.data.s);
         else if (e.data.t === 'finish') onFinish(e.data.r);
+        else if (e.data.t === 'hint') onHint(e.data.k);
       };
       const w = worker;
       down = (x, y) => w.postMessage({ t: 'down', x, y });
@@ -63,7 +64,7 @@ function start(host?: HTMLElement, mode: Mode = 'free', onFinish: (r: RunResult)
   if (!worker) {
     c.width = W * dpr;
     c.height = H * dpr;
-    const run = createRunner(c.getContext('2d')!, dpr, bar, play, { mode, finish: onFinish });
+    const run = createRunner(c.getContext('2d')!, dpr, bar, play, { mode, finish: onFinish, hint: onHint });
     let raf = 0;
     let last = performance.now();
     const frame = (now: number) => {

@@ -292,6 +292,9 @@ const en = {
     nobody: 'nobody yet',
     rank: (n: number) => `you are #${n}`,
     unreachable: 'couldn’t reach the board',
+    tip: 'Tip',
+    hideTips: 'Hide tips',
+    showTips: 'Show tips',
     /** Under the machine while that kind of step can be worked, until you've done it a few times. */
     hint: {
       screw: 'Click it, again and again',

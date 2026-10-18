@@ -15,7 +15,7 @@ ctx.onmessage = (e) => {
   if (m.t === 'init') {
     m.canvas.width = W * m.dpr;
     m.canvas.height = H * m.dpr;
-    run = createRunner(m.canvas.getContext('2d')!, m.dpr, m.bar, (s) => ctx.postMessage({ t: 'sound', s }), { mode: m.mode, finish: (r) => ctx.postMessage({ t: 'finish', r }) });
+    run = createRunner(m.canvas.getContext('2d')!, m.dpr, m.bar, (s) => ctx.postMessage({ t: 'sound', s }), { mode: m.mode, finish: (r) => ctx.postMessage({ t: 'finish', r }), hint: (k) => ctx.postMessage({ t: 'hint', k }) });
     let last = performance.now();
     timer = setInterval(() => {
       const now = performance.now();
