@@ -4,7 +4,7 @@ import { createRunner, H, W } from './loadingRunner';
 type In =
   | { t: 'init'; canvas: OffscreenCanvas; dpr: number }
   | { t: 'down' | 'move'; x: number; y: number }
-  | { t: 'up' | 'stop' }
+  | { t: 'up' | 'stop' | 'splash' }
   | { t: 'progress'; p: number };
 const ctx = self as unknown as { onmessage: ((e: MessageEvent<In>) => void) | null; close(): void };
 
@@ -25,6 +25,7 @@ ctx.onmessage = (e) => {
   } else if (m.t === 'down') run?.down(m.x, m.y);
   else if (m.t === 'move') run?.move(m.x, m.y);
   else if (m.t === 'up') run?.up();
+  else if (m.t === 'splash') run?.splash();
   else if (m.t === 'progress') run?.progress(m.p);
   else if (m.t === 'stop') {
     clearInterval(timer);

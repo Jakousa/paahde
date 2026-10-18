@@ -25,6 +25,9 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   materials included; `compileAsync` didn't cover them), so `src/warmup.ts` draws real frames a few materials at a
   time instead: one object per distinct material/geometry layout shown, batch doubling while frames are quick.
   Not sliceable: module evaluation, model parsing, objects first seen after the warm-up (bosses, loot).
+- Last stage, the splash: once the models and terrain are in (everything sliceable is done), the loading game fades into
+  a calm view (a turning gear, `splash()` in `src/loadingRunner.ts`; the worker keeps animating while the page
+  blocks), and 0.7 s later `src/main.ts` runs the whole shader warm-up back to back, unsliced, then the cover lifts.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.

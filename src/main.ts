@@ -227,7 +227,7 @@ let bodyLoaded = false;
 let coverTimedOut = false;
 base.ready.then(() => (baseLoaded = true), () => (baseLoaded = true));
 loadScavenger().then(() => (bodyLoaded = true), () => (bodyLoaded = true));
-setTimeout(() => (coverTimedOut = true), 20_000);
+setTimeout(() => (coverTimedOut = true), 30_000);
 const me = new Avatar(0xffffff);
 me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
 let bodyHidden = true;
@@ -305,6 +305,8 @@ const focus = new THREE.Vector3();
 let accumulator = 0;
 let lastLoadFrame = 0;
 let warmed = false;
+let splashAt = 0;
+const SPLASH_MS = 700; // the splash fades in (src/loadingRunner.ts) before the page blocks
 const warm = new Warmup([scene, orbit.camera], () => post.render());
 terrain.loading = true;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
@@ -335,6 +337,10 @@ renderer.setAnimationLoop((time) => {
   // frame would take seconds to build every shader and freeze the page. Nothing else is drawn until that is done.
   const modelsIn = bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)) && terrain.built;
   loaded ||= coverTimedOut || warmed;
+  if (modelsIn && !splashAt) {
+    splashAt = time;
+    loading.splash(); // everything that can be sliced is done: the rest blocks the page, so the game gives way to a calm view
+  }
   // Behind the loading screen, draw at about 15 fps so the page has time for the game on it (src/yield.ts).
   if (!loaded && time - lastLoadFrame < LOADING_FRAME_MS) return;
   lastLoadFrame = time;
@@ -576,5 +582,9 @@ baseSand.update(frameDt, storm.atBase);
     warm.finish();
     terrain.loading = false;
     post.render();
-  } else if (modelsIn) warmed = warm.step();
+  } else if (splashAt && time - splashAt > SPLASH_MS) {
+    // Under the splash: the first frame's shaders, post passes included. The page is allowed to freeze now.
+    while (!warm.step()) { /* one real frame per round */ }
+    warmed = true;
+  }
 });

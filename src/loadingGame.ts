@@ -7,6 +7,7 @@ import { createRunner, H, W } from './loadingRunner';
 let canvas: HTMLCanvasElement | null = null;
 let off: (() => void) | null = null;
 let progress: (p: number) => void = () => {};
+let splash: () => void = () => {};
 
 function start() {
   const cover = document.getElementById('cover');
@@ -33,6 +34,7 @@ function start() {
       move = (x, y) => w.postMessage({ t: 'move', x, y });
       up = () => w.postMessage({ t: 'up' });
       progress = (p) => w.postMessage({ t: 'progress', p });
+      splash = () => w.postMessage({ t: 'splash' });
       stop = () => w.postMessage({ t: 'stop' });
     } catch {
       worker = null;
@@ -54,6 +56,7 @@ function start() {
     move = run.move;
     up = run.up;
     progress = run.progress;
+    splash = run.splash;
     stop = () => cancelAnimationFrame(raf);
   }
 
@@ -88,6 +91,8 @@ function stopGame() {
   canvas?.remove();
   canvas = null;
   progress = () => {};
+  splash = () => {};
 }
 
-export const loading = { start, stop: stopGame, progress: (p: number) => progress(p) };
+/** The last stage: the game fades into a calm view while the page does what can't be sliced. */
+export const loading = { start, stop: stopGame, progress: (p: number) => progress(p), splash: () => splash() };
