@@ -455,11 +455,18 @@ export class GuardianServer {
         if (g.prey === p.id) this.hunt(g, p, now);
         else if (g.prey < 0) {
           this.hunt(g, p, now);
-          // One crawler sees you, the whole site's pack comes (bar any backing off after a bite).
-          if (g.kind === CRAWLER) {
-            for (const o of this.guardians) if (o !== g && o.kind === CRAWLER && o.home === g.home && o.prey < 0 && now >= o.calmUntil && o.deadAt < 0) this.hunt(o, p, now);
-          }
+          this.rouse(g, p, now);
         }
+      }
+    }
+    // A crawler of a pack that's after someone joins in as soon as it's free (backed off, or calmed down).
+    if (g.kind === CRAWLER && g.prey < 0 && now >= g.calmUntil) {
+      const o = this.guardians.find((o) => o !== g && o.kind === CRAWLER && o.home === g.home && o.deadAt < 0 && o.prey >= 0 && now - o.knownAt < 1000);
+      const p = o && exposed.find((q) => q.id === o.prey);
+      if (o && p) {
+        this.hunt(g, p, now);
+        g.px = o.px;
+        g.pz = o.pz;
       }
     }
     if (g.prey >= 0) {
@@ -545,6 +552,16 @@ export class GuardianServer {
     }
     g.x = nx;
     g.z = nz;
+  }
+
+  /** One crawler angered (seen you, shot at): the whole site's pack comes for you, whatever they were doing. */
+  private rouse(g: Guardian, p: BotPlayer, now: number) {
+    if (g.kind !== CRAWLER) return;
+    for (const o of this.guardians) {
+      if (o === g || o.kind !== CRAWLER || o.home !== g.home || o.deadAt >= 0 || o.prey >= 0) continue;
+      o.calmUntil = 0;
+      this.hunt(o, p, now);
+    }
   }
 
   private hunt(g: Guardian, p: BotPlayer, now: number) {
@@ -867,6 +884,8 @@ export class GuardianServer {
     if (near > slack || Math.hypot(ex - cx, ey - cy, ez - cz) > slack * 1.5) return miss;
     if (!body) g.broken |= 1 << (i as number);
     if (!body && allBroken(g.broken, g.points)) {
+      // Killing one sets the rest of the pack on you too.
+      if (!by.safe && !indoors(by.x, by.y, by.z)) this.rouse(g, by, now);
       g.deadAt = now;
       g.prey = -1;
       g.aiming = false;
@@ -879,7 +898,7 @@ export class GuardianServer {
       g.calmUntil = 0;
       g.shotUntil = now + SHOT_TRACK_MS;
       this.hunt(g, by, now);
-      if (g.kind === CRAWLER) for (const o of this.guardians) if (o.kind === CRAWLER && o.home === g.home && o.deadAt < 0 && o.prey < 0) this.hunt(o, by, now);
+      this.rouse(g, by, now);
     }
     return { hit: !body, kill: null };
   }
