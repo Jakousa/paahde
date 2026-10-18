@@ -558,9 +558,10 @@ export class GuardianServer {
     }
     g.speed += (want - g.speed) * (1 - Math.exp(-dt / ease));
     let nx = g.x + Math.sin(g.yaw) * g.speed * dt, nz = g.z + Math.cos(g.yaw) * g.speed * dt;
-    // The base is out of bounds: stopped at the edge (and it gives up the hunt there).
+    // The base is out of bounds: stopped at the edge (and it gives up the hunt there). Not for a debug menu pack
+    // (made-up home, id < 0), so it can be tried out near the base.
     const bd = Math.hypot(nx - BASE.x, nz - BASE.z);
-    if (bd < BASE_KEEP_OUT) {
+    if (bd < BASE_KEEP_OUT && g.home.id >= 0) {
       nx = BASE.x + ((nx - BASE.x) / bd) * BASE_KEEP_OUT;
       nz = BASE.z + ((nz - BASE.z) / bd) * BASE_KEEP_OUT;
       if (!hunting) this.patrolPoint(g);
@@ -608,7 +609,7 @@ export class GuardianServer {
       g.tz = g.home.z + Math.cos(a) * r;
       // Not inside a wreck (a crawler would walk round it for ever).
       if (g.kind === CRAWLER) [g.tx, g.tz] = keepOut(g.tx, g.tz, CRAWLER_R + 0.5);
-      if (Math.hypot(g.tx - BASE.x, g.tz - BASE.z) <= BASE_KEEP_OUT + 10) continue;
+      if (g.home.id >= 0 && Math.hypot(g.tx - BASE.x, g.tz - BASE.z) <= BASE_KEEP_OUT + 10) continue;
       // Not where another of its kind stands or is heading (guardians: crawlers swarm).
       const sep = SEP_R * KINDS[g.kind].scale;
       if (i < 9 && g.kind === GUARDIAN && this.guardians.some((o) => o !== g && o.kind === g.kind && o.deadAt < 0
