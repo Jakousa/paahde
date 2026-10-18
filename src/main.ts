@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { BACK, DT, FORWARD, isSlipFace, quantizeYaw } from '../shared/sim.ts';
+import { BACK, DT, FORWARD, isSlipFace, MOUNT_TICKS, quantizeYaw } from '../shared/sim.ts';
 import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { allBeaten } from '../shared/bosses.ts';
@@ -11,7 +11,7 @@ import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { BaseSand } from './world/baseSand';
 import { Shelters } from './world/shelters';
-import { addCrosshair } from './crosshair';
+import { addCrosshair, crosshairRing } from './crosshair';
 import { ShieldFx } from './shieldFx';
 import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
@@ -428,6 +428,7 @@ baseSand.update(frameDt, storm.atBase);
   // Sand hissing under you: a speed slide, or (softer) slipping down a slip face on your feet.
   const ownSpeed = Math.hypot(s.vx, s.vz);
   slideSound.update(frameDt, !s.grounded || s.riding || net.down ? 0 : s.sliding ? 1 : ownSpeed > 2 && isSlipFace(s.x, s.z) ? 0.5 : 0, ownSpeed);
+  crosshairRing(s.mounting > 0 && !net.down ? 1 - s.mounting / MOUNT_TICKS : null);
   engineSound.update(frameDt, s.riding || s.mounting > 0, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   drinkSound.remotes(others, orbit.camera.position);
