@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
-import { bikeLevel, bottleSips, carriedGear, GEAR_KINDS, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
+import { bikeLevel, bottleSips, carriedGear, equipped, gearTiers, GEAR_KINDS, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
@@ -41,6 +41,8 @@ import { CrashServer } from './crash.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
 import { TerrainServer } from './terrain.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
+import { HEAT_MAX } from '../shared/water.ts';
+import { TIERS } from '../shared/salvage.ts';
 import type { Caster } from '../shared/shade.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { BUNKER_SPAWN } from '../shared/base.ts';
@@ -113,6 +115,7 @@ type Player = {
   aim: boolean; // gun raised to aim (cosmetic, relayed in snapshots)
   /** Dead and lying where they fell until `until` (Date.now ms), thrown by `push` (shared/ragdoll.ts). */
   down: { until: number; push: [number, number, number] } | null;
+  shieldUntil: number; // Date.now() ms: their shield plate just broke, nothing hurts them till then (shielded)
   firedAt: number; // last laser rifle shot or throw (performance.now() ms)
   chatAt: number; // last chat line (performance.now() ms)
   name: string; // shown in chat ('' none; db.getName null until asked)
@@ -179,7 +182,8 @@ wss.on('connection', (ws) => {
     if (msg.t === 'unfit' && p) return onUnfit(p, msg.slot, msg.to, msg.ti);
     if (msg.t === 'lootTake' && p) return onLootTake(p, msg.id);
     if (msg.t === 'drop' && p) return onDrop(p, msg.box, msg.slot);
-    if (msg.t === 'debugGear' && p) return onDebugGear(p);
+    if (msg.t === 'debugGear' && p) return onDebugGear(p, msg.tier);
+    if (msg.t === 'debugHit' && p) return die(p, 'laser', [0, 3, 6]);
     if (msg.t === 'chat' && p) return onChat(p, msg.text);
     if (msg.t === 'name' && p) return onName(p, msg.name);
     if (msg.t === 'hands' && p) {
@@ -241,7 +245,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, firedAt: 0, chatAt: 0, name: '', jam: null,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, name: '', jam: null,
   };
   players.set(ws, p);
   save(p);
@@ -331,6 +335,7 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
 /** Drop where they stand (off the bike, stopped) for DOWN_MS, as a ragdoll thrown by `push`; then respawn(). */
 function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 0, 0]) {
   if (p.down || lives <= 0) return;
+  if (cause !== 'heat' && shielded(p, push)) return;
   p.down = { until: Date.now() + DOWN_MS, push };
   p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, sliding: false, crouching: false };
   revive(p.heat, Date.now());
@@ -349,6 +354,26 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   db.setSetting('lives', lives);
   for (const o of players.values()) send(o.ws, { t: 'lives', n: lives, beaten });
   if (lives <= 0) gameOver();
+}
+
+/** A killing blow (not heatstroke) on someone wearing a shield plate: it takes the blow and breaks (shared/gear.ts
+ *  SHIELD_BREAKS), and for a moment after nothing else can hurt them (shieldGraceMs). True if they live. */
+function shielded(p: Player, push: [number, number, number]): boolean {
+  const now = Date.now();
+  if (now < p.shieldUntil) return true;
+  const plate = equipped(items.slots(p.browserId, 'equip'), 'armor');
+  if (!plate) return false;
+  const ms = Math.round(shieldGraceMs(quality(plate))), tier = tierOf(plate); // before it breaks
+  p.shieldUntil = now + ms;
+  items.breakShield(p.browserId);
+  sendBox(p, 'equip');
+  // A crawler's bites fill the heat meter: the blow is taken, so take them back off.
+  p.heat.heat = Math.min(p.heat.heat, HEAT_MAX * 0.6);
+  send(p.ws, waterMsg(p.heat));
+  const s = p.state;
+  const msg: ServerMsg = { t: 'shieldBreak', id: p.id, x: round4(s.x), y: round4(s.y), z: round4(s.z), push, tier, ms };
+  for (const o of players.values()) if (Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, msg);
+  return true;
 }
 
 /** The last life is gone: everyone sees how it ended, then the world closes for good (new joins are turned away). */
@@ -720,9 +745,10 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
 
 // Debug menu: one of each piece of gear (the guns too), repaired with Scrap parts, into the bag (what fits) and the
 // equipment slots (if free).
-function onDebugGear(p: Player) {
+function onDebugGear(p: Player, tier: unknown) {
+  const t = TIERS[Number.isInteger(tier) ? (tier as number) : 0] ?? 'scrap';
   for (const kind of GEAR_KINDS) {
-    const parts = scrapParts(kind);
+    const parts = scrapParts(kind, t);
     if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
   }
   for (const box of ['bag', 'equip']) sendBox(p, box);
@@ -877,9 +903,10 @@ function broadcast(time: number) {
   const list: PlayerSnap[] = [...players.values()].map((p) => {
     const item = p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot]?.kind : undefined;
     const gear = wornGear(items.slots(p.browserId, 'equip')) | carriedGear(items.slots(p.browserId, 'bag'), p.slot);
+    const tiers = gearTiers(items.slots(p.browserId, 'equip'), items.slots(p.browserId, 'bag'), p.slot);
     return {
       id: p.id, color: p.color, pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}), ...(p.aim ? { aim: 1 as const } : {}),
-      ...(item ? { item } : {}), ...(gear ? { gear } : {}), ...(p.down ? { down: p.down.push } : {}),
+      ...(item ? { item } : {}), ...(gear ? { gear } : {}), ...(tiers ? { tiers } : {}), ...(p.down ? { down: p.down.push } : {}),
     };
   });
   for (const p of players.values()) send(p.ws, { t: 'snap', time, ack: p.ack, players: list });

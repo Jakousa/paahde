@@ -49,6 +49,11 @@ MATERIALS = {
     'glass_dark': (0x1a2a2c, 0.3, 0.2, 0),
     'EmitScreen': (0x5fe0b8, 0.0, 0.4, 1.2),
     'EmitAmber': (0xffa040, 0.0, 0.4, 1.5),
+    # The shield plate: weathered hull plating off a crashed ship, its livery stripe, and the emitter's lens (src/tierLook.ts
+    # colours `ShieldLens` by tier).
+    'hull': (0x8e8b7f, 0.55, 0.62, 0),
+    'hull_dark': (0x4d4a43, 0.6, 0.7, 0),
+    'ShieldLens': (0xffb04a, 0.0, 0.3, 2.0),
     # receivers' bodies, one per boss
     'rcv_carrier': (0x5a7272, 0.25, 0.65, 0),
     'rcv_carrier_dark': (0x2c3a3a, 0.3, 0.7, 0),
@@ -64,7 +69,7 @@ MATERIALS = {
 CELLS = {
     'canteen': (1, 2), 'spyglass': (2, 1), 'motorcycle': (4, 3), 'backpack': (2, 2), 'storm_detector': (1, 2),
     'wristpad': (1, 1), 'metal_detector': (1, 3), 'shovel': (1, 3), 'laser_rifle': (4, 1), 'laser_pistol': (2, 1),
-    'jammer': (2, 1), 'receiver_carrier': (2, 1), 'receiver_queen': (2, 1), 'receiver_colossus': (2, 1),
+    'jammer': (2, 1), 'shield': (2, 2), 'receiver_carrier': (2, 1), 'receiver_queen': (2, 1), 'receiver_colossus': (2, 1),
     'receiver_worm': (2, 1),
 }
 CELL, GAP = 54, 4  # src/inventory.ts
@@ -396,6 +401,105 @@ def make_receiver(boss):
 
 # ------------------------------------------------------------------------------------------------ table
 
+# ------------------------------------------------------------------------------------------------ shield plate
+
+SH_R = 0.25  # the plate is a piece of a cylinder this round (m), its axis behind it: it wraps the chest
+SH_T = 0.012
+
+
+def sh_at(a, z, out=0.0, b=0.0):
+    """A point on the plate's front at angle `a` round the chest (0 straight ahead, + to the wearer's left), `out` m
+    proud of it, `b` its bulge there."""
+    r = SH_R + b + out
+    return (r * math.sin(a), SH_R - r * math.cos(a), z)
+
+
+def sh_bulge(t):
+    return 0.014 * (1 - (2 * t - 1) ** 2)  # bowed forward a little top to bottom, like a breastplate
+
+
+def sh_patch(mb, a0, a1, z0, z1, out, th, mat, n=8, rows=6, edge=None):
+    """A curved slab on the plate (out .. out + th proud of it) from angle a0 to a1 and height z0 to z1; `edge(t)`
+    gives (a0, a1) per row (t 0 at z0 .. 1 at z1) for cut edges."""
+    secs = []
+    for i in range(rows + 1):
+        t = i / rows
+        z = z0 + (z1 - z0) * t
+        lo, hi = edge(t) if edge else (a0, a1)
+        b = sh_bulge((z + 0.13) / 0.26)
+        outer = [sh_at(lo + (hi - lo) * j / n, z, out + th, b) for j in range(n + 1)]
+        inner = [sh_at(lo + (hi - lo) * j / n, z, out, b) for j in reversed(range(n + 1))]
+        secs.append(outer + inner)
+    return mb.loft(secs, mat)
+
+
+def build_shield(mb, rng):
+    """Upright, as worn (the wearer's front is -Y, origin at the plate's middle): a shard of hull plating torch-cut
+    off a crashed ship, wrapped round the chest on canvas padding, strapped on, its livery stripe and stencils
+    still on it; at the sternum a copper-coil emitter with a lens, wired to a cell clamped to its side."""
+    a0, a1 = -0.66, 0.4
+
+    def cut(t):  # the torch cut: the top left corner sliced off at a slant, the right edge a little ragged
+        return (a0 + 0.05 * max(0.0, t - 0.7) / 0.3 + 0.015 * math.sin(t * 23), a1 - 0.3 * max(0.0, t - 0.5) / 0.5)
+
+    # Padding first, peeking out round the plate.
+    sh_patch(mb, a0 - 0.05, a1 + 0.05, -0.145, 0.12, -0.03, 0.026, 'canvas_dark', n=10, rows=4)
+    plate = sh_patch(mb, a0, a1, -0.13, 0.13, 0.0, SH_T, 'hull', n=14, rows=10, edge=cut)
+    mb.jitter(plate, rng, 0.0015)
+    mb.dent(plate, sh_at(0.25, -0.07, SH_T), 0.05, 0.006)
+    mb.dent(plate, sh_at(-0.5, 0.06, SH_T), 0.04, 0.005)
+    # The ship's livery: a faded orange band across, a dark one under it, stencil blocks of its hull number.
+    sh_patch(mb, a0 + 0.01, 0.2, 0.035, 0.07, SH_T, 0.0012, 'orange_paint', edge=lambda t: (a0 + 0.01, 0.2 - 0.05 * t))
+    sh_patch(mb, a0 + 0.01, 0.12, 0.02, 0.03, SH_T, 0.0012, 'hull_dark')
+    for k, (w, h) in enumerate(((0.018, 0.03), (0.012, 0.03), (0.018, 0.03))):
+        a = -0.56 + k * 0.08
+        sh_patch(mb, a, a + w / SH_R, -0.105, -0.105 + h, SH_T, 0.001, 'hull_dark', n=2, rows=1)
+    # Rivets along the edges.
+    for i in range(9):
+        t = i / 8
+        lo, hi = cut(min(t, 0.999))
+        z = -0.115 + 0.23 * t
+        b = sh_bulge((z + 0.13) / 0.26)
+        for a in (lo + 0.03, hi - 0.03):
+            mb.blob(0.0045, sh_at(a, z, SH_T, b), 'steel_dull')
+    for j in range(7):
+        a = a0 + 0.06 + (a1 - a0 - 0.12) * j / 6
+        mb.blob(0.0045, sh_at(a, -0.117, SH_T, sh_bulge(0.05)), 'steel_dull')
+    # The emitter at the sternum: a brass collar, three copper windings stepping in, the lens.
+    ea, ez = -0.06, -0.015
+    eb = sh_bulge((ez + 0.13) / 0.26)
+    rot = (D90, 0, ea)
+    mb.cyl(0.042, 0.042, 0.012, 18, sh_at(ea, ez, SH_T + 0.006, eb), 'brass', rot=rot)
+    for k, (R, r) in enumerate(((0.034, 0.007), (0.028, 0.006), (0.022, 0.005))):
+        mb.torus(R, r, 18, 6, sh_at(ea, ez, SH_T + 0.016 + k * 0.008, eb), 'copper', rot=rot)
+    mb.cyl(0.018, 0.016, 0.01, 16, sh_at(ea, ez, SH_T + 0.03, eb), 'ShieldLens', rot=rot)
+    for k in range(4):  # the collar's bolts
+        ang = k * D90 + 0.4
+        a = ea + 0.038 * math.cos(ang) / SH_R
+        mb.blob(0.004, sh_at(a, ez + 0.038 * math.sin(ang), SH_T + 0.013, eb), 'steel')
+    # The cell, clamped on lying across the plate's right side, wired up to the emitter.
+    ca, cz = -0.5, -0.06
+    cb = sh_bulge((cz + 0.13) / 0.26)
+    cc = sh_at(ca, cz, SH_T + 0.02, cb)
+    mb.cyl(0.017, 0.017, 0.085, 12, cc, 'paint_faded_blue', rot=(0, D90, ca))
+    for dx in (-0.03, 0.03):
+        p = (cc[0] + dx * math.cos(ca), cc[1] + dx * math.sin(ca), cc[2])
+        mb.cyl(0.0185, 0.0185, 0.008, 12, p, 'steel_dull', rot=(0, D90, ca))
+    mb.cyl(0.008, 0.008, 0.012, 8, (cc[0] + 0.047 * math.cos(ca), cc[1] + 0.047 * math.sin(ca), cc[2]), 'term_red',
+           rot=(0, D90, ca))
+    it.wire(mb, [(cc[0] + 0.05 * math.cos(ca), cc[1] + 0.05 * math.sin(ca), cc[2]),
+                 sh_at(-0.36, -0.02, SH_T + 0.008, cb), sh_at(-0.2, 0.0, SH_T + 0.01, eb),
+                 sh_at(ea - 0.16, ez, SH_T + 0.015, eb)], 0.0035, 5, 'wire_red')
+    # Straps: up over the shoulders from the top corners, round the ribs from the bottom ones, buckled.
+    for a, z, d in ((a0 + 0.08, 0.1, (0.0, 0.1, 0.09)), (a1 - 0.18, 0.1, (0.0, 0.1, 0.09)),
+                    (a0 + 0.02, -0.1, (-0.06, 0.14, -0.02)), (a1 - 0.02, -0.1, (0.06, 0.14, -0.02))):
+        p = sh_at(a, z, SH_T, sh_bulge((z + 0.13) / 0.26))
+        q = (p[0] + d[0] * 0.5, p[1] + d[1] * 0.4, p[2] + d[2] * 0.6)
+        r = (p[0] + d[0], p[1] + d[1], p[2] + d[2])
+        it.wire(mb, [p, q, r], 0.009, 5, 'leather')
+        mb.box((0.024, 0.008, 0.02), (p[0], p[1] - 0.006, p[2]), 'brass', rot=(0, 0, a))
+
+
 # kind: (builder, pose on the sand (Euler, rad), icon pose, icon camera direction (from the object))
 SIDE = Vector((0.18, -1, 0.32)).normalized()
 THREE_Q = Vector((0.55, -1, 0.42)).normalized()
@@ -407,6 +511,8 @@ BUILT = {
     'wristpad': (build_wristpad, (D90, -D90, 0), (0, 0, -D90 - 0.3), THREE_Q),
     'backpack': (build_backpack, (-D90, 0, 0), (0, 0, -0.35), THREE_Q),
     'jammer': (build_jammer, (D90, 0, 0), (0, 0, 0), SIDE),
+    # Exported upright, as worn (src/models/scavenger.ts straps it on; src/world/loot.ts lays it down).
+    'shield': (build_shield, (0, 0, 0), (0, 0, 0.2), Vector((0.2, -1, 0.15)).normalized()),
 }
 RECV_VIEW = Vector((-0.3, -1, 0.75)).normalized()  # from behind and above, so the dial (leaning back) shows
 for _boss in RECV_COLOURS:  # lying on the slot-less side, slot and dial up to the sky

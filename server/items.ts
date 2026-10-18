@@ -1,7 +1,7 @@
 // Server side of items (shared/items.ts): every box's slots, cached from the `items` table, the one-time gear
 // setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
-import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, lockedWhileRiding, refit, scrapParts, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
+import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, SHIELD_BREAKS, isGear, lockedWhileRiding, refit, scrapParts, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
   addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, settle, sizeOf, sortItems, stackOf,
   type Item, type Slots,
@@ -233,6 +233,14 @@ export class ItemServer {
   }
 
   /** Empty part slot `i` of the gear in bag slot `slot` (its part used up). False if nothing is fitted there. */
+  /** The equipped shield plate took a blow: what breaks of it (shared/gear.ts SHIELD_BREAKS) is gone. */
+  breakShield(browserId: string) {
+    const it = this.slots(browserId, 'equip')[EQUIP_SLOTS.indexOf('armor')];
+    if (it?.kind !== 'shield' || !it.parts) return;
+    it.parts = it.parts.map((p, j) => (SHIELD_BREAKS.includes(j) ? null : p));
+    this.save(browserId, 'equip');
+  }
+
   spendPart(browserId: string, slot: number, i: number): boolean {
     const it = this.slots(browserId, 'bag')[slot];
     if (!it?.parts?.[i]) return false;

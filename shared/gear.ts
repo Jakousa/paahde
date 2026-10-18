@@ -13,11 +13,11 @@ import {
   type Item, type Shape, type Slots,
 } from './items.ts';
 import { PART_LABELS } from './parts.ts';
-import type { PartId } from './salvage.ts';
+import type { PartId, Tier } from './salvage.ts';
 
-export const EQUIP_SLOTS = ['back', 'wrist', 'belt', 'vehicle'] as const;
+export const EQUIP_SLOTS = ['back', 'wrist', 'belt', 'vehicle', 'armor'] as const;
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
-export const EQUIP_LABELS: Record<EquipSlot, string> = { back: 'Back', wrist: 'Wrist', belt: 'Belt', vehicle: 'Vehicle' };
+export const EQUIP_LABELS: Record<EquipSlot, string> = { back: 'Back', wrist: 'Wrist', belt: 'Belt', vehicle: 'Vehicle', armor: 'Armor' };
 
 /** A part slot: a tiered part from disassembly, or a basic material (shared/items.ts SCRAP or CLOTH; no tier: it holds
  *  things together), or one of the kinds `scrap` lists (an enemy's or boss's own part: no tier either). `rare`: never
@@ -61,6 +61,10 @@ export const GEAR: Record<string, GearSpec> = {
   // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
   jammer: { slots: [P('compute'), P('coil'), P('battery')], better: 'how fast it locks on',
     use: 'Hold the mouse button on a drone or jet until it drops.' },
+  // The shield plate (server/world.ts die): a hull plate over cloth padding, and an emitter (coil, cell) that throws a
+  // field round you as a killing blow lands. It takes that blow and breaks: the cell burns out and the plate cracks.
+  shield: { slots: [P('coil'), P('battery'), SCRAP, CLOTH], equip: 'armor', better: 'how long you stay safe after it breaks',
+    use: 'Takes one killing blow, then breaks.' },
   // The receivers (shared/bosses.ts RECEIVERS): each calls its boss, spending the cell. Tuned by a part from the boss's
   // kin (shared/tables.ts RELIC_DROPS); the worm's by a part from each of the other bosses.
   receiver_carrier: { slots: [CELL, own('drone_transponder'), P('compute')], ...RECEIVER },
@@ -88,9 +92,9 @@ export function partsOf(it: Item): (string | null)[] {
   return Array.from({ length: n }, (_, i) => it.parts?.[i] ?? null);
 }
 
-/** Gear `kind` in working order with the worst parts (Scrap tier) in every slot. */
-export function scrapParts(kind: string): string[] {
-  return GEAR[kind].slots.map((s) => ('part' in s ? partKind(s.part, 'scrap') : s.scrap[0]));
+/** Gear `kind` in working order with the worst parts (Scrap tier) in every slot, or `tier`'s. */
+export function scrapParts(kind: string, tier: Tier = 'scrap'): string[] {
+  return GEAR[kind].slots.map((s) => ('part' in s ? partKind(s.part, tier) : s.scrap[0]));
 }
 
 /**
@@ -164,6 +168,30 @@ export const gunCooldown = (base: number, q: number) => base * by(q, 1, 0.4);
 /** The jammer's lock time (ms) at quality q: from its base (shared/jammer.ts JAM_MS) at Scrap parts down to 60% at Space-grade. */
 export const jamMs = (base: number, q: number) => base * by(q, 1, 0.6);
 
+/** The shield plate: after it takes a killing blow, nothing else can hurt you for this long (ms), to get away. */
+export const shieldGraceMs = (q: number) => by(q, 1500, 5000);
+/** What breaks when the shield takes a blow: the cell (burnt out) and the scrap plate (cracked); the coil and padding
+ *  stay. Its part slot indices (GEAR.shield). */
+export const SHIELD_BREAKS = [1, 2];
+
+/** The tier an item looks like (0 Scrap .. 3 Space-grade): its quality rounded down, 0 when broken or not gear. */
+export const tierOf = (it: Item | null | undefined) => Math.max(0, Math.min(3, Math.floor(quality(it) + 1e-6)));
+
+/** What others need to draw your gear's tier (PlayerSnap.tiers): 2 bits each, in TIER_SLOTS order: the item in hand,
+ *  each equipment slot (EQUIP_SLOTS), and the carried canteen and sidearm (the best one in the bag). */
+export const TIER_SLOTS = ['hand', ...EQUIP_SLOTS, 'canteen', 'laser_pistol'] as const;
+export type TierSlot = (typeof TIER_SLOTS)[number];
+export function gearTiers(equip: Slots | undefined, bag: Slots | undefined, held: number): number {
+  const t: Partial<Record<TierSlot, number>> = { hand: held >= 0 ? tierOf(bag?.[held]) : 0 };
+  EQUIP_SLOTS.forEach((s, i) => (t[s] = tierOf(equip?.[i])));
+  bag?.forEach((it, i) => {
+    if (i !== held && (it?.kind === 'canteen' || it?.kind === 'laser_pistol')) t[it.kind] = Math.max(t[it.kind] ?? 0, tierOf(it));
+  });
+  return TIER_SLOTS.reduce((bits, s, i) => bits | ((t[s] ?? 0) << (2 * i)), 0);
+}
+/** One slot's tier out of gearTiers' bits. */
+export const tierIn = (tiers: number | undefined, s: TierSlot) => ((tiers ?? 0) >> (2 * TIER_SLOTS.indexOf(s))) & 3;
+
 /** The repaired gear equipped in a slot, or null. */
 export function equipped(equip: Slots | undefined, slot: EquipSlot): Item | null {
   const it = equip?.[EQUIP_SLOTS.indexOf(slot)];
@@ -177,7 +205,7 @@ export function wornGear(equip: Slots | undefined): number {
   return bits;
 }
 
-/** An equipment slot's bit in wornGear (by EQUIP_SLOTS index: back 1, wrist 2, belt 4, vehicle 8). */
+/** An equipment slot's bit in wornGear (by EQUIP_SLOTS index: back 1, wrist 2, belt 4, vehicle 8, armor 16). */
 export const wornBit = (slot: EquipSlot) => 1 << EQUIP_SLOTS.indexOf(slot);
 
 /** Things drawn on the body while in the bag (not in hand): the scrap plate on the backpack, the canteen

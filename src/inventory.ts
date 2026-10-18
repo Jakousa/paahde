@@ -11,7 +11,7 @@
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
-import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tryMove, type Boxes } from '../shared/gear.ts';
+import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
 import { findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
@@ -203,6 +203,9 @@ const rarityColor = (kind: string) => {
   return t ? hex(RARITY[t].color) : null;
 };
 
+/** An item's rarity colour: a part's tier, or repaired gear's (shared/gear.ts tierOf: what it looks like, src/tierLook.ts). */
+const itemColor = (it: Item) => (isGear(it.kind) && repaired(it) ? hex(RARITY[TIERS[tierOf(it)]].color) : rarityColor(it.kind));
+
 /** Tooltip for an item: the rarity for items with a tier; gear says what it needs or how good it is. */
 export function itemTitle(it: Item): string {
   const t = ITEMS[it.kind]?.tier;
@@ -343,7 +346,7 @@ export class InventoryHud {
     const shape = bagShape(equip);
     // Equipment, then the bag: hotbar row, the backpack's grid (with any rows it no longer opens), and overflow.
     let html = `<div class="box"><div class="head"><h3>${boxLabel('equip')}</h3></div>`
-      + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('equip', equip, 0, EQUIP_SLOTS.length)}</div>`
+      + `<div class="grid" style="grid-template-columns: repeat(${EQUIP_SLOTS.length}, 54px)">${this.slotsHtml('equip', equip, 0, EQUIP_SLOTS.length)}</div>`
       + `<div class="sep"></div><div class="head"><h3>${boxLabel('bag')}</h3><button data-sort="bag" title="Pack it tight, biggest first (the hotbar stays)">Sort</button></div>`
       + `<div class="grid" style="grid-template-columns: repeat(4, 54px)">${this.slotsHtml('bag', bag, 0, HOTBAR)}</div><div class="sep"></div>`;
     if (!shape.rows) html += `<div class="none">No backpack</div>`;
@@ -424,7 +427,7 @@ export class InventoryHud {
       const key = box === 'bag' && i < HOTBAR ? `<span class="key">${i + 1}</span>` : '';
       const ph = box === 'equip' && !it ? `<span class="ph">${EQUIP_LABELS[EQUIP_SLOTS[i]]}</span>` : '';
       const broken = it && isGear(it.kind) && !repaired(it);
-      const c = it && rarityColor(it.kind);
+      const c = it && itemColor(it);
       const cls = `slot${it ? '' : ' empty'}${key ? ' hot' : ''}${broken ? ' broken' : ''}${dead ? ' dead' : ''}${c ? ' rare' : ''}`;
       html += `<div class="${cls}" data-box="${box}" data-i="${i}"${c ? ` style="--c:${c}"` : ''}${it ? ` title="${itemTitle(it)}"` : ''}>${key}${ph}${it ? this.itemHtml(it) : ''}</div>`;
     }
@@ -466,7 +469,7 @@ export class InventoryHud {
   /** One item lying in a grid, spanning its cells (`style`). */
   private slotHtml(box: string, i: number, it: Item, style: string, dead: boolean) {
     const broken = isGear(it.kind) && !repaired(it);
-    const c = rarityColor(it.kind);
+    const c = itemColor(it);
     const cls = `slot item${broken ? ' broken' : ''}${dead ? ' dead' : ''}${c ? ' rare' : ''}${it.r ? ' turned' : ''}`;
     return `<div class="${cls}" data-box="${box}" data-i="${i}" style="${style}${c ? `; --c:${c}` : ''}" title="${itemTitle(it)}">${this.itemHtml(it)}</div>`;
   }

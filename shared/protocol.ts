@@ -87,8 +87,10 @@ export type ClientMsg =
   // Throw the scrap item in hotbar slot `slot` (shared/throw.ts) from the eye (x, y, z) along unit (dx, dy, dz). `n`:
   // the client's count of its throws, echoed in the 'toss' so it can tie its own flying junk to the server's.
   | { t: 'throw'; slot: number; n: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }
-  // Debug menu: repaired gear of every kind, Scrap parts (for testing).
-  | { t: 'debugGear' }
+  // Debug menu: repaired gear of every kind, every part of `tier` (0 Scrap .. 3 Space-grade; for testing).
+  | { t: 'debugGear'; tier?: number }
+  // Debug menu: a killing blow (a guardian's laser), to try the shield plate on.
+  | { t: 'debugHit' }
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
   // there, puts it in your bag as an item (of the component's kind) and answers 'items'.
   | { t: 'crashTake'; id: string }
@@ -137,8 +139,9 @@ export type Hands = 0 | 1 | 2 | 3;
 // item: the kind of the item in their selected hotbar slot (drawn in their hand), omitted when empty.
 // aim: their gun (or jammer) is raised to aim (the 'hands' message), omitted when not.
 // gear: the gear they wear and carry (shared/gear.ts wornGear | carriedGear bits), omitted when none.
+// tiers: how good that gear and the item in hand are, for the look (shared/gear.ts gearTiers), omitted when all Scrap.
 // down: dead, lying as a ragdoll until the respawn (shared/ragdoll.ts); the push (m/s) that threw the body, [0, 0, 0] if none.
-export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; aim?: 1; item?: string; gear?: number; down?: [number, number, number] };
+export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; aim?: 1; item?: string; gear?: number; tiers?: number; down?: [number, number, number] };
 
 export type ServerMsg =
   // First message on every connection: the build the server is serving (dist/version.txt, 'dev' if
@@ -260,6 +263,10 @@ export type ServerMsg =
   // stays (src/chat.ts says how). Deaths are kept in the world's DB; 'obituaries' sends the last OBITUARY_KEEP on join.
   | Obituary
   | { t: 'obituaries'; list: Obituary[] }
+  // Player `id`'s shield plate (shared/gear.ts) took a killing blow at (x, y, z) and broke; `push` the blow's (m/s),
+  // `tier` the plate's (tierOf), `ms` how long its field still keeps them safe (shieldGraceMs). To everyone near: the
+  // flash, the crack, the shards, the field.
+  | { t: 'shieldBreak'; id: number; x: number; y: number; z: number; push: [number, number, number]; tier: number; ms: number }
   | { t: 'zap'; by: number; x: number; y: number; z: number; ex: number; ey: number; ez: number; hit: boolean; pistol?: true }
   // Thrown scrap `id` (shared/throw.ts tossAt), item `kind`, thrown by player `by` (their throw `n`), flying from
   // (x, y, z) with velocity (vx, vy, vz) at server time `time`; sent again with `hit` as it bounces off a drone, and

@@ -28,6 +28,7 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   backpack: { label: 'Backpack', stack: 1, size: [2, 2] },
   storm_detector: { label: 'Storm detector', stack: 1, size: [1, 2] },
   wristpad: { label: 'Wrist computer', stack: 1 },
+  shield: { label: 'Shield plate', stack: 1, size: [2, 2] },
   // Every piece of junk picked up (scrap piles, crash-site debris) is just scrap: the crafting and repair metal.
   scrap: { label: 'Scrap', stack: 20 },
   // The other basic material: tarps, sacks and seat covers (cloth bundles in the scrap piles, burnt seats at crash sites).

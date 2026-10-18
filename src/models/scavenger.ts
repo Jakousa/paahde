@@ -8,8 +8,9 @@
 // The glb is fetched once and shared; each instance gets its own skeleton (SkeletonUtils.clone) and its
 // own copy of the `PlayerTint` material (scarf, face mask, sash, armband), which setColor() recolours.
 // setOutfit() says what's in the hand (carried at the right hip, src/models/outfit.ts) and which gear is worn:
-// the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt, and which things in
-// the bag are carried on the body (CARRIED: their own meshes too). A gun in hand
+// the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt, the shield plate on
+// the chest (SHIELD_URL), and which things in the bag are carried on the body (CARRIED: their own meshes too). Each
+// piece shows its tier (src/tierLook.ts; `tiers`: shared/gear.ts gearTiers). A gun in hand
 // (GUN_HOLD) is carried at the low ready, or raised along the look pitch while `aiming`.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
@@ -18,7 +19,8 @@ import { LegIk, lowestAnkles, type Ground } from './legIk';
 import { Ragdoll, type RagdollGround } from './ragdoll';
 import { CrouchGait } from './crouchGait';
 import type { RidePose } from '../players';
-import { carriedBit, wornBit } from '../../shared/gear.ts';
+import { carriedBit, tierIn, wornBit, type TierSlot } from '../../shared/gear.ts';
+import { applyTier } from '../tierLook';
 import { beltModel, disposeModel, DRAW_IN, heldModel, heldMuzzle, wristModel } from './outfit';
 import { LAMP_ON } from './jammer';
 import { RECEIVERS } from '../../shared/bosses.ts';
@@ -76,6 +78,11 @@ const TRUDGE_MIX = 0.7;
 const TRUDGE_LEAN = 0.75;
 
 const CANTEEN_URL = './models/canteen.glb';
+/** The shield plate (tools/blender/finds.py: upright as worn, the wearer's front +Z, origin at the plate's middle). */
+const SHIELD_URL = './models/finds/shield.glb';
+/** Where its middle sits on the chest (glTF rest pose: face +Z, up +Y), tipped back with the chest. */
+const SHIELD_AT = new THREE.Vector3(-0.015, 1.315, 0.192);
+const SHIELD_TILT = -0.12;
 /** Carried canteen, root space (forward -Z, right +X): where its bottom sits and its forward tip (rad). */
 const CARRY_AT = new THREE.Vector3(0.32, 0.88, -0.2);
 const CARRY_TIP = -0.15;
@@ -88,6 +95,7 @@ const GRIP_UP = 0.1;
 
 let cached: Promise<GLTF> | null = null;
 let canteenCached: Promise<GLTF> | null = null;
+let shieldCached: Promise<GLTF> | null = null;
 const ANKLES = ['LeftFoot', 'RightFoot'];
 const lowest = new WeakMap<GLTF, Map<string, number>>();
 const trudgeClips = new WeakMap<GLTF, THREE.AnimationClip | null>();
@@ -137,9 +145,12 @@ export class ScavengerModel {
   private gear = 0;
   private pack: THREE.Object3D | null = null;
   /** The carried things' meshes and the gear bits each needs. */
-  private carried: { mesh: THREE.Object3D; bits: number }[] = [];
+  private carried: { mesh: THREE.Object3D; bits: number; tier: TierSlot | null }[] = [];
   private wrist: THREE.Object3D | null = null;
   private belt: THREE.Object3D | null = null;
+  private shield: THREE.Object3D | null = null;
+  /** The gear's tiers (shared/gear.ts gearTiers). */
+  private tiers = 0;
   /** Meshes were added since the last setOutfit (it tells the Avatar). */
   private added = false;
   private sip = 0; // 0 carried .. 1 at the mouth
@@ -173,6 +184,7 @@ export class ScavengerModel {
       const own = mats.map((m) => {
         if (m.name !== 'PlayerTint') return m;
         const c = (m as THREE.MeshStandardMaterial).clone();
+        c.userData.noTier = true; // the player's colour stays the player's colour
         this.tint.push(c);
         return c;
       });
@@ -198,9 +210,9 @@ export class ScavengerModel {
       if (b && !this.posed.some((p) => p.bone === b)) this.posed.push({ bone: b, base: b.quaternion.clone() });
     }
     this.pack = model.getObjectByName('Scavenger_Backpack') ?? null;
-    for (const [name, bits] of CARRIED) {
+    for (const [name, bits, tier] of CARRIED) {
       const mesh = model.getObjectByName(name);
-      if (mesh) this.carried.push({ mesh, bits });
+      if (mesh) this.carried.push({ mesh, bits, tier });
     }
     // The shovel strapped to the backpack is from when there was digging: never shown.
     const shovel = model.getObjectByName('Scavenger_Shovel');
@@ -242,6 +254,18 @@ export class ScavengerModel {
 
   /** The wrist computer round the left forearm and the storm detector on the belt's left side, placed in the
    *  rest pose (glTF space: face +Z, the character's left +X) and parented to their bones; hidden until worn. */
+  /** Every piece of gear shown in its tier (applyTier is cheap when nothing changed). */
+  private showTiers() {
+    const t = (s: TierSlot) => tierIn(this.tiers, s);
+    if (this.pack) applyTier(this.pack, t('back'));
+    if (this.wrist) applyTier(this.wrist, t('wrist'));
+    if (this.belt) applyTier(this.belt, t('belt'));
+    if (this.shield) applyTier(this.shield, t('armor'));
+    if (this.held) applyTier(this.held, t('hand'));
+    if (this.canteen) applyTier(this.canteen, t('hand'));
+    for (const c of this.carried) if (c.tier) applyTier(c.mesh, t(c.tier));
+  }
+
   private wearGear(model: THREE.Object3D) {
     model.updateMatrixWorld(true);
     const at = (o: THREE.Object3D) => model.worldToLocal(o.getWorldPosition(new THREE.Vector3()));
@@ -259,14 +283,28 @@ export class ScavengerModel {
       this.belt = attach(model, hips, beltModel(), new THREE.Vector3(0.215, 0.93, -0.06), new THREE.Quaternion().setFromAxisAngle(Y_AXIS, 0.37));
     }
     for (const o of [this.wrist, this.belt]) if (o) o.visible = false;
+    const spine2 = model.getObjectByName('Spine2');
+    if (!spine2) return;
+    shieldCached ??= new GLTFLoader().loadAsync(SHIELD_URL);
+    shieldCached.then((g) => {
+      if (this.disposed) return;
+      const plate = g.scene.clone(true);
+      plate.traverse((o) => {
+        if ((o as THREE.Mesh).isMesh) o.castShadow = o.receiveShadow = true;
+      });
+      plate.visible = false;
+      this.shield = attach(model, spine2, plate, SHIELD_AT, new THREE.Quaternion().setFromAxisAngle(X_AXIS, SHIELD_TILT));
+      this.added = true;
+    }, (e) => console.warn('shield model failed to load', e));
   }
 
   /** What's in the hand (an item kind, null for none) and the worn gear (wornGear bits). True when meshes were
-   *  added since the last call (the Avatar puts them on its layers). */
-  setOutfit(item: string | null, gear: number): boolean {
+   *  added since the last call (the Avatar puts them on its layers). `tiers`: how good each is (shared/gear.ts gearTiers). */
+  setOutfit(item: string | null, gear: number, tiers = 0): boolean {
     let added = this.added;
     this.added = false;
     this.gear = gear;
+    this.tiers = tiers;
     if (item !== this.item) {
       this.item = item;
       if (this.held) disposeModel(this.held);
@@ -356,6 +394,8 @@ export class ScavengerModel {
     for (const c of this.carried) c.mesh.visible = (this.gear & c.bits) === c.bits;
     if (this.wrist) this.wrist.visible = (this.gear & WRIST) !== 0;
     if (this.belt) this.belt.visible = (this.gear & BELT) !== 0;
+    if (this.shield) this.shield.visible = (this.gear & ARMOR) !== 0;
+    this.showTiers();
     if (!this.mixer) return;
     if (this.doll) return this.doll.update(dt);
     // Remote speeds arrive as 20 Hz steps; smooth them so playback rate (and the feet) don't jitter.
@@ -738,7 +778,7 @@ export class ScavengerModel {
   dispose() {
     this.disposed = true;
     if (this.held) disposeModel(this.held);
-    for (const o of [this.wrist, this.belt]) if (o) disposeModel(o);
+    for (const o of [this.wrist, this.belt, this.shield]) if (o) disposeModel(o);
     this.mixer?.stopAllAction();
     this.mixer?.uncacheRoot(this.mixer.getRoot());
     for (const m of this.tint) m.dispose();
@@ -794,13 +834,13 @@ const SLIDE_REST = V(0.22, -0.24, -0.44);
 const SLIDE_FINGERS = V(-0.03, -0.06, -0.15);
 const _saved = Array.from({ length: 8 }, () => new THREE.Quaternion());
 
-const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt');
+const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt'), ARMOR = wornBit('armor');
 /** glb meshes of things carried on the body (tools/models/scavenger.py GEAR_MESH) and the gear bits that show them:
  *  the scrap plate is strapped to the backpack, so it needs it too. */
-const CARRIED: [string, number][] = [
-  ['Scavenger_Scrap', carriedBit('scrap') | BACK],
-  ['Scavenger_Canteen', carriedBit('canteen')],
-  ['Scavenger_Sidearm', carriedBit('laser_pistol')],
+const CARRIED: [string, number, TierSlot | null][] = [
+  ['Scavenger_Scrap', carriedBit('scrap') | BACK, null],
+  ['Scavenger_Canteen', carriedBit('canteen'), 'canteen'],
+  ['Scavenger_Sidearm', carriedBit('laser_pistol'), 'laser_pistol'],
 ];
 
 /** Parent `o` to `bone`, placed at `p` / `q` in `model`'s space (as it is posed now). */

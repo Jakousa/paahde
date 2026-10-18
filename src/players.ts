@@ -74,7 +74,7 @@ export interface AvatarModel {
   setColor(hex: number): void;
   update(pose: ModelPose, dt: number): void;
   /** What's in the hand (an item kind, null for none) and the gear worn (shared/gear.ts wornGear bits). */
-  setOutfit?(item: string | null, gear: number): boolean;
+  setOutfit?(item: string | null, gear: number, tiers?: number): boolean;
   /** First person on the bike: draw the body (hands on the bars) but not the head the camera is in. */
   setHeadless?(on: boolean): void;
   /** The eyes' world position, once posed (riding in first person, the camera sits there). */
@@ -154,10 +154,10 @@ export class Avatar {
     this.model.setHeadless?.(on);
   }
 
-  /** What's in hand and worn (see AvatarModel.setOutfit); call every frame, it's cheap when nothing changed. */
-  setOutfit(item: string | null, gear: number) {
+  /** What's in hand and worn and how good (see AvatarModel.setOutfit); call every frame, it's cheap when nothing changed. */
+  setOutfit(item: string | null, gear: number, tiers = 0) {
     // New meshes (an item taken out, a model loaded) get the layers too.
-    if (this.model.setOutfit?.(item, gear)) this.attach(this.model);
+    if (this.model.setOutfit?.(item, gear, tiers)) this.attach(this.model);
   }
 
   /** The eyes' world position as last drawn; false if the model can't tell (placeholder). */

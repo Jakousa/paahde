@@ -13,6 +13,7 @@ const TEXTS: Record<string, string> = {
   backpack: 'Backpack: Tab, into the Back slot.',
   storm_detector: 'Storm detector: Tab, into the Belt slot. Beeps before a storm.',
   wristpad: 'Wrist computer: Tab, into the Wrist slot.',
+  shield: 'Shield plate: Tab, into the Armor slot. Takes one killing blow.',
   canteen: 'Water bottle: on the hotbar, hold mouse to drink. Fill at a pump.',
   spyglass: 'Telescope: on the hotbar, hold mouse to look, wheel to zoom.',
   laser_pistol: 'Laser pistol: on the hotbar. Left mouse fires, right aims.',

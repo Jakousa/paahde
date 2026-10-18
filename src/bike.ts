@@ -13,6 +13,7 @@ import { END_FADE, TRACK_WRAP, tyreprints } from './footprints.ts';
 import { tyreDust } from './tyreDust.ts';
 import type { RidePose } from './players.ts';
 import { nightLevel, SHADOW_ONLY_LAYER } from './world/env.ts';
+import { applyTier } from './tierLook.ts';
 
 // Rider contact points, in the bike's frame (origin on the ground between the tyres, forward is -z), from
 // tools/blender/sandbike.py: hips over the front of the seat (top 0.86), ankles over the pegs (0.2, 0.34, 0.12).
@@ -95,6 +96,9 @@ export class Bike {
   private disposed = false;
   private headlight?: (typeof headlights)[number];
   private lens: THREE.MeshStandardMaterial[] = [];
+  private model?: THREE.Object3D;
+  /** How good the bike's parts are (src/tierLook.ts). */
+  private tier = 1;
   private glow = 0; // 0..1, the headlight ramping on and off
   private readonly pose: RidePose = {
     seat: new THREE.Vector3(),
@@ -125,6 +129,7 @@ export class Bike {
             lens.emissive.setHex(HEADLIGHT.color);
             lens.emissiveIntensity = 0;
             m.material = lens;
+            m.userData.noTier = true;
             this.lens.push(lens);
           }
         });
@@ -132,9 +137,17 @@ export class Bike {
         this.rear = model.getObjectByName('RearWheel');
         this.bars = model.getObjectByName('Handlebar');
         this.tilt.add(model);
+        this.model = model;
+        applyTier(model, this.tier);
       },
       (e) => console.warn('sand bike model failed to load', e),
     );
+  }
+
+  /** The look of its parts' tier (0 Scrap .. 3 Space-grade). */
+  setTier(tier: number) {
+    this.tier = tier;
+    if (this.model) applyTier(this.model, tier);
   }
 
   update(p: BikePose, dt: number) {

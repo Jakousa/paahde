@@ -1396,3 +1396,26 @@ drawn by `src/world/shelters.ts`).
   removed on load (`RETIRED`, shared/items.ts), and a cache holding one is replaced.
 - **To bring it back:** the commit that removed it has everything (client prediction, the dig fx and ring, the
   detector's ticks, `loot.dug`).
+
+## Gear shows its tier; the shield plate
+
+- **Tier looks:** every model of a piece of gear looks its tier (`tierOf`: the parts' mean tier rounded down, as the
+  tooltip names it), with the parts' own language (tools/blender/items.py): Scrap rusts in blotches (noise on the
+  model's local position), Basic is the model as made, Quality is polished with brass-warm metal and orange lamps,
+  Space-grade goes pale with a cyan sheen along its edges and cyan lamps. `src/tierLook.ts` makes one node-material
+  variant per material and tier and swaps it in per mesh (`applyTier`, cheap enough to call every frame, so models that
+  load late catch up). On: the first-person hands (`playerHands.tier`), the avatar (held item, backpack, wrist, belt,
+  shield, carried canteen and sidearm), the bike (from `PlayerState.bike`) and loot on the sand (broken gear is Scrap).
+  Animated materials opt out with `userData.noTier` (the bike's headlight, the guns' charge glow, the player tint).
+- **Others see it:** `PlayerSnap.tiers`, 2 bits per `TIER_SLOTS` entry (hand, each equipment slot, carried canteen and
+  sidearm), omitted when all Scrap. Gear slots in the Tab inventory get the tier's rarity colour too.
+- **Shield plate** (`shield`, new `armor` equipment slot, found at crawler sites and in caches): a torch-cut shard of
+  ship hull on canvas padding with a copper-coil emitter and a cell (tools/blender/finds.py `build_shield`, worn on the
+  chest from Spine2, lies on its back as a find). A killing blow that isn't heatstroke (`die` → `shielded`) breaks it
+  instead: the cell burns out and the plate cracks (`SHIELD_BREAKS`: those slots empty, repair at the workbench), a
+  crawler's bites come back off the heat meter, and nothing hurts you for `shieldGraceMs` (1.5 s Scrap .. 5 s
+  Space-grade). Everyone near gets `shieldBreak`: the emitter's field flashes round you in the lens's tier colour and
+  hangs on for the grace, flickering out at the end, hull shards fly, a crack, a glassy ring and a thump (−24.7 LUFS,
+  −1.3 dBTP); the wearer gets a jolt and a flash over the screen.
+- **Debug (F3):** *Give gear* at any tier, *Hit me* (a killing blow).
+

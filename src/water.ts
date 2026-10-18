@@ -9,7 +9,7 @@
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // and F at a pump (the base's, some shelters') refills it.
 import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
-import { equipped, repaired } from '../shared/gear.ts';
+import { equipped, repaired, tierOf } from '../shared/gear.ts';
 import { HOTBAR } from '../shared/items.ts';
 import { PISTOL, RIFLE } from '../shared/rifle.ts';
 import { JAMMER } from '../shared/jammer.ts';
@@ -28,12 +28,13 @@ import { atWater, indoors } from '../shared/shelters.ts';
  * are true for the whole sip / refill action.
  */
 export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer' | 'receiver' | 'scrap';
-/** `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden).
+/** `tier`: how good the item in hand is (shared/gear.ts tierOf), for its look (src/tierLook.ts).
+ *  `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden).
  *  `throwAt`: when the last throw of scrap started (performance.now(), src/throw.ts), for the hands' throw. */
 /** Rifle or pistol (src/rifle.ts): `aim` 0..1 raised to the eye, `rifleScoped` looking through its scope (hands hidden), `kick`
  *  the recoil to show (1 on firing, decaying), `charge` the cell 0..1 (1: ready to fire). */
 export const playerHands = {
-  held: 'none' as Held, throwAt: 0, drinking: false, filling: false, looking: false, scoped: false,
+  held: 'none' as Held, tier: 1, throwAt: 0, drinking: false, filling: false, looking: false, scoped: false,
   aim: 0, rifleScoped: false, kick: 0, charge: 1,
   /** The jammer's lamp (src/jammer.ts), 0 dark .. 1 fully lit. */
   jamLamp: 0,
@@ -236,6 +237,7 @@ export class Survival {
     const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : receiverBoss(kind) ? 'receiver' : kind && THROWABLE.has(kind) ? 'scrap' : 'none';
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
+    playerHands.tier = tierOf(it);
     tools.bike = kind === 'motorcycle' && repaired(it);
   }
 

@@ -73,6 +73,9 @@ export type RemotePlayer = {
   /** Dead, lying as a ragdoll thrown by this push (m/s); null when alive. */
   down: [number, number, number] | null;
   gear: number;
+  /** How good that gear and the item in hand are (shared/gear.ts gearTiers); `bike` their motorcycle (PlayerState.bike). */
+  tiers: number;
+  bike: number;
   drinking: boolean;
   /** Filling their canteen at the pump. */
   filling: boolean;
@@ -181,6 +184,8 @@ export class Net {
   onObituary?: (msg: Obituary) => void;
   /** The world's latest deaths, oldest first, as we join (src/chat.ts). */
   onObituaries?: (list: Obituary[]) => void;
+  /** Someone's shield plate took a killing blow (src/shieldFx.ts). */
+  onShieldBreak?: (msg: Extract<ServerMsg, { t: 'shieldBreak' }>) => void;
   /** Another player's laser rifle shot (src/rifle.ts draws it). */
   onZap?: (msg: Extract<ServerMsg, { t: 'zap' }>) => void;
   /** Thrown scrap flying, bouncing off a drone or landed (src/throw.ts). */
@@ -284,8 +289,13 @@ export class Net {
   }
 
   /** Debug menu: repaired gear of every kind. */
-  debugGear() {
-    if (this.connected) this.send({ t: 'debugGear' });
+  debugGear(tier = 0) {
+    if (this.connected) this.send({ t: 'debugGear', tier });
+  }
+
+  /** Debug menu: a killing blow, to try the shield plate on. */
+  debugHit() {
+    if (this.connected) this.send({ t: 'debugHit' });
   }
 
   /** Carry off the small machine at a crash site: hidden now, confirmed (it lands in the bag) or put back by the server. */
@@ -647,6 +657,7 @@ export class Net {
     if (msg.t === 'chat') return this.onChat?.(msg);
     if (msg.t === 'obituary') return this.onObituary?.(msg);
     if (msg.t === 'obituaries') return this.onObituaries?.(msg.list);
+    if (msg.t === 'shieldBreak') return this.onShieldBreak?.(msg);
     if (msg.t === 'called') {
       this.called = msg.b;
       return;
@@ -737,7 +748,7 @@ export class Net {
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
-        riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3,
+        riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, tiers: pick.tiers ?? 0, bike: pick.bike ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3,
         aiming: pick.aim === 1 || this.justFired(pb.id),
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t, down: pb.down ?? null,
       });

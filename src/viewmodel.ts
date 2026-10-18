@@ -36,6 +36,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { FirstPersonCamera } from './camera';
 import { playerHands, type Held } from './water';
 import { jammerModel, LAMP_ON } from './models/jammer';
+import { applyTier } from './tierLook';
 import { RECEIVER_LAMP, receiverModel } from './models/receiver';
 import type { BossKind } from '../shared/bosses.ts';
 
@@ -126,6 +127,7 @@ export class ViewModel {
       const own = mats.map((m) => {
         if (m.name !== 'PlayerTint') return m;
         const c = (m as THREE.MeshStandardMaterial).clone();
+        c.userData.noTier = true;
         this.tint.push(c);
         return c;
       });
@@ -160,6 +162,7 @@ export class ViewModel {
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
         if (m.name === 'RifleGlow' || m.name === 'PistolGlow') {
           m.userData.base = (m as THREE.MeshStandardMaterial).emissiveIntensity || 1;
+          m.userData.noTier = true; // it shows the cell's charge
           this.rifleGlow.push(m as THREE.MeshStandardMaterial);
         }
       }
@@ -192,6 +195,17 @@ export class ViewModel {
     if (this.jammer) this.jammer.obj.visible = this.shown === 'jammer';
     this.showReceiver();
     if (this.scrapChunk) this.scrapChunk.visible = this.shown === 'scrap';
+  }
+
+  /** The item in hand in its tier (src/tierLook.ts; `playerHands.tier`). */
+  private showTier() {
+    const kind = playerHands.receiver.kind;
+    const held: Partial<Record<Held, THREE.Object3D | null | undefined>> = {
+      canteen: this.canteen, telescope: this.telescope, rifle: this.rifle, pistol: this.pistol, jammer: this.jammer?.obj,
+      receiver: kind ? this.receivers.get(kind)?.obj : null,
+    };
+    const o = held[this.shown];
+    if (o) applyTier(o, playerHands.tier);
   }
 
   /** The receiver of the boss in hand on the jammer's mount (made the first time), the others hidden. */
@@ -369,6 +383,7 @@ export class ViewModel {
       const f = (view.stepPhase / (2 * Math.PI)) * WALK_RATE + WALK_PHASE;
       a.time = (f - Math.floor(f)) * a.getClip().duration;
     }
+    this.showTier();
     if (this.jammer) this.jammer.lamp.color.copy(LAMP_ON).multiplyScalar(playerHands.jamLamp);
     if (this.shown === 'receiver') {
       const r = playerHands.receiver.kind ? this.receivers.get(playerHands.receiver.kind) : undefined;

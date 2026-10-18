@@ -21,7 +21,7 @@ export class DebugMenu {
   private panel = document.createElement('div');
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
-  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) => void,
+  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) => void,
     showTrophies: (mode: TrophyShow) => void) {
     const style = document.createElement('style');
     style.textContent = `
@@ -57,7 +57,8 @@ export class DebugMenu {
 <label title="Boss trophies at the base, local view (walking into them still follows the bosses beaten)">Trophies <select id="dbgTrophies"><option value="won">as won</option><option value="all">all</option><option value="none">none</option></select></label>
 <label>Tone <select id="dbgTone">${TONE_CURVES.map((c) => `<option>${c}</option>`).join('')}</select></label>
 <label id="dbgWhiteRow">White <input id="dbgWhite" type="range" min="1" max="8" step="0.25"> <b id="dbgWhiteVal"></b></label>
-<div class="row"><button id="dbgGear" title="One of every piece of gear, repaired with Scrap parts, a laser rifle, a laser pistol and a jammer (what doesn't fit the bag is skipped)">Give gear</button></div>`;
+<div class="row">Give gear ${['Scrap', 'Basic', 'Quality', 'Space'].map((n, i) => `<button data-gear="${i}" title="One of every piece of gear, repaired with ${n} parts (what doesn't fit is skipped)">${n}</button>`).join('')}</div>
+<div class="row"><button id="dbgHit" title="A killing blow (a guardian's laser): try the shield plate">Hit me</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
     const live = p.querySelector<HTMLInputElement>('#dbgLive')!;
@@ -66,7 +67,8 @@ export class DebugMenu {
     const row = p.querySelector<HTMLElement>('.row')!;
     p.querySelector('#dbgStorm')!.addEventListener('click', summonStorm);
     p.querySelector('#dbgLocalStorm')!.addEventListener('click', summonLocalStorm);
-    p.querySelector('#dbgGear')!.addEventListener('click', giveGear);
+    for (const b of p.querySelectorAll<HTMLElement>('[data-gear]')) b.addEventListener('click', () => giveGear(Number(b.dataset.gear)));
+    p.querySelector('#dbgHit')!.addEventListener('click', hit);
     p.querySelector('#dbgGuardian')!.addEventListener('click', () => summonBot('guardian'));
     p.querySelector('#dbgDrone')!.addEventListener('click', () => summonBot('drone'));
     p.querySelector('#dbgJet')!.addEventListener('click', () => summonBot('jet'));

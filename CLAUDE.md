@@ -85,7 +85,10 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`, `shared/storage.ts`), Tab overlay in `src/inventory.ts`
 - `shared/gear.ts` — gear found broken and repaired with parts at the workbench (part slots, quality, what each
   does, move/repair rules for client and server); `shared/loot.ts` + `server/loot.ts` — finds and caches in
-  the world, drawn by `src/world/loot.ts`
+  the world, drawn by `src/world/loot.ts`. Every model of gear shows its tier (quality rounded down: rust → as made →
+  polished brass → pale with a cyan sheen), `src/tierLook.ts` `applyTier`; others see it via `PlayerSnap.tiers`
+  (`gearTiers`). The shield plate (Armor slot) takes one killing blow, then breaks (`shielded` in server/world.ts,
+  `src/shieldFx.ts`)
 - `src/main.ts` — entry: renderer, scene, fixed-step game loop
 - `src/net.ts` — client netcode (prediction, reconciliation, interpolation, reconnect)
 - `src/input.ts` — keyboard → input bitmask

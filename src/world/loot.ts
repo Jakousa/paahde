@@ -6,7 +6,8 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { cameraPosition, float, length, max, modelPosition, normalLocal, positionLocal, smoothstep, uniform, uv, vec3 } from 'three/tsl';
-import { GEAR, isGear, repaired } from '../../shared/gear.ts';
+import { GEAR, isGear, repaired, tierOf } from '../../shared/gear.ts';
+import { applyTier } from '../tierLook';
 import { RECEIVERS, RELICS } from '../../shared/bosses.ts';
 import { RELIC_DROPS } from '../../shared/tables.ts';
 import { parsePart } from '../../shared/items.ts';
@@ -125,6 +126,7 @@ const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
       if (g.userData.rims) g.userData.rims.length = 0; // the stand-in's rims went with it
       stand.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
       g.add(m);
+      if (g.userData.tier !== undefined) applyTier(m, g.userData.tier);
       if (g.userData.rims) addRims(m, g.userData.rims);
     }, () => {});
   },
@@ -141,6 +143,8 @@ const FIND_MODELS: Record<string, { url: string; rot?: [number, number, number] 
   laser_pistol: { url: './models/pistol.glb', rot: [0, 0, Math.PI / 2] },
   ...Object.fromEntries(['backpack', 'storm_detector', 'wristpad', 'jammer', ...Object.values(RECEIVERS)]
     .map((k) => [k, { url: `./models/finds/${k}.glb` }])),
+  // Made upright, as worn: lies on its back, the emitter to the sky.
+  shield: { url: './models/finds/shield.glb', rot: [-Math.PI / 2, 0, 0] },
 };
 /** The enemies' and bosses' own parts (shared/tables.ts RELIC_DROPS, shared/bosses.ts RELICS): tools/blender/relics.py. */
 const RELIC_KINDS = new Set([...Object.values(RELIC_DROPS).map((r) => r.kind), ...Object.values(RELICS)]);
@@ -172,6 +176,7 @@ function addFind(g: THREE.Group, kind: string) {
       o.userData.shared = true; // every copy shares the loaded geometry: never disposed
     });
     g.add(m);
+    if (g.userData.tier !== undefined) applyTier(m, g.userData.tier);
     if (g.userData.rims) addRims(m, g.userData.rims);
   }, (e) => console.warn(`${spec.url} failed to load`, e));
 }
@@ -275,6 +280,8 @@ export class LootView {
       this.group.add(pool);
     }
     if (isGear(l.kind)) {
+      // Gear looks its parts' tier (src/tierLook.ts): broken, it's Scrap at best.
+      obj.userData.tier = tierOf({ id: 0, kind: l.kind, n: 1, parts: l.parts });
       if (FIND_MODELS[l.kind]) addFind(obj, l.kind);
       else GEAR_MODELS[l.kind]?.(obj);
       if (rims) addRims(obj, rims);

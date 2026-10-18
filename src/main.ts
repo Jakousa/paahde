@@ -12,6 +12,7 @@ import { BlownSand } from './blownSand';
 import { BaseSand } from './world/baseSand';
 import { Shelters } from './world/shelters';
 import { addCrosshair } from './crosshair';
+import { ShieldFx } from './shieldFx';
 import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
 import { addItem, debrisItem, SCRAP } from '../shared/items.ts';
@@ -69,7 +70,7 @@ import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { machinesAt } from '../shared/crash.ts';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
-import { bagShape, carriedGear, equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
+import { bagShape, carriedGear, equipped, gearTiers, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootName } from './world/loot';
 import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
@@ -166,13 +167,15 @@ machines.bench.onReady = () => {
   const job = machines.bench.site(net.siteLink(BENCH_ID), scrapBench);
   if (job && !teardown.active && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 5) teardown.begin(job);
 };
-new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear(), (what) => net.summonBot(what),
+new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
   (mode) => trophies.show(mode));
 new Chat(net);
 askName(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
 update.busy = () => guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
 const lootView = new LootView(scene);
+const shieldFx = new ShieldFx(scene, () => orbit.camera.position, () => net.id, (m) => guardianFx.jolt(m));
+net.onShieldBreak = (m) => shieldFx.play(m);
 const corpseView = new CorpseView(scene);
 addCrosshair();
 loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
@@ -207,7 +210,7 @@ addHeadlights(scene);
 let lastHeading = NaN;
 /** Draw player `id`'s bike while they ride, with `avatar` seated on it, and drop it when they get off.
  *  False when not riding: then the caller updates the avatar on foot. */
-function ride(id: number, avatar: Avatar, p: { riding: boolean; pitch?: number } & Parameters<Bike['update']>[0], dt: number): boolean {
+function ride(id: number, avatar: Avatar, p: { riding: boolean; pitch?: number; bike: number } & Parameters<Bike['update']>[0], dt: number): boolean {
   let bike = bikes.get(id);
   if (!p.riding) {
     if (bike) {
@@ -218,6 +221,7 @@ function ride(id: number, avatar: Avatar, p: { riding: boolean; pitch?: number }
     return false;
   }
   if (!bike) bikes.set(id, (bike = new Bike(scene)));
+  bike.setTier(Math.max(0, Math.min(3, Math.floor(p.bike - 1 + 1e-6)))); // PlayerState.bike: 1 + its quality
   bike.update(p, dt);
   bike.seat(avatar.root);
   avatar.update({ x: p.x, y: p.y, z: p.z, facing: p.heading, speed: 0, grounded: true, pitch: p.pitch, ride: bike.rider() }, dt);
@@ -325,7 +329,7 @@ renderer.setAnimationLoop((time) => {
   lastHeading = s.riding ? v.heading : NaN;
   // What's in hand (the selected hotbar slot) and worn (shared/gear.ts): drawn on the body, and sets what the tools can do.
   const inHand = tools.slot >= 0 ? net.boxes.bag?.[tools.slot] : null;
-  me.setOutfit(inHand?.kind ?? null, wornGear(net.boxes.equip) | carriedGear(net.boxes.bag, tools.slot));
+  me.setOutfit(inHand?.kind ?? null, wornGear(net.boxes.equip) | carriedGear(net.boxes.bag, tools.slot), gearTiers(net.boxes.equip, net.boxes.bag, tools.slot));
   const riding = ride(0, me, { ...s, x: v.x, y: v.y, z: v.z, heading: v.heading, pitch: orbit.pitch }, frameDt);
   if (!riding) {
     me.update(
@@ -352,7 +356,7 @@ renderer.setAnimationLoop((time) => {
         () => model.dispose(),
       );
     }
-    avatar.setOutfit(r.item, r.gear);
+    avatar.setOutfit(r.item, r.gear, r.tiers);
     if (!ride(r.id, avatar, { ...r, heading: r.facing }, frameDt)) {
       avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching }, frameDt);
     }
@@ -377,6 +381,7 @@ renderer.setAnimationLoop((time) => {
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
   const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, !s.riding && !teardown.active && !net.down);
   lootView.update(frameDt, net.loot, focus);
+  shieldFx.update(frameDt, (id) => (id === net.id ? me.root.position : others.find((o) => o.id === id) ?? null));
   corpseView.update(frameDt, focus);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
   teardown.placeCamera(frameDt); // at the disassembly table: a fixed view above it
