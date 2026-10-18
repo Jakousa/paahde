@@ -1027,9 +1027,6 @@ Goal of this session: *I can roam around the desert planet with my friends in th
 - `?agx`: AgX tone mapping.
 - `sand.*` and `env.*` uniforms (wind, colours, ripple strength, glitter, haze, sun size) can be changed
   live without recompiling.
-- `node scripts/test-dig.ts` checks that digging is deterministic, that slumping works and that
-  saved data round-trips.
-- `node scripts/ws-dig-check.ts [url] dig|look` checks dig sync against a running server.
 - Agent worktrees live in `.claude/worktrees/`. It's gitignored and Vite doesn't watch it.
 
 ### Known gaps / next up
@@ -1387,3 +1384,15 @@ drawn by `src/world/shelters.ts`).
   goal*).
 - **Gaps:** finished worlds' databases stay on disk; nothing lists open worlds; the browser ID is the same in every
   world (each world's DB keeps its own player row).
+
+## No digging (for now)
+
+- **Taken out:** players can't dig or pile sand any more, and the shovel and metal detector are gone with it (items,
+  gear, finds, hints, held models; `src/dig.ts`, `src/detector.ts` and the dig scripts deleted; the crosshair moved to
+  `src/crosshair.ts`). The DIG/PILE input bits (64, 128) are free. The terrain edit layer stays for the bosses'
+  craters, the relaxation and the wind's healing (`shared/dig.ts`, `server/terrain.ts`).
+- **Caches** lie out on the sand now, picked up like any find; the ones buried before come up on the next start
+  (`world_loot.depth` is always 0). Shovels and metal detectors already in boxes, dropped or lying in the world are
+  removed on load (`RETIRED`, shared/items.ts), and a cache holding one is replaced.
+- **To bring it back:** the commit that removed it has everything (client prediction, the dig fx and ring, the
+  detector's ticks, `loot.dug`).

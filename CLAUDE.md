@@ -24,7 +24,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`);
   pieces give one of the two basic materials, `scrap` or `cloth` (shared/items.ts `SCRAP`/`CLOTH`)
 - `shared/rocks.ts` — rock formations (mesas, buttes, boulders) placed by a rockiness noise; part of `baseHeight`
-  (max with the dunes). Steep rock is a wall in `step()`, digging stops at rock, `rock` attribute paints them in
+  (max with the dunes). Steep rock is a wall in `step()`, craters stop at rock, `rock` attribute paints them in
   `src/world/sandMaterial.ts`
 - `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen
 - `shared/temperature.ts` — air/felt °C by time of day (drives thirst); `shared/shade.ts` — sun ray march (shade)
@@ -84,8 +84,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `server/scrap.ts` — scrap pickups, respawn;
   `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`, `shared/storage.ts`), Tab overlay in `src/inventory.ts`
 - `shared/gear.ts` — gear found broken and repaired with parts at the workbench (part slots, quality, what each
-  does, move/repair rules for client and server); `shared/loot.ts` + `server/loot.ts` — finds and buried caches in
-  the world, drawn by `src/world/loot.ts`, heard by the metal detector (`src/detector.ts`)
+  does, move/repair rules for client and server); `shared/loot.ts` + `server/loot.ts` — finds and caches in
+  the world, drawn by `src/world/loot.ts`
 - `src/main.ts` — entry: renderer, scene, fixed-step game loop
 - `src/net.ts` — client netcode (prediction, reconciliation, interpolation, reconnect)
 - `src/input.ts` — keyboard → input bitmask

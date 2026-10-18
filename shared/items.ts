@@ -28,8 +28,6 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   backpack: { label: 'Backpack', stack: 1, size: [2, 2] },
   storm_detector: { label: 'Storm detector', stack: 1, size: [1, 2] },
   wristpad: { label: 'Wrist computer', stack: 1 },
-  metal_detector: { label: 'Metal detector', stack: 1, size: [1, 3] },
-  shovel: { label: 'Shovel', stack: 1, size: [1, 3] },
   // Every piece of junk picked up (scrap piles, crash-site debris) is just scrap: the crafting and repair metal.
   scrap: { label: 'Scrap', stack: 20 },
   // The other basic material: tarps, sacks and seat covers (cloth bundles in the scrap piles, burnt seats at crash sites).
@@ -69,8 +67,11 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
 };
 const ORDER = Object.keys(ITEMS);
 
+/** Kinds taken out of the game (the shovel and metal detector went with digging): dropped from boxes and the world on load. */
+export const RETIRED = new Set(['shovel', 'metal_detector']);
+
 /** Used from the hotbar (held in hand): Store all leaves these in the bag. Placeables (shared/placed.ts) stay too. */
-export const TOOLS = new Set(['canteen', 'spyglass', 'shovel', 'metal_detector', 'laser_rifle', 'laser_pistol', 'jammer',
+export const TOOLS = new Set(['canteen', 'spyglass', 'laser_rifle', 'laser_pistol', 'jammer',
   'receiver_carrier', 'receiver_queen', 'receiver_colossus', 'receiver_worm']);
 
 /** Every item fits a grid this many rows tall once turned (its smaller side): the smallest backpack's rows

@@ -1,8 +1,7 @@
-// Loot in the world (server/loot.ts): broken gear lying at crash sites and near the spawn, caches buried in
-// the sand (depth > 0: only the metal detector finds them, src/detector.ts; dig down to it and it comes up).
+// Loot in the world (server/loot.ts): broken gear lying at crash sites and near the spawn, caches out in the desert.
 // Players can also drop items from the Tab inventory: they lie on the sand (src 'drop') until someone takes them.
 // Stashes lie on shelter floors (shared/shelters.ts) instead of the sand over them (lootY).
-// The client draws what's on the surface (src/world/loot.ts) and F picks it up.
+// The client draws it (src/world/loot.ts) and F picks it up.
 import { insideBase, overBase } from './base.ts';
 import { overShelter, shelterFloorY } from './shelters.ts';
 import { heightAt } from './terrain.ts';
@@ -15,8 +14,6 @@ export type Loot = {
   parts?: (string | null)[];
   x: number;
   z: number;
-  /** Metres under the undisturbed sand; 0 once it's on the surface. */
-  depth: number;
   src: 'find' | 'cache' | 'drop';
 };
 

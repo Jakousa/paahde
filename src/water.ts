@@ -1,5 +1,5 @@
 // Survival on the client (shared/water.ts, server/water.ts): the hotbar (the bag's first slots,
-// shared/items.ts: the water bottle, telescope (src/telescope.ts), shovel and metal detector (src/detector.ts),
+// shared/items.ts: the water bottle, telescope (src/telescope.ts) and the rest,
 // all found broken and repaired, shared/gear.ts), drinking and refilling, and the HUD: the body heat meter
 // (bottom left, glowing while heat builds), the clock and felt temperature with a sun/shade icon (top right,
 // shared/temperature.ts; only with the wrist computer equipped), a heatstroke vignette and swimming view (post.ts) past 60%, and the
@@ -7,11 +7,10 @@
 //
 // The server owns the numbers; this only plays the actions and asks. Keys 1–4 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
-// (no digging while your hands are full, see `tools` in src/input.ts), and F at a pump (the base's, some shelters') refills it.
+// and F at a pump (the base's, some shelters') refills it.
 import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
 import { equipped, repaired } from '../shared/gear.ts';
 import { HOTBAR } from '../shared/items.ts';
-import { isPlaceable } from '../shared/placed.ts';
 import { PISTOL, RIFLE } from '../shared/rifle.ts';
 import { JAMMER } from '../shared/jammer.ts';
 import { receiverBoss, type BossKind } from '../shared/bosses.ts';
@@ -26,16 +25,15 @@ import { atWater, indoors } from '../shared/shelters.ts';
 
 /**
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
- * are true for the whole sip / refill action. Digging is the DIG input bit, as before.
+ * are true for the whole sip / refill action.
  */
 export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer' | 'receiver' | 'scrap';
 /** `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden).
- *  `tool`: a hand tool that leaves the use button to digging (held stays 'none'): the metal detector or the shovel.
  *  `throwAt`: when the last throw of scrap started (performance.now(), src/throw.ts), for the hands' throw. */
 /** Rifle or pistol (src/rifle.ts): `aim` 0..1 raised to the eye, `rifleScoped` looking through its scope (hands hidden), `kick`
  *  the recoil to show (1 on firing, decaying), `charge` the cell 0..1 (1: ready to fire). */
 export const playerHands = {
-  held: 'none' as Held, tool: 'none' as 'none' | 'shovel' | 'detector', throwAt: 0, drinking: false, filling: false, looking: false, scoped: false,
+  held: 'none' as Held, throwAt: 0, drinking: false, filling: false, looking: false, scoped: false,
   aim: 0, rifleScoped: false, kick: 0, charge: 1,
   /** The jammer's lamp (src/jammer.ts), 0 dark .. 1 fully lit. */
   jamLamp: 0,
@@ -238,7 +236,6 @@ export class Survival {
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
     tools.bike = kind === 'motorcycle' && repaired(it);
-    playerHands.tool = repaired(it) && (kind === 'shovel' || kind === 'metal_detector') ? (kind === 'shovel' ? 'shovel' : 'detector') : 'none';
   }
 
   /** Redraw the hotbar slots whose item changed. */
@@ -299,10 +296,7 @@ export class Survival {
     const holding = playerHands.held === 'canteen';
     const bottle = w.maxSips > 0;
     const byPump = atWater(pos.x, pos.y, pos.z);
-    // A placeable in hand (src/placing.ts) takes the use button too, and so does junk to throw (src/throw.ts).
     const kind = this.net.boxes.bag?.[this.selected]?.kind;
-    tools.blocked = playerHands.held !== 'none' || isPlaceable(kind) || (!!kind && THROWABLE.has(kind));
-
     // Drinking: hold the use button for DRINK_MS; letting go early spills nothing and costs nothing.
     const use = useHeld();
     if (!use) this.needRelease = false;

@@ -1,6 +1,5 @@
 // Loot on the sand (shared/loot.ts, from the server via src/net.ts): broken gear at crash sites and near the
-// spawn, dug-up caches, things dropped from a full bag. Buried loot isn't drawn (the metal detector hears it,
-// src/detector.ts). Gear has its own model (FIND_MODELS; the motorcycle is the sand bike on its side); parts use the disassembly
+// spawn, caches out in the desert, things dropped from a full bag. Gear has its own model (FIND_MODELS; the motorcycle is the sand bike on its side); parts use the disassembly
 // part models (src/teardown/junk.ts); broken gear, parts and relics have a warm glow along their edges and a faint warm pool
 // on the sand so they catch the eye among the crash-site debris;
 // anything else is a battered crate. Each sits on the sand where it is (also at the bottom of a hole).
@@ -140,7 +139,7 @@ const FIND_MODELS: Record<string, { url: string; rot?: [number, number, number] 
   spyglass: { url: './models/telescope.glb' },
   laser_rifle: { url: './models/rifle.glb', rot: [0, 0, Math.PI / 2] },
   laser_pistol: { url: './models/pistol.glb', rot: [0, 0, Math.PI / 2] },
-  ...Object.fromEntries(['backpack', 'shovel', 'metal_detector', 'storm_detector', 'wristpad', 'jammer', ...Object.values(RECEIVERS)]
+  ...Object.fromEntries(['backpack', 'storm_detector', 'wristpad', 'jammer', ...Object.values(RECEIVERS)]
     .map((k) => [k, { url: `./models/finds/${k}.glb` }])),
 };
 /** The enemies' and bosses' own parts (shared/tables.ts RELIC_DROPS, shared/bosses.ts RELICS): tools/blender/relics.py. */
@@ -197,14 +196,14 @@ export class LootView {
     scene.add(this.group);
   }
 
-  /** Every frame: draw surface loot near the player, drop what's gone or out of view. */
+  /** Every frame: draw loot near the player, drop what's gone or out of view. */
   update(dt: number, loot: Map<number, Loot>, me: { x: number; z: number }) {
     this.t += dt;
     glowPulse.value = 0.16 + 0.05 * Math.sin(this.t * 1.6);
     rimPulse.value = 0.55 + 0.15 * Math.sin(this.t * 2.2);
     for (const [id, s] of this.shown) {
       const l = loot.get(id);
-      if (!l || l.depth > 0 || Math.hypot(l.x - me.x, l.z - me.z) > VIEW + 20) {
+      if (!l || Math.hypot(l.x - me.x, l.z - me.z) > VIEW + 20) {
         this.group.remove(s.obj);
         s.obj.traverse((o) => (o as THREE.Mesh).isMesh && !o.userData.shared && (o as THREE.Mesh).geometry.dispose());
         if (s.pool) {
@@ -215,7 +214,6 @@ export class LootView {
       }
     }
     for (const l of loot.values()) {
-      if (l.depth > 0) continue;
       const d = Math.hypot(l.x - me.x, l.z - me.z);
       if (d > VIEW) continue;
       let s = this.shown.get(l.id);

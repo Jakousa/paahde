@@ -1,6 +1,6 @@
 // Chat: Enter opens a line at the bottom left, Enter sends it (Esc or an empty line just closes). Lines from
 // everyone show above it for a while, each behind a swatch of the speaker's avatar colour and their name (src/name.ts); while typing, the
-// recent ones all come back. The input keeps the keys to itself, so typing doesn't walk, dig or open menus.
+// recent ones all come back. The input keeps the keys to itself, so typing doesn't walk or open menus.
 import { CHAT_MAX, type DeathCause } from '../shared/protocol.ts';
 import type { Net } from './net';
 import { tools, ui } from './input';

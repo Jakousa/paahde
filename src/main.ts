@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
-import { BACK, DIG, DT, FORWARD, isSlipFace, PILE, quantizeYaw } from '../shared/sim.ts';
-import { digTarget, EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
+import { BACK, DT, FORWARD, isSlipFace, quantizeYaw } from '../shared/sim.ts';
+import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { allBeaten } from '../shared/bosses.ts';
 import { WORLD_ID } from '../shared/world.ts';
@@ -11,7 +11,7 @@ import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { BaseSand } from './world/baseSand';
 import { Shelters } from './world/shelters';
-import { DigFx } from './dig';
+import { addCrosshair } from './crosshair';
 import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
 import { addItem, debrisItem, SCRAP } from '../shared/items.ts';
@@ -73,7 +73,6 @@ import { bagShape, carriedGear, equipped, locatorRange, quality, repaired, spygl
 import { LootView, lootName } from './world/loot';
 import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
-import { Detector } from './detector';
 import { Chat } from './chat';
 import { askName } from './name';
 import { tools } from './input';
@@ -172,15 +171,7 @@ askName(net, renderer.domElement);
 update.busy = () => guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
 const lootView = new LootView(scene);
 const corpseView = new CorpseView(scene);
-const detector = new Detector();
-const digFx = new DigFx(scene);
-// Remote players play their dig clip for a moment after each stroke the server reports.
-const DIG_ANIM_S = 0.5;
-const digUntil = new Map<number, number>();
-net.onDig = (at, pile, _mine, id) => {
-  digFx.puff(at, pile);
-  digUntil.set(id, performance.now() + DIG_ANIM_S * 1000);
-};
+addCrosshair();
 loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
 // Dark until the player model has loaded, and the bunker too if you spawn in it, so the first frames show
 // neither a half-built room nor placeholder bodies; after 20 s, whatever has loaded.
@@ -336,7 +327,7 @@ renderer.setAnimationLoop((time) => {
   if (!riding) {
     me.update(
       { x: v.x, y: v.y, z: v.z, facing: v.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
-      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, drinking: playerHands.drinking, aiming: aiming || net.justFired(net.id), down: net.down,
+      pitch: orbit.pitch, drinking: playerHands.drinking, aiming: aiming || net.justFired(net.id), down: net.down,
       look: orbit.freeYaw },
       frameDt,
     );
@@ -360,7 +351,7 @@ renderer.setAnimationLoop((time) => {
     }
     avatar.setOutfit(r.item, r.gear);
     if (!ride(r.id, avatar, { ...r, heading: r.facing }, frameDt)) {
-      avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching, digging: (digUntil.get(r.id) ?? 0) > performance.now() }, frameDt);
+      avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching }, frameDt);
     }
   }
   for (const [id, avatar] of remotes) {
@@ -369,7 +360,6 @@ renderer.setAnimationLoop((time) => {
       remotes.delete(id);
       bikes.get(id)?.dispose();
       bikes.delete(id);
-      digUntil.delete(id);
     }
   }
 
@@ -383,10 +373,6 @@ renderer.setAnimationLoop((time) => {
   if (orbit.down !== (net.down !== null)) document.body.classList.toggle('down', (orbit.down = net.down !== null));
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
   const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, !s.riding && !teardown.active && !net.down);
-  // The detector listens where you look (where you'd dig), or a step ahead when you look up.
-  const looked = digTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch))
-    ?? { x: net.me.x - Math.sin(orbit.yaw) * 1.2, z: net.me.z - Math.cos(orbit.yaw) * 1.2 };
-  detector.update(frameDt, inHand?.kind === 'metal_detector' && repaired(inHand) ? quality(inHand) : -1, net.loot, looked);
   lootView.update(frameDt, net.loot, focus);
   corpseView.update(frameDt, focus);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
@@ -404,8 +390,7 @@ renderer.setAnimationLoop((time) => {
   me.setHeadless(riding && !orbit.showBody);
   viewmodel.root.visible = bodyHidden && !teardown.active;
   viewmodel.setColor(net.color);
-  viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding,
-    digging: (input & (DIG | PILE)) !== 0 || (digUntil.get(net.id) ?? 0) > performance.now() });
+  viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding });
   zaps.update(frameDt); // after the gun is drawn: your beam starts at its muzzle
   // Before the wind: the storm sets how hard it blows here.
   const belt = equipped(net.boxes.equip, 'belt');
@@ -450,7 +435,6 @@ baseSand.update(frameDt, storm.atBase);
     dead: survival.dead,
   });
   crashSound.update(orbit.camera.position, orbit.viewYaw);
-  digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;

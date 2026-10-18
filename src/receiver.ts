@@ -4,8 +4,8 @@
 // the worse its parts (shared/gear.ts receiverWobble), and it ticks, faster and higher the more nearly you face it;
 // the lamp blinks with the ticks. Nothing on the HUD.
 //
-// Sound through the shared output (src/audio.ts), head-locked like the metal detector's ticks (src/detector.ts):
-// the same short sine ticks, a little lower; the sweep −26 LUFS momentary like the jammer's chirp.
+// Sound through the shared output (src/audio.ts), head-locked:
+// short sine ticks; the sweep −26 LUFS momentary like the jammer's chirp.
 import { receiverBoss } from '../shared/bosses.ts';
 import { quality, receiverWobble, repaired } from '../shared/gear.ts';
 import type { Item } from '../shared/items.ts';

@@ -270,8 +270,8 @@ export function openDb(path: string) {
   const insertDropped = db.prepare('INSERT INTO dropped (id, kind, parts, x, z, dropped_at) VALUES (?, ?, ?, ?, ?, ?)');
   const deleteDropped = db.prepare('DELETE FROM dropped WHERE id = ?');
 
-  // World loot (server/loot.ts): finds lying at crash sites and caches buried in the sand, so a restart keeps what
-  // was taken and dug. id is the loot id (shared with `dropped`). spawn: what it stands in for when taken (a FINDS key,
+  // World loot (server/loot.ts): finds lying at crash sites and caches out in the desert, so a restart keeps what
+  // was taken. id is the loot id (shared with `dropped`). spawn: what it stands in for when taken (a FINDS key,
   // 'rare', 'home_bike'; NULL for a cache). loot_pending: taken ones waiting to come back somewhere else.
   db.exec(`
     CREATE TABLE IF NOT EXISTS world_loot (
@@ -280,7 +280,7 @@ export function openDb(path: string) {
       parts TEXT,                            -- gear: JSON part kinds per slot, else NULL
       x     REAL NOT NULL,
       z     REAL NOT NULL,
-      depth REAL NOT NULL,                   -- m under the sand, 0 once on the surface
+      depth REAL NOT NULL,                   -- m under the sand, 0 once on the surface (always 0 now: no digging)
       src   TEXT NOT NULL,                   -- 'find' | 'cache'
       spawn TEXT
     );
@@ -341,8 +341,8 @@ export function openDb(path: string) {
     deleteDropped: (id: number) => deleteDropped.run(id),
     loadWorldLoot: () => (allWorldLoot.all() as { id: number; kind: string; parts: string | null; x: number; z: number; depth: number; src: 'find' | 'cache'; spawn: string | null }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
-    putWorldLoot: (l: { id: number; kind: string; parts?: (string | null)[]; x: number; z: number; depth: number; src: string }, spawn: string | null) =>
-      insertWorldLoot.run(l.id, l.kind, l.parts ? JSON.stringify(l.parts) : null, l.x, l.z, l.depth, l.src, spawn),
+    putWorldLoot: (l: { id: number; kind: string; parts?: (string | null)[]; x: number; z: number; src: string }, spawn: string | null) =>
+      insertWorldLoot.run(l.id, l.kind, l.parts ? JSON.stringify(l.parts) : null, l.x, l.z, 0, l.src, spawn),
     deleteWorldLoot: (id: number) => deleteWorldLoot.run(id),
     surfaceWorldLoot: (id: number) => surfaceWorldLoot.run(id),
     loadLootPending: () => allPending.all() as { id: number; at: number; what: 'find' | 'cache'; kind: string | null }[],

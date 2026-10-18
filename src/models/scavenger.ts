@@ -202,6 +202,9 @@ export class ScavengerModel {
       const mesh = model.getObjectByName(name);
       if (mesh) this.carried.push({ mesh, bits });
     }
+    // The shovel strapped to the backpack is from when there was digging: never shown.
+    const shovel = model.getObjectByName('Scavenger_Shovel');
+    if (shovel) shovel.visible = false;
     this.wearGear(model);
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
@@ -793,9 +796,8 @@ const _saved = Array.from({ length: 8 }, () => new THREE.Quaternion());
 
 const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt');
 /** glb meshes of things carried on the body (tools/models/scavenger.py GEAR_MESH) and the gear bits that show them:
- *  the shovel and scrap plate are strapped to the backpack, so they need it too. */
+ *  the scrap plate is strapped to the backpack, so it needs it too. */
 const CARRIED: [string, number][] = [
-  ['Scavenger_Shovel', carriedBit('shovel') | BACK],
   ['Scavenger_Scrap', carriedBit('scrap') | BACK],
   ['Scavenger_Canteen', carriedBit('canteen')],
   ['Scavenger_Sidearm', carriedBit('laser_pistol')],

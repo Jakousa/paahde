@@ -8,7 +8,6 @@
 // both apply the same rules: gear only into its equipment slot (and only once repaired), nothing put down past the
 // bag's open rows (the backpack sets them; taking it off leaves what's there stranded, not lost) and only where it fits in a grid, and parts only into the workbench item's matching slots (fitPart).
 import { isCorpseBox } from './corpse.ts';
-import type { DigTool } from './dig.ts';
 import {
   ITEMS, BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, partKind, sizeOf, strandedAt,
   type Item, type Shape, type Slots,
@@ -55,10 +54,6 @@ export const GEAR: Record<string, GearSpec> = {
     use: 'Beeps before a sandstorm reaches you.' },
   wristpad: { slots: [P('compute'), P('battery')], equip: 'wrist', better: 'how far away players show on the locator',
     use: 'Shows the clock, the temperature and the locator bar.' },
-  metal_detector: { slots: [P('coil'), P('compute'), P('battery')], better: 'range',
-    use: 'Hold it and look at the sand: it ticks faster near something buried. Dig there.' },
-  shovel: { slots: [SCRAP, P('motor')], better: 'digging speed and width',
-    use: 'Hold it and dig (left mouse): faster and wider than bare hands.' },
   // The guns (shared/rifle.ts): a coil focuses the beam; the rifle also needs a cell and a heatsink.
   laser_pistol: { slots: [P('coil'), SCRAP], better: 'how fast it recharges', use: 'Left mouse to fire, right mouse to aim.' },
   laser_rifle: { slots: [P('coil'), P('battery'), P('heatsink'), SCRAP], better: 'how fast it recharges',
@@ -160,24 +155,12 @@ export const backpackRows = (q: number) => Math.round(by(q, 2, BAG_ROWS));
 export const stormWarnS = (q: number) => by(q, 6, 20);
 /** Wrist computer: other players show on the locator this far away (m). The base always does. */
 export const locatorRange = (q: number) => by(q, 250, 2000);
-/** Metal detector: hears buried things this far away (m, horizontally). */
-export const detectorRange = (q: number) => by(q, 8, 22);
 
 /** A gun's recharge (ms) at quality q: a fifth slower than its base at Scrap parts, a quarter faster at Space-grade. */
 export const gunCooldown = (base: number, q: number) => base * by(q, 1.2, 0.75);
 
 /** The jammer's lock time (ms) at quality q: from its base (shared/jammer.ts JAM_MS) at Scrap parts down to 60% at Space-grade. */
 export const jamMs = (base: number, q: number) => base * by(q, 1, 0.6);
-
-/** Bare hands: slow and narrow. */
-export const HANDS: DigTool = { mm: 70, radius: 0.8, cooldown: 18 };
-export function shovelTool(q: number): DigTool {
-  return { mm: Math.round(by(q, 200, 380)), radius: by(q, 1.1, 1.6), cooldown: Math.round(by(q, 12, 8)) };
-}
-/** The dig tool for an item held in the hand (a repaired shovel), else bare hands. */
-export function digTool(held: Item | null | undefined): DigTool {
-  return held?.kind === 'shovel' && repaired(held) ? shovelTool(quality(held)) : HANDS;
-}
 
 /** The repaired gear equipped in a slot, or null. */
 export function equipped(equip: Slots | undefined, slot: EquipSlot): Item | null {
@@ -195,9 +178,9 @@ export function wornGear(equip: Slots | undefined): number {
 /** An equipment slot's bit in wornGear (by EQUIP_SLOTS index: back 1, wrist 2, belt 4, vehicle 8). */
 export const wornBit = (slot: EquipSlot) => 1 << EQUIP_SLOTS.indexOf(slot);
 
-/** Things drawn on the body while in the bag (not in hand): the shovel and scrap plate on the backpack, the canteen
+/** Things drawn on the body while in the bag (not in hand): the scrap plate on the backpack, the canteen
  *  and sidearm on the belt. Their bits follow the worn ones (carriedBit). */
-export const CARRIED = ['shovel', 'scrap', 'canteen', 'laser_pistol'] as const;
+export const CARRIED = ['scrap', 'canteen', 'laser_pistol'] as const;
 export const carriedBit = (kind: (typeof CARRIED)[number]) => 1 << (EQUIP_SLOTS.length + CARRIED.indexOf(kind));
 
 /** The CARRIED kinds in the bag outside the hand (`held`: the selected hotbar slot, -1 for none), as bits. */

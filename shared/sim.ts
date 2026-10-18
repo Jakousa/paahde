@@ -115,9 +115,7 @@ export const LEFT = 4;
 export const RIGHT = 8;
 export const JUMP = 16;
 export const CROUCH = 32; // Ctrl / C: crouch
-// Digging changes the world, not the player: step() ignores it; the server applies it to the terrain.
-export const DIG = 64;
-export const PILE = 128; // like DIG, but puts sand back (shared/dig.ts)
+// 64 and 128 were dig and pile (no digging now): free.
 export const SLIDE = 256; // Shift: speed slide
 export const BIKE = 512; // 9: get on / off the motorcycle (needs a repaired one equipped: PlayerState.bike)
 export const INPUT_MASK = 1023;

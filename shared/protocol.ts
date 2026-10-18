@@ -44,8 +44,7 @@ export type ClientMsg =
   | { t: 'fill' }
   // What's in your hands (Hands below), sent when it changes and after every 'welcome'. Cosmetic: other
   // players see it on your avatar; the drink/fill checks don't depend on it.
-  // slot: the selected hotbar slot (-1 none); the server digs with what's in it (a repaired shovel digs
-  // faster, shared/gear.ts digTool).
+  // slot: the selected hotbar slot (-1 none).
   // aim: a gun (or the jammer) in hand is raised to aim; others see it shouldered along the pitch.
   | { t: 'hands'; hands: Hands; slot?: number; aim?: boolean }
   // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning.
@@ -158,8 +157,6 @@ export type ServerMsg =
   // The wind's healing pass (shared/dig.ts heal) just ran on the server: run it on your copy too. Its changes aren't
   // sent (they touch every edited vertex every pass); it's deterministic, and later edits come as absolute values.
   | { t: 'terrainHeal' }
-  // Another player dug (pile = false) or piled sand at (x, y, z): for particle effects only.
-  | { t: 'dug'; id: number; x: number; y: number; z: number; pile: boolean }
   // Scrap pieces picked up (taken) or respawned (back), as flat [ix, iz, i, ...] triples. On join, before
   // 'welcome', with reset: the full taken list, replacing whatever the client had. Sent before the
   // snapshot, like terrainEdit. A rejected pickup gets its piece back in a message to that player only.
@@ -168,7 +165,7 @@ export type ServerMsg =
   // they change, every 'chest<i>' on join and to everyone when it changes. `got`: a pickup (scrap, a
   // carried machine, a part out of a machine) added this kind (for the HUD toast).
   | { t: 'items'; box: string; slots: Slots; got?: string }
-  // Loot in the world (shared/loot.ts): added or changed (a cache dug up), and removed (ids). On join, before
+  // Loot in the world (shared/loot.ts): added or changed, and removed (ids). On join, before
   // 'welcome', with reset: everything there is.
   | { t: 'loot'; add: Loot[]; remove: number[]; reset?: boolean }
   // Packs left where players died (shared/corpse.ts): new ones, and ones emptied or gone (ids), to everyone. On join,

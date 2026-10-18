@@ -4,9 +4,9 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
+import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
-import { bikeLevel, bottleSips, carriedGear, digTool, GEAR_KINDS, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
+import { bikeLevel, bottleSips, carriedGear, GEAR_KINDS, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
@@ -96,7 +96,6 @@ type Player = {
   state: PlayerState;
   yaw: number; // last quantized camera yaw, reused while idle
   pitch: number; // last quantized camera pitch (shared/dig.ts)
-  digCooldown: number; // simulated ticks until the next dig/pile stroke may land
   ack: number; // last applied input seq
   tokens: number; // input rate limiter: refills at TICK_RATE/s, so inputs can't speed up time
   lastInputAt: number;
@@ -108,7 +107,7 @@ type Player = {
   ws: WebSocket;
   alive: boolean;
   hands: Hands; // what the client says it holds, relayed in snapshots
-  slot: number; // selected hotbar slot (-1 none): digs with what's in it
+  slot: number; // selected hotbar slot (-1 none)
   aim: boolean; // gun raised to aim (cosmetic, relayed in snapshots)
   /** Dead and lying where they fell until `until` (Date.now ms), thrown by `push` (shared/ragdoll.ts). */
   down: { until: number; push: [number, number, number] } | null;
@@ -238,7 +237,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   items.setup(browserId);
   state.bike = bikeLevel(items.slots(browserId, 'equip'));
   const p: Player = {
-    id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
+    id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
     heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, firedAt: 0, chatAt: 0, name: '', jam: null,
   };
@@ -307,7 +306,7 @@ function shadeCasters(now: number): Caster[] {
     if (s.riding) casters.push({ x: s.x, z: s.z, ax: -Math.sin(s.heading), az: -Math.cos(s.heading), half: 0.55, r: 0.35, y0: s.y, y1: s.y + 1, id: o.id });
   }
   for (const l of loot.loot.values()) {
-    if (l.kind === 'motorcycle' && l.depth === 0) casters.push({ x: l.x, z: l.z, ax: 1, az: 0, half: 0, r: 0.7, y0: -Infinity, y1: heightAt(l.x, l.z) + 0.6 });
+    if (l.kind === 'motorcycle') casters.push({ x: l.x, z: l.z, ax: 1, az: 0, half: 0, r: 0.7, y0: -Infinity, y1: heightAt(l.x, l.z) + 0.6 });
   }
   return casters;
 }
@@ -802,23 +801,6 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.input = input & INPUT_MASK;
   const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
   p.state = step(p.state, input & INPUT_MASK, p.yaw, drag, guardians.posts);
-  dig(p, input);
-}
-
-// Dig/pile stroke while the button is held, at most every tool.cooldown simulated ticks: bare hands, or a
-// repaired shovel in the selected hotbar slot (shared/gear.ts digTool). The client runs the same countdown and
-// stroke as a prediction (src/net.ts). No digging from the bike. A dig can uncover a buried cache (server/loot.ts).
-function dig(p: Player, input: number) {
-  if (p.digCooldown > 0) p.digCooldown--;
-  if (!(input & (DIG | PILE)) || p.digCooldown > 0 || p.state.riding) return;
-  const pile = (input & DIG) === 0;
-  const tool = digTool(p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot] : null);
-  const at = terrain.stroke(p.state, p.yaw, p.pitch, pile, tool);
-  if (!at) return;
-  p.digCooldown = tool.cooldown;
-  if (!pile) loot.dug(at.x, at.z, tool.radius);
-  const msg: ServerMsg = { t: 'dug', id: p.id, x: round4(at.x), y: round4(at.y), z: round4(at.z), pile };
-  for (const o of players.values()) if (o !== p) send(o.ws, msg);
 }
 
 // Fixed-rate server loop: refill input tokens, simulate idle players, broadcast snapshots.
@@ -841,7 +823,6 @@ setInterval(() => {
       p.input = 0;
       for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
         p.state = step(p.state, 0, p.yaw, 0, guardians.posts);
-        dig(p, 0);
       }
     } else {
       p.idleAccum = 0;

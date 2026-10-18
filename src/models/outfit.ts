@@ -50,21 +50,6 @@ function tool(tip: number, build: (g: THREE.Group) => void) {
  * models that arrive later.
  */
 const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
-  shovel: () => tool(0.45, (g) => {
-    cyl(g, 0.017, 1.0, WOOD, 0, -0.3, 0);
-    box(g, 0.12, 0.03, 0.03, WOOD, 0, 0.2, 0); // T grip
-    box(g, 0.22, 0.28, 0.02, STEEL, 0, -0.92, 0);
-  }),
-  metal_detector: (() => () => {
-    const tip = 0.85;
-    return tool(tip, (g) => {
-      cyl(g, 0.012, 1.05, STEEL, 0, -0.45, 0);
-      box(g, 0.07, 0.1, 0.11, DARK, 0, -0.05, -0.05);
-      // The coil lies flat on the ground ahead.
-      const coil = cyl(g, 0.14, 0.025, RUST, 0, -0.98, 0);
-      coil.rotation.x = -tip;
-    });
-  })(),
   // The first-person spyglass (public/models/telescope.glb; objective -Z, origin at the grip), carried collapsed: the
   // avatar places it and draws the tubes out as it's raised to the eye (scavenger.ts holdScope, userData.draws).
   spyglass: (loaded) => {

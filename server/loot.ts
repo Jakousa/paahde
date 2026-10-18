@@ -1,16 +1,16 @@
 // Loot lying in the world (shared/loot.ts): broken gear to find and repair (shared/gear.ts) at the crash sites (the
 // starter gear at the scrap fields near the base, the advanced gear on crawler ground, rare loose parts on guardian
 // ground: shared/crashsites.ts SiteLevel; and one broken motorcycle always in front of the base door, HOME_BIKE), stashes
-// on the shelters' floors (SHELTER_STASHES), things buried in the sand that the metal detector hears and a shovel digs up. All shared: the first player to press F
+// on the shelters' floors (SHELTER_STASHES), and caches lying out in the open desert. All shared: the first player to press F
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
-// Kept in the DB (`world_loot`, `loot_pending`, written on change), so a restart keeps what was taken and dug. Items
+// Kept in the DB (`world_loot`, `loot_pending`, written on change), so a restart keeps what was taken. Items
 // players drop are kept in `dropped` and never respawn.
 import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
 import { overShelter, shelterAt, shelterLootSpot, sheltersNear } from '../shared/shelters.ts';
 import { GEAR, GEAR_KINDS, isGear, refit, scrapParts } from '../shared/gear.ts';
 import { JAMMER } from '../shared/jammer.ts';
 import { receiverBoss } from '../shared/bosses.ts';
-import { CLOTH, partKind, SCRAP } from '../shared/items.ts';
+import { CLOTH, partKind, RETIRED, SCRAP } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
@@ -18,7 +18,7 @@ import { PART_IDS, pickTier } from '../shared/parts.ts';
 import { GUNS, PISTOL } from '../shared/rifle.ts';
 import { rocksNear } from '../shared/rocks.ts';
 import { BROKEN_GEAR, CACHES, FINDS, HOME_BIKE, RARE_FINDS, SHELTER_STASHES, type TierWeights } from '../shared/tables.ts';
-import { EDIT_CELL, edits, WORLD_HALF } from '../shared/terrain.ts';
+import { WORLD_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';
@@ -35,9 +35,8 @@ const RARE_KIND = 'rare';
 const HOME_KIND = 'home_bike';
 /** The pending-spawn key for a stash on a shelter's floor (SHELTER_STASHES). */
 const STASH_KIND = 'shelter';
-/** How far from the base buried caches lie, and how deep (m). */
+/** How far from the base caches lie (m). */
 const CACHE_MIN_R = 80, CACHE_MAX_R = 1200;
-const CACHE_DEPTH = [0.5, 1.1];
 /** A taken find / cache is replaced this long after (ms). */
 const FIND_RESPAWN_MS = 3 * 60_000;
 const CACHE_RESPAWN_MS = 60_000;
@@ -111,16 +110,27 @@ export class LootServer {
     this.db = db;
     // Dropped items keep their ids; everything else is numbered after them.
     for (const r of db.loadDropped()) {
+      if (RETIRED.has(r.kind)) {
+        db.deleteDropped(r.id);
+        continue;
+      }
       // Gear whose slots changed since (shared/gear.ts refit); a jammer from before it was gear works, with Scrap parts.
       const parts = r.parts ? (refit(r.kind, r.parts) ?? r.parts) : isGear(r.kind) ? scrapParts(r.kind) : undefined;
-      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, depth: 0, src: 'drop' });
+      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, src: 'drop' });
       this.nextId = Math.max(this.nextId, r.id + 1);
     }
-    // Finds and caches from before the restart, and the ones waiting to come back.
+    // Finds and caches from before the restart, and the ones waiting to come back. Caches buried back when there was
+    // digging lie on the surface now; gear no longer in the game is gone (and comes back as something else).
     const world = db.loadWorldLoot();
     for (const r of world) {
+      if (RETIRED.has(r.kind)) {
+        db.deleteWorldLoot(r.id);
+        if (r.src === 'cache') this.queue('cache', '');
+        continue;
+      }
+      if (r.depth > 0) db.surfaceWorldLoot(r.id);
       const parts = r.parts ? (refit(r.kind, r.parts) ?? r.parts) : undefined;
-      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, depth: r.depth, src: r.src });
+      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, src: r.src });
       if (r.spawn) this.spawnKey.set(r.id, r.spawn);
       if (r.spawn === HOME_KIND) this.homeBikeId = r.id;
       this.nextId = Math.max(this.nextId, r.id + 1);
@@ -136,8 +146,8 @@ export class LootServer {
       for (const [id, k] of this.spawnKey) lying.set(k, [...(lying.get(k) ?? []), id]);
       lying.set('', [...this.loot.values()].filter((l) => l.src === 'cache').map((l) => l.id));
       want.set('', CACHES.n);
-      for (const k of new Set([...want.keys(), ...lying.keys()])) {
-        const keyOf = (p: Spawn) => (p.what === 'cache' ? '' : p.kind ?? '');
+      const keyOf = (p: Spawn) => (p.what === 'cache' ? '' : p.kind ?? '');
+      for (const k of new Set([...want.keys(), ...lying.keys(), ...this.pending.map(keyOf)])) {
         let extra = (lying.get(k)?.length ?? 0) + this.pending.filter((p) => keyOf(p) === k).length - (want.get(k) ?? 0);
         for (const p of this.pending.filter((p) => keyOf(p) === k)) {
           if (extra <= 0) break;
@@ -181,13 +191,13 @@ export class LootServer {
   }
 
   /**
-   * A player (browser id `who`) takes loot `id`: it must be on the surface and in reach. `give` puts it in their bag
+   * A player (browser id `who`) takes loot `id`: it must be in reach. `give` puts it in their bag
    * (false: no room). Returns the item's kind, 'full' if the bag was full, 'had' if it's the home bike and they've
    * had one (one each, so it can't be farmed for motors; another lies there at once), or null if refused.
    */
   take(s: PlayerState, who: string, id: unknown, give: (l: Loot) => boolean): string | null {
     const l = typeof id === 'number' ? this.loot.get(id) : undefined;
-    if (!l || l.depth > 0 || !lootReach(s, l, 1.5)) return null;
+    if (!l || !lootReach(s, l, 1.5)) return null;
     if (l.id === this.homeBikeId) {
       if (this.db.hasGrant(who, HOME_KIND)) return 'had';
       if (!this.db.tx(() => give(l) && (this.db.markGrant(who, HOME_KIND), this.remove(l), this.queue('find', HOME_KIND), true))) return 'full';
@@ -208,7 +218,7 @@ export class LootServer {
     const a = s.riding ? s.heading : s.facing;
     const x = s.x - Math.sin(a) * DROP_AHEAD + rand(-0.2, 0.2);
     const z = s.z - Math.cos(a) * DROP_AHEAD + rand(-0.2, 0.2);
-    const l: Loot = { id: this.nextId++, kind: item.kind, ...(item.parts ? { parts: [...item.parts] } : {}), x, z, depth: 0, src: 'drop' };
+    const l: Loot = { id: this.nextId++, kind: item.kind, ...(item.parts ? { parts: [...item.parts] } : {}), x, z, src: 'drop' };
     this.db.insertDropped(l.id, l.kind, l.parts, x, z);
     this.add(l);
   }
@@ -216,23 +226,9 @@ export class LootServer {
   /** Something left on the sand within `spread` m of (x, z) (a killed walker's parts, server/guardians.ts; thrown
    *  scrap, server/throws.ts), kept like a dropped item. */
   dropAt(x: number, z: number, kind: string, spread = 0.8) {
-    const l: Loot = { id: this.nextId++, kind, x: x + rand(-spread, spread), z: z + rand(-spread, spread), depth: 0, src: 'drop' };
+    const l: Loot = { id: this.nextId++, kind, x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
     this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z);
     this.add(l);
-  }
-
-  /** After a dig stroke at (x, z) with radius r: caches the hole has reached (anywhere within a cell of them) come up. */
-  dug(x: number, z: number, r: number) {
-    for (const l of this.loot.values()) {
-      if (l.depth <= 0 || Math.hypot(l.x - x, l.z - z) > r + 2 * EDIT_CELL) continue;
-      const ix = Math.round(l.x / EDIT_CELL), iz = Math.round(l.z / EDIT_CELL);
-      let mm = Infinity;
-      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) mm = Math.min(mm, edits.getMm(ix + dx, iz + dz));
-      if (mm > -l.depth * 1000) continue;
-      l.depth = 0;
-      this.db.surfaceWorldLoot(l.id);
-      this.added.push(l); // clients take an add of a known id as an update
-    }
   }
 
   /** Every few seconds: put back what was taken a while ago. */
@@ -297,7 +293,7 @@ export class LootServer {
     if (kind === HOME_KIND) {
       const parts = GEAR.motorcycle.slots.map((s) => ('part' in s && HOME_BIKE.fitted.includes(s.part) ? partKind(s.part, 'scrap') : null));
       this.homeBikeId = this.nextId++;
-      this.place({ id: this.homeBikeId, kind: 'motorcycle', parts, ...this.homeBike, depth: 0, src: 'find' }, HOME_KIND);
+      this.place({ id: this.homeBikeId, kind: 'motorcycle', parts, ...this.homeBike, src: 'find' }, HOME_KIND);
       return;
     }
     const level = FINDS[kind]?.level ?? 2;
@@ -317,8 +313,8 @@ export class LootServer {
       if (!overBase(x, z, 6) && !overShelter(x, z, 6)) break;
     }
     if (kind === RARE_KIND) {
-      this.place({ id: this.nextId++, kind: partKind(pick(RARE_PARTS), pickTier(RARE_FINDS.tierWeights, Math.random)), x, z, depth: 0, src: 'find' }, kind);
-    } else this.place({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, depth: 0, src: 'find' }, kind);
+      this.place({ id: this.nextId++, kind: partKind(pick(RARE_PARTS), pickTier(RARE_FINDS.tierWeights, Math.random)), x, z, src: 'find' }, kind);
+    } else this.place({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, src: 'find' }, kind);
   }
 
   /** A stash on the floor of a shelter that has none lying in it yet. */
@@ -330,7 +326,7 @@ export class LootServer {
     }
     const free = this.shelters.filter((s) => !taken.has(s.id));
     const { x, z } = shelterLootSpot(pick(free.length ? free : this.shelters), Math.random);
-    this.place({ id: this.nextId++, ...this.contents(SHELTER_STASHES), x, z, depth: 0, src: 'find' }, STASH_KIND);
+    this.place({ id: this.nextId++, ...this.contents(SHELTER_STASHES), x, z, src: 'find' }, STASH_KIND);
   }
 
   /** What a cache or stash holds, picked by its table's odds. */
@@ -347,10 +343,10 @@ export class LootServer {
     let x = 0, z = 0;
     for (let tries = 0; tries < 20; tries++) {
       const a = rand(0, Math.PI * 2), d = rand(CACHE_MIN_R, CACHE_MAX_R);
-      x = Math.round((BASE.x + Math.sin(a) * d) / EDIT_CELL) * EDIT_CELL;
-      z = Math.round((BASE.z + Math.cos(a) * d) / EDIT_CELL) * EDIT_CELL;
-      if (Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20 && !overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break; // dug up: not under rock
+      x = BASE.x + Math.sin(a) * d;
+      z = BASE.z + Math.cos(a) * d;
+      if (Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20 && !overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break;
     }
-    this.place({ id: this.nextId++, ...this.contents(CACHES), x, z, depth: rand(CACHE_DEPTH[0], CACHE_DEPTH[1]), src: 'cache' }, null);
+    this.place({ id: this.nextId++, ...this.contents(CACHES), x, z, src: 'cache' }, null);
   }
 }

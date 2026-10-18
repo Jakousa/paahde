@@ -3,7 +3,7 @@
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
 import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, lockedWhileRiding, refit, scrapParts, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
-  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, roomFor, CLOTH, SCRAP, settle, sizeOf, sortItems, stackOf,
+  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, settle, sizeOf, sortItems, stackOf,
   type Item, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -64,9 +64,9 @@ export class ItemServer {
     if (!slots) {
       const rows = this.db.loadBox(owner, box);
       slots = new Array(Math.max(boxSize(box), ...rows.map((r) => r.slot + 1))).fill(null);
-      for (const r of rows) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n, ...(r.parts ? { parts: r.parts } : {}), ...(r.r ? { r: true } : {}) };
+      for (const r of rows) if (!RETIRED.has(r.kind)) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n, ...(r.parts ? { parts: r.parts } : {}), ...(r.r ? { r: true } : {}) };
       this.boxes.set(key, slots);
-      let changed = false;
+      let changed = rows.some((r) => RETIRED.has(r.kind));
       for (const it of [...slots]) {
         // Gear from before repairs existed (the old starter canteen and spyglass, guns crafted before they were gear)
         // works: Scrap parts in every slot.

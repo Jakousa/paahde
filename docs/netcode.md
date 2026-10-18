@@ -95,12 +95,9 @@ at our scale and the whole team can read and change it. Alternatives, if needs g
   in `server/world.ts`).
 - Purely visual effects (particles, squash and stretch, the wasm spin) stay client-side.
 - New message types go in `shared/protocol.ts`.
-- **Terrain edits** (digging, `shared/dig.ts`): the server applies dig/pile strokes from the input bits
-  (aimed by the quantized camera yaw + pitch in each input), runs the angle-of-repose sand relaxation at
-  30 Hz on recently changed vertices only, and broadcasts changed vertices as `terrainEdit` right before
-  each snapshot. Edits are absolute integer millimetres, so they are idempotent. The client predicts its
-  own strokes and holds back server values for predicted vertices until a snapshot acks the input that
-  dug them. The wind's healing pass (every 5 s, every edited vertex creeps back towards 0) isn't sent vertex by
+- **Terrain edits** (craters, `shared/dig.ts`; players don't dig any more): the server stamps craters, runs the
+  angle-of-repose sand relaxation at 30 Hz on recently changed vertices only, and broadcasts changed vertices as
+  `terrainEdit` right before each snapshot. Edits are absolute integer millimetres, so they are idempotent. The wind's healing pass (every 5 s, every edited vertex creeps back towards 0) isn't sent vertex by
   vertex: the server says `terrainHeal` and each client runs the same deterministic `heal()` on its copy (edits
   flushed after it carry the post-heal absolute values, so the two can't drift). Joining clients get all edited chunks (`terrainChunks`) before `welcome`; chunks persist in
   the `terrain_chunks` SQLite table (saved every 5 s and on shutdown).

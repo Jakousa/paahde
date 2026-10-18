@@ -7,9 +7,7 @@
 //   grows by the measured network jitter, so late snapshots don't freeze them and then make them jump.
 // - Clock: the server's time is taken from the least-delayed snapshot (the largest offset seen), not an
 //   average, so the shared clock (wind, interpolation) doesn't wobble with jitter.
-// - Terrain: the server owns the edit layer and sends absolute values. Our own dig strokes are predicted
-//   immediately; the server's value for each predicted vertex is held back until a snapshot acks the
-//   input that dug it (terrainEdit always arrives before that snapshot), then applied.
+// - Terrain: the server owns the edit layer (craters, the wind's healing) and sends absolute values.
 // - Survival: heat/canteen state comes from the server ('water'); src/water.ts plays drink/fill and asks.
 //   Dying of heatstroke moves us to the base on the server; the next reconciliation snaps there.
 // - Scrap: picked-up pieces are hidden (and lose their hitbox) as soon as we ask; the server sends the
@@ -22,11 +20,11 @@
 //   'partRefused' (the part goes back in the machine) and the bag.
 // - Loot (shared/loot.ts): what lies in the world, from the server; F asks to take it.
 // - Hands: what we hold (canteen, drinking, filling, a gun raised to aim) is sent when it changes and relayed in snapshots, cosmetic only;
-//   with it the selected hotbar slot, which the server digs with (a shovel digs faster).
-import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
+//   with it the selected hotbar slot.
+import { spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
-import { cellKey, cellX, cellZ, heal, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
-import { bagShape, boxShape, digTool, fitPart, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
+import { heal, pitchFromQ } from '../shared/dig.ts';
+import { bagShape, boxShape, fitPart, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
 import { debrisItem, HOTBAR, roomFor, scrapItem, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
@@ -109,11 +107,8 @@ export class Net {
   private retryMs = 500;
   private browserId: string;
   private joinedOnce = false;
-  private digCooldown = 0;
   /** Take the next reconciliation as a teleport (respawn). */
   private snapNext = false;
-  /** Predicted terrain vertices: the server's latest value, and the input seq that last dug there. */
-  private predicted = new Map<number, { server: number; seq: number }>();
   /** Chunks we held before a (re)join; whatever the server doesn't resend is dropped. */
   private staleChunks = new Set<string>();
   /** What's in our hands, and what the server last heard (-1: tell it again, after a (re)join). */
@@ -191,9 +186,6 @@ export class Net {
   /** A bed we tended was planted or harvested. */
   onTended?: (what: 'planted' | 'harvested') => void;
 
-  /** A dig/pile stroke landed: ours (predicted) or another player's. For effects only. */
-  onDig?: (at: Point, pile: boolean, mine: boolean, id: number) => void;
-
   constructor(browserId: string) {
     this.browserId = browserId;
     this.connect();
@@ -212,7 +204,6 @@ export class Net {
     this.me = step(this.me, input, yaw, drag, this.legPosts);
     this.pending.push({ seq: this.seq, input, yaw, drag });
     this.send({ t: 'input', seq: this.seq, input, yaw, pitch });
-    this.predictDig(input, yaw, pitch);
   }
 
   /** Pick up a scrap piece: hidden now, confirmed (items) or put back by the server. False if the bag is full. */
@@ -443,30 +434,10 @@ export class Net {
     scrapChanged();
   }
 
-  // Same countdown and stroke as the server's dig() in server/world.ts.
-  private predictDig(input: number, yaw: number, pitch: number) {
-    if (this.digCooldown > 0) this.digCooldown--;
-    if (!(input & (DIG | PILE)) || this.digCooldown > 0 || this.me.riding) return;
-    const pile = (input & DIG) === 0;
-    const seq = this.seq;
-    const tool = digTool(tools.slot >= 0 ? this.boxes.bag?.[tools.slot] : null);
-    const at = stroke(edits, this.me, yaw, pitch, pile, (ix, iz, prev) => {
-      const k = cellKey(ix, iz);
-      const p = this.predicted.get(k);
-      if (p) p.seq = seq;
-      else this.predicted.set(k, { server: prev, seq });
-    }, tool);
-    if (!at) return;
-    this.digCooldown = tool.cooldown;
-    this.onDig?.(at, pile, true, this.id);
-  }
-
   private applyTerrainEdit(cells: number[]) {
     for (let i = 0; i + 2 < cells.length; i += 3) {
       const ix = cells[i], iz = cells[i + 1], mm = cells[i + 2];
-      const p = this.predicted.get(cellKey(ix, iz));
-      if (p) p.server = mm; // held until the dig that predicted it is acked
-      else edits.setMm(ix, iz, mm);
+      edits.setMm(ix, iz, mm);
     }
   }
 
@@ -486,15 +457,6 @@ export class Net {
         edits.deleteChunk(cx, cz);
       }
       this.staleChunks.clear();
-    }
-  }
-
-  /** The server has processed inputs up to `ack`: its terrain values now include our predicted digs. */
-  private resolvePredictions(ack: number) {
-    for (const [k, p] of this.predicted) {
-      if (p.seq > ack) continue;
-      edits.setMm(cellX(k), cellZ(k), p.server);
-      this.predicted.delete(k);
     }
   }
 
@@ -577,10 +539,6 @@ export class Net {
       this.snapshots = [];
       this.clockOffset = undefined; // a restarted server has a new clock
       this.jitter = 0;
-      // Predicted vertices go back to the last server value; the rejoin resends all chunks anyway.
-      for (const [k, p] of this.predicted) edits.setMm(cellX(k), cellZ(k), p.server);
-      this.predicted.clear();
-      this.digCooldown = 0;
       this.holders.clear();
       this.status = 'reconnecting';
       // Game over or no such world (server/world.ts, server/index.ts): nothing to come back to.
@@ -707,10 +665,6 @@ export class Net {
       this.legPosts = posts;
       return;
     }
-    if (msg.t === 'dug') {
-      if (msg.id !== this.id) this.onDig?.({ x: msg.x, y: msg.y, z: msg.z }, msg.pile, false, msg.id);
-      return;
-    }
     if (msg.t === 'welcome') {
       this.id = msg.id;
       this.joinedOnce = true;
@@ -737,7 +691,6 @@ export class Net {
       this.snapshots.push({ time: msg.time, players });
       while (this.snapshots.length > 30) this.snapshots.shift();
 
-      this.resolvePredictions(msg.ack);
       const server = players.get(this.id);
       if (server) this.reconcile(server, msg.ack);
     }

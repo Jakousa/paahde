@@ -15,8 +15,6 @@ const TEXTS: Record<string, string> = {
   wristpad: 'Wrist computer: Tab, into the Wrist slot.',
   canteen: 'Water bottle: on the hotbar, hold mouse to drink. Fill at a pump.',
   spyglass: 'Telescope: on the hotbar, hold mouse to look, wheel to zoom.',
-  metal_detector: 'Metal detector: on the hotbar, aim at the sand. Fast ticks: dig.',
-  shovel: 'Shovel: on the hotbar, left mouse digs.',
   laser_pistol: 'Laser pistol: on the hotbar. Left mouse fires, right aims.',
   laser_rifle: 'Laser rifle: on the hotbar. Left mouse fires, right scopes.',
   jammer: 'Jammer: on the hotbar, hold mouse on a drone until it drops.',

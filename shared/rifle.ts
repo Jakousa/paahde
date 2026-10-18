@@ -15,7 +15,7 @@ export const COOLDOWN_MS = 420;
 export const RANGE = 260;
 
 /**
- * The laser pistol: the cheap one, found broken at the scrap fields near home (and in buried caches) and repaired with a
+ * The laser pistol: the cheap one, found broken at the scrap fields near home (and in caches) and repaired with a
  * coil and scrap. One-handed, iron sights, no scope; it breaks weak points and drones just as the rifle does, but recharges
  * faster and only reaches PISTOL_RANGE: under a guardian's cannon (BOLT_RANGE, shared/guardians.ts), so it's for
  * crawlers and drones, or for a brave close fight.

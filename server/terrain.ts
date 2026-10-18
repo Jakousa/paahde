@@ -1,6 +1,6 @@
-// Server side of the terrain edit layer: applies dig strokes, runs sand relaxation, batches changed
+// Server side of the terrain edit layer: stamps craters, runs sand relaxation, batches changed
 // vertices for broadcast and persists dirty chunks to SQLite.
-import { cellKey, cellX, cellZ, deposit, heal, Relaxer, stroke, strokeDig, type DigTool, type Point } from '../shared/dig.ts';
+import { cellKey, cellX, cellZ, deposit, heal, Relaxer, strokeDig } from '../shared/dig.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { EDIT_CELL, EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import type { openDb } from './db.ts';
@@ -49,17 +49,12 @@ export class TerrainServer {
     console.log(`terrain: loaded ${edits.size} edited chunks`);
   }
 
-  /** Apply one dig or pile stroke from a player. Returns where it landed, or null if out of reach. */
-  stroke(feet: { x: number; y: number; z: number }, yawQ: number, pitchQ: number, pile: boolean, tool?: DigTool): Point | null {
-    return stroke(edits, feet, yawQ, pitchQ, pile, this.onCell, tool);
-  }
-
   /** A blast crater at (x, z): a bowl `radius` wide and `mm` deep, the sand thrown out into a rim around it.
    *  `settle` false (the bosses' big ones): the walls stay as dug instead of slumping to the angle of repose. A
    *  boss's steep 10 m bowl would otherwise avalanche for seconds, sending ~10 000 vertices per footstep. */
   crater(x: number, z: number, radius: number, mm: number, settle = true) {
     const sink = settle ? this.onCell : this.onStamp;
-    const removed = strokeDig(edits, x, z, sink, { mm, radius, cooldown: 0 });
+    const removed = strokeDig(edits, x, z, sink, { mm, radius });
     const n = 10;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2;

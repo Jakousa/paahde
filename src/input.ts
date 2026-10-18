@@ -1,13 +1,12 @@
-import { BACK, BIKE, CROUCH, DIG, FORWARD, JUMP, LEFT, PILE, RIGHT, SLIDE } from '../shared/sim.ts';
+import { BACK, BIKE, CROUCH, FORWARD, JUMP, LEFT, RIGHT, SLIDE } from '../shared/sim.ts';
 
 const keys = new Set<string>();
-let mouseDig = false;
-let mousePile = false;
+let mouseUse = false;
+let mouseAim = false;
 let pickupPressed = false;
-/** Hands full (canteen or spyglass out, src/water.ts): left mouse / E and right mouse / Q don't dig or pile.
- *  slot: the selected hotbar slot (-1 none), digging with what's in it (src/net.ts, a shovel).
+/** slot: the selected hotbar slot (-1 none).
  *  frozen: the disassembly mode (src/teardown) owns the keyboard and mouse, so the player stands still. */
-export const tools = { blocked: false, frozen: false, slot: -1, bike: false };
+export const tools = { frozen: false, slot: -1, bike: false };
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 /** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
 export const ui = { inventoryOpen: false, debugFreed: false };
@@ -47,22 +46,22 @@ addEventListener('keyup', (e) => {
 });
 addEventListener('blur', () => {
   keys.clear();
-  mouseDig = mousePile = false;
+  mouseUse = mouseAim = false;
 });
-// Mouse digs only while the pointer is locked: the first click just captures the mouse.
+// The mouse buttons count only while the pointer is locked: the first click just captures the mouse.
 addEventListener('mousedown', (e) => {
   if (!document.pointerLockElement) return;
-  if (e.button === 0) mouseDig = true;
-  if (e.button === 2) mousePile = true;
+  if (e.button === 0) mouseUse = true;
+  if (e.button === 2) mouseAim = true;
 });
 addEventListener('mouseup', (e) => {
-  if (e.button === 0) mouseDig = false;
-  if (e.button === 2) mousePile = false;
+  if (e.button === 0) mouseUse = false;
+  if (e.button === 2) mouseAim = false;
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement) {
-    mouseDig = mousePile = false;
+    mouseUse = mouseAim = false;
     keys.clear();
     // Fullscreen and the keyboard lock stay on, so Esc only opens the menu; its button leaves fullscreen.
   }
@@ -84,7 +83,7 @@ export function keyHeld(code: string): boolean {
 
 /** Right mouse or X (always the same button). */
 function rightHeld(): boolean {
-  return mousePile || keys.has('KeyX');
+  return mouseAim || keys.has('KeyX');
 }
 
 export function readInput(): number {
@@ -103,21 +102,18 @@ export function readInput(): number {
   // (getting on puts it away, src/water.ts).
   if (keys.has('Digit9')) input |= BIKE;
   // A repaired motorcycle in hand (src/water.ts): the use button gets on and off it instead.
-  if (tools.bike && (mouseDig || keys.has('KeyE'))) return input | BIKE;
-  if (tools.blocked) return input;
-  if (mouseDig || keys.has('KeyE')) input |= DIG;
-  else if (rightHeld() || keys.has('KeyQ')) input |= PILE;
+  if (tools.bike && (mouseUse || keys.has('KeyE'))) input |= BIKE;
   return input;
 }
 
-/** Use button (left mouse or E) held down: digs normally, drinks while the canteen is held. */
+/** Use button (left mouse or E) held down: drinks while the canteen is held, fires a gun, throws scrap... */
 export function useHeld(): boolean {
-  return !tools.frozen && (mouseDig || keys.has('KeyE'));
+  return !tools.frozen && (mouseUse || keys.has('KeyE'));
 }
 
 /** Any use button held (left/right mouse, E, Q or X): raises the spyglass while it's out. */
 export function aimHeld(): boolean {
-  return mouseDig || rightHeld() || keys.has('KeyE') || keys.has('KeyQ');
+  return mouseUse || rightHeld() || keys.has('KeyE') || keys.has('KeyQ');
 }
 
 /** Aim button held (right mouse or X): the rifle up to the eye. */

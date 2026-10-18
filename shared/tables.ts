@@ -174,8 +174,7 @@ export const LEVEL_TIERS: Record<SiteLevel, Record<Tier, number>> = {
 /** Broken gear lying around at once, and the crash-site level it lies at (level-0 finds also lie at scrap piles). */
 export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   canteen: { n: 7, level: 0 }, spyglass: { n: 5, level: 0 }, backpack: { n: 7, level: 0 },
-  motorcycle: { n: 3, level: 1 }, shovel: { n: 3, level: 1 }, storm_detector: { n: 2, level: 1 }, wristpad: { n: 2, level: 1 },
-  metal_detector: { n: 2, level: 1 },
+  motorcycle: { n: 3, level: 1 }, storm_detector: { n: 2, level: 1 }, wristpad: { n: 2, level: 1 },
   // The guns (shared/rifle.ts): the pistol near home, the rifle out on crawler ground, to take on the guardians with.
   laser_pistol: { n: 4, level: 0 }, laser_rifle: { n: 3, level: 1 },
   // The jammer (shared/jammer.ts): out where the roaming drones and the jets first come after you.
@@ -198,7 +197,7 @@ export const RARE_FINDS = { n: 10, noParts: ['impeller'] as PartId[], tierWeight
  *  fits); at least one slot is always left empty. */
 export const BROKEN_GEAR = { filled: 0.5, tierWeights: { scrap: 7, basic: 3 } satisfies TierWeights };
 
-/** Buried caches, dug up with the shovel after the metal detector finds them: how many at once, and what is inside
+/** Caches lying out in the desert: how many at once, and what is inside
  *  (relative odds: a part, some scrap, some cloth, a broken laser pistol, a piece of other broken gear). */
 export const CACHES = {
   n: 60,
