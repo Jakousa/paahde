@@ -47,6 +47,9 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   searchlight drones (constants, beam test); simulated in `server/guardians.ts`, legs are client IK in
   `src/world/guardians.ts`, bolts `src/world/bolts.ts`, drones `src/world/drones.ts`, glue/sound/shake in
   `src/guardians.ts`, `src/guardianSound.ts`
+- `shared/carrier.ts` — the hive carrier boss (huge four-fan drone that bombs from its belly, fan hubs are its weak
+  points): brain `server/carrier.ts`, view `src/world/carrier.ts`, sound `src/carrierSound.ts`, model
+  `tools/blender/carrier.py`
 - `shared/jets.ts` — fixed-wing drones: high fast flyovers (straight or big circles), day and night; 3 rifle hits and it glides down; scheduled by
   `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts` (`jets`)
 - `shared/ragdoll.ts` — dying: you lie where you fell for `DOWN_MS` (input ignored, third-person camera) as a

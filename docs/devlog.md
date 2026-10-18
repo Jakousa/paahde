@@ -2,6 +2,29 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — The hive carrier
+
+- **What**: the searchlight drones' mothership, a boss (shared/bosses.ts 'carrier'): a ~90 m armoured hull on four
+  ducted fans (tools/blender/carrier.py -> public/models/carrier.glb, ~4.7k tris assembled: hull, one duct and one
+  rotor cloned per fan). Nav lamps blink red/white, three searchlights sweep the sand under it (the drones' cone,
+  glare and pool; full at night, faint by day), the front one swings red onto its target. Its shadow is the sun's.
+- **Moves** (server/carrier.ts, shared/carrier.ts): ~74 m over the highest sand under it, drifting 3.5 m/s on long
+  legs round the players, turning slowly (0.07 rad/s), banked into turns, nose down with speed, bobbing. The
+  downwash scours a bowl every 8 m (r 6.5 m, 320 mm: a faint trench) and kicks dust up under each live fan.
+- **Attacks**: anyone out in the open within 200 m it can see from its belly (lineOfSight; 700 m if they shot it)
+  it follows at 4.6 m/s (a walk outruns it) and bombs every 2.6-3.8 s within 110 m: a bomb falls from the bay
+  (blinking, whistling) aimed at where you'll be with 60% lead, ~3.9 s, and bursts: kills within 7 m (cause 'bomb',
+  blastPush), crater r 5 m 1.5 m deep. Walking straight on or turning aside gets out from under it; indoors is safe.
+  The fall is deterministic (bombAt from the 'bomb' bossFx), the server resolves the impact at the same time.
+- **Weak points**: the four fan hubs (glowing lens under each motor pod, seen from below and under the duct rims).
+  Each broken: that rotor runs down and smokes, the carrier slows, sinks 7 m and lists toward it. All four: it falls
+  (~5 s, drifting and tumbling), craters the sand (r 11 m + r 7 m under each fan, kills within 26 m), and the wreck
+  burns and sinks for its 240 s. server/bosses.ts got an optional `wreck` hook (brains ticked while the wreck lies)
+  for that delayed impact.
+- **Sound** (src/carrierSound.ts): four fans' chopped low noise beating against each other, a motor hum and a duct
+  whoosh, delayed by the speed of sound and dulled with distance (heard ~3 km); bombs whistle down and boom.
+- **Gaps**: loudness set by ear against the jets, not measured with ebur128 yet; the hub hit test only checks the
+  lens (rotor blades and duct walls don't block shots); drops land under where it died, before the wreck does.
 ## 2026-10-18 — Bosses, and the worm
 
 - **Bosses** (shared/bosses.ts): one-of-a-kind giant machines, the worm, the carrier, the colossus and the queen. They

@@ -48,6 +48,8 @@ export type Brain = {
   snap(b: Boss): number[];
   /** All its weak points broken, at `now`: stop, fall, whatever it does when it dies (optional). */
   die?(b: Boss, now: number, out: BossOut): void;
+  /** Dead, while its wreck lies: anything still to come of the death (a fall's impact) (optional). */
+  wreck?(b: Boss, dt: number, now: number, players: BossPlayer[], out: BossOut): void;
 };
 
 const BRAINS: Record<BossKind, Brain> = { worm, carrier, colossus, queen };
@@ -93,7 +95,10 @@ export class BossServer {
     // Hurt nobody indoors or safe: the brains get them flagged.
     const ps = players.map((p) => (p.safe || indoors(p.x, p.y, p.z) ? { ...p, safe: true } : p));
     this.bosses = this.bosses.filter((b) => {
-      if (b.deadAt >= 0) return now - b.deadAt < BOSSES[b.kind].wreckS * 1000;
+      if (b.deadAt >= 0) {
+        BRAINS[b.kind].wreck?.(b, dt, now, ps, out);
+        return now - b.deadAt < BOSSES[b.kind].wreckS * 1000;
+      }
       if (!b.leaving && now > b.until) b.leaving = true;
       return !BRAINS[b.kind].tick(b, dt, now, ps, out);
     });
