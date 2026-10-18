@@ -494,6 +494,35 @@ export class TeardownView {
     if (off !== null) this.restY = this.home.y + off;
   }
 
+  /**
+   * Middle-drag from (x0,y0) to (x1,y1), as a trackball centred on the machine: grabbing on it rolls it like a ball,
+   * grabbing out in the air turns it about the view axis, as if the pointer held that point of it.
+   */
+  private dragJunk(x0: number, y0: number, x1: number, y1: number) {
+    const j = this.site?.junk;
+    if (!j) return;
+    const box = new THREE.Box3().setFromObject(j.root);
+    const c = this.screen(j.root);
+    if (!c || box.isEmpty()) return;
+    const edge = j.root.getWorldPosition(new THREE.Vector3())
+      .add(new THREE.Vector3(box.getSize(new THREE.Vector3()).length() / 2, 0, 0).applyQuaternion(this.camera.quaternion))
+      .project(this.camera);
+    const r = Math.max(Math.hypot(((edge.x + 1) / 2) * innerWidth - c.x, ((1 - edge.y) / 2) * innerHeight - c.y), 60);
+    // Pointer to a point on a ball of radius r (Bell's trackball: a hyperbolic sheet past its rim), camera space, y up.
+    const ball = (x: number, y: number) => {
+      const px = (x - c.x) / r, py = (c.y - y) / r;
+      const d = px * px + py * py;
+      return new THREE.Vector3(px, py, d <= 0.5 ? Math.sqrt(1 - d) : 0.5 / Math.sqrt(d)).normalize();
+    };
+    const a = ball(x0, y0), b = ball(x1, y1);
+    const axis = new THREE.Vector3().crossVectors(a, b);
+    if (axis.lengthSq() < 1e-12) return;
+    const angle = Math.acos(THREE.MathUtils.clamp(a.dot(b), -1, 1));
+    axis.normalize().applyQuaternion(this.camera.quaternion);
+    j.root.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, angle));
+    this.computeRest();
+  }
+
   private spinJunk(yaw: number, pitch: number) {
     const j = this.site?.junk;
     if (!j) return;
@@ -661,11 +690,12 @@ export class TeardownView {
       const dx = e.clientX - d.x, dy = e.clientY - d.y;
       if (!d.moved && Math.hypot(dx, dy) < DRAG_PX) return;
       d.moved = true;
+      const fx = d.x, fy = d.y;
       d.x = e.clientX;
       d.y = e.clientY;
       this.ui.overlay.style.cursor = 'grabbing';
       if (d.kind === 'rotate') {
-        this.spinJunk(dx * 0.01, dy * 0.01);
+        this.dragJunk(fx, fy, e.clientX, e.clientY);
         return;
       }
       this.lookYaw = THREE.MathUtils.clamp(this.lookYaw - dx * LOOK_SENS, -1.6, 1.6);
