@@ -343,7 +343,7 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   if (p.down || lives <= 0) return;
   if (cause !== 'heat' && shielded(p, push)) return;
   p.down = { until: Date.now() + DOWN_MS, push };
-  p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, sliding: false, crouching: false };
+  p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, mounting: 0, sliding: false, crouching: false };
   revive(p.heat, Date.now());
   send(p.ws, { t: 'died', cause, push });
   const obit: Obituary = { t: 'obituary', id: p.id, color: p.color, name: p.name, cause, at: Date.now() };

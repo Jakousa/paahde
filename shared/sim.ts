@@ -105,6 +105,7 @@ export type PlayerState = {
   slideSpent: boolean; // this Shift press already started a slide: the next one needs a fresh press
   riding: boolean; // on the sand bike (stepBike)
   bikeHeld: boolean; // the bike key was down last tick, so mounting needs a fresh press
+  mounting: number; // ticks left getting on the bike (MOUNT_TICKS after the bike key; standing still; 0: not)
   heading: number; // the bike's heading (radians, same convention as facing); the body faces it while riding
   bike: number; // the equipped motorcycle (shared/gear.ts bikeLevel): 0 none, else 1 + its quality; set by the server
 };
@@ -120,6 +121,9 @@ export const CROUCH = 32; // Ctrl / C: crouch
 export const SLIDE = 256; // Shift: speed slide
 export const BIKE = 512; // 9: get on / off the motorcycle (needs a repaired one equipped: PlayerState.bike)
 export const INPUT_MASK = 1023;
+/** Getting on the bike takes this long, standing still; the bike key again stops it. Getting off is at once. */
+export const MOUNT_TICKS = 3 * TICK_RATE;
+const MOVE_KEYS = FORWARD | BACK | LEFT | RIGHT | JUMP | CROUCH | SLIDE;
 
 // Camera yaw is sent with every input, quantized to 16 bits so client and server agree exactly.
 export const YAW_STEPS = 65536;
@@ -140,7 +144,7 @@ export function spawnState(x = SPAWN.x, z = SPAWN.z, y = x === SPAWN.x && z === 
   return {
     x, y, z, vx: 0, vy: 0, vz: 0, facing: 0,
     grounded: true, airJumps: AIR_JUMPS, jumpHeld: false, landTicks: 0,
-    sliding: false, crouching: false, slideCool: 0, slideSpent: false, riding: false, bikeHeld: false, heading: 0, bike: 0,
+    sliding: false, crouching: false, slideCool: 0, slideSpent: false, riding: false, bikeHeld: false, mounting: 0, heading: 0, bike: 0,
   };
 }
 
@@ -214,12 +218,19 @@ const tmpCollide = { x: 0, z: 0, vx: 0, vz: 0 };
 export function step(s: PlayerState, input: number, yawQ: number, storm = 0, legs: readonly number[] = NO_LEGS): PlayerState {
   const yaw = yawFromQ(yawQ);
   const bikeDown = (input & BIKE) !== 0;
-  if (s.riding && !s.bike) s = { ...s, riding: false }; // unequipped under you
+  if (!s.bike && (s.riding || s.mounting > 0)) s = { ...s, riding: false, mounting: 0 }; // unequipped under you
+  let mounting = s.mounting > 0 ? s.mounting : 0;
   if (bikeDown && !s.bikeHeld && (s.riding || s.bike > 0)) {
-    // Get on facing where you look, keeping your momentum; get off with the bike's.
-    s = s.riding ? { ...s, riding: false } : { ...s, riding: true, heading: yaw, sliding: false, crouching: false };
+    // Get off at once with the bike's momentum; getting on takes MOUNT_TICKS (pressing again stops it).
+    if (s.riding) s = { ...s, riding: false };
+    else mounting = mounting > 0 ? 0 : MOUNT_TICKS;
+  }
+  if (mounting > 0 && --mounting === 0) {
+    // On: facing where you look.
+    s = { ...s, riding: true, mounting: 0, heading: yaw, sliding: false, crouching: false };
   }
   if (s.riding) return stepBike(s, input, bikeDown, storm, legs);
+  if (mounting > 0) input &= ~MOVE_KEYS; // standing at the bike, swinging a leg over
   const fwd = (input & FORWARD ? 1 : 0) - (input & BACK ? 1 : 0);
   const strafe = (input & RIGHT ? 1 : 0) - (input & LEFT ? 1 : 0);
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
@@ -386,7 +397,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   if (grounded) airJumps = AIR_JUMPS;
   return {
     x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks, sliding, crouching, slideCool,
-    slideSpent, riding: false, bikeHeld: bikeDown, heading: s.heading, bike: s.bike,
+    slideSpent, riding: false, bikeHeld: bikeDown, mounting, heading: s.heading, bike: s.bike,
   };
 }
 
@@ -510,7 +521,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   h = Math.atan2(Math.sin(h), Math.cos(h));
   return {
     x, y, z, vx, vy, vz, facing: h, grounded, airJumps: AIR_JUMPS, jumpHeld: jumpDown, landTicks,
-    sliding: false, crouching: false, slideCool: s.slideCool, slideSpent: s.slideSpent, riding: true, bikeHeld: bikeDown, heading: h, bike: s.bike,
+    sliding: false, crouching: false, slideCool: s.slideCool, slideSpent: s.slideSpent, riding: true, bikeHeld: bikeDown, mounting: 0, heading: h, bike: s.bike,
   };
 }
 

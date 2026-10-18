@@ -716,7 +716,7 @@ export class Net {
       x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
       sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool, slideSpent: server.slideSpent,
-      riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading, bike: server.bike,
+      riding: server.riding, bikeHeld: server.bikeHeld, mounting: server.mounting ?? 0, heading: server.heading, bike: server.bike,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag, this.legPosts);
     this.errorX += this.me.x - s.x;
