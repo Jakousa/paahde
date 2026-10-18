@@ -26,7 +26,7 @@
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
-import { bagShape, boxShape, digTool, fitPart, tryMove, unfitPart } from '../shared/gear.ts';
+import { bagShape, boxShape, digTool, fitPart, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
 import { DEBRIS_ITEMS, HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
@@ -203,7 +203,8 @@ export class Net {
    * server answers with both boxes. False if refused.
    */
   moveItem(from: string, fi: number, to: string, ti: number, n?: number, r?: boolean): boolean {
-    if (!this.connected || !tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId, r)) return false;
+    if (!this.connected || (this.me.riding && lockedWhileRiding(from, fi))) return false;
+    if (!tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId, r)) return false;
     this.growChests(from, to);
     this.send({ t: 'move', from, fi, to, ti, ...(n !== undefined ? { n } : {}), ...(r !== undefined ? { r } : {}) });
     this.onItems?.(from);
@@ -249,7 +250,7 @@ export class Net {
   dropItem(box: string, slot: number): boolean {
     const slots = this.boxes[box];
     const it = slots?.[slot];
-    if (!this.connected || !it || box === 'equip' || box === 'bench') return false;
+    if (!this.connected || !it || (this.me.riding && lockedWhileRiding(box, slot))) return false;
     slots[slot] = it.n > 1 ? { ...it, n: it.n - 1 } : null;
     this.growChests(box);
     this.send({ t: 'drop', box, slot });
