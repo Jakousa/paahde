@@ -132,8 +132,8 @@ const by = (q: number, lo: number, hi: number) => lo + ((hi - lo) * q) / 3;
 
 // What each piece of gear does at quality q (0..3).
 /** Motorcycle top speed (m/s) and engine (m/s² from a standstill). */
-export const bikeTopSpeed = (q: number) => by(q, 19, 28);
-export const bikeEngine = (q: number) => by(q, 14, 19);
+export const bikeTopSpeed = (q: number) => by(q, 22, 30);
+export const bikeEngine = (q: number) => by(q, 16, 20);
 /** Telescope's strongest zoom. */
 export const spyglassZoom = (q: number) => by(q, 4, 12);
 /** Sips in a full water bottle. */
