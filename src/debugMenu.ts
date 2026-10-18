@@ -4,8 +4,10 @@
 // (for everyone, after the usual warning); "Local sandstorm" sends one at you from just upwind at once, seen only by you.
 // "Guardian here" / "Drone here" bring the nearest guardian, or a drone (by day too), to you, for everyone; "Jet here"
 // sends a fixed-wing drone over you.
+// "Tone" switches the tone curve live (post.ts toneControl); "white" is the filmic curve's white point.
 // "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, and a laser rifle, pistol and jammer in your bag and equipment.
 import { ui } from './input';
+import { TONE_CURVES, toneControl, type ToneCurve } from './post';
 import { summonLocalStorm } from './storm';
 import { clockText, timeControl } from './world/dayNight';
 
@@ -23,6 +25,8 @@ export class DebugMenu {
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.18); z-index: 10; }
 #debugMenu h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; opacity: .7; }
 #debugMenu input[type=range] { width: 100%; }
+#debugMenu label input[type=range] { flex: 1; width: auto; }
+#debugMenu select { font: inherit; color: inherit; background: rgba(255, 233, 204, 0.12); border: 0; border-radius: 4px; }
 #debugMenu .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 #debugMenu button { font: inherit; color: inherit; background: rgba(255, 233, 204, 0.12); border: 0; border-radius: 4px;
   padding: 3px 7px; cursor: pointer; }
@@ -43,6 +47,8 @@ export class DebugMenu {
 <div class="row"><button id="dbgGuardian" title="The nearest guardian, brought 90 m from you (for everyone)">Guardian here</button>
 <button id="dbgDrone" title="A searchlight drone over you for a minute, even by day (for everyone)">Drone here</button>
 <button id="dbgJet" title="A fixed-wing drone flying over you in about 15 s (for everyone)">Jet here</button></div>
+<label>Tone <select id="dbgTone">${TONE_CURVES.map((c) => `<option>${c}</option>`).join('')}</select></label>
+<label id="dbgWhiteRow">White <input id="dbgWhite" type="range" min="1" max="8" step="0.25"> <b id="dbgWhiteVal"></b></label>
 <div class="row"><button id="dbgGear" title="One of every piece of gear, repaired with Scrap parts, a laser rifle, a laser pistol and a jammer (what doesn't fit the bag is skipped)">Give gear</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
@@ -56,6 +62,20 @@ export class DebugMenu {
     p.querySelector('#dbgGuardian')!.addEventListener('click', () => summonBot('guardian'));
     p.querySelector('#dbgDrone')!.addEventListener('click', () => summonBot('drone'));
     p.querySelector('#dbgJet')!.addEventListener('click', () => summonBot('jet'));
+
+    const tone = p.querySelector<HTMLSelectElement>('#dbgTone')!;
+    const white = p.querySelector<HTMLInputElement>('#dbgWhite')!;
+    const whiteRow = p.querySelector<HTMLElement>('#dbgWhiteRow')!;
+    const whiteVal = p.querySelector<HTMLElement>('#dbgWhiteVal')!;
+    const showTone = () => {
+      tone.value = toneControl.curve;
+      white.value = String(toneControl.white);
+      whiteVal.textContent = toneControl.white.toFixed(2);
+      whiteRow.style.display = toneControl.curve === 'filmic' ? '' : 'none';
+    };
+    tone.addEventListener('change', () => { toneControl.set(tone.value as ToneCurve); showTone(); });
+    white.addEventListener('input', () => { toneControl.set(toneControl.curve, Number(white.value)); showTone(); });
+    showTone();
 
     const show = (tod: number) => {
       slider.value = String(Math.round(tod * 1440) % 1440);

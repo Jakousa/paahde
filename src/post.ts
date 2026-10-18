@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import {
   Fn, abs, atan, cos, dot, exp, float, length, max, mix, mx_noise_float, pass, pow, renderOutput, saturate,
   smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin, perspectiveDepthToViewZ, If, normalize, sqrt, min, log, rtt,
+  select, acesFilmicToneMapping, agxToneMapping,
 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
@@ -19,20 +20,38 @@ import { BASE, HUT, W } from '../shared/base.ts';
 type N = Node<'vec3'>;
 type F = Node<'float'>;
 
-/** Tone curve: `?tone=filmic|aces|agx` (`?agx` still works), `?white=` the filmic white point. */
-const params = new URLSearchParams(location.search);
-const TONE_NAME = params.get('tone') ?? (params.has('agx') ? 'agx' : 'aces');
-const TONE = TONE_NAME === 'agx' ? THREE.AgXToneMapping : TONE_NAME === 'filmic' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
-const FILMIC_WHITE = Number(params.get('white') ?? 2);
-
-/** Hable's filmic curve, per channel (Godot's "Filmic", exposure bias 2 baked in), scaled so `white`
- *  maps to 1. Keeps hue and saturation in bright oranges, where ACES and AgX wash them towards yellow-white. */
+/** Hable's filmic curve, per channel (Godot's "Filmic", exposure bias 2 baked in). Keeps hue and
+ *  saturation in bright oranges, where ACES and AgX wash them towards yellow-white. */
+const A = 0.22 * 4, B = 0.3 * 2, C = 0.1, D = 0.2, E = 0.01, F_ = 0.3;
+const hable = (x: number) => (x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F_) - E / F_;
+/** 1 / hable(white point): scales the curve so the white point maps to 1. */
+const filmicScale = uniform(1);
 function filmic(c: N): N {
-  const A = 0.22 * 4, B = 0.3 * 2, C = 0.1, D = 0.2, E = 0.01, F_ = 0.3;
-  const curve = (x: number) => (x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F_) - E / F_;
   const top = c.mul(c.mul(A).add(C * B)).add(D * E);
   const bottom = c.mul(c.mul(A).add(B)).add(D * F_);
-  return top.div(bottom).sub(E / F_).div(curve(FILMIC_WHITE));
+  return top.div(bottom).sub(E / F_).mul(filmicScale);
+}
+
+export const TONE_CURVES = ['aces', 'agx', 'filmic'] as const;
+export type ToneCurve = (typeof TONE_CURVES)[number];
+const toneIndex = uniform(0);
+
+/** Tone curve, switchable live (debug menu); starts from `?tone=aces|agx|filmic` (`?agx` still works) and
+ *  `?white=` (the filmic white point). */
+export const toneControl: { curve: ToneCurve; white: number; set(curve: ToneCurve, white?: number): void } = {
+  curve: 'aces',
+  white: 2,
+  set(curve, white = toneControl.white) {
+    toneControl.curve = curve;
+    toneControl.white = white;
+    toneIndex.value = TONE_CURVES.indexOf(curve);
+    filmicScale.value = 1 / hable(white);
+  },
+};
+{
+  const params = new URLSearchParams(location.search);
+  const name = params.get('tone') ?? (params.has('agx') ? 'agx' : 'aces');
+  toneControl.set((TONE_CURVES as readonly string[]).includes(name) ? (name as ToneCurve) : 'aces', Number(params.get('white') ?? 2));
 }
 
 /** Sun tint used for veiling glare and flares (linear). */
@@ -117,7 +136,7 @@ export class Post {
   constructor(renderer: THREE.WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera) {
     this.renderer = renderer;
     this.camera = camera as THREE.PerspectiveCamera;
-    renderer.toneMapping = TONE;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping; // the composite tone maps itself (toneControl)
     renderer.toneMappingExposure = 1;
 
     const scenePass = pass(scene, camera);
@@ -349,8 +368,8 @@ export class Post {
       // Saturation boost (AgX desaturates; push the orange back).
       c = mix(vec3(lum), c, 1.18);
       c = max(c, vec3(0));
-      if (TONE_NAME === 'filmic') c = saturate(filmic(c));
-      let o: N = renderOutput(vec4(c, 1), TONE, THREE.SRGBColorSpace).rgb;
+      const toned = select(toneIndex.equal(2), saturate(filmic(c)), select(toneIndex.equal(1), agxToneMapping(c, float(1)) as N, acesFilmicToneMapping(c, float(1)) as N));
+      let o: N = renderOutput(vec4(toned, 1), THREE.NoToneMapping, THREE.SRGBColorSpace).rgb;
       // Vignette.
       const p = uv();
       const v = length(p.sub(0.5).mul(vec2(aspect.mul(0.8), 1)));
