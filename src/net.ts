@@ -181,6 +181,8 @@ export class Net {
   onBolt?: (msg: Extract<ServerMsg, { t: 'shot' | 'boom' | 'missile' | 'blast' }>) => void;
   /** A chat line from player `id` (us too), src/chat.ts. */
   onChat?: (msg: Extract<ServerMsg, { t: 'chat' }>) => void;
+  /** Joined a world you haven't been asked your name in yet (src/name.ts). */
+  onAskName?: () => void;
   onObituary?: (msg: Extract<ServerMsg, { t: 'obituary' }>) => void;
   /** Another player's laser rifle shot (src/rifle.ts draws it). */
   onZap?: (msg: Extract<ServerMsg, { t: 'zap' }>) => void;
@@ -346,6 +348,11 @@ export class Net {
   /** Say something in chat; it comes back as 'chat' to everyone. */
   chat(text: string) {
     if (this.connected) this.send({ t: 'chat', text });
+  }
+
+  /** Your name in this world ('' none), asked once (src/name.ts). */
+  setName(name: string) {
+    if (this.connected) this.send({ t: 'name', name });
   }
 
   /** One sip finished (src/water.ts); the server answers with 'water'. */
@@ -716,6 +723,7 @@ export class Net {
       this.sentSlot = -1;
       this.retryMs = 500;
       this.status = 'online';
+      if (msg.name === null) this.onAskName?.();
       return;
     }
     if (msg.t === 'snap') {

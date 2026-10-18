@@ -75,6 +75,7 @@ import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
 import { Detector } from './detector';
 import { Chat } from './chat';
+import { askName } from './name';
 import { tools } from './input';
 import { Wrecks } from './world/wrecks';
 import { Trophies } from './world/trophies';
@@ -166,6 +167,7 @@ machines.bench.onReady = () => {
 };
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear(), (what) => net.summonBot(what));
 new Chat(net);
+askName(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
 update.busy = () => guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
 const lootView = new LootView(scene);

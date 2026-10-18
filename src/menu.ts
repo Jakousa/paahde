@@ -145,6 +145,7 @@ export class Menu {
     addEventListener('keydown', (e) => {
       if (e.code === 'Tab' && this.open) this.toggle(false);
       if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
+      if (document.getElementById('name')) return; // Esc there skips the name (src/name.ts)
       this.toggle(!this.open);
     }, true);
     document.addEventListener('pointerlockchange', () => {

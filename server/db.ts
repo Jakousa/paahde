@@ -4,6 +4,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, OLD_SCRAP, SCRAP, type Item, type Slots } from '../shared/items.ts';
 
 export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
+/** A player's name in this world: null until they were asked (src/name.ts), '' if they left it blank. */
+export type PlayerName = string | null;
 
 export function openDb(path: string) {
   mkdirSync(dirname(path), { recursive: true });
@@ -29,8 +31,12 @@ export function openDb(path: string) {
   if (!cols.some((c) => c.name === 'sips')) db.exec('ALTER TABLE players ADD COLUMN sips INTEGER NOT NULL DEFAULT 4');
   // v4: the thirst bar became a heat meter (0 = cool); `water` is unused from here on.
   if (!cols.some((c) => c.name === 'heat')) db.exec('ALTER TABLE players ADD COLUMN heat REAL NOT NULL DEFAULT 0');
+  // v5: a name, asked the first time they join this world (NULL: not asked yet).
+  if (!cols.some((c) => c.name === 'name')) db.exec('ALTER TABLE players ADD COLUMN name TEXT');
 
   const get = db.prepare('SELECT id, color, x, z, heat, sips FROM players WHERE id = ?');
+  const getName = db.prepare('SELECT name FROM players WHERE id = ?');
+  const putName = db.prepare('UPDATE players SET name = ? WHERE id = ?');
   const upsert = db.prepare(`
     INSERT INTO players (id, color, x, y, z, heat, sips) VALUES (?, ?, ?, 0, ?, ?, ?)
     ON CONFLICT (id) DO UPDATE SET x = excluded.x, z = excluded.z, heat = excluded.heat, sips = excluded.sips,
@@ -388,6 +394,8 @@ export function openDb(path: string) {
     spendCrash: (site: number, at: number) => insertSpent.run(site, at),
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,
     savePlayer: (p: PlayerRow) => upsert.run(p.id, p.color, p.x, p.z, p.heat, p.sips),
+    getName: (id: string) => ((getName.get(id) as { name: string | null } | undefined)?.name ?? null) as PlayerName,
+    setName: (id: string, name: string) => putName.run(name, id),
     loadChunks(): { cx: number; cz: number; data: Int32Array }[] {
       return (allChunks.all() as { cx: number; cz: number; data: Uint8Array }[]).map((r) => ({
         cx: r.cx,

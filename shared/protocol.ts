@@ -251,7 +251,7 @@ export type ServerMsg =
   | ({ t: 'missile'; id: number; g: number; time: number } & MissilePath)
   | { t: 'blast'; id: number; x: number; y: number; z: number }
   // Player `by` fired a laser rifle (or the pistol: `pistol`) from (x, y, z) to (ex, ey, ez); `hit`: it broke a weak point there.
-  // Player `id` (public id; `color` their avatar's) said `text` in chat, to everyone (also back to the sender).
+  // Player `id` (public id; `color` their avatar's, `name` theirs or '') said `text` in chat, to everyone (also back to the sender).
   | { t: 'chat'; id: number; color: number; name: string; text: string }
   // Player `id` (`color` their avatar's) died of `cause`, to everyone: a line in chat (src/chat.ts says how).
   | { t: 'obituary'; id: number; color: number; name: string; cause: DeathCause }
