@@ -250,7 +250,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
   send(ws, jets.msg());
-  send(ws, loot.joinMessage());
+  send(ws, loot.joinMessage(browserId));
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   send(ws, corpses.joinMessage());
   for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes()]) send(ws, boxMsg(browserId, box));
@@ -792,11 +792,13 @@ function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   const weather = storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
   const flights = jets.tick(time, [...players.values()].map((p) => p.state));
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), placedThings.flush(), garden.flush(), loot.flush(), weather, flights]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), placedThings.flush(), garden.flush(), weather, flights]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
   }
+  const lootMsg = loot.flush(); // per player: the home bike is hidden from whoever has had theirs
+  if (lootMsg) for (const p of players.values()) send(p.ws, loot.seenBy(lootMsg, p.browserId));
   const list: PlayerSnap[] = [...players.values()].map((p) => {
     const item = p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot]?.kind : undefined;
     const gear = wornGear(items.slots(p.browserId, 'equip')) | carriedGear(items.slots(p.browserId, 'bag'), p.slot);

@@ -157,16 +157,22 @@ export class LootServer {
     this.removed = [];
   }
 
-  /** Everything, for a joining client. */
-  joinMessage(): ServerMsg {
-    return { t: 'loot', add: [...this.loot.values()], remove: [], reset: true };
+  /** Everything, for a joining client (browser id `who`). */
+  joinMessage(who: string): ServerMsg {
+    return this.seenBy({ t: 'loot', add: [...this.loot.values()], remove: [], reset: true }, who);
+  }
+
+  /** A loot message as player `who` (browser id) sees it: the home bike is gone for whoever has had theirs. */
+  seenBy(msg: Extract<ServerMsg, { t: 'loot' }>, who: string): Extract<ServerMsg, { t: 'loot' }> {
+    if (!msg.add.some((l) => l.id === this.homeBikeId) || !this.db.hasGrant(who, HOME_KIND)) return msg;
+    return { ...msg, add: msg.add.filter((l) => l.id !== this.homeBikeId) };
   }
 
   /** What changed since the last flush, for everyone (null if nothing). */
-  flush(): ServerMsg | null {
+  flush(): Extract<ServerMsg, { t: 'loot' }> | null {
     if (!this.added.length && !this.removed.length) return null;
     // Taken again before this went out: just the removal.
-    const msg: ServerMsg = { t: 'loot', add: [...new Set(this.added)].filter((l) => this.loot.get(l.id) === l), remove: this.removed };
+    const msg: Extract<ServerMsg, { t: 'loot' }> = { t: 'loot', add: [...new Set(this.added)].filter((l) => this.loot.get(l.id) === l), remove: this.removed };
     this.added = [];
     this.removed = [];
     return msg;
