@@ -282,6 +282,7 @@ let fpsFrames = 0;
 let fpsSince = performance.now();
 
 renderer.setAnimationLoop((time) => {
+  net.telemetry.frame(performance.now());
   fpsFrames++;
   if (time - fpsSince >= 500) {
     fps = Math.round((fpsFrames * 1000) / (time - fpsSince));
@@ -514,7 +515,7 @@ baseSand.update(frameDt, storm.atBase);
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   hud.update(net.me);
 
-  menu.setInfo(`${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
+  menu.setInfo(`${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
   teardown.update(frameDt);
   post.render();
 });

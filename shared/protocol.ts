@@ -47,6 +47,8 @@ export type ClientMsg =
   // slot: the selected hotbar slot (-1 none).
   // aim: a gun (or the jammer) in hand is raised to aim; others see it shouldered along the pitch.
   | { t: 'hands'; hands: Hands; slot?: number; aim?: boolean }
+  // Stall tracing (src/telemetry.ts → server/telemetry.ts): stalls seen since the last one, and a summary a minute.
+  | { t: 'telemetry'; ev: StallEvent[]; sum?: NetSummary }
   // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning.
   | { t: 'storm' }
   // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
@@ -144,6 +146,17 @@ export type Hands = 0 | 1 | 2 | 3;
 // tiers: how good that gear and the item in hand are, for the look (shared/gear.ts gearTiers), omitted when all Scrap.
 // down: dead, lying as a ragdoll until the respawn (shared/ragdoll.ts); the push (m/s) that threw the body, [0, 0, 0] if none.
 export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; aim?: 1; item?: string; gear?: number; tiers?: number; down?: [number, number, number] };
+
+/** A stall the client saw (src/telemetry.ts), `ago` ms before it was sent, lasting `ms`:
+ *  - down: no snapshots, though the server sent them on time (the network, server → us); `n` came in the burst after
+ *  - up: snapshots on time, but our inputs weren't reaching the server (the network, us → server)
+ *  - server: the snapshots' own server times were that far apart (the world's loop was late)
+ *  - frame: our own frame took that long (the browser's main thread was busy)
+ *  - reconnect: the socket closed (close `code`) and we were offline that long */
+export type StallEvent = { k: 'down' | 'up' | 'server' | 'frame' | 'reconnect'; ago: number; ms: number; n?: number; code?: number };
+/** The last minute on a client: round trip (input → its ack) p50/p95/max, worst snapshot gap, worst frame, average fps
+ *  (all ms but fps); `hidden`: the tab was hidden some of it. */
+export type NetSummary = { rtt50: number; rtt95: number; rttMax: number; gapMax: number; frameMax: number; fps: number; hidden?: boolean };
 
 export type ServerMsg =
   // First message on every connection: the build the server is serving (dist/version.txt, 'dev' if

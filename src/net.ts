@@ -37,6 +37,7 @@ import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
 import { serverBuild } from './update';
 import { WORLD_ID } from '../shared/world.ts';
+import { Telemetry } from './telemetry';
 
 /** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
 export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' }>;
@@ -89,6 +90,8 @@ type Snapshot = { time: number; players: Map<number, PlayerSnap> };
 
 export class Net {
   status = 'connecting';
+  /** Stall tracing (src/telemetry.ts): fed here and by the frame loop, reports to the server. */
+  readonly telemetry = new Telemetry((msg) => this.connected && this.ws?.readyState === WebSocket.OPEN && (this.send(msg), true));
   id = 0;
   color = 0xffffff;
   /** Predicted local state (authoritative for physics on this client). */
@@ -222,6 +225,7 @@ export class Net {
     this.me = step(this.me, input, yaw, drag, this.legPosts);
     this.pending.push({ seq: this.seq, input, yaw, drag });
     this.send({ t: 'input', seq: this.seq, input, yaw, pitch });
+    this.telemetry.sent(this.seq);
   }
 
   /** Pick up a scrap piece: hidden now, confirmed (items) or put back by the server. False if the bag is full. */
@@ -563,6 +567,7 @@ export class Net {
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
     ws.onclose = (e) => {
+      this.telemetry.closed(e.code);
       this.id = 0;
       this.pending = [];
       this.snapshots = [];
@@ -716,6 +721,7 @@ export class Net {
       this.epoch = msg.epoch;
       this.me = this.prev = msg.state;
       this.seq = 0;
+      this.telemetry.opened();
       this.sentHands = -1;
       this.sentSlot = -1;
       this.retryMs = 500;
@@ -736,6 +742,7 @@ export class Net {
       while (this.snapshots.length > 30) this.snapshots.shift();
 
       const server = players.get(this.id);
+      this.telemetry.snap(msg.time, msg.ack);
       if (server) this.reconcile(server, msg.ack);
     }
   }

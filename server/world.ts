@@ -23,9 +23,10 @@ import { GUNS, PISTOL } from '../shared/rifle.ts';
 import { inCone, JAM_BLEED, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer.ts';
 import { THROW_MS, THROWABLE } from '../shared/throw.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
-import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import type { ClientMsg, DeathCause, Hands, NetSummary, PlayerSnap, ServerMsg, StallEvent } from '../shared/protocol.ts';
 import { CHAT_MAX, NAME_MAX, OBITUARY_KEEP, type Obituary } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
+import { trace } from './telemetry.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
 import { ItemServer } from './items.ts';
@@ -118,6 +119,8 @@ type Player = {
   shieldUntil: number; // Date.now() ms: their shield plate just broke, nothing hurts them till then (shielded)
   firedAt: number; // last laser rifle shot or throw (performance.now() ms)
   chatAt: number; // last chat line (performance.now() ms)
+  traceAt: number; // last 'telemetry' taken (performance.now() ms)
+  backlogAt: number; // last traced their sends piling up (performance.now() ms)
   name: string; // shown in chat ('' none; db.getName null until asked)
   /** Loaded the game and chose a name ('ready', src/name.ts): until then unseen by others, unhurtable and out of the heat. */
   ready: boolean;
@@ -195,6 +198,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'chat' && p) return onChat(p, msg.text);
     if (msg.t === 'name' && p) return onName(p, msg.name);
     if (msg.t === 'ready' && p) return onReady(p);
+    if (msg.t === 'telemetry' && p) return onTelemetry(p, msg.ev, msg.sum);
     if (msg.t === 'hands' && p) {
       p.hands = msg.hands === 1 || msg.hands === 2 || msg.hands === 3 ? msg.hands : 0;
       p.aim = msg.aim === true;
@@ -254,7 +258,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, name: '', ready: false, jam: null,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: '', ready: false, jam: null,
   };
   players.set(ws, p);
   save(p);
@@ -878,6 +882,8 @@ setInterval(() => {
   const now = performance.now();
   const elapsed = (now - last) / 1000;
   last = now;
+  // Something blocked the event loop: every player's snapshots and bots are late by this much.
+  if (elapsed > LATE_TICK_S) trace('tick', { ms: Math.round(elapsed * 1000), players: players.size });
   const tod = timeOfDayAt(now + epoch);
   for (const p of players.values()) {
     p.tokens = Math.min(MAX_INPUT_BURST, p.tokens + elapsed * TICK_RATE);
@@ -950,6 +956,36 @@ function broadcast(time: number) {
   for (const p of players.values()) {
     const list = p.ready ? seen : [...seen, all.find((o) => o.snap.id === p.id)!.snap];
     send(p.ws, { t: 'snap', time, ack: p.ack, players: list });
+    // Sends piling up past the kernel's buffer: TCP can't get them out to this player (a stalled or slow link).
+    if (p.ws.bufferedAmount > BACKLOG_BYTES && time - p.backlogAt > TRACE_GAP_MS) {
+      p.backlogAt = time;
+      trace('backlog', { p: p.id, name: p.name, bytes: p.ws.bufferedAmount });
+    }
+  }
+}
+
+/** A tick this late (s) is traced (server/telemetry.ts), and a player's queued sends past this many bytes; a backlog
+ *  and a client's own reports at most once per TRACE_GAP_MS per player. */
+const LATE_TICK_S = 0.1;
+const BACKLOG_BYTES = 64 * 1024;
+const TRACE_GAP_MS = 2000;
+const STALL_KINDS = new Set(['down', 'up', 'server', 'frame', 'reconnect']);
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(Math.max(v, 0), 3_600_000)) : undefined);
+
+/** Stalls a client saw and its minute's summary (src/telemetry.ts), each traced at the time it happened. */
+function onTelemetry(p: Player, ev: unknown, sum: unknown) {
+  const now = performance.now();
+  if (now - p.traceAt < TRACE_GAP_MS || !Array.isArray(ev)) return;
+  p.traceAt = now;
+  const who = { p: p.id, name: p.name };
+  for (const e of ev.slice(0, 16) as Partial<StallEvent>[]) {
+    const ms = num(e?.ms), ago = num(e?.ago);
+    if (!e || !STALL_KINDS.has(e.k as string) || ms === undefined || ago === undefined) continue;
+    trace(e.k as string, { ...who, ms, ...(num(e.n) !== undefined ? { n: num(e.n) } : {}), ...(num(e.code) !== undefined ? { code: num(e.code) } : {}) }, Date.now() - ago);
+  }
+  if (sum && typeof sum === 'object') {
+    const s = sum as Partial<NetSummary>;
+    trace('summary', { ...who, rtt50: num(s.rtt50), rtt95: num(s.rtt95), rttMax: num(s.rttMax), gapMax: num(s.gapMax), frameMax: num(s.frameMax), fps: num(s.fps), ...(s.hidden === true ? { hidden: true } : {}) });
   }
 }
 

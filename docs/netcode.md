@@ -86,6 +86,29 @@ at our scale and the whole team can read and change it. Alternatives, if needs g
   simulating that player with no keys pressed, so they land instead of hanging in mid-air.
 - Message size is capped at 1 KB and the browser ID format is validated.
 
+## Telemetry (stall tracing)
+
+Clients trace the stalls they see (`src/telemetry.ts`) and send them in small batches, with a summary a minute; the
+world adds its own (`server/telemetry.ts`). Everything goes, one JSON line per event, to `telemetry.jsonl` next to the
+database (`/opt/dadajam/data/telemetry.jsonl` on the server; it survives redeploys, and past 20 MB becomes `.1`).
+`at` is when it happened, `w` the world, `p`/`name` the player, `ms` how long.
+
+| kind | from | means |
+|---|---|---|
+| `down` | client | no snapshots for `ms` though the server stamped them on time: the network, server → player; `n` arrived in the burst after |
+| `up` | client | snapshots on time, but an input waited `ms` for its ack: the network, player → server |
+| `server` | client | snapshots stamped `ms` apart: the world's loop was late |
+| `frame` | client | one frame took `ms` (the browser's main thread was busy); snapshots queued behind it aren't counted as `down` |
+| `reconnect` | client | offline `ms` after the socket closed with `code` |
+| `summary` | client | the last minute: round trip `rtt50`/`rtt95`/`rttMax`, worst snapshot gap `gapMax`, worst frame `frameMax`, `fps` |
+| `tick` | world | a tick came `ms` after the last (the event loop was blocked), with `players` on |
+| `backlog` | world | `bytes` queued for a player that TCP can't send out (a stalled or slow link) |
+
+`ssh maukass tail -f /opt/dadajam/data/telemetry.jsonl`, or e.g. `jq -c 'select(.kind != "summary")'` on it. A `down`
+and `up` at the same moment from one player is their link stalling both ways (Wi-Fi); `down` for everyone at once is
+the server's side of the network; `tick` is the world itself. The stats line (Esc → Show stats) shows the round trip
+and the last stall.
+
 ## Rules when changing gameplay
 
 - **All movement or physics that affects position goes in `shared/sim.ts`**, which both sides run.
