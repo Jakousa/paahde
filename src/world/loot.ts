@@ -1,7 +1,8 @@
 // Loot on the sand (shared/loot.ts, from the server via src/net.ts): broken gear at crash sites and near the
 // spawn, dug-up caches, things dropped from a full bag. Buried loot isn't drawn (the metal detector hears it,
-// src/detector.ts). Gear has its own model (FIND_MODELS; the motorcycle is the sand bike on its side); broken gear has a warm glow
-// along its edges and a faint warm pool on the sand so it catches the eye among the crash-site debris; parts use the disassembly part models (src/teardown/junk.ts);
+// src/detector.ts). Gear has its own model (FIND_MODELS; the motorcycle is the sand bike on its side); parts use the disassembly
+// part models (src/teardown/junk.ts); broken gear, parts and relics have a warm glow along their edges and a faint warm pool
+// on the sand so they catch the eye among the crash-site debris;
 // anything else is a battered crate. Each sits on the sand where it is (also at the bottom of a hole).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -264,27 +265,34 @@ export class LootView {
     let rims: THREE.Mesh[] | null = null;
     let pool: THREE.Mesh | null = null;
     const part = parsePart(l.kind);
+    // Broken gear, parts and relics glow along their edges, with a faint warm pool on the sand around them: small and
+    // dark, they'd otherwise be lost on the sand (a boss's spoils scattered over its wreck, a kill's drop).
+    const glow = isGear(l.kind) ? !repaired({ id: 0, kind: l.kind, n: 1, parts: l.parts }) : !!part || RELIC_KINDS.has(l.kind);
+    if (glow) {
+      rims = obj.userData.rims = [];
+      // In the loot group, not the turned model: its vertices follow the sand (drape()).
+      pool = new THREE.Mesh(POOL_GEO.clone(), POOL);
+      pool.position.set(l.x, 0, l.z);
+      pool.renderOrder = 1;
+      this.group.add(pool);
+    }
     if (isGear(l.kind)) {
       if (FIND_MODELS[l.kind]) addFind(obj, l.kind);
       else GEAR_MODELS[l.kind]?.(obj);
-      // Broken gear glows along its edges, with a faint warm pool on the sand around it.
-      if (!repaired({ id: 0, kind: l.kind, n: 1, parts: l.parts })) {
-        rims = obj.userData.rims = [];
-        addRims(obj, rims);
-        // In the loot group, not the turned model: its vertices follow the sand (drape()).
-        pool = new THREE.Mesh(POOL_GEO.clone(), POOL);
-        pool.position.set(l.x, 0, l.z);
-        pool.renderOrder = 1;
-        this.group.add(pool);
-      }
+      if (rims) addRims(obj, rims);
     } else if (RELIC_KINDS.has(l.kind)) {
       FIND_MODELS[l.kind] ??= { url: `./models/items/${l.kind}.glb` };
       addFind(obj, l.kind);
     } else if (part) {
+      const add = (m: THREE.Object3D) => {
+        obj.add(m);
+        if (rims) addRims(m, rims);
+      };
       loadPart(part.part, TIERS[part.tier]).then((m) => {
         m.scale.multiplyScalar(0.7);
-        obj.add(m);
-      }, () => box(obj, 0.3, 0.2, 0.3, STEEL, 0, 0.1, 0));
+        m.traverse((o) => { o.userData.shared = true; }); // the cached part's geometry: never disposed
+        add(m);
+      }, () => add(box(new THREE.Group(), 0.3, 0.2, 0.3, STEEL, 0, 0.1, 0)));
     } else {
       // A battered crate for anything else (scrap, carried machines).
       box(obj, 0.5, 0.36, 0.4, WOOD, 0, 0.18, 0);
