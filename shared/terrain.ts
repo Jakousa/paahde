@@ -13,7 +13,7 @@
 // client and server agree exactly. Edits travel as absolute values (not deltas), so applying the same
 // edit twice is harmless and a client can predict a dig locally and still converge on the server.
 
-import { overBase, withPad } from './base.ts';
+import { baseSolid, nearBunker, overBase, withPad } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockHeight } from './rocks.ts';
 export { WIND, WORLD_SEED } from './dunes.ts';
@@ -139,4 +139,33 @@ export function normalAt(x: number, z: number, out: { x: number; y: number; z: n
   out.y = ny / len;
   out.z = nz / len;
   return out;
+}
+
+/** A shot at world (x, y, z) is stopped here: in the sand, or the base's walls (down in the bunker the sand above
+ *  is its roof, not in the way). */
+export function shotSolid(x: number, y: number, z: number): boolean {
+  return baseSolid(x, y, z) ?? y <= heightAt(x, z);
+}
+
+/**
+ * How far a shot from (ox, oy, oz) along unit (dx, dy, dz) goes before the sand or the base's walls stop it, or
+ * `range` if nothing does. Sampled every 0.75 m (0.15 m by the bunker), then refined.
+ */
+export function shotGround(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, range: number): number {
+  const at = (t: number) => shotSolid(ox + dx * t, oy + dy * t, oz + dz * t);
+  let prev = 0;
+  for (let t = 0.5; t <= range;) {
+    if (at(t)) {
+      let lo = prev, hi = t;
+      for (let i = 0; i < 8; i++) {
+        const mid = (lo + hi) / 2;
+        if (at(mid)) hi = mid;
+        else lo = mid;
+      }
+      return hi;
+    }
+    prev = t;
+    t += nearBunker(ox + dx * t, oz + dz * t, 2) ? 0.15 : 0.75;
+  }
+  return range;
 }

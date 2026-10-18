@@ -31,7 +31,8 @@ import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
 import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
 import { gunCooldown, quality } from '../shared/gear.ts';
-import { heightAt } from '../shared/terrain.ts';
+import { heightAt, shotGround } from '../shared/terrain.ts';
+import { baseSolid } from '../shared/base.ts';
 import { SPRINT_SPEED, WALK_SPEED } from '../shared/sim.ts';
 
 /** Raising to the eye takes ADS_S; the scope view comes in at the end of it. */
@@ -305,20 +306,8 @@ export class Rifle {
       _d.addScaledVector(_r, Math.cos(a) * r).addScaledVector(_u, Math.sin(a) * r).normalize();
     }
     // The sand first, then anything of a walker before it.
-    let dist = range, ground = false;
-    for (let t = 0.5; t <= range; t += 0.75) {
-      if (_o.y + _d.y * t > heightAt(_o.x + _d.x * t, _o.z + _d.z * t)) continue;
-      // Refine between the last two samples.
-      let lo = t - 0.75, hi = t;
-      for (let i = 0; i < 6; i++) {
-        const mid = (lo + hi) / 2;
-        if (_o.y + _d.y * mid > heightAt(_o.x + _d.x * mid, _o.z + _d.z * mid)) lo = mid;
-        else hi = mid;
-      }
-      dist = hi;
-      ground = true;
-      break;
-    }
+    let dist = shotGround(_o.x, _o.y, _o.z, _d.x, _d.y, _d.z, range);
+    const ground = dist < range;
     const hit = this.guardians.raycast(_o, _d, dist);
     if (hit) dist = hit.dist;
     const drone = this.drones.raycast(_o, _d, dist);
@@ -342,6 +331,10 @@ export class Rifle {
       zaps.burst(_e.x, _e.y, _e.z, hit.normal.x, hit.normal.y, hit.normal.z, hit.index >= 0 ? 6 : 16);
       if (hit.index >= 0) this.guardians.breakLocal(hit.walker, hit.index);
       rifleSound.impact(hit.index >= 0 ? 'glass' : 'metal', _e, _o);
+    } else if (ground && baseSolid(_e.x, _e.y, _e.z) === true) {
+      // The bunker's concrete.
+      zaps.burst(_e.x, _e.y, _e.z, -_d.x, -_d.y, -_d.z, 10);
+      rifleSound.impact('metal', _e, _o);
     } else if (ground) {
       zaps.burst(_e.x, _e.y + 0.05, _e.z, 0, 1, 0, 8);
       for (let i = 0; i < 3; i++) tyreDust.emit(_e.x, _e.y + 0.1, _e.z, (Math.random() - 0.5) * 1.5, 1 + Math.random(), (Math.random() - 0.5) * 1.5, 0.35);

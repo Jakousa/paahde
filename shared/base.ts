@@ -388,3 +388,25 @@ export function baseCeiling(x: number, z: number, prevY: number, height: number)
   const c = ceilingAt(x - BASE.x, z - BASE.z);
   return prevY - BASE.y + height <= c + 0.05 ? c + BASE.y - height : Infinity;
 }
+
+/**
+ * What a shot (src/rifle.ts) meets at world (x, y, z) in and around the base: true solid (the hut, the skylight's
+ * collar and glass, the bunker's walls, floors and ceilings), false the air inside it (the sand above is not in the
+ * way there), null elsewhere (the terrain decides).
+ */
+export function baseSolid(x: number, y: number, z: number): boolean | null {
+  const lx = x - BASE.x, lz = z - BASE.z, ly = y - BASE.y, ax = Math.abs(lx);
+  if (ly > HUT.top || !inFootprint(lx, lz, 0)) return null;
+  // Air: the hut, stairwell, tunnel and hallway; the doorway; the room (up to the skylight's glass).
+  if (ax < W && lz > HALL.z && lz < HUT.z1 && ly > stairY(lz) && ly < ceilingAt(lx, lz)) return false;
+  if (ax < HUT.door && lz >= HUT.z1 - 0.01 && ly > 0 && ly < HUT.h) return false;
+  if (ax < ROOM.w && lz > ROOM.z && lz <= HALL.z && ly > FLOOR && ly < ceilingAt(lx, lz)) return false;
+  if (ax < W + HUT.t && lz > HUT.z0 - HUT.t) return true; // the hut's walls and roof
+  if (ax < SKY.collar && Math.abs(lz - ROOM_Z) < SKY.collar && ly < SKY.h) return true; // collar, glass
+  return ly < BURIED_TOP ? true : null; // underground concrete; the sand over it
+}
+
+/** Within `m` of the bunker's footprint (shots step finely there: its walls and glass are thin). */
+export function nearBunker(x: number, z: number, m: number): boolean {
+  return inFootprint(x - BASE.x, z - BASE.z, m);
+}
