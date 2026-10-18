@@ -347,7 +347,7 @@ class Walker {
       this.root.add(leg.hip, leg.femur, leg.tibia, leg.footObj);
       this.legs.push(leg);
     });
-    // Weak points: a red lens in a dark rim, on its knee (guardians) or the body (crawlers).
+    // Weak points: a red lens in a dark rim, on its knee or belly (guardians) or the body (crawlers).
     for (const wp of weakPoints(f.kind, f.legs)) {
       const group = new THREE.Group();
       const lens = new THREE.Mesh(lensGeo, lensMat);
@@ -358,7 +358,7 @@ class Walker {
       // The rim stands across the lens, facing out of the knee or the flank.
       if (wp.on === 'body') rim.rotation.y = Math.PI / 2;
       else rim.rotation.x = Math.PI / 2;
-      (wp.on === 'body' ? this.body : this.legs[wp.leg].tibia).add(group);
+      (wp.on === 'tibia' ? this.legs[wp.leg].tibia : this.body).add(group);
       this.targets.push({ wp, lens, group, broken: false, smoke: Math.random() });
     }
     if (this.noShadows) this.root.traverse((o) => (o.castShadow = false));

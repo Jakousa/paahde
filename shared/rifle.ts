@@ -31,17 +31,20 @@ export const GUNS: Record<string, { cooldown: number; range: number }> = {
 
 /**
  * A walker's weak points. Guardians: one on every knee (in the tibia's frame, origin at the knee, +Z down the shin,
- * +Y towards the bend's outside). Crawlers: two on the flanks of the body (body frame, +Z forward). Positions and radii
+ * +Y towards the bend's outside), and one on the belly under the body's core (body frame, facing down, behind the
+ * cannon's pod). Crawlers: two on the flanks of the body (body frame, +Z forward). Positions and radii
  * at the model's scale 1 (multiplied by KINDS scale); `hit` pads the radius for the hit test (small, quick crawlers).
  */
-export type WeakPoint = { on: 'tibia' | 'body'; leg: number; x: number; y: number; z: number; r: number };
+export type WeakPoint = { on: 'tibia' | 'body' | 'belly'; leg: number; x: number; y: number; z: number; r: number };
 
 const KNEE = { x: 0, y: 0.55, z: 0.15, r: 0.85 };
+const BELLY = { x: 0, y: -2.1, z: -3.2, r: 0.8 };
 const FLANK = { y: 1.9, z: 0.9, r: 1.25 };
 
 export function weakPoints(kind: Kind, legs: 3 | 4): WeakPoint[] {
   if (kind === CRAWLER) return [-1, 1].map((s) => ({ on: 'body', leg: -1, x: s * 3.35, ...FLANK }));
-  return Array.from({ length: legs }, (_, leg) => ({ on: 'tibia', leg, ...KNEE }));
+  const knees = Array.from({ length: legs }, (_, leg): WeakPoint => ({ on: 'tibia', leg, ...KNEE }));
+  return [...knees, { on: 'belly', leg: -1, ...BELLY }];
 }
 
 /** The hit test's radius over the drawn one, by kind (guardian, crawler). */

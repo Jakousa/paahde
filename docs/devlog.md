@@ -59,7 +59,7 @@ Crash sites are also much rarer: `DENSITY` is 0.14 per cell out in the desert an
 - **Crafted** at the workbench: metal plank + metal sheet + 2 wiring coils + a battery (any tiers). A hotbar item
   (`laser_rifle`, 4×1); the debug gear button gives one. Every player from before got one, once, in the 4th hotbar
   slot (server/items.ts `rifleGift`, the new `grants` table); what was there moved into the bag.
-- **Weak points** (shared/rifle.ts): red glowing lenses, one on every knee of a guardian and one on each flank of a
+- **Weak points** (shared/rifle.ts): red glowing lenses, one on every knee of a guardian plus one on its belly under the core, and one on each flank of a
   crawler, all pulsing together. A hit shatters the lens (glass chips, sparks, an electric fizz), the walker flinches
   and turns on the shooter (a crawler's whole pack with it), and the broken point keeps smoking. All of them broken:
   it dies.
