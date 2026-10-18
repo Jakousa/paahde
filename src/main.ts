@@ -190,6 +190,7 @@ let coverP = 0;
 THREE.DefaultLoadingManager.onProgress = (_url, done, total) => {
   coverP = Math.max(coverP, done / total);
   cover.style.setProperty('--p', String(coverP));
+  loading.progress(coverP);
 };
 let loaded = false;
 let coverFrames = 0; // frames drawn behind the cover once loaded (lets shaders compile)

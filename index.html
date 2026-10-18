@@ -19,6 +19,7 @@
       #cover { position: fixed; inset: 0; z-index: 25; background: #111; pointer-events: none; transition: opacity .4s;
         display: flex; flex-direction: column; gap: 22px; align-items: center; justify-content: center;
         user-select: none; -webkit-user-select: none; }
+      #cover.play i { display: none; }
       #cover i { display: block; width: 160px; height: 2px; background: #2a2622; overflow: hidden; }
       #cover i::after { content: ''; display: block; height: 100%; width: calc(var(--p, 0) * 100%); background: #c9a878;
         transition: width .2s; }
