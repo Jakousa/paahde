@@ -52,6 +52,10 @@ the hand correctly and let the fingers close on it.
   along `pn` until the deepest palm vertex is 2 mm inside it (`PALMS` holds the rest palm vertices).
   Which end sticks out by the thumb matters: the spyglass has its eyepiece by the thumb, so the same grip
   brings it to the eye.
+- **Bars in general** (`bar_in_hand(pre, contact, axis, ref, roll, grip)`): the same placement for either hand and any
+  object: its `axis` across the palm (+ end by the thumb), `ref` out of the palm turned `roll` about it, the point
+  `grip` pushed onto the palm. The shovel (both hands on the shaft), the jammer's support hand under its body and the
+  scrap offcut use it; the shovel's rolls are searched for the straightest wrists over all the dig's keys.
 - **Arm:** `solve_arm()` (two-bone IK with a pole) places the hand; `ELBOW` holds the last solved elbow.
   `right_hand_world(wrist, fingers, thumb)` builds a hand matrix from directions. For the at-eye pose the
   roll about the tube is searched for the straightest wrist that's in reach (`eye_cost`). One-shots
@@ -72,6 +76,8 @@ the hand correctly and let the fingers close on it.
 - Build: `/Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup -P tools/models/hands.py`
   takes about 1 minute (bake). Read the `GRASP`/`WRIST` lines. The `WARN out of reach` lines during the
   at-eye roll search are expected.
+- Quick pose checks: `HANDS_FAST=1 HANDS_OUT=/tmp/x.glb` skips the bakes (flat colours, a stand-in box jammer) for a
+  quicker build; render that file. Only the full build writes the real `hands.glb`.
 - Close-ups: `tools/models/render_hand.py -- public/models/hands.glb <prefix> Clip:frame,...`. Tile the views
   with `ffmpeg ... xstack` and look at one image. Check `fp` (what the player sees) and at least two
   close-ups: a pose can look fine from the eye with the thumb through the barrel.

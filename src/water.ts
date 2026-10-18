@@ -28,13 +28,14 @@ import { drinkSound } from './drinkSound';
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
  * are true for the whole sip / refill action. Digging is the DIG input bit, as before.
  */
-export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer';
+export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer' | 'scrap';
 /** `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden).
- *  `tool`: a hand tool with no viewmodel of its own (the hands stay empty): the metal detector or the shovel. */
+ *  `tool`: a hand tool that leaves the use button to digging (held stays 'none'): the metal detector or the shovel.
+ *  `throwAt`: when the last throw of scrap started (performance.now(), src/throw.ts), for the hands' throw. */
 /** Rifle or pistol (src/rifle.ts): `aim` 0..1 raised to the eye, `rifleScoped` looking through its scope (hands hidden), `kick`
  *  the recoil to show (1 on firing, decaying), `charge` the cell 0..1 (1: ready to fire). */
 export const playerHands = {
-  held: 'none' as Held, tool: 'none' as 'none' | 'shovel' | 'detector', drinking: false, filling: false, looking: false, scoped: false,
+  held: 'none' as Held, tool: 'none' as 'none' | 'shovel' | 'detector', throwAt: 0, drinking: false, filling: false, looking: false, scoped: false,
   aim: 0, rifleScoped: false, kick: 0, charge: 1,
   /** The jammer's lamp (src/jammer.ts), 0 dark .. 1 fully lit. */
   jamLamp: 0,
@@ -237,7 +238,7 @@ export class Survival {
     const it = this.net.boxes.bag?.[this.selected];
     const kind = it?.kind;
     // A broken telescope or gun is just junk in the hand; a broken bottle still shows (it holds no water).
-    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : 'none';
+    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : kind && THROWABLE.has(kind) ? 'scrap' : 'none';
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
     playerHands.tool = repaired(it) && (kind === 'shovel' || kind === 'metal_detector') ? (kind === 'shovel' ? 'shovel' : 'detector') : 'none';

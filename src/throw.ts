@@ -1,10 +1,12 @@
 // Throwing scrap (shared/throw.ts): with a piece of junk taken out from the hotbar, left mouse / E throws it where
-// you look, on an arc you learn to aim above. It shows at once and flies on our guess of the server's path; the
+// you look, on an arc you learn to aim above. The hand winds up first (ScrapThrow, src/viewmodel.ts, from
+// `playerHands.throwAt`) and lets go RELEASE_MS after the press, where you look then. From there it flies on our guess of the server's path; the
 // server takes it out of the bag, flies it (server/throws.ts) and tells everyone near ('toss'). Others' throws show
 // from there. Off a drone it bounces with a clank and sparks; on the sand it thumps down and lies there as loot.
 import * as THREE from 'three/webgpu';
 import type { FirstPersonCamera } from './camera';
 import { tools, useHeld } from './input';
+import { playerHands } from './water';
 import type { Net } from './net';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
@@ -16,8 +18,13 @@ import type { ServerMsg } from '../shared/protocol.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { THROW_MS, THROWABLE, THROW_SPEED, tossAt, type TossPath } from '../shared/throw.ts';
 
-/** It leaves the hand here (eye frame: right, up, forward, m) and eases onto the true arc over HAND_S. */
-const HAND = new THREE.Vector3(0.3, -0.25, 0.4);
+/** From the press to letting go (ms): the wind-up of the hands' ScrapThrow (0.5 s, let go at 0.42). */
+const RELEASE_MS = 210;
+/** It leaves the hand here (eye frame: right, up, forward, m; where the hands let go) and eases onto the true arc
+ *  over HAND_S. */
+const HAND = new THREE.Vector3(0.06, 0.04, 0.25);
+/** A pile piece flown when the hands' scrap model isn't there is shrunk to about this size (m across). */
+const PIECE_M = 0.25;
 const HAND_S = 0.18;
 /** Lying on the sand waiting for the server's word this long (ms) at most. */
 const LAND_WAIT_MS = 1500;
@@ -43,7 +50,10 @@ export class Thrower {
   private tosses: Toss[] = [];
   private wasUse = false;
   private readyAt = 0;
+  private releaseAt = 0;
   private count = 0;
+  /** The piece in flight: the one drawn in the hands (src/viewmodel.ts scrapPiece), null until it has loaded. */
+  piece: (() => THREE.Object3D | null) | null = null;
 
   constructor(scene: THREE.Scene, view: FirstPersonCamera, net: Net, scrap: Scrap) {
     this.view = view;
@@ -64,14 +74,23 @@ export class Thrower {
     const kind = this.inHand();
     const use = !!kind && can && useHeld() && !!document.pointerLockElement;
     const now = performance.now();
-    if (use && !this.wasUse && now >= this.readyAt && !inBase(this.net.me.x, this.net.me.y, this.net.me.z)) this.toss();
+    const out = !inBase(this.net.me.x, this.net.me.y, this.net.me.z);
+    if (use && !this.wasUse && now >= this.readyAt && out) {
+      // Wind up: the throw itself goes at the release.
+      this.readyAt = now + THROW_MS;
+      this.releaseAt = now + RELEASE_MS;
+      playerHands.throwAt = now;
+    }
+    if (this.releaseAt && now >= this.releaseAt) {
+      this.releaseAt = 0;
+      if (kind && can && out) this.toss();
+    }
     this.wasUse = use;
     this.draw(dt);
   }
 
   private toss() {
     const cam = this.view.camera;
-    this.readyAt = performance.now() + THROW_MS;
     _o.copy(this.view.eye);
     cam.getWorldQuaternion(_q);
     _d.set(0, 0, -1).applyQuaternion(_q);
@@ -84,8 +103,17 @@ export class Thrower {
   }
 
   private add(id: number, n: number, mine: boolean, path: TossPath): Toss {
-    // Scrap is all one item: it flies as one of the scrap piles' pieces, picked by the thrower's count (the same for everyone).
-    const mesh = this.scrap.mesh(n % SCRAP_KINDS.filter((k) => !k.item).length);
+    // Scrap is all one item: it flies as the piece drawn in the hands, or (not loaded yet) one of the scrap piles'
+    // pieces picked by the thrower's count, shrunk to a handful.
+    let mesh = this.piece?.() ?? null;
+    if (!mesh) {
+      const m = this.scrap.mesh(n % SCRAP_KINDS.filter((k) => !k.item).length);
+      if (m) {
+        m.geometry.computeBoundingSphere();
+        m.scale.setScalar(Math.min(1, PIECE_M / 2 / (m.geometry.boundingSphere?.radius || 1)));
+      }
+      mesh = m;
+    }
     if (mesh) this.root.add(mesh);
     const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     const t: Toss = { id, n, mine, path, mesh, off: new THREE.Vector3(), axis, spin: 6 + Math.random() * 8, landedAt: 0 };

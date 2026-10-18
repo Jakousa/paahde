@@ -38,9 +38,21 @@
 #   PistolIdle (3 s loop)  low ready in the right fist, index on the trigger, muzzle on the crosshair
 #   PistolWalk (0.73 s loop)  the same hold with the walk bob
 #   PistolAim (0.23 s one-shot)  from the PistolIdle frame-0 pose out at arm's length (play clamped): the iron
-#     sights end on the view axis with the eye P_RELIEF behind the rear sight
+#     sights end on the view axis with the eye P_RELIEF behind the rear sight, canted P_CANT so the forearm runs out of
+#     the bottom right corner
 # Mesh node `Pistol` ('Pistol', emissive 'PistolGlow') with `PistolMuzzle` / `PistolEye` markers, as the rifle's.
 # Also writes public/models/pistol.glb (origin at the grip, muzzle +Z, up +Y).
+# Jammer (src/models/jammer.ts, drawn by the game on the empty `JammerMount`, in the pistol's frame):
+#   JammerIdle / JammerWalk  low right in the right fist like the pistol, antenna on the crosshair
+#   JammerAim (0.27 s one-shot, scrubbed)  up in front at chest height, the left palm coming up under its body
+# Hand tools (tools/models/handtools.py; nodes `Shovel`, `Detector`, `ScrapChunk` on the right hand, own atlases):
+#   ShovelIdle / ShovelWalk  carried in the right fist under the T grip, blade out ahead low in the view
+#   ShovelDig (1.2 s loop)  both hands: drive it in, lever, lift the scoop into view, flick it out to the left
+#   DetectorIdle (3 s, two sweeps) / DetectorWalk (one sweep)  by its grip, the coil swept low across the view
+#   DetectorDig (1.2 s loop)  held up out of the way while the left hand scoops (Dig's left arm)
+#   ScrapIdle / ScrapWalk  a bent angle-iron offcut in the fist, low right
+#   ScrapThrow (0.5 s one-shot)  cocked by the ear, thrown over the top, let go at SC_RELEASE, back with the next
+# HANDS_FAST=1 HANDS_OUT=<path> skips the bakes (flat colours, a stand-in jammer) for quick checks with render_hand.py.
 import math
 import os
 import sys
@@ -51,9 +63,10 @@ from mathutils import Matrix, Quaternion, Vector
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import scavenger as S  # noqa: E402  (creates materials; the character itself is only built by its main())
-from sclib import V, join, tri_count  # noqa: E402
+from sclib import V, cylinder, join, rounded_box, tri_count  # noqa: E402
 
-OUT = os.path.join(S.ROOT, 'public', 'models', 'hands.glb')
+OUT = os.environ.get('HANDS_OUT') or os.path.join(S.ROOT, 'public', 'models', 'hands.glb')
+FAST = bool(os.environ.get('HANDS_FAST'))  # skip the bakes (quick pose checks; write HANDS_OUT elsewhere)
 
 # Arm layout relative to the eye (origin), built in the character's frame (facing -Y) then turned 180°
 # about Z so the viewmodel faces +Y (= -Z in three.js) like the camera.
@@ -592,13 +605,13 @@ def right_hand_world(wrist, fingers, thumb):
     return m
 
 
-def carry_hand(wrist, thumb, ulnar):
+def carry_hand(wrist, thumb, ulnar, pole=R_POLE):
     """Right hand at `wrist` in line with the forearm (the IK's elbow), bent `ulnar` degrees towards the
     little finger (tipping the eyepiece forward), thumb side towards `thumb`."""
     fingers = V((-0.2, 0.8, -0.5))
     for _ in range(4):
         m = right_hand_world(wrist, fingers, thumb)
-        solve_arm('Right', m, R_POLE)
+        solve_arm('Right', m, pole)
         fa = (V(wrist) - ELBOW['Right']).normalized()
         t = (V(thumb) - fa * V(thumb).dot(fa)).normalized()
         fingers = fa * math.cos(math.radians(ulnar)) - t * math.sin(math.radians(ulnar))
@@ -955,8 +968,11 @@ def pistol_ready(at, roll, dist=45.0):
     return pw
 
 
-# aim: the sight line on the view axis, the eye P_RELIEF behind the rear sight
-P_AIM = Matrix.Translation(-PS.eye_local(P_RELIEF))
+# aim: the sight line on the view axis, the eye P_RELIEF behind the rear sight, canted P_CANT about the sight line
+# (top to the left), so the hand under it sits off to the right and the forearm runs out of the bottom right corner
+# instead of up the middle of the view
+P_CANT = -35
+P_AIM = Matrix.Rotation(math.radians(P_CANT), 4, 'Y') @ Matrix.Translation(-PS.eye_local(P_RELIEF))
 # ready: low right, forearm forward, canted a touch inwards
 P_READY = pistol_ready((0.15, 0.30, -0.16), roll=-6)
 
@@ -1007,6 +1023,370 @@ for nm, pw, pp in (('pistol ready', P_READY, PR_POLE), ('pistol aim', P_AIM, PR_
 for name, frames, fn in (('PistolIdle', 90, pistol_idle), ('PistolWalk', 22, pistol_walk)):
     S.clip(name, frames, fn)
 clip_once('PistolAim', 7, pistol_aim)  # 8 keys, 0.23 s
+
+# ============================================================================== held by a bar
+# The shovel's shaft, the jammer's body and the scrap offcut are held like the spyglass: the bar lies obliquely
+# across the palm (T_OBLIQUE), pushed in until it presses the glove. Each object is placed in view space and the
+# hands follow it through these hand-relative placements, as the rifle's do.
+from types import SimpleNamespace  # noqa: E402
+
+import handtools as HT  # noqa: E402
+
+
+def bar_in_hand(pre, contact, axis, ref, roll, grip=(0, 0, 0), label=None):
+    """Object (its natural frame) relative to the <pre>Hand bone, and its rest-space matrix. `axis` (natural) lies
+    across the palm with its + end by the thumb; `ref` (natural, square to the axis) points out of the palm, turned
+    `roll` degrees about the axis; the natural point `grip` sits at the palm, pushed in along the palm normal until
+    `contact` (natural-frame sdf) presses the glove 2 mm."""
+    a, pn, t = hand_frame(1 if pre == 'Left' else -1)
+    W = V(S.B[pre + 'Hand'][0])
+    b = math.radians(T_OBLIQUE)
+    u = (t * math.cos(b) + a * math.sin(b)).normalized()
+    r = Quaternion(u, math.radians(roll)) @ (pn - u * pn.dot(u)).normalized()
+    A = V(axis).normalized()
+    Rf = (V(ref) - A * V(ref).dot(A)).normalized()
+    r3 = frame_cols(u, r, u.cross(r)) @ frame_cols(A, Rf, A.cross(Rf)).inverted()
+
+    def place(v):
+        m = r3.to_4x4()
+        m.translation = W + a * 0.058 + pn * v - r3 @ V(grip)
+        return m
+
+    v = 0.05
+    for _ in range(8):
+        g = in_rest(place(v), contact)
+        v -= min(g(p) for p in PALMS[pre]) + 0.002
+    m = place(v)
+    if label:
+        print(label, pre, 'palm offset', round(v, 4), 'roll', roll)
+    return BONES[pre + 'Hand'].matrix_local.inverted() @ m, m
+
+
+def obj_world(at, d, face):
+    """Object matrix (view space) from its origin, its +Y direction and a hint for its +Z."""
+    Y = V(d).normalized()
+    Z = (V(face) - Y * V(face).dot(Y)).normalized()
+    m = frame_cols(Y.cross(Z), Y, Z).to_4x4()
+    m.translation = V(at)
+    return m
+
+
+def key_world(k):
+    return obj_world(k[0:3], k[3:6], k[6:9])
+
+
+def held_pose(holds, sway=None):
+    """Arms for the objects in `holds` = [(pre, hand-bone matrix in view space, pole, twist, finger pose)]; an arm
+    not listed is lowered out of view."""
+    pose = {}
+    if not any(h[0] == 'Left' for h in holds):
+        pose.update(solve_arm('Left', left_hand_world(*L_LOW), L_POLE, twist=0.6))
+        curl(pose, 'Left', 12)
+    for pre, hw, pole, twist, grip in holds:
+        pose.update(solve_arm(pre, hw, pole, twist))
+        pose.update(grip)
+    if sway:
+        pose['Root'] = sway
+    return pose
+
+
+def idle_sway(p):
+    w = 2 * math.pi * p
+    return rot((X, 0.9 * math.sin(w)), (Z, 0.6 * math.sin(w + 1)))
+
+
+def walk_sway(p):
+    w = 2 * math.pi * p
+    return rot((X, 2.5 * math.sin(2 * w)), (Y, 2.0 * math.sin(w)))
+
+
+def grip_blend(g0, g1, f):
+    """Finger pose between two (slerp per bone; a bone missing from one is at rest there)."""
+    return {k: g0.get(k, Quaternion()).slerp(g1.get(k, Quaternion()), f) for k in set(g0) | set(g1)}
+
+
+def curl_pose(pre, c, thumb=0.0):
+    p = {}
+    curl(p, pre, c, thumb)
+    return p
+
+
+# ============================================================================== shovel clips
+# Carried in the right fist under the T grip, the blade out ahead low in the view (the left arm lowered). ShovelDig
+# (digging and piling sand back) brings it in close in both hands, the left underhand further down the shaft, both
+# thumbs towards the blade: drive the blade down and forward, lever it, lift the scoop into view and flick it out to
+# the left.
+SV_R_CONTACT = capsule_sdf(V((0, -0.05, 0)), V((0, 0.05, 0)), HT.SH_R)
+SV_L_CONTACT = capsule_sdf(V((0, HT.SH_LEFT - 0.05, 0)), V((0, HT.SH_LEFT + 0.05, 0)), HT.SH_R)
+SV_SDF_NAT = (lambda sh, tb: lambda p: min(sh(p), tb(p)))(
+    capsule_sdf(V((0, HT.SH_TOP, 0)), V((0, HT.SH_SOCKET, 0)), HT.SH_R),
+    capsule_sdf(V((-0.045, HT.SH_TOP - 0.014, 0)), V((0.045, HT.SH_TOP - 0.014, 0)), 0.013))
+# (shaft origin x y z, towards the blade, scoop face hint) in view space
+SV_CARRY = (0.17, 0.34, -0.19, -0.42, 0.82, -0.38, 0, -0.5, 1)
+SV_READY = (0.07, 0.25, -0.15, -0.22, 0.90, -0.38, 0, -0.5, 1)
+SV_DIG = [(0.0, SV_READY),
+          (0.20, (0.06, 0.30, -0.22, -0.12, 0.60, -0.80, 0, 0, 1)),  # blade driven down and forward
+          (0.40, (0.10, 0.22, -0.26, -0.15, 0.82, -0.55, 0, -0.3, 1)),  # handle pulled down and back: levered
+          (0.62, (0.07, 0.23, -0.13, -0.25, 0.92, -0.30, 0, -0.6, 1)),  # scoop lifted into view
+          (0.80, (0.03, 0.26, -0.11, -0.62, 0.74, -0.20, -1, -0.2, 0.5)),  # flicked out to the left
+          (1.0, SV_READY)]
+SV_KEYS = [k for _, k in SV_DIG[:-1]]
+
+
+def sv_rel(pre, roll, label=None):
+    if pre == 'Right':
+        return bar_in_hand(pre, SV_R_CONTACT, (0, 1, 0), (0, 0, 1), roll, label=label)
+    return bar_in_hand(pre, SV_L_CONTACT, (0, 1, 0), (0, 0, 1), roll, (0, HT.SH_LEFT, 0), label)
+
+
+def sv_cost(pre, roll, twist):
+    rel = sv_rel(pre, roll)[0]
+    return sum(best_pole(pre, key_world(k) @ rel.inverted(), twist)[1]
+               for k in SV_KEYS + ([SV_CARRY] if pre == 'Right' else []))
+
+
+SV_RROLL = min(range(-180, 180, 30), key=lambda r: sv_cost('Right', r, 0.75))
+SV_LROLL = min(range(-180, 180, 30), key=lambda r: sv_cost('Left', r, L_TWIST))
+SV_RHAND, SV_RM = sv_rel('Right', SV_RROLL, 'SHOVEL')
+SV_LHAND, SV_LM = sv_rel('Left', SV_LROLL, 'SHOVEL')
+SV_RGRIP = grasp('Right', in_rest(SV_RM, SV_SDF_NAT), wrap=SV_RM.to_3x3() @ V((0, 1, 0)))
+SV_LGRIP = grasp('Left', in_rest(SV_LM, SV_SDF_NAT), wrap=SV_LM.to_3x3() @ V((0, 1, 0)))
+SV_RPOLES = [best_pole('Right', key_world(k) @ SV_RHAND.inverted(), 0.75)[0] for k in SV_KEYS]
+SV_LPOLES = [best_pole('Left', key_world(k) @ SV_LHAND.inverted(), L_TWIST)[0] for k in SV_KEYS]
+SV_CPOLE = best_pole('Right', key_world(SV_CARRY) @ SV_RHAND.inverted(), 0.75)[0]
+
+
+def shovel_pose(k, rp, lp, sway=None):
+    sw = key_world(k)
+    return held_pose([('Right', sw @ SV_RHAND.inverted(), rp, 0.75, SV_RGRIP),
+                      ('Left', sw @ SV_LHAND.inverted(), lp, L_TWIST, SV_LGRIP)], sway)
+
+
+def shovel_carry(sway):
+    return held_pose([('Right', key_world(SV_CARRY) @ SV_RHAND.inverted(), SV_CPOLE, 0.75, SV_RGRIP)], sway)
+
+
+def shovel_idle(p):
+    return shovel_carry(idle_sway(p)), (0, 0, 0)
+
+
+def shovel_walk(p):
+    return shovel_carry(walk_sway(p)), (0, 0, 0)
+
+
+def shovel_dig(p):
+    k = keys(SV_DIG, p)
+    rp = keys([(q, tuple(v)) for (q, _), v in zip(SV_DIG, SV_RPOLES + [SV_RPOLES[0]])], p)
+    lp = keys([(q, tuple(v)) for (q, _), v in zip(SV_DIG, SV_LPOLES + [SV_LPOLES[0]])], p)
+    return shovel_pose(k, V(rp), V(lp), rot((X, 3 * math.sin(2 * math.pi * p)))), (0, 0, 0)
+
+
+print('WRIST shovel carry', round(wrist_bend_of(shovel_carry(None), 'Right')))
+for i, k in enumerate(SV_KEYS):
+    ps = shovel_pose(k, SV_RPOLES[i], SV_LPOLES[i])
+    print('WRIST shovel', SV_DIG[i][0], 'right', round(wrist_bend_of(ps, 'Right')), 'left',
+          round(wrist_bend_of(ps, 'Left')))
+for name, frames, fn in (('ShovelIdle', 90, shovel_idle), ('ShovelWalk', 22, shovel_walk), ('ShovelDig', 36, shovel_dig)):
+    S.clip(name, frames, fn)
+
+# ============================================================================== metal detector clips
+# One-handed by its raked grip (gun_in_right, like the pistol), the shaft running forward and down so the coil sits
+# low in the middle of the view. Idle and walking it sweeps side to side; digging, the right hand holds it up out
+# of the way while the left hand scoops (the empty-hand Dig clip's left arm).
+DTG = SimpleNamespace(RAKE=HT.DT_RAKE, GRIP_AXIS=HT.DT_GRIP_AXIS, GRIP_TOP=HT.DT_GRIP_TOP, GRIP_BOT=HT.DT_GRIP_BOT,
+                      GRIP_R=HT.DT_GRIP_R)
+DT_SDF_NAT = (lambda g, b: lambda p: min(g(p), b(p)))(
+    capsule_sdf(HT.DT_GRIP_AXIS * HT.DT_GRIP_BOT, HT.DT_GRIP_AXIS * HT.DT_GRIP_TOP, HT.DT_GRIP_R),
+    box_sdf(*HT.DT_BOX))
+DT_AT = (0.15, 0.30, -0.18)
+DT_PITCH = -2
+DT_YAW0, DT_SWEEP = 9, 17  # middle of the sweep (+ = coil left), half its width (deg)
+DT_RAISED = rifle_world((0.21, 0.27, -0.11), -12, 18, 8)  # held up out of the way while digging
+
+
+def dt_world(yaw, p_off=0.0):
+    return rifle_world(DT_AT, yaw, DT_PITCH + p_off, -0.25 * (yaw - DT_YAW0))
+
+
+def dt_cost(yaw):
+    h = gun_in_right(DTG, DT_SDF_NAT, yaw, 'DETECTOR')[0]
+    return sum(best_pole('Right', w @ h.inverted(), 0.75)[1]
+               for w in (dt_world(DT_YAW0 - DT_SWEEP), dt_world(DT_YAW0 + DT_SWEEP), DT_RAISED))
+
+
+DT_GYAW = min(range(-60, 61, 10), key=dt_cost)
+DT_HAND, DT_SDF, DT_AXIS = gun_in_right(DTG, DT_SDF_NAT, DT_GYAW, 'DETECTOR')
+print('DETECTOR yaw', DT_GYAW)
+DT_GRIP = grasp('Right', DT_SDF, wrap=DT_AXIS)
+DT_POLE = best_pole('Right', dt_world(DT_YAW0) @ DT_HAND.inverted(), 0.75)[0]
+DT_POLE_UP = best_pole('Right', DT_RAISED @ DT_HAND.inverted(), 0.75)[0]
+
+
+def detector_pose(dw, pole=None, sway=None):
+    return held_pose([('Right', dw @ DT_HAND.inverted(), pole or DT_POLE, 0.75, DT_GRIP)], sway)
+
+
+def detector_idle(p):  # two slow sweeps per 3 s
+    return detector_pose(dt_world(DT_YAW0 + DT_SWEEP * math.sin(4 * math.pi * p)), sway=idle_sway(p)), (0, 0, 0)
+
+
+def detector_walk(p):  # one sweep per walk cycle
+    w = 2 * math.pi * p
+    return detector_pose(dt_world(DT_YAW0 + DT_SWEEP * math.sin(w), 2 * math.sin(2 * w)), sway=walk_sway(p)), (0, 0, 0)
+
+
+def detector_dig(p):
+    d, _ = dig(p)
+    pose = detector_pose(DT_RAISED, DT_POLE_UP)
+    pose.update({k: q for k, q in d.items() if k.startswith('Left') or k == 'Root'})
+    return pose, (0, 0, 0)
+
+
+for nm, w, pl in (('left', dt_world(DT_YAW0 + DT_SWEEP), None), ('right', dt_world(DT_YAW0 - DT_SWEEP), None),
+                  ('raised', DT_RAISED, DT_POLE_UP)):
+    print('WRIST detector', nm, round(wrist_bend_of(detector_pose(w, pl), 'Right')))
+for name, frames, fn in (('DetectorIdle', 90, detector_idle), ('DetectorWalk', 22, detector_walk),
+                         ('DetectorDig', 36, detector_dig)):
+    S.clip(name, frames, fn)
+
+# ============================================================================== scrap clips
+# A bent offcut of angle iron in the right fist like the spyglass (the bent end out by the thumb), carried low
+# right. ScrapThrow: cocked back up by the ear, whipped forward over the top and let go at SC_RELEASE (the game
+# hides the piece from there and launches the throw then), following through down and to the left, then back to
+# the carry with the next piece.
+SC_CONTACT = (lambda bs: lambda p: min(b(p) for b in bs))([box_sdf(lo, hi) for lo, hi in HT.scrap_boxes()])
+SC_HAND, SC_M = bar_in_hand('Right', SC_CONTACT, (0, 1, 0), (1, 0, 1), 0, (0.006, 0, 0.006), 'SCRAP')
+SC_GRIP = grasp('Right', in_rest(SC_M, SC_CONTACT), wrap=SC_M.to_3x3() @ V((0, 1, 0)))
+SC_OPEN = curl_pose('Right', 22, 10)
+SC_RELEASE = 0.42
+SC_CARRY = carry_hand((0.17, 0.35, -0.17), (-0.35, 0.55, 0.75), 18)
+# (p, wrist, thumb side, ulnar bend, elbow pole) in view space, the hand in line with the forearm; None: the carry
+SC_THROW = [(0.0, None),
+            (0.30, (0.22, 0.27, 0.07), (-0.6, 0.4, 0.1), 10, (0.9, 0.0, -0.1)),  # cocked up by the ear
+            (SC_RELEASE, (0.12, 0.40, 0.04), (-0.8, 0.0, 0.6), 0, (0.6, 0.0, -0.5)),  # let go, forward and up
+            (0.64, (0.0, 0.36, -0.26), (-0.8, 0.3, 0.3), 10, R_POLE),  # followed through, down left
+            (1.0, None)]
+SC_HANDS = [SC_CARRY if k[1] is None else carry_hand(*k[1:]) for k in SC_THROW]
+SC_POLES = [R_POLE if k[1] is None else k[4] for k in SC_THROW]
+
+
+def scrap_pose(hw, pole, grip, sway=None):
+    return held_pose([('Right', hw, pole, 0.75, grip)], sway)
+
+
+def scrap_idle(p):
+    return scrap_pose(SC_CARRY, SC_POLES[0], SC_GRIP, idle_sway(p)), (0, 0, 0)
+
+
+def scrap_walk(p):
+    return scrap_pose(SC_CARRY, SC_POLES[0], SC_GRIP, walk_sway(p)), (0, 0, 0)
+
+
+def scrap_throw(p):
+    i = next(j for j in range(len(SC_THROW) - 1) if p <= SC_THROW[j + 1][0])
+    p0, p1 = SC_THROW[i][0], SC_THROW[i + 1][0]
+    f = max(0.0, min(1.0, (p - p0) / (p1 - p0)))
+    f = f * f * (3 - 2 * f)
+    hw = mat_lerp(SC_HANDS[i], SC_HANDS[i + 1], f)
+    pole = V(SC_POLES[i]).lerp(V(SC_POLES[i + 1]), f)
+    o = max(0.0, min(1.0, (p - SC_RELEASE) / 0.08))  # the fingers open as it leaves
+    c = max(0.0, min(1.0, (p - 0.8) / 0.2))  # and close round the next piece on the way back
+    grip = grip_blend(SC_GRIP, SC_OPEN, o * (1 - c))
+    return scrap_pose(hw, pole, grip, rot((X, -4 * math.sin(math.pi * p)))), (0, 0, 0)
+
+
+for i, k in enumerate(SC_THROW[:-1]):
+    print('WRIST scrap', k[0], round(wrist_bend_of(scrap_pose(SC_HANDS[i], SC_POLES[i], SC_GRIP), 'Right')))
+for name, frames, fn in (('ScrapIdle', 90, scrap_idle), ('ScrapWalk', 22, scrap_walk)):
+    S.clip(name, frames, fn)
+clip_once('ScrapThrow', 15, scrap_throw)  # 16 keys, 0.5 s
+
+# ============================================================================== jammer clips
+# The jammer (src/models/jammer.ts, built in three.js in the pistol's frame) is described here only for its grip:
+# the raked grip under a squat body. Natural frame = the pistol's (three.js x, y, z -> natural -x, z, y).
+# JammerIdle / JammerWalk carry it low right like the pistol; JammerAim (scrubbed by the use button, src/jammer.ts)
+# brings it up in front at chest height in both hands, the left palm under the body, the antenna on the crosshair.
+JG = SimpleNamespace(RAKE=28, GRIP_AXIS=V((0, math.sin(math.radians(28)), math.cos(math.radians(28)))),
+                     GRIP_TOP=0.044, GRIP_BOT=-0.050, GRIP_R=0.0165)
+J_BODY = ((-0.024, -0.04, 0.044), (0.024, 0.11, 0.088))
+J_TIP = V((0, 0.31, 0.066))  # end of the yagi boom
+J_SDF_NAT = (lambda g, b, u, t: lambda p: min(g(p), b(p), u(p), t(p)))(
+    capsule_sdf(JG.GRIP_AXIS * JG.GRIP_BOT, JG.GRIP_AXIS * JG.GRIP_TOP, JG.GRIP_R), box_sdf(*J_BODY),
+    box_sdf((-0.025, -0.01, 0.040), (0.025, 0.10, 0.048)), box_sdf((-0.003, 0.02, 0.027), (0.003, 0.05, 0.033)))
+
+
+def jammer_ready(at, roll, pitch_off=0.0, dist=45.0):
+    """Jammer at `at` with its antenna on the crosshair (as pistol_ready, for the boom's tip)."""
+    T = V((0, dist * math.cos(0.05), dist * math.sin(0.05)))
+    w = rifle_world(at, roll=roll)
+    for _ in range(4):
+        d = (T - w @ J_TIP).normalized()
+        w = rifle_world(at, math.degrees(math.atan2(-d.x, d.y)), math.degrees(math.asin(d.z)) + pitch_off, roll)
+    return w
+
+
+J_READY = jammer_ready((0.15, 0.30, -0.17), -6, -4)
+J_AIM = jammer_ready((0.07, 0.33, -0.15), -2)
+
+
+def j_cost(yaw):
+    h = gun_in_right(JG, J_SDF_NAT, yaw, 'JAMMER')[0]
+    return sum(best_pole('Right', w @ h.inverted(), 0.75)[1] for w in (J_READY, J_AIM))
+
+
+J_YAW = min(range(-40, 41, 5), key=j_cost)
+J_HAND, J_SDF, J_AXIS = gun_in_right(JG, J_SDF_NAT, J_YAW, 'JAMMER')
+print('JAMMER yaw', J_YAW)
+J_GRIP = grasp('Right', J_SDF, wrap=J_AXIS)
+J_BODY_CONTACT = box_sdf(*J_BODY)
+
+
+def jl_rel(roll, label=None):
+    return bar_in_hand('Left', J_BODY_CONTACT, (0, 1, 0), (0, 0, 1), roll, (0, 0.075, 0.044), label)
+
+
+JL_ROLL = min(range(-60, 61, 15), key=lambda r: best_pole('Left', J_AIM @ jl_rel(r)[0].inverted(), L_TWIST)[1])
+JL_HAND, JL_M = jl_rel(JL_ROLL, 'JAMMER')
+JL_GRIP = grasp('Left', in_rest(JL_M, J_SDF_NAT))
+J_POLE = best_pole('Right', J_READY @ J_HAND.inverted(), 0.75)[0]
+J_POLE_AIM = best_pole('Right', J_AIM @ J_HAND.inverted(), 0.75)[0]
+JL_POLE_AIM = best_pole('Left', J_AIM @ JL_HAND.inverted(), L_TWIST)[0]
+JL_LOW = left_hand_world(*L_LOW)
+JL_REST = curl_pose('Left', 12)
+
+
+def jammer_pose(jw, pole=None, sway=None):
+    return held_pose([('Right', jw @ J_HAND.inverted(), pole or J_POLE, 0.75, J_GRIP)], sway)
+
+
+def jammer_idle(p):
+    return jammer_pose(J_READY, sway=idle_sway(p)), (0, 0, 0)
+
+
+def jammer_walk(p):
+    return jammer_pose(J_READY, sway=walk_sway(p)), (0, 0, 0)
+
+
+def jammer_aim(p):
+    f = p * p * (3 - 2 * p)
+    jw = mat_lerp(J_READY, J_AIM, f)
+    jw.translation += V((0, 0.0, 0.02)) * math.sin(math.pi * p)
+    lf = max(0.0, min(1.0, (p - 0.15) / 0.85))
+    lf = lf * lf * (3 - 2 * lf)
+    lw = mat_lerp(JL_LOW, J_AIM @ JL_HAND.inverted(), lf)
+    lw.translation += V((0, 0.0, -0.06)) * math.sin(math.pi * lf)  # up from below, not through the jammer
+    pose = held_pose([('Right', jw @ J_HAND.inverted(), V(J_POLE).lerp(V(J_POLE_AIM), f), 0.75, J_GRIP),
+                      ('Left', lw, V(L_POLE).lerp(V(JL_POLE_AIM), lf), 0.6 + (L_TWIST - 0.6) * lf,
+                       grip_blend(JL_REST, JL_GRIP, lf))], rot((Z, 0.6 * math.sin(1) * (1 - p))))
+    return pose, (0, 0, 0)
+
+
+print('WRIST jammer ready', round(wrist_bend_of(jammer_pose(J_READY), 'Right')))
+ps = jammer_aim(1.0)[0]
+print('WRIST jammer aim right', round(wrist_bend_of(ps, 'Right')), 'left', round(wrist_bend_of(ps, 'Left')))
+for name, frames, fn in (('JammerIdle', 90, jammer_idle), ('JammerWalk', 22, jammer_walk)):
+    S.clip(name, frames, fn)
+clip_once('JammerAim', 8, jammer_aim)  # 9 keys, 0.27 s
 for pb in rig.pose.bones:
     pb.rotation_quaternion = Quaternion()
 
@@ -1020,10 +1400,29 @@ RIF_AT = V((0.0, 5.0, 0.9))
 rif, rif_glow = RF.build(RIF_AT)
 PIS_AT = V((0.0, -5.0, 0.9))
 pis, pis_glow = PS.build(PIS_AT)
+TOOLS = [(HT.build_shovel, V((5.0, 5.0, 0.9)), 'shovel', SV_RHAND), (HT.build_detector, V((-5.0, 5.0, 0.9)), 'detector', DT_HAND),
+         (HT.build_scrap, V((5.0, -5.0, 0.9)), 'scrap', SC_HAND)]
+tools = [(f(at), at, pre, m) for f, at, pre, m in TOOLS]
 
 import bake  # noqa: E402
 
-bake.bake_atlas(body, 1024, S.OUT_DIR, tint_name='Tint', small=0, prefix='hands')
+if FAST:  # pose checks only (render_hand.py): flat double-sided colours, no atlases for the body and tools
+    def flat(o, rgb):
+        m = bpy.data.materials.new('Fast' + o.name)
+        m.use_nodes = True
+        m.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = (*rgb, 1)
+        m.use_backface_culling = False
+        o.data.materials.clear()
+        o.data.materials.append(m)
+
+    flat(body, (0.45, 0.28, 0.16))
+    for (o, at, _, _), rgb in zip(tools, ((0.5, 0.5, 0.45), (0.25, 0.3, 0.15), (0.45, 0.2, 0.1))):
+        HT.unplace(o, at)
+        flat(o, rgb)
+else:
+    bake.bake_atlas(body, 1024, S.OUT_DIR, tint_name='Tint', small=0, prefix='hands')
+    for o, at, pre, _ in tools:
+        HT.bake_and_export(o, S.OUT_DIR, at, pre)
 CT.bake_and_export(can, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'canteen.glb'), CAN_AT)
 tel_parts = TS.bake_and_export(tel, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'telescope.glb'), TEL_AT)
 rif = RF.bake_and_export(rif, rif_glow, S.OUT_DIR, os.path.join(S.ROOT, 'public', 'models', 'rifle.glb'), RIF_AT)
@@ -1049,6 +1448,32 @@ pis.parent_type = 'BONE'
 pis.parent_bone = 'RightHand'
 pis.matrix_parent_inverse = Matrix.Identity(4)
 pis.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ P_HAND @ PS.FLIP
+
+
+def on_right_hand(o, m):
+    o.parent = rig
+    o.parent_type = 'BONE'
+    o.parent_bone = 'RightHand'
+    o.matrix_parent_inverse = Matrix.Identity(4)
+    o.matrix_basis = Matrix.Translation((0, -BONES['RightHand'].length, 0)) @ m
+
+
+for o, _, _, m in tools:
+    on_right_hand(o, m)
+# where the jammer (src/models/jammer.ts, in the pistol's glTF frame) goes in the right hand
+jmount = bpy.data.objects.new('JammerMount', None)
+bpy.context.scene.collection.objects.link(jmount)
+on_right_hand(jmount, J_HAND @ PS.FLIP)
+extra = [o for o, _, _, _ in tools] + [jmount]
+if FAST:  # a stand-in jammer from its boxes, to look at the grip
+    jp = join([rounded_box('JammerProxy', c, sz, S.M['brass'], bevel=0.002, segments=1) for c, sz in (
+        ((0, 0.035, 0.066), (0.048, 0.15, 0.044)), ((0, 0.045, 0.044), (0.05, 0.11, 0.008)),
+        ((0, 0.20, 0.066), (0.12, 0.2, 0.006)))] + [cylinder('JammerProxyGrip', JG.GRIP_AXIS * JG.GRIP_BOT,
+                                                               JG.GRIP_AXIS * JG.GRIP_TOP, 0.016, S.M['brass'])],
+            'JammerProxy')
+    flat(jp, (0.3, 0.32, 0.18))
+    on_right_hand(jp, J_HAND)
+    extra.append(jp)
 # marker nodes on the rifle (mesh frame = natural turned by FLIP; identity rotation, so their glTF +Z is
 # the bore direction, towards the muzzle)
 marks = []
@@ -1094,6 +1519,6 @@ def check_aim(label='RIFLE', clip='RifleAim', muzzle=0, eye=1):
 
 check_aim()
 check_aim('PISTOL', 'PistolAim', 2, 3)
-bake.export(rig, [body, can, *tel_parts, rif, pis, *marks], OUT)
+bake.export(rig, [body, can, *tel_parts, rif, pis, *marks, *extra], OUT)
 print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can), 'TELESCOPE', tri_count(tel), 'RIFLE', tri_count(rif),
       'PISTOL', tri_count(pis))

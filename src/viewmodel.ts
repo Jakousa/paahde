@@ -22,11 +22,15 @@
 // kicks it back into the shoulder and up on a spring (`playerHands.kick`); its `RifleGlow` material dims as the cell
 // empties and brightens as it recharges. While aiming the mouse-look sway is mostly taken out, so the sights stay on.
 // Laser pistol: the same with PistolIdle / PistolWalk / PistolAim (out at arm's length onto the iron sights; the hands
-// stay in view) on the `Pistol` mesh, one-handed. The jammer (src/jammer.ts) is held with the pistol's clips (PistolAim
-// pointing it while jamming): its model (src/models/jammer.ts) sits where the pistol would, its lamp lit by
-// `playerHands.jamLamp`.
+// stay in view) on the `Pistol` mesh, one-handed. The jammer (src/jammer.ts): JammerIdle / JammerWalk, and JammerAim
+// (scrubbed like the guns' aim while jamming: up in front in both hands); its model (src/models/jammer.ts) sits on the
+// `JammerMount` node, its lamp lit by `playerHands.jamLamp`.
+// Hand tools (`playerHands.tool`; they leave the use button to digging): ShovelIdle / ShovelWalk / ShovelDig on the
+// `Shovel` mesh; DetectorIdle / DetectorWalk (sweeping) / DetectorDig (the left hand scoops) on `Detector`. Scrap in
+// hand (`held` 'scrap'): ScrapIdle / ScrapWalk on `ScrapChunk`, and ScrapThrow from `playerHands.throwAt`, the piece
+// hidden from the release (THROW_RELEASE) until the hand is back with the next one.
 //
-// Debug (with ?debug, `dbg.viewmodel`): ?hold=canteen|telescope forces what's held, ?anim=Drink loops one clip.
+// Debug (with ?debug, `dbg.viewmodel`): ?hold=canteen|telescope|shovel|… forces what's held, ?anim=Drink loops one clip.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { FirstPersonCamera } from './camera';
@@ -54,7 +58,12 @@ const DRAW_S = 0.3;
 const SPRING_DT = 1 / 120;
 
 const params = new URLSearchParams(location.search);
-const forcedHold = params.get('hold') as Held | null;
+/** What the hands show: the held item, else a hand tool. */
+type Shown = Held | 'shovel' | 'detector';
+const forcedHold = params.get('hold') as Shown | null;
+/** ScrapThrow lets go of the piece here (fraction of the clip, hands.py SC_RELEASE) and has the next in hand from here. */
+const THROW_RELEASE = 0.42;
+const THROW_NEXT = 0.9;
 const forcedAnim = params.get('anim');
 
 export class ViewModel {
@@ -72,6 +81,10 @@ export class ViewModel {
   private pistol: THREE.Object3D | null = null;
   private pistolMuzzle: THREE.Object3D | null = null;
   private jammer: ReturnType<typeof jammerModel> | null = null;
+  private shovel: THREE.Object3D | null = null;
+  private detector: THREE.Object3D | null = null;
+  private scrapChunk: THREE.Object3D | null = null;
+  private lastThrow = 0;
   /** Recoil kick on a spring: offset and velocity. */
   private kick = 0;
   private kickV = 0;
@@ -79,7 +92,7 @@ export class ViewModel {
   private draws: THREE.Object3D[] = [];
   private drawn = 0; // spyglass draw tubes: 0 = pushed in, 1 = drawn out
   private tint: THREE.MeshStandardMaterial[] = [];
-  private shown: Held = 'none';
+  private shown: Shown = 'none';
   private lower = 1; // 0 = up in view, 1 = fully lowered (starts lowered and raises on load)
   private slide = 0;
   private lagYaw = NaN;
@@ -123,15 +136,19 @@ export class ViewModel {
     this.rifleMuzzle = model.getObjectByName('RifleMuzzle') ?? null;
     this.pistol = model.getObjectByName('Pistol') ?? null;
     this.pistolMuzzle = model.getObjectByName('PistolMuzzle') ?? null;
-    if (this.pistol?.parent) {
-      // The jammer in the pistol's place (same frame: grip at the origin, forward +Z).
+    this.shovel = model.getObjectByName('Shovel') ?? null;
+    this.detector = model.getObjectByName('Detector') ?? null;
+    this.scrapChunk = model.getObjectByName('ScrapChunk') ?? null;
+    // The jammer on its mount (the pistol's frame: grip at the origin, forward +Z), else in the pistol's place.
+    const mount = model.getObjectByName('JammerMount') ?? this.pistol;
+    if (mount?.parent) {
       this.jammer = jammerModel();
       const j = this.jammer.obj;
-      j.position.copy(this.pistol.position);
-      j.quaternion.copy(this.pistol.quaternion);
-      j.scale.copy(this.pistol.scale);
+      j.position.copy(mount.position);
+      j.quaternion.copy(mount.quaternion);
+      j.scale.copy(mount.scale);
       j.traverse((o) => (o.frustumCulled = false));
-      this.pistol.parent.add(j);
+      mount.parent.add(j);
     }
     for (const gun of [this.rifle, this.pistol]) gun?.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -169,6 +186,19 @@ export class ViewModel {
     if (this.rifle) this.rifle.visible = this.shown === 'rifle';
     if (this.pistol) this.pistol.visible = this.shown === 'pistol';
     if (this.jammer) this.jammer.obj.visible = this.shown === 'jammer';
+    if (this.shovel) this.shovel.visible = this.shown === 'shovel';
+    if (this.detector) this.detector.visible = this.shown === 'detector';
+    if (this.scrapChunk) this.scrapChunk.visible = this.shown === 'scrap';
+  }
+
+  /** A copy of the scrap piece drawn in the hand, for the throw in flight (src/throw.ts); null until loaded. */
+  scrapPiece(): THREE.Object3D | null {
+    let src: THREE.Mesh | undefined;
+    this.scrapChunk?.traverse((o) => { if (!src && (o as THREE.Mesh).isMesh) src = o as THREE.Mesh; });
+    if (!src) return null;
+    const m = new THREE.Mesh(src.geometry, src.material);
+    m.castShadow = true;
+    return m;
   }
 
   /** The gun's muzzle in world space (as drawn: scaled about the eye like the rest), or null if it isn't out. */
@@ -223,7 +253,7 @@ export class ViewModel {
     const swayPitch = clamp(view.pitch - this.lagPitch, -0.12, 0.12);
 
     // Swap what's held behind a quick lower/raise.
-    const want = forcedHold ?? playerHands.held;
+    const want: Shown = forcedHold ?? (playerHands.held !== 'none' ? playerHands.held : playerHands.tool);
     if (this.mixer) {
       // Empty hands stay lowered out of view; only something held brings them up.
       if (want !== this.shown || want === 'none') {
@@ -289,13 +319,36 @@ export class ViewModel {
       } else if (moving) this.play((walk = this.has('RifleWalk') ? 'RifleWalk' : 'Walk'));
       else this.play(this.has('RifleIdle') ? 'RifleIdle' : 'Idle');
     } else if (this.shown === 'pistol' || this.shown === 'jammer') {
-      if (playerHands.aim > 0 && this.has('PistolAim')) {
-        this.play('PistolAim', 0.08);
+      // The jammer has its own clips (two hands while jamming); a model without them falls back to the pistol's.
+      const pre = this.shown === 'jammer' && this.has('JammerAim') ? 'Jammer' : 'Pistol';
+      if (playerHands.aim > 0 && this.has(pre + 'Aim')) {
+        this.play(pre + 'Aim', 0.08);
         const a = this.current!;
         a.timeScale = 0;
         a.time = smooth(playerHands.aim) * a.getClip().duration * 0.999;
-      } else if (moving) this.play((walk = this.has('PistolWalk') ? 'PistolWalk' : 'Walk'));
-      else this.play(this.has('PistolIdle') ? 'PistolIdle' : 'Idle');
+      } else if (moving) this.play((walk = this.has(pre + 'Walk') ? pre + 'Walk' : 'Walk'));
+      else this.play(this.has(pre + 'Idle') ? pre + 'Idle' : 'Idle');
+    } else if (this.shown === 'shovel' || this.shown === 'detector') {
+      const pre = this.shown === 'shovel' ? 'Shovel' : 'Detector';
+      if (pose.digging) this.play(this.has(pre + 'Dig') ? pre + 'Dig' : 'Dig', 0.12);
+      else if (moving) this.play((walk = this.has(pre + 'Walk') ? pre + 'Walk' : 'Walk'));
+      else this.play(this.has(pre + 'Idle') ? pre + 'Idle' : 'Idle');
+    } else if (this.shown === 'scrap') {
+      const thrown = this.actions.get('ScrapThrow');
+      if (playerHands.throwAt !== this.lastThrow && thrown) {
+        this.lastThrow = playerHands.throwAt;
+        if (this.current === thrown) thrown.reset().play();
+        else this.play('ScrapThrow', 0.05, true);
+      }
+      const throwing = !!thrown && this.current === thrown && thrown.isRunning();
+      if (this.scrapChunk) {
+        const f = throwing ? thrown.time / thrown.getClip().duration : 1;
+        this.scrapChunk.visible = f < THROW_RELEASE || f >= THROW_NEXT;
+      }
+      if (!throwing) {
+        if (moving) this.play((walk = this.has('ScrapWalk') ? 'ScrapWalk' : 'Walk'));
+        else this.play(this.has('ScrapIdle') ? 'ScrapIdle' : 'Idle');
+      }
     } else if (pose.digging) this.play('Dig', 0.12);
     else if (moving) this.play((walk = 'Walk'));
     else this.play('Idle');
