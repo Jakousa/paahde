@@ -2,6 +2,7 @@
 // first-person hands and props when present. Drag to orbit, wheel to zoom. ?clip=Run shows one clip large.
 // ?walk: the characters walk circles over rolling dunes instead, to check foot planting and leg IK;
 // &heading=1.57 strafes right, 3.14 backs up (travel direction relative to facing).
+// ?item=laser_rifle puts that item in every hand; &aim raises it to aim (&pitch=0.3 aims up).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ScavengerModel, type ScavengerClip } from './scavenger';
@@ -49,6 +50,9 @@ let yaw = 0.35;
 let pitch = 0.12;
 let dist = 11;
 
+const item = params.get('item');
+const aiming = params.has('aim');
+const aimPitch = Number(params.get('pitch') ?? 0);
 const only = params.get('clip') as ScavengerClip | null;
 const clips: ScavengerClip[] = only ? [only] : ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide', 'Powerslide', 'Crouch', 'CrouchWalk'];
 const colors = [0xd8452b, 0x2f8fd8, 0xe0b23a, 0x4fae5a, 0xb455c8, 0xe8e2d6];
@@ -64,7 +68,10 @@ clips.forEach((clip, i) => {
   if (clip === 'Jump') m.root.position.y = 0.5;
   scene.add(m.root);
   models.push({ m, clip });
-  void m.ready.then(() => m.play(clip, 0));
+  void m.ready.then(() => {
+    m.play(clip, 0);
+    if (item) m.setOutfit(item, 0);
+  });
 });
 
 // optional extras (first-person hands, props) laid out behind the characters
@@ -109,6 +116,7 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+Object.assign(window, { lab: { models, camera, scene } });
 await renderer.init();
 const timer = new THREE.Timer();
 const label = document.getElementById('label')!;
@@ -126,7 +134,8 @@ renderer.setAnimationLoop((time) => {
       sliding: clip === 'Slide',
       powerSlide: clip === 'Powerslide',
       crouching: clip === 'Crouch' || clip === 'CrouchWalk',
-      pitch: clip === 'Idle' ? Math.sin(time / 1500) * 0.5 : 0,
+      pitch: aiming ? aimPitch : clip === 'Idle' && !item ? Math.sin(time / 1500) * 0.5 : 0,
+      aiming,
       plant: walking,
       heading: walking ? heading : 0,
       ground: walking ? dune : undefined,

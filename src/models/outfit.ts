@@ -90,13 +90,13 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
     return g;
   },
   motorcycle: () => crate(0.36, RED),
-  // Carried at the hip in the right hand, muzzle forward and a little down, the stock back under the arm.
+  // Muzzle forward and a little down. The avatar turns and places the guns itself (scavenger.ts GUN_HOLD: the rifle
+  // across the body in both hands, or shouldered to aim; the pistol by the thigh, or held out at arm's length).
   laser_rifle: (loaded) => {
     const g = gunModel('./models/rifle.glb', loaded, 0.087, 0.588);
     g.rotation.set(-0.25, Math.PI, 0); // the model's muzzle is +Z
     return g;
   },
-  // In the right hand, muzzle forward and down.
   laser_pistol: (loaded) => {
     const g = gunModel('./models/pistol.glb', loaded, 0.064, 0.205);
     g.rotation.set(-0.45, Math.PI, 0);

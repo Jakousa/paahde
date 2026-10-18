@@ -264,7 +264,9 @@ renderer.setAnimationLoop((time) => {
   }
 
   const others = net.frame(frameDt);
-  net.setHands(playerHands.held, playerHands.drinking, playerHands.filling);
+  // The gun raised (or just fired): others see it shouldered (src/models/scavenger.ts).
+  const aiming = playerHands.aim > 0.5;
+  net.setHands(playerHands.held, playerHands.drinking, playerHands.filling, aiming);
 
   me.setColor(net.color);
   const s = net.me;
@@ -280,7 +282,7 @@ renderer.setAnimationLoop((time) => {
   if (!riding) {
     me.update(
       { x: v.x, y: v.y, z: v.z, facing: v.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
-      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, drinking: playerHands.drinking, down: net.down },
+      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, drinking: playerHands.drinking, aiming: aiming || net.justFired(net.id), down: net.down },
       frameDt,
     );
   }

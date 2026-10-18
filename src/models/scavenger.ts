@@ -8,7 +8,8 @@
 // The glb is fetched once and shared; each instance gets its own skeleton (SkeletonUtils.clone) and its
 // own copy of the `PlayerTint` material (scarf, face mask, sash, armband), which setColor() recolours.
 // setOutfit() says what's in the hand (carried at the right hip, src/models/outfit.ts) and which gear is worn:
-// the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt.
+// the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt. A gun in hand
+// (GUN_HOLD) is carried at the low ready, or raised along the look pitch while `aiming`.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -45,6 +46,8 @@ export type ScavengerPose = {
   ride?: RidePose;
   /** Drinking from the canteen in hand (setOutfit): raised to the mouth and tipped up. */
   drinking?: boolean;
+  /** A gun in hand (setOutfit) raised to aim along `pitch`; otherwise it is carried at the low ready. */
+  aiming?: boolean;
 };
 
 export type ScavengerClip = 'Idle' | 'Walk' | 'Run' | 'Jump' | 'Dig' | 'Slide' | 'Powerslide' | 'Crouch' | 'CrouchWalk';
@@ -119,6 +122,7 @@ export class ScavengerModel {
   /** Meshes were added since the last setOutfit (it tells the Avatar). */
   private added = false;
   private sip = 0; // 0 carried .. 1 at the mouth
+  private aimT = 0; // a gun in hand: 0 at the low ready .. 1 raised to aim
   /** Dead: the body is a ragdoll (src/models/ragdoll.ts) instead of the clips. */
   private doll: Ragdoll | null = null;
   private color: number;
@@ -364,8 +368,11 @@ export class ScavengerModel {
     if (this.canteen) this.canteen.visible = this.item === 'canteen' && !pose.ride;
     if (this.canteen?.visible) this.holdCanteen(this.canteen, loose);
     if (this.held) this.held.visible = !pose.ride;
+    this.aimT += ((pose.aiming && !loose && !pose.digging ? 1 : 0) - this.aimT) * (1 - Math.exp(-dt * 12));
     // Digging, the clip swings the arms: the tool goes with the hand.
-    if (this.held?.visible) this.holdItem(this.held, loose || !!pose.digging);
+    const gun = this.item ? GUN_HOLD[this.item] : undefined;
+    if (this.held?.visible && gun) this.holdGun(this.held, gun, loose || !!pose.digging, pitch);
+    else if (this.held?.visible) this.holdItem(this.held, loose || !!pose.digging);
     if (pose.ride) return this.ride(pose.ride);
     // Plant the feet: lock while the clip has them down (not when sliding: the sand moves with you).
     const clip = this.current?.getClip().name ?? '';
@@ -419,6 +426,53 @@ export class ScavengerModel {
     reach(arm[0], arm[1], arm[2], _t, _pole.set(0.6, -0.5, 0.6).transformDirection(this.root.matrixWorld));
   }
 
+  /** A gun in hand (GUN_HOLD): carried at the low ready, or raised along the look `pitch` as `aimT` goes to 1. The
+   *  grip is placed from the right shoulder, the torso turns into the stance (the head keeps looking ahead), then the
+   *  right hand closes on the grip and, for the rifle, the left on the handguard. `loose`: the gun follows the hand. */
+  private holdGun(o: THREE.Object3D, g: GunHold, loose: boolean, pitch: number) {
+    const arm = this.arms[1];
+    if (!arm || !this.spine) return;
+    const k = this.aimT;
+    // Muzzle direction and the gun's up, root space (forward -Z, right +X): lerped from the ready to the aim.
+    const p = clamp(pitch, -0.9, 0.9);
+    _fwd.copy(g.ready).lerp(_t.set(0, Math.sin(p), -Math.cos(p)), k).normalize();
+    _up.copy(g.readyUp).lerp(_t.set(0, Math.cos(p), Math.sin(p)), k);
+    _right.crossVectors(_fwd, _up).normalize();
+    _up.crossVectors(_right, _fwd);
+    // glTF guns: muzzle +Z, up +Y, their right -X.
+    o.quaternion.setFromRotationMatrix(_m.makeBasis(_t.copy(_right).negate(), _up, _fwd));
+    this.root.updateMatrixWorld(true);
+    if (loose) {
+      this.root.worldToLocal(arm[2].getWorldPosition(o.position));
+      return;
+    }
+    if (k > 1e-3 && g.twist) {
+      rotateAboutRoot(this.root, this.spine, Y_AXIS, g.twist * k);
+      if (this.neck) rotateAboutRoot(this.root, this.neck, Y_AXIS, -g.twist * k);
+      this.root.updateMatrixWorld(true);
+    }
+    // The grip, from the right shoulder: at the ready a fixed spot; aiming, out along the aim.
+    this.root.worldToLocal(arm[0].getWorldPosition(_s0));
+    o.position.copy(_s0).add(g.readyAt);
+    _t.copy(_s0).add(g.aimFrom).addScaledVector(_fwd, g.aimOut);
+    o.position.lerp(_t, k);
+    // Right hand: wrist behind and above the grip, a little to the gun's right; knuckles forward round it.
+    _t.copy(o.position).addScaledVector(_fwd, -0.06).addScaledVector(_up, 0.035).addScaledVector(_right, 0.02);
+    this.root.localToWorld(_t);
+    reach(arm[0], arm[1], arm[2], _t, _pole.copy(g.elbow).lerp(g.aimElbow, k).transformDirection(this.root.matrixWorld));
+    _t.copy(o.position).addScaledVector(_fwd, 0.04).addScaledVector(_up, -0.03).addScaledVector(_right, -0.01);
+    aim(arm[2], arm[3], this.root.localToWorld(_t));
+    // Left hand under the handguard, wrist to the left of it, fingers round under it to the right.
+    const left = this.arms[0];
+    if (g.support && left) {
+      _t.copy(o.position).addScaledVector(_fwd, g.support).addScaledVector(_up, 0.03).addScaledVector(_right, -0.055);
+      this.root.localToWorld(_t);
+      reach(left[0], left[1], left[2], _t, _pole.set(-0.5, -1, 0.2).transformDirection(this.root.matrixWorld));
+      _t.copy(o.position).addScaledVector(_fwd, g.support + 0.03).addScaledVector(_up, 0.05).addScaledVector(_right, 0.03);
+      aim(left[2], left[3], this.root.localToWorld(_t));
+    }
+  }
+
   /** Sit on the bike: move the body so the hips are on the seat, bend the upper body, then reach the hands and feet. */
   private ride(r: RidePose) {
     if (!this.hips || !this.spine) return;
@@ -462,6 +516,36 @@ export class ScavengerModel {
   }
 }
 
+/** How a gun is held (root space: forward -Z, right +X, up +Y). */
+type GunHold = {
+  /** At the low ready: the muzzle direction, the gun's up, and the grip from the right shoulder joint. */
+  ready: THREE.Vector3; readyUp: THREE.Vector3; readyAt: THREE.Vector3;
+  /** Aiming: the grip is `aimOut` along the aim from the shoulder joint + `aimFrom`. */
+  aimFrom: THREE.Vector3; aimOut: number;
+  /** Where the right elbow points, at the ready and aiming. */
+  elbow: THREE.Vector3; aimElbow: THREE.Vector3;
+  /** Torso turn into the aiming stance (rad about +Y; - brings the left shoulder forward). */
+  twist: number;
+  /** Two hands: the left closes this far along the bore ahead of the grip (the handguard). */
+  support?: number;
+};
+const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+/** The rifle across the body, muzzle down to the front left, both hands; aiming, the butt in the shoulder. The
+ *  pistol (and the jammer, built in its frame) in the right hand, down by the thigh; aiming, the arm out straight. */
+const RIFLE: GunHold = {
+  ready: V(-0.62, -0.38, -0.55).normalize(), readyUp: V(0.25, 1, -0.2), readyAt: V(-0.04, -0.34, -0.24),
+  aimFrom: V(-0.06, -0.06, 0.02), aimOut: 0.3,
+  elbow: V(0.7, -0.6, 0.6), aimElbow: V(1, -0.9, 0.3),
+  twist: -0.45, support: 0.24,
+};
+const PISTOL: GunHold = {
+  ready: V(-0.05, -0.75, -0.6).normalize(), readyUp: V(0, 0.6, -0.75), readyAt: V(0.07, -0.5, -0.12),
+  aimFrom: V(-0.04, -0.02, 0), aimOut: 0.56,
+  elbow: V(0.5, -0.4, 1), aimElbow: V(0.4, -1, 0),
+  twist: 0.2,
+};
+const GUN_HOLD: Record<string, GunHold> = { laser_rifle: RIFLE, laser_pistol: PISTOL, jammer: PISTOL };
+
 const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt');
 
 /** Parent `o` to `bone`, placed at `p` / `q` in `model`'s space (as it is posed now). */
@@ -493,6 +577,11 @@ const _t = new THREE.Vector3();
 const _p = new THREE.Vector3();
 const _o = new THREE.Vector3();
 const _pole = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _s0 = new THREE.Vector3();
+const _m = new THREE.Matrix4();
 const _s = new THREE.Vector3();
 const _e = new THREE.Vector3();
 const _w = new THREE.Vector3();

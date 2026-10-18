@@ -24,6 +24,8 @@ export type AvatarPose = {
   ride?: RidePose;
   /** Drinking from the canteen in hand (see setOutfit). */
   drinking?: boolean;
+  /** A gun in hand raised to aim along `pitch` (else carried at the low ready). */
+  aiming?: boolean;
   /** Dead: a ragdoll thrown by this push (m/s, world; shared/ragdoll.ts). Placement stays where it fell. */
   down?: [number, number, number] | null;
 };
@@ -56,6 +58,7 @@ export type ModelPose = {
   ground?: (x: number, z: number) => number;
   ride?: RidePose;
   drinking?: boolean;
+  aiming?: boolean;
 };
 
 export interface AvatarModel {
@@ -245,7 +248,7 @@ export class Avatar {
     this.model.update(
       {
         speed: pose.speed, grounded: pose.grounded, sliding: slip, powerSlide: power, crouching: pose.crouching, tiltPitch, tiltRoll,
-        digging: pose.digging, pitch: pose.pitch, heading, drinking: pose.drinking, ground: onSand && !power ? heightAt : undefined,
+        digging: pose.digging, pitch: pose.pitch, heading, drinking: pose.drinking, aiming: pose.aiming, ground: onSand && !power ? heightAt : undefined,
       },
       dt,
     );

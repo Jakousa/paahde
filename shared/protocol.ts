@@ -45,7 +45,8 @@ export type ClientMsg =
   // players see it on your avatar; the drink/fill checks don't depend on it.
   // slot: the selected hotbar slot (-1 none); the server digs with what's in it (a repaired shovel digs
   // faster, shared/gear.ts digTool).
-  | { t: 'hands'; hands: Hands; slot?: number }
+  // aim: a gun (or the jammer) in hand is raised to aim; others see it shouldered along the pitch.
+  | { t: 'hands'; hands: Hands; slot?: number; aim?: boolean }
   // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning.
   | { t: 'storm' }
   // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
@@ -119,9 +120,10 @@ export type Hands = 0 | 1 | 2 | 3;
 // tilt their heads.
 // hands: what they're holding (Hands), omitted when empty.
 // item: the kind of the item in their selected hotbar slot (drawn in their hand), omitted when empty.
+// aim: their gun (or jammer) is raised to aim (the 'hands' message), omitted when not.
 // gear: the gear they wear (shared/gear.ts wornGear bits), omitted when none.
 // down: dead, lying as a ragdoll until the respawn (shared/ragdoll.ts); the push (m/s) that threw the body, [0, 0, 0] if none.
-export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; item?: string; gear?: number; down?: [number, number, number] };
+export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; aim?: 1; item?: string; gear?: number; down?: [number, number, number] };
 
 export type ServerMsg =
   // First message on every connection: the build the server is serving (dist/version.txt, 'dev' if

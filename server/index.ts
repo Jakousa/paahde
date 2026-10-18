@@ -97,6 +97,7 @@ type Player = {
   alive: boolean;
   hands: Hands; // what the client says it holds, relayed in snapshots
   slot: number; // selected hotbar slot (-1 none): digs with what's in it
+  aim: boolean; // gun raised to aim (cosmetic, relayed in snapshots)
   /** Dead and lying where they fell until `until` (Date.now ms), thrown by `push` (shared/ragdoll.ts). */
   down: { until: number; push: [number, number, number] } | null;
   firedAt: number; // last laser rifle shot or throw (performance.now() ms)
@@ -173,6 +174,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'chat' && p) return onChat(p, msg.text);
     if (msg.t === 'hands' && p) {
       p.hands = msg.hands === 1 || msg.hands === 2 || msg.hands === 3 ? msg.hands : 0;
+      p.aim = msg.aim === true;
       p.slot = Number.isInteger(msg.slot) && (msg.slot as number) >= 0 && (msg.slot as number) < HOTBAR ? (msg.slot as number) : -1;
       return;
     }
@@ -217,7 +219,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, down: null, firedAt: 0, chatAt: 0, jam: null,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, aim: false, down: null, firedAt: 0, chatAt: 0, jam: null,
   };
   players.set(ws, p);
   save(p);
@@ -711,7 +713,7 @@ function broadcast(time: number) {
     const item = p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot]?.kind : undefined;
     const gear = wornGear(items.slots(p.browserId, 'equip'));
     return {
-      id: p.id, color: p.color, pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}),
+      id: p.id, color: p.color, pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}), ...(p.aim ? { aim: 1 as const } : {}),
       ...(item ? { item } : {}), ...(gear ? { gear } : {}), ...(p.down ? { down: p.down.push } : {}),
     };
   });

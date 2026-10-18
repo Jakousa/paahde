@@ -21,7 +21,7 @@
 //   (predicted, like a move); the server checks it against the machine's roll and answers with the bag, or
 //   'partRefused' (the part goes back in the machine) and the bag.
 // - Loot (shared/loot.ts): what lies in the world, from the server; F asks to take it.
-// - Hands: what we hold (canteen, drinking, filling) is sent when it changes and relayed in snapshots, cosmetic only;
+// - Hands: what we hold (canteen, drinking, filling, a gun raised to aim) is sent when it changes and relayed in snapshots, cosmetic only;
 //   with it the selected hotbar slot, which the server digs with (a shovel digs faster).
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
@@ -50,6 +50,8 @@ import type { BedState } from '../shared/garden.ts';
 const INTERP_MS = 100;
 /** Ceiling on the extra interpolation delay added for jitter. */
 const MAX_JITTER_MS = 300;
+/** After a shot, a player's gun stays raised this long (ms), even fired from the hip. */
+const SHOT_RAISED_MS = 1500;
 /** Per snapshot, the clock offset creeps down this much (1 ms/s, to follow drift or a slower route)… */
 const OFFSET_DECAY_MS = 0.05;
 /** …and the jitter estimate decays by this factor (a ~5 s time constant at 20 Hz). */
@@ -72,6 +74,8 @@ export type RemotePlayer = {
   drinking: boolean;
   /** Filling their canteen at the pump. */
   filling: boolean;
+  /** Gun raised: aiming (the 'hands' message), or a shot of theirs went off just now ('zap'). */
+  aiming: boolean;
 };
 
 type Snapshot = { time: number; players: Map<number, PlayerSnap> };
@@ -112,6 +116,10 @@ export class Net {
   private hands: Hands = 0;
   private sentHands = -1;
   private sentSlot = -1;
+  private aim = false;
+  private sentAim = false;
+  /** When each player (us too) last fired (performance.now() ms): the gun stays up a moment after a shot. */
+  private shotAt = new Map<number, number>();
 
   /** Loot in the world by id (shared/loot.ts), from the server. */
   loot = new Map<number, Loot>();
@@ -323,6 +331,11 @@ export class Net {
     this.send({ t: 'drink' });
   }
 
+  /** Player `id` (ours: this.id) fired in the last moment: their gun stays raised that long (SHOT_RAISED_MS). */
+  justFired(id: number) {
+    return performance.now() - (this.shotAt.get(id) ?? -Infinity) < SHOT_RAISED_MS;
+  }
+
   /** A laser rifle shot from (x, y, z) to (ex, ey, ez); `hit`: weak point i of walker g, as we saw it (shared/rifle.ts). */
   /** Holding the jammer on a jet or drone (shared/jammer.ts), from the eye along the aim. */
   jam(kind: 'jet' | 'drone', id: number, x: number, y: number, z: number, dx: number, dy: number, dz: number) {
@@ -331,6 +344,7 @@ export class Net {
 
   fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number } | { d: number } | { j: number }) {
     const r = (n: number) => Math.round(n * 100) / 100;
+    this.shotAt.set(this.id, performance.now());
     this.send({ t: 'fire', x: r(x), y: r(y), z: r(z), ex: r(ex), ey: r(ey), ez: r(ez), ...hit });
   }
 
@@ -354,12 +368,14 @@ export class Net {
    * What we're holding, for other players' view of us; sent when it changes. Call every frame. The server
    * shows others the item in the selected slot; `hands` adds drinking from the canteen or filling it.
    */
-  setHands(held: string, drinking: boolean, filling: boolean) {
+  setHands(held: string, drinking: boolean, filling: boolean, aim: boolean) {
     this.hands = held === 'canteen' ? (drinking ? 2 : filling ? 3 : 1) : 0;
-    if (this.connected && (this.hands !== this.sentHands || tools.slot !== this.sentSlot)) {
-      this.send({ t: 'hands', hands: this.hands, slot: tools.slot });
+    this.aim = aim;
+    if (this.connected && (this.hands !== this.sentHands || tools.slot !== this.sentSlot || aim !== this.sentAim)) {
+      this.send({ t: 'hands', hands: this.hands, slot: tools.slot, ...(aim ? { aim } : {}) });
       this.sentHands = this.hands;
       this.sentSlot = tools.slot;
+      this.sentAim = aim;
     }
   }
 
@@ -623,7 +639,10 @@ export class Net {
       return;
     }
     if (msg.t === 'shot' || msg.t === 'boom' || msg.t === 'missile' || msg.t === 'blast') return this.onBolt?.(msg);
-    if (msg.t === 'zap') return this.onZap?.(msg);
+    if (msg.t === 'zap') {
+      this.shotAt.set(msg.by, performance.now());
+      return this.onZap?.(msg);
+    }
     if (msg.t === 'toss' || msg.t === 'tossEnd') return this.onToss?.(msg);
     if (msg.t === 'chat') return this.onChat?.(msg);
     if (msg.t === 'bots') {
@@ -705,6 +724,7 @@ export class Net {
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
         riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3,
+        aiming: pick.aim === 1 || this.justFired(pb.id),
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t, down: pb.down ?? null,
       });
     }
