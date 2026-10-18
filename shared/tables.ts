@@ -28,6 +28,12 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   // A grow bag on a scrap frame.
   plant_bed: [SCRAP(2), CLOTH(2)],
   uv_lamp: [SCRAP(2), { label: 'Wiring coil', n: 1, part: 'coil' }],
+  // The plain metal parts, hammered out of scrap: Scrap tier only, so better ones still come from salvage. The
+  // electrics (motor, battery, coil, relay, compute, anti-matter) can't be made.
+  gear_scrap: [SCRAP(3)],
+  bearing_scrap: [SCRAP(2)],
+  valve_scrap: [SCRAP(3)],
+  heatsink_scrap: [SCRAP(4)],
   // (Tools, guns and the jammer aren't crafted: they're found broken and repaired, shared/gear.ts.)
 };
 
