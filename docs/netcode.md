@@ -100,7 +100,9 @@ at our scale and the whole team can read and change it. Alternatives, if needs g
   30 Hz on recently changed vertices only, and broadcasts changed vertices as `terrainEdit` right before
   each snapshot. Edits are absolute integer millimetres, so they are idempotent. The client predicts its
   own strokes and holds back server values for predicted vertices until a snapshot acks the input that
-  dug them. Joining clients get all edited chunks (`terrainChunks`) before `welcome`; chunks persist in
+  dug them. The wind's healing pass (every 5 s, every edited vertex creeps back towards 0) isn't sent vertex by
+  vertex: the server says `terrainHeal` and each client runs the same deterministic `heal()` on its copy (edits
+  flushed after it carry the post-heal absolute values, so the two can't drift). Joining clients get all edited chunks (`terrainChunks`) before `welcome`; chunks persist in
   the `terrain_chunks` SQLite table (saved every 5 s and on shutdown).
 - **Scrap pickups** (`shared/scrap.ts`, `server/scrap.ts`): the client sends `pickup` with the piece id
   and hides the piece (and its hitbox) at once. The server checks reach from its own view of the player,

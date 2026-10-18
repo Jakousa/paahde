@@ -143,6 +143,9 @@ export type ServerMsg =
   // that the server didn't send are dropped at done) and as changed vertices [ix, iz, mm, ...] after digs.
   | { t: 'terrainChunks'; chunks: { cx: number; cz: number; mm: number[] }[]; reset?: boolean; done?: boolean }
   | { t: 'terrainEdit'; cells: number[] }
+  // The wind's healing pass (shared/dig.ts heal) just ran on the server: run it on your copy too. Its changes aren't
+  // sent (they touch every edited vertex every pass); it's deterministic, and later edits come as absolute values.
+  | { t: 'terrainHeal' }
   // Another player dug (pile = false) or piled sand at (x, y, z): for particle effects only.
   | { t: 'dug'; id: number; x: number; y: number; z: number; pile: boolean }
   // Scrap pieces picked up (taken) or respawned (back), as flat [ix, iz, i, ...] triples. On join, before

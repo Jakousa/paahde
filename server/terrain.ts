@@ -24,9 +24,8 @@ export class TerrainServer {
     this.dirtyChunks.add(TerrainEdits.key(Math.floor(ix / EDIT_CHUNK), Math.floor(iz / EDIT_CHUNK)));
   };
 
-  // Healing flattens, so it never needs relaxing.
+  // Healing flattens, so it never needs relaxing; nor sending: every client heals its own copy ('terrainHeal').
   private onHeal = (ix: number, iz: number) => {
-    this.changed.add(cellKey(ix, iz));
     this.dirtyChunks.add(TerrainEdits.key(Math.floor(ix / EDIT_CHUNK), Math.floor(iz / EDIT_CHUNK)));
   };
 
@@ -58,7 +57,8 @@ export class TerrainServer {
     if (!this.relaxer.idle) this.relaxer.step(edits, RELAX_MAX_CELLS, this.onCell);
   }
 
-  /** Wind fills holes and flattens piles a little; call every few seconds. */
+  /** Wind fills holes and flattens piles a little; call every few seconds, and tell every client ('terrainHeal')
+   *  right away: they heal their copies the same way. */
   heal() {
     heal(edits, this.onHeal);
   }

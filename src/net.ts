@@ -25,7 +25,7 @@
 //   with it the selected hotbar slot, which the server digs with (a shovel digs faster).
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
-import { cellKey, cellX, cellZ, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
+import { cellKey, cellX, cellZ, heal, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { bagShape, boxShape, digTool, fitPart, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
 import { debrisItem, HOTBAR, roomFor, scrapItem, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
@@ -580,6 +580,7 @@ export class Net {
     if (msg.t === 'lives') return this.onLives?.(msg.n);
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);
+    if (msg.t === 'terrainHeal') return void heal(edits);
     if (msg.t === 'scrap') return this.applyScrap(msg);
     if (msg.t === 'items') {
       this.boxes[msg.box] = msg.slots;

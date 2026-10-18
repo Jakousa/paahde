@@ -829,6 +829,7 @@ function save(p: Player) {
 setInterval(() => {
   players.forEach(save);
   terrain.heal();
+  for (const p of players.values()) send(p.ws, { t: 'terrainHeal' });
   terrain.save();
   scrap.respawn();
   loot.respawn();
