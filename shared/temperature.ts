@@ -10,8 +10,9 @@
 // cold. Both halves have zero slope at the ends: no kinks.
 //
 // Felt: air, plus up to SUN_BONUS in direct sun (scaled by the sun's height, like sunlight per m²). In
-// shade, SHADE_DROP under the air while the sun is up (cool sand, no glare), fading out as it nears the
-// horizon, so a dune's late-afternoon shadow is a real refuge. Partly in shade (shared/shade.ts sunOnBody), it is
+// shade, SHADE_DROP under the air while the sun is up (cool sand, no glare), and never above SHADE_MAX, so even at
+// midday the shadow of a rock, a dune or a wreck cools you off (slowly; the base is faster): finding shade is how
+// you get through the afternoon. Both fade out as the sun nears the horizon. Partly in shade (shared/shade.ts sunOnBody), it is
 // the mix of the two by how much of the body the sun reaches. In the base (the hut or the bunker) the thick walls
 // and the sand keep it at most BASE_MAX.
 import { NOON_ELEVATION, sunElevation } from './sun.ts';
@@ -28,7 +29,9 @@ export const AIR_MAX_TOD = 14 / 24;
 export const SUN_BONUS = 12;
 /** Felt °C under the air in shade while the sun is up... */
 export const SHADE_DROP = 10;
-/** ...in full below this sunStrength, fading to none at sunset. */
+/** Shade never feels hotter than this (°C) while the sun is up: under COMFORT_TEMP (shared/water.ts), so it cools. */
+export const SHADE_MAX = 26;
+/** ...both in full above this sunStrength, fading to none at sunset. */
 const SHADE_FULL_STRENGTH = 0.2;
 /** The base never feels hotter than this (°C): cool enough that you cool off there. */
 export const BASE_MAX = 22;
@@ -64,6 +67,6 @@ export function feltTemp(tod: number, sun: number, inside: boolean): number {
   if (inside) return Math.min(air, BASE_MAX);
   const strength = sunStrength(tod);
   const lit = air + SUN_BONUS * strength;
-  const shaded = air - SHADE_DROP * Math.min(1, strength / SHADE_FULL_STRENGTH);
+  const shaded = air + (Math.min(air - SHADE_DROP, SHADE_MAX) - air) * Math.min(1, strength / SHADE_FULL_STRENGTH);
   return shaded + (lit - shaded) * sun;
 }

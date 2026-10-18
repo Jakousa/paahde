@@ -3,7 +3,7 @@
 //
 // Heat builds up: the hotter it feels (shared/temperature.ts: air temperature by time of day, plus the
 // sun's bonus, or the shade's chill, capped in the base), the faster, from nothing at COMFORT_TEMP up a
-// quadratic curve. Below COMFORT_TEMP (the base, nights) you cool off by yourself. Sips from the water bottle
+// quadratic curve. Below COMFORT_TEMP (the base, shade by day, nights) you cool off by yourself. Sips from the water bottle
 // (found broken and repaired, shared/gear.ts) bring it down; the pump in the base refills it. A full meter is heatstroke.
 
 /** Full heat meter: heatstroke. */
@@ -14,7 +14,7 @@ export const COMFORT_TEMP = 30;
 export const HOT_TEMP = 54;
 /** ...an empty meter fills in this long walking (s). */
 export const HOT_FULL_BAR_S = 60;
-/** Build-up grows with (felt − COMFORT_TEMP) to this power: shade (~20 °C cooler than sun) barely builds any. */
+/** Build-up grows with (felt − COMFORT_TEMP) to this power: partial shade builds little. */
 export const HEAT_POWER = 2;
 /** Build-up multiplier while sprinting. */
 export const SPRINT_HEAT = 1.5;

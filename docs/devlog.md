@@ -2,6 +2,13 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — Shade cools you off
+
+- In full shade (a rock, a dune's lee, a wreck, a hut) the felt temperature is never above `SHADE_MAX` (26 °C,
+  shared/temperature.ts) while the sun is up, so the heat meter goes down even at midday: a full meter empties in
+  ~80 s, half the base's speed. Before, midday shade was air − 10 (~34 °C) and still built heat slowly. Half in the
+  sun still builds a little. The cap fades out with the shade drop as the sun sets.
+
 ## 2026-10-18 — Hands for the shovel, metal detector, scrap and jammer
 
 - **Shovel** (tools/models/handtools.py, wooden shaft with a T grip, painted steel blade): carried in the right fist
