@@ -10,7 +10,7 @@ import { bikeLevel, bottleSips, carriedGear, digTool, GEAR_KINDS, gunCooldown, j
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
-import { BOSS_SPOILS, KILL_SPOILS, RELIC_DROPS } from '../shared/tables.ts';
+import { BOSS_SPOILS, JET_RELIC_ODDS, JET_SCRAP, JET_SOFT_EXTRA, JET_SPOILS, KILL_SPOILS, RELIC_DROPS } from '../shared/tables.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
@@ -595,6 +595,21 @@ function dropSpoils(k: Kill) {
   }
 }
 
+/** A jet's wreck (shared/tables.ts JET_SPOILS): parts, maybe its transponder and some scrap, strewn back along its
+ *  heading from where its nose went in (`yaw`: the way it was going). */
+function dropJetSpoils(w: { x: number; z: number; yaw: number; soft: boolean }) {
+  const sp = JET_SPOILS, bx = -Math.sin(w.yaw), bz = -Math.cos(w.yaw);
+  const at = (kind: string) => {
+    const back = -2 + Math.random() * 12, side = (Math.random() - 0.5) * 14;
+    loot.dropAt(w.x + bx * back - bz * side, w.z + bz * back + bx * side, kind);
+  };
+  const n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1)) + (w.soft ? JET_SOFT_EXTRA : 0);
+  for (let i = 0; i < n; i++) at(partKind(sp.parts[Math.floor(Math.random() * sp.parts.length)], pickTier(sp.tierWeights, Math.random)));
+  if (Math.random() < JET_RELIC_ODDS) at(RELIC_DROPS.drone.kind);
+  const scrapN = JET_SCRAP.min + Math.floor(Math.random() * (JET_SCRAP.max - JET_SCRAP.min + 1));
+  for (let i = 0; i < scrapN; i++) at(SCRAP);
+}
+
 /** A boss's parts, scattered over its wreck; its kind's first kill counts toward the win and gives the world lives. */
 function dropBossSpoils(k: BossKill) {
   if (!(beaten & bossBit(k.kind))) {
@@ -864,6 +879,7 @@ function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   const weather = storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
   const flights = jets.tick(time, [...players.values()].map((p) => p.state));
+  for (const w of jets.wrecks(time)) dropJetSpoils(w);
   for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), placedThings.flush(), garden.flush(), weather, flights]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);

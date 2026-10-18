@@ -1,7 +1,7 @@
 // Server side of the fixed-wing drones (shared/jets.ts): now and then one flies past a random player, in a straight
 // pass or a big circle around them, and the list goes out to everyone whenever it changes. Shot (shoot) JET_HP times,
 // one glides down to the sand. In memory only.
-import { GLIDE, GLIDE_SPEED, jetSpin, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
+import { DIVE_STEP, JET_NOSE, jetDive, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
 import { baseHeight } from '../shared/terrain.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 
@@ -29,6 +29,7 @@ export class JetServer {
   private nextId = 1;
   private nextAt: number;
   private changed = false;
+  private wrecked = new Set<number>();
 
   constructor(now: number) {
     this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS) / 2;
@@ -121,31 +122,39 @@ export class JetServer {
     this.bringDown(j, now, true);
   }
 
-  /** Engine dead: it glides on along its heading until that line meets the sand (marched, then halved down to 1 m).
-   *  Jammed (`soft`): it falls (shared/jets.ts jetSpin) until it meets the sand, marched in 50 ms steps. */
+  /** Engine dead (or jammed: `soft`): it dives (shared/jets.ts jetDive), marched in DIVE_STEP steps until its nose
+   *  meets the sand. */
   private bringDown(j: Jet, now: number, soft = false) {
     jetAt(j, now, _p);
     const sx = Math.sin(_p.yaw), sz = Math.cos(_p.yaw), r = (v: number) => Math.round(v * 100) / 100;
-    if (soft) {
-      let s = 0, m = jetSpin(j.speed, 0);
-      while (s < 60 && _p.y - m.drop > baseHeight(_p.x + sx * m.fwd, _p.z + sz * m.fwd)) m = jetSpin(j.speed, (s += 0.05));
-      const lx = _p.x + sx * m.fwd, lz = _p.z + sz * m.fwd, land = Math.round(now + s * 1000);
-      j.down = { at: Math.round(now), x: r(_p.x), y: r(_p.y), z: r(_p.z), yaw: r(_p.yaw), land, lx: r(lx), ly: r(baseHeight(lx, lz)), lz: r(lz), soft: true };
-      j.end = land + WRECK_MS;
-      return;
+    const under = (t: number) => {
+      const m = jetDive(j.speed, t, soft), f = m.fwd + JET_NOSE * Math.cos(m.pitch);
+      return _p.y - m.drop + JET_NOSE * Math.sin(m.pitch) <= baseHeight(_p.x + sx * f, _p.z + sz * f);
+    };
+    let s = 0;
+    while (s < 60 && !under(s)) s += DIVE_STEP;
+    // Then halved down to the millisecond within that last step.
+    let lo = Math.max(0, s - DIVE_STEP);
+    while (s - lo > 0.001) {
+      const mid = (lo + s) / 2;
+      if (under(mid)) s = mid;
+      else lo = mid;
     }
-    const above = (f: number) => _p.y - f / GLIDE - baseHeight(_p.x + sx * f, _p.z + sz * f);
-    let lo = 0, hi = 20;
-    while (above(hi) > 0 && hi < 5000) [lo, hi] = [hi, hi + 20];
-    while (hi - lo > 1) {
-      const mid = (lo + hi) / 2;
-      if (above(mid) > 0) lo = mid;
-      else hi = mid;
-    }
-    const land = Math.round(now + (hi / (j.speed * GLIDE_SPEED)) * 1000);
-    const lx = _p.x + sx * hi, lz = _p.z + sz * hi;
-    j.down = { at: Math.round(now), x: r(_p.x), y: r(_p.y), z: r(_p.z), yaw: r(_p.yaw), land, lx: r(lx), ly: r(baseHeight(lx, lz)), lz: r(lz) };
+    const m = jetDive(j.speed, s, soft), lx = _p.x + sx * m.fwd, lz = _p.z + sz * m.fwd, land = Math.round(now + s * 1000);
+    j.down = { at: Math.round(now), x: r(_p.x), y: r(_p.y), z: r(_p.z), yaw: r(_p.yaw), land, lx: r(lx), ly: r(baseHeight(lx, lz)), lz: r(lz), ...(soft ? { soft: true as const } : {}) };
     j.end = land + WRECK_MS;
+  }
+
+  /** Jets whose wrecks hit the sand since the last call (once each): where, and whether jammed. */
+  wrecks(now: number): { x: number; z: number; yaw: number; soft: boolean }[] {
+    const out = [];
+    for (const j of this.jets) {
+      if (!j.down || j.down.land > now || this.wrecked.has(j.id)) continue;
+      this.wrecked.add(j.id);
+      out.push({ x: j.down.lx, z: j.down.lz, yaw: j.down.yaw, soft: !!j.down.soft });
+    }
+    for (const id of this.wrecked) if (!this.jets.some((j) => j.id === id)) this.wrecked.delete(id);
+    return out;
   }
 
   msg(): ServerMsg {

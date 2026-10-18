@@ -1,12 +1,13 @@
 // Fixed-wing drones ("jets"): big, high and fast, by day and by night. No lights and no searchlight; they only fly
-// over, but can be shot (JET_HP hits, shared/rifle.ts): the last one kills the engine and it glides down to the sand,
+// over, but can be shot (JET_HP hits, shared/rifle.ts): the last one kills the engine and it dives into the sand,
 // where the wreck smokes for WRECK_MS. The server (server/jets.ts) now and then sends one past a random player and broadcasts the list;
 // like the sandstorms (shared/storm.ts) the rest is plain math on that list and the server clock, so both sides agree
 // where each one is. Drawn by src/world/jets.ts, heard via src/guardianSound.ts (jets).
 //
 // A flight is a straight run in, an arc of a big circle (none: a straight pass) and a straight run out, at a steady
-// speed and height. It starts and ends far out of sight (LEAD m beyond where it turns or passes). Once shot down the
-// server adds `down`: from where it was then, a straight glide along its heading to where that line meets the sand.
+// speed and height. It starts and ends far out of sight (LEAD m beyond where it turns or passes). Once brought down
+// (shot or jammed) the server adds `down`: from where it was then it dives along its heading (jetDive) until its nose
+// meets the sand, and the wreck stays there nose in, tail up.
 
 import { baseHeight } from './terrain.ts';
 
@@ -30,34 +31,56 @@ export type Jet = {
   end: number;
   /** Rifle hits taken. */
   hurt: number;
-  /** Shot down at server time `at` at (x, y, z) heading `yaw`; it glides to (lx, ly, lz), landing at `land`. `soft`:
-   *  jammed (shared/jammer.ts), not shot: it drops into a flat spin, falling steeply, and lands whole on its belly, no smoke. */
+  /** Brought down at server time `at` at (x, y, z) heading `yaw`; its nose hits the sand near (lx, ly, lz) at `land`.
+   *  `soft`: jammed (shared/jammer.ts), not shot: it rolls over harder as it dives, a thin trail instead of smoke. */
   down?: { at: number; x: number; y: number; z: number; yaw: number; land: number; lx: number; ly: number; lz: number; soft?: true };
 };
 
 /** Hits that bring one down. */
 export const JET_HP = 3;
-/** Shot down: it glides at this share of its speed, dropping 1 m for every GLIDE m forward. */
-export const GLIDE_SPEED = 0.8;
-export const GLIDE = 5;
-/** Jammed: it falls like a plane that's lost its controls. Its way along its heading bleeds off from full speed to
- *  SPIN_KEEP of it (time constant SPIN_SLOW s), it sinks faster and faster towards SPIN_SINK m/s (SPIN_FALL s, like
- *  falling with drag), and it spins flat, the spin tightening with the sink up to SPIN_RATE rad/s. */
-const SPIN_KEEP = 0.25;
-const SPIN_SLOW = 2.5;
-const SPIN_SINK = 45;
-const SPIN_FALL = 3;
-const SPIN_RATE = 2.8;
-/** How far along its heading (m), how far down (m) and how far round (rad) a jammed jet is `s` seconds on. */
-export function jetSpin(speed: number, s: number) {
-  const ease = (k: number) => s - k * (1 - Math.exp(-s / k));
-  return {
-    fwd: speed * (SPIN_KEEP * s + (1 - SPIN_KEEP) * (s - ease(SPIN_SLOW))),
-    drop: SPIN_SINK * ease(SPIN_FALL),
-    turn: SPIN_RATE * ease(SPIN_FALL),
-    v: speed * (SPIN_KEEP + (1 - SPIN_KEEP) * Math.exp(-s / SPIN_SLOW)),
-    w: 1 - Math.exp(-s / SPIN_FALL),
-  };
+/** Down (shot or jammed) it falls like a plane, not a drone: it keeps its way, the nose drops towards DIVE_PITCH
+ *  (time constant DIVE_TIP s; slower shot, the wings still flying it a while) and the path follows the nose, gaining
+ *  DIVE_ACCEL m/s every second, while it rolls over about its length, winding up to ROLL rad/s over ROLL_RAMP s. */
+const DIVE_PITCH = 1.25;
+const DIVE_TIP = 2.2;
+const SHOT_TIP = 3.4;
+const DIVE_ACCEL = 9;
+const ROLL = 2.4;
+const SHOT_ROLL = 0.9;
+const ROLL_RAMP = 2.5;
+/** The integration step (s): the same steps on both sides, so they agree. */
+export const DIVE_STEP = 0.05;
+/** Nose ahead of the centre (m), and how deep it ploughs into the sand past where it first touches (m). */
+export const JET_NOSE = 5.6;
+const BURY = 2.2;
+export type Dive = { fwd: number; drop: number; pitch: number; roll: number; v: number };
+const _dv: Dive = { fwd: 0, drop: 0, pitch: 0, roll: 0, v: 0 };
+/** How far along its heading (m) and down (m) a downed jet is `s` s on, its pitch (rad, nose up) and roll, and speed. */
+export function jetDive(speed: number, s: number, soft: boolean, out: Dive = _dv): Dive {
+  const tip = soft ? DIVE_TIP : SHOT_TIP;
+  const pitch = (t: number) => -DIVE_PITCH * (1 - Math.exp(-t / tip));
+  let fwd = 0, drop = 0, t = 0;
+  // Midpoint steps: fixed DIVE_STEP, then the bit left over.
+  while (t < s) {
+    const h = Math.min(DIVE_STEP, s - t), m = t + h / 2, v = speed + DIVE_ACCEL * m, th = pitch(m);
+    fwd += v * Math.cos(th) * h;
+    drop -= v * Math.sin(th) * h;
+    t += h;
+  }
+  out.fwd = fwd;
+  out.drop = drop;
+  out.pitch = pitch(s);
+  out.roll = (soft ? ROLL : SHOT_ROLL) * (s - ROLL_RAMP * (1 - Math.exp(-s / ROLL_RAMP)));
+  out.v = speed + DIVE_ACCEL * s;
+  return out;
+}
+/** The wreck on the sand: the dive at the moment its nose touched, pushed BURY m on along its nose. */
+export function jetWreck(speed: number, landS: number, soft: boolean, out: Dive = _dv): Dive {
+  jetDive(speed, landS, soft, out);
+  out.fwd += BURY * Math.cos(out.pitch);
+  out.drop -= BURY * Math.sin(out.pitch);
+  out.v = 0;
+  return out;
 }
 /** The wreck lies on the sand this long (ms) before it's cleared. */
 export const WRECK_MS = 90_000;
@@ -121,55 +144,19 @@ export function jetAt(j: Jet, t: number, out: JetPose): boolean {
   return true;
 }
 
-/** Shot down: gliding in, nose dipping and rolling over as it goes, then the wreck, nose in and on one wing. */
+/** Down: diving in, nose dropping and rolling over (jetDive); then the wreck, nose buried, tail up, as it hit. */
 function downAt(j: Jet, t: number, out: JetPose): boolean {
-  const d = j.down!, u = Math.min(1, (t - d.at) / Math.max(1, d.land - d.at));
-  out.x = d.x + (d.lx - d.x) * u;
-  out.y = d.y + (d.ly - d.y) * u;
-  out.z = d.z + (d.lz - d.z) * u;
+  const d = j.down!, landS = (d.land - d.at) / 1000, s = (t - d.at) / 1000, soft = !!d.soft;
+  const m = s >= landS ? jetWreck(j.speed, landS, soft) : jetDive(j.speed, s, soft);
+  out.x = d.x + Math.sin(d.yaw) * m.fwd;
+  out.y = d.y - m.drop;
+  out.z = d.z + Math.cos(d.yaw) * m.fwd;
   out.yaw = d.yaw;
-  const s = (t - d.at) / 1000;
-  if (d.soft) {
-    // Jammed: it carries on along its heading, slowing, while it drops faster and faster and spins flat, tighter as
-    // it falls, nose dipping and wings see-sawing; then it sits on the sand whole, on its belly, facing wherever the
-    // spin left it.
-    const f = Math.min(s, (d.land - d.at) / 1000), m = jetSpin(j.speed, f);
-    out.x = d.x + Math.sin(d.yaw) * m.fwd;
-    out.z = d.z + Math.cos(d.yaw) * m.fwd;
-    out.y = d.y - m.drop;
-    out.yaw = d.yaw + (j.id % 2 ? 1 : -1) * m.turn;
-    if (u >= 1) {
-      out.y = baseHeight(out.x, out.z) + 0.6;
-      out.bank = 0;
-      out.pitch = 0.03;
-      out.vx = out.vz = 0;
-      out.state = 2;
-      return true;
-    }
-    // Wound up with the fall, levelling off over the last half second so it sits down flat.
-    const w = Math.min(m.w * 1.5, 1, (d.land - t) / 500);
-    out.bank = w * (0.25 + 0.2 * Math.sin(s * 5 + j.id));
-    out.pitch = -w * (0.45 + 0.1 * Math.sin(s * 3.7));
-    const v = m.v;
-    out.vx = Math.sin(d.yaw) * v;
-    out.vz = Math.cos(d.yaw) * v;
-    out.state = 1;
-    return true;
-  }
-  // A slow wallow in roll that grows, the nose sagging below the glide path.
-  out.bank = (0.15 + 0.35 * u) * Math.sin(s * 0.9 + j.id) + 0.25 * u;
-  out.pitch = -Math.atan(1 / GLIDE) - 0.15 * u;
-  if (u >= 1) {
-    out.y += 0.4; // half sunk, nose in
-    out.bank = 0.35;
-    out.pitch = -0.12;
-    out.vx = out.vz = 0;
-    out.state = 2;
-    return true;
-  }
-  const v = j.speed * GLIDE_SPEED;
-  out.vx = Math.sin(d.yaw) * v;
-  out.vz = Math.cos(d.yaw) * v;
-  out.state = 1;
+  out.pitch = m.pitch;
+  out.bank = (j.id % 2 ? 1 : -1) * m.roll;
+  const h = m.v * Math.cos(m.pitch);
+  out.vx = Math.sin(d.yaw) * h;
+  out.vz = Math.cos(d.yaw) * h;
+  out.state = s >= landS ? 2 : 1;
   return true;
 }

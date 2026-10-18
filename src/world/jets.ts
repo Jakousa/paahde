@@ -1,9 +1,9 @@
 // Fixed-wing drones (shared/jets.ts): a long-winged unmanned plane built from primitives: a slim fuselage with a
 // sensor-domed nose, an intake hump over the back feeding a jet nozzle at the tail, straight tapered wings and a V
 // tail. Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and the server clock,
-// rolled into its turns. Shot, it trails smoke (more with each hit); brought down it glides in on a heavy trail,
-// slides into the sand (onCrash) and smoulders. Jammed (shared/jammer.ts) it drops in a flat spin, a thin trail
-// corkscrewing off its tail, and thumps down whole on its belly (onLand). The rifle tests shots against it here (raycast).
+// rolled into its turns. Shot, it trails smoke (more with each hit); brought down it dives in rolling over on a heavy
+// trail, ploughs in nose first (onCrash) and smoulders, tail in the air. Jammed (shared/jammer.ts) it dives the same,
+// rolling harder, a thin trail corkscrewing off its tail. The rifle tests shots against it here (raycast).
 import * as THREE from 'three/webgpu';
 import { JET_SPAN, jetAt, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { zaps } from './zaps';
@@ -94,10 +94,8 @@ export class Jets {
   private scene: THREE.Scene;
   /** A shot hit a jet at (x, y, z) (each one counts: the JET_HP-th brings it down). */
   onHit: (x: number, y: number, z: number) => void = () => {};
-  /** A shot-down jet slid into the sand at (x, y, z). */
-  onCrash: (x: number, y: number, z: number) => void = () => {};
-  /** A jammed jet touched down on its belly at (x, y, z). */
-  onLand: (x: number, y: number, z: number) => void = () => {};
+  /** A downed jet's nose went into the sand at (x, y, z), diving along (dx, dy, dz). */
+  onCrash: (x: number, y: number, z: number, dx: number, dy: number, dz: number) => void = () => {};
   /** The jet our jammer is on and how far its lock has built (0..1), or null (src/jammer.ts). */
   jamming: { id: number; level: number } | null = null;
 
@@ -138,11 +136,14 @@ export class Jets {
       if (j.hurt > v.hurt) this.onHit(p.x, p.y, p.z);
       v.hurt = j.hurt;
       const soft = !!j.down?.soft;
-      if (p.state === 2 && v.state === 1) (soft ? this.onLand : this.onCrash)(p.x, p.y, p.z);
+      if (p.state === 2 && v.state === 1) {
+        _t.set(0, 0, 1).transformDirection(o.matrixWorld);
+        this.onCrash(p.x + _t.x * 4, p.y + _t.y * 4, p.z + _t.z * 4, _t.x, _t.y, _t.z);
+      }
       v.state = p.state;
       // Smoke: a thin trail once hit, thicker with each hit, a heavy one gliding down; the wreck smoulders. Jammed it
-      // comes down whole: a thin trail off the spinning tail (so it reads from far off), no smoke once down.
-      const rate = soft ? (p.state === 2 ? 0 : p.state === 1 ? 14 + j.hurt * 10 : j.hurt * 10) : p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
+      // has no fire: a thin trail off the rolling tail (so it reads from far off), a lighter smoulder once down.
+      const rate = soft ? (p.state === 2 ? 3 : p.state === 1 ? 14 + j.hurt * 10 : j.hurt * 10) : p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
       v.smoke += dt * rate;
       if (v.smoke >= 1) _t.copy(TAIL).applyMatrix4(o.matrixWorld);
       for (; v.smoke >= 1; v.smoke--) {

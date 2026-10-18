@@ -17,6 +17,7 @@ import { CHARGE_MS, CRAWLER, FIRE_R, FOOT_CRUSH_R, GUARDIAN, KINDS } from '../sh
 import { guardianSound } from './guardianSound';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
+import { zaps } from './world/zaps';
 import type { Net } from './net';
 
 /** Footfalls shake the camera within this distance (m), up to SHAKE metres at the foot. */
@@ -65,16 +66,19 @@ export class GuardianFx {
     this.jets = new Jets(scene);
     // Shot: a heavier bang than a drone's. Down: it hits the sand like a walker's hull, with the burst of a drone's crash.
     this.jets.onHit = (x, y, z) => guardianSound.footfall(x, y, z, 1, this.ear);
-    // Jammed down: a belly landing (a walker's hull slamming, a long dust spray), no blast; a drone just settles.
-    this.jets.onLand = (x, y, z) => {
-      rifleSound.slam({ x, y, z }, this.ear, true);
-      this.thump(x, y, z, 1.2, 24, 6, 3);
-    };
+    // A jammed drone just settles.
     this.drones.onLand = (x, y, z) => rifleSound.slam({ x, y, z }, this.ear, false);
-    this.jets.onCrash = (x, y, z) => {
+    // Nose first into the sand (shot or jammed): a fireball, a spray of sparks and torn panels thrown on the way it
+    // was going, a ring of dust and a big shake, a bang and a slam.
+    this.jets.onCrash = (x, y, z, dx, dy, dz) => {
+      this.bolts.boom(-1, x, y, z, true);
+      zaps.burst(x, y + 1, z, dx * 0.6, 0.8, dz * 0.6, 70, 8);
+      zaps.shatter(x, y + 1.5, z, dx * 0.8, 0.6 - dy * 0.3, dz * 0.8, 4);
+      for (let i = 0; i < 8; i++) zaps.puff(x + (Math.random() - 0.5) * 8, y + Math.random() * 4, z + (Math.random() - 0.5) * 8, 6 + Math.random() * 4, 4);
+      guardianSound.boom(x, y, z, this.ear);
       rifleSound.firework({ x, y, z }, this.ear, 1, MISSILE_FIREWORK_PITCH);
       rifleSound.slam({ x, y, z }, this.ear, true);
-      this.thump(x, y, z, 2.2, 36, 9, 4);
+      this.thump(x, y, z, 3, 48, 12, 5);
     };
     this.guardians.onFootfall = (f) => this.footfall(f);
     // A shot hitting a drone: a lighter bang than its crash (each one counts, so no firework like a weak point's).
