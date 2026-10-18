@@ -9,10 +9,10 @@ import { partKind, SCRAP_ITEMS } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
-import { PART_IDS } from '../shared/parts.ts';
+import { PART_IDS, pickTier } from '../shared/parts.ts';
 import { PISTOL } from '../shared/rifle.ts';
 import { rocksNear } from '../shared/rocks.ts';
-import { TIERS } from '../shared/salvage.ts';
+import { BROKEN_GEAR, CACHES, FINDS, RARE_FINDS } from '../shared/tables.ts';
 import { EDIT_CELL, edits, WORLD_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -20,40 +20,30 @@ import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
 
-/** How many of each piece of broken gear lie around at once, and the level of crash site they lie at: a new player
- *  starts with nothing and finds the canteen, telescope and backpack at the scrap fields (or a scrap pile). */
-const FINDS: Record<string, { n: number; level: SiteLevel }> = {
-  canteen: { n: 7, level: 0 }, spyglass: { n: 5, level: 0 }, backpack: { n: 7, level: 0 },
-  motorcycle: { n: 3, level: 1 }, shovel: { n: 3, level: 1 }, storm_detector: { n: 2, level: 1 }, wristpad: { n: 2, level: 1 },
-  metal_detector: { n: 2, level: 1 },
-};
+// What lies around and what is in it: FINDS, RARE_FINDS, BROKEN_GEAR and CACHES in shared/tables.ts.
 /** The odds a level-0 find lies at a scrap pile (shared/scrap.ts) within PILE_FIND_R m of the base instead of a crash site. */
 const PILE_ODDS = 0.45;
 const PILE_FIND_R = 600;
-/** Loose Quality / Space-grade parts lying at guardian ground (level 2) at once (RARE_KIND: any such part, anti-matter too). */
-const RARE_FINDS = 10;
+/** The FINDS key for a loose rare part at guardian ground (level 2). */
 const RARE_KIND = 'rare';
-const RARE_TIERS = [3, 1];
-/** Buried caches at once, how far from the base, and how deep (m). */
-const CACHES = 60;
+/** How far from the base buried caches lie, and how deep (m). */
 const CACHE_MIN_R = 80, CACHE_MAX_R = 1200;
 const CACHE_DEPTH = [0.5, 1.1];
 /** A taken find / cache is replaced this long after (ms). */
 const FIND_RESPAWN_MS = 3 * 60_000;
 const CACHE_RESPAWN_MS = 60_000;
-/** Cache contents: part tiers, and the odds of a part / a piece of scrap / a laser pistol / broken gear. */
-const TIER_WEIGHTS = [5, 3, 1.2, 0.25];
-const CACHE_ODDS = { part: 0.65, scrap: 0.2, pistol: 0.04 };
-const PARTS = PART_IDS.filter((p) => p !== 'antimatter');
+const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
 
 type Spawn = { at: number; what: 'find' | 'cache'; kind?: string };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
-function pickTier(): number {
-  let r = Math.random() * TIER_WEIGHTS.reduce((a, b) => a + b);
-  for (let i = 0; i < TIER_WEIGHTS.length; i++) if ((r -= TIER_WEIGHTS[i]) < 0) return i;
-  return 0;
+/** A key of `odds`, picked by its relative odds. */
+function pickOdds<K extends string>(odds: Record<K, number>): K {
+  const ks = Object.keys(odds) as K[];
+  let r = Math.random() * ks.reduce((a, k) => a + odds[k], 0);
+  for (const k of ks) if ((r -= odds[k]) < 0) return k;
+  return ks[0];
 }
 
 /** The scrap piles within PILE_FIND_R of the base: centre and how far their pieces reach. */
@@ -88,8 +78,8 @@ export class LootServer {
       this.nextId = Math.max(this.nextId, r.id + 1);
     }
     for (const [kind, f] of Object.entries(FINDS)) for (let i = 0; i < f.n; i++) this.spawnFind(kind);
-    for (let i = 0; i < RARE_FINDS; i++) this.spawnFind(RARE_KIND);
-    for (let i = 0; i < CACHES; i++) this.spawnCache();
+    for (let i = 0; i < RARE_FINDS.n; i++) this.spawnFind(RARE_KIND);
+    for (let i = 0; i < CACHES.n; i++) this.spawnCache();
     this.added = [];
   }
 
@@ -183,7 +173,8 @@ export class LootServer {
   /** Broken: a few low-tier parts already in, at least one slot empty. */
   private brokenParts(kind: string): (string | null)[] {
     const slots = GEAR[kind].slots;
-    const parts = slots.map((s): string | null => (Math.random() < 0.5 ? ('part' in s ? partKind(s.part, TIERS[Math.random() < 0.7 ? 0 : 1]) : pick(s.scrap)) : null));
+    const parts = slots.map((s): string | null =>
+      Math.random() < BROKEN_GEAR.filled ? ('part' in s ? partKind(s.part, pickTier(BROKEN_GEAR.tierWeights, Math.random)) : pick(s.scrap)) : null);
     if (!parts.includes(null)) parts[Math.floor(Math.random() * parts.length)] = null;
     return parts;
   }
@@ -207,8 +198,7 @@ export class LootServer {
       if (!overBase(x, z, 6)) break;
     }
     if (kind === RARE_KIND) {
-      const tier = Math.random() * (RARE_TIERS[0] + RARE_TIERS[1]) < RARE_TIERS[0] ? 'quality' : 'space';
-      this.add({ id: this.nextId++, kind: partKind(pick(PART_IDS), tier), x, z, depth: 0, src: 'find' });
+      this.add({ id: this.nextId++, kind: partKind(pick(PART_IDS), pickTier(RARE_FINDS.tierWeights, Math.random)), x, z, depth: 0, src: 'find' });
     } else this.add({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, depth: 0, src: 'find' });
   }
 
@@ -220,11 +210,11 @@ export class LootServer {
       z = Math.round((BASE.z + Math.cos(a) * d) / EDIT_CELL) * EDIT_CELL;
       if (Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20 && !overBase(x, z, 10) && !rocksNear(x, z, 3)) break; // dug up: not under rock
     }
-    const r = Math.random();
+    const what = pickOdds(CACHES.contents);
     let kind: string, parts: (string | null)[] | undefined;
-    if (r < CACHE_ODDS.part) kind = partKind(pick(PARTS), TIERS[pickTier()]);
-    else if (r < CACHE_ODDS.part + CACHE_ODDS.scrap) kind = pick(SCRAP_ITEMS);
-    else if (r < CACHE_ODDS.part + CACHE_ODDS.scrap + CACHE_ODDS.pistol) kind = PISTOL;
+    if (what === 'part') kind = partKind(pick(CACHE_PARTS), pickTier(CACHES.tierWeights, Math.random));
+    else if (what === 'scrap') kind = pick(SCRAP_ITEMS);
+    else if (what === 'pistol') kind = PISTOL;
     else {
       kind = pick(GEAR_KINDS);
       parts = this.brokenParts(kind);

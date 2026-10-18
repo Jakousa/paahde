@@ -16,6 +16,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 
 ## Layout
 
+- `shared/tables.ts` — every loot table and crafting recipe (machine/wreck yields, world finds, caches, kill
+  drops, workbench recipes) as plain data; tune drops and recipes there
 - `shared/sim.ts` — deterministic movement/physics, run by **both** client and server
 - `shared/protocol.ts` — WebSocket message types
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`)

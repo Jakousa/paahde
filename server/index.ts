@@ -10,6 +10,8 @@ import { bikeLevel, bottleSips, digTool, GEAR, GEAR_KINDS, wornGear } from '../s
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP_ITEMS } from '../shared/items.ts';
 import { TIERS } from '../shared/salvage.ts';
+import { pickTier } from '../shared/parts.ts';
+import { KILL_SPOILS } from '../shared/tables.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { inBase, overBase } from '../shared/base.ts';
@@ -429,15 +431,13 @@ function onChat(p: Player, text: unknown) {
   for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
 }
 
-/** What a killed walker leaves: a guardian a few good parts, a crawler now and then a poor one; a downed drone one. */
-const SPOILS = ['coil', 'battery', 'compute', 'relay', 'motor', 'bearing'] as const;
+/** What a killed walker or downed drone leaves on the sand (shared/tables.ts KILL_SPOILS). */
 function dropSpoils(k: Kill) {
-  const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
-  const n = k.kind === GUARDIAN ? 2 + Math.floor(Math.random() * 2) : k.kind === 'drone' || Math.random() < 0.35 ? 1 : 0;
+  const sp = KILL_SPOILS[k.kind === GUARDIAN ? 'guardian' : k.kind === 'drone' ? 'drone' : 'crawler'];
+  const n = Math.random() < sp.odds ? sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1)) : 0;
   for (let i = 0; i < n; i++) {
-    const tier = k.kind === GUARDIAN ? pick(['quality', 'quality', 'space'] as const)
-      : k.kind === 'drone' ? pick(['basic', 'quality'] as const) : pick(['scrap', 'basic'] as const);
-    loot.dropAt(k.x, k.z, partKind(pick(SPOILS), tier));
+    const part = sp.parts[Math.floor(Math.random() * sp.parts.length)];
+    loot.dropAt(k.x, k.z, partKind(part, pickTier(sp.tierWeights, Math.random)));
   }
 }
 

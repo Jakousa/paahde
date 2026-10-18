@@ -1,8 +1,8 @@
 // Machine sites: the wrecked machinery lying at the crashed spacecraft (shared/crashsites.ts `machines`), one
 // component each (COMPONENTS in salvage.ts) that you take apart where it lies (large) or carry home (small),
 // src/teardown. Every crash site has one large machine next to its wreck and 0–2 small ones in the debris trail; a
-// scrap field (site level 0) only 2–3 small ones. Which kinds lie where depends on the site's level (LEVEL_KINDS),
-// and so do the large machines' part tiers (shared/salvage.ts LEVEL_TIERS).
+// scrap field (site level 0) only 2–3 small ones. Which kinds lie where depends on the site's level, and so do the
+// large machines' part tiers (shared/tables.ts LEVEL_KINDS, LEVEL_TIERS).
 // The layout is the crash sites' (deterministic, integer hashing), so every client sees the same machines with the
 // same contents. Ids are "<crash site id>:<index>", index 0 the large machine (if the site has one).
 import { BASE_SPAWN } from './base.ts';
@@ -10,6 +10,7 @@ import { crashSite, crashSitesNear, crashTaken, type CrashSite as Wreck } from '
 import type { SiteLevel } from './crashsites.ts';
 import { COMPONENTS, SALVAGE, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
 import { STATIONS } from './stations.ts';
+import { LEVEL_KINDS } from './tables.ts';
 
 /** Components small enough to carry, and the salvage wrecks (shared/wrecks.ts); each is an item of the same kind
  *  (shared/items.ts) in the bag, taken apart on the disassembly table. */
@@ -68,14 +69,6 @@ export function seeded(seed: number) {
   };
 }
 
-/** Relative odds of each component at each site level, small (carried) and large ones: scrap fields hold the starter
- *  machines (the parts for the canteen, telescope, backpack and laser rifle), crawler ground the motorcycle's motor and
- *  the advanced gear's electronics, guardian ground mostly jet engines (rolled with better tiers there). */
-const LEVEL_KINDS: Record<SiteLevel, Partial<Record<ComponentKind, number>>> = {
-  0: { winch: 3, solenoid_valve: 3, beacon: 3 },
-  1: { control_cabinet: 3, robot_arm: 2, beacon: 1, pump_housing: 3, jet_engine: 1 },
-  2: { robot_arm: 3, control_cabinet: 2, jet_engine: 3, pump_housing: 1 },
-};
 function pickKind(u: number, carry: boolean, level: SiteLevel): ComponentKind {
   const ks = (Object.entries(LEVEL_KINDS[level]) as [ComponentKind, number][]).filter(([k]) => COMPONENTS[k].carry === carry);
   let r = u * ks.reduce((s, [, w]) => s + w, 0);

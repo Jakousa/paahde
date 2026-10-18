@@ -3,7 +3,9 @@
 // (public/icons/items/<part>_<tier>.png). They come out of machines in the disassembly mode (src/teardown) and
 // land in the bag through the server (server/crash.ts), which rolls the same contents from the same seed as the
 // client (rollParts) and never hands out more of a kind than the machine holds.
-import { junkSpec, LEVEL_TIERS, TIERS, type JunkKind, type PartId, type Tier } from './salvage.ts';
+import { junkSpec, TIERS, type JunkKind, type PartId, type Tier } from './salvage.ts';
+import { LEVEL_TIERS, type TierWeights } from './tables.ts';
+import type { SiteLevel } from './crashsites.ts';
 
 export const PART_LABELS: Record<PartId, string> = {
   battery: 'Battery',
@@ -42,21 +44,21 @@ export function partItems(): Record<string, { label: string; stack: number; tier
   return out;
 }
 
-export function pickTier(weights: Record<Tier, number>, rand: () => number): Tier {
+export function pickTier(weights: TierWeights, rand: () => number): Tier {
   let sum = 0;
-  for (const t of TIERS) sum += weights[t];
+  for (const t of TIERS) sum += weights[t] ?? 0;
   let r = rand() * sum;
-  for (const t of TIERS) if ((r -= weights[t]) < 0) return t;
+  for (const t of TIERS) if ((r -= weights[t] ?? 0) < 0) return t;
   return 'scrap';
 }
 
 /** What is inside a component or salvage wreck of `kind`, rolled with `rand` (shared/crash.ts seeded(seed)): every part and its
- *  tier, in roll order. `level` is the crash site's (LEVEL_TIERS). src/teardown/junk.ts mounts these; the server checks takes
+ *  tier, in roll order. `level` is the crash site's (shared/tables.ts LEVEL_TIERS). src/teardown/junk.ts mounts these; the server checks takes
  *  against them. */
 export function rollParts(kind: JunkKind, rand: () => number, level = 1): { part: PartId; tier: Tier }[] {
   const spec = junkSpec(kind);
-  const boost = LEVEL_TIERS[level] ?? LEVEL_TIERS[1];
-  const weights = Object.fromEntries(TIERS.map((t) => [t, spec.tierWeights[t] * boost[t]])) as Record<Tier, number>;
+  const boost = LEVEL_TIERS[level as SiteLevel] ?? LEVEL_TIERS[1];
+  const weights = Object.fromEntries(TIERS.map((t) => [t, (spec.tierWeights[t] ?? 0) * boost[t]])) as Record<Tier, number>;
   const out: { part: PartId; tier: Tier }[] = [];
   for (const y of spec.yields) {
     const n = y.min + Math.floor(rand() * (y.max - y.min + 1));

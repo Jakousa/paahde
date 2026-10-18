@@ -8,6 +8,7 @@
 import { addItem, HOTBAR, ITEMS, type Shape, type Slots } from './items.ts';
 import { partOf } from './parts.ts';
 import { TIERS } from './salvage.ts';
+import { RECIPE_TABLE, type IngredientSpec } from './tables.ts';
 
 export type Ingredient = { label: string; n: number; match: (kind: string) => boolean };
 export type Recipe = { makes: string; needs: Ingredient[] };
@@ -18,28 +19,17 @@ const tierRank = (kind: string) => {
   return t ? TIERS.indexOf(t) : -1;
 };
 
-const sheet: Ingredient['match'] = (k) => k === 'metal_sheet' || k === 'dented_sheet';
-/** The wiring coil part, any tier. */
-const coil: Ingredient['match'] = (k) => partOf(k)?.part === 'coil' && k in ITEMS;
-const battery: Ingredient['match'] = (k) => partOf(k)?.part === 'battery' && k in ITEMS;
-const compute: Ingredient['match'] = (k) => partOf(k)?.part === 'compute' && k in ITEMS;
+/** An ingredient from shared/tables.ts: any tier of a part, or one of a list of kinds. */
+const ingredient = (spec: IngredientSpec): Ingredient => ({
+  label: spec.label,
+  n: spec.n,
+  match: 'part' in spec ? (k) => partOf(k)?.part === spec.part && k in ITEMS : (k) => spec.kinds.includes(k),
+});
 
-/** Recipe id → what it makes and needs. The id is the item kind it makes. */
-export const RECIPES: Record<string, Recipe> = {
-  plant_bed: { makes: 'plant_bed', needs: [{ label: 'Metal sheet', n: 3, match: sheet }] },
-  uv_lamp: { makes: 'uv_lamp', needs: [{ label: 'Metal sheet', n: 2, match: sheet }, { label: 'Wiring coil', n: 1, match: coil }] },
-  // The one weapon (shared/rifle.ts): a plank for the barrel, a sheet for the body, coils to focus the beam, a cell.
-  laser_rifle: { makes: 'laser_rifle', needs: [
-    { label: 'Metal plank', n: 1, match: (k) => k === 'metal_plank' }, { label: 'Metal sheet', n: 1, match: sheet },
-    { label: 'Wiring coil', n: 2, match: coil }, { label: 'Battery', n: 1, match: battery },
-  ] },
-  // The cheap gun (shared/rifle.ts PISTOL): a sheet for the body and a coil, no cell to find.
-  laser_pistol: { makes: 'laser_pistol', needs: [{ label: 'Metal sheet', n: 1, match: sheet }, { label: 'Wiring coil', n: 1, match: coil }] },
-  // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
-  jammer: { makes: 'jammer', needs: [
-    { label: 'Compute unit', n: 1, match: compute }, { label: 'Wiring coil', n: 1, match: coil }, { label: 'Battery', n: 1, match: battery },
-  ] },
-};
+/** Recipe id → what it makes and needs (shared/tables.ts RECIPE_TABLE). The id is the item kind it makes. */
+export const RECIPES: Record<string, Recipe> = Object.fromEntries(
+  Object.entries(RECIPE_TABLE).map(([id, needs]) => [id, { makes: id, needs: needs.map(ingredient) }]),
+);
 
 /** How many items in `slots` match an ingredient. */
 export const countMatching = (slots: Slots, ing: Ingredient) => slots.reduce((n, it) => n + (it && ing.match(it.kind) ? it.n : 0), 0);
