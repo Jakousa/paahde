@@ -396,7 +396,7 @@ baseSand.update(frameDt, storm.atBase);
   // Sprouts grow only under a UV lamp (shared/garden.ts).
   const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : '<span class="bad">Needs UV lamp</span>') : null;
   const target = net.connected && station < 0 && !bed ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
-  // Debris at the crash sites (hull plates, pipes, ...) is picked up like scrap, as a scrap item (shared/items.ts DEBRIS_ITEMS).
+  // Debris at the crash sites (hull plates, pipes, ...) is picked up like scrap, as scrap (shared/items.ts SCRAP).
   const debris = net.connected && station < 0 && !bed && !target && !teardown.active ? debrisTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   const debrisPrompt = debris ? `Pick up ${CRASH_KINDS[debris.kind].label}` : null;
   const find = net.connected && station < 0 && !bed && !target && !debris && !teardown.active ? lootView.target(net.me, orbit.yaw) : null;

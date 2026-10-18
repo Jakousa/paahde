@@ -49,7 +49,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   Verlet ragdoll (`src/models/ragdoll.ts`) thrown by the killing blast's push (`blastPush`), then respawn
 - `shared/corpse.ts` — dying leaves the bag past the hotbar in a pack where you fell (shared box `corpse<id>`, take-only,
   30 min); `server/corpses.ts` makes/expires them, `src/world/corpses.ts` draws the bundle and rag flag
-- `shared/rifle.ts` — the crafted laser rifle and the cheaper one-handed laser pistol (`GUNS`; model `tools/models/pistol.py`), the walkers' red weak points (all shot: it dies) and drone hits; aim, sway, recoil,
+- `shared/rifle.ts` — the laser rifle and the cheaper one-handed laser pistol (`GUNS`; gear found broken and repaired, shared/gear.ts; model `tools/models/pistol.py`), the walkers' red weak points (all shot: it dies) and drone hits; aim, sway, recoil,
   scope and the hitscan in `src/rifle.ts`, beam/sparks/smoke `src/world/zaps.ts`, sounds `src/rifleSound.ts`, targets
   and the collapse in `src/world/guardians.ts`, checked by `GuardianServer.shoot` (server/guardians.ts)
 - `shared/jammer.ts` — the jammer: hold it 5 s on a jet or drone in its cone and it glides down whole; the lock is

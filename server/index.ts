@@ -6,10 +6,9 @@ import sirv from 'sirv';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
-import { bikeLevel, bottleSips, digTool, GEAR, GEAR_KINDS, wornGear } from '../shared/gear.ts';
+import { bikeLevel, bottleSips, digTool, GEAR_KINDS, gunCooldown, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { HOTBAR, partKind, SCRAP_ITEMS } from '../shared/items.ts';
-import { TIERS } from '../shared/salvage.ts';
+import { HOTBAR, partKind, SCRAP } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
 import { KILL_SPOILS } from '../shared/tables.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
@@ -18,7 +17,7 @@ import { inBase, overBase } from '../shared/base.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { BLAST_R, CRATER_MM, CRATER_R, GUARDIAN } from '../shared/guardians.ts';
 import { BLAST_R as MISSILE_BLAST_R } from '../shared/missiles.ts';
-import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
+import { GUNS, PISTOL } from '../shared/rifle.ts';
 import { inCone, JAM_BLEED, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer.ts';
 import { THROW_MS, THROWABLE } from '../shared/throw.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
@@ -351,11 +350,12 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
   const now = performance.now();
   const nums = [m.x, m.y, m.z, m.ex, m.ey, m.ez];
   if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v))) return;
-  const kind = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot]?.kind;
+  const held = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot];
+  const kind = held?.kind;
   const gun = kind ? GUNS[kind] : undefined;
-  if (p.down || !gun) return;
+  if (p.down || !gun || !repaired(held)) return;
   // A little slack for network jitter bunching two clicks together.
-  if (now - p.firedAt < gun.cooldown * 0.8) return;
+  if (now - p.firedAt < gunCooldown(gun.cooldown, quality(held)) * 0.8) return;
   if (Math.hypot(m.ex - m.x, m.ey - m.y, m.ez - m.z) > gun.range + 5) return;
   p.firedAt = now;
   const s = p.state;
@@ -455,8 +455,8 @@ function dropSpoils(k: Kill) {
 }
 
 function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {
-  const kind = scrap.pickup(p.state, ix, iz, i, p.lastPickup, (k) => items.give(p.browserId, SCRAP_ITEMS[k]));
-  if (kind !== null) return sendBox(p, 'bag', SCRAP_ITEMS[kind]);
+  const kind = scrap.pickup(p.state, ix, iz, i, p.lastPickup, () => items.give(p.browserId, SCRAP));
+  if (kind !== null) return sendBox(p, 'bag', SCRAP);
   // Refused: the client already hid the piece. If it is still there, tell this client to show it again.
   if (typeof ix === 'number' && typeof iz === 'number' && typeof i === 'number' && !scrapTaken.has(scrapKey(ix, iz, i))) {
     send(p.ws, { t: 'scrap', taken: [], back: [ix, iz, i] });
@@ -536,14 +536,14 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
   corpses.check(box);
 }
 
-// Debug menu: one of each piece of gear, repaired with Scrap parts, into the bag (what fits) and the
-// equipment slots (if free).
+// Debug menu: one of each piece of gear (the guns too), repaired with Scrap parts, into the bag (what fits) and the
+// equipment slots (if free), and a jammer.
 function onDebugGear(p: Player) {
   for (const kind of GEAR_KINDS) {
-    const parts = GEAR[kind].slots.map((s) => ('part' in s ? partKind(s.part, TIERS[0]) : s.scrap[0]));
+    const parts = scrapParts(kind);
     if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
   }
-  for (const gun of [RIFLE, PISTOL, JAMMER]) if (!items.slots(p.browserId, 'bag').some((it) => it?.kind === gun)) items.giveItem(p.browserId, { kind: gun });
+  if (!items.slots(p.browserId, 'bag').some((it) => it?.kind === JAMMER)) items.giveItem(p.browserId, { kind: JAMMER });
   for (const box of ['bag', 'equip']) sendBox(p, box);
   gearChanged(p.browserId);
 }

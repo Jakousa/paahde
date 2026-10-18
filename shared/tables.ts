@@ -21,19 +21,13 @@ type Loot = { yields: SalvageYield[]; tierWeights: TierWeights };
 
 export type IngredientSpec = { label: string; n: number } & ({ part: PartId } | { kinds: string[] });
 
-const SHEET = ['metal_sheet', 'dented_sheet'];
+const SCRAP = (n: number): IngredientSpec => ({ label: 'Scrap', n, kinds: ['scrap'] });
 
 export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
-  plant_bed: [{ label: 'Metal sheet', n: 3, kinds: SHEET }],
-  uv_lamp: [{ label: 'Metal sheet', n: 2, kinds: SHEET }, { label: 'Wiring coil', n: 1, part: 'coil' }],
-  // The one weapon (shared/rifle.ts): a plank for the barrel, a sheet for the body, coils to focus the beam, a cell.
-  laser_rifle: [
-    { label: 'Metal plank', n: 1, kinds: ['metal_plank'] }, { label: 'Metal sheet', n: 1, kinds: SHEET },
-    { label: 'Wiring coil', n: 2, part: 'coil' }, { label: 'Battery', n: 1, part: 'battery' },
-  ],
-  // The cheap gun (shared/rifle.ts PISTOL): a sheet for the body and a coil, no cell to find.
-  laser_pistol: [{ label: 'Metal sheet', n: 1, kinds: SHEET }, { label: 'Wiring coil', n: 1, part: 'coil' }],
+  plant_bed: [SCRAP(4)],
+  uv_lamp: [SCRAP(2), { label: 'Wiring coil', n: 1, part: 'coil' }],
   // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
+  // (The guns aren't crafted: they're found broken and repaired, shared/gear.ts.)
   jammer: [{ label: 'Compute unit', n: 1, part: 'compute' }, { label: 'Wiring coil', n: 1, part: 'coil' }, { label: 'Battery', n: 1, part: 'battery' }],
 };
 
@@ -130,7 +124,7 @@ export const COMPONENT_LOOT: Record<ComponentKind, Loot> = {
     tierWeights: { scrap: 3, basic: 4, quality: 2, space: 0.3 },
   },
   // The starter machines of the scrap fields (level 0): between them everything the first gear needs (canteen:
-  // valve; telescope: gear, bearing; backpack: gear; laser rifle: coils, battery).
+  // valve; telescope: gear, bearing; backpack: gear; laser pistol: coil).
   winch: {
     yields: [
       { part: 'gear', min: 1, max: 2 },
@@ -177,6 +171,8 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   canteen: { n: 7, level: 0 }, spyglass: { n: 5, level: 0 }, backpack: { n: 7, level: 0 },
   motorcycle: { n: 3, level: 1 }, shovel: { n: 3, level: 1 }, storm_detector: { n: 2, level: 1 }, wristpad: { n: 2, level: 1 },
   metal_detector: { n: 2, level: 1 },
+  // The guns (shared/rifle.ts): the pistol near home, the rifle out on crawler ground, to take on the guardians with.
+  laser_pistol: { n: 4, level: 0 }, laser_rifle: { n: 3, level: 1 },
 };
 
 /** One broken motorcycle always lies on the sand in front of the base door (server/loot.ts homeBikeSpot), so a bike is
@@ -192,7 +188,7 @@ export const RARE_FINDS = { n: 10, tierWeights: { quality: 3, space: 1 } satisfi
 export const BROKEN_GEAR = { filled: 0.5, tierWeights: { scrap: 7, basic: 3 } satisfies TierWeights };
 
 /** Buried caches, dug up with the shovel after the metal detector finds them: how many at once, and what is inside
- *  (relative odds: a part, a piece of scrap, a laser pistol, a piece of broken gear). */
+ *  (relative odds: a part, some scrap, a broken laser pistol, a piece of other broken gear). */
 export const CACHES = {
   n: 60,
   contents: { part: 0.65, scrap: 0.2, pistol: 0.04, gear: 0.11 },

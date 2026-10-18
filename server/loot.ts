@@ -5,12 +5,12 @@
 // Kept in memory: a restart lays out fresh ones. Items players drop are kept in the DB (`dropped`) and never respawn.
 import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
 import { GEAR, GEAR_KINDS } from '../shared/gear.ts';
-import { partKind, SCRAP_ITEMS } from '../shared/items.ts';
+import { partKind, SCRAP } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
 import { PART_IDS, pickTier } from '../shared/parts.ts';
-import { PISTOL } from '../shared/rifle.ts';
+import { GUNS, PISTOL } from '../shared/rifle.ts';
 import { rocksNear } from '../shared/rocks.ts';
 import { BROKEN_GEAR, CACHES, FINDS, HOME_BIKE, RARE_FINDS } from '../shared/tables.ts';
 import { EDIT_CELL, edits, WORLD_HALF } from '../shared/terrain.ts';
@@ -35,6 +35,8 @@ const CACHE_DEPTH = [0.5, 1.1];
 const FIND_RESPAWN_MS = 3 * 60_000;
 const CACHE_RESPAWN_MS = 60_000;
 const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
+/** Broken gear a cache can hold (the guns have their own odds: only the pistol, CACHES.contents.pistol). */
+const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS));
 
 type Spawn = { at: number; what: 'find' | 'cache'; kind?: string };
 
@@ -242,10 +244,9 @@ export class LootServer {
     const what = pickOdds(CACHES.contents);
     let kind: string, parts: (string | null)[] | undefined;
     if (what === 'part') kind = partKind(pick(CACHE_PARTS), pickTier(CACHES.tierWeights, Math.random));
-    else if (what === 'scrap') kind = pick(SCRAP_ITEMS);
-    else if (what === 'pistol') kind = PISTOL;
+    else if (what === 'scrap') kind = SCRAP;
     else {
-      kind = pick(GEAR_KINDS);
+      kind = what === 'pistol' ? PISTOL : pick(CACHE_GEAR);
       parts = this.brokenParts(kind);
     }
     this.add({ id: this.nextId++, kind, ...(parts ? { parts } : {}), x, z, depth: rand(CACHE_DEPTH[0], CACHE_DEPTH[1]), src: 'cache' });

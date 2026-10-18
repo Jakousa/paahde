@@ -270,7 +270,7 @@ export class LootView {
         this.group.add(pool);
       }
     } else if (GEAR_MODELS[l.kind]) {
-      GEAR_MODELS[l.kind](obj); // crafted things with a model of their own (the laser rifle)
+      GEAR_MODELS[l.kind](obj); // crafted things with a model of their own (the jammer)
     } else if (part) {
       loadPart(part.part, TIERS[part.tier]).then((m) => {
         m.scale.multiplyScalar(0.7);

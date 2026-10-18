@@ -27,7 +27,7 @@ import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts'
 import type { BenchJob, ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
 import { bagShape, boxShape, digTool, fitPart, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
-import { DEBRIS_ITEMS, HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
+import { HOTBAR, roomFor, SCRAP, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
@@ -191,7 +191,7 @@ export class Net {
   /** Pick up a scrap piece: hidden now, confirmed (items) or put back by the server. False if the bag is full. */
   pickup(pc: ScrapPiece): boolean {
     if (!this.connected || scrapTaken.has(pc.key)) return true;
-    if (!roomFor(this.boxes.bag ?? [], SCRAP_ITEMS[pc.kind], bagShape(this.boxes.equip))) return false;
+    if (!roomFor(this.boxes.bag ?? [], SCRAP, bagShape(this.boxes.equip))) return false;
     this.send({ t: 'pickup', ix: pc.ix, iz: pc.iz, i: pc.i });
     scrapTaken.add(pc.key);
     scrapChanged();
@@ -279,7 +279,7 @@ export class Net {
   /** Pick up a crash debris piece (shared/crashsites.ts), the same way as a wreck. False if the bag is full. */
   debrisTake(pc: CrashPiece): boolean {
     if (!this.connected || !pc.id || crashTaken.has(pc.id)) return true;
-    if (!roomFor(this.boxes.bag ?? [], DEBRIS_ITEMS[CRASH_KINDS[pc.kind].node], bagShape(this.boxes.equip))) return false;
+    if (!roomFor(this.boxes.bag ?? [], SCRAP, bagShape(this.boxes.equip))) return false;
     this.crashTake(pc.id);
     return true;
   }

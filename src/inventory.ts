@@ -138,13 +138,11 @@ export const CANTEEN_SVG = `<svg viewBox="0 0 22 26"><rect x="8" y="0.5" width="
 export const TELESCOPE_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.8" transform="rotate(-45 11 13)">
 <rect x="-1" y="11.6" width="5" height="2.8" rx="0.8" fill="#d4a24c"/><rect x="3.5" y="11" width="5" height="4" fill="#b8873a"/>
 <rect x="8.5" y="10.2" width="10" height="5.6" rx="0.6" fill="#6a3626"/><rect x="18" y="9.6" width="4" height="6.8" rx="1" fill="#d4a24c"/></g></svg>`;
-const drum = (body: string, band: string) => `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9">
-<path d="M4 5v16c0 2 14 2 14 0V5" fill="${body}"/><ellipse cx="11" cy="5" rx="7" ry="2" fill="${band}"/>
-<path d="M4 10.5c0 1.6 14 1.6 14 0M4 16c0 1.6 14 1.6 14 0" fill="none" stroke="${band}" stroke-width="1.4"/></g></svg>`;
-const frame = (bend: string) => `<svg viewBox="0 0 22 26"><path d="M3 6h16v14H3z${bend}" fill="none" stroke="#2a160a" stroke-width="3.6"/>
-<path d="M3 6h16v14H3z${bend}" fill="none" stroke="#8d8a82" stroke-width="2"/><path d="M3 13h16" stroke="#6a665e" stroke-width="1.5"/></svg>`;
-const sheet = (dent: string) => `<svg viewBox="0 0 22 26"><path d="M3 7l12-3 4 15-12 3z" fill="#9a968c" stroke="#2a160a" stroke-width="0.9"/>
-<path d="M6 9l9-2${dent}" fill="none" stroke="#c9c4b8" stroke-width="0.9" opacity="0.8"/></svg>`;
+// Scrap: a dented sheet with a plank across it and a cog on top, a little heap of junk.
+const SCRAP_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><path d="M2 10l12-3 4 13-12 3z" fill="#9a968c"/>
+<path d="M5 12l9-2c-1 2 1 3-1 4" fill="none" stroke="#c9c4b8" opacity="0.8"/><path d="M3 21L17 9l1.8 2.2L4.8 23z" fill="#7d7a72"/>
+<g transform="translate(14 7.5)" fill="#8a7f6a">${[0, 60, 120, 180, 240, 300].map((a) => `<rect x="-1.4" y="-5.6" width="2.8" height="2.6" transform="rotate(${a})"/>`).join('')}
+<circle r="3.8"/><circle r="1.4" fill="#2a160a"/></g></g></svg>`;
 const g = (body: string) => `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9">${body}</g></svg>`;
 const ICONS: Record<string, string> = {
   canteen: CANTEEN_SVG,
@@ -164,17 +162,7 @@ const ICONS: Record<string, string> = {
 <ellipse cx="7" cy="21.5" rx="3" ry="1.2" fill="#2a160a"/>`),
   shovel: g(`<path d="M15.5 2l-6 13" stroke-width="2.6"/><path d="M15.5 2l-6 13" stroke="#8a6a3e" stroke-width="1.4"/>
 <path d="M13 1h5" stroke-width="2.4"/><path d="M7 14l5 2.3-2.5 6.2c-1 2-4.5.5-5.5-1-1-1.5-.3-3.5 3-7.5z" fill="#9a968c"/>`),
-  oil_drum: drum('#3d6e8a', '#26475a'),
-  rusty_drum: drum('#8a4a26', '#5e2f16'),
-  gear: `<svg viewBox="0 0 22 26"><g transform="translate(11 13)" stroke="#2a160a" stroke-width="0.9" fill="#8a7f6a">
-${[0, 45, 90, 135, 180, 225, 270, 315].map((a) => `<rect x="-1.8" y="-10" width="3.6" height="4" transform="rotate(${a})"/>`).join('')}
-<circle r="7"/><circle r="2.6" fill="#2a160a"/></g></svg>`,
-  scrap_frame: frame(''),
-  bent_frame: frame('M3 20l8-5'),
-  metal_plank: `<svg viewBox="0 0 22 26"><path d="M2 18L18 4l2 2.4L4 20.4z" fill="#7d7a72" stroke="#2a160a" stroke-width="0.9"/>
-<circle cx="6" cy="16.6" r="0.9" fill="#2a160a"/><circle cx="16" cy="7.8" r="0.9" fill="#2a160a"/></svg>`,
-  metal_sheet: sheet(''),
-  dented_sheet: sheet('M8 14c2-2 4 1 6-1'),
+  scrap: SCRAP_SVG,
   // Carried crash-site machines: a joint with its arm stub, and a cabinet with a door and lamps.
   robot_arm: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="18" width="16" height="4" rx="1" fill="#6a665e"/>
 <rect x="5" y="9" width="9" height="10" rx="2" fill="#d4a24c"/><rect x="12" y="4" width="7" height="4" rx="1" fill="#b8873a" transform="rotate(30 12 6)"/>

@@ -19,7 +19,7 @@
 import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { crashSite, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
-import { DEBRIS_ITEMS } from '../shared/items.ts';
+import { SCRAP } from '../shared/items.ts';
 import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
 import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
 import { COMPONENTS, type JunkKind } from '../shared/salvage.ts';
@@ -61,7 +61,7 @@ function carrySite(id: unknown): { id: string; kind: string; dist: (feet: Feet) 
   const w = wreckById(id);
   if (w) return { id: w.id, kind: w.kind, dist: flat(w) };
   const d = debrisById(id);
-  if (d) return { id: d.id!, kind: DEBRIS_ITEMS[CRASH_KINDS[d.kind].node], dist: (f) => debrisReach(f, d) - DEBRIS_REACH };
+  if (d) return { id: d.id!, kind: SCRAP, dist: (f) => debrisReach(f, d) - DEBRIS_REACH };
   const s = crashSiteById(id);
   return s && COMPONENTS[s.kind].carry ? { id: s.id, kind: s.kind, dist: flat(s) } : null;
 }

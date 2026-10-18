@@ -7,8 +7,6 @@
 // turned it. An item sits in the slot of its top-left cell; the other cells it covers stay null in the array.
 import { partItems, partItem, partOf } from './parts.ts';
 import { SALVAGE, TIERS, type PartId, type Tier } from './salvage.ts';
-import { CRASH_KINDS } from './crashKinds.ts';
-import { SCRAP_KINDS } from './scrap.ts';
 
 type Size = [number, number];
 
@@ -16,7 +14,8 @@ type Size = [number, number];
 const PART_SIZES: Partial<Record<PartId, Size>> = { battery: [1, 2], motor: [2, 2], heatsink: [2, 1], antimatter: [2, 2], impeller: [2, 2] };
 
 /**
- * Item kind ids as stored in the DB. Never rename one: rows hold them. `stack` is 1 for all: nothing stacks for now.
+ * Item kind ids as stored in the DB. Never rename one: rows hold them (or migrate them, server/db.ts). `stack`: how
+ * many fit one stack (1 for all but scrap).
  * `tier`: the item's quality, which doubles as its rarity (RARITY in shared/salvage.ts); parts have one.
  * `size`: [w, h] grid cells it takes, 1 × 1 if not given. Keep the smaller side at most MAX_SIDE.
  * Gear (shared/gear.ts: the water bottle, telescope, motorcycle, ...) is found broken and repaired with parts.
@@ -30,15 +29,8 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   wristpad: { label: 'Wrist computer', stack: 1 },
   metal_detector: { label: 'Metal detector', stack: 1, size: [1, 3] },
   shovel: { label: 'Shovel', stack: 1, size: [1, 3] },
-  oil_drum: { label: 'Oil drum', stack: 1, size: [2, 2] },
-  rusty_drum: { label: 'Rusty drum', stack: 1, size: [2, 2] },
-  gear: { label: 'Gear', stack: 1 },
-  scrap_frame: { label: 'Scrap frame', stack: 1, size: [2, 2] },
-  bent_frame: { label: 'Bent frame', stack: 1, size: [2, 2] },
-  metal_plank: { label: 'Metal plank', stack: 1, size: [1, 3] },
-  metal_sheet: { label: 'Metal sheet', stack: 1, size: [2, 2] },
-  dented_sheet: { label: 'Dented sheet', stack: 1, size: [2, 2] },
-  spring: { label: 'Spring', stack: 1 },
+  // Every piece of junk picked up (scrap piles, crash-site debris) is just scrap: the crafting and repair metal.
+  scrap: { label: 'Scrap', stack: 20 },
   // Small crash-site machines carried home to the disassembly table (COMPONENTS with carry: true, shared/salvage.ts).
   // The item kind is the component kind.
   robot_arm: { label: 'Robot arm joint', stack: 1, size: [2, 2] },
@@ -51,6 +43,7 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
   plant_bed: { label: 'Plant bed', stack: 1, size: [3, 2] },
   uv_lamp: { label: 'UV lamp', stack: 1, size: [1, 2] },
+  // The guns (shared/rifle.ts) are gear: found broken, repaired at the workbench. The jammer is crafted.
   laser_rifle: { label: 'Laser rifle', stack: 1, size: [4, 1] },
   laser_pistol: { label: 'Laser pistol', stack: 1, size: [2, 1] },
   jammer: { label: 'Jammer', stack: 1, size: [2, 1] },
@@ -77,31 +70,10 @@ export function parsePart(kind: string): { part: PartId; tier: number } | null {
   return p ? { part: p.part, tier: TIERS.indexOf(p.tier) } : null;
 }
 
-/** Item kind of each scrap prop, by SCRAP_KINDS index. */
-export const SCRAP_ITEMS = ['oil_drum', 'rusty_drum', 'gear', 'scrap_frame', 'bent_frame', 'metal_plank', 'metal_sheet', 'dented_sheet', 'spring'];
-if (SCRAP_ITEMS.length !== SCRAP_KINDS.length) throw new Error('shared/items.ts: SCRAP_ITEMS out of step with SCRAP_KINDS');
-
-/** The scrap item a crash-site debris piece (shared/crashsites.ts) gives when picked up, by CRASH_KINDS node name. */
-export const DEBRIS_ITEMS: Record<string, string> = {
-  Crash_Debris_1: 'metal_sheet', // hull plate
-  Crash_Debris_2: 'dented_sheet', // bent fin
-  Crash_Debris_3: 'metal_plank', // pipe bundle
-  Crash_Debris_4: 'scrap_frame', // burnt seat
-  Crash_Debris_5: 'bent_frame', // porthole ring
-  Crash_Debris_6: 'rusty_drum', // boiler tank
-  Crash_Debris_7: 'gear', // gear housing
-  // Scrap-field junk (CrashKind.field)
-  Crash_Debris_8: 'oil_drum', // toppled oil drum
-  Crash_Debris_9: 'gear', // track sprocket
-  Crash_Debris_10: 'bent_frame', // buckled ladder
-  Crash_Debris_11: 'dented_sheet', // dented crate lid
-  Crash_Debris_12: 'spring', // coil spring
-  Crash_Debris_13: 'metal_plank', // steel planks
-  Crash_Debris_14: 'metal_sheet', // antenna dish
-};
-for (const k of CRASH_KINDS) {
-  if (!k.main && !k.dressing && !(DEBRIS_ITEMS[k.node] in ITEMS)) throw new Error(`shared/items.ts: no DEBRIS_ITEMS entry for ${k.node}`);
-}
+/** The scrap item: what every scrap pile piece (shared/scrap.ts) and crash-site debris piece gives when picked up. */
+export const SCRAP = 'scrap';
+/** Scrap kinds from before they were all one SCRAP (old DB rows; old `inventory` table indexes = SCRAP_KINDS order). */
+export const OLD_SCRAP = ['oil_drum', 'rusty_drum', 'gear', 'scrap_frame', 'bent_frame', 'metal_plank', 'metal_sheet', 'dented_sheet', 'spring'];
 
 /**
  * One stack. `id` is its DB row id (negative: a client-side guess until the server answers). Gear also has

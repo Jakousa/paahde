@@ -1,4 +1,4 @@
-// The laser rifle: crafted at the workbench (shared/crafting.ts), held from the hotbar, the one thing that can fight
+// The laser rifle: gear (shared/gear.ts), found broken out on crawler ground and repaired at the workbench, held from the hotbar, the one thing that can fight
 // the walkers (shared/guardians.ts). Each walker carries glowing red weak points; a hit breaks one, and once every
 // one of them is broken it dies: it collapses where it stands (src/world/guardians.ts), smoking, and drops parts.
 //
@@ -8,14 +8,15 @@
 import { CRAWLER, type Kind } from './guardians.ts';
 
 export const RIFLE = 'laser_rifle';
-/** Semi-automatic: one shot per click, at most one every COOLDOWN_MS while the cell recharges. */
+/** Semi-automatic: one shot per click, at most one every COOLDOWN_MS while the cell recharges (scaled by the gun's
+ *  quality, shared/gear.ts gunCooldown). */
 export const COOLDOWN_MS = 420;
 /** How far the beam reaches (m). */
 export const RANGE = 260;
 
 /**
- * The laser pistol: the cheap one (two common parts at the workbench, shared/crafting.ts; also turns up in buried
- * caches). One-handed, iron sights, no scope; it breaks weak points and drones just as the rifle does, but recharges
+ * The laser pistol: the cheap one, found broken at the scrap fields near home (and in buried caches) and repaired with a
+ * coil and scrap. One-handed, iron sights, no scope; it breaks weak points and drones just as the rifle does, but recharges
  * faster and only reaches PISTOL_RANGE: under a guardian's cannon (BOLT_RANGE, shared/guardians.ts), so it's for
  * crawlers and drones, or for a brave close fight.
  */

@@ -2,6 +2,22 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — One scrap; guns are found broken and repaired
+
+- **Scrap is one item.** The nine junk kinds (metal sheet/plank, dented sheet, oil/rusty drum, scrap/bent frame,
+  gear, spring) are now just `scrap` (shared/items.ts `SCRAP`), 1×1 and stacking to 20. Every scrap-pile piece and
+  crash-site debris piece gives it (the world props keep their variety; `SCRAP_ITEMS` / `DEBRIS_ITEMS` are gone).
+  Gear scrap slots (bottle, backpack, shovel) take a piece of scrap ("Scrap"), recipes cost N scrap (plant bed 4, UV
+  lamp 2 + coil; the jammer is unchanged), caches hold scrap, and thrown scrap flies as one of the pile pieces.
+  New inventory icon: a sheet, a plank and a cog.
+- **Migration** (server/db.ts v8, every start, idempotent): old kinds in `items` and `dropped` become `scrap`, also
+  inside gear `parts` JSON; when a box loads, the stacks of one are merged (server/items.ts `mergeStacks`).
+- **Guns are gear** (shared/gear.ts): the laser pistol (coil + scrap) and the laser rifle (coil, battery, heatsink,
+  scrap) are no longer crafted. They lie broken like the bottle: pistols at the scrap fields (level 0, 4 at once),
+  rifles on crawler ground (level 1, 3 at once); buried caches' pistol is a broken one too. A broken gun isn't raised
+  or fired (client and server check `repaired`). Better parts recharge it faster (`gunCooldown`: ×1.2 at Scrap down to
+  ×0.75 at Space-grade). Guns crafted before this load with Scrap parts in every slot, so they keep working.
+
 ## 2026-10-18 — Dying leaves your pack behind
 
 - **The penalty** (shared/corpse.ts): dying out in the desert empties the bag past the hotbar (the backpack's grid and

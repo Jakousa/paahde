@@ -1,12 +1,12 @@
-// Throwing scrap: any scrap item (shared/items.ts SCRAP_ITEMS) taken out from the hotbar is thrown with the use
+// Throwing scrap: scrap (shared/items.ts SCRAP) taken out from the hotbar is thrown with the use
 // button (src/throw.ts), so someone with no gun and a bag of junk can still knock a drone out of the sky. The server
 // takes the item out of the bag and flies it (server/throws.ts) on a plain ballistic arc; passing within THROW_HIT of
 // a flying drone it counts as a rifle hit (shared/rifle.ts DRONE_HP) and bounces off; on the sand it lies where it
 // landed as dropped loot (shared/loot.ts), to be picked up again.
-import { SCRAP_ITEMS } from './items.ts';
+import { SCRAP } from './items.ts';
 
 /** What can be thrown. */
-export const THROWABLE = new Set(SCRAP_ITEMS);
+export const THROWABLE = new Set([SCRAP]);
 /** Launch speed (m/s) and gravity on the arc (m/s², lighter than a player's: it's a game): straight up it climbs
  *  about THROW_SPEED² / 2G = 33 m, over a drone's DRONE_ALT. */
 export const THROW_SPEED = 30;

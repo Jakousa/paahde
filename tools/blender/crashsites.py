@@ -10,8 +10,8 @@ public/models/crashsites.glb has one top-level node per variant (Crash_Fighter, 
 Crash_Nacelle, Crash_Shuttle, Crash_Probe, Crash_Debris_1..7, the Crash_Cradle / Crash_Skid dressing, then the
 scrap-field pieces: Crash_Crawler, Crash_Mast, Crash_Skiff, Crash_CargoPod, Crash_Drill, Crash_Debris_8..14).
 Scrap fields (site level 0, near the base) use only the scrap-field pieces (CrashKind.field); other sites never
-do. Their wrecks are older, smaller and more mundane, and their junk reads as the scrap item it gives (shared/items.ts
-DEBRIS_ITEMS). Every node sits at the scene origin with
+do. Their wrecks are older, smaller and more mundane, and their junk is all picked up as scrap (shared/items.ts
+SCRAP). Every node sits at the scene origin with
 identity transform; its mesh origin is on the ground at the piece's centre. Hulls continue 0.5-1.5 m below
 the origin plane, so the wrecks look dug in and nothing floats when the ground is +-0.5 m off.
 
@@ -1814,7 +1814,7 @@ def build_drill(mb, rng):
     mb.sand(-1.6, 0.0, 0.6, 3.2, 0.35, yaw=0.2, res=(5, 12))
 
 
-# Scrap-field junk: small things to carry home, each read as the scrap item it gives (shared/items.ts DEBRIS_ITEMS).
+# Scrap-field junk: small things to carry home, all picked up as scrap (shared/items.ts SCRAP).
 
 def junk_barrel(mb, rng):
     """Toppled oil drum, lid dented, a dark oil stain spreading from the bung (~1 m). Gives an oil drum."""

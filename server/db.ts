@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, SCRAP_ITEMS, type Item, type Slots } from '../shared/items.ts';
+import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, OLD_SCRAP, SCRAP, type Item, type Slots } from '../shared/items.ts';
 
 export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
 
@@ -190,8 +190,8 @@ export function openDb(path: string) {
         { player_id: string; kind: number; count: number }[];
       const bags = new Map<string, Slots>();
       for (const r of rows) {
-        const kind = SCRAP_ITEMS[r.kind];
-        if (!kind) continue;
+        if (!OLD_SCRAP[r.kind]) continue;
+        const kind = SCRAP;
         let bag = bags.get(r.player_id);
         if (!bag) bags.set(r.player_id, (bag = new Array(BAG_SLOTS).fill(null)));
         // Can't fit (more than a bag of scrap): keep what fits, one item per slot.
@@ -201,6 +201,20 @@ export function openDb(path: string) {
       db.exec('DROP TABLE inventory');
       console.log(`items: moved ${bags.size} players' scrap into their bags`);
     });
+  }
+
+  // v8: the scrap kinds (sheets, planks, drums, frames, ...) became one stackable SCRAP: in boxes, fitted in gear
+  // (JSON parts) and dropped on the sand. The scattered stacks of one are merged when a box loads (server/items.ts).
+  {
+    const old = OLD_SCRAP.map((k) => `'${k}'`).join(', ');
+    const n = (db.prepare(`SELECT COUNT(*) AS n FROM items WHERE kind IN (${old})`).get() as { n: number }).n;
+    tx(() => {
+      db.exec(`UPDATE items SET kind = '${SCRAP}' WHERE kind IN (${old})`);
+      for (const k of OLD_SCRAP) {
+        db.prepare("UPDATE items SET parts = REPLACE(parts, ?, ?) WHERE parts LIKE ?").run(`"${k}"`, `"${SCRAP}"`, `%"${k}"%`);
+      }
+    });
+    if (n) console.log(`items: ${n} old scrap stacks are scrap now`);
   }
 
   // Placed things (shared/placed.ts, server/placed.ts): items put down on the bunker floor. The old
@@ -240,6 +254,12 @@ export function openDb(path: string) {
       dropped_at INTEGER NOT NULL            -- ms since epoch
     );
   `);
+  // v8 (above): dropped scrap too.
+  tx(() => {
+    const old = OLD_SCRAP.map((k) => `'${k}'`).join(', ');
+    db.exec(`UPDATE dropped SET kind = '${SCRAP}' WHERE kind IN (${old})`);
+    for (const k of OLD_SCRAP) db.prepare('UPDATE dropped SET parts = REPLACE(parts, ?, ?) WHERE parts LIKE ?').run(`"${k}"`, `"${SCRAP}"`, `%"${k}"%`);
+  });
   const allDropped = db.prepare('SELECT id, kind, parts, x, z FROM dropped ORDER BY id');
   const insertDropped = db.prepare('INSERT INTO dropped (id, kind, parts, x, z, dropped_at) VALUES (?, ?, ?, ?, ?, ?)');
   const deleteDropped = db.prepare('DELETE FROM dropped WHERE id = ?');

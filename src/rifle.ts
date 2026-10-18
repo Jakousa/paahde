@@ -20,7 +20,7 @@
 //   at once, and the server is told (Net.fire), checks it, and shows everyone near the beam ('zap').
 import * as THREE from 'three/webgpu';
 import type { FirstPersonCamera } from './camera';
-import { aimDown, breathHeld, useHeld } from './input';
+import { aimDown, breathHeld, tools, useHeld } from './input';
 import { playerHands } from './water';
 import type { Net } from './net';
 import type { Guardians } from './world/guardians';
@@ -30,6 +30,7 @@ import { zaps } from './world/zaps';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
 import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
+import { gunCooldown, quality } from '../shared/gear.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { SPRINT_SPEED, WALK_SPEED } from '../shared/sim.ts';
 
@@ -244,7 +245,7 @@ export class Rifle {
     }
     playerHands.kick = Math.max(0, playerHands.kick - dt * 5);
 
-    const charge = Math.min(1, 1 - (this.readyAt - performance.now()) / GUNS[feel.kind].cooldown);
+    const charge = Math.min(1, 1 - (this.readyAt - performance.now()) / this.cooldown(feel.kind));
     playerHands.charge = charge;
     if (scoped) {
       this.zoomEl.textContent = `${this.zoom.toFixed(1)}×`;
@@ -282,9 +283,15 @@ export class Rifle {
     if (fire) this.shoot();
   }
 
+  /** The held gun's recharge (ms): its parts' quality sets it (shared/gear.ts gunCooldown), as on the server. */
+  private cooldown(kind: string) {
+    const it = this.net.boxes.bag?.[tools.slot];
+    return gunCooldown(GUNS[kind].cooldown, it?.kind === kind ? Math.max(0, quality(it)) : 0);
+  }
+
   private shoot() {
     const cam = this.view.camera;
-    const feel = FEEL[this.gun], { cooldown, range } = GUNS[feel.kind];
+    const feel = FEEL[this.gun], { range } = GUNS[feel.kind], cooldown = this.cooldown(feel.kind);
     this.readyAt = performance.now() + cooldown;
     // From the eye along the aim (sway included), scattered within the cone from the hip. In third person the
     // camera is behind the eye on the view ray, so this still goes where the crosshair is.

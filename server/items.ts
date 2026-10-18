@@ -1,9 +1,9 @@
 // Server side of items (shared/items.ts): every box's slots, cached from the `items` table, the one-time gear
 // setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
-import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, lockedWhileRiding, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
+import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, lockedWhileRiding, scrapParts, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
-  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, roomFor, settle, sizeOf, sortItems, stackOf,
+  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, roomFor, SCRAP, settle, sizeOf, sortItems, stackOf,
   type Item, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -14,6 +14,25 @@ import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
+
+/** Pile stacks of one kind onto the first of them, up to its stack size (gear never stacks). Mutates; whether it did. */
+function mergeStacks(slots: Slots): boolean {
+  let changed = false;
+  for (let i = 0; i < slots.length; i++) {
+    const a = slots[i];
+    if (!a || a.parts || a.n >= stackOf(a.kind)) continue;
+    for (let j = i + 1; j < slots.length && a.n < stackOf(a.kind); j++) {
+      const b = slots[j];
+      if (!b || b.kind !== a.kind || b.parts) continue;
+      const k = Math.min(b.n, stackOf(a.kind) - a.n);
+      a.n += k;
+      b.n -= k;
+      if (b.n <= 0) slots[j] = null;
+      changed = true;
+    }
+  }
+  return changed;
+}
 
 /** Slack (m) on the reach checks for the server's view of the player lagging the client's. */
 const REACH_SLACK = 1.5;
@@ -49,9 +68,10 @@ export class ItemServer {
       this.boxes.set(key, slots);
       let changed = false;
       for (const it of [...slots]) {
-        // Gear from before repairs existed (the old starter canteen and spyglass) works: Scrap parts in every slot.
+        // Gear from before repairs existed (the old starter canteen and spyglass, guns crafted before they were gear)
+        // works: Scrap parts in every slot.
         if (it && isGear(it.kind) && !it.parts) {
-          it.parts = GEAR[it.kind].slots.map((s) => ('part' in s ? partKind(s.part, 'scrap') : s.scrap[s.scrap.length - 1]));
+          it.parts = scrapParts(it.kind);
           changed = true;
         }
         // Stacks bigger than their kind allows now: one item per stack, the rest past the end for settle() to place.
@@ -60,6 +80,8 @@ export class ItemServer {
           changed = true;
         }
       }
+      // Scrap migrated from the old kinds (server/db.ts) comes as many stacks of one: merge them.
+      if (mergeStacks(slots)) changed = true;
       // The bag's own rows past the backpack are kept (stranded) rather than moved: settle with the backpack's shape.
       if (settle(slots, boxShape(box, this.view(browserId, box)), isShared(box))) changed = true;
       if (isShared(box)) growChest(slots);
@@ -91,7 +113,7 @@ export class ItemServer {
     this.db.tx(() => {
       if (this.db.hasStarterKit(browserId)) {
         const equip = this.slots(browserId, 'equip');
-        const pack: Item = { id: this.newId(), kind: 'backpack', n: 1, parts: ['bent_frame', partKind('gear', 'quality')] };
+        const pack: Item = { id: this.newId(), kind: 'backpack', n: 1, parts: [SCRAP, partKind('gear', 'quality')] };
         const back = EQUIP_SLOTS.indexOf('back');
         if (!equip[back]) equip[back] = pack;
         else {
@@ -105,8 +127,8 @@ export class ItemServer {
   }
 
   /**
-   * Once, to the players from before the laser rifle (shared/rifle.ts): one in the 4th hotbar slot. New players craft
-   * their own.
+   * Once, to the players from before the laser rifle (shared/rifle.ts): one in the 4th hotbar slot. New players find
+   * and repair their own.
    */
   private rifleGift(browserId: string) {
     this.slotGift(browserId, 'rifle', RIFLE, HOTBAR - 1, this.db.hasGearKit(browserId));
@@ -123,7 +145,7 @@ export class ItemServer {
       if (!give) return;
       const bag = this.slots(browserId, 'bag');
       const was = bag[slot];
-      bag[slot] = { id: this.newId(), kind, n: 1 };
+      bag[slot] = { id: this.newId(), kind, n: 1, ...(isGear(kind) ? { parts: scrapParts(kind) } : {}) };
       if (was) {
         const spot = findSpot(bag, this.bagShape(browserId), was.kind, !!was.r, [slot]);
         if (spot) {

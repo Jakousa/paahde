@@ -227,8 +227,8 @@ export class Survival {
   private hold() {
     const it = this.net.boxes.bag?.[this.selected];
     const kind = it?.kind;
-    // A broken telescope is just junk in the hand; a broken bottle still shows (it holds no water).
-    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE ? 'rifle' : kind === PISTOL ? 'pistol' : kind === JAMMER ? 'jammer' : 'none';
+    // A broken telescope or gun is just junk in the hand; a broken bottle still shows (it holds no water).
+    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER ? 'jammer' : 'none';
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
     playerHands.tool = repaired(it) && (kind === 'shovel' || kind === 'metal_detector') ? (kind === 'shovel' ? 'shovel' : 'detector') : 'none';

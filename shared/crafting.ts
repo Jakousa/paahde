@@ -3,7 +3,7 @@
 // asks; the server checks reach and runs craft() on the real bag (server/items.ts).
 //
 // Ingredients match groups of item kinds, so any tier of a part will do: wiring is the coil part in any
-// tier (coil_scrap … coil_space, shared/parts.ts), metal sheets are clean or dented. The worst matching item
+// tier (coil_scrap … coil_space, shared/parts.ts); scrap is the one SCRAP item. The worst matching item
 // (lowest tier) is used first.
 import { addItem, HOTBAR, ITEMS, type Shape, type Slots } from './items.ts';
 import { partOf } from './parts.ts';

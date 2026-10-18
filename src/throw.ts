@@ -11,7 +11,7 @@ import { tyreDust } from './tyreDust';
 import { zaps } from './world/zaps';
 import type { Scrap } from './world/scrap';
 import { inBase } from '../shared/base.ts';
-import { SCRAP_ITEMS } from '../shared/items.ts';
+import { SCRAP_KINDS } from '../shared/scrap.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { THROW_MS, THROWABLE, THROW_SPEED, tossAt, type TossPath } from '../shared/throw.ts';
@@ -64,12 +64,12 @@ export class Thrower {
     const kind = this.inHand();
     const use = !!kind && can && useHeld() && !!document.pointerLockElement;
     const now = performance.now();
-    if (use && !this.wasUse && now >= this.readyAt && !inBase(this.net.me.x, this.net.me.y, this.net.me.z)) this.toss(kind!);
+    if (use && !this.wasUse && now >= this.readyAt && !inBase(this.net.me.x, this.net.me.y, this.net.me.z)) this.toss();
     this.wasUse = use;
     this.draw(dt);
   }
 
-  private toss(kind: string) {
+  private toss() {
     const cam = this.view.camera;
     this.readyAt = performance.now() + THROW_MS;
     _o.copy(this.view.eye);
@@ -77,14 +77,15 @@ export class Thrower {
     _d.set(0, 0, -1).applyQuaternion(_q);
     const n = ++this.count;
     const path: TossPath = { time: this.net.serverTime(), x: _o.x, y: _o.y, z: _o.z, vx: _d.x * THROW_SPEED, vy: _d.y * THROW_SPEED, vz: _d.z * THROW_SPEED };
-    const t = this.add(0, n, true, kind, path);
+    const t = this.add(0, n, true, path);
     t.off.set(HAND.x, HAND.y, -HAND.z).applyQuaternion(_q);
     this.net.throwScrap(tools.slot, n, _o.x, _o.y, _o.z, _d.x, _d.y, _d.z);
     rifleSound.swish();
   }
 
-  private add(id: number, n: number, mine: boolean, kind: string, path: TossPath): Toss {
-    const mesh = this.scrap.mesh(SCRAP_ITEMS.indexOf(kind));
+  private add(id: number, n: number, mine: boolean, path: TossPath): Toss {
+    // Scrap is all one item: it flies as one of the scrap piles' pieces, picked by the thrower's count (the same for everyone).
+    const mesh = this.scrap.mesh(n % SCRAP_KINDS.length);
     if (mesh) this.root.add(mesh);
     const axis = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     const t: Toss = { id, n, mine, path, mesh, off: new THREE.Vector3(), axis, spin: 6 + Math.random() * 8, landedAt: 0 };
@@ -115,7 +116,7 @@ export class Thrower {
     }
     const path: TossPath = { time: m.time, x: m.x, y: m.y, z: m.z, vx: m.vx, vy: m.vy, vz: m.vz };
     if (!t) {
-      t = this.add(m.id, m.n, false, m.kind, path);
+      t = this.add(m.id, m.n, false, path);
       if (!m.hit) rifleSound.swish(_o.set(m.x, m.y, m.z), ear);
     }
     if (!m.hit) return;

@@ -10,7 +10,7 @@
 import { isCorpseBox } from './corpse.ts';
 import type { DigTool } from './dig.ts';
 import {
-  BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, sizeOf, strandedAt,
+  BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, partKind, sizeOf, strandedAt,
   type Item, type Shape, type Slots,
 } from './items.ts';
 import { PART_LABELS } from './parts.ts';
@@ -20,7 +20,7 @@ export const EQUIP_SLOTS = ['back', 'wrist', 'belt', 'vehicle'] as const;
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
 export const EQUIP_LABELS: Record<EquipSlot, string> = { back: 'Back', wrist: 'Wrist', belt: 'Belt', vehicle: 'Vehicle' };
 
-/** A part slot: a tiered part from disassembly, or a piece of scrap (no tier: it holds things together). */
+/** A part slot: a tiered part from disassembly, or a piece of scrap (shared/items.ts SCRAP; no tier: it holds things together). */
 export type PartSlot = { part: PartId } | { scrap: string[]; label: string };
 
 export type GearSpec = {
@@ -33,14 +33,15 @@ export type GearSpec = {
 };
 
 const P = (part: PartId): PartSlot => ({ part });
+const SCRAP: PartSlot = { scrap: ['scrap'], label: 'Scrap' };
 
 export const GEAR: Record<string, GearSpec> = {
   motorcycle: { slots: [P('motor'), P('battery'), P('bearing')], equip: 'vehicle', better: 'top speed and acceleration',
     use: 'Press 9 to get on and off.' },
   spyglass: { slots: [P('gear'), P('bearing')], better: 'zoom', use: 'Hold the mouse button to look, wheel to zoom.' },
-  canteen: { slots: [P('valve'), { scrap: ['oil_drum', 'rusty_drum'], label: 'Drum' }], better: 'how many sips it holds',
+  canteen: { slots: [P('valve'), SCRAP], better: 'how many sips it holds',
     use: 'Hold the mouse button to drink; fill it at the pump in the base.' },
-  backpack: { slots: [{ scrap: ['scrap_frame', 'bent_frame'], label: 'Frame' }, P('gear')], equip: 'back', better: 'room (rows)',
+  backpack: { slots: [SCRAP, P('gear')], equip: 'back', better: 'room (rows)',
     use: 'Bag room past the hotbar.' },
   storm_detector: { slots: [P('coil'), P('relay')], equip: 'belt', better: 'how early it warns',
     use: 'Beeps before a sandstorm reaches you.' },
@@ -48,8 +49,12 @@ export const GEAR: Record<string, GearSpec> = {
     use: 'Shows the clock, the temperature and the locator bar.' },
   metal_detector: { slots: [P('coil'), P('compute'), P('battery')], better: 'range',
     use: 'Hold it and look at the sand: it ticks faster near something buried. Dig there.' },
-  shovel: { slots: [{ scrap: ['metal_sheet', 'dented_sheet'], label: 'Blade' }, P('motor')], better: 'digging speed and width',
+  shovel: { slots: [SCRAP, P('motor')], better: 'digging speed and width',
     use: 'Hold it and dig (left mouse): faster and wider than bare hands.' },
+  // The guns (shared/rifle.ts): a coil focuses the beam; the rifle also needs a cell and a heatsink.
+  laser_pistol: { slots: [P('coil'), SCRAP], better: 'how fast it recharges', use: 'Left mouse to fire, right mouse to aim.' },
+  laser_rifle: { slots: [P('coil'), P('battery'), P('heatsink'), SCRAP], better: 'how fast it recharges',
+    use: 'Left mouse to fire, right mouse to look through the scope.' },
 };
 export const GEAR_KINDS = Object.keys(GEAR);
 
@@ -69,6 +74,11 @@ export function fitsSlot(s: PartSlot, kind: string): boolean {
 export function partsOf(it: Item): (string | null)[] {
   const n = GEAR[it.kind]?.slots.length ?? 0;
   return Array.from({ length: n }, (_, i) => it.parts?.[i] ?? null);
+}
+
+/** Gear `kind` in working order with the worst parts (Scrap tier) in every slot. */
+export function scrapParts(kind: string): string[] {
+  return GEAR[kind].slots.map((s) => ('part' in s ? partKind(s.part, 'scrap') : s.scrap[0]));
 }
 
 /** Every slot filled. */
@@ -112,6 +122,9 @@ export const stormWarnS = (q: number) => by(q, 6, 20);
 export const locatorRange = (q: number) => by(q, 250, 2000);
 /** Metal detector: hears buried things this far away (m, horizontally). */
 export const detectorRange = (q: number) => by(q, 8, 22);
+
+/** A gun's recharge (ms) at quality q: a fifth slower than its base at Scrap parts, a quarter faster at Space-grade. */
+export const gunCooldown = (base: number, q: number) => base * by(q, 1.2, 0.75);
 
 /** Bare hands: slow and narrow. */
 export const HANDS: DigTool = { mm: 70, radius: 0.8, cooldown: 18 };
