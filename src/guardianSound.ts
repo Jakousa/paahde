@@ -7,6 +7,8 @@
 //   rising double chirp, once (not a siren: the beam and the HUD say the rest).
 // - missiles: a rocket's roar flying with each one (looped noise: a low rumble and a jet's hiss, fluttering), louder
 //   and brighter as it closes on you and pitched up by its approach (softened Doppler); the blast cuts it.
+// - jets: the fixed-wing drones (shared/jets.ts) roar the same way, deeper, with a turbine's whine, heard kilometres
+//   off and from where the plane was when the sound left it (it lags well behind a fast one overhead).
 // Footfalls (and so the bolts' and missiles' blasts) and the cannon carry across the desert through src/acoustics.ts.
 // The Web Audio listener follows the camera (src/crashSound.ts sets it). Through the shared output in
 // src/audio.ts; levels ramped. Measured at the default volume (OfflineAudioContext + ffmpeg ebur128): a step
@@ -36,6 +38,15 @@ const ROAR_GAIN = 0.35;
 const ROAR_RUMBLE = 2.5;
 const FLUTTER = 0.3;
 const MAX_ROAR = 4;
+/** Jet roar: heard within JET_HEAR m, full level within JET_REF (1/d past it), the hiss and whine opening up from
+ *  JET_FAR to JET_NEAR; air dulls it more slowly than a missile's (it's bigger and louder). */
+const JET_HEAR = 3500;
+const JET_REF = 150;
+const JET_FAR = 1500;
+const JET_NEAR = 200;
+const JET_GAIN = 0.3;
+const JET_WHINE = 0.05;
+const MAX_JET = 2;
 const HORN_GAIN = 0.22;
 const CHARGE_GAIN = 0.05;
 /** Crawler feet are heard within this distance (m). */
@@ -44,7 +55,7 @@ const TICK_GAIN = 0.12;
 const CHITTER_GAIN = 0.05;
 
 type Buzz = { id: number; osc: OscillatorNode; whine: OscillatorNode; gain: GainNode; panner: PannerNode };
-type Roar = { srcs: AudioBufferSourceNode[]; gain: GainNode; hiss: GainNode; air: BiquadFilterNode; panner: PannerNode };
+type Roar = { srcs: AudioBufferSourceNode[]; gain: GainNode; hiss: GainNode; air: BiquadFilterNode; panner: PannerNode; whine?: OscillatorNode };
 
 let noiseBuf: AudioBuffer | null = null;
 function noise(ctx: AudioContext) {
@@ -70,6 +81,7 @@ function panner(ctx: AudioContext, x: number, y: number, z: number, ref: number)
 class GuardianSound {
   private buzz = new Map<number, Buzz>();
   private roar = new Map<number, Roar>();
+  private jet = new Map<number, Roar>();
 
   /** A foot landed at (x, y, z), `weight` 0..1; the listener is at `ear`. */
   footfall(x: number, y: number, z: number, weight: number, ear: { x: number; y: number; z: number }) {
@@ -270,23 +282,70 @@ class GuardianSound {
     }
   }
 
+  /** Every frame: the fixed-wing drones, each where it was when the sound now reaching `ear` left it (position,
+   *  velocity m/s). */
+  jets(list: { id: number; x: number; y: number; z: number; vx: number; vz: number }[], ear: { x: number; y: number; z: number }) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const now = ctx.currentTime;
+    const near = list.map((m) => ({ m, d: Math.hypot(m.x - ear.x, m.y - ear.y, m.z - ear.z) })).filter((o) => o.d < JET_HEAR)
+      .sort((a, b) => a.d - b.d).slice(0, MAX_JET);
+    const keep = new Set(near.map((o) => o.m.id));
+    for (const [id, r] of this.jet) {
+      if (keep.has(id)) continue;
+      r.gain.gain.setTargetAtTime(0, now, 0.5);
+      for (const s of r.srcs) s.stop(now + 3);
+      r.whine?.stop(now + 3);
+      this.jet.delete(id);
+    }
+    for (const { m, d } of near) {
+      let r = this.jet.get(m.id);
+      if (!r) {
+        r = this.roarVoice(ctx, out, m, 220, 1100);
+        // The turbine: a high, thin tone under the hiss.
+        const whine = ctx.createOscillator();
+        whine.type = 'triangle';
+        whine.frequency.value = 3100 + (m.id % 5) * 90;
+        const wg = ctx.createGain();
+        wg.gain.value = JET_WHINE;
+        whine.connect(wg).connect(r.hiss);
+        whine.start();
+        r.whine = whine;
+        this.jet.set(m.id, r);
+      }
+      const near01 = 1 - Math.min(1, Math.max(0, (d - JET_NEAR) / (JET_FAR - JET_NEAR)));
+      const edge = Math.min(1, (JET_HEAR - d) / (JET_HEAR * 0.3));
+      r.gain.gain.setTargetAtTime(JET_GAIN * (JET_REF / Math.max(JET_REF, d)) * edge, now, 0.1);
+      r.hiss.gain.setTargetAtTime(0.2 + 0.8 * near01 * near01, now, 0.1);
+      r.air.frequency.setTargetAtTime(Math.max(300, 16000 * Math.exp(-d / 700)), now, 0.1);
+      // Doppler, softened like the missiles': higher coming in, a falling moan going away.
+      const closing = -((m.x - ear.x) * m.vx + (m.z - ear.z) * m.vz) / Math.max(d, 1);
+      const rate = Math.min(1.4, Math.max(0.75, SPEED_OF_SOUND / (SPEED_OF_SOUND - 0.5 * closing)));
+      for (const s of r.srcs) s.playbackRate.setTargetAtTime(rate, now, 0.1);
+      r.whine!.detune.setTargetAtTime(1200 * Math.log2(rate), now, 0.1);
+      r.panner.positionX.setTargetAtTime(m.x, now, 0.05);
+      r.panner.positionY.setTargetAtTime(m.y, now, 0.05);
+      r.panner.positionZ.setTargetAtTime(m.z, now, 0.05);
+    }
+  }
+
   /** A missile's roar: looped noise as a low rumble and a jet's hiss, fluttering with the exhaust's turbulence. */
-  private roarVoice(ctx: AudioContext, out: AudioNode, m: { x: number; y: number; z: number }): Roar {
+  private roarVoice(ctx: AudioContext, out: AudioNode, m: { x: number; y: number; z: number }, rumbleHz = 350, hissHz = 1600): Roar {
     const buf = noise(ctx);
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
     const rumble = ctx.createBiquadFilter();
     rumble.type = 'lowpass';
-    rumble.frequency.value = 350;
+    rumble.frequency.value = rumbleHz;
     const rumble2 = ctx.createBiquadFilter();
     rumble2.type = 'lowpass';
-    rumble2.frequency.value = 350;
+    rumble2.frequency.value = rumbleHz;
     const rumbleGain = ctx.createGain();
     rumbleGain.gain.value = ROAR_RUMBLE;
     const band = ctx.createBiquadFilter();
     band.type = 'bandpass';
-    band.frequency.value = 1600;
+    band.frequency.value = hissHz;
     band.Q.value = 0.5;
     const hiss = ctx.createGain();
     hiss.gain.value = 0.25;

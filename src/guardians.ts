@@ -2,13 +2,17 @@
 // (src/world/botFrames.ts), walks the guardians (src/world/guardians.ts) and flies the drones
 // (src/world/drones.ts), and does what makes them feel big and dangerous: footfall sound, dust and camera shake,
 // the horn when one comes for you, the cannon (src/world/bolts.ts: charge whine, zap, burst), the missiles a drone
-// calls down (src/world/missiles.ts: jet roar, blast), a chirp when a drone locks on.
+// calls down (src/world/missiles.ts: jet roar, blast), a chirp when a drone locks on. Also flies the fixed-wing
+// drones (src/world/jets.ts) and their roar.
 import * as THREE from 'three/webgpu';
 import { BOT_DELAY_MS, dronesAt, guardiansAt } from './world/botFrames';
 import { Drones } from './world/drones';
 import { Guardians, type Footfall } from './world/guardians';
 import { Bolts } from './world/bolts';
 import { Missiles } from './world/missiles';
+import { Jets } from './world/jets';
+import { jetAt, type JetPose } from '../shared/jets.ts';
+import { SPEED_OF_SOUND } from './acoustics';
 import { CHARGE_MS, CRAWLER, FOOT_CRUSH_R, GUARDIAN, KINDS } from '../shared/guardians.ts';
 import { guardianSound } from './guardianSound';
 import { rifleSound } from './rifleSound';
@@ -31,6 +35,8 @@ export class GuardianFx {
   readonly drones: Drones;
   readonly bolts: Bolts;
   readonly missiles: Missiles;
+  readonly jets: Jets;
+  private jetPose: JetPose = { x: 0, y: 0, z: 0, yaw: 0, bank: 0, vx: 0, vz: 0 };
   private bound = false;
   private locked = false;
   private charging = new Set<number>();
@@ -51,6 +57,7 @@ export class GuardianFx {
     this.drones = new Drones(scene);
     this.bolts = new Bolts(scene);
     this.missiles = new Missiles(scene);
+    this.jets = new Jets(scene);
     this.guardians.onFootfall = (f) => this.footfall(f);
     // A shot hitting a drone: a lighter bang than its crash (each one counts, so no firework like a weak point's).
     this.drones.onHit = (x, y, z) => guardianSound.footfall(x, y, z, 0.7, this.ear);
@@ -95,6 +102,21 @@ export class GuardianFx {
     this.thump(f.x, f.y, f.z, f.weight, 9, 2.5 * KINDS[GUARDIAN].scale, 1.6 * KINDS[GUARDIAN].scale);
   }
 
+  /** The jets where the sound reaching the ear now left them: the time te with te = now − distance(te) / c, found
+   *  by a few fixed-point steps (they fly well under the speed of sound, so it settles fast). */
+  private heardJets(net: Net) {
+    const now = net.serverTime(), p = this.jetPose, e = this.ear, out = [];
+    for (const j of net.jets) {
+      let te = now, ok = false;
+      for (let i = 0; i < 4; i++) {
+        if (!(ok = jetAt(j, te, p))) break;
+        te = now - (Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z) / SPEED_OF_SOUND) * 1000;
+      }
+      if (ok && jetAt(j, te, p)) out.push({ id: j.id, x: p.x, y: p.y, z: p.z, vx: p.vx, vz: p.vz });
+    }
+    return out;
+  }
+
   /** Shake and dust for something heavy at (x, y, z). */
   private thump(x: number, y: number, z: number, weight: number, puffs: number, speed: number, size: number) {
     const d = Math.hypot(x - this.ear.x, z - this.ear.z);
@@ -137,6 +159,8 @@ export class GuardianFx {
     this.bolts.update(dt, net.serverTime());
     this.missiles.update(dt, net.serverTime());
     guardianSound.missiles(this.missiles.heads(net.serverTime()), this.ear);
+    this.jets.update(net.jets, net.serverTime(), this.ear);
+    guardianSound.jets(this.heardJets(net), this.ear);
     const t = net.serverTime() - BOT_DELAY_MS;
     const gs = guardiansAt(net.bots, t);
     const ds = dronesAt(net.bots, t);

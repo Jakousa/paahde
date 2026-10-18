@@ -4,6 +4,7 @@ import type { Slots } from './items.ts';
 import type { Loot } from './loot.ts';
 import type { MissilePath } from './missiles.ts';
 import type { Storm } from './storm.ts';
+import type { Jet } from './jets.ts';
 import type { TossPath } from './throw.ts';
 import type { Placed } from './placed.ts';
 import type { BedState } from './garden.ts';
@@ -63,8 +64,9 @@ export type ClientMsg =
   | { t: 'drop'; box: string; slot: number }
   // Pick up loot (shared/loot.ts) in reach. Answered with 'items' (or a 'notice' when the bag is full).
   | { t: 'lootTake'; id: number }
-  // Debug menu: bring the nearest guardian 90 m from you, or a searchlight drone over you for a minute (by day too).
-  | { t: 'summon'; what: 'guardian' | 'drone' }
+  // Debug menu: bring the nearest guardian 90 m from you, a searchlight drone over you for a minute (by day too), or
+  // a fixed-wing drone past you in about 15 s.
+  | { t: 'summon'; what: 'guardian' | 'drone' | 'jet' }
   // A laser rifle or pistol shot (shared/rifle.ts) from (x, y, z) to where it stopped, (ex, ey, ez). `g`/`i`: the client
   // found it hit weak point i of walker g (i -1: just its body, which angers it); `d`: it hit drone d. The server checks
   // the gun is in hand, its reach, the rate and that the shot was aimed at that walker, breaks the point, and shows the
@@ -197,6 +199,9 @@ export type ServerMsg =
   // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time).
   // Sent before 'welcome' on join and to everyone whenever the list changes.
   | { t: 'storms'; storms: Storm[] }
+  // Every fixed-wing drone flight in the air (shared/jets.ts; times on the server clock). Like 'storms': before
+  // 'welcome' on join and to everyone whenever the list changes.
+  | { t: 'jets'; jets: Jet[] }
   // Guardians and night drones (shared/guardians.ts) within reach, about 10 times a second, at server time `time`.
   // g: [id, kind, legs, x, z, yaw, hunt, ax, ay, az, gun, broken, dead] per walker (kind: shared/guardians.ts KINDS
   // index; (ax, ay, az) where its cannon aims; gun -1 idle, 0 aiming, 1 charging; broken: bit i set once weak point i

@@ -41,6 +41,7 @@ import type { SiteLink } from './teardown/teardown';
 export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' }>;
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
+import type { Jet } from '../shared/jets.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 import { setPlaced } from '../shared/placed.ts';
 import type { BedState } from '../shared/garden.ts';
@@ -143,6 +144,8 @@ export class Net {
   onNotice?: (text: string) => void;
   /** Sandstorms announced and not over yet (shared/storm.ts), times on the server clock. */
   storms: Storm[] = [];
+  /** Fixed-wing drone flights in the air (shared/jets.ts), times on the server clock. */
+  jets: Jet[] = [];
   /** Recent 'bots' messages (guardians and drones, shared/guardians.ts), oldest first; src/world/botFrames.ts
    *  interpolates them. */
   bots: Extract<ServerMsg, { t: 'bots' }>[] = [];
@@ -453,7 +456,7 @@ export class Net {
   }
 
   /** Debug menu: the nearest guardian, or a drone, brought to us (shared/guardians.ts). */
-  summonBot(what: 'guardian' | 'drone') {
+  summonBot(what: 'guardian' | 'drone' | 'jet') {
     this.send({ t: 'summon', what });
   }
 
@@ -591,6 +594,10 @@ export class Net {
     if (msg.t === 'tended') return this.onTended?.(msg.what);
     if (msg.t === 'storms') {
       this.storms = msg.storms;
+      return;
+    }
+    if (msg.t === 'jets') {
+      this.jets = msg.jets;
       return;
     }
     if (msg.t === 'shot' || msg.t === 'boom' || msg.t === 'missile' || msg.t === 'blast') return this.onBolt?.(msg);

@@ -993,3 +993,22 @@ thrown with left mouse / E (`src/throw.ts`, `shared/throw.ts`).
 - **Gaps:** no throw pose in the hands (the junk isn't drawn in hand at all); it only hits drones (not walkers or
   players); a bag-full return over the base loses the item. The swish/clank levels are by analogy with the beam's
   impact sounds, not measured.
+
+
+## Fixed-wing drones
+
+A second flying machine, by day and by night: a big unmanned plane (18 m span, `shared/jets.ts`) passing high
+(110–180 m) and fast (75–110 m/s). No lights, no searchlight, no spotting; for now it only flies over.
+
+- **Flights** (`server/jets.ts`): every 1.5–4 min (at most 2 in the air) one is sent past a random player: a straight
+  pass within 350 m of them, or (40%) an arc of 0.75–2.5 laps round a 700–1400 m circle whose ring runs near them.
+  Each flight is a run in, an arc and a run out, entering and leaving 3 km out. Like the sandstorms the list goes out
+  on join and on change ('jets'), and both sides compute the position from it and the server clock (`jetAt`), so
+  nothing streams per frame. In memory only.
+- **Client:** built from primitives in `src/world/jets.ts` (lathe fuselage, sensor dome, intake hump and nozzle,
+  tapered wings, V tail), banked into its turns. The roar (`guardianSound.jets`) is the missile's roar, deeper, with a
+  turbine whine, heard to 3.5 km and from where the plane was when the sound left it (fixed-point on
+  te = now − d(te)/c), so it lags behind the plane overhead. Measured (mono K-weighted render, same method that gives
+  the missile's −17): −20.5 LUFS at 150 m, −27 at 300 m, −37 at 700 m, −46 at 1.5 km.
+- **Testing:** F3 → "Jet here" sends a straight pass over you, ~13 s out, for everyone.
+- **Gaps:** can't be shot or hit with thrown scrap; holds one height over the whole flight (terrain at the player).

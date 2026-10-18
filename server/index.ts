@@ -29,6 +29,7 @@ import { LootServer } from './loot.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
+import { JetServer } from './jets.ts';
 import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
@@ -64,6 +65,7 @@ const garden = new GardenServer(db);
 const loot = new LootServer(db);
 
 const storms = new StormServer(performance.now());
+const jets = new JetServer(performance.now());
 const guardians = new GuardianServer();
 const throws = new ThrowServer(guardians);
 /** Heat per second from drone searchlights by player id, from the last bot tick. */
@@ -144,6 +146,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
+    if (msg.t === 'summon' && msg.what === 'jet' && p) return jets.spawn(p.state.x, p.state.z, 0, performance.now(), true);
     if (msg.t === 'summon' && p) return guardians.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'fire' && p) return onFire(p, msg);
     if (msg.t === 'throw' && p) return onThrow(p, msg);
@@ -218,6 +221,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, placedThings.joinMessage());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
+  send(ws, jets.msg());
   send(ws, loot.joinMessage());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`)]) send(ws, boxMsg(browserId, box));
@@ -653,7 +657,8 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   const weather = storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), placedThings.flush(), garden.flush(), loot.flush(), weather]) {
+  const flights = jets.tick(time, [...players.values()].map((p) => p.state));
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), placedThings.flush(), garden.flush(), loot.flush(), weather, flights]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
