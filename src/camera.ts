@@ -7,7 +7,8 @@
 // (crosshair) still aims where the dig/pickup rays go, and the boom shortens so it never sinks into a dune.
 import * as THREE from 'three/webgpu';
 import { heightAt } from '../shared/terrain.ts';
-import { WALK_SPEED, SPRINT_SPEED } from '../shared/sim.ts';
+import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED } from '../shared/sim.ts';
+import { CROUCH_CYCLE } from './models/crouchGait';
 import { EYE_HEIGHT } from '../shared/dig.ts'; // the dig and pickup rays start here too
 import { terrainHidden } from '../shared/base.ts';
 const SENSITIVITY = 0.0022;
@@ -142,9 +143,12 @@ export class FirstPersonCamera {
     // Past a walk it grows only gently (sprint ≈ 1.1×, its faster step rate is enough), and the vertical shape is sin², which is smooth
     // at footfall where |sin| had a hard cusp.
     const pace = speed / WALK_SPEED;
-    const bobTarget = moving && !p.sliding && !p.riding ? (pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15)) : 0;
+    // Crouched: short quick steps (the body's, src/models/crouchGait.ts), the bob gentle.
+    const crouched = !!p.crouching && !p.sliding;
+    const bobTarget = !moving || p.sliding || p.riding ? 0
+      : crouched ? 0.35 * Math.min(1, speed / CROUCH_SPEED) : pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15);
     this.bobAmount += (bobTarget - this.bobAmount) * (1 - Math.exp(-dt * 6));
-    if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / STRIDE;
+    if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / (crouched ? CROUCH_CYCLE / 2 : STRIDE);
     const s = Math.sin(this.bobPhase);
     const bobY = (0.5 - s * s) * 0.03 * this.bobAmount;
     const bobX = s * 0.015 * this.bobAmount;

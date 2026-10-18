@@ -6,6 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ScavengerModel, type ScavengerClip } from './scavenger';
+import { CROUCH_SPEED } from '../../shared/sim.ts';
 
 const renderer = new THREE.WebGPURenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -128,7 +129,7 @@ renderer.setAnimationLoop((time) => {
   for (const { m, clip } of models) {
     // drive through update() so the clip-selection logic is exercised too
     const pose = {
-      speed: clip === 'Walk' ? 1.3 : clip === 'Run' ? 6 : 0,
+      speed: clip === 'Walk' ? 1.3 : clip === 'Run' ? 6 : clip === 'CrouchWalk' ? CROUCH_SPEED : 0,
       grounded: clip !== 'Jump',
       digging: clip === 'Dig',
       sliding: clip === 'Slide',

@@ -66,8 +66,8 @@ const SLIDE_DECEL = 9; // flat-sand friction while sliding (m/s²); steep downhi
 const SLIDE_GRAVITY = 0.9; // fraction of gravity along the slope that acts on a slide
 const SLIDE_TURN = 1.6; // rad/s the heading can swing towards the input
 
-// Ctrl / C crouches: slow.
-const CROUCH_SPEED = 3;
+// Ctrl / C crouches: slow, short careful steps (src/models/crouchGait.ts strides to it).
+export const CROUCH_SPEED = 2;
 /** Speed lost on foot at full sandstorm strength (shared/storm.ts), whichever way you go. */
 const STORM_SLOW = 0.2;
 /** The storm pushes downwind (WIND, the way storms drift): this much (m/s) added to the velocity you're

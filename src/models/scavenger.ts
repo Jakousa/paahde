@@ -15,6 +15,7 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { LegIk, lowestAnkles, type Ground } from './legIk';
 import { Ragdoll, type RagdollGround } from './ragdoll';
+import { CrouchGait } from './crouchGait';
 import type { RidePose } from '../players';
 import { wornBit } from '../../shared/gear.ts';
 import { beltModel, disposeModel, heldModel, heldMuzzle, wristModel } from './outfit';
@@ -29,7 +30,7 @@ export type ScavengerPose = {
   /** Intentional Ctrl slide (clip 'Powerslide'); the body tilts to the ground by tiltPitch / tiltRoll
    *  (rad; + pitch = uphill ahead, + roll = uphill to the right). */
   powerSlide?: boolean;
-  /** Crouched ('Crouch' standing, 'CrouchWalk' moving). */
+  /** Crouched: the 'Crouch' clip with the legs, hips and lean posed over it (src/models/crouchGait.ts). */
   crouching?: boolean;
   tiltPitch?: number;
   tiltRoll?: number;
@@ -57,7 +58,6 @@ const FADE = 0.2;
 // Ground speed (m/s) at which each locomotion clip plays at timeScale 1 without the feet sliding.
 const WALK_REF = 1.3;
 const RUN_REF = 4.7;
-const CROUCH_REF = 1.0;
 const RUN_ABOVE = 2.8;
 const MAX_HIP_YAW = 1.0; // rad; strafing beyond this shows as a crab-walk rather than hips turned further
 
@@ -98,6 +98,7 @@ export class ScavengerModel {
   private neck: THREE.Object3D | null = null;
   private head: THREE.Object3D | null = null;
   private legIk: LegIk | null = null;
+  private crouch: CrouchGait | null = null;
   private minAnkle = new Map<string, number>();
   /** Bones adjusted after the mixer, with their animated rotation (see update()). */
   private posed: { bone: THREE.Object3D; base: THREE.Quaternion }[] = [];
@@ -178,6 +179,12 @@ export class ScavengerModel {
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
     this.tilt.add(model);
+    if (this.hips && this.spine && legs.every((l) => l.every((b) => b))) {
+      this.crouch = new CrouchGait(this.root, model, {
+        hips: this.hips, spine: this.spine, neck: this.neck, head: this.head,
+        legs: legs as THREE.Object3D[][], arms: this.arms.map((a) => a[0]),
+      });
+    }
     this.setColor(this.color);
     this.play('Idle', 0);
     // The canteen lives in the root (not the hand bone), placed each frame; the right arm reaches for it.
@@ -334,14 +341,14 @@ export class ScavengerModel {
     else if (pose.powerSlide) this.play('Powerslide', 0.12);
     else if (pose.sliding) this.play('Slide');
     else if (pose.digging) this.play('Dig');
-    else if (pose.crouching && speed > 0.25) this.play('CrouchWalk', FADE, dir * clamp(speed / CROUCH_REF, 0.6, 2.2));
-    else if (pose.crouching) this.play('Crouch');
+    else if (pose.crouching) this.play('Crouch'); // stepping or not: crouchGait poses the legs
     else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(speed / RUN_REF, 0.75, 1.6));
     else if (speed > 0.25) this.play('Walk', FADE, dir * clamp(speed / WALK_REF, 0.6, 1.8));
     else this.play('Idle');
     // The mixer only writes a bone when its animated value changes, so on a constant track (Dig's Neck,
     // its kneeling legs) last frame's look tilt / IK would stay in place and pile up. Undo them first.
     for (const p of this.posed) p.bone.quaternion.copy(p.base);
+    this.crouch?.restore();
     this.mixer.update(dt);
     // Lean to the slope: pitch about the model's X (+ = nose up), roll about Z, pivoting at the feet.
     const tk = 1 - Math.exp(-dt * 10);
@@ -350,6 +357,8 @@ export class ScavengerModel {
     this.tilt.rotation.x += ((power ? clamp(pose.tiltPitch ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.x) * tk;
     this.tilt.rotation.z += ((power ? clamp(pose.tiltRoll ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.z) * tk;
     for (const p of this.posed) p.base.copy(p.bone.quaternion);
+    const crouched = !!pose.crouching && pose.grounded && !pose.ride && !pose.sliding && !pose.powerSlide && !pose.digging;
+    this.crouch?.apply(dt, crouched, crouched ? speed : 0, dir);
 
     this.root.updateMatrixWorld(true);
     if (Math.abs(this.hipYaw) > 1e-3 && this.hips && this.spine) {
