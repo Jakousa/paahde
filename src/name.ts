@@ -30,6 +30,7 @@ export function askName(net: Net, canvas: HTMLElement) {
     const el = document.createElement('div');
     el.id = 'name';
     el.innerHTML = `<form><div class="link"><input placeholder="your name" maxlength="${NAME_MAX}" autocomplete="off"
+data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"
 spellcheck="false"><button>Go</button></div><button type="button" class="skip">skip</button></form>`;
     document.head.append(style);
     document.body.append(el);
