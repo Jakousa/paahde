@@ -1,7 +1,7 @@
 // Chat: Enter opens a line at the bottom left, Enter sends it (Esc or an empty line just closes). Lines from
 // everyone show above it for a while, each behind a swatch of the speaker's avatar colour; while typing, the
 // recent ones all come back. The input keeps the keys to itself, so typing doesn't walk, dig or open menus.
-import { CHAT_MAX } from '../shared/protocol.ts';
+import { CHAT_MAX, type DeathCause } from '../shared/protocol.ts';
 import type { Net } from './net';
 import { tools, ui } from './input';
 
@@ -10,12 +10,26 @@ const SHOW_MS = 12000;
 /** Lines kept (shown while typing). */
 const KEEP = 12;
 
+/** A death in chat, after the dead player's swatch. */
+const OBITUARY: Record<DeathCause, string> = {
+  heat: 'died of the heat',
+  guardian: 'stepped on by a guardian',
+  laser: 'shot down',
+  missile: 'blown up',
+  crawler: 'bitten to death',
+  worm: 'eaten by the worm',
+  stomp: 'crushed by the colossus',
+  bomb: 'bombed by the carrier',
+  queen: 'killed by the queen',
+};
+
 const css = `
 #chat { position: fixed; left: 16px; bottom: 110px; width: min(380px, calc(100vw - 32px)); z-index: 6;
   pointer-events: none; font: 13px var(--mono); color: #f2e6d6; }
 #chat .log { display: flex; flex-direction: column; gap: 2px; }
 #chat .line { padding: 2px 6px; border-radius: 4px; background: rgba(20, 14, 10, 0.45); text-shadow: 0 1px 2px #000;
   overflow-wrap: anywhere; animation: chatFade ${SHOW_MS}ms linear forwards; }
+#chat .line.death { font-style: italic; color: #e8a090; }
 #chat .line i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; }
 #chat .line.gone { animation: none; opacity: 0; visibility: hidden; }
 #chat.open .line { animation: none; opacity: 1; visibility: visible; }
@@ -44,6 +58,7 @@ export class Chat {
     document.body.append(this.el);
 
     net.onChat = (m) => this.add(m.color, m.text);
+    net.onObituary = (m) => this.add(m.color, OBITUARY[m.cause], 'death');
 
     // Only from the game itself: not over the inventory, the Esc menu or the disassembly.
     addEventListener('keydown', (e) => {
@@ -90,9 +105,9 @@ export class Chat {
     }
   }
 
-  private add(color: number, text: string) {
+  private add(color: number, text: string, kind?: 'death') {
     const line = document.createElement('div');
-    line.className = 'line';
+    line.className = kind ? `line ${kind}` : 'line';
     line.dataset.at = String(performance.now());
     const swatch = document.createElement('i');
     swatch.style.background = `#${color.toString(16).padStart(6, '0')}`;

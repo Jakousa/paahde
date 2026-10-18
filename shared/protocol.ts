@@ -112,10 +112,14 @@ export type ClientMsg =
   | { t: 'siteTake'; id: string; i: number }
   // A chat line (Enter, src/chat.ts). The server trims it to CHAT_MAX, drops empty ones and rate-limits, then sends
   // it to everyone as 'chat'.
-  | { t: 'chat'; text: string };
+  | { t: 'chat'; text: string }
+  // Your name in this world (src/name.ts), asked once after the first 'welcome' (blank: no name). Trimmed to NAME_MAX.
+  | { t: 'name'; name: string };
 
 /** Longest chat line (characters). */
 export const CHAT_MAX = 160;
+/** Longest player name (characters). */
+export const NAME_MAX = 20;
 
 /** The job on the disassembly table: which carried machine, its seed (picked by the server), progress so far. */
 export type BenchJob = { kind: string; seed: number; done: number[]; taken: number[] };
@@ -141,7 +145,8 @@ export type ServerMsg =
   | { t: 'lives'; n: number; beaten: number }
   // id is a public per-connection id; the browserId is never sent to other players.
   // epoch = wall-clock ms (Unix) at server time 0, so the time of day survives server restarts.
-  | { t: 'welcome'; id: number; state: PlayerState; color: number; epoch: number }
+  // name: yours in this world, null if you haven't been asked yet (src/name.ts asks).
+  | { t: 'welcome'; id: number; state: PlayerState; color: number; epoch: number; name: string | null }
   // ack = last input seq the server applied for *this* client; time = server clock in ms.
   // Sent right after the tick's terrainEdit, so terrain changes up to `ack` have already arrived.
   | { t: 'snap'; time: number; ack: number; players: PlayerSnap[] }
@@ -247,7 +252,9 @@ export type ServerMsg =
   | { t: 'blast'; id: number; x: number; y: number; z: number }
   // Player `by` fired a laser rifle (or the pistol: `pistol`) from (x, y, z) to (ex, ey, ez); `hit`: it broke a weak point there.
   // Player `id` (public id; `color` their avatar's) said `text` in chat, to everyone (also back to the sender).
-  | { t: 'chat'; id: number; color: number; text: string }
+  | { t: 'chat'; id: number; color: number; name: string; text: string }
+  // Player `id` (`color` their avatar's) died of `cause`, to everyone: a line in chat (src/chat.ts says how).
+  | { t: 'obituary'; id: number; color: number; name: string; cause: DeathCause }
   | { t: 'zap'; by: number; x: number; y: number; z: number; ex: number; ey: number; ez: number; hit: boolean; pistol?: true }
   // Thrown scrap `id` (shared/throw.ts tossAt), item `kind`, thrown by player `by` (their throw `n`), flying from
   // (x, y, z) with velocity (vx, vy, vz) at server time `time`; sent again with `hit` as it bounces off a drone, and

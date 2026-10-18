@@ -329,6 +329,7 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, sliding: false, crouching: false };
   revive(p.heat, Date.now());
   send(p.ws, { t: 'died', cause, push });
+  for (const o of players.values()) send(o.ws, { t: 'obituary', id: p.id, color: p.color, cause });
   // The bag past the hotbar stays where they fell (shared/corpse.ts).
   const pack = corpses.leave(p.browserId, p.color, p.state.x, p.state.z);
   if (pack) {

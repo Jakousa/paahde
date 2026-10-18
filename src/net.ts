@@ -181,6 +181,7 @@ export class Net {
   onBolt?: (msg: Extract<ServerMsg, { t: 'shot' | 'boom' | 'missile' | 'blast' }>) => void;
   /** A chat line from player `id` (us too), src/chat.ts. */
   onChat?: (msg: Extract<ServerMsg, { t: 'chat' }>) => void;
+  onObituary?: (msg: Extract<ServerMsg, { t: 'obituary' }>) => void;
   /** Another player's laser rifle shot (src/rifle.ts draws it). */
   onZap?: (msg: Extract<ServerMsg, { t: 'zap' }>) => void;
   /** Thrown scrap flying, bouncing off a drone or landed (src/throw.ts). */
@@ -677,6 +678,7 @@ export class Net {
     }
     if (msg.t === 'toss' || msg.t === 'tossEnd') return this.onToss?.(msg);
     if (msg.t === 'chat') return this.onChat?.(msg);
+    if (msg.t === 'obituary') return this.onObituary?.(msg);
     if (msg.t === 'called') {
       this.called = msg.b;
       return;
