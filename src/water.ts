@@ -206,7 +206,8 @@ export class Survival {
     addEventListener('keydown', (e) => {
       if (e.repeat || !/^Digit[1-9]$/.test(e.code)) return;
       // 9 gets on the bike (src/input.ts): put away what's in hand.
-      if (e.code === 'Digit9' && !net.me.riding && net.me.bike > 0 && !tools.frozen) return this.select(-1);
+      // (Not a motorcycle in hand: that's the one you'd ride.)
+      if (e.code === 'Digit9' && !net.me.riding && net.me.bike > 0 && !tools.frozen && !tools.bike) return this.select(-1);
       const n = Number(e.code.slice(5)) - 1;
       if (n >= HOTBAR) return;
       this.select(this.selected === n ? -1 : n);
@@ -241,6 +242,7 @@ export class Survival {
     const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : kind && THROWABLE.has(kind) ? 'scrap' : 'none';
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
+    tools.bike = kind === 'motorcycle' && repaired(it);
     playerHands.tool = repaired(it) && (kind === 'shovel' || kind === 'metal_detector') ? (kind === 'shovel' ? 'shovel' : 'detector') : 'none';
   }
 

@@ -180,7 +180,11 @@ wss.on('connection', (ws) => {
     if (msg.t === 'hands' && p) {
       p.hands = msg.hands === 1 || msg.hands === 2 || msg.hands === 3 ? msg.hands : 0;
       p.aim = msg.aim === true;
-      p.slot = Number.isInteger(msg.slot) && (msg.slot as number) >= 0 && (msg.slot as number) < HOTBAR ? (msg.slot as number) : -1;
+      const slot = Number.isInteger(msg.slot) && (msg.slot as number) >= 0 && (msg.slot as number) < HOTBAR ? (msg.slot as number) : -1;
+      if (slot !== p.slot) {
+        p.slot = slot;
+        gearChanged(p.browserId); // a motorcycle in hand rides too
+      }
       return;
     }
     if (p) return onCrash(p, msg);
@@ -259,12 +263,14 @@ function onFill(p: Player) {
   send(p.ws, waterMsg(p.heat));
 }
 
-/** A player's items changed: the motorcycle they can ride and their water bottle follow, on every connection. */
+/** A player's items (or selected hotbar slot) changed: the motorcycle they can ride (equipped, or the one in hand) and
+ *  their water bottle follow, on every connection. */
 function gearChanged(browserId: string) {
-  const bike = bikeLevel(items.slots(browserId, 'equip'));
-  const sips = bottleSips(items.slots(browserId, 'bag'));
+  const bag = items.slots(browserId, 'bag');
+  const sips = bottleSips(bag);
   for (const o of players.values()) {
     if (o.browserId !== browserId) continue;
+    const bike = bikeLevel(items.slots(browserId, 'equip'), o.slot >= 0 ? bag[o.slot] : null);
     if (o.state.bike !== bike) o.state = { ...o.state, bike };
     if (setBottle(o.heat, sips)) send(o.ws, waterMsg(o.heat));
   }

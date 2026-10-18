@@ -195,9 +195,10 @@ export function bottleSips(bag: Slots | undefined): number {
   return best < 0 ? 0 : canteenSips(best);
 }
 
-/** Motorcycle level for PlayerState.bike: 0 without a repaired one equipped, else 1 + quality (1..4). */
-export function bikeLevel(equip: Slots | undefined): number {
-  const b = equipped(equip, 'vehicle');
+/** Motorcycle level for PlayerState.bike: 0 without a repaired one equipped or in hand (`held`: the selected hotbar
+ *  item), else 1 + quality (1..4). */
+export function bikeLevel(equip: Slots | undefined, held?: Item | null): number {
+  const b = equipped(equip, 'vehicle') ?? (held?.kind === 'motorcycle' && repaired(held) ? held : undefined);
   return b ? 1 + quality(b) : 0;
 }
 

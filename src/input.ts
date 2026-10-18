@@ -7,7 +7,7 @@ let pickupPressed = false;
 /** Hands full (canteen or spyglass out, src/water.ts): left mouse / E and right mouse / Q don't dig or pile.
  *  slot: the selected hotbar slot (-1 none), digging with what's in it (src/net.ts, a shovel).
  *  frozen: the disassembly mode (src/teardown) owns the keyboard and mouse, so the player stands still. */
-export const tools = { blocked: false, frozen: false, slot: -1 };
+export const tools = { blocked: false, frozen: false, slot: -1, bike: false };
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 /** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
 export const ui = { inventoryOpen: false, debugFreed: false };
@@ -102,6 +102,8 @@ export function readInput(): number {
   // 9: get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped), whatever's in hand
   // (getting on puts it away, src/water.ts).
   if (keys.has('Digit9')) input |= BIKE;
+  // A repaired motorcycle in hand (src/water.ts): the use button gets on and off it instead.
+  if (tools.bike && (mouseDig || keys.has('KeyE'))) return input | BIKE;
   if (tools.blocked) return input;
   if (mouseDig || keys.has('KeyE')) input |= DIG;
   else if (rightHeld() || keys.has('KeyQ')) input |= PILE;
