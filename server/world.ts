@@ -11,7 +11,7 @@ import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
 import { BOSS_SPOILS, KILL_SPOILS } from '../shared/tables.ts';
-import { BOSS_KINDS, BOSS_SEND_R, type BossKind } from '../shared/bosses.ts';
+import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, bossBit, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
@@ -63,6 +63,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const db = openDb(process.env.DB_PATH ?? `data/worlds/${WORLD_ID}.db`);
 /** Deaths left in this world, shared by everyone; at 0 the game is over. */
 let lives = db.getSetting('lives') ?? LIVES;
+/** Boss kinds killed at least once (shared/bosses.ts bossBit); each first kill gave BOSS_LIVES lives. */
+let beaten = db.getSetting('bosses_beaten') ?? 0;
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
 const items = new ItemServer(db);
@@ -82,7 +84,7 @@ const corpses = new CorpseServer(db, items, (msg) => {
 
 const storms = new StormServer(performance.now());
 const jets = new JetServer(performance.now());
-const bosses = new BossServer(performance.now());
+const bosses = new BossServer();
 const guardians = new GuardianServer();
 const throws = new ThrowServer(guardians);
 /** Heat per second from drone searchlights by player id, from the last bot tick. */
@@ -136,7 +138,7 @@ const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 1024 })
 
 wss.on('connection', (ws) => {
   send(ws, { t: 'version', build: BUILD });
-  send(ws, { t: 'lives', n: lives });
+  send(ws, { t: 'lives', n: lives, beaten });
   if (lives <= 0) return ws.close(4410, 'game over');
   ws.on('pong', () => {
     const p = players.get(ws);
@@ -334,7 +336,7 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   }
   lives--;
   db.setSetting('lives', lives);
-  for (const o of players.values()) send(o.ws, { t: 'lives', n: lives });
+  for (const o of players.values()) send(o.ws, { t: 'lives', n: lives, beaten });
   if (lives <= 0) gameOver();
 }
 
@@ -535,8 +537,16 @@ function dropSpoils(k: Kill) {
   }
 }
 
-/** A boss's parts, scattered over its wreck. */
+/** A boss's parts, scattered over its wreck; its kind's first kill counts toward the win and gives the world lives. */
 function dropBossSpoils(k: BossKill) {
+  if (!(beaten & bossBit(k.kind))) {
+    beaten |= bossBit(k.kind);
+    lives += BOSS_LIVES;
+    db.setSetting('bosses_beaten', beaten);
+    db.setSetting('lives', lives);
+    for (const o of players.values()) send(o.ws, { t: 'lives', n: lives, beaten });
+    console.log(`world ${WORLD_ID}: ${k.kind} beaten${allBeaten(beaten) ? ', world won' : ''}`);
+  }
   const sp = BOSS_SPOILS[k.kind];
   const n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1));
   for (let i = 0; i < n; i++) {

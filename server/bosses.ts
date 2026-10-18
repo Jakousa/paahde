@@ -1,7 +1,5 @@
-// Server side of the bosses (shared/bosses.ts): spawns them (rarely near someone out in the open, or from the debug
-// menu), ticks each kind's brain (server/<kind>.ts), checks rifle hits, and hands the deaths, sand marks and one-off
+// Server side of the bosses (shared/bosses.ts): spawns them (from the debug menu), ticks each kind's brain (server/<kind>.ts), checks rifle hits, and hands the deaths, sand marks and one-off
 // effects back to server/index.ts. In memory only: a restart sends them all away.
-import { BASE } from '../shared/base.ts';
 import { BOSS_KINDS, BOSS_SEND_R, BOSSES, bossDown, type BossKind, type BossSnap } from '../shared/bosses.ts';
 import type { DeathCause, ServerMsg } from '../shared/protocol.ts';
 import { RANGE } from '../shared/rifle.ts';
@@ -54,28 +52,17 @@ export type Brain = {
 
 const BRAINS: Record<BossKind, Brain> = { worm, carrier, colossus, queen };
 
-/** A summoned boss stays this long (ms); a rare one RARE_STAY. */
+/** A summoned boss stays this long (ms). */
 const SUMMON_STAY = 10 * 60_000;
-const RARE_STAY: [number, number] = [6 * 60_000, 10 * 60_000];
-/** A rare one turns up every RARE_GAP ms (random within) near someone out in the open at least RARE_FROM_BASE m
- *  from the base, while no other boss is about. */
-const RARE_GAP: [number, number] = [25 * 60_000, 50 * 60_000];
-const RARE_FROM_BASE = 500;
 
 /** A killed boss, for server/index.ts to drop its parts around (x, z) within r. */
 export type BossKill = { kind: BossKind; x: number; z: number; r: number; by: number };
 
-const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 export class BossServer {
   bosses: Boss[] = [];
   private nextId = 1;
-  private rareAt: number;
-
-  constructor(now: number) {
-    this.rareAt = now + rand(RARE_GAP[0], RARE_GAP[1]) / 2;
-  }
 
   /** Debug menu: a boss of `kind` near player `p` (one of a kind: an earlier one of it goes). */
   summon(kind: unknown, p: BossPlayer, now: number) {
@@ -102,14 +89,6 @@ export class BossServer {
       if (!b.leaving && now > b.until) b.leaving = true;
       return !BRAINS[b.kind].tick(b, dt, now, ps, out);
     });
-    if (now >= this.rareAt) {
-      this.rareAt = now + rand(RARE_GAP[0], RARE_GAP[1]);
-      const open = ps.filter((p) => !p.safe && Math.hypot(p.x - BASE.x, p.z - BASE.z) > RARE_FROM_BASE);
-      const p = open[Math.floor(Math.random() * open.length)];
-      if (p && !this.bosses.some((b) => b.deadAt < 0)) {
-        this.spawn(BOSS_KINDS[Math.floor(Math.random() * BOSS_KINDS.length)], p.x, p.z, false, now, now + rand(RARE_STAY[0], RARE_STAY[1]));
-      }
-    }
     return out;
   }
 

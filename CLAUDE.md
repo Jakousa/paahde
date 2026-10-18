@@ -47,7 +47,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   searchlight drones (constants, beam test); simulated in `server/guardians.ts`, legs are client IK in
   `src/world/guardians.ts`, bolts `src/world/bolts.ts`, drones `src/world/drones.ts`, glue/sound/shake in
   `src/guardians.ts`, `src/guardianSound.ts`
-- `shared/bosses.ts` — bosses (one-of-a-kind giants, rare or F3-summoned, weak points to shoot): `server/bosses.ts` spawns
+- `shared/bosses.ts` — bosses (one-of-a-kind giants, called (F3 for now), weak points to shoot; every kind beaten wins the world, `beaten` in server/world.ts): `server/bosses.ts` spawns
   and ticks one brain per kind (`server/<kind>.ts`), `src/bosses.ts` interpolates them and handles the weak points,
   one view per kind (`src/world/<kind>.ts`, built on `src/world/bossParts.ts`); spoils in `shared/tables.ts` BOSS_SPOILS
 - `shared/worm.ts` — the worm boss (100 m, swims through the sand, bursts out under prey; Terraria-style head steering,
@@ -75,7 +75,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `server/throws.ts`, lands as loot; drawn and thrown in `src/throw.ts`
 - `shared/world.ts` — worlds: each game is its own world at its own URL (`?w=<id>`, made on the landing page,
   `src/landing.ts`), with a seed from its id, its own players and DB (`data/worlds/<id>.db`; the old world is
-  `?w=main`), and 10 shared lives (`src/lives.ts`); at 0 the game is over
+  `?w=main`), and 10 shared lives (`src/lives.ts`; +10 per boss kind beaten); at 0 the game is over
 - `server/index.ts` — front server: static files, `POST /api/worlds`, passes `/ws?w=<id>` through to the world's
   process; `server/world.ts` — authoritative game server for one world (forked per world, exits when empty); `server/db.ts` — SQLite;
   `server/scrap.ts` — scrap pickups, respawn;

@@ -150,8 +150,9 @@ export class Net {
   onWater?: (w: { heat: number; sips: number; rising: boolean; temp: number; shade: boolean }) => void;
   /** We died (heatstroke, a drone's beam or a guardian): we lie where we fell until the server respawns us. */
   onDied?: (cause: DeathCause) => void;
-  /** The world's shared lives left (shared/world.ts), on join and after every death. */
-  onLives?: (n: number) => void;
+  /** The world's shared lives left (shared/world.ts) and the boss kinds beaten (shared/bosses.ts bossBit), on join,
+   *  after every death and after a boss kind's first kill. */
+  onLives?: (n: number, beaten: number) => void;
   /** The world turned us away for good: its lives are spent ('over') or it doesn't exist ('missing'). */
   onEnded?: (why: 'over' | 'missing') => void;
   /** Dead and lying as a ragdoll: the push (m/s) that threw the body (shared/ragdoll.ts); null when alive. */
@@ -582,7 +583,7 @@ export class Net {
       return;
     }
     if (msg.t === 'version') return serverBuild(msg.build);
-    if (msg.t === 'lives') return this.onLives?.(msg.n);
+    if (msg.t === 'lives') return this.onLives?.(msg.n, msg.beaten);
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);
     if (msg.t === 'terrainHeal') return void heal(edits);

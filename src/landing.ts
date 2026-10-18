@@ -1,5 +1,6 @@
 // The landing page (no world in the URL) and the end screens over the game (game over, unknown world):
-// a title and one button that makes a new world (server/index.ts /api/worlds) and goes to its URL.
+// a title and one button that makes a new world (server/index.ts /api/worlds) and goes to its URL. Also the
+// victory screen (every boss beaten), which goes away again: the world plays on.
 
 const css = `
 #landing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; color: #e8d2ae;
@@ -39,5 +40,29 @@ export function landing(why?: 'over' | 'missing') {
     } catch {
       button.disabled = false;
     }
+  });
+}
+
+/** Every boss kind is beaten (shared/bosses.ts allBeaten): say so once per world on this browser, then play on. */
+export function victory(world: string) {
+  const key = `dadajam.won.${world}`;
+  try {
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, '1');
+  } catch {}
+  if (document.getElementById('landing')) return;
+  document.exitPointerLock?.();
+  const style = document.createElement('style');
+  style.textContent = css;
+  document.head.appendChild(style);
+  const el = document.createElement('div');
+  el.id = 'landing';
+  el.className = 'over';
+  el.innerHTML = '<div class="panel"><h1>dadajam</h1><p>The desert is yours</p><button>Play on</button></div>';
+  document.body.append(el);
+  el.querySelector('button')!.addEventListener('click', () => {
+    el.remove();
+    style.remove();
+    Promise.resolve(document.querySelector('canvas')?.requestPointerLock()).catch(() => {});
   });
 }

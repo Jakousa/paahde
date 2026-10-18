@@ -2,6 +2,8 @@ import * as THREE from 'three/webgpu';
 import { BACK, DIG, DT, FORWARD, isSlipFace, PILE, quantizeYaw } from '../shared/sim.ts';
 import { digTarget, EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
+import { allBeaten } from '../shared/bosses.ts';
+import { WORLD_ID } from '../shared/world.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
 import { bedLit, placed } from '../shared/placed.ts';
 import { STATIONS, stationTarget } from '../shared/stations.ts';
@@ -18,7 +20,7 @@ import { LocatorBar } from './locator';
 import { Menu } from './menu';
 import { getBrowserId, Net } from './net';
 import { Lives } from './lives';
-import { landing } from './landing';
+import { landing, victory } from './landing';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { addHeadlights, Bike } from './bike';
@@ -119,7 +121,10 @@ if (location.search.includes('debug')) {
 
 const net = new Net(getBrowserId());
 const lives = new Lives();
-net.onLives = (n) => lives.set(n);
+net.onLives = (n, beaten) => {
+  lives.set(n, beaten);
+  if (allBeaten(beaten)) victory(WORLD_ID);
+};
 net.onEnded = (why) => landing(why);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { net });
 // Machine progress (large sites and the disassembly table), from the server: every machine is kept up to date,
