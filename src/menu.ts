@@ -55,7 +55,7 @@ export class Menu {
     this.infoEl.style.display = this.stats ? 'block' : 'none';
 
     this.el.id = 'menu';
-    this.el.innerHTML = `<div class="panel"><h2>dadajam</h2><button class="resume">Resume</button>
+    this.el.innerHTML = `<div class="panel"><h2>hiekka</h2><button class="resume">Resume</button>
 <h3>Settings</h3>
 <label class="row"><span>Volume</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
 <label class="row"><span>Music</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label>
