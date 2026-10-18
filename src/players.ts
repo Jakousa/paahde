@@ -86,7 +86,7 @@ export interface AvatarModel {
   dispose(): void;
 }
 
-const STRIDE = 1.15; // metres per footstep, matches the first-person head bob
+const STRIDE = 1.72; // metres per footstep, matches the first-person head bob (src/camera.ts) and the Run clip
 const STREAK_STEP = 0.3; // metres per slide-streak segment
 const STREAK_WIDTH = 0.42;
 

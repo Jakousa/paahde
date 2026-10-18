@@ -20,7 +20,9 @@ const BASE_FOV = 72;
 const SPRINT_FOV_KICK = 9;
 /** Widest the view gets (sprinting); the sun's shadow cascades are fitted to it. */
 export const MAX_FOV = BASE_FOV + SPRINT_FOV_KICK;
-const STRIDE = 1.15; // metres per step (half a bob cycle)
+// Metres per step (half a bob cycle): the third-person Run clip's (RUN_REF × its 0.73 s cycle / 2, src/models/scavenger.ts)
+// so the view, the footstep sounds (src/players.ts) and the body's feet keep one cadence, ~4.4 steps/s at a walk.
+const STRIDE = 1.72;
 // Climbing (grade from CLIMB_FROM to CLIMB_FULL along the way you walk): steps up to CLIMB_SHORTEN shorter and
 // up to 1 + CLIMB_HEAVY times the bob, a trudge in step with the third-person body (src/models/scavenger.ts).
 const CLIMB_FROM = 0.08;
@@ -174,8 +176,8 @@ export class FirstPersonCamera {
     this.bobAmount += (bobTarget - this.bobAmount) * (1 - Math.exp(-dt * 6));
     if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / (crouched ? CROUCH_CYCLE / 2 : STRIDE * (1 - CLIMB_SHORTEN * this.climb));
     const s = Math.sin(this.bobPhase);
-    const bobY = (0.5 - s * s) * 0.03 * this.bobAmount;
-    const bobX = s * 0.015 * this.bobAmount;
+    const bobY = (0.5 - s * s) * 0.018 * this.bobAmount;
+    const bobX = s * 0.009 * this.bobAmount;
 
     // Camera basis on the ground plane.
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);

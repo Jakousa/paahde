@@ -5,7 +5,7 @@
 // of SLOT seconds, each a step starting near the slot start. Outside it is a walk on a gravel trail,
 // levelled so a steady walk at ~2.4 steps/s measures −23 LUFS; inside the base it is footsteps on concrete,
 // which only peak-normalise to about −30 LUFS, so their gain is higher to sound as loud. `gain` pulls both
-// well under the wind, since in game you take ~5 steps/s.
+// well under the wind, since in game you take ~4.4 steps/s.
 import { audio } from './audio';
 
 export type Surface = 'sand' | 'concrete';
