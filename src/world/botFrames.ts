@@ -1,5 +1,6 @@
 // Guardians and drones between server updates ('bots', ~10 Hz, shared/guardians.ts): drawn BOT_DELAY_MS in the
-// past and interpolated between the two messages around that time, like remote players (src/net.ts).
+// past and interpolated between the two messages around that time, like remote players (src/net.ts). Past the latest
+// one (a network stall) they carry on as they were going for up to EXTRAP_MS, then stop and wait.
 import type { ServerMsg } from '../../shared/protocol.ts';
 import { CRAWLER, F_STRIDE, GUARDIAN, type Kind } from '../../shared/guardians.ts';
 
@@ -7,6 +8,8 @@ type BotsMsg = Extract<ServerMsg, { t: 'bots' }>;
 
 /** How far behind the server clock (ms) they're drawn: two updates and some jitter. */
 export const BOT_DELAY_MS = 250;
+/** How long (ms) past the latest message they're drawn carrying on before they stop. */
+const EXTRAP_MS = 250;
 export const G_STRIDE = 13;
 export const D_STRIDE = 12;
 
@@ -45,12 +48,13 @@ function index(arr: number[], stride: number) {
   return m;
 }
 
-/** The two messages around `time` and how far between them (both the latest when it's past the end). */
+/** The two messages around `time` and how far between them; past the latest, the last two and t > 1 (carried on
+ *  by at most EXTRAP_MS). */
 function around(msgs: readonly BotsMsg[], time: number): [BotsMsg, BotsMsg, number] | null {
   if (!msgs.length) return null;
   for (let i = msgs.length - 1; i > 0; i--) {
     const a = msgs[i - 1], b = msgs[i];
-    if (a.time <= time) return [a, b, Math.min(1, Math.max(0, (time - a.time) / Math.max(1, b.time - a.time)))];
+    if (a.time <= time) return [a, b, Math.max(0, (Math.min(time, b.time + EXTRAP_MS) - a.time) / Math.max(1, b.time - a.time))];
   }
   return [msgs[0], msgs[0], 0];
 }
@@ -61,7 +65,8 @@ export function guardiansAt(msgs: readonly BotsMsg[], time: number): GuardianFra
   const [a, b, t] = ab;
   const ia = index(a.g, G_STRIDE), out: GuardianFrame[] = [];
   // Feet as of the message at or before `time` (they jump, not glide: a new spot starts a swing there).
-  const fa = feetOf(a, Math.max(0, time - a.time) / 1000), fb = a === b ? fa : feetOf(b, 0);
+  const at = time >= b.time ? b : a;
+  const fa = feetOf(at, Math.max(0, time - at.time) / 1000), fb = at === b ? fa : feetOf(b, 0);
   for (let j = 0; j < b.g.length; j += G_STRIDE) {
     const g = b.g, i = ia.get(g[j]);
     const p = i === undefined ? g : a.g, k = i === undefined ? j : i;
