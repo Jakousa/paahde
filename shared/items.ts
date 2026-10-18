@@ -24,7 +24,7 @@ const PART_SIZES: Partial<Record<PartId, Size>> = { battery: [1, 2], motor: [2, 
 export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; size?: Size }> = {
   canteen: { label: 'Water bottle', stack: 1, size: [1, 2] },
   spyglass: { label: 'Telescope', stack: 1, size: [2, 1] },
-  motorcycle: { label: 'Motorcycle', stack: 1, size: [4, 3] },
+  motorcycle: { label: 'Motorcycle', stack: 1, size: [4, 2] },
   backpack: { label: 'Backpack', stack: 1, size: [2, 2] },
   storm_detector: { label: 'Storm detector', stack: 1, size: [1, 2] },
   wristpad: { label: 'Wrist computer', stack: 1 },
@@ -51,9 +51,9 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   laser_pistol: { label: 'Laser pistol', stack: 1, size: [2, 1] },
   jammer: { label: 'Jammer', stack: 1, size: [2, 1] },
   // Salvage wrecks carried home from the desert (shared/wrecks.ts), taken apart on the disassembly table too.
-  vehicle_frame: { label: SALVAGE.vehicle_frame.label, stack: 1, size: [4, 3] },
+  vehicle_frame: { label: SALVAGE.vehicle_frame.label, stack: 1, size: [4, 2] },
   water_jet: { label: SALVAGE.water_jet.label, stack: 1, size: [3, 2] },
-  warp_core: { label: SALVAGE.warp_core.label, stack: 1, size: [3, 3] },
+  warp_core: { label: SALVAGE.warp_core.label, stack: 1, size: [3, 2] },
   ai_control: { label: SALVAGE.ai_control.label, stack: 1, size: [2, 2] },
 };
 const ORDER = Object.keys(ITEMS);
@@ -61,8 +61,9 @@ const ORDER = Object.keys(ITEMS);
 /** Used from the hotbar (held in hand): Store all leaves these in the bag. Placeables (shared/placed.ts) stay too. */
 export const TOOLS = new Set(['canteen', 'spyglass', 'shovel', 'metal_detector', 'laser_rifle', 'laser_pistol', 'jammer']);
 
-/** Every item fits a grid this many rows tall once turned (its smaller side): chests keep this many rows empty. */
-export const MAX_SIDE = 3;
+/** Every item fits a grid this many rows tall once turned (its smaller side): the smallest backpack's rows
+ *  (shared/gear.ts backpackRows), so anything can be picked up into any bag; chests keep this many rows empty. */
+export const MAX_SIDE = 2;
 for (const [k, v] of Object.entries(ITEMS)) if (Math.min(...(v.size ?? [1, 1])) > MAX_SIDE) throw new Error(`shared/items.ts: ${k} is too big`);
 
 /** Item kind of a part (shared/parts.ts partItem). */
