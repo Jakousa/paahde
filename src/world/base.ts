@@ -38,11 +38,15 @@ const BULB = { x: 0, y: 1.95, z: HUT.z0 + 0.25, intensity: 2, distance: 9 };
  *  room's front and back walls. Each has a warm point light at its bulb. */
 /** Room lamps hang on rods from the ceiling, their mounts this high above the floor (shade bottom about 3.9 m). */
 const LAMP_MOUNT = 4.3;
+/** The work lamps over the two benches hang low and bright, a little in front of the table tops
+ *  (shade bottom about 2.4 m, above a head), so the tables and the machine being taken apart are well lit. */
+const WORK_MOUNT = 2.7;
+const WORK_X = ROOM.w - 1.0;
 const HALL_LAMP_Z = (STAIRS.z - STAIRS.n * STAIRS.run + HALL.z) / 2;
 const LAMPS = [
   { x: 0, z: HALL_LAMP_Z, ceil: vaultCrown(HALL_LAMP_Z) - FLOOR, intensity: 0.8 },
-  { x: -ROOM.w + 1.4, z: ROOM_Z, ceil: LAMP_MOUNT, intensity: 5.5 },
-  { x: ROOM.w - 1.4, z: ROOM_Z, ceil: LAMP_MOUNT, intensity: 5.5 },
+  { x: -WORK_X, z: ROOM_Z, ceil: WORK_MOUNT, intensity: 9 },
+  { x: WORK_X, z: ROOM_Z, ceil: WORK_MOUNT, intensity: 9 },
   { x: 0, z: HALL.z - 3, ceil: LAMP_MOUNT, intensity: 5.5 },
   { x: 0, z: ROOM.z + 3, ceil: LAMP_MOUNT, intensity: 5.5 },
 ];
