@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
-import { bikeLevel, bottleSips, digTool, GEAR_KINDS, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
+import { bikeLevel, bottleSips, carriedGear, digTool, GEAR_KINDS, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
@@ -799,7 +799,7 @@ function broadcast(time: number) {
   }
   const list: PlayerSnap[] = [...players.values()].map((p) => {
     const item = p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot]?.kind : undefined;
-    const gear = wornGear(items.slots(p.browserId, 'equip'));
+    const gear = wornGear(items.slots(p.browserId, 'equip')) | carriedGear(items.slots(p.browserId, 'bag'), p.slot);
     return {
       id: p.id, color: p.color, pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}), ...(p.aim ? { aim: 1 as const } : {}),
       ...(item ? { item } : {}), ...(gear ? { gear } : {}), ...(p.down ? { down: p.down.push } : {}),

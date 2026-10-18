@@ -4,7 +4,7 @@
 #   ... -- --fast        skip baking (procedural materials, no export), save tools/models/out/scavenger_fast.blend
 #   ... -- --tex 1024     atlas size (default 2048 baked, colour kept at 2048, normal/ORM downscaled to 1024)
 #
-# Output: public/models/scavenger.glb (skinned meshes Scavenger_Body and Scavenger_Backpack (hidden without one), materials Scavenger / PlayerTint / Lens,
+# Output: public/models/scavenger.glb (skinned meshes Scavenger_Body, Scavenger_Backpack (hidden without one) and the carried gear (GEAR_MESH), materials Scavenger / PlayerTint / Lens,
 # clips Idle, Walk, Run, Jump, Dig, Slide, Powerslide, Crouch, CrouchWalk). Faces -Y in Blender = +Z in three.js.
 import math
 import os
@@ -97,7 +97,11 @@ def seg_dist(p, a, b):
 
 
 PARTS = []  # (obj, weight spec)
-BACK_GEAR = []  # backpack pieces, split into their own mesh (shown only with a backpack equipped)
+# Gear pieces split into their own meshes, by vertex group → glb mesh: the backpack (shown only with one equipped) and
+# the things carried on the body (shown only while in the bag: src/models/scavenger.ts CARRIED).
+GEAR = {'GearBack': [], 'GearShovel': [], 'GearCanteen': [], 'GearSidearm': [], 'GearScrap': []}
+GEAR_MESH = {'GearBack': 'Scavenger_Backpack', 'GearShovel': 'Scavenger_Shovel', 'GearCanteen': 'Scavenger_Canteen',
+             'GearSidearm': 'Scavenger_Sidearm', 'GearScrap': 'Scavenger_Scrap'}
 
 
 def part(obj, bones=None, rigid=None, fn=None, bias=None, power=4.0):
@@ -646,19 +650,22 @@ def build_belt():
     p, n, tg = belt_frame(2.75, 0.205, 0.165)
     R = Matrix((tg, n, V((0, 0, 1)))).transposed()
     cc = p + n * 0.045 + V((0, 0, -0.10))
-    objs.append(rounded_box('Canteen', cc, (0.12, 0.05, 0.15), M['brass'], bevel=0.022, segments=3, rot=R))
-    objs.append(rounded_box('CanteenWrap', cc + V((0, 0, -0.02)), (0.125, 0.054, 0.07), M['canvas'], bevel=0.02,
+    can = []
+    can.append(rounded_box('Canteen', cc, (0.12, 0.05, 0.15), M['brass'], bevel=0.022, segments=3, rot=R))
+    can.append(rounded_box('CanteenWrap', cc + V((0, 0, -0.02)), (0.125, 0.054, 0.07), M['canvas'], bevel=0.02,
                             segments=2, rot=R))
-    objs.append(cylinder('CanteenNeck', cc + V((0, 0, 0.074)), cc + V((0, 0, 0.098)), 0.012, M['steel'], n=10))
+    can.append(cylinder('CanteenNeck', cc + V((0, 0, 0.074)), cc + V((0, 0, 0.098)), 0.012, M['steel'], n=10))
+    GEAR['GearCanteen'].append(part(join(can, 'HipCanteen'), rigid='Hips'))
     # holstered tool (right hip): salvaged cutter / scanner
     p, n, tg = belt_frame(3.35, 0.205, 0.165)
     hc = p + n * 0.03 + V((0, 0, -0.13))
     objs.append(rounded_box('Holster', hc, (0.05, 0.035, 0.17), M['leather'], bevel=0.012,
                             rot=Matrix((tg, n, V((0, 0, 1)))).transposed()))
-    objs.append(cylinder('ToolBody', hc + V((0, 0, 0.07)), hc + V((0, 0, 0.16)), 0.017, M['steel'], n=10,
-                         rings_extra=[(0.3, 1.15), (0.4, 1.15), (0.45, 1.0)]))
-    objs.append(cylinder('ToolGrip', hc + V((0, 0, 0.15)) + n * 0.0, hc + V((0, 0, 0.15)) + n * 0.06 + V((0, 0, 0.02)),
-                         0.013, M['wood'], n=8))
+    tool = [cylinder('ToolBody', hc + V((0, 0, 0.07)), hc + V((0, 0, 0.16)), 0.017, M['steel'], n=10,
+                         rings_extra=[(0.3, 1.15), (0.4, 1.15), (0.45, 1.0)]),
+            cylinder('ToolGrip', hc + V((0, 0, 0.15)) + n * 0.0, hc + V((0, 0, 0.15)) + n * 0.06 + V((0, 0, 0.02)),
+                     0.013, M['wood'], n=8)]
+    GEAR['GearSidearm'].append(part(join(tool, 'Sidearm'), rigid='Hips'))
     gear = join(objs, 'BeltGear')
     part(gear, rigid='Hips')
     # hanging vacuum-tube trinket on the left hip
@@ -710,7 +717,7 @@ def build_straps():
     pts = [V((x, env_front(x, z, CAPE_T, 0.018), z)) for x in [0.125 - 0.25 * k / 8 for k in range(9)]]
     objs.append(sweep('Sternum', pts, rect_profile(0.025, 0.006), M['leather'], up=V((0, 0, 1))))
     st = join(objs, 'Straps')
-    BACK_GEAR.append(st)
+    GEAR['GearBack'].append(st)
     part(st, bones=['Spine1', 'Spine2', 'LeftShoulder', 'RightShoulder'], bias={'Spine2': 2.5}, power=3)
     # chest pressure gauge on the left strap (the hose ends here)
     gx, gz = 0.125, 1.33
@@ -719,7 +726,7 @@ def build_straps():
     gd = V((0.15, -1, 0.25)).normalized()
     g = [cylinder('Gauge', gc, gc + gd * 0.022, 0.029, M['brass'], n=16, rings_extra=[(0.8, 1.0), (0.9, 0.9)]),
          cylinder('GaugeFace', gc + gd * 0.019, gc + gd * 0.023, 0.023, M['steel'], n=16)]
-    BACK_GEAR.append(part(join(g, 'Gauge'), rigid='Spine2'))
+    GEAR['GearBack'].append(part(join(g, 'Gauge'), rigid='Spine2'))
 
 
 def build_backpack():
@@ -794,12 +801,13 @@ def build_backpack():
     # dented scrap plate hanging on the right
     sp = rounded_box('Scrap', V((-0.12, 0.41, 1.03)), (0.15, 0.008, 0.11), M['paint'], bevel=0.004, segments=1,
                      rot=Matrix.Rotation(math.radians(12), 3, 'Y'))
-    objs.append(sp)
+    GEAR['GearScrap'].append(part(join([sp], 'ScrapPlate'), rigid='Spine2'))
     # shovel strapped diagonally, blade up behind the left shoulder
+    shovel = []
     h0, h1 = V((-0.17, 0.425, 0.98)), V((0.16, 0.425, 1.50))
     hd = (h1 - h0).normalized()
-    objs.append(cylinder('ShovelHandle', h0, h1, 0.0145, M['wood'], n=8))
-    objs.append(cylinder('ShovelGrip', h0 - hd * 0.02, h0 + hd * 0.08, 0.017, M['leather'], n=8))
+    shovel.append(cylinder('ShovelHandle', h0, h1, 0.0145, M['wood'], n=8))
+    shovel.append(cylinder('ShovelGrip', h0 - hd * 0.02, h0 + hd * 0.08, 0.017, M['leather'], n=8))
     blade_c = h1 + hd * 0.11
     bx = hd.cross(V((0, 1, 0))).normalized()
     Rb = Matrix((bx, V((0, 1, 0)), hd)).transposed()
@@ -809,17 +817,18 @@ def build_backpack():
         lc.y -= 0.025 * (1 - (lc.x / 0.075) ** 2)
         lc.x *= 1 - 0.35 * max(0.0, lc.z / 0.1) ** 2
         v.co = blade_c + Rb @ lc
-    objs.append(blade)
-    objs.append(cylinder('ShovelSocket', h1 - hd * 0.03, h1 + hd * 0.02, 0.019, M['steel'], n=8))
+    shovel.append(blade)
+    shovel.append(cylinder('ShovelSocket', h1 - hd * 0.03, h1 + hd * 0.02, 0.019, M['steel'], n=8))
     for z in (1.14, 1.34):
         f = (z - h0.z) / (h1.z - h0.z)
         c = h0.lerp(h1, f)
-        objs.append(cylinder('ShovelStrap', c - hd * 0.012, c + hd * 0.012, 0.022, M['leather2'], n=8))
+        shovel.append(cylinder('ShovelStrap', c - hd * 0.012, c + hd * 0.012, 0.022, M['leather2'], n=8))
+    GEAR['GearShovel'].append(part(join(shovel, 'Shovel'), rigid='Spine2'))
     pack = join(objs, 'Backpack')
     part(pack, rigid='Spine2')
-    BACK_GEAR.append(pack)
+    GEAR['GearBack'].append(pack)
     tubes = join(lens, 'PackTubes')
-    BACK_GEAR.append(tubes)
+    GEAR['GearBack'].append(tubes)
     return tubes
 
 
@@ -852,9 +861,10 @@ def build_character():
     for lo, bone in zip(lens_objs, ['Head', 'Hips', 'Spine2']):
         apply_weights(lo, dict(bones=None, rigid=bone, fn=None, bias={}, power=4))
 
-    # tag the backpack's vertices, to split them off after the joins (main)
-    for o in BACK_GEAR:
-        o.vertex_groups.new(name='GearBack').add(list(range(len(o.data.vertices))), 1.0, 'REPLACE')
+    # tag the gear's vertices, to split them off after the joins (main)
+    for group, objs in GEAR.items():
+        for o in objs:
+            o.vertex_groups.new(name=group).add(list(range(len(o.data.vertices))), 1.0, 'REPLACE')
 
     body_parts = [o for o, _ in PARTS]
     total = sum(tri_count(o) for o in body_parts) + sum(tri_count(o) for o in lens_objs)
@@ -1147,12 +1157,12 @@ def main():
     lens.modifiers.clear()
     body.modifiers.clear()
     body = join([body, lens], 'Scavenger_Body')
-    pack = split_group(body, 'GearBack', 'Scavenger_Backpack')
-    for m in (body, pack):
+    gear = [split_group(body, group, name) for group, name in GEAR_MESH.items()]
+    for m in [body, *gear]:
         mod = m.modifiers.new('Armature', 'ARMATURE')
         mod.object = rig
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT_DIR, 'scavenger.blend'))
-    bake.export(rig, [body, pack], OUT_GLB)
+    bake.export(rig, [body, *gear], OUT_GLB)
     print('TRIS_FINAL', tri_count(body))
 
 

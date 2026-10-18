@@ -8,7 +8,8 @@
 // The glb is fetched once and shared; each instance gets its own skeleton (SkeletonUtils.clone) and its
 // own copy of the `PlayerTint` material (scarf, face mask, sash, armband), which setColor() recolours.
 // setOutfit() says what's in the hand (carried at the right hip, src/models/outfit.ts) and which gear is worn:
-// the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt. A gun in hand
+// the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt, and which things in
+// the bag are carried on the body (CARRIED: their own meshes too). A gun in hand
 // (GUN_HOLD) is carried at the low ready, or raised along the look pitch while `aiming`.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
@@ -17,7 +18,7 @@ import { LegIk, lowestAnkles, type Ground } from './legIk';
 import { Ragdoll, type RagdollGround } from './ragdoll';
 import { CrouchGait } from './crouchGait';
 import type { RidePose } from '../players';
-import { wornBit } from '../../shared/gear.ts';
+import { carriedBit, wornBit } from '../../shared/gear.ts';
 import { beltModel, disposeModel, heldModel, heldMuzzle, wristModel } from './outfit';
 import { LAMP_ON } from './jammer';
 
@@ -134,6 +135,8 @@ export class ScavengerModel {
   private held: THREE.Object3D | null = null;
   private gear = 0;
   private pack: THREE.Object3D | null = null;
+  /** The carried things' meshes and the gear bits each needs. */
+  private carried: { mesh: THREE.Object3D; bits: number }[] = [];
   private wrist: THREE.Object3D | null = null;
   private belt: THREE.Object3D | null = null;
   /** Meshes were added since the last setOutfit (it tells the Avatar). */
@@ -194,6 +197,10 @@ export class ScavengerModel {
       if (b && !this.posed.some((p) => p.bone === b)) this.posed.push({ bone: b, base: b.quaternion.clone() });
     }
     this.pack = model.getObjectByName('Scavenger_Backpack') ?? null;
+    for (const [name, bits] of CARRIED) {
+      const mesh = model.getObjectByName(name);
+      if (mesh) this.carried.push({ mesh, bits });
+    }
     this.wearGear(model);
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
@@ -342,6 +349,7 @@ export class ScavengerModel {
   /** Called every render frame. */
   update(pose: ScavengerPose, dt: number) {
     if (this.pack) this.pack.visible = (this.gear & BACK) !== 0;
+    for (const c of this.carried) c.mesh.visible = (this.gear & c.bits) === c.bits;
     if (this.wrist) this.wrist.visible = (this.gear & WRIST) !== 0;
     if (this.belt) this.belt.visible = (this.gear & BELT) !== 0;
     if (!this.mixer) return;
@@ -711,6 +719,14 @@ const SLIDE_HAND = V(-0.42, 0.05, 0.3);
 const _saved = Array.from({ length: 8 }, () => new THREE.Quaternion());
 
 const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt');
+/** glb meshes of things carried on the body (tools/models/scavenger.py GEAR_MESH) and the gear bits that show them:
+ *  the shovel and scrap plate are strapped to the backpack, so they need it too. */
+const CARRIED: [string, number][] = [
+  ['Scavenger_Shovel', carriedBit('shovel') | BACK],
+  ['Scavenger_Scrap', carriedBit('scrap') | BACK],
+  ['Scavenger_Canteen', carriedBit('canteen')],
+  ['Scavenger_Sidearm', carriedBit('laser_pistol')],
+];
 
 /** Parent `o` to `bone`, placed at `p` / `q` in `model`'s space (as it is posed now). */
 function attach(model: THREE.Object3D, bone: THREE.Object3D, o: THREE.Object3D, p: THREE.Vector3, q: THREE.Quaternion) {

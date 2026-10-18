@@ -64,7 +64,7 @@ import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { machinesAt } from '../shared/crash.ts';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
-import { equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
+import { carriedGear, equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootName } from './world/loot';
 import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
@@ -304,7 +304,7 @@ renderer.setAnimationLoop((time) => {
   lastHeading = s.riding ? v.heading : NaN;
   // What's in hand (the selected hotbar slot) and worn (shared/gear.ts): drawn on the body, and sets what the tools can do.
   const inHand = tools.slot >= 0 ? net.boxes.bag?.[tools.slot] : null;
-  me.setOutfit(inHand?.kind ?? null, wornGear(net.boxes.equip));
+  me.setOutfit(inHand?.kind ?? null, wornGear(net.boxes.equip) | carriedGear(net.boxes.bag, tools.slot));
   const riding = ride(0, me, { ...s, x: v.x, y: v.y, z: v.z, heading: v.heading, pitch: orbit.pitch }, frameDt);
   if (!riding) {
     me.update(

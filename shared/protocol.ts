@@ -122,7 +122,7 @@ export type Hands = 0 | 1 | 2 | 3;
 // hands: what they're holding (Hands), omitted when empty.
 // item: the kind of the item in their selected hotbar slot (drawn in their hand), omitted when empty.
 // aim: their gun (or jammer) is raised to aim (the 'hands' message), omitted when not.
-// gear: the gear they wear (shared/gear.ts wornGear bits), omitted when none.
+// gear: the gear they wear and carry (shared/gear.ts wornGear | carriedGear bits), omitted when none.
 // down: dead, lying as a ragdoll until the respawn (shared/ragdoll.ts); the push (m/s) that threw the body, [0, 0, 0] if none.
 export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; aim?: 1; item?: string; gear?: number; down?: [number, number, number] };
 

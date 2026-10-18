@@ -3,6 +3,7 @@
 // ?walk: the characters walk circles over rolling dunes instead, to check foot planting and leg IK;
 // &heading=1.57 strafes right, 3.14 backs up (travel direction relative to facing).
 // ?item=laser_rifle puts that item in every hand; &aim raises it to aim (&pitch=0.3 aims up).
+// ?gear=255 wears and carries that gear (shared/gear.ts wornGear | carriedGear bits).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ScavengerModel, type ScavengerClip } from './scavenger';
@@ -52,6 +53,7 @@ let pitch = 0.12;
 let dist = 11;
 
 const item = params.get('item');
+const gear = Number(params.get('gear') ?? 0);
 const aiming = params.has('aim');
 const aimPitch = Number(params.get('pitch') ?? 0);
 const only = params.get('clip') as ScavengerClip | null;
@@ -71,7 +73,7 @@ clips.forEach((clip, i) => {
   models.push({ m, clip });
   void m.ready.then(() => {
     m.play(clip, 0);
-    if (item) m.setOutfit(item, 0);
+    if (item || gear) m.setOutfit(item, gear);
   });
 });
 

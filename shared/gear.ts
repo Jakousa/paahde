@@ -182,6 +182,21 @@ export function wornGear(equip: Slots | undefined): number {
 /** An equipment slot's bit in wornGear (by EQUIP_SLOTS index: back 1, wrist 2, belt 4, vehicle 8). */
 export const wornBit = (slot: EquipSlot) => 1 << EQUIP_SLOTS.indexOf(slot);
 
+/** Things drawn on the body while in the bag (not in hand): the shovel and scrap plate on the backpack, the canteen
+ *  and sidearm on the belt. Their bits follow the worn ones (carriedBit). */
+export const CARRIED = ['shovel', 'scrap', 'canteen', 'laser_pistol'] as const;
+export const carriedBit = (kind: (typeof CARRIED)[number]) => 1 << (EQUIP_SLOTS.length + CARRIED.indexOf(kind));
+
+/** The CARRIED kinds in the bag outside the hand (`held`: the selected hotbar slot, -1 for none), as bits. */
+export function carriedGear(bag: Slots | undefined, held: number): number {
+  let bits = 0;
+  bag?.forEach((it, i) => {
+    const k = CARRIED.indexOf(it?.kind as (typeof CARRIED)[number]);
+    if (k >= 0 && i !== held) bits |= 1 << (EQUIP_SLOTS.length + k);
+  });
+  return bits;
+}
+
 /** The bag's layout: the hotbar, then the grid with as many rows open as the backpack's (none without one). */
 export function bagShape(equip: Slots | undefined): Shape {
   const pack = equipped(equip, 'back');
