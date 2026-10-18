@@ -28,9 +28,7 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   // A grow bag on a scrap frame.
   plant_bed: [SCRAP(2), CLOTH(2)],
   uv_lamp: [SCRAP(2), { label: 'Wiring coil', n: 1, part: 'coil' }],
-  // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
-  // (The guns aren't crafted: they're found broken and repaired, shared/gear.ts.)
-  jammer: [{ label: 'Compute unit', n: 1, part: 'compute' }, { label: 'Wiring coil', n: 1, part: 'coil' }, { label: 'Battery', n: 1, part: 'battery' }],
+  // (Tools, guns and the jammer aren't crafted: they're found broken and repaired, shared/gear.ts.)
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -175,6 +173,8 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   metal_detector: { n: 2, level: 1 },
   // The guns (shared/rifle.ts): the pistol near home, the rifle out on crawler ground, to take on the guardians with.
   laser_pistol: { n: 4, level: 0 }, laser_rifle: { n: 3, level: 1 },
+  // The jammer (shared/jammer.ts): out where the roaming drones and the jets first come after you.
+  jammer: { n: 3, level: 1 },
 };
 
 /** One broken motorcycle always lies on the sand in front of the base door (server/loot.ts homeBikeSpot), so a bike is

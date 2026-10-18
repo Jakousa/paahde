@@ -46,7 +46,7 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
   plant_bed: { label: 'Plant bed', stack: 1, size: [3, 2] },
   uv_lamp: { label: 'UV lamp', stack: 1, size: [1, 2] },
-  // The guns (shared/rifle.ts) are gear: found broken, repaired at the workbench. The jammer is crafted.
+  // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.
   laser_rifle: { label: 'Laser rifle', stack: 1, size: [4, 1] },
   laser_pistol: { label: 'Laser pistol', stack: 1, size: [2, 1] },
   jammer: { label: 'Jammer', stack: 1, size: [2, 1] },

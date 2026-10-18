@@ -4,7 +4,8 @@
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
 // Kept in memory: a restart lays out fresh ones. Items players drop are kept in the DB (`dropped`) and never respawn.
 import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
-import { GEAR, GEAR_KINDS, refit } from '../shared/gear.ts';
+import { GEAR, GEAR_KINDS, isGear, refit, scrapParts } from '../shared/gear.ts';
+import { JAMMER } from '../shared/jammer.ts';
 import { CLOTH, partKind, SCRAP } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
@@ -35,8 +36,8 @@ const CACHE_DEPTH = [0.5, 1.1];
 const FIND_RESPAWN_MS = 3 * 60_000;
 const CACHE_RESPAWN_MS = 60_000;
 const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
-/** Broken gear a cache can hold (the guns have their own odds: only the pistol, CACHES.contents.pistol). */
-const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS));
+/** Broken gear a cache can hold (not the jammer; the guns have their own odds: only the pistol, CACHES.contents.pistol). */
+const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS) && k !== JAMMER);
 
 type Spawn = { at: number; what: 'find' | 'cache'; kind?: string };
 
@@ -98,7 +99,8 @@ export class LootServer {
     this.db = db;
     // Dropped items keep their ids; everything else is numbered after them.
     for (const r of db.loadDropped()) {
-      const parts = r.parts && (refit(r.kind, r.parts) ?? r.parts); // gear whose slots changed since (shared/gear.ts)
+      // Gear whose slots changed since (shared/gear.ts refit); a jammer from before it was gear works, with Scrap parts.
+      const parts = r.parts ? (refit(r.kind, r.parts) ?? r.parts) : isGear(r.kind) ? scrapParts(r.kind) : undefined;
       this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, depth: 0, src: 'drop' });
       this.nextId = Math.max(this.nextId, r.id + 1);
     }

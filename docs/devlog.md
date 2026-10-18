@@ -2,6 +2,15 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — The jammer is found, not crafted
+
+- The jammer is gear now (shared/gear.ts): found broken on crawler ground (level 1, 3 at once, not in caches), the
+  ring where roaming drones and jets first come after you (the scrap fields have none), and repaired at the workbench
+  with a compute unit, a coil and a battery. A broken one isn't raised and the server ignores its 'jam'. Better parts
+  lock on faster (`jamMs`: JAM_MS at Scrap parts down to 60% at Space-grade; client lamp and server count agree).
+- Its recipe is gone: the workbench crafts only the plant bed and the UV lamp. Jammers from before (no parts, in a
+  box or dropped on the sand) load with Scrap parts and keep working. The debug gear button gives one with the rest.
+
 ## 2026-10-18 — Two basic materials: scrap and cloth; guns are found broken and repaired
 
 - **Scrap is one item.** The nine junk kinds (metal sheet/plank, dented sheet, oil/rusty drum, scrap/bent frame,

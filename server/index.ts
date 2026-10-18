@@ -6,7 +6,7 @@ import sirv from 'sirv';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
-import { bikeLevel, bottleSips, digTool, GEAR_KINDS, gunCooldown, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
+import { bikeLevel, bottleSips, digTool, GEAR_KINDS, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
@@ -382,16 +382,16 @@ function onJam(p: Player, m: Extract<ClientMsg, { t: 'jam' }>) {
   const now = performance.now();
   const nums = [m.x, m.y, m.z, m.dx, m.dy, m.dz];
   if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v)) || !Number.isInteger(m.id) || (m.kind !== 'jet' && m.kind !== 'drone')) return;
-  const kind = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot]?.kind;
+  const held = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot];
   const s = p.state, len = Math.hypot(m.dx, m.dy, m.dz);
-  if (kind !== JAMMER || p.down || len < 0.5 || Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
+  if (held?.kind !== JAMMER || !repaired(held) || p.down || len < 0.5 || Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
   const at = m.kind === 'jet' ? jets.where(m.id, now) : guardians.droneAt(m.id);
   if (!at || !inCone(m.x, m.y, m.z, m.dx / len, m.dy / len, m.dz / len, at.x, at.y, at.z, 0.1)) return;
   const j = p.jam && p.jam.kind === m.kind && p.jam.id === m.id ? p.jam : (p.jam = { kind: m.kind, id: m.id, acc: 0, at: now });
   const gap = now - j.at, step = Math.min(gap, JAM_SEND_MS * 1.5);
   j.acc = Math.max(0, j.acc - (gap - step) * JAM_BLEED) + step;
   j.at = now;
-  if (j.acc < JAM_MS) return;
+  if (j.acc < jamMs(JAM_MS, quality(held))) return;
   p.jam = null;
   if (m.kind === 'jet') jets.jam(m.id, now);
   else guardians.jamDrone(m.id, now);
@@ -543,13 +543,12 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
 }
 
 // Debug menu: one of each piece of gear (the guns too), repaired with Scrap parts, into the bag (what fits) and the
-// equipment slots (if free), and a jammer.
+// equipment slots (if free).
 function onDebugGear(p: Player) {
   for (const kind of GEAR_KINDS) {
     const parts = scrapParts(kind);
     if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
   }
-  if (!items.slots(p.browserId, 'bag').some((it) => it?.kind === JAMMER)) items.giveItem(p.browserId, { kind: JAMMER });
   for (const box of ['bag', 'equip']) sendBox(p, box);
   gearChanged(p.browserId);
 }

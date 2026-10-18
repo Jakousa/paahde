@@ -1,4 +1,4 @@
-// The jammer: a handheld tool (crafted, shared/crafting.ts) that takes down fixed-wing drones (shared/jets.ts) and
+// The jammer: a handheld tool (gear found broken on crawler ground and repaired, shared/gear.ts) that takes down fixed-wing drones (shared/jets.ts) and
 // searchlight drones (shared/guardians.ts) without a shot. Hold the use button with one inside its wide cone for
 // JAM_MS and its controls drop out: it glides down and lands whole (a jet on its belly, a drone settling on the sand).
 // Losing it from the cone bleeds the lock away at JAM_BLEED× the rate it built.
@@ -8,7 +8,7 @@
 // and range and adds up the time.
 
 export const JAMMER = 'jammer';
-/** Held on one target this long (ms) brings it down. */
+/** Held on one target this long (ms) brings it down, with Scrap parts (better parts: shared/gear.ts jamMs). */
 export const JAM_MS = 5000;
 /** The cone's half angle (rad) and its reach (m): enough for a jet passing high overhead. */
 export const JAM_CONE = 0.2;

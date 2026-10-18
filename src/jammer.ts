@@ -11,7 +11,8 @@ import * as THREE from 'three/webgpu';
 import { inCone, JAM_BLEED, JAM_CONE, JAM_MS, JAM_SEND_MS } from '../shared/jammer.ts';
 import { audio } from './audio';
 import type { FirstPersonCamera } from './camera';
-import { useHeld } from './input';
+import { tools, useHeld } from './input';
+import { jamMs, quality } from '../shared/gear.ts';
 import type { Net } from './net';
 import { playerHands } from './water';
 import type { Drones } from './world/drones';
@@ -90,8 +91,10 @@ export class Jammer {
       this.level = 0;
     }
     const on = !!next;
-    if (on) this.level = Math.min(1, this.level + (dt * 1000) / JAM_MS);
-    else if (this.target) this.level = Math.max(0, this.level - (dt * 1000 * JAM_BLEED) / JAM_MS);
+    // The lock time this jammer's parts give (shared/gear.ts jamMs), as the server counts it.
+    const lockMs = jamMs(JAM_MS, Math.max(0, quality(this.net.boxes.bag?.[tools.slot])));
+    if (on) this.level = Math.min(1, this.level + (dt * 1000) / lockMs);
+    else if (this.target) this.level = Math.max(0, this.level - (dt * 1000 * JAM_BLEED) / lockMs);
     if (on && performance.now() - this.sentAt >= JAM_SEND_MS) {
       this.sentAt = performance.now();
       this.net.jam(this.target!.kind, this.target!.id, _o.x, _o.y, _o.z, _d.x, _d.y, _d.z);

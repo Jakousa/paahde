@@ -58,6 +58,9 @@ export const GEAR: Record<string, GearSpec> = {
   laser_pistol: { slots: [P('coil'), SCRAP], better: 'how fast it recharges', use: 'Left mouse to fire, right mouse to aim.' },
   laser_rifle: { slots: [P('coil'), P('battery'), P('heatsink'), SCRAP], better: 'how fast it recharges',
     use: 'Left mouse to fire, right mouse to look through the scope.' },
+  // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
+  jammer: { slots: [P('compute'), P('coil'), P('battery')], better: 'how fast it locks on',
+    use: 'Hold the mouse button on a drone or jet until it drops.' },
 };
 export const GEAR_KINDS = Object.keys(GEAR);
 
@@ -149,6 +152,9 @@ export const detectorRange = (q: number) => by(q, 8, 22);
 
 /** A gun's recharge (ms) at quality q: a fifth slower than its base at Scrap parts, a quarter faster at Space-grade. */
 export const gunCooldown = (base: number, q: number) => base * by(q, 1.2, 0.75);
+
+/** The jammer's lock time (ms) at quality q: from its base (shared/jammer.ts JAM_MS) at Scrap parts down to 60% at Space-grade. */
+export const jamMs = (base: number, q: number) => base * by(q, 1, 0.6);
 
 /** Bare hands: slow and narrow. */
 export const HANDS: DigTool = { mm: 70, radius: 0.8, cooldown: 18 };
