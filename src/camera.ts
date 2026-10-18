@@ -7,7 +7,7 @@
 // (crosshair) still aims where the dig/pickup rays go, and the boom shortens so it never sinks into a dune.
 import * as THREE from 'three/webgpu';
 import { heightAt } from '../shared/terrain.ts';
-import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED } from '../shared/sim.ts';
+import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, slopeAt } from '../shared/sim.ts';
 import { CROUCH_CYCLE } from './models/crouchGait';
 import { EYE_HEIGHT } from '../shared/dig.ts'; // the dig and pickup rays start here too
 import { terrainHidden } from '../shared/base.ts';
@@ -21,6 +21,13 @@ const SPRINT_FOV_KICK = 9;
 /** Widest the view gets (sprinting); the sun's shadow cascades are fitted to it. */
 export const MAX_FOV = BASE_FOV + SPRINT_FOV_KICK;
 const STRIDE = 1.15; // metres per step (half a bob cycle)
+// Climbing (grade from CLIMB_FROM to CLIMB_FULL along the way you walk): steps up to CLIMB_SHORTEN shorter and
+// up to 1 + CLIMB_HEAVY times the bob, a trudge in step with the third-person body (src/models/scavenger.ts).
+const CLIMB_FROM = 0.08;
+const CLIMB_FULL = 0.5;
+const CLIMB_SHORTEN = 0.25;
+const CLIMB_HEAVY = 1.2;
+const slope = { gx: 0, gz: 0 };
 const BOOM = 4.5; // third-person distance behind the eye (m)
 const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
 /** Speed slide: the view rolls this far (rad) towards the trailing left hand. */
@@ -42,7 +49,8 @@ export class FirstPersonCamera {
 
   private eyeY = NaN; // smoothed feet height
   private bobPhase = 0;
-  private bobAmount = 0; // 0..1, fades in with walking, out when airborne/stopped
+  private bobAmount = 0; // about 0..1 (more when trudging uphill), fades in with walking, out when airborne/stopped
+  private climb = 0; // 0..1, eased: how much of a trudge uphill the step is
   private crouch = 0; // 0..1, eased in while sliding (crouching: 0.7): the eye drops and the view rolls a touch
   private dip = 0; // landing dip offset (m), spring back to 0
   private dipVel = 0;
@@ -152,10 +160,19 @@ export class FirstPersonCamera {
     const pace = speed / WALK_SPEED;
     // Crouched: short quick steps (the body's, src/models/crouchGait.ts), the bob gentle.
     const crouched = !!p.crouching && !p.sliding;
-    const bobTarget = !moving || p.sliding || p.riding ? 0
-      : crouched ? 0.35 * Math.min(1, speed / CROUCH_SPEED) : pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15);
+    const walking = moving && !p.sliding && !p.riding;
+    let grade = 0;
+    if (walking && !crouched && !terrainHidden(p.x, p.z, p.y)) {
+      slopeAt(p.x, p.z, slope);
+      grade = (p.vx * slope.gx + p.vz * slope.gz) / speed;
+    }
+    const climbTarget = Math.max(0, Math.min(1, (grade - CLIMB_FROM) / (CLIMB_FULL - CLIMB_FROM)));
+    this.climb += (climbTarget - this.climb) * (1 - Math.exp(-dt * 5));
+    const bobTarget = !walking ? 0
+      : crouched ? 0.35 * Math.min(1, speed / CROUCH_SPEED)
+      : (pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15)) * (1 + CLIMB_HEAVY * this.climb);
     this.bobAmount += (bobTarget - this.bobAmount) * (1 - Math.exp(-dt * 6));
-    if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / (crouched ? CROUCH_CYCLE / 2 : STRIDE);
+    if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / (crouched ? CROUCH_CYCLE / 2 : STRIDE * (1 - CLIMB_SHORTEN * this.climb));
     const s = Math.sin(this.bobPhase);
     const bobY = (0.5 - s * s) * 0.03 * this.bobAmount;
     const bobX = s * 0.015 * this.bobAmount;

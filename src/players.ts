@@ -55,6 +55,8 @@ export type ModelPose = {
   tiltPitch?: number; tiltRoll?: number;
   /** Direction of travel relative to facing (rad): 0 ahead, +π/2 to the right, ±π backwards. */
   heading?: number;
+  /** Grade along the way you're walking (tan; + = uphill): climbing trudges, leaning in with shorter steps. */
+  climb?: number;
   /** Sand height under the feet, when standing on sand (not scrap): lets the model plant its feet. */
   ground?: (x: number, z: number) => number;
   ride?: RidePose;
@@ -232,9 +234,18 @@ export class Avatar {
     }
     this.root.position.set(pose.x, pose.y, pose.z);
     const power = !!pose.powerSlide && pose.grounded;
-    const slip = !power && (pose.sliding ?? (pose.grounded && pose.speed > 2 && isSlipFace(pose.x, pose.z)));
-    const sliding = slip || power;
     const vx = pose.vx ?? 0, vz = pose.vz ?? 0;
+    const onSand = pose.grounded && Math.abs(pose.y - heightAt(pose.x, pose.z)) < 0.05;
+    // Uphill grade along the way you're going (tan; + = climbing), and how fast you're gaining ground up the slope (m/s).
+    let climb = 0, upSpeed = 0;
+    if (onSand && pose.speed > 0.5 && pose.vx !== undefined) {
+      const g = slopeAt(pose.x, pose.z, tmpSlope);
+      climb = (vx * g.gx + vz * g.gz) / pose.speed;
+      upSpeed = (vx * g.gx + vz * g.gz) / Math.max(1e-6, Math.hypot(g.gx, g.gz));
+    }
+    // Climbing a slip face is walking (sim.ts lets you claw up one), not sliding down it.
+    const slip = !power && (pose.sliding ?? (pose.grounded && pose.speed > 2 && upSpeed < 1 && isSlipFace(pose.x, pose.z)));
+    const sliding = slip || power;
     // Facing comes from 20 Hz snapshots (remote) or the mouse (local): smooth it a little. In a speed slide the
     // body goes feet first the way it is travelling (the head turns to where it looks), turning more slowly.
     const feetFirst = power && pose.vx !== undefined && Math.hypot(vx, vz) > 1;
@@ -250,7 +261,6 @@ export class Avatar {
     const ahead = -vx * Math.sin(this.facing) - vz * Math.cos(this.facing);
     const right = vx * Math.cos(this.facing) - vz * Math.sin(this.facing);
     const heading = pose.vx === undefined ? 0 : Math.atan2(right, ahead);
-    const onSand = pose.grounded && Math.abs(pose.y - heightAt(pose.x, pose.z)) < 0.05;
     let tiltPitch = 0, tiltRoll = 0;
     if (power && onSand) {
       // Lie along the ground: the slope's rise along the body's forward and right directions.
@@ -262,7 +272,7 @@ export class Avatar {
     this.model.update(
       {
         speed: pose.speed, grounded: pose.grounded, sliding: slip, powerSlide: power, crouching: pose.crouching, tiltPitch, tiltRoll,
-        digging: pose.digging, pitch: pose.pitch, heading, drinking: pose.drinking, aiming: pose.aiming, ground: onSand && !power ? heightAt : undefined,
+        digging: pose.digging, pitch: pose.pitch, heading, climb: sliding ? 0 : climb, drinking: pose.drinking, aiming: pose.aiming, ground: onSand && !power ? heightAt : undefined,
         look,
       },
       dt,

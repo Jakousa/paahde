@@ -39,6 +39,9 @@ export type ScavengerPose = {
   /** Direction of travel relative to facing (rad): 0 ahead, +π/2 right, ±π backwards. Turns the hips
    *  toward it (the torso keeps facing ahead) and plays the stride in reverse when backing up. */
   heading?: number;
+  /** Grade along the direction of travel (tan; + = uphill). Climbing trudges: the run blends toward the walk's
+   *  shorter steps (the cadence still follows the ground covered, so the feet stay planted) and the body leans in. */
+  climb?: number;
   /** Sand height sampler for foot placement; omit when not standing on sand (flat feet). */
   ground?: Ground;
   /** Pin planted feet to the world (default true). Off for a model animating in place, e.g. the lab. */
@@ -62,6 +65,12 @@ const WALK_REF = 1.3;
 const RUN_REF = 4.7;
 const RUN_ABOVE = 2.8;
 const MAX_HIP_YAW = 1.0; // rad; strafing beyond this shows as a crab-walk rather than hips turned further
+// Uphill trudge: from TRUDGE_FROM grade up to TRUDGE_FULL the run blends up to TRUDGE_MIX of the walk in (shorter,
+// grounded steps) and the upper body leans forward by TRUDGE_LEAN rad per unit of grade.
+const TRUDGE_FROM = 0.08;
+const TRUDGE_FULL = 0.5;
+const TRUDGE_MIX = 0.7;
+const TRUDGE_LEAN = 0.75;
 
 const CANTEEN_URL = './models/canteen.glb';
 /** Carried canteen, root space (forward -Z, right +X): where its bottom sits and its forward tip (rad). */
@@ -78,6 +87,7 @@ let cached: Promise<GLTF> | null = null;
 let canteenCached: Promise<GLTF> | null = null;
 const ANKLES = ['LeftFoot', 'RightFoot'];
 const lowest = new WeakMap<GLTF, Map<string, number>>();
+const trudgeClips = new WeakMap<GLTF, THREE.AnimationClip | null>();
 
 /** Starts (or reuses) the glb download. Call early to warm the cache. */
 export function loadScavenger(): Promise<GLTF> {
@@ -105,6 +115,9 @@ export class ScavengerModel {
   /** Bones adjusted after the mixer, with their animated rotation (see update()). */
   private posed: { bone: THREE.Object3D; base: THREE.Quaternion }[] = [];
   private speed = 0;
+  /** Smoothed uphill grade (pose.climb), and the walk layered over the run while climbing (a copy of the Walk clip). */
+  private climb = 0;
+  private trudge: THREE.AnimationAction | null = null;
   private backwards = false;
   private hipYaw = 0;
   private hips: THREE.Object3D | null = null;
@@ -183,6 +196,13 @@ export class ScavengerModel {
     this.wearGear(model);
     this.mixer = new THREE.AnimationMixer(model);
     for (const clip of gltf.animations) this.actions.set(clip.name, this.mixer.clipAction(clip));
+    if (!trudgeClips.has(gltf)) {
+      const walk = gltf.animations.find((c) => c.name === 'Walk')?.clone() ?? null;
+      if (walk) walk.name = 'Trudge';
+      trudgeClips.set(gltf, walk);
+    }
+    const trudge = trudgeClips.get(gltf);
+    if (trudge) this.trudge = this.mixer.clipAction(trudge);
     this.tilt.add(model);
     if (this.hips && this.spine && legs.every((l) => l.every((b) => b))) {
       this.crouch = new CrouchGait(this.root, model, {
@@ -341,15 +361,19 @@ export class ScavengerModel {
     const hipTarget = moving ? clamp(legDir, -MAX_HIP_YAW, MAX_HIP_YAW) : 0;
     this.hipYaw += (hipTarget - this.hipYaw) * (1 - Math.exp(-dt * 8));
     const dir = this.backwards ? -1 : 1;
+    const climbing = moving && !pose.crouching ? clamp(pose.climb ?? 0, 0, 0.8) : 0;
+    this.climb += (climbing - this.climb) * (1 - Math.exp(-dt * 5));
+    const mix = TRUDGE_MIX * clamp((this.climb - TRUDGE_FROM) / (TRUDGE_FULL - TRUDGE_FROM), 0, 1);
     if (pose.ride) this.play('Idle');
     else if (!pose.grounded) this.play('Jump');
     else if (pose.powerSlide) this.play('Powerslide', 0.12);
     else if (pose.sliding) this.play('Slide');
     else if (pose.digging) this.play('Dig');
     else if (pose.crouching) this.play('Crouch'); // stepping or not: crouchGait poses the legs
-    else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(speed / RUN_REF, 0.75, 1.6));
+    else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(speed / this.runRef(mix), mix > 0 ? 0.5 : 0.75, 1.6));
     else if (speed > 0.25) this.play('Walk', FADE, dir * clamp(speed / WALK_REF, 0.6, 1.8));
     else this.play('Idle');
+    this.layTrudge(mix);
     // The mixer only writes a bone when its animated value changes, so on a constant track (Dig's Neck,
     // its kneeling legs) last frame's look tilt / IK would stay in place and pile up. Undo them first.
     for (const p of this.posed) p.bone.quaternion.copy(p.base);
@@ -370,6 +394,12 @@ export class ScavengerModel {
       // +heading is to the right, which is a negative turn about +Y; the spine turns back to face ahead.
       rotateAboutRoot(this.root, this.hips, Y_AXIS, -this.hipYaw);
       rotateAboutRoot(this.root, this.spine, Y_AXIS, this.hipYaw);
+    }
+    if (this.climb > 1e-3 && this.spine) {
+      // Lean into the slope; the head comes partly back up to keep looking ahead.
+      const lean = TRUDGE_LEAN * this.climb;
+      rotateAboutRoot(this.root, this.spine, X_AXIS, -lean);
+      if (this.neck) rotateAboutRoot(this.root, this.neck, X_AXIS, lean * 0.5);
     }
     const pitch = clamp(pose.pitch ?? 0, -1.1, 1.1);
     if (pitch !== 0 && this.neck && this.head) {
@@ -401,7 +431,9 @@ export class ScavengerModel {
     if (pose.ride) return this.ride(pose.ride);
     // Plant the feet: lock while the clip has them down (not when sliding: the sand moves with you).
     const clip = this.current?.getClip().name ?? '';
-    const lock = pose.grounded && !pose.sliding && !pose.powerSlide && pose.plant !== false ? (this.minAnkle.get(clip) ?? null) : null;
+    let lock = pose.grounded && !pose.sliding && !pose.powerSlide && pose.plant !== false ? (this.minAnkle.get(clip) ?? null) : null;
+    // Trudging, the walk's lower foot is mixed in.
+    if (lock !== null && clip === 'Run' && mix > 0) lock += ((this.minAnkle.get('Walk') ?? lock) - lock) * mix;
     this.legIk?.update(dt, pose.grounded, lock, pose.ground ?? null);
   }
 
@@ -473,6 +505,33 @@ export class ScavengerModel {
       }
     }
     this.root.updateMatrixWorld(true);
+  }
+
+  /** Ground covered per second of the Run clip at timeScale 1 with `mix` of the walk layered in: the blend's
+   *  stride is between the two, so the cadence follows the distance actually travelled. */
+  private runRef(mix: number) {
+    const run = this.actions.get('Run'), walk = this.actions.get('Walk');
+    if (!run || !walk || mix <= 0) return RUN_REF;
+    return RUN_REF * (1 - mix) + WALK_REF * (walk.getClip().duration / run.getClip().duration) * mix;
+  }
+
+  /** Climbing: layer the walk (in step with the run) over the run, weighted to `mix` of the pose. */
+  private layTrudge(mix: number) {
+    const run = this.actions.get('Run'), t = this.trudge;
+    if (!run || !t) return;
+    const w = run.isRunning() && mix > 0.01 ? (mix / (1 - mix)) * run.getEffectiveWeight() : 0;
+    if (w <= 0) {
+      if (t.isRunning()) t.stop();
+      return;
+    }
+    if (!t.isRunning()) {
+      t.enabled = true;
+      t.play();
+    }
+    t.setEffectiveWeight(w);
+    const rd = run.getClip().duration, td = t.getClip().duration;
+    t.time = (run.time / rd) * td;
+    t.timeScale = (run.timeScale * td) / rd;
   }
 
   /** Place the canteen (carried, or at the mouth while drinking) and reach the right hand to it; `loose` (in
