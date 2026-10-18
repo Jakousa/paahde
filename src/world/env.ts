@@ -60,6 +60,9 @@ export const stormDiscs = Array.from({ length: STORM_SLOTS }, () => uniform(new 
 export const stormGround = uniform(new THREE.Vector4());
 /** How deep in a sandstorm the camera is, 0..1 (eased; 0 in the base): the grit on the view (post.ts). */
 export const stormHere = uniform(0);
+/** 1 while the camera is in the base: the post pass's dust starts only where the view ray leaves the
+ *  bunker (up through the skylight, out of the hut's door), so the storm shows outside but the rooms stay clear. */
+export const stormIndoors = uniform(0);
 /** Integrated wind travel (m, xz): advects streaks and dust so they move with the wind. */
 export const windDrift = uniform(new THREE.Vector2());
 /** Apparent angular radius of the sun disc, radians (cheated huge: real sun is 0.0045). */

@@ -10,10 +10,11 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, stormDiscs, stormGround, stormHere, sunColor, sunDirection,
+  hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, stormDiscs, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
   sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
 import { EDGE } from '../shared/storm.ts';
+import { BASE, HUT, W } from '../shared/base.ts';
 
 type N = Node<'vec3'>;
 const TONE = new URLSearchParams(location.search).has('agx') ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
@@ -165,6 +166,19 @@ export class Post {
       const first = float(1e9).toVar(); // where the dust starts, for the haze in front of it
       const jitter = fract(sin(dot(p.mul(vec2(911.3, 577.7)), vec2(12.9898, 78.233))).mul(43758.5453));
       const ground = [stormGround.x, stormGround.y, stormGround.z, stormGround.w];
+      // In the base the dust only starts where the ray gets out: up past the pad's surface (the skylight,
+      // the stairwell) and out of the entrance hut (its door). Rays that end on the walls never get there.
+      const ly = camPos.y.sub(BASE.y);
+      const rising = dir.y.greaterThan(1e-4);
+      const tSurf = ly.greaterThanEqual(0).select(float(0), rising.select(ly.negate().div(max(dir.y, 1e-4)), float(1e9)));
+      // Leaving the hut (and the stairwell under it, open below): the far side of its box along the ray.
+      const inv = vec3(1).div(dir.add(vec3(dir.x.greaterThanEqual(0).select(1e-6, -1e-6), dir.y.greaterThanEqual(0).select(1e-6, -1e-6), dir.z.greaterThanEqual(0).select(1e-6, -1e-6))));
+      const ta = vec3(BASE.x - W, BASE.y - 100, BASE.z + HUT.z0).sub(camPos).mul(inv);
+      const tb = vec3(BASE.x + W, BASE.y + HUT.h, BASE.z + HUT.z1).sub(camPos).mul(inv);
+      const tNear = max(max(min(ta.x, tb.x), min(ta.y, tb.y)), min(ta.z, tb.z));
+      const tFar = min(min(max(ta.x, tb.x), max(ta.y, tb.y)), max(ta.z, tb.z));
+      const tHut = tFar.greaterThan(max(tNear, 0)).select(tFar, float(0));
+      const tOut = max(tSurf, tHut).mul(stormIndoors);
       stormDiscs.forEach((disc, i) => {
         If(disc.w.greaterThan(0), () => {
           const oc = camPos.xz.sub(disc.xy);
@@ -175,7 +189,7 @@ export class Post {
           const h = b.mul(b).sub(a.mul(c));
           If(h.greaterThan(0), () => {
             const sq = sqrt(h);
-            const t0 = max(b.negate().sub(sq).div(a), 0);
+            const t0 = max(b.negate().sub(sq).div(a), tOut);
             // Rays climbing out of the dust: stop where it has thinned to ~5% (3 STORM_H up).
             const top = ground[i].add(STORM_H * 3).sub(camPos.y).div(max(dir.y, 1e-4));
             const t1 = min(min(b.negate().add(sq).div(a), tScene), top);

@@ -7,6 +7,7 @@ import { bedLit, placed } from '../shared/placed.ts';
 import { STATIONS, stationTarget } from '../shared/stations.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
+import { BaseSand } from './world/baseSand';
 import { DigFx } from './dig';
 import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
@@ -88,6 +89,7 @@ const crashSound = new CrashSound();
 const dust = new Dust(scene);
 const post = new Post(renderer, scene, orbit.camera);
 const blownSand = new BlownSand(scene);
+const baseSand = new BaseSand(scene);
 const viewmodel = new ViewModel(orbit, scene); // first-person hands, parented to the camera
 
 const windSound = new WindSound();
@@ -345,6 +347,7 @@ renderer.setAnimationLoop((time) => {
   wind.update(net.serverTime() / 1000);
   blownSand.update(frameDt, focus);
   dust.update(frameDt, orbit.camera.position);
+baseSand.update(frameDt, storm.atBase);
   tyreDust.update(frameDt);
   base.update();
   mast.update(frameDt);

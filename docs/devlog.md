@@ -1014,10 +1014,17 @@ Local, short storms instead of the old global one (`wind.ts` used to hash a 3–
 - **Look** (`src/post.ts`): each storm is a dust cylinder marched in the post pass (6 jittered steps along the
   view ray, clipped to the cylinder and the scene depth): density full out to 55% of the radius, thinning
   upwards over 60 m, billowed by 3D noise that drifts with the wind and rises. From outside: a tall rolling
-  brown column (dark against the dusk sky); inside: dust fog ~20 m deep. Not drawn from inside the
-  bunker (it would fog the rooms). Up to 4 at once.
+  brown column (dark against the dusk sky); inside: dust fog ~20 m deep. Up to 4 at once.
+- **From the bunker:** the storm used to vanish indoors (the columns weren't drawn and `wind.local` was 0), so
+  the skylight showed a clear sky. Now, in the base (`stormIndoors`), the march starts only where the view ray
+  leaves it: above the pad's surface (skylight, stairwell) or out of the entrance hut's box (its door), so the
+  sky and doorway fill with moving dust while the rooms stay clear. The wind keeps blowing (`wind.local` is the
+  storm over the camera's spot even indoors) and is heard underground through a 420 Hz lowpass
+  (`src/windSound.ts`); grit sifts down the skylight and blows in at the door (`src/world/baseSand.ts`, from the
+  storm over the base). No grit on the view, and the locator still works down there.
 - **Testing:** F3 → "Sandstorm here" summons one on you, for everyone. With `?debug`, `dbg.net.storms` can
-  be set by hand for a look-only storm (the server doesn't know about it).
+  be set by hand for a look-only storm (the server doesn't know about it), or `dbg.storm.summonHere()` puts a
+  full-strength local one right on you for 90 s (only you see it).
 
 
 ## Throwing scrap
