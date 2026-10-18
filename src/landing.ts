@@ -8,10 +8,9 @@ import { audio } from './audio';
 const css = `
 #landing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; color: #e8d2ae;
   background: #4a2414; font-family: var(--mono); overflow: hidden; }
-#landing .bg { position: absolute; inset: -3%; background: url(./landing.svg) 65% bottom / cover; animation: landing-drift 60s ease-in-out infinite alternate; }
+#landing .bg { position: absolute; inset: -3%; background: url(./landing.svg) 72% bottom / cover; animation: landing-drift 60s ease-in-out infinite alternate; }
 #landing .shade { position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse 80% 70% at 50% 55%, transparent 60%, rgba(30, 14, 8, .45) 100%); }
-#landing canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 #landing.over .bg, #landing.over .shade { display: none; }
 #landing.over { background: rgba(17, 10, 6, 0.82); }
 #landing .panel { position: relative; display: grid; justify-items: center; gap: 30px; text-align: center; padding: 16px;
@@ -49,10 +48,7 @@ export function landing(why?: 'over' | 'missing') {
   const line = why === 'over' ? 'Game over' : why === 'missing' ? 'No such world' : '';
   el.innerHTML = `${why ? '' : '<div class="bg"></div><div class="shade"></div>'}<div class="panel"><h1>hiekka</h1>${line ? `<p>${line}</p>` : ''}<button>Start a new game</button></div>`;
   document.body.append(el);
-  if (!why) {
-    blowingSand(el);
-    music(el);
-  }
+  if (!why) music(el);
   const button = el.querySelector('button')!;
   button.addEventListener('click', async () => {
     button.disabled = true;
@@ -65,87 +61,6 @@ export function landing(why?: 'over' | 'missing') {
       button.disabled = false;
     }
   });
-}
-
-/** Sand blowing across the picture on a canvas under the panel: soft veils of it low over the dunes and
- * fine grains, coming in gusts. Stops once the page is gone. */
-function blowingSand(el: HTMLElement) {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const canvas = document.createElement('canvas');
-  el.insertBefore(canvas, el.querySelector('.panel'));
-  const g = canvas.getContext('2d')!;
-  // Veils: wide flat clouds of sand along the ground (y and sizes are fractions of the screen height).
-  const veils = Array.from({ length: 16 }, () => ({ x: 0, y: 0, rx: 0, ry: 0, speed: 0, alpha: 0, phase: 0 }));
-  const grains = Array.from({ length: 220 }, () => ({ x: 0, y: 0, len: 0, speed: 0, alpha: 0, phase: 0 }));
-  const placeVeil = (v: (typeof veils)[number], anywhere: boolean) => {
-    v.y = 0.47 + 0.45 * Math.random();
-    const near = (v.y - 0.4) / 0.6; // lower on the screen = closer = bigger and faster
-    v.rx = (0.25 + 0.5 * Math.random()) * (0.5 + near);
-    v.ry = v.rx * (0.08 + 0.08 * Math.random());
-    v.x = anywhere ? Math.random() * 2 - 0.5 : -v.rx * 1.2;
-    v.speed = 0.04 + 0.1 * near;
-    v.alpha = 0.06 + 0.1 * Math.random();
-    v.phase = Math.random() * 6.28;
-  };
-  const placeGrain = (p: (typeof grains)[number], anywhere: boolean) => {
-    p.x = anywhere ? Math.random() * 2 : -0.05;
-    p.y = 0.46 + 0.54 * Math.pow(Math.random(), 0.8);
-    const near = (p.y - 0.4) / 0.6;
-    p.speed = 0.12 + 0.35 * near * (0.6 + Math.random() * 0.8);
-    p.len = 1 + 12 * near * Math.random();
-    p.alpha = 0.06 + 0.22 * near * Math.random();
-    p.phase = Math.random() * 6.28;
-  };
-  for (const v of veils) placeVeil(v, true);
-  for (const p of grains) placeGrain(p, true);
-  let w = 0;
-  let h = 0;
-  let last = performance.now();
-  const frame = (now: number) => {
-    if (!el.isConnected) return;
-    const dt = Math.min((now - last) / 1000, 0.1);
-    last = now;
-    const dpr = Math.min(devicePixelRatio, 2);
-    if (w !== innerWidth * dpr || h !== innerHeight * dpr) {
-      w = canvas.width = innerWidth * dpr;
-      h = canvas.height = innerHeight * dpr;
-    }
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, w, h);
-    const t = now / 1000;
-    const gust = 0.55 + 0.45 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1); // 0.1..1
-    // x is in screen heights so shapes keep their proportions on any aspect ratio.
-    const aspect = w / h;
-    for (const v of veils) {
-      v.x += v.speed * (0.4 + gust) * dt;
-      if (v.x - v.rx > aspect) placeVeil(v, false);
-      const y = v.y + 0.006 * Math.sin(t * 0.5 + v.phase);
-      g.setTransform(v.rx * h, 0, 0, v.ry * h, v.x * h, y * h);
-      const grad = g.createRadialGradient(0, 0, 0, 0, 0, 1);
-      const a = v.alpha * (0.4 + 0.6 * gust);
-      grad.addColorStop(0, `rgba(250, 196, 120, ${a})`);
-      grad.addColorStop(0.5, `rgba(240, 170, 90, ${a * 0.5})`);
-      grad.addColorStop(1, 'rgba(240, 170, 90, 0)');
-      g.fillStyle = grad;
-      g.fillRect(-1, -1, 2, 2);
-    }
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.lineCap = 'round';
-    for (const p of grains) {
-      p.x += p.speed * (0.3 + gust) * dt;
-      if (p.x > aspect + 0.05) placeGrain(p, false);
-      const y = (p.y + 0.01 * Math.sin(t * 2 + p.phase + p.x * 7)) * h;
-      const len = p.len * (0.3 + gust) * dpr;
-      g.strokeStyle = `rgba(255, 232, 190, ${p.alpha * (0.4 + 0.6 * gust)})`;
-      g.lineWidth = dpr * (0.6 + 0.6 * Math.random());
-      g.beginPath();
-      g.moveTo(p.x * h, y);
-      g.lineTo(p.x * h - len, y + len * 0.08);
-      g.stroke();
-    }
-    requestAnimationFrame(frame);
-  };
-  requestAnimationFrame(frame);
 }
 
 /** "Desert ambience" (src/music.ts DESERT_AMBIENCE: exactly 112 s, loops whole) through the music slider,
