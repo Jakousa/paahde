@@ -37,22 +37,22 @@ const STAND_MARGIN = 0.15;
 export type ScrapPose = 'flat' | 'upright' | 'side' | 'stuck';
 
 /**
- * Prop kinds: glTF node name (as authored; GLTFLoader sanitizes them), inventory label, scale to real size,
+ * Prop kinds: glTF node name (as authored; GLTFLoader sanitizes them), scale to real size,
  * half extents after scaling (x, y, z; Y up, measured from public/models/junkyard_props.glb), and how they tend to lie.
  */
 /** `item`: what picking it up gives (shared/items.ts), scrap unless given. `node: ''`: no model in the glb, drawn
  *  procedurally by src/world/scrap.ts (the cloth bundle: a tied-up tarp or sack). */
-export const SCRAP_KINDS: { node: string; label: string; scale: number; half: [number, number, number]; weight: number; poses: [ScrapPose, number][]; item?: 'cloth' }[] = [
-  { node: 'Barrel v1 ', label: 'Oil drum', scale: 0.28, half: [0.294, 0.44, 0.293], weight: 3, poses: [['upright', 0.5], ['side', 0.4], ['stuck', 0.1]] },
-  { node: 'Barrel v2.001', label: 'Rusty drum', scale: 0.28, half: [0.293, 0.451, 0.291], weight: 2, poses: [['upright', 0.4], ['side', 0.5], ['stuck', 0.1]] },
-  { node: 'Gear v1.001', label: 'Gear', scale: 0.35, half: [0.39, 0.04, 0.39], weight: 1.5, poses: [['flat', 0.6], ['stuck', 0.4]] },
-  { node: 'Metal peice 2 v1.001', label: 'Scrap frame', scale: 0.45, half: [0.644, 0.036, 0.909], weight: 2, poses: [['flat', 0.5], ['stuck', 0.5]] },
-  { node: 'Metal peice 2 v2.001', label: 'Bent frame', scale: 0.45, half: [0.655, 0.158, 0.905], weight: 2, poses: [['flat', 0.5], ['stuck', 0.5]] },
-  { node: 'Metal plank v1.001', label: 'Metal plank', scale: 0.35, half: [1.423, 0.124, 0.082], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
-  { node: 'Metal sheet v1.001', label: 'Metal sheet', scale: 0.75, half: [0.75, 0.015, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
-  { node: 'Metal sheet v2.001', label: 'Dented sheet', scale: 0.75, half: [0.765, 0.146, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
-  { node: 'Metal spring v1.001', label: 'Spring', scale: 0.3, half: [0.708, 0.234, 0.236], weight: 1, poses: [['flat', 1]] },
-  { node: '', label: 'Cloth', scale: 1, half: [0.34, 0.16, 0.26], weight: 2.5, poses: [['flat', 1]], item: 'cloth' },
+export const SCRAP_KINDS: { node: string; scale: number; half: [number, number, number]; weight: number; poses: [ScrapPose, number][]; item?: 'cloth' }[] = [
+  { node: 'Barrel v1 ', scale: 0.28, half: [0.294, 0.44, 0.293], weight: 3, poses: [['upright', 0.5], ['side', 0.4], ['stuck', 0.1]] },
+  { node: 'Barrel v2.001', scale: 0.28, half: [0.293, 0.451, 0.291], weight: 2, poses: [['upright', 0.4], ['side', 0.5], ['stuck', 0.1]] },
+  { node: 'Gear v1.001', scale: 0.35, half: [0.39, 0.04, 0.39], weight: 1.5, poses: [['flat', 0.6], ['stuck', 0.4]] },
+  { node: 'Metal peice 2 v1.001', scale: 0.45, half: [0.644, 0.036, 0.909], weight: 2, poses: [['flat', 0.5], ['stuck', 0.5]] },
+  { node: 'Metal peice 2 v2.001', scale: 0.45, half: [0.655, 0.158, 0.905], weight: 2, poses: [['flat', 0.5], ['stuck', 0.5]] },
+  { node: 'Metal plank v1.001', scale: 0.35, half: [1.423, 0.124, 0.082], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
+  { node: 'Metal sheet v1.001', scale: 0.75, half: [0.75, 0.015, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
+  { node: 'Metal sheet v2.001', scale: 0.75, half: [0.765, 0.146, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
+  { node: 'Metal spring v1.001', scale: 0.3, half: [0.708, 0.234, 0.236], weight: 1, poses: [['flat', 1]] },
+  { node: '', scale: 1, half: [0.34, 0.16, 0.26], weight: 2.5, poses: [['flat', 1]], item: 'cloth' },
 ];
 const TOTAL_WEIGHT = SCRAP_KINDS.reduce((s, k) => s + k.weight, 0);
 
