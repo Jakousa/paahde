@@ -1317,11 +1317,14 @@ Crafted at the workbench from a compute unit, a wiring coil and a battery (any t
 - **Use:** hold the use button (LMB / E) with a jet or drone inside the cone (`JAM_CONE` 0.2 rad half angle, out to
   `JAM_RANGE` 400 m). The client takes the one nearest the aim (and keeps it while it stays in), and tells the
   server ('jam': target, eye, aim) every 200 ms. The server (`onJam`) checks the jammer is in hand, the eye near the
-  player and the target in the cone (0.1 rad slack; jets 150 ms back), and adds the time since the last word, capped
-  at 1.5× the send interval so a client can't run it ahead; any longer gap bleeds the lock at 2×; a new target
-  starts over. At `JAM_MS` (5 s) it goes down.
-- **Jammed jet:** `down.soft`: a flatter glide (9:1), wings rocking slightly, then a belly landing that skids to a
-  stop over 3 s (on `baseHeight`), throwing sand; a slam and dust, no blast and no smoke. **Jammed drone:** light out,
+  player and the target in the cone (0.1 rad slack; jets anywhere in the last 0.5 s, for ping), and adds the time
+  since the last word, capped at 1.5× the send interval so a client can't run it ahead; any longer gap bleeds the
+  lock at 0.5×; a new target starts over. At `JAM_MS` (3.5 s; was 5 s with a 0.2 rad, 400 m cone: too hard on jets)
+  it goes down.
+- **Jammed jet:** `down.soft`: a flat spin (yaw winding up to 2.6 rad/s over 2 s, nose dipped, wings see-sawing),
+  drifting on at 0.3× speed and falling 1:1 (~6 s from cruise height), a thin trail corkscrewing off the tail, the
+  roar cut; then whole on its belly where the spin left it, a slam and dust, no blast and no smoke. (It used to glide
+  in at 9:1 and skid: too slow, and it didn't read as jammed.) **Jammed drone:** light out,
   sinking at 2.5 m/s while it drifts to a stop, rotors winding down, settling upright (`jammed` field in 'bots',
   drone stride 12). Its parts drop as if shot down.
 - **Feel, no HUD:** the hands raise it (JammerAim since 2026-10-18, before the pistol's clips: the model

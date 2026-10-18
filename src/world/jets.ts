@@ -2,12 +2,11 @@
 // sensor-domed nose, an intake hump over the back feeding a jet nozzle at the tail, straight tapered wings and a V
 // tail. Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and the server clock,
 // rolled into its turns. Shot, it trails smoke (more with each hit); brought down it glides in on a heavy trail,
-// slides into the sand (onCrash) and smoulders. Jammed (shared/jammer.ts) it glides in level and skids to a stop on
-// its belly in a spray of sand (onLand). The rifle tests shots against it here (raycast).
+// slides into the sand (onCrash) and smoulders. Jammed (shared/jammer.ts) it drops in a flat spin, a thin trail
+// corkscrewing off its tail, and thumps down whole on its belly (onLand). The rifle tests shots against it here (raycast).
 import * as THREE from 'three/webgpu';
 import { JET_SPAN, jetAt, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { zaps } from './zaps';
-import { tyreDust } from '../tyreDust';
 
 /** Hidden past this distance (m) from the camera. */
 const SHOW_R = 5000;
@@ -142,11 +141,8 @@ export class Jets {
       if (p.state === 2 && v.state === 1) (soft ? this.onLand : this.onCrash)(p.x, p.y, p.z);
       v.state = p.state;
       // Smoke: a thin trail once hit, thicker with each hit, a heavy one gliding down; the wreck smoulders. Jammed it
-      // comes down whole: only the trail of any hits, and dust thrown up while it skids.
-      if (soft && p.state === 2 && Math.hypot(p.vx, p.vz) > 3 && Math.random() < dt * 30) {
-        tyreDust.emit(p.x + (Math.random() - 0.5) * 8, p.y - 0.4, p.z + (Math.random() - 0.5) * 8, p.vx * 0.2, 1 + Math.random() * 2, p.vz * 0.2, 2.5);
-      }
-      const rate = soft ? (p.state === 2 ? 0 : j.hurt * 10) : p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
+      // comes down whole: a thin trail off the spinning tail (so it reads from far off), no smoke once down.
+      const rate = soft ? (p.state === 2 ? 0 : p.state === 1 ? 14 + j.hurt * 10 : j.hurt * 10) : p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
       v.smoke += dt * rate;
       if (v.smoke >= 1) _t.copy(TAIL).applyMatrix4(o.matrixWorld);
       for (; v.smoke >= 1; v.smoke--) {

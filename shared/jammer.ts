@@ -1,6 +1,6 @@
 // The jammer: a handheld tool (gear found broken on crawler ground and repaired, shared/gear.ts) that takes down fixed-wing drones (shared/jets.ts) and
 // searchlight drones (shared/guardians.ts) without a shot. Hold the use button with one inside its wide cone for
-// JAM_MS and its controls drop out: it glides down and lands whole (a jet on its belly, a drone settling on the sand).
+// JAM_MS and its controls drop out: it comes down and lands whole (a jet spinning flat, on its belly, a drone settling on the sand).
 // Losing it from the cone bleeds the lock away at JAM_BLEED× the rate it built.
 //
 // The client (src/jammer.ts) picks the target nearest the aim within the cone and, while held, tells the server

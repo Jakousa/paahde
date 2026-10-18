@@ -31,7 +31,7 @@ export type Jet = {
   /** Rifle hits taken. */
   hurt: number;
   /** Shot down at server time `at` at (x, y, z) heading `yaw`; it glides to (lx, ly, lz), landing at `land`. `soft`:
-   *  jammed (shared/jammer.ts), not shot: a flatter, steady glide and a belly landing, no smoke. */
+   *  jammed (shared/jammer.ts), not shot: it drops into a flat spin, falling steeply, and lands whole on its belly, no smoke. */
   down?: { at: number; x: number; y: number; z: number; yaw: number; land: number; lx: number; ly: number; lz: number; soft?: true };
 };
 
@@ -40,9 +40,12 @@ export const JET_HP = 3;
 /** Shot down: it glides at this share of its speed, dropping 1 m for every GLIDE m forward. */
 export const GLIDE_SPEED = 0.8;
 export const GLIDE = 5;
-/** Jammed: a flatter glide (m forward per m down), then a skid to a stop on the sand this long (s). */
-export const SOFT_GLIDE = 9;
-const SKID_S = 3;
+/** Jammed: a flat spin, drifting on at this share of its speed and dropping 1 m for every SPIN_GLIDE m forward; the
+ *  spin winds up to SPIN_RATE rad/s over SPIN_RAMP s. */
+export const SPIN_SPEED = 0.3;
+export const SPIN_GLIDE = 1;
+const SPIN_RATE = 2.6;
+const SPIN_RAMP = 2;
 /** The wreck lies on the sand this long (ms) before it's cleared. */
 export const WRECK_MS = 90_000;
 
@@ -114,18 +117,26 @@ function downAt(j: Jet, t: number, out: JetPose): boolean {
   out.yaw = d.yaw;
   const s = (t - d.at) / 1000;
   if (d.soft) {
-    // Jammed: wings rocking a little, nose level; then down on its belly, skidding to a stop over SKID_S along the sand.
-    const v0 = j.speed * GLIDE_SPEED, k = Math.min(SKID_S, Math.max(0, (t - d.land) / 1000));
-    const slid = v0 * (k - (k * k) / (2 * SKID_S));
-    out.x += Math.sin(d.yaw) * slid;
-    out.z += Math.cos(d.yaw) * slid;
-    if (u >= 1) out.y = baseHeight(out.x, out.z) + 0.6;
-    out.bank = 0.08 * Math.sin(s * 0.7 + j.id) * (1 - u);
-    out.pitch = u >= 1 ? 0.03 : 0;
-    const v = u < 1 ? v0 : v0 * (1 - k / SKID_S);
+    // Jammed: it yaws round faster and faster in a flat spin, nose dipping and wings see-sawing, sinking steeply;
+    // then it sits on the sand whole, on its belly, facing wherever the spin left it.
+    const f = Math.min(s, (d.land - d.at) / 1000), r = Math.min(f, SPIN_RAMP);
+    out.yaw = d.yaw + (j.id % 2 ? 1 : -1) * SPIN_RATE * ((r * r) / (2 * SPIN_RAMP) + (f - r));
+    if (u >= 1) {
+      out.y = baseHeight(out.x, out.z) + 0.6;
+      out.bank = 0;
+      out.pitch = 0.03;
+      out.vx = out.vz = 0;
+      out.state = 2;
+      return true;
+    }
+    // Wound up over SPIN_RAMP, levelling off over the last half second so it sits down flat.
+    const w = Math.min(1, s / SPIN_RAMP, (d.land - t) / 500);
+    out.bank = w * (0.25 + 0.2 * Math.sin(s * 5 + j.id));
+    out.pitch = -w * (0.35 + 0.1 * Math.sin(s * 3.7));
+    const v = j.speed * SPIN_SPEED;
     out.vx = Math.sin(d.yaw) * v;
     out.vz = Math.cos(d.yaw) * v;
-    out.state = u >= 1 ? 2 : 1;
+    out.state = 1;
     return true;
   }
   // A slow wallow in roll that grows, the nose sagging below the glide path.
