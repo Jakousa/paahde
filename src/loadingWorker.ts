@@ -1,10 +1,10 @@
 // Runs the loading screen's game off the main thread (src/loadingGame.ts has the page side).
-import { createRunner, H, W } from './loadingRunner';
+import { createRunner, H, W, type Mode } from './loadingRunner';
 
 type In =
-  | { t: 'init'; canvas: OffscreenCanvas; dpr: number; bar: boolean }
+  | { t: 'init'; canvas: OffscreenCanvas; dpr: number; bar: boolean; mode: Mode }
   | { t: 'down' | 'move'; x: number; y: number }
-  | { t: 'up' | 'stop' }
+  | { t: 'up' | 'stop' | 'finishNow' }
   | { t: 'progress'; p: number };
 const ctx = self as unknown as { onmessage: ((e: MessageEvent<In>) => void) | null; postMessage(m: unknown): void; close(): void };
 
@@ -15,7 +15,7 @@ ctx.onmessage = (e) => {
   if (m.t === 'init') {
     m.canvas.width = W * m.dpr;
     m.canvas.height = H * m.dpr;
-    run = createRunner(m.canvas.getContext('2d')!, m.dpr, m.bar, (s) => ctx.postMessage({ t: 'sound', s }));
+    run = createRunner(m.canvas.getContext('2d')!, m.dpr, m.bar, (s) => ctx.postMessage({ t: 'sound', s }), { mode: m.mode, finish: (r) => ctx.postMessage({ t: 'finish', r }) });
     let last = performance.now();
     timer = setInterval(() => {
       const now = performance.now();
@@ -25,6 +25,7 @@ ctx.onmessage = (e) => {
   } else if (m.t === 'down') run?.down(m.x, m.y);
   else if (m.t === 'move') run?.move(m.x, m.y);
   else if (m.t === 'up') run?.up();
+  else if (m.t === 'finishNow') run?.finishNow();
   else if (m.t === 'progress') run?.progress(m.p);
   else if (m.t === 'stop') {
     clearInterval(timer);

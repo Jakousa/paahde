@@ -74,6 +74,15 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   on rails with terminals and right-angled wires; a wire between two parts frees both. The first four machines teach
   click / wire / bolt / pry one at a time. Check the layouts without a browser: build 600 machines, solve them by
   working every ready step, test overlaps and bounds; `debugMachine()` plus a node canvas renders them to PNG.
+- Minigame games and leaderboards: Esc menu > Teardown minigame (`src/minigameMenu.ts`) offers 10 / 20 / 30 machine
+  speedruns (time, lowest first) and Endless (machines in one go, Finish ends it), each with a leaderboard
+  (`server/minigame.ts`, `data/minigame.db`, `/api/minigame`; one best entry per name; the client reports its own
+  score, the server only refuses the impossible and rate-limits). A run's machines get more complex with how many have
+  been taken apart (`make()` in `createRunner`, level = 0.7 per machine +/- 1.5, max 14: more screw clicks, lid screws,
+  bolts through component bases, wires, nested covers, parts per machine); a part's grade is the work behind it
+  (`effort()`: covers over it and what holds it), so deeper parts are better and space-grade only turns up late. The bag
+  groups parts into stacks by part and grade, best first, with counts. The loading screen keeps the free game with the
+  four lessons. Tested without a browser: a bot plays whole runs through `debugState()`.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.

@@ -6,7 +6,8 @@
 // between terminals in right angles, and what holds a thing is what it would be in real life: lids and plates by
 // screws, bolts or a tab, a component by bolts through its base and by the wires on its terminals. Covers nest (a
 // plate under a lid), a machine can hold several parts, and a wire between two parts frees both when it is cut.
-// The first machines teach one move each, then the shapes mix. The step markers look like the game's. Plain
+// The first machines teach one move each, then the shapes mix; in a run they get more complex with every machine taken
+// apart (with some luck either way), and the parts behind more work are better grades. The step markers look like the game's. Plain
 // canvas 2D, and it knows nothing of the page: it runs in a worker (src/loadingWorker.ts, src/loadingGame.ts)
 // because the main thread is busy building the world while this is up. The loading bar is drawn here too.
 export const W = 520;
@@ -24,8 +25,8 @@ const TIER_COLORS = ['#b08a62', '#74d08a', '#ff9a3c', '#3ff0ff']; // shared/salv
 const CX = 260; // the machine's centre on the canvas
 const CY = 105;
 const BAG_Y = 236;
-const BAG_N = 8;
-const BAG_GAP = 32;
+const BAG_N = 12;
+const BAG_GAP = 30;
 /** The swap of one machine for the next, and a part's trip to the bag (s); the slide starts this far off screen. */
 const SWAP_S = 0.18;
 const FLY_S = 0.3;
@@ -106,6 +107,8 @@ interface Machine {
   decor: Decor[];
   halfW: number;
   halfH: number;
+  /** The best grade among its parts (the tag on its lid). */
+  best: number;
 }
 interface Act {
   step: Step;
@@ -140,11 +143,31 @@ function route(a: P, b: P, vertical: boolean): P[] {
   return [a, [a[0], my], [b[0], my], b];
 }
 
-/** Machine number `i`: the first few teach one move each, then the layouts are drawn at random. */
-export function buildMachine(i: number, rnd: () => number): Machine {
-  const M: Machine = { body: [], covers: [], steps: [], slots: [], wires: [], decor: [], halfW: 0, halfH: 0 };
-  const baseTier = Math.min(3, Math.floor(i / 2));
-  const tierOf = () => Math.min(3, baseTier + (rnd() < 0.25 ? 1 : 0));
+/** How much work it takes to get a part out: what holds the covers over it, and what holds it. Better parts are behind more. */
+function effort(sl: Slot): number {
+  const seen = new Set<Step>();
+  const add = (s: Step) => seen.add(s);
+  for (let c = sl.under; c; c = c.under) c.holds.forEach(add);
+  sl.holds.forEach(add);
+  let sum = 0;
+  for (const s of seen) sum += s.kind === 'screw' ? s.need / 2 : 2;
+  return sum;
+}
+
+/** Part grade (0 scrap .. 3 space-grade) by effort and how far along the run is. */
+const gradeOf = (sl: Slot, level: number) => {
+  const e = effort(sl) + level * 0.15;
+  return e < 5 ? 0 : e < 9 ? 1 : e < 14 ? 2 : 3;
+};
+
+/** A machine of complexity `L` (0 up; more covers, clicks, bolts, wires and parts as it grows, and the better the parts
+ *  behind them). With `teach`, machines 0..3 are the fixed lessons: click, wire, bolt, pry, one at a time. */
+export function buildMachine(L: number, rnd: () => number, teach = false): Machine {
+  const M: Machine = { body: [], covers: [], steps: [], slots: [], wires: [], decor: [], halfW: 0, halfH: 0, best: 0 };
+  const lesson = teach ? L : -1; // 0..3: which lesson
+  const lv = teach ? 0 : L;
+  const need = 2 + (lv >= 7 ? 1 : 0); // clicks per screw
+  const mountP = Math.min(0.85, lv * 0.07); // chance a component is bolted down through its base
   const rect = (w: number, h: number, r = 8): Shape => ({ t: 'rect', w, h, r });
   const circle = (r: number): Shape => ({ t: 'circle', r });
   const body = (shape: Shape, x = 0, y = 0) => M.body.push({ shape, x, y });
@@ -162,11 +185,11 @@ export function buildMachine(i: number, rnd: () => number): Machine {
     s.owner = c;
     c.holds.push(s);
   };
-  const screws = (c: Cover, pts: P[], need: number) => {
+  const screws = (c: Cover, pts: P[]) => {
     for (const [x, y] of pts) hold(c, step('screw', x, y, { need, under: c.under }));
   };
   const slot = (part: number, x: number, y: number, under: Cover | null, rot = 0): Slot => {
-    const s: Slot = { part, tier: tierOf(), x, y, rot, under, holds: [], taken: false, plate: false };
+    const s: Slot = { part, tier: 0, x, y, rot, under, holds: [], taken: false, plate: false };
     M.slots.push(s);
     return s;
   };
@@ -196,92 +219,127 @@ export function buildMachine(i: number, rnd: () => number): Machine {
     sl.plate = sl.part !== 0;
     for (const [x, y] of at) sl.holds.push(step('bolt', x, y, { under: sl.under }));
   };
+  const maybeMount = (sl: Slot) => {
+    if (rnd() < mountP) mount(sl);
+  };
   const corners = (hw: number, hh: number, n: number): P[] => ([[-hw, -hh], [hw, hh], [hw, -hh], [-hw, hh]] as P[]).slice(0, n);
+  /** 2 lid screws, more as it gets harder. */
+  const lidScrews = (max: number) => Math.min(max, 2 + Math.floor(rnd() * (1 + lv / 5)));
 
-  const kinds = ['crate', 'pump', 'cabinet', 'nested', 'twobay'] as const;
-  const kind = i === 0 || i === 1 ? 'crate' : i === 2 ? 'pump' : i === 3 ? 'cabinet' : kinds[Math.floor(rnd() * kinds.length)];
-  const simple = i < 4; // one move at a time while learning
+  const all = ['crate', 'pump', 'cabinet', 'nested', 'twobay'] as const;
+  const pool = lv < 2 ? all.slice(0, 1) : lv < 4 ? all.slice(0, 3) : all;
+  const kind = teach ? (['crate', 'crate', 'pump', 'cabinet'] as const)[lesson] : pool[Math.floor(rnd() * pool.length)];
 
   if (kind === 'crate') {
     body(rect(250, 120));
     const lid = cover(rect(240, 110), 0, 0, 'lid', null);
-    screws(lid, corners(108, 46, i < 2 ? 2 : 2 + Math.floor(rnd() * 3)), i < 2 ? 2 : 3);
+    screws(lid, corners(108, 46, lidScrews(4)));
     M.decor.push({ t: 'rail', x: 0, y: 50, w: 210, h: 6 });
-    if (i === 0) {
-      slot(Math.floor(rnd() * 4), 0, -2, lid);
-    } else if (i === 1 || rnd() < 0.5) {
+    const variants = lesson === 0 || (!teach && lv < 2) ? ['one'] : lesson === 1 || lv < 5 ? ['elbow'] : lv < 7 ? ['elbow', 'block'] : ['elbow', 'block', 'three'];
+    const variant = variants[Math.floor(rnd() * variants.length)];
+    if (variant === 'one') {
+      maybeMount(slot(Math.floor(rnd() * 4), 0, -2, lid));
+    } else if (variant === 'elbow') {
       // two components side by side, wired through one run: one cut frees both
       const a = slot(1, -82, -22, lid);
       const b = slot(2, 82, 22, lid);
       const w = wire(term(a, 1), term(b, -1), lid);
       a.holds.push(w);
       b.holds.push(w);
-      if (i >= 6) mount(a);
-    } else {
+      maybeMount(a);
+    } else if (variant === 'block') {
       // each on its own wire to a terminal block between them
       const a = slot(1, -82, -10, lid);
       const b = slot(rnd() < 0.5 ? 2 : 3, 82, -10, lid);
       M.decor.push({ t: 'block', x: 0, y: -10, w: 22, h: 34 });
       a.holds.push(wire(term(a, 1), [-11, -10], lid));
       b.holds.push(wire([11, -10], term(b, -1), lid));
-      if (i >= 6) mount(a);
+      maybeMount(a);
+    } else {
+      // three in a row, a wire between each pair: the middle one needs both cut
+      const a = slot(1, -84, -10, lid);
+      const b = slot(2, 0, -10, lid);
+      const c = slot(3, 84, -10, lid);
+      const w1 = wire(term(a, 1), term(b, -1), lid);
+      const w2 = wire(term(b, 1), term(c, -1), lid);
+      a.holds.push(w1);
+      b.holds.push(w1, w2);
+      c.holds.push(w2);
+      maybeMount(b);
     }
   } else if (kind === 'pump') {
+    const sides = teach || lv < 3 ? 0 : lv < 8 ? 1 : 2; // inspection plates on the sides, each with a part behind it
     body(circle(74));
-    if (!simple) body(rect(64, 76, 6), 88, 0);
+    if (sides >= 1) body(rect(64, 76, 6), 88, 0);
+    if (sides >= 2) body(rect(64, 76, 6), -88, 0);
     const lid = cover(circle(66), 0, 0, 'lid', null);
-    screws(lid, [[-38, -38], [38, -38], [38, 38], [-38, 38]], 2);
+    screws(lid, [[-38, -38], [38, -38], [38, 38], [-38, 38]]);
     const gear = slot(0, 0, 0, lid);
     mount(gear);
-    if (!simple) {
-      // an inspection plate on the side, pulled off by its tab, with a coil behind it
+    if (sides >= 1) {
       const plate = cover(rect(54, 62, 4), 88, 0, 'plate', null, [1, -0.6]);
       hold(plate, step('pry', 116, 0, { dx: 1 }));
-      const coil = slot(3, 88, 0, plate);
-      if (rnd() < 0.5) mount(coil);
+      maybeMount(slot(3, 88, 0, plate));
+    }
+    if (sides >= 2) {
+      const plate = cover(rect(54, 62, 4), -88, 0, 'plate', null, [-1, -0.6]);
+      hold(plate, step('pry', -116, 0, { dx: -1 }));
+      maybeMount(slot(2, -88, 0, plate));
     }
   } else if (kind === 'cabinet') {
     body(rect(168, 158, 6));
     const door = cover(rect(158, 148, 4), 0, 0, 'door', null, [1, -0.3]);
     hold(door, step('pry', 84, 0, { dx: 1 }));
-    if (!simple) screws(door, [[-66, -64]], 2);
+    if (!teach && lv >= 3) screws(door, [[-66, -64]]);
     M.decor.push({ t: 'pcb', x: 0, y: 0, w: 132, h: 142 });
     const a = slot(1, 0, -48, door, Math.PI / 2);
-    const b = slot(rnd() < 0.5 ? 3 : 2, 0, 48, door, Math.PI / 2);
+    // from level 8 a shield plate on screws covers the lower component
+    const shield = !teach && lv >= 8 ? cover(rect(120, 56, 3), 0, 50, 'plate', door, [0, -1]) : null;
+    if (shield) screws(shield, [[52, 32], [52, 68]]); // on the side away from the component's bolts
+    const b = slot(rnd() < 0.5 ? 3 : 2, 0, 48, shield ?? door, Math.PI / 2);
     const w = wire(term(a, 1), term(b, -1), door, { vertical: true });
     a.holds.push(w);
     b.holds.push(w);
-    if (!simple && rnd() < 0.5) mount(b);
+    if (!teach) maybeMount(rnd() < 0.5 ? a : b);
   } else if (kind === 'nested') {
-    // a lid with a bolted plate inside it, and the wire from outside the plate to the coil under it
+    // a lid with a bolted plate inside it, and the wire from outside the plate to the coil under it; deeper still, a
+    // cap on screws over the coil
     body(rect(272, 132));
     const lid = cover(rect(262, 122), 0, 0, 'lid', null);
-    screws(lid, corners(122, 50, 2 + Math.floor(rnd() * 3)), 3);
+    screws(lid, corners(122, 50, lidScrews(4)));
     M.decor.push({ t: 'rail', x: -88, y: 52, w: 70, h: 6 });
     const motor = slot(2, -88, -6, lid);
     const plate = cover(rect(122, 94, 4), 52, 0, 'plate', lid, [0.6, -1]);
     hold(plate, step('bolt', 6, -36, { under: lid }));
     hold(plate, step('bolt', 98, 36, { under: lid }));
-    const coil = slot(3, 52, -6, plate);
+    const cap = lv >= 10 ? cover(rect(54, 50, 4), 52, -6, 'plate', plate, [0, -1]) : null;
+    if (cap) screws(cap, [[36, -22], [68, 10]]);
+    const coil = slot(3, 52, -6, cap ?? plate);
     const w = wire(term(motor, 1), term(coil, -1), lid, { at: 0.3 });
     motor.holds.push(w);
     coil.holds.push(w);
-    if (rnd() < 0.5) mount(motor);
+    maybeMount(motor);
   } else {
     // two bays with a lid each, a link through the wall between them that has to be cut first
     body(rect(292, 112));
     M.decor.push({ t: 'rail', x: 0, y: 0, w: 8, h: 112 });
     const left = cover(rect(124, 102), -81, 0, 'lid', null, [-0.5, -1]);
-    screws(left, [[-128, -38], [-34, 38]], 2);
+    screws(left, [[-128, -38], [-34, -38]]);
     const right = cover(rect(124, 102), 81, 0, 'door', null, [1, -0.4]);
     if (rnd() < 0.5) hold(right, step('pry', 146, 0, { dx: 1 }));
-    else screws(right, [[34, -38], [128, 38]], 2);
+    else screws(right, [[34, -38], [128, -38]]);
     const a = slot(1, -80, 0, left);
     const b = slot(rnd() < 0.5 ? 2 : 3, 80, 0, right);
     M.decor.push({ t: 'block', x: 0, y: 0, w: 30, h: 40 });
     const link = wire(term(a, 1), term(b, -1), null);
     a.holds.push(link);
     b.holds.push(link);
+    maybeMount(rnd() < 0.5 ? a : b);
+  }
+
+  for (const sl of M.slots) {
+    sl.tier = gradeOf(sl, lv);
+    M.best = Math.max(M.best, sl.tier);
   }
 
   // Half the machines are the other way round.
@@ -306,9 +364,28 @@ export function buildMachine(i: number, rnd: () => number): Machine {
  *  hits (src/teardownSound.ts), the bolt's ring while it's turned and when it stops, and a part going into the bag. */
 export type Sound = 'tink' | 'clink' | 'soft' | 'clang' | 'turn' | 'stop' | 'take';
 
+/** 'free': the loading screen (no clock, no end). 10 / 20 / 30: a speedrun, the time to take that many machines apart.
+ *  'endless': as many machines as you like in one go, scored by how many. */
+export type Mode = 10 | 20 | 30 | 'endless' | 'free';
+export interface RunResult {
+  mode: Mode;
+  machines: number;
+  /** Milliseconds from the first click to the last part out. */
+  ms: number;
+}
+
+/** m:ss.t */
+export const clockText = (ms: number) => `${Math.floor(ms / 60000)}:${(Math.floor(ms / 100) / 10 % 60).toFixed(1).padStart(4, '0')}`;
+
 /** `bar`: draw the loading bar under the game (the loading screen; not when played from the menu). */
-export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D, dpr: number, bar = true, sound: (s: Sound) => void = () => {}) {
+export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D, dpr: number, bar = true, sound: (s: Sound) => void = () => {}, run?: { mode: Mode; finish: (r: RunResult) => void }) {
   g.scale(dpr, dpr);
+  const mode: Mode = run?.mode ?? 'free';
+  const goal = typeof mode === 'number' ? mode : 0; // machines to take apart in a speedrun
+  let done = 0; // machines emptied this run
+  let t0 = 0; // performance.now() at the first click, 0 before it
+  let finished = false;
+  let lastMs = 0;
   let target = 0; // loading progress asked for, and the eased value drawn
   let shown = 0;
   let clock = 0;
@@ -316,13 +393,31 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   const rnd = () => ((rand = (rand * 16807) % 2147483647) / 2147483647);
 
   let n = 0; // machines so far
-  let m = buildMachine(0, rnd);
+  /** Machine k of the run: its complexity grows with k, with some luck either way (the loading screen starts with
+   *  the four lessons). */
+  const make = (k: number): Machine => {
+    if (mode === 'free' && k < 4) return buildMachine(k, rnd, true);
+    const lo = mode === 'free' ? 4 : 0;
+    const level = Math.round((mode === 'free' ? k * 0.7 - 1 : k * 0.7) + (rnd() - 0.5) * 3);
+    return buildMachine(Math.max(lo, Math.min(14, level)), rnd);
+  };
+  let m = make(0);
   let slide = SLIDE_FROM; // the machine's x offset while it comes in (the first slides in, the rest swap with the old one)
   let old: Machine | null = null; // the machine just emptied, on its way out
   let oldSlide = 0;
   let swap = 0; // 0..1: the swap of old for new
-  const flights: { t: number; part: number; tier: number; x: number; y: number }[] = []; // parts on their way to the bag
-  const bag: { part: number; tier: number }[] = [];
+  const flights: { t: number; part: number; tier: number; x: number; y: number; to: number }[] = []; // parts on their way to the bag
+  // The bag holds stacks of the same part and grade, best grade first.
+  const bag: { part: number; tier: number; count: number; pulse: number }[] = [];
+  const stacks = (extra?: { part: number; tier: number }) => {
+    const list = bag.map((b) => ({ part: b.part, tier: b.tier, count: b.count }));
+    if (extra) {
+      const hit = list.find((b) => b.part === extra.part && b.tier === extra.tier);
+      if (hit) hit.count++;
+      else list.push({ part: extra.part, tier: extra.tier, count: 1 });
+    }
+    return list.sort((a, b) => b.tier - a.tier || b.count - a.count || a.part - b.part);
+  };
   let act: Act | null = null;
   let hover: Step | null = null;
   let px = -99; // the pointer, in canvas pixels
@@ -361,21 +456,34 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     }
   };
 
+  function finishRun() {
+    if (finished) return;
+    finished = true;
+    act = null;
+    lastMs = Math.round(performance.now() - t0);
+    run?.finish({ mode, machines: done, ms: lastMs });
+  }
+
   function down(x: number, y: number) {
     px = x;
     py = y;
+    if (finished) return;
+    if (!t0) t0 = performance.now();
     const lx = x - slide - CX;
     const ly = y - CY;
     for (const sl of m.slots) {
       if (!free(sl) || Math.hypot(lx - sl.x, ly - sl.y) > 30) continue;
       // Into the bag; when the last part is out the next machine comes in as this one goes out.
       sl.taken = true;
-      flights.push({ t: 0, part: sl.part, tier: sl.tier, x: CX + slide + sl.x, y: CY + sl.y });
+      const to = stacks(sl).findIndex((b) => b.part === sl.part && b.tier === sl.tier);
+      flights.push({ t: 0, part: sl.part, tier: sl.tier, x: CX + slide + sl.x, y: CY + sl.y, to: Math.min(to, BAG_N - 1) });
       sound('take');
       if (m.slots.every((o) => o.taken)) {
+        done++;
+        if (goal && done >= goal) return finishRun();
         old = m;
         oldSlide = slide;
-        m = buildMachine(++n, rnd);
+        m = make(++n);
         swap = 0;
         act = null;
       }
@@ -449,11 +557,16 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       oldSlide = -SLIDE_FROM * e;
       if (swap >= 1) old = null;
     }
+    for (const b of bag) b.pulse = Math.max(0, b.pulse - dt * 3);
     for (let i = flights.length - 1; i >= 0; i--) {
       flights[i].t += dt;
       if (flights[i].t >= FLY_S) {
-        bag.push({ part: flights[i].part, tier: flights[i].tier });
-        if (bag.length > BAG_N) bag.shift();
+        const f = flights[i];
+        const have = bag.find((b) => b.part === f.part && b.tier === f.tier);
+        if (have) {
+          have.count++;
+          have.pulse = 1;
+        } else bag.push({ part: f.part, tier: f.tier, count: 1, pulse: 1 });
         flights.splice(i, 1);
       }
     }
@@ -845,7 +958,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     g.globalAlpha = 1;
   }
 
-  function drawCover(c: Cover) {
+  function drawCover(c: Cover, tag: number) {
     g.save();
     g.globalAlpha = c.released ? Math.max(0, 1 - c.age) : 1;
     g.translate(c.cx + c.x, c.cy + c.y);
@@ -860,8 +973,8 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     if (c.style === 'lid' && c.shape.t === 'rect') {
       g.fillStyle = dark;
       g.fillRect(-c.shape.w / 2 + 24, -8, c.shape.w - 48, 16); // the accent stripe
-      g.fillStyle = TIER_COLORS[Math.min(3, Math.floor(n / 2))];
-      g.fillRect(-c.shape.w / 2 + 24, -8, 14, 16); // the rarity tag
+      g.fillStyle = TIER_COLORS[tag];
+      g.fillRect(-c.shape.w / 2 + 24, -8, 14, 16); // the rarity tag: the best grade inside
       g.fillStyle = TRIM;
       const vy = c.shape.h / 2 - 20;
       for (let i = -2; i <= 2; i++) g.fillRect(i * 22 - 3, vy, 6, 3); // vents
@@ -944,7 +1057,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     // inner covers first, so the outer one is on top of them
     for (let k = mm.covers.length - 1; k >= 0; k--) {
       const c = mm.covers[k];
-      if (!c.released || c.age < 1) drawCover(c);
+      if (!c.released || c.age < 1) drawCover(c, mm.best);
     }
     if (markers) for (const s of mm.steps) if (ready(s)) drawMarker(s);
   }
@@ -966,12 +1079,16 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     for (const f of flights) {
       const t = Math.min(1, f.t / FLY_S);
       const e = t * t;
-      const to = bagAt(Math.min(bag.length, BAG_N - 1));
+      const to = bagAt(f.to);
       glyph(f.part, f.x + (to.x - f.x) * e, f.y + (to.y - f.y) * e - Math.sin(t * Math.PI) * 30, 1.1 - 0.6 * e, TIER_COLORS[f.tier]);
     }
-    // the bag
+    // the bag: a stack per part and grade, best grade first; the grade is the colour of the frame and glow, the number
+    // how many; a stack that just got one pulses
+    const list = stacks();
     for (let i = 0; i < BAG_N; i++) {
       const b = bagAt(i);
+      const it = list[i];
+      const pulse = it ? (bag.find((o) => o.part === it.part && o.tier === it.tier)?.pulse ?? 0) : 0;
       g.fillStyle = 'rgba(28, 15, 7, 0.8)';
       g.strokeStyle = 'rgba(255, 240, 220, 0.16)';
       g.lineWidth = 1;
@@ -979,14 +1096,40 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       g.roundRect(b.x - 13, b.y - 13, 26, 26, 4);
       g.fill();
       g.stroke();
-      const it = bag[i];
-      if (it) {
-        g.strokeStyle = TIER_COLORS[it.tier];
-        g.beginPath();
-        g.roundRect(b.x - 13, b.y - 13, 26, 26, 4);
-        g.stroke();
-        glyph(it.part, b.x, b.y, 0.5, TIER_COLORS[it.tier]);
+      if (!it) continue;
+      const c = TIER_COLORS[it.tier];
+      if (it.tier >= 2) {
+        const glow = g.createRadialGradient(b.x, b.y, 4, b.x, b.y, 24);
+        glow.addColorStop(0, c + '66');
+        glow.addColorStop(1, c + '00');
+        g.fillStyle = glow;
+        g.fillRect(b.x - 24, b.y - 24, 48, 48);
       }
+      g.strokeStyle = c;
+      g.lineWidth = it.tier >= 2 ? 2 : 1.5;
+      g.beginPath();
+      g.roundRect(b.x - 13, b.y - 13, 26, 26, 4);
+      g.stroke();
+      glyph(it.part, b.x, b.y, 0.5 + pulse * 0.18, c);
+      if (it.count > 1) {
+        g.fillStyle = '#fff4e4';
+        g.font = '600 9px ui-monospace, Menlo, Consolas, monospace';
+        g.textAlign = 'right';
+        g.textBaseline = 'alphabetic';
+        g.fillText(String(it.count), b.x + 12, b.y + 11);
+      }
+    }
+
+    // the run's clock and count
+    if (mode !== 'free') {
+      g.fillStyle = HI;
+      g.font = '600 14px ui-monospace, Menlo, Consolas, monospace';
+      g.textBaseline = 'top';
+      g.textAlign = 'left';
+      if (mode !== 'endless') g.fillText(clockText(finished ? lastMs : t0 ? performance.now() - t0 : 0), 12, 10);
+      g.textAlign = 'right';
+      g.fillText(goal ? `${done}/${goal}` : String(done), W - 12, 10);
+      g.textBaseline = 'alphabetic';
     }
 
     // the loading bar, drawn here so it keeps moving while the page is busy
@@ -1005,7 +1148,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     /** For looking at a machine without playing up to it (tools, not the game). */
     debugMachine(i: number, seed = 7, peel = 0) {
       rand = seed;
-      m = buildMachine(i, rnd);
+      m = buildMachine(i, rnd, false);
       slide = 0;
       swap = 1;
       // peel: take that many covers off, outermost first, to see what is under them
@@ -1014,6 +1157,14 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
         c.released = true;
         c.age = 2;
       }
+    },
+    debugState: () => ({ m, slide, done, finished }),
+    debugBag(list: [number, number, number][]) {
+      for (const [part, tier, count] of list) bag.push({ part, tier, count, pulse: 0 });
+    },
+    /** Endless: stop here with the machines done so far. */
+    finishNow() {
+      if (done > 0) finishRun();
     },
     down,
     move,

@@ -10,12 +10,15 @@ import { dirname, join } from 'node:path';
 import sirv from 'sirv';
 import { WebSocketServer } from 'ws';
 import { LEGACY_WORLD, newWorldId, WORLD_ID_RE } from '../shared/world.ts';
+import { leaderboard, minigameApi } from './minigame.ts';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DB_PATH = process.env.DB_PATH ?? 'data/dadajam.db';
 const WORLDS_DIR = join(dirname(DB_PATH), 'worlds');
 /** New worlds a minute, from everyone: enough for players, not for filling the disk. */
 const NEW_PER_MIN = 30;
+
+const board = leaderboard(join(dirname(DB_PATH), 'minigame.db')); // the minigame's leaderboards (server/minigame.ts), shared by all worlds
 
 /** The world from before there were worlds keeps its old database; the rest have one each. */
 const dbPath = (id: string) => (id === LEGACY_WORLD ? DB_PATH : join(WORLDS_DIR, `${id}.db`));
@@ -58,6 +61,7 @@ const serveStatic = sirv('dist', {
 let made: number[] = [];
 const http = createServer((req, res) => {
   if (req.url === '/healthz') return void res.end('ok');
+  if (minigameApi(board, req, res)) return;
   if (req.url === '/api/worlds' && req.method === 'POST') {
     const now = Date.now();
     made = made.filter((t) => now - t < 60_000);

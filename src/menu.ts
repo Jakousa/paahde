@@ -6,7 +6,7 @@ import { WORLD_ID } from '../shared/world.ts';
 import { audio } from './audio';
 import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
 import { capture, toggleFullscreen, tools, ui } from './input';
-import { loading } from './loadingGame';
+import { openMinigame } from './minigameMenu';
 import { TEXT } from '../shared/text.ts';
 
 const STATS_KEY = 'dadajam.stats';
@@ -43,11 +43,6 @@ const css = `
 #menu .foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
   opacity: 0.6; line-height: 1.5; word-break: break-all; }
 #menu .foot a { color: inherit; }
-#play { position: fixed; inset: 0; z-index: 31; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 18px; background: rgba(12, 6, 2, 0.3); font: 12px var(--mono); user-select: none; -webkit-user-select: none; }
-#play button { padding: 8px 26px; font: 600 13px var(--mono); letter-spacing: 0.08em; color: #2a160a; background: #ffd9a0;
-  border: 0; border-radius: 5px; cursor: pointer; }
-#play button:hover { background: #ffe6bf; }
 `;
 
 
@@ -178,28 +173,10 @@ export class Menu {
     });
   }
 
-  /** The loading screen's game (src/loadingGame.ts) over the world, which stays visible behind it; Leave or Esc comes back. */
+  /** The teardown minigame (src/minigameMenu.ts) over the world, which stays visible behind it. */
   private playMinigame() {
-    const o = document.createElement('div');
-    o.id = 'play';
-    o.innerHTML = `<button class="leave">${TEXT.menu.leave}</button>`;
-    document.body.append(o);
-    loading.start(o);
     this.el.style.visibility = 'hidden';
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Escape') return;
-      e.preventDefault();
-      e.stopPropagation();
-      leave();
-    };
-    const leave = () => {
-      removeEventListener('keydown', onKey, true);
-      loading.stop();
-      o.remove();
-      this.el.style.visibility = '';
-    };
-    addEventListener('keydown', onKey, true);
-    o.querySelector('.leave')!.addEventListener('click', leave);
+    openMinigame(() => (this.el.style.visibility = ''));
   }
 
   /** The rebinding rows: click a key, press the new one (Esc cancels, Backspace clears). */

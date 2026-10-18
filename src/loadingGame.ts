@@ -2,7 +2,7 @@
 // the big game bundle has downloaded and stopped by src/main.ts when the cover leaves. The main thread is blocked for
 // long stretches while the world builds, so the game and the bar are drawn by a worker into an OffscreenCanvas; only
 // the pointer events come through the page. Without OffscreenCanvas it runs on the page instead.
-import { createRunner, H, W, type Sound } from './loadingRunner';
+import { createRunner, H, W, type Mode, type RunResult, type Sound } from './loadingRunner';
 import { teardownSound } from './teardownSound';
 import { uiSound } from './uiSound';
 
@@ -17,9 +17,11 @@ function play(s: Sound) {
 let canvas: HTMLCanvasElement | null = null;
 let off: (() => void) | null = null;
 let progress: (p: number) => void = () => {};
+let finishNow: () => void = () => {};
 
-/** On the loading cover (no arguments), or inside `host` without the loading bar (played from the Esc menu, src/menu.ts). */
-function start(host?: HTMLElement) {
+/** On the loading cover (no arguments), or inside `host` without the loading bar (played from the Esc menu, src/minigameMenu.ts)
+ *  in a `mode`, which calls `onFinish` when the run is over. */
+function start(host?: HTMLElement, mode: Mode = 'free', onFinish: (r: RunResult) => void = () => {}) {
   const cover = host ?? document.getElementById('cover');
   if (!cover || canvas) return;
   const bar = !host;
@@ -42,13 +44,17 @@ function start(host?: HTMLElement) {
     try {
       worker = new Worker(new URL('./loadingWorker.ts', import.meta.url), { type: 'module' });
       const offscreen = c.transferControlToOffscreen();
-      worker.postMessage({ t: 'init', canvas: offscreen, dpr, bar }, [offscreen]);
-      worker.onmessage = (e) => e.data.t === 'sound' && play(e.data.s);
+      worker.postMessage({ t: 'init', canvas: offscreen, dpr, bar, mode }, [offscreen]);
+      worker.onmessage = (e) => {
+        if (e.data.t === 'sound') play(e.data.s);
+        else if (e.data.t === 'finish') onFinish(e.data.r);
+      };
       const w = worker;
       down = (x, y) => w.postMessage({ t: 'down', x, y });
       move = (x, y) => w.postMessage({ t: 'move', x, y });
       up = () => w.postMessage({ t: 'up' });
       progress = (p) => w.postMessage({ t: 'progress', p });
+      finishNow = () => w.postMessage({ t: 'finishNow' });
       stop = () => w.postMessage({ t: 'stop' });
     } catch {
       worker = null;
@@ -57,7 +63,7 @@ function start(host?: HTMLElement) {
   if (!worker) {
     c.width = W * dpr;
     c.height = H * dpr;
-    const run = createRunner(c.getContext('2d')!, dpr, bar, play);
+    const run = createRunner(c.getContext('2d')!, dpr, bar, play, { mode, finish: onFinish });
     let raf = 0;
     let last = performance.now();
     const frame = (now: number) => {
@@ -70,6 +76,7 @@ function start(host?: HTMLElement) {
     move = run.move;
     up = run.up;
     progress = run.progress;
+    finishNow = run.finishNow;
     stop = () => cancelAnimationFrame(raf);
   }
 
@@ -104,6 +111,7 @@ function stopGame() {
   canvas?.remove();
   canvas = null;
   progress = () => {};
+  finishNow = () => {};
 }
 
-export const loading = { start, stop: stopGame, progress: (p: number) => progress(p) };
+export const loading = { start, stop: stopGame, progress: (p: number) => progress(p), finishNow: () => finishNow() };
