@@ -4,7 +4,7 @@
 // Losing it from the cone bleeds the lock away at JAM_BLEED× the rate it built.
 //
 // The client (src/jammer.ts) picks the target nearest the aim within the cone and, while held, tells the server
-// ('jam') about JAM_SEND_MS; the server (server/index.ts onJam) checks the tool is in hand and the target in the cone
+// ('jam') about JAM_SEND_MS; the server (server/world.ts onJam) checks the tool is in hand and the target in the cone
 // and range and adds up the time.
 
 export const JAMMER = 'jammer';

@@ -49,7 +49,7 @@ client                         server
 
 ## Frameworks considered
 
-We use a small hand-written server (`server/index.ts`, ~200 lines) because the model above is simple
+We use a small hand-written server (`server/world.ts`, ~200 lines) because the model above is simple
 at our scale and the whole team can read and change it. Alternatives, if needs grow:
 
 - **[Colyseus](https://colyseus.io) 0.18** (MIT): rooms, matchmaking, binary delta-compressed state
@@ -92,7 +92,7 @@ at our scale and the whole team can read and change it. Alternatives, if needs g
   Anything only the client simulates will rubber-band. Keep it deterministic: no `Math.random()`,
   `Date.now()` or frame-time `dt` inside `step`.
 - Add new inputs as bits in the input bitmask (the server masks unknown bits: update `input & 7`
-  in `server/index.ts`).
+  in `server/world.ts`).
 - Purely visual effects (particles, squash and stretch, the wasm spin) stay client-side.
 - New message types go in `shared/protocol.ts`.
 - **Terrain edits** (digging, `shared/dig.ts`): the server applies dig/pile strokes from the input bits

@@ -38,6 +38,7 @@ import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
 import { serverBuild } from './update';
+import { WORLD_ID } from '../shared/world.ts';
 
 /** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
 export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' }>;
@@ -148,6 +149,10 @@ export class Net {
   onWater?: (w: { heat: number; sips: number; rising: boolean; temp: number; shade: boolean }) => void;
   /** We died (heatstroke, a drone's beam or a guardian): we lie where we fell until the server respawns us. */
   onDied?: (cause: DeathCause) => void;
+  /** The world's shared lives left (shared/world.ts), on join and after every death. */
+  onLives?: (n: number) => void;
+  /** The world turned us away for good: its lives are spent ('over') or it doesn't exist ('missing'). */
+  onEnded?: (why: 'over' | 'missing') => void;
   /** Dead and lying as a ragdoll: the push (m/s) that threw the body (shared/ragdoll.ts); null when alive. */
   down: [number, number, number] | null = null;
   /** Plant bed stages and growth by placed id (shared/garden.ts), from the server. Beds without one are empty. */
@@ -413,7 +418,7 @@ export class Net {
     scrapChanged();
   }
 
-  // Same countdown and stroke as the server's dig() in server/index.ts.
+  // Same countdown and stroke as the server's dig() in server/world.ts.
   private predictDig(input: number, yaw: number, pitch: number) {
     if (this.digCooldown > 0) this.digCooldown--;
     if (!(input & (DIG | PILE)) || this.digCooldown > 0 || this.me.riding) return;
@@ -529,7 +534,9 @@ export class Net {
   }
 
   private connect() {
-    const ws = new WebSocket(new URL('ws', location.href.replace(/^http/, 'ws')));
+    const url = new URL('ws', location.href.replace(/^http/, 'ws'));
+    url.search = `?w=${WORLD_ID}`;
+    const ws = new WebSocket(url);
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'joining';
@@ -539,7 +546,7 @@ export class Net {
       this.send(spawn === 'base' || spawn === 'crash' || spawn === 'field' || spawn === 'shelter' ? { t: 'hello', browserId: this.browserId, spawn } : { t: 'hello', browserId: this.browserId });
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
-    ws.onclose = () => {
+    ws.onclose = (e) => {
       this.id = 0;
       this.pending = [];
       this.snapshots = [];
@@ -551,6 +558,8 @@ export class Net {
       this.digCooldown = 0;
       this.holders.clear();
       this.status = 'reconnecting';
+      // Game over or no such world (server/world.ts, server/index.ts): nothing to come back to.
+      if (e.code === 4410 || e.code === 4404) return this.onEnded?.(e.code === 4410 ? 'over' : 'missing');
       // Reconnect with backoff; deploys restart the server, so this is expected to happen.
       // Jitter spreads everyone's reconnects out after a restart.
       setTimeout(() => this.connect(), this.retryMs * (0.5 + Math.random()));
@@ -564,6 +573,7 @@ export class Net {
       return;
     }
     if (msg.t === 'version') return serverBuild(msg.build);
+    if (msg.t === 'lives') return this.onLives?.(msg.n);
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);
     if (msg.t === 'scrap') return this.applyScrap(msg);

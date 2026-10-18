@@ -129,6 +129,8 @@ export type ServerMsg =
   // First message on every connection: the build the server is serving (dist/version.txt, 'dev' if
   // none). A client built from another SHA reloads the page to pick up the new build.
   | { t: 'version'; build: string }
+  /** Deaths left in this world (shared/world.ts LIVES), on join and after every death; 0 is game over. */
+  | { t: 'lives'; n: number }
   // id is a public per-connection id; the browserId is never sent to other players.
   // epoch = wall-clock ms (Unix) at server time 0, so the time of day survives server restarts.
   | { t: 'welcome'; id: number; state: PlayerState; color: number; epoch: number }

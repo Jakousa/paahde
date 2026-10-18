@@ -2,6 +2,7 @@
 // panel took it. Resume (or a click on the backdrop) goes back in. Settings: volume and music volume (src/audio.ts) and
 // the stats line in the top-left corner; below them the controls, the build/connection line and credits.
 // The game keeps running behind it: it's multiplayer, nothing pauses.
+import { WORLD_ID } from '../shared/world.ts';
 import { audio } from './audio';
 import { capture, toggleFullscreen, tools, ui } from './input';
 
@@ -61,10 +62,18 @@ export class Menu {
 <label class="row"><span>Occlusion</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
 <label class="row"><span>Show stats</span><input class="stats" type="checkbox"></label>
 <button class="fs" style="margin-top:8px"></button>
+<button class="invite" style="margin-top:8px">Copy invite link</button>
 <h3>Controls</h3><div class="keys">${KEYS.map(([k, v]) => `<kbd>${k}</kbd><span>${v}</span>`).join('')}</div>
 <div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">credits</a></div></div>`;
     document.body.append(this.el);
     this.footEl = this.el.querySelector('.info')!;
+    // The world's URL (shared/world.ts), without dev flags: anyone opening it joins this world.
+    const invite = this.el.querySelector<HTMLButtonElement>('.invite')!;
+    invite.addEventListener('click', () => {
+      const url = `${location.origin}${location.pathname}?w=${WORLD_ID}`;
+      navigator.clipboard?.writeText(url).then(() => (invite.textContent = 'Copied'), () => (invite.textContent = url));
+      setTimeout(() => (invite.textContent = 'Copy invite link'), 2500);
+    });
 
     const vol = this.el.querySelector<HTMLInputElement>('.vol')!;
     const val = this.el.querySelector<HTMLElement>('.val')!;

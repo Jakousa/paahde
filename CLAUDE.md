@@ -7,7 +7,8 @@ a few minutes, so `main` must always build.
 ## Commands
 
 - `npm run dev` — compile wasm, then run the game server (:8787, auto-restarts) and Vite
-  (http://localhost:5173, proxies `/ws`). Open two tabs to see multiplayer.
+  (http://localhost:5173, proxies `/ws` and `/api`). Make a world on the landing page, then open its URL in a
+  second tab to see multiplayer.
 - `npm run asbuild` — recompile wasm only (Vite does not watch `assembly/`)
 - `npm run build` — wasm + `tsc --noEmit` + production build into `dist/`. Run before pushing.
 - `npm run preview` — build, then run the production server (serves `dist/` + `/ws` on :8787).
@@ -56,10 +57,14 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   scope and the hitscan in `src/rifle.ts`, beam/sparks/smoke `src/world/zaps.ts`, sounds `src/rifleSound.ts`, targets
   and the collapse in `src/world/guardians.ts`, checked by `GuardianServer.shoot` (server/guardians.ts)
 - `shared/jammer.ts` — the jammer (gear, found broken and repaired): hold it 5 s on a jet or drone in its cone and it glides down whole; the lock is
-  added up by `onJam` (server/index.ts), aimed and heard in `src/jammer.ts`, model `src/models/jammer.ts`
+  added up by `onJam` (server/world.ts), aimed and heard in `src/jammer.ts`, model `src/models/jammer.ts`
 - `shared/throw.ts` — thrown scrap (any scrap item in hand, use button): flown and struck against drones in
   `server/throws.ts`, lands as loot; drawn and thrown in `src/throw.ts`
-- `server/index.ts` — authoritative game server (static files + `/ws`); `server/db.ts` — SQLite;
+- `shared/world.ts` — worlds: each game is its own world at its own URL (`?w=<id>`, made on the landing page,
+  `src/landing.ts`), with a seed from its id, its own players and DB (`data/worlds/<id>.db`; the old world is
+  `?w=main`), and 10 shared lives (`src/lives.ts`); at 0 the game is over
+- `server/index.ts` — front server: static files, `POST /api/worlds`, passes `/ws?w=<id>` through to the world's
+  process; `server/world.ts` — authoritative game server for one world (forked per world, exits when empty); `server/db.ts` — SQLite;
   `server/scrap.ts` — scrap pickups, respawn;
   `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`, `shared/storage.ts`), Tab overlay in `src/inventory.ts`
 - `shared/gear.ts` — gear found broken and repaired with parts at the workbench (part slots, quality, what each

@@ -1245,3 +1245,22 @@ drawn by `src/world/shelters.ts`).
   reach about level with it (`lootReach` checks height too), so it can't be taken through the roof.
 - **Gaps:** no sand blowing in during storms (the base has `baseSand`); a stash isn't heard by the metal detector
   (it's not buried).
+
+## Worlds and shared lives
+
+- **Worlds:** the page without `?w=` is a landing page (`src/landing.ts`) with one button, *New world*: it asks
+  `POST api/worlds` for a fresh random id and goes to `?w=<id>`. Anyone opening that URL plays the same world; the
+  Esc menu copies it (*Copy invite link*). Each world has its own seed (`seedFor(id)`, shared/world.ts), so its own
+  dunes, rocks, base spot and sites, and its own players, items and terrain edits in `data/worlds/<id>.db`. The world
+  from before keeps `data/dadajam.db` and seed 1017 at `?w=main`. Unknown ids are turned away (close 4404).
+- **One process per world:** the layouts are seeded once when the shared modules load, so the front server
+  (`server/index.ts`: static files, the API, `/ws`) forks `server/world.ts` per world with `WORLD_ID` and pipes each
+  WebSocket upgrade through to the world's local port. A world starts on its first connection and exits after 10
+  minutes empty; on SIGTERM the front waits for the worlds to save. Dev: `--watch-path=server --watch-path=shared`
+  restarts the front, and the worlds go with it.
+- **Lives:** 10 per world (`LIVES`), shared by everyone, kept in the world's `settings` (`lives`); every death
+  (`die()`) spends one and everyone gets `{ t: 'lives' }`. A row of marks in the top-right corner (`src/lives.ts`)
+  puts one out per death. At 0 nobody can die any more, everyone is closed with 4410 once the last body has lain its
+  `DOWN_MS`, and joining a spent world gets the end screen (*Game over*, *New world*).
+- **Gaps:** finished worlds' databases stay on disk; nothing lists open worlds; the browser ID is the same in every
+  world (each world's DB keeps its own player row).

@@ -17,8 +17,9 @@
 //     the corridors, but not on slip faces.
 //   - A regional "sand supply" mask flattens some areas into pans; a very gentle erg undulation on top.
 
-/** Seeds the dunes, scrap, wrecks and crash sites, and so where the base goes (shared/base.ts). */
-export const WORLD_SEED = 1017;
+/** Seeds the dunes, scrap, wrecks and crash sites, and so where the base goes (shared/base.ts); per world
+ *  (shared/world.ts). */
+export { WORLD_SEED } from './world.ts';
 
 /** Unit vector the wind blows towards (xz). Slip faces face this way; ripples run perpendicular. */
 export const WIND = { x: 0.3162277660168379, z: 0.9486832980505138 }; // normalize(1, 3)

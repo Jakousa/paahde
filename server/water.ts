@@ -1,7 +1,7 @@
 // Server side of survival (shared/water.ts): builds up (or cools off) each player's heat meter by the felt
 // temperature (shared/temperature.ts; how much of the body is in the sun from shared/shade.ts, with other players
 // and bikes as shade casters; hotter in a sandstorm, shared/storm.ts), validates sips and canteen refills, and says
-// when a player has died of heatstroke (server/index.ts respawns them).
+// when a player has died of heatstroke (server/world.ts respawns them).
 import { atWater, indoors } from '../shared/shelters.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { sunOnBody, type Caster } from '../shared/shade.ts';
@@ -56,7 +56,7 @@ export function waterMsg(t: Heat): ServerMsg {
   };
 }
 
-/** What shades a player, from server/index.ts: `casters` everyone's bodies and bikes (shared/shade.ts), `self` the
+/** What shades a player, from server/world.ts: `casters` everyone's bodies and bikes (shared/shade.ts), `self` the
  *  player's id (their own don't count). */
 export type Surroundings = { casters: readonly Caster[]; self: number };
 

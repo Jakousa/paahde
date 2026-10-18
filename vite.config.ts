@@ -29,7 +29,7 @@ export default defineConfig({
   server: {
     // Docker dev (docker-compose.yml): listen on all interfaces and poll for changes on the bind mount.
     host: process.env.DEV_DOCKER ? true : undefined,
-    proxy: { '/ws': { target: 'ws://localhost:8787', ws: true } },
+    proxy: { '/ws': { target: 'ws://localhost:8787', ws: true }, '/api': 'http://localhost:8787' },
     // Agent worktrees live under .claude/; their builds shouldn't reload this dev server.
     watch: { ignored: ['**/.claude/**'], usePolling: !!process.env.DEV_DOCKER },
   },

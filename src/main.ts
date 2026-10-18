@@ -16,6 +16,8 @@ import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
 import { Menu } from './menu';
 import { getBrowserId, Net } from './net';
+import { Lives } from './lives';
+import { landing } from './landing';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { addHeadlights, Bike } from './bike';
@@ -113,6 +115,9 @@ if (location.search.includes('debug')) {
 }
 
 const net = new Net(getBrowserId());
+const lives = new Lives();
+net.onLives = (n) => lives.set(n);
+net.onEnded = (why) => landing(why);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { net });
 // Machine progress (large sites and the disassembly table), from the server: every machine is kept up to date,
 // and the one being worked on gets it through the disassembly mode, animated.
@@ -217,7 +222,7 @@ thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one 
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => placedView.sync(placed, net.garden);
 net.onNotice = (text) => {
-  if (text === 'Bag full') uiSound.full(); // the server refused a find (server/index.ts)
+  if (text === 'Bag full') uiSound.full(); // the server refused a find (server/world.ts)
   hud.toast(text);
 };
 function bagFull() {

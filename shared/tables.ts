@@ -208,7 +208,7 @@ export const SHELTER_STASHES = {
 };
 
 // ---------------------------------------------------------------------------------------------------------------
-// What a killed enemy leaves on the sand (server/index.ts dropSpoils): with `odds`, min..max parts, each a random
+// What a killed enemy leaves on the sand (server/world.ts dropSpoils): with `odds`, min..max parts, each a random
 // one of `parts` at a tier from tierWeights.
 
 type Spoils = { odds: number; min: number; max: number; parts: PartId[]; tierWeights: TierWeights };
