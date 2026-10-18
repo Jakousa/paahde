@@ -2,7 +2,8 @@
 // starter gear at the scrap fields near the base, the advanced gear on crawler ground, rare loose parts on guardian
 // ground: shared/crashsites.ts SiteLevel; and one broken motorcycle always in front of the base door, HOME_BIKE), things buried in the sand that the metal detector hears and a shovel digs up. All shared: the first player to press F
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
-// Kept in memory: a restart lays out fresh ones. Items players drop are kept in the DB (`dropped`) and never respawn.
+// Kept in the DB (`world_loot`, `loot_pending`, written on change), so a restart keeps what was taken and dug. Items
+// players drop are kept in `dropped` and never respawn.
 import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
 import { GEAR, GEAR_KINDS, isGear, refit, scrapParts } from '../shared/gear.ts';
 import { JAMMER } from '../shared/jammer.ts';
@@ -39,7 +40,8 @@ const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
 /** Broken gear a cache can hold (not the jammer; the guns have their own odds: only the pistol, CACHES.contents.pistol). */
 const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS) && k !== JAMMER);
 
-type Spawn = { at: number; what: 'find' | 'cache'; kind?: string };
+/** A taken find or cache waiting to come back; id is its loot_pending row. */
+type Spawn = { id: number; at: number; what: 'find' | 'cache'; kind?: string };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
@@ -93,6 +95,8 @@ export class LootServer {
   private piles = nearPiles();
   private homeBike = homeBikeSpot();
   private homeBikeId = -1;
+  /** What each lying find stands in for (FINDS key, RARE_KIND, HOME_KIND); caches aren't in it. */
+  private spawnKey = new Map<number, string>();
   private db: Db;
 
   constructor(db: Db) {
@@ -104,11 +108,46 @@ export class LootServer {
       this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, depth: 0, src: 'drop' });
       this.nextId = Math.max(this.nextId, r.id + 1);
     }
-    for (const [kind, f] of Object.entries(FINDS)) for (let i = 0; i < f.n; i++) this.spawnFind(kind);
-    for (let i = 0; i < RARE_FINDS.n; i++) this.spawnFind(RARE_KIND);
-    this.spawnFind(HOME_KIND);
-    for (let i = 0; i < CACHES.n; i++) this.spawnCache();
+    // Finds and caches from before the restart, and the ones waiting to come back.
+    const world = db.loadWorldLoot();
+    for (const r of world) {
+      const parts = r.parts ? (refit(r.kind, r.parts) ?? r.parts) : undefined;
+      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, depth: r.depth, src: r.src });
+      if (r.spawn) this.spawnKey.set(r.id, r.spawn);
+      if (r.spawn === HOME_KIND) this.homeBikeId = r.id;
+      this.nextId = Math.max(this.nextId, r.id + 1);
+    }
+    this.pending = db.loadLootPending().map((p) => ({ id: p.id, at: p.at, what: p.what, ...(p.kind ? { kind: p.kind } : {}) }));
+    // As many of each as shared/tables.ts says (a fresh DB lays them all out; a changed table tops up or trims).
+    db.tx(() => {
+      const want = new Map<string, number>(Object.entries(FINDS).map(([k, f]) => [k, f.n]));
+      want.set(RARE_KIND, RARE_FINDS.n);
+      want.set(HOME_KIND, 1);
+      const lying = new Map<string, number[]>();
+      for (const [id, k] of this.spawnKey) lying.set(k, [...(lying.get(k) ?? []), id]);
+      lying.set('', [...this.loot.values()].filter((l) => l.src === 'cache').map((l) => l.id));
+      want.set('', CACHES.n);
+      for (const k of new Set([...want.keys(), ...lying.keys()])) {
+        const keyOf = (p: Spawn) => (p.what === 'cache' ? '' : p.kind ?? '');
+        let extra = (lying.get(k)?.length ?? 0) + this.pending.filter((p) => keyOf(p) === k).length - (want.get(k) ?? 0);
+        for (const p of this.pending.filter((p) => keyOf(p) === k)) {
+          if (extra <= 0) break;
+          this.dropPending(p);
+          extra--;
+        }
+        for (const id of lying.get(k) ?? []) {
+          if (extra <= 0) break;
+          this.remove(this.loot.get(id)!);
+          extra--;
+        }
+        for (; extra < 0; extra++) {
+          if (k === '') this.spawnCache();
+          else this.spawnFind(k);
+        }
+      }
+    });
     this.added = [];
+    this.removed = [];
   }
 
   /** Everything, for a joining client. */
@@ -136,9 +175,7 @@ export class LootServer {
     if (!l || l.depth > 0 || !lootReach(s, l, 1.5)) return null;
     if (l.id === this.homeBikeId) {
       if (this.db.hasGrant(who, HOME_KIND)) return 'had';
-      if (!this.db.tx(() => give(l) && (this.db.markGrant(who, HOME_KIND), true))) return 'full';
-      this.remove(l);
-      this.pending.push({ at: Date.now() + FIND_RESPAWN_MS, what: 'find', kind: HOME_KIND });
+      if (!this.db.tx(() => give(l) && (this.db.markGrant(who, HOME_KIND), this.remove(l), this.queue('find', HOME_KIND), true))) return 'full';
       return l.kind;
     }
     if (l.src === 'drop') {
@@ -146,10 +183,8 @@ export class LootServer {
       this.remove(l);
       return l.kind;
     }
-    if (!give(l)) return 'full';
-    this.remove(l);
-    const kind = l.kind in FINDS ? l.kind : RARE_KIND;
-    this.pending.push({ at: Date.now() + (l.src === 'find' ? FIND_RESPAWN_MS : CACHE_RESPAWN_MS), what: l.src, kind: l.src === 'find' ? kind : undefined });
+    const key = this.spawnKey.get(l.id) ?? (l.kind in FINDS ? l.kind : RARE_KIND);
+    if (!this.db.tx(() => give(l) && (this.remove(l), this.queue(l.src === 'find' ? 'find' : 'cache', key), true))) return 'full';
     return l.kind;
   }
 
@@ -180,6 +215,7 @@ export class LootServer {
       for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) mm = Math.min(mm, edits.getMm(ix + dx, iz + dz));
       if (mm > -l.depth * 1000) continue;
       l.depth = 0;
+      this.db.surfaceWorldLoot(l.id);
       this.added.push(l); // clients take an add of a known id as an update
     }
   }
@@ -189,11 +225,20 @@ export class LootServer {
     const now = Date.now();
     const due = this.pending.filter((p) => p.at <= now);
     if (!due.length) return;
-    this.pending = this.pending.filter((p) => p.at > now);
-    for (const p of due) {
-      if (p.what === 'find') this.spawnFind(p.kind!);
-      else this.spawnCache();
-    }
+    this.db.tx(() => {
+      for (const p of due) {
+        this.dropPending(p);
+        if (p.what === 'find') this.spawnFind(p.kind!);
+        else this.spawnCache();
+      }
+    });
+  }
+
+  /** A find or cache laid out (kept in the DB); `spawn`: what a find stands in for. Dropped items use add(). */
+  private place(l: Loot, spawn: string | null) {
+    this.db.putWorldLoot(l, spawn);
+    if (spawn) this.spawnKey.set(l.id, spawn);
+    this.add(l);
   }
 
   private add(l: Loot) {
@@ -204,6 +249,22 @@ export class LootServer {
   private remove(l: Loot) {
     this.loot.delete(l.id);
     this.removed.push(l.id);
+    if (l.src !== 'drop') {
+      this.db.deleteWorldLoot(l.id);
+      this.spawnKey.delete(l.id);
+    }
+  }
+
+  /** A taken find (spawn key `kind`) or cache comes back somewhere else after a while. */
+  private queue(what: 'find' | 'cache', kind: string) {
+    const at = Date.now() + (what === 'find' ? FIND_RESPAWN_MS : CACHE_RESPAWN_MS);
+    const k = what === 'find' ? kind : null;
+    this.pending.push({ id: this.db.insertLootPending(at, what, k), at, what, ...(k ? { kind: k } : {}) });
+  }
+
+  private dropPending(p: Spawn) {
+    this.db.deleteLootPending(p.id);
+    this.pending = this.pending.filter((q) => q !== p);
   }
 
   /** Broken: a few low-tier parts already in, at least one slot empty. */
@@ -220,7 +281,7 @@ export class LootServer {
     if (kind === HOME_KIND) {
       const parts = GEAR.motorcycle.slots.map((s) => ('part' in s && HOME_BIKE.fitted.includes(s.part) ? partKind(s.part, 'scrap') : null));
       this.homeBikeId = this.nextId++;
-      this.add({ id: this.homeBikeId, kind: 'motorcycle', parts, ...this.homeBike, depth: 0, src: 'find' });
+      this.place({ id: this.homeBikeId, kind: 'motorcycle', parts, ...this.homeBike, depth: 0, src: 'find' }, HOME_KIND);
       return;
     }
     const level = FINDS[kind]?.level ?? 2;
@@ -240,8 +301,8 @@ export class LootServer {
       if (!overBase(x, z, 6)) break;
     }
     if (kind === RARE_KIND) {
-      this.add({ id: this.nextId++, kind: partKind(pick(PART_IDS), pickTier(RARE_FINDS.tierWeights, Math.random)), x, z, depth: 0, src: 'find' });
-    } else this.add({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, depth: 0, src: 'find' });
+      this.place({ id: this.nextId++, kind: partKind(pick(PART_IDS), pickTier(RARE_FINDS.tierWeights, Math.random)), x, z, depth: 0, src: 'find' }, kind);
+    } else this.place({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, depth: 0, src: 'find' }, kind);
   }
 
   private spawnCache() {
@@ -261,6 +322,6 @@ export class LootServer {
       kind = what === 'pistol' ? PISTOL : pick(CACHE_GEAR);
       parts = this.brokenParts(kind);
     }
-    this.add({ id: this.nextId++, kind, ...(parts ? { parts } : {}), x, z, depth: rand(CACHE_DEPTH[0], CACHE_DEPTH[1]), src: 'cache' });
+    this.place({ id: this.nextId++, kind, ...(parts ? { parts } : {}), x, z, depth: rand(CACHE_DEPTH[0], CACHE_DEPTH[1]), src: 'cache' }, null);
   }
 }

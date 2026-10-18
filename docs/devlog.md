@@ -2,6 +2,14 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — World loot survives restarts
+
+- Finds and buried caches are kept in SQLite (`world_loot`, `loot_pending` in server/db.ts), so a deploy no longer
+  lays out a fresh world: what was taken stays gone until its respawn timer (also kept) runs out, dug-up caches stay
+  on the surface, and the home bike keeps its id. Written on change only (lay out, take, dig up, respawn), never per
+  tick. Each find row remembers what it stands in for (FINDS key, `rare`, `home_bike`); at start the counts are
+  topped up or trimmed to shared/tables.ts, so retuning FINDS / CACHES still takes effect on the next deploy.
+
 ## 2026-10-18 — The jammer is found, not crafted
 
 - The jammer is gear now (shared/gear.ts): found broken on crawler ground (level 1, 3 at once, not in caches), the
@@ -321,7 +329,7 @@ motorcycle, telescope, water bottle, backpack, storm detector, wrist computer, m
 - **Batteries** had no source: control cabinets now hold a backup battery (last in their yields and builder, so saved
   bench jobs keep their indexes).
 - **Testing:** F3 → "Give gear" puts one of each, repaired with Common parts, in your bag and equipment.
-- Gaps: loot is in server memory (a restart lays out fresh finds); no first-person models for the shovel or metal
+- Gaps: ~~loot is in server memory~~ (kept in SQLite since 2026-10-18); no first-person models for the shovel or metal
   detector (the hands stay empty); the find models are boxes and cylinders; caches don't show their contents
   until dug up.
 

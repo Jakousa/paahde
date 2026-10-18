@@ -243,7 +243,7 @@ export function openDb(path: string) {
   const deleteBed = db.prepare('DELETE FROM beds WHERE id = ?');
 
   // Items dropped on the sand (shared/loot.ts, src 'drop'): they lie there until someone picks them up, across
-  // restarts (the rest of the loot is laid out fresh). id is the loot id.
+  // restarts. id is the loot id (finds and caches are in `world_loot`, below).
   db.exec(`
     CREATE TABLE IF NOT EXISTS dropped (
       id         INTEGER PRIMARY KEY,
@@ -263,6 +263,35 @@ export function openDb(path: string) {
   const allDropped = db.prepare('SELECT id, kind, parts, x, z FROM dropped ORDER BY id');
   const insertDropped = db.prepare('INSERT INTO dropped (id, kind, parts, x, z, dropped_at) VALUES (?, ?, ?, ?, ?, ?)');
   const deleteDropped = db.prepare('DELETE FROM dropped WHERE id = ?');
+
+  // World loot (server/loot.ts): finds lying at crash sites and caches buried in the sand, so a restart keeps what
+  // was taken and dug. id is the loot id (shared with `dropped`). spawn: what it stands in for when taken (a FINDS key,
+  // 'rare', 'home_bike'; NULL for a cache). loot_pending: taken ones waiting to come back somewhere else.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS world_loot (
+      id    INTEGER PRIMARY KEY,
+      kind  TEXT NOT NULL,                   -- ITEMS key
+      parts TEXT,                            -- gear: JSON part kinds per slot, else NULL
+      x     REAL NOT NULL,
+      z     REAL NOT NULL,
+      depth REAL NOT NULL,                   -- m under the sand, 0 once on the surface
+      src   TEXT NOT NULL,                   -- 'find' | 'cache'
+      spawn TEXT
+    );
+    CREATE TABLE IF NOT EXISTS loot_pending (
+      id   INTEGER PRIMARY KEY AUTOINCREMENT,
+      at   INTEGER NOT NULL,                 -- ms since epoch: comes back then
+      what TEXT NOT NULL,                    -- 'find' | 'cache'
+      kind TEXT                              -- the find's spawn key; NULL for a cache
+    );
+  `);
+  const allWorldLoot = db.prepare('SELECT id, kind, parts, x, z, depth, src, spawn FROM world_loot ORDER BY id');
+  const insertWorldLoot = db.prepare('INSERT OR REPLACE INTO world_loot (id, kind, parts, x, z, depth, src, spawn) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const deleteWorldLoot = db.prepare('DELETE FROM world_loot WHERE id = ?');
+  const surfaceWorldLoot = db.prepare('UPDATE world_loot SET depth = 0 WHERE id = ?');
+  const allPending = db.prepare('SELECT id, at, what, kind FROM loot_pending ORDER BY at');
+  const insertPending = db.prepare('INSERT INTO loot_pending (at, what, kind) VALUES (?, ?, ?)');
+  const deletePending = db.prepare('DELETE FROM loot_pending WHERE id = ?');
 
   // Packs left where players died (shared/corpse.ts, server/corpses.ts); their items are box 'corpse<id>' (owner '').
   db.exec(`
@@ -297,6 +326,16 @@ export function openDb(path: string) {
     insertDropped: (id: number, kind: string, parts: (string | null)[] | undefined, x: number, z: number) =>
       insertDropped.run(id, kind, parts ? JSON.stringify(parts) : null, x, z, Date.now()),
     deleteDropped: (id: number) => deleteDropped.run(id),
+    loadWorldLoot: () => (allWorldLoot.all() as { id: number; kind: string; parts: string | null; x: number; z: number; depth: number; src: 'find' | 'cache'; spawn: string | null }[])
+      .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
+    putWorldLoot: (l: { id: number; kind: string; parts?: (string | null)[]; x: number; z: number; depth: number; src: string }, spawn: string | null) =>
+      insertWorldLoot.run(l.id, l.kind, l.parts ? JSON.stringify(l.parts) : null, l.x, l.z, l.depth, l.src, spawn),
+    deleteWorldLoot: (id: number) => deleteWorldLoot.run(id),
+    surfaceWorldLoot: (id: number) => surfaceWorldLoot.run(id),
+    loadLootPending: () => allPending.all() as { id: number; at: number; what: 'find' | 'cache'; kind: string | null }[],
+    /** Returns the new row's id. */
+    insertLootPending: (at: number, what: string, kind: string | null) => Number(insertPending.run(at, what, kind).lastInsertRowid),
+    deleteLootPending: (id: number) => deletePending.run(id),
     loadCorpses: () => allCorpses.all() as { id: number; color: number; x: number; z: number; until: number }[],
     /** New pack row; returns its id. */
     insertCorpse: (owner: string, color: number, x: number, z: number, until: number) =>
