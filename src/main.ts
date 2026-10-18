@@ -414,7 +414,8 @@ baseSand.update(frameDt, storm.atBase);
     riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
     indoors: indoors(cam.x, cam.y, cam.z),
     sandstorm: storm.level > 0.3,
-    combat: guardianFx.combat || bossFx.combat,
+    epic: guardianFx.epic || bossFx.combat,
+    combat: guardianFx.combat,
     dead: survival.dead,
   });
   crashSound.update(orbit.camera.position, orbit.yaw);

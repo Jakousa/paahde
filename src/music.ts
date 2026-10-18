@@ -10,6 +10,9 @@
 //   back to the start of bar 5.
 // - "Desert ambience" (desert-ambience.mp3), outdoors when nothing else is going on: exactly 112 s, loops
 //   whole, and picks up where it left off when you come back to it.
+// - "Epic battle" (epic-battle.mp3, by Veikko Suhonen), against a boss or a guardian hunting close by: 150 bpm in
+//   4/4 (1.6 s a bar), 25 bars (1764000 samples, exactly 40 s). Bar 1 is the intro and bars 2–9 part A, played once
+//   from the top; then part B, bars 10–25, loops for as long as the fight lasts.
 // - "Cinematic drum loop Ares 127" (combat-drums.mp3, harrisonlace, CC0), while something is after you: 127 bpm,
 //   16 bars (1333418 samples), loops whole, from the top each fight.
 // - "Death" (death.mp3, by Veikko Suhonen), once when you die: 9.56 s (421707 samples), the last 1.2 s faded
@@ -19,7 +22,7 @@
 // Everything plays through `audio.music` (music slider, then the volume slider and limiter).
 import { audio } from './audio';
 
-export type MusicState = 'dead' | 'heatstroke' | 'combat' | 'sandstorm' | 'riding' | 'indoors' | 'peaceful';
+export type MusicState = 'dead' | 'heatstroke' | 'epic' | 'combat' | 'sandstorm' | 'riding' | 'indoors' | 'peaceful';
 /** What is going on, from main.ts. `peaceful` is not a cue: it is when none of these is. `dead` only starts the
  *  death music (on the way in); the state lasts as long as the song. */
 export type MusicCues = Partial<Record<Exclude<MusicState, 'peaceful'>, boolean>>;
@@ -43,6 +46,8 @@ const BAR = 2;
 const DUNE_RIDING: Song = { src: './audio/dune-riding.mp3', gain: 0.5, loopStart: 4 * BAR, loopEnd: 32 * BAR, resume: false };
 const DESERT_AMBIENCE: Song = { src: './audio/desert-ambience.mp3', gain: 0.45, loopStart: 0, loopEnd: 112, resume: true };
 const COMBAT_DRUMS: Song = { src: './audio/combat-drums.mp3', gain: 0.55, loopStart: 0, loopEnd: 1333418 / 44100, resume: false };
+const EPIC_BAR = 1.6;
+const EPIC_BATTLE: Song = { src: './audio/epic-battle.mp3', gain: 0.55, loopStart: 9 * EPIC_BAR, loopEnd: 1764000 / 44100, resume: false };
 const DEATH: Song = { src: './audio/death.mp3', gain: 0.55, loopStart: 0, loopEnd: 421707 / 44100, resume: false, once: true, cut: 0.15 };
 
 /** Highest priority first. */
@@ -50,6 +55,7 @@ const STATES: { state: MusicState; song: Song | null; enter: number; leave: numb
   { state: 'dead', song: DEATH, enter: 0, leave: 0 },
   // Not cued: the breathing (src/breathing.ts) plays over whatever music is on.
   { state: 'heatstroke', song: null, enter: 0, leave: 3 },
+  { state: 'epic', song: EPIC_BATTLE, enter: 0, leave: 8 },
   { state: 'combat', song: COMBAT_DRUMS, enter: 0, leave: 8 },
   { state: 'sandstorm', song: null, enter: 1, leave: 4 },
   // Under the mix: the wind roars while riding.
@@ -116,7 +122,7 @@ class Music {
     }
     this.wasDead = !!cues.dead;
     // The dead aren't in a fight, whatever the walkers still think.
-    if (cues.dead) cues = { ...cues, combat: false };
+    if (cues.dead) cues = { ...cues, epic: false, combat: false };
     const quiet = !STATES.some((s) => s.state !== 'peaceful' && s.state !== 'dead' && cues[s.state as keyof MusicCues]);
     let top = -1;
     STATES.forEach((s, i) => {

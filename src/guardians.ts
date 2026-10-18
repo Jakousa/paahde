@@ -26,6 +26,8 @@ const DUST_R = 600;
 /** A crawler's bite jolts the camera this much (m). */
 const BITE_SHAKE = 0.18;
 
+/** A guardian hunting this close (m) is an epic battle (music). */
+const EPIC_R = 60;
 /** Firework bursts (rifleSound.firework) besides a guardian's weak point: a crawler's and a crashing drone's softer
  *  (×level), a missile's blast lower (pitch) to sound bigger. */
 const CRAWLER_FIREWORK = 0.4;
@@ -47,6 +49,8 @@ export class GuardianFx {
   private hunted = new Set<number>();
   /** Something is after you: a guardian or crawlers hunting you, a drone's light on you, or a missile coming down. */
   combat = false;
+  /** An epic battle: a guardian on the hunt within EPIC_R, close enough to fight (its long-range shots don't count). */
+  epic = false;
   private crawled = new Set<number>();
   private bitAt = 0;
   private ear = new THREE.Vector3();
@@ -184,6 +188,7 @@ export class GuardianFx {
     const t = net.serverTime() - BOT_DELAY_MS;
     const gs = guardiansAt(net.bots, t);
     const ds = dronesAt(net.bots, t);
+    this.epic = gs.some((g) => g.kind === GUARDIAN && !g.dead && g.hunt > 0 && Math.hypot(g.x - focus.x, g.z - focus.z) < EPIC_R);
     this.guardians.update(gs, dt, focus);
     this.drones.update(ds, dt, focus, net.storms, t);
     guardianSound.drones(ds.filter((d) => !d.down), this.ear); // shot-down ones are quiet
