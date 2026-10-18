@@ -363,6 +363,7 @@ export class ScavengerModel {
       rotateAboutRoot(this.root, this.head, X_AXIS, pitch * 0.6);
     }
     this.head?.scale.setScalar(this.headless ? 1e-3 : 1);
+    this.runArms(speed);
     this.sip += ((pose.drinking ? 1 : 0) - this.sip) * (1 - Math.exp(-dt * 8));
     const loose = !pose.grounded || !!pose.sliding || !!pose.powerSlide;
     if (this.canteen) this.canteen.visible = this.item === 'canteen' && !pose.ride;
@@ -378,6 +379,41 @@ export class ScavengerModel {
     const clip = this.current?.getClip().name ?? '';
     const lock = pose.grounded && !pose.sliding && !pose.powerSlide && pose.plant !== false ? (this.minAnkle.get(clip) ?? null) : null;
     this.legIk?.update(dt, pose.grounded, lock, pose.ground ?? null);
+  }
+
+  /** Running arms, over the Run clip (whose arms reach out straight, the elbow bending on a skewed hinge): each
+   *  upper arm swings from the shoulder against its leg, the elbow held bent about 90° (tighter in front), hands
+   *  in toward the midline, swing growing with speed. Blended by the clip's weight, so it fades in and out with
+   *  the run; a held item's hold (after this) still takes the right arm. */
+  private runArms(speed: number) {
+    const run = this.actions.get('Run');
+    const w = run?.isRunning() ? run.getEffectiveWeight() : 0;
+    if (w < 1e-3 || this.arms.length < 2) return;
+    const amp = clamp(0.35 + speed / 16, 0.5, 1);
+    const ph = (run!.time / run!.getClip().duration) * Math.PI * 2;
+    this.root.updateMatrixWorld(true);
+    for (let i = 0; i < 2; i++) {
+      const arm = this.arms[i];
+      const side = i === 0 ? -1 : 1; // the left arm is at -X in root space (forward -Z)
+      // + = forward; the clip has the left thigh furthest forward at phase 0, so the left arm is back.
+      const s = (i === 0 ? -1 : 1) * Math.cos(ph);
+      const swing = amp * (s > 0 ? RUN_SWING_FWD : RUN_SWING_BACK) * s;
+      const elbow = RUN_ELBOW + RUN_ELBOW_VAR * s;
+      _q0.copy(arm[0].quaternion);
+      _q1.copy(arm[1].quaternion);
+      // Upper arm down and a little out, swung forward/back; forearm bent forward from it and in toward the body.
+      _u.set(side * 0.2, -Math.cos(swing), -Math.sin(swing)).normalize();
+      _f.set(-side * 0.18, -Math.cos(swing + elbow), -Math.sin(swing + elbow)).normalize();
+      this.root.worldToLocal(arm[0].getWorldPosition(_t));
+      _t.addScaledVector(_u, RUN_UPPER).addScaledVector(_f, RUN_FORE);
+      this.root.localToWorld(_t);
+      reach(arm[0], arm[1], arm[2], _t, _pole.copy(_u).transformDirection(this.root.matrixWorld));
+      if (w < 1) {
+        arm[0].quaternion.slerpQuaternions(_q0, arm[0].quaternion, w);
+        arm[1].quaternion.slerpQuaternions(_q1, arm[1].quaternion, w);
+        arm[0].updateMatrixWorld(true);
+      }
+    }
   }
 
   /** Place the canteen (carried, or at the mouth while drinking) and reach the right hand to it; `loose` (in
@@ -589,6 +625,18 @@ const _dir = new THREE.Vector3();
 const _bend = new THREE.Vector3();
 const _from = new THREE.Vector3();
 const _wq = new THREE.Quaternion();
+const _q0 = new THREE.Quaternion();
+const _q1 = new THREE.Quaternion();
+const _u = new THREE.Vector3();
+const _f = new THREE.Vector3();
+// Running arms (runArms): upper arm swing forward / back at full speed (rad), elbow bend ± its variation (rad,
+// more bent in front), and the shoulder-elbow / elbow-wrist lengths (m) the hand target is laid out with.
+const RUN_SWING_FWD = 0.55;
+const RUN_SWING_BACK = 0.7;
+const RUN_ELBOW = 1.45;
+const RUN_ELBOW_VAR = 0.15;
+const RUN_UPPER = 0.29;
+const RUN_FORE = 0.26;
 const _pq = new THREE.Quaternion();
 
 /** Two-bone IK: turn `upper` and `lower` so `end` (the lower bone's child) reaches `target`, the middle joint
