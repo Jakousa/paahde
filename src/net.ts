@@ -22,7 +22,7 @@
 // - Hands: what we hold (canteen, drinking, filling, a gun raised to aim) is sent when it changes and relayed in snapshots, cosmetic only;
 //   with it the selected hotbar slot.
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
-import type { BenchJob, ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { heal, pitchFromQ } from '../shared/dig.ts';
 import { bagShape, boxShape, fitPart, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
 import { debrisItem, HOTBAR, roomFor, scrapItem, sortItems, type Slots } from '../shared/items.ts';
@@ -178,7 +178,9 @@ export class Net {
   onChat?: (msg: Extract<ServerMsg, { t: 'chat' }>) => void;
   /** Joined a world you haven't been asked your name in yet (src/name.ts). */
   onAskName?: () => void;
-  onObituary?: (msg: Extract<ServerMsg, { t: 'obituary' }>) => void;
+  onObituary?: (msg: Obituary) => void;
+  /** The world's latest deaths, oldest first, as we join (src/chat.ts). */
+  onObituaries?: (list: Obituary[]) => void;
   /** Another player's laser rifle shot (src/rifle.ts draws it). */
   onZap?: (msg: Extract<ServerMsg, { t: 'zap' }>) => void;
   /** Thrown scrap flying, bouncing off a drone or landed (src/throw.ts). */
@@ -644,6 +646,7 @@ export class Net {
     if (msg.t === 'toss' || msg.t === 'tossEnd') return this.onToss?.(msg);
     if (msg.t === 'chat') return this.onChat?.(msg);
     if (msg.t === 'obituary') return this.onObituary?.(msg);
+    if (msg.t === 'obituaries') return this.onObituaries?.(msg.list);
     if (msg.t === 'called') {
       this.called = msg.b;
       return;

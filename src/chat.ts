@@ -1,7 +1,9 @@
 // Chat: Enter opens a line at the bottom left, Enter sends it (Esc or an empty line just closes). Lines from
 // everyone show above it for a while, each behind a swatch of the speaker's avatar colour and their name (src/name.ts); while typing, the
-// recent ones all come back. The input keeps the keys to itself, so typing doesn't walk or open menus.
-import { CHAT_MAX, type DeathCause } from '../shared/protocol.ts';
+// recent ones all come back. Each line starts with the time it was said (local hh:mm). Deaths are lines too; the
+// world keeps them, so joining brings back its latest ones, faded, for when you open chat. The input keeps the keys
+// to itself, so typing doesn't walk or open menus.
+import { CHAT_MAX, type DeathCause, type Obituary } from '../shared/protocol.ts';
 import type { Net } from './net';
 import { tools, ui } from './input';
 
@@ -30,6 +32,7 @@ const css = `
 #chat .line { padding: 2px 6px; border-radius: 4px; background: rgba(20, 14, 10, 0.45); text-shadow: 0 1px 2px #000;
   overflow-wrap: anywhere; animation: chatFade ${SHOW_MS}ms linear forwards; }
 #chat .line.death { font-style: italic; }
+#chat .line time { opacity: 0.55; margin-right: 6px; }
 #chat .line b { font-weight: 600; margin-right: 6px; }
 #chat .line i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; }
 #chat .line.gone { animation: none; opacity: 0; visibility: hidden; }
@@ -58,8 +61,13 @@ export class Chat {
     this.el.append(this.log, this.input);
     document.body.append(this.el);
 
-    net.onChat = (m) => this.add(m.color, m.name, m.text);
-    net.onObituary = (m) => this.add(m.color, m.name, OBITUARY[m.cause], 'death');
+    net.onChat = (m) => this.add(m.color, m.name, m.text, m.at);
+    net.onObituary = (m) => this.add(m.color, m.name, OBITUARY[m.cause], m.at, 'death');
+    // On every (re)join: the world's latest deaths replace the ones we have, already faded.
+    net.onObituaries = (list: Obituary[]) => {
+      for (const line of [...this.log.querySelectorAll('.line.death')]) line.remove();
+      for (const m of list) this.add(m.color, m.name, OBITUARY[m.cause], m.at, 'death', true);
+    };
 
     // Only from the game itself: not over the inventory, the Esc menu or the disassembly.
     addEventListener('keydown', (e) => {
@@ -106,12 +114,18 @@ export class Chat {
     }
   }
 
-  private add(color: number, name: string, text: string, kind?: 'death') {
+  /** A line said at `at` (ms since epoch), in order among the others; `old`: already faded (history). */
+  private add(color: number, name: string, text: string, at: number, kind?: 'death', old = false) {
     const line = document.createElement('div');
     line.className = kind ? `line ${kind}` : 'line';
-    line.dataset.at = String(performance.now());
+    if (old) line.classList.add('gone');
+    line.dataset.at = String(old ? -Infinity : performance.now());
+    line.dataset.said = String(at);
     const hex = `#${color.toString(16).padStart(6, '0')}`;
     if (kind === 'death') line.style.color = hex; // in the dead player's colour
+    const time = document.createElement('time');
+    time.textContent = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    line.append(time);
     const swatch = document.createElement('i');
     swatch.style.background = hex;
     line.append(swatch);
@@ -121,7 +135,8 @@ export class Chat {
       line.append(who);
     }
     line.append(text);
-    this.log.append(line);
+    const after = [...this.log.children as HTMLCollectionOf<HTMLElement>].find((l) => Number(l.dataset.said) > at);
+    this.log.insertBefore(line, after ?? null);
     while (this.log.children.length > KEEP) this.log.firstElementChild!.remove();
   }
 }

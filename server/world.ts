@@ -24,7 +24,7 @@ import { inCone, JAM_BLEED, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer
 import { THROW_MS, THROWABLE } from '../shared/throw.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
-import { CHAT_MAX, NAME_MAX } from '../shared/protocol.ts';
+import { CHAT_MAX, NAME_MAX, OBITUARY_KEEP, type Obituary } from '../shared/protocol.ts';
 import { openDb } from './db.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
@@ -260,6 +260,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, jets.msg());
   send(ws, loot.joinMessage(browserId));
   send(ws, { t: 'welcome', id: p.id, state, color, epoch, name });
+  send(ws, { t: 'obituaries', list: db.lastObituaries(OBITUARY_KEEP) });
   recall(p);
   send(ws, corpses.joinMessage());
   for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes()]) send(ws, boxMsg(browserId, box));
@@ -334,7 +335,9 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, sliding: false, crouching: false };
   revive(p.heat, Date.now());
   send(p.ws, { t: 'died', cause, push });
-  for (const o of players.values()) send(o.ws, { t: 'obituary', id: p.id, color: p.color, name: p.name, cause });
+  const obit: Obituary = { t: 'obituary', id: p.id, color: p.color, name: p.name, cause, at: Date.now() };
+  db.putObituary(obit);
+  for (const o of players.values()) send(o.ws, obit);
   // The bag past the hotbar stays where they fell (shared/corpse.ts).
   const pack = corpses.leave(p.browserId, p.color, p.state.x, p.state.z);
   if (pack) {
@@ -573,7 +576,7 @@ function onChat(p: Player, text: unknown) {
   const clean = text.replace(/[\p{Cc}\p{Cf}]/gu, ' ').trim().slice(0, CHAT_MAX);
   if (!clean) return;
   p.chatAt = now;
-  const json = JSON.stringify({ t: 'chat', id: p.id, color: p.color, name: p.name, text: clean } satisfies ServerMsg);
+  const json = JSON.stringify({ t: 'chat', id: p.id, color: p.color, name: p.name, text: clean, at: Date.now() } satisfies ServerMsg);
   for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
 }
 

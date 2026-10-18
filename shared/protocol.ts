@@ -115,6 +115,11 @@ export type ClientMsg =
   // Your name in this world (src/name.ts), asked once after the first 'welcome' (blank: no name). Trimmed to NAME_MAX.
   | { t: 'name'; name: string };
 
+/** A death, as chat shows it (ServerMsg 'obituary'). */
+export type Obituary = { t: 'obituary'; id: number; color: number; name: string; cause: DeathCause; at: number };
+/** Deaths sent to a player as they join (the newest). */
+export const OBITUARY_KEEP = 12;
+
 /** Longest chat line (characters). */
 export const CHAT_MAX = 160;
 /** Longest player name (characters). */
@@ -248,10 +253,13 @@ export type ServerMsg =
   | ({ t: 'missile'; id: number; g: number; time: number } & MissilePath)
   | { t: 'blast'; id: number; x: number; y: number; z: number }
   // Player `by` fired a laser rifle (or the pistol: `pistol`) from (x, y, z) to (ex, ey, ez); `hit`: it broke a weak point there.
-  // Player `id` (public id; `color` their avatar's, `name` theirs or '') said `text` in chat, to everyone (also back to the sender).
-  | { t: 'chat'; id: number; color: number; name: string; text: string }
-  // Player `id` (`color` their avatar's) died of `cause`, to everyone: a line in chat (src/chat.ts says how).
-  | { t: 'obituary'; id: number; color: number; name: string; cause: DeathCause }
+  // Player `id` (public id; `color` their avatar's, `name` theirs or '') said `text` in chat at `at` (ms since epoch),
+  // to everyone (also back to the sender).
+  | { t: 'chat'; id: number; color: number; name: string; text: string; at: number }
+  // Player `id` (`color` their avatar's) died of `cause` at `at` (ms since epoch), to everyone: a line in chat that
+  // stays (src/chat.ts says how). Deaths are kept in the world's DB; 'obituaries' sends the last OBITUARY_KEEP on join.
+  | Obituary
+  | { t: 'obituaries'; list: Obituary[] }
   | { t: 'zap'; by: number; x: number; y: number; z: number; ex: number; ey: number; ez: number; hit: boolean; pistol?: true }
   // Thrown scrap `id` (shared/throw.ts tossAt), item `kind`, thrown by player `by` (their throw `n`), flying from
   // (x, y, z) with velocity (vx, vy, vz) at server time `time`; sent again with `hit` as it bounces off a drone, and

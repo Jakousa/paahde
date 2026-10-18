@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type { Obituary } from '../shared/protocol.ts';
 import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, OLD_SCRAP, SCRAP, type Item, type Slots } from '../shared/items.ts';
 
 export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
@@ -321,12 +322,30 @@ export function openDb(path: string) {
   const insertCorpse = db.prepare('INSERT INTO corpses (owner, color, x, z, until) VALUES (?, ?, ?, ?, ?)');
   const deleteCorpse = db.prepare('DELETE FROM corpses WHERE id = ?');
 
+  // Every death in this world, for chat (ServerMsg 'obituary'); kept for good.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS obituaries (
+      id     INTEGER PRIMARY KEY AUTOINCREMENT,
+      player INTEGER NOT NULL,               -- public id
+      color  INTEGER NOT NULL,
+      name   TEXT NOT NULL,
+      cause  TEXT NOT NULL,                  -- DeathCause (shared/protocol.ts)
+      at     INTEGER NOT NULL                -- ms since epoch
+    );
+  `);
+  const lastObituaries = db.prepare('SELECT player AS id, color, name, cause, at FROM obituaries ORDER BY id DESC LIMIT ?');
+  const insertObituary = db.prepare('INSERT INTO obituaries (player, color, name, cause, at) VALUES (?, ?, ?, ?, ?)');
+
   // Key/value settings (the debug menu's shared-clock shift survives server restarts).
   db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL NOT NULL)');
   const getSetting = db.prepare('SELECT value FROM settings WHERE key = ?');
   const putSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
 
   return {
+    /** The newest `n` deaths, oldest first. */
+    lastObituaries: (n: number) =>
+      (lastObituaries.all(n) as Omit<Obituary, 't'>[]).reverse().map((r) => ({ t: 'obituary' as const, ...r })),
+    putObituary: (o: Obituary) => insertObituary.run(o.id, o.color, o.name, o.cause, o.at),
     getSetting: (key: string) => (getSetting.get(key) as { value: number } | undefined)?.value,
     setSetting: (key: string, value: number) => putSetting.run(key, value),
     loadPlaced: () => allPlaced.all() as { id: number; kind: string; x: number; z: number; rot: number }[],
