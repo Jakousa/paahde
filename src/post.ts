@@ -17,8 +17,23 @@ import { EDGE } from '../shared/storm.ts';
 import { BASE, HUT, W } from '../shared/base.ts';
 
 type N = Node<'vec3'>;
-const TONE = new URLSearchParams(location.search).has('agx') ? THREE.AgXToneMapping : THREE.ACESFilmicToneMapping;
 type F = Node<'float'>;
+
+/** Tone curve: `?tone=filmic|aces|agx` (`?agx` still works), `?white=` the filmic white point. */
+const params = new URLSearchParams(location.search);
+const TONE_NAME = params.get('tone') ?? (params.has('agx') ? 'agx' : 'aces');
+const TONE = TONE_NAME === 'agx' ? THREE.AgXToneMapping : TONE_NAME === 'filmic' ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+const FILMIC_WHITE = Number(params.get('white') ?? 2);
+
+/** Hable's filmic curve, per channel (Godot's "Filmic", exposure bias 2 baked in), scaled so `white`
+ *  maps to 1. Keeps hue and saturation in bright oranges, where ACES and AgX wash them towards yellow-white. */
+function filmic(c: N): N {
+  const A = 0.22 * 4, B = 0.3 * 2, C = 0.1, D = 0.2, E = 0.01, F_ = 0.3;
+  const curve = (x: number) => (x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F_) - E / F_;
+  const top = c.mul(c.mul(A).add(C * B)).add(D * E);
+  const bottom = c.mul(c.mul(A).add(B)).add(D * F_);
+  return top.div(bottom).sub(E / F_).div(curve(FILMIC_WHITE));
+}
 
 /** Sun tint used for veiling glare and flares (linear). */
 const GLARE_TINT = new THREE.Color(1.0, 0.5, 0.2);
@@ -334,6 +349,7 @@ export class Post {
       // Saturation boost (AgX desaturates; push the orange back).
       c = mix(vec3(lum), c, 1.18);
       c = max(c, vec3(0));
+      if (TONE_NAME === 'filmic') c = saturate(filmic(c));
       let o: N = renderOutput(vec4(c, 1), TONE, THREE.SRGBColorSpace).rgb;
       // Vignette.
       const p = uv();
