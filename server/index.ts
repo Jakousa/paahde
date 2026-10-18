@@ -17,6 +17,7 @@ import { crashSitesNear } from '../shared/crashsites.ts';
 import { BLAST_R, CRATER_MM, CRATER_R, GUARDIAN } from '../shared/guardians.ts';
 import { BLAST_R as MISSILE_BLAST_R } from '../shared/missiles.ts';
 import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
+import { inCone, JAM_BLEED, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer.ts';
 import { THROW_MS, THROWABLE } from '../shared/throw.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
@@ -94,6 +95,8 @@ type Player = {
   down: { until: number; push: [number, number, number] } | null;
   firedAt: number; // last laser rifle shot or throw (performance.now() ms)
   chatAt: number; // last chat line (performance.now() ms)
+  /** The jammer's lock (shared/jammer.ts): on which target, built up how far (ms), last told when (performance.now). */
+  jam: { kind: 'jet' | 'drone'; id: number; acc: number; at: number } | null;
 };
 
 const players = new Map<WebSocket, Player>();
@@ -149,6 +152,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'summon' && msg.what === 'jet' && p) return jets.spawn(p.state.x, p.state.z, 0, performance.now(), true);
     if (msg.t === 'summon' && p) return guardians.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'fire' && p) return onFire(p, msg);
+    if (msg.t === 'jam' && p) return onJam(p, msg);
     if (msg.t === 'throw' && p) return onThrow(p, msg);
     if (msg.t === 'stomped' && p) return onStomped(p, msg.g);
     if (msg.t === 'drink' && p) return onDrink(p);
@@ -207,7 +211,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), digCooldown: 0, ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, down: null, firedAt: 0, chatAt: 0,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), ws, alive: true, hands: 0, slot: -1, down: null, firedAt: 0, chatAt: 0, jam: null,
   };
   players.set(ws, p);
   save(p);
@@ -349,6 +353,28 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
   const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
   for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
   if (r.kill) dropSpoils(r.kill);
+}
+
+/** The jammer held on a jet or drone (shared/jammer.ts): with the jammer in hand and the target in the cone from the
+ *  eye, the lock builds by the time since the last word (at most a little over the client's send interval: it can't
+ *  run ahead), bleeding off for any gap beyond; a new target starts over. At JAM_MS the target goes down, gliding. */
+function onJam(p: Player, m: Extract<ClientMsg, { t: 'jam' }>) {
+  const now = performance.now();
+  const nums = [m.x, m.y, m.z, m.dx, m.dy, m.dz];
+  if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v)) || !Number.isInteger(m.id) || (m.kind !== 'jet' && m.kind !== 'drone')) return;
+  const kind = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot]?.kind;
+  const s = p.state, len = Math.hypot(m.dx, m.dy, m.dz);
+  if (kind !== JAMMER || p.down || len < 0.5 || Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
+  const at = m.kind === 'jet' ? jets.where(m.id, now) : guardians.droneAt(m.id);
+  if (!at || !inCone(m.x, m.y, m.z, m.dx / len, m.dy / len, m.dz / len, at.x, at.y, at.z, 0.1)) return;
+  const j = p.jam && p.jam.kind === m.kind && p.jam.id === m.id ? p.jam : (p.jam = { kind: m.kind, id: m.id, acc: 0, at: now });
+  const gap = now - j.at, step = Math.min(gap, JAM_SEND_MS * 1.5);
+  j.acc = Math.max(0, j.acc - (gap - step) * JAM_BLEED) + step;
+  j.at = now;
+  if (j.acc < JAM_MS) return;
+  p.jam = null;
+  if (m.kind === 'jet') jets.jam(m.id, now);
+  else guardians.jamDrone(m.id, now);
 }
 
 /** Thrown scrap (shared/throw.ts): a throwable in that hotbar slot, not too soon after the last, from the thrower's
@@ -501,7 +527,7 @@ function onDebugGear(p: Player) {
     const parts = GEAR[kind].slots.map((s) => ('part' in s ? partKind(s.part, TIERS[0]) : s.scrap[0]));
     if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
   }
-  for (const gun of [RIFLE, PISTOL]) if (!items.slots(p.browserId, 'bag').some((it) => it?.kind === gun)) items.giveItem(p.browserId, { kind: gun });
+  for (const gun of [RIFLE, PISTOL, JAMMER]) if (!items.slots(p.browserId, 'bag').some((it) => it?.kind === gun)) items.giveItem(p.browserId, { kind: gun });
   for (const box of ['bag', 'equip']) sendBox(p, box);
   gearChanged(p.browserId);
 }

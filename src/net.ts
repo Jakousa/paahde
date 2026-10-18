@@ -319,6 +319,11 @@ export class Net {
   }
 
   /** A laser rifle shot from (x, y, z) to (ex, ey, ez); `hit`: weak point i of walker g, as we saw it (shared/rifle.ts). */
+  /** Holding the jammer on a jet or drone (shared/jammer.ts), from the eye along the aim. */
+  jam(kind: 'jet' | 'drone', id: number, x: number, y: number, z: number, dx: number, dy: number, dz: number) {
+    this.send({ t: 'jam', kind, id, x, y, z, dx, dy, dz });
+  }
+
   fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number } | { d: number } | { j: number }) {
     const r = (n: number) => Math.round(n * 100) / 100;
     this.send({ t: 'fire', x: r(x), y: r(y), z: r(z), ex: r(ex), ey: r(ey), ez: r(ez), ...hit });

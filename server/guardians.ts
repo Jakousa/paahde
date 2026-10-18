@@ -125,9 +125,13 @@ type Drone = {
   until: number;
   /** Beam direction (unit), sent to clients. */
   dx: number; dy: number; dz: number;
-  /** Rifle hits taken; shot down when (-1 flying), falling with velocity (vx, vy, vz), on the sand (crashed). */
-  hurt: number; downAt: number; vx: number; vy: number; vz: number; crashed: boolean;
+  /** Rifle hits taken; shot down when (-1 flying), falling with velocity (vx, vy, vz), on the sand (crashed).
+   *  Jammed (shared/jammer.ts): brought down gently instead, settling on the sand whole. */
+  hurt: number; downAt: number; vx: number; vy: number; vz: number; crashed: boolean; jammed: boolean;
 };
+
+/** A jammed drone sinks this fast (m/s). */
+const JAM_SINK = 2.5;
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -578,7 +582,9 @@ export class GuardianServer {
   /** A shot-down drone: drops, carried on by its speed, until it hits the sand (and lies there). */
   private fall(d: Drone, dt: number) {
     if (d.crashed) return;
-    d.vy -= 9.8 * dt;
+    // Jammed: sinking at a steady JAM_SINK while it drifts to a stop.
+    if (d.jammed) d.vy = -JAM_SINK;
+    else d.vy -= 9.8 * dt;
     const drag = Math.exp(-dt * 0.4);
     d.vx *= drag;
     d.vz *= drag;
@@ -638,6 +644,24 @@ export class GuardianServer {
   strikeDrone(id: number, dx: number, dz: number, now: number, by: number) {
     const d = this.drones.find((o) => o.id === id);
     if (d && d.downAt < 0) this.hurt(d, dx, dz, now, by);
+  }
+
+  /** Where flying drone `id` is (the jammer's check), or null. */
+  droneAt(id: number): { x: number; y: number; z: number } | null {
+    const d = this.drones.find((o) => o.id === id);
+    return d && d.downAt < 0 ? d : null;
+  }
+
+  /** Jammed (shared/jammer.ts): light out and rotors winding down, it sinks to the sand whole. */
+  jamDrone(id: number, now: number) {
+    const d = this.drones.find((o) => o.id === id);
+    if (!d || d.downAt >= 0) return;
+    d.downAt = now;
+    d.jammed = true;
+    d.lock = -1;
+    d.vx = Math.sin(d.yaw) * DRONE_SPEED * 0.6;
+    d.vz = Math.cos(d.yaw) * DRONE_SPEED * 0.6;
+    d.vy = -JAM_SINK;
   }
 
   /** Drone `d` takes a hit along unit (dx, dz) from player `by`; the last one brings it down. */
@@ -741,7 +765,7 @@ export class GuardianServer {
     const z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hz + Math.cos(a) * from));
     const d: Drone = {
       id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
-      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until,
+      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, jammed: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until,
     };
     // First pass: across the site from where it came in.
     d.tx = hx + rand(-30, 30);
@@ -793,7 +817,7 @@ export class GuardianServer {
     for (const o of this.drones) {
       if (Math.hypot(o.x - x, o.z - z) > SEND_R) continue;
       d.push(o.id, r2(o.x), r2(o.y), r2(o.z), r3(o.yaw), r3(o.dx), r3(o.dy), r3(o.dz), o.lock < 0 ? 0 : o.lock === id ? 2 : 1,
-        o.hurt, o.downAt < 0 ? 0 : Math.round((time - o.downAt) / 100) / 10 + 0.01);
+        o.hurt, o.downAt < 0 ? 0 : Math.round((time - o.downAt) / 100) / 10 + 0.01, o.jammed ? 1 : 0);
     }
     return { t: 'bots', time, g, d };
   }

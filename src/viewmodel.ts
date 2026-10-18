@@ -22,13 +22,16 @@
 // kicks it back into the shoulder and up on a spring (`playerHands.kick`); its `RifleGlow` material dims as the cell
 // empties and brightens as it recharges. While aiming the mouse-look sway is mostly taken out, so the sights stay on.
 // Laser pistol: the same with PistolIdle / PistolWalk / PistolAim (out at arm's length onto the iron sights; the hands
-// stay in view) on the `Pistol` mesh, one-handed.
+// stay in view) on the `Pistol` mesh, one-handed. The jammer (src/jammer.ts) is held with the pistol's clips (PistolAim
+// pointing it while jamming): its model (src/models/jammer.ts) sits where the pistol would, its lamp lit by
+// `playerHands.jamLamp`.
 //
 // Debug (with ?debug, `dbg.viewmodel`): ?hold=canteen|telescope forces what's held, ?anim=Drink loops one clip.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { FirstPersonCamera } from './camera';
 import { playerHands, type Held } from './water';
+import { jammerModel, LAMP_ON } from './models/jammer';
 
 export type HandsPose = { speed: number; grounded: boolean; digging?: boolean; sliding?: boolean };
 
@@ -68,6 +71,7 @@ export class ViewModel {
   private rifleGlow: THREE.MeshStandardMaterial[] = [];
   private pistol: THREE.Object3D | null = null;
   private pistolMuzzle: THREE.Object3D | null = null;
+  private jammer: ReturnType<typeof jammerModel> | null = null;
   /** Recoil kick on a spring: offset and velocity. */
   private kick = 0;
   private kickV = 0;
@@ -119,6 +123,16 @@ export class ViewModel {
     this.rifleMuzzle = model.getObjectByName('RifleMuzzle') ?? null;
     this.pistol = model.getObjectByName('Pistol') ?? null;
     this.pistolMuzzle = model.getObjectByName('PistolMuzzle') ?? null;
+    if (this.pistol?.parent) {
+      // The jammer in the pistol's place (same frame: grip at the origin, forward +Z).
+      this.jammer = jammerModel();
+      const j = this.jammer.obj;
+      j.position.copy(this.pistol.position);
+      j.quaternion.copy(this.pistol.quaternion);
+      j.scale.copy(this.pistol.scale);
+      j.traverse((o) => (o.frustumCulled = false));
+      this.pistol.parent.add(j);
+    }
     for (const gun of [this.rifle, this.pistol]) gun?.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -154,6 +168,7 @@ export class ViewModel {
     if (this.telescope) this.telescope.visible = this.shown === 'telescope';
     if (this.rifle) this.rifle.visible = this.shown === 'rifle';
     if (this.pistol) this.pistol.visible = this.shown === 'pistol';
+    if (this.jammer) this.jammer.obj.visible = this.shown === 'jammer';
   }
 
   /** The gun's muzzle in world space (as drawn: scaled about the eye like the rest), or null if it isn't out. */
@@ -268,7 +283,7 @@ export class ViewModel {
         a.time = smooth(playerHands.aim) * a.getClip().duration * 0.999;
       } else if (moving) this.play((walk = this.has('RifleWalk') ? 'RifleWalk' : 'Walk'));
       else this.play(this.has('RifleIdle') ? 'RifleIdle' : 'Idle');
-    } else if (this.shown === 'pistol') {
+    } else if (this.shown === 'pistol' || this.shown === 'jammer') {
       if (playerHands.aim > 0 && this.has('PistolAim')) {
         this.play('PistolAim', 0.08);
         const a = this.current!;
@@ -288,6 +303,7 @@ export class ViewModel {
       const f = (view.stepPhase / (2 * Math.PI)) * WALK_RATE + WALK_PHASE;
       a.time = (f - Math.floor(f)) * a.getClip().duration;
     }
+    if (this.jammer) this.jammer.lamp.color.copy(LAMP_ON).multiplyScalar(playerHands.jamLamp);
     this.mixer.update(dt);
   }
 }

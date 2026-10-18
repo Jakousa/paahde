@@ -2,10 +2,12 @@
 // sensor-domed nose, an intake hump over the back feeding a jet nozzle at the tail, straight tapered wings and a V
 // tail. Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and the server clock,
 // rolled into its turns. Shot, it trails smoke (more with each hit); brought down it glides in on a heavy trail,
-// slides into the sand (onCrash) and smoulders. The rifle tests shots against it here (raycast).
+// slides into the sand (onCrash) and smoulders. Jammed (shared/jammer.ts) it glides in level and skids to a stop on
+// its belly in a spray of sand (onLand). The rifle tests shots against it here (raycast).
 import * as THREE from 'three/webgpu';
 import { JET_SPAN, jetAt, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { zaps } from './zaps';
+import { tyreDust } from '../tyreDust';
 
 /** Hidden past this distance (m) from the camera. */
 const SHOW_R = 5000;
@@ -95,6 +97,15 @@ export class Jets {
   onHit: (x: number, y: number, z: number) => void = () => {};
   /** A shot-down jet slid into the sand at (x, y, z). */
   onCrash: (x: number, y: number, z: number) => void = () => {};
+  /** A jammed jet touched down on its belly at (x, y, z). */
+  onLand: (x: number, y: number, z: number) => void = () => {};
+  /** The jet our jammer is on and how far its lock has built (0..1), or null (src/jammer.ts). */
+  jamming: { id: number; level: number } | null = null;
+
+  /** The jets still flying, where they're drawn (the jammer's targets). */
+  *flying(): Generator<{ id: number; x: number; y: number; z: number }> {
+    for (const [id, v] of this.views) if (v.state === 0) yield { id, x: v.obj.position.x, y: v.obj.position.y, z: v.obj.position.z };
+  }
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -120,14 +131,22 @@ export class Jets {
       o.position.set(p.x, p.y, p.z);
       // Nose up is -X here (it faces +Z). Bank is + turning towards +yaw (to the left, facing +Z): the left wing (+X)
       // goes down.
-      o.rotation.set(-p.pitch, p.yaw, -p.bank);
+      // Being jammed by us (src/jammer.ts): it twitches, more as the lock builds.
+      const jam = this.jamming?.id === j.id && p.state === 0 ? this.jamming.level : 0;
+      const tw = performance.now() / 1000;
+      o.rotation.set(-p.pitch + jam * 0.05 * Math.sin(tw * 9.1), p.yaw, -p.bank + jam * 0.12 * Math.sin(tw * 6.3 + 1));
       o.updateMatrixWorld();
       if (j.hurt > v.hurt) this.onHit(p.x, p.y, p.z);
       v.hurt = j.hurt;
-      if (p.state === 2 && v.state === 1) this.onCrash(p.x, p.y, p.z);
+      const soft = !!j.down?.soft;
+      if (p.state === 2 && v.state === 1) (soft ? this.onLand : this.onCrash)(p.x, p.y, p.z);
       v.state = p.state;
-      // Smoke: a thin trail once hit, thicker with each hit, a heavy one gliding down; the wreck smoulders.
-      const rate = p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
+      // Smoke: a thin trail once hit, thicker with each hit, a heavy one gliding down; the wreck smoulders. Jammed it
+      // comes down whole: only the trail of any hits, and dust thrown up while it skids.
+      if (soft && p.state === 2 && Math.hypot(p.vx, p.vz) > 3 && Math.random() < dt * 30) {
+        tyreDust.emit(p.x + (Math.random() - 0.5) * 8, p.y - 0.4, p.z + (Math.random() - 0.5) * 8, p.vx * 0.2, 1 + Math.random() * 2, p.vz * 0.2, 2.5);
+      }
+      const rate = soft ? (p.state === 2 ? 0 : j.hurt * 10) : p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
       v.smoke += dt * rate;
       if (v.smoke >= 1) _t.copy(TAIL).applyMatrix4(o.matrixWorld);
       for (; v.smoke >= 1; v.smoke--) {

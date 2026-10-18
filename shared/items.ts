@@ -53,6 +53,7 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   uv_lamp: { label: 'UV lamp', stack: 1, size: [1, 2] },
   laser_rifle: { label: 'Laser rifle', stack: 1, size: [4, 1] },
   laser_pistol: { label: 'Laser pistol', stack: 1, size: [2, 1] },
+  jammer: { label: 'Jammer', stack: 1, size: [2, 1] },
   // Salvage wrecks carried home from the desert (shared/wrecks.ts), taken apart on the disassembly table too.
   vehicle_frame: { label: SALVAGE.vehicle_frame.label, stack: 1, size: [4, 3] },
   water_jet: { label: SALVAGE.water_jet.label, stack: 1, size: [3, 2] },
@@ -62,7 +63,7 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
 const ORDER = Object.keys(ITEMS);
 
 /** Used from the hotbar (held in hand): Store all leaves these in the bag. Placeables (shared/placed.ts) stay too. */
-export const TOOLS = new Set(['canteen', 'spyglass', 'shovel', 'metal_detector', 'laser_rifle', 'laser_pistol']);
+export const TOOLS = new Set(['canteen', 'spyglass', 'shovel', 'metal_detector', 'laser_rifle', 'laser_pistol', 'jammer']);
 
 /** Every item fits a grid this many rows tall once turned (its smaller side): chests keep this many rows empty. */
 export const MAX_SIDE = 3;

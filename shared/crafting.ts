@@ -22,6 +22,7 @@ const sheet: Ingredient['match'] = (k) => k === 'metal_sheet' || k === 'dented_s
 /** The wiring coil part, any tier. */
 const coil: Ingredient['match'] = (k) => partOf(k)?.part === 'coil' && k in ITEMS;
 const battery: Ingredient['match'] = (k) => partOf(k)?.part === 'battery' && k in ITEMS;
+const compute: Ingredient['match'] = (k) => partOf(k)?.part === 'compute' && k in ITEMS;
 
 /** Recipe id → what it makes and needs. The id is the item kind it makes. */
 export const RECIPES: Record<string, Recipe> = {
@@ -34,6 +35,10 @@ export const RECIPES: Record<string, Recipe> = {
   ] },
   // The cheap gun (shared/rifle.ts PISTOL): a sheet for the body and a coil, no cell to find.
   laser_pistol: { makes: 'laser_pistol', needs: [{ label: 'Metal sheet', n: 1, match: sheet }, { label: 'Wiring coil', n: 1, match: coil }] },
+  // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
+  jammer: { makes: 'jammer', needs: [
+    { label: 'Compute unit', n: 1, match: compute }, { label: 'Wiring coil', n: 1, match: coil }, { label: 'Battery', n: 1, match: battery },
+  ] },
 };
 
 /** How many items in `slots` match an ingredient. */

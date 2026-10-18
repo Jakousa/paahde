@@ -8,6 +8,8 @@
 // speed and height. It starts and ends far out of sight (LEAD m beyond where it turns or passes). Once shot down the
 // server adds `down`: from where it was then, a straight glide along its heading to where that line meets the sand.
 
+import { baseHeight } from './terrain.ts';
+
 export type Jet = {
   id: number;
   /** Where it enters (m) and its heading there (three.js yaw: forward = (sin, cos)). */
@@ -28,8 +30,9 @@ export type Jet = {
   end: number;
   /** Rifle hits taken. */
   hurt: number;
-  /** Shot down at server time `at` at (x, y, z) heading `yaw`; it glides to (lx, ly, lz), landing at `land`. */
-  down?: { at: number; x: number; y: number; z: number; yaw: number; land: number; lx: number; ly: number; lz: number };
+  /** Shot down at server time `at` at (x, y, z) heading `yaw`; it glides to (lx, ly, lz), landing at `land`. `soft`:
+   *  jammed (shared/jammer.ts), not shot: a flatter, steady glide and a belly landing, no smoke. */
+  down?: { at: number; x: number; y: number; z: number; yaw: number; land: number; lx: number; ly: number; lz: number; soft?: true };
 };
 
 /** Hits that bring one down. */
@@ -37,6 +40,9 @@ export const JET_HP = 3;
 /** Shot down: it glides at this share of its speed, dropping 1 m for every GLIDE m forward. */
 export const GLIDE_SPEED = 0.8;
 export const GLIDE = 5;
+/** Jammed: a flatter glide (m forward per m down), then a skid to a stop on the sand this long (s). */
+export const SOFT_GLIDE = 9;
+const SKID_S = 3;
 /** The wreck lies on the sand this long (ms) before it's cleared. */
 export const WRECK_MS = 90_000;
 
@@ -107,6 +113,21 @@ function downAt(j: Jet, t: number, out: JetPose): boolean {
   out.z = d.z + (d.lz - d.z) * u;
   out.yaw = d.yaw;
   const s = (t - d.at) / 1000;
+  if (d.soft) {
+    // Jammed: wings rocking a little, nose level; then down on its belly, skidding to a stop over SKID_S along the sand.
+    const v0 = j.speed * GLIDE_SPEED, k = Math.min(SKID_S, Math.max(0, (t - d.land) / 1000));
+    const slid = v0 * (k - (k * k) / (2 * SKID_S));
+    out.x += Math.sin(d.yaw) * slid;
+    out.z += Math.cos(d.yaw) * slid;
+    if (u >= 1) out.y = baseHeight(out.x, out.z) + 0.6;
+    out.bank = 0.08 * Math.sin(s * 0.7 + j.id) * (1 - u);
+    out.pitch = u >= 1 ? 0.03 : 0;
+    const v = u < 1 ? v0 : v0 * (1 - k / SKID_S);
+    out.vx = Math.sin(d.yaw) * v;
+    out.vz = Math.cos(d.yaw) * v;
+    out.state = u >= 1 ? 2 : 1;
+    return true;
+  }
   // A slow wallow in roll that grows, the nose sagging below the glide path.
   out.bank = (0.15 + 0.35 * u) * Math.sin(s * 0.9 + j.id) + 0.25 * u;
   out.pitch = -Math.atan(1 / GLIDE) - 0.15 * u;

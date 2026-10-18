@@ -8,6 +8,7 @@ import { float, length, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { GEAR, isGear, repaired } from '../../shared/gear.ts';
 import { parsePart } from '../../shared/items.ts';
 import { LOOT_REACH, type Loot } from '../../shared/loot.ts';
+import { jammerModel } from '../models/jammer';
 import { TIERS } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { loadPart } from '../teardown/junk';
@@ -133,6 +134,13 @@ const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
     cyl(g, 0.0085, 0.04, DARK, 0.12, 0.012, -0.064, 0, along);
     cyl(g, 0.0135, 0.055, DARK, 0.17, 0.014, -0.064, 0, along);
     cyl(g, 0.012, 0.006, GLOW, 0.2, 0.014, -0.064, 0, along).castShadow = false;
+  },
+  jammer: (g) => {
+    // Lying on its left side: antenna +X, the grip towards +Z (src/models/jammer.ts).
+    const m = jammerModel().obj;
+    m.rotation.set(-Math.PI / 2, Math.PI / 2, 0);
+    m.position.y = 0.026;
+    g.add(m);
   },
 };
 

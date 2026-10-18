@@ -2,12 +2,14 @@
 // for the item in the hand (the selected hotbar slot) and for the wrist computer and storm detector when
 // equipped (the backpack is part of the glb). Small boxes and cylinders, like the loot on the sand
 // (src/world/loot.ts); parts use the disassembly part models (src/teardown/junk.ts). The laser rifle and pistol use
-// their own models (public/models/rifle.glb, pistol.glb; tools/models/rifle.py, pistol.py).
+// their own models (public/models/rifle.glb, pistol.glb; tools/models/rifle.py, pistol.py), the jammer
+// src/models/jammer.ts.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { parsePart } from '../../shared/items.ts';
 import { TIERS } from '../../shared/salvage.ts';
 import { loadPart } from '../teardown/junk';
+import { jammerModel } from './jammer';
 
 const mat = (color: number, rough = 0.8, metal = 0.2) => new THREE.MeshStandardNodeMaterial({ color, roughness: rough, metalness: metal });
 const RUST = mat(0x7a4a2e, 0.9, 0.3);
@@ -98,6 +100,13 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
   laser_pistol: (loaded) => {
     const g = gunModel('./models/pistol.glb', loaded);
     g.rotation.set(-0.45, Math.PI, 0);
+    return g;
+  },
+  // Held like the pistol (src/models/jammer.ts is built in its frame), antenna forward.
+  jammer: () => {
+    const g = jammerModel().obj;
+    g.rotation.set(-0.45, Math.PI, 0);
+    shadows(g);
     return g;
   },
 };

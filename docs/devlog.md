@@ -1020,3 +1020,26 @@ A second flying machine, by day and by night: a big unmanned plane (18 m span, `
 - **Testing:** F3 → "Jet here" sends a straight pass over you, ~13 s out, for everyone.
 - **Gaps:** thrown scrap doesn't reach them; no spoils from the wreck; holds one height over the whole flight
   (terrain at the player).
+
+
+## Jammer
+
+A handheld tool that brings down jets and searchlight drones without a shot (`shared/jammer.ts`, `src/jammer.ts`).
+Crafted at the workbench from a compute unit, a wiring coil and a battery (any tier).
+
+- **Use:** hold the use button (LMB / E) with a jet or drone inside the cone (`JAM_CONE` 0.2 rad half angle, out to
+  `JAM_RANGE` 400 m). The client takes the one nearest the aim (and keeps it while it stays in), and tells the
+  server ('jam': target, eye, aim) every 200 ms. The server (`onJam`) checks the jammer is in hand, the eye near the
+  player and the target in the cone (0.1 rad slack; jets 150 ms back), and adds the time since the last word, capped
+  at 1.5× the send interval so a client can't run it ahead; any longer gap bleeds the lock at 2×; a new target
+  starts over. At `JAM_MS` (5 s) it goes down.
+- **Jammed jet:** `down.soft`: a flatter glide (9:1), wings rocking slightly, then a belly landing that skids to a
+  stop over 3 s (on `baseHeight`), throwing sand; a slam and dust, no blast and no smoke. **Jammed drone:** light out,
+  sinking at 2.5 m/s while it drifts to a stop, rotors winding down, settling upright (`jammed` field in 'bots',
+  drone stride 12). Its parts drop as if shot down.
+- **Feel, no HUD:** the hand raises it (PistolAim, the pistol's clips: the model `src/models/jammer.ts` is built in
+  the pistol's frame and sits in its place); the lamp on top glows while searching and blinks faster as the lock
+  builds; the target twitches (only for the jammer's user); a warbling static climbs in pitch and speed as the lock
+  builds, a falling chirp when it drops. Levels measured: searching −38 LUFS, lock −32 → −27, chirp −26.
+- **Gaps:** no viewmodel-specific clips (the pistol's grip and aim); others see the tool in your hand but not the
+  jamming (no sound or effect for them); the lock bar is only felt, so the 5 s are learned by trying.

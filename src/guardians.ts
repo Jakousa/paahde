@@ -60,6 +60,12 @@ export class GuardianFx {
     this.jets = new Jets(scene);
     // Shot: a heavier bang than a drone's. Down: it hits the sand like a walker's hull, with the burst of a drone's crash.
     this.jets.onHit = (x, y, z) => guardianSound.footfall(x, y, z, 1, this.ear);
+    // Jammed down: a belly landing (a walker's hull slamming, a long dust spray), no blast; a drone just settles.
+    this.jets.onLand = (x, y, z) => {
+      rifleSound.slam({ x, y, z }, this.ear, true);
+      this.thump(x, y, z, 1.2, 24, 6, 3);
+    };
+    this.drones.onLand = (x, y, z) => rifleSound.slam({ x, y, z }, this.ear, false);
     this.jets.onCrash = (x, y, z) => {
       rifleSound.firework({ x, y, z }, this.ear, 1, MISSILE_FIREWORK_PITCH);
       rifleSound.slam({ x, y, z }, this.ear, true);

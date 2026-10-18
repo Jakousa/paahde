@@ -50,6 +50,7 @@ import { StormFx } from './storm';
 import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
 import { Rifle } from './rifle';
+import { Jammer } from './jammer';
 import { Thrower } from './throw';
 import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
@@ -172,6 +173,8 @@ const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
+const jammer = new Jammer(orbit, net, guardianFx.jets, guardianFx.drones);
+if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { jammer });
 const rifle = new Rifle(orbit, net, guardianFx.guardians, guardianFx.drones, guardianFx.jets, (out) => viewmodel.muzzle(out));
 scene.add(zaps.root);
 const thrower = new Thrower(scene, orbit, net, scrap);
@@ -312,6 +315,7 @@ renderer.setAnimationLoop((time) => {
   guardianFx.update(net, frameDt, orbit.camera, focus);
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
   thrower.update(frameDt, !s.riding && !teardown.active && !net.down);
+  jammer.update(frameDt, !s.riding && !teardown.active && !net.down);
   zaps.update(frameDt);
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));

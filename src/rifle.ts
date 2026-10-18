@@ -182,7 +182,8 @@ export class Rifle {
     const feel = FEEL[this.gun];
     const holding = isGun(playerHands.held) && can;
     const aiming = holding && ((aimDown() && !!document.pointerLockElement) || this.forceAim);
-    playerHands.aim = Math.max(0, Math.min(1, playerHands.aim + (aiming ? dt : -dt * 1.4) / ADS_S));
+    // The jammer (src/jammer.ts) raises the hand itself.
+    if (playerHands.held !== 'jammer') playerHands.aim = Math.max(0, Math.min(1, playerHands.aim + (aiming ? dt : -dt * 1.4) / ADS_S));
     // In third person aiming brings the view in to the eye (src/camera.ts); the scope only once it's there.
     this.view.aimIn = aiming;
     const scoped = aiming && playerHands.aim >= 1 && feel.scope && this.view.boomLength < 0.05;
@@ -254,7 +255,7 @@ export class Rifle {
    */
   afterCamera(fire: boolean) {
     const cam = this.view.camera;
-    if (!isGun(playerHands.held) && !playerHands.aim) return;
+    if (!isGun(playerHands.held) && (!playerHands.aim || playerHands.held === 'jammer')) return;
     // Through the scope the eye's shadow slides about with the sway and the kick.
     if (this.scoped) {
       const px = innerHeight * 3;

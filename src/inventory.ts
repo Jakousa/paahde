@@ -203,6 +203,14 @@ stroke-linejoin="round"><path d="M-13 5Q-3 10 6 1.5" fill="none" stroke="#6e6444
 <path d="M12.3 -1.6V1.4M13.4 -1.6V1.4" stroke="#ff6a2a" stroke-width="0.6"/><circle cx="15.6" cy="-0.1" r="1.6" fill="#ff7a32" stroke="none" opacity="0.45"/>
 <circle cx="15.2" cy="-0.1" r="0.9" fill="#ffb066" stroke="none"/><rect x="-1.6" y="-3.2" width="1.2" height="1.2" fill="#2e2a26"/>
 <rect x="-5.6" y="-5" width="7.4" height="2" rx="1" fill="#4a4a48"/><path d="M-11 0.3L-10 2.8" stroke="#3a3a36" stroke-width="1.4"/></g></svg>`,
+  // Jammer, antenna right: olive body on a dark raked grip, a yagi (boom and four elements), a whip aerial, amber lamp.
+  jammer: `<svg viewBox="0 0 22 26"><g transform="translate(11 13) scale(0.85)" stroke="#120c08" stroke-width="0.7" stroke-linejoin="round">
+<path d="M-6.4 0L-2.4 0L-4 9.4Q-4.4 10.4 -5.6 10.2L-8.2 9.7Q-9.2 9.4 -8.8 8.4z" fill="#2e2a26"/>
+<rect x="-9.4" y="-4.6" width="11" height="5" rx="0.8" fill="#6e6850"/><rect x="-9" y="-0.4" width="10" height="1.2" fill="#2e2a26"/>
+<path d="M1.6 -2.1H12.8" stroke="#a9aaa6" stroke-width="0.9"/>
+<path d="M4 -5.6V1.4M6.6 -5V0.8M9 -4.5V0.3M11.3 -4.1V-0.1" stroke="#a9aaa6" stroke-width="0.8"/>
+<path d="M-7.6 -4.6L-9.6 -11.6" stroke="#8d8f8a" stroke-width="0.6"/>
+<circle cx="-4.6" cy="-5.2" r="1.7" fill="#ff9a32" stroke="none" opacity="0.4"/><circle cx="-4.6" cy="-5.1" r="0.9" fill="#ffb84a" stroke="none"/></g></svg>`,
   // Laser pistol, muzzle right: black upper with the silver bolt cap and cell tube, raked brown grip, ribbed shroud, red tip.
   laser_pistol: `<svg viewBox="0 0 22 26"><g transform="translate(11 13) scale(0.85)" stroke="#120c08" stroke-width="0.7" stroke-linejoin="round">
 <path d="M-6.5 -1.2L-1.6 -1.2L-3.6 9.2Q-4 10.4 -5.4 10.2L-8.6 9.6Q-9.6 9.3 -9.2 8.2z" fill="#6a3a22"/>

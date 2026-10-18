@@ -5,7 +5,8 @@
 //
 // Shot (shared/rifle.ts): hit once it sparks, trails smoke and wobbles, its light stuttering; brought down, the light
 // dies and it drops, tumbling and spinning down on a smoke trail, crashes in a burst of sparks and dust (onCrash) and
-// smokes on the sand until the server clears it. The rifle tests shots against it here (raycast).
+// smokes on the sand until the server clears it. The rifle tests shots against it here (raycast). Jammed
+// (shared/jammer.ts) it goes dark and sinks level, rotors winding down, and settles on the sand whole.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { abs, dot, float, length, normalView, positionViewDirection, pow, smoothstep, uniform, uv, vec3 } from 'three/tsl';
@@ -89,6 +90,8 @@ type View = {
   model: boolean;
   /** Hits seen, the tumble while falling (spin, tip), smoke owed, and whether it has hit the sand. */
   hurt: number; spin: number; tip: number; smoke: number; crashed: boolean;
+  /** Brought down (shot or jammed): no longer a target. */
+  down: boolean;
 };
 
 /** A drone's body, for the hit test (m, about its centre). */
@@ -151,7 +154,7 @@ export class Drones {
     root.add(beam, glare);
     this.scene.add(root, pool);
     beam.userData.tint = tint;
-    return { root, rotors, beam, pool, grid, glare, color, model: model !== null, hurt: 0, spin: 0, tip: 0, smoke: 0, crashed: false };
+    return { root, rotors, beam, pool, grid, glare, color, model: model !== null, hurt: 0, spin: 0, tip: 0, smoke: 0, crashed: false, down: false };
   }
 
   update(frames: DroneFrame[], dt: number, focus: { x: number; z: number }, storms: readonly Storm[], t: number) {
@@ -176,6 +179,7 @@ export class Drones {
         zaps.burst(f.x, f.y, f.z, 0, -0.3, 0, 22, 1.5);
         this.onHit(f.x, f.y, f.z);
       }
+      v.down = f.down > 0;
       if (f.down > 0) {
         this.falling(v, f, dt);
         continue;
@@ -186,7 +190,9 @@ export class Drones {
         for (; v.smoke >= 1; v.smoke--) zaps.puff(f.x, f.y + 0.2, f.z, 0.7, 1.5);
         if (Math.random() < dt * 3) zaps.burst(f.x, f.y, f.z, 0, -1, 0, 5);
       }
-      const wob = v.hurt > 0 ? 1 : 0;
+      // Being jammed by us (src/jammer.ts): it twitches and its light stutters, more as the lock builds.
+      const jam = this.jamming?.id === f.id ? this.jamming.level : 0;
+      const wob = v.hurt > 0 ? 1 : jam;
       // Hovering: a slow bob and a lean into the way it's going.
       v.root.position.set(f.x, f.y + Math.sin(now * 1.3 + f.id) * 0.25, f.z);
       v.root.rotation.set(0.08 + wob * Math.sin(now * 5.3) * 0.12, f.yaw, Math.sin(now * 0.9 + f.id) * 0.04 + wob * Math.sin(now * 4.1) * 0.15, 'YXZ');
@@ -233,6 +239,7 @@ export class Drones {
   private falling(v: View, f: DroneFrame, dt: number) {
     v.beam.visible = v.pool.visible = v.glare.visible = false;
     const ground = heightAt(f.x, f.z);
+    if (f.jammed) return this.sinking(v, f, dt, ground);
     if (!v.crashed && f.y - ground < 0.9 && f.down > 0.15) {
       v.crashed = true;
       zaps.burst(f.x, ground + 0.4, f.z, 0, 1, 0, 60, 3);
@@ -262,11 +269,29 @@ export class Drones {
     v.root.rotation.set(v.tip, f.yaw + v.spin, v.tip * 0.4, 'YXZ');
   }
 
+  /** Jammed: light out, rotors winding down, sinking level with a slight sway; it settles on the sand upright. */
+  private sinking(v: View, f: DroneFrame, dt: number, ground: number) {
+    const now = performance.now() / 1000;
+    if (!v.crashed && f.y - ground < 0.9 && f.down > 0.15) {
+      v.crashed = true;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        tyreDust.emit(f.x, ground + 0.15, f.z, Math.cos(a) * 1.5, 0.4 + Math.random() * 0.5, Math.sin(a) * 1.5, 0.7);
+      }
+      this.onLand(f.x, ground, f.z);
+    }
+    const spin = v.crashed ? 0 : Math.max(0.15, 1 - f.down * 0.12);
+    v.rotors.forEach((r, i) => (r.rotation.y += (i % 2 ? -1 : 1) * dt * 60 * spin));
+    const sway = v.crashed ? 0 : 0.06;
+    v.root.position.set(f.x, v.crashed ? ground + 0.3 : f.y, f.z);
+    v.root.rotation.set(sway * Math.sin(now * 1.7 + f.id), f.yaw, sway * Math.sin(now * 1.3 + f.id * 2), 'YXZ');
+  }
+
   /** The first flying drone the shot from `o` along unit `d` strikes within `max` m: its id, distance, the point. */
   raycast(o: THREE.Vector3, d: THREE.Vector3, max: number): { drone: number; dist: number; point: THREE.Vector3 } | null {
     let best: { drone: number; dist: number; point: THREE.Vector3 } | null = null;
     for (const [id, v] of this.views) {
-      if (v.crashed || !v.beam.visible && v.tip > 0) continue;
+      if (v.down) continue;
       const c = v.root.position;
       const ox = o.x - c.x, oy = o.y - c.y, oz = o.z - c.z;
       const b = ox * d.x + oy * d.y + oz * d.z, disc = b * b - (ox * ox + oy * oy + oz * oz - HIT_R * HIT_R);
@@ -280,6 +305,16 @@ export class Drones {
 
   /** A shot-down drone hit the sand at (x, y, z) (src/guardians.ts: the bang). */
   onCrash: (x: number, y: number, z: number) => void = () => {};
+  /** The drones still flying, where they're drawn (the jammer's targets). */
+  *flying(): Generator<{ id: number; x: number; y: number; z: number }> {
+    for (const [id, v] of this.views) if (!v.down) yield { id, x: v.root.position.x, y: v.root.position.y, z: v.root.position.z };
+  }
+
+  /** The drone our jammer is on and how far its lock has built (0..1), or null (src/jammer.ts). */
+  jamming: { id: number; level: number } | null = null;
+
+  /** A jammed drone settled on the sand at (x, y, z). */
+  onLand: (x: number, y: number, z: number) => void = () => {};
   /** A shot hit a drone (every hit counts, the last brings it down). */
   onHit: (x: number, y: number, z: number) => void = () => {};
 

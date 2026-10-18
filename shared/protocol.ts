@@ -72,6 +72,9 @@ export type ClientMsg =
   // drone j (shared/jets.ts). The server checks
   // the gun is in hand, its reach, the rate and that the shot was aimed at that walker, breaks the point, and shows the
   // shot to everyone near ('zap').
+  // Holding the jammer (shared/jammer.ts) on jet or drone `id` from the eye (x, y, z) along (dx, dy, dz), about every
+  // JAM_SEND_MS while the use button is down; the server adds up the lock and brings the target down at JAM_MS.
+  | { t: 'jam'; kind: 'jet' | 'drone'; id: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }
   // A guardian's foot (client IK) came down on you (shared/guardians.ts FOOT_CRUSH_R); the server checks guardian `g`
   // is alive and near enough, and kills you ('died', cause 'guardian').
   | { t: 'stomped'; g: number }
@@ -207,8 +210,9 @@ export type ServerMsg =
   // g: [id, kind, legs, x, z, yaw, hunt, ax, ay, az, gun, broken, dead] per walker (kind: shared/guardians.ts KINDS
   // index; (ax, ay, az) where its cannon aims; gun -1 idle, 0 aiming, 1 charging; broken: bit i set once weak point i
   // is shot (shared/rifle.ts); dead: 0 alive, else seconds since it died + 0.01);
-  // d: [id, x, y, z, yaw, dx, dy, dz, lock, hurt, down] per drone ((dx, dy, dz) the searchlight's unit direction; hurt:
-  // rifle hits taken (shared/rifle.ts DRONE_HP); down: 0 flying, else seconds since it was shot down + 0.01).
+  // d: [id, x, y, z, yaw, dx, dy, dz, lock, hurt, down, jammed] per drone ((dx, dy, dz) the searchlight's unit direction;
+  // hurt: rifle hits taken (shared/rifle.ts DRONE_HP); down: 0 flying, else seconds since it was shot down + 0.01;
+  // jammed: 1 brought down by a jammer (shared/jammer.ts), sinking gently instead of falling).
   // hunt / lock: 0 nobody, 1 someone else, 2 you.
   | { t: 'bots'; time: number; g: number[]; d: number[] }
   // Guardian `g` fired laser bolt `id` from (x, y, z) along unit (dx, dy, dz) at server time `time`; it flies at

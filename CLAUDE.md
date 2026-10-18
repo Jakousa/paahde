@@ -48,6 +48,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/rifle.ts` — the crafted laser rifle and the cheaper one-handed laser pistol (`GUNS`; model `tools/models/pistol.py`), the walkers' red weak points (all shot: it dies) and drone hits; aim, sway, recoil,
   scope and the hitscan in `src/rifle.ts`, beam/sparks/smoke `src/world/zaps.ts`, sounds `src/rifleSound.ts`, targets
   and the collapse in `src/world/guardians.ts`, checked by `GuardianServer.shoot` (server/guardians.ts)
+- `shared/jammer.ts` — the jammer: hold it 5 s on a jet or drone in its cone and it glides down whole; the lock is
+  added up by `onJam` (server/index.ts), aimed and heard in `src/jammer.ts`, model `src/models/jammer.ts`
 - `shared/throw.ts` — thrown scrap (any scrap item in hand, use button): flown and struck against drones in
   `server/throws.ts`, lands as loot; drawn and thrown in `src/throw.ts`
 - `server/index.ts` — authoritative game server (static files + `/ws`); `server/db.ts` — SQLite;
