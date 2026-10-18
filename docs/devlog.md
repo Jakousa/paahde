@@ -1400,8 +1400,9 @@ drawn by `src/world/shelters.ts`).
 ## Gear shows its tier; the shield plate
 
 - **Tier looks:** every model of a piece of gear looks its tier (`tierOf`: the parts' mean tier rounded down, as the
-  tooltip names it), with the parts' own language (tools/blender/items.py): Scrap rusts in blotches (noise on the
-  model's local position), Basic is the model as made, Quality is polished with brass-warm metal and orange lamps,
+  tooltip names it), with the parts' own language (tools/blender/items.py): Scrap rusts in blotches on metal and
+  fades and stains on cloth (noise on the mesh's own unskinned vertex positions, so it rides with a worn backpack; metal
+  only above 0.5 metalness: the player's baked atlas has in-between values over cloth), Basic is the model as made, Quality is polished with brass-warm metal and orange lamps,
   Space-grade goes pale with a cyan sheen along its edges and cyan lamps. `src/tierLook.ts` makes one node-material
   variant per material and tier and swaps it in per mesh (`applyTier`, cheap enough to call every frame, so models that
   load late catch up). On: the first-person hands (`playerHands.tier`), the avatar (held item, backpack, wrist, belt,
