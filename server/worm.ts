@@ -2,9 +2,15 @@
 // it, lays the body along the head's path, and does the harm: the burst out of the sand and the head swallow whoever
 // is near, and the plunge back in; both blow craters, and running shallow its back ploughs a furrow. The more people
 // about (server/bossCrowd.ts), the faster it hunts, the shorter the warning and the sooner it comes up again.
+//
+// Now and then, hunting someone a way off, it breaks out of the sand short of them and flies a huge arc high over the
+// desert instead (the sky arc), and while its body is up there it fires missiles out of its back: the guardians'
+// missiles (shared/missiles.ts, drawn by src/world/missiles.ts), some at whoever is about, some scattered round them.
+// A crowd gets more of them and more often.
 import { BASE } from '../shared/base.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import { rockHeight } from '../shared/rocks.ts';
+import { BLAST_R, flightTime, LEAD, SCATTER, type MissilePath } from '../shared/missiles.ts';
 import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt, sandOverRock } from '../shared/terrain.ts';
 import {
@@ -48,6 +54,17 @@ const BURST_CRATER = { r: 7, mm: 2400 }, PLUNGE_CRATER = { r: 5.5, mm: 1800 };
 const FURROW_R = 2.6, FURROW_STEP = 5;
 /** The trail is kept as points at least TRAIL_STEP m apart. */
 const TRAIL_STEP = 0.8;
+/** The sky arc: hunting deep with its prey ARC_R m off, it comes up (after the tell, at the spot over its head) aiming
+ *  ARC_FWD m on towards them and ARC_UP m over the sand, at ARC_SPEED (a far higher, longer leap than the rise). Not
+ *  again for ARC_GAP s (shorter for a crowd by CROWD_ARC a person), the first ARC_FIRST s into a fight. While it's up,
+ *  every SHOT_S s a missile leaves a segment of its back that's well out of the sand (SHOT_CLEAR m): ARC_SHOTS of
+ *  them (+ARC_SHOTS_PER a person, at most ARC_SHOTS_MAX), at people within SHOT_R of its head; every SPRAY-th one at a
+ *  spot SPRAY_R m round one of them instead. */
+const ARC_R: [number, number] = [45, 170], ARC_FWD = 45, ARC_UP = 95, ARC_SPEED = 62;
+const ARC_GAP: [number, number] = [22, 34], CROWD_ARC = 0.15, ARC_FIRST = 8;
+const SHOT_S = 0.5, SHOT_CLEAR = 6, ARC_SHOTS = 8, ARC_SHOTS_PER = 2, ARC_SHOTS_MAX = 16, SHOT_R = 320, SPRAY = 3, SPRAY_R: [number, number] = [12, 40];
+/** Its missiles' ids, clear of the guardians' (server/guardians.ts counts from 1). */
+let nextMissile = 1_000_000;
 const BODY_LEN = (SEGS + 1) * SEG_LEN;
 
 type Worm = {
@@ -68,6 +85,11 @@ type Worm = {
   ax: number; ay: number; az: number; riseAt: number; coolUntil: number;
   /** Was the head under the sand last tick; where the last furrow crater went. */
   under: boolean; fx: number; fz: number;
+  /** The sky arc: this leap is one; the next not before (clock); missiles fired this arc, the next one at (clock);
+   *  missiles in the air; everyone's position and velocity (for the lead). */
+  arc: boolean; arcReady: number; shots: number; shotAt: number;
+  missiles: { id: number; at: number; x: number; y: number; z: number }[];
+  vel: Map<number, { x: number; z: number; vx: number; vz: number }>;
 };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -204,6 +226,7 @@ export const worm: Brain = {
       vx: fx * ROAM_SPEED, vy: 0, vz: fz * ROAM_SPEED, mode: MODE_ROAM, trail: [], segs: [], tx: x + fx * 300, tz: z + fz * 300,
       clock: 0, surfaceAt: rand(4, 10), surfaceUntil: 0, prey: -1, fixAt: 0, px: 0, pz: 0, shallow: false, lungeUntil: 0, ax: 0, ay: 0, az: 0, riseAt: 0, coolUntil: 0,
       under: true, fx: b.x, fz: b.z,
+      arc: false, arcReady: ARC_FIRST, shots: 0, shotAt: 0, missiles: [], vel: new Map(),
     };
     // A straight trail behind it, so the body is laid out from the start.
     for (let s = BODY_LEN + 4; s > 0; s -= 2) w.trail.push(b.x - fx * s, b.y, b.z - fz * s);
@@ -216,6 +239,8 @@ export const worm: Brain = {
     w.clock += dt;
     const ground = heightAt(b.x, b.z);
     const n = crowd(b, players);
+    track(w, dt, players);
+    landMissiles(w, now, players, out);
 
     // Prey: whoever shot it if it can reach them, else the nearest reachable within NOTICE_R.
     if (!b.leaving && w.mode !== MODE_RISE && w.mode !== MODE_AIR) {
@@ -273,6 +298,18 @@ export const worm: Brain = {
         // Half out, closing in; too close and not lined up, it runs on and comes round again.
         if (d < LUNGE_R && w.clock > w.coolUntil) swim(b, w, b.x + fx * PASS_R, b.z + fz * PASS_R, SURFACE_DEPTH, speed, dt);
         else swim(b, w, w.px, w.pz, SURFACE_DEPTH, speed, dt);
+      } else if (d > ARC_R[0] && d < ARC_R[1] && w.clock > w.arcReady && w.clock > w.coolUntil && ground - b.y > RISE_MIN_DEPTH && !bodyOut(w)) {
+        // The sky arc: up out of the sand here, short of them, and high over towards them.
+        const ux = (w.px - b.x) / (d || 1), uz = (w.pz - b.z) / (d || 1);
+        w.arc = true;
+        w.shots = 0;
+        w.ax = b.x + ux * ARC_FWD;
+        w.az = b.z + uz * ARC_FWD;
+        w.ay = heightAt(b.x, b.z) + ARC_UP;
+        w.riseAt = w.clock + Math.max(TELL_MIN, TELL - CROWD_TELL * (n - 1));
+        w.arcReady = w.clock + rand(ARC_GAP[0], ARC_GAP[1]) / scaled(1, n, CROWD_ARC);
+        w.mode = MODE_RISE;
+        event(out, b, 'tell', b.x, heightAt(b.x, b.z), b.z, now, [Math.round((w.riseAt - w.clock + HUNT_DEPTH / ARC_SPEED) * 100) / 100]);
       } else if (d < RISE_R && ground - b.y > RISE_MIN_DEPTH && w.clock > w.coolUntil && !bodyOut(w)) {
         // Rise: the spot is where they are now, a little past them; the sand there shivers while it holds under it,
         // then it comes up there whether they're still on it or not.
@@ -282,6 +319,7 @@ export const worm: Brain = {
         w.ay = heightAt(w.ax, w.az) + RISE_UP;
         w.riseAt = w.clock + Math.max(TELL_MIN, TELL - CROWD_TELL * (n - 1));
         w.mode = MODE_RISE;
+        w.arc = false;
         event(out, b, 'tell', w.ax, heightAt(w.ax, w.az), w.az, now, [Math.round((w.riseAt - w.clock + HUNT_DEPTH / RISE_SPEED) * 100) / 100]);
       } else if (d < PASS_R * 0.6 && !(w.clock > w.coolUntil && !bodyOut(w))) {
         // Not ready to come up yet: run on past them rather than circle tight under them.
@@ -291,27 +329,32 @@ export const worm: Brain = {
         swim(b, w, w.px, w.pz, HUNT_DEPTH, d < 60 ? speed * 0.8 : speed, dt);
       }
     } else if (w.mode === MODE_RISE) {
+      const speed = w.arc ? ARC_SPEED : RISE_SPEED;
       if (w.clock < w.riseAt) {
-        // The tell: creep in under the spot.
-        swim(b, w, w.ax, w.az, HUNT_DEPTH, WIND_SPEED, dt, ACCEL * 2);
+        // The tell: creep in under the spot (the arc: hold where it is, the sand over it shivering).
+        if (w.arc) steer(w, 0, 1, 0, TURN, 0, ACCEL * 2, dt);
+        else swim(b, w, w.ax, w.az, HUNT_DEPTH, WIND_SPEED, dt, ACCEL * 2);
       } else {
         const dx = w.ax - b.x, dy = w.ay - b.y, dz = w.az - b.z, l = Math.hypot(dx, dy, dz) || 1;
         if (w.riseAt >= 0) {
-          // Off: it kicks up at once, straight for the spot.
+          // Off: it kicks up at once, straight for the spot (the arc at full speed).
           w.riseAt = -1;
-          w.vx = (dx / l) * RISE_SPEED * 0.75;
-          w.vy = (dy / l) * RISE_SPEED * 0.75;
-          w.vz = (dz / l) * RISE_SPEED * 0.75;
+          const kick = w.arc ? speed : speed * 0.75;
+          w.vx = (dx / l) * kick;
+          w.vy = (dy / l) * kick;
+          w.vz = (dz / l) * kick;
         }
-        steer(w, dx / l, dy / l, dz / l, RISE_TURN, RISE_SPEED, ACCEL * 3, dt);
+        steer(w, dx / l, dy / l, dz / l, RISE_TURN, speed, ACCEL * 3, dt);
       }
       if (!under) w.mode = MODE_AIR;
     } else if (w.mode === MODE_AIR) {
       w.vy -= GRAVITY * dt;
+      if (w.arc && !b.leaving) salvo(b, w, n, now, players, out);
       if (under) {
         w.mode = MODE_DIVE;
         w.coolUntil = w.clock + COOL_S / scaled(1, n, CROWD_COOL);
         w.shallow = Math.random() < SHALLOW_P;
+        w.arc = false;
       }
     } else {
       // Dive: down to depth, then back to whatever it was doing.
@@ -366,7 +409,8 @@ export const worm: Brain = {
       }
     }
 
-    // Leaving: gone once it's far from everyone (or after a while).
+    // Leaving: gone once it's far from everyone (or after a while), its missiles down.
+    if (b.leaving && w.missiles.length) return false;
     if (b.leaving) return players.every((p) => Math.hypot(p.x - b.x, p.z - b.z) > 800) || now > b.until + 120_000;
     return false;
   },
@@ -389,5 +433,76 @@ export const worm: Brain = {
   die(b) {
     const w = b.st as Worm;
     w.vx = w.vy = w.vz = 0;
+    w.arc = false;
+  },
+
+  wreck(b, _dt, now, players, out) {
+    // The missiles already flying still land.
+    landMissiles(b.st as Worm, now, players, out);
   },
 };
+
+/** Everyone's ground velocity (smoothed), for leading the missiles. */
+function track(w: Worm, dt: number, players: BossPlayer[]) {
+  for (const p of players) {
+    const v = w.vel.get(p.id);
+    if (!v) {
+      w.vel.set(p.id, { x: p.x, z: p.z, vx: 0, vz: 0 });
+      continue;
+    }
+    let vx = (p.x - v.x) / Math.max(dt, 1e-3), vz = (p.z - v.z) / Math.max(dt, 1e-3);
+    if (Math.hypot(vx, vz) > 40) vx = vz = 0; // a respawn, not a run
+    const k = Math.min(1, dt / 0.6);
+    v.vx += (vx - v.vx) * k;
+    v.vz += (vz - v.vz) * k;
+    v.x = p.x;
+    v.z = p.z;
+  }
+  if (w.vel.size > players.length + 8) for (const id of w.vel.keys()) if (!players.some((p) => p.id === id)) w.vel.delete(id);
+}
+
+/** Up on the sky arc: a missile every SHOT_S out of a segment of its back that's clear of the sand. */
+function salvo(b: Boss, w: Worm, n: number, now: number, players: BossPlayer[], out: BossOut) {
+  const count = Math.min(ARC_SHOTS_MAX, Math.round(scaled(ARC_SHOTS, n, ARC_SHOTS_PER / ARC_SHOTS)));
+  if (w.shots >= count || w.clock < w.shotAt) return;
+  const up: number[] = [];
+  for (let i = 2; i < SEGS - 4; i++) if (w.segs[i * 3 + 1] > heightAt(w.segs[i * 3], w.segs[i * 3 + 2]) + SHOT_CLEAR) up.push(i);
+  const marks = players.filter((p) => !p.safe && Math.hypot(p.x - b.x, p.z - b.z) < SHOT_R)
+    .sort((p, q) => (p.id === w.prey ? -1 : q.id === w.prey ? 1 : 0));
+  if (!up.length || !marks.length) return;
+  const k = w.shots++;
+  w.shotAt = w.clock + SHOT_S;
+  const i = up[Math.floor(Math.random() * up.length)], seg = segScale(i) * RADIUS;
+  const x0 = w.segs[i * 3], y0 = w.segs[i * 3 + 1] + seg, z0 = w.segs[i * 3 + 2];
+  const p = marks[Math.floor(k / SPRAY) % marks.length], v = w.vel.get(p.id);
+  let x1: number, z1: number;
+  const flight = flightTime(Math.hypot(p.x - x0, p.z - z0));
+  if (k % SPRAY === SPRAY - 1) {
+    // Here and there: a spot round them.
+    const a = Math.random() * Math.PI * 2, r = rand(SPRAY_R[0], SPRAY_R[1]);
+    (x1 = p.x + Math.sin(a) * r), (z1 = p.z + Math.cos(a) * r);
+  } else {
+    const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * SCATTER;
+    x1 = p.x + (v ? v.vx : 0) * flight * LEAD + Math.sin(a) * r;
+    z1 = p.z + (v ? v.vz : 0) * flight * LEAD + Math.cos(a) * r;
+  }
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const path: MissilePath = { x0: r2(x0), y0: r2(y0), z0: r2(z0), x1: r2(x1), y1: r2(heightAt(x1, z1)), z1: r2(z1), flight: Math.round(flight * 1000) / 1000 };
+  const id = nextMissile++;
+  w.missiles.push({ id, at: now + path.flight * 1000, x: path.x1, y: path.y1, z: path.z1 });
+  out.events.push({ x: path.x1, z: path.z1, msg: { t: 'missile', id, g: -1, time: now, ...path } });
+}
+
+/** Missiles now landing: a burst, death round it. */
+function landMissiles(w: Worm, now: number, players: BossPlayer[], out: BossOut) {
+  if (!w.missiles.length) return;
+  w.missiles = w.missiles.filter((m) => {
+    if (m.at > now) return true;
+    for (const p of players) {
+      if (p.safe || out.kills.some((k) => k.id === p.id)) continue;
+      if (Math.hypot(p.x - m.x, p.y + 0.9 - m.y, p.z - m.z) < BLAST_R) out.kills.push({ id: p.id, cause: 'missile', push: blastPush(m.x, m.y, m.z, p.x, p.y, p.z, BLAST_R) });
+    }
+    out.events.push({ x: m.x, z: m.z, msg: { t: 'blast', id: m.id, x: m.x, y: m.y, z: m.z } });
+    return false;
+  });
+}

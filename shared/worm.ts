@@ -12,7 +12,8 @@
 // (or on sand thinly over it) is out of its reach. Someone out on the sand within NOTICE_R draws it. Some hunts it
 // closes in deep, and once under them it rises and bursts out of the sand (the sand shivers first: get moving),
 // swallowing anyone near its head; others it comes half out of the sand, its back ploughing a furrow, and charges
-// straight through them, jaws open (step aside). The weak points sit on its back and can only be shot while out of the sand.
+// straight through them, jaws open (step aside); and now and then, a way off, it bursts out short of them and flies a
+// huge arc high over the desert, firing missiles out of its back (server/worm.ts salvo). The weak points sit on its back and can only be shot while out of the sand.
 
 /** Body segments behind the head and their spacing along the path (m). */
 export const SEGS = 44;

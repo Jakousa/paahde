@@ -53,7 +53,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `server/bosses.ts` spawns and ticks one brain per kind (`server/<kind>.ts`), `src/bosses.ts` interpolates them and
   handles the weak points, one view per kind (`src/world/<kind>.ts`, built on `src/world/bossParts.ts`); spoils in
   `shared/tables.ts` BOSS_SPOILS
-- `shared/worm.ts` — the worm boss (200 m, swims through the sand, bursts out under prey or charges half out of it; Terraria-style head steering,
+- `shared/worm.ts` — the worm boss (200 m, swims through the sand, bursts out under prey, charges half out of it, or flies a huge arc firing missiles from its back; Terraria-style head steering,
   segments follow its path): brain `server/worm.ts`, view `src/world/worm.ts`, `src/wormSound.ts`, model `tools/blender/worm.py`
 - `shared/carrier.ts` — the hive carrier boss (huge four-fan drone that bombs from its belly, fan hubs are its weak
   points): brain `server/carrier.ts`, view `src/world/carrier.ts`, sound `src/carrierSound.ts`, model
