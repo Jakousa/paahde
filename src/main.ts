@@ -61,6 +61,8 @@ import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
 import { Rifle } from './rifle';
 import { Jammer } from './jammer';
+import { Receiver } from './receiver';
+import { BossBar } from './bossBar';
 import { Thrower } from './throw';
 import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
@@ -75,6 +77,7 @@ import { Detector } from './detector';
 import { Chat } from './chat';
 import { tools } from './input';
 import { Wrecks } from './world/wrecks';
+import { Trophies } from './world/trophies';
 import { Mast } from './world/mast';
 import { GuardianFx } from './guardians';
 import { update } from './update';
@@ -92,6 +95,7 @@ const sky = new Sky(scene);
 const terrain = new Terrain(scene);
 const base = new Base(scene);
 const mast = new Mast(scene); // flag mast with a windsock by the entrance
+const trophies = new Trophies(scene); // the beaten bosses' parts on the mast's fins
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
 const placedView = new PlacedView(scene, base); // plant beds and UV lamps on the bunker floor
 const scrap = new Scrap(scene);
@@ -123,6 +127,7 @@ const net = new Net(getBrowserId());
 const lives = new Lives();
 net.onLives = (n, beaten) => {
   lives.set(n, beaten);
+  trophies.set(beaten);
   if (allBeaten(beaten)) victory(WORLD_ID);
 };
 net.onEnded = (why) => landing(why);
@@ -229,6 +234,8 @@ const survival = new Survival(net);
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
 const jammer = new Jammer(orbit, net, guardianFx.jets, guardianFx.drones);
+const receiver = new Receiver(orbit, net);
+const bossBar = new BossBar();
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { jammer });
 // The beam starts at the drawn gun: the first-person one, or in third person the one in the body's hand.
 const rifle = new Rifle(orbit, net, guardianFx.guardians, guardianFx.drones, guardianFx.jets,
@@ -382,11 +389,13 @@ renderer.setAnimationLoop((time) => {
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
   teardown.placeCamera(frameDt); // at the disassembly table: a fixed view above it
   bossFx.update(net, frameDt, orbit.camera);
+  bossBar.update(frameDt, bossFx.bar);
   guardianFx.update(net, frameDt, orbit.camera, focus);
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
   thrower.update(frameDt, !s.riding && !teardown.active && !net.down);
   jammer.update(frameDt, !s.riding && !teardown.active && !net.down);
   jammer.others(others, orbit.camera.position); // others' jammers: their static
+  receiver.update(frameDt, inHand, !s.riding && !teardown.active && !net.down);
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
   me.setHeadless(riding && !orbit.showBody);

@@ -922,7 +922,7 @@ export const JUNK_KINDS = Object.keys(BUILDERS) as JunkKind[];
  *  is mounted. */
 export function buildJunk(kind: JunkKind, seed: number, level = 1): Junk {
   const spec = junkSpec(kind);
-  const rolled: Record<PartId, Roll[]> = { battery: [], motor: [], heatsink: [], compute: [], antimatter: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
+  const rolled: Record<PartId, Roll[]> = { battery: [], motor: [], heatsink: [], compute: [], uranium: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
   let best = 0;
   machineParts(kind, seed, level).forEach(({ part, tier }, index) => {
     rolled[part].push({ tier, index });

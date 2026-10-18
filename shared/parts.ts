@@ -12,7 +12,7 @@ export const PART_LABELS: Record<PartId, string> = {
   motor: 'Electric motor',
   heatsink: 'Heat sink',
   compute: 'Compute unit',
-  antimatter: 'Anti-matter container',
+  uranium: 'Uranium cell',
   coil: 'Wiring coil',
   impeller: 'Impeller',
   bearing: 'Bearing',

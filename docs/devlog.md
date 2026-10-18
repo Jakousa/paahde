@@ -2,6 +2,31 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — Bosses are the goal: receivers, health, trophies
+
+- **Win:** the world is won when every boss kind has been killed once (`beaten` in the world's settings,
+  `bosses_beaten`, a bit per kind). Each first kill gives the world 10 more lives (`BOSS_LIVES`; the lives row grows,
+  ten to a row) and puts the boss's part up as a trophy on one of the flag mast's fins (`src/world/trophies.ts`). All
+  four: a victory screen once per browser (*The desert is yours*, *Play on*), and the world goes on.
+- **No more random bosses.** They're called with **receivers** (gear, `receiver_<kind>`, found broken on guardian
+  ground, `FINDS` level 2): a **uranium cell** (the old anti-matter container, renamed: DB v9 migration) plus the
+  boss's kin's part: a drone transponder (drones), brood gland (crawlers), walker servo (guardians) (`RELIC_DROPS`).
+  The worm's receiver takes the part each of the other three bosses leaves (hive core, queen's eye, furnace heart:
+  `RELICS`), so the worm comes last. Those slots are never filled in gear found broken (`PartSlot.rare`).
+- **Calling** (`onCall`, server/world.ts): left mouse with a repaired receiver in hand spends the cell and the boss
+  turns up some way off (its brain's non-summoned spawn), unless one of it is already about. A called boss stays
+  until it's killed; its hits taken are kept (`called_<kind>`), so after a restart (or the world's process ending
+  when empty) it comes back near whoever joins first.
+- **Pointing** (`src/receiver.ts`): everyone gets every live boss's position each second (`{ t: 'called' }`). A
+  receiver in hand, repaired or not, turns its dial's needle to its boss (wobblier on worse parts) and ticks faster
+  and higher the more nearly you face it, the lamp blinking with the ticks. Held with the jammer's clips on the same
+  mount (`src/models/receiver.ts`).
+- **Health:** bosses have health (`BOSSES[kind].hp`, weak-point hits: worm 18, carrier 12, colossus 15, queen 18). A
+  hit breaks the point for `REGROW_MS` (20 s), then it regrows, so the fight goes round the points. A bar across the
+  top of the HUD (`src/bossBar.ts`) shows the nearest live boss within 700 m, with its name.
+- **Gaps:** no world-wide sign when someone calls a boss; bosses don't scale with the number of players; receivers of
+  beaten bosses still turn up (a rematch drops parts and its relic again).
+
 ## 2026-10-18 — The hive carrier
 
 - **What**: the searchlight drones' mothership, a boss (shared/bosses.ts 'carrier'): a ~90 m armoured hull on four
@@ -1350,5 +1375,7 @@ drawn by `src/world/shelters.ts`).
   (`die()`) spends one and everyone gets `{ t: 'lives' }`. A row of marks in the top-right corner (`src/lives.ts`)
   puts one out per death. At 0 nobody can die any more, everyone is closed with 4410 once the last body has lain its
   `DOWN_MS`, and joining a spent world gets the end screen (*Game over*, *New world*).
+- **Bosses:** each kind's first kill gives the world 10 more lives; every kind killed wins it (see *Bosses are the
+  goal*).
 - **Gaps:** finished worlds' databases stay on disk; nothing lists open worlds; the browser ID is the same in every
   world (each world's DB keeps its own player row).

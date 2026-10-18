@@ -5,7 +5,7 @@
     blender -b --python tools/blender/finds.py -- --preview out.png   # also a perspective render of them on sand
 
 Writes public/models/finds/<kind>.glb for the gear that had only a code-built stand-in (backpack, shovel, metal
-detector, storm detector, wrist computer, jammer), each already in the pose it lies in on the sand; src/world/loot.ts
+detector, storm detector, wrist computer, jammer) and the boss receivers (receiver_<boss>), each already in the pose it lies in on the sand; src/world/loot.ts
 sits it on the ground. The water bottle, telescope, laser rifle, laser pistol and motorcycle keep their models
 (public/models/canteen.glb, telescope.glb, rifle.glb, pistol.glb, sandbike.glb): they are imported here only to
 render their icons.
@@ -49,13 +49,23 @@ MATERIALS = {
     'glass_dark': (0x1a2a2c, 0.3, 0.2, 0),
     'EmitScreen': (0x5fe0b8, 0.0, 0.4, 1.2),
     'EmitAmber': (0xffa040, 0.0, 0.4, 1.5),
+    # receivers' bodies, one per boss
+    'rcv_carrier': (0x5a7272, 0.25, 0.65, 0),
+    'rcv_carrier_dark': (0x2c3a3a, 0.3, 0.7, 0),
+    'rcv_queen': (0x5c1a17, 0.2, 0.6, 0),
+    'rcv_queen_dark': (0x2a0d0b, 0.25, 0.7, 0),
+    'rcv_colossus': (0xa0521f, 0.35, 0.7, 0),
+    'rcv_colossus_dark': (0x55280f, 0.4, 0.75, 0),
+    'rcv_worm': (0xc9a556, 0.15, 0.7, 0),
+    'rcv_worm_dark': (0x2e2520, 0.4, 0.7, 0),
 }
 
 # Grid cells (w, h) per kind: shared/items.ts ITEMS sizes. The icon has this shape.
 CELLS = {
     'canteen': (1, 2), 'spyglass': (2, 1), 'motorcycle': (4, 3), 'backpack': (2, 2), 'storm_detector': (1, 2),
     'wristpad': (1, 1), 'metal_detector': (1, 3), 'shovel': (1, 3), 'laser_rifle': (4, 1), 'laser_pistol': (2, 1),
-    'jammer': (2, 1),
+    'jammer': (2, 1), 'receiver_carrier': (2, 1), 'receiver_queen': (2, 1), 'receiver_colossus': (2, 1),
+    'receiver_worm': (2, 1),
 }
 CELL, GAP = 54, 4  # src/inventory.ts
 
@@ -304,6 +314,86 @@ def build_jammer(mb, rng):
     mb.cyl(0.007, 0.007, 0.008, 8, (0.005, 0.0, 0.092), 'plastic_black')
 
 
+# ------------------------------------------------------------------------------------------------ receivers
+
+# Distress-signal receivers: each calls one boss, fed by a uranium cell (items.py) pushed into the slot in its
+# side. Same frame as the jammer (+X forward, +Z up, grip where the hand closes at the origin) and EXACTLY the
+# jammer's grip and trigger guard, so the game holds them with the jammer's hand clips. A held model built to
+# match in three.js maps Blender (x, y, z) to three.js (-y, z, x).
+RECV_BODY = ((0.13, 0.06, 0.056), (0.03, 0.0, 0.071))  # size, centre: x -0.035..0.095, z 0.043..0.099
+DIAL_TILT = 0.4  # the dial face leans back (towards the eye) by this much from facing straight up
+DIAL_FACE = Vector((0.035, 0.0, 0.111))  # centre of the dial's face plane
+DIAL_R = 0.0225  # face radius; light rim to 0.0285, dark drum behind it
+RECV_COLOURS = {  # body, dark (underside, ribs, drum, bands)
+    'carrier': ('rcv_carrier', 'rcv_carrier_dark'),
+    'queen': ('rcv_queen', 'rcv_queen_dark'),
+    'colossus': ('rcv_colossus', 'rcv_colossus_dark'),
+    'worm': ('rcv_worm', 'rcv_worm_dark'),
+}
+
+
+def make_receiver(boss):
+    body, dark = RECV_COLOURS[boss]
+
+    def build_receiver(mb, rng):
+        """Upright, antenna forward (+X): the jammer's raked grip under a squat body, a round analogue dial on top
+        leaning back towards the eye, a stubby antenna at the front, the lamp at the back, the cell slot in the -Y
+        side."""
+        # Grip and trigger guard: build_jammer's, unchanged.
+        mb.box((0.036, 0.03, 0.095), (-0.004, 0, 0.004), 'rubber', rot=(0, 0.49, 0), bevel=0.004)
+        for k in range(4):
+            mb.box((0.038, 0.032, 0.004), (-0.014 + k * 0.01 * 0.47, 0, -0.03 + k * 0.018), dark, rot=(0, 0.49, 0))
+        it.wire(mb, [(0.012, 0, 0.044), (0.03, 0, 0.022), (0.05, 0, 0.026), (0.052, 0, 0.044)], 0.003, 5,
+                'plastic_black')
+        # Squat body, dark underside and nose plate.
+        (sx, sy, sz), c = RECV_BODY
+        mb.box((sx, sy, sz), c, body, bevel=0.006)
+        mb.box((0.1, sy + 0.002, 0.008), (0.035, 0, 0.045), dark)
+        mb.box((0.006, sy - 0.012, sz - 0.016), (c[0] + sx / 2, 0, c[2]), dark)
+        if boss == 'worm':  # dark bands round the body, like the worm's
+            for x in (-0.018, 0.078):
+                mb.box((0.012, sy + 0.003, sz + 0.003), (x, 0, c[2]), dark)
+        # Cell slot in the -Y side: a steel frame round a dark opening, a hazard tab above it.
+        y = -sy / 2
+        mb.box((0.048, 0.002, 0.024), (0.03, y - 0.0005, 0.07), 'plastic_black')
+        for dz in (-0.014, 0.014):
+            mb.box((0.056, 0.004, 0.004), (0.03, y - 0.0015, 0.07 + dz), 'steel')
+        for dx in (-0.026, 0.026):
+            mb.box((0.004, 0.004, 0.032), (0.03 + dx, y - 0.0015, 0.07), 'steel')
+        mb.box((0.02, 0.003, 0.005), (0.03, y - 0.001, 0.0915), 'hazard_yellow')
+        for dx in (-0.01, 0.01):  # contacts deep in the slot
+            mb.cyl(0.0025, 0.0025, 0.002, 6, (0.03 + dx, y - 0.001, 0.07), 'brass', rot=it.X90)
+        # Dial: dark drum sunk into the top, light rim, dark face, cream ticks, orange needle on a steel pivot.
+        tilt = Euler((0, -DIAL_TILT, 0)).to_matrix()
+        n = tilt @ Vector((0, 0, 1))  # face normal (up and back)
+        u = tilt @ Vector((1, 0, 0))  # the dial's 12 o'clock (forward and up)
+        rot = (0, -DIAL_TILT, 0)
+        F = DIAL_FACE
+        mb.cyl(0.028, 0.028, 0.022, 16, F - n * 0.011, dark, rot=rot)
+        mb.lathe([(DIAL_R, 0.0), (0.0285, 0.0), (0.0285, 0.005), (DIAL_R, 0.005)], 16, F, 'alu', rot=rot)
+        mb.cyl(DIAL_R, DIAL_R, 0.002, 16, F, 'plastic_black', rot=rot)
+        for k in range(7):
+            a = -2.1 + k * 4.2 / 6
+            p = F + n * 0.0015 + (u * math.cos(a) + Vector((0, 1, 0)) * math.sin(a)) * 0.0175
+            r = (tilt @ Euler((0, 0, a)).to_matrix()).to_euler()
+            mb.box((0.006 if k % 3 == 0 else 0.004, 0.0016, 0.001), p, 'label', rot=tuple(r))
+        a = -0.6  # needle at rest, left of 12 o'clock
+        d = u * math.cos(a) + Vector((0, 1, 0)) * math.sin(a)
+        r = (tilt @ Euler((0, 0, a)).to_matrix()).to_euler()
+        mb.box((0.017, 0.0024, 0.0012), F + n * 0.0025 + d * 0.0075, 'accent_orange', rot=tuple(r))
+        mb.cyl(0.003, 0.003, 0.004, 8, F + n * 0.003, 'steel', rot=rot)
+        # Stubby antenna at the front, raked forward a little.
+        a0 = Vector((0.08, 0, 0.099))
+        mb.cyl(0.0075, 0.0075, 0.01, 8, a0 + Vector((0, 0, 0.005)), 'plastic_black')
+        it.wire(mb, [a0 + Vector((0, 0, 0.01)), a0 + Vector((0.012, 0, 0.055))], 0.0042, 6, 'rubber')
+        mb.ball(0.0058, a0 + Vector((0.012, 0, 0.057)), 'rubber', u=8, v=5)
+        # The lamp at the back, like the jammer's.
+        mb.box((0.018, 0.018, 0.004), (-0.02, 0.012, 0.1), 'plastic_black')
+        mb.ball(0.0065, (-0.02, 0.012, 0.104), 'EmitAmber', u=8, v=5)
+
+    return build_receiver
+
+
 # ------------------------------------------------------------------------------------------------ table
 
 # kind: (builder, pose on the sand (Euler, rad), icon pose, icon camera direction (from the object))
@@ -318,6 +408,9 @@ BUILT = {
     'backpack': (build_backpack, (-D90, 0, 0), (0, 0, -0.35), THREE_Q),
     'jammer': (build_jammer, (D90, 0, 0), (0, 0, 0), SIDE),
 }
+RECV_VIEW = Vector((-0.3, -1, 0.75)).normalized()  # from behind and above, so the dial (leaning back) shows
+for _boss in RECV_COLOURS:  # lying on the slot-less side, slot and dial up to the sky
+    BUILT['receiver_' + _boss] = (make_receiver(_boss), (-D90, 0, 0), (0, 0, 0), RECV_VIEW)
 # The existing models: file in public/models/, icon pose, camera direction.
 IMPORTED = {
     'canteen': ('canteen.glb', (0, 0, -0.4), THREE_Q),

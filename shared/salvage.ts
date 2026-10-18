@@ -4,7 +4,7 @@
 import { COMPONENT_LOOT, SALVAGE_LOOT, type TierWeights } from './tables.ts';
 
 /** Craftable part ids, matching tools/blender/items.py (public/models/items/<id>_<tier>.glb). */
-export type PartId = 'battery' | 'motor' | 'heatsink' | 'compute' | 'antimatter' | 'coil'
+export type PartId = 'battery' | 'motor' | 'heatsink' | 'compute' | 'uranium' | 'coil'
   // Mechanical and switching parts that come out of the smaller crash-site components.
   | 'impeller' | 'bearing' | 'gear' | 'valve' | 'relay';
 
@@ -46,7 +46,7 @@ export const SALVAGE: Record<SalvageId, SalvageKind> = {
   vehicle_frame: { label: 'Broken vehicle frame', model: 'salvage/vehicle_frame.glb', ...SALVAGE_LOOT.vehicle_frame },
   // #17: a stranded jet ski; its battery bay and drive motor are still in there, plus the bilge pump motor.
   water_jet: { label: 'Broken water jet', model: 'salvage/water_jet.glb', ...SALVAGE_LOOT.water_jet },
-  // #16: rare, the valuable one. A starship's reactor column: compute racks, coolant fins, anti-matter bottles.
+  // #16: rare, the valuable one. A starship's reactor column: compute racks, coolant fins, uranium cells.
   warp_core: { label: 'Warp drive core', model: 'salvage/warp_core.glb', ...SALVAGE_LOOT.warp_core },
   // #15: broken rack computer that once ran some big machine; finned side cooler + a stack of modules.
   ai_control: { label: 'AI control system', model: 'salvage/ai_control.glb', ...SALVAGE_LOOT.ai_control },

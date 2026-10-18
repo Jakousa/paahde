@@ -12,7 +12,7 @@ import { SCRAP_KINDS } from './scrap.ts';
 type Size = [number, number];
 
 /** Grid cells [w, h] per part; the rest are 1 × 1. */
-const PART_SIZES: Partial<Record<PartId, Size>> = { battery: [1, 2], motor: [2, 2], heatsink: [2, 1], antimatter: [2, 2], impeller: [2, 2] };
+const PART_SIZES: Partial<Record<PartId, Size>> = { battery: [1, 2], motor: [2, 2], heatsink: [2, 1], uranium: [2, 2], impeller: [2, 2] };
 
 /**
  * Item kind ids as stored in the DB. Never rename one: rows hold them (or migrate them, server/db.ts). `stack`: how
@@ -50,6 +50,17 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   laser_rifle: { label: 'Laser rifle', stack: 1, size: [4, 1] },
   laser_pistol: { label: 'Laser pistol', stack: 1, size: [2, 1] },
   jammer: { label: 'Jammer', stack: 1, size: [2, 1] },
+  // The receivers that call the bosses (shared/bosses.ts RECEIVERS), and the enemies' and bosses' own parts they take.
+  receiver_carrier: { label: 'Hive receiver', stack: 1, size: [2, 1] },
+  receiver_queen: { label: 'Brood receiver', stack: 1, size: [2, 1] },
+  receiver_colossus: { label: 'Iron receiver', stack: 1, size: [2, 1] },
+  receiver_worm: { label: 'Deep receiver', stack: 1, size: [2, 1] },
+  drone_transponder: { label: 'Drone transponder', stack: 1 },
+  brood_gland: { label: 'Brood gland', stack: 1 },
+  servo_heart: { label: 'Walker servo', stack: 1 },
+  hive_core: { label: 'Hive core', stack: 1 },
+  queen_eye: { label: "Queen's eye", stack: 1 },
+  furnace_heart: { label: 'Furnace heart', stack: 1 },
   // Salvage wrecks carried home from the desert (shared/wrecks.ts), taken apart on the disassembly table too.
   vehicle_frame: { label: SALVAGE.vehicle_frame.label, stack: 1, size: [4, 2] },
   water_jet: { label: SALVAGE.water_jet.label, stack: 1, size: [3, 2] },
@@ -59,7 +70,8 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
 const ORDER = Object.keys(ITEMS);
 
 /** Used from the hotbar (held in hand): Store all leaves these in the bag. Placeables (shared/placed.ts) stay too. */
-export const TOOLS = new Set(['canteen', 'spyglass', 'shovel', 'metal_detector', 'laser_rifle', 'laser_pistol', 'jammer']);
+export const TOOLS = new Set(['canteen', 'spyglass', 'shovel', 'metal_detector', 'laser_rifle', 'laser_pistol', 'jammer',
+  'receiver_carrier', 'receiver_queen', 'receiver_colossus', 'receiver_worm']);
 
 /** Every item fits a grid this many rows tall once turned (its smaller side): the smallest backpack's rows
  *  (shared/gear.ts backpackRows), so anything can be picked up into any bag; chests keep this many rows empty. */

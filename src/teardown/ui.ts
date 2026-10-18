@@ -12,7 +12,7 @@ import { RARITY, type PartId, type Tier } from '../../shared/salvage.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 export const PART_NAMES: Record<PartId, string> = {
-  battery: 'Battery', motor: 'Motor', heatsink: 'Heatsink', compute: 'Compute unit', antimatter: 'Antimatter cell', coil: 'Coil',
+  battery: 'Battery', motor: 'Motor', heatsink: 'Heatsink', compute: 'Compute unit', uranium: 'Uranium cell', coil: 'Coil',
   impeller: 'Impeller', bearing: 'Bearing', gear: 'Gear', valve: 'Valve', relay: 'Relay',
 };
 export const partName = (part: PartId, tier: Tier) => `${PART_NAMES[part]} · ${RARITY[tier].name}`;

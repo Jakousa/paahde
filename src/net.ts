@@ -173,6 +173,8 @@ export class Net {
   /** Recent 'bosses' messages (shared/bosses.ts), oldest first, and the one-offs not yet handled (src/bosses.ts). */
   bosses: Extract<ServerMsg, { t: 'bosses' }>[] = [];
   bossFx: Extract<ServerMsg, { t: 'bossFx' }>[] = [];
+  /** Where every live boss is, wherever we are (the receivers' needles, src/receiver.ts). */
+  called: Extract<ServerMsg, { t: 'called' }>['b'] = [];
   /** The guardians' planted feet in the latest 'bots', as posts we can't walk through (shared/sim.ts collideLegs). */
   private legPosts: number[] = [];
   /** A guardian's laser bolt was fired or burst (src/world/bolts.ts). */
@@ -356,6 +358,11 @@ export class Net {
   }
 
   /** A laser rifle shot from (x, y, z) to (ex, ey, ez); `hit`: weak point i of walker g, as we saw it (shared/rifle.ts). */
+  /** The receiver in hand sends its signal: its boss is called (shared/bosses.ts). */
+  call() {
+    this.send({ t: 'call' });
+  }
+
   /** Holding the jammer on a jet or drone (shared/jammer.ts), from the eye along the aim. */
   jam(kind: 'jet' | 'drone', id: number, x: number, y: number, z: number, dx: number, dy: number, dz: number) {
     this.send({ t: 'jam', kind, id, x, y, z, dx, dy, dz });
@@ -670,6 +677,10 @@ export class Net {
     }
     if (msg.t === 'toss' || msg.t === 'tossEnd') return this.onToss?.(msg);
     if (msg.t === 'chat') return this.onChat?.(msg);
+    if (msg.t === 'called') {
+      this.called = msg.b;
+      return;
+    }
     if (msg.t === 'bosses') {
       this.bosses.push(msg);
       if (this.bosses.length > 12) this.bosses.shift();

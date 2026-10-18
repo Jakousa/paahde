@@ -232,6 +232,15 @@ export class ItemServer {
     return true;
   }
 
+  /** Empty part slot `i` of the gear in bag slot `slot` (its part used up). False if nothing is fitted there. */
+  spendPart(browserId: string, slot: number, i: number): boolean {
+    const it = this.slots(browserId, 'bag')[slot];
+    if (!it?.parts?.[i]) return false;
+    it.parts = it.parts.map((p, j) => (j === i ? null : p));
+    this.save(browserId, 'bag');
+    return true;
+  }
+
   /** Craft a recipe (shared/crafting.ts) at the workbench. Returns the item kind made, or why not. */
   craft(browserId: string, s: PlayerState, recipe: unknown): string | { made: string } {
     if (typeof recipe !== 'string' || !RECIPES[recipe]) return 'Unknown recipe';

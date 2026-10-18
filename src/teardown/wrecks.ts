@@ -168,7 +168,7 @@ export function waterJet(k: Kit) {
  *  the middle section breached so the core glows through. On top of the capped section: the fin bank, up to three
  *  heat sinks under a screwed shroud, each on a coolant clamp and a bolt. On the +z flank: the compute rack, a door
  *  on four screws and a pry seam, two rack bolts from underneath, a card latch on every board. On the -z flank of
- *  the torn section: the anti-matter bottles, clamped in their cage; vent the containment field first. */
+ *  the torn section: the uranium cells, clamped in their cage; vent the coolant first. */
 export function warpCore(k: Kit) {
   const g = k.grade;
   const AY = 0.62, R = 0.5;
@@ -230,13 +230,13 @@ export function warpCore(k: Kit) {
   }
   if (g >= 2) k.lamps(3, RX - 0.2, AY + 0.42, RZ + 0.27, 0.2);
 
-  // anti-matter bottles in a cage on the -z flank of the torn section; vent the field before touching them
+  // uranium cells in a cage on the -z flank of the torn section; vent the coolant before touching them
   const BZ = -0.68;
   k.box(0.8, 0.05, 0.36, 0.5, AY - 0.12, BZ, 'trim');
   k.box(0.8, 0.04, 0.06, 0.5, AY + 0.3, BZ - 0.17, 'trim'); // cage band
   const vent = k.pry('Field vent', [0.5, AY - 0.1, BZ - 0.2], [0, 0, -1]);
   for (const x of [0.32, 0.68]) {
-    k.mount('antimatter', [[x, AY - 0.07, BZ], [0, 0, 0]], () => [vent, k.bolt('Cage clamp', [x, AY + 0.32, BZ - 0.2], [0, 0, -1], [vent], 2)]);
+    k.mount('uranium', [[x, AY - 0.07, BZ], [0, 0, 0]], () => [vent, k.bolt('Cage clamp', [x, AY + 0.32, BZ - 0.2], [0, 0, -1], [vent], 2)]);
   }
 }
 

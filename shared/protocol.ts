@@ -78,6 +78,9 @@ export type ClientMsg =
   // Holding the jammer (shared/jammer.ts) on jet or drone `id` from the eye (x, y, z) along (dx, dy, dz), about every
   // JAM_SEND_MS while the use button is down; the server adds up the lock and brings the target down at JAM_MS.
   | { t: 'jam'; kind: 'jet' | 'drone'; id: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }
+  // Use button on the repaired receiver in hand (shared/bosses.ts RECEIVERS): its cell is spent and its boss called
+  // ('called'), unless that boss is already about.
+  | { t: 'call' }
   // A guardian's foot (client IK) came down on you (shared/guardians.ts FOOT_CRUSH_R); the server checks guardian `g`
   // is alive and near enough, and kills you ('died', cause 'guardian').
   | { t: 'stomped'; g: number }
@@ -253,6 +256,8 @@ export type ServerMsg =
   | { t: 'tossEnd'; id: number; x: number; y: number; z: number }
   // The bosses (shared/bosses.ts) within BOSS_SEND_R, about 10 times a second, at server time `time`.
   | { t: 'bosses'; time: number; b: BossSnap[] }
+  // Where every live boss is, wherever you are, every second and when one is called: for the receivers' needles.
+  | { t: 'called'; b: { k: BossKind; x: number; z: number }[] }
   // Something boss `id` did once at (x, y, z) at server time `time` (`e` names it, its view knows what it means;
   // `a`: any numbers it goes with), to everyone within BOSS_SEND_R.
   | { t: 'bossFx'; id: number; e: string; time: number; x: number; y: number; z: number; a?: number[] };

@@ -21,6 +21,7 @@ import type { RidePose } from '../players';
 import { carriedBit, wornBit } from '../../shared/gear.ts';
 import { beltModel, disposeModel, heldModel, heldMuzzle, wristModel } from './outfit';
 import { LAMP_ON } from './jammer';
+import { RECEIVERS } from '../../shared/bosses.ts';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -718,7 +719,9 @@ const PISTOL: GunHold = {
   elbow: V(0.5, -0.4, 1), aimElbow: V(0.4, -1, 0),
   twist: 0.2,
 };
-const GUN_HOLD: Record<string, GunHold> = { laser_rifle: RIFLE, laser_pistol: PISTOL, jammer: PISTOL };
+const GUN_HOLD: Record<string, GunHold> = {
+  laser_rifle: RIFLE, laser_pistol: PISTOL, jammer: PISTOL, ...Object.fromEntries(Object.values(RECEIVERS).map((k) => [k, PISTOL])),
+};
 
 /** Speed slide (slidePose): extra lean back (rad) and where the trailing left hand touches the sand (root space,
  *  forward -Z, along the slope). */

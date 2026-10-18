@@ -10,8 +10,8 @@ import { bikeLevel, bottleSips, carriedGear, digTool, GEAR_KINDS, gunCooldown, j
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
-import { BOSS_SPOILS, KILL_SPOILS } from '../shared/tables.ts';
-import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, bossBit, type BossKind } from '../shared/bosses.ts';
+import { BOSS_SPOILS, KILL_SPOILS, RELIC_DROPS } from '../shared/tables.ts';
+import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
@@ -166,6 +166,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'summon' && p) return guardians.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'fire' && p) return onFire(p, msg);
     if (msg.t === 'jam' && p) return onJam(p, msg);
+    if (msg.t === 'call' && p) return onCall(p);
     if (msg.t === 'throw' && p) return onThrow(p, msg);
     if (msg.t === 'stomped' && p) return onStomped(p, msg.g);
     if (msg.t === 'drink' && p) return onDrink(p);
@@ -254,6 +255,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, jets.msg());
   send(ws, loot.joinMessage(browserId));
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
+  recall(p);
   send(ws, corpses.joinMessage());
   for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes()]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
@@ -396,6 +398,46 @@ function tickBots(elapsed: number, now: number, tod: number) {
     send(p.ws, bosses.msg(now, p.state.x, p.state.z));
   }
   bossOut(b);
+  if (now - whereSentAt > 1000) {
+    whereSentAt = now;
+    sendAll(bosses.whereMsg());
+  }
+}
+
+let whereSentAt = 0;
+
+/** A message to everyone. */
+function sendAll(msg: ServerMsg) {
+  const json = JSON.stringify(msg);
+  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+}
+
+/** Settings key of a called boss: the hits it has taken + 1 while it's about, 0 once it's dead (none called). */
+const calledKey = (kind: BossKind) => `called_${kind}`;
+
+/** The receiver in hand (shared/bosses.ts RECEIVERS), repaired: spend its cell and call its boss, some way off. */
+function onCall(p: Player) {
+  const held = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot];
+  const kind = receiverBoss(held?.kind);
+  if (p.down || !kind || !repaired(held) || bosses.alive(kind)) return;
+  const s = p.state;
+  if (!bosses.call(kind, { id: p.id, x: s.x, y: s.y, z: s.z, safe: false }, performance.now())) return;
+  items.spendPart(p.browserId, p.slot, 0); // the uranium cell (shared/gear.ts: first slot)
+  sendBox(p, 'bag');
+  db.setSetting(calledKey(kind), 1);
+  console.log(`world ${WORLD_ID}: ${kind} called`);
+  sendAll(bosses.whereMsg());
+}
+
+/** Bosses called before a restart (the world's process ends when the last player leaves) come back near whoever
+ *  joins first, with the hits they had taken. */
+function recall(p: Player) {
+  const s = p.state;
+  for (const kind of BOSS_KINDS) {
+    const v = db.getSetting(calledKey(kind)) ?? 0;
+    if (v > 0 && !bosses.alive(kind)) bosses.call(kind, { id: p.id, x: s.x, y: s.y, z: s.z, safe: false }, performance.now(), v - 1);
+  }
+  send(p.ws, bosses.whereMsg());
 }
 
 /** The sand marks and one-off effects of the bosses (server/bosses.ts). */
@@ -442,6 +484,7 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
     const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
     for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
     bossOut(out);
+    if (r.boss?.called) db.setSetting(calledKey(r.boss.kind), r.kill ? 0 : BOSSES[r.boss.kind].hp - r.boss.hp + 1);
     if (r.kill) dropBossSpoils(r.kill);
     return;
   }
@@ -529,7 +572,9 @@ function onChat(p: Player, text: unknown) {
 
 /** What a killed walker or downed drone leaves on the sand (shared/tables.ts KILL_SPOILS). */
 function dropSpoils(k: Kill) {
-  const sp = KILL_SPOILS[k.kind === GUARDIAN ? 'guardian' : k.kind === 'drone' ? 'drone' : 'crawler'];
+  const kind = k.kind === GUARDIAN ? 'guardian' : k.kind === 'drone' ? 'drone' : 'crawler';
+  const sp = KILL_SPOILS[kind];
+  if (Math.random() < RELIC_DROPS[kind].odds) loot.dropAt(k.x, k.z, RELIC_DROPS[kind].kind);
   const n = Math.random() < sp.odds ? sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1)) : 0;
   for (let i = 0; i < n; i++) {
     const part = sp.parts[Math.floor(Math.random() * sp.parts.length)];
@@ -547,6 +592,8 @@ function dropBossSpoils(k: BossKill) {
     for (const o of players.values()) send(o.ws, { t: 'lives', n: lives, beaten });
     console.log(`world ${WORLD_ID}: ${k.kind} beaten${allBeaten(beaten) ? ', world won' : ''}`);
   }
+  const relic = RELICS[k.kind];
+  if (relic) loot.dropAt(k.x, k.z, relic);
   const sp = BOSS_SPOILS[k.kind];
   const n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1));
   for (let i = 0; i < n; i++) {

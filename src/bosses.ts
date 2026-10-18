@@ -27,6 +27,8 @@ const VIEWS: Record<BossKind, (scene: THREE.Scene) => BossView> = {
 
 /** Smoke puffs per second out of a broken weak point. */
 const SMOKE_RATE = 6;
+/** The health bar shows the nearest live boss within this (m). */
+const BAR_R = 700;
 /** A shot weak point stays broken here this long (ms) waiting for the server to agree. */
 const PREDICT_MS = 1500;
 
@@ -44,6 +46,8 @@ export class BossFx {
   private ctx: BossCtx;
   /** Something is after us: a boss within FIGHT_R. */
   combat = false;
+  /** The nearest live boss within BAR_R, for the health bar (src/bossBar.ts); null if none. */
+  bar: { kind: BossKind; hp: number } | null = null;
 
   constructor(scene: THREE.Scene, thump: BossCtx['thump'], shake: BossCtx['shake']) {
     this.scene = scene;
@@ -61,7 +65,8 @@ export class BossFx {
     for (const m of net.bossFx.splice(0)) this.shown.get(m.id)?.view.fx?.(m, c);
     const snaps = this.at(net.bosses, c.time);
     const seen = new Set<number>();
-    let near = false;
+    let near = false, barD = BAR_R;
+    this.bar = null;
     for (const s of snaps) {
       seen.add(s.id);
       let v = this.shown.get(s.id);
@@ -75,7 +80,12 @@ export class BossFx {
       this.smoulder(v, dt);
       if (s.dead > 0 && !v.dead) rifleSound.firework(s, c.ear, 1.4, 0.6);
       v.dead = s.dead > 0;
-      if (!v.dead && c.me && Math.hypot(s.x - c.me.x, s.z - c.me.z) < 250) near = true;
+      const d = c.me ? Math.hypot(s.x - c.me.x, s.z - c.me.z) : Infinity;
+      if (!v.dead && d < 250) near = true;
+      if (!v.dead && d < barD) {
+        barD = d;
+        this.bar = { kind: s.k, hp: s.hp };
+      }
     }
     this.combat = near;
     for (const [id, v] of this.shown) {

@@ -24,7 +24,8 @@
 // Laser pistol: the same with PistolIdle / PistolWalk / PistolAim (out at arm's length onto the iron sights; the hands
 // stay in view) on the `Pistol` mesh, one-handed. The jammer (src/jammer.ts): JammerIdle / JammerWalk, and JammerAim
 // (scrubbed like the guns' aim while jamming: up in front in both hands); its model (src/models/jammer.ts) sits on the
-// `JammerMount` node, its lamp lit by `playerHands.jamLamp`.
+// `JammerMount` node, its lamp lit by `playerHands.jamLamp`. A receiver (src/receiver.ts) sits on the same mount and
+// is held with the jammer's Idle / Walk clips; its needle and lamp follow `playerHands.receiver`.
 // Hand tools (`playerHands.tool`; they leave the use button to digging): ShovelIdle / ShovelWalk / ShovelDig on the
 // `Shovel` mesh; DetectorIdle / DetectorWalk (sweeping) / DetectorDig (the left hand scoops) on `Detector`. Scrap in
 // hand (`held` 'scrap'): ScrapIdle / ScrapWalk on `ScrapChunk`, and ScrapThrow from `playerHands.throwAt`, the piece
@@ -36,6 +37,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { FirstPersonCamera } from './camera';
 import { playerHands, type Held } from './water';
 import { jammerModel, LAMP_ON } from './models/jammer';
+import { RECEIVER_LAMP, receiverModel } from './models/receiver';
+import type { BossKind } from '../shared/bosses.ts';
 
 export type HandsPose = { speed: number; grounded: boolean; digging?: boolean; sliding?: boolean };
 
@@ -81,6 +84,9 @@ export class ViewModel {
   private pistol: THREE.Object3D | null = null;
   private pistolMuzzle: THREE.Object3D | null = null;
   private jammer: ReturnType<typeof jammerModel> | null = null;
+  /** Where the jammer sits; the receivers are made on it as they're first held, one per boss. */
+  private mount: THREE.Object3D | null = null;
+  private receivers = new Map<BossKind, ReturnType<typeof receiverModel>>();
   private shovel: THREE.Object3D | null = null;
   private detector: THREE.Object3D | null = null;
   private scrapChunk: THREE.Object3D | null = null;
@@ -142,6 +148,7 @@ export class ViewModel {
     // The jammer on its mount (the pistol's frame: grip at the origin, forward +Z), else in the pistol's place.
     const mount = model.getObjectByName('JammerMount') ?? this.pistol;
     if (mount?.parent) {
+      this.mount = mount;
       this.jammer = jammerModel();
       const j = this.jammer.obj;
       j.position.copy(mount.position);
@@ -186,9 +193,25 @@ export class ViewModel {
     if (this.rifle) this.rifle.visible = this.shown === 'rifle';
     if (this.pistol) this.pistol.visible = this.shown === 'pistol';
     if (this.jammer) this.jammer.obj.visible = this.shown === 'jammer';
+    this.showReceiver();
     if (this.shovel) this.shovel.visible = this.shown === 'shovel';
     if (this.detector) this.detector.visible = this.shown === 'detector';
     if (this.scrapChunk) this.scrapChunk.visible = this.shown === 'scrap';
+  }
+
+  /** The receiver of the boss in hand on the jammer's mount (made the first time), the others hidden. */
+  private showReceiver() {
+    const kind = this.shown === 'receiver' ? playerHands.receiver.kind : null;
+    if (kind && !this.receivers.has(kind) && this.mount?.parent) {
+      const r = receiverModel(kind);
+      r.obj.position.copy(this.mount.position);
+      r.obj.quaternion.copy(this.mount.quaternion);
+      r.obj.scale.copy(this.mount.scale);
+      r.obj.traverse((o) => (o.frustumCulled = false));
+      this.mount.parent.add(r.obj);
+      this.receivers.set(kind, r);
+    }
+    for (const [k, r] of this.receivers) r.obj.visible = k === kind;
   }
 
   /** A copy of the scrap piece drawn in the hand, for the throw in flight (src/throw.ts); null until loaded. */
@@ -313,9 +336,10 @@ export class ViewModel {
         a.time = smooth(playerHands.aim) * a.getClip().duration * 0.999;
       } else if (moving) this.play((walk = this.has('RifleWalk') ? 'RifleWalk' : 'Walk'));
       else this.play(this.has('RifleIdle') ? 'RifleIdle' : 'Idle');
-    } else if (this.shown === 'pistol' || this.shown === 'jammer') {
-      // The jammer has its own clips (two hands while jamming); a model without them falls back to the pistol's.
-      const pre = this.shown === 'jammer' && this.has('JammerAim') ? 'Jammer' : 'Pistol';
+    } else if (this.shown === 'pistol' || this.shown === 'jammer' || this.shown === 'receiver') {
+      // The jammer has its own clips (two hands while jamming), the receiver is held with them; a model without them
+      // falls back to the pistol's.
+      const pre = this.shown !== 'pistol' && this.has('JammerAim') ? 'Jammer' : 'Pistol';
       if (playerHands.aim > 0 && this.has(pre + 'Aim')) {
         this.play(pre + 'Aim', 0.08);
         const a = this.current!;
@@ -357,6 +381,14 @@ export class ViewModel {
       a.time = (f - Math.floor(f)) * a.getClip().duration;
     }
     if (this.jammer) this.jammer.lamp.color.copy(LAMP_ON).multiplyScalar(playerHands.jamLamp);
+    if (this.shown === 'receiver') {
+      const r = playerHands.receiver.kind ? this.receivers.get(playerHands.receiver.kind) : undefined;
+      if (!r?.obj.visible) this.showReceiver(); // another boss's receiver came into the hand
+      if (r) {
+        r.needle.rotation.y = playerHands.receiver.needle;
+        r.lamp.color.copy(RECEIVER_LAMP).multiplyScalar(playerHands.receiver.lamp);
+      }
+    }
     this.mixer.update(dt);
   }
 }

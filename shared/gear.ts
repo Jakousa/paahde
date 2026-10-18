@@ -10,7 +10,7 @@
 import { isCorpseBox } from './corpse.ts';
 import type { DigTool } from './dig.ts';
 import {
-  BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, partKind, sizeOf, strandedAt,
+  ITEMS, BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, partKind, sizeOf, strandedAt,
   type Item, type Shape, type Slots,
 } from './items.ts';
 import { PART_LABELS } from './parts.ts';
@@ -21,8 +21,9 @@ export type EquipSlot = (typeof EQUIP_SLOTS)[number];
 export const EQUIP_LABELS: Record<EquipSlot, string> = { back: 'Back', wrist: 'Wrist', belt: 'Belt', vehicle: 'Vehicle' };
 
 /** A part slot: a tiered part from disassembly, or a basic material (shared/items.ts SCRAP or CLOTH; no tier: it holds
- *  things together). */
-export type PartSlot = { part: PartId } | { scrap: string[]; label: string };
+ *  things together), or one of the kinds `scrap` lists (an enemy's or boss's own part: no tier either). `rare`: never
+ *  already fitted in gear found broken (server/loot.ts). */
+export type PartSlot = ({ part: PartId } | { scrap: string[]; label: string }) & { rare?: true };
 
 export type GearSpec = {
   slots: PartSlot[];
@@ -37,6 +38,10 @@ const P = (part: PartId): PartSlot => ({ part });
 /** The basic materials (shared/items.ts): a piece of scrap metal, a piece of cloth. */
 const SCRAP: PartSlot = { scrap: ['scrap'], label: 'Scrap' };
 const CLOTH: PartSlot = { scrap: ['cloth'], label: 'Cloth' };
+/** The receivers' slots: the uranium cell that drives the call, and an enemy's or boss's own part. */
+const CELL: PartSlot = { part: 'uranium', rare: true };
+const own = (kind: string): PartSlot => ({ scrap: [kind], label: ITEMS[kind].label, rare: true });
+const RECEIVER = { better: 'how steady its needle', use: 'Left mouse sends the signal. The needle points to what answers.' };
 
 export const GEAR: Record<string, GearSpec> = {
   motorcycle: { slots: [P('motor'), P('battery'), P('bearing')], equip: 'vehicle', better: 'top speed and acceleration',
@@ -61,6 +66,12 @@ export const GEAR: Record<string, GearSpec> = {
   // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
   jammer: { slots: [P('compute'), P('coil'), P('battery')], better: 'how fast it locks on',
     use: 'Hold the mouse button on a drone or jet until it drops.' },
+  // The receivers (shared/bosses.ts RECEIVERS): each calls its boss, spending the cell. Tuned by a part from the boss's
+  // kin (shared/tables.ts RELIC_DROPS); the worm's by a part from each of the other bosses.
+  receiver_carrier: { slots: [CELL, own('drone_transponder'), P('compute')], ...RECEIVER },
+  receiver_queen: { slots: [CELL, own('brood_gland'), P('coil')], ...RECEIVER },
+  receiver_colossus: { slots: [CELL, own('servo_heart'), P('relay')], ...RECEIVER },
+  receiver_worm: { slots: [CELL, own('hive_core'), own('queen_eye'), own('furnace_heart')], ...RECEIVER },
 };
 export const GEAR_KINDS = Object.keys(GEAR);
 
@@ -134,6 +145,8 @@ export function quality(it: Item | null | undefined): number {
 const by = (q: number, lo: number, hi: number) => lo + ((hi - lo) * q) / 3;
 
 // What each piece of gear does at quality q (0..3).
+/** Receiver: how far its needle wanders off the true bearing (rad). */
+export const receiverWobble = (q: number) => by(q, 0.35, 0.05);
 /** Motorcycle top speed (m/s) and engine (m/s² from a standstill). */
 export const bikeTopSpeed = (q: number) => by(q, 22, 30);
 export const bikeEngine = (q: number) => by(q, 16, 20);

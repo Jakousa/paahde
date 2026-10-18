@@ -4,7 +4,7 @@
 //
 // Tier weights are relative odds per tier (scrap, basic, quality, space): { scrap: 3, basic: 1 } is 3 to 1, and a
 // tier left out or 0 never comes up. Part ids are shared/salvage.ts PartId (battery, motor, heatsink, compute,
-// antimatter, coil, impeller, bearing, gear, valve, relay); an item of a part is "<part>_<tier>" (shared/items.ts).
+// uranium, coil, impeller, bearing, gear, valve, relay); an item of a part is "<part>_<tier>" (shared/items.ts).
 //
 // Machine and wreck contents are rolled from a seed on both sides (shared/parts.ts rollParts): changing their yields
 // changes what is inside every machine in the world, including half-stripped ones, which can leave a part someone has
@@ -29,7 +29,7 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   plant_bed: [SCRAP(2), CLOTH(2)],
   uv_lamp: [SCRAP(2), { label: 'Wiring coil', n: 1, part: 'coil' }],
   // The plain metal parts, hammered out of scrap: Scrap tier only, so better ones still come from salvage. The
-  // electrics (motor, battery, coil, relay, compute, anti-matter) can't be made.
+  // electrics (motor, battery, coil, relay, compute, uranium) can't be made.
   gear_scrap: [SCRAP(3)],
   bearing_scrap: [SCRAP(2)],
   valve_scrap: [SCRAP(3)],
@@ -66,7 +66,7 @@ export const SALVAGE_LOOT: Record<SalvageId, Loot & { weight: number }> = {
     yields: [
       { part: 'compute', min: 1, max: 3 },
       { part: 'heatsink', min: 2, max: 3 },
-      { part: 'antimatter', min: 1, max: 2 },
+      { part: 'uranium', min: 1, max: 2 },
     ],
     tierWeights: { basic: 1, quality: 4, space: 6 },
     weight: 0.6,
@@ -180,6 +180,9 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   laser_pistol: { n: 4, level: 0 }, laser_rifle: { n: 3, level: 1 },
   // The jammer (shared/jammer.ts): out where the roaming drones and the jets first come after you.
   jammer: { n: 3, level: 1 },
+  // The receivers that call the bosses (shared/bosses.ts): out on guardian ground.
+  receiver_carrier: { n: 1, level: 2 }, receiver_queen: { n: 1, level: 2 }, receiver_colossus: { n: 1, level: 2 },
+  receiver_worm: { n: 1, level: 2 },
 };
 
 /** One broken motorcycle always lies on the sand in front of the base door (server/loot.ts homeBikeSpot), so a bike is
@@ -187,7 +190,7 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
  *  starter machines give (battery: beacon, bearing: winch). Taken, another lies there at once. */
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
-/** Loose rare parts (any part, anti-matter too) lying at guardian ground at once, and their tiers. */
+/** Loose rare parts (any part, uranium too) lying at guardian ground at once, and their tiers. */
 /** `noParts`: never found this way. The impeller isn't dropped anywhere: nothing uses it. */
 export const RARE_FINDS = { n: 10, noParts: ['impeller'] as PartId[], tierWeights: { quality: 3, space: 1 } satisfies TierWeights };
 
@@ -201,7 +204,7 @@ export const CACHES = {
   n: 60,
   contents: { part: 0.6, scrap: 0.15, cloth: 0.1, pistol: 0.04, gear: 0.11 },
   /** A cache part: any part but these, at these tiers. */
-  noParts: ['antimatter', 'impeller'] as PartId[],
+  noParts: ['uranium', 'impeller'] as PartId[],
   tierWeights: { scrap: 5, basic: 3, quality: 1.2, space: 0.25 } satisfies TierWeights,
 };
 
@@ -226,10 +229,19 @@ export const KILL_SPOILS: Record<'guardian' | 'crawler' | 'drone', Spoils> = {
   drone: { odds: 1, min: 1, max: 1, parts: SPOILS, tierWeights: { basic: 1, quality: 1 } },
 };
 
-/** A killed boss (shared/bosses.ts): min..max parts scattered over its wreck (`odds` unused: always). */
+/** Besides its spoils, a killed enemy leaves its own part with these odds: what its boss's receiver takes (shared/gear.ts). */
+export const RELIC_DROPS: Record<'guardian' | 'crawler' | 'drone', { kind: string; odds: number }> = {
+  guardian: { kind: 'servo_heart', odds: 0.5 },
+  crawler: { kind: 'brood_gland', odds: 0.12 },
+  drone: { kind: 'drone_transponder', odds: 0.3 },
+};
+
+/** A killed boss (shared/bosses.ts): min..max parts scattered over its wreck (`odds` unused: always), a uranium cell
+ *  among them likely; its own part too (shared/bosses.ts RELICS). */
+const BOSS_PARTS: PartId[] = [...SPOILS, 'uranium'];
 export const BOSS_SPOILS: Record<'worm' | 'carrier' | 'colossus' | 'queen', Spoils> = {
-  worm: { odds: 1, min: 5, max: 7, parts: SPOILS, tierWeights: { quality: 2, space: 2 } },
-  carrier: { odds: 1, min: 5, max: 7, parts: SPOILS, tierWeights: { quality: 2, space: 2 } },
-  colossus: { odds: 1, min: 6, max: 8, parts: SPOILS, tierWeights: { quality: 1, space: 3 } },
-  queen: { odds: 1, min: 5, max: 7, parts: SPOILS, tierWeights: { quality: 2, space: 2 } },
+  worm: { odds: 1, min: 5, max: 7, parts: BOSS_PARTS, tierWeights: { quality: 2, space: 2 } },
+  carrier: { odds: 1, min: 5, max: 7, parts: BOSS_PARTS, tierWeights: { quality: 2, space: 2 } },
+  colossus: { odds: 1, min: 6, max: 8, parts: BOSS_PARTS, tierWeights: { quality: 1, space: 3 } },
+  queen: { odds: 1, min: 5, max: 7, parts: BOSS_PARTS, tierWeights: { quality: 2, space: 2 } },
 };

@@ -285,6 +285,13 @@ export function openDb(path: string) {
       kind TEXT                              -- the find's spawn key; NULL for a cache
     );
   `);
+  // v9: the anti-matter container became the uranium cell (`antimatter_<tier>` → `uranium_<tier>`): in boxes, dropped
+  // and lying in the world.
+  tx(() => {
+    for (const t of ['items', 'dropped', 'world_loot']) {
+      db.exec(`UPDATE ${t} SET kind = 'uranium' || SUBSTR(kind, 11) WHERE kind LIKE 'antimatter\\_%' ESCAPE '\\'`);
+    }
+  });
   const allWorldLoot = db.prepare('SELECT id, kind, parts, x, z, depth, src, spawn FROM world_loot ORDER BY id');
   const insertWorldLoot = db.prepare('INSERT OR REPLACE INTO world_loot (id, kind, parts, x, z, depth, src, spawn) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
   const deleteWorldLoot = db.prepare('DELETE FROM world_loot WHERE id = ?');

@@ -3,13 +3,15 @@
 // equipped (the backpack is part of the glb). Small boxes and cylinders, like the loot on the sand
 // (src/world/loot.ts); parts use the disassembly part models (src/teardown/junk.ts). The laser rifle and pistol use
 // their own models (public/models/rifle.glb, pistol.glb; tools/models/rifle.py, pistol.py), the jammer
-// src/models/jammer.ts.
+// src/models/jammer.ts, the receivers src/models/receiver.ts.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { parsePart } from '../../shared/items.ts';
 import { TIERS } from '../../shared/salvage.ts';
 import { loadPart } from '../teardown/junk';
 import { jammerModel } from './jammer';
+import { receiverModel } from './receiver';
+import { BOSS_KINDS, RECEIVERS } from '../../shared/bosses.ts';
 
 const mat = (color: number, rough = 0.8, metal = 0.2) => new THREE.MeshStandardNodeMaterial({ color, roughness: rough, metalness: metal });
 const RUST = mat(0x7a4a2e, 0.9, 0.3);
@@ -110,6 +112,13 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
     shadows(g);
     return g;
   },
+  // The receivers: held like the jammer.
+  ...Object.fromEntries(BOSS_KINDS.map((k) => [RECEIVERS[k], () => {
+    const g = receiverModel(k).obj;
+    g.rotation.set(-0.45, Math.PI, 0);
+    shadows(g);
+    return g;
+  }])),
 };
 
 const gunSrc = new Map<string, Promise<THREE.Object3D>>();

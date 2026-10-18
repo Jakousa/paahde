@@ -7,6 +7,8 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { cameraPosition, float, length, max, modelPosition, normalLocal, positionLocal, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { GEAR, isGear, repaired } from '../../shared/gear.ts';
+import { RECEIVERS, RELICS } from '../../shared/bosses.ts';
+import { RELIC_DROPS } from '../../shared/tables.ts';
 import { parsePart } from '../../shared/items.ts';
 import { lootReach, lootY, type Loot } from '../../shared/loot.ts';
 import { TIERS } from '../../shared/salvage.ts';
@@ -137,9 +139,11 @@ const FIND_MODELS: Record<string, { url: string; rot?: [number, number, number] 
   spyglass: { url: './models/telescope.glb' },
   laser_rifle: { url: './models/rifle.glb', rot: [0, 0, Math.PI / 2] },
   laser_pistol: { url: './models/pistol.glb', rot: [0, 0, Math.PI / 2] },
-  ...Object.fromEntries(['backpack', 'shovel', 'metal_detector', 'storm_detector', 'wristpad', 'jammer']
+  ...Object.fromEntries(['backpack', 'shovel', 'metal_detector', 'storm_detector', 'wristpad', 'jammer', ...Object.values(RECEIVERS)]
     .map((k) => [k, { url: `./models/finds/${k}.glb` }])),
 };
+/** The enemies' and bosses' own parts (shared/tables.ts RELIC_DROPS, shared/bosses.ts RELICS): tools/blender/relics.py. */
+const RELIC_KINDS = new Set([...Object.values(RELIC_DROPS).map((r) => r.kind), ...Object.values(RELICS)]);
 const findCache = new Map<string, Promise<THREE.Object3D>>();
 const gltf = new GLTFLoader();
 
@@ -273,6 +277,9 @@ export class LootView {
         pool.renderOrder = 1;
         this.group.add(pool);
       }
+    } else if (RELIC_KINDS.has(l.kind)) {
+      FIND_MODELS[l.kind] ??= { url: `./models/items/${l.kind}.glb` };
+      addFind(obj, l.kind);
     } else if (part) {
       loadPart(part.part, TIERS[part.tier]).then((m) => {
         m.scale.multiplyScalar(0.7);

@@ -9,6 +9,7 @@ import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
 import { overShelter, shelterAt, shelterLootSpot, sheltersNear } from '../shared/shelters.ts';
 import { GEAR, GEAR_KINDS, isGear, refit, scrapParts } from '../shared/gear.ts';
 import { JAMMER } from '../shared/jammer.ts';
+import { receiverBoss } from '../shared/bosses.ts';
 import { CLOTH, partKind, SCRAP } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
@@ -42,8 +43,9 @@ const FIND_RESPAWN_MS = 3 * 60_000;
 const CACHE_RESPAWN_MS = 60_000;
 const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
 const RARE_PARTS = PART_IDS.filter((p) => !RARE_FINDS.noParts.includes(p));
-/** Broken gear a cache can hold (not the jammer; the guns have their own odds: only the pistol, CACHES.contents.pistol). */
-const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS) && k !== JAMMER);
+/** Broken gear a cache can hold (not the jammer or the receivers; the guns have their own odds: only the pistol,
+ *  CACHES.contents.pistol). */
+const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS) && k !== JAMMER && !receiverBoss(k));
 
 /** A taken find or cache waiting to come back; id is its loot_pending row. */
 type Spawn = { id: number; at: number; what: 'find' | 'cache'; kind?: string };
@@ -280,11 +282,11 @@ export class LootServer {
     this.pending = this.pending.filter((q) => q !== p);
   }
 
-  /** Broken: a few low-tier parts already in, at least one slot empty. */
+  /** Broken: a few low-tier parts already in (never a rare slot's), at least one slot empty. */
   private brokenParts(kind: string): (string | null)[] {
     const slots = GEAR[kind].slots;
     const parts = slots.map((s): string | null =>
-      Math.random() < BROKEN_GEAR.filled ? ('part' in s ? partKind(s.part, pickTier(BROKEN_GEAR.tierWeights, Math.random)) : pick(s.scrap)) : null);
+      !s.rare && Math.random() < BROKEN_GEAR.filled ? ('part' in s ? partKind(s.part, pickTier(BROKEN_GEAR.tierWeights, Math.random)) : pick(s.scrap)) : null);
     if (!parts.includes(null)) parts[Math.floor(Math.random() * parts.length)] = null;
     return parts;
   }
