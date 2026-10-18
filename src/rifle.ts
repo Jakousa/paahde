@@ -120,6 +120,8 @@ export class Rifle {
   private winded = 0;
   /** How much the aim wanders right now (eased): 1 settled, more on the move. */
   private unsteady = 1;
+  /** Where in a breath (rad): stepped by the breathing rate, which quickens when winded. */
+  private breath = 0;
   /** The sway and recoil offsets on the view (rad), and the recoil spring's velocity. */
   private swayYaw = 0;
   private swayPitch = 0;
@@ -219,7 +221,10 @@ export class Rifle {
     const want = stance * (1 + 2.2 * Math.min(2, pace) + 2.5 * this.winded) * gasp * (this.held > 0 ? 0.18 : 1);
     this.unsteady += (want - this.unsteady) * (1 - Math.exp(-dt * 2));
     const u = this.unsteady * feel.sway;
-    const b = Math.sin(this.time * BREATH_HZ * Math.PI * 2 * (1 + this.winded * 1.5));
+    // The phase advances at the breathing rate. Not sin(time × rate): with the rate changing (getting winded, getting
+    // your breath back) that swept the phase by time × Δrate, minutes into a game a jitter of tens of Hz on the view.
+    this.breath = (this.breath + dt * BREATH_HZ * Math.PI * 2 * (1 + this.winded * 1.5)) % (Math.PI * 2);
+    const b = Math.sin(this.breath);
     const f = this.time * TREMOR_HZ * Math.PI * 2;
     // Breath shows most when held to the eye; from the hip the arms just bob a little.
     const k = 0.35 + 0.65 * playerHands.aim;
