@@ -117,7 +117,7 @@ const PAD_Y = BASE.y - 0.06;
 export const MAST = {
   x: 14, z: -14, h: 22, r0: 0.3, r1: 0.13,
   plinth: { r: 1.2, h: 0.5 },
-  fins: { n: 4, reach: 2.6, h: 7, t: 0.45 },
+  fins: { n: 4, reach: 2.6, h: 11, t: 0.45 },
 };
 
 /** Local point within the mast's fins (+ margin). */
@@ -285,7 +285,7 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
   capsules.push({ x: MAST.x, z: MAST.z, ax: 1, az: 0, half: 0, r: plinth.r, y0: -Infinity, top: plinth.h });
   capsules.push({ x: MAST.x, z: MAST.z, ax: 1, az: 0, half: 0, r: MAST.r0, y0: plinth.h, top: WALL_H });
   for (const [ax, az] of [[1, 0], [0, 1]]) {
-    capsules.push({ x: MAST.x, z: MAST.z, ax, az, half: fins.reach, r: fins.t / 2 + 0.05, y0: -Infinity, top: plinth.h + fins.h });
+    capsules.push({ x: MAST.x, z: MAST.z, ax, az, half: fins.reach, r: fins.t / 2 + 0.05, y0: -Infinity, top: fins.h });
   }
 }
 for (const p of BASE_PIECES) {

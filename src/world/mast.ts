@@ -67,15 +67,15 @@ export class Mast {
 
     // Buttress fins: right triangles against the pole, sloping out past the plinth, sunk into the sand.
     const tri = new THREE.Shape();
-    tri.moveTo(0, -0.4);
-    tri.lineTo(fins.reach, -0.4);
+    tri.moveTo(0, -0.6);
+    tri.lineTo(fins.reach, -0.6);
     tri.lineTo(fins.reach, 0.25);
     tri.lineTo(0, fins.h);
     const finGeo = new THREE.ExtrudeGeometry(tri, { depth: fins.t, bevelEnabled: false });
     finGeo.translate(0, 0, -fins.t / 2);
     for (let i = 0; i < fins.n; i++) {
       const f = mesh(finGeo, concrete);
-      f.position.y = plinth.h;
+      f.position.y = 0;
       f.rotation.y = (i / fins.n) * Math.PI * 2;
       this.group.add(f);
     }
