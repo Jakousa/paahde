@@ -1,14 +1,19 @@
 // The jammer in your hand (shared/jammer.ts). Hold the use button: of the jets and drones in the cone it takes the
 // one nearest the aim (keeping it while it stays in), builds the lock locally as a guess of the server's, and tells
-// the server every JAM_SEND_MS. Nothing on the HUD: the hand points it (PistolAim, src/viewmodel.ts), its lamp blinks
+// the server every JAM_SEND_MS. Nothing on the HUD: the hands point it (JammerAim, src/viewmodel.ts), its lamp blinks
 // faster as the lock builds, the target twitches (src/world/jets.ts, drones.ts), and you hear it: a warbling static
 // that climbs as the lock builds, a falling chirp when the target drops out.
+//
+// Others see a jammer raised in someone's hand (their 'hands' aim flag, already sent for the guns) blink its lamp
+// (src/models/scavenger.ts) and hear its searching static from where they stand (`others`): the same voice at the
+// searching level, panned, 1/d from REMOTE_REF.
 //
 // Sound through the shared output (src/audio.ts), head-locked (it's in your hand). Measured (OfflineAudioContext,
 // K-weighted, gated): searching −38 LUFS; locked on −32 rising to −27 as the band climbs (the gain eases off as it
 // goes, the K-weighting favours the highs); the chirp −26 momentary.
 import * as THREE from 'three/webgpu';
-import { inCone, JAM_BLEED, JAM_CONE, JAM_MS, JAM_SEND_MS } from '../shared/jammer.ts';
+import { inCone, JAM_BLEED, JAM_CONE, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer.ts';
+import { EYE_HEIGHT } from '../shared/dig.ts';
 import { audio } from './audio';
 import type { FirstPersonCamera } from './camera';
 import { tools, useHeld } from './input';
@@ -25,6 +30,9 @@ const HISS_GAIN = 0.12;
 const LOCK_GAIN = 0.34;
 const LOCK_EASE = 0.4;
 const CHIRP_GAIN = 0.12;
+/** Someone else's jammer: heard at the searching level (−38 LUFS) at REMOTE_REF m, 1/d past it, not past REMOTE_MAX. */
+const REMOTE_REF = 2;
+const REMOTE_MAX = 60;
 
 type Target = { kind: 'jet' | 'drone'; id: number };
 type Voice = { src: AudioBufferSourceNode; band: BiquadFilterNode; gain: GainNode; lfo: OscillatorNode; depth: GainNode };
@@ -42,6 +50,8 @@ export class Jammer {
   private sentAt = 0;
   private blink = 0;
   private voice: Voice | null = null;
+  /** Others' jammers being heard, by player id. */
+  private heard = new Map<number, { voice: Voice; pan: PannerNode }>();
   /** Debug (?debug, `dbg.jammer`): hold the use button without the mouse captured. */
   forceUse = false;
 
@@ -163,6 +173,45 @@ export class Jammer {
     src.start();
     lfo.start();
     return { src, band, gain, lfo, depth };
+  }
+
+  /** Every frame with the other players (interpolated) and where we hear from: the static of each one jamming. */
+  others(players: readonly { id: number; x: number; y: number; z: number; item: string | null; aiming: boolean; down: unknown }[],
+    ear: { x: number; y: number; z: number }) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running) return;
+    const now = ctx.currentTime;
+    const on = new Set<number>();
+    for (const p of players) {
+      if (p.item !== JAMMER || !p.aiming || p.down || Math.hypot(p.x - ear.x, p.y - ear.y, p.z - ear.z) > REMOTE_MAX) continue;
+      on.add(p.id);
+      let h = this.heard.get(p.id);
+      if (!h) {
+        const pan = ctx.createPanner();
+        pan.panningModel = 'equalpower';
+        pan.distanceModel = 'inverse';
+        pan.refDistance = REMOTE_REF;
+        pan.rolloffFactor = 1;
+        pan.positionX.value = p.x;
+        pan.positionY.value = p.y + EYE_HEIGHT - 0.3;
+        pan.positionZ.value = p.z;
+        pan.connect(out);
+        h = { voice: this.makeVoice(ctx, pan), pan };
+        h.voice.gain.gain.setTargetAtTime(HISS_GAIN, now, 0.05);
+        this.heard.set(p.id, h);
+      }
+      h.pan.positionX.setTargetAtTime(p.x, now, 0.05);
+      h.pan.positionY.setTargetAtTime(p.y + EYE_HEIGHT - 0.3, now, 0.05);
+      h.pan.positionZ.setTargetAtTime(p.z, now, 0.05);
+    }
+    for (const [id, h] of this.heard) {
+      if (on.has(id)) continue;
+      h.voice.gain.gain.setTargetAtTime(0, now, 0.03);
+      h.voice.src.stop(now + 0.3);
+      h.voice.lfo.stop(now + 0.3);
+      h.voice.src.onended = () => h.pan.disconnect();
+      this.heard.delete(id);
+    }
   }
 
   /** The target dropped out: a falling chirp. */

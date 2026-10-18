@@ -19,6 +19,7 @@ import { CrouchGait } from './crouchGait';
 import type { RidePose } from '../players';
 import { wornBit } from '../../shared/gear.ts';
 import { beltModel, disposeModel, heldModel, heldMuzzle, wristModel } from './outfit';
+import { LAMP_ON } from './jammer';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -424,6 +425,9 @@ export class ScavengerModel {
     if (this.canteen?.visible) this.holdCanteen(this.canteen, loose);
     if (this.held) this.held.visible = !pose.ride;
     this.aimT += ((pose.aiming && !loose && !pose.digging ? 1 : 0) - this.aimT) * (1 - Math.exp(-dt * 12));
+    // A jammer raised is jamming: its lamp blinks, for everyone to see (src/jammer.ts has the user's own).
+    const lamp = this.held?.userData.lamp as THREE.MeshBasicNodeMaterial | undefined;
+    if (lamp) lamp.color.copy(LAMP_ON).multiplyScalar(pose.aiming && !pose.ride ? (performance.now() % 400 < 200 ? 1 : 0.25) : 0);
     // Digging, the clip swings the arms: the tool goes with the hand.
     const gun = this.item ? GUN_HOLD[this.item] : undefined;
     if (this.held?.visible && gun) this.holdGun(this.held, gun, loose || !!pose.digging, pitch);

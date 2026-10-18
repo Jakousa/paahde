@@ -104,7 +104,8 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
   },
   // Held like the pistol (src/models/jammer.ts is built in its frame), antenna forward.
   jammer: () => {
-    const g = jammerModel().obj;
+    const { obj: g, lamp } = jammerModel();
+    g.userData.lamp = lamp; // blinked by the avatar while it's raised (src/models/scavenger.ts)
     g.rotation.set(-0.45, Math.PI, 0);
     shadows(g);
     return g;

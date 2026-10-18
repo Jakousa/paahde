@@ -210,6 +210,7 @@ rifle.remoteMuzzle = (id, out) => (remotes.get(id)?.muzzle(out) ? out : null);
 scene.add(zaps.root);
 zaps.setCamera(orbit.camera);
 const thrower = new Thrower(scene, orbit, net, scrap);
+thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one drawn in the hand
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => placedView.sync(placed, net.garden);
 net.onNotice = (text) => {
@@ -362,6 +363,7 @@ renderer.setAnimationLoop((time) => {
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
   thrower.update(frameDt, !s.riding && !teardown.active && !net.down);
   jammer.update(frameDt, !s.riding && !teardown.active && !net.down);
+  jammer.others(others, orbit.camera.position); // others' jammers: their static
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
   me.setHeadless(riding && !orbit.showBody);
