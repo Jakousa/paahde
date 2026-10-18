@@ -270,19 +270,38 @@ function allowed(box: string, i: number, it: Item, boxes: Boxes): boolean {
 }
 
 /**
- * Did the move put something down in bag rows the backpack (as it is after the move) doesn't open? Items already
- * lying there may end up stranded (taking the backpack off leaves its contents in the bag's closed rows, shown
- * red, only to be moved out, open again with a backpack on), but nothing new goes there.
+ * Did the move strand anything in bag rows the backpack (as it is after the move) doesn't open? Items already lying
+ * there stay stranded (from before this rule, or a backpack lost on dying; shown red, only to be moved out), but
+ * nothing new goes there, and a backpack with things in its rows can't come off (or be swapped for a smaller one).
  */
 function strandsNew(before: Boxes, after: Boxes): boolean {
   const bag = after.bag, old = before.bag;
   if (!bag || !old) return false;
-  const shape = bagShape(after.equip);
+  const shape = bagShape(after.equip), oldShape = bagShape(before.equip);
   for (let i = 0; i < bag.length; i++) {
     const x = bag[i], o = old[i];
-    if (x && !(o && o.id === x.id && o.kind === x.kind && !!o.r === !!x.r) && strandedAt(bag, shape, i)) return true;
+    if (x && strandedAt(bag, shape, i) && !(o && o.id === x.id && o.kind === x.kind && !!o.r === !!x.r && strandedAt(old, oldShape, i))) return true;
   }
   return false;
+}
+
+/** A repaired motorcycle on you (bag or equipment): what opens the motorcycle's cargo ('bike', shared/storage.ts). */
+const hasBike = (b: Boxes) => [b.bag, b.equip].some((s) => s?.some((it) => it?.kind === 'motorcycle' && repaired(it)));
+
+/**
+ * Would going from `before` to `after` shut away what a carrier holds: strand the backpack's rows, or leave the
+ * motorcycle's cargo (itself, say) with no motorcycle on you to open it?
+ */
+function losesCargo(before: Boxes, after: Boxes): boolean {
+  return strandsNew(before, after) || (!!after.bike?.some((it) => it) && hasBike(before) && !hasBike(after));
+}
+
+/** Is the item at `box`[i] a carrier with something in it (so it can't leave: empty it first)? */
+export function holdsCargo(boxes: Boxes, box: string, i: number): boolean {
+  if (!boxes[box]?.[i]) return false;
+  const after = cloneBoxes(boxes, [box]);
+  after[box]![i] = null;
+  return losesCargo(boxes, after);
 }
 
 /** The motorcycle can't leave its slot while you ride it. */
@@ -320,7 +339,7 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
       if (x && x !== boxes[id]![i] && !sameItem(x, boxes[id]![i]) && !allowed(id, i, x, b)) return false;
     }
   }
-  if (strandsNew(boxes, b)) return false;
+  if (losesCargo(boxes, b)) return false;
   for (const id of ids) boxes[id]!.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }

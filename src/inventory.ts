@@ -11,7 +11,7 @@
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
-import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
+import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, holdsCargo, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
 import { findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
@@ -673,15 +673,19 @@ export class InventoryHud {
     if (this.net.boxes[box]?.some((it) => it)) this.noRoom();
   }
 
-  /** Store all: everything in the bag but tools and placeables into a storage box, as far as it fits. */
+  /** Store all: everything in the bag but tools, placeables and a carrier with things in it (the motorcycle whose
+   *  cargo this may be) into a storage box, as far as it fits. */
   private storeAll(box: string) {
-    const stays = (it: Item | null) => !it || TOOLS.has(it.kind) || isPlaceable(it.kind);
+    const stays = (i: number) => {
+      const it = this.net.boxes.bag?.[i];
+      return !it || TOOLS.has(it.kind) || isPlaceable(it.kind) || holdsCargo(this.net.boxes, 'bag', i);
+    };
     const bag = this.net.boxes.bag;
     if (!bag) return;
     let moved = 0;
-    for (let i = bag.length - 1; i >= 0; i--) if (!stays(bag[i]) && this.net.moveItem('bag', i, box, -1)) moved++;
+    for (let i = bag.length - 1; i >= 0; i--) if (!stays(i) && this.net.moveItem('bag', i, box, -1)) moved++;
     if (moved) uiSound.plop(moved);
-    if (this.net.boxes.bag?.some((it) => !stays(it))) this.noRoom();
+    if (this.net.boxes.bag?.some((_, i) => !stays(i))) this.noRoom();
   }
 
   private noRoom() {
@@ -788,6 +792,7 @@ export class InventoryHud {
   private drop(box: string, i: number) {
     if (box === 'part') return this.toast('Take it off');
     if (this.net.me.riding && lockedWhileRiding(box, i)) return this.toast('Get off first');
+    if (holdsCargo(this.net.boxes, box, i)) return this.toast('Empty it first');
     if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast("Can't drop here");
     this.net.dropItem(box, i);
   }
@@ -795,6 +800,7 @@ export class InventoryHud {
   /** Say why a drop didn't go through. */
   private refuse(from: string, fi: number, it: Item, to: string) {
     if (this.net.me.riding && lockedWhileRiding(from, fi)) this.toast('Get off first');
+    else if (holdsCargo(this.net.boxes, from, fi)) this.toast('Empty it first');
     else if (to === 'equip') this.toast(isGear(it.kind) && GEAR[it.kind].equip ? (repaired(it) ? 'Wrong slot' : 'Broken') : "Can't wear");
     else if (to === 'bench') this.toast(isGear(it.kind) ? 'Bench in use' : 'Gear only');
     else if (to === 'part') this.toast("That part doesn't go there");

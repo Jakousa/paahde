@@ -1,7 +1,7 @@
 // Server side of items (shared/items.ts): every box's slots, cached from the `items` table, the one-time gear
 // setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
-import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, SHIELD_BREAKS, isGear, lockedWhileRiding, refit, scrapParts, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
+import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, holdsCargo, SHIELD_BREAKS, isGear, lockedWhileRiding, refit, scrapParts, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
   addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, settle, sizeOf, sortItems, stackOf,
   type Item, type Slots,
@@ -275,7 +275,7 @@ export class ItemServer {
 
   /**
    * Take one of the item at `box`[slot] out to drop it on the sand (equipment too: a backpack's contents stay in
-   * the bag's closed rows; not the motorcycle you're riding). Returns what came out, or null if refused. Call
+   * the bag's closed rows; not the motorcycle you're riding, nor a carrier with something in it). Returns what came out, or null if refused. Call
    * inside the drop's transaction.
    */
   drop(browserId: string, s: PlayerState, box: unknown, slot: unknown): { kind: string; parts?: (string | null)[] } | null {
@@ -283,7 +283,7 @@ export class ItemServer {
     const slots = this.slots(browserId, box);
     if (!Number.isInteger(slot) || (slot as number) < 0 || (slot as number) >= slots.length) return null;
     const it = slots[slot as number];
-    if (!it || (s.riding && lockedWhileRiding(box, slot as number))) return null;
+    if (!it || (s.riding && lockedWhileRiding(box, slot as number)) || holdsCargo(this.view(browserId, box), box, slot as number)) return null;
     if (--it.n <= 0) slots[slot as number] = null;
     this.save(browserId, box);
     return { kind: it.kind, ...(it.parts ? { parts: it.parts } : {}) };

@@ -24,7 +24,7 @@
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { heal, pitchFromQ } from '../shared/dig.ts';
-import { bagShape, boxShape, fitPart, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
+import { bagShape, boxShape, fitPart, holdsCargo, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
 import { debrisItem, HOTBAR, roomFor, scrapItem, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
@@ -290,7 +290,7 @@ export class Net {
   dropItem(box: string, slot: number): boolean {
     const slots = this.boxes[box];
     const it = slots?.[slot];
-    if (!this.connected || !it || (this.me.riding && lockedWhileRiding(box, slot))) return false;
+    if (!this.connected || !it || (this.me.riding && lockedWhileRiding(box, slot)) || holdsCargo(this.boxes, box, slot)) return false;
     slots[slot] = it.n > 1 ? { ...it, n: it.n - 1 } : null;
     this.growChests(box);
     this.send({ t: 'drop', box, slot });
