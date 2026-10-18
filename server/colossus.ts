@@ -15,6 +15,9 @@
 //   nearest under it (not only its prey) and turns on someone else after a stomp; and it fires salvos of missiles from
 //   its shoulder pods at the people standing off (shared/colossus.ts SALVO_*), more missiles and more often the more
 //   there are. One player never sees a salvo.
+// - Whoever it's up against, it raises the arm on its prey's side, points, and fires a volley of rockets from that
+//   hand at them (shared/colossus.ts VOLLEY_*): keeping your distance and shooting it isn't safe either. More rockets
+//   and more often for a crowd.
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import { BASE } from '../shared/base.ts';
@@ -22,10 +25,10 @@ import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
 import {
   BIG_CRATER_MM, BIG_CRATER_R, BIG_KILL_R, BIG_S, DOUBLE_S, FALL_FROM, FALL_S, FALL_TO, FOOT_X, HIP_H,
-  HUNT_TURN_RATE, MISSILE_CRATER_MM, MISSILE_CRATER_R, MISSILE_KILL_R, MISSILE_MAX, MISSILE_MIN, missileT, MOOD_HUNT,
+  HAND_L, HUNT_TURN_RATE, MISSILE_CRATER_MM, MISSILE_CRATER_R, MISSILE_KILL_R, MISSILE_MAX, MISSILE_MIN, missileT, MOOD_HUNT,
   MOOD_ROAM, MOOD_STOMP, POD, RAISE_S, RECOVER_S, SALVO_STAGGER_S, SALVO_TELL_S, SEEN_LAG_MS, SETTLE, SETTLE_S, STEP_AT,
-  STEP_CRATER_MM, STEP_CRATER_R, STEP_KILL_R, STOMP_GAP_S, STOMP_NEAR, STOMP_REACH, STRIDE, SWING_S, TURN_RATE, TURN_SLOW,
-  WAIST_Y, WALK,
+  SHOULDER_X, SHOULDER_Y, STEP_CRATER_MM, STEP_CRATER_R, STEP_KILL_R, STOMP_GAP_S, STOMP_NEAR, STOMP_REACH, STRIDE, SWING_S,
+  TURN_RATE, TURN_SLOW, UPPER_ARM, VOLLEY_MAX, VOLLEY_MIN, VOLLEY_SHOTS, VOLLEY_STAGGER_S, VOLLEY_TELL_S, WAIST_Y, WALK,
 } from '../shared/colossus.ts';
 
 /** Notices players out in the open within this distance (m); a shooter from further off; loses them past LOSE_R
@@ -73,6 +76,14 @@ const PER_SALVO = 0.2;
 const FIRST_SALVO_S = 6;
 const LEAD = 0.5;
 const SCATTER = 3;
+/** Hand volleys: the time from one to the next (s, shorter by PER_VOLLEY a person past one), the first not before
+ *  FIRST_VOLLEY_S after it turns up; a rocket more per person past one, at most VOLLEY_CAP. The arm stays up ARM_HOLD_S
+ *  after the last. */
+const VOLLEY_GAP_S = 9;
+const PER_VOLLEY = 0.15;
+const FIRST_VOLLEY_S = 6;
+const VOLLEY_CAP = 7;
+const ARM_HOLD_S = 0.6;
 
 /** A foot's spot (where it stands, or where its swing lands), seconds left of the swing, its kind (0 step, 1 the big
  *  stomp) and how far this step goes. */
@@ -107,6 +118,9 @@ type St = {
    *  not before (ms). Missiles in the air; everyone's ground track (for leading them). */
   salvoAt: number; salvoTargets: number[]; salvoFired: number; nextSalvo: number;
   missiles: Missile[]; tracks: Map<number, Track>;
+  /** The hand volley: started (ms, -1 none: the tell, then the shots), with arm (±1, 0 none), rockets in it and fired,
+   *  pointing at (aimX, aimZ); the next not before (ms). */
+  volleyAt: number; volleyArm: number; volleyCount: number; volleyFired: number; aimX: number; aimZ: number; nextVolley: number;
 };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -168,6 +182,7 @@ export const colossus: Brain = {
       pending: [], lx: 0, lz: 0, leftAt: 0, fall: 0, fell: false,
       n: 1, stompPrey: -1, hold: false,
       salvoAt: -1, salvoTargets: [], salvoFired: 0, nextSalvo: 0, missiles: [], tracks: new Map(),
+      volleyAt: -1, volleyArm: 0, volleyCount: 0, volleyFired: 0, aimX: 0, aimZ: 0, nextVolley: now + FIRST_VOLLEY_S * 1000,
     };
     b.st = st;
     plant(b, st);
@@ -258,6 +273,7 @@ export const colossus: Brain = {
     stepFeet(b, st, dt, now, players);
     b.y = (st.feet[0].y + st.feet[1].y) / 2 + HIP_H;
     salvo(b, st, now, players, out);
+    volley(b, st, now, players, out);
     return false;
   },
 
@@ -272,7 +288,7 @@ export const colossus: Brain = {
     const s: number[] = [];
     for (const f of st.feet) s.push(r2(f.x), r2(f.y), r2(f.z), r2(f.left), f.kind);
     const mood = st.foot >= 0 ? MOOD_STOMP : st.prey >= 0 ? MOOD_HUNT : MOOD_ROAM;
-    s.push(mood, r2(st.prey >= 0 ? st.px : 0), r2(st.prey >= 0 ? st.pz : 0), Math.round(st.fall * 1e3) / 1e3, st.salvoAt >= 0 ? 1 : 0);
+    s.push(mood, r2(st.prey >= 0 ? st.px : 0), r2(st.prey >= 0 ? st.pz : 0), Math.round(st.fall * 1e3) / 1e3, st.salvoAt >= 0 ? 1 : 0, st.volleyArm, r2(st.aimX), r2(st.aimZ));
     return s;
   },
 
@@ -282,6 +298,8 @@ export const colossus: Brain = {
     st.fall = wrap(b.yaw + rand(-0.6, 0.6));
     st.foot = -1;
     st.salvoAt = -1; // the missiles already flying still land
+    st.volleyAt = -1;
+    st.volleyArm = 0;
     for (const f of st.feet) {
       f.left = 0;
       f.kind = 0;
@@ -537,21 +555,69 @@ function salvo(b: Boss, st: St, now: number, players: BossPlayer[], out: BossOut
   }
 }
 
-/** One missile out of the pod on side `sx` (+1 the +X shoulder) at where `p` will be. */
-function fire(b: Boss, st: St, now: number, p: BossPlayer, sx: number, out: BossOut) {
-  const c = Math.cos(b.yaw), s = Math.sin(b.yaw), px = POD[0] * sx, pz = POD[2];
-  const x0 = b.x + c * px + s * pz, z0 = b.z - s * px + c * pz, y0 = b.y + WAIST_Y + POD[1];
+/** One missile out of the pod on side `sx` (+1 the +X shoulder) at where `p` will be (`lead`: how much of their
+ *  speed); or a rocket out of that hand (`hand`). */
+function fire(b: Boss, st: St, now: number, p: BossPlayer, sx: number, out: BossOut, hand = false, lead = LEAD) {
+  const c = Math.cos(b.yaw), s = Math.sin(b.yaw);
+  let x0: number, y0: number, z0: number;
+  if (hand) {
+    // The palm: the arm out straight from the shoulder at them.
+    const sx0 = b.x + c * SHOULDER_X * sx, sz0 = b.z - s * SHOULDER_X * sx, sy0 = b.y + WAIST_Y + SHOULDER_Y;
+    const dx = p.x - sx0, dy = p.y - sy0, dz = p.z - sz0, d = Math.max(1, Math.hypot(dx, dy, dz)), l = UPPER_ARM + HAND_L;
+    (x0 = sx0 + (dx / d) * l), (y0 = sy0 + (dy / d) * l), (z0 = sz0 + (dz / d) * l);
+  } else {
+    const px = POD[0] * sx, pz = POD[2];
+    (x0 = b.x + c * px + s * pz), (z0 = b.z - s * px + c * pz), (y0 = b.y + WAIST_Y + POD[1]);
+  }
   const tr = st.tracks.get(p.id);
-  let T = missileT(Math.hypot(p.x - x0, p.z - z0));
+  let T = missileT(Math.hypot(p.x - x0, p.z - z0), hand);
   const a = Math.random() * Math.PI * 2, r = Math.random() * SCATTER;
-  const x = p.x + (tr ? tr.vx : 0) * T * LEAD + Math.cos(a) * r;
-  const z = p.z + (tr ? tr.vz : 0) * T * LEAD + Math.sin(a) * r;
+  const x = p.x + (tr ? tr.vx : 0) * T * lead + Math.cos(a) * r;
+  const z = p.z + (tr ? tr.vz : 0) * T * lead + Math.sin(a) * r;
   if (!inWorld(x, z)) return;
   const y = heightAt(x, z);
-  T = missileT(Math.hypot(x - x0, z - z0));
+  T = missileT(Math.hypot(x - x0, z - z0), hand);
   st.missiles.push({ at: now + T * 1000 + SEEN_LAG_MS, x, y, z });
   const r1 = (v: number) => Math.round(v * 10) / 10;
-  out.events.push({ msg: { t: 'bossFx', id: b.id, e: 'missile', time: Math.round(now), x: r1(x0), y: r1(y0), z: r1(z0), a: [r1(x), r1(y), r1(z), r2(T), sx] }, x: b.x, z: b.z });
+  out.events.push({ msg: { t: 'bossFx', id: b.id, e: 'missile', time: Math.round(now), x: r1(x0), y: r1(y0), z: r1(z0), a: [r1(x), r1(y), r1(z), r2(T), sx, hand ? 1 : 0] }, x: b.x, z: b.z });
+}
+
+/** Who a hand volley can go for: its prey, out in the open, away from the base, off its feet. */
+function volleyOk(b: Boss, p: BossPlayer | undefined): p is BossPlayer {
+  if (!p) return false;
+  const d = Math.hypot(p.x - b.x, p.z - b.z);
+  return !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT && d > VOLLEY_MIN && d < VOLLEY_MAX;
+}
+
+/**
+ * The hand volley, at its prey (alone or not): the arm on their side comes up and points at them (the tell,
+ * VOLLEY_TELL_S), then the rockets one after another, leading them more each time. Not while it stomps.
+ */
+function volley(b: Boss, st: St, now: number, players: BossPlayer[], out: BossOut) {
+  const p = players.find((o) => o.id === st.prey);
+  if (st.volleyAt < 0) {
+    if (b.leaving || now < st.nextVolley || st.foot >= 0 || !volleyOk(b, p)) return;
+    const side = (p.x - b.x) * Math.cos(b.yaw) - (p.z - b.z) * Math.sin(b.yaw);
+    st.volleyArm = side >= 0 ? 1 : -1;
+    st.volleyCount = Math.min(VOLLEY_CAP, VOLLEY_SHOTS + st.n - 1);
+    st.volleyFired = 0;
+    st.volleyAt = now;
+    (st.aimX = p.x), (st.aimZ = p.z);
+    return;
+  }
+  const ok = volleyOk(b, p);
+  if (ok) (st.aimX = p.x), (st.aimZ = p.z);
+  while (ok && st.volleyFired < st.volleyCount && now >= st.volleyAt + (VOLLEY_TELL_S + st.volleyFired * VOLLEY_STAGGER_S) * 1000) {
+    const k = st.volleyFired++;
+    fire(b, st, now, p, st.volleyArm, out, true, k / Math.max(1, st.volleyCount - 1));
+  }
+  // Done (or its prey gone out of reach): the arm comes down a moment after.
+  const end = st.volleyAt + (VOLLEY_TELL_S + (st.volleyCount - 1) * VOLLEY_STAGGER_S + ARM_HOLD_S) * 1000;
+  if (now >= end || (!ok && now > st.volleyAt + VOLLEY_TELL_S * 1000)) {
+    st.volleyAt = -1;
+    st.volleyArm = 0;
+    st.nextVolley = now + (VOLLEY_GAP_S * 1000) / scaled(1, st.n, PER_VOLLEY);
+  }
 }
 
 /** Missiles now landing (seen time): a crater, death around it. */

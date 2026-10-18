@@ -15,6 +15,9 @@
 //   with a klaxon; then each missile ('missile' bossFx: launch spot, landing spot, flight time, shoulder) climbs out of
 //   its pod trailing smoke and arcs down (shared/colossus.ts missileAt), its landing spot glowing red on the sand, a
 //   whistle over it before it bursts.
+// - The hand volley (server/colossus.ts volley, whoever it's up against): the arm on its prey's side swings up and
+//   points at them, the palm glowing hotter with a rising whine; then rockets leave the hand ('missile' bossFx with
+//   a[5] = 1) on low arcs, a kick of smoke at the palm each time, their spots glowing like the salvo's.
 // - Dead: the furnace gutters, the knees buckle, and it topples like a felled tower along its fall direction (the
 //   server's), hitting the sand FALL_S after it died (the server digs the furrow then); it smokes and, at the end,
 //   sinks into the sand.
@@ -26,8 +29,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BOSSES, type BossSnap } from '../../shared/bosses.ts';
 import {
-  ANKLE_H, BIG_LIFT, BIG_S, BUCKLE_S, CORE, CORE_R, FALL_S, FOREARM, HIP_H, HIP_X, HOLD_S, KNEE, KNEE_R, MISSILE_KILL_R,
-  missileAt, MOOD_STOMP, NECK, POD, RAISE_S, S_FALL, S_FOOT, S_LOOK, S_MOOD, S_PODS, SALVO_TELL_S, SHIN, SHOULDER_X, SHOULDER_Y, SLAM_S, STRIDE, THIGH, UPPER_ARM, VENT, VENT_DIR, VENT_R, WAIST_Y,
+  ANKLE_H, BIG_LIFT, BIG_S, BUCKLE_S, CORE, CORE_R, FALL_S, FOREARM, HAND_L, HIP_H, HIP_X, HOLD_S, KNEE, KNEE_R, MISSILE_KILL_R,
+  missileAt, MOOD_STOMP, NECK, POD, RAISE_S, S_FALL, S_FOOT, S_AIM, S_ARM, S_LOOK, S_MOOD, S_PODS, SALVO_TELL_S, SHIN, SHOULDER_X, SHOULDER_Y, SLAM_S, STRIDE, THIGH, UPPER_ARM, VENT, VENT_DIR, VENT_R, VOLLEY_TELL_S, WAIST_Y,
 } from '../../shared/colossus.ts';
 import { float, length, smoothstep, uv, vec3 } from 'three/tsl';
 import { heightAt, normalAt } from '../../shared/terrain.ts';
@@ -93,8 +96,11 @@ function flareMat(r: number, g: number, b: number) {
 }
 const motorMat = flareMat(3.2, 1.3, 0.35);
 
+/** The arm comes up to point in about 1/ARM_UP s, down in 1/ARM_DOWN; the palm's glow sprite at its hottest (m). */
+const ARM_UP = 3.5, ARM_DOWN = 1.6, PALM_GLOW = 7;
+
 type Missile = {
-  t0: number; T: number; side: number; to: THREE.Vector3; from: THREE.Vector3 | null;
+  t0: number; T: number; side: number; hand: boolean; to: THREE.Vector3; from: THREE.Vector3 | null;
   mesh: THREE.Group; mark: THREE.Mesh; trail: number; whistled: boolean;
 };
 type Pod = { group: THREE.Group; lid: THREE.Group; open: number };
@@ -208,7 +214,8 @@ export class ColossusView implements BossView {
   readonly root = new THREE.Group();
   private fall = new THREE.Group();
   private parts = {} as Record<'pelvis' | 'torso' | 'head', THREE.Group>;
-  private arms: { upper: THREE.Group; fore: THREE.Group }[] = [];
+  /** Arms; how far each is raised to point (0..1), its palm's glow, its volley's start (s, this.clock; -1 none). */
+  private arms: { upper: THREE.Group; fore: THREE.Group; up: number; palm: THREE.Sprite; since: number }[] = [];
   private legs: Leg[] = [];
   private glowMat = new THREE.MeshBasicNodeMaterial({ vertexColors: true });
   private built = false;
@@ -259,8 +266,12 @@ export class ColossusView implements BossView {
       if (i === 1) upper.scale.x = -1; // the model's arm is the +X one
       fore.position.set(0, -UPPER_ARM, 0);
       upper.add(fore);
+      const palm = new THREE.Sprite(motorMat);
+      palm.position.set(0, -HAND_L, 0);
+      palm.visible = false;
+      fore.add(palm);
       this.parts.torso.add(upper);
-      this.arms.push({ upper, fore });
+      this.arms.push({ upper, fore, up: 0, palm, since: -1 });
       const leg: Leg = {
         from: new THREE.Vector3(), to: new THREE.Vector3(), t: -1, dur: 1, kind: 0, ground: 0, yaw: 0, yaw0: 0, left: 0,
         ankle: new THREE.Vector3(), pitch: 0, thigh: g(), shin: g(), foot: g(),
@@ -552,11 +563,33 @@ export class ColossusView implements BossView {
     const phase = Math.max(-1, Math.min(1, (ahead(0) - ahead(1)) / STRIDE));
     const T = this.parts.torso;
     T.rotation.set(this.lean * 0.6, -phase * TWIST, this.sway / SWAY * ROLL * 0.5, 'YXZ');
+    this.root.updateMatrixWorld(true);
+    const armSide = s.s[S_ARM] ?? 0;
     this.arms.forEach((a, i) => {
       const sw = (i === 0 ? 1 : -1) * phase * ARM_SWING;
       const up = stomp > 0 && stomp < RAISE_S + HOLD_S ? -0.35 * smooth(stomp / RAISE_S) : 0;
       a.upper.rotation.set(-sw + up, 0, i === 0 ? 0.07 : -0.07, 'XYZ');
       a.fore.rotation.set(-0.25 - Math.max(0, -sw) * 0.5 + up * 1.4, 0, 0);
+      // The volley: this arm swings up and points straight at its prey, the palm heating up through the tell.
+      const pointing = armSide === (i === 0 ? 1 : -1);
+      if (pointing && a.since < 0) {
+        a.since = this.clock;
+        a.palm.getWorldPosition(_v);
+        colossusSound.charge(_v.x, _v.y, _v.z, ctx.ear, VOLLEY_TELL_S);
+      } else if (!pointing) a.since = -1;
+      a.up += ((pointing ? 1 : 0) - a.up) * (1 - Math.exp(-dt * (pointing ? ARM_UP : ARM_DOWN)));
+      if (a.up > 0.002) {
+        const ax = s.s[S_AIM], az = s.s[S_AIM + 1];
+        _p.set(ax, heightAt(ax, az) + 2, az);
+        T.worldToLocal(_p).sub(a.upper.position).normalize();
+        _q.setFromUnitVectors(_y.set(0, -1, 0), _p);
+        a.upper.quaternion.slerp(_q, smooth(a.up));
+        a.fore.rotation.x *= 1 - smooth(a.up);
+      }
+      const heat = a.since < 0 ? 0 : Math.min(1, (this.clock - a.since) / VOLLEY_TELL_S);
+      const glow = a.up * (0.3 + 0.7 * heat) * PALM_GLOW * (0.85 + 0.15 * Math.sin(this.clock * 30));
+      a.palm.visible = glow > 0.1;
+      a.palm.scale.setScalar(glow);
     });
     // Head: to its prey, else ahead.
     let hy = 0, hp = 0.12;
@@ -670,6 +703,8 @@ export class ColossusView implements BossView {
     const f = clamp01((t - BUCKLE_S) / (FALL_S - BUCKLE_S));
     const ang = FALL_ANGLE * f * f;
     this.arms.forEach((a, i) => {
+      a.palm.visible = false;
+      a.up = 0;
       a.upper.rotation.set(-0.15 * b - 1.6 * smooth(f * 1.3), 0, (i === 0 ? 0.07 : -0.07) + (i === 0 ? 0.2 : -0.2) * f, 'XYZ');
       a.fore.rotation.set(-0.3 - 0.4 * f, 0, 0);
     });
@@ -734,7 +769,8 @@ export class ColossusView implements BossView {
     this.podGlow.color.setRGB(3 * g * blink, 0.25 * g * blink, 0.08 * g * blink);
   }
 
-  /** A missile is on its way ('missile': from the pod at (x, y, z), a = landing x, y, z, flight time, shoulder). */
+  /** A missile is on its way ('missile': from the pod at (x, y, z), a = landing x, y, z, flight time, shoulder, and
+   *  1 if it's a rocket from that side's hand). */
   fx(m: BossFxMsg) {
     if (m.e !== 'missile' || !m.a || m.a.length < 5) return;
     const mesh = new THREE.Group();
@@ -754,7 +790,7 @@ export class ColossusView implements BossView {
     mark.visible = false;
     mark.renderOrder = 2;
     this.scene.add(mark);
-    this.missiles.push({ t0: m.time, T: m.a[3], side: m.a[4], to: new THREE.Vector3(m.a[0], m.a[1], m.a[2]), from: null, mesh, mark, trail: 0, whistled: false });
+    this.missiles.push({ t0: m.time, T: m.a[3], side: m.a[4], hand: m.a[5] === 1, to: new THREE.Vector3(m.a[0], m.a[1], m.a[2]), from: null, mesh, mark, trail: 0, whistled: false });
   }
 
   private updateMissiles(ctx: BossCtx, dt: number) {
@@ -764,10 +800,10 @@ export class ColossusView implements BossView {
       const t = (ctx.time - ms.t0) / 1000;
       if (t < 0) return true;
       if (!ms.from) {
-        // Out of the drawn pod on its side (the server's is near enough; this one is where it's seen).
+        // Out of the drawn pod or palm on its side (the server's is near enough; this one is where it's seen).
         ms.from = new THREE.Vector3();
-        const pod = this.pods[ms.side > 0 ? 0 : 1];
-        if (pod && this.dead < 0) pod.group.getWorldPosition(ms.from);
+        const from = ms.hand ? this.arms[ms.side > 0 ? 0 : 1]?.palm : this.pods[ms.side > 0 ? 0 : 1]?.group;
+        if (from && this.dead < 0) from.getWorldPosition(ms.from);
         else ms.from.copy(ms.to).setY(ms.to.y + 60);
         if (t < 0.5) {
           colossusSound.launch(ms.from.x, ms.from.y, ms.from.z, ctx.ear);
@@ -781,8 +817,8 @@ export class ColossusView implements BossView {
         return false;
       }
       const f = ms.from;
-      missileAt(f.x, f.y, f.z, ms.to.x, ms.to.y, ms.to.z, ms.T, t, _p);
-      missileAt(f.x, f.y, f.z, ms.to.x, ms.to.y, ms.to.z, ms.T, t + 0.05, _a);
+      missileAt(f.x, f.y, f.z, ms.to.x, ms.to.y, ms.to.z, ms.T, t, _p, ms.hand);
+      missileAt(f.x, f.y, f.z, ms.to.x, ms.to.y, ms.to.z, ms.T, t + 0.05, _a, ms.hand);
       ms.mesh.visible = true;
       ms.mesh.position.copy(_p);
       ms.mesh.lookAt(_a);

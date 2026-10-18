@@ -7,6 +7,8 @@
 // - tell: the big stomp held overhead: a rising steam shriek and a servo groan for as long as it hangs there.
 // - salvo (against a crowd): a klaxon from the shoulder pods as they open, a roar per launch, and a falling whistle
 //   over each missile's landing spot before it hits (the burst is a bolt's boom, src/guardianSound.ts).
+// - charge: an arm coming up to point for a hand volley: a servo groan and a whine rising as the palm heats (its
+//   rockets then launch, whistle and burst like the salvo's).
 // - engine: while it's near, a slow, deep furnace drone with a throb, following it; louder when it hunts.
 // - dying: a falling groan as the furnace fails; collapse: the body hitting the sand, several slams and a long rumble.
 // Levels are set against the guardians' (src/guardianSound.ts, measured there): a step here at 25 m about as loud as a
@@ -30,6 +32,8 @@ const ENGINE_GAIN = 0.1;
 const KLAXON_GAIN = 0.22;
 const LAUNCH_GAIN = 0.5;
 const INCOMING_GAIN = 0.18;
+/** The hand volley's tell: the arm's servos and the palm's rising whine (by ear, under the klaxon). */
+const CHARGE_GAIN = 0.2;
 
 let noiseBuf: AudioBuffer | null = null;
 function noise(ctx: AudioContext) {
@@ -140,6 +144,29 @@ class ColossusSound {
     groan.connect(lp).connect(gg).connect(o);
     groan.start(t);
     groan.stop(t + len + 0.6);
+  }
+
+  /** An arm comes up to point for a hand volley (`len` s till the first rocket): a servo groan and a whine rising
+   *  as the palm heats. */
+  charge(x: number, y: number, z: number, ear: P, len: number) {
+    const ctx = audio.ctx, s = placed({ x, y, z }, ear, CHARGE_GAIN, 30, 1000);
+    if (!ctx || !s) return;
+    const { input: o, t } = s;
+    const whine = ctx.createOscillator();
+    whine.type = 'triangle';
+    whine.frequency.setValueAtTime(260, t);
+    whine.frequency.exponentialRampToValueAtTime(1500, t + len);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.35, t + len * 0.9);
+    g.gain.setTargetAtTime(0, t + len, 0.05);
+    whine.connect(g).connect(o);
+    whine.start(t);
+    whine.stop(t + len + 0.4);
+    const bp = hiss(ctx, o, t, 0.9, 'bandpass', 1800, 1.4, 0.6, 0.1);
+    bp.frequency.setValueAtTime(2600, t);
+    bp.frequency.exponentialRampToValueAtTime(1200, t + 0.8);
+    tone(ctx, o, t, 0.8, 'sawtooth', 55, 70, 0.4);
   }
 
   /** The shoulder pods open for a salvo (`len` s till the first launch): a two-tone klaxon blaring from up there. */

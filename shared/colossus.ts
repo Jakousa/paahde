@@ -103,16 +103,31 @@ export const MISSILE_CRATER_MM = 1400;
 /** The pods: torso-local top centre of each (±x), on the upper back behind the pauldrons, the tubes facing up. */
 export const POD: [number, number, number] = [12, 21, -11];
 
-/** A missile's flight time (s) to a spot `d` m away (flat). */
-export const missileT = (d: number) => MISSILE_T0 + d / MISSILE_V;
+/** A missile's flight time (s) to a spot `d` m away (flat); a hand rocket's (faster, flatter). */
+export const missileT = (d: number, hand = false) => (hand ? HAND_T0 + d / HAND_V : MISSILE_T0 + d / MISSILE_V);
+
+/** The hand volley, at its prey whoever it's up against (one player too): the arm on their side swings up and points
+ *  at them while the palm glows and whines for VOLLEY_TELL_S, then VOLLEY_SHOTS rockets (more for a crowd) leave the
+ *  hand every VOLLEY_STAGGER_S, each on a low arc to where they'd be (no lead, then more and more: running straight
+ *  doesn't dodge them all, turning does), the same burst as a missile. Only at someone VOLLEY_MIN..VOLLEY_MAX m off,
+ *  not under its feet (that's what stomps are for). Fair: the shortest flight (HAND_T0 + VOLLEY_MIN / HAND_V ≈ 2.6 s)
+ *  is ≈ 19 m of walking, its spot glowing the whole way. HAND_L: the forearm's origin (the elbow) to the palm (m). */
+export const VOLLEY_TELL_S = 1.3;
+export const VOLLEY_STAGGER_S = 0.4;
+export const VOLLEY_SHOTS = 3;
+export const VOLLEY_MIN = 32;
+export const VOLLEY_MAX = 300;
+export const HAND_T0 = 2.2;
+export const HAND_V = 110;
+export const HAND_L = 15;
 
 /** A missile's position `t` s after leaving (x0, y0, z0) for (x1, y1, z1), landing at T: up out of the pod, over in an
- *  arc (higher for a longer shot), and down onto the spot. */
-export function missileAt(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, T: number, t: number, out: { x: number; y: number; z: number }) {
+ *  arc (higher for a longer shot), and down onto the spot; a hand rocket flies out along a low arc. */
+export function missileAt(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, T: number, t: number, out: { x: number; y: number; z: number }, hand = false) {
   const u = Math.max(0, Math.min(1, t / T));
-  // Across slowly at first (it climbs out), fastest coming down.
-  const e = u * u * (1.6 - 0.6 * u);
-  const apex = 30 + Math.hypot(x1 - x0, z1 - z0) * 0.25;
+  // Across slowly at first (it climbs out), fastest coming down; a hand rocket leaves fast.
+  const e = hand ? u * (1.25 - 0.25 * u) : u * u * (1.6 - 0.6 * u);
+  const apex = hand ? 6 + Math.hypot(x1 - x0, z1 - z0) * 0.08 : 30 + Math.hypot(x1 - x0, z1 - z0) * 0.25;
   out.x = x0 + (x1 - x0) * e;
   out.z = z0 + (z1 - z0) * e;
   out.y = y0 + (y1 - y0) * u * u + apex * Math.sin(Math.PI * u);
@@ -121,10 +136,13 @@ export function missileAt(x0: number, y0: number, z0: number, x1: number, y1: nu
 
 /** BossSnap.s for the colossus: per foot (0, 1) its spot x, y, z, seconds left of its swing (0 planted) and the
  *  swing's kind (0 a step, 1 the big stomp); then its mood (MOOD_*), where it looks (x, z), the fall's yaw, and the
- *  pods (1 open: a salvo coming or under way, 0 shut). */
+ *  pods (1 open: a salvo coming or under way, 0 shut); the hand volley's arm (1 the +X one, −1 the −X one, 0 none)
+ *  and where it points (x, z). */
 export const S_FOOT = 5;
 export const S_MOOD = 10;
 export const S_LOOK = 11;
 export const S_FALL = 13;
 export const S_PODS = 14;
+export const S_ARM = 15;
+export const S_AIM = 16;
 export const MOOD_ROAM = 0, MOOD_HUNT = 1, MOOD_STOMP = 2;
