@@ -105,6 +105,9 @@ http.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
         for (let i = 0; i < req.rawHeaders.length; i += 2) raw += `${req.rawHeaders[i]}: ${req.rawHeaders[i + 1]}\r\n`;
         up.write(raw + '\r\n');
         if (head.length) up.write(head);
+        // Small frames at 60 Hz (inputs) and 20 Hz (snapshots): don't let Nagle hold them back on either hop.
+        socket.setNoDelay(true);
+        up.setNoDelay(true);
         socket.pipe(up).pipe(socket);
       });
       up.on('error', () => socket.destroy());
