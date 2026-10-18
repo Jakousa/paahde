@@ -78,6 +78,7 @@ import { askName } from './name';
 import { tools } from './input';
 import { Wrecks } from './world/wrecks';
 import { Trophies } from './world/trophies';
+import { setTrophies } from '../shared/trophies.ts';
 import { Mast } from './world/mast';
 import { GuardianFx } from './guardians';
 import { update } from './update';
@@ -95,7 +96,7 @@ const sky = new Sky(scene);
 const terrain = new Terrain(scene);
 const base = new Base(scene);
 const mast = new Mast(scene); // flag mast with a windsock by the entrance
-const trophies = new Trophies(scene); // the beaten bosses' parts on the mast's fins
+const trophies = new Trophies(scene); // a big piece of each beaten boss round the base
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
 const placedView = new PlacedView(scene, base); // plant beds and UV lamps on the bunker floor
 const scrap = new Scrap(scene);
@@ -129,6 +130,7 @@ const lives = new Lives();
 net.onLives = (n, beaten) => {
   lives.set(n, beaten);
   trophies.set(beaten);
+  setTrophies(beaten);
   if (allBeaten(beaten)) victory(WORLD_ID);
 };
 net.onEnded = (why) => landing(why);

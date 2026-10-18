@@ -20,6 +20,7 @@ import { collideCrash } from './crashsites.ts';
 import { bikeEngine, bikeTopSpeed } from './gear.ts';
 import { GUARDIAN, KINDS, LEG_POST_H, LEG_POST_R } from './guardians.ts';
 import { collideScrap } from './scrap.ts';
+import { collideTrophies } from './trophies.ts';
 import { WIND } from './dunes.ts';
 import { heightAt, onRock, WORLD_HALF } from './terrain.ts';
 
@@ -349,7 +350,8 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   c.z = s.z + vz * DT;
   c.vx = vx;
   c.vz = vz;
-  const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP));
+  const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP),
+    collideTrophies(c, y, s.y, PLAYER_RADIUS, STEP_UP));
   const baseTop = Math.max(collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP), collideShelter(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, y, PLAYER_RADIUS, legs);
   blockRock(c, s.x, s.z, Math.max(y, s.y));
@@ -461,7 +463,8 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   c.vx = vx;
   c.vz = vz;
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
-  const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
+  const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP),
+    collideTrophies(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
   const baseTop = Math.max(collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP), collideShelter(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, airborneY, BIKE_RADIUS, legs);
   blockRock(c, s.x, s.z, Math.max(airborneY, s.y));

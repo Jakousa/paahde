@@ -1,54 +1,149 @@
-// The trophies at the base: each boss kind beaten (shared/bosses.ts, the 'lives' message's `beaten`) puts its part up
-// on a steel bracket on one of the flag mast's buttress fins (src/world/mast.ts), big: the carrier's hive core, the
-// queen's eye, the colossus's furnace heart and the worm's tooth (public/models/items/, tools/blender/relics.py).
-// Client-only decoration, out of reach on the fins' slopes.
+// The trophies at the base (shared/trophies.ts): each boss kind beaten sets up a big piece of it, full size, on the sand
+// round the pad, built from the boss's own model (tools/blender/<kind>.py): the worm's head rearing out of the sand,
+// jaws spread, the segment behind it sunk; the colossus's head sunk to the chin and its arm raised out of the sand beside it; one of
+// the carrier's fan ducts on edge with its rotor; the queen's thorax nose-up, cutters open, a leg arching out of the sand each side.
+// Dead: their lamps barely glow, the weak points are dark glass. Client-only looks; the collision is shared.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { BASE, MAST } from '../../shared/base.ts';
-import { BOSS_KINDS, bossBit, RELICS, type BossKind } from '../../shared/bosses.ts';
+import { BOSS_KINDS, bossBit, type BossKind } from '../../shared/bosses.ts';
+import { FEMUR } from '../../shared/queen.ts';
+import { TROPHY_PLACES } from '../../shared/trophies.ts';
+import { brokenLensMat, lensGeo, mergePart } from './bossParts';
 
-/** How far out along its fin (m from the pole's axis) the trophy sits, and how much bigger than the item it is. */
-const OUT = 2.0;
-const SCALE = 7;
-const STEEL = new THREE.MeshStandardNodeMaterial({ color: 0x3a3430, roughness: 0.6, metalness: 0.6 });
+const D = Math.PI / 180;
+/** The lamps of a dead boss: their glow turned right down. */
+const embers = new THREE.MeshBasicNodeMaterial({ vertexColors: true, color: 0x2a2a2a });
 
-/** The model each kind's trophy is. */
-const MODEL: Record<BossKind, string> = { ...(RELICS as Record<BossKind, string>), worm: 'worm_tooth' };
+/** Each kind's model and the nodes a trophy takes from it. */
+const MODELS: Record<BossKind, { glb: string; nodes: string[] }> = {
+  worm: { glb: 'worm', nodes: ['Worm_Head', 'Worm_Jaw', 'Worm_Grinder', 'Worm_Segment'] },
+  colossus: { glb: 'colossus', nodes: ['Colossus_Head', 'Colossus_UpperArm', 'Colossus_Forearm'] },
+  carrier: { glb: 'carrier', nodes: ['Carrier_Duct', 'Carrier_Rotor'] },
+  queen: { glb: 'queen', nodes: ['Queen_Thorax', 'Queen_MandibleL', 'Queen_MandibleR', 'Queen_Femur', 'Queen_Tibia'] },
+};
 
-/** Height of the fin's sloping top edge at `r` m out (src/world/mast.ts: from (reach, 0.25) up to (0, h)). */
-const finTop = (r: number) => 0.25 + ((MAST.fins.reach - r) / MAST.fins.reach) * (MAST.fins.h - 0.25);
+type Parts = Record<string, THREE.Object3D>;
+
+/** Part `n` merged (shadow-casting, its lamps dimmed), to place. */
+function part(parts: Parts, n: string): THREE.Group {
+  const g = mergePart(parts[n]);
+  for (const c of g.children) {
+    const m = c as THREE.Mesh;
+    if (m.isMesh && !m.castShadow) m.material = embers;
+  }
+  return g;
+}
+
+/** A dead weak point: dark glass of radius r at p in `on`. */
+function deadLens(on: THREE.Object3D, r: number, x: number, y: number, z: number) {
+  const m = new THREE.Mesh(lensGeo, brokenLensMat);
+  m.scale.setScalar(r);
+  m.position.set(x, y, z);
+  on.add(m);
+}
+
+/** An object at (x, y, z) in the trophy's frame, turned by Euler (rx, ry, rz) in degrees. */
+function at<T extends THREE.Object3D>(o: T, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): T {
+  o.position.set(x, y, z);
+  o.rotation.set(rx * D, ry * D, rz * D);
+  return o;
+}
+
+/** Each kind's trophy, in its frame: origin on the sand, +Z towards the base (shared/trophies.ts). */
+const BUILD: Record<BossKind, (p: Parts) => THREE.Object3D> = {
+  worm(p) {
+    const g = new THREE.Group();
+    // The head pitched up 70°, the collar's underside in the sand; the segment behind it along its axis, mostly sunk.
+    const head = at(new THREE.Group(), 0, 4.4, 0, -70, 0, 8);
+    head.add(part(p, 'Worm_Head'), at(part(p, 'Worm_Grinder'), 0, 0, 0, 0, 0, 20));
+    for (let k = 0; k < 3; k++) {
+      const holder = at(new THREE.Group(), 0, 0, 0, 0, 0, k * 120);
+      holder.add(at(part(p, 'Worm_Jaw'), 0, 4.3, 2.0, -(k === 0 ? 70 : 52)));
+      head.add(holder);
+    }
+    g.add(head, at(part(p, 'Worm_Segment'), 0, 0.3, -1.5, -70, 0, 14));
+    return g;
+  },
+  colossus(p) {
+    const g = new THREE.Group();
+    // The head sunk to the chin, looking up past the base; beside it an arm out of the sand: the upper arm a ridge
+    // along it from the buried shoulder, the forearm raised from the elbow, fist up.
+    g.add(at(part(p, 'Colossus_Head'), 0, -0.8, 0, -15, 0, 9));
+    g.add(at(part(p, 'Colossus_UpperArm'), 20, -2.5, -5, 0, 0, -101.5));
+    g.add(at(part(p, 'Colossus_Forearm'), 6.3, 0.3, -5, 180 + 10, 25, -12));
+    return g;
+  },
+  carrier(p) {
+    const g = new THREE.Group();
+    // The duct on edge, its axis towards the base, leaning back a little and rolled; a third of it in the sand.
+    const fan = at(new THREE.Group(), 0, 8, 0, 90 - 12, 0, 9);
+    fan.add(part(p, 'Carrier_Duct'), at(part(p, 'Carrier_Rotor'), 0, 0, 0, 0, 33, 0));
+    deadLens(fan, 1.1, 0, -3.3, 0);
+    g.add(fan);
+    return g;
+  },
+  queen(p) {
+    const g = new THREE.Group();
+    // The thorax nose-up out of the sand, cutters spread; a leg out of each side arching up to the knee and back down.
+    const body = at(new THREE.Group(), 0, 1.5, 0, -40, 0, -6);
+    body.add(part(p, 'Queen_Thorax'));
+    body.add(at(part(p, 'Queen_MandibleL'), -1.0, -0.8, 8.3, 0, -30, 0));
+    body.add(at(part(p, 'Queen_MandibleR'), 1.0, -0.8, 8.3, 0, 30, 0));
+    deadLens(body, 1.0, 0, 0.2, 9.1);
+    g.add(body);
+    for (const s of [-1, 1]) {
+      // Hip by the body, the femur rising 55° outwards, the tibia bending back down 60° into the sand.
+      const femur = at(new THREE.Group(), 3.5 * s, -0.5, 0, 0, 80 * s, 0);
+      const pitch = at(new THREE.Group(), 0, 0, 0, -55);
+      pitch.add(part(p, 'Queen_Femur'), at(part(p, 'Queen_Tibia'), 0, 0, FEMUR, 115));
+      femur.add(pitch);
+      g.add(femur);
+    }
+    return g;
+  },
+};
 
 export class Trophies {
-  private group = new THREE.Group();
   private up = new Set<BossKind>();
-  private gltf = new GLTFLoader();
+  private models = new Map<string, Promise<Parts>>();
+  private scene: THREE.Scene;
 
   constructor(scene: THREE.Scene) {
-    this.group.position.set(BASE.x + MAST.x, BASE.y, BASE.z + MAST.z);
-    scene.add(this.group);
+    this.scene = scene;
   }
 
-  /** The kinds beaten (shared/bosses.ts bossBit mask): put up the ones not yet up. */
+  /** The nodes of public/models/<glb>.glb by name, loaded once. */
+  private load(glb: string): Promise<Parts> {
+    let m = this.models.get(glb);
+    if (!m) {
+      m = new GLTFLoader().loadAsync(`./models/${glb}.glb`).then((gltf) => {
+        const parts: Parts = {};
+        gltf.scene.updateMatrixWorld(true);
+        for (const c of gltf.scene.children) {
+          c.position.set(0, 0, 0);
+          c.quaternion.identity();
+          parts[c.name] = c;
+        }
+        return parts;
+      });
+      this.models.set(glb, m);
+    }
+    return m;
+  }
+
+  /** The kinds beaten (shared/bosses.ts bossBit mask): set up the ones not yet up. */
   set(beaten: number) {
-    BOSS_KINDS.forEach((kind, i) => {
-      if (!(beaten & bossBit(kind)) || this.up.has(kind)) return;
+    for (const kind of BOSS_KINDS) {
+      if (!(beaten & bossBit(kind)) || this.up.has(kind)) continue;
       this.up.add(kind);
-      // Fin i (src/world/mast.ts turns fin i by i quarter turns): out along its local +X.
-      const fin = new THREE.Group();
-      fin.rotation.y = (i / MAST.fins.n) * Math.PI * 2;
-      this.group.add(fin);
-      const y = finTop(OUT);
-      const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, MAST.fins.t + 0.12), STEEL);
-      bracket.position.set(OUT, y + 0.04, 0);
-      bracket.castShadow = true;
-      fin.add(bracket);
-      this.gltf.loadAsync(`./models/items/${MODEL[kind]}.glb`).then((m) => {
-        const o = m.scene;
-        o.scale.setScalar(SCALE);
-        o.position.set(OUT, y + 0.08, 0);
-        o.traverse((c) => (c.castShadow = true));
-        fin.add(o);
-      }, (e) => console.warn(`trophy ${kind} failed to load`, e));
-    });
+      const { glb, nodes } = MODELS[kind];
+      this.load(glb).then((parts) => {
+        for (const n of nodes) if (!parts[n]) throw new Error(`${glb}.glb has no ${n}`);
+        const o = BUILD[kind](parts), p = TROPHY_PLACES[kind];
+        o.position.set(p.x, p.y, p.z);
+        o.rotation.y = Math.atan2(p.fx, p.fz);
+        this.scene.add(o);
+      }).catch((e) => console.warn(`trophy ${kind} failed`, e));
+    }
   }
 }

@@ -47,6 +47,7 @@ import { BUNKER_SPAWN } from '../shared/base.ts';
 import { blastPush, DOWN_MS } from '../shared/ragdoll.ts';
 import { stormAt, stormDrag } from '../shared/storm.ts';
 import { sunElevation, timeOfDayAt } from '../shared/sun.ts';
+import { setTrophies } from '../shared/trophies.ts';
 import { LIVES, WORLD_ID } from '../shared/world.ts';
 
 /** Nobody on for this long: the world saves and exits until someone comes back. */
@@ -65,6 +66,7 @@ const db = openDb(process.env.DB_PATH ?? `data/worlds/${WORLD_ID}.db`);
 let lives = db.getSetting('lives') ?? LIVES;
 /** Boss kinds killed at least once (shared/bosses.ts bossBit); each first kill gave BOSS_LIVES lives. */
 let beaten = db.getSetting('bosses_beaten') ?? 0;
+setTrophies(beaten);
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
 const items = new ItemServer(db);
@@ -615,6 +617,7 @@ function dropBossSpoils(k: BossKill) {
     beaten |= bossBit(k.kind);
     lives += BOSS_LIVES;
     db.setSetting('bosses_beaten', beaten);
+    setTrophies(beaten);
     db.setSetting('lives', lives);
     for (const o of players.values()) send(o.ws, { t: 'lives', n: lives, beaten });
     console.log(`world ${WORLD_ID}: ${k.kind} beaten${allBeaten(beaten) ? ', world won' : ''}`);

@@ -14,6 +14,7 @@
 // Local frame: origin = the entrance's floor at its doorway centre line, axes = world axes (the base is
 // not rotated). The door faces +Z, the bunker runs down -Z. Dimensions match tools/blender/base/bunker.py.
 
+import type { BossKind } from './bosses.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 
 /**
@@ -124,6 +125,25 @@ export const MAST = {
   fins: { n: 4, reach: 2.6, h: 11, t: 0.45 },
 };
 
+/**
+ * Where each boss kind's trophy stands once it's beaten (shared/trophies.ts): local (x, z) round the pad, and the
+ * radius (m) of sand round it that is never dug (overBase), so it can't be undermined.
+ */
+export const TROPHY_SPOTS: Record<BossKind, { x: number; z: number; r: number }> = {
+  worm: { x: -27, z: 6, r: 9 },
+  queen: { x: 27, z: 8, r: 15 },
+  colossus: { x: -28, z: -24, r: 21 },
+  carrier: { x: 32, z: -32, r: 14 },
+};
+
+function nearTrophy(lx: number, lz: number, m: number): boolean {
+  for (const k in TROPHY_SPOTS) {
+    const t = TROPHY_SPOTS[k as BossKind], dx = lx - t.x, dz = lz - t.z, r = t.r + m;
+    if (dx * dx + dz * dz < r * r) return true;
+  }
+  return false;
+}
+
 /** Local point within the mast's fins (+ margin). */
 function nearMast(lx: number, lz: number, m: number): boolean {
   const dx = lx - MAST.x, dz = lz - MAST.z, r = MAST.fins.reach + 1 + m;
@@ -153,11 +173,11 @@ function inFootprint(lx: number, lz: number, m: number): boolean {
   return Math.abs(lx) < ROOM.w + WT + m && lz > ROOM.z - WT - m && lz < HALL.z + WT + m;
 }
 
-/** True over the bunker's footprint or around the mast + margin (no digging: it would cut into the rooms
- *  or undermine the mast). */
+/** True over the bunker's footprint, around the mast or a trophy's spot + margin (no digging: it would cut into
+ *  the rooms or undermine the mast or the trophy). */
 export function overBase(x: number, z: number, margin = 0): boolean {
   const lx = x - BASE.x, lz = z - BASE.z;
-  return inFootprint(lx, lz, margin) || nearMast(lx, lz, margin);
+  return inFootprint(lx, lz, margin) || nearMast(lx, lz, margin) || nearTrophy(lx, lz, margin);
 }
 
 /** True where a building stands on the surface (the entrance hut, the skylight's collar) + margin. */

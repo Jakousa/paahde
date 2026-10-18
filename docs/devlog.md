@@ -6,7 +6,7 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 
 - **Win:** the world is won when every boss kind has been killed once (`beaten` in the world's settings,
   `bosses_beaten`, a bit per kind). Each first kill gives the world 10 more lives (`BOSS_LIVES`; the lives row grows,
-  ten to a row) and puts the boss's part up as a trophy on one of the flag mast's fins (`src/world/trophies.ts`). All
+  ten to a row) and sets up a big piece of the boss, full size, on the sand round the pad as its trophy (`shared/trophies.ts`, drawn by `src/world/trophies.ts`): the worm's head rearing out of the sand, jaws spread; the colossus's head sunk to the chin with its arm raised beside it; a carrier fan duct on edge; the queen's thorax nose-up with a leg arching out each side. They block (shared collision, on per kind beaten) and the sand round them isn't dug (`TROPHY_SPOTS`, shared/base.ts). They replaced small relics on the mast's fins, which nobody noticed. All
   four: a victory screen once per browser (*The desert is yours*, *Play on*), and the world goes on.
 - **No more random bosses.** They're called with **receivers** (gear, `receiver_<kind>`, found broken on guardian
   ground, `FINDS` level 2): a **uranium cell** (the old anti-matter container, renamed: DB v9 migration) plus the
