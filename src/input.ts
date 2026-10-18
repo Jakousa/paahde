@@ -2,8 +2,6 @@ import { isBound, norm, slots, type Action } from './bindings';
 import { BACK, BIKE, CROUCH, FORWARD, JUMP, LEFT, RIGHT, SLIDE } from '../shared/sim.ts';
 
 const keys = new Set<string>();
-let mouseUse = false;
-let mouseAim = false;
 let pickupPressed = false;
 /** slot: the selected hotbar slot (-1 none).
  *  frozen: the disassembly mode (src/teardown) owns the keyboard and mouse, so the player stands still. */
@@ -47,22 +45,18 @@ addEventListener('keyup', (e) => {
 });
 addEventListener('blur', () => {
   keys.clear();
-  mouseUse = mouseAim = false;
 });
 // The mouse buttons count only while the pointer is locked: the first click just captures the mouse.
 addEventListener('mousedown', (e) => {
   if (!document.pointerLockElement) return;
-  if (e.button === 0) mouseUse = true;
-  if (e.button === 2) mouseAim = true;
+  keys.add(`Mouse${e.button}`);
 });
 addEventListener('mouseup', (e) => {
-  if (e.button === 0) mouseUse = false;
-  if (e.button === 2) mouseAim = false;
+  keys.delete(`Mouse${e.button}`);
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement) {
-    mouseUse = mouseAim = false;
     keys.clear();
     // Fullscreen and the keyboard lock stay on, so Esc only opens the menu; its button leaves fullscreen.
   }
@@ -88,11 +82,6 @@ export function actionHeld(a: Action): boolean {
   return keys.has(x) || keys.has(y);
 }
 
-/** Right mouse or X (always the same button). */
-function rightHeld(): boolean {
-  return mouseAim || actionHeld('aim');
-}
-
 export function readInput(): number {
   let input = 0;
   if (tools.frozen) return input;
@@ -109,23 +98,23 @@ export function readInput(): number {
   // (getting on puts it away, src/water.ts).
   if (actionHeld('bike') || keys.has('Digit9')) input |= BIKE;
   // A repaired motorcycle in hand (src/water.ts): the use button gets on and off it instead.
-  if (tools.bike && (mouseUse || actionHeld('use'))) input |= BIKE;
+  if (tools.bike && actionHeld('use')) input |= BIKE;
   return input;
 }
 
 /** Use button (left mouse or E) held down: drinks while the canteen is held, fires a gun, throws scrap... */
 export function useHeld(): boolean {
-  return !tools.frozen && (mouseUse || actionHeld('use'));
+  return !tools.frozen && actionHeld('use');
 }
 
 /** Any use button held (left/right mouse, E, Q or X): raises the spyglass while it's out. */
 export function aimHeld(): boolean {
-  return mouseUse || rightHeld() || actionHeld('use') || actionHeld('spyglass');
+  return actionHeld('use') || actionHeld('aim') || actionHeld('spyglass');
 }
 
 /** Aim button held (right mouse or X): the rifle up to the eye. */
 export function aimDown(): boolean {
-  return !tools.frozen && rightHeld();
+  return !tools.frozen && actionHeld('aim');
 }
 
 /** Shift held (hold your breath while aiming the rifle). */

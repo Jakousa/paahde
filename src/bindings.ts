@@ -1,6 +1,6 @@
-// Rebindable keys. Bindings are physical keys (KeyboardEvent.code), so WASD stays under the left hand on AZERTY /
+// Rebindable keys and mouse buttons. Bindings are physical keys (KeyboardEvent.code) or 'Mouse<button>', so WASD stays under the left hand on AZERTY /
 // Dvorak; labels shown to the player come from the layout map. Each action has two slots; binding a key that another
-// action holds takes it from there. Saved in localStorage. Fixed (not rebindable): mouse buttons, Esc, Enter (chat),
+// action holds takes it from there. Saved in localStorage. Fixed (not rebindable): Esc, Enter (chat),
 // 1–9 (hotbar, 9 = bike), F3 / ` (debug panel), Meta keys.
 
 export type Action =
@@ -18,8 +18,8 @@ export const ACTIONS: { id: Action; label: string; keys: Slots }[] = [
   { id: 'jump', label: 'jump', keys: ['Space', ''] },
   { id: 'sprint', label: 'slide · hold breath', keys: ['ShiftLeft', ''] },
   { id: 'crouch', label: 'crouch', keys: ['ControlLeft', 'KeyC'] },
-  { id: 'use', label: 'use · throw', keys: ['KeyE', ''] },
-  { id: 'aim', label: 'aim', keys: ['KeyX', ''] },
+  { id: 'use', label: 'use · throw', keys: ['Mouse0', 'KeyE'] },
+  { id: 'aim', label: 'aim', keys: ['Mouse2', 'KeyX'] },
   { id: 'spyglass', label: 'spyglass', keys: ['KeyQ', ''] },
   { id: 'interact', label: 'pick up · interact', keys: ['KeyF', ''] },
   { id: 'bike', label: 'motorcycle', keys: ['KeyZ', ''] },
@@ -29,7 +29,7 @@ export const ACTIONS: { id: Action; label: string; keys: Slots }[] = [
   { id: 'pickPlaced', label: 'pick up placed', keys: ['KeyG', ''] },
 ];
 
-const KEY = 'dadajam.bindings';
+const KEY = 'dadajam.bindings2';
 const RESERVED = /^(Escape|Enter|NumpadEnter|F3|Backquote|Digit[1-9]|Meta.*|ContextMenu)$/;
 
 /** Left and right Shift / Ctrl / Alt are one key to the game. */
@@ -122,8 +122,11 @@ const NAMES: Record<string, string> = {
   ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Backspace: 'Bksp',
 };
 
+const MOUSE: Record<string, string> = { Mouse0: 'LMB', Mouse1: 'MMB', Mouse2: 'RMB' };
+
 export function keyName(code: string): string {
   if (!code) return '—';
+  if (code.startsWith('Mouse')) return MOUSE[code] ?? `Mouse ${Number(code.slice(5)) + 1}`;
   if (NAMES[code]) return NAMES[code];
   const l = layout?.get(code);
   if (l) return l.length === 1 ? l.toUpperCase() : l;

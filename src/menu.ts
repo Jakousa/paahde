@@ -42,7 +42,7 @@ const css = `
 
 // Not rebindable (src/bindings.ts).
 const KEYS: [string, string][] = [
-  ['LMB', 'use item · throw scrap'], ['RMB', 'aim'], ['1–4', 'hotbar'], ['9', 'motorcycle on · off'], ['Alt', 'look around'],
+  ['1–4', 'hotbar'], ['9', 'motorcycle on · off'], ['Alt', 'look around'],
   ['Enter', 'chat'], ['Esc', 'this menu'],
 ];
 
@@ -201,6 +201,16 @@ export class Menu {
       finish(e.code);
     }, true);
     let pendingMod = '';
+    let ignoreClick = false;
+    // A mouse button binds too; the click that follows must not toggle the button again.
+    addEventListener('mousedown', (e) => {
+      if (!listening) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      ignoreClick = true;
+      setTimeout(() => (ignoreClick = false), 0);
+      finish(`Mouse${e.button}`);
+    }, true);
     addEventListener('keyup', (e) => {
       if (!listening || e.code !== pendingMod) return;
       e.stopImmediatePropagation();
@@ -222,10 +232,10 @@ export class Menu {
     };
     grid.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest('button');
-      if (!b) return;
+      if (!b || ignoreClick) return;
       b.blur();
       listening = listening === b ? undefined : b;
-      note.textContent = listening ? 'press a key · Esc cancels · Backspace clears' : '';
+      note.textContent = listening ? 'press a key or button · Esc cancels · Backspace clears' : '';
       show();
     });
     this.el.querySelector('.reset')!.addEventListener('click', (e) => {
