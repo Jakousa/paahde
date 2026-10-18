@@ -1,6 +1,7 @@
 // Sand thrown up by the sand bike's tyres: soft puffs off the back wheel that grow, drift downwind and fade.
-// More with speed and when the back steps out sideways, plus a burst on landing (Bike.update emits them).
-// One instanced sprite pool shared by every bike; purely visual. Lit like the storm dust (world/dust.ts).
+// More with speed and when the back steps out sideways, plus a burst on landing (Bike.update emits them). Also
+// the sand a sliding body sprays (src/players.ts), smaller and shorter-lived. One instanced sprite pool shared by
+// all of them; purely visual. Lit like the storm dust (world/dust.ts).
 import * as THREE from 'three/webgpu';
 import { float, instancedBufferAttribute, length, mx_noise_float, smoothstep, uv, vec2, vec3 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
@@ -40,14 +41,14 @@ class TyreDust {
     this.mesh.frustumCulled = false;
   }
 
-  /** One puff at (x, y, z) thrown with velocity (vx, vy, vz), `size` metres across to start with. */
-  emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, size: number) {
+  /** One puff at (x, y, z) thrown with velocity (vx, vy, vz), `size` metres across to start with, lasting `life` s. */
+  emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, size: number, life = 2.2 + Math.random() * 2.0) {
     const i = this.next;
     this.next = (i + 1) % MAX;
     this.pos.set([x, y, z], i * 3);
     this.vel.set([vx, vy, vz], i * 3);
     this.age[i] = 0;
-    this.life[i] = 2.2 + Math.random() * 2.0;
+    this.life[i] = life;
     this.size[i] = size;
     this.live = Math.max(this.live, i + 1);
   }

@@ -23,6 +23,8 @@ export const MAX_FOV = BASE_FOV + SPRINT_FOV_KICK;
 const STRIDE = 1.15; // metres per step (half a bob cycle)
 const BOOM = 4.5; // third-person distance behind the eye (m)
 const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
+/** Speed slide: the view rolls this far (rad) towards the trailing left hand. */
+const SLIDE_ROLL = 0.07;
 const SPRING_DT = 1 / 120; // the landing dip's longest step (s): a slow frame taken whole would make it swing ever harder
 const THIRD_PERSON_KEY = 'dadajam.thirdPerson';
 
@@ -45,6 +47,8 @@ export class FirstPersonCamera {
   private dip = 0; // landing dip offset (m), spring back to 0
   private dipVel = 0;
   private roll = 0;
+  private slide = 0; // 0..1, eased in while speed-sliding: the view leans back onto the trailing (left) hand
+  private slideClock = 0; // seconds, drives the slide's shake
   private fov = BASE_FOV;
   /** Magnification (spyglass, src/telescope.ts); 1 = none. The view eases towards it. */
   zoom = 1;
@@ -132,6 +136,9 @@ export class FirstPersonCamera {
     }
     this.wasGrounded = p.grounded;
     this.lastVy = p.vy;
+    // Dropping into a slide kicks the eye down on the same spring (it overshoots, then settles low).
+    const sliding = !!p.sliding && p.grounded;
+    if (sliding && this.slide < 0.05) this.dipVel -= 0.9;
     const k = 120, c = 16;
     for (let n = Math.ceil(dt / SPRING_DT), h = dt / n; n > 0; n--) {
       this.dipVel += (-k * this.dip - c * this.dipVel) * h;
@@ -162,12 +169,23 @@ export class FirstPersonCamera {
     const x = p.x + rightX * bobX;
     const z = p.z + rightZ * bobX;
     this.crouch += ((p.grounded ? (p.sliding ? 1 : p.crouching ? 0.7 : 0) : 0) - this.crouch) * (1 - Math.exp(-dt * 12));
-    let y = this.eyeY + EYE_HEIGHT - 0.65 * this.crouch + bobY + this.dip;
+    // Sliding: lean back and to the left, the hand in the sand; the sand shakes the view, more the faster.
+    this.slide += ((sliding ? 1 : 0) - this.slide) * (1 - Math.exp(-dt * (sliding ? 9 : 5)));
+    let shakeY = 0, shakeR = 0, shakeP = 0;
+    if (this.slide > 1e-3) {
+      const t = (this.slideClock += dt);
+      // Less from behind the body (third person), where the body shows the slide.
+      const a = this.slide * Math.min(1, Math.max(0, (speed - WALK_SPEED) / 10)) * (1 - 0.6 * Math.min(1, this.boom / BOOM));
+      shakeY = a * 0.008 * (Math.sin(t * 31) * 0.6 + Math.sin(t * 47.3 + 1.3) * 0.4);
+      shakeR = a * 0.006 * Math.sin(t * 23.7 + 0.4) * Math.sin(t * 5.1);
+      shakeP = a * 0.005 * Math.sin(t * 37.9 + 2.1);
+    } else this.slideClock = 0;
+    let y = this.eyeY + EYE_HEIGHT - 0.65 * this.crouch + bobY + this.dip + shakeY;
     // Never look out from under a dune (in the base's entrance and bunker the sand isn't in the way).
     if (!terrainHidden(x, z, p.y)) y = Math.max(y, heightAt(x, z) + 0.3);
 
     // Third person: back off along the view ray, shortening the boom where it would dip under the sand.
-    const pitch = this.pitch + this.dip * 0.12;
+    const pitch = this.pitch + this.dip * 0.12 + shakeP;
     const cp = Math.cos(pitch);
     const bx = sy * cp, by = -Math.sin(pitch), bz = cy * cp; // unit vector pointing behind the view
     const third = (this.thirdPerson && !this.aimIn) || this.down;
@@ -183,7 +201,7 @@ export class FirstPersonCamera {
     if (this.boom < 0.01) this.boom = 0;
     this.eye.set(x, y, z);
     this.camera.position.set(x + bx * this.boom, y + by * this.boom, z + bz * this.boom);
-    this.camera.rotation.set(pitch, this.yaw, this.roll + bobX * 0.1);
+    this.camera.rotation.set(pitch, this.yaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
 
     // FOV kick when moving faster than a walk (sprint, slides).
     const t = Math.max(0, Math.min(1, (speed - WALK_SPEED - 0.5) / (SPRINT_SPEED - WALK_SPEED - 1)));

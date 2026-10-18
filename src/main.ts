@@ -1,5 +1,5 @@
 import * as THREE from 'three/webgpu';
-import { BACK, DIG, DT, FORWARD, PILE, quantizeYaw } from '../shared/sim.ts';
+import { BACK, DIG, DT, FORWARD, isSlipFace, PILE, quantizeYaw } from '../shared/sim.ts';
 import { digTarget, EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
@@ -42,6 +42,7 @@ import { footsteps } from './footsteps';
 import { music } from './music';
 import { uiSound } from './uiSound';
 import { breathing } from './breathing';
+import { slideSound } from './slideSound';
 import { audio } from './audio';
 import { inBase } from '../shared/base.ts';
 import { pickupSound } from './pickupSound';
@@ -385,6 +386,9 @@ baseSand.update(frameDt, storm.atBase);
   base.update();
   mast.update(frameDt);
   windSound.update(frameDt, orbit.camera.position, orbit.yaw, s);
+  // Sand hissing under you: a speed slide, or (softer) slipping down a slip face on your feet.
+  const ownSpeed = Math.hypot(s.vx, s.vz);
+  slideSound.update(frameDt, !s.grounded || s.riding || net.down ? 0 : s.sliding ? 1 : ownSpeed > 2 && isSlipFace(s.x, s.z) ? 0.5 : 0, ownSpeed);
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   drinkSound.remotes(others, orbit.camera.position);

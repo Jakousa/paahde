@@ -10,6 +10,7 @@ import { wornBit } from '../shared/gear.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, footprints, streaks } from './footprints.ts';
 import { footsteps } from './footsteps.ts';
+import { tyreDust } from './tyreDust.ts';
 import { SHADOW_ONLY_LAYER } from './world/env.ts';
 
 export type AvatarPose = {
@@ -59,6 +60,9 @@ export type ModelPose = {
   ride?: RidePose;
   drinking?: boolean;
   aiming?: boolean;
+  /** Where the eyes look relative to the body's facing (rad, + = to the left): nonzero when the body faces
+   *  its travel instead (feet first in a slide); the head turns towards it. */
+  look?: number;
 };
 
 export interface AvatarModel {
@@ -93,6 +97,11 @@ export class Avatar {
   // Where the current slide streak last ended; NaN when not sliding.
   private streakX = NaN;
   private streakZ = NaN;
+  /** How fast the body turns to its facing (eased: slower while it goes feet first in a slide). */
+  private turnRate = 18;
+  /** Seconds into the current slide (0 when not sliding) and sand puffs owed to the spray. */
+  private slideFor = 0;
+  private sprayOwed = 0;
   private label?: THREE.Sprite;
   /** Leave footprints even when the root is hidden (the local first-person player). */
   footprints = true;
@@ -222,17 +231,22 @@ export class Avatar {
       return;
     }
     this.root.position.set(pose.x, pose.y, pose.z);
-    // Facing comes from 20 Hz snapshots (remote) or the mouse (local): smooth it a little.
-    if (!Number.isFinite(this.facing)) this.facing = pose.facing;
-    const d = Math.atan2(Math.sin(pose.facing - this.facing), Math.cos(pose.facing - this.facing));
-    this.facing += d * (1 - Math.exp(-dt * 18));
-    this.root.rotation.y = this.facing;
-
     const power = !!pose.powerSlide && pose.grounded;
     const slip = !power && (pose.sliding ?? (pose.grounded && pose.speed > 2 && isSlipFace(pose.x, pose.z)));
     const sliding = slip || power;
-    // Travel direction in the body frame (facing f looks along (-sin f, -cos f)).
     const vx = pose.vx ?? 0, vz = pose.vz ?? 0;
+    // Facing comes from 20 Hz snapshots (remote) or the mouse (local): smooth it a little. In a speed slide the
+    // body goes feet first the way it is travelling (the head turns to where it looks), turning more slowly.
+    const feetFirst = power && pose.vx !== undefined && Math.hypot(vx, vz) > 1;
+    const want = feetFirst ? Math.atan2(-vx, -vz) : pose.facing;
+    if (!Number.isFinite(this.facing)) this.facing = want;
+    this.turnRate += ((feetFirst ? 9 : 18) - this.turnRate) * (1 - Math.exp(-dt * 4));
+    const d = Math.atan2(Math.sin(want - this.facing), Math.cos(want - this.facing));
+    this.facing += d * (1 - Math.exp(-dt * this.turnRate));
+    this.root.rotation.y = this.facing;
+    const look = Math.atan2(Math.sin(pose.facing - this.facing), Math.cos(pose.facing - this.facing));
+
+    // Travel direction in the body frame (facing f looks along (-sin f, -cos f)).
     const ahead = -vx * Math.sin(this.facing) - vz * Math.cos(this.facing);
     const right = vx * Math.cos(this.facing) - vz * Math.sin(this.facing);
     const heading = pose.vx === undefined ? 0 : Math.atan2(right, ahead);
@@ -249,9 +263,12 @@ export class Avatar {
       {
         speed: pose.speed, grounded: pose.grounded, sliding: slip, powerSlide: power, crouching: pose.crouching, tiltPitch, tiltRoll,
         digging: pose.digging, pitch: pose.pitch, heading, drinking: pose.drinking, aiming: pose.aiming, ground: onSand && !power ? heightAt : undefined,
+        look,
       },
       dt,
     );
+    if (sliding && onSand) this.spray(pose, vx, vz, power, dt);
+    else this.slideFor = 0;
 
     // Footprints: one per stride while walking; a sliding body draws a continuous streak instead. Only on the sand
     // itself: on the bunker's stairs and floors the print would hang at the sand's height overhead.
@@ -272,6 +289,25 @@ export class Avatar {
     // Toes turned out a little; the boot print mirrors per foot.
     if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing - this.foot * 0.08, 1, 1, this.foot);
     footsteps.step(fx, fz, pose.speed, inBase(fx, pose.y, fz) ? 'concrete' : 'sand');
+  }
+
+  /** Sand thrown up while sliding: ploughed off the leading boot and, in a speed slide, the hand trailing behind
+   *  on the left; a burst as the slide starts. Faster throws more. */
+  private spray(pose: AvatarPose, vx: number, vz: number, power: boolean, dt: number) {
+    const fx = -Math.sin(this.facing), fz = -Math.cos(this.facing); // forward; right is (-fz, fx)
+    const burst = this.slideFor === 0 && power ? 14 : 0;
+    this.slideFor += dt;
+    this.sprayOwed += dt * Math.max(0, pose.speed - 2) * (power ? 5 : 2.5) + burst;
+    for (; this.sprayOwed >= 1; this.sprayOwed--) {
+      const hand = power && Math.random() < 0.35;
+      // Leading boot (left leg out front) or the trailing left hand, in the body's frame.
+      const ahead = hand ? -0.3 : power ? 0.75 : 0.25, side = hand ? -0.45 : power ? -0.1 : 0;
+      const x = pose.x + fx * ahead - fz * side, z = pose.z + fz * ahead + fx * side;
+      const out = (hand ? -1 : Math.random() < 0.5 ? -1 : 1) * (0.8 + Math.random() * 1.8);
+      const keep = hand ? 0.15 + Math.random() * 0.2 : 0.6 + Math.random() * 0.4; // the boot ploughs sand on ahead
+      tyreDust.emit(x, heightAt(x, z) + 0.08, z, vx * keep - fz * out, (hand ? 0.5 : 1) + Math.random() * 1.6, vz * keep + fx * out,
+        (hand ? 0.06 : 0.09) + Math.random() * 0.08, 0.7 + Math.random() * 0.9);
+    }
   }
 
   /** Extend the slide streak to (x, z): a strip from where it last ended, once it is long enough. */

@@ -49,6 +49,8 @@ export type ScavengerPose = {
   drinking?: boolean;
   /** A gun in hand (setOutfit) raised to aim along `pitch`; otherwise it is carried at the low ready. */
   aiming?: boolean;
+  /** Where the eyes look relative to the body (rad, + = left); the neck and head turn towards it. */
+  look?: number;
 };
 
 export type ScavengerClip = 'Idle' | 'Walk' | 'Run' | 'Jump' | 'Dig' | 'Slide' | 'Powerslide' | 'Crouch' | 'CrouchWalk';
@@ -124,6 +126,9 @@ export class ScavengerModel {
   private added = false;
   private sip = 0; // 0 carried .. 1 at the mouth
   private aimT = 0; // a gun in hand: 0 at the low ready .. 1 raised to aim
+  private slideT = 0; // speed slide: 0 off .. 1 the full slide pose (lean back, hand in the sand, arm out)
+  private slideClock = 0;
+  private look = 0;
   /** Dead: the body is a ragdoll (src/models/ragdoll.ts) instead of the clips. */
   private doll: Ragdoll | null = null;
   private color: number;
@@ -371,8 +376,18 @@ export class ScavengerModel {
       rotateAboutRoot(this.root, this.neck, X_AXIS, pitch * 0.4);
       rotateAboutRoot(this.root, this.head, X_AXIS, pitch * 0.6);
     }
+    // Looking away from where the body faces (feet first in a slide): the neck and head turn, after the pitch.
+    this.look += (clamp(pose.look ?? 0, -1.4, 1.4) - this.look) * (1 - Math.exp(-dt * 10));
+    if (Math.abs(this.look) > 1e-3 && this.neck && this.head) {
+      rotateAboutRoot(this.root, this.neck, Y_AXIS, this.look * 0.4);
+      rotateAboutRoot(this.root, this.head, Y_AXIS, this.look * 0.6);
+    }
     this.head?.scale.setScalar(this.headless ? 1e-3 : 1);
     this.runArms(speed);
+    // After the running arms: sliding in from a run, the slide's arms take over as the Run clip fades.
+    this.slideT += ((power ? 1 : 0) - this.slideT) * (1 - Math.exp(-dt * (power ? 9 : 6)));
+    if (this.slideT > 1e-3) this.slidePose(this.slideT, dt);
+    else this.slideClock = 0;
     this.sip += ((pose.drinking ? 1 : 0) - this.sip) * (1 - Math.exp(-dt * 8));
     const loose = !pose.grounded || !!pose.sliding || !!pose.powerSlide;
     if (this.canteen) this.canteen.visible = this.item === 'canteen' && !pose.ride;
@@ -423,6 +438,41 @@ export class ScavengerModel {
         arm[0].updateMatrixWorld(true);
       }
     }
+  }
+
+  /** Speed slide, over the Powerslide clip, weighted by `w` (0..1, eased in and out): lean further back, the left
+   *  hand trails in the sand behind the hip, the right arm is out to the side for balance. Placed in the tilt
+   *  group's space, which lies along the slope. */
+  private slidePose(w: number, dt: number) {
+    const left = this.arms[0], right = this.arms[1];
+    if (!this.spine || !left || !right) return;
+    const t = (this.slideClock += dt);
+    const bones = [this.spine, this.neck, left[0], left[1], left[2], right[0], right[1], right[2]];
+    for (let i = 0; i < bones.length; i++) if (bones[i]) _saved[i].copy(bones[i]!.quaternion);
+    // Lean back onto the trailing hand (and a little towards it); the neck keeps the eyes on the way ahead.
+    rotateAboutRoot(this.root, this.spine, X_AXIS, SLIDE_LEAN);
+    rotateAboutRoot(this.root, this.spine, Z_AXIS, 0.12);
+    if (this.neck) rotateAboutRoot(this.root, this.neck, X_AXIS, -SLIDE_LEAN * 0.8);
+    this.root.updateMatrixWorld(true);
+    // Left hand flat in the sand behind and outside the hip, skipping over it; fingers trail back.
+    const sand = SLIDE_HAND.y + 0.012 * Math.sin(t * 23) * Math.sin(t * 7.1);
+    this.tilt.localToWorld(_t.set(SLIDE_HAND.x, sand, SLIDE_HAND.z));
+    reach(left[0], left[1], left[2], _t, _pole.set(-1, 0.4, 0.7).transformDirection(this.tilt.matrixWorld));
+    aim(left[2], left[3], this.tilt.localToWorld(_t.set(SLIDE_HAND.x - 0.04, sand - 0.03, SLIDE_HAND.z + 0.16)));
+    // Right arm out to the side and a little forward, balancing: it bobs with the bumps.
+    this.tilt.worldToLocal(right[0].getWorldPosition(_s0));
+    const bob = 0.05 * Math.sin(t * 2.3) + 0.02 * Math.sin(t * 9.7);
+    this.tilt.localToWorld(_t.copy(_s0).add(_o.set(0.42, 0.1 + bob, -0.18)));
+    reach(right[0], right[1], right[2], _t, _pole.set(0.2, -1, 0.6).transformDirection(this.tilt.matrixWorld));
+    aim(right[2], right[3], this.tilt.localToWorld(_t.copy(_s0).add(_o.set(0.62, 0.06 + bob, -0.22))));
+    // Blend from the clip's pose by the weight.
+    if (w < 0.999) {
+      for (let i = 0; i < bones.length; i++) {
+        const b = bones[i];
+        if (b) b.quaternion.slerpQuaternions(_saved[i], _q.copy(b.quaternion), w);
+      }
+    }
+    this.root.updateMatrixWorld(true);
   }
 
   /** Place the canteen (carried, or at the mouth while drinking) and reach the right hand to it; `loose` (in
@@ -590,6 +640,12 @@ const PISTOL: GunHold = {
   twist: 0.2,
 };
 const GUN_HOLD: Record<string, GunHold> = { laser_rifle: RIFLE, laser_pistol: PISTOL, jammer: PISTOL };
+
+/** Speed slide (slidePose): extra lean back (rad) and where the trailing left hand touches the sand (root space,
+ *  forward -Z, along the slope). */
+const SLIDE_LEAN = 0.35;
+const SLIDE_HAND = V(-0.42, 0.05, 0.3);
+const _saved = Array.from({ length: 8 }, () => new THREE.Quaternion());
 
 const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt');
 
