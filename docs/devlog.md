@@ -2,6 +2,21 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — Dying leaves your pack behind
+
+- **The penalty** (shared/corpse.ts): dying out in the desert empties the bag past the hotbar (the backpack's grid and
+  anything stranded past it) into a pack lying where you fell. The 4 hotbar slots, the equipment (backpack, bike…)
+  and the bike's cargo stay with you. Dying in or over the base, or with nothing past the hotbar, leaves nothing.
+- **Getting it back**: anyone can open it like a chest (Tab beside it, or F: "Open pack"), box `corpse<id>` shown as
+  "Left behind"; things only come out (shared/gear.ts tryMove / unfitPart refuse anything going in, so no "Store all").
+  It's gone once empty, or after 30 min (`CORPSE_MS`) with what's still in it.
+- **Server** (server/corpses.ts): the pack row (`corpses` table) and the move of the items (same ids, bag and pack
+  saved together) are one transaction; while lying dead you can't move, drop or sort items (so nothing races the
+  pack). Emptied packs are dropped after any move, fit or drop out of them; expired ones on the 5 s save tick.
+  Clients keep `CORPSES` from 'corpses' messages, so shared/storage.ts can say what's in reach on both sides.
+- **Seen from afar** (src/world/corpses.ts): a tied canvas bundle with a slanted stick and a flapping rag in the dead
+  player's colour, drawn out to 700 m.
+
 ## 2026-10-18 — A motorcycle in front of the door
 
 - **Before**: the only motorcycles were 3 broken ones lying at random crawler-ground sites (950–1650 m out), drawn as a
@@ -999,10 +1014,17 @@ Local, short storms instead of the old global one (`wind.ts` used to hash a 3–
 - **Look** (`src/post.ts`): each storm is a dust cylinder marched in the post pass (6 jittered steps along the
   view ray, clipped to the cylinder and the scene depth): density full out to 55% of the radius, thinning
   upwards over 60 m, billowed by 3D noise that drifts with the wind and rises. From outside: a tall rolling
-  brown column (dark against the dusk sky); inside: dust fog ~20 m deep. Not drawn from inside the
-  bunker (it would fog the rooms). Up to 4 at once.
+  brown column (dark against the dusk sky); inside: dust fog ~20 m deep. Up to 4 at once.
+- **From the bunker:** the storm used to vanish indoors (the columns weren't drawn and `wind.local` was 0), so
+  the skylight showed a clear sky. Now, in the base (`stormIndoors`), the march starts only where the view ray
+  leaves it: above the pad's surface (skylight, stairwell) or out of the entrance hut's box (its door), so the
+  sky and doorway fill with moving dust while the rooms stay clear. The wind keeps blowing (`wind.local` is the
+  storm over the camera's spot even indoors) and is heard underground through a 420 Hz lowpass
+  (`src/windSound.ts`); grit sifts down the skylight and blows in at the door (`src/world/baseSand.ts`, from the
+  storm over the base). No grit on the view, and the locator still works down there.
 - **Testing:** F3 → "Sandstorm here" summons one on you, for everyone. With `?debug`, `dbg.net.storms` can
-  be set by hand for a look-only storm (the server doesn't know about it).
+  be set by hand for a look-only storm (the server doesn't know about it), or `dbg.storm.summonHere()` puts a
+  full-strength local one right on you for 90 s (only you see it).
 
 
 ## Throwing scrap

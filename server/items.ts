@@ -1,8 +1,11 @@
 // Server side of items (shared/items.ts): every box's slots, cached from the `items` table, the one-time gear
 // setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
-import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
-import { addItem, findSpot, hasItem, HOTBAR, partKind, roomFor, settle, sortItems, stackOf, type Item, type Slots } from '../shared/items.ts';
+import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, isGear, lockedWhileRiding, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
+import {
+  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, roomFor, settle, sizeOf, sortItems, stackOf,
+  type Item, type Slots,
+} from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, growChest, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { craft, RECIPES } from '../shared/crafting.ts';
@@ -218,21 +221,23 @@ export class ItemServer {
     if (!Number.isInteger(ti) || (ti as number) < -1 || (ti as number) >= this.slots(browserId, to).length) return false;
     if (n !== undefined && (!Number.isInteger(n) || (n as number) < 1)) return false;
     if (r !== undefined && typeof r !== 'boolean') return false;
+    if (s.riding && lockedWhileRiding(from, fi as number)) return false;
     if (!tryMove(this.view(browserId, from, to), from, fi as number, to, ti as number, n as number | undefined, this.newId, r)) return false;
     this.save(browserId, from, to);
     return true;
   }
 
   /**
-   * Take one of the item at `box`[slot] out to drop it on the sand (not from the equipment or the workbench:
-   * take it off first). Returns what came out, or null if refused. Call inside the drop's transaction.
+   * Take one of the item at `box`[slot] out to drop it on the sand (equipment too: a backpack's contents stay in
+   * the bag's closed rows; not the motorcycle you're riding). Returns what came out, or null if refused. Call
+   * inside the drop's transaction.
    */
   drop(browserId: string, s: PlayerState, box: unknown, slot: unknown): { kind: string; parts?: (string | null)[] } | null {
-    if (typeof box !== 'string' || !boxSize(box) || box === 'equip' || box === 'bench' || !canOpen(s, box, REACH_SLACK)) return null;
+    if (typeof box !== 'string' || !boxSize(box) || !canOpen(s, box, REACH_SLACK)) return null;
     const slots = this.slots(browserId, box);
     if (!Number.isInteger(slot) || (slot as number) < 0 || (slot as number) >= slots.length) return null;
     const it = slots[slot as number];
-    if (!it) return null;
+    if (!it || (s.riding && lockedWhileRiding(box, slot as number))) return null;
     if (--it.n <= 0) slots[slot as number] = null;
     this.save(browserId, box);
     return { kind: it.kind, ...(it.parts ? { parts: it.parts } : {}) };
@@ -261,6 +266,46 @@ export class ItemServer {
     if (!sortItems(this.slots(browserId, box), boxShape(box, this.view(browserId, box)))) return false;
     this.save(browserId, box);
     return true;
+  }
+
+  /** Anything in the bag past the hotbar (what dying leaves behind, server/corpses.ts)? */
+  hasPack(browserId: string): boolean {
+    return this.slots(browserId, 'bag').some((it, i) => i >= HOTBAR && !!it);
+  }
+
+  /**
+   * Dying: everything in the bag past the hotbar moves (keeping its ids) into the new, empty pack box `box`
+   * (shared/corpse.ts), biggest first, packed from the top; the hotbar and the equipment stay. Call inside the
+   * transaction that records the pack, once it's in CORPSES.
+   */
+  leave(browserId: string, box: string) {
+    const bag = this.slots(browserId, 'bag');
+    const out = bag.slice(HOTBAR).filter((it): it is Item => !!it);
+    const area = (it: Item) => sizeOf(it.kind)[0] * sizeOf(it.kind)[1];
+    out.sort((a, b) => area(b) - area(a));
+    bag.fill(null, HOTBAR);
+    bag.length = BAG_SLOTS;
+    const pack: Slots = new Array(CHEST_COLS * CHEST_ROWS).fill(null);
+    for (const it of out) {
+      growChest(pack); // MAX_SIDE free rows below what's in: anything fits
+      const spot = findSpot(pack, gridShape(CHEST_COLS, pack.length / CHEST_COLS), it.kind, false, [], false);
+      const moved: Item = { ...it };
+      delete moved.r;
+      if (spot?.r) moved.r = true;
+      if (spot) pack[spot.i] = moved;
+      else pack.push(moved);
+    }
+    this.boxes.set(`|${box}`, pack);
+    this.save(browserId, 'bag', box);
+  }
+
+  isEmpty(box: string): boolean {
+    return this.slots('', box).every((it) => !it);
+  }
+
+  /** A shared box that's gone (an emptied or expired pack): forget it. */
+  dropBox(box: string) {
+    this.boxes.delete(`|${box}`);
   }
 
   /** Forget a player's own boxes once their last connection closes (shared ones stay cached). */

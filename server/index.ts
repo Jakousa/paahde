@@ -29,6 +29,7 @@ import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
 import { ItemServer } from './items.ts';
 import { LootServer } from './loot.ts';
+import { CorpseServer } from './corpses.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
@@ -66,6 +67,10 @@ const crash = new CrashServer(db, (ids, msg) => {
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
 const garden = new GardenServer(db);
 const loot = new LootServer(db);
+const corpses = new CorpseServer(db, items, (msg) => {
+  const json = JSON.stringify(msg);
+  for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
+});
 
 const storms = new StormServer(performance.now());
 const jets = new JetServer(performance.now());
@@ -230,7 +235,8 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, jets.msg());
   send(ws, loot.joinMessage());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch });
-  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`)]) send(ws, boxMsg(browserId, box));
+  send(ws, corpses.joinMessage());
+  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes()]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
 
 }
@@ -279,6 +285,13 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, sliding: false, crouching: false };
   revive(p.heat, Date.now());
   send(p.ws, { t: 'died', cause, push });
+  // The bag past the hotbar stays where they fell (shared/corpse.ts).
+  const pack = corpses.leave(p.browserId, p.color, p.state.x, p.state.z);
+  if (pack) {
+    sendBox(p, pack);
+    sendBox(p, 'bag');
+    gearChanged(p.browserId);
+  }
 }
 
 /** The client saw a guardian's foot come down on it (the feet are client IK). */
@@ -464,27 +477,29 @@ function sendBox(p: Player, box: string, got?: string) {
 
 // Moves and sorts: the client already applied its guess, so it always gets the boxes back.
 function onMove(p: Player, from: unknown, fi: unknown, to: unknown, ti: unknown, n: unknown, r: unknown) {
-  const changed = items.move(p.browserId, p.state, from, fi, to, ti, n, r);
+  const changed = !p.down && items.move(p.browserId, p.state, from, fi, to, ti, n, r);
   for (const box of new Set([from, to])) {
     if (typeof box !== 'string' || !boxSize(box)) continue;
     if (changed) sendBox(p, box);
     else send(p.ws, boxMsg(p.browserId, box));
   }
   if (changed) gearChanged(p.browserId);
+  if (changed) corpses.check(from);
 }
 
 function onFit(p: Player, from: unknown, fi: unknown, slot: unknown) {
-  const changed = items.fit(p.browserId, p.state, from, fi, slot);
+  const changed = !p.down && items.fit(p.browserId, p.state, from, fi, slot);
   for (const box of new Set(['bench', 'bag', from])) {
     if (typeof box !== 'string' || !boxSize(box)) continue;
     if (changed) sendBox(p, box);
     else send(p.ws, boxMsg(p.browserId, box));
   }
   if (changed) gearChanged(p.browserId);
+  if (changed) corpses.check(from);
 }
 
 function onUnfit(p: Player, slot: unknown, to: unknown, ti: unknown) {
-  const changed = items.unfit(p.browserId, p.state, slot, to, ti);
+  const changed = !p.down && items.unfit(p.browserId, p.state, slot, to, ti);
   for (const box of new Set(['bench', to])) {
     if (typeof box !== 'string' || !boxSize(box)) continue;
     if (changed) sendBox(p, box);
@@ -507,7 +522,7 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
   if (typeof box !== 'string' || !boxSize(box)) return;
   const s = p.state;
   const inside = !canDropAt(s.x, s.z);
-  const item = inside ? null : db.tx(() => {
+  const item = inside || p.down ? null : db.tx(() => {
     const it = items.drop(p.browserId, s, box, slot);
     if (it) loot.drop(s, it);
     return it;
@@ -518,6 +533,7 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
   }
   sendBox(p, box);
   gearChanged(p.browserId);
+  corpses.check(box);
 }
 
 // Debug menu: one of each piece of gear, repaired with Scrap parts, into the bag (what fits) and the
@@ -533,7 +549,7 @@ function onDebugGear(p: Player) {
 }
 
 function onSort(p: Player, box: unknown) {
-  if (items.sort(p.browserId, p.state, box)) sendBox(p, box as string);
+  if (!p.down && items.sort(p.browserId, p.state, box)) sendBox(p, box as string);
   else if (typeof box === 'string' && boxSize(box)) send(p.ws, boxMsg(p.browserId, box));
 }
 
@@ -725,6 +741,7 @@ setInterval(() => {
   terrain.save();
   scrap.respawn();
   loot.respawn();
+  corpses.expire();
   garden.grow();
 }, SAVE_INTERVAL_MS);
 

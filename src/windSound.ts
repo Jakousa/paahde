@@ -29,8 +29,11 @@ const RING = 4;
 const RING_N = 6;
 /** How much of the local wind (vs the regional one) you hear: < 1 so dune lees are quieter, not silent. */
 const LOCAL = 0.6;
-/** Friction velocity left underground (the base's bunker), as a fraction of the surface's. */
-const BURIED = 0.2;
+/** Friction velocity left underground (the base's bunker), as a fraction of the surface's: a storm overhead
+ *  still roars down the skylight and the stairs, but through the muffle below. */
+const BURIED = 0.45;
+/** Underground everything goes through a lowpass at this cutoff (Hz): the wind is heard through the earth. */
+const MUFFLE_HZ = 420;
 /** Time constant (s) of the followed wind; about a second to settle. */
 const TAU = 0.6;
 /** Own speeds (m/s) over which moving through the air fades in: running adds little, sliding some, the
@@ -83,6 +86,7 @@ function noiseBuffer(ctx: AudioContext, brown: boolean): AudioBuffer {
 type Graph = {
   ctx: AudioContext;
   master: GainNode;
+  muffle: BiquadFilterNode;
   rumble: GainNode;
   rumbleLp: BiquadFilterNode;
   rushL: GainNode;
@@ -112,7 +116,11 @@ export class WindSound {
   private build(ctx: AudioContext, out: GainNode): Graph {
     const master = ctx.createGain();
     master.gain.value = 0;
-    master.connect(out);
+    const muffle = ctx.createBiquadFilter();
+    muffle.type = 'lowpass';
+    muffle.frequency.value = 20000;
+    muffle.Q.value = 0.5;
+    master.connect(muffle).connect(out);
     const pink = noiseBuffer(ctx, false);
     const brown = noiseBuffer(ctx, true);
     // Each layer reads the loop from a different offset so they stay uncorrelated.
@@ -166,7 +174,7 @@ export class WindSound {
     source(pink, 3.2).connect(hissHp).connect(hiss).connect(master);
 
     master.gain.setTargetAtTime(MIX, ctx.currentTime, 1.5); // fade in rather than pop on the first click
-    return { ctx, master, rumble, rumbleLp, rushL, rushR, rushBp, rushLp, howl, hiss, hissHp };
+    return { ctx, master, muffle, rumble, rumbleLp, rushL, rushR, rushBp, rushLp, howl, hiss, hissHp };
   }
 
   /** Follow the wind at the listener. `yaw` is the camera yaw (three.js: forward = (−sin, −cos)); `vel` is
@@ -192,7 +200,8 @@ export class WindSound {
     us = LOCAL * (us / (RING_N + 1)) + (1 - LOCAL) * usR;
     q = LOCAL * (q / (RING_N + 1)) + (1 - LOCAL) * qR;
     // Down in the bunker the wind is a faint draught from the skylight and the stairs.
-    if (listener.y < heightAt(listener.x, listener.z) - 0.5) {
+    const buried = listener.y < heightAt(listener.x, listener.z) - 0.5;
+    if (buried) {
       us *= BURIED;
       q = 0;
     }
@@ -231,6 +240,7 @@ export class WindSound {
 
     const now = g.ctx.currentTime;
     const set = (p: AudioParam, v: number, tau = 0.3) => p.setTargetAtTime(v, now, tau);
+    set(g.muffle.frequency, buried ? MUFFLE_HZ : 20000, 0.4);
 
     // A faint floor of moving air even in a calm, so the desert is never dead silent.
     set(g.rumble.gain, 0.03 + 0.55 * x ** 1.4 * (1 + 0.4 * gust));

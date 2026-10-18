@@ -5,8 +5,9 @@
 // wrist, belt, vehicle), the rest is used from the hotbar.
 //
 // Moves between boxes go through tryMove(), on the client as a prediction and on the server for real, so
-// both apply the same rules: gear only into its equipment slot (and only once repaired), nothing past the
-// bag's open rows (the backpack sets them) and only where it fits in a grid, and parts only into the workbench item's matching slots (fitPart).
+// both apply the same rules: gear only into its equipment slot (and only once repaired), nothing put down past the
+// bag's open rows (the backpack sets them; taking it off leaves what's there stranded, not lost) and only where it fits in a grid, and parts only into the workbench item's matching slots (fitPart).
+import { isCorpseBox } from './corpse.ts';
 import type { DigTool } from './dig.ts';
 import {
   BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, sizeOf, strandedAt,
@@ -183,15 +184,24 @@ function allowed(box: string, i: number, it: Item, boxes: Boxes): boolean {
   return true;
 }
 
-/** Items in bag rows the backpack doesn't open (they can only be moved out). */
-function stranded(boxes: Boxes): number {
-  const bag = boxes.bag;
-  if (!bag) return 0;
-  const shape = bagShape(boxes.equip);
-  let n = 0;
-  for (let i = 0; i < bag.length; i++) if (strandedAt(bag, shape, i)) n++;
-  return n;
+/**
+ * Did the move put something down in bag rows the backpack (as it is after the move) doesn't open? Items already
+ * lying there may end up stranded (taking the backpack off leaves its contents in the bag's closed rows, shown
+ * red, only to be moved out, open again with a backpack on), but nothing new goes there.
+ */
+function strandsNew(before: Boxes, after: Boxes): boolean {
+  const bag = after.bag, old = before.bag;
+  if (!bag || !old) return false;
+  const shape = bagShape(after.equip);
+  for (let i = 0; i < bag.length; i++) {
+    const x = bag[i], o = old[i];
+    if (x && !(o && o.id === x.id && o.kind === x.kind && !!o.r === !!x.r) && strandedAt(bag, shape, i)) return true;
+  }
+  return false;
 }
+
+/** The motorcycle can't leave its slot while you ride it. */
+export const lockedWhileRiding = (box: string, i: number) => box === 'equip' && EQUIP_SLOTS[i] === 'vehicle';
 
 /**
  * Move n (default all) of `from`[fi] to `to`[ti] (ti -1: anywhere it may go), turned if `r` (default: as it
@@ -203,6 +213,8 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
   const src0 = boxes[from], dst0 = boxes[to];
   const it = src0?.[fi];
   if (!src0 || !dst0 || !it) return false;
+  // A dead player's pack (shared/corpse.ts) is only taken from.
+  if (to !== from && isCorpseBox(to)) return false;
   // Anywhere in equip: the item's own slot.
   if (to === 'equip' && ti === -1) {
     const slot = GEAR[it.kind]?.equip;
@@ -212,7 +224,9 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
   const ids = [...new Set([from, to])];
   const b = cloneBoxes(boxes, ids);
   const src = b[from]!, dst = b[to]!;
-  if (!moveItem(src, fi, boxShape(from, boxes), dst, ti, boxShape(to, boxes), n, newId, r)) return false;
+  // Into the bag from the equipment: laid out as the bag will be once it's off (a backpack never lands in its own rows).
+  const dstShape = to === 'bag' && from === 'equip' ? bagShape(boxes.equip?.map((x, i) => (i === fi ? null : x))) : boxShape(to, boxes);
+  if (!moveItem(src, fi, boxShape(from, boxes), dst, ti, dstShape, n, newId, r)) return false;
   // Every slot that changed must allow what's in it now.
   for (const id of ids) {
     const slots = b[id]!;
@@ -221,7 +235,7 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
       if (x && x !== boxes[id]![i] && !sameItem(x, boxes[id]![i]) && !allowed(id, i, x, b)) return false;
     }
   }
-  if (stranded(b) > stranded(boxes)) return false;
+  if (strandsNew(boxes, b)) return false;
   for (const id of ids) boxes[id]!.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }
@@ -263,7 +277,7 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
 /** Take the part in slot `slot` of the workbench item out into `to`[ti] (-1: anywhere in it). */
 export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, newId: () => number): boolean {
   const target = boxes.bench?.[0];
-  if (!target || !boxes[to]) return false;
+  if (!target || !boxes[to] || isCorpseBox(to)) return false;
   const parts = partsOf(target);
   const kind = parts[slot];
   if (!kind) return false;

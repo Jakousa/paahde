@@ -4,12 +4,12 @@
 // pass draws (src/post.ts). The heat is the server's (server/water.ts); the HUD just shows the felt °C.
 //
 // In the dust you lose the locator bar (src/locator.ts): no bearings on the base or the others.
-import { inBase } from '../shared/base.ts';
+import { BASE, ROOM_Z, inBase } from '../shared/base.ts';
 import { RAMP_MS, inStormPath, stormAt, stormCentre, stormEnvelope, type Storm } from '../shared/storm.ts';
 import { WIND } from '../shared/dunes.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { audio } from './audio';
-import { STORM_SLOTS, stormDiscs, stormGround, stormHere } from './world/env';
+import { STORM_SLOTS, stormDiscs, stormGround, stormHere, stormIndoors } from './world/env';
 import { wind } from './world/wind';
 
 /** Seconds between beep bursts while a storm you're in the path of is on its way. */
@@ -28,10 +28,14 @@ const TAU = 0.8;
 
 /** Debug menu: storms only this client sees, merged into the server's (no heat, no one else). */
 const localStorms: Storm[] = [];
-let summonLocal = false;
+let summonLocal: boolean | 'here' = false;
 /** A storm rolling in from upwind right now, seen only by you, to look at the dust (debug menu). */
 export function summonLocalStorm() {
   summonLocal = true;
+}
+/** Debug (dbg.storm.summonHere()): a full-strength local storm right over you for a minute and a half. */
+export function summonHere() {
+  summonLocal = 'here';
 }
 
 const css = `
@@ -45,8 +49,12 @@ const css = `
 `;
 
 export class StormFx {
-  /** Storm strength at the camera, eased, 0..1. */
+  /** Storm strength at the camera, eased, 0..1 (0 in the base). */
   level = 0;
+  /** Storm strength over the camera's spot, in the base too, eased, 0..1. */
+  outside = 0;
+  /** Storm strength over the base, eased, 0..1: the sand sifting in (src/world/baseSand.ts). */
+  atBase = 0;
   private banner = document.createElement('div');
   private warned = new Map<number, number>(); // storm id → server ms of the last beep burst
   private c = { x: 0, z: 0 };
@@ -62,7 +70,10 @@ export class StormFx {
   /** Per render frame: storms from the server, server time `now` (ms), the camera and the player's feet. */
   /** `warnS`: how early the storm detector on your belt warns (s, shared/gear.ts stormWarnS); 0 without one. */
   update(dt: number, serverStorms: readonly Storm[], now: number, cam: { x: number; y: number; z: number }, me: { x: number; y: number; z: number }, warnS: number) {
-    if (summonLocal) {
+    if (summonLocal === 'here') {
+      summonLocal = false;
+      localStorms.push({ id: -1 - localStorms.length, x: me.x, z: me.z, r: 100, speed: 0.5, start: now - RAMP_MS, end: now + 90_000 });
+    } else if (summonLocal) {
       summonLocal = false;
       // Already building up, 180 m upwind: you see the wall from outside, then it rolls over you.
       localStorms.push({ id: -1 - localStorms.length, x: me.x - WIND.x * 180, z: me.z - WIND.z * 180, r: 100, speed: 4,
@@ -70,19 +81,26 @@ export class StormFx {
     }
     for (let i = localStorms.length - 1; i >= 0; i--) if (localStorms[i].end <= now) localStorms.splice(i, 1);
     const storms = localStorms.length ? [...serverStorms, ...localStorms] : serverStorms;
-    // The bunker keeps the dust out, and the columns aren't drawn from in there (they'd fog the rooms).
+    // The bunker keeps the dust out: no grit on the view and the locator works down there. But the storm
+    // still blows overhead: the wind (muffled underground, src/windSound.ts), the columns seen up through
+    // the skylight and out of the door (the post pass starts them where the view leaves the base), and the
+    // sand sifting in (src/world/baseSand.ts).
     const indoors = inBase(cam.x, cam.y, cam.z);
-    const here = indoors ? 0 : stormAt(storms, cam.x, cam.z, now);
-    this.level += (here - this.level) * (1 - Math.exp(-dt / TAU));
-    wind.local = this.level;
+    const outside = stormAt(storms, cam.x, cam.z, now);
+    const k = 1 - Math.exp(-dt / TAU);
+    this.outside += (outside - this.outside) * k;
+    this.level += ((indoors ? 0 : outside) - this.level) * k;
+    this.atBase += (stormAt(storms, BASE.x, BASE.z + ROOM_Z / 2, now) - this.atBase) * k;
+    wind.local = this.outside;
     stormHere.value = this.level;
+    stormIndoors.value = indoors ? 1 : 0;
 
     const g = stormGround.value;
     const ground = [0, 0, 0, 0];
     let n = 0;
     for (const s of storms) {
       const e = stormEnvelope(s, now);
-      if (e <= 0 || n >= STORM_SLOTS || indoors) continue;
+      if (e <= 0 || n >= STORM_SLOTS) continue;
       stormCentre(s, now, this.c);
       stormDiscs[n].value.set(this.c.x, this.c.z, s.r, e);
       ground[n++] = heightAt(this.c.x, this.c.z);
@@ -107,6 +125,10 @@ export class StormFx {
     } else {
       this.show('', false);
     }
+  }
+
+  summonHere() {
+    summonHere();
   }
 
   /** The locator bar is lost in the dust. */

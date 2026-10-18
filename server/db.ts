@@ -244,6 +244,21 @@ export function openDb(path: string) {
   const insertDropped = db.prepare('INSERT INTO dropped (id, kind, parts, x, z, dropped_at) VALUES (?, ?, ?, ?, ?, ?)');
   const deleteDropped = db.prepare('DELETE FROM dropped WHERE id = ?');
 
+  // Packs left where players died (shared/corpse.ts, server/corpses.ts); their items are box 'corpse<id>' (owner '').
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS corpses (
+      id      INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner   TEXT NOT NULL,                 -- browser ID of who died
+      color   INTEGER NOT NULL,
+      x       REAL NOT NULL,
+      z       REAL NOT NULL,
+      until   INTEGER NOT NULL               -- ms since epoch: gone then
+    );
+  `);
+  const allCorpses = db.prepare('SELECT id, color, x, z, until FROM corpses ORDER BY id');
+  const insertCorpse = db.prepare('INSERT INTO corpses (owner, color, x, z, until) VALUES (?, ?, ?, ?, ?)');
+  const deleteCorpse = db.prepare('DELETE FROM corpses WHERE id = ?');
+
   // Key/value settings (the debug menu's shared-clock shift survives server restarts).
   db.exec('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value REAL NOT NULL)');
   const getSetting = db.prepare('SELECT value FROM settings WHERE key = ?');
@@ -262,6 +277,15 @@ export function openDb(path: string) {
     insertDropped: (id: number, kind: string, parts: (string | null)[] | undefined, x: number, z: number) =>
       insertDropped.run(id, kind, parts ? JSON.stringify(parts) : null, x, z, Date.now()),
     deleteDropped: (id: number) => deleteDropped.run(id),
+    loadCorpses: () => allCorpses.all() as { id: number; color: number; x: number; z: number; until: number }[],
+    /** New pack row; returns its id. */
+    insertCorpse: (owner: string, color: number, x: number, z: number, until: number) =>
+      Number(insertCorpse.run(owner, color, x, z, until).lastInsertRowid),
+    /** A pack and whatever is still in it. */
+    deleteCorpse: (id: number) => tx(() => {
+      deleteCorpse.run(id);
+      clearBox.run('', `corpse${id}`);
+    }),
     loadBeds: () => allBeds.all() as { id: number; stage: number; growth: number }[],
     saveBed: (id: number, stage: number, growth: number) => upsertBed.run(id, stage, growth),
     deleteBed: (id: number) => deleteBed.run(id),

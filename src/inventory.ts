@@ -11,7 +11,7 @@
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
-import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, partsOf, quality, repaired, slotLabel, tryMove, type Boxes } from '../shared/gear.ts';
+import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tryMove, type Boxes } from '../shared/gear.ts';
 import { findSpot, HOTBAR, ITEMS, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
@@ -19,6 +19,7 @@ import { countMatching, RECIPES } from '../shared/crafting.ts';
 import { SCRAP_KINDS, type ScrapPiece } from '../shared/scrap.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
+import { isCorpseBox } from '../shared/corpse.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { isPlaceable } from '../shared/placed.ts';
 import { takePickup, ui } from './input';
@@ -401,7 +402,7 @@ export class InventoryHud {
         html += this.benchHtml(slots[0] ?? null);
         continue;
       }
-      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns"><button data-store="${box}">Store all</button><button data-all="${box}">Take all</button><button data-sort="${box}">Sort</button></span></div>`
+      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns">${isCorpseBox(box) ? '' : `<button data-store="${box}">Store all</button>`}<button data-all="${box}">Take all</button><button data-sort="${box}">Sort</button></span></div>`
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
     if (!this.storages.length) {
@@ -759,7 +760,7 @@ export class InventoryHud {
     else if (at.box === 'part') ok = this.net.fit(d.box, d.i, at.i);
     else ok = this.net.moveItem(d.box, d.i, at.box, at.i, d.half ? Math.ceil(it.n / 2) : undefined, d.r);
     if (ok) uiSound.plop();
-    else this.refuse(d.box, it, at.box);
+    else this.refuse(d.box, d.i, it, at.box);
   }
 
   /** Off every panel: on the dimmed backdrop (or out of the window). */
@@ -771,17 +772,17 @@ export class InventoryHud {
   /** Dragged out of the panels: drop it on the sand in front of you. */
   private drop(box: string, i: number) {
     if (box === 'part') return this.toast('Take it off');
-    if (box === 'equip' || box === 'bench') return this.toast('Take it off');
+    if (this.net.me.riding && lockedWhileRiding(box, i)) return this.toast('Get off first');
     if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast("Can't drop here");
     this.net.dropItem(box, i);
   }
 
   /** Say why a drop didn't go through. */
-  private refuse(from: string, it: Item, to: string) {
-    if (to === 'equip') this.toast(isGear(it.kind) && GEAR[it.kind].equip ? (repaired(it) ? 'Wrong slot' : 'Broken') : "Can't wear");
+  private refuse(from: string, fi: number, it: Item, to: string) {
+    if (this.net.me.riding && lockedWhileRiding(from, fi)) this.toast('Get off first');
+    else if (to === 'equip') this.toast(isGear(it.kind) && GEAR[it.kind].equip ? (repaired(it) ? 'Wrong slot' : 'Broken') : "Can't wear");
     else if (to === 'bench') this.toast(isGear(it.kind) ? 'Bench in use' : 'Gear only');
     else if (to === 'part') this.toast("That part doesn't go there");
-    else if (from === 'equip' && it.kind === 'backpack') this.toast('Empty the backpack first');
     else {
       this.toast("Doesn't fit there");
       uiSound.full();

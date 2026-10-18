@@ -26,13 +26,14 @@
 import { DIG, PILE, spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { cellKey, cellX, cellZ, pitchFromQ, stroke, type Point } from '../shared/dig.ts';
-import { bagShape, boxShape, digTool, fitPart, tryMove, unfitPart } from '../shared/gear.ts';
+import { bagShape, boxShape, digTool, fitPart, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
 import { DEBRIS_ITEMS, HOTBAR, roomFor, SCRAP_ITEMS, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
 import { growChest, isShared } from '../shared/storage.ts';
+import { corpseBox, CORPSES } from '../shared/corpse.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
@@ -115,6 +116,9 @@ export class Net {
   /** Loot in the world by id (shared/loot.ts), from the server. */
   loot = new Map<number, Loot>();
   onLoot?: () => void;
+
+  /** The packs left by the dead changed (shared/corpse.ts CORPSES). */
+  onCorpses?: () => void;
 
   /** Item boxes we can see (shared/storage.ts BoxId → slots): bag, equip, bench, bike and chests, from the server. */
   boxes: Record<string, Slots> = {};
@@ -199,7 +203,8 @@ export class Net {
    * server answers with both boxes. False if refused.
    */
   moveItem(from: string, fi: number, to: string, ti: number, n?: number, r?: boolean): boolean {
-    if (!this.connected || !tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId, r)) return false;
+    if (!this.connected || (this.me.riding && lockedWhileRiding(from, fi))) return false;
+    if (!tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId, r)) return false;
     this.growChests(from, to);
     this.send({ t: 'move', from, fi, to, ti, ...(n !== undefined ? { n } : {}), ...(r !== undefined ? { r } : {}) });
     this.onItems?.(from);
@@ -245,7 +250,7 @@ export class Net {
   dropItem(box: string, slot: number): boolean {
     const slots = this.boxes[box];
     const it = slots?.[slot];
-    if (!this.connected || !it || box === 'equip' || box === 'bench') return false;
+    if (!this.connected || !it || (this.me.riding && lockedWhileRiding(box, slot))) return false;
     slots[slot] = it.n > 1 ? { ...it, n: it.n - 1 } : null;
     this.growChests(box);
     this.send({ t: 'drop', box, slot });
@@ -545,6 +550,18 @@ export class Net {
     if (msg.t === 'items') {
       this.boxes[msg.box] = msg.slots;
       return this.onItems?.(msg.box, msg.got);
+    }
+    if (msg.t === 'corpses') {
+      if (msg.reset) {
+        for (const id of CORPSES.keys()) delete this.boxes[corpseBox(id)];
+        CORPSES.clear();
+      }
+      for (const id of msg.remove) {
+        CORPSES.delete(id);
+        delete this.boxes[corpseBox(id)];
+      }
+      for (const c of msg.add) CORPSES.set(c.id, c);
+      return this.onCorpses?.();
     }
     if (msg.t === 'loot') {
       if (msg.reset) this.loot.clear();
