@@ -6,12 +6,17 @@
 // Too slow: drop straight to the ratio that should fit (cost ∝ ratio²), and remember that the ratio
 // we left was too much. Steady 60 fps: creep back up, never past a ceiling that failed recently, so
 // looking at the sky and back doesn't pump the resolution up and down every few seconds.
+//
+// Not every slow frame is pixels: a CPU spike, or a browser throttled to 30 fps (battery saver), is
+// just as slow at any ratio, and dropping for it only pixelates the screen with nothing to climb back
+// on. So each drop is a probe: if the next window isn't clearly faster, the ratio goes back and drops
+// wait a while (longer each time it happens again).
 import type * as THREE from 'three/webgpu';
 
 /** Never render finer than this (retina screens report 2–3): one pixel per CSS pixel is plenty for
  *  this look, and it leaves headroom for 60 fps on laptops. */
 const MAX_RATIO = 1;
-const MIN_RATIO = 0.5;
+const MIN_RATIO = 0.65;
 /** Frame time we aim for, a little under 60 fps so vsync jitter doesn't count as slow. */
 const TARGET_MS = 1000 / 57;
 /** Frames slower than this are treated as slow when averaged (55 fps). */
@@ -27,6 +32,11 @@ const CEILING_RELAX_S = 60;
 const WARMUP_S = 3;
 /** Single frames longer than this (shader compiles, a hidden tab) are left out of the average. */
 const HITCH_MS = 100;
+/** A drop has to save at least this share of the frame time to count as helping. */
+const MIN_GAIN = 0.1;
+/** After a drop that didn't help, no drops for this long, doubling on each repeat up to the max. */
+const HOLD_S = 8;
+const HOLD_MAX_S = 120;
 
 export class DynamicResolution {
   ratio: number;
@@ -38,6 +48,10 @@ export class DynamicResolution {
   private elapsed = 0;
   private calm = 0;
   private warmup = WARMUP_S;
+  /** The drop being judged: the ratio, ceiling and frame time before it. */
+  private probe: { ratio: number; ceiling: number; ms: number } | null = null;
+  private hold = 0;
+  private holdS = HOLD_S;
 
   constructor(renderer: THREE.WebGPURenderer) {
     this.renderer = renderer;
@@ -59,11 +73,28 @@ export class DynamicResolution {
     const avg = this.frames > 0 ? this.ms / this.frames : 0;
     this.elapsed = this.ms = this.frames = 0;
     this.ceiling += (this.max - this.ceiling) * Math.min(1, span / CEILING_RELAX_S);
+    this.hold = Math.max(0, this.hold - span);
     if (avg === 0) return;
+
+    const probe = this.probe;
+    this.probe = null;
+    if (probe) {
+      if (avg > probe.ms * (1 - MIN_GAIN)) {
+        // Fewer pixels didn't help: not pixel-bound, so put the resolution back.
+        this.ceiling = probe.ceiling;
+        this.set(probe.ratio);
+        this.hold = this.holdS;
+        this.holdS = Math.min(HOLD_MAX_S, this.holdS * 2);
+        this.calm = 0;
+        return;
+      }
+      this.holdS = HOLD_S;
+    }
 
     if (avg > SLOW_MS) {
       this.calm = 0;
-      if (this.ratio <= MIN_RATIO) return;
+      if (this.ratio <= MIN_RATIO || this.hold > 0) return;
+      this.probe = { ratio: this.ratio, ceiling: this.ceiling, ms: avg };
       this.ceiling = Math.min(this.ceiling, this.ratio * 0.97);
       this.set(this.ratio * Math.max(0.7, Math.sqrt(TARGET_MS / avg)));
     } else if ((this.calm += span) >= CALM_S) {
