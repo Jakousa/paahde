@@ -43,6 +43,7 @@ import { serverBuild } from './update';
 export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' }>;
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
+import { F_STRIDE } from '../shared/guardians.ts';
 import type { Jet } from '../shared/jets.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 import { setPlaced } from '../shared/placed.ts';
@@ -162,6 +163,8 @@ export class Net {
   /** Recent 'bots' messages (guardians and drones, shared/guardians.ts), oldest first; src/world/botFrames.ts
    *  interpolates them. */
   bots: Extract<ServerMsg, { t: 'bots' }>[] = [];
+  /** The guardians' planted feet in the latest 'bots', as posts we can't walk through (shared/sim.ts collideLegs). */
+  private legPosts: number[] = [];
   /** A guardian's laser bolt was fired or burst (src/world/bolts.ts). */
   onBolt?: (msg: Extract<ServerMsg, { t: 'shot' | 'boom' | 'missile' | 'blast' }>) => void;
   /** A chat line from player `id` (us too), src/chat.ts. */
@@ -191,7 +194,7 @@ export class Net {
     this.seq++;
     this.prev = this.me;
     const drag = stormDrag(this.storms, this.me.x, this.me.y, this.me.z, this.serverTime());
-    this.me = step(this.me, input, yaw, drag);
+    this.me = step(this.me, input, yaw, drag, this.legPosts);
     this.pending.push({ seq: this.seq, input, yaw, drag });
     this.send({ t: 'input', seq: this.seq, input, yaw, pitch });
     this.predictDig(input, yaw, pitch);
@@ -649,6 +652,9 @@ export class Net {
     if (msg.t === 'bots') {
       this.bots.push(msg);
       if (this.bots.length > 12) this.bots.shift();
+      const f = msg.f ?? [], posts: number[] = [];
+      for (let i = 0; i + F_STRIDE <= f.length; i += F_STRIDE) if (f[i + 5] === 0) posts.push(f[i + 2], f[i + 3], f[i + 4]);
+      this.legPosts = posts;
       return;
     }
     if (msg.t === 'dug') {
@@ -694,7 +700,7 @@ export class Net {
       sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool, slideSpent: server.slideSpent,
       riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading, bike: server.bike,
     };
-    for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag);
+    for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag, this.legPosts);
     this.errorX += this.me.x - s.x;
     this.errorY += this.me.y - s.y;
     this.errorZ += this.me.z - s.z;

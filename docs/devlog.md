@@ -2,6 +2,23 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — Guardian feet are solid, stand on wrecks, and guardians keep apart
+
+- **The server steps the guardians' feet** (`stepFeet` in server/guardians.ts, same rules as the client gait: rest
+  spot, STEP_DIST, one foot or a diagonal pair at a time, swing times to keep up) and sends them in 'bots' (`f`:
+  id, leg, x, y, z, swing left). The client swings each leg to the spot the server picked, in the time it has left
+  (`followFeet`, src/world/guardians.ts). Crawlers keep their own client-side gait (tiny, quick, many).
+- **Planted feet block players**: posts LEG_POST_R × scale around the foot, LEG_POST_H × scale tall, in `step()`
+  (shared/sim.ts `collideLegs`, on foot and on the bike). The server passes the feet it has planted; the client the
+  planted ones in the latest 'bots'. Planted feet don't move, so prediction agrees except for a moment as a foot lifts
+  or lands near you (a small correction). Swinging feet, the upper legs and knees don't block.
+- **Feet stand on whatever is there** (`footTop`, shared/guardians.ts): sand, rock (already in heightAt), or the top of
+  the crash-site wreck and scrap capsules under the pad (the same hitboxes players collide with). A step up onto a
+  wreck lifts higher, and the foot sits level on it.
+- **Walkers of a kind steer apart** (SEP_R = 2·REST_R + STEP_DIST, × scale): repelled from each other on top of the
+  way they're heading (less while hunting, so two after you close in side by side), a crowded one standing about
+  walks off, and guardians pick patrol points away from each other.
+
 ## 2026-10-18 — World loot survives restarts
 
 - Finds and buried caches are kept in SQLite (`world_loot`, `loot_pending` in server/db.ts), so a deploy no longer
@@ -245,8 +262,9 @@ out in the open.
   origin at its joint) and `drone.glb`. Boxes stand in if they fail to load.
 - Debug menu (F3): "Guardian here" brings the nearest one 90 m from you; "Drone here" sends a drone for a minute, by
   day too. Drones by night need the shared clock at night ("Apply to all players").
-- Gaps: legs pass through wrecks and players (no collision with legs, only the crush under the body); feet stand on
-  sand only; guardians don't avoid each other.
+- Gaps: the upper legs and knees don't block players (planted feet do since 2026-10-18, "Guardian feet are solid",
+  which also put feet on top of wrecks and keeps guardians apart); bodies and shins still pass through wrecks and
+  rocks (only the feet step on top).
 
 ## 2026-10-17 — Crash-site debris can be picked up
 

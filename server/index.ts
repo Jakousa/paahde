@@ -628,7 +628,7 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.pitch = pitch as number;
   p.input = input & INPUT_MASK;
   const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
-  p.state = step(p.state, input & INPUT_MASK, p.yaw, drag);
+  p.state = step(p.state, input & INPUT_MASK, p.yaw, drag, guardians.posts);
   dig(p, input);
 }
 
@@ -667,7 +667,7 @@ setInterval(() => {
     if (Date.now() - p.lastInputAt > IDLE_MS) {
       p.input = 0;
       for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
-        p.state = step(p.state, 0, p.yaw);
+        p.state = step(p.state, 0, p.yaw, 0, guardians.posts);
         dig(p, 0);
       }
     } else {

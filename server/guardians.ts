@@ -11,8 +11,8 @@ import { BASE, inBase } from '../shared/base.ts';
 import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
 import {
   ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
-  CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, CRUSH_SLACK, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, GUARDIAN, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
-  NIGHT_SUN, NOTICE_R, REST_R, SEEK_GIVE_UP, STEP_DIST, SEEK_RATE, sweepAt, TRACK_RATE,
+  CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, CRUSH_SLACK, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, footTop, GUARDIAN, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
+  NIGHT_SUN, NOTICE_R, REST_R, restSpot, SEEK_GIVE_UP, SETTLE, STEP_DIST, STEP_MAX, STEP_MIN, SEEK_RATE, sweepAt, TRACK_RATE,
 } from '../shared/guardians.ts';
 import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MIN_R, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
@@ -82,6 +82,12 @@ const GUARDIAN_BACK_MS = 8 * 60_000;
 const GUARDIAN_BACK_FAR = 900;
 /** A rifle shot counts against a walker if it passes and ends within this far (m, × scale) of the body's centre. */
 const SHOT_SLACK = REST_R + 6;
+/** Walkers of a kind keep this far apart (m, × scale: their legs would tangle closer), steering away from each other
+ *  with weight SEP_W (SEP_HUNT_W while hunting, so two after the same prey still close in, side by side). One
+ *  standing about with another this close (fraction of SEP_R, summed) walks off. */
+const SEP_R = 2 * REST_R + STEP_DIST;
+const SEP_W = 1.6, SEP_HUNT_W = 0.8;
+const SEP_CROWDED = 0.35;
 
 /** What the bots need to know about a player (feet position; `safe` = just respawned, can't be hurt). */
 export type BotPlayer = { id: number; x: number; y: number; z: number; safe: boolean };
@@ -97,7 +103,12 @@ type Guardian = {
   missileAt: number;
   /** Weak points (shared/rifle.ts): how many, which are shot (bit mask); died when (-1 alive). */
   points: number; broken: number; deadAt: number;
+  /** Guardians' feet (crawlers' are only drawn, src/world/guardians.ts); yaw last tick; standing still for (s). */
+  feet: Foot[] | null; lastYaw: number; still: number;
 };
+
+/** A guardian's foot: planted at (x, y, z), or swinging there with `left` s to go of `dur`. */
+type Foot = { x: number; y: number; z: number; left: number };
 
 /** A walker killed by a rifle (`by` the shooter's id), for the server to drop its parts. */
 export type Kill = { kind: Kind | 'drone'; x: number; z: number; by: number };
@@ -176,10 +187,84 @@ export class GuardianServer {
       id: this.nextWalker++, kind, legs, x, z, yaw: rand(-Math.PI, Math.PI), speed: 0, home,
       tx: home.x, tz: home.z, guardUntil: 0, prey: -1, huntAt: 0, px: 0, pz: 0, knownAt: 0, calmUntil: 0, shotUntil: 0, bitAt: 0,
       aiming: false, ax: 0, ay: 0, az: 0, chargeAt: -1, firedAt: 0, missileAt: 0,
-      points: weakPoints(kind, legs).length, broken: 0, deadAt: -1,
+      points: weakPoints(kind, legs).length, broken: 0, deadAt: -1, feet: null, lastYaw: 0, still: 0,
     };
+    g.lastYaw = g.yaw;
+    if (kind === GUARDIAN) this.plantFeet(g);
     this.patrolPoint(g);
     return g;
+  }
+
+  /** Every foot on its rest spot (a new or teleported guardian). */
+  private plantFeet(g: Guardian) {
+    const sc = KINDS[g.kind].scale;
+    g.feet = [];
+    for (let i = 0; i < g.legs; i++) {
+      const f = restSpot(g.x, g.z, g.yaw, g.legs, i, sc, 0, 0, 0, { x: 0, y: 0, z: 0, left: 0 });
+      f.y = footTop(f.x, f.z, sc);
+      g.feet.push(f);
+    }
+  }
+
+  /**
+   * A guardian's gait (the client swings its legs to these feet): a planted foot stays put until its rest spot is
+   * STEP_DIST away (or, standing, SETTLE), then it steps to where its rest spot will be when it lands, led on by
+   * half a swing (the feet lead the body). Four legs step one at a time, diagonal pairs when hurrying; three one at
+   * a time. Swings are timed to keep up. It lands on whatever is there: sand, rock, wreck or scrap (footTop).
+   */
+  private stepFeet(g: Guardian, dt: number) {
+    const feet = g.feet;
+    if (!feet) return;
+    const sc = KINDS[g.kind].scale, T = Math.sqrt(sc), n = feet.length;
+    const vx = Math.sin(g.yaw) * g.speed, vz = Math.cos(g.yaw) * g.speed;
+    const turn = wrap(g.yaw - g.lastYaw) / dt;
+    g.lastYaw = g.yaw;
+    const footSpeed = g.speed + Math.abs(turn) * REST_R * sc;
+    g.still = footSpeed < 0.25 * T ? g.still + dt : 0;
+    const settling = g.still > 0.6 * T;
+    const together = n === 4 && footSpeed / T > 3.2 ? 2 : 1;
+    const dur = Math.min(STEP_MAX * T, Math.max(STEP_MIN * T, (0.8 * STEP_DIST * sc * together) / (Math.max(0.5 * T, footSpeed) * n)));
+    const group = (i: number) => (n === 4 ? i % 2 : i);
+    let swinging = 0, swingGroup = -1;
+    feet.forEach((f, i) => {
+      if (f.left > 0) f.left = Math.max(0, f.left - dt);
+      if (f.left > 0) {
+        swinging++;
+        swingGroup = group(i);
+      }
+    });
+    const p = { x: 0, z: 0 };
+    while (swinging < together) {
+      let best = -1, bestErr = (settling ? SETTLE : STEP_DIST) * sc;
+      feet.forEach((f, i) => {
+        if (f.left > 0 || (swingGroup >= 0 && group(i) !== swingGroup)) return;
+        restSpot(g.x, g.z, g.yaw, g.legs, i, sc, 0, 0, 0, p);
+        const err = Math.hypot(p.x - f.x, p.z - f.z);
+        if (err > bestErr) {
+          best = i;
+          bestErr = err;
+        }
+      });
+      if (best < 0) break;
+      const d = settling ? 1.1 * T : dur;
+      // Where the rest spot will be as it lands (turning with the body), and half a swing on.
+      const f = feet[best];
+      restSpot(g.x, g.z, g.yaw + turn * d, g.legs, best, sc, vx, vz, d * 1.5, f);
+      f.y = footTop(f.x, f.z, sc);
+      f.left = d;
+      swingGroup = group(best);
+      swinging++;
+    }
+  }
+
+  /** Planted guardian feet as posts players can't walk through (shared/sim.ts collideLegs): (x, sole y, z) each. */
+  posts: number[] = [];
+  private updatePosts() {
+    this.posts.length = 0;
+    for (const g of this.guardians) {
+      if (!g.feet || g.deadAt >= 0) continue;
+      for (const f of g.feet) if (f.left === 0) this.posts.push(f.x, f.y, f.z);
+    }
   }
 
   /** Crawlers out at the sites someone is near, gone from the ones everyone has left. */
@@ -220,9 +305,11 @@ export class GuardianServer {
     for (const g of this.guardians) {
       if (g.deadAt >= 0) continue;
       this.tickGuardian(g, dt, now, exposed, byId, bitten);
+      this.stepFeet(g, dt);
       if (KINDS[g.kind].gun) this.tickGun(g, now, byId, events);
     }
     this.tickBolts(dt, exposed, shot, events);
+    this.updatePosts();
     return { bitten, shot, blasted, events };
   }
 
@@ -381,6 +468,26 @@ export class GuardianServer {
       }
     }
     const hunting = g.prey >= 0;
+    // Others of its kind close by: it steers away from them (their legs would tangle).
+    const sep = SEP_R * k.scale;
+    let ax = 0, az = 0, crowd = 0;
+    for (const o of this.guardians) {
+      if (o === g || o.kind !== g.kind || o.deadAt >= 0) continue;
+      const ox = g.x - o.x, oz = g.z - o.z, d = Math.hypot(ox, oz);
+      if (d >= sep) continue;
+      const w = 1 - d / sep;
+      // Right on top of each other: apart by id.
+      ax += d > 1e-3 ? (ox / d) * w : Math.sin(g.id) * w;
+      az += d > 1e-3 ? (oz / d) * w : Math.cos(g.id) * w;
+      crowd += w;
+    }
+    if (crowd > SEP_CROWDED && !hunting && (now < g.guardUntil || Math.hypot(g.tx - g.x, g.tz - g.z) < sep)) {
+      // Standing about (or about to) with another too close: off somewhere clear of it.
+      const a = Math.hypot(ax, az) || 1;
+      g.guardUntil = 0;
+      g.tx = g.x + (ax / a) * sep;
+      g.tz = g.z + (az / a) * sep;
+    }
     const dx = g.tx - g.x, dz = g.tz - g.z, dist = Math.hypot(dx, dz);
     let want = 0;
     const near = g.kind === CRAWLER ? 0.6 : 6, ease = g.kind === CRAWLER ? 0.25 : 1.5;
@@ -390,7 +497,8 @@ export class GuardianServer {
     } else if (dist < (hunting ? Math.min(1, k.reach * 0.5) : near)) {
       if (!hunting) this.arrive(g, now);
     } else {
-      const turn = wrap(Math.atan2(dx, dz) - g.yaw);
+      const sw = hunting ? SEP_HUNT_W : SEP_W;
+      const turn = wrap(Math.atan2(dx / dist + ax * sw, dz / dist + az * sw) - g.yaw);
       const rate = (hunting ? k.huntTurn : k.turn) * dt;
       g.yaw = wrap(g.yaw + Math.max(-rate, Math.min(rate, turn)));
       // Walks on while roughly facing the way; turns on the spot when it isn't. Slows down to arrive.
@@ -435,7 +543,12 @@ export class GuardianServer {
       const a = rand(-Math.PI, Math.PI), r = rand(...PATROL[g.kind]);
       g.tx = g.home.x + Math.sin(a) * r;
       g.tz = g.home.z + Math.cos(a) * r;
-      if (Math.hypot(g.tx - BASE.x, g.tz - BASE.z) > BASE_KEEP_OUT + 10) return;
+      if (Math.hypot(g.tx - BASE.x, g.tz - BASE.z) <= BASE_KEEP_OUT + 10) continue;
+      // Not where another of its kind stands or is heading (guardians: crawlers swarm).
+      const sep = SEP_R * KINDS[g.kind].scale;
+      if (i < 9 && g.kind === GUARDIAN && this.guardians.some((o) => o !== g && o.kind === g.kind && o.deadAt < 0
+        && (Math.hypot(o.x - g.tx, o.z - g.tz) < sep || Math.hypot(o.tx - g.tx, o.tz - g.tz) < sep))) continue;
+      return;
     }
   }
 
@@ -693,6 +806,8 @@ export class GuardianServer {
     g.x = p.x + Math.sin(a) * 90;
     g.z = p.z + Math.cos(a) * 90;
     g.yaw = Math.atan2(p.x - g.x, p.z - g.z);
+    g.lastYaw = g.yaw;
+    this.plantFeet(g);
     g.tx = p.x;
     g.tz = p.z;
     g.prey = -1;
@@ -807,9 +922,10 @@ export class GuardianServer {
 
   /** The 'bots' message for a player at (x, z): guardians and drones within SEND_R, flagged when after them. */
   msg(time: number, id: number, x: number, z: number): ServerMsg {
-    const g: number[] = [], d: number[] = [];
+    const g: number[] = [], d: number[] = [], f: number[] = [];
     for (const o of this.guardians) {
       if (Math.hypot(o.x - x, o.z - z) > (o.kind === CRAWLER ? CRAWLER_SEND_R : SEND_R)) continue;
+      if (o.feet && o.deadAt < 0) o.feet.forEach((e, i) => f.push(o.id, i, r2(e.x), r2(e.y), r2(e.z), r2(e.left)));
       g.push(o.id, o.kind, o.legs, r2(o.x), r2(o.z), r3(o.yaw), o.prey < 0 ? 0 : o.prey === id ? 2 : 1,
         o.aiming ? r2(o.ax) : 0, o.aiming ? r2(o.ay) : 0, o.aiming ? r2(o.az) : 0, o.chargeAt >= 0 ? 1 : o.aiming ? 0 : -1,
         o.broken, o.deadAt < 0 ? 0 : Math.round((time - o.deadAt) / 100) / 10 + 0.01);
@@ -819,6 +935,6 @@ export class GuardianServer {
       d.push(o.id, r2(o.x), r2(o.y), r2(o.z), r3(o.yaw), r3(o.dx), r3(o.dy), r3(o.dz), o.lock < 0 ? 0 : o.lock === id ? 2 : 1,
         o.hurt, o.downAt < 0 ? 0 : Math.round((time - o.downAt) / 100) / 10 + 0.01, o.jammed ? 1 : 0);
     }
-    return { t: 'bots', time, g, d };
+    return { t: 'bots', time, g, d, f };
   }
 }

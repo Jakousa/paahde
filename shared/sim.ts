@@ -17,6 +17,7 @@
 import { BUNKER_SPAWN, baseCeiling, collideBase, terrainHidden } from './base.ts';
 import { collideCrash } from './crashsites.ts';
 import { bikeEngine, bikeTopSpeed } from './gear.ts';
+import { GUARDIAN, KINDS, LEG_POST_H, LEG_POST_R } from './guardians.ts';
 import { collideScrap } from './scrap.ts';
 import { WIND } from './dunes.ts';
 import { heightAt, onRock, WORLD_HALF } from './terrain.ts';
@@ -177,6 +178,31 @@ function blockRock(c: { x: number; z: number; vx: number; vz: number }, fx: numb
   c.vz = 0;
 }
 
+/** No walker feet near (step()'s default). */
+export const NO_LEGS: readonly number[] = [];
+
+/**
+ * Push a mover of `radius` out of the guardians' planted feet (shared/guardians.ts LEG_POST_R): `legs` holds a post
+ * per foot as (x, sole y, z). The server passes the feet it has planted; the client the planted ones in the latest
+ * 'bots' it has (src/net.ts). Planted feet don't move, so the two agree except for a moment as a foot lifts or lands.
+ */
+export function collideLegs(c: { x: number; z: number; vx: number; vz: number }, y: number, radius: number, legs: readonly number[]) {
+  const sc = KINDS[GUARDIAN].scale, R = LEG_POST_R * sc + radius, H = LEG_POST_H * sc;
+  for (let i = 0; i + 2 < legs.length; i += 3) {
+    const lx = legs[i], ly = legs[i + 1], lz = legs[i + 2];
+    if (y > ly + H || y + PLAYER_HEIGHT < ly) continue;
+    let ex = c.x - lx, ez = c.z - lz;
+    const d2 = ex * ex + ez * ez;
+    if (d2 >= R * R) continue;
+    const d = Math.sqrt(d2);
+    if (d > 1e-9) { ex /= d; ez /= d; } else { ex = 1; ez = 0; }
+    c.x = lx + ex * R;
+    c.z = lz + ez * R;
+    const vn = c.vx * ex + c.vz * ez;
+    if (vn < 0) { c.vx -= vn * ex; c.vz -= vn * ez; }
+  }
+}
+
 const tmpSlope = { gx: 0, gz: 0 };
 const flatSlope = { gx: 0, gz: 0 };
 const tmpCollide = { x: 0, z: 0, vx: 0, vz: 0 };
@@ -185,7 +211,7 @@ const tmpCollide = { x: 0, z: 0, vx: 0, vz: 0 };
  * Advance one tick. `yawQ` is the quantized camera yaw: yaw 0 looks down -Z, and increases
  * counter-clockwise seen from above (three.js camera rotation.y convention).
  */
-export function step(s: PlayerState, input: number, yawQ: number, storm = 0): PlayerState {
+export function step(s: PlayerState, input: number, yawQ: number, storm = 0, legs: readonly number[] = NO_LEGS): PlayerState {
   const yaw = yawFromQ(yawQ);
   const bikeDown = (input & BIKE) !== 0;
   if (s.riding && !s.bike) s = { ...s, riding: false }; // unequipped under you
@@ -193,7 +219,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0): Pl
     // Get on facing where you look, keeping your momentum; get off with the bike's.
     s = s.riding ? { ...s, riding: false } : { ...s, riding: true, heading: yaw, sliding: false, crouching: false };
   }
-  if (s.riding) return stepBike(s, input, bikeDown, storm);
+  if (s.riding) return stepBike(s, input, bikeDown, storm, legs);
   const fwd = (input & FORWARD ? 1 : 0) - (input & BACK ? 1 : 0);
   const strafe = (input & RIGHT ? 1 : 0) - (input & LEFT ? 1 : 0);
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
@@ -326,6 +352,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0): Pl
   c.vz = vz;
   const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP));
   const baseTop = collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP);
+  if (legs.length) collideLegs(c, y, PLAYER_RADIUS, legs);
   blockRock(c, s.x, s.z, Math.max(y, s.y));
   vx = c.vx;
   vz = c.vz;
@@ -389,7 +416,7 @@ const BIKE_LAUNCH_EPS = 0.03; // the ground must fall this far below the ballist
 const BIKE_LAND_KEEP = 0.92; // horizontal speed kept on a landing
 const BIKE_HARD_LANDING = 16;
 
-function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: number): PlayerState {
+function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: number, legs: readonly number[]): PlayerState {
   const top = bikeTopSpeed(s.bike - 1), engine = bikeEngine(s.bike - 1);
   const throttle = (input & FORWARD ? 1 : 0) - (input & BACK ? 1 : 0);
   const steer = (input & LEFT ? 1 : 0) - (input & RIGHT ? 1 : 0); // + turns left (heading grows counter-clockwise)
@@ -437,6 +464,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
   const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
   const baseTop = collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP);
+  if (legs.length) collideLegs(c, airborneY, BIKE_RADIUS, legs);
   blockRock(c, s.x, s.z, Math.max(airborneY, s.y));
   vx = c.vx;
   vz = c.vz;

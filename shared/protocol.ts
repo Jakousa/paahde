@@ -220,7 +220,9 @@ export type ServerMsg =
   // hurt: rifle hits taken (shared/rifle.ts DRONE_HP); down: 0 flying, else seconds since it was shot down + 0.01;
   // jammed: 1 brought down by a jammer (shared/jammer.ts), sinking gently instead of falling).
   // hunt / lock: 0 nobody, 1 someone else, 2 you.
-  | { t: 'bots'; time: number; g: number[]; d: number[] }
+  // f: [id, leg, x, y, z, left] per foot of each living guardian (shared/guardians.ts F_STRIDE): where the server has
+  // planted it (y its sole), or is swinging it to with `left` s to go (0 planted). Planted feet block players.
+  | { t: 'bots'; time: number; g: number[]; d: number[]; f?: number[] }
   // Guardian `g` fired laser bolt `id` from (x, y, z) along unit (dx, dy, dz) at server time `time`; it flies at
   // BOLT_SPEED (shared/guardians.ts) until it bursts ('boom': on the ground, a player, or out of range).
   | { t: 'shot'; id: number; g: number; time: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }

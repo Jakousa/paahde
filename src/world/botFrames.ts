@@ -1,7 +1,7 @@
 // Guardians and drones between server updates ('bots', ~10 Hz, shared/guardians.ts): drawn BOT_DELAY_MS in the
 // past and interpolated between the two messages around that time, like remote players (src/net.ts).
 import type { ServerMsg } from '../../shared/protocol.ts';
-import { CRAWLER, GUARDIAN, type Kind } from '../../shared/guardians.ts';
+import { CRAWLER, F_STRIDE, GUARDIAN, type Kind } from '../../shared/guardians.ts';
 
 type BotsMsg = Extract<ServerMsg, { t: 'bots' }>;
 
@@ -15,9 +15,27 @@ export const D_STRIDE = 12;
 export type GuardianFrame = {
   id: number; kind: Kind; legs: 3 | 4; x: number; z: number; yaw: number; hunt: number; ax: number; ay: number; az: number; gun: number;
   broken: number; dead: number;
+  /** Guardians: where the server has its feet, (x, y, z, s of swing left) per leg as of the frame's time; null for
+   *  crawlers (their gait is the client's own). */
+  feet: number[] | null;
 };
 /** hurt: rifle hits taken; down: 0 flying, else seconds since it was shot down; jammed: brought down by a jammer. */
 export type DroneFrame = { id: number; x: number; y: number; z: number; yaw: number; dx: number; dy: number; dz: number; lock: number; hurt: number; down: number; jammed: boolean };
+
+/** The feet in a 'bots' message by guardian id: (x, y, z, swing left) per leg, the swing counted on by `late` s. */
+function feetOf(msg: BotsMsg, late: number): Map<number, number[]> {
+  const m = new Map<number, number[]>(), f = msg.f ?? [];
+  for (let i = 0; i + F_STRIDE <= f.length; i += F_STRIDE) {
+    let a = m.get(f[i]);
+    if (!a) m.set(f[i], (a = []));
+    const leg = f[i + 1] * 4;
+    a[leg] = f[i + 2];
+    a[leg + 1] = f[i + 3];
+    a[leg + 2] = f[i + 4];
+    a[leg + 3] = Math.max(0, f[i + 5] - late);
+  }
+  return m;
+}
 
 const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
 
@@ -42,6 +60,8 @@ export function guardiansAt(msgs: readonly BotsMsg[], time: number): GuardianFra
   if (!ab) return [];
   const [a, b, t] = ab;
   const ia = index(a.g, G_STRIDE), out: GuardianFrame[] = [];
+  // Feet as of the message at or before `time` (they jump, not glide: a new spot starts a swing there).
+  const fa = feetOf(a, Math.max(0, time - a.time) / 1000), fb = a === b ? fa : feetOf(b, 0);
   for (let j = 0; j < b.g.length; j += G_STRIDE) {
     const g = b.g, i = ia.get(g[j]);
     const p = i === undefined ? g : a.g, k = i === undefined ? j : i;
@@ -54,6 +74,7 @@ export function guardiansAt(msgs: readonly BotsMsg[], time: number): GuardianFra
       ay: p[k + 10] >= 0 ? p[k + 8] + (g[j + 8] - p[k + 8]) * t : g[j + 8],
       az: p[k + 10] >= 0 ? p[k + 9] + (g[j + 9] - p[k + 9]) * t : g[j + 9],
       gun: g[j + 10], broken: g[j + 11], dead: g[j + 12],
+      feet: fa.get(g[j]) ?? fb.get(g[j]) ?? null,
     });
   }
   return out;

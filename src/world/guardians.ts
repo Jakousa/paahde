@@ -2,9 +2,13 @@
 // rig at different scales (KINDS). The server says where each body is
 // and which way it faces; the legs are procedural, here, on every client:
 //
+// - Guardians' feet are the server's (server/guardians.ts stepFeet, sent in 'bots'), so players collide with the same
+//   planted feet everywhere (shared/sim.ts collideLegs): when the server moves a foot, it swings there from where it
+//   is, in the time the server gives. Crawlers' gait is worked out here, by the same rules:
 // - Every foot has a rest spot on the ground (REST_R out along its hip socket, turned with the body, led ahead by
 //   the body's velocity). A planted foot stays exactly where it landed until its rest spot has drifted STEP_DIST
 //   away (or the body has stopped and it's a little off: it settles).
+// - A foot comes down on top of whatever is there: sand, rock, a wreck or scrap (shared/guardians.ts footTop).
 // - Gait: few feet in the air at once, chosen by who is furthest behind. Four legs walk one foot at a time (a slow,
 //   heavy wave gait) and diagonal pairs together when hunting; three legs always one at a time. A step lands
 //   ahead of the rest spot (by half a step's travel), so the feet lead the body instead of dragging behind it.
@@ -28,7 +32,9 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ANKLE, BODY_H, CRAWLER, FEMUR, GUN_MOUNT, GUN_PIVOT, KINDS, MUZZLE, REST_R, SOCKETS, STEP_DIST, TIBIA } from '../../shared/guardians.ts';
+import {
+  ANKLE, BODY_H, CRAWLER, FEMUR, footTop, GUN_MOUNT, GUN_PIVOT, KINDS, MUZZLE, REST_R, SETTLE, SOCKETS, STEP_DIST, STEP_MAX, STEP_MIN, TIBIA,
+} from '../../shared/guardians.ts';
 import { heightAt, normalAt } from '../../shared/terrain.ts';
 import { HIT_PAD, weakPoints, WRECK_S, WRECK_SINK, type WeakPoint } from '../../shared/rifle.ts';
 import type { GuardianFrame } from './botFrames.ts';
@@ -37,10 +43,7 @@ import { zaps } from './zaps.ts';
 /** Drawn within this distance (m), by kind. Lengths and times below are for scale 1; a walker of scale s uses
  *  lengths × s and times × √s (dynamic similarity: small legs swing quicker). */
 const SHOW_R = [2000, 260];
-/** A planted foot steps once its rest spot is STEP_DIST away (m, shared/guardians.ts); a stopped body settles feet off by SETTLE. */
-const SETTLE = 1.2;
-/** Swing time bounds (s) and the lift (m) for a step of length d: LIFT + LIFT_K·d. */
-const STEP_MIN = 0.6, STEP_MAX = 1.5;
+/** The lift (m) for a step of length d: LIFT + LIFT_K·d. (Step distance and swing times: shared/guardians.ts.) */
 const LIFT = 1.6, LIFT_K = 0.22;
 /** Body spring: stiffness, damping, and the dip when a foot lands (m/s). */
 const SPRING_K = 9, SPRING_C = 4.5, LAND_DIP = 0.9;
@@ -216,7 +219,10 @@ type Leg = {
   /** Diagonal pair (four legs) for the trot. */
   group: number;
   foot: THREE.Vector3;
+  /** Swinging from (its y on the ground), to (the server's spot, guardians); the sole's height without the lift. */
   from: THREE.Vector3;
+  to: THREE.Vector3;
+  ground: number;
   /** Swing progress 0..1, or -1 planted. */
   t: number;
   dur: number;
@@ -339,11 +345,14 @@ class Walker {
     SOCKETS[f.legs].forEach(([sx, sz], i) => {
       const l = Math.hypot(sx, sz);
       const leg: Leg = {
-        sx, sz, ox: sx / l, oz: sz / l, group: f.legs === 4 ? i % 2 : i, foot: new THREE.Vector3(), from: new THREE.Vector3(), t: -1, dur: 1,
+        sx, sz, ox: sx / l, oz: sz / l, group: f.legs === 4 ? i % 2 : i, foot: new THREE.Vector3(), from: new THREE.Vector3(), to: new THREE.Vector3(), ground: 0, t: -1, dur: 1,
         hip: instance(p.hip), femur: instance(p.femur), tibia: instance(p.tibia), footObj: instance(p.foot),
       };
       for (const o of [leg.hip, leg.femur, leg.tibia, leg.footObj]) o.scale.setScalar(this.s);
       this.rest(leg, 0, leg.foot);
+      if (f.feet && f.feet[i * 4] !== undefined) leg.foot.set(f.feet[i * 4], f.feet[i * 4 + 1], f.feet[i * 4 + 2]);
+      leg.to.copy(leg.foot);
+      leg.ground = leg.foot.y;
       this.root.add(leg.hip, leg.femur, leg.tibia, leg.footObj);
       this.legs.push(leg);
     });
@@ -469,7 +478,7 @@ class Walker {
     const lx = leg.ox * REST_R * this.s, lz = leg.oz * REST_R * this.s;
     out.x = this.x + lx * c + lz * s + this.vx * lead;
     out.z = this.z - lx * s + lz * c + this.vz * lead;
-    out.y = heightAt(out.x, out.z);
+    out.y = footTop(out.x, out.z, this.s);
     return out;
   }
 
@@ -489,10 +498,13 @@ class Walker {
       this.yaw = f.yaw;
       this.vx = this.vz = 0;
       this.y = heightAt(f.x, f.z) + BODY_H * this.s;
-      for (const leg of this.legs) {
+      this.legs.forEach((leg, i) => {
         leg.t = -1;
         this.rest(leg, 0, leg.foot);
-      }
+        if (f.feet && f.feet[i * 4] !== undefined) leg.foot.set(f.feet[i * 4], f.feet[i * 4 + 1], f.feet[i * 4 + 2]);
+        leg.to.copy(leg.foot);
+        leg.ground = leg.foot.y;
+      });
     }
     const turn = Math.atan2(Math.sin(f.yaw - this.yaw), Math.cos(f.yaw - this.yaw)) / dt;
     this.x = f.x;
@@ -505,63 +517,17 @@ class Walker {
     const footSpeed = speed + Math.abs(turn) * REST_R * S;
     this.still = footSpeed < 0.25 * T ? this.still + dt : 0;
 
-    // Gait: how many feet may swing at once, and how long a swing takes so they keep up (Froude speed: speed/√s).
     const n = this.legs.length;
-    const together = n === 4 && footSpeed / T > 3.2 ? 2 : 1;
-    const dur = Math.min(STEP_MAX * T, Math.max(STEP_MIN * T, (0.8 * STEP_DIST * S * together) / (Math.max(0.5 * T, footSpeed) * n)));
-
-    for (const leg of this.legs) {
-      if (leg.t < 0) continue;
-      leg.t = Math.min(1, leg.t + dt / leg.dur);
-      // The landing spot follows the rest spot as the body moves on, led by half the swing's travel.
-      this.rest(leg, leg.dur * 0.5, _p);
-      const e = leg.t * leg.t * (3 - 2 * leg.t);
-      const span = Math.hypot(_p.x - leg.from.x, _p.z - leg.from.z);
-      leg.foot.lerpVectors(leg.from, _p, e);
-      leg.foot.y += Math.sin(Math.PI * Math.pow(leg.t, 0.8)) * (LIFT * S + LIFT_K * span);
-      if (leg.t >= 1) {
-        leg.t = -1;
-        leg.foot.copy(_p);
-        this.vy -= LAND_DIP * T * Math.min(1, span / (STEP_DIST * S) + 0.3);
-        this.onFootfall({ x: _p.x, y: _p.y, z: _p.z, weight: Math.min(1, 0.4 + span / (STEP_DIST * S)), kind: this.kind, id: this.id });
-      }
-    }
-    // Who steps next: the planted foot furthest from its rest spot, if the gait allows.
-    let swinging = 0, group = -1;
-    for (const leg of this.legs) if (leg.t >= 0) {
-      swinging++;
-      group = leg.group;
-    }
-    while (swinging < together) {
-      let best: Leg | null = null, bestErr = 0;
-      for (const leg of this.legs) {
-        if (leg.t >= 0 || (group >= 0 && leg.group !== group)) continue;
-        this.rest(leg, 0, _p);
-        const err = Math.hypot(_p.x - leg.foot.x, _p.z - leg.foot.z);
-        const need = (this.still > 0.6 * T ? SETTLE : STEP_DIST) * S;
-        if (err > need && err > bestErr) {
-          best = leg;
-          bestErr = err;
-        }
-      }
-      if (!best) break;
-      best.t = 0;
-      best.dur = this.still > 0.6 * T ? 1.1 * T : dur;
-      best.from.copy(best.foot);
-      group = best.group;
-      swinging++;
-    }
+    if (f.feet) this.followFeet(f.feet, dt);
+    else this.gait(footSpeed, dt);
 
     // Body: over the feet's average ground, tilted to their plane, on a spring.
     let gy = 0, sp = 0, sr = 0, pp = 0, rr = 0;
     const c = Math.cos(this.yaw), s = Math.sin(this.yaw);
-    for (const leg of this.legs) {
-      const fy = leg.t >= 0 ? heightAt(leg.foot.x, leg.foot.z) : leg.foot.y;
-      gy += fy;
-    }
+    for (const leg of this.legs) gy += leg.ground;
     gy /= n;
     for (const leg of this.legs) {
-      const fy = (leg.t >= 0 ? heightAt(leg.foot.x, leg.foot.z) : leg.foot.y) - gy;
+      const fy = leg.ground - gy;
       const dx = leg.foot.x - this.x, dz = leg.foot.z - this.z;
       const lz = dx * s + dz * c, lx = dx * c - dz * s; // body frame: forward, side
       sp += fy * lz;
@@ -596,6 +562,97 @@ class Walker {
     this.aimGun(f, dt);
   }
 
+  /** Crawlers: their own gait (see the top of the file). */
+  private gait(footSpeed: number, dt: number) {
+    // Gait: how many feet may swing at once, and how long a swing takes so they keep up (Froude speed: speed/√s).
+    const n = this.legs.length, S = this.s, T = this.ts;
+    const together = n === 4 && footSpeed / T > 3.2 ? 2 : 1;
+    const dur = Math.min(STEP_MAX * T, Math.max(STEP_MIN * T, (0.8 * STEP_DIST * S * together) / (Math.max(0.5 * T, footSpeed) * n)));
+
+    for (const leg of this.legs) {
+      if (leg.t < 0) continue;
+      leg.t = Math.min(1, leg.t + dt / leg.dur);
+      // The landing spot follows the rest spot as the body moves on, led by half the swing's travel.
+      this.rest(leg, leg.dur * 0.5, _p);
+      const e = leg.t * leg.t * (3 - 2 * leg.t);
+      const span = Math.hypot(_p.x - leg.from.x, _p.z - leg.from.z);
+      leg.foot.lerpVectors(leg.from, _p, e);
+      leg.ground = leg.foot.y;
+      leg.foot.y += Math.sin(Math.PI * Math.pow(leg.t, 0.8)) * (LIFT * S + LIFT_K * span);
+      if (leg.t >= 1) {
+        leg.t = -1;
+        leg.foot.copy(_p);
+        leg.ground = _p.y;
+        this.vy -= LAND_DIP * T * Math.min(1, span / (STEP_DIST * S) + 0.3);
+        this.onFootfall({ x: _p.x, y: _p.y, z: _p.z, weight: Math.min(1, 0.4 + span / (STEP_DIST * S)), kind: this.kind, id: this.id });
+      }
+    }
+    // Who steps next: the planted foot furthest from its rest spot, if the gait allows.
+    let swinging = 0, group = -1;
+    for (const leg of this.legs) if (leg.t >= 0) {
+      swinging++;
+      group = leg.group;
+    }
+    while (swinging < together) {
+      let best: Leg | null = null, bestErr = 0;
+      for (const leg of this.legs) {
+        if (leg.t >= 0 || (group >= 0 && leg.group !== group)) continue;
+        this.rest(leg, 0, _p);
+        const err = Math.hypot(_p.x - leg.foot.x, _p.z - leg.foot.z);
+        const need = (this.still > 0.6 * T ? SETTLE : STEP_DIST) * S;
+        if (err > need && err > bestErr) {
+          best = leg;
+          bestErr = err;
+        }
+      }
+      if (!best) break;
+      best.t = 0;
+      best.dur = this.still > 0.6 * T ? 1.1 * T : dur;
+      best.from.copy(best.foot);
+      group = best.group;
+      swinging++;
+    }
+  }
+
+  /** Guardians: the feet go where the server puts them, each new spot a swing from where the foot is, landing in
+   *  the time the server has left for it (`feet`: x, y, z, s left per leg). */
+  private followFeet(feet: number[], dt: number) {
+    const S = this.s, T = this.ts;
+    this.legs.forEach((leg, i) => {
+      const x = feet[i * 4], y = feet[i * 4 + 1], z = feet[i * 4 + 2], left = feet[i * 4 + 3];
+      if (x === undefined) return;
+      if (Math.hypot(x - leg.to.x, z - leg.to.z) > 0.05 || Math.abs(y - leg.to.y) > 0.05) {
+        leg.to.set(x, y, z);
+        if (Math.hypot(x - leg.foot.x, z - leg.foot.z) > 40 * S) {
+          // Far off (it came into view mid-stride): just put it there.
+          leg.foot.copy(leg.to);
+          leg.ground = y;
+          leg.t = -1;
+          return;
+        }
+        leg.from.set(leg.foot.x, leg.ground, leg.foot.z);
+        leg.t = 0;
+        leg.dur = Math.max(0.3 * T, left > 0 ? left : 0.6 * T);
+      }
+      if (leg.t < 0) return;
+      leg.t = Math.min(1, leg.t + dt / leg.dur);
+      const e = leg.t * leg.t * (3 - 2 * leg.t);
+      const span = Math.hypot(leg.to.x - leg.from.x, leg.to.z - leg.from.z);
+      leg.foot.lerpVectors(leg.from, leg.to, e);
+      leg.ground = leg.foot.y;
+      // Up and over whatever is in the way: a step onto a wreck lifts higher.
+      const climb = Math.max(0, leg.to.y - leg.from.y);
+      leg.foot.y += Math.sin(Math.PI * Math.pow(leg.t, 0.8)) * (LIFT * S + LIFT_K * span + climb);
+      if (leg.t >= 1) {
+        leg.t = -1;
+        leg.foot.copy(leg.to);
+        leg.ground = leg.to.y;
+        this.vy -= LAND_DIP * T * Math.min(1, span / (STEP_DIST * S) + 0.3);
+        this.onFootfall({ x: leg.to.x, y: leg.to.y, z: leg.to.z, weight: Math.min(1, 0.4 + span / (STEP_DIST * S)), kind: this.kind, id: this.id });
+      }
+    });
+  }
+
   /**
    * Dead: twitches, then the legs give out one by one in servo jerks (feet skidding out), the body sinking in stages
    * towards the sand and tipping towards the legs that failed first, and a slam at the end. A function of the time
@@ -625,7 +682,7 @@ class Walker {
       this.rest(leg, 0, _p);
       const out = 1 + SPLAY * fail[i];
       leg.foot.set(this.x + (_p.x - this.x) * out, 0, this.z + (_p.z - this.z) * out);
-      leg.foot.y = heightAt(leg.foot.x, leg.foot.z);
+      leg.foot.y = leg.ground = footTop(leg.foot.x, leg.foot.z, S);
       tx += leg.ox * fail[i] * (1.2 - i / n);
       tz += leg.oz * fail[i] * (1.2 - i / n);
       if (!this.went[i] && t > this.failAt[i]) {
@@ -711,7 +768,9 @@ class Walker {
   private pose(leg: Leg, _dt: number) {
     _h.set(leg.sx, 0, leg.sz).applyMatrix4(this.body.matrixWorld);
     // Foot flat on the sand (tipped toes-down mid-swing), its +Z pointing away from the body.
-    normalAt(leg.foot.x, leg.foot.z, _n);
+    // On sand or rock, along its slope; on a wreck or scrap, level.
+    if (leg.ground > heightAt(leg.foot.x, leg.foot.z) + 0.2) _n.x = _n.z = 0, _n.y = 1;
+    else normalAt(leg.foot.x, leg.foot.z, _n);
     _d.set(leg.foot.x - this.x, 0, leg.foot.z - this.z).normalize();
     const air = leg.t >= 0 ? Math.sin(Math.PI * leg.t) : 0;
     _y.set(_n.x, _n.y, _n.z).lerp(UP, air).addScaledVector(_d, -0.5 * air).normalize();

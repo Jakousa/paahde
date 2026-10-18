@@ -22,6 +22,8 @@
 // its line of sight (behind a dune crest, into the base) or outrun it, and after LOSE_MS in the dark it lets you go
 // and leaves you be for IGNORE_MS.
 import { inBase } from './base.ts';
+import { collideCrash } from './crashsites.ts';
+import { collideScrap } from './scrap.ts';
 import { heightAt } from './terrain.ts';
 import { HEAT_MAX } from './water.ts';
 
@@ -41,13 +43,56 @@ export const SOCKETS: Record<3 | 4, [number, number][]> = {
 };
 /** A foot at rest stands this far out from the body's centre, along its socket's direction. */
 export const REST_R = 14;
-/** A planted foot steps once its rest spot is this far away (src/world/guardians.ts). */
+/** A planted foot steps once its rest spot is this far away (server/guardians.ts for guardians, src/world/guardians.ts
+ *  for crawlers); a stopped body settles feet that are off by SETTLE. Lengths × scale. */
 export const STEP_DIST = 9;
-/** A guardian's foot landing within this (m, horizontally, × scale) of you crushes you. The feet are client IK, so
+export const SETTLE = 1.2;
+/** Swing time bounds (s, × √scale: small legs swing quicker). */
+export const STEP_MIN = 0.6, STEP_MAX = 1.5;
+/** A guardian's foot landing within this (m, horizontally, × scale) of you crushes you. The landing is animated on the client, so
  *  your client tells the server ('stomped'); it checks the guardian is alive and that one of its feet could reach you
  *  (within (REST_R + STEP_DIST) × scale + CRUSH_SLACK of its centre). */
 export const FOOT_CRUSH_R = 1.5;
 export const CRUSH_SLACK = 8;
+/** Half the foot pad's width (m, × scale): it stands on the highest thing under it (footTop). */
+export const FOOT_HALF = 1.1;
+
+/**
+ * Where a guardian's feet are is the server's call (server/guardians.ts steps them, the client swings its legs to
+ * them), so both sides know the planted ones exactly. A planted foot is a post players can't walk through
+ * (shared/sim.ts collideLegs): LEG_POST_R (m, × scale) around the foot, from its sole up LEG_POST_H (× scale), the
+ * foot pad and the near-vertical shin over it. Feet in the air don't block.
+ */
+export const LEG_POST_R = 1.2;
+export const LEG_POST_H = 12;
+/** 'bots' feet (`f`): guardian id, leg, x, y (the sole), z, seconds of swing left (0 planted). */
+export const F_STRIDE = 6;
+
+const _top = { x: 0, z: 0, vx: 0, vz: 0 };
+/** The top of whatever a walker's foot (of `scale`) put down at (x, z) stands on: sand, rock (part of heightAt), or
+ *  the scrap and crash-site wrecks under its pad (their collision capsules, shared/scrap.ts, shared/crashsites.ts). */
+export function footTop(x: number, z: number, scale: number): number {
+  let top = heightAt(x, z);
+  const h = FOOT_HALF * scale;
+  for (let i = 0; i < 5; i++) {
+    _top.x = x + (i === 1 ? h : i === 2 ? -h : 0);
+    _top.z = z + (i === 3 ? h : i === 4 ? -h : 0);
+    // From far above, nothing pushes: the result is the highest capsule top under the point.
+    top = Math.max(top, collideScrap(_top, 1e6, 1e6, 0, 0), collideCrash(_top, 1e6, 1e6, 0, 0));
+  }
+  return top;
+}
+
+/** A foot's rest spot for leg `i` of a `legs`-legged walker of `scale` at (x, z) facing `yaw`, led `lead` s along
+ *  (vx, vz), into `out` (x, z only). */
+export function restSpot<T extends { x: number; z: number }>(x: number, z: number, yaw: number, legs: 3 | 4, i: number, scale: number, vx: number, vz: number, lead: number, out: T): T {
+  const [sx, sz] = SOCKETS[legs][i], l = Math.hypot(sx, sz);
+  const lx = (sx / l) * REST_R * scale, lz = (sz / l) * REST_R * scale;
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  out.x = x + lx * c + lz * s + vx * lead;
+  out.z = z - lx * s + lz * c + vz * lead;
+  return out;
+}
 
 /**
  * The walker kinds. `scale` multiplies every length above (the model is built at 1). Speeds in m/s (a player walks
