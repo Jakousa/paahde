@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+  <!-- The landing page's backdrop (src/landing.ts): golden hour over the dunes, palette from docs/look.md. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2226"/>
+      <stop offset=".28" stop-color="#4a3a3a"/>
+      <stop offset=".46" stop-color="#8a4a33"/>
+      <stop offset=".56" stop-color="#d0692a"/>
+      <stop offset=".63" stop-color="#f7a440"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="1040" cy="566" r="700" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffd890" stop-opacity=".95"/>
+      <stop offset=".12" stop-color="#ffb347" stop-opacity=".7"/>
+      <stop offset=".4" stop-color="#f08a1c" stop-opacity=".25"/>
+      <stop offset="1" stop-color="#f08a1c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sun" cx="0" cy="0" r="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".75" stop-color="#fff4d0"/>
+      <stop offset="1" stop-color="#ffd27a"/>
+    </radialGradient>
+    <linearGradient id="haze" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e09050"/>
+      <stop offset="1" stop-color="#c8703a"/>
+    </linearGradient>
+    <linearGradient id="far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b85a2a"/>
+      <stop offset="1" stop-color="#8a3f1c"/>
+    </linearGradient>
+    <linearGradient id="mid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7a3418"/>
+      <stop offset="1" stop-color="#4a2414"/>
+    </linearGradient>
+    <linearGradient id="near" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a2414"/>
+      <stop offset="1" stop-color="#22100a"/>
+    </linearGradient>
+    <linearGradient id="lit" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#c46a24"/>
+      <stop offset=".7" stop-color="#e8902e"/>
+      <stop offset="1" stop-color="#ffb24a"/>
+    </linearGradient>
+    <linearGradient id="litfar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#c46a24" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#ffb24a"/>
+    </linearGradient>
+    <linearGradient id="dust" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7a440" stop-opacity="0"/>
+      <stop offset=".5" stop-color="#f0a050" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#f7a440" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="7"/>
+      <feColorMatrix values="0 0 0 0 .1  0 0 0 0 .05  0 0 0 0 .02  0 0 0 .55 -.18"/>
+    </filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6"/></filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <rect width="1600" height="900" fill="url(#halo)"/>
+  <circle cx="1040" cy="566" r="128" fill="#ffe0a0" opacity=".5" filter="url(#soft)"/>
+  <circle cx="1040" cy="566" r="104" fill="url(#sun)"/>
+
+  <!-- Far mesas and a walker in the haze. -->
+  <g fill="url(#haze)" opacity=".9">
+    <path d="M70 572 L92 532 L104 530 L112 512 L196 510 L204 530 L232 536 L250 574 Z"/>
+    <path d="M300 574 L314 552 L362 550 L378 576 Z"/>
+    <path d="M1330 572 L1352 540 L1366 538 L1374 526 L1430 524 L1440 542 L1468 548 L1486 574 Z"/>
+  </g>
+  <g fill="none" stroke="#d07a40" stroke-width="3.2" stroke-linecap="round" opacity=".85">
+    <path d="M520 498 L498 566 M520 498 L512 570 M534 500 L552 568 M534 500 L566 562"/>
+  </g>
+  <path d="M506 494 Q526 478 548 494 L540 504 L512 504 Z" fill="#d07a40" opacity=".9"/>
+  <circle cx="527" cy="500" r="2" fill="#ffd890"/>
+
+  <!-- Far dune range, hazy. -->
+  <path d="M0 586 C160 564 300 560 440 574 C560 586 640 566 760 560 C880 554 960 576 1100 580 C1260 584 1420 560 1600 568 L1600 900 L0 900 Z" fill="url(#haze)"/>
+  <rect y="540" width="1600" height="80" fill="url(#dust)"/>
+
+  <!-- Second range: sharp crests, shadowed towards us, the faces turned to the sun lit. -->
+  <path d="M0 640 C120 628 260 610 380 598 C440 612 520 628 640 628 C780 628 880 614 980 616 C1120 620 1240 604 1350 590 C1420 604 1500 616 1600 620 L1600 900 L0 900 Z" fill="url(#far)"/>
+  <path d="M380 598 C440 612 520 628 640 628 C560 630 480 632 420 634 C404 622 392 610 380 598 Z" fill="url(#litfar)" opacity=".8"/>
+  <path d="M1180 606 C1240 604 1300 598 1350 590 C1340 606 1320 620 1290 632 C1250 622 1210 614 1180 606 Z" fill="url(#litfar)" opacity=".9"/>
+  <path d="M0 640 C120 628 260 610 380 598 C440 612 520 628 640 628 C780 628 880 614 980 616 C1120 620 1240 604 1350 590 C1420 604 1500 616 1600 620" fill="none" stroke="#ffc46a" stroke-width="1.6" opacity=".75"/>
+
+  <!-- Mid dunes. -->
+  <path d="M0 700 C80 690 170 676 240 666 C300 684 380 700 520 704 C680 708 820 690 960 668 C1030 656 1080 646 1120 638 C1190 660 1300 690 1440 694 C1520 696 1570 692 1600 690 L1600 900 L0 900 Z" fill="url(#mid)"/>
+  <path d="M960 668 C1030 656 1080 646 1120 638 C1108 664 1080 690 1040 712 C1012 696 984 682 960 668 Z" fill="url(#lit)" opacity=".9"/>
+  <path d="M240 666 C300 684 380 700 520 704 C430 704 340 702 270 700 C262 688 250 676 240 666 Z" fill="url(#litfar)" opacity=".7"/>
+  <path d="M0 700 C80 690 170 676 240 666 C300 684 380 700 520 704 C680 708 820 690 960 668 C1030 656 1080 646 1120 638 C1190 660 1300 690 1440 694 C1520 696 1570 692 1600 690" fill="none" stroke="#ffb24a" stroke-width="2" opacity=".75"/>
+  <!-- A lone figure just below the crest. -->
+  <g fill="#2a120a">
+    <circle cx="1098" cy="636" r="2.6"/>
+    <path d="M1095 639 L1101 639 L1102 650 L1100 658 L1098.5 658 L1098 651 L1097 658 L1095.5 658 L1094 650 Z"/>
+    <path d="M1101 641 L1106 647" stroke="#2a120a" stroke-width="1.4"/>
+  </g>
+
+  <!-- The near dune: a long crest rising to the right, its sunlit face a broad wedge, ripples everywhere. -->
+  <path d="M0 800 C200 786 420 772 620 776 C820 780 980 786 1140 770 C1280 756 1400 738 1520 722 C1560 734 1590 748 1600 756 L1600 900 L0 900 Z" fill="url(#near)"/>
+  <path d="M1000 784 C1140 770 1280 756 1400 738 C1440 732 1490 726 1520 722 C1500 760 1470 810 1430 900 L1250 900 C1180 852 1100 812 1000 784 Z" fill="url(#lit)"/>
+  <path d="M0 800 C200 786 420 772 620 776 C820 780 980 786 1140 770 C1280 756 1400 738 1520 722 C1560 734 1590 748 1600 756" fill="none" stroke="#ffc46a" stroke-width="2.4" opacity=".85"/>
+  <g fill="none" stroke="#7a3a1c" stroke-width="1.4" opacity=".55">
+    <path d="M30 822 C150 812 260 806 380 808 S 620 800 760 810 S 1000 820 1080 808"/>
+    <path d="M0 846 C130 834 260 828 400 832 S 660 824 800 836 S 1040 850 1140 836"/>
+    <path d="M0 872 C140 860 280 856 420 860 S 700 852 840 864 S 1080 878 1180 866"/>
+    <path d="M60 896 C200 886 320 882 460 886 S 740 880 880 890 S 1100 900 1180 896"/>
+  </g>
+  <g fill="none" stroke="#a8541e" stroke-width="1.2" opacity=".6">
+    <path d="M1060 790 C1180 778 1300 766 1420 746"/>
+    <path d="M1110 808 C1220 796 1330 784 1440 762"/>
+    <path d="M1150 828 C1250 818 1350 806 1450 784"/>
+    <path d="M1180 852 C1270 842 1360 832 1446 812"/>
+    <path d="M1200 878 C1280 870 1360 862 1440 842"/>
+  </g>
+
+  <!-- Sand blowing off the crests. -->
+  <g filter="url(#soft)" fill="#ffd08a">
+    <ellipse cx="1190" cy="636" rx="80" ry="5" opacity=".45"/>
+    <ellipse cx="1300" cy="640" rx="120" ry="7" opacity=".2"/>
+    <ellipse cx="1590" cy="718" rx="90" ry="7" opacity=".45"/>
+    <ellipse cx="450" cy="596" rx="70" ry="4" opacity=".35"/>
+    <ellipse cx="1410" cy="588" rx="60" ry="4" opacity=".35"/>
+  </g>
+
+  <rect width="1600" height="900" filter="url(#grain)" opacity=".5"/>
+</svg>

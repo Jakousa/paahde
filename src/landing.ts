@@ -6,11 +6,9 @@
 const css = `
 #landing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; color: #e8d2ae;
   background: #4a2414; font-family: var(--mono); overflow: hidden; }
-#landing .bg { position: absolute; inset: -3%; background: url(./landing.jpg) center 70% / cover;
-  filter: contrast(1.08) saturate(1.04) brightness(.95); animation: landing-drift 60s ease-in-out infinite alternate; }
+#landing .bg { position: absolute; inset: -3%; background: url(./landing.svg) 65% bottom / cover; animation: landing-drift 60s ease-in-out infinite alternate; }
 #landing .shade { position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(180deg, rgba(43, 34, 38, .55) 0%, rgba(43, 34, 38, 0) 45%),
-    radial-gradient(ellipse 75% 65% at 50% 55%, transparent 55%, rgba(42, 18, 10, .55) 100%); }
+  background: radial-gradient(ellipse 80% 70% at 50% 55%, transparent 60%, rgba(30, 14, 8, .45) 100%); }
 #landing canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 #landing.over .bg, #landing.over .shade { display: none; }
 #landing.over { background: rgba(17, 10, 6, 0.82); }
