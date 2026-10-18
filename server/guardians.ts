@@ -24,6 +24,7 @@ import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK
 import { sunElevation } from '../shared/sun.ts';
 import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
 import { indoors } from '../shared/shelters.ts';
+import { flank } from './pack.ts';
 
 export const TICK_HZ = 10;
 /** Players get guardians and drones within this distance (m), crawlers within CRAWLER_SEND_R. */
@@ -163,6 +164,8 @@ export class GuardianServer {
   private spottedAt = new Map<number, number>();
   /** Player positions last tick, for leading the missiles. */
   private lastPos = new Map<number, { x: number; z: number }>();
+  /** Player velocities (smoothed), for the crawler packs heading them off. */
+  private vel = new Map<number, { x: number; z: number; vx: number; vz: number }>();
   private sites = allCrashSites();
   /** Guardian ground: the sites guardians roam. */
   private ground = this.sites.filter((s) => s.level === 2);
@@ -299,6 +302,7 @@ export class GuardianServer {
     const shot: number[] = [], blasted: number[] = [], events: BoltEvent[] = [];
     const byId = new Map(players.map((p) => [p.id, p]));
     const exposed = players.filter((p) => !p.safe && !indoors(p.x, p.y, p.z));
+    this.track(dt, players);
     this.swarm(players);
     this.wrecks(now);
     const lit = this.tickDrones(dt, now, tod, players, exposed, byId);
@@ -312,6 +316,23 @@ export class GuardianServer {
     this.tickBolts(dt, exposed, shot, events);
     this.updatePosts();
     return { bitten, shot, blasted, events };
+  }
+
+  private track(dt: number, players: BotPlayer[]) {
+    const k = 1 - Math.exp(-dt * 6);
+    for (const p of players) {
+      const v = this.vel.get(p.id);
+      if (!v) {
+        this.vel.set(p.id, { x: p.x, z: p.z, vx: 0, vz: 0 });
+        continue;
+      }
+      const vx = (p.x - v.x) / dt, vz = (p.z - v.z) / dt;
+      // A respawn or a teleport isn't a velocity.
+      if (Math.hypot(vx, vz) < 25) (v.vx += (vx - v.vx) * k), (v.vz += (vz - v.vz) * k);
+      v.x = p.x;
+      v.z = p.z;
+    }
+    if (this.vel.size > players.length) for (const id of this.vel.keys()) if (!players.some((p) => p.id === id)) this.vel.delete(id);
   }
 
   /** Missiles: guardians shell their prey, and the nearest ones whoever a drone's beam is on; ones that have landed burst. */
@@ -454,8 +475,15 @@ export class GuardianServer {
         g.prey = -1;
         this.patrolPoint(g);
       } else {
-        g.tx = g.px;
-        g.tz = g.pz;
+        if (g.kind === CRAWLER) {
+          // The pack on the same prey fans out round them, heading them off (server/pack.ts).
+          const pack = this.guardians.filter((o) => o.kind === CRAWLER && o.deadAt < 0 && o.prey === g.prey).sort((a, b) => a.id - b.id);
+          const v = this.vel.get(g.prey);
+          [g.tx, g.tz] = flank(g.x, g.z, g.px, g.pz, v?.vx ?? 0, v?.vz ?? 0, k.hunt, pack.indexOf(g), pack.length, 8, 1);
+        } else {
+          g.tx = g.px;
+          g.tz = g.pz;
+        }
         // A guardian over you only crushes you if a foot comes down on you (stomp); a crawler bites.
         if (g.kind === CRAWLER && Math.hypot(p.x - g.x, p.z - g.z) < k.reach) {
           if (now - g.bitAt >= BITE_MS) {

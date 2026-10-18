@@ -6,8 +6,8 @@
 // - Guardians: a few rare giants roaming from crash site to crash site, standing guard now and then. Come within
 //   sight of one (or get caught in a drone's searchlight near one) and it hunts you, slower than you can walk; if one
 //   of its feet comes down on you, you're crushed (FOOT_CRUSH_R; under its body, between the legs, you're safe).
-// - Crawlers: player-sized spiders swarming every crash site someone is near. Faster than you walk (sprint away),
-//   one bite kills (BITE_HEAT fills the heat meter, shared/water.ts); they give up after a short chase or once
+// - Crawlers: player-sized spiders swarming every crash site someone is near. Faster than you run (slide away),
+//   the pack spreads out and comes at you from all sides (server/pack.ts); one bite kills (BITE_HEAT fills the heat meter, shared/water.ts); they give up after a short chase or once
 //   you're well away from their site.
 //
 // While it hunts you and sees you, a guardian's cannon (hung under its body, turning to follow you) charges for
@@ -95,13 +95,13 @@ export function restSpot<T extends { x: number; z: number }>(x: number, z: numbe
 }
 
 /**
- * The walker kinds. `scale` multiplies every length above (the model is built at 1). Speeds in m/s (a player walks
- * 6, sprints 11), turn rates in rad/s; `sight`: notices someone out in the open this close (m), from any side;
+ * The walker kinds. `scale` multiplies every length above (the model is built at 1). Speeds in m/s (a player runs
+ * 7.5, slides 15), turn rates in rad/s; `sight`: notices someone out in the open this close (m), from any side;
  * `reach`: gets this close (m, horizontally) to its prey: a crawler bites, a guardian stands over you; `gun`: has the cannon.
  */
 export const KINDS = [
   { name: 'guardian', scale: 1.5, patrol: 2.8, hunt: 5.2, turn: 0.3, huntTurn: 0.6, sight: 65, reach: 7.5, gun: true },
-  { name: 'crawler', scale: 0.11, patrol: 2.6, hunt: 7.4, turn: 3, huntTurn: 7, sight: 12, reach: 1.5, gun: false },
+  { name: 'crawler', scale: 0.11, patrol: 2.6, hunt: 11, turn: 3, huntTurn: 9, sight: 12, reach: 1.5, gun: false },
 ] as const;
 export const GUARDIAN = 0, CRAWLER = 1;
 export type Kind = typeof GUARDIAN | typeof CRAWLER;

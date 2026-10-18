@@ -11,8 +11,10 @@
 //   legs up, REAR_MS) → slam → RECOVER (stands, RECOVER_MS: the window to run or shoot) → HUNT. It gives up past
 //   GIVE_UP or after CHASE_MS, and leaves that player be for a while. LEAVE: walks away from everyone, out of sight.
 // - The brood: while it fights, every so often its sac opens (BIRTH_MS) and a clutch of spiderlings drops out from
-//   under it. They run at whoever is out in the open (spread over everyone), crouch close by, then spring at where
-//   their prey will be: a sidestep while they crouch, or a sprint, gets you out of it. They last until they're shot
+//   under it. They run at whoever is out in the open (spread over everyone), faster than a run, the ones on the same
+//   person fanning out to come at them from all sides (server/pack.ts); close by they crouch, then spring at where
+//   their prey will be, taking turns (SP_TURNS) so one leap follows another: a sidestep while one crouches, or a
+//   slide out of the ring, gets you out of it. They last until they're shot
 //   (one hit: shared/bosses.ts MINION) or it dies; once it has lost everyone (CALM_MS) they curl up one by one. Their bites, like the stabs, are worked out as the drawn spiderling lands (DRAW_DELAY).
 // - A crowd (server/bossCrowd.ts: everyone within CROWD_R) makes it harder: a quicker rear, a shorter stand after
 //   the slam, a slightly faster charge, and more spiderlings out at once, in bigger clutches, more often. One player
@@ -28,6 +30,7 @@ import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
+import { flank } from './pack.ts';
 
 /** The client draws bosses this far (ms) behind the server (src/world/botFrames.ts BOT_DELAY_MS). */
 const DRAW_DELAY = 250;
@@ -56,7 +59,10 @@ const REAR_PER = 0.1, RECOVER_PER = 0.25, CHARGE_PER = 0.015;
 const BROOD_MAX = 6, BROOD_PER = 0.5, CLUTCH = 3, CLUTCH_PER = 0.5, CLUTCH_MS = 10_000, CLUTCH_FASTER = 0.3, FIRST_CLUTCH_MS = 3000;
 /** Spiderlings go for people within SP_SIGHT (m) of them; each one already after someone counts as SP_SHARE m more
  *  to them, so a crowd gets spread out; they turn at SP_TURN (rad/s) and keep SP_GAP (m) apart. */
-const SP_SIGHT = 160, SP_SHARE = 12, SP_TURN = 7, SP_GAP = 1.6;
+const SP_SIGHT = 160, SP_SHARE = 12, SP_TURN = 8, SP_GAP = 1.6;
+/** In leaping range, a spiderling waits its turn: not within SP_TURNS ms of another on the same prey crouching, and
+ *  circles them meanwhile (unless they're right on it). SP_WIDE: how far out (m) the pack fans to come at them. */
+const SP_TURNS = 500, SP_WIDE = 10;
 
 type Foot = { x: number; y: number; z: number; left: number; up: boolean };
 type Pending = { at: number; slam: boolean; hole: boolean; x: number; y: number; z: number; x2: number; z2: number };
@@ -412,6 +418,13 @@ function brood(b: Boss, st: St, dt: number, now: number, n: number, players: Bos
 
   const chasing = new Map<number, number>();
   for (const l of st.brood) if (l.prey >= 0 && l.st !== SP_DIE) chasing.set(l.prey, (chasing.get(l.prey) ?? 0) + 1);
+  // Who's after whom (by id, for each one's side of them), and when someone's prey last had one crouch at them.
+  const packs = new Map<number, number[]>(), pounced = new Map<number, number>();
+  for (const l of st.brood) {
+    if (l.prey < 0 || l.st === SP_DIE || l.st === SP_DROP) continue;
+    if (l.st === SP_RUN) packs.set(l.prey, [...(packs.get(l.prey) ?? []), l.id]);
+    if (l.st === SP_CROUCH || l.st === SP_LEAP) pounced.set(l.prey, Math.max(pounced.get(l.prey) ?? 0, l.stAt));
+  }
   const killed = new Set(out.kills.map((k) => k.id));
   st.brood = st.brood.filter((l) => {
     const since = now - l.stAt;
@@ -446,7 +459,8 @@ function brood(b: Boss, st: St, dt: number, now: number, n: number, players: Bos
         // them): crouch, aimed there. So walking away only puts it off; a sprint, or a sidestep as it crouches, doesn't.
         const v = st.vel.get(p.id), lead = (CROUCH_MS + LEAP_MS + DRAW_DELAY) / 1000;
         const ax = p.x + (v ? v.vx * lead : 0) - l.x, az = p.z + (v ? v.vz * lead : 0) - l.z, len = Math.hypot(ax, az);
-        if (len <= LEAP_MAX || d < LEAP_R) {
+        const waiting = d >= LEAP_R && now - (pounced.get(p.id) ?? -Infinity) < SP_TURNS;
+        if ((len <= LEAP_MAX || d < LEAP_R) && !waiting) {
           const k = Math.min(1, LEAP_MAX / Math.max(len, 1e-3));
           l.fx = l.x;
           l.fz = l.z;
@@ -454,14 +468,22 @@ function brood(b: Boss, st: St, dt: number, now: number, n: number, players: Bos
           l.az = l.z + az * k;
           if (len > 0.1) l.yaw = Math.atan2(ax, az);
           ling(l, SP_CROUCH, now);
+          pounced.set(p.id, now);
           return true;
         }
-        // Cutting them off: headed for where they're going, more so further off.
-        const cut = Math.min(1.5, (0.6 * d) / SP_SPEED);
-        heading = Math.atan2(p.x + (v ? v.vx * cut : 0) - l.x, p.z + (v ? v.vz * cut : 0) - l.z);
-        // Zigzagging in, further off.
-        if (d > 10) heading += Math.sin(now * 0.006 + l.id * 1.7) * 0.35;
-        want = SP_SPEED;
+        if (len <= LEAP_MAX + 2) {
+          // Another's turn to spring: round them at leaping range, ready.
+          const ccw = l.id % 2 ? 1 : -1;
+          heading = Math.atan2(l.x - p.x, l.z - p.z) + ccw * (Math.PI / 2 + (d - LEAP_MAX * 0.8) * 0.15);
+          want = SP_SPEED * 0.8;
+        } else {
+          // Heading them off, each from its own side (server/pack.ts), zigzagging in further off.
+          const pack = packs.get(p.id) ?? [l.id];
+          const [tx, tz] = flank(l.x, l.z, p.x, p.z, v?.vx ?? 0, v?.vz ?? 0, SP_SPEED, Math.max(0, pack.indexOf(l.id)), pack.length, SP_WIDE);
+          heading = Math.atan2(tx - l.x, tz - l.z);
+          if (d > 14) heading += Math.sin(now * 0.006 + l.id * 1.7) * 0.25;
+          want = SP_SPEED;
+        }
       } else if (Math.hypot(b.x - l.x, b.z - l.z) > 25) {
         // Nobody: back to her, milling about under her.
         heading = Math.atan2(b.x - l.x, b.z - l.z);

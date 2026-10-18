@@ -10,8 +10,10 @@
 // broken: it falls (die), drifting on and tumbling, and the wreck cratering the sand where it lands (wreck).
 //
 // Gun drones (shared/carrier.ts DRONE_*) drop out of the bay while anyone is about: each picks the person fewest of
-// them are on, circles them low, and every few seconds hovers, aims ('daim': the spot where they stand) and after
-// DRONE_CHARGE fires there ('dshot'): still standing there, they're dead. It keeps at it until it's shot down
+// them are on, circles them low (the ones on the same person spread evenly round them), and every few seconds
+// hovers, aims ('daim') and after DRONE_CHARGE fires there ('dshot'): still standing there, they're dead. They take
+// turns (DRONE_TURNS), and while another has them painted, the next aims at where they're running to instead
+// (crossfire: neither standing still nor running straight on saves them, a sidestep or a slide does). It keeps at it until it's shot down
 // (one hit: shared/bosses.ts MINION, hitMinion); with nobody left, or once the carrier has
 // lost everyone (CALM_S, one by one), it flies home into the bay. The carrier dying drops
 // them all.
@@ -63,13 +65,18 @@ const DRONE_FIRST = 4;
 const DRONE_SEEK_R = 260;
 /** Drone flight: top speeds (m/s) hunting and going home, acceleration (m/s²), circling radius (m) and height over
  *  the sand (m), the reach it aims from (m), and the wait between shots (s). */
-const DRONE_SPEED = 15;
-const DRONE_HOME_SPEED = 20;
-const DRONE_ACC = 16;
+const DRONE_SPEED = 20;
+const DRONE_HOME_SPEED = 22;
+const DRONE_ACC = 24;
 const DRONE_ORBIT = 20;
 const DRONE_HEIGHT = 9;
 const DRONE_REACH = 50;
 const DRONE_RELOAD: [number, number] = [2.5, 4];
+/** Circling speed (rad/s); gun drones on the same person start aiming at least DRONE_TURNS ms apart, and one aiming
+ *  while another's aim is on them leads them by DRONE_LEAD s (where they'll be when it fires). */
+const DRONE_SPIN = 0.7;
+const DRONE_TURNS = 600;
+const DRONE_LEAD = DRONE_CHARGE + 0.15;
 /** An emptied slot stays empty this long (ms), so the view sees one drone go before the next takes its slot. */
 const SLOT_REST = 1500;
 /** Without a target this long (s), its drones are called home, one every RECALL_S. */
@@ -219,6 +226,15 @@ function tickDrones(b: Boss, st: St, dt: number, now: number, players: BossPlaye
     }
   }
 
+  // The drones on each person, by slot (each spreads to its share of the circle round them), and when one of them
+  // last began to aim at them.
+  const flights = new Map<number, Drone[]>(), aimedAt = new Map<number, number>();
+  for (const d of st.drones) {
+    if (d.target < 0 || d.phase === 'out' || d.phase === 'home') continue;
+    flights.set(d.target, [...(flights.get(d.target) ?? []), d]);
+    if (d.phase === 'aim') aimedAt.set(d.target, Math.max(aimedAt.get(d.target) ?? 0, d.until - DRONE_CHARGE * 1000));
+  }
+  for (const f of flights.values()) f.sort((a, c) => a.slot - c.slot);
   st.drones = st.drones.filter((d) => {
     let prey = d.target >= 0 ? players.find((p) => p.id === d.target) ?? null : null;
     if (prey && (prey.safe || Math.hypot(prey.x - b.x, prey.z - b.z) > DRONE_SEEK_R * 1.4)) prey = null;
@@ -251,18 +267,30 @@ function tickDrones(b: Boss, st: St, dt: number, now: number, players: BossPlaye
     if (d.phase === 'out') (gx = bay.x + st.vx), (gy = bay.y - 14), (gz = bay.z + st.vz);
     else if (d.phase === 'home') (gx = bay.x), (gy = bay.y), (gz = bay.z), (top = DRONE_HOME_SPEED);
     else if (d.phase === 'hunt' && prey) {
-      d.orbit += d.turn * 0.45 * dt;
+      // Round them the way the first on them goes, each easing to its even share of the circle.
+      const f = flights.get(prey.id), lead = f?.[0];
+      if (f && lead && lead !== d) {
+        d.turn = lead.turn;
+        const want = lead.orbit + (2 * Math.PI * f.indexOf(d)) / f.length;
+        d.orbit += Math.atan2(Math.sin(want - d.orbit), Math.cos(want - d.orbit)) * Math.min(1, dt * 1.2);
+      }
+      d.orbit += d.turn * DRONE_SPIN * dt;
       const r = DRONE_ORBIT + 6 * Math.sin(now / 1700 + d.slot);
       gx = prey.x + Math.sin(d.orbit) * r;
       gz = prey.z + Math.cos(d.orbit) * r;
       gy = Math.max(heightAt(gx, gz), prey.y) + DRONE_HEIGHT + 2 * Math.sin(now / 900 + d.slot * 2);
       // Reloaded, close enough and in sight: stop and aim at where they stand.
-      if (now >= d.until && Math.hypot(prey.x - d.x, prey.y - d.y, prey.z - d.z) < DRONE_REACH && lineOfSight(d.x, d.y, d.z, prey.x, prey.y + 1, prey.z)) {
+      const last = aimedAt.get(prey.id);
+      if (now >= d.until && (last === undefined || now - last >= DRONE_TURNS)
+        && Math.hypot(prey.x - d.x, prey.y - d.y, prey.z - d.z) < DRONE_REACH && lineOfSight(d.x, d.y, d.z, prey.x, prey.y + 1, prey.z)) {
+        // Another's aim still on them: this one paints where they're running to.
+        const tr = last !== undefined && now - last < DRONE_CHARGE * 1000 ? st.tracks.get(prey.id) : undefined;
         d.phase = 'aim';
         d.until = now + DRONE_CHARGE * 1000;
-        d.lx = prey.x;
-        d.ly = prey.y + 1;
-        d.lz = prey.z;
+        d.lx = prey.x + (tr ? tr.vx * DRONE_LEAD : 0);
+        d.lz = prey.z + (tr ? tr.vz * DRONE_LEAD : 0);
+        d.ly = (tr ? heightAt(d.lx, d.lz) : prey.y) + 1;
+        aimedAt.set(prey.id, now);
         out.events.push({ msg: { t: 'bossFx', id: b.id, e: 'daim', time: Math.round(now), x: r3(d.lx), y: r3(d.ly), z: r3(d.lz), a: [d.slot, DRONE_CHARGE] }, x: d.x, z: d.z });
       }
     }
