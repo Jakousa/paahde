@@ -20,7 +20,7 @@ import { type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
 import { capture, actionHeld, takePickup, tools, ui } from '../input.ts';
 import { isBound, type Action } from '../bindings.ts';
 import { teardownSound } from '../teardownSound.ts';
-import { lowestOffset, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
+import { animateMarker, lowestOffset, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi } from './ui.ts';
 import { uiSound } from '../uiSound.ts';
 
@@ -121,8 +121,6 @@ const SOLO = new URLSearchParams(location.search).has('debug');
 
 type Phase = 'idle' | 'walk' | 'work';
 
-const HOVER_MAT = new THREE.MeshBasicNodeMaterial({ color: 0xffffff });
-
 export class TeardownView {
   private ui: TeardownUi;
   private phase: Phase = 'idle';
@@ -157,7 +155,6 @@ export class TeardownView {
   private nextAt = 0;
   /** Markers drawn highlighted this frame (the hovered step, or what blocks the hovered thing). */
   private lit = new Set<Step>();
-  private markerMat: THREE.Material | null = null;
 
   /** The table camera: 0 = the normal view, 1 = fixed above the table; eased both ways. */
   private camK = 0;
@@ -252,7 +249,6 @@ export class TeardownView {
     this.announced.clear();
     this.pending.clear();
     for (const s of site.junk.slots) if (slotOpen(s)) this.announced.add(s);
-    this.markerMat ??= site.junk.steps[0]?.marker.material as THREE.Material ?? null;
     tools.frozen = true;
     if (document.pointerLockElement) ui.debugFreed = true; // freed on purpose: don't open the Esc menu (src/menu.ts)
     document.exitPointerLock();
@@ -284,10 +280,7 @@ export class TeardownView {
     if (!site) return;
     this.endInteraction();
     // Nothing of the mode stays on screen: no markers, no part rings.
-    for (const s of site.junk.steps) {
-      s.marker.visible = false;
-      if (this.markerMat) s.marker.material = this.markerMat;
-    }
+    for (const s of site.junk.steps) s.marker.visible = false;
     for (const s of site.junk.slots) s.ring.visible = false;
     // Takes still waiting for an answer count as given (the server has them).
     for (const [i] of this.pending) this.applyTook(i, true);
@@ -935,17 +928,19 @@ export class TeardownView {
       const b = focus.step.after.filter((x) => !x.done);
       for (const s of b.length ? b : [focus.step]) this.lit.add(s);
     } else if (focus?.type === 'part' && !slotOpen(focus.slot)) for (const s of focus.slot.piece.holds) if (!s.done) this.lit.add(s);
-    const wob = 1 + 0.12 * Math.sin(this.pulse * 6);
     for (const s of j.steps) {
       const lit = this.lit.has(s);
       s.marker.visible = working && !s.done && (stepReady(s) || lit);
-      s.marker.scale.setScalar(lit ? 1.15 + 0.1 * Math.sin(this.pulse * 10) : wob * 0.7);
-      if (this.markerMat) s.marker.material = lit ? HOVER_MAT : this.markerMat;
+      if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);
     }
     const hoverSlot = focus?.type === 'part' ? focus.slot : null;
     for (const s of j.slots) {
-      s.ring.visible = working && slotOpen(s);
+      const open = slotOpen(s);
+      s.ring.visible = working && open;
       s.ring.scale.setScalar((s === hoverSlot ? 1.18 : 1) + 0.08 * Math.sin(this.pulse * 5));
+      // Parts glow a little all the time, and pulse once they are free to take.
+      const glow = open ? PART_GLOW + 0.3 + 0.2 * Math.sin(this.pulse * 3) + (s === hoverSlot ? 0.35 : 0) : PART_GLOW;
+      for (const m of s.glow) m.emissiveIntensity = glow;
     }
 
     if (working) this.updateUi(dt);

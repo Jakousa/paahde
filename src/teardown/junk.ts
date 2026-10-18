@@ -32,7 +32,8 @@ export interface Step {
   /** The part of `obj` that turns / tilts with progress. */
   spin: THREE.Object3D;
   hit: THREE.Mesh;
-  marker: THREE.Mesh;
+  /** Small indicator of what to do (makeMarker); shown when the step is ready. */
+  marker: THREE.Group;
   /** Height of `obj`'s origin above the ground once it has fallen (before the machine's scale). */
   floorY: number;
   mat?: THREE.MeshStandardNodeMaterial;
@@ -52,6 +53,8 @@ export interface Slot {
   /** Which of the machine's parts this is (shared/machine.ts machineParts), the same on every client and the server. */
   index: number;
   ring: THREE.Mesh;
+  /** The part model's materials, tinted with its rarity colour (emissiveIntensity pulses). */
+  glow: THREE.MeshStandardMaterial[];
   taken: boolean;
   /** The part's own holder; free to take once its holds are done. */
   piece: Piece;
@@ -101,6 +104,8 @@ export function lowestOffset(root: THREE.Object3D): number | null {
 // ---- part models -------------------------------------------------------------------------------------------
 
 const PART_SIZE = 0.5;
+/** Emissive strength of a part still inside the machine (a free one pulses above it, teardown.ts). */
+export const PART_GLOW = 0.35;
 /** Parts drawn smaller than PART_SIZE across. */
 const SIZE: Partial<Record<PartId, number>> = { relay: 0.3 };
 /** Height along the axis (model +y) of the parts that sit on a shaft, once scaled: where their centre is. */
@@ -144,8 +149,112 @@ const PALETTE = [
 const UP = new THREE.Vector3(0, 1, 0);
 const HIT_MAT = new THREE.MeshBasicMaterial();
 const MARKER_MAT = new THREE.MeshBasicNodeMaterial({ color: 0xffb050 });
-const MARKER_GEO = new THREE.TorusGeometry(0.19, 0.018, 6, 28).rotateX(Math.PI / 2);
-const WIRE_MARKER_GEO = new THREE.SphereGeometry(0.07, 10, 8);
+const MARKER_HOT_MAT = new THREE.MeshBasicNodeMaterial({ color: 0xffffff });
+
+// ---- step markers ------------------------------------------------------------------------------------------
+// Small, and each kind of action reads differently: beads for clicks (one per click left, they tap), a turning
+// arc with an arrowhead for bolts, a double arrow sweeping across for wires, an arrow pulling away for pry tabs,
+// arrows rising for lifts (one per player needed).
+
+const BEAD_GEO = new THREE.SphereGeometry(0.03, 8, 6);
+const ARC_GEO = new THREE.TorusGeometry(0.13, 0.014, 6, 24, Math.PI * 1.5);
+const HEAD_GEO = new THREE.ConeGeometry(0.045, 0.1, 8).rotateZ(-Math.PI / 2).translate(0, -0.13, 0);
+const SHAFT_GEO = new THREE.BoxGeometry(0.2, 0.014, 0.014);
+const HEAD_X_GEO = new THREE.ConeGeometry(0.04, 0.08, 8);
+const PRY_SHAFT_GEO = new THREE.BoxGeometry(0.014, 0.014, 0.14);
+const UP_SHAFT_GEO = new THREE.BoxGeometry(0.014, 0.1, 0.014).translate(0, 0.05, 0);
+
+function markerMesh(parent: THREE.Object3D, geo: THREE.BufferGeometry, x = 0, y = 0, z = 0) {
+  const m = new THREE.Mesh(geo, MARKER_MAT);
+  m.position.set(x, y, z);
+  m.raycast = () => {};
+  m.userData.ignoreBounds = true;
+  parent.add(m);
+  return m;
+}
+
+/** The marker for one step, in the step's frame (+y is the face normal). `userData.pips` are the click beads. */
+function makeMarker(kind: StepKind, need: number, players: number): THREE.Group {
+  const g = new THREE.Group();
+  g.userData.ignoreBounds = true;
+  if (kind === 'screw' || kind === 'clip') {
+    const pips: THREE.Mesh[] = [];
+    for (let i = 0; i < need; i++) {
+      const a = (i / need) * Math.PI * 2;
+      pips.push(markerMesh(g, BEAD_GEO, need > 1 ? Math.cos(a) * 0.1 : 0, 0, need > 1 ? Math.sin(a) * 0.1 : 0));
+    }
+    g.userData.pips = pips;
+  } else if (kind === 'bolt') {
+    const turn = new THREE.Group();
+    turn.rotation.x = Math.PI / 2;
+    markerMesh(turn, ARC_GEO);
+    markerMesh(turn, HEAD_GEO);
+    g.add(turn);
+    g.userData.turn = turn;
+  } else if (kind === 'wire') {
+    const sweep = new THREE.Group();
+    markerMesh(sweep, SHAFT_GEO);
+    markerMesh(sweep, HEAD_X_GEO, 0.12, 0, 0).rotation.z = -Math.PI / 2;
+    markerMesh(sweep, HEAD_X_GEO, -0.12, 0, 0).rotation.z = Math.PI / 2;
+    g.add(sweep);
+    g.userData.sweep = sweep;
+  } else if (kind === 'pry') {
+    const pull = new THREE.Group();
+    markerMesh(pull, PRY_SHAFT_GEO, 0, 0, 0.07);
+    markerMesh(pull, HEAD_X_GEO, 0, 0, 0.17).rotation.x = Math.PI / 2;
+    g.add(pull);
+    g.userData.pull = pull;
+  } else {
+    const up = new THREE.Group();
+    for (let i = 0; i < players; i++) {
+      const x = (i - (players - 1) / 2) * 0.12;
+      markerMesh(up, UP_SHAFT_GEO, x, 0, 0);
+      markerMesh(up, HEAD_X_GEO, x, 0.14, 0);
+    }
+    g.add(up);
+    g.userData.up = up;
+  }
+  return g;
+}
+
+const _wp = new THREE.Vector3();
+const _wq = new THREE.Quaternion();
+const _sa = new THREE.Vector3();
+const _sb = new THREE.Vector3();
+
+/** Per frame: pulse and move the marker of `step` (time `t`), white when `lit`; `cam` is needed to turn the wire's
+ *  arrow across the wire as it is seen. */
+export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Camera) {
+  const m = step.marker;
+  const u = m.userData;
+  if (u.lit !== lit) {
+    u.lit = lit;
+    m.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = lit ? MARKER_HOT_MAT : MARKER_MAT; });
+  }
+  m.scale.setScalar(lit ? 1.25 : 1 + 0.08 * Math.sin(t * 6));
+  const tap = Math.pow(Math.max(0, Math.sin(t * 7)), 4);
+  if (u.pips) {
+    const left = Math.max(0, step.need - Math.floor(step.progress));
+    (u.pips as THREE.Mesh[]).forEach((p, i) => {
+      p.visible = i < left;
+      p.scale.setScalar(1 + 0.7 * Math.pow(Math.max(0, Math.sin(t * 7 - i * 0.9)), 4));
+    });
+  } else if (u.turn) u.turn.rotation.z = -t * 3.2;
+  else if (u.pull) u.pull.position.z = tap * 0.1;
+  else if (u.up) u.up.position.y = tap * 0.08;
+  else if (u.sweep) {
+    // Across the wire as seen on screen: the arrow faces the camera, its shaft at right angles to the wire.
+    step.obj.getWorldPosition(_wp);
+    const d = u.dir as THREE.Vector3;
+    _sa.copy(_wp).project(cam);
+    _sb.copy(d).transformDirection(step.obj.matrixWorld).multiplyScalar(0.2).add(_wp).project(cam);
+    const ang = Math.atan2(_sb.y - _sa.y, (_sb.x - _sa.x) * (cam as THREE.PerspectiveCamera).aspect) + Math.PI / 2;
+    m.parent!.getWorldQuaternion(_wq).invert().multiply(cam.getWorldQuaternion(new THREE.Quaternion()));
+    m.quaternion.copy(_wq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), ang));
+    (u.sweep as THREE.Group).position.x = Math.sin(t * 7) * 0.06;
+    m.scale.setScalar(lit ? 1.25 : 1);
+  }
+}
 
 interface BayOpts {
   /** Pry tab on the front edge (+z). */
@@ -269,18 +378,17 @@ export class Kit {
 
   // -- steps ------------------------------------------------------------------------------------------------
   private reg(kind: StepKind, label: string, g: THREE.Group, spin: THREE.Object3D, hitGeo: THREE.BufferGeometry, need: number,
-    after: Step[], floorY: number, mat?: THREE.MeshStandardNodeMaterial, markerGeo: THREE.BufferGeometry = MARKER_GEO): Step {
+    after: Step[], floorY: number, mat?: THREE.MeshStandardNodeMaterial, players = 1, wireDir?: THREE.Vector3): Step {
     const hit = new THREE.Mesh(hitGeo, HIT_MAT);
     hit.visible = false; // never drawn, but still hit by the pointer ray
     hit.position.y = 0.05;
     g.add(hit);
-    const marker = new THREE.Mesh(markerGeo, MARKER_MAT);
-    marker.position.y = 0.06;
+    const marker = makeMarker(kind, need, players);
+    marker.position.y = kind === 'lift' ? 0.2 : 0.1;
     marker.visible = false;
-    marker.raycast = () => {};
-    marker.userData.ignoreBounds = true;
+    if (wireDir) marker.userData.dir = wireDir;
     g.add(marker);
-    const step: Step = { kind, label, need, players: 1, progress: 0, done: false, after, obj: g, spin, hit, marker, floorY, mat };
+    const step: Step = { kind, label, need, players, progress: 0, done: false, after, obj: g, spin, hit, marker, floorY, mat };
     hit.userData.target = { type: 'step', step } satisfies Target;
     this.g.add(g);
     this.steps.push(step);
@@ -331,9 +439,7 @@ export class Kit {
     const { g, spin } = this.stepGroup(pos, nrm);
     this.mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.05, 12), 'dark', 0, 0.025, 0, g);
     this.mesh(new THREE.TorusGeometry(0.11, 0.028, 8, 20), 'yellow', 0, 0.15, 0, spin);
-    const s = this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.22, 8, 6), seconds, after, 0.1);
-    s.players = players;
-    return s;
+    return this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.22, 8, 6), seconds, after, 0.1, undefined, players);
   }
   /** Wire from the first point to the last, a ring lug at each end: swipe across it to cut. */
   wire(label: string, pts: V[], key: MatKey = 'red', after: Step[] = [], r = 0.035): Step {
@@ -351,7 +457,7 @@ export class Kit {
     }
     const spin = new THREE.Group();
     g.add(spin);
-    return this.reg('wire', label, g, spin, new THREE.TubeGeometry(rel, 12, Math.max(0.1, r * 2), 5), 1, after, 0.03, mat, WIRE_MARKER_GEO);
+    return this.reg('wire', label, g, spin, new THREE.TubeGeometry(rel, 12, Math.max(0.1, r * 2), 5), 1, after, 0.03, mat, 1, rel.getTangent(0.5));
   }
 
   private basis(nrm: V): [THREE.Vector3, THREE.Vector3] {
@@ -426,7 +532,7 @@ export class Kit {
     holder.position.set(...pos);
     holder.rotation.set(...rot);
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(0.34, 0.02, 6, 36).rotateX(Math.PI / 2),
+      new THREE.TorusGeometry(0.27, 0.014, 6, 36).rotateX(Math.PI / 2),
       new THREE.MeshBasicNodeMaterial({ color: RARITY[tier].color }),
     );
     ring.position.y = 0.02;
@@ -434,12 +540,30 @@ export class Kit {
     ring.raycast = () => {}; // a marker, never a click target
     ring.userData.ignoreBounds = true;
     holder.add(ring);
-    const slot: Slot = { part, tier, index, ring, taken: false, piece: { obj: holder, holds, released: false, floorY: 0, pop: [0, 1, 0] } };
+    const slot: Slot = { part, tier, index, ring, taken: false, glow: [], piece: { obj: holder, holds, released: false, floorY: 0, pop: [0, 1, 0] } };
     holder.userData.target = { type: 'part', slot } satisfies Target;
     this.g.add(holder);
     this.slots.push(slot);
     loadPart(part, tier).then(
-      (m) => { m.traverse((o) => { o.castShadow = true; }); holder.add(m); },
+      (m) => {
+        m.traverse((o) => {
+          o.castShadow = true;
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          // The part glows in its rarity colour (own material copies: the model is shared); teardown.ts pulses it.
+          const own = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).map((x) => {
+            const c = x.clone() as THREE.MeshStandardMaterial;
+            if (c.emissive) {
+              c.emissive.setHex(RARITY[tier].color);
+              c.emissiveIntensity = PART_GLOW;
+              slot.glow.push(c);
+            }
+            return c;
+          });
+          mesh.material = Array.isArray(mesh.material) ? own : own[0];
+        });
+        holder.add(m);
+      },
       (e) => console.warn('teardown: part model failed', part, tier, e),
     );
     return slot;
