@@ -35,7 +35,7 @@ const css = `
 const KEYS: [string, string][] = [
   ['WASD', 'move'], ['Space', 'jump'], ['Shift', 'sprint'], ['Ctrl / C', 'slide'],
   ['LMB / E', 'use item · throw scrap'], ['RMB', 'aim'], ['F', 'pick up · interact'],
-  ['1–4', 'hotbar'], ['9', 'motorcycle on · off'], ['Tab', 'inventory'], ['T', 'third person'], ['Enter', 'chat'], ['Esc', 'this menu'],
+  ['1–4', 'hotbar'], ['Z', 'motorcycle on · off'], ['Tab', 'inventory'], ['T', 'third person'], ['Enter', 'chat'], ['Esc', 'this menu'],
 ];
 
 export class Menu {
