@@ -121,7 +121,7 @@ export const LINES: Line[] = [
   { id: 'ride', on: 'tick', when: (s) => s.riding, say: 'Wind in my face, sand in my teeth.' },
 
   // Water.
-  { id: 'pump', on: 'tick', when: (s) => s.atPump && s.maxSips > 0 && s.sips < s.maxSips, say: 'Water. Fill her up.' },
+  { id: 'pump', on: 'tick', when: (s) => s.atPump && s.maxSips > 0 && s.sips < s.maxSips, say: 'There we go.' },
   { id: 'pump.nothing', on: 'tick', when: (s) => s.atPump && s.shelter && !carries(s, 'canteen'),
     say: 'Water, and nothing to carry it in.', again: 10 * MIN },
 
