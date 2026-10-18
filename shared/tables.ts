@@ -229,11 +229,19 @@ export const KILL_SPOILS: Record<'guardian' | 'crawler' | 'drone', Spoils> = {
   drone: { odds: 1, min: 1, max: 1, parts: SPOILS, tierWeights: { basic: 1, quality: 1 } },
 };
 
+/** A downed jet's wreck (server/world.ts dropJetSpoils): its avionics and engine, scattered behind its nose, better
+ *  than a drone's; jammed it came down in one piece, so JET_SOFT_EXTRA more. Its drone transponder (what the carrier's
+ *  receiver takes) with JET_RELIC_ODDS, and some scrap off the airframe. */
+export const JET_SPOILS: Spoils = { odds: 1, min: 2, max: 3, parts: ['compute', 'coil', 'battery', 'relay', 'motor', 'heatsink', 'bearing'], tierWeights: { basic: 2, quality: 2, space: 0.4 } };
+export const JET_SOFT_EXTRA = 1;
+export const JET_RELIC_ODDS = 0.6;
+export const JET_SCRAP = { min: 2, max: 4 };
+
 /** Besides its spoils, a killed enemy leaves its own part with these odds: what its boss's receiver takes (shared/gear.ts). */
 export const RELIC_DROPS: Record<'guardian' | 'crawler' | 'drone', { kind: string; odds: number }> = {
   guardian: { kind: 'servo_heart', odds: 0.5 },
-  crawler: { kind: 'brood_gland', odds: 0.12 },
-  drone: { kind: 'drone_transponder', odds: 0.3 },
+  crawler: { kind: 'brood_gland', odds: 0.1 },
+  drone: { kind: 'drone_transponder', odds: 0.1 },
 };
 
 /** A killed boss (shared/bosses.ts): min..max parts scattered over its wreck (`odds` unused: always), a uranium cell
