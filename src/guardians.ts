@@ -132,8 +132,13 @@ export class GuardianFx {
     return out;
   }
 
+  /** Shake the camera this much (m) at least, from now. */
+  jolt(amount: number) {
+    this.shake = Math.max(this.shake, amount);
+  }
+
   /** Shake and dust for something heavy at (x, y, z). */
-  private thump(x: number, y: number, z: number, weight: number, puffs: number, speed: number, size: number) {
+  thump(x: number, y: number, z: number, weight: number, puffs: number, speed: number, size: number) {
     const d = Math.hypot(x - this.ear.x, z - this.ear.z);
     if (d < SHAKE_R) this.shake = Math.max(this.shake, SHAKE * weight * (1 - d / SHAKE_R) ** 2);
     if (d < DUST_R) {

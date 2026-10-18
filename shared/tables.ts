@@ -225,3 +225,11 @@ export const KILL_SPOILS: Record<'guardian' | 'crawler' | 'drone', Spoils> = {
   crawler: { odds: 0.35, min: 1, max: 1, parts: SPOILS, tierWeights: { scrap: 1, basic: 1 } },
   drone: { odds: 1, min: 1, max: 1, parts: SPOILS, tierWeights: { basic: 1, quality: 1 } },
 };
+
+/** A killed boss (shared/bosses.ts): min..max parts scattered over its wreck (`odds` unused: always). */
+export const BOSS_SPOILS: Record<'worm' | 'carrier' | 'colossus' | 'queen', Spoils> = {
+  worm: { odds: 1, min: 5, max: 7, parts: SPOILS, tierWeights: { quality: 2, space: 2 } },
+  carrier: { odds: 1, min: 5, max: 7, parts: SPOILS, tierWeights: { quality: 2, space: 2 } },
+  colossus: { odds: 1, min: 6, max: 8, parts: SPOILS, tierWeights: { quality: 1, space: 3 } },
+  queen: { odds: 1, min: 5, max: 7, parts: SPOILS, tierWeights: { quality: 2, space: 2 } },
+};

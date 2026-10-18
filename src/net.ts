@@ -46,6 +46,7 @@ import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
 import { F_STRIDE } from '../shared/guardians.ts';
 import type { Jet } from '../shared/jets.ts';
+import type { BossKind } from '../shared/bosses.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 import { setPlaced } from '../shared/placed.ts';
 import type { BedState } from '../shared/garden.ts';
@@ -168,6 +169,9 @@ export class Net {
   /** Recent 'bots' messages (guardians and drones, shared/guardians.ts), oldest first; src/world/botFrames.ts
    *  interpolates them. */
   bots: Extract<ServerMsg, { t: 'bots' }>[] = [];
+  /** Recent 'bosses' messages (shared/bosses.ts), oldest first, and the one-offs not yet handled (src/bosses.ts). */
+  bosses: Extract<ServerMsg, { t: 'bosses' }>[] = [];
+  bossFx: Extract<ServerMsg, { t: 'bossFx' }>[] = [];
   /** The guardians' planted feet in the latest 'bots', as posts we can't walk through (shared/sim.ts collideLegs). */
   private legPosts: number[] = [];
   /** A guardian's laser bolt was fired or burst (src/world/bolts.ts). */
@@ -351,7 +355,7 @@ export class Net {
     this.send({ t: 'jam', kind, id, x, y, z, dx, dy, dz });
   }
 
-  fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number } | { d: number } | { j: number }) {
+  fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number } | { d: number } | { j: number } | { b: number; bi: number }) {
     const r = (n: number) => Math.round(n * 100) / 100;
     this.shotAt.set(this.id, performance.now());
     this.send({ t: 'fire', x: r(x), y: r(y), z: r(z), ex: r(ex), ey: r(ey), ez: r(ez), ...hit });
@@ -491,7 +495,7 @@ export class Net {
   }
 
   /** Debug menu: the nearest guardian, or a drone, brought to us (shared/guardians.ts). */
-  summonBot(what: 'guardian' | 'drone' | 'jet') {
+  summonBot(what: 'guardian' | 'drone' | 'jet' | BossKind) {
     this.send({ t: 'summon', what });
   }
 
@@ -659,6 +663,15 @@ export class Net {
     }
     if (msg.t === 'toss' || msg.t === 'tossEnd') return this.onToss?.(msg);
     if (msg.t === 'chat') return this.onChat?.(msg);
+    if (msg.t === 'bosses') {
+      this.bosses.push(msg);
+      if (this.bosses.length > 12) this.bosses.shift();
+      return;
+    }
+    if (msg.t === 'bossFx') {
+      if (this.bossFx.length < 64) this.bossFx.push(msg);
+      return;
+    }
     if (msg.t === 'bots') {
       this.bots.push(msg);
       if (this.bots.length > 12) this.bots.shift();

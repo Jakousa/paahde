@@ -26,6 +26,7 @@ import type { Net } from './net';
 import type { Guardians } from './world/guardians';
 import type { Drones } from './world/drones';
 import type { Jets } from './world/jets';
+import { bossFx } from './bosses';
 import { zaps } from './world/zaps';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
@@ -316,6 +317,8 @@ export class Rifle {
     if (drone) dist = drone.dist;
     const jet = this.jets.raycast(_o, _d, dist);
     if (jet) dist = jet.dist;
+    const boss = bossFx?.raycast(_o, _d, dist) ?? null;
+    if (boss) dist = boss.dist;
     _e.copy(_o).addScaledVector(_d, dist);
     // The beam from the drawn muzzle (first or third person). Through the scope no gun is drawn: from the barrel just
     // under it, a little ahead of the eye, so it rises from the bottom of the scope to the crosshair.
@@ -326,7 +329,11 @@ export class Rifle {
     zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z, true, this.muzzle);
     rifleSound.shot(null, null, this.gun === 'pistol');
     rifleSound.recharge(cooldown / 1000 - 0.08);
-    if (drone || jet) {
+    if (boss) {
+      zaps.burst(_e.x, _e.y, _e.z, boss.normal.x, boss.normal.y, boss.normal.z, boss.index >= 0 ? 6 : 16, 1.4);
+      if (boss.index >= 0) bossFx!.breakLocal(boss.boss, boss.index);
+      rifleSound.impact(boss.index >= 0 ? 'glass' : 'metal', _e, _o);
+    } else if (drone || jet) {
       zaps.burst(_e.x, _e.y, _e.z, -_d.x, -_d.y, -_d.z, jet ? 24 : 16, jet ? 1.6 : 1);
       rifleSound.impact('metal', _e, _o);
     } else if (hit) {
@@ -342,7 +349,7 @@ export class Rifle {
       for (let i = 0; i < 3; i++) tyreDust.emit(_e.x, _e.y + 0.1, _e.z, (Math.random() - 0.5) * 1.5, 1 + Math.random(), (Math.random() - 0.5) * 1.5, 0.35);
       rifleSound.impact('sand', _e, _o);
     }
-    this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, jet ? { j: jet.jet } : drone ? { d: drone.drone } : hit ? { g: hit.walker, i: hit.index } : undefined);
+    this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, boss ? (boss.index >= 0 ? { b: boss.boss, bi: boss.index } : undefined) : jet ? { j: jet.jet } : drone ? { d: drone.drone } : hit ? { g: hit.walker, i: hit.index } : undefined);
     // Recoil: the muzzle climbs (some of it stays: pull it back down), kicks a little sideways; less held to the eye.
     const ads = playerHands.aim;
     const climb = feel.climb * (1.25 - 0.45 * ads) * (0.85 + Math.random() * 0.3);

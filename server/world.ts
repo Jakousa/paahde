@@ -10,7 +10,8 @@ import { bikeLevel, bottleSips, digTool, GEAR_KINDS, gunCooldown, jamMs, quality
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
-import { KILL_SPOILS } from '../shared/tables.ts';
+import { BOSS_SPOILS, KILL_SPOILS } from '../shared/tables.ts';
+import { BOSS_KINDS, BOSS_SEND_R, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { overBase } from '../shared/base.ts';
@@ -34,6 +35,7 @@ import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
 import { JetServer } from './jets.ts';
+import { BossServer, type BossKill, type BossOut } from './bosses.ts';
 import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
@@ -80,6 +82,7 @@ const corpses = new CorpseServer(db, items, (msg) => {
 
 const storms = new StormServer(performance.now());
 const jets = new JetServer(performance.now());
+const bosses = new BossServer(performance.now());
 const guardians = new GuardianServer();
 const throws = new ThrowServer(guardians);
 /** Heat per second from drone searchlights by player id, from the last bot tick. */
@@ -157,6 +160,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'summon' && msg.what === 'jet' && p) return jets.spawn(p.state.x, p.state.z, 0, performance.now(), true);
+    if (msg.t === 'summon' && BOSS_KINDS.includes(msg.what as BossKind) && p) return bosses.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'summon' && p) return guardians.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'fire' && p) return onFire(p, msg);
     if (msg.t === 'jam' && p) return onJam(p, msg);
@@ -383,6 +387,22 @@ function tickBots(elapsed: number, now: number, tod: number) {
     send(p.ws, guardians.msg(now, p.id, p.state.x, p.state.z));
   }
   for (const e of r.events) if ((e.msg.t === 'boom' && e.msg.ground) || e.msg.t === 'blast') terrain.crater(e.msg.x, e.msg.z, CRATER_R, CRATER_MM);
+  const b = bosses.tick(dt, now, list);
+  for (const p of players.values()) {
+    const k = b.kills.find((o) => o.id === p.id);
+    if (k) die(p, k.cause, k.push);
+    send(p.ws, bosses.msg(now, p.state.x, p.state.z));
+  }
+  bossOut(b);
+}
+
+/** The sand marks and one-off effects of the bosses (server/bosses.ts). */
+function bossOut(b: BossOut) {
+  for (const c of b.craters) terrain.crater(c.x, c.z, c.r, c.mm);
+  for (const e of b.events) {
+    const json = JSON.stringify(e.msg);
+    for (const p of players.values()) if (Math.hypot(e.x - p.state.x, e.z - p.state.z) < BOSS_SEND_R && p.ws.readyState === p.ws.OPEN) p.ws.send(json);
+  }
 }
 
 /** The nearest bolt burst ('boom') or missile blast throws a player it killed. */
@@ -414,6 +434,15 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
   if (Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
   const wall = Date.now();
   const by = { id: p.id, x: s.x, y: s.y, z: s.z, safe: wall - p.heat.diedAt < BOT_GRACE_MS };
+  if (m.b !== undefined) {
+    const out: BossOut = { kills: [], craters: [], events: [] };
+    const r = bosses.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.b, m.bi, now, out);
+    const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
+    for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
+    bossOut(out);
+    if (r.kill) dropBossSpoils(r.kill);
+    return;
+  }
   const r = m.j !== undefined ? { hit: jets.shoot(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.j, now), kill: null }
     : m.d !== undefined ? { hit: guardians.shootDrone(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.d, now, p.id), kill: null }
     : m.g === undefined ? { hit: false, kill: null } : guardians.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.g, m.i, now);
@@ -503,6 +532,16 @@ function dropSpoils(k: Kill) {
   for (let i = 0; i < n; i++) {
     const part = sp.parts[Math.floor(Math.random() * sp.parts.length)];
     loot.dropAt(k.x, k.z, partKind(part, pickTier(sp.tierWeights, Math.random)));
+  }
+}
+
+/** A boss's parts, scattered over its wreck. */
+function dropBossSpoils(k: BossKill) {
+  const sp = BOSS_SPOILS[k.kind];
+  const n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1));
+  for (let i = 0; i < n; i++) {
+    const part = sp.parts[Math.floor(Math.random() * sp.parts.length)], a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * k.r;
+    loot.dropAt(k.x + Math.cos(a) * d, k.z + Math.sin(a) * d, partKind(part, pickTier(sp.tierWeights, Math.random)));
   }
 }
 

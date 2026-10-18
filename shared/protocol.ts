@@ -9,6 +9,7 @@ import type { Jet } from './jets.ts';
 import type { TossPath } from './throw.ts';
 import type { Placed } from './placed.ts';
 import type { BedState } from './garden.ts';
+import type { BossKind, BossSnap } from './bosses.ts';
 
 export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
@@ -67,11 +68,11 @@ export type ClientMsg =
   // Pick up loot (shared/loot.ts) in reach. Answered with 'items' (or a 'notice' when the bag is full).
   | { t: 'lootTake'; id: number }
   // Debug menu: bring the nearest guardian 90 m from you, a searchlight drone over you for a minute (by day too), or
-  // a fixed-wing drone past you in about 15 s.
-  | { t: 'summon'; what: 'guardian' | 'drone' | 'jet' }
+  // a fixed-wing drone past you in about 15 s, or a boss (shared/bosses.ts) near you.
+  | { t: 'summon'; what: 'guardian' | 'drone' | 'jet' | BossKind }
   // A laser rifle or pistol shot (shared/rifle.ts) from (x, y, z) to where it stopped, (ex, ey, ez). `g`/`i`: the client
   // found it hit weak point i of walker g (i -1: just its body, which angers it); `d`: it hit drone d; `j`: fixed-wing
-  // drone j (shared/jets.ts). The server checks
+  // drone j (shared/jets.ts); `b`/`bi`: weak point bi of boss b (shared/bosses.ts). The server checks
   // the gun is in hand, its reach, the rate and that the shot was aimed at that walker, breaks the point, and shows the
   // shot to everyone near ('zap').
   // Holding the jammer (shared/jammer.ts) on jet or drone `id` from the eye (x, y, z) along (dx, dy, dz), about every
@@ -80,7 +81,7 @@ export type ClientMsg =
   // A guardian's foot (client IK) came down on you (shared/guardians.ts FOOT_CRUSH_R); the server checks guardian `g`
   // is alive and near enough, and kills you ('died', cause 'guardian').
   | { t: 'stomped'; g: number }
-  | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number; d?: number; j?: number }
+  | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number; d?: number; j?: number; b?: number; bi?: number }
   // Throw the scrap item in hotbar slot `slot` (shared/throw.ts) from the eye (x, y, z) along unit (dx, dy, dz). `n`:
   // the client's count of its throws, echoed in the 'toss' so it can tie its own flying junk to the server's.
   | { t: 'throw'; slot: number; n: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }
@@ -242,6 +243,11 @@ export type ServerMsg =
   // (x, y, z) with velocity (vx, vy, vz) at server time `time`; sent again with `hit` as it bounces off a drone, and
   // 'tossEnd' where it lands (it becomes loot there) or is lost.
   | ({ t: 'toss'; id: number; by: number; n: number; kind: string; hit?: true } & TossPath)
-  | { t: 'tossEnd'; id: number; x: number; y: number; z: number };
+  | { t: 'tossEnd'; id: number; x: number; y: number; z: number }
+  // The bosses (shared/bosses.ts) within BOSS_SEND_R, about 10 times a second, at server time `time`.
+  | { t: 'bosses'; time: number; b: BossSnap[] }
+  // Something boss `id` did once at (x, y, z) at server time `time` (`e` names it, its view knows what it means;
+  // `a`: any numbers it goes with), to everyone within BOSS_SEND_R.
+  | { t: 'bossFx'; id: number; e: string; time: number; x: number; y: number; z: number; a?: number[] };
 
-export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler';
+export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen';

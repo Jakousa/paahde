@@ -35,6 +35,7 @@ import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
 import { DebugMenu } from './debugMenu.ts';
+import { BossFx } from './bosses';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
 import { wind } from './world/wind';
@@ -105,13 +106,14 @@ const storm = new StormFx();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
 const wrecks = new Wrecks(scene); // salvage wrecks out in the desert, carried home to the disassembly table
 const guardianFx = new GuardianFx(scene); // the giant walkers around the crash sites, and the night drones
+const bossFx = new BossFx(scene, (...a) => guardianFx.thump(...a), (s) => guardianFx.jolt(s)); // the worm, carrier, colossus and queen (shared/bosses.ts)
 const teardown = new TeardownView(scene, orbit.camera, renderer.domElement); // F at a machine site: the character walks up and the disassembly controls take over
 machines.busy = () => teardown.current?.id;
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
   const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, mast, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, mast, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx, bossFx } });
 }
 
 const net = new Net(getBrowserId());
@@ -142,7 +144,7 @@ machines.bench.onReady = () => {
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear(), (what) => net.summonBot(what));
 new Chat(net);
 // New builds wait for a quiet moment to reload (src/update.ts).
-update.busy = () => guardianFx.combat || net.me.riding || teardown.active || !!net.down;
+update.busy = () => guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
 const lootView = new LootView(scene);
 const corpseView = new CorpseView(scene);
 const detector = new Detector();
@@ -361,6 +363,7 @@ renderer.setAnimationLoop((time) => {
   corpseView.update(frameDt, focus);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
   teardown.placeCamera(frameDt); // at the disassembly table: a fixed view above it
+  bossFx.update(net, frameDt, orbit.camera);
   guardianFx.update(net, frameDt, orbit.camera, focus);
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
   thrower.update(frameDt, !s.riding && !teardown.active && !net.down);
@@ -411,7 +414,7 @@ baseSand.update(frameDt, storm.atBase);
     riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
     indoors: indoors(cam.x, cam.y, cam.z),
     sandstorm: storm.level > 0.3,
-    combat: guardianFx.combat,
+    combat: guardianFx.combat || bossFx.combat,
     dead: survival.dead,
   });
   crashSound.update(orbit.camera.position, orbit.yaw);
