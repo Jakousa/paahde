@@ -34,6 +34,8 @@ const FRAME_BUDGET_MS = 3;
 /** If a new layout has waited this long, raise the per-frame budget to LATE_BUDGET_MS. */
 const MAX_PENDING_MS = 500;
 const LATE_BUDGET_MS = 10;
+/** While the loading screen is up (`loading`) even the first build is spread over frames, this many ms each. */
+const LOADING_BUDGET_MS = 25;
 const CACHE_LIMIT = 500;
 
 const VERTS = CELLS + 1;
@@ -97,6 +99,12 @@ export class Terrain {
   private index = buildIndex();
   private cache = new Map<string, Chunk>();
   private shown = new Set<string>();
+  /** Set by the loading screen: build the first chunks under a budget instead of all in one frame. */
+  loading = false;
+  /** The first layout is complete and showing. */
+  get built() {
+    return this.shown.size > 0;
+  }
   private desired: { key: string; level: number; ix: number; iz: number; dist: number }[] = [];
   private pendingSince = 0;
   private dirty = new Set<string>();
@@ -138,7 +146,7 @@ export class Terrain {
     // First frame: build everything synchronously so the world appears complete. If a layout has been
     // waiting long (very fast movement), spend more time per frame rather than keep the stale one.
     const late = this.pendingSince > 0 && t0 - this.pendingSince > MAX_PENDING_MS;
-    const deadline = this.shown.size === 0 ? Infinity : t0 + (late ? LATE_BUDGET_MS : FRAME_BUDGET_MS);
+    const deadline = this.loading ? t0 + LOADING_BUDGET_MS : this.shown.size === 0 ? Infinity : t0 + (late ? LATE_BUDGET_MS : FRAME_BUDGET_MS);
 
     // Rebuild dirty (edited) chunks first, nearest first; the chunk under the player always.
     if (this.dirty.size) {

@@ -8,9 +8,12 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   real one (click screws, circle bolts, swipe wires, drag pry tabs, take the freed part into the bag), introduced one
   at a time, with the game's step markers and rarity colours. Game and loading bar are drawn in a worker
   (`src/loadingWorker.ts`), pointer events forwarded by `src/loadingGame.ts`, started from `src/entry.ts`.
-- The world build yields to the browser (`src/yield.ts` `slice()`, between the constructors in `src/main.ts`), shaders
-  compile with `compileAsync`, and the loop draws at ~15 fps until loaded, so no stretch of the main thread runs much
-  past 66 ms and clicks on the loading game get through. Not measured yet: module evaluation and model parsing can't be sliced.
+- The world build yields to the browser (`src/yield.ts` `slice()`, between the constructors in `src/main.ts`), the loop
+  draws nothing and runs at ~15 fps until loaded, and the terrain's first build is spread over frames
+  (`Terrain.loading`). Traces showed the first rendered frame building every shader at once (1.5-2 s, shadow-pass
+  materials included; `compileAsync` didn't cover them), so `src/warmup.ts` draws real frames a few materials at a
+  time instead: one object per distinct material/geometry layout shown, batch doubling while frames are quick.
+  Not sliceable: module evaluation, model parsing, objects first seen after the warm-up (bosses, loot).
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.

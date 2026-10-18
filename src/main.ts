@@ -87,6 +87,7 @@ import { Mast } from './world/mast';
 import { GuardianFx } from './guardians';
 import { update } from './update';
 import { LOADING_FRAME_MS, slice } from './yield';
+import { Warmup } from './warmup';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
@@ -299,8 +300,9 @@ const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
 let accumulator = 0;
 let lastLoadFrame = 0;
-let warmStarted = false;
 let warmed = false;
+const warm = new Warmup([scene, orbit.camera], () => post.render());
+terrain.loading = true;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
 // ?spawn=crash / field: once joined, turn to face the machine or the scrap field we were put next to.
 const spawnAt = new URLSearchParams(location.search).get('spawn');
@@ -325,12 +327,9 @@ renderer.setAnimationLoop((time) => {
     return;
   }
   joined = true;
-  // Once the models are in, build every shader one object at a time (the first frame would take seconds for all of
-  // them at once and freeze the page); nothing is drawn until that is done.
-  if (!warmStarted && (bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)))) {
-    warmStarted = true;
-    Promise.race([post.compileAsync().catch(() => {}), new Promise((r) => setTimeout(r, 15_000))]).then(() => (warmed = true));
-  }
+  // Once the models and terrain are in, draw real frames a few materials at a time (src/warmup.ts): the first full
+  // frame would take seconds to build every shader and freeze the page. Nothing else is drawn until that is done.
+  const modelsIn = bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)) && terrain.built;
   loaded ||= coverTimedOut || warmed;
   // Behind the loading screen, draw at about 15 fps so the page has time for the game on it (src/yield.ts).
   if (!loaded && time - lastLoadFrame < LOADING_FRAME_MS) return;
@@ -558,5 +557,9 @@ baseSand.update(frameDt, storm.atBase);
 
   menu.setInfo(`${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
   teardown.update(frameDt);
-  if (loaded) post.render();
+  if (loaded) {
+    warm.finish();
+    terrain.loading = false;
+    post.render();
+  } else if (modelsIn) warmed = warm.step();
 });
