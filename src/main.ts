@@ -313,15 +313,13 @@ const focus = new THREE.Vector3();
 let accumulator = 0;
 let lastLoadFrame = 0;
 let warmed = false;
-let splashAt = 0;
 let warming = false;
 /** Resolves when the GPU has finished what was sent so far (WebGPU), else after a moment. */
 const gpuIdle = (): Promise<void> => {
   const queue = (renderer.backend as unknown as { device?: GPUDevice }).device?.queue;
   return queue ? queue.onSubmittedWorkDone() : new Promise((r) => setTimeout(r, 40));
 };
-const SPLASH_MS = 700; // the splash fades in (src/loadingRunner.ts) before the page blocks
-const warm = new Warmup([scene, orbit.camera], () => post.render());
+const warm = new Warmup([scene, orbit.camera], () => post.render(), renderer.backend);
 terrain.loading = true;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
 // ?spawn=crash / field: once joined, turn to face the machine or the scrap field we were put next to.
@@ -351,10 +349,6 @@ renderer.setAnimationLoop((time) => {
   // frame would take seconds to build every shader and freeze the page. Nothing else is drawn until that is done.
   const modelsIn = bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)) && terrain.built;
   loaded ||= coverTimedOut || warmed;
-  if (modelsIn && !splashAt) {
-    splashAt = time;
-    loading.splash(); // everything that can be sliced is done: the rest blocks the page, so the game gives way to a calm view
-  }
   // Behind the loading screen, draw at about 15 fps so the page has time for the game on it (src/yield.ts).
   if (!loaded && time - lastLoadFrame < LOADING_FRAME_MS) return;
   lastLoadFrame = time;
@@ -608,9 +602,13 @@ baseSand.update(frameDt, storm.atBase);
     warm.finish();
     terrain.loading = false;
     post.render();
-  } else if (splashAt && !warming && time - splashAt > SPLASH_MS) {
-    // Under the splash: the first frame's shaders, post passes included, a few materials per round (src/warmup.ts).
+  } else if (modelsIn && !warming) {
+    // Everything sliceable is in: build the first frame's shaders, post passes included, a few materials per round
+    // (src/warmup.ts) while the game on the loading screen keeps going.
     warming = true;
-    warm.run(gpuIdle).then(() => (warmed = true));
+    warm.run(gpuIdle).then(() => {
+      loading.progress(1);
+      warmed = true;
+    });
   }
 });

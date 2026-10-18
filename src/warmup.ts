@@ -11,7 +11,7 @@ type Drawn = THREE.Object3D & { material?: THREE.Material | THREE.Material[]; ge
 /** Round time (draw + GPU) to aim for: grow the batch below FAST_MS, shrink it above SLOW_MS. */
 const FAST_MS = 60;
 const SLOW_MS = 200;
-/** Rest between rounds so the splash gets drawn. */
+/** Rest between rounds so the game on the loading screen gets drawn. */
 const PAUSE_MS = 30;
 
 export class Warmup {
@@ -23,10 +23,37 @@ export class Warmup {
 
   private roots: THREE.Object3D[];
   private render: () => void;
+  private backend: unknown;
+  /** Pipelines being compiled in the background (WebGPU), awaited each round. */
+  private pending: Promise<void>[] = [];
+  private unpatch: (() => void) | null = null;
+  private labels: string[] = [];
 
-  constructor(roots: THREE.Object3D[], render: () => void) {
+  constructor(roots: THREE.Object3D[], render: () => void, backend: unknown) {
     this.roots = roots;
     this.render = render;
+    this.backend = backend;
+  }
+
+  /** While warming, pipelines are created with createRenderPipelineAsync (three does that when it is given a list of
+   *  promises, as compileAsync does): the GPU compiles them on background threads, not on the thread that also puts
+   *  the loading screen on the display, which one big sync compile froze for seconds. Anything drawn before its
+   *  pipeline is ready is skipped. */
+  private patch() {
+    const b = this.backend as { isWebGPUBackend?: boolean; createRenderPipeline: (...a: unknown[]) => void; draw: (...a: unknown[]) => void; get: (o: unknown) => { pipeline?: unknown; error?: boolean } };
+    if (!b.isWebGPUBackend || this.unpatch) return;
+    const create = b.createRenderPipeline;
+    const draw = b.draw;
+    b.createRenderPipeline = (renderObject: unknown, promises: unknown) => create.call(b, renderObject, promises ?? this.pending);
+    b.draw = (renderObject: unknown, info: unknown) => {
+      const data = b.get((renderObject as { pipeline: unknown }).pipeline);
+      if (data.pipeline === undefined && data.error !== true) return;
+      draw.call(b, renderObject, info);
+    };
+    this.unpatch = () => {
+      delete (b as Partial<typeof b>).createRenderPipeline;
+      delete (b as Partial<typeof b>).draw;
+    };
   }
 
   /** Draws the next few materials, one batch per round, and waits for the GPU between rounds (`settle`). The GPU compiles
@@ -38,7 +65,9 @@ export class Warmup {
       const t0 = performance.now();
       if (this.draw()) return;
       await settle();
+      await Promise.all(this.pending.splice(0));
       const ms = performance.now() - t0;
+      if (ms > 500) console.info(`[warmup] slow round ${Math.round(ms)} ms:`, this.labels.join(', '));
       this.batch = ms < FAST_MS ? this.batch * 2 : ms > SLOW_MS ? Math.max(1, this.batch >> 1) : this.batch;
       await new Promise((r) => setTimeout(r, PAUSE_MS));
     }
@@ -49,7 +78,13 @@ export class Warmup {
     if (this.done) return true;
     if (!this.started) this.collect();
     if (!this.queue.length) return this.finish();
+    this.patch();
     const stage = this.queue.splice(0, this.batch);
+    this.labels = stage.map((o) => {
+      const m = (o as Drawn).material;
+      const mat = Array.isArray(m) ? m[0] : m;
+      return `${o.name || o.type}/${mat?.name || mat?.type}`;
+    });
     for (const e of this.every) e.o.visible = false;
     for (const o of stage) {
       o.visible = true;
@@ -66,6 +101,12 @@ export class Warmup {
       e.o.frustumCulled = e.culled;
     }
     this.done = true;
+    // The wrappers stay until the last background compile is in, or a frame could draw a pipeline that isn't there.
+    if (this.unpatch) {
+      const off = this.unpatch;
+      this.unpatch = null;
+      Promise.all(this.pending.splice(0)).then(off, off);
+    }
     return true;
   }
 

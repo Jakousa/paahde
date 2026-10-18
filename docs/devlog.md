@@ -41,12 +41,13 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   materials included; `compileAsync` didn't cover them), so `src/warmup.ts` draws real frames a few materials at a
   time instead: one object per distinct material/geometry layout shown, batch doubling while frames are quick.
   Not sliceable: module evaluation, model parsing, objects first seen after the warm-up (bosses, loot).
-- Last stage, the splash: once the models and terrain are in, the loading game fades into a calm view (a turning gear,
-  `splash()` in `src/loadingRunner.ts`) and `Warmup.run` (src/warmup.ts) builds the shaders in rounds, waiting for the GPU
-  (`queue.onSubmittedWorkDone`) after each. Why: a trace showed a 5.5 s single GPU task - pipelines compile on the GPU
-  process's main thread, the same one that shows the worker's canvas, so no amount of page-side slicing or workers keeps
-  the minigame moving through a big batch; only small GPU-timed batches do. Still seen after loading: shadow-pass
-  materials built on the first frames (~0.2 s CPU, more on the GPU) that the warm-up didn't reach.
+- Last stage: once the models and terrain are in, `Warmup.run` (src/warmup.ts) builds the shaders in rounds while the
+  minigame keeps going, waiting for the GPU (`queue.onSubmittedWorkDone`) after each. A trace showed a 5.6 s single GPU
+  task: pipelines compile on the GPU process's main thread, the same one that shows the worker's canvas, so a big
+  compile freezes the minigame however the page is sliced. Fix in progress: while warming, the WebGPU backend's
+  `createRenderPipeline` is wrapped to use `createRenderPipelineAsync` (background threads) and `draw` skips pipelines
+  not yet ready; slow rounds (>0.5 s) are logged to the console as `[warmup] slow round ...` with the materials in them.
+  Still seen after loading: shadow-pass materials built on the first frames that the warm-up didn't reach.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.

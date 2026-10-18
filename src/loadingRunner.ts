@@ -73,8 +73,6 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   let px = -99;
   let py = -99;
   let flash = 0; // a screw just turned
-  let splashing = false; // the last stage: the game fades out for a calm view while the page does what can't be sliced
-  let splashT = 0;
 
   function make(i: number): Machine {
     const screws = i < 2 ? 2 : i < 6 ? 3 : 2 + Math.floor(rnd() * 3);
@@ -120,7 +118,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   function down(x: number, y: number) {
     px = x;
     py = y;
-    if (phase !== 'work' || splashing) return;
+    if (phase !== 'work') return;
     x -= slide;
     if (partFree() && Math.hypot(x - CX, y - CY) < 30) {
       m.taken = true;
@@ -173,7 +171,6 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
 
   function update(dt: number) {
     clock += dt;
-    if (splashing) splashT = Math.min(1, splashT + dt * 2);
     flash = Math.max(0, flash - dt);
     const L = m.lid;
     if (L.released) {
@@ -487,7 +484,6 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
 
   function draw() {
     g.clearRect(0, 0, W, H);
-    g.globalAlpha = 1 - splashT;
     g.fillStyle = 'rgba(0, 0, 0, 0.35)';
     g.beginPath();
     g.ellipse(CX + slide, CY + 70, 140, 9, 0, 0, 7);
@@ -524,25 +520,6 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
       }
     }
 
-    g.globalAlpha = 1;
-    if (splashT > 0) {
-      // a slowly turning gear in the middle: nothing to do, just wait
-      g.globalAlpha = splashT;
-      const r = 40 + Math.sin(clock * 3) * 2;
-      const grad = g.createRadialGradient(CX, 95, 8, CX, 95, r + 30);
-      grad.addColorStop(0, 'rgba(255, 217, 160, 0.35)');
-      grad.addColorStop(1, 'rgba(255, 217, 160, 0)');
-      g.fillStyle = grad;
-      g.beginPath();
-      g.arc(CX, 95, r + 30, 0, 7);
-      g.fill();
-      g.save();
-      g.translate(CX, 95);
-      g.rotate(clock * 0.8);
-      glyph(0, 0, 0, 2.2, HI);
-      g.restore();
-      g.globalAlpha = 1;
-    }
     // the loading bar, drawn here so it keeps moving while the page is busy
     const bx = (W - BAR_W) / 2;
     g.fillStyle = '#2a2622';
@@ -558,11 +535,6 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
     down,
     move,
     up,
-    splash() {
-      splashing = true;
-      act = null;
-      target = 1;
-    },
     progress: (p: number) => (target = Math.max(target, p)),
     frame(dt: number) {
       dt = Math.min(0.05, dt);
