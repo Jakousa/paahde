@@ -1,18 +1,19 @@
 // The teardown minigame as a thing to play from the Esc menu (src/menu.ts), over the world, which stays visible behind
 // a see-through backdrop. Four games, each with its own leaderboard (server/minigame.ts):
-//   10 / 20 / 30 machines   a speedrun: the time to take that many apart, lowest wins
+//   5 / 10 / 20 machines    a speedrun: the time to take that many apart, lowest wins
 //   Endless                 as many machines as you can in one go, scored by how many
-// Pick one, play it (src/loadingGame.ts runs the game), then put your name to the result and see where it ranks.
-// Esc steps back: out of a run to the choice, out of the choice to the menu.
+// Pick one and see its records (and your best) before starting; play it (src/loadingGame.ts runs the game), then put
+// your name to the result and see where it ranks.
+// Esc steps back: out of a run to the records, out of the records to the choice, out of the choice to the menu.
 import { NAME_MAX } from '../shared/protocol.ts';
 import { loading } from './loadingGame';
 import type { Mode, RunResult } from './loadingRunner';
 
 const NAME_KEY = 'dadajam.name'; // the same name as in the world (src/name.ts)
 const MODES: { mode: Mode; key: string; title: string }[] = [
+  { mode: 5, key: '5', title: '5 machines' },
   { mode: 10, key: '10', title: '10 machines' },
   { mode: 20, key: '20', title: '20 machines' },
-  { mode: 30, key: '30', title: '30 machines' },
   { mode: 'endless', key: 'endless', title: 'Endless' },
 ];
 
@@ -88,7 +89,7 @@ export function openMinigame(onClose: () => void) {
   o.id = 'play';
   document.body.append(o);
 
-  let screen: 'pick' | 'run' | 'result' = 'pick';
+  let screen: 'pick' | 'intro' | 'run' | 'result' = 'pick';
   let current = MODES[0];
   let alive = true;
 
@@ -105,6 +106,7 @@ export function openMinigame(onClose: () => void) {
     e.preventDefault();
     e.stopPropagation();
     if (screen === 'pick') close();
+    else if (screen === 'run' || screen === 'result') intro(current);
     else pick();
   };
   addEventListener('keydown', onKey, true);
@@ -118,7 +120,7 @@ export function openMinigame(onClose: () => void) {
     }).join('')}</div></div><button class="leave">Leave</button>`;
     o.querySelector('.leave')!.addEventListener('click', close);
     for (const card of o.querySelectorAll<HTMLElement>('.card')) {
-      card.addEventListener('click', () => play(MODES.find((m) => m.key === card.dataset.m)!));
+      card.addEventListener('click', () => intro(MODES.find((m) => m.key === card.dataset.m)!));
     }
     for (const m of MODES) {
       fetchTop(m.key).then((top) => {
@@ -128,12 +130,30 @@ export function openMinigame(onClose: () => void) {
     }
   }
 
+  /** What the end of a run shows, before it: the records, your best on top if you have one, and Start. */
+  function intro(m: (typeof MODES)[number]) {
+    current = m;
+    screen = 'intro';
+    loading.stop();
+    const best = myBest(m.key);
+    o.innerHTML = `<div class="panel result"><h2>${m.title}</h2>${best ? `<div class="big"><small>your best</small>${scoreText(m.mode, best)}</div>` : ''}<div class="board"><div class="none">…</div></div></div>
+<div class="row"><button class="start">Start</button><button class="quiet back">Back</button></div>`;
+    o.querySelector('.start')!.addEventListener('click', () => play(m));
+    o.querySelector('.back')!.addEventListener('click', pick);
+    let me: string | undefined;
+    try {
+      me = localStorage.getItem(NAME_KEY) ?? undefined;
+    } catch {}
+    const board = o.querySelector<HTMLElement>('.board')!;
+    fetchTop(m.key).then((top) => alive && screen === 'intro' && current === m && (board.innerHTML = list(m.mode, top, me)));
+  }
+
   function play(m: (typeof MODES)[number]) {
     current = m;
     screen = 'run';
     loading.stop();
     o.innerHTML = `<div class="stage"></div><div class="row"><button class="leave quiet">Leave</button>${m.mode === 'endless' ? '<button class="finish">Finish</button>' : ''}</div>`;
-    o.querySelector('.leave')!.addEventListener('click', pick);
+    o.querySelector('.leave')!.addEventListener('click', () => intro(m));
     o.querySelector('.finish')?.addEventListener('click', () => loading.finishNow());
     loading.start(o.querySelector<HTMLElement>('.stage')!, m.mode, (r) => alive && screen === 'run' && result(r));
   }

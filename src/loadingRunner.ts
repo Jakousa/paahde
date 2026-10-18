@@ -150,7 +150,7 @@ function effort(sl: Slot): number {
   for (let c = sl.under; c; c = c.under) c.holds.forEach(add);
   sl.holds.forEach(add);
   let sum = 0;
-  for (const s of seen) sum += s.kind === 'screw' ? s.need / 2 : 2;
+  for (const s of seen) sum += s.kind === 'screw' ? s.need / 2 : s.kind === 'bolt' ? 1 + s.need : 2;
   return sum;
 }
 
@@ -166,8 +166,9 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
   const M: Machine = { body: [], covers: [], steps: [], slots: [], wires: [], decor: [], halfW: 0, halfH: 0, best: 0 };
   const lesson = teach ? L : -1; // 0..3: which lesson
   const lv = teach ? 0 : L;
-  const need = 2 + (lv >= 7 ? 1 : 0); // clicks per screw
-  const mountP = Math.min(0.85, lv * 0.07); // chance a component is bolted down through its base
+  const need = 2 + (lv >= 4 ? 1 : 0) + (lv >= 9 ? 1 : 0) + (lv >= 13 ? 1 : 0) + (lv >= 17 ? 1 : 0); // clicks per screw
+  const turns = 1 + (lv >= 12 ? 1 : 0) + (lv >= 16 ? 1 : 0); // full turns per bolt
+  const mountP = Math.min(0.85, lv * 0.09); // chance a component is bolted down through its base
   const rect = (w: number, h: number, r = 8): Shape => ({ t: 'rect', w, h, r });
   const circle = (r: number): Shape => ({ t: 'circle', r });
   const body = (shape: Shape, x = 0, y = 0) => M.body.push({ shape, x, y });
@@ -216,26 +217,36 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
     const at: P[] = sl.part === 0 ? [[sl.x, sl.y]] : Math.round(Math.cos(sl.rot)) !== 0
       ? [[sl.x - 26, sl.y + 27], [sl.x + 26, sl.y + 27]]
       : [[sl.x - 27, sl.y - 26], [sl.x - 27, sl.y + 26]]; // (turned 90 degrees, its base plate is on the left)
+    // Not where another fastener already is.
+    if (at.some(([x, y]) => M.steps.some((o) => o.kind !== 'wire' && Math.hypot(o.x - x, o.y - y) < 27))) return;
     sl.plate = sl.part !== 0;
-    for (const [x, y] of at) sl.holds.push(step('bolt', x, y, { under: sl.under }));
+    for (const [x, y] of at) sl.holds.push(step('bolt', x, y, { need: turns, under: sl.under }));
   };
   const maybeMount = (sl: Slot) => {
     if (rnd() < mountP) mount(sl);
   };
   const corners = (hw: number, hh: number, n: number): P[] => ([[-hw, -hh], [hw, hh], [hw, -hh], [-hw, hh]] as P[]).slice(0, n);
-  /** 2 lid screws, more as it gets harder. */
-  const lidScrews = (max: number) => Math.min(max, 2 + Math.floor(rnd() * (1 + lv / 5)));
+  /** 2 lid screws, a third from level 2, a fourth from 5. */
+  const lidScrews = (max: number) => Math.min(max, 2 + (lv >= 2 ? 1 : 0) + (lv >= 5 ? 1 : 0));
+
+  /** A long run keeps adding to do: the lid of a crate or nested box also has a latch tab from level 8, two from 11. */
+  const latches = (lid: Cover, x: number) => {
+    if (teach) return;
+    if (lv >= 8) hold(lid, step('pry', x, -24, { dx: 1 }));
+    if (lv >= 11) hold(lid, step('pry', -x, -24, { dx: -1 }));
+  };
 
   const all = ['crate', 'pump', 'cabinet', 'nested', 'twobay'] as const;
-  const pool = lv < 2 ? all.slice(0, 1) : lv < 4 ? all.slice(0, 3) : all;
+  const pool = lv < 1 ? all.slice(0, 1) : lv < 3 ? all.slice(0, 3) : all;
   const kind = teach ? (['crate', 'crate', 'pump', 'cabinet'] as const)[lesson] : pool[Math.floor(rnd() * pool.length)];
 
   if (kind === 'crate') {
     body(rect(250, 120));
     const lid = cover(rect(240, 110), 0, 0, 'lid', null);
     screws(lid, corners(108, 46, lidScrews(4)));
+    latches(lid, 125);
     M.decor.push({ t: 'rail', x: 0, y: 50, w: 210, h: 6 });
-    const variants = lesson === 0 || (!teach && lv < 2) ? ['one'] : lesson === 1 || lv < 5 ? ['elbow'] : lv < 7 ? ['elbow', 'block'] : ['elbow', 'block', 'three'];
+    const variants = lesson === 0 || (!teach && lv < 1) ? ['one'] : lesson === 1 || lv < 3 ? ['elbow'] : lv < 5 ? ['elbow', 'block'] : ['elbow', 'block', 'three'];
     const variant = variants[Math.floor(rnd() * variants.length)];
     if (variant === 'one') {
       maybeMount(slot(Math.floor(rnd() * 4), 0, -2, lid));
@@ -268,7 +279,7 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
       maybeMount(b);
     }
   } else if (kind === 'pump') {
-    const sides = teach || lv < 3 ? 0 : lv < 8 ? 1 : 2; // inspection plates on the sides, each with a part behind it
+    const sides = teach || lv < 2 ? 0 : lv < 6 ? 1 : 2; // inspection plates on the sides, each with a part behind it
     body(circle(74));
     if (sides >= 1) body(rect(64, 76, 6), 88, 0);
     if (sides >= 2) body(rect(64, 76, 6), -88, 0);
@@ -290,11 +301,11 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
     body(rect(168, 158, 6));
     const door = cover(rect(158, 148, 4), 0, 0, 'door', null, [1, -0.3]);
     hold(door, step('pry', 84, 0, { dx: 1 }));
-    if (!teach && lv >= 3) screws(door, [[-66, -64]]);
+    if (!teach && lv >= 2) screws(door, [[-66, -64]]);
     M.decor.push({ t: 'pcb', x: 0, y: 0, w: 132, h: 142 });
     const a = slot(1, 0, -48, door, Math.PI / 2);
     // from level 8 a shield plate on screws covers the lower component
-    const shield = !teach && lv >= 8 ? cover(rect(120, 56, 3), 0, 50, 'plate', door, [0, -1]) : null;
+    const shield = !teach && lv >= 6 ? cover(rect(120, 56, 3), 0, 50, 'plate', door, [0, -1]) : null;
     if (shield) screws(shield, [[52, 32], [52, 68]]); // on the side away from the component's bolts
     const b = slot(rnd() < 0.5 ? 3 : 2, 0, 48, shield ?? door, Math.PI / 2);
     const w = wire(term(a, 1), term(b, -1), door, { vertical: true });
@@ -307,12 +318,13 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
     body(rect(272, 132));
     const lid = cover(rect(262, 122), 0, 0, 'lid', null);
     screws(lid, corners(122, 50, lidScrews(4)));
+    latches(lid, 136);
     M.decor.push({ t: 'rail', x: -88, y: 52, w: 70, h: 6 });
     const motor = slot(2, -88, -6, lid);
     const plate = cover(rect(122, 94, 4), 52, 0, 'plate', lid, [0.6, -1]);
-    hold(plate, step('bolt', 6, -36, { under: lid }));
-    hold(plate, step('bolt', 98, 36, { under: lid }));
-    const cap = lv >= 10 ? cover(rect(54, 50, 4), 52, -6, 'plate', plate, [0, -1]) : null;
+    hold(plate, step('bolt', 6, -36, { need: turns, under: lid }));
+    hold(plate, step('bolt', 98, 36, { need: turns, under: lid }));
+    const cap = lv >= 8 ? cover(rect(54, 50, 4), 52, -6, 'plate', plate, [0, -1]) : null;
     if (cap) screws(cap, [[36, -22], [68, 10]]);
     const coil = slot(3, 52, -6, cap ?? plate);
     const w = wire(term(motor, 1), term(coil, -1), lid, { at: 0.3 });
@@ -337,6 +349,8 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
     maybeMount(rnd() < 0.5 ? a : b);
   }
 
+  // From level 6, components that weren't bolted down get bolted down more and more often.
+  if (!teach) for (const sl of M.slots) if (lv >= 6 && !sl.holds.some((h) => h.kind === 'bolt') && !sl.under?.under && rnd() < (lv - 5) * 0.12) mount(sl);
   for (const sl of M.slots) {
     sl.tier = gradeOf(sl, lv);
     M.best = Math.max(M.best, sl.tier);
@@ -364,9 +378,9 @@ export function buildMachine(L: number, rnd: () => number, teach = false): Machi
  *  hits (src/teardownSound.ts), the bolt's ring while it's turned and when it stops, and a part going into the bag. */
 export type Sound = 'tink' | 'clink' | 'soft' | 'clang' | 'turn' | 'stop' | 'take';
 
-/** 'free': the loading screen (no clock, no end). 10 / 20 / 30: a speedrun, the time to take that many machines apart.
+/** 'free': the loading screen (no clock, no end). 5 / 10 / 20: a speedrun, the time to take that many machines apart.
  *  'endless': as many machines as you like in one go, scored by how many. */
-export type Mode = 10 | 20 | 30 | 'endless' | 'free';
+export type Mode = 5 | 10 | 20 | 'endless' | 'free';
 export interface RunResult {
   mode: Mode;
   machines: number;
@@ -398,8 +412,9 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
   const make = (k: number): Machine => {
     if (mode === 'free' && k < 4) return buildMachine(k, rnd, true);
     const lo = mode === 'free' ? 4 : 0;
-    const level = Math.round((mode === 'free' ? k * 0.7 - 1 : k * 0.7) + (rnd() - 0.5) * 3);
-    return buildMachine(Math.max(lo, Math.min(14, level)), rnd);
+    // A run climbs about a level a machine, so every other one has something more to do; the loading screen is gentler.
+    const level = Math.round((mode === 'free' ? k * 0.8 - 1 : k) + (rnd() - 0.5) * 2);
+    return buildMachine(Math.max(lo, Math.min(20, level)), rnd);
   };
   let m = make(0);
   let slide = SLIDE_FROM; // the machine's x offset while it comes in (the first slides in, the rest swap with the old one)
@@ -520,7 +535,7 @@ export function createRunner(g: OffscreenCanvasRenderingContext2D | CanvasRender
         act.total += Math.abs(d);
         if (d) sound('turn');
       }
-      s.progress = Math.min(1, act.total / (2 * Math.PI));
+      s.progress = Math.min(1, act.total / (2 * Math.PI * s.need)); // `need` turns
     } else if (s.kind === 'wire') {
       s.progress = Math.min(1, Math.hypot(lx - act.x0, ly - act.y0) / CUT_PX);
     } else {

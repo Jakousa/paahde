@@ -1,5 +1,5 @@
 // Leaderboards of the teardown minigame (src/minigameMenu.ts): one list per game mode, shared by everyone on the
-// server and not tied to any world. Speedruns (take 10 / 20 / 30 machines apart) rank by time, lowest first; endless
+// server and not tied to any world. Speedruns (take 5 / 10 / 20 machines apart) rank by time, lowest first; endless
 // ranks by machines taken apart in one session, highest first. One entry per name and mode: the best one.
 // GET /api/minigame?mode=10 -> { top }, POST /api/minigame { mode, name, score, machines } -> { top, rank }.
 // The client says how it did and nothing here can check it, so it only turns away what can't be real.
@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { NAME_MAX } from '../shared/protocol.ts';
 
-const MODES = ['10', '20', '30', 'endless'];
+const MODES = ['5', '10', '20', 'endless'];
 const TOP = 10;
 /** A speedrun machine can't be taken apart faster than this (ms each), and a run takes under an hour. */
 const MIN_MS_PER_MACHINE = 600;
