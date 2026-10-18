@@ -94,7 +94,16 @@ export class Base {
       const mats = Array.isArray(m.material) ? m.material : [m.material];
       m.castShadow = !mats.some((mt) => mt.name.startsWith('Glass'));
       m.receiveShadow = true;
-      const conv = (mt: THREE.Material) => convert(mt as THREE.MeshStandardMaterial, outdoors ? null : lit);
+      const conv = (mt: THREE.Material) => {
+        const c = convert(mt as THREE.MeshStandardMaterial, outdoors ? null : lit);
+        // Cast from both sides. The shadow pass draws back faces only, and this model isn't made of closed
+        // solids: the hut is one outer shell, hollow and open at the bottom, so its sunward roof and walls
+        // never reached the shadow map, and the vault and the arch walls are single sheets. Only the 2 cm
+        // concrete skins stood between the sun and the stairwell, too thin for the normal offset and PCF:
+        // the sun leaked onto the walls in sawtooth bands and lit the steps underground.
+        c.shadowSide = THREE.DoubleSide;
+        return c;
+      };
       m.material = Array.isArray(m.material) ? m.material.map(conv) : conv(m.material);
     });
     // The shell (hut, stairs, rooms) is placed at the origin; pieces from BASE_PIECES by node name.
