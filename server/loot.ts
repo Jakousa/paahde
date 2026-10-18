@@ -1,9 +1,9 @@
 // Loot lying in the world (shared/loot.ts): broken gear to find and repair (shared/gear.ts) at the crash sites (the
 // starter gear at the scrap fields near the base, the advanced gear on crawler ground, rare loose parts on guardian
-// ground: shared/crashsites.ts SiteLevel), things buried in the sand that the metal detector hears and a shovel digs up. All shared: the first player to press F
+// ground: shared/crashsites.ts SiteLevel; and one broken motorcycle always in front of the base door, HOME_BIKE), things buried in the sand that the metal detector hears and a shovel digs up. All shared: the first player to press F
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
 // Kept in memory: a restart lays out fresh ones. Items players drop are kept in the DB (`dropped`) and never respawn.
-import { BASE, overBase } from '../shared/base.ts';
+import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
 import { GEAR, GEAR_KINDS } from '../shared/gear.ts';
 import { partKind, SCRAP_ITEMS } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
@@ -12,7 +12,7 @@ import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
 import { PART_IDS, pickTier } from '../shared/parts.ts';
 import { PISTOL } from '../shared/rifle.ts';
 import { rocksNear } from '../shared/rocks.ts';
-import { BROKEN_GEAR, CACHES, FINDS, RARE_FINDS } from '../shared/tables.ts';
+import { BROKEN_GEAR, CACHES, FINDS, HOME_BIKE, RARE_FINDS } from '../shared/tables.ts';
 import { EDIT_CELL, edits, WORLD_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -26,6 +26,8 @@ const PILE_ODDS = 0.45;
 const PILE_FIND_R = 600;
 /** The FINDS key for a loose rare part at guardian ground (level 2). */
 const RARE_KIND = 'rare';
+/** The pending-spawn key for the motorcycle in front of the base door (HOME_BIKE). */
+const HOME_KIND = 'home_bike';
 /** How far from the base buried caches lie, and how deep (m). */
 const CACHE_MIN_R = 80, CACHE_MAX_R = 1200;
 const CACHE_DEPTH = [0.5, 1.1];
@@ -60,6 +62,24 @@ function nearPiles() {
   return out;
 }
 
+/** Where the home bike lies: out from the door (it faces +Z), off the path a little, on clear sand in plain view.
+ *  The same spot every time. */
+function homeBikeSpot() {
+  const clear = (x: number, z: number) => {
+    if (overBase(x, z, 6) || rocksNear(x, z, 3)) return false;
+    const ix = Math.floor(x / SCRAP_CELL), iz = Math.floor(z / SCRAP_CELL);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if (scrapPieces(ix + dx, iz + dz).some((p) => Math.hypot(p.x - x, p.z - z) < 4)) return false;
+    }
+    return true;
+  };
+  for (const d of [22, 28, 34, 16, 42]) for (const a of [0.35, -0.35, 0.6, -0.6, 0, 0.9, -0.9]) {
+    const x = BASE_SPAWN.x + Math.sin(a) * d, z = BASE_SPAWN.z + Math.cos(a) * d;
+    if (clear(x, z)) return { x, z };
+  }
+  return { x: BASE_SPAWN.x + 8, z: BASE_SPAWN.z + 20 };
+}
+
 export class LootServer {
   readonly loot = new Map<number, Loot>();
   private nextId = 1;
@@ -68,6 +88,8 @@ export class LootServer {
   private removed: number[] = [];
   private sites = allCrashSites();
   private piles = nearPiles();
+  private homeBike = homeBikeSpot();
+  private homeBikeId = -1;
   private db: Db;
 
   constructor(db: Db) {
@@ -79,6 +101,7 @@ export class LootServer {
     }
     for (const [kind, f] of Object.entries(FINDS)) for (let i = 0; i < f.n; i++) this.spawnFind(kind);
     for (let i = 0; i < RARE_FINDS.n; i++) this.spawnFind(RARE_KIND);
+    this.spawnFind(HOME_KIND);
     for (let i = 0; i < CACHES.n; i++) this.spawnCache();
     this.added = [];
   }
@@ -112,7 +135,7 @@ export class LootServer {
     }
     if (!give(l)) return 'full';
     this.remove(l);
-    const kind = l.kind in FINDS ? l.kind : RARE_KIND;
+    const kind = l.id === this.homeBikeId ? HOME_KIND : l.kind in FINDS ? l.kind : RARE_KIND;
     this.pending.push({ at: Date.now() + (l.src === 'find' ? FIND_RESPAWN_MS : CACHE_RESPAWN_MS), what: l.src, kind: l.src === 'find' ? kind : undefined });
     return l.kind;
   }
@@ -181,6 +204,12 @@ export class LootServer {
 
   /** Gear kind `kind` (FINDS) lying at a crash site of its level, among the debris around the wreck; RARE_KIND: a rare part. */
   private spawnFind(kind: string) {
+    if (kind === HOME_KIND) {
+      const parts = GEAR.motorcycle.slots.map((s) => ('part' in s && HOME_BIKE.fitted.includes(s.part) ? partKind(s.part, 'scrap') : null));
+      this.homeBikeId = this.nextId++;
+      this.add({ id: this.homeBikeId, kind: 'motorcycle', parts, ...this.homeBike, depth: 0, src: 'find' });
+      return;
+    }
     const level = FINDS[kind]?.level ?? 2;
     const sites = this.sites.filter((s) => s.level === level);
     let x = 0, z = 0;

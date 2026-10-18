@@ -2,6 +2,19 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — A motorcycle in front of the door
+
+- **Before**: the only motorcycles were 3 broken ones lying at random crawler-ground sites (950–1650 m out), drawn as a
+  1 m box stand-in, and their missing motor only came from crawler-ground machines or salvage wrecks. Nothing near the
+  base hinted a bike existed.
+- **Now**: one broken motorcycle always lies on the sand ~20–40 m out from the base door (server/loot.ts
+  `homeBikeSpot`: first clear spot off the door's axis, no rock, scrap or pad), in view as you come up the stairs. It
+  has its motor fitted (scrap tier, `HOME_BIKE` in shared/tables.ts) and needs a battery and a bearing, both from the
+  scrap fields' starter machines (beacon, winch), so it can be ridden after the first trips out. Taken, another lies
+  there 3 minutes later. The crawler-ground ones stay.
+- Broken motorcycles are drawn with the real sand bike model (src/bike.ts `loadBikeModel`) dropped on its side, so
+  they read as a bike from far off (box stand-in until it loads; its shared geometry is never disposed).
+
 ## 2026-10-17 — Roaming drones
 
 - A few drones now roam the open desert day and night (server/guardians.ts `roam`, site `ROAM`): at most 6 out at

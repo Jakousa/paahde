@@ -12,6 +12,11 @@ import { jammerModel } from '../models/jammer';
 import { TIERS } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { loadPart } from '../teardown/junk';
+import { loadBikeModel } from '../bike';
+
+/** The broken motorcycle lies over on its side by this much (rad), its low side this far (m) above the sand origin. */
+const BIKE_ROLL = 1.3;
+const BIKE_LIFT = 0.12;
 
 /** Drawn within this distance (m). */
 const VIEW = 350;
@@ -76,12 +81,28 @@ function cyl(g: THREE.Group, r: number, h: number, m: THREE.Material, x = 0, y =
 /** Small stand-in models for the gear, lying on the sand (origin at the ground). */
 const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
   motorcycle: (g) => {
-    // Lying on its side.
-    cyl(g, 0.36, 0.2, DARK, -0.65, 0.12, 0, 0, 0);
-    cyl(g, 0.36, 0.2, DARK, 0.65, 0.12, 0.05, 0, 0);
-    box(g, 1.1, 0.16, 0.3, RED, 0, 0.24, 0.05, 0, 0.1);
-    box(g, 0.5, 0.12, 0.25, DARK, -0.1, 0.36, 0.05);
-    box(g, 0.08, 0.6, 0.08, STEEL, 0.55, 0.3, 0.1, 0, 0.5);
+    // The real sand bike (src/bike.ts) dropped on its side, half sunk in the sand, so it reads as a bike from afar;
+    // a box stand-in until the model has loaded.
+    const stand = new THREE.Group();
+    cyl(stand, 0.36, 0.2, DARK, -0.65, 0.12, 0, 0, 0);
+    cyl(stand, 0.36, 0.2, DARK, 0.65, 0.12, 0.05, 0, 0);
+    box(stand, 1.1, 0.16, 0.3, RED, 0, 0.24, 0.05, 0, 0.1);
+    box(stand, 0.5, 0.12, 0.25, DARK, -0.1, 0.36, 0.05);
+    g.add(stand);
+    loadBikeModel().then((gltf) => {
+      const m = gltf.scene.clone(true);
+      m.traverse((o) => {
+        o.castShadow = o.receiveShadow = true;
+        o.userData.shared = true; // its geometry is the ridden bikes' too: never disposed
+      });
+      m.rotation.set(0, Math.PI / 2, 0, 'YXZ');
+      m.rotation.z = BIKE_ROLL;
+      m.getObjectByName('Handlebar')?.rotation.set(0, 0.45, 0);
+      m.position.y = BIKE_LIFT;
+      g.remove(stand);
+      stand.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
+      g.add(m);
+    }, () => {});
   },
   spyglass: (g) => {
     cyl(g, 0.045, 0.32, RUST, 0, 0.05, 0, 0, Math.PI / 2);
@@ -171,7 +192,7 @@ export class LootView {
       const l = loot.get(id);
       if (!l || l.depth > 0 || Math.hypot(l.x - me.x, l.z - me.z) > VIEW + 20) {
         this.group.remove(s.obj);
-        s.obj.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
+        s.obj.traverse((o) => (o as THREE.Mesh).isMesh && !o.userData.shared && (o as THREE.Mesh).geometry.dispose());
         if (s.pool) {
           this.group.remove(s.pool);
           s.pool.geometry.dispose();

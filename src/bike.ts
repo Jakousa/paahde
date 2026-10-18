@@ -42,6 +42,8 @@ const headlights: { light: THREE.SpotLight; used: boolean }[] = [];
 
 let shared: Promise<GLTF> | undefined;
 const load = () => (shared ??= new GLTFLoader().loadAsync('./models/sandbike.glb'));
+/** The sand bike model (shared by every clone: don't change its materials), also drawn lying broken on the sand (src/world/loot.ts). */
+export const loadBikeModel = load;
 
 export type BikePose = { x: number; y: number; z: number; heading: number; vx: number; vy: number; vz: number; grounded: boolean;
   /** Space held: up on the back wheel while grounded. */
