@@ -55,6 +55,14 @@ export class TerrainEdits {
   /** Chunks already reported in the current batch (cleared on the next microtask). */
   private told = new Set<number>();
 
+  /** Chunk (cx, cz)'s array was changed in place (shared/dig.ts heal): tell the listeners, as setMm would. */
+  touch(cx: number, cz: number) {
+    // Its low-edge vertices are also sampled by the neighbouring chunks' meshes.
+    this.changed(cx, cz);
+    this.changed(cx - 1, cz);
+    this.changed(cx, cz - 1);
+  }
+
   private changed(cx: number, cz: number) {
     if (!this.onChange) return;
     const k = cx * 0x100000 + cz;

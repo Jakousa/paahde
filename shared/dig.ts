@@ -209,17 +209,24 @@ export function stroke(
   return p;
 }
 
-/** One healing pass: moves every edited vertex toward 0 (the untouched dunes). Returns the vertices changed. */
-export function heal(edits: TerrainEdits, sink?: CellSink): number {
+/** One healing pass: moves every edited vertex toward 0 (the untouched dunes). Returns the vertices changed;
+ *  `onChunk` hears of each chunk that changed. Works on the chunk arrays in place (it runs every 5 s over every edited
+ *  vertex, on the server and every client: per-vertex setMm was ~130 ms with a few hundred boss craters about). */
+export function heal(edits: TerrainEdits, onChunk?: (cx: number, cz: number) => void): number {
   let changed = 0;
   for (const [cx, cz, c] of edits.entries()) {
+    let any = false;
     for (let i = 0; i < c.length; i++) {
       const v = c[i];
       if (v === 0) continue;
       const a = Math.abs(v), q = Math.min(a, HEAL_MIN_MM + (a >> HEAL_SHIFT));
-      set(edits, cx * EDIT_CHUNK + (i % EDIT_CHUNK), cz * EDIT_CHUNK + Math.floor(i / EDIT_CHUNK), v > 0 ? v - q : v + q, sink);
+      c[i] = v > 0 ? v - q : v + q;
       changed++;
+      any = true;
     }
+    if (!any) continue;
+    edits.touch(cx, cz);
+    onChunk?.(cx, cz);
   }
   return changed;
 }

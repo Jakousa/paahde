@@ -11,6 +11,9 @@ type Db = ReturnType<typeof openDb>;
 const CHUNKS_PER_MSG = 16;
 /** Relaxation work cap per pass, so a huge avalanche can't stall the game loop. */
 const RELAX_MAX_CELLS = 20_000;
+/** Chunks only healed are saved a share at a time, all of them over this many saves (12 × 5 s: at worst a minute's
+ *  healing lost on a crash). */
+const HEAL_SAVE_EVERY = 12;
 
 export class TerrainServer {
   private db: Db;
@@ -31,8 +34,11 @@ export class TerrainServer {
   };
 
   // Healing flattens, so it never needs relaxing; nor sending: every client heals its own copy ('terrainHeal').
-  private onHeal = (ix: number, iz: number) => {
-    this.dirtyChunks.add(TerrainEdits.key(Math.floor(ix / EDIT_CHUNK), Math.floor(iz / EDIT_CHUNK)));
+  // Nor saving every time: it touches every edited chunk, so each save takes a share of them, round robin (a chunk
+  // healed again goes to the back of the set).
+  private healed = new Set<string>();
+  private onHeal = (cx: number, cz: number) => {
+    this.healed.add(TerrainEdits.key(cx, cz));
   };
 
   constructor(db: Db) {
@@ -99,8 +105,14 @@ export class TerrainServer {
     return msgs;
   }
 
-  /** Persist chunks changed since the last save. */
-  save() {
+  /** Persist chunks changed since the last save, and 1/HEAL_SAVE_EVERY of those only healed (`all`: all of them). */
+  save(all = false) {
+    let n = all ? this.healed.size : Math.ceil(this.healed.size / HEAL_SAVE_EVERY);
+    for (const k of this.healed) {
+      if (n-- <= 0) break;
+      this.dirtyChunks.add(k);
+      this.healed.delete(k);
+    }
     if (this.dirtyChunks.size === 0) return;
     const out: { cx: number; cz: number; data: Int32Array }[] = [];
     for (const k of this.dirtyChunks) {

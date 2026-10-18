@@ -930,7 +930,7 @@ function shutdown() {
     save(p);
     p.ws.close(1012, 'server restarting');
   }
-  terrain.save();
+  terrain.save(true);
   db.close();
   http.close();
   process.exit(0);
