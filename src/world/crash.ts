@@ -176,6 +176,8 @@ export class Bench {
   private asked = 0;
   /** The job we asked for is on the table (src/main.ts starts the mode). */
   onReady?: () => void;
+  /** Lights a new machine with the bunker's lamps (Base.lightIndoors). */
+  indoors?: (root: THREE.Object3D) => void;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -211,6 +213,7 @@ export class Bench {
     if (!this.job) {
       const kind = job.kind as JunkKind;
       const junk = buildJunk(kind, job.seed);
+      this.indoors?.(junk.root);
       // Fit the table: its long side is BENCH.d.
       const size = new THREE.Box3().setFromObject(junk.root).getSize(new THREE.Vector3());
       junk.root.scale.setScalar(Math.min(1, (BENCH.d * 0.95) / Math.max(size.x, size.z, 1e-3)));

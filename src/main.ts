@@ -116,6 +116,7 @@ const guardianFx = new GuardianFx(scene); // the giant walkers around the crash 
 const bossFx = new BossFx(scene, (...a) => guardianFx.thump(...a), (s) => guardianFx.jolt(s)); // the worm, carrier, colossus and queen (shared/bosses.ts)
 const teardown = new TeardownView(scene, orbit.camera, renderer.domElement); // F at a machine site: the character walks up and the disassembly controls take over
 machines.busy = () => teardown.current?.id;
+machines.bench.indoors = (root) => base.lightIndoors(root);
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).

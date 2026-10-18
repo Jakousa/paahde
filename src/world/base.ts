@@ -161,6 +161,21 @@ export class Base {
     return convert(src as THREE.MeshStandardMaterial, this.lit);
   }
 
+  /** Light a thing indoors (a machine on the disassembly table) with the bunker's lights instead of the
+   *  scene's, so the work lamps reach it at night. Changes its node materials in place. */
+  lightIndoors(root: THREE.Object3D) {
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      for (const mt of Array.isArray(m.material) ? m.material : [m.material]) {
+        if ((mt as THREE.MeshStandardNodeMaterial).isMeshStandardNodeMaterial) {
+          (mt as THREE.MeshStandardNodeMaterial).lightsNode = this.lit;
+          mt.needsUpdate = true;
+        }
+      }
+    });
+  }
+
   /** Follow the daylight with the bounce under the skylight. */
   update() {
     const day = THREE.MathUtils.smoothstep(sunDirection.value.y, 0.0, 0.5);
