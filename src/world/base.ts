@@ -65,19 +65,20 @@ export class Base {
       this.lamps[i].updateMatrixWorld();
     });
     const loader = new GLTFLoader();
-    loader.load(
-      './models/base/bunker.glb',
-      (gltf) => this.place(gltf.scene),
-      undefined,
-      (err) => console.warn('base: failed to load bunker.glb', err),
-    );
-    loader.load(
-      './models/base/lamp.glb',
-      (gltf) => this.hangLamps(gltf.scene),
-      undefined,
-      (err) => console.warn('base: failed to load lamp.glb', err),
-    );
+    this.ready = Promise.all([
+      loader.loadAsync('./models/base/bunker.glb').then(
+        (gltf) => this.place(gltf.scene),
+        (err) => console.warn('base: failed to load bunker.glb', err),
+      ),
+      loader.loadAsync('./models/base/lamp.glb').then(
+        (gltf) => this.hangLamps(gltf.scene),
+        (err) => console.warn('base: failed to load lamp.glb', err),
+      ),
+    ]).then(() => {});
   }
+
+  /** Resolves once the bunker and its lamps are in place (or failed to load). */
+  readonly ready: Promise<void>;
 
   private lit = lights([sunLight, this.bounce, this.bulb, ...this.lamps]);
 

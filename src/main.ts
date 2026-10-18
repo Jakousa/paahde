@@ -138,6 +138,14 @@ net.onDig = (at, pile, _mine, id) => {
   digUntil.set(id, performance.now() + DIG_ANIM_S * 1000);
 };
 loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
+// Dark until the bunker you spawn in and the player model have loaded, so the first frames show neither a
+// half-built room nor placeholder bodies; after 20 s, whatever has loaded.
+const cover = document.createElement('div');
+cover.style.cssText = 'position: fixed; inset: 0; z-index: 25; background: #111; pointer-events: none; transition: opacity .4s';
+document.body.append(cover);
+let loaded = false;
+let coverFrames = 0; // frames drawn behind the cover once loaded (lets shaders compile)
+Promise.race([Promise.allSettled([base.ready, loadScavenger()]), new Promise((r) => setTimeout(r, 20_000))]).then(() => (loaded = true));
 const me = new Avatar(0xffffff);
 me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
 let bodyHidden = true;
@@ -224,6 +232,10 @@ renderer.setAnimationLoop((time) => {
     return;
   }
   joined = true;
+  if (loaded && coverFrames < 3 && ++coverFrames === 3) {
+    cover.style.opacity = '0';
+    setTimeout(() => cover.remove(), 500);
+  }
   if (faceCrash) {
     faceCrash = false;
     const near = crashSitesNear(net.me.x, net.me.z, 200);
