@@ -17,6 +17,7 @@ import { partOf } from '../shared/parts.ts';
 import { RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
 import type { ScrapPiece } from '../shared/scrap.ts';
+import { Hints } from './hints';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { isCorpseBox } from '../shared/corpse.ts';
@@ -238,6 +239,7 @@ export class InventoryHud {
   /** The cells a drag would take, lit green or red. */
   private hint = document.createElement('div');
   private hintAt = '';
+  private hints = new Hints();
 
   constructor(net: Net, canvas: HTMLElement) {
     this.net = net;
@@ -257,6 +259,7 @@ export class InventoryHud {
     net.onItems = (box, got) => {
       // The disassembly mode shows its own "+ Motor · Quality" flying to the hotbar.
       if (got && !document.body.classList.contains('teardown')) this.toast(`+1 ${itemLabel(got)}`);
+      this.hints.onItems(net.boxes, box, got);
       if (box === 'bag' || box === 'equip' || this.storages.includes(box)) this.render();
     };
 
