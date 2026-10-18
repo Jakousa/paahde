@@ -29,6 +29,13 @@ const STORM_H = 60;
 const STORM_STEPS = 6;
 /** The dust frays out to this many storm radii (the gameplay strength ends at 1). */
 const STORM_OUTER = 1.3;
+/** Ambient occlusion fades out between these view distances (m). Far off, GTAO (half resolution, normals
+ *  rebuilt from depth) sees the ground at grazing angles a metre or more per pixel, and the depth step
+ *  grows with distance² (near plane 5 cm: ~1 m at 1 km, as big as its 1.2 m radius): it read that as
+ *  creases and peppered distant dunes and rock faces with dark dots, worst through the scope. Past
+ *  ~100 m the haze has flattened any real occlusion anyway. */
+const AO_FADE_START = 40;
+const AO_FADE_END = 90;
 
 /** How much sunlight gets through the sandstorms along the sun ray from `o`, 0..1: the shader's dust
  *  (dusted in Post) marched on the CPU, with the billows averaged out. */
@@ -142,8 +149,10 @@ export class Post {
       // sample is itself far away.
       const wDist = perspectiveDepthToViewZ(depth.sample(warped).r, camNear, camFar).negate();
       const keep = smoothstep(15, 30, wDist);
-      // Ambient occlusion darkens creases (GTAO from the scene depth); the slider scales it.
-      const occl = mix(float(1), aoTex.sample(p).r, aoIntensity);
+      // Ambient occlusion darkens creases (GTAO from the scene depth); the slider scales it. None far
+      // away (AO_FADE_END), where it only adds speckle.
+      const aoNear = float(1).sub(smoothstep(AO_FADE_START, AO_FADE_END, dist));
+      const occl = mix(float(1), aoTex.sample(p).r, aoIntensity.mul(aoNear));
       return color.sample(mix(p, warped, keep)).rgb.mul(occl);
     })();
 
