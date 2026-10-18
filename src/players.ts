@@ -107,6 +107,7 @@ export class Avatar {
   private slideFor = 0;
   private sprayOwed = 0;
   private label?: THREE.Sprite;
+  private labelText = '';
   /** Leave footprints even when the root is hidden (the local first-person player). */
   footprints = true;
   private shadowOnly = false;
@@ -172,26 +173,33 @@ export class Avatar {
 
   /** Floating tag over the head (remote players). */
   setLabel(text: string, color: number) {
+    if (this.label && text === this.labelText) return;
     this.clearLabel();
+    this.labelText = text;
+    const font = 'bold 34px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
+    let g = canvas.getContext('2d')!;
+    g.font = font;
+    // Wide enough for the name (up to NAME_MAX characters), at least the old 256 px.
+    const w = g.measureText(text).width + 36;
+    canvas.width = Math.max(256, Math.ceil(w + 16));
     canvas.height = 64;
-    const g = canvas.getContext('2d')!;
-    g.font = 'bold 34px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    g = canvas.getContext('2d')!;
+    g.font = font;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillStyle = 'rgba(20, 10, 5, 0.55)';
-    const w = g.measureText(text).width + 36;
+    const cx = canvas.width / 2;
     g.beginPath();
-    g.roundRect(128 - w / 2, 8, w, 48, 24);
+    g.roundRect(cx - w / 2, 8, w, 48, 24);
     g.fill();
     g.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
-    g.fillText(text, 128, 33);
+    g.fillText(text, cx, 33);
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     const mat = new THREE.SpriteNodeMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
     this.label = new THREE.Sprite(mat);
-    this.label.scale.set(1.2, 0.3, 1);
+    this.label.scale.set((0.3 * canvas.width) / canvas.height, 0.3, 1);
     this.label.position.y = 2.25;
     this.root.add(this.label);
   }

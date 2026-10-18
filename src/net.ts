@@ -179,6 +179,8 @@ export class Net {
   onBolt?: (msg: Extract<ServerMsg, { t: 'shot' | 'boom' | 'missile' | 'blast' }>) => void;
   /** A chat line from player `id` (us too), src/chat.ts. */
   onChat?: (msg: Extract<ServerMsg, { t: 'chat' }>) => void;
+  /** Other players' names by public id ('' unnamed), for the tags over their heads. */
+  names = new Map<number, string>();
   /** Joined a world you haven't been asked your name in yet (src/name.ts). */
   onAskName?: () => void;
   onObituary?: (msg: Obituary) => void;
@@ -655,6 +657,11 @@ export class Net {
     }
     if (msg.t === 'toss' || msg.t === 'tossEnd') return this.onToss?.(msg);
     if (msg.t === 'chat') return this.onChat?.(msg);
+    if (msg.t === 'names') {
+      if (msg.reset) this.names.clear();
+      for (const [id, name] of msg.names) this.names.set(id, name);
+      return;
+    }
     if (msg.t === 'obituary') return this.onObituary?.(msg);
     if (msg.t === 'obituaries') return this.onObituaries?.(msg.list);
     if (msg.t === 'shieldBreak') return this.onShieldBreak?.(msg);

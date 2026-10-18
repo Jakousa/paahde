@@ -259,6 +259,9 @@ export type ServerMsg =
   // Player `id` (public id; `color` their avatar's, `name` theirs or '') said `text` in chat at `at` (ms since epoch),
   // to everyone (also back to the sender).
   | { t: 'chat'; id: number; color: number; name: string; text: string; at: number }
+  // Players' names ([public id, name], '' unnamed) for the tags over their heads: everyone on join (reset), then
+  // a player's to everyone when they join or name themselves.
+  | { t: 'names'; names: [number, string][]; reset?: boolean }
   // Player `id` (`color` their avatar's) died of `cause` at `at` (ms since epoch), to everyone: a line in chat that
   // stays (src/chat.ts says how). Deaths are kept in the world's DB; 'obituaries' sends the last OBITUARY_KEEP on join.
   | Obituary

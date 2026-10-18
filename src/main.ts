@@ -348,7 +348,6 @@ renderer.setAnimationLoop((time) => {
     if (!avatar) {
       const a = (avatar = new Avatar(r.color));
       remotes.set(r.id, a);
-      a.setLabel(`#${r.id}`, r.color);
       scene.add(a.root);
       // Placeholder until the rigged scavenger has loaded, then swap it in.
       const model = new ScavengerModel(r.color);
@@ -357,6 +356,7 @@ renderer.setAnimationLoop((time) => {
         () => model.dispose(),
       );
     }
+    avatar.setLabel(net.names.get(r.id) || `#${r.id}`, r.color);
     avatar.setOutfit(r.item, r.gear, r.tiers);
     if (!ride(r.id, avatar, { ...r, heading: r.facing }, frameDt)) {
       avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching }, frameDt);

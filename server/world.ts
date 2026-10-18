@@ -270,6 +270,8 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, jets.msg());
   send(ws, loot.joinMessage(browserId));
   send(ws, { t: 'welcome', id: p.id, state, color, epoch, name });
+  send(ws, { t: 'names', names: [...players.values()].map((o) => [o.id, o.name]), reset: true });
+  sendName(p);
   send(ws, { t: 'obituaries', list: db.lastObituaries(OBITUARY_KEEP) });
   recall(p);
   send(ws, corpses.joinMessage());
@@ -616,6 +618,13 @@ function onName(p: Player, name: unknown) {
   if (typeof name !== 'string') return;
   p.name = name.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
   db.setName(p.browserId, p.name);
+  sendName(p);
+}
+
+/** p's name to everyone else, for the tag over their head. */
+function sendName(p: Player) {
+  const json = JSON.stringify({ t: 'names', names: [[p.id, p.name]] } satisfies ServerMsg);
+  for (const o of players.values()) if (o !== p && o.ws.readyState === o.ws.OPEN) o.ws.send(json);
 }
 
 /** What a killed walker or downed drone leaves on the sand (shared/tables.ts KILL_SPOILS). */
