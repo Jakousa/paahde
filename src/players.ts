@@ -172,7 +172,7 @@ export class Avatar {
 
   /** Floating tag over the head (remote players). */
   setLabel(text: string, color: number) {
-    this.label?.removeFromParent();
+    this.clearLabel();
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 64;
@@ -194,6 +194,15 @@ export class Avatar {
     this.label.scale.set(1.2, 0.3, 1);
     this.label.position.y = 2.25;
     this.root.add(this.label);
+  }
+
+  private clearLabel() {
+    if (!this.label) return;
+    this.label.removeFromParent();
+    this.label.material.map?.dispose();
+    this.label.material.dispose();
+    this.label.dispose();
+    this.label = undefined;
   }
 
   /** Where the body lies while down (the ragdoll's middle, else just above the feet); false when not down. */
@@ -343,6 +352,7 @@ export class Avatar {
 
   dispose() {
     this.model.dispose();
+    this.clearLabel();
     this.root.removeFromParent();
   }
 }
@@ -487,6 +497,7 @@ export class PlaceholderModel implements AvatarModel {
   dispose() {
     this.root.removeFromParent();
     this.root.traverse((o) => {
+      o.dispose();
       if (o instanceof THREE.Mesh) o.geometry.dispose();
     });
     this.robeMat.dispose();

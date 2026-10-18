@@ -234,5 +234,8 @@ function shadows<T extends THREE.Object3D>(o: T): T {
 /** Free a held model's geometries (the materials are shared). */
 export function disposeModel(o: THREE.Object3D) {
   o.removeFromParent();
-  o.traverse((c) => (c as THREE.Mesh).isMesh && (c as THREE.Mesh).geometry.dispose());
+  o.traverse((c) => {
+    c.dispose();
+    if ((c as THREE.Mesh).isMesh) (c as THREE.Mesh).geometry.dispose();
+  });
 }

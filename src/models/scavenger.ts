@@ -823,6 +823,13 @@ export class ScavengerModel {
     this.mixer?.uncacheRoot(this.mixer.getRoot());
     for (const m of this.tint) m.dispose();
     this.root.removeFromParent();
+    // Clones share the glTF's geometry/materials, but own their skeletons and renderer bindings.
+    const skeletons = new Set<THREE.Skeleton>();
+    this.root.traverse((o) => {
+      if (o instanceof THREE.SkinnedMesh) skeletons.add(o.skeleton);
+      o.dispose();
+    });
+    for (const skeleton of skeletons) skeleton.dispose();
   }
 }
 
