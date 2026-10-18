@@ -1,12 +1,13 @@
 // Server side of the fixed-wing drones (shared/jets.ts): now and then one flies past a random player, in a straight
-// pass or a big circle around them, and the list goes out to everyone whenever it changes. In memory only.
-import { JET_ALT_MAX, JET_ALT_MIN, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, jetLength, type Jet } from '../shared/jets.ts';
+// pass or a big circle around them, and the list goes out to everyone whenever it changes. Shot (shoot) JET_HP times,
+// one glides down to the sand. In memory only.
+import { GLIDE, GLIDE_SPEED, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
 import { baseHeight } from '../shared/terrain.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 
 /** Time between one flight's start and the next (ms). */
-const GAP_MIN_MS = 90_000;
-const GAP_MAX_MS = 4 * 60_000;
+const GAP_MIN_MS = 150_000;
+const GAP_MAX_MS = 6 * 60_000;
 const MAX_JETS = 2;
 /** The pass lands within this far (m) of the player it was picked for; a circle's ring passes about as near. */
 const OFFSET = 350;
@@ -17,7 +18,11 @@ const R_MAX = 1400;
 const TURN_MIN = 0.75 * Math.PI;
 const TURN_MAX = 2.5 * Math.PI;
 
+/** The shooter sees the jet at its guess of the server clock: test the shot against where it was this far back (ms). */
+const LAG_MS = [0, 100, 200, 300];
+
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
+const _p = jetPose();
 
 export class JetServer {
   jets: Jet[] = [];
@@ -76,10 +81,47 @@ export class JetServer {
       out: LEAD,
       start: Math.round(now),
       end: 0,
+      hurt: 0,
     };
     jet.end = Math.round(now + (jetLength(jet) / jet.speed) * 1000);
     this.jets.push(jet);
     this.changed = true;
+  }
+
+  /** A rifle shot from (x, y, z) to (ex, ey, ez) at server time `now` that the client says hit jet `id`: true if it
+   *  passed near where that jet was lately (the last hit brings it down). */
+  shoot(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number): boolean {
+    const j = this.jets.find((o) => o.id === id);
+    if (!j || j.down) return false;
+    const dx = ex - x, dy = ey - y, dz = ez - z, len2 = dx * dx + dy * dy + dz * dz;
+    if (len2 < 0.01) return false;
+    const near = LAG_MS.some((lag) => {
+      if (!jetAt(j, now - lag, _p)) return false;
+      const t = Math.max(0, Math.min(1, ((_p.x - x) * dx + (_p.y - y) * dy + (_p.z - z) * dz) / len2));
+      return Math.hypot(x + dx * t - _p.x, y + dy * t - _p.y, z + dz * t - _p.z) < JET_HIT && Math.hypot(ex - _p.x, ey - _p.y, ez - _p.z) < JET_HIT * 1.5;
+    });
+    if (!near) return false;
+    this.changed = true;
+    if (++j.hurt >= JET_HP) this.bringDown(j, now);
+    return true;
+  }
+
+  /** Engine dead: it glides on along its heading until that line meets the sand (marched, then halved down to 1 m). */
+  private bringDown(j: Jet, now: number) {
+    jetAt(j, now, _p);
+    const sx = Math.sin(_p.yaw), sz = Math.cos(_p.yaw), above = (f: number) => _p.y - f / GLIDE - baseHeight(_p.x + sx * f, _p.z + sz * f);
+    let lo = 0, hi = 20;
+    while (above(hi) > 0 && hi < 5000) [lo, hi] = [hi, hi + 20];
+    while (hi - lo > 1) {
+      const mid = (lo + hi) / 2;
+      if (above(mid) > 0) lo = mid;
+      else hi = mid;
+    }
+    const land = Math.round(now + (hi / (j.speed * GLIDE_SPEED)) * 1000);
+    const lx = _p.x + sx * hi, lz = _p.z + sz * hi;
+    const r = (v: number) => Math.round(v * 100) / 100;
+    j.down = { at: Math.round(now), x: r(_p.x), y: r(_p.y), z: r(_p.z), yaw: r(_p.yaw), land, lx: r(lx), ly: r(baseHeight(lx, lz)), lz: r(lz) };
+    j.end = land + WRECK_MS;
   }
 
   msg(): ServerMsg {

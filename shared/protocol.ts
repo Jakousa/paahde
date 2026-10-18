@@ -68,13 +68,14 @@ export type ClientMsg =
   // a fixed-wing drone past you in about 15 s.
   | { t: 'summon'; what: 'guardian' | 'drone' | 'jet' }
   // A laser rifle or pistol shot (shared/rifle.ts) from (x, y, z) to where it stopped, (ex, ey, ez). `g`/`i`: the client
-  // found it hit weak point i of walker g (i -1: just its body, which angers it); `d`: it hit drone d. The server checks
+  // found it hit weak point i of walker g (i -1: just its body, which angers it); `d`: it hit drone d; `j`: fixed-wing
+  // drone j (shared/jets.ts). The server checks
   // the gun is in hand, its reach, the rate and that the shot was aimed at that walker, breaks the point, and shows the
   // shot to everyone near ('zap').
   // A guardian's foot (client IK) came down on you (shared/guardians.ts FOOT_CRUSH_R); the server checks guardian `g`
   // is alive and near enough, and kills you ('died', cause 'guardian').
   | { t: 'stomped'; g: number }
-  | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number; d?: number }
+  | { t: 'fire'; x: number; y: number; z: number; ex: number; ey: number; ez: number; g?: number; i?: number; d?: number; j?: number }
   // Throw the scrap item in hotbar slot `slot` (shared/throw.ts) from the eye (x, y, z) along unit (dx, dy, dz). `n`:
   // the client's count of its throws, echoed in the 'toss' so it can tie its own flying junk to the server's.
   | { t: 'throw'; slot: number; n: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }

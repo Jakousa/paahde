@@ -25,6 +25,7 @@ import { playerHands } from './water';
 import type { Net } from './net';
 import type { Guardians } from './world/guardians';
 import type { Drones } from './world/drones';
+import type { Jets } from './world/jets';
 import { zaps } from './world/zaps';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
@@ -100,6 +101,7 @@ export class Rifle {
   private net: Net;
   private guardians: Guardians;
   private drones: Drones;
+  private jets: Jets;
   /** Where the drawn muzzle is (src/viewmodel.ts), or null. */
   private muzzle: (out: THREE.Vector3) => THREE.Vector3 | null;
   private el = document.createElement('div');
@@ -133,8 +135,9 @@ export class Rifle {
   forceAim = false;
   forceFire = false;
 
-  constructor(view: FirstPersonCamera, net: Net, guardians: Guardians, drones: Drones, muzzle: (out: THREE.Vector3) => THREE.Vector3 | null) {
+  constructor(view: FirstPersonCamera, net: Net, guardians: Guardians, drones: Drones, jets: Jets, muzzle: (out: THREE.Vector3) => THREE.Vector3 | null) {
     this.drones = drones;
+    this.jets = jets;
     this.view = view;
     this.net = net;
     this.guardians = guardians;
@@ -305,6 +308,8 @@ export class Rifle {
     if (hit) dist = hit.dist;
     const drone = this.drones.raycast(_o, _d, dist);
     if (drone) dist = drone.dist;
+    const jet = this.jets.raycast(_o, _d, dist);
+    if (jet) dist = jet.dist;
     _e.copy(_o).addScaledVector(_d, dist);
     // The beam from the drawn muzzle, or (third person: the rifle isn't drawn in the hands) from about where it'd be.
     const m = this.muzzle(_m) ?? _m.copy(_o).addScaledVector(_d, 0.6).addScaledVector(_r.set(1, 0, 0).applyQuaternion(_q), 0.2).add(_u.set(0, -0.25, 0));
@@ -314,8 +319,8 @@ export class Rifle {
     zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z);
     rifleSound.shot(null, null, this.gun === 'pistol');
     rifleSound.recharge(cooldown / 1000 - 0.08);
-    if (drone) {
-      zaps.burst(_e.x, _e.y, _e.z, -_d.x, -_d.y, -_d.z, 16);
+    if (drone || jet) {
+      zaps.burst(_e.x, _e.y, _e.z, -_d.x, -_d.y, -_d.z, jet ? 24 : 16, jet ? 1.6 : 1);
       rifleSound.impact('metal', _e, _o);
     } else if (hit) {
       zaps.burst(_e.x, _e.y, _e.z, hit.normal.x, hit.normal.y, hit.normal.z, hit.index >= 0 ? 6 : 16);
@@ -326,7 +331,7 @@ export class Rifle {
       for (let i = 0; i < 3; i++) tyreDust.emit(_e.x, _e.y + 0.1, _e.z, (Math.random() - 0.5) * 1.5, 1 + Math.random(), (Math.random() - 0.5) * 1.5, 0.35);
       rifleSound.impact('sand', _e, _o);
     }
-    this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, drone ? { d: drone.drone } : hit ? { g: hit.walker, i: hit.index } : undefined);
+    this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, jet ? { j: jet.jet } : drone ? { d: drone.drone } : hit ? { g: hit.walker, i: hit.index } : undefined);
     // Recoil: the muzzle climbs (some of it stays: pull it back down), kicks a little sideways; less held to the eye.
     const ads = playerHands.aim;
     const climb = feel.climb * (1.25 - 0.45 * ads) * (0.85 + Math.random() * 0.3);

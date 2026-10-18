@@ -1,9 +1,11 @@
 // Fixed-wing drones (shared/jets.ts): a long-winged unmanned plane built from primitives: a slim fuselage with a
 // sensor-domed nose, an intake hump over the back feeding a jet nozzle at the tail, straight tapered wings and a V
 // tail. Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and the server clock,
-// rolled into its turns.
+// rolled into its turns. Shot, it trails smoke (more with each hit); brought down it glides in on a heavy trail,
+// slides into the sand (onCrash) and smoulders. The rifle tests shots against it here (raycast).
 import * as THREE from 'three/webgpu';
-import { JET_SPAN, jetAt, type Jet, type JetPose } from '../../shared/jets.ts';
+import { JET_SPAN, jetAt, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
+import { zaps } from './zaps';
 
 /** Hidden past this distance (m) from the camera. */
 const SHOW_R = 5000;
@@ -73,18 +75,33 @@ function build(): THREE.Group {
   return g;
 }
 
+type View = { obj: THREE.Object3D; hurt: number; state: number; smoke: number };
+
+/** Hit boxes in the body frame (half sizes and centre, before JET_SPAN scaling): the fuselage, the wings. */
+const BOXES = [
+  { h: new THREE.Vector3(0.8, 0.9, 5.6), c: new THREE.Vector3(0, 0.2, 0) },
+  { h: new THREE.Vector3(9.2, 0.5, 1.1), c: new THREE.Vector3(0, 0.15, 0.1) },
+];
+/** The nozzle, where the smoke streams from (body frame). */
+const TAIL = new THREE.Vector3(0, 0.5, -5.8);
+const _inv = new THREE.Matrix4(), _o = new THREE.Vector3(), _d = new THREE.Vector3(), _t = new THREE.Vector3();
+
 export class Jets {
-  private views = new Map<number, THREE.Object3D>();
-  private pose: JetPose = { x: 0, y: 0, z: 0, yaw: 0, bank: 0, vx: 0, vz: 0 };
+  private views = new Map<number, View>();
+  private pose: JetPose = jetPose();
   private proto: THREE.Group | null = null;
   private scene: THREE.Scene;
+  /** A shot hit a jet at (x, y, z) (each one counts: the JET_HP-th brings it down). */
+  onHit: (x: number, y: number, z: number) => void = () => {};
+  /** A shot-down jet slid into the sand at (x, y, z). */
+  onCrash: (x: number, y: number, z: number) => void = () => {};
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
   }
 
   /** Every frame: the flights and the server time (ms); `eye` the camera. */
-  update(jets: Jet[], t: number, eye: { x: number; z: number }) {
+  update(jets: Jet[], t: number, eye: { x: number; z: number }, dt: number) {
     const seen = new Set<number>();
     for (const j of jets) {
       const p = this.pose;
@@ -93,20 +110,57 @@ export class Jets {
       let v = this.views.get(j.id);
       if (!v) {
         this.proto ??= build();
-        v = this.proto.clone();
-        v.rotation.order = 'YXZ';
-        this.scene.add(v);
-        this.views.set(j.id, v);
+        const obj = this.proto.clone();
+        obj.rotation.order = 'YXZ';
+        this.scene.add(obj);
+        // Came into view already hit or down: don't replay it.
+        this.views.set(j.id, (v = { obj, hurt: j.hurt, state: p.state, smoke: 0 }));
       }
-      v.position.set(p.x, p.y, p.z);
-      v.rotation.y = p.yaw;
-      // Bank is + turning towards +yaw (to the left, facing +Z): the left wing (+X) goes down.
-      v.rotation.z = -p.bank;
+      const o = v.obj;
+      o.position.set(p.x, p.y, p.z);
+      // Nose up is -X here (it faces +Z). Bank is + turning towards +yaw (to the left, facing +Z): the left wing (+X)
+      // goes down.
+      o.rotation.set(-p.pitch, p.yaw, -p.bank);
+      o.updateMatrixWorld();
+      if (j.hurt > v.hurt) this.onHit(p.x, p.y, p.z);
+      v.hurt = j.hurt;
+      if (p.state === 2 && v.state === 1) this.onCrash(p.x, p.y, p.z);
+      v.state = p.state;
+      // Smoke: a thin trail once hit, thicker with each hit, a heavy one gliding down; the wreck smoulders.
+      const rate = p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
+      v.smoke += dt * rate;
+      if (v.smoke >= 1) _t.copy(TAIL).applyMatrix4(o.matrixWorld);
+      for (; v.smoke >= 1; v.smoke--) {
+        if (p.state === 2) zaps.puff(p.x + (Math.random() - 0.5) * 6, p.y + 0.5, p.z + (Math.random() - 0.5) * 6, 3, 2.2);
+        else zaps.puff(_t.x, _t.y, _t.z, p.state === 1 ? 4 : 2 + j.hurt, 0.5);
+      }
     }
     for (const [id, v] of this.views) {
       if (seen.has(id)) continue;
-      this.scene.remove(v);
+      this.scene.remove(v.obj);
       this.views.delete(id);
     }
+  }
+
+  /** The first flying (or gliding) jet the shot from `o` along unit `d` strikes within `max` m, and how far. */
+  raycast(o: THREE.Vector3, d: THREE.Vector3, max: number): { jet: number; dist: number } | null {
+    let best: { jet: number; dist: number } | null = null;
+    for (const [id, v] of this.views) {
+      if (v.state !== 0) continue;
+      // Into the body frame, the direction scaled with it: o + d·t there is _o + _d·t, so t stays in world metres.
+      _inv.copy(v.obj.matrixWorld).invert();
+      _o.copy(o).applyMatrix4(_inv);
+      _d.copy(o).add(d).applyMatrix4(_inv).sub(_o);
+      for (const b of BOXES) {
+        let lo = 0, hi = max;
+        for (const ax of ['x', 'y', 'z'] as const) {
+          const a = (b.c[ax] - b.h[ax] - _o[ax]) / _d[ax], c = (b.c[ax] + b.h[ax] - _o[ax]) / _d[ax];
+          lo = Math.max(lo, Math.min(a, c));
+          hi = Math.min(hi, Math.max(a, c));
+        }
+        if (lo <= hi && (!best || lo < best.dist)) best = { jet: id, dist: lo };
+      }
+    }
+    return best;
   }
 }

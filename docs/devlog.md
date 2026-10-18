@@ -998,9 +998,9 @@ thrown with left mouse / E (`src/throw.ts`, `shared/throw.ts`).
 ## Fixed-wing drones
 
 A second flying machine, by day and by night: a big unmanned plane (18 m span, `shared/jets.ts`) passing high
-(110–180 m) and fast (75–110 m/s). No lights, no searchlight, no spotting; for now it only flies over.
+(110–180 m) and fast (60–90 m/s). No lights, no searchlight, no spotting; it only flies over, but it can be shot.
 
-- **Flights** (`server/jets.ts`): every 1.5–4 min (at most 2 in the air) one is sent past a random player: a straight
+- **Flights** (`server/jets.ts`): every 2.5–6 min (at most 2 in the air) one is sent past a random player: a straight
   pass within 350 m of them, or (40%) an arc of 0.75–2.5 laps round a 700–1400 m circle whose ring runs near them.
   Each flight is a run in, an arc and a run out, entering and leaving 3 km out. Like the sandstorms the list goes out
   on join and on change ('jets'), and both sides compute the position from it and the server clock (`jetAt`), so
@@ -1010,5 +1010,13 @@ A second flying machine, by day and by night: a big unmanned plane (18 m span, `
   turbine whine, heard to 3.5 km and from where the plane was when the sound left it (fixed-point on
   te = now − d(te)/c), so it lags behind the plane overhead. Measured (mono K-weighted render, same method that gives
   the missile's −17): −20.5 LUFS at 150 m, −27 at 300 m, −37 at 700 m, −46 at 1.5 km.
+- **Shooting:** the rifle tests its ray against two boxes (fuselage, wings) in the jet's frame (`Jets.raycast`); the
+  server checks the shot passed within `JET_HIT` of where the jet was 0–300 ms ago (the client flies it on its guess
+  of the server clock). `JET_HP` (3) hits: each a bang and a thicker smoke trail; the last kills the engine (the roar
+  stops) and the server adds `down`: a straight glide along its heading at 0.8× speed, 1 m down per 5 forward,
+  marched against `baseHeight` to where it meets the sand (mesas included: it can fly into one). The glide and wreck
+  are math on that record like the flight. Landing: firework, slam, dust and shake; the wreck smoulders 90 s.
+  Only within the rifle's 260 m, so a pass overhead gives a few seconds of shooting; the pistol can't reach.
 - **Testing:** F3 → "Jet here" sends a straight pass over you, ~13 s out, for everyone.
-- **Gaps:** can't be shot or hit with thrown scrap; holds one height over the whole flight (terrain at the player).
+- **Gaps:** thrown scrap doesn't reach them; no spoils from the wreck; holds one height over the whole flight
+  (terrain at the player).

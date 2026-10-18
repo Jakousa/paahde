@@ -319,7 +319,7 @@ export class Net {
   }
 
   /** A laser rifle shot from (x, y, z) to (ex, ey, ez); `hit`: weak point i of walker g, as we saw it (shared/rifle.ts). */
-  fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number } | { d: number }) {
+  fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number } | { d: number } | { j: number }) {
     const r = (n: number) => Math.round(n * 100) / 100;
     this.send({ t: 'fire', x: r(x), y: r(y), z: r(z), ex: r(ex), ey: r(ey), ez: r(ez), ...hit });
   }

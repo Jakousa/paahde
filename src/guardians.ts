@@ -11,7 +11,7 @@ import { Guardians, type Footfall } from './world/guardians';
 import { Bolts } from './world/bolts';
 import { Missiles } from './world/missiles';
 import { Jets } from './world/jets';
-import { jetAt, type JetPose } from '../shared/jets.ts';
+import { jetAt, jetPose, type JetPose } from '../shared/jets.ts';
 import { SPEED_OF_SOUND } from './acoustics';
 import { CHARGE_MS, CRAWLER, FOOT_CRUSH_R, GUARDIAN, KINDS } from '../shared/guardians.ts';
 import { guardianSound } from './guardianSound';
@@ -36,7 +36,7 @@ export class GuardianFx {
   readonly bolts: Bolts;
   readonly missiles: Missiles;
   readonly jets: Jets;
-  private jetPose: JetPose = { x: 0, y: 0, z: 0, yaw: 0, bank: 0, vx: 0, vz: 0 };
+  private jetPose: JetPose = jetPose();
   private bound = false;
   private locked = false;
   private charging = new Set<number>();
@@ -58,6 +58,13 @@ export class GuardianFx {
     this.bolts = new Bolts(scene);
     this.missiles = new Missiles(scene);
     this.jets = new Jets(scene);
+    // Shot: a heavier bang than a drone's. Down: it hits the sand like a walker's hull, with the burst of a drone's crash.
+    this.jets.onHit = (x, y, z) => guardianSound.footfall(x, y, z, 1, this.ear);
+    this.jets.onCrash = (x, y, z) => {
+      rifleSound.firework({ x, y, z }, this.ear, 1, MISSILE_FIREWORK_PITCH);
+      rifleSound.slam({ x, y, z }, this.ear, true);
+      this.thump(x, y, z, 2.2, 36, 9, 4);
+    };
     this.guardians.onFootfall = (f) => this.footfall(f);
     // A shot hitting a drone: a lighter bang than its crash (each one counts, so no firework like a weak point's).
     this.drones.onHit = (x, y, z) => guardianSound.footfall(x, y, z, 0.7, this.ear);
@@ -112,7 +119,7 @@ export class GuardianFx {
         if (!(ok = jetAt(j, te, p))) break;
         te = now - (Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z) / SPEED_OF_SOUND) * 1000;
       }
-      if (ok && jetAt(j, te, p)) out.push({ id: j.id, x: p.x, y: p.y, z: p.z, vx: p.vx, vz: p.vz });
+      if (ok && jetAt(j, te, p) && p.state === 0) out.push({ id: j.id, x: p.x, y: p.y, z: p.z, vx: p.vx, vz: p.vz });
     }
     return out;
   }
@@ -159,7 +166,7 @@ export class GuardianFx {
     this.bolts.update(dt, net.serverTime());
     this.missiles.update(dt, net.serverTime());
     guardianSound.missiles(this.missiles.heads(net.serverTime()), this.ear);
-    this.jets.update(net.jets, net.serverTime(), this.ear);
+    this.jets.update(net.jets, net.serverTime(), this.ear, dt);
     guardianSound.jets(this.heardJets(net), this.ear);
     const t = net.serverTime() - BOT_DELAY_MS;
     const gs = guardiansAt(net.bots, t);
