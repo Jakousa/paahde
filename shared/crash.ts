@@ -37,6 +37,10 @@ export function crashChanged() {
   for (const f of crashListeners) f();
 }
 
+/** Version of the machines' step lists (src/teardown/junk.ts, wrecks.ts): saved steps-done indexes are only kept
+ *  when they were saved under this layout. Bump it whenever a machine's steps change order or number. */
+export const TEARDOWN_LAYOUT = 2;
+
 /** How close you must be (m) for the "Disassemble" prompt. */
 export const CRASH_REACH = 4.5;
 

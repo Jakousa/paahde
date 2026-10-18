@@ -145,8 +145,11 @@ export function openDb(path: string) {
       seed INTEGER NOT NULL
     );
   `);
-  const allProgress = db.prepare('SELECT id, done, taken FROM machine_progress');
-  const putProgress = db.prepare('INSERT OR REPLACE INTO machine_progress (id, done, taken) VALUES (?, ?, ?)');
+  // Which step layout `done` indexes refer to (TEARDOWN_LAYOUT in shared/crash.ts); rows from before had layout 1.
+  const progCols = db.prepare('SELECT name FROM pragma_table_info(?)').all('machine_progress') as { name: string }[];
+  if (!progCols.some((c) => c.name === 'layout')) db.exec('ALTER TABLE machine_progress ADD COLUMN layout INTEGER NOT NULL DEFAULT 1');
+  const allProgress = db.prepare('SELECT id, done, taken, layout FROM machine_progress');
+  const putProgress = db.prepare('INSERT OR REPLACE INTO machine_progress (id, done, taken, layout) VALUES (?, ?, ?, ?)');
   const deleteProgress = db.prepare('DELETE FROM machine_progress WHERE id = ?');
   const getBench = db.prepare('SELECT kind, seed FROM bench_job WHERE id = 1');
   const putBench = db.prepare('INSERT OR REPLACE INTO bench_job (id, kind, seed) VALUES (1, ?, ?)');
@@ -284,8 +287,9 @@ export function openDb(path: string) {
     loadCrashTaken: () => allCrash.all() as { id: string; taken_at: number }[],
     takeCrash: (id: string, at: number) => insertCrash.run(id, at),
     respawnCrash: (id: string) => deleteCrash.run(id),
-    loadProgress: () => (allProgress.all() as { id: string; done: string; taken: string }[]).map((r) => ({ id: r.id, done: nums(r.done), taken: nums(r.taken) })),
-    saveProgress: (id: string, done: number[], taken: number[]) => putProgress.run(id, JSON.stringify(done), JSON.stringify(taken)),
+    loadProgress: () => (allProgress.all() as { id: string; done: string; taken: string; layout: number }[])
+      .map((r) => ({ id: r.id, done: nums(r.done), taken: nums(r.taken), layout: r.layout })),
+    saveProgress: (id: string, done: number[], taken: number[], layout: number) => putProgress.run(id, JSON.stringify(done), JSON.stringify(taken), layout),
     clearProgress: (id: string) => deleteProgress.run(id),
     loadBench: () => getBench.get() as { kind: string; seed: number } | undefined,
     saveBench: (kind: string, seed: number) => putBench.run(kind, seed),

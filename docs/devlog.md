@@ -15,6 +15,22 @@ What we built, why, and what's left. Newest session first. Add an entry when you
 - Broken motorcycles are drawn with the real sand bike model (src/bike.ts `loadBikeModel`) dropped on its side, so
   they read as a bike from far off (box stand-in until it loads; its shared geometry is never disposed).
 
+## 2026-10-18 — Shorter disassembly
+
+Taking machines apart was too long ("too many parts"). Same machines, same parts and mounts, about half the
+steps (`src/teardown/junk.ts`, `wrecks.ts`; nothing in Blender changed, the machines are built in code):
+
+- Steps per machine (average over seeds, before → after): jet engine 50 → 24, robot arm 43 → 20, pump 39 → 19,
+  vehicle frame 28 → 13, control cabinet 25 → 12, warp core 25 → 12, AI control 20 → 9, water jet 20 → 10, solenoid
+  valve 12 → 4.5, beacon 10 → 5, winch 8 → 3.6. Screws take 2 clicks (3 on fancy machines), bolts 3 half turns.
+- How: a lid (`bay`) or plate (`rect`) has two screws at opposite corners (or none, held by a pry seam or latch),
+  bolt circles are 2–4 bolts, one bolt where there were two, one spring clip per heat sink, two board standoffs.
+  Wires that only doubled another (earth, coil feed / return, second starter lead, cell leads, ribbons) are plain
+  cables now. The prerequisites that make sense stay: drain before the cover, cut the leads before the bolts, guard
+  before the coupling, the two-player lifts.
+- Saved progress: `machine_progress` has a `layout` column; steps done under another `TEARDOWN_LAYOUT`
+  (shared/crash.ts, now 2) are dropped on load, parts taken stay taken. Bump it when a machine's steps change.
+
 ## 2026-10-17 — Roaming drones
 
 - A few drones now roam the open desert day and night (server/guardians.ts `roam`, site `ROAM`): at most 6 out at

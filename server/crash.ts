@@ -16,7 +16,7 @@
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
-import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE } from '../shared/crash.ts';
+import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { crashSite, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
 import { DEBRIS_ITEMS } from '../shared/items.ts';
@@ -96,7 +96,9 @@ export class CrashServer {
       const m = this.large(r.id);
       if (!m) continue; // the layout changed since (or the table is free): forget it
       const ok = (i: number) => Number.isInteger(i) && i >= 0 && i <= MAX_INDEX;
-      this.sessions.set(m.id, this.newSession(r.done.filter(ok), r.taken.filter((i) => ok(i) && i < m.parts.length)));
+      // Steps saved under another layout point at different hardware now: redo them (the parts taken stay taken).
+      const done = r.layout === TEARDOWN_LAYOUT ? r.done.filter(ok) : [];
+      this.sessions.set(m.id, this.newSession(done, r.taken.filter((i) => ok(i) && i < m.parts.length)));
     }
     if (this.bench && !this.sessions.has(BENCH_ID)) this.sessions.set(BENCH_ID, this.newSession([], []));
     console.log(`crash: ${this.sessions.size} machines worked on`);
@@ -141,7 +143,7 @@ export class CrashServer {
     const ok = this.db.tx(() => {
       if (!take()) return false;
       this.db.saveBench(kind, seed);
-      this.db.saveProgress(BENCH_ID, [], []);
+      this.db.saveProgress(BENCH_ID, [], [], TEARDOWN_LAYOUT);
       return true;
     });
     if (!ok) return false;
@@ -166,7 +168,7 @@ export class CrashServer {
   }
 
   private save(id: string, s: Session) {
-    this.db.saveProgress(id, [...s.done], [...s.taken.keys()]);
+    this.db.saveProgress(id, [...s.done], [...s.taken.keys()], TEARDOWN_LAYOUT);
   }
 
   /** Make a site's machine whole again: forget its progress (dev/admin helper; nothing calls it on its own). */

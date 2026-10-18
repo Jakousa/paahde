@@ -3,7 +3,9 @@
 // in is a step you can do: screws (several clicks), bolts (circle the pointer), clips, wires (swipe to cut) and
 // pry tabs. Fasteners follow the engineering: bolt circles on round flanges, corner screws on box lids, a row
 // along a split line, set screws on a coupling hub, supply wires from a cable gland to a terminal block through
-// a contactor. Steps sit on different faces, so the machine has to be turned over and around.
+// a contactor. Steps sit on different faces, so the machine has to be turned over and around. Kept short: a
+// cover has two screws, a flange two to four bolts, a starter machine takes a few moves. Changing a machine's
+// steps means bumping TEARDOWN_LAYOUT (shared/crash.ts), or saved progress points at the wrong hardware.
 // The real item models (public/models/items/<part>_<tier>.glb, tools/blender/items.py) are mounted inside.
 // Better parts come out of fancier machines.
 import * as THREE from 'three/webgpu';
@@ -150,8 +152,8 @@ interface BayOpts {
   pry?: boolean;
   /** Snap latch on the rear wall (-z): only reachable from behind. */
   latch?: boolean;
-  /** Extra screws at the middle of the two long edges. */
-  mids?: boolean;
+  /** Lid screws: 2 at opposite corners (the default), 4 at every corner, or 0 (held by the latch / pry tab alone). */
+  screws?: 0 | 2 | 4;
 }
 
 /** Builds one machine: geometry, steps, covers and part mounts. The salvage wrecks' builders are in wrecks.ts. */
@@ -294,7 +296,7 @@ export class Kit {
   }
 
   /** Small screw: several clicks to back it out. */
-  screw(label: string, pos: V, nrm: V = [0, 1, 0], after: Step[] = [], need = 3 + (this.grade >= 2 ? 1 : 0)): Step {
+  screw(label: string, pos: V, nrm: V = [0, 1, 0], after: Step[] = [], need = 2 + (this.grade >= 2 ? 1 : 0)): Step {
     const { g, spin } = this.stepGroup(pos, nrm);
     this.mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.04, 12), 'trim', 0, 0.02, 0, spin);
     this.mesh(new THREE.BoxGeometry(0.1, 0.02, 0.018), 'dark', 0, 0.04, 0, spin);
@@ -302,7 +304,7 @@ export class Kit {
     return this.reg('screw', label, g, spin, new THREE.SphereGeometry(0.15, 8, 6), need, after, 0.02);
   }
   /** Big hex bolt or nut: turn the pointer around it. `need` is half turns. */
-  bolt(label: string, pos: V, nrm: V = [0, 1, 0], after: Step[] = [], need = 4): Step {
+  bolt(label: string, pos: V, nrm: V = [0, 1, 0], after: Step[] = [], need = 3): Step {
     const { g, spin } = this.stepGroup(pos, nrm);
     this.mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.09, 6), 'trim', 0, 0.045, 0, spin);
     this.mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.02, 16), 'dark', 0, 0.01, 0, g);
@@ -371,12 +373,10 @@ export class Kit {
     }
     return out;
   }
-  /** Screws along the two long edges of a rectangular cover: corners, plus the middle when `nW` is 3. */
-  rect(label: string, c: V, nrm: V, w: number, h: number, nW = 2, after: Step[] = []): Step[] {
+  /** Screws at two opposite corners of a rectangular cover. */
+  rect(label: string, c: V, nrm: V, w: number, h: number, after: Step[] = []): Step[] {
     const [u, v] = this.basis(nrm);
-    const out: Step[] = [];
-    for (const b of [-h / 2, h / 2]) for (let i = 0; i < nW; i++) out.push(this.screw(label, this.at(c, u, v, -w / 2 + (i * w) / (nW - 1), b), nrm, after));
-    return out;
+    return [[-1, -1], [1, 1]].map(([a, b]) => this.screw(label, this.at(c, u, v, (a * w) / 2, (b * h) / 2), nrm, after));
   }
   /** Evenly spaced bolts from one point to another (a split-line flange). */
   row(label: string, a: V, b: V, n: number, nrm: V, after: Step[] = [], need = 2): Step[] {
@@ -396,8 +396,8 @@ export class Kit {
     return p;
   }
 
-  /** Walled box open at the top on level `deckY`, closed by a lid that is screwed down at the corners (and the
-   *  middle of the long edges with `mids`). Optional pry tab at the front, snap latch on the back wall. Returns the lid. */
+  /** Walled box open at the top on level `deckY`, closed by a lid screwed down at two opposite corners (`screws`
+   *  for all four or none). Optional pry tab at the front, snap latch on the back wall. Returns the lid. */
   bay(cx: number, cz: number, w: number, d: number, deckY: number, h: number, o: BayOpts = {}): Piece {
     const t = 0.06;
     this.box(w, h, t, cx, deckY, cz - d / 2 + t / 2, 'trim');
@@ -411,8 +411,8 @@ export class Kit {
     this.box(w - 0.2, 0.02, 0.06, 0, 0.04, 0, this.grade >= 1 ? 'accent' : 'trim', group);
     if (this.grade >= 3) this.box(w - 0.4, 0.02, 0.03, 0, 0.05, d / 4, 'glow', group);
     const bx = w / 2 - 0.1, bz = d / 2 - 0.1;
-    const spots: [number, number][] = [[-bx, -bz], [bx, -bz], [-bx, bz], [bx, bz]];
-    if (o.mids) spots.push(w >= d ? [0, -bz] : [-bx, 0], w >= d ? [0, bz] : [bx, 0]);
+    const n = o.screws ?? 2;
+    const spots: [number, number][] = n === 4 ? [[-bx, -bz], [bx, -bz], [-bx, bz], [bx, bz]] : n === 2 ? [[-bx, -bz], [bx, bz]] : [];
     const holds = spots.map(([x, z]) => this.screw('Lid screw', [cx + x, top + 0.08, cz + z]));
     if (o.latch) holds.push(this.clip('Rear latch', [cx, top - h / 2, cz - d / 2 - 0.01], [0, 0, -1], 1));
     if (o.pry) holds.push(this.pry('Lid seam', [cx, top + 0.04, cz + d / 2], [0, 0, 1], [...holds]));
@@ -463,9 +463,9 @@ export class Kit {
 
 /** End-suction centrifugal pump on a skid, motor-driven through a guarded coupling.
  *  Front (-x): suction cover held by a bolt circle (drain the casing first: the plug is underneath) over the
- *  impeller. Middle: bearing housing with an inspection lid over two bearings, a valve in the discharge.
- *  Back (+x): coupling guard, coupling hubs with set screws, the motor on its pedestal, and its terminal box:
- *  supply through a gland, live via a contactor to the terminals, neutral, earth. */
+ *  impeller. Middle: bearing housing with a prised-on inspection lid over two bearings, a valve in the discharge.
+ *  Back (+x): latched coupling guard, the motor hub's set screw, the motor on its pedestal, and its terminal box:
+ *  supply through a gland, live via a contactor to the terminals, neutral. */
 function pumpHousing(k: Kit) {
   const g = k.grade;
   const SY = 0.62; // shaft height
@@ -491,7 +491,7 @@ function pumpHousing(k: Kit) {
     const a = (i / 6) * Math.PI * 2;
     k.mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.09, 6).rotateZ(Math.PI / 2), 'trim', -0.5, Math.cos(a) * 0.24, Math.sin(a) * 0.24, cov); // inlet flange studs
   }
-  const coverBolts = k.circle('Cover bolt', [-1.065, SY, 0], [-1, 0, 0], 0.36, 8, [drain]);
+  const coverBolts = k.circle('Cover bolt', [-1.065, SY, 0], [-1, 0, 0], 0.36, 4, [drain], 'bolt', Math.PI / 4);
   k.cover(cov, coverBolts, [-1, 0.25, 0], 0.44);
   // impeller on the shaft, behind the cover, held by its nut
   k.mount('impeller', k.ax('impeller', [-0.78, SY, 0], 'x'), () => [k.bolt('Impeller nut', [-0.96, SY, 0], [-1, 0, 0], [], 3)]);
@@ -501,15 +501,14 @@ function pumpHousing(k: Kit) {
   k.cyl(0.42, 0.04, -0.75, 1.06, 0, 'trim', 'y', 32);
   const valve = k.take('valve');
   if (valve) {
-    const bolts = k.circle('Valve flange bolt', [-0.75, 1.1, 0], [0, 1, 0], 0.34, 4, [], 'bolt', Math.PI / 4);
+    const bolts = k.circle('Valve flange bolt', [-0.75, 1.1, 0], [0, 1, 0], 0.34, 2, [], 'bolt', Math.PI / 4);
     k.part('valve', valve, [-0.75, 1.1, 0], bolts);
   } else k.cyl(0.12, 0.5, -0.75, 1.1, 0, 'body'); // plain spool piece
   k.cyl(0.12, 0.25, -0.75, 1.6, 0, 'body');
   k.cyl(0.28, 0.04, -0.75, 1.82, 0, 'trim', 'y', 24);
 
-  // bearing housing: lid over two bearings, each held by a retaining clip
-  const bhLid = k.bay(0.275, 0, 0.95, 0.46, 0.15, 0.71, { mids: true });
-  void bhLid;
+  // bearing housing: lid prised off its seam, over two bearings, each held by a retaining clip
+  k.bay(0.275, 0, 0.95, 0.46, 0.15, 0.71, { screws: 0, pry: true });
   for (const x of [0.0, 0.5]) {
     k.mount('bearing', k.ax('bearing', [x, SY, 0], 'x'), () => [k.clip('Bearing retainer', [x, SY + 0.27, 0], [0, 1, 0], 2)]);
   }
@@ -525,14 +524,13 @@ function pumpHousing(k: Kit) {
   const guard = k.group([1.075, SY, 0]);
   k.shell(0.22, 0.65, [0, 0, 0], 'x', 'upper', 'accent', guard);
   for (const z of [-0.25, 0.25]) k.box(0.65, 0.03, 0.08, 0, -0.01, z, 'accent', guard);
-  k.cover(guard, k.rect('Guard screw', [1.075, SY + 0.03, 0], [0, 1, 0], 0.5, 0.5, 2), [0, 1, 0], 0.2);
+  k.cover(guard, [k.clip('Guard latch', [1.075, SY + 0.25, 0], [0, 1, 0])], [0, 1, 0], 0.2);
 
   // motor on a pedestal, its feet bolted down at the corners
   k.box(0.78, 0.22, 0.7, 1.9, 0.15, 0, 'trim');
   k.box(0.7, 0.05, 0.66, 1.9, 0.37, 0, 'body');
   // terminal box on top: gland on the +z wall, contactor on a rail, terminal block along the far wall
-  const tbLid = k.bay(1.9, 0, 0.8, 0.5, 0.95, 0.36);
-  void tbLid;
+  k.bay(1.9, 0, 0.8, 0.5, 0.95, 0.36);
   k.box(0.7, 0.03, 0.38, 1.9, 0.95, 0, 'dark');
   k.cyl(0.06, 0.12, 1.7, 1.1, 0.3, 'trim', 'z');
   k.cable([[1.7, 1.1, 0.36], [1.7, 1.0, 0.65], [1.0, 0.18, 0.66], [-0.2, 0.18, 0.66]], 0.045);
@@ -541,18 +539,15 @@ function pumpHousing(k: Kit) {
   const G: V = [1.7, 1.1, 0.25];
   const relayTier = k.take('relay');
   const neutral = k.wire('Neutral', [[1.72, 1.08, 0.25], [1.9, 1.04, 0.2], [2.06, 1.04, 0.0]], 'blue');
-  const earth = k.wire('Earth wire', [[1.76, 1.06, 0.25], [1.95, 1.02, 0.24], [2.1, 1.06, 0.15]], 'green');
-  const earthScrew = k.screw('Earth screw', [2.05, 0.98, 0.22]);
+  k.cable([[1.76, 1.06, 0.25], [1.95, 1.02, 0.24], [2.1, 1.06, 0.15]], 0.035, 'green'); // earth
   const liveToMotor = k.wire('Live to motor', [[1.88, 1.26, 0.1], [1.98, 1.22, -0.02], [2.1, 1.06, -0.15]], 'brown');
   if (relayTier) {
     const liveIn = k.wire('Live in', [G, [1.69, 1.2, 0.18], [1.68, 1.26, 0.1]], 'brown');
-    const coilFeed = k.wire('Coil feed', [[1.74, 1.12, 0.25], [1.6, 1.2, 0.1], [1.68, 1.26, -0.1]], 'brown', [], 0.025);
-    const coilReturn = k.wire('Coil return', [[1.88, 1.26, -0.1], [2.0, 1.15, -0.05], [2.08, 1.06, 0.0]], 'blue', [], 0.025);
     const din = k.clip('Rail clip', [1.78, 0.98, 0.21], [0, 1, 0]);
-    k.part('relay', relayTier, [1.78, 0.98, 0], [din, liveIn, liveToMotor, coilFeed, coilReturn]);
+    k.part('relay', relayTier, [1.78, 0.98, 0], [din, liveIn, liveToMotor]);
   } else k.cable([[G[0], G[1], G[2]], [1.8, 1.2, 0.1], [1.88, 1.26, 0.1]], 0.035, 'brown'); // straight through
-  const motorHolds = [setMotor, liveToMotor, neutral, earth, earthScrew];
-  const feet = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => k.bolt('Motor foot bolt', [1.9 + sx * 0.31, 0.42, sz * 0.28], [0, 1, 0], motorHolds, 2)));
+  const motorHolds = [setMotor, liveToMotor, neutral];
+  const feet = [[-1, -1], [1, 1]].map(([sx, sz]) => k.bolt('Motor foot bolt', [1.9 + sx * 0.31, 0.42, sz * 0.28], [0, 1, 0], motorHolds, 2));
   // the motor is too heavy for one person: two of you lift it off once the feet are free
   k.mount('motor', [[1.9, 0.42, 0], [0, 0, 0]], () => [...motorHolds, ...feet, k.lift('Lift the motor off', [2.17, 0.67, 0], [1, 0, 0], 2, feet)]);
   if (g >= 3) k.lamps(4, 1.65, 0.45, 0.4, 0.2);
@@ -593,15 +588,15 @@ function jetEngine(k: Kit) {
   k.shell(0.42, 1.0, [0, 0, 0], 'x', 'upper', 'body', top);
   for (const z of [-1, 1]) k.box(1.0, 0.04, 0.1, 0, 0, z * 0.47, 'body', top);
   const split: Step[] = [];
-  for (const z of [-1, 1]) split.push(...k.row('Split-line bolt', [-0.75, AY + 0.02, z * 0.47], [0, AY + 0.02, z * 0.47], 4, [0, 1, 0]));
+  for (const z of [-1, 1]) split.push(...k.row('Split-line bolt', [-0.7, AY + 0.02, z * 0.47], [-0.1, AY + 0.02, z * 0.47], 2, [0, 1, 0]));
   // the upper casing is heavy: once the flange bolts are out, two of you lift it clear
   k.cover(top, [...split, k.lift('Lift the casing off', [-0.4, AY + 0.46, 0], [0, 1, 0], 2, split)], [0, 1, 0.1], 0.45);
-  // bearings on pedestals under cap blocks, two bolts each
+  // bearings on pedestals under cap blocks, one screw each
   for (const x of [-0.75, -0.1]) {
     k.box(0.26, 0.16, 0.4, x, 0.55, 0, 'trim');
     const cap = k.group([x, AY + 0.27, 0]);
     k.mesh(new THREE.BoxGeometry(0.28, 0.06, 0.46), 'trim', 0, 0, 0, cap);
-    const screws = [-0.2, 0.2].map((z) => k.screw('Bearing cap screw', [x, AY + 0.3, z]));
+    const screws = [k.screw('Bearing cap screw', [x, AY + 0.3, 0.2])];
     k.cover(cap, screws, [0, 1, 0], 0.03);
     k.mount('bearing', k.ax('bearing', [x, AY, 0], 'x'), () => screws);
   }
@@ -615,7 +610,7 @@ function jetEngine(k: Kit) {
   }
   k.box(0.74, 0.04, 0.44, 0.4, AY + 0.4 - 0.02, 0, 'trim');
   const igniterLead = k.wire('Igniter lead', [[0.4, 1.62, 0.05], [0.3, 1.45, 0.3], [0.2, 0.9, 0.7], [0.0, 0.34, 0.72]], 'black', [], 0.03);
-  k.mount('coil', [[0.4, AY + 0.4 + 0.02, 0], [0, 0, 0]], () => [igniterLead, ...[0.1, 0.7].map((x) => k.bolt('Igniter bolt', [x, AY + 0.43, 0], [0, 1, 0], [igniterLead], 2))]);
+  k.mount('coil', [[0.4, AY + 0.4 + 0.02, 0], [0, 0, 0]], () => [igniterLead, k.bolt('Igniter bolt', [0.7, AY + 0.43, 0], [0, 1, 0], [igniterLead], 2)]);
 
   // turbine and nozzle
   k.cyl(0.36, 0.55, 1.03, AY, 0, 'body', 'x');
@@ -629,7 +624,7 @@ function jetEngine(k: Kit) {
   k.rod([0.75, 0.64, 0.65], [0.75, 1.0, 0.65], 0.03, 'copper');
   k.rod([0.75, 0.14, 0.65], [1.4, 0.14, 0.65], 0.03, 'copper');
   const valveLead = k.wire('Solenoid lead', [[0.78, 0.45, 0.65], [0.4, 0.2, 0.75], [-0.4, 0.3, 0.72]], 'brown', [], 0.03);
-  k.mount('valve', [[0.75, 0.14, 0.65], [0, 0, 0]], () => [valveLead, k.bolt('Union nut', [0.75, 0.68, 0.65], [0, 1, 0], [valveLead], 2), k.bolt('Union nut', [1.05, 0.17, 0.65], [0, 1, 0], [valveLead], 2)]);
+  k.mount('valve', [[0.75, 0.14, 0.65], [0, 0, 0]], () => [valveLead, k.bolt('Union nut', [0.75, 0.68, 0.65], [0, 1, 0], [valveLead], 2)]);
 
   // accessory gearbox under the front: open towards +z, closed by a cover; starter flanged on the -z side
   const gb = [-0.45, 0.365, 0] as V;
@@ -640,40 +635,38 @@ function jetEngine(k: Kit) {
   k.box(0.7, 0.3, 0.04, gb[0], 0.22, -0.3, 'body');
   const cover = k.group([gb[0], gb[1], 0.31]);
   k.mesh(new THREE.BoxGeometry(0.74, 0.34, 0.04), 'body', 0, 0, 0, cover);
-  k.cover(cover, k.rect('Gearbox screw', [gb[0], gb[1], 0.33], [0, 0, 1], 0.62, 0.26, 3), [0, 0.2, 1], 0.17);
+  k.cover(cover, k.rect('Gearbox screw', [gb[0], gb[1], 0.33], [0, 0, 1], 0.62, 0.26), [0, 0.2, 1], 0.17);
   for (const x of [-0.6, -0.3]) {
     k.rod([x, gb[1], -0.28], [x, gb[1], 0.22], 0.03, 'copper');
-    k.mount('gear', k.ax('gear', [x, gb[1], 0], 'z'), () => [k.clip('Gear clip', [x, gb[1], 0.22], [0, 0, 1], 2)]);
+    k.mount('gear', k.ax('gear', [x, gb[1], 0], 'z'), () => [k.clip('Gear clip', [x, gb[1], 0.22], [0, 0, 1])]);
   }
-  const sLead = k.wire('Starter lead +', [[-0.35, 0.58, -0.85], [-0.7, 0.16, -0.85], [-1.3, 0.16, -0.1], [-1.2, 0.16, 0.6], [-0.85, 0.3, 0.72]], 'red', [], 0.04);
-  const sLead2 = k.wire('Starter lead -', [[-0.25, 0.58, -0.85], [-0.65, 0.16, -0.8], [-1.35, 0.16, -0.1], [-1.25, 0.16, 0.6], [-0.75, 0.3, 0.72]], 'black', [], 0.04);
+  const sLead = k.wire('Starter lead', [[-0.35, 0.58, -0.85], [-0.7, 0.16, -0.85], [-1.3, 0.16, -0.1], [-1.2, 0.16, 0.6], [-0.85, 0.3, 0.72]], 'red', [], 0.04);
+  k.cable([[-0.25, 0.58, -0.85], [-0.65, 0.16, -0.8], [-1.35, 0.16, -0.1], [-1.25, 0.16, 0.6], [-0.75, 0.3, 0.72]], 0.04, 'black');
   k.cyl(0.34, 0.05, -0.3, gb[1], -0.33, 'trim', 'z');
-  k.mount('motor', [[-0.3, 0.12, -0.65], [0, 0, 0]], () => [sLead, sLead2, ...k.circle('Starter flange bolt', [-0.3, gb[1], -0.36], [0, 0, -1], 0.27, 4, [sLead, sLead2], 'bolt', Math.PI / 4)]);
+  k.mount('motor', [[-0.3, 0.12, -0.65], [0, 0, 0]], () => [sLead, ...k.circle('Starter flange bolt', [-0.3, gb[1], -0.36], [0, 0, -1], 0.27, 2, [sLead], 'bolt', Math.PI / 4)]);
   k.rod([-0.3, gb[1], -0.45], [-0.3, gb[1], -0.2], 0.04, 'copper');
 
   // control box beside the engine
   const cx = -0.35, cz = 1.05;
-  k.bay(cx, cz, 1.58, 0.6, 0.12, 0.42, { mids: true });
+  k.bay(cx, cz, 1.58, 0.6, 0.12, 0.42);
   k.box(1.4, 0.03, 0.46, cx, 0.12, cz, 'dark');
   for (let i = 0; i < 3; i++) { // round connectors on the wall facing the engine
     const x = -0.8 + i * 0.4;
     k.cyl(0.1, 0.1, x, 0.34, 0.72, 'chip', 'z');
   }
   // contents, left to right: starter relay, ECU on standoffs, power stage with heatsink
-  const connectors = [0, 1, 2].map((i) => k.bolt('Connector ring', [-0.8 + i * 0.4, 0.34, 0.68], [0, 0, -1], [], 2));
-  void connectors;
-  const ribbon = k.wire('Ribbon cable', [[-0.2, 0.3, 1.0], [-0.3, 0.32, 0.9], [-0.4, 0.3, 0.8]], 'blue', [], 0.025);
+  const connector = k.bolt('Connector ring', [-0.4, 0.34, 0.68], [0, 0, -1], [], 2);
+  k.cable([[-0.2, 0.3, 1.0], [-0.3, 0.32, 0.9], [-0.4, 0.3, 0.8]], 0.025, 'blue'); // ribbon
   k.box(0.56, 0.04, 0.44, -0.45, 0.15, cz, 'pcb');
   k.mount('relay', [[-0.92, 0.15, cz], [0, 0, 0]], () => [
     k.clip('Rail clip', [-0.92, 0.17, cz + 0.2], [0, 1, 0]),
     k.wire('Relay feed', [[-0.93, 0.5, 1.0], [-0.9, 0.42, 0.9], [-0.8, 0.3, 0.78]], 'red', [], 0.04),
-    k.wire('Relay coil wire', [[-0.88, 0.45, 1.0], [-0.7, 0.5, 1.02], [-0.5, 0.36, 1.0]], 'brown', [], 0.025),
   ]);
-  const standoffs = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => k.screw('ECU standoff', [-0.45 + sx * 0.27, 0.19, cz + sz * 0.2])));
-  k.mount('compute', [[-0.45, 0.2, cz], [0, 0, 0]], () => [...standoffs, ribbon, ...connectors]);
+  const standoffs = [[-1, -1], [1, 1]].map(([sx, sz]) => k.screw('ECU standoff', [-0.45 + sx * 0.27, 0.19, cz + sz * 0.2]));
+  k.mount('compute', [[-0.45, 0.2, cz], [0, 0, 0]], () => [...standoffs, connector]);
   k.box(0.4, 0.04, 0.4, 0.05, 0.15, cz, 'pcb');
   k.box(0.26, 0.05, 0.26, 0.05, 0.19, cz, 'chip');
-  k.mount('heatsink', [[0.05, 0.2, cz], [0, 0, 0]], () => [k.clip('Spring clip', [-0.2, 0.55, cz], [0, 1, 0]), k.clip('Spring clip', [0.3, 0.55, cz], [0, 1, 0])]);
+  k.mount('heatsink', [[0.05, 0.2, cz], [0, 0, 0]], () => [k.clip('Spring clip', [0.3, 0.55, cz], [0, 1, 0])]);
   if (g >= 2) k.lamps(6, -1.0, 0.12, 1.37, 0.2);
 }
 
@@ -699,12 +692,12 @@ function robotArm(k: Kit) {
   const topCover = k.group([0, 1.0, 0]);
   k.mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 36), 'body', 0, 0.025, 0, topCover);
   k.mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.03, 20), 'trim', 0, 0.065, 0, topCover);
-  const coverBolts = k.circle('Top cover bolt', [0, 1.05, 0], [0, 1, 0], 0.42, 8);
+  const coverBolts = k.circle('Top cover bolt', [0, 1.05, 0], [0, 1, 0], 0.42, 3, [], 'bolt', Math.PI / 6);
   k.cover(topCover, coverBolts, [0, 1, 0], 0.03);
   const gearBolt = k.bolt('Gear retaining bolt', [0, 0.85, 0], [0, 1, 0], [], 3);
   const clampRing = k.group([0, 0.6, 0]);
   k.mesh(new THREE.LatheGeometry([new THREE.Vector2(0.2, 0), new THREE.Vector2(0.42, 0), new THREE.Vector2(0.42, 0.04), new THREE.Vector2(0.2, 0.04), new THREE.Vector2(0.2, 0)], 32), 'trim', 0, 0, 0, clampRing);
-  const clampBolts = k.circle('Clamp ring bolt', [0, 0.64, 0], [0, 1, 0], 0.34, 6, [gearBolt]);
+  const clampBolts = k.circle('Clamp ring bolt', [0, 0.64, 0], [0, 1, 0], 0.34, 3, [gearBolt], 'bolt', -Math.PI / 6);
   k.cover(clampRing, clampBolts, [0, 1, 0], 0.03);
   k.rod([0, 0.15, 0], [0, 0.9, 0], 0.05, 'copper');
   k.mount('gear', k.ax('gear', [0, 0.76, 0], 'y'), () => [gearBolt]);
@@ -717,11 +710,11 @@ function robotArm(k: Kit) {
   for (const z of [-0.6, 0.6]) k.box(0.46, 0.65, 0.04, -0.75, 0.25, z, 'body');
   const gbCover = k.group([-0.98, 0.575, 0]);
   k.mesh(new THREE.BoxGeometry(0.04, 0.65, 1.2), 'body', 0, 0, 0, gbCover);
-  k.cover(gbCover, k.rect('Gearbox screw', [-1.0, 0.575, 0], [-1, 0, 0], 1.0, 0.5, 3), [-1, 0.2, 0], 0.33);
+  k.cover(gbCover, k.rect('Gearbox screw', [-1.0, 0.575, 0], [-1, 0, 0], 1.0, 0.5), [-1, 0.2, 0], 0.33);
   const slots: [number, 'bearing' | 'gear'][] = [[-0.38, 'bearing'], [0, 'gear'], [0.38, 'gear']];
   for (const [z, part] of slots) {
     k.rod([-0.52, 0.575, z], [-0.95, 0.575, z], 0.03, 'copper');
-    k.mount(part, k.ax(part, [-0.76 - (part === 'gear' && z > 0 ? 0.12 : 0), 0.575, z], 'x'), () => [k.clip(part === 'gear' ? 'Gear clip' : 'Bearing clip', [-0.9, 0.575, z], [-1, 0, 0], 2)]);
+    k.mount(part, k.ax(part, [-0.76 - (part === 'gear' && z > 0 ? 0.12 : 0), 0.575, z], 'x'), () => [k.clip(part === 'gear' ? 'Gear clip' : 'Bearing clip', [-0.9, 0.575, z], [-1, 0, 0])]);
   }
 
   // servo motor on +x: shelf, adapter plate with four bolts, shaft into the housing; cables run to the driver bay
@@ -730,7 +723,7 @@ function robotArm(k: Kit) {
   k.rod([0.75, 0.55, 0], [0.4, 0.55, 0], 0.045, 'copper');
   const power = k.wire('Motor power cable', [[0.95, 0.82, 0.15], [0.8, 0.95, 0.5], [0.45, 0.98, 0.9], [0.3, 0.98, 1.1], [0.1, 0.96, 1.45]], 'red', [], 0.05);
   const encoder = k.wire('Encoder cable', [[1.1, 0.7, 0.2], [0.9, 0.85, 0.6], [0.5, 0.9, 1.0], [0.3, 0.92, 1.4], [0.1, 0.92, 1.55]], 'blue', [], 0.025);
-  const plate = k.circle('Motor flange bolt', [0.62, 0.55, 0], [1, 0, 0], 0.38, 4, [power, encoder], 'bolt', Math.PI / 4);
+  const plate = k.circle('Motor flange bolt', [0.62, 0.55, 0], [1, 0, 0], 0.38, 2, [power, encoder], 'bolt', Math.PI / 4);
   k.mount('motor', [[0.95, 0.3, 0], [0, 0, 0]], () => [power, encoder, ...plate]);
 
   // the link, and the driver bay on top of it
@@ -741,22 +734,21 @@ function robotArm(k: Kit) {
     k.stud(Math.cos(a) * 0.25, 0.55 + Math.sin(a) * 0.25, 2.34, 0.04);
   }
   k.box(0.8, 0.04, 1.5, 0, 0.78, 1.45, 'trim');
-  k.bay(0, 1.45, 0.8, 1.5, 0.82, 0.36, { mids: true });
+  k.bay(0, 1.45, 0.8, 1.5, 0.82, 0.36, { screws: 0, pry: true });
   k.box(0.7, 0.03, 1.3, 0, 0.82, 1.45, 'pcb');
   const dy = 0.85;
   k.box(0.26, 0.05, 0.26, 0, dy, 1.05, 'chip');
-  k.mount('heatsink', [[0, dy + 0.05, 1.05], [0, 0, 0]], () => [k.clip('Spring clip', [-0.3, dy + 0.4, 1.05], [0, 1, 0]), k.clip('Spring clip', [0.3, dy + 0.4, 1.05], [0, 1, 0])]);
-  const standoffs = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => k.screw('Board standoff', [sx * 0.31, dy, 1.55 + sz * 0.27])));
+  k.mount('heatsink', [[0, dy + 0.05, 1.05], [0, 0, 0]], () => [k.clip('Spring clip', [0.3, dy + 0.4, 1.05], [0, 1, 0])]);
+  const standoffs = [[-1, -1], [1, 1]].map(([sx, sz]) => k.screw('Board standoff', [sx * 0.31, dy, 1.55 + sz * 0.27]));
   k.mount('compute', [[0, dy, 1.55], [0, 0, 0]], () => [...standoffs, encoder]);
   // brake relay in the bay, brake solenoid on the base, joined by one long cable
   k.box(0.8, 0.04, 0.5, -0.65, 0.12, 1.0, 'trim');
   const relayT = k.take('relay'), coilT = k.take('coil');
   const brakeFeed = relayT || coilT ? k.wire('Brake feed', [[-0.2, 1.1, 1.95], [-0.5, 0.9, 1.85], [-0.7, 0.7, 1.4], [-0.65, 0.6, 1.0]], 'yellow', [], 0.03) : null;
   if (relayT && brakeFeed) {
-    const coilWire = k.wire('Brake coil wire', [[0.1, 1.1, 1.9], [0.0, 1.05, 1.75], [0.0, 1.0, 1.6]], 'brown', [], 0.025);
-    k.part('relay', relayT, [0, dy, 1.98], [k.clip('Rail clip', [0, dy + 0.3, 2.13], [0, 1, 0]), brakeFeed, coilWire]);
+    k.part('relay', relayT, [0, dy, 1.98], [k.clip('Rail clip', [0, dy + 0.3, 2.13], [0, 1, 0]), brakeFeed]);
   }
-  if (coilT && brakeFeed) k.part('coil', coilT, [-0.65, 0.16, 1.0], [brakeFeed, ...[-0.95, -0.35].map((x) => k.bolt('Solenoid bolt', [x, 0.18, 1.0], [0, 1, 0], [brakeFeed], 2))]);
+  if (coilT && brakeFeed) k.part('coil', coilT, [-0.65, 0.16, 1.0], [brakeFeed, k.bolt('Solenoid bolt', [-0.35, 0.18, 1.0], [0, 1, 0], [brakeFeed], 2)]);
   if (g >= 2) k.lamps(4, -0.3, 0.82, 0.72, 0.2);
 }
 
@@ -771,7 +763,7 @@ function controlCabinet(k: Kit) {
   k.box(1.6, 0.05, 1.5, 0, 0, 0, 'trim'); // back plate
   k.box(1.4, 0.02, 1.3, 0, 0.05, 0, 'dark'); // mounting plate
   for (const z of [-0.6, 0.6]) k.cyl(0.04, 0.3, -0.83, 0.25, z, 'trim', 'y'); // hinge knuckles
-  k.bay(0, 0, 1.6, 1.5, 0.05, 0.6, { mids: true, latch: true, pry: true });
+  k.bay(0, 0, 1.6, 1.5, 0.05, 0.6, { screws: 0, latch: true, pry: true });
   const Y = 0.07;
   // cable gland and the cable going off
   k.cyl(0.07, 0.12, -0.55, 0.3, -0.75, 'trim', 'z');
@@ -779,14 +771,12 @@ function controlCabinet(k: Kit) {
   // terminal block, DIN rail
   for (const x of [-0.75, -0.62, -0.49]) k.box(0.1, 0.12, 0.12, x, Y, -0.5, 'yellow');
   k.box(0.04, 0.03, 1.2, 0, Y, -0.05, 'chip');
-  const pe = k.wire('Earth wire', [[-0.6, 0.3, -0.68], [-0.7, 0.14, -0.55], [-0.78, 0.1, -0.3]], 'green');
-  const peScrew = k.screw('Earth stud nut', [-0.78, Y + 0.02, -0.28]);
-  const mainsL = k.wire('Mains live', [[-0.58, 0.3, -0.68], [-0.62, 0.38, -0.3], [-0.58, 0.34, 0.0]], 'brown');
-  const mainsN = k.wire('Mains neutral', [[-0.52, 0.3, -0.68], [-0.45, 0.4, -0.3], [-0.44, 0.34, 0.0]], 'blue');
+  k.cable([[-0.6, 0.3, -0.68], [-0.7, 0.14, -0.55], [-0.78, 0.1, -0.3]], 0.035, 'green'); // earth to its stud
+  k.stud(-0.78, Y + 0.02, -0.28, 0.05);
+  const mains = k.wire('Mains cable', [[-0.55, 0.3, -0.68], [-0.55, 0.4, -0.3], [-0.5, 0.34, 0.0]], 'brown', [], 0.045);
   const secondary = k.wire('Transformer secondary', [[-0.45, 0.34, 0.22], [-0.25, 0.4, 0.1], [-0.08, 0.33, -0.5]], 'red', [], 0.03);
   // transformer on the left, bolted through the back plate
-  k.mount('coil', [[-0.5, Y, 0.1], [0, 0, 0]], () => [pe, peScrew, mainsL, mainsN, secondary,
-    ...[-0.8, -0.2].map((x) => k.bolt('Transformer bolt', [x, 0, 0.1], [0, -1, 0], [mainsL, mainsN, secondary], 2))]);
+  k.mount('coil', [[-0.5, Y, 0.1], [0, 0, 0]], () => [mains, secondary, k.bolt('Transformer bolt', [-0.5, 0, 0.1], [0, -1, 0], [mains, secondary], 2)]);
   // two contactors on the rail: the first fed by the transformer, the second driven from the board
   const relay1 = k.take('relay');
   const out1 = k.wire('Contactor 1 out', [[0.08, 0.33, -0.5], [0.3, 0.4, -0.45], [0.42, 0.14, -0.45]], 'red', [], 0.03);
@@ -794,21 +784,19 @@ function controlCabinet(k: Kit) {
   const relay2 = k.take('relay');
   const extra: Step[] = [];
   if (relay2) {
-    const coil2 = k.wire('Contactor 2 coil', [[0.08, 0.33, 0.1], [0.3, 0.4, 0.0], [0.45, 0.14, -0.1]], 'brown', [], 0.025);
     const out2 = k.wire('Contactor 2 out', [[-0.08, 0.33, 0.3], [0.2, 0.42, 0.1], [0.4, 0.14, -0.05]], 'red', [], 0.03);
-    extra.push(coil2, out2);
-    k.part('relay', relay2, [0.0, Y, 0.2], [k.clip('Rail clip', [0.0, Y + 0.02, 0.4], [0, 1, 0]), coil2, out2]);
+    extra.push(out2);
+    k.part('relay', relay2, [0.0, Y, 0.2], [k.clip('Rail clip', [0.0, Y + 0.02, 0.4], [0, 1, 0]), out2]);
   }
   // controller board and the heatsink on its regulator
   k.box(0.62, 0.04, 0.5, 0.5, Y, -0.25, 'pcb');
-  const standoffs = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => k.screw('Board standoff', [0.5 + sx * 0.3, Y + 0.04, -0.25 + sz * 0.22])));
+  const standoffs = [[-1, -1], [1, 1]].map(([sx, sz]) => k.screw('Board standoff', [0.5 + sx * 0.3, Y + 0.04, -0.25 + sz * 0.22]));
   k.mount('compute', [[0.5, Y + 0.04, -0.25], [0, 0, 0]], () => [...standoffs, out1, ...extra]);
   k.box(0.4, 0.04, 0.4, 0.5, Y, 0.42, 'pcb');
   k.box(0.26, 0.05, 0.26, 0.5, Y + 0.04, 0.42, 'chip');
-  k.mount('heatsink', [[0.5, Y + 0.09, 0.42], [0, 0, 0]], () => [k.clip('Spring clip', [0.22, Y + 0.45, 0.42], [0, 1, 0]), k.clip('Spring clip', [0.78, Y + 0.45, 0.42], [0, 1, 0])]);
-  // backup battery for the controller, strapped down in the free corner by the hinges (built last, so the
-  // steps and part slots before it keep their indexes for saved bench jobs)
-  k.mount('battery', [[-0.45, Y, 0.58], [0, 0, 0]], () => [k.clip('Battery strap', [-0.45, Y + 0.28, 0.58], [0, 1, 0], 2)]);
+  k.mount('heatsink', [[0.5, Y + 0.09, 0.42], [0, 0, 0]], () => [k.clip('Spring clip', [0.78, Y + 0.45, 0.42], [0, 1, 0])]);
+  // backup battery for the controller, strapped down in the free corner by the hinges
+  k.mount('battery', [[-0.45, Y, 0.58], [0, 0, 0]], () => [k.clip('Battery strap', [-0.45, Y + 0.28, 0.58], [0, 1, 0])]);
   if (g >= 2) k.lamps(5, -0.4, 0.65, 0.5, 0.2);
 }
 
@@ -838,7 +826,7 @@ function winch(k: Kit) {
 
   const cap = k.group([-0.55, Y - 0.1, 0]);
   k.mesh(new THREE.BoxGeometry(0.26, 0.4, 0.5), 'trim', 0, 0.2, 0, cap);
-  const capBolts = [-0.18, 0.18].map((z) => k.bolt('Bearing cap bolt', [-0.55, Y + 0.3, z], [0, 1, 0], [], 2));
+  const capBolts = [k.bolt('Bearing cap bolt', [-0.55, Y + 0.3, 0.18], [0, 1, 0], [], 2)];
   k.cover(cap, capBolts, [0, 1, 0], 0.13);
   k.mount('bearing', k.ax('bearing', [-0.55, Y, 0], 'x'), () => capBolts);
 
@@ -846,14 +834,14 @@ function winch(k: Kit) {
   k.rod([0.32, PY, 0], [1.08, PY, 0], 0.035, 'copper');
   k.rod([1.08, PY, 0], [1.08, PY + 0.35, 0], 0.03, 'trim');
   k.cyl(0.05, 0.22, 1.08, PY + 0.35, 0, 'red', 'x');
-  // gear guard over both gears, four screws on its outer face
+  // gear guard over both gears, a latch on its outer face
   const guard = k.group([0.72, Y - 0.32, 0]);
   k.mesh(new THREE.BoxGeometry(0.34, 1.18, 0.66), 'body', 0, 0.59, 0, guard);
   k.mesh(new THREE.BoxGeometry(0.02, 0.9, 0.06), g >= 1 ? 'accent' : 'trim', 0.18, 0.59, 0, guard);
-  const guardScrews = k.rect('Guard screw', [0.9, Y + 0.27, 0], [1, 0, 0], 0.5, 0.95, 2);
+  const guardScrews = [k.clip('Guard latch', [0.9, Y + 0.6, 0], [1, 0, 0])];
   k.cover(guard, guardScrews, [1, 0.3, 0], 0.17);
-  k.mount('gear', k.ax('gear', [0.7, Y, 0], 'x'), () => [k.bolt('Drum gear nut', [0.84, Y, 0], [1, 0, 0], guardScrews, 3)]);
-  k.mount('gear', k.ax('gear', [0.7, PY, 0], 'x'), () => [k.clip('Pinion clip', [0.84, PY, 0], [1, 0, 0], 2, guardScrews)]);
+  k.mount('gear', k.ax('gear', [0.7, Y, 0], 'x'), () => [k.bolt('Drum gear nut', [0.84, Y, 0], [1, 0, 0], guardScrews, 2)]);
+  k.mount('gear', k.ax('gear', [0.7, PY, 0], 'x'), () => [k.clip('Pinion clip', [0.84, PY, 0], [1, 0, 0], 1, guardScrews)]);
 }
 
 /** A cut-off section of coolant line on two saddles with a solenoid valve in it: the valve body sits in the line
@@ -868,13 +856,13 @@ function solenoidValve(k: Kit) {
   }
   // the line's flanges either side of the valve
   for (const x of [-0.32, 0.32]) k.cyl(0.24, 0.05, x, Y, 0, 'trim', 'x', 24);
-  const flanges = [-0.36, 0.36].flatMap((x) => k.circle('Flange bolt', [x, Y, 0], [Math.sign(x), 0, 0], 0.18, 4, [], 'bolt', Math.PI / 4));
+  const flanges = [-0.36, 0.36].map((x) => k.bolt('Flange bolt', [x, Y + 0.18, 0], [Math.sign(x), 0, 0], [], 2));
   if (g >= 2) for (const x of [-0.6, 0.6]) k.ring(0.125, 0.015, x, Y, 0, 'accent', 'x');
   // junction box on the bracket, a lead up to the coil
   k.box(0.36, 0.22, 0.3, 0.45, 0.06, 0.48, 'body');
   const lid = k.group([0.45, 0.3, 0.48]);
   k.mesh(new THREE.BoxGeometry(0.38, 0.03, 0.32), 'trim', 0, 0, 0, lid);
-  const lidScrews = [-1, 1].map((sx) => k.screw('Junction box screw', [0.45 + sx * 0.14, 0.32, 0.48]));
+  const lidScrews = [k.screw('Junction box screw', [0.59, 0.32, 0.48])];
   k.cover(lid, lidScrews, [0, 1, 0.3], 0.02);
   const lead = k.wire('Coil lead', [[0.45, 0.3, 0.48], [0.4, 0.75, 0.2], [0.15, 0.85, -0.25], [0.0, Y + 0.45, -0.47]], 'brown', lidScrews, 0.03);
   const valve = k.take('valve');
@@ -883,7 +871,7 @@ function solenoidValve(k: Kit) {
   // the coil on a shelf bracket behind the valve, bolted down at both ends
   k.box(0.4, Y + 0.24, 0.05, 0, 0.06, -0.66, 'trim');
   k.box(0.5, 0.04, 0.36, 0, Y + 0.26, -0.47, 'trim');
-  k.mount('coil', [[0, Y + 0.3, -0.47], [0, 0, 0]], () => [lead, ...[-0.2, 0.2].map((x) => k.bolt('Coil bolt', [x, Y + 0.3, -0.47], [0, 1, 0], [lead], 2))]);
+  k.mount('coil', [[0, Y + 0.3, -0.47], [0, 0, 0]], () => [lead, k.bolt('Coil bolt', [0.2, Y + 0.3, -0.47], [0, 1, 0], [lead], 2)]);
 }
 
 /** A crashed distress beacon lying on its side: a drum-shaped body with the battery pack under a latched, screwed
@@ -895,12 +883,12 @@ function beacon(k: Kit) {
   k.box(1.04, 0.06, 0.12, 0, 0.12, -0.45, 'yellow');
   k.box(1.04, 0.06, 0.12, 0, 0.12, 0.45, 'yellow');
   // battery bay on top
-  const lid = k.bay(0, -0.05, 0.9, 0.6, 0.5, 0.3, { latch: true });
-  k.mount('battery', [[0, 0.52, -0.05], [0, 0, 0]], () => [...lid.holds, k.clip('Battery strap', [0, 0.82, -0.05], [0, 1, 0], 2, lid.holds)]);
+  const lid = k.bay(0, -0.05, 0.9, 0.6, 0.5, 0.3, { screws: 0, latch: true });
+  k.mount('battery', [[0, 0.52, -0.05], [0, 0, 0]], () => [...lid.holds, k.clip('Battery strap', [0, 0.82, -0.05], [0, 1, 0], 1, lid.holds)]);
   // mast foot on +z with the transmitter coil, the mast snapped off and lying alongside
   k.cyl(0.3, 0.06, 0, 0.5, 0.52, 'trim', 'y', 24);
   const feed = k.wire('Antenna feed', [[0.3, 0.5, 0.25], [0.4, 0.62, 0.4], [0.2, 0.6, 0.55]], 'red', lid.holds, 0.03);
-  const footBolts = k.circle('Mast foot bolt', [0, 0.57, 0.52], [0, 1, 0], 0.24, 3, [feed]);
+  const footBolts = k.circle('Mast foot bolt', [0, 0.57, 0.52], [0, 1, 0], 0.24, 2, [feed]);
   k.mount('coil', [[0, 0.56, 0.52], [0, 0, 0]], () => [feed, ...footBolts]);
   k.rod([0.55, 0.06, 0.7], [0.65, 0.06, -0.8], 0.04, 'trim');
   k.cyl(0.07, 0.08, 0.56, 0.06, 0.62, 'red', 'y', 10);

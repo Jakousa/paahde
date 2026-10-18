@@ -6,7 +6,7 @@
 // Kit units are about twice the model's metres; SCALE in junk.ts brings them back to size. Everything is done
 // alone on the table, so nothing here needs a two-player lift.
 import * as THREE from 'three/webgpu';
-import type { Kit, Step } from './junk.ts';
+import type { Kit } from './junk.ts';
 
 // ---- broken vehicle frame (#14) ------------------------------------------------------------------------------
 
@@ -51,18 +51,14 @@ export function vehicleFrame(k: Kit) {
   k.box(0.5, 0.14, 0.4, 0.35, CY, CZ, 'trim');
   k.box(0.5, 0.14, 0.4, -0.35, CY, CZ, 'trim');
   const phase = k.wire('Phase lead', [[0.55, CY + 0.12, CZ + 0.18], [0.75, 0.62, 1.35], [0.8, 0.5, 1.6]], 'red', [], 0.03);
-  const phase2 = k.wire('Phase lead', [[0.6, CY + 0.12, CZ + 0.05], [0.85, 0.66, 1.3], [0.86, 0.46, 1.58]], 'yellow', [], 0.03);
+  k.cable([[0.6, CY + 0.12, CZ + 0.05], [0.85, 0.66, 1.3], [0.86, 0.46, 1.58]], 0.03, 'yellow');
   for (const x of [0.35, -0.35]) {
-    k.mount('heatsink', [[x, CY + 0.14, CZ], [0, 0, 0]], () => [
-      k.clip('Spring clip', [x - 0.3, CY + 0.38, CZ], [-1, 0, 0]),
-      ...[-0.15, 0.15].map((z) => k.screw('Heatsink screw', [x + 0.22, CY + 0.15, CZ + z])),
-    ]);
+    k.mount('heatsink', [[x, CY + 0.14, CZ], [0, 0, 0]], () => [k.clip('Spring clip', [x - 0.3, CY + 0.38, CZ], [-1, 0, 0])]);
   }
 
-  // rear hub motor on its axle nut and two caliper bolts; the spare front hub on the other side
-  const axleNut = k.bolt('Axle nut', [1.25, 0.4, 1.65], [1, 0, 0], [phase, phase2], 3);
-  k.mount('motor', [[0.98, 0.22, 1.65], [0, 0, Math.PI / 2]], () => [phase, phase2, axleNut,
-    ...[-0.12, 0.12].map((z) => k.bolt('Caliper bolt', [0.74, 0.62, 1.65 + z], [0, 1, 0], [], 2))]);
+  // rear hub motor on its axle nut and a caliper bolt; the spare front hub on the other side
+  const axleNut = k.bolt('Axle nut', [1.25, 0.4, 1.65], [1, 0, 0], [phase], 3);
+  k.mount('motor', [[0.98, 0.22, 1.65], [0, 0, Math.PI / 2]], () => [phase, axleNut, k.bolt('Caliper bolt', [0.74, 0.62, 1.65], [0, 1, 0], [], 2)]);
   k.mount('motor', [[-1.0, 0.18, -1.3], [0, 0, -Math.PI / 2]], () => {
     const lead = k.wire('Phase lead', [[-0.85, 0.5, -1.2], [-0.7, 0.6, -0.4], [-0.55, CY + 0.1, CZ - 0.1]], 'red', [], 0.03);
     return [lead, k.bolt('Hub nut', [-1.27, 0.4, -1.3], [-1, 0, 0], [lead], 3)];
@@ -77,25 +73,21 @@ export function vehicleFrame(k: Kit) {
   k.add(seat);
   k.mesh(new THREE.BoxGeometry(1.0, 0.05, 0.82), 'accent', 0, 0, 0, seat);
   k.mesh(new THREE.BoxGeometry(0.9, 0.12, 0.08), 'accent', 0, 0.06, 0.38, seat);
-  const seatScrews = [-1, 1].flatMap((sx) => [-1, 1].map((sz) => k.screw('Seat screw', [sx * 0.42, RY + 0.58, 0.5 + sz * 0.28])));
+  const seatScrews = [[-1, -1], [1, 1]].map(([sx, sz]) => k.screw('Seat screw', [sx * 0.42, RY + 0.58, 0.5 + sz * 0.28]));
   k.cover(seat, seatScrews, [0.2, 1, 0], 0.03);
   for (const x of [-0.25, 0.25]) {
     k.mount('coil', [[x, RY + 0.02, 0.5], [0, 0, 0]], () => [
-      k.wire('Choke lead', [[x, RY + 0.42, 0.62], [x * 1.5, RY + 0.3, 0.82], [x * 1.4, CY + 0.12, CZ - 0.12]], 'brown', [], 0.025),
       k.bolt('Choke bolt', [x, RY + 0.02, 0.5], [0, -1, 0], [], 2), // from underneath: turn the frame over
     ]);
   }
 
   // battery tray at the front: lid over up to three cells, strapped down and wired together
   k.box(1.2, 0.04, 1.0, 0, RY - 0.19, -0.5, 'trim');
-  k.bay(0, -0.5, 1.2, 1.0, RY - 0.15, 0.5, { pry: true, mids: true });
+  k.bay(0, -0.5, 1.2, 1.0, RY - 0.15, 0.5);
   k.cable([[0, RY + 0.2, -0.05], [0, RY + 0.35, 0.3], [-0.2, CY + 0.12, CZ - 0.1]], 0.04, 'red');
   const cells: [number, number][] = [[-0.29, -0.76], [0.29, -0.76], [0, -0.25]];
   for (const [x, z] of cells) {
-    k.mount('battery', [[x, RY - 0.15, z], [0, 0, 0]], () => [
-      k.clip('Cell strap', [x, RY + 0.27, z], [0, 1, 0]),
-      k.wire('Cell lead', [[x + 0.15, RY + 0.27, z], [x * 0.5 + 0.1, RY + 0.32, z + 0.1], [0, RY + 0.25, -0.08]], 'red', [], 0.03),
-    ]);
+    k.mount('battery', [[x, RY - 0.15, z], [0, 0, 0]], () => [k.clip('Cell strap', [x, RY + 0.27, z], [0, 1, 0])]);
   }
   if (g >= 2) k.lamps(4, -0.3, RY + 0.17, CZ + 0.21, 0.2);
 }
@@ -138,16 +130,14 @@ export function waterJet(k: Kit) {
   k.mesh(new THREE.BoxGeometry(0.84, 0.18, d + 0.04), 'black', 0, 0, 0, seat);
   k.mesh(new THREE.BoxGeometry(0.7, 0.03, d - 0.1), 'brown', 0, 0.1, 0, seat);
   const latch = k.clip('Seat clip', [0, DY + H - 0.12, z1 + 0.01], [0, 0, 1]);
-  const seatBolts = [-0.28, 0.28].map((x) => k.screw('Seat bolt', [x, DY + H + 0.18, z0 + 0.1]));
+  const seatBolts = [k.screw('Seat bolt', [0, DY + H + 0.18, z0 + 0.1])];
   k.cover(seat, [latch, ...seatBolts], [0, 1, 0.3], 0.09);
 
   // in the bay: batteries in front, the drive motor behind them
-  const cables: Step[] = [];
   for (const z of [-0.03, 0.34]) {
     k.mount('battery', [[0, DY, z], [0, 0, 0]], () => {
-      const lead = k.wire('Battery lead', [[0.18, DY + 0.42, z], [0.25, DY + 0.38, (z + 0.75) / 2], [0.12, DY + 0.38, 0.72]], 'red', [], 0.03);
-      cables.push(lead);
-      return [k.clip('Battery strap', [-0.12, DY + 0.42, z], [0, 1, 0]), lead];
+      k.cable([[0.18, DY + 0.42, z], [0.25, DY + 0.38, (z + 0.75) / 2], [0.12, DY + 0.38, 0.72]], 0.03, 'red');
+      return [k.clip('Battery strap', [-0.12, DY + 0.42, z], [0, 1, 0])];
     });
   }
   k.box(0.5, 0.03, 0.2, 0, DY, 1.25 - 0.05, 'dark');
@@ -157,21 +147,18 @@ export function waterJet(k: Kit) {
   k.add(grate);
   k.mesh(new THREE.BoxGeometry(0.44, 0.03, 0.5), 'trim', 0, 0, 0, grate);
   for (const x of [-0.12, 0, 0.12]) k.mesh(new THREE.BoxGeometry(0.03, 0.04, 0.46), 'dark', x, -0.02, 0, grate);
-  const grateScrews = k.rect('Grate screw', [0, -0.04, 1.0], [0, -1, 0], 0.34, 0.4, 2);
+  const grateScrews = k.rect('Grate screw', [0, -0.04, 1.0], [0, -1, 0], 0.34, 0.4);
   k.cover(grate, grateScrews, [0, -1, 0], 0.02);
   k.mount('motor', [[0, DY, 0.8], [0, Math.PI / 2, 0]], () => [
-    ...cables,
     k.wire('Phase lead', [[-0.16, DY + 0.38, 0.75], [-0.25, DY + 0.4, 0.4], [-0.2, DY + 0.36, 0.1]], 'yellow', [], 0.03),
-    ...[-0.28, 0.28].map((x) => k.bolt('Motor mount bolt', [x, DY + 0.04, 0.8], [0, 1, 0], [], 2)),
+    k.bolt('Motor mount bolt', [0.28, DY + 0.04, 0.8], [0, 1, 0], [], 2),
     k.screw('Shaft coupling', [0, 0.0, 0.92], [0, -1, 0], grateScrews), // only through the intake grate
   ]);
 
   // stern hatch over the bilge pump motor
-  k.bay(0, 1.32, 0.76, 0.44, DY, 0.42, { pry: true });
-  k.mount('motor', [[0, DY + 0.02, 1.32], [0, 0, 0]], () => [
-    k.clip('Pump bracket', [0.3, DY + 0.2, 1.32], [1, 0, 0]),
-    k.wire('Pump lead', [[-0.2, DY + 0.34, 1.3], [-0.3, DY + 0.5, 1.18], [-0.32, DY + 0.38, 1.02]], 'blue', [], 0.025),
-  ]);
+  k.bay(0, 1.32, 0.76, 0.44, DY, 0.42, { screws: 0, pry: true });
+  k.cable([[-0.2, DY + 0.34, 1.3], [-0.3, DY + 0.5, 1.18], [-0.32, DY + 0.38, 1.02]], 0.025, 'blue');
+  k.mount('motor', [[0, DY + 0.02, 1.32], [0, 0, 0]], () => [k.clip('Pump bracket', [0.3, DY + 0.2, 1.32], [1, 0, 0])]);
   if (g >= 2) k.lamps(3, -0.1, 1.3, -0.92, 0.1);
 }
 
@@ -220,28 +207,23 @@ export function warpCore(k: Kit) {
   k.mesh(new THREE.BoxGeometry(1.0, 0.04, 0.56), 'body', 0, 0, 0, shroud);
   for (const z of [-0.27, 0.27]) k.mesh(new THREE.BoxGeometry(1.0, 0.44, 0.03), 'body', 0, -0.22, z, shroud);
   if (g >= 3) k.mesh(new THREE.BoxGeometry(0.8, 0.02, 0.04), 'glow', 0, 0.03, 0, shroud);
-  k.cover(shroud, k.rect('Shroud screw', [-0.78, TOP + 0.53, 0], [0, 1, 0], 0.84, 0.4, 2), [0, 1, 0.2], 0.22);
+  k.cover(shroud, k.rect('Shroud screw', [-0.78, TOP + 0.53, 0], [0, 1, 0], 0.84, 0.4), [0, 1, 0.2], 0.22);
   for (const x of [-1.08, -0.78, -0.48]) {
-    k.mount('heatsink', [[x, TOP + 0.05, 0], [0, Math.PI / 2, 0]], () => [
-      coolant,
-      k.clip('Coolant clamp', [x, TOP + 0.36, 0.15], [0, 1, 0]),
-      k.bolt('Fin bank bolt', [x, TOP + 0.08, -0.2], [0, 1, 0], [], 2),
-    ]);
+    k.mount('heatsink', [[x, TOP + 0.05, 0], [0, Math.PI / 2, 0]], () => [coolant, k.clip('Coolant clamp', [x, TOP + 0.36, 0.15], [0, 1, 0])]);
   }
 
   // compute rack on the +z flank: shelves of boards behind a door
   const RX = -0.78, RZ = 0.73;
   for (const x of [RX - 0.33, RX + 0.33]) k.box(0.04, 0.84, 0.46, x, AY - 0.42, RZ, 'trim');
   for (let i = 0; i < 4; i++) k.box(0.62, 0.03, 0.44, RX, AY - 0.44 + i * 0.27, RZ, 'dark');
-  const rackBolts = [RX - 0.25, RX + 0.25].map((x) => k.bolt('Rack bolt', [x, AY - 0.45, RZ], [0, -1, 0], [], 2));
+  const rackBolts = [k.bolt('Rack bolt', [RX, AY - 0.45, RZ], [0, -1, 0], [], 2)];
   const door = new THREE.Group();
   door.position.set(RX, AY - 0.02, RZ + 0.25);
   k.add(door);
   k.mesh(new THREE.BoxGeometry(0.7, 0.86, 0.04), 'body', 0, 0, 0, door);
   k.mesh(new THREE.BoxGeometry(0.5, 0.04, 0.02), g >= 1 ? 'accent' : 'trim', 0, 0.3, 0.025, door);
-  const doorScrews = k.rect('Rack door screw', [RX, AY - 0.02, RZ + 0.27], [0, 0, 1], 0.56, 0.72, 2);
-  const seam = k.pry('Door seam', [RX + 0.35, AY - 0.02, RZ + 0.27], [1, 0, 0], doorScrews);
-  k.cover(door, [...doorScrews, seam, ...rackBolts], [0, 0.2, 1], 0.02);
+  const seam = k.pry('Door seam', [RX + 0.35, AY - 0.02, RZ + 0.27], [1, 0, 0]);
+  k.cover(door, [seam, ...rackBolts], [0, 0.2, 1], 0.02);
   for (let i = 0; i < 3; i++) {
     const y = AY - 0.41 + i * 0.27;
     k.mount('compute', [[RX, y, RZ - 0.02], [0, 0, 0]], () => [k.clip('Card latch', [RX + 0.18, y + 0.1, RZ + 0.2], [0, 0, 1])]);
@@ -254,11 +236,7 @@ export function warpCore(k: Kit) {
   k.box(0.8, 0.04, 0.06, 0.5, AY + 0.3, BZ - 0.17, 'trim'); // cage band
   const vent = k.pry('Field vent', [0.5, AY - 0.1, BZ - 0.2], [0, 0, -1]);
   for (const x of [0.32, 0.68]) {
-    k.mount('antimatter', [[x, AY - 0.07, BZ], [0, 0, 0]], () => [
-      vent,
-      k.wire('Field lead', [[x, AY + 0.45, BZ], [x - 0.08, AY + 0.55, BZ + 0.18], [x - 0.1, AY + 0.4, -0.45]], 'blue', [vent], 0.025),
-      ...[-0.1, 0.1].map((dx) => k.bolt('Cage clamp', [x + dx, AY + 0.32, BZ - 0.2], [0, 0, -1], [vent], 2)),
-    ]);
+    k.mount('antimatter', [[x, AY - 0.07, BZ], [0, 0, 0]], () => [vent, k.bolt('Cage clamp', [x, AY + 0.32, BZ - 0.2], [0, 0, -1], [vent], 2)]);
   }
 }
 
@@ -290,9 +268,8 @@ export function aiControl(k: Kit) {
     const y = P + 0.06 + i * 0.34;
     k.box(W - 2 * T, 0.03, D - 0.2, 0, y - 0.03, 0.0, 'trim'); // slot rail
     k.mount('compute', [[0, y, 0.15], [0, 0, 0]], () => {
-      const holds = [-0.45, 0.45].map((x) => k.screw('Faceplate screw', [x, y + 0.1, D / 2 + 0.01], [0, 0, 1]));
-      if (i < 2) holds.push(k.wire('Ribbon cable', [[-0.15, y + 0.12, 0.1], [-0.2, y + 0.2, -0.1], [-0.25, y + 0.18, -0.4]], 'blue', [], 0.025));
-      return holds;
+      if (i < 2) k.cable([[-0.15, y + 0.12, 0.1], [-0.2, y + 0.2, -0.1], [-0.25, y + 0.18, -0.4]], 0.025, 'blue'); // ribbon
+      return [k.screw('Faceplate screw', [0.45, y + 0.1, D / 2 + 0.01], [0, 0, 1])];
     });
   }
 
@@ -300,17 +277,12 @@ export function aiControl(k: Kit) {
   const loop = k.wire('Coolant pipe', [[0.0, H + 0.06, -0.38], [0.45, H + 0.06, -0.4], [0.7, H - 0.1, -0.42], [0.82, 0.7, -0.42]], 'copper', [], 0.035);
   k.box(0.04, 1.5, D - 0.08, W / 2 + 0.02, 0.5, 0, 'trim'); // base plate
   for (const y of [0.75, 1.25, 1.75]) {
-    k.mount('heatsink', [[W / 2 + 0.04, y, 0], [0, 0, -Math.PI / 2]], () => [
-      loop,
-      ...[-0.38, 0.38].map((z) => k.bolt('Heat sink bolt', [W / 2 + 0.06, y, z], [1, 0, 0], [], 2)),
-    ]);
+    k.mount('heatsink', [[W / 2 + 0.04, y, 0], [0, 0, -Math.PI / 2]], () => [loop, k.bolt('Heat sink bolt', [W / 2 + 0.06, y, 0.38], [1, 0, 0], [], 2)]);
   }
 
   // fan hood on the roof over the power supply choke
-  k.bay(-0.1, 0.02, 0.72, 0.72, H + T, 0.5, { mids: true });
-  k.mount('coil', [[-0.1, H + T, 0.02], [0, 0, 0]], () => [
-    k.wire('Supply lead', [[0.08, H + T + 0.4, 0.02], [0.18, H + T + 0.3, -0.15], [0.2, H + T + 0.05, -0.25]], 'brown', [], 0.03),
-    k.clip('Choke clip', [-0.38, H + T + 0.2, 0.02], [-1, 0, 0]),
-  ]);
+  k.bay(-0.1, 0.02, 0.72, 0.72, H + T, 0.5);
+  k.cable([[0.08, H + T + 0.4, 0.02], [0.18, H + T + 0.3, -0.15], [0.2, H + T + 0.05, -0.25]], 0.03, 'brown'); // supply lead
+  k.mount('coil', [[-0.1, H + T, 0.02], [0, 0, 0]], () => [k.clip('Choke clip', [-0.38, H + T + 0.2, 0.02], [-1, 0, 0])]);
   if (g >= 2) k.lamps(4, 0.06, H - 0.12, D / 2 + 0.01, 0.08);
 }
