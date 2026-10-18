@@ -310,6 +310,11 @@ export class Net {
     if (this.connected) this.send({ t: 'crashUse', kind });
   }
 
+  /** Scrap the machine on the disassembly table (the server answers with 'bench' and the bag). */
+  benchScrap() {
+    if (this.connected) this.send({ t: 'benchScrap' });
+  }
+
   /** The shared session of a large crash site, or of the disassembly table ('bench') (see SiteLink in src/teardown/teardown.ts). */
   siteLink(id: string): SiteLink {
     const key = (i: number) => `${id}:${i}`;

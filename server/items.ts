@@ -179,9 +179,10 @@ export class ItemServer {
     return roomFor(this.slots(browserId, 'bag'), kind, this.bagShape(browserId));
   }
 
-  /** One `kind` into the bag (the backpack first, then the hotbar). False if it's full. Call inside the pickup's transaction. */
-  give(browserId: string, kind: string): boolean {
-    if (!addItem(this.slots(browserId, 'bag'), kind, 1, this.newId, this.bagShape(browserId))) return false;
+  /** `n` (default one) `kind` into the bag (the backpack first, then the hotbar); all or none. False if they don't fit.
+   *  Call inside the pickup's transaction. */
+  give(browserId: string, kind: string, n = 1): boolean {
+    if (!addItem(this.slots(browserId, 'bag'), kind, n, this.newId, this.bagShape(browserId))) return false;
     this.save(browserId, 'bag');
     return true;
   }

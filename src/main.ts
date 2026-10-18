@@ -12,7 +12,7 @@ import { Shelters } from './world/shelters';
 import { DigFx } from './dig';
 import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
-import { debrisItem } from '../shared/items.ts';
+import { addItem, debrisItem, SCRAP } from '../shared/items.ts';
 import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
 import { Menu } from './menu';
@@ -65,7 +65,7 @@ import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { machinesAt } from '../shared/crash.ts';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
-import { carriedGear, equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
+import { bagShape, carriedGear, equipped, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootName } from './world/loot';
 import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
@@ -127,6 +127,8 @@ if (location.search.includes('debug')) Object.assign((window as unknown as { dbg
 net.onSite = (m) => {
   const cur = teardown.current;
   machines.apply(m, cur?.id ?? null);
+  // Someone scrapped the table's machine while we work on it (a finished one stays open until we leave).
+  if (m.t === 'bench' && !m.job && cur?.id === BENCH_ID && cur.junk.slots.some((s) => !s.taken)) teardown.end();
   if (m.t === 'siteTook' && cur?.id === m.id) {
     teardown.applyTook(m.i, m.ok, m.reason);
   }
@@ -137,9 +139,18 @@ net.onSite = (m) => {
   } else if (m.t === 'siteDone') teardown.applyDone(m.i);
   else teardown.applyTake(m.i, m.by === net.id);
 };
+// Scrap the machine on the disassembly table: one scrap per part still on it, if they all fit in the bag.
+const scrapBench = () => {
+  const n = Math.max(1, teardown.current?.junk.slots.filter((s) => !s.taken).length ?? 1);
+  if (!addItem([...(net.boxes.bag ?? [])], SCRAP, n, () => 0, bagShape(net.boxes.equip))) return false;
+  net.benchScrap();
+  pickupSound.play();
+  hud.toast(`+${n} ${itemLabel(SCRAP)}`);
+  return true;
+};
 // A machine we put on the disassembly table is there (the server picked its seed): start taking it apart.
 machines.bench.onReady = () => {
-  const job = machines.bench.site(net.siteLink(BENCH_ID));
+  const job = machines.bench.site(net.siteLink(BENCH_ID), scrapBench);
   if (job && !teardown.active && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 5) teardown.begin(job);
 };
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), () => net.debugGear(), (what) => net.summonBot(what));
@@ -460,7 +471,7 @@ baseSand.update(frameDt, storm.atBase);
     if (use) {
       if (STATIONS[station].kind === 'workbench') hud.open();
       else if (table) {
-        const job = table.resume ? machines.bench.site(net.siteLink(BENCH_ID)) : null;
+        const job = table.resume ? machines.bench.site(net.siteLink(BENCH_ID), scrapBench) : null;
         if (job) teardown.begin(job);
         else {
           // The server picks the machine's seed; its 'bench' answer starts the mode (onReady below).

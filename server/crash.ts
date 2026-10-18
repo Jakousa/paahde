@@ -12,7 +12,7 @@
 //    take ('sites' on join, then siteDone / siteTake), so a machine looks the same to everyone, worked on or not.
 //  - The base's disassembly table is the same kind of session, with id BENCH_ID: crashUse puts a carried machine
 //    on it with a seed picked here, and the job (kind, seed in `bench_job`, progress like a site's) is kept until
-//    its last part is taken; then the table is free.
+//    its last part is taken (or it is scrapped, scrapBench); then the table is free.
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
@@ -319,16 +319,30 @@ export class CrashServer {
     if (!ok) return { t: 'siteTook', id: site.id, i, ok: false, reason: 'full' };
     this.broadcast({ t: 'siteTake', id: site.id, i, by: pid });
     if (site.wreck !== null && s.taken.size >= site.parts.length) this.spend(site.wreck);
-    if (site.id === BENCH_ID && s.taken.size >= site.parts.length) {
-      // Every part is out: the table is free again.
-      this.bench = null;
-      this.sessions.delete(BENCH_ID);
-      this.db.tx(() => {
-        this.db.clearBench();
-        this.db.clearProgress(BENCH_ID);
-      });
-      this.broadcast(this.benchMessage());
-    }
+    if (site.id === BENCH_ID && s.taken.size >= site.parts.length) this.freeBench(); // every part is out
     return { t: 'siteTook', id: site.id, i, ok: true, kind };
+  }
+
+  /** Scrap the machine on the table: `give(n)` puts one scrap per part still on it (at least one) in the bag
+   *  (false: no room, and the machine stays). The table is free again. */
+  scrapBench(feet: Feet, give: (n: number) => boolean): boolean {
+    const s = this.sessions.get(BENCH_ID);
+    if (!this.bench || !s || Math.hypot(BENCH.x - feet.x, BENCH.z - feet.z) > BENCH_REACH) return false;
+    const n = Math.max(1, machineParts(this.bench.kind, this.bench.seed).length - s.taken.size);
+    return this.db.tx(() => {
+      if (!give(n)) return false;
+      this.freeBench();
+      return true;
+    });
+  }
+
+  private freeBench() {
+    this.bench = null;
+    this.sessions.delete(BENCH_ID);
+    this.db.tx(() => {
+      this.db.clearBench();
+      this.db.clearProgress(BENCH_ID);
+    });
+    this.broadcast(this.benchMessage());
   }
 }

@@ -46,6 +46,8 @@ export interface WorkSite {
   changed?: () => void;
   /** The mode was left (the workbench tidies its table). */
   closed?: () => void;
+  /** Turn the whole machine into scrap (the table only): false if the bag has no room. */
+  scrap?: () => boolean;
 }
 
 /** The server's answer to taking a part (SiteLink.take): ok, its item is in the bag; or refused ('full': the bag
@@ -185,7 +187,7 @@ export class TeardownView {
     this.scene = scene;
     this.camera = camera;
     this.canvas = canvas;
-    this.ui = new TeardownUi(() => this.end());
+    this.ui = new TeardownUi(() => this.end(), () => this.scrap());
     const o = this.ui.overlay;
     o.addEventListener('pointerdown', (e) => this.onDown(e));
     o.addEventListener('pointermove', (e) => this.onMove(e));
@@ -254,12 +256,25 @@ export class TeardownView {
     if (document.pointerLockElement) ui.debugFreed = true; // freed on purpose: don't open the Esc menu (src/menu.ts)
     document.exitPointerLock();
     this.ui.setPhase('walk');
+    this.ui.setScrap(!!site.scrap);
     site.link?.join();
     if (!site.junk.root.parent) this.scene.add(site.junk.root);
     this.home.set(site.x, site.ground(site.x, site.z), site.z);
     this.computeRest();
     site.junk.root.position.y = this.restY;
     this.refreshCard();
+  }
+
+  /** Scrap the machine (the table only) and leave; the server frees the table. */
+  private scrap() {
+    const site = this.site;
+    if (!site?.scrap || this.phase !== 'work') return;
+    if (!site.scrap()) {
+      this.ui.message('Bag full', true);
+      uiSound.full();
+      return;
+    }
+    this.end();
   }
 
   /** Stop: the controls come back (the camera swings back from the table). */

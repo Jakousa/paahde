@@ -94,6 +94,9 @@ export type ClientMsg =
   // up from the bag (checked against the table's reach), picks the machine's seed and tells everyone ('bench');
   // answers 'items' either way.
   | { t: 'crashUse'; kind: string }
+  // Scrap the machine on the disassembly table: one scrap per part still on it (at least one) goes in your bag, if
+  // it all fits, and the table is free ('bench' to everyone, 'items' to you).
+  | { t: 'benchScrap' }
   // Large crash sites, and the table (id 'bench'), are worked on together. Join/leave the session; hold a lifting
   // eye (it needs `players` of you holding at once, re-sent about once a second while held); report a step done (a
   // lift is checked against the holders) or take a part (first one wins: its item goes in your bag, answered with

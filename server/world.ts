@@ -8,7 +8,7 @@ import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bikeLevel, bottleSips, carriedGear, digTool, GEAR_KINDS, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { HOTBAR, partKind, scrapItem } from '../shared/items.ts';
+import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
 import { BOSS_SPOILS, KILL_SPOILS } from '../shared/tables.ts';
 import { BOSS_KINDS, BOSS_SEND_R, type BossKind } from '../shared/bosses.ts';
@@ -659,6 +659,8 @@ function onCrash(p: Player, msg: ClientMsg) {
     sendBox(p, 'bag');
     send(p.ws, crash.benchMessage()); // refused (the table was taken): what is on it
     gearChanged(p.browserId);
+  } else if (msg.t === 'benchScrap') {
+    if (crash.scrapBench(p.state, (n) => items.give(p.browserId, SCRAP, n))) sendBox(p, 'bag');
   } else if (msg.t === 'siteJoin') {
     const state = crash.join(p.id, p.state, msg.id);
     if (state) send(p.ws, state);

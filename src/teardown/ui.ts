@@ -1,6 +1,7 @@
 // DOM for the disassembly mode: a full-screen overlay that takes the pointer (so clicks never reach the game
 // canvas and re-capture the mouse). On it, styled like the Esc menu (src/menu.ts):
-//   top panel    the machine, its rarity, steps and parts progress, Leave; "3 on another side" when stuck
+//   top panel    the machine, its rarity, steps and parts progress, Scrap (the table: click twice), Leave;
+//                "3 on another side" when stuck
 //   tip          next to the pointer: what is under it and a terse action ("×3", "circle"),
 //                or what it waits on ("after lid screw ×4")
 //   ring         radial progress drawn around the step being worked (and the guide circle for bolts)
@@ -36,6 +37,11 @@ body.teardown #crosshair, body.teardown #pickup { display: none !important; }
 #tdTop button { margin-left: auto; font: 600 11px var(--mono); color: #2a160a; background: #ffd9a0; border: 0;
   border-radius: 4px; padding: 3px 8px; cursor: pointer; }
 #tdTop button:hover { background: #ffe6bf; }
+#tdTop .who { margin-right: auto; }
+#tdTop .head button { margin-left: 0; }
+#tdTop button.scrap { background: rgba(255, 240, 220, 0.12); color: #fff4e4; }
+#tdTop button.scrap:hover { background: rgba(255, 240, 220, 0.22); }
+#tdTop button.scrap.sure { background: #ff9c86; color: #2a160a; }
 #tdTop .meters { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px; align-items: center; margin: 9px 0 7px; }
 #tdTop .meters span { opacity: 0.7; }
 #tdTop .meters b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
@@ -93,7 +99,10 @@ export class TeardownUi {
   private lastTip = '';
   private lastNext = '';
 
-  constructor(onLeave: () => void) {
+  private scrapEl: HTMLButtonElement;
+  private sureTimer = 0;
+
+  constructor(onLeave: () => void, onScrap: () => void) {
     const style = document.createElement('style');
     style.textContent = css;
     document.head.append(style);
@@ -103,7 +112,7 @@ export class TeardownUi {
     o.innerHTML = `<div id="tdTags"></div>
 <svg id="tdRing" viewBox="0 0 ${RING_R * 2 + 12} ${RING_R * 2 + 12}"><circle class="bg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}"/><circle class="fg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/></svg>
 <div class="panel" id="tdTop">
-  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button><kbd>F</kbd></button></div>
+  <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button class="scrap">Scrap</button><button class="leave"><kbd>F</kbd></button></div>
   <div class="meters"><span>steps</span><div class="bar steps"><i></i></div><b class="ns"></b><span>parts</span><div class="bar parts"><i></i></div><b class="np"></b></div>
   <div class="next"></div>
 </div>
@@ -116,7 +125,20 @@ export class TeardownUi {
     this.tagsEl = o.querySelector('#tdTags')!;
     this.msgEl = o.querySelector('#tdMsg')!;
     this.nextEl = this.top.querySelector('.next')!;
-    this.top.querySelector('button')!.addEventListener('click', onLeave);
+    this.top.querySelector('.leave')!.addEventListener('click', onLeave);
+    // Scrapping throws the machine away: the first click asks, a second within a few seconds does it.
+    this.scrapEl = this.top.querySelector('.scrap')!;
+    this.scrapEl.addEventListener('click', () => {
+      if (this.scrapEl.classList.contains('sure')) {
+        this.setScrap(true);
+        onScrap();
+        return;
+      }
+      this.scrapEl.classList.add('sure');
+      this.scrapEl.textContent = 'Scrap it?';
+      clearTimeout(this.sureTimer);
+      this.sureTimer = window.setTimeout(() => this.setScrap(true), 3000);
+    });
     this.setPhase('off');
   }
 
@@ -130,6 +152,14 @@ export class TeardownUi {
       this.ring(null);
       this.tags([]);
     }
+  }
+
+  /** Whether the Scrap button shows (the table's machine can be scrapped whole). */
+  setScrap(on: boolean) {
+    clearTimeout(this.sureTimer);
+    this.scrapEl.classList.remove('sure');
+    this.scrapEl.textContent = 'Scrap';
+    this.scrapEl.style.display = on ? '' : 'none';
   }
 
   setProgress(p: Progress) {
