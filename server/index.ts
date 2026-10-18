@@ -8,7 +8,7 @@ import { DIG, DT, INPUT_MASK, PILE, spawnState, step, TICK_RATE, YAW_STEPS, type
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bikeLevel, bottleSips, digTool, GEAR_KINDS, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { HOTBAR, partKind, scrapItem } from '../shared/items.ts';
+import { CLOTH, HOTBAR, partKind, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
 import { KILL_SPOILS } from '../shared/tables.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
@@ -38,6 +38,8 @@ import { CrashServer } from './crash.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
 import { TerrainServer } from './terrain.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
+import type { Caster } from '../shared/shade.ts';
+import { heightAt } from '../shared/terrain.ts';
 import { BUNKER_SPAWN } from '../shared/base.ts';
 import { blastPush, DOWN_MS } from '../shared/ragdoll.ts';
 import { stormAt, stormDrag } from '../shared/storm.ts';
@@ -268,15 +270,45 @@ function gearChanged(browserId: string) {
   }
 }
 
-// Heat builds up in the sun (server/water.ts); when it's full the player dies of heatstroke and respawns at
-// the base, cooled down.
+/** What casts shade on players besides the world (shared/shade.ts): everyone standing (shorter crouched) or riding
+ *  (the bike as a low capsule along its heading), and motorcycles lying on the sand. Rebuilt every CASTERS_MS. */
+let casters: Caster[] = [];
+let castersAt = -Infinity;
+const CASTERS_MS = 250;
+function shadeCasters(now: number): Caster[] {
+  if (now - castersAt < CASTERS_MS) return casters;
+  castersAt = now;
+  casters = [];
+  for (const o of players.values()) {
+    const s = o.state;
+    if (o.down) continue;
+    casters.push({ x: s.x, z: s.z, ax: 1, az: 0, half: 0, r: 0.28, y0: s.y, y1: s.y + (s.crouching ? 1.2 : 1.8), id: o.id });
+    if (s.riding) casters.push({ x: s.x, z: s.z, ax: -Math.sin(s.heading), az: -Math.cos(s.heading), half: 0.55, r: 0.35, y0: s.y, y1: s.y + 1, id: o.id });
+  }
+  for (const l of loot.loot.values()) {
+    if (l.kind === 'motorcycle' && l.depth === 0) casters.push({ x: l.x, z: l.z, ax: 1, az: 0, half: 0, r: 0.7, y0: -Infinity, y1: heightAt(l.x, l.z) + 0.6 });
+  }
+  return casters;
+}
+
+/** Pieces of cloth in a player's bag: wrapped around them against the night's cold (shared/temperature.ts). */
+function clothIn(browserId: string): number {
+  let n = 0;
+  for (const it of items.slots(browserId, 'bag')) if (it?.kind === CLOTH) n += it.n;
+  return n;
+}
+
+// Heat builds up in the sun, chill out in the night (server/water.ts); when either is full the player dies of
+// heatstroke or cold and respawns at the base, recovered.
 // The next snapshot carries the new position, which the client snaps to (src/net.ts reconcile).
 function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const now = Date.now();
   const storm = stormAt(storms.storms, p.state.x, p.state.z, serverNow);
-  const r = tickHeat(p.heat, dt, p.state, p.input, tod, storm, now);
+  const r = tickHeat(p.heat, dt, p.state, p.input, tod, storm, now, { casters: shadeCasters(now), self: p.id, cloth: () => clothIn(p.browserId) });
   if (r === 'died') {
     die(p, 'heat');
+  } else if (r === 'froze') {
+    die(p, 'cold');
   } else if (r === 'send') {
     send(p.ws, waterMsg(p.heat));
   }

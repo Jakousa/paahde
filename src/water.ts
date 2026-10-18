@@ -3,13 +3,14 @@
 // all found broken and repaired, shared/gear.ts), drinking and refilling, and the HUD: the body heat meter
 // (bottom left, glowing while heat builds), the clock and felt temperature with a sun/shade icon (top right,
 // shared/temperature.ts; only with the wrist computer equipped), a heatstroke vignette and swimming view (post.ts) past 60%, and the
-// death screen.
+// death screen. The cold (the server's hidden chill, shared/water.ts) has no meter: frost grows in from the screen
+// edges (post.ts `frost`) and the hands shake (`playerHands.shiver`, src/viewmodel.ts; the view too, main.ts).
 //
 // The server owns the numbers; this only plays the actions and asks. Keys 1–4 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // (no digging while your hands are full, see `tools` in src/input.ts), and F at the base's pump refills it.
 import { atPump, inBase } from '../shared/base.ts';
-import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
+import { CHILL_MAX, DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
 import { equipped, repaired } from '../shared/gear.ts';
 import { HOTBAR } from '../shared/items.ts';
 import { isPlaceable } from '../shared/placed.ts';
@@ -20,7 +21,7 @@ import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
-import { heatstroke } from './world/env.ts';
+import { frost, heatstroke } from './world/env.ts';
 import { drinkSound } from './drinkSound';
 
 /**
@@ -37,7 +38,12 @@ export const playerHands = {
   aim: 0, rifleScoped: false, kick: 0, charge: 1,
   /** The jammer's lamp (src/jammer.ts), 0 dark .. 1 fully lit. */
   jamLamp: 0,
+  /** Shivering with cold, 0 .. 1 (src/viewmodel.ts shakes the hands, main.ts the view). */
+  shiver: 0,
 };
+
+/** The cold shows from this much chill (frost at the edges, a light shiver) and is at its worst at CHILL_MAX. */
+const CHILL_SHOW = 0.15 * CHILL_MAX;
 
 /** Heat meter colours: cool, warming up, nearly heatstroke. */
 const BLUE = [78, 170, 255];
@@ -148,6 +154,7 @@ export class Survival {
 
   private selected = -1; // hotbar slot, -1 = empty hands
   private shown = 0; // eased meter value
+  private shownChill = 0; // eased chill
   private actionAt = 0; // performance.now() when the current sip / refill started
   private needRelease = false; // one sip per press: let go before the next
   private deadUntil = 0;
@@ -207,6 +214,7 @@ export class Survival {
       this.deadUntil = performance.now() + DOWN_MS;
       this.cancel();
       this.shown = 0;
+      this.shownChill = 0;
     };
     this.select(-1);
   }
@@ -405,6 +413,11 @@ export class Survival {
     }
     // Heatstroke vignette and swimming view (post.ts), from 60% to full.
     heatstroke.value = dead ? 0 : Math.min(1, Math.max(0, (this.shown - 0.6 * HEAT_MAX) / (0.4 * HEAT_MAX)));
+    // Cold: frost creeping in from the edges and shaking hands, eased like the meter.
+    this.shownChill += (w.chill - this.shownChill) * (1 - Math.exp(-dt * 2));
+    const cold = dead ? 0 : Math.min(1, Math.max(0, (this.shownChill - CHILL_SHOW) / (CHILL_MAX - CHILL_SHOW)));
+    frost.value = cold;
+    playerHands.shiver = cold;
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
     // Black out over the last stretch of lying dead, then fade back in on the base after the respawn.

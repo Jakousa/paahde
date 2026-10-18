@@ -2,6 +2,45 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — Partial shade, shade from wrecks and people, cold nights
+
+- **Body shade** (shared/shade.ts `sunOnBody`): four rays instead of one, from the head, both shoulders (±0.22 m
+  across the sun) and the legs (0.5 m), lower when crouched, weighted 0.35/0.2/0.2/0.25. The felt temperature mixes
+  sun and shade by the lit share (shared/temperature.ts `feltTemp(tod, sun, …)`), so legs below a crest or half
+  behind the hut is partial shade. The `shade` flag sent to the client is "less than half lit".
+- **What casts shade:** dunes, rocks and digs (`heightAt`, already), the hut and skylight collar (already), scrap
+  (already), and now crash-site wrecks and debris (their collision capsules, within 80 m along the ray), other
+  players (a 0.28 m capsule, 1.8 m tall, 1.2 crouched), their bikes while ridden (a low capsule along the heading)
+  and motorcycles lying on the sand. Players and bikes are `Caster`s the server gathers every 250 ms
+  (server/index.ts `shadeCasters`); your own don't shade you. Ray vs capsule is analytic (`hitsPrism`).
+- **Finer far march:** a step that lands closer over the sand than 0.6 × its length is walked again in 0.5 m
+  substeps. Against a 0.1 m reference march at the grazing evening sun, missed crests fell from 15 to 3 in 825
+  shaded points. Cost: ~40 µs per ray as before, ~150–200 µs per body check, 4 checks/s per player.
+- **Cold nights:** outside, once the sun is down, it feels **8 °C under the air** (`NIGHT_CHILL`: radiating to the
+  clear sky, the night wind), fading in over the sun's first 6° below the horizon: ~6.5 °C at midnight, ~4 °C before
+  dawn. The base stays between **16 and 22 °C** (`BASE_MIN`): the sand keeps the day's warmth.
+- **Chill** (shared/water.ts): a second, hidden meter. Under **10 °C** felt it builds (full in 140 s at 0 °C, slower
+  the less cold); at 10 °C and up it fades (full → empty in 40 s from 16 °C). Full is death by cold (`died`
+  `cause: 'cold'`). Out in the open with nothing, it kills ~4½ min after midnight (from 22:00: ~6½ min); trips out
+  from the bunker still work. Shelter: the base; a smouldering crash site (+14 °C within 3 m of a smoke point,
+  fading to 9 m; only until its large machine is stripped); cloth in the bag, wrapped around you (each piece keeps
+  20% of the night's chill off, 4 pieces 80%: enough for the whole night); a sandstorm's hot wind (+10 °C).
+
+  | time | air | outside | 2 cloth | 4 cloth | base |
+  |---|---|---|---|---|---|
+  | 21:00 | 22.6 | 14.6 | 17.8 | 21.0 | 22.0 |
+  | 22:30 | 17.8 | 9.8 | 13.0 | 16.2 | 17.8 |
+  | 00:00 | 14.5 | 6.5 | 9.7 | 12.9 | 16.0 |
+  | 03:00 | 12.1 | 4.1 | 7.3 | 10.5 | 16.0 |
+  | 06:00 | 12.5 | 14.0 (sun) / 6.3 (shade) | | | 16.0 |
+
+- **No meter for it:** frost grows in from the screen edges and corners (post.ts `frost`: milky rime with crystal
+  veins, the colour draining to blue-grey, creeping further in as it deepens), the held item shakes (~8–12 Hz,
+  src/viewmodel.ts `playerHands.shiver`) and the view trembles a little (main.ts). It starts showing at 15% chill.
+  The wrist computer's thermometer already reads the cold felt °C in blue.
+- **Protocol:** `water` gains `chill` (0..100), sent like heat while it moves. Chill isn't saved: a reconnect
+  starts warm.
+
 ## 2026-10-18 — Guardian feet are solid, stand on wrecks, and guardians keep apart
 
 - **The server steps the guardians' feet** (`stepFeet` in server/guardians.ts, same rules as the client gait: rest
@@ -630,10 +669,11 @@ entrance hut and scrap piles block the sun.
 - **Where to find shade:** in the afternoon the sun is too high for slip faces (32°) to throw much
   shadow; the hut's lee works, and from ~17:00 the slip faces facing the base's pan put it in shade.
   Mornings the shade is on the windward side of crests (sun from the east, slip faces face +Z, downwind).
-- **Gaps:** the shade check is one point (the head), so half in shade counts as sun; the far march is
-  coarse (steps ~9 m at 180 m) and can miss a thin crest at grazing angles; other players and the bike cast
-  no shade; no cold at night (below 24 °C you only cool off); temperature doesn't vary with altitude
-  or wind; the client doesn't predict the icon (it lags up to ~250 ms + latency).
+- **Gaps:** ~~the shade check is one point (the head)~~, ~~the far march can miss a thin crest at grazing
+  angles~~, ~~other players and the bike cast no shade~~, ~~no cold at night~~: all fixed in "Partial shade, shade
+  from wrecks and people, cold nights" (2026-10-18). Still: temperature doesn't vary with altitude or wind; the
+  client doesn't predict the icon (it lags up to ~250 ms + latency); placed things in the bunker don't matter
+  (it is all base).
 
 ## 2026-10-17 — Thirst and heat
 
@@ -662,8 +702,8 @@ The first survival mechanic: the sun dries you out, the canteen keeps you going,
   server updates.
 - **Viewmodel hook:** `playerHands` in `src/water.ts` (`held: 'none' | 'canteen'`, `drinking`, `filling`)
   is what the first-person hands should show. Tuning is at the top of `shared/water.ts`.
-- **Known gaps:** dune and building shadows don't count as shade (only the base's footprint does); no
-  shelter at night is needed (no cold); you can't drink from or share with other players; slots 2–4 are
+- **Known gaps:** ~~dune and building shadows don't count as shade~~ (fixed: "Temperature and shade"); ~~no
+  shelter at night is needed~~ (fixed: cold nights, 2026-10-18); you can't drink from or share with other players; slots 2–4 are
   empty; drinking at a full bar is blocked client-side only (the server would accept and waste the sip).
 
 ## 2026-10-17 — Dev helpers: spawn at base, sand bike
