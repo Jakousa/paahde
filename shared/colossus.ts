@@ -85,10 +85,46 @@ export const FALL_TO = 66;
  *  and kills) happen on the server this much later than the foot comes down, so they line up with what's seen. */
 export const SEEN_LAG_MS = 250;
 
+/** The shoulder salvo, only against a crowd (server/bossCrowd.ts: two or more people near it; the more, the bigger and
+ *  the more often): the pods on its shoulders open and their lamps blink for SALVO_TELL_S (a klaxon), then a missile
+ *  every SALVO_STAGGER_S, alternating shoulders, each at someone a little way off (MISSILE_MIN..MISSILE_MAX m), aimed
+ *  where they're heading (half their speed's lead, a little scatter). A missile climbs out of its pod and arcs down
+ *  over missileT(d) seconds, its landing spot glowing on the sand the whole way: kills within MISSILE_KILL_R. Fair:
+ *  the shortest flight (MISSILE_T0 + MISSILE_MIN / MISSILE_V ≈ 3.2 s) is ≈ 24 m of walking. */
+export const SALVO_TELL_S = 1.6;
+export const SALVO_STAGGER_S = 0.22;
+export const MISSILE_MIN = 35;
+export const MISSILE_MAX = 320;
+export const MISSILE_T0 = 2.8;
+export const MISSILE_V = 90;
+export const MISSILE_KILL_R = 6.5;
+export const MISSILE_CRATER_R = 5;
+export const MISSILE_CRATER_MM = 1400;
+/** The pods: torso-local top centre of each (±x), on the upper back behind the pauldrons, the tubes facing up. */
+export const POD: [number, number, number] = [12, 21, -11];
+
+/** A missile's flight time (s) to a spot `d` m away (flat). */
+export const missileT = (d: number) => MISSILE_T0 + d / MISSILE_V;
+
+/** A missile's position `t` s after leaving (x0, y0, z0) for (x1, y1, z1), landing at T: up out of the pod, over in an
+ *  arc (higher for a longer shot), and down onto the spot. */
+export function missileAt(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, T: number, t: number, out: { x: number; y: number; z: number }) {
+  const u = Math.max(0, Math.min(1, t / T));
+  // Across slowly at first (it climbs out), fastest coming down.
+  const e = u * u * (1.6 - 0.6 * u);
+  const apex = 30 + Math.hypot(x1 - x0, z1 - z0) * 0.25;
+  out.x = x0 + (x1 - x0) * e;
+  out.z = z0 + (z1 - z0) * e;
+  out.y = y0 + (y1 - y0) * u * u + apex * Math.sin(Math.PI * u);
+  return out;
+}
+
 /** BossSnap.s for the colossus: per foot (0, 1) its spot x, y, z, seconds left of its swing (0 planted) and the
- *  swing's kind (0 a step, 1 the big stomp); then its mood (MOOD_*), where it looks (x, z), and the fall's yaw. */
+ *  swing's kind (0 a step, 1 the big stomp); then its mood (MOOD_*), where it looks (x, z), the fall's yaw, and the
+ *  pods (1 open: a salvo coming or under way, 0 shut). */
 export const S_FOOT = 5;
 export const S_MOOD = 10;
 export const S_LOOK = 11;
 export const S_FALL = 13;
+export const S_PODS = 14;
 export const MOOD_ROAM = 0, MOOD_HUNT = 1, MOOD_STOMP = 2;

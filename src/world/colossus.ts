@@ -11,6 +11,10 @@
 //   planted foot and rolling with it; the torso twists against the stride, the arms swing against the legs, the head
 //   turns to its prey. Legs are two-bone IK from the hip sockets to the ankles, knees forward.
 // - Weak points (src/world/bossParts.ts): the furnace core in its chest, both kneecaps, the two exhaust stacks on its back.
+// - The shoulder pods (against a crowd, server/colossus.ts salvo): their lids swing up and the tube mouths blink red
+//   with a klaxon; then each missile ('missile' bossFx: launch spot, landing spot, flight time, shoulder) climbs out of
+//   its pod trailing smoke and arcs down (shared/colossus.ts missileAt), its landing spot glowing red on the sand, a
+//   whistle over it before it bursts.
 // - Dead: the furnace gutters, the knees buckle, and it topples like a felled tower along its fall direction (the
 //   server's), hitting the sand FALL_S after it died (the server digs the furrow then); it smokes and, at the end,
 //   sinks into the sand.
@@ -22,12 +26,16 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BOSSES, type BossSnap } from '../../shared/bosses.ts';
 import {
-  ANKLE_H, BIG_LIFT, BIG_S, BUCKLE_S, CORE, CORE_R, FALL_S, FOREARM, HIP_H, HIP_X, HOLD_S, KNEE, KNEE_R, MOOD_STOMP, NECK,
-  RAISE_S, S_FALL, S_FOOT, S_LOOK, S_MOOD, SHIN, SHOULDER_X, SHOULDER_Y, SLAM_S, STRIDE, THIGH, UPPER_ARM, VENT, VENT_DIR, VENT_R, WAIST_Y,
+  ANKLE_H, BIG_LIFT, BIG_S, BUCKLE_S, CORE, CORE_R, FALL_S, FOREARM, HIP_H, HIP_X, HOLD_S, KNEE, KNEE_R, MISSILE_KILL_R,
+  missileAt, MOOD_STOMP, NECK, POD, RAISE_S, S_FALL, S_FOOT, S_LOOK, S_MOOD, S_PODS, SALVO_TELL_S, SHIN, SHOULDER_X, SHOULDER_Y, SLAM_S, STRIDE, THIGH, UPPER_ARM, VENT, VENT_DIR, VENT_R, WAIST_Y,
 } from '../../shared/colossus.ts';
+import { float, length, smoothstep, uv, vec3 } from 'three/tsl';
 import { heightAt, normalAt } from '../../shared/terrain.ts';
 import { colossusSound } from '../colossusSound';
-import { weakPoint, type BossCtx, type BossView } from './bossParts';
+import { guardianSound } from '../guardianSound';
+import { rifleSound } from '../rifleSound';
+import { tyreDust } from '../tyreDust';
+import { weakPoint, type BossCtx, type BossFxMsg, type BossView } from './bossParts';
 import { zaps } from './zaps';
 
 /** A normal step's lift (m): LIFT plus LIFT_K per metre of step. */
@@ -51,6 +59,45 @@ const NODES: Record<Part, string> = {
 };
 
 const litMat = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.5 });
+
+/** The shoulder pods (on struts on its upper back): a box of tubes (W × H × D m, its top at POD), a lid hinged at the back that swings up OPEN rad;
+ *  the tube mouths (2 × 3) glow when open. */
+const POD_W = 4.4, POD_H = 3.4, POD_D = 6, POD_OPEN = 1.9;
+const podGeo = new THREE.BoxGeometry(POD_W, POD_H, POD_D).translate(0, -POD_H / 2, 0);
+const lidGeo = new THREE.BoxGeometry(POD_W + 0.4, 0.5, POD_D + 0.3).translate(0, 0.25, POD_D / 2 + 0.15);
+const strutGeo = new THREE.BoxGeometry(1.6, 4, 1.6).translate(0, -POD_H - 1.6, 0.5);
+const mouthGeo = new THREE.CylinderGeometry(0.6, 0.6, 0.3, 10).translate(0, 0.05, 0);
+const podMat = new THREE.MeshStandardNodeMaterial({ color: 0x2b2420, roughness: 0.6, metalness: 0.6 });
+/** A missile: body along +Z, nose cone, four fins; its motor a glow sprite behind. */
+const missileGeo = (() => {
+  const body = new THREE.CylinderGeometry(0.35, 0.35, 3, 8).rotateX(Math.PI / 2);
+  const nose = new THREE.ConeGeometry(0.35, 1, 8).rotateX(Math.PI / 2).translate(0, 0, 2);
+  const fins = [0, 1].map((i) => new THREE.BoxGeometry(1.5, 0.06, 0.6).rotateZ((i * Math.PI) / 2).translate(0, 0, -1.3));
+  return mergeGeometries([body.toNonIndexed(), nose.toNonIndexed(), ...fins.map((f) => f.toNonIndexed())]);
+})();
+const missileMat = new THREE.MeshStandardNodeMaterial({ color: 0x3a302a, roughness: 0.5, metalness: 0.6 });
+/** The landing spot: a ring on the sand MISSILE_KILL_R across. */
+const markGeo = new THREE.RingGeometry(0.82, 1, 40).rotateX(-Math.PI / 2);
+const MARK_LIFT = 0.35;
+/** Smoke puffs per second behind a missile. */
+const TRAIL_RATE = 22;
+/** The whistle starts this long (s) before a missile lands. */
+const WHISTLE_S = 1.6;
+
+function flareMat(r: number, g: number, b: number) {
+  const m = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const f = float(1).sub(smoothstep(0, 1, length(uv().sub(0.5)).mul(2)));
+  m.colorNode = vec3(r, g, b);
+  m.opacityNode = f.mul(f).mul(f);
+  return m;
+}
+const motorMat = flareMat(3.2, 1.3, 0.35);
+
+type Missile = {
+  t0: number; T: number; side: number; to: THREE.Vector3; from: THREE.Vector3 | null;
+  mesh: THREE.Group; mark: THREE.Mesh; trail: number; whistled: boolean;
+};
+type Pod = { group: THREE.Group; lid: THREE.Group; open: number };
 
 /** Merged geometries per part: lit (vertex colours) and glowing. */
 type Geo = { lit: THREE.BufferGeometry | null; glow: THREE.BufferGeometry | null };
@@ -189,6 +236,12 @@ export class ColossusView implements BossView {
   private smoke = 0;
   /** Stomp tell played for this stomp. */
   private told = false;
+  /** The shoulder pods (+X, −X), their mouths' glow, open last frame; missiles in the air. */
+  private pods: Pod[] = [];
+  private podGlow = new THREE.MeshBasicNodeMaterial({ color: 0x000000 });
+  private markMat = new THREE.MeshBasicNodeMaterial({ color: 0xff2a10, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  private podsOpen = false;
+  private missiles: Missile[] = [];
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -234,6 +287,26 @@ export class ColossusView implements BossView {
       this.parts.torso.add(p);
       this.points.push(p);
     }
+    for (const sx of [1, -1]) {
+      const group = new THREE.Group(), lid = new THREE.Group();
+      group.position.set(POD[0] * sx, POD[1], POD[2]);
+      const body = new THREE.Mesh(podGeo, podMat);
+      body.castShadow = true;
+      lid.position.set(0, 0, -POD_D / 2);
+      const lidMesh = new THREE.Mesh(lidGeo, podMat);
+      lidMesh.castShadow = true;
+      lid.add(lidMesh);
+      const strut = new THREE.Mesh(strutGeo, podMat);
+      strut.position.x = -0.8 * sx; // towards the spine
+      group.add(body, lid, strut);
+      for (let i = 0; i < 6; i++) {
+        const m = new THREE.Mesh(mouthGeo, this.podGlow);
+        m.position.set(((i % 2) - 0.5) * 2.2, 0, (Math.floor(i / 2) - 1) * 1.8);
+        group.add(m);
+      }
+      this.parts.torso.add(group);
+      this.pods.push({ group, lid, open: 0 });
+    }
     this.dress(false);
     scene.add(this.root);
     void load().then(() => this.dress(true));
@@ -274,6 +347,8 @@ export class ColossusView implements BossView {
     if (dt <= 0) return;
     this.clock += dt;
     this.applyShakes(ctx);
+    this.updateMissiles(ctx, dt);
+    this.updatePods(s.dead > 0 ? 0 : s.s[S_PODS] ?? 0, ctx, dt);
     if (s.dead > 0) return this.die(s, ctx, dt);
     const first = !this.placed || Math.hypot(s.x - this.x, s.z - this.z) > 60;
     const k = 1 - Math.exp(-dt * 2);
@@ -641,6 +716,108 @@ export class ColossusView implements BossView {
     }
   }
 
+  /** The pods open for a salvo (a klaxon as they do), the tube mouths blinking, then glowing hot; shut otherwise. */
+  private updatePods(open: number, ctx: BossCtx, dt: number) {
+    const want = open > 0;
+    if (want && !this.podsOpen) {
+      this.pods[0].group.getWorldPosition(_v);
+      colossusSound.klaxon(_v.x, _v.y, _v.z, ctx.ear, SALVO_TELL_S);
+    }
+    this.podsOpen = want;
+    let g = 0;
+    for (const p of this.pods) {
+      p.open += ((want ? 1 : 0) - p.open) * (1 - Math.exp(-dt * (want ? 5 : 2)));
+      p.lid.rotation.x = -POD_OPEN * p.open;
+      g = Math.max(g, p.open);
+    }
+    const blink = want ? (Math.sin(this.clock * 16) > 0 ? 1 : 0.25) : 1;
+    this.podGlow.color.setRGB(3 * g * blink, 0.25 * g * blink, 0.08 * g * blink);
+  }
+
+  /** A missile is on its way ('missile': from the pod at (x, y, z), a = landing x, y, z, flight time, shoulder). */
+  fx(m: BossFxMsg) {
+    if (m.e !== 'missile' || !m.a || m.a.length < 5) return;
+    const mesh = new THREE.Group();
+    const body = new THREE.Mesh(missileGeo, missileMat);
+    body.castShadow = true;
+    const motor = new THREE.Sprite(motorMat);
+    motor.position.set(0, 0, -2);
+    motor.scale.setScalar(2.4);
+    mesh.add(body, motor);
+    mesh.visible = false;
+    this.scene.add(mesh);
+    const mark = new THREE.Mesh(markGeo, this.markMat);
+    mark.scale.setScalar(MISSILE_KILL_R);
+    mark.position.set(m.a[0], m.a[1] + MARK_LIFT, m.a[2]);
+    normalAt(m.a[0], m.a[2], _n);
+    mark.quaternion.setFromUnitVectors(UP, _v.set(_n.x, _n.y, _n.z));
+    mark.visible = false;
+    mark.renderOrder = 2;
+    this.scene.add(mark);
+    this.missiles.push({ t0: m.time, T: m.a[3], side: m.a[4], to: new THREE.Vector3(m.a[0], m.a[1], m.a[2]), from: null, mesh, mark, trail: 0, whistled: false });
+  }
+
+  private updateMissiles(ctx: BossCtx, dt: number) {
+    if (!this.missiles.length) return;
+    let pulse = 0;
+    this.missiles = this.missiles.filter((ms) => {
+      const t = (ctx.time - ms.t0) / 1000;
+      if (t < 0) return true;
+      if (!ms.from) {
+        // Out of the drawn pod on its side (the server's is near enough; this one is where it's seen).
+        ms.from = new THREE.Vector3();
+        const pod = this.pods[ms.side > 0 ? 0 : 1];
+        if (pod && this.dead < 0) pod.group.getWorldPosition(ms.from);
+        else ms.from.copy(ms.to).setY(ms.to.y + 60);
+        if (t < 0.5) {
+          colossusSound.launch(ms.from.x, ms.from.y, ms.from.z, ctx.ear);
+          for (let i = 0; i < 4; i++) zaps.puff(ms.from.x + (Math.random() - 0.5) * 3, ms.from.y + 1 + i, ms.from.z + (Math.random() - 0.5) * 3, 3, 3);
+        }
+      }
+      if (t >= ms.T) {
+        ms.mesh.removeFromParent();
+        ms.mark.removeFromParent();
+        if (t < ms.T + 1) this.blast(ms.to.x, ms.to.y, ms.to.z, ctx);
+        return false;
+      }
+      const f = ms.from;
+      missileAt(f.x, f.y, f.z, ms.to.x, ms.to.y, ms.to.z, ms.T, t, _p);
+      missileAt(f.x, f.y, f.z, ms.to.x, ms.to.y, ms.to.z, ms.T, t + 0.05, _a);
+      ms.mesh.visible = true;
+      ms.mesh.position.copy(_p);
+      ms.mesh.lookAt(_a);
+      ms.mark.visible = true;
+      ms.trail += dt * TRAIL_RATE;
+      while (ms.trail >= 1) {
+        ms.trail -= 1;
+        zaps.puff(_p.x, _p.y, _p.z, 1.6, 0.6);
+      }
+      if (!ms.whistled && t > ms.T - WHISTLE_S) {
+        ms.whistled = true;
+        colossusSound.incoming(ms.to.x, ms.to.y, ms.to.z, ctx.ear, ms.T - t);
+      }
+      pulse = Math.max(pulse, t / ms.T);
+      return true;
+    });
+    // The marks burn brighter and blink faster as their missiles come down.
+    const k = 0.6 + 0.4 * Math.sin(this.clock * (6 + 20 * pulse));
+    this.markMat.color.setRGB(1.6 * k * (0.5 + pulse), 0.16 * k, 0.05 * k);
+  }
+
+  /** A missile bursting on the sand. */
+  private blast(x: number, y: number, z: number, ctx: BossCtx) {
+    zaps.burst(x, y + 0.5, z, 0, 1, 0, 40, 4);
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2, v = 6 + Math.random() * 7;
+      tyreDust.emit(x + Math.cos(a) * 2, y + 0.5, z + Math.sin(a) * 2, Math.cos(a) * v, 2 + Math.random() * 6, Math.sin(a) * v, 3.5 + Math.random() * 2, 3 + Math.random() * 2);
+    }
+    for (let i = 0; i < 4; i++) zaps.puff(x + (Math.random() - 0.5) * 4, y + 2 + i * 2, z + (Math.random() - 0.5) * 4, 5, 3);
+    ctx.thump(x, y, z, 2.4, 26, 7, 3.2);
+    guardianSound.boom(x, y, z, ctx.ear);
+    _v.set(x, y, z);
+    rifleSound.firework(_v, ctx.ear, 1, 0.75);
+  }
+
   /** Where the shot from `o` along unit `d` first meets its metal (capsules round its limbs and body) within `max`. */
   hull(o: THREE.Vector3, d: THREE.Vector3, max: number): number | null {
     let best: number | null = null;
@@ -667,6 +844,13 @@ export class ColossusView implements BossView {
   dispose() {
     this.scene.remove(this.root);
     this.glowMat.dispose();
+    for (const m of this.missiles) {
+      m.mesh.removeFromParent();
+      m.mark.removeFromParent();
+    }
+    this.missiles = [];
+    this.podGlow.dispose();
+    this.markMat.dispose();
     colossusSound.engine(0, 0, 0, null, 0, false, true);
   }
 }

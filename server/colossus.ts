@@ -10,14 +10,22 @@
 //   a wider kill and a bigger crater. Slow enough to run from sideways.
 // - All five weak points broken: its knees buckle and it topples like a tower along its fall direction; where the
 //   body lands, a furrow of craters (and anyone under it dies).
+// - Against a crowd (server/bossCrowd.ts: everyone near it, one player the baseline) it's harder for each more: it
+//   stomps sooner again and recovers quicker, reaches further, turns and walks a little faster, stomps whoever is
+//   nearest under it (not only its prey) and turns on someone else after a stomp; and it fires salvos of missiles from
+//   its shoulder pods at the people standing off (shared/colossus.ts SALVO_*), more missiles and more often the more
+//   there are. One player never sees a salvo.
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
+import { crowd, scaled } from './bossCrowd.ts';
 import { BASE } from '../shared/base.ts';
 import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
 import {
   BIG_CRATER_MM, BIG_CRATER_R, BIG_KILL_R, BIG_S, DOUBLE_S, FALL_FROM, FALL_S, FALL_TO, FOOT_X, HIP_H,
-  HUNT_TURN_RATE, MOOD_HUNT, MOOD_ROAM, MOOD_STOMP, RAISE_S, RECOVER_S, SEEN_LAG_MS, SETTLE, SETTLE_S, STEP_AT,
-  STEP_CRATER_MM, STEP_CRATER_R, STEP_KILL_R, STOMP_GAP_S, STOMP_NEAR, STOMP_REACH, STRIDE, SWING_S, TURN_RATE, TURN_SLOW, WALK,
+  HUNT_TURN_RATE, MISSILE_CRATER_MM, MISSILE_CRATER_R, MISSILE_KILL_R, MISSILE_MAX, MISSILE_MIN, missileT, MOOD_HUNT,
+  MOOD_ROAM, MOOD_STOMP, POD, RAISE_S, RECOVER_S, SALVO_STAGGER_S, SALVO_TELL_S, SEEN_LAG_MS, SETTLE, SETTLE_S, STEP_AT,
+  STEP_CRATER_MM, STEP_CRATER_R, STEP_KILL_R, STOMP_GAP_S, STOMP_NEAR, STOMP_REACH, STRIDE, SWING_S, TURN_RATE, TURN_SLOW,
+  WAIST_Y, WALK,
 } from '../shared/colossus.ts';
 
 /** Notices players out in the open within this distance (m); a shooter from further off; loses them past LOSE_R
@@ -46,10 +54,34 @@ const FOOTPRINT_R = 1200;
 /** The falling body kills within this distance (m) of the line it lands along. */
 const BODY_KILL_R = 12;
 
+/** Crowd scaling (server/bossCrowd.ts scaled: × (1 + per × (n − 1)) for n people near it): how much quicker the big
+ *  stomp comes round again and how much shorter it stands after one; its stomp reach (and how near before it stomps);
+ *  its hunting turn rate and walk. */
+const PER_STOMP_RATE = 0.25;
+const PER_RECOVER = 0.15;
+const PER_REACH = 0.06;
+const PER_TURN = 0.08;
+const PER_WALK = 0.04;
+/** After a big stomp against a crowd, it turns on someone else this often. */
+const SWITCH_P = 0.6;
+/** Salvos: missiles in one (n people: 2 × (n − 1), at most SALVO_MAX), the time from one to the next (s, shorter by
+ *  PER_SALVO a person past two), the first not before FIRST_SALVO_S after it meets a crowd. How much of a target's
+ *  speed it leads by, and the scatter (m). */
+const SALVO_MAX = 10;
+const SALVO_GAP_S = 18;
+const PER_SALVO = 0.2;
+const FIRST_SALVO_S = 6;
+const LEAD = 0.5;
+const SCATTER = 3;
+
 /** A foot's spot (where it stands, or where its swing lands), seconds left of the swing, its kind (0 step, 1 the big
  *  stomp) and how far this step goes. */
 type Foot = { x: number; y: number; z: number; left: number; kind: number; span: number };
 type Pending = { at: number; x: number; y: number; z: number; r: number; mm: number; kill: number; big: boolean };
+/** A missile on its way: lands at (x, y, z) at `at` (seen time). */
+type Missile = { at: number; x: number; y: number; z: number };
+/** A player's ground track: where, when (ms), velocity (m/s, smoothed). */
+type Track = { x: number; z: number; t: number; vx: number; vz: number };
 type St = {
   feet: [Foot, Foot];
   /** Foot to step next; both feet down for (s); standing still for (s); speed (m/s); yaw last tick. */
@@ -67,6 +99,14 @@ type St = {
   lx: number; lz: number; leftAt: number;
   /** Dead: the fall's yaw, and whether it has landed. */
   fall: number; fell: boolean;
+  /** People up against it (server/bossCrowd.ts), this tick. Who the big stomp is aimed at. */
+  n: number; stompPrey: number;
+  /** Someone is under it and the big stomp is ready: no new step, so it can stomp. */
+  hold: boolean;
+  /** The salvo: started (ms, -1 none: the tell, then the shots), its targets in firing order, shots fired; the next one
+   *  not before (ms). Missiles in the air; everyone's ground track (for leading them). */
+  salvoAt: number; salvoTargets: number[]; salvoFired: number; nextSalvo: number;
+  missiles: Missile[]; tracks: Map<number, Track>;
 };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -126,6 +166,8 @@ export const colossus: Brain = {
       prey: -1, px: 0, pz: 0, seenAt: 0,
       foot: -1, stompAt: 0, ax: 0, az: 0, stompReady: now + 5000, recoverUntil: 0,
       pending: [], lx: 0, lz: 0, leftAt: 0, fall: 0, fell: false,
+      n: 1, stompPrey: -1, hold: false,
+      salvoAt: -1, salvoTargets: [], salvoFired: 0, nextSalvo: 0, missiles: [], tracks: new Map(),
     };
     b.st = st;
     plant(b, st);
@@ -135,6 +177,11 @@ export const colossus: Brain = {
   tick(b, dt, now, players, out) {
     const st = b.st as St;
     footfalls(st, now, players, out);
+    landMissiles(st, now, players, out);
+    track(st, now, players);
+    st.n = crowd(b, players);
+    st.hold = false;
+    const n = st.n;
     if (b.leaving && !st.leftAt) {
       // Away from everyone, far past the edge of sight.
       let ax = 0, az = 0;
@@ -152,7 +199,7 @@ export const colossus: Brain = {
     }
     if (b.leaving) {
       const near = players.reduce((m, p) => Math.min(m, Math.hypot(p.x - b.x, p.z - b.z)), Infinity);
-      if ((near > GONE_R && st.foot < 0) || now - st.leftAt > LEAVE_MS) return true;
+      if ((near > GONE_R && st.foot < 0 && !st.missiles.length) || now - st.leftAt > LEAVE_MS) return true;
     } else hunt(b, st, now, players);
 
     // Where to: its prey, its way out, or the next waypoint (away from the base).
@@ -172,28 +219,45 @@ export const colossus: Brain = {
     const err = wrap(Math.atan2(gx - b.x, gz - b.z) - b.yaw);
     const dist = Math.hypot(gx - b.x, gz - b.z);
 
-    let want = WALK * Math.max(TURN_SLOW, Math.cos(Math.min(Math.PI / 2, Math.abs(err))));
+    let want = scaled(WALK, n, PER_WALK) * Math.max(TURN_SLOW, Math.cos(Math.min(Math.PI / 2, Math.abs(err))));
     if (st.prey >= 0 && dist < 12) want = 0; // right over them: stop and stomp
     if (st.foot >= 0) {
       // The big stomp: creep at them while the foot rises, then stand.
       const t = (now - st.stompAt) / 1000;
       want = t < RAISE_S ? 1.2 : 0;
       if (t < RAISE_S) {
-        const p = players.find((o) => o.id === st.prey);
+        const p = players.find((o) => o.id === st.stompPrey);
         if (p && !p.safe) aimStomp(b, st, p.x, p.z);
       }
     } else if (now < st.recoverUntil) want = 0;
-    else if (st.prey >= 0 && dist < STOMP_NEAR && now >= st.stompReady && !b.leaving && st.feet.every((f) => f.left === 0) && st.down > DOUBLE_S) {
-      startStomp(b, st, now);
-      want = 1.2;
+    else if (st.prey >= 0 && now >= st.stompReady && !b.leaving) {
+      // Its prey under it, or (against a crowd) whoever is nearest under it.
+      const near = scaled(STOMP_NEAR, n, PER_REACH);
+      let who: BossPlayer | null = null;
+      if (dist < near) who = players.find((p) => p.id === st.prey) ?? null;
+      if (n > 1) {
+        let bd = who ? Math.hypot(who.x - b.x, who.z - b.z) : near;
+        for (const p of players) {
+          const d = Math.hypot(p.x - b.x, p.z - b.z);
+          if (!p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT && d < bd) (who = p), (bd = d);
+        }
+        // Against a crowd it doesn't stride on past someone under it: the next step waits, and it stomps.
+        st.hold = !!who;
+        if (who) want = Math.min(want, 1.2);
+      }
+      if (who && st.feet.every((f) => f.left === 0) && st.down > DOUBLE_S) {
+        startStomp(b, st, now, who);
+        want = 1.2;
+      }
     }
     st.speed += Math.max(-ACCEL * dt, Math.min(ACCEL * dt, want - st.speed));
-    const rate = st.prey >= 0 ? HUNT_TURN_RATE : TURN_RATE;
+    const rate = st.prey >= 0 ? scaled(HUNT_TURN_RATE, n, PER_TURN) : TURN_RATE;
     b.yaw = wrap(b.yaw + Math.max(-rate * dt, Math.min(rate * dt, err)));
     b.x += Math.sin(b.yaw) * st.speed * dt;
     b.z += Math.cos(b.yaw) * st.speed * dt;
-    stepFeet(b, st, dt, now);
+    stepFeet(b, st, dt, now, players);
     b.y = (st.feet[0].y + st.feet[1].y) / 2 + HIP_H;
+    salvo(b, st, now, players, out);
     return false;
   },
 
@@ -208,7 +272,7 @@ export const colossus: Brain = {
     const s: number[] = [];
     for (const f of st.feet) s.push(r2(f.x), r2(f.y), r2(f.z), r2(f.left), f.kind);
     const mood = st.foot >= 0 ? MOOD_STOMP : st.prey >= 0 ? MOOD_HUNT : MOOD_ROAM;
-    s.push(mood, r2(st.prey >= 0 ? st.px : 0), r2(st.prey >= 0 ? st.pz : 0), Math.round(st.fall * 1e3) / 1e3);
+    s.push(mood, r2(st.prey >= 0 ? st.px : 0), r2(st.prey >= 0 ? st.pz : 0), Math.round(st.fall * 1e3) / 1e3, st.salvoAt >= 0 ? 1 : 0);
     return s;
   },
 
@@ -217,6 +281,7 @@ export const colossus: Brain = {
     // Topples forward, or a little to one side; a foot in the air comes down where it is.
     st.fall = wrap(b.yaw + rand(-0.6, 0.6));
     st.foot = -1;
+    st.salvoAt = -1; // the missiles already flying still land
     for (const f of st.feet) {
       f.left = 0;
       f.kind = 0;
@@ -227,6 +292,7 @@ export const colossus: Brain = {
   wreck(b, _dt, now, players, out) {
     const st = b.st as St;
     footfalls(st, now, players, out);
+    landMissiles(st, now, players, out);
     if (st.fell || now - b.deadAt < FALL_S * 1000 + SEEN_LAG_MS) return;
     st.fell = true;
     // The body lands along its fall: a furrow of craters, the chest's the biggest, anyone under it crushed.
@@ -281,12 +347,14 @@ function setPrey(st: St, p: BossPlayer, now: number) {
   st.seenAt = now;
 }
 
-/** Raise the foot nearer its prey's side. */
-function startStomp(b: Boss, st: St, now: number) {
-  const side = (st.px - b.x) * Math.cos(b.yaw) - (st.pz - b.z) * Math.sin(b.yaw);
+/** Raise the foot nearer `p`'s side, to come down on them. */
+function startStomp(b: Boss, st: St, now: number, p: BossPlayer) {
+  st.hold = false;
+  const side = (p.x - b.x) * Math.cos(b.yaw) - (p.z - b.z) * Math.sin(b.yaw);
   st.foot = side >= 0 ? 0 : 1;
   st.stompAt = now;
-  aimStomp(b, st, st.px, st.pz);
+  st.stompPrey = p.id;
+  aimStomp(b, st, p.x, p.z);
   const f = st.feet[st.foot];
   f.left = BIG_S;
   f.kind = 1;
@@ -296,8 +364,8 @@ function startStomp(b: Boss, st: St, now: number) {
 function aimStomp(b: Boss, st: St, x: number, z: number) {
   const f = st.feet[st.foot], o = st.feet[1 - st.foot];
   let dx = x - b.x, dz = z - b.z;
-  const d = Math.hypot(dx, dz);
-  if (d > STOMP_REACH) (dx *= STOMP_REACH / d), (dz *= STOMP_REACH / d);
+  const d = Math.hypot(dx, dz), reach = scaled(STOMP_REACH, st.n, PER_REACH);
+  if (d > reach) (dx *= reach / d), (dz *= reach / d);
   let ax = b.x + dx, az = b.z + dz;
   const od = Math.hypot(ax - o.x, az - o.z);
   if (od < 9) {
@@ -316,7 +384,7 @@ function aimStomp(b: Boss, st: St, x: number, z: number) {
  * (the other one if it's much further behind), both down at least DOUBLE_S between steps. It steps to where its rest
  * spot will be when it lands, half a swing on (the feet lead the hips).
  */
-function stepFeet(b: Boss, st: St, dt: number, now: number) {
+function stepFeet(b: Boss, st: St, dt: number, now: number, players: BossPlayer[]) {
   const feet = st.feet;
   const turn = wrap(b.yaw - st.lastYaw) / Math.max(dt, 1e-3);
   st.lastYaw = b.yaw;
@@ -336,13 +404,14 @@ function stepFeet(b: Boss, st: St, dt: number, now: number) {
     st.down = 0;
     if (big) {
       st.foot = -1;
-      st.recoverUntil = now + RECOVER_S * 1000;
-      st.stompReady = now + STOMP_GAP_S * 1000;
+      st.recoverUntil = now + (RECOVER_S * 1000) / scaled(1, st.n, PER_RECOVER);
+      st.stompReady = now + (STOMP_GAP_S * 1000) / scaled(1, st.n, PER_STOMP_RATE);
+      if (st.n > 1 && Math.random() < SWITCH_P) turnOnAnother(b, st, now, players);
     }
   }
   if (feet.some((f) => f.left > 0)) return;
   st.down += dt;
-  if (st.down < DOUBLE_S || st.foot >= 0) return;
+  if (st.down < DOUBLE_S || st.foot >= 0 || st.hold) return;
   const p = { x: 0, z: 0 };
   const errs = feet.map((f, i) => Math.hypot(rest(b.x, b.z, b.yaw, i, 0, p).x - f.x, p.z - f.z));
   const need = st.still > 1 ? SETTLE : STEP_AT;
@@ -390,3 +459,112 @@ function footfalls(st: St, now: number, players: BossPlayer[], out: BossOut) {
   });
 }
 
+
+/** Against a crowd: after a stomp, after someone else out in the open (nearest first, mostly). */
+function turnOnAnother(b: Boss, st: St, now: number, players: BossPlayer[]) {
+  const others = players
+    .filter((p) => p.id !== st.prey && !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT && Math.hypot(p.x - b.x, p.z - b.z) < NOTICE_R)
+    .sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z));
+  if (!others.length) return;
+  setPrey(st, others[Math.random() < 0.7 ? 0 : Math.floor(Math.random() * others.length)], now);
+}
+
+/** Everyone's ground velocity, for leading them. */
+function track(st: St, now: number, players: BossPlayer[]) {
+  for (const p of players) {
+    const t = st.tracks.get(p.id);
+    if (!t) {
+      st.tracks.set(p.id, { x: p.x, z: p.z, t: now, vx: 0, vz: 0 });
+      continue;
+    }
+    const dt = (now - t.t) / 1000;
+    if (dt < 0.2) continue;
+    const vx = (p.x - t.x) / dt, vz = (p.z - t.z) / dt;
+    // A respawn or a teleport isn't running.
+    const jump = Math.hypot(vx, vz) > 40;
+    t.vx += ((jump ? 0 : vx) - t.vx) * (jump ? 1 : 0.5);
+    t.vz += ((jump ? 0 : vz) - t.vz) * (jump ? 1 : 0.5);
+    t.x = p.x;
+    t.z = p.z;
+    t.t = now;
+  }
+  if (st.tracks.size > players.length + 8) for (const id of st.tracks.keys()) if (!players.some((p) => p.id === id)) st.tracks.delete(id);
+}
+
+/** Who a missile can go for: out in the open, away from the base, standing off from it. */
+function missileOk(b: Boss, p: BossPlayer) {
+  const d = Math.hypot(p.x - b.x, p.z - b.z);
+  return !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT && d > MISSILE_MIN && d < MISSILE_MAX;
+}
+
+/**
+ * The shoulder salvo, against two or more people: pods open (the tell, SALVO_TELL_S), then the missiles one after
+ * another, spread over everyone standing off from it (those it isn't hunting first).
+ */
+function salvo(b: Boss, st: St, now: number, players: BossPlayer[], out: BossOut) {
+  const n = st.n;
+  if (st.salvoAt < 0) {
+    if (n < 2) {
+      // Alone with it: no salvos, and a fresh crowd gets a moment before the first.
+      st.nextSalvo = Math.max(st.nextSalvo, now + FIRST_SALVO_S * 1000);
+      return;
+    }
+    if (b.leaving || now < st.nextSalvo || st.prey < 0) return;
+    const targets = players.filter((p) => missileOk(b, p))
+      .map((p) => ({ p, k: (p.id === st.prey ? 1 : 0) + Math.random() * 0.5 }))
+      .sort((p, q) => p.k - q.k)
+      .map((o) => o.p);
+    if (!targets.length) {
+      st.nextSalvo = now + 2000;
+      return;
+    }
+    const count = Math.min(SALVO_MAX, 2 * (n - 1));
+    st.salvoTargets = [];
+    for (let i = 0; i < count; i++) st.salvoTargets.push(targets[i % targets.length].id);
+    st.salvoAt = now;
+    st.salvoFired = 0;
+    return;
+  }
+  while (st.salvoFired < st.salvoTargets.length && now >= st.salvoAt + (SALVO_TELL_S + st.salvoFired * SALVO_STAGGER_S) * 1000) {
+    const k = st.salvoFired++;
+    let p = players.find((o) => o.id === st.salvoTargets[k]);
+    if (!p || !missileOk(b, p)) p = players.find((o) => missileOk(b, o));
+    if (p) fire(b, st, now, p, k % 2 === 0 ? 1 : -1, out);
+  }
+  if (st.salvoFired >= st.salvoTargets.length) {
+    st.salvoAt = -1;
+    st.nextSalvo = now + (SALVO_GAP_S * 1000) / scaled(1, n - 1, PER_SALVO);
+  }
+}
+
+/** One missile out of the pod on side `sx` (+1 the +X shoulder) at where `p` will be. */
+function fire(b: Boss, st: St, now: number, p: BossPlayer, sx: number, out: BossOut) {
+  const c = Math.cos(b.yaw), s = Math.sin(b.yaw), px = POD[0] * sx, pz = POD[2];
+  const x0 = b.x + c * px + s * pz, z0 = b.z - s * px + c * pz, y0 = b.y + WAIST_Y + POD[1];
+  const tr = st.tracks.get(p.id);
+  let T = missileT(Math.hypot(p.x - x0, p.z - z0));
+  const a = Math.random() * Math.PI * 2, r = Math.random() * SCATTER;
+  const x = p.x + (tr ? tr.vx : 0) * T * LEAD + Math.cos(a) * r;
+  const z = p.z + (tr ? tr.vz : 0) * T * LEAD + Math.sin(a) * r;
+  if (!inWorld(x, z)) return;
+  const y = heightAt(x, z);
+  T = missileT(Math.hypot(x - x0, z - z0));
+  st.missiles.push({ at: now + T * 1000 + SEEN_LAG_MS, x, y, z });
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  out.events.push({ msg: { t: 'bossFx', id: b.id, e: 'missile', time: Math.round(now), x: r1(x0), y: r1(y0), z: r1(z0), a: [r1(x), r1(y), r1(z), r2(T), sx] }, x: b.x, z: b.z });
+}
+
+/** Missiles now landing (seen time): a crater, death around it. */
+function landMissiles(st: St, now: number, players: BossPlayer[], out: BossOut) {
+  if (!st.missiles.length) return;
+  st.missiles = st.missiles.filter((m) => {
+    if (m.at > now) return true;
+    if (inWorld(m.x, m.z)) out.craters.push({ x: m.x, z: m.z, r: MISSILE_CRATER_R, mm: MISSILE_CRATER_MM });
+    for (const p of players) {
+      if (p.safe || out.kills.some((k) => k.id === p.id)) continue;
+      if (Math.hypot(p.x - m.x, p.y - m.y, p.z - m.z) > MISSILE_KILL_R) continue;
+      out.kills.push({ id: p.id, cause: 'missile', push: blastPush(m.x, m.y, m.z, p.x, p.y, p.z, MISSILE_KILL_R) });
+    }
+    return false;
+  });
+}
