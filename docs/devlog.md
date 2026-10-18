@@ -68,6 +68,12 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   0.3 s) and it plays the real teardown sounds (`teardownSound`, `uiSound.plop`): the worker asks, `src/loadingGame.ts`
   plays, since a worker has no audio. When the loading cover lifts and the world already has our name, `capture()` puts
   the mouse straight in the game (the browser only grants it while the last click is fresh, so it works after playing).
+- Minigame machines (`buildMachine` in `src/loadingRunner.ts`) are laid out like simple engineering diagrams: five
+  layouts (crate, round pump with a side plate, cabinet with a door and a circuit board, a lid with a bolted plate under
+  it, two bays with a link wire between them), randomly mirrored, covers nested, up to two parts each, components
+  on rails with terminals and right-angled wires; a wire between two parts frees both. The first four machines teach
+  click / wire / bolt / pry one at a time. Check the layouts without a browser: build 600 machines, solve them by
+  working every ready step, test overlaps and bounds; `debugMachine()` plus a node canvas renders them to PNG.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.
