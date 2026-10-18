@@ -13,8 +13,8 @@
 // The Web Audio listener follows the camera (src/crashSound.ts sets it). Through the shared output in
 // src/audio.ts; levels ramped. Measured at the default volume (OfflineAudioContext + ffmpeg ebur128): a step
 // every 1.2 s ≈ −22 LUFS within 12 m and −27 at 20 m (peaks −4 dBFS close up); one drone at 15 m −31; the
-// chirp −26 (momentary); the horn at 60 m −25; a missile's roar (before panning) −17 within 30 m, −23.5 at 60 m,
-// −29 at 100 m, −42 at 300 m.
+// chirp −26 (momentary); the horn at 60 m −25; a missile's roar (before panning) −20 within 30 m, −26.5 at 60 m,
+// −32 at 100 m, −45 at 300 m.
 import { audio } from './audio';
 import { placed, SPEED_OF_SOUND } from './acoustics';
 
@@ -22,6 +22,8 @@ import { placed, SPEED_OF_SOUND } from './acoustics';
 const STEP_HEAR = 500;
 const STEP_REF = 12;
 const STEP_GAIN = 1.4;
+/** A bolt's or missile's blast: its two booms, as footfall weights. */
+const BOOM_GAIN = 0.7;
 /** Drone buzz within this distance (m), at most this many at once. */
 const BUZZ_HEAR = 110;
 const BUZZ_REF = 15;
@@ -34,7 +36,7 @@ const ROAR_HEAR = 700;
 const ROAR_REF = 30;
 const ROAR_FAR = 300;
 const ROAR_NEAR = 40;
-const ROAR_GAIN = 0.35;
+const ROAR_GAIN = 0.25;
 const ROAR_RUMBLE = 2.5;
 const FLUTTER = 0.3;
 const MAX_ROAR = 4;
@@ -48,7 +50,7 @@ const JET_GAIN = 0.3;
 const JET_WHINE = 0.05;
 const MAX_JET = 2;
 const HORN_GAIN = 0.22;
-const CHARGE_GAIN = 0.05;
+const CHARGE_GAIN = 0.035;
 /** Crawler feet are heard within this distance (m). */
 const TICK_HEAR = 30;
 const TICK_GAIN = 0.12;
@@ -197,8 +199,8 @@ class GuardianSound {
 
   /** A bolt burst at (x, y, z): a footfall's boom, twice over, with a crackle. */
   boom(x: number, y: number, z: number, ear: { x: number; y: number; z: number }) {
-    this.footfall(x, y, z, 1, ear);
-    this.footfall(x, y, z, 0.8, ear);
+    this.footfall(x, y, z, BOOM_GAIN, ear);
+    this.footfall(x, y, z, BOOM_GAIN * 0.8, ear);
   }
 
   /** A guardian at (x, y, z) has started hunting you. */

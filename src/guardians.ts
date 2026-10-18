@@ -31,6 +31,7 @@ const BITE_SHAKE = 0.18;
 const CRAWLER_FIREWORK = 0.4;
 const DRONE_FIREWORK = 0.5;
 const MISSILE_FIREWORK_PITCH = 0.8;
+const MISSILE_FIREWORK = 0.7;
 
 export class GuardianFx {
   readonly guardians: Guardians;
@@ -173,7 +174,7 @@ export class GuardianFx {
           this.missiles.land(m.id);
           this.bolts.boom(-1, m.x, m.y, m.z, true);
           guardianSound.boom(m.x, m.y, m.z, this.ear);
-          rifleSound.firework(m, this.ear, 1, MISSILE_FIREWORK_PITCH);
+          rifleSound.firework(m, this.ear, MISSILE_FIREWORK, MISSILE_FIREWORK_PITCH);
           this.thump(m.x, m.y, m.z, 2.6, 30, 7, 3.4);
         }
       };
