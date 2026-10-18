@@ -4,7 +4,7 @@ The player character sometimes says a line out loud, shown as a subtitle at the 
 the game guides without tutorials: the character notices what matters and reacts the way a person stuck in a
 desert would. That lets us drop explanatory UI text.
 
-Code: lines and their conditions in `src/lines.ts` (plain data, tune there), the engine and subtitle in
+Code: lines and their conditions in `src/speechLines.ts` (plain data, tune there), the engine and subtitle in
 `src/speech.ts`, fed each frame from `src/main.ts`.
 
 ## How a line is written
@@ -29,15 +29,37 @@ Code: lines and their conditions in `src/lines.ts` (plain data, tune there), the
 - **Rarely.** One line at a time, a pause after each, and a quiet start after joining. A remark that matters only
   once is said once per browser (no `again`). One that can come back (overheating) has a long `again`, measured
   in minutes.
-- **Conditions decide, not just events.** A line has an event (`see`, `respawn`, or `tick` for state that's
-  polled), plus a condition on what the player has and where they are (`SpeechState`). If the condition
+- **Conditions decide, not just events.** A line has an event plus a condition on what the player has and where they
+  are (`SpeechState`). Events: `see` (a find in reach), `near` (a crash-site machine or wreck in reach), `got` (an
+  item newly in the bag: picked up, crafted, repaired, taken out of a machine), `bagFull`, `respawn`, and `tick`
+  (polled, for state: riding, at a pump, in a shelter, overheating, storms, enemies, night). If the condition
   doesn't hold, the line isn't said. Example: the water bottle remark needs a bottle in sight and *none in the
   bag, working or broken*, and it's worded by whether the sun is up.
 
 ## Adding a line
 
-1. Need a new trigger? Add the event to `SpeechEvents` in `src/lines.ts` and call `speech.event(...)` from where it
+1. Need a new trigger? Add the event to `SpeechEvents` in `src/speechLines.ts` and call `speech.event(...)` from where it
    happens. Need new state for a condition? Add a field to `SpeechState` and fill it in `src/main.ts`.
 2. Add the line to `LINES`. Lines that share an `id` are variants of one remark: the first whose `when` holds is
    said, and they share one once/again memory.
+   Every item kind should have a first-`got` line, worded by whether it's broken or working (`firstGot`): picking a
+   thing up for the first time is when the player most wonders what it's for.
 3. Read it aloud. If it sounds like a tooltip, rewrite it.
+
+## What has lines, and what could
+
+Has lines: a water bottle in sight with none in the bag (day/night), a machine to take apart (the big ones on the
+spot, the small ones and wrecks to carry home), the first of each item kind in the bag (each piece of gear broken
+and working, scrap, cloth, parts and the space-grade ones, plant bed, UV lamp, receivers, relics), the first ride,
+a pump (with a bottle to fill, or in a shelter with none), the first shelter, overheating, an empty bottle, the storm
+warning and being in a storm, the first enemy and the first boss, the first night out, a full bag, respawning.
+
+Ideas, not built yet (most need a new event or state field):
+- Taking the first part out of a machine; the first repair or craft at the workbench ("Good as new. Well, good.").
+- Low on water far from any pump; a full bottle that's been carried a while without drinking in the heat.
+- The first drone searchlight at night; the first jet overhead; being shot at for the first time.
+- A shield plate breaking ("That was close."); a guardian going down; a boss beaten.
+- Lost: far from the base for a long time with no wrist computer.
+- Lives running low for the world (src/lives.ts).
+- Another player nearby for the first time; a dead player's pack ("Whoever this was, they won't mind.").
+- Sand in the bunker during a storm; a plant bed growing up, and the first harvest.

@@ -1,8 +1,8 @@
 // The player character talking to themselves: a subtitle at the bottom of the screen when something happens that
-// they'd have a word about (the lines, their conditions and how often: src/lines.ts; how to write them:
+// they'd have a word about (the lines, their conditions and how often: src/speechLines.ts; how to write them:
 // docs/speech.md). Only one line at a time, with a pause after it; an event that comes while talking is dropped
 // (a `tick` remark just comes up again later). Remarks said once are remembered on this browser (localStorage).
-import { LINES, type Line, type SpeechEvents, type SpeechState } from './lines';
+import { LINES, type Line, type SpeechEvents, type SpeechState } from './speechLines';
 
 const KEY = 'dadajam.said';
 /** Nothing said this long (s) after joining: let the world come in first. */

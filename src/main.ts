@@ -54,7 +54,7 @@ import { breathing } from './breathing';
 import { slideSound } from './slideSound';
 import { audio } from './audio';
 import { inBase } from '../shared/base.ts';
-import { indoors } from '../shared/shelters.ts';
+import { atWater, indoors, inShelter } from '../shared/shelters.ts';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
@@ -264,8 +264,12 @@ const locator = new LocatorBar();
 const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
 const speech = new Speech();
-/** The find last looked at, so the character remarks on it once per look (src/lines.ts 'see'). */
+/** The find last looked at, so the character remarks on it once per look (src/speechLines.ts 'see'). */
 let seenFind: number | null = null;
+/** The machine or wreck last in reach ('near'), and the item ids in the bag at the last frame ('got'; null until the
+ *  bag first arrives: what we log in with is old news). */
+let seenSite: string | null = null;
+let bagIds: Set<number> | null = null;
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
 const jammer = new Jammer(orbit, net, guardianFx.jets, guardianFx.drones);
@@ -283,12 +287,16 @@ thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one 
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => placedView.sync(placed, net.garden);
 net.onNotice = (text) => {
-  if (text === 'Bag full') uiSound.full(); // the server refused a find (server/world.ts)
+  if (text === 'Bag full') { // the server refused a find (server/world.ts)
+    uiSound.full();
+    speech.event('bagFull', undefined);
+  }
   hud.toast(text);
 };
 function bagFull() {
   hud.toast('Bag full');
   uiSound.full();
+  speech.event('bagFull', undefined);
 }
 const placer = new Placer(net, placedView);
 
@@ -573,12 +581,24 @@ baseSand.update(frameDt, storm.atBase);
   const targeted = use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   const w = net.water;
-  speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(net.me.x, net.me.y, net.me.z), heat: survival.heatLevel,
-    rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips, storm: storm.level, stormWarning: storm.warning,
+  const m = net.me;
+  speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(m.x, m.y, m.z), shelter: inShelter(m.x, m.y, m.z),
+    atPump: atWater(m.x, m.y, m.z), heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
+    storm: storm.level, stormWarning: storm.warning, riding: s.riding, combat: guardianFx.combat, boss: bossFx.combat,
     bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null });
   if ((find?.id ?? null) !== seenFind) {
     seenFind = find?.id ?? null;
     if (find) speech.event('see', find);
+  }
+  const nearKey = site ? `m${site.site.id}` : wreck ? `w${wreck.id}` : null;
+  if (nearKey !== seenSite) {
+    seenSite = nearKey;
+    if (site) speech.event('near', { kind: site.site.kind, carry: small });
+    else if (wreck) speech.event('near', { kind: wreck.kind, carry: true });
+  }
+  if (net.boxes.bag) {
+    for (const it of net.boxes.bag) if (it && bagIds && !bagIds.has(it.id)) speech.event('got', it);
+    bagIds = new Set(net.boxes.bag.flatMap((it) => (it ? [it.id] : [])));
   }
   hud.update(net.me);
 

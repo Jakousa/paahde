@@ -96,7 +96,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `src/wasm.ts` — loads the compiled wasm; use exports as `wasm.<fn>`
 - `assembly/` — AssemblyScript source (compiled to `src/wasm/`, gitignored — never edit `src/wasm/`)
 - `docs/devlog.md` — what's been built and why, known gaps; `docs/look.md` — art direction
-- `src/speech.ts`, `src/lines.ts` — the character's subtitled remarks: engine + lines as data (event, condition,
+- `src/speech.ts`, `src/speechLines.ts` — the character's subtitled remarks: engine + lines as data (event, condition,
   once/again); guidelines in `docs/speech.md`
 - `tools/models/hands.py` — first-person hands + held-item clips; read `docs/viewmodel-hands.md` before
   posing hands or adding a held item (grip anatomy, grasp solver, how to check)
@@ -137,7 +137,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - The character's own voice is the exception that guides: subtitled lines when something matters (a water bottle
   when you have none, overheating, a storm coming). First person, one short plain sentence, sometimes dryly funny,
   pointing at what to do without explaining rules, and right for the moment (day/night, what you carry). Rules
-  and how to add lines: `docs/speech.md`; lines and their conditions are data in `src/lines.ts`.
+  and how to add lines: `docs/speech.md`; lines and their conditions are data in `src/speechLines.ts`.
 
 ## Audio loudness
 
