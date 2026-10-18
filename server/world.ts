@@ -142,6 +142,9 @@ const http = createServer((_req, res) => {
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 1024 });
 
 wss.on('connection', (ws) => {
+  // Invalid frames (including maxPayload violations) emit an error as ws closes the connection.
+  // Keep that connection's protocol error from becoming an uncaught error in the whole world.
+  ws.on('error', () => {});
   send(ws, { t: 'version', build: BUILD });
   send(ws, { t: 'lives', n: lives, beaten });
   if (lives <= 0) return ws.close(4410, 'game over');
@@ -155,6 +158,9 @@ wss.on('connection', (ws) => {
       msg = JSON.parse(String(data));
     } catch {
       return ws.close(1003, 'bad json');
+    }
+    if (msg === null || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.t !== 'string') {
+      return ws.close(1003, 'bad message');
     }
     const p = players.get(ws);
     if (msg.t === 'hello' && !p) return join(ws, msg.browserId, msg.spawn);
