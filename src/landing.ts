@@ -16,10 +16,10 @@ const css = `
 #landing.over { background: rgba(17, 10, 6, 0.82); }
 #landing .panel { position: relative; display: grid; justify-items: center; gap: 30px; text-align: center; padding: 16px;
   transform: translateY(-18vh); animation: landing-in 1.6s ease-out both; }
-#landing h1 { margin: 0; font-size: clamp(40px, 7vw, 88px); font-weight: 300; letter-spacing: .38em;
-  margin-right: -.38em; color: #fff4d0;
+#landing h1 { margin: 0; font: clamp(40px, 7vw, 88px) var(--title); letter-spacing: .3em;
+  margin-right: -.3em; color: #fff4d0;
   text-shadow: 0 0 40px rgba(255, 179, 71, .45), 0 0 12px rgba(140, 50, 10, .5), 0 2px 3px rgba(60, 20, 5, .45); }
-#landing p { margin: 0; font-size: 14px; letter-spacing: .2em; color: #fff4d0; text-shadow: 0 1px 2px rgba(60, 20, 5, .6); }
+#landing p { margin: 0; font: 14px var(--title); letter-spacing: .2em; color: #fff4d0; text-shadow: 0 1px 2px rgba(60, 20, 5, .6); }
 #landing .link { display: flex; gap: 0; }
 #landing input { font: 14px var(--mono); width: min(64vw, 380px); padding: 12px 14px; border: 1px solid rgba(255, 244, 208, .5);
   border-right: 0; border-radius: 2px 0 0 2px; color: #2a120a; background: rgba(255, 244, 208, .92); outline: none; }

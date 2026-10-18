@@ -32,7 +32,7 @@ const css = `
 #play .row { display: flex; gap: 10px; }
 #play .panel { padding: 16px 18px; border-radius: 8px; background: rgba(28, 15, 7, 0.92);
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 10px 40px rgba(0, 0, 0, 0.5); }
-#play h2 { margin: 0 0 12px; font: 600 15px var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: #ffd9a0; }
+#play h2 { margin: 0 0 12px; font: 15px var(--title); letter-spacing: 0.18em; text-transform: uppercase; color: #ffd9a0; }
 #play .modes { display: grid; grid-template-columns: repeat(2, 200px); gap: 12px; }
 #play .card { text-align: left; padding: 10px 12px 9px; background: rgba(255, 217, 160, 0.08); color: #fff4e4;
   box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.2); letter-spacing: 0; font: 12px var(--mono); border-radius: 6px; cursor: pointer; border: 0; }

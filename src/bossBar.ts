@@ -8,6 +8,7 @@ const css = `
   pointer-events: none; display: grid; gap: 5px; justify-items: center; opacity: 0; transition: opacity .8s;
   font: 600 12px var(--mono); letter-spacing: .3em; color: #ffd9a0; text-shadow: 0 1px 2px #000; }
 #bossBar.on { opacity: 1; }
+#bossBar .name { font: 13px var(--title); }
 #bossBar .track { position: relative; width: 100%; height: 8px; background: rgba(20, 8, 4, .65); border-radius: 2px;
   box-shadow: 0 0 0 1px rgba(255, 190, 110, .35); overflow: hidden; }
 #bossBar .trail, #bossBar .fill { position: absolute; inset: 0 auto 0 0; }

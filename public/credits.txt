@@ -4,6 +4,12 @@ dadajam - credits
 Third-party assets
 ------------------
 
+Neuropol (font)
+  By Ray Larabie, Typodermic Fonts (https://typodermicfonts.com/neuropol/), version 3.100, released in 2024
+  under CC0 (https://creativecommons.org/publicdomain/zero/1.0/).
+  Converted from OTF to WOFF2. The titles, the prologue and the death screen.
+  Files: fonts/neuropol.woff2
+
 Junkyard Props (3D model)
   This work is based on "Junkyard Props"
   (https://sketchfab.com/3d-models/junkyard-props-37343a1b386f4d75879be93319dbb717)

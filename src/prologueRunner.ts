@@ -7,7 +7,9 @@ import { TEXT } from '../shared/text.ts';
 
 type Ctx = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+/** Neuropol (public/fonts), loaded by whoever runs this (src/prologueWorker.ts, index.html); `relayout` once it's in. */
+export const FONT_URL = './fonts/neuropol.woff2';
+const FONT = 'Neuropol, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const INK = '236, 228, 210'; // the prologue's warm white (rgb, for alpha)
 const GOLD = '217, 178, 106';
 /** Dust colours: whites, pale golds, yellows and ochres; the far layer is dim, the near one bright. */
@@ -58,11 +60,14 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
   let pace = new Float32Array(0); // each grain's own speed, so they don't move as one sheet
   let buckets: Int32Array[] = [];
 
-  // Text laid out for the current size.
+  // Text laid out for the current size: each line's letters with their x from the line's start.
+  type Line = { s: string; xs: number[] };
   let size = 15;
-  let adv = 9; // one monospace letter's advance, letter spacing included
+  let big = 27;
   let lineH = 28;
-  let paras: { lines: string[]; y: number }[] = [];
+  let paras: { lines: Line[]; y: number }[] = [];
+  let title: Line & { x: number } = { s: '', xs: [], x: 0 };
+  let time: Line & { x: number } = { s: '', xs: [], x: 0 };
   let blockX = 0;
   let blockTop = 0;
   let blockBottom = 0;
@@ -74,27 +79,36 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
     oy[i] = py[i];
   }
 
+  /** A line's letters placed in the current font, `spacing` px apart past their own widths, and its width. */
+  function line(s: string, spacing: number): Line & { width: number } {
+    const xs: number[] = [];
+    for (let k = 0; k < s.length; k++) xs.push(g.measureText(s.slice(0, k)).width + k * spacing);
+    return { s, xs, width: g.measureText(s).width + (s.length - 1) * spacing };
+  }
+
   function layout() {
-    size = Math.round(Math.max(13, Math.min(17, w / 58)));
-    g.font = `${size}px ${MONO}`;
-    adv = g.measureText('M').width * 1.08;
-    lineH = Math.round(size * 1.85);
-    const cols = Math.max(24, Math.min(52, Math.floor((w * 0.86) / adv)));
+    size = Math.round(Math.max(12, Math.min(16, w / 64)));
+    big = Math.round(size * 1.8);
+    g.font = `${size}px ${FONT}`;
+    const spacing = size * 0.05;
+    const width = (t: string) => g.measureText(t).width + (t.length - 1) * spacing;
+    lineH = Math.round(size * 1.95);
+    const max = Math.min(w * 0.86, size * 36);
     const wrapped = TEXT.prologue.lines.map((p) => {
-      const lines: string[] = [];
-      let line = '';
+      const lines: Line[] = [];
+      let text = '';
       for (const word of p.split(' ')) {
-        if (line && line.length + 1 + word.length > cols) {
-          lines.push(line);
-          line = word;
-        } else line = line ? `${line} ${word}` : word;
+        if (text && width(`${text} ${word}`) > max) {
+          lines.push(line(text, spacing));
+          text = word;
+        } else text = text ? `${text} ${word}` : word;
       }
-      lines.push(line);
+      lines.push(line(text, spacing));
       return lines;
     });
-    const longest = Math.max(...wrapped.flat().map((l) => l.length));
+    const longest = Math.max(...wrapped.flat().map((l) => width(l.s)));
     const rows = wrapped.reduce((s, l) => s + l.length, 0) + wrapped.length - 1;
-    blockX = Math.round((w - longest * adv) / 2);
+    blockX = Math.round((w - longest) / 2);
     blockTop = Math.round(h * 0.47 - (rows * lineH) / 2);
     blockBottom = blockTop + rows * lineH;
     let y = blockTop;
@@ -103,6 +117,15 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
       y += (lines.length + 1) * lineH;
       return p;
     });
+
+    // the title card: spaced wide, in capitals
+    const card = (s: string, px: number, spread: number) => {
+      g.font = `${px}px ${FONT}`;
+      const l = line(s.toUpperCase(), g.measureText('M').width * spread);
+      return { ...l, x: Math.round((w - l.width) / 2) };
+    };
+    title = card(TEXT.game.title, big, 0.6);
+    time = card(TEXT.prologue.time, size, 0.25);
   }
 
   function resize(cw: number, ch: number, deviceRatio: number) {
@@ -208,14 +231,14 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
 
   const ramp = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
 
-  /** One line of letters `step` apart, each fading in (and rising a touch) `CHAR_S` after the one before it from `t0`. */
-  function letters(s: string, x: number, y: number, step: number, t0: number, k0: number, rgb: string, scale: number) {
+  /** One laid-out line from `x`, each letter fading in (and rising a touch) `CHAR_S` after the one before it from `t0`. */
+  function letters({ s, xs }: Line, x: number, y: number, t0: number, k0: number, rgb: string, scale: number) {
     for (let k = 0; k < s.length; k++) {
       if (s[k] === ' ') continue;
       const a = ramp((clock - t0 - (k0 + k) * CHAR_S) / LETTER_S) * scale;
       if (a <= 0.003) continue;
       g.fillStyle = `rgba(${rgb},${a})`;
-      g.fillText(s[k], x + k * step, y + (1 - a / scale) * 5);
+      g.fillText(s[k], x + xs[k], y + (1 - a / scale) * 5);
     }
   }
 
@@ -236,33 +259,24 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
       g.fillRect(-1, -1, 2, 2);
       g.restore();
 
-      g.font = `${size}px ${MONO}`;
+      g.font = `${size}px ${FONT}`;
       g.textBaseline = 'middle';
       paras.forEach((p, i) => {
         let k0 = 0;
         p.lines.forEach((line, r) => {
-          letters(line, blockX, p.y + r * lineH + lineH / 2, adv, PARA_AT[i], k0, INK, out);
-          k0 += line.length + 1;
+          letters(line, blockX, p.y + r * lineH + lineH / 2, PARA_AT[i], k0, INK, out);
+          k0 += line.s.length + 1;
         });
       });
     }
     const at = full ? CARD_AT : TITLE_AT;
     if (clock > at) {
-      const title = TEXT.game.title.toUpperCase();
-      const time = TEXT.prologue.time.toUpperCase();
-      const big = Math.round(size * 1.8);
       g.textBaseline = 'middle';
-      // spaced wide, and centred on the letters rather than on their spacing
-      const card = (s: string, y: number, spacing: number, t0: number, rgb: string, a: number) => {
-        const m = g.measureText('M').width;
-        const step = m * spacing;
-        letters(s, Math.round((w - (s.length - 1) * step - m) / 2), y, step, t0, 0, rgb, a);
-      };
-      g.font = `${big}px ${MONO}`;
-      card(title, full ? h * 0.47 - big * 0.6 : h * 0.47, 1.6, at, GOLD, 1);
+      g.font = `${big}px ${FONT}`;
+      letters(title, title.x, full ? h * 0.47 - big * 0.6 : h * 0.47, at, 0, GOLD, 1);
       if (!full) return;
-      g.font = `${size}px ${MONO}`;
-      card(time, h * 0.47 + big * 0.8, 1.25, at + 1.4, INK, 0.7);
+      g.font = `${size}px ${FONT}`;
+      letters(time, time.x, h * 0.47 + big * 0.8, at + 1.4, 0, INK, 0.7);
     }
   }
 
@@ -284,6 +298,7 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
 
   return {
     resize,
+    relayout: layout,
     progress: (p: number) => (target = Math.max(target, p)),
     frame(dt: number) {
       dt = Math.min(0.05, dt);

@@ -116,8 +116,8 @@ const css = `
   transition: opacity .25s; white-space: nowrap; }
 #deathScreen { position: fixed; inset: 0; z-index: 20; pointer-events: none; display: none; flex-direction: column;
   align-items: center; justify-content: flex-start; padding-top: 14vh; gap: 10px; background: radial-gradient(ellipse
-  closest-side, rgba(40, 8, 2, 0) 55%, rgba(40, 8, 2, 0.75) 100%); color: #ffe2c4; font: 600 34px var(--mono);
-  letter-spacing: 0.04em; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); animation: deathIn 0.6s ease-out; }
+  closest-side, rgba(40, 8, 2, 0) 55%, rgba(40, 8, 2, 0.75) 100%); color: #ffe2c4; font: 34px var(--title);
+  letter-spacing: 0.06em; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); animation: deathIn 0.6s ease-out; }
 @keyframes deathIn { from { opacity: 0; } to { opacity: 1; } }
 #deathFade { position: fixed; inset: 0; z-index: 21; pointer-events: none; background: #000; opacity: 0; display: none; }
 `;

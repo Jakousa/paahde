@@ -18,7 +18,7 @@ const css = `
 #menu.open { display: flex; }
 #menu .panel { width: min(340px, calc(100vw - 32px)); padding: 16px 18px 14px; border-radius: 8px;
   background: rgba(28, 15, 7, 0.92); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 10px 40px rgba(0, 0, 0, 0.5); }
-#menu h2 { margin: 0 0 14px; font: 600 15px var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: #ffd9a0; }
+#menu h2 { margin: 0 0 14px; font: 15px var(--title); letter-spacing: 0.18em; text-transform: uppercase; color: #ffd9a0; }
 #menu h3 { margin: 16px 0 8px; font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.6; }
 #menu button { width: 100%; padding: 8px; font: 600 13px var(--mono); letter-spacing: 0.08em; color: #2a160a;
   background: #ffd9a0; border: 0; border-radius: 5px; cursor: pointer; }

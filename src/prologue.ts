@@ -4,7 +4,7 @@
 // it runs on the page instead.
 // A tab's first load tells the whole prologue and keeps the cover up until it is told (or a key or click skips it);
 // a reload in the same tab (a deploy, src/update.ts) shows only the title.
-import { createPrologue, PROLOGUE_S } from './prologueRunner';
+import { createPrologue, FONT_URL, PROLOGUE_S } from './prologueRunner';
 
 let off: (() => void) | null = null;
 let progress: (p: number) => void = () => {};
@@ -33,7 +33,7 @@ function start() {
     try {
       worker = new Worker(new URL('./prologueWorker.ts', import.meta.url), { type: 'module' });
       const offscreen = c.transferControlToOffscreen();
-      worker.postMessage({ t: 'init', canvas: offscreen, ...size(), full }, [offscreen]);
+      worker.postMessage({ t: 'init', canvas: offscreen, ...size(), full, font: new URL(FONT_URL, document.baseURI).href }, [offscreen]);
       const w = worker;
       resize = () => w.postMessage({ t: 'size', ...size() });
       progress = (p) => w.postMessage({ t: 'progress', p });
@@ -49,6 +49,7 @@ function start() {
       run.resize(s.w, s.h, s.dpr);
     };
     resize();
+    document.fonts?.load('16px Neuropol').then(() => run.relayout(), () => {});
     let raf = 0;
     let last = performance.now();
     const frame = (now: number) => {
