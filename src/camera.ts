@@ -5,6 +5,8 @@
 // landings dip the view on a spring, strafing rolls it slightly, and sprinting kicks the FOV out.
 // T toggles a third-person view: the camera backs off along the view ray from the eye, so the screen centre
 // (crosshair) still aims where the dig/pickup rays go, and the boom shortens so it never sinks into a dune.
+// Holding Alt (Option) looks around freely: the mouse turns only the view (freeYaw / freePitch on top of yaw / pitch),
+// so you keep running or sliding the way you were going; letting go swings the view back.
 import * as THREE from 'three/webgpu';
 import { heightAt } from '../shared/terrain.ts';
 import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, slopeAt } from '../shared/sim.ts';
@@ -36,6 +38,7 @@ const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
 const SLIDE_ROLL = 0.07;
 const SPRING_DT = 1 / 120; // the landing dip's longest step (s): a slow frame taken whole would make it swing ever harder
 const THIRD_PERSON_KEY = 'dadajam.thirdPerson';
+const FREE_YAW_LIMIT = (160 * Math.PI) / 180; // free look: as far round as over a shoulder
 
 /** What the camera needs from the local player each frame. */
 export type ViewPose = { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; sliding?: boolean; crouching?: boolean; riding?: boolean;
@@ -48,6 +51,10 @@ export class FirstPersonCamera {
   readonly camera: THREE.PerspectiveCamera;
   yaw = 0;
   pitch = -0.05;
+  /** Free look (Alt held): the view's turn away from yaw / pitch, which still steer and aim. Eases back to 0 on release. */
+  freeYaw = 0;
+  freePitch = 0;
+  private freeLook = false;
 
   private eyeY = NaN; // smoothed feet height
   private bobPhase = 0;
@@ -95,9 +102,20 @@ export class FirstPersonCamera {
     dom.addEventListener('click', () => {
       if (document.pointerLockElement !== dom) dom.requestPointerLock();
     });
+    const alt = (e: KeyboardEvent) => {
+      if (e.code === 'AltLeft' || e.code === 'AltRight') this.freeLook = e.type === 'keydown';
+    };
+    addEventListener('keydown', alt);
+    addEventListener('keyup', alt);
+    addEventListener('blur', () => (this.freeLook = false));
     addEventListener('mousemove', (e) => {
       if (document.pointerLockElement !== dom) return;
       const s = SENSITIVITY / this.zoomShown; // zoomed in, the same hand movement turns the view less
+      if (this.freeLook && !Number.isFinite(this.rideHeading) && this.zoom <= 1) {
+        this.freeYaw = Math.max(-FREE_YAW_LIMIT, Math.min(FREE_YAW_LIMIT, this.freeYaw - e.movementX * s));
+        this.freePitch = Math.max(-PITCH_LIMIT - this.pitch, Math.min(PITCH_LIMIT - this.pitch, this.freePitch - e.movementY * s));
+        return;
+      }
       this.yaw -= e.movementX * s;
       this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - e.movementY * s));
       if (Number.isFinite(this.rideHeading)) this.limitRide(1);
@@ -111,6 +129,11 @@ export class FirstPersonCamera {
     this.yaw += turn - d;
     const down = RIDE_PITCH_DOWN * (1 - (0.6 * Math.abs(turn)) / RIDE_YAW_LIMIT);
     if (this.pitch < -down) this.pitch += (-down - this.pitch) * t;
+  }
+
+  /** Where the view looks (yaw plus any free look): for the listener and other things that follow the screen. */
+  get viewYaw() {
+    return this.yaw + this.freeYaw;
   }
 
   /** Step phase in radians (one step per π), so hands/footsteps can sync to the bob. */
@@ -134,6 +157,13 @@ export class FirstPersonCamera {
     // On the bike in first person, keep the view to a neck's range (eased, so mounting or leaving third person doesn't snap).
     this.rideHeading = p.riding && !this.thirdPerson && p.heading !== undefined ? p.heading : NaN;
     if (Number.isFinite(this.rideHeading)) this.limitRide(1 - Math.exp(-dt * 8));
+    if (!this.freeLook || Number.isFinite(this.rideHeading) || this.zoom > 1) {
+      const k = 1 - Math.exp(-dt * 7);
+      this.freeYaw -= this.freeYaw * k;
+      this.freePitch -= this.freePitch * k;
+      if (Math.abs(this.freeYaw) + Math.abs(this.freePitch) < 1e-4) this.freeYaw = this.freePitch = 0;
+    }
+    const viewYaw = this.yaw + this.freeYaw;
 
     // Eye height: follow the feet quickly but smoothly; snap if far (respawn/teleport) or airborne.
     if (!Number.isFinite(this.eyeY) || Math.abs(p.y - this.eyeY) > 3) this.eyeY = p.y;
@@ -204,9 +234,9 @@ export class FirstPersonCamera {
     if (!sandHidden(x, z, p.y)) y = Math.max(y, heightAt(x, z) + 0.3);
 
     // Third person: back off along the view ray, shortening the boom where it would dip under the sand.
-    const pitch = this.pitch + this.dip * 0.12 + shakeP;
-    const cp = Math.cos(pitch);
-    const bx = sy * cp, by = -Math.sin(pitch), bz = cy * cp; // unit vector pointing behind the view
+    const pitch = this.pitch + this.freePitch + this.dip * 0.12 + shakeP;
+    const cp = Math.cos(pitch), vs = Math.sin(viewYaw), vc = Math.cos(viewYaw);
+    const bx = vs * cp, by = -Math.sin(pitch), bz = vc * cp; // unit vector pointing behind the view
     const third = (this.thirdPerson && !this.aimIn) || this.down;
     let reach = third ? BOOM : 0;
     for (let i = 1; i <= 12 && reach > 0; i++) {
@@ -220,7 +250,7 @@ export class FirstPersonCamera {
     if (this.boom < 0.01) this.boom = 0;
     this.eye.set(x, y, z);
     this.camera.position.set(x + bx * this.boom, y + by * this.boom, z + bz * this.boom);
-    this.camera.rotation.set(pitch, this.yaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
+    this.camera.rotation.set(pitch, viewYaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
 
     // FOV kick when moving faster than a walk (sprint, slides).
     const t = Math.max(0, Math.min(1, (speed - WALK_SPEED - 0.5) / (SPRINT_SPEED - WALK_SPEED - 1)));

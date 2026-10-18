@@ -326,7 +326,8 @@ renderer.setAnimationLoop((time) => {
   if (!riding) {
     me.update(
       { x: v.x, y: v.y, z: v.z, facing: v.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
-      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, drinking: playerHands.drinking, aiming: aiming || net.justFired(net.id), down: net.down },
+      digging: (digUntil.get(net.id) ?? 0) > performance.now(), pitch: orbit.pitch, drinking: playerHands.drinking, aiming: aiming || net.justFired(net.id), down: net.down,
+      look: orbit.freeYaw },
       frameDt,
     );
   }
@@ -401,7 +402,7 @@ renderer.setAnimationLoop((time) => {
   const wrist = equipped(net.boxes.equip, 'wrist');
   const range = wrist ? locatorRange(quality(wrist)) : 0;
   locator.lost = storm.lost || !wrist;
-  locator.update(orbit.camera, orbit.yaw, orbit.pitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z)]);
+  locator.update(orbit.camera, orbit.viewYaw, orbit.pitch + orbit.freePitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z)]);
   terrain.update(focus);
   scrap.update(focus);
   crashSites.update(focus);
@@ -416,14 +417,14 @@ baseSand.update(frameDt, storm.atBase);
   base.update();
   shelters.update(orbit.camera.position);
   mast.update(frameDt);
-  windSound.update(frameDt, orbit.camera.position, orbit.yaw, s);
+  windSound.update(frameDt, orbit.camera.position, orbit.viewYaw, s);
   // Sand hissing under you: a speed slide, or (softer) slipping down a slip face on your feet.
   const ownSpeed = Math.hypot(s.vx, s.vz);
   slideSound.update(frameDt, !s.grounded || s.riding || net.down ? 0 : s.sliding ? 1 : ownSpeed > 2 && isSlipFace(s.x, s.z) ? 0.5 : 0, ownSpeed);
   engineSound.update(frameDt, s.riding, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   drinkSound.remotes(others, orbit.camera.position);
-  footsteps.listener(orbit.camera.position, orbit.yaw);
+  footsteps.listener(orbit.camera.position, orbit.viewYaw);
   breathing.update(survival.heatLevel, survival.dead);
   audio.setMuffled(survival.dead); // the world goes dull while you lie dead; the music doesn't
   const cam = orbit.camera.position;
@@ -435,7 +436,7 @@ baseSand.update(frameDt, storm.atBase);
     combat: guardianFx.combat,
     dead: survival.dead,
   });
-  crashSound.update(orbit.camera.position, orbit.yaw);
+  crashSound.update(orbit.camera.position, orbit.viewYaw);
   digFx.update(frameDt, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), document.pointerLockElement === renderer.domElement);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.

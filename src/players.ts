@@ -29,6 +29,8 @@ export type AvatarPose = {
   aiming?: boolean;
   /** Dead: a ragdoll thrown by this push (m/s, world; shared/ragdoll.ts). Placement stays where it fell. */
   down?: [number, number, number] | null;
+  /** The head turned this far from where the body faces (rad, + = left): the local player's free look (Alt). */
+  look?: number;
 };
 
 /** A seated rider's contact points and body English, in the avatar root's space (forward is -z). */
@@ -63,7 +65,7 @@ export type ModelPose = {
   drinking?: boolean;
   aiming?: boolean;
   /** Where the eyes look relative to the body's facing (rad, + = to the left): nonzero when the body faces
-   *  its travel instead (feet first in a slide); the head turns towards it. */
+   *  its travel instead (feet first in a slide); the head turns towards it. Given, it adds to that (free look). */
   look?: number;
 };
 
@@ -255,7 +257,7 @@ export class Avatar {
     const d = Math.atan2(Math.sin(want - this.facing), Math.cos(want - this.facing));
     this.facing += d * (1 - Math.exp(-dt * this.turnRate));
     this.root.rotation.y = this.facing;
-    const look = Math.atan2(Math.sin(pose.facing - this.facing), Math.cos(pose.facing - this.facing));
+    const look = Math.atan2(Math.sin(pose.facing - this.facing), Math.cos(pose.facing - this.facing)) + (pose.look ?? 0);
 
     // Travel direction in the body frame (facing f looks along (-sin f, -cos f)).
     const ahead = -vx * Math.sin(this.facing) - vz * Math.cos(this.facing);

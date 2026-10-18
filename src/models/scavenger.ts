@@ -449,16 +449,23 @@ export class ScavengerModel {
     this.legIk?.update(dt, pose.grounded, lock, pose.ground ?? null);
   }
 
-  /** Running arms, over the Run clip (whose arms reach out straight, the elbow bending on a skewed hinge): each
-   *  upper arm swings from the shoulder against its leg, the elbow held bent about 90° (tighter in front), hands
-   *  in toward the midline, swing growing with speed. Blended by the clip's weight, so it fades in and out with
-   *  the run; a held item's hold (after this) still takes the right arm. */
+  /** Running arms, over the Run clip (whose arms reach out straight, the elbow bending on a skewed hinge), the way
+   *  runners swing them: from the shoulder, in the plane of travel (elbows back, not out), the elbow near 90° and
+   *  closing a little in front, so a hand comes up to the chest in front and back past the hip behind; the
+   *  shoulders turn against the arms. Swing grows with speed. Blended by the clip's weight, so it fades in and out
+   *  with the run; a held item's hold (after this) still takes the right arm. */
   private runArms(speed: number) {
     const run = this.actions.get('Run');
     const w = run?.isRunning() ? run.getEffectiveWeight() : 0;
     if (w < 1e-3 || this.arms.length < 2) return;
-    const amp = clamp(0.35 + speed / 16, 0.5, 1);
+    const amp = clamp(0.4 + speed / 14, 0.6, 1);
     const ph = (run!.time / run!.getClip().duration) * Math.PI * 2;
+    // Left arm back at phase 0, so the right shoulder comes forward (+ about Y turns +X towards -Z).
+    if (this.spine) {
+      _q0.copy(this.spine.quaternion);
+      rotateAboutRoot(this.root, this.spine, Y_AXIS, RUN_TWIST * amp * Math.cos(ph));
+      if (w < 1) this.spine.quaternion.slerpQuaternions(_q0, _q.copy(this.spine.quaternion), w);
+    }
     this.root.updateMatrixWorld(true);
     for (let i = 0; i < 2; i++) {
       const arm = this.arms[i];
@@ -469,9 +476,9 @@ export class ScavengerModel {
       const elbow = RUN_ELBOW + RUN_ELBOW_VAR * s;
       _q0.copy(arm[0].quaternion);
       _q1.copy(arm[1].quaternion);
-      // Upper arm down and a little out, swung forward/back; forearm bent forward from it and in toward the body.
-      _u.set(side * 0.2, -Math.cos(swing), -Math.sin(swing)).normalize();
-      _f.set(-side * 0.18, -Math.cos(swing + elbow), -Math.sin(swing + elbow)).normalize();
+      // Upper arm down, just clear of the body, swung forward/back; forearm bent forward from it, in a touch in front.
+      _u.set(side * 0.12, -Math.cos(swing), -Math.sin(swing)).normalize();
+      _f.set(-side * (0.04 + 0.12 * Math.max(0, s)), -Math.cos(swing + elbow), -Math.sin(swing + elbow)).normalize();
       this.root.worldToLocal(arm[0].getWorldPosition(_t));
       _t.addScaledVector(_u, RUN_UPPER).addScaledVector(_f, RUN_FORE);
       this.root.localToWorld(_t);
@@ -484,9 +491,10 @@ export class ScavengerModel {
     }
   }
 
-  /** Speed slide, over the Powerslide clip, weighted by `w` (0..1, eased in and out): lean further back, the left
-   *  hand trails in the sand behind the hip, the right arm is out to the side for balance. Placed in the tilt
-   *  group's space, which lies along the slope. */
+  /** Speed slide, over the Powerslide clip, weighted by `w` (0..1, eased in and out), the way a slide into base or
+   *  a shooter's slide looks: lean back, the left hand trailing in the sand behind the hip, the right arm loose and
+   *  low in front, elbow bent, the hand over the knees (not up in the air). Placed in the tilt group's space, which
+   *  lies along the slope. */
   private slidePose(w: number, dt: number) {
     const left = this.arms[0], right = this.arms[1];
     if (!this.spine || !left || !right) return;
@@ -503,12 +511,12 @@ export class ScavengerModel {
     this.tilt.localToWorld(_t.set(SLIDE_HAND.x, sand, SLIDE_HAND.z));
     reach(left[0], left[1], left[2], _t, _pole.set(-1, 0.4, 0.7).transformDirection(this.tilt.matrixWorld));
     aim(left[2], left[3], this.tilt.localToWorld(_t.set(SLIDE_HAND.x - 0.04, sand - 0.03, SLIDE_HAND.z + 0.16)));
-    // Right arm out to the side and a little forward, balancing: it bobs with the bumps.
+    // Right arm forward and down from the shoulder, the elbow out and bent, the hand over the knees: it bobs with the bumps.
     this.tilt.worldToLocal(right[0].getWorldPosition(_s0));
-    const bob = 0.05 * Math.sin(t * 2.3) + 0.02 * Math.sin(t * 9.7);
-    this.tilt.localToWorld(_t.copy(_s0).add(_o.set(0.42, 0.1 + bob, -0.18)));
-    reach(right[0], right[1], right[2], _t, _pole.set(0.2, -1, 0.6).transformDirection(this.tilt.matrixWorld));
-    aim(right[2], right[3], this.tilt.localToWorld(_t.copy(_s0).add(_o.set(0.62, 0.06 + bob, -0.22))));
+    const bob = 0.03 * Math.sin(t * 2.3) + 0.015 * Math.sin(t * 9.7);
+    this.tilt.localToWorld(_t.copy(_s0).add(_o.copy(SLIDE_REST).setY(SLIDE_REST.y + bob)));
+    reach(right[0], right[1], right[2], _t, _pole.set(1, -0.3, 0.4).transformDirection(this.tilt.matrixWorld));
+    aim(right[2], right[3], this.tilt.localToWorld(_t.copy(_s0).add(_o.copy(SLIDE_REST).add(SLIDE_FINGERS).setY(SLIDE_REST.y + SLIDE_FINGERS.y + bob))));
     // Blend from the clip's pose by the weight.
     if (w < 0.999) {
       for (let i = 0; i < bones.length; i++) {
@@ -716,6 +724,9 @@ const GUN_HOLD: Record<string, GunHold> = { laser_rifle: RIFLE, laser_pistol: PI
  *  forward -Z, along the slope). */
 const SLIDE_LEAN = 0.35;
 const SLIDE_HAND = V(-0.42, 0.05, 0.3);
+/** Where the free right hand rests from its shoulder (tilt space), and its fingers' direction (forward, a little down). */
+const SLIDE_REST = V(0.22, -0.24, -0.44);
+const SLIDE_FINGERS = V(-0.03, -0.06, -0.15);
 const _saved = Array.from({ length: 8 }, () => new THREE.Quaternion());
 
 const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt');
@@ -773,12 +784,14 @@ const _q0 = new THREE.Quaternion();
 const _q1 = new THREE.Quaternion();
 const _u = new THREE.Vector3();
 const _f = new THREE.Vector3();
-// Running arms (runArms): upper arm swing forward / back at full speed (rad), elbow bend ± its variation (rad,
-// more bent in front), and the shoulder-elbow / elbow-wrist lengths (m) the hand target is laid out with.
-const RUN_SWING_FWD = 0.55;
-const RUN_SWING_BACK = 0.7;
+// Running arms (runArms): upper arm swing forward / back at full speed (rad; sprinters: hand chest-to-chin high in
+// front, past the hip behind), elbow bend ± its variation (rad, more bent in front, opening behind), the shoulders'
+// counter-turn (rad), and the shoulder-elbow / elbow-wrist lengths (m) the hand target is laid out with.
+const RUN_SWING_FWD = 0.7;
+const RUN_SWING_BACK = 1.15;
 const RUN_ELBOW = 1.45;
-const RUN_ELBOW_VAR = 0.15;
+const RUN_ELBOW_VAR = 0.35;
+const RUN_TWIST = 0.12;
 const RUN_UPPER = 0.29;
 const RUN_FORE = 0.26;
 const _pq = new THREE.Quaternion();
