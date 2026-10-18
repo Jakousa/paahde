@@ -433,8 +433,8 @@ export class ScavengerModel {
       this.root.localToWorld(_t);
       reach(arm[0], arm[1], arm[2], _t, _pole.copy(_u).transformDirection(this.root.matrixWorld));
       if (w < 1) {
-        arm[0].quaternion.slerpQuaternions(_q0, arm[0].quaternion, w);
-        arm[1].quaternion.slerpQuaternions(_q1, arm[1].quaternion, w);
+        arm[0].quaternion.slerpQuaternions(_q0, _q.copy(arm[0].quaternion), w);
+        arm[1].quaternion.slerpQuaternions(_q1, _q.copy(arm[1].quaternion), w);
         arm[0].updateMatrixWorld(true);
       }
     }
