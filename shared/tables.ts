@@ -181,8 +181,8 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   // The jammer (shared/jammer.ts): out where the roaming drones and the jets first come after you.
   jammer: { n: 3, level: 1 },
   // The receivers that call the bosses (shared/bosses.ts): out on guardian ground.
-  receiver_carrier: { n: 1, level: 2 }, receiver_queen: { n: 1, level: 2 }, receiver_colossus: { n: 1, level: 2 },
-  receiver_worm: { n: 1, level: 2 },
+  receiver_carrier: { n: 3, level: 2 }, receiver_queen: { n: 3, level: 2 }, receiver_colossus: { n: 3, level: 2 },
+  receiver_worm: { n: 3, level: 2 },
 };
 
 /** One broken motorcycle always lies on the sand in front of the base door (server/loot.ts homeBikeSpot), so a bike is
