@@ -5,6 +5,10 @@
 //
 // Browsers only start audio after a user gesture, so the context is created on the first click or key;
 // `onStart` callbacks run then (or immediately, if it is already running).
+//
+// A single NaN or infinite sample reaching a BiquadFilter leaves it putting out NaN for good (Chrome), so one bad
+// sample from any sound would silence everything through the muffle low-pass for the rest of the session. `out`
+// goes through a small worklet that zeroes non-finite samples first (and warns once, to help find the culprit).
 
 const VOLUME_KEY = 'dadajam.volume';
 const MUSIC_KEY = 'dadajam.musicVolume';
@@ -14,6 +18,25 @@ const MUFFLE_GAIN = 0.5;
 const MUFFLE_OFF_HZ = 20000;
 const MUFFLE_IN = 0.15;
 const MUFFLE_OUT = 0.8;
+
+const FINITE = `registerProcessor('finite', class extends AudioWorkletProcessor {
+  constructor() { super(); this.told = false; }
+  process(inputs, outputs) {
+    const i = inputs[0], o = outputs[0];
+    let bad = false;
+    for (let c = 0; c < o.length; c++) {
+      const a = i[c], b = o[c];
+      if (!a) continue;
+      for (let k = 0; k < b.length; k++) {
+        const v = a[k];
+        if (v - v === 0) b[k] = v;
+        else { b[k] = 0; bad = true; }
+      }
+    }
+    if (bad && !this.told) { this.told = true; this.port.postMessage(0); }
+    return true;
+  }
+});`;
 
 function stored(key: string, fallback: number) {
   try {
@@ -79,6 +102,17 @@ class AudioOut {
     lp.Q.value = 0.707;
     const duck = ctx.createGain();
     out.connect(lp).connect(duck).connect(master);
+    const url = URL.createObjectURL(new Blob([FINITE], { type: 'text/javascript' }));
+    ctx.audioWorklet
+      .addModule(url)
+      .then(() => {
+        const finite = new AudioWorkletNode(ctx, 'finite', { outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' });
+        finite.port.onmessage = () => console.warn('audio: a sound put out NaN/Infinity (zeroed)');
+        out.disconnect();
+        out.connect(finite).connect(lp);
+      })
+      .catch((e) => console.warn('audio: no NaN guard', e))
+      .finally(() => URL.revokeObjectURL(url));
     const music = ctx.createGain();
     music.gain.value = this.musicVolume;
     music.connect(master);
