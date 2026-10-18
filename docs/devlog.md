@@ -2,6 +2,35 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — Bosses, and the worm
+
+- **Bosses** (shared/bosses.ts): one-of-a-kind giant machines, the worm, the carrier, the colossus and the queen. They
+  turn up rarely (one every 25–50 min near someone out in the open at least 500 m from the base, while no other is
+  about) and leave after 6–10 min; F3 brings one to you for 10 min. For now each is fought the same way: glowing weak
+  points (the walkers' red lenses) to shoot, all of them broken and it dies and leaves 5–8 Quality/Space-grade parts
+  over its wreck (shared/tables.ts BOSS_SPOILS). Framework: server/bosses.ts (spawning, rifle hits, one brain per kind
+  in server/<kind>.ts handing back deaths, craters and one-off effects), src/bosses.ts (interpolation, weak points,
+  one view per kind in src/world/<kind>.ts), 'bosses' / 'bossFx' messages.
+- **The worm** (the Borer: shared/worm.ts, server/worm.ts, src/world/worm.ts, src/wormSound.ts, tools/blender/worm.py):
+  a mechanical worm a hundred metres long, 22 armoured ring segments behind a maw of three jaws with a grinder spinning
+  in its throat. It moves the way Terraria's worms do (the usual recipe for burrowing worms; the snake/centipede
+  "follow the leader" distance chain): only the head is simulated, steering under the sand (turn rate 1.1 rad/s,
+  9 m/s roaming, 17 hunting), flying on gravity once out of it; every segment sits 4.4 m behind the one before along
+  the head's path, so the body pours out of the hole after the head and back into the sand along the same arc.
+  It roams 10 m down, now and then running just under the surface with its back out (a furrow behind it). Someone out
+  on the sand within 200 m draws it: it closes in 15 m down, and once under them the sand shivers (a ring of dust, a
+  swelling roar, the ground trembling) and a second later it bursts out at 36 m/s, leaps ~48 m high with its jaws
+  open and plunges back in 40–50 m on. The burst and plunge kill within 6.5 m and blow craters (7 m / 2.4 m deep and
+  5.5 m / 1.8 m), the head and any segment out of the sand kill what they pass through. Standing still is death;
+  walking off as soon as the sand shivers gets you clear most of the time (simulated: ~70%). It can't swim through rock:
+  it turns away from it, and anyone on rock or thin sand over it is out of reach; it keeps 380 m from the base.
+  Weak points: six lenses on its back, shootable only while out of the sand. Dead, whatever was out falls onto the sand
+  segment by segment and lies there for 4 min.
+- **Terrain healing is local now**: the wind's heal pass touched every edited vertex every 5 s and the server sent
+  them all, so a boss's craters would have cost every client megabytes a pass. The server now sends `terrainHeal`
+  and each client runs the same deterministic heal() on its copy (docs/netcode.md).
+- Gaps: the boss sounds are levelled against the guardians' measured footfalls, not measured themselves yet; boss
+  fights don't start the epic battle music yet.
 ## 2026-10-18 — Shade cools you off
 
 - In full shade (a rock, a dune's lee, a wreck, a hut) the felt temperature is never above `SHADE_MAX` (26 °C,
