@@ -115,7 +115,7 @@ class Wind {
   /** Wind speed-up over the terrain at (x, z): >1 on crests and windward slopes, <1 in the lee. */
   private topography(x: number, z: number): number {
     const ix = Math.floor(x / 4), iz = Math.floor(z / 4);
-    const key = ix * 65536 + iz;
+    const key = ix * 2 ** 26 + iz;
     let f = this.topo.get(key);
     if (f === undefined) {
       const cx = ix * 4 + 2, cz = iz * 4 + 2;

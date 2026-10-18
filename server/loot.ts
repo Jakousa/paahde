@@ -12,13 +12,13 @@ import { JAMMER } from '../shared/jammer.ts';
 import { receiverBoss } from '../shared/bosses.ts';
 import { CLOTH, partKind, RETIRED, SCRAP } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
-import { allCrashSites, type SiteLevel } from '../shared/crashsites.ts';
+import { coreCrashSites, type SiteLevel } from '../shared/crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
 import { PART_IDS, pickTier } from '../shared/parts.ts';
 import { GUNS, PISTOL } from '../shared/rifle.ts';
 import { rocksNear } from '../shared/rocks.ts';
 import { BROKEN_GEAR, CACHES, FINDS, HOME_BIKE, RARE_FINDS, SHELTER_STASHES, type TierWeights } from '../shared/tables.ts';
-import { WORLD_HALF } from '../shared/terrain.ts';
+import { CORE_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';
@@ -97,11 +97,12 @@ export class LootServer {
   private pending: Spawn[] = [];
   private added: Loot[] = [];
   private removed: number[] = [];
-  private sites = allCrashSites();
+  /** Finds lie at the sites in the core square (terrain.ts CORE_HALF), not spread over the endless world. */
+  private sites = coreCrashSites();
   private piles = nearPiles();
   private homeBike = homeBikeSpot();
   private homeBikeId = -1;
-  private shelters = sheltersNear(0, 0, WORLD_HALF * 1.5);
+  private shelters = sheltersNear(0, 0, CORE_HALF * 1.5);
   /** What each lying find stands in for (FINDS key, RARE_KIND, HOME_KIND); caches aren't in it. */
   private spawnKey = new Map<number, string>();
   private db: Db;
@@ -345,7 +346,7 @@ export class LootServer {
       const a = rand(0, Math.PI * 2), d = rand(CACHE_MIN_R, CACHE_MAX_R);
       x = BASE.x + Math.sin(a) * d;
       z = BASE.z + Math.cos(a) * d;
-      if (Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20 && !overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break;
+      if (!overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break;
     }
     this.place({ id: this.nextId++, ...this.contents(CACHES), x, z, src: 'cache' }, null);
   }

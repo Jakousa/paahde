@@ -162,7 +162,7 @@ export class BlownSand {
    */
   private groundCell(x: number, z: number): number {
     const ix = Math.floor(x), iz = Math.floor(z);
-    const key = ix * 65536 + iz;
+    const key = ix * 2 ** 26 + iz;
     let slot = this.groundSlots.get(key);
     if (slot !== undefined) return slot;
     if (this.groundSlots.size >= GROUND_CELLS) this.groundSlots.clear();

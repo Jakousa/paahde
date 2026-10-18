@@ -10,7 +10,7 @@ import { crashSitesNear, siteLevel } from './crashsites.ts';
 import { shelterWithin } from './shelters.ts';
 import { rocksNear } from './rocks.ts';
 import { SALVAGE, type SalvageId } from './salvage.ts';
-import { baseHeight, WORLD_HALF, WORLD_SEED } from './terrain.ts';
+import { baseHeight, WORLD_SEED } from './terrain.ts';
 
 /** Grid cell size (m); each cell holds at most one wreck. */
 export const WRECK_CELL = 300;
@@ -50,7 +50,7 @@ function flatEnough(x: number, z: number): boolean {
 
 /** Clear of the base pad, rocks, shelters, the crash-site machines and the crashed spacecraft. */
 function clear(x: number, z: number): boolean {
-  return Math.abs(x) < WORLD_HALF - 10 && Math.abs(z) < WORLD_HALF - 10 && flatEnough(x, z) && padBlend(x, z) > 0.3 && !rocksNear(x, z, 4) &&
+  return flatEnough(x, z) && padBlend(x, z) > 0.3 && !rocksNear(x, z, 4) &&
     sitesNear(x, z, 12).length === 0 && crashSitesNear(x, z, 30).length === 0 && !shelterWithin(x, z, 6);
 }
 

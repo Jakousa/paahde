@@ -19,8 +19,11 @@ import { rockHeight } from './rocks.ts';
 import { nearShelter, overShelter, shelterSolid, withShelterPad } from './shelters.ts';
 export { WIND, WORLD_SEED } from './dunes.ts';
 
-/** The playable world is a square of ±WORLD_HALF metres around the origin. */
-export const WORLD_HALF = 2000;
+/**
+ * The world has no edge. The server spreads the finite things (finds, stashes, giant guardians, roaming bosses) over
+ * this square of ±CORE_HALF metres round the origin; scrap, crash sites, wrecks and shelters go on forever.
+ */
+export const CORE_HALF = 2000;
 
 /** Edit grid spacing in metres. Edit vertex (ix, iz) sits at world (ix * EDIT_CELL, iz * EDIT_CELL). */
 export const EDIT_CELL = 0.5;

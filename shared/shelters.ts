@@ -25,6 +25,7 @@
 import { atPump, BASE, inBase, PUMP_REACH, terrainHidden, type Capsule } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockiness, rocksNear } from './rocks.ts';
+import { cellId } from './cells.ts';
 
 export type ShelterKind = 'small' | 'deep' | 'long';
 
@@ -133,8 +134,6 @@ function rng(ix: number, iz: number) {
 }
 
 const FACINGS: [number, number][] = [[0, 1], [1, 0], [0, -1], [-1, 0]];
-/** The world playable square (shared/terrain.ts WORLD_HALF; not imported, terrain.ts imports this). */
-const WORLD_HALF = 2000;
 
 /** Local → world offset for a shelter facing (dx, dz). */
 function toWorld(dx: number, dz: number, lx: number, lz: number): [number, number] {
@@ -152,7 +151,6 @@ function cellShelter(ix: number, iz: number): Shelter | null {
     const x = Math.round(ix * SHELTER_CELL + CELL_MARGIN + span * r());
     const z = Math.round(iz * SHELTER_CELL + CELL_MARGIN + span * r());
     const [dx, dz] = FACINGS[Math.floor(r() * 4)];
-    if (Math.abs(x) > WORLD_HALF - CELL_MARGIN || Math.abs(z) > WORLD_HALF - CELL_MARGIN) continue;
     const bx = x - BASE.x, bz = z - BASE.z;
     if (bx * bx + bz * bz < BASE_CLEAR * BASE_CLEAR) continue;
     const L = SHELTER_KINDS[kind];
@@ -177,7 +175,7 @@ function cellShelter(ix: number, iz: number): Shelter | null {
     }
     if (hi - lo > MAX_RANGE) continue;
     const pump = r() < PUMP_ODDS[kind];
-    return { id: (ix + 64) * 128 + (iz + 64), kind, x, y: Math.round((sum / n) * 100) / 100, z, dx, dz, L, pump };
+    return { id: cellId(ix, iz), kind, x, y: Math.round((sum / n) * 100) / 100, z, dx, dz, L, pump };
   }
   return null;
 }
@@ -186,7 +184,7 @@ const cells = new Map<number, Shelter | null>();
 
 /** The shelter in cell (ix, iz), if any. */
 function shelterInCell(ix: number, iz: number): Shelter | null {
-  const k = (ix + 64) * 128 + (iz + 64);
+  const k = cellId(ix, iz);
   let s = cells.get(k);
   if (s === undefined) cells.set(k, (s = cellShelter(ix, iz)));
   return s;

@@ -141,7 +141,7 @@ function cellRocks(ix: number, iz: number): Rock[] {
 
 const own = new Map<number, Rock[]>();
 const near = new Map<number, Rock[]>();
-const cellKey = (ix: number, iz: number) => (ix + 1024) * 2048 + (iz + 1024);
+const cellKey = (ix: number, iz: number) => (ix + 2 ** 25) * 2 ** 26 + (iz + 2 ** 25);
 
 function ownRocks(ix: number, iz: number): Rock[] {
   const k = cellKey(ix, iz);

@@ -8,7 +8,7 @@
 // (level 0) near the base have none. A few more drones roam the open desert day and night (ROAMERS), drifting in
 // near someone now and then on long legs, and flying off again after a few minutes.
 import { BASE } from '../shared/base.ts';
-import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
+import { coreCrashSites, crashSite, crashSitesNear, type CrashSite } from '../shared/crashsites.ts';
 import {
   ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
   CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, CRUSH_SLACK, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, footTop, GUARDIAN, GUN_DEPRESS, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
@@ -22,7 +22,7 @@ import { nearStorm, type Storm } from '../shared/storm.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
 import { sunElevation } from '../shared/sun.ts';
-import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
+import { heightAt } from '../shared/terrain.ts';
 import { indoors } from '../shared/shelters.ts';
 import { flank, keepOut, skirt, type Skirt } from './pack.ts';
 
@@ -154,6 +154,13 @@ type Drone = {
 /** A jammed drone sinks this fast (m/s). */
 const JAM_SINK = 2.5;
 
+/** The crash sites within r of any of these players. */
+function sitesNear(players: { x: number; z: number }[], r: number): CrashSite[] {
+  const out = new Map<number, CrashSite>();
+  for (const p of players) for (const s of crashSitesNear(p.x, p.z, r)) out.set(s.id, s);
+  return [...out.values()];
+}
+
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -174,7 +181,8 @@ export class GuardianServer {
   private lastPos = new Map<number, { x: number; z: number }>();
   /** Player velocities (smoothed), for the crawler packs heading them off. */
   private vel = new Map<number, { x: number; z: number; vx: number; vz: number }>();
-  private sites = allCrashSites();
+  /** The sites in the core square (terrain.ts CORE_HALF); crawlers and night drones go by the sites near players. */
+  private sites = coreCrashSites();
   /** Guardian ground: the sites guardians roam. */
   private ground = this.sites.filter((s) => s.level === 2);
   private nextDrone = 1;
@@ -289,7 +297,7 @@ export class GuardianServer {
   private swarm(players: BotPlayer[]) {
     const near = (s: CrashSite, r: number) => players.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < r);
     for (const id of this.swarmed) {
-      const s = this.sites.find((o) => o.id === id)!;
+      const s = crashSite(id)!;
       if (near(s, SITE_LEAVE_R)) continue;
       this.swarmed.delete(id);
       this.guardians = this.guardians.filter((g) => g.kind !== CRAWLER || g.home !== s);
@@ -299,8 +307,8 @@ export class GuardianServer {
       this.guardians = this.guardians.filter((g) => g.home !== s);
       return false;
     });
-    for (const s of this.sites) {
-      if (s.level === 0 || this.swarmed.has(s.id) || !near(s, SITE_NEAR_R)) continue;
+    for (const s of sitesNear(players, SITE_NEAR_R)) {
+      if (s.level === 0 || this.swarmed.has(s.id)) continue;
       this.swarmed.add(s.id);
       const n = CRAWLERS_MIN + Math.floor(Math.random() * (CRAWLERS_MAX - CRAWLERS_MIN + 1));
       for (let i = 0; i < n; i++) {
@@ -640,13 +648,12 @@ export class GuardianServer {
     // At night, every crawler- or guardian-ground site someone is near has its drones over it (not the scrap fields).
     if (night) {
       for (const id of this.refill.keys()) {
-        const s = this.sites.find((o) => o.id === id)!;
+        const s = crashSite(id)!;
         if (!players.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_LEAVE_R)) this.refill.delete(id);
       }
-      for (const s of this.sites) {
+      for (const s of sitesNear(exposed, SITE_NEAR_R)) {
         if (s.level === 0) continue;
         if (this.drones.length >= MAX_DRONES) break;
-        if (!exposed.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_NEAR_R)) continue;
         let have = this.drones.filter((d) => !d.leaving && d.downAt < 0 && d.site === s.id).length;
         const at = this.refill.get(s.id);
         if (at === undefined) {
@@ -992,8 +999,8 @@ export class GuardianServer {
   /** A drone coming in from `from` m away to patrol around (hx, hz), over crash site `site` (-1: summoned). */
   private spawnDrone(hx: number, hz: number, site: number, until: number, from: number) {
     const a = rand(-Math.PI, Math.PI);
-    const x = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hx + Math.sin(a) * from));
-    const z = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, hz + Math.cos(a) * from));
+    const x = hx + Math.sin(a) * from;
+    const z = hz + Math.cos(a) * from;
     const d: Drone = {
       id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
       hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, jammed: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until,
@@ -1006,11 +1013,11 @@ export class GuardianServer {
 
   private dronePoint(d: Drone) {
     if (d.site === ROAM) {
-      // A long leg somewhere ahead-ish, inside the world and clear of the base.
+      // A long leg somewhere ahead-ish, clear of the base.
       for (let i = 0; i < 8; i++) {
         const a = d.yaw + rand(-1.6, 1.6), r = rand(...ROAM_LEG);
-        d.tx = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, d.x + Math.sin(a) * r));
-        d.tz = Math.max(-WORLD_HALF, Math.min(WORLD_HALF, d.z + Math.cos(a) * r));
+        d.tx = d.x + Math.sin(a) * r;
+        d.tz = d.z + Math.cos(a) * r;
         if (Math.hypot(d.tx - BASE.x, d.tz - BASE.z) > ROAM_BASE_KEEP_OUT + 20) return;
       }
       return;

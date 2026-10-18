@@ -35,7 +35,7 @@ import { Placer } from './placing';
 import { Scrap } from './world/scrap';
 import { CrashSites } from './world/crashsites';
 import { CrashSound } from './crashSound';
-import { allCrashSites, crashSitesNear, debrisTarget } from '../shared/crashsites.ts';
+import { coreCrashSites, crashSitesNear, debrisTarget } from '../shared/crashsites.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
@@ -123,7 +123,7 @@ machines.bench.indoors = (root) => base.lightIndoors(root);
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
-  const crash = allCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
+  const crash = coreCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
   Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, mast, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx, bossFx } });
 }
 

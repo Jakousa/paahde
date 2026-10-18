@@ -39,13 +39,13 @@ export function pitchFromQ(q: number): number {
 
 /** Packs an edit vertex index pair into one safe integer (for Sets/Maps). */
 export function cellKey(ix: number, iz: number): number {
-  return (ix + 32768) * 65536 + (iz + 32768);
+  return (ix + 2 ** 25) * 2 ** 26 + (iz + 2 ** 25);
 }
 export function cellX(k: number): number {
-  return Math.floor(k / 65536) - 32768;
+  return Math.floor(k / 2 ** 26) - 2 ** 25;
 }
 export function cellZ(k: number): number {
-  return (k % 65536) - 32768;
+  return (k % 2 ** 26) - 2 ** 25;
 }
 
 /** Called after an edit vertex changes, with its previous value. */

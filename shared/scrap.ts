@@ -19,7 +19,8 @@ import { yawFromQ } from './sim.ts';
 import { BASE_SPAWN, padBlend } from './base.ts';
 import { rocksNear } from './rocks.ts';
 import { shelterWithin } from './shelters.ts';
-import { baseHeight, heightAt, WORLD_HALF, WORLD_SEED } from './terrain.ts';
+import { cellInRange } from './cells.ts';
+import { baseHeight, heightAt, WORLD_SEED } from './terrain.ts';
 
 /** Grid cell size (m); each cell holds at most one pile. */
 export const SCRAP_CELL = 90;
@@ -122,7 +123,7 @@ function generate(ix: number, iz: number): ScrapPiece[] {
   for (let t = 0; t < 4 && !ok; t++) {
     px = (ix + 0.1 + 0.8 * r()) * SCRAP_CELL;
     pz = (iz + 0.1 + 0.8 * r()) * SCRAP_CELL;
-    ok = Math.abs(px) < WORLD_HALF - 10 && Math.abs(pz) < WORLD_HALF - 10 && flatEnough(px, pz) && padBlend(px, pz) > 0.3 && !rocksNear(px, pz, PILE_RADIUS + 2) &&
+    ok = flatEnough(px, pz) && padBlend(px, pz) > 0.3 && !rocksNear(px, pz, PILE_RADIUS + 2) &&
       !shelterWithin(px, pz, PILE_RADIUS + 2);
   }
   if (!ok) return NONE;
@@ -223,7 +224,7 @@ export function scrapKey(ix: number, iz: number, i: number): string {
 /** The piece with this id, if it exists (ids come from the network: validate them with this). */
 export function scrapPiece(ix: number, iz: number, i: number): ScrapPiece | undefined {
   if (!Number.isInteger(ix) || !Number.isInteger(iz) || !Number.isInteger(i)) return undefined;
-  if (Math.abs(ix * SCRAP_CELL) > WORLD_HALF + SCRAP_CELL || Math.abs(iz * SCRAP_CELL) > WORLD_HALF + SCRAP_CELL) return undefined;
+  if (!cellInRange(ix, iz)) return undefined;
   return scrapPieces(ix, iz)[i];
 }
 

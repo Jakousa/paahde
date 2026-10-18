@@ -27,7 +27,8 @@ import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
 import { rocksNear } from './rocks.ts';
 import { SCRAP_CELL, scrapPieces } from './scrap.ts';
 import { yawFromQ } from './sim.ts';
-import { baseHeight, heightAt, WORLD_HALF, WORLD_SEED } from './terrain.ts';
+import { cellId, cellOf } from './cells.ts';
+import { baseHeight, CORE_HALF, heightAt, WORLD_SEED } from './terrain.ts';
 
 /** Grid cell size (m); each cell holds at most one site. */
 export const CRASH_CELL = 350;
@@ -140,7 +141,7 @@ export const debrisId = (site: number, i: number) => `d:${site}:${i}`;
 /** The debris piece with this id, or null. Ids may come from the network: this validates them. */
 export function debrisById(id: unknown): CrashPiece | null {
   if (typeof id !== 'string') return null;
-  const m = /^d:(\d{1,6}):(\d{1,2})$/.exec(id);
+  const m = /^d:(\d{1,16}):(\d{1,2})$/.exec(id);
   const pc = m ? crashSite(Number(m[1]))?.pieces[Number(m[2])] : undefined;
   return pc && pc.id === id ? pc : null;
 }
@@ -218,7 +219,7 @@ function nearScrap(x: number, z: number, radius: number): boolean {
 
 /** Stable id of the site in cell (ix, iz). */
 export function crashSiteId(ix: number, iz: number): number {
-  return (ix + 64) * 128 + (iz + 64);
+  return cellId(ix, iz);
 }
 
 const cache = new Map<number, CrashSite | null>();
@@ -234,10 +235,8 @@ export function crashSiteAt(ix: number, iz: number): CrashSite | null {
 
 /** The site with this id, or undefined (ids may come from the network: this validates them). */
 export function crashSite(id: number): CrashSite | undefined {
-  if (!Number.isInteger(id) || id < 0) return undefined;
-  const ix = Math.floor(id / 128) - 64, iz = (id % 128) - 64;
-  if (Math.abs(ix * CRASH_CELL) > WORLD_HALF + CRASH_CELL || Math.abs(iz * CRASH_CELL) > WORLD_HALF + CRASH_CELL) return undefined;
-  return crashSiteAt(ix, iz) ?? undefined;
+  const c = cellOf(id);
+  return c ? crashSiteAt(c.ix, c.iz) ?? undefined : undefined;
 }
 
 /** Sites whose centre lies within r of (x, z), nearest first. */
@@ -254,10 +253,10 @@ export function crashSitesNear(x: number, z: number, r: number): CrashSite[] {
   return out.sort((a, b) => a.d - b.d).map((o) => o.s);
 }
 
-/** Every site in the world (for the server, debug maps). */
-export function allCrashSites(): CrashSite[] {
+/** Every site in the core square (terrain.ts CORE_HALF: where the server lays out finds and giant guardians; debug maps). */
+export function coreCrashSites(): CrashSite[] {
   const out: CrashSite[] = [];
-  const lo = Math.floor(-WORLD_HALF / CRASH_CELL), hi = Math.floor(WORLD_HALF / CRASH_CELL);
+  const lo = Math.floor(-CORE_HALF / CRASH_CELL), hi = Math.floor(CORE_HALF / CRASH_CELL);
   for (let iz = lo; iz <= hi; iz++) for (let ix = lo; ix <= hi; ix++) {
     const s = crashSiteAt(ix, iz);
     if (s) out.push(s);
@@ -280,8 +279,7 @@ function generate(ix: number, iz: number): CrashSite | null {
     cx = ix * CRASH_CELL + CELL_MARGIN + span * r();
     cz = iz * CRASH_CELL + CELL_MARGIN + span * r();
     const bx = cx - BASE.x, bz = cz - BASE.z, sx = cx - BASE_SPAWN.x, sz = cz - BASE_SPAWN.z;
-    ok = Math.abs(cx) < WORLD_HALF - 30 && Math.abs(cz) < WORLD_HALF - 30 &&
-      bx * bx + bz * bz > BASE_CLEAR * BASE_CLEAR && sx * sx + sz * sz > BASE_CLEAR * BASE_CLEAR &&
+    ok = bx * bx + bz * bz > BASE_CLEAR * BASE_CLEAR && sx * sx + sz * sz > BASE_CLEAR * BASE_CLEAR &&
       padBlend(cx, cz) >= 1 && flatEnough(cx, cz, K.radius) && !nearScrap(cx, cz, K.radius) && !shelterWithin(cx, cz, K.radius);
   }
   if (!ok) return null;

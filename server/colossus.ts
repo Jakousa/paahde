@@ -22,7 +22,7 @@ import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import { BASE } from '../shared/base.ts';
 import { blastPush } from '../shared/ragdoll.ts';
-import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
+import { CORE_HALF, heightAt } from '../shared/terrain.ts';
 import {
   BIG_CRATER_MM, BIG_CRATER_R, BIG_KILL_R, BIG_S, DOUBLE_S, FALL_FROM, FALL_S, FALL_TO, FOOT_X, HIP_H,
   HAND_L, HUNT_TURN_RATE, MISSILE_CRATER_MM, MISSILE_CRATER_R, MISSILE_KILL_R, MISSILE_MAX, MISSILE_MIN, missileT, MOOD_HUNT,
@@ -126,7 +126,6 @@ type St = {
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const r2 = (v: number) => Math.round(v * 100) / 100;
-const inWorld = (x: number, z: number) => Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20;
 const fromBase = (x: number, z: number) => Math.hypot(x - BASE.x, z - BASE.z);
 
 /** Foot i's rest spot: beside the hips (foot 0 on its +X side), `lead` m ahead. */
@@ -149,12 +148,12 @@ function plant(b: Boss, st: St) {
   });
 }
 
-/** A roaming waypoint: far off, in the world, away from the base (roughly towards `dir` if given). */
+/** A roaming waypoint: far off, in the core square (terrain.ts CORE_HALF), away from the base (roughly towards `dir` if given). */
 function waypoint(st: St, x: number, z: number, dir?: number) {
   for (let k = 0; k < 20; k++) {
     const a = dir === undefined ? Math.random() * Math.PI * 2 : dir + rand(-1.1, 1.1), d = rand(ROAM[0], ROAM[1]);
     const tx = x + Math.sin(a) * d, tz = z + Math.cos(a) * d;
-    if (Math.abs(tx) > WORLD_HALF - MARGIN || Math.abs(tz) > WORLD_HALF - MARGIN || fromBase(tx, tz) < BASE_KEEP_OUT + 100) continue;
+    if (Math.abs(tx) > CORE_HALF - MARGIN || Math.abs(tz) > CORE_HALF - MARGIN || fromBase(tx, tz) < BASE_KEEP_OUT + 100) continue;
     st.tx = tx;
     st.tz = tz;
     return;
@@ -324,7 +323,7 @@ export const colossus: Brain = {
     const marks: [number, number, number][] = [[FALL_FROM + 6, 10, 2200], [30, 12, 3000], [44, 13.5, 3400], [58, 10, 2600]];
     for (const [d, r, mm] of marks) {
       const x = ox + sx * d, z = oz + sz * d;
-      if (inWorld(x, z)) out.craters.push({ x, z, r, mm });
+      out.craters.push({ x, z, r, mm });
     }
     for (const p of players) {
       if (p.safe) continue;
@@ -471,7 +470,7 @@ function footfalls(st: St, now: number, players: BossPlayer[], out: BossOut) {
   if (!st.pending.length) return;
   st.pending = st.pending.filter((e) => {
     if (e.at > now) return true;
-    if (inWorld(e.x, e.z) && (e.big || players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < FOOTPRINT_R))) out.craters.push({ x: e.x, z: e.z, r: e.r, mm: e.mm });
+    if ((e.big || players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < FOOTPRINT_R))) out.craters.push({ x: e.x, z: e.z, r: e.r, mm: e.mm });
     for (const p of players) {
       if (p.safe || out.kills.some((k) => k.id === p.id)) continue;
       const d = Math.hypot(p.x - e.x, p.z - e.z);
@@ -579,7 +578,6 @@ function fire(b: Boss, st: St, now: number, p: BossPlayer, sx: number, out: Boss
   const a = Math.random() * Math.PI * 2, r = Math.random() * SCATTER;
   const x = p.x + (tr ? tr.vx : 0) * T * lead + Math.cos(a) * r;
   const z = p.z + (tr ? tr.vz : 0) * T * lead + Math.sin(a) * r;
-  if (!inWorld(x, z)) return;
   const y = heightAt(x, z);
   T = missileT(Math.hypot(x - x0, z - z0), hand);
   st.missiles.push({ at: now + T * 1000 + SEEN_LAG_MS, x, y, z });
@@ -630,7 +628,7 @@ function landMissiles(st: St, now: number, players: BossPlayer[], out: BossOut) 
   if (!st.missiles.length) return;
   st.missiles = st.missiles.filter((m) => {
     if (m.at > now) return true;
-    if (inWorld(m.x, m.z)) out.craters.push({ x: m.x, z: m.z, r: MISSILE_CRATER_R, mm: MISSILE_CRATER_MM });
+    out.craters.push({ x: m.x, z: m.z, r: MISSILE_CRATER_R, mm: MISSILE_CRATER_MM });
     for (const p of players) {
       if (p.safe || out.kills.some((k) => k.id === p.id)) continue;
       if (Math.hypot(p.x - m.x, p.y - m.y, p.z - m.z) > MISSILE_KILL_R) continue;

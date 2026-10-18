@@ -22,7 +22,7 @@ import { GUARDIAN, KINDS, LEG_POST_H, LEG_POST_R } from './guardians.ts';
 import { collideScrap } from './scrap.ts';
 import { collideTrophies } from './trophies.ts';
 import { WIND } from './dunes.ts';
-import { heightAt, onRock, WORLD_HALF } from './terrain.ts';
+import { heightAt, onRock } from './terrain.ts';
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
@@ -368,8 +368,8 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   blockRock(c, s.x, s.z, Math.max(y, s.y));
   vx = c.vx;
   vz = c.vz;
-  const x = clamp(c.x, -WORLD_HALF, WORLD_HALF);
-  const z = clamp(c.z, -WORLD_HALF, WORLD_HALF);
+  const x = c.x;
+  const z = c.z;
   const ground = Math.max(sandAt(x, z, s.y), scrapTop, baseTop);
   // Under the roof: bump your head.
   const ceiling = Math.min(baseCeiling(x, z, s.y, PLAYER_HEIGHT), shelterCeiling(x, z, s.y, PLAYER_HEIGHT));
@@ -481,8 +481,8 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   blockRock(c, s.x, s.z, Math.max(airborneY, s.y));
   vx = c.vx;
   vz = c.vz;
-  const x = clamp(c.x, -WORLD_HALF, WORLD_HALF);
-  const z = clamp(c.z, -WORLD_HALF, WORLD_HALF);
+  const x = c.x;
+  const z = c.z;
   const ground = Math.max(sandAt(x, z, s.y), scrapTop, baseTop);
   const hs = Math.hypot(vx, vz);
 

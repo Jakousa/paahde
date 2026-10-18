@@ -2,6 +2,19 @@
 
 What we built, why, and what's left. Newest session first. Add an entry when you land something big.
 
+## 2026-10-18 — The world has no edge
+
+- The ±2000 m clamp is gone: you can walk and ride forever. Terrain, rocks, scrap, wrecks, crash sites and shelters
+  were already generated per cell from the seed; their bound checks are dropped, so nothing inside the old square
+  moved (checked: same sites, shelters, piles). Past 2 km every crash site is level 2 (guardian ground).
+- Crash-site and shelter ids keep their old values in the old 128×128 cells and number every other cell after them
+  (`shared/cells.ts`), so `crash_spent` rows stay valid. Packed cache keys (dig, rocks, blown sand, wind) widened.
+- `CORE_HALF` (shared/terrain.ts, 2000) is the square the server still spreads the finite things over: finds,
+  stashes, giant guardians (`coreCrashSites()`), the colossus's roaming. Crawlers and night drones go by the sites
+  near players (`crashSitesNear`), so they turn up anywhere.
+- Known gaps: nothing to find far out but scrap, machines and crawlers; shaders that use world positions (sand
+  ripples) lose float precision some tens of km out; site caches grow with how far people have been.
+
 ## 2026-10-18 — Bosses are the goal: receivers, health, trophies
 
 - **Win:** the world is won when every boss kind has been killed once (`beaten` in the world's settings,

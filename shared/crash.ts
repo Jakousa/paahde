@@ -98,7 +98,7 @@ export function machinesAt(w: Wreck): CrashSite[] {
 /** The site with this id ("<crash site id>:<index>"), or null. Ids may come from the network: this validates them. */
 export function crashSiteById(id: unknown): CrashSite | null {
   if (typeof id !== 'string') return null;
-  const m = /^(\d{1,6}):(\d)$/.exec(id);
+  const m = /^(\d{1,16}):(\d)$/.exec(id);
   const w = m ? crashSite(Number(m[1])) : undefined;
   return (w && machinesAt(w)[Number(m![2])]) ?? null;
 }
