@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
-import { tyreprints } from './footprints.ts';
+import { END_FADE, TRACK_WRAP, tyreprints } from './footprints.ts';
 import { tyreDust } from './tyreDust.ts';
 import type { RidePose } from './players.ts';
 import { nightLevel, SHADOW_ONLY_LAYER } from './world/env.ts';
@@ -26,7 +26,7 @@ const WHEELBASE = 1.36;
 const STEER_AXIS = new THREE.Vector3(0, 0.9135, 0.4067);
 const MAX_LEAN = 0.6;
 const MAX_STEER = 0.5;
-const TRACK_STEP = 0.5; // metres between tyre-track marks
+const TRACK_STEP = 0.3; // metres per tyre-track strip (short, so turns curve smoothly)
 const WHEELIE = 0.45; // rad the nose comes up, about the rear tyre's contact
 /** The headlight lens in the Handlebar node's frame (tools/blender/sandbike.py lamp_c), and where the beam
  *  aims from there: ahead and a little down, so it pools on the sand ~15 m out. */
@@ -60,7 +60,10 @@ export class Bike {
   private wheelie = 0;
   private lean = 0;
   private steer = 0;
-  private track = 0;
+  // Where the tyre track last ended, and the path distance there (keys the tread pattern).
+  private trackX = NaN;
+  private trackZ = NaN;
+  private trackS = 0;
   private forward = NaN;
   private accel = 0;
   private grounded = true;
@@ -174,13 +177,33 @@ export class Bike {
     this.lights(dt);
 
     // Tyre track and dust on the sand.
-    if (!p.grounded || p.y > heightAt(p.x, p.z) + 0.05) return;
+    if (!p.grounded || p.y > heightAt(p.x, p.z) + 0.05) {
+      this.trackX = NaN; // airborne: the track breaks, and starts afresh where it lands
+      return;
+    }
     this.dust(p, fx, fz, hs, dt, landed);
-    this.track += hs * dt;
-    if (this.track < TRACK_STEP) return;
-    this.track %= TRACK_STEP;
-    const tx = p.x - fx * WHEELBASE * 0.5, tz = p.z - fz * WHEELBASE * 0.5;
-    tyreprints.add(tx, heightAt(tx, tz), tz, p.heading, 2.2);
+    this.trackTo(p.x - fx * WHEELBASE * 0.5, p.z - fz * WHEELBASE * 0.5);
+  }
+
+  /** Extend the tyre track to the rear wheel at (x, z): a strip from where it last ended, once it is long enough. */
+  private trackTo(x: number, z: number) {
+    if (Number.isNaN(this.trackX)) {
+      this.trackX = x;
+      this.trackZ = z;
+      return;
+    }
+    const dx = x - this.trackX, dz = z - this.trackZ;
+    const len = Math.hypot(dx, dz);
+    if (len < TRACK_STEP) return;
+    if (len < 3) {
+      const mx = this.trackX + dx / 2, mz = this.trackZ + dz / 2;
+      // Stretched so each end fade overlaps the neighbouring strip's, and the joins blend.
+      const strip = len / (1 - END_FADE);
+      tyreprints.add(mx, heightAt(mx, mz), mz, Math.atan2(-dx, -dz), 1, strip, this.trackS + len / 2, strip);
+      this.trackS = (this.trackS + len) % TRACK_WRAP;
+    } // else a teleport or snapshot jump: start afresh
+    this.trackX = x;
+    this.trackZ = z;
   }
 
   /** The headlight: on once it is dark (the sun a couple of degrees under), with a quick ramp so it doesn't pop. */
