@@ -21,6 +21,7 @@
 // - Loot (shared/loot.ts): what lies in the world, from the server; F asks to take it.
 // - Hands: what we hold (canteen, drinking, filling, a gun raised to aim) is sent when it changes and relayed in snapshots, cosmetic only;
 //   with it the selected hotbar slot.
+import { setYard } from '../shared/yard.ts';
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { heal, pitchFromQ } from '../shared/dig.ts';
@@ -304,6 +305,11 @@ export class Net {
   }
 
   /** Debug menu: repaired gear of every kind. */
+  /** Dev yard: put one machine (or all) back together (shared/yard.ts). */
+  yardReset(id?: string) {
+    if (this.connected) this.send({ t: 'yardReset', id });
+  }
+
   debugGear(tier = 0) {
     if (this.connected) this.send({ t: 'debugGear', tier });
   }
@@ -636,6 +642,7 @@ export class Net {
       m.set(msg.i, msg.n);
       return;
     }
+    if (msg.t === 'yard') return setYard(true);
     if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake' || msg.t === 'sites' || msg.t === 'siteReset' || msg.t === 'bench' || msg.t === 'siteTook') {
       if (msg.t === 'siteDone') this.holders.get(msg.id)?.delete(msg.i);
       return this.onSite?.(msg);

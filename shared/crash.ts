@@ -9,6 +9,7 @@ import { BASE_SPAWN } from './base.ts';
 import { crashSite, crashSitesNear, crashTaken, type CrashSite as Wreck } from './crashsites.ts';
 import type { SiteLevel } from './crashsites.ts';
 import { COMPONENTS, SALVAGE, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
+import { yardById, yardOn, yardSites } from './yard.ts';
 import { STATIONS } from './stations.ts';
 import { LEVEL_KINDS } from './tables.ts';
 
@@ -57,9 +58,11 @@ export interface CrashSite {
   z: number;
   /** Heading of the component, radians (three.js rotation.y; the machine lies across its throw direction). */
   yaw: number;
-  kind: ComponentKind;
+  kind: JunkKind;
   /** Seeds what is inside (tiers). */
   seed: number;
+  /** A machine of the dev yard (shared/yard.ts): worked in place whatever its size, never spent. */
+  yard?: boolean;
 }
 
 /** Deterministic PRNG from a seed (integer hashing only). */
@@ -98,6 +101,8 @@ export function machinesAt(w: Wreck): CrashSite[] {
 /** The site with this id ("<crash site id>:<index>"), or null. Ids may come from the network: this validates them. */
 export function crashSiteById(id: unknown): CrashSite | null {
   if (typeof id !== 'string') return null;
+  const y = yardById(id);
+  if (y) return y;
   const m = /^(\d{1,16}):(\d)$/.exec(id);
   const w = m ? crashSite(Number(m[1])) : undefined;
   return (w && machinesAt(w)[Number(m![2])]) ?? null;
@@ -107,6 +112,7 @@ export function crashSiteById(id: unknown): CrashSite | null {
 /** Every machine site within `radius` of (x, z). */
 export function sitesNear(x: number, z: number, radius: number): CrashSite[] {
   const out: CrashSite[] = [];
+  if (yardOn()) for (const s of yardSites()) if (Math.hypot(s.x - x, s.z - z) <= radius) out.push(s);
   for (const w of crashSitesNear(x, z, radius + 40)) {
     for (const s of machinesAt(w)) if (Math.hypot(s.x - x, s.z - z) <= radius) out.push(s);
   }

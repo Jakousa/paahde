@@ -71,7 +71,8 @@ import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { machinesAt } from '../shared/crash.ts';
-import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
+import { yardSites } from '../shared/yard.ts';
+import { junkSpec, SALVAGE } from '../shared/salvage.ts';
 import { bagShape, carriedGear, equipped, gearTiers, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootPrompt } from './world/loot';
 import { CorpseView } from './world/corpses';
@@ -199,7 +200,8 @@ machines.bench.onReady = () => {
   if (job && !teardown.active && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 5) teardown.begin(job);
 };
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
-  (mode) => trophies.show(mode));
+  (mode) => trophies.show(mode),
+  (all) => (all ? net.yardReset() : net.yardReset(machines.nearestYard(net.me.x, net.me.z)?.site.id)));
 new Chat(net);
 const names = nameGate(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
@@ -324,7 +326,7 @@ terrain.loading = true;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
 // ?spawn=crash / field: once joined, turn to face the machine or the scrap field we were put next to.
 const spawnAt = new URLSearchParams(location.search).get('spawn');
-let faceCrash = spawnAt === 'crash' || spawnAt === 'field';
+let faceCrash = spawnAt === 'crash' || spawnAt === 'field' || spawnAt === 'yard';
 // FPS for the info line: frames counted over half-second windows.
 let fps = 0;
 let fpsFrames = 0;
@@ -360,7 +362,7 @@ renderer.setAnimationLoop((time) => {
   if (faceCrash) {
     faceCrash = false;
     const near = crashSitesNear(net.me.x, net.me.z, 200);
-    const site = spawnAt === 'field' ? near.find((s) => s.level === 0) : near.find((s) => s.level > 0)?.machines[0];
+    const site = spawnAt === 'yard' ? yardSites()[2] : spawnAt === 'field' ? near.find((s) => s.level === 0) : near.find((s) => s.level > 0)?.machines[0];
     if (site) orbit.yaw = Math.atan2(-(site.x - net.me.x), -(site.z - net.me.z));
   }
   resolution.update(frameDt);
@@ -526,10 +528,10 @@ baseSand.update(frameDt, storm.atBase);
   // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
   // it lies. A carried one is taken apart on the base's disassembly table.
   const site = net.connected && !teardown.active && station < 0 && !bed && !target && !debris && !find ? machines.nearest(net.me.x, net.me.z) : null;
-  const small = site ? COMPONENTS[site.site.kind].carry : false;
+  const small = site ? junkSpec(site.site.kind).carry && !site.site.yard : false;
   // Salvage wrecks (src/world/wrecks.ts) are always carried home.
   const wreck = net.connected && !teardown.active && station < 0 && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
-  const sitePrompt = site ? (small ? TEXT.prompt.pickUp(COMPONENTS[site.site.kind].label) : TEXT.prompt.disassemble(COMPONENTS[site.site.kind].label))
+  const sitePrompt = site ? (small ? TEXT.prompt.pickUp(junkSpec(site.site.kind).label) : TEXT.prompt.disassemble(junkSpec(site.site.kind).label))
     : wreck ? TEXT.prompt.pickUp(SALVAGE[wreck.kind].label) : null;
   const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
   const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? TEXT.prompt.useWorkbench : (table?.label ?? TEXT.prompt.useTable);

@@ -23,7 +23,7 @@ export class DebugMenu {
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
   constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) => void,
-    showTrophies: (mode: TrophyShow) => void) {
+    showTrophies: (mode: TrophyShow) => void, resetYard: (all: boolean) => void = () => {}) {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
@@ -59,6 +59,7 @@ export class DebugMenu {
 <label>Tone <select id="dbgTone">${TONE_CURVES.map((c) => `<option>${c}</option>`).join('')}</select></label>
 <label id="dbgWhiteRow">White <input id="dbgWhite" type="range" min="1" max="8" step="0.25"> <b id="dbgWhiteVal"></b></label>
 <div class="row">Give gear ${['Scrap', 'Basic', 'Quality', 'Space'].map((n, i) => `<button data-gear="${i}" title="One of every piece of gear, repaired with ${n} parts (what doesn't fit is skipped)">${n}</button>`).join('')}</div>
+<div class="row">Yard <button id="dbgYard" title="Put the nearest yard machine back together (npm run dev:yard)">Reset near</button><button id="dbgYardAll" title="Put every yard machine back together">Reset all</button></div>
 <div class="row"><button id="dbgHit" title="A killing blow (a guardian's laser): try the shield plate">Hit me</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
@@ -70,6 +71,8 @@ export class DebugMenu {
     p.querySelector('#dbgLocalStorm')!.addEventListener('click', summonLocalStorm);
     for (const b of p.querySelectorAll<HTMLElement>('[data-gear]')) b.addEventListener('click', () => giveGear(Number(b.dataset.gear)));
     p.querySelector('#dbgHit')!.addEventListener('click', hit);
+    p.querySelector('#dbgYard')!.addEventListener('click', () => resetYard(false));
+    p.querySelector('#dbgYardAll')!.addEventListener('click', () => resetYard(true));
     p.querySelector('#dbgGuardian')!.addEventListener('click', () => summonBot('guardian'));
     p.querySelector('#dbgDrone')!.addEventListener('click', () => summonBot('drone'));
     p.querySelector('#dbgJet')!.addEventListener('click', () => summonBot('jet'));

@@ -33,7 +33,7 @@ function world(id: string): Promise<number> {
   if (!w) {
     mkdirSync(WORLDS_DIR, { recursive: true });
     const child = fork(new URL('./world.ts', import.meta.url), {
-      env: { ...process.env, WORLD_ID: id, DB_PATH: dbPath(id), TELEMETRY_PATH: join(dirname(DB_PATH), 'telemetry.jsonl') },
+      env: { ...process.env, WORLD_ID: id, DB_PATH: dbPath(id), ...(process.argv.includes('--yard') ? { MACHINE_YARD: '1' } : {}), TELEMETRY_PATH: join(dirname(DB_PATH), 'telemetry.jsonl') },
       // Not under the dev server's --watch-path: that restarts this process, and the worlds go with it.
       execArgv: process.execArgv.filter((a) => !a.startsWith('--watch')),
     });

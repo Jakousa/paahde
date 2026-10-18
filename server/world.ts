@@ -14,7 +14,7 @@ import { BOSS_SPOILS, JET_RELIC_ODDS, JET_SCRAP, JET_SOFT_EXTRA, JET_SPOILS, KIL
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, RECEIVERS, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
-import { overBase } from '../shared/base.ts';
+import { BASE, overBase } from '../shared/base.ts';
 import { indoors, overShelter, shelterAt, sheltersNear } from '../shared/shelters.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { BLAST_R, CRATER_MM, CRATER_R, GUARDIAN } from '../shared/guardians.ts';
@@ -39,6 +39,7 @@ import { JetServer } from './jets.ts';
 import { BossServer, type BossKill, type BossOut } from './bosses.ts';
 import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
+import { setYard, yardOn } from '../shared/yard.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
 import { TerrainServer } from './terrain.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
@@ -74,6 +75,8 @@ setTrophies(beaten);
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
 const items = new ItemServer(db);
+// The dev machine yard (npm run dev:yard, shared/yard.ts), before the machines' progress is loaded.
+if (process.env.MACHINE_YARD) setYard(true);
 const crash = new CrashServer(db, (ids, msg) => {
   const want = new Set(ids);
   for (const p of players.values()) if (want.has(p.id)) send(p.ws, msg);
@@ -246,6 +249,10 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
     const m = crashSitesNear(state.x, state.z, 3000).find((s) => s.level > 0)?.machines[0];
     if (m) state = spawnState(m.x + m.dx * 7, m.z + m.dz * 7);
   }
+  if (spawn === 'yard' && yardOn()) {
+    // Dev helper: outside the bunker, a few steps from the first row of the machine yard (shared/yard.ts).
+    state = spawnState(BASE.x, BASE.z + 14);
+  }
   if (spawn === 'field') {
     // Dev helper: just outside the nearest scrap field, on the base's side, looking at it.
     const s = crashSitesNear(state.x, state.z, 3000).find((o) => o.level === 0);
@@ -265,6 +272,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   save(p);
   const name = db.getName(browserId);
   p.name = name ?? '';
+  if (process.env.MACHINE_YARD) send(ws, { t: 'yard' });
   // Terrain first, so the client never sees its spawn without the holes.
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
@@ -817,6 +825,8 @@ function onCrash(p: Player, msg: ClientMsg) {
     gearChanged(p.browserId);
   } else if (msg.t === 'benchScrap') {
     if (crash.scrapBench(p.state, (n) => items.give(p.browserId, SCRAP, n))) sendBox(p, 'bag');
+  } else if (msg.t === 'yardReset') {
+    crash.yardReset(msg.id);
   } else if (msg.t === 'siteJoin') {
     const state = crash.join(p.id, p.state, msg.id);
     if (state) send(p.ws, state);
