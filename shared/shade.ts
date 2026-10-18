@@ -4,7 +4,8 @@
 // `sunOnBody` casts BODY rays (head, both shoulders, knees; lower when crouching) and weighs them, so standing half
 // behind a hut or with the legs below a crest is partial shade. Each ray (`inSun`) goes from the point towards
 // the sun (shared/sun.ts) and is tested against:
-// - the base's surface buildings (the entrance hut and the skylight's collar, as boxes);
+// - the base's surface buildings (the entrance hut and the skylight's collar, as boxes) and the shelters' huts
+//   (shared/shelters.ts) within HUT_DIST;
 // - crash-site wrecks and debris (their collision capsules, shared/crashsites.ts) within CRASH_DIST;
 // - `casters`: things that move, passed in by the caller: other players, their bikes, motorcycles lying on the sand;
 // - near the start, the scrap piles' hitboxes (shared/scrap.ts);
@@ -20,6 +21,7 @@ import { BASE, HUT, ROOM_Z, SKY, W } from './base.ts';
 import { crashTaken, crashSitesNear, pieceY, type CrashSite } from './crashsites.ts';
 import { EYE_HEIGHT, MAX_EDIT_MM } from './dig.ts';
 import { scrapPieces, scrapTaken, SCRAP_CELL, type ScrapPiece } from './scrap.ts';
+import { S_HUT, sheltersNear, shelterHutRect } from './shelters.ts';
 import { DECL, skyVector, sunHourAngle, type Vec3 } from './sun.ts';
 import { ROCK_H_MAX } from './rocks.ts';
 import { heightAt } from './terrain.ts';
@@ -40,6 +42,8 @@ const GROUND_MAX = 12 + 30 + 3.5 + ROCK_H_MAX + MAX_EDIT_MM / 1000 + 1;
 const SCRAP_DIST = 25;
 /** Crash-site pieces (up to ~6 m tall) are tested this far along the ray (m). */
 const CRASH_DIST = 80;
+/** Shelter huts (2.6 m tall) are tested this close (m). */
+const HUT_DIST = 60;
 /** Casters (players, bikes) further than this from the point (m, on each axis) are skipped. */
 const CASTER_DIST = 30;
 /** Sun this close to the horizon (sin of its elevation) counts as set. */
@@ -166,9 +170,18 @@ function sitesNear(x: number, z: number): CrashSite[] {
   return crashSitesNear(x, z, CRASH_DIST + 120);
 }
 
+/** The shelters' huts close enough to (x, z) to shade it, as boxes like BOXES. */
+function hutsNear(x: number, z: number): number[][] {
+  return sheltersNear(x, z, HUT_DIST).map((s) => {
+    const [x0, z0, x1, z1] = shelterHutRect(s);
+    return [x0, x1, s.y - 0.3, s.y + S_HUT.top, z0, z1];
+  });
+}
+
 /** One ray from (x, y, z) along d (towards the sun, d.y ≥ MIN_SUN_Y): true if nothing is in the way. */
-function rayClear(x: number, y: number, z: number, d: Vec3, sites: CrashSite[], casters: readonly Caster[], self: number): boolean {
+function rayClear(x: number, y: number, z: number, d: Vec3, sites: CrashSite[], huts: number[][], casters: readonly Caster[], self: number): boolean {
   for (const b of BOXES) if (hitsBox(x, y, z, d, b, MAX_DIST)) return false;
+  for (const b of huts) if (hitsBox(x, y, z, d, b, MAX_DIST)) return false;
   for (const c of casters) {
     if (c.id === self || Math.abs(c.x - x) > CASTER_DIST || Math.abs(c.z - z) > CASTER_DIST) continue;
     if (hitsPrism(x, y, z, d, c.x, c.z, c.ax, c.az, c.half, c.r, c.y0, c.y1)) return false;
@@ -209,7 +222,7 @@ function rayClear(x: number, y: number, z: number, d: Vec3, sites: CrashSite[], 
 export function inSun(x: number, y: number, z: number, tod: number, casters: readonly Caster[] = [], self = -1): boolean {
   const d = sunDirection(tod);
   if (d.y < MIN_SUN_Y) return false;
-  return rayClear(x, y, z, d, sitesNear(x, z), casters, self);
+  return rayClear(x, y, z, d, sitesNear(x, z), hutsNear(x, z), casters, self);
 }
 
 /**
@@ -222,11 +235,11 @@ export function sunOnBody(x: number, y: number, z: number, crouching: boolean, t
   const hl = Math.hypot(d.x, d.z);
   // Across the sun's direction, on the ground (any way when it is straight overhead).
   const sx = hl > 1e-6 ? -d.z / hl : 1, sz = hl > 1e-6 ? d.x / hl : 0;
-  const sites = sitesNear(x, z);
+  const sites = sitesNear(x, z), huts = hutsNear(x, z);
   const k = crouching ? CROUCH_SCALE : 1;
   let lit = 0;
   for (const [h, side, w] of BODY) {
-    if (rayClear(x + sx * side, y + h * k, z + sz * side, d, sites, casters, self)) lit += w;
+    if (rayClear(x + sx * side, y + h * k, z + sz * side, d, sites, huts, casters, self)) lit += w;
   }
   return Math.min(1, lit);
 }

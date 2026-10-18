@@ -7,7 +7,7 @@
 // crawler and guardian ground, drones at night there too) and go when everyone has left. The scrap fields
 // (level 0) near the base have none. A few more drones roam the open desert day and night (ROAMERS), drifting in
 // near someone now and then on long legs, and flying off again after a few minutes.
-import { BASE, inBase } from '../shared/base.ts';
+import { BASE } from '../shared/base.ts';
 import { allCrashSites, type CrashSite } from '../shared/crashsites.ts';
 import {
   ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
@@ -23,6 +23,7 @@ import type { ServerMsg } from '../shared/protocol.ts';
 import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
 import { sunElevation } from '../shared/sun.ts';
 import { heightAt, WORLD_HALF } from '../shared/terrain.ts';
+import { indoors } from '../shared/shelters.ts';
 
 export const TICK_HZ = 10;
 /** Players get guardians and drones within this distance (m), crawlers within CRAWLER_SEND_R. */
@@ -297,7 +298,7 @@ export class GuardianServer {
     const bitten = new Map<number, number>();
     const shot: number[] = [], blasted: number[] = [], events: BoltEvent[] = [];
     const byId = new Map(players.map((p) => [p.id, p]));
-    const exposed = players.filter((p) => !p.safe && !inBase(p.x, p.y, p.z));
+    const exposed = players.filter((p) => !p.safe && !indoors(p.x, p.y, p.z));
     this.swarm(players);
     this.wrecks(now);
     const lit = this.tickDrones(dt, now, tod, players, exposed, byId);
@@ -367,7 +368,7 @@ export class GuardianServer {
     const sc = KINDS[g.kind].scale;
     const pv = gunPivot(g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, g.yaw, sc, { x: 0, y: 0, z: 0 });
     const cy = p ? p.y + 1.1 : 0;
-    g.aiming = !!p && !p.safe && !inBase(p.x, p.y, p.z) && Math.hypot(p.x - pv.x, cy - pv.y, p.z - pv.z) < FIRE_R
+    g.aiming = !!p && !p.safe && !indoors(p.x, p.y, p.z) && Math.hypot(p.x - pv.x, cy - pv.y, p.z - pv.z) < FIRE_R
       && lineOfSight(pv.x, pv.y, pv.z, p.x, cy, p.z);
     if (!g.aiming || !p) {
       g.chargeAt = -1;
@@ -442,11 +443,11 @@ export class GuardianServer {
     if (g.prey >= 0) {
       const p = byId.get(g.prey);
       const shot = now < g.shotUntil;
-      if (shot && p && !p.safe && !inBase(p.x, p.y, p.z)) this.hunt(g, p, now);
+      if (shot && p && !p.safe && !indoors(p.x, p.y, p.z)) this.hunt(g, p, now);
       // Crawlers keep to their site; guardians give up once you've got far from them.
       const far = g.kind === CRAWLER ? Math.hypot(g.px - g.home.x, g.pz - g.home.z) : Math.hypot(g.px - g.x, g.pz - g.z);
       const tired = g.kind === CRAWLER && now - g.huntAt > CRAWLER_CHASE_MS;
-      const gone = !p || p.safe || inBase(p.x, p.y, p.z) || now - g.knownAt > HUNT_FORGET || (far > HUNT_GIVE_UP_R[g.kind] && !shot) || tired;
+      const gone = !p || p.safe || indoors(p.x, p.y, p.z) || now - g.knownAt > HUNT_FORGET || (far > HUNT_GIVE_UP_R[g.kind] && !shot) || tired;
       if (tired) g.calmUntil = now + CRAWLER_CALM_MS;
       if (gone) {
         g.prey = -1;
@@ -725,7 +726,7 @@ export class GuardianServer {
    *  them. The one hunting them calms down after. */
   stomp(id: unknown, p: BotPlayer, now: number): boolean {
     const g = this.guardians.find((o) => o.id === id);
-    if (!g || g.kind !== GUARDIAN || g.deadAt >= 0 || p.safe || inBase(p.x, p.y, p.z)) return false;
+    if (!g || g.kind !== GUARDIAN || g.deadAt >= 0 || p.safe || indoors(p.x, p.y, p.z)) return false;
     if (Math.hypot(p.x - g.x, p.z - g.z) > (REST_R + STEP_DIST) * KINDS[GUARDIAN].scale + CRUSH_SLACK) return false;
     if (g.prey === p.id) {
       g.prey = -1;
@@ -845,7 +846,7 @@ export class GuardianServer {
       return { hit: true, kill: { kind: g.kind, x: g.x, z: g.z, by: by.id } };
     }
     // Hurt (or just hit), it turns on whoever did it; a crawler's pack with it.
-    if (!by.safe && !inBase(by.x, by.y, by.z)) {
+    if (!by.safe && !indoors(by.x, by.y, by.z)) {
       g.calmUntil = 0;
       g.shotUntil = now + SHOT_TRACK_MS;
       this.hunt(g, by, now);

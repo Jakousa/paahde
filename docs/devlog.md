@@ -1238,3 +1238,23 @@ Crafted at the workbench from a compute unit, a wiring coil and a battery (any t
   builds, a falling chirp when it drops. Levels measured: searching −38 LUFS, lock −32 → −27, chirp −26.
 - **Gaps:** others see and hear that you're jamming (lamp, static) but not the lock building; the lock bar is only
   felt, so the 5 s are learned by trying.
+
+## Shelters
+
+Small empty bunkers out in the desert for getting out of the sun, a storm or a drone's sight (`shared/shelters.ts`,
+drawn by `src/world/shelters.ts`).
+- **Where:** one at most per 400 m cell, likelier the rockier the cell (`rockiness`): 0.02 + 0.45·k. The spot is
+  kept off rock (the pad flattens dunes only) and, in rocky country, within ~45 m of it; the dunes under the pad may
+  vary at most 3.5 m. About 20 in the world (11 small, 5 deep, 4 long with seed 1017), none within 350 m of the base.
+  Scrap, wrecks and crash sites keep off them (`shelterWithin`). Facing is one of the four world axes, so the local ↔
+  world turn is exact.
+- **Kinds:** a 2.6 m concrete hut over stairs, like the base's but smaller; *small* 14 steps to a 4.8 × 5 m room,
+  *deep* 40 steps (10 m down) to a 5.2 × 6.5 m room, *long* 14 steps then a 20 m corridor to a 3.6 × 12 m gallery.
+  Flat ceilings (stepped over the stairs) instead of the base's vaults, so collision and the drawn boxes stay simple.
+- **Hooks:** same as the base's, side by side: pad in `baseHeight`, no edits over them, `collideShelter` /
+  `shelterCeiling` / `sandHidden` in `step()`, `shelterSolid` for shots, the hut as a shade box, `indoors()` (base or
+  shelter) for heat, storm drag, drones, throwing, music and footsteps. The storm dust's hut box is a uniform now
+  (`indoorHutMin/Max`). The nearest 4 huts' floors are cut out of the sand (`shelterHoles`).
+- **Light:** the sun through the door, a dim fill in the nearest shelter's room following the daylight, a faint glow.
+- **Dev:** `?spawn=shelter` starts outside the nearest one's door. Someone who leaves inside one comes back at its door.
+- **Gaps:** no sand blowing in during storms (the base has `baseSand`); empty, nothing to find in them yet.

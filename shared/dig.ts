@@ -12,9 +12,9 @@
 //
 // The dig point is where the player looks: a ray from the eye along the camera yaw/pitch, marched
 // against heightAt up to DIG_REACH metres. Yaw and pitch travel quantized, so both sides agree.
-import { terrainHidden } from './base.ts';
 import { yawFromQ } from './sim.ts';
 import { baseHeight, EDIT_CELL, EDIT_CHUNK, heightAt, sandOverRock, type TerrainEdits } from './terrain.ts';
+import { sandHidden } from './shelters.ts';
 
 /** Eye height above the feet (first-person camera). */
 export const EYE_HEIGHT = 1.65;
@@ -96,7 +96,7 @@ export function digTarget(feet: { x: number; y: number; z: number }, yawQ: numbe
         else lo = m;
       }
       const hx = ex + dx * hi, hz = ez + dz * hi;
-      return terrainHidden(hx, hz, feet.y) ? null : { x: hx, y: ey + dy * hi, z: hz };
+      return sandHidden(hx, hz, feet.y) ? null : { x: hx, y: ey + dy * hi, z: hz };
     }
     prev = t;
   }

@@ -21,11 +21,11 @@
 // you no faster than TRACK_RATE and the drone flies slower than you walk: sprint sideways out of the light, break
 // its line of sight (behind a dune crest, into the base) or outrun it, and after LOSE_MS in the dark it lets you go
 // and leaves you be for IGNORE_MS.
-import { inBase } from './base.ts';
 import { collideCrash } from './crashsites.ts';
 import { collideScrap } from './scrap.ts';
 import { heightAt } from './terrain.ts';
 import { HEAT_MAX } from './water.ts';
+import { indoors } from './shelters.ts';
 
 // --- Guardian body and legs (metres; must match tools/blender/guardians.py) ---
 
@@ -211,7 +211,7 @@ export function inBeam(x: number, y: number, z: number, dx: number, dy: number, 
   const d = Math.hypot(vx, vy, vz);
   if (d > BEAM_RANGE || d < 1) return false;
   if ((vx * dx + vy * dy + vz * dz) / d < Math.cos(BEAM_HALF)) return false;
-  if (inBase(px, py, pz)) return false;
+  if (indoors(px, py, pz)) return false;
   return lineOfSight(x, y, z, px, cy, pz);
 }
 

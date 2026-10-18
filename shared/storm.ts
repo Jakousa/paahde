@@ -11,8 +11,8 @@
 // Gameplay: inside one it's hotter (STORM_TEMP on the felt temperature, server/water.ts), you walk slower and
 // it pushes you downwind (STORM_SLOW, STORM_PUSH, shared/sim.ts), and the locator bar is lost in the dust
 // (src/storm.ts). The base keeps it out.
-import { inBase } from './base.ts';
 import { WIND } from './dunes.ts';
+import { indoors } from './shelters.ts';
 
 export type Storm = {
   id: number;
@@ -90,7 +90,7 @@ export function nearStorm(storms: readonly Storm[], x: number, z: number, t: num
 /** Storm strength slowing a player standing at (x, y, z) (feet): none in the base. Fed to step() by
  *  the server per input and by the client per predicted tick (kept for replays), shared/sim.ts. */
 export function stormDrag(storms: readonly Storm[], x: number, y: number, z: number, t: number): number {
-  return inBase(x, y + 1, z) ? 0 : stormAt(storms, x, z, t);
+  return indoors(x, y + 1, z) ? 0 : stormAt(storms, x, z, t);
 }
 
 /** Will storm `s` pass over (x, z) (within WARN_MARGIN), standing still there? */

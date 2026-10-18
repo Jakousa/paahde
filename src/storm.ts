@@ -4,12 +4,13 @@
 // pass draws (src/post.ts). The heat is the server's (server/water.ts); the HUD just shows the felt °C.
 //
 // In the dust you lose the locator bar (src/locator.ts): no bearings on the base or the others.
-import { BASE, ROOM_Z, inBase } from '../shared/base.ts';
+import { BASE, HUT, ROOM_Z, W, inBase } from '../shared/base.ts';
+import { indoors, S_HUT, shelterAt, shelterHutInside } from '../shared/shelters.ts';
 import { RAMP_MS, inStormPath, stormAt, stormCentre, stormEnvelope, type Storm } from '../shared/storm.ts';
 import { WIND } from '../shared/dunes.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { audio } from './audio';
-import { STORM_SLOTS, stormDiscs, stormGround, stormHere, stormIndoors } from './world/env';
+import { indoorHutMax, indoorHutMin, indoorSurface, STORM_SLOTS, stormDiscs, stormGround, stormHere, stormIndoors } from './world/env';
 import { wind } from './world/wind';
 
 /** Seconds between beep bursts while a storm you're in the path of is on its way. */
@@ -81,19 +82,30 @@ export class StormFx {
     }
     for (let i = localStorms.length - 1; i >= 0; i--) if (localStorms[i].end <= now) localStorms.splice(i, 1);
     const storms = localStorms.length ? [...serverStorms, ...localStorms] : serverStorms;
-    // The bunker keeps the dust out: no grit on the view and the locator works down there. But the storm
+    // The bunker (or a shelter) keeps the dust out: no grit on the view and the locator works down there. But the storm
     // still blows overhead: the wind (muffled underground, src/windSound.ts), the columns seen up through
     // the skylight and out of the door (the post pass starts them where the view leaves the base), and the
     // sand sifting in (src/world/baseSand.ts).
-    const indoors = inBase(cam.x, cam.y, cam.z);
+    const inside = indoors(cam.x, cam.y, cam.z);
     const outside = stormAt(storms, cam.x, cam.z, now);
     const k = 1 - Math.exp(-dt / TAU);
     this.outside += (outside - this.outside) * k;
-    this.level += ((indoors ? 0 : outside) - this.level) * k;
+    this.level += ((inside ? 0 : outside) - this.level) * k;
     this.atBase += (stormAt(storms, BASE.x, BASE.z + ROOM_Z / 2, now) - this.atBase) * k;
     wind.local = this.outside;
     stormHere.value = this.level;
-    stormIndoors.value = indoors ? 1 : 0;
+    stormIndoors.value = inside ? 1 : 0;
+    const sh = inside && !inBase(cam.x, cam.y, cam.z) ? shelterAt(cam.x, cam.z) : null;
+    if (sh) {
+      const [x0, z0, x1, z1] = shelterHutInside(sh);
+      indoorHutMin.value.set(x0, sh.y - 100, z0);
+      indoorHutMax.value.set(x1, sh.y + S_HUT.h, z1);
+      indoorSurface.value = sh.y;
+    } else {
+      indoorHutMin.value.set(BASE.x - W, BASE.y - 100, BASE.z + HUT.z0);
+      indoorHutMax.value.set(BASE.x + W, BASE.y + HUT.h, BASE.z + HUT.z1);
+      indoorSurface.value = BASE.y;
+    }
 
     const g = stormGround.value;
     const ground = [0, 0, 0, 0];
@@ -115,7 +127,7 @@ export class StormFx {
       if (!coming || s.start < coming.start) coming = s;
     }
     for (const id of this.warned.keys()) if (!storms.some((s) => s.id === id)) this.warned.delete(id);
-    if (coming && !inBase(me.x, me.y, me.z)) {
+    if (coming && !indoors(me.x, me.y, me.z)) {
       const last = this.warned.get(coming.id);
       if (last === undefined || now - last >= BEEP_EVERY * 1000) {
         this.warned.set(coming.id, now);

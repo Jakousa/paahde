@@ -12,11 +12,11 @@ import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
 import { zaps } from './world/zaps';
 import type { Scrap } from './world/scrap';
-import { inBase } from '../shared/base.ts';
 import { SCRAP_KINDS } from '../shared/scrap.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { THROW_MS, THROWABLE, THROW_SPEED, tossAt, type TossPath } from '../shared/throw.ts';
+import { indoors } from '../shared/shelters.ts';
 
 /** From the press to letting go (ms): the wind-up of the hands' ScrapThrow (0.5 s, let go at 0.42). */
 const RELEASE_MS = 210;
@@ -74,7 +74,7 @@ export class Thrower {
     const kind = this.inHand();
     const use = !!kind && can && useHeld() && !!document.pointerLockElement;
     const now = performance.now();
-    const out = !inBase(this.net.me.x, this.net.me.y, this.net.me.z);
+    const out = !indoors(this.net.me.x, this.net.me.y, this.net.me.z);
     if (use && !this.wasUse && now >= this.readyAt && out) {
       // Wind up: the throw itself goes at the release.
       this.readyAt = now + THROW_MS;

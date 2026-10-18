@@ -13,7 +13,8 @@ import { pickTier } from '../shared/parts.ts';
 import { KILL_SPOILS } from '../shared/tables.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
-import { inBase, overBase } from '../shared/base.ts';
+import { overBase } from '../shared/base.ts';
+import { indoors, overShelter, shelterAt, sheltersNear } from '../shared/shelters.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { BLAST_R, CRATER_MM, CRATER_R, GUARDIAN } from '../shared/guardians.ts';
 import { BLAST_R as MISSILE_BLAST_R } from '../shared/missiles.ts';
@@ -210,6 +211,14 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   // Heights aren't saved: someone who left over the bunker (or in it) starts down in it.
   const atBase = spawn === 'base';
   let state = row && !atBase && !overBase(row.x, row.z, 0.5) ? spawnState(row.x, row.z) : spawnState();
+  // Someone who left in a shelter starts outside its door.
+  const left = row && !atBase && overShelter(row.x, row.z, 0.5) ? shelterAt(row.x, row.z) : null;
+  if (left) state = spawnState(left.x + left.dx * 4, left.z + left.dz * 4);
+  if (spawn === 'shelter') {
+    // Dev helper: 6 m outside the door of the nearest shelter.
+    const s = sheltersNear(state.x, state.z, 6000).sort((a, b) => Math.hypot(a.x - state.x, a.z - state.z) - Math.hypot(b.x - state.x, b.z - state.z))[0];
+    if (s) state = spawnState(s.x + s.dx * 6, s.z + s.dz * 6);
+  }
   if (spawn === 'crash') {
     // Dev helper: 7 m from the large machine of the nearest crash site, on its far side from the wreck.
     const m = crashSitesNear(state.x, state.z, 3000).find((s) => s.level > 0)?.machines[0];
@@ -443,7 +452,7 @@ function onThrow(p: Player, m: Extract<ClientMsg, { t: 'throw' }>) {
   if (!nums.every((v) => typeof v === 'number' && Number.isFinite(v)) || !Number.isInteger(m.n)) return;
   if (!Number.isInteger(m.slot) || m.slot < 0 || m.slot >= HOTBAR || p.down) return;
   const s = p.state, len = Math.hypot(m.dx, m.dy, m.dz);
-  if (s.riding || len < 0.5 || now - p.firedAt < THROW_MS * 0.8 || inBase(s.x, s.y, s.z)) return;
+  if (s.riding || len < 0.5 || now - p.firedAt < THROW_MS * 0.8 || indoors(s.x, s.y, s.z)) return;
   if (Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
   const kind = items.slots(p.browserId, 'bag')[m.slot]?.kind;
   if (!kind || !THROWABLE.has(kind) || !db.tx(() => items.takeAt(p.browserId, m.slot, kind))) return sendBox(p, 'bag');

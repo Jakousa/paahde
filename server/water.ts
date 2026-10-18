@@ -3,7 +3,8 @@
 // players and bikes as shade casters; hotter in a sandstorm, shared/storm.ts; cold at night unless sheltered,
 // wrapped in cloth or by a smouldering wreck), validates sips and canteen refills, and says when a player has died
 // of heatstroke or cold (server/index.ts respawns them).
-import { atPump, inBase } from '../shared/base.ts';
+import { atPump } from '../shared/base.ts';
+import { indoors } from '../shared/shelters.ts';
 import { crashSpent } from '../shared/crash.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -90,7 +91,7 @@ export type Surroundings = { casters: readonly Caster[]; self: number; cloth: ()
  */
 export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod: number, storm: number, now: number,
   around: Surroundings): 'died' | 'froze' | 'send' | null {
-  const inside = inBase(s.x, s.y, s.z);
+  const inside = indoors(s.x, s.y, s.z);
   if (now - t.shadeAt >= SHADE_MS) {
     t.shadeAt = now;
     t.sun = inside ? 0 : sunOnBody(s.x, s.y, s.z, s.crouching, tod, around.casters, around.self);

@@ -9,7 +9,7 @@
 // The server owns the numbers; this only plays the actions and asks. Keys 1–4 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // (no digging while your hands are full, see `tools` in src/input.ts), and F at the base's pump refills it.
-import { atPump, inBase } from '../shared/base.ts';
+import { atPump } from '../shared/base.ts';
 import { CHILL_MAX, DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
 import { equipped, repaired } from '../shared/gear.ts';
 import { HOTBAR } from '../shared/items.ts';
@@ -23,6 +23,7 @@ import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
 import { frost, heatstroke } from './world/env.ts';
 import { drinkSound } from './drinkSound';
+import { indoors } from '../shared/shelters.ts';
 
 /**
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
@@ -357,7 +358,7 @@ export class Survival {
       else if (w.sips <= 0) html = 'Empty';
     }
     // Junk in hand (src/throw.ts): it can be thrown, out of the bunker.
-    if (!scrapTargeted && !dead && kind && THROWABLE.has(kind) && !inBase(pos.x, pos.y, pos.z)) html = `<kbd>LMB</kbd>Throw`;
+    if (!scrapTargeted && !dead && kind && THROWABLE.has(kind) && !indoors(pos.x, pos.y, pos.z)) html = `<kbd>LMB</kbd>Throw`;
     if (html !== this.promptHtml) {
       this.promptHtml = html;
       this.prompt.innerHTML = html;

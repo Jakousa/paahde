@@ -10,7 +10,7 @@ import { heightAt } from '../shared/terrain.ts';
 import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, slopeAt } from '../shared/sim.ts';
 import { CROUCH_CYCLE } from './models/crouchGait';
 import { EYE_HEIGHT } from '../shared/dig.ts'; // the dig and pickup rays start here too
-import { terrainHidden } from '../shared/base.ts';
+import { sandHidden } from '../shared/shelters.ts';
 const SENSITIVITY = 0.0022;
 const PITCH_LIMIT = (85 * Math.PI) / 180;
 // Riding in first person the rider's body is drawn (headless) around the eye: a neck's range keeps the view out of it.
@@ -162,7 +162,7 @@ export class FirstPersonCamera {
     const crouched = !!p.crouching && !p.sliding;
     const walking = moving && !p.sliding && !p.riding;
     let grade = 0;
-    if (walking && !crouched && !terrainHidden(p.x, p.z, p.y)) {
+    if (walking && !crouched && !sandHidden(p.x, p.z, p.y)) {
       slopeAt(p.x, p.z, slope);
       grade = (p.vx * slope.gx + p.vz * slope.gz) / speed;
     }
@@ -199,7 +199,7 @@ export class FirstPersonCamera {
     } else this.slideClock = 0;
     let y = this.eyeY + EYE_HEIGHT - 0.65 * this.crouch + bobY + this.dip + shakeY;
     // Never look out from under a dune (in the base's entrance and bunker the sand isn't in the way).
-    if (!terrainHidden(x, z, p.y)) y = Math.max(y, heightAt(x, z) + 0.3);
+    if (!sandHidden(x, z, p.y)) y = Math.max(y, heightAt(x, z) + 0.3);
 
     // Third person: back off along the view ray, shortening the boom where it would dip under the sand.
     const pitch = this.pitch + this.dip * 0.12 + shakeP;

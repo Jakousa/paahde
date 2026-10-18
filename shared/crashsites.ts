@@ -22,6 +22,7 @@
 // piece's origin sits at heightAt(x, z) − sink; capsule tops are origin + h.
 import { BASE, BASE_SPAWN, padBlend } from './base.ts';
 import { CRASH_KINDS, type CrashKind } from './crashKinds.ts';
+import { shelterWithin } from './shelters.ts';
 import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
 import { rocksNear } from './rocks.ts';
 import { SCRAP_CELL, scrapPieces } from './scrap.ts';
@@ -281,7 +282,7 @@ function generate(ix: number, iz: number): CrashSite | null {
     const bx = cx - BASE.x, bz = cz - BASE.z, sx = cx - BASE_SPAWN.x, sz = cz - BASE_SPAWN.z;
     ok = Math.abs(cx) < WORLD_HALF - 30 && Math.abs(cz) < WORLD_HALF - 30 &&
       bx * bx + bz * bz > BASE_CLEAR * BASE_CLEAR && sx * sx + sz * sz > BASE_CLEAR * BASE_CLEAR &&
-      padBlend(cx, cz) >= 1 && flatEnough(cx, cz, K.radius) && !nearScrap(cx, cz, K.radius);
+      padBlend(cx, cz) >= 1 && flatEnough(cx, cz, K.radius) && !nearScrap(cx, cz, K.radius) && !shelterWithin(cx, cz, K.radius);
   }
   if (!ok) return null;
   const id = crashSiteId(ix, iz);

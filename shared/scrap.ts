@@ -18,6 +18,7 @@ import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
 import { yawFromQ } from './sim.ts';
 import { BASE_SPAWN, padBlend } from './base.ts';
 import { rocksNear } from './rocks.ts';
+import { shelterWithin } from './shelters.ts';
 import { baseHeight, heightAt, WORLD_HALF, WORLD_SEED } from './terrain.ts';
 
 /** Grid cell size (m); each cell holds at most one pile. */
@@ -121,7 +122,8 @@ function generate(ix: number, iz: number): ScrapPiece[] {
   for (let t = 0; t < 4 && !ok; t++) {
     px = (ix + 0.1 + 0.8 * r()) * SCRAP_CELL;
     pz = (iz + 0.1 + 0.8 * r()) * SCRAP_CELL;
-    ok = Math.abs(px) < WORLD_HALF - 10 && Math.abs(pz) < WORLD_HALF - 10 && flatEnough(px, pz) && padBlend(px, pz) > 0.3 && !rocksNear(px, pz, PILE_RADIUS + 2);
+    ok = Math.abs(px) < WORLD_HALF - 10 && Math.abs(pz) < WORLD_HALF - 10 && flatEnough(px, pz) && padBlend(px, pz) > 0.3 && !rocksNear(px, pz, PILE_RADIUS + 2) &&
+      !shelterWithin(px, pz, PILE_RADIUS + 2);
   }
   if (!ok) return NONE;
   const out: ScrapPiece[] = [];

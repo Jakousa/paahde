@@ -16,6 +16,7 @@
 import { baseSolid, nearBunker, overBase, withPad } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockHeight } from './rocks.ts';
+import { nearShelter, overShelter, shelterSolid, withShelterPad } from './shelters.ts';
 export { WIND, WORLD_SEED } from './dunes.ts';
 
 /** The playable world is a square of ±WORLD_HALF metres around the origin. */
@@ -27,9 +28,9 @@ export const EDIT_CELL = 0.5;
 export const EDIT_CHUNK = 32;
 
 /** Procedural dunes and rocks (shared/rocks.ts) before player edits, flattened into a pad around the home
- *  base (shared/base.ts). */
+ *  base (shared/base.ts) and the shelters (shared/shelters.ts). */
 export function baseHeight(x: number, z: number): number {
-  return withPad(x, z, Math.max(duneHeight(x, z, WORLD_SEED), rockHeight(x, z)));
+  return withShelterPad(x, z, withPad(x, z, Math.max(duneHeight(x, z, WORLD_SEED), rockHeight(x, z))));
 }
 
 /** How far the dunes would have to be dug to reach rock at (x, z), m: 0 on bare rock, Infinity with no
@@ -61,9 +62,9 @@ export class TerrainEdits {
     return c ? c[(iz - cz * EDIT_CHUNK) * EDIT_CHUNK + (ix - cx * EDIT_CHUNK)] : 0;
   }
 
-  /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. Not over the bunker. */
+  /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. Not over the bunker or a shelter. */
   setMm(ix: number, iz: number, mm: number) {
-    if (mm !== 0 && overBase(ix * EDIT_CELL, iz * EDIT_CELL, 1)) return;
+    if (mm !== 0 && (overBase(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overShelter(ix * EDIT_CELL, iz * EDIT_CELL, 1))) return;
     const cx = Math.floor(ix / EDIT_CHUNK), cz = Math.floor(iz / EDIT_CHUNK);
     const k = TerrainEdits.key(cx, cz);
     let c = this.chunks.get(k);
@@ -141,10 +142,10 @@ export function normalAt(x: number, z: number, out: { x: number; y: number; z: n
   return out;
 }
 
-/** A shot at world (x, y, z) is stopped here: in the sand, or the base's walls (down in the bunker the sand above
- *  is its roof, not in the way). */
+/** A shot at world (x, y, z) is stopped here: in the sand, or the base's or a shelter's walls (down in them the sand
+ *  above is their roof, not in the way). */
 export function shotSolid(x: number, y: number, z: number): boolean {
-  return baseSolid(x, y, z) ?? y <= heightAt(x, z);
+  return baseSolid(x, y, z) ?? shelterSolid(x, y, z) ?? y <= heightAt(x, z);
 }
 
 /**
@@ -165,7 +166,8 @@ export function shotGround(ox: number, oy: number, oz: number, dx: number, dy: n
       return hi;
     }
     prev = t;
-    t += nearBunker(ox + dx * t, oz + dz * t, 2) ? 0.15 : 0.75;
+    const px = ox + dx * t, pz = oz + dz * t;
+    t += nearBunker(px, pz, 2) || nearShelter(px, pz, 2) ? 0.15 : 0.75;
   }
   return range;
 }

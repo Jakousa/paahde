@@ -5,6 +5,7 @@
 // Kept in the DB (`world_loot`, `loot_pending`, written on change), so a restart keeps what was taken and dug. Items
 // players drop are kept in `dropped` and never respawn.
 import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
+import { overShelter } from '../shared/shelters.ts';
 import { GEAR, GEAR_KINDS, isGear, refit, scrapParts } from '../shared/gear.ts';
 import { JAMMER } from '../shared/jammer.ts';
 import { CLOTH, partKind, SCRAP } from '../shared/items.ts';
@@ -298,7 +299,7 @@ export class LootServer {
       const a = rand(0, Math.PI * 2), d = rand(site.radius * 0.4, site.radius + 8);
       x = site.x + Math.sin(a) * d;
       z = site.z + Math.cos(a) * d;
-      if (!overBase(x, z, 6)) break;
+      if (!overBase(x, z, 6) && !overShelter(x, z, 6)) break;
     }
     if (kind === RARE_KIND) {
       this.place({ id: this.nextId++, kind: partKind(pick(PART_IDS), pickTier(RARE_FINDS.tierWeights, Math.random)), x, z, depth: 0, src: 'find' }, kind);
@@ -311,7 +312,7 @@ export class LootServer {
       const a = rand(0, Math.PI * 2), d = rand(CACHE_MIN_R, CACHE_MAX_R);
       x = Math.round((BASE.x + Math.sin(a) * d) / EDIT_CELL) * EDIT_CELL;
       z = Math.round((BASE.z + Math.cos(a) * d) / EDIT_CELL) * EDIT_CELL;
-      if (Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20 && !overBase(x, z, 10) && !rocksNear(x, z, 3)) break; // dug up: not under rock
+      if (Math.abs(x) < WORLD_HALF - 20 && Math.abs(z) < WORLD_HALF - 20 && !overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break; // dug up: not under rock
     }
     const what = pickOdds(CACHES.contents);
     let kind: string, parts: (string | null)[] | undefined;

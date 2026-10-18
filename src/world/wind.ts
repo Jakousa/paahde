@@ -20,6 +20,7 @@
 //     down onto it. In strong wind this shows as plumes "smoking" off the crests.
 //   - Wind also grows with height above the wider dune field, so the high ridges run first.
 import { insideBase } from '../../shared/base.ts';
+import { insideShelter } from '../../shared/shelters.ts';
 import { heightAt, normalAt, WIND } from '../../shared/terrain.ts';
 
 const KAPPA = 0.4;
@@ -145,8 +146,8 @@ class Wind {
     // wandering sideways over time).
     const gust = fade(noise(along / 50, across / 35, 7));
     const streak = noise(along / 14, across / 2.5 + this.t * 0.15, 11);
-    // Indoors (the home base) the air is still; right outside its walls it's sheltered.
-    const shelter = insideBase(x, z) ? 0.15 : insideBase(x, z, 2) ? 0.6 : 1;
+    // Indoors (the home base, a shelter's hut) the air is still; right outside their walls it's sheltered.
+    const shelter = insideBase(x, z) || insideShelter(x, z) ? 0.15 : insideBase(x, z, 2) || insideShelter(x, z, 2) ? 0.6 : 1;
     const u = this.u10 * (GUST_MIN + GUST_RANGE * gust) * this.topography(x, z) * shelter;
     const us = ustarFrom10(u);
     const q = Math.max(0, (us * us - USTAR_T * USTAR_T) / (USTAR_T * USTAR_T));

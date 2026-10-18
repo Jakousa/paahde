@@ -65,6 +65,11 @@ export const stormHere = uniform(0);
 /** 1 while the camera is in the base: the post pass's dust starts only where the view ray leaves the
  *  bunker (up through the skylight, out of the hut's door), so the storm shows outside but the rooms stay clear. */
 export const stormIndoors = uniform(0);
+/** The hut of the bunker the camera is in (the base's, or a shelter's): its air's box (world min, max; open far
+ *  below, into the stairwell), and the sand's height over the bunker. Set with stormIndoors (src/storm.ts). */
+export const indoorHutMin = uniform(new THREE.Vector3());
+export const indoorHutMax = uniform(new THREE.Vector3());
+export const indoorSurface = uniform(0);
 /** Integrated wind travel (m, xz): advects streaks and dust so they move with the wind. */
 export const windDrift = uniform(new THREE.Vector2());
 /** Apparent angular radius of the sun disc, radians (cheated huge: real sun is 0.0045). */

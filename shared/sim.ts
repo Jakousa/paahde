@@ -14,7 +14,8 @@
 // - Rock (shared/rocks.ts) holds: bare rock up to ROCK_CLIMB_TAN doesn't slide; steeper rock is a wall you
 //   can't walk up, only jump onto. Off its edge you fall or slide.
 // - Sand bike (dev helper, 9 toggles it): see stepBike() below.
-import { BUNKER_SPAWN, baseCeiling, collideBase, terrainHidden } from './base.ts';
+import { BUNKER_SPAWN, baseCeiling, collideBase } from './base.ts';
+import { collideShelter, sandHidden, shelterCeiling } from './shelters.ts';
 import { collideCrash } from './crashsites.ts';
 import { bikeEngine, bikeTopSpeed } from './gear.ts';
 import { GUARDIAN, KINDS, LEG_POST_H, LEG_POST_R } from './guardians.ts';
@@ -131,9 +132,9 @@ export function yawFromQ(q: number): number {
   return (q / YAW_STEPS) * Math.PI * 2;
 }
 
-/** The sand's height as ground for feet that were at `prevY`: none inside the base's entrance and bunker. */
+/** The sand's height as ground for feet that were at `prevY`: none inside the base's or a shelter's entrance and rooms. */
 function sandAt(x: number, z: number, prevY: number): number {
-  return terrainHidden(x, z, prevY) ? -Infinity : heightAt(x, z);
+  return sandHidden(x, z, prevY) ? -Infinity : heightAt(x, z);
 }
 
 export function spawnState(x = SPAWN.x, z = SPAWN.z, y = x === SPAWN.x && z === SPAWN.z ? SPAWN.y : heightAt(x, z)): PlayerState {
@@ -351,7 +352,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   c.vx = vx;
   c.vz = vz;
   const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP));
-  const baseTop = collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP);
+  const baseTop = Math.max(collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP), collideShelter(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, y, PLAYER_RADIUS, legs);
   blockRock(c, s.x, s.z, Math.max(y, s.y));
   vx = c.vx;
@@ -360,7 +361,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   const z = clamp(c.z, -WORLD_HALF, WORLD_HALF);
   const ground = Math.max(sandAt(x, z, s.y), scrapTop, baseTop);
   // Under the roof: bump your head.
-  const ceiling = baseCeiling(x, z, s.y, PLAYER_HEIGHT);
+  const ceiling = Math.min(baseCeiling(x, z, s.y, PLAYER_HEIGHT), shelterCeiling(x, z, s.y, PLAYER_HEIGHT));
   if (y > ceiling) {
     y = ceiling;
     if (vy > 0) vy = 0;
@@ -463,7 +464,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   c.vz = vz;
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
   const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
-  const baseTop = collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP);
+  const baseTop = Math.max(collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP), collideShelter(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, airborneY, BIKE_RADIUS, legs);
   blockRock(c, s.x, s.z, Math.max(airborneY, s.y));
   vx = c.vx;
@@ -500,7 +501,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
       grounded = true;
     }
   }
-  const ceiling = baseCeiling(x, z, s.y, PLAYER_HEIGHT);
+  const ceiling = Math.min(baseCeiling(x, z, s.y, PLAYER_HEIGHT), shelterCeiling(x, z, s.y, PLAYER_HEIGHT));
   if (y > ceiling) {
     y = ceiling;
     if (vy > 0) vy = 0;

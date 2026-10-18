@@ -8,6 +8,7 @@ import { STATIONS, stationTarget } from '../shared/stations.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { BaseSand } from './world/baseSand';
+import { Shelters } from './world/shelters';
 import { DigFx } from './dig';
 import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
@@ -45,6 +46,7 @@ import { breathing } from './breathing';
 import { slideSound } from './slideSound';
 import { audio } from './audio';
 import { inBase } from '../shared/base.ts';
+import { indoors } from '../shared/shelters.ts';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { playerHands, Survival } from './water';
@@ -84,6 +86,7 @@ const sky = new Sky(scene);
 const terrain = new Terrain(scene);
 const base = new Base(scene);
 const mast = new Mast(scene); // flag mast with a windsock by the entrance
+const shelters = new Shelters(scene); // small empty bunkers out in the desert
 const placedView = new PlacedView(scene, base); // plant beds and UV lamps on the bunker floor
 const scrap = new Scrap(scene);
 const crashSites = new CrashSites(scene);
@@ -392,6 +395,7 @@ renderer.setAnimationLoop((time) => {
 baseSand.update(frameDt, storm.atBase);
   tyreDust.update(frameDt);
   base.update();
+  shelters.update(orbit.camera.position);
   mast.update(frameDt);
   windSound.update(frameDt, orbit.camera.position, orbit.yaw, s);
   // Sand hissing under you: a speed slide, or (softer) slipping down a slip face on your feet.
@@ -406,7 +410,7 @@ baseSand.update(frameDt, storm.atBase);
   const cam = orbit.camera.position;
   music.update(frameDt, {
     riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
-    indoors: inBase(cam.x, cam.y, cam.z),
+    indoors: indoors(cam.x, cam.y, cam.z),
     sandstorm: storm.level > 0.3,
     combat: guardianFx.combat,
     dead: survival.dead,

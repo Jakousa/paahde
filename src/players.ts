@@ -4,7 +4,7 @@
 // footprints, footstep sounds and the name tag. Its visuals are a swappable `AvatarModel`: the simple procedural
 // placeholder below, or the rigged scavenger (src/models/scavenger.ts) with the same interface.
 import * as THREE from 'three/webgpu';
-import { inBase, terrainHidden } from '../shared/base.ts';
+import { indoors, sandHidden } from '../shared/shelters.ts';
 import { isSlipFace, slopeAt } from '../shared/sim.ts';
 import { wornBit } from '../shared/gear.ts';
 import { heightAt } from '../shared/terrain.ts';
@@ -209,7 +209,7 @@ export class Avatar {
       if (!pose.ride) this.root.position.set(pose.x, pose.y, pose.z); // first frame we see them: already dead
       // In the base the bunker floor is under the feet, not the sand overhead.
       const y = this.root.position.y;
-      const ground = (x: number, z: number) => (terrainHidden(x, z, y) ? y : heightAt(x, z));
+      const ground = (x: number, z: number) => (sandHidden(x, z, y) ? y : heightAt(x, z));
       this.tipped = !this.model.ragdoll?.(_push.fromArray(pose.down), ground);
     } else if (!pose.down && this.down) {
       this.down = false;
@@ -282,7 +282,7 @@ export class Avatar {
 
     // Footprints: one per stride while walking; a sliding body draws a continuous streak instead. Only on the sand
     // itself: on the bunker's stairs and floors the print would hang at the sand's height overhead.
-    const prints = this.footprints && onSand && !terrainHidden(pose.x, pose.z, pose.y);
+    const prints = this.footprints && onSand && !sandHidden(pose.x, pose.z, pose.y);
     if (!prints || !sliding) this.streakX = NaN;
     if (!this.footprints || !pose.grounded) return;
     if (sliding) {
@@ -298,7 +298,7 @@ export class Avatar {
     const fx = pose.x + Math.cos(this.facing) * side, fz = pose.z - Math.sin(this.facing) * side;
     // Toes turned out a little; the boot print mirrors per foot.
     if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing - this.foot * 0.08, 1, 1, this.foot);
-    footsteps.step(fx, fz, pose.speed, inBase(fx, pose.y, fz) ? 'concrete' : 'sand');
+    footsteps.step(fx, fz, pose.speed, indoors(fx, pose.y, fz) ? 'concrete' : 'sand');
   }
 
   /** Sand thrown up while sliding: ploughed off the leading boot and, in a speed slide, the hand trailing behind

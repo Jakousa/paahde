@@ -14,13 +14,18 @@ import type { LightsNode, Node } from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { BASE, BASE_PIECES, FLOOR, HALL, HUT, ROOM, ROOM_Z, STAIRS, TERRAIN_HOLES, vaultCrown } from '../../shared/base.ts';
 import { moonColor, sunColor, sunDirection, sunLight } from './env.ts';
+import { shelterHoles } from './shelters.ts';
 
-/** False inside the holes cut in the terrain (shared/base.ts TERRAIN_HOLES): use as a material's maskNode. */
+/** False inside the holes cut in the terrain (shared/base.ts TERRAIN_HOLES, and the nearest shelters' huts,
+ *  src/world/shelters.ts): use as a material's maskNode. */
 export function outsideTerrainHoles(): Node<'bool'> {
   let outside: Node<'bool'> = bool(true);
+  const p = positionWorld;
   for (const [x0, z0, x1, z1] of TERRAIN_HOLES) {
-    const p = positionWorld;
     outside = outside.and(p.x.lessThan(x0).or(p.x.greaterThan(x1)).or(p.z.lessThan(z0)).or(p.z.greaterThan(z1)));
+  }
+  for (const h of shelterHoles) {
+    outside = outside.and(p.x.lessThan(h.x).or(p.x.greaterThan(h.z)).or(p.z.lessThan(h.y)).or(p.z.greaterThan(h.w)));
   }
   return outside;
 }
