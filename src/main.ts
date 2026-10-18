@@ -145,9 +145,14 @@ net.onDig = (at, pile, _mine, id) => {
 loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
 // Dark until the bunker you spawn in and the player model have loaded, so the first frames show neither a
 // half-built room nor placeholder bodies; after 20 s, whatever has loaded.
-const cover = document.createElement('div');
-cover.style.cssText = 'position: fixed; inset: 0; z-index: 25; background: #111; pointer-events: none; transition: opacity .4s';
-document.body.append(cover);
+const cover = document.getElementById('cover')!; // in index.html, so it is up before this script has loaded
+// The bar counts every model and texture through three's default loading manager; never runs backwards as
+// more loads are queued.
+let coverP = 0;
+THREE.DefaultLoadingManager.onProgress = (_url, done, total) => {
+  coverP = Math.max(coverP, done / total);
+  cover.style.setProperty('--p', String(coverP));
+};
 let loaded = false;
 let coverFrames = 0; // frames drawn behind the cover once loaded (lets shaders compile)
 Promise.race([Promise.allSettled([base.ready, loadScavenger()]), new Promise((r) => setTimeout(r, 20_000))]).then(() => (loaded = true));

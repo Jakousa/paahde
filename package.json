@@ -6,7 +6,7 @@
     "asbuild": "asc assembly/index.ts --target release",
     "dev": "npm run asbuild && concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"vite\"",
     "dev:server": "node --watch server/index.ts",
-    "build": "npm run asbuild && tsc --noEmit && vite build",
+    "build": "npm run asbuild && tsc --noEmit && vite build && node tools/precompress.ts",
     "start": "node server/index.ts",
     "preview": "npm run build && npm start"
   },

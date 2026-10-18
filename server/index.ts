@@ -117,8 +117,11 @@ const BUILD = (() => {
   }
 })();
 
+// .br/.gz copies and content-derived mtimes (so ETags survive a deploy) come from tools/precompress.ts.
 const serveStatic = sirv('dist', {
   etag: true,
+  brotli: true,
+  gzip: true,
   setHeaders: (res, path) => {
     res.setHeader('Cache-Control', path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
   },
