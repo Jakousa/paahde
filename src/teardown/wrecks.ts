@@ -280,9 +280,9 @@ export function aiControl(k: Kit) {
     k.mount('heatsink', [[W / 2 + 0.04, y, 0], [0, 0, -Math.PI / 2]], () => [loop, k.bolt('Heat sink bolt', [W / 2 + 0.06, y, 0.38], [1, 0, 0], [], 2)]);
   }
 
-  // fan hood on the roof over the power supply choke
+  // fan hood on the roof over the power supply choke, clipped down on its top (under the hood, facing up)
   k.bay(-0.1, 0.02, 0.72, 0.72, H + T, 0.5);
   k.cable([[0.08, H + T + 0.4, 0.02], [0.18, H + T + 0.3, -0.15], [0.2, H + T + 0.05, -0.25]], 0.03, 'brown'); // supply lead
-  k.mount('coil', [[-0.1, H + T, 0.02], [0, 0, 0]], () => [k.clip('Choke clip', [-0.38, H + T + 0.2, 0.02], [-1, 0, 0])]);
+  k.mount('coil', [[-0.1, H + T, 0.02], [0, 0, 0]], () => [k.clip('Choke clip', [-0.1, H + T + 0.47, 0.02], [0, 1, 0])]);
   if (g >= 2) k.lamps(4, 0.06, H - 0.12, D / 2 + 0.01, 0.08);
 }
