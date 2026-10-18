@@ -98,7 +98,7 @@ const css = `
 #hotbar .slot { position: relative; width: 44px; height: 44px; border-radius: 6px; background: rgba(20, 10, 5, 0.45);
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.15); display: flex; align-items: center; justify-content: center; }
 #hotbar .slot.sel { background: rgba(60, 34, 16, 0.6); box-shadow: 0 0 0 2px rgba(255, 233, 204, 0.75); }
-#hotbar .slot.broken svg { opacity: 0.45; filter: grayscale(0.8); }
+#hotbar .slot.broken svg, #hotbar .slot.broken img { opacity: 0.45; filter: grayscale(0.8); }
 #hotbar .key { position: absolute; left: 4px; top: 2px; font: 600 9px var(--mono); opacity: 0.6; }
 #hotbar svg { width: 22px; height: 26px; margin-top: -4px; }
 #hotbar img { width: 36px; height: 36px; margin-top: -2px; }

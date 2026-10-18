@@ -35,7 +35,7 @@ const GAP = 4;
 /** Size (px) of an item w × h cells big. */
 const span = (n: number) => n * CELL + (n - 1) * GAP;
 /** Icon scale for an item w × h cells big: by its short side, and a little more for long ones (SVGs; images stay square). */
-const iconScale = (w: number, h: number) => `--s: ${Math.min(w, h)}; --sv: ${Math.min(w, h) + (w !== h ? 0.4 : 0)}`;
+const iconScale = (w: number, h: number) => `--s: ${Math.min(w, h)}; --sv: ${Math.min(w, h) + (w !== h ? 0.4 : 0)}; --pw: ${span(w)}px; --ph: ${span(h)}px`;
 
 const css = `
 #pickup { position: fixed; left: 50%; top: calc(50% + 22px); transform: translateX(-50%); padding: 3px 8px;
@@ -69,6 +69,9 @@ const css = `
 #invOverlay .slot.item { width: auto; height: auto; z-index: 1; background: rgba(66, 44, 26, 0.96); }
 #invOverlay .slot.item svg, #invGhost svg { width: calc(30px * var(--sv, 1)); height: calc(34px * var(--sv, 1)); }
 #invOverlay .slot.item img, #invGhost img { width: calc(46px * var(--s, 1)); height: calc(46px * var(--s, 1)); }
+img.fit { object-fit: contain; }
+#invOverlay .slot.item img.fit, #invGhost img.fit { width: calc(var(--pw, 54px) - 6px); height: calc(var(--ph, 54px) - 6px); }
+#invOverlay .slot.item.turned > img.fit, #invGhost.turned > img.fit { width: calc(var(--ph, 54px) - 6px); height: calc(var(--pw, 54px) - 6px); }
 #invOverlay .slot.turned > svg, #invOverlay .slot.turned > img, #invGhost.turned > svg, #invGhost.turned > img { transform: rotate(90deg); }
 #invOverlay .hint { z-index: 2; pointer-events: none; border-radius: 6px; }
 #invOverlay .hint.ok { background: rgba(140, 220, 150, 0.22); box-shadow: inset 0 0 0 2px rgba(140, 220, 150, 0.85); }
@@ -131,13 +134,6 @@ const css = `
 `;
 
 // Icons, 22 × 26 like the hotbar's.
-export const CANTEEN_SVG = `<svg viewBox="0 0 22 26"><rect x="8" y="0.5" width="6" height="4" rx="1" fill="#6b4a2e"/>
-<ellipse cx="11" cy="15" rx="9.5" ry="9.5" fill="#8a8f86" stroke="#2a160a" stroke-width="1"/>
-<ellipse cx="11" cy="15" rx="6.5" ry="6.5" fill="none" stroke="#5e6a5a" stroke-width="2.2"/>
-<path d="M2 11h18" stroke="#6b4a2e" stroke-width="2"/></svg>`;
-export const TELESCOPE_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.8" transform="rotate(-45 11 13)">
-<rect x="-1" y="11.6" width="5" height="2.8" rx="0.8" fill="#d4a24c"/><rect x="3.5" y="11" width="5" height="4" fill="#b8873a"/>
-<rect x="8.5" y="10.2" width="10" height="5.6" rx="0.6" fill="#6a3626"/><rect x="18" y="9.6" width="4" height="6.8" rx="1" fill="#d4a24c"/></g></svg>`;
 // Scrap: a dented sheet with a plank across it and a cog on top, a little heap of junk.
 const SCRAP_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><path d="M2 10l12-3 4 13-12 3z" fill="#9a968c"/>
 <path d="M5 12l9-2c-1 2 1 3-1 4" fill="none" stroke="#c9c4b8" opacity="0.8"/><path d="M3 21L17 9l1.8 2.2L4.8 23z" fill="#7d7a72"/>
@@ -148,25 +144,7 @@ const CLOTH_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.
 <path d="M3 9c3-2 13-2 16 0v9c-3 2-13 2-16 0z" fill="#b89a6a"/><path d="M3 13.5c3 2 13 2 16 0" fill="none" stroke="#7a6040"/>
 <path d="M5 9.4c0 3 1 6 0 9.4M17 9.4c0 3-1 6 0 9.4" fill="none" stroke="#8a7048" stroke-width="0.7"/>
 <path d="M11 7.6v12.8" stroke="#5a3a1e" stroke-width="1.6"/><path d="M11 7.6c-2-2-4-1-3 0.6M11 7.6c2-2 4-1 3 0.6" fill="none" stroke="#5a3a1e" stroke-width="1"/></g></svg>`;
-const g = (body: string) => `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9">${body}</g></svg>`;
 const ICONS: Record<string, string> = {
-  canteen: CANTEEN_SVG,
-  spyglass: TELESCOPE_SVG,
-  motorcycle: g(`<circle cx="5" cy="18" r="4" fill="#3a2a1e"/><circle cx="17" cy="18" r="4" fill="#3a2a1e"/>
-<circle cx="5" cy="18" r="1.4" fill="#8a8f86"/><circle cx="17" cy="18" r="1.4" fill="#8a8f86"/>
-<path d="M5 18l4-7h6l2 7M9 11l-1-3h3M15 11l2-4h2" fill="none" stroke-width="1.6"/><rect x="9" y="10" width="7" height="3.4" rx="1" fill="#c0563a"/>`),
-  backpack: g(`<rect x="4" y="5" width="14" height="18" rx="4" fill="#8a6a3e"/><path d="M4 11c4 2 10 2 14 0v4c-4 2-10 2-14 0z" fill="#6b4a2e"/>
-<rect x="8" y="16" width="6" height="4" rx="1" fill="#a8844e"/><path d="M8 5c0-3 6-3 6 0" fill="none" stroke-width="1.6"/>`),
-  storm_detector: g(`<rect x="4" y="8" width="14" height="15" rx="2" fill="#7d7a72"/><path d="M14 8V2" stroke-width="1.4"/>
-<circle cx="14" cy="2" r="1.2" fill="#ffb050"/><rect x="6.5" y="11" width="9" height="5" fill="#2a3a2e"/>
-<path d="M7.5 14.5c2-3 4 1 6-2" fill="none" stroke="#ffb050" stroke-width="1"/><circle cx="8" cy="19.5" r="1.2" fill="#e05a3a"/>`),
-  wristpad: g(`<rect x="8" y="1" width="6" height="24" rx="2" fill="#5e4a36"/><rect x="4" y="7" width="14" height="12" rx="2.5" fill="#6a665e"/>
-<rect x="6" y="9" width="10" height="8" rx="1" fill="#2a3a3e"/><path d="M7.5 15l2-3 2 2 3-4" fill="none" stroke="#6ef0c8" stroke-width="1"/>`),
-  metal_detector: g(`<path d="M15 2L9 19" stroke-width="2.4"/><path d="M15 2L9 19" stroke="#a8a294" stroke-width="1.2"/>
-<rect x="12.5" y="5" width="5" height="4" rx="1" fill="#3a3a3a" transform="rotate(20 15 7)"/><ellipse cx="7" cy="21.5" rx="6" ry="2.6" fill="#d4a24c"/>
-<ellipse cx="7" cy="21.5" rx="3" ry="1.2" fill="#2a160a"/>`),
-  shovel: g(`<path d="M15.5 2l-6 13" stroke-width="2.6"/><path d="M15.5 2l-6 13" stroke="#8a6a3e" stroke-width="1.4"/>
-<path d="M13 1h5" stroke-width="2.4"/><path d="M7 14l5 2.3-2.5 6.2c-1 2-4.5.5-5.5-1-1-1.5-.3-3.5 3-7.5z" fill="#9a968c"/>`),
   scrap: SCRAP_SVG,
   cloth: CLOTH_SVG,
   // Carried crash-site machines: a joint with its arm stub, and a cabinet with a door and lamps.
@@ -188,34 +166,6 @@ const ICONS: Record<string, string> = {
   beacon: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="12" width="16" height="10" rx="1.5" fill="#e0c060"/>
 <path d="M3 15h16M3 19h16" stroke="#2a160a" stroke-width="0.6"/><rect x="9" y="8" width="4" height="4" fill="#7d7a72"/>
 <path d="M11 8V2" stroke-width="1.2"/><circle cx="11" cy="2.5" r="1.4" fill="#ff5a3a"/></g></svg>`,
-  // Laser rifle, muzzle up-right: wood stock, grip and handguard, grey receiver, scope, energy cell, glowing emitter.
-  laser_rifle: `<svg viewBox="0 0 22 26"><g transform="translate(11 13.5) rotate(-48) scale(0.8)" stroke="#2a160a" stroke-width="0.8"
-stroke-linejoin="round"><path d="M-13 5Q-3 10 6 1.5" fill="none" stroke="#6e6444" stroke-width="1"/>
-<path d="M-15.5 -0.6L-6.6 -1.7V1.4L-15.5 4.6z" fill="#8e4426"/><path d="M-4.4 1.2L-6 5.6H-3.8L-2.6 1.2z" fill="#7e3a20"/>
-<path d="M-0.6 1.2H2.4L3.3 5.4H0.4z" fill="#6a6648"/><path d="M1 2.2L1.6 4.5" stroke="#ff6a2a" stroke-width="0.9"/>
-<rect x="-7" y="-2.1" width="9.6" height="3.5" rx="0.6" fill="#8d8f8a"/><rect x="2.4" y="-1.7" width="6.4" height="3" rx="1.1" fill="#8e4426"/>
-<rect x="8.6" y="-0.75" width="3" height="1.3" fill="#55575a"/><rect x="11.4" y="-2" width="3.4" height="3.8" rx="0.5" fill="#3a3a38"/>
-<path d="M12.3 -1.6V1.4M13.4 -1.6V1.4" stroke="#ff6a2a" stroke-width="0.6"/><circle cx="15.6" cy="-0.1" r="1.6" fill="#ff7a32" stroke="none" opacity="0.45"/>
-<circle cx="15.2" cy="-0.1" r="0.9" fill="#ffb066" stroke="none"/><rect x="-1.6" y="-3.2" width="1.2" height="1.2" fill="#2e2a26"/>
-<rect x="-5.6" y="-5" width="7.4" height="2" rx="1" fill="#4a4a48"/><path d="M-11 0.3L-10 2.8" stroke="#3a3a36" stroke-width="1.4"/></g></svg>`,
-  // Jammer, antenna right: olive body on a dark raked grip, a yagi (boom and four elements), a whip aerial, amber lamp.
-  jammer: `<svg viewBox="0 0 22 26"><g transform="translate(11 13) scale(0.85)" stroke="#120c08" stroke-width="0.7" stroke-linejoin="round">
-<path d="M-6.4 0L-2.4 0L-4 9.4Q-4.4 10.4 -5.6 10.2L-8.2 9.7Q-9.2 9.4 -8.8 8.4z" fill="#2e2a26"/>
-<rect x="-9.4" y="-4.6" width="11" height="5" rx="0.8" fill="#6e6850"/><rect x="-9" y="-0.4" width="10" height="1.2" fill="#2e2a26"/>
-<path d="M1.6 -2.1H12.8" stroke="#a9aaa6" stroke-width="0.9"/>
-<path d="M4 -5.6V1.4M6.6 -5V0.8M9 -4.5V0.3M11.3 -4.1V-0.1" stroke="#a9aaa6" stroke-width="0.8"/>
-<path d="M-7.6 -4.6L-9.6 -11.6" stroke="#8d8f8a" stroke-width="0.6"/>
-<circle cx="-4.6" cy="-5.2" r="1.7" fill="#ff9a32" stroke="none" opacity="0.4"/><circle cx="-4.6" cy="-5.1" r="0.9" fill="#ffb84a" stroke="none"/></g></svg>`,
-  // Laser pistol, muzzle right: black upper with the silver bolt cap and cell tube, raked brown grip, ribbed shroud, red tip.
-  laser_pistol: `<svg viewBox="0 0 22 26"><g transform="translate(11 13) scale(0.85)" stroke="#120c08" stroke-width="0.7" stroke-linejoin="round">
-<path d="M-6.5 -1.2L-1.6 -1.2L-3.6 9.2Q-4 10.4 -5.4 10.2L-8.6 9.6Q-9.6 9.3 -9.2 8.2z" fill="#6a3a22"/>
-<path d="M-7 1.2L-4.6 1.6M-7.6 4L-5 4.4M-8.2 6.8L-5.6 7.2" stroke="#3a1e10" stroke-width="0.5"/>
-<path d="M-1.4 -0.6Q-1 3.2 2.2 3.2Q3.4 3.2 3.4 -0.6" fill="none" stroke="#2a2a2a" stroke-width="0.9"/>
-<rect x="-9" y="-4.4" width="12.6" height="4.2" rx="0.7" fill="#2e2f31"/><rect x="-10.6" y="-3.6" width="1.8" height="2.6" rx="0.6" fill="#a9aaa6"/>
-<rect x="-7" y="-6" width="8" height="1.5" rx="0.7" fill="#c4c5c0"/><rect x="3.4" y="-3" width="2.4" height="1.6" fill="#2e2f31"/>
-<rect x="5.6" y="-3.6" width="4.4" height="2.8" rx="0.4" fill="#1e1c1b"/><path d="M6.6 -3.6V-0.8M7.7 -3.6V-0.8M8.8 -3.6V-0.8" stroke="#3a3836" stroke-width="0.5"/>
-<rect x="9.8" y="-3.5" width="1.4" height="2.6" rx="0.4" fill="#ff3a1a" stroke="none"/><circle cx="11" cy="-2.2" r="1.8" fill="#ff5a2a" stroke="none" opacity="0.35"/>
-<rect x="-3.6" y="-3" width="3" height="0.9" fill="#ff3a1a" stroke="none" opacity="0.85"/></g></svg>`,
   spring: `<svg viewBox="0 0 22 26"><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
 stroke="#a8a294" stroke-width="1.3"/></svg>`,
@@ -224,6 +174,9 @@ stroke="#a8a294" stroke-width="1.3"/></svg>`,
 const png = (kind: string) => `<img src="./icons/items/${kind}.png" alt="" draggable="false">`;
 ICONS.plant_bed = png('plant_bed');
 ICONS.uv_lamp = png('uv_lamp');
+// Gear (shared/gear.ts) icons are rendered at the item's grid shape (tools/blender/finds.py): `fit` stretches them
+// over the item's cells (--pw/--ph from iconScale), or keeps their shape inside a single slot.
+for (const k of Object.keys(GEAR)) ICONS[k] = `<img class="fit" src="./icons/items/${k}.png" alt="" draggable="false">`;
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 /** Parts (shared/parts.ts) use their rendered icons, public/icons/items/<part>_<tier>.png (tools/blender/items.py); a lettered tile in the rarity colour if one fails. */
 function partIcon(kind: string) {

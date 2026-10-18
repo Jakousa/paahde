@@ -66,6 +66,25 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   tick. Each find row remembers what it stands in for (FINDS key, `rare`, `home_bike`); at start the counts are
   topped up or trimmed to shared/tables.ts, so retuning FINDS / CACHES still takes effect on the next deploy.
 
+## 2026-10-18 — Real models and icons for the gear (issue #8)
+
+- **Finds on the sand have real models** (src/world/loot.ts `FIND_MODELS`), no more boxes and cylinders. The water
+  bottle, telescope, laser rifle and laser pistol are their held models (public/models/canteen.glb, telescope.glb,
+  rifle.glb, pistol.glb) laid down; the motorcycle stays the sand bike on its side. New stylised low-poly models
+  for the rest, in public/models/finds/ (tools/blender/finds.py, 560-1440 tris each, already in their lying pose):
+  a spade with a D-grip and taped shaft, a metal detector (yellow search coil, cable wound up the shaft, control box,
+  arm cuff), an orange storm detector (barometer dial, three-cup anemometer, whip aerial, rubber corners), the wrist
+  computer (leather cuff, screen module, straps), a canvas backpack (flap, pockets, bedroll, tin cup) and the jammer
+  (the held one's shape: raked grip, olive body, yagi, whip aerial, amber lamp).
+- **The edge glow on broken gear** now pushes each mesh out along its normals (by the distance to the camera, in the
+  shader) instead of scaling it about its box: a glTF mesh is one material's pieces spread over the whole model, so
+  scaling it shifted them off the model and lit it up white.
+- **Inventory icons for every piece of gear** are rendered too (public/icons/items/<kind>.png, same script, the part
+  icons' light and outline), at the item's grid shape: they fill the item's cells in the Tab inventory (turned with
+  it) and keep their shape in single slots and the hotbar (`img.fit`). The gear SVGs are gone.
+- Every item in issue #8's list now has a model and an icon (parts were done before). The first-person shovel and
+  metal detector are someone else's (tools/models/hands.py); these are only the world and icon models.
+
 ## 2026-10-18 — The jammer is found, not crafted
 
 - The jammer is gear now (shared/gear.ts): found broken on crawler ground (level 1, 3 at once, not in caches), the

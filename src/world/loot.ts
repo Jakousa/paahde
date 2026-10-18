@@ -1,14 +1,14 @@
 // Loot on the sand (shared/loot.ts, from the server via src/net.ts): broken gear at crash sites and near the
 // spawn, dug-up caches, things dropped from a full bag. Buried loot isn't drawn (the metal detector hears it,
-// src/detector.ts). Gear is a small model built here from boxes and cylinders; broken gear has a warm glow
+// src/detector.ts). Gear has its own model (FIND_MODELS; the motorcycle is the sand bike on its side); broken gear has a warm glow
 // along its edges and a faint warm pool on the sand so it catches the eye among the crash-site debris; parts use the disassembly part models (src/teardown/junk.ts);
 // anything else is a battered crate. Each sits on the sand where it is (also at the bottom of a hole).
 import * as THREE from 'three/webgpu';
-import { float, length, smoothstep, uniform, uv, vec3 } from 'three/tsl';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { cameraPosition, float, length, max, modelPosition, normalLocal, positionLocal, smoothstep, uniform, uv, vec3 } from 'three/tsl';
 import { GEAR, isGear, repaired } from '../../shared/gear.ts';
 import { parsePart } from '../../shared/items.ts';
 import { LOOT_REACH, type Loot } from '../../shared/loot.ts';
-import { jammerModel } from '../models/jammer';
 import { TIERS } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { loadPart } from '../teardown/junk';
@@ -33,54 +33,39 @@ const mat = (color: number, rough = 0.8, metal = 0.2) => new THREE.MeshStandardN
 const RUST = mat(0x7a4a2e, 0.9, 0.3);
 const DARK = mat(0x2e2a26, 0.7, 0.4);
 const STEEL = mat(0x8a8f86, 0.5, 0.7);
-const CLOTH = mat(0x7a5e3a, 0.95, 0);
 const RED = mat(0xa84a32, 0.6, 0.3);
 const WOOD = mat(0x6b4a2e, 0.9, 0);
-const STOCK = mat(0x7e3a20, 0.6, 0);
-const GRIP = mat(0x6a3a22, 0.7, 0);
-const GLOW = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(1, 0.35, 0.12).multiplyScalar(2) });
 const glowPulse = uniform(1);
 const rimPulse = uniform(1);
 /**
- * The glowing edge: each mesh of the model again, a little bigger and drawn inside out, so only a thin rim of it
- * shows around the model's outline (the model itself hides the rest).
+ * The glowing edge: each mesh of the model again, pushed out along its normals and drawn inside out, so only a thin
+ * rim of it shows around the model's outline (the model itself hides the rest). Its width follows the distance from
+ * the camera (RIM_PER_M), so it stays a pixel or two across.
  */
 const RIM = (() => {
   const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     side: THREE.BackSide, fog: false });
+  const w = max(float(RIM_MIN), cameraPosition.distance(modelPosition).mul(RIM_PER_M));
+  m.positionNode = positionLocal.add(normalLocal.mul(w));
   m.colorNode = vec3(1.0, 0.62, 0.22).mul(3); // bright enough to bloom (src/post.ts)
   m.opacityNode = rimPulse;
   return m;
 })();
-type Rim = { mesh: THREE.Mesh; size: THREE.Vector3; center: THREE.Vector3 };
 
-/** Give every mesh under `root` its rim (see RIM), sized from its geometry's box in metres. */
-function addRims(root: THREE.Object3D, rims: Rim[]) {
-  root.updateWorldMatrix(true, true);
+/** Give every mesh under `root` its rim (see RIM). */
+function addRims(root: THREE.Object3D, rims: THREE.Mesh[]) {
   const meshes: THREE.Mesh[] = [];
   root.traverse((o) => (o as THREE.Mesh).isMesh && !o.userData.rim && meshes.push(o as THREE.Mesh));
-  const ws = new THREE.Vector3();
   for (const o of meshes) {
-    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
-    const b = o.geometry.boundingBox!;
     const mesh = new THREE.Mesh(o.geometry, RIM);
     mesh.userData.rim = mesh.userData.shared = true; // the geometry is the model's: disposed with it
     mesh.castShadow = mesh.receiveShadow = false;
     mesh.renderOrder = 2;
     o.add(mesh);
-    o.getWorldScale(ws);
-    rims.push({ mesh, size: b.getSize(new THREE.Vector3()).multiply(ws), center: b.getCenter(new THREE.Vector3()) });
+    rims.push(mesh);
   }
 }
 
-/** Grow each rim to `w` m past its mesh on every side, around the mesh's own middle. */
-function sizeRims(rims: Rim[], w: number) {
-  for (const r of rims) {
-    const s = r.mesh.scale.set(1 + 2 * w / Math.max(r.size.x, 1e-3), 1 + 2 * w / Math.max(r.size.y, 1e-3),
-      1 + 2 * w / Math.max(r.size.z, 1e-3));
-    r.mesh.position.set(r.center.x * (1 - s.x), r.center.y * (1 - s.y), r.center.z * (1 - s.z));
-  }
-}
 /** A faint warm disc lying on the sand, breathing slowly (all of them together). */
 const POOL = (() => {
   const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
@@ -112,7 +97,7 @@ function cyl(g: THREE.Group, r: number, h: number, m: THREE.Material, x = 0, y =
   return o;
 }
 
-/** Small stand-in models for the gear, lying on the sand (origin at the ground). */
+/** Gear drawn here: the motorcycle (origin at the ground). */
 const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
   motorcycle: (g) => {
     // The real sand bike (src/bike.ts) dropped on its side, half sunk in the sand, so it reads as a bike from afar;
@@ -140,68 +125,53 @@ const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
       if (g.userData.rims) addRims(m, g.userData.rims);
     }, () => {});
   },
-  spyglass: (g) => {
-    cyl(g, 0.045, 0.32, RUST, 0, 0.05, 0, 0, Math.PI / 2);
-    cyl(g, 0.055, 0.2, WOOD, 0.24, 0.055, 0, 0, Math.PI / 2);
-  },
-  canteen: (g) => {
-    cyl(g, 0.14, 0.08, STEEL, 0, 0.14, 0, Math.PI / 2, 0).scale.set(1, 1, 1);
-    cyl(g, 0.03, 0.05, WOOD, 0, 0.3, 0);
-  },
-  backpack: (g) => {
-    box(g, 0.42, 0.22, 0.55, CLOTH, 0, 0.11, 0, 0.3);
-    box(g, 0.36, 0.06, 0.3, WOOD, 0.03, 0.24, 0.08, 0.3);
-  },
-  storm_detector: (g) => {
-    box(g, 0.24, 0.14, 0.32, STEEL, 0, 0.07, 0, 0.5);
-    cyl(g, 0.01, 0.3, DARK, 0.06, 0.28, 0.1, 0.3, 0);
-  },
-  wristpad: (g) => {
-    box(g, 0.12, 0.03, 0.4, CLOTH, 0, 0.015, 0, 0.8);
-    box(g, 0.14, 0.04, 0.12, DARK, 0, 0.04, 0, 0.8);
-  },
-  metal_detector: (g) => {
-    cyl(g, 0.015, 1.1, STEEL, 0, 0.03, 0, Math.PI / 2, 0);
-    cyl(g, 0.16, 0.03, RUST, 0, 0.02, 0.6);
-    box(g, 0.1, 0.08, 0.14, DARK, 0, 0.06, -0.3);
-  },
-  shovel: (g) => {
-    cyl(g, 0.02, 1.0, WOOD, 0, 0.03, 0, Math.PI / 2, 0);
-    box(g, 0.24, 0.03, 0.3, STEEL, 0, 0.03, 0.6);
-  },
-  laser_rifle: (g) => {
-    // Lying on its left side: muzzle +X, the scope towards -Z, grip and cell towards +Z (tools/models/rifle.py sizes).
-    const along = Math.PI / 2;
-    box(g, 0.23, 0.034, 0.06, STOCK, -0.22, 0.02, 0.015, 0, 0);
-    box(g, 0.27, 0.034, 0.068, STEEL, 0.035, 0.02, -0.01);
-    box(g, 0.03, 0.026, 0.1, STOCK, -0.01, 0.016, 0.07, 0.35);
-    box(g, 0.05, 0.03, 0.09, DARK, 0.13, 0.017, 0.08, -0.3);
-    cyl(g, 0.021, 0.19, STOCK, 0.265, 0.022, -0.004, 0, along);
-    cyl(g, 0.009, 0.12, DARK, 0.41, 0.022, -0.004, 0, along);
-    cyl(g, 0.026, 0.1, DARK, 0.52, 0.027, -0.004, 0, along);
-    cyl(g, 0.0275, 0.012, GLOW, 0.54, 0.027, -0.004, 0, along).castShadow = false;
-    cyl(g, 0.017, 0.22, DARK, 0.04, 0.018, -0.07, 0, along);
-  },
-  laser_pistol: (g) => {
-    // Lying on its left side: muzzle +X, the grip towards +Z, raked forward (tools/models/pistol.py sizes).
-    const along = Math.PI / 2;
-    box(g, 0.16, 0.023, 0.036, DARK, 0.02, 0.012, -0.063);
-    box(g, 0.026, 0.024, 0.1, GRIP, -0.005, 0.012, 0.0, -0.45);
-    cyl(g, 0.011, 0.02, STEEL, -0.07, 0.012, -0.067, 0, along);
-    cyl(g, 0.0085, 0.04, DARK, 0.12, 0.012, -0.064, 0, along);
-    cyl(g, 0.0135, 0.055, DARK, 0.17, 0.014, -0.064, 0, along);
-    cyl(g, 0.012, 0.006, GLOW, 0.2, 0.014, -0.064, 0, along).castShadow = false;
-  },
-  jammer: (g) => {
-    // Lying on its left side: antenna +X, the grip towards +Z (src/models/jammer.ts).
-    const m = jammerModel().obj;
-    m.rotation.set(-Math.PI / 2, Math.PI / 2, 0);
-    m.position.y = 0.026;
-    g.add(m);
-  },
 };
 
-type Shown = { obj: THREE.Group; rims: Rim[] | null; pool: THREE.Mesh | null; poolY: number; l: Loot };
+/**
+ * The real models of the gear (issue #8): the water bottle, telescope and guns are the held ones lying down; the rest
+ * were made for lying on the sand (public/models/finds/, tools/blender/finds.py). `rot` lays the model down (XYZ, rad).
+ */
+const FIND_MODELS: Record<string, { url: string; rot?: [number, number, number] }> = {
+  canteen: { url: './models/canteen.glb', rot: [-Math.PI / 2, 0, 0] },
+  spyglass: { url: './models/telescope.glb' },
+  laser_rifle: { url: './models/rifle.glb', rot: [0, 0, Math.PI / 2] },
+  laser_pistol: { url: './models/pistol.glb', rot: [0, 0, Math.PI / 2] },
+  ...Object.fromEntries(['backpack', 'shovel', 'metal_detector', 'storm_detector', 'wristpad', 'jammer']
+    .map((k) => [k, { url: `./models/finds/${k}.glb` }])),
+};
+const findCache = new Map<string, Promise<THREE.Object3D>>();
+const gltf = new GLTFLoader();
+
+/** Load `kind`'s model (once), laid down and sat on the sand at the origin, into `g`; then rim it if `g` has rims. */
+function addFind(g: THREE.Group, kind: string) {
+  const spec = FIND_MODELS[kind];
+  let p = findCache.get(kind);
+  if (!p) {
+    p = gltf.loadAsync(spec.url).then((m) => {
+      const lay = new THREE.Group();
+      lay.add(m.scene);
+      if (spec.rot) lay.rotation.set(...spec.rot);
+      const wrap = new THREE.Group();
+      wrap.add(lay);
+      const b = new THREE.Box3().setFromObject(wrap);
+      const c = b.getCenter(new THREE.Vector3());
+      lay.position.set(-c.x, -b.min.y, -c.z);
+      return wrap;
+    });
+    findCache.set(kind, p);
+  }
+  p.then((src) => {
+    const m = src.clone(true);
+    m.traverse((o) => {
+      o.castShadow = true;
+      o.userData.shared = true; // every copy shares the loaded geometry: never disposed
+    });
+    g.add(m);
+    if (g.userData.rims) addRims(m, g.userData.rims);
+  }, (e) => console.warn(`${spec.url} failed to load`, e));
+}
+
+type Shown = { obj: THREE.Group; rims: THREE.Mesh[] | null; pool: THREE.Mesh | null; poolY: number; l: Loot };
 
 /** Lay the pool's vertices just above the sand around (x, z), wherever it has been dug. */
 function drape(pool: THREE.Mesh, x: number, z: number) {
@@ -216,11 +186,7 @@ export class LootView {
   private shown = new Map<number, Shown>();
   private t = 0;
 
-  /** The rims are sized by how far they are from it. */
-  private camera: THREE.Camera;
-
-  constructor(scene: THREE.Scene, camera: THREE.Camera) {
-    this.camera = camera;
+  constructor(scene: THREE.Scene) {
     scene.add(this.group);
   }
 
@@ -255,9 +221,7 @@ export class LootView {
       s.obj.position.set(l.x, heightAt(l.x, l.z) - 0.02, l.z);
       if (s.rims) {
         const on = d < RIM_VIEW;
-        for (const r of s.rims) r.mesh.visible = on;
-        const cd = Math.hypot(l.x - this.camera.position.x, s.obj.position.y - this.camera.position.y, l.z - this.camera.position.z);
-        if (on) sizeRims(s.rims, Math.max(RIM_MIN, cd * RIM_PER_M));
+        for (const r of s.rims) r.visible = on;
       }
       if (s.pool) {
         s.pool.visible = d < POOL_VIEW;
@@ -291,11 +255,12 @@ export class LootView {
 
   private build(l: Loot): Shown {
     const obj = new THREE.Group();
-    let rims: Rim[] | null = null;
+    let rims: THREE.Mesh[] | null = null;
     let pool: THREE.Mesh | null = null;
     const part = parsePart(l.kind);
     if (isGear(l.kind)) {
-      GEAR_MODELS[l.kind]?.(obj);
+      if (FIND_MODELS[l.kind]) addFind(obj, l.kind);
+      else GEAR_MODELS[l.kind]?.(obj);
       // Broken gear glows along its edges, with a faint warm pool on the sand around it.
       if (!repaired({ id: 0, kind: l.kind, n: 1, parts: l.parts })) {
         rims = obj.userData.rims = [];
@@ -306,8 +271,6 @@ export class LootView {
         pool.renderOrder = 1;
         this.group.add(pool);
       }
-    } else if (GEAR_MODELS[l.kind]) {
-      GEAR_MODELS[l.kind](obj); // crafted things with a model of their own (the jammer)
     } else if (part) {
       loadPart(part.part, TIERS[part.tier]).then((m) => {
         m.scale.multiplyScalar(0.7);
