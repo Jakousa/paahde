@@ -92,13 +92,13 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
   motorcycle: () => crate(0.36, RED),
   // Carried at the hip in the right hand, muzzle forward and a little down, the stock back under the arm.
   laser_rifle: (loaded) => {
-    const g = gunModel('./models/rifle.glb', loaded);
+    const g = gunModel('./models/rifle.glb', loaded, 0.087, 0.588);
     g.rotation.set(-0.25, Math.PI, 0); // the model's muzzle is +Z
     return g;
   },
   // In the right hand, muzzle forward and down.
   laser_pistol: (loaded) => {
-    const g = gunModel('./models/pistol.glb', loaded);
+    const g = gunModel('./models/pistol.glb', loaded, 0.064, 0.205);
     g.rotation.set(-0.45, Math.PI, 0);
     return g;
   },
@@ -116,10 +116,15 @@ const gunSrc = new Map<string, Promise<THREE.Object3D>>();
 /**
  * The laser rifle or pistol (public/models/rifle.glb, pistol.glb): origin at the grip, muzzle +Z, up +Y, materials
  * 'Rifle' / 'Pistol' and the emissive glow. Empty until loaded (then `loaded` is called); each copy has its own
- * geometry, so disposeModel() can free it.
+ * geometry, so disposeModel() can free it. A child 'Muzzle' marks the tip of the bore (`bore` m up, `tip` m forward:
+ * rifle.py / pistol.py BZ, MUZZLE_Y), where its shots start (heldMuzzle).
  */
-function gunModel(url: string, loaded?: () => void): THREE.Group {
+function gunModel(url: string, loaded: (() => void) | undefined, bore: number, tip: number): THREE.Group {
   const g = new THREE.Group();
+  const muzzle = new THREE.Object3D();
+  muzzle.name = 'Muzzle';
+  muzzle.position.set(0, bore, tip);
+  g.add(muzzle);
   let src = gunSrc.get(url);
   if (!src) gunSrc.set(url, (src = new GLTFLoader().loadAsync(url).then((gltf) => gltf.scene)));
   src.then(
@@ -136,6 +141,14 @@ function gunModel(url: string, loaded?: () => void): THREE.Group {
     (e) => console.warn(`${url} failed to load`, e),
   );
   return g;
+}
+
+/** The muzzle of a held gun (heldModel) in world space into `out`, or null if it has none. */
+export function heldMuzzle(held: THREE.Object3D, out: THREE.Vector3): THREE.Vector3 | null {
+  const m = held.getObjectByName('Muzzle');
+  if (!m) return null;
+  m.updateWorldMatrix(true, false);
+  return m.getWorldPosition(out);
 }
 
 /** A battered crate hanging from the hand: scrap, carried machines, anything without a model of its own. */

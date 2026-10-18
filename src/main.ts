@@ -180,8 +180,12 @@ const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
 const jammer = new Jammer(orbit, net, guardianFx.jets, guardianFx.drones);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { jammer });
-const rifle = new Rifle(orbit, net, guardianFx.guardians, guardianFx.drones, guardianFx.jets, (out) => viewmodel.muzzle(out));
+// The beam starts at the drawn gun: the first-person one, or in third person the one in the body's hand.
+const rifle = new Rifle(orbit, net, guardianFx.guardians, guardianFx.drones, guardianFx.jets,
+  (out) => viewmodel.muzzle(out) ?? (orbit.showBody && me.muzzle(out) ? out : null));
+rifle.remoteMuzzle = (id, out) => (remotes.get(id)?.muzzle(out) ? out : null);
 scene.add(zaps.root);
+zaps.setCamera(orbit.camera);
 const thrower = new Thrower(scene, orbit, net, scrap);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => placedView.sync(placed, net.garden);
@@ -322,7 +326,6 @@ renderer.setAnimationLoop((time) => {
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
   thrower.update(frameDt, !s.riding && !teardown.active && !net.down);
   jammer.update(frameDt, !s.riding && !teardown.active && !net.down);
-  zaps.update(frameDt);
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
   me.setHeadless(riding && !orbit.showBody);
@@ -330,6 +333,7 @@ renderer.setAnimationLoop((time) => {
   viewmodel.setColor(net.color);
   viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding,
     digging: (input & (DIG | PILE)) !== 0 || (digUntil.get(net.id) ?? 0) > performance.now() });
+  zaps.update(frameDt); // after the gun is drawn: your beam starts at its muzzle
   // Before the wind: the storm sets how hard it blows here.
   const belt = equipped(net.boxes.equip, 'belt');
   storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me, belt ? stormWarnS(quality(belt)) : 0);

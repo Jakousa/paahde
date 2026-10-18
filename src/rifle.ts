@@ -136,6 +136,8 @@ export class Rifle {
   /** Debug (?debug, `dbg.rifle`): hold the aim / fire buttons without the mouse captured. */
   forceAim = false;
   forceFire = false;
+  /** Where player `id`'s drawn gun's muzzle is (world), or null (not drawn, or no gun in hand). */
+  remoteMuzzle: (id: number, out: THREE.Vector3) => THREE.Vector3 | null = () => null;
 
   constructor(view: FirstPersonCamera, net: Net, guardians: Guardians, drones: Drones, jets: Jets, muzzle: (out: THREE.Vector3) => THREE.Vector3 | null) {
     this.drones = drones;
@@ -160,12 +162,12 @@ export class Rifle {
       this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * Math.exp(-e.deltaY * 0.0015)));
     }, { passive: true });
     net.onZap = (m) => {
-      // Someone else's shot: the beam from a little ahead of their eye, the sound from there.
+      // Someone else's shot: the beam from their gun's muzzle (or a little ahead of their eye), the sound from there.
       _d.set(m.ex - m.x, m.ey - m.y, m.ez - m.z);
       const len = _d.length();
       if (len < 0.5) return;
       _d.divideScalar(len);
-      _o.set(m.x, m.y - 0.15, m.z).addScaledVector(_d, 0.8);
+      if (!this.remoteMuzzle(m.by, _o)) _o.set(m.x, m.y - 0.15, m.z).addScaledVector(_d, 0.8);
       const ear = this.view.camera.position;
       zaps.beam(_o.x, _o.y, _o.z, m.ex, m.ey, m.ez, _o.distanceTo(ear) < 60);
       rifleSound.shot(_o, ear, !!m.pistol);
@@ -317,12 +319,10 @@ export class Rifle {
     const jet = this.jets.raycast(_o, _d, dist);
     if (jet) dist = jet.dist;
     _e.copy(_o).addScaledVector(_d, dist);
-    // The beam from the drawn muzzle, or (third person: the rifle isn't drawn in the hands) from about where it'd be.
+    // The beam from the drawn muzzle (first or third person), or (through the scope, no gun drawn) from about where it'd be.
     const m = this.muzzle(_m) ?? _m.copy(_o).addScaledVector(_d, 0.6).addScaledVector(_r.set(1, 0, 0).applyQuaternion(_q), 0.2).add(_u.set(0, -0.25, 0));
-    // Down the iron sights the beam runs straight away from the eye: start it a few metres out, or the inside of its
-    // glow fills the view.
-    if (!feel.scope && playerHands.aim > 0.5 && dist > 6) m.addScaledVector(_d, 4);
-    zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z);
+    // It starts at the drawn muzzle as the gun kicks and the view climbs.
+    zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z, true, this.muzzle);
     rifleSound.shot(null, null, this.gun === 'pistol');
     rifleSound.recharge(cooldown / 1000 - 0.08);
     if (drone || jet) {
