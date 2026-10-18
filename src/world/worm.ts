@@ -1,10 +1,11 @@
 // The worm (shared/worm.ts) as drawn: the head with its three jaws and the grinder spinning in its throat, the body
-// segments laid where the server put them (one instanced mesh per material, so the hundred-metre body is a handful of
+// segments laid where the server put them (one instanced mesh per material, so the two-hundred-metre body is a handful of
 // draw calls), and the spike of a tail. Weak points ride on the backs of six segments (shared/worm.ts POINT_SEGS).
 //
 // What sells it: sand sprays up wherever the body passes through the surface; swimming shallow, the sand over its
 // head boils along in a wake and the ground trembles; before it bursts out the sand there shivers ('tell'); the burst
-// and the plunge throw up fountains of sand ('breach', 'plunge'); the jaws gape while it's out. Dead, whatever was out
+// and the plunge throw up fountains of sand ('breach', 'plunge'); the jaws gape while it's out, and while it charges
+// half out of the sand ('lunge': a roar, the ground shaking). Dead, whatever was out
 // of the sand falls and slams down onto it, segment after segment, and lies there; the wreck sinks before it's cleared.
 // Hidden while we're underground (the base, a shelter): it swims under them.
 //
@@ -16,7 +17,7 @@ import { BOSSES, type BossSnap } from '../../shared/bosses.ts';
 import { WRECK_SINK } from '../../shared/rifle.ts';
 import { indoors } from '../../shared/shelters.ts';
 import { heightAt } from '../../shared/terrain.ts';
-import { HEAD_R, MODE_AIR, MODE_HUNT, MODE_RISE, POINT_R, POINT_SEGS, RADIUS, SEG_LEN, SEGS, segScale } from '../../shared/worm.ts';
+import { HEAD_R, MODE_AIR, MODE_HUNT, MODE_LUNGE, MODE_RISE, POINT_R, POINT_SEGS, RADIUS, SEG_LEN, SEGS, segScale, TELL } from '../../shared/worm.ts';
 import { weakPoint, type BossCtx, type BossFxMsg, type BossView } from './bossParts';
 import { tyreDust } from '../tyreDust';
 import { rifleSound } from '../rifleSound';
@@ -28,11 +29,11 @@ const JAW_OPEN = 1.05, JAW_RATE = 3;
 const SPIN = [0.6, 4];
 /** Dead: segments fall at this gravity (m/s²), each DROP_GAP s after the one before, and rest this deep in the sand
  *  (× radius). */
-const DROP_G = 22, DROP_GAP = 0.06, REST = 0.35;
+const DROP_G = 22, DROP_GAP = 0.035, REST = 0.35;
 /** Sand thrown up per second where a segment crosses the surface (at full speed), and by the wake over its head. */
 const SPRAY_RATE = 10, WAKE_RATE = 14;
-/** A 'tell' shivers the sand for this long (s) in a ring this wide (m). */
-const TELL_S = 1.1, TELL_R = 7;
+/** A 'tell' shivers the sand in a ring this wide (m) until it bursts out (the message says when) and TELL_AFTER s on. */
+const TELL_R = 7, TELL_AFTER = 0.3;
 
 type Model = { seg: THREE.Object3D; head: THREE.Object3D; grinder: THREE.Object3D; jaw: THREE.Object3D; tail: THREE.Object3D };
 let model: Model | null = null;
@@ -123,7 +124,7 @@ export class WormView implements BossView {
   private spin = 0;
   private spray = new Float32Array(SEGS + 1);
   private wake = 0;
-  private tells: { x: number; y: number; z: number; t: number }[] = [];
+  private tells: { x: number; y: number; z: number; t: number; len: number }[] = [];
   private landed = new Uint8Array(SEGS + 1);
   private bounds = new THREE.Box3();
 
@@ -197,7 +198,7 @@ export class WormView implements BossView {
     orient(_f, _q);
     this.head.position.set(p[0], p[1], p[2]);
     this.head.quaternion.copy(_q);
-    const out = mode === MODE_RISE || mode === MODE_AIR;
+    const out = mode === MODE_RISE || mode === MODE_AIR || mode === MODE_LUNGE;
     this.jaw += Math.max(-JAW_RATE * ctx.dt, Math.min(JAW_RATE * ctx.dt, (dead > 0 ? 0.4 : out ? 1 : 0) - this.jaw));
     for (const j of this.jaws) j.rotation.x = -JAW_OPEN * this.jaw;
     if (dead <= 0) this.spin += ctx.dt * (mode >= MODE_HUNT ? SPIN[1] : SPIN[0]);
@@ -255,7 +256,7 @@ export class WormView implements BossView {
       const y = Math.max(rest, p[a + 1] - 0.5 * DROP_G * t * t);
       if (y <= rest && !this.landed[i]) {
         this.landed[i] = 1;
-        if (p[a + 1] - rest > 2 && i % 3 === 0) {
+        if (p[a + 1] - rest > 2 && i % 4 === 0) {
           rifleSound.slam({ x: p[a], y: rest, z: p[a + 2] }, ctx.ear, true);
           ctx.thump(p[a], rest - r, p[a + 2], 1.4, 10, 5, 2.5);
         }
@@ -295,13 +296,13 @@ export class WormView implements BossView {
       if (depth > -HEAD_R && near < 60) ctx.shake(0.06 * (1 - near / 60) * Math.min(1, speed / 12));
     }
     // The tell: the sand shivering in a ring where it's about to burst out.
-    this.tells = this.tells.filter((t) => (t.t += dt) < TELL_S);
+    this.tells = this.tells.filter((t) => (t.t += dt) < t.len);
     for (const t of this.tells) {
       for (let k = 0; k < 3; k++) {
         const ang = Math.random() * Math.PI * 2, rr = Math.random() * TELL_R;
         tyreDust.emit(t.x + Math.cos(ang) * rr, t.y + 0.1, t.z + Math.sin(ang) * rr, 0, 0.5 + Math.random() * (1 + 3 * t.t), 0, 0.8 + t.t);
       }
-      if (Math.hypot(t.x - e.x, t.z - e.z) < 40) ctx.shake(0.05 + 0.12 * (t.t / TELL_S));
+      if (Math.hypot(t.x - e.x, t.z - e.z) < 40) ctx.shake(0.05 + 0.12 * Math.min(1, t.t / t.len));
     }
     // The rumble from the sand over its head: louder shallow, fast and out.
     const level = dead > 0 ? 0 : Math.max(0, Math.min(1, (1 - Math.max(0, depth) / 25) * Math.min(1, speed / 14) + (mode >= MODE_HUNT ? 0.15 : 0)));
@@ -310,8 +311,12 @@ export class WormView implements BossView {
 
   fx(m: BossFxMsg, ctx: BossCtx) {
     if (m.e === 'tell') {
-      this.tells.push({ x: m.x, y: m.y, z: m.z, t: 0 });
-      wormSound.tell(m, ctx.ear);
+      const len = (m.a?.[0] ?? TELL) + TELL_AFTER;
+      this.tells.push({ x: m.x, y: m.y, z: m.z, t: 0, len });
+      wormSound.tell(m, ctx.ear, len);
+    } else if (m.e === 'lunge') {
+      wormSound.tell(m, ctx.ear, 0.7);
+      if (Math.hypot(m.x - ctx.ear.x, m.z - ctx.ear.z) < 60) ctx.shake(0.25);
     } else if (m.e === 'breach' || m.e === 'plunge') {
       const up = m.e === 'breach';
       // A fountain of sand thrown along its way, and a ring of it out across the sand.

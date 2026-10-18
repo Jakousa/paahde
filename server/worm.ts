@@ -1,13 +1,15 @@
 // The worm's brain (shared/worm.ts, server/bosses.ts): steers its head through the sand, flies it on gravity out of
 // it, lays the body along the head's path, and does the harm: the burst out of the sand and the head swallow whoever
-// is near, and the plunge back in; both blow craters, and running shallow its back ploughs a furrow.
+// is near, and the plunge back in; both blow craters, and running shallow its back ploughs a furrow. The more people
+// about (server/bossCrowd.ts), the faster it hunts, the shorter the warning and the sooner it comes up again.
 import { BASE } from '../shared/base.ts';
+import { crowd, scaled } from './bossCrowd.ts';
 import { rockHeight } from '../shared/rocks.ts';
 import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt, sandOverRock } from '../shared/terrain.ts';
 import {
-  ACCEL, GRAVITY, HEAD_R, HUNT_SPEED, MODE_AIR, MODE_DIVE, MODE_HUNT, MODE_RISE, MODE_ROAM, NOTICE_R, RADIUS, RISE_SPEED, RISE_TURN,
-  ROAM_SPEED, SEG_LEN, SEGS, segScale, TURN,
+  ACCEL, GRAVITY, HEAD_R, HUNT_SPEED, MODE_AIR, MODE_DIVE, MODE_HUNT, MODE_LUNGE, MODE_RISE, MODE_ROAM, NOTICE_R, RADIUS, RISE_SPEED, RISE_TURN,
+  ROAM_SPEED, SEG_LEN, SEGS, segScale, TELL, TURN,
 } from '../shared/worm.ts';
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 
@@ -17,18 +19,27 @@ const ROAM_DEPTH = 10, HUNT_DEPTH = 15, DIVE_DEPTH = 18, LEAVE_DEPTH = 24;
 const SURFACE_DEPTH = RADIUS * 0.55;
 /** Roaming: runs at the surface every SURFACE_EVERY s (random within), for SURFACE_FOR s. */
 const SURFACE_EVERY: [number, number] = [18, 40];
-const SURFACE_FOR: [number, number] = [7, 12];
+const SURFACE_FOR: [number, number] = [10, 18];
 /** Waypoints (m from where it is); it keeps BASE_KEEP_OUT from the base, and hunts nobody within PREY_BASE of it. */
 const LEG: [number, number] = [180, 420];
 const BASE_KEEP_OUT = 380, PREY_BASE = 320;
 /** Rock: it can't reach anyone standing on rock or sand thinner than ON_ROCK over it; it looks AHEAD m for rock. */
 const ON_ROCK = 4;
 const AHEAD = 10;
-/** Hunting: rises once within RISE_R (m, horizontally) of its prey and at least RISE_MIN_DEPTH down, aiming
- *  RISE_UP m over the sand and RISE_LEAD m past them; after a leap it dives and keeps off for COOL_S. */
-const RISE_R = 13, RISE_MIN_DEPTH = 8, RISE_UP = 45, RISE_LEAD = 3, COOL_S = 5;
-/** It loses prey it hasn't had a fix on for this long (s). */
-const LOSE_S = 4;
+/** Hunting: rises once within RISE_R (m, horizontally) of its prey, at least RISE_MIN_DEPTH down and with all of its
+ *  body back under the sand. It holds under the spot for the tell (TELL, creeping at WIND_SPEED), then shoots up
+ *  aiming RISE_UP m over the sand and RISE_LEAD m past it; after a leap it dives and keeps off for COOL_S. */
+const RISE_R = 13, RISE_MIN_DEPTH = 8, RISE_UP = 50, RISE_LEAD = 3, COOL_S = 6, WIND_SPEED = 4;
+/** Hunting half out of the sand (its back up, ploughing a furrow), SHALLOW_P of the hunts: once within LUNGE_R (m) it
+ *  charges straight at where they are, LUNGE_SPEED, and runs on through for LUNGE_S s whatever they do (step aside!),
+ *  swallowing whoever its head meets and crushing whoever its back runs into. Then it goes deep. */
+const SHALLOW_P = 0.45, LUNGE_R = 24, LUNGE_SPEED = 24, LUNGE_S = 2.2, LUNGE_ON = 40;
+/** Too close to rise yet (cooling down, body still out, not deep enough): it runs on past them this far before turning back. */
+const PASS_R = 40;
+/** A crowd: per person past the first, this much faster hunting, shorter tell (down to TELL_MIN s), shorter cool-down. */
+const CROWD_SPEED = 0.06, CROWD_TELL = 0.08, TELL_MIN = 0.8, CROWD_COOL = 0.25;
+/** It loses prey it hasn't had a fix on for this long (s), or that has got this far from it (m) unless they shot it. */
+const LOSE_S = 4, LOSE_R = NOTICE_R * 1.5;
 /** Harm: the burst and the plunge kill within BURST_R (m) of where the head breaks the sand; the head out of the sand
  *  swallows within SWALLOW_R of its centre; a body segment out of the sand crushes within its radius + BODY_PAD. */
 const BURST_R = 6.5, SWALLOW_R = HEAD_R + 1, BODY_PAD = 1;
@@ -50,8 +61,11 @@ type Worm = {
   /** Server s clock (summed dt) and when the next surface run starts / the current one ends. */
   clock: number; surfaceAt: number; surfaceUntil: number;
   prey: number; fixAt: number; px: number; pz: number;
-  /** Rising at (ax, ay, az); cooling down (no rising) until then. */
-  ax: number; ay: number; az: number; coolUntil: number;
+  /** This hunt: half out of the sand (else deep); charging till lungeUntil. */
+  shallow: boolean; lungeUntil: number;
+  /** Rising at (ax, ay, az) once the clock reaches riseAt (till then the tell: it holds under the spot); cooling down
+   *  (no rising) until coolUntil. */
+  ax: number; ay: number; az: number; riseAt: number; coolUntil: number;
   /** Was the head under the sand last tick; where the last furrow crater went. */
   under: boolean; fx: number; fz: number;
 };
@@ -95,7 +109,7 @@ function steer(w: Worm, dx: number, dy: number, dz: number, turn: number, speed:
 }
 
 /** Steer for (tx, tz) at `depth` under the sand there, turning away from rock ahead. */
-function swim(b: Boss, w: Worm, tx: number, tz: number, depth: number, speed: number, dt: number) {
+function swim(b: Boss, w: Worm, tx: number, tz: number, depth: number, speed: number, dt: number, accel = ACCEL) {
   let hx = tx - b.x, hz = tz - b.z;
   const hl = Math.hypot(hx, hz) || 1;
   (hx /= hl), (hz /= hl);
@@ -113,7 +127,7 @@ function swim(b: Boss, w: Worm, tx: number, tz: number, depth: number, speed: nu
   const yT = Math.min(heightAt(b.x + hx * 8, b.z + hz * 8), heightAt(b.x, b.z)) - depth;
   const dy = Math.max(-0.8, Math.min(0.8, (yT - b.y) / 14));
   const n = Math.hypot(1, dy);
-  steer(w, hx / n, dy / n, hz / n, TURN, speed, ACCEL, dt);
+  steer(w, hx / n, dy / n, hz / n, TURN, speed, accel, dt);
 }
 
 /** Can it go after this player: out on the sand, off rock, away from the base? */
@@ -155,6 +169,15 @@ function layBody(b: Boss, w: Worm) {
   }
 }
 
+/** Is any of the body out of the sand (still pouring out of a leap, or its back up on a surface run)? */
+function bodyOut(w: Worm): boolean {
+  for (let i = 0; i < SEGS; i++) {
+    const x = w.segs[i * 3], y = w.segs[i * 3 + 1], z = w.segs[i * 3 + 2];
+    if (y + RADIUS * segScale(i) > heightAt(x, z)) return true;
+  }
+  return false;
+}
+
 function kill(out: BossOut, p: BossPlayer, x: number, y: number, z: number, r: number) {
   if (out.kills.some((k) => k.id === p.id)) return;
   out.kills.push({ id: p.id, cause: 'worm', push: blastPush(x, y, z, p.x, p.y, p.z, r) });
@@ -179,7 +202,7 @@ export const worm: Brain = {
     const fx = Math.sin(b.yaw), fz = Math.cos(b.yaw);
     const w: Worm = {
       vx: fx * ROAM_SPEED, vy: 0, vz: fz * ROAM_SPEED, mode: MODE_ROAM, trail: [], segs: [], tx: x + fx * 300, tz: z + fz * 300,
-      clock: 0, surfaceAt: rand(4, 10), surfaceUntil: 0, prey: -1, fixAt: 0, px: 0, pz: 0, ax: 0, ay: 0, az: 0, coolUntil: 0,
+      clock: 0, surfaceAt: rand(4, 10), surfaceUntil: 0, prey: -1, fixAt: 0, px: 0, pz: 0, shallow: false, lungeUntil: 0, ax: 0, ay: 0, az: 0, riseAt: 0, coolUntil: 0,
       under: true, fx: b.x, fz: b.z,
     };
     // A straight trail behind it, so the body is laid out from the start.
@@ -192,13 +215,14 @@ export const worm: Brain = {
     const w = b.st as Worm;
     w.clock += dt;
     const ground = heightAt(b.x, b.z);
+    const n = crowd(b, players);
 
     // Prey: whoever shot it if it can reach them, else the nearest reachable within NOTICE_R.
     if (!b.leaving && w.mode !== MODE_RISE && w.mode !== MODE_AIR) {
       const ok = players.filter(reachable);
       const angry = b.angryUntil > now ? ok.find((p) => p.id === b.angry && Math.hypot(p.x - b.x, p.z - b.z) < NOTICE_R * 2) : undefined;
       const near = angry ?? ok.filter((p) => Math.hypot(p.x - b.x, p.z - b.z) < NOTICE_R).sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z))[0];
-      const cur = ok.find((p) => p.id === w.prey);
+      const cur = ok.find((p) => p.id === w.prey && (p === angry || Math.hypot(p.x - b.x, p.z - b.z) < LOSE_R));
       const p = cur ?? near;
       if (p) {
         w.prey = p.id;
@@ -206,8 +230,11 @@ export const worm: Brain = {
         w.px = p.x;
         w.pz = p.z;
       } else if (w.prey >= 0 && w.clock - w.fixAt > LOSE_S) w.prey = -1;
-      if (w.mode === MODE_ROAM && w.prey >= 0) w.mode = MODE_HUNT;
-      if (w.mode === MODE_HUNT && w.prey < 0) w.mode = MODE_ROAM;
+      if (w.mode === MODE_ROAM && w.prey >= 0) {
+        w.mode = MODE_HUNT;
+        w.shallow = Math.random() < SHALLOW_P;
+      }
+      if ((w.mode === MODE_HUNT || w.mode === MODE_LUNGE) && w.prey < 0) w.mode = MODE_ROAM;
     }
     if (b.leaving && w.mode !== MODE_RISE && w.mode !== MODE_AIR && w.mode !== MODE_DIVE) {
       if (w.mode !== MODE_ROAM || w.prey >= 0) newWaypoint(b, w, players, true);
@@ -224,29 +251,67 @@ export const worm: Brain = {
       }
       const depth = b.leaving ? LEAVE_DEPTH : w.clock < w.surfaceUntil ? SURFACE_DEPTH : ROAM_DEPTH;
       swim(b, w, w.tx, w.tz, depth, ROAM_SPEED, dt);
+    } else if (w.mode === MODE_LUNGE) {
+      // The charge: straight on for the spot it saw them at and past it.
+      swim(b, w, w.ax, w.az, SURFACE_DEPTH, LUNGE_SPEED, dt, ACCEL * 2);
+      if (w.clock > w.lungeUntil) {
+        w.mode = MODE_DIVE;
+        w.shallow = Math.random() < SHALLOW_P;
+        w.coolUntil = w.clock + COOL_S / scaled(1, n, CROWD_COOL);
+      }
     } else if (w.mode === MODE_HUNT) {
-      const d = Math.hypot(w.px - b.x, w.pz - b.z);
-      if (d < RISE_R && ground - b.y > RISE_MIN_DEPTH && w.clock > w.coolUntil) {
-        // Rise: aim over and a little past them, and warn: the sand over its head shivers.
+      const d = Math.hypot(w.px - b.x, w.pz - b.z), speed = scaled(HUNT_SPEED, n, CROWD_SPEED);
+      const s = Math.hypot(w.vx, w.vz) || 1, fx = w.vx / s, fz = w.vz / s;
+      if (w.shallow && w.clock > w.coolUntil && d < LUNGE_R && (w.px - b.x) * fx + (w.pz - b.z) * fz > d * 0.7) {
+        // Charge: they're ahead of it. Aim through them.
+        w.ax = w.px + ((w.px - b.x) / (d || 1)) * LUNGE_ON;
+        w.az = w.pz + ((w.pz - b.z) / (d || 1)) * LUNGE_ON;
+        w.lungeUntil = w.clock + LUNGE_S;
+        w.mode = MODE_LUNGE;
+        event(out, b, 'lunge', b.x, ground, b.z, now);
+      } else if (w.shallow) {
+        // Half out, closing in; too close and not lined up, it runs on and comes round again.
+        if (d < LUNGE_R && w.clock > w.coolUntil) swim(b, w, b.x + fx * PASS_R, b.z + fz * PASS_R, SURFACE_DEPTH, speed, dt);
+        else swim(b, w, w.px, w.pz, SURFACE_DEPTH, speed, dt);
+      } else if (d < RISE_R && ground - b.y > RISE_MIN_DEPTH && w.clock > w.coolUntil && !bodyOut(w)) {
+        // Rise: the spot is where they are now, a little past them; the sand there shivers while it holds under it,
+        // then it comes up there whether they're still on it or not.
         const ux = (w.px - b.x) / (d || 1), uz = (w.pz - b.z) / (d || 1);
         w.ax = w.px + ux * RISE_LEAD;
         w.az = w.pz + uz * RISE_LEAD;
-        w.ay = heightAt(w.px, w.pz) + RISE_UP;
+        w.ay = heightAt(w.ax, w.az) + RISE_UP;
+        w.riseAt = w.clock + Math.max(TELL_MIN, TELL - CROWD_TELL * (n - 1));
         w.mode = MODE_RISE;
-        event(out, b, 'tell', w.px, heightAt(w.px, w.pz), w.pz, now);
+        event(out, b, 'tell', w.ax, heightAt(w.ax, w.az), w.az, now, [Math.round((w.riseAt - w.clock + HUNT_DEPTH / RISE_SPEED) * 100) / 100]);
+      } else if (d < PASS_R * 0.6 && !(w.clock > w.coolUntil && !bodyOut(w))) {
+        // Not ready to come up yet: run on past them rather than circle tight under them.
+        swim(b, w, b.x + fx * PASS_R, b.z + fz * PASS_R, HUNT_DEPTH, speed * 0.8, dt);
       } else {
-        // Close in deep: aim behind them so it's under them by the time it turns up.
-        swim(b, w, w.px, w.pz, HUNT_DEPTH, d < 60 ? HUNT_SPEED * 0.8 : HUNT_SPEED, dt);
+        // Close in deep, easing off near them so it doesn't overshoot.
+        swim(b, w, w.px, w.pz, HUNT_DEPTH, d < 60 ? speed * 0.8 : speed, dt);
       }
     } else if (w.mode === MODE_RISE) {
-      const dx = w.ax - b.x, dy = w.ay - b.y, dz = w.az - b.z, n = Math.hypot(dx, dy, dz) || 1;
-      steer(w, dx / n, dy / n, dz / n, RISE_TURN, RISE_SPEED, ACCEL * 3, dt);
+      if (w.clock < w.riseAt) {
+        // The tell: creep in under the spot.
+        swim(b, w, w.ax, w.az, HUNT_DEPTH, WIND_SPEED, dt, ACCEL * 2);
+      } else {
+        const dx = w.ax - b.x, dy = w.ay - b.y, dz = w.az - b.z, l = Math.hypot(dx, dy, dz) || 1;
+        if (w.riseAt >= 0) {
+          // Off: it kicks up at once, straight for the spot.
+          w.riseAt = -1;
+          w.vx = (dx / l) * RISE_SPEED * 0.75;
+          w.vy = (dy / l) * RISE_SPEED * 0.75;
+          w.vz = (dz / l) * RISE_SPEED * 0.75;
+        }
+        steer(w, dx / l, dy / l, dz / l, RISE_TURN, RISE_SPEED, ACCEL * 3, dt);
+      }
       if (!under) w.mode = MODE_AIR;
     } else if (w.mode === MODE_AIR) {
       w.vy -= GRAVITY * dt;
       if (under) {
         w.mode = MODE_DIVE;
-        w.coolUntil = w.clock + COOL_S;
+        w.coolUntil = w.clock + COOL_S / scaled(1, n, CROWD_COOL);
+        w.shallow = Math.random() < SHALLOW_P;
       }
     } else {
       // Dive: down to depth, then back to whatever it was doing.
@@ -261,7 +326,7 @@ export const worm: Brain = {
       w.vx = -w.vx * 0.5;
       w.vz = -w.vz * 0.5;
       w.vy = Math.abs(w.vy) * 0.5 + 2;
-      if (w.mode === MODE_RISE) w.mode = MODE_DIVE;
+      if (w.mode === MODE_RISE || w.mode === MODE_LUNGE) w.mode = MODE_DIVE;
       (nx = b.x), (ny = b.y + w.vy * dt), (nz = b.z);
     }
     b.x = nx;

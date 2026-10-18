@@ -112,8 +112,8 @@ class WormSound {
     return { gain, panner: p, lp, saws, srcs: [...saws, n, lfo] };
   }
 
-  /** The sand at (x, y, z) shivers: it's about to burst out there. */
-  tell(at: P, ear: P) {
+  /** The sand at (x, y, z) shivers: it's about to burst out there, in `len` s. */
+  tell(at: P, ear: P, len: number) {
     const ctx = audio.ctx, s = placed(at, ear, TELL_GAIN, 20, 700);
     if (!ctx || !s) return;
     const { input, t } = s;
@@ -122,14 +122,14 @@ class WormSound {
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.frequency.setValueAtTime(90, t);
-    lp.frequency.exponentialRampToValueAtTime(700, t + 1.1);
+    lp.frequency.exponentialRampToValueAtTime(700, t + len);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.001, t);
-    g.gain.exponentialRampToValueAtTime(1, t + 1.0);
-    g.gain.setTargetAtTime(0, t + 1.1, 0.3);
+    g.gain.exponentialRampToValueAtTime(1, t + len - 0.1);
+    g.gain.setTargetAtTime(0, t + len, 0.3);
     n.connect(lp).connect(g).connect(input);
     n.start(t, Math.random());
-    n.stop(t + 2.5);
+    n.stop(t + len + 1.4);
   }
 
   /** It burst out of the sand at (x, y, z): a blast of sand and a howl of metal falling away. */

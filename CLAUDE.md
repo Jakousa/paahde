@@ -47,10 +47,13 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   searchlight drones (constants, beam test); simulated in `server/guardians.ts`, legs are client IK in
   `src/world/guardians.ts`, bolts `src/world/bolts.ts`, drones `src/world/drones.ts`, glue/sound/shake in
   `src/guardians.ts`, `src/guardianSound.ts`
-- `shared/bosses.ts` — bosses (one-of-a-kind giants, called (F3 for now), weak points to shoot; every kind beaten wins the world, `beaten` in server/world.ts): `server/bosses.ts` spawns
-  and ticks one brain per kind (`server/<kind>.ts`), `src/bosses.ts` interpolates them and handles the weak points,
-  one view per kind (`src/world/<kind>.ts`, built on `src/world/bossParts.ts`); spoils in `shared/tables.ts` BOSS_SPOILS
-- `shared/worm.ts` — the worm boss (100 m, swims through the sand, bursts out under prey; Terraria-style head steering,
+- `shared/bosses.ts` — bosses (one-of-a-kind giants with health, weak points to shoot that regrow, HUD bar `src/bossBar.ts`):
+  called with receivers (gear: uranium cell + an enemy's part, `RECEIVERS`/`RELICS`; `onCall` in server/world.ts, needle
+  `src/receiver.ts`) or F3; every kind beaten wins the world (`beaten` in server/world.ts, trophies `src/world/trophies.ts`).
+  `server/bosses.ts` spawns and ticks one brain per kind (`server/<kind>.ts`), `src/bosses.ts` interpolates them and
+  handles the weak points, one view per kind (`src/world/<kind>.ts`, built on `src/world/bossParts.ts`); spoils in
+  `shared/tables.ts` BOSS_SPOILS
+- `shared/worm.ts` — the worm boss (200 m, swims through the sand, bursts out under prey or charges half out of it; Terraria-style head steering,
   segments follow its path): brain `server/worm.ts`, view `src/world/worm.ts`, `src/wormSound.ts`, model `tools/blender/worm.py`
 - `shared/carrier.ts` — the hive carrier boss (huge four-fan drone that bombs from its belly, fan hubs are its weak
   points): brain `server/carrier.ts`, view `src/world/carrier.ts`, sound `src/carrierSound.ts`, model
