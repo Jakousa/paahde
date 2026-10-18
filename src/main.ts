@@ -134,7 +134,7 @@ new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.res
 new Chat(net);
 // New builds wait for a quiet moment to reload (src/update.ts).
 update.busy = () => guardianFx.combat || net.me.riding || teardown.active || !!net.down;
-const lootView = new LootView(scene);
+const lootView = new LootView(scene, orbit.camera);
 const corpseView = new CorpseView(scene);
 const detector = new Detector();
 const digFx = new DigFx(scene);

@@ -1,7 +1,7 @@
 // Loot on the sand (shared/loot.ts, from the server via src/net.ts): broken gear at crash sites and near the
 // spawn, dug-up caches, things dropped from a full bag. Buried loot isn't drawn (the metal detector hears it,
-// src/detector.ts). Gear is a small model built here from boxes and cylinders; broken gear has a twinkling
-// glint and a faint warm pool on the sand so it catches the eye among the crash-site debris; parts use the disassembly part models (src/teardown/junk.ts);
+// src/detector.ts). Gear is a small model built here from boxes and cylinders; broken gear has a warm glow
+// along its edges and a faint warm pool on the sand so it catches the eye among the crash-site debris; parts use the disassembly part models (src/teardown/junk.ts);
 // anything else is a battered crate. Each sits on the sand where it is (also at the bottom of a hole).
 import * as THREE from 'three/webgpu';
 import { float, length, smoothstep, uniform, uv, vec3 } from 'three/tsl';
@@ -20,9 +20,11 @@ const BIKE_LIFT = 0.12;
 
 /** Drawn within this distance (m). */
 const VIEW = 350;
-/** The glint on broken gear: size (m) up close, and how far away it shows (it fades out towards there). */
-const GLINT_SIZE = 0.24;
-const GLINT_VIEW = 160;
+/** The glowing edge on broken gear: about this many m wide per m away (so it stays a pixel or two across), never
+ * thinner than RIM_MIN (m) up close, and how far away it shows. */
+const RIM_PER_M = 0.0024;
+const RIM_MIN = 0.007;
+const RIM_VIEW = 160;
 /** The warm pool on the sand under it: radius (m) and how far away it shows. */
 const POOL_R = 0.75;
 const POOL_VIEW = 45;
@@ -38,15 +40,47 @@ const STOCK = mat(0x7e3a20, 0.6, 0);
 const GRIP = mat(0x6a3a22, 0.7, 0);
 const GLOW = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(1, 0.35, 0.12).multiplyScalar(2) });
 const glowPulse = uniform(1);
-/** A small hot point with a soft falloff, added on top; each one twinkles by its scale. */
-const GLINT = (() => {
-  const m = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
-  const r = length(uv().sub(0.5));
-  const soft = float(1).sub(smoothstep(0.0, 0.5, r));
-  m.colorNode = vec3(1.0, 0.8, 0.5);
-  m.opacityNode = soft.mul(soft).mul(soft).mul(0.65);
+const rimPulse = uniform(1);
+/**
+ * The glowing edge: each mesh of the model again, a little bigger and drawn inside out, so only a thin rim of it
+ * shows around the model's outline (the model itself hides the rest).
+ */
+const RIM = (() => {
+  const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    side: THREE.BackSide, fog: false });
+  m.colorNode = vec3(1.0, 0.62, 0.22).mul(3); // bright enough to bloom (src/post.ts)
+  m.opacityNode = rimPulse;
   return m;
 })();
+type Rim = { mesh: THREE.Mesh; size: THREE.Vector3; center: THREE.Vector3 };
+
+/** Give every mesh under `root` its rim (see RIM), sized from its geometry's box in metres. */
+function addRims(root: THREE.Object3D, rims: Rim[]) {
+  root.updateWorldMatrix(true, true);
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((o) => (o as THREE.Mesh).isMesh && !o.userData.rim && meshes.push(o as THREE.Mesh));
+  const ws = new THREE.Vector3();
+  for (const o of meshes) {
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    const b = o.geometry.boundingBox!;
+    const mesh = new THREE.Mesh(o.geometry, RIM);
+    mesh.userData.rim = mesh.userData.shared = true; // the geometry is the model's: disposed with it
+    mesh.castShadow = mesh.receiveShadow = false;
+    mesh.renderOrder = 2;
+    o.add(mesh);
+    o.getWorldScale(ws);
+    rims.push({ mesh, size: b.getSize(new THREE.Vector3()).multiply(ws), center: b.getCenter(new THREE.Vector3()) });
+  }
+}
+
+/** Grow each rim to `w` m past its mesh on every side, around the mesh's own middle. */
+function sizeRims(rims: Rim[], w: number) {
+  for (const r of rims) {
+    const s = r.mesh.scale.set(1 + 2 * w / Math.max(r.size.x, 1e-3), 1 + 2 * w / Math.max(r.size.y, 1e-3),
+      1 + 2 * w / Math.max(r.size.z, 1e-3));
+    r.mesh.position.set(r.center.x * (1 - s.x), r.center.y * (1 - s.y), r.center.z * (1 - s.z));
+  }
+}
 /** A faint warm disc lying on the sand, breathing slowly (all of them together). */
 const POOL = (() => {
   const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
@@ -100,8 +134,10 @@ const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
       m.getObjectByName('Handlebar')?.rotation.set(0, 0.45, 0);
       m.position.y = BIKE_LIFT;
       g.remove(stand);
+      if (g.userData.rims) g.userData.rims.length = 0; // the stand-in's rims went with it
       stand.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
       g.add(m);
+      if (g.userData.rims) addRims(m, g.userData.rims);
     }, () => {});
   },
   spyglass: (g) => {
@@ -165,7 +201,7 @@ const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
   },
 };
 
-type Shown = { obj: THREE.Group; glint: THREE.Sprite | null; pool: THREE.Mesh | null; poolY: number; l: Loot };
+type Shown = { obj: THREE.Group; rims: Rim[] | null; pool: THREE.Mesh | null; poolY: number; l: Loot };
 
 /** Lay the pool's vertices just above the sand around (x, z), wherever it has been dug. */
 function drape(pool: THREE.Mesh, x: number, z: number) {
@@ -180,7 +216,11 @@ export class LootView {
   private shown = new Map<number, Shown>();
   private t = 0;
 
-  constructor(scene: THREE.Scene) {
+  /** The rims are sized by how far they are from it. */
+  private camera: THREE.Camera;
+
+  constructor(scene: THREE.Scene, camera: THREE.Camera) {
+    this.camera = camera;
     scene.add(this.group);
   }
 
@@ -188,6 +228,7 @@ export class LootView {
   update(dt: number, loot: Map<number, Loot>, me: { x: number; z: number }) {
     this.t += dt;
     glowPulse.value = 0.16 + 0.05 * Math.sin(this.t * 1.6);
+    rimPulse.value = 0.55 + 0.15 * Math.sin(this.t * 2.2);
     for (const [id, s] of this.shown) {
       const l = loot.get(id);
       if (!l || l.depth > 0 || Math.hypot(l.x - me.x, l.z - me.z) > VIEW + 20) {
@@ -212,12 +253,11 @@ export class LootView {
       s.l = l;
       // Follows the sand (it may be dug around, or sit at the bottom of the hole it came out of).
       s.obj.position.set(l.x, heightAt(l.x, l.z) - 0.02, l.z);
-      if (s.glint) {
-        // Twinkles (its own phase), grows with distance so it stays a few pixels across, fades out before GLINT_VIEW.
-        s.glint.visible = d < GLINT_VIEW;
-        const tw = 0.7 + 0.3 * Math.sin(this.t * 3.1 + l.id * 1.7) * Math.sin(this.t * 1.3 + l.id);
-        const k = GLINT_SIZE * tw * Math.max(1, d / 18) * Math.min(1, (GLINT_VIEW - d) / 40);
-        s.glint.scale.set(k, k, 1);
+      if (s.rims) {
+        const on = d < RIM_VIEW;
+        for (const r of s.rims) r.mesh.visible = on;
+        const cd = Math.hypot(l.x - this.camera.position.x, s.obj.position.y - this.camera.position.y, l.z - this.camera.position.z);
+        if (on) sizeRims(s.rims, Math.max(RIM_MIN, cd * RIM_PER_M));
       }
       if (s.pool) {
         s.pool.visible = d < POOL_VIEW;
@@ -251,18 +291,15 @@ export class LootView {
 
   private build(l: Loot): Shown {
     const obj = new THREE.Group();
-    let glint: THREE.Sprite | null = null;
+    let rims: Rim[] | null = null;
     let pool: THREE.Mesh | null = null;
     const part = parsePart(l.kind);
     if (isGear(l.kind)) {
       GEAR_MODELS[l.kind]?.(obj);
-      // Broken gear glints, with a faint warm pool on the sand around it.
+      // Broken gear glows along its edges, with a faint warm pool on the sand around it.
       if (!repaired({ id: 0, kind: l.kind, n: 1, parts: l.parts })) {
-        // Sits just on top of the model, over its middle (worked out before the group is turned).
-        const b = new THREE.Box3().setFromObject(obj);
-        glint = new THREE.Sprite(GLINT);
-        glint.position.set((b.min.x + b.max.x) / 2, b.max.y + 0.03, (b.min.z + b.max.z) / 2);
-        obj.add(glint);
+        rims = obj.userData.rims = [];
+        addRims(obj, rims);
         // In the loot group, not the turned model: its vertices follow the sand (drape()).
         pool = new THREE.Mesh(POOL_GEO.clone(), POOL);
         pool.position.set(l.x, 0, l.z);
@@ -283,7 +320,7 @@ export class LootView {
     }
     obj.rotation.y = (l.id * 2.39996) % (Math.PI * 2); // some variety, the same for everyone
     this.group.add(obj);
-    return { obj, glint, pool, poolY: NaN, l };
+    return { obj, rims, pool, poolY: NaN, l };
   }
 }
 
