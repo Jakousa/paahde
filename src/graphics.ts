@@ -18,11 +18,18 @@ export interface GraphicsPrefs {
   cascades: number;
   /** Size of each cascade's shadow map. Needs a reload. */
   shadowMap: number;
+  /** Taps of the sun-shadow filter: 4, 8 or 16 (src/world/shadowFilter.ts). Needs a reload. */
+  shadowFilter: number;
+  /** How often the far shadow cascades are redrawn: 0 every frame, 1 some, 2 rarely (src/world/cascades.ts). */
+  shadowRefresh: number;
+  /** Multisampled edges (the renderer is made with it). Needs a reload. */
+  antialias: boolean;
 }
 
-export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, minRes: 0.5, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, cascades: 4, shadowMap: 1024 };
+export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, minRes: 0.5, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, cascades: 4, shadowMap: 1024, shadowFilter: 16, shadowRefresh: 1, antialias: true };
 export const SHADOW_DISTANCE_RANGE = [200, 1600] as const;
 export const FPS_LIMITS = [30, 60, 90, 120, 144, 240, 0] as const;
+export const SHADOW_FILTERS = [4, 8, 16] as const;
 export const SHADOW_MAPS = [512, 1024, 2048] as const;
 
 const KEY = 'dadajam.graphics';
@@ -42,7 +49,9 @@ function load(): GraphicsPrefs {
     g.cascades = Math.round(g.cascades);
     num('shadowMap', SHADOW_MAPS[0], SHADOW_MAPS[SHADOW_MAPS.length - 1]);
     if (!(SHADOW_MAPS as readonly number[]).includes(g.shadowMap)) g.shadowMap = GRAPHICS_DEFAULTS.shadowMap;
-    for (const k of ['dynamicRes', 'fullscreen', 'shadows'] as const) if (typeof o[k] === 'boolean') g[k] = o[k];
+    if ((SHADOW_FILTERS as readonly number[]).includes(o.shadowFilter)) g.shadowFilter = o.shadowFilter;
+    if ([0, 1, 2].includes(o.shadowRefresh)) g.shadowRefresh = o.shadowRefresh;
+    for (const k of ['dynamicRes', 'fullscreen', 'shadows', 'antialias'] as const) if (typeof o[k] === 'boolean') g[k] = o[k];
   } catch {}
   return g;
 }
@@ -68,7 +77,7 @@ export function setGraphics<K extends keyof GraphicsPrefs>(key: K, value: Graphi
 
 /** Does a setting that only applies on a fresh page differ from the running one? */
 export function needsReload(): boolean {
-  return graphics.cascades !== startup.cascades || graphics.shadowMap !== startup.shadowMap;
+  return graphics.cascades !== startup.cascades || graphics.shadowMap !== startup.shadowMap || graphics.shadowFilter !== startup.shadowFilter || graphics.antialias !== startup.antialias;
 }
 
 /** Shadow cascade ends as fractions of the shadow distance, by cascade count (the last is the distance itself). */

@@ -3,7 +3,7 @@
 import { setCounts, setMarkers, tdPrefs } from './teardown/prefs.ts';
 import { audio } from './audio';
 import { TEXT } from '../shared/text.ts';
-import { FPS_LIMITS, SHADOW_DISTANCE_RANGE, SHADOW_MAPS, graphics, needsReload, onGraphics, setGraphics } from './graphics';
+import { FPS_LIMITS, SHADOW_FILTERS, SHADOW_DISTANCE_RANGE, SHADOW_MAPS, graphics, needsReload, onGraphics, setGraphics } from './graphics';
 import { setFullscreen } from './input';
 
 const STATS_KEY = 'dadajam.stats';
@@ -106,6 +106,9 @@ export function optionsHtml(): string {
 <label class="row" data-tip="${TEXT.menu.tips.shadowDistance}"><span>${TEXT.menu.shadowDistance}</span><input class="gDist" type="range" min="${SHADOW_DISTANCE_RANGE[0]}" max="${SHADOW_DISTANCE_RANGE[1]}" step="50"><span class="val gDistVal"></span></label>
 <label class="row" data-tip="${TEXT.menu.tips.cascades}"><span>${TEXT.menu.cascades}</span><input class="gCas" type="range" min="1" max="4" step="1"><span class="val gCasVal"></span></label>
 <label class="row" data-tip="${TEXT.menu.tips.shadowDetail}"><span>${TEXT.menu.shadowDetail}</span><input class="gMap" type="range" min="0" max="${SHADOW_MAPS.length - 1}" step="1"><span class="val gMapVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.shadowFilter}"><span>${TEXT.menu.shadowFilter}</span><input class="gFilt" type="range" min="0" max="${SHADOW_FILTERS.length - 1}" step="1"><span class="val gFiltVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.shadowRefresh}"><span>${TEXT.menu.shadowRefresh}</span><input class="gRefresh" type="range" min="0" max="2" step="1"><span class="val gRefreshVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.antialias}"><span>${TEXT.menu.antialias}</span><input class="gAa" type="checkbox"></label>
 <div class="note gNote"></div></div>
 <div class="pane" data-pane="audio">
 <label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
@@ -228,11 +231,24 @@ function bindGraphics(root: HTMLElement): HTMLInputElement[] {
   const showMap = () => text('.gMapVal', TEXT.menu.shadowDetails[SHADOW_MAPS.indexOf(graphics.shadowMap as never)]);
   showMap();
   map.addEventListener('input', () => (setGraphics('shadowMap', SHADOW_MAPS[parseInt(map.value)]), showMap(), showNote()));
-  const dependent = [dist, cas, map];
+  const filt = q('.gFilt');
+  filt.value = String(SHADOW_FILTERS.indexOf(graphics.shadowFilter as never));
+  const showFilt = () => text('.gFiltVal', TEXT.menu.shadowDetails[SHADOW_FILTERS.indexOf(graphics.shadowFilter as never)]);
+  showFilt();
+  filt.addEventListener('input', () => (setGraphics('shadowFilter', SHADOW_FILTERS[parseInt(filt.value)]), showFilt(), showNote()));
+  const refresh = q('.gRefresh');
+  refresh.value = String(graphics.shadowRefresh);
+  const showRefresh = () => text('.gRefreshVal', TEXT.menu.shadowRefreshes[graphics.shadowRefresh]);
+  showRefresh();
+  refresh.addEventListener('input', () => (setGraphics('shadowRefresh', parseInt(refresh.value)), showRefresh()));
+  const aa = q('.gAa');
+  aa.checked = graphics.antialias;
+  aa.addEventListener('change', () => (setGraphics('antialias', aa.checked), showNote()));
+  const dependent = [dist, cas, map, filt, refresh];
   const enable = () => dependent.forEach((i) => (i.disabled = !graphics.shadows));
   enable();
   shadows.addEventListener('change', () => (setGraphics('shadows', shadows.checked), enable()));
-  return [fps, res, dyn, min, shadows, dist, cas, map];
+  return [aa, filt, refresh, fps, res, dyn, min, shadows, dist, cas, map];
 }
 
 

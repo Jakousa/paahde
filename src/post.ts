@@ -181,6 +181,11 @@ export class Post {
     aoPass.radius.value = 1.2;
     aoPass.thickness.value = 1;
     aoPass.scale.value = 1.5;
+    // With the occlusion slider at 0 neither the depth copy nor the AO pass is drawn (the lookup then reads a stale texture times 0).
+    for (const node of [depthCopy, aoPass] as unknown as { updateBefore(frame: unknown): void }[]) {
+      const draw = node.updateBefore.bind(node);
+      node.updateBefore = (frame) => (this.aoIntensity.value > 0 ? draw(frame) : undefined);
+    }
     const aoTex = aoPass.getTextureNode();
 
     // --- Heat haze: vertically stretched, upward-scrolling noise warps the frame near the horizon,

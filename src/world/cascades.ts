@@ -13,6 +13,7 @@
 // the grid is re-snapped about an anchor near the camera (moved in coarse steps), so a turn slides
 // nearby casters by only (distance from the anchor) x angle.
 import * as THREE from 'three/webgpu';
+import { graphics } from '../graphics.ts';
 import { Fn, float, mix, positionView, saturate, step, uniform, vec3, vec4, viewZToOrthographicDepth } from 'three/tsl';
 import { CSMShadowNode, type CSMShadowNodeData } from 'three/addons/csm/CSMShadowNode.js';
 import type { Node, NodeBuilder, NodeFrame } from 'three/webgpu';
@@ -38,8 +39,8 @@ interface CSMInternals {
   setupShadowPosition(builder: NodeBuilder): void;
 }
 
-/** Every how many frames each cascade's map is drawn again (the far ones show big, slow things: dunes, rocks, wrecks). The last two take turns, so every frame draws just one of them: an uneven pattern (one frame with both, one with neither) is felt as stutter. */
-const PERIOD = [1, 1, 2, 2];
+/** Every how many frames each cascade's map is drawn again, by the Shadow refresh option (default the middle row; the far ones show big, slow things: dunes, rocks, wrecks). The last two take turns, so every frame draws just one of them: an uneven pattern (one frame with both, one with neither) is felt as stutter. */
+const REFRESH = [[1, 1, 1, 1], [1, 1, 2, 2], [1, 2, 4, 4]];
 
 /** What a cascade's shadow camera looked like when its map was last drawn (the shadows are looked up by it). */
 interface Kept {
@@ -83,7 +84,7 @@ export class CascadedShadows extends CSMShadowNode {
     const f = this.tick++;
     this.lights.forEach((lw, i) => {
       const shadow = lw.shadow!, cam = shadow.camera as THREE.OrthographicCamera;
-      const period = PERIOD[i] ?? 1;
+      const period = REFRESH[graphics.shadowRefresh][i] ?? 1;
       const k = this.kept[i];
       shadow.autoUpdate = false;
       if (!k || period === 1 || (f + i) % period === 0) {

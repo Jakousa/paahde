@@ -16,6 +16,8 @@ import type * as THREE from 'three/webgpu';
 /** Default scale, and the most we render by default (retina screens report 2–3): one pixel per CSS pixel is plenty for
  *  this look, and it leaves headroom for 60 fps on laptops. The graphics options can raise it. */
 const MAX_RATIO = 1;
+/** Resolution changes in multiples of this. */
+const RATIO_STEP = 0.05;
 const MIN_RATIO = 0.65;
 /** Frame time we aim for is a little under the fps target, so vsync jitter doesn't count as slow; frames
  *  slower than the slow time (5 fps under the target) are slow when averaged. */
@@ -144,7 +146,12 @@ export class DynamicResolution {
   }
 
   private set(ratio: number) {
-    this.ratio = Math.max(this.minRatio, Math.min(this.max, ratio));
+    // In 5 % steps (the top and bottom exact): every new size reallocates the post-processing targets, a hitch, so the many tiny
+    // steps of a fine control loop cost more than the pixels they save.
+    const stepped = ratio < 4 * RATIO_STEP ? ratio : Math.round(ratio / RATIO_STEP) * RATIO_STEP; // (tiny ratios, set by hand, stay fine)
+    const next = Math.max(this.minRatio, Math.min(this.max, ratio >= this.max - RATIO_STEP / 2 ? this.max : stepped));
+    if (next === this.ratio) return;
+    this.ratio = next;
     this.renderer.setPixelRatio(this.ratio);
   }
 }
