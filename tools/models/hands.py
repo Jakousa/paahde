@@ -1427,8 +1427,11 @@ def gr_left(roll):
 
 
 GRR_ROLL = min(range(-180, 180, 15), key=lambda r: best_pole('Right', GR_READY @ gr_right(r)[0].inverted(), 0.75)[1])
+GRR_ROLL += 75 + int(os.environ.get('GR_RTURN', '0'))  # the right fist turned a further 75 deg counter-clockwise about the housing (seen from behind), by eye
+
 GR_HAND, GR_M = gr_right(GRR_ROLL)
 GRL_ROLL = min(range(-180, 180, 15), key=lambda r: best_pole('Left', GR_READY @ gr_left(r)[0].inverted(), L_TWIST)[1])
+GRL_ROLL += -15 + int(os.environ.get('GR_LTURN', '0'))  # the left fist tipped 15 deg forward, by eye
 GL_HAND, GL_M = gr_left(GRL_ROLL)
 print('GRINDER rolls right', GRR_ROLL, 'left', GRL_ROLL)
 GR_AXIS_R = (GR_M.to_3x3() @ V((0, 1, 0))).normalized()
