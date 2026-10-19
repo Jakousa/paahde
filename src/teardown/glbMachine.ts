@@ -125,6 +125,7 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
     ofModule.set(mod.id, outer);
 
     const piece = kit.cover(group, outer, mod.pop as V, 0.3);
+    piece.id = mod.id;
     const ownedSlots: Slot[] = [];
     if (inner.length || parts.some((p) => p.at.inner)) {
       // it lies where it fell, by the machine, to be taken apart further

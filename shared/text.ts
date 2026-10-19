@@ -100,7 +100,15 @@ const en = {
 
   // ---- Prompts under the crosshair (after the key) ---------------------------------------------------------------
 
+  /** The pieces that come off a machine and lie on the ground, to be picked up and taken apart in the hands (src/teardown). */
+  pieces: {
+    fan: 'Fan rotor', compressor: 'Compressor rotor', combustor: 'Combustor', turbine: 'Turbine', nozzle: 'Exhaust nozzle',
+    starter: 'Starter', generator: 'Generator', pma: 'Alternator', hydpump: 'Hydraulic pump', fuelpump: 'Fuel pump',
+    oilpump: 'Oil pump', fadec: 'Engine computer', oilcooler: 'Oil cooler',
+  } as Record<string, string>,
+
   prompt: {
+    putDown: 'Put it down',
     pickUp: (what: string) => `Pick up ${lower(what)}`,
     /** A find with parts missing: "Pick up broken telescope (1/2 parts)". */
     pickUpBroken: (what: string, have: number, n: number) => `Pick up broken ${lower(what)} (${have}/${n} parts)`,

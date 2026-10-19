@@ -9,6 +9,7 @@
 // so you keep running or sliding the way you were going; letting go swings the view back.
 import * as THREE from 'three/webgpu';
 import { isBound } from './bindings';
+import { tools } from './input';
 import { heightAt } from '../shared/terrain.ts';
 import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, slopeAt } from '../shared/sim.ts';
 import { CROUCH_CYCLE } from './models/crouchGait';
@@ -110,7 +111,7 @@ export class FirstPersonCamera {
     addEventListener('keyup', alt);
     addEventListener('blur', () => (this.freeLook = false));
     addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== dom) return;
+      if (document.pointerLockElement !== dom || tools.spinning) return; // (turning a machine or a piece in the hand with the mouse: the view stays)
       const s = SENSITIVITY / this.zoomShown; // zoomed in, the same hand movement turns the view less
       if (this.freeLook && !Number.isFinite(this.rideHeading) && this.zoom <= 1) {
         this.freeYaw = Math.max(-FREE_YAW_LIMIT, Math.min(FREE_YAW_LIMIT, this.freeYaw - e.movementX * s));

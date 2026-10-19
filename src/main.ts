@@ -560,11 +560,17 @@ baseSand.update(frameDt, storm.atBase);
   const chest = net.connected && !net.down && station < 0 && !bed && !target && !debris && !find && !site && !wreck && !pack
     && openBoxes(net.me).some((b) => b.startsWith('chest') && net.boxes[b]);
   const packPrompt = pack ? TEXT.prompt.openPack : chest ? TEXT.prompt.openChest : null;
-  const fPrompt = use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
+  // A piece that came off a machine and lies by you can be picked up to be turned and taken apart in the hands; F again sets it down.
+  const pieceHere = teardown.active && !teardown.holding ? teardown.pieceNear(net.me) : null;
+  const piecePrompt = teardown.holding ? TEXT.prompt.putDown : pieceHere ? TEXT.prompt.pickUp(pieceHere.label) : null;
+  const fPrompt = piecePrompt ?? use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup();
-  if (interact && teardown.current?.id !== BENCH_ID) {
+  if (interact && piecePrompt) {
+    if (teardown.holding) teardown.putDown();
+    else teardown.hold(pieceHere!.piece);
+  } else if (interact && teardown.current?.id !== BENCH_ID) {
     if (use) {
       if (STATIONS[station].kind === 'workbench') hud.open();
       else if (table) {
@@ -591,7 +597,7 @@ baseSand.update(frameDt, storm.atBase);
     } else if (wreck) net.crashTake(wreck.id);
     else if (pack || chest) hud.open();
   }
-  const targeted = use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
+  const targeted = piecePrompt !== null || use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   const w = net.water;
   const m = net.me;

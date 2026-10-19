@@ -137,6 +137,8 @@ export class TeardownView {
   /** Markers drawn highlighted this frame (the hovered step, or what blocks the hovered thing). */
   private lit = new Set<Step>();
   private wasDown = false;
+  /** A piece that came off the machine, held up in front of the eyes to be turned and taken apart. */
+  private held: { piece: Piece } | null = null;
   /** Seconds the interact key has been held at the table (a long hold scraps the machine). */
   private scrapHold = 0;
 
@@ -218,6 +220,8 @@ export class TeardownView {
   end() {
     const site = this.site;
     if (!site) return;
+    if (this.held) this.putDown(); // (the piece is not carried off: it is set down where you stand)
+    tools.spinning = false;
     this.endInteraction();
     // Nothing of the mode stays on screen: no markers, no part rings.
     for (const s of site.junk.steps) s.marker.visible = false;
@@ -241,6 +245,62 @@ export class TeardownView {
     this.ui.setPhase('off');
     tools.engaged = false;
     this.act = null;
+  }
+
+  get holding() {
+    return this.held !== null;
+  }
+
+  /** The piece lying on the ground within a step or two of (x, z) that can be picked up (it has more to take apart), with its name. */
+  pieceNear(me: { x: number; z: number }): { piece: Piece; label: string } | null {
+    const site = this.site;
+    if (!site || this.held) return null;
+    let best: Piece | null = null, bd = 2;
+    for (const p of site.junk.pieces) {
+      const n = p.inner;
+      if (!n || !n.resting || !n.loaded || n.gone || !p.released || pieceEmpty(p)) continue;
+      p.obj.getWorldPosition(this.tmpA);
+      const d = Math.hypot(this.tmpA.x - me.x, this.tmpA.z - me.z);
+      if (d < bd) (bd = d), (best = p);
+    }
+    return best ? { piece: best, label: (TEXT.pieces[best.id ?? ''] ?? best.id ?? '') } : null;
+  }
+
+  /** Pick a piece up: it comes up in front of you, a little to the right and brought to a size that is easy to work (held right
+   *  mouse and the mouse turns it). Its steps and parts are worked from the crosshair as on the machine. */
+  hold(piece: Piece) {
+    if (this.held || !piece.inner) return;
+    const box = new THREE.Box3().setFromObject(piece.obj);
+    const r = Math.max(0.1, box.getSize(this.tmpA).length() / 2);
+    piece.inner.resting = false;
+    this.camera.add(piece.obj);
+    piece.obj.position.set(0.16, -0.12, -0.95);
+    piece.obj.quaternion.identity();
+    piece.obj.scale.setScalar(THREE.MathUtils.clamp(0.38 / r, 0.4, 2.2));
+    wake(piece.obj);
+    piece.obj.updateMatrixWorld(true);
+    this.held = { piece };
+    teardownSound.hit('clink', 0.7);
+  }
+
+  /** Put the piece down on the ground in front of you, as it was (what was done to it stays done). */
+  putDown() {
+    const h = this.held, site = this.site;
+    if (!h || !site) return;
+    const p = h.piece;
+    this.held = null;
+    tools.spinning = false;
+    const fwd = this.camera.getWorldDirection(this.tmpA);
+    const at = this.camera.getWorldPosition(this.tmpB);
+    const wx = at.x + fwd.x * 1.2, wz = at.z + fwd.z * 1.2;
+    const root = site.junk.root;
+    root.updateMatrixWorld(true);
+    const local = root.worldToLocal(this.tmpA.set(wx, site.ground(wx, wz), wz));
+    p.obj.scale.setScalar(1);
+    p.obj.quaternion.identity();
+    if (p.inner) p.inner.rest.set(local.x, local.z);
+    restPiece(p);
+    teardownSound.hit('clink', 0.7);
   }
 
   /** Called every frame: walking far enough away from the machine ends the mode. */
@@ -377,6 +437,13 @@ export class TeardownView {
     this.computeRest();
   }
 
+  /** The piece in the hands, turned by the mouse about the view's up and right (it hangs off the camera). */
+  private turnHeld(mx: number, my: number) {
+    const o = this.held!.piece.obj;
+    o.quaternion.premultiply(this.tmpQ.setFromAxisAngle(this.tmpA.set(0, 1, 0), mx * 0.01));
+    o.quaternion.premultiply(this.tmpQ.setFromAxisAngle(this.tmpA.set(1, 0, 0), my * 0.01));
+  }
+
   private resetRotation() {
     const j = this.site?.junk;
     if (!j) return;
@@ -396,7 +463,8 @@ export class TeardownView {
   private pick(x: number, y: number, reach = Infinity): Target | null {
     if (!this.site) return null;
     this.ray(x, y);
-    const h = this.raycaster.intersectObject(this.site.junk.root, true).find((i) => this.shown(i.object));
+    // (the machine, and the piece in the hands, which hangs off the camera)
+    const h = this.raycaster.intersectObjects(this.held ? [this.site.junk.root, this.held.piece.obj] : [this.site.junk.root], true).find((i) => this.shown(i.object));
     if (h && h.distance > reach) return null;
     let hit: Target | null = null;
     for (let o: THREE.Object3D | null = h?.object ?? null; o && !hit; o = o.parent) hit = (o.userData.target as Target | undefined) ?? null;
@@ -474,9 +542,16 @@ export class TeardownView {
       if (this.act) this.letGo();
       this.hover = null;
       tools.engaged = false;
+      tools.spinning = false;
       return;
     }
-    if (site.movable && actionHeld('aim')) this.spin(mx, my);
+    // Right mouse held turns the machine on the table, or the piece in the hands: the mouse turns it, the view stays.
+    const turning = (site.movable || !!this.held) && actionHeld('aim');
+    tools.spinning = turning;
+    if (turning) {
+      if (this.held) this.turnHeld(mx, my);
+      else this.spin(mx, my);
+    }
     if (this.act) {
       const a = this.act;
       this.camera.getWorldPosition(this.tmpB);
@@ -828,6 +903,10 @@ export class TeardownView {
     const n = p?.inner;
     if (!p || !n || n.gone || !p.released || !pieceEmpty(p)) return;
     n.gone = true;
+    if (this.held?.piece === p) {
+      this.held = null; // nothing left in the hands: it goes (the release below takes it off the camera)
+      tools.spinning = false;
+    }
     const l = this.loose.find((x) => x.piece === p);
     if (l) l.piece = undefined; // still in the air: it just shrinks away
     if (silent) p.obj.removeFromParent();

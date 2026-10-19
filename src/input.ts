@@ -5,7 +5,7 @@ const keys = new Set<string>();
 let pickupPressed = false;
 /** slot: the selected hotbar slot (-1 none).
  *  frozen: the disassembly mode (src/teardown) owns the keyboard and mouse, so the player stands still. */
-export const tools = { frozen: false, slot: -1, bike: false, engaged: false };
+export const tools = { frozen: false, slot: -1, bike: false, engaged: false, spinning: false };
 /* engaged: the crosshair is on something the disassembly (src/teardown) works, so the use button is its, not the hand's. */
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 /** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
@@ -127,7 +127,7 @@ export function aimHeld(): boolean {
 
 /** Aim button held (right mouse or X): the rifle up to the eye. */
 export function aimDown(): boolean {
-  return !tools.frozen && actionHeld('aim');
+  return !tools.frozen && !tools.spinning && actionHeld('aim');
 }
 
 /** Shift held (hold your breath while aiming the rifle). */

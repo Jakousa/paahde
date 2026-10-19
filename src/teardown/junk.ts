@@ -150,6 +150,8 @@ export interface WireEnd {
 }
 /** Something that comes off by itself once every hold is done: a lid, bracket, guard, cover. */
 export interface Piece {
+  /** The module it is (shared/machines.ts), for its name. */
+  id?: string;
   obj: THREE.Object3D;
   holds: Step[];
   released: boolean;
