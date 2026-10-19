@@ -98,6 +98,8 @@ import { TEXT } from '../shared/text.ts';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
+// (the stats line counts a whole frame: the shadow passes, the scene and the post passes, not just the last render call, which is a full-screen quad)
+renderer.info.autoReset = false;
 const resolution = new DynamicResolution(renderer); // sets the pixel ratio, then keeps it near 60 fps
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -628,6 +630,7 @@ baseSand.update(frameDt, storm.atBase);
   if (loaded) {
     warm.finish();
     terrain.loading = false;
+    renderer.info.reset();
     post.render();
   } else if (modelsIn && !warming) {
     // Everything sliceable is in: build the first frame's shaders, post passes included, a few materials per round
