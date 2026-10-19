@@ -14,6 +14,7 @@ import {
 import { hasItem, type Slots } from '../../shared/items.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
+import { viewCull } from './viewCull';
 import { attachAll, buildJunk, detailList, hideDetail, lowestOffset, pieceEmpty, restPiece, settle, type Junk } from '../teardown/junk.ts';
 import type { SiteMsg } from '../net.ts';
 import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
@@ -61,12 +62,6 @@ export class MachineSites {
   private progress = new Map<string, Progress>();
   /** Id of the site the disassembly mode is working on (src/teardown): its machine is never swapped under it. */
   busy: () => string | undefined = () => undefined;
-  /** The player's camera: a whole machine out of its view is not drawn or walked at all (see cull). */
-  camera: THREE.Camera | null = null;
-  private frustum = new THREE.Frustum();
-  private viewProj = new THREE.Matrix4();
-  private ball = new THREE.Sphere();
-  private frameAt = -1;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -102,19 +97,11 @@ export class MachineSites {
    *  either) its objects are not visited by the renderer at all, instead of each being frustum-tested every frame. */
   private cull(v: SiteView, d: number) {
     const root = v.junk!.root;
-    const cam = this.camera;
-    if (!cam || this.busy() === v.site.id || d < CULL_NEAR) {
+    if (this.busy() === v.site.id || d < CULL_NEAR) {
       root.visible = true;
       return;
     }
-    if (this.frameAt !== performance.now()) {
-      this.frameAt = performance.now();
-      this.viewProj.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
-      this.frustum.setFromProjectionMatrix(this.viewProj);
-    }
-    this.ball.center.set(v.site.x, root.position.y + 1, v.site.z);
-    this.ball.radius = CULL_RADIUS;
-    root.visible = this.frustum.intersectsSphere(this.ball);
+    root.visible = viewCull.visible(v.site.x, root.position.y + 1, v.site.z, CULL_RADIUS);
   }
 
   /** Its fasteners are drawn only while you are near (or working on it): the rest of the time they are hidden, and the machine

@@ -1,3 +1,4 @@
+import { viewCull } from './world/viewCull';
 import * as THREE from 'three/webgpu';
 import { BACK, DT, FORWARD, isSlipFace, MOUNT_TICKS, quantizeYaw } from '../shared/sim.ts';
 import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
@@ -157,7 +158,7 @@ await slice();
 const teardown = new TeardownView(scene, orbit.camera, renderer.domElement); // F at a machine site: the character walks up and the disassembly controls take over
 await slice();
 machines.busy = () => teardown.current?.id;
-machines.camera = orbit.camera;
+viewCull.camera = orbit.camera;
 machines.bench.indoors = (root) => base.lightIndoors(root);
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
@@ -455,6 +456,7 @@ renderer.setAnimationLoop((time) => {
   }
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
   const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, !s.riding && !net.down);
+  viewCull.begin();
   lootView.update(frameDt, net.loot, focus);
   shieldFx.update(frameDt, (id) => (id === net.id ? me.root.position : others.find((o) => o.id === id) ?? null));
   corpseView.update(frameDt, focus);

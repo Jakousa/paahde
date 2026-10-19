@@ -16,6 +16,7 @@ import { TIERS } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { shelterFloorY } from '../../shared/shelters.ts';
 import { loadPart } from '../teardown/junk';
+import { viewCull } from './viewCull';
 import { loadBikeModel } from '../bike';
 import { TEXT } from '../../shared/text.ts';
 
@@ -25,6 +26,8 @@ const BIKE_LIFT = 0.12;
 
 /** Drawn within this distance (m). */
 const VIEW = 350;
+/** Pickups made per frame as they come into range. */
+const BUILDS_PER_FRAME = 3;
 /** The glowing edge on broken gear: about this many m wide per m away (so it stays a pixel or two across), never
  * thinner than RIM_MIN (m) up close, and how far away it shows. */
 const RIM_PER_M = 0.0024;
@@ -182,7 +185,7 @@ function addFind(g: THREE.Group, kind: string) {
   }, (e) => console.warn(`${spec.url} failed to load`, e));
 }
 
-type Shown = { obj: THREE.Group; rims: THREE.Mesh[] | null; pool: THREE.Mesh | null; poolY: number; l: Loot };
+type Shown = { obj: THREE.Group; rims: THREE.Mesh[] | null; pool: THREE.Mesh | null; poolY: number; l: Loot; age: number; frozen: boolean };
 
 /** Lay the pool's vertices just above the sand around (x, z), wherever it has been dug. */
 function drape(pool: THREE.Mesh, x: number, z: number) {
@@ -219,23 +222,45 @@ export class LootView {
         this.shown.delete(id);
       }
     }
+    let built = 0;
     for (const l of loot.values()) {
       const d = Math.hypot(l.x - me.x, l.z - me.z);
       if (d > VIEW) continue;
       let s = this.shown.get(l.id);
       if (!s) {
+        if (built >= BUILDS_PER_FRAME) continue; // a few a frame: each one makes its models and materials
+        built++;
         s = this.build(l);
         this.shown.set(l.id, s);
       }
       s.l = l;
-      // Follows the sand (it may be dug around, or sit at the bottom of the hole it came out of), or a shelter's floor.
-      s.obj.position.set(l.x, lootY(l) - 0.02, l.z);
+      s.age += dt;
+      // Follows the sand (it may be dug around, or sit at the bottom of the hole it came out of), or a shelter's floor. Its matrix
+      // is made only when it moves: a pickup lies still, and every object under it would otherwise be rebuilt every frame.
+      const y = lootY(l) - 0.02;
+      const p = s.obj.position;
+      if (p.x !== l.x || p.y !== y || p.z !== l.z) {
+        p.set(l.x, y, l.z);
+        s.obj.updateMatrix();
+        s.obj.matrixWorldNeedsUpdate = true;
+      }
+      if (!s.frozen && s.age > 1.5) {
+        s.frozen = true;
+        s.obj.traverse((o) => {
+          if (o === s!.obj) return;
+          o.updateMatrix();
+          o.matrixAutoUpdate = false;
+        });
+      }
+      // Out of view (and not close enough for its shadow to matter): not drawn at all.
+      const seen = d < 12 || viewCull.visible(l.x, y + 0.3, l.z, 2);
+      s.obj.visible = seen;
       if (s.rims) {
         const on = d < RIM_VIEW;
         for (const r of s.rims) r.visible = on;
       }
       if (s.pool) {
-        s.pool.visible = d < POOL_VIEW;
+        s.pool.visible = seen && d < POOL_VIEW;
         if (s.pool.visible && s.poolY !== s.obj.position.y) {
           s.poolY = s.obj.position.y;
           drape(s.pool, l.x, l.z);
@@ -277,6 +302,8 @@ export class LootView {
       // In the loot group, not the turned model: its vertices follow the sand (drape()).
       pool = new THREE.Mesh(POOL_GEO.clone(), POOL);
       pool.position.set(l.x, 0, l.z);
+      pool.updateMatrix();
+      pool.matrixAutoUpdate = false; // (it lies where it was put: only its vertices follow the sand)
       pool.renderOrder = 1;
       this.group.add(pool);
     }
@@ -305,8 +332,10 @@ export class LootView {
       box(obj, 0.52, 0.05, 0.42, RUST, 0, 0.3, 0);
     }
     obj.rotation.y = (l.id * 2.39996) % (Math.PI * 2); // some variety, the same for everyone
+    obj.updateMatrix();
+    obj.matrixAutoUpdate = false; // moved by update() only when the pickup moves
     this.group.add(obj);
-    return { obj, rims, pool, poolY: NaN, l };
+    return { obj, rims, pool, poolY: NaN, l, age: 0, frozen: false };
   }
 }
 
