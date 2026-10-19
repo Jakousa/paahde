@@ -183,7 +183,13 @@ function bindGraphics(root: HTMLElement): HTMLInputElement[] {
   const q = (c: string) => root.querySelector<HTMLInputElement>(c)!;
   const text = (c: string, t: string) => (root.querySelector<HTMLElement>(c)!.textContent = t);
   const note = root.querySelector<HTMLElement>('.gNote')!;
-  const showNote = () => (note.textContent = needsReload() ? TEXT.menu.needsReload : '');
+  const showNote = () => {
+    note.textContent = needsReload() ? TEXT.menu.needsReload : '';
+    note.style.cursor = needsReload() ? 'pointer' : '';
+    note.style.textDecoration = needsReload() ? 'underline' : '';
+  };
+  note.addEventListener('click', () => needsReload() && location.reload());
+  showNote();
   const display = root.querySelector<HTMLSelectElement>('.gDisplay')!;
   display.value = graphics.fullscreen ? '1' : '0';
   onGraphics((g, changed) => changed === 'fullscreen' && (display.value = g.fullscreen ? '1' : '0'));

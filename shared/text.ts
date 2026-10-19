@@ -265,7 +265,7 @@ const en = {
       antialias: 'Smooths jagged edges. Off is faster. Needs a reload.',
       shadowDetail: 'Sharpness of each shadow slice. Lower is faster. Needs a reload.',
     },
-    needsReload: 'Applies after a reload',
+    needsReload: 'Click to reload and apply',
     volume: 'Volume',
     music: 'Music',
     occlusion: 'Occlusion',
