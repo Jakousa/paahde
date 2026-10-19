@@ -14,7 +14,7 @@ import {
 import { hasItem, type Slots } from '../../shared/items.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
-import { buildJunk, lowestOffset, type Junk } from '../teardown/junk.ts';
+import { buildJunk, lowestOffset, pieceEmpty, restPiece, type Junk } from '../teardown/junk.ts';
 import type { SiteMsg } from '../net.ts';
 import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
 import { TEXT } from '../../shared/text.ts';
@@ -324,17 +324,20 @@ function fastForward(junk: Junk, done: Iterable<number>, taken: Iterable<number>
     s.progress = s.need;
     s.obj.removeFromParent();
   }
-  for (const p of junk.pieces) {
-    if (!p.released && p.holds.every((h) => h.done)) {
-      p.released = true;
-      p.obj.removeFromParent();
-    }
-  }
+  for (const p of junk.pieces) if (!p.released && p.holds.every((h) => h.done)) p.released = true;
   for (const i of taken) {
     const s = junk.slots.find((x) => x.index === i);
     if (!s || s.taken) continue;
     s.taken = true;
     s.ring.visible = false;
     s.piece.obj.removeFromParent();
+  }
+  // What has come off is gone, unless it still has something in it: that lies on the ground by the machine.
+  for (const p of junk.pieces) {
+    if (!p.released) continue;
+    if (pieceEmpty(p)) {
+      if (p.inner) p.inner.gone = true;
+      p.obj.removeFromParent();
+    } else restPiece(p);
   }
 }

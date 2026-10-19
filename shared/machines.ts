@@ -25,6 +25,8 @@ export interface LayoutStep {
   after: string[];
   need?: number;
   players?: number;
+  /** Done on the piece once it has come off (it lies on the ground), not on the machine it came from. */
+  inner?: boolean;
 }
 
 export interface LayoutPart {
@@ -34,6 +36,8 @@ export interface LayoutPart {
   quat: number[];
   /** Chance it is still in a machine whose module is there. */
   chance: number;
+  /** Inside the module: freed by its inner steps, on the piece lying on the ground. */
+  inner?: boolean;
 }
 
 export interface LayoutModule {

@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit  # noqa: E402
-from kit import (MB, Machine, Matrix, Vector, PI, T, Rx, Rz, S, around, crush, ripple)  # noqa: E402
+from kit import (MB, Machine, Matrix, Vector, PI, T, Rx, Rz, S, around, crush, ripple, shell_solid, swing)  # noqa: E402
 
 OUT = os.path.join(kit.ROOT, 'public', 'models', 'machines')
 TS = os.path.join(kit.ROOT, 'shared', 'machines')
@@ -120,14 +120,19 @@ def build(pose, rnd_seed=11):
     rnd = random.Random(rnd_seed)
     m = Machine('jet_engine', 'turbofan', pose)
     sh = m.shell
+    swung = set()
+
+    def half_shell(mod, p0, p1, prof, t, seed, mat='Paint'):
+        a0, a1 = arc(math.radians(p0), math.radians(p1))
+        shell_solid(mod.mb, prof, t, 18, mat, 'Dark', a0=a0, a1=a1, matfn=weathered(seed, 0.3, 0.3))
 
     # ======================================================================= shell: what never comes off
-    # fan case (inlet lip crumpled, one dent)
-    fan_case = [(0.80, 0.50), (0.80, 1.10), (0.835, 1.20), (0.885, 1.14), (0.875, 0.90), (0.857, 0.50), (0.80, 0.50)]
-    sh.lathe(fan_case, 48, 'Paint', matfn=weathered(2, 0.3, 0.35))
-    crush(sh, polar(math.radians(110), 0.88, 1.12), 0.55, 0.16)
-    crush(sh, polar(math.radians(-40), 0.88, 1.15), 0.4, 0.09)
-    ripple(sh, 4, 0.012, 7.0)
+    # structural fan case (the nacelle skin is on top of it), dented
+    shell_solid(sh, [(0.80, 0.50), (0.80, 0.97)], 0.025, 48, 'Steel')
+    sh.lathe([(0.80, 0.97), (0.86, 0.97), (0.86, 0.945), (0.80, 0.945), (0.80, 0.97)], 48, 'Dark')
+    sh.lathe([(0.80, 0.52), (0.855, 0.52), (0.855, 0.50), (0.80, 0.50), (0.80, 0.52)], 48, 'Dark')
+    crush(sh, polar(math.radians(110), 0.82, 0.9), 0.5, 0.1)
+    ripple(sh, 4, 0.008, 7.0)
     # fan frame: hub ring, outlet guide vanes and struts
     sh.lathe([(0.26, 0.40), (0.28, 0.40), (0.28, 0.54), (0.26, 0.54), (0.26, 0.40)], 32, 'Dark')
     for i in range(30):
@@ -140,30 +145,19 @@ def build(pose, rnd_seed=11):
         sh.push(Rz(a))
         sh.box((0.54, 0, 0.47), (0.5, 0.03, 0.09), 'Steel')
         sh.pop()
-    # bleed / bypass splitter ring and core cowl remains (torn arcs hanging off the core)
+    # splitter ring
     sh.lathe([(0.52, 0.34), (0.56, 0.34), (0.56, 0.52), (0.52, 0.52), (0.52, 0.34)], 40, 'Steel')
-    for (p0, p1, z0, z1, sd) in ((-150, -30, -0.05, -0.85, 5), (35, 105, 0.0, -0.62, 8), (190, 235, -0.1, -0.55, 3)):
-        a0, a1 = arc(math.radians(p0), math.radians(p1))
-        sh.lathe([(0.575, z0), (0.60, (z0 + z1) / 2), (0.57, z1)], 18, 'Paint', matfn=weathered(sd, 0.35, 0.3), a0=a0, a1=a1)
-    # core casings: split open on the side that faces up (local 25..150 deg), rotors show through; flanges at the joints
-    open0, open1 = math.radians(150), math.radians(385)
-    a0, a1 = arc(open0, open1)
-    casing = [  # (radius, z)
-        (0.345, 0.46), (0.33, 0.20), (0.30, -0.08),   # booster + compressor
-        (0.37, -0.10), (0.37, -0.40),                  # combustor
-        (0.33, -0.42), (0.33, -0.60),                  # HP turbine
-        (0.43, -0.62), (0.40, -1.00),                  # LP turbine
-        (0.36, -1.02), (0.36, -1.12),                  # rear frame
-    ]
-    sh.lathe(casing, 40, 'Steel', matfn=weathered(6, 0.3, 0.3, 'Steel'), a0=a0, a1=a1)
-    sh.lathe([(r - 0.012, z) for r, z in casing], 40, 'Dark', a0=a0, a1=a1)
+    # core casings: split open on the side that faces up (local 150..385 deg is what remains), thick, with flanges at the joints
+    a0, a1 = arc(math.radians(150), math.radians(385))
+    casing = [(0.345, 0.46), (0.33, 0.20), (0.30, -0.08), (0.37, -0.10), (0.37, -0.40), (0.33, -0.42), (0.33, -0.60),
+              (0.43, -0.62), (0.40, -1.00), (0.36, -1.02), (0.36, -1.12)]
+    shell_solid(sh, casing, 0.016, 40, 'Steel', 'Dark', a0=a0, a1=a1, matfn=weathered(6, 0.3, 0.3, 'Steel'))
     for (r, z) in ((0.345, 0.46), (0.30, -0.09), (0.37, -0.41), (0.33, -0.61), (0.40, -1.01)):
         sh.lathe([(r - 0.03, z + 0.012), (r + 0.045, z + 0.012), (r + 0.045, z - 0.012), (r - 0.03, z - 0.012), (r - 0.03, z + 0.012)],
                  40, 'Dark', a0=a0, a1=a1)
     # main shaft
     sh.cyl((0, 0, 1.0), (0, 0, -1.12), 0.055, 0.055, segs=14, mat='Dark')
     sh.cyl((0, 0, 0.95), (0, 0, 0.45), 0.095, 0.095, segs=14, mat='Steel')
-    # rear nozzle bare mount ring and plug cone stub
     sh.lathe([(0.36, -1.12), (0.37, -1.12), (0.37, -1.14), (0.36, -1.14), (0.36, -1.12)], 32, 'Dark', a0=a0, a1=a1)
     # gearbox housing on top of the core, between the fan frame and the compressor
     sh.box((0, 0.435, 0.22), (0.36, 0.12, 0.54), 'Steel')
@@ -171,69 +165,125 @@ def build(pose, rnd_seed=11):
     for z in (0.40, 0.20, 0.00):
         for sx in (-1, 1):
             sh.box((sx * 0.19, 0.435, z), (0.03, 0.115, 0.15), 'Dark')
-    # gearbox drive shaft up the radial strut from the core
     sh.cyl((0, 0.30, 0.40), (0, 0.50, 0.40), 0.03, 0.03, segs=8, mat='Dark')
     # pylon mount lugs and links on top, torn
     for dz, tilt in ((0.28, 0.1), (-0.58, -0.22)):
         sh.box((0, 0.88, dz), (0.1, 0.05, 0.16), 'Dark', rot=(0, 0, tilt))
         sh.box((0.09, 0.78, dz), (0.03, 0.14, 0.12), 'Steel')
         sh.box((-0.09, 0.78, dz), (0.03, 0.14, 0.12), 'Steel')
-    # harness trunks along the fan case and core (the ones you can pull are wires)
-    sh.sweep([polar(math.radians(20), 0.87, 0.70), polar(math.radians(20), 0.75, 0.52), polar(math.radians(10), 0.52, 0.45), polar(0, 0.46, 0.38)],
+    # harness trunks along the fan case and core
+    sh.sweep([polar(math.radians(20), 0.82, 0.70), polar(math.radians(20), 0.75, 0.52), polar(math.radians(10), 0.52, 0.45), polar(0, 0.46, 0.38)],
              0.02, 'Rubber')
     sh.sweep([polar(math.radians(-25), 0.45, 0.30), polar(math.radians(-35), 0.52, 0.12), polar(math.radians(-70), 0.60, -0.15), polar(math.radians(-110), 0.55, -0.4)],
              0.018, 'Rubber')
-    # oil and burn on the casing
-    sh.sphere(polar(math.radians(200), 0.82, 0.62), 0.12, 'Oil', scale=(1, 1, 0.35))
+    # a plug of the core's rear end and the bare nozzle mount
+    sh.lathe([(0.13, -1.12), (0.12, -1.0), (0.10, -1.0)], 20, 'Dark')
 
-    # ======================================================================= modules
-    # --- fan cowl half: swung open about its hinge line (local 340 deg)
-    hinge = polar(math.radians(340), 0.93, 0)
-    cowl = m.module('cowl', 0.75, pop=(-0.6, 0.8, 0.2))
-    cowl.place(around(hinge, (0, 0, 1), -1.15))
-    ca0, ca1 = arc(math.radians(180), math.radians(340))
-    cowl.mb.lathe([(0.915, 0.56), (0.93, 0.8), (0.915, 1.08), (0.88, 1.14)], 16, 'Paint', matfn=weathered(9, 0.3, 0.3), a0=ca0, a1=ca1)
-    cowl.mb.lathe([(0.89, 0.56), (0.905, 0.8), (0.89, 1.08), (0.86, 1.14)], 16, 'Dark', a0=ca0, a1=ca1)
-    crush(cowl.mb, polar(math.radians(235), 0.93, 1.1), 0.4, 0.1)
-    for z in (0.62, 0.84, 1.04):
-        cowl.mb.box(polar(math.radians(180), 0.925, z), (0.04, 0.05, 0.09), 'Steel', rot=(0, 0, -math.radians(180)))
-    for z in (0.62, 0.85, 1.05):
-        cowl.mb.box(polar(math.radians(340), 0.92, z), (0.05, 0.05, 0.1), 'Dark')
-    latches = [cowl.step('clip', 'cowlLatch', polar(math.radians(180), 0.945, z), polar(math.radians(180), 1, 0).normalized()) for z in (0.62, 0.84, 1.04)]
-    cowl.step('bolt', 'hingePin', polar(math.radians(340), 0.95, 0.62), radial(math.radians(340)), after=latches)
-    cowl.step('bolt', 'hingePin', polar(math.radians(340), 0.95, 1.05), radial(math.radians(340)), after=latches)
+    # ======================================================================= the aerodynamic shell, in pieces
+    # --- inlet lip: a ring bolted to the front of the fan case
+    inlet = m.module('inlet', 0.8, pop=(0, 0.3, 1))
+    shell_solid(inlet.mb, [(0.80, 0.95), (0.80, 1.10), (0.835, 1.20), (0.885, 1.14), (0.875, 0.98), (0.88, 0.95)], 0.02, 48, 'Paint', 'Dark',
+                matfn=weathered(2, 0.3, 0.35))
+    crush(inlet.mb, polar(math.radians(70), 0.88, 1.15), 0.5, 0.12)
+    ripple(inlet.mb, 12, 0.01, 7.0)
+    inlet.rring('bolt', 'inletBolt', 0.965, 0.895, 8, phase=0.2)
 
-    # --- fan: disc, blades (some snapped, some folded), retaining ring
+    # --- fan cowl: two halves, A hanging open on its hinge, B still on (and dented)
+    fa = m.module('fancowl_a', 0.6, pop=(-0.5, 0.8, 0.3))
+    fa.place(swing(math.radians(340), math.radians(180), 0.92, 1.1))
+    half_shell(fa, 180, 340, [(0.90, 0.52), (0.925, 0.75), (0.915, 0.94)], 0.014, 9)
+    crush(fa.mb, polar(math.radians(235), 0.93, 0.8), 0.4, 0.07)
+    fa.rring('bolt', 'hingePin', 0.62, 0.935, 1, phase=math.radians(340))
+    fa.rring('bolt', 'hingePin', 0.86, 0.935, 1, phase=math.radians(340))
+    fa.step('clip', 'cowlLatch', polar(math.radians(180), 0.935, 0.58), radial(math.radians(180)), after=['hingePin'])
+    fa.step('clip', 'cowlLatch', polar(math.radians(180), 0.935, 0.84), radial(math.radians(180)), after=['hingePin'])
+
+    fb = m.module('fancowl_b', 0.55, pop=(0.5, 0.9, 0.2))
+    half_shell(fb, 20, 180, [(0.90, 0.52), (0.925, 0.75), (0.915, 0.94)], 0.014, 14)
+    crush(fb.mb, polar(math.radians(120), 0.93, 0.7), 0.4, 0.08)
+    fb.rring('bolt', 'hingePin', 0.62, 0.935, 1, phase=math.radians(20))
+    fb.rring('bolt', 'hingePin', 0.86, 0.935, 1, phase=math.radians(20))
+    fb.step('clip', 'cowlLatch', polar(math.radians(180), 0.935, 0.68), radial(math.radians(180)))
+    fb.step('clip', 'cowlLatch', polar(math.radians(180), 0.935, 0.9), radial(math.radians(180)))
+
+    # --- thrust reverser sleeve halves over the fan duct
+    for key, (p0, p1, hinge, free, chance, swingit, sd) in {
+        'reverser_a': (180, 360, 360, 180, 0.5, True, 21),
+        'reverser_b': (0, 180, 0, 180, 0.5, False, 25),
+    }.items():
+        rv = m.module(key, chance, pop=(-1 if key.endswith('a') else 1, 0.8, -0.2))
+        if swingit:
+            rv.place(swing(math.radians(hinge), math.radians(free), 0.62, 1.0))
+        half_shell(rv, p0, p1, [(0.66, 0.50), (0.64, -0.05), (0.56, -0.62)], 0.014, sd)
+        rv.rring('bolt', 'hingePin', 0.30, 0.67, 1, phase=math.radians(hinge))
+        rv.rring('bolt', 'hingePin', -0.30, 0.62, 1, phase=math.radians(hinge))
+        zs = (0.35, -0.05, -0.4)
+        for z in zs:
+            rv.step('clip', 'cowlLatch', polar(math.radians(free), 0.655 - 0.03 * (0.4 - z), z), radial(math.radians(free)))
+
+    # --- core cowl halves around the core, inside the duct
+    for key, (p0, p1, hinge, free, chance, swingit, sd, rev) in {
+        'corecowl_a': (180, 360, 360, 180, 0.5, True, 31, 'reverser_a'),
+        'corecowl_b': (0, 180, 0, 180, 0.55, False, 35, 'reverser_b'),
+    }.items():
+        cc = m.module(key, chance, pop=(-1 if key.endswith('a') else 1, 0.8, 0.0))
+        if swingit:
+            cc.place(swing(math.radians(hinge), math.radians(free), 0.45, 1.0))
+        half_shell(cc, p0, p1, [(0.45, 0.46), (0.45, 0.1), (0.40, -0.5), (0.34, -0.85)], 0.012, sd)
+        cc.rring('bolt', 'hingePin', 0.30, 0.46, 1, phase=math.radians(hinge))
+        cc.rring('bolt', 'hingePin', -0.40, 0.41, 1, phase=math.radians(hinge))
+        for z in (0.28, -0.1, -0.45):
+            cc.step('clip', 'cowlLatch', polar(math.radians(free), 0.45 - 0.05 * max(0, -z), z), radial(math.radians(free)), after=[rev])
+
+    # --- exhaust nozzle, with the plug on the ground behind it
+    noz = m.module('nozzle', 0.8, pop=(0, 0.3, -1))
+    shell_solid(noz.mb, [(0.37, -1.12), (0.35, -1.20), (0.27, -1.34), (0.255, -1.40)], 0.015, 28, 'Steel', 'Burnt', matfn=weathered(21, 0.3, 0.3, 'Steel'))
+    noz.mb.lathe([(0.12, -1.12), (0.13, -1.25), (0.0, -1.42)], 20, 'Burnt')
+    noz.mb.cyl((0.12, 0, -1.12), (0.04, 0, -1.12), 0.01, 0.01, segs=4, mat='Dark')
+    noz.mb.lathe([(0.0, -1.12), (0.12, -1.12), (0.12, -1.10), (0.0, -1.10)], 16, 'Dark')
+    ripple(noz.mb, 8, 0.008, 8.0)
+    noz.rring('bolt', 'nozzleBolt', -1.14, 0.375, 8, tilt=0.0)
+    noz.step('lift', 'nozzleLift', (0, 0.34, -1.2), (0, 1, 0), after=['nozzleBolt'], need=3.5)
+    noz.inside()
+    noz.ring('bolt', 'plugBolt', (0, 0, -1.43), (0, 0, -1), 0.06, 3)
+
+    # ======================================================================= modules inside
+    # --- spinner (nose cone)
     spinner = m.module('spinner', 0.6, pop=(0, 0.3, 1))
-    spinner.mb.lathe([(0.0, 1.22), (0.06, 1.215), (0.15, 1.19), (0.205, 1.12), (0.23, 1.0)], 24, 'Paint', matfn=weathered(13, 0.35, 0.2))
+    spinner.mb.lathe([(0.0, 1.22), (0.06, 1.215), (0.15, 1.19), (0.205, 1.12), (0.23, 1.0), (0.0, 1.0)], 24, 'Paint', matfn=weathered(13, 0.35, 0.2))
     crush(spinner.mb, Vector((0.05, 0.1, 1.22)), 0.2, 0.05)
     spinner.ring('bolt', 'spinnerBolt', (0, 0, 1.19), (0, 0, 1), 0.12, 3, phase=0.4)
 
+    # --- fan rotor: disc and blades. Pulled out whole, then its bearing retainer is taken off on the ground
     fan = m.module('fan', 0.8, pop=(0, 0.4, 1))
-    fan.mb.lathe([(0.0, 1.0), (0.205, 1.0), (0.23, 0.97), (0.23, 0.85), (0.0, 0.85)], 24, 'Dark', cap=True)
-    fan.mb.lathe([(0.09, 1.005), (0.15, 1.005), (0.15, 1.02), (0.09, 1.02)], 18, 'Steel')
+    fan.mb.lathe([(0.0, 1.0), (0.205, 1.0), (0.23, 0.97), (0.23, 0.85), (0.0, 0.85)], 24, 'Dark')
+    fan.mb.lathe([(0.09, 1.005), (0.15, 1.005), (0.15, 1.02), (0.09, 1.02), (0.09, 1.005)], 18, 'Steel')
     blade_row(fan.mb, 28, 0.20, 0.785, 0.93, 0.19, 0.55, 0.014, 'Blade', rnd, broken=5, bent=4)
-    fan.ring('bolt', 'fanBolt', (0, 0, 1.02), (0, 0, 1), 0.13, 6, after=['spinner'])
+    fan.ring('bolt', 'fanBolt', (0, 0, 1.02), (0, 0, 1), 0.13, 6, after=['spinner', 'inlet'])
     fan.step('lift', 'fanLift', (0, 0, 1.0), (0, 0, 1), after=['fanBolt'], need=3.5)
+    fan.inside()
+    fan.ring('bolt', 'retainerBolt', (0, 0, 0.85), (0, 0, -1), 0.15, 4, phase=0.4)
     fan.part('bearing', (0.0, 0.0, 0.9), (PI / 2, 0, 0), chance=0.85)
 
-    # --- compressor: rotor drum with its blade rows, bleed valve and variable-vane linkage on the (open) casing
+    # --- compressor: rotor drum with its blade rows
     comp = m.module('compressor', 0.75, pop=(0.4, 1, 0.3))
-    comp.mb.lathe([(0.10, 0.44), (0.19, 0.44), (0.24, 0.20), (0.255, -0.08), (0.10, -0.08)], 24, 'Dark')
+    comp.mb.lathe([(0.0, 0.44), (0.19, 0.44), (0.24, 0.20), (0.255, -0.08), (0.0, -0.08)], 24, 'Dark')
     for j in range(7):
         z = 0.40 - j * 0.07
         rr = 0.19 + 0.045 * j
-        blade_row(comp.mb, 34, rr, 0.30 + 0.0 * j, z, 0.045, 0.5, 0.006, 'Blade', rnd, broken=1 if j in (2, 5) else 0, bent=1 if j == 3 else 0, phase=j * 0.07)
+        blade_row(comp.mb, 34, rr, 0.30, z, 0.045, 0.5, 0.006, 'Blade', rnd, broken=1 if j in (2, 5) else 0, bent=1 if j == 3 else 0, phase=j * 0.07)
     comp.mb.sweep([polar(math.radians(120), 0.36, 0.30), polar(math.radians(130), 0.42, 0.3), polar(math.radians(150), 0.47, 0.26)], 0.012, 'Copper')
-    comp.mb.cyl(polar(math.radians(95), 0.36, 0.05), polar(math.radians(95), 0.47, 0.05), 0.05, 0.05, segs=10, mat='Brass')
-    comp.ring('bolt', 'flangeBolt', (0, 0, 0.46), (0, 0, 1), 0.22, 8, after=['fan'])
-    comp.step('clip', 'linkagePin', polar(math.radians(130), 0.42, 0.3), radial(math.radians(130)), after=['flangeBolt'])
-    comp.step('clip', 'linkagePin', polar(math.radians(105), 0.40, 0.18), radial(math.radians(105)), after=['flangeBolt'])
+    comp.mb.cyl(polar(math.radians(95), 0.30, 0.05), polar(math.radians(95), 0.40, 0.05), 0.05, 0.05, segs=10, mat='Brass')
+    comp.ring('bolt', 'flangeBolt', (0, 0, 0.46), (0, 0, 1), 0.22, 8, after=['fan', 'corecowl_b', 'corecowl_a'])
     comp.step('lift', 'coreLift', (0, 0.25, 0.46), (0, 1, 0), after=['flangeBolt'], need=3.5)
+    comp.inside()
+    comp.step('clip', 'linkagePin', polar(math.radians(130), 0.42, 0.3), radial(math.radians(130)))
+    comp.step('clip', 'linkagePin', polar(math.radians(105), 0.40, 0.18), radial(math.radians(105)))
+    comp.ring('bolt', 'padBolt', polar(math.radians(95), 0.41, 0.05), radial(math.radians(95)), 0.06, 3, phase=0.4)
     comp.part('relay', polar(math.radians(120), 0.38, 0.3), (0, 0, 0), chance=0.8)
-    comp.part('valve', polar(math.radians(95), 0.5, 0.05), (0, 0, 0), chance=0.7)
+    comp.part('valve', polar(math.radians(95), 0.35, 0.05), (0, 0, 0), chance=0.7)
 
-    # --- combustor: annular liner with fuel nozzles, igniters in the casing
+    # --- combustor: annular liner with fuel nozzles, igniters
     comb = m.module('combustor', 0.7, pop=(0.3, 1, 0))
     comb.mb.lathe([(0.26, -0.10), (0.30, -0.14), (0.31, -0.35), (0.26, -0.40), (0.20, -0.40), (0.20, -0.12), (0.26, -0.10)], 30, 'Burnt',
                   matfn=lambda i, k: 'Scorch' if blob(i, k, 3) < 0.45 else 'Burnt')
@@ -248,146 +298,138 @@ def build(pose, rnd_seed=11):
     comb.wire('igniterLead', [polar(math.radians(105), 0.45, -0.25), polar(math.radians(90), 0.6, -0.2), polar(math.radians(50), 0.55, 0.0), polar(math.radians(20), 0.47, 0.1)],
               key='black', after=['flangeBolt'], r=0.01)
     comb.step('lift', 'coreLift', (0, 0.28, -0.10), (0, 1, 0), after=['igniterLead', 'flangeBolt'], need=3.5)
+    comb.inside()
+    for a in (0.0, 2.1, 4.2):
+        comb.step('clip', 'manifoldClamp', polar(a, 0.315, -0.09), radial(a))
+    comb.ring('screw', 'padScrew', polar(math.radians(70), 0.455, -0.25), radial(math.radians(70)), 0.04, 2)
     comb.part('coil', polar(math.radians(70), 0.4, -0.25), (0, 0, 0), chance=0.8)
     comb.part('coil', polar(math.radians(105), 0.4, -0.25), (0, 0, 0), chance=0.6)
     comb.part('valve', polar(math.radians(88), 0.33, -0.12), (0, 0, 0), chance=0.7)
 
     # --- turbine: HP and LP discs with burnt blades
     turb = m.module('turbine', 0.7, pop=(0.4, 1, -0.3))
-    turb.mb.lathe([(0.06, -0.42), (0.20, -0.42), (0.22, -0.60), (0.06, -0.60)], 20, 'Dark')
+    turb.mb.lathe([(0.0, -0.42), (0.20, -0.42), (0.22, -0.60), (0.0, -0.60)], 20, 'Dark')
     blade_row(turb.mb, 40, 0.20, 0.31, -0.50, 0.07, 0.6, 0.008, 'Burnt', rnd, broken=3, bent=2)
     for j in range(4):
         z = -0.70 - j * 0.07
         blade_row(turb.mb, 54, 0.12, 0.30 + 0.025 * j, z, 0.05, 0.4, 0.006, 'Burnt', rnd, broken=2 if j in (1, 3) else 0, bent=2 if j == 2 else 0, phase=j * 0.05)
         turb.mb.cyl((0, 0, z + 0.015), (0, 0, z - 0.015), 0.16 + 0.015 * j, 0.16 + 0.015 * j, segs=24, mat='Dark')
+    turb.mb.cyl((0, 0, -0.60), (0, 0, -0.98), 0.06, 0.06, segs=12, mat='Dark')
     turb.ring('bolt', 'flangeBolt', (0, 0, -0.62), (0, 0, 1), 0.33, 8, after=['combustor'])
     turb.step('lift', 'coreLift', (0, 0.3, -0.62), (0, 1, 0), after=['flangeBolt'], need=3.5)
+    turb.inside()
+    turb.ring('bolt', 'retainerBolt', (0, 0, -0.98), (0, 0, -1), 0.09, 4, phase=0.4)
     turb.part('bearing', (0, 0.0, -0.9), (PI / 2, 0, 0), chance=0.8)
 
-    # --- rear nozzle and plug
-    noz = m.module('nozzle', 0.8, pop=(0, 0.3, -1))
-    noz.mb.lathe([(0.37, -1.12), (0.35, -1.20), (0.27, -1.34), (0.255, -1.40)], 28, 'Steel', matfn=weathered(21, 0.3, 0.3, 'Steel'))
-    noz.mb.lathe([(0.12, -1.12), (0.13, -1.25), (0.0, -1.42)], 20, 'Burnt')
-    ripple(noz.mb, 8, 0.01, 8.0)
-    noz.ring('bolt', 'nozzleBolt', (0, 0, -1.14), (0, 0, -1), 0.345, 8)
-    noz.step('lift', 'nozzleLift', (0, 0.3, -1.2), (0, 1, 0), after=['nozzleBolt'], need=3.5)
-
     # --- accessories on the gearbox: starter, generator, PMA (+x side); hydraulic, fuel, oil pump (-x side)
-    def accessory(mid, chance, sx, z, r, ln, tilt, body, parts_at):
+    def accessory(mid, chance, sx, z, r, ln, tilt, body, covers):
         a = m.module(mid, chance, pop=(sx, 0.5, 0))
-        L = around((sx * 0.2, 0.435, z), (0, 0, 1), -sx * tilt)
-        a.place(L)
+        a.place(around((sx * 0.2, 0.435, z), (0, 0, 1), -sx * tilt))
         a.mb.cyl((sx * 0.2, 0.435, z), (sx * (0.2 + ln), 0.435, z), r, r, segs=14, mat=body)
         a.mb.cyl((sx * 0.2, 0.435, z), (sx * 0.23, 0.435, z), r * 1.15, r * 1.15, segs=14, mat='Dark')
         a.mb.cyl((sx * (0.2 + ln), 0.435, z), (sx * (0.2 + ln + 0.03), 0.435, z), r * 0.6, r * 0.6, segs=10, mat='Dark')
+        a.cover_after = covers
         return a
 
-    st = accessory('starter', 0.85, +1, 0.40, 0.07, 0.30, 0.25, 'Orange', None)
-    cl = st.step('clip', 'vClamp', (0.215, 0.435 + 0.075, 0.40), (0, 1, 0))
+    def end_bell(a, sx, z, r, ln, n=3):
+        """Inner: the end cap screws (once it lies on the ground) that open the machine."""
+        a.inside()
+        a.ring('screw', 'endBellScrew', (sx * (0.2 + ln + 0.03), 0.435, z), (sx, 0, 0), r * 0.45, n, phase=0.3)
+
+    cb, ca = ['corecowl_b'], ['corecowl_a']
+    st = accessory('starter', 0.85, +1, 0.40, 0.07, 0.30, 0.25, 'Orange', cb)
+    cl = st.step('clip', 'vClamp', (0.215, 0.435 + 0.075, 0.40), (0, 1, 0), after=cb)
     st.wire('harness', [(0.46, 0.50, 0.40), (0.42, 0.62, 0.44), (0.30, 0.66, 0.50), (0.12, 0.60, 0.55)], key='black', after=[cl], r=0.014)
+    end_bell(st, 1, 0.40, 0.07, 0.30)
     st.part('motor', (0.38, 0.435, 0.40), (0, 0, -PI / 2), chance=0.9)
 
-    ge = accessory('generator', 0.85, +1, 0.20, 0.105, 0.30, 0.15, 'Steel', None)
-    gb = ge.ring('bolt', 'padBolt', (0.22, 0.435, 0.20), (1, 0, 0), 0.115, 4, phase=0.78)
+    ge = accessory('generator', 0.85, +1, 0.20, 0.105, 0.30, 0.15, 'Steel', cb)
+    gb = ge.ring('bolt', 'padBolt', (0.22, 0.435, 0.20), (1, 0, 0), 0.115, 4, phase=0.78, after=cb)
     ge.wire('harness', [(0.48, 0.50, 0.20), (0.40, 0.66, 0.16), (0.24, 0.70, 0.12), (0.10, 0.62, 0.10)], key='red', after=gb, r=0.016)
     ge.wire('harness', [(0.48, 0.43, 0.14), (0.38, 0.60, 0.08), (0.22, 0.66, 0.02), (0.08, 0.60, 0.0)], key='black', after=gb, r=0.012)
+    end_bell(ge, 1, 0.20, 0.105, 0.30, 4)
     ge.part('motor', (0.40, 0.435, 0.20), (0, 0, -PI / 2), chance=0.8)
     ge.part('coil', (0.36, 0.52, 0.20), (0, 0, 0), chance=0.7)
 
-    pm = accessory('pma', 0.7, +1, 0.00, 0.05, 0.20, 0.0, 'Brass', None)
-    pm.ring('screw', 'padScrew', (0.215, 0.435, 0.0), (1, 0, 0), 0.065, 3, phase=0.4)
+    pm = accessory('pma', 0.7, +1, 0.00, 0.05, 0.20, 0.0, 'Brass', cb)
+    pm.ring('screw', 'padScrew', (0.215, 0.435, 0.0), (1, 0, 0), 0.065, 3, phase=0.4, after=cb)
+    end_bell(pm, 1, 0.0, 0.05, 0.20, 2)
     pm.part('coil', (0.32, 0.435, 0.0), (0, 0, -PI / 2), chance=0.8)
 
-    hy = accessory('hydpump', 0.7, -1, 0.40, 0.075, 0.28, 0.2, 'Steel', None)
-    hb = hy.ring('bolt', 'padBolt', (-0.215, 0.435, 0.40), (-1, 0, 0), 0.085, 4, phase=0.78)
+    hy = accessory('hydpump', 0.7, -1, 0.40, 0.075, 0.28, 0.2, 'Steel', ca)
+    hb = hy.ring('bolt', 'padBolt', (-0.215, 0.435, 0.40), (-1, 0, 0), 0.085, 4, phase=0.78, after=ca)
     hy.wire('hoseFitting', [(-0.46, 0.45, 0.40), (-0.55, 0.30, 0.42), (-0.60, 0.1, 0.46), (-0.58, -0.1, 0.5)], key='black', after=hb, r=0.022)
+    end_bell(hy, -1, 0.40, 0.075, 0.28)
     hy.part('valve', (-0.36, 0.435, 0.40), (0, 0, PI / 2), chance=0.8)
 
     fp = m.module('fuelpump', 0.75, pop=(-1, 0.5, 0))
     fp.place(around((-0.2, 0.435, 0.20), (0, 0, 1), 0.18))
     fp.mb.box((-0.34, 0.435, 0.20), (0.26, 0.15, 0.15), 'Steel')
     fp.mb.cyl((-0.34, 0.435, 0.20), (-0.34, 0.55, 0.20), 0.05, 0.05, segs=10, mat='Brass')
-    fb = fp.ring('bolt', 'padBolt', (-0.215, 0.435, 0.20), (-1, 0, 0), 0.075, 4, phase=0.78)
-    fp.wire('harness', [(-0.4, 0.55, 0.20), (-0.36, 0.68, 0.14), (-0.2, 0.72, 0.1), (-0.1, 0.62, 0.08)], key='black', after=fb, r=0.014)
+    fb_ = fp.ring('bolt', 'padBolt', (-0.215, 0.435, 0.20), (-1, 0, 0), 0.075, 4, phase=0.78, after=ca)
+    fp.wire('harness', [(-0.4, 0.55, 0.20), (-0.36, 0.68, 0.14), (-0.2, 0.72, 0.1), (-0.1, 0.62, 0.08)], key='black', after=fb_, r=0.014)
+    fp.inside()
+    fp.ring('screw', 'endBellScrew', (-0.34, 0.435, 0.275), (0, 0, 1), 0.06, 3, phase=0.3)
     fp.part('valve', (-0.34, 0.435, 0.20), (0, 0, PI / 2), chance=0.85)
 
-    op = accessory('oilpump', 0.6, -1, 0.00, 0.06, 0.20, 0.1, 'Dark', None)
-    op.ring('bolt', 'padBolt', (-0.215, 0.435, 0.0), (-1, 0, 0), 0.07, 3, phase=0.4)
+    op = accessory('oilpump', 0.6, -1, 0.00, 0.06, 0.20, 0.1, 'Dark', ca)
+    op.ring('bolt', 'padBolt', (-0.215, 0.435, 0.0), (-1, 0, 0), 0.07, 3, phase=0.4, after=ca)
+    end_bell(op, -1, 0.0, 0.06, 0.20, 3)
     op.part('bearing', (-0.32, 0.435, 0.0), (0, 0, PI / 2), chance=0.8)
 
-    # --- gearbox train: cover, gears and bearings (always there)
+    # --- gearbox train: cover, gears and bearings (always there), once the accessories are off
     gt = m.module('gearbox', 1.0, pop=(0, 1, 0))
     gt.mb.box((0, 0.51, 0.22), (0.37, 0.02, 0.55), 'Steel')
-    gt.row('bolt', 'coverBolt', (-0.16, 0.525, 0.0), (-0.16, 0.525, 0.44), 4, (0, 1, 0), after=['starter', 'generator', 'pma', 'hydpump', 'fuelpump', 'oilpump'])
-    gt.row('bolt', 'coverBolt', (0.16, 0.525, 0.0), (0.16, 0.525, 0.44), 4, (0, 1, 0), after=['starter', 'generator', 'pma', 'hydpump', 'fuelpump', 'oilpump'])
+    pads = ['starter', 'generator', 'pma', 'hydpump', 'fuelpump', 'oilpump']
+    gt.row('bolt', 'coverBolt', (-0.16, 0.525, 0.0), (-0.16, 0.525, 0.44), 4, (0, 1, 0), after=pads)
+    gt.row('bolt', 'coverBolt', (0.16, 0.525, 0.0), (0.16, 0.525, 0.44), 4, (0, 1, 0), after=pads)
     gt.part('gear', (0.0, 0.40, 0.30), (0, 0, 0), chance=1.0)
     gt.part('gear', (0.0, 0.40, 0.08), (0, 0, 0), chance=0.7)
 
-    # --- FADEC (on the fan case, left), oil cooler (right), oil tank
+    # --- FADEC (on the fan case, left), oil cooler (right, under the cowl that is still on), oil tank
     fd = m.module('fadec', 0.85, pop=(-1, 0.3, 0))
-    pos = polar(math.radians(262), 0.90, 0.82)
+    pos = polar(math.radians(262), 0.835, 0.82)
     fd.mb.push(kit.aim(pos, radial(math.radians(262))))
     fd.mb.box((0, 0, 0.04), (0.42, 0.28, 0.08), 'Steel')
     fd.mb.box((0.13, 0.0, 0.1), (0.1, 0.16, 0.05), 'Dark')
     fd.mb.pop()
-    fd.ring('screw', 'mountScrew', pos + radial(math.radians(262)) * 0.085, radial(math.radians(262)), 0.17, 4, phase=0.78)
-    fd.step('clip', 'connectorLatch', pos + radial(math.radians(262)) * 0.16, radial(math.radians(262)))
-    fd.wire('harness', [pos + radial(math.radians(262)) * 0.12, polar(math.radians(250), 0.96, 0.95), polar(math.radians(220), 0.9, 1.0), polar(math.radians(190), 0.88, 0.8)],
+    fd.ring('screw', 'mountScrew', pos + radial(math.radians(262)) * 0.085, radial(math.radians(262)), 0.17, 4, phase=0.78, after=['fancowl_a'])
+    fd.step('clip', 'connectorLatch', pos + radial(math.radians(262)) * 0.14, radial(math.radians(262)), after=['fancowl_a'])
+    fd.wire('harness', [pos + radial(math.radians(262)) * 0.12, polar(math.radians(250), 0.9, 0.95), polar(math.radians(220), 0.84, 1.0), polar(math.radians(190), 0.83, 0.8)],
             key='black', after=['connectorLatch'], r=0.016)
+    fd.inside()
+    fd.ring('screw', 'coverScrew', pos + radial(math.radians(262)) * 0.09, radial(math.radians(262)), 0.15, 4, phase=0.2)
     fd.part('compute', pos + radial(math.radians(262)) * 0.06, (0, 0, 0), chance=0.9)
 
     oc = m.module('oilcooler', 0.6, pop=(1, 0.5, 0.2))
-    pos = polar(math.radians(115), 0.90, 0.72)
+    pos = polar(math.radians(115), 0.835, 0.72)
     oc.mb.push(kit.aim(pos, radial(math.radians(115))))
     oc.mb.box((0, 0, 0.05), (0.32, 0.2, 0.1), 'Copper')
     for j in range(8):
         oc.mb.box((-0.14 + j * 0.04, 0, 0.11), (0.012, 0.18, 0.03), 'Steel')
     oc.mb.pop()
-    oc.row('bolt', 'coolerBolt', pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, -0.1)), pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, 0.1)), 2, radial(math.radians(115)))
-    oc.wire('hoseFitting', [pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, 0.14)), polar(math.radians(135), 0.98, 0.9), polar(math.radians(150), 0.9, 0.6), polar(math.radians(160), 0.5, 0.45)],
+    oc.row('bolt', 'coolerBolt', pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, -0.1)), pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, 0.1)), 2,
+           radial(math.radians(115)), after=['fancowl_b'])
+    oc.wire('hoseFitting', [pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, 0.14)), polar(math.radians(135), 0.9, 0.9), polar(math.radians(150), 0.84, 0.6), polar(math.radians(160), 0.5, 0.45)],
             key='black', after=['coolerBolt'], r=0.02)
+    oc.inside()
+    oc.ring('screw', 'coverScrew', pos + radial(math.radians(115)) * 0.12, radial(math.radians(115)), 0.1, 4, phase=0.78)
     oc.part('heatsink', pos + radial(math.radians(115)) * 0.07, (0, 0, 0), chance=0.9)
 
     tk = m.module('tank', 0.55, pop=(0.2, 1, 0))
-    pos = polar(math.radians(60), 0.90, 0.78)
+    pos = polar(math.radians(60), 0.84, 0.78)
     tk.mb.cyl(pos + Vector((0, 0, -0.2)), pos + Vector((0, 0, 0.2)), 0.1, 0.1, segs=14, mat='Paint')
     tk.mb.cyl(pos + Vector((0, 0.0, -0.2)), pos + Vector((0, 0, -0.22)), 0.12, 0.12, segs=14, mat='Dark')
-    tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.1 + Vector((0, 0, -0.1)), radial(math.radians(60)))
-    tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.1 + Vector((0, 0, 0.1)), radial(math.radians(60)))
+    tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.1 + Vector((0, 0, -0.1)), radial(math.radians(60)), after=['fancowl_b'])
+    tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.1 + Vector((0, 0, 0.1)), radial(math.radians(60)), after=['fancowl_b'])
 
-    # ======================================================================= dress: earth, scorch, debris (not posed)
     return m
 
 
-def finish_dress(m, low, rnd):
-    """Sand heaped round the nose and along the slide, plus what flew off: loose blades, panel scraps, a hose."""
-    d = m.dress
-    # the nose sits in a bulldozed bank
-    for i in range(14):
-        a = 2 * PI * i / 14 + rnd.random() * 0.4
-        r = 1.0 + rnd.random() * 0.5
-        d.sphere((math.cos(a) * r * 0.9, 0.0, 1.5 + math.sin(a) * r * 0.6), 0.55 + rnd.random() * 0.35, 'Sand', u=7, v=4, scale=(1.4, 0.5, 1.0))
-    # furrow ridges trailing back
-    for j in range(6):
-        for sx in (-1, 1):
-            d.sphere((sx * (0.9 + j * 0.05), 0.0, -0.4 - j * 0.9), 0.35, 'Sand', u=6, v=4, scale=(0.8, 0.35, 2.0))
-    # loose fan blades lying on the ground
-    for (x, z, ya) in ((1.9, 1.6, 0.6), (-2.2, 2.4, 2.1), (2.6, -0.6, 1.2), (-1.7, -2.0, 0.2)):
-        d.push(T(x, 0.03, z) @ kit.Ry(ya))
-        blade(d, 0.0, 0.58, 0.0, 0.19, 0.15, 1.25, 1.25, 0.014, 'Blade', stations=3)
-        d.pop()
-    # torn cowl panel scraps
-    for (x, z, ya, w, h) in ((-2.0, -1.2, 0.5, 0.9, 0.5), (3.0, 1.0, 2.5, 0.7, 0.4), (-3.0, 0.6, 1.0, 0.5, 0.35)):
-        d.box((x, 0.04, z), (w, 0.03, h), 'Paint', rot=(0.08, ya, 0.1))
-    # a scorch smear and a spill
-    d.sphere((0.2, 0.0, -2.8), 0.9, 'Scorch', u=8, v=3, scale=(1.4, 0.04, 1.0))
-    d.sphere((-0.9, 0.0, 0.2), 0.7, 'Oil', u=8, v=3, scale=(1.0, 0.03, 1.4))
-    # a hose snaking away
-    d.sweep([(1.2, 0.04, -1.0), (1.8, 0.04, -1.8), (2.6, 0.04, -2.0), (3.2, 0.04, -2.8)], 0.025, 'Rubber')
-
-
 def min_y(m):
+    """Lowest point of the posed engine: the structure and the pieces still in place (halves swung open do not count)."""
     ys = [(m.pose @ v.co).y for v in m.shell.bm.verts]
+    ys += [(mod._m() @ v.co).y for mod in m.modules if mod.local == Matrix.Identity(4) for v in mod.mb.bm.verts]
     return min(ys)
 
 
@@ -415,7 +457,6 @@ def main():
     probe = build(T(0, 0, 0) @ base)
     lift = -min_y(probe) - 0.28  # the nose is dug in this far
     m = build(T(0, lift, 0) @ base)
-    finish_dress(m, lift, random.Random(5))
     kit.finish(m, MATERIALS, OUT, TS, preview=a.preview, previewer=preview)
 
 

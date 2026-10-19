@@ -16,7 +16,7 @@ import { isBound } from '../bindings.ts';
 import { tdPrefs } from './prefs.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { Rope } from './rope.ts';
-import { animateMarker, lowestOffset, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
+import { animateMarker, lowestOffset, pieceEmpty, restPiece, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi } from './ui.ts';
 import { uiSound } from '../uiSound.ts';
 import { lower, TEXT } from '../../shared/text.ts';
@@ -79,6 +79,8 @@ interface Loose {
   floorY: number;
   /** Seconds until it shrinks away. */
   life: number;
+  /** A module that came off with more to take apart: it lands, stays and becomes part of the machine's scene again. */
+  piece?: Piece;
 }
 
 /** A part the player clicked: hidden while the server is asked; it flies to the bag or comes back. */
@@ -214,7 +216,12 @@ export class TeardownView {
     for (const s of site.junk.slots) s.ring.visible = false;
     // Takes still waiting for an answer count as given (the server has them).
     for (const [i] of this.pending) this.applyTook(i, true);
-    for (const l of this.loose) this.scene.remove(l.obj);
+    for (const l of this.loose) {
+      if (l.piece) {
+        site.junk.root.attach(l.obj); // a piece with more in it stays: it lies where it fell
+        l.piece.inner!.resting = true;
+      } else this.scene.remove(l.obj);
+    }
     this.loose = [];
     site.link?.leave();
     site.changed?.();
@@ -253,6 +260,7 @@ export class TeardownView {
       slot.taken = true;
       slot.ring.visible = false;
       slot.piece.obj.removeFromParent();
+      this.checkEmpty(slot.owner);
     }
     this.refreshCard();
   }
@@ -286,6 +294,7 @@ export class TeardownView {
     if (ok) {
       s.piece.obj.removeFromParent();
       s.piece.obj.visible = true;
+      this.checkEmpty(s.owner);
       this.ui.fly(p.x, p.y, s.part as PartId, s.tier as Tier);
       const j = site.junk;
       site.changed?.();
@@ -704,9 +713,9 @@ export class TeardownView {
     }
   }
 
-  private release(obj: THREE.Object3D, floorY: number, life: number, vel: THREE.Vector3, spin: THREE.Vector3): Loose {
+  private release(obj: THREE.Object3D, floorY: number, life: number, vel: THREE.Vector3, spin: THREE.Vector3, piece?: Piece): Loose {
     this.scene.attach(obj); // keeps the world transform
-    const l: Loose = { obj, vel, spin, floorY: floorY * (this.site?.junk.scale ?? 1) * (this.site?.junk.root.scale.x ?? 1), life };
+    const l: Loose = { obj, vel, spin, floorY: floorY * (this.site?.junk.scale ?? 1) * (this.site?.junk.root.scale.x ?? 1), life, piece };
     this.loose.push(l);
     return l;
   }
@@ -744,6 +753,7 @@ export class TeardownView {
     const j = this.site!.junk;
     const freed = j.pieces.filter((p) => !p.released && p.holds.every((h) => h.done));
     for (const p of freed) this.releasePiece(p, how === 'silent');
+    this.checkEmpty(s.owner, how === 'silent');
     if (how !== 'silent') {
       // The fastener comes off; a cover it was holding drops off with a clang.
       const level = how === 'remote' ? 0.6 : 1;
@@ -760,14 +770,28 @@ export class TeardownView {
 
   private releasePiece(p: Piece, silent: boolean) {
     p.released = true;
+    const more = !pieceEmpty(p); // something left in it: it stays, lying on the ground
     if (silent) {
-      p.obj.removeFromParent();
+      if (more) restPiece(p);
+      else p.obj.removeFromParent();
       return;
     }
     const r = () => (Math.random() - 0.5) * 2;
     const n = new THREE.Vector3(...p.pop).normalize().applyQuaternion(this.site!.junk.root.quaternion);
     const vel = n.multiplyScalar(2).add(new THREE.Vector3(r(), 2.8, r()));
-    this.release(p.obj, p.floorY, 12, vel, new THREE.Vector3(r() * 2, r() * 2, r() * 2));
+    this.release(p.obj, p.floorY, more ? Infinity : 12, vel, new THREE.Vector3(r() * 2, r() * 2, r() * 2), more ? p : undefined);
+  }
+
+  /** A piece that came off and has been emptied (every inner step done, every inner part taken) is cleared away. */
+  private checkEmpty(p: Piece | undefined, silent = false) {
+    const n = p?.inner;
+    if (!p || !n || n.gone || !p.released || !pieceEmpty(p)) return;
+    n.gone = true;
+    const l = this.loose.find((x) => x.piece === p);
+    if (l) l.piece = undefined; // still in the air: it just shrinks away
+    if (silent) p.obj.removeFromParent();
+    else if (l) l.life = Math.min(l.life, 0.5);
+    else this.release(p.obj, p.floorY, 0.5, new THREE.Vector3(), new THREE.Vector3());
   }
 
   // ---- per frame -------------------------------------------------------------------------------------------
@@ -869,6 +893,14 @@ export class TeardownView {
       o.rotation.y += l.spin.y * dt;
       o.rotation.z += l.spin.z * dt;
       const floor = site.ground(o.position.x, o.position.z) + l.floorY;
+      if (l.piece && o.position.y <= floor + 0.001 && l.vel.lengthSq() < 0.5) {
+        // landed: it stays where it lies, in the machine's scene, to be taken apart further
+        o.position.y = floor;
+        site.junk.root.attach(o);
+        l.piece.inner!.resting = true;
+        this.loose.splice(i, 1);
+        continue;
+      }
       if (o.position.y <= floor) {
         o.position.y = floor;
         l.vel.y = l.vel.y < -1 ? -l.vel.y * 0.3 : 0;

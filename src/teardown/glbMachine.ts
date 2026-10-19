@@ -9,7 +9,7 @@ import { layoutOf, type LayoutStep } from '../../shared/machines.ts';
 import { junkSpec, TIERS, type JunkKind, type PartId } from '../../shared/salvage.ts';
 import { TEXT } from '../../shared/text.ts';
 import { mergePart } from '../world/bossParts.ts';
-import { Kit, type Junk, type Piece, type Step, type Target, type V } from './junk.ts';
+import { Kit, type Junk, type Piece, type Slot, type Step, type Target, type V } from './junk.ts';
 
 const loader = new GLTFLoader();
 const cache = new Map<string, Promise<Map<string, THREE.Object3D>>>();
@@ -48,8 +48,9 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
 
   const byId = new Map<string, Step>();
   const ofModule = new Map<string, Step[]>();
-  const pieces: { piece: Piece; group: THREE.Group; id: string }[] = [];
+  const pieces: { piece: Piece; group: THREE.Group; frame: THREE.Group; id: string }[] = [];
   const labels = TEXT.steps as Record<string, string>;
+  let lying = 0;
 
   const make = (ls: LayoutStep, after: Step[], slide: { group: THREE.Group; pop: number[] }): Step => {
     const label = labels[ls.label] ?? ls.label;
@@ -65,8 +66,13 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
   };
 
   for (const { mod, parts } of mods) {
+    // The module's own group moves as it is pulled and falls when it comes off; `frame` holds everything that goes with it
+    // (its model, and the inner steps and parts), at the machine's coordinates until the model has arrived.
     const group = new THREE.Group();
+    const frame = new THREE.Group();
+    group.add(frame);
     kit.g.add(group);
+    const outer: Step[] = [], inner: Step[] = [];
     const mine: { ls: LayoutStep; step: Step }[] = [];
     for (const ls of mod.steps) {
       // what must be done first: a step id, a module (all its steps), or a label within this module; a module that is gone counts as done
@@ -77,49 +83,70 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
         else if (ofModule.has(e)) for (const x of ofModule.get(e)!) after.add(x);
         else for (const o of mine) if (o.ls.label === e) after.add(o.step);
       }
+      if (ls.inner) for (const o of outer) after.add(o);
       const step = make(ls, [...after], { group, pop: mod.pop });
       mine.push({ ls, step });
       byId.set(ls.id, step);
+      (ls.inner ? inner : outer).push(step);
     }
-    const holds = mine.map((o) => o.step);
-    ofModule.set(mod.id, holds);
+    ofModule.set(mod.id, [...outer, ...inner]);
 
-    pieces.push({ piece: kit.cover(group, holds, mod.pop as V, 0.3), group, id: mod.id });
+    const piece = kit.cover(group, outer, mod.pop as V, 0.3);
+    const ownedSlots: Slot[] = [];
+    if (inner.length || parts.some((p) => p.at.inner)) {
+      // it lies where it fell, by the machine, to be taken apart further
+      const ang = 0.7 + lying * 2.4, r = 2.5 + (lying % 2) * 0.9;
+      lying++;
+      piece.inner = { steps: inner, slots: ownedSlots, rest: new THREE.Vector2(Math.cos(ang) * r, Math.sin(ang) * r), resting: false, loaded: false, gone: false };
+      for (const s of inner) {
+        s.owner = piece;
+        frame.add(s.obj);
+      }
+    }
+    pieces.push({ piece, group, frame, id: mod.id });
 
     for (const p of parts) {
-      const slot = kit.part(p.part, { tier: p.tier, index: p.index }, [0, 0, 0], holds);
+      const innerPart = !!p.at.inner && inner.length > 0;
+      const slot = kit.part(p.part, { tier: p.tier, index: p.index }, [0, 0, 0], innerPart ? inner : outer);
       const holder = slot.piece.obj;
       holder.scale.setScalar(PART_SCALE);
       holder.quaternion.set(p.at.quat[0], p.at.quat[1], p.at.quat[2], p.at.quat[3]);
       const mid = new THREE.Vector3(0, PART_MID * PART_SCALE, 0).applyQuaternion(holder.quaternion);
       holder.position.set(p.at.pos[0] - mid.x, p.at.pos[1] - mid.y, p.at.pos[2] - mid.z);
+      if (innerPart) {
+        slot.owner = piece;
+        ownedSlots.push(slot);
+        frame.add(holder);
+      }
     }
   }
   kit.slots.sort((a, b) => a.index - b.index);
 
   loadModel(layout.model).then(
     (nodes) => {
-      const stay = (name: string) => {
-        const n = nodes.get(name);
-        if (!n) return;
-        const c = n.clone(true);
-        c.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
-        kit.g.add(c);
-      };
-      stay('Shell');
-      for (const { piece, group, id } of pieces) {
+      const shell = nodes.get('Shell')?.clone(true);
+      if (shell) {
+        shell.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+        kit.g.add(shell);
+      }
+      for (const { piece, group, frame, id } of pieces) {
         const n = nodes.get(`Mod_${id}`);
         if (!n) continue;
-        const inner = n.clone(true);
-        inner.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
-        const box = new THREE.Box3().setFromObject(inner);
+        const mesh = n.clone(true);
+        mesh.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+        const box = new THREE.Box3().setFromObject(mesh);
         if (box.isEmpty()) continue;
-        // the module falls about its own middle
+        frame.add(mesh);
+        // the module falls and lies about its own middle
         const c = box.getCenter(new THREE.Vector3());
-        inner.position.sub(c);
-        group.position.copy(c);
-        group.add(inner);
         piece.floorY = c.y - box.min.y;
+        frame.position.copy(c).negate();
+        group.position.add(c);
+        const inn = piece.inner;
+        if (inn) {
+          inn.loaded = true;
+          if (inn.resting) group.position.set(inn.rest.x, piece.floorY, inn.rest.y);
+        }
       }
     },
     (e) => console.warn('teardown: machine model failed', layout.model, e),

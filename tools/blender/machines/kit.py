@@ -254,6 +254,36 @@ class MB:
             self.cyl(Vector(p), Vector(p) + n * h, r, r, segs=6, mat=mat)
 
 
+def shell_solid(mb, prof, t, segs, mat, inner_mat=None, a0=0.0, a1=2 * PI, matfn=None):
+    """A lathed shell with wall thickness `t`: outer skin, inner skin, the rims and (for an arc) the cut faces, so nothing in it
+    is see-through. prof is (radius, z) of the outer skin; a0..a1 an arc about Z (as MB.lathe)."""
+    full = abs((a1 - a0) - 2 * PI) < 1e-6
+    inner = [(r - t, z) for r, z in prof]
+    mb.lathe(prof, segs, mat, a0=a0, a1=a1, matfn=matfn)
+    mb.lathe(inner, segs, inner_mat or mat, a0=a0, a1=a1)
+    for k in (0, len(prof) - 1):
+        mb.lathe([prof[k], inner[k]], segs, mat, a0=a0, a1=a1)
+    if not full:
+        for ang in (a0, a1):
+            o = [(r * math.cos(ang), r * math.sin(ang), z) for r, z in prof]
+            i = [(r * math.cos(ang), r * math.sin(ang), z) for r, z in inner]
+            mb.loft([o, i], mat, closed=False)
+
+
+def swing(hinge_phi, free_phi, radius, angle):
+    """Matrix swinging a half-shell open about its hinge line (parallel to Z at angle hinge_phi, our angles) so that its free edge
+    moves away from the axis."""
+    h = Vector((radius * math.sin(hinge_phi), radius * math.cos(hinge_phi), 0))
+    e = Vector((radius * math.sin(free_phi), radius * math.cos(free_phi), 0))
+    best = None
+    for sgn in (1, -1):
+        m = around(h, (0, 0, 1), sgn * angle)
+        d = (m @ e).length
+        if best is None or d > best[0]:
+            best = (d, m)
+    return best[1]
+
+
 # ================================================================================================= damage
 
 def crush(mb, centre, radius, depth, toward=None):
@@ -303,6 +333,12 @@ class Module:
         self.mb = MB()
         self.local = Matrix.Identity(4)
         self.n = 0
+        self.in_inner = False
+
+    def inside(self, on=True):
+        """Steps and parts made from now on are *inner*: they belong to the piece once it has come off (it lies on the ground and
+        is taken apart further), not to the machine it came from."""
+        self.in_inner = on
 
     def place(self, local):
         """This module sits displaced from where it was built (hanging off its pad, swung open): everything of it, geometry,
@@ -328,6 +364,8 @@ class Module:
             d['need'] = need
         if players != 1:
             d['players'] = players
+        if self.in_inner:
+            d['inner'] = True
         self.steps.append(d)
         return sid
 
@@ -345,6 +383,15 @@ class Module:
             ids.append(self.step(kind, label, Vector(centre) + (u * math.cos(a) + w * math.sin(a)) * r, nrm, after, need))
         return ids
 
+    def rring(self, kind, label, z, r, n, after=(), phase=0.0, need=None, tilt=0.0):
+        """A ring of fasteners round an axis (Z) at axial position z and radius r, each facing outward (the engine's skin)."""
+        ids = []
+        for i in range(n):
+            a = phase + 2 * PI * i / n
+            d = Vector((math.sin(a), math.cos(a), tilt)).normalized()
+            ids.append(self.step(kind, label, Vector((r * math.sin(a), r * math.cos(a), z)), d, after, need))
+        return ids
+
     def row(self, kind, label, a, b, n, nrm, after=(), need=None):
         """n fasteners evenly from a to b (a split-line or edge flange)."""
         a, b = Vector(a), Vector(b)
@@ -353,14 +400,19 @@ class Module:
     def wire(self, label, pts, key='black', after=(), r=0.012):
         self.n += 1
         sid = f'{self.id}.{label}{self.n}'
-        self.steps.append({'id': sid, 'kind': 'wire', 'label': label, 'pts': [self._tx(p) for p in pts], 'key': key, 'r': r,
-                           'after': list(after)})
+        d = {'id': sid, 'kind': 'wire', 'label': label, 'pts': [self._tx(p) for p in pts], 'key': key, 'r': r, 'after': list(after)}
+        if self.in_inner:
+            d['inner'] = True
+        self.steps.append(d)
         return sid
 
     def part(self, part, pos, rot=(0, 0, 0), chance=1.0, holds=None):
         """A collectable part sitting at `pos` inside this module (revealed when the module's steps are done)."""
         q = (self._m().to_3x3() @ Euler(rot).to_matrix()).to_quaternion()
-        self.parts.append({'part': part, 'pos': self._tx(pos), 'quat': [q.x, q.y, q.z, q.w], 'chance': chance})
+        d = {'part': part, 'pos': self._tx(pos), 'quat': [q.x, q.y, q.z, q.w], 'chance': chance}
+        if self.in_inner:
+            d['inner'] = True
+        self.parts.append(d)
 
 
 class Machine:

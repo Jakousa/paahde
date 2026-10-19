@@ -41,6 +41,8 @@ export interface Step {
   hit: THREE.Mesh;
   /** Small indicator of what to do (makeMarker); shown when the step is ready. */
   marker: THREE.Group;
+  /** An inner step: the piece (a module that has come off) it is on. */
+  owner?: Piece;
   /** Pulls: the thing that slides apart as it is held (a module of the machine), and how far (m) along `dir`. */
   slide?: { obj: THREE.Object3D; dir: THREE.Vector3; dist: number; offset: THREE.Vector3 };
   /** A small glint on the fastener while it can be worked, there with the big indicators off too. */
@@ -74,6 +76,18 @@ export interface Piece {
   floorY: number;
   /** Outward direction in the machine's frame; it pops that way. */
   pop: [number, number, number];
+  /** Taken apart further once it has come off: it then lies on the ground by the machine and these are left to do. */
+  inner?: PieceInner;
+}
+export interface PieceInner {
+  steps: Step[];
+  slots: Slot[];
+  /** Where it lies (x, z in the machine's frame, on the ground), and whether it does yet. */
+  rest: THREE.Vector2;
+  resting: boolean;
+  /** The model has arrived and `obj` is placed. */
+  loaded: boolean;
+  gone: boolean;
 }
 export interface Slot {
   part: PartId;
@@ -86,6 +100,8 @@ export interface Slot {
   taken: boolean;
   /** The part's own holder; free to take once its holds are done. */
   piece: Piece;
+  /** Inside a module that comes off: that module's piece. */
+  owner?: Piece;
 }
 export interface Junk {
   kind: JunkKind;
@@ -116,6 +132,16 @@ interface Roll {
 
 export const stepReady = (s: Step) => !s.done && s.after.every((a) => a.done);
 export const slotOpen = (s: Slot) => !s.taken && s.piece.holds.every((h) => h.done);
+/** Nothing left to do on a piece that came off: every inner step done and every inner part taken. */
+export const pieceEmpty = (p: Piece) => !p.inner || (p.inner.steps.every((s) => s.done) && p.inner.slots.every((s) => s.taken));
+
+/** Put a piece that has come off down where it lies by the machine (a saved game, or the end of a visit): it stays to be taken apart. */
+export function restPiece(p: Piece) {
+  const n = p.inner;
+  if (!n) return;
+  n.resting = true;
+  if (n.loaded) p.obj.position.set(n.rest.x, p.floorY, n.rest.y);
+}
 
 /** Distance from `root`'s origin down to the lowest drawn point: where to put it so it rests on the ground. */
 export function lowestOffset(root: THREE.Object3D): number | null {

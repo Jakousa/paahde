@@ -349,11 +349,12 @@ const en = {
     transformerBolt: 'Transformer bolt', transformerSecondary: 'Transformer secondary', unionNut: 'Union nut',
     valveFlangeBolt: 'Valve flange bolt',
     // The turbofan (shared/machines/turbofan.ts)
-    connectorLatch: 'Connector latch', coolerBolt: 'Cooler bolt', coreLift: 'Lift the core stage out',
-    cowlLatch: 'Cowl latch', fanBolt: 'Fan bolt', fanLift: 'Lift the fan out', harness: 'Harness', hingePin: 'Hinge pin',
+    connectorLatch: 'Connector latch', coolerBolt: 'Cooler bolt', coreLift: 'Pull the stage out',
+    cowlLatch: 'Cowl latch', fanBolt: 'Fan bolt', fanLift: 'Pull the fan out', harness: 'Harness', hingePin: 'Hinge pin',
     hoseFitting: 'Hose fitting', linkagePin: 'Linkage pin', mountScrew: 'Mount screw', nozzleBolt: 'Nozzle bolt',
-    nozzleLift: 'Lift the nozzle off', padBolt: 'Pad bolt', padScrew: 'Pad screw', spinnerBolt: 'Spinner bolt',
-    strapClip: 'Strap clip', vClamp: 'V-clamp',
+    nozzleLift: 'Pull the nozzle off', padBolt: 'Pad bolt', padScrew: 'Pad screw', spinnerBolt: 'Spinner bolt',
+    strapClip: 'Strap clip', vClamp: 'V-clamp', inletBolt: 'Inlet bolt', retainerBolt: 'Retainer bolt', plugBolt: 'Plug bolt',
+    endBellScrew: 'End cap screw', manifoldClamp: 'Manifold clamp', coverScrew: 'Cover screw',
   },
 
   // ---- One-time how-to banners (src/hints.ts); `k` gives the current key names --------------------------------------
