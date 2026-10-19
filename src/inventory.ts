@@ -715,7 +715,8 @@ export class InventoryHud {
   private showTip() {
     const hit = ui.inventoryOpen && !this.drag?.moved ? document.elementFromPoint(this.pointer.x, this.pointer.y) : null;
     const el = hit?.closest<HTMLElement>('[data-box][data-i]') ?? null;
-    if (el !== this.tipAt) {
+    // Nothing under the pointer always hides it: a render resets tipAt to null with the tip maybe still up.
+    if (el !== this.tipAt || !el) {
       this.tipAt = el;
       const it = el && this.itemAt(el.dataset.box!, +el.dataset.i!);
       const html = it ? tipHtml(it) : el?.dataset.tip ? `<div class="sub">${el.dataset.tip}</div>` : '';
