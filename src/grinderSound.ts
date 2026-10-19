@@ -101,6 +101,10 @@ interface Nodes {
   growlGain: GainNode;
   growlLfo: OscillatorNode;
   crackGain: GainNode;
+  bedBand: BiquadFilterNode;
+  bedGain: GainNode;
+  buzz: OscillatorNode;
+  buzzGain: GainNode;
 }
 
 class GrinderSound {
@@ -174,7 +178,15 @@ class GrinderSound {
       const crackGain = gain();
       loop(crackle(ctx)).connect(filter('bandpass', 4800, 1.2)).connect(crackGain).connect(out);
 
-      this.n = { out, hum, hum2, humGain, whine, whineGain, airBand, airGain, scrapeBand, scrapeGain, singBand, singGain, growlGain, growlLfo, crackGain };
+      // The even layer under the ragged one: a steady bed of grinding (smooth noise, no chop) and a held buzz of the disc on the work.
+      const bedBand = filter('bandpass', 2300, 0.8);
+      const bedGain = gain();
+      loop(pink).connect(bedBand).connect(bedGain).connect(out);
+      const buzz = osc('sawtooth');
+      const buzzGain = gain();
+      buzz.connect(filter('bandpass', 900, 1.5)).connect(buzzGain).connect(out);
+
+      this.n = { bedBand, bedGain, buzz, buzzGain, out, hum, hum2, humGain, whine, whineGain, airBand, airGain, scrapeBand, scrapeGain, singBand, singGain, growlGain, growlLfo, crackGain };
     });
   }
 
@@ -241,6 +253,12 @@ class GrinderSound {
     set(n.growlLfo.frequency, 14 + 110 * r + 40 * this.snag); // the teeth meeting the work
     set(n.growlGain.gain, 0.5 * c * (1 - 0.4 * this.snag));
     set(n.crackGain.gain, 0.7 * c * (1 + 0.8 * this.snag), 0.01);
+
+    // The even layer: it only follows the contact and the revs, so it holds steady while the rest stutters over it.
+    set(n.bedBand.frequency, 1700 + 1300 * r, 0.05);
+    set(n.bedGain.gain, 0.5 * c * (0.4 + 0.6 * r), 0.03);
+    set(n.buzz.frequency, 150 + 260 * r);
+    set(n.buzzGain.gain, 0.16 * c * r, 0.03);
   }
 }
 
