@@ -8,7 +8,7 @@
 import { BASE_SPAWN } from './base.ts';
 import { crashSite, crashSitesNear, crashTaken, type CrashSite as Wreck } from './crashsites.ts';
 import type { SiteLevel } from './crashsites.ts';
-import { COMPONENTS, SALVAGE, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
+import { COMPONENTS, SALVAGE, junkSpec, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
 import { labById, labSites } from './lab.ts';
 import { jetSiteById, jetSites } from './jetcrash.ts';
 import { STATIONS } from './stations.ts';
@@ -33,8 +33,10 @@ export const SITE_RANGE = 14;
 export { crashTaken };
 export const crashListeners: (() => void)[] = [];
 /** Crash sites (numeric shared/crashsites.ts ids) whose large machine has been stripped of every part: no smoke,
- *  no beeping, the machine stays a husk. Kept in step with the server ('crashSpent' messages). */
+ *  no beeping, and its frame was scrapped. Kept in step with the server ('crashSpent' messages). */
 export const crashSpent = new Set<number>();
+/** The large machine at this site had its frame scrapped (every part out, then mashed to scrap): it is gone, solid and drawn no more. */
+export const siteSpent = (site: CrashSite) => !site.lab && !junkSpec(site.kind).carry && crashSpent.has(site.wreck);
 export function crashChanged() {
   for (const f of crashListeners) f();
 }

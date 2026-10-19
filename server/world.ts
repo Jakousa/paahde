@@ -893,6 +893,8 @@ function onCrash(p: Player, msg: ClientMsg) {
     gearChanged(p.browserId);
   } else if (msg.t === 'benchScrap') {
     if (crash.scrapBench(p.state, (n) => items.give(p.browserId, SCRAP, n))) sendBox(p, 'bag');
+  } else if (msg.t === 'siteScrap') {
+    crash.scrapFrame(p.id, msg.id, (n, x, z) => payScrap(p, n, x, z));
   } else if (msg.t === 'labReset') {
     crash.labReset(msg.id);
   } else if (msg.t === 'siteJoin') {
@@ -902,7 +904,7 @@ function onCrash(p: Player, msg: ClientMsg) {
   else if (msg.t === 'siteHold') crash.hold(p.id, msg.id, msg.i, msg.players, msg.on);
   else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i, (n, x, z) => payScrap(p, n, x, z));
   else if (msg.t === 'siteTake') {
-    const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.give(p.browserId, kind), (n, x, z) => payScrap(p, n, x, z));
+    const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.give(p.browserId, kind));
     if (answer) send(p.ws, answer);
     if (answer?.t === 'siteTook' && answer.ok) sendBox(p, 'bag', answer.kind);
   }

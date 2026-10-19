@@ -23,7 +23,7 @@ import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { crashSite, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
 import { debrisItem } from '../shared/items.ts';
 import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
-import { stepList } from '../shared/machineSteps.ts';
+import { frameScrap, stepList } from '../shared/machineSteps.ts';
 import { SCRAP_REWARD } from '../shared/tables.ts';
 import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
 import { junkSpec, type JunkKind } from '../shared/salvage.ts';
@@ -274,6 +274,7 @@ export class CrashServer {
   private spend(wreck: number) {
     if (crashSpent.has(wreck)) return;
     crashSpent.add(wreck);
+    machineChanged(); // (its frame is gone: nothing to bump into)
     this.db.spendCrash(wreck, Date.now());
     this.newlySpent.push(wreck);
   }
@@ -365,21 +366,24 @@ export class CrashServer {
   }
 
   /** Scrap for step `i` just done (and for what it finished) at a machine: see SCRAP_REWARD. */
-  private scrapFor(site: { kind: JunkKind; seed: number; level: number; parts: MachinePart[] }, s: Session, i: number | null): number {
-    let n = i === null ? 0 : SCRAP_REWARD.step;
+  private scrapFor(site: { kind: JunkKind; seed: number; level: number }, s: Session, i: number): number {
+    let n = SCRAP_REWARD.step;
     const steps = stepList(site.kind, site.seed, site.level);
     if (!steps) return n; // (a machine built in code: only the steps are paid)
-    const { list, modules } = steps;
-    if (i !== null) {
-      const me = list[i];
-      if (me) {
-        let all = true;
-        for (let k = 0; k < list.length && all; k++) if (list[k].module === me.module && list[k].inner === me.inner && !s.done.has(k)) all = false;
-        if (all) n += me.inner ? SCRAP_REWARD.piece : SCRAP_REWARD.module;
-      }
+    const { list } = steps;
+    const me = list[i];
+    if (me) {
+      let all = true;
+      for (let k = 0; k < list.length && all; k++) if (list[k].module === me.module && list[k].inner === me.inner && !s.done.has(k)) all = false;
+      if (all) n += me.inner ? SCRAP_REWARD.piece : SCRAP_REWARD.module;
     }
-    if (list.every((_, k) => s.done.has(k)) && s.taken.size >= site.parts.length) n += SCRAP_REWARD.machine + modules * SCRAP_REWARD.perModule;
     return n;
+  }
+
+  /** Every step done and every part taken: only the frame is left. */
+  private stripped(site: { kind: JunkKind; seed: number; level: number; parts: MachinePart[] }, s: Session): boolean {
+    const steps = stepList(site.kind, site.seed, site.level);
+    return s.taken.size >= site.parts.length && (!steps || steps.list.every((_, k) => s.done.has(k)));
   }
 
   done(pid: number, id: unknown, i: unknown, reward?: (n: number, x: number, z: number) => void) {
@@ -394,13 +398,13 @@ export class CrashServer {
     this.save(site.id, s);
     this.broadcast({ t: 'siteDone', id: site.id, i });
     const m = crashSiteById(site.id);
-    if (reward && m && site.id !== BENCH_ID) reward(this.scrapFor({ kind: m.kind, seed: m.seed, level: m.level, parts: site.parts }, s, i), site.x, site.z);
+    if (reward && m && site.id !== BENCH_ID) reward(this.scrapFor({ kind: m.kind, seed: m.seed, level: m.level }, s, i), site.x, site.z);
   }
 
   /** First to take part `i` gets it: `give(kind)` puts its item in their bag (false: the bag is full, and the part
    *  stays on the machine for someone else). Later askers are told who did. Returns the answer for the taker, or
    *  null when there is nothing to say (bad message, or they already have it). */
-  takePart(pid: number, id: unknown, i: unknown, give: (kind: string) => boolean, reward?: (n: number, x: number, z: number) => void): ServerMsg | null {
+  takePart(pid: number, id: unknown, i: unknown, give: (kind: string) => boolean): ServerMsg | null {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
     if (!site || !s || !s.players.has(pid) || !this.index(i) || i >= site.parts.length) return null;
@@ -417,22 +421,28 @@ export class CrashServer {
     });
     if (!ok) return { t: 'siteTook', id: site.id, i, ok: false, reason: 'full' };
     this.broadcast({ t: 'siteTake', id: site.id, i, by: pid });
-    const m = crashSiteById(site.id);
-    if (reward && m && site.id !== BENCH_ID) {
-      const n = this.scrapFor({ kind: m.kind, seed: m.seed, level: m.level, parts: site.parts }, s, null); // (the last part out finishes the machine)
-      if (n) reward(n, site.x, site.z);
-    }
-    if (site.wreck !== null && s.taken.size >= site.parts.length) this.spend(site.wreck);
-    if (site.id === BENCH_ID && s.taken.size >= site.parts.length) this.freeBench(); // every part is out
     return { t: 'siteTook', id: site.id, i, ok: true, kind };
   }
 
-  /** Scrap the machine on the table: `give(n)` puts one scrap per part still on it (at least one) in the bag
-   *  (false: no room, and the machine stays). The table is free again. */
+  /** The frame of a machine in the field, with nothing left on it, was mashed to scrap: paid, and the site is spent for good (its frame
+   *  is gone). Only a stripped machine can be (the table's: scrapBench). A lab machine is made whole again. */
+  scrapFrame(pid: number, id: unknown, reward: (n: number, x: number, z: number) => void) {
+    const site = this.large(id);
+    const s = site && this.sessions.get(site.id);
+    if (!site || !s || site.id === BENCH_ID || !s.players.has(pid) || (site.wreck !== null && crashSpent.has(site.wreck))) return;
+    const m = crashSiteById(site.id);
+    if (!m || !this.stripped({ kind: m.kind, seed: m.seed, level: m.level, parts: site.parts }, s)) return;
+    reward(frameScrap(m.kind, m.seed, m.level, 0), site.x, site.z);
+    if (site.wreck !== null) this.spend(site.wreck);
+    else this.resetSite(site.id);
+  }
+
+  /** Scrap the machine on the table, finished or not (what is still on it is destroyed, and pays more: frameScrap): `give(n)` puts the scrap
+   *  in the bag (false: no room, and the machine stays). The table is free again. */
   scrapBench(feet: Feet, give: (n: number) => boolean): boolean {
     const s = this.sessions.get(BENCH_ID);
     if (!this.bench || !s || Math.hypot(BENCH.x - feet.x, BENCH.z - feet.z) > BENCH_REACH) return false;
-    const n = Math.max(1, machineParts(this.bench.kind, this.bench.seed).length - s.taken.size);
+    const n = frameScrap(this.bench.kind, this.bench.seed, 1, Math.max(0, machineParts(this.bench.kind, this.bench.seed).length - s.taken.size));
     return this.db.tx(() => {
       if (!give(n)) return false;
       this.freeBench();

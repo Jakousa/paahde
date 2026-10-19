@@ -4,7 +4,7 @@
 // and the server like the other collisions (shared/sim.ts), reading each machine's finished steps from `setMachineProgress`'s
 // source (the server's sessions, the client's mirror of them): a step done can only shrink the machine, so a client a
 // moment ahead of the server is never pushed.
-import { sitesNear, type CrashSite } from './crash.ts';
+import { siteSpent, sitesNear, type CrashSite } from './crash.ts';
 import { machineModules } from './machine.ts';
 import { layoutOf } from './machines.ts';
 import { heightAt } from './terrain.ts';
@@ -81,6 +81,7 @@ const STAND_MARGIN = 0.15;
 export function machineCapsules(site: CrashSite): Cap[] {
   const layout = layoutOf(site.kind);
   if (!layout?.hits || !layout.pose) return [];
+  if (siteSpent(site)) return []; // (its frame was scrapped: nothing to bump into)
   const done = doneOf(site.id);
   let out = boxCache.get(site.id);
   if (out) return out;

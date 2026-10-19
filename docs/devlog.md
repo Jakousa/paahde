@@ -2,6 +2,19 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-19 — Steps and parts left, scrapping the frame, Options tabs
+
+- Near a machine (the table's, a field machine being worked, or a small one you could carry) a small pill at the top of the screen
+  shows its name and `N steps · M parts` left (`TeardownUi.setCounts`, `TeardownView.setNear`). Setting: Options → Gameplay
+  "Steps and parts left" (`tdPrefs.counts`), next to "Disassembly guides". The old hidden top panel's meters are gone.
+- A machine with every step done and every part taken is a bare frame: mash the use button on it (14 presses, draining between,
+  `FRAME_PRESSES`) and it turns to scrap. Out in the field that pays `frameScrap` (what the last part used to pay), spends the site
+  (`siteScrap`, `scrapFrame` in server/crash.ts) and the frame is gone: no longer drawn or solid (`siteSpent`). It used to stay as a husk.
+- Only the disassembly table can scrap an unfinished machine (its menu, or the same mash once stripped): the parts still on it are
+  destroyed and pay `SCRAP_REWARD.perPartLeft` each on top of the frame. The table no longer frees itself when the last part is out.
+- Esc menu: Settings moved into an Options sub-view with Gameplay and Audio tabs (Audio: volume, music; Gameplay: guides, counts,
+  occlusion, stats).
+
 ## 2026-10-18 — More kinds of rock
 
 - `shared/rocks.ts` grew from mesas and boulders to five kinds: mesas (some long escarpments), pillar fields

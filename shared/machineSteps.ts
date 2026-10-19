@@ -5,11 +5,18 @@
 import { machineModules } from './machine.ts';
 import { layoutOf } from './machines.ts';
 import type { JunkKind } from './salvage.ts';
+import { SCRAP_REWARD } from './tables.ts';
 
 export interface StepInfo {
   module: string;
   /** Done on the piece once it has come off (not on the machine). */
   inner: boolean;
+}
+
+/** Scrap for turning a machine's frame into scrap (shared/tables.ts SCRAP_REWARD): the same for the client's bag check and the server's pay.
+ *  `partsLeft` parts still on it (only at the disassembly table) are destroyed and add to it. */
+export function frameScrap(kind: JunkKind, seed: number, level: number, partsLeft: number): number {
+  return SCRAP_REWARD.machine + (stepList(kind, seed, level)?.modules ?? 0) * SCRAP_REWARD.perModule + partsLeft * SCRAP_REWARD.perPartLeft;
 }
 
 const cache = new Map<string, { list: StepInfo[]; modules: number } | null>();

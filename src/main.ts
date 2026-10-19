@@ -191,7 +191,7 @@ net.onSite = (m) => {
   const cur = teardown.current;
   machines.apply(m, cur?.id ?? null);
   // Someone scrapped the table's machine while we work on it (a finished one stays open until we leave).
-  if (m.t === 'bench' && !m.job && cur?.id === BENCH_ID && cur.junk.slots.some((s) => !s.taken)) teardown.end();
+  if (m.t === 'bench' && !m.job && cur?.id === BENCH_ID) teardown.end();
   if (m.t === 'siteTook' && cur?.id === m.id) {
     teardown.applyTook(m.i, m.ok, m.reason);
   }
@@ -202,9 +202,9 @@ net.onSite = (m) => {
   } else if (m.t === 'siteDone') teardown.applyDone(m.i);
   else teardown.applyTake(m.i, m.by === net.id);
 };
-// Scrap the machine on the disassembly table: one scrap per part still on it, if they all fit in the bag.
+// Scrap the machine on the disassembly table, finished or not (what is still on it is destroyed and pays more), if the scrap fits in the bag.
 const scrapBench = () => {
-  const n = Math.max(1, machines.bench.menu(net.boxes.bag).left);
+  const n = machines.bench.menu(net.boxes.bag).scrap;
   if (!addItem([...(net.boxes.bag ?? [])], SCRAP, n, () => 0, bagShape(net.boxes.equip))) return false;
   net.benchScrap();
   pickupSound.play();
@@ -565,6 +565,10 @@ baseSand.update(frameDt, storm.atBase);
     const job = machines.bench.site(net.siteLink(BENCH_ID), scrapBench);
     if (job && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 3.5) teardown.begin(job);
   }
+  // Its frame was scrapped (by us or someone else) while we work on it: it is gone.
+  if (teardown.current && teardown.current.id !== BENCH_ID && machines.isSpent(teardown.current.id)) teardown.end();
+  // Close to a machine that is not being worked (a small one to carry home): its steps and parts, as when working it.
+  teardown.setNear(site?.junk ? { label: junkSpec(site.site.kind).label, steps: site.junk.steps.filter((s) => !s.done).length, parts: site.junk.slots.filter((s) => !s.taken).length, scrap: false } : null);
   // Salvage wrecks (src/world/wrecks.ts) are always carried home.
   const wreck = net.connected && station < 0 && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
   const sitePrompt = site ? (small ? TEXT.prompt.pickUp(junkSpec(site.site.kind).label) : TEXT.prompt.disassemble(junkSpec(site.site.kind).label))

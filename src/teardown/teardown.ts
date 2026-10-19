@@ -17,7 +17,7 @@ import { tdPrefs } from './prefs.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { Rope } from './rope.ts';
 import { animateMarker, attachAll, lowestOffset, pieceEmpty, restPiece, setSheen, settle, shinyOf, wake, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
-import { partName, rarityColor, TeardownUi } from './ui.ts';
+import { partName, rarityColor, TeardownUi, type Counts } from './ui.ts';
 import { playerHands } from '../water.ts';
 import { uiSound } from '../uiSound.ts';
 import { lower, TEXT } from '../../shared/text.ts';
@@ -46,7 +46,7 @@ export interface WorkSite {
   changed?: () => void;
   /** The mode was left (the workbench tidies its table). */
   closed?: () => void;
-  /** Turn the whole machine into scrap (the table only): false if the bag has no room. */
+  /** Turn the whole machine into scrap, finished or not (the table only; a field machine's frame goes through SiteLink.scrap): false if the bag has no room. */
   scrap?: () => boolean;
 }
 
@@ -66,6 +66,8 @@ export interface SiteLink {
   /** A step was done here (it is also done for everyone else). */
   done(i: number): void;
   take(i: number): void;
+  /** The bare frame was mashed to scrap (a field machine; the table's goes through WorkSite.scrap). */
+  scrap(): void;
   /** Holding a lifting eye on step i (or letting go). */
   hold(i: number, players: number, on: boolean): void;
   /** How many players hold step i right now, me included. */
@@ -114,6 +116,9 @@ const SWING_PX = 16;
 const PRY_PX = 110;
 /** How far above a freed part its tag sits (machine units). */
 const TAG_UP = 0.45;
+/** Presses to mash a bare frame to scrap, and how fast they drain away (per second). */
+const FRAME_PRESSES = 14;
+const FRAME_DRAIN = 2.2;
 /** ?debug lets one player do two-player lifts, for testing. */
 const SOLO = new URLSearchParams(location.search).has('debug');
 
@@ -140,6 +145,8 @@ export class TeardownView {
   /** Markers drawn highlighted this frame (the hovered step, or what blocks the hovered thing). */
   private lit = new Set<Step>();
   private wasDown = false;
+  /** Presses so far on the bare frame (they drain away between presses), out of FRAME_PRESSES. */
+  private frame = 0;
   /** The right mouse's grab on a turning object: the pointer the trackball follows (px), and whether it was held last frame. */
   private tb = { x: 0, y: 0 };
   private wasTurning = false;
@@ -192,6 +199,7 @@ export class TeardownView {
     this.phase = 'work';
     this.hover = null;
     this.wasDown = false;
+    this.frame = 0;
     this.announced.clear();
     this.pending.clear();
     for (const s of site.junk.slots) if (slotOpen(s)) this.announced.add(s);
@@ -207,16 +215,28 @@ export class TeardownView {
     this.refreshCard();
   }
 
-  /** Scrap the machine (the table only, from its menu) and leave; the server frees the table. */
+  /** Scrap the machine and leave: the table's, finished or not (from its menu, or by mashing the bare frame), or the bare frame of a
+   *  machine in the field (mashed). The server frees the table, or spends the site. */
   scrap() {
     const site = this.site;
-    if (!site?.scrap || this.phase !== 'work') return;
-    if (!site.scrap()) {
-      this.ui.message(TEXT.notice.bagFull, true);
-      uiSound.full();
-      return;
-    }
+    if (!site || this.phase !== 'work') return;
+    if (site.scrap) {
+      if (!site.scrap()) {
+        this.frame = 0;
+        this.ui.message(TEXT.notice.bagFull, true);
+        uiSound.full();
+        return;
+      }
+    } else if (this.stripped() && site.link) site.link.scrap();
+    else return; // (an unfinished machine in the field cannot be scrapped)
+    teardownSound.hit('clang', 1);
     this.end();
+  }
+
+  /** Every step done and every part taken: only the frame is left. */
+  private stripped() {
+    const j = this.site?.junk;
+    return !!j && j.steps.every((s) => s.done) && j.slots.every((s) => s.taken) && this.pending.size === 0;
   }
 
   /** Stop: the controls come back (the camera swings back from the table). */
@@ -246,8 +266,14 @@ export class TeardownView {
     this.hover = null;
     this.phase = 'idle';
     this.ui.setPhase('off');
+    this.ui.setCounts(null);
     tools.engaged = false;
     this.act = null;
+  }
+
+  /** Out of the mode, close to a machine: its steps and parts left (null: not near one). The mode shows its own. */
+  setNear(c: Counts | null) {
+    if (this.phase === 'idle') this.ui.setCounts(c);
   }
 
   /** The server paid scrap for what was just taken apart: it flies from the crosshair to the bag, and what did not fit is said. */
@@ -397,9 +423,8 @@ export class TeardownView {
     const site = this.site;
     const j = site?.junk;
     if (!site || !j) return;
-    this.ui.setProgress({
-      label: site.label, tier: j.tier, stepsDone: j.steps.filter((s) => s.done).length, steps: j.steps.length,
-      partsTaken: j.slots.filter((s) => s.taken).length, parts: j.slots.length, shared: !!site.link && !site.movable,
+    this.ui.setCounts({
+      label: site.label, steps: j.steps.filter((s) => !s.done).length, parts: j.slots.filter((s) => !s.taken).length, scrap: this.stripped(),
     });
     this.nextAt = 0;
   }
@@ -504,6 +529,8 @@ export class TeardownView {
     for (let o: THREE.Object3D | null = h?.object ?? null; o && !hit; o = o.parent) hit = (o.userData.target as Target | undefined) ?? null;
     if (hit?.type === 'step' && hit.step.done) hit = null; // (a part aimed at as a whole stays a target after it has come off)
     if (hit?.type === 'step' || hit?.type === 'part') return hit;
+    // With nothing left on it, any surface of the machine is its frame.
+    if (h && this.stripped()) return { type: 'frame' };
     // A freed part counts when the pointer is on it or its tag, even where the machine hides it.
     const j = this.site.junk;
     for (const s of j.slots) {
@@ -548,6 +575,7 @@ export class TeardownView {
   /** The tip for a target: title, the exact action, and whether it is locked (then the action says why). */
   private describe(t: Target | null): { title: string; action: string; locked?: boolean; color?: string } | null {
     if (!t) return null;
+    if (t.type === 'frame') return { title: this.site!.label, action: TEXT.teardown.scrapFrame };
     if (t.type === 'step') {
       const s = t.step;
       const b = s.after.filter((a) => !a.done);
@@ -627,10 +655,19 @@ export class TeardownView {
         } else if (t.type === 'part') {
           if (slotOpen(t.slot)) this.takePart(t.slot, this.ax, this.ay);
           else this.ui.message(this.describe(t)!.action, true);
-        }
+        } else if (t.type === 'frame') this.pressFrame();
       }
     }
     tools.engaged = !!this.act || !!this.hover;
+  }
+
+  /** A press on the bare frame: it jumps, and enough of them in a row turn it into scrap. */
+  private pressFrame() {
+    const root = this.site!.junk.root;
+    this.frame++;
+    root.position.y += 0.025 * root.scale.y; // (it settles back to the ground in update)
+    teardownSound.hit('clang', 0.6 + 0.4 * Math.min(1, this.frame / FRAME_PRESSES));
+    if (this.frame >= FRAME_PRESSES) this.scrap();
   }
 
   private startStep(s: Step) {
@@ -1007,6 +1044,7 @@ export class TeardownView {
       this.show(s);
     }
     this.grind();
+    if (this.frame > 0) this.frame = Math.max(0, this.frame - dt * FRAME_DRAIN);
 
     // Lifts: progress only while enough players hold it.
     const a = this.act;
@@ -1169,7 +1207,8 @@ export class TeardownView {
 
     // Ring: around the step being worked at the crosshair, or a hovered one that is part-way done (a half-turned bolt).
     const rs = a?.step ?? (t?.type === 'step' && t.step.progress > 0 && !t.step.done ? t.step : null);
-    if (rs && a) this.ui.ring({ x: this.ax, y: this.ay, f: rs.progress / rs.need });
+    if (this.frame > 0) this.ui.ring({ x: this.ax, y: this.ay, f: this.frame / FRAME_PRESSES });
+    else if (rs && a) this.ui.ring({ x: this.ax, y: this.ay, f: rs.progress / rs.need });
     else if (rs && rs.kind !== 'wire') {
       const p = this.screen(rs.obj);
       this.ui.ring(p && { ...p, f: rs.progress / rs.need });

@@ -2,7 +2,7 @@
 // panel took it. Resume (or a click on the backdrop) goes back in. Settings: volume and music volume (src/audio.ts) and
 // the stats line in the top-left corner; below them the controls, the build/connection line and credits.
 // The game keeps running behind it: it's multiplayer, nothing pauses.
-import { setMarkers, tdPrefs } from './teardown/prefs.ts';
+import { setCounts, setMarkers, tdPrefs } from './teardown/prefs.ts';
 import { WORLD_ID } from '../shared/world.ts';
 import { audio } from './audio';
 import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
@@ -36,9 +36,17 @@ const css = `
 #menu .binds button:hover { background: rgba(255, 217, 160, 0.28); }
 #menu .binds button.listening { background: #ffd9a0; color: #2a160a; }
 #menu .note { min-height: 16px; margin-top: 6px; opacity: 0.7; font-size: 11px; }
-#menu .controls { display: none; }
-#menu .panel.sub .controls { display: block; }
-#menu .panel.sub .main { display: none; }
+#menu .controls, #menu .options { display: none; }
+#menu .panel.sub .controls, #menu .panel.opts .options { display: block; }
+#menu .panel.sub .main, #menu .panel.opts .main { display: none; }
+#menu .panel.opts ~ button.mini { display: none; }
+#menu .tabs { display: flex; gap: 6px; margin: 14px 0 6px; }
+#menu .tabs button { padding: 5px 0; font: 600 11px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; background: rgba(255, 217, 160, 0.14); color: #ffd9a0; }
+#menu .tabs button:hover { background: rgba(255, 217, 160, 0.28); }
+#menu .tabs button.on { background: #ffd9a0; color: #2a160a; }
+#menu .tabs button { flex: 1; }
+#menu .pane { min-height: 96px; }
+#menu .options .row > span:first-child { width: 140px; }
 #menu button.reset { margin-top: 8px; background: transparent; color: #ffd9a0; box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.3); }
 #menu kbd { font: 600 11px var(--mono); color: #ffd9a0; }
 #menu .foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid rgba(255, 240, 220, 0.12); font-size: 11px;
@@ -89,16 +97,21 @@ export class Menu {
 
     this.el.id = 'menu';
     this.el.innerHTML = `<div class="panel"><div class="main"><h2>${TEXT.game.name}</h2><button class="resume">${TEXT.menu.resume}</button>
-<h3>${TEXT.menu.settings}</h3>
-<label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
-<label class="row"><span>${TEXT.menu.music}</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label>
-<label class="row"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
-<label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label>
-<label class="row"><span>${TEXT.menu.showGuides}</span><input class="guides" type="checkbox"></label>
+<button class="opt" style="margin-top:12px">${TEXT.menu.options}</button>
 <button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>
 <button class="ctl" style="margin-top:8px">${TEXT.menu.controls}</button>
 <div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
+<div class="options"><h2>${TEXT.menu.options}</h2><button class="optBack">${TEXT.controls.back}</button>
+<div class="tabs"><button class="tab on" data-tab="gameplay">${TEXT.menu.gameplay}</button><button class="tab" data-tab="audio">${TEXT.menu.audio}</button></div>
+<div class="pane" data-pane="gameplay">
+<label class="row"><span>${TEXT.menu.showGuides}</span><input class="guides" type="checkbox"></label>
+<label class="row"><span>${TEXT.menu.showCounts}</span><input class="counts" type="checkbox"></label>
+<label class="row"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
+<label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label></div>
+<div class="pane" data-pane="audio">
+<label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
+<label class="row"><span>${TEXT.menu.music}</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label></div></div>
 <div class="controls"><h2>${TEXT.controls.title}</h2><button class="back">${TEXT.controls.back}</button>
 <h3>${TEXT.controls.how}</h3><div class="binds"></div><div class="note"></div>
 <button class="reset">${TEXT.controls.reset}</button><div class="foot">${TEXT.controls.fixed}</div></div></div>
@@ -161,10 +174,23 @@ export class Menu {
     const guides = this.el.querySelector<HTMLInputElement>('.guides')!;
     guides.checked = tdPrefs.markers;
     guides.addEventListener('change', () => setMarkers(guides.checked));
+    const counts = this.el.querySelector<HTMLInputElement>('.counts')!;
+    counts.checked = tdPrefs.counts;
+    counts.addEventListener('change', () => setCounts(counts.checked));
+    // Options: a sub-view like the controls, with a tab for each group of settings.
+    const panel = this.el.querySelector<HTMLElement>('.panel')!;
+    const tab = (name: string) => {
+      for (const b of this.el.querySelectorAll<HTMLElement>('.tab')) b.classList.toggle('on', b.dataset.tab === name);
+      for (const p of this.el.querySelectorAll<HTMLElement>('.pane')) p.style.display = p.dataset.pane === name ? '' : 'none';
+    };
+    tab('gameplay');
+    for (const b of this.el.querySelectorAll<HTMLElement>('.tab')) b.addEventListener('click', () => (tab(b.dataset.tab!), b.blur()));
+    this.el.querySelector('.opt')!.addEventListener('click', () => panel.classList.add('opts'));
+    this.el.querySelector('.optBack')!.addEventListener('click', () => panel.classList.remove('opts'));
     this.bindControls();
     this.el.querySelector('.mini')!.addEventListener('click', () => this.playMinigame());
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
-    for (const input of [vol, music, aoEl, stats, guides]) input.addEventListener('change', () => input.blur());
+    for (const input of [vol, music, aoEl, stats, guides, counts]) input.addEventListener('change', () => input.blur());
 
     const fs = this.el.querySelector<HTMLButtonElement>('.fs')!;
     const showFs = () => (fs.textContent = document.fullscreenElement ? TEXT.menu.exitFullscreen : TEXT.menu.enterFullscreen);

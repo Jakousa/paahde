@@ -374,6 +374,7 @@ export class Net {
       },
       done: (i) => this.send({ t: 'siteDone', id, i }),
       take: (i) => this.send({ t: 'siteTake', id, i }),
+      scrap: () => this.send({ t: 'siteScrap', id }),
       hold: (i, players, on) => {
         // The server forgets a hold after a few seconds, so keep saying it while we hold.
         const old = this.holdTimers.get(key(i));

@@ -107,9 +107,11 @@ export type ClientMsg =
   // up from the bag (checked against the table's reach), picks the machine's seed and tells everyone ('bench');
   // answers 'items' either way.
   | { t: 'crashUse'; kind: string }
-  // Scrap the machine on the disassembly table: one scrap per part still on it (at least one) goes in your bag, if
-  // it all fits, and the table is free ('bench' to everyone, 'items' to you).
+  // Scrap the machine on the disassembly table, finished or not (shared/machineSteps.ts frameScrap: more if parts are still on it,
+  // which are destroyed): the scrap goes in your bag, if it all fits, and the table is free ('bench' to everyone, 'items' to you).
   | { t: 'benchScrap' }
+  // Mash the frame of a stripped field machine to scrap (siteScrap, below): the server checks that nothing is left on it, pays and
+  // the site is spent ('crashSpent'). Not allowed on a machine with parts or steps left.
   // Large crash sites, and the table (id 'bench'), are worked on together. Join/leave the session; hold a lifting
   // eye (it needs `players` of you holding at once, re-sent about once a second while held); report a step done (a
   // lift is checked against the holders) or take a part (first one wins: its item goes in your bag, answered with
@@ -122,6 +124,7 @@ export type ClientMsg =
   | { t: 'siteHold'; id: string; i: number; players: number; on: boolean }
   | { t: 'siteDone'; id: string; i: number }
   | { t: 'siteTake'; id: string; i: number }
+  | { t: 'siteScrap'; id: string }
   // A chat line (Enter, src/chat.ts). The server trims it to CHAT_MAX, drops empty ones and rate-limits, then sends
   // it to everyone as 'chat'.
   | { t: 'chat'; text: string }

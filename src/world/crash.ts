@@ -2,14 +2,13 @@
 // dressing under each machine are drawn by src/world/crashsites.ts) and the disassembly table job at the base.
 // Each machine (src/teardown/junk.ts) is built when you come within BUILD_R and dropped again when you are far
 // away. The machine is the same object the disassembly mode works on, so a half taken-apart machine stays that
-// way while you are around. The large machine of a spent crash site (crashSpent: every part taken) is built as a
-// stripped husk and offers nothing.
+// way while you are around. The large machine of a spent crash site (crashSpent: stripped, then its frame mashed to scrap) is gone.
 // How far each machine has been taken apart is the server's (server/crash.ts): every step and take arrives here
 // for every machine, and a machine built later is fast-forwarded to it. Machines you carried home (small ones, and the salvage wrecks of src/world/wrecks.ts)
 // are taken apart on the base's disassembly table, whose job is the server's too and is seen by everyone.
 import * as THREE from 'three/webgpu';
 import {
-  BENCH, CARRY_KINDS, crashSpent, crashTaken, CRASH_REACH, seeded, sitesNear, type CrashSite,
+  BENCH, CARRY_KINDS, crashTaken, CRASH_REACH, seeded, siteSpent, sitesNear, type CrashSite,
 } from '../../shared/crash.ts';
 import { hasItem, type Slots } from '../../shared/items.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
@@ -17,6 +16,7 @@ import { heightAt } from '../../shared/terrain.ts';
 import { viewCull } from './viewCull';
 import { machineChanged, machineGround, setMachineProgress, setMachineShove } from '../../shared/machineBoxes.ts';
 import { layoutOf } from '../../shared/machines.ts';
+import { frameScrap } from '../../shared/machineSteps.ts';
 import { attachAll, buildJunk, detailList, hideDetail, lowestOffset, pieceEmpty, restPiece, settle, type Junk } from '../teardown/junk.ts';
 import type { SiteMsg } from '../net.ts';
 import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
@@ -42,8 +42,6 @@ type Progress = { done: Set<number>; taken: Set<number> };
 interface SiteView {
   site: CrashSite;
   junk: Junk | null;
-  /** The junk was built as a stripped husk (its crash site was spent). */
-  husk: boolean;
   /** The site's machine is drawn (in the scene). */
   shown: boolean;
   /** Close enough that its fasteners are drawn (seen from afar there are hundreds of meshes for nothing), and whether the
@@ -57,8 +55,6 @@ interface SiteView {
   /** What is still to be put back into the scene as you come near, a few a frame. */
   queue?: THREE.Object3D[];
 }
-
-const spent = (site: CrashSite) => !site.lab && !junkSpec(site.kind).carry && crashSpent.has(site.wreck);
 
 export class MachineSites {
   private views = new Map<string, SiteView>();
@@ -85,15 +81,15 @@ export class MachineSites {
     for (const site of near) {
       keep.add(site.id);
       let v = this.views.get(site.id);
-      if (!v) this.views.set(site.id, (v = { site, junk: null, husk: false, shown: false }));
-      // Spent while we weren't working on it: rebuild as the husk.
-      if (v.junk && v.husk !== spent(site) && this.busy() !== site.id) this.drop(v, true);
+      if (!v) this.views.set(site.id, (v = { site, junk: null, shown: false }));
       const d = Math.hypot(site.x - focus.x, site.z - focus.z);
-      const gone = !site.lab && junkSpec(site.kind).carry && crashTaken.has(site.id);
-      if (gone && v.shown) this.drop(v, false);
+      // Carried off, or its frame scrapped: not there any more.
+      const spent = siteSpent(site);
+      const gone = spent || (!site.lab && junkSpec(site.kind).carry && crashTaken.has(site.id));
+      if (gone && (v.shown || v.junk)) this.drop(v, spent);
       else if (!gone && d < BUILD_R && !v.shown) this.show(v);
       else if (v.shown && d > DROP_R) this.drop(v, false);
-      if (v.shown && v.junk && !v.husk) this.detailed(v, d);
+      if (v.shown && v.junk) this.detailed(v, d);
       if (v.shown && v.junk?.setRoll) this.rolling(v);
       if (v.shown && v.junk) this.cull(v, d);
     }
@@ -175,12 +171,8 @@ export class MachineSites {
     if (!v.junk) {
       v.junk = buildJunk(site.kind, site.seed, site.level);
       v.junk.root.rotation.y = site.yaw;
-      v.husk = spent(site);
-      if (v.husk) fastForward(v.junk, v.junk.steps.map((_, i) => i), v.junk.slots.map((s) => s.index));
-      else {
-        const p = this.progress.get(site.id);
-        if (p) fastForward(v.junk, p.done, p.taken);
-      }
+      const p = this.progress.get(site.id);
+      if (p) fastForward(v.junk, p.done, p.taken);
     }
     const j = v.junk;
     j.root.position.set(site.x, layoutOf(site.kind) ? machineGround(site, 0, 0) : heightAt(site.x, site.z), site.z);
@@ -200,6 +192,12 @@ export class MachineSites {
     settle(j.root); // (a machine at rest is not walked over every frame)
   }
 
+  /** The site's frame has been scrapped (by anyone): the machine is gone. */
+  isSpent(id: string): boolean {
+    const v = this.views.get(id);
+    return !!v && siteSpent(v.site);
+  }
+
   /** The lab machine nearest (x, z) within a few steps, for the debug menu's reset. */
   nearestLab(x: number, z: number): SiteView | null {
     let best: SiteView | null = null;
@@ -217,7 +215,7 @@ export class MachineSites {
     let best: SiteView | null = null;
     let bd = CRASH_REACH;
     for (const v of this.views.values()) {
-      if (!v.shown || !v.junk || v.husk) continue;
+      if (!v.shown || !v.junk) continue;
       const d = Math.hypot(v.site.x - x, v.site.z - z);
       if (d < bd) {
         bd = d;
@@ -314,12 +312,13 @@ export class Bench {
   ground = (x: number, z: number) =>
     Math.abs(x - BENCH.x) < BENCH.w / 2 && Math.abs(z - BENCH.z) < BENCH.d / 2 ? BENCH.top : BENCH.floor;
 
-  /** What the table's menu offers: the machine on it (name, parts still on it), or the carried machines that can be put on it. */
-  menu(bag: Slots | undefined): { job: string | null; left: number; kinds: { kind: JunkKind; label: string }[] } {
+  /** What the table's menu offers: the machine on it (name, the scrap it is worth as it is: the server's frameScrap), or the carried
+   *  machines that can be put on it. */
+  menu(bag: Slots | undefined): { job: string | null; scrap: number; kinds: { kind: JunkKind; label: string }[] } {
     const cur = this.job;
     return {
       job: cur ? junkSpec(cur.kind).label : null,
-      left: cur ? cur.junk.slots.filter((s) => !s.taken).length : 0,
+      scrap: cur ? frameScrap(cur.kind, cur.seed, 1, cur.junk.slots.filter((s) => !s.taken).length) : 0,
       kinds: cur ? [] : CARRY_KINDS.filter((k) => hasItem(bag, k)).map((kind) => ({ kind, label: junkSpec(kind).label })),
     };
   }

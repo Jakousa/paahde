@@ -11,6 +11,7 @@
 import { kbd } from '../bindings';
 import { RARITY, type PartId, type Tier } from '../../shared/salvage.ts';
 import { TEXT } from '../../shared/text.ts';
+import { tdListeners, tdPrefs } from './prefs.ts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 export const partName = (part: PartId, tier: Tier) => TEXT.partTaken(TEXT.parts[part], RARITY[tier].name);
@@ -42,12 +43,10 @@ body.tdHeld #crosshair { opacity: 0; }
 #tdTop button.scrap { background: rgba(255, 240, 220, 0.12); color: #fff4e4; }
 #tdTop button.scrap:hover { background: rgba(255, 240, 220, 0.22); }
 #tdTop button.scrap.sure { background: #ff9c86; color: #2a160a; }
-#tdTop .meters { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 8px; align-items: center; margin: 9px 0 7px; }
-#tdTop .meters span { opacity: 0.7; }
-#tdTop .meters b { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
-#tdTop .bar { height: 5px; border-radius: 3px; background: rgba(255, 240, 220, 0.12); overflow: hidden; }
-#tdTop .bar i { display: block; height: 100%; width: 0; background: #ffd9a0; transition: width .25s; }
-#tdTop .bar.parts i { background: var(--c, #ffd9a0); }
+#tdCount { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); z-index: 5; display: none; pointer-events: none; padding: 3px 11px;
+  border-radius: 999px; background: rgba(28, 15, 7, 0.55); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.12); font: 11px var(--mono); color: #fff4e4;
+  white-space: nowrap; user-select: none; -webkit-user-select: none; }
+#tdCount b { margin-right: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #ffd9a0; }
 #tdTop .next { color: #fff4e4; }
 #tdTop .next:empty, #tdTip .a:empty { display: none; }
 #tdTop .next::before { content: '▸ '; color: #ffd9a0; }
@@ -76,15 +75,12 @@ body.tdHeld #crosshair { opacity: 0; }
   transform: translate(-50%, -50%); transition: left .75s cubic-bezier(.5,0,.8,.4), top .75s cubic-bezier(.4,-0.6,.8,.6), opacity .75s ease-in, scale .75s; }
 `;
 
-export interface Progress {
+/** What is left to do on the machine nearby: steps and parts; `scrap` when only the frame is left. */
+export interface Counts {
   label: string;
-  tier: Tier;
-  stepsDone: number;
   steps: number;
-  partsTaken: number;
   parts: number;
-  /** Large sites: shared with others. */
-  shared: boolean;
+  scrap: boolean;
 }
 
 export class TeardownUi {
@@ -98,6 +94,9 @@ export class TeardownUi {
   private tagPool: HTMLElement[] = [];
   private lastTip = '';
   private lastNext = '';
+  private countEl = document.createElement('div');
+  private counts: Counts | null = null;
+  private lastCounts = '';
 
   private scrapEl: HTMLButtonElement;
   private sureTimer = 0;
@@ -113,13 +112,16 @@ export class TeardownUi {
 <svg id="tdRing" viewBox="0 0 ${RING_R * 2 + 12} ${RING_R * 2 + 12}"><circle class="bg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}"/><circle class="fg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/></svg>
 <div class="panel" id="tdTop">
   <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button class="scrap">${TEXT.teardown.scrap}</button><button class="leave">${kbd('interact')}</button></div>
-  <div class="meters"><span>${TEXT.teardown.steps}</span><div class="bar steps"><i></i></div><b class="ns"></b><span>${TEXT.teardown.parts}</span><div class="bar parts"><i></i></div><b class="np"></b></div>
   <div class="next"></div>
 </div>
 <div id="tdTip"><div class="t"></div><div class="a"></div></div>
 <div id="tdMsg"></div>`;
     document.body.append(o);
-    this.top = o.querySelector('#tdTop')!;
+    this.countEl.id = 'tdCount';
+    document.body.append(this.countEl);
+    tdListeners.add(() => this.setCounts(this.counts));
+    this.setCounts(null);
+    this.top =o.querySelector('#tdTop')!;
     this.tipEl = o.querySelector('#tdTip')!;
     this.ringEl = o.querySelector('#tdRing')!;
     this.tagsEl = o.querySelector('#tdTags')!;
@@ -149,18 +151,16 @@ export class TeardownUi {
     this.scrapEl.style.display = on ? '' : 'none';
   }
 
-  setProgress(p: Progress) {
-    const t = this.top;
-    t.querySelector('.name')!.textContent = p.label;
-    const tier = t.querySelector<HTMLElement>('.tier')!;
-    tier.textContent = RARITY[p.tier].name;
-    tier.style.color = rarityColor(p.tier);
-    t.querySelector('.who')!.textContent = p.shared ? TEXT.teardown.shared : '';
-    t.querySelector<HTMLElement>('.steps i')!.style.width = `${p.steps ? (100 * p.stepsDone) / p.steps : 100}%`;
-    t.querySelector<HTMLElement>('.parts i')!.style.width = `${p.parts ? (100 * p.partsTaken) / p.parts : 100}%`;
-    t.querySelector<HTMLElement>('.bar.parts')!.style.setProperty('--c', rarityColor(p.tier));
-    t.querySelector('.ns')!.textContent = `${p.stepsDone}/${p.steps}`;
-    t.querySelector('.np')!.textContent = `${p.partsTaken}/${p.parts}`;
+  /** The small line at the top of the screen near a machine: its name and what is left on it (null: hidden). A setting turns it off. */
+  setCounts(c: Counts | null) {
+    this.counts = c;
+    this.countEl.style.display = c && tdPrefs.counts ? 'block' : 'none';
+    if (!c || !tdPrefs.counts) return;
+    const text = `${c.label}|${c.scrap ? TEXT.teardown.scrapFrame : TEXT.teardown.left(c.steps, c.parts)}`;
+    if (text === this.lastCounts) return;
+    this.lastCounts = text;
+    const [name, left] = text.split('|');
+    this.countEl.replaceChildren(Object.assign(document.createElement('b'), { textContent: name }), left);
   }
 
   /** The "what to do next" line. */

@@ -208,7 +208,9 @@ export interface Junk {
 export type Target =
   | { type: 'junk'; junk: Junk }
   | { type: 'step'; step: Step }
-  | { type: 'part'; slot: Slot };
+  | { type: 'part'; slot: Slot }
+  /** The bare frame of a machine with nothing left on it: mashed to scrap. */
+  | { type: 'frame' };
 
 /** One rolled part: its tier and its index in machineParts(). */
 interface Roll {
