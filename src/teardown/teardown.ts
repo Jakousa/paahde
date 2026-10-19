@@ -11,7 +11,7 @@
 // physics is plain frame-time maths: it is only cosmetic.
 import * as THREE from 'three/webgpu';
 import { type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
-import { actionHeld, takeMouse, tools, ui } from '../input.ts';
+import { actionHeld, keyHeld, takeMouse, tools, ui } from '../input.ts';
 import { isBound } from '../bindings.ts';
 import { tdPrefs } from './prefs.ts';
 import { teardownSound } from '../teardownSound.ts';
@@ -144,6 +144,14 @@ export class TeardownView {
   private wasDown = false;
   /** A piece that came off the machine, held up in front of the eyes to be turned and taken apart. */
   private held: { piece: Piece } | null = null;
+  /** With a piece in the hands the mouse moves this cursor over the view (px) instead of turning it: that is where it aims. */
+  private cur = { x: 0, y: 0 };
+  private get ax() {
+    return this.held ? this.cur.x : innerWidth / 2;
+  }
+  private get ay() {
+    return this.held ? this.cur.y : innerHeight / 2;
+  }
   /** Seconds the interact key has been held at the table (a long hold scraps the machine). */
   private scrapHold = 0;
 
@@ -254,7 +262,7 @@ export class TeardownView {
 
   /** The server paid scrap for what was just taken apart: it flies from the crosshair to the bag, and what did not fit is said. */
   gotScrap(n: number, dropped: number) {
-    this.ui.flyText(innerWidth / 2, innerHeight / 2 + 40, TEXT.notice.got(n, TEXT.items.scrap));
+    this.ui.flyText(this.ax, this.ay + 40, TEXT.notice.got(n, TEXT.items.scrap));
     if (dropped > 0) this.ui.message(TEXT.notice.bagFull, true);
   }
 
@@ -291,6 +299,9 @@ export class TeardownView {
     wake(piece.obj);
     piece.obj.updateMatrixWorld(true);
     this.held = { piece };
+    this.cur.x = innerWidth / 2 + 0.1 * innerWidth; // (over the piece, which hangs a little to the right)
+    this.cur.y = innerHeight / 2 + 0.05 * innerHeight;
+    document.body.classList.add('tdHeld');
     teardownSound.hit('clink', 0.7);
   }
 
@@ -301,6 +312,8 @@ export class TeardownView {
     const p = h.piece;
     this.held = null;
     tools.spinning = false;
+    document.body.classList.remove('tdHeld');
+    this.ui.cursor(null);
     const fwd = this.camera.getWorldDirection(this.tmpA);
     const at = this.camera.getWorldPosition(this.tmpB);
     const wx = at.x + fwd.x * 1.2, wz = at.z + fwd.z * 1.2;
@@ -558,10 +571,16 @@ export class TeardownView {
     }
     // Right mouse held turns the machine on the table, or the piece in the hands: the mouse turns it, the view stays.
     const turning = (site.movable || !!this.held) && actionHeld('aim');
-    tools.spinning = turning;
+    // With a piece in the hands the view does not turn with the mouse (the mouse moves the cursor over the piece) unless the middle
+    // button is held; right mouse turns the piece.
+    const looking = !!this.held && !turning && keyHeld('Mouse1');
+    tools.spinning = turning || (!!this.held && !looking);
     if (turning) {
       if (this.held) this.turnHeld(mx, my);
       else this.spin(mx, my);
+    } else if (this.held && !looking && !this.act) {
+      this.cur.x = THREE.MathUtils.clamp(this.cur.x + mx, 8, innerWidth - 8);
+      this.cur.y = THREE.MathUtils.clamp(this.cur.y + my, 8, innerHeight - 8);
     }
     if (this.act) {
       const a = this.act;
@@ -570,14 +589,14 @@ export class TeardownView {
       if (!down || far || a.step.done) this.letGo();
       else this.moveStep(a, mx, my);
     } else {
-      this.hover = this.pick(innerWidth / 2, innerHeight / 2, REACH);
+      this.hover = this.pick(this.ax, this.ay, REACH);
       if (pressed && this.hover) {
         const t = this.hover;
         if (t.type === 'step') {
           if (stepReady(t.step)) this.startStep(t.step);
           else this.ui.message(this.describe(t)!.action, true);
         } else if (t.type === 'part') {
-          if (slotOpen(t.slot)) this.takePart(t.slot, innerWidth / 2, innerHeight / 2);
+          if (slotOpen(t.slot)) this.takePart(t.slot, this.ax, this.ay);
           else this.ui.message(this.describe(t)!.action, true);
         }
       }
@@ -607,7 +626,7 @@ export class TeardownView {
       ends.forEach((e, i) => {
         if (e.done) return;
         const q = this.screen(e.lug);
-        const d = q ? Math.hypot(q.x - innerWidth / 2, q.y - innerHeight / 2) : Infinity;
+        const d = q ? Math.hypot(q.x - this.ax, q.y - this.ay) : Infinity;
         if (d < bd) (bd = d), (end = i);
       });
       if (end < 0) end = ends.findIndex((e) => !e.done);
@@ -920,6 +939,8 @@ export class TeardownView {
     if (this.held?.piece === p) {
       this.held = null; // nothing left in the hands: it goes (the release below takes it off the camera)
       tools.spinning = false;
+      document.body.classList.remove('tdHeld');
+      this.ui.cursor(null);
     }
     const l = this.loose.find((x) => x.piece === p);
     if (l) l.piece = undefined; // still in the air: it just shrinks away
@@ -1123,11 +1144,12 @@ export class TeardownView {
     const a = this.act;
     const t = a ? { type: 'step' as const, step: a.step } : this.hover;
     const d = !a || a.step.kind === 'lift' ? this.describe(t) : null;
-    this.ui.tip(d && { ...d, x: innerWidth / 2 + 6, y: innerHeight / 2 + 10 });
+    this.ui.tip(d && { ...d, x: this.ax + 6, y: this.ay + 10 });
+    this.ui.cursor(this.held ? this.cur : null);
 
     // Ring: around the step being worked at the crosshair, or a hovered one that is part-way done (a half-turned bolt).
     const rs = a?.step ?? (t?.type === 'step' && t.step.progress > 0 && !t.step.done ? t.step : null);
-    if (rs && a) this.ui.ring({ x: innerWidth / 2, y: innerHeight / 2, f: rs.progress / rs.need });
+    if (rs && a) this.ui.ring({ x: this.ax, y: this.ay, f: rs.progress / rs.need });
     else if (rs && rs.kind !== 'wire') {
       const p = this.screen(rs.obj);
       this.ui.ring(p && { ...p, f: rs.progress / rs.need });

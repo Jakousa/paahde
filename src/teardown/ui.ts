@@ -26,6 +26,9 @@ const css = `
 #tdOverlay .panel { position: absolute; background: rgba(28, 15, 7, 0.88); border-radius: 8px;
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.35); }
 #tdOverlay kbd { font: 600 10px var(--mono); padding: 0 4px; border-radius: 3px; background: #ffd9a0; color: #2a160a; }
+body.tdHeld #crosshair { opacity: 0; }
+#tdCursor { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); pointer-events: none; display: none; }
 #tdTop { top: 12px; left: 50%; transform: translateX(-50%); width: min(460px, calc(100vw - 32px)); padding: 10px 14px 9px; }
 #tdTop .head { display: flex; align-items: baseline; gap: 10px; }
 #tdTop .name { font: 600 13px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: #ffd9a0; }
@@ -106,7 +109,7 @@ export class TeardownUi {
 
     const o = this.overlay;
     o.id = 'tdOverlay';
-    o.innerHTML = `<div id="tdTags"></div>
+    o.innerHTML = `<div id="tdTags"></div><div id="tdCursor"></div>
 <svg id="tdRing" viewBox="0 0 ${RING_R * 2 + 12} ${RING_R * 2 + 12}"><circle class="bg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}"/><circle class="fg" cx="${RING_R + 6}" cy="${RING_R + 6}" r="${RING_R}" stroke-dasharray="${RING_C}" stroke-dashoffset="${RING_C}"/></svg>
 <div class="panel" id="tdTop">
   <div class="head"><span class="name"></span><span class="tier"></span><span class="who"></span><button class="scrap">${TEXT.teardown.scrap}</button><button class="leave">${kbd('interact')}</button></div>
@@ -237,6 +240,16 @@ export class TeardownUi {
     this.msgEl.append(el);
     while (this.msgEl.children.length > 3) this.msgEl.firstElementChild!.remove();
     setTimeout(() => el.remove(), MSG_MS);
+  }
+
+  /** The cursor over a piece held in the hands (null: the game's own crosshair is the aim). */
+  cursor(at: { x: number; y: number } | null) {
+    const el = this.overlay.querySelector<HTMLElement>('#tdCursor')!;
+    el.style.display = at ? 'block' : 'none';
+    if (at) {
+      el.style.left = `${at.x}px`;
+      el.style.top = `${at.y}px`;
+    }
   }
 
   /** A line of text flying from (x, y) down to the hotbar, like a part taken (the scrap paid for a step). */
