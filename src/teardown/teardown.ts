@@ -461,11 +461,15 @@ export class TeardownView {
     this.computeRest();
   }
 
-  /** The piece in the hands, turned by the mouse about the view's up and right (it hangs off the camera). */
+  /** The piece in the hands, turned by the mouse exactly as a machine on the table is (spin): about the vertical, and about the
+   *  view's right. It hangs off the camera, so those axes are taken into the camera's own frame. */
   private turnHeld(mx: number, my: number) {
+    if (!mx && !my) return;
     const o = this.held!.piece.obj;
-    o.quaternion.premultiply(this.tmpQ.setFromAxisAngle(this.tmpA.set(0, 1, 0), mx * 0.01));
-    o.quaternion.premultiply(this.tmpQ.setFromAxisAngle(this.tmpA.set(1, 0, 0), my * 0.01));
+    const up = this.tmpA.set(0, 1, 0).applyQuaternion(this.tmpQ.copy(this.camera.quaternion).invert());
+    const q = new THREE.Quaternion().setFromAxisAngle(up, mx * 0.008);
+    q.premultiply(new THREE.Quaternion().setFromAxisAngle(this.tmpB.set(1, 0, 0), my * 0.008));
+    o.quaternion.premultiply(q);
   }
 
   private resetRotation() {
