@@ -300,10 +300,9 @@ def build(pose, rnd_seed=11):
     comb.mb.cyl(polar(math.radians(70), 0.31, -0.25), polar(math.radians(70), 0.45, -0.25), 0.028, 0.028, segs=8, mat='Dark')
     comb.mb.cyl(polar(math.radians(105), 0.31, -0.25), polar(math.radians(105), 0.45, -0.25), 0.028, 0.028, segs=8, mat='Dark')
     comb.ring('bolt', 'flangeBolt', (0, 0, -0.09), (0, 0, 1), 0.30, 8, after=['compressor'])
-    comb.wire('igniterLead', [polar(math.radians(70), 0.45, -0.25), polar(math.radians(60), 0.6, -0.18), polar(math.radians(30), 0.52, 0.02), polar(math.radians(15), 0.47, 0.1)],
-              key='black', after=['flangeBolt'], r=0.01)
-    comb.wire('igniterLead', [polar(math.radians(105), 0.45, -0.25), polar(math.radians(90), 0.6, -0.2), polar(math.radians(50), 0.55, 0.0), polar(math.radians(20), 0.47, 0.1)],
-              key='black', after=['flangeBolt'], r=0.01)
+    D = math.radians
+    comb.wire('igniterLead', [polar(D(70), 0.46, -0.25), polar(D(62), 0.46, -0.2), polar(D(40), 0.46, -0.14)], key='black', after=['flangeBolt'], r=0.016)
+    comb.wire('igniterLead', [polar(D(105), 0.46, -0.25), polar(D(95), 0.46, -0.2), polar(D(55), 0.46, -0.16)], key='black', after=['flangeBolt'], r=0.016)
     comb.step('lift', 'coreLift', (0, 0.28, -0.10), (0, 1, 0), after=['igniterLead', 'flangeBolt'], need=3.5)
     comb.inside()
     for a in (0.0, 2.1, 4.2):
@@ -346,14 +345,14 @@ def build(pose, rnd_seed=11):
     cb, ca = ['corecowl_b'], ['corecowl_a']
     st = accessory('starter', 0.85, +1, 0.40, 0.07, 0.30, 0.25, 'Orange', cb)
     cl = st.step('clip', 'vClamp', (0.215, 0.435 + 0.075, 0.40), (0, 1, 0), after=cb)
-    st.wire('harness', [(0.46, 0.50, 0.40), (0.42, 0.62, 0.44), (0.30, 0.66, 0.50), (0.12, 0.60, 0.55)], key='black', after=[cl], r=0.014)
+    st.wire('harness', [(0.535, 0.435, 0.40), (0.60, 0.47, 0.40), (0.60, 0.58, 0.38), (0.45, 0.64, 0.36), (0.2, 0.60, 0.34), (0.1, 0.57, 0.32)], key='black', after=[cl], r=0.022)
     end_bell(st, 1, 0.40, 0.07, 0.30)
     st.part('motor', (0.38, 0.435, 0.40), (0, 0, -PI / 2), chance=0.9)
 
     ge = accessory('generator', 0.85, +1, 0.20, 0.105, 0.30, 0.15, 'Steel', cb)
     gb = ge.ring('bolt', 'padBolt', (0.22, 0.435, 0.20), (1, 0, 0), 0.115, 4, phase=0.78, after=cb)
-    ge.wire('harness', [(0.48, 0.50, 0.20), (0.40, 0.66, 0.16), (0.24, 0.70, 0.12), (0.10, 0.62, 0.10)], key='red', after=gb, r=0.016)
-    ge.wire('harness', [(0.48, 0.43, 0.14), (0.38, 0.60, 0.08), (0.22, 0.66, 0.02), (0.08, 0.60, 0.0)], key='black', after=gb, r=0.012)
+    ge.wire('harness', [(0.535, 0.435, 0.20), (0.60, 0.47, 0.20), (0.60, 0.60, 0.20), (0.45, 0.66, 0.20), (0.2, 0.62, 0.18), (0.1, 0.57, 0.18)], key='black', after=gb, r=0.024)
+    ge.wire('harness', [(0.535, 0.40, 0.15), (0.62, 0.43, 0.15), (0.62, 0.56, 0.14), (0.45, 0.63, 0.13), (0.2, 0.60, 0.12), (0.12, 0.57, 0.12)], key='red', after=gb, r=0.02)
     end_bell(ge, 1, 0.20, 0.105, 0.30, 4)
     ge.part('motor', (0.40, 0.435, 0.20), (0, 0, -PI / 2), chance=0.8)
     ge.part('coil', (0.36, 0.52, 0.20), (0, 0, 0), chance=0.7)
@@ -365,7 +364,7 @@ def build(pose, rnd_seed=11):
 
     hy = accessory('hydpump', 0.7, -1, 0.40, 0.075, 0.28, 0.2, 'Steel', ca)
     hb = hy.ring('bolt', 'padBolt', (-0.215, 0.435, 0.40), (-1, 0, 0), 0.085, 4, phase=0.78, after=ca)
-    hy.wire('hoseFitting', [(-0.46, 0.45, 0.40), (-0.55, 0.30, 0.42), (-0.60, 0.1, 0.46), (-0.58, -0.1, 0.5)], key='black', after=hb, r=0.022)
+    hy.wire('hoseFitting', [(-0.51, 0.435, 0.40), (-0.58, 0.38, 0.40), (-0.52, 0.28, 0.37), (-0.37, 0.22, 0.33)], key='black', after=hb, r=0.028)
     end_bell(hy, -1, 0.40, 0.075, 0.28)
     hy.part('valve', (-0.36, 0.435, 0.40), (0, 0, PI / 2), chance=0.8)
 
@@ -374,7 +373,7 @@ def build(pose, rnd_seed=11):
     fp.mb.box((-0.34, 0.435, 0.20), (0.26, 0.15, 0.15), 'Steel')
     fp.mb.cyl((-0.34, 0.435, 0.20), (-0.34, 0.55, 0.20), 0.05, 0.05, segs=10, mat='Brass')
     fb_ = fp.ring('bolt', 'padBolt', (-0.215, 0.435, 0.20), (-1, 0, 0), 0.075, 4, phase=0.78, after=ca)
-    fp.wire('harness', [(-0.4, 0.55, 0.20), (-0.36, 0.68, 0.14), (-0.2, 0.72, 0.1), (-0.1, 0.62, 0.08)], key='black', after=fb_, r=0.014)
+    fp.wire('harness', [(-0.47, 0.50, 0.20), (-0.55, 0.58, 0.20), (-0.45, 0.65, 0.20), (-0.2, 0.62, 0.17), (-0.1, 0.57, 0.18)], key='black', after=fb_, r=0.022)
     fp.inside()
     fp.ring('screw', 'endBellScrew', (-0.34, 0.435, 0.275), (0, 0, 1), 0.06, 3, phase=0.3)
     fp.part('valve', (-0.34, 0.435, 0.20), (0, 0, PI / 2), chance=0.85)
@@ -402,8 +401,8 @@ def build(pose, rnd_seed=11):
     fd.mb.pop()
     fd.ring('screw', 'mountScrew', pos + radial(math.radians(262)) * 0.085, radial(math.radians(262)), 0.17, 4, phase=0.78, after=['fancowl_a'])
     fd.step('clip', 'connectorLatch', pos + radial(math.radians(262)) * 0.14, radial(math.radians(262)), after=['fancowl_a'])
-    fd.wire('harness', [pos + radial(math.radians(262)) * 0.12, polar(math.radians(250), 0.9, 0.95), polar(math.radians(220), 0.84, 1.0), polar(math.radians(190), 0.83, 0.8)],
-            key='black', after=['connectorLatch'], r=0.016)
+    fd.wire('harness', [pos + radial(D(262)) * 0.12, polar(D(262), 0.875, 0.74), polar(D(285), 0.875, 0.64), polar(D(315), 0.875, 0.6), polar(D(345), 0.875, 0.6)],
+            key='black', after=['connectorLatch'], r=0.024)
     fd.inside()
     fd.ring('screw', 'coverScrew', pos + radial(math.radians(262)) * 0.09, radial(math.radians(262)), 0.15, 4, phase=0.2)
     fd.part('compute', pos + radial(math.radians(262)) * 0.06, (0, 0, 0), chance=0.9)
@@ -417,8 +416,8 @@ def build(pose, rnd_seed=11):
     oc.mb.pop()
     oc.row('bolt', 'coolerBolt', pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, -0.1)), pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, 0.1)), 2,
            radial(math.radians(115)), after=['fancowl_b'])
-    oc.wire('hoseFitting', [pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, 0.14)), polar(math.radians(135), 0.9, 0.9), polar(math.radians(150), 0.84, 0.6), polar(math.radians(160), 0.5, 0.45)],
-            key='black', after=['coolerBolt'], r=0.02)
+    oc.wire('hoseFitting', [pos + radial(D(115)) * 0.12, polar(D(110), 0.875, 0.82), polar(D(88), 0.875, 0.86), polar(D(64), 0.875, 0.82)],
+            key='black', after=['coolerBolt'], r=0.028)
     oc.inside()
     oc.ring('screw', 'coverScrew', pos + radial(math.radians(115)) * 0.12, radial(math.radians(115)), 0.1, 4, phase=0.78)
     oc.part('heatsink', pos + radial(math.radians(115)) * 0.07, (0, 0, 0), chance=0.9)

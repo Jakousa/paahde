@@ -83,8 +83,7 @@ export function hideDetail(junk: { steps: Step[]; slots: Slot[] }) {
  *  (a hundred new objects in one frame is a long frame: each needs its pipeline and bindings made). */
 export function detailList(junk: { steps: Step[]; slots: Slot[] }): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
-  for (const sl of junk.slots) if (!sl.taken) out.push(sl.piece.obj);
-  for (const s of junk.steps) if (!s.done && stepReady(s)) out.push(s.obj);
+  for (const s of junk.steps) if (!s.done && stepReady(s)) out.push(s.obj); // (the parts inside show only once they are free to take)
   return out;
 }
 
@@ -433,6 +432,9 @@ interface BayOpts {
   screws?: 0 | 2 | 4;
 }
 
+/** A cable's plugs and sockets are drawn at this fraction of the hardware kit's size: small, clean connectors on thick cable. */
+const PLUG_SCALE = 0.62;
+
 const KIT_MATS: Partial<Record<number, Record<MatKey, THREE.MeshStandardNodeMaterial>>> = {};
 
 /** The materials of one grade, made once and shared by every machine of it: each new material is a shader build the first time
@@ -775,7 +777,7 @@ export class Kit {
   /** The plugs on the ends of a cable and the sockets they sit in, once the hardware kit is in; with several strands, the cable
    *  fans into its wires at each plug. */
   private dressWire(step: Step, g: THREE.Group, lugs: THREE.Object3D[], rel: THREE.CatmullRomCurve3, strands: number, r: number) {
-    const k = 1 / this.fs;
+    const k = PLUG_SCALE / this.fs;
     const colours: MatKey[] = ['red', 'black', 'yellow', 'blue', 'green', 'brown'];
     hardware().then((hw) => {
       const plug = hw.get('Plug'), socket = hw.get('Socket');

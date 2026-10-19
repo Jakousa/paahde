@@ -47,7 +47,7 @@ const CLIP_HARDWARE: Record<string, 'latch' | 'clamp' | 'pin'> = {
   cowlLatch: 'latch', connectorLatch: 'latch', strapClip: 'latch', vClamp: 'clamp', manifoldClamp: 'clamp', linkagePin: 'pin',
 };
 /** How many wires run in a cable (a harness is several, an igniter lead one). */
-const STRANDS: Record<string, number> = { harness: 5, igniterLead: 2, hoseFitting: 1 };
+const STRANDS: Record<string, number> = {};
 
 /** Size of the fasteners and terminals on a full-size model. */
 const FASTENER = 0.6;

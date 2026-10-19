@@ -1073,6 +1073,8 @@ export class TeardownView {
     for (const s of j.slots) {
       const open = slotOpen(s);
       s.ring.visible = working && open;
+      // a part is not seen inside the machine: it appears when it is free to take
+      s.piece.obj.visible = open && !this.pendingSlot(s);
       s.ring.scale.setScalar((s === hoverSlot ? 1.18 : 1) + 0.08 * Math.sin(this.pulse * 5));
       // Parts glow a little all the time, and pulse once they are free to take.
       const glow = open ? PART_GLOW + 0.3 + 0.2 * Math.sin(this.pulse * 3) + (s === hoverSlot ? 0.35 : 0) : PART_GLOW;
