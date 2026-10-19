@@ -8,9 +8,9 @@
 // dies down over the last RAMP_MS. Its strength at a point is the envelope times a radial falloff: full
 // out to EDGE·r, nothing past r.
 //
-// Gameplay: inside one it's hotter (STORM_TEMP on the felt temperature, server/water.ts), you walk slower and
-// it pushes you downwind (STORM_SLOW, STORM_PUSH, shared/sim.ts), and the locator bar is lost in the dust
-// (src/storm.ts). The base keeps it out.
+// Gameplay: inside one the dust hides the sun, so your body heat stops rising (STORM_SHADE, server/water.ts), you
+// walk slower and it pushes you downwind (STORM_SLOW, STORM_PUSH, shared/sim.ts), and the electronics die in its
+// static (toolsDown). The base keeps it out.
 //
 // Mega-storms (`front`): rare world-wide storm fronts. A straight wall of dust across the whole world rolls
 // downwind at FRONT_SPEED, faster than you can run and only outrun on a good bike. It appears FRONT_LEAD_S
@@ -44,8 +44,8 @@ export const MIN_LEN_MS = 70_000;
 export const MAX_LEN_MS = 180_000;
 /** Full strength out to this fraction of the radius, fading to nothing at the radius. */
 export const EDGE = 0.55;
-/** Felt °C added at full strength (outside the base). */
-export const STORM_TEMP = 10;
+/** Storm strength above which the dust hides the sun enough that body heat stops rising (it can still fall). */
+export const STORM_SHADE = 0.35;
 /** Players this far (m) beyond a storm's path get the warning too. */
 export const WARN_MARGIN = 40;
 

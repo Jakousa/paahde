@@ -1383,8 +1383,7 @@ Local, short storms instead of the old global one (`wind.ts` used to hash a 3–
 - **Warning:** a storm whose path will cross where you stand (within 40 m) beeps three pips every 2.5 s
   and shows a countdown banner, unless you're in the base. The pips peak at −21.5 LUFS momentary at the default
   volume (true peak −8 dBTP), measured offline with the same waveform.
-- **Inside:** +10 °C felt (`STORM_TEMP`, server/water.ts) on top of sun/shade, so heat builds fast by day
-  and even nights get warm; the base keeps it out. The locator bar (our only map) is lost while the storm
+- **Inside:** (was +10 °C felt; now the dust hides the sun and body heat stops rising, see Mega-storms.) The locator bar (our only map) is lost while the storm
   at the camera is over 0.35. The storm at the camera also sets `wind.local`, which drives the wind to
   ~17 m/s, so the grains, drift sheet, dust puffs, sky haze and wind sound all pick it up.
 - **Look** (`src/post.ts`): each storm is a dust cylinder marched in the post pass (6 jittered steps along the
@@ -1667,6 +1666,11 @@ The local sandstorms are smaller now (radius 60–130 m, from 140–300), and ra
   strength over `SEIZE_AT` 0.35) is the one test every ground enemy's brain asks each tick: walkers and crawlers stand
   where they are (no walking, bites, cannon or missiles; server/guardians.ts), harvesters brake to a stop (a pace stretch
   to 0) and set off again once it has passed (server/harvesters.ts). Use it for any new ground enemy. Jets fly on.
+- **Heat:** storms no longer add heat. In any storm over `STORM_SHADE` (0.35), out of a bunker, the dust hides the sun
+  and body heat stops rising (it can still cool) (server/water.ts).
+- **Columns thicker:** the dense core of a sandstorm column now reaches 75% of its radius (was 45%) and is 1.3× as
+  thick, marched in steps closer together where the ray goes in and shaded by the dust actually seen (as the front):
+  clear for a few metres, rocks 40–60 m off are faint shapes. Still well short of a front (3–10 m).
 - **Tools fail in any storm** (columns too): above `STATIC_AT` (0.35) where you stand, out of a bunker, the electronics
   die: the wrist computer's clock and thermometer and its locator bar vanish, the storm detector goes quiet, the jammer
   won't lock (checked on the server too), and a receiver can't call and its needle hangs dead. Client: `storm.toolsDown`

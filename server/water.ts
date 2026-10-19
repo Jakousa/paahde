@@ -1,12 +1,12 @@
 // Server side of survival (shared/water.ts): builds up (or cools off) each player's heat meter by the felt
 // temperature (shared/temperature.ts; how much of the body is in the sun from shared/shade.ts, with other players
-// and bikes as shade casters; hotter in a sandstorm, shared/storm.ts, and on a mud flat, shared/biomes.ts), validates sips and canteen refills, and says
+// and bikes as shade casters; it stops rising in a sandstorm, shared/storm.ts; hotter on a mud flat, shared/biomes.ts), validates sips and canteen refills, and says
 // when a player has died of heatstroke (server/world.ts respawns them).
 import { atWater, indoors } from '../shared/shelters.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { sunOnBody, type Caster } from '../shared/shade.ts';
 import { type PlayerState } from '../shared/sim.ts';
-import { STORM_TEMP } from '../shared/storm.ts';
+import { STORM_SHADE } from '../shared/storm.ts';
 import { feltTemp, groundHeat } from '../shared/temperature.ts';
 import {
   DRINK_COOLDOWN_MS, FILL_COOLDOWN_MS, FILL_SLACK, HEAT_MAX, heatPerSecond, SIP_COOL,
@@ -74,10 +74,12 @@ export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod
     t.sun = inside ? 0 : sunOnBody(s.x, s.y, s.z, s.crouching, tod, around.casters, around.self);
     t.shade = t.sun < 0.5;
   }
-  t.temp = feltTemp(tod, t.sun, inside) + (inside ? 0 : groundHeat(s.x, s.z, tod, t.sun) + STORM_TEMP * storm);
+  t.temp = feltTemp(tod, t.sun, inside) + (inside ? 0 : groundHeat(s.x, s.z, tod, t.sun));
   if (now - t.diedAt < RESPAWN_GRACE_MS) return null;
   const sprinting = s.sliding; // speed slides are the exertion now (there is no sprint)
-  const rate = t.off ? Math.min(0, heatPerSecond(t.temp, sprinting)) : heatPerSecond(t.temp, sprinting);
+  // In a sandstorm the dust hides the sun: the heat stops rising (it still cools).
+  const capped = t.off || (!inside && storm > STORM_SHADE);
+  const rate = capped ? Math.min(0, heatPerSecond(t.temp, sprinting)) : heatPerSecond(t.temp, sprinting);
   const rising = rate > 0;
   const before = t.heat;
   t.heat = Math.min(HEAT_MAX, Math.max(0, t.heat + rate * dt));

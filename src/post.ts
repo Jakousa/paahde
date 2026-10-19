@@ -62,6 +62,9 @@ const STORM_H = 60;
 const STORM_STEPS = 6;
 /** The dust frays out to this many storm radii (the gameplay strength ends at 1). */
 const STORM_OUTER = 1.3;
+/** Dense core out to this fraction of the radius, and how thick it is (×STORM_K): ~15 m to see in its middle. */
+const STORM_CORE = EDGE * 0.75;
+const STORM_THICK = 1.3;
 /** Mega-storm front dust: how fast it thins upwards (m; the head of the wall stands up to FRONT_HEAD times
  *  taller), how far (m) its billows reach out ahead of the leading edge, how far past where a ray enters it is
  *  marched (opaque long before), and the steps (closer together near the eye). */
@@ -105,10 +108,10 @@ function sunThroughDust(o: THREE.Vector3, sd: THREE.Vector3): number {
     for (let k = 0; k < n; k++) {
       const t = t0 + dt * (k + 0.5);
       const r = Math.hypot(ox + sd.x * t, oz + sd.z * t) / disc.z;
-      const fade = 1 - THREE.MathUtils.smoothstep(r, EDGE * 0.45, STORM_OUTER);
+      const fade = 1 - THREE.MathUtils.smoothstep(r, STORM_CORE, STORM_OUTER);
       const hh = Math.max(o.y + sd.y * t - gs[i], 0);
       const up = Math.exp(-hh / STORM_H) * (1 - THREE.MathUtils.smoothstep(hh, STORM_H, STORM_H * 3));
-      tau += disc.w * fade * fade * up * 0.7 * dt;
+      tau += disc.w * fade * fade * up * 0.7 * STORM_THICK * dt;
     }
   });
   // The front: the sun ray marched out to FRONT_REACH through the slab (billows averaged out).
@@ -270,26 +273,31 @@ export class Post {
             const t1 = min(min(b.negate().add(sq).div(a), tScene), top);
             If(t1.greaterThan(t0), () => {
               first.assign(min(first, t0));
-              const dt = t1.sub(t0).div(STORM_STEPS);
+              // Steps closer together near where the ray goes in: from inside, the few metres you can see.
+              const len = t1.sub(t0);
               for (let k = 0; k < STORM_STEPS; k++) {
-                const t = t0.add(dt.mul(jitter.add(k)));
+                const f = jitter.add(k).div(STORM_STEPS);
+                const t = t0.add(len.mul(f.mul(f)));
+                const dt = len.mul((2 * k + 1) / (STORM_STEPS * STORM_STEPS));
                 const q = camPos.add(dir.mul(t));
                 const w = vec3(q.x.sub(windDrift.x.mul(1.5)), q.y.mul(1.6).sub(time.mul(4)), q.z.sub(windDrift.y.mul(1.5)));
                 const n = mx_noise_float(w.mul(0.035));
                 // Soft, ragged rim: density tapers from well inside the core out past the radius (the
                 // billows push the edge in and out), so the column frays into the air instead of ending.
                 const r = length(q.xz.sub(disc.xy)).div(disc.z).add(n.mul(0.18));
-                const fade = float(1).sub(smoothstep(EDGE * 0.45, STORM_OUTER, r));
+                const fade = float(1).sub(smoothstep(STORM_CORE, STORM_OUTER, r));
                 const rim = fade.mul(fade);
                 // Thins upwards, and the last of it fades out before the march stops at the top.
                 const h = max(q.y.sub(ground[i]), 0);
                 const up = exp(h.div(-STORM_H)).mul(float(1).sub(smoothstep(STORM_H, STORM_H * 3, h.mul(n.mul(0.25).add(1)))));
                 const billow = saturate(n.mul(0.9).add(0.7));
-                const d = disc.w.mul(rim).mul(up).mul(billow).mul(dt);
+                const d = disc.w.mul(rim).mul(up).mul(billow).mul(dt).mul(STORM_THICK);
+                // Shaded by the dust actually seen (weighted by what gets through), as the front's.
+                const ds = d.mul(exp(tau.mul(-STORM_K)));
                 tau.addAssign(d);
                 // Billows catch the light; the low, thick dust at the foot of the wall is in its own shade.
-                lit.addAssign(d.mul(n.mul(0.45).add(0.75)).mul(float(1.25).sub(up.mul(0.6))));
-                seen.addAssign(d);
+                lit.addAssign(ds.mul(n.mul(0.45).add(0.75)).mul(float(1.25).sub(up.mul(0.6))));
+                seen.addAssign(ds);
               }
             });
           });
