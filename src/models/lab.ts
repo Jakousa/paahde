@@ -10,7 +10,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ScavengerModel, type ScavengerClip } from './scavenger';
 import { CROUCH_SPEED } from '../../shared/sim.ts';
 
-const renderer = new THREE.WebGPURenderer({ antialias: true });
+const renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;

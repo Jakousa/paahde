@@ -98,7 +98,8 @@ import { Warmup } from './warmup';
 import { TEXT } from '../shared/text.ts';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
-const renderer = new THREE.WebGPURenderer({ antialias: true });
+// powerPreference asks for the discrete GPU (eGPU, laptop dGPU) over the integrated one when there is a choice.
+const renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: 'high-performance' });
 // (the stats line counts a whole frame: the shadow passes, the scene and the post passes, not just the last render call, which is a full-screen quad)
 renderer.info.autoReset = false;
 const resolution = new DynamicResolution(renderer); // sets the pixel ratio, then keeps it near 60 fps
