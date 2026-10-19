@@ -28,7 +28,7 @@ const EXHAUSTS: [number, number, number][] = [[-6.5, 19.1, -19.5], [-3.5, 19.1, 
 const CHUTE = new THREE.Vector3(0, 6.2, -25.6);
 /** Effects (dust, smoke) only within this far (m) of the camera. */
 const FX_R = 800;
-const CORE_GLOW = 9;
+const CORE_GLOW = 16;
 
 /** The track shoe's way round a loop d m from the bottom run's rear end, forward: (y, z) of its centre and its turn
  *  about X (0 on the top run, grouser up; π on the bottom, grouser down). */
@@ -94,7 +94,7 @@ function blocks(): Parts {
   const cores = CORES.map((c) => {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(CORE_HALF, CORE_HALF, 0.3, 6).rotateX(Math.PI / 2),
       new THREE.MeshStandardNodeMaterial({ color: 0, emissive: 0xffc070, emissiveIntensity: CORE_GLOW }));
-    m.position.set(c.x, c.y, c.z + 0.6);
+    m.position.set(c.x, c.y, c.z);
     return m;
   });
   const link = new THREE.Mesh(new THREE.BoxGeometry(TRACK_W, 0.3, 0.76), iron);
@@ -198,14 +198,15 @@ class View {
  *  throat behind it. */
 const BOXES: { h: THREE.Vector3; c: THREE.Vector3 }[] = [
   { h: new THREE.Vector3(HALF_W, (HULL_TOP - 1.6) / 2, (21.3 - STERN) / 2), c: new THREE.Vector3(0, (HULL_TOP + 1.6) / 2, (21.3 + STERN) / 2) },
-  { h: new THREE.Vector3(12.2, 3.4, 3.2), c: new THREE.Vector3(0, 12.0, 24.4) },
-  { h: new THREE.Vector3(1.0, 4.05, 4.4), c: new THREE.Vector3(11.2, 4.65, 23.4) },
-  { h: new THREE.Vector3(1.0, 4.05, 4.4), c: new THREE.Vector3(-11.2, 4.65, 23.4) },
+  { h: new THREE.Vector3(12.2, 2.0, 3.2), c: new THREE.Vector3(0, 13.2, 24.4) },
+  { h: new THREE.Vector3(1.0, 5.45, 4.4), c: new THREE.Vector3(11.2, 6.05, 23.4) },
+  { h: new THREE.Vector3(1.0, 5.45, 4.4), c: new THREE.Vector3(-11.2, 6.05, 23.4) },
   { h: new THREE.Vector3(9.8, DRUM_R, DRUM_R), c: DRUM.clone() },
-  { h: new THREE.Vector3(10.2, 4.0, 0.3), c: new THREE.Vector3(0, 4.6, 21.3) },
+  { h: new THREE.Vector3(10.2, 5.4, 0.4), c: new THREE.Vector3(0, 6.0, 21.3) },
 ];
-/** The cores' boxes, standing a little proud of the throat so they're hit before it. */
-const CORE_BOXES = CORES.map((c) => ({ h: new THREE.Vector3(CORE_HALF, CORE_HALF, 0.35), c: new THREE.Vector3(c.x, c.y, c.z) }));
+/** The cores' boxes (a little generous, the housing round each lens counts), standing proud of the throat so they're
+ *  hit before it. */
+const CORE_BOXES = CORES.map((c) => ({ h: new THREE.Vector3(CORE_HALF + 0.3, CORE_HALF + 0.3, 0.6), c: new THREE.Vector3(c.x, c.y, c.z - 0.3) }));
 
 const _inv = new THREE.Matrix4(), _o = new THREE.Vector3(), _d = new THREE.Vector3(), _n = new THREE.Vector3();
 
@@ -282,7 +283,8 @@ export class Harvesters {
   /** Dust off the drum (thrown hard at a charge), sand pouring from the stern, smoke from the exhausts and the dead
    *  cores; a wreck burns. */
   private effects(h: Harvester, v: View, p: HarvesterPose, dt: number) {
-    const m = v.root.matrixWorld, fast = Math.max(1, p.v / SPEED);
+    // Faster, more dust and smoke (but not without end: it charges at ten times its crawl).
+    const m = v.root.matrixWorld, fast = Math.min(4, Math.max(1, p.v / SPEED));
     v.dust += dt * (p.state ? 0 : 16 * fast);
     for (; v.dust >= 1; v.dust--) {
       _v.set((Math.random() - 0.5) * 18, DRUM.y - 1.2, DRUM.z + 1.4).applyMatrix4(m);

@@ -204,7 +204,7 @@ export class GuardianFx {
     }
     harvesterSound.update(nearest, this.ear);
     const v = nearest ? nearest.v / SPEED : 1;
-    if (best < TREMBLE_R) this.shake = Math.max(this.shake, 0.06 * Math.min(3, v) * (1 - best / TREMBLE_R));
+    if (best < TREMBLE_R) this.shake = Math.max(this.shake, 0.06 * Math.min(4, v) * (1 - best / TREMBLE_R));
   }
 
   /** Every frame, after the camera has been placed: draws them and shakes the camera. */

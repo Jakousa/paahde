@@ -1681,12 +1681,14 @@ The local sandstorms are smaller now (radius 60–130 m, from 140–300), and ra
 The first harvester read as a tank with a turret; it's now a pure juggernaut, and a commoner one.
 
 - **Behaviour:** no turret, no bolts, no horn; it ignores everyone, except whoever stands in its lane (within 110 m
-  ahead of its bow and 15 m of its middle): then it speeds up from 2.2 to 8 m/s (0.7 m/s², faster than a walk, slower
-  than a sprint) and holds it until the lane has been clear for 5 s, then winds back down. Its pace is a short list of
+  ahead of its bow and 15 m of its middle): then it speeds up from 2.2 to 22 m/s (4 m/s²: flat out in 5 s, faster
+  than anyone runs or slides, so the way out is sideways) and holds it until the lane has been clear for 5 s, then
+  winds back down (2 m/s²). Its pace is a short list of
   stretches (`Pace`: from a server time, a distance and a speed, ramping to a target speed), sent with the route when
   it changes, so the pose is still plain math on both sides.
-- **Weak points:** the three hexagonal intake cores in its throat behind the drum, 4 hits each, counted only for shots
-  fired from in front of it. To kill it you have to stand in its lane, which sets it charging at you.
+- **Weak points:** the three big hexagonal intake cores (3.2 m across, bright) on hex housings standing out of the
+  throat wall over the drum, under a raised hood (its bottom at 11 m), so from anywhere in front of it they're in plain
+  view; 4 hits each, counted only for shots fired from in front of it. To kill it you have to stand in its lane, which sets it charging at you.
 - **Look:** one monolith, bigger (24.4 m wide, 53 m long, 19 m high): no tower; full-length skirts hide all but the
   bottom of the treads. The detail is all small (hand-sized louvered grilles along the flanks, a few glowing faintly
   inside, hairline plate seams, rails, ladders, little lamps, flush exhaust grilles), so its bulk reads by them.

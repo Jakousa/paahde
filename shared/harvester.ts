@@ -1,9 +1,9 @@
 // The harvester: a tracked sand crawler the size of a building, one slab-sided monolith of rust-black iron grinding
 // slowly over the dunes along a long route, sifting the sand for whatever traces of ore it holds (a cutter drum in its
 // maw, a slot at the stern spilling the sifted sand). It pays no one any mind, except whoever stands in its lane right
-// ahead of it: then it opens up and charges (CHARGE m/s, faster than a walk, slower than a sprint) until the lane has
-// been clear for a while. Anyone it drives over is ground into the sand. Its only weak points are the three glowing
-// intake cores deep in its maw, behind the drum (CORE_HP rifle hits each): to kill it you have to stand in front of it.
+// ahead of it: then it opens up and charges (CHARGE m/s, faster than anyone can run or slide: you have to get out of
+// its lane) until the lane has been clear for a while. Anyone it drives over is ground into the sand. Its only weak points are the three glowing
+// intake cores in its maw, over the drum (CORE_HP rifle hits each): to kill it you have to stand in front of it.
 // With all three out it seizes, burns where it stopped and its ore hopper bursts (shared/tables.ts HARVESTER_SPOILS).
 //
 // Like the jets (shared/jets.ts) the server (server/harvesters.ts) sends the route, the pace and its state whenever
@@ -39,11 +39,12 @@ export type Harvester = {
 
 /** Route point spacing (m). */
 export const STEP = 20;
-/** Crawling speed, charging speed (m/s; a player walks 7.5, sprints 11), and how fast it gets up to it and back (m/s²). */
+/** Crawling speed, charging speed (m/s; a player walks 7.5, sprints 11, slides at most 18), and how fast it gets up
+ *  to it and back (m/s²). */
 export const SPEED = 2.2;
-export const CHARGE = 8;
-export const SPEED_UP = 0.7;
-export const SLOW_DOWN = 0.45;
+export const CHARGE = 22;
+export const SPEED_UP = 4;
+export const SLOW_DOWN = 2;
 /** Front axle to rear axle (m), and from the left tracks' centres to the right ones'. */
 export const WHEELBASE = 30;
 export const TRACK = 18;
@@ -61,11 +62,12 @@ export const HULL_TOP = 19;
 export const AHEAD = 110;
 export const LANE = HALF_W + 3;
 export const CALM_MS = 5000;
-/** Intake cores (local centres, facing forward) in the throat behind the drum; their half size (m). */
+/** Intake cores (local centres, facing forward) on the throat wall over the drum, in plain view from in front under
+ *  the raised hood; their half size (m). */
 export const CORES: readonly { x: number; y: number; z: number }[] = [
-  { x: -5.6, y: 6.4, z: 21.75 }, { x: 0, y: 6.4, z: 21.75 }, { x: 5.6, y: 6.4, z: 21.75 },
+  { x: -6, y: 8.2, z: 22.4 }, { x: 0, y: 8.2, z: 22.4 }, { x: 6, y: 8.2, z: 22.4 },
 ];
-export const CORE_HALF = 1.15;
+export const CORE_HALF = 1.6;
 export const CORE_HP = 4;
 /** The wreck burns this long (ms) before it's cleared. */
 export const WRECK_MS = 8 * 60_000;

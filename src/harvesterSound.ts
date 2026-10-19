@@ -20,6 +20,8 @@ const GAIN = 0.26;
 const FIRE_HZ = 8.5;
 const NOTES = [33, 49.5];
 const CLANK_HZ = SPEED / 0.84;
+/** The engine and treads follow its speed up to this many times their crawl (a charge is ten times it). */
+const RATE_MAX = 4;
 /** At a full charge, this much louder. */
 const CHARGE_GAIN = 1.6;
 
@@ -62,7 +64,7 @@ export class HarvesterSound {
     }
     const edge = Math.max(0, Math.min(1, (HEAR - d) / (HEAR * 0.3)));
     // How far into a charge (0 crawling .. 1 flat out).
-    const rate = Math.max(1, h.v / SPEED), c = Math.min(1, (rate - 1) / (CHARGE / SPEED - 1));
+    const rate = Math.min(RATE_MAX, Math.max(1, h.v / SPEED)), c = Math.min(1, (h.v / SPEED - 1) / (CHARGE / SPEED - 1));
     v.gain.gain.setTargetAtTime(GAIN * (1 + (CHARGE_GAIN - 1) * c) * (REF / Math.max(REF, d)) * edge, now, 0.3);
     const near = 1 - Math.min(1, Math.max(0, (d - NEAR * 0.4) / NEAR));
     v.near.gain.setTargetAtTime(near, now, 0.3);
