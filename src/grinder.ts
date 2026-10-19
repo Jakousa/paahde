@@ -11,6 +11,10 @@ import { zaps } from './world/zaps.ts';
 const REACH = 2.3;
 const SPARK_EVERY = 0.035;
 const SOUND_EVERY = 0.09;
+/** The meshes within NEAR m of the eye (and under BIG m across) are the ones tested, collected every REFRESH s. */
+const NEAR = 5;
+const BIG = 60;
+const REFRESH = 0.4;
 
 export class Grinder {
   private scene: THREE.Scene;
@@ -22,6 +26,9 @@ export class Grinder {
   private dir = new THREE.Vector3();
   private nrm = new THREE.Vector3();
   private at = { x: 0, y: 0, z: 0 };
+  private near: THREE.Mesh[] = [];
+  private c = new THREE.Vector3();
+  private age = 0;
   private spark = 0;
   private sound = 0;
 
@@ -44,9 +51,8 @@ export class Grinder {
     this.camera.getWorldDirection(this.dir);
     this.ray.set(this.from, this.dir);
     this.ray.far = REACH;
-    const roots = this.scene.children.filter((c) => !this.skip.has(c) && c.visible && !c.userData.soft);
-    for (const h of this.ray.intersectObjects(roots, true)) {
-      if (!this.hard(h.object)) continue;
+    this.refresh(dt);
+    for (const h of this.ray.intersectObjects(this.near, false)) {
       const p = h.point;
       if (h.face) this.nrm.copy(h.face.normal).transformDirection(h.object.matrixWorld);
       else this.nrm.set(0, 1, 0);
@@ -69,13 +75,38 @@ export class Grinder {
     }
   }
 
-  /** A mesh a grinder bites on: drawn, solid, not a particle pool or glass. */
-  private hard(o: THREE.Object3D): boolean {
+  /** Every few tenths of a second, while the disc runs: the solid meshes close to the eye are collected, so the ray tests only those
+   *  (a ray through the whole scene would walk every instance of every pool). */
+  private refresh(dt: number) {
+    this.age -= dt;
+    if (this.age > 0) return;
+    this.age = REFRESH;
+    this.near.length = 0;
+    this.collect(this.scene);
+  }
+
+  private collect(o: THREE.Object3D) {
+    if (!o.visible || o.userData.soft || this.skip.has(o)) return;
     const m = o as THREE.Mesh;
-    if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh) return false;
-    for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible || p.userData.soft || this.skip.has(p)) return false;
+    if (m.isMesh) {
+      if (!(m as THREE.InstancedMesh).isInstancedMesh && this.solid(m)) this.near.push(m);
+      return; // (meshes are leaves here: nothing hangs off one that a grinder could bite on separately)
+    }
+    for (const c of o.children) this.collect(c);
+  }
+
+  /** A mesh a grinder bites on, near enough to matter: drawn, opaque, not huge (the sky, the terrain's chunks), within reach soon. */
+  private solid(m: THREE.Mesh): boolean {
     const mat = m.material as THREE.Material | THREE.Material[];
     const one = Array.isArray(mat) ? mat[0] : mat;
-    return !!one && !one.transparent && one.visible !== false;
+    if (!one || one.transparent || one.visible === false || one.side === THREE.BackSide) return false;
+    const g = m.geometry;
+    if (!g.boundingSphere) g.computeBoundingSphere();
+    const bs = g.boundingSphere;
+    if (!bs) return false;
+    const r = bs.radius * m.matrixWorld.getMaxScaleOnAxis();
+    if (r > BIG) return false;
+    this.c.copy(bs.center).applyMatrix4(m.matrixWorld);
+    return this.c.distanceTo(this.from) - r < NEAR;
   }
 }
