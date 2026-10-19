@@ -10,7 +10,7 @@ import { bikeLevel, bottleSips, carriedGear, equipped, gearTiers, GEAR_KINDS, sh
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
-import { BOSS_SPOILS, JET_RELIC_ODDS, JET_SCRAP, KILL_SPOILS, RECEIVER_DROPS, RELIC_DROPS } from '../shared/tables.ts';
+import { BOSS_SPOILS, HARVESTER_SCRAP, HARVESTER_SPOILS, JET_RELIC_ODDS, JET_SCRAP, KILL_SPOILS, RECEIVER_DROPS, RELIC_DROPS } from '../shared/tables.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, RECEIVERS, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
@@ -40,8 +40,9 @@ import { JetCrashes } from './jetcrash.ts';
 import { BREAK_S, breakup, type Breakup } from '../shared/jetbreak.ts';
 import { jetImpact, type Jet } from '../shared/jets.ts';
 import { jetCrashList } from '../shared/jetcrash.ts';
+import { HarvesterServer, type Furrow, type HarvesterKill } from './harvesters.ts';
 import { BossServer, type BossKill, type BossOut } from './bosses.ts';
-import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
+import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type BoltEvent, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
 import { LAB, LAB_SPAWN } from '../shared/lab.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
@@ -96,6 +97,7 @@ const corpses = new CorpseServer(db, items, (msg) => {
 const storms = new StormServer(performance.now());
 const jets = new JetServer(performance.now());
 const jetCrashes = new JetCrashes(db);
+const harvesters = new HarvesterServer(performance.now());
 const bosses = new BossServer();
 const guardians = new GuardianServer();
 const throws = new ThrowServer(guardians);
@@ -185,6 +187,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'summon' && msg.what === 'jet' && p) return jets.spawn(p.state.x, p.state.z, 0, performance.now(), true);
+    if (msg.t === 'summon' && msg.what === 'harvester' && p) return void harvesters.spawn(p.state.x, p.state.z, performance.now(), true);
     if (msg.t === 'summon' && BOSS_KINDS.includes(msg.what as BossKind) && p) return bosses.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'summon' && p) return guardians.summon(msg.what, { id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: false }, performance.now());
     if (msg.t === 'fire' && p) return onFire(p, msg);
@@ -304,6 +307,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, storms.msg());
   send(ws, jets.msg());
   send(ws, { t: 'jetCrashes', list: jetCrashList(), reset: true });
+  send(ws, harvesters.msg());
   send(ws, loot.joinMessage(browserId));
   send(ws, { t: 'welcome', id: p.id, state, color, epoch, name });
   send(ws, { t: 'names', names: [...players.values()].filter((o) => o.ready).map((o) => [o.id, o.name]), reset: true });
@@ -458,7 +462,12 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const wall = Date.now();
   const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !p.ready || !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
   guardians.storms = storms.storms;
+  // The harvesters first: their turret's bolts fly with the walkers' (and kill the same way, 'laser').
+  const furrows: Furrow[] = [], hEvents: BoltEvent[] = [];
+  const crushed = harvesters.tick(dt, now, list, guardians, hEvents, furrows);
+  for (const f of furrows) terrain.crater(f.x, f.z, f.r, f.mm, false);
   const r = guardians.tick(dt, now, tod, list);
+  r.events.unshift(...hEvents);
   for (const k of guardians.crashes()) dropSpoils(k);
   // The bolts go out before the deaths they cause, so the client has the bolt to hold the death for (src/net.ts).
   for (const p of players.values()) {
@@ -466,7 +475,9 @@ function tickBots(elapsed: number, now: number, tod: number) {
     send(p.ws, guardians.msg(now, p.id, p.state.x, p.state.z));
   }
   for (const p of players.values()) {
-    if (r.shot.includes(p.id)) {
+    const c = crushed.find((o) => o.id === p.id);
+    if (c) die(p, 'harvester', c.push);
+    else if (r.shot.includes(p.id)) {
       const hit = boltPush(p, r.events, 'boom', BLAST_R);
       die(p, 'laser', hit.push, hit.id);
     } else if (r.blasted.includes(p.id)) die(p, 'missile', boltPush(p, r.events, 'blast', MISSILE_BLAST_R).push);
@@ -569,6 +580,13 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
     bossOut(out);
     if (r.boss?.called) db.setSetting(calledKey(r.boss.kind), r.kill ? 0 : BOSSES[r.boss.kind].hp - r.boss.hp + 1);
     if (r.kill) dropBossSpoils(r.kill);
+    return;
+  }
+  if (m.h !== undefined) {
+    const r = harvesters.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.h, m.hi, now);
+    const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
+    for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
+    if (r.kill) dropHarvesterSpoils(r.kill);
     return;
   }
   const r = m.j !== undefined ? { hit: jets.shoot(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.j, now), kill: null }
@@ -716,6 +734,24 @@ function jetCame(b: { jet: number; bk: Breakup; lx: number; lz: number }): Serve
   const scrapN = JET_SCRAP.min + Math.floor(Math.random() * (JET_SCRAP.max - JET_SCRAP.min + 1));
   for (let i = 0; i < scrapN; i++) at(SCRAP);
   return { t: 'jetCrashes', list: gone.length ? jetCrashList() : [c], reset: gone.length > 0 };
+}
+
+/** A harvester's burst hopper (shared/tables.ts HARVESTER_SPOILS): ore and drive parts and a heap of scrap, spilled
+ *  out round its sides and stern (not under it: the wreck stays there a while). */
+function dropHarvesterSpoils(k: HarvesterKill) {
+  const fx = Math.sin(k.yaw), fz = Math.cos(k.yaw);
+  const at = (kind: string) => {
+    // A ring round the hull: along it -16..+12 m, out 9..15 m to either side, or behind the stern.
+    const behind = Math.random() < 0.3, along = behind ? -18 - Math.random() * 6 : -16 + Math.random() * 28;
+    const side = behind ? (Math.random() - 0.5) * 14 : (Math.random() < 0.5 ? 1 : -1) * (9 + Math.random() * 6);
+    loot.dropAt(k.x + fx * along + fz * side, k.z + fz * along - fx * side, kind);
+  };
+  const sp = HARVESTER_SPOILS;
+  const n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1));
+  for (let i = 0; i < n; i++) at(partKind(sp.parts[Math.floor(Math.random() * sp.parts.length)], pickTier(sp.tierWeights, Math.random)));
+  const scrapN = HARVESTER_SCRAP.min + Math.floor(Math.random() * (HARVESTER_SCRAP.max - HARVESTER_SCRAP.min + 1));
+  for (let i = 0; i < scrapN; i++) at(SCRAP);
+  if (Math.random() < RECEIVER_DROPS.jet) loot.dropBroken(k.x - fx * 20, k.z - fz * 20, randomReceiver(), 4);
 }
 
 /** A boss's parts, scattered over its wreck; its kind's first kill counts toward the win and gives the world lives. */
@@ -1003,7 +1039,7 @@ function broadcast(time: number) {
       if (jetsBreaking[i].due <= time) crashed.push(jetCame(jetsBreaking.splice(i, 1)[0]));
     }
   }
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), garden.flush(), weather, flights, ...crashed]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);

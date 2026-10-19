@@ -25,7 +25,7 @@ export class DebugMenu {
   private panel = document.createElement('div');
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
-  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) => void,
+  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | 'harvester' | BossKind) => void,
     showTrophies: (mode: TrophyShow) => void, resetYard: (all: boolean) => void = () => {}, noHeat: (off: boolean) => void = () => {}, noWeather: (off: boolean) => void = () => {},
     fly: FlyCam, startFly: () => void) {
     const style = document.createElement('style');
@@ -58,6 +58,7 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu) { visibility: hidden !impor
 <div class="row"><button id="dbgGuardian" title="The nearest guardian, brought 90 m from you (for everyone)">Guardian here</button>
 <button id="dbgDrone" title="A searchlight drone over you for a minute, even by day (for everyone)">Drone here</button>
 <button id="dbgJet" title="A fixed-wing drone flying over you in about 15 s (for everyone)">Jet here</button>
+<button id="dbgHarvester" title="A harvester crawling past 50 m away in about a minute (for everyone)">Harvester here</button>
 <button id="dbgCrawlers" title="A pack of six crawlers 30 m off, coming for you (for everyone)">Crawlers here</button></div>
 <div class="row">${BOSS_KINDS.map((k) => `<button data-boss="${k}" title="The ${k} boss near you for ten minutes (for everyone)">${BOSSES[k].label}</button>`).join('')}</div>
 <label title="Boss trophies at the base, local view (walking into them still follows the bosses beaten)">Trophies <select id="dbgTrophies"><option value="won">as won</option><option value="all">all</option><option value="none">none</option></select></label>
@@ -93,6 +94,7 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu) { visibility: hidden !impor
     p.querySelector('#dbgGuardian')!.addEventListener('click', () => summonBot('guardian'));
     p.querySelector('#dbgDrone')!.addEventListener('click', () => summonBot('drone'));
     p.querySelector('#dbgJet')!.addEventListener('click', () => summonBot('jet'));
+    p.querySelector('#dbgHarvester')!.addEventListener('click', () => summonBot('harvester'));
     p.querySelector('#dbgCrawlers')!.addEventListener('click', () => summonBot('crawlers'));
     for (const b of p.querySelectorAll<HTMLElement>('[data-boss]')) b.addEventListener('click', () => summonBot(b.dataset.boss as BossKind));
 

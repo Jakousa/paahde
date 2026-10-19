@@ -247,6 +247,11 @@ export const KILL_SPOILS: Record<'guardian' | 'crawler' | 'drone', Spoils> = {
 export const JET_RELIC_ODDS = 0.2;
 export const JET_SCRAP = { min: 2, max: 4 };
 
+/** A killed harvester (shared/harvester.ts; server/world.ts dropHarvesterSpoils): its burst ore hopper spills what it
+ *  sifted out of the sand (uranium mostly) and its drive train lies about it; lots of scrap off the hull. */
+export const HARVESTER_SPOILS: Spoils = { odds: 1, min: 4, max: 6, parts: ['uranium', 'uranium', 'uranium', 'motor', 'bearing', 'heatsink', 'relay', 'battery'], tierWeights: { basic: 2, quality: 2, space: 0.6 } };
+export const HARVESTER_SCRAP = { min: 8, max: 14 };
+
 /** Besides its spoils, a killed enemy leaves its own part with these odds: what its boss's receiver takes (shared/gear.ts). */
 export const RELIC_DROPS: Record<'guardian' | 'crawler' | 'drone', { kind: string; odds: number }> = {
   guardian: { kind: 'servo_heart', odds: 0.5 },

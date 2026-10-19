@@ -216,6 +216,7 @@ const en = {
     stomp: 'crushed by the colossus',
     bomb: 'bombed by the carrier',
     queen: 'killed by the queen',
+    harvester: 'ground into the sand by a harvester',
   },
 
   // ---- Esc menu, controls, landing page, name ----------------------------------------------------------------------

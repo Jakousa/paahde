@@ -69,6 +69,10 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts` (`jets`); model `tools/blender/machines/plane.py`. Down, it comes apart on impact (`shared/jetbreak.ts`: each piece of `shared/jetpieces.ts` flies, tumbles, bounces and settles on the sand, splashing it; deterministic,
   so the server and every client run the same), and when they lie still a permanent crash site is made (`shared/jetcrash.ts`, `server/jetcrash.ts`, in the world's DB, pieces solid via
   their own capsules): each engine (80% tear off, 30% of those are wrecked in the landing) is a `jet:<n>:<k>` machine to take apart (the turbofan; jet engines hardly lie anywhere else)
+- `shared/harvester.ts` — the harvester: a building-sized tracked sand crawler on a long route over the dunes (pose is
+  math on the route + server clock); runs you over, turret salvos (the walkers' bolts) once it turns on you, killed
+  by shooting out its four heat vents; brain `server/harvesters.ts`, view `src/world/harvesters.ts`, sound
+  `src/harvesterSound.ts`, model `tools/blender/harvester.py`, spoils `shared/tables.ts` HARVESTER_SPOILS
 - `shared/ragdoll.ts` — dying: you lie where you fell for `DOWN_MS` (input ignored, third-person camera) as a
   Verlet ragdoll (`src/models/ragdoll.ts`) thrown by the killing blast's push (`blastPush`), then respawn
 - `shared/corpse.ts` — dying leaves the bag past the hotbar in a pack where you fell (shared box `corpse<id>`, take-only,

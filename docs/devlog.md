@@ -1579,3 +1579,33 @@ drawn by `src/world/shelters.ts`).
 - **Replaced:** the earlier dev machine yard (`--yard`, `dev:yard`, `spawn=yard`) is gone; the normal game has no test
   machines. Yard progress ids (`yard:<n>`) are simply forgotten.
 
+
+## Harvester
+
+A new enemy: a tracked sand crawler the size of a building (`shared/harvester.ts`), 15 m wide, 34 m long, 21 m to
+its stacks; slab-sided rust-black iron on four armoured track units, a toothed cutter drum in a low maw, an ore
+hopper, a sieve tower with a slit eye under a heavy brow, a turret on top. It slowly grinds over the dunes sifting the
+sand for ore.
+
+- **Routes** (`server/harvesters.ts`): every 10–25 min (first after 3–8) one sets off on a ~4 km route passing
+  160–420 m from a random player outside, 2.2 m/s (about half an hour across). The route wanders and steers round
+  rock, the base, shelters, crash sites and slopes steeper than ~24°. Like the jets, only the route and the start go
+  out ('harvesters'); the pose is math on the server clock: the front and rear axles ride the route 9 m either side,
+  the hull sits on the four track units' sand (`baseHeight`), so it pitches and rolls over the dunes and cuts its
+  corners.
+- **Menace:** anyone in its footprint is run over (`'harvester'`, "ground into the sand by a harvester"). Within 75 m
+  where its eye can see you, or once you shoot it, it turns on you: the eye goes red, the walkers' horn, then salvos
+  of three of the walkers' bolts from the turret every 5.2 s (they fly and kill as theirs, `GuardianServer.bolt`,
+  'shot' with g = −id). It loses you past 240 m or unseen for 25 s (angry for 90 s after a shot).
+- **Killing it:** only the four glowing heat vents on its flanks count, 3 hits each; its armour just sparks (and
+  angers it). Each vent shot out goes dark and smokes; the last one seizes the engine: a blast, it burns where it
+  stopped for 8 min, and its hopper bursts round it (`HARVESTER_SPOILS`: mostly uranium, drive parts, 8–14 scrap,
+  rarely a broken receiver).
+- **Look and sound:** model `tools/blender/harvester.py` (`public/models/harvester.glb`); 120 instanced track shoes
+  run round the loops by the distance come, the drum turns and throws sand, the chute spills sifted sand, the stacks
+  smoke. Furrows dug behind the tracks while someone is within 700 m. `src/harvesterSound.ts`: diesel rumble, tread
+  clank and drum grind, delayed and dulled with distance (levels set by ear against the carrier's thrum, not yet
+  measured in LUFS).
+- **Debug (F3):** *Harvester here*: one passes about 50 m away within a minute or so.
+- **Gaps:** its hull isn't solid to walk into (being under it kills, but the wreck can be walked through); the AI
+  ignores storms and night.

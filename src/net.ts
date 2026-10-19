@@ -46,6 +46,7 @@ import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
 import { F_STRIDE } from '../shared/guardians.ts';
 import type { Jet } from '../shared/jets.ts';
+import type { Harvester } from '../shared/harvester.ts';
 import type { BossKind } from '../shared/bosses.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 import { setPlaced } from '../shared/placed.ts';
@@ -178,6 +179,10 @@ export class Net {
   storms: Storm[] = [];
   /** Fixed-wing drone flights in the air (shared/jets.ts), times on the server clock. */
   jets: Jet[] = [];
+  /** Harvesters out (shared/harvester.ts), times on the server clock. */
+  harvesters: Harvester[] = [];
+  /** Other players where they were last drawn (frame()). */
+  others: RemotePlayer[] = [];
   /** Recent 'bots' messages (guardians and drones, shared/guardians.ts), oldest first; src/world/botFrames.ts
    *  interpolates them. */
   bots: Extract<ServerMsg, { t: 'bots' }>[] = [];
@@ -418,7 +423,7 @@ export class Net {
     this.send({ t: 'jam', kind, id, x, y, z, dx, dy, dz });
   }
 
-  fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number } | { d: number } | { j: number } | { b: number; bi: number }) {
+  fire(x: number, y: number, z: number, ex: number, ey: number, ez: number, hit?: { g: number; i: number } | { d: number } | { j: number } | { h: number; hi: number } | { b: number; bi: number }) {
     const r = (n: number) => Math.round(n * 100) / 100;
     this.shotAt.set(this.id, performance.now());
     this.send({ t: 'fire', x: r(x), y: r(y), z: r(z), ex: r(ex), ey: r(ey), ez: r(ez), ...hit });
@@ -529,7 +534,7 @@ export class Net {
   }
 
   /** Debug menu: the nearest guardian, or a drone, brought to us (shared/guardians.ts). */
-  summonBot(what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) {
+  summonBot(what: 'guardian' | 'drone' | 'jet' | 'crawlers' | 'harvester' | BossKind) {
     this.send({ t: 'summon', what });
   }
 
@@ -568,7 +573,7 @@ export class Net {
     // Ease towards the target delay so remote players slow down or speed up a little instead of jumping.
     const target = INTERP_MS + Math.min(this.jitter, MAX_JITTER_MS);
     this.interpMs += (target - this.interpMs) * (1 - Math.exp(-dtSeconds * 2));
-    return this.interpolate(performance.now() + (this.clockOffset ?? 0) - this.interpMs);
+    return (this.others = this.interpolate(performance.now() + (this.clockOffset ?? 0) - this.interpMs));
   }
 
   private connect() {
@@ -698,6 +703,10 @@ export class Net {
     }
     if (msg.t === 'jetCrashes') {
       setJetCrashes(msg.list, !!msg.reset);
+      return;
+    }
+    if (msg.t === 'harvesters') {
+      this.harvesters = msg.harvesters;
       return;
     }
     if (msg.t === 'shot' || msg.t === 'boom' || msg.t === 'missile' || msg.t === 'blast') return this.onBolt?.(msg);
