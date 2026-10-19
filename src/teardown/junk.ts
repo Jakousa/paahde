@@ -36,6 +36,20 @@ export function sheen(mat: THREE.MeshStandardNodeMaterial, sweep: boolean): { va
   return u;
 }
 
+/** Bring every world matrix under `root` up to date once, then stop three.js walking its (hundreds of) objects every frame:
+ *  a machine that is not being worked on does not move. The disassembly turns the walk back on while it works
+ *  (src/teardown/teardown.ts begin); call this again after anything under it was moved. */
+export function settle(root: THREE.Object3D) {
+  root.matrixWorldAutoUpdate = true;
+  root.updateMatrixWorld(true);
+  root.matrixWorldAutoUpdate = false;
+}
+
+/** A machine seen from afar needs none of its fasteners drawn: with `on` the steps that can be worked are drawn, else none. */
+export function showSteps(junk: { steps: Step[] }, on: boolean) {
+  for (const s of junk.steps) if (!s.done) s.obj.visible = on && stepReady(s);
+}
+
 export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift' | 'grind' | 'mash';
 export interface Step {
   kind: StepKind;
@@ -482,6 +496,11 @@ export class Kit {
   // -- steps ------------------------------------------------------------------------------------------------
   private reg(kind: StepKind, label: string, g: THREE.Group, spin: THREE.Object3D, hitGeo: THREE.BufferGeometry, need: number,
     after: Step[], floorY: number, mat?: THREE.MeshStandardNodeMaterial, players = 1): Step {
+    // fasteners are small: no shadow pass for them (the draws were a large part of the frame with many machines in view)
+    g.traverse((o) => {
+      o.castShadow = false;
+      o.receiveShadow = false;
+    });
     // what the step is made of takes the shimmer: its own copies of the materials
     const shine: THREE.MeshStandardNodeMaterial[] = [];
     g.traverse((o) => {

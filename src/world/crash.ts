@@ -14,13 +14,15 @@ import {
 import { hasItem, type Slots } from '../../shared/items.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
-import { buildJunk, lowestOffset, pieceEmpty, restPiece, type Junk } from '../teardown/junk.ts';
+import { buildJunk, lowestOffset, pieceEmpty, restPiece, settle, showSteps, type Junk } from '../teardown/junk.ts';
 import type { SiteMsg } from '../net.ts';
 import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
 import { TEXT } from '../../shared/text.ts';
 
 /** Machines are built (a few hundred meshes) when you come this close, and dropped beyond DROP_R. */
 const BUILD_R = 60;
+/** Fasteners are drawn within this many metres (a little more once they are). */
+const DETAIL_R = 14;
 const DROP_R = 140;
 /** Session id of the disassembly table (server/crash.ts BENCH_ID). */
 export const BENCH_ID = 'bench';
@@ -35,6 +37,10 @@ interface SiteView {
   husk: boolean;
   /** The site's machine is drawn (in the scene). */
   shown: boolean;
+  /** Close enough that its fasteners are drawn (seen from afar there are hundreds of meshes for nothing), and whether the
+   *  disassembly was working on it last frame. */
+  detail?: boolean;
+  wasBusy?: boolean;
 }
 
 const spent = (site: CrashSite) => !site.lab && !junkSpec(site.kind).carry && crashSpent.has(site.wreck);
@@ -68,11 +74,32 @@ export class MachineSites {
       if (gone && v.shown) this.drop(v, false);
       else if (!gone && d < BUILD_R && !v.shown) this.show(v);
       else if (v.shown && d > DROP_R) this.drop(v, false);
+      if (v.shown && v.junk && !v.husk) this.detailed(v, d);
     }
     for (const [id, v] of this.views) {
       if (keep.has(id)) continue;
       this.drop(v, true);
       this.views.delete(id);
+    }
+  }
+
+  /** Its fasteners are drawn only while you are near (or working on it): the rest of the time they are hidden, and the machine
+   *  is not walked over for matrices. */
+  private detailed(v: SiteView, d: number) {
+    const j = v.junk!;
+    const busy = this.busy() === v.site.id;
+    if (busy !== !!v.wasBusy) {
+      v.wasBusy = busy;
+      if (!busy) {
+        settle(j.root);
+        v.detail = undefined;
+      }
+    }
+    if (busy) return;
+    const want = d < (v.detail ? DETAIL_R + 2 : DETAIL_R);
+    if (want !== v.detail) {
+      v.detail = want;
+      showSteps(j, want);
     }
   }
 
@@ -101,6 +128,9 @@ export class MachineSites {
     const off = j.fixed ? null : lowestOffset(j.root);
     if (off !== null) j.root.position.y += off;
     v.shown = true;
+    v.detail = false;
+    showSteps(j, false);
+    settle(j.root); // (a machine at rest is not walked over every frame)
   }
 
   /** The lab machine nearest (x, z) within a few steps, for the debug menu's reset. */
@@ -156,7 +186,11 @@ export class MachineSites {
     for (const i of done) p.done.add(i);
     for (const i of taken) p.taken.add(i);
     const v = this.views.get(m.id);
-    if (v?.junk && m.id !== active) fastForward(v.junk, done, taken);
+    if (v?.junk && m.id !== active) {
+      fastForward(v.junk, done, taken);
+      settle(v.junk.root);
+      if (v.detail) showSteps(v.junk, true);
+    }
   }
 
   /** The disassembly job for a site: shared with other players when the machine is too big to carry. */
