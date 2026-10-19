@@ -117,17 +117,18 @@ def pad(mb, centre, nrm, w, h, mat='Dark'):
 
 
 def rest_swing(mod, pose, hinge_phi, free_phi, radius):
-    """Swing a half-shell open about its hinge until it hangs down and rests on the ground (the lowest swing that touches it)."""
+    """Swing a half-shell open about its hinge until it hangs down and rests on the ground: of every opening the one that comes
+    lowest without going into the ground (the smallest such swing if several do)."""
     h = Vector((radius * math.sin(hinge_phi), radius * math.cos(hinge_phi), 0))
-    best = None
+    cands = []
     for sgn in (1, -1):
-        for k in range(1, 60):
+        for k in range(1, 31):  # at most about 70 degrees open: a door on its hinge, not a wing
             M = around(h, (0, 0, 1), sgn * k * 0.04)
             low = min((pose @ M @ v.co).y for v in mod.mb.bm.verts)
-            if low <= 0.03:
-                break
-        if best is None or (low <= 0.03 and (best[2] > 0.03 or k < best[0])) or (best[2] > 0.03 and low < best[2]):
-            best = (k, M, low)
+            cands.append((k, M, low))
+    ok = [c for c in cands if c[2] >= -0.05]
+    best = min(ok, key=lambda c: (round(c[2], 2), c[0])) if ok else max(cands, key=lambda c: c[2])
+    print(f'swing {mod.id}: step {best[0]} lowest {best[2]:.2f}')
     mod.place(best[1])
 
 
