@@ -847,12 +847,25 @@ function onCrash(p: Player, msg: ClientMsg) {
     if (state) send(p.ws, state);
   } else if (msg.t === 'siteLeave') crash.leave(p.id, msg.id);
   else if (msg.t === 'siteHold') crash.hold(p.id, msg.id, msg.i, msg.players, msg.on);
-  else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i);
+  else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i, (n, x, z) => payScrap(p, n, x, z));
   else if (msg.t === 'siteTake') {
-    const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.give(p.browserId, kind));
+    const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.give(p.browserId, kind), (n, x, z) => payScrap(p, n, x, z));
     if (answer) send(p.ws, answer);
     if (answer?.t === 'siteTook' && answer.ok) sendBox(p, 'bag', answer.kind);
   }
+}
+
+/** Scrap for taking a machine apart: into the bag as far as it fits (a stack at a time), the rest left on the ground by the machine. */
+function payScrap(p: Player, n: number, x: number, z: number) {
+  let got = 0;
+  for (let k = 0; k < n; k++) {
+    if (!items.give(p.browserId, SCRAP, 1)) break;
+    got++;
+  }
+  const dropped = n - got;
+  for (let k = 0; k < dropped; k++) loot.dropAt(x, z, SCRAP, 1.4);
+  if (got) sendBox(p, 'bag');
+  send(p.ws, { t: 'scrapGot', n, dropped });
 }
 
 function onTend(p: Player, bed: unknown) {

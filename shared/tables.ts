@@ -25,6 +25,11 @@ export type IngredientSpec = { label: string; n: number } & ({ part: PartId } | 
 const SCRAP = (n: number): IngredientSpec => ({ label: TEXT.items.scrap, n, kinds: ['scrap'] });
 const CLOTH = (n: number): IngredientSpec => ({ label: TEXT.items.cloth, n, kinds: ['cloth'] });
 
+/** Scrap for taking machines apart (server/crash.ts): every step done gives `step`, a module that comes off (all its outer steps) `module`
+ *  more, a piece taken apart on the ground (all its inner steps) `piece` more, and the machine finished (every step done, every part
+ *  taken) `machine` plus `perModule` for each module it had. Scrap is the crafting metal, so this is the economy's tap. */
+export const SCRAP_REWARD = { step: 1, module: 2, piece: 2, machine: 6, perModule: 1 };
+
 export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   // (The plant bed and UV lamp aren't crafted for now: growing doesn't fit the game yet. Their code is still in
   // shared/garden.ts; to bring them back: plant_bed: [SCRAP(2), CLOTH(2)], uv_lamp: [SCRAP(2), coil 1].)

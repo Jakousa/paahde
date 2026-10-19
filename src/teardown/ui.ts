@@ -239,6 +239,27 @@ export class TeardownUi {
     setTimeout(() => el.remove(), MSG_MS);
   }
 
+  /** A line of text flying from (x, y) down to the hotbar, like a part taken (the scrap paid for a step). */
+  flyText(x: number, y: number, text: string, color = '#ffd9a0') {
+    const el = document.createElement('div');
+    el.className = 'tdFly';
+    el.textContent = text;
+    el.style.setProperty('--c', color);
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    document.body.append(el);
+    const bar = document.getElementById('hotbar')?.getBoundingClientRect();
+    const tx = bar && bar.width ? bar.left + bar.width / 2 : innerWidth / 2;
+    const ty = bar && bar.height ? bar.top + bar.height / 2 : innerHeight - 30;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el.style.left = `${tx}px`;
+      el.style.top = `${ty}px`;
+      el.style.opacity = '0.15';
+      el.style.scale = '0.7';
+    }));
+    setTimeout(() => el.remove(), 900);
+  }
+
   /** "+ Motor · Quality" flies from (x, y) down to the hotbar (src/water.ts), where the bag is. */
   fly(x: number, y: number, part: PartId, tier: Tier) {
     const el = document.createElement('div');

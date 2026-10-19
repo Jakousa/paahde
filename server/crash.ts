@@ -23,6 +23,8 @@ import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { crashSite, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
 import { debrisItem } from '../shared/items.ts';
 import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
+import { stepList } from '../shared/machineSteps.ts';
+import { SCRAP_REWARD } from '../shared/tables.ts';
 import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
 import { junkSpec, type JunkKind } from '../shared/salvage.ts';
 import { LAB, labSites } from '../shared/lab.ts';
@@ -361,7 +363,25 @@ export class CrashServer {
     if (n !== before) this.notify(s.players, { t: 'siteHolders', id: site.id, i, n });
   }
 
-  done(pid: number, id: unknown, i: unknown) {
+  /** Scrap for step `i` just done (and for what it finished) at a machine: see SCRAP_REWARD. */
+  private scrapFor(site: { kind: JunkKind; seed: number; level: number; parts: MachinePart[] }, s: Session, i: number | null): number {
+    let n = i === null ? 0 : SCRAP_REWARD.step;
+    const steps = stepList(site.kind, site.seed, site.level);
+    if (!steps) return n; // (a machine built in code: only the steps are paid)
+    const { list, modules } = steps;
+    if (i !== null) {
+      const me = list[i];
+      if (me) {
+        let all = true;
+        for (let k = 0; k < list.length && all; k++) if (list[k].module === me.module && list[k].inner === me.inner && !s.done.has(k)) all = false;
+        if (all) n += me.inner ? SCRAP_REWARD.piece : SCRAP_REWARD.module;
+      }
+    }
+    if (list.every((_, k) => s.done.has(k)) && s.taken.size >= site.parts.length) n += SCRAP_REWARD.machine + modules * SCRAP_REWARD.perModule;
+    return n;
+  }
+
+  done(pid: number, id: unknown, i: unknown, reward?: (n: number, x: number, z: number) => void) {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
     if (!site || !s || !s.players.has(pid) || !this.index(i) || s.done.has(i)) return;
@@ -372,12 +392,14 @@ export class CrashServer {
     s.holders.delete(i);
     this.save(site.id, s);
     this.broadcast({ t: 'siteDone', id: site.id, i });
+    const m = crashSiteById(site.id);
+    if (reward && m && site.id !== BENCH_ID) reward(this.scrapFor({ kind: m.kind, seed: m.seed, level: m.level, parts: site.parts }, s, i), site.x, site.z);
   }
 
   /** First to take part `i` gets it: `give(kind)` puts its item in their bag (false: the bag is full, and the part
    *  stays on the machine for someone else). Later askers are told who did. Returns the answer for the taker, or
    *  null when there is nothing to say (bad message, or they already have it). */
-  takePart(pid: number, id: unknown, i: unknown, give: (kind: string) => boolean): ServerMsg | null {
+  takePart(pid: number, id: unknown, i: unknown, give: (kind: string) => boolean, reward?: (n: number, x: number, z: number) => void): ServerMsg | null {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
     if (!site || !s || !s.players.has(pid) || !this.index(i) || i >= site.parts.length) return null;
@@ -394,6 +416,11 @@ export class CrashServer {
     });
     if (!ok) return { t: 'siteTook', id: site.id, i, ok: false, reason: 'full' };
     this.broadcast({ t: 'siteTake', id: site.id, i, by: pid });
+    const m = crashSiteById(site.id);
+    if (reward && m && site.id !== BENCH_ID) {
+      const n = this.scrapFor({ kind: m.kind, seed: m.seed, level: m.level, parts: site.parts }, s, null); // (the last part out finishes the machine)
+      if (n) reward(n, site.x, site.z);
+    }
     if (site.wreck !== null && s.taken.size >= site.parts.length) this.spend(site.wreck);
     if (site.id === BENCH_ID && s.taken.size >= site.parts.length) this.freeBench(); // every part is out
     return { t: 'siteTook', id: site.id, i, ok: true, kind };

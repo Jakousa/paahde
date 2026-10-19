@@ -212,6 +212,8 @@ export type ServerMsg =
   | { t: 'sites'; sites: { id: string; done: number[]; taken: number[] }[] }
   // A site's machine is whole again (dev reset): forget its progress.
   | { t: 'siteReset'; id: string }
+  // Scrap paid out for what you took apart (server/crash.ts): `n` in all, `dropped` of them left on the ground by the machine (your bag was full).
+  | { t: 'scrapGot'; n: number; dropped: number }
   // Machines pushed along (shared/machineBoxes.ts pushedMachine): how far round their own axis (a, rad) and how far shoved (x, z, m from
   // where they lay) each that has been is, on join (with reset: all of them) and whenever one moves.
   | { t: 'siteRolls'; rolls: { id: string; a: number; x: number; z: number }[]; reset?: boolean }

@@ -247,6 +247,12 @@ export class TeardownView {
     this.act = null;
   }
 
+  /** The server paid scrap for what was just taken apart: it flies from the crosshair to the bag, and what did not fit is said. */
+  gotScrap(n: number, dropped: number) {
+    this.ui.flyText(innerWidth / 2, innerHeight / 2 + 40, TEXT.notice.got(n, TEXT.items.scrap));
+    if (dropped > 0) this.ui.message(TEXT.notice.bagFull, true);
+  }
+
   get holding() {
     return this.held !== null;
   }

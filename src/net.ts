@@ -147,6 +147,8 @@ export class Net {
   private holders = new Map<string, Map<number, number>>();
   private holdTimers = new Map<string, ReturnType<typeof setInterval>>();
   onSite?: (msg: SiteMsg) => void;
+  /** Scrap was paid for taking a machine apart (`dropped` of it left on the ground: the bag was full). */
+  onScrapGot?: (n: number, dropped: number) => void;
 
   /** Heat meter, canteen sips, whether heat is building up, felt °C and shade (server 'water', shared/water.ts). */
   water = { heat: 0, sips: 0, maxSips: 0, rising: false, temp: 20, shade: true, at: 0 };
@@ -645,6 +647,7 @@ export class Net {
       for (const id of msg.spent) crashSpent.add(id);
       return crashChanged();
     }
+    if (msg.t === 'scrapGot') return this.onScrapGot?.(msg.n, msg.dropped);
     if (msg.t === 'siteHolders') {
       let m = this.holders.get(msg.id);
       if (!m) this.holders.set(msg.id, (m = new Map()));

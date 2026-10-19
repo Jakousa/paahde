@@ -176,6 +176,7 @@ net.onLives = (n, beaten) => {
   if (allBeaten(beaten)) victory(WORLD_ID);
 };
 net.onEnded = (why) => landing(why);
+net.onScrapGot = (n, dropped) => teardown.gotScrap(n, dropped);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { net });
 // Machine progress (large sites and the disassembly table), from the server: every machine is kept up to date,
 // and the one being worked on gets it through the disassembly mode, animated.

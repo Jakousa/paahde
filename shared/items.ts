@@ -31,7 +31,7 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   wristpad: { label: TEXT.items.wristpad, stack: 1 },
   shield: { label: TEXT.items.shield, stack: 1, size: [2, 2] },
   // Every piece of junk picked up (scrap piles, crash-site debris) is just scrap: the crafting and repair metal.
-  scrap: { label: TEXT.items.scrap, stack: 20 },
+  scrap: { label: TEXT.items.scrap, stack: 128 }, // (taking machines apart pays in it: shared/tables.ts SCRAP_REWARD)
   // The other basic material: tarps, sacks and seat covers (cloth bundles in the scrap piles, burnt seats at crash sites).
   cloth: { label: TEXT.items.cloth, stack: 20 },
   // Small crash-site machines carried home to the disassembly table (COMPONENTS with carry: true, shared/salvage.ts).
