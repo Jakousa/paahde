@@ -820,8 +820,8 @@ export class Kit {
   hardwareStep(kind: 'screw' | 'bolt' | 'clip', hw: 'bolt' | 'screw' | 'latch' | 'clamp' | 'pin' | 'fitting', variant: 'A' | 'B', label: string, pos: V,
     nrm: V, after: Step[], need: number): Step {
     const { g, spin } = this.stepGroup(pos, nrm);
-    const step = kind === 'bolt' ? this.reg('bolt', label, g, spin, new THREE.SphereGeometry(0.2, 8, 6), need, after, 0.05)
-      : kind === 'screw' ? this.reg('screw', label, g, spin, new THREE.SphereGeometry(0.15, 8, 6), need, after, 0.02)
+    const step = kind === 'bolt' ? this.reg('bolt', label, g, spin, new THREE.SphereGeometry(0.2, 8, 6), need, after, 0.14) // (it comes out whole, shank and all: it lands on the end of that)
+      : kind === 'screw' ? this.reg('screw', label, g, spin, new THREE.SphereGeometry(0.15, 8, 6), need, after, 0.09)
         : this.reg('clip', label, g, spin, new THREE.BoxGeometry(0.34, 0.2, 0.26), need, after, 0.04);
     const base = { bolt: 'Bolt', screw: 'Screw', latch: 'Latch', clamp: 'Clamp', pin: 'Pin', fitting: 'Fitting' }[hw] + variant;
     if (hw === 'latch') {

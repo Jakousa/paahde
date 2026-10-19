@@ -68,32 +68,47 @@ def hexhead(mb, r, h, mat, top=0.88, base=0.0, phase=0.0):
     lathe_y(mb, [(0, base), (r, base)], 6, mat, phase=phase)
 
 
+def thread(mb, r, y0, y1, mat, step=0.006):
+    """A threaded shank: a core with rings along it."""
+    mb.cyl((0, y0, 0), (0, y1, 0), r * 0.86, r * 0.86, segs=10, mat=mat)
+    y = y0 + step
+    while y < y1 - 0.002:
+        mb.cyl((0, y, 0), (0, y + step * 0.45, 0), r, r, segs=10, mat=mat)
+        y += step
+    mb.cyl((0, y0, 0), (0, y0 - 0.004, 0), r * 0.6, r * 0.8, segs=10, mat=mat)  # the chamfered tip
+
+
 def bolt(variant):
     worn = variant == 'B'
     body = 'Rust' if worn else 'Oxide'
     head = 'Rust' if worn else 'Zinc'
-    # seat: a washer on a raised boss, the paint worn round it
+    # the seat is only what is on the surface: the paint worn away round the hole and a dark ring where the washer bears
     s = MB()
-    s.cyl((0, -0.004, 0), (0, 0.0, 0), 0.046, 0.046, segs=20, mat='Dark')
-    s.cyl((0, 0, 0), (0, 0.005, 0), 0.037, 0.037, segs=20, mat=body)
+    s.cyl((0, -0.003, 0), (0, 0.0, 0), 0.046, 0.046, segs=20, mat='Dark')
+    s.cyl((0, 0.0, 0), (0, 0.0015, 0), 0.04, 0.04, segs=20, mat=body)
     emit(s, f'Bolt{variant}')
+    # the bolt is one piece that comes out whole: washer, head, and a threaded shank that goes into the part
     h = MB()
-    hexhead(h, 0.031, 0.02, head, phase=0.2)
-    h.box((0, 0.012, 0), (0.006, 0.006, 0.07), 'Dark')  # the cross-drilled hole for safety wire
-    h.cyl((0, 0.02, 0), (0, 0.0215, 0), 0.012, 0.012, segs=8, mat='Dark')
-    emit(h, f'Bolt{variant}_Spin', (0, 0.005, 0))
+    h.cyl((0, 0.0015, 0), (0, 0.0065, 0), 0.037, 0.037, segs=20, mat=body)  # the washer
+    hexhead(h, 0.031, 0.02, head, base=0.0065, phase=0.2)
+    h.box((0, 0.0185, 0), (0.006, 0.006, 0.07), 'Dark')  # the cross-drilled hole for safety wire
+    h.cyl((0, 0.0265, 0), (0, 0.028, 0), 0.012, 0.012, segs=8, mat='Dark')
+    thread(h, 0.0125, -0.075, 0.0015, 'Rust' if worn else 'Steel')
+    emit(h, f'Bolt{variant}_Spin', (0, 0.0, 0))
 
 
 def screw(variant):
     worn = variant == 'B'
     s = MB()
-    s.cyl((0, -0.003, 0), (0, 0.002, 0), 0.032, 0.032, segs=18, mat='Dark')
+    s.cyl((0, -0.003, 0), (0, 0.0, 0), 0.032, 0.032, segs=18, mat='Dark')
     emit(s, f'Screw{variant}')
     h = MB()
-    lathe_y(h, [(0.027, 0.0), (0.027, 0.007), (0.02, 0.013), (0.0, 0.0145)], 14, 'Rust' if worn else 'Steel', cap=True)
-    h.box((0, 0.0138, 0), (0.034, 0.003, 0.006), 'Dark')
-    h.box((0, 0.0138, 0), (0.006, 0.003, 0.034), 'Dark')
-    emit(h, f'Screw{variant}_Spin', (0, 0.002, 0))
+    h.cyl((0, 0.0, 0), (0, 0.003, 0), 0.027, 0.027, segs=18, mat='Rust' if worn else 'Oxide')  # a washer under the head
+    lathe_y(h, [(0.026, 0.003), (0.026, 0.01), (0.019, 0.016), (0.0, 0.0175)], 14, 'Rust' if worn else 'Steel', cap=True)
+    h.box((0, 0.017, 0), (0.034, 0.003, 0.006), 'Dark')
+    h.box((0, 0.017, 0), (0.006, 0.003, 0.034), 'Dark')
+    thread(h, 0.0075, -0.05, 0.0, 'Rust' if worn else 'Steel', step=0.005)
+    emit(h, f'Screw{variant}_Spin', (0, 0.0, 0))
 
 
 def latch(variant):
