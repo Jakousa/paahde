@@ -139,7 +139,7 @@ def build(pose, rnd_seed=11):
 
     def half_shell(mod, p0, p1, prof, t, seed, mat='Paint'):
         a0, a1 = arc(math.radians(p0), math.radians(p1))
-        shell_solid(mod.mb, prof, t, 18, mat, 'Dark', a0=a0, a1=a1, matfn=weathered(seed, 0.3, 0.3))
+        shell_solid(mod.mb, prof, t, 18, mat, 'Dark', a0=a0, a1=a1, matfn=weathered(seed, 0.3, 0.3, mat))
 
     # ======================================================================= shell: what never comes off
     # structural fan case (the nacelle skin is on top of it), dented
@@ -162,18 +162,13 @@ def build(pose, rnd_seed=11):
         sh.pop()
     # splitter ring
     sh.lathe([(0.52, 0.34), (0.56, 0.34), (0.56, 0.52), (0.52, 0.52), (0.52, 0.34)], 40, 'Steel')
-    # core casings: split open on the side that faces up (local 150..385 deg is what remains), thick, with flanges at the joints
-    a0, a1 = arc(math.radians(150), math.radians(385))
-    casing = [(0.345, 0.46), (0.33, 0.20), (0.30, -0.08), (0.37, -0.10), (0.37, -0.40), (0.33, -0.42), (0.33, -0.60),
-              (0.43, -0.62), (0.40, -1.00), (0.36, -1.02), (0.36, -1.12)]
-    shell_solid(sh, casing, 0.016, 40, 'Steel', 'Dark', a0=a0, a1=a1, matfn=weathered(6, 0.3, 0.3, 'Steel'))
-    for (r, z) in ((0.345, 0.46), (0.30, -0.09), (0.37, -0.41), (0.33, -0.61), (0.40, -1.01)):
-        sh.lathe([(r - 0.03, z + 0.012), (r + 0.045, z + 0.012), (r + 0.045, z - 0.012), (r - 0.03, z - 0.012), (r - 0.03, z + 0.012)],
-                 40, 'Dark', a0=a0, a1=a1)
+    # joints between the core's stages: full flange rings (the casing halves, modules of their own, fit between them)
+    for (r, z) in ((0.34, 0.46), (0.31, -0.09), (0.385, -0.41), (0.325, -0.61), (0.40, -1.01)):
+        sh.lathe([(r - 0.03, z + 0.012), (r + 0.045, z + 0.012), (r + 0.045, z - 0.012), (r - 0.03, z - 0.012), (r - 0.03, z + 0.012)], 40, 'Dark')
     # main shaft
     sh.cyl((0, 0, 1.0), (0, 0, -1.12), 0.055, 0.055, segs=14, mat='Dark')
     sh.cyl((0, 0, 0.95), (0, 0, 0.45), 0.095, 0.095, segs=14, mat='Steel')
-    sh.lathe([(0.36, -1.12), (0.37, -1.12), (0.37, -1.14), (0.36, -1.14), (0.36, -1.12)], 32, 'Dark', a0=a0, a1=a1)
+    sh.lathe([(0.36, -1.12), (0.37, -1.12), (0.37, -1.14), (0.36, -1.14), (0.36, -1.12)], 32, 'Dark')
     # gearbox housing on top of the core, between the fan frame and the compressor
     sh.box((0, 0.435, 0.22), (0.36, 0.12, 0.54), 'Steel')
     sh.box((0, 0.345, 0.22), (0.46, 0.04, 0.52), 'Dark')
@@ -210,11 +205,11 @@ def build(pose, rnd_seed=11):
     def seam_pts(prof, phi, z0, z1, n=7, off=0.004):
         return [polar(phi, prof_r(prof, z0 + (z1 - z0) * i / (n - 1)) + off, z0 + (z1 - z0) * i / (n - 1)) for i in range(n)]
 
-    def skin(ida, idb, prof, t, z0, z1, chances, seed, after_a=(), after_b=(), dents=()):
+    def skin(ida, idb, prof, t, z0, z1, chances, seed, after_a=(), after_b=(), dents=(), mat='Paint'):
         b = m.module(idb, chances[1], pop=(0.7, 0.8, 0.0))
         a = m.module(ida, chances[0], pop=(-0.7, 0.8, 0.0))
-        half_shell(b, 0, 180, prof, t, seed + 1)
-        half_shell(a, 180, 360, prof, t, seed)
+        half_shell(b, 0, 180, prof, t, seed + 1, mat)
+        half_shell(a, 180, 360, prof, t, seed, mat)
         for (mod, phi, rad) in dents:
             crush((a if mod == 'a' else b).mb, polar(math.radians(phi), prof_r(prof, (z0 + z1) / 2) + 0.01, (z0 + z1) / 2 + rad), 0.4, 0.07)
         for phi in (0.0, PI):
@@ -228,10 +223,14 @@ def build(pose, rnd_seed=11):
 
     FAN = [(0.90, 0.52), (0.925, 0.75), (0.915, 0.94)]
     skin('fancowl_a', 'fancowl_b', FAN, 0.014, 0.54, 0.92, (0.7, 0.7), 9, dents=(('a', 235, 0.1), ('b', 120, -0.1)))
-    REV = [(0.905, 0.50), (0.905, -0.05), (0.895, -0.62)]  # the nacelle is as wide as the fan cowl all the way back
+    REV = [(0.905, 0.50), (0.89, -0.05), (0.80, -0.62)]  # as wide as the fan cowl at the front, easing in toward the back
     skin('reverser_a', 'reverser_b', REV, 0.014, -0.58, 0.46, (0.65, 0.65), 21, dents=(('b', 80, 0.0),))
-    CORE = [(0.865, 0.46), (0.865, 0.1), (0.855, -0.5), (0.845, -0.85)]
+    CORE = [(0.86, 0.46), (0.84, 0.1), (0.77, -0.5), (0.70, -0.85)]
     skin('corecowl_a', 'corecowl_b', CORE, 0.012, -0.8, 0.42, (0.6, 0.6), 31, after_a=['reverser_a'], after_b=['reverser_b'])
+    # the core's own casing, hugging the rotors: swelling round the combustor, opening out round the turbine
+    CASING = [(0.34, 0.46), (0.325, 0.20), (0.31, -0.08), (0.385, -0.10), (0.385, -0.40), (0.325, -0.44), (0.325, -0.58), (0.345, -0.68),
+              (0.40, -0.92), (0.40, -1.02), (0.37, -1.12)]
+    skin('casing_a', 'casing_b', CASING, 0.016, -1.08, 0.42, (0.85, 0.85), 6, after_a=['corecowl_a'], after_b=['corecowl_b'], mat='Steel')
 
     # --- exhaust nozzle, with the plug on the ground behind it
     noz = m.module('nozzle', 0.8, pop=(0, 0.3, -1))
@@ -272,7 +271,7 @@ def build(pose, rnd_seed=11):
         blade_row(comp.mb, 34, rr, 0.30, z, 0.045, 0.5, 0.006, 'Blade', rnd, broken=1 if j in (2, 5) else 0, bent=1 if j == 3 else 0, phase=j * 0.07)
     comp.mb.sweep([polar(math.radians(120), 0.36, 0.30), polar(math.radians(130), 0.42, 0.3), polar(math.radians(150), 0.47, 0.26)], 0.012, 'Copper')
     comp.mb.cyl(polar(math.radians(95), 0.30, 0.05), polar(math.radians(95), 0.40, 0.05), 0.05, 0.05, segs=10, mat='Brass')
-    comp.ring('bolt', 'flangeBolt', (0, 0, 0.46), (0, 0, 1), 0.22, 8, after=['fan', 'corecowl_b', 'corecowl_a'])
+    comp.ring('bolt', 'flangeBolt', (0, 0, 0.46), (0, 0, 1), 0.22, 8, after=['fan', 'casing_a', 'casing_b'])
     comp.step('lift', 'coreLift', (0, 0.25, 0.46), (0, 1, 0), after=['flangeBolt'], need=3.5)
     comp.inside()
     comp.step('clip', 'linkagePin', polar(math.radians(130), 0.42, 0.3), radial(math.radians(130)))
