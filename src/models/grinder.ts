@@ -27,7 +27,7 @@ export function grinderModel(): { obj: THREE.Group; disc: THREE.Object3D } {
   add(new THREE.CylinderGeometry(0.026, 0.03, 0.05, 14).rotateX(Math.PI / 2), BODY, 0, 0, 0.135);
   // The gear head: a steel casing with a boss for the spindle.
   add(new THREE.BoxGeometry(0.056, 0.056, 0.07), STEEL, 0, 0, 0.225);
-  add(new THREE.CylinderGeometry(0.018, 0.018, 0.012, 12).rotateZ(Math.PI / 2), DARK, 0.03, 0, 0.225);
+  add(new THREE.CylinderGeometry(0.018, 0.018, 0.012, 12).rotateZ(Math.PI / 2), DARK, -0.03, 0, 0.225);
   // The side handle, leaning up and to the left from the head, with a knob.
   const up = new THREE.Vector3(0.25, 0.968, 0).normalize();
   const base = new THREE.Vector3(0, 0.028, 0.21);
@@ -36,9 +36,9 @@ export function grinderModel(): { obj: THREE.Group; disc: THREE.Object3D } {
   rod.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
   const knob = add(new THREE.SphereGeometry(0.017, 10, 8), DARK, 0, 0, 0);
   knob.position.copy(base).addScaledVector(up, 0.105);
-  // The disc, on a spindle out to the left of the head: in the housing's own plane, so its edge shows from behind.
+  // The disc, on a spindle out to the right of the head: in the housing's own plane, so its edge shows from behind.
   const disc = new THREE.Group();
-  disc.position.set(0.05, 0, 0.225);
+  disc.position.set(-0.05, 0, 0.225);
   g.add(disc);
   disc.add(new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.056, 0.004, 28).rotateZ(Math.PI / 2), DISC));
   disc.add(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.009, 8).rotateZ(Math.PI / 2), STEEL));
@@ -49,7 +49,7 @@ export function grinderModel(): { obj: THREE.Group; disc: THREE.Object3D } {
   // The half guard over the back and top of the disc.
   const guard = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.022, 20, 1, true, Math.PI / 4, Math.PI).rotateZ(Math.PI / 2), STEEL.clone());
   (guard.material as THREE.MeshStandardNodeMaterial).side = THREE.DoubleSide;
-  guard.position.set(0.05, 0, 0.225);
+  guard.position.set(-0.05, 0, 0.225);
   g.add(guard);
   return { obj: g, disc };
 }
