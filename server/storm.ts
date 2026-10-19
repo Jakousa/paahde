@@ -22,6 +22,8 @@ const FRONT_FIRST_MIN_MS = 15 * 60_000;
 /** A front keeps blowing this long (ms) after its back has passed the furthest player (downwind) it was
  *  sent at, so riding away from it only works on a fast bike. */
 const FRONT_LINGER_MS = 45_000;
+/** A front held back by a boss being out tries again this long (ms) after. */
+const FRONT_RETRY_MS = 3 * 60_000;
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -39,8 +41,9 @@ export class StormServer {
     this.nextFrontAt = now + rand(FRONT_FIRST_MIN_MS, FRONT_GAP_MAX_MS);
   }
 
-  /** Server time `now` (ms) and where the players are. Returns a 'storms' message when the list changed. */
-  tick(now: number, players: { x: number; z: number }[], night = false): ServerMsg | null {
+  /** Server time `now` (ms) and where the players are. Returns a 'storms' message when the list changed.
+   *  `boss`: a boss is alive somewhere, so no storm front comes (it waits till after the fight). */
+  tick(now: number, players: { x: number; z: number }[], night = false, boss = false): ServerMsg | null {
     const live = this.off ? [] : this.storms.filter((s) => s.end > now);
     if (live.length !== this.storms.length) {
       this.storms = live;
@@ -51,7 +54,8 @@ export class StormServer {
       const p = players[Math.floor(Math.random() * players.length)];
       if (p && !this.off && this.storms.filter((s) => !s.front).length < MAX_STORMS) this.spawn(p.x, p.z, OFFSET, now);
     }
-    if (now >= this.nextFrontAt) {
+    if (now >= this.nextFrontAt && boss) this.nextFrontAt = now + FRONT_RETRY_MS;
+    else if (now >= this.nextFrontAt) {
       this.nextFrontAt = now + rand(FRONT_GAP_MIN_MS, FRONT_GAP_MAX_MS);
       if (players.length && !this.off && !this.storms.some((s) => s.front)) this.spawnFront(players, now);
     }

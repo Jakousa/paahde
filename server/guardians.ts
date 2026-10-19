@@ -18,7 +18,7 @@ import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MIN_R, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
   missileAt,
 } from '../shared/missiles.ts';
-import { nearStorm, type Storm } from '../shared/storm.ts';
+import { frontOut, nearStorm, type Storm } from '../shared/storm.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
 import { sunElevation } from '../shared/sun.ts';
@@ -149,7 +149,14 @@ type Drone = {
   /** Rifle hits taken; shot down when (-1 flying), falling with velocity (vx, vy, vz), on the sand (crashed).
    *  Jammed (shared/jammer.ts): brought down gently instead, settling on the sand whole. */
   hurt: number; downAt: number; vx: number; vy: number; vz: number; crashed: boolean; jammed: boolean;
+  /** Fleeing a storm front: climbing straight for the sky (leaving too), gone once FLEE_TOP up. */
+  fled: boolean;
 };
+
+/** Drones fleeing a storm front climb this fast (m/s), drifting on at this, and are gone this high (m) over the sand. */
+const FLEE_CLIMB = 14;
+const FLEE_DRIFT = 6;
+const FLEE_TOP = 260;
 
 /** A jammed drone sinks this fast (m/s). */
 const JAM_SINK = 2.5;
@@ -653,8 +660,10 @@ export class GuardianServer {
   private tickDrones(dt: number, now: number, tod: number, players: BotPlayer[], exposed: BotPlayer[], byId: Map<number, BotPlayer>): Set<number> {
     const lit = new Set<number>();
     const night = sunElevation(tod) < NIGHT_SUN;
+    // A storm front coming: every drone flies up out of it, and none come until it has died down.
+    const front = frontOut(this.storms, now);
     // At night, every crawler- or guardian-ground site someone is near has its drones over it (not the scrap fields).
-    if (night) {
+    if (night && !front) {
       for (const id of this.refill.keys()) {
         const s = crashSite(id)!;
         if (!players.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < SITE_LEAVE_R)) this.refill.delete(id);
@@ -675,7 +684,7 @@ export class GuardianServer {
         }
       }
     } else this.refill.clear();
-    this.roam(dt, now, exposed);
+    if (!front) this.roam(dt, now, exposed);
     const v = { x: 0, y: 0, z: 0 };
     for (const d of this.drones) {
       if (d.downAt >= 0) {
@@ -687,6 +696,7 @@ export class GuardianServer {
         d.hz = d.z;
       }
       if ((now > d.until && (!night || d.site === ROAM)) || !players.some((p) => Math.hypot(p.x - d.hx, p.z - d.hz) < DRONE_LONELY)) d.leaving = true;
+      if (front) d.fled = d.leaving = true;
       // Near a storm the light is off and it notices nobody (the client darkens it by the same rule).
       const dark = nearStorm(this.storms, d.x, d.z, now);
       if (dark) d.lock = d.seek = -1;
@@ -703,7 +713,7 @@ export class GuardianServer {
       if (d.leaving) {
         d.lock = -1;
         alt = DRONE_ALT * 5;
-        speed = CHASE_SPEED;
+        speed = d.fled ? FLEE_DRIFT : CHASE_SPEED;
         tx = d.x + Math.sin(d.yaw) * 100;
         tz = d.z + Math.cos(d.yaw) * 100;
       } else if (target) {
@@ -730,7 +740,8 @@ export class GuardianServer {
         this.dronePoint(d);
       }
       const ground = Math.max(heightAt(d.x, d.z), heightAt(d.x + Math.sin(d.yaw) * 15, d.z + Math.cos(d.yaw) * 15));
-      d.y += (ground + alt - d.y) * (1 - Math.exp(-dt * (d.leaving ? 0.3 : 1.2)));
+      if (d.fled) d.y += FLEE_CLIMB * dt;
+      else d.y += (ground + alt - d.y) * (1 - Math.exp(-dt * (d.leaving ? 0.3 : 1.2)));
       // Aim the beam: turning after the prey no faster than TRACK_RATE (SEEK_RATE onto someone noticed), or sweeping ahead.
       if (target) {
         const ax = target.x - d.x, ay = target.y + 1.1 - d.y, az = target.z - d.z, l = Math.hypot(ax, ay, az) || 1;
@@ -777,7 +788,7 @@ export class GuardianServer {
         }
       }
     }
-    this.drones = this.drones.filter((d) => d.downAt >= 0 ? now - d.downAt < DRONE_WRECK_S * 1000 : !d.leaving || d.y < heightAt(d.x, d.z) + DRONE_ALT * 4.5);
+    this.drones = this.drones.filter((d) => d.downAt >= 0 ? now - d.downAt < DRONE_WRECK_S * 1000 : !d.leaving || d.y < heightAt(d.x, d.z) + (d.fled ? FLEE_TOP : DRONE_ALT * 4.5));
     return lit;
   }
 
@@ -1011,7 +1022,7 @@ export class GuardianServer {
     const z = hz + Math.cos(a) * from;
     const d: Drone = {
       id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
-      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, jammed: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until,
+      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, jammed: false, fled: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until,
     };
     // First pass: across the site from where it came in.
     d.tx = hx + rand(-30, 30);

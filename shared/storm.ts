@@ -149,6 +149,11 @@ export function stormDrag(storms: readonly Storm[], x: number, y: number, z: num
   return Math.max(k, f);
 }
 
+/** Is a mega-storm front out (appeared, not yet died down) at time `t`? */
+export function frontOut(storms: readonly Storm[], t: number): boolean {
+  return storms.some((s) => s.front && t >= s.start && t < s.end);
+}
+
 /** The strongest mega-storm front at (x, z) at time `t`, 0..1 (no columns). */
 export function frontAt(storms: readonly Storm[], x: number, z: number, t: number): number {
   let k = 0;

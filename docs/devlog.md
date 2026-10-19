@@ -1658,6 +1658,11 @@ The local sandstorms are smaller now (radius 60–130 m, from 140–300), and ra
   (`seen`), or the far-off pillars ghosted through the opaque fog in its shading. The sun is dimmed
   through it (`sunThroughDust`). Gotcha: shared nodes (`dir`, `tScene`, `tOut`, `jitter`) must be `.toVar()`'d at the
   top of the Fn — built first inside the columns' `If`, they were garbage in the front's.
+- **Enemies:** when a front appears every flying drone gives up (no beam, no locks) and climbs straight up at 14 m/s,
+  drifting slowly, and is gone 260 m up (~18 s, before the front reaches anyone); no drones come, at sites or roaming,
+  until it has died down (`frontOut`, server/guardians.ts `fled`). Shot-down or jammed drones still fall. While any
+  boss is alive no front comes: a front that falls due waits and tries again 3 min later (`boss` in `StormServer.tick`).
+  The debug button ignores that.
 - **Debug:** F3 → *Storm front* sends one over everyone (30 s to the first player). `dbg.storm.summonFront(ahead)`
   puts a still one `ahead` m upwind for 3 min, seen only by you (negative: you're in it; you choke on screen but the
   server doesn't know).

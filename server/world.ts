@@ -1035,7 +1035,8 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   // (The lab has no storms and no jets.)
-  const weather = LAB ? null : storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
+  const weather = LAB ? null : storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0,
+    BOSS_KINDS.some((k) => bosses.alive(k)));
   const flights = LAB ? null : jets.tick(time, [...players.values()].map((p) => p.state));
   const crashed: ServerMsg[] = [];
   if (!LAB) {
