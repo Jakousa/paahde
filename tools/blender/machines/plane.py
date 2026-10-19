@@ -189,12 +189,13 @@ def pieces():
     rnd = random.Random(7)
     out = []
 
-    def add(pid, pivot, build, caps, hit=True, f=0.2):
+    def add(pid, pivot, build, caps, hit=True, f=0.2, skip=(), extra=()):
         mb = MB()
         mb.push(T(-pivot[0], -pivot[1], -pivot[2]))
         build(mb)
         mb.pop()
-        out.append({'id': pid, 'pivot': pivot, 'mb': mb, 'hit': hit, 'f': f,
+        out.append({'id': pid, 'pivot': pivot, 'mb': mb, 'hit': hit, 'f': f, 'skip': skip,
+                    'extra': [tuple(e[i] - pivot[i] for i in range(3)) for e in extra],
                     'caps': [{'c': tuple(c[i] - pivot[i] for i in range(3)), 'a': a, 'half': h, 'r': r} for (c, a, h, r) in caps]})
 
     def nose(mb):
@@ -229,8 +230,16 @@ def pieces():
     add('front', (0, 0, 2.5), front, [((0, 0, 2.5), (0, 0, 1), 4.5, 1.75), ((2.9, -0.3, 1.0), (1, 0, 0), 1.4, 1.2), ((-2.9, -0.3, 1.0), (1, 0, 0), 1.4, 1.2)], f=0.1)
     add('rear', (0, 0.1, -5.5), rear, [((0, 0.1, -5.5), (0, 0, 1), 3.5, 1.6)], f=0.14)
     add('tail', (0, 1.5, -12), tail, [((0, 0.5, -12), (0, 0, 1), 3.0, 1.2), ((0, 4.0, -11.0), (0, 1, 0), 3.0, 0.7), ((0, 1.3, -12.8), (1, 0, 0), 5.5, 0.9)], f=0.2)
-    add('wingL', (-9.5, -0.8, 1.0), wing_l, [((-10.2, 0.2, -0.3), (1, 0, 0), 5.8, 2.4), ((-ENG_X, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95)], f=0.22)
-    add('wingR', (10.2, 0.3, -0.3), wing_r, [((10.2, 0.2, -0.3), (1, 0, 0), 5.8, 2.4)], f=0.22)
+    def wing_pts(sgn):
+        # the wing really is thin: it touches the sand with its own corners (not the fat capsule it is hit with)
+        pts = []
+        for (x, y, z, ch, th) in wing_secs(0.2, 1.0):
+            pts += [(sgn * x, y - th * 0.45, z - ch * 0.4), (sgn * x, y - th * 0.3, z - ch), (sgn * x, y, z)]
+        return pts
+
+    add('wingL', (-9.5, -0.8, 1.0), wing_l, [((-10.2, 0.2, -0.3), (1, 0, 0), 5.8, 2.4), ((-ENG_X, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95)], f=0.22,
+        skip=(0,), extra=wing_pts(-1))
+    add('wingR', (10.2, 0.3, -0.3), wing_r, [((10.2, 0.2, -0.3), (1, 0, 0), 5.8, 2.4)], f=0.22, skip=(0,), extra=wing_pts(1))
     add('engineR', (ENG_X, ENG_Y, ENG_Z), lambda mb: engine(mb, ENG_X, ENG_Y, ENG_Z, 1), [((ENG_X, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95)], hit=False, f=0.32)
     # skin panels, doors and ribs that came off the body
     for i in range(8):
@@ -239,7 +248,8 @@ def pieces():
         rx, ry, cy = fus_at(z)
         pos = (rx * 1.05 * math.sin(ang), cy + ry * 1.05 * math.cos(ang), z)
         add(f'panel{i}', pos, lambda mb, p=pos, sx=sx, sy=sy, sz=sz, i=i: mb.box(p, (sx, sy, sz), ['JetHull', 'JetSand', 'JetFlap', 'JetDark'][i % 4]),
-            [(pos, (1, 0, 0), sx / 2, max(0.3, sy))], f=rnd.uniform(0.3, 0.45))
+            [(pos, (1, 0, 0), sx / 2, max(0.3, sy))], f=rnd.uniform(0.3, 0.45), skip=(0,),
+            extra=[(pos[0] + a * sx / 2, pos[1] - sy / 2, pos[2] + b * sz / 2) for a in (-1, 1) for b in (-1, 1)])
     for i in range(3):
         z = rnd.uniform(-8, 8)
         rx, ry, cy = fus_at(z)
@@ -262,12 +272,15 @@ def pieces_ts(ps):
     rows = []
     for p in ps:
         pts = []
-        for cp in p['caps']:
+        for ci, cp in enumerate(p['caps']):
+            if ci in p['skip']:
+                continue
             c, a, h, rad = Vector(cp['c']), Vector(cp['a']).normalized(), cp['half'], cp['r']
             for sgn in (-1, 1):
                 e = c + a * h * sgn
                 for off in ((0, -rad, 0), (rad, 0, 0), (-rad, 0, 0), (0, 0, rad), (0, 0, -rad), (0, rad, 0)):
                     pts.append(r(e + Vector(off)))
+        pts += [r(e) for e in p['extra']]
         caps = [{'c': r(cp['c']), 'a': r(Vector(cp['a']).normalized()), 'half': round(cp['half'], 3), 'r': round(cp['r'], 3)} for cp in p['caps']]
         rows.append(json.dumps({'id': p['id'], 'pivot': r(p['pivot']), 'f': round(p['f'], 3), 'hit': p['hit'], 'caps': caps, 'pts': pts}, separators=(',', ':')))
     body = ',\n  '.join(rows)

@@ -131,6 +131,15 @@ export function breakup(im: Impact, seed: number): Breakup {
     let vx = im.vx * d.f + kx[0] + (rand() - 0.5) * 6, vy = im.vy * d.f * 0.3 + (3 + rand() * 9) * (0.5 + light * 0.5), vz = im.vz * d.f + kx[2] + (rand() - 0.5) * 6;
     let wx = (rand() - 0.5) * 2 * (1.2 + 2.5 * light), wy = (rand() - 0.5) * 2 * (0.8 + 2 * light), wz = (rand() - 0.5) * 2 * (1.2 + 2.5 * light);
     let calm = 0, lastHit = -1, lastSlide = -1;
+    // it settles into the sand: heavy things deeper, each a little differently, deeper still where it dug its own crater
+    let lo = Infinity, hi = -Infinity;
+    for (const pt of d.pts) {
+      lo = Math.min(lo, pt[1]);
+      hi = Math.max(hi, pt[1]);
+    }
+    const deep = Math.min(1, (hi - lo) * 0.35); // (the thinner it is, the less of it sinks)
+    const sinkTo = deep * (0.1 + rand() * 0.4) + (hi - lo) * 0.04;
+    let sink = 0, dug = 0;
     for (let k = 0; k < steps; k++) {
       const t = k * BREAK_DT;
       // fly
@@ -149,7 +158,7 @@ export function breakup(im: Impact, seed: number): Breakup {
       for (const pt of d.pts) {
         const r = qRot(q, pt);
         const g = baseHeight(px + r[0], pz + r[2]);
-        const p = g - (py + r[1]);
+        const p = g - sink - (py + r[1]);
         if (p > pen) pen = p;
       }
       let flags = 0;
@@ -162,7 +171,9 @@ export function breakup(im: Impact, seed: number): Breakup {
           const s = -vn;
           if (s > SPLASH_V && t - lastHit > 0.35) {
             lastHit = t;
-            events.push({ t, x: px, z: pz, r: Math.min(4.5, 1.1 + big * 0.9), mm: Math.min(1600, 150 + s * 55) });
+            const mm = Math.min(1600, 150 + s * 55);
+            events.push({ t, x: px, z: pz, r: Math.min(4.5, 1.1 + big * 0.9), mm });
+            dug = Math.min(1.1 * deep, dug + mm * 0.0004 * deep);
           }
           const e = s > 3 ? BOUNCE : 0;
           vx -= (1 + e) * vn * nrm[0];
@@ -187,6 +198,7 @@ export function breakup(im: Impact, seed: number): Breakup {
           }
         }
         // turning slows on the sand and it settles to lie flat on the slope
+        if (speed < 6) sink += (sinkTo + dug - sink) * Math.min(1, 0.9 * BREAK_DT);
         const damp = Math.max(0, 1 - 5 * BREAK_DT);
         wx *= damp;
         wy *= damp;
