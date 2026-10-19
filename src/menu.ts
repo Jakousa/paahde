@@ -111,15 +111,15 @@ export class Menu {
 <label class="row"><span>${TEXT.menu.showCounts}</span><input class="counts" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label></div>
 <div class="pane" data-pane="graphics">
-<label class="row"><span>${TEXT.menu.display}</span><select class="gDisplay"><option value="1">${TEXT.menu.fullscreen}</option><option value="0">${TEXT.menu.windowed}</option></select></label>
-<label class="row"><span>${TEXT.menu.fpsTarget}</span><input class="gFps" type="range" min="0" max="${FPS_LIMITS.length - 1}" step="1"><span class="val gFpsVal"></span></label>
-<label class="row"><span>${TEXT.menu.resolution}</span><input class="gRes" type="range" min="0.25" max="1" step="0.05"><span class="val gResVal"></span></label>
-<label class="row"><span>${TEXT.menu.dynamicRes}</span><input class="gDyn" type="checkbox"></label>
-<label class="row"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
-<label class="row"><span>${TEXT.menu.shadows}</span><input class="gShadows" type="checkbox"></label>
-<label class="row"><span>${TEXT.menu.shadowDistance}</span><input class="gDist" type="range" min="${SHADOW_DISTANCE_RANGE[0]}" max="${SHADOW_DISTANCE_RANGE[1]}" step="50"><span class="val gDistVal"></span></label>
-<label class="row"><span>${TEXT.menu.cascades}</span><input class="gCas" type="range" min="1" max="4" step="1"><span class="val gCasVal"></span></label>
-<label class="row"><span>${TEXT.menu.shadowDetail}</span><input class="gMap" type="range" min="0" max="${SHADOW_MAPS.length - 1}" step="1"><span class="val gMapVal"></span></label>
+<label class="row" title="${TEXT.menu.tips.display}"><span>${TEXT.menu.display}</span><select class="gDisplay"><option value="1">${TEXT.menu.fullscreen}</option><option value="0">${TEXT.menu.windowed}</option></select></label>
+<label class="row" title="${TEXT.menu.tips.fpsTarget}"><span>${TEXT.menu.fpsTarget}</span><input class="gFps" type="range" min="0" max="${FPS_LIMITS.length - 1}" step="1"><span class="val gFpsVal"></span></label>
+<label class="row" title="${TEXT.menu.tips.resolution}"><span>${TEXT.menu.resolution}</span><input class="gRes" type="range" min="0.25" max="1" step="0.05"><span class="val gResVal"></span></label>
+<label class="row" title="${TEXT.menu.tips.dynamicRes}"><span>${TEXT.menu.dynamicRes}</span><input class="gDyn" type="checkbox"></label>
+<label class="row" title="${TEXT.menu.tips.occlusion}"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
+<label class="row" title="${TEXT.menu.tips.shadows}"><span>${TEXT.menu.shadows}</span><input class="gShadows" type="checkbox"></label>
+<label class="row" title="${TEXT.menu.tips.shadowDistance}"><span>${TEXT.menu.shadowDistance}</span><input class="gDist" type="range" min="${SHADOW_DISTANCE_RANGE[0]}" max="${SHADOW_DISTANCE_RANGE[1]}" step="50"><span class="val gDistVal"></span></label>
+<label class="row" title="${TEXT.menu.tips.cascades}"><span>${TEXT.menu.cascades}</span><input class="gCas" type="range" min="1" max="4" step="1"><span class="val gCasVal"></span></label>
+<label class="row" title="${TEXT.menu.tips.shadowDetail}"><span>${TEXT.menu.shadowDetail}</span><input class="gMap" type="range" min="0" max="${SHADOW_MAPS.length - 1}" step="1"><span class="val gMapVal"></span></label>
 <div class="note gNote"></div></div>
 <div class="pane" data-pane="audio">
 <label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
