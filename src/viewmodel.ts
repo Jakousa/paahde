@@ -395,7 +395,7 @@ export class ViewModel {
     }
     this.showTier();
     if (this.jammer) this.jammer.lamp.color.copy(LAMP_ON).multiplyScalar(playerHands.jamLamp);
-    if (this.grinder) this.grinder.disc.rotation.z += playerHands.grind * 60 * dt;
+    if (this.grinder) this.grinder.disc.rotation.x += playerHands.grind * 70 * dt;
     if (this.shown === 'receiver') {
       const r = playerHands.receiver.kind ? this.receivers.get(playerHands.receiver.kind) : undefined;
       if (!r?.obj.visible) this.showReceiver(); // another boss's receiver came into the hand

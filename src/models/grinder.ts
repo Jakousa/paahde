@@ -1,41 +1,52 @@
-// The grinder as a model, from boxes and cylinders: a hand angle grinder (an electric motor, a battery and scrap in a
-// housing) with its disc out front behind a half guard. Built in the laser pistol's frame like the jammer
-// (src/models/jammer.ts): origin at the grip, forward +Z, up +Y, so the hands hold it with the pistol's clips
-// (src/viewmodel.ts). `disc` spins while it grinds (src/teardown).
+// The grinder as a model, from boxes and cylinders: a hand angle grinder like a real one. A long motor housing, a gear head at the
+// front with the disc beside it standing in the same plane as the housing (the spindle across the body) behind a half guard,
+// a side handle up from the head and a raked grip under the rear. Built in the laser pistol's frame like the jammer
+// (src/models/jammer.ts): origin at the grip, forward +Z, up +Y, so the hands hold it with the jammer's clips, the left
+// palm under the housing (src/viewmodel.ts). `disc` spins about its X axis while it grinds (src/grinder.ts).
 import * as THREE from 'three/webgpu';
 
-const BODY = new THREE.MeshStandardNodeMaterial({ color: 0xb8742a, roughness: 0.7, metalness: 0.3 });
-const DARK = new THREE.MeshStandardNodeMaterial({ color: 0x26211d, roughness: 0.6, metalness: 0.4 });
-const STEEL = new THREE.MeshStandardNodeMaterial({ color: 0x9a9c94, roughness: 0.4, metalness: 0.8 });
-const DISC = new THREE.MeshStandardNodeMaterial({ color: 0x6b6258, roughness: 0.9, metalness: 0.2 });
+const BODY = new THREE.MeshStandardNodeMaterial({ color: 0x35558f, roughness: 0.65, metalness: 0.3 });
+const DARK = new THREE.MeshStandardNodeMaterial({ color: 0x1f1f23, roughness: 0.6, metalness: 0.35 });
+const STEEL = new THREE.MeshStandardNodeMaterial({ color: 0xa4a8ab, roughness: 0.4, metalness: 0.85 });
+const DISC = new THREE.MeshStandardNodeMaterial({ color: 0x232225, roughness: 0.85, metalness: 0.2 });
 
 export function grinderModel(): { obj: THREE.Group; disc: THREE.Object3D } {
   const g = new THREE.Group();
-  const add = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) => {
+  const add = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number) => {
     const o = new THREE.Mesh(geo, m);
     o.position.set(x, y, z);
-    o.rotation.set(rx, ry, rz);
     g.add(o);
     return o;
   };
-  // Grip, raked like the pistol's, under the motor housing.
-  add(new THREE.BoxGeometry(0.028, 0.095, 0.036), DARK, 0, 0.004, -0.004, 0.49);
-  // Motor housing along the axis, a battery pack under its back, the neck and gear head at the front.
-  add(new THREE.CylinderGeometry(0.03, 0.03, 0.15, 12).rotateX(Math.PI / 2), BODY, 0, 0.07, 0.02);
-  add(new THREE.BoxGeometry(0.04, 0.03, 0.07), DARK, 0, 0.034, -0.03);
-  add(new THREE.BoxGeometry(0.05, 0.05, 0.05), DARK, 0, 0.07, 0.115);
-  // The disc, on a spindle out to the side of the head, behind a half guard.
+  // Raked grip under the rear of the housing, with a trigger guard.
+  const grip = add(new THREE.BoxGeometry(0.028, 0.095, 0.036), DARK, 0, 0.004, -0.004);
+  grip.rotation.x = 0.49;
+  add(new THREE.BoxGeometry(0.006, 0.006, 0.03), DARK, 0, 0.03, 0.035);
+  // The housing: motor body (blue) with a dark rear cap and vents, and a neck to the head.
+  add(new THREE.CylinderGeometry(0.03, 0.03, 0.17, 14).rotateX(Math.PI / 2), BODY, 0, 0.068, 0.02);
+  add(new THREE.CylinderGeometry(0.031, 0.031, 0.04, 14).rotateX(Math.PI / 2), DARK, 0, 0.068, -0.08);
+  add(new THREE.CylinderGeometry(0.025, 0.03, 0.05, 14).rotateX(Math.PI / 2), BODY, 0, 0.068, 0.125);
+  // The gear head: a steel casing with a boss for the spindle.
+  add(new THREE.BoxGeometry(0.056, 0.056, 0.07), STEEL, 0, 0.068, 0.17);
+  add(new THREE.CylinderGeometry(0.018, 0.018, 0.012, 12).rotateZ(Math.PI / 2), DARK, -0.03, 0.068, 0.17);
+  // Side handle up from the head.
+  add(new THREE.CylinderGeometry(0.008, 0.008, 0.085, 8), DARK, 0, 0.13, 0.15);
+  add(new THREE.SphereGeometry(0.011, 8, 6), DARK, 0, 0.175, 0.15);
+  // The disc, on a spindle out to the left of the head: in the housing's own plane, so its edge shows from behind.
   const disc = new THREE.Group();
-  disc.position.set(0, 0.07, 0.15);
+  disc.position.set(-0.045, 0.068, 0.17);
   g.add(disc);
-  const d = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.004, 24), DISC);
-  d.rotation.x = Math.PI / 2;
-  disc.add(d);
-  disc.add(new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.012, 8).rotateX(Math.PI / 2), STEEL));
-  const guard = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.014, 16, 1, true, 0, Math.PI).rotateX(Math.PI / 2), DARK);
-  guard.position.set(0, 0.07, 0.15);
-  guard.rotation.z = Math.PI / 2;
-  guard.material = DARK;
+  disc.add(new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.056, 0.004, 28).rotateZ(Math.PI / 2), DISC));
+  disc.add(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.009, 8).rotateZ(Math.PI / 2), STEEL));
+  // A radial mark that shows it turn.
+  const mark = new THREE.Mesh(new THREE.BoxGeometry(0.0056, 0.1, 0.008), STEEL);
+  mark.position.x = -0.002;
+  disc.add(mark);
+  // The half guard over the back and top of the disc.
+  const guard = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.022, 20, 1, true, Math.PI / 4, Math.PI).rotateZ(Math.PI / 2), STEEL);
+  guard.position.set(-0.045, 0.068, 0.17);
+  guard.material = STEEL.clone();
+  (guard.material as THREE.MeshStandardNodeMaterial).side = THREE.DoubleSide;
   g.add(guard);
   return { obj: g, disc };
 }
