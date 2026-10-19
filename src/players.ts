@@ -171,6 +171,11 @@ export class Avatar {
     return this.root.visible && (this.model.muzzle?.(out) ?? false);
   }
 
+  /** Show or hide the tag (the fly camera's clean view, src/flyCam.ts). */
+  showLabel(on: boolean) {
+    if (this.label) this.label.visible = on;
+  }
+
   /** Floating tag over the head (remote players). */
   setLabel(text: string, color: number) {
     if (this.label && text === this.labelText) return;

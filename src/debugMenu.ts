@@ -7,6 +7,8 @@
 // "Tone" switches the tone curve live (post.ts toneControl); "white" is the filmic curve's white point.
 // "Trophies" shows the boss trophies at the base (src/world/trophies.ts) for the kinds beaten, all or none (local
 // view, looks only: walking into them still follows the kinds beaten).
+// "Fly camera" (src/flyCam.ts) leaves the body and flies the view freely, for shooting video; "Hide HUD" clears the
+// screen while flying, and FOV / smooth / bank shape the shot.
 // "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, and a laser rifle, pistol and jammer in your bag and equipment.
 import { isBound } from './bindings';
 import { ui } from './input';
@@ -15,6 +17,7 @@ import { TONE_CURVES, toneControl, type ToneCurve } from './post';
 import { summonLocalStorm } from './storm';
 import { clockText, timeControl } from './world/dayNight';
 import type { TrophyShow } from './world/trophies';
+import type { FlyCam } from './flyCam';
 
 const PRESETS: [string, number][] = [['Dawn', 0.27], ['Noon', 0.5], ['Golden hour', 0.7], ['Dusk', 0.77], ['Midnight', 0]];
 
@@ -23,7 +26,8 @@ export class DebugMenu {
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
   constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) => void,
-    showTrophies: (mode: TrophyShow) => void, resetYard: (all: boolean) => void = () => {}, noHeat: (off: boolean) => void = () => {}, noWeather: (off: boolean) => void = () => {}) {
+    showTrophies: (mode: TrophyShow) => void, resetYard: (all: boolean) => void = () => {}, noHeat: (off: boolean) => void = () => {}, noWeather: (off: boolean) => void = () => {},
+    fly: FlyCam, startFly: () => void) {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
@@ -37,7 +41,8 @@ export class DebugMenu {
 #debugMenu button { font: inherit; color: inherit; background: rgba(255, 233, 204, 0.12); border: 0; border-radius: 4px;
   padding: 3px 7px; cursor: pointer; }
 #debugMenu button:hover { background: rgba(255, 233, 204, 0.25); }
-#debugMenu label { display: flex; gap: 6px; align-items: center; margin-top: 8px; }`;
+#debugMenu label { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+body.clean > :not(canvas):not(#debugMenu):not(#menu) { visibility: hidden !important; }`;
     document.head.append(style);
 
     const p = this.panel;
@@ -62,6 +67,12 @@ export class DebugMenu {
 <div class="row">Test lab <button id="dbgYard" title="Put the nearest lab machine back together (?w=lab)">Reset near</button><button id="dbgYardAll" title="Put every lab machine back together">Reset all</button></div>
 <label title="No heat build-up for you (the meter drops to zero)"><input id="dbgNoHeat" type="checkbox"> Disable heat</label>
 <label title="No random sandstorms in this world (clears the ones blowing)"><input id="dbgNoWeather" type="checkbox"> Disable weather</label>
+<div class="row"><button id="dbgFly" title="Leave the body and fly the view (WASD, Space/Ctrl up and down, Shift fast, Alt slow, wheel sets speed)">Fly camera</button>
+<label style="margin-top:0"><input id="dbgClean" type="checkbox"> Hide HUD</label></div>
+<div id="dbgFlyOpts" style="display:none">
+<label>FOV <input id="dbgFov" type="range" min="15" max="100" step="1"> <b id="dbgFovVal"></b></label>
+<label>Smooth <input id="dbgSmooth" type="range" min="0" max="1" step="0.05"></label>
+<label>Bank <input id="dbgBank" type="range" min="0" max="1" step="0.05"></label></div>
 <div class="row"><button id="dbgHit"title="A killing blow (a guardian's laser): try the shield plate">Hit me</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
@@ -84,6 +95,37 @@ export class DebugMenu {
     p.querySelector('#dbgJet')!.addEventListener('click', () => summonBot('jet'));
     p.querySelector('#dbgCrawlers')!.addEventListener('click', () => summonBot('crawlers'));
     for (const b of p.querySelectorAll<HTMLElement>('[data-boss]')) b.addEventListener('click', () => summonBot(b.dataset.boss as BossKind));
+
+    const flyBtn = p.querySelector<HTMLButtonElement>('#dbgFly')!;
+    const flyOpts = p.querySelector<HTMLElement>('#dbgFlyOpts')!;
+    const clean = p.querySelector<HTMLInputElement>('#dbgClean')!;
+    const fov = p.querySelector<HTMLInputElement>('#dbgFov')!;
+    const fovVal = p.querySelector<HTMLElement>('#dbgFovVal')!;
+    const smooth = p.querySelector<HTMLInputElement>('#dbgSmooth')!;
+    const bank = p.querySelector<HTMLInputElement>('#dbgBank')!;
+    const showFly = () => {
+      flyBtn.textContent = fly.active ? 'Stop flying' : 'Fly camera';
+      flyOpts.style.display = fly.active ? '' : 'none';
+      fov.value = String(fly.fov);
+      fovVal.textContent = `${fly.fov}°`;
+      smooth.value = String(fly.smooth);
+      bank.value = String(fly.bank);
+    };
+    flyBtn.addEventListener('click', () => {
+      if (fly.active) fly.stop();
+      else {
+        startFly();
+        // Straight into the shot: close the panel and take the mouse.
+        p.style.display = 'none';
+        fly.dom.requestPointerLock();
+      }
+      showFly();
+    });
+    clean.addEventListener('change', () => fly.setClean(clean.checked));
+    fov.addEventListener('input', () => { fly.fov = Number(fov.value); showFly(); });
+    smooth.addEventListener('input', () => (fly.smooth = Number(smooth.value)));
+    bank.addEventListener('input', () => (fly.bank = Number(bank.value)));
+    showFly();
 
     const trophies = p.querySelector<HTMLSelectElement>('#dbgTrophies')!;
     trophies.addEventListener('change', () => showTrophies(trophies.value as TrophyShow));

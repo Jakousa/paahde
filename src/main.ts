@@ -42,6 +42,7 @@ import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
 import { DebugMenu } from './debugMenu.ts';
+import { FlyCam } from './flyCam';
 import { BossFx } from './bosses';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
@@ -110,6 +111,7 @@ document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 const orbit = new FirstPersonCamera(renderer.domElement);
 await slice();
+const fly = new FlyCam(renderer.domElement); // F3 → Fly camera, for shooting video
 const sky = new Sky(scene);
 await slice();
 const terrain = new Terrain(scene);
@@ -217,11 +219,12 @@ new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.res
   (mode) => trophies.show(mode),
   (all) => (all ? net.labReset() : net.labReset(machines.nearestLab(net.me.x, net.me.z)?.site.id)),
   (off) => net.debugHeat(off),
-  (off) => net.debugWeather(off));
+  (off) => net.debugWeather(off),
+  fly, () => fly.start(orbit.camera, orbit.yaw, orbit.pitch));
 new Chat(net);
 const names = nameGate(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
-update.busy = () => guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
+update.busy = () => fly.active || guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
 const lootView = new LootView(scene);
 const shieldFx = new ShieldFx(scene, () => orbit.camera.position, () => net.id, (m) => guardianFx.jolt(m));
 net.onShieldBreak = (m) => shieldFx.play(m);
@@ -382,7 +385,12 @@ renderer.setAnimationLoop((time) => {
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
   accumulator += frameDt;
   teardown.watch(net.me); // walking far enough away from a machine ends the disassembly
-  const input = !net.isReady ? 0 : readInput(); // standing still until named
+  // Flying the camera, the body stands where it was, facing the way it did.
+  if (fly.active) {
+    orbit.yaw = fly.heldYaw;
+    orbit.pitch = fly.heldPitch;
+  }
+  const input = !net.isReady || fly.active ? 0 : readInput(); // standing still until named
   while (accumulator >= DT) {
     net.tick(input, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
     accumulator -= DT;
@@ -429,6 +437,7 @@ renderer.setAnimationLoop((time) => {
       );
     }
     avatar.setLabel(net.names.get(r.id) || `#${r.id}`, r.color);
+    avatar.showLabel(!(fly.active && fly.clean));
     avatar.setOutfit(r.item, r.gear, r.tiers);
     if (!ride(r.id, avatar, { ...r, heading: r.facing }, frameDt)) {
       avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching }, frameDt);
@@ -455,7 +464,8 @@ renderer.setAnimationLoop((time) => {
     if (!orbit.down) speech.event('respawn', undefined);
   }
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
-  const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, !s.riding && !net.down);
+  const hands = !s.riding && !net.down && !fly.active; // the tools work
+  const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, hands);
   viewCull.begin();
   lootView.update(frameDt, net.loot, focus);
   shieldFx.update(frameDt, (id) => (id === net.id ? me.root.position : others.find((o) => o.id === id) ?? null));
@@ -465,14 +475,20 @@ renderer.setAnimationLoop((time) => {
   bossBar.update(frameDt, bossFx.bar);
   guardianFx.update(net, frameDt, orbit.camera, focus);
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
-  thrower.update(frameDt, !s.riding && !net.down);
-  grinder.update(frameDt, !s.riding && !net.down);
-  jammer.update(frameDt, !s.riding && !net.down);
+  // Flying, the camera leaves the body and the world streams in around it instead.
+  if (fly.active) {
+    fly.update(frameDt, orbit.camera);
+    focus.copy(fly.pos);
+  }
+  thrower.update(frameDt, hands);
+  grinder.update(frameDt, hands);
+  jammer.update(frameDt, hands);
   jammer.others(others, orbit.camera.position); // others' jammers: their static
-  receiver.update(frameDt, inHand, !s.riding && !net.down);
+  receiver.update(frameDt, inHand, hands);
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
-  if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
-  me.setHeadless(riding && !orbit.showBody);
+  const bodyShown = orbit.showBody || riding || fly.active;
+  if (bodyShown === bodyHidden) me.setShadowOnly((bodyHidden = !bodyShown));
+  me.setHeadless(riding && !orbit.showBody && !fly.active);
   viewmodel.root.visible = bodyHidden;
   viewmodel.setColor(net.color);
   viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding });
@@ -566,7 +582,7 @@ baseSand.update(frameDt, storm.atBase);
   const fPrompt = piecePrompt ?? use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
-  const interact = takePickup();
+  const interact = takePickup() && !fly.active;
   if (interact && piecePrompt) {
     if (teardown.holding) teardown.putDown();
     else teardown.hold(pieceHere!.piece);
