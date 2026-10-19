@@ -30,7 +30,7 @@ type Biome = {
 };
 
 /** Dried lake beds: dead flat, cracked mud, no dunes and next to no rocks, no shade, and hotter than the sand. */
-export const MUDFLAT: Biome = { from: 1000, full: 2400, cover: 0.35, size: 700, edge: 0.05, seed: 41 };
+export const MUDFLAT: Biome = { from: 1000, full: 2400, cover: 0.35, size: 1200, edge: 0.035, seed: 41 };
 
 /** Width (m) of the band inside `from` where a biome fades to nothing, so a patch reaching over it ends softly. */
 const FADE_IN = 150;
