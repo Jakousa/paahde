@@ -46,6 +46,7 @@ export class DynamicResolution {
   private scale = MAX_RATIO;
   /** Off: the ratio stays at the scale instead of following the frame time. */
   private dynamic = true;
+  private floor = MIN_RATIO;
   private targetMs = 1000 / (60 - TARGET_SLACK_FPS);
   private slowMs = 1000 / (60 - SLOW_SLACK_FPS);
   private ceiling: number;
@@ -81,6 +82,12 @@ export class DynamicResolution {
     this.targetMs = 1000 / Math.max(10, fps - TARGET_SLACK_FPS);
     this.slowMs = 1000 / Math.max(10, fps - SLOW_SLACK_FPS);
     this.probe = null;
+  }
+
+  /** Adaptive resolution never goes below this ratio. */
+  setMin(ratio: number) {
+    this.floor = ratio;
+    this.set(this.ratio);
   }
 
   setDynamic(on: boolean) {
@@ -133,7 +140,7 @@ export class DynamicResolution {
   }
 
   private get minRatio() {
-    return Math.min(MIN_RATIO, this.max);
+    return Math.min(this.floor, this.max);
   }
 
   private set(ratio: number) {

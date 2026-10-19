@@ -5,6 +5,8 @@ export interface GraphicsPrefs {
   resScale: number;
   /** Resolution follows the frame time (below the scale); off holds it at the scale. */
   dynamicRes: boolean;
+  /** Lowest render scale adaptive resolution may go to. */
+  minRes: number;
   /** Clicking into the game goes fullscreen (and locks the keyboard); off, the game stays in its window. */
   fullscreen: boolean;
   /** Frames per second the game draws at most; 0 = as fast as the screen goes. Adaptive resolution aims at it (60 when 0). */
@@ -18,7 +20,7 @@ export interface GraphicsPrefs {
   shadowMap: number;
 }
 
-export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, cascades: 4, shadowMap: 1024 };
+export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, minRes: 0.5, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, cascades: 4, shadowMap: 1024 };
 export const SHADOW_DISTANCE_RANGE = [200, 1600] as const;
 export const FPS_LIMITS = [30, 60, 90, 120, 144, 240, 0] as const;
 export const SHADOW_MAPS = [512, 1024, 2048] as const;
@@ -29,10 +31,11 @@ function load(): GraphicsPrefs {
   const g = { ...GRAPHICS_DEFAULTS };
   try {
     const o = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    const num = (k: 'resScale' | 'shadowDistance' | 'cascades' | 'shadowMap', lo: number, hi: number) => {
+    const num = (k: 'resScale' | 'minRes' | 'shadowDistance' | 'cascades' | 'shadowMap', lo: number, hi: number) => {
       if (typeof o[k] === 'number' && Number.isFinite(o[k])) g[k] = Math.min(Math.max(o[k], lo), hi);
     };
     num('resScale', 0.25, 2);
+    num('minRes', 0.25, 1);
     num('shadowDistance', SHADOW_DISTANCE_RANGE[0], SHADOW_DISTANCE_RANGE[1]);
     num('cascades', 1, 4);
     if ((FPS_LIMITS as readonly number[]).includes(o.fpsLimit)) g.fpsLimit = o.fpsLimit;

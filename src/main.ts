@@ -110,9 +110,11 @@ const resolution = new DynamicResolution(renderer); // sets the pixel ratio, the
 resolution.setScale(graphics.resScale);
 resolution.setDynamic(graphics.dynamicRes);
 resolution.setTargetFps(graphics.fpsLimit || 60);
+resolution.setMin(graphics.minRes);
 onGraphics((g, changed) => {
   if (changed === 'resScale') resolution.setScale(g.resScale);
   if (changed === 'dynamicRes') resolution.setDynamic(g.dynamicRes);
+  if (changed === 'minRes') resolution.setMin(g.minRes);
   if (changed === 'fpsLimit') resolution.setTargetFps(g.fpsLimit || 60);
 });
 renderer.setSize(window.innerWidth, window.innerHeight);

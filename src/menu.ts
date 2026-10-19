@@ -38,6 +38,8 @@ const css = `
 #menu .binds button { padding: 3px 0; font: 600 11px var(--mono); letter-spacing: 0; background: rgba(255, 217, 160, 0.14); color: #ffd9a0; }
 #menu .binds button:hover { background: rgba(255, 217, 160, 0.28); }
 #menu .binds button.listening { background: #ffd9a0; color: #2a160a; }
+#menu .tip { position: fixed; display: none; padding: 6px 8px; border-radius: 5px; pointer-events: none; font-size: 11px; line-height: 1.4;
+  background: rgba(20, 10, 4, 0.96); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.2), 0 6px 18px rgba(0, 0, 0, 0.5); }
 #menu .note { min-height: 16px; margin-top: 6px; opacity: 0.7; font-size: 11px; }
 #menu .controls, #menu .options { display: none; }
 #menu .panel.sub .controls, #menu .panel.opts .options { display: block; }
@@ -111,15 +113,16 @@ export class Menu {
 <label class="row"><span>${TEXT.menu.showCounts}</span><input class="counts" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label></div>
 <div class="pane" data-pane="graphics">
-<label class="row" title="${TEXT.menu.tips.display}"><span>${TEXT.menu.display}</span><select class="gDisplay"><option value="1">${TEXT.menu.fullscreen}</option><option value="0">${TEXT.menu.windowed}</option></select></label>
-<label class="row" title="${TEXT.menu.tips.fpsTarget}"><span>${TEXT.menu.fpsTarget}</span><input class="gFps" type="range" min="0" max="${FPS_LIMITS.length - 1}" step="1"><span class="val gFpsVal"></span></label>
-<label class="row" title="${TEXT.menu.tips.resolution}"><span>${TEXT.menu.resolution}</span><input class="gRes" type="range" min="0.25" max="1" step="0.05"><span class="val gResVal"></span></label>
-<label class="row" title="${TEXT.menu.tips.dynamicRes}"><span>${TEXT.menu.dynamicRes}</span><input class="gDyn" type="checkbox"></label>
-<label class="row" title="${TEXT.menu.tips.occlusion}"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
-<label class="row" title="${TEXT.menu.tips.shadows}"><span>${TEXT.menu.shadows}</span><input class="gShadows" type="checkbox"></label>
-<label class="row" title="${TEXT.menu.tips.shadowDistance}"><span>${TEXT.menu.shadowDistance}</span><input class="gDist" type="range" min="${SHADOW_DISTANCE_RANGE[0]}" max="${SHADOW_DISTANCE_RANGE[1]}" step="50"><span class="val gDistVal"></span></label>
-<label class="row" title="${TEXT.menu.tips.cascades}"><span>${TEXT.menu.cascades}</span><input class="gCas" type="range" min="1" max="4" step="1"><span class="val gCasVal"></span></label>
-<label class="row" title="${TEXT.menu.tips.shadowDetail}"><span>${TEXT.menu.shadowDetail}</span><input class="gMap" type="range" min="0" max="${SHADOW_MAPS.length - 1}" step="1"><span class="val gMapVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.display}"><span>${TEXT.menu.display}</span><select class="gDisplay"><option value="1">${TEXT.menu.fullscreen}</option><option value="0">${TEXT.menu.windowed}</option></select></label>
+<label class="row" data-tip="${TEXT.menu.tips.fpsTarget}"><span>${TEXT.menu.fpsTarget}</span><input class="gFps" type="range" min="0" max="${FPS_LIMITS.length - 1}" step="1"><span class="val gFpsVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.resolution}"><span>${TEXT.menu.resolution}</span><input class="gRes" type="range" min="0.25" max="1" step="0.05"><span class="val gResVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.dynamicRes}"><span>${TEXT.menu.dynamicRes}</span><input class="gDyn" type="checkbox"></label>
+<label class="row" data-tip="${TEXT.menu.tips.minRes}"><span>${TEXT.menu.minRes}</span><input class="gMin" type="range" min="0.25" max="1" step="0.05"><span class="val gMinVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.occlusion}"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.shadows}"><span>${TEXT.menu.shadows}</span><input class="gShadows" type="checkbox"></label>
+<label class="row" data-tip="${TEXT.menu.tips.shadowDistance}"><span>${TEXT.menu.shadowDistance}</span><input class="gDist" type="range" min="${SHADOW_DISTANCE_RANGE[0]}" max="${SHADOW_DISTANCE_RANGE[1]}" step="50"><span class="val gDistVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.cascades}"><span>${TEXT.menu.cascades}</span><input class="gCas" type="range" min="1" max="4" step="1"><span class="val gCasVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.shadowDetail}"><span>${TEXT.menu.shadowDetail}</span><input class="gMap" type="range" min="0" max="${SHADOW_MAPS.length - 1}" step="1"><span class="val gMapVal"></span></label>
 <div class="note gNote"></div></div>
 <div class="pane" data-pane="audio">
 <label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
@@ -201,6 +204,7 @@ export class Menu {
     this.el.querySelector('.opt')!.addEventListener('click', () => panel.classList.add('opts'));
     this.el.querySelector('.optBack')!.addEventListener('click', () => panel.classList.remove('opts'));
     this.bindControls();
+    this.bindTips();
     this.el.querySelector('.mini')!.addEventListener('click', () => this.playMinigame());
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
     for (const input of [vol, music, aoEl, stats, guides, counts, ...gInputs]) input.addEventListener('change', () => input.blur());
@@ -260,6 +264,13 @@ export class Menu {
     const dyn = q('.gDyn');
     dyn.checked = graphics.dynamicRes;
     dyn.addEventListener('change', () => setGraphics('dynamicRes', dyn.checked));
+    const min = q('.gMin');
+    min.value = String(graphics.minRes);
+    const showMin = () => text('.gMinVal', `${Math.round(graphics.minRes * 100)}%`);
+    showMin();
+    min.addEventListener('input', () => (setGraphics('minRes', parseFloat(min.value)), showMin()));
+    min.disabled = !graphics.dynamicRes;
+    dyn.addEventListener('change', () => (min.disabled = !dyn.checked));
     const shadows = q('.gShadows');
     shadows.checked = graphics.shadows;
     const dist = q('.gDist');
@@ -281,7 +292,25 @@ export class Menu {
     const enable = () => dependent.forEach((i) => (i.disabled = !graphics.shadows));
     enable();
     shadows.addEventListener('change', () => (setGraphics('shadows', shadows.checked), enable()));
-    return [fps, res, dyn, shadows, dist, cas, map];
+    return [fps, res, dyn, min, shadows, dist, cas, map];
+  }
+
+  /** Hover tips: native `title` tooltips don't show in fullscreen or over this overlay, so one of our own follows the pointer. */
+  private bindTips() {
+    const tip = document.createElement('div');
+    tip.className = 'tip';
+    this.el.append(tip);
+    this.el.addEventListener('pointermove', (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>('[data-tip]');
+      tip.style.display = row ? 'block' : 'none';
+      if (!row) return;
+      tip.textContent = row.dataset.tip!;
+      const w = Math.min(260, innerWidth - 16);
+      tip.style.width = `${w}px`;
+      tip.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, e.clientX + 14))}px`;
+      tip.style.top = `${Math.min(innerHeight - tip.offsetHeight - 8, e.clientY + 18)}px`;
+    });
+    this.el.addEventListener('pointerleave', () => (tip.style.display = 'none'));
   }
 
   /** The teardown minigame (src/minigameMenu.ts) over the world, which stays visible behind it. */
