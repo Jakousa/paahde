@@ -101,7 +101,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `src/input.ts` — keyboard → input bitmask
 - `src/wasm.ts` — loads the compiled wasm; use exports as `wasm.<fn>`
 - `assembly/` — AssemblyScript source (compiled to `src/wasm/`, gitignored — never edit `src/wasm/`)
-- `docs/devlog.md` — what's been built and why, known gaps; `docs/look.md` — art direction
+- `docs/devlog.md` — what's been built and why, known gaps; `docs/look.md` — art direction; `docs/machines.md` — **the guide for continuing the
+  realistic-machines program** (pipeline, rules, checks, backlog; read it before touching `tools/blender/machines/`, `src/teardown/` or the jets); `tools/trace-report.py` reads Chrome performance traces
 - `shared/text.ts` — **every player-visible text** (`TEXT`): names of things, prompts, notices, menus, hints, step
   labels, speech; rules in `docs/text.md`
 - `src/speech.ts`, `src/speechLines.ts` — the character's subtitled remarks: engine + when each line is said (event,
