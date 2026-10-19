@@ -827,6 +827,8 @@ export class TeardownView {
     for (const s of j.steps) {
       const lit = this.lit.has(s);
       const ready = !s.done && stepReady(s);
+      // a step still waiting on another is not there yet: it cannot be seen or aimed at, so it never gets in the way
+      if (!s.done) s.obj.visible = ready;
       // the big indicator (a setting) on every ready step, or just on what the crosshair is on; the glint is always there
       s.marker.visible = !s.done && (tdPrefs.markers ? ready || lit : lit);
       if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);
