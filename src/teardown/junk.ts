@@ -51,8 +51,10 @@ export function wake(root: THREE.Object3D) {
 }
 
 /** A machine seen from afar needs none of its fasteners drawn: with `on` the steps that can be worked are drawn, else none. */
-export function showSteps(junk: { steps: Step[] }, on: boolean) {
+export function showSteps(junk: { steps: Step[]; slots: Slot[] }, on: boolean) {
   for (const s of junk.steps) if (!s.done) s.obj.visible = on && stepReady(s);
+  // the parts inside are drawn only when you are near too (from afar they are hidden behind the shell anyway)
+  for (const sl of junk.slots) if (!sl.taken) sl.piece.obj.visible = on;
 }
 
 export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift' | 'grind' | 'mash';

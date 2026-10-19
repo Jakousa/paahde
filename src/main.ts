@@ -612,7 +612,8 @@ baseSand.update(frameDt, storm.atBase);
   }
   hud.update(net.me);
 
-  menu.setInfo(`${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
+  const ri = renderer.info.render as { drawCalls?: number; calls?: number; triangles: number };
+  menu.setInfo(`${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${ri.drawCalls ?? ri.calls} draws · ${(ri.triangles / 1000).toFixed(0)}k tris · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
   teardown.update(frameDt);
   if (loaded) {
     warm.finish();
