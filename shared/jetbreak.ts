@@ -75,7 +75,17 @@ export interface BreakEvent {
   slide?: true;
 }
 
+/** What became of an engine: still on its wing ('on'), torn off and lying whole (a machine to take apart) or wrecked in the landing. */
+export type Fate = 'on' | 'machine' | 'wreck';
+/** The engines' pieces, left then right (shared/jetpieces.ts ids), the odds each tears off the wing and, if it does, is wrecked in the landing. */
+export const ENGINES = ['engineL', 'engineR'];
+export const ENGINE_OFF = 0.8;
+export const ENGINE_WRECKED = 0.3;
+
 export interface Breakup {
+  /** What became of each engine (ENGINES order) and, for a wrecked one, when (s after the impact) it was wrecked: from then on its piece is the husk. */
+  fates: Fate[];
+  wrecked: number[];
   /** Per piece (in JET_PIECES order), per step: x, y, z, qx, qy, qz, qw, flags (1: on the sand, 2: moving fast). */
   states: Float32Array[];
   steps: number;
@@ -117,9 +127,29 @@ export function breakup(im: Impact, seed: number): Breakup {
   const states: Float32Array[] = [];
   const events: BreakEvent[] = [];
   const final: number[][] = [];
+  const fr = rng(seed * 104729 + 7);
+  const fates: Fate[] = ENGINES.map(() => {
+    const off = fr() < ENGINE_OFF, dead = fr() < ENGINE_WRECKED;
+    return !off ? 'on' : dead ? 'wreck' : 'machine';
+  });
+  const wrecked = ENGINES.map(() => -1);
   for (let i = 0; i < n; i++) {
     const d = JET_PIECES[i];
     const out = new Float32Array(steps * STATE_W);
+    const ei = ENGINES.indexOf(d.id);
+    if (ei >= 0 && fates[ei] === 'on') {
+      // still on its wing: it goes where the wing goes
+      const pi = JET_PIECES.findIndex((q) => q.id === d.parent), par = JET_PIECES[pi], ps = states[pi];
+      const rel: V3 = [d.pivot[0] - par.pivot[0], d.pivot[1] - par.pivot[1], d.pivot[2] - par.pivot[2]];
+      for (let k = 0; k < steps; k++) {
+        const o = k * STATE_W, qp: Q4 = [ps[o + 3], ps[o + 4], ps[o + 5], ps[o + 6]], r = qRot(qp, rel);
+        out.set([ps[o] + r[0], ps[o + 1] + r[1], ps[o + 2] + r[2], qp[0], qp[1], qp[2], qp[3], ps[o + 7]], o);
+      }
+      states.push(out);
+      const e = (steps - 1) * STATE_W;
+      final.push([out[e], out[e + 1], out[e + 2], out[e + 3], out[e + 4], out[e + 5], out[e + 6]].map((v, j) => Math.round(v * (j < 3 ? 100 : 10000)) / (j < 3 ? 100 : 10000)));
+      continue;
+    }
     // start: where it sat on the plane, moving with it (less of it the heavier it is), kicked away from the plane's axis and up
     const off = qRot(qPlane, d.pivot);
     let px = im.x + off[0], py = im.y + off[1], pz = im.z + off[2];
@@ -172,6 +202,10 @@ export function breakup(im: Impact, seed: number): Breakup {
             lastHit = t;
             const mm = Math.min(1600, 150 + s * 55);
             events.push({ t, x: px, z: pz, r: Math.min(4.5, 1.1 + big * 0.9), mm });
+            if (ei >= 0 && fates[ei] === 'wreck' && wrecked[ei] < 0) {
+              wrecked[ei] = t; // wrecked in the landing: a blast and a deep bowl
+              events.push({ t, x: px, z: pz, r: 3.2, mm: 1100 });
+            }
           }
           const e = s > 3 ? BOUNCE : 0;
           vx -= (1 + e) * vn * nrm[0];
@@ -212,11 +246,12 @@ export function breakup(im: Impact, seed: number): Breakup {
       }
       out.set([px, py, pz, q[0], q[1], q[2], q[3], flags], k * STATE_W);
     }
+    if (ei >= 0 && fates[ei] === 'wreck' && wrecked[ei] < 0) wrecked[ei] = 1.5; // (it never hit hard: wrecked anyway)
     states.push(out);
     const o = (steps - 1) * STATE_W;
     final.push([out[o], out[o + 1], out[o + 2], out[o + 3], out[o + 4], out[o + 5], out[o + 6]].map((v, j) => Math.round(v * (j < 3 ? 100 : 10000)) / (j < 3 ? 100 : 10000)));
   }
   events.sort((a, b) => a.t - b.t);
   if (events.length > 70) events.length = 70;
-  return { states, steps, events, final };
+  return { fates, wrecked, states, steps, events, final };
 }

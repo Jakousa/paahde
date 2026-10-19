@@ -706,7 +706,7 @@ function jetLanded(j: Jet) {
 /** The pieces of a jet have come to rest: its crash site is made (shared/jetcrash.ts: they stay, the right engine is a machine to take apart),
  *  its transponder maybe, a broken receiver now and then, and some scrap off the airframe, strewn about where its nose went in. */
 function jetCame(b: { jet: number; bk: Breakup; lx: number; lz: number }): ServerMsg {
-  const { crash: c, gone } = jetCrashes.add(b.jet, b.bk.final);
+  const { crash: c, gone } = jetCrashes.add(b.jet, b.bk.final, b.bk.fates);
   const at = (kind: string) => {
     const a = Math.random() * Math.PI * 2, d = 3 + Math.random() * 16;
     loot.dropAt(b.lx + Math.cos(a) * d, b.lz + Math.sin(a) * d, kind);

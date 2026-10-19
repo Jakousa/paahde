@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { JET_SPAN, jetAt, jetImpact, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { jetCrashList } from '../../shared/jetcrash.ts';
-import { breakup, BREAK_DT, STATE_W, type Breakup } from '../../shared/jetbreak.ts';
+import { breakup, BREAK_DT, ENGINES, STATE_W, type Breakup, type Fate } from '../../shared/jetbreak.ts';
 import { JET_PIECES } from '../../shared/jetpieces.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { tyreDust } from '../tyreDust';
@@ -118,6 +118,9 @@ const _q0 = new THREE.Quaternion(), _q1 = new THREE.Quaternion();
 /** The pieces of a broken plane, one group each placed at its pivot: flying apart from the impact (shared/jetbreak.ts) or lying where they came to rest. */
 class Debris {
   readonly holders: THREE.Group[] = [];
+  /** An engine's husk (wrecked in the landing), shown instead of the engine from then on; by piece index. */
+  private husks = new Map<number, THREE.Object3D>();
+  private whole = new Map<number, THREE.Object3D>();
   bk: Breakup | null = null;
   /** The next event (a splash of sand) to play. */
   ev = 0;
@@ -134,6 +137,15 @@ class Debris {
         n.visible = true;
         n.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
         holder.add(n);
+        const x = model!.getObjectByName(`P_${d.id}_x`)?.clone();
+        if (x) {
+          x.position.set(0, 0, 0);
+          x.visible = false;
+          x.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+          holder.add(x);
+          this.husks.set(this.holders.length, x);
+          this.whole.set(this.holders.length, n);
+        }
       }
       holder.scale.setScalar(JET_SPAN / MODEL_SPAN);
       scene.add(holder);
@@ -141,10 +153,22 @@ class Debris {
     }
   }
 
-  /** Where each piece lies (x, y, z, qx, qy, qz, qw). */
-  rest(pieces: number[][]) {
+  /** Show an engine as it was, or as the husk it was wrecked into. */
+  private wreck(i: number, on: boolean) {
+    const x = this.husks.get(i), n = this.whole.get(i);
+    if (x) x.visible = on;
+    if (n) n.visible = !on;
+  }
+
+  /** Where each piece lies (x, y, z, qx, qy, qz, qw), and what became of the engines (the wrecked ones are husks; the ones that lie whole are machines, not drawn). */
+  rest(pieces: number[][], fates: Fate[]) {
     this.holders.forEach((h, i) => {
       const w = pieces[i];
+      const ei = ENGINES.indexOf(JET_PIECES[i].id);
+      if (ei >= 0) {
+        this.wreck(i, fates[ei] === 'wreck');
+        h.userData.machine = fates[ei] === 'machine';
+      }
       if (!w) return;
       h.position.set(w[0], w[1], w[2]);
       h.quaternion.set(w[3], w[4], w[5], w[6]);
@@ -157,6 +181,8 @@ class Debris {
     const bk = this.bk!;
     const k = Math.min(bk.steps - 1, Math.max(0, t / BREAK_DT)), i0 = Math.floor(k), i1 = Math.min(bk.steps - 1, i0 + 1), f = k - i0;
     this.holders.forEach((h, i) => {
+      const ei = ENGINES.indexOf(JET_PIECES[i].id);
+      if (ei >= 0) this.wreck(i, bk.fates[ei] === 'wreck' && t >= bk.wrecked[ei]);
       const st = bk.states[i], a = i0 * STATE_W, b = i1 * STATE_W;
       h.position.set(st[a] + (st[b] - st[a]) * f, st[a + 1] + (st[b + 1] - st[a + 1]) * f, st[a + 2] + (st[b + 2] - st[a + 2]) * f);
       _q0.set(st[a + 3], st[a + 4], st[a + 5], st[a + 6]);
@@ -340,14 +366,11 @@ export class Jets {
       }
       if (!o) {
         o = new Debris(this.scene);
-        o.rest(c.pieces);
-        // (the right engine lies on as a machine: its piece is not drawn)
-        const e = o.holders[JET_PIECES.findIndex((p) => p.id === 'engineR')];
-        if (e) e.visible = false;
+        o.rest(c.pieces, c.fates);
         this.wreckViews.set(c.id, o);
       }
       const show = !this.views.has(c.jet);
-      o.holders.forEach((h, i) => (h.visible = show && JET_PIECES[i].id !== 'engineR'));
+      o.holders.forEach((h) => (h.visible = show && !h.userData.machine)); // (an engine that lies whole is a machine: not drawn here)
       if (show && Math.random() < dt * 1.2) zaps.puff(c.x + (Math.random() - 0.5) * 10, heightAt(c.x, c.z) + 2, c.z + (Math.random() - 0.5) * 10, 3, 2.2);
     }
     for (const [id, o] of this.wreckViews) {
