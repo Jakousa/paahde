@@ -50,11 +50,35 @@ export function wake(root: THREE.Object3D) {
   root.traverse((o) => { o.matrixAutoUpdate = true; });
 }
 
-/** A machine seen from afar needs none of its fasteners drawn: with `on` the steps that can be worked are drawn, else none. */
-export function showSteps(junk: { steps: Step[]; slots: Slot[] }, on: boolean) {
-  for (const s of junk.steps) if (!s.done) s.obj.visible = on && stepReady(s);
-  // the parts inside are drawn only when you are near too (from afar they are hidden behind the shell anyway)
-  for (const sl of junk.slots) if (!sl.taken) sl.piece.obj.visible = on;
+/** A machine seen from afar has no use for its fasteners and parts: they are taken out of the scene graph altogether (hidden
+ *  objects are still walked every frame, and cost a draw once shown), remembering where they hang (`userData.home`). */
+export function hideDetail(junk: { steps: Step[]; slots: Slot[] }) {
+  for (const s of junk.steps) {
+    if (s.done) continue;
+    s.obj.userData.home ??= s.obj.parent;
+    s.obj.removeFromParent();
+  }
+  for (const sl of junk.slots) {
+    if (sl.taken) continue;
+    const o = sl.piece.obj;
+    o.userData.home ??= o.parent;
+    o.removeFromParent();
+  }
+}
+
+/** What goes back into the scene when you come near: the steps that can be worked and the parts, to be added a few a frame
+ *  (a hundred new objects in one frame is a long frame: each needs its pipeline and bindings made). */
+export function detailList(junk: { steps: Step[]; slots: Slot[] }): THREE.Object3D[] {
+  const out: THREE.Object3D[] = [];
+  for (const sl of junk.slots) if (!sl.taken) out.push(sl.piece.obj);
+  for (const s of junk.steps) if (!s.done && stepReady(s)) out.push(s.obj);
+  return out;
+}
+
+/** Back in the scene at once (the disassembly starts: any step can come ready). */
+export function attachAll(junk: { steps: Step[]; slots: Slot[] }) {
+  for (const s of junk.steps) if (!s.done) (s.obj.userData.home as THREE.Object3D | null | undefined)?.add(s.obj);
+  for (const sl of junk.slots) if (!sl.taken) (sl.piece.obj.userData.home as THREE.Object3D | null | undefined)?.add(sl.piece.obj);
 }
 
 export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift' | 'grind' | 'mash';

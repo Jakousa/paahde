@@ -14,7 +14,7 @@ import {
 import { hasItem, type Slots } from '../../shared/items.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
-import { buildJunk, lowestOffset, pieceEmpty, restPiece, settle, showSteps, type Junk } from '../teardown/junk.ts';
+import { attachAll, buildJunk, detailList, hideDetail, lowestOffset, pieceEmpty, restPiece, settle, type Junk } from '../teardown/junk.ts';
 import type { SiteMsg } from '../net.ts';
 import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
 import { TEXT } from '../../shared/text.ts';
@@ -22,7 +22,9 @@ import { TEXT } from '../../shared/text.ts';
 /** Machines are built (a few hundred meshes) when you come this close, and dropped beyond DROP_R. */
 const BUILD_R = 60;
 /** Fasteners are drawn within this many metres (a little more once they are). */
-const DETAIL_R = 14;
+const DETAIL_R = 16;
+/** Objects put back per frame as a machine's detail comes in. */
+const DETAIL_PER_FRAME = 24;
 const DROP_R = 140;
 /** Session id of the disassembly table (server/crash.ts BENCH_ID). */
 export const BENCH_ID = 'bench';
@@ -41,6 +43,8 @@ interface SiteView {
    *  disassembly was working on it last frame. */
   detail?: boolean;
   wasBusy?: boolean;
+  /** What is still to be put back into the scene as you come near, a few a frame. */
+  queue?: THREE.Object3D[];
 }
 
 const spent = (site: CrashSite) => !site.lab && !junkSpec(site.kind).carry && crashSpent.has(site.wreck);
@@ -90,7 +94,11 @@ export class MachineSites {
     const busy = this.busy() === v.site.id;
     if (busy !== !!v.wasBusy) {
       v.wasBusy = busy;
-      if (!busy) {
+      if (busy) {
+        attachAll(j); // the disassembly may bring any step ready
+        v.queue = [];
+      } else {
+        hideDetail(j);
         settle(j.root);
         v.detail = undefined;
       }
@@ -99,7 +107,16 @@ export class MachineSites {
     const want = d < (v.detail ? DETAIL_R + 2 : DETAIL_R);
     if (want !== v.detail) {
       v.detail = want;
-      showSteps(j, want);
+      if (want) v.queue = detailList(j);
+      else {
+        v.queue = [];
+        hideDetail(j);
+      }
+    }
+    for (let n = 0; v.queue && v.queue.length && n < DETAIL_PER_FRAME; n++) {
+      const o = v.queue.pop()!;
+      (o.userData.home as THREE.Object3D | null | undefined)?.add(o);
+      o.visible = true;
     }
   }
 
@@ -129,7 +146,8 @@ export class MachineSites {
     if (off !== null) j.root.position.y += off;
     v.shown = true;
     v.detail = false;
-    showSteps(j, false);
+    v.queue = [];
+    hideDetail(j);
     settle(j.root); // (a machine at rest is not walked over every frame)
   }
 
@@ -189,7 +207,10 @@ export class MachineSites {
     if (v?.junk && m.id !== active) {
       fastForward(v.junk, done, taken);
       settle(v.junk.root);
-      if (v.detail) showSteps(v.junk, true);
+      if (v.detail) {
+        hideDetail(v.junk);
+        v.queue = detailList(v.junk);
+      }
     }
   }
 
