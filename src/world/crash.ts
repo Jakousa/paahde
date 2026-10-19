@@ -303,10 +303,6 @@ export class Bench {
   private job: Job | null = null;
   /** The table's job ended while the mode was open on it: tidy the machine away when it closes. */
   private stale: Junk | null = null;
-  /** We asked to put a machine on the table: start the mode when the server's job arrives. */
-  private asked = 0;
-  /** The job we asked for is on the table (src/main.ts starts the mode). */
-  onReady?: () => void;
   /** Lights a new machine with the bunker's lamps (Base.lightIndoors). */
   indoors?: (root: THREE.Object3D) => void;
 
@@ -318,17 +314,14 @@ export class Bench {
   ground = (x: number, z: number) =>
     Math.abs(x - BENCH.x) < BENCH.w / 2 && Math.abs(z - BENCH.z) < BENCH.d / 2 ? BENCH.top : BENCH.floor;
 
-  /** What the table offers: work on the machine on it, or put a carried one from the bag on it. */
-  offer(bag: Slots | undefined): { label: string; kind: JunkKind; resume: boolean } | null {
+  /** What the table's menu offers: the machine on it (name, parts still on it), or the carried machines that can be put on it. */
+  menu(bag: Slots | undefined): { job: string | null; left: number; kinds: { kind: JunkKind; label: string }[] } {
     const cur = this.job;
-    if (cur) return { label: TEXT.prompt.disassemble(junkSpec(cur.kind).label), kind: cur.kind, resume: true };
-    const kind = CARRY_KINDS.find((k) => hasItem(bag, k));
-    return kind ? { label: TEXT.prompt.putOnTable(junkSpec(kind).label), kind, resume: false } : null;
-  }
-
-  /** We sent crashUse: the server's 'bench' answer starts the mode (onReady). */
-  ask() {
-    this.asked = performance.now();
+    return {
+      job: cur ? junkSpec(cur.kind).label : null,
+      left: cur ? cur.junk.slots.filter((s) => !s.taken).length : 0,
+      kinds: cur ? [] : CARRY_KINDS.filter((k) => hasItem(bag, k)).map((kind) => ({ kind, label: junkSpec(kind).label })),
+    };
   }
 
   /** The table's job from the server (null: free). `active`: the mode is open on the table. */
@@ -352,10 +345,6 @@ export class Bench {
       this.place();
     }
     if (!active) fastForward(this.job.junk, job.done, job.taken);
-    if (this.asked && performance.now() - this.asked < 5000) {
-      this.asked = 0;
-      this.onReady?.();
-    }
   }
 
   /** A step or take on the table's machine; the mode animates it itself when open on the table. */

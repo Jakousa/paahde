@@ -74,6 +74,7 @@ import { Thrower } from './throw';
 import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
+import { BenchMenu } from './benchMenu';
 import { machinesAt } from '../shared/crash.ts';
 import { LAB_LOOK } from '../shared/lab.ts';
 import { addLabPlates } from './world/labPlates';
@@ -203,18 +204,14 @@ net.onSite = (m) => {
 };
 // Scrap the machine on the disassembly table: one scrap per part still on it, if they all fit in the bag.
 const scrapBench = () => {
-  const n = Math.max(1, teardown.current?.junk.slots.filter((s) => !s.taken).length ?? 1);
+  const n = Math.max(1, machines.bench.menu(net.boxes.bag).left);
   if (!addItem([...(net.boxes.bag ?? [])], SCRAP, n, () => 0, bagShape(net.boxes.equip))) return false;
   net.benchScrap();
   pickupSound.play();
   hud.toast(TEXT.notice.got(n, itemLabel(SCRAP)));
   return true;
 };
-// A machine we put on the disassembly table is there (the server picked its seed): start taking it apart.
-machines.bench.onReady = () => {
-  const job = machines.bench.site(net.siteLink(BENCH_ID), scrapBench);
-  if (job && !teardown.active && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 5) teardown.begin(job);
-};
+const benchMenu = new BenchMenu(renderer.domElement);
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
   (mode) => trophies.show(mode),
   (all) => (all ? net.labReset() : net.labReset(machines.nearestLab(net.me.x, net.me.z)?.site.id)),
@@ -563,12 +560,17 @@ baseSand.update(frameDt, storm.atBase);
   // A small one is picked up with F; a big one starts its disassembly by itself when you come close (src/teardown).
   const site = small ? nearSite : null;
   if (nearSite && !small && !teardown.active) teardown.begin(machines.workSite(nearSite, net.siteLink(nearSite.site.id)));
+  // A machine on the disassembly table is worked like a big one: it starts by itself when you stand at the table.
+  if (!teardown.active && !benchMenu.isOpen && net.connected) {
+    const job = machines.bench.site(net.siteLink(BENCH_ID), scrapBench);
+    if (job && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 3.5) teardown.begin(job);
+  }
   // Salvage wrecks (src/world/wrecks.ts) are always carried home.
   const wreck = net.connected && station < 0 && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
   const sitePrompt = site ? (small ? TEXT.prompt.pickUp(junkSpec(site.site.kind).label) : TEXT.prompt.disassemble(junkSpec(site.site.kind).label))
     : wreck ? TEXT.prompt.pickUp(SALVAGE[wreck.kind].label) : null;
-  const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
-  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? TEXT.prompt.useWorkbench : (table?.label ?? TEXT.prompt.useTable);
+  const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.menu(net.boxes.bag) : null;
+  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? TEXT.prompt.useWorkbench : TEXT.prompt.useTable;
   // A dead player's pack (shared/corpse.ts) lying here: F opens it next to the bag, like a chest.
   const pack = net.connected && !net.down && station < 0 && !bed && !target && !debris && !find && !site && !wreck
     && corpsesNear(net.me).some((b) => net.boxes[b]);
@@ -586,17 +588,16 @@ baseSand.update(frameDt, storm.atBase);
   if (interact && piecePrompt) {
     if (teardown.holding) teardown.putDown();
     else teardown.hold(pieceHere!.piece);
-  } else if (interact && teardown.current?.id !== BENCH_ID) {
+  } else if (interact) {
     if (use) {
       if (STATIONS[station].kind === 'workbench') hud.open();
-      else if (table) {
-        const job = table.resume ? machines.bench.site(net.siteLink(BENCH_ID), scrapBench) : null;
-        if (job) teardown.begin(job);
-        else {
-          // The server picks the machine's seed; its 'bench' answer starts the mode (onReady below).
-          machines.bench.ask();
-          net.crashUse(table.kind);
-        }
+      else if (table && (table.job || table.kinds.length)) {
+        benchMenu.open({
+          job: table.job,
+          kinds: table.kinds,
+          place: (kind) => net.crashUse(kind),
+          scrap: () => (teardown.current?.id === BENCH_ID ? teardown.scrap() : scrapBench()),
+        });
       } else hud.toast(TEXT.notice.nothingToTakeApart);
     } else if (tend && bed) net.tend(bed.id);
     else if (target) {

@@ -102,8 +102,6 @@ const SEAM_REACH = 0.13;
 /** The workable sheen: one goes over a part every this many seconds, and takes this long. */
 const SHEEN_EVERY = 7;
 const SHEEN_LEN = 1.3;
-/** Seconds of holding F at the table to scrap the machine. */
-const SCRAP_HOLD = 1.1;
 /** How far from the machine's middle the mode starts for a big machine and stops (m); the table's stops farther out. */
 const LEAVE = 8;
 /** What can be worked: within this distance (m) of the eye. */
@@ -155,8 +153,6 @@ export class TeardownView {
   private get ay() {
     return this.held ? this.cur.y : innerHeight / 2;
   }
-  /** Seconds the interact key has been held at the table (a long hold scraps the machine). */
-  private scrapHold = 0;
 
   /** The use button held on a step. sx / sy: smoothed mouse travel (bolts), a stroke so far (wires) or the pull so far (pry). */
   private act: { step: Step; angle: number; end: number; sx: number; sy: number; lastMove: number } | null = null;
@@ -173,17 +169,8 @@ export class TeardownView {
     addEventListener('keydown', (e) => {
       if (this.phase === 'idle' || e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement) return;
       if (!this.site) return;
-      // At the table F leaves (a long hold scraps the machine); out in the field F does what it always does.
-      if (this.site.movable && isBound('interact', e.code) && !e.repeat) this.scrapHold = 0.001;
       if (isBound('rotate', e.code)) {
         if (this.site.movable) this.resetRotation();
-      }
-    });
-    addEventListener('keyup', (e) => {
-      if (this.site?.movable && isBound('interact', e.code) && this.scrapHold > 0) {
-        const held = this.scrapHold;
-        this.scrapHold = 0;
-        if (held < SCRAP_HOLD) this.end();
       }
     });
   }
@@ -220,8 +207,8 @@ export class TeardownView {
     this.refreshCard();
   }
 
-  /** Scrap the machine (the table only) and leave; the server frees the table. */
-  private scrap() {
+  /** Scrap the machine (the table only, from its menu) and leave; the server frees the table. */
+  scrap() {
     const site = this.site;
     if (!site?.scrap || this.phase !== 'work') return;
     if (!site.scrap()) {
@@ -1011,15 +998,6 @@ export class TeardownView {
     // the band of the sheen: 0..1 while it runs, its place along its way (m from the eye)
     const sheenQ = (this.pulse % SHEEN_EVERY) / SHEEN_LEN;
     setSheen(sheenQ <= 1 ? -18 + 36 * sheenQ : -99);
-    if (site.movable && this.scrapHold > 0) {
-      // F held at the table: a long hold scraps the machine
-      this.scrapHold += dt;
-      if (this.scrapHold >= SCRAP_HOLD) {
-        this.scrapHold = 0;
-        this.scrap();
-        return;
-      }
-    }
     const working = true;
 
     // Mashing: the progress drains away between presses.
