@@ -297,17 +297,24 @@ def build(pose, rnd_seed=11):
     for j in range(16):
         a = 2 * PI * j / 16
         comb.mb.cyl(polar(a, 0.2, -0.09), polar(a, 0.31, -0.09), 0.012, 0.012, segs=6, mat='Brass')
-    comb.mb.cyl(polar(math.radians(70), 0.31, -0.25), polar(math.radians(70), 0.45, -0.25), 0.028, 0.028, segs=8, mat='Dark')
-    comb.mb.cyl(polar(math.radians(105), 0.31, -0.25), polar(math.radians(105), 0.45, -0.25), 0.028, 0.028, segs=8, mat='Dark')
+    for ph in (70, 105):
+        comb.mb.cyl(polar(math.radians(ph), 0.31, -0.25), polar(math.radians(ph), 0.45, -0.25), 0.045, 0.045, segs=12, mat='Dark')
+        comb.mb.cyl(polar(math.radians(ph), 0.40, -0.25), polar(math.radians(ph), 0.412, -0.25), 0.062, 0.062, segs=12, mat='Steel')  # the collar the screws are in
     comb.ring('bolt', 'flangeBolt', (0, 0, -0.09), (0, 0, 1), 0.30, 8, after=['compressor'])
     D = math.radians
-    comb.wire('igniterLead', [polar(D(70), 0.46, -0.25), polar(D(62), 0.46, -0.2), polar(D(40), 0.46, -0.14)], key='black', after=['flangeBolt'], r=0.016)
-    comb.wire('igniterLead', [polar(D(105), 0.46, -0.25), polar(D(95), 0.46, -0.2), polar(D(55), 0.46, -0.16)], key='black', after=['flangeBolt'], r=0.016)
+
+    def cable(a, na, b, nb, via=(), leg=0.06):
+        """The path of a cable between two points on surfaces, leaving and arriving along their normals (the connectors lie flat on them)."""
+        a, b = Vector(a), Vector(b)
+        return [a, a + Vector(na).normalized() * leg, *[Vector(v) for v in via], b + Vector(nb).normalized() * leg, b]
+
+    comb.wire('igniterLead', cable(polar(D(70), 0.45, -0.25), radial(D(70)), polar(D(105), 0.45, -0.25), radial(D(105)), via=[polar(D(88), 0.56, -0.25)]),
+              key='black', after=['flangeBolt'], r=0.018)
     comb.step('lift', 'coreLift', (0, 0.28, -0.10), (0, 1, 0), after=['igniterLead', 'flangeBolt'], need=3.5)
     comb.inside()
     for a in (0.0, 2.1, 4.2):
         comb.step('clip', 'manifoldClamp', polar(a, 0.315, -0.09), radial(a))
-    comb.ring('screw', 'padScrew', polar(math.radians(70), 0.455, -0.25), radial(math.radians(70)), 0.04, 2)
+    comb.ring('screw', 'padScrew', polar(math.radians(70), 0.412, -0.25), radial(math.radians(70)), 0.052, 2)
     comb.part('coil', polar(math.radians(70), 0.4, -0.25), (0, 0, 0), chance=0.8)
     comb.part('coil', polar(math.radians(105), 0.4, -0.25), (0, 0, 0), chance=0.6)
     comb.part('valve', polar(math.radians(88), 0.33, -0.12), (0, 0, 0), chance=0.7)
@@ -343,16 +350,17 @@ def build(pose, rnd_seed=11):
         a.ring('screw', 'endBellScrew', (sx * (0.2 + ln + 0.03), 0.435, z), (sx, 0, 0), r * 0.45, n, phase=0.3)
 
     cb, ca = ['corecowl_b'], ['corecowl_a']
-    st = accessory('starter', 0.85, +1, 0.40, 0.07, 0.30, 0.25, 'Orange', cb)
+    st = accessory('starter', 0.85, +1, 0.40, 0.07, 0.30, 0.0, 'Orange', cb)
     cl = st.step('clip', 'vClamp', (0.215, 0.435 + 0.075, 0.40), (0, 1, 0), after=cb)
-    st.wire('harness', [(0.535, 0.435, 0.40), (0.60, 0.47, 0.40), (0.60, 0.58, 0.38), (0.45, 0.64, 0.36), (0.2, 0.60, 0.34), (0.1, 0.57, 0.32)], key='black', after=[cl], r=0.022)
+    st.wire('harness', cable((0.53, 0.435, 0.40), (1, 0, 0), (0.07, 0.52, 0.32), (0, 1, 0), via=[(0.64, 0.50, 0.39), (0.55, 0.62, 0.36), (0.3, 0.66, 0.34)]),
+            key='black', after=[cl], r=0.024)
     end_bell(st, 1, 0.40, 0.07, 0.30)
     st.part('motor', (0.38, 0.435, 0.40), (0, 0, -PI / 2), chance=0.9)
 
-    ge = accessory('generator', 0.85, +1, 0.20, 0.105, 0.30, 0.15, 'Steel', cb)
+    ge = accessory('generator', 0.85, +1, 0.20, 0.105, 0.30, 0.0, 'Steel', cb)
     gb = ge.ring('bolt', 'padBolt', (0.22, 0.435, 0.20), (1, 0, 0), 0.115, 4, phase=0.78, after=cb)
-    ge.wire('harness', [(0.535, 0.435, 0.20), (0.60, 0.47, 0.20), (0.60, 0.60, 0.20), (0.45, 0.66, 0.20), (0.2, 0.62, 0.18), (0.1, 0.57, 0.18)], key='black', after=gb, r=0.024)
-    ge.wire('harness', [(0.535, 0.40, 0.15), (0.62, 0.43, 0.15), (0.62, 0.56, 0.14), (0.45, 0.63, 0.13), (0.2, 0.60, 0.12), (0.12, 0.57, 0.12)], key='red', after=gb, r=0.02)
+    ge.wire('harness', cable((0.53, 0.435, 0.20), (1, 0, 0), (0.07, 0.52, 0.17), (0, 1, 0), via=[(0.64, 0.50, 0.20), (0.55, 0.62, 0.18), (0.3, 0.64, 0.17)]),
+            key='black', after=gb, r=0.026)
     end_bell(ge, 1, 0.20, 0.105, 0.30, 4)
     ge.part('motor', (0.40, 0.435, 0.20), (0, 0, -PI / 2), chance=0.8)
     ge.part('coil', (0.36, 0.52, 0.20), (0, 0, 0), chance=0.7)
@@ -362,18 +370,19 @@ def build(pose, rnd_seed=11):
     end_bell(pm, 1, 0.0, 0.05, 0.20, 2)
     pm.part('coil', (0.32, 0.435, 0.0), (0, 0, -PI / 2), chance=0.8)
 
-    hy = accessory('hydpump', 0.7, -1, 0.40, 0.075, 0.28, 0.2, 'Steel', ca)
+    hy = accessory('hydpump', 0.7, -1, 0.40, 0.075, 0.28, 0.0, 'Steel', ca)
     hb = hy.ring('bolt', 'padBolt', (-0.215, 0.435, 0.40), (-1, 0, 0), 0.085, 4, phase=0.78, after=ca)
-    hy.wire('hoseFitting', [(-0.51, 0.435, 0.40), (-0.58, 0.38, 0.40), (-0.52, 0.28, 0.37), (-0.37, 0.22, 0.33)], key='black', after=hb, r=0.028)
+    hy.wire('hoseFitting', cable((-0.51, 0.435, 0.40), (-1, 0, 0), (-0.07, 0.52, 0.36), (0, 1, 0), via=[(-0.62, 0.50, 0.39), (-0.52, 0.62, 0.37), (-0.3, 0.65, 0.36)]),
+            key='black', after=hb, r=0.028)
     end_bell(hy, -1, 0.40, 0.075, 0.28)
     hy.part('valve', (-0.36, 0.435, 0.40), (0, 0, PI / 2), chance=0.8)
 
     fp = m.module('fuelpump', 0.75, pop=(-1, 0.5, 0))
-    fp.place(around((-0.2, 0.435, 0.20), (0, 0, 1), 0.18))
     fp.mb.box((-0.34, 0.435, 0.20), (0.26, 0.15, 0.15), 'Steel')
     fp.mb.cyl((-0.34, 0.435, 0.20), (-0.34, 0.55, 0.20), 0.05, 0.05, segs=10, mat='Brass')
     fb_ = fp.ring('bolt', 'padBolt', (-0.215, 0.435, 0.20), (-1, 0, 0), 0.075, 4, phase=0.78, after=ca)
-    fp.wire('harness', [(-0.47, 0.50, 0.20), (-0.55, 0.58, 0.20), (-0.45, 0.65, 0.20), (-0.2, 0.62, 0.17), (-0.1, 0.57, 0.18)], key='black', after=fb_, r=0.022)
+    fp.wire('harness', cable((-0.47, 0.435, 0.20), (-1, 0, 0), (-0.07, 0.52, 0.20), (0, 1, 0), via=[(-0.58, 0.50, 0.20), (-0.5, 0.62, 0.20), (-0.3, 0.64, 0.20)]),
+            key='black', after=fb_, r=0.024)
     fp.inside()
     fp.ring('screw', 'endBellScrew', (-0.34, 0.435, 0.275), (0, 0, 1), 0.06, 3, phase=0.3)
     fp.part('valve', (-0.34, 0.435, 0.20), (0, 0, PI / 2), chance=0.85)
@@ -394,40 +403,42 @@ def build(pose, rnd_seed=11):
 
     # --- FADEC (on the fan case, left), oil cooler (right, under the cowl that is still on), oil tank
     fd = m.module('fadec', 0.85, pop=(-1, 0.3, 0))
-    pos = polar(math.radians(262), 0.835, 0.82)
-    fd.mb.push(kit.aim(pos, radial(math.radians(262))))
-    fd.mb.box((0, 0, 0.04), (0.42, 0.28, 0.08), 'Steel')
-    fd.mb.box((0.13, 0.0, 0.1), (0.1, 0.16, 0.05), 'Dark')
+    pos = polar(math.radians(262), 0.80, 0.78)  # (the fan case's own surface)
+    fm = kit.aim(pos, radial(math.radians(262)))  # local x runs along the engine (rearward is -x), z out of the case
+    fd.mb.push(fm)
+    fd.mb.box((0, 0, 0.04), (0.30, 0.28, 0.08), 'Steel')
+    fd.mb.box((0.07, 0.0, 0.1), (0.1, 0.16, 0.05), 'Dark')
     fd.mb.pop()
     fd.ring('screw', 'mountScrew', pos + radial(math.radians(262)) * 0.085, radial(math.radians(262)), 0.17, 4, phase=0.78, after=['fancowl_a'])
     fd.step('clip', 'connectorLatch', pos + radial(math.radians(262)) * 0.14, radial(math.radians(262)), after=['fancowl_a'])
-    fd.wire('harness', [pos + radial(D(262)) * 0.12, polar(D(262), 0.875, 0.74), polar(D(285), 0.875, 0.64), polar(D(315), 0.875, 0.6), polar(D(345), 0.875, 0.6)],
-            key='black', after=['connectorLatch'], r=0.024)
+    fd.wire('harness', cable(fm @ Vector((-0.15, 0, 0.04)), fm.to_3x3() @ Vector((-1, 0, 0)), polar(D(300), 0.80, 0.58), radial(D(300)),
+                             via=[polar(D(275), 0.865, 0.57), polar(D(290), 0.865, 0.575)], leg=0.05), key='black', after=['connectorLatch'], r=0.026)
     fd.inside()
     fd.ring('screw', 'coverScrew', pos + radial(math.radians(262)) * 0.09, radial(math.radians(262)), 0.15, 4, phase=0.2)
     fd.part('compute', pos + radial(math.radians(262)) * 0.06, (0, 0, 0), chance=0.9)
 
     oc = m.module('oilcooler', 0.6, pop=(1, 0.5, 0.2))
-    pos = polar(math.radians(115), 0.835, 0.72)
-    oc.mb.push(kit.aim(pos, radial(math.radians(115))))
-    oc.mb.box((0, 0, 0.05), (0.32, 0.2, 0.1), 'Copper')
-    for j in range(8):
-        oc.mb.box((-0.14 + j * 0.04, 0, 0.11), (0.012, 0.18, 0.03), 'Steel')
+    pos = polar(math.radians(115), 0.80, 0.72)
+    om = kit.aim(pos, radial(math.radians(115)))
+    oc.mb.push(om)
+    oc.mb.box((0, 0, 0.05), (0.24, 0.2, 0.1), 'Copper')
+    for j in range(6):
+        oc.mb.box((-0.1 + j * 0.04, 0, 0.11), (0.012, 0.18, 0.03), 'Steel')
     oc.mb.pop()
     oc.row('bolt', 'coolerBolt', pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, -0.1)), pos + radial(math.radians(115)) * 0.1 + Vector((0, 0, 0.1)), 2,
            radial(math.radians(115)), after=['fancowl_b'])
-    oc.wire('hoseFitting', [pos + radial(D(115)) * 0.12, polar(D(110), 0.875, 0.82), polar(D(88), 0.875, 0.86), polar(D(64), 0.875, 0.82)],
-            key='black', after=['coolerBolt'], r=0.028)
+    oc.wire('hoseFitting', cable(om @ Vector((-0.12, 0, 0.05)), om.to_3x3() @ Vector((-1, 0, 0)), polar(D(140), 0.80, 0.56), radial(D(140)),
+                                 via=[polar(D(122), 0.865, 0.553)], leg=0.05), key='black', after=['coolerBolt'], r=0.028)
     oc.inside()
     oc.ring('screw', 'coverScrew', pos + radial(math.radians(115)) * 0.12, radial(math.radians(115)), 0.1, 4, phase=0.78)
     oc.part('heatsink', pos + radial(math.radians(115)) * 0.07, (0, 0, 0), chance=0.9)
 
     tk = m.module('tank', 0.55, pop=(0.2, 1, 0))
-    pos = polar(math.radians(60), 0.84, 0.78)
-    tk.mb.cyl(pos + Vector((0, 0, -0.2)), pos + Vector((0, 0, 0.2)), 0.1, 0.1, segs=14, mat='Paint')
-    tk.mb.cyl(pos + Vector((0, 0.0, -0.2)), pos + Vector((0, 0, -0.22)), 0.12, 0.12, segs=14, mat='Dark')
-    tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.1 + Vector((0, 0, -0.1)), radial(math.radians(60)), after=['fancowl_b'])
-    tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.1 + Vector((0, 0, 0.1)), radial(math.radians(60)), after=['fancowl_b'])
+    pos = polar(math.radians(60), 0.85, 0.78)
+    tk.mb.cyl(pos + Vector((0, 0, -0.2)), pos + Vector((0, 0, 0.2)), 0.05, 0.05, segs=14, mat='Paint')
+    tk.mb.cyl(pos + Vector((0, 0.0, -0.2)), pos + Vector((0, 0, -0.22)), 0.06, 0.06, segs=14, mat='Dark')
+    tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.05 + Vector((0, 0, -0.1)), radial(math.radians(60)), after=['fancowl_b'])
+    tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.05 + Vector((0, 0, 0.1)), radial(math.radians(60)), after=['fancowl_b'])
 
     # what the players bump into: cylinders along the axis, there while a shell, rotor or accessory of theirs is on (the structure
     # always is); the whole machine is solid within these, as it stands in the sand
