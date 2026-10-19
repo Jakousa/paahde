@@ -62,7 +62,7 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
 
   const byId = new Map<string, Step>();
   const ofModule = new Map<string, Step[]>();
-  const pieces: { piece: Piece; group: THREE.Group; frame: THREE.Group; id: string }[] = [];
+  const pieces: { piece: Piece; group: THREE.Group; frame: THREE.Group; id: string; shiny: Step[] }[] = [];
   const labels = TEXT.steps as Record<string, string>;
   let lying = 0;
 
@@ -124,7 +124,7 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
         frame.add(s.obj);
       }
     }
-    pieces.push({ piece, group, frame, id: mod.id });
+    pieces.push({ piece, group, frame, id: mod.id, shiny: [...outer, ...inner].filter((s) => s.kind === 'lift' || s.kind === 'mash') });
 
     for (const p of parts) {
       const innerPart = !!p.at.inner && inner.length > 0;
@@ -150,11 +150,24 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
         shell.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
         kit.g.add(shell);
       }
-      for (const { piece, group, frame, id } of pieces) {
+      for (const { piece, group, frame, id, shiny } of pieces) {
         const n = nodes.get(`Mod_${id}`);
         if (!n) continue;
         const mesh = n.clone(true);
         mesh.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+        // a part that is pulled or prised takes the shimmer itself: it gets materials of its own
+        if (shiny.length) {
+          const own: THREE.MeshStandardNodeMaterial[] = [];
+          mesh.traverse((o) => {
+            const m = o as THREE.Mesh;
+            if (m.isMesh && m.material instanceof THREE.MeshStandardNodeMaterial) {
+              const c = m.material.clone() as THREE.MeshStandardNodeMaterial;
+              m.material = c;
+              own.push(c);
+            }
+          });
+          for (const s of shiny) s.shine.push(...own);
+        }
         const box = new THREE.Box3().setFromObject(mesh);
         if (box.isEmpty()) continue;
         frame.add(mesh);

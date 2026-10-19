@@ -47,8 +47,11 @@ export interface Step {
   seam?: { curve: THREE.CatmullRomCurve3; bead: THREE.Object3D };
   /** Pulls: the thing that slides apart as it is held (a module of the machine), and how far (m) along `dir`. */
   slide?: { obj: THREE.Object3D; dir: THREE.Vector3; dist: number; offset: THREE.Vector3 };
-  /** A small glint on the fastener while it can be worked, there with the big indicators off too. */
-  glint: THREE.Mesh;
+  /** The step's own parts' materials: they take a faint enchanted shimmer while it can be worked (there with the big indicators
+   *  off too). A pull or a prised shell adds its module's materials once the model has arrived. */
+  shine: THREE.MeshStandardNodeMaterial[];
+  /** Seams: a faint line along the seam that does the same. */
+  glint?: THREE.Mesh;
   /** Height of `obj`'s origin above the ground once it has fallen (before the machine's scale). */
   floorY: number;
   mat?: THREE.MeshStandardNodeMaterial;
@@ -218,7 +221,6 @@ const MARKER_TOP_HOT_MAT = new THREE.MeshBasicNodeMaterial({ color: 0xffffff, de
 // arrows rising for lifts (one per player needed).
 
 const BEAD_GEO = new THREE.SphereGeometry(0.03, 8, 6);
-const GLINT_GEO = new THREE.SphereGeometry(0.035, 8, 6);
 const ARC_GEO = new THREE.TorusGeometry(0.13, 0.014, 6, 24, Math.PI * 1.5);
 const HEAD_GEO = new THREE.ConeGeometry(0.045, 0.1, 8).rotateZ(-Math.PI / 2).translate(0, -0.13, 0);
 const SHAFT_GEO = new THREE.BoxGeometry(0.2, 0.014, 0.014);
@@ -465,6 +467,15 @@ export class Kit {
   // -- steps ------------------------------------------------------------------------------------------------
   private reg(kind: StepKind, label: string, g: THREE.Group, spin: THREE.Object3D, hitGeo: THREE.BufferGeometry, need: number,
     after: Step[], floorY: number, mat?: THREE.MeshStandardNodeMaterial, players = 1): Step {
+    // what the step is made of takes the shimmer: its own copies of the materials
+    const shine: THREE.MeshStandardNodeMaterial[] = [];
+    g.traverse((o) => {
+      const m = o as THREE.Mesh;
+      const mt = m.isMesh ? (m.material as THREE.MeshStandardNodeMaterial) : null;
+      if (!mt || !mt.emissive) return;
+      if (mt !== mat) m.material = mt.clone();
+      shine.push(m.material as THREE.MeshStandardNodeMaterial);
+    });
     const hit = new THREE.Mesh(hitGeo, HIT_MAT);
     hit.visible = false; // never drawn, but still hit by the pointer ray
     hit.position.y = 0.05;
@@ -473,13 +484,7 @@ export class Kit {
     marker.position.y = kind === 'lift' ? 0.2 : 0.1;
     marker.visible = false;
     g.add(marker);
-    const glint = new THREE.Mesh(GLINT_GEO, new THREE.MeshBasicNodeMaterial({ color: 0xffe2b0, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
-    glint.position.y = 0.09;
-    glint.visible = false;
-    glint.raycast = () => {}; // never a click target
-    glint.userData.ignoreBounds = true;
-    g.add(glint);
-    const step: Step = { kind, label, need, players, progress: 0, done: false, after, obj: g, spin, hit, marker, glint, floorY: floorY * this.fs, mat };
+    const step: Step = { kind, label, need, players, progress: 0, done: false, after, obj: g, spin, hit, marker, shine, floorY: floorY * this.fs, mat };
     hit.userData.target = { type: 'step', step } satisfies Target;
     this.g.add(g);
     this.steps.push(step);
@@ -579,6 +584,12 @@ export class Kit {
     bead.visible = false;
     spin.add(bead);
     step.seam = { curve, bead };
+    const glint = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.009, 5), new THREE.MeshBasicNodeMaterial({ color: 0x8fdcff, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
+    glint.visible = false;
+    glint.raycast = () => {};
+    glint.userData.ignoreBounds = true;
+    g.add(glint);
+    step.glint = glint;
     return step;
   }
   /** A part that pulls apart: no eye or ring, just the indicator on the part itself, and while it is held `slide.obj`

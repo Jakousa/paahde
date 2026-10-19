@@ -1,5 +1,5 @@
 // Disassembly settings (the Esc menu): whether the big indicators show on every step that can be worked now. The small
-// glint on a workable fastener is always there.
+// shimmer on a workable part is always there.
 const KEY = 'dadajam.tdMarkers';
 
 export const tdPrefs = { markers: true };

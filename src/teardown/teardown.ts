@@ -894,11 +894,18 @@ export class TeardownView {
       // the big indicator (a setting) on every ready step, or just on what the crosshair is on; the glint is always there
       s.marker.visible = !s.done && (tdPrefs.markers ? ready || lit : lit);
       if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);
-      s.glint.visible = ready && !lit && !s.marker.visible;
-      if (s.glint.visible) {
-        const k = 0.55 + 0.45 * Math.sin(this.pulse * 3.2 + s.obj.position.x * 7 + s.obj.position.z * 5);
-        s.glint.scale.setScalar(0.6 + 0.8 * k);
-        (s.glint.material as THREE.MeshBasicNodeMaterial).opacity = 0.25 + 0.5 * k;
+      // the enchanted look: the step's own parts take a faint cool tint that slowly shifts, the way a glint runs over an item
+      const calm = ready && !lit && !s.marker.visible;
+      const k = 0.5 + 0.5 * Math.sin(this.pulse * 1.9 + s.obj.position.x * 3 + s.obj.position.z * 2.3 + s.obj.position.y * 1.7);
+      for (const m of s.shine) {
+        if (calm && (s.kind !== 'wire' || s.progress === 0)) {
+          m.emissive.setHex(0x7fd0ff);
+          m.emissiveIntensity = 0.04 + 0.16 * k * k;
+        } else if (m.emissiveIntensity && (s.kind !== 'wire' || s.progress === 0)) m.emissiveIntensity = 0;
+      }
+      if (s.glint) {
+        s.glint.visible = calm;
+        (s.glint.material as THREE.MeshBasicNodeMaterial).opacity = 0.12 + 0.28 * k;
       }
     }
     // Cables that are being shaken, or have an end off, move.
