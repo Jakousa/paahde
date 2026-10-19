@@ -1709,3 +1709,9 @@ The first harvester read as a tank with a turret; it's now a pure juggernaut, an
   stays continuous for everyone), curving towards them on a radius of 70 m or more, straight on once it's within 25 m,
   then wandering on; where the way isn't clear (rock, the base, shelters) it stops turning there. Its lamps are red.
   A wreck sends up a tall plume of smoke off its back (`zaps.plume`: long-lived, fast-rising puffs), seen from 3 km.
+- **Mud flats only:** harvesters live on the mud flats (shared/biomes.ts `mudflat`). One is only sent when a player is
+  out within reach of a flat: it rises out of the mud (nose first, from 21 m down, over its first 26 m of route, in a
+  ring of dust) 150–900 m from them, at a spot at least 0.9 flat, and its route keeps to ground at least 0.6 flat, so
+  routes are as long as the flat lets them be (up to 3 km); where it runs out it sinks back in the same way. Charging,
+  it won't steer off the flat either: get off the mud and it can't follow. With nobody near a flat it looks again
+  every 30 s. F3 *Harvester here*: the nearest flat within 3 km.

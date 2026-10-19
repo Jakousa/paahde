@@ -12,6 +12,8 @@
 // to a target speed and holding it (paceAt); the server starts a new one when it speeds up or slows down.
 // Drawn by src/world/harvesters.ts (model tools/blender/harvester.py), heard via src/harvesterSound.ts.
 //
+// It lives in the mud flats: it rises out of the mud where its route starts and sinks back in where it ends (RISE).
+//
 // Its pose: the front and rear axles ride the route WHEELBASE / 2 ahead of and behind the distance it has come, the
 // hull between them (so it cuts its corners like a real tracked vehicle), sitting on the four track units' sand.
 
@@ -87,9 +89,17 @@ export type HarvesterPose = {
   v: number;
   /** 0 crawling, 1 a wreck. */
   state: number;
+  /** How far down in the mud it is (0 up on it .. 1 under it): rising out at its route's start, sinking at its end. */
+  sunk: number;
 };
 
-export const harvesterPose = (): HarvesterPose => ({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, s: 0, v: 0, state: 0 });
+export const harvesterPose = (): HarvesterPose => ({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, s: 0, v: 0, state: 0, sunk: 0 });
+
+/** It lives in the mud flats (server/harvesters.ts): over the first RISE m of its route it rises out of the mud, nose
+ *  first, from BURY m down (a little over its height), and over the last RISE m it sinks back in, nose first. */
+export const RISE = 26;
+export const BURY = 21;
+const RISE_TILT = 0.22;
 
 /** Route length (m). */
 export const routeLength = (pts: number[]) => {
@@ -167,7 +177,8 @@ export function harvesterAt(h: Harvester, t: number, out: HarvesterPose): boolea
   if (t < h.start || (h.end && t > h.end)) return false;
   const pv = paceAt(h.pace, h.down ? Math.min(t, h.down.at) : t);
   const s = pv.s;
-  if (s > cumulative(h.pts)[h.pts.length / 2 - 1]) return false;
+  const len = cumulative(h.pts)[h.pts.length / 2 - 1];
+  if (s > len) return false;
   along(h.pts, s + WHEELBASE / 2, _f);
   along(h.pts, s - WHEELBASE / 2, _r);
   const yaw = Math.atan2(_f.x - _r.x, _f.z - _r.z);
@@ -178,9 +189,12 @@ export function harvesterAt(h: Harvester, t: number, out: HarvesterPose): boolea
   const rl = trackGround(_r.x + sx, _r.z + sz, fx, fz), rr = trackGround(_r.x - sx, _r.z - sz, fx, fz);
   out.x = (_f.x + _r.x) / 2;
   out.z = (_f.z + _r.z) / 2;
-  out.y = (fl + fr + rl + rr) / 4;
+  // Rising out of the mud or sinking back in (smoothstep in, smoothstep out), nose up coming out, down going in.
+  const k = Math.max(0, Math.min(1, Math.min(s, len - s) / RISE)), up = k * k * (3 - 2 * k);
+  out.sunk = 1 - up;
+  out.y = (fl + fr + rl + rr) / 4 - BURY * out.sunk;
   out.yaw = yaw;
-  out.pitch = Math.atan2((fl + fr - rl - rr) / 2, WHEELBASE);
+  out.pitch = Math.atan2((fl + fr - rl - rr) / 2, WHEELBASE) + (s < len / 2 ? 1 : -1) * RISE_TILT * Math.sin(Math.PI * out.sunk);
   out.roll = Math.atan2((fl + rl - fr - rr) / 2, TRACK);
   out.s = s;
   out.v = h.down && t >= h.down.at ? 0 : pv.v;

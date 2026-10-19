@@ -1,5 +1,6 @@
-// Server side of the harvester (shared/harvester.ts): now and then one sets off on a long route over the dunes that
-// passes some way from a random player, steering round rock, the base, shelters and crash sites. Its list goes out to
+// Server side of the harvester (shared/harvester.ts): the mud flats (shared/biomes.ts) are its ground. Now and then,
+// when a player is out near one, a harvester rises out of the mud of a flat some way from them and crawls a route that
+// keeps to the flat (steering round rock, the base, shelters and crash sites too), sinking back where it runs out. Its list goes out to
 // everyone whenever it changes (a new one, a change of pace, a core shot out, its death). Ticked with the bots: it
 // runs over whoever is under it, charges whoever it sees ahead (inSight: a new stretch of pace up to CHARGE, back down
 // to SPEED once it has seen no one for CALM_MS), steering at the nearest of them as it does (the route ahead of its
@@ -15,19 +16,26 @@ import { rocksNear } from '../shared/rocks.ts';
 import { overBase } from '../shared/base.ts';
 import { nearShelter, indoors } from '../shared/shelters.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
+import { mudflat } from '../shared/biomes.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { seized, type Storm } from '../shared/storm.ts';
 
-/** Time between one harvester setting off and the next being sent (ms); the first comes sooner. */
+/** Time between one harvester setting off and the next being sent (ms); the first comes sooner. With no one out near
+ *  a mud flat, it looks again after RETRY_MS. */
 const GAP_MIN_MS = 4 * 60_000;
 const GAP_MAX_MS = 10 * 60_000;
+const RETRY_MS = 30_000;
 const MAX_OUT = 2;
-/** Its route passes this near (m) the player it was picked for, after this much route (m) to get there, and goes on
- *  for AFTER m. */
-const PASS_MIN = 160;
-const PASS_MAX = 420;
-const BEFORE = 1500;
-const AFTER = 2600;
+/** It rises out of the mud this far (m) from the player it was sent for (debug: as near as it can, out to DEBUG_R),
+ *  on a route up to ROUTE_LEN m long, at least ROUTE_MIN. */
+const RISE_MIN = 150;
+const RISE_MAX = 900;
+const DEBUG_R = 3000;
+const ROUTE_LEN = 3000;
+const ROUTE_MIN = 300;
+/** How much mud flat (shared/biomes.ts mudflat) its ground needs: where it rises, and along its way. */
+const MUD_RISE = 0.9;
+const MUD_ROAM = 0.6;
 /** The route's heading changes by at most this much per STEP (rad); it looks this far ahead (m) for trouble. */
 const TURN = 0.09;
 const LOOK = 70;
@@ -51,7 +59,7 @@ const TURN_R = 70;
 const STEER_LEN = 260;
 const REACHED = 25;
 const STEER_ON = 1500;
-const STEER_MIN = 600;
+const STEER_MIN = 200;
 /** Seized up by a storm front (shared/storm.ts seized): it brakes to a stop at this (m/s²). */
 const SEIZE_BRAKE = 3;
 
@@ -60,9 +68,9 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
-/** Clear ground for its footprint at (x, z): sand, not too steep, away from what it mustn't crush. */
+/** Clear ground for its footprint at (x, z): out on a mud flat, not too steep, away from what it mustn't crush. */
 function clear(x: number, z: number): boolean {
-  if (overBase(x, z, 140) || nearShelter(x, z, 45) || rocksNear(x, z, 16)) return false;
+  if (mudflat(x, z) < MUD_ROAM || overBase(x, z, 140) || nearShelter(x, z, 45) || rocksNear(x, z, 16)) return false;
   for (const s of crashSitesNear(x, z, 260)) if (Math.hypot(s.x - x, s.z - z) < s.radius + 30) return false;
   const dx = baseHeight(x + 4, z) - baseHeight(x - 4, z), dz = baseHeight(x, z + 4) - baseHeight(x, z - 4);
   return Math.hypot(dx, dz) < SLOPE;
@@ -100,15 +108,6 @@ function wander(x: number, z: number, yaw: number, len: number): number[] {
   return pts;
 }
 
-/** A route through (x, z) heading `yaw`: `before` m leading up to it, `after` m on. Null if it can't get far enough. */
-function route(x: number, z: number, yaw: number, before: number, after: number): number[] | null {
-  if (!clear(x, z)) return null;
-  const on = wander(x, z, yaw, after), back = wander(x, z, yaw + Math.PI, before);
-  if (routeLength(on) < after * 0.5 || routeLength(back) < before * 0.5) return null;
-  const pts: number[] = [];
-  for (let i = back.length - 2; i >= 2; i -= 2) pts.push(back[i], back[i + 1]);
-  return pts.concat(on);
-}
 
 type Brain = {
   /** Last saw someone in its lane (server ms). */
@@ -142,17 +141,16 @@ export class HarvesterServer {
     this.nextAt = now + rand(60_000, 4 * 60_000);
   }
 
-  /** Set one off past (x, z) at server time `now`. `soon` (debug): it passes 50 m away (more if that's no good), with
-   *  only 160 m to go. */
+  /** Raise one out of a mud flat RISE_MIN..RISE_MAX m from (x, z) at server time `now` (false: no flat there, or no
+   *  way across it). `soon` (debug): the nearest spot it can, out to DEBUG_R. */
   spawn(x: number, z: number, now: number, soon = false): boolean {
-    for (let i = 0; i < 40; i++) {
-      // Debug: as near as it can, further out each try (not over the base).
-      const a = rand(-Math.PI, Math.PI), d = soon ? 50 + i * 8 : rand(PASS_MIN, PASS_MAX);
+    const tries = soon ? 120 : 60;
+    for (let i = 0; i < tries; i++) {
+      const a = rand(-Math.PI, Math.PI), d = soon ? 60 + (i / tries) * DEBUG_R : rand(RISE_MIN, RISE_MAX);
       const px = x + Math.sin(a) * d, pz = z + Math.cos(a) * d;
-      // Heading across the line to the player, either way, give or take.
-      const yaw = a + (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2 + rand(-0.5, 0.5);
-      const pts = route(px, pz, yaw, soon ? 160 : BEFORE, AFTER);
-      if (!pts) continue;
+      if (mudflat(px, pz) < MUD_RISE || !clear(px, pz)) continue;
+      const pts = wander(px, pz, rand(-Math.PI, Math.PI), ROUTE_LEN);
+      if (routeLength(pts) < ROUTE_MIN) continue;
       const id = this.nextId++, start = Math.round(now);
       this.harvesters.push({ id, pts, pace: [{ t: start, s: 0, v: SPEED, a: 0, to: SPEED }], start, end: 0, cores: CORES.map(() => 0), charging: false });
       this.brains.set(id, { aheadAt: 0, furrowS: 0, stuck: false, steerAt: 0 });
@@ -173,10 +171,9 @@ export class HarvesterServer {
       this.changed = true;
     }
     const exposed = players.filter((p) => !p.safe && !indoors(p.x, p.y, p.z));
-    if (now >= this.nextAt) {
-      this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS);
+    if (now >= this.nextAt && this.harvesters.length < MAX_OUT) {
       const p = exposed[Math.floor(Math.random() * exposed.length)];
-      if (p && this.harvesters.length < MAX_OUT) this.spawn(p.x, p.z, now);
+      this.nextAt = now + (p && this.spawn(p.x, p.z, now) ? rand(GAP_MIN_MS, GAP_MAX_MS) : RETRY_MS);
     }
     for (const h of this.harvesters) {
       const b = this.brains.get(h.id)!;

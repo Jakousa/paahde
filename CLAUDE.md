@@ -73,7 +73,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts` (`jets`); model `tools/blender/machines/plane.py`. Down, it comes apart on impact (`shared/jetbreak.ts`: each piece of `shared/jetpieces.ts` flies, tumbles, bounces and settles on the sand, splashing it; deterministic,
   so the server and every client run the same), and when they lie still a permanent crash site is made (`shared/jetcrash.ts`, `server/jetcrash.ts`, in the world's DB, pieces solid via
   their own capsules): each engine (80% tear off, 30% of those are wrecked in the landing) is a `jet:<n>:<k>` machine to take apart (the turbofan; jet engines hardly lie anywhere else)
-- `shared/harvester.ts` — the harvester: a building-sized tracked monolith crawling a long route over the dunes (pose is
+- `shared/harvester.ts` — the harvester: a building-sized tracked monolith of the mud flats, rising out of the mud and
+  crawling a route that keeps to the flat (pose is
   math on the route, its pace stretches and the server clock); ignores everyone but whoever it sees ahead (a wedge),
   whom it turns towards, charges and runs over; killed only by shooting the three cores in its maw; brain `server/harvesters.ts`, view
   `src/world/harvesters.ts`, sound `src/harvesterSound.ts`, model `tools/blender/harvester.py`, spoils

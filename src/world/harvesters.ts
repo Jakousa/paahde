@@ -3,11 +3,12 @@
 // their loops (an instanced track shoe), the cutter drum in its maw turns and throws up sand (a storm of it when it
 // charges), the exhausts on its back smoke and the slot in its stern spills sifted sand. The three intake cores in
 // its throat glow, flicker as they're hit and go dark once shot out, pouring smoke; with the last it seizes, burning
-// (onDeath), a huge plume of smoke towering off its back for as long as the wreck lies there. The rifle tests shots against it (raycast).
+// (onDeath), a huge plume of smoke towering off its back for as long as the wreck lies there. It heaves up out of the mud in a ring of dust and sinks back
+// the same way. The rifle tests shots against it (raycast).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-  CORE_HALF, CORE_HP, CORES, HALF_W, harvesterAt, harvesterPose, HULL_TOP, SHOW_R, SPEED, STERN, TRACK, TRACK_W,
+  BOW, BURY, CORE_HALF, CORE_HP, CORES, HALF_W, harvesterAt, harvesterPose, HULL_TOP, SHOW_R, SPEED, STERN, TRACK, TRACK_W,
   WHEELBASE, type Harvester, type HarvesterPose,
 } from '../../shared/harvester.ts';
 import { tyreDust } from '../tyreDust';
@@ -122,6 +123,7 @@ class View {
   dust = 0;
   smoke = 0;
   plume = 0;
+  mud = 0;
   private parts: Parts | null = null;
   private links: THREE.InstancedMesh | null = null;
   private coreMats: THREE.MeshStandardMaterial[] = [];
@@ -296,6 +298,15 @@ export class Harvesters {
   private effects(h: Harvester, v: View, p: HarvesterPose, dt: number) {
     // Faster, more dust and smoke (but not without end: it charges at ten times its crawl).
     const m = v.root.matrixWorld, fast = Math.min(4, Math.max(1, p.v / SPEED));
+    // Rising out of the mud or sinking into it: dust heaving up all round its edges, at the mud's level.
+    v.mud += dt * (p.sunk > 0.01 && p.sunk < 0.99 ? 40 : 0);
+    for (; v.mud >= 1; v.mud--) {
+      const side = Math.random() < 0.5, u = Math.random() * 2 - 1, sg = Math.random() < 0.5 ? -1 : 1;
+      const lx = side ? sg * (HALF_W + 1) : u * (HALF_W + 1), lz = side ? (STERN + BOW) / 2 + (u * (BOW - STERN)) / 2 : sg < 0 ? STERN - 1 : BOW + 1;
+      _v.set(lx, BURY * p.sunk, lz).applyMatrix4(m);
+      const ox = Math.sign(lx) * Math.random() * 2, oz = (side ? 0 : sg) * Math.random() * 2;
+      tyreDust.emit(_v.x, _v.y + 0.3, _v.z, ox, 1 + Math.random() * 4, oz, 2.5 + Math.random() * 3);
+    }
     v.dust += dt * (p.state ? 0 : 16 * fast);
     for (; v.dust >= 1; v.dust--) {
       _v.set((Math.random() - 0.5) * 18, DRUM.y - 1.2, DRUM.z + 1.4).applyMatrix4(m);
