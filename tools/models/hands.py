@@ -45,6 +45,8 @@
 # Jammer (src/models/jammer.ts, drawn by the game on the empty `JammerMount`, in the pistol's frame):
 #   JammerIdle / JammerWalk  low right in the right fist like the pistol, antenna on the crosshair
 #   JammerAim (0.27 s one-shot, scrubbed)  up in front at chest height, the left palm coming up under its body
+# Grinder (src/models/grinder.ts, drawn on the empty `GrinderMount`, in the pistol's frame but with its origin on the housing's axis):
+#   GrinderIdle / GrinderWalk  two-handed: the right fist round the motor housing, the left fist round the side handle
 # Hand tools (tools/models/handtools.py; nodes `Shovel`, `Detector`, `ScrapChunk` on the right hand, own atlases):
 #   ShovelIdle / ShovelWalk  carried in the right fist under the T grip, blade out ahead low in the view
 #   ShovelDig (1.2 s loop)  both hands: drive it in, lever, lift the scoop into view, flick it out to the left
@@ -1387,6 +1389,73 @@ print('WRIST jammer aim right', round(wrist_bend_of(ps, 'Right')), 'left', round
 for name, frames, fn in (('JammerIdle', 90, jammer_idle), ('JammerWalk', 22, jammer_walk)):
     S.clip(name, frames, fn)
 clip_once('JammerAim', 8, jammer_aim)  # 9 keys, 0.27 s
+
+# ============================================================================== grinder clips
+# The angle grinder (src/models/grinder.ts, three.js frame = the pistol's glTF frame; natural = (-x, z, y) of it). Held
+# the way a real one is: the RIGHT fist closed round the rear of the motor housing (the housing lies obliquely across the
+# palm, the forearm behind it and a little off its axis), the LEFT fist closed round the side handle that leans up and
+# to the left from the gear head. Origin = the right fist's centre on the housing axis (housing y -0.07..0.15, r 0.03).
+GR_R, GR_HR = 0.03, 0.013  # housing and side-handle radius
+GR_HANDLE_AT = V((0.0, 0.21, 0.028))  # where the handle leaves the head (natural)
+GR_HANDLE_DIR = V((-0.25, 0.0, 0.968)).normalized()  # natural: up and to the right in natural x (= left of the tool in three.js)
+GR_HOUSING_NAT = capsule_sdf(V((0, -0.07, 0)), V((0, 0.15, 0)), GR_R)
+GR_HANDLE_NAT = capsule_sdf(GR_HANDLE_AT + GR_HANDLE_DIR * 0.012, GR_HANDLE_AT + GR_HANDLE_DIR * 0.098, GR_HR)
+GR_SDF_NAT = (lambda a, b: lambda p: min(a(p), b(p)))(GR_HOUSING_NAT, GR_HANDLE_NAT)
+GR_GRIP_L = GR_HANDLE_AT + GR_HANDLE_DIR * 0.055  # the left fist
+GR_TIP = V((0, 0.28, 0))  # the front edge of the head: pointed at the crosshair
+
+
+def grinder_world(at, roll):
+    """Grinder (natural frame) at `at` in view space with its tip on the crosshair, like jammer_ready."""
+    T = V((0.02, 1.1, 0.0))  # a metre or so ahead, not the horizon: a grinder is held across the view, head toward the middle
+    w = rifle_world(at, roll=roll)
+    for _ in range(4):
+        d = (T - w @ GR_TIP).normalized()
+        w = rifle_world(at, math.degrees(math.atan2(-d.x, d.y)), math.degrees(math.asin(d.z)), roll)
+    return w
+
+
+GR_READY = grinder_world((0.12, 0.27, -0.15), 0)
+
+
+def gr_right(roll):
+    return bar_in_hand('Right', GR_HOUSING_NAT, (0, 1, 0), (0, 0, 1), roll, (0, 0, 0))
+
+
+def gr_left(roll):
+    return bar_in_hand('Left', GR_HANDLE_NAT, tuple(GR_HANDLE_DIR), (1, 0, 0), roll, tuple(GR_GRIP_L))
+
+
+GRR_ROLL = min(range(-180, 180, 15), key=lambda r: best_pole('Right', GR_READY @ gr_right(r)[0].inverted(), 0.75)[1])
+GR_HAND, GR_M = gr_right(GRR_ROLL)
+GRL_ROLL = min(range(-180, 180, 15), key=lambda r: best_pole('Left', GR_READY @ gr_left(r)[0].inverted(), L_TWIST)[1])
+GL_HAND, GL_M = gr_left(GRL_ROLL)
+print('GRINDER rolls right', GRR_ROLL, 'left', GRL_ROLL)
+GR_AXIS_R = (GR_M.to_3x3() @ V((0, 1, 0))).normalized()
+GL_AXIS_R = (GL_M.to_3x3() @ GR_HANDLE_DIR).normalized()
+GR_GRIP = grasp('Right', in_rest(GR_M, GR_SDF_NAT), wrap=GR_AXIS_R)
+GL_GRIP = grasp('Left', in_rest(GL_M, GR_SDF_NAT), wrap=GL_AXIS_R)
+GR_POLE = best_pole('Right', GR_READY @ GR_HAND.inverted(), 0.75)[0]
+GL_POLE = best_pole('Left', GR_READY @ GL_HAND.inverted(), L_TWIST)[0]
+
+
+def grinder_pose(gw, sway=None):
+    return held_pose([('Right', gw @ GR_HAND.inverted(), GR_POLE, 0.75, GR_GRIP),
+                      ('Left', gw @ GL_HAND.inverted(), GL_POLE, L_TWIST, GL_GRIP)], sway)
+
+
+def grinder_idle(p):
+    return grinder_pose(GR_READY, sway=idle_sway(p)), (0, 0, 0)
+
+
+def grinder_walk(p):
+    return grinder_pose(GR_READY, sway=walk_sway(p)), (0, 0, 0)
+
+
+ps = grinder_pose(GR_READY)
+print('WRIST grinder right', round(wrist_bend_of(ps, 'Right')), 'left', round(wrist_bend_of(ps, 'Left')))
+for name, frames, fn in (('GrinderIdle', 90, grinder_idle), ('GrinderWalk', 22, grinder_walk)):
+    S.clip(name, frames, fn)
 for pb in rig.pose.bones:
     pb.rotation_quaternion = Quaternion()
 
@@ -1465,6 +1534,11 @@ jmount = bpy.data.objects.new('JammerMount', None)
 bpy.context.scene.collection.objects.link(jmount)
 on_right_hand(jmount, J_HAND @ PS.FLIP)
 extra = [o for o, _, _, _ in tools] + [jmount]
+# where the grinder (src/models/grinder.ts, in the pistol's glTF frame) goes in the right hand
+gmount = bpy.data.objects.new('GrinderMount', None)
+bpy.context.scene.collection.objects.link(gmount)
+on_right_hand(gmount, GR_HAND @ PS.FLIP)
+extra.append(gmount)
 if FAST:  # a stand-in jammer from its boxes, to look at the grip
     jp = join([rounded_box('JammerProxy', c, sz, S.M['brass'], bevel=0.002, segments=1) for c, sz in (
         ((0, 0.035, 0.066), (0.048, 0.15, 0.044)), ((0, 0.045, 0.044), (0.05, 0.11, 0.008)),
@@ -1474,6 +1548,14 @@ if FAST:  # a stand-in jammer from its boxes, to look at the grip
     flat(jp, (0.3, 0.32, 0.18))
     on_right_hand(jp, J_HAND)
     extra.append(jp)
+if FAST:  # a stand-in grinder: housing, head, disc and handle
+    gp = join([cylinder('GrinderProxyBody', V((0, -0.07, 0)), V((0, 0.15, 0)), GR_R, S.M['brass']),
+               rounded_box('GrinderProxyHead', (0, 0.225, 0), (0.056, 0.07, 0.056), S.M['brass'], bevel=0.002, segments=1),
+               cylinder('GrinderProxyDisc', V((0.0, 0.225, 0)) + V((-0.045, 0, 0)) - V((0.002, 0, 0)), V((0.0, 0.225, 0)) + V((-0.045, 0, 0)) + V((0.002, 0, 0)), 0.056, S.M['brass']),
+               cylinder('GrinderProxyHandle', GR_HANDLE_AT, GR_HANDLE_AT + GR_HANDLE_DIR * 0.1, GR_HR, S.M['brass'])], 'GrinderProxy')
+    flat(gp, (0.2, 0.3, 0.55))
+    on_right_hand(gp, GR_HAND)
+    extra.append(gp)
 # marker nodes on the rifle (mesh frame = natural turned by FLIP; identity rotation, so their glTF +Z is
 # the bore direction, towards the muzzle)
 marks = []

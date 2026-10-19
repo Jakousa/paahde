@@ -157,13 +157,17 @@ export class ViewModel {
       j.scale.copy(mount.scale);
       j.traverse((o) => (o.frustumCulled = false));
       mount.parent.add(j);
+    }
+    // The grinder on its own mount (the right fist round its housing, the left on its handle), else on the jammer's.
+    const gmount = model.getObjectByName('GrinderMount') ?? mount;
+    if (gmount?.parent) {
       this.grinder = grinderModel();
       const gr = this.grinder.obj;
-      gr.position.copy(mount.position);
-      gr.quaternion.copy(mount.quaternion);
-      gr.scale.copy(mount.scale);
+      gr.position.copy(gmount.position);
+      gr.quaternion.copy(gmount.quaternion);
+      gr.scale.copy(gmount.scale);
       gr.traverse((o) => (o.frustumCulled = false));
-      mount.parent.add(gr);
+      gmount.parent.add(gr);
     }
     for (const gun of [this.rifle, this.pistol]) gun?.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -355,6 +359,9 @@ export class ViewModel {
         a.time = smooth(playerHands.aim) * a.getClip().duration * 0.999;
       } else if (moving) this.play((walk = this.has('RifleWalk') ? 'RifleWalk' : 'Walk'));
       else this.play(this.has('RifleIdle') ? 'RifleIdle' : 'Idle');
+    } else if (this.shown === 'grinder' && this.has('GrinderIdle')) {
+      // held in both hands the way a grinder is: the right fist round the housing, the left round the side handle
+      this.play(moving ? (walk = this.has('GrinderWalk') ? 'GrinderWalk' : 'GrinderIdle') : 'GrinderIdle');
     } else if (this.shown === 'pistol' || this.shown === 'jammer' || this.shown === 'receiver' || this.shown === 'grinder') {
       // The jammer has its own clips (two hands while jamming), the receiver is held with them; a model without them
       // falls back to the pistol's.

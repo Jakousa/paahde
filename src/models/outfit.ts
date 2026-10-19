@@ -108,7 +108,7 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
   // The grinder: held like the jammer.
   grinder: () => {
     const g = grinderModel().obj;
-    g.rotation.set(-0.45, Math.PI, 0);
+    g.rotation.set(0, Math.PI, 0);
     shadows(g);
     return g;
   },

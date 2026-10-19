@@ -36,7 +36,7 @@ for spec in A[2].split(','):
         if o.name.startswith('Telescope'): o.hide_render = not name.startswith('Telescope')
         if o.name.startswith('Rifle'): o.hide_render = not name.startswith('Rifle')
         if o.name.startswith('Pistol'): o.hide_render = not name.startswith('Pistol')
-        for prop, clips in (('Shovel', 'Shovel'), ('Detector', 'Detector'), ('ScrapChunk', 'Scrap'), ('JammerProxy', 'Jammer')):
+        for prop, clips in (('Shovel', 'Shovel'), ('Detector', 'Detector'), ('ScrapChunk', 'Scrap'), ('JammerProxy', 'Jammer'), ('GrinderProxy', 'Grinder')):
             if o.name.startswith(prop): o.hide_render = not name.startswith(clips)
     sc.frame_set(int(fr)); bpy.context.view_layer.update()
     h = hand_pos()

@@ -150,8 +150,6 @@ export class Grinder {
     const holding = can && playerHands.held === 'grinder' && !!document.pointerLockElement;
     const using = holding && actionHeld('use');
     playerHands.grind += ((using ? 1 : 0) - playerHands.grind) * Math.min(1, dt * 10);
-    // held out in front in both hands, the way a grinder is (the jammer's two-handed pose)
-    if (playerHands.held === 'grinder') playerHands.aim += ((can ? 1 : 0) - playerHands.aim) * Math.min(1, dt * 6);
     playerHands.grindAt = null;
     this.sparks.update(dt);
     if (!using) {
