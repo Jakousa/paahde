@@ -223,9 +223,9 @@ def build(pose, rnd_seed=11):
 
     FAN = [(0.90, 0.52), (0.925, 0.75), (0.915, 0.94)]
     skin('fancowl_a', 'fancowl_b', FAN, 0.014, 0.54, 0.92, (0.7, 0.7), 9, dents=(('a', 235, 0.1), ('b', 120, -0.1)))
-    REV = [(0.905, 0.50), (0.89, -0.05), (0.80, -0.62)]  # as wide as the fan cowl at the front, easing in toward the back
+    REV = [(0.905, 0.50), (0.86, -0.05), (0.70, -0.62)]  # as wide as the fan cowl at the front, easing in toward the back
     skin('reverser_a', 'reverser_b', REV, 0.014, -0.58, 0.46, (0.65, 0.65), 21, dents=(('b', 80, 0.0),))
-    CORE = [(0.86, 0.46), (0.84, 0.1), (0.77, -0.5), (0.70, -0.85)]
+    CORE = [(0.86, 0.46), (0.80, 0.1), (0.62, -0.5), (0.50, -0.85)]
     skin('corecowl_a', 'corecowl_b', CORE, 0.012, -0.8, 0.42, (0.6, 0.6), 31, after_a=['reverser_a'], after_b=['reverser_b'])
     # the core's own casing, hugging the rotors: swelling round the combustor, opening out round the turbine
     CASING = [(0.34, 0.46), (0.325, 0.20), (0.31, -0.08), (0.385, -0.10), (0.385, -0.40), (0.325, -0.44), (0.325, -0.58), (0.345, -0.68),
