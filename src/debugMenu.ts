@@ -23,7 +23,7 @@ export class DebugMenu {
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
   constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: () => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | BossKind) => void,
-    showTrophies: (mode: TrophyShow) => void, resetYard: (all: boolean) => void = () => {}, noHeat: (off: boolean) => void = () => {}) {
+    showTrophies: (mode: TrophyShow) => void, resetYard: (all: boolean) => void = () => {}, noHeat: (off: boolean) => void = () => {}, noWeather: (off: boolean) => void = () => {}) {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
@@ -61,6 +61,7 @@ export class DebugMenu {
 <div class="row">Give gear ${['Scrap', 'Basic', 'Quality', 'Space'].map((n, i) => `<button data-gear="${i}" title="One of every piece of gear, repaired with ${n} parts (what doesn't fit is skipped)">${n}</button>`).join('')}</div>
 <div class="row">Yard <button id="dbgYard" title="Put the nearest yard machine back together (npm run dev:yard)">Reset near</button><button id="dbgYardAll" title="Put every yard machine back together">Reset all</button></div>
 <label title="No heat build-up for you (the meter drops to zero)"><input id="dbgNoHeat" type="checkbox"> Disable heat</label>
+<label title="No random sandstorms in this world (clears the ones blowing)"><input id="dbgNoWeather" type="checkbox"> Disable weather</label>
 <div class="row"><button id="dbgHit"title="A killing blow (a guardian's laser): try the shield plate">Hit me</button></div>`;
     document.body.append(p);
     const slider = p.querySelector<HTMLInputElement>('#dbgTod')!;
@@ -74,6 +75,8 @@ export class DebugMenu {
     p.querySelector('#dbgHit')!.addEventListener('click', hit);
     const noHeatBox = p.querySelector<HTMLInputElement>('#dbgNoHeat')!;
     noHeatBox.addEventListener('change', () => noHeat(noHeatBox.checked));
+    const noWeatherBox = p.querySelector<HTMLInputElement>('#dbgNoWeather')!;
+    noWeatherBox.addEventListener('change', () => noWeather(noWeatherBox.checked));
     p.querySelector('#dbgYard')!.addEventListener('click', () => resetYard(false));
     p.querySelector('#dbgYardAll')!.addEventListener('click', () => resetYard(true));
     p.querySelector('#dbgGuardian')!.addEventListener('click', () => summonBot('guardian'));

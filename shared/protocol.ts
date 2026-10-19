@@ -94,6 +94,8 @@ export type ClientMsg =
   // Debug menu: a killing blow (a guardian's laser), to try the shield plate on.
   | { t: 'debugHit' }
   | { t: 'debugHeat'; off: boolean }
+  // Debug menu: no random sandstorms in this world (shared by everyone) while on.
+  | { t: 'debugWeather'; off: boolean }
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
   // there, puts it in your bag as an item (of the component's kind) and answers 'items'.
   | { t: 'crashTake'; id: string }

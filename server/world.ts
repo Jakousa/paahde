@@ -199,6 +199,10 @@ wss.on('connection', (ws) => {
     if (msg.t === 'drop' && p) return onDrop(p, msg.box, msg.slot);
     if (msg.t === 'debugGear' && p) return onDebugGear(p, msg.tier);
     if (msg.t === 'debugHit' && p) return die(p, 'laser', [0, 3, 6]);
+    if (msg.t === 'debugWeather' && p) {
+      storms.off = msg.off === true;
+      return;
+    }
     if (msg.t === 'debugHeat' && p) {
       p.heat.off = msg.off === true;
       if (p.heat.off) p.heat.heat = 0;

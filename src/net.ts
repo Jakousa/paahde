@@ -319,6 +319,11 @@ export class Net {
     if (this.connected) this.send({ t: 'debugHeat', off });
   }
 
+  /** Debug menu: no random sandstorms in this world. */
+  debugWeather(off: boolean) {
+    if (this.connected) this.send({ t: 'debugWeather', off });
+  }
+
   /** Debug menu: a killing blow, to try the shield plate on. */
   debugHit() {
     if (this.connected) this.send({ t: 'debugHit' });
