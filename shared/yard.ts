@@ -16,8 +16,10 @@ export function setYard(v: boolean) {
 
 /** Every kind of machine, in rows from the entrance outwards; new kinds are added as they are made. */
 export const YARD_KINDS: JunkKind[][] = [
+  // the machine under review, three seeds of it (what survived differs), then the ones not reworked yet
+  ['jet_engine', 'jet_engine', 'jet_engine'],
   ['winch', 'solenoid_valve', 'beacon', 'control_cabinet', 'robot_arm'],
-  ['pump_housing', 'jet_engine', 'vehicle_frame', 'water_jet', 'warp_core', 'ai_control'],
+  ['pump_housing', 'vehicle_frame', 'water_jet', 'warp_core', 'ai_control'],
 ];
 /** Metres between machines along a row, from the entrance to the first row, and between rows. */
 const GAP = 11;

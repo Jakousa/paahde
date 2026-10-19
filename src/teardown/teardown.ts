@@ -424,6 +424,10 @@ export class TeardownView {
   private computeRest() {
     const j = this.site?.junk;
     if (!j) return;
+    if (j.fixed) {
+      this.restY = this.home.y;
+      return;
+    }
     const off = lowestOffset(j.root);
     if (off !== null) this.restY = this.home.y + off;
   }
@@ -434,7 +438,7 @@ export class TeardownView {
    */
   private dragJunk(x0: number, y0: number, x1: number, y1: number) {
     const j = this.site?.junk;
-    if (!j) return;
+    if (!j || j.fixed) return;
     const box = new THREE.Box3().setFromObject(j.root);
     const c = this.screen(j.root);
     if (!c || box.isEmpty()) return;

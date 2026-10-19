@@ -102,7 +102,7 @@ export class MachineSites {
     const j = v.junk;
     j.root.position.set(site.x, heightAt(site.x, site.z), site.z);
     this.scene.add(j.root);
-    const off = lowestOffset(j.root);
+    const off = j.fixed ? null : lowestOffset(j.root);
     if (off !== null) j.root.position.y += off;
     v.shown = true;
     if (site.yard) {

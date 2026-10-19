@@ -362,7 +362,7 @@ renderer.setAnimationLoop((time) => {
   if (faceCrash) {
     faceCrash = false;
     const near = crashSitesNear(net.me.x, net.me.z, 200);
-    const site = spawnAt === 'yard' ? yardSites()[2] : spawnAt === 'field' ? near.find((s) => s.level === 0) : near.find((s) => s.level > 0)?.machines[0];
+    const site = spawnAt === 'yard' ? yardSites()[1] : spawnAt === 'field' ? near.find((s) => s.level === 0) : near.find((s) => s.level > 0)?.machines[0];
     if (site) orbit.yaw = Math.atan2(-(site.x - net.me.x), -(site.z - net.me.z));
   }
   resolution.update(frameDt);

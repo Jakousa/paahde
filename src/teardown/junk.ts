@@ -12,6 +12,8 @@ import * as THREE from 'three/webgpu';
 import { Rope } from './rope.ts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { machineParts } from '../../shared/machine.ts';
+import { layoutOf } from '../../shared/machines.ts';
+import { buildModelJunk } from './glbMachine.ts';
 import { junkSpec, RARITY, TIERS, type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
 import { aiControl, vehicleFrame, warpCore, waterJet } from './wrecks.ts';
 import { TEXT } from '../../shared/text.ts';
@@ -93,6 +95,8 @@ export interface Junk {
   steps: Step[];
   pieces: Piece[];
   slots: Slot[];
+  /** Built from a model at its real size, in its resting pose (src/teardown/glbMachine.ts): never turned by hand or lifted to rest. */
+  fixed?: boolean;
 }
 /** What a pointer hit resolves to; stored in `userData.target` on the object that owns the interaction. */
 export type Target =
@@ -317,6 +321,8 @@ export class Kit {
   private mats: Record<MatKey, THREE.MeshStandardNodeMaterial>;
   private dmats: Partial<Record<MatKey, THREE.MeshStandardNodeMaterial>> = {};
   private queue: Record<PartId, Roll[]>;
+  /** Size of the fasteners and wire terminals (1 for the machines built in code, smaller on a full-size model). */
+  fs = 1;
 
   constructor(grade: number, rolled: Record<PartId, Roll[]>) {
     this.grade = grade;
@@ -429,7 +435,7 @@ export class Kit {
     marker.position.y = kind === 'lift' ? 0.2 : 0.1;
     marker.visible = false;
     g.add(marker);
-    const step: Step = { kind, label, need, players, progress: 0, done: false, after, obj: g, spin, hit, marker, floorY, mat };
+    const step: Step = { kind, label, need, players, progress: 0, done: false, after, obj: g, spin, hit, marker, floorY: floorY * this.fs, mat };
     hit.userData.target = { type: 'step', step } satisfies Target;
     this.g.add(g);
     this.steps.push(step);
@@ -439,6 +445,7 @@ export class Kit {
     const g = new THREE.Group();
     g.position.set(...pos);
     g.quaternion.setFromUnitVectors(UP, new THREE.Vector3(...nrm).normalize());
+    g.scale.setScalar(this.fs);
     const spin = new THREE.Group();
     g.add(spin);
     return { g, spin };
@@ -496,19 +503,20 @@ export class Kit {
     const ends: WireEnd[] = [];
     const lugs: THREE.Mesh[] = [];
     for (const t of [0, 1]) {
-      const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.025, 10), this.mats.copper);
+      const f = this.fs;
+      const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.06 * f, 0.06 * f, 0.025 * f, 10), this.mats.copper);
       lug.position.copy(rel.getPoint(t));
       this.add(lug, g);
       lugs.push(lug);
       if (!short) ends.push({ lug, base: lug.position.clone(), swings: 0, done: false });
       // What it is fastened to: a terminal block with a stud up through the lug, and a nut on it.
       const at = lug.position;
-      const block = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.16), this.mats.dark);
-      block.position.set(at.x, at.y - 0.045, at.z);
-      const stud = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.1, 8), this.mats.copper);
-      stud.position.set(at.x, at.y - 0.005, at.z);
-      const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.034, 0.022, 6), this.mats.copper);
-      nut.position.set(at.x, at.y + 0.024, at.z);
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.16 * f, 0.05 * f, 0.16 * f), this.mats.dark);
+      block.position.set(at.x, at.y - 0.045 * f, at.z);
+      const stud = new THREE.Mesh(new THREE.CylinderGeometry(0.018 * f, 0.018 * f, 0.1 * f, 8), this.mats.copper);
+      stud.position.set(at.x, at.y - 0.005 * f, at.z);
+      const nut = new THREE.Mesh(new THREE.CylinderGeometry(0.034 * f, 0.034 * f, 0.022 * f, 6), this.mats.copper);
+      nut.position.set(at.x, at.y + 0.024 * f, at.z);
       this.add(block, g);
       this.add(stud, g);
       this.add(nut, g);
@@ -1116,6 +1124,7 @@ export const JUNK_KINDS = Object.keys(BUILDERS) as JunkKind[];
  *  Part models load in the background. Slots are sorted by part index, so `slots[i].index === i` whenever every rolled part
  *  is mounted. */
 export function buildJunk(kind: JunkKind, seed: number, level = 1): Junk {
+  if (layoutOf(kind)) return buildModelJunk(kind, seed, level);
   const spec = junkSpec(kind);
   const rolled: Record<PartId, Roll[]> = { battery: [], motor: [], heatsink: [], compute: [], uranium: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
   let best = 0;

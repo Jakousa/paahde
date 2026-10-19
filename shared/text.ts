@@ -347,6 +347,12 @@ const en = {
     starterFlangeBolt: 'Starter flange bolt', starterLead: 'Starter lead', topCoverBolt: 'Top cover bolt',
     transformerBolt: 'Transformer bolt', transformerSecondary: 'Transformer secondary', unionNut: 'Union nut',
     valveFlangeBolt: 'Valve flange bolt',
+    // The turbofan (shared/machines/turbofan.ts)
+    connectorLatch: 'Connector latch', coolerBolt: 'Cooler bolt', coreLift: 'Lift the core stage out',
+    cowlLatch: 'Cowl latch', fanBolt: 'Fan bolt', fanLift: 'Lift the fan out', harness: 'Harness', hingePin: 'Hinge pin',
+    hoseFitting: 'Hose fitting', linkagePin: 'Linkage pin', mountScrew: 'Mount screw', nozzleBolt: 'Nozzle bolt',
+    nozzleLift: 'Lift the nozzle off', padBolt: 'Pad bolt', padScrew: 'Pad screw', spinnerBolt: 'Spinner bolt',
+    strapClip: 'Strap clip', vClamp: 'V-clamp',
   },
 
   // ---- One-time how-to banners (src/hints.ts); `k` gives the current key names --------------------------------------
