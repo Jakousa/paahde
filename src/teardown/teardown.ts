@@ -910,7 +910,7 @@ export class TeardownView {
       }
       if (s.glint) {
         s.glint.visible = calm && q <= 1;
-        (s.glint.material as THREE.MeshBasicNodeMaterial).opacity = 0.25 * Math.sin(Math.min(1, Math.max(0, q)) * Math.PI);
+        (s.glint.material as THREE.MeshBasicNodeMaterial).opacity = 0.025 * Math.sin(Math.min(1, Math.max(0, q)) * Math.PI);
       }
     }
     // Cables that are being shaken, or have an end off, move.
