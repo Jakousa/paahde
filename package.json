@@ -7,7 +7,8 @@
     "dev:server": "node --watch-path=server --watch-path=shared server/index.ts --lab",
     "build": "tsc --noEmit && vite build && node tools/precompress.ts",
     "start": "node server/index.ts",
-    "preview": "npm run build && npm start"
+    "preview": "npm run build && npm start",
+    "perf": "node tools/perf.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

@@ -63,6 +63,8 @@ import { atWater, indoors, inShelter } from '../shared/shelters.ts';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { graphics, onGraphics } from './graphics';
+import { PERF_RUN, perf } from './perf';
+import { statsPref } from './options';
 import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
 import { Speech } from './speech';
@@ -104,7 +106,10 @@ import { TEXT } from '../shared/text.ts';
 
 // WebGPURenderer uses WebGPU when available and falls back to WebGL2 otherwise.
 // powerPreference asks for the discrete GPU (eGPU, laptop dGPU) over the integrated one when there is a choice.
-const renderer = new THREE.WebGPURenderer({ antialias: graphics.antialias, powerPreference: 'high-performance' });
+perf.milestone('main-start');
+// GPU timestamp queries (src/perf.ts) are only set up when stats were on at load, or for a benchmark run: they cost a readback a frame.
+const gpuTimes = statsPref() || PERF_RUN;
+const renderer = new THREE.WebGPURenderer({ antialias: graphics.antialias, powerPreference: 'high-performance', trackTimestamp: gpuTimes });
 // (the stats line counts a whole frame: the shadow passes, the scene and the post passes, not just the last render call, which is a full-screen quad)
 renderer.info.autoReset = false;
 const resolution = new DynamicResolution(renderer); // sets the pixel ratio, then keeps it near 60 fps
@@ -343,6 +348,9 @@ const backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBack
 const gpuInfo = (renderer.backend as unknown as { device?: { adapterInfo?: { vendor?: string; architecture?: string; description?: string } } }).device?.adapterInfo;
 const gpuName = gpuInfo ? (gpuInfo.description || [gpuInfo.vendor, gpuInfo.architecture].filter(Boolean).join(' ')) : '';
 const backendText = gpuName ? `${backend} ${gpuName}` : backend;
+perf.gpuTracked = gpuTimes && !!(renderer.backend as { trackTimestamp?: boolean }).trackTimestamp;
+perf.describe({ backend, gpu: gpuName, gpuTimestamps: perf.gpuTracked, world: WORLD_ID });
+perf.milestone('renderer-ready');
 
 const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
@@ -371,6 +379,7 @@ renderer.setAnimationLoop((time) => {
     if (time < nextFrameAt - 1) return;
     nextFrameAt = time - nextFrameAt > every ? time + every : nextFrameAt + every; // keeps the average on target; no catching up after a stall
   }
+  perf.frameStart();
   net.telemetry.frame(performance.now());
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);
@@ -379,16 +388,19 @@ renderer.setAnimationLoop((time) => {
     return;
   }
   joined = true;
+  perf.milestone('joined');
   // Once the models and terrain are in, draw real frames a few materials at a time (src/warmup.ts): the first full
   // frame would take seconds to build every shader and freeze the page. Nothing else is drawn until that is done.
   const modelsIn = bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)) && terrain.built;
+  if (modelsIn) perf.milestone('models-in');
   loaded ||= coverTimedOut || warmed;
+  if (loaded) perf.milestone('loaded');
   // Behind the loading screen, draw at about 15 fps so the page has time for the game on it (src/yield.ts).
   if (!loaded && time - lastLoadFrame < LOADING_FRAME_MS) return;
   lastLoadFrame = time;
   if (loaded && prologue.told() && coverFrames < 3 && ++coverFrames === 3) {
     cover.style.opacity = '0';
-    setTimeout(() => (prologue.stop(), cover.remove()), 500);
+    setTimeout(() => (prologue.stop(), cover.remove(), perf.milestone('cover-gone')), 500);
     names.loaded();
   }
   if (faceCrash) {
@@ -666,21 +678,28 @@ baseSand.update(frameDt, storm.atBase);
 
   const ri = renderer.info.render as { drawCalls?: number; calls?: number; triangles: number };
   statsGraph.visible = menu.statsOn;
-  statsGraph.frame(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000, graphics.dynamicRes ? resolution.ratio : undefined);
+  perf.collect = menu.statsOn || PERF_RUN;
+  statsGraph.frame(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000, graphics.dynamicRes ? resolution.ratio : undefined, perf.last.cpu, perf.gpuTracked ? (perf.last.gpu ?? undefined) : undefined);
   menu.setInfo(`${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backendText} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
   teardown.update(frameDt);
   if (loaded) {
     warm.finish();
     terrain.loading = false;
     renderer.info.reset();
+    perf.submitStart();
     post.render();
+    perf.submitEnd(renderer);
   } else if (modelsIn && !warming) {
     // Everything sliceable is in: build the first frame's shaders, post passes included, a few materials per round
     // (src/warmup.ts) while the prologue on the loading screen keeps going.
     warming = true;
+    perf.milestone('warmup-start');
     warm.run(gpuIdle).then(() => {
       prologue.progress(1);
       warmed = true;
+      perf.milestone('warmed');
     });
   }
+  if (PERF_RUN) document.getElementById('name')?.querySelector<HTMLElement>('.skip')?.click(); // (a benchmark answers the name box itself)
+  perf.frameEnd(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000, resolution.ratio, loaded && coverFrames >= 3 && !document.getElementById('cover') && !document.getElementById('name'), frameDt, (rad) => (orbit.yaw += rad));
 });
