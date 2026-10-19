@@ -60,6 +60,7 @@ import { inBase } from '../shared/base.ts';
 import { atWater, indoors, inShelter } from '../shared/shelters.ts';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
+import { graphics, onGraphics } from './graphics';
 import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
 import { Speech } from './speech';
@@ -105,6 +106,12 @@ const renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: 'h
 // (the stats line counts a whole frame: the shadow passes, the scene and the post passes, not just the last render call, which is a full-screen quad)
 renderer.info.autoReset = false;
 const resolution = new DynamicResolution(renderer); // sets the pixel ratio, then keeps it near 60 fps
+resolution.setScale(graphics.resScale);
+resolution.setDynamic(graphics.dynamicRes);
+onGraphics((g, changed) => {
+  if (changed === 'resScale') resolution.setScale(g.resScale);
+  if (changed === 'dynamicRes') resolution.setDynamic(g.dynamicRes);
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);

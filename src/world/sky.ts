@@ -4,12 +4,13 @@
 // over the shadow-casting light.
 //
 // Sun shadows are cascaded shadow maps (parallel-split, Zhang et al. 2006; cascades.ts): the
-// view out to SHADOW_FAR is cut into slices by distance and each slice gets its own 2048² map fitted to
+// view out to the shadow distance is cut into slices by distance and each slice gets its own 2048² map fitted to
 // it, so a player's shadow at your feet is a few cm per texel while a dune 1 km away still casts its
 // 200 m shadow. Terrain casts too. Biases are set per cascade in world units, scaled to its texel size.
 import * as THREE from 'three/webgpu';
 import { cameraPosition, fog, min, normalize, positionWorld, vec3 } from 'three/tsl';
 import { MAX_FOV } from '../camera.ts';
+import { cascadeEnds, graphics, onGraphics, startup } from '../graphics.ts';
 import { CascadedShadows } from './cascades.ts';
 import { setShadowNoiseAxes, wideShadowFilter } from './shadowFilter.ts';
 import { DayNight } from './dayNight.ts';
@@ -18,13 +19,12 @@ import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm
 
 /** Sun elevation (radians) below which the moon is the shadow-casting light. Both are ~dark here. */
 const MOON_TAKES_OVER = THREE.MathUtils.degToRad(-3);
-/** Far end of each cascade (m from the camera). Past the last one the haze is ~95%, so no shadows. */
+/** Far end of each cascade (m from the camera), from the graphics options. Past the last one the haze is ~95%, so no shadows. */
 // (Dev experiments for the GPU cost: `?cascades=1..3` uses fewer, `?shadows=0` none.)
 const QUERY = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
-const CASCADE_PRESETS: Record<string, number[]> = { '1': [400], '2': [60, 600], '3': [30, 320, 1600] };
-const CASCADE_ENDS = CASCADE_PRESETS[QUERY.get('cascades') ?? ''] ?? [20, 80, 320, 1600];
-const SHADOW_FAR = CASCADE_ENDS[CASCADE_ENDS.length - 1];
-const SHADOW_MAP = 1024; // per cascade; 2048 looked crisper but cost GPU time on every frame
+const CASCADES = Math.min(4, Math.max(1, Number(QUERY.get('cascades')) || startup.cascades));
+const CASCADE_ENDS = cascadeEnds(graphics.shadowDistance, CASCADES);
+const SHADOW_MAP = startup.shadowMap; // per cascade; 2048 looked crisper but cost GPU time on every frame
 /** How far sunwards of a slice casters are still drawn: a 30 m crest at 10° throws a ~170 m shadow. */
 const LIGHT_MARGIN = 300;
 /** Depth bias and normal offset, in texels of each cascade (normal-offset shadows, Holbert 2011). */
@@ -72,13 +72,13 @@ export class Sky {
     this.day = new DayNight(this.ambient);
 
     const sun = this.sun;
-    sun.castShadow = QUERY.get('shadows') !== '0';
+    sun.castShadow = QUERY.get('shadows') !== '0' && graphics.shadows;
     sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
     // Each cascade clones this shadow, layers included: also draw shadow-only objects (own body).
     sun.shadow.camera.layers.enable(SHADOW_ONLY_LAYER);
     this.csm = new CascadedShadows(sun, {
       cascades: CASCADE_ENDS.length,
-      maxFar: SHADOW_FAR,
+      maxFar: graphics.shadowDistance,
       mode: 'custom',
       lightMargin: LIGHT_MARGIN,
       customSplitsCallback: (_n, _near, far, breaks) => breaks.push(...CASCADE_ENDS.map((d) => d / far)),
@@ -86,6 +86,19 @@ export class Sky {
     this.csm.fade = true; // widens each cascade's map to cover the cross-fade into it
     sun.shadow.shadowNode = this.csm;
     scene.add(sun, sun.target);
+    onGraphics((g, changed) => {
+      if (changed === 'shadows') sun.castShadow = g.shadows;
+      if (changed === 'shadowDistance') this.setShadowDistance(g.shadowDistance);
+    });
+  }
+
+  /** Cut the cascades again out to this distance (m); they are refitted on the next frame. */
+  private setShadowDistance(distance: number) {
+    CASCADE_ENDS.splice(0, CASCADE_ENDS.length, ...cascadeEnds(distance, CASCADES));
+    this.csm.maxFar = distance;
+    if (!this.csm.camera) return; // not built yet: its first render reads the above
+    this.csm.updateFrustums();
+    this.fittedAspect = NaN;
   }
 
   /**

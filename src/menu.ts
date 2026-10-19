@@ -9,6 +9,7 @@ import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
 import { capture, toggleFullscreen, tools, ui } from './input';
 import { openMinigame } from './minigameMenu';
 import { TEXT } from '../shared/text.ts';
+import { SHADOW_DISTANCE_RANGE, SHADOW_MAPS, graphics, needsReload, setGraphics } from './graphics';
 
 const STATS_KEY = 'dadajam.stats';
 const AO_KEY = 'dadajam.ao';
@@ -103,12 +104,21 @@ export class Menu {
 <button class="ctl" style="margin-top:8px">${TEXT.menu.controls}</button>
 <div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
 <div class="options"><h2>${TEXT.menu.options}</h2><button class="optBack">${TEXT.controls.back}</button>
-<div class="tabs"><button class="tab on" data-tab="gameplay">${TEXT.menu.gameplay}</button><button class="tab" data-tab="audio">${TEXT.menu.audio}</button></div>
+<div class="tabs"><button class="tab on" data-tab="gameplay">${TEXT.menu.gameplay}</button><button class="tab" data-tab="graphics">${TEXT.menu.graphics}</button><button class="tab" data-tab="audio">${TEXT.menu.audio}</button></div>
 <div class="pane" data-pane="gameplay">
 <label class="row"><span>${TEXT.menu.showGuides}</span><input class="guides" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.showCounts}</span><input class="counts" type="checkbox"></label>
-<label class="row"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
 <label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label></div>
+<div class="pane" data-pane="graphics">
+<label class="row"><span>${TEXT.menu.forceFullscreen}</span><input class="gForceFs" type="checkbox"></label>
+<label class="row"><span>${TEXT.menu.resolution}</span><input class="gRes" type="range" min="0.25" max="1" step="0.05"><span class="val gResVal"></span></label>
+<label class="row"><span>${TEXT.menu.dynamicRes}</span><input class="gDyn" type="checkbox"></label>
+<label class="row"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
+<label class="row"><span>${TEXT.menu.shadows}</span><input class="gShadows" type="checkbox"></label>
+<label class="row"><span>${TEXT.menu.shadowDistance}</span><input class="gDist" type="range" min="${SHADOW_DISTANCE_RANGE[0]}" max="${SHADOW_DISTANCE_RANGE[1]}" step="50"><span class="val gDistVal"></span></label>
+<label class="row"><span>${TEXT.menu.cascades}</span><input class="gCas" type="range" min="1" max="4" step="1"><span class="val gCasVal"></span></label>
+<label class="row"><span>${TEXT.menu.shadowDetail}</span><input class="gMap" type="range" min="0" max="${SHADOW_MAPS.length - 1}" step="1"><span class="val gMapVal"></span></label>
+<div class="note gNote"></div></div>
 <div class="pane" data-pane="audio">
 <label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
 <label class="row"><span>${TEXT.menu.music}</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label></div></div>
@@ -162,6 +172,7 @@ export class Menu {
         localStorage.setItem(AO_KEY, String(aoLevel));
       } catch {}
     });
+    const gInputs = this.bindGraphics();
     const stats = this.el.querySelector<HTMLInputElement>('.stats')!;
     stats.checked = this.stats;
     stats.addEventListener('change', () => {
@@ -190,7 +201,7 @@ export class Menu {
     this.bindControls();
     this.el.querySelector('.mini')!.addEventListener('click', () => this.playMinigame());
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
-    for (const input of [vol, music, aoEl, stats, guides, counts]) input.addEventListener('change', () => input.blur());
+    for (const input of [vol, music, aoEl, stats, guides, counts, ...gInputs]) input.addEventListener('change', () => input.blur());
 
     const fs = this.el.querySelector<HTMLButtonElement>('.fs')!;
     const showFs = () => (fs.textContent = document.fullscreenElement ? TEXT.menu.exitFullscreen : TEXT.menu.enterFullscreen);
@@ -226,6 +237,56 @@ export class Menu {
       }
       this.toggle(true);
     });
+  }
+
+  /** The Graphics tab (src/graphics.ts): each control shows and sets one setting. Returns the inputs. */
+  private bindGraphics(): HTMLInputElement[] {
+    const q = (c: string) => this.el.querySelector<HTMLInputElement>(c)!;
+    const text = (c: string, t: string) => (this.el.querySelector<HTMLElement>(c)!.textContent = t);
+    const note = this.el.querySelector<HTMLElement>('.gNote')!;
+    const showNote = () => (note.textContent = needsReload() ? TEXT.menu.needsReload : '');
+    const forceFs = q('.gForceFs');
+    forceFs.checked = graphics.forceFullscreen;
+    forceFs.addEventListener('change', () => {
+      setGraphics('forceFullscreen', forceFs.checked);
+      if (forceFs.checked && !document.fullscreenElement) toggleFullscreen();
+    });
+    // Back into fullscreen at the next click when it was left (the browser needs a click to allow it).
+    addEventListener('pointerdown', () => {
+      if (graphics.forceFullscreen && !document.fullscreenElement) toggleFullscreen();
+    }, true);
+    const res = q('.gRes');
+    // Over 1 only on screens that have more pixels per CSS pixel than that.
+    res.max = String(Math.max(1, Math.min(devicePixelRatio, 2)));
+    res.value = String(graphics.resScale);
+    const showRes = () => text('.gResVal', `${Math.round(graphics.resScale * 100)}%`);
+    showRes();
+    res.addEventListener('input', () => (setGraphics('resScale', parseFloat(res.value)), showRes()));
+    const dyn = q('.gDyn');
+    dyn.checked = graphics.dynamicRes;
+    dyn.addEventListener('change', () => setGraphics('dynamicRes', dyn.checked));
+    const shadows = q('.gShadows');
+    shadows.checked = graphics.shadows;
+    const dist = q('.gDist');
+    dist.value = String(graphics.shadowDistance);
+    const showDist = () => text('.gDistVal', `${graphics.shadowDistance} m`);
+    showDist();
+    dist.addEventListener('input', () => (setGraphics('shadowDistance', parseFloat(dist.value)), showDist()));
+    const cas = q('.gCas');
+    cas.value = String(graphics.cascades);
+    const showCas = () => text('.gCasVal', String(graphics.cascades));
+    showCas();
+    cas.addEventListener('input', () => (setGraphics('cascades', parseInt(cas.value)), showCas(), showNote()));
+    const map = q('.gMap');
+    map.value = String(SHADOW_MAPS.indexOf(graphics.shadowMap as never));
+    const showMap = () => text('.gMapVal', TEXT.menu.shadowDetails[SHADOW_MAPS.indexOf(graphics.shadowMap as never)]);
+    showMap();
+    map.addEventListener('input', () => (setGraphics('shadowMap', SHADOW_MAPS[parseInt(map.value)]), showMap(), showNote()));
+    const dependent = [dist, cas, map];
+    const enable = () => dependent.forEach((i) => (i.disabled = !graphics.shadows));
+    enable();
+    shadows.addEventListener('change', () => (setGraphics('shadows', shadows.checked), enable()));
+    return [forceFs, res, dyn, shadows, dist, cas, map];
   }
 
   /** The teardown minigame (src/minigameMenu.ts) over the world, which stays visible behind it. */

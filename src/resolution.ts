@@ -13,8 +13,8 @@
 // wait a while (longer each time it happens again).
 import type * as THREE from 'three/webgpu';
 
-/** Never render finer than this (retina screens report 2–3): one pixel per CSS pixel is plenty for
- *  this look, and it leaves headroom for 60 fps on laptops. */
+/** Default scale, and the most we render by default (retina screens report 2–3): one pixel per CSS pixel is plenty for
+ *  this look, and it leaves headroom for 60 fps on laptops. The graphics options can raise it. */
 const MAX_RATIO = 1;
 const MIN_RATIO = 0.65;
 /** Frame time we aim for, a little under 60 fps so vsync jitter doesn't count as slow. */
@@ -42,6 +42,10 @@ export class DynamicResolution {
   ratio: number;
   private renderer: THREE.WebGPURenderer;
   private max: number;
+  /** The player's resolution scale (Options → Graphics): CSS pixels rendered per pixel, capped by the screen's own ratio. */
+  private scale = MAX_RATIO;
+  /** Off: the ratio stays at the scale instead of following the frame time. */
+  private dynamic = true;
   private ceiling: number;
   private ms = 0;
   private frames = 0;
@@ -55,14 +59,30 @@ export class DynamicResolution {
 
   constructor(renderer: THREE.WebGPURenderer) {
     this.renderer = renderer;
-    this.max = Math.min(window.devicePixelRatio, MAX_RATIO);
+    this.max = Math.min(window.devicePixelRatio, this.scale);
     this.ratio = this.ceiling = this.max;
     renderer.setPixelRatio(this.ratio);
   }
 
+  /** Render at this many pixels per CSS pixel at most (below 1 the canvas is stretched to the window). */
+  setScale(scale: number) {
+    this.scale = scale;
+    this.max = Math.min(window.devicePixelRatio, scale);
+    this.ceiling = this.max;
+    this.probe = null;
+    this.calm = 0;
+    this.set(this.max);
+  }
+
+  setDynamic(on: boolean) {
+    this.dynamic = on;
+    this.probe = null;
+    if (!on) this.set(this.max);
+  }
+
   /** Call once per rendered frame with its duration in seconds. */
   update(dt: number) {
-    if ((this.warmup -= dt) > 0) return;
+    if (!this.dynamic || (this.warmup -= dt) > 0) return;
     this.elapsed += dt;
     if (dt * 1000 < HITCH_MS) {
       this.ms += dt * 1000;
@@ -93,7 +113,7 @@ export class DynamicResolution {
 
     if (avg > SLOW_MS) {
       this.calm = 0;
-      if (this.ratio <= MIN_RATIO || this.hold > 0) return;
+      if (this.ratio <= this.minRatio || this.hold > 0) return;
       this.probe = { ratio: this.ratio, ceiling: this.ceiling, ms: avg };
       this.ceiling = Math.min(this.ceiling, this.ratio * 0.97);
       this.set(this.ratio * Math.max(0.7, Math.sqrt(TARGET_MS / avg)));
@@ -103,8 +123,12 @@ export class DynamicResolution {
     }
   }
 
+  private get minRatio() {
+    return Math.min(MIN_RATIO, this.max);
+  }
+
   private set(ratio: number) {
-    this.ratio = Math.max(MIN_RATIO, Math.min(this.max, ratio));
+    this.ratio = Math.max(this.minRatio, Math.min(this.max, ratio));
     this.renderer.setPixelRatio(this.ratio);
   }
 }
