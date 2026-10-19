@@ -13,8 +13,8 @@ export const lower = (label: string) => (/^[A-Z]{2}/.test(label) ? label : label
 const en = {
   game: {
     /** The game's name as it's shown in the menu and on the landing page (and, capitalised, the browser tab). */
-    name: 'hiekka',
-    title: 'Hiekka',
+    name: 'paahde',
+    title: 'Paahde',
   },
 
   // ---- Names of things ----------------------------------------------------------------------------------------

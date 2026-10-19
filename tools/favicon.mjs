@@ -46,5 +46,5 @@ const font = `file://${join(pub, 'fonts/neuropol.woff2')}`;
 shot(`<style>@font-face{font-family:N;src:url(${font})}</style>
 <div style="position:relative;width:1200px;height:630px;background:url(file://${join(pub, 'landing.svg')}) 72% bottom/cover">
 <h1 style="position:absolute;inset:0;margin:0;display:flex;align-items:center;justify-content:center;padding-bottom:260px;
-font:96px N;letter-spacing:.3em;color:#fff4d0;text-shadow:0 2px 6px rgba(60,20,5,.6)">HIEKKA</h1></div>`, 1200, 630, join(pub, 'og.png'));
+font:96px N;letter-spacing:.3em;color:#fff4d0;text-shadow:0 2px 6px rgba(60,20,5,.6)">PAAHDE</h1></div>`, 1200, 630, join(pub, 'og.png'));
 console.log('wrote favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png, og.png');
