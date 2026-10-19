@@ -16,7 +16,7 @@
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
-import { machineChanged, machineShove, MAX_SHOVE, pushedMachine, setMachineProgress, setMachineShove } from '../shared/machineBoxes.ts';
+import { machineChanged, machineShove, maxShove, pushedMachine, setMachineProgress, setMachineShove } from '../shared/machineBoxes.ts';
 import { CROUCH, BACK, DT, FORWARD, LEFT, PLAYER_RADIUS, RIGHT, STEP_UP } from '../shared/sim.ts';
 import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
@@ -225,9 +225,10 @@ export class CrashServer {
     const o = machineShove(site.id);
     let x = o.x + wx * v, z = o.z + wz * v;
     const far = Math.hypot(x, z);
-    if (far > MAX_SHOVE) {
-      x *= MAX_SHOVE / far;
-      z *= MAX_SHOVE / far;
+    const most = maxShove(site);
+    if (far > most) {
+      x *= most / far;
+      z *= most / far;
     }
     const ax = Math.sin(site.yaw), az = Math.cos(site.yaw);
     const across = -az * wx + ax * wz; // the push across the axis (+: the way the positive roll carries the top)

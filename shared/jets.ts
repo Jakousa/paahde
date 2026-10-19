@@ -82,8 +82,16 @@ export function jetWreck(speed: number, landS: number, soft: boolean, out: Dive 
   out.v = 0;
   return out;
 }
-/** The flight's own wreck lies on the sand this long (ms) before it is handed over to the crash site (shared/jetcrash.ts), which stays. */
-export const WRECK_MS = 3_000;
+/** Having hit the sand it breaks up and slides on SLIDE_M m along its heading over SLIDE_MS ms, nose coming up and settling flat, a trench
+ *  behind it (server/jetcrash.ts); it then lies there as the crash site (shared/jetcrash.ts), which stays. The flight's own wreck is handed over
+ *  to that WRECK_MS after it hit. */
+export const SLIDE_M = 32;
+export const SLIDE_MS = 3400;
+/** The wreck's centre sits this high (m) over the sand it lies on (the model's belly is at -1.8, a little sunk). */
+const SETTLE_Y = 1.7;
+const SETTLE_PITCH = -0.07;
+const SETTLE_BANK = 0.16;
+export const WRECK_MS = SLIDE_MS + 2_000;
 
 /** Wingspan (m): a searchlight drone is about 2. The plane (tools/blender/machines/plane.py) is modelled at this size. */
 export const JET_SPAN = 32;
@@ -148,15 +156,26 @@ export function jetAt(j: Jet, t: number, out: JetPose): boolean {
 function downAt(j: Jet, t: number, out: JetPose): boolean {
   const d = j.down!, landS = (d.land - d.at) / 1000, s = (t - d.at) / 1000, soft = !!d.soft;
   const m = s >= landS ? jetWreck(j.speed, landS, soft) : jetDive(j.speed, s, soft);
-  out.x = d.x + Math.sin(d.yaw) * m.fwd;
-  out.y = d.y - m.drop;
-  out.z = d.z + Math.cos(d.yaw) * m.fwd;
+  let fwd = m.fwd, y = d.y - m.drop, pitch = m.pitch, bank = (j.id % 2 ? 1 : -1) * m.roll, speed = m.v * Math.cos(m.pitch);
+  if (s >= landS) {
+    // It breaks up on the sand and slides on, the nose coming up, the roll settling to a lean, the belly on the ground.
+    const u = Math.min(1, ((s - landS) * 1000) / SLIDE_MS), k = 1 - (1 - u) * (1 - u);
+    fwd += SLIDE_M * k;
+    const x = d.x + Math.sin(d.yaw) * fwd, z = d.z + Math.cos(d.yaw) * fwd;
+    y += (baseHeight(x, z) + SETTLE_Y - y) * k;
+    pitch += (SETTLE_PITCH - pitch) * k;
+    const b0 = Math.atan2(Math.sin(bank), Math.cos(bank));
+    bank = b0 * (1 - k) + (j.id % 2 ? 1 : -1) * SETTLE_BANK * k;
+    speed = (SLIDE_M * 2 / (SLIDE_MS / 1000)) * (1 - u);
+  }
+  out.x = d.x + Math.sin(d.yaw) * fwd;
+  out.y = y;
+  out.z = d.z + Math.cos(d.yaw) * fwd;
   out.yaw = d.yaw;
-  out.pitch = m.pitch;
-  out.bank = (j.id % 2 ? 1 : -1) * m.roll;
-  const h = m.v * Math.cos(m.pitch);
-  out.vx = Math.sin(d.yaw) * h;
-  out.vz = Math.cos(d.yaw) * h;
+  out.pitch = pitch;
+  out.bank = bank;
+  out.vx = Math.sin(d.yaw) * speed;
+  out.vz = Math.cos(d.yaw) * speed;
   out.state = s >= landS ? 2 : 1;
   return true;
 }

@@ -19,6 +19,8 @@ export function setMachineProgress(source: (id: string) => ReadonlySet<number> |
 /** Where a pushed machine has been shoved to, as metres from where it lay (the server's, mirrored on every client). It stays
  *  within MAX_SHOVE of its place, so it never reaches what lies round it. */
 export const MAX_SHOVE = 5;
+/** How far (m) a machine may be shoved from where it lay: an engine in its crater (shared/jetcrash.ts) can be pushed out of it. */
+export const maxShove = (site: { id: string }) => (site.id.startsWith('jet:') ? 11 : MAX_SHOVE);
 const shoves = new Map<string, { x: number; z: number }>();
 export function machineShove(id: string): { x: number; z: number } {
   return shoves.get(id) ?? ZERO;
@@ -28,12 +30,37 @@ export function setMachineShove(id: string, x: number, z: number) {
   if (x === 0 && z === 0) shoves.delete(id);
   else shoves.set(id, { x, z });
   boxCache.delete(id);
+  groundCache.delete(id);
+}
+
+const groundCache = new Map<string, { x: number; z: number; y: number }>();
+/** The height a machine rests at, shoved (ox, oz) from where it lay: on the highest sand under its body, so pushed up the side of a
+ *  crater it rides up on the high side instead of sinking into the bank (it was set down on flat sand: shared/machines `pose.lift`). */
+export function machineGround(site: CrashSite, ox = machineShove(site.id).x, oz = machineShove(site.id).z): number {
+  const c = groundCache.get(site.id);
+  if (c && c.x === ox && c.z === oz) return c.y;
+  const sy = Math.sin(site.yaw), cy = Math.cos(site.yaw);
+  let y = -Infinity;
+  for (let i = -2; i <= 2; i++) {
+    for (let k = -1; k <= 1; k++) {
+      const a = i * 0.6, s = k * 0.7; // along its length and across it
+      y = Math.max(y, heightAt(site.x + ox + sy * a + cy * s, site.z + oz + cy * a - sy * s));
+    }
+  }
+  if (groundCache.size > 512) groundCache.clear();
+  groundCache.set(site.id, { x: ox, z: oz, y });
+  return y;
 }
 
 /** A machine's finished steps changed (or all of them, with no id): its solid is worked out again next time it is asked for. */
 export function machineChanged(id?: string) {
-  if (id === undefined) boxCache.clear();
-  else boxCache.delete(id);
+  if (id === undefined) {
+    boxCache.clear();
+    groundCache.clear();
+  } else {
+    boxCache.delete(id);
+    groundCache.delete(id);
+  }
 }
 
 interface Cap {
@@ -101,7 +128,7 @@ function machinesNear(x: number, z: number): CrashSite[] {
   const key = cx * 100003 + cz;
   let list = nearCache.get(key);
   if (!list) {
-    list = sitesNear((cx + 0.5) * NEAR_CELL, (cz + 0.5) * NEAR_CELL, NEAR_CELL * 0.75 + 8 + MAX_SHOVE).filter((s) => !!layoutOf(s.kind)?.hits);
+    list = sitesNear((cx + 0.5) * NEAR_CELL, (cz + 0.5) * NEAR_CELL, NEAR_CELL * 0.75 + 8 + 11).filter((s) => !!layoutOf(s.kind)?.hits);
     if (nearCache.size > 256) nearCache.clear();
     nearCache.set(key, list);
   }
@@ -119,7 +146,7 @@ export function pushedMachine(p: { x: number; z: number }, y: number, radius: nu
   for (const site of machinesNear(p.x, p.z)) {
     const o = machineShove(site.id);
     if (Math.abs(p.x - site.x - o.x) > 4 + radius || Math.abs(p.z - site.z - o.z) > 4 + radius) continue;
-    const base = heightAt(site.x + o.x, site.z + o.z);
+    const base = machineGround(site, o.x, o.z);
     for (const b of machineCapsules(site)) {
       let t = (p.x - b.x) * b.ax + (p.z - b.z) * b.az;
       t = t < -b.half ? -b.half : t > b.half ? b.half : t;
@@ -147,7 +174,7 @@ export function collideMachines(p: { x: number; z: number; vx: number; vz: numbe
   for (const site of sites) {
     const o = machineShove(site.id);
     if (Math.abs(p.x - site.x - o.x) > 4 + radius || Math.abs(p.z - site.z - o.z) > 4 + radius) continue; // (the longest stretch is about 1.5 m each way of the middle)
-    const base = heightAt(site.x + o.x, site.z + o.z);
+    const base = machineGround(site, o.x, o.z);
     for (const b of machineCapsules(site)) {
       const reach = b.half + b.r + radius;
       if (Math.abs(p.x - b.x) > reach || Math.abs(p.z - b.z) > reach) continue;

@@ -96,10 +96,21 @@ class JetProto extends THREE.Group {
   }
 }
 
+/** The plane whole (flying), or in pieces (down: it broke up on the sand; jet.glb's `Jet_Wreck`, without the right engine, which lies on as a machine). */
+function setBroken(o: THREE.Object3D, broken: boolean) {
+  for (const [name, on] of [['Jet_Body', !broken], ['Jet_EngineR', !broken], ['Jet_Wreck', broken]] as const) {
+    const n = o.getObjectByName(name);
+    if (n) n.visible = on;
+  }
+}
+
 function fill(g: THREE.Group) {
   g.clear();
-  if (model) g.add(model.clone());
-  else {
+  if (model) {
+    const c = model.clone();
+    setBroken(c, false);
+    g.add(c);
+  } else {
     const p = primitive();
     p.scale.setScalar(JET_SPAN / 18); // (the stand-in is an 18 m plane)
     g.add(p);
@@ -192,6 +203,7 @@ export class Jets {
         this.onCrash(p.x + _t.x * 12, p.y + _t.y * 12, p.z + _t.z * 12, _t.x, _t.y, _t.z);
       }
       v.state = p.state;
+      if (p.state === 2) setBroken(o, true); // (broke up on the sand)
       // Smoke: a thin trail once hit, thicker with each hit, a heavy one gliding down; the wreck smoulders. Jammed it
       // has no fire: a thin trail off the rolling tail (so it reads from far off), a lighter smoulder once down.
       const rate = soft ? (p.state === 2 ? 3 : p.state === 1 ? 14 + j.hurt * 10 : j.hurt * 10) : p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
@@ -224,8 +236,7 @@ export class Jets {
       }
       if (!o) {
         o = model.clone();
-        const eng = o.getObjectByName('Jet_EngineR');
-        if (eng) eng.visible = false;
+        setBroken(o, true);
         o.rotation.order = 'YXZ';
         o.position.set(c.x, c.y, c.z);
         o.rotation.set(-c.pitch, c.yaw, -c.bank);

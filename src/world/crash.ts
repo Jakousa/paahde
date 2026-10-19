@@ -15,7 +15,8 @@ import { hasItem, type Slots } from '../../shared/items.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { viewCull } from './viewCull';
-import { machineChanged, setMachineProgress, setMachineShove } from '../../shared/machineBoxes.ts';
+import { machineChanged, machineGround, setMachineProgress, setMachineShove } from '../../shared/machineBoxes.ts';
+import { layoutOf } from '../../shared/machines.ts';
 import { attachAll, buildJunk, detailList, hideDetail, lowestOffset, pieceEmpty, restPiece, settle, type Junk } from '../teardown/junk.ts';
 import type { SiteMsg } from '../net.ts';
 import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
@@ -113,7 +114,7 @@ export class MachineSites {
     v.sx = Math.abs(to.x - cx) < 2e-3 ? to.x : cx + (to.x - cx) * k;
     v.sz = Math.abs(to.z - cz) < 2e-3 ? to.z : cz + (to.z - cz) * k;
     const root = v.junk!.root;
-    root.position.set(v.site.x + v.sx, heightAt(v.site.x + v.sx, v.site.z + v.sz), v.site.z + v.sz);
+    root.position.set(v.site.x + v.sx, layoutOf(v.site.kind) ? machineGround(v.site, v.sx, v.sz) : heightAt(v.site.x + v.sx, v.site.z + v.sz), v.site.z + v.sz);
     v.junk!.setRoll!(v.rolled);
     if (!root.matrixAutoUpdate) settle(root); // (setRoll does this for a frozen machine; the position alone needs it too)
   }
@@ -182,7 +183,7 @@ export class MachineSites {
       }
     }
     const j = v.junk;
-    j.root.position.set(site.x, heightAt(site.x, site.z), site.z);
+    j.root.position.set(site.x, layoutOf(site.kind) ? machineGround(site, 0, 0) : heightAt(site.x, site.z), site.z);
     this.scene.add(j.root);
     const off = j.fixed ? null : lowestOffset(j.root);
     if (off !== null) j.root.position.y += off;

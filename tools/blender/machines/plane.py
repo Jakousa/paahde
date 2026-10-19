@@ -9,7 +9,8 @@ Three.js frame (Y up, +Z the nose, span along X), origin about the centre of mas
 export like the other models.
 
   Jet_Body     the fuselage, wings, tail and the left engine (what stays in the wreck)
-  Jet_EngineR  the right engine on its pylon (hidden in the wreck: it lies on the ground as a machine)
+  Jet_EngineR  the right engine on its pylon (not in the wreck: it lies on the ground as a machine)
+  Jet_Wreck    the plane after it came in: torn apart, in pieces on the sand (ground at y = -1.8); shown instead of the two above
   Tail         an empty at the left engine's exit, where the smoke streams from (src/world/jets.ts TAIL)
 """
 
@@ -61,9 +62,7 @@ def ring(rx, ry, z, cy=0.0, n=20, p=2.4):
 
 
 def fuselage(mb):
-    # (z, half width, half height, centre y): a round tube with a drooped nose and a tail cone swept up
-    st = [(15.0, 0.02, 0.02, -0.25), (14.6, 0.5, 0.5, -0.25), (13.4, 1.0, 1.05, -0.2), (11.0, 1.45, 1.5, -0.1), (7.0, 1.7, 1.75, 0.0),
-          (0.0, 1.8, 1.85, 0.0), (-6.0, 1.7, 1.75, 0.05), (-10.0, 1.4, 1.45, 0.3), (-13.0, 0.9, 1.0, 0.7), (-15.0, 0.4, 0.5, 1.0)]
+    st = ST
     rings = [ring(rx, ry, z, cy) for z, rx, ry, cy in st]
     nk = len(rings[0])
 
@@ -107,11 +106,7 @@ def surface(mb, sections, mat='JetHull', mirror=False, camo=True):
 
 def wings(mb):
     for sgn in (1, -1):
-        secs = []
-        for s in (0.0, 0.18, 0.5, 0.82, 1.0):
-            x = 1.5 + s * 14.6
-            ch = 7.2 - 5.0 * s
-            secs.append((x, -0.5 + 1.1 * s, 3.2 - 6.0 * s, ch, 0.95 - 0.65 * s))
+        secs = wing_secs()
         surface(mb, secs, mirror=sgn < 0)
         # winglet
         tip = secs[-1]
@@ -125,6 +120,110 @@ def wings(mb):
     for (_, y, z, ch, th) in fin:
         rings.append([(0, y, z), (th * 0.9, y, z - ch * 0.18), (th, y, z - ch * 0.45), (th * 0.4, y, z - ch), (-th * 0.3, y, z - ch), (-th * 0.45, y, z - ch * 0.4)])
     mb.loft(rings, 'JetHull', cap0=True, cap1=True)
+
+
+# (z, half width, half height, centre y): a round tube with a drooped nose and a tail cone swept up
+ST = [(15.0, 0.02, 0.02, -0.25), (14.6, 0.5, 0.5, -0.25), (13.4, 1.0, 1.05, -0.2), (11.0, 1.45, 1.5, -0.1), (7.0, 1.7, 1.75, 0.0),
+      (0.0, 1.8, 1.85, 0.0), (-6.0, 1.7, 1.75, 0.05), (-10.0, 1.4, 1.45, 0.3), (-13.0, 0.9, 1.0, 0.7), (-15.0, 0.4, 0.5, 1.0)]
+
+
+def fus_at(z):
+    """The fuselage's half width, half height and centre height at z."""
+    for (za, *a), (zb, *b) in zip(ST, ST[1:]):
+        if zb <= z <= za:
+            t = (za - z) / (za - zb)
+            return tuple(x + (y - x) * t for x, y in zip(a, b))
+    return ST[0][1:] if z > 0 else ST[-1][1:]
+
+
+def fus_section(mb, z0, z1, ragged=(True, True), seed=0):
+    """The stretch of fuselage between z0 and z1 (broken off: its ends torn, dark inside), the same skin as the whole."""
+    n = max(3, int((z1 - z0) / 1.2))
+    zs = [z1 - (z1 - z0) * i / n for i in range(n + 1)]
+    rings = []
+    for i, z in enumerate(zs):
+        rx, ry, cy = fus_at(z)
+        r = ring(rx, ry, z, cy)
+        if (i == 0 and ragged[1]) or (i == n and ragged[0]):
+            r = [(x * (0.8 + 0.28 * noise(k * 1.7 + seed, z)), cy + (y - cy) * (0.8 + 0.28 * noise(k * 2.3 + seed, z + 1)), z + 0.5 * (noise(k + seed, 5) - 0.5))
+                 for k, (x, y, _) in enumerate(r)]
+        rings.append(r)
+    nk = len(rings[0])
+
+    def mat(i, k):
+        a = 2 * PI * k / nk
+        return 'JetSand' if math.sin(a) > 0.2 and noise(math.cos(a) * 3, zs[i]) < 0.42 else 'JetHull'
+
+    mb.loft(rings, 'JetHull', cap0=True, cap1=True, matfn=mat, capmat='JetDark')
+
+
+def wing_secs(a=0.0, b=1.0):
+    """A wing's sections from the fraction a of its span to b."""
+    out = []
+    for s in sorted({a, b, *[t for t in (0.0, 0.18, 0.5, 0.82, 1.0) if a < t < b]}):
+        out.append((1.5 + s * 14.6, -0.5 + 1.1 * s, 3.2 - 6.0 * s, 7.2 - 5.0 * s, 0.95 - 0.65 * s))
+    return out
+
+
+def about(pivot, M):
+    """M turned about `pivot` instead of the origin."""
+    return T(*pivot) @ M @ T(-pivot[0], -pivot[1], -pivot[2])
+
+
+def tail_group(mb):
+    """The tail section's fittings: the tail planes and the fin."""
+    for sgn in (1, -1):
+        surface(mb, [(1.2, 0.9, -11.2, 3.4, 0.45), (3.0, 1.15, -12.6, 2.2, 0.3), (5.6, 1.5, -14.3, 1.2, 0.18)], mirror=sgn < 0)
+    fin = [(1.4, -8.2, 5.2, 0.4), (4.2, -11.0, 3.4, 0.3), (7.0, -13.2, 2.0, 0.2)]
+    mb.loft([[(0, y, z), (th * 0.9, y, z - ch * 0.18), (th, y, z - ch * 0.45), (th * 0.4, y, z - ch), (-th * 0.3, y, z - ch), (-th * 0.45, y, z - ch * 0.4)]
+             for (y, z, ch, th) in fin], 'JetHull', cap0=True, cap1=True)
+
+
+def wreck():
+    """The plane as it lies after it came in: the nose torn off and crumpled, the middle on its belly rolled over a little, the tail broken off
+    and thrown to one side with its fins, the right wing torn off at the root (its outer half lying on the sand), the left wing drooping with its
+    engine, the right engine gone (it lies on as a machine), and pieces strewn about. The ground is at y = -1.8."""
+    import random
+    mb = MB()
+    g = -1.8
+    # the middle breaks in two: the front half (with the wings) on its belly rolled a little, the back half cracked off behind it, yawed
+    mb.push(T(0, -0.15, 0) @ kit.Rz(0.16))
+    fus_section(mb, -2.0, 7.0, (True, True), 3)
+    mb.sphere((0, 1.75, 2.5), 1.0, 'JetHull', u=14, v=7, scale=(1.0, 0.55, 2.2))
+    mb.cyl((0, 1.9, 2.0), (0.3, 2.7, 1.6), 0.04, 0.02, segs=5, mat='JetSteel')
+    mb.push(about((-1.5, -0.5, 0), kit.Rz(-0.42)))
+    surface(mb, wing_secs(0.0, 0.5), mirror=True)
+    engine(mb, -ENG_X, ENG_Y, ENG_Z, -1)
+    mb.pop()
+    surface(mb, wing_secs(0.0, 0.2))
+    mb.pop()
+    mb.push(T(-1.2, -0.45, -1.8) @ about((0, 0, -2), kit.Ry(0.22) @ kit.Rz(0.3) @ kit.Rx(0.05)))
+    fus_section(mb, -9.0, -2.0, (True, True), 8)
+    mb.pop()
+    mb.push(T(1.2, -1.5, 5.0) @ about((0, 0, 7), kit.Rx(0.42) @ kit.Ry(0.3) @ kit.Rz(-0.5)))
+    fus_section(mb, 7.0, 15.0, (True, False), 11)
+    mb.sphere((0, -1.6, 11.8), 0.55, 'JetGlass', u=12, v=7)
+    mb.sphere((0, 0.2, 14.4), 0.52, 'JetDark', u=12, v=7, scale=(1, 0.9, 1.4))
+    mb.pop()
+    mb.push(T(5.5, -1.2, -7.0) @ about((0, 0, -9), kit.Ry(0.7) @ kit.Rz(1.25) @ kit.Rx(-0.1)))
+    fus_section(mb, -15.0, -9.0, (False, True), 5)
+    tail_group(mb)
+    mb.pop()
+    mb.push(T(11.0, g - 0.15, -11.0) @ kit.Ry(-0.45) @ kit.Rz(0.04))
+    surface(mb, wing_secs(0.3, 1.0))
+    mb.pop()
+    rnd = random.Random(7)
+    for i in range(18):
+        sx, sy, sz = rnd.uniform(0.6, 2.8), rnd.uniform(0.06, 0.3), rnd.uniform(0.6, 2.2)
+        x, z = rnd.uniform(-15, 22), rnd.uniform(-22, 24)
+        if abs(x) < 3 and -10 < z < 8:
+            x += 6 * (1 if x >= 0 else -1)
+        mb.box((x, g + sy / 2 + rnd.uniform(0, 0.4), z), (sx, sy, sz), rnd.choice(['JetHull', 'JetHull', 'JetSand', 'JetFlap', 'JetDark']),
+               rot=(rnd.uniform(-0.3, 0.3), rnd.uniform(0, PI), rnd.uniform(-0.3, 0.3)))
+    for i in range(5):
+        x, z = rnd.uniform(-12, 18), rnd.uniform(-20, 20)
+        mb.beam((x, g + 0.2, z), (x + rnd.uniform(-3, 3), g + rnd.uniform(0.2, 1.0), z + rnd.uniform(-3, 3)), 0.18, 0.18, 'JetSteel')
+    return mb
 
 
 def engine(mb, cx, cy, cz, side):
@@ -157,7 +256,7 @@ def build():
     wings(body)
     engine(body, -ENG_X, ENG_Y, ENG_Z, -1)
     engine(eng, ENG_X, ENG_Y, ENG_Z, 1)
-    return body, eng
+    return body, eng, wreck()
 
 
 def make(mb, name):
@@ -183,7 +282,13 @@ def preview(objs, out_dir):
         ('front', (6, 3, 42), (0, -1, 0), 38),
         ('top', (3, 52, 6), (0, 0, 0), 38),
         ('engine', (-12, -2, 12), (-5.6, -2, 1.6), 40),
+        ('wreck', (34, 12, 30), (3, -2, 0), 42),
+        ('wreck_top', (3, 60, 4), (3, 0, 0), 42),
     ):
+        broken = name.startswith('wreck')
+        objs['Jet_Wreck'].hide_render = not broken
+        objs['Jet_Body'].hide_render = broken
+        objs['Jet_EngineR'].hide_render = broken
         look(pos, tgt, lens)
         shoot(os.path.join(out_dir, f'plane_{name}.png'))
 
@@ -194,8 +299,8 @@ def main():
         bpy.data.objects.remove(o)
     for name, spec in MATERIALS.items():
         kit.make_material(name, *spec)
-    body, eng = build()
-    objs = [make(body, 'Jet_Body'), make(eng, 'Jet_EngineR')]
+    body, eng, wrk = build()
+    objs = [make(body, 'Jet_Body'), make(eng, 'Jet_EngineR'), make(wrk, 'Jet_Wreck')]
     tail = bpy.data.objects.new('Tail', None)
     tail.location = kit.C @ Vector(TAIL)
     bpy.context.scene.collection.objects.link(tail)
