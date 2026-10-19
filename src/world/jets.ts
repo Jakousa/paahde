@@ -13,12 +13,13 @@ import { breakup, BREAK_DT, ENGINES, STATE_W, type Breakup, type Fate } from '..
 import { JET_PIECES } from '../../shared/jetpieces.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { tyreDust } from '../tyreDust';
+import { mergePart } from './bossParts';
 import { zaps } from './zaps';
 
 /** Hidden past this distance (m) from the camera. */
 const SHOW_R = 5000;
 /** The wrecks on the sand are drawn within this far (m). */
-const WRECK_SHOW_R = 900;
+const WRECK_SHOW_R = 600;
 
 /** A flat trapezoid in the XZ plane (thickness `t`, along -Y..+Y), from x = 0 (root chord `root`, its leading edge
  *  at z = 0) to x = `len` (tip chord `tip`, leading edge swept back `sweep`). */
@@ -135,22 +136,39 @@ class Debris {
       if (n) {
         n.position.set(0, 0, 0);
         n.visible = true;
-        n.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+        this.prep(n, d.id);
         holder.add(n);
         const x = model!.getObjectByName(`P_${d.id}_x`)?.clone();
         if (x) {
           x.position.set(0, 0, 0);
           x.visible = false;
-          x.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+          this.prep(x, d.id);
           holder.add(x);
           this.husks.set(this.holders.length, x);
           this.whole.set(this.holders.length, n);
         }
       }
       holder.scale.setScalar(JET_SPAN / MODEL_SPAN);
+      holder.matrixAutoUpdate = false; // (placed by hand: see place())
       scene.add(holder);
       this.holders.push(holder);
     }
+  }
+
+  /** A piece's mesh: it casts a shadow unless it is a small one, and never walks its own matrix. */
+  private prep(n: THREE.Object3D, id: string) {
+    const small = id.startsWith('panel') || id.startsWith('beam');
+    n.traverse((o) => {
+      o.castShadow = o.castShadow && !small;
+      o.receiveShadow = true;
+      o.matrixAutoUpdate = false;
+      o.updateMatrix();
+    });
+  }
+
+  private place(h: THREE.Group) {
+    h.updateMatrix();
+    h.updateMatrixWorld(true);
   }
 
   /** Show an engine as it was, or as the husk it was wrecked into. */
@@ -172,7 +190,7 @@ class Debris {
       if (!w) return;
       h.position.set(w[0], w[1], w[2]);
       h.quaternion.set(w[3], w[4], w[5], w[6]);
-      h.updateMatrixWorld();
+      this.place(h);
     });
   }
 
@@ -188,7 +206,7 @@ class Debris {
       _q0.set(st[a + 3], st[a + 4], st[a + 5], st[a + 6]);
       _q1.set(st[b + 3], st[b + 4], st[b + 5], st[b + 6]);
       h.quaternion.copy(_q0).slerp(_q1, f);
-      h.updateMatrixWorld();
+      this.place(h);
       if (st[a + 7] >= 3) dust(h.position.x, h.position.y, h.position.z, 1);
     });
   }
@@ -220,7 +238,16 @@ function build(): THREE.Group {
   new GLTFLoader().loadAsync('./models/jet.glb').then(
     (gltf) => {
       if (!gltf.scene.getObjectByName('Jet_Body')) throw new Error('jet.glb has no Jet_Body');
-      model = gltf.scene;
+      // every node as one lit mesh (a glTF node comes in one mesh per material, and each is drawn again into each shadow cascade)
+      const merged = new THREE.Group();
+      for (const node of [...gltf.scene.children]) {
+        if (!node.name.startsWith('Jet_') && !node.name.startsWith('P_')) continue;
+        const m = mergePart(node);
+        m.name = node.name;
+        m.position.copy(node.position);
+        merged.add(m);
+      }
+      model = merged;
       for (const p of pending) fill(p);
       pending.clear();
     },
