@@ -4,7 +4,7 @@
     tools/blender/run.sh -b --python tools/blender/harvester.py -- --preview <dir>  # also renders PNG previews
 
 All coordinates are three.js (Y up, +Z forward = the maw, +X its left side), built in three.js space and turned into
-Blender's Z-up frame just before export (as tools/blender/jet.py does). The origin is on the sand under the middle
+Blender's Z-up frame just before export (as tools/blender/machines/plane.py does). The origin is on the sand under the middle
 of the four track units (shared/harvester.ts: TRACK 12 apart across, WHEELBASE 18 along); it is 15 m wide, 34 m from
 the stern to the drum's cheeks and 19.5 m to the top of its stacks. Monolithic on purpose: big flat slabs of
 rust-black iron, few openings, the scale told by the deck rails, the ladder and the hazard bands on the maw.

@@ -1,10 +1,8 @@
-# dadajam
+# Paahde
 
-Online multiplayer game jam project. three.js (WebGPU renderer, automatic WebGL2 fallback) + TypeScript + Vite,
+Online multiplayer desert survival game, made in the dadajam game jam (repo name: dadajam). three.js (WebGPU renderer, automatic WebGL2 fallback) + TypeScript + Vite,
 a Node WebSocket game server with SQLite, and performance-critical code in WebAssembly via
 [AssemblyScript](https://www.assemblyscript.org/). See [docs/netcode.md](docs/netcode.md) for how syncing works.
-
-Controls: ←/→ or A/D to move, Space/↑/W to jump (press again in the air to double jump).
 
 **Live:** https://herkku.org/dadajam/ — every push to `main` deploys automatically (~2–3 min).
 
@@ -29,7 +27,7 @@ npm run build    # production build into dist/
 
 AI agents (Claude Code, Codex, Cursor…): project instructions are in `CLAUDE.md` (also `AGENTS.md`).
 
-Branch, open a PR (CI checks it builds), merge to `main`. Don't push broken builds to `main` — it goes live.
+Small commits straight to `main` (CI also builds PRs). Run `npm run build` first: `main` goes live on every push.
 
 ## Deployment
 
@@ -40,9 +38,9 @@ Branch, open a PR (CI checks it builds), merge to `main`. Don't push broken buil
 3. The host Caddy proxies `herkku.org/dadajam/*` (including the `/ws` WebSocket) to the container on
    `127.0.0.1:8086` (`deploy/dadajam.caddy`). The SQLite DB lives in `/opt/dadajam/data` on the server.
 
-The build SHA is shown in the top-left corner, so you can check which commit is live.
+The build SHA is shown at the bottom of the Esc menu, so you can check which commit is live.
 
 ## Credits
 
 Third-party assets and their licences are listed in [`public/credits.txt`](public/credits.txt), which ships
-with the game (linked in the top-left corner). Add every downloaded asset there.
+with the game (linked from the Esc menu). Add every downloaded asset there.

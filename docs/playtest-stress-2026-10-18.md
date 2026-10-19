@@ -5,8 +5,8 @@ The local server sustained eight players and a sixteen-player overload run. Issu
 ## Scope and setup
 
 - Apple M2 Pro, 12 CPU cores, 16 GB RAM; Node 24.20.0; Chrome 155, headless with hardware WebGPU/Metal. One viewport at 1280×720 for the scenario measurements.
-- Production build and production server on localhost:8797, isolated worktree and SQLite worlds. The working checkout and its uncommitted model work were preserved.
-- Read the project architecture, shared deterministic movement, netcode, world lifecycle, inventory, bosses and client rendering. Simulation is authoritative at 60 Hz with 20 Hz player snapshots; worlds have separate processes and databases.
+- Production build and production server on localhost, isolated SQLite worlds.
+- Simulation is authoritative at 60 Hz with 20 Hz player snapshots; worlds have separate processes and databases.
 - Boss/swarm measurements use **one full rendered browser plus seven real WebSocket protocol clients**, each with its own identity, input stream, inventory, shooting and ping traffic. The overload adds eight more protocol clients. Separate eight-full-browser results are below.
 - Debug gear/spawn/summon controls supplied repeatable encounters. Boss fixtures used extra lives; the combined runs used 1,000 lives while the observer displayed at most 50 marks. Normal ten-life game-over was tested separately. The protocol bots deliberately disconnected and returned to the arena after respawning: their recorded 1006 closes are intentional test churn.
 - Early moving/swarm measurements used the `35aa28f` checkout; individual and combined boss runs used `9a369c6`. Later browser, latency, distant worm and cleanup checks used `9026b34` (includes teammates’ intervening changes), followed by the motorcycle cleanup in `b48f95b`. Do not interpret local results as a production-VPS or Internet capacity benchmark.
@@ -76,10 +76,8 @@ The distant worm run started roughly 1,021 m from the base on deep sand. With ei
 
 Eight-player server capacity looks suitable for the local playtest based on these runs. The strongest remaining risks are client frame rate during heavy fights and delayed graphics initialization when many renderers compete for one GPU. Carrier combat averaged 27 FPS; the extreme swarm/combined fights averaged 19–21 FPS. Individual spawn/death/shader hitches reached about 1.6 seconds. We did not certify older laptops, Safari/Firefox, packet-loss recovery, a two-hour uninterrupted soak, or production-host CPU/network capacity.
 
-The tests used the latest available code at the stated checkpoints; subsequent team commits need their own smoke check. No deployment configuration was changed. All test databases and processes were isolated from normal development and production worlds.
+The tests used the latest available code at the stated checkpoints; subsequent team commits need their own smoke check. All test databases and processes were isolated from normal development and production worlds.
 
-## Evidence
+## Regression test
 
-Raw snapshots, measurements, screenshots, CPU profiles and local orchestration scripts are under `/tmp/dadajam-stress-artifacts`. This directory is local evidence, not a portable committed test suite. Reusable server crash regression coverage is committed in `tools/server-resilience.test.mjs`.
-
-Invalid/contaminated exploratory windows (`one-browser-baseline.json`, `bossmixed.json`, the first aborted overload, and the first restart observer with a bad instrumentation expression) were excluded from reported results. Old browser-error entries caused by rebuilding assets without restarting the local static server were also excluded; the server was restarted for subsequent builds.
+Server crash regression coverage is in `tools/server-resilience.test.mjs` (`node --test tools/server-resilience.test.mjs`).

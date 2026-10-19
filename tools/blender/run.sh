@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs Blender with these arguments, one at a time across every session and agent on this machine (several at once
+# Runs Blender with these arguments, one at a time on this machine (several at once
 # choke it): waits for the lock, cleared when the holder exits or dies.
 #   tools/blender/run.sh -b --python tools/blender/worm.py -- --preview out.png
 LOCK=/tmp/dadajam-blender.lock

@@ -81,8 +81,7 @@ the hand correctly and let the fingers close on it.
 - Close-ups: `tools/models/render_hand.py -- public/models/hands.glb <prefix> Clip:frame,...`. Tile the views
   with `ffmpeg ... xstack` and look at one image. Check `fp` (what the player sees) and at least two
   close-ups: a pose can look fine from the eye with the thumb through the barrel.
-- Compare with the previous build: `rtk proxy git show HEAD:public/models/hands.glb > old.glb` (plain
-  `git show` goes through rtk and corrupts the binary).
+- Compare with the previous build: `git show HEAD:public/models/hands.glb > old.glb`.
 - In game: `npm run build`, serve a copy of `dist/` on a private port, then
   `node tools/models/screenshot.mjs "http://localhost:<port>/?debug&hold=telescope" out.png 1600 900 12000`.
   Add `&anim=TelescopeRaise` to loop a clip.

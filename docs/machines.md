@@ -1,36 +1,31 @@
 # The machine program: how to continue it
 
-For the agent that picks up the realistic-machines work, and for the project owner who steers it. Read the whole file once; it is the result of a
+For whoever continues the realistic-machines work. Read the whole file once; it is the result of a
 long run of reviews and says what went wrong as well as what worked. Details of one machine live in `docs/machines/<machine>.md`
-(the turbofan: `docs/machines/turbofan.md`); the owner's art direction is `docs/look.md`; every player-visible text rule is `docs/text.md`.
+(the turbofan: `docs/machines/turbofan.md`); the art direction is `docs/look.md`; every player-visible text rule is `docs/text.md`.
 
 ## 1. What the program is
 
 Replace the old code-built boxy "components" (`src/teardown/junk.ts` builders) with **realistic, Blender-authored, used-future machines** that
 are taken apart in the disassembly mode, then grow the world around them: scrap economy, structures made of several machines, boss wrecks.
-The long plan is in the owner's plan file (`~/.claude/plans/okay-i-want-to-joyful-eich.md`; if you do not have it, this file is enough).
 
 **Where it stands (update this paragraph when you finish something)**
 
-- Done and reviewed by the owner: the **turbofan jet engine** (`tools/blender/machines/turbofan.py` -> `public/models/machines/turbofan.glb` +
+- Done and reviewed: the **turbofan jet engine** (`tools/blender/machines/turbofan.py` -> `public/models/machines/turbofan.glb` +
   generated `shared/machines/turbofan.ts`): shells that need a grinder then prying, rotor modules, accessories on a gearbox, cables with plugs,
   hardware kit (`tools/blender/machines/hardware.py` -> `hardware.glb`: real screws, bolts, latches, clamps, pins), pushing/rolling the
   engine, picking up and turning pieces that come off, scrap per step, rotors / fuel manifold / turbine disc as collectable parts.
 - Done, not yet marked good: **downed jets**: the plane, a flying wing with two turbofan pods on its back (`tools/blender/machines/plane.py` -> `public/models/jet.glb` +
   generated `shared/jetpieces.ts`), the break-up simulation (`shared/jetbreak.ts`), permanent crash sites (`shared/jetcrash.ts`,
-  `server/jetcrash.ts`), engines that tear off, may be wrecked, otherwise lie as machines to take apart. Never watched running by an agent.
+  `server/jetcrash.ts`), engines that tear off, may be wrecked, otherwise lie as machines to take apart.
 - Not done (suggested order, see section 9): findability of jet wrecks, uses for the rotor parts, the shell turning into scrap, terrain hollow for
   normal crash sites, pieces as inventory items, the other machines one by one (section 8), structures, boss wrecks.
-- Everything lives on the git branch **`machines`** (pushed to `origin/machines`). `main` is the live game.
 
 ## 2. Ground rules (they override habits)
 
-1. **Never merge into or push `main`** until the owner says a step is good. Pushing `machines` is allowed and wanted (back-up, others can see it;
-   it deploys nothing). Commit small, push often. Commit trailer: `Co-Authored-By: <your model name> <noreply@anthropic.com>`.
-2. `main` must always build, so before the owner-approved merge run `npm run build`. On the branch run it before each push anyway.
-3. Another session may have **uncommitted edits in `src/debugMenu.ts`**: never commit that file (`git reset -q src/debugMenu.ts` before committing;
-   `git add` explicit paths, not `-A` at the root). Do not edit it either, put dev switches in the URL (`?cascades=`, `?shadows=0`) or elsewhere.
-4. The owner's standing rules for machines:
+1. `main` is the live game and must always build: run `npm run build` before each push. Commit small, push often.
+2. Put dev switches in the URL (`?cascades=`, `?shadows=0`) rather than new menu entries.
+3. Standing rules for machines:
    - **Models hold only the machine.** No sand, furrows, scorch decals, loose debris or spills in a machine's glb. Crash marks belong in the
      terrain (craters, see `server/terrain.ts crater()`); loose pieces that fly off are physics, not model.
    - **Disassembly is normal play**: movement and mouse look as usual; the mode starts near a machine and ends when you walk away; the crosshair is
@@ -41,13 +36,12 @@ The long plan is in the owner's plan file (`~/.claude/plans/okay-i-want-to-joyfu
    - **Shells start on.** A shell may need a grinder along a hinted seam, then a mashing prise (`grind` then `mash`). Both halves of the outer
      shell must go before the inner one can. The same shell model may be used by the flying jets.
    - **Parts are real**: a jet engine's parts come from what an engine really is (rotors, manifold, bearings, starter...). Keep interactions simple
-     but visually rich; the owner is "scared of too much complexity": few large things, clean connectors, nothing floating or
+     but visually rich; avoid complexity: few large things, clean connectors, nothing floating or
      sitting inside a rotor.
    - Every player-visible string goes in `shared/text.ts` (labels `TEXT.steps`, parts `TEXT.parts`, prompts); never inline.
-5. Anything that moves a player is in `shared/sim.ts` and deterministic; shared/server code uses `.ts` import extensions and no enums,
+4. Anything that moves a player is in `shared/sim.ts` and deterministic; shared/server code uses `.ts` import extensions and no enums,
    namespaces or constructor parameter properties (`erasableSyntaxOnly`). Import three from `three/webgpu`.
-6. Be honest in reports: say what you ran and what you could only reason about. The owner has twice caught confident statements that were wrong
-   ("a 60 fps cap"; stats that read 0). Say "not verified in the running game" when that is the case.
+5. Say what you ran and what you only reasoned about; write "not verified in the running game" when that is the case.
 
 ## 3. How a machine is made (the pipeline)
 
@@ -62,8 +56,7 @@ src/teardown/teardown.ts     the mode: picking, gestures, held pieces, sheen, sc
 server/crash.ts      sessions (done steps / taken parts by index), scrap grants, pushing; shared/crash.ts the site ids; shared/machineBoxes.ts solid capsules
 ```
 
-Run a model: `BLENDER="C:/Program Files/Blender Foundation/Blender 5.0/blender.exe" sh tools/blender/run.sh -b --python tools/blender/machines/turbofan.py [-- --preview <dir>]`
-(Blender 5.0 is installed there; if the path differs find it). The script writes the glb **and** the layout TS; commit both.
+Run a model: `BLENDER=<path to Blender 5.0> sh tools/blender/run.sh -b --python tools/blender/machines/turbofan.py [-- --preview <dir>]`. The script writes the glb **and** the layout TS; commit both.
 
 **Frames.** The scripts build in three.js axes (Y up, +Z forward, metres) under a transform stack and are turned into Blender Z-up just before
 export (`kit.C`). The turbofan's own frame has the engine axis on Z, fan at +Z, angles measured from +Y towards +X (`polar(phi, r, z)`); the finished
@@ -71,7 +64,7 @@ engine is posed (pitch, roll, sunk) and written in world axes with the origin on
 
 **`kit.py` in one paragraph.** `MB` is a bmesh builder with a matrix stack (`push/pop`): `loft(rings)`, `cyl`, `lathe(profile, segs, mat)` (revolves an (r,z)
 profile about local Z), `box`, `beam`, `sphere`, `sweep` (tube along points), `deform`. `shell_solid` makes a thick lathed shell (use it for cowls and
-casings: a one-sided surface is see-through, the owner reported this). `Machine.module(id, chance, pop)` returns a `Module` that records geometry and:
+casings: a one-sided surface is see-through). `Machine.module(id, chance, pop)` returns a `Module` that records geometry and:
 `step(kind, label, pos, nrm, after, need)`, `ring` / `rring` / `row` (a ring or row of fasteners), `wire(label, pts, key, after, r)` (cables), `grind`, `mash`,
 `part(partId, pos, rot, chance)`, `inside()`, `place(M)`. `Machine.hit(z0, z1, r, mods)` adds a solid cylinder that exists while any of `mods` is still on.
 
@@ -102,16 +95,16 @@ Run all of these before every push, and look at images you render:
 | Layouts solvable, counts within caps | `node tools/check-machines.ts` (400 seeds) |
 | Step order / locks consistent | `node tools/check-teardown-order.ts` |
 | Machine collision boxes | `node tools/check-machine-boxes.ts` |
-| Geometry looks right | `... machines/<m>.py -- --preview <dir>`, then **open the PNGs** (the Read tool shows images). Cowls too thin, parts floating, wrong axis: you can only see it here |
+| Geometry looks right | `... machines/<m>.py -- --preview <dir>`, then **open the PNGs**. Cowls too thin, parts floating, wrong axis: you can only see it here |
 | Server-side logic | write a throwaway `tools/_t.ts` (delete it after), run it with `node`: e.g. `JetServer`, `breakup()`, `collideJetWrecks()` run fine in plain node |
-| A drawing component (canvas, UI) | bundle it with `npx rolldown <file> --format iife --name X -o out.js`, load it in a test html, screenshot with headless Chrome over the DevTools protocol (a small script that opens `chrome.exe --headless=new --remote-debugging-port=...` and calls `Page.captureScreenshot`) |
-| Performance | the owner records a Chrome trace; you read it with `python tools/trace-report.py <trace> [frames|profile|compare]` |
+| A drawing component (canvas, UI) | bundle it with `npx rolldown <file> --format iife --name X -o out.js`, load it in a test html, screenshot with headless Chrome over the DevTools protocol (a small script that opens Chrome with `--headless=new --remote-debugging-port=...` and calls `Page.captureScreenshot`) |
+| Performance | record a Chrome trace and read it with `python tools/trace-report.py <trace> [frames|profile|compare]` |
 
-What an agent **cannot** check: the game running (the headless browser is too slow to render the game itself), feel, sound, the look in sunlight. Say so and make
-the owner's check cheap: give the lab URL, what to click, what to look for.
+What headless checks cannot show: the game running (a headless browser is too slow to render it), feel, sound, the look in sunlight. Make the
+reviewer's check cheap: give the lab URL, what to click, what to look for.
 
 **Test lab**: `npm run dev` then `http://localhost:5173/?w=lab` (flat room, every machine and part, the grinder). Dev server is on :8787 (game) and :5173 (Vite); restart it
-fresh before asking for a review: find listeners with `netstat -ano | findstr ":8787 :5173"`, `taskkill /PID <pid> /F`, then `npm run dev` in the background.
+fresh before asking for a review (stop the old `npm run dev`, then start it again).
 Jets: the debug menu (F3) has "summon jet"; the rifle hits it three times. `?cascades=1..3` / `?shadows=0` for GPU experiments; "Show stats" in the Esc menu shows the frame-time graphs.
 
 ## 5. Procedure for a new or reworked machine (the loop)
@@ -123,9 +116,8 @@ Jets: the debug menu (F3) has "summon jet"; the rifle hits it three times. `?cas
    from 3 m away standing in the sand. Reuse the hardware kit; add hardware kinds to `hardware.py` rather than inventing boxes.
 3. **Register it**: `shared/machines.ts` (LAYOUTS), `LEVEL_KINDS` / `COMPONENTS` in `shared/tables.ts` / `shared/salvage.ts`, `tools/check-machines.ts` KINDS, `shared/lab.ts` rows,
    `TEXT.machines`, step labels in `TEXT.steps`.
-4. **Check** (section 4), fix, render previews, look, fix. Do this 2-3 rounds *before* showing the owner anything.
-5. **Commit and push to `machines`.** Report to the owner in the format of section 10. Wait for review; iterate on the same step until they say it is good. Only then (and only
-   if asked) does anything go towards `main`.
+4. **Check** (section 4), fix, render previews, look, fix. Do this 2-3 rounds *before* asking for a review.
+5. **Commit and push**, with what to look at (section 10). Iterate on the same step until it is good.
 
 ## 6. Performance (the game is already near its budget)
 
@@ -148,54 +140,41 @@ Jets: the debug menu (F3) has "summon jet"; the rifle hits it three times. `?cas
 - Three's `renderer.info` resets at every render call; with post-processing the last call is a full-screen quad (0 draws). `autoReset = false` + one manual `reset()` a frame.
 - A shared module registry (`shared/jetcrash.ts`, `shared/lab.ts`) can add machine sites without touching the crash-site layout; mark them `lab: true` so they are worked in place and never "spent".
 - Stateless determinism: anything both sides simulate (`shared/jetbreak.ts`) must use seeded randomness and only shared inputs; store the *result* (final poses) in the DB for anything that must agree exactly.
-- The previous reports: chat-visible claims must be backed by a command you ran. Do not leave dead code (`if False else`) in generated scripts.
+- Do not leave dead code (`if False else`) in generated scripts.
 
 ## 8. The roster (suggested order for the next machines)
 
 Existing code-built machines to replace one at a time, each with its own `docs/machines/<m>.md`: pump housing (the reference for look and feel at size M), winch, solenoid valve,
-beacon, control cabinet, robot arm, then the four salvage wrecks (truck chassis, pump jet, control rack, reactor core). New ones when the owner asks: see the plan file's catalogue.
+beacon, control cabinet, robot arm, then the four salvage wrecks (truck chassis, pump jet, control rack, reactor core). New ones as the design asks for them (section 12).
 Keep `LEVEL_KINDS` in mind: level 0 scrap fields hold only small starter machines; jet engines must stay (nearly) absent from normal crash sites because downed jets are their source.
 
-## 9. Backlog, in the order I would take it (an agent can do all of these with no human in the loop except where marked)
+## 9. Backlog, in suggested order
 
 1. **Findable jet wrecks**: smoke column + locator dot + beep like normal crash sites (`src/world/crashSmoke.ts`, `src/crashSound.ts`, `src/locator.ts` read `crashSpent` and crash-site
    lists; add the jet crashes as sources), until every engine at that wreck is stripped. Keep wrecks whose engines are untouched when the 12-site cap trims (`shared/jetcrash.ts JET_CRASH_MAX`).
 2. **Jammed jets** (`shared/jammer.ts`) should land gentler than shot ones: fewer pieces tear off, engines mostly stay whole (`soft` in `shared/jets.ts` is available).
 3. **Shell to scrap at the end / recreatable shell** (turbofan.md): scrap grant on stripping the last step (`server/crash.ts` `scrapFor` and its `reward` callback), numbers in `shared/tables.ts SCRAP_REWARD`.
-4. **Uses for the five rotor/manifold parts**: a recipe for a built engine at the workbench (`shared/crafting.ts`, `shared/tables.ts` recipes), a gear slot; *ask the owner* what a built engine does if the plan file does not say.
+4. **Uses for the five rotor/manifold parts**: a recipe for a built engine at the workbench (`shared/crafting.ts`, `shared/tables.ts` recipes), a gear slot; decide what a built engine does first.
 5. **Terrain hollow for ordinary crash sites** (not only jets): a crater, bank and furrow from the machine's pose, stamped by the server once (`server/terrain.ts crater(..., false)`).
 6. **Piece as an inventory item** (a second F puts a held piece into the bag): needs an item per module kind; keep "F again puts it down" as the first step.
 7. Normal-world performance (trace first), then the next machine from section 8.
 
-## 10. What the owner should think about and steer (and how an agent asks)
+## 10. Open design decisions and reviews
 
-**Decisions only the owner can make** (an agent should propose a default and keep going, then list these in its report):
-- Which machine or feature is next, and how big (steps, scrap values, drop rates). Defaults: use the numbers in `docs/machines/turbofan.md` and `shared/tables.ts` and adjust by feel.
-- Art direction: used-future, mechanical, water-seeking cities' leftovers (`docs/look.md`). Anything that shifts it (colours, new materials, text) is theirs.
-- What the economy rewards: how much scrap for fasteners and for finishing, how rare engines are (jets spawn every 2.5-6 min, max two, three hits to down), the odds
-  an engine tears off (0.8) and is wrecked (0.3) (`shared/jetbreak.ts`).
+- Which machine or feature is next, and how big (steps, scrap values, drop rates). Defaults: the numbers in `docs/machines/turbofan.md` and `shared/tables.ts`, adjusted by feel.
+- Art direction: used-future, mechanical, water-seeking cities' leftovers (`docs/look.md`).
+- What the economy rewards: scrap for fasteners and for finishing, how rare engines are, the odds an engine tears off (0.8) and is wrecked (0.3) (`shared/jetbreak.ts`).
 - What a built engine or rotor is *for* (vehicle, base generator).
-- When a step is good enough to merge to `main`.
 
-**How the owner can give feedback that makes the next round fast**: a screenshot with the problem circled (it has worked every time), the machine name and which step, what
-they expected. For performance: a Chrome trace saved while looking at the problem, plus the stats panel (draws / tris) in view. Say if a build was stale (the server and client must be restarted fresh; a few "bugs" were old clients).
-
-**An agent should only stop and ask** when a choice changes the design in a way that is expensive to undo (a new economy rule, deleting a feature, anything that touches `main`). Everything else:
-pick the recommended option, say so in one line, and move on.
-
-## 11. Report format after each round
-
-- One line: what is on the branch now and the commit.
-- **Verified** (commands run and what they printed) and **not verified** (what only the running game can show).
-- What to look at, with the URL (`?w=lab` or the jet recipe) and exact steps; what you expect to see.
-- Defaults you chose that the owner may want to change (numbers, names, odds).
-- Next step you would take.
+When asking for a review, say what changed and the commit, what was verified (commands run) and what was not, and what to look at (URL, exact steps, what you expect to see).
+Feedback that works best: a screenshot with the problem circled, the machine and step, what was expected; for performance, a Chrome trace plus the stats panel in view.
+Restart the server and client fresh before reviewing (a few "bugs" were old clients).
 
 ## 12. The larger picture: machines of every size, structures, and boss bodies you take apart
 
 Everything above is about **one machine** (the turbofan, size M). The program's goal is bigger: a world whose big mechanical things are a reason to go places and
-spend time. This section is the map for that, and how the pieces you build now must be shaped so the bigger ones fit. The owner's plan file has the full
-catalogue; the engineering consequences are here.
+spend time. This section is the map for that, and how the pieces you build now must be shaped so the bigger ones fit. The engineering consequences are
+here.
 
 ### 12.1 Size classes
 
@@ -248,7 +227,7 @@ head, chest, arms and legs, the queen's thorax, sac and leg groups, the worm's s
 point and roll, the colossus's fall yaw and footprints, the queen's seeded leg pose, the worm's exposed segments); spoils come from `BOSS_SPOILS` (`shared/tables.ts`); `beaten` is a bitmask
 in the world settings; craters from footprints and falls are already terrain edits. All of it is server-owned in `server/bosses.ts` and `server/<kind>.ts`.
 
-**Build it in this order** (each step is one review gate with the owner; none changes the living bosses):
+**Build it in this order** (each step is one review gate; none changes the living bosses):
 
 1. **Persist the death pose.** On a boss's first kill (and on rematches, which do not re-drop the relic) the server stores a small record per kind in the settings or db: position, yaw and the few
    numbers each death animation derives from (carrier landing, roll and pitch; colossus fall yaw and feet; queen position and leg seed; worm exposed segments). Send it once on join
@@ -259,21 +238,21 @@ in the world settings; craters from footprints and falls are already terrain edi
    each a seeded presence and parts so the same wreck is not identical in two worlds (the world seed already exists in `shared/world.ts`).
 4. **The puzzle.** The relic stops being loose loot and becomes the **last part of the wreck's `requires` chain**: for example on the colossus, the chest plates need the shoulder power bus cut (arm section),
    the core housing needs both plates off and its coolant line drained, and the furnace heart sits in the core behind a seized mounting that needs the grinder. Each requirement is a normal step or part, so the
-   existing mode, scrap and sounds work unchanged. Two players for the biggest lifts is welcome (`players` on a step already exists). Keep each puzzle to a handful of requirements: the owner fears complexity.
-5. **Rules around it.** The worm is the de-facto last boss (its receiver needs the three relics): **confirm with the owner** whether the worm also gets a wreck and a relic puzzle. A rematch
+   existing mode, scrap and sounds work unchanged. Two players for the biggest lifts is welcome (`players` on a step already exists). Keep each puzzle to a handful of requirements: avoid complexity.
+5. **Rules around it.** The worm is the de-facto last boss (its receiver needs the three relics): **decide** whether the worm also gets a wreck and a relic puzzle. A rematch
    kill must not respawn the relic. When a wreck is fully stripped it becomes a husk (the `crash_spent` pattern), never removed.
 6. **Collision and findability.** Solid capsules from the generated layout (huge walkable ruins: the player must be able to climb on and into them), craters already exist, and give a wreck the same
    beacon, smoke and locator as other sites (backlog item 1), since these are the destinations of the whole game.
 
 **Why this shape.** The boss kills stay the climax of play; the wreck turns the aftermath into a place worth a long expedition with several people, and the item that leads to the next boss is earned by
-understanding the machine, not by a drop table. Everything an agent builds for ordinary machines (kit, hardware, shells, pieces, scrap) is reused; the new engine work is only sections (12.2), persistence (step 1)
+understanding the machine, not by a drop table. Everything built for ordinary machines (kit, hardware, shells, pieces, scrap) is reused; the new engine work is only sections (12.2), persistence (step 1)
 and the cross-section requirements.
 
-### 12.4 What an agent should do first, and when to involve the owner
+### 12.4 What to do first, and what needs a design call
 
-- Finish the single-machine program (sections 8 and 9) until the owner has marked **three** different kinds good (suggested: a small carried one, the pump, and one new large one): that proves the kit
+- Finish the single-machine program (sections 8 and 9) until **three** different kinds are marked good (suggested: a small carried one, the pump, and one new large one): that proves the kit
   and the review loop. Then do the structure engine (12.2) with one reference structure, then the boss-wreck engine (12.3) with the carrier first (it is the simplest body: four ducts and a hull),
   then the colossus and the queen, then the worm.
-- The owner's steering points in this phase: the **catalogue** (which structures exist in this world and what they are for), **the puzzle for each boss item** (they will want a say in how the
+- The design calls in this phase: the **catalogue** (which structures exist in this world and what they are for), **the puzzle for each boss item** (how the
   relic is held), the **scale of rewards** (how much scrap and which tiers a structure or a wreck gives), and **whether a boss wreck can be stripped to nothing** or always leaves something.
 - Keep every step of this reviewable in the test lab first; a structure or a wreck that can only be reached by finding it in the desert will not get reviewed.

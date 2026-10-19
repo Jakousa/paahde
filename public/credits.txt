@@ -1,5 +1,5 @@
-dadajam - credits
-=================
+Paahde - credits
+================
 
 Third-party assets
 ------------------
@@ -95,4 +95,5 @@ Made for this game
 "Epic battle" (audio/epic-battle.mp3), the music in a fight with a boss or a guardian up close, is by Veikko Suhonen, made for dadajam.
 
 All other models, textures, icons and sounds were made for dadajam: models and icons are generated
-in Blender by the scripts in tools/ of the source repository, and the wind and the crash-site electronics are synthesised in code.
+in Blender by the scripts in tools/ of the source repository
+(https://github.com/woltsu/dadajam), and the wind and the crash-site electronics are synthesised in code.

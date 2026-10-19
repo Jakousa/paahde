@@ -33,7 +33,7 @@ where a flange or a clamp really is.
 Class **M** (site, worked in place). A real **CFM56-sized** engine: **fan 1.74 m, length 2.43 m** (ratio 0.71). A smaller
 carried **turbojet / APU** can follow later as its own S machine.
 
-Decided with the project owner: real CFM56 size; **components are individually present or missing** per engine
+Decisions: real CFM56 size; **components are individually present or missing** per engine
 (seeded: any of them, most of them, can be gone); the **shell is its own thing** that turns into scrap when the
 disassembly ends, like every machine's shell, and can later be recreated from scrap or other material (crafting is
 reworked later); a built jet engine is used in **both** vehicles and the base, but that waits for the crafting overhaul.

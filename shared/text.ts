@@ -188,7 +188,7 @@ const en = {
     missing: 'missing',
     works: (quality: string) => `Works · ${quality}`,
     needs: (slots: string[]) => `Needs ${slots.join(', ')}`,
-    needsA: (slot: string) => `Needs a ${lower(slot)}`,
+    needsA: (slot: string) => `Needs ${/^[aeiou]/i.test(slot) ? 'an' : 'a'} ${lower(slot)}`,
     hotbarBroken: (what: string) => `${what} (broken)`,
   },
 
