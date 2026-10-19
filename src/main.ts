@@ -21,6 +21,7 @@ import { kbd } from './bindings';
 import { readInput, takePickup } from './input';
 import { LocatorBar } from './locator';
 import { Menu } from './menu';
+import { StatsGraph } from './statsGraph';
 import { getBrowserId, Net } from './net';
 import { Lives } from './lives';
 import { landing, victory } from './landing';
@@ -342,19 +343,10 @@ let joined = false; // until the first welcome, net.me is the default spawn, not
 // ?spawn=crash / field: once joined, turn to face the machine or the scrap field we were put next to.
 const spawnAt = new URLSearchParams(location.search).get('spawn');
 let faceCrash = spawnAt === 'crash' || spawnAt === 'field' || LAB;
-// FPS for the info line: frames counted over half-second windows.
-let fps = 0;
-let fpsFrames = 0;
-let fpsSince = performance.now();
+const statsGraph = new StatsGraph();
 
 renderer.setAnimationLoop((time) => {
   net.telemetry.frame(performance.now());
-  fpsFrames++;
-  if (time - fpsSince >= 500) {
-    fps = Math.round((fpsFrames * 1000) / (time - fpsSince));
-    fpsFrames = 0;
-    fpsSince = time;
-  }
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);
   if (!joined && !net.connected) {
@@ -625,7 +617,9 @@ baseSand.update(frameDt, storm.atBase);
   hud.update(net.me);
 
   const ri = renderer.info.render as { drawCalls?: number; calls?: number; triangles: number };
-  menu.setInfo(`${fps} fps @ ${resolution.ratio.toFixed(2)}x · ${ri.drawCalls ?? ri.calls} draws · ${(ri.triangles / 1000).toFixed(0)}k tris · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
+  statsGraph.visible = menu.statsOn;
+  statsGraph.frame(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000);
+  menu.setInfo(`${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
   teardown.update(frameDt);
   if (loaded) {
     warm.finish();

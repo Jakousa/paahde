@@ -13,8 +13,8 @@
       :root { --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --title: Neuropol, var(--mono); }
       html, body { margin: 0; height: 100%; overflow: hidden; background: #111; font-family: var(--mono); }
       canvas { display: block; }
-      /* Stats line: off unless "Show stats" is ticked in the Esc menu (src/menu.ts). */
-      #info { position: fixed; top: 8px; left: 8px; color: #ccc; font: 12px var(--mono); display: none;
+      /* Stats line, under the graphs (src/statsGraph.ts): off unless "Show stats" is ticked in the Esc menu (src/menu.ts). */
+      #info { position: fixed; top: 192px; left: 8px; color: #ccc; font: 12px var(--mono); display: none;
         pointer-events: none; text-shadow: 0 1px 2px #000; }
       /* Loading cover: up from the first paint until the world is built and warmed (src/main.ts), with the prologue
          and its loading bar drawn on it (src/prologue.ts). */

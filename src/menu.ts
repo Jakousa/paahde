@@ -295,12 +295,17 @@ export class Menu {
     return this.el.classList.contains('open');
   }
 
+  /** "Show stats" is ticked (src/statsGraph.ts is drawn). */
+  get statsOn() {
+    return this.stats;
+  }
+
   private toggle(open: boolean) {
     this.el.classList.toggle('open', open);
     if (open) this.footEl.textContent = this.lastInfo;
   }
 
-  /** Every frame: the stats line (fps, clock, backend, connection, players, build). */
+  /** Every frame: the stats line under the graphs (render scale, clock, backend, connection, players, build). */
   setInfo(text: string) {
     if (text === this.lastInfo) return;
     this.lastInfo = text;
