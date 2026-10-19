@@ -10,7 +10,8 @@ export like the other models.
 
   Jet_Body     the fuselage, wings, tail and the left engine (what stays in the wreck)
   Jet_EngineR  the right engine on its pylon (not in the wreck: it lies on the ground as a machine)
-  Jet_Wreck    the plane after it came in: torn apart, in pieces on the sand (ground at y = -1.8); shown instead of the two above
+  P_<id>       the pieces it breaks into when it comes in (shared/jetpieces.ts, generated with this): nose, front, rear, tail, the wings, the right engine,
+               panels and beams, each about its own pivot (the node's position) as it sat on the whole plane
   Tail         an empty at the left engine's exit, where the smoke streams from (src/world/jets.ts TAIL)
 """
 
@@ -179,51 +180,104 @@ def tail_group(mb):
              for (y, z, ch, th) in fin], 'JetHull', cap0=True, cap1=True)
 
 
-def wreck():
-    """The plane as it lies after it came in: the nose torn off and crumpled, the middle on its belly rolled over a little, the tail broken off
-    and thrown to one side with its fins, the right wing torn off at the root (its outer half lying on the sand), the left wing drooping with its
-    engine, the right engine gone (it lies on as a machine), and pieces strewn about. The ground is at y = -1.8."""
+def pieces():
+    """What the plane breaks into when it comes in (src/world/jets.ts flies them apart with shared/jetbreak.ts): each piece is cut from the whole
+    plane (ragged where it tore), built about its own pivot, and has its own simple hitboxes (capsules, centre and axis about the pivot).
+    Returns [{id, pivot, mb, caps, hit, f}]: `f` is how much of the plane's speed it keeps (heavy things less), `hit` whether it is solid for
+    the players once it lies (the right engine is not: it lies on as a machine)."""
     import random
-    mb = MB()
-    g = -1.8
-    # the middle breaks in two: the front half (with the wings) on its belly rolled a little, the back half cracked off behind it, yawed
-    mb.push(T(0, -0.15, 0) @ kit.Rz(0.16))
-    fus_section(mb, -2.0, 7.0, (True, True), 3)
-    mb.sphere((0, 1.75, 2.5), 1.0, 'JetHull', u=14, v=7, scale=(1.0, 0.55, 2.2))
-    mb.cyl((0, 1.9, 2.0), (0.3, 2.7, 1.6), 0.04, 0.02, segs=5, mat='JetSteel')
-    mb.push(about((-1.5, -0.5, 0), kit.Rz(-0.42)))
-    surface(mb, wing_secs(0.0, 0.5), mirror=True)
-    engine(mb, -ENG_X, ENG_Y, ENG_Z, -1)
-    mb.pop()
-    surface(mb, wing_secs(0.0, 0.2))
-    mb.pop()
-    mb.push(T(-1.2, -0.45, -1.8) @ about((0, 0, -2), kit.Ry(0.22) @ kit.Rz(0.3) @ kit.Rx(0.05)))
-    fus_section(mb, -9.0, -2.0, (True, True), 8)
-    mb.pop()
-    mb.push(T(1.2, -1.5, 5.0) @ about((0, 0, 7), kit.Rx(0.42) @ kit.Ry(0.3) @ kit.Rz(-0.5)))
-    fus_section(mb, 7.0, 15.0, (True, False), 11)
-    mb.sphere((0, -1.6, 11.8), 0.55, 'JetGlass', u=12, v=7)
-    mb.sphere((0, 0.2, 14.4), 0.52, 'JetDark', u=12, v=7, scale=(1, 0.9, 1.4))
-    mb.pop()
-    mb.push(T(5.5, -1.2, -7.0) @ about((0, 0, -9), kit.Ry(0.7) @ kit.Rz(1.25) @ kit.Rx(-0.1)))
-    fus_section(mb, -15.0, -9.0, (False, True), 5)
-    tail_group(mb)
-    mb.pop()
-    mb.push(T(11.0, g - 0.15, -11.0) @ kit.Ry(-0.45) @ kit.Rz(0.04))
-    surface(mb, wing_secs(0.3, 1.0))
-    mb.pop()
     rnd = random.Random(7)
-    for i in range(18):
-        sx, sy, sz = rnd.uniform(0.6, 2.8), rnd.uniform(0.06, 0.3), rnd.uniform(0.6, 2.2)
-        x, z = rnd.uniform(-15, 22), rnd.uniform(-22, 24)
-        if abs(x) < 3 and -10 < z < 8:
-            x += 6 * (1 if x >= 0 else -1)
-        mb.box((x, g + sy / 2 + rnd.uniform(0, 0.4), z), (sx, sy, sz), rnd.choice(['JetHull', 'JetHull', 'JetSand', 'JetFlap', 'JetDark']),
-               rot=(rnd.uniform(-0.3, 0.3), rnd.uniform(0, PI), rnd.uniform(-0.3, 0.3)))
-    for i in range(5):
-        x, z = rnd.uniform(-12, 18), rnd.uniform(-20, 20)
-        mb.beam((x, g + 0.2, z), (x + rnd.uniform(-3, 3), g + rnd.uniform(0.2, 1.0), z + rnd.uniform(-3, 3)), 0.18, 0.18, 'JetSteel')
-    return mb
+    out = []
+
+    def add(pid, pivot, build, caps, hit=True, f=0.2):
+        mb = MB()
+        mb.push(T(-pivot[0], -pivot[1], -pivot[2]))
+        build(mb)
+        mb.pop()
+        out.append({'id': pid, 'pivot': pivot, 'mb': mb, 'hit': hit, 'f': f,
+                    'caps': [{'c': tuple(c[i] - pivot[i] for i in range(3)), 'a': a, 'half': h, 'r': r} for (c, a, h, r) in caps]})
+
+    def nose(mb):
+        fus_section(mb, 7.0, 15.0, (True, False), 11)
+        mb.sphere((0, -1.6, 11.8), 0.55, 'JetGlass', u=12, v=7)
+        mb.sphere((0, 0.2, 14.4), 0.52, 'JetDark', u=12, v=7, scale=(1, 0.9, 1.4))
+        mb.cyl((0.4, 0.0, 14.7), (0.4, 0.0, 17.0), 0.05, 0.015, segs=5, mat='JetSteel')
+
+    def front(mb):
+        fus_section(mb, -2.0, 7.0, (True, True), 3)
+        mb.sphere((0, 1.75, 2.5), 1.0, 'JetHull', u=14, v=7, scale=(1.0, 0.55, 2.2))
+        mb.cyl((0, 1.9, 2.0), (0, 2.9, 2.0), 0.04, 0.02, segs=5, mat='JetSteel')
+        surface(mb, wing_secs(0.0, 0.2))
+        surface(mb, wing_secs(0.0, 0.2), mirror=True)
+
+    def rear(mb):
+        fus_section(mb, -9.0, -2.0, (True, True), 8)
+        mb.cyl((0, 1.9, -3.0), (0, 2.6, -3.1), 0.04, 0.02, segs=5, mat='JetSteel')
+
+    def tail(mb):
+        fus_section(mb, -15.0, -9.0, (False, True), 5)
+        tail_group(mb)
+
+    def wing_l(mb):
+        surface(mb, wing_secs(0.2, 1.0), mirror=True)
+        engine(mb, -ENG_X, ENG_Y, ENG_Z, -1)
+
+    def wing_r(mb):
+        surface(mb, wing_secs(0.2, 1.0))
+
+    add('nose', (0, -0.2, 11), nose, [((0, -0.1, 11), (0, 0, 1), 3.9, 1.05)], f=0.2)
+    add('front', (0, 0, 2.5), front, [((0, 0, 2.5), (0, 0, 1), 4.5, 1.75), ((2.9, -0.3, 1.0), (1, 0, 0), 1.4, 1.2), ((-2.9, -0.3, 1.0), (1, 0, 0), 1.4, 1.2)], f=0.1)
+    add('rear', (0, 0.1, -5.5), rear, [((0, 0.1, -5.5), (0, 0, 1), 3.5, 1.6)], f=0.14)
+    add('tail', (0, 1.5, -12), tail, [((0, 0.5, -12), (0, 0, 1), 3.0, 1.2), ((0, 4.0, -11.0), (0, 1, 0), 3.0, 0.7), ((0, 1.3, -12.8), (1, 0, 0), 5.5, 0.9)], f=0.2)
+    add('wingL', (-9.5, -0.8, 1.0), wing_l, [((-10.2, 0.2, -0.3), (1, 0, 0), 5.8, 2.4), ((-ENG_X, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95)], f=0.22)
+    add('wingR', (10.2, 0.3, -0.3), wing_r, [((10.2, 0.2, -0.3), (1, 0, 0), 5.8, 2.4)], f=0.22)
+    add('engineR', (ENG_X, ENG_Y, ENG_Z), lambda mb: engine(mb, ENG_X, ENG_Y, ENG_Z, 1), [((ENG_X, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95)], hit=False, f=0.32)
+    # skin panels, doors and ribs that came off the body
+    for i in range(8):
+        sx, sy, sz = rnd.uniform(0.8, 2.6), rnd.uniform(0.1, 0.24), rnd.uniform(0.8, 2.0)
+        ang, z = rnd.uniform(0.3, PI - 0.3) * (1 if i % 2 else -1), rnd.uniform(-10, 10)
+        rx, ry, cy = fus_at(z)
+        pos = (rx * 1.05 * math.sin(ang), cy + ry * 1.05 * math.cos(ang), z)
+        add(f'panel{i}', pos, lambda mb, p=pos, sx=sx, sy=sy, sz=sz, i=i: mb.box(p, (sx, sy, sz), ['JetHull', 'JetSand', 'JetFlap', 'JetDark'][i % 4]),
+            [(pos, (1, 0, 0), sx / 2, max(0.3, sy))], f=rnd.uniform(0.3, 0.45))
+    for i in range(3):
+        z = rnd.uniform(-8, 8)
+        rx, ry, cy = fus_at(z)
+        pos = (rnd.choice([-1, 1]) * rx, cy + 0.3, z)
+        d = (rnd.uniform(-1, 1), rnd.uniform(-0.3, 0.3), rnd.uniform(-1, 1))
+        n = math.sqrt(sum(v * v for v in d))
+        d = tuple(v / n for v in d)
+        add(f'beam{i}', pos, lambda mb, p=pos, d=d: mb.beam(tuple(p[k] - d[k] * 1.4 for k in range(3)), tuple(p[k] + d[k] * 1.4 for k in range(3)), 0.2, 0.2, 'JetSteel'),
+            [(pos, d, 1.4, 0.25)], f=rnd.uniform(0.35, 0.5))
+    return out
+
+
+def pieces_ts(ps):
+    """shared/jetpieces.ts: what shared/jetbreak.ts needs of each piece, and src/world/jets.ts which node it is."""
+    import json
+
+    def r(v):
+        return [round(x, 3) for x in v]
+
+    rows = []
+    for p in ps:
+        pts = []
+        for cp in p['caps']:
+            c, a, h, rad = Vector(cp['c']), Vector(cp['a']).normalized(), cp['half'], cp['r']
+            for sgn in (-1, 1):
+                e = c + a * h * sgn
+                for off in ((0, -rad, 0), (rad, 0, 0), (-rad, 0, 0), (0, 0, rad), (0, 0, -rad), (0, rad, 0)):
+                    pts.append(r(e + Vector(off)))
+        caps = [{'c': r(cp['c']), 'a': r(Vector(cp['a']).normalized()), 'half': round(cp['half'], 3), 'r': round(cp['r'], 3)} for cp in p['caps']]
+        rows.append(json.dumps({'id': p['id'], 'pivot': r(p['pivot']), 'f': round(p['f'], 3), 'hit': p['hit'], 'caps': caps, 'pts': pts}, separators=(',', ':')))
+    body = ',\n  '.join(rows)
+    return ('// Generated by tools/blender/machines/plane.py from the model: do not edit by hand.\n'
+            "// The pieces a downed jet breaks into (public/models/jet.glb nodes `P_<id>`, origin at the pivot): where each was on the whole plane\n"
+            '// (the plane\'s frame: x across, y up, z the nose), its simple hitboxes (capsules about the pivot), the points it touches the sand with, how much of\n'
+            "// the plane's speed it keeps (`f`) and whether it is solid once it lies. Read by shared/jetbreak.ts.\n\n"
+            'export interface JetPieceDef {\n  id: string;\n  pivot: [number, number, number];\n  f: number;\n  hit: boolean;\n'
+            '  caps: { c: [number, number, number]; a: [number, number, number]; half: number; r: number }[];\n  pts: [number, number, number][];\n}\n\n'
+            f'export const JET_PIECES: JetPieceDef[] = [\n  {body},\n];\n')
 
 
 def engine(mb, cx, cy, cz, side):
@@ -256,10 +310,10 @@ def build():
     wings(body)
     engine(body, -ENG_X, ENG_Y, ENG_Z, -1)
     engine(eng, ENG_X, ENG_Y, ENG_Z, 1)
-    return body, eng, wreck()
+    return body, eng
 
 
-def make(mb, name):
+def make(mb, name, loc=None):
     import bmesh
     bmesh.ops.transform(mb.bm, matrix=kit.C, verts=mb.bm.verts)
     bmesh.ops.recalc_face_normals(mb.bm, faces=mb.bm.faces)
@@ -270,6 +324,8 @@ def make(mb, name):
     for m in mb.mats:
         mesh.materials.append(bpy.data.materials[m])
     obj = bpy.data.objects.new(name, mesh)
+    if loc is not None:
+        obj.location = kit.C @ Vector(loc)
     bpy.context.scene.collection.objects.link(obj)
     return obj
 
@@ -283,12 +339,10 @@ def preview(objs, out_dir):
         ('top', (3, 52, 6), (0, 0, 0), 38),
         ('engine', (-12, -2, 12), (-5.6, -2, 1.6), 40),
         ('wreck', (34, 12, 30), (3, -2, 0), 42),
-        ('wreck_top', (3, 60, 4), (3, 0, 0), 42),
     ):
         broken = name.startswith('wreck')
-        objs['Jet_Wreck'].hide_render = not broken
-        objs['Jet_Body'].hide_render = broken
-        objs['Jet_EngineR'].hide_render = broken
+        for k, o in objs.items():
+            o.hide_render = (k.startswith('P_') != broken) if k.startswith('P_') else broken
         look(pos, tgt, lens)
         shoot(os.path.join(out_dir, f'plane_{name}.png'))
 
@@ -299,13 +353,16 @@ def main():
         bpy.data.objects.remove(o)
     for name, spec in MATERIALS.items():
         kit.make_material(name, *spec)
-    body, eng, wrk = build()
-    objs = [make(body, 'Jet_Body'), make(eng, 'Jet_EngineR'), make(wrk, 'Jet_Wreck')]
+    body, eng = build()
+    ps = pieces()
+    objs = [make(body, 'Jet_Body'), make(eng, 'Jet_EngineR')] + [make(q['mb'], 'P_' + q['id'], q['pivot']) for q in ps]
     tail = bpy.data.objects.new('Tail', None)
     tail.location = kit.C @ Vector(TAIL)
     bpy.context.scene.collection.objects.link(tail)
     os.makedirs(OUT, exist_ok=True)
     kit.export_glb(objs + [tail], os.path.join(OUT, 'jet.glb'))
+    with open(os.path.join(kit.ROOT, 'shared', 'jetpieces.ts'), 'w', encoding='utf8', newline='\n') as f:
+        f.write(pieces_ts(ps))
     for o in objs:
         print(f'{o.name}: tris={kit.tri_count(o)} size={o.dimensions.x:.1f} x {o.dimensions.z:.1f} x {o.dimensions.y:.1f} m')
     if a.preview:

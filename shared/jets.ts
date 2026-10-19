@@ -10,6 +10,7 @@
 // meets the sand, and the wreck stays there nose in, tail up.
 
 import { baseHeight } from './terrain.ts';
+import { BREAK_S, type Impact } from './jetbreak.ts';
 
 export type Jet = {
   id: number;
@@ -50,9 +51,8 @@ const SHOT_ROLL = 0.9;
 const ROLL_RAMP = 2.5;
 /** The integration step (s): the same steps on both sides, so they agree. */
 export const DIVE_STEP = 0.05;
-/** Nose ahead of the centre (m), and how deep it ploughs into the sand past where it first touches (m). */
+/** Nose ahead of the centre (m). */
 export const JET_NOSE = 15;
-const BURY = 4;
 export type Dive = { fwd: number; drop: number; pitch: number; roll: number; v: number };
 const _dv: Dive = { fwd: 0, drop: 0, pitch: 0, roll: 0, v: 0 };
 /** How far along its heading (m) and down (m) a downed jet is `s` s on, its pitch (rad, nose up) and roll, and speed. */
@@ -74,24 +74,9 @@ export function jetDive(speed: number, s: number, soft: boolean, out: Dive = _dv
   out.v = speed + DIVE_ACCEL * s;
   return out;
 }
-/** The wreck on the sand: the dive at the moment its nose touched, pushed BURY m on along its nose. */
-export function jetWreck(speed: number, landS: number, soft: boolean, out: Dive = _dv): Dive {
-  jetDive(speed, landS, soft, out);
-  out.fwd += BURY * Math.cos(out.pitch);
-  out.drop -= BURY * Math.sin(out.pitch);
-  out.v = 0;
-  return out;
-}
-/** Having hit the sand it breaks up and slides on SLIDE_M m along its heading over SLIDE_MS ms, nose coming up and settling flat, a trench
- *  behind it (server/jetcrash.ts); it then lies there as the crash site (shared/jetcrash.ts), which stays. The flight's own wreck is handed over
- *  to that WRECK_MS after it hit. */
-export const SLIDE_M = 32;
-export const SLIDE_MS = 3400;
-/** The wreck's centre sits this high (m) over the sand it lies on (the model's belly is at -1.8, a little sunk). */
-const SETTLE_Y = 1.7;
-const SETTLE_PITCH = -0.07;
-const SETTLE_BANK = 0.16;
-export const WRECK_MS = SLIDE_MS + 2_000;
+/** At the sand it breaks up into pieces (shared/jetbreak.ts) that fly on, tumble and settle for BREAK_S seconds; the flight is handed over to the
+ *  crash site (shared/jetcrash.ts), which stays, WRECK_MS after it hit. */
+export const WRECK_MS = BREAK_S * 1000 + 2_000;
 
 /** Wingspan (m): a searchlight drone is about 2. The plane (tools/blender/machines/plane.py) is modelled at this size. */
 export const JET_SPAN = 32;
@@ -152,30 +137,32 @@ export function jetAt(j: Jet, t: number, out: JetPose): boolean {
   return true;
 }
 
-/** Down: diving in, nose dropping and rolling over (jetDive); then the wreck, nose buried, tail up, as it hit. */
+/** Down: diving in, nose dropping and rolling over (jetDive), until its nose meets the sand; then it is in pieces (shared/jetbreak.ts) and this is
+ *  where it hit (state 2). */
 function downAt(j: Jet, t: number, out: JetPose): boolean {
-  const d = j.down!, landS = (d.land - d.at) / 1000, s = (t - d.at) / 1000, soft = !!d.soft;
-  const m = s >= landS ? jetWreck(j.speed, landS, soft) : jetDive(j.speed, s, soft);
-  let fwd = m.fwd, y = d.y - m.drop, pitch = m.pitch, bank = (j.id % 2 ? 1 : -1) * m.roll, speed = m.v * Math.cos(m.pitch);
-  if (s >= landS) {
-    // It breaks up on the sand and slides on, the nose coming up, the roll settling to a lean, the belly on the ground.
-    const u = Math.min(1, ((s - landS) * 1000) / SLIDE_MS), k = 1 - (1 - u) * (1 - u);
-    fwd += SLIDE_M * k;
-    const x = d.x + Math.sin(d.yaw) * fwd, z = d.z + Math.cos(d.yaw) * fwd;
-    y += (baseHeight(x, z) + SETTLE_Y - y) * k;
-    pitch += (SETTLE_PITCH - pitch) * k;
-    const b0 = Math.atan2(Math.sin(bank), Math.cos(bank));
-    bank = b0 * (1 - k) + (j.id % 2 ? 1 : -1) * SETTLE_BANK * k;
-    speed = (SLIDE_M * 2 / (SLIDE_MS / 1000)) * (1 - u);
-  }
-  out.x = d.x + Math.sin(d.yaw) * fwd;
-  out.y = y;
-  out.z = d.z + Math.cos(d.yaw) * fwd;
+  const d = j.down!, landS = (d.land - d.at) / 1000, s = Math.min((t - d.at) / 1000, landS), soft = !!d.soft;
+  const m = jetDive(j.speed, s, soft);
+  out.x = d.x + Math.sin(d.yaw) * m.fwd;
+  out.y = d.y - m.drop;
+  out.z = d.z + Math.cos(d.yaw) * m.fwd;
   out.yaw = d.yaw;
-  out.pitch = pitch;
-  out.bank = bank;
-  out.vx = Math.sin(d.yaw) * speed;
-  out.vz = Math.cos(d.yaw) * speed;
-  out.state = s >= landS ? 2 : 1;
+  out.pitch = m.pitch;
+  out.bank = (j.id % 2 ? 1 : -1) * m.roll;
+  const landed = (t - d.at) / 1000 >= landS;
+  const h = landed ? 0 : m.v * Math.cos(m.pitch);
+  out.vx = Math.sin(d.yaw) * h;
+  out.vz = Math.cos(d.yaw) * h;
+  out.state = landed ? 2 : 1;
   return true;
+}
+
+/** The impact of a downed jet: the plane's pose the moment its nose touched, and its velocity then (along its nose). */
+export function jetImpact(j: Jet): Impact {
+  const d = j.down!, landS = (d.land - d.at) / 1000;
+  const m = jetDive(j.speed, landS, !!d.soft);
+  const c = Math.cos(m.pitch), sx = Math.sin(d.yaw), cz = Math.cos(d.yaw);
+  return {
+    x: d.x + sx * m.fwd, y: d.y - m.drop, z: d.z + cz * m.fwd, yaw: d.yaw, pitch: m.pitch, bank: (j.id % 2 ? 1 : -1) * m.roll,
+    vx: sx * c * m.v, vy: Math.sin(m.pitch) * m.v, vz: cz * c * m.v,
+  };
 }

@@ -81,6 +81,11 @@ export class GuardianFx {
       rifleSound.slam({ x, y, z }, this.ear, true);
       this.thump(x, y, z, 3, 48, 12, 5);
     };
+    // A piece of the broken plane hitting the sand: a thud and sand thrown up, by its size.
+    this.jets.onSplash = (x, y, z, size) => {
+      this.thump(x, y, z, 0.3 + size * 0.25, 6 + Math.round(size * 5), 3 + size * 1.5, 2 + size);
+      rifleSound.slam({ x, y, z }, this.ear, size > 2.5);
+    };
     this.guardians.onFootfall = (f) => this.footfall(f);
     // A shot hitting a drone: a lighter bang than its crash (each one counts, so no firework like a weak point's).
     this.drones.onHit = (x, y, z) => guardianSound.footfall(x, y, z, 0.7, this.ear);

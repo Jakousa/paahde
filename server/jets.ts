@@ -1,10 +1,9 @@
 // Server side of the fixed-wing drones (shared/jets.ts): now and then one flies past a random player, in a straight
 // pass or a big circle around them, and the list goes out to everyone whenever it changes. Shot (shoot) JET_HP times,
 // one glides down to the sand. In memory only.
-import { SLIDE_MS, DIVE_STEP, JET_NOSE, jetDive, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
+import { DIVE_STEP, JET_NOSE, jetDive, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
 import { baseHeight } from '../shared/terrain.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
-import type { JetWreck } from './jetcrash.ts';
 
 /** Time between one flight's start and the next (ms). */
 const GAP_MIN_MS = 150_000;
@@ -146,14 +145,13 @@ export class JetServer {
     j.end = land + WRECK_MS;
   }
 
-  /** Jets whose wrecks hit the sand since the last call (once each): the pose they lie in, where the nose went in, and whether jammed. */
-  wrecks(now: number): JetWreck[] {
-    const out: JetWreck[] = [];
+  /** Jets whose noses met the sand since the last call (once each). */
+  landed(now: number): Jet[] {
+    const out: Jet[] = [];
     for (const j of this.jets) {
-      if (!j.down || j.down.land + SLIDE_MS > now || this.wrecked.has(j.id)) continue;
+      if (!j.down || j.down.land > now || this.wrecked.has(j.id)) continue;
       this.wrecked.add(j.id);
-      jetAt(j, j.down.land + SLIDE_MS, _p);
-      out.push({ jet: j.id, x: _p.x, y: _p.y, z: _p.z, yaw: _p.yaw, pitch: _p.pitch, bank: _p.bank, lx: j.down.lx, lz: j.down.lz, soft: !!j.down.soft });
+      out.push(j);
     }
     for (const id of this.wrecked) if (!this.jets.some((j) => j.id === id)) this.wrecked.delete(id);
     return out;

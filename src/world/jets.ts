@@ -7,8 +7,12 @@
 // against it here (raycast).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { JET_SPAN, jetAt, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
+import { JET_SPAN, jetAt, jetImpact, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { jetCrashList } from '../../shared/jetcrash.ts';
+import { breakup, BREAK_DT, STATE_W, type Breakup } from '../../shared/jetbreak.ts';
+import { JET_PIECES } from '../../shared/jetpieces.ts';
+import { heightAt } from '../../shared/terrain.ts';
+import { tyreDust } from '../tyreDust';
 import { zaps } from './zaps';
 
 /** Hidden past this distance (m) from the camera. */
@@ -96,11 +100,76 @@ class JetProto extends THREE.Group {
   }
 }
 
-/** The plane whole (flying), or in pieces (down: it broke up on the sand; jet.glb's `Jet_Wreck`, without the right engine, which lies on as a machine). */
+/** The plane whole (flying); the pieces it breaks into (jet.glb's `P_<id>` nodes, shared/jetpieces.ts) are never part of it: they are drawn on their own
+ *  (`Debris`) once it has come apart. */
 function setBroken(o: THREE.Object3D, broken: boolean) {
-  for (const [name, on] of [['Jet_Body', !broken], ['Jet_EngineR', !broken], ['Jet_Wreck', broken]] as const) {
+  for (const [name, on] of [['Jet_Body', !broken], ['Jet_EngineR', !broken]] as const) {
     const n = o.getObjectByName(name);
     if (n) n.visible = on;
+  }
+  for (const d of JET_PIECES) {
+    const n = o.getObjectByName(`P_${d.id}`);
+    if (n) n.visible = false;
+  }
+}
+
+const _q0 = new THREE.Quaternion(), _q1 = new THREE.Quaternion();
+
+/** The pieces of a broken plane, one group each placed at its pivot: flying apart from the impact (shared/jetbreak.ts) or lying where they came to rest. */
+class Debris {
+  readonly holders: THREE.Group[] = [];
+  bk: Breakup | null = null;
+  /** The next event (a splash of sand) to play. */
+  ev = 0;
+
+  private scene: THREE.Scene;
+
+  constructor(scene: THREE.Scene) {
+    this.scene = scene;
+    for (const d of JET_PIECES) {
+      const holder = new THREE.Group();
+      const n = model!.getObjectByName(`P_${d.id}`)?.clone();
+      if (n) {
+        n.position.set(0, 0, 0);
+        n.visible = true;
+        n.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
+        holder.add(n);
+      }
+      holder.scale.setScalar(JET_SPAN / MODEL_SPAN);
+      scene.add(holder);
+      this.holders.push(holder);
+    }
+  }
+
+  /** Where each piece lies (x, y, z, qx, qy, qz, qw). */
+  rest(pieces: number[][]) {
+    this.holders.forEach((h, i) => {
+      const w = pieces[i];
+      if (!w) return;
+      h.position.set(w[0], w[1], w[2]);
+      h.quaternion.set(w[3], w[4], w[5], w[6]);
+      h.updateMatrixWorld();
+    });
+  }
+
+  /** The pieces `t` s after the impact; `dust` is called where one scrapes along the sand fast. */
+  fly(t: number, dust: (x: number, y: number, z: number, speed: number) => void) {
+    const bk = this.bk!;
+    const k = Math.min(bk.steps - 1, Math.max(0, t / BREAK_DT)), i0 = Math.floor(k), i1 = Math.min(bk.steps - 1, i0 + 1), f = k - i0;
+    this.holders.forEach((h, i) => {
+      const st = bk.states[i], a = i0 * STATE_W, b = i1 * STATE_W;
+      h.position.set(st[a] + (st[b] - st[a]) * f, st[a + 1] + (st[b + 1] - st[a + 1]) * f, st[a + 2] + (st[b + 2] - st[a + 2]) * f);
+      _q0.set(st[a + 3], st[a + 4], st[a + 5], st[a + 6]);
+      _q1.set(st[b + 3], st[b + 4], st[b + 5], st[b + 6]);
+      h.quaternion.copy(_q0).slerp(_q1, f);
+      h.updateMatrixWorld();
+      if (st[a + 7] >= 3) dust(h.position.x, h.position.y, h.position.z, 1);
+    });
+  }
+
+  dispose() {
+    for (const h of this.holders) this.scene.remove(h);
+    this.holders.length = 0;
   }
 }
 
@@ -137,7 +206,7 @@ function build(): THREE.Group {
   return g;
 }
 
-type View = { obj: THREE.Object3D; hurt: number; state: number; smoke: number };
+type View = { obj: THREE.Object3D; hurt: number; state: number; smoke: number; deb: Debris | null };
 
 /** Hit boxes in the body frame (half sizes and centre, before JET_SPAN scaling): the fuselage, the wings. */
 const BOXES = [
@@ -150,7 +219,7 @@ const _inv = new THREE.Matrix4(), _o = new THREE.Vector3(), _d = new THREE.Vecto
 
 export class Jets {
   private views = new Map<number, View>();
-  private wreckViews = new Map<number, THREE.Object3D>();
+  private wreckViews = new Map<number, Debris>();
   private pose: JetPose = jetPose();
   private proto: THREE.Group | null = null;
   private scene: THREE.Scene;
@@ -158,6 +227,8 @@ export class Jets {
   onHit: (x: number, y: number, z: number) => void = () => {};
   /** A downed jet's nose went into the sand at (x, y, z), diving along (dx, dy, dz). */
   onCrash: (x: number, y: number, z: number, dx: number, dy: number, dz: number) => void = () => {};
+  /** A piece of the broken plane hit the sand hard at (x, y, z), `size` m across (sand thrown up and a thud, src/guardians.ts). */
+  onSplash: (x: number, y: number, z: number, size: number) => void = () => {};
   /** The jet our jammer is on and how far its lock has built (0..1), or null (src/jammer.ts). */
   jamming: { id: number; level: number } | null = null;
 
@@ -184,7 +255,7 @@ export class Jets {
         obj.rotation.order = 'YXZ';
         this.scene.add(obj);
         // Came into view already hit or down: don't replay it.
-        this.views.set(j.id, (v = { obj, hurt: j.hurt, state: p.state, smoke: 0 }));
+        this.views.set(j.id, (v = { obj, hurt: j.hurt, state: p.state, smoke: 0, deb: null }));
       }
       const o = v.obj;
       o.position.set(p.x, p.y, p.z);
@@ -203,27 +274,60 @@ export class Jets {
         this.onCrash(p.x + _t.x * 12, p.y + _t.y * 12, p.z + _t.z * 12, _t.x, _t.y, _t.z);
       }
       v.state = p.state;
-      if (p.state === 2) setBroken(o, true); // (broke up on the sand)
+      if (p.state === 2) {
+        // It broke up on the sand: the plane is gone and its pieces fly on, tumble and settle.
+        o.visible = false;
+        this.pieces(j, v, t, dt);
+        continue;
+      }
       // Smoke: a thin trail once hit, thicker with each hit, a heavy one gliding down; the wreck smoulders. Jammed it
       // has no fire: a thin trail off the rolling tail (so it reads from far off), a lighter smoulder once down.
       const rate = soft ? (p.state === 2 ? 3 : p.state === 1 ? 14 + j.hurt * 10 : j.hurt * 10) : p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
       v.smoke += dt * rate;
       if (v.smoke >= 1) _t.copy(TAIL).applyMatrix4(o.matrixWorld);
-      for (; v.smoke >= 1; v.smoke--) {
-        if (p.state === 2) zaps.puff(p.x + (Math.random() - 0.5) * 12, p.y + 0.5, p.z + (Math.random() - 0.5) * 12, 3, 2.2);
-        else zaps.puff(_t.x, _t.y, _t.z, p.state === 1 ? 4 : 2 + j.hurt, 0.5);
-      }
+      for (; v.smoke >= 1; v.smoke--) zaps.puff(_t.x, _t.y, _t.z, p.state === 1 ? 4 : 2 + j.hurt, 0.5);
     }
     for (const [id, v] of this.views) {
       if (seen.has(id)) continue;
       this.scene.remove(v.obj);
+      v.deb?.dispose();
       this.views.delete(id);
     }
     this.wrecks(eye, dt);
   }
 
-  /** The planes that came down stay where they lay (shared/jetcrash.ts), the right engine gone from the wing (it lies on the sand as
-   *  a machine); close by they smoulder. */
+  /** The broken plane `t` ms into the flight list's clock: the pieces from the simulation started at the impact, smoke off the wreck, sand thrown up where they land. */
+  private pieces(j: Jet, v: View, t: number, dt: number) {
+    if (!model) return;
+    if (!v.deb) {
+      v.deb = new Debris(this.scene);
+      v.deb.bk = breakup(jetImpact(j), j.id);
+      const since = Math.max(0, (t - j.down!.land) / 1000);
+      while (v.deb.ev < v.deb.bk.events.length && v.deb.bk.events[v.deb.ev].t < since - 0.05) v.deb.ev++; // (came into view late: no replay)
+    }
+    const d = v.deb, since = Math.max(0, (t - j.down!.land) / 1000);
+    d.fly(since, (x, y, z) => {
+      if (Math.random() < dt * 6) tyreDust.emit(x + (Math.random() - 0.5) * 2, y + 0.3, z + (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3, 2 + Math.random() * 2);
+    });
+    const ev = d.bk!.events;
+    while (d.ev < ev.length && ev[d.ev].t <= since) {
+      const e = ev[d.ev++];
+      const y = this.sandY(e.x, e.z);
+      if (!e.slide) this.onSplash(e.x, y, e.z, e.r);
+    }
+    // the largest pieces smoulder
+    if (Math.random() < dt * 5) {
+      const h = d.holders[1] ?? d.holders[0];
+      if (h) zaps.puff(h.position.x + (Math.random() - 0.5) * 6, h.position.y + 1, h.position.z + (Math.random() - 0.5) * 6, 3, 2.2);
+    }
+  }
+
+  private sandY(x: number, z: number) {
+    return heightAt(x, z);
+  }
+
+  /** The planes that came down stay where their pieces came to rest (shared/jetcrash.ts), the right engine among them gone from view: it lies on the
+   *  sand as a machine; close by they smoulder. */
   private wrecks(eye: { x: number; z: number }, dt: number) {
     const list = jetCrashList();
     for (const c of list) {
@@ -231,25 +335,24 @@ export class Jets {
       let o = this.wreckViews.get(c.id);
       if (near) this.proto ??= build(); // (starts the model loading)
       if (!near || !model) {
-        if (o) o.visible = false;
+        if (o) o.holders.forEach((h) => (h.visible = false));
         continue;
       }
       if (!o) {
-        o = model.clone();
-        setBroken(o, true);
-        o.rotation.order = 'YXZ';
-        o.position.set(c.x, c.y, c.z);
-        o.rotation.set(-c.pitch, c.yaw, -c.bank);
-        o.scale.setScalar(JET_SPAN / MODEL_SPAN);
-        this.scene.add(o);
+        o = new Debris(this.scene);
+        o.rest(c.pieces);
+        // (the right engine lies on as a machine: its piece is not drawn)
+        const e = o.holders[JET_PIECES.findIndex((p) => p.id === 'engineR')];
+        if (e) e.visible = false;
         this.wreckViews.set(c.id, o);
       }
-      o.visible = !this.views.has(c.jet);
-      if (o.visible && Math.random() < dt * 1.2) zaps.puff(c.x + (Math.random() - 0.5) * 10, c.y + 2, c.z + (Math.random() - 0.5) * 10, 3, 2.2);
+      const show = !this.views.has(c.jet);
+      o.holders.forEach((h, i) => (h.visible = show && JET_PIECES[i].id !== 'engineR'));
+      if (show && Math.random() < dt * 1.2) zaps.puff(c.x + (Math.random() - 0.5) * 10, heightAt(c.x, c.z) + 2, c.z + (Math.random() - 0.5) * 10, 3, 2.2);
     }
     for (const [id, o] of this.wreckViews) {
       if (list.some((c) => c.id === id)) continue;
-      this.scene.remove(o);
+      o.dispose();
       this.wreckViews.delete(id);
     }
   }

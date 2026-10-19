@@ -36,7 +36,9 @@ import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
 import { JetServer } from './jets.ts';
-import { JetCrashes, type JetWreck } from './jetcrash.ts';
+import { JetCrashes } from './jetcrash.ts';
+import { BREAK_S, breakup, type Breakup } from '../shared/jetbreak.ts';
+import { jetImpact, type Jet } from '../shared/jets.ts';
 import { jetCrashList } from '../shared/jetcrash.ts';
 import { BossServer, type BossKill, type BossOut } from './bosses.ts';
 import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
@@ -689,19 +691,28 @@ function dropSpoils(k: Kill) {
   }
 }
 
-/** A jet came down (shared/jets.ts): its crash site is made (shared/jetcrash.ts: the plane stays, its engine lies on ahead to be taken
- *  apart), the sand dug up round them, its transponder maybe, a broken receiver now and then, and some scrap off the airframe, strewn
- *  back along its heading from where its nose went in. */
-function jetCame(w: JetWreck): ServerMsg {
-  const { crash: c, gone, craters } = jetCrashes.add(w);
-  for (const k of craters) terrain.crater(k.x, k.z, k.r, k.mm, false);
-  const bx = -Math.sin(w.yaw), bz = -Math.cos(w.yaw);
+/** A jet's nose met the sand (shared/jets.ts): it comes apart (shared/jetbreak.ts: every client flies the same pieces from the same impact), the sand is
+ *  dug up where they land when they land, and when they have come to rest the crash site is made (jetCame). */
+const jetsBreaking: { due: number; jet: number; bk: Breakup; lx: number; lz: number }[] = [];
+const jetCraters: { at: number; x: number; z: number; r: number; mm: number }[] = [];
+function jetLanded(j: Jet) {
+  const d = j.down!;
+  const bk = breakup(jetImpact(j), j.id);
+  jetCraters.push({ at: d.land, x: d.lx, z: d.lz, r: 7.5, mm: 2800 });
+  for (const e of bk.events) jetCraters.push({ at: d.land + e.t * 1000, x: e.x, z: e.z, r: e.r, mm: e.mm });
+  jetsBreaking.push({ due: d.land + BREAK_S * 1000, jet: j.id, bk, lx: d.lx, lz: d.lz });
+}
+
+/** The pieces of a jet have come to rest: its crash site is made (shared/jetcrash.ts: they stay, the right engine is a machine to take apart),
+ *  its transponder maybe, a broken receiver now and then, and some scrap off the airframe, strewn about where its nose went in. */
+function jetCame(b: { jet: number; bk: Breakup; lx: number; lz: number }): ServerMsg {
+  const { crash: c, gone } = jetCrashes.add(b.jet, b.bk.final);
   const at = (kind: string) => {
-    const back = -2 + Math.random() * 12, side = (Math.random() - 0.5) * 14;
-    loot.dropAt(w.lx + bx * back - bz * side, w.lz + bz * back + bx * side, kind);
+    const a = Math.random() * Math.PI * 2, d = 3 + Math.random() * 16;
+    loot.dropAt(b.lx + Math.cos(a) * d, b.lz + Math.sin(a) * d, kind);
   };
   if (Math.random() < JET_RELIC_ODDS) at(RELIC_DROPS.drone.kind);
-  if (Math.random() < RECEIVER_DROPS.jet) loot.dropBroken(w.lx + bx * 4, w.lz + bz * 4, randomReceiver(), 4);
+  if (Math.random() < RECEIVER_DROPS.jet) loot.dropBroken(b.lx + 4, b.lz, randomReceiver(), 4);
   const scrapN = JET_SCRAP.min + Math.floor(Math.random() * (JET_SCRAP.max - JET_SCRAP.min + 1));
   for (let i = 0; i < scrapN; i++) at(SCRAP);
   return { t: 'jetCrashes', list: gone.length ? jetCrashList() : [c], reset: gone.length > 0 };
@@ -981,7 +992,17 @@ function broadcast(time: number) {
   const weather = LAB ? null : storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
   const flights = LAB ? null : jets.tick(time, [...players.values()].map((p) => p.state));
   const crashed: ServerMsg[] = [];
-  if (!LAB) for (const w of jets.wrecks(time)) crashed.push(jetCame(w));
+  if (!LAB) {
+    for (const j of jets.landed(time)) jetLanded(j);
+    for (let i = jetCraters.length - 1; i >= 0; i--) {
+      if (jetCraters[i].at > time) continue;
+      const k = jetCraters.splice(i, 1)[0];
+      terrain.crater(k.x, k.z, k.r, k.mm, false);
+    }
+    for (let i = jetsBreaking.length - 1; i >= 0; i--) {
+      if (jetsBreaking[i].due <= time) crashed.push(jetCame(jetsBreaking.splice(i, 1)[0]));
+    }
+  }
   for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), garden.flush(), weather, flights, ...crashed]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
