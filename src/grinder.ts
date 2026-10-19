@@ -1,14 +1,13 @@
 // The grinder in your hand: hold the use button and the disc spins up, in the air or on anything. Touched to something hard
-// (a machine, scrap, a wreck, the bunker) it throws sparks and sings; on sand it only runs. Where it touches is
+// (a machine, scrap, a wreck, the bunker) it throws sparks and sings (src/grinderSound.ts: the motor spools up, sags under load); on sand it only runs. Where it touches is
 // `playerHands.grindAt`, which the disassembly reads (src/teardown) to cut the seams of a machine's shell.
 import * as THREE from 'three/webgpu';
 import { actionHeld } from './input.ts';
-import { teardownSound } from './teardownSound.ts';
+import { grinderSound } from './grinderSound.ts';
 import { playerHands } from './water.ts';
 
 /** How far (m) the disc reaches from the eye. */
 const REACH = 2.3;
-const SOUND_EVERY = 0.09;
 /** The meshes within NEAR m of the eye (and under BIG m across) are the ones tested, collected every REFRESH s. */
 const NEAR = 5;
 const BIG = 60;
@@ -82,6 +81,12 @@ class Sparks {
   lost() {
     this.have = false;
     this.owe = 0;
+    this.drag.set(0, 0, 0);
+  }
+
+  /** How fast (m/s) the contact point is being drawn over the surface (smoothed; 0 off it). */
+  get speed() {
+    return this.drag.length();
   }
 
   update(dt: number) {
@@ -135,7 +140,6 @@ export class Grinder {
   private c = new THREE.Vector3();
   private age = 0;
   private sparks: Sparks;
-  private sound = 0;
 
   constructor(scene: THREE.Scene, camera: THREE.Camera, skip: THREE.Object3D[]) {
     this.scene = scene;
@@ -152,11 +156,13 @@ export class Grinder {
     playerHands.grind += ((using ? 1 : 0) - playerHands.grind) * Math.min(1, dt * 10);
     playerHands.grindAt = null;
     this.sparks.update(dt);
-    if (!using) {
-      this.sparks.lost();
-      return;
-    }
+    if (!using) this.sparks.lost();
+    const touching = using && this.touch(dt);
+    grinderSound.update(dt, using, touching, this.sparks.speed);
+  }
 
+  /** The disc runs: whether it is on something hard (then `playerHands.grindAt` is where, and the sparks fly). */
+  private touch(dt: number): boolean {
     this.camera.getWorldPosition(this.from);
     this.camera.getWorldDirection(this.dir);
     this.ray.set(this.from, this.dir);
@@ -172,14 +178,10 @@ export class Grinder {
       this.at.z = p.z;
       playerHands.grindAt = this.at;
       this.sparks.emit(dt, p.x, p.y, p.z, this.nrm, true);
-      this.sound -= dt;
-      if (this.sound <= 0) {
-        this.sound = SOUND_EVERY;
-        teardownSound.turn();
-      }
-      return;
+      return true;
     }
     this.sparks.lost(); // the disc runs in the air
+    return false;
   }
 
   /** Every few tenths of a second, while the disc runs: the solid meshes close to the eye are collected, so the ray tests only those
