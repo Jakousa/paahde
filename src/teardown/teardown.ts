@@ -80,6 +80,9 @@ interface Loose {
   floorY: number;
   /** Seconds until it shrinks away. */
   life: number;
+  /** A step's fastener: it flies to the player and shrinks to nothing within `life` (scaled from `s0`) instead of falling. */
+  collect?: boolean;
+  s0?: number;
   /** A module that came off with more to take apart: it lands, stays and becomes part of the machine's scene again. */
   piece?: Piece;
 }
@@ -92,6 +95,8 @@ interface Pending {
 }
 
 const GRAVITY = 16;
+/** A finished fastener flies to you and is gone within this many seconds. */
+const COLLECT_S = 0.5;
 /** The grinder cuts the stretch of a seam within this distance (m) of where it touches. */
 const SEAM_REACH = 0.13;
 /** The workable sheen: one goes over a part every this many seconds, and takes this long. */
@@ -870,7 +875,10 @@ export class TeardownView {
       // The finished fastener pops off along its own normal.
       const n = new THREE.Vector3(0, 1, 0).applyQuaternion(s.obj.getWorldQuaternion(new THREE.Quaternion()));
       const vel = n.multiplyScalar(s.kind === 'wire' ? 0.5 : 1.8).add(new THREE.Vector3(r() * 0.6, 2.2, r() * 0.6));
-      this.release(s.obj, s.floorY, 8, vel, new THREE.Vector3(r() * 10, r() * 10, r() * 10));
+      // It pops off and is gone in half a second, flying to you: it is collected (the scrap it is worth arrives at the same time)
+      const l = this.release(s.obj, s.floorY, COLLECT_S, vel, new THREE.Vector3(r() * 10, r() * 10, r() * 10));
+      l.collect = true;
+      l.s0 = s.obj.scale.x;
     }
     const j = this.site!.junk;
     const freed = j.pieces.filter((p) => !p.released && p.holds.every((h) => h.done));
@@ -1024,6 +1032,22 @@ export class TeardownView {
       const l = this.loose[i];
       const o = l.obj;
       l.life -= dt;
+      if (l.collect) {
+        // toward the hands, just below the eye, and smaller as it goes
+        const eye = this.camera.getWorldPosition(this.tmpA);
+        const fwd = this.camera.getWorldDirection(this.tmpB);
+        const to = eye.addScaledVector(fwd, 0.35);
+        to.y -= 0.35;
+        o.position.lerp(to, 1 - Math.exp(-dt * 9));
+        o.scale.setScalar(Math.max((l.life / COLLECT_S) * (l.s0 ?? 1), 0.001));
+        o.rotation.x += l.spin.x * dt;
+        o.rotation.y += l.spin.y * dt;
+        if (l.life <= 0) {
+          this.scene.remove(o);
+          this.loose.splice(i, 1);
+        }
+        continue;
+      }
       if (l.life < 0.5) o.scale.setScalar(Math.max(l.life / 0.5, 0.001));
       if (l.life <= 0) {
         this.scene.remove(o);
