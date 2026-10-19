@@ -10,6 +10,7 @@
 // changes what is inside every machine in the world, including half-stripped ones, which can leave a part someone has
 // already taken back in place. Fine between sessions; just be aware.
 import type { SiteLevel } from './crashsites.ts';
+import type { ShelterKind } from './shelters.ts';
 import type { ComponentKind, PartId, SalvageId, SalvageYield, Tier } from './salvage.ts';
 import { TEXT } from './text.ts';
 
@@ -221,12 +222,13 @@ export const CACHES = {
   tierWeights: { scrap: 5, basic: 3, quality: 1.2, space: 0.25 } satisfies TierWeights,
 };
 
-/** Stashes left on the floors of the shelters (shared/shelters.ts): how many lie at once (each in a different
- *  shelter; a taken one comes back in another), and what they are, like CACHES but richer. */
+/** Stashes left on the floors of the shelters (shared/shelters.ts): how many lie in each shelter by its kind (every
+ *  shelter is stocked; a taken one comes back in whichever shelter is shortest), and what they are, like CACHES but
+ *  richer: more gear, better parts. */
 export const SHELTER_STASHES = {
-  n: 6,
-  contents: { part: 0.45, scrap: 0.1, cloth: 0.15, pistol: 0.08, gear: 0.22, receiver: 0.05 },
-  tierWeights: { scrap: 3, basic: 3, quality: 1.5, space: 0.3 } satisfies TierWeights,
+  perShelter: { small: 2, deep: 3, long: 3 } satisfies Record<ShelterKind, number>,
+  contents: { part: 0.42, scrap: 0.06, cloth: 0.1, pistol: 0.1, gear: 0.29, receiver: 0.03 },
+  tierWeights: { scrap: 1, basic: 3, quality: 2.5, space: 0.6 } satisfies TierWeights,
 };
 
 // ---------------------------------------------------------------------------------------------------------------

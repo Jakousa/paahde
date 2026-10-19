@@ -1482,9 +1482,9 @@ drawn by `src/world/shelters.ts`).
 - **Pumps:** some have the base's hand pump in the middle of the room (`pump`, odds by kind: small 0.15, long 0.35,
   deep 0.7: the deeper, the likelier it reaches water; 8 of 20 with seed 1017). The canteen fills there like at the
   base (`atWater`, client and server); the pump has the base's hitbox. Drawn from bunker.glb's `pump` node.
-- **Stashes:** `SHELTER_STASHES` (shared/tables.ts): 6 lie at once, each in a different shelter, on the room floor
-  (`shelterLootSpot`); like a cache's contents but richer. Taken, one comes back in another shelter after
-  FIND_RESPAWN_MS (spawn key `shelter`). Loot now lies at `lootY` (a shelter's floor, else the sand) and is only in
+- **Stashes:** `SHELTER_STASHES` (shared/tables.ts): every shelter is stocked, `perShelter` by kind (small 2, deep and
+  long 3), on the room floor (`shelterLootSpot`); like a cache's contents but richer (more gear, mostly Basic/Quality
+  parts). Taken, one comes back after FIND_RESPAWN_MS in whichever shelter is shortest (spawn key `shelter`). Loot now lies at `lootY` (a shelter's floor, else the sand) and is only in
   reach about level with it (`lootReach` checks height too), so it can't be taken through the roof.
 - **Gaps:** no sand blowing in during storms (the base has `baseSand`); a stash isn't heard by the metal detector
   (it's not buried).

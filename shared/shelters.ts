@@ -5,7 +5,7 @@
 // - deep: a long flight down to a room far under the sand;
 // - long: a short flight, then a long low corridor to a narrow gallery.
 // Some have a hand pump in the middle of the room, like the base's (the deeper, the likelier: PUMP_ODDS), where the
-// canteen fills. Server/loot.ts leaves stashes on their floors now and then (shelterLootSpot).
+// canteen fills. Server/loot.ts keeps stashes on their floors (shelterLootSpot).
 // Shared by server physics and client prediction (collideShelter() etc. in sim.ts), the terrain (the pad in
 // baseHeight, no digging over them, the hut's floor cut out of the sand) and the renderer (src/world/shelters.ts
 // builds them from this layout).

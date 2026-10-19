@@ -6,7 +6,7 @@
 // Kept in the DB (`world_loot`, `loot_pending`, written on change), so a restart keeps what was taken. Items
 // players drop are kept in `dropped` and never respawn.
 import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
-import { overShelter, shelterAt, shelterLootSpot, sheltersNear } from '../shared/shelters.ts';
+import { overShelter, shelterAt, shelterLootSpot, sheltersNear, type Shelter } from '../shared/shelters.ts';
 import { GEAR, GEAR_KINDS, isGear, refit, scrapParts } from '../shared/gear.ts';
 import { JAMMER } from '../shared/jammer.ts';
 import { RECEIVERS, receiverBoss } from '../shared/bosses.ts';
@@ -157,7 +157,7 @@ export class LootServer {
       const want = new Map<string, number>(Object.entries(FINDS).map(([k, f]) => [k, f.n]));
       want.set(RARE_KIND, RARE_FINDS.n);
       want.set(HOME_KIND, 1);
-      want.set(STASH_KIND, this.shelters.length ? SHELTER_STASHES.n : 0);
+      want.set(STASH_KIND, this.shelters.reduce((n, s) => n + SHELTER_STASHES.perShelter[s.kind], 0));
       const lying = new Map<string, number[]>();
       for (const [id, k] of this.spawnKey) lying.set(k, [...(lying.get(k) ?? []), id]);
       lying.set('', [...this.loot.values()].filter((l) => l.src === 'cache').map((l) => l.id));
@@ -355,15 +355,17 @@ export class LootServer {
     } else this.place({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, src: 'find' }, kind);
   }
 
-  /** A stash on the floor of a shelter that has none lying in it yet. */
+  /** A stash on the floor of the shelter furthest short of its SHELTER_STASHES.perShelter. */
   private spawnStash() {
-    const taken = new Set<number>();
+    const lying = new Map<number, number>();
     for (const [id, k] of this.spawnKey) {
       const l = this.loot.get(id);
-      if (k === STASH_KIND && l) taken.add(shelterAt(l.x, l.z)?.id ?? -1);
+      const s = l && k === STASH_KIND ? shelterAt(l.x, l.z) : null;
+      if (s) lying.set(s.id, (lying.get(s.id) ?? 0) + 1);
     }
-    const free = this.shelters.filter((s) => !taken.has(s.id));
-    const { x, z } = shelterLootSpot(pick(free.length ? free : this.shelters), Math.random);
+    const short = (s: Shelter) => SHELTER_STASHES.perShelter[s.kind] - (lying.get(s.id) ?? 0);
+    const most = Math.max(...this.shelters.map(short));
+    const { x, z } = shelterLootSpot(pick(this.shelters.filter((s) => short(s) === most)), Math.random);
     this.place({ id: this.nextId++, ...this.contents(SHELTER_STASHES), x, z, src: 'find' }, STASH_KIND);
   }
 
