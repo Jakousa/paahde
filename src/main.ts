@@ -64,6 +64,7 @@ import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
 import { Rifle } from './rifle';
 import { Jammer } from './jammer';
+import { Grinder } from './grinder';
 import { Receiver } from './receiver';
 import { BossBar } from './bossBar';
 import { Thrower } from './throw';
@@ -276,6 +277,7 @@ let seenSite: string | null = null;
 let bagIds: Set<number> | null = null;
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
+const grinder = new Grinder(scene, orbit.camera, [me.root]);
 const jammer = new Jammer(orbit, net, guardianFx.jets, guardianFx.drones);
 const receiver = new Receiver(orbit, net);
 const bossBar = new BossBar();
@@ -455,6 +457,7 @@ renderer.setAnimationLoop((time) => {
   guardianFx.update(net, frameDt, orbit.camera, focus);
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
   thrower.update(frameDt, !s.riding && !net.down);
+  grinder.update(frameDt, !s.riding && !net.down);
   jammer.update(frameDt, !s.riding && !net.down);
   jammer.others(others, orbit.camera.position); // others' jammers: their static
   receiver.update(frameDt, inHand, !s.riding && !net.down);

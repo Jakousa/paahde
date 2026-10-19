@@ -59,7 +59,7 @@ export interface Step {
   /** An inner step: the piece (a module that has come off) it is on. */
   owner?: Piece;
   /** Seams: the line to follow with the grinder (the step's own frame), and how far along it the grinder has got (0..1 is `progress`). */
-  seam?: { curve: THREE.CatmullRomCurve3; bead: THREE.Object3D };
+  seam?: { curve: THREE.CatmullRomCurve3; mids: THREE.Vector3[]; cut: boolean[]; marks: THREE.Mesh[] };
   /** Pulls: the thing that slides apart as it is held (a module of the machine), and how far (m) along `dir`. */
   slide?: { obj: THREE.Object3D; dir: THREE.Vector3; dist: number; offset: THREE.Vector3 };
   /** The step's own parts' materials: they take a faint enchanted shimmer while it can be worked (there with the big indicators
@@ -595,12 +595,24 @@ export class Kit {
     line.visible = false;
     g.add(line);
     step.marker = line;
-    const bead = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicNodeMaterial({ color: 0xffd080 }));
-    bead.raycast = () => {};
-    bead.userData.ignoreBounds = true;
-    bead.visible = false;
-    spin.add(bead);
-    step.seam = { curve, bead };
+    // The seam is cut where the grinder has touched it, in any order: a mark for each stretch that has been.
+    const n = Math.max(10, Math.round(curve.getLength() / 0.07));
+    const mids: THREE.Vector3[] = [], marks: THREE.Mesh[] = [];
+    const burnt = new THREE.MeshBasicNodeMaterial({ color: 0x1a0d06 });
+    for (let i = 0; i < n; i++) {
+      const a = curve.getPoint(i / n), b = curve.getPoint((i + 1) / n);
+      const len = a.distanceTo(b);
+      const mark = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, len * 1.15, 6), burnt);
+      mark.position.copy(a).add(b).multiplyScalar(0.5);
+      mark.quaternion.setFromUnitVectors(UP, b.clone().sub(a).normalize());
+      mark.visible = false;
+      mark.raycast = () => {};
+      mark.userData.ignoreBounds = true;
+      g.add(mark);
+      marks.push(mark);
+      mids.push(a.clone().add(b).multiplyScalar(0.5));
+    }
+    step.seam = { curve, mids, cut: new Array<boolean>(n).fill(false), marks };
     const glint = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.009, 5), new THREE.MeshBasicNodeMaterial({ color: 0x8fdcff, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending }));
     glint.visible = false;
     glint.raycast = () => {};

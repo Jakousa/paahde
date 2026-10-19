@@ -252,6 +252,7 @@ export class Terrain {
     mesh.updateMatrix();
     const c: Chunk = { key: key(level, ix, iz), level, x0: ix * size, z0: iz * size, size, mesh, lastUsed: this.frame };
     this.fill(c);
+    mesh.userData.soft = true; // sand: the grinder (src/grinder.ts) does not bite on it
     this.scene.add(mesh);
     this.cache.set(c.key, c);
   }

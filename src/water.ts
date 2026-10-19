@@ -42,6 +42,8 @@ export const playerHands = {
   jamLamp: 0,
   /** The grinder in hand (src/teardown): 0..1 how hard it is grinding, for the disc and the hands. */
   grind: 0,
+  /** Where the grinder in hand touches something hard (src/grinder.ts), or null. */
+  grindAt: null as { x: number; y: number; z: number } | null,
   /** The receiver in hand (src/receiver.ts): its boss (null: none in hand), needle (rad, + to the left), lamp 0..1. */
   receiver: { kind: null as BossKind | null, needle: 0, lamp: 0 },
 };

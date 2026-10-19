@@ -92,6 +92,8 @@ interface Pending {
 }
 
 const GRAVITY = 16;
+/** The grinder cuts the stretch of a seam within this distance (m) of where it touches. */
+const SEAM_REACH = 0.13;
 /** The workable sheen: one goes over a part every this many seconds, and takes this long. */
 const SHEEN_EVERY = 7;
 const SHEEN_LEN = 1.3;
@@ -495,8 +497,9 @@ export class TeardownView {
   }
 
   private startStep(s: Step) {
-    if (s.kind === 'grind' && playerHands.held !== 'grinder') {
-      this.ui.message(TEXT.teardown.needGrinder, true);
+    if (s.kind === 'grind') {
+      // nothing to start: the grinder (src/grinder.ts) cuts wherever it touches the seam
+      if (playerHands.held !== 'grinder') this.ui.message(TEXT.teardown.needGrinder, true);
       return;
     }
     if (s.kind === 'mash') {
@@ -569,7 +572,7 @@ export class TeardownView {
     const a = this.act;
     if (!a) return;
     const s = a.step;
-    if (s.kind === 'bolt' || s.kind === 'grind') teardownSound.stop();
+    if (s.kind === 'bolt') teardownSound.stop();
     if (s.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(s), s.players, false);
     // A half-pried tab or half-lifted weight falls back, and a half-shaken wire end goes still (an end that has come
     // loose stays loose); a half-turned bolt stays where it is.
@@ -725,13 +728,6 @@ export class TeardownView {
       case 'mash':
         this.slide(s, f); // the part lifts away a little with every press
         break;
-      case 'grind': {
-        // the spark sits at the cut's end
-        const b = s.seam!.bead;
-        b.visible = f > 0 && f < 1;
-        s.seam!.curve.getPoint(Math.min(f, 1), b.position);
-        break;
-      }
       case 'lift':
         s.spin.position.y = Math.min(f, 1) * 0.12;
         this.slide(s, f); // the module parts from the machine as it is pulled
@@ -860,8 +856,7 @@ export class TeardownView {
       s.progress = Math.max(0, s.progress - dt * 1.6);
       this.show(s);
     }
-    // Grinding a seam: the crosshair has to follow the line, the grinder cuts as far as it has been followed.
-    this.grind(dt);
+    this.grind();
 
     // Lifts: progress only while enough players hold it.
     const a = this.act;
@@ -971,36 +966,31 @@ export class TeardownView {
     }
   }
 
-  /** The seam being ground: the cut follows the crosshair along the line (only a little ahead of what is cut), at a pace. */
-  private grind(dt: number) {
-    const a = this.act;
-    const grinding = a?.step.kind === 'grind' && !a.step.done && playerHands.held === 'grinder';
-    playerHands.grind += ((grinding ? 1 : 0) - playerHands.grind) * Math.min(1, dt * 10);
-    if (playerHands.held === 'grinder') playerHands.aim += ((grinding ? 1 : 0) - playerHands.aim) * Math.min(1, dt * 8);
-    if (!grinding || !a) return;
-    const s = a.step, seam = s.seam!;
-    this.ray(innerWidth / 2, innerHeight / 2);
-    const ray = this.raycaster.ray;
-    let bestT = -1, bd = 0.16;
-    const pt = this.tmpA;
-    for (let i = 0; i <= 60; i++) {
-      const t = i / 60;
-      seam.curve.getPoint(t, pt);
-      s.obj.localToWorld(pt);
-      const d = ray.distanceToPoint(pt);
-      if (d < bd) (bd = d), (bestT = t);
-    }
-    if (bestT >= s.progress - 0.03 && bestT <= s.progress + 0.12) {
-      s.progress = Math.min(1, Math.max(s.progress, Math.min(bestT, s.progress + dt * 0.22)));
-      teardownSound.turn();
-      a.lastMove = performance.now();
-      this.show(s);
-      if (s.progress >= 1) {
-        this.act = null;
-        teardownSound.stop();
+  /** Where the grinder touches (src/grinder.ts) cuts the seams there that can be cut now, anywhere along them and in any order;
+   *  a seam is open once nearly all of it has been touched. */
+  private grind() {
+    const at = playerHands.grindAt;
+    if (!at || playerHands.held !== 'grinder') return;
+    const p = this.tmpA.set(at.x, at.y, at.z);
+    for (const s of this.site!.junk.steps) {
+      if (s.kind !== 'grind' || s.done || !stepReady(s)) continue;
+      const seam = s.seam!;
+      const local = s.obj.worldToLocal(this.tmpB.copy(p));
+      let fresh = false;
+      for (let i = 0; i < seam.cut.length; i++) {
+        if (seam.cut[i] || seam.mids[i].distanceTo(local) > SEAM_REACH) continue;
+        seam.cut[i] = true;
+        seam.marks[i].visible = true;
+        fresh = true;
+      }
+      if (!fresh) continue;
+      s.progress = seam.cut.filter(Boolean).length / seam.cut.length;
+      if (s.progress >= 0.92) {
+        s.progress = s.need;
+        for (const m of seam.marks) m.visible = true;
         this.complete(s);
       }
-    } else teardownSound.stop();
+    }
   }
 
   /** The tip, progress ring, part tags and the "next" line. */
