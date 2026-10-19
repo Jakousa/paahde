@@ -1,0 +1,15 @@
+{
+  "name": "Hiekka",
+  "short_name": "Hiekka",
+  "description": "A multiplayer survival game in a burning desert: salvage the machines, find water, bring down the giants.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#050403",
+  "theme_color": "#3a2a2c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

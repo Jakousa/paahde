@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Favicon (index.html): the huge low sun over the dunes, palette from docs/look.md. Rendered to the PNGs
+       and favicon.ico by tools/favicon.mjs. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a2a2c"/>
+      <stop offset=".55" stop-color="#b8582a"/>
+      <stop offset=".8" stop-color="#f4a95a"/>
+    </linearGradient>
+    <clipPath id="c"><rect width="64" height="64" rx="12"/></clipPath>
+  </defs>
+  <g clip-path="url(#c)">
+  <rect width="64" height="64" fill="url(#sky)"/>
+  <circle cx="34" cy="38" r="19" fill="#ffb347"/>
+  <circle cx="34" cy="38" r="14" fill="#fff1cc"/>
+  <path d="M0 44 Q18 37 36 42 T64 40 V52 H0 Z" fill="#c46a24"/>
+  <path d="M0 52 Q22 44 44 49 T64 47 V64 H0 Z" fill="#4a2414"/>
+  </g>
+</svg>
