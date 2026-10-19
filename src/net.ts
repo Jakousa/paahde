@@ -30,6 +30,7 @@ import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
+import { setJetCrashes } from '../shared/jetcrash.ts';
 import { growChest, isShared } from '../shared/storage.ts';
 import { corpseBox, CORPSES } from '../shared/corpse.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
@@ -693,6 +694,10 @@ export class Net {
     }
     if (msg.t === 'jets') {
       this.jets = msg.jets;
+      return;
+    }
+    if (msg.t === 'jetCrashes') {
+      setJetCrashes(msg.list, !!msg.reset);
       return;
     }
     if (msg.t === 'shot' || msg.t === 'boom' || msg.t === 'missile' || msg.t === 'blast') return this.onBolt?.(msg);

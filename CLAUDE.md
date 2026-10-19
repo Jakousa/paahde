@@ -66,7 +66,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `server/colossus.ts` (server feet, footprint craters, big stomp, fall furrow), view `src/world/colossus.ts` (leg IK,
   death topple), `src/colossusSound.ts`, model `tools/blender/colossus.py`
 - `shared/jets.ts` — fixed-wing drones: high fast flyovers (straight or big circles), day and night; 3 rifle hits and it glides down; scheduled by
-  `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts` (`jets`)
+  `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts` (`jets`); model `tools/blender/machines/plane.py`. Down, it leaves a permanent crash site (`shared/jetcrash.ts`, made by `server/jetcrash.ts`,
+  in the world's DB): the plane stays, the sand is dug up (`jetCame` in server/world.ts) and its right engine lies on ahead as a `jet:<n>` machine to take apart (the turbofan; jet engines hardly lie anywhere else)
 - `shared/ragdoll.ts` — dying: you lie where you fell for `DOWN_MS` (input ignored, third-person camera) as a
   Verlet ragdoll (`src/models/ragdoll.ts`) thrown by the killing blast's push (`blastPush`), then respawn
 - `shared/corpse.ts` — dying leaves the bag past the hotbar in a pack where you fell (shared box `corpse<id>`, take-only,

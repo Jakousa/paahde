@@ -6,6 +6,7 @@ import type { Corpse } from './corpse.ts';
 import type { MissilePath } from './missiles.ts';
 import type { Storm } from './storm.ts';
 import type { Jet } from './jets.ts';
+import type { JetCrash } from './jetcrash.ts';
 import type { TossPath } from './throw.ts';
 import type { Placed } from './placed.ts';
 import type { BedState } from './garden.ts';
@@ -261,6 +262,7 @@ export type ServerMsg =
   // Every fixed-wing drone flight in the air (shared/jets.ts; times on the server clock). Like 'storms': before
   // 'welcome' on join and to everyone whenever the list changes.
   | { t: 'jets'; jets: Jet[] }
+  | { t: 'jetCrashes'; list: JetCrash[]; reset?: boolean }
   // Guardians and night drones (shared/guardians.ts) within reach, about 10 times a second, at server time `time`.
   // g: [id, kind, legs, x, z, yaw, hunt, ax, ay, az, gun, broken, dead] per walker (kind: shared/guardians.ts KINDS
   // index; (ax, ay, az) where its cannon aims; gun -1 idle, 0 aiming, 1 charging; broken: bit i set once weak point i

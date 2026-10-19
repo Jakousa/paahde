@@ -10,6 +10,7 @@ import { crashSite, crashSitesNear, crashTaken, type CrashSite as Wreck } from '
 import type { SiteLevel } from './crashsites.ts';
 import { COMPONENTS, SALVAGE, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
 import { labById, labSites } from './lab.ts';
+import { jetSiteById, jetSites } from './jetcrash.ts';
 import { STATIONS } from './stations.ts';
 import { LEVEL_KINDS } from './tables.ts';
 
@@ -61,7 +62,7 @@ export interface CrashSite {
   kind: JunkKind;
   /** Seeds what is inside (tiers). */
   seed: number;
-  /** A machine of the dev test lab (shared/lab.ts): worked in place whatever its size, never spent. */
+  /** A machine of the dev test lab (shared/lab.ts) or an engine torn off a downed jet (shared/jetcrash.ts): worked in place whatever its size, never spent. */
   lab?: boolean;
 }
 
@@ -101,7 +102,7 @@ export function machinesAt(w: Wreck): CrashSite[] {
 /** The site with this id ("<crash site id>:<index>"), or null. Ids may come from the network: this validates them. */
 export function crashSiteById(id: unknown): CrashSite | null {
   if (typeof id !== 'string') return null;
-  const y = labById(id);
+  const y = labById(id) ?? jetSiteById(id);
   if (y) return y;
   const m = /^(\d{1,16}):(\d)$/.exec(id);
   const w = m ? crashSite(Number(m[1])) : undefined;
@@ -113,6 +114,7 @@ export function crashSiteById(id: unknown): CrashSite | null {
 export function sitesNear(x: number, z: number, radius: number): CrashSite[] {
   const out: CrashSite[] = [];
   for (const s of labSites()) if (Math.hypot(s.x - x, s.z - z) <= radius) out.push(s);
+  for (const s of jetSites()) if (Math.hypot(s.x - x, s.z - z) <= radius) out.push(s);
   for (const w of crashSitesNear(x, z, radius + 40)) {
     for (const s of machinesAt(w)) if (Math.hypot(s.x - x, s.z - z) <= radius) out.push(s);
   }

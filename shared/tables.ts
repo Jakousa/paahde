@@ -164,8 +164,9 @@ export const COMPONENT_LOOT: Record<ComponentKind, Loot> = {
  *  Each site has one large machine (carry: false) and a few small ones; each is picked from its own size. */
 export const LEVEL_KINDS: Record<SiteLevel, Partial<Record<ComponentKind, number>>> = {
   0: { winch: 3, solenoid_valve: 3, beacon: 3 },
-  1: { control_cabinet: 3, robot_arm: 2, beacon: 1, pump_housing: 3, jet_engine: 1 },
-  2: { robot_arm: 3, control_cabinet: 2, jet_engine: 3, pump_housing: 1 },
+  1: { control_cabinet: 3, robot_arm: 2, beacon: 1, pump_housing: 3 },
+  // (jet engines come off downed jets, shared/jetcrash.ts; hardly ever lie at a crash site)
+  2: { robot_arm: 3, control_cabinet: 2, jet_engine: 0.15, pump_housing: 1 },
 };
 
 /** Multipliers on a machine's tierWeights by crash-site level. Machines carried home roll at level 1. */
@@ -241,11 +242,8 @@ export const KILL_SPOILS: Record<'guardian' | 'crawler' | 'drone', Spoils> = {
   drone: { odds: 1, min: 1, max: 1, parts: SPOILS, tierWeights: { basic: 1, quality: 1 } },
 };
 
-/** A downed jet's wreck (server/world.ts dropJetSpoils): its avionics and engine, scattered behind its nose, better
- *  than a drone's; jammed it came down in one piece, so JET_SOFT_EXTRA more. Its drone transponder (what the carrier's
- *  receiver takes) with JET_RELIC_ODDS, and some scrap off the airframe. */
-export const JET_SPOILS: Spoils = { odds: 1, min: 2, max: 3, parts: ['compute', 'coil', 'battery', 'relay', 'motor', 'heatsink', 'bearing', 'uranium'], tierWeights: { basic: 2, quality: 2, space: 0.4 } };
-export const JET_SOFT_EXTRA = 1;
+/** A downed jet's crash site (server/world.ts jetCame): its engine is a machine to take apart (shared/jetcrash.ts); besides, its drone transponder
+ *  (what the carrier's receiver takes) with JET_RELIC_ODDS, and some scrap off the airframe. */
 export const JET_RELIC_ODDS = 0.2;
 export const JET_SCRAP = { min: 2, max: 4 };
 

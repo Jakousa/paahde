@@ -10,7 +10,7 @@ import { bikeLevel, bottleSips, carriedGear, equipped, gearTiers, GEAR_KINDS, sh
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
-import { BOSS_SPOILS, JET_RELIC_ODDS, JET_SCRAP, JET_SOFT_EXTRA, JET_SPOILS, KILL_SPOILS, RECEIVER_DROPS, RELIC_DROPS } from '../shared/tables.ts';
+import { BOSS_SPOILS, JET_RELIC_ODDS, JET_SCRAP, KILL_SPOILS, RECEIVER_DROPS, RELIC_DROPS } from '../shared/tables.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, RECEIVERS, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
@@ -36,6 +36,8 @@ import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
 import { JetServer } from './jets.ts';
+import { JetCrashes, type JetWreck } from './jetcrash.ts';
+import { jetCrashList } from '../shared/jetcrash.ts';
 import { BossServer, type BossKill, type BossOut } from './bosses.ts';
 import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
@@ -91,6 +93,7 @@ const corpses = new CorpseServer(db, items, (msg) => {
 
 const storms = new StormServer(performance.now());
 const jets = new JetServer(performance.now());
+const jetCrashes = new JetCrashes(db);
 const bosses = new BossServer();
 const guardians = new GuardianServer();
 const throws = new ThrowServer(guardians);
@@ -298,6 +301,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
   send(ws, jets.msg());
+  send(ws, { t: 'jetCrashes', list: jetCrashList(), reset: true });
   send(ws, loot.joinMessage(browserId));
   send(ws, { t: 'welcome', id: p.id, state, color, epoch, name });
   send(ws, { t: 'names', names: [...players.values()].filter((o) => o.ready).map((o) => [o.id, o.name]), reset: true });
@@ -685,20 +689,22 @@ function dropSpoils(k: Kill) {
   }
 }
 
-/** A jet's wreck (shared/tables.ts JET_SPOILS): parts, maybe its transponder and some scrap, strewn back along its
- *  heading from where its nose went in (`yaw`: the way it was going). */
-function dropJetSpoils(w: { x: number; z: number; yaw: number; soft: boolean }) {
-  const sp = JET_SPOILS, bx = -Math.sin(w.yaw), bz = -Math.cos(w.yaw);
+/** A jet came down (shared/jets.ts): its crash site is made (shared/jetcrash.ts: the plane stays, its engine lies on ahead to be taken
+ *  apart), the sand dug up round them, its transponder maybe, a broken receiver now and then, and some scrap off the airframe, strewn
+ *  back along its heading from where its nose went in. */
+function jetCame(w: JetWreck): ServerMsg {
+  const { crash: c, gone, craters } = jetCrashes.add(w);
+  for (const k of craters) terrain.crater(k.x, k.z, k.r, k.mm, false);
+  const bx = -Math.sin(w.yaw), bz = -Math.cos(w.yaw);
   const at = (kind: string) => {
     const back = -2 + Math.random() * 12, side = (Math.random() - 0.5) * 14;
-    loot.dropAt(w.x + bx * back - bz * side, w.z + bz * back + bx * side, kind);
+    loot.dropAt(w.lx + bx * back - bz * side, w.lz + bz * back + bx * side, kind);
   };
-  const n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1)) + (w.soft ? JET_SOFT_EXTRA : 0);
-  for (let i = 0; i < n; i++) at(partKind(sp.parts[Math.floor(Math.random() * sp.parts.length)], pickTier(sp.tierWeights, Math.random)));
   if (Math.random() < JET_RELIC_ODDS) at(RELIC_DROPS.drone.kind);
-  if (Math.random() < RECEIVER_DROPS.jet) loot.dropBroken(w.x + bx * 4, w.z + bz * 4, randomReceiver(), 4);
+  if (Math.random() < RECEIVER_DROPS.jet) loot.dropBroken(w.lx + bx * 4, w.lz + bz * 4, randomReceiver(), 4);
   const scrapN = JET_SCRAP.min + Math.floor(Math.random() * (JET_SCRAP.max - JET_SCRAP.min + 1));
   for (let i = 0; i < scrapN; i++) at(SCRAP);
+  return { t: 'jetCrashes', list: gone.length ? jetCrashList() : [c], reset: gone.length > 0 };
 }
 
 /** A boss's parts, scattered over its wreck; its kind's first kill counts toward the win and gives the world lives. */
@@ -974,8 +980,9 @@ function broadcast(time: number) {
   // (The lab has no storms and no jets.)
   const weather = LAB ? null : storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
   const flights = LAB ? null : jets.tick(time, [...players.values()].map((p) => p.state));
-  if (!LAB) for (const w of jets.wrecks(time)) dropJetSpoils(w);
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), garden.flush(), weather, flights]) {
+  const crashed: ServerMsg[] = [];
+  if (!LAB) for (const w of jets.wrecks(time)) crashed.push(jetCame(w));
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), garden.flush(), weather, flights, ...crashed]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);

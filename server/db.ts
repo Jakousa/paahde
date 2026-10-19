@@ -133,6 +133,11 @@ export function openDb(path: string) {
       spent_at INTEGER NOT NULL               -- ms since epoch
     );
   `);
+  // Downed jets' crash sites (shared/jetcrash.ts): one JSON row each.
+  db.exec('CREATE TABLE IF NOT EXISTS jet_crashes (id INTEGER PRIMARY KEY, data TEXT NOT NULL)');
+  const allJetCrashes = db.prepare('SELECT data FROM jet_crashes ORDER BY id');
+  const putJetCrash = db.prepare('INSERT OR REPLACE INTO jet_crashes (id, data) VALUES (?, ?)');
+  const deleteJetCrash = db.prepare('DELETE FROM jet_crashes WHERE id = ?');
   const allSpent = db.prepare('SELECT site, spent_at FROM crash_spent');
   const insertSpent = db.prepare('INSERT OR IGNORE INTO crash_spent (site, spent_at) VALUES (?, ?)');
   const allCrash = db.prepare('SELECT id, taken_at FROM crash_taken');
@@ -409,6 +414,9 @@ export function openDb(path: string) {
     loadBench: () => getBench.get() as { kind: string; seed: number } | undefined,
     saveBench: (kind: string, seed: number) => putBench.run(kind, seed),
     clearBench: () => deleteBench.run(),
+    loadJetCrashes: () => (allJetCrashes.all() as { data: string }[]).map((r) => JSON.parse(r.data)),
+    saveJetCrash: (id: number, data: unknown) => putJetCrash.run(id, JSON.stringify(data)),
+    deleteJetCrash: (id: number) => deleteJetCrash.run(id),
     loadCrashSpent: () => allSpent.all() as { site: number; spent_at: number }[],
     spendCrash: (site: number, at: number) => insertSpent.run(site, at),
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,

@@ -4,6 +4,7 @@
 import { DIVE_STEP, JET_NOSE, jetDive, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
 import { baseHeight } from '../shared/terrain.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
+import type { JetWreck } from './jetcrash.ts';
 
 /** Time between one flight's start and the next (ms). */
 const GAP_MIN_MS = 150_000;
@@ -145,13 +146,14 @@ export class JetServer {
     j.end = land + WRECK_MS;
   }
 
-  /** Jets whose wrecks hit the sand since the last call (once each): where, and whether jammed. */
-  wrecks(now: number): { x: number; z: number; yaw: number; soft: boolean }[] {
-    const out = [];
+  /** Jets whose wrecks hit the sand since the last call (once each): the pose they lie in, where the nose went in, and whether jammed. */
+  wrecks(now: number): JetWreck[] {
+    const out: JetWreck[] = [];
     for (const j of this.jets) {
       if (!j.down || j.down.land > now || this.wrecked.has(j.id)) continue;
       this.wrecked.add(j.id);
-      out.push({ x: j.down.lx, z: j.down.lz, yaw: j.down.yaw, soft: !!j.down.soft });
+      jetAt(j, j.down.land, _p);
+      out.push({ jet: j.id, x: _p.x, y: _p.y, z: _p.z, yaw: _p.yaw, pitch: _p.pitch, bank: _p.bank, lx: j.down.lx, lz: j.down.lz, soft: !!j.down.soft });
     }
     for (const id of this.wrecked) if (!this.jets.some((j) => j.id === id)) this.wrecked.delete(id);
     return out;

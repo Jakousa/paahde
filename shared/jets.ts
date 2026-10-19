@@ -51,8 +51,8 @@ const ROLL_RAMP = 2.5;
 /** The integration step (s): the same steps on both sides, so they agree. */
 export const DIVE_STEP = 0.05;
 /** Nose ahead of the centre (m), and how deep it ploughs into the sand past where it first touches (m). */
-export const JET_NOSE = 5.6;
-const BURY = 2.2;
+export const JET_NOSE = 15;
+const BURY = 4;
 export type Dive = { fwd: number; drop: number; pitch: number; roll: number; v: number };
 const _dv: Dive = { fwd: 0, drop: 0, pitch: 0, roll: 0, v: 0 };
 /** How far along its heading (m) and down (m) a downed jet is `s` s on, its pitch (rad, nose up) and roll, and speed. */
@@ -82,11 +82,11 @@ export function jetWreck(speed: number, landS: number, soft: boolean, out: Dive 
   out.v = 0;
   return out;
 }
-/** The wreck lies on the sand this long (ms) before it's cleared. */
-export const WRECK_MS = 90_000;
+/** The flight's own wreck lies on the sand this long (ms) before it is handed over to the crash site (shared/jetcrash.ts), which stays. */
+export const WRECK_MS = 3_000;
 
-/** Wingspan (m): a searchlight drone is about 2. */
-export const JET_SPAN = 18;
+/** Wingspan (m): a searchlight drone is about 2. The plane (tools/blender/machines/plane.py) is modelled at this size. */
+export const JET_SPAN = 32;
 /** Server hit test: the shot must pass this close (m) to its centre (it's JET_SPAN wide). */
 export const JET_HIT = JET_SPAN / 2 + 3;
 /** Height above the sand (m) and speed (m/s) a flight picks from. */

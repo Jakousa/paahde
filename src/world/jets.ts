@@ -1,7 +1,6 @@
-// Fixed-wing drones (shared/jets.ts): a long-winged unmanned recon/strike plane (public/models/jet.glb, made by
-// tools/blender/jet.py; a primitive stand-in until it has loaded): a slim fuselage with a satcom bulge and a sensor
-// ball under the chin, an intake hump over the back feeding a jet nozzle at the tail, straight wings with missiles
-// under them and a V tail. Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and
+// Fixed-wing drones (shared/jets.ts): a big twin-engined unmanned plane (public/models/jet.glb, made by
+// tools/blender/machines/plane.py; a primitive stand-in until it has loaded) with the turbofan's own engines on its wings.
+// Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and
 // the server clock, rolled into its turns. Shot, it trails smoke (more with each hit); brought down it dives in
 // rolling over on a heavy trail, ploughs in nose first (onCrash) and smoulders, tail in the air. Jammed
 // (shared/jammer.ts) it dives the same, rolling harder, a thin trail corkscrewing off its tail. The rifle tests shots
@@ -9,10 +8,13 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { JET_SPAN, jetAt, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
+import { jetCrashList } from '../../shared/jetcrash.ts';
 import { zaps } from './zaps';
 
 /** Hidden past this distance (m) from the camera. */
 const SHOW_R = 5000;
+/** The wrecks on the sand are drawn within this far (m). */
+const WRECK_SHOW_R = 900;
 
 /** A flat trapezoid in the XZ plane (thickness `t`, along -Y..+Y), from x = 0 (root chord `root`, its leading edge
  *  at z = 0) to x = `len` (tip chord `tip`, leading edge swept back `sweep`). */
@@ -78,7 +80,9 @@ function primitive(): THREE.Group {
   return g;
 }
 
-/** jet.glb's scene (an 18 m span, metres, nose +Z, the nozzle exit at its `Tail` empty), once loaded. */
+/** The span jet.glb is modelled for (m). */
+const MODEL_SPAN = 32;
+/** jet.glb's scene (metres, nose +Z, the left engine's exit at its `Tail` empty), once loaded. */
 let model: THREE.Object3D | null = null;
 /** Planes made while it was still loading: they get the model when it comes in. */
 const pending = new Set<THREE.Group>();
@@ -94,12 +98,17 @@ class JetProto extends THREE.Group {
 
 function fill(g: THREE.Group) {
   g.clear();
-  g.add(model ? model.clone() : primitive());
+  if (model) g.add(model.clone());
+  else {
+    const p = primitive();
+    p.scale.setScalar(JET_SPAN / 18); // (the stand-in is an 18 m plane)
+    g.add(p);
+  }
 }
 
 function build(): THREE.Group {
   const g = new JetProto();
-  g.scale.setScalar(JET_SPAN / 18); // modelled for an 18 m span
+  g.scale.setScalar(JET_SPAN / MODEL_SPAN);
   fill(g);
   pending.add(g);
   new GLTFLoader().loadAsync('./models/jet.glb').then(
@@ -121,15 +130,16 @@ type View = { obj: THREE.Object3D; hurt: number; state: number; smoke: number };
 
 /** Hit boxes in the body frame (half sizes and centre, before JET_SPAN scaling): the fuselage, the wings. */
 const BOXES = [
-  { h: new THREE.Vector3(0.8, 0.9, 5.6), c: new THREE.Vector3(0, 0.2, 0) },
-  { h: new THREE.Vector3(9.2, 0.5, 1.1), c: new THREE.Vector3(0, 0.15, 0.1) },
+  { h: new THREE.Vector3(1.9, 2.0, 15.4), c: new THREE.Vector3(0, 0, 0) },
+  { h: new THREE.Vector3(16.5, 0.9, 3.8), c: new THREE.Vector3(0, 0.4, -0.4) },
 ];
-/** The nozzle, where the smoke streams from (body frame; jet.glb's `Tail` empty). */
-const TAIL = new THREE.Vector3(0, 0.5, -5.8);
+/** The left engine's exit, where the smoke streams from (body frame; jet.glb's `Tail` empty). */
+const TAIL = new THREE.Vector3(-5.6, -2.05, 0.2);
 const _inv = new THREE.Matrix4(), _o = new THREE.Vector3(), _d = new THREE.Vector3(), _t = new THREE.Vector3();
 
 export class Jets {
   private views = new Map<number, View>();
+  private wreckViews = new Map<number, THREE.Object3D>();
   private pose: JetPose = jetPose();
   private proto: THREE.Group | null = null;
   private scene: THREE.Scene;
@@ -179,7 +189,7 @@ export class Jets {
       const soft = !!j.down?.soft;
       if (p.state === 2 && v.state === 1) {
         _t.set(0, 0, 1).transformDirection(o.matrixWorld);
-        this.onCrash(p.x + _t.x * 4, p.y + _t.y * 4, p.z + _t.z * 4, _t.x, _t.y, _t.z);
+        this.onCrash(p.x + _t.x * 12, p.y + _t.y * 12, p.z + _t.z * 12, _t.x, _t.y, _t.z);
       }
       v.state = p.state;
       // Smoke: a thin trail once hit, thicker with each hit, a heavy one gliding down; the wreck smoulders. Jammed it
@@ -188,7 +198,7 @@ export class Jets {
       v.smoke += dt * rate;
       if (v.smoke >= 1) _t.copy(TAIL).applyMatrix4(o.matrixWorld);
       for (; v.smoke >= 1; v.smoke--) {
-        if (p.state === 2) zaps.puff(p.x + (Math.random() - 0.5) * 6, p.y + 0.5, p.z + (Math.random() - 0.5) * 6, 3, 2.2);
+        if (p.state === 2) zaps.puff(p.x + (Math.random() - 0.5) * 12, p.y + 0.5, p.z + (Math.random() - 0.5) * 12, 3, 2.2);
         else zaps.puff(_t.x, _t.y, _t.z, p.state === 1 ? 4 : 2 + j.hurt, 0.5);
       }
     }
@@ -196,6 +206,40 @@ export class Jets {
       if (seen.has(id)) continue;
       this.scene.remove(v.obj);
       this.views.delete(id);
+    }
+    this.wrecks(eye, dt);
+  }
+
+  /** The planes that came down stay where they lay (shared/jetcrash.ts), the right engine gone from the wing (it lies on the sand as
+   *  a machine); close by they smoulder. */
+  private wrecks(eye: { x: number; z: number }, dt: number) {
+    const list = jetCrashList();
+    for (const c of list) {
+      const near = Math.hypot(c.x - eye.x, c.z - eye.z) < WRECK_SHOW_R;
+      let o = this.wreckViews.get(c.id);
+      if (near) this.proto ??= build(); // (starts the model loading)
+      if (!near || !model) {
+        if (o) o.visible = false;
+        continue;
+      }
+      if (!o) {
+        o = model.clone();
+        const eng = o.getObjectByName('Jet_EngineR');
+        if (eng) eng.visible = false;
+        o.rotation.order = 'YXZ';
+        o.position.set(c.x, c.y, c.z);
+        o.rotation.set(-c.pitch, c.yaw, -c.bank);
+        o.scale.setScalar(JET_SPAN / MODEL_SPAN);
+        this.scene.add(o);
+        this.wreckViews.set(c.id, o);
+      }
+      o.visible = !this.views.has(c.jet);
+      if (o.visible && Math.random() < dt * 1.2) zaps.puff(c.x + (Math.random() - 0.5) * 10, c.y + 2, c.z + (Math.random() - 0.5) * 10, 3, 2.2);
+    }
+    for (const [id, o] of this.wreckViews) {
+      if (list.some((c) => c.id === id)) continue;
+      this.scene.remove(o);
+      this.wreckViews.delete(id);
     }
   }
 

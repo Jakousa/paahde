@@ -1,4 +1,4 @@
-// Debug menu: F3 (or `) toggles a small panel. Opening it frees the mouse so the controls can be clicked.
+// Debug menu: with `debug` in the URL (?debug), F3 (or `) toggles a small panel; without it the keys do nothing. Opening it frees the mouse so the controls can be clicked.
 // Time of day: a slider that holds the sky at that time (local view only), or, with "Apply to all players",
 // moves the shared server clock for everyone, production included. "Sandstorm here" summons one on you
 // (for everyone, after the usual warning); "Local sandstorm" sends one at you from just upwind at once, seen only by you.
@@ -146,6 +146,8 @@ export class DebugMenu {
       if (p.style.display !== 'none' && live.checked) show(currentTod());
     }, 500);
 
+    // Only reachable when the page URL has `debug` (same switch as the console handle in main.ts).
+    if (!location.search.includes('debug')) return;
     addEventListener('keydown', (e) => {
       if (!isBound('debug', e.code)) return;
       e.preventDefault();
