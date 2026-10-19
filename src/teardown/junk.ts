@@ -9,6 +9,7 @@
 // The real item models (public/models/items/<part>_<tier>.glb, tools/blender/items.py) are mounted inside.
 // Better parts come out of fancier machines.
 import * as THREE from 'three/webgpu';
+import { abs, dot, positionLocal, smoothstep, uniform, vec3 } from 'three/tsl';
 import { Rope } from './rope.ts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { machineParts } from '../../shared/machine.ts';
@@ -20,6 +21,20 @@ import { TEXT } from '../../shared/text.ts';
 
 /** Step labels (shared/text.ts). */
 const S = TEXT.steps;
+
+/** A material that can take a momentary sheen (the workable look, src/teardown): normally it looks as made. `sweep`: a band of
+ *  light crossing the part (big parts); else the whole thing brightens and fades (small ones). `value` is set per frame:
+ *  sweep position along the part (far off = none) or brightness 0..1. */
+export function sheen(mat: THREE.MeshStandardNodeMaterial, sweep: boolean): { value: number } {
+  const u = uniform(sweep ? -9 : 0);
+  const tint = vec3(0.5, 0.82, 1.0);
+  mat.emissiveNode = sweep
+    ? tint.mul(smoothstep(0.3, 0.0, abs(dot(positionLocal, vec3(0.6, 0.3, 0.75)).sub(u))).mul(0.3))
+    : tint.mul(u.mul(0.3));
+  mat.userData.sheen = u;
+  mat.userData.big = sweep;
+  return u;
+}
 
 export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift' | 'grind' | 'mash';
 export interface Step {
@@ -473,7 +488,9 @@ export class Kit {
       const m = o as THREE.Mesh;
       const mt = m.isMesh ? (m.material as THREE.MeshStandardNodeMaterial) : null;
       if (!mt || !mt.emissive) return;
-      if (mt !== mat) m.material = mt.clone();
+      if (mt === mat) return; // (a wire's own cable shows its shaking in its glow)
+      m.material = mt.clone();
+      sheen(m.material as THREE.MeshStandardNodeMaterial, false);
       shine.push(m.material as THREE.MeshStandardNodeMaterial);
     });
     const hit = new THREE.Mesh(hitGeo, HIT_MAT);

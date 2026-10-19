@@ -9,7 +9,7 @@ import { layoutOf, type LayoutStep } from '../../shared/machines.ts';
 import { junkSpec, TIERS, type JunkKind, type PartId } from '../../shared/salvage.ts';
 import { TEXT } from '../../shared/text.ts';
 import { mergePart } from '../world/bossParts.ts';
-import { Kit, type Junk, type Piece, type Slot, type Step, type Target, type V } from './junk.ts';
+import { Kit, sheen, type Junk, type Piece, type Slot, type Step, type Target, type V } from './junk.ts';
 
 const loader = new GLTFLoader();
 let twoSided: THREE.MeshStandardNodeMaterial | null = null;
@@ -162,6 +162,7 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
             const m = o as THREE.Mesh;
             if (m.isMesh && m.material instanceof THREE.MeshStandardNodeMaterial) {
               const c = m.material.clone() as THREE.MeshStandardNodeMaterial;
+              sheen(c, true);
               m.material = c;
               own.push(c);
             }

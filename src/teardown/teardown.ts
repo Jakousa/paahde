@@ -92,6 +92,9 @@ interface Pending {
 }
 
 const GRAVITY = 16;
+/** The workable sheen: one goes over a part every this many seconds, and takes this long. */
+const SHEEN_EVERY = 7;
+const SHEEN_LEN = 1.3;
 /** Seconds of holding F at the table to scrap the machine. */
 const SCRAP_HOLD = 1.1;
 /** How far from the machine's middle the mode starts for a big machine and stops (m); the table's stops farther out. */
@@ -892,20 +895,22 @@ export class TeardownView {
       // a step still waiting on another is not there yet: it cannot be seen or aimed at, so it never gets in the way
       if (!s.done) s.obj.visible = ready;
       // the big indicator (a setting) on every ready step, or just on what the crosshair is on; the glint is always there
-      s.marker.visible = !s.done && (tdPrefs.markers ? ready || lit : lit);
+      s.marker.visible = !s.done && tdPrefs.markers && (ready || lit);
       if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);
-      // the enchanted look: the step's own parts take a faint cool tint that slowly shifts, the way a glint runs over an item
-      const calm = ready && !lit && !s.marker.visible;
-      const k = 0.5 + 0.5 * Math.sin(this.pulse * 1.9 + s.obj.position.x * 3 + s.obj.position.z * 2.3 + s.obj.position.y * 1.7);
+      // The enchanted look: they look as made, and now and then a sheen goes over them (a band of light across a big part, a
+      // brief brightening of a small one), each on its own beat. Not while the big indicators are on them.
+      const calm = ready && !s.marker.visible;
+      const beat = SHEEN_EVERY * (0.5 + 0.5 * Math.sin(s.obj.position.x * 12.9 + s.obj.position.z * 78.2 + s.obj.position.y * 37.7 + 1)); // 0..SHEEN_EVERY
+      const q = ((this.pulse + beat) % SHEEN_EVERY) / SHEEN_LEN; // 0..1 during the sheen
       for (const m of s.shine) {
-        if (calm && (s.kind !== 'wire' || s.progress === 0)) {
-          m.emissive.setHex(0x7fd0ff);
-          m.emissiveIntensity = 0.04 + 0.16 * k * k;
-        } else if (m.emissiveIntensity && (s.kind !== 'wire' || s.progress === 0)) m.emissiveIntensity = 0;
+        const u = m.userData.sheen as { value: number } | undefined;
+        if (!u) continue;
+        const big = !!m.userData.big;
+        u.value = !calm || q > 1 ? (big ? -9 : 0) : big ? -1.6 + 3.2 * q : Math.sin(q * Math.PI) ** 2;
       }
       if (s.glint) {
-        s.glint.visible = calm;
-        (s.glint.material as THREE.MeshBasicNodeMaterial).opacity = 0.12 + 0.28 * k;
+        s.glint.visible = calm && q <= 1;
+        (s.glint.material as THREE.MeshBasicNodeMaterial).opacity = 0.5 * Math.sin(Math.min(1, Math.max(0, q)) * Math.PI);
       }
     }
     // Cables that are being shaken, or have an end off, move.
