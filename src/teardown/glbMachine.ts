@@ -95,6 +95,7 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
     const outer: Step[] = [], inner: Step[] = [];
     const mine: { ls: LayoutStep; step: Step }[] = [];
     for (const ls of mod.steps) {
+      if (ls.with && !ls.with.every((id) => mods.some((m) => m.mod.id === id))) continue; // joins something that is not there
       // what must be done first: a step id, a module (all its steps), or a label within this module; a module that is gone counts as done
       const after = new Set<Step>();
       for (const e of ls.after) {

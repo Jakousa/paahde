@@ -416,11 +416,14 @@ class Module:
         self.steps.append(d)
         return sid
 
-    def grind(self, label, pts, after=()):
-        """A seam to be ground open with the grinder: followed along `pts`."""
+    def grind(self, label, pts, after=(), only_with=()):
+        """A seam to be ground open with the grinder: followed along `pts`. It joins this module to `only_with` (module ids): it is
+        only there when those are all on the machine too (a seam against a half that is gone is not a seam)."""
         self.n += 1
         sid = f'{self.id}.{label}{self.n}'
         d = {'id': sid, 'kind': 'grind', 'label': label, 'pts': [self._tx(p) for p in pts], 'after': list(after)}
+        if only_with:
+            d['with'] = list(only_with)
         if self.in_inner:
             d['inner'] = True
         self.steps.append(d)

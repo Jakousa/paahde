@@ -225,8 +225,8 @@ def build(pose, rnd_seed=11):
             pts += [polar(ph(n - i), prof_r(prof, zz(0)) + 0.012, zz(0)) for i in range(1, n)]
             return pts
 
-        g_top = b.grind('seam', seam_pts(prof, 0.0, z0 + 0.02, z1 - 0.02), after=after_b)
-        g_bot = b.grind('seam', seam_pts(prof, PI, z0 + 0.02, z1 - 0.02), after=after_b)
+        g_top = b.grind('seam', seam_pts(prof, 0.0, z0 + 0.02, z1 - 0.02), after=after_b, only_with=[ida])
+        g_bot = b.grind('seam', seam_pts(prof, PI, z0 + 0.02, z1 - 0.02), after=after_b, only_with=[ida])
         b.mash('pryOpen', outline(0.0, PI), after=[g_top, g_bot], need=10)
         a.mash('pryOpen', outline(PI, 2 * PI), after=[g_top, g_bot, *after_a], need=10)
         return a, b
@@ -236,11 +236,11 @@ def build(pose, rnd_seed=11):
     REV = [(0.905, 0.50), (0.86, -0.05), (0.70, -0.62)]  # as wide as the fan cowl at the front, easing in toward the back
     skin('reverser_a', 'reverser_b', REV, 0.014, -0.58, 0.46, (0.65, 0.65), 21, dents=(('b', 80, 0.0),))
     CORE = [(0.86, 0.46), (0.80, 0.1), (0.62, -0.5), (0.50, -0.85)]
-    skin('corecowl_a', 'corecowl_b', CORE, 0.012, -0.8, 0.42, (0.6, 0.6), 31, after_a=['reverser_a'], after_b=['reverser_b'])
+    skin('corecowl_a', 'corecowl_b', CORE, 0.012, -0.8, 0.42, (0.6, 0.6), 31, after_a=['reverser_a', 'reverser_b'], after_b=['reverser_a', 'reverser_b'])
     # the core's own casing, hugging the rotors: swelling round the combustor, opening out round the turbine
     CASING = [(0.34, 0.46), (0.325, 0.20), (0.31, -0.08), (0.385, -0.10), (0.385, -0.40), (0.325, -0.44), (0.325, -0.58), (0.345, -0.68),
               (0.40, -0.92), (0.40, -1.02), (0.37, -1.12)]
-    skin('casing_a', 'casing_b', CASING, 0.016, -1.08, 0.42, (0.85, 0.85), 6, after_a=['corecowl_a'], after_b=['corecowl_b'], mat='Steel')
+    skin('casing_a', 'casing_b', CASING, 0.016, -1.08, 0.42, (0.85, 0.85), 6, after_a=['corecowl_a', 'corecowl_b'], after_b=['corecowl_a', 'corecowl_b'], mat='Steel')
 
     # --- exhaust nozzle, with the plug on the ground behind it
     noz = m.module('nozzle', 0.8, pop=(0, 0.3, -1))

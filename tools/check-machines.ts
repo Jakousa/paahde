@@ -14,9 +14,10 @@ for (const kind of KINDS) {
     const mods = machineModules(kind, seed, 2);
     const ids = new Map<string, string[]>();
     const all: { id: string; label: string; after: string[]; mod: string }[] = [];
+    const here = (s: { with?: string[] }) => !s.with || s.with.every((id) => mods.some((m) => m.mod.id === id));
     for (const { mod } of mods) {
-      ids.set(mod.id, mod.steps.map((s) => s.id));
-      for (const s of mod.steps) all.push({ id: s.id, label: s.label, after: s.after, mod: mod.id });
+      ids.set(mod.id, mod.steps.filter(here).map((s) => s.id));
+      for (const s of mod.steps.filter(here)) all.push({ id: s.id, label: s.label, after: s.after, mod: mod.id });
     }
     const deps = new Map<string, Set<string>>();
     for (const s of all) {

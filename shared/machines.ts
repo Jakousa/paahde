@@ -25,6 +25,8 @@ export interface LayoutStep {
   after: string[];
   need?: number;
   players?: number;
+  /** Only there when these modules are all on the machine (a seam joins two halves; with one gone there is nothing to grind). */
+  with?: string[];
   /** Done on the piece once it has come off (it lies on the ground), not on the machine it came from. */
   inner?: boolean;
 }
