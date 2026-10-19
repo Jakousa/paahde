@@ -16,6 +16,7 @@ import { baseHeight, EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../
 import { LAB } from '../../shared/world.ts';
 import { hazeDensity, hazeFar } from './env.ts';
 import { createSandMaterial, sand } from './sandMaterial.ts';
+import { tagBig } from './shadowLod.ts';
 
 /** Grid cells per chunk side. */
 const CELLS = 64;
@@ -250,6 +251,7 @@ export class Terrain {
     // Dunes shadow each other and the players: the sun's cascades reach ~1.6 km (sky.ts). The shadow
     // pass draws back faces, so lit slopes never self-shadow (only faces turned from the sun can).
     mesh.castShadow = true;
+    tagBig(mesh); // (drawn into every shadow cascade: src/world/shadowLod.ts)
     mesh.visible = false;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();

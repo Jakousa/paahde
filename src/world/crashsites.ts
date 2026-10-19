@@ -5,9 +5,11 @@
 // layout and hitboxes live in shared/crashsites.ts (the server collides players with them too); this only
 // turns pieces into instance matrices.
 //
-// Each glb node (one per CRASH_KINDS entry) becomes one InstancedMesh per mesh/material in it, filled with
-// every piece of that kind within VIEW of the player. Rebuilt when the player has moved REBUILD metres, the
-// sand under a piece is dug, or a debris piece is picked up (crashTaken) or lies there again. Wrecks are big landmarks, so the view distance is long.
+// Each glb node (one per CRASH_KINDS entry) has a mesh per material. Every piece of every site within VIEW of the player is baked
+// into world space and merged into ONE mesh per material (about seven draw calls for all the wrecks, instead of one instanced mesh
+// per kind and material, ~100, each drawn again in every shadow cascade). A site's baked geometry is kept; the merged meshes are
+// rebuilt when the set of sites in view changes, the sand under a piece is dug, or a debris piece is picked up (crashTaken) or lies
+// there again. Wrecks are big landmarks, so the view distance is long.
 //
 // Dressing pieces (the sand berms, cradle, straps and cables under each machine) are draped over the dunes
 // instead: their vertices are lifted to the terrain under each one and every piece in view is merged into one
@@ -19,7 +21,7 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { color, float, instancedBufferAttribute, mx_noise_float, smoothstep, texture, vec2 } from 'three/tsl';
+import { attribute, color, float, mx_noise_float, smoothstep, texture, vec2 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { CRASH_KINDS, type CrashKind } from '../../shared/crashKinds.ts';
 import { crashListeners, crashSpent, crashTaken } from '../../shared/crash.ts';
@@ -28,6 +30,7 @@ import { EDIT_CELL, EDIT_CHUNK, edits, heightAt } from '../../shared/terrain.ts'
 import { createSandMaterial } from './sandMaterial.ts';
 import { CrashSmoke, STOP_TAPER } from './crashSmoke.ts';
 import { time } from './env.ts';
+import { tagBig } from './shadowLod.ts';
 
 const MODEL_URL = './models/crashsites.glb';
 const GLOW = 'CrashGlow';
@@ -35,17 +38,16 @@ const GLOW = 'CrashGlow';
 export const CRASH_VIEW = 1000;
 /** Rebuild the instances after moving this far (m). */
 const REBUILD = 40;
-/** Instances per kind: main wrecks appear once per site, debris several times. */
+/** Most sites drawn at once (the nearest). */
 const MAX_SITES = 24;
-const MAIN_CAPACITY = MAX_SITES;
-const DEBRIS_CAPACITY = MAX_SITES * 8;
 
-type Part = { mesh: THREE.InstancedMesh; phase: THREE.InstancedBufferAttribute | null };
+/** One mesh of a kind, its geometry baked into the node's frame, and the material it is drawn with. */
+type Part = { geo: THREE.BufferGeometry; mat: THREE.Material; glow: boolean };
 /** One material of the dressing kinds: the source geometry per kind, and the merged, draped mesh. */
 type Drape = { src: Map<number, THREE.BufferGeometry>; mesh: THREE.Mesh };
 const SAND = 'CrashSand';
 
-type Kind = { parts: Part[]; count: number; capacity: number };
+type Kind = { parts: Part[] };
 
 const _q = new THREE.Quaternion();
 const _qt = new THREE.Quaternion();
@@ -74,15 +76,15 @@ function flicker(phase: Node<'float'>): Node<'float'> {
   return float(0.82).add(slow.mul(0.16)).add(fast.mul(0.06)).mul(float(1).sub(drop.mul(0.8)));
 }
 
-/** A glow material that flickers per instance (phase attribute), copying the source's look. */
-function glowMaterial(src: THREE.Material | null, phase: THREE.InstancedBufferAttribute): THREE.Material {
+/** A glow material that flickers per piece (the `phase` vertex attribute), copying the source's look. */
+function glowMaterial(src: THREE.Material | null): THREE.Material {
   const s = src as THREE.MeshStandardMaterial | null;
   const m = new THREE.MeshStandardNodeMaterial({ roughness: 0.4, metalness: 0 });
   m.name = GLOW;
   m.color.copy(s?.color ?? new THREE.Color(0x1a0d08));
   if (s?.map) m.map = s.map;
   const emissive = s && s.emissive && s.emissive.getHex() !== 0 ? s.emissive.clone().multiplyScalar(Math.max(1, s.emissiveIntensity)) : new THREE.Color(0xff6a2a).multiplyScalar(3);
-  const ph = instancedBufferAttribute(phase, 'float') as unknown as Node<'float'>;
+  const ph = attribute('phase', 'float') as unknown as Node<'float'>;
   const tint = s?.emissiveMap ? texture(s.emissiveMap).rgb.mul(color(emissive)) : color(emissive);
   m.emissiveNode = tint.mul(flicker(ph));
   return m;
@@ -92,6 +94,12 @@ export class CrashSites {
   private group = new THREE.Group();
   private kinds: Kind[] = [];
   private drapes = new Map<string, Drape>();
+  /** The merged mesh of each material, the glow material made for each source material, and each site's baked geometry per material. */
+  private meshes = new Map<THREE.Material, THREE.Mesh>();
+  private glowMats = new Map<THREE.Material, THREE.Material>();
+  private glowSet = new Set<THREE.Material>();
+  private siteGeos = new Map<number, Map<THREE.Material, THREE.BufferGeometry>>();
+  private siteKey = '';
   private smoke: CrashSmoke;
   private lastX = NaN;
   private lastZ = NaN;
@@ -131,19 +139,19 @@ export class CrashSites {
   private init(root: THREE.Object3D | null) {
     root?.updateMatrixWorld(true);
     this.kinds = CRASH_KINDS.map((kind, ki) => {
-      const capacity = kind.main ? MAIN_CAPACITY : DEBRIS_CAPACITY;
       const node = root?.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(kind.node));
       if (kind.dressing) {
         if (node) this.drapeFrom(ki, node);
-        return { parts: [], count: 0, capacity: 0 };
+        return { parts: [] };
       }
-      const parts = node ? this.partsFrom(node, capacity) : [];
+      const parts = node ? this.partsFrom(node) : [];
       if (!parts.length) {
         if (root) console.warn(`crashsites: no node "${kind.node}"; drawing a placeholder`);
-        parts.push(...this.placeholder(kind, capacity));
+        parts.push(...this.placeholder(kind));
       }
-      return { parts, count: 0, capacity };
+      return { parts };
     });
+    this.siteKey = '';
     this.dirty = true;
   }
 
@@ -161,6 +169,7 @@ export class CrashSites {
         mesh.castShadow = mat.name !== SAND;
         mesh.receiveShadow = true;
         mesh.frustumCulled = false;
+        tagBig(mesh);
         this.group.add(mesh);
         this.drapes.set(mat.name, (d = { src: new Map(), mesh }));
       }
@@ -203,8 +212,8 @@ export class CrashSites {
     }
   }
 
-  /** One InstancedMesh per mesh under `node`, its geometry baked into the node's frame (minus its position). */
-  private partsFrom(node: THREE.Object3D, capacity: number): Part[] {
+  /** One Part per mesh under `node`, its geometry baked into the node's frame (minus its position). */
+  private partsFrom(node: THREE.Object3D): Part[] {
     const parts: Part[] = [];
     _t.makeTranslation(-node.matrixWorld.elements[12], -node.matrixWorld.elements[13], -node.matrixWorld.elements[14]);
     node.traverse((o) => {
@@ -214,23 +223,13 @@ export class CrashSites {
       const mats = Array.isArray(src.material) ? src.material : [src.material];
       // Multi-material meshes come out of GLTFLoader as one mesh per primitive, so one material here.
       const mat = mats[0];
-      parts.push(this.part(geo, mat, mat.name === GLOW, capacity));
+      parts.push({ geo, mat, glow: mat.name === GLOW });
     });
     return parts;
   }
 
-  private part(geo: THREE.BufferGeometry, mat: THREE.Material, glow: boolean, capacity: number): Part {
-    const phase = glow ? new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1) : null;
-    const mesh = new THREE.InstancedMesh(geo, phase ? glowMaterial(mat, phase) : mat, capacity);
-    mesh.castShadow = !glow;
-    mesh.receiveShadow = true;
-    mesh.count = 0;
-    this.group.add(mesh);
-    return { mesh, phase };
-  }
-
   /** Grey boxes around the hitbox capsules (reaching below the sand), plus a glowing cube at the beacon. */
-  private placeholder(kind: CrashKind, capacity: number): Part[] {
+  private placeholder(kind: CrashKind): Part[] {
     const boxes = kind.capsules.map((c) => {
       const g = new THREE.BoxGeometry(2 * c.r, c.h + 1, 2 * (c.half + c.r));
       g.rotateY(Math.atan2(c.ax, c.az));
@@ -241,7 +240,7 @@ export class CrashSites {
     const metal = new THREE.MeshStandardNodeMaterial({ color: 0x5c4a3e, roughness: 0.55, metalness: 0.6 });
     const [bx, by, bz] = kind.beacon;
     const light = new THREE.BoxGeometry(0.3, 0.3, 0.3).translate(bx, by, bz);
-    return [this.part(hull, metal, false, capacity), this.part(light, new THREE.MeshStandardMaterial({ color: 0x1a0d08 }), true, capacity)];
+    return [{ geo: hull, mat: metal, glow: false }, { geo: light, mat: new THREE.MeshStandardMaterial({ color: 0x1a0d08 }), glow: true }];
   }
 
   /** Called every frame with the local player's position. */
@@ -250,28 +249,89 @@ export class CrashSites {
     if (!this.dirty && Math.hypot(focus.x - this.lastX, focus.z - this.lastZ) < REBUILD) return;
     this.lastX = focus.x;
     this.lastZ = focus.z;
-    this.dirty = false;
     this.sites = crashSitesNear(focus.x, focus.z, CRASH_VIEW).slice(0, MAX_SITES);
-    for (const k of this.kinds) k.count = 0;
-    for (const s of this.sites) {
-      const phase = sitePhase(s.id);
-      for (const pc of s.pieces) this.place(pc, phase);
+    const key = this.sites.map((s) => s.id).join(',');
+    const changed = this.dirty || key !== this.siteKey;
+    if (this.dirty) this.siteGeos.clear(); // a piece was taken or put back, or sand under one was dug
+    this.dirty = false;
+    if (changed) {
+      this.siteKey = key;
+      this.build();
+      this.drape();
     }
-    for (const k of this.kinds) {
-      for (const p of k.parts) {
-        p.mesh.count = k.count;
-        p.mesh.instanceMatrix.needsUpdate = true;
-        if (p.phase) p.phase.needsUpdate = true;
-        p.mesh.computeBoundingSphere();
-      }
-    }
-    this.drape();
     this.smoke.setSites(this.sites, this.stopAt);
   }
 
-  private place(pc: CrashPiece, phase: number) {
-    const kind = this.kinds[pc.kind];
-    if (!kind || kind.count >= kind.capacity || (pc.id && crashTaken.has(pc.id))) return;
+  /** The merged mesh of every material, from the baked geometry of each site in view. */
+  private build() {
+    const per = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    for (const s of this.sites) {
+      let geos = this.siteGeos.get(s.id);
+      if (!geos) this.siteGeos.set(s.id, (geos = this.bake(s)));
+      for (const [mat, g] of geos) {
+        const list = per.get(mat);
+        if (list) list.push(g);
+        else per.set(mat, [g]);
+      }
+    }
+    for (const [id, geos] of this.siteGeos) {
+      if (this.sites.some((s) => s.id === id)) continue;
+      for (const g of geos.values()) g.dispose();
+      this.siteGeos.delete(id);
+    }
+    for (const [mat, mesh] of this.meshes) {
+      const list = per.get(mat);
+      mesh.visible = !!list;
+      if (!list) continue;
+      mesh.geometry.dispose();
+      mesh.geometry = list.length === 1 ? list[0].clone() : mergeAll(list);
+    }
+    for (const [mat, list] of per) {
+      if (this.meshes.has(mat)) continue;
+      const glow = this.glowSet.has(mat);
+      let drawn = mat;
+      if (glow) {
+        let g = this.glowMats.get(mat);
+        if (!g) this.glowMats.set(mat, (g = glowMaterial(mat)));
+        drawn = g;
+      }
+      const mesh = new THREE.Mesh(list.length === 1 ? list[0].clone() : mergeAll(list), drawn);
+      mesh.castShadow = !glow;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = false; // (it spans every site in view)
+      tagBig(mesh);
+      this.group.add(mesh);
+      this.meshes.set(mat, mesh);
+    }
+  }
+
+  /** One site's pieces placed in the world, merged per material (a glow part gets a flicker phase per piece). */
+  private bake(site: CrashSite): Map<THREE.Material, THREE.BufferGeometry> {
+    const lists = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    const phase = sitePhase(site.id);
+    for (const pc of site.pieces) {
+      const kind = this.kinds[pc.kind];
+      if (!kind || !kind.parts.length || (pc.id && crashTaken.has(pc.id))) continue;
+      this.place(pc);
+      for (const p of kind.parts) {
+        const g = p.geo.clone().applyMatrix4(_m);
+        if (p.glow) this.glowSet.add(p.mat);
+        if (p.glow) g.setAttribute('phase', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill((phase + pc.i * 0.137) % 1), 1));
+        const list = lists.get(p.mat);
+        if (list) list.push(g);
+        else lists.set(p.mat, [g]);
+      }
+    }
+    const out = new Map<THREE.Material, THREE.BufferGeometry>();
+    for (const [mat, list] of lists) {
+      out.set(mat, mergeAll(list));
+      for (const g of list) g.dispose();
+    }
+    return out;
+  }
+
+  /** `_m` = the world matrix of a piece. */
+  private place(pc: CrashPiece) {
     _q.setFromEuler(_e.set(0, Math.atan2(pc.dx, pc.dz), 0));
     if (pc.i > 0 && !CRASH_KINDS[pc.kind].dressing) {
       // Debris lies a little askew (visual only; its hitbox stays upright).
@@ -282,10 +342,20 @@ export class CrashSites {
     }
     _p.set(pc.x, pieceY(pc), pc.z);
     _m.compose(_p, _q, _s);
-    const i = kind.count++;
-    for (const p of kind.parts) {
-      p.mesh.setMatrixAt(i, _m);
-      if (p.phase) p.phase.setX(i, (phase + pc.i * 0.137) % 1);
-    }
   }
+}
+
+/** mergeGeometries for geometries that may differ in what they carry: only the attributes all have are kept, and all are indexed or none. */
+function mergeAll(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
+  if (list.length === 1) return list[0].clone();
+  const common = Object.keys(list[0].attributes).filter((n) => list.every((g) => n in g.attributes));
+  const indexed = list.every((g) => g.index);
+  const norm = list.map((g) => {
+    const c = indexed ? g.clone() : g.index ? g.toNonIndexed() : g.clone();
+    for (const n of Object.keys(c.attributes)) if (!common.includes(n)) c.deleteAttribute(n);
+    return c;
+  });
+  const merged = mergeGeometries(norm)!;
+  for (const g of norm) g.dispose();
+  return merged;
 }

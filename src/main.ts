@@ -351,6 +351,9 @@ const backendText = gpuName ? `${backend} ${gpuName}` : backend;
 perf.gpuTracked = gpuTimes && !!(renderer.backend as { trackTimestamp?: boolean }).trackTimestamp;
 perf.describe({ backend, gpu: gpuName, gpuTimestamps: perf.gpuTracked, world: WORLD_ID });
 perf.milestone('renderer-ready');
+perf.scene = scene;
+perf.onDone = () => (orbit.pitch = 0.12);
+perf.cascades = () => sky.csm.lights.map((l) => l.shadow!.camera);
 
 const timer = new THREE.Timer();
 const focus = new THREE.Vector3();

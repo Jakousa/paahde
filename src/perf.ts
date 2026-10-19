@@ -10,7 +10,8 @@
 // Timing is only collected while stats are shown or a run is on: the GPU queries are only set up then (the renderer is made
 // with `trackTimestamp` at start, so a reload is needed after turning stats on for GPU times).
 import { slots } from './bindings';
-import { graphics } from './graphics';
+import * as THREE from 'three/webgpu';
+import { graphics, setGraphics } from './graphics';
 
 const params = new URLSearchParams(location.search);
 const perfParam = params.get('perf');
@@ -68,6 +69,12 @@ class Perf {
   private rec = { gap: [] as number[], cpu: [] as number[], submit: [] as number[], gpu: [] as number[], draws: [] as number[], tris: [] as number[], ratio: [] as number[] };
   private held = new Set<string>();
   private env: Record<string, unknown> = {};
+  /** The scene, for the census of what is drawn (set by main.ts). */
+  scene: THREE.Object3D | null = null;
+  /** Called when a run ends (main.ts looks at the horizon, for the pictures tools/perf.ts takes). */
+  onDone: (() => void) | null = null;
+  /** The shadow cascades' cameras (set by main.ts), to count what each one draws. */
+  cascades: (() => THREE.Camera[]) | null = null;
 
   constructor() {
     if (typeof PerformanceObserver !== 'undefined') {
@@ -80,6 +87,7 @@ class Perf {
         }).observe({ type: 'longtask', buffered: true });
       } catch {}
     }
+    (window as unknown as { __setGraphics: unknown }).__setGraphics = setGraphics; // (tools/perf.ts --ab changes an option mid-run)
     this.publish();
   }
 
@@ -190,6 +198,7 @@ class Perf {
     this.key('forward', false);
     this.key('sprint', false);
     this.phase = 'done';
+    this.onDone?.();
     this.milestone('run-end');
     const r = this.rec;
     const fps = r.gap.length ? Math.round(10000 / (r.gap.reduce((x, y) => x + y, 0) / r.gap.length)) / 10 : null;
@@ -201,6 +210,7 @@ class Perf {
       url: location.href,
       env: { ...this.env, dpr: devicePixelRatio, screen: `${screen.width}x${screen.height}`, window: `${innerWidth}x${innerHeight}`, ua: navigator.userAgent },
       graphics: { ...graphics },
+      census: this.census(),
       startup: { milestonesMs: this.marks, longTasks: { count: this.longTasks.count, totalMs: Math.round(this.longTasks.ms), beforePlayableMs: Math.round(this.longTasks.before) } },
       gameplay: RUN_S === 0 ? null : {
         seconds: RUN_S,
@@ -228,6 +238,74 @@ class Perf {
       a.download = `dadajam-perf-${result.build || 'dev'}-${Date.now()}.json`;
       a.click();
     }
+  }
+
+  /** What the scene holds to draw: meshes and triangles that cast shadows (each is drawn again in every cascade it reaches),
+   *  by the top-level object they hang under, and by size (world radius, m). Says where draw calls could be saved. */
+  private census() {
+    if (!this.scene) return null;
+    const scene = this.scene;
+    const roots = new Map<string, { meshes: number; tris: number; instanced: number }>();
+    const kinds = new Map<string, { meshes: number; geometries: Set<string>; instances: number }>();
+    const sizes = { 'lt0.5': 0, 'lt1': 0, 'lt2': 0, 'lt5': 0, 'lt20': 0, 'ge20': 0 };
+    let meshes = 0, tris = 0, all = 0, shadowless = 0;
+    const v = new THREE.Vector3();
+    const rootOf = (o: THREE.Object3D) => {
+      let t = o;
+      while (t.parent && t.parent !== scene) t = t.parent;
+      return `${t.type}${t.name ? ':' + t.name : ''}`;
+    };
+    scene.traverseVisible((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      all++;
+      if (!m.castShadow) return void shadowless++;
+      const g = m.geometry;
+      const t = g.index ? g.index.count / 3 : (g.attributes.position?.count ?? 0) / 3;
+      meshes++;
+      tris += t;
+      const key = rootOf(o);
+      const e = roots.get(key) ?? { meshes: 0, tris: 0, instanced: 0 };
+      e.meshes++;
+      e.tris += t;
+      if ((m as THREE.InstancedMesh).isInstancedMesh) e.instanced++;
+      roots.set(key, e);
+      const mat = Array.isArray(m.material) ? m.material[0] : m.material;
+      const kind = `${(m as THREE.InstancedMesh).isInstancedMesh ? 'instanced ' : ''}${m.name || mat?.name || m.type}${g.name ? ' / ' + g.name : ''}`;
+      const ke = kinds.get(kind) ?? { meshes: 0, geometries: new Set<string>(), instances: 0 };
+      ke.meshes++;
+      ke.geometries.add(g.uuid);
+      ke.instances += (m as THREE.InstancedMesh).isInstancedMesh ? (m as THREE.InstancedMesh).count : 1;
+      kinds.set(kind, ke);
+      g.boundingSphere ?? g.computeBoundingSphere();
+      m.matrixWorld.decompose(v, new THREE.Quaternion(), new THREE.Vector3());
+      const sc = new THREE.Vector3().setFromMatrixScale(m.matrixWorld);
+      const rad = (g.boundingSphere?.radius ?? 0) * Math.max(sc.x, sc.y, sc.z);
+      const k = rad < 0.5 ? 'lt0.5' : rad < 1 ? 'lt1' : rad < 2 ? 'lt2' : rad < 5 ? 'lt5' : rad < 20 ? 'lt20' : 'ge20';
+      sizes[k]++;
+    });
+    const byRoot = [...roots].sort((a, b) => b[1].meshes - a[1].meshes).slice(0, 20).map(([root, e]) => ({ root, ...e, tris: Math.round(e.tris) }));
+    const byKind = [...kinds].sort((a, b) => b[1].meshes - a[1].meshes).slice(0, 25).map(([kind, e]) => ({ kind, meshes: e.meshes, geometries: e.geometries.size, instances: e.instances }));
+    // what each cascade's shadow pass would draw: casters whose layers match its camera and that are in its box (or never culled)
+    const cascadeDraws = (this.cascades?.() ?? []).map((cam) => {
+      const fr = new THREE.Frustum();
+      cam.updateMatrixWorld();
+      fr.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+      const byKind = new Map<string, number>();
+      let n = 0;
+      scene.traverseVisible((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || !m.castShadow || !m.layers.test(cam.layers)) return;
+        if (m.frustumCulled && !fr.intersectsObject(m)) return;
+        if ((m as THREE.InstancedMesh).isInstancedMesh && (m as THREE.InstancedMesh).count === 0) return;
+        n++;
+        const mat = Array.isArray(m.material) ? m.material[0] : m.material;
+        const k = `${(m as THREE.InstancedMesh).isInstancedMesh ? 'instanced ' : ''}${m.frustumCulled ? '' : 'unculled '}${rootOf(o)} ${mat?.name ?? ''}`;
+        byKind.set(k, (byKind.get(k) ?? 0) + 1);
+      });
+      return { draws: n, top: [...byKind].sort((a, b) => b[1] - a[1]).slice(0, 6) };
+    });
+    return { cascadeDraws, byKind, visibleMeshes: all, shadowCasters: meshes, shadowlessMeshes: shadowless, casterTriangles: Math.round(tris), byRoot, casterRadiusM: sizes };
   }
 
   /** The run's state for tools/perf.ts (and a glance at the console): `window.__perfState`. */

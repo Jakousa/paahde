@@ -2,7 +2,7 @@
 // route and writes the result (CPU / GPU / frame times, the startup timeline) and a Chrome trace of the same stretch to data/perf/.
 //
 //   node tools/perf.ts [--base http://localhost:5173/] [--seconds 30] [--trace play|startup|none] [--world <id>]
-//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--headless] [--out data/perf] [--label name]
+//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
 //
 //   --seconds    gameplay to record (0 = the startup timeline only, no walking)
 //   --trace      play: trace only the recorded walk (default); startup: trace from page load until playable; none
@@ -133,6 +133,8 @@ try {
   await send('Page.navigate', { url });
 
   let phase = '';
+  let shotData: Buffer | null = null;
+  let shotB: Buffer | null = null;
   const t0 = Date.now();
   while (Date.now() - t0 < 10 * 60_000) {
     const state = (await evaluate('window.__perfState && window.__perfState.phase')) as string | undefined;
@@ -147,12 +149,27 @@ try {
   }
   if (phase !== 'done') throw new Error('the run did not finish (the game never became playable?)');
   await traceStop();
+  if (flag('shot')) {
+    // the view where the walk ended (it stands still there), then again with one option changed, to compare the two pictures
+    const grab = async () => Buffer.from(((await send('Page.captureScreenshot', { format: 'png' })) as { data: string }).data, 'base64');
+    await sleep(1000);
+    shotData = await grab();
+    const ab = opt('ab');
+    if (ab) {
+      const [k, v] = ab.split('=');
+      await evaluate(`window.__setGraphics(${JSON.stringify(k)}, ${v})`);
+      await sleep(2500);
+      shotB = await grab();
+    }
+  }
   const result = (await evaluate('window.__perfResult')) as Record<string, any>;
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const name = `${stamp}${label ? `-${label}` : ''}`;
   writeFileSync(join(out, `${name}.json`), JSON.stringify(result, null, 2));
   if (traceEvents.length) writeFileSync(join(out, `${name}.trace.json.gz`), gzipSync(JSON.stringify({ traceEvents })));
+  if (shotData) writeFileSync(join(out, `${name}.png`), shotData);
+  if (shotB) writeFileSync(join(out, `${name}.ab.png`), shotB);
   const g = result.gameplay;
   console.log(`\nwritten ${join(out, name)}.json${traceEvents.length ? ' and .trace.json.gz' : ''}`);
   console.log('startup (ms):', JSON.stringify(result.startup.milestonesMs), '| long tasks', JSON.stringify(result.startup.longTasks));

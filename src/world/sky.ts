@@ -11,7 +11,8 @@ import * as THREE from 'three/webgpu';
 import { cameraPosition, fog, min, normalize, positionWorld, vec3 } from 'three/tsl';
 import { MAX_FOV } from '../camera.ts';
 import { cascadeEnds, graphics, onGraphics, startup } from '../graphics.ts';
-import { CascadedShadows } from './cascades.ts';
+import { CascadedShadows, FIRST_CACHED } from './cascades.ts';
+import { ShadowLod, SHADOW_LOD_FIRST, lodLayer } from './shadowLod.ts';
 import { setShadowNoiseAxes, wideShadowFilter } from './shadowFilter.ts';
 import { DayNight } from './dayNight.ts';
 import { NightSky, nightSky } from './nightSky.ts';
@@ -40,8 +41,12 @@ export class Sky {
   readonly sun = sunLight;
   private dome: THREE.Mesh;
   private ambient: THREE.HemisphereLight;
-  private csm: CascadedShadows;
+  csm: CascadedShadows;
   private fittedAspect = NaN;
+  private lod = new ShadowLod();
+  private lodMin: number[] = [];
+  private scene: THREE.Scene;
+  private lodSet = false;
   readonly day: DayNight;
   readonly night = new NightSky();
 
@@ -49,6 +54,7 @@ export class Sky {
     // Golden-hour sun (10°) through dusty air: warm, a little reddened. dayNight.ts keys the rest of the day off it.
     sunColor.value.setRGB(1.0, 0.7, 0.42).multiplyScalar(3.4);
 
+    this.scene = scene;
     // Sky dome: big camera-centred sphere drawn first, without depth, so the depth buffer stays at 1
     // for sky pixels (post uses that to tell sky from ground).
     const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false });
@@ -83,6 +89,7 @@ export class Sky {
       lightMargin: LIGHT_MARGIN,
       customSplitsCallback: (_n, _near, far, breaks) => breaks.push(...CASCADE_ENDS.map((d) => d / far)),
     });
+    this.csm.onFit = (i) => this.fitLight(i);
     this.csm.fade = true; // widens each cascade's map to cover the cross-fade into it
     sun.shadow.shadowNode = this.csm;
     scene.add(sun, sun.target);
@@ -118,6 +125,20 @@ export class Sky {
     this.sun.target.updateMatrixWorld();
     setShadowNoiseAxes(moonlit ? moonDirection.value : sunDirection.value);
     this.fitCascades(camera);
+    this.cullSmall();
+  }
+
+  /** The cascades from SHADOW_LOD_FIRST on only draw casters big enough to show in their texels (src/world/shadowLod.ts). */
+  private cullSmall() {
+    const csm = this.csm;
+    if (!csm.camera || !csm.lights.length) return;
+    if (!this.lodSet) {
+      this.lodSet = true;
+      csm.lights.forEach((l, i) => i >= SHADOW_LOD_FIRST && l.shadow!.camera.layers.set(lodLayer(i)));
+    }
+    this.lodMin.length = csm.lights.length;
+    for (let i = SHADOW_LOD_FIRST; i < csm.lights.length; i++) this.lodMin[i] = 0.6 * csm.texel(i);
+    this.lod.update(this.scene, this.lodMin);
   }
 
   /**
@@ -135,19 +156,23 @@ export class Sky {
     csm.updateFrustums();
     camera.fov = fov;
     camera.updateProjectionMatrix();
-    csm.lights.forEach((light, i) => {
-      const shadow = light.shadow!;
-      const cam = shadow.camera;
-      const width = cam.right - cam.left; // bounds the slice in every direction, depth included
-      const texel = width / SHADOW_MAP;
-      cam.near = 1;
-      cam.far = LIGHT_MARGIN + width;
-      cam.updateProjectionMatrix();
-      shadow.bias = (-DEPTH_BIAS_TEXELS * texel) / (cam.far - cam.near); // depth bias is in [0, 1] depth units
-      shadow.normalBias = NORMAL_BIAS_TEXELS * texel;
-      shadow.radius = PCF_RADIUS_TEXELS[i];
-      (shadow as unknown as { texelWorld: number }).texelWorld = texel; // sizes the filter's world-pinned noise
-      (shadow as unknown as { filterNode: unknown }).filterNode = wideShadowFilter; // wider than the stock 5-tap PCF
-    });
+    csm.lights.forEach((_light, i) => i < FIRST_CACHED && this.fitLight(i)); // the cached cascades fit themselves each time they are drawn
+    csm.invalidate();
+  }
+
+  /** Depth range, biases and filter of cascade `i` from the width of its box. */
+  private fitLight(i: number) {
+    const shadow = this.csm.lights[i].shadow!;
+    const cam = shadow.camera;
+    const width = cam.right - cam.left; // bounds the slice in every direction, depth included
+    const texel = width / SHADOW_MAP;
+    cam.near = 1;
+    cam.far = LIGHT_MARGIN + width;
+    cam.updateProjectionMatrix();
+    shadow.bias = (-DEPTH_BIAS_TEXELS * texel) / (cam.far - cam.near); // depth bias is in [0, 1] depth units
+    shadow.normalBias = NORMAL_BIAS_TEXELS * texel;
+    shadow.radius = PCF_RADIUS_TEXELS[i];
+    (shadow as unknown as { texelWorld: number }).texelWorld = texel; // sizes the filter's world-pinned noise
+    (shadow as unknown as { filterNode: unknown }).filterNode = wideShadowFilter; // wider than the stock 5-tap PCF
   }
 }
