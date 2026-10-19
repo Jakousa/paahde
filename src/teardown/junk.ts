@@ -384,7 +384,7 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
     const hot = u.top ? MARKER_TOP_HOT_MAT : MARKER_HOT_MAT, cold = u.top ? MARKER_TOP_MAT : MARKER_MAT;
     m.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = lit ? hot : cold; });
   }
-  if (step.kind === 'grind' || step.kind === 'mash') {
+  if (u.line) {
     // the line to follow, or the part's edge, glows; it is drawn in the step's own frame, so it is not scaled
     m.scale.setScalar(1);
     return;
@@ -640,6 +640,7 @@ export class Kit {
     step.marker.removeFromParent();
     const line = new THREE.Group();
     line.userData.ignoreBounds = true;
+    line.userData.line = true;
     markerMesh(line, new THREE.TubeGeometry(curve, 96, 0.012, 5, true));
     line.visible = false;
     g.add(line);
@@ -661,6 +662,7 @@ export class Kit {
     step.marker.removeFromParent();
     const line = new THREE.Group();
     line.userData.ignoreBounds = true;
+    line.userData.line = true;
     markerMesh(line, new THREE.TubeGeometry(curve, 32, 0.012, 5));
     line.visible = false;
     g.add(line);
@@ -691,12 +693,15 @@ export class Kit {
     step.glint = glint;
     return step;
   }
-  /** A part that pulls apart: no eye or ring, just the indicator on the part itself, and while it is held `slide.obj`
-   *  parts from the machine along `dir`. `pos` is a point on its surface. */
-  pull(label: string, pos: V, nrm: V, after: Step[], seconds: number, slide: { obj: THREE.Object3D; dir: THREE.Vector3; dist: number }): Step {
+  /** A part that pulls apart: an arrow on the part itself showing the way it comes out, and you press the use button on the arrow
+   *  (or the part) again and again, `presses` times, like a prised shell: `slide.obj` parts from the machine along `dir` with every
+   *  press and drifts back if you stop. `pos` is a point on its surface. */
+  pull(label: string, pos: V, nrm: V, after: Step[], presses: number, slide: { obj: THREE.Object3D; dir: THREE.Vector3; dist: number }): Step {
     const { g, spin } = this.stepGroup(pos, nrm);
-    const step = this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.35 / this.fs, 8, 6), seconds, after, 0.1, undefined, 1);
+    const step = this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.35 / this.fs, 8, 6), presses, after, 0.1, undefined, 1);
+    step.kind = 'mash'; // (the arrow marker was made for a lift; what it asks for is the mash)
     step.slide = { ...slide, offset: new THREE.Vector3() };
+    slide.obj.userData.target = { type: 'step', step } satisfies Target;
     return step;
   }
   /** Wire from the first point to the last, a ring lug at each end: shake each end loose. */

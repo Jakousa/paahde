@@ -430,6 +430,24 @@ def build(pose, rnd_seed=11):
     tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.1 + Vector((0, 0, -0.1)), radial(math.radians(60)), after=['fancowl_b'])
     tk.step('clip', 'strapClip', pos + radial(math.radians(60)) * 0.1 + Vector((0, 0, 0.1)), radial(math.radians(60)), after=['fancowl_b'])
 
+    # what the players bump into: cylinders along the axis, there while a shell, rotor or accessory of theirs is on (the structure
+    # always is); the whole machine is solid within these, as it stands in the sand
+    m.hit(0.5, 0.97, 0.83)  # the fan case
+    m.hit(-1.12, 0.5, 0.36)  # the core: flanges, shaft, gearbox
+    m.hit(0.95, 1.22, 0.89, ['inlet'])
+    m.hit(0.52, 0.94, 0.93, ['fancowl_a', 'fancowl_b'])
+    m.hit(-0.05, 0.5, 0.9, ['reverser_a', 'reverser_b'])
+    m.hit(-0.62, -0.05, 0.8, ['reverser_a', 'reverser_b'])
+    m.hit(-0.1, 0.46, 0.8, ['corecowl_a', 'corecowl_b'])
+    m.hit(-0.85, -0.1, 0.6, ['corecowl_a', 'corecowl_b'])
+    m.hit(-1.1, 0.46, 0.4, ['casing_a', 'casing_b'])
+    m.hit(0.85, 1.0, 0.79, ['fan'])
+    m.hit(1.0, 1.22, 0.23, ['spinner'])
+    m.hit(-0.08, 0.44, 0.3, ['compressor'])
+    m.hit(-0.4, -0.1, 0.38, ['combustor'])
+    m.hit(-1.0, -0.42, 0.4, ['turbine'])
+    m.hit(-1.42, -1.12, 0.37, ['nozzle'])
+    m.hit(-0.1, 0.5, 0.52, ['starter', 'generator', 'pma', 'hydpump', 'fuelpump', 'oilpump', 'gearbox'])
     return m
 
 
@@ -464,6 +482,7 @@ def main():
     probe = build(T(0, 0, 0) @ base)
     lift = -min_y(probe) - 0.28  # the nose is dug in this far
     m = build(T(0, lift, 0) @ base)
+    m.meta = {'pitch': pitch, 'lift': lift}
     kit.finish(m, MATERIALS, OUT, TS, preview=a.preview, previewer=preview)
 
 

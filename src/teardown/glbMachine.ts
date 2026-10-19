@@ -77,7 +77,7 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
       case 'lift': {
         // the indicator points the way it comes out, the way the module slides
         const dir = new THREE.Vector3(...(slide.pop as V)).normalize();
-        return kit.pull(label, pos, dir.toArray() as V, after, ls.need ?? 3, { obj: slide.group, dir, dist: 0.45 });
+        return kit.pull(label, pos, dir.toArray() as V, after, Math.max(6, Math.round((ls.need ?? 3) * 3)), { obj: slide.group, dir, dist: 0.45 });
       }
       case 'grind': return kit.grind(label, (ls.pts ?? []) as V[], after);
       case 'mash': return kit.mash(label, (ls.pts ?? []) as V[], after, ls.need ?? 10, slide.group, { dir: new THREE.Vector3(...(slide.pop as V)).normalize(), dist: 0.14 });

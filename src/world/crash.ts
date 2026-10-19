@@ -15,6 +15,7 @@ import { hasItem, type Slots } from '../../shared/items.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { viewCull } from './viewCull';
+import { machineChanged, setMachineProgress } from '../../shared/machineBoxes.ts';
 import { attachAll, buildJunk, detailList, hideDetail, lowestOffset, pieceEmpty, restPiece, settle, type Junk } from '../teardown/junk.ts';
 import type { SiteMsg } from '../net.ts';
 import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
@@ -66,6 +67,8 @@ export class MachineSites {
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.bench = new Bench(scene);
+    // the players bump into what is still on a machine (shared/machineBoxes.ts): it reads which steps are done from here
+    setMachineProgress((id) => this.progress.get(id)?.done);
   }
 
   /** Every frame with the local player's position. */
@@ -202,6 +205,7 @@ export class MachineSites {
     if (m.t === 'siteTook') return;
     if (m.t === 'sites') {
       this.progress.clear();
+      machineChanged();
       for (const r of m.sites) this.progress.set(r.id, { done: new Set(r.done), taken: new Set(r.taken) });
       // Rebuild what is already built (a reconnect): it may be behind or ahead.
       for (const v of this.views.values()) if (v.junk && v.site.id !== active) this.drop(v, true);
@@ -210,6 +214,7 @@ export class MachineSites {
     if (m.id === BENCH_ID) return this.bench.apply(m, active === BENCH_ID);
     if (m.t === 'siteReset') {
       this.progress.delete(m.id);
+      machineChanged(m.id);
       const v = this.views.get(m.id);
       if (v?.junk && m.id !== active) this.drop(v, true);
       return;
@@ -220,6 +225,7 @@ export class MachineSites {
     const taken = m.t === 'siteState' ? m.taken : m.t === 'siteTake' ? [m.i] : [];
     for (const i of done) p.done.add(i);
     for (const i of taken) p.taken.add(i);
+    machineChanged(m.id);
     const v = this.views.get(m.id);
     if (v?.junk && m.id !== active) {
       fastForward(v.junk, done, taken);

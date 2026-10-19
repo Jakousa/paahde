@@ -52,9 +52,20 @@ export interface LayoutModule {
   parts: LayoutPart[];
 }
 
+/** A stretch of solid along the machine's axis (shared/machineBoxes.ts): there while any of `mods` is still on it (always if none). */
+export interface LayoutHit {
+  z0: number;
+  z1: number;
+  r: number;
+  mods: string[];
+}
+
 export interface MachineLayout {
   kind: string;
   model: string;
+  /** How the model lies (the axis pitched down by `pitch` radians, its middle `lift` m above the ground at the site). */
+  pose?: { pitch: number; lift: number };
+  hits?: LayoutHit[];
   modules: LayoutModule[];
 }
 

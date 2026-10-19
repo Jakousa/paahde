@@ -1,0 +1,132 @@
+// A model-built machine (shared/machines.ts) is solid, and its solid shrinks as it comes apart: each shell, rotor and
+// accessory the layout lists in `hits` is a stretch of cylinder along the machine's axis, there while any of the modules
+// it belongs to is still on the machine. A module is off once all its outer steps are done. Run by both the client
+// and the server like the other collisions (shared/sim.ts), reading each machine's finished steps from `setMachineProgress`'s
+// source (the server's sessions, the client's mirror of them): a step done can only shrink the machine, so a client a
+// moment ahead of the server is never pushed.
+import { sitesNear, type CrashSite } from './crash.ts';
+import { machineModules } from './machine.ts';
+import { layoutOf } from './machines.ts';
+import { heightAt } from './terrain.ts';
+
+/** Where a site's finished step indexes are (see server/crash.ts sessions, src/world/crash.ts progress). */
+let doneOf: (id: string) => ReadonlySet<number> | undefined = () => undefined;
+export function setMachineProgress(source: (id: string) => ReadonlySet<number> | undefined) {
+  doneOf = source;
+  boxCache.clear();
+}
+
+/** A machine's finished steps changed (or all of them, with no id): its solid is worked out again next time it is asked for. */
+export function machineChanged(id?: string) {
+  if (id === undefined) boxCache.clear();
+  else boxCache.delete(id);
+}
+
+interface Cap {
+  x: number;
+  z: number;
+  ax: number;
+  az: number;
+  half: number;
+  r: number;
+  /** Height of the top above the ground at the machine. */
+  h: number;
+}
+
+const boxCache = new Map<string, Cap[]>();
+const STAND_MARGIN = 0.15;
+
+/** The capsules of a machine as it stands now. */
+export function machineCapsules(site: CrashSite): Cap[] {
+  const layout = layoutOf(site.kind);
+  if (!layout?.hits || !layout.pose) return [];
+  const done = doneOf(site.id);
+  let out = boxCache.get(site.id);
+  if (out) return out;
+  const mods = machineModules(site.kind, site.seed, site.level);
+  const present = new Set(mods.map((m) => m.mod.id));
+  // which modules have come off: every outer step of theirs done (the steps are numbered in the order src/teardown/glbMachine.ts builds them)
+  const off = new Set<string>();
+  let index = 0;
+  for (const { mod } of mods) {
+    let outer = 0, outerDone = 0;
+    for (const s of mod.steps) {
+      if (s.with && !s.with.every((id) => present.has(id))) continue;
+      if (!s.inner) {
+        outer++;
+        if (done?.has(index)) outerDone++;
+      }
+      index++;
+    }
+    if (outer > 0 && outerDone === outer) off.add(mod.id);
+  }
+  const { pitch, lift } = layout.pose;
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const sy = Math.sin(site.yaw), cy = Math.cos(site.yaw);
+  out = [];
+  for (const h of layout.hits) {
+    if (h.mods.length && !h.mods.some((id) => present.has(id) && !off.has(id))) continue;
+    const zc = (h.z0 + h.z1) / 2;
+    const along = zc * cp; // how far out along the ground
+    out.push({
+      x: site.x + sy * along, z: site.z + cy * along, ax: sy, az: cy,
+      half: ((h.z1 - h.z0) / 2) * cp, r: h.r, h: lift - zc * sp + h.r * cp,
+    });
+  }
+  if (boxCache.size > 512) boxCache.clear();
+  boxCache.set(site.id, out);
+  return out;
+}
+
+/** The model-built machines near a player, by the cell of 12 m they stand in (they do not move). */
+const nearCache = new Map<number, CrashSite[]>();
+const NEAR_CELL = 12;
+function machinesNear(x: number, z: number): CrashSite[] {
+  const cx = Math.floor(x / NEAR_CELL), cz = Math.floor(z / NEAR_CELL);
+  const key = cx * 100003 + cz;
+  let list = nearCache.get(key);
+  if (!list) {
+    list = sitesNear((cx + 0.5) * NEAR_CELL, (cz + 0.5) * NEAR_CELL, NEAR_CELL * 0.75 + 8).filter((s) => !!layoutOf(s.kind)?.hits);
+    if (nearCache.size > 256) nearCache.clear();
+    nearCache.set(key, list);
+  }
+  return list;
+}
+
+/**
+ * Collide a player (circle of `radius` at feet height y; prevY is last tick's) with the machines near: the same rules as
+ * collideCrash (shared/crashsites.ts): a top within `stepUp` below the feet is ground (the highest such top, or -Infinity),
+ * anything taller a wall that pushes the position out and takes the velocity into it away, in place.
+ */
+export function collideMachines(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, stepUp: number): number {
+  const sites = machinesNear(p.x, p.z);
+  if (!sites.length) return -Infinity;
+  let support = -Infinity;
+  const feet = Math.max(y, prevY);
+  for (const site of sites) {
+    if (Math.abs(p.x - site.x) > 4 + radius || Math.abs(p.z - site.z) > 4 + radius) continue; // (the longest stretch is about 1.5 m each way of the middle)
+    const base = heightAt(site.x, site.z);
+    for (const b of machineCapsules(site)) {
+      const reach = b.half + b.r + radius;
+      if (Math.abs(p.x - b.x) > reach || Math.abs(p.z - b.z) > reach) continue;
+      let t = (p.x - b.x) * b.ax + (p.z - b.z) * b.az;
+      t = t < -b.half ? -b.half : t > b.half ? b.half : t;
+      const qx = b.x + b.ax * t, qz = b.z + b.az * t;
+      let ex = p.x - qx, ez = p.z - qz;
+      const d = Math.sqrt(ex * ex + ez * ez);
+      const top = base + b.h;
+      if (feet >= top - stepUp) {
+        if (d < b.r + STAND_MARGIN && top > support) support = top;
+        continue;
+      }
+      const R = b.r + radius;
+      if (d >= R) continue;
+      if (d > 1e-9) { ex /= d; ez /= d; } else { ex = b.az; ez = -b.ax; }
+      p.x = qx + ex * R;
+      p.z = qz + ez * R;
+      const vn = p.vx * ex + p.vz * ez;
+      if (vn < 0) { p.vx -= vn * ex; p.vz -= vn * ez; }
+    }
+  }
+  return support;
+}

@@ -16,6 +16,7 @@
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
+import { machineChanged, setMachineProgress } from '../shared/machineBoxes.ts';
 import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { crashSite, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
@@ -101,6 +102,7 @@ export class CrashServer {
       const done = r.layout === TEARDOWN_LAYOUT ? r.done.filter(ok) : [];
       this.sessions.set(m.id, this.newSession(done, r.taken.filter((i) => ok(i) && i < m.parts.length)));
     }
+    setMachineProgress((id) => this.sessions.get(id)?.done);
     if (this.bench && !this.sessions.has(BENCH_ID)) this.sessions.set(BENCH_ID, this.newSession([], []));
     console.log(`crash: ${this.sessions.size} machines worked on`);
     for (const r of db.loadCrashTaken()) {
@@ -182,6 +184,7 @@ export class CrashServer {
   resetSite(id: string) {
     if (id === BENCH_ID || !this.sessions.has(id)) return;
     this.sessions.delete(id);
+    machineChanged(id);
     this.db.clearProgress(id);
     this.broadcast({ t: 'siteReset', id });
   }
@@ -301,6 +304,7 @@ export class CrashServer {
     const need = s.need.get(i) ?? 1;
     if (need > 1 && (this.live(s, i) < need || !s.holders.get(i)?.has(pid))) return; // not enough hands
     s.done.add(i);
+    machineChanged(site.id);
     s.holders.delete(i);
     this.save(site.id, s);
     this.broadcast({ t: 'siteDone', id: site.id, i });
