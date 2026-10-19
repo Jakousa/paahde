@@ -603,6 +603,11 @@ export class TeardownView {
       this.tb.x = this.held ? this.cur.x : innerWidth / 2;
       this.tb.y = this.held ? this.cur.y : innerHeight / 2;
     }
+    if (this.wasTurning && !turning && this.held) {
+      // let go: the cursor stays where the grab was dragged to, not back where it started
+      this.cur.x = THREE.MathUtils.clamp(this.tb.x, 8, innerWidth - 8);
+      this.cur.y = THREE.MathUtils.clamp(this.tb.y, 8, innerHeight - 8);
+    }
     this.wasTurning = turning;
     if (turning) this.trackball(mx, my);
     else if (this.held && !looking && !this.act) {
