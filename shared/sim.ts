@@ -72,7 +72,8 @@ const SLIDE_TURN = 1.6; // rad/s the heading can swing towards the input
 
 // Ctrl / C crouches: slow, short careful steps (src/models/crouchGait.ts strides to it).
 export const CROUCH_SPEED = 2;
-/** Speed lost on foot at full sandstorm strength (shared/storm.ts), whichever way you go. */
+/** Speed lost on foot at full sandstorm strength (shared/storm.ts), whichever way you go. The storm's strength passed
+ *  to step() goes past 1 in a front (stormDrag, FRONT_PUSH): that pushes harder but slows no more. */
 const STORM_SLOW = 0.2;
 /** The storm pushes downwind (WIND, the way storms drift): this much (m/s) added to the velocity you're
  *  steering towards on the ground at full strength, so you drift standing still and lose it walking into it;
@@ -247,7 +248,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   let landTicks = s.landTicks > 0 ? s.landTicks - 1 : 0;
   let speed = WALK_SPEED;
   if (landTicks > 0) speed *= LAND_SLOW + (1 - LAND_SLOW) * (1 - landTicks / MAX_LAND_TICKS);
-  speed *= 1 - STORM_SLOW * storm;
+  speed *= 1 - STORM_SLOW * Math.min(1, storm);
   const pushX = WIND.x * storm, pushZ = WIND.z * storm;
 
   let vx = s.vx;

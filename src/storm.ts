@@ -29,9 +29,11 @@ const PIP_HZ = 1760;
 const PIP_GAIN = 0.5;
 /** How fast the felt storm follows where you are (s), so walking out of one doesn't pop. */
 const TAU = 0.8;
-/** A front's roar starts this far (m) ahead of it, rising to FRONT_ROAR of a storm's wind at its wall. */
+/** A front's roar starts this far (m) ahead of it, rising to FRONT_ROAR of a storm's wind at its wall; once its back
+ *  has gone by, the wind calms from FRONT_ROAR over FRONT_CALM m (~20 s). */
 const FRONT_HEARD = 400;
 const FRONT_ROAR = 0.6;
+const FRONT_CALM = 640;
 /** What's left of a front's grit on the view, and of its wind, in the lee of rock. */
 const LEE_GRIT = 0.4;
 const LEE_WIND = 0.6;
@@ -122,7 +124,11 @@ export class StormFx {
     let column = 0, roar = 0;
     for (const s of storms) {
       if (!s.front) column = Math.max(column, stormStrength(s, cam.x, cam.z, now));
-      else roar = Math.max(roar, stormEnvelope(s, now) * FRONT_ROAR * (1 - Math.min(1, -frontDepth(s, cam.x, cam.z, now) / FRONT_HEARD)));
+      else {
+        const u = frontDepth(s, cam.x, cam.z, now);
+        const k = u < 0 ? 1 + u / FRONT_HEARD : u > s.r ? 1 - (u - s.r) / FRONT_CALM : 1;
+        roar = Math.max(roar, stormEnvelope(s, now) * FRONT_ROAR * Math.max(0, k));
+      }
     }
     const front = frontAt(storms, cam.x, cam.z, now);
     this.lee = front > 0.05 && !indoors(me.x, me.y, me.z) && sheltered(me.x, me.y, me.z);

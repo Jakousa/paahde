@@ -1645,8 +1645,8 @@ The local sandstorms are smaller now (radius 60–130 m, from 140–300), and ra
   black just before the server's tally kills (`choking`, post.ts; full at 92% of `CHOKE_S`).
 - **Cover:** a bunker (base or shelter), or the lee of rock: `sheltered` looks 1.5–24 m upwind for ground rising
   over your eye by more than 0.6 m and steeper than 0.8 (≈39°, so a dune's lee face doesn't count, cliffs, boulders
-  and pillars do). About 1.4% of random desert spots qualify, many more in rocky country. In the lee the front's push
-  is cut to 30%, the grit to 40% and the wind to 60%, so you can feel you found it; the character says so once.
+  and pillars do). About 1.4% of random desert spots qualify, many more in rocky country. In the lee no storm
+  pushes you at all (`stormDrag` is 0, columns too), the grit is cut to 40% and the wind to 60%, so you can feel you found it; the character says so once.
 - **Warning and voice:** the storm detector beeps and shows "⚠ Storm front" twice as early as for a column. Everyone
   sees the wall coming and hears it rising from 400 m out; the character says a line when it's under 25 s away, and
   when choking.
@@ -1666,6 +1666,10 @@ The local sandstorms are smaller now (radius 60–130 m, from 140–300), and ra
   strength over `SEIZE_AT` 0.35) is the one test every ground enemy's brain asks each tick: walkers and crawlers stand
   where they are (no walking, bites, cannon or missiles; server/guardians.ts), harvesters brake to a stop (a pace stretch
   to 0) and set off again once it has passed (server/harvesters.ts). Use it for any new ground enemy. Jets fly on.
+- **Push:** a front pushes 2.5× as hard as a column at full strength (`FRONT_PUSH`: ~5 m/s of drift on foot, so walking
+  into it barely makes headway) but slows you no more (shared/sim.ts clamps the slow at 1).
+- **Calming:** the front's roar used to stay at 60% after its back had passed (the "coming" ramp kept growing behind
+  it) until the front died down; now it calms from 60% over 640 m behind the back (~20 s).
 - **Heat:** storms no longer add heat. In any storm over `STORM_SHADE` (0.35), out of a bunker, the dust hides the sun
   and body heat stops rising (it can still cool) (server/water.ts).
 - **Columns thicker:** the dense core of a sandstorm column now reaches 75% of its radius (was 45%) and is 1.3× as

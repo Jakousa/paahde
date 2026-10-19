@@ -135,18 +135,18 @@ export function nearStorm(storms: readonly Storm[], x: number, z: number, t: num
   return false;
 }
 
-/** Storm strength slowing a player standing at (x, y, z) (feet): none in the base. Fed to step() by
- *  the server per input and by the client per predicted tick (kept for replays), shared/sim.ts. */
+/** A front pushes this many times harder than a column at full strength (shared/sim.ts STORM_PUSH). */
+export const FRONT_PUSH = 2.5;
+
+/** The storm's wind on a player standing at (x, y, z) (feet): a column's strength 0..1, a front's up to FRONT_PUSH
+ *  (it slows you no more than a column, shared/sim.ts, but pushes harder). None in a bunker or in the lee of rock:
+ *  the wind blows over your head. Fed to step() by the server per input and by the client per predicted tick (kept
+ *  for replays), shared/sim.ts. */
 export function stormDrag(storms: readonly Storm[], x: number, y: number, z: number, t: number): number {
   if (indoors(x, y + 1, z)) return 0;
-  let k = 0, f = 0;
-  for (const s of storms) {
-    if (s.front) f = Math.max(f, stormStrength(s, x, z, t));
-    else k = Math.max(k, stormStrength(s, x, z, t));
-  }
-  // In the lee of a cliff the front blows over your head.
-  if (f > 0 && sheltered(x, y, z)) f *= LEE_DRAG;
-  return Math.max(k, f);
+  let k = 0;
+  for (const s of storms) k = Math.max(k, stormStrength(s, x, z, t) * (s.front ? FRONT_PUSH : 1));
+  return k > 0 && sheltered(x, y, z) ? 0 : k;
 }
 
 /** Is a mega-storm front out (appeared, not yet died down) at time `t`? */
@@ -185,8 +185,6 @@ const LEE_STEPS = [1.5, 3, 5, 8, 12, 17, 24];
 const LEE_OVER = 0.6;
 const LEE_SLOPE = 0.8;
 const EYE = 1.6;
-/** What's left of a front's push in the lee. */
-const LEE_DRAG = 0.3;
 
 /** Out of a mega-storm's wind at (x, y, z) (feet): in a bunker, or with rock rising steeply just upwind. */
 export function sheltered(x: number, y: number, z: number): boolean {
