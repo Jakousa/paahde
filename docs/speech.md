@@ -12,13 +12,20 @@ from `src/main.ts`.
 
 - **First person, out loud, to nobody.** "This should help me live through this heat...", not "Water bottle:
   restores hydration".
-- **One short sentence.** About eight words, rarely more than twelve. It's read while playing.
+- **One or two short sentences.** About eight words, rarely more than twelve. It's read while playing. Short means
+  saying less, not clipping the grammar: "The bottle's empty. I need to find a pump.", not "Bottle's empty. Need
+  pump." Strings of one-word fragments sound machine-written (docs/text.md "Flavor text").
 - **Plain words.** No game words (no "heat meter", "item", "slot", "quality", "repair at workbench"), no keys, no
   numbers. The character lives in the world, not in the UI.
-- **Point at what to do, don't spell it out.** "Too hot. I need shade." tells you to find shade. It doesn't
+- **Point at what to do, don't spell it out.** "It's too hot. I need some shade." tells you to find shade. It doesn't
   explain how heat works. Leave the player something to figure out.
+- **A person, not a narrator.** Tired, stubborn and dry, talking mostly to keep their spirits up. Relatable
+  complaints and small reliefs are good ("More room to carry junk. My back is going to hate me.").
 - **Sometimes funny.** Dry and understated, never zany: "Note to self: don't do that again." Only some lines
   should be jokes. A joke repeated too often gets old, so give repeating lines a few wordings.
+- **Swears when it's bad.** A boss, being spotted, choking in a storm front, an empty bottle in the heat, dying:
+  "Oh no. Oh, shit.", "Oh hell, here it comes.", "Well, that hurt like hell." Everyday lines stay clean, so the
+  swearing marks the moments that really are bad.
 - **Right for the moment.** If the same thing means different things at different times, write a variant for each
   (day/night, inside/outside, already have one/don't). A line that's wrong for the moment is worse than no line.
 

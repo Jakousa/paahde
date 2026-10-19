@@ -26,8 +26,30 @@ writes player-facing words inline. Two reasons:
   (`items`, `parts`, `tiers`, `machines`, `bosses`, `equip`, `boxes`).
 - **Keys are stable names for the meaning**, not the English words: `notice.cantWear`, not `notice.cantWearIt`
   copied from the text. Item, part and machine sections are keyed by their item kind ids.
-- **The voice:** terse labels, sentence case, a few words, no explanations or tutorials (CLAUDE.md "Game design").
-  The character's speech has its own guide: `docs/speech.md`.
+- **The voice:** labels (prompts, notices, menu items, step names, names of things) are terse: sentence case, a few
+  words, no explanations or tutorials (CLAUDE.md "Game design"). The character's speech has its own guide:
+  `docs/speech.md`.
+
+## Flavor text: write like a person
+
+Anything longer than a label (gear descriptions, hint banners, settings tips, the prologue, the death and win lines
+and all of the speech) is written as natural, grammatical English, the way a person would say it. Keep it short by
+saying less, never by clipping the grammar.
+
+- **Whole sentences.** Avoid telegraph style. Pile-ups of one- and two-word fragments ("Broken. Dead, but a bike.
+  Ironic.") and colon shorthand ("Motorcycle: Tab, into the Vehicle slot.") read as machine-written. Write
+  "It's broken, but it's a bike." and "Put the motorcycle in the Vehicle slot (Tab)." instead.
+- **Contractions and small words.** Use "it's", "I'll", "I'd better", "a bit of" and "the stuff". Dropping the
+  articles and verbs ("Need a pump.", "Bottle's empty.") sounds like a status readout.
+- **One fragment is fine, a habit isn't.** A real person says "Wheels, finally." Ten lines in that rhythm sound like a
+  template. Vary the shape: a question, an aside, a complaint, a joke.
+- **Personality.** The character is a tired, stubborn scavenger with a dry sense of humour who is mostly talking
+  to keep themselves going. Lines should be relatable: sore feet, an aching back, sand in the teeth, relief at cool shade.
+- **Swearing.** When things go badly (a boss shows up, choking in a storm front, out of water, spotted, just died),
+  the character swears the way anyone would: "Shit, they've seen me.", "Oh hell, here it comes.", "Damn, I'm cooking
+  out here." Keep it to the tough moments so it lands, and keep calm lines clean.
+- **Instructions are still instructions.** Hints and tips say plainly what to press and where, in one or two
+  ordinary sentences, without flavour that hides the point.
 
 ## Not in the registry
 
