@@ -9,6 +9,7 @@ import { seeded, sitesNear } from './crash.ts';
 import { crashSitesNear, siteLevel } from './crashsites.ts';
 import { shelterWithin } from './shelters.ts';
 import { rocksNear } from './rocks.ts';
+import { LAB } from './world.ts';
 import { SALVAGE, type SalvageId } from './salvage.ts';
 import { baseHeight, WORLD_SEED } from './terrain.ts';
 
@@ -65,6 +66,7 @@ export function wreckAt(ix: number, iz: number): Wreck | null {
 }
 
 function generate(ix: number, iz: number): Wreck | null {
+  if (LAB) return null;
   const r = cellRng(ix, iz);
   if (r() >= DENSITY) return null;
   const kind = pickKind(r());
@@ -82,6 +84,7 @@ function generate(ix: number, iz: number): Wreck | null {
 const STARTER_OFFSETS: [number, number][] = [[-40, 30], [40, 30], [-30, 44], [30, 44], [-48, 10], [48, 10], [0, 52], [-44, -30], [44, -30]];
 let starter: Wreck | null | undefined;
 function starterWreck(): Wreck | null {
+  if (LAB) return null;
   if (starter !== undefined) return starter;
   starter = null;
   const r = cellRng(9, 9);

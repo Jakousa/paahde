@@ -26,6 +26,7 @@ import { atPump, BASE, inBase, PUMP_REACH, terrainHidden, type Capsule } from '.
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockiness, rocksNear } from './rocks.ts';
 import { cellId } from './cells.ts';
+import { LAB } from './world.ts';
 
 export type ShelterKind = 'small' | 'deep' | 'long';
 
@@ -141,6 +142,7 @@ function toWorld(dx: number, dz: number, lx: number, lz: number): [number, numbe
 }
 
 function cellShelter(ix: number, iz: number): Shelter | null {
+  if (LAB) return null;
   const r = rng(ix, iz);
   const k = rockiness((ix + 0.5) * SHELTER_CELL, (iz + 0.5) * SHELTER_CELL);
   if (r() > 0.02 + 0.45 * k) return null;

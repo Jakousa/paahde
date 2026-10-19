@@ -16,6 +16,7 @@
 // one is a giant. Rocks sit on the lowest sand under them, partly buried; overlapping rocks merge (max).
 import { BASE } from './base.ts';
 import { duneHeight, ss, vnoise, WORLD_SEED } from './dunes.ts';
+import { LAB } from './world.ts';
 
 /** Grid cell size (m). A cell owns the formations whose centres lie in it. */
 export const ROCK_CELL = 160;
@@ -269,8 +270,11 @@ function ownRocks(ix: number, iz: number): Rock[] {
   return l;
 }
 
+const NO_ROCKS: Rock[] = [];
+
 /** Every rock that reaches into cell (ix, iz) (theirs and their neighbours'). */
 function rocksIn(ix: number, iz: number): Rock[] {
+  if (LAB) return NO_ROCKS; // the dev test lab (shared/lab.ts) is flat
   const k = cellKey(ix, iz);
   let l = near.get(k);
   if (l) return l;

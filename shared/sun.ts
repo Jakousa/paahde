@@ -5,6 +5,8 @@
 // runs a real diurnal arc (spherical astronomy, hour angle H at latitude LAT and declination DECL): it rises
 // in the east (+Z), peaks in the south (+X) at 90° − LAT + DECL, and sets a little north of west (−Z).
 
+import { LAB } from './world.ts';
+
 /** Real seconds per in-game day (24 h in 30 min). */
 export const DAY_SECONDS = 30 * 60;
 export const LAT = (42 * Math.PI) / 180;
@@ -16,6 +18,7 @@ export const NOON_ELEVATION = Math.PI / 2 - LAT + DECL;
 
 /** Time of day in [0, 1) at wall-clock `unixMs`: 0 = midnight, 0.25 ≈ sunrise, 0.5 = noon, 0.75 ≈ sunset. */
 export function timeOfDayAt(unixMs: number, dayLen = DAY_SECONDS): number {
+  if (LAB) return 0.5; // the dev test lab (shared/lab.ts): always noon
   const t = unixMs / 1000 / dayLen + DAY_OFFSET;
   return t - Math.floor(t);
 }

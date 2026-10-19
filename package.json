@@ -5,9 +5,7 @@
   "scripts": {
     "asbuild": "asc assembly/index.ts --target release",
     "dev": "npm run asbuild && concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"vite\"",
-    "dev:server": "node --watch-path=server --watch-path=shared server/index.ts",
-    "dev:server:yard": "node --watch-path=server --watch-path=shared server/index.ts --yard",
-    "dev:yard": "npm run asbuild && concurrently -k -n server,client -c blue,green \"npm:dev:server:yard\" \"vite\"",
+    "dev:server": "node --watch-path=server --watch-path=shared server/index.ts --lab",
     "build": "npm run asbuild && tsc --noEmit && vite build && node tools/precompress.ts",
     "start": "node server/index.ts",
     "preview": "npm run build && npm start"

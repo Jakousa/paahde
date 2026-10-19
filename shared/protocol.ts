@@ -15,8 +15,8 @@ export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
   // spawn: 'base' starts at the home base's door instead of the saved position, 'crash' next to the nearest
   // crash site with a large machine, 'field' at the edge of the nearest scrap field, 'shelter' outside the nearest
-  // shelter's door, 'yard' in front of the dev machine yard (dev helpers, ?spawn=base / ?spawn=crash / ?spawn=field / ?spawn=shelter / ?spawn=yard).
-  | { t: 'hello'; browserId: string; spawn?: 'base' | 'crash' | 'field' | 'shelter' | 'yard' }
+  // shelter's door (dev helpers, ?spawn=base / ?spawn=crash / ?spawn=field / ?spawn=shelter).
+  | { t: 'hello'; browserId: string; spawn?: 'base' | 'crash' | 'field' | 'shelter' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
@@ -111,8 +111,8 @@ export type ClientMsg =
   // lift is checked against the holders) or take a part (first one wins: its item goes in your bag, answered with
   // 'siteTook' and 'items'). Step numbers are indexes into the machine the seed builds (src/teardown/junk.ts),
   // part numbers into machineParts() (shared/machine.ts), the same on every client and the server.
-  // Dev yard only (shared/yard.ts): put a yard machine (or, without an id, all of them) back together.
-  | { t: 'yardReset'; id?: string }
+  // Dev test lab only (shared/lab.ts): put a lab machine (or, without an id, all of them) back together.
+  | { t: 'labReset'; id?: string }
   | { t: 'siteJoin'; id: string }
   | { t: 'siteLeave'; id: string }
   | { t: 'siteHold'; id: string; i: number; players: number; on: boolean }
@@ -210,8 +210,6 @@ export type ServerMsg =
   // On join, before 'welcome': the progress of every large site's machine that has been worked on. Kept for
   // good (server/crash.ts machine_progress); siteDone / siteTake keep it up to date, for everyone.
   | { t: 'sites'; sites: { id: string; done: number[]; taken: number[] }[] }
-  // The dev machine yard is on in this world (shared/yard.ts); sent first on join.
-  | { t: 'yard' }
   // A site's machine is whole again (dev reset): forget its progress.
   | { t: 'siteReset'; id: string }
   // The machine on the base's disassembly table (null: the table is free). On join, and to everyone when a job

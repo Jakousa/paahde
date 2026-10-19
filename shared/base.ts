@@ -114,6 +114,8 @@ function vaultAt(ax: number, c: number): number {
 const PAD = { x0: -14, x1: 14, z0: -36, z1: 14, blend: 24 };
 /** The pad's sand lies just under the entrance floor so they don't z-fight. */
 const PAD_Y = BASE.y - 0.06;
+/** The dev test lab's floor (shared/lab.ts): the pad's height everywhere, so the bunker's entrance sits level in it. */
+export const LAB_FLOOR_Y = PAD_Y;
 
 /**
  * Flag mast behind and beside the entrance hut, seen from afar: a tapered concrete pole (foot radius r0, top r1,

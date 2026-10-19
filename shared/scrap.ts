@@ -20,6 +20,7 @@ import { BASE_SPAWN, padBlend } from './base.ts';
 import { rocksNear } from './rocks.ts';
 import { shelterWithin } from './shelters.ts';
 import { cellInRange } from './cells.ts';
+import { LAB } from './world.ts';
 import { baseHeight, heightAt, WORLD_SEED } from './terrain.ts';
 
 /** Grid cell size (m); each cell holds at most one pile. */
@@ -115,6 +116,7 @@ export function scrapPieces(ix: number, iz: number): ScrapPiece[] {
 }
 
 function generate(ix: number, iz: number): ScrapPiece[] {
+  if (LAB) return NONE; // the dev test lab (shared/lab.ts) has none
   const r = rng(ix, iz);
   // The spawn cell always gets one, so new players see scrap straight away.
   if (r() >= DENSITY && !(ix === SPAWN_IX && iz === SPAWN_IZ)) return NONE;

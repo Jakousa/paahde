@@ -37,7 +37,7 @@ interface SiteView {
   shown: boolean;
 }
 
-const spent = (site: CrashSite) => !site.yard && !junkSpec(site.kind).carry && crashSpent.has(site.wreck);
+const spent = (site: CrashSite) => !site.lab && !junkSpec(site.kind).carry && crashSpent.has(site.wreck);
 
 export class MachineSites {
   private views = new Map<string, SiteView>();
@@ -45,8 +45,6 @@ export class MachineSites {
   readonly bench: Bench;
   /** Every large site's progress, from the server. */
   private progress = new Map<string, Progress>();
-  /** Dev yard: the machine's floor label (a plate on the sand in front of it). */
-  private labels = new Map<string, THREE.Mesh>();
   /** Id of the site the disassembly mode is working on (src/teardown): its machine is never swapped under it. */
   busy: () => string | undefined = () => undefined;
 
@@ -66,7 +64,7 @@ export class MachineSites {
       // Spent while we weren't working on it: rebuild as the husk.
       if (v.junk && v.husk !== spent(site) && this.busy() !== site.id) this.drop(v, true);
       const d = Math.hypot(site.x - focus.x, site.z - focus.z);
-      const gone = !site.yard && junkSpec(site.kind).carry && crashTaken.has(site.id);
+      const gone = !site.lab && junkSpec(site.kind).carry && crashTaken.has(site.id);
       if (gone && v.shown) this.drop(v, false);
       else if (!gone && d < BUILD_R && !v.shown) this.show(v);
       else if (v.shown && d > DROP_R) this.drop(v, false);
@@ -81,8 +79,6 @@ export class MachineSites {
   /** Take the machine out of the scene; `forget` also throws the built junk away. */
   private drop(v: SiteView, forget: boolean) {
     if (v.junk && v.shown) this.scene.remove(v.junk.root);
-    const label = this.labels.get(v.site.id);
-    if (label) this.scene.remove(label);
     v.shown = false;
     if (forget) v.junk = null;
   }
@@ -105,20 +101,14 @@ export class MachineSites {
     const off = j.fixed ? null : lowestOffset(j.root);
     if (off !== null) j.root.position.y += off;
     v.shown = true;
-    if (site.yard) {
-      let label = this.labels.get(site.id);
-      if (!label) this.labels.set(site.id, (label = yardLabel(junkSpec(site.kind).label)));
-      label.position.set(site.x, heightAt(site.x, site.z + 4.2) + 0.06, site.z + 4.2);
-      this.scene.add(label);
-    }
   }
 
-  /** The yard machine nearest (x, z) within a few steps, for the debug menu's reset. */
-  nearestYard(x: number, z: number): SiteView | null {
+  /** The lab machine nearest (x, z) within a few steps, for the debug menu's reset. */
+  nearestLab(x: number, z: number): SiteView | null {
     let best: SiteView | null = null;
     let bd = 12;
     for (const v of this.views.values()) {
-      if (!v.site.yard) continue;
+      if (!v.site.lab) continue;
       const d = Math.hypot(v.site.x - x, v.site.z - z);
       if (d < bd) (bd = d), (best = v);
     }
@@ -177,28 +167,6 @@ export class MachineSites {
       ground: heightAt, radius: 5, movable: false, link,
     };
   }
-}
-
-/** A plate with the machine's name, lying on the sand (dev yard). */
-function yardLabel(text: string): THREE.Mesh {
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 128;
-  const g = c.getContext('2d')!;
-  g.fillStyle = 'rgba(28, 15, 7, 0.88)';
-  g.beginPath();
-  g.roundRect(4, 4, 504, 120, 16);
-  g.fill();
-  g.fillStyle = '#ffd9a0';
-  g.font = '600 52px ui-monospace, Menlo, Consolas, monospace';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(text, 256, 66);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.65), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
-  m.rotation.x = -Math.PI / 2; // lying flat, its top toward the machine, readable from the entrance side
-  return m;
 }
 
 // ---- disassembly table -------------------------------------------------------------------------------------

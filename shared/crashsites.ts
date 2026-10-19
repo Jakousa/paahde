@@ -28,6 +28,7 @@ import { rocksNear } from './rocks.ts';
 import { SCRAP_CELL, scrapPieces } from './scrap.ts';
 import { yawFromQ } from './sim.ts';
 import { cellId, cellOf } from './cells.ts';
+import { LAB } from './world.ts';
 import { baseHeight, CORE_HALF, heightAt, WORLD_SEED } from './terrain.ts';
 
 /** Grid cell size (m); each cell holds at most one site. */
@@ -265,6 +266,7 @@ export function coreCrashSites(): CrashSite[] {
 }
 
 function generate(ix: number, iz: number): CrashSite | null {
+  if (LAB) return null; // the dev test lab (shared/lab.ts) has its own machine sites
   const r = rng(ix, iz);
   // The level goes by the cell's centre, so it is known before the site is placed.
   const level = siteLevel((ix + 0.5) * CRASH_CELL, (iz + 0.5) * CRASH_CELL);

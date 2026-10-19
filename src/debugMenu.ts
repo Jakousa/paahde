@@ -59,7 +59,7 @@ export class DebugMenu {
 <label>Tone <select id="dbgTone">${TONE_CURVES.map((c) => `<option>${c}</option>`).join('')}</select></label>
 <label id="dbgWhiteRow">White <input id="dbgWhite" type="range" min="1" max="8" step="0.25"> <b id="dbgWhiteVal"></b></label>
 <div class="row">Give gear ${['Scrap', 'Basic', 'Quality', 'Space'].map((n, i) => `<button data-gear="${i}" title="One of every piece of gear, repaired with ${n} parts (what doesn't fit is skipped)">${n}</button>`).join('')}</div>
-<div class="row">Yard <button id="dbgYard" title="Put the nearest yard machine back together (npm run dev:yard)">Reset near</button><button id="dbgYardAll" title="Put every yard machine back together">Reset all</button></div>
+<div class="row">Test lab <button id="dbgYard" title="Put the nearest lab machine back together (?w=lab)">Reset near</button><button id="dbgYardAll" title="Put every lab machine back together">Reset all</button></div>
 <label title="No heat build-up for you (the meter drops to zero)"><input id="dbgNoHeat" type="checkbox"> Disable heat</label>
 <label title="No random sandstorms in this world (clears the ones blowing)"><input id="dbgNoWeather" type="checkbox"> Disable weather</label>
 <div class="row"><button id="dbgHit"title="A killing blow (a guardian's laser): try the shield plate">Hit me</button></div>`;

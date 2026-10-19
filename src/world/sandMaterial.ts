@@ -107,6 +107,20 @@ export const sand = {
   rockBump: uniform(0.25),
 };
 
+/** The dev test lab's floor (shared/lab.ts): a plain light grey, no ripples, glitter or sheen. */
+export function labFloor() {
+  sand.albedoRed.value.set(0.58, 0.58, 0.56);
+  sand.albedoGold.value.set(0.62, 0.62, 0.6);
+  sand.shadowTint.value.set(0.85, 0.88, 0.95);
+  sand.sheenTint.value.set(1, 1, 1);
+  sand.glitterTint.value.set(1, 1, 1);
+  sand.rippleStrength.value = 0;
+  sand.megaRippleStrength.value = 0;
+  sand.sheen.value = 0;
+  sand.rim.value = 0;
+  sand.glitter.value = 0;
+}
+
 const PI = Math.PI;
 
 // --- Ripples ---------------------------------------------------------------------------------------

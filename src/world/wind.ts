@@ -20,6 +20,7 @@
 //     down onto it. In strong wind this shows as plumes "smoking" off the crests.
 //   - Wind also grows with height above the wider dune field, so the high ridges run first.
 import { insideBase } from '../../shared/base.ts';
+import { LAB } from '../../shared/world.ts';
 import { insideShelter } from '../../shared/shelters.ts';
 import { heightAt, normalAt, WIND } from '../../shared/terrain.ts';
 
@@ -94,7 +95,9 @@ class Wind {
   update(seconds: number) {
     // Keep the numbers small; the weather pattern repeats every ~11 days anyway.
     const t = (this.t = seconds % 1e6);
-    if (this.override !== null) {
+    if (LAB) {
+      this.u10 = 0; // the dev test lab (shared/lab.ts): still air
+    } else if (this.override !== null) {
       this.u10 = this.override;
     } else {
       // Weather: mostly calm, a light air wandering below the threshold (only exposed crests stir in

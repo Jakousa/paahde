@@ -9,9 +9,11 @@ import { connect, type Socket } from 'node:net';
 import { dirname, join } from 'node:path';
 import sirv from 'sirv';
 import { WebSocketServer } from 'ws';
-import { LEGACY_WORLD, newWorldId, WORLD_ID_RE } from '../shared/world.ts';
+import { LAB_WORLD, labAllowed, LEGACY_WORLD, newWorldId, WORLD_ID_RE } from '../shared/world.ts';
 import { leaderboard, minigameApi } from './minigame.ts';
 
+// The dev test lab (?w=lab, shared/lab.ts) exists only when the dev server is started with --lab (npm run dev:server).
+if (process.argv.includes('--lab')) process.env.DADAJAM_LAB = '1';
 const PORT = Number(process.env.PORT ?? 8787);
 const DB_PATH = process.env.DB_PATH ?? 'data/dadajam.db';
 const WORLDS_DIR = join(dirname(DB_PATH), 'worlds');
@@ -22,7 +24,7 @@ const board = leaderboard(join(dirname(DB_PATH), 'minigame.db')); // the minigam
 
 /** The world from before there were worlds keeps its old database; the rest have one each. */
 const dbPath = (id: string) => (id === LEGACY_WORLD ? DB_PATH : join(WORLDS_DIR, `${id}.db`));
-const exists = (id: string) => WORLD_ID_RE.test(id) && existsSync(dbPath(id));
+const exists = (id: string) => (id === LAB_WORLD && labAllowed()) || (WORLD_ID_RE.test(id) && existsSync(dbPath(id)));
 
 type World = { child: ChildProcess; port: Promise<number> };
 const worlds = new Map<string, World>();
@@ -33,7 +35,7 @@ function world(id: string): Promise<number> {
   if (!w) {
     mkdirSync(WORLDS_DIR, { recursive: true });
     const child = fork(new URL('./world.ts', import.meta.url), {
-      env: { ...process.env, WORLD_ID: id, DB_PATH: dbPath(id), ...(process.argv.includes('--yard') ? { MACHINE_YARD: '1' } : {}), TELEMETRY_PATH: join(dirname(DB_PATH), 'telemetry.jsonl') },
+      env: { ...process.env, WORLD_ID: id, DB_PATH: dbPath(id), TELEMETRY_PATH: join(dirname(DB_PATH), 'telemetry.jsonl') },
       // Not under the dev server's --watch-path: that restarts this process, and the worlds go with it.
       execArgv: process.execArgv.filter((a) => !a.startsWith('--watch')),
     });

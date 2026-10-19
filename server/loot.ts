@@ -21,6 +21,8 @@ import { BROKEN_GEAR, CACHES, FINDS, HOME_BIKE, RARE_FINDS, SHELTER_STASHES, typ
 import { CORE_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
+import { LAB } from '../shared/world.ts';
+import { labItems, type LabItem } from '../shared/lab.ts';
 import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
@@ -105,10 +107,23 @@ export class LootServer {
   private shelters = sheltersNear(0, 0, CORE_HALF * 1.5);
   /** What each lying find stands in for (FINDS key, RARE_KIND, HOME_KIND); caches aren't in it. */
   private spawnKey = new Map<number, string>();
+  /** The dev test lab's pickups (shared/lab.ts): taken, they are laid out again where they were. */
+  private labSpots = new Map<number, LabItem>();
   private db: Db;
 
   constructor(db: Db) {
     this.db = db;
+    if (LAB) {
+      // Nothing of the desert's finds and caches: only what players dropped here, and the lab's own tables.
+      for (const r of db.loadDropped()) {
+        this.loot.set(r.id, { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), x: r.x, z: r.z, src: 'drop' });
+        this.nextId = Math.max(this.nextId, r.id + 1);
+      }
+      for (const r of db.loadWorldLoot()) db.deleteWorldLoot(r.id);
+      for (const it of labItems()) this.labPlace(it);
+      this.added = [];
+      return;
+    }
     // Dropped items keep their ids; everything else is numbered after them.
     for (const r of db.loadDropped()) {
       if (RETIRED.has(r.kind)) {
@@ -204,6 +219,13 @@ export class LootServer {
       if (!this.db.tx(() => give(l) && (this.db.markGrant(who, HOME_KIND), this.remove(l), this.queue('find', HOME_KIND), true))) return 'full';
       return l.kind;
     }
+    const spot = this.labSpots.get(l.id);
+    if (spot) {
+      if (!give(l)) return 'full';
+      this.remove(l);
+      this.labPlace(spot);
+      return l.kind;
+    }
     if (l.src === 'drop') {
       if (!this.db.tx(() => give(l) && (this.db.deleteDropped(l.id), true))) return 'full';
       this.remove(l);
@@ -239,6 +261,13 @@ export class LootServer {
     this.add(l);
   }
 
+  /** A lab pickup lying at its spot (not kept in the DB: the table is laid out afresh every start). */
+  private labPlace(it: LabItem) {
+    const l: Loot = { id: this.nextId++, kind: it.kind, ...(it.parts ? { parts: [...it.parts] } : {}), x: it.x, z: it.z, src: 'find' };
+    this.labSpots.set(l.id, it);
+    this.add(l);
+  }
+
   /** Every few seconds: put back what was taken a while ago. */
   respawn() {
     const now = Date.now();
@@ -268,6 +297,7 @@ export class LootServer {
   private remove(l: Loot) {
     this.loot.delete(l.id);
     this.removed.push(l.id);
+    this.labSpots.delete(l.id);
     if (l.src !== 'drop') {
       this.db.deleteWorldLoot(l.id);
       this.spawnKey.delete(l.id);

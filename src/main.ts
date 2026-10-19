@@ -3,7 +3,7 @@ import { BACK, DT, FORWARD, isSlipFace, MOUNT_TICKS, quantizeYaw } from '../shar
 import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { allBeaten } from '../shared/bosses.ts';
-import { WORLD_ID } from '../shared/world.ts';
+import { LAB, WORLD_ID } from '../shared/world.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
 import { bedLit, placed } from '../shared/placed.ts';
 import { STATIONS, stationTarget } from '../shared/stations.ts';
@@ -72,7 +72,9 @@ import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { machinesAt } from '../shared/crash.ts';
-import { yardSites } from '../shared/yard.ts';
+import { LAB_LOOK } from '../shared/lab.ts';
+import { addLabPlates } from './world/labPlates';
+import { labFloor } from './world/sandMaterial';
 import { junkSpec, SALVAGE } from '../shared/salvage.ts';
 import { bagShape, carriedGear, equipped, gearTiers, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootPrompt } from './world/loot';
@@ -106,6 +108,10 @@ await slice();
 const sky = new Sky(scene);
 await slice();
 const terrain = new Terrain(scene);
+if (LAB) {
+  labFloor(); // the dev test lab (shared/lab.ts): a plain floor with name plates
+  addLabPlates(scene);
+}
 await slice();
 const base = new Base(scene);
 await slice();
@@ -202,7 +208,7 @@ machines.bench.onReady = () => {
 };
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
   (mode) => trophies.show(mode),
-  (all) => (all ? net.yardReset() : net.yardReset(machines.nearestYard(net.me.x, net.me.z)?.site.id)),
+  (all) => (all ? net.labReset() : net.labReset(machines.nearestLab(net.me.x, net.me.z)?.site.id)),
   (off) => net.debugHeat(off),
   (off) => net.debugWeather(off));
 new Chat(net);
@@ -330,7 +336,7 @@ terrain.loading = true;
 let joined = false; // until the first welcome, net.me is the default spawn, not our saved position
 // ?spawn=crash / field: once joined, turn to face the machine or the scrap field we were put next to.
 const spawnAt = new URLSearchParams(location.search).get('spawn');
-let faceCrash = spawnAt === 'crash' || spawnAt === 'field' || spawnAt === 'yard';
+let faceCrash = spawnAt === 'crash' || spawnAt === 'field' || LAB;
 // FPS for the info line: frames counted over half-second windows.
 let fps = 0;
 let fpsFrames = 0;
@@ -366,7 +372,7 @@ renderer.setAnimationLoop((time) => {
   if (faceCrash) {
     faceCrash = false;
     const near = crashSitesNear(net.me.x, net.me.z, 200);
-    const site = spawnAt === 'yard' ? yardSites()[1] : spawnAt === 'field' ? near.find((s) => s.level === 0) : near.find((s) => s.level > 0)?.machines[0];
+    const site = LAB ? LAB_LOOK : spawnAt === 'field' ? near.find((s) => s.level === 0) : near.find((s) => s.level > 0)?.machines[0];
     if (site) orbit.yaw = Math.atan2(-(site.x - net.me.x), -(site.z - net.me.z));
   }
   resolution.update(frameDt);
@@ -483,8 +489,10 @@ renderer.setAnimationLoop((time) => {
   wrecks.update(focus);
   sky.update(frameDt, focus, orbit.camera, net.worldTime());
   wind.update(net.serverTime() / 1000);
-  blownSand.update(frameDt, focus);
-  dust.update(frameDt, orbit.camera.position);
+  if (!LAB) {
+    blownSand.update(frameDt, focus);
+    dust.update(frameDt, orbit.camera.position);
+  }
 baseSand.update(frameDt, storm.atBase);
   tyreDust.update(frameDt);
   base.update();
@@ -532,7 +540,7 @@ baseSand.update(frameDt, storm.atBase);
   // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
   // it lies. A carried one is taken apart on the base's disassembly table.
   const nearSite = net.connected && station < 0 && !bed && !target && !debris && !find ? machines.nearest(net.me.x, net.me.z) : null;
-  const small = nearSite ? junkSpec(nearSite.site.kind).carry && !nearSite.site.yard : false;
+  const small = nearSite ? junkSpec(nearSite.site.kind).carry && !nearSite.site.lab : false;
   // A small one is picked up with F; a big one starts its disassembly by itself when you come close (src/teardown).
   const site = small ? nearSite : null;
   if (nearSite && !small && !teardown.active) teardown.begin(machines.workSite(nearSite, net.siteLink(nearSite.site.id)));

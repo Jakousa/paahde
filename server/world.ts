@@ -39,7 +39,7 @@ import { JetServer } from './jets.ts';
 import { BossServer, type BossKill, type BossOut } from './bosses.ts';
 import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
-import { setYard, yardOn } from '../shared/yard.ts';
+import { LAB, LAB_SPAWN } from '../shared/lab.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
 import { TerrainServer } from './terrain.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
@@ -75,8 +75,6 @@ setTrophies(beaten);
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
 const items = new ItemServer(db);
-// The dev machine yard (npm run dev:yard, shared/yard.ts), before the machines' progress is loaded.
-if (process.env.MACHINE_YARD) setYard(true);
 const crash = new CrashServer(db, (ids, msg) => {
   const want = new Set(ids);
   for (const p of players.values()) if (want.has(p.id)) send(p.ws, msg);
@@ -249,6 +247,8 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   // Someone who left in a shelter starts outside its door.
   const left = row && !atBase && overShelter(row.x, row.z, 0.5) ? shelterAt(row.x, row.z) : null;
   if (left) state = spawnState(left.x + left.dx * 4, left.z + left.dz * 4);
+  // The dev test lab (shared/lab.ts): new players appear in the open room, not down in the bunker.
+  if (LAB && (!row || atBase || overBase(row.x, row.z, 0.5))) state = spawnState(LAB_SPAWN.x, LAB_SPAWN.z);
   if (spawn === 'shelter') {
     // Dev helper: 6 m outside the door of the nearest shelter.
     const s = sheltersNear(state.x, state.z, 6000).sort((a, b) => Math.hypot(a.x - state.x, a.z - state.z) - Math.hypot(b.x - state.x, b.z - state.z))[0];
@@ -258,10 +258,6 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
     // Dev helper: 7 m from the large machine of the nearest crash site, on its far side from the wreck.
     const m = crashSitesNear(state.x, state.z, 3000).find((s) => s.level > 0)?.machines[0];
     if (m) state = spawnState(m.x + m.dx * 7, m.z + m.dz * 7);
-  }
-  if (spawn === 'yard' && yardOn()) {
-    // Dev helper: outside the bunker, a few steps from the first row of the machine yard (shared/yard.ts).
-    state = spawnState(BASE.x, BASE.z + 14);
   }
   if (spawn === 'field') {
     // Dev helper: just outside the nearest scrap field, on the base's side, looking at it.
@@ -280,9 +276,16 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   };
   players.set(ws, p);
   save(p);
+  if (LAB) {
+    // No heat in the lab; and a first visit brings the full kit: every gear kind repaired, the grinder.
+    p.heat.off = true;
+    if (!db.hasGrant(browserId, 'lab_kit')) {
+      db.markGrant(browserId, 'lab_kit');
+      onDebugGear(p, 0);
+    }
+  }
   const name = db.getName(browserId);
   p.name = name ?? '';
-  if (process.env.MACHINE_YARD) send(ws, { t: 'yard' });
   // Terrain first, so the client never sees its spawn without the holes.
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
@@ -836,8 +839,8 @@ function onCrash(p: Player, msg: ClientMsg) {
     gearChanged(p.browserId);
   } else if (msg.t === 'benchScrap') {
     if (crash.scrapBench(p.state, (n) => items.give(p.browserId, SCRAP, n))) sendBox(p, 'bag');
-  } else if (msg.t === 'yardReset') {
-    crash.yardReset(msg.id);
+  } else if (msg.t === 'labReset') {
+    crash.labReset(msg.id);
   } else if (msg.t === 'siteJoin') {
     const state = crash.join(p.id, p.state, msg.id);
     if (state) send(p.ws, state);
@@ -913,7 +916,7 @@ setInterval(() => {
       if (Date.now() >= p.down.until) respawn(p);
       continue;
     }
-    if (p.ready) heat(p, elapsed, tod, now);
+    if (p.ready && !LAB) heat(p, elapsed, tod, now);
     if (Date.now() - p.lastInputAt > IDLE_MS) {
       p.input = 0;
       for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
@@ -923,7 +926,7 @@ setInterval(() => {
       p.idleAccum = 0;
     }
   }
-  tickBots(elapsed, now, tod);
+  if (!LAB) tickBots(elapsed, now, tod); // (no walkers, drones or bosses in the lab)
   tickThrows(elapsed, now);
   relaxAccum += elapsed;
   if (relaxAccum >= 1 / RELAX_RATE) {
@@ -953,9 +956,10 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
-  const weather = storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
-  const flights = jets.tick(time, [...players.values()].map((p) => p.state));
-  for (const w of jets.wrecks(time)) dropJetSpoils(w);
+  // (The lab has no storms and no jets.)
+  const weather = LAB ? null : storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
+  const flights = LAB ? null : jets.tick(time, [...players.values()].map((p) => p.state));
+  if (!LAB) for (const w of jets.wrecks(time)) dropJetSpoils(w);
   for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), placedThings.flush(), garden.flush(), weather, flights]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);

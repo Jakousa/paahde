@@ -34,5 +34,18 @@ export function newWorldId(): string {
   return s;
 }
 
+/**
+ * The dev test lab (shared/lab.ts): the world with this id, in development only. The dev server (npm run dev) starts
+ * with `--lab`, which sets DADAJAM_LAB for the world processes; the browser asks Vite's dev flag. The production
+ * server and `npm start` have neither, so the id is just an unknown world there.
+ */
+export const LAB_WORLD = 'lab';
+export function labAllowed(): boolean {
+  if (typeof process !== 'undefined' && process.env) return process.env.DADAJAM_LAB === '1';
+  return !!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV;
+}
+
 export const WORLD_ID = readWorldId();
+/** This world is the dev test lab: flat floor, no desert and no events, every machine and part laid out (shared/lab.ts). */
+export const LAB = WORLD_ID === LAB_WORLD && labAllowed();
 export const WORLD_SEED = seedFor(WORLD_ID);

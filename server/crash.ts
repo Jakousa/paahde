@@ -23,7 +23,7 @@ import { debrisItem } from '../shared/items.ts';
 import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
 import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
 import { junkSpec, type JunkKind } from '../shared/salvage.ts';
-import { yardOn, yardSites } from '../shared/yard.ts';
+import { LAB, labSites } from '../shared/lab.ts';
 import { wreckById } from '../shared/wrecks.ts';
 import type { openDb } from './db.ts';
 
@@ -64,7 +64,7 @@ function carrySite(id: unknown): { id: string; kind: string; dist: (feet: Feet) 
   const d = debrisById(id);
   if (d) return { id: d.id!, kind: debrisItem(CRASH_KINDS[d.kind].node), dist: (f) => debrisReach(f, d) - DEBRIS_REACH };
   const s = crashSiteById(id);
-  return s && !s.yard && junkSpec(s.kind).carry ? { id: s.id, kind: s.kind, dist: flat(s) } : null;
+  return s && !s.lab && junkSpec(s.kind).carry ? { id: s.id, kind: s.kind, dist: flat(s) } : null;
 }
 /** A scrap field's small machines (site level 0, the starter machines every new player needs) are back after this long;
  *  other small machines stay gone. */
@@ -172,10 +172,10 @@ export class CrashServer {
     this.db.saveProgress(id, [...s.done], [...s.taken.keys()], TEARDOWN_LAYOUT);
   }
 
-  /** The dev yard's reset (yardReset): `id` one yard machine, or every one of them. */
-  yardReset(id: unknown) {
-    if (!yardOn()) return;
-    for (const s of yardSites()) if (id === undefined || id === s.id) this.resetSite(s.id);
+  /** The dev test lab's reset (labReset): `id` one lab machine, or every one of them. */
+  labReset(id: unknown) {
+    if (!LAB) return;
+    for (const s of labSites()) if (id === undefined || id === s.id) this.resetSite(s.id);
   }
 
   /** Make a site's machine whole again: forget its progress (dev/admin helper; nothing calls it on its own). */
@@ -236,8 +236,8 @@ export class CrashServer {
       return this.bench ? { id: BENCH_ID, x: BENCH.x, z: BENCH.z, range: BENCH_REACH, parts: machineParts(this.bench.kind, this.bench.seed), wreck: null } : null;
     }
     const site = crashSiteById(id);
-    // (A yard machine is worked in place whatever its size, and is never spent.)
-    return site && (site.yard || !junkSpec(site.kind).carry) ? { id: site.id, x: site.x, z: site.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed, site.level), wreck: site.yard ? null : site.wreck } : null;
+    // (A lab machine is worked in place whatever its size, and is never spent.)
+    return site && (site.lab || !junkSpec(site.kind).carry) ? { id: site.id, x: site.x, z: site.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed, site.level), wreck: site.lab ? null : site.wreck } : null;
   }
   private newSession(done: number[], taken: number[]): Session {
     return { done: new Set(done), taken: new Map(taken.map((i) => [i, -1])), players: new Set(), holders: new Map(), need: new Map() };

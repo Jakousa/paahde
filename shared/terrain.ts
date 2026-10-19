@@ -13,9 +13,10 @@
 // client and server agree exactly. Edits travel as absolute values (not deltas), so applying the same
 // edit twice is harmless and a client can predict a dig locally and still converge on the server.
 
-import { baseSolid, nearBunker, overBase, withPad } from './base.ts';
+import { baseSolid, LAB_FLOOR_Y, nearBunker, overBase, withPad } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockHeight } from './rocks.ts';
+import { LAB } from './world.ts';
 import { nearShelter, overShelter, shelterSolid, withShelterPad } from './shelters.ts';
 export { WIND, WORLD_SEED } from './dunes.ts';
 
@@ -33,6 +34,7 @@ export const EDIT_CHUNK = 32;
 /** Procedural dunes and rocks (shared/rocks.ts) before player edits, flattened into a pad around the home
  *  base (shared/base.ts) and the shelters (shared/shelters.ts). */
 export function baseHeight(x: number, z: number): number {
+  if (LAB) return LAB_FLOOR_Y; // the dev test lab (shared/lab.ts): one flat floor, same on client and server
   return withShelterPad(x, z, withPad(x, z, Math.max(duneHeight(x, z, WORLD_SEED), rockHeight(x, z))));
 }
 
