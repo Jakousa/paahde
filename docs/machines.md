@@ -190,3 +190,90 @@ pick the recommended option, say so in one line, and move on.
 - What to look at, with the URL (`?w=lab` or the jet recipe) and exact steps; what you expect to see.
 - Defaults you chose that the owner may want to change (numbers, names, odds).
 - Next step you would take.
+
+## 12. The larger picture: machines of every size, structures, and boss bodies you take apart
+
+Everything above is about **one machine** (the turbofan, size M). The program's goal is bigger: a world whose big mechanical things are a reason to go places and
+spend time. This section is the map for that, and how the pieces you build now must be shaped so the bigger ones fit. The owner's plan file has the full
+catalogue; the engineering consequences are here.
+
+### 12.1 Size classes
+
+| Class | Size | How you work it | Examples (working titles) |
+|---|---|---|---|
+| S | 0.4-1.2 m | carried home, taken apart on the disassembly table (`BENCH`, `shared/crash.ts`) | winch, valve, beacon, relay box, filter housing, hand pump |
+| M | 1.2-3 m | a site you walk around, worked in place (the turbofan, a well-head pump) | generator set, compressor, cooler unit, gearbox, robot arm |
+| L | 3-8 m, 1-3 sections | a site, sections walked between | tractor, hauler truck, combine header, pivot-irrigation span |
+| XL | 8-60 m, 3-10 sections | a structure site | pumping station, windpump tower, desalination plant, bucket-wheel excavator, crashed cargo hauler |
+| Wreck | 60-200 m, 3-10 sections | a boss wreck (12.3) | colossus, carrier, queen, worm |
+
+Rules that carry across sizes: every machine has a **seeded presence** (any module can be missing, so two of a kind differ), **proportions from a real reference**,
+**steps that each have a visible reason**, **parts that really are inside it**, and a **size range** per kind (seeded metric variation plus a few model variants:
+swap `Mod_*` nodes) so they are not twins. Bigger things are not "more steps in one list": they are **several machines** (12.2), because a layout is capped
+(the server stores a step as an index, `MAX_INDEX = 255` in `server/crash.ts`) and because a player works one place at a time (pivot, camera distance and
+work radius are per machine: today `radius: 5`, `src/world/crash.ts`).
+
+Scrap economy is the same at every size: scrap per step kind, more for finishing a module, a piece, the machine (`SCRAP_REWARD` in `shared/tables.ts`); the shell
+turns to scrap at the end (backlog item 3). Bigger machines pay by section, so a long structure keeps paying while you walk it.
+
+### 12.2 Structures: a site made of several machines
+
+A structure is **a site with several machine sections**, each an ordinary machine layout (its own glb nodes, layout, hits, parts), placed by anchors in the
+structure's own model. The id scheme already allows it (`"<site>:<0-9>"`); the engine pieces to build, in this order:
+
+1. **Sections as machines.** `machinesAt()` (`shared/crash.ts`) yields one `CrashSite` per section at its anchor (an empty named `Section_<n>` in the structure's glb gives position
+   and yaw). One structure model, many layouts; the shell can be one `Shell` for the whole thing with each section's `Mod_*` nodes in it.
+2. **Per-section work space.** Pivot, work radius and camera distance become data on the section (not constants). Walking from one section to the next ends one work session and
+   starts the other (the mode already starts and ends by distance; make the distance per section).
+3. **Cross-section requirements** (`requires`): "cut the main power bus at the shoulder before the chest plates can be unbolted". A step in section B names a step in section A in its `after`
+   (extend the id space to `<section>/<step id>`), and `shared/machineSteps.ts` plus the server check it from the shared layout, so a client cannot skip it. Always keep the puzzle
+   solvable: extend `tools/check-machines.ts` to build the whole structure and prove every step has a legal order (it already proves this per machine).
+4. **Per-kind layout versions.** Today one global `TEARDOWN_LAYOUT` resets everyone's progress whenever any machine changes. Move to a hash per kind (saved with the progress row in `machine_progress`)
+   so reworking one machine resets only that machine.
+5. **Placement and collision.** A deterministic cell grid in the style of `shared/crashsites.ts` and `shared/wrecks.ts` with its own random stream (nothing existing may move), a level by
+   distance from the base (`SiteLevel`), solid capsules from the layout's `hits` (`shared/machineBoxes.ts` already does this per machine; sections just add more), and a husk state per section
+   and per structure (the `crash_spent` pattern).
+6. **Dev placement.** Put one of each structure in the test lab (`shared/lab.ts`) so it can be reviewed without finding it.
+
+Start with one reference structure of three sections (a pumping station: pump house, tank, switch yard) before generalising; build the second only after the first is marked good.
+
+### 12.3 Boss bodies as disassembly sites (with a puzzle for the boss item)
+
+**The idea.** When a boss dies today, its model lies as a wreck for `wreckS` seconds (240-300, `BOSSES` in `shared/bosses.ts`) and then vanishes; its relic (`RELICS`:
+carrier `hive_core`, queen `queen_eye`, colossus `furnace_heart`; the worm's receiver needs all three) drops as loose loot at the death spot. The goal: **the body stays for good, shared by
+everyone in that world, and is a structure (12.2) whose sections you take apart; the relic is the last part of a puzzle inside it.**
+
+What exists to build on: the bosses' models are small rigid-part kits (`public/models/<kind>.glb`, 3-9 nodes, from `tools/blender/<kind>.py`: the carrier's four fan ducts, the colossus's
+head, chest, arms and legs, the queen's thorax, sac and leg groups, the worm's segments); death poses are pure functions of the death snapshot (`src/world/<kind>.ts`: the carrier's landing
+point and roll, the colossus's fall yaw and footprints, the queen's seeded leg pose, the worm's exposed segments); spoils come from `BOSS_SPOILS` (`shared/tables.ts`); `beaten` is a bitmask
+in the world settings; craters from footprints and falls are already terrain edits. All of it is server-owned in `server/bosses.ts` and `server/<kind>.ts`.
+
+**Build it in this order** (each step is one review gate with the owner; none changes the living bosses):
+
+1. **Persist the death pose.** On a boss's first kill (and on rematches, which do not re-drop the relic) the server stores a small record per kind in the settings or db: position, yaw and the few
+   numbers each death animation derives from (carrier landing, roll and pitch; colossus fall yaw and feet; queen position and leg seed; worm exposed segments). Send it once on join
+   (like `crashSpent`, not at 10 Hz like live bosses). Reuse the jet pattern: `shared/jetcrash.ts` plus `server/jetcrash.ts` is exactly "a permanent shared wreck kept in the world's database".
+2. **Draw the wreck statically** in that pose from the same glb (a function of the record, no animation), with a dev placement so each wreck can be reviewed without killing the boss.
+3. **Cut it into sections along its node boundaries** (colossus: head, chest and core, each arm, each leg, pelvis; carrier: four fan ducts and hull bays; queen: thorax and eyes, sac halves, leg groups;
+   worm: head and a few segments) and give each section a normal layout (a Blender script per boss under `tools/blender/machines/`, same kit and hardware). Sections are machines (12.2); give
+   each a seeded presence and parts so the same wreck is not identical in two worlds (the world seed already exists in `shared/world.ts`).
+4. **The puzzle.** The relic stops being loose loot and becomes the **last part of the wreck's `requires` chain**: for example on the colossus, the chest plates need the shoulder power bus cut (arm section),
+   the core housing needs both plates off and its coolant line drained, and the furnace heart sits in the core behind a seized mounting that needs the grinder. Each requirement is a normal step or part, so the
+   existing mode, scrap and sounds work unchanged. Two players for the biggest lifts is welcome (`players` on a step already exists). Keep each puzzle to a handful of requirements: the owner fears complexity.
+5. **Rules around it.** The worm is the de-facto last boss (its receiver needs the three relics): **confirm with the owner** whether the worm also gets a wreck and a relic puzzle. A rematch
+   kill must not respawn the relic. When a wreck is fully stripped it becomes a husk (the `crash_spent` pattern), never removed.
+6. **Collision and findability.** Solid capsules from the generated layout (huge walkable ruins: the player must be able to climb on and into them), craters already exist, and give a wreck the same
+   beacon, smoke and locator as other sites (backlog item 1), since these are the destinations of the whole game.
+
+**Why this shape.** The boss kills stay the climax of play; the wreck turns the aftermath into a place worth a long expedition with several people, and the item that leads to the next boss is earned by
+understanding the machine, not by a drop table. Everything an agent builds for ordinary machines (kit, hardware, shells, pieces, scrap) is reused; the new engine work is only sections (12.2), persistence (step 1)
+and the cross-section requirements.
+
+### 12.4 What an agent should do first, and when to involve the owner
+
+- Finish the single-machine program (sections 8 and 9) until the owner has marked **three** different kinds good (suggested: a small carried one, the pump, and one new large one): that proves the kit
+  and the review loop. Then do the structure engine (12.2) with one reference structure, then the boss-wreck engine (12.3) with the carrier first (it is the simplest body: four ducts and a hull),
+  then the colossus and the queen, then the worm.
+- The owner's steering points in this phase: the **catalogue** (which structures exist in this world and what they are for), **the puzzle for each boss item** (they will want a say in how the
+  relic is held), the **scale of rewards** (how much scrap and which tiers a structure or a wreck gives), and **whether a boss wreck can be stripped to nothing** or always leaves something.
+- Keep every step of this reviewable in the test lab first; a structure or a wreck that can only be reached by finding it in the desert will not get reviewed.
