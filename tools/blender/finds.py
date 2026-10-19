@@ -343,11 +343,11 @@ def build_grinder(mb, rng):
     dz = z + 0.07
     mb.cyl(0.018, 0.018, 0.012, 12, (hx, 0, dz - 0.004), 'plastic_black')
     # Disc, flange and nut, a printed ring, and the half guard over the back of it.
-    mb.cyl(0.056, 0.056, 0.004, 28, (hx + 0.045, 0, dz + 0.006), 'disc')
-    mb.cyl(0.034, 0.034, 0.0012, 20, (hx + 0.045, 0, dz + 0.0085), 'accent_orange')
-    mb.cyl(0.016, 0.016, 0.006, 8, (hx + 0.045, 0, dz + 0.011), 'steel')
-    mb.lathe([(0.062, 0.0), (0.062, 0.022), (0.059, 0.022), (0.059, 0.0)], 16, (hx + 0.045, 0, dz - 0.002),
-             'steel_dull', arc=math.pi, phase=D90 + math.pi / 4)
+    mb.cyl(0.056, 0.056, 0.004, 28, (hx - 0.045, 0, dz + 0.006), 'disc')
+    mb.cyl(0.034, 0.034, 0.0012, 20, (hx - 0.045, 0, dz + 0.0085), 'accent_orange')
+    mb.cyl(0.016, 0.016, 0.006, 8, (hx - 0.045, 0, dz + 0.011), 'steel')
+    mb.lathe([(0.062, 0.0), (0.062, 0.022), (0.059, 0.022), (0.059, 0.0)], 16, (hx - 0.045, 0, dz - 0.002),
+             'steel_dull', arc=math.pi, phase=-D90 - math.pi / 4)
     # Side handle, lying out to -Y with its knob, a rubber grip near the end.
     it.wire(mb, [(hx, -0.028, z - 0.004), (hx - 0.002, -0.07, z - 0.002), (hx - 0.004, -0.115, z + 0.004)], 0.013, 8,
             'plastic_black')
