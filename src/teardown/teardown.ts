@@ -392,6 +392,7 @@ export class TeardownView {
     if (h && h.distance > reach) return null;
     let hit: Target | null = null;
     for (let o: THREE.Object3D | null = h?.object ?? null; o && !hit; o = o.parent) hit = (o.userData.target as Target | undefined) ?? null;
+    if (hit?.type === 'step' && hit.step.done) hit = null; // (a part aimed at as a whole stays a target after it has come off)
     if (hit?.type === 'step' || hit?.type === 'part') return hit;
     // A freed part counts when the pointer is on it or its tag, even where the machine hides it.
     const j = this.site.junk;
@@ -691,6 +692,15 @@ export class TeardownView {
 
   // ---- tearing down ----------------------------------------------------------------------------------------
 
+  /** A step whose part moves as it goes (a pull, a prised shell): put it `f` of the way along its slide. */
+  private slide(s: Step, f: number) {
+    const sl = s.slide;
+    if (!sl) return;
+    sl.obj.position.addScaledVector(sl.offset, -1);
+    sl.offset.copy(sl.dir).multiplyScalar(Math.min(f, 1) * sl.dist);
+    sl.obj.position.add(sl.offset);
+  }
+
   /** Show how far a step has got. */
   private show(s: Step) {
     const f = s.progress / s.need;
@@ -707,8 +717,10 @@ export class TeardownView {
         s.spin.rotation.z = Math.min(f, 1) * 1.3;
         break;
       case 'pry':
-      case 'mash':
         s.spin.rotation.x = -Math.min(f, 1) * 0.9;
+        break;
+      case 'mash':
+        this.slide(s, f); // the part lifts away a little with every press
         break;
       case 'grind': {
         // the spark sits at the cut's end
@@ -719,13 +731,7 @@ export class TeardownView {
       }
       case 'lift':
         s.spin.position.y = Math.min(f, 1) * 0.12;
-        if (s.slide) {
-          // the module parts from the machine as it is pulled
-          const sl = s.slide, k = Math.min(f, 1) * sl.dist;
-          sl.obj.position.addScaledVector(sl.offset, -1);
-          sl.offset.copy(sl.dir).multiplyScalar(k);
-          sl.obj.position.add(sl.offset);
-        }
+        this.slide(s, f); // the module parts from the machine as it is pulled
         break;
       case 'wire':
         if (s.mat) {

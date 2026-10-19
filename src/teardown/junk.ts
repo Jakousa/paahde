@@ -310,8 +310,8 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
     const hot = u.top ? MARKER_TOP_HOT_MAT : MARKER_HOT_MAT, cold = u.top ? MARKER_TOP_MAT : MARKER_MAT;
     m.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = lit ? hot : cold; });
   }
-  if (step.kind === 'grind') {
-    // the line to follow glows; it is drawn in the step's own frame, so it is not scaled
+  if (step.kind === 'grind' || step.kind === 'mash') {
+    // the line to follow, or the part's edge, glows; it is drawn in the step's own frame, so it is not scaled
     m.scale.setScalar(1);
     return;
   }
@@ -324,7 +324,7 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
       p.scale.setScalar(1 + 0.7 * Math.pow(Math.max(0, Math.sin(t * 7 - i * 0.9)), 4));
     });
   } else if (u.turn) u.turn.rotation.z = t * 3.2;
-  else if (u.pull) u.pull.position.z = (step.kind === 'mash' ? Math.pow(Math.max(0, Math.sin(t * 15)), 2) : tap) * 0.1;
+  else if (u.pull) u.pull.position.z = tap * 0.1;
   else if (u.up) u.up.position.y = tap * 0.08;
   else if (u.ends) {
     // Each end of the wire that is still holding: the marker faces the camera, so the shake reads left-right on screen.
@@ -534,12 +534,27 @@ export class Kit {
     return this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.22, 8, 6), seconds, after, 0.1, undefined, players);
   }
   /** A tab to mash: press the use button on it again and again (the progress drains away between presses). */
-  mash(label: string, pos: V, nrm: V, after: Step[], presses: number): Step {
-    const { g, spin } = this.stepGroup(pos, nrm);
-    this.mesh(new THREE.BoxGeometry(0.3, 0.04, 0.2), 'dark', 0, 0.02, 0, g);
-    spin.position.set(0, 0.04, 0);
-    this.mesh(new THREE.BoxGeometry(0.28, 0.03, 0.26), 'trim', 0, 0.015, 0.13, spin);
-    return this.reg('mash', label, g, spin, new THREE.BoxGeometry(0.4, 0.25, 0.4), presses, after, 0.04);
+  mash(label: string, outline: V[], after: Step[], presses: number, part: THREE.Object3D, slide: { dir: THREE.Vector3; dist: number }): Step {
+    // No tab: the part itself is what is aimed at (`part`, a module's group), and its edge glows along `outline`. It lifts
+    // away a little with every press.
+    const p0 = new THREE.Vector3(...outline[0]);
+    const g = new THREE.Group();
+    g.position.copy(p0);
+    const spin = new THREE.Group();
+    g.add(spin);
+    const curve = new THREE.CatmullRomCurve3(outline.map((p) => new THREE.Vector3(...p).sub(p0)), true);
+    const step = this.reg('mash', label, g, spin, new THREE.SphereGeometry(0.05, 6, 4), presses, after, 0.02);
+    step.hit.position.y = 0;
+    step.marker.removeFromParent();
+    const line = new THREE.Group();
+    line.userData.ignoreBounds = true;
+    markerMesh(line, new THREE.TubeGeometry(curve, 96, 0.012, 5, true));
+    line.visible = false;
+    g.add(line);
+    step.marker = line;
+    step.slide = { obj: part, dir: slide.dir, dist: slide.dist, offset: new THREE.Vector3() };
+    part.userData.target = { type: 'step', step } satisfies Target;
+    return step;
   }
   /** A seam to grind open: follow the line `pts` (the machine's frame) with the grinder. A spark runs along as it is cut. */
   grind(label: string, pts: V[], after: Step[]): Step {

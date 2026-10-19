@@ -406,6 +406,16 @@ class Module:
         self.steps.append(d)
         return sid
 
+    def mash(self, label, outline, after=(), need=10):
+        """A part to be prised away by mashing the use button on it: its whole edge (`outline`, a closed path round the part) glows."""
+        self.n += 1
+        sid = f'{self.id}.{label}{self.n}'
+        d = {'id': sid, 'kind': 'mash', 'label': label, 'pts': [self._tx(p) for p in outline], 'after': list(after), 'need': need}
+        if self.in_inner:
+            d['inner'] = True
+        self.steps.append(d)
+        return sid
+
     def grind(self, label, pts, after=()):
         """A seam to be ground open with the grinder: followed along `pts`."""
         self.n += 1

@@ -214,11 +214,21 @@ def build(pose, rnd_seed=11):
             crush((a if mod == 'a' else b).mb, polar(math.radians(phi), prof_r(prof, (z0 + z1) / 2) + 0.01, (z0 + z1) / 2 + rad), 0.4, 0.07)
         for phi in (0.0, PI):
             b.mb.sweep(seam_pts(prof, phi, z0 + 0.01, z1 - 0.01, off=0.002), 0.005, 'Dark')
-        zm = (z0 + z1) / 2
+        def outline(p0, p1):
+            """A closed path round the edge of a half: along one seam, across the rear, back along the other seam, across the front."""
+            n = 10
+            zz = lambda i: (z0 + 0.03) + (z1 - z0 - 0.06) * i / n
+            ph = lambda i: p0 + (p1 - p0) * i / n
+            pts = [polar(p0, prof_r(prof, zz(i)) + 0.012, zz(i)) for i in range(n + 1)]
+            pts += [polar(ph(i), prof_r(prof, zz(n)) + 0.012, zz(n)) for i in range(1, n)]
+            pts += [polar(p1, prof_r(prof, zz(n - i)) + 0.012, zz(n - i)) for i in range(n + 1)]
+            pts += [polar(ph(n - i), prof_r(prof, zz(0)) + 0.012, zz(0)) for i in range(1, n)]
+            return pts
+
         g_top = b.grind('seam', seam_pts(prof, 0.0, z0 + 0.02, z1 - 0.02), after=after_b)
         g_bot = b.grind('seam', seam_pts(prof, PI, z0 + 0.02, z1 - 0.02), after=after_b)
-        b.step('mash', 'pryOpen', polar(PI * 0.8, prof_r(prof, zm - 0.08) + 0.01, zm - 0.08), radial(PI * 0.8), after=[g_top, g_bot], need=10)
-        a.step('mash', 'pryOpen', polar(PI * 1.2, prof_r(prof, zm + 0.08) + 0.01, zm + 0.08), radial(PI * 1.2), after=[g_top, g_bot, *after_a], need=10)
+        b.mash('pryOpen', outline(0.0, PI), after=[g_top, g_bot], need=10)
+        a.mash('pryOpen', outline(PI, 2 * PI), after=[g_top, g_bot, *after_a], need=10)
         return a, b
 
     FAN = [(0.90, 0.52), (0.925, 0.75), (0.915, 0.94)]
