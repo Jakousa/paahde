@@ -34,8 +34,8 @@ function load(): GraphicsPrefs {
     const num = (k: 'resScale' | 'minRes' | 'shadowDistance' | 'cascades' | 'shadowMap', lo: number, hi: number) => {
       if (typeof o[k] === 'number' && Number.isFinite(o[k])) g[k] = Math.min(Math.max(o[k], lo), hi);
     };
-    num('resScale', 0.25, 2);
-    num('minRes', 0.25, 1);
+    num('resScale', 0.01, 2);
+    num('minRes', 0.01, 1);
     num('shadowDistance', SHADOW_DISTANCE_RANGE[0], SHADOW_DISTANCE_RANGE[1]);
     num('cascades', 1, 4);
     if ((FPS_LIMITS as readonly number[]).includes(o.fpsLimit)) g.fpsLimit = o.fpsLimit;

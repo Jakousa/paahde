@@ -5,6 +5,7 @@
 // the browser lets it, after the first click or key.
 import { audio } from './audio';
 import { TEXT } from '../shared/text.ts';
+import { MENU_CSS, bindOptions, optionsHtml } from './options';
 
 const css = `
 #landing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; color: #e8d2ae;
@@ -47,10 +48,12 @@ export function landing(why?: 'over' | 'missing') {
   el.id = 'landing';
   if (why) el.className = 'over';
   const line = why === 'over' ? TEXT.landing.gameOver : why === 'missing' ? TEXT.landing.noSuchWorld : '';
-  el.innerHTML = `${why ? '' : '<div class="bg"></div><div class="shade"></div>'}<div class="panel"><h1>${TEXT.game.name}</h1>${line ? `<p>${line}</p>` : ''}<button>${TEXT.landing.start}</button></div>`;
+  el.innerHTML = `${why ? '' : '<div class="bg"></div><div class="shade"></div>'}<div class="panel"><h1>${TEXT.game.name}</h1>${line ? `<p>${line}</p>` : ''}<button class="start">${TEXT.landing.start}</button><button class="optionsBtn">${TEXT.menu.options}</button></div>`;
   document.body.append(el);
   if (!why) music(el);
-  const button = el.querySelector('button')!;
+  const button = el.querySelector<HTMLButtonElement>('.start')!;
+  if (!why) el.querySelector('.optionsBtn')!.addEventListener('click', options);
+  else el.querySelector('.optionsBtn')!.remove();
   button.addEventListener('click', async () => {
     button.disabled = true;
     try {
@@ -62,6 +65,26 @@ export function landing(why?: 'over' | 'missing') {
       button.disabled = false;
     }
   });
+}
+
+/** The options over the main menu, to set up before joining: the Esc menu's own view (src/options.ts). */
+function options() {
+  if (!document.getElementById('menuStyle')) {
+    const style = document.createElement('style');
+    style.id = 'menuStyle';
+    style.textContent = MENU_CSS;
+    document.head.appendChild(style);
+  }
+  const menu = document.createElement('div');
+  menu.id = 'menu';
+  menu.className = 'open';
+  menu.style.zIndex = '50';
+  menu.innerHTML = `<div class="panel opts">${optionsHtml()}</div>`;
+  document.body.append(menu);
+  bindOptions(menu, {});
+  const close = () => menu.remove();
+  menu.querySelector('.optBack')!.addEventListener('click', close);
+  menu.addEventListener('pointerdown', (e) => e.target === menu && close());
 }
 
 /** "Desert ambience" (src/music.ts DESERT_AMBIENCE: exactly 112 s, loops whole) through the music slider,
@@ -98,14 +121,14 @@ function music(el: HTMLElement) {
 /** The new world's link in place of the button: copy it to share, Join to go there yourself. */
 function shareLink(el: HTMLElement, url: string) {
   const p = el.querySelector('p');
-  el.querySelector('.panel > button')!.remove();
+  el.querySelector('.start')!.remove();
   p?.remove();
   const row = document.createElement('div');
   row.className = 'link';
   row.innerHTML = `<input readonly><button>${TEXT.landing.copy}</button>`;
   const join = document.createElement('button');
   join.textContent = TEXT.landing.join;
-  el.querySelector('.panel')!.append(row, join);
+  el.querySelector('.optionsBtn')!.before(row, join);
   const input = row.querySelector('input')!;
   const copy = row.querySelector('button')!;
   input.value = url;
