@@ -314,6 +314,11 @@ export class Net {
     if (this.connected) this.send({ t: 'debugGear', tier });
   }
 
+  /** Debug menu: no heat build-up for this player. */
+  debugHeat(off: boolean) {
+    if (this.connected) this.send({ t: 'debugHeat', off });
+  }
+
   /** Debug menu: a killing blow, to try the shield plate on. */
   debugHit() {
     if (this.connected) this.send({ t: 'debugHit' });

@@ -201,7 +201,8 @@ machines.bench.onReady = () => {
 };
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
   (mode) => trophies.show(mode),
-  (all) => (all ? net.yardReset() : net.yardReset(machines.nearestYard(net.me.x, net.me.z)?.site.id)));
+  (all) => (all ? net.yardReset() : net.yardReset(machines.nearestYard(net.me.x, net.me.z)?.site.id)),
+  (off) => net.debugHeat(off));
 new Chat(net);
 const names = nameGate(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).

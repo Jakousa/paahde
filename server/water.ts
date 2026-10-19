@@ -35,6 +35,7 @@ export type Heat = {
   lastDrink: number;
   lastFill: number;
   diedAt: number;
+  off: boolean; // debug menu: no heat at all
 };
 
 export function newHeat(heat = 0, sips = 0, maxSips = 0): Heat {
@@ -43,7 +44,7 @@ export function newHeat(heat = 0, sips = 0, maxSips = 0): Heat {
   return {
     heat: h, sips: s, maxSips, rising: false, temp: 20, sun: 0, shade: true, shadeAt: -Infinity,
     sentTemp: 20, sentShade: true,
-    sentAt: 0, lastDrink: 0, lastFill: 0, diedAt: -Infinity,
+    sentAt: 0, lastDrink: 0, lastFill: 0, diedAt: -Infinity, off: false,
   };
 }
 
@@ -76,7 +77,7 @@ export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod
   t.temp = feltTemp(tod, t.sun, inside) + (inside ? 0 : STORM_TEMP * storm);
   if (now - t.diedAt < RESPAWN_GRACE_MS) return null;
   const sprinting = s.sliding; // speed slides are the exertion now (there is no sprint)
-  const rate = heatPerSecond(t.temp, sprinting);
+  const rate = t.off ? Math.min(0, heatPerSecond(t.temp, sprinting)) : heatPerSecond(t.temp, sprinting);
   const rising = rate > 0;
   const before = t.heat;
   t.heat = Math.min(HEAT_MAX, Math.max(0, t.heat + rate * dt));
@@ -103,7 +104,7 @@ export function setBottle(t: Heat, max: number): boolean {
 
 /** A crawler's bite (shared/guardians.ts): `heat` more on the meter. True if that was heatstroke. */
 export function bite(t: Heat, heat: number): boolean {
-  if (Date.now() - t.diedAt < RESPAWN_GRACE_MS) return false;
+  if (t.off || Date.now() - t.diedAt < RESPAWN_GRACE_MS) return false;
   t.heat = Math.min(HEAT_MAX, t.heat + heat);
   t.sentAt = Date.now();
   return t.heat >= HEAT_MAX;

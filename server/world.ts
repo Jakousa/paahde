@@ -199,6 +199,12 @@ wss.on('connection', (ws) => {
     if (msg.t === 'drop' && p) return onDrop(p, msg.box, msg.slot);
     if (msg.t === 'debugGear' && p) return onDebugGear(p, msg.tier);
     if (msg.t === 'debugHit' && p) return die(p, 'laser', [0, 3, 6]);
+    if (msg.t === 'debugHeat' && p) {
+      p.heat.off = msg.off === true;
+      if (p.heat.off) p.heat.heat = 0;
+      send(p.ws, waterMsg(p.heat));
+      return;
+    }
     if (msg.t === 'chat' && p) return onChat(p, msg.text);
     if (msg.t === 'name' && p) return onName(p, msg.name);
     if (msg.t === 'ready' && p) return onReady(p);
