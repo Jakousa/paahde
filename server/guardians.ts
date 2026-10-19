@@ -31,7 +31,7 @@ export const TICK_HZ = 10;
 export const SEND_R = 1200;
 const CRAWLER_SEND_R = 300;
 /** How many guardians roam guardian ground, starting spread evenly over its sites from nearest the base to farthest. */
-const GUARDIANS = 4;
+const GUARDIANS = 6;
 /** Walkers never come this close (m) to the base: it's safe ground. */
 const BASE_KEEP_OUT = 200;
 /** Patrol waypoints lie this far (m) from the site's centre, by kind. */
@@ -86,7 +86,7 @@ const ROAM_BASE_KEEP_OUT = 250;
 /** A dead walker's wreck lies where it fell this long (ms), by kind; a dead guardian is replaced after GUARDIAN_BACK_MS
  *  by a new one at a site far from where it died. */
 const WRECK_MS: Record<Kind, number> = { [GUARDIAN]: WRECK_S[GUARDIAN] * 1000, [CRAWLER]: WRECK_S[CRAWLER] * 1000 };
-const GUARDIAN_BACK_MS = 8 * 60_000;
+const GUARDIAN_BACK_MS = 6 * 60_000;
 const GUARDIAN_BACK_FAR = 900;
 /** A rifle shot counts against a walker if it passes and ends within this far (m, × scale) of the body's centre. */
 const SHOT_SLACK = REST_R + 6;

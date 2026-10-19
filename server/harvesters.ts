@@ -18,8 +18,8 @@ import type { ServerMsg } from '../shared/protocol.ts';
 import type { BoltEvent, GuardianServer } from './guardians.ts';
 
 /** Time between one harvester setting off and the next being sent (ms); the first comes sooner. */
-const GAP_MIN_MS = 10 * 60_000;
-const GAP_MAX_MS = 25 * 60_000;
+const GAP_MIN_MS = 7 * 60_000;
+const GAP_MAX_MS = 18 * 60_000;
 const MAX_OUT = 1;
 /** Its route passes this near (m) the player it was picked for, after this much route (m) to get there, and goes on
  *  for AFTER m. */

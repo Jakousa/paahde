@@ -451,7 +451,7 @@ A new player starts with nothing, and the crash sites now lead them on in three 
   calls in guardians within `ALERT_R` and missiles from guardians within `MISSILE_R` (shared/missiles.ts), which
   reach in from guardian ground. The large machine is mostly the pump housing (motor, bearing, valve).
   The motorcycle, shovel, storm detector, wristpad and metal detector are found here.
-- **Guardian ground (level 2):** the 4 guardians roam only these sites, and a drone's searchlight brings them.
+- **Guardian ground (level 2):** the 6 guardians roam only these sites, and a drone's searchlight brings them.
   The large machines are mostly jet engines, and their parts roll with `LEVEL_TIERS` (much more Quality and Space-grade).
   Loose Quality/Space-grade parts lie around (`RARE_FINDS`). The warp core salvage wreck only lies out here.
 
@@ -1409,7 +1409,7 @@ thrown with left mouse / E (`src/throw.ts`, `shared/throw.ts`).
 A second flying machine, by day and by night: a big unmanned plane (18 m span, `shared/jets.ts`) passing high
 (110–180 m) and fast (60–90 m/s). No lights, no searchlight, no spotting; it only flies over, but it can be shot.
 
-- **Flights** (`server/jets.ts`): every 2.5–6 min (at most 2 in the air) one is sent past a random player: a straight
+- **Flights** (`server/jets.ts`): every 4–10 min (at most 2 in the air) one is sent past a random player: a straight
   pass within 350 m of them, or (40%) an arc of 0.75–2.5 laps round a 700–1400 m circle whose ring runs near them.
   Each flight is a run in, an arc and a run out, entering and leaving 3 km out. Like the sandstorms the list goes out
   on join and on change ('jets'), and both sides compute the position from it and the server clock (`jetAt`), so
@@ -1587,7 +1587,7 @@ its stacks; slab-sided rust-black iron on four armoured track units, a toothed c
 hopper, a sieve tower with a slit eye under a heavy brow, a turret on top. It slowly grinds over the dunes sifting the
 sand for ore.
 
-- **Routes** (`server/harvesters.ts`): every 10–25 min (first after 3–8) one sets off on a ~4 km route passing
+- **Routes** (`server/harvesters.ts`): every 7–18 min (first after 3–8) one sets off on a ~4 km route passing
   160–420 m from a random player outside, 2.2 m/s (about half an hour across). The route wanders and steers round
   rock, the base, shelters, crash sites and slopes steeper than ~24°. Like the jets, only the route and the start go
   out ('harvesters'); the pose is math on the server clock: the front and rear axles ride the route 9 m either side,

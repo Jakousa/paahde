@@ -6,8 +6,8 @@ import { baseHeight } from '../shared/terrain.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 
 /** Time between one flight's start and the next (ms). */
-const GAP_MIN_MS = 150_000;
-const GAP_MAX_MS = 6 * 60_000;
+const GAP_MIN_MS = 4 * 60_000;
+const GAP_MAX_MS = 10 * 60_000;
 const MAX_JETS = 2;
 /** The pass lands within this far (m) of the player it was picked for; a circle's ring passes about as near. */
 const OFFSET = 350;
