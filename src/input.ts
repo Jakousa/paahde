@@ -5,7 +5,8 @@ const keys = new Set<string>();
 let pickupPressed = false;
 /** slot: the selected hotbar slot (-1 none).
  *  frozen: the disassembly mode (src/teardown) owns the keyboard and mouse, so the player stands still. */
-export const tools = { frozen: false, slot: -1, bike: false };
+export const tools = { frozen: false, slot: -1, bike: false, engaged: false };
+/* engaged: the crosshair is on something the disassembly (src/teardown) works, so the use button is its, not the hand's. */
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 /** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
 export const ui = { inventoryOpen: false, debugFreed: false };
@@ -55,6 +56,18 @@ addEventListener('mouseup', (e) => {
   keys.delete(`Mouse${e.button}`);
 });
 addEventListener('contextmenu', (e) => e.preventDefault());
+// Mouse travel since it was last asked for, for what is done with the mouse itself (the disassembly's gestures).
+let mdx = 0, mdy = 0;
+addEventListener('mousemove', (e) => {
+  if (!document.pointerLockElement) return;
+  mdx += e.movementX;
+  mdy += e.movementY;
+});
+export function takeMouse(): [number, number] {
+  const r: [number, number] = [mdx, mdy];
+  mdx = mdy = 0;
+  return r;
+}
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement) {
     keys.clear();
@@ -104,7 +117,7 @@ export function readInput(): number {
 
 /** Use button (left mouse or E) held down: drinks while the canteen is held, fires a gun, throws scrap... */
 export function useHeld(): boolean {
-  return !tools.frozen && actionHeld('use');
+  return !tools.frozen && !tools.engaged && actionHeld('use');
 }
 
 /** Any use button held (left/right mouse, E, Q or X): raises the spyglass while it's out. */

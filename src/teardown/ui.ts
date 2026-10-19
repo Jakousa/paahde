@@ -21,8 +21,7 @@ const RING_R = 30;
 const RING_C = 2 * Math.PI * RING_R;
 
 const css = `
-body.teardown #crosshair, body.teardown #pickup { display: none !important; }
-#tdOverlay { position: fixed; inset: 0; z-index: 5; display: none; touch-action: none; user-select: none;
+#tdOverlay { position: fixed; inset: 0; z-index: 5; display: none; pointer-events: none; touch-action: none; user-select: none;
   -webkit-user-select: none; font: 12px var(--mono); color: #fff4e4; }
 #tdOverlay .panel { position: absolute; background: rgba(28, 15, 7, 0.88); border-radius: 8px;
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.35); }
@@ -100,7 +99,7 @@ export class TeardownUi {
   private scrapEl: HTMLButtonElement;
   private sureTimer = 0;
 
-  constructor(onLeave: () => void, onScrap: () => void) {
+  constructor() {
     const style = document.createElement('style');
     style.textContent = css;
     document.head.append(style);
@@ -123,28 +122,15 @@ export class TeardownUi {
     this.tagsEl = o.querySelector('#tdTags')!;
     this.msgEl = o.querySelector('#tdMsg')!;
     this.nextEl = this.top.querySelector('.next')!;
-    this.top.querySelector('.leave')!.addEventListener('click', onLeave);
     // Scrapping throws the machine away: the first click asks, a second within a few seconds does it.
     this.scrapEl = this.top.querySelector('.scrap')!;
-    this.scrapEl.addEventListener('click', () => {
-      if (this.scrapEl.classList.contains('sure')) {
-        this.setScrap(true);
-        onScrap();
-        return;
-      }
-      this.scrapEl.classList.add('sure');
-      this.scrapEl.textContent = TEXT.teardown.scrapSure;
-      clearTimeout(this.sureTimer);
-      this.sureTimer = window.setTimeout(() => this.setScrap(true), 3000);
-    });
     this.setPhase('off');
   }
 
   /** 'walk': the character is walking up, nothing shows yet. 'work': all of it. */
-  setPhase(phase: 'off' | 'walk' | 'work') {
+  setPhase(phase: 'off' | 'work') {
     this.overlay.style.display = phase === 'off' ? 'none' : 'block';
-    document.body.classList.toggle('teardown', phase !== 'off');
-    this.top.style.display = phase === 'work' ? '' : 'none';
+    this.top.style.display = 'none'; // the machine and the world say how far along it is
     if (phase !== 'work') {
       this.tip(null);
       this.ring(null);

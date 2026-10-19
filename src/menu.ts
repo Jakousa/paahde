@@ -2,6 +2,7 @@
 // panel took it. Resume (or a click on the backdrop) goes back in. Settings: volume and music volume (src/audio.ts) and
 // the stats line in the top-left corner; below them the controls, the build/connection line and credits.
 // The game keeps running behind it: it's multiplayer, nothing pauses.
+import { setMarkers, tdPrefs } from './teardown/prefs.ts';
 import { WORLD_ID } from '../shared/world.ts';
 import { audio } from './audio';
 import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
@@ -93,6 +94,7 @@ export class Menu {
 <label class="row"><span>${TEXT.menu.music}</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label>
 <label class="row"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
 <label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label>
+<label class="row"><span>${TEXT.menu.showGuides}</span><input class="guides" type="checkbox"></label>
 <button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>
 <button class="ctl" style="margin-top:8px">${TEXT.menu.controls}</button>
@@ -156,10 +158,13 @@ export class Menu {
         localStorage.setItem(STATS_KEY, this.stats ? '1' : '0');
       } catch {}
     });
+    const guides = this.el.querySelector<HTMLInputElement>('.guides')!;
+    guides.checked = tdPrefs.markers;
+    guides.addEventListener('change', () => setMarkers(guides.checked));
     this.bindControls();
     this.el.querySelector('.mini')!.addEventListener('click', () => this.playMinigame());
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
-    for (const input of [vol, music, aoEl, stats]) input.addEventListener('change', () => input.blur());
+    for (const input of [vol, music, aoEl, stats, guides]) input.addEventListener('change', () => input.blur());
 
     const fs = this.el.querySelector<HTMLButtonElement>('.fs')!;
     const showFs = () => (fs.textContent = document.fullscreenElement ? TEXT.menu.exitFullscreen : TEXT.menu.enterFullscreen);

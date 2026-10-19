@@ -1,22 +1,19 @@
-// Disassembly mode. At a machine site you press F: the character walks up to a set distance, the normal controls
-// give way to the disassembly ones, and the machine in front of you comes apart right there in the world.
-//   Left mouse   on a step: work it (click screws and clips, circle the pointer around big bolts, shake wires
-//                loose at both ends, drag pry tabs away, hold a lifting eye: heavy things need two players holding
-//                together). On a freed part: take it (it goes to the bag). Anywhere else: drag to look around.
-//   Middle mouse drag: look around.
-//   Right mouse drag: turn the machine over (a small one on the table; trackball centred on it).
-//   W / S step closer and further, A / D walk around the machine (the table too); walk too far and the mode ends.
-// Steps sit on every face, so a small machine has to be turned over and around. Large machines are too heavy to
-// turn or move: you walk around them instead, and none of their steps faces down. They stay where they
-// lie and are worked on by everyone near them through a shared session (SiteLink, server/crash.ts); small ones
-// are carried home and taken apart on the disassembly table, which you walk around too and turn the machine on. Loose-piece
-// physics is plain frame-time maths: it is only cosmetic, nothing here moves players (the walk-up goes through
-// the normal input path).
+// Disassembly mode. Near a machine site (or at the table) the machine shows what can be worked, and everything else is
+// normal play: you walk, look and use your hands as usual. The crosshair is the pointer, and the mouse itself does the
+// gestures, so the view shakes while you shake a cable loose. The mode starts by itself when you come close and ends
+// when you walk far enough away.
+//   Use button (left mouse / E) on a step: work it (click screws and clips, circle the mouse for big bolts, shake wires
+//                loose at both ends, drag pry tabs away, hold a pull). On a freed part: take it (it goes to the bag).
+//   Right mouse  (the table only) turn the machine over with the mouse.
+// Steps sit on every face, so a small machine has to be turned over; large machines you walk around, and none of
+// their steps faces down. Big machines stay where they lie and are worked on by everyone near them through a shared
+// session (SiteLink, server/crash.ts); small ones are carried home and taken apart on the disassembly table. Loose-piece
+// physics is plain frame-time maths: it is only cosmetic.
 import * as THREE from 'three/webgpu';
-import { BACK, FORWARD, LEFT, RIGHT } from '../../shared/sim.ts';
 import { type JunkKind, type PartId, type Tier } from '../../shared/salvage.ts';
-import { capture, actionHeld, takePickup, tools, ui } from '../input.ts';
+import { actionHeld, takeMouse, tools, ui } from '../input.ts';
 import { isBound } from '../bindings.ts';
+import { tdPrefs } from './prefs.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { Rope } from './rope.ts';
 import { animateMarker, lowestOffset, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
@@ -92,35 +89,29 @@ interface Pending {
 }
 
 const GRAVITY = 16;
-/** Distance from the machine at which you work. */
-const STAND = 3.2;
-const WALK_TIMEOUT = 6;
-/** Closest you can step to a machine (m); further than STAND + LEAVE_MARGIN ends the mode. */
-const MIN_DIST = 1.3;
-const LEAVE_MARGIN = 3.5;
-/** Radians per pixel of a look-around drag. */
-const LOOK_SENS = 0.003;
+/** Seconds of holding F at the table to scrap the machine. */
+const SCRAP_HOLD = 1.1;
+/** How far from the machine's middle the mode starts for a big machine and stops (m); the table's stops farther out. */
+const LEAVE = 8;
+/** What can be worked: within this distance (m) of the eye. */
+const REACH = 4.6;
 /** A wire comes loose at an end after this many swings of the shake there (a swing: a stroke of at least SWING_PX that
  *  the pointer then turns back from), the pointer within SHAKE_REACH px of that end on screen. */
 const SWINGS = 6;
 const SWING_PX = 16;
-const SHAKE_REACH = 130;
 /** Pointer travel for one decisive pry, in pixels. */
 const PRY_PX = 110;
-/** Pointer travel (px) before a left press on the machine becomes a turn instead of a click. */
-const DRAG_PX = 4;
 /** How far above a freed part its tag sits (machine units). */
 const TAG_UP = 0.45;
 /** ?debug lets one player do two-player lifts, for testing. */
 const SOLO = new URLSearchParams(location.search).has('debug');
 
-type Phase = 'idle' | 'walk' | 'work';
+type Phase = 'idle' | 'work';
 
 export class TeardownView {
   private ui: TeardownUi;
   private phase: Phase = 'idle';
   private site: WorkSite | null = null;
-  private walkFor = 0;
   private restY = 0;
   private loose: Loose[] = [];
   private raycaster = new THREE.Raycaster();
@@ -128,33 +119,21 @@ export class TeardownView {
   private pulse = 0;
   private announced = new Set<Slot>();
   private home = new THREE.Vector3();
-  /** The camera's yaw / pitch (src/camera.ts), seen from drive(); middle-drag turns it directly. */
-  private look: { yaw: number; pitch: number } | null = null;
-  /** How far you have looked away from the machine, added to the easing target so the view stays there. */
-  private lookYaw = 0;
-  private lookPitch = 0;
-  /** The distance to hold while strafing. */
-  private workDist = 0;
-  private farWarned = false;
   private pending = new Map<number, Pending>();
   /** Every answer to a part we took (the toast and fly-to-bag are drawn here already). */
   onTake?: (r: TakeResult) => void;
 
-  /** What is under the pointer, and where the pointer is (client px; NaN when off the overlay). */
+  /** What the crosshair is on. */
   private hover: Target | null = null;
-  private px = NaN;
-  private py = NaN;
   private nextAt = 0;
   /** Markers drawn highlighted this frame (the hovered step, or what blocks the hovered thing). */
   private lit = new Set<Step>();
+  private wasDown = false;
+  /** Seconds the interact key has been held at the table (a long hold scraps the machine). */
+  private scrapHold = 0;
 
-  /** Left-button interaction with a step. */
-  private act: { step: Step; x0: number; y0: number; angle: number; cx: number; cy: number; dist: number; end: number; sx: number; sy: number; lastMove: number } | null = null;
-  private drag:
-    | { kind: 'rotate'; x: number; y: number; moved: boolean }
-    | { kind: 'look'; x: number; y: number; moved: boolean }
-    | null = null;
-  private button = -1;
+  /** The use button held on a step. sx / sy: smoothed mouse travel (bolts), a stroke so far (wires) or the pull so far (pry). */
+  private act: { step: Step; angle: number; end: number; sx: number; sy: number; lastMove: number } | null = null;
 
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
@@ -164,35 +143,21 @@ export class TeardownView {
     this.scene = scene;
     this.camera = camera;
     this.canvas = canvas;
-    this.ui = new TeardownUi(() => this.end(), () => this.scrap());
-    const o = this.ui.overlay;
-    o.addEventListener('pointerdown', (e) => this.onDown(e));
-    o.addEventListener('pointermove', (e) => this.onMove(e));
-    o.addEventListener('pointerup', (e) => this.onUp(e));
-    o.addEventListener('pointercancel', (e) => this.onUp(e));
-    o.addEventListener('pointerleave', () => (this.px = this.py = NaN));
-    o.addEventListener('contextmenu', (e) => e.preventDefault());
-    // Middle button would start the browser's autoscroll.
-    o.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
-    o.addEventListener('auxclick', (e) => e.preventDefault());
-    o.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+    this.ui = new TeardownUi();
     addEventListener('keydown', (e) => {
       if (this.phase === 'idle' || e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement) return;
-      // F and Esc leave (end() gives the mouse back to the game).
-      if (isBound('interact', e.code) && !e.repeat) {
-        takePickup(); // the same press doesn't start it again
-        this.end();
-        return;
-      }
-      if (e.code === 'Escape') {
-        e.stopImmediatePropagation(); // Esc here only leaves: never also the Esc menu (src/menu.ts)
-        this.end();
-        return;
-      }
-      if (this.phase !== 'work' || !this.site) return;
+      if (!this.site) return;
+      // At the table F leaves (a long hold scraps the machine); out in the field F does what it always does.
+      if (this.site.movable && isBound('interact', e.code) && !e.repeat) this.scrapHold = 0.001;
       if (isBound('rotate', e.code)) {
         if (this.site.movable) this.resetRotation();
-        this.lookYaw = this.lookPitch = 0;
+      }
+    });
+    addEventListener('keyup', (e) => {
+      if (this.site?.movable && isBound('interact', e.code) && this.scrapHold > 0) {
+        const held = this.scrapHold;
+        this.scrapHold = 0;
+        if (held < SCRAP_HOLD) this.end();
       }
     });
   }
@@ -207,22 +172,17 @@ export class TeardownView {
 
   // ---- entering and leaving --------------------------------------------------------------------------------
 
-  /** Start: the character walks up to the machine, then the disassembly controls take over. */
+  /** Start: the machine shows what can be worked; nothing of the player's controls changes. */
   begin(site: WorkSite) {
     if (this.phase !== 'idle') return;
     this.site = site;
-    this.phase = 'walk';
-    this.walkFor = 0;
-    this.lookYaw = this.lookPitch = 0;
-    this.farWarned = false;
+    this.phase = 'work';
     this.hover = null;
+    this.wasDown = false;
     this.announced.clear();
     this.pending.clear();
     for (const s of site.junk.slots) if (slotOpen(s)) this.announced.add(s);
-    tools.frozen = true;
-    if (document.pointerLockElement) ui.debugFreed = true; // freed on purpose: don't open the Esc menu (src/menu.ts)
-    document.exitPointerLock();
-    this.ui.setPhase('walk');
+    this.ui.setPhase('work');
     this.ui.setScrap(!!site.scrap);
     site.link?.join();
     if (!site.junk.root.parent) this.scene.add(site.junk.root);
@@ -262,60 +222,16 @@ export class TeardownView {
     this.site = null;
     this.hover = null;
     this.phase = 'idle';
-    tools.frozen = false;
     this.ui.setPhase('off');
-    // However it ended, the mouse goes straight back to the game (begin() freed it).
-    if (!ui.inventoryOpen) capture(this.canvas);
+    tools.engaged = false;
+    this.act = null;
   }
 
-  /** Called every frame before the input is read. Walks the character to the machine, eases the view onto it,
-   *  and returns the input bits to use instead of the keyboard (0 when working). */
-  drive(look: { yaw: number; pitch: number }, me: { x: number; z: number }, dt: number): number {
+  /** Called every frame: walking far enough away from the machine ends the mode. */
+  watch(me: { x: number; z: number }) {
     const site = this.site;
-    if (!site || this.phase === 'idle') return 0;
-    const dx = site.x - me.x, dz = site.z - me.z;
-    const d = Math.hypot(dx, dz);
-    const stand = site.stand ?? STAND;
-    const leave = stand + LEAVE_MARGIN;
-    if (d > leave) {
-      this.end(); // walked away, died or teleported
-      return 0;
-    }
-    this.look = look;
-    const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
-    const eased = 1 - Math.exp(-dt * 7);
-    look.yaw += wrap(Math.atan2(-dx, -dz) + this.lookYaw - look.yaw) * eased;
-    const eye = this.camera.position;
-    const wantPitch = Math.atan2(this.home.y + 0.5 - eye.y, Math.max(d, 0.5));
-    look.pitch += (wantPitch + this.lookPitch - look.pitch) * eased;
-    if (this.phase === 'work') {
-      // W / S step closer and further, A / D around (the arrow keys too).
-      const left = actionHeld('left');
-      const right = actionHeld('right');
-      const fwd = actionHeld('forward');
-      const back = actionHeld('back');
-      let bits = 0;
-      if (left) bits |= LEFT;
-      if (right) bits |= RIGHT;
-      if (fwd && d > MIN_DIST) bits |= FORWARD;
-      else if (back) bits |= BACK;
-      if (fwd || back) this.workDist = d;
-      else if (bits && Math.abs(this.lookYaw) < 0.3) bits |= d > this.workDist + 0.25 ? FORWARD : d < this.workDist - 0.25 ? BACK : 0; // keep the circle
-      const far = d > leave - 1.2;
-      if (far && !this.farWarned) this.ui.message(TEXT.notice.tooFar, true);
-      this.farWarned = far;
-      return bits;
-    }
-    this.walkFor += dt;
-    if ((d <= stand + 0.15 && d >= stand - 0.5) || this.walkFor > WALK_TIMEOUT) {
-      this.phase = 'work';
-      this.workDist = d;
-      this.ui.setPhase('work');
-      this.refreshCard();
-      this.nextAt = 0;
-      return 0;
-    }
-    return d > stand + 0.15 ? FORWARD : BACK;
+    if (!site || this.phase === 'idle') return;
+    if (Math.hypot(site.x - me.x, site.z - me.z) > (site.stand ?? LEAVE) + (site.movable ? 4 : 0)) this.end();
   }
 
   // ---- remote events (large sites) -------------------------------------------------------------------------
@@ -432,32 +348,14 @@ export class TeardownView {
     if (off !== null) this.restY = this.home.y + off;
   }
 
-  /**
-   * Middle-drag from (x0,y0) to (x1,y1), as a trackball centred on the machine: grabbing on it rolls it like a ball,
-   * grabbing out in the air turns it about the view axis, as if the pointer held that point of it.
-   */
-  private dragJunk(x0: number, y0: number, x1: number, y1: number) {
+  /** Right mouse held at the table: the mouse turns the machine, about the vertical and about the view's right. */
+  private spin(mx: number, my: number) {
     const j = this.site?.junk;
-    if (!j || j.fixed) return;
-    const box = new THREE.Box3().setFromObject(j.root);
-    const c = this.screen(j.root);
-    if (!c || box.isEmpty()) return;
-    const edge = j.root.getWorldPosition(new THREE.Vector3())
-      .add(new THREE.Vector3(box.getSize(new THREE.Vector3()).length() / 2, 0, 0).applyQuaternion(this.camera.quaternion))
-      .project(this.camera);
-    const r = Math.max(Math.hypot(((edge.x + 1) / 2) * innerWidth - c.x, ((1 - edge.y) / 2) * innerHeight - c.y), 60);
-    // Pointer to a point on a ball of radius r (Bell's trackball: a hyperbolic sheet past its rim), camera space, y up.
-    const ball = (x: number, y: number) => {
-      const px = (x - c.x) / r, py = (c.y - y) / r;
-      const d = px * px + py * py;
-      return new THREE.Vector3(px, py, d <= 0.5 ? Math.sqrt(1 - d) : 0.5 / Math.sqrt(d)).normalize();
-    };
-    const a = ball(x0, y0), b = ball(x1, y1);
-    const axis = new THREE.Vector3().crossVectors(a, b);
-    if (axis.lengthSq() < 1e-12) return;
-    const angle = Math.acos(THREE.MathUtils.clamp(a.dot(b), -1, 1));
-    axis.normalize().applyQuaternion(this.camera.quaternion);
-    j.root.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, angle));
+    if (!j || j.fixed || (!mx && !my)) return;
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), mx * 0.008);
+    const right = this.tmpA.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    q.premultiply(new THREE.Quaternion().setFromAxisAngle(right, my * 0.008));
+    j.root.quaternion.premultiply(q);
     this.computeRest();
   }
 
@@ -477,10 +375,11 @@ export class TeardownView {
   }
 
   /** What is under the pointer: only the nearest surface counts, so lids and plates hide what is under them. */
-  private pick(x: number, y: number): Target | null {
+  private pick(x: number, y: number, reach = Infinity): Target | null {
     if (!this.site) return null;
     this.ray(x, y);
     const h = this.raycaster.intersectObject(this.site.junk.root, true).find((i) => this.shown(i.object));
+    if (h && h.distance > reach) return null;
     let hit: Target | null = null;
     for (let o: THREE.Object3D | null = h?.object ?? null; o && !hit; o = o.parent) hit = (o.userData.target as Target | undefined) ?? null;
     if (hit?.type === 'step' || hit?.type === 'part') return hit;
@@ -490,7 +389,7 @@ export class TeardownView {
       if (!slotOpen(s) || this.pendingSlot(s)) continue;
       for (const up of [0, TAG_UP * j.scale * j.root.scale.x]) {
         const p = this.screen(s.piece.obj, up);
-        if (p && Math.hypot(p.x - x, p.y - y) < 34) return { type: 'part', slot: s };
+        if (p && Math.hypot(p.x - x, p.y - y) < 34 && this.camera.position.distanceTo(s.piece.obj.getWorldPosition(this.tmpA)) < reach) return { type: 'part', slot: s };
       }
     }
     return hit;
@@ -544,44 +443,57 @@ export class TeardownView {
     return null;
   }
 
-  private onDown(e: PointerEvent) {
-    if (this.phase !== 'work' || !this.site) return;
-    if ((e.target as HTMLElement).closest('.panel')) return;
-    if (this.drag || this.act) return;
-    this.ui.overlay.setPointerCapture(e.pointerId);
-    this.button = e.button;
-    this.px = e.clientX;
-    this.py = e.clientY;
-    const look = () => {
-      this.drag = { kind: 'look', x: e.clientX, y: e.clientY, moved: false };
-    };
-    if (e.button === 1) return look();
-    const target = this.pick(e.clientX, e.clientY);
-    if (e.button === 2) {
-      // Right drag turns a machine on the table over (big ones stay as they lie).
-      if (this.site.movable) this.drag = { kind: 'rotate', x: e.clientX, y: e.clientY, moved: false };
+  /** Every frame: what the crosshair is on, the use button's press and release, and the gesture while it is held. */
+  private pointer(mx: number, my: number) {
+    const site = this.site!;
+    const down = actionHeld('use') && !ui.inventoryOpen;
+    const pressed = down && !this.wasDown;
+    this.wasDown = down;
+    if (!document.pointerLockElement || ui.inventoryOpen) {
+      if (this.act) this.letGo();
+      this.hover = null;
+      tools.engaged = false;
       return;
     }
-    if (e.button !== 0) return;
-    if (target?.type === 'step') {
-      if (stepReady(target.step)) this.startStep(target.step, e);
-      else this.ui.message(this.describe(target)!.action, true);
-      return;
+    if (site.movable && actionHeld('aim')) this.spin(mx, my);
+    if (this.act) {
+      const a = this.act;
+      this.camera.getWorldPosition(this.tmpB);
+      const far = a.step.obj.getWorldPosition(this.tmpA).distanceTo(this.tmpB) > REACH + 1.5;
+      if (!down || far || a.step.done) this.letGo();
+      else this.moveStep(a, mx, my);
+    } else {
+      this.hover = this.pick(innerWidth / 2, innerHeight / 2, REACH);
+      if (pressed && this.hover) {
+        const t = this.hover;
+        if (t.type === 'step') {
+          if (stepReady(t.step)) this.startStep(t.step);
+          else this.ui.message(this.describe(t)!.action, true);
+        } else if (t.type === 'part') {
+          if (slotOpen(t.slot)) this.takePart(t.slot, innerWidth / 2, innerHeight / 2);
+          else this.ui.message(this.describe(t)!.action, true);
+        }
+      }
     }
-    if (target?.type === 'part') {
-      if (slotOpen(target.slot)) this.takePart(target.slot, e.clientX, e.clientY);
-      else this.ui.message(this.describe(target)!.action, true);
-      return;
-    }
-    look();
+    tools.engaged = !!this.act || !!this.hover;
   }
 
-  private startStep(s: Step, e: PointerEvent) {
-    const v = new THREE.Vector3();
-    s.obj.getWorldPosition(v).project(this.camera);
-    const cx = ((v.x + 1) / 2) * innerWidth;
-    const cy = ((1 - v.y) / 2) * innerHeight;
-    this.act = { step: s, x0: e.clientX, y0: e.clientY, angle: Math.atan2(e.clientY - cy, e.clientX - cx), cx, cy, dist: 0, end: -1, sx: 0, sy: 0, lastMove: 0 };
+  private startStep(s: Step) {
+    let end = -1;
+    if (s.kind === 'wire') {
+      // the end nearest the crosshair is the one shaken; let go and grab again for the other
+      const ends = s.ends!;
+      let bd = Infinity;
+      ends.forEach((e, i) => {
+        if (e.done) return;
+        const q = this.screen(e.lug);
+        const d = q ? Math.hypot(q.x - innerWidth / 2, q.y - innerHeight / 2) : Infinity;
+        if (d < bd) (bd = d), (end = i);
+      });
+      if (end < 0) end = ends.findIndex((e) => !e.done);
+      if (end < 0) return;
+    }
+    this.act = { step: s, angle: NaN, end, sx: 0, sy: 0, lastMove: 0 };
     if (s.kind === 'lift') {
       this.site!.link?.hold(this.site!.junk.steps.indexOf(s), s.players, true);
       return;
@@ -594,52 +506,27 @@ export class TeardownView {
     }
   }
 
-  private onMove(e: PointerEvent) {
-    this.px = e.clientX;
-    this.py = e.clientY;
-    if (this.phase !== 'work' || !this.site) return;
-    const d = this.drag;
-    if (d?.kind === 'rotate' || d?.kind === 'look') {
-      const dx = e.clientX - d.x, dy = e.clientY - d.y;
-      if (!d.moved && Math.hypot(dx, dy) < DRAG_PX) return;
-      d.moved = true;
-      const fx = d.x, fy = d.y;
-      d.x = e.clientX;
-      d.y = e.clientY;
-      this.ui.overlay.style.cursor = 'grabbing';
-      if (d.kind === 'rotate') {
-        this.dragJunk(fx, fy, e.clientX, e.clientY);
-        return;
-      }
-      this.lookYaw = THREE.MathUtils.clamp(this.lookYaw - dx * LOOK_SENS, -1.6, 1.6);
-      this.lookPitch = THREE.MathUtils.clamp(this.lookPitch - dy * LOOK_SENS, -1.0, 1.0);
-      if (this.look) {
-        this.look.yaw -= dx * LOOK_SENS; // at once, the easing follows
-        this.look.pitch = THREE.MathUtils.clamp(this.look.pitch - dy * LOOK_SENS, -1.45, 1.45);
-      }
-      return;
-    }
-    if (this.act) {
-      this.moveStep(this.act, e);
-      return;
-    }
-    this.hover = this.pick(e.clientX, e.clientY);
-  }
-
-  private moveStep(a: NonNullable<TeardownView['act']>, e: PointerEvent) {
+  /** The mouse moved (mx, my pixels this frame) while a step is held. */
+  private moveStep(a: NonNullable<TeardownView['act']>, mx: number, my: number) {
     const s = a.step;
     if (s.kind === 'bolt') {
-      if (Math.hypot(e.clientX - a.cx, e.clientY - a.cy) < 14) return;
-      const ang = Math.atan2(e.clientY - a.cy, e.clientX - a.cx);
+      // turning the mouse in circles: the direction it travels in turns, half a turn of it is one of the bolt's
+      a.sx = a.sx * 0.7 + mx * 0.3;
+      a.sy = a.sy * 0.7 + my * 0.3;
+      if (Math.hypot(a.sx, a.sy) < 2.5) return;
+      const ang = Math.atan2(a.sy, a.sx);
+      if (Number.isNaN(a.angle)) a.angle = ang;
       let dA = ang - a.angle;
       dA = Math.atan2(Math.sin(dA), Math.cos(dA));
       a.angle = ang;
       s.progress += Math.abs(dA) / Math.PI;
       if (dA) teardownSound.turn();
     } else if (s.kind === 'wire') {
-      this.shake(s, a, e);
+      this.shake(s, a, mx, my);
     } else if (s.kind === 'pry') {
-      s.progress = Math.min(s.need, (Math.hypot(e.clientX - a.x0, e.clientY - a.y0) / PRY_PX) * s.need);
+      a.sx += mx;
+      a.sy += my;
+      s.progress = Math.min(s.need, (Math.hypot(a.sx, a.sy) / PRY_PX) * s.need);
     } else return;
     this.show(s);
     if (s.progress >= s.need) {
@@ -649,29 +536,21 @@ export class TeardownView {
     }
   }
 
-  private onUp(e: PointerEvent) {
-    if (this.ui.overlay.hasPointerCapture(e.pointerId)) this.ui.overlay.releasePointerCapture(e.pointerId);
-    if (e.button !== this.button) return;
-    this.button = -1;
-    if (this.drag) {
-      this.drag = null;
-      this.ui.overlay.style.cursor = '';
-    }
+  /** The use button was released (or the step is out of reach). */
+  private letGo() {
     const a = this.act;
-    if (a) {
-      const s = a.step;
-      if (s.kind === 'bolt') teardownSound.stop();
-      if (s.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(s), s.players, false);
-      // A half-pried tab or half-lifted weight falls back, and a half-shaken wire end goes still (an end that has come
-      // loose stays loose); a half-turned bolt stays where it is.
-      if (!s.done && s.kind === 'wire') this.stillWire(s);
-      else if (!s.done && (s.kind === 'pry' || s.kind === 'lift')) {
-        s.progress = 0;
-        this.show(s);
-      }
-      this.act = null;
+    if (!a) return;
+    const s = a.step;
+    if (s.kind === 'bolt') teardownSound.stop();
+    if (s.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(s), s.players, false);
+    // A half-pried tab or half-lifted weight falls back, and a half-shaken wire end goes still (an end that has come
+    // loose stays loose); a half-turned bolt stays where it is.
+    if (!s.done && s.kind === 'wire') this.stillWire(s);
+    else if (!s.done && (s.kind === 'pry' || s.kind === 'lift')) {
+      s.progress = 0;
+      this.show(s);
     }
-    if (this.site) this.hover = this.pick(e.clientX, e.clientY);
+    this.act = null;
   }
 
   private ropeG = new THREE.Vector3();
@@ -737,32 +616,18 @@ export class TeardownView {
     }
   }
 
-  /** The pointer moved while a wire is held: shake the end it is nearest. A swing is a stroke the pointer turns back from. */
-  private shake(s: Step, a: NonNullable<TeardownView['act']>, e: PointerEvent) {
-    const ends = s.ends!;
-    let best = -1;
-    // within reach of an end, but never so far that a short wire's other end counts too
-    const q = ends.map((end) => this.screen(end.lug));
-    const span = q[0] && q[1] ? Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y) : SHAKE_REACH / 0.45;
-    let bd = Math.max(22, Math.min(SHAKE_REACH, span * 0.45));
-    ends.forEach((end, i) => {
-      if (end.done) return;
-      const p = this.screen(end.lug);
-      const d = p ? Math.hypot(p.x - e.clientX, p.y - e.clientY) : Infinity;
-      if (d < bd) (bd = d), (best = i);
-    });
-    if (best < 0) return;
-    if (best !== a.end) {
-      a.end = best;
-      a.sx = a.sy = 0;
+  /** The mouse moved while a wire is held: shake the end that was grabbed. A swing is a stroke the mouse turns back from. */
+  private shake(s: Step, a: NonNullable<TeardownView['act']>, mx: number, my: number) {
+    const end = s.ends![a.end];
+    if (!end || end.done) {
+      // that end is loose: the other, if any, is grabbed by letting go and pressing again
+      return;
     }
-    const mx = e.movementX, my = e.movementY;
     if (Math.hypot(mx, my) < 1) return;
     a.lastMove = performance.now();
     if (a.sx * mx + a.sy * my < 0) {
       // turned back: it counts if the stroke before was long enough
       if (Math.hypot(a.sx, a.sy) >= SWING_PX) {
-        const end = ends[best];
         end.swings++;
         if (end.swings >= SWINGS) {
           end.done = true;
@@ -796,10 +661,8 @@ export class TeardownView {
     if (a?.step.kind === 'wire' && !a.step.done) this.stillWire(a.step);
     if (a?.step.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(a.step), a.step.players, false);
     teardownSound.stop();
-    this.drag = null;
     this.act = null;
-    this.button = -1;
-    this.ui.overlay.style.cursor = '';
+    tools.engaged = false;
   }
 
   // ---- tearing down ----------------------------------------------------------------------------------------
@@ -824,6 +687,13 @@ export class TeardownView {
         break;
       case 'lift':
         s.spin.position.y = Math.min(f, 1) * 0.12;
+        if (s.slide) {
+          // the module parts from the machine as it is pulled
+          const sl = s.slide, k = Math.min(f, 1) * sl.dist;
+          sl.obj.position.addScaledVector(sl.offset, -1);
+          sl.offset.copy(sl.dir).multiplyScalar(k);
+          sl.obj.position.add(sl.offset);
+        }
         break;
       case 'wire':
         if (s.mat) {
@@ -915,7 +785,18 @@ export class TeardownView {
     if (!site || this.phase === 'idle') return;
     this.pulse += dt;
     const j = site.junk;
-    const working = this.phase === 'work'; // markers, rings and tips only once you are at the machine
+    const [mx, my] = takeMouse();
+    this.pointer(mx, my);
+    if (site.movable && this.scrapHold > 0) {
+      // F held at the table: a long hold scraps the machine
+      this.scrapHold += dt;
+      if (this.scrapHold >= SCRAP_HOLD) {
+        this.scrapHold = 0;
+        this.scrap();
+        return;
+      }
+    }
+    const working = true;
 
     // Lifts: progress only while enough players hold it.
     const a = this.act;
@@ -937,7 +818,7 @@ export class TeardownView {
     j.root.position.y = y + (this.restY - y) * Math.min(1, dt * 9);
 
     // Highlight: the step under the pointer, or what is in the way of the thing under the pointer.
-    const focus: Target | null = this.act ? { type: 'step', step: this.act.step } : this.drag ? null : this.hover;
+    const focus: Target | null = this.act ? { type: 'step', step: this.act.step } : this.hover;
     this.lit.clear();
     if (focus?.type === 'step') {
       const b = focus.step.after.filter((x) => !x.done);
@@ -945,8 +826,16 @@ export class TeardownView {
     } else if (focus?.type === 'part' && !slotOpen(focus.slot)) for (const s of focus.slot.piece.holds) if (!s.done) this.lit.add(s);
     for (const s of j.steps) {
       const lit = this.lit.has(s);
-      s.marker.visible = working && !s.done && (stepReady(s) || lit);
+      const ready = !s.done && stepReady(s);
+      // the big indicator (a setting) on every ready step, or just on what the crosshair is on; the glint is always there
+      s.marker.visible = !s.done && (tdPrefs.markers ? ready || lit : lit);
       if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);
+      s.glint.visible = ready && !lit && !s.marker.visible;
+      if (s.glint.visible) {
+        const k = 0.55 + 0.45 * Math.sin(this.pulse * 3.2 + s.obj.position.x * 7 + s.obj.position.z * 5);
+        s.glint.scale.setScalar(0.6 + 0.8 * k);
+        (s.glint.material as THREE.MeshBasicNodeMaterial).opacity = 0.25 + 0.5 * k;
+      }
     }
     // Cables that are being shaken, or have an end off, move.
     for (const s of j.steps) if (s.rope && !s.done) this.updateRope(s, dt);
@@ -1002,21 +891,19 @@ export class TeardownView {
   private updateUi(dt: number) {
     const site = this.site!;
     const j = site.junk;
-    // Tip: what the pointer is on (or the step being worked).
+    // Tip by the crosshair: what it is on (or the step being worked, for a pull).
     const a = this.act;
-    const t = a ? { type: 'step' as const, step: a.step } : this.drag ? null : this.hover;
-    const d = Number.isFinite(this.px) && (!a || a.step.kind === 'lift') ? this.describe(t) : null;
-    this.ui.tip(d && { ...d, x: this.px, y: this.py });
-    const cursor = this.drag ? 'grabbing' : !t ? (this.hover ? 'grab' : '') : d?.locked ? 'not-allowed' : 'pointer';
-    if (this.ui.overlay.style.cursor !== cursor) this.ui.overlay.style.cursor = cursor;
+    const t = a ? { type: 'step' as const, step: a.step } : this.hover;
+    const d = !a || a.step.kind === 'lift' ? this.describe(t) : null;
+    this.ui.tip(d && { ...d, x: innerWidth / 2 + 6, y: innerHeight / 2 + 10 });
 
-    // Ring: around the step being worked, or a hovered one that is part-way done (a half-turned bolt).
+    // Ring: around the step being worked at the crosshair, or a hovered one that is part-way done (a half-turned bolt).
     const rs = a?.step ?? (t?.type === 'step' && t.step.progress > 0 && !t.step.done ? t.step : null);
-    if (rs && rs.kind !== 'wire') {
-      const p = a && rs.kind === 'bolt' ? { x: a.cx, y: a.cy } : this.screen(rs.obj);
-      this.ui.ring(p && { ...p, f: rs.progress / rs.need, guide: rs.kind === 'bolt' });
-    } else if (a?.step.kind === 'wire') this.ui.ring({ x: this.px, y: this.py, f: a.step.progress / a.step.need });
-    else this.ui.ring(null);
+    if (rs && a) this.ui.ring({ x: innerWidth / 2, y: innerHeight / 2, f: rs.progress / rs.need });
+    else if (rs && rs.kind !== 'wire') {
+      const p = this.screen(rs.obj);
+      this.ui.ring(p && { ...p, f: rs.progress / rs.need });
+    } else this.ui.ring(null);
 
     // Tags over the freed parts.
     const tags: { x: number; y: number; text: string; color: string }[] = [];

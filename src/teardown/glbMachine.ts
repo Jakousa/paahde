@@ -1,6 +1,6 @@
 // Machines built from a Blender model (tools/blender/machines/<model>.py, layout in shared/machines/<kind>.ts).
 // The steps, covers and part mounts come from the layout and are built at once (the markers and fasteners are the same Kit
-// pieces the code-built machines use, only smaller); the model's meshes arrive when the file has loaded: `Shell` and `Dress`
+// pieces the code-built machines use, only smaller); the model's meshes arrive when the file has loaded: `Shell`
 // stay for good, each `Mod_<id>` is a module that falls away when its steps are done and leaves the parts inside.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -51,7 +51,7 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
   const pieces: { piece: Piece; group: THREE.Group; id: string }[] = [];
   const labels = TEXT.steps as Record<string, string>;
 
-  const make = (ls: LayoutStep, after: Step[]): Step => {
+  const make = (ls: LayoutStep, after: Step[], slide: { group: THREE.Group; pop: number[] }): Step => {
     const label = labels[ls.label] ?? ls.label;
     const pos = (ls.pos ?? [0, 0, 0]) as V, nrm = (ls.nrm ?? [0, 1, 0]) as V;
     switch (ls.kind) {
@@ -59,12 +59,14 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
       case 'bolt': return kit.bolt(label, pos, nrm, after, ls.need ?? 2);
       case 'clip': return kit.clip(label, pos, nrm, ls.need ?? 1, after);
       case 'pry': return kit.pry(label, pos, nrm, after);
-      case 'lift': return kit.lift(label, pos, nrm, ls.players ?? 1, after, ls.need ?? 3);
+      case 'lift': return kit.pull(label, pos, nrm, after, ls.need ?? 3, { obj: slide.group, dir: new THREE.Vector3(...(slide.pop as V)).normalize(), dist: 0.45 });
       case 'wire': return kit.wire(label, (ls.pts ?? []) as V[], (ls.key ?? 'black') as 'black', after, ls.r);
     }
   };
 
   for (const { mod, parts } of mods) {
+    const group = new THREE.Group();
+    kit.g.add(group);
     const mine: { ls: LayoutStep; step: Step }[] = [];
     for (const ls of mod.steps) {
       // what must be done first: a step id, a module (all its steps), or a label within this module; a module that is gone counts as done
@@ -75,15 +77,13 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
         else if (ofModule.has(e)) for (const x of ofModule.get(e)!) after.add(x);
         else for (const o of mine) if (o.ls.label === e) after.add(o.step);
       }
-      const step = make(ls, [...after]);
+      const step = make(ls, [...after], { group, pop: mod.pop });
       mine.push({ ls, step });
       byId.set(ls.id, step);
     }
     const holds = mine.map((o) => o.step);
     ofModule.set(mod.id, holds);
 
-    const group = new THREE.Group();
-    kit.g.add(group);
     pieces.push({ piece: kit.cover(group, holds, mod.pop as V, 0.3), group, id: mod.id });
 
     for (const p of parts) {
@@ -107,7 +107,6 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
         kit.g.add(c);
       };
       stay('Shell');
-      stay('Dress');
       for (const { piece, group, id } of pieces) {
         const n = nodes.get(`Mod_${id}`);
         if (!n) continue;

@@ -216,6 +216,7 @@ const en = {
     music: 'Music',
     occlusion: 'Occlusion',
     showStats: 'Show stats',
+    showGuides: 'Disassembly guides',
     enterFullscreen: 'Enter fullscreen',
     exitFullscreen: 'Exit fullscreen',
     copyInvite: 'Copy invite link',

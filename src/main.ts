@@ -369,9 +369,8 @@ renderer.setAnimationLoop((time) => {
 
   // Fixed-step simulation: identical DT on client and server keeps prediction in agreement.
   accumulator += frameDt;
-  // Disassembly walks the character up to the machine with the normal input bits, then the keyboard goes quiet.
-  const walk = teardown.drive(orbit, net.me, frameDt);
-  const input = !net.isReady ? 0 : teardown.active ? walk : readInput(); // standing still until named
+  teardown.watch(net.me); // walking far enough away from a machine ends the disassembly
+  const input = !net.isReady ? 0 : readInput(); // standing still until named
   while (accumulator >= DT) {
     net.tick(input, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
     accumulator -= DT;
@@ -444,7 +443,7 @@ renderer.setAnimationLoop((time) => {
     if (!orbit.down) speech.event('respawn', undefined);
   }
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
-  const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, !s.riding && !teardown.active && !net.down);
+  const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, !s.riding && !net.down);
   lootView.update(frameDt, net.loot, focus);
   shieldFx.update(frameDt, (id) => (id === net.id ? me.root.position : others.find((o) => o.id === id) ?? null));
   corpseView.update(frameDt, focus);
@@ -453,14 +452,14 @@ renderer.setAnimationLoop((time) => {
   bossBar.update(frameDt, bossFx.bar);
   guardianFx.update(net, frameDt, orbit.camera, focus);
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
-  thrower.update(frameDt, !s.riding && !teardown.active && !net.down);
-  jammer.update(frameDt, !s.riding && !teardown.active && !net.down);
+  thrower.update(frameDt, !s.riding && !net.down);
+  jammer.update(frameDt, !s.riding && !net.down);
   jammer.others(others, orbit.camera.position); // others' jammers: their static
-  receiver.update(frameDt, inHand, !s.riding && !teardown.active && !net.down);
+  receiver.update(frameDt, inHand, !s.riding && !net.down);
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   if ((orbit.showBody || riding) === bodyHidden) me.setShadowOnly((bodyHidden = !(orbit.showBody || riding)));
   me.setHeadless(riding && !orbit.showBody);
-  viewmodel.root.visible = bodyHidden && !teardown.active;
+  viewmodel.root.visible = bodyHidden;
   viewmodel.setColor(net.color);
   viewmodel.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, sliding: s.sliding });
   zaps.update(frameDt); // after the gun is drawn: your beam starts at its muzzle
@@ -512,7 +511,7 @@ baseSand.update(frameDt, storm.atBase);
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
   // Placing from the hotbar and G to pick placed things up (src/placing.ts); its prompt goes after F's.
-  const placing = placer.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), !teardown.active, (t) => hud.toast(t));
+  const placing = placer.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), true, (t) => hud.toast(t));
   const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), placed) : null;
   const bedState = bed ? net.garden.get(bed.id) : undefined;
   const stage = bed ? (bedState?.stage ?? EMPTY) : -1;
@@ -521,32 +520,35 @@ baseSand.update(frameDt, storm.atBase);
   const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : `<span class="bad">${TEXT.prompt.needsUvLamp}</span>`) : null;
   const target = net.connected && station < 0 && !bed ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   // Debris at the crash sites (hull plates, pipes, ...) is picked up as what it gives: scrap or cloth (shared/items.ts debrisItem).
-  const debris = net.connected && station < 0 && !bed && !target && !teardown.active ? debrisTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  const debris = net.connected && station < 0 && !bed && !target ? debrisTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   const debrisPrompt = debris ? TEXT.prompt.pickUp(itemLabel(debrisItem(CRASH_KINDS[debris.kind].node))) : null;
-  const find = net.connected && station < 0 && !bed && !target && !debris && !teardown.active ? lootView.target(net.me, orbit.yaw) : null;
+  const find = net.connected && station < 0 && !bed && !target && !debris ? lootView.target(net.me, orbit.yaw) : null;
   const findPrompt = find ? lootPrompt(find, itemLabel) : null;
   // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
   // it lies. A carried one is taken apart on the base's disassembly table.
-  const site = net.connected && !teardown.active && station < 0 && !bed && !target && !debris && !find ? machines.nearest(net.me.x, net.me.z) : null;
-  const small = site ? junkSpec(site.site.kind).carry && !site.site.yard : false;
+  const nearSite = net.connected && station < 0 && !bed && !target && !debris && !find ? machines.nearest(net.me.x, net.me.z) : null;
+  const small = nearSite ? junkSpec(nearSite.site.kind).carry && !nearSite.site.yard : false;
+  // A small one is picked up with F; a big one starts its disassembly by itself when you come close (src/teardown).
+  const site = small ? nearSite : null;
+  if (nearSite && !small && !teardown.active) teardown.begin(machines.workSite(nearSite, net.siteLink(nearSite.site.id)));
   // Salvage wrecks (src/world/wrecks.ts) are always carried home.
-  const wreck = net.connected && !teardown.active && station < 0 && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
+  const wreck = net.connected && station < 0 && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
   const sitePrompt = site ? (small ? TEXT.prompt.pickUp(junkSpec(site.site.kind).label) : TEXT.prompt.disassemble(junkSpec(site.site.kind).label))
     : wreck ? TEXT.prompt.pickUp(SALVAGE[wreck.kind].label) : null;
   const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.offer(net.boxes.bag) : null;
   const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? TEXT.prompt.useWorkbench : (table?.label ?? TEXT.prompt.useTable);
   // A dead player's pack (shared/corpse.ts) lying here: F opens it next to the bag, like a chest.
-  const pack = net.connected && !net.down && !teardown.active && station < 0 && !bed && !target && !debris && !find && !site && !wreck
+  const pack = net.connected && !net.down && station < 0 && !bed && !target && !debris && !find && !site && !wreck
     && corpsesNear(net.me).some((b) => net.boxes[b]);
   // The base's chest in reach (shared/storage.ts): F opens it next to the bag.
-  const chest = net.connected && !net.down && !teardown.active && station < 0 && !bed && !target && !debris && !find && !site && !wreck && !pack
+  const chest = net.connected && !net.down && station < 0 && !bed && !target && !debris && !find && !site && !wreck && !pack
     && openBoxes(net.me).some((b) => b.startsWith('chest') && net.boxes[b]);
   const packPrompt = pack ? TEXT.prompt.openPack : chest ? TEXT.prompt.openChest : null;
   const fPrompt = use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
-  hud.setTarget(teardown.active ? null : fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
+  hud.setTarget(fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup();
-  if (interact && !teardown.active) {
+  if (interact && teardown.current?.id !== BENCH_ID) {
     if (use) {
       if (STATIONS[station].kind === 'workbench') hud.open();
       else if (table) {
@@ -569,8 +571,7 @@ baseSand.update(frameDt, storm.atBase);
       net.lootTake(find.id);
       pickupSound.play();
     } else if (site) {
-      if (small) net.crashTake(site.site.id);
-      else teardown.begin(machines.workSite(site, net.siteLink(site.site.id)));
+      net.crashTake(site.site.id);
     } else if (wreck) net.crashTake(wreck.id);
     else if (pack || chest) hud.open();
   }

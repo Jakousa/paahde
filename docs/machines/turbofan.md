@@ -103,3 +103,10 @@ the lowest tier among the four turbine components.
    half-buried orientation handled by the site placement.
 2. Layout: steps and holds as above; new component ids; loot table; label text and speech.
 3. Yard: replaces the old jet engine in the second row; review in the yard.
+
+## Review notes (round 1)
+
+- The model holds only the engine: no sand, furrows or debris. The crash mark is the terrain's job (carve a hollow, bank and
+  furrow from the machine's pose, like craters and the colossus's footprints).
+- Next: the aerodynamic shell on the engine (shared with the flying jets), seams ground open with a craftable grinder; parts
+  from real engine hardware (fan rotor in 3 sizes, compressor rotor, fuel manifold, turbine disc, bearings high tier).
