@@ -748,9 +748,9 @@ function jetCame(b: { jet: number; bk: Breakup; lx: number; lz: number }): Serve
 function dropHarvesterSpoils(k: HarvesterKill) {
   const fx = Math.sin(k.yaw), fz = Math.cos(k.yaw);
   const at = (kind: string) => {
-    // A ring round the hull: along it -22..+22 m, out 14..20 m to either side, or out of its maw ahead.
+    // A ring round the hull: along it -22..+22 m, out 16..22 m to either side, or out of its maw ahead.
     const front = Math.random() < 0.35, along = front ? 30 + Math.random() * 8 : -22 + Math.random() * 44;
-    const side = front ? (Math.random() - 0.5) * 18 : (Math.random() < 0.5 ? 1 : -1) * (14 + Math.random() * 6);
+    const side = front ? (Math.random() - 0.5) * 22 : (Math.random() < 0.5 ? 1 : -1) * (16 + Math.random() * 6);
     loot.dropAt(k.x + fx * along + fz * side, k.z + fz * along - fx * side, kind);
   };
   const sp = HARVESTER_SPOILS;

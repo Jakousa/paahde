@@ -23,9 +23,13 @@ const LINKS = 40;
 const LOOP = 4 * LOOP_HALF + 2 * Math.PI * LOOP_R;
 const UNITS: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 /** The drum (local axle) and its radius; the exhausts on its back and the stern slot (tools/blender/harvester.py). */
-const DRUM = new THREE.Vector3(0, 2.6, 24.6);
+const DRUM = new THREE.Vector3(0, 2.3, 24.6);
 const DRUM_R = 2.4;
-const EXHAUSTS: [number, number, number][] = [[-6.5, 19.1, -19.5], [-3.5, 19.1, -19.5], [3.5, 19.1, -19.5], [6.5, 19.1, -19.5]];
+const EXHAUSTS: [number, number, number][] = [[-7.5, 19.1, -19.5], [-4, 19.1, -19.5], [4, 19.1, -19.5], [7.5, 19.1, -19.5]];
+/** The maw: the throat wall's z (its back), the cheeks' inner faces (x), the hood's underside (y). */
+const THROAT = 18.2;
+const MAW_X = 12;
+const HOOD = 9.6;
 const CHUTE = new THREE.Vector3(0, 6.2, -25.6);
 /** Effects (dust, smoke) only within this far (m) of the camera; a wreck's plume within PLUME_R. */
 const FX_R = 800;
@@ -97,8 +101,9 @@ function blocks(): Parts {
     return m;
   };
   const hull = new THREE.Group();
-  hull.add(box(24.4, HULL_TOP - 5.6, 46.7, 0, (HULL_TOP + 5.6) / 2, -2.05), box(24.4, 8.1, 8.8, 0, 4.6, 23.4));
-  const drum = new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R, DRUM_R, 19, 10).rotateZ(Math.PI / 2), iron);
+  hull.add(box(2 * HALF_W, HULL_TOP - 5.6, THROAT - STERN, 0, (HULL_TOP + 5.6) / 2, (THROAT + STERN) / 2),
+    box(2 * HALF_W, 4, BOW - THROAT, 0, HOOD + 2, (BOW + THROAT) / 2));
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R, DRUM_R, 2 * MAW_X - 0.8, 10).rotateZ(Math.PI / 2), iron);
   drum.position.copy(DRUM);
   const cores = CORES.map((c) => {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(CORE_HALF, CORE_HALF, 0.3, 6).rotateX(Math.PI / 2),
@@ -208,12 +213,12 @@ class View {
 /** Hit boxes in the local frame (half sizes, centre): the hull, the hood over the maw, its cheeks, the drum, the
  *  throat behind it. */
 const BOXES: { h: THREE.Vector3; c: THREE.Vector3 }[] = [
-  { h: new THREE.Vector3(HALF_W, (HULL_TOP - 1.6) / 2, (21.3 - STERN) / 2), c: new THREE.Vector3(0, (HULL_TOP + 1.6) / 2, (21.3 + STERN) / 2) },
-  { h: new THREE.Vector3(12.2, 2.0, 3.2), c: new THREE.Vector3(0, 13.2, 24.4) },
-  { h: new THREE.Vector3(1.0, 5.45, 4.4), c: new THREE.Vector3(11.2, 6.05, 23.4) },
-  { h: new THREE.Vector3(1.0, 5.45, 4.4), c: new THREE.Vector3(-11.2, 6.05, 23.4) },
-  { h: new THREE.Vector3(9.8, DRUM_R, DRUM_R), c: DRUM.clone() },
-  { h: new THREE.Vector3(10.2, 5.4, 0.4), c: new THREE.Vector3(0, 6.0, 21.3) },
+  { h: new THREE.Vector3(HALF_W, (HULL_TOP - 1.6) / 2, (THROAT - STERN) / 2), c: new THREE.Vector3(0, (HULL_TOP + 1.6) / 2, (THROAT + STERN) / 2) },
+  { h: new THREE.Vector3(HALF_W, (16.4 - HOOD) / 2, (BOW - THROAT) / 2), c: new THREE.Vector3(0, (16.4 + HOOD) / 2, (BOW + THROAT) / 2) },
+  ...[1, -1].map((s) => ({ h: new THREE.Vector3((HALF_W - MAW_X) / 2, (HOOD + 0.4 - 0.6) / 2, (BOW - THROAT) / 2),
+    c: new THREE.Vector3((s * (HALF_W + MAW_X)) / 2, (HOOD + 1) / 2, (BOW + THROAT) / 2) })),
+  { h: new THREE.Vector3(MAW_X - 0.4, DRUM_R, DRUM_R), c: DRUM.clone() },
+  { h: new THREE.Vector3(MAW_X, (HOOD - 0.6) / 2, 0.4), c: new THREE.Vector3(0, (HOOD + 0.6) / 2, THROAT) },
 ];
 /** The cores' boxes (a little generous, the housing round each lens counts), standing proud of the throat so they're
  *  hit before it. */
@@ -309,7 +314,7 @@ export class Harvesters {
     }
     v.dust += dt * (p.state ? 0 : 16 * fast);
     for (; v.dust >= 1; v.dust--) {
-      _v.set((Math.random() - 0.5) * 18, DRUM.y - 1.2, DRUM.z + 1.4).applyMatrix4(m);
+      _v.set((Math.random() - 0.5) * 2 * (MAW_X - 1), 0.3, DRUM.z + 1.4).applyMatrix4(m);
       const up = 1.5 + Math.random() * 2.5 * fast;
       tyreDust.emit(_v.x, _v.y, _v.z, (Math.random() - 0.5) * 2 * fast, up, (Math.random() - 0.5) * 2 * fast, 2 + Math.random() * 1.6 * fast);
       _v.copy(CHUTE).applyMatrix4(m);

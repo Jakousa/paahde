@@ -5,8 +5,8 @@
 
 All coordinates are three.js (Y up, +Z forward = the maw, +X its left side), built in three.js space and turned into
 Blender's Z-up frame just before export (as tools/blender/jet.py does). The origin is on the sand under the middle
-of the four track units (shared/harvester.ts: TRACK 18 apart across, WHEELBASE 30 along). It is one monolith: a
-single slab-sided hull 24.4 m wide, 53 m from the stern to the lip of its maw and 19 m high, its full-length skirts
+of the four track units (shared/harvester.ts: TRACK 21 apart across, WHEELBASE 22 along). It is one monolith: a
+single slab-sided hull 28 m wide, 53 m from the stern to the lip of its maw and 19 m high, its full-length skirts
 hiding all but the bottom of its treads. Every detail on it is small (hand-sized grilles, ladders, rails, lamps,
 hairline seams), so the eye reads the bulk by them.
 
@@ -348,20 +348,23 @@ def export_glb(objs, path):
 # ================================================================================================= harvester
 
 # keep in step with shared/harvester.ts and src/world/harvesters.ts
-TRACK_X = 9.0          # TRACK / 2
-TRACK_Z = 15.0         # WHEELBASE / 2
+TRACK_X = 10.5         # TRACK / 2
+TRACK_Z = 11.0         # WHEELBASE / 2 (the front units end just behind the throat)
 TRACK_W = 5.0
 LOOP_HALF = 4.6        # straight run half length between the end wheels' centres
 LOOP_R = 2.4           # end wheel radius to the belt's centre line
 LOOP_Y = 2.6           # end wheels' axle height
-DRUM = (0, 2.6, 24.6)
+DRUM = (0, 2.3, 24.6)  # its teeth's tips reach just under the sand
 DRUM_R = 2.4
-CORES = [(-6, 8.2, 22.4), (0, 8.2, 22.4), (6, 8.2, 22.4)]
+CORES = [(-6.5, 6.8, 19.3), (0, 6.8, 19.3), (6.5, 6.8, 19.3)]
+THROAT = 18.2         # the throat wall's z: the back of the maw
 CORE_HALF = 1.6
-HW, HWT = 12.2, 10.6   # half width at the sides, at the top edges
+HW, HWT = 14.0, 12.2   # half width at the sides, at the top edges
+MAW_X = 12.0           # the cheeks' inner faces: the maw is this wide either side of the middle
+HOOD = 9.6             # the hood's underside: the top of the maw
 BOT, TOP = 5.6, 19.0
 # keep in step with src/world/harvesters.ts EXHAUSTS / CHUTE
-EXHAUSTS = [(-6.5, -19.5), (-3.5, -19.5), (3.5, -19.5), (6.5, -19.5)]
+EXHAUSTS = [(-7.5, -19.5), (-4.0, -19.5), (4.0, -19.5), (7.5, -19.5)]
 CHUTE = (0, 6.2, -25.6)
 
 
@@ -412,37 +415,41 @@ def build_hull():
     mb = MB()
     # --- the monolith: one loft from the bevelled stern to the start of the front slope, then the hood over the maw.
     sections = [
-        (-25.4, 7.2, 15.2, 11.6, 9.9),
+        (-25.4, 7.2, 15.2, HW - 0.6, HWT - 0.7),
         (-24.6, BOT, 17.6, HW, HWT),
         (-22.0, BOT, TOP, HW, HWT),
-        (15.5, BOT, TOP, HW, HWT),
-        (21.3, BOT, 15.2, HW, HWT),
+        (13.0, BOT, TOP, HW, HWT),
+        (THROAT, BOT, 16.4, HW, HWT),
     ]
     mb.loft([ring(*sec) for sec in sections], 'HarvIron', cap0=True, cap1=True, matfn=hull_mat, capmat='HarvDark')
-    mb.loft([ring(21.2, 11.2, 15.2, HW, HWT), ring(27.6, 11.4, 12.8, 12.0, 10.9, ch=0.5, c=0.3)], 'HarvIron', cap1=True,
-            matfn=hull_mat, capmat='HarvIron')
+    mb.loft([ring(THROAT - 0.1, HOOD, 16.4, HW, HWT), ring(27.6, HOOD + 0.2, 12.2, HW - 0.2, HWT + 0.3, ch=0.5, c=0.3)],
+            'HarvIron', cap1=True, matfn=hull_mat, capmat='HarvIron')
     # The maw's cheeks, flush with the flanks, and the throat behind the drum.
     for s in (1, -1):
-        mb.prism_x([(0.6, 19.0), (0.6, 26.6), (1.4, 27.8), (11.5, 27.8), (11.5, 19.0)], s * 10.2, s * 12.2, 'HarvIron')
+        cx = s * (MAW_X + HW) / 2
+        mb.prism_x([(0.6, THROAT), (0.6, 26.6), (1.4, 27.8), (HOOD + 0.4, 27.8), (HOOD + 0.4, THROAT)], s * MAW_X, s * HW, 'HarvIron')
         for i in range(4):  # hazard bands on the cheek's front face
-            mb.box((s * 11.2, 1.3 + i * 0.7, 27.81), (1.9, 0.3, 0.02), 'HarvHazard')
-        mb.box((s * 11.2, 0.9, 23.3), (2.06, 0.5, 8.6), 'HarvSteel')  # wear strip where it meets the sand
-    mb.box((0, 6.0, 21.3), (20.4, 10.8, 0.3), 'HarvDark')
-    for x in [i * 1.2 - 9.6 for i in range(17)]:  # intake bars up the throat
+            mb.box((cx, 1.3 + i * 0.7, 27.81), (HW - MAW_X - 0.1, 0.3, 0.02), 'HarvHazard')
+        mb.box((cx, 0.9, (THROAT + 27.8) / 2), (HW - MAW_X + 0.06, 0.5, 27.8 - THROAT - 0.8), 'HarvSteel')  # wear strip
+        # ribs down the cheeks' inner faces, lit by the cores
+        for z in (THROAT + 2.5, THROAT + 5.0, THROAT + 7.5):
+            mb.box((s * (MAW_X - 0.08), (0.6 + HOOD) / 2, z), (0.16, HOOD - 0.8, 0.3), 'HarvRust')
+    mb.box((0, (0.6 + HOOD) / 2, THROAT), (2 * MAW_X, HOOD - 0.4, 0.3), 'HarvDark')
+    for x in [i * 1.2 - (MAW_X - 0.6) for i in range(int((2 * MAW_X - 1.2) / 1.2) + 1)]:  # intake bars up the throat
         if all(abs(x - c[0]) > CORE_HALF + 0.4 for c in CORES):
-            mb.box((x, 6.0, 21.5), (0.12, 10.6, 0.12), 'HarvSteel')
+            mb.box((x, (0.6 + HOOD) / 2, THROAT + 0.2), (0.12, HOOD - 0.6, 0.12), 'HarvSteel')
     for cx, cy, cz in CORES:  # the cores' sockets
         # a hex housing standing out of the throat wall, the core set in its face
-        mb.cyl((cx, cy, 21.4), (cx, cy, cz + 0.05), CORE_HALF + 0.4, segs=6, mat='HarvSteel', phase=PI / 6)
-        mb.cyl((cx, cy, 21.45), (cx, cy, cz + 0.1), CORE_HALF + 0.12, segs=6, mat='HarvDark', phase=PI / 6)
+        mb.cyl((cx, cy, THROAT + 0.1), (cx, cy, cz + 0.05), CORE_HALF + 0.4, segs=6, mat='HarvSteel', phase=PI / 6)
+        mb.cyl((cx, cy, THROAT + 0.15), (cx, cy, cz + 0.1), CORE_HALF + 0.12, segs=6, mat='HarvDark', phase=PI / 6)
     # --- skirts down the whole length of both sides, the keel between the tracks, the wheels under them.
     for s in (1, -1):
-        mb.prism_x([(1.6, -23.4), (1.6, 18.4), (2.4, 19.0), (6.0, 19.0), (6.0, -24.6), (2.4, -24.6)],
-                   s * 12.05, s * 12.4, 'HarvIron')
-        mb.box((s * 12.4, 1.75, -2.8), (0.06, 0.3, 41.6), 'HarvSand')
-        for z in range(-21, 18, 6):
-            mb.box((s * 12.41, 3.9, z), (0.02, 4.2, 0.05), 'HarvDark')
-    mb.box((0, 4.0, -2.0), (12.6, 3.4, 42), 'HarvRust')
+        mb.prism_x([(1.6, -23.4), (1.6, THROAT - 0.6), (2.4, THROAT), (6.0, THROAT), (6.0, -24.6), (2.4, -24.6)],
+                   s * (HW - 0.15), s * (HW + 0.2), 'HarvIron')
+        mb.box((s * (HW + 0.2), 1.75, -3.3), (0.06, 0.3, 40.6), 'HarvSand')
+        for z in range(-21, 17, 6):
+            mb.box((s * (HW + 0.21), 3.9, z), (0.02, 4.2, 0.05), 'HarvDark')
+    mb.box((0, 4.0, -3.2), (15.0, 3.4, 40), 'HarvRust')
     for sx in (1, -1):
         for sz in (1, -1):
             cx, cz = sx * TRACK_X, sz * TRACK_Z
@@ -484,7 +491,7 @@ def build_hull():
     for x, z in ((-4.0, -8.0), (5.0, 6.0)):
         mb.box((x, TOP + 0.1, z), (1.2, 0.2, 1.2), 'HarvIron')
         mb.box((x + 0.45, TOP + 0.26, z), (0.08, 0.12, 0.6), 'HarvSteel')
-    for x, z, h in ((-8.6, -21.0, 4.0), (-8.0, -21.0, 2.6)):
+    for x, z, h in ((-10.2, -21.0, 4.0), (-9.6, -21.0, 2.6)):
         mb.cyl((x, TOP, z), (x, TOP + h, z), 0.03, segs=4, mat='HarvSteel')
     # The stern: the slot it lets the sifted sand out of, ladder, seams.
     cx, cy, cz = CHUTE
@@ -499,12 +506,13 @@ def build_hull():
 def build_drum():
     """The cutter drum in the maw, about its axle (local X): a core with helical rows of small teeth from both ends."""
     mb = MB()
-    mb.cyl((-9.6, 0, 0), (9.6, 0, 0), 1.7, segs=16, mat='HarvRust')
-    for x in (-9.6, 0, 9.6):
+    w = MAW_X - 0.4
+    mb.cyl((-w, 0, 0), (w, 0, 0), 1.7, segs=16, mat='HarvRust')
+    for x in (-w, 0, w):
         mb.cyl((x - 0.12, 0, 0), (x + 0.12, 0, 0), 2.0, segs=16, mat='HarvSteel')
-    n = 26
+    n = 30
     for k in range(n):
-        x = -9.2 + k * (18.4 / (n - 1))
+        x = -(w - 0.4) + k * (2 * (w - 0.4) / (n - 1))
         for j in range(6):
             a = j * (2 * PI / 6) + (abs(x) * 0.35) * (1 if x > 0 else -1)
             d = Vector((0, math.cos(a), math.sin(a)))
@@ -526,9 +534,9 @@ def build_cores():
 def build_lamps():
     mb = MB()
     for s in (1, -1):
-        mb.box((s * 11.2, 11.65, 27.4), (0.35, 0.22, 0.25), 'HarvLamp')
-        mb.box((s * 6.0, 12.9, 27.45), (0.3, 0.18, 0.2), 'HarvLamp')
-        mb.box((s * (HW + 0.06), 12.0, 18.0), (0.1, 0.18, 0.3), 'HarvLamp')
+        mb.box((s * (MAW_X + HW) / 2, HOOD + 0.55, 27.6), (0.35, 0.22, 0.25), 'HarvLamp')
+        mb.box((s * 6.5, HOOD + 1.3, 27.68), (0.3, 0.18, 0.2), 'HarvLamp')
+        mb.box((s * (HW + 0.06), 12.0, 14.0), (0.1, 0.18, 0.3), 'HarvLamp')
     return finish(mb, 'Harvester_Lamps')
 
 

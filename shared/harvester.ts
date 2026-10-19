@@ -48,13 +48,13 @@ export const CHARGE = 22;
 export const SPEED_UP = 4;
 export const SLOW_DOWN = 2;
 /** Front axle to rear axle (m), and from the left tracks' centres to the right ones'. */
-export const WHEELBASE = 30;
-export const TRACK = 18;
+export const WHEELBASE = 22;
+export const TRACK = 21;
 /** Track unit (local): length, width (m). */
 export const TRACK_LEN = 14;
 export const TRACK_W = 5;
 /** Footprint (local, m): half width, from the stern to the front of the maw. Anyone in it is run over. */
-export const HALF_W = 12.4;
+export const HALF_W = 14.2;
 export const STERN = -25.4;
 export const BOW = 27.8;
 /** The hull's top (m above its ground). */
@@ -68,10 +68,10 @@ export const CALM_MS = 5000;
 
 /** Whether local (lx, lz) (toLocal) is in its sight. */
 export const inSight = (lx: number, lz: number) => lz >= BOW - 2 && lz < BOW + SIGHT && Math.abs(lx) < LANE + (lz - BOW) * SPREAD;
-/** Intake cores (local centres, facing forward) on the throat wall over the drum, in plain view from in front under
- *  the raised hood; their half size (m). */
+/** Intake cores (local centres, facing forward) on the throat wall at the back of the maw, over the drum, in plain
+ *  view from in front under the hood; their half size (m). */
 export const CORES: readonly { x: number; y: number; z: number }[] = [
-  { x: -6, y: 8.2, z: 22.4 }, { x: 0, y: 8.2, z: 22.4 }, { x: 6, y: 8.2, z: 22.4 },
+  { x: -6.5, y: 6.8, z: 19.3 }, { x: 0, y: 6.8, z: 19.3 }, { x: 6.5, y: 6.8, z: 19.3 },
 ];
 export const CORE_HALF = 1.6;
 export const CORE_HP = 4;

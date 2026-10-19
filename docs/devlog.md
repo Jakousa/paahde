@@ -1715,3 +1715,7 @@ The first harvester read as a tank with a turret; it's now a pure juggernaut, an
   routes are as long as the flat lets them be (up to 3 km); where it runs out it sinks back in the same way. Charging,
   it won't steer off the flat either: get off the mud and it can't follow. With nobody near a flat it looks again
   every 30 s. F3 *Harvester here*: the nearest flat within 3 km.
+- **Wider, lower, deeper maw:** 28 m wide now (tracks 21 m apart; the front pair moved back, WHEELBASE 22, so they end
+  behind the throat). The maw is lower (the hood's underside at 9.6 m, was 11.2) and 3 m deeper (the throat wall at
+  z 18.2), ribbed inside; the drum sits lower so its teeth bite just under the sand; the cores moved down and back
+  with the throat (y 6.8, z 19.3) and are still in plain view from in front.
