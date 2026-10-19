@@ -41,7 +41,7 @@ const COOLDOWN_MS = 200;
 /** How fast (m/s) a machine is shoved by someone walking into it crouched: a slow walk, a ton and a half of engine. */
 const SHOVE_SPEED = 0.4;
 /** About what a lying machine's radius is: it rolls as it goes (rolling without slipping: speed / radius). */
-const ROLL_RADIUS = 0.9;
+const ROLL_RADIUS = 0.45; // (half of what it is: it turns twice as fast as it would rolling without slipping)
 /** Session id of the base's disassembly table. */
 export const BENCH_ID = 'bench';
 
