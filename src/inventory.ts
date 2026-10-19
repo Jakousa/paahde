@@ -201,7 +201,7 @@ ICONS.uv_lamp = png('uv_lamp');
 for (const k of ['drone_transponder', 'brood_gland', 'servo_heart', 'hive_core', 'queen_eye', 'furnace_heart']) ICONS[k] = png(k);
 // Gear (shared/gear.ts) icons are rendered at the item's grid shape (tools/blender/finds.py): `fit` stretches them
 // over the item's cells (--pw/--ph from iconScale), or keeps their shape inside a single slot.
-for (const k of Object.keys(GEAR)) ICONS[k] = `<img class="fit" src="./icons/items/${k}.png" alt="" draggable="false">`;
+for (const k of [...Object.keys(GEAR), 'grinder']) ICONS[k] = `<img class="fit" src="./icons/items/${k}.png" alt="" draggable="false">`;
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 /** Parts (shared/parts.ts) use their rendered icons, public/icons/items/<part>_<tier>.png (tools/blender/items.py); a lettered tile in the rarity colour if one fails. */
 function partIcon(kind: string) {

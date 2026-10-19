@@ -313,6 +313,8 @@ export class LootView {
       if (FIND_MODELS[l.kind]) addFind(obj, l.kind);
       else GEAR_MODELS[l.kind]?.(obj);
       if (rims) addRims(obj, rims);
+    } else if (l.kind === 'grinder') {
+      addFind(obj, l.kind); // a tool, not gear: its model lies in FIND_MODELS
     } else if (RELIC_KINDS.has(l.kind)) {
       FIND_MODELS[l.kind] ??= { url: `./models/items/${l.kind}.glb` };
       addFind(obj, l.kind);
