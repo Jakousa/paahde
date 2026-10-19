@@ -97,7 +97,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `src/shieldFx.ts`)
 - `src/main.ts` — entry: renderer, scene, fixed-step game loop
 - `src/net.ts` — client netcode (prediction, reconciliation, interpolation, reconnect)
-- `src/telemetry.ts`, `server/telemetry.ts` — stall tracing to `data/telemetry.jsonl` (docs/netcode.md "Telemetry")
+- `src/telemetry.ts`, `server/telemetry.ts` — stall tracing to `data/telemetry.jsonl` (docs/netcode.md "Telemetry"; read it with
+  `node tools/telemetry.ts` (digest + HTML report, or `tail`)
 - `src/input.ts` — keyboard → input bitmask
 - `src/wasm.ts` — loads the compiled wasm; use exports as `wasm.<fn>`
 - `assembly/` — AssemblyScript source (compiled to `src/wasm/`, gitignored — never edit `src/wasm/`)

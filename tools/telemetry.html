@@ -1,0 +1,339 @@
+<!doctype html>
+<!-- The page tools/telemetry.ts writes its report into (the data replaces the null below). Self-contained, opens from disk. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telemetry Report</title>
+<style>
+:root {
+  --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1c1a; --muted: #6d6a63; --line: #e2dfd8; --shade: rgba(200, 120, 40, .10);
+  --down: #d1452f; --up: #a43fb5; --server: #d39a12; --tick: #b07a00; --frame: #1f8fb3; --reconnect: #3a5bd9; --backlog: #8a2c1c; --other: #777;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141412; --panel: #1d1c1a; --ink: #ecebe6; --muted: #9a978f; --line: #33312d; --shade: rgba(230, 150, 60, .13);
+    --down: #ef6a52; --up: #c672d6; --server: #f0bd3c; --tick: #d9a52a; --frame: #4cb6d8; --reconnect: #7590f0; --backlog: #d06a52; --other: #999;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141412; --panel: #1d1c1a; --ink: #ecebe6; --muted: #9a978f; --line: #33312d; --shade: rgba(230, 150, 60, .13);
+  --down: #ef6a52; --up: #c672d6; --server: #f0bd3c; --tick: #d9a52a; --frame: #4cb6d8; --reconnect: #7590f0; --backlog: #d06a52; --other: #999;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif; }
+main { max-width: 1400px; margin: 0 auto; padding: 20px 16px 60px; }
+h1 { font-size: 20px; margin: 0 0 2px; }
+h2 { font-size: 15px; margin: 28px 0 8px; }
+.sub { color: var(--muted); font-size: 12px; }
+.tiles { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; min-width: 110px; }
+.tile b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+.tile span { color: var(--muted); font-size: 12px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; position: sticky; top: 0; z-index: 2; }
+.bar label { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; }
+select, button { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
+button { cursor: pointer; }
+.sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; overflow-x: auto; }
+svg { display: block; user-select: none; }
+svg text { fill: var(--muted); font-size: 11px; }
+svg .lane-label { fill: var(--ink); }
+svg .world-label { fill: var(--ink); font-weight: 600; }
+svg .grid { stroke: var(--line); }
+svg .inc { fill: var(--shade); }
+svg .brush { fill: var(--ink); opacity: .08; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; cursor: pointer; white-space: nowrap; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--bg); }
+td.num { text-align: right; white-space: nowrap; }
+.tag { display: inline-block; padding: 0 6px; border-radius: 4px; background: var(--bg); border: 1px solid var(--line); white-space: nowrap; }
+#tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.18); display: none; z-index: 5; max-width: 340px; }
+.hint { color: var(--muted); font-size: 12px; margin: 4px 2px 0; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin: 6px 2px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Telemetry Report</h1>
+  <div class="sub" id="meta"></div>
+  <div class="tiles" id="tiles"></div>
+  <div class="bar" id="bar">
+    <label>World <select id="fWorld"></select></label>
+    <label>Player <select id="fPlayer"></select></label>
+    <span id="fKinds"></span>
+    <label><input type="checkbox" id="fLoading"> hide loading</label>
+    <button id="reset">Whole range</button>
+    <span class="sub" id="range"></span>
+  </div>
+
+  <h2>Timeline</h2>
+  <div class="panel"><svg id="timeline"></svg></div>
+  <div class="hint">A bar is a stall, from when it began to when it ended; shaded spans are incidents. Drag to zoom, double-click to zoom out.</div>
+
+  <h2>Round trip p95 (ms) and fps, per player minute</h2>
+  <div class="panel"><svg id="rtt"></svg><svg id="fps"></svg></div>
+  <div class="legend" id="pLegend"></div>
+
+  <h2>Incidents</h2>
+  <div class="panel"><table id="incidents"></table></div>
+
+  <h2>Events</h2>
+  <div class="panel"><table id="events"></table></div>
+  <div class="hint" id="eventsHint"></div>
+</main>
+<div id="tip"></div>
+<script>
+const DATA = /*DATA*/null;
+const KINDS = ['down', 'up', 'server', 'tick', 'frame', 'reconnect', 'backlog'];
+const color = (k) => `var(--${KINDS.includes(k) ? k : 'other'})`;
+const PCOL = ['#d1452f', '#1f8fb3', '#d39a12', '#a43fb5', '#3a9b4c', '#3a5bd9', '#c4692b', '#6b7a8f', '#b0407a', '#4a8f8a'];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const secs = (ms) => (ms >= 10000 ? `${(ms / 1000).toFixed(0)} s` : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`);
+const clock = (t) => new Date(t).toISOString().slice(5, 19).replace('T', ' ');
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs, parent) => {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+
+for (const e of DATA.events) {
+  e.t = Date.parse(e.at);
+  e.start = e.kind === 'summary' || e.kind === 'backlog' ? e.t : e.t - (e.ms || 0);
+  e.key = e.s ?? null;
+}
+const playerName = new Map(DATA.players.map((p) => [p.key, p.name || `#${p.p}`]));
+const playerColor = new Map(DATA.players.map((p, i) => [p.key, PCOL[i % PCOL.length]]));
+const firstSeen = new Map(DATA.players.map((p) => [p.key, p.first]));
+const full = [Math.min(...DATA.events.map((e) => e.start)), Math.max(...DATA.events.map((e) => e.t))];
+let view = [...full];
+const state = { world: '', player: '', kinds: new Set(KINDS.concat('other')), hideLoading: false };
+
+$('meta').textContent = `${DATA.source} · made ${clock(Date.parse(DATA.made))} UTC · times in UTC`;
+
+// Filters
+const worlds = [...new Set(DATA.events.map((e) => e.w))];
+$('fWorld').innerHTML = `<option value="">all (${worlds.length})</option>` + worlds.map((w) => `<option>${esc(w)}</option>`).join('');
+const fillPlayers = () => {
+  const ps = DATA.players.filter((p) => !state.world || p.w === state.world);
+  $('fPlayer').innerHTML = `<option value="">all (${ps.length})</option>` + ps.map((p) => `<option value="${esc(p.key)}">${esc(p.name || `#${p.p}`)} · ${esc(p.w)} · ${clock(p.first).slice(0, 11)}</option>`).join('');
+  $('fPlayer').value = state.player;
+};
+fillPlayers();
+$('fKinds').innerHTML = KINDS.map((k) => `<label><input type="checkbox" data-k="${k}" checked><span class="sw" style="background:${color(k)}"></span>${k}</label>`).join(' ');
+$('fWorld').onchange = (ev) => { state.world = ev.target.value; state.player = ''; fillPlayers(); draw(); };
+$('fPlayer').onchange = (ev) => { state.player = ev.target.value; draw(); };
+$('fKinds').onchange = (ev) => { const k = ev.target.dataset.k; ev.target.checked ? state.kinds.add(k) : state.kinds.delete(k); draw(); };
+$('fLoading').onchange = (ev) => { state.hideLoading = ev.target.checked; draw(); };
+$('reset').onclick = () => { view = [...full]; draw(); };
+
+const isLoading = (e) => e.kind === 'frame' && e.key && e.start - (firstSeen.get(e.key) ?? -Infinity) < 20000;
+const pass = (e) =>
+  (!state.world || e.w === state.world) &&
+  (!state.player || e.key === state.player || (e.key === null && e.w === state.player.split('/')[0])) &&
+  (e.kind === 'summary' || state.kinds.has(KINDS.includes(e.kind) ? e.kind : 'other')) &&
+  !(state.hideLoading && isLoading(e));
+const inView = (a, b) => b >= view[0] && a <= view[1];
+
+// Tooltip
+const tip = $('tip');
+const showTip = (ev, html) => {
+  tip.innerHTML = html;
+  tip.style.display = 'block';
+  const x = Math.min(ev.clientX + 12, innerWidth - tip.offsetWidth - 8), y = Math.min(ev.clientY + 12, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = `${x}px`;
+  tip.style.top = `${y}px`;
+};
+const hideTip = () => (tip.style.display = 'none');
+const describe = (e) =>
+  `<b style="color:${color(e.kind)}">${esc(e.kind)}</b> ${e.key ? esc(playerName.get(e.key)) : '(world)'} · ${esc(e.w)}<br>` +
+  `${clock(e.start)} → ${clock(e.t).slice(6)} · <b>${e.kind === 'backlog' ? `${e.bytes} bytes` : secs(e.ms || 0)}</b>` +
+  (e.n !== undefined ? ` · ${e.n} in the burst` : '') + (e.code !== undefined ? ` · close ${e.code}` : '') + (e.players !== undefined ? ` · ${e.players} players on` : '') +
+  (isLoading(e) ? '<br><span class="sub">right after joining (loading)</span>' : '');
+
+// Time axis helpers
+const LEFT = 150, RIGHT = 14;
+const width = () => Math.max(600, $('timeline').parentElement.clientWidth - 18);
+const scaleX = (W) => (t) => LEFT + ((t - view[0]) / Math.max(1, view[1] - view[0])) * (W - LEFT - RIGHT);
+function axis(svg, W, H, x) {
+  const span = view[1] - view[0];
+  const steps = [1e3, 5e3, 15e3, 6e4, 3e5, 9e5, 36e5, 6 * 36e5, 864e5];
+  const step = steps.find((s) => span / s <= 8) ?? 864e5;
+  for (let t = Math.ceil(view[0] / step) * step; t <= view[1]; t += step) {
+    el('line', { x1: x(t), x2: x(t), y1: 14, y2: H, class: 'grid' }, svg);
+    const label = step >= 864e5 ? clock(t).slice(0, 5) : step >= 6e4 ? clock(t).slice(6, 11) : clock(t).slice(6);
+    el('text', { x: x(t), y: 10, 'text-anchor': 'middle' }, svg).textContent = label;
+  }
+}
+function brush(svg, W, H, x) {
+  let from = null, rect = null;
+  const at = (ev) => view[0] + ((ev.offsetX - LEFT) / (W - LEFT - RIGHT)) * (view[1] - view[0]);
+  svg.onmousedown = (ev) => { if (ev.offsetX < LEFT) return; from = ev.offsetX; rect = el('rect', { x: from, y: 14, width: 0, height: H - 14, class: 'brush' }, svg); svg._t0 = at(ev); };
+  svg.onmousemove = (ev) => { if (rect) { rect.setAttribute('x', Math.min(from, ev.offsetX)); rect.setAttribute('width', Math.abs(ev.offsetX - from)); } };
+  svg.onmouseup = (ev) => {
+    if (!rect) return;
+    const t1 = at(ev), w = Math.abs(ev.offsetX - from);
+    rect.remove(); rect = null;
+    if (w > 6) { view = [Math.min(svg._t0, t1), Math.max(svg._t0, t1)]; draw(); }
+  };
+  svg.ondblclick = () => { view = [...full]; draw(); };
+}
+
+function drawTimeline() {
+  const svg = $('timeline');
+  svg.innerHTML = '';
+  const W = width(), x = scaleX(W);
+  const evs = DATA.events.filter((e) => e.kind !== 'summary' && pass(e) && inView(e.start, e.t));
+  // Lanes: per world, a world lane (tick, backlog with no player) and one per player seen in the range.
+  const lanes = [];
+  for (const w of worlds) {
+    if (state.world && w !== state.world) continue;
+    const ps = DATA.players.filter((p) => p.w === w && inView(p.first, p.last) && (!state.player || state.player === p.key));
+    const worldEvs = evs.filter((e) => e.w === w);
+    if (!ps.length && !worldEvs.length) continue;
+    lanes.push({ w, key: null, label: w, world: true });
+    for (const p of ps) lanes.push({ w, key: p.key, label: p.name || `#${p.p}`, p });
+  }
+  const ROW = 18, H = 20 + lanes.length * ROW + 4;
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  axis(svg, W, H, x);
+  // Incidents behind everything.
+  const laneY = new Map(lanes.map((l, i) => [`${l.w}|${l.key}`, 20 + i * ROW]));
+  for (const inc of DATA.incidents) {
+    if ((state.world && inc.w !== state.world) || !inView(inc.start, inc.end)) continue;
+    const ys = lanes.map((l, i) => (l.w === inc.w ? 20 + i * ROW : null)).filter((y) => y !== null);
+    if (!ys.length) continue;
+    const r = el('rect', { x: x(inc.start) - 2, y: Math.min(...ys), width: Math.max(4, x(inc.end) - x(inc.start) + 4), height: Math.max(...ys) - Math.min(...ys) + ROW, class: 'inc' }, svg);
+    r.onmousemove = (ev) => showTip(ev, `<b>${esc(inc.verdict)}</b> · ${secs(inc.ms)}<br>${esc(inc.cause)}<br><span class="sub">${esc(inc.who.join(', ') || '(world)')}</span>`);
+    r.onmouseleave = hideTip;
+  }
+  lanes.forEach((l, i) => {
+    const y = 20 + i * ROW;
+    el('text', { x: l.world ? 4 : 14, y: y + 12, class: l.world ? 'world-label' : 'lane-label' }, svg).textContent = l.label.slice(0, 20);
+    if (l.p) el('line', { x1: Math.max(LEFT, x(l.p.first)), x2: Math.min(W - RIGHT, x(l.p.last)), y1: y + 9, y2: y + 9, stroke: 'var(--line)', 'stroke-width': 2 }, svg);
+  });
+  for (const e of evs) {
+    const y = laneY.get(`${e.w}|${e.key}`);
+    if (y === undefined) continue;
+    const x0 = Math.max(LEFT, x(e.start)), x1 = Math.min(W - RIGHT, x(e.t));
+    const r = el('rect', { x: x0, y: y + 3, width: Math.max(3, x1 - x0), height: 12, rx: 2, fill: color(e.kind), opacity: isLoading(e) ? 0.45 : 0.9 }, svg);
+    r.onmousemove = (ev) => showTip(ev, describe(e));
+    r.onmouseleave = hideTip;
+  }
+  if (!lanes.length) el('text', { x: LEFT, y: 34 }, svg).textContent = 'Nothing in this range.';
+  brush(svg, W, H, x);
+  $('range').textContent = `${clock(view[0])} → ${clock(view[1])}`;
+}
+
+function drawSeries(id, field, label, logScale) {
+  const svg = $(id);
+  svg.innerHTML = '';
+  const W = width(), H = 150, x = scaleX(W);
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', H);
+  const sums = DATA.events.filter((e) => e.kind === 'summary' && pass(e) && inView(e.t, e.t) && typeof e[field] === 'number');
+  const vals = sums.map((e) => e[field]);
+  const max = logScale ? Math.max(100, ...vals) : Math.max(60, ...vals);
+  const top = 18, bottom = H - 6;
+  const y = logScale ? (v) => bottom - (Math.log10(Math.max(1, v)) / Math.log10(max)) * (bottom - top) : (v) => bottom - (v / max) * (bottom - top);
+  axis(svg, W, H, x);
+  const ticks = logScale ? [10, 30, 100, 300, 1000, 3000, 10000].filter((v) => v <= max) : [0, 30, 60, 90, 120].filter((v) => v <= max);
+  for (const v of ticks) {
+    el('line', { x1: LEFT, x2: W - RIGHT, y1: y(v), y2: y(v), class: 'grid' }, svg);
+    el('text', { x: LEFT - 6, y: y(v) + 4, 'text-anchor': 'end' }, svg).textContent = v;
+  }
+  el('text', { x: 4, y: top + 10, class: 'lane-label' }, svg).textContent = label;
+  const byPlayer = new Map();
+  for (const e of sums) (byPlayer.get(e.key) ?? byPlayer.set(e.key, []).get(e.key)).push(e);
+  for (const [key, list] of byPlayer) {
+    // Break the line where a player was gone for more than two minutes.
+    let d = '', prev = null;
+    for (const e of list) {
+      d += `${prev && e.t - prev.t < 125000 ? 'L' : 'M'}${x(e.t).toFixed(1)},${y(e[field]).toFixed(1)}`;
+      prev = e;
+    }
+    el('path', { d, fill: 'none', stroke: playerColor.get(key), 'stroke-width': 1.6 }, svg);
+    for (const e of list) {
+      const c = el('circle', { cx: x(e.t), cy: y(e[field]), r: 3, fill: playerColor.get(key), opacity: e.hidden ? 0.35 : 1 }, svg);
+      c.onmousemove = (ev) => showTip(ev, `<b>${esc(playerName.get(key))}</b> · ${esc(e.w)} · minute to ${clock(e.t)}<br>rtt ${e.rtt50} / ${e.rtt95} / max ${e.rttMax} ms<br>worst snapshot gap ${secs(e.gapMax)} · worst frame ${secs(e.frameMax)} · ${e.fps} fps${e.hidden ? '<br>tab hidden some of it' : ''}`);
+      c.onmouseleave = hideTip;
+    }
+  }
+  brush(svg, W, H, x);
+  return [...byPlayer.keys()];
+}
+
+let incSort = { by: 'start', dir: -1 };
+function drawIncidents() {
+  const list = DATA.incidents.filter((i) => (!state.world || i.w === state.world) && (!state.player || i.keys.includes(state.player)) && inView(i.start, i.end));
+  list.sort((a, b) => (a[incSort.by] < b[incSort.by] ? -1 : a[incSort.by] > b[incSort.by] ? 1 : 0) * incSort.dir);
+  const head = [['start', 'When (UTC)'], ['ms', 'How long'], ['verdict', 'Whose side'], ['w', 'World'], ['who', 'Who'], ['cause', 'Why']];
+  $('incidents').innerHTML =
+    `<thead><tr>${head.map(([k, t]) => `<th data-k="${k}">${t}${incSort.by === k ? (incSort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>` +
+    `<tbody>${list.slice(0, 300).map((i, n) => `<tr data-n="${n}"><td>${clock(i.start)}</td><td class="num">${secs(i.ms)}</td><td><span class="tag">${esc(i.verdict)}</span></td><td>${esc(i.w)}</td><td>${esc(i.who.join(', ') || '(world)')}</td><td>${esc(i.cause)}</td></tr>`).join('')}</tbody>`;
+  $('incidents').querySelector('thead').onclick = (ev) => {
+    const k = ev.target.dataset.k;
+    if (!k) return;
+    incSort = { by: k, dir: incSort.by === k ? -incSort.dir : k === 'start' || k === 'ms' ? -1 : 1 };
+    drawIncidents();
+  };
+  $('incidents').querySelector('tbody').onclick = (ev) => {
+    const tr = ev.target.closest('tr');
+    if (!tr) return;
+    const i = list[tr.dataset.n], pad = Math.max(5000, i.ms * 2);
+    view = [i.start - pad, i.end + pad];
+    draw();
+    $('timeline').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+}
+
+function drawEvents() {
+  const list = DATA.events.filter((e) => pass(e) && inView(e.start, e.t)).reverse();
+  const rest = (e) =>
+    e.kind === 'summary'
+      ? `rtt ${e.rtt50}/${e.rtt95}/${e.rttMax} · gap ${e.gapMax} · frame ${e.frameMax} · ${e.fps} fps${e.hidden ? ' · hidden' : ''}`
+      : e.kind === 'backlog' ? `${e.bytes} bytes` : `${secs(e.ms || 0)}${e.n !== undefined ? ` · n ${e.n}` : ''}${e.code !== undefined ? ` · code ${e.code}` : ''}${e.players !== undefined ? ` · ${e.players} players` : ''}`;
+  $('events').innerHTML =
+    '<thead><tr><th>At (UTC)</th><th>Kind</th><th>World</th><th>Player</th><th>What</th></tr></thead>' +
+    `<tbody>${list.slice(0, 500).map((e) => `<tr><td>${clock(e.t)}</td><td><span class="sw" style="background:${color(e.kind)}"></span> ${esc(e.kind)}</td><td>${esc(e.w)}</td><td>${esc(e.key ? playerName.get(e.key) : '')}</td><td>${esc(rest(e))}</td></tr>`).join('')}</tbody>`;
+  $('eventsHint').textContent = list.length > 500 ? `Newest 500 of ${list.length} in range; zoom in for the rest.` : `${list.length} in range.`;
+}
+
+function drawTiles() {
+  const evs = DATA.events.filter((e) => pass(e) && inView(e.start, e.t));
+  const stalls = evs.filter((e) => e.kind !== 'summary' && e.kind !== 'backlog');
+  const incs = DATA.incidents.filter((i) => (!state.world || i.w === state.world) && inView(i.start, i.end));
+  const sums = evs.filter((e) => e.kind === 'summary' && !e.hidden && e.fps > 0);
+  const med = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : '–');
+  const worst = stalls.reduce((m, e) => Math.max(m, e.ms || 0), 0);
+  const tiles = [
+    [new Set(evs.filter((e) => e.key).map((e) => e.key)).size, 'players'],
+    [stalls.length, 'stalls'],
+    [incs.length, 'incidents'],
+    [worst ? secs(worst) : '–', 'worst stall'],
+    [med(sums.map((e) => e.rtt50)), 'median rtt (ms)'],
+    [med(sums.map((e) => e.fps)), 'median fps'],
+  ];
+  $('tiles').innerHTML = tiles.map(([v, t]) => `<div class="tile"><b>${esc(v)}</b><span>${t}</span></div>`).join('');
+}
+
+function draw() {
+  hideTip();
+  drawTiles();
+  drawTimeline();
+  const keys = new Set([...drawSeries('rtt', 'rtt95', 'rtt p95', true), ...drawSeries('fps', 'fps', 'fps', false)]);
+  $('pLegend').innerHTML = [...keys].map((k) => `<span><span class="sw" style="background:${playerColor.get(k)}"></span> ${esc(playerName.get(k))} <span class="sub">${esc(k.split('/')[0])}</span></span>`).join('');
+  drawIncidents();
+  drawEvents();
+}
+draw();
+addEventListener('resize', () => draw());
+</script>
+</body>
+</html>

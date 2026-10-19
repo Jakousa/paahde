@@ -104,7 +104,13 @@ database (`/opt/dadajam/data/telemetry.jsonl` on the server; it survives redeplo
 | `tick` | world | a tick came `ms` after the last (the event loop was blocked), with `players` on |
 | `backlog` | world | `bytes` queued for a player that TCP can't send out (a stalled or slow link) |
 
-`ssh maukass tail -f /opt/dadajam/data/telemetry.jsonl`, or e.g. `jq -c 'select(.kind != "summary")'` on it. A `down`
+**`node tools/telemetry.ts`** reads it over ssh (`--file data/telemetry.jsonl` for a local one), prints a digest
+(incidents by cause, round trip and fps per player, the worst incidents) and opens an HTML report: a timeline per world
+and player, round trip and fps per player minute, incidents and events you can filter and zoom (`--since 6h`,
+`--world`, `--player`). `node tools/telemetry.ts tail` follows it live. Stalls close together in one world make an
+incident, and its verdict follows the reading below. Player ids are reused, so the tool groups by world and name.
+
+Or by hand: `ssh maukass tail -f /opt/dadajam/data/telemetry.jsonl`, or e.g. `jq -c 'select(.kind != "summary")'` on it. A `down`
 and `up` at the same moment from one player is their link stalling both ways (Wi-Fi); `down` for everyone at once is
 the server's side of the network; `tick` is the world itself. The stats line (Esc → Show stats) shows the round trip
 and the last stall.
