@@ -11,10 +11,10 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
+  choking, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
   sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
-import { EDGE } from '../shared/storm.ts';
+import { EDGE, FRONT_TAIL, FRONT_WALL } from '../shared/storm.ts';
 
 type N = Node<'vec3'>;
 type F = Node<'float'>;
@@ -62,6 +62,16 @@ const STORM_H = 60;
 const STORM_STEPS = 6;
 /** The dust frays out to this many storm radii (the gameplay strength ends at 1). */
 const STORM_OUTER = 1.3;
+/** Mega-storm front dust: how fast it thins upwards (m; the head of the wall stands up to FRONT_HEAD times
+ *  taller), how far (m) its billows reach out ahead of the leading edge, how far past where a ray enters it is
+ *  marched (opaque long before), and the steps (closer together near the eye). */
+const FRONT_H = 55;
+const FRONT_HEAD = 2.5;
+const FRONT_FRAY = 60;
+const FRONT_REACH = 700;
+const FRONT_STEPS = 8;
+/** How bright the front's dust is next to a column's. */
+const FRONT_LIT = 0.6;
 /** Ambient occlusion fades out between these view distances (m). Far off, GTAO (half resolution, normals
  *  rebuilt from depth) sees the ground at grazing angles a metre or more per pixel, and the depth step
  *  grows with distance² (near plane 5 cm: ~1 m at 1 km, as big as its 1.2 m radius): it read that as
@@ -99,6 +109,20 @@ function sunThroughDust(o: THREE.Vector3, sd: THREE.Vector3): number {
       tau += disc.w * fade * fade * up * 0.7 * dt;
     }
   });
+  // The front: the sun ray marched out to FRONT_REACH through the slab (billows averaged out).
+  const f = stormFront.value, fe = stormFrontEnv.value;
+  if (fe.x > 0) {
+    const top = (fe.y + FRONT_H * FRONT_HEAD * 2.5 - o.y) / Math.max(sd.y, 1e-4);
+    const n = 16, len = Math.min(FRONT_REACH, top), dt = len / n;
+    for (let k = 0; k < n; k++) {
+      const t = dt * (k + 0.5);
+      const u = f.z - ((o.x + sd.x * t) * f.x + (o.z + sd.z * t) * f.y);
+      const wall = THREE.MathUtils.smoothstep(u, -FRONT_FRAY, FRONT_WALL) * (1 - THREE.MathUtils.smoothstep(u, f.w - FRONT_TAIL, f.w));
+      const H = FRONT_H * (1 + (FRONT_HEAD - 1) * Math.exp(-Math.max(u, 0) / 300));
+      const hh = Math.max(o.y + sd.y * t - fe.y, 0);
+      tau += fe.x * wall * Math.exp(-hh / H) * 0.7 * dt;
+    }
+  }
   return Math.exp(-STORM_K * tau);
 }
 
@@ -201,12 +225,13 @@ export class Post {
       const ndc = vec4(p.x.mul(2).sub(1), float(1).sub(p.y.mul(2)), 1, 1);
       const v = projInv.mul(ndc);
       const dv = normalize(v.xyz.div(v.w));
-      const dir = normalize(camWorld.mul(vec4(dv, 0)).xyz);
-      const tScene = viewZ.div(dv.z); // both negative: distance along the ray
+      // As variables: the columns and the front both use these, and nodes first built inside one's If stay there.
+      const dir = normalize(camWorld.mul(vec4(dv, 0)).xyz).toVar();
+      const tScene = viewZ.div(dv.z).toVar(); // both negative: distance along the ray
       const tau = float(0).toVar();
       const lit = float(0).toVar(); // optical-depth-weighted brightness of the dust seen
       const first = float(1e9).toVar(); // where the dust starts, for the haze in front of it
-      const jitter = fract(sin(dot(p.mul(vec2(911.3, 577.7)), vec2(12.9898, 78.233))).mul(43758.5453));
+      const jitter = fract(sin(dot(p.mul(vec2(911.3, 577.7)), vec2(12.9898, 78.233))).mul(43758.5453)).toVar();
       const ground = [stormGround.x, stormGround.y, stormGround.z, stormGround.w];
       // In the base (or a shelter) the dust only starts where the ray gets out: up past the pad's surface (the
       // skylight, the stairwell) and out of the entrance hut (its door). Rays that end on the walls never get there.
@@ -220,7 +245,7 @@ export class Post {
       const tNear = max(max(min(ta.x, tb.x), min(ta.y, tb.y)), min(ta.z, tb.z));
       const tFar = min(min(max(ta.x, tb.x), max(ta.y, tb.y)), max(ta.z, tb.z));
       const tHut = tFar.greaterThan(max(tNear, 0)).select(tFar, float(0));
-      const tOut = max(tSurf, tHut).mul(stormIndoors);
+      const tOut = max(tSurf, tHut).mul(stormIndoors).toVar();
       stormDiscs.forEach((disc, i) => {
         If(disc.w.greaterThan(0), () => {
           const oc = camPos.xz.sub(disc.xy);
@@ -259,6 +284,44 @@ export class Post {
               }
             });
           });
+        });
+      });
+      // The mega-storm front (shared/storm.ts): a slab of dust across the whole world behind its leading edge, a tall
+      // rolling wall from ahead (its head stands higher than the dust behind) and dust fog inside. Marched out to
+      // FRONT_REACH past where the ray enters, in steps that widen with distance.
+      If(stormFrontEnv.x.greaterThan(0), () => {
+        const fd = stormFront.xy;
+        const a0 = dot(camPos.xz, fd);
+        const ad = dot(dir.xz, fd);
+        const inv = float(1).div(ad.greaterThanEqual(0).select(max(ad, 1e-5), min(ad, -1e-5)));
+        const ta = stormFront.z.sub(stormFront.w).sub(a0).mul(inv);
+        const tb = stormFront.z.add(FRONT_FRAY).sub(a0).mul(inv);
+        const t0 = max(min(ta, tb), tOut);
+        const top = stormFrontEnv.y.add(FRONT_H * FRONT_HEAD * 2.5).sub(camPos.y).div(max(dir.y, 1e-4));
+        const t1 = min(min(min(max(ta, tb), tScene), top), t0.add(FRONT_REACH));
+        If(t1.greaterThan(t0), () => {
+          first.assign(min(first, t0));
+          const len = t1.sub(t0);
+          for (let k = 0; k < FRONT_STEPS; k++) {
+            const f = jitter.add(k).div(FRONT_STEPS);
+            const t = t0.add(len.mul(f.mul(f)));
+            const dt = len.mul((2 * k + 1) / (FRONT_STEPS * FRONT_STEPS));
+            const q = camPos.add(dir.mul(t));
+            const w = vec3(q.x.sub(windDrift.x.mul(3)), q.y.mul(1.3).sub(time.mul(7)), q.z.sub(windDrift.y.mul(3)));
+            const n = mx_noise_float(w.mul(0.011)).mul(0.6).add(mx_noise_float(w.mul(0.035)).mul(0.4));
+            // How far behind the leading edge, the billows pushing it in and out.
+            const u = stormFront.z.sub(dot(q.xz, fd)).add(n.mul(FRONT_FRAY));
+            const wall = smoothstep(-FRONT_FRAY, FRONT_WALL, u).mul(float(1).sub(smoothstep(stormFront.w.sub(FRONT_TAIL), stormFront.w, u)));
+            const H = exp(max(u, 0).div(-300)).mul(FRONT_H * (FRONT_HEAD - 1)).add(FRONT_H);
+            const h = max(q.y.sub(stormFrontEnv.y), 0);
+            // A crisp, billowing top: full up to its height, gone within half as much again.
+            const up = exp(h.div(H).negate()).mul(float(1).sub(smoothstep(H.mul(1.6), H.mul(2.4), h.mul(n.mul(0.35).add(1)))));
+            const billow = saturate(n.mul(0.9).add(0.7));
+            const d = stormFrontEnv.x.mul(wall).mul(up).mul(billow).mul(dt);
+            tau.addAssign(d);
+            // Darker than the haze it rises out of: lit billow tops over a deep brown body.
+            lit.addAssign(d.mul(n.mul(0.7).add(0.45)).mul(float(1).sub(up.mul(0.55))).mul(FRONT_LIT));
+          }
         });
       });
       const trans = exp(tau.mul(-STORM_K));
@@ -382,6 +445,11 @@ export class Post {
       const ragged = v.add(mx_noise_float(vec3(p.sub(0.5).mul(vec2(aspect, 1)).mul(2.5), time.mul(0.4))).mul(0.06));
       const edge = smoothstep(mix(float(0.62), float(0.18), hs), 1.0, ragged);
       o = mix(o, vec3(0.32, 0.015, 0.005), saturate(edge.mul(hs).mul(beat.mul(0.25).add(0.8)).mul(1.15)));
+      // Choking in a storm front: the light dims and a dark, ragged dust-brown closes in from the edges.
+      const ch = choking;
+      o = o.mul(float(1).sub(ch.mul(0.35)));
+      const cEdge = smoothstep(mix(float(0.7), float(0.08), ch), 1.0, ragged);
+      o = mix(o, vec3(0.07, 0.04, 0.02), saturate(cEdge.mul(ch).mul(1.3)));
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
       o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(0.028)));

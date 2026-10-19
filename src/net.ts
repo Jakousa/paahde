@@ -539,9 +539,9 @@ export class Net {
     this.send({ t: 'summon', what });
   }
 
-  /** Debug menu: a sandstorm where we stand, for everyone. */
-  summonStorm() {
-    this.send({ t: 'storm' });
+  /** Debug menu: a sandstorm where we stand, for everyone; `front`: a mega-storm front over everyone at once. */
+  summonStorm(front = false) {
+    this.send({ t: 'storm', ...(front ? { front } : {}) });
   }
 
   /** Debug menu: put the shared clock back to real time. */

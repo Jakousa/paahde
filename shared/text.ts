@@ -203,6 +203,7 @@ const en = {
     inShade: 'In shade',
     sun: 'Sun',
     sandstorm: '⚠ Sandstorm',
+    stormFront: '⚠ Storm front',
     death: 'The desert knows no mercy',
   },
   /** A death in chat, after the dead player's name (shared/protocol.ts DeathCause). */
@@ -217,6 +218,7 @@ const en = {
     bomb: 'bombed by the carrier',
     queen: 'killed by the queen',
     harvester: 'ground into the sand by a harvester',
+    storm: 'choked in the storm front',
   },
 
   // ---- Esc menu, controls, landing page, name ----------------------------------------------------------------------
@@ -450,6 +452,9 @@ const en = {
     shelter: 'Somebody dug in here once. Nice and cool.',
     stormWarning: "That beeping can't be good. Better get under a roof.",
     storm: ["Can't see a thing!", 'Sand in my everything.'],
+    stormFront: ["That's a wall of sand. I need rock between me and it.", 'Here it comes. Underground, or behind a cliff.'],
+    choking: ["Can't breathe out here.", 'Get out of the wind!'],
+    lee: 'The rock takes the worst of it.',
     boss: 'Oh. Oh no.',
     combat: "They've seen me. Keep moving!",
     night: 'Finally, it cools down.',

@@ -1,6 +1,8 @@
 // Server side of sandstorms (shared/storm.ts): now and then one blows up somewhere near a random player,
-// and the list goes out to everyone whenever it changes. In memory only: a restart clears the weather.
-import { MAX_LEN_MS, MIN_LEN_MS, WARN_MS, type Storm } from '../shared/storm.ts';
+// and rarely a mega-storm front rolls in over everyone; the list goes out to everyone whenever it changes.
+// In memory only: a restart clears the weather.
+import { WIND } from '../shared/dunes.ts';
+import { FRONT_LEAD_S, FRONT_PASS_S, FRONT_SPEED, MAX_LEN_MS, MIN_LEN_MS, WARN_MS, type Storm } from '../shared/storm.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 
 /** Quiet time between one storm's announcement and the next (ms). */
@@ -10,9 +12,16 @@ const GAP_MAX_MS = 10 * 60_000;
 const NIGHT_GAP = 2.5;
 /** A new storm's centre lands this far (m) from the player it was picked for, at most. */
 const OFFSET = 220;
-const R_MIN = 140;
-const R_MAX = 300;
+const R_MIN = 60;
+const R_MAX = 130;
 const MAX_STORMS = 3;
+/** Time between mega-storm fronts (ms), and before the first one after the world starts. */
+const FRONT_GAP_MIN_MS = 35 * 60_000;
+const FRONT_GAP_MAX_MS = 70 * 60_000;
+const FRONT_FIRST_MIN_MS = 15 * 60_000;
+/** A front keeps blowing this long (ms) after its back has passed the furthest player (downwind) it was
+ *  sent at, so riding away from it only works on a fast bike. */
+const FRONT_LINGER_MS = 45_000;
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
@@ -20,12 +29,14 @@ export class StormServer {
   storms: Storm[] = [];
   private nextId = 1;
   private nextAt: number;
+  private nextFrontAt: number;
   private changed = false;
   /** Debug menu: no random storms (and any blowing now are cleared). */
   off = false;
 
   constructor(now: number) {
     this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS) / 2;
+    this.nextFrontAt = now + rand(FRONT_FIRST_MIN_MS, FRONT_GAP_MAX_MS);
   }
 
   /** Server time `now` (ms) and where the players are. Returns a 'storms' message when the list changed. */
@@ -38,7 +49,11 @@ export class StormServer {
     if (now >= this.nextAt) {
       this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS) * (night ? NIGHT_GAP : 1);
       const p = players[Math.floor(Math.random() * players.length)];
-      if (p && !this.off && this.storms.length < MAX_STORMS) this.spawn(p.x, p.z, OFFSET, now);
+      if (p && !this.off && this.storms.filter((s) => !s.front).length < MAX_STORMS) this.spawn(p.x, p.z, OFFSET, now);
+    }
+    if (now >= this.nextFrontAt) {
+      this.nextFrontAt = now + rand(FRONT_GAP_MIN_MS, FRONT_GAP_MAX_MS);
+      if (players.length && !this.off && !this.storms.some((s) => s.front)) this.spawnFront(players, now);
     }
     if (!this.changed) return null;
     this.changed = false;
@@ -57,6 +72,30 @@ export class StormServer {
       speed: Math.round(rand(2, 5) * 10) / 10,
       start: Math.round(start),
       end: Math.round(start + rand(MIN_LEN_MS, MAX_LEN_MS)),
+    });
+    this.changed = true;
+  }
+
+  /** A mega-storm front rolling in from upwind of everyone: it reaches the first of `players` FRONT_LEAD_S
+   *  from `now`, and dies down once it has blown over the last. */
+  spawnFront(players: { x: number; z: number }[], now: number) {
+    let first = Infinity, last = -Infinity;
+    for (const p of players) {
+      const a = p.x * WIND.x + p.z * WIND.z;
+      first = Math.min(first, a);
+      last = Math.max(last, a);
+    }
+    const a0 = first - FRONT_SPEED * FRONT_LEAD_S;
+    const depth = FRONT_SPEED * FRONT_PASS_S;
+    this.storms.push({
+      id: this.nextId++,
+      x: Math.round(WIND.x * a0),
+      z: Math.round(WIND.z * a0),
+      r: depth,
+      speed: FRONT_SPEED,
+      start: Math.round(now),
+      end: Math.round(now + ((last - a0 + depth) / FRONT_SPEED) * 1000 + FRONT_LINGER_MS),
+      front: true,
     });
     this.changed = true;
   }

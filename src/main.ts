@@ -219,7 +219,7 @@ const scrapBench = () => {
   return true;
 };
 const benchMenu = new BenchMenu(renderer.domElement);
-new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), () => net.summonStorm(), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
+new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), (front) => net.summonStorm(front), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
   (mode) => trophies.show(mode),
   (all) => (all ? net.labReset() : net.labReset(machines.nearestLab(net.me.x, net.me.z)?.site.id)),
   (off) => net.debugHeat(off),
@@ -499,7 +499,7 @@ renderer.setAnimationLoop((time) => {
   zaps.update(frameDt); // after the gun is drawn: your beam starts at its muzzle
   // Before the wind: the storm sets how hard it blows here.
   const belt = equipped(net.boxes.equip, 'belt');
-  storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me, belt ? stormWarnS(quality(belt)) : 0);
+  storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me, belt ? stormWarnS(quality(belt)) : 0, survival.dead || net.down !== null);
   // The locator comes with the wrist computer; a better one shows players further away (the base always).
   const wrist = equipped(net.boxes.equip, 'wrist');
   const range = wrist ? locatorRange(quality(wrist)) : 0;
@@ -631,7 +631,7 @@ baseSand.update(frameDt, storm.atBase);
   const m = net.me;
   speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(m.x, m.y, m.z), shelter: inShelter(m.x, m.y, m.z),
     atPump: atWater(m.x, m.y, m.z), heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
-    storm: storm.level, stormWarning: storm.warning, riding: s.riding, combat: guardianFx.combat, boss: bossFx.combat,
+    storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, riding: s.riding, combat: guardianFx.combat, boss: bossFx.combat,
     bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null });
   if ((find?.id ?? null) !== seenFind) {
     seenFind = find?.id ?? null;

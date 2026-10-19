@@ -1626,3 +1626,35 @@ sand for ore.
 - **Debug (F3):** *Harvester here*: one passes about 50 m away within a minute or so.
 - **Gaps:** its hull isn't solid to walk into (being under it kills, but the wreck can be walked through); the AI
   ignores storms and night.
+
+## Mega-storms (storm fronts)
+
+The local sandstorms are smaller now (radius 60–130 m, from 140–300), and rarely a world-wide storm front rolls in.
+
+- **When and where** (`server/storm.ts` `spawnFront`, `shared/storm.ts`): every 35–70 min (the first 15–70 min after
+  the world starts). A front is a `Storm` with `front: true`: a straight wall across the whole world, square to the
+  dunes' `WIND`, rolling downwind at 32 m/s. It appears 30 s upwind of the first player it will reach, is 1920 m deep
+  (60 s to blow over a spot), and dies down 45 s after its back has passed the furthest player downwind. Same message
+  and clock maths as the columns, so `stormAt`, `stormDrag`, `nearStorm` (drones dark, no walker fire) and the heat
+  pick it up.
+- **Outrunning it:** walking (7.5) and sliding (15–18) can't, nor the basic bike (20 m/s top); a bike better than
+  basic (`bikeTopSpeed` over 32) can, if you keep going downwind until it dies down.
+- **Choking:** out in the open in it you choke (`frontExposure`: strength over 0.3 counts, full strength fills it in
+  `CHOKE_S` = 12 s, it wears off at half that rate). The server counts it per player (`choke`, server/world.ts) and
+  kills at 12 (`'storm'`, "choked in the storm front"; the shield plate doesn't help, the ragdoll is thrown downwind).
+  The client counts the same to dim the view and close in a dark, ragged brown from the edges (`choking`, post.ts).
+- **Cover:** a bunker (base or shelter), or the lee of rock: `sheltered` looks 1.5–24 m upwind for ground rising
+  over your eye by more than 0.6 m and steeper than 0.8 (≈39°, so a dune's lee face doesn't count, cliffs, boulders
+  and pillars do). About 1.4% of random desert spots qualify, many more in rocky country. In the lee the front's push
+  is cut to 30%, the grit to 40% and the wind to 60%, so you can feel you found it; the character says so once.
+- **Warning and voice:** the storm detector beeps and shows "⚠ Storm front" twice as early as for a column. Everyone
+  sees the wall coming and hears it rising from 400 m out; the character says a line when it's under 25 s away, and
+  when choking.
+- **Look** (`src/post.ts`): a slab of dust behind the leading edge, marched in 8 steps (closer together near the eye)
+  out to 700 m past where the ray enters; the head of the wall stands ~140 m, the dust behind thins lower, billowed
+  by drifting noise; darker than the column dust, so from afar it's a brown bank over the horizon. The sun is dimmed
+  through it (`sunThroughDust`). Gotcha: shared nodes (`dir`, `tScene`, `tOut`, `jitter`) must be `.toVar()`'d at the
+  top of the Fn — built first inside the columns' `If`, they were garbage in the front's.
+- **Debug:** F3 → *Storm front* sends one over everyone (30 s to the first player). `dbg.storm.summonFront(ahead)`
+  puts a still one `ahead` m upwind for 3 min, seen only by you (negative: you're in it; you choke on screen but the
+  server doesn't know).

@@ -51,8 +51,8 @@ export type ClientMsg =
   | { t: 'hands'; hands: Hands; slot?: number; aim?: boolean }
   // Stall tracing (src/telemetry.ts → server/telemetry.ts): stalls seen since the last one, and a summary a minute.
   | { t: 'telemetry'; ev: StallEvent[]; sum?: NetSummary }
-  // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning.
-  | { t: 'storm' }
+  // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning; `front`: a mega-storm front at once.
+  | { t: 'storm'; front?: boolean }
   // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
   // to box `to` slot ti (ti -1: anywhere in it). Boxes: 'bag', 'bike', 'chest<i>'. The server checks
   // you can open both, applies moveItem() and answers with 'items' for each box that changed.
@@ -322,4 +322,4 @@ export type ServerMsg =
   // `a`: any numbers it goes with), to everyone within BOSS_SEND_R.
   | { t: 'bossFx'; id: number; e: string; time: number; x: number; y: number; z: number; a?: number[] };
 
-export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen' | 'harvester';
+export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen' | 'harvester' | 'storm';

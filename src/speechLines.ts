@@ -34,6 +34,10 @@ export type SpeechState = {
   /** Sandstorm here (0..1), and the storm detector warning of one on its way. */
   storm: number;
   stormWarning: boolean;
+  /** A mega-storm front about to hit us, out in the open; choking in one; sitting one out in the lee of rock. */
+  frontComing: boolean;
+  choking: boolean;
+  lee: boolean;
   /** On the motorcycle. */
   riding: boolean;
   /** Walkers or drones after us; a boss close by. */
@@ -142,6 +146,9 @@ export const LINES: Line[] = [
     say: TEXT.speech.stormWarning, again: 5 * MIN },
   { id: 'storm', on: 'tick', when: (s) => !s.dead && !s.indoors && s.storm > 0.5,
     say: TEXT.speech.storm, again: 5 * MIN },
+  { id: 'stormFront', on: 'tick', when: (s) => !s.dead && s.frontComing, say: TEXT.speech.stormFront, again: 10 * MIN },
+  { id: 'choking', on: 'tick', when: (s) => !s.dead && s.choking, say: TEXT.speech.choking, again: MIN },
+  { id: 'lee', on: 'tick', when: (s) => !s.dead && s.lee, say: TEXT.speech.lee, again: 20 * MIN },
 
   // Things that want us dead.
   { id: 'boss', on: 'tick', when: (s) => !s.dead && s.boss, say: TEXT.speech.boss },
