@@ -32,7 +32,7 @@ export const PLAYER_HEIGHT = 1.8; // y is the player's feet
 /** Horizontal collision radius against scrap (shared/scrap.ts). */
 export const PLAYER_RADIUS = 0.35;
 /** Scrap whose top is at most this far above the feet is stepped onto instead of blocking. */
-const STEP_UP = 0.35;
+export const STEP_UP = 0.35;
 const GRAVITY = -25;
 export const WALK_SPEED = 7.5;
 /** No sprint any more: the speed where "fast" effects (FOV kick, being winded) are in full swing, reached by sliding. */

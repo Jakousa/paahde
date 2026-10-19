@@ -40,7 +40,7 @@ import { WORLD_ID } from '../shared/world.ts';
 import { Telemetry } from './telemetry';
 
 /** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
-export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' }>;
+export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' | 'siteRolls' }>;
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
 import { F_STRIDE } from '../shared/guardians.ts';
@@ -651,7 +651,7 @@ export class Net {
       m.set(msg.i, msg.n);
       return;
     }
-    if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake' || msg.t === 'sites' || msg.t === 'siteReset' || msg.t === 'bench' || msg.t === 'siteTook') {
+    if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake' || msg.t === 'sites' || msg.t === 'siteReset' || msg.t === 'bench' || msg.t === 'siteTook' || msg.t === 'siteRolls') {
       if (msg.t === 'siteDone') this.holders.get(msg.id)?.delete(msg.i);
       return this.onSite?.(msg);
     }

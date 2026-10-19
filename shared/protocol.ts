@@ -212,6 +212,9 @@ export type ServerMsg =
   | { t: 'sites'; sites: { id: string; done: number[]; taken: number[] }[] }
   // A site's machine is whole again (dev reset): forget its progress.
   | { t: 'siteReset'; id: string }
+  // Machines pushed round (rolled about their own axis, shared/machineBoxes.ts pushedMachine): the angle (rad) of each that has been,
+  // on join (with reset: all of them) and whenever one moves.
+  | { t: 'siteRolls'; rolls: { id: string; a: number }[]; reset?: boolean }
   // The machine on the base's disassembly table (null: the table is free). On join, and to everyone when a job
   // starts or its last part is taken. Its steps and takes come as siteDone / siteTake with id 'bench'.
   | { t: 'bench'; job: BenchJob | null }

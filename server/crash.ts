@@ -16,7 +16,8 @@
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
-import { machineChanged, setMachineProgress } from '../shared/machineBoxes.ts';
+import { machineChanged, pushedMachine, setMachineProgress } from '../shared/machineBoxes.ts';
+import { DT, PLAYER_RADIUS, STEP_UP } from '../shared/sim.ts';
 import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { crashSite, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
@@ -37,6 +38,8 @@ const REACH_SLACK = 1.5;
 const BENCH_REACH = 6;
 const MAX_INDEX = 255;
 const COOLDOWN_MS = 200;
+/** How fast (rad/s) a machine rolls when pushed at a walk: a quarter turn in about five seconds. */
+const ROLL_RATE = 0.3;
 /** Session id of the base's disassembly table. */
 export const BENCH_ID = 'bench';
 
@@ -187,6 +190,38 @@ export class CrashServer {
     machineChanged(id);
     this.db.clearProgress(id);
     this.broadcast({ t: 'siteReset', id });
+    if (this.rolls.delete(id)) this.broadcast({ t: 'siteRolls', rolls: [{ id, a: 0 }] }); // (set back as it was)
+  }
+
+  /** How far each machine that has been pushed round has rolled about its axis (rad), and which changed since the last message. */
+  private rolls = new Map<string, number>();
+  private rolled = new Set<string>();
+
+  /** A player at `s` this tick: leaning on a machine while walking into it rolls it, slowly, away from them: pushing from one
+   *  side brings the other round. Slower than a walk (a ton and a half of engine). */
+  push(s: { x: number; y: number; z: number; vx: number; vz: number }) {
+    const hit = pushedMachine(s, s.y, PLAYER_RADIUS, STEP_UP);
+    if (!hit) return;
+    const { site, nx, nz, into } = hit;
+    // which way round: the top moves away from the player (the axis' horizontal direction crossed with up, against the push)
+    const ax = Math.sin(site.yaw), az = Math.cos(site.yaw);
+    const side = az * nx - ax * nz;
+    if (Math.abs(side) < 0.05) return; // pushing along the axis: it does not roll
+    const rate = ROLL_RATE * Math.min(1, into / 2) * Math.sign(side);
+    this.rolls.set(site.id, (this.rolls.get(site.id) ?? 0) + rate * DT);
+    this.rolled.add(site.id);
+  }
+
+  /** The machines that rolled since last time (each at most once per broadcast). */
+  flushRolls(): ServerMsg | null {
+    if (!this.rolled.size) return null;
+    const rolls = [...this.rolled].map((id) => ({ id, a: Math.round((this.rolls.get(id) ?? 0) * 1000) / 1000 }));
+    this.rolled.clear();
+    return { t: 'siteRolls', rolls };
+  }
+
+  rollsMessage(): ServerMsg {
+    return { t: 'siteRolls', rolls: [...this.rolls].map(([id, a]) => ({ id, a: Math.round(a * 1000) / 1000 })), reset: true };
   }
 
   joinMessage(): ServerMsg {

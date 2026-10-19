@@ -164,6 +164,8 @@ export interface PieceInner {
   resting: boolean;
   /** The model has arrived and `obj` is placed. */
   loaded: boolean;
+  /** Where it lies once it has come off: the machine's root (not the part that rolls). */
+  home?: THREE.Object3D;
   gone: boolean;
 }
 export interface Slot {
@@ -194,6 +196,8 @@ export interface Junk {
   slots: Slot[];
   /** Built from a model at its real size, in its resting pose (src/teardown/glbMachine.ts): never turned by hand or lifted to rest. */
   fixed?: boolean;
+  /** Rolled about its own axis by this many radians (pushed round: server/crash.ts push); the pieces lying round it stay put. */
+  setRoll?: (a: number) => void;
 }
 /** What a pointer hit resolves to; stored in `userData.target` on the object that owns the interaction. */
 export type Target =
@@ -217,6 +221,7 @@ export function restPiece(p: Piece) {
   const n = p.inner;
   if (!n) return;
   n.resting = true;
+  n.home?.add(p.obj); // (the machine rolls when pushed; what lies round it does not)
   if (n.loaded) p.obj.position.set(n.rest.x, p.floorY, n.rest.y);
 }
 

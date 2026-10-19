@@ -187,7 +187,7 @@ net.onSite = (m) => {
   if (m.t === 'siteTook' && cur?.id === m.id) {
     teardown.applyTook(m.i, m.ok, m.reason);
   }
-  if (!cur || m.t === 'sites' || m.t === 'bench' || m.t === 'siteReset' || m.t === 'siteTook' || cur.id !== m.id) return;
+  if (!cur || m.t === 'sites' || m.t === 'bench' || m.t === 'siteReset' || m.t === 'siteTook' || m.t === 'siteRolls' || cur.id !== m.id) return;
   if (m.t === 'siteState') {
     for (const i of m.done) teardown.applyDone(i, true);
     for (const i of m.taken) teardown.applyTake(i, false);

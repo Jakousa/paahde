@@ -44,6 +44,7 @@ function loadModel(model: string): Promise<Map<string, THREE.Object3D>> {
 
 /** Size of the fasteners and terminals on a full-size model. */
 const FASTENER = 0.6;
+const _p = new THREE.Vector3();
 /** Parts shown at this fraction of their usual size: they sit inside things measured in metres. */
 const PART_SCALE = 0.4;
 /** How far (before PART_SCALE) a part's centre is above its base. */
@@ -191,6 +192,20 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
     kind, label: junkSpec(kind).label, tier: TIERS[best], root, scale: 1,
     steps: kit.steps, pieces: kit.pieces, slots: kit.slots, fixed: true,
   };
+  for (const p of kit.pieces) if (p.inner) p.inner.home = root;
+  if (layout.pose) {
+    // Pushed round, the machine turns about its own (tilted) axis through the sunk nose: the nose stays down in the sand
+    // and it never comes out, whatever side is brought up.
+    const axis = new THREE.Vector3(0, -Math.sin(layout.pose.pitch), Math.cos(layout.pose.pitch));
+    const pivot = new THREE.Vector3(0, layout.pose.lift, 0);
+    const q = new THREE.Quaternion();
+    junk.setRoll = (a) => {
+      q.setFromAxisAngle(axis, a);
+      kit.g.quaternion.copy(q);
+      kit.g.position.copy(pivot).sub(_p.copy(pivot).applyQuaternion(q));
+      if (!kit.g.matrixAutoUpdate) settle(root); // (a machine at rest is frozen: bring its matrices up to date)
+    };
+  }
   root.userData.target = { type: 'junk', junk } satisfies Target;
   return junk;
 }

@@ -94,6 +94,30 @@ function machinesNear(x: number, z: number): CrashSite[] {
 }
 
 /**
+ * The machine a player is leaning on, if any: touching its side (within a hand's breadth), not standing on it, and walking
+ * into it. Returns it with the direction from its axis to the player (horizontal, unit) and the speed into it (m/s).
+ * The server turns that into the machine rolling slowly about its axis (server/crash.ts push), so every side can be reached.
+ */
+export function pushedMachine(p: { x: number; z: number; vx: number; vz: number }, y: number, radius: number, stepUp: number):
+  { site: CrashSite; nx: number; nz: number; into: number } | null {
+  for (const site of machinesNear(p.x, p.z)) {
+    if (Math.abs(p.x - site.x) > 4 + radius || Math.abs(p.z - site.z) > 4 + radius) continue;
+    const base = heightAt(site.x, site.z);
+    for (const b of machineCapsules(site)) {
+      let t = (p.x - b.x) * b.ax + (p.z - b.z) * b.az;
+      t = t < -b.half ? -b.half : t > b.half ? b.half : t;
+      const ex = p.x - (b.x + b.ax * t), ez = p.z - (b.z + b.az * t);
+      const d = Math.sqrt(ex * ex + ez * ez);
+      if (d < 1e-6 || d > b.r + radius + 0.12 || y >= base + b.h - stepUp) continue;
+      const nx = ex / d, nz = ez / d;
+      const into = -(p.vx * nx + p.vz * nz);
+      if (into > 0) return { site, nx, nz, into };
+    }
+  }
+  return null;
+}
+
+/**
  * Collide a player (circle of `radius` at feet height y; prevY is last tick's) with the machines near: the same rules as
  * collideCrash (shared/crashsites.ts): a top within `stepUp` below the feet is ground (the highest such top, or -Infinity),
  * anything taller a wall that pushes the position out and takes the velocity into it away, in place.

@@ -293,6 +293,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, crash.progressMessage());
   send(ws, crash.benchMessage());
   send(ws, crash.spentMessage());
+  send(ws, crash.rollsMessage());
   send(ws, placedThings.joinMessage());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
@@ -897,6 +898,7 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.input = input & INPUT_MASK;
   const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
   p.state = step(p.state, input & INPUT_MASK, p.yaw, drag, guardians.posts);
+  crash.push(p.state); // leaning on a machine rolls it
 }
 
 // Fixed-rate server loop: refill input tokens, simulate idle players, broadcast snapshots.
@@ -960,7 +962,7 @@ function broadcast(time: number) {
   const weather = LAB ? null : storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0);
   const flights = LAB ? null : jets.tick(time, [...players.values()].map((p) => p.state));
   if (!LAB) for (const w of jets.wrecks(time)) dropJetSpoils(w);
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), placedThings.flush(), garden.flush(), weather, flights]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), garden.flush(), weather, flights]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);

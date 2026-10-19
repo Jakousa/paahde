@@ -48,6 +48,8 @@ interface SiteView {
   /** Close enough that its fasteners are drawn (seen from afar there are hundreds of meshes for nothing), and whether the
    *  disassembly was working on it last frame. */
   detail?: boolean;
+  /** How far round it is drawn rolled now (it follows the server's angle). */
+  rolled?: number;
   wasBusy?: boolean;
   /** What is still to be put back into the scene as you come near, a few a frame. */
   queue?: THREE.Object3D[];
@@ -57,6 +59,8 @@ const spent = (site: CrashSite) => !site.lab && !junkSpec(site.kind).carry && cr
 
 export class MachineSites {
   private views = new Map<string, SiteView>();
+  /** The angle (rad) each pushed-round machine is at, from the server. */
+  private rollTo = new Map<string, number>();
   private scene: THREE.Scene;
   readonly bench: Bench;
   /** Every large site's progress, from the server. */
@@ -87,6 +91,7 @@ export class MachineSites {
       else if (!gone && d < BUILD_R && !v.shown) this.show(v);
       else if (v.shown && d > DROP_R) this.drop(v, false);
       if (v.shown && v.junk && !v.husk) this.detailed(v, d);
+      if (v.shown && v.junk?.setRoll) this.rolling(v);
       if (v.shown && v.junk) this.cull(v, d);
     }
     for (const [id, v] of this.views) {
@@ -94,6 +99,15 @@ export class MachineSites {
       this.drop(v, true);
       this.views.delete(id);
     }
+  }
+
+  /** Follow the server's angle for a machine that has been pushed round, easing into it. */
+  private rolling(v: SiteView) {
+    const to = this.rollTo.get(v.site.id) ?? 0;
+    const cur = v.rolled ?? 0;
+    if (Math.abs(to - cur) < 1e-4) return;
+    v.rolled = Math.abs(to - cur) < 2e-3 ? to : cur + (to - cur) * 0.2;
+    v.junk!.setRoll!(v.rolled);
   }
 
   /** One test for the whole machine, a sphere round it: outside the view (and far enough off that its shadow cannot reach it
@@ -165,6 +179,8 @@ export class MachineSites {
     const off = j.fixed ? null : lowestOffset(j.root);
     if (off !== null) j.root.position.y += off;
     v.shown = true;
+    v.rolled = this.rollTo.get(site.id) ?? 0;
+    j.setRoll?.(v.rolled);
     v.detail = false;
     v.queue = [];
     hideDetail(j);
@@ -203,6 +219,11 @@ export class MachineSites {
   apply(m: SiteMsg, active: string | null) {
     if (m.t === 'bench') return this.bench.set(m.job, active === BENCH_ID);
     if (m.t === 'siteTook') return;
+    if (m.t === 'siteRolls') {
+      if (m.reset) this.rollTo.clear();
+      for (const r of m.rolls) this.rollTo.set(r.id, r.a);
+      return;
+    }
     if (m.t === 'sites') {
       this.progress.clear();
       machineChanged();
