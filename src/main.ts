@@ -326,6 +326,10 @@ window.addEventListener('resize', () => {
 
 await renderer.init();
 const backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
+// which GPU the browser actually gave us (shown in the stats line, so "integrated or not" can be read off it)
+const gpuInfo = (renderer.backend as unknown as { device?: { adapterInfo?: { vendor?: string; architecture?: string; description?: string } } }).device?.adapterInfo;
+const gpuName = gpuInfo ? (gpuInfo.description || [gpuInfo.vendor, gpuInfo.architecture].filter(Boolean).join(' ')) : '';
+const backendText = gpuName ? `${backend} ${gpuName}` : backend;
 
 const timer = new THREE.Timer();
 const focus = new THREE.Vector3();
@@ -351,7 +355,7 @@ renderer.setAnimationLoop((time) => {
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);
   if (!joined && !net.connected) {
-    menu.setInfo(`${backend} · ${net.status} · build ${__BUILD_SHA__}`);
+    menu.setInfo(`${backendText} · ${net.status} · build ${__BUILD_SHA__}`);
     return;
   }
   joined = true;
@@ -620,7 +624,7 @@ baseSand.update(frameDt, storm.atBase);
   const ri = renderer.info.render as { drawCalls?: number; calls?: number; triangles: number };
   statsGraph.visible = menu.statsOn;
   statsGraph.frame(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000);
-  menu.setInfo(`${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backend} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
+  menu.setInfo(`${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backendText} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
   teardown.update(frameDt);
   if (loaded) {
     warm.finish();
