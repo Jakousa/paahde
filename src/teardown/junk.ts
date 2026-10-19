@@ -36,13 +36,18 @@ export function sheen(mat: THREE.MeshStandardNodeMaterial, sweep: boolean): { va
   return u;
 }
 
-/** Bring every world matrix under `root` up to date once, then stop three.js walking its (hundreds of) objects every frame:
- *  a machine that is not being worked on does not move. The disassembly turns the walk back on while it works
- *  (src/teardown/teardown.ts begin); call this again after anything under it was moved. */
+/** Bring every world matrix under `root` up to date once, then stop three.js rebuilding the matrix of each of its (hundreds of)
+ *  objects every frame (scene.updateMatrixWorld does that for any object with matrixAutoUpdate): a machine that is not
+ *  being worked on does not move. The disassembly wakes it while it works (`wake`); call `settle` again after anything under
+ *  it was moved. */
 export function settle(root: THREE.Object3D) {
-  root.matrixWorldAutoUpdate = true;
+  root.traverse((o) => { o.matrixAutoUpdate = true; });
   root.updateMatrixWorld(true);
-  root.matrixWorldAutoUpdate = false;
+  root.traverse((o) => { o.matrixAutoUpdate = false; });
+}
+
+export function wake(root: THREE.Object3D) {
+  root.traverse((o) => { o.matrixAutoUpdate = true; });
 }
 
 /** A machine seen from afar needs none of its fasteners drawn: with `on` the steps that can be worked are drawn, else none. */

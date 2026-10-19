@@ -187,7 +187,7 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
     (e) => console.warn('teardown: machine model failed', layout.model, e),
   ).then(() => {
     // the model arrived and moved things under a root that may no longer be walked every frame
-    if (!root.matrixWorldAutoUpdate && root.parent) settle(root);
+    if (!root.matrixAutoUpdate && root.parent) settle(root);
   });
 
   const root = new THREE.Group();

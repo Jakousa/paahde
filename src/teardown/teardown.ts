@@ -16,7 +16,7 @@ import { isBound } from '../bindings.ts';
 import { tdPrefs } from './prefs.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { Rope } from './rope.ts';
-import { animateMarker, lowestOffset, pieceEmpty, restPiece, settle, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
+import { animateMarker, lowestOffset, pieceEmpty, restPiece, settle, wake, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi } from './ui.ts';
 import { playerHands } from '../water.ts';
 import { uiSound } from '../uiSound.ts';
@@ -194,7 +194,7 @@ export class TeardownView {
     this.ui.setScrap(!!site.scrap);
     site.link?.join();
     if (!site.junk.root.parent) this.scene.add(site.junk.root);
-    site.junk.root.matrixWorldAutoUpdate = true; // it moves while it is worked on (src/world/crash.ts settle() stops the walk again)
+    wake(site.junk.root); // it moves while it is worked on (settle() stops the matrix updates again when the work ends)
     this.home.set(site.x, site.ground(site.x, site.z), site.z);
     this.computeRest();
     site.junk.root.position.y = this.restY;
