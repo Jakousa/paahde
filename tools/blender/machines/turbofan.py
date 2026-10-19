@@ -277,18 +277,13 @@ def build(pose, rnd_seed=11):
     comp.mb.lathe([(0.0, 0.44), (0.19, 0.44), (0.24, 0.20), (0.255, -0.08), (0.0, -0.08)], 24, 'Dark')
     for j in range(7):
         z = 0.40 - j * 0.07
-        rr = 0.19 + 0.045 * j
-        blade_row(comp.mb, 34, rr, 0.30, z, 0.045, 0.5, 0.006, 'Blade', rnd, broken=1 if j in (2, 5) else 0, bent=1 if j == 3 else 0, phase=j * 0.07)
-    comp.mb.sweep([polar(math.radians(120), 0.36, 0.30), polar(math.radians(130), 0.42, 0.3), polar(math.radians(150), 0.47, 0.26)], 0.012, 'Copper')
-    comp.mb.cyl(polar(math.radians(95), 0.30, 0.05), polar(math.radians(95), 0.40, 0.05), 0.05, 0.05, segs=10, mat='Brass')
+        # from the drum's surface to just short of the casing (the casing swells and narrows with the stage)
+        drum = 0.19 + 0.065 * (0.44 - z) / 0.64 if z > 0.2 else 0.24 + 0.015 * (0.2 - z) / 0.28
+        case = 0.34 - 0.015 * (0.46 - z) / 0.26 if z > 0.2 else 0.325 - 0.015 * (0.2 - z) / 0.28
+        blade_row(comp.mb, 34, drum - 0.01, case - 0.035, z, 0.045, 0.5, 0.006, 'Blade', rnd, broken=1 if j in (2, 5) else 0, bent=1 if j == 3 else 0, phase=j * 0.07)
     comp.ring('bolt', 'flangeBolt', (0, 0, 0.46), (0, 0, 1), 0.22, 8, after=['fan', 'casing_a', 'casing_b'])
     comp.step('lift', 'coreLift', (0, 0.25, 0.46), (0, 1, 0), after=['flangeBolt'], need=3.5)
     comp.inside()
-    comp.step('clip', 'linkagePin', polar(math.radians(130), 0.42, 0.3), radial(math.radians(130)))
-    comp.step('clip', 'linkagePin', polar(math.radians(105), 0.40, 0.18), radial(math.radians(105)))
-    comp.ring('bolt', 'padBolt', polar(math.radians(95), 0.41, 0.05), radial(math.radians(95)), 0.06, 3, phase=0.4)
-    comp.part('relay', polar(math.radians(120), 0.38, 0.3), (0, 0, 0), chance=0.8)
-    comp.part('valve', polar(math.radians(95), 0.35, 0.05), (0, 0, 0), chance=0.7)
 
     # --- combustor: annular liner with fuel nozzles, igniters
     comb = m.module('combustor', 0.7, pop=(0.3, 1, 0))
@@ -312,17 +307,14 @@ def build(pose, rnd_seed=11):
               key='black', after=['flangeBolt'], r=0.018)
     comb.step('lift', 'coreLift', (0, 0.28, -0.10), (0, 1, 0), after=['igniterLead', 'flangeBolt'], need=3.5)
     comb.inside()
-    for a in (0.0, 2.1, 4.2):
-        comb.step('clip', 'manifoldClamp', polar(a, 0.315, -0.09), radial(a))
     comb.ring('screw', 'padScrew', polar(math.radians(70), 0.412, -0.25), radial(math.radians(70)), 0.052, 2)
     comb.part('coil', polar(math.radians(70), 0.4, -0.25), (0, 0, 0), chance=0.8)
     comb.part('coil', polar(math.radians(105), 0.4, -0.25), (0, 0, 0), chance=0.6)
-    comb.part('valve', polar(math.radians(88), 0.33, -0.12), (0, 0, 0), chance=0.7)
 
     # --- turbine: HP and LP discs with burnt blades
     turb = m.module('turbine', 0.7, pop=(0.4, 1, -0.3))
     turb.mb.lathe([(0.0, -0.42), (0.20, -0.42), (0.22, -0.60), (0.0, -0.60)], 20, 'Dark')
-    blade_row(turb.mb, 40, 0.20, 0.31, -0.50, 0.07, 0.6, 0.008, 'Burnt', rnd, broken=3, bent=2)
+    blade_row(turb.mb, 40, 0.20, 0.295, -0.50, 0.07, 0.6, 0.008, 'Burnt', rnd, broken=3, bent=2)
     for j in range(4):
         z = -0.70 - j * 0.07
         blade_row(turb.mb, 54, 0.12, 0.30 + 0.025 * j, z, 0.05, 0.4, 0.006, 'Burnt', rnd, broken=2 if j in (1, 3) else 0, bent=2 if j == 2 else 0, phase=j * 0.05)
@@ -416,6 +408,7 @@ def build(pose, rnd_seed=11):
     fd.inside()
     fd.ring('screw', 'coverScrew', pos + radial(math.radians(262)) * 0.09, radial(math.radians(262)), 0.15, 4, phase=0.2)
     fd.part('compute', pos + radial(math.radians(262)) * 0.06, (0, 0, 0), chance=0.9)
+    fd.part('relay', pos + radial(math.radians(262)) * 0.04 + Vector((0.08, 0, 0)), (0, 0, 0), chance=0.7)
 
     oc = m.module('oilcooler', 0.6, pop=(1, 0.5, 0.2))
     pos = polar(math.radians(115), 0.80, 0.72)
