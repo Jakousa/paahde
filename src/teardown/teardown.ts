@@ -511,7 +511,7 @@ export class TeardownView {
     if (!this.site) return null;
     this.ray(x, y);
     // (the machine, and the piece in the hands, which hangs off the camera)
-    const h = this.raycaster.intersectObjects(this.held ? [this.site.junk.root, this.held.piece.obj] : [this.site.junk.root], true).find((i) => this.shown(i.object));
+    const h = this.raycaster.intersectObjects(this.held ? [this.site.junk.root, this.held.piece.obj] : [this.site.junk.root], true).find((i) => this.shown(i.object) && !this.locked(i.object));
     if (h && h.distance > reach) return null;
     let hit: Target | null = null;
     for (let o: THREE.Object3D | null = h?.object ?? null; o && !hit; o = o.parent) hit = (o.userData.target as Target | undefined) ?? null;
@@ -527,6 +527,15 @@ export class TeardownView {
       }
     }
     return hit;
+  }
+
+  /** A part still locked inside the machine is drawn but the pointer goes through it. */
+  private locked(o: THREE.Object3D) {
+    for (let p: THREE.Object3D | null = o; p; p = p.parent) {
+      const t = p.userData.target as Target | undefined;
+      if (t?.type === 'part') return !slotOpen(t.slot) || this.pendingSlot(t.slot);
+    }
+    return false;
   }
 
   /** Not inside a hidden group (a part waiting for the server). */
@@ -1073,8 +1082,6 @@ export class TeardownView {
     for (const s of j.slots) {
       const open = slotOpen(s);
       s.ring.visible = working && open;
-      // a part is not seen inside the machine: it appears when it is free to take
-      s.piece.obj.visible = open && !this.pendingSlot(s);
       s.ring.scale.setScalar((s === hoverSlot ? 1.18 : 1) + 0.08 * Math.sin(this.pulse * 5));
       // Parts glow a little all the time, and pulse once they are free to take.
       const glow = open ? PART_GLOW + 0.3 + 0.2 * Math.sin(this.pulse * 3) + (s === hoverSlot ? 0.35 : 0) : PART_GLOW;

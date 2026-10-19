@@ -83,7 +83,8 @@ export function hideDetail(junk: { steps: Step[]; slots: Slot[] }) {
  *  (a hundred new objects in one frame is a long frame: each needs its pipeline and bindings made). */
 export function detailList(junk: { steps: Step[]; slots: Slot[] }): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
-  for (const s of junk.steps) if (!s.done && stepReady(s)) out.push(s.obj); // (the parts inside show only once they are free to take)
+  for (const s of junk.steps) if (!s.done && stepReady(s)) out.push(s.obj);
+  for (const sl of junk.slots) if (!sl.taken) out.push(sl.piece.obj);
   return out;
 }
 
