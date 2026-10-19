@@ -16,7 +16,7 @@ import { isBound } from '../bindings.ts';
 import { tdPrefs } from './prefs.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { Rope } from './rope.ts';
-import { animateMarker, attachAll, lowestOffset, pieceEmpty, restPiece, settle, wake, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
+import { animateMarker, attachAll, lowestOffset, pieceEmpty, restPiece, setSheen, settle, shinyOf, wake, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi } from './ui.ts';
 import { playerHands } from '../water.ts';
 import { uiSound } from '../uiSound.ts';
@@ -842,6 +842,9 @@ export class TeardownView {
     const j = site.junk;
     const [mx, my] = takeMouse();
     this.pointer(mx, my);
+    // the band of the sheen: 0..1 while it runs, its place along its way (m from the eye)
+    const sheenQ = (this.pulse % SHEEN_EVERY) / SHEEN_LEN;
+    setSheen(sheenQ <= 1 ? -18 + 36 * sheenQ : -99);
     if (site.movable && this.scrapHold > 0) {
       // F held at the table: a long hold scraps the machine
       this.scrapHold += dt;
@@ -895,20 +898,17 @@ export class TeardownView {
       // the big indicator (a setting) on every ready step, or just on what the crosshair is on; the glint is always there
       s.marker.visible = !s.done && tdPrefs.markers && (ready || lit);
       if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);
-      // The enchanted look: they look as made, and now and then a sheen goes over them (a band of light across a big part, a
-      // brief brightening of a small one), each on its own beat. Not while the big indicators are on them.
+      // The enchanted look: what can be worked looks as made, and now and then a band of light runs across the world and lights it
+      // where it passes (setSheen below). Not while the big indicators are on it.
       const calm = ready && !s.marker.visible;
-      const beat = SHEEN_EVERY * (0.5 + 0.5 * Math.sin(s.obj.position.x * 12.9 + s.obj.position.z * 78.2 + s.obj.position.y * 37.7 + 1)); // 0..SHEEN_EVERY
-      const q = ((this.pulse + beat) % SHEEN_EVERY) / SHEEN_LEN; // 0..1 during the sheen
-      for (const m of s.shine) {
-        const u = m.userData.sheen as { value: number } | undefined;
-        if (!u) continue;
-        const big = !!m.userData.big;
-        u.value = !calm || q > 1 ? (big ? -9 : 0) : big ? -1.6 + 3.2 * q : Math.sin(q * Math.PI) ** 2;
+      for (const e of s.shine) {
+        if (e.on === calm) continue;
+        e.on = calm;
+        e.mesh.material = calm ? shinyOf(e.plain) : e.plain;
       }
       if (s.glint) {
-        s.glint.visible = calm && q <= 1;
-        (s.glint.material as THREE.MeshBasicNodeMaterial).opacity = 0.025 * Math.sin(Math.min(1, Math.max(0, q)) * Math.PI);
+        s.glint.visible = calm && sheenQ <= 1;
+        (s.glint.material as THREE.MeshBasicNodeMaterial).opacity = 0.025 * Math.sin(Math.min(1, Math.max(0, sheenQ)) * Math.PI);
       }
     }
     // Cables that are being shaken, or have an end off, move.

@@ -9,7 +9,7 @@ import { layoutOf, type LayoutStep } from '../../shared/machines.ts';
 import { junkSpec, TIERS, type JunkKind, type PartId } from '../../shared/salvage.ts';
 import { TEXT } from '../../shared/text.ts';
 import { mergePart } from '../world/bossParts.ts';
-import { Kit, settle, sheen, type Junk, type Piece, type Slot, type Step, type Target, type V } from './junk.ts';
+import { Kit, settle, type Junk, type Shine, type Piece, type Slot, type Step, type Target, type V } from './junk.ts';
 
 const loader = new GLTFLoader();
 let twoSided: THREE.MeshStandardNodeMaterial | null = null;
@@ -155,17 +155,12 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
         if (!n) continue;
         const mesh = n.clone(true);
         mesh.traverse((o) => { o.castShadow = true; o.receiveShadow = true; });
-        // a part that is pulled or prised takes the shimmer itself: it gets materials of its own
+        // a part that is pulled or prised takes the sheen itself
         if (shiny.length) {
-          const own: THREE.MeshStandardNodeMaterial[] = [];
+          const own: Shine[] = [];
           mesh.traverse((o) => {
             const m = o as THREE.Mesh;
-            if (m.isMesh && m.material instanceof THREE.MeshStandardNodeMaterial) {
-              const c = m.material.clone() as THREE.MeshStandardNodeMaterial;
-              sheen(c, true);
-              m.material = c;
-              own.push(c);
-            }
+            if (m.isMesh && m.material instanceof THREE.MeshStandardNodeMaterial) own.push({ mesh: m, plain: m.material, on: false });
           });
           for (const s of shiny) s.shine.push(...own);
         }

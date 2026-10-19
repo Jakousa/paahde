@@ -9,7 +9,7 @@
 // The real item models (public/models/items/<part>_<tier>.glb, tools/blender/items.py) are mounted inside.
 // Better parts come out of fancier machines.
 import * as THREE from 'three/webgpu';
-import { abs, dot, positionLocal, smoothstep, uniform, vec3 } from 'three/tsl';
+import { abs, cameraPosition, dot, positionWorld, smoothstep, uniform, vec3 } from 'three/tsl';
 import { Rope } from './rope.ts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { machineParts } from '../../shared/machine.ts';
@@ -22,18 +22,30 @@ import { TEXT } from '../../shared/text.ts';
 /** Step labels (shared/text.ts). */
 const S = TEXT.steps;
 
-/** A material that can take a momentary sheen (the workable look, src/teardown): normally it looks as made. `sweep`: a band of
- *  light crossing the part (big parts); else the whole thing brightens and fades (small ones). `value` is set per frame:
- *  sweep position along the part (far off = none) or brightness 0..1. */
-export function sheen(mat: THREE.MeshStandardNodeMaterial, sweep: boolean): { value: number } {
-  const u = uniform(sweep ? -9 : 0);
-  const tint = vec3(0.5, 0.82, 1.0);
-  mat.emissiveNode = sweep
-    ? tint.mul(smoothstep(0.3, 0.0, abs(dot(positionLocal, vec3(0.6, 0.3, 0.75)).sub(u))).mul(0.015))
-    : tint.mul(u.mul(0.015));
-  mat.userData.sheen = u;
-  mat.userData.big = sweep;
-  return u;
+/** The workable sheen (src/teardown): a band of light that runs across the world now and then and lights whatever can be worked
+ *  where it passes, along a fixed direction, measured from the eye. A part that can be worked wears the "shiny" copy of its
+ *  material (`shinyOf`) and goes back to the plain one when it cannot. One copy per material, all sharing the one uniform
+ *  `sheenAt` (metres along the band's way from the eye, far off = none): materials with a node of their own per step were a
+ *  shader build each, and hundreds of those in a few frames were the long frames when machines came into view. */
+const sheenAt = uniform(-99);
+export const setSheen = (metres: number) => {
+  sheenAt.value = metres;
+};
+const shiny = new Map<THREE.Material, THREE.MeshStandardNodeMaterial>();
+export function shinyOf(base: THREE.MeshStandardNodeMaterial): THREE.MeshStandardNodeMaterial {
+  let m = shiny.get(base);
+  if (!m) {
+    m = base.clone();
+    m.emissiveNode = vec3(0.5, 0.82, 1.0).mul(smoothstep(0.7, 0.0, abs(dot(positionWorld.sub(cameraPosition), vec3(0.7, 0, 0.7)).sub(sheenAt))).mul(0.015));
+    shiny.set(base, m);
+  }
+  return m;
+}
+/** A mesh of a step (or of the part it frees) that takes the sheen: its plain material, and whether it wears the shiny one now. */
+export interface Shine {
+  mesh: THREE.Mesh;
+  plain: THREE.MeshStandardNodeMaterial;
+  on: boolean;
 }
 
 /** Bring every world matrix under `root` up to date once, then stop three.js rebuilding the matrix of each of its (hundreds of)
@@ -109,7 +121,7 @@ export interface Step {
   slide?: { obj: THREE.Object3D; dir: THREE.Vector3; dist: number; offset: THREE.Vector3 };
   /** The step's own parts' materials: they take a faint enchanted shimmer while it can be worked (there with the big indicators
    *  off too). A pull or a prised shell adds its module's materials once the model has arrived. */
-  shine: THREE.MeshStandardNodeMaterial[];
+  shine: Shine[];
   /** Seams: a faint line along the seam that does the same. */
   glint?: THREE.Mesh;
   /** Height of `obj`'s origin above the ground once it has fallen (before the machine's scale). */
@@ -411,6 +423,34 @@ interface BayOpts {
   screws?: 0 | 2 | 4;
 }
 
+const KIT_MATS: Partial<Record<number, Record<MatKey, THREE.MeshStandardNodeMaterial>>> = {};
+
+/** The materials of one grade, made once and shared by every machine of it: each new material is a shader build the first time
+ *  it is drawn, and a machine made its fourteen again every time it was built (long frames as machines came into range). */
+function kitMaterials(grade: number): Record<MatKey, THREE.MeshStandardNodeMaterial> {
+  const hit = KIT_MATS[grade];
+  if (hit) return hit;
+  const p = PALETTE[grade];
+  const mat = (color: number, metalness: number, roughness: number, glow = 0) =>
+    new THREE.MeshStandardNodeMaterial({ color, metalness, roughness, emissive: glow ? color : 0x000000, emissiveIntensity: glow });
+  return (KIT_MATS[grade] = {
+    body: mat(p.body, p.metal, p.rough),
+    trim: mat(p.trim, grade === 2 ? 1 : 0.7, grade === 2 ? 0.2 : 0.6),
+    accent: mat(p.accent, 0.4, 0.5),
+    glow: grade >= 2 ? mat(p.glow, 0, 0.3, grade === 3 ? 4 : 1.5) : mat(p.accent, 0.3, 0.8),
+    dark: mat(0x15100d, 0.3, 0.8),
+    red: mat(0xb02a20, 0, 0.6),
+    blue: mat(0x2858b8, 0, 0.6),
+    yellow: mat(0xd8a820, 0, 0.6),
+    copper: mat(0xc87a44, 1, 0.3),
+    pcb: mat(0x1f5a36, 0.2, 0.55),
+    chip: mat(0x14181c, 0.4, 0.4),
+    brown: mat(0x6b3f1e, 0, 0.6),
+    black: mat(0x0c0c0e, 0, 0.5),
+    green: mat(0x7da228, 0, 0.6),
+  });
+}
+
 /** Builds one machine: geometry, steps, covers and part mounts. The salvage wrecks' builders are in wrecks.ts. */
 export class Kit {
   g = new THREE.Group();
@@ -427,25 +467,7 @@ export class Kit {
   constructor(grade: number, rolled: Record<PartId, Roll[]>) {
     this.grade = grade;
     this.queue = rolled;
-    const p = PALETTE[grade];
-    const mat = (color: number, metalness: number, roughness: number, glow = 0) =>
-      new THREE.MeshStandardNodeMaterial({ color, metalness, roughness, emissive: glow ? color : 0x000000, emissiveIntensity: glow });
-    this.mats = {
-      body: mat(p.body, p.metal, p.rough),
-      trim: mat(p.trim, grade === 2 ? 1 : 0.7, grade === 2 ? 0.2 : 0.6),
-      accent: mat(p.accent, 0.4, 0.5),
-      glow: grade >= 2 ? mat(p.glow, 0, 0.3, grade === 3 ? 4 : 1.5) : mat(p.accent, 0.3, 0.8),
-      dark: mat(0x15100d, 0.3, 0.8),
-      red: mat(0xb02a20, 0, 0.6),
-      blue: mat(0x2858b8, 0, 0.6),
-      yellow: mat(0xd8a820, 0, 0.6),
-      copper: mat(0xc87a44, 1, 0.3),
-      pcb: mat(0x1f5a36, 0.2, 0.55),
-      chip: mat(0x14181c, 0.4, 0.4),
-      brown: mat(0x6b3f1e, 0, 0.6),
-      black: mat(0x0c0c0e, 0, 0.5),
-      green: mat(0x7da228, 0, 0.6),
-    };
+    this.mats = kitMaterials(grade);
   }
 
   /** Next rolled `part`, or null when the machine holds no more of them (the mount stays empty). */
@@ -532,16 +554,14 @@ export class Kit {
       o.castShadow = false;
       o.receiveShadow = false;
     });
-    // what the step is made of takes the shimmer: its own copies of the materials
-    const shine: THREE.MeshStandardNodeMaterial[] = [];
+    // what the step is made of takes the sheen
+    const shine: Shine[] = [];
     g.traverse((o) => {
       const m = o as THREE.Mesh;
       const mt = m.isMesh ? (m.material as THREE.MeshStandardNodeMaterial) : null;
       if (!mt || !mt.emissive) return;
       if (mt === mat) return; // (a wire's own cable shows its shaking in its glow)
-      m.material = mt.clone();
-      sheen(m.material as THREE.MeshStandardNodeMaterial, false);
-      shine.push(m.material as THREE.MeshStandardNodeMaterial);
+      shine.push({ mesh: m, plain: mt, on: false });
     });
     const hit = new THREE.Mesh(hitGeo, HIT_MAT);
     hit.visible = false; // never drawn, but still hit by the pointer ray
