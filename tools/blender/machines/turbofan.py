@@ -294,9 +294,7 @@ def build(pose, rnd_seed=11):
     comb = m.module('combustor', 0.7, pop=(0.3, 1, 0))
     comb.mb.lathe([(0.26, -0.10), (0.30, -0.14), (0.31, -0.35), (0.26, -0.40), (0.20, -0.40), (0.20, -0.12), (0.26, -0.10)], 30, 'Burnt',
                   matfn=lambda i, k: 'Scorch' if blob(i, k, 3) < 0.45 else 'Burnt')
-    for j in range(16):
-        a = 2 * PI * j / 16
-        comb.mb.cyl(polar(a, 0.2, -0.09), polar(a, 0.31, -0.09), 0.012, 0.012, segs=6, mat='Brass')
+    # (the fuel manifold ring with its nozzles is a part: items.py build_fuelmanifold)
     for ph in (70, 105):
         comb.mb.cyl(polar(math.radians(ph), 0.31, -0.25), polar(math.radians(ph), 0.45, -0.25), 0.045, 0.045, segs=12, mat='Dark')
         comb.mb.cyl(polar(math.radians(ph), 0.40, -0.25), polar(math.radians(ph), 0.412, -0.25), 0.062, 0.062, segs=12, mat='Steel')  # the collar the screws are in
@@ -311,6 +309,7 @@ def build(pose, rnd_seed=11):
     comb.wire('igniterLead', cable(polar(D(70), 0.45, -0.25), radial(D(70)), polar(D(105), 0.45, -0.25), radial(D(105)), via=[polar(D(88), 0.56, -0.25)]),
               key='black', after=['flangeBolt'], r=0.018)
     comb.step('lift', 'coreLift', (0, 0.28, -0.10), (0, 1, 0), after=['igniterLead', 'flangeBolt'], need=3.5)
+    comb.part('fuelmanifold', (0.0, 0.0, -0.09 - 0.016 + 0.06), (PI / 2, 0, 0), chance=0.85)
     comb.inside()
     comb.ring('screw', 'padScrew', polar(math.radians(70), 0.412, -0.25), radial(math.radians(70)), 0.052, 2)
     comb.part('coil', polar(math.radians(70), 0.4, -0.25), (0, 0, 0), chance=0.8)
@@ -334,6 +333,7 @@ def build(pose, rnd_seed=11):
     turb.mb.lathe([(0.06, -0.95), (0.10, -0.95), (0.10, -1.0), (0.06, -1.0), (0.06, -0.95)], 16, 'Dark')
     turb.ring('bolt', 'flangeBolt', (0, 0, -0.62), (0, 0, 1), 0.33, 8, after=['combustor'])
     turb.step('lift', 'coreLift', (0, 0.3, -0.62), (0, 1, 0), after=['flangeBolt'], need=3.5)
+    turb.part('turbinedisc', (0.0, 0.0, -0.66 + 0.06), (PI / 2, 0, 0), chance=0.9)
     turb.part('turbinerotor', (0.0, 0.0, -0.98 + 0.06), (PI / 2, 0, 0), chance=0.9)
     turb.inside()
     turb.ring('bolt', 'retainerBolt', (0, 0, -0.98), (0, 0, -1), 0.09, 4, phase=0.4)

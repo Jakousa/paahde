@@ -31,7 +31,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 TIERS = ['scrap', 'basic', 'quality', 'space']
 ITEMS = ['battery', 'motor', 'heatsink', 'compute', 'coil', 'uranium', 'impeller', 'bearing', 'gear', 'valve',
-         'relay', 'fanrotor', 'comprotor', 'turbinerotor']
+         'relay', 'fanrotor', 'comprotor', 'turbinerotor', 'turbinedisc', 'fuelmanifold']
 
 # Materials: name -> (sRGB hex, metallic, roughness, emission strength). Emissive ones glow in their colour.
 MATERIALS = {
@@ -1168,25 +1168,49 @@ def build_comprotor(mb, tier, rng):
 
 
 def build_turbinerotor(mb, tier, rng):
-    """The turbine: a heavy disc with its ring of burnt blades, four lighter discs behind it, and the shaft out of the back."""
+    """The turbine's low-pressure rotor: four lighter discs with their burnt blades, and the shaft out of the back."""
     m = _rotor_mats(tier)
     burnt = 'rust_dark' if tier == 'scrap' else m['blade']
-    _disc(mb, [(0.0, -0.42), (0.20, -0.42), (0.22, -0.60), (0.0, -0.60)], m['hub'], 24)
-    _rotor_row(mb, tier, rng, 40, 0.20, 0.285, -0.50, 0.07, 0.6, 0.008, burnt, m['alt'], broken=3, bent=2)
     for j in range(4):
         z = -0.70 - j * 0.07
         _rotor_row(mb, tier, rng, 54, 0.12, 0.30 + 0.02 * j, z, 0.05, 0.4, 0.006, burnt, m['alt'], broken=2 if j in (1, 3) else 0,
                    bent=2 if j == 2 else 0, phase=j * 0.05)
         _disc(mb, [(0.0, z + 0.015), (0.16 + 0.015 * j, z + 0.015), (0.16 + 0.015 * j, z - 0.015), (0.0, z - 0.015)], m['body'], 24)
-    _disc(mb, [(0.0, -0.60), (0.06, -0.60), (0.06, -0.98), (0.0, -0.98)], m['body'], 14)
+    _disc(mb, [(0.0, -0.60), (0.06, -0.60), (0.06, -0.98), (0.0, -0.98)], m['hub'], 14)
+
+
+def build_turbinedisc(mb, tier, rng):
+    """The turbine's first stage: a heavy disc with its ring of burnt blades."""
+    m = _rotor_mats(tier)
+    burnt = 'rust_dark' if tier == 'scrap' else m['blade']
+    _disc(mb, [(0.0, -0.42), (0.20, -0.42), (0.22, -0.60), (0.0, -0.60)], m['hub'], 24)
+    _disc(mb, [(0.0, -0.60), (0.07, -0.60), (0.07, -0.66), (0.0, -0.66)], m['body'], 14)
+    _rotor_row(mb, tier, rng, 40, 0.20, 0.285, -0.50, 0.07, 0.6, 0.008, burnt, m['alt'], broken=3, bent=2)
     if tier == 'space':
         _disc(mb, [(0.2, -0.43), (0.205, -0.43), (0.205, -0.45), (0.2, -0.45)], 'glow', 24)
+
+
+def build_fuelmanifold(mb, tier, rng):
+    """The fuel manifold: a pipe ring round the front of the combustor with sixteen nozzles pointing in, and a feed pipe up."""
+    m = _rotor_mats(tier)
+    K = ROTOR_K
+    mb.torus(0.30 * K, 0.016 * K, 36, 8, (0, 0, 0), m['hub'])
+    for j in range(16):
+        a = 2 * math.pi * j / 16
+        c, s_ = math.cos(a), math.sin(a)
+        if tier == 'scrap' and j in (4, 11):
+            continue  # nozzles lost
+        mb.cyl(0.011 * K, 0.007 * K, 0.1 * K, 6, (0.25 * K * c, 0.25 * K * s_, 0), m['alt'], rot=(0, math.pi / 2, a))
+        mb.cyl(0.022 * K, 0.022 * K, 0.014 * K, 8, (0.2 * K * c, 0.2 * K * s_, 0), m['body'], rot=(0, math.pi / 2, a))
+    mb.cyl(0.014 * K, 0.014 * K, 0.14 * K, 8, (0.30 * K * math.cos(1.2), 0.30 * K * math.sin(1.2), 0.07 * K), m['hub'])
+    mb.cyl(0.02 * K, 0.02 * K, 0.02 * K, 8, (0.30 * K * math.cos(1.2), 0.30 * K * math.sin(1.2), 0.15 * K), m['body'])
 
 
 BUILDERS = {'battery': build_battery, 'motor': build_motor, 'heatsink': build_heatsink, 'compute': build_compute,
             'coil': build_coil, 'uranium': build_uranium, 'impeller': build_impeller, 'bearing': build_bearing,
             'gear': build_gear, 'valve': build_valve, 'relay': build_relay,
-            'fanrotor': build_fanrotor, 'comprotor': build_comprotor, 'turbinerotor': build_turbinerotor}
+            'fanrotor': build_fanrotor, 'comprotor': build_comprotor, 'turbinerotor': build_turbinerotor,
+            'turbinedisc': build_turbinedisc, 'fuelmanifold': build_fuelmanifold}
 
 
 def build_item(item, tier):

@@ -199,7 +199,7 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
 /** Parts that only an engine gives (nothing uses them yet): never found loose. */
-const ROTORS: PartId[] = ['fanrotor', 'comprotor', 'turbinerotor'];
+const ROTORS: PartId[] = ['fanrotor', 'comprotor', 'turbinerotor', 'turbinedisc', 'fuelmanifold'];
 
 /** Loose rare parts (any part, uranium too) lying at guardian ground at once, and their tiers. */
 /** `noParts`: never found this way. The impeller isn't dropped anywhere: nothing uses it. */

@@ -82,6 +82,11 @@ export interface RolledPart {
   at: LayoutPart;
 }
 
+/** What a machine's own parts are likely to be, over its kind's tier weights: an engine's main-shaft bearings are good ones. */
+const PART_TIERS: Partial<Record<JunkKind, Partial<Record<PartId, Partial<Record<Tier, number>>>>>> = {
+  jet_engine: { bearing: { scrap: 0.15, basic: 0.5, quality: 2.5, space: 4 } },
+};
+
 export interface RolledModule {
   mod: LayoutModule;
   parts: RolledPart[];
@@ -100,7 +105,12 @@ export function rollModules(kind: JunkKind, rand: () => number, level: number): 
   let index = 0;
   for (const mod of present) {
     const parts: RolledPart[] = [];
-    for (const at of mod.parts) if (rand() < at.chance) parts.push({ part: at.part, tier: pickTier(weights, rand), index: index++, at });
+    for (const at of mod.parts) {
+      if (rand() >= at.chance) continue;
+      const bias = PART_TIERS[kind]?.[at.part];
+      const w = bias ? (Object.fromEntries(TIERS.map((t) => [t, weights[t] * (bias[t] ?? 1)])) as Record<Tier, number>) : weights;
+      parts.push({ part: at.part, tier: pickTier(w, rand), index: index++, at });
+    }
     out.push({ mod, parts });
   }
   return out;

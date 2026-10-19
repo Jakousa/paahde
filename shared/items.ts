@@ -13,7 +13,7 @@ import { TEXT } from './text.ts';
 type Size = [number, number];
 
 /** Grid cells [w, h] per part; the rest are 1 × 1. */
-const PART_SIZES: Partial<Record<PartId, Size>> = { battery: [1, 2], motor: [2, 2], heatsink: [2, 1], uranium: [2, 2], impeller: [2, 2], fanrotor: [2, 2], comprotor: [2, 2], turbinerotor: [2, 2] };
+const PART_SIZES: Partial<Record<PartId, Size>> = { battery: [1, 2], motor: [2, 2], heatsink: [2, 1], uranium: [2, 2], impeller: [2, 2], fanrotor: [2, 2], comprotor: [2, 2], turbinerotor: [2, 2], turbinedisc: [2, 2], fuelmanifold: [2, 2] };
 
 /**
  * Item kind ids as stored in the DB. Never rename one: rows hold them (or migrate them, server/db.ts). `stack`: how

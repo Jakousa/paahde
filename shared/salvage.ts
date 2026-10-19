@@ -9,7 +9,7 @@ export type PartId = 'battery' | 'motor' | 'heatsink' | 'compute' | 'uranium' | 
   // Mechanical and switching parts that come out of the smaller crash-site components.
   | 'impeller' | 'bearing' | 'gear' | 'valve' | 'relay'
   // The rotors of a jet engine, taken whole out of it (tools/blender/machines/turbofan.py): they are only found in engines.
-  | 'fanrotor' | 'comprotor' | 'turbinerotor';
+  | 'fanrotor' | 'comprotor' | 'turbinerotor' | 'turbinedisc' | 'fuelmanifold';
 
 export interface SalvageYield {
   part: PartId;

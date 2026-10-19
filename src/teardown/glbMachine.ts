@@ -58,7 +58,7 @@ const PART_SCALE = 0.4;
 const PART_MID = 0.15;
 
 const emptyRolls = (): Record<PartId, { tier: (typeof TIERS)[number]; index: number }[]> =>
-  ({ battery: [], motor: [], heatsink: [], compute: [], uranium: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [], fanrotor: [], comprotor: [], turbinerotor: [] });
+  ({ battery: [], motor: [], heatsink: [], compute: [], uranium: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [], fanrotor: [], comprotor: [], turbinerotor: [], turbinedisc: [], fuelmanifold: [] });
 
 export function buildModelJunk(kind: JunkKind, seed: number, level: number): Junk {
   const layout = layoutOf(kind)!;

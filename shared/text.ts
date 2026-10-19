@@ -26,6 +26,7 @@ const en = {
     battery: 'Battery', motor: 'Electric motor', heatsink: 'Heat sink', compute: 'Compute unit', uranium: 'Uranium cell',
     coil: 'Wiring coil', impeller: 'Impeller', bearing: 'Bearing', gear: 'Gear', valve: 'Valve', relay: 'Relay',
     fanrotor: 'Fan rotor', comprotor: 'Compressor rotor', turbinerotor: 'Turbine rotor',
+    turbinedisc: 'Turbine disc', fuelmanifold: 'Fuel manifold',
   },
   /** A part as an item: "Quality battery". */
   partItem: (tier: string, part: string) => `${tier} ${lower(part)}`,
