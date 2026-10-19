@@ -38,8 +38,8 @@ interface CSMInternals {
   setupShadowPosition(builder: NodeBuilder): void;
 }
 
-/** Every how many frames each cascade's map is drawn again (the far ones show big, slow things: dunes, rocks, wrecks). */
-const PERIOD = [1, 1, 2, 4];
+/** Every how many frames each cascade's map is drawn again (the far ones show big, slow things: dunes, rocks, wrecks). The last two take turns, so every frame draws just one of them: an uneven pattern (one frame with both, one with neither) is felt as stutter. */
+const PERIOD = [1, 1, 2, 2];
 
 /** What a cascade's shadow camera looked like when its map was last drawn (the shadows are looked up by it). */
 interface Kept {
