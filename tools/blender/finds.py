@@ -5,7 +5,7 @@
     blender -b --python tools/blender/finds.py -- --preview out.png   # also a perspective render of them on sand
 
 Writes public/models/finds/<kind>.glb for the gear that had only a code-built stand-in (backpack, shovel, metal
-detector, storm detector, wrist computer, jammer) and the boss receivers (receiver_<boss>), each already in the pose it lies in on the sand; src/world/loot.ts
+detector, storm detector, wrist computer, jammer, grinder) and the boss receivers (receiver_<boss>), each already in the pose it lies in on the sand; src/world/loot.ts
 sits it on the ground. The water bottle, telescope, laser rifle, laser pistol and motorcycle keep their models
 (public/models/canteen.glb, telescope.glb, rifle.glb, pistol.glb, sandbike.glb): they are imported here only to
 render their icons.
@@ -43,6 +43,9 @@ MATERIALS = {
     'strap': (0x3b2a1c, 0.0, 0.8, 0),
     'olive': (0x5a5440, 0.25, 0.75, 0),
     'olive_dark': (0x3e3a2c, 0.25, 0.8, 0),
+    # The grinder (src/models/grinder.ts): blue motor housing, cutting disc.
+    'grinder_blue': (0x35558f, 0.3, 0.65, 0),
+    'disc': (0x232225, 0.2, 0.85, 0),
     'orange_paint': (0xc4652a, 0.2, 0.6, 0),
     'rubber': (0x1e1c1a, 0.0, 0.9, 0),
     'detector_yellow': (0xd2a12c, 0.1, 0.55, 0),
@@ -69,7 +72,7 @@ MATERIALS = {
 CELLS = {
     'canteen': (1, 2), 'spyglass': (2, 1), 'motorcycle': (4, 3), 'backpack': (2, 2), 'storm_detector': (1, 2),
     'wristpad': (1, 1), 'metal_detector': (1, 3), 'shovel': (1, 3), 'laser_rifle': (4, 1), 'laser_pistol': (2, 1),
-    'jammer': (2, 1), 'shield': (2, 2), 'receiver_carrier': (2, 1), 'receiver_queen': (2, 1), 'receiver_colossus': (2, 1),
+    'jammer': (2, 1), 'grinder': (2, 1), 'shield': (2, 2), 'receiver_carrier': (2, 1), 'receiver_queen': (2, 1), 'receiver_colossus': (2, 1),
     'receiver_worm': (2, 1),
 }
 CELL, GAP = 54, 4  # src/inventory.ts
@@ -319,6 +322,41 @@ def build_jammer(mb, rng):
     mb.cyl(0.007, 0.007, 0.008, 8, (0.005, 0.0, 0.092), 'plastic_black')
 
 
+# ------------------------------------------------------------------------------------------------ grinder
+
+def build_grinder(mb, rng):
+    """Lying on the sand, disc up: an angle grinder like src/models/grinder.ts, housing along +X (blue motor, dark
+    caps, tapering neck), the gear head at the front with the spindle up and the cutting disc under a half guard,
+    the side handle lying out towards -Y."""
+    z = 0.032
+    mb.cyl(0.03, 0.03, 0.15, 14, (0.005, 0, z), 'grinder_blue', rot=it.Y90)
+    mb.cyl(0.031, 0.031, 0.04, 14, (-0.05, 0, z), 'plastic_black', rot=it.Y90)
+    mb.cyl(0.03, 0.03, 0.03, 14, (0.095, 0, z), 'plastic_black', rot=it.Y90)
+    mb.cyl(0.03, 0.026, 0.05, 14, (0.135, 0, z), 'grinder_blue', rot=it.Y90)
+    for k in range(4):  # vent slots on the flank
+        mb.box((0.012, 0.004, 0.012), (-0.01 + k * 0.02, -0.0295, z + 0.004), 'plastic_black')
+    mb.box((0.04, 0.003, 0.016), (0.04, -0.03, z - 0.006), 'label')
+    # Gear head: a steel casing carrying the spindle, up to the disc.
+    hx = 0.225
+    mb.box((0.07, 0.056, 0.056), (hx, 0, z), 'steel_dull', bevel=0.004)
+    mb.box((0.05, 0.05, 0.03), (hx, 0, z + 0.04), 'steel_dull', bevel=0.004)
+    dz = z + 0.07
+    mb.cyl(0.018, 0.018, 0.012, 12, (hx, 0, dz - 0.004), 'plastic_black')
+    # Disc, flange and nut, a printed ring, and the half guard over the back of it.
+    mb.cyl(0.056, 0.056, 0.004, 28, (hx + 0.045, 0, dz + 0.006), 'disc')
+    mb.cyl(0.034, 0.034, 0.0012, 20, (hx + 0.045, 0, dz + 0.0085), 'accent_orange')
+    mb.cyl(0.016, 0.016, 0.006, 8, (hx + 0.045, 0, dz + 0.011), 'steel')
+    mb.lathe([(0.062, 0.0), (0.062, 0.022), (0.059, 0.022), (0.059, 0.0)], 16, (hx + 0.045, 0, dz - 0.002),
+             'steel_dull', arc=math.pi, phase=D90 + math.pi / 4)
+    # Side handle, lying out to -Y with its knob, a rubber grip near the end.
+    it.wire(mb, [(hx, -0.028, z - 0.004), (hx - 0.002, -0.07, z - 0.002), (hx - 0.004, -0.115, z + 0.004)], 0.013, 8,
+            'plastic_black')
+    mb.ball(0.017, (hx - 0.004, -0.122, z + 0.006), 'plastic_black', u=10, v=7)
+    # Trigger switch under the body and the cable stub at the back.
+    mb.box((0.03, 0.018, 0.008), (0.03, 0, z - 0.032), 'rust')
+    it.wire(mb, [(-0.07, 0, z), (-0.12, 0.02, 0.012), (-0.17, 0.05, 0.008), (-0.2, 0.09, 0.007)], 0.006, 6, 'rubber')
+
+
 # ------------------------------------------------------------------------------------------------ receivers
 
 # Distress-signal receivers: each calls one boss, fed by a uranium cell (items.py) pushed into the slot in its
@@ -511,6 +549,7 @@ BUILT = {
     'wristpad': (build_wristpad, (D90, -D90, 0), (0, 0, -D90 - 0.3), THREE_Q),
     'backpack': (build_backpack, (-D90, 0, 0), (0, 0, -0.35), THREE_Q),
     'jammer': (build_jammer, (D90, 0, 0), (0, 0, 0), SIDE),
+    'grinder': (build_grinder, (0, 0, 0), (0, 0, 0), THREE_Q),
     # Exported upright, as worn (src/models/scavenger.ts straps it on; src/world/loot.ts lays it down).
     'shield': (build_shield, (0, 0, 0), (0, 0, 0.2), Vector((0.2, -1, 0.15)).normalized()),
 }

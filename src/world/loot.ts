@@ -145,7 +145,7 @@ const FIND_MODELS: Record<string, { url: string; rot?: [number, number, number] 
   spyglass: { url: './models/telescope.glb' },
   laser_rifle: { url: './models/rifle.glb', rot: [0, 0, Math.PI / 2] },
   laser_pistol: { url: './models/pistol.glb', rot: [0, 0, Math.PI / 2] },
-  ...Object.fromEntries(['backpack', 'storm_detector', 'wristpad', 'jammer', ...Object.values(RECEIVERS)]
+  ...Object.fromEntries(['backpack', 'storm_detector', 'wristpad', 'jammer', 'grinder', ...Object.values(RECEIVERS)]
     .map((k) => [k, { url: `./models/finds/${k}.glb` }])),
   // Made upright, as worn: lies on its back, the emitter to the sky.
   shield: { url: './models/finds/shield.glb', rot: [-Math.PI / 2, 0, 0] },
