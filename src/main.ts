@@ -660,7 +660,7 @@ baseSand.update(frameDt, storm.atBase);
 
   const ri = renderer.info.render as { drawCalls?: number; calls?: number; triangles: number };
   statsGraph.visible = menu.statsOn;
-  statsGraph.frame(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000);
+  statsGraph.frame(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000, graphics.dynamicRes ? resolution.ratio : undefined);
   menu.setInfo(`${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backendText} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
   teardown.update(frameDt);
   if (loaded) {

@@ -1,7 +1,8 @@
 // The stats display ("Show stats" in the Esc menu, src/menu.ts): the last five seconds as graphs instead of a line of numbers that flicker too fast to read.
 //   - frame time, one bar per frame (ms, with the 60 and 120 fps budgets drawn in), coloured by how far over budget it was: a stutter or an every-other-frame
 //     zigzag shows as a pattern, and the numbers above are averaged over half a second (and the slowest 1 % of frames) so they hold still;
-//   - draw calls and thousands of triangles per frame as lines.
+//   - draw calls and thousands of triangles per frame as lines;
+//   - with adaptive resolution on, the render scale it picked (src/resolution.ts) as a line.
 // Fed once a frame by src/main.ts; only drawn while shown. The text line under it (src/menu.ts setInfo) keeps the rarely changing things.
 
 /** Frames kept: about five seconds at 60 fps. */
@@ -9,6 +10,8 @@ const N = 300;
 const W = 320;
 const GRAPH_H = 56;
 const H = 176;
+/** Taller by the resolution line when adaptive resolution is on. */
+const H_RES = 220;
 /** Frame time axis (ms): the bars are clamped to this. */
 const MAX_MS = 33.4;
 const FONT = '11px ui-monospace, "Cascadia Mono", Consolas, monospace';
@@ -28,6 +31,8 @@ export class StatsGraph {
   private ms = new Float32Array(N);
   private draws = new Float32Array(N);
   private tris = new Float32Array(N);
+  private res = new Float32Array(N);
+  private showRes = false;
   /** Next slot to write, and how many are filled. */
   private head = 0;
   private count = 0;
@@ -38,8 +43,8 @@ export class StatsGraph {
   constructor() {
     const ratio = Math.min(2, window.devicePixelRatio || 1);
     this.el.width = W * ratio;
-    this.el.height = H * ratio;
-    this.el.style.cssText = `position:fixed;top:8px;left:8px;width:${W}px;height:${H}px;pointer-events:none;display:none;z-index:20`;
+    this.el.height = H_RES * ratio;
+    this.el.style.cssText = `position:fixed;top:8px;left:8px;width:${W}px;height:${H_RES}px;pointer-events:none;display:none;z-index:20`;
     document.body.appendChild(this.el);
     this.ctx = this.el.getContext('2d')!;
     this.ctx.scale(ratio, ratio);
@@ -52,12 +57,14 @@ export class StatsGraph {
   }
 
   /** Once per rendered frame: the draw calls and (thousands of) triangles of the frame before. */
-  frame(draws: number, trisK: number) {
+  frame(draws: number, trisK: number, ratio?: number) {
+    this.showRes = ratio !== undefined;
     const now = performance.now();
     const i = this.head;
     this.ms[i] = Math.min(250, now - this.last);
     this.draws[i] = draws;
     this.tris[i] = trisK;
+    this.res[i] = ratio ?? 0;
     this.last = now;
     this.head = (i + 1) % N;
     this.count = Math.min(N, this.count + 1);
@@ -71,10 +78,10 @@ export class StatsGraph {
 
   private draw() {
     const c = this.ctx, n = this.count;
-    c.clearRect(0, 0, W, H);
+    c.clearRect(0, 0, W, H_RES);
     c.fillStyle = 'rgba(8, 6, 4, 0.55)';
     c.beginPath();
-    c.roundRect(0, 0, W, H, 6);
+    c.roundRect(0, 0, W, this.showRes ? H_RES : H, 6);
     c.fill();
     c.font = FONT;
     c.textBaseline = 'top';
@@ -110,6 +117,7 @@ export class StatsGraph {
     }
     this.line('draws', this.draws, 86, '#7cc4f2', (v) => v.toFixed(0));
     this.line('tris', this.tris, 130, '#f2b87c', (v) => `${v.toFixed(0)}k`);
+    if (this.showRes) this.line('scale', this.res, 174, '#b8e07c', (v) => `${v.toFixed(2)}x`);
   }
 
   /** A labelled line graph of the last frames of `a`, from its lowest to its highest value, with the latest value written beside the label. */
