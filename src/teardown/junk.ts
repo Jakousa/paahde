@@ -29,8 +29,8 @@ export function sheen(mat: THREE.MeshStandardNodeMaterial, sweep: boolean): { va
   const u = uniform(sweep ? -9 : 0);
   const tint = vec3(0.5, 0.82, 1.0);
   mat.emissiveNode = sweep
-    ? tint.mul(smoothstep(0.3, 0.0, abs(dot(positionLocal, vec3(0.6, 0.3, 0.75)).sub(u))).mul(0.3))
-    : tint.mul(u.mul(0.3));
+    ? tint.mul(smoothstep(0.3, 0.0, abs(dot(positionLocal, vec3(0.6, 0.3, 0.75)).sub(u))).mul(0.15))
+    : tint.mul(u.mul(0.15));
   mat.userData.sheen = u;
   mat.userData.big = sweep;
   return u;
