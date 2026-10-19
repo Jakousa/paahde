@@ -24,6 +24,8 @@ export type SpeechState = {
   shelter: boolean;
   /** Close enough to a pump to fill a bottle. */
   atPump: boolean;
+  /** Out on a mud flat (shared/biomes.ts): hotter by day, no shade. */
+  mudflat: boolean;
   /** Body heat (0..shared/water.ts HEAT_MAX), whether it's building up, and whether we stand in shade. */
   heat: number;
   rising: boolean;
@@ -140,6 +142,8 @@ export const LINES: Line[] = [
 
   // Places.
   { id: 'shelter', on: 'tick', when: (s) => s.shelter, say: TEXT.speech.shelter },
+  { id: 'mudflat', on: 'tick', when: (s) => !s.dead && s.mudflat && s.day, say: TEXT.speech.mudflatDay },
+  { id: 'mudflat', on: 'tick', when: (s) => !s.dead && s.mudflat, say: TEXT.speech.mudflatNight },
 
   // Sandstorms.
   { id: 'stormWarning', on: 'tick', when: (s) => !s.dead && s.stormWarning,

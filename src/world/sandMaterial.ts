@@ -14,6 +14,9 @@
 //   - bare rock (per-vertex `rock` from terrain.ts, shared/rocks.ts): rust sandstone in beds, with dark
 //     desert-varnish streaks down the faces, bumped by the same noise, and sand settled on its ledges;
 //     no ripples, sheen or glitter there
+//   - mud flats (per-vertex `mud` from terrain.ts, shared/biomes.ts): pale baked clay cracked into polygons at two
+//     scales, plate edges curled up, cracks fading into their average darkening with distance; no ripples, sheen
+//     or glitter there either. The cracks are only worked out where there is mud.
 //
 // Everything is a pure function of world position, camera and light, so it is stable when standing still.
 // Tunables are exported TSL uniforms (`sand.*`): set `.value` at runtime, no recompile needed.
@@ -28,7 +31,9 @@ import {
   dot,
   float,
   floor,
+  Fn,
   fract,
+  If,
   dFdx,
   dFdy,
   fwidth,
@@ -39,6 +44,7 @@ import {
   mx_cell_noise_vec3,
   mx_fractal_noise_float,
   mx_noise_float,
+  mx_worley_noise_vec2,
   normalize,
   normalLocal,
   normalWorldGeometry,
@@ -50,6 +56,7 @@ import {
   sign,
   sin,
   smoothstep,
+  sqrt,
   uniform,
   vec2,
   vec3,
@@ -105,7 +112,54 @@ export const sand = {
   rockBed: uniform(1.4),
   /** Bump depth (m) of the rock's streaks and bed joints. */
   rockBump: uniform(0.25),
+  /** Mud flat clay: the paler and darker baked crust, and the shadow down in its cracks. */
+  mudLight: uniform(new THREE.Color(0.8, 0.67, 0.53)),
+  mudDark: uniform(new THREE.Color(0.64, 0.51, 0.39)),
+  mudCrack: uniform(new THREE.Color(0.16, 0.1, 0.06)),
 };
+
+// --- Mud flat cracks ------------------------------------------------------------------------------
+
+/** Desiccation plates: small polygons (MUD_SMALL m across) inside big ones (MUD_BIG m) split by wider cracks. */
+const MUD_SMALL = 0.5, MUD_BIG = 2.6;
+/** Half-widths (m) of the small and big cracks. */
+const MUD_SMALL_W = 0.008, MUD_BIG_W = 0.022;
+/** How much of the ground each kind of crack covers on average (crack length per m² of a hexagonal-ish net,
+ *  1.86 / cell size, times its full width): what a crack fades into once it is thinner than a pixel. */
+const MUD_SMALL_COVER = (1.86 / MUD_SMALL) * 2 * MUD_SMALL_W, MUD_BIG_COVER = (1.86 / MUD_BIG) * 2 * MUD_BIG_W;
+
+/** Distance (m) from a point to the nearest crack of a Voronoi net of `size` m cells: half the gap between the
+ *  distances to the nearest two cell centres (exact on the line between them, a little short near corners). */
+function crackDistance(q: V2, size: number, jitter: number): F {
+  const f = mx_worley_noise_vec2(q.div(size), jitter) as V2; // squared distances, in cells
+  return sqrt(f.y).sub(sqrt(f.x)).mul(size * 0.5);
+}
+
+/** Mud at (xz) with `fw` (m) the pixel footprint: x = crack cover (0..1, antialiased), y = bump height (m).
+ *  Zero off the mud (`m` 0), where it skips the work. No derivatives in here: it runs in a branch. */
+const mudCracks = Fn(([xz, fw, m]: [V2, F, F]) => {
+  const out = vec2(0, 0).toVar();
+  If(m.greaterThan(0.001), () => {
+    // Wobble the net a few cm so the cracks wander instead of running ruler-straight.
+    const warp = vec2(mx_noise_float(xz.mul(1.9)), mx_noise_float(xz.mul(1.9).add(31.7))).mul(0.05);
+    const q = xz.add(warp);
+    const eS = crackDistance(q, MUD_SMALL, 0.85);
+    const eB = crackDistance(q.add(vec2(7.3, -3.1)), MUD_BIG, 1);
+    // Big cracks open and close along their length.
+    const wB = mx_noise_float(xz.mul(0.35).add(11.3)).mul(0.5).add(1).mul(MUD_BIG_W);
+    // Antialiased crack, blended into its average cover once it is under a pixel wide.
+    const aa = fw.mul(0.7).max(0.001);
+    const cS = mix(float(1).sub(smoothstep(aa.negate(), aa, eS.sub(MUD_SMALL_W))), float(MUD_SMALL_COVER),
+      smoothstep(MUD_SMALL_W, MUD_SMALL_W * 6, fw));
+    const cB = mix(float(1).sub(smoothstep(aa.negate(), aa, eB.sub(wB))), float(MUD_BIG_COVER),
+      smoothstep(MUD_BIG_W, MUD_BIG_W * 6, fw));
+    // Plates curl up at their edges as they dry, then drop into the crack.
+    const curl = smoothstep(0.07, 0.01, eS).mul(0.004).add(smoothstep(0.25, 0.02, eB).mul(0.012));
+    const h = curl.sub(cS.mul(0.01)).sub(cB.mul(0.03));
+    out.assign(vec2(max(cS, cB), h));
+  });
+  return out;
+});
 
 /** The dev test lab's floor (shared/lab.ts): a plain light grey, no ripples, glitter or sheen. */
 export function labFloor() {
@@ -173,6 +227,7 @@ interface SandSurface {
   albedo: V3;
   slip: F; // 1 on slip faces
   rock: F; // 1 on bare rock
+  mud: F; // 1 on a mud flat
   dust: F; // 0..1 dust in the air (wind + storm): dulls glitter and sheen
   rippleVis: F; // how resolved the small ripples are here (0 far away / masked)
   dist: F;
@@ -196,8 +251,9 @@ function buildSurface(): SandSurface {
   const crest = attribute('crest', 'float') as F;
   const crestBand = smoothstep(0.35, 0.85, crest);
   const rock = attribute('rock', 'float') as F;
+  const mud = attribute('mud', 'float') as F;
 
-  const rippleMask = flatEnough.mul(float(1).sub(slip)).mul(float(1).sub(crestBand)).mul(float(1).sub(rock));
+  const rippleMask = flatEnough.mul(float(1).sub(slip)).mul(float(1).sub(crestBand)).mul(float(1).sub(rock)).mul(float(1).sub(mud));
 
   // Domain warp (metres along the wind) so crests meander and bend. Its gradient makes the ripple
   // normal follow the bent crest direction: taken from screen-space derivatives (the warp varies over
@@ -247,10 +303,14 @@ function buildSurface(): SandSurface {
   const dpx = dFdx(p), dpy = dFdy(p);
   const r1 = cross(dpy, n0), r2 = cross(n0, dpx);
   const bdet = dot(dpx, r1);
-  const grad = r1.mul(dFdx(bump)).add(r2.mul(dFdy(bump))).mul(sign(bdet));
-  const bumpFade = float(1).sub(smoothstep(0.15, 0.6, length(fwidth(p))));
-  const nRock = normalize(abs(bdet).mul(n0).sub(grad.mul(bumpFade)));
-  const n = normalize(mix(nSand, nRock, rock));
+  const bumped = (h: F, fade: F) => normalize(abs(bdet).mul(n0).sub(r1.mul(dFdx(h)).add(r2.mul(dFdy(h))).mul(sign(bdet)).mul(fade)));
+  const footprint = length(fwidth(p));
+  const nRock = bumped(bump, float(1).sub(smoothstep(0.15, 0.6, footprint)));
+
+  // Mud flat: cracks and curled plates (bumped the same way, faded sooner: they are finer).
+  const mudFx = mudCracks(xz, footprint, mud) as V2;
+  const nMud = bumped(mudFx.y, float(1).sub(smoothstep(0.04, 0.2, footprint)));
+  const n = normalize(mix(mix(nSand, nMud, mud), nRock, rock));
 
   // Albedo: large-scale red/gold patches, slip faces darker, ripple troughs a hair darker.
   const patch = saturate(mx_fractal_noise_float(vec3(p.x.mul(0.006), 0, p.z.mul(0.006)), 3).mul(0.9).add(0.5));
@@ -274,7 +334,13 @@ function buildSurface(): SandSurface {
   // Wind-blown sand settles on ledges and flat tops.
   const dusted = mix(varnished, albedo, smoothstep(0.86, 0.97, n0.y).mul(0.7));
 
-  return { p, n0, n, nSpec, v, albedo: mix(albedo, dusted, rock), slip, rock, dust, dist, rippleVis: f1 };
+  // Baked clay, blotchy over metres, darker down the cracks.
+  const mudAlbedo = mix(c3(sand.mudDark), c3(sand.mudLight), saturate(patch.mul(0.7).add(mx_noise_float(xz.mul(0.4).add(3.3)).mul(0.35)).add(0.15)))
+    .mul(grain.sub(1).mul(0.5).add(1))
+    .mul(float(1).sub(mudFx.x));
+  const ground = mix(albedo, mudAlbedo.add(c3(sand.mudCrack).mul(mudFx.x)), mud);
+
+  return { p, n0, n, nSpec, v, albedo: mix(ground, dusted, rock), slip, rock, mud, dust, dist, rippleVis: f1 };
 }
 
 class SandLightingModel extends THREE.LightingModel {
@@ -290,7 +356,8 @@ class SandLightingModel extends THREE.LightingModel {
     const lightColor = input.lightColor as V3;
     const directDiffuse = input.reflectedLight.directDiffuse as V3;
     const directSpecular = input.reflectedLight.directSpecular as V3;
-    const { p, n0, n, nSpec, v, albedo, slip, rock, dust, dist, rippleVis } = this.s;
+    const { p, n0, n, nSpec, v, albedo, slip, rock, mud, dust, dist, rippleVis } = this.s;
+    const bare = float(1).sub(max(rock, mud)); // sand, not rock or clay: sheen and glitter
     // Light direction arrives in view space; the sand works in world space.
     const l = normalize(cameraWorldMatrix.mul(vec4(lightDirection, 0)).xyz);
     const ndl = dot(n, l);
@@ -317,7 +384,7 @@ class SandLightingModel extends THREE.LightingModel {
       .mul(pow(toSun, 3))
       .mul(saturate(ndl.add(0.35)))
       .mul(sand.rim);
-    const spec = c3(sand.sheenTint).mul(max(ocean.mul(float(1).sub(dust.mul(0.6))).mul(float(1).sub(rock)), rim));
+    const spec = c3(sand.sheenTint).mul(max(ocean.mul(float(1).sub(dust.mul(0.6))).mul(bare), rim));
 
     // Glitter: only in sunlight, fades out with distance (and per-cell footprint inside the layers).
     const lit = saturate(ndl.mul(5));
@@ -330,7 +397,7 @@ class SandLightingModel extends THREE.LightingModel {
       .mul(near)
       .mul(facing)
       .mul(float(1).sub(slip.mul(0.7)))
-      .mul(float(1).sub(rock))
+      .mul(bare)
       .mul(float(1).sub(dust.mul(0.7)))
       .mul(sand.glitter);
 

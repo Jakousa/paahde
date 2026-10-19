@@ -27,6 +27,10 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   giant) placed by a rockiness noise, the kind by a regional style noise; part of `baseHeight`
   (max with the dunes). Steep rock is a wall in `step()`, craters stop at rock, `rock` attribute paints them in
   `src/world/sandMaterial.ts`
+- `shared/biomes.ts` — biomes: regions met further out the further you go (noise blobs whose share of the land grows
+  with distance from the origin). First one: mud flats (dried lake beds) — no dunes (`duneHeight`), next to no rocks
+  (`rockiness`), cracked clay via the per-vertex `mud` attribute in `src/world/sandMaterial.ts`, hotter by day
+  (`groundHeat` in shared/temperature.ts). Noise primitives in `shared/noise.ts`
 - `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen
 - `shared/temperature.ts` — air/felt °C by time of day (drives thirst); `shared/shade.ts` — sun ray march (shade)
   tuning, drained and validated in `server/water.ts`, HUD + `playerHands` in `src/water.ts`

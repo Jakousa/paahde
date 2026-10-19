@@ -16,6 +16,7 @@
 //   - A second, smaller dune train (slightly different wind angle) rides on the windward slopes and in
 //     the corridors, but not on slip faces.
 //   - A regional "sand supply" mask flattens some areas into pans; a very gentle erg undulation on top.
+//   - Mud flats (shared/biomes.ts) have no sand supply at all: flat, slightly sunk, the erg undulation damped.
 
 /** Seeds the dunes, scrap, wrecks and crash sites, and so where the base goes (shared/base.ts); per world
  *  (shared/world.ts). */
@@ -41,33 +42,17 @@ const H1_MIN = 12, H1_MAX = 30;
 const MEGA = 1.0; // in rare megadune regions big crests grow by up to this fraction (to ~60 m)
 const HORN1 = 70; // how far low crest ends are pushed downwind
 const WARP1 = 110; // domain-warp amplitude (m)
+/** How far (m) a mud flat's floor lies under the land around it: a dried lake bed. */
+const MUD_SINK = 2.5;
 // Small dunes
 const L2 = 42;
 const CREST2 = 0.7 * L2;
 const H2_MAX = 3.5;
 const HORN2 = 6;
 
-export function hash2(ix: number, iz: number, seed: number): number {
-  let h = Math.imul(ix | 0, 0x27d4eb2d) ^ Math.imul(iz | 0, 0x165667b1) ^ seed;
-  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296; // [0, 1)
-}
-
-export function ss(t: number): number {
-  return t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
-}
-
-/** 2D value noise in [0, 1) with quintic fade. */
-export function vnoise(x: number, z: number, seed: number): number {
-  const ix = Math.floor(x), iz = Math.floor(z);
-  let fx = x - ix, fz = z - iz;
-  fx = fx * fx * fx * (fx * (fx * 6 - 15) + 10);
-  fz = fz * fz * fz * (fz * (fz * 6 - 15) + 10);
-  const a = hash2(ix, iz, seed), b = hash2(ix + 1, iz, seed);
-  const c = hash2(ix, iz + 1, seed), d = hash2(ix + 1, iz + 1, seed);
-  return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
-}
+import { hash2, ss, vnoise } from './noise.ts';
+import { mudflat } from './biomes.ts';
+export { hash2, ss, vnoise };
 
 // Derivatives of the last vnoiseD call (scratch, overwritten every call).
 let ndx = 0, ndz = 0;
@@ -124,15 +109,17 @@ function dune(s: number, crest: number, h: number, slip: number, kc: number, kt:
 /** Procedural dune height at world (x, z). Pure function. */
 export function duneHeight(x: number, z: number, seed: number): number {
   const S = seed | 0;
+  // Mud flats (shared/biomes.ts): no sand to make dunes of, a dead flat floor a little sunk into the land.
+  const mud = mudflat(x, z);
   x += OFFSET_X;
   z += OFFSET_Z;
 
   // Regional sand supply: 0 = flat pan, 1 = full dune field.
-  const supply = vnoise(x * (1 / 1100), z * (1 / 1100), S + 11) * 0.7 + vnoise(x * (1 / 430), z * (1 / 430), S + 12) * 0.3;
+  const supply = (vnoise(x * (1 / 1100), z * (1 / 1100), S + 11) * 0.7 + vnoise(x * (1 / 430), z * (1 / 430), S + 12) * 0.3) * (1 - mud);
   const big = ss((supply - 0.08) * (1 / 0.3));
   const small = ss((supply - 0.06) * (1 / 0.25));
   // Very gentle erg undulation.
-  let h = (vnoise(x * (1 / 1600), z * (1 / 1600), S + 13) - 0.5) * 24;
+  let h = (vnoise(x * (1 / 1600), z * (1 / 1600), S + 13) - 0.5) * 24 * (1 - 0.6 * mud) - MUD_SINK * mud;
 
   const across = z * WX - x * WZ;
 

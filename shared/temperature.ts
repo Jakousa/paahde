@@ -15,6 +15,10 @@
 // you get through the afternoon. Both fade out as the sun nears the horizon. Partly in shade (shared/shade.ts sunOnBody), it is
 // the mix of the two by how much of the body the sun reaches. In the base (the hut or the bunker) the thick walls
 // and the sand keep it at most BASE_MAX.
+//
+// Ground: some biomes (shared/biomes.ts) are hotter than the dune sea while the sun is up. Out on a mud flat the
+// bare baked clay adds up to MUD_SUN in the sun (MUD_SHADE in what little shade there is), by the sun's height.
+import { mudflat } from './biomes.ts';
 import { NOON_ELEVATION, sunElevation } from './sun.ts';
 
 /** Coolest air (°C), at AIR_MIN_TOD, just before sunrise (~05:35 here). */
@@ -35,6 +39,11 @@ export const SHADE_MAX = 26;
 const SHADE_FULL_STRENGTH = 0.2;
 /** The base never feels hotter than this (°C): cool enough that you cool off there. */
 export const BASE_MAX = 22;
+
+/** Extra felt °C on a mud flat in direct sun with the sun at its noon height... */
+export const MUD_SUN = 7;
+/** ...and in shade there. */
+export const MUD_SHADE = 3;
 
 /** Air temperature (°C) at a time of day in [0, 1). */
 export function airTemp(tod: number): number {
@@ -69,4 +78,12 @@ export function feltTemp(tod: number, sun: number, inside: boolean): number {
   const lit = air + SUN_BONUS * strength;
   const shaded = air + (Math.min(air - SHADE_DROP, SHADE_MAX) - air) * Math.min(1, strength / SHADE_FULL_STRENGTH);
   return shaded + (lit - shaded) * sun;
+}
+
+/** Extra felt °C from the ground under a player outdoors at (x, z): the biome's heat (0 in the dune sea), with
+ *  `sun` (0..1) of the body in direct sun. */
+export function groundHeat(x: number, z: number, tod: number, sun: number): number {
+  const mud = mudflat(x, z);
+  if (mud === 0) return 0;
+  return mud * sunStrength(tod) * (MUD_SHADE + (MUD_SUN - MUD_SHADE) * sun);
 }

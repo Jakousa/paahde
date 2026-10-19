@@ -10,8 +10,10 @@
 // once all of its chunks exist, so there are never holes; built chunks are cached for reuse.
 // Edits (digging) invalidate the fine chunks they touch, which are rebuilt nearest-first.
 import * as THREE from 'three/webgpu';
+import { mudflat } from '../../shared/biomes.ts';
 import { rockHeight } from '../../shared/rocks.ts';
 import { baseHeight, EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../shared/terrain.ts';
+import { LAB } from '../../shared/world.ts';
 import { hazeDensity, hazeFar } from './env.ts';
 import { createSandMaterial, sand } from './sandMaterial.ts';
 
@@ -240,6 +242,7 @@ export class Terrain {
     geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     geo.setAttribute('crest', new THREE.BufferAttribute(new Float32Array(n), 1));
     geo.setAttribute('rock', new THREE.BufferAttribute(new Float32Array(n), 1));
+    geo.setAttribute('mud', new THREE.BufferAttribute(new Float32Array(n), 1));
     geo.setIndex(this.index);
     const mesh = new THREE.Mesh(geo, this.material);
     mesh.position.set(ix * size, 0, iz * size);
@@ -299,9 +302,12 @@ export class Terrain {
     this.blurCrest(crest);
     // Bare rock (shared/rocks.ts): 1 where the rock is the surface, fading out under a few cm of sand.
     const rock = geo.attributes.rock.array as Float32Array;
+    // Mud flat (shared/biomes.ts): 1 out on the cracked clay.
+    const mud = geo.attributes.mud.array as Float32Array;
     for (let j = 0; j < VERTS; j++) {
       for (let i = 0; i < VERTS; i++) {
         const v = j * VERTS + i;
+        mud[v] = LAB ? 0 : mudflat(c.x0 + i * step, c.z0 + j * step);
         const t = (rockHeight(c.x0 + i * step, c.z0 + j * step) - pos[v * 3 + 1]) * (1 / 0.3) + 1;
         rock[v] = t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
         if (rock[v] > 0) crest[v] = 0; // rims are rock, not a sand brink
@@ -322,12 +328,14 @@ export class Terrain {
         nor[s + 2] = nor[g + 2];
         crest[base + e * VERTS + t] = crest[src];
         rock[base + e * VERTS + t] = rock[src];
+        mud[base + e * VERTS + t] = mud[src];
       }
     }
     geo.attributes.position.needsUpdate = true;
     geo.attributes.normal.needsUpdate = true;
     geo.attributes.crest.needsUpdate = true;
     geo.attributes.rock.needsUpdate = true;
+    geo.attributes.mud.needsUpdate = true;
     minY -= drop;
     const bb = (geo.boundingBox ??= new THREE.Box3());
     bb.min.set(0, minY, 0);

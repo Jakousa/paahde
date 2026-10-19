@@ -463,6 +463,9 @@ const en = {
     sip: ['Time for a sip.', 'My throat is sand.'],
     dry: ["Bottle's empty. Need a pump.", 'Not a drop left.'],
     shelter: 'Somebody dug in here once. Nice and cool.',
+    /** First time out on a mud flat (shared/biomes.ts), by day and by night. */
+    mudflatDay: "A dead lake. The ground's hotter than the air.",
+    mudflatNight: "A dead lake. I wouldn't cross this by day.",
     stormWarning: "That beeping can't be good. Better get under a roof.",
     storm: ["Can't see a thing!", 'Sand in my everything.'],
     stormFront: ["That's a wall of sand. I need rock between me and it.", 'Here it comes. Underground, or behind a cliff.'],

@@ -15,6 +15,7 @@
 // domain-warped ellipse with a height profile by kind, plus boulders fallen around the big ones; now and then
 // one is a giant. Rocks sit on the lowest sand under them, partly buried; overlapping rocks merge (max).
 import { BASE } from './base.ts';
+import { mudflat } from './biomes.ts';
 import { duneHeight, ss, vnoise, WORLD_SEED } from './dunes.ts';
 import { LAB } from './world.ts';
 
@@ -73,9 +74,12 @@ function rng(ix: number, iz: number) {
 
 /** 0 = sand sea, 1 = rocky country. Large blobs a few km across, with ragged edges. */
 export function rockiness(x: number, z: number): number {
+  // Mud flats (shared/biomes.ts) keep only the stray boulder of the sand sea.
+  const flat = 1 - mudflat(x, z);
+  if (flat <= 0) return 0;
   const n = vnoise(x * (1 / 700) + 31.7, z * (1 / 700) - 12.3, WORLD_SEED + 21) * 0.65 +
     vnoise(x * (1 / 260), z * (1 / 260), WORLD_SEED + 22) * 0.35;
-  return ss((n - 0.45) * (1 / 0.22));
+  return ss((n - 0.45) * (1 / 0.22)) * flat;
 }
 
 /** How likely each kind of formation is at (x, z) in full rocky country: two slow noises pick a point in a
