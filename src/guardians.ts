@@ -3,8 +3,8 @@
 // (src/world/drones.ts), and does what makes them feel big and dangerous: footfall sound, dust and camera shake,
 // the horn when one comes for you, the cannon (src/world/bolts.ts: charge whine, zap, burst), the missiles a drone
 // calls down (src/world/missiles.ts: jet roar, blast), a chirp when a drone locks on. Also flies the fixed-wing
-// drones (src/world/jets.ts) and their roar, and the harvesters (src/world/harvesters.ts): their rumble, the horn
-// when one turns on you, the turret's bolts, the shots that land on them, their death.
+// drones (src/world/jets.ts) and their roar, and the harvesters (src/world/harvesters.ts): their rumble (a roar when
+// one charges), the ground trembling near one, the shots that land in their maws, their death.
 import * as THREE from 'three/webgpu';
 import { BOT_DELAY_MS, dronesAt, guardiansAt } from './world/botFrames';
 import { Drones } from './world/drones';
@@ -14,6 +14,7 @@ import { Missiles } from './world/missiles';
 import { Jets } from './world/jets';
 import { Harvesters } from './world/harvesters';
 import { harvesterSound } from './harvesterSound';
+import { SPEED } from '../shared/harvester.ts';
 import { jetAt, jetPose, type JetPose } from '../shared/jets.ts';
 import { SPEED_OF_SOUND } from './acoustics';
 import { CHARGE_MS, CRAWLER, FIRE_R, FOOT_CRUSH_R, GUARDIAN, KINDS } from '../shared/guardians.ts';
@@ -27,6 +28,9 @@ import type { Net } from './net';
 const SHAKE_R = 90;
 const SHAKE = 0.35;
 const DUST_R = 600;
+/** A harvester shakes the ground within TREMBLE_R m; one charging within CHARGE_NEAR counts as a fight. */
+const TREMBLE_R = 90;
+const CHARGE_NEAR = 250;
 /** A crawler's bite jolts the camera this much (m). */
 const BITE_SHAKE = 0.18;
 
@@ -44,8 +48,8 @@ export class GuardianFx {
   readonly missiles: Missiles;
   readonly jets: Jets;
   readonly harvesters: Harvesters;
-  /** Harvesters hunting us (to sound the horn once each). */
-  private harvested = new Set<number>();
+  /** A harvester is charging within CHARGE_NEAR m of us. */
+  private charged = false;
   private jetPose: JetPose = jetPose();
   private bound = false;
   private locked = false;
@@ -71,15 +75,15 @@ export class GuardianFx {
     this.missiles = new Missiles(scene);
     this.jets = new Jets(scene);
     this.harvesters = new Harvesters(scene);
-    // A shot on a vent: a heavy clang; one shot out: a burst of fire and sparks out of it.
+    // A shot into a core: a heavy clang; one shot out: a burst of fire and sparks out of its maw.
     this.harvesters.onHit = (x, y, z) => guardianSound.footfall(x, y, z, 0.8, this.ear);
-    this.harvesters.onVentOut = (x, y, z) => {
-      zaps.burst(x, y, z, 0, 0.6, 0, 40, 4);
-      for (let i = 0; i < 6; i++) zaps.puff(x, y, z, 3 + Math.random() * 3, 3);
+    this.harvesters.onCoreOut = (x, y, z, dx, dz) => {
+      zaps.burst(x, y, z, dx, 0.5, dz, 40, 4);
+      for (let i = 0; i < 6; i++) zaps.puff(x + dx * 2, y, z + dz * 2, 3 + Math.random() * 3, 3);
       guardianSound.boom(x, y, z, this.ear);
       rifleSound.firework({ x, y, z }, this.ear, 0.7, MISSILE_FIREWORK_PITCH);
     };
-    // The last vent: the engine seizes, a blast through the hull, fire and a column of smoke, a shake felt far off.
+    // The last core: the engine seizes, a blast through the hull, fire and a column of smoke, a shake felt far off.
     this.harvesters.onDeath = (x, y, z) => {
       this.bolts.burst(x, y, z, true);
       zaps.burst(x, y + 4, z, 0, 1, 0, 120, 14);
@@ -188,29 +192,19 @@ export class GuardianFx {
     }
   }
 
-  /** The harvesters: drawn, their turrets on their prey, heard, the horn when one turns on us; near one the ground
-   *  trembles under it. */
-  private updateHarvesters(net: Net, dt: number, camera: THREE.Camera) {
-    const me = net.me, others = net.others;
-    const prey = new THREE.Vector3();
-    this.harvesters.update(net.harvesters, net.serverTime(), this.ear, dt, (id) => {
-      if (id === net.id) return prey.set(me.x, me.y + 1.1, me.z);
-      const o = others.find((r) => r.id === id);
-      return o ? prey.set(o.x, o.y + 1.1, o.z) : null;
-    });
-    this.harvesters.setPrey(net.harvesters);
-    let nearest: { id: number; x: number; y: number; z: number; vents: number } | null = null, best = Infinity;
-    for (const b of this.harvesters.bodies(net.id)) {
+  /** The harvesters: drawn and heard; near one the ground trembles under it, more as it charges. */
+  private updateHarvesters(net: Net, dt: number) {
+    this.harvesters.update(net.harvesters, net.serverTime(), this.ear, dt);
+    let nearest: { id: number; x: number; y: number; z: number; v: number; cores: number } | null = null, best = Infinity;
+    this.charged = false;
+    for (const b of this.harvesters.bodies()) {
       const d = Math.hypot(b.x - this.ear.x, b.z - this.ear.z);
       if (b.alive && d < best) (best = d), (nearest = b);
-      if (b.alive && b.hunting && !this.harvested.has(b.id)) guardianSound.horn(b.x, camera.position.y + 14, b.z);
-      if (b.alive && b.hunting) this.harvested.add(b.id);
-      else this.harvested.delete(b.id);
+      if (b.alive && b.v > SPEED * 1.5 && d < CHARGE_NEAR) this.charged = true;
     }
-    for (const id of this.harvested) if (!net.harvesters.some((h) => h.id === id)) this.harvested.delete(id);
     harvesterSound.update(nearest, this.ear);
-    // Its weight through the sand: a faint, steady tremble close by.
-    if (best < 60) this.shake = Math.max(this.shake, 0.05 * (1 - best / 60));
+    const v = nearest ? nearest.v / SPEED : 1;
+    if (best < TREMBLE_R) this.shake = Math.max(this.shake, 0.06 * Math.min(3, v) * (1 - best / TREMBLE_R));
   }
 
   /** Every frame, after the camera has been placed: draws them and shakes the camera. */
@@ -228,7 +222,7 @@ export class GuardianFx {
       };
       net.onBolt = (m) => {
         if (m.t === 'shot') {
-          const muzzle = m.g < 0 ? this.harvesters.fire(-m.g, this.muzzle) : this.guardians.fire(m.g, this.muzzle);
+          const muzzle = this.guardians.fire(m.g, this.muzzle);
           this.bolts.fire(m, muzzle);
           const at = muzzle ?? this.muzzle.set(m.x, m.y, m.z);
           rifleSound.cannon(at, this.ear);
@@ -250,7 +244,7 @@ export class GuardianFx {
     guardianSound.missiles(this.missiles.heads(net.serverTime()), this.ear);
     this.jets.update(net.jets, net.serverTime(), this.ear, dt);
     guardianSound.jets(this.heardJets(net), this.ear);
-    this.updateHarvesters(net, dt, camera);
+    this.updateHarvesters(net, dt);
     const t = net.serverTime() - BOT_DELAY_MS;
     const gs = guardiansAt(net.bots, t);
     const ds = dronesAt(net.bots, t);
@@ -288,7 +282,7 @@ export class GuardianFx {
     if (spotted && !this.locked) guardianSound.chirp();
     this.locked = spotted;
     const incoming = this.missiles.incoming(focus.x, focus.z, 30, net.serverTime()).length > 0;
-    this.combat = incoming || spotted || this.hunted.size > 0 || this.crawled.size > 0 || this.harvested.size > 0;
+    this.combat = incoming || spotted || this.hunted.size > 0 || this.crawled.size > 0 || this.charged;
     if (this.shake > 0.001) {
       const s = this.shake;
       camera.position.x += (Math.random() - 0.5) * s;

@@ -3,13 +3,13 @@
 // - treads: band-passed noise clanking at the rate the shoes come round (SPEED / pitch), and a thin squeal of steel.
 // - drum: a gravelly grind from the maw, churning.
 // Late by the distance at the speed of sound (a delay line), duller further off, the clank and grind fading out before
-// the engine does; thinner with every vent shot out (the engine labours), silent once it's dead. Its horn when it turns
-// on you is the walkers' (src/guardianSound.ts horn), its turret the walkers' cannon (rifleSound.cannon).
+// the engine does. At a charge it all runs faster (the clank at the shoes' rate), the engine climbing, louder and
+// opening up into a roar; rougher with every core shot out; silent once it's dead.
 // Through the shared output (src/audio.ts: master gain and limiter); every level ramped. Set against the carrier's
 // thrum (src/carrierSound.ts): at REF a little under it, since it's heard for longer.
 import { audio } from './audio';
 import { SPEED_OF_SOUND } from './acoustics';
-import { SPEED } from '../shared/harvester.ts';
+import { CHARGE, CORES, SPEED } from '../shared/harvester.ts';
 
 /** Heard within HEAR m, full level within REF (1/d past it); the treads and drum are heard within NEAR. */
 const HEAR = 2500;
@@ -19,7 +19,9 @@ const GAIN = 0.26;
 /** Engine firing rate (Hz) and its two notes; tread clanks a second (a shoe is about 0.8 m). */
 const FIRE_HZ = 8.5;
 const NOTES = [33, 49.5];
-const CLANK_HZ = SPEED / 0.8;
+const CLANK_HZ = SPEED / 0.84;
+/** At a full charge, this much louder. */
+const CHARGE_GAIN = 1.6;
 
 type P = { x: number; y: number; z: number };
 
@@ -36,13 +38,15 @@ type Voice = {
   id: number;
   stop: (() => void)[];
   delay: DelayNode; air: BiquadFilterNode; gain: GainNode; near: GainNode; engine: BiquadFilterNode; panner: PannerNode;
+  /** Oscillators that run faster with its speed: base frequency, and how much of the speed-up they follow. */
+  rates: { o: OscillatorNode; f: number; k: number }[];
 };
 
 export class HarvesterSound {
   private v: Voice | null = null;
 
-  /** Every frame: the nearest harvester crawling (`vents` still glowing of 4), or null, heard from `ear`. */
-  update(h: { id: number; x: number; y: number; z: number; vents: number } | null, ear: P) {
+  /** Every frame: the nearest harvester crawling (at `v` m/s, `cores` still glowing), or null, heard from `ear`. */
+  update(h: { id: number; x: number; y: number; z: number; v: number; cores: number } | null, ear: P) {
     const ctx = audio.ctx, out = audio.out;
     if (!ctx || !out || !audio.running) return;
     const d = h ? Math.hypot(h.x - ear.x, h.y - ear.y, h.z - ear.z) : Infinity;
@@ -57,11 +61,14 @@ export class HarvesterSound {
       return;
     }
     const edge = Math.max(0, Math.min(1, (HEAR - d) / (HEAR * 0.3)));
-    v.gain.gain.setTargetAtTime(GAIN * (REF / Math.max(REF, d)) * edge, now, 0.3);
+    // How far into a charge (0 crawling .. 1 flat out).
+    const rate = Math.max(1, h.v / SPEED), c = Math.min(1, (rate - 1) / (CHARGE / SPEED - 1));
+    v.gain.gain.setTargetAtTime(GAIN * (1 + (CHARGE_GAIN - 1) * c) * (REF / Math.max(REF, d)) * edge, now, 0.3);
     const near = 1 - Math.min(1, Math.max(0, (d - NEAR * 0.4) / NEAR));
     v.near.gain.setTargetAtTime(near, now, 0.3);
-    // Fewer vents: the engine runs hotter and rougher, its low-pass opening up.
-    v.engine.frequency.setTargetAtTime(200 + (4 - h.vents) * 90, now, 0.5);
+    for (const r of v.rates) r.o.frequency.setTargetAtTime(r.f * (1 + r.k * (rate - 1)), now, 0.25);
+    // A charge, or cores shot out: the engine runs harder and rougher, its low-pass opening up.
+    v.engine.frequency.setTargetAtTime(200 + 420 * c + (CORES.length - h.cores) * 90, now, 0.4);
     v.air.frequency.setTargetAtTime(Math.max(140, 7000 * Math.exp(-d / 450)), now, 0.2);
     v.delay.delayTime.setTargetAtTime(d / SPEED_OF_SOUND, now, 0.3);
     v.panner.positionX.setTargetAtTime(h.x, now, 0.05);
@@ -72,12 +79,15 @@ export class HarvesterSound {
   private voice(ctx: AudioContext, out: AudioNode, id: number, at: P): Voice {
     const t = ctx.currentTime;
     const stop: (() => void)[] = [];
-    const osc = (type: OscillatorType, f: number) => {
+    const rates: Voice['rates'] = [];
+    /** An oscillator at `f` Hz, following `k` of its speed-up. */
+    const osc = (type: OscillatorType, f: number, k = 0) => {
       const o = ctx.createOscillator();
       o.type = type;
       o.frequency.value = f;
       o.start(t);
       stop.push(() => o.stop());
+      if (k) rates.push({ o, f, k });
       return o;
     };
     const src = () => {
@@ -89,10 +99,10 @@ export class HarvesterSound {
       return n;
     };
     /** `node`'s level swung by an LFO at `hz` (a square for clanks), `depth` of the way to silence. */
-    const pulse = (node: AudioNode, hz: number, depth: number, type: OscillatorType = 'sine') => {
+    const pulse = (node: AudioNode, hz: number, depth: number, type: OscillatorType = 'sine', k = 0) => {
       const am = ctx.createGain();
       am.gain.value = 1 - depth / 2;
-      const lfo = osc(type, hz), g = ctx.createGain();
+      const lfo = osc(type, hz, k), g = ctx.createGain();
       g.gain.value = depth / 2;
       lfo.connect(g).connect(am.gain);
       node.connect(am);
@@ -121,9 +131,9 @@ export class HarvesterSound {
     engine.type = 'lowpass';
     engine.frequency.value = 200;
     engine.Q.value = 2;
-    for (const f of NOTES) osc('sawtooth', f).connect(engine);
-    osc('sine', NOTES[0] / 2).connect(engine);
-    pulse(engine, FIRE_HZ, 0.6).connect(mix);
+    for (const f of NOTES) osc('sawtooth', f, 0.3).connect(engine);
+    osc('sine', NOTES[0] / 2, 0.3).connect(engine);
+    pulse(engine, FIRE_HZ, 0.6, 'sine', 0.5).connect(mix);
 
     // Treads and drum, only near.
     const near = ctx.createGain();
@@ -136,7 +146,7 @@ export class HarvesterSound {
     src().connect(clank);
     const cg = ctx.createGain();
     cg.gain.value = 0.55;
-    pulse(clank, CLANK_HZ, 1, 'square').connect(cg).connect(near);
+    pulse(clank, CLANK_HZ, 1, 'square', 1).connect(cg).connect(near);
     const squeal = osc('triangle', 760);
     const vib = osc('sine', 0.23), vg = ctx.createGain();
     vg.gain.value = 40;
@@ -151,8 +161,8 @@ export class HarvesterSound {
     src().connect(grind);
     const gg = ctx.createGain();
     gg.gain.value = 0.9;
-    pulse(grind, 5.3, 0.7).connect(gg).connect(near);
-    return { id, stop, delay, air, gain, near, engine, panner };
+    pulse(grind, 5.3, 0.7, 'sine', 0.6).connect(gg).connect(near);
+    return { id, stop, delay, air, gain, near, engine, panner, rates };
   }
 
   private stop() {

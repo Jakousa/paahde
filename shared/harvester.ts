@@ -1,13 +1,15 @@
-// The harvester: a tracked sand crawler the size of a building, slab-sided and black with rust, grinding slowly over
-// the dunes along a long route and sifting the sand for whatever traces of ore it holds (a cutter drum in its maw, a
-// sieve tower, a chute spilling the sifted sand behind). It minds its own business until someone comes close or shoots
-// it: then its slit eye turns red, its horn sounds and the turret on its tower lobs heavy bolts (the walkers' bolts,
-// server/guardians.ts). Anyone it drives over is ground into the sand. Only its four heat vents can hurt it
-// (VENT_HP each, shared/rifle.ts hits): with all of them out the engine seizes, it burns where it stopped and its ore
-// hopper bursts (shared/tables.ts HARVESTER_SPOILS).
+// The harvester: a tracked sand crawler the size of a building, one slab-sided monolith of rust-black iron grinding
+// slowly over the dunes along a long route, sifting the sand for whatever traces of ore it holds (a cutter drum in its
+// maw, a slot at the stern spilling the sifted sand). It pays no one any mind, except whoever stands in its lane right
+// ahead of it: then it opens up and charges (CHARGE m/s, faster than a walk, slower than a sprint) until the lane has
+// been clear for a while. Anyone it drives over is ground into the sand. Its only weak points are the three glowing
+// intake cores deep in its maw, behind the drum (CORE_HP rifle hits each): to kill it you have to stand in front of it.
+// With all three out it seizes, burns where it stopped and its ore hopper bursts (shared/tables.ts HARVESTER_SPOILS).
 //
-// Like the jets (shared/jets.ts) the server (server/harvesters.ts) sends the route and the start time whenever
-// something changes, and the rest is plain math on that and the server clock: both sides agree where it is.
+// Like the jets (shared/jets.ts) the server (server/harvesters.ts) sends the route, the pace and its state whenever
+// something changes, and the rest is plain math on that and the server clock: both sides agree where it is. The pace
+// is a list of stretches, each from a server time, a distance along the route and a speed, ramping at a steady rate
+// to a target speed and holding it (paceAt); the server starts a new one when it speeds up or slows down.
 // Drawn by src/world/harvesters.ts (model tools/blender/harvester.py), heard via src/harvesterSound.ts.
 //
 // Its pose: the front and rear axles ride the route WHEELBASE / 2 ahead of and behind the distance it has come, the
@@ -15,83 +17,73 @@
 
 import { baseHeight } from './terrain.ts';
 
+/** From server time `t` (ms), `s` m along the route at `v` m/s, ramping by `a` m/s² to `to` m/s and holding it. */
+export type Pace = { t: number; s: number; v: number; a: number; to: number };
+
 export type Harvester = {
   id: number;
   /** The route: x, z pairs (m), about STEP apart. */
   pts: number[];
-  /** Speed along it (m/s). */
-  speed: number;
-  /** Server-clock ms it set off from the first point; it leaves at `end` (killed: the wreck goes WRECK_MS after). */
+  /** Its pace, oldest first (the first from when it set off). */
+  pace: Pace[];
+  /** Server-clock ms it set off from the first point. It's gone past the route's end, or (killed) at `end`. */
   start: number;
   end: number;
-  /** Rifle hits on each heat vent (VENTS; VENT_HP puts it out). */
-  vents: number[];
-  /** The player it has turned on (0 none): the turret follows them. */
-  prey: number;
+  /** Rifle hits on each intake core (CORES; CORE_HP puts it out). */
+  cores: number[];
+  /** Charging someone ahead of it. */
+  charging: boolean;
   /** Killed at server time `at`: it stops where it was then. */
   down?: { at: number };
 };
 
 /** Route point spacing (m). */
 export const STEP = 20;
-/** Crawling speed (m/s). */
+/** Crawling speed, charging speed (m/s; a player walks 7.5, sprints 11), and how fast it gets up to it and back (m/s²). */
 export const SPEED = 2.2;
+export const CHARGE = 8;
+export const SPEED_UP = 0.7;
+export const SLOW_DOWN = 0.45;
 /** Front axle to rear axle (m), and from the left tracks' centres to the right ones'. */
-export const WHEELBASE = 18;
-export const TRACK = 12;
-/** Track unit (local): length, width, height (m). */
-export const TRACK_LEN = 10;
-export const TRACK_W = 3.4;
-export const TRACK_H = 4.2;
+export const WHEELBASE = 30;
+export const TRACK = 18;
+/** Track unit (local): length, width (m). */
+export const TRACK_LEN = 14;
+export const TRACK_W = 5;
 /** Footprint (local, m): half width, from the stern to the front of the maw. Anyone in it is run over. */
-export const HALF_W = 7.9;
-export const STERN = -15.5;
-export const BOW = 18.5;
-/** The hull's top (m above its ground), the tower's. */
-export const HULL_TOP = 12;
-export const TOWER_TOP = 17.4;
-/** The turret's pivot (local) and the length of its barrels (m). */
-export const TURRET = { x: 0, y: 18.6, z: -5 };
-export const BARREL = 4.2;
-/** The slit eye across the front of the tower (local centre). */
-export const EYE = { x: 0, y: 15.4, z: 1.1 };
-/** Heat vents (local centres, facing out to the side): the only places a shot hurts it. */
-export const VENTS: readonly { x: number; y: number; z: number }[] = [
-  { x: 7.65, y: 7.4, z: 5.5 }, { x: 7.65, y: 7.4, z: -6.5 },
-  { x: -7.65, y: 7.4, z: 5.5 }, { x: -7.65, y: 7.4, z: -6.5 },
+export const HALF_W = 12.4;
+export const STERN = -25.4;
+export const BOW = 27.8;
+/** The hull's top (m above its ground). */
+export const HULL_TOP = 19;
+/** Its lane: anyone this far (m) ahead of its bow and within LANE of its middle sets it charging; it calms down
+ *  CALM_MS after the lane is clear. */
+export const AHEAD = 110;
+export const LANE = HALF_W + 3;
+export const CALM_MS = 5000;
+/** Intake cores (local centres, facing forward) in the throat behind the drum; their half size (m). */
+export const CORES: readonly { x: number; y: number; z: number }[] = [
+  { x: -5.6, y: 6.4, z: 21.75 }, { x: 0, y: 6.4, z: 21.75 }, { x: 5.6, y: 6.4, z: 21.75 },
 ];
-/** Vent grille half size (m): along the hull and up. */
-export const VENT_HALF = { z: 2.1, y: 1.3 };
-export const VENT_HP = 3;
+export const CORE_HALF = 1.15;
+export const CORE_HP = 4;
 /** The wreck burns this long (ms) before it's cleared. */
 export const WRECK_MS = 8 * 60_000;
 /** Seen from this far (m) by clients. */
 export const SHOW_R = 4000;
 
-/** It notices anyone this near (m) whom its eye can see; it gives up on prey this far off (or unseen this long). */
-export const NOTICE_R = 75;
-export const LOSE_R = 240;
-export const LOSE_MS = 25_000;
-/** Shot at, it stays angry at the shooter this long (ms). */
-export const ANGER_MS = 90_000;
-/** After turning on someone it sounds its horn and waits this long (ms) before the first salvo. */
-export const WAKE_MS = 3200;
-/** A salvo of SALVO bolts, SALVO_GAP ms apart, every SALVO_MS. */
-export const SALVO = 3;
-export const SALVO_GAP = 320;
-export const SALVO_MS = 5200;
-
 export type HarvesterPose = {
   x: number; y: number; z: number;
   /** three.js yaw (forward = (sin, cos)), nose up (rad), roll (rad, + lifts its +X side). */
   yaw: number; pitch: number; roll: number;
-  /** Distance come along the route (m): the tracks and the drum turn by it. */
+  /** Distance come along the route (m): the tracks and the drum turn by it; its speed now (m/s). */
   s: number;
+  v: number;
   /** 0 crawling, 1 a wreck. */
   state: number;
 };
 
-export const harvesterPose = (): HarvesterPose => ({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, s: 0, state: 0 });
+export const harvesterPose = (): HarvesterPose => ({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, s: 0, v: 0, state: 0 });
 
 /** Route length (m). */
 export const routeLength = (pts: number[]) => {
@@ -99,6 +91,22 @@ export const routeLength = (pts: number[]) => {
   for (let i = 2; i < pts.length; i += 2) l += Math.hypot(pts[i] - pts[i - 2], pts[i + 1] - pts[i - 1]);
   return l;
 };
+
+const _pv = { s: 0, v: 0 };
+/** How far along (m) and how fast (m/s) a pace has it at server time `t` (ms). */
+export function paceAt(pace: Pace[], t: number, out = _pv): { s: number; v: number } {
+  let p = pace[0];
+  for (let i = pace.length - 1; i > 0; i--) if (pace[i].t <= t) {
+    p = pace[i];
+    break;
+  }
+  const dt = Math.max(0, (t - p.t) / 1000);
+  const ramp = p.a === 0 ? 0 : Math.max(0, (p.to - p.v) / p.a);
+  const r = Math.min(dt, ramp);
+  out.s = p.s + p.v * r + (p.a * r * r) / 2 + p.to * (dt - r);
+  out.v = dt < ramp ? p.v + p.a * dt : p.to;
+  return out;
+}
 
 /** Cumulative distance at each route point, cached per route. */
 const _cum = new WeakMap<number[], Float64Array>();
@@ -139,11 +147,12 @@ function trackGround(x: number, z: number, fx: number, fz: number) {
 
 const _f = { x: 0, z: 0 }, _r = { x: 0, z: 0 };
 
-/** Harvester `h` at server time `t` (ms), into `out`; false before it sets off or after it's gone. */
+/** Harvester `h` at server time `t` (ms), into `out`; false before it sets off or once it's gone. */
 export function harvesterAt(h: Harvester, t: number, out: HarvesterPose): boolean {
-  if (t < h.start || t > h.end) return false;
-  const until = h.down ? Math.min(t, h.down.at) : t;
-  const s = (h.speed * (until - h.start)) / 1000;
+  if (t < h.start || (h.end && t > h.end)) return false;
+  const pv = paceAt(h.pace, h.down ? Math.min(t, h.down.at) : t);
+  const s = pv.s;
+  if (s > cumulative(h.pts)[h.pts.length / 2 - 1]) return false;
   along(h.pts, s + WHEELBASE / 2, _f);
   along(h.pts, s - WHEELBASE / 2, _r);
   const yaw = Math.atan2(_f.x - _r.x, _f.z - _r.z);
@@ -159,7 +168,8 @@ export function harvesterAt(h: Harvester, t: number, out: HarvesterPose): boolea
   out.pitch = Math.atan2((fl + fr - rl - rr) / 2, WHEELBASE);
   out.roll = Math.atan2((fl + rl - fr - rr) / 2, TRACK);
   out.s = s;
-  out.state = h.down ? (t >= h.down.at ? 1 : 0) : 0;
+  out.v = h.down && t >= h.down.at ? 0 : pv.v;
+  out.state = h.down && t >= h.down.at ? 1 : 0;
   return true;
 }
 
@@ -185,5 +195,5 @@ export function toLocal(p: HarvesterPose, x: number, z: number, out: { x: number
   return out;
 }
 
-/** Vents still glowing. */
-export const ventsLeft = (h: Harvester) => h.vents.filter((n) => n < VENT_HP).length;
+/** Cores still glowing. */
+export const coresLeft = (h: Harvester) => h.cores.filter((n) => n < CORE_HP).length;

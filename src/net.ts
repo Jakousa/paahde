@@ -184,8 +184,6 @@ export class Net {
   jets: Jet[] = [];
   /** Harvesters out (shared/harvester.ts), times on the server clock. */
   harvesters: Harvester[] = [];
-  /** Other players where they were last drawn (frame()). */
-  others: RemotePlayer[] = [];
   /** Recent 'bots' messages (guardians and drones, shared/guardians.ts), oldest first; src/world/botFrames.ts
    *  interpolates them. */
   bots: Extract<ServerMsg, { t: 'bots' }>[] = [];
@@ -581,7 +579,7 @@ export class Net {
     // Ease towards the target delay so remote players slow down or speed up a little instead of jumping.
     const target = INTERP_MS + Math.min(this.jitter, MAX_JITTER_MS);
     this.interpMs += (target - this.interpMs) * (1 - Math.exp(-dtSeconds * 2));
-    return (this.others = this.interpolate(performance.now() + (this.clockOffset ?? 0) - this.interpMs));
+    return this.interpolate(performance.now() + (this.clockOffset ?? 0) - this.interpMs);
   }
 
   private connect() {

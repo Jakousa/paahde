@@ -76,7 +76,7 @@ export type ClientMsg =
   | { t: 'summon'; what: 'guardian' | 'drone' | 'jet' | 'crawlers' | 'harvester' | BossKind }
   // A laser rifle or pistol shot (shared/rifle.ts) from (x, y, z) to where it stopped, (ex, ey, ez). `g`/`i`: the client
   // found it hit weak point i of walker g (i -1: just its body, which angers it); `d`: it hit drone d; `j`: fixed-wing
-  // drone j (shared/jets.ts); `h`/`hi`: heat vent hi (-1: its armour) of harvester h (shared/harvester.ts);
+  // drone j (shared/jets.ts); `h`/`hi`: intake core hi of harvester h (shared/harvester.ts);
   // `b`/`bi`: weak point bi of boss b (shared/bosses.ts). The server checks
   // the gun is in hand, its reach, the rate and that the shot was aimed at that walker, breaks the point, and shows the
   // shot to everyone near ('zap').
@@ -271,8 +271,7 @@ export type ServerMsg =
   | { t: 'jets'; jets: Jet[] }
   | { t: 'jetCrashes'; list: JetCrash[]; reset?: boolean }
   // Every harvester out (shared/harvester.ts; times on the server clock): before 'welcome' on join and to everyone
-  // whenever the list changes (a new one, its prey, a vent shot out, its death). Its turret's bolts are 'shot's with
-  // g = -id.
+  // whenever the list changes (a new one, a change of pace, a core shot out, its death).
   | { t: 'harvesters'; harvesters: Harvester[] }
   // Guardians and night drones (shared/guardians.ts) within reach, about 10 times a second, at server time `time`.
   // g: [id, kind, legs, x, z, yaw, hunt, ax, ay, az, gun, broken, dead] per walker (kind: shared/guardians.ts KINDS

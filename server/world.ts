@@ -42,7 +42,7 @@ import { jetImpact, type Jet } from '../shared/jets.ts';
 import { jetCrashList } from '../shared/jetcrash.ts';
 import { HarvesterServer, type Furrow, type HarvesterKill } from './harvesters.ts';
 import { BossServer, type BossKill, type BossOut } from './bosses.ts';
-import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type BoltEvent, type Kill } from './guardians.ts';
+import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
 import { LAB, LAB_SPAWN } from '../shared/lab.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
@@ -470,12 +470,10 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const wall = Date.now();
   const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !p.ready || !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
   guardians.storms = storms.storms;
-  // The harvesters first: their turret's bolts fly with the walkers' (and kill the same way, 'laser').
-  const furrows: Furrow[] = [], hEvents: BoltEvent[] = [];
-  const crushed = harvesters.tick(dt, now, list, guardians, hEvents, furrows);
+  const furrows: Furrow[] = [];
+  const crushed = harvesters.tick(now, list, furrows);
   for (const f of furrows) terrain.crater(f.x, f.z, f.r, f.mm, false);
   const r = guardians.tick(dt, now, tod, list);
-  r.events.unshift(...hEvents);
   for (const k of guardians.crashes()) dropSpoils(k);
   // The bolts go out before the deaths they cause, so the client has the bolt to hold the death for (src/net.ts).
   for (const p of players.values()) {
@@ -591,7 +589,7 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
     return;
   }
   if (m.h !== undefined) {
-    const r = harvesters.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.h, m.hi, now);
+    const r = harvesters.shoot(m.x, m.z, m.ex, m.ey, m.ez, m.h, m.hi, now);
     const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
     for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
     if (r.kill) dropHarvesterSpoils(r.kill);
@@ -745,13 +743,13 @@ function jetCame(b: { jet: number; bk: Breakup; lx: number; lz: number }): Serve
 }
 
 /** A harvester's burst hopper (shared/tables.ts HARVESTER_SPOILS): ore and drive parts and a heap of scrap, spilled
- *  out round its sides and stern (not under it: the wreck stays there a while). */
+ *  out round its sides and out of its maw (not under it: the wreck stays there a while). */
 function dropHarvesterSpoils(k: HarvesterKill) {
   const fx = Math.sin(k.yaw), fz = Math.cos(k.yaw);
   const at = (kind: string) => {
-    // A ring round the hull: along it -16..+12 m, out 9..15 m to either side, or behind the stern.
-    const behind = Math.random() < 0.3, along = behind ? -18 - Math.random() * 6 : -16 + Math.random() * 28;
-    const side = behind ? (Math.random() - 0.5) * 14 : (Math.random() < 0.5 ? 1 : -1) * (9 + Math.random() * 6);
+    // A ring round the hull: along it -22..+22 m, out 14..20 m to either side, or out of its maw ahead.
+    const front = Math.random() < 0.35, along = front ? 30 + Math.random() * 8 : -22 + Math.random() * 44;
+    const side = front ? (Math.random() - 0.5) * 18 : (Math.random() < 0.5 ? 1 : -1) * (14 + Math.random() * 6);
     loot.dropAt(k.x + fx * along + fz * side, k.z + fz * along - fx * side, kind);
   };
   const sp = HARVESTER_SPOILS;

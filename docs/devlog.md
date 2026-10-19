@@ -1666,3 +1666,23 @@ The local sandstorms are smaller now (radius 60–130 m, from 140–300), and ra
 - **Debug:** F3 → *Storm front* sends one over everyone (30 s to the first player). `dbg.storm.summonFront(ahead)`
   puts a still one `ahead` m upwind for 3 min, seen only by you (negative: you're in it; you choke on screen but the
   server doesn't know).
+
+
+## Harvester, second take: no guns, it charges
+
+The first harvester read as a tank with a turret; it's now a pure juggernaut, and a commoner one.
+
+- **Behaviour:** no turret, no bolts, no horn; it ignores everyone, except whoever stands in its lane (within 110 m
+  ahead of its bow and 15 m of its middle): then it speeds up from 2.2 to 8 m/s (0.7 m/s², faster than a walk, slower
+  than a sprint) and holds it until the lane has been clear for 5 s, then winds back down. Its pace is a short list of
+  stretches (`Pace`: from a server time, a distance and a speed, ramping to a target speed), sent with the route when
+  it changes, so the pose is still plain math on both sides.
+- **Weak points:** the three hexagonal intake cores in its throat behind the drum, 4 hits each, counted only for shots
+  fired from in front of it. To kill it you have to stand in its lane, which sets it charging at you.
+- **Look:** one monolith, bigger (24.4 m wide, 53 m long, 19 m high): no tower; full-length skirts hide all but the
+  bottom of the treads. The detail is all small (hand-sized louvered grilles along the flanks, a few glowing faintly
+  inside, hairline plate seams, rails, ladders, little lamps, flush exhaust grilles), so its bulk reads by them.
+- **More of them:** every 4–10 min, up to two out at once.
+- **Sound:** at a charge the engine, clank and grind all run faster and louder, opening up into a roar; the ground
+  trembles harder near one. Levels still set by ear, not measured in LUFS.
+

@@ -453,14 +453,6 @@ export class GuardianServer {
     events.push({ x: b.x, z: b.z, msg: { t: 'shot', id: b.id, g: g.id, time: now, x: r2(b.x), y: r2(b.y), z: r2(b.z), dx: r3(b.dx), dy: r3(b.dy), dz: r3(b.dz) } });
   }
 
-  /** A bolt fired by something else (the harvester's turret, server/harvesters.ts; `g` its negative id) from (x, y, z)
-   *  along unit (dx, dy, dz): it flies and kills like a walker's. Its 'shot' event. */
-  bolt(x: number, y: number, z: number, dx: number, dy: number, dz: number, g: number, now: number): BoltEvent {
-    const b: Bolt = { id: this.nextBolt++, x, y, z, dx, dy, dz, flown: 0, by: g };
-    this.bolts.push(b);
-    return { x, z, msg: { t: 'shot', id: b.id, g, time: now, x: r2(x), y: r2(y), z: r2(z), dx: r3(dx), dy: r3(dy), dz: r3(dz) } };
-  }
-
   /** Bolts fly on; one that meets a player or the ground bursts there and kills whoever is within BLAST_R. */
   private tickBolts(dt: number, exposed: BotPlayer[], shot: number[], events: BoltEvent[]) {
     const step = BOLT_SPEED * dt;

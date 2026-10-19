@@ -341,7 +341,7 @@ export class Rifle {
       if (lens) bossFx!.breakLocal(boss.boss, boss.index);
       rifleSound.impact(lens ? 'glass' : 'metal', _e, _o);
     } else if (crawler) {
-      // Its armour just throws sparks; a vent takes the hit.
+      // Its armour just throws sparks; a core in its maw takes the hit.
       zaps.burst(_e.x, _e.y, _e.z, crawler.normal.x, crawler.normal.y, crawler.normal.z, crawler.index >= 0 ? 18 : 10, crawler.index >= 0 ? 1.4 : 1);
       rifleSound.impact('metal', _e, _o);
     } else if (drone || jet) {
