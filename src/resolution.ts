@@ -36,6 +36,8 @@ const WARMUP_S = 3;
 const HITCH_MS = 100;
 /** A drop has to save at least this share of the frame time to count as helping. */
 const MIN_GAIN = 0.1;
+/** ... but a drop that saves few pixels only has to show this share of the saving. */
+const MIN_GAIN_SHARE = 0.4;
 /** After a drop that didn't help, no drops for this long, doubling on each repeat up to the max. */
 const HOLD_S = 8;
 const HOLD_MAX_S = 120;
@@ -58,7 +60,7 @@ export class DynamicResolution {
   private calm = 0;
   private warmup = WARMUP_S;
   /** The drop being judged: the ratio, ceiling and frame time before it. */
-  private probe: { ratio: number; ceiling: number; ms: number } | null = null;
+  private probe: { ratio: number; to: number; ceiling: number; ms: number } | null = null;
   private hold = 0;
   private holdS = HOLD_S;
 
@@ -117,7 +119,9 @@ export class DynamicResolution {
     const probe = this.probe;
     this.probe = null;
     if (probe) {
-      if (avg > probe.ms * (1 - MIN_GAIN)) {
+      // A drop that cuts the pixels by a share should cut the frame time by at least a part of it (a small drop can't show a 10 % gain).
+      const saved = 1 - (probe.to / probe.ratio) ** 2;
+      if (avg > probe.ms * (1 - Math.min(MIN_GAIN, saved * MIN_GAIN_SHARE))) {
         // Fewer pixels didn't help: not pixel-bound, so put the resolution back.
         this.ceiling = probe.ceiling;
         this.set(probe.ratio);
@@ -132,9 +136,12 @@ export class DynamicResolution {
     if (avg > this.slowMs) {
       this.calm = 0;
       if (this.ratio <= this.minRatio || this.hold > 0) return;
-      this.probe = { ratio: this.ratio, ceiling: this.ceiling, ms: avg };
-      this.ceiling = Math.min(this.ceiling, this.ratio * 0.97);
-      this.set(this.ratio * Math.max(0.7, Math.sqrt(this.targetMs / avg)));
+      // At least one step down (a smaller change is rounded away, and would only be judged as a drop that didn't help).
+      const from = this.ratio, ceiling = this.ceiling;
+      this.set(Math.min(from - RATIO_STEP, from * Math.max(0.7, Math.sqrt(this.targetMs / avg))));
+      if (this.ratio === from) return;
+      this.probe = { ratio: from, to: this.ratio, ceiling, ms: avg };
+      this.ceiling = Math.min(ceiling, from * 0.97);
     } else if ((this.calm += span) >= CALM_S) {
       this.calm = 0;
       if (this.ratio < this.ceiling) this.set(Math.min(this.ceiling, this.ratio * STEP_UP));
