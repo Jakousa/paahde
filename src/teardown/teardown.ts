@@ -142,6 +142,9 @@ export class TeardownView {
   /** Markers drawn highlighted this frame (the hovered step, or what blocks the hovered thing). */
   private lit = new Set<Step>();
   private wasDown = false;
+  /** The right mouse's grab on a turning object: the pointer the trackball follows (px), and whether it was held last frame. */
+  private tb = { x: 0, y: 0 };
+  private wasTurning = false;
   /** A piece that came off the machine, held up in front of the eyes to be turned and taken apart. */
   private held: { piece: Piece } | null = null;
   /** With a piece in the hands the mouse moves this cursor over the view (px) instead of turning it: that is where it aims. */
@@ -450,26 +453,42 @@ export class TeardownView {
     if (off !== null) this.restY = this.home.y + off;
   }
 
-  /** Right mouse held at the table: the mouse turns the machine, about the vertical and about the view's right. */
-  private spin(mx: number, my: number) {
-    const j = this.site?.junk;
-    if (!j || j.fixed || (!mx && !my)) return;
-    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), mx * 0.008);
-    const right = this.tmpA.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
-    q.premultiply(new THREE.Quaternion().setFromAxisAngle(right, my * 0.008));
-    j.root.quaternion.premultiply(q);
-    this.computeRest();
-  }
-
-  /** The piece in the hands, turned by the mouse exactly as a machine on the table is (spin): about the vertical, and about the
-   *  view's right. It hangs off the camera, so those axes are taken into the camera's own frame. */
-  private turnHeld(mx: number, my: number) {
-    if (!mx && !my) return;
-    const o = this.held!.piece.obj;
-    const up = this.tmpA.set(0, 1, 0).applyQuaternion(this.tmpQ.copy(this.camera.quaternion).invert());
-    const q = new THREE.Quaternion().setFromAxisAngle(up, mx * 0.008);
-    q.premultiply(new THREE.Quaternion().setFromAxisAngle(this.tmpB.set(1, 0, 0), my * 0.008));
-    o.quaternion.premultiply(q);
+  /**
+   * Right mouse held, at the table or with a piece in the hands: the object turns like a trackball centred on it (Bell's: a hyperbolic
+   * sheet past its rim). Grab it on its middle and it rolls the way the mouse goes; grab it way out on a side, or off it, and it turns about the view
+   * axis like a clock, as if the grabbed point of it followed the pointer. The grab is where the cursor was (the piece in the hands) or the crosshair (the
+   * table) when the button went down, and the mouse moves that pointer from there.
+   */
+  private trackball(mx: number, my: number) {
+    const held = this.held?.piece.obj;
+    const o = held ?? this.site?.junk.root;
+    if (!o || (!mx && !my) || (!held && this.site?.junk.fixed)) return;
+    const c = this.screen(o);
+    const box = new THREE.Box3().setFromObject(o);
+    if (!c || box.isEmpty()) return;
+    // the ball's radius on screen: half the object's size, measured sideways from its middle
+    const edge = o.getWorldPosition(new THREE.Vector3())
+      .add(new THREE.Vector3(box.getSize(new THREE.Vector3()).length() / 2, 0, 0).applyQuaternion(this.camera.quaternion))
+      .project(this.camera);
+    const r = Math.max(Math.hypot(((edge.x + 1) / 2) * innerWidth - c.x, ((1 - edge.y) / 2) * innerHeight - c.y), 60);
+    const ball = (x: number, y: number) => {
+      const px = (x - c.x) / r, py = (c.y - y) / r;
+      const d = px * px + py * py;
+      return new THREE.Vector3(px, py, d <= 0.5 ? Math.sqrt(1 - d) : 0.5 / Math.sqrt(d)).normalize();
+    };
+    const t = this.tb;
+    const a = ball(t.x, t.y);
+    t.x += mx;
+    t.y += my;
+    const b = ball(t.x, t.y);
+    const axis = new THREE.Vector3().crossVectors(a, b);
+    if (axis.lengthSq() < 1e-12) return;
+    const angle = Math.acos(THREE.MathUtils.clamp(a.dot(b), -1, 1));
+    // the object hangs off the camera (held): its parent's frame is the view's; the machine on the table is in the world's
+    if (!held) axis.normalize().applyQuaternion(this.camera.quaternion);
+    else axis.normalize();
+    o.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, angle));
+    if (!held) this.computeRest();
   }
 
   private resetRotation() {
@@ -579,10 +598,14 @@ export class TeardownView {
     // button is held; right mouse turns the piece.
     const looking = !!this.held && !turning && keyHeld('Mouse1');
     tools.spinning = turning || (!!this.held && !looking);
-    if (turning) {
-      if (this.held) this.turnHeld(mx, my);
-      else this.spin(mx, my);
-    } else if (this.held && !looking && !this.act) {
+    if (turning && !this.wasTurning) {
+      // the grab: where the cursor is (the piece in the hands), or the crosshair (the table)
+      this.tb.x = this.held ? this.cur.x : innerWidth / 2;
+      this.tb.y = this.held ? this.cur.y : innerHeight / 2;
+    }
+    this.wasTurning = turning;
+    if (turning) this.trackball(mx, my);
+    else if (this.held && !looking && !this.act) {
       this.cur.x = THREE.MathUtils.clamp(this.cur.x + mx, 8, innerWidth - 8);
       this.cur.y = THREE.MathUtils.clamp(this.cur.y + my, 8, innerHeight - 8);
     }
@@ -1149,7 +1172,7 @@ export class TeardownView {
     const t = a ? { type: 'step' as const, step: a.step } : this.hover;
     const d = !a || a.step.kind === 'lift' ? this.describe(t) : null;
     this.ui.tip(d && { ...d, x: this.ax + 6, y: this.ay + 10 });
-    this.ui.cursor(this.held ? this.cur : null);
+    this.ui.cursor(this.held ? (this.wasTurning ? this.tb : this.cur) : null);
 
     // Ring: around the step being worked at the crosshair, or a hovered one that is part-way done (a half-turned bolt).
     const rs = a?.step ?? (t?.type === 'step' && t.step.progress > 0 && !t.step.done ? t.step : null);
