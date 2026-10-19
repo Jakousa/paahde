@@ -181,11 +181,6 @@ def build(pose, rnd_seed=11):
         for sx in (-1, 1):
             sh.box((sx * 0.19, 0.435, z), (0.03, 0.115, 0.15), 'Dark')
     sh.cyl((0, 0.30, 0.40), (0, 0.50, 0.40), 0.03, 0.03, segs=8, mat='Dark')
-    # pylon mount lugs and links on top, torn
-    for dz, tilt in ((0.28, 0.1), (-0.58, -0.22)):
-        sh.box((0, 0.88, dz), (0.1, 0.05, 0.16), 'Dark', rot=(0, 0, tilt))
-        sh.box((0.09, 0.78, dz), (0.03, 0.14, 0.12), 'Steel')
-        sh.box((-0.09, 0.78, dz), (0.03, 0.14, 0.12), 'Steel')
     # harness trunks along the fan case and core
     sh.sweep([polar(math.radians(20), 0.82, 0.70), polar(math.radians(20), 0.75, 0.52), polar(math.radians(10), 0.52, 0.45), polar(0, 0.46, 0.38)],
              0.02, 'Rubber')
