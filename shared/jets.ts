@@ -51,8 +51,8 @@ const SHOT_ROLL = 0.9;
 const ROLL_RAMP = 2.5;
 /** The integration step (s): the same steps on both sides, so they agree. */
 export const DIVE_STEP = 0.05;
-/** Nose ahead of the centre (m). */
-export const JET_NOSE = 15;
+/** Nose ahead of the centre (m): the apex of the flying wing. */
+export const JET_NOSE = 8.5;
 export type Dive = { fwd: number; drop: number; pitch: number; roll: number; v: number };
 const _dv: Dive = { fwd: 0, drop: 0, pitch: 0, roll: 0, v: 0 };
 /** How far along its heading (m) and down (m) a downed jet is `s` s on, its pitch (rad, nose up) and roll, and speed. */
@@ -78,7 +78,7 @@ export function jetDive(speed: number, s: number, soft: boolean, out: Dive = _dv
  *  crash site (shared/jetcrash.ts), which stays, WRECK_MS after it hit. */
 export const WRECK_MS = BREAK_S * 1000 + 2_000;
 
-/** Wingspan (m): a searchlight drone is about 2. The plane (tools/blender/machines/plane.py) is modelled at this size. */
+/** Wingspan (m): a searchlight drone is about 2. The plane (tools/blender/machines/plane.py, a flying wing 16 m nose to tail) is modelled at this size. */
 export const JET_SPAN = 32;
 /** Server hit test: the shot must pass this close (m) to its centre (it's JET_SPAN wide). */
 export const JET_HIT = JET_SPAN / 2 + 3;

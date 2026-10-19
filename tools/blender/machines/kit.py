@@ -573,6 +573,7 @@ def preview_scene(ground_y_blender=0.0, sun_deg=(72, 0, -140)):
     bpy.ops.mesh.primitive_plane_add(size=400, location=(0, 0, ground_y_blender))
     ground = bpy.context.active_object
     gm = bpy.data.materials.new('ground')
+    gm.use_nodes = True  # (on by default from Blender 4.2; 4.0 makes it without nodes)
     gm.node_tree.nodes.get('Principled BSDF').inputs['Base Color'].default_value = (*lin(0xc46a24), 1)
     gm.node_tree.nodes.get('Principled BSDF').inputs['Roughness'].default_value = 1.0
     ground.data.materials.append(gm)

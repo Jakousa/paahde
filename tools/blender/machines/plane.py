@@ -1,18 +1,21 @@
-"""The jets (shared/jets.ts): a big twin-engined unmanned plane, 32 m span and 30 m long, flown over the desert and brought down by the
-rifle. Its engines are the crashed turbofan's (tools/blender/machines/turbofan.py) as they were on the wing: the same cowls, the same
-fan case, the same nozzle, with a simple mock of the fan and its spinner behind the intake lip. When one comes down the right engine
-is torn off and lies beside the wreck as the real thing, to be taken apart (src/teardown).
+"""The jets (shared/jets.ts): a big unmanned flying wing, 32 m span and 16 m nose to tail, flown over the desert and brought down by the
+rifle. No fuselage and no tail: one thick blended body that thins out into swept wings, a double-W trailing edge with elevons along it and
+split drag rudders at the tips (the B-2 / B-21 and the sixth-generation fighter studies). Its two engines are not buried in the wing but ride
+in pods on short pylons over its back (as on the X-48): the crashed turbofan's own (tools/blender/machines/turbofan.py), the same cowls,
+fan case and nozzle, with a simple mock of the fan and its spinner behind the intake lip. When it comes down they tear off and lie beside the
+wreck as the real thing, to be taken apart (src/teardown).
 
     tools/blender/run.sh -b --python tools/blender/machines/plane.py [-- --preview dir]     # writes public/models/jet.glb
 
 Three.js frame (Y up, +Z the nose, span along X), origin about the centre of mass, metres, turned into Blender's Z-up just before
 export like the other models.
 
-  Jet_Body     the fuselage, wings, tail and the left engine (what stays in the wreck)
-  Jet_EngineR  the right engine on its pylon (not in the wreck: it lies on the ground as a machine)
+  Jet_Body     the wing, its fittings and the left engine (what flies)
+  Jet_EngineR  the right engine on its pylon
+  P_<id>       the pieces it breaks into when it comes in (shared/jetpieces.ts, generated with this): the centre body, the inner, middle and
+               outer wing panels each side, the engines, skin panels and spars, each about its own pivot (the node's position) as it sat on the
+               whole plane
   P_<id>_x     an engine wrecked in the landing (instead of P_engineL / P_engineR)
-  P_<id>       the pieces it breaks into when it comes in (shared/jetpieces.ts, generated with this): nose, front, rear, tail, the wings, the right engine,
-               panels and beams, each about its own pivot (the node's position) as it sat on the whole plane
   Tail         an empty at the left engine's exit, where the smoke streams from (src/world/jets.ts TAIL)
 """
 
@@ -21,7 +24,7 @@ import os
 import sys
 
 import bpy
-from mathutils import Matrix, Vector
+from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit  # noqa: E402
@@ -44,148 +47,189 @@ MATERIALS = {
     'Blade': (0xa3a4a6, 0.9, 0.35),
 }
 
-# the engine's centre line on the wing (the turbofan's frame: axis Z, fan towards +Z)
-ENG_X, ENG_Y, ENG_Z = 5.6, -2.05, 1.6
-TAIL = (-ENG_X, ENG_Y, ENG_Z - 1.4)
-
 
 def noise(x, z):
     return 0.5 + 0.5 * math.sin(x * 0.9 + math.sin(z * 0.4) * 2.0) * math.sin(z * 0.55 + x * 0.3)
 
 
-def ring(rx, ry, z, cy=0.0, n=20, p=2.4):
-    """A superellipse ring of half-width rx and half-height ry at z."""
-    out = []
-    for k in range(n):
-        a = 2 * PI * k / n
-        c, s = math.cos(a), math.sin(a)
-        out.append((rx * math.copysign(abs(c) ** (2 / p), c), cy + ry * math.copysign(abs(s) ** (2 / p), s), z))
-    return out
+# ---- the wing: a planform and an airfoil at every station across the span -----------------------------------------------------------
+
+HALF = 16.0          # half span
+NOSE = 8.5           # the leading edges meet here (z)
+SWEEP = 0.65         # leading edge: back this far (m) per metre out (33 degrees)
+# the trailing edge, |x| -> z: the double W (a point at the middle, notches at 4 m, points again at 8 m, then straight out to the tip)
+TE = [(0.0, -7.5), (4.0, -5.0), (8.0, -7.5), (HALF, -3.7)]
+UP = 0.6             # the share of a section's thickness above its chord line
+N = 12               # points along each of the upper and lower surfaces
+# where sections are taken (|x|); the pieces are cut at 2.5, 8 and 12.5
+STATIONS = [0.0, 0.6, 1.3, 2.0, 2.5, 3.2, 4.0, 4.6, 5.25, 6.0, 7.0, 8.0, 9.5, 11.0, 12.5, 13.6, 14.6, 15.4, 15.8, HALF]
+# the elevons along the trailing edge and the split drag rudders at the tips (|x| from, to)
+ELEVONS = [(4.6, 7.6), (8.4, 13.3)]
+RUDDER = (13.6, 15.5)
 
 
-def fuselage(mb):
-    st = ST
-    rings = [ring(rx, ry, z, cy) for z, rx, ry, cy in st]
-    nk = len(rings[0])
-
-    def mat(i, k):
-        z = st[i][0]
-        a = 2 * PI * k / nk
-        top = math.sin(a) > 0.2
-        return 'JetSand' if top and noise(math.cos(a) * 3, z) < 0.42 else 'JetHull'
-
-    mb.loft(rings, 'JetHull', cap0=True, cap1=True, matfn=mat)
-    # a sensor ball under the chin, a satcom bulge over the shoulders, a chin radome in dark glass
-    mb.sphere((0, -1.6, 11.8), 0.55, 'JetGlass', u=12, v=7)
-    mb.sphere((0, 1.75, 8.5), 1.0, 'JetHull', u=14, v=7, scale=(1.0, 0.55, 2.2))
-    mb.sphere((0, 0.2, 14.4), 0.52, 'JetDark', u=12, v=7, scale=(1, 0.9, 1.4))
-    # panel lines round the fuselage
-    for z in (12.2, 6.0, 0.0, -6.0, -10.0):
-        i = min(range(len(st)), key=lambda q: abs(st[q][0] - z))
-        _, rx, ry, cy = st[i]
-        mb.loft([ring(rx * 1.004, ry * 1.004, z - 0.04, cy, 24), ring(rx * 1.004, ry * 1.004, z + 0.04, cy, 24)], 'JetDark')
-    # antennas and probes
-    mb.cyl((0, 1.9, 2.0), (0, 2.9, 2.0), 0.04, 0.02, segs=5, mat='JetSteel')
-    mb.cyl((0, 1.9, -3.0), (0, 2.6, -3.1), 0.04, 0.02, segs=5, mat='JetSteel')
-    mb.cyl((0.4, 0.0, 14.7), (0.4, 0.0, 17.0), 0.05, 0.015, segs=5, mat='JetSteel')
+def lerp_te(ax):
+    for (xa, za), (xb, zb) in zip(TE, TE[1:]):
+        if ax <= xb:
+            return za + (zb - za) * (ax - xa) / (xb - xa)
+    return TE[-1][1]
 
 
-def surface(mb, sections, mat='JetHull', mirror=False, camo=True):
-    """A wing or fin: sections (x, y, z of the leading edge, chord, thickness) from root to tip, flat on the bottom, with a flap strip."""
-    rings = []
-    for (x, y, z, ch, th) in sections:
-        pts = [(x, y, z), (x, y + th * 0.9, z - ch * 0.18), (x, y + th, z - ch * 0.45), (x, y + th * 0.4, z - ch), (x, y - th * 0.3, z - ch), (x, y - th * 0.45, z - ch * 0.4)]
-        rings.append(pts)
-    if mirror:
-        rings = [[(-p[0], p[1], p[2]) for p in reversed(r)] for r in rings]
+def station(x):
+    """At span position x: the leading edge (z), the chord, the thickness and the chord line's height."""
+    ax = min(abs(x), HALF)
+    le = NOSE - SWEEP * (math.sqrt(ax * ax + 0.25) - 0.5)   # (the apex a little rounded)
+    ch = le - lerp_te(ax)
+    t = 0.14 + 1.9 * math.exp(-(ax / 2.8) ** 2) + 0.55 * (1 - ax / HALF)   # the blended centre body, thinning out to the tips
+    t *= min(1.0, (HALF + 0.05 - ax) / 0.6) ** 0.5
+    return le, ch, t, 0.0
 
+
+def foil(u):
+    """A section's thickness at u (0 the leading edge, 1 the trailing edge) as a share of its greatest (NACA 4-digit, closed trailing edge)."""
+    u = min(max(u, 0.0), 1.0)
+    return (0.2969 * math.sqrt(u) - 0.1260 * u - 0.3516 * u * u + 0.2843 * u ** 3 - 0.1036 * u ** 4) / 0.1002
+
+
+US = [(1 - math.cos(PI * k / N)) / 2 for k in range(N + 1)]
+
+
+def section(x):
+    """The section ring at x: the upper surface from the trailing edge to the leading edge, then the lower one back (2N points)."""
+    le, ch, t, y0 = station(x)
+    up = [(x, y0 + t * UP * foil(u), le - u * ch) for u in reversed(US)]
+    lo = [(x, y0 - t * (1 - UP) * foil(u), le - u * ch) for u in US[1:-1]]
+    return up + lo
+
+
+def surf_y(x, z, upper=True):
+    """The wing's upper (or lower) surface height at (x, z)."""
+    le, ch, t, y0 = station(x)
+    f = foil((le - z) / ch)
+    return y0 + t * UP * f if upper else y0 - t * (1 - UP) * f
+
+
+def all_stations():
+    return [-s for s in reversed(STATIONS[1:])] + STATIONS
+
+
+def wing_mat(rings):
+    """A face's material from where it is: burnt behind the engines, the elevons and leading edge darker, sand patches on top."""
     def m(i, k):
-        if camo and k in (1, 2) and noise(i * 3.1 + rings[i][1][0], rings[i][1][2]) < 0.4:
+        a, b = rings[i], rings[i + 1]
+        j = (k + 1) % len(a)
+        x = (a[k][0] + a[j][0] + b[k][0] + b[j][0]) / 4
+        z = (a[k][2] + a[j][2] + b[k][2] + b[j][2]) / 4
+        upper = k < N
+        le, ch, _, _ = station(x)
+        u = (le - z) / ch
+        ax = abs(x)
+        if upper and abs(ax - ENG_X) < 0.75 and z < ENG_Z - 1.2:
+            return 'JetBurnt'
+        if u < 0.035 or (u > 0.82 and any(a0 <= ax <= a1 for a0, a1 in ELEVONS)):
+            return 'JetFlap'
+        if upper and noise(x * 0.7, z * 0.9) < 0.3:
             return 'JetSand'
-        return 'JetFlap' if k in (3,) else mat
-    mb.loft(rings, mat, cap0=True, cap1=True, matfn=m)
+        return 'JetHull'
+    return m
 
 
-def wings(mb):
-    for sgn in (1, -1):
-        secs = wing_secs()
-        surface(mb, secs, mirror=sgn < 0)
-        # winglet
-        tip = secs[-1]
-        surface(mb, [(tip[0], tip[1] - 0.05, tip[2] - 0.2, 1.6, 0.12), (tip[0], tip[1] + 1.7, tip[2] - 1.5, 0.9, 0.08)], mirror=sgn < 0)
-        # tail plane
-        surface(mb, [(1.2, 0.9, -11.2, 3.4, 0.45), (3.0, 1.15, -12.6, 2.2, 0.3), (5.6, 1.5, -14.3, 1.2, 0.18)], mirror=sgn < 0)
-    # the fin and a ventral fin
-    fin = [(0.0, 1.4, -8.2, 5.2, 0.4), (0.0, 4.2, -11.0, 3.4, 0.3), (0.0, 7.0, -13.2, 2.0, 0.2)]
-    # a fin stands up in Y and is thin in X: its rings run along Y, so build it with the sections turned
-    rings = []
-    for (_, y, z, ch, th) in fin:
-        rings.append([(0, y, z), (th * 0.9, y, z - ch * 0.18), (th, y, z - ch * 0.45), (th * 0.4, y, z - ch), (-th * 0.3, y, z - ch), (-th * 0.45, y, z - ch * 0.4)])
-    mb.loft(rings, 'JetHull', cap0=True, cap1=True)
+def wing_loft(mb, x0, x1, ragged=(False, False), seed=0):
+    """The wing between x0 and x1 (x0 < x1): sections at every station between and at both ends; a broken-off end is torn, dark inside."""
+    xs = [x0] + [s for s in all_stations() if x0 + 1e-6 < s < x1 - 1e-6] + [x1]
+    rings = [section(x) for x in xs]
+    for end, (i, rag) in enumerate(((0, ragged[0]), (len(rings) - 1, ragged[1]))):
+        if not rag:
+            continue
+        x = xs[i]
+        _, _, _, y0 = station(x)
+        rings[i] = [(px + 0.45 * (noise(k * 1.7 + seed, end * 3.0) - 0.5), y0 + (py - y0) * (0.7 + 0.35 * noise(k * 2.3 + seed, x)),
+                     pz + 0.3 * (noise(k + seed, 5 + end) - 0.5)) for k, (px, py, pz) in enumerate(rings[i])]
+    mb.loft(rings, 'JetHull', cap0=True, cap1=True, matfn=wing_mat(rings), capmat='JetDark' if any(ragged) else 'JetHull')
 
 
-# (z, half width, half height, centre y): a round tube with a drooped nose and a tail cone swept up
-ST = [(15.0, 0.02, 0.02, -0.25), (14.6, 0.5, 0.5, -0.25), (13.4, 1.0, 1.05, -0.2), (11.0, 1.45, 1.5, -0.1), (7.0, 1.7, 1.75, 0.0),
-      (0.0, 1.8, 1.85, 0.0), (-6.0, 1.7, 1.75, 0.05), (-10.0, 1.4, 1.45, 0.3), (-13.0, 0.9, 1.0, 0.7), (-15.0, 0.4, 0.5, 1.0)]
+def rudders(mb, sgn):
+    """The split drag rudders at a tip: an upper and a lower plate hinged on the trailing edge, a little open."""
+    x0, x1 = RUDDER
+    xm = (x0 + x1) / 2
+    zte = lerp_te(xm)
+    yaw = math.atan2(lerp_te(x1) - lerp_te(x0), x1 - x0)   # along the swept trailing edge
+    for s in (1, -1):
+        mb.box((sgn * xm, s * 0.1, zte + 0.42), (x1 - x0, 0.04, 0.9), 'JetFlap', rot=(s * 0.3, sgn * -yaw, 0))
 
 
-def fus_at(z):
-    """The fuselage's half width, half height and centre height at z."""
-    for (za, *a), (zb, *b) in zip(ST, ST[1:]):
-        if zb <= z <= za:
-            t = (za - z) / (za - zb)
-            return tuple(x + (y - x) * t for x, y in zip(a, b))
-    return ST[0][1:] if z > 0 else ST[-1][1:]
+def body_fittings(mb):
+    """On the centre body: a sensor ball under the nose, a dark sensor visor up front, a satcom hump, blade antennas."""
+    mb.sphere((0, surf_y(0, 6.0, False) - 0.05, 6.0), 0.38, 'JetGlass', u=12, v=7)
+    mb.sphere((0, surf_y(0, 5.2) - 0.12, 5.2), 1.0, 'JetGlass', u=14, v=6, scale=(1.15, 0.22, 0.75))
+    mb.sphere((0, surf_y(0, 0.4) - 0.28, 0.4), 1.0, 'JetHull', u=14, v=7, scale=(1.0, 0.4, 2.0))
+    for x, z, h in ((0.0, -2.6, 0.7), (1.4, 3.0, 0.45), (0.0, -1.5, -0.5)):
+        y = surf_y(x, z, h > 0)
+        mb.box((x, y + h / 2, z), (0.04, abs(h), 0.5), 'JetSteel', taper=(1.0, 0.5) if h > 0 else (1.0, 1.0))
+    # underneath (what the players see of it): the weapon bay doors and the gear doors, darker panels with sawtooth ends
+    for x, z0, z1, w in ((0.85, 3.4, -1.6, 1.5), (-0.85, 3.4, -1.6, 1.5), (2.7, 2.6, -0.4, 1.0), (-2.7, 2.6, -0.4, 1.0)):
+        zs = [z0 - (z0 - z1) * i / 6 for i in range(7)]
+        dxs = [-1 + 2 * k / 6 for k in range(7)]   # (across it too: the skin is straight between its sections, the door must not dip under it)
+        rings = [[(x + dx * w / 2, surf_y(x + dx * w / 2, z, False) - lift, z + (0.25 if i == 0 else -0.25 if i == 6 else 0) * dx)
+                  for lift, d in ((0.015, dxs), (0.06, dxs[::-1])) for dx in d] for i, z in enumerate(zs)]
+        mb.loft(rings, 'JetFlap', cap0=True, cap1=True)
 
 
-def fus_section(mb, z0, z1, ragged=(True, True), seed=0):
-    """The stretch of fuselage between z0 and z1 (broken off: its ends torn, dark inside), the same skin as the whole."""
-    n = max(3, int((z1 - z0) / 1.2))
-    zs = [z1 - (z1 - z0) * i / n for i in range(n + 1)]
-    rings = []
-    for i, z in enumerate(zs):
-        rx, ry, cy = fus_at(z)
-        r = ring(rx, ry, z, cy)
-        if (i == 0 and ragged[1]) or (i == n and ragged[0]):
-            r = [(x * (0.8 + 0.28 * noise(k * 1.7 + seed, z)), cy + (y - cy) * (0.8 + 0.28 * noise(k * 2.3 + seed, z + 1)), z + 0.5 * (noise(k + seed, 5) - 0.5))
-                 for k, (x, y, _) in enumerate(r)]
-        rings.append(r)
-    nk = len(rings[0])
-
-    def mat(i, k):
-        a = 2 * PI * k / nk
-        return 'JetSand' if math.sin(a) > 0.2 and noise(math.cos(a) * 3, zs[i]) < 0.42 else 'JetHull'
-
-    mb.loft(rings, 'JetHull', cap0=True, cap1=True, matfn=mat, capmat='JetDark')
+# the engines: centre lines over the wing's back (the turbofan's frame: axis Z, fan towards +Z), the fan case's bottom GAP above the skin
+ENG_X, ENG_Z = 4.3, -2.6
+GAP = 0.55
+ENG_Y = max(surf_y(ENG_X + dx, ENG_Z + dz) for dx in (-0.9, 0, 0.9) for dz in (-1.4, 0, 1.2)) + GAP + 0.93
+TAIL = (-ENG_X, ENG_Y, ENG_Z - 1.45)
 
 
-def wing_secs(a=0.0, b=1.0):
-    """A wing's sections from the fraction a of its span to b."""
-    out = []
-    for s in sorted({a, b, *[t for t in (0.0, 0.18, 0.5, 0.82, 1.0) if a < t < b]}):
-        out.append((1.5 + s * 14.6, -0.5 + 1.1 * s, 3.2 - 6.0 * s, 7.2 - 5.0 * s, 0.95 - 0.65 * s))
-    return out
+def engine(mb, cx, cy, cz):
+    """The turbofan as it rides on the wing: the turbofan.py cowls and nozzle in one skin, a fan and its spinner in the intake, the pylon down
+    into the wing."""
+    M = T(cx, cy, cz)
+    outer = [(0.80, 1.10), (0.835, 1.20), (0.885, 1.14), (0.915, 0.94), (0.925, 0.75), (0.905, 0.52), (0.86, -0.05), (0.80, -0.30), (0.70, -0.62),
+             (0.50, -0.85), (0.37, -1.12), (0.35, -1.20), (0.27, -1.34), (0.255, -1.40)]
+    mb.lathe(outer, 36, 'Paint', M=M)
+    # inside the lip: the dark intake, the fan disc with its blades, the spinner
+    mb.lathe([(0.0, 0.93), (0.78, 0.93), (0.78, 0.96), (0.0, 0.96)], 28, 'Dark', M=M)
+    mb.lathe([(0.0, 0.96), (0.1, 0.99), (0.21, 1.06), (0.23, 1.1), (0.205, 1.18), (0.0, 1.24)], 20, 'Steel', M=M)
+    for i in range(24):
+        a = 2 * PI * i / 24
+        mb.push(M @ Rz(a))
+        mb.box((0.5, 0.0, 0.97), (0.55, 0.012, 0.13), 'Blade', rot=(0, 0.0, 0.5))
+        mb.pop()
+    # the burnt nozzle ring and the plug
+    mb.lathe([(0.255, -1.40), (0.255, -1.43), (0.27, -1.43), (0.27, -1.34)], 18, 'Burnt', M=M)
+    mb.lathe([(0.0, -1.12), (0.12, -1.12), (0.13, -1.25), (0.0, -1.46)], 16, 'Burnt', M=M)
+    # the pylon down into the wing (its foot a little under the skin), narrowing up to the nacelle
+    lo, hi = surf_y(cx, cz - 0.3) - 0.2, cy - 0.84
+    mb.box((cx, (lo + hi) / 2, cz - 0.3), (0.36, hi - lo, 2.8), 'JetHull', taper=(0.8, 0.75))
+    # the nacelle's own mounting ring where it meets the pylon
+    mb.lathe([(0.915, 0.18), (0.94, 0.18), (0.94, 0.05), (0.915, 0.05)], 36, 'Dark', M=M)
 
 
-def about(pivot, M):
-    """M turned about `pivot` instead of the origin."""
-    return T(*pivot) @ M @ T(-pivot[0], -pivot[1], -pivot[2])
-
-
-def tail_group(mb):
-    """The tail section's fittings: the tail planes and the fin."""
-    for sgn in (1, -1):
-        surface(mb, [(1.2, 0.9, -11.2, 3.4, 0.45), (3.0, 1.15, -12.6, 2.2, 0.3), (5.6, 1.5, -14.3, 1.2, 0.18)], mirror=sgn < 0)
-    fin = [(1.4, -8.2, 5.2, 0.4), (4.2, -11.0, 3.4, 0.3), (7.0, -13.2, 2.0, 0.2)]
-    mb.loft([[(0, y, z), (th * 0.9, y, z - ch * 0.18), (th, y, z - ch * 0.45), (th * 0.4, y, z - ch), (-th * 0.3, y, z - ch), (-th * 0.45, y, z - ch * 0.4)]
-             for (y, z, ch, th) in fin], 'JetHull', cap0=True, cap1=True)
+def engine_husk(mb, cx, cy, cz):
+    """An engine wrecked in the landing: the cowl crushed and burnt, no fan, the nozzle torn, the pylon snapped."""
+    M = T(cx, cy, cz)
+    outer = [(0.80, 1.10), (0.835, 1.20), (0.885, 1.14), (0.915, 0.94), (0.925, 0.75), (0.905, 0.52), (0.86, -0.05), (0.80, -0.30), (0.70, -0.62),
+             (0.50, -0.85), (0.37, -1.12), (0.35, -1.20), (0.27, -1.34), (0.255, -1.40)]
+    mb.lathe(outer, 24, 'Burnt', M=M)
+    mb.lathe([(0.0, 0.93), (0.78, 0.93), (0.78, 0.96), (0.0, 0.96)], 20, 'JetDark', M=M)
+    mb.lathe([(0.0, 0.96), (0.1, 0.99), (0.21, 1.06), (0.2, 1.1), (0.0, 1.12)], 14, 'JetDark', M=M)
+    for i in range(6):  # stumps of fan blades
+        mb.push(M @ Rz(2 * PI * i / 6 + 0.3))
+        mb.box((0.3, 0.0, 0.97), (0.22, 0.012, 0.12), 'Steel')
+        mb.pop()
+    mb.box((cx, cy - 1.1, cz - 0.4), (0.36, 0.45, 1.6), 'JetHull')
+    crush(mb, (cx + 0.9, cy + 0.3, cz + 0.6), 0.9, 0.5, toward=(cx, cy, cz))
+    crush(mb, (cx - 0.5, cy - 0.7, cz - 0.4), 0.8, 0.45, toward=(cx, cy, cz))
+    ripple(mb, 5, 0.04, 5.0)
 
 
 def pieces():
     """What the plane breaks into when it comes in (src/world/jets.ts flies them apart with shared/jetbreak.ts): each piece is cut from the whole
     plane (ragged where it tore), built about its own pivot, and has its own simple hitboxes (capsules, centre and axis about the pivot).
     Returns [{id, pivot, mb, caps, hit, f}]: `f` is how much of the plane's speed it keeps (heavy things less), `hit` whether it is solid for
-    the players once it lies (the right engine is not: it lies on as a machine)."""
+    the players once it lies."""
     import random
     rnd = random.Random(7)
     out = []
@@ -200,93 +244,83 @@ def pieces():
                     'caps': [{'c': tuple(c[i] - pivot[i] for i in range(3)), 'a': a, 'half': h, 'r': r, 'hv': (cp[4] if len(cp) > 4 else r)}
                              for cp in caps for (c, a, h, r) in [cp[:4]]]})
 
-    def fus_caps(z0, z1, n):
-        """The fuselage between z0 and z1 as n capsules along it, each as fat as the skin there."""
-        out_ = []
+    def slab_caps(x0, x1, n):
+        """The wing between x0 and x1 as n slab capsules across it: as wide as the chord there, as thick as the wing."""
+        caps = []
         for i in range(n):
-            za, zb = z1 - (z1 - z0) * i / n, z1 - (z1 - z0) * (i + 1) / n
+            xa, xb = x0 + (x1 - x0) * i / n, x0 + (x1 - x0) * (i + 1) / n
+            xm = (xa + xb) / 2
+            le, ch, t, y0 = station(xm)
+            caps.append(((xm, y0 + t * (UP - 0.5), le - ch * 0.45), (1, 0, 0), abs(xb - xa) / 2, ch / 2, t / 2 + 0.06))
+        return caps
+
+    def body_caps():
+        """The centre body as runs of capsules along it, each as thick as the body there."""
+        le, ch, _, _ = station(0)
+        caps = []
+        for i in range(4):
+            za, zb = le - ch * (0.06 + 0.22 * i), le - ch * (0.06 + 0.22 * (i + 1))
             zm = (za + zb) / 2
-            rx, ry, cy = fus_at(zm)
-            out_.append(((0, cy, zm), (0, 0, 1), (za - zb) / 2, rx * 0.97, ry * 0.97))
-        return out_
+            t = (surf_y(1.25, zm) - surf_y(1.25, zm, False))
+            caps.append(((0, (surf_y(1.25, zm) + surf_y(1.25, zm, False)) / 2, zm), (0, 0, 1), (za - zb) / 2, 2.3, t / 2 + 0.05))
+        return caps
 
-    def wing_caps(sgn, a, b):
-        """A wing between the fractions a and b of its span, a slab capsule a section long: as wide as the chord there, as thick as the wing."""
-        secs = wing_secs(a, b)
-        out_ = []
-        for (x0, y0, z0, c0, t0), (x1, y1, z1, c1, t1) in zip(secs, secs[1:]):
-            ch, th = (c0 + c1) / 2, (t0 + t1) / 2
-            out_.append((((x0 + x1) / 2 * sgn, (y0 + y1) / 2 + th * 0.2, (z0 + z1) / 2 - ch / 2), (1, 0, 0), abs(x1 - x0) / 2, ch / 2, th / 2 + 0.06))
-        return out_
-
-    def nose(mb):
-        fus_section(mb, 7.0, 15.0, (True, False), 11)
-        mb.sphere((0, -1.6, 11.8), 0.55, 'JetGlass', u=12, v=7)
-        mb.sphere((0, 0.2, 14.4), 0.52, 'JetDark', u=12, v=7, scale=(1, 0.9, 1.4))
-        mb.cyl((0.4, 0.0, 14.7), (0.4, 0.0, 17.0), 0.05, 0.015, segs=5, mat='JetSteel')
-
-    def front(mb):
-        fus_section(mb, -2.0, 7.0, (True, True), 3)
-        mb.sphere((0, 1.75, 2.5), 1.0, 'JetHull', u=14, v=7, scale=(1.0, 0.55, 2.2))
-        mb.cyl((0, 1.9, 2.0), (0, 2.9, 2.0), 0.04, 0.02, segs=5, mat='JetSteel')
-        surface(mb, wing_secs(0.0, 0.2))
-        surface(mb, wing_secs(0.0, 0.2), mirror=True)
-
-    def rear(mb):
-        fus_section(mb, -9.0, -2.0, (True, True), 8)
-        mb.cyl((0, 1.9, -3.0), (0, 2.6, -3.1), 0.04, 0.02, segs=5, mat='JetSteel')
-
-    def tail(mb):
-        fus_section(mb, -15.0, -9.0, (False, True), 5)
-        tail_group(mb)
-
-    def wing_l(mb):
-        surface(mb, wing_secs(0.2, 1.0), mirror=True)
-
-    def wing_r(mb):
-        surface(mb, wing_secs(0.2, 1.0))
-
-    add('nose', (0, -0.2, 11), nose, fus_caps(7.0, 14.9, 4) + [((0, 0.2, 14.4), (0, 0, 1), 0.3, 0.45, 0.4)], f=0.2)
-    add('front', (0, 0, 2.5), front, fus_caps(-2.0, 7.0, 3) + [((0, 1.9, 2.5), (0, 0, 1), 1.4, 0.8, 0.45)] + wing_caps(1, 0.0, 0.2) + wing_caps(-1, 0.0, 0.2), f=0.1)
-    add('rear', (0, 0.1, -5.5), rear, fus_caps(-9.0, -2.0, 3), f=0.14)
-    # the fin: slabs thin across and as long as the chord there, as tall as its stretch; the tail planes: thin slabs out each side
-    fin_caps = [((0, 2.8, -10.8), (0, 0, 1), 1.9, 0.36, 1.4), ((0, 5.6, -12.1), (0, 0, 1), 1.0, 0.3, 1.4)]
-    plane_caps = [((sgn * 2.1, 1.05, -12.4), (1, 0, 0), 0.95, 1.1, 0.3) for sgn in (1, -1)] + [((sgn * 4.3, 1.4, -13.4), (1, 0, 0), 1.3, 0.75, 0.22) for sgn in (1, -1)]
-    add('tail', (0, 1.5, -12), tail, fus_caps(-15.0, -9.0, 3) + fin_caps + plane_caps, f=0.2)
-    def engine_pts(sgn):
-        # the nacelle's underside and sides (and the pylon's foot)
-        return [(sgn * ENG_X + dx, ENG_Y + dy, ENG_Z + dz) for dz in (-1.2, 0, 1.1) for (dx, dy) in ((0, -0.95), (0.9, 0), (-0.9, 0))]
-
-    def wing_pts(sgn):
-        # the wing really is thin: it touches the sand with its own corners (not the fat capsule it is hit with)
+    def outline(x0, x1):
+        """The points the wing between x0 and x1 touches the sand with: its real outline (it is thin: not the fat capsules it is hit with)."""
         pts = []
-        for (x, y, z, ch, th) in wing_secs(0.2, 1.0):
-            pts += [(sgn * x, y - th * 0.45, z - ch * 0.4), (sgn * x, y - th * 0.3, z - ch), (sgn * x, y, z)]
+        for x in sorted({x0, (x0 + x1) / 2, x1}):
+            le, ch, t, y0 = station(x)
+            for u in (0.0, 0.3, 0.65, 1.0):
+                pts.append((x, surf_y(x, le - u * ch, False), le - u * ch))
+                pts.append((x, surf_y(x, le - u * ch), le - u * ch))
         return pts
 
-    wl, wr = wing_caps(-1, 0.2, 1.0), wing_caps(1, 0.2, 1.0)
-    pylon = lambda sgn: ((sgn * ENG_X, ENG_Y + 1.0, ENG_Z - 0.4), (0, 0, 1), 1.2, 0.2, 0.7)
-    add('wingL', (-9.5, -0.8, 1.0), wing_l, wl, f=0.22, skip=tuple(range(len(wl))), extra=wing_pts(-1))
-    add('wingR', (10.2, 0.3, -0.3), wing_r, wr, f=0.22, skip=tuple(range(len(wr))), extra=wing_pts(1))
-    # the engines: each on its wing (parent) unless it tears off; a torn-off one may be wrecked in the landing (the husk: crushed and burnt)
+    def centre(x0, x1):
+        le, ch, t, _ = station((x0 + x1) / 2)
+        return ((x0 + x1) / 2, t * (UP - 0.5), le - ch * 0.5)
+
+    def front(mb):
+        wing_loft(mb, -2.5, 2.5, (True, True), 3)
+        body_fittings(mb)
+
+    bc = body_caps()
+    add('front', (0, 0.2, 0.5), front, bc, f=0.1, skip=tuple(range(len(bc))), extra=outline(-2.5, 2.5) + [(0, surf_y(0, 0.4) + 0.12, 0.4)])
+    # the wing panels each side, root to tip: they keep more of the plane's speed the lighter they are; the tips take the drag rudders
+    for (pid, a, b, f, n) in (('inner', 2.5, 8.0, 0.16, 2), ('mid', 8.0, 12.5, 0.22, 2), ('tip', 12.5, HALF, 0.28, 1)):
+        for sgn, side in ((-1, 'L'), (1, 'R')):
+            x0, x1 = (a, b) if sgn > 0 else (-b, -a)
+            rag = (True, b < HALF) if sgn > 0 else (b < HALF, True)
+
+            def build(mb, x0=x0, x1=x1, rag=rag, sgn=sgn, tip=pid == 'tip'):
+                wing_loft(mb, x0, x1, rag, int(abs(x0) * 3))
+                if tip:
+                    rudders(mb, sgn)
+            caps = slab_caps(x0, x1, n)
+            add(pid + side, centre(x0, x1), build, caps, f=f, skip=tuple(range(len(caps))), extra=outline(x0, x1))
+    # the engines: each on its inner wing (parent) unless it tears off; a torn-off one may be wrecked in the landing (the husk: crushed and burnt)
     for sgn, name in ((-1, 'engineL'), (1, 'engineR')):
         ex = sgn * ENG_X
-        add(name, (ex, ENG_Y, ENG_Z), lambda mb, ex=ex, sgn=sgn: engine(mb, ex, ENG_Y, ENG_Z, sgn),
-            [((ex, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95), pylon(sgn)], f=0.32, parent='wingL' if sgn < 0 else 'wingR',
+        pylon = ((ex, ENG_Y - 1.25, ENG_Z - 0.3), (0, 0, 1), 1.0, 0.2, 0.45)
+        add(name, (ex, ENG_Y, ENG_Z), lambda mb, ex=ex: engine(mb, ex, ENG_Y, ENG_Z),
+            [((ex, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95), pylon], f=0.32, parent='innerL' if sgn < 0 else 'innerR',
             husk=lambda mb, ex=ex: engine_husk(mb, ex, ENG_Y, ENG_Z))
-    # skin panels, doors and ribs that came off the body
+    # skin panels and access doors that came off, top and bottom
     for i in range(8):
-        sx, sy, sz = rnd.uniform(0.8, 2.6), rnd.uniform(0.1, 0.24), rnd.uniform(0.8, 2.0)
-        ang, z = rnd.uniform(0.3, PI - 0.3) * (1 if i % 2 else -1), rnd.uniform(-10, 10)
-        rx, ry, cy = fus_at(z)
-        pos = (rx * 1.05 * math.sin(ang), cy + ry * 1.05 * math.cos(ang), z)
+        sx, sy, sz = rnd.uniform(0.8, 2.6), rnd.uniform(0.1, 0.2), rnd.uniform(0.8, 2.0)
+        x = rnd.uniform(-10, 10)
+        le, ch, _, _ = station(x)
+        z = le - ch * rnd.uniform(0.15, 0.75)
+        top = i % 3 != 2
+        pos = (x, surf_y(x, z, top) + (sy / 2 if top else -sy / 2), z)
         add(f'panel{i}', pos, lambda mb, p=pos, sx=sx, sy=sy, sz=sz, i=i: mb.box(p, (sx, sy, sz), ['JetHull', 'JetSand', 'JetFlap', 'JetDark'][i % 4]),
             [(pos, (1, 0, 0), max(0.05, sx / 2 - sz / 2), sz / 2, sy / 2 + 0.03)], f=rnd.uniform(0.3, 0.45), skip=(0,),
             extra=[(pos[0] + a * sx / 2, pos[1] - sy / 2, pos[2] + b * sz / 2) for a in (-1, 1) for b in (-1, 1)])
+    # spars and ribs torn out of the body
     for i in range(3):
-        z = rnd.uniform(-8, 8)
-        rx, ry, cy = fus_at(z)
-        pos = (rnd.choice([-1, 1]) * rx, cy + 0.3, z)
+        x = rnd.uniform(-6, 6)
+        le, ch, _, _ = station(x)
+        z = le - ch * rnd.uniform(0.25, 0.6)
+        pos = (x, (surf_y(x, z) + surf_y(x, z, False)) / 2, z)
         d = (rnd.uniform(-1, 1), rnd.uniform(-0.3, 0.3), rnd.uniform(-1, 1))
         n = math.sqrt(sum(v * v for v in d))
         d = tuple(v / n for v in d)
@@ -326,54 +360,14 @@ def pieces_ts(ps):
             f'export const JET_PIECES: JetPieceDef[] = [\n  {body},\n];\n')
 
 
-def engine_husk(mb, cx, cy, cz):
-    """An engine wrecked in the landing: the cowl crushed and burnt, no fan, the nozzle torn, the pylon snapped."""
-    M = T(cx, cy, cz)
-    outer = [(0.80, 1.10), (0.835, 1.20), (0.885, 1.14), (0.915, 0.94), (0.925, 0.75), (0.905, 0.52), (0.86, -0.05), (0.80, -0.30), (0.70, -0.62),
-             (0.50, -0.85), (0.37, -1.12), (0.35, -1.20), (0.27, -1.34), (0.255, -1.40)]
-    mb.lathe(outer, 24, 'Burnt', M=M)
-    mb.lathe([(0.0, 0.93), (0.78, 0.93), (0.78, 0.96), (0.0, 0.96)], 20, 'JetDark', M=M)
-    mb.lathe([(0.0, 0.96), (0.1, 0.99), (0.21, 1.06), (0.2, 1.1), (0.0, 1.12)], 14, 'JetDark', M=M)
-    for i in range(6):  # stumps of fan blades
-        mb.push(M @ Rz(2 * PI * i / 6 + 0.3))
-        mb.box((0.3, 0.0, 0.97), (0.22, 0.012, 0.12), 'Steel')
-        mb.pop()
-    mb.box((cx, cy + 1.2, cz - 0.4), (0.38, 0.5, 1.6), 'JetHull')
-    crush(mb, (cx + 0.9, cy + 0.3, cz + 0.6), 0.9, 0.5, toward=(cx, cy, cz))
-    crush(mb, (cx - 0.5, cy - 0.7, cz - 0.4), 0.8, 0.45, toward=(cx, cy, cz))
-    ripple(mb, 5, 0.04, 5.0)
-
-
-def engine(mb, cx, cy, cz, side):
-    """The turbofan as it hung on the wing: the turbofan.py cowls and nozzle in one skin, a fan and its spinner in the intake, the pylon to the wing."""
-    M = T(cx, cy, cz)
-    outer = [(0.80, 1.10), (0.835, 1.20), (0.885, 1.14), (0.915, 0.94), (0.925, 0.75), (0.905, 0.52), (0.86, -0.05), (0.80, -0.30), (0.70, -0.62),
-             (0.50, -0.85), (0.37, -1.12), (0.35, -1.20), (0.27, -1.34), (0.255, -1.40)]
-    mb.lathe(outer, 36, 'Paint', M=M)
-    # inside the lip: the dark intake, the fan disc with its blades, the spinner
-    mb.lathe([(0.0, 0.93), (0.78, 0.93), (0.78, 0.96), (0.0, 0.96)], 28, 'Dark', M=M)
-    mb.lathe([(0.0, 0.96), (0.1, 0.99), (0.21, 1.06), (0.23, 1.1), (0.205, 1.18), (0.0, 1.24)], 20, 'Steel', M=M)
-    for i in range(24):
-        a = 2 * PI * i / 24
-        mb.push(M @ Rz(a))
-        mb.box((0.5, 0.0, 0.97), (0.55, 0.012, 0.13), 'Blade', rot=(0, 0.0, 0.5))
-        mb.pop()
-    # the burnt nozzle ring and the plug
-    mb.lathe([(0.255, -1.40), (0.255, -1.43), (0.27, -1.43), (0.27, -1.34)], 18, 'Burnt', M=M)
-    mb.lathe([(0.0, -1.12), (0.12, -1.12), (0.13, -1.25), (0.0, -1.46)], 16, 'Burnt', M=M)
-    # the pylon up into the wing, a fairing along it
-    top = 0.92
-    mb.box((cx, cy + top + 0.55, cz - 0.4), (0.38, 1.35, 3.2), 'JetHull', taper=(1.0, 0.7))
-    # the nacelle's own mounting ring where it meets the pylon
-    mb.lathe([(0.915, 0.18), (0.94, 0.18), (0.94, 0.05), (0.915, 0.05)], 36, 'Dark', M=M)
-
-
 def build():
     body, eng = MB(), MB()
-    fuselage(body)
-    wings(body)
-    engine(body, -ENG_X, ENG_Y, ENG_Z, -1)
-    engine(eng, ENG_X, ENG_Y, ENG_Z, 1)
+    wing_loft(body, -HALF, HALF)
+    body_fittings(body)
+    for sgn in (1, -1):
+        rudders(body, sgn)
+    engine(body, -ENG_X, ENG_Y, ENG_Z)
+    engine(eng, ENG_X, ENG_Y, ENG_Z)
     return body, eng
 
 
@@ -398,15 +392,18 @@ def preview(objs, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     scene, cam, look, shoot = kit.preview_scene(ground_y_blender=-20)
     for name, pos, tgt, lens in (
-        ('side', (40, 4, 6), (0, 0, 0), 38),
-        ('front', (6, 3, 42), (0, -1, 0), 38),
-        ('top', (3, 52, 6), (0, 0, 0), 38),
-        ('engine', (-12, -2, 12), (-5.6, -2, 1.6), 40),
-        ('wreck', (34, 12, 30), (3, -2, 0), 42),
+        ('side', (30, 3, 2), (0, 0.5, 0), 38),
+        ('front', (5, 3, 34), (0, 0.5, 0), 38),
+        ('top', (2, 46, 3), (0, 0, 0), 38),
+        ('below', (12, -14, 16), (0, 0, 0), 38),
+        ('belly', (0.5, -17, 0.5), (0, 0, 0), 30),
+        ('rear', (-20, 9, -26), (0, 0.5, -1), 38),
+        ('engine', (-11, 4, -9), (-ENG_X, ENG_Y - 0.4, ENG_Z), 40),
+        ('wreck', (28, 14, 26), (0, -1, 0), 40),
     ):
         broken = name.startswith('wreck')
         for k, o in objs.items():
-            o.hide_render = (k.startswith('P_') != broken) if k.startswith('P_') else broken
+            o.hide_render = (not broken or k.endswith('_x')) if k.startswith('P_') else broken
         look(pos, tgt, lens)
         shoot(os.path.join(out_dir, f'plane_{name}.png'))
 
@@ -436,6 +433,7 @@ def main():
         f.write(pieces_ts(ps))
     for o in objs:
         print(f'{o.name}: tris={kit.tri_count(o)} size={o.dimensions.x:.1f} x {o.dimensions.z:.1f} x {o.dimensions.y:.1f} m')
+    print(f'ENG_Y={ENG_Y:.3f} TAIL={tuple(round(v, 3) for v in TAIL)}')
     if a.preview:
         preview({o.name: o for o in objs}, os.path.abspath(a.preview))
 

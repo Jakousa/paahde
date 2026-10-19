@@ -1,13 +1,13 @@
-// Fixed-wing drones (shared/jets.ts): a big twin-engined unmanned plane (public/models/jet.glb, made by
-// tools/blender/machines/plane.py; a primitive stand-in until it has loaded) with the turbofan's own engines on its wings.
+// Fixed-wing drones (shared/jets.ts): a big unmanned flying wing (public/models/jet.glb, made by
+// tools/blender/machines/plane.py; a primitive stand-in until it has loaded) with the turbofan's own engines in pods on its back.
 // Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and
 // the server clock, rolled into its turns. Shot, it trails smoke (more with each hit); brought down it dives in
-// rolling over on a heavy trail, ploughs in nose first (onCrash) and smoulders, tail in the air. Jammed
+// rolling over on a heavy trail, ploughs in nose first (onCrash) and breaks up, its engines torn off. Jammed
 // (shared/jammer.ts) it dives the same, rolling harder, a thin trail corkscrewing off its tail. The rifle tests shots
 // against it here (raycast).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { JET_SPAN, jetAt, jetImpact, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
+import { JET_NOSE, JET_SPAN, jetAt, jetImpact, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { jetCrashList } from '../../shared/jetcrash.ts';
 import { breakup, BREAK_DT, ENGINES, STATE_W, type Breakup, type Fate } from '../../shared/jetbreak.ts';
 import { JET_PIECES } from '../../shared/jetpieces.ts';
@@ -21,66 +21,29 @@ const SHOW_R = 5000;
 /** The wrecks on the sand are drawn within this far (m). */
 const WRECK_SHOW_R = 600;
 
-/** A flat trapezoid in the XZ plane (thickness `t`, along -Y..+Y), from x = 0 (root chord `root`, its leading edge
- *  at z = 0) to x = `len` (tip chord `tip`, leading edge swept back `sweep`). */
-function panel(len: number, root: number, tip: number, sweep: number, t: number) {
-  const s = new THREE.Shape();
-  s.moveTo(0, 0);
-  s.lineTo(len, -sweep);
-  s.lineTo(len, -sweep - tip);
-  s.lineTo(0, -root);
-  s.closePath();
-  const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: false });
-  g.translate(0, 0, -t / 2);
-  g.rotateX(Math.PI / 2); // shape y → -z: the trailing edge points backwards (-Z), forward is +Z
-  return g;
-}
-
-/** The stand-in built from primitives, shown until jet.glb has loaded (and if it fails). */
+/** The stand-in built from primitives, shown until jet.glb has loaded (and if it fails): the flying wing's outline as a slab, the centre body's
+ *  hump and the two engine pods on its back, at full size. */
 function primitive(): THREE.Group {
-  // Double sided: the left wing and fin are the right ones mirrored (negative scale).
-  const hull = new THREE.MeshStandardNodeMaterial({ color: 0x3a332d, roughness: 0.55, metalness: 0.5, side: THREE.DoubleSide });
-  const dark = new THREE.MeshStandardNodeMaterial({ color: 0x15110f, roughness: 0.4, metalness: 0.7, side: THREE.DoubleSide });
-  const dome = new THREE.MeshStandardNodeMaterial({ color: 0x0c0b0b, roughness: 0.15, metalness: 0.2 });
+  const hull = new THREE.MeshStandardNodeMaterial({ color: 0x3a332d, roughness: 0.55, metalness: 0.5 });
+  const pale = new THREE.MeshStandardNodeMaterial({ color: 0xbdb8a8, roughness: 0.7, metalness: 0.15 });
   const g = new THREE.Group();
-
-  // Fuselage: a lathe along +Z, nose at +5.6, tail at -5.4, thickest just behind the nose.
-  const prof: [number, number][] = [[0, -5.4], [0.32, -5.3], [0.42, -4.6], [0.55, -2], [0.68, 0.8], [0.72, 2.6], [0.62, 4.2], [0.42, 5.1], [0.12, 5.55], [0, 5.6]];
-  const body = new THREE.LatheGeometry(prof.map(([r, z]) => new THREE.Vector2(r, z)), 20);
-  body.rotateX(Math.PI / 2);
-  g.add(new THREE.Mesh(body, hull));
-  // A sensor dome under the nose.
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), dome);
-  ball.position.set(0, -0.6, 3.9);
-  g.add(ball);
-  // Intake hump over the back, ending in the nozzle at the tail.
-  const hump = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 4.6, 16), hull);
-  hump.rotation.x = Math.PI / 2;
-  hump.scale.set(1, 1, 0.7);
-  hump.position.set(0, 0.58, -2.4);
+  // the planform (x across, the shape's y is z: the nose at +8.5, the double-W trailing edge)
+  const half: [number, number][] = [[0, 8.5], [16, -1.6], [16, -3.7], [8, -7.5], [4, -5], [0, -7.5]];
+  const s = new THREE.Shape();
+  [...half, ...half.slice(1, -1).reverse().map(([x, z]): [number, number] => [-x, z])].forEach(([x, z], i) => (i ? s.lineTo(x, z) : s.moveTo(x, z)));
+  const slab = new THREE.ExtrudeGeometry(s, { depth: 0.5, bevelEnabled: false });
+  slab.translate(0, 0, -0.25);
+  slab.rotateX(Math.PI / 2); // shape y → z
+  g.add(new THREE.Mesh(slab, hull));
+  const hump = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8), hull);
+  hump.scale.set(2.6, 1.3, 7.5);
+  hump.position.set(0, 0.1, 0.5);
   g.add(hump);
-  const lip = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.07, 8, 18), dark);
-  lip.position.set(0, 0.58, -0.1);
-  lip.scale.set(1, 0.7, 1);
-  g.add(lip);
-  const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 1.1, 16, 1, true), dark);
-  nozzle.rotation.x = Math.PI / 2;
-  nozzle.position.set(0, 0.5, -5.1);
-  g.add(nozzle);
-
-  // Wings: straight, long and thin, a little dihedral.
   for (const side of [1, -1]) {
-    const w = new THREE.Mesh(panel(8.6, 1.9, 0.75, 0.35, 0.16), hull);
-    w.position.set(side * 0.4, 0.15, 0.9);
-    w.scale.x = side;
-    w.rotation.z = side * 0.04;
-    g.add(w);
-    // V tail: two fins canted 40° out from vertical.
-    const f = new THREE.Mesh(panel(2.4, 1.3, 0.6, 0.6, 0.1), hull);
-    f.position.set(0, 0.2, -4.0);
-    f.rotation.z = side * (Math.PI / 2 - 0.7);
-    f.scale.x = side;
-    g.add(f);
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.3, 2.8, 16), pale);
+    pod.rotation.x = Math.PI / 2;
+    pod.position.set(side * 4.3, 1.88, -2.6);
+    g.add(pod);
   }
   return g;
 }
@@ -224,9 +187,7 @@ function fill(g: THREE.Group) {
     setBroken(c, false);
     g.add(c);
   } else {
-    const p = primitive();
-    p.scale.setScalar(JET_SPAN / 18); // (the stand-in is an 18 m plane)
-    g.add(p);
+    g.add(primitive());
   }
 }
 
@@ -261,13 +222,16 @@ function build(): THREE.Group {
 
 type View = { obj: THREE.Object3D; hurt: number; state: number; smoke: number; deb: Debris | null };
 
-/** Hit boxes in the body frame (half sizes and centre, before JET_SPAN scaling): the fuselage, the wings. */
+/** Hit boxes in the body frame (half sizes and centre, before JET_SPAN scaling): the centre body, the inner wing, the outer wing (the swept
+ *  part, about its middle chord), the engine pods. */
 const BOXES = [
-  { h: new THREE.Vector3(1.9, 2.0, 15.4), c: new THREE.Vector3(0, 0, 0) },
-  { h: new THREE.Vector3(16.5, 0.9, 3.8), c: new THREE.Vector3(0, 0.4, -0.4) },
+  { h: new THREE.Vector3(3.0, 1.5, 8.0), c: new THREE.Vector3(0, 0.25, 0.5) },
+  { h: new THREE.Vector3(9.0, 0.6, 4.6), c: new THREE.Vector3(0, 0.1, -1.4) },
+  { h: new THREE.Vector3(16.0, 0.4, 1.8), c: new THREE.Vector3(0, 0, -2.7) },
+  { h: new THREE.Vector3(5.3, 1.0, 1.5), c: new THREE.Vector3(0, 1.88, -2.6) },
 ];
 /** The left engine's exit, where the smoke streams from (body frame; jet.glb's `Tail` empty). */
-const TAIL = new THREE.Vector3(-5.6, -2.05, 0.2);
+const TAIL = new THREE.Vector3(-4.3, 1.88, -4.05);
 const _inv = new THREE.Matrix4(), _o = new THREE.Vector3(), _d = new THREE.Vector3(), _t = new THREE.Vector3();
 
 export class Jets {
@@ -324,7 +288,7 @@ export class Jets {
       const soft = !!j.down?.soft;
       if (p.state === 2 && v.state === 1) {
         _t.set(0, 0, 1).transformDirection(o.matrixWorld);
-        this.onCrash(p.x + _t.x * 12, p.y + _t.y * 12, p.z + _t.z * 12, _t.x, _t.y, _t.z);
+        this.onCrash(p.x + _t.x * JET_NOSE * 0.8, p.y + _t.y * JET_NOSE * 0.8, p.z + _t.z * JET_NOSE * 0.8, _t.x, _t.y, _t.z);
       }
       v.state = p.state;
       if (p.state === 2) {
