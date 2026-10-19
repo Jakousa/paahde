@@ -136,7 +136,8 @@ export class StormFx {
     const exposure = dead ? 0 : frontExposure(storms, me.x, me.y, me.z, now);
     this.choke = dead ? 0 : Math.max(0, this.choke + (exposure > 0 ? exposure : -CHOKE_RECOVER) * dt);
     this.choking = this.choke > CHOKE_SAY_S;
-    choking.value = Math.min(1, Math.max(0, (this.choke / CHOKE_S - 0.1) / 0.9));
+    // Full (black) a little before the server's tally kills, so the view is dark when the death comes.
+    choking.value = Math.min(1, Math.max(0, (this.choke / CHOKE_S - 0.1) / 0.82));
     this.atBase += (stormAt(storms, BASE.x, BASE.z + ROOM_Z / 2, now) - this.atBase) * k;
     wind.local = this.outside;
     stormHere.value = this.level;

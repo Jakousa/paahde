@@ -72,6 +72,8 @@ const FRONT_REACH = 700;
 const FRONT_STEPS = 8;
 /** How bright the front's dust is next to a column's. */
 const FRONT_LIT = 0.6;
+/** How much thicker the front's dust is than a column's: inside it you see 3–10 m. */
+const FRONT_THICK = 4;
 /** Ambient occlusion fades out between these view distances (m). Far off, GTAO (half resolution, normals
  *  rebuilt from depth) sees the ground at grazing angles a metre or more per pixel, and the depth step
  *  grows with distance² (near plane 5 cm: ~1 m at 1 km, as big as its 1.2 m radius): it read that as
@@ -230,6 +232,7 @@ export class Post {
       const tScene = viewZ.div(dv.z).toVar(); // both negative: distance along the ray
       const tau = float(0).toVar();
       const lit = float(0).toVar(); // optical-depth-weighted brightness of the dust seen
+      const seen = float(0).toVar(); // the optical depth those weights add up to
       const first = float(1e9).toVar(); // where the dust starts, for the haze in front of it
       const jitter = fract(sin(dot(p.mul(vec2(911.3, 577.7)), vec2(12.9898, 78.233))).mul(43758.5453)).toVar();
       const ground = [stormGround.x, stormGround.y, stormGround.z, stormGround.w];
@@ -281,6 +284,7 @@ export class Post {
                 tau.addAssign(d);
                 // Billows catch the light; the low, thick dust at the foot of the wall is in its own shade.
                 lit.addAssign(d.mul(n.mul(0.45).add(0.75)).mul(float(1.25).sub(up.mul(0.6))));
+                seen.addAssign(d);
               }
             });
           });
@@ -317,16 +321,20 @@ export class Post {
             // A crisp, billowing top: full up to its height, gone within half as much again.
             const up = exp(h.div(H).negate()).mul(float(1).sub(smoothstep(H.mul(1.6), H.mul(2.4), h.mul(n.mul(0.35).add(1)))));
             const billow = saturate(n.mul(0.9).add(0.7));
-            const d = stormFrontEnv.x.mul(wall).mul(up).mul(billow).mul(dt);
+            const d = stormFrontEnv.x.mul(wall).mul(up).mul(billow).mul(dt).mul(FRONT_THICK);
+            // So thick that only the dust nearest the eye shows: weighted by how much of it is seen, or what's behind
+            // it (the pillars far off in the fog) would show through in its shading.
+            const ds = d.mul(exp(tau.mul(-STORM_K)));
             tau.addAssign(d);
+            seen.addAssign(ds);
             // Darker than the haze it rises out of: lit billow tops over a deep brown body.
-            lit.addAssign(d.mul(n.mul(0.7).add(0.45)).mul(float(1).sub(up.mul(0.55))).mul(FRONT_LIT));
+            lit.addAssign(ds.mul(n.mul(0.7).add(0.45)).mul(float(1).sub(up.mul(0.55))).mul(FRONT_LIT));
           }
         });
       });
       const trans = exp(tau.mul(-STORM_K));
       // Lit dust: diffused sun on the sand colour plus the haze; far storms fade into the haze like dunes.
-      const shade = lit.div(max(tau, 1e-4));
+      const shade = lit.div(max(seen, 1e-4));
       const dust = dustLit.mul(shade);
       const far = float(1).sub(exp(first.mul(hazeDensity).negate()));
       return vec4(mix(dust, hazeColorFor(dir), far.mul(0.35)), trans);
@@ -445,11 +453,13 @@ export class Post {
       const ragged = v.add(mx_noise_float(vec3(p.sub(0.5).mul(vec2(aspect, 1)).mul(2.5), time.mul(0.4))).mul(0.06));
       const edge = smoothstep(mix(float(0.62), float(0.18), hs), 1.0, ragged);
       o = mix(o, vec3(0.32, 0.015, 0.005), saturate(edge.mul(hs).mul(beat.mul(0.25).add(0.8)).mul(1.15)));
-      // Choking in a storm front: the light dims and a dark, ragged dust-brown closes in from the edges.
+      // Choking in a storm front: the light dims and a dark, ragged dust-brown closes in from the edges, over the
+      // whole view, until it goes black as you die.
       const ch = choking;
       o = o.mul(float(1).sub(ch.mul(0.35)));
-      const cEdge = smoothstep(mix(float(0.7), float(0.08), ch), 1.0, ragged);
+      const cEdge = smoothstep(mix(float(0.7), float(-0.15), ch), mix(float(1), float(0.3), ch), ragged);
       o = mix(o, vec3(0.07, 0.04, 0.02), saturate(cEdge.mul(ch).mul(1.3)));
+      o = o.mul(float(1).sub(smoothstep(0.75, 1, ch)));
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
       o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(0.028)));

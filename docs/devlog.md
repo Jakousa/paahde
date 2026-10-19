@@ -1642,7 +1642,8 @@ The local sandstorms are smaller now (radius 60–130 m, from 140–300), and ra
 - **Choking:** out in the open in it you choke (`frontExposure`: strength over 0.3 counts, full strength fills it in
   `CHOKE_S` = 12 s, it wears off at half that rate). The server counts it per player (`choke`, server/world.ts) and
   kills at 12 (`'storm'`, "choked in the storm front"; the shield plate doesn't help, the ragdoll is thrown downwind).
-  The client counts the same to dim the view and close in a dark, ragged brown from the edges (`choking`, post.ts).
+  The client counts the same to dim the view and close in a dark, ragged brown from the edges over the whole view,
+  black just before the server's tally kills (`choking`, post.ts; full at 92% of `CHOKE_S`).
 - **Cover:** a bunker (base or shelter), or the lee of rock: `sheltered` looks 1.5–24 m upwind for ground rising
   over your eye by more than 0.6 m and steeper than 0.8 (≈39°, so a dune's lee face doesn't count, cliffs, boulders
   and pillars do). About 1.4% of random desert spots qualify, many more in rocky country. In the lee the front's push
@@ -1652,7 +1653,9 @@ The local sandstorms are smaller now (radius 60–130 m, from 140–300), and ra
   when choking.
 - **Look** (`src/post.ts`): a slab of dust behind the leading edge, marched in 8 steps (closer together near the eye)
   out to 700 m past where the ray enters; the head of the wall stands ~140 m, the dust behind thins lower, billowed
-  by drifting noise; darker than the column dust, so from afar it's a brown bank over the horizon. The sun is dimmed
+  by drifting noise; darker than the column dust, so from afar it's a brown bank over the horizon. Inside it is 4×
+  as thick as a column (`FRONT_THICK`): you see 3–10 m. Its colour is weighted by how much of each sample is seen
+  (`seen`), or the far-off pillars ghosted through the opaque fog in its shading. The sun is dimmed
   through it (`sunThroughDust`). Gotcha: shared nodes (`dir`, `tScene`, `tOut`, `jitter`) must be `.toVar()`'d at the
   top of the Fn — built first inside the columns' `If`, they were garbage in the front's.
 - **Debug:** F3 → *Storm front* sends one over everyone (30 s to the first player). `dbg.storm.summonFront(ahead)`
