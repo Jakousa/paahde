@@ -38,7 +38,20 @@ interface CSMInternals {
   setupShadowPosition(builder: NodeBuilder): void;
 }
 
+/** Every how many frames each cascade's map is drawn again (the far ones show big, slow things: dunes, rocks, wrecks). */
+const PERIOD = [1, 1, 2, 4];
+
+/** What a cascade's shadow camera looked like when its map was last drawn (the shadows are looked up by it). */
+interface Kept {
+  pos: THREE.Vector3;
+  target: THREE.Vector3;
+  box: [number, number, number, number, number, number];
+}
+
 export class CascadedShadows extends CSMShadowNode {
+  private tick = 0;
+  private kept: Kept[] = [];
+
   constructor(light: THREE.DirectionalLight, data: CSMShadowNodeData) {
     super(light, data);
   }
@@ -65,6 +78,26 @@ export class CascadedShadows extends CSMShadowNode {
       lw.updateMatrixWorld();
       lw.target.updateMatrixWorld();
     }
+    // The far cascades are drawn again only every few frames (staggered): the frames between they keep the camera their map was drawn
+    // with, which the lookups read (the stock node refits every cascade to the view each frame).
+    const f = this.tick++;
+    this.lights.forEach((lw, i) => {
+      const shadow = lw.shadow!, cam = shadow.camera as THREE.OrthographicCamera;
+      const period = PERIOD[i] ?? 1;
+      const k = this.kept[i];
+      shadow.autoUpdate = false;
+      if (!k || period === 1 || (f + i) % period === 0) {
+        shadow.needsUpdate = true;
+        this.kept[i] = { pos: lw.position.clone(), target: lw.target.position.clone(), box: [cam.left, cam.right, cam.top, cam.bottom, cam.near, cam.far] };
+        return;
+      }
+      lw.position.copy(k.pos);
+      lw.target.position.copy(k.target);
+      [cam.left, cam.right, cam.top, cam.bottom, cam.near, cam.far] = k.box;
+      cam.updateProjectionMatrix();
+      lw.updateMatrixWorld();
+      lw.target.updateMatrixWorld();
+    });
     return undefined;
   }
 
