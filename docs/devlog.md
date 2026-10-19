@@ -1556,3 +1556,26 @@ drawn by `src/world/shelters.ts`).
   being taken apart overlapped. The top is bare now; the tools sit round the sides, none more than ~0.3 m out (a
   player is 0.35 m wide): vise and bolt tray on the west side, grinder on a bracket and the scrap bin on the east, a
   tool rail on the back, hazard stripes on the front.
+
+## The test lab (dev only)
+
+- **What:** `http://localhost:5173/?w=lab` (after `npm run dev`; the dev server starts with `--lab`, which the
+  production server and `npm start` don't) is a clean flat room for taking machines apart and trying components. It's
+  an ordinary world with the id `lab` (own DB `data/worlds/lab.db`); every other `?w=` is the normal game. It opens with
+  the F3 debug menu on (`&debug` is added to the URL).
+- **Flat ground:** one switch, `LAB` in shared/world.ts (world id `lab` and the dev flag, same on client and server):
+  `baseHeight` is the bunker pad's height everywhere, and the rock, scrap, wreck, crash-site and shelter layouts are
+  empty, so physics, shots and drawing agree. The clock stands at noon (`timeOfDayAt`); the server runs no heat, storms,
+  jets, walkers or bosses; the client has no wind or blown sand and draws the floor plain grey (`labFloor`).
+- **Layout** (shared/lab.ts, metres from the bunker door, +Z out into the room): spawn (0, 12) facing out; parts at
+  x 24..33, z 8..38 (11 parts as rows, 4 tiers as columns, plates beside and above); the grinder and every gear kind
+  (broken, all slots empty) at x -24..-36, z 8 on; machines at z 50 / 70 / 90, 16 m apart: six jet engines (seeds
+  differ, so shell halves and modules do), then every other kind, name plates in front (`src/world/labPlates.ts`).
+- **Machines** are work sites `lab:<n>` (the old dev yard's mechanism, `CrashSite.lab`): the real disassembly, sessions,
+  part grants and two players; F3 *Reset near / all* puts them back together. **Pickups** are loot (server/loot.ts)
+  laid out afresh at every start and again where taken, so the tables never run out. The **workbench and disassembly
+  table** are the bunker's own, a few steps from the spawn. A first visit hands over the debug kit (every gear kind
+  repaired at Scrap tier, the grinder).
+- **Replaced:** the earlier dev machine yard (`--yard`, `dev:yard`, `spawn=yard`) is gone; the normal game has no test
+  machines. Yard progress ids (`yard:<n>`) are simply forgotten.
+

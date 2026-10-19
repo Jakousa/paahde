@@ -1,6 +1,6 @@
 # Turbofan engine (replaces `jet_engine`): reference and disassembly plan
 
-Status: first version built (tools/blender/machines/turbofan.py, shared/machines/turbofan.ts, src/teardown/glbMachine.ts), in review in the dev yard. Not yet: the new turbine components (fan rotor, compressor rotor, combustor, turbine disc), scrap from fasteners and from the shell at the end, the shell recreated from scrap, lifts needing two players.
+Status: first version built (tools/blender/machines/turbofan.py, shared/machines/turbofan.ts, src/teardown/glbMachine.ts), in review in the test lab (`?w=lab`, shared/lab.ts). Not yet: the new turbine components (fan rotor, compressor rotor, combustor, turbine disc), scrap from fasteners and from the shell at the end, the shell recreated from scrap, lifts needing two players.
 
 ## Why a rework
 
@@ -102,7 +102,7 @@ the lowest tier among the four turbine components.
    circles, blade rows, cowl halves with crush damage, gearbox, accessories, harness), posed in its crashed state,
    half-buried orientation handled by the site placement.
 2. Layout: steps and holds as above; new component ids; loot table; label text and speech.
-3. Yard: replaces the old jet engine in the second row; review in the yard.
+3. Yard: replaces the old jet engine in the second row; review in the test lab.
 
 ## Review notes (round 1)
 

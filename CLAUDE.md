@@ -8,7 +8,8 @@ a few minutes, so `main` must always build.
 
 - `npm run dev` — compile wasm, then run the game server (:8787, auto-restarts) and Vite
   (http://localhost:5173, proxies `/ws` and `/api`). Make a world on the landing page, then open its URL in a
-  second tab to see multiplayer.
+  second tab to see multiplayer. **Test lab (dev only):** `http://localhost:5173/?w=lab`, a flat room with every
+  machine to take apart and every part, gear and the grinder to pick up (shared/lab.ts, docs/devlog.md "The test lab").
 - `npm run asbuild` — recompile wasm only (Vite does not watch `assembly/`)
 - `npm run build` — wasm + `tsc --noEmit` + production build into `dist/`. Run before pushing.
 - `npm run preview` — build, then run the production server (serves `dist/` + `/ws` on :8787).
@@ -77,6 +78,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   added up by `onJam` (server/world.ts), aimed and heard in `src/jammer.ts`, model `src/models/jammer.ts`
 - `shared/throw.ts` — thrown scrap (any scrap item in hand, use button): flown and struck against drones in
   `server/throws.ts`, lands as loot; drawn and thrown in `src/throw.ts`
+- `shared/lab.ts` — the dev test lab (`?w=lab`, `LAB` in shared/world.ts: flat floor, no desert or events; layout of the
+  machine sites `lab:<n>`, pickups and plates); drawn by `src/world/labPlates.ts`, pickups via `server/loot.ts`
 - `shared/world.ts` — worlds: each game is its own world at its own URL (`?w=<id>`, made on the landing page,
   `src/landing.ts`), with a seed from its id, its own players and DB (`data/worlds/<id>.db`; the old world is
   `?w=main`), and 10 shared lives (`src/lives.ts`; +10 per boss kind beaten); at 0 the game is over
