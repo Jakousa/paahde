@@ -799,6 +799,7 @@ function onDebugGear(p: Player, tier: unknown) {
     const parts = scrapParts(kind, t);
     if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
   }
+  items.give(p.browserId, 'grinder'); // (the grinder is made, not found: shared/tables.ts RECIPE_TABLE)
   for (const box of ['bag', 'equip']) sendBox(p, box);
   gearChanged(p.browserId);
 }

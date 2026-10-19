@@ -21,7 +21,7 @@ import { TEXT } from '../../shared/text.ts';
 /** Step labels (shared/text.ts). */
 const S = TEXT.steps;
 
-export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift';
+export type StepKind = 'screw' | 'bolt' | 'clip' | 'wire' | 'pry' | 'lift' | 'grind' | 'mash';
 export interface Step {
   kind: StepKind;
   label: string;
@@ -43,6 +43,8 @@ export interface Step {
   marker: THREE.Group;
   /** An inner step: the piece (a module that has come off) it is on. */
   owner?: Piece;
+  /** Seams: the line to follow with the grinder (the step's own frame), and how far along it the grinder has got (0..1 is `progress`). */
+  seam?: { curve: THREE.CatmullRomCurve3; bead: THREE.Object3D };
   /** Pulls: the thing that slides apart as it is held (a module of the machine), and how far (m) along `dir`. */
   slide?: { obj: THREE.Object3D; dir: THREE.Vector3; dist: number; offset: THREE.Vector3 };
   /** A small glint on the fastener while it can be worked, there with the big indicators off too. */
@@ -273,7 +275,7 @@ function makeMarker(kind: StepKind, need: number, players: number): THREE.Group 
     }
     g.userData.ends = ends;
     g.userData.top = true;
-  } else if (kind === 'pry') {
+  } else if (kind === 'pry' || kind === 'mash') {
     const pull = new THREE.Group();
     markerMesh(pull, PRY_SHAFT_GEO, 0, 0, 0.07);
     markerMesh(pull, HEAD_X_GEO, 0, 0, 0.17).rotation.x = Math.PI / 2;
@@ -308,6 +310,11 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
     const hot = u.top ? MARKER_TOP_HOT_MAT : MARKER_HOT_MAT, cold = u.top ? MARKER_TOP_MAT : MARKER_MAT;
     m.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = lit ? hot : cold; });
   }
+  if (step.kind === 'grind') {
+    // the line to follow glows; it is drawn in the step's own frame, so it is not scaled
+    m.scale.setScalar(1);
+    return;
+  }
   m.scale.setScalar(lit ? 1.25 : 1 + 0.08 * Math.sin(t * 6));
   const tap = Math.pow(Math.max(0, Math.sin(t * 7)), 4);
   if (u.pips) {
@@ -317,7 +324,7 @@ export function animateMarker(step: Step, t: number, lit: boolean, cam: THREE.Ca
       p.scale.setScalar(1 + 0.7 * Math.pow(Math.max(0, Math.sin(t * 7 - i * 0.9)), 4));
     });
   } else if (u.turn) u.turn.rotation.z = t * 3.2;
-  else if (u.pull) u.pull.position.z = tap * 0.1;
+  else if (u.pull) u.pull.position.z = (step.kind === 'mash' ? Math.pow(Math.max(0, Math.sin(t * 15)), 2) : tap) * 0.1;
   else if (u.up) u.up.position.y = tap * 0.08;
   else if (u.ends) {
     // Each end of the wire that is still holding: the marker faces the camera, so the shake reads left-right on screen.
@@ -525,6 +532,39 @@ export class Kit {
     this.mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.05, 12), 'dark', 0, 0.025, 0, g);
     this.mesh(new THREE.TorusGeometry(0.11, 0.028, 8, 20), 'yellow', 0, 0.15, 0, spin);
     return this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.22, 8, 6), seconds, after, 0.1, undefined, players);
+  }
+  /** A tab to mash: press the use button on it again and again (the progress drains away between presses). */
+  mash(label: string, pos: V, nrm: V, after: Step[], presses: number): Step {
+    const { g, spin } = this.stepGroup(pos, nrm);
+    this.mesh(new THREE.BoxGeometry(0.3, 0.04, 0.2), 'dark', 0, 0.02, 0, g);
+    spin.position.set(0, 0.04, 0);
+    this.mesh(new THREE.BoxGeometry(0.28, 0.03, 0.26), 'trim', 0, 0.015, 0.13, spin);
+    return this.reg('mash', label, g, spin, new THREE.BoxGeometry(0.4, 0.25, 0.4), presses, after, 0.04);
+  }
+  /** A seam to grind open: follow the line `pts` (the machine's frame) with the grinder. A spark runs along as it is cut. */
+  grind(label: string, pts: V[], after: Step[]): Step {
+    const p0 = new THREE.Vector3(...pts[0]);
+    const g = new THREE.Group();
+    g.position.copy(p0);
+    const spin = new THREE.Group();
+    g.add(spin);
+    const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p).sub(p0)));
+    const step = this.reg('grind', label, g, spin, new THREE.TubeGeometry(curve, 24, 0.1, 5), 1, after, 0.02);
+    step.hit.position.y = 0;
+    step.marker.removeFromParent();
+    const line = new THREE.Group();
+    line.userData.ignoreBounds = true;
+    markerMesh(line, new THREE.TubeGeometry(curve, 32, 0.012, 5));
+    line.visible = false;
+    g.add(line);
+    step.marker = line;
+    const bead = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshBasicNodeMaterial({ color: 0xffd080 }));
+    bead.raycast = () => {};
+    bead.userData.ignoreBounds = true;
+    bead.visible = false;
+    spin.add(bead);
+    step.seam = { curve, bead };
+    return step;
   }
   /** A part that pulls apart: no eye or ring, just the indicator on the part itself, and while it is held `slide.obj`
    *  parts from the machine along `dir`. `pos` is a point on its surface. */

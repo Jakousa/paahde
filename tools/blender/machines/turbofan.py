@@ -136,7 +136,6 @@ def build(pose, rnd_seed=11):
     rnd = random.Random(rnd_seed)
     m = Machine('jet_engine', 'turbofan', pose)
     sh = m.shell
-    swung = set()
 
     def half_shell(mod, p0, p1, prof, t, seed, mat='Paint'):
         a0, a1 = arc(math.radians(p0), math.radians(p1))
@@ -204,52 +203,40 @@ def build(pose, rnd_seed=11):
     ripple(inlet.mb, 12, 0.01, 7.0)
     inlet.rring('bolt', 'inletBolt', 0.965, 0.895, 8, phase=0.2)
 
-    # --- fan cowl: two halves, A hanging open on its hinge, B still on (and dented)
-    fa = m.module('fancowl_a', 0.6, pop=(-0.5, 0.8, 0.3))
-    half_shell(fa, 180, 340, [(0.90, 0.52), (0.925, 0.75), (0.915, 0.94)], 0.014, 9)
-    crush(fa.mb, polar(math.radians(235), 0.93, 0.8), 0.4, 0.07)
-    rest_swing(fa, pose, math.radians(340), math.radians(180), 0.92)
-    fa.rring('bolt', 'hingePin', 0.62, 0.935, 1, phase=math.radians(340))
-    fa.rring('bolt', 'hingePin', 0.86, 0.935, 1, phase=math.radians(340))
-    fa.step('clip', 'cowlLatch', polar(math.radians(180), 0.935, 0.58), radial(math.radians(180)), after=['hingePin'])
-    fa.step('clip', 'cowlLatch', polar(math.radians(180), 0.935, 0.84), radial(math.radians(180)), after=['hingePin'])
+    # --- the nacelle's three skins, each two halves lying exactly together: the seams are fused, so a grinder opens them (top
+    # and bottom), then each half is prised away
+    def prof_r(prof, z):
+        pts = sorted(prof, key=lambda q: q[1])
+        for (r0, z0), (r1, z1) in zip(pts, pts[1:]):
+            if z0 <= z <= z1 and z1 > z0:
+                return r0 + (r1 - r0) * (z - z0) / (z1 - z0)
+        return pts[-1][0] if z > pts[-1][1] else pts[0][0]
 
-    fb = m.module('fancowl_b', 0.55, pop=(0.5, 0.9, 0.2))
-    half_shell(fb, 20, 180, [(0.90, 0.52), (0.925, 0.75), (0.915, 0.94)], 0.014, 14)
-    crush(fb.mb, polar(math.radians(120), 0.93, 0.7), 0.4, 0.08)
-    fb.rring('bolt', 'hingePin', 0.62, 0.935, 1, phase=math.radians(20))
-    fb.rring('bolt', 'hingePin', 0.86, 0.935, 1, phase=math.radians(20))
-    fb.step('clip', 'cowlLatch', polar(math.radians(180), 0.935, 0.68), radial(math.radians(180)))
-    fb.step('clip', 'cowlLatch', polar(math.radians(180), 0.935, 0.9), radial(math.radians(180)))
+    def seam_pts(prof, phi, z0, z1, n=7, off=0.004):
+        return [polar(phi, prof_r(prof, z0 + (z1 - z0) * i / (n - 1)) + off, z0 + (z1 - z0) * i / (n - 1)) for i in range(n)]
 
-    # --- thrust reverser sleeve halves over the fan duct
-    for key, (p0, p1, hinge, free, chance, swingit, sd) in {
-        'reverser_a': (180, 360, 360, 180, 0.5, True, 21),
-        'reverser_b': (0, 180, 0, 180, 0.5, False, 25),
-    }.items():
-        rv = m.module(key, chance, pop=(-1 if key.endswith('a') else 1, 0.8, -0.2))
-        half_shell(rv, p0, p1, [(0.66, 0.50), (0.64, -0.05), (0.56, -0.62)], 0.014, sd)
-        if swingit:
-            rest_swing(rv, pose, math.radians(hinge), math.radians(free), 0.62)
-        rv.rring('bolt', 'hingePin', 0.30, 0.67, 1, phase=math.radians(hinge))
-        rv.rring('bolt', 'hingePin', -0.30, 0.62, 1, phase=math.radians(hinge))
-        zs = (0.35, -0.05, -0.4)
-        for z in zs:
-            rv.step('clip', 'cowlLatch', polar(math.radians(free), 0.655 - 0.03 * (0.4 - z), z), radial(math.radians(free)))
+    def skin(ida, idb, prof, t, z0, z1, chances, seed, after_a=(), after_b=(), dents=()):
+        b = m.module(idb, chances[1], pop=(0.7, 0.8, 0.0))
+        a = m.module(ida, chances[0], pop=(-0.7, 0.8, 0.0))
+        half_shell(b, 0, 180, prof, t, seed + 1)
+        half_shell(a, 180, 360, prof, t, seed)
+        for (mod, phi, rad) in dents:
+            crush((a if mod == 'a' else b).mb, polar(math.radians(phi), prof_r(prof, (z0 + z1) / 2) + 0.01, (z0 + z1) / 2 + rad), 0.4, 0.07)
+        for phi in (0.0, PI):
+            b.mb.sweep(seam_pts(prof, phi, z0 + 0.01, z1 - 0.01, off=0.002), 0.005, 'Dark')
+        zm = (z0 + z1) / 2
+        g_top = b.grind('seam', seam_pts(prof, 0.0, z0 + 0.02, z1 - 0.02), after=after_b)
+        g_bot = b.grind('seam', seam_pts(prof, PI, z0 + 0.02, z1 - 0.02), after=after_b)
+        b.step('mash', 'pryOpen', polar(PI * 0.8, prof_r(prof, zm - 0.08) + 0.01, zm - 0.08), radial(PI * 0.8), after=[g_top, g_bot], need=10)
+        a.step('mash', 'pryOpen', polar(PI * 1.2, prof_r(prof, zm + 0.08) + 0.01, zm + 0.08), radial(PI * 1.2), after=[g_top, g_bot, *after_a], need=10)
+        return a, b
 
-    # --- core cowl halves around the core, inside the duct
-    for key, (p0, p1, hinge, free, chance, swingit, sd, rev) in {
-        'corecowl_a': (180, 360, 360, 180, 0.5, True, 31, 'reverser_a'),
-        'corecowl_b': (0, 180, 0, 180, 0.55, False, 35, 'reverser_b'),
-    }.items():
-        cc = m.module(key, chance, pop=(-1 if key.endswith('a') else 1, 0.8, 0.0))
-        half_shell(cc, p0, p1, [(0.45, 0.46), (0.45, 0.1), (0.40, -0.5), (0.34, -0.85)], 0.012, sd)
-        if swingit:
-            rest_swing(cc, pose, math.radians(hinge), math.radians(free), 0.45)
-        cc.rring('bolt', 'hingePin', 0.30, 0.46, 1, phase=math.radians(hinge))
-        cc.rring('bolt', 'hingePin', -0.40, 0.41, 1, phase=math.radians(hinge))
-        for z in (0.28, -0.1, -0.45):
-            cc.step('clip', 'cowlLatch', polar(math.radians(free), 0.45 - 0.05 * max(0, -z), z), radial(math.radians(free)), after=[rev])
+    FAN = [(0.90, 0.52), (0.925, 0.75), (0.915, 0.94)]
+    skin('fancowl_a', 'fancowl_b', FAN, 0.014, 0.54, 0.92, (0.7, 0.7), 9, dents=(('a', 235, 0.1), ('b', 120, -0.1)))
+    REV = [(0.66, 0.50), (0.64, -0.05), (0.56, -0.62)]
+    skin('reverser_a', 'reverser_b', REV, 0.014, -0.58, 0.46, (0.65, 0.65), 21, dents=(('b', 80, 0.0),))
+    CORE = [(0.45, 0.46), (0.45, 0.1), (0.40, -0.5), (0.34, -0.85)]
+    skin('corecowl_a', 'corecowl_b', CORE, 0.012, -0.8, 0.42, (0.6, 0.6), 31, after_a=['reverser_a'], after_b=['reverser_b'])
 
     # --- exhaust nozzle, with the plug on the ground behind it
     noz = m.module('nozzle', 0.8, pop=(0, 0.3, -1))

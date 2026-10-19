@@ -34,6 +34,8 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   bearing_scrap: [SCRAP(2)],
   valve_scrap: [SCRAP(3)],
   heatsink_scrap: [SCRAP(4)],
+  // The grinder, for seams in a machine's shell: a motor spins the disc, a battery drives it.
+  grinder: [{ label: TEXT.parts.motor, n: 1, part: 'motor' }, { label: TEXT.parts.battery, n: 1, part: 'battery' }, SCRAP(3)],
   // (Tools, guns and the jammer aren't crafted: they're found broken and repaired, shared/gear.ts.)
 };
 

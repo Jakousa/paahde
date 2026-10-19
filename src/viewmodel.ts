@@ -36,6 +36,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { FirstPersonCamera } from './camera';
 import { playerHands, type Held } from './water';
 import { jammerModel, LAMP_ON } from './models/jammer';
+import { grinderModel } from './models/grinder';
 import { applyTier } from './tierLook';
 import { RECEIVER_LAMP, receiverModel } from './models/receiver';
 import type { BossKind } from '../shared/bosses.ts';
@@ -82,6 +83,7 @@ export class ViewModel {
   private pistol: THREE.Object3D | null = null;
   private pistolMuzzle: THREE.Object3D | null = null;
   private jammer: ReturnType<typeof jammerModel> | null = null;
+  private grinder: ReturnType<typeof grinderModel> | null = null;
   /** Where the jammer sits; the receivers are made on it as they're first held, one per boss. */
   private mount: THREE.Object3D | null = null;
   private receivers = new Map<BossKind, ReturnType<typeof receiverModel>>();
@@ -155,6 +157,13 @@ export class ViewModel {
       j.scale.copy(mount.scale);
       j.traverse((o) => (o.frustumCulled = false));
       mount.parent.add(j);
+      this.grinder = grinderModel();
+      const gr = this.grinder.obj;
+      gr.position.copy(mount.position);
+      gr.quaternion.copy(mount.quaternion);
+      gr.scale.copy(mount.scale);
+      gr.traverse((o) => (o.frustumCulled = false));
+      mount.parent.add(gr);
     }
     for (const gun of [this.rifle, this.pistol]) gun?.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -193,6 +202,7 @@ export class ViewModel {
     if (this.rifle) this.rifle.visible = this.shown === 'rifle';
     if (this.pistol) this.pistol.visible = this.shown === 'pistol';
     if (this.jammer) this.jammer.obj.visible = this.shown === 'jammer';
+    if (this.grinder) this.grinder.obj.visible = this.shown === 'grinder';
     this.showReceiver();
     if (this.scrapChunk) this.scrapChunk.visible = this.shown === 'scrap';
   }
@@ -201,7 +211,7 @@ export class ViewModel {
   private showTier() {
     const kind = playerHands.receiver.kind;
     const held: Partial<Record<Held, THREE.Object3D | null | undefined>> = {
-      canteen: this.canteen, telescope: this.telescope, rifle: this.rifle, pistol: this.pistol, jammer: this.jammer?.obj,
+      canteen: this.canteen, telescope: this.telescope, rifle: this.rifle, pistol: this.pistol, jammer: this.jammer?.obj, grinder: this.grinder?.obj,
       receiver: kind ? this.receivers.get(kind)?.obj : null,
     };
     const o = held[this.shown];
@@ -345,7 +355,7 @@ export class ViewModel {
         a.time = smooth(playerHands.aim) * a.getClip().duration * 0.999;
       } else if (moving) this.play((walk = this.has('RifleWalk') ? 'RifleWalk' : 'Walk'));
       else this.play(this.has('RifleIdle') ? 'RifleIdle' : 'Idle');
-    } else if (this.shown === 'pistol' || this.shown === 'jammer' || this.shown === 'receiver') {
+    } else if (this.shown === 'pistol' || this.shown === 'jammer' || this.shown === 'receiver' || this.shown === 'grinder') {
       // The jammer has its own clips (two hands while jamming), the receiver is held with them; a model without them
       // falls back to the pistol's.
       const pre = this.shown !== 'pistol' && this.has('JammerAim') ? 'Jammer' : 'Pistol';
@@ -385,6 +395,7 @@ export class ViewModel {
     }
     this.showTier();
     if (this.jammer) this.jammer.lamp.color.copy(LAMP_ON).multiplyScalar(playerHands.jamLamp);
+    if (this.grinder) this.grinder.disc.rotation.z += playerHands.grind * 60 * dt;
     if (this.shown === 'receiver') {
       const r = playerHands.receiver.kind ? this.receivers.get(playerHands.receiver.kind) : undefined;
       if (!r?.obj.visible) this.showReceiver(); // another boss's receiver came into the hand

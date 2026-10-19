@@ -11,13 +11,13 @@ import { LAYOUT as TURBOFAN } from './machines/turbofan.ts';
 
 export interface LayoutStep {
   id: string;
-  kind: 'screw' | 'bolt' | 'clip' | 'pry' | 'lift' | 'wire';
+  kind: 'screw' | 'bolt' | 'clip' | 'pry' | 'lift' | 'wire' | 'grind' | 'mash';
   /** Key into TEXT.steps. */
   label: string;
   /** Not wires: where it is and which way its face points (the machine's frame, metres, y up). */
   pos?: number[];
   nrm?: number[];
-  /** Wires: the path, the colour key and the cable's radius. */
+  /** Wires and seams: the path (a seam is followed with the grinder), the wire's colour key and the cable's radius. */
   pts?: number[][];
   key?: string;
   r?: number;

@@ -10,6 +10,7 @@ import { parsePart } from '../../shared/items.ts';
 import { TIERS } from '../../shared/salvage.ts';
 import { loadPart } from '../teardown/junk';
 import { jammerModel } from './jammer';
+import { grinderModel } from './grinder';
 import { receiverModel } from './receiver';
 import { BOSS_KINDS, RECEIVERS } from '../../shared/bosses.ts';
 
@@ -100,6 +101,13 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
   jammer: () => {
     const { obj: g, lamp } = jammerModel();
     g.userData.lamp = lamp; // blinked by the avatar while it's raised (src/models/scavenger.ts)
+    g.rotation.set(-0.45, Math.PI, 0);
+    shadows(g);
+    return g;
+  },
+  // The grinder: held like the jammer.
+  grinder: () => {
+    const g = grinderModel().obj;
     g.rotation.set(-0.45, Math.PI, 0);
     shadows(g);
     return g;

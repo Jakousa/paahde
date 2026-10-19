@@ -193,7 +193,7 @@ export class Rifle {
     const holding = isGun(playerHands.held) && can;
     const aiming = holding && ((aimDown() && !!document.pointerLockElement) || this.forceAim);
     // The jammer (src/jammer.ts) raises the hand itself.
-    if (playerHands.held !== 'jammer') playerHands.aim = Math.max(0, Math.min(1, playerHands.aim + (aiming ? dt : -dt * 1.4) / ADS_S));
+    if (playerHands.held !== 'jammer' && playerHands.held !== 'grinder') playerHands.aim = Math.max(0, Math.min(1, playerHands.aim + (aiming ? dt : -dt * 1.4) / ADS_S));
     // In third person aiming brings the view in to the eye (src/camera.ts); the scope only once it's there.
     this.view.aimIn = aiming;
     const scoped = aiming && playerHands.aim >= 1 && feel.scope && this.view.boomLength < 0.05;

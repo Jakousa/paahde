@@ -46,6 +46,7 @@ const en = {
     laser_rifle: 'Laser rifle',
     laser_pistol: 'Laser pistol',
     jammer: 'Jammer',
+    grinder: 'Grinder',
     receiver_carrier: 'Hive receiver',
     receiver_queen: 'Brood receiver',
     receiver_colossus: 'Iron receiver',
@@ -319,6 +320,9 @@ const en = {
     circle: 'circle',
     shake: 'shake',
     pry: 'pry',
+    mash: 'mash',
+    grind: 'grind the seam',
+    needGrinder: 'needs a grinder',
     players: (have: number, need: number) => `${have}/${need} players`,
   },
   /** What holds a machine together: the steps in the disassembly mode (src/teardown/junk.ts, wrecks.ts). */
@@ -353,7 +357,7 @@ const en = {
     cowlLatch: 'Cowl latch', fanBolt: 'Fan bolt', fanLift: 'Pull the fan out', harness: 'Harness', hingePin: 'Hinge pin',
     hoseFitting: 'Hose fitting', linkagePin: 'Linkage pin', mountScrew: 'Mount screw', nozzleBolt: 'Nozzle bolt',
     nozzleLift: 'Pull the nozzle off', padBolt: 'Pad bolt', padScrew: 'Pad screw', spinnerBolt: 'Spinner bolt',
-    strapClip: 'Strap clip', vClamp: 'V-clamp', inletBolt: 'Inlet bolt', retainerBolt: 'Retainer bolt', plugBolt: 'Plug bolt',
+    strapClip: 'Strap clip', vClamp: 'V-clamp', seam: 'Seam', pryOpen: 'Pry open', inletBolt: 'Inlet bolt', retainerBolt: 'Retainer bolt', plugBolt: 'Plug bolt',
     endBellScrew: 'End cap screw', manifoldClamp: 'Manifold clamp', coverScrew: 'Cover screw',
   },
 

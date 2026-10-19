@@ -406,6 +406,16 @@ class Module:
         self.steps.append(d)
         return sid
 
+    def grind(self, label, pts, after=()):
+        """A seam to be ground open with the grinder: followed along `pts`."""
+        self.n += 1
+        sid = f'{self.id}.{label}{self.n}'
+        d = {'id': sid, 'kind': 'grind', 'label': label, 'pts': [self._tx(p) for p in pts], 'after': list(after)}
+        if self.in_inner:
+            d['inner'] = True
+        self.steps.append(d)
+        return sid
+
     def part(self, part, pos, rot=(0, 0, 0), chance=1.0, holds=None):
         """A collectable part sitting at `pos` inside this module (revealed when the module's steps are done)."""
         q = (self._m().to_3x3() @ Euler(rot).to_matrix()).to_quaternion()

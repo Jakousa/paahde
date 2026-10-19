@@ -29,7 +29,7 @@ import { TEXT } from '../shared/text.ts';
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
  * are true for the whole sip / refill action.
  */
-export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer' | 'receiver' | 'scrap';
+export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer' | 'receiver' | 'scrap' | 'grinder';
 /** `tier`: how good the item in hand is (shared/gear.ts tierOf), for its look (src/tierLook.ts).
  *  `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden).
  *  `throwAt`: when the last throw of scrap started (performance.now(), src/throw.ts), for the hands' throw. */
@@ -40,6 +40,8 @@ export const playerHands = {
   aim: 0, rifleScoped: false, kick: 0, charge: 1,
   /** The jammer's lamp (src/jammer.ts), 0 dark .. 1 fully lit. */
   jamLamp: 0,
+  /** The grinder in hand (src/teardown): 0..1 how hard it is grinding, for the disc and the hands. */
+  grind: 0,
   /** The receiver in hand (src/receiver.ts): its boss (null: none in hand), needle (rad, + to the left), lamp 0..1. */
   receiver: { kind: null as BossKind | null, needle: 0, lamp: 0 },
 };
@@ -235,7 +237,7 @@ export class Survival {
     const it = this.net.boxes.bag?.[this.selected];
     const kind = it?.kind;
     // A broken telescope or gun is just junk in the hand; a broken bottle still shows (it holds no water).
-    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : receiverBoss(kind) ? 'receiver' : kind && THROWABLE.has(kind) ? 'scrap' : 'none';
+    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : kind === 'grinder' ? 'grinder' : receiverBoss(kind) ? 'receiver' : kind && THROWABLE.has(kind) ? 'scrap' : 'none';
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
     playerHands.tier = tierOf(it);
