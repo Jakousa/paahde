@@ -5,3 +5,7 @@ src/wasm/
 .claude/settings.local.json
 data/
 .claude/worktrees/
+__pycache__/
+*.pyc
+*.orig
+*.rej
