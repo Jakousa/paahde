@@ -19,7 +19,10 @@ import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm
 /** Sun elevation (radians) below which the moon is the shadow-casting light. Both are ~dark here. */
 const MOON_TAKES_OVER = THREE.MathUtils.degToRad(-3);
 /** Far end of each cascade (m from the camera). Past the last one the haze is ~95%, so no shadows. */
-const CASCADE_ENDS = [20, 80, 320, 1600];
+// (Dev experiments for the GPU cost: `?cascades=1..3` uses fewer, `?shadows=0` none.)
+const QUERY = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
+const CASCADE_PRESETS: Record<string, number[]> = { '1': [400], '2': [60, 600], '3': [30, 320, 1600] };
+const CASCADE_ENDS = CASCADE_PRESETS[QUERY.get('cascades') ?? ''] ?? [20, 80, 320, 1600];
 const SHADOW_FAR = CASCADE_ENDS[CASCADE_ENDS.length - 1];
 const SHADOW_MAP = 1024; // per cascade; 2048 looked crisper but cost GPU time on every frame
 /** How far sunwards of a slice casters are still drawn: a 30 m crest at 10° throws a ~170 m shadow. */
@@ -69,7 +72,7 @@ export class Sky {
     this.day = new DayNight(this.ambient);
 
     const sun = this.sun;
-    sun.castShadow = true;
+    sun.castShadow = QUERY.get('shadows') !== '0';
     sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
     // Each cascade clones this shadow, layers included: also draw shadow-only objects (own body).
     sun.shadow.camera.layers.enable(SHADOW_ONLY_LAYER);
