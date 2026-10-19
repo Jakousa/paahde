@@ -34,7 +34,7 @@ const NORMAL_BIAS_TEXELS = 2;
  *  a dune's shadow edge is a staircase whose steps survive any filter narrower than the step length
  *  (they showed as a saw along the edge). The coarse cascades therefore blur wide; the nearest one is
  *  fine enough (~3 cm) to stay crisp. */
-const PCF_RADIUS_TEXELS = [2, 6, 8, 8];
+const PCF_RADIUS_TEXELS = [2, 5, 8, 8];
 
 export class Sky {
   readonly sun = sunLight;

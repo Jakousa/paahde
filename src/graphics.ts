@@ -80,10 +80,12 @@ export function needsReload(): boolean {
   return graphics.cascades !== startup.cascades || graphics.shadowMap !== startup.shadowMap || graphics.shadowFilter !== startup.shadowFilter || graphics.antialias !== startup.antialias;
 }
 
-/** Shadow cascade ends as fractions of the shadow distance, by cascade count (the last is the distance itself). */
-const CASCADE_FRACTIONS: Record<number, number[]> = { 1: [1], 2: [0.12, 1], 3: [0.02, 0.2, 1], 4: [0.0125, 0.05, 0.2, 1] };
+/** Far end (m) of each cascade, by cascade count, at the full 1600 m. The nearest is the sharp one around you (a player's long low-sun
+ *  shadow stays crisp out to its end), so it is wide; each end is also capped to a share of a shorter shadow distance. */
+const CASCADE_BASE: Record<number, number[]> = { 1: [1600], 2: [60, 1600], 3: [40, 300, 1600], 4: [40, 128, 400, 1600] };
+const CASCADE_SHARE: Record<number, number[]> = { 1: [1], 2: [0.3, 1], 3: [0.25, 0.7, 1], 4: [0.25, 0.6, 0.9, 1] };
 
-/** Far end (m) of each cascade for these settings. */
+/** Far end of each cascade for these settings. */
 export function cascadeEnds(distance: number, count: number): number[] {
-  return CASCADE_FRACTIONS[count].map((f) => f * distance);
+  return CASCADE_BASE[count].map((b, i) => (i === count - 1 ? distance : Math.min(b, distance * CASCADE_SHARE[count][i])));
 }
