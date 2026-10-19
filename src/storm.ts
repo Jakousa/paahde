@@ -10,7 +10,7 @@
 // mirrored here: server/world.ts).
 import { BASE, HUT, ROOM_Z, W, inBase } from '../shared/base.ts';
 import { indoors, S_HUT, shelterAt, shelterHutInside } from '../shared/shelters.ts';
-import { CHOKE_RECOVER, CHOKE_S, FRONT_PASS_S, FRONT_RAMP_MS, FRONT_SPEED, RAMP_MS, frontArrival, frontAt, frontDepth, frontExposure, inStormPath, sheltered, stormAt, stormCentre, stormEnvelope, stormStrength, type Storm } from '../shared/storm.ts';
+import { CHOKE_RECOVER, CHOKE_S, STATIC_AT, FRONT_PASS_S, FRONT_RAMP_MS, FRONT_SPEED, RAMP_MS, frontArrival, frontAt, frontDepth, frontExposure, inStormPath, sheltered, stormAt, stormCentre, stormEnvelope, stormStrength, type Storm } from '../shared/storm.ts';
 import { WIND } from '../shared/dunes.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { audio } from './audio';
@@ -27,8 +27,6 @@ const PIP_HZ = 1760;
 /** Peak gain of a pip. At the default volume (0.4) a burst peaks at −27.5 LUFS momentary, true peak −14 dBTP
  *  (6 dB under the −21.5 measured at gain 1): a quiet tell under the mix, not an alarm. */
 const PIP_GAIN = 0.5;
-/** Storm strength at the camera above which the locator bar is lost in the dust. */
-const LOST_AT = 0.35;
 /** How fast the felt storm follows where you are (s), so walking out of one doesn't pop. */
 const TAU = 0.8;
 /** A front's roar starts this far (m) ahead of it, rising to FRONT_ROAR of a storm's wind at its wall. */
@@ -198,7 +196,7 @@ export class StormFx {
     for (const id of this.warned.keys()) if (!storms.some((s) => s.id === id)) this.warned.delete(id);
     const out = !indoors(me.x, me.y, me.z);
     this.frontComing = out && frontIn < FRONT_SAY_S;
-    this.warning = !!coming && out;
+    this.warning = !!coming && out && !this.toolsDown;
     if (coming && this.warning) {
       const last = this.warned.get(coming.id);
       if (last === undefined || now - last >= BEEP_EVERY * 1000) {
@@ -219,9 +217,10 @@ export class StormFx {
     summonFront(ahead);
   }
 
-  /** The locator bar is lost in the dust. */
-  get lost(): boolean {
-    return this.level > LOST_AT;
+  /** The storm's static has knocked out the electronics (shared/storm.ts STATIC_AT): the wrist computer's clock,
+   *  thermometer and locator, the storm detector, the jammer and the receivers are dead till you're out of it. */
+  get toolsDown(): boolean {
+    return this.level > STATIC_AT;
   }
 
   private show(text: string, warn: boolean) {

@@ -1663,6 +1663,14 @@ The local sandstorms are smaller now (radius 60–130 m, from 140–300), and ra
   until it has died down (`frontOut`, server/guardians.ts `fled`). Shot-down or jammed drones still fall. While any
   boss is alive no front comes: a front that falls due waits and tries again 3 min later (`boss` in `StormServer.tick`).
   The debug button ignores that.
+- **Static:** a front's static seizes up machines on the ground. `seized(storms, x, z, t)` (shared/storm.ts, front
+  strength over `SEIZE_AT` 0.35) is the one test every ground enemy's brain asks each tick: walkers and crawlers stand
+  where they are (no walking, bites, cannon or missiles; server/guardians.ts), harvesters brake to a stop (a pace stretch
+  to 0) and set off again once it has passed (server/harvesters.ts). Use it for any new ground enemy. Jets fly on.
+- **Tools fail in any storm** (columns too): above `STATIC_AT` (0.35) where you stand, out of a bunker, the electronics
+  die: the wrist computer's clock and thermometer and its locator bar vanish, the storm detector goes quiet, the jammer
+  won't lock (checked on the server too), and a receiver can't call and its needle hangs dead. Client: `storm.toolsDown`
+  (src/storm.ts); server: `toolsDown()`. Guns, the spyglass and the bike still work.
 - **Debug:** F3 → *Storm front* sends one over everyone (30 s to the first player). `dbg.storm.summonFront(ahead)`
   puts a still one `ahead` m upwind for 3 min, seen only by you (negative: you're in it; you choke on screen but the
   server doesn't know).

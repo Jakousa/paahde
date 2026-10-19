@@ -154,6 +154,24 @@ export function frontOut(storms: readonly Storm[], t: number): boolean {
   return storms.some((s) => s.front && t >= s.start && t < s.end);
 }
 
+/** Any storm's static knocks out our electronics once it blows this hard where you stand (out of a bunker): the wrist
+ *  computer (clock, thermometer, locator), the storm detector, the jammer, the receivers. src/storm.ts toolsDown on the
+ *  client, toolsDown() here for the server's checks. */
+export const STATIC_AT = 0.35;
+/** Are tools dead for someone standing at (x, y, z) (feet) at time `t`? */
+export function toolsDown(storms: readonly Storm[], x: number, y: number, z: number, t: number): boolean {
+  return !indoors(x, y + 1, z) && stormAt(storms, x, z, t) > STATIC_AT;
+}
+
+/** A storm front's static seizes up machines on the ground (walkers, crawlers, harvesters) once it blows this hard
+ *  over them: they stop dead and hold fire until it has passed. */
+export const SEIZE_AT = 0.35;
+/** Is a machine on the ground at (x, z) seized up by a storm front at time `t`? Each ground enemy's brain asks this
+ *  every tick and, while it's true, neither moves nor attacks (server/guardians.ts, server/harvesters.ts). */
+export function seized(storms: readonly Storm[], x: number, z: number, t: number): boolean {
+  return frontAt(storms, x, z, t) > SEIZE_AT;
+}
+
 /** The strongest mega-storm front at (x, z) at time `t`, 0..1 (no columns). */
 export function frontAt(storms: readonly Storm[], x: number, z: number, t: number): number {
   let k = 0;

@@ -141,6 +141,8 @@ const SHADE_ICON = `<svg class="shadeIcon" viewBox="0 0 16 16"><title>${TEXT.hud
 <circle cx="10" cy="6.5" r="3" fill="#ffc46b" opacity="0.45"/><path d="M10 1.4v1.3M14.6 6.5h-1.3M13.3 3.2l-.9.9M6.7 3.2l.9.9" stroke="#ffc46b" stroke-width="1.4" stroke-linecap="round" opacity="0.45"/>
 <path d="M0.5 14.5C3 8.5 6 7 9 8.6c2.2 1.2 4.4 3.6 6.5 5.9z" fill="#7a5a3e" stroke="#2a160a" stroke-width="0.8"/></svg>`;
 export class Survival {
+  /** A storm's static has the electronics dead (src/storm.ts toolsDown): no clock or thermometer. */
+  toolsDown = false;
   private net: Net;
   private root = document.createElement('div');
   private heat = document.createElement('div');
@@ -303,8 +305,8 @@ export class Survival {
     const dead = now < this.deadUntil;
     this.hold();
     this.drawHotbar();
-    // The clock and thermometer come with the wrist computer.
-    this.env.style.display = equipped(this.net.boxes.equip, 'wrist') ? '' : 'none';
+    // The clock and thermometer come with the wrist computer, and die in a storm.
+    this.env.style.display = equipped(this.net.boxes.equip, 'wrist') && !this.toolsDown ? '' : 'none';
     const holding = playerHands.held === 'canteen';
     const bottle = w.maxSips > 0;
     const byPump = atWater(pos.x, pos.y, pos.z);

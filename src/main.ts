@@ -499,9 +499,9 @@ renderer.setAnimationLoop((time) => {
   }
   thrower.update(frameDt, hands);
   grinder.update(frameDt, hands);
-  jammer.update(frameDt, hands);
+  jammer.update(frameDt, hands && !storm.toolsDown); // dead in a storm's static (storm.update is later: last frame's)
   jammer.others(others, orbit.camera.position); // others' jammers: their static
-  receiver.update(frameDt, inHand, hands);
+  receiver.update(frameDt, inHand, hands, storm.toolsDown);
   // T: third person. On the bike the body is drawn in first person too (hands on the bars), minus the head.
   const bodyShown = orbit.showBody || riding || fly.active;
   if (bodyShown === bodyHidden) me.setShadowOnly((bodyHidden = !bodyShown));
@@ -516,7 +516,8 @@ renderer.setAnimationLoop((time) => {
   // The locator comes with the wrist computer; a better one shows players further away (the base always).
   const wrist = equipped(net.boxes.equip, 'wrist');
   const range = wrist ? locatorRange(quality(wrist)) : 0;
-  locator.lost = storm.lost || !wrist;
+  locator.lost = storm.toolsDown || !wrist;
+  survival.toolsDown = storm.toolsDown;
   locator.update(orbit.camera, orbit.viewYaw, orbit.pitch + orbit.freePitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z)]);
   terrain.update(focus);
   scrap.update(focus);

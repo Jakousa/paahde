@@ -42,8 +42,9 @@ export class Receiver {
     this.net = net;
   }
 
-  /** Every frame, after the camera is placed. `held`: the item in hand; `can`: free to use it. */
-  update(dt: number, held: Item | null | undefined, can: boolean) {
+  /** Every frame, after the camera is placed. `held`: the item in hand; `can`: free to use it; `dead`: a storm's static
+   *  has it dead (src/storm.ts toolsDown): no call, and the needle hangs as if nothing answered. */
+  update(dt: number, held: Item | null | undefined, can: boolean, dead = false) {
     const kind = playerHands.held === 'receiver' ? receiverBoss(held?.kind) : null;
     const r = playerHands.receiver;
     r.kind = kind;
@@ -53,8 +54,8 @@ export class Receiver {
       return;
     }
     this.t += dt;
-    const down = can && useHeld() && !!document.pointerLockElement;
-    const boss = this.net.called.find((b) => b.k === kind);
+    const down = can && !dead && useHeld() && !!document.pointerLockElement;
+    const boss = dead ? undefined : this.net.called.find((b) => b.k === kind);
     if (down && !this.wasDown && !boss && repaired(held) && performance.now() - this.sentAt > 3000) {
       this.sentAt = performance.now();
       this.net.call();

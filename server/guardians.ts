@@ -18,7 +18,7 @@ import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MIN_R, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
   missileAt,
 } from '../shared/missiles.ts';
-import { frontOut, nearStorm, type Storm } from '../shared/storm.ts';
+import { frontOut, nearStorm, seized, type Storm } from '../shared/storm.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
 import { sunElevation } from '../shared/sun.ts';
@@ -343,9 +343,15 @@ export class GuardianServer {
     this.tickMissiles(dt, now, lit, players, exposed, blasted, events);
     for (const g of this.guardians) {
       if (g.deadAt >= 0) continue;
-      this.tickGuardian(g, dt, now, exposed, byId, bitten);
+      // Seized up by a storm front's static: stands where it is, no bites, no cannon, till it has passed.
+      const stuck = seized(this.storms, g.x, g.z, now);
+      if (stuck) {
+        g.speed = 0;
+        g.aiming = false;
+        g.chargeAt = -1;
+      } else this.tickGuardian(g, dt, now, exposed, byId, bitten);
       this.stepFeet(g, dt);
-      if (KINDS[g.kind].gun) this.tickGun(g, now, byId, events);
+      if (KINDS[g.kind].gun && !stuck) this.tickGun(g, now, byId, events);
     }
     this.tickBolts(dt, exposed, shot, events);
     this.updatePosts();
@@ -375,7 +381,7 @@ export class GuardianServer {
     for (const p of exposed) {
       if (lit.has(p.id) && !this.spottedAt.has(p.id)) this.spottedAt.set(p.id, now);
       const spotted = lit.has(p.id) && now - this.spottedAt.get(p.id)! >= FIRST_MS;
-      const alive = this.guardians.filter((g) => g.kind === GUARDIAN && g.deadAt < 0);
+      const alive = this.guardians.filter((g) => g.kind === GUARDIAN && g.deadAt < 0 && !seized(this.storms, g.x, g.z, now));
       const shooters = new Set(alive.filter((g) => g.prey === p.id && now - g.huntAt >= FIRST_MS));
       if (spotted) {
         for (const g of alive.filter((g) => Math.hypot(g.x - p.x, g.z - p.z) < MISSILE_R)

@@ -55,7 +55,7 @@ import { heightAt } from '../shared/terrain.ts';
 import { BUNKER_SPAWN } from '../shared/base.ts';
 import { blastPush, DOWN_MS } from '../shared/ragdoll.ts';
 import { WIND } from '../shared/dunes.ts';
-import { CHOKE_RECOVER, CHOKE_S, frontExposure, stormAt, stormDrag } from '../shared/storm.ts';
+import { CHOKE_RECOVER, CHOKE_S, frontExposure, stormAt, stormDrag, toolsDown } from '../shared/storm.ts';
 import { sunElevation, timeOfDayAt } from '../shared/sun.ts';
 import { setTrophies } from '../shared/trophies.ts';
 import { LIVES, WORLD_ID } from '../shared/world.ts';
@@ -471,7 +471,7 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !p.ready || !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
   guardians.storms = storms.storms;
   const furrows: Furrow[] = [];
-  const crushed = harvesters.tick(now, list, furrows);
+  const crushed = harvesters.tick(now, list, furrows, storms.storms);
   for (const f of furrows) terrain.crater(f.x, f.z, f.r, f.mm, false);
   const r = guardians.tick(dt, now, tod, list);
   for (const k of guardians.crashes()) dropSpoils(k);
@@ -519,8 +519,8 @@ const calledKey = (kind: BossKind) => `called_${kind}`;
 function onCall(p: Player) {
   const held = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot];
   const kind = receiverBoss(held?.kind);
-  if (p.down || !kind || !repaired(held) || bosses.alive(kind)) return;
   const s = p.state;
+  if (p.down || !kind || !repaired(held) || bosses.alive(kind) || toolsDown(storms.storms, s.x, s.y, s.z, performance.now())) return;
   if (!bosses.call(kind, { id: p.id, x: s.x, y: s.y, z: s.z, safe: false }, performance.now())) return;
   items.spendPart(p.browserId, p.slot, 0); // the uranium cell (shared/gear.ts: first slot)
   sendBox(p, 'bag');
@@ -613,6 +613,7 @@ function onJam(p: Player, m: Extract<ClientMsg, { t: 'jam' }>) {
   const held = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot];
   const s = p.state, len = Math.hypot(m.dx, m.dy, m.dz);
   if (held?.kind !== JAMMER || !repaired(held) || p.down || len < 0.5 || Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > SHOT_FROM) return;
+  if (toolsDown(storms.storms, s.x, s.y, s.z, now)) return; // dead in a storm's static
   // A jet moves fast: the client sees it where it was some ping ago, so any of the last half second will do.
   const seen = (at: { x: number; y: number; z: number } | null) => !!at && inCone(m.x, m.y, m.z, m.dx / len, m.dy / len, m.dz / len, at.x, at.y, at.z, 0.1);
   if (m.kind === 'jet' ? ![0, 150, 300, 500].some((ago) => seen(jets.where(m.id, now, ago))) : !seen(guardians.droneAt(m.id))) return;

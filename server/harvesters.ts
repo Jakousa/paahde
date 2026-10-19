@@ -14,6 +14,7 @@ import { overBase } from '../shared/base.ts';
 import { nearShelter, indoors } from '../shared/shelters.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
+import { seized, type Storm } from '../shared/storm.ts';
 
 /** Time between one harvester setting off and the next being sent (ms); the first comes sooner. */
 const GAP_MIN_MS = 4 * 60_000;
@@ -39,6 +40,8 @@ const FURROW_R_M = 2.4;
  *  length (local z: from in front of the maw, give or take). */
 const CORE_SLACK = 0.9;
 const SHOT_FROM_Z = 12;
+/** Seized up by a storm front (shared/storm.ts seized): it brakes to a stop at this (m/s²). */
+const SEIZE_BRAKE = 3;
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -100,6 +103,8 @@ type Brain = {
   aheadAt: number;
   /** Where the furrows were last stamped (distance come, m). */
   furrowS: number;
+  /** Seized up by a storm front: stopped till it has passed. */
+  stuck: boolean;
 };
 
 export type HarvesterPlayer = { id: number; x: number; y: number; z: number; safe: boolean };
@@ -136,15 +141,15 @@ export class HarvesterServer {
       if (!pts) continue;
       const id = this.nextId++, start = Math.round(now);
       this.harvesters.push({ id, pts, pace: [{ t: start, s: 0, v: SPEED, a: 0, to: SPEED }], start, end: 0, cores: CORES.map(() => 0), charging: false });
-      this.brains.set(id, { aheadAt: 0, furrowS: 0 });
+      this.brains.set(id, { aheadAt: 0, furrowS: 0, stuck: false });
       this.changed = true;
       return true;
     }
     return false;
   }
 
-  /** Advance to server time `now`. Who it ran over; furrows to stamp go into `furrows`. */
-  tick(now: number, players: HarvesterPlayer[], furrows: Furrow[]): Crushed[] {
+  /** Advance to server time `now` under `storms`. Who it ran over; furrows to stamp go into `furrows`. */
+  tick(now: number, players: HarvesterPlayer[], furrows: Furrow[], storms: readonly Storm[] = []): Crushed[] {
     const crushed: Crushed[] = [];
     // Gone: a wreck burnt out, or past the route's end.
     const live = this.harvesters.filter((h) => (h.end ? h.end > now : harvesterAt(h, now, _p)));
@@ -172,22 +177,28 @@ export class HarvesterServer {
         }
         if (Math.abs(_l.x) < LANE && _l.z >= BOW - 2 && _l.z < BOW + AHEAD && level) ahead = true;
       }
+      // A storm front's static seizes it: it brakes to a stop and sits there till it has passed, then sets off again.
+      const stuck = seized(storms, _p.x, _p.z, now);
+      if (stuck !== b.stuck) {
+        b.stuck = stuck;
+        this.pace(h, now, stuck ? 0 : SPEED);
+      }
+      if (stuck) continue;
       if (ahead) b.aheadAt = now;
-      if (ahead && !h.charging) this.pace(h, now, true);
-      else if (!ahead && h.charging && now - b.aheadAt > CALM_MS) this.pace(h, now, false);
+      if (ahead && !h.charging) this.pace(h, now, CHARGE);
+      else if (!ahead && h.charging && now - b.aheadAt > CALM_MS) this.pace(h, now, SPEED);
       this.furrows(b, players, furrows);
     }
     return crushed;
   }
 
-  /** A new stretch of pace from now: up to CHARGE, or back down to SPEED. */
-  private pace(h: Harvester, now: number, charge: boolean) {
+  /** A new stretch of pace from now, towards speed `to`: up to CHARGE, back down to SPEED, or stopping (0, seized). */
+  private pace(h: Harvester, now: number, to: number) {
     const { s, v } = paceAt(h.pace, now);
-    const to = charge ? CHARGE : SPEED;
-    h.pace.push({ t: Math.round(now), s: r2(s), v: r3(v), a: to > v ? SPEED_UP : -SLOW_DOWN, to });
+    h.pace.push({ t: Math.round(now), s: r2(s), v: r3(v), a: to > v ? SPEED_UP : to === 0 ? -SEIZE_BRAKE : -SLOW_DOWN, to });
     // Only the last few matter (the one before covers anyone whose clock is a little behind).
     if (h.pace.length > 3) h.pace.splice(0, h.pace.length - 3);
-    h.charging = charge;
+    h.charging = to === CHARGE;
     this.changed = true;
   }
 
