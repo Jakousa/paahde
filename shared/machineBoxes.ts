@@ -94,11 +94,12 @@ function machinesNear(x: number, z: number): CrashSite[] {
 }
 
 /**
- * The machine a player is leaning on, if any: touching its side (within a hand's breadth), not standing on it, and walking
- * into it. Returns it with the direction from its axis to the player (horizontal, unit) and the speed into it (m/s).
+ * The machine a player is leaning on, if any: touching its side (within a hand's breadth), not standing on it, and meaning to walk
+ * into it (`wishX`, `wishZ`: the unit direction the keys ask for; the velocity cannot say, the collision has just taken the part
+ * into the machine away). Returns it with the direction from its axis to the player (horizontal, unit) and how squarely they push (0..1).
  * The server turns that into the machine rolling slowly about its axis (server/crash.ts push), so every side can be reached.
  */
-export function pushedMachine(p: { x: number; z: number; vx: number; vz: number }, y: number, radius: number, stepUp: number):
+export function pushedMachine(p: { x: number; z: number }, y: number, radius: number, stepUp: number, wishX: number, wishZ: number):
   { site: CrashSite; nx: number; nz: number; into: number } | null {
   for (const site of machinesNear(p.x, p.z)) {
     if (Math.abs(p.x - site.x) > 4 + radius || Math.abs(p.z - site.z) > 4 + radius) continue;
@@ -110,8 +111,8 @@ export function pushedMachine(p: { x: number; z: number; vx: number; vz: number 
       const d = Math.sqrt(ex * ex + ez * ez);
       if (d < 1e-6 || d > b.r + radius + 0.12 || y >= base + b.h - stepUp) continue;
       const nx = ex / d, nz = ez / d;
-      const into = -(p.vx * nx + p.vz * nz);
-      if (into > 0) return { site, nx, nz, into };
+      const into = -(wishX * nx + wishZ * nz);
+      if (into > 0.3) return { site, nx, nz, into };
     }
   }
   return null;

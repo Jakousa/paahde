@@ -898,7 +898,7 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.input = input & INPUT_MASK;
   const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
   p.state = step(p.state, input & INPUT_MASK, p.yaw, drag, guardians.posts);
-  crash.push(p.state); // leaning on a machine rolls it
+  crash.push(p.state, input & INPUT_MASK, p.yaw); // crouched and leaning on a machine rolls it
 }
 
 // Fixed-rate server loop: refill input tokens, simulate idle players, broadcast snapshots.

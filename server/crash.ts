@@ -17,7 +17,7 @@
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
 import { machineChanged, pushedMachine, setMachineProgress } from '../shared/machineBoxes.ts';
-import { DT, PLAYER_RADIUS, STEP_UP } from '../shared/sim.ts';
+import { CROUCH, BACK, DT, FORWARD, LEFT, PLAYER_RADIUS, RIGHT, STEP_UP } from '../shared/sim.ts';
 import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { crashSite, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
@@ -197,17 +197,26 @@ export class CrashServer {
   private rolls = new Map<string, number>();
   private rolled = new Set<string>();
 
-  /** A player at `s` this tick: leaning on a machine while walking into it rolls it, slowly, away from them: pushing from one
-   *  side brings the other round. Slower than a walk (a ton and a half of engine). */
-  push(s: { x: number; y: number; z: number; vx: number; vz: number }) {
-    const hit = pushedMachine(s, s.y, PLAYER_RADIUS, STEP_UP);
+  /** A player at `s` this tick with these keys (`input`) and facing (`yaw`): crouched and leaning on a machine, walking into it, they
+   *  roll it, slowly, away from them: pushing from one side brings the other round. (Crouching so that brushing past never does.) */
+  push(s: { x: number; y: number; z: number }, input: number, yaw: number) {
+    if (!(input & CROUCH)) return;
+    const fwd = (input & FORWARD ? 1 : 0) - (input & BACK ? 1 : 0);
+    const strafe = (input & RIGHT ? 1 : 0) - (input & LEFT ? 1 : 0);
+    let wx = -Math.sin(yaw) * fwd + Math.cos(yaw) * strafe;
+    let wz = -Math.cos(yaw) * fwd - Math.sin(yaw) * strafe;
+    const len = Math.hypot(wx, wz);
+    if (!len) return;
+    wx /= len;
+    wz /= len;
+    const hit = pushedMachine(s, s.y, PLAYER_RADIUS, STEP_UP, wx, wz);
     if (!hit) return;
     const { site, nx, nz, into } = hit;
     // which way round: the top moves away from the player (the axis' horizontal direction crossed with up, against the push)
     const ax = Math.sin(site.yaw), az = Math.cos(site.yaw);
     const side = az * nx - ax * nz;
     if (Math.abs(side) < 0.05) return; // pushing along the axis: it does not roll
-    const rate = ROLL_RATE * Math.min(1, into / 2) * Math.sign(side);
+    const rate = ROLL_RATE * into * Math.sign(side);
     this.rolls.set(site.id, (this.rolls.get(site.id) ?? 0) + rate * DT);
     this.rolled.add(site.id);
   }
