@@ -23,6 +23,10 @@ import { TEXT } from '../../shared/text.ts';
 const BUILD_R = 60;
 /** Fasteners are drawn within this many metres (a little more once they are). */
 const DETAIL_R = 16;
+/** A machine and what lies round it (pieces on the ground) fit in this sphere; within CULL_NEAR m it is always drawn, as its
+ *  shadow and the pieces around you matter more than the saving. */
+const CULL_RADIUS = 8;
+const CULL_NEAR = 24;
 /** Objects put back per frame as a machine's detail comes in. */
 const DETAIL_PER_FRAME = 24;
 const DROP_R = 140;
@@ -57,6 +61,12 @@ export class MachineSites {
   private progress = new Map<string, Progress>();
   /** Id of the site the disassembly mode is working on (src/teardown): its machine is never swapped under it. */
   busy: () => string | undefined = () => undefined;
+  /** The player's camera: a whole machine out of its view is not drawn or walked at all (see cull). */
+  camera: THREE.Camera | null = null;
+  private frustum = new THREE.Frustum();
+  private viewProj = new THREE.Matrix4();
+  private ball = new THREE.Sphere();
+  private frameAt = -1;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -79,12 +89,32 @@ export class MachineSites {
       else if (!gone && d < BUILD_R && !v.shown) this.show(v);
       else if (v.shown && d > DROP_R) this.drop(v, false);
       if (v.shown && v.junk && !v.husk) this.detailed(v, d);
+      if (v.shown && v.junk) this.cull(v, d);
     }
     for (const [id, v] of this.views) {
       if (keep.has(id)) continue;
       this.drop(v, true);
       this.views.delete(id);
     }
+  }
+
+  /** One test for the whole machine, a sphere round it: outside the view (and far enough off that its shadow cannot reach it
+   *  either) its objects are not visited by the renderer at all, instead of each being frustum-tested every frame. */
+  private cull(v: SiteView, d: number) {
+    const root = v.junk!.root;
+    const cam = this.camera;
+    if (!cam || this.busy() === v.site.id || d < CULL_NEAR) {
+      root.visible = true;
+      return;
+    }
+    if (this.frameAt !== performance.now()) {
+      this.frameAt = performance.now();
+      this.viewProj.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+      this.frustum.setFromProjectionMatrix(this.viewProj);
+    }
+    this.ball.center.set(v.site.x, root.position.y + 1, v.site.z);
+    this.ball.radius = CULL_RADIUS;
+    root.visible = this.frustum.intersectsSphere(this.ball);
   }
 
   /** Its fasteners are drawn only while you are near (or working on it): the rest of the time they are hidden, and the machine

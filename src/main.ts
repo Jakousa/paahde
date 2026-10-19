@@ -157,6 +157,7 @@ await slice();
 const teardown = new TeardownView(scene, orbit.camera, renderer.domElement); // F at a machine site: the character walks up and the disassembly controls take over
 await slice();
 machines.busy = () => teardown.current?.id;
+machines.camera = orbit.camera;
 machines.bench.indoors = (root) => base.lightIndoors(root);
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
