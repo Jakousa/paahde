@@ -1,4 +1,4 @@
-# Dev environment: `docker compose up` runs `npm run dev` (wasm build, game server on :8787, Vite on :5173).
+# Dev environment: `docker compose up` runs `npm run dev` (game server on :8787, Vite on :5173).
 # Open http://localhost:5173. Source is bind-mounted, so edits hot-reload; node_modules lives in a named volume
 # (the host's would hold Windows/macOS native binaries). Run `docker compose run --rm dev npm run build` to check a build.
 services:

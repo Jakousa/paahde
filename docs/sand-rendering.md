@@ -412,8 +412,8 @@ approach. That's correct, because the mirage is distance-gated.
   `backgroundNode`, otherwise the haze color won't match.
 - Render with `pipeline.render()` instead of `renderer.render()` once post is added. Keep
   `renderer.toneMapping` set: `RenderPipeline` applies it at its output (`outputColorTransform`).
-- Heavy per-frame CPU work (re-meshing terrain chunks when the player moves) is a candidate for
-  `assembly/`, but only if it shows up in profiling. A 256² grid rebuild in TS is fine.
+- Heavy per-frame CPU work (re-meshing terrain chunks when the player moves) belongs in a worker,
+  but only if it shows up in profiling. A 256² grid rebuild in TS is fine.
 
 ## Sources (summary)
 - Journey GDC 2013: https://gdcvault.com/play/1017742/Sand-Rendering-in · Zucconi series: https://www.alanzucconi.com/2019/10/08/journey-sand-shader-1/

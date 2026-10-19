@@ -3,10 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "asbuild": "asc assembly/index.ts --target release",
-    "dev": "npm run asbuild && concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"vite\"",
+    "dev": "concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"vite\"",
     "dev:server": "node --watch-path=server --watch-path=shared server/index.ts --lab",
-    "build": "npm run asbuild && tsc --noEmit && vite build && node tools/precompress.ts",
+    "build": "tsc --noEmit && vite build && node tools/precompress.ts",
     "start": "node server/index.ts",
     "preview": "npm run build && npm start"
   },
@@ -15,7 +14,6 @@
     "@types/three": "^0.186.0",
     "@types/ws": "^8.18.2",
     "@webgpu/types": "^0.1.74",
-    "assemblyscript": "^0.28.20",
     "concurrently": "^10.0.6",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"

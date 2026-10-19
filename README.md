@@ -1,8 +1,7 @@
 # Paahde
 
 Online multiplayer desert survival game, made in the dadajam game jam (repo name: dadajam). three.js (WebGPU renderer, automatic WebGL2 fallback) + TypeScript + Vite,
-a Node WebSocket game server with SQLite, and performance-critical code in WebAssembly via
-[AssemblyScript](https://www.assemblyscript.org/). See [docs/netcode.md](docs/netcode.md) for how syncing works.
+and a Node WebSocket game server with SQLite. See [docs/netcode.md](docs/netcode.md) for how syncing works.
 
 **Live:** https://herkku.org/dadajam/ — every push to `main` deploys automatically (~2–3 min).
 
@@ -12,7 +11,7 @@ Node 24+.
 
 ```sh
 npm install
-npm run dev      # wasm + game server + Vite on http://localhost:5173 (open two tabs)
+npm run dev      # game server + Vite on http://localhost:5173 (open two tabs)
 docker compose up   # same thing in a container (no local Node needed); stop with: docker compose down
 npm run build    # production build into dist/
 ```
@@ -20,8 +19,6 @@ npm run build    # production build into dist/
 - `src/` — client (TypeScript, three.js). Import three from `three/webgpu`.
 - `server/` — authoritative game server + SQLite; `shared/` — simulation and protocol used by both.
 - `public/` — static assets (models, textures, audio); reference them with relative paths.
-- `assembly/` — AssemblyScript compiled to `src/wasm/game.wasm`; exported functions are available as
-  `wasm.<name>` via `src/wasm.ts`. Rerun `npm run asbuild` (or restart `dev`) after changing it.
 
 ## Workflow
 

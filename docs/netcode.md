@@ -122,7 +122,7 @@ and the last stall.
   `Date.now()` or frame-time `dt` inside `step`.
 - Add new inputs as bits in the input bitmask (the server masks unknown bits: update `input & 7`
   in `server/world.ts`).
-- Purely visual effects (particles, squash and stretch, the wasm spin) stay client-side.
+- Purely visual effects (particles, squash and stretch) stay client-side.
 - New message types go in `shared/protocol.ts`.
 - **Terrain edits** (craters, `shared/dig.ts`; players don't dig any more): the server stamps craters, runs the
   angle-of-repose sand relaxation at 30 Hz on recently changed vertices only, and broadcasts changed vertices as

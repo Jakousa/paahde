@@ -1,17 +1,16 @@
 # dadajam
 
 Public game jam repo, three collaborators. Online multiplayer browser game: three.js + TypeScript + Vite
-client, Node 24 WebSocket game server with SQLite, hot paths in WebAssembly via AssemblyScript. Every merge to `main` goes live at https://herkku.org/dadajam/ within
+client, Node 24 WebSocket game server with SQLite. Every merge to `main` goes live at https://herkku.org/dadajam/ within
 a few minutes, so `main` must always build.
 
 ## Commands
 
-- `npm run dev` — compile wasm, then run the game server (:8787, auto-restarts) and Vite
+- `npm run dev` — run the game server (:8787, auto-restarts) and Vite
   (http://localhost:5173, proxies `/ws` and `/api`). Make a world on the landing page, then open its URL in a
   second tab to see multiplayer. **Test lab (dev only):** `http://localhost:5173/?w=lab`, a flat room with every
   machine to take apart and every part, gear and the grinder to pick up (shared/lab.ts, docs/devlog.md "The test lab").
-- `npm run asbuild` — recompile wasm only (Vite does not watch `assembly/`)
-- `npm run build` — wasm + `tsc --noEmit` + production build into `dist/`. Run before pushing.
+- `npm run build` — `tsc --noEmit` + production build into `dist/`. Run before pushing.
 - `npm run preview` — build, then run the production server (serves `dist/` + `/ws` on :8787).
 
 There are no tests yet; `npm run build` is the check CI runs on PRs.
@@ -104,8 +103,6 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `src/telemetry.ts`, `server/telemetry.ts` — stall tracing to `data/telemetry.jsonl` (docs/netcode.md "Telemetry"; read it with
   `node tools/telemetry.ts` (digest + HTML report, or `tail`)
 - `src/input.ts` — keyboard → input bitmask
-- `src/wasm.ts` — loads the compiled wasm; use exports as `wasm.<fn>`
-- `assembly/` — AssemblyScript source (compiled to `src/wasm/`, gitignored — never edit `src/wasm/`)
 - `docs/devlog.md` — what's been built and why, known gaps; `docs/look.md` — art direction; `docs/machines.md` — **the guide for continuing the
   realistic-machines program** (pipeline, rules, checks, backlog; read it before touching `tools/blender/machines/`, `src/teardown/` or the jets); `tools/trace-report.py` reads Chrome performance traces
 - `shared/text.ts` — **every player-visible text** (`TEXT`): names of things, prompts, notices, menus, hints, step
@@ -135,11 +132,6 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   - `await renderer.init()` before the first render; loop with `renderer.setAnimationLoop`.
 - The game is served under a subpath (`/dadajam/`) with `base: './'`. Never use absolute URLs like
   `/models/x.glb`; use relative paths (`./models/x.glb`) or `import url from './x.glb?url'`.
-- AssemblyScript is TypeScript-like but not TypeScript: explicit numeric types (`f32`, `i32`, `f64`),
-  no closures, no union types or `any`. Use `Mathf` for f32 math. Keep the JS↔wasm boundary to numbers
-  (or shared typed-array views over `wasm.memory`) — crossing it with strings/objects is slow.
-- Put per-frame number crunching (physics, simulation, procedural generation) in `assembly/`;
-  scene graph, input, UI and loading stay in TypeScript.
 - Strict TypeScript; keep it compiling with no errors.
 
 ## Game design

@@ -1,6 +1,5 @@
 node_modules/
 dist/
-src/wasm/
 .DS_Store
 .claude/settings.local.json
 data/
