@@ -39,6 +39,11 @@ MATERIALS = {
 objects = []
 
 
+def lathe_y(mb, profile, segs, mat, **kw):
+    """MB.lathe turns about Z (the engine's axis); the hardware stands on +Y."""
+    return mb.lathe(profile, segs, mat, M=kit.Rx(-PI / 2), **kw)
+
+
 def emit(mb, name, pivot=(0, 0, 0)):
     """Make the object: the geometry (built in the node's own frame, three.js axes, origin at the seat) with its origin moved to `pivot`."""
     p = Vector(pivot)
@@ -59,8 +64,8 @@ def emit(mb, name, pivot=(0, 0, 0)):
 
 def hexhead(mb, r, h, mat, top=0.88, base=0.0, phase=0.0):
     """A hex head (r: corner radius) with its top chamfered in."""
-    mb.lathe([(r, base), (r, h * 0.8), (r * top, h)], 6, mat, phase=phase, cap=True)
-    mb.lathe([(0, base), (r, base)], 6, mat, phase=phase)
+    lathe_y(mb, [(r, base), (r, h * 0.8), (r * top, h)], 6, mat, phase=phase, cap=True)
+    lathe_y(mb, [(0, base), (r, base)], 6, mat, phase=phase)
 
 
 def bolt(variant):
@@ -85,7 +90,7 @@ def screw(variant):
     s.cyl((0, -0.003, 0), (0, 0.002, 0), 0.032, 0.032, segs=18, mat='Dark')
     emit(s, f'Screw{variant}')
     h = MB()
-    h.lathe([(0.027, 0.0), (0.027, 0.007), (0.02, 0.013), (0.0, 0.0145)], 14, 'Rust' if worn else 'Steel', cap=True)
+    lathe_y(h, [(0.027, 0.0), (0.027, 0.007), (0.02, 0.013), (0.0, 0.0145)], 14, 'Rust' if worn else 'Steel', cap=True)
     h.box((0, 0.0138, 0), (0.034, 0.003, 0.006), 'Dark')
     h.box((0, 0.0138, 0), (0.006, 0.003, 0.034), 'Dark')
     emit(h, f'Screw{variant}_Spin', (0, 0.002, 0))
@@ -99,10 +104,10 @@ def latch(variant):
     s.box((-0.045, 0.02, 0.026), (0.016, 0.02, 0.008), 'Zinc')  # the hinge cheeks
     s.box((-0.045, 0.02, -0.026), (0.016, 0.02, 0.008), 'Zinc')
     emit(s, f'Latch{variant}')
-    h = MB()  # the lever, hinged at the origin and lying toward +X
-    h.box((0.045, 0.0, 0), (0.095, 0.011, 0.038), 'Steel')
-    h.box((0.093, 0.0, 0), (0.026, 0.018, 0.046), 'Orange')  # the grip end
-    h.cyl((0, 0, -0.022), (0, 0, 0.022), 0.009, 0.009, segs=10, mat='Zinc')
+    h = MB()  # the lever, hinged at (-0.045, 0.02, 0) and lying toward +X (built where it sits: emit() moves the origin to the hinge)
+    h.box((0.0, 0.02, 0), (0.095, 0.011, 0.038), 'Steel')
+    h.box((0.048, 0.02, 0), (0.026, 0.018, 0.046), 'Orange')  # the grip end
+    h.cyl((-0.045, 0.02, -0.022), (-0.045, 0.02, 0.022), 0.009, 0.009, segs=10, mat='Zinc')
     emit(h, f'Latch{variant}_Spin', (-0.045, 0.02, 0))
 
 
@@ -115,7 +120,7 @@ def clamp(variant):
     emit(s, f'Clamp{variant}')
     h = MB()  # the T-bolt and its wing nut, turned to open the band
     h.cyl((0, -0.01, 0), (0, 0.058, 0), 0.008, 0.008, segs=10, mat='Zinc')
-    h.lathe([(0.021, 0.045), (0.021, 0.062), (0.015, 0.066)], 8, 'Steel', cap=True)
+    lathe_y(h, [(0.021, 0.045), (0.021, 0.062), (0.015, 0.066)], 8, 'Steel', cap=True)
     h.box((0, 0.056, 0), (0.07, 0.012, 0.014), 'Steel')  # the wings
     h.box((0, 0.062, 0), (0.014, 0.014, 0.014), 'Steel')
     emit(h, f'Clamp{variant}_Spin', (0, 0.0, 0))
@@ -130,7 +135,7 @@ def pin(variant):
     emit(s, f'Pin{variant}')
     h = MB()  # a quick-release pin: the shaft, a thumb button, a ring to pull it by
     h.cyl((0, -0.03, 0), (0, 0.062, 0), 0.0085, 0.0085, segs=10, mat='Steel')
-    h.lathe([(0.019, 0.05), (0.019, 0.066), (0.012, 0.072)], 10, 'Brass', cap=True)
+    lathe_y(h, [(0.019, 0.05), (0.019, 0.066), (0.012, 0.072)], 10, 'Brass', cap=True)
     ring = h.sweep([(0.0, 0.074, 0.0), (0.03, 0.09, 0.0), (0.045, 0.1, 0.0), (0.03, 0.112, 0.0), (0.0, 0.094, 0.0)], 0.0032, 'Zinc')
     emit(h, f'Pin{variant}_Spin', (0, 0.006, 0))
 
@@ -150,11 +155,11 @@ def plug():
     """A circular multi-pin connector's plug: a knurled coupling ring, a body, a backshell the cable leaves by (+Y), a strain relief."""
     p = MB()
     p.cyl((0, 0.0, 0), (0, 0.028, 0), 0.027, 0.027, segs=16, mat='Zinc')
-    p.lathe([(0.034, 0.002), (0.034, 0.02), (0.03, 0.024)], 16, 'Oxide', cap=True)  # the coupling ring
+    lathe_y(p, [(0.034, 0.002), (0.034, 0.02), (0.03, 0.024)], 16, 'Oxide', cap=True)  # the coupling ring
     for i in range(12):
         a = 2 * PI * i / 12
         p.box((0.034 * math.cos(a), 0.012, 0.034 * math.sin(a)), (0.006, 0.016, 0.006), 'Steel', rot=(0, -a, 0))
-    p.lathe([(0.026, 0.028), (0.022, 0.05), (0.013, 0.07)], 14, 'Oxide')
+    lathe_y(p, [(0.026, 0.028), (0.022, 0.05), (0.013, 0.07)], 14, 'Oxide')
     p.cyl((0, 0.07, 0), (0, 0.098, 0), 0.013, 0.01, segs=10, mat='Rubber')
     emit(p, 'Plug')
 
