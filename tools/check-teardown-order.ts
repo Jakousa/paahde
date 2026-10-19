@@ -12,10 +12,10 @@ let bad = 0;
 for (let seed = 1; seed <= 300; seed++) {
   const j = buildJunk('jet_engine', seed * 7919, 2);
   const mods = machineModules('jet_engine', seed * 7919, 2);
-  const owner: string[] = [];
-  for (const { mod } of mods) for (const ls of mod.steps) if (!ls.with || ls.with.every((id) => mods.some((m) => m.mod.id === id))) owner.push(mod.id);
+  const owner: string[] = [], inner: boolean[] = [];
+  for (const { mod } of mods) for (const ls of mod.steps) if (!ls.with || ls.with.every((id) => mods.some((m) => m.mod.id === id))) { owner.push(mod.id); inner.push(!!ls.inner); }
   const present = new Set(mods.map((m) => m.mod.id));
-  const gone = (id: string) => j.steps.every((s, i) => owner[i] !== id || s.done);
+  const gone = (id: string) => j.steps.every((s, i) => owner[i] !== id || inner[i] || s.done); // (off: its outer steps are done)
   for (let n = 0; n < 500; n++) {
     const s = j.steps.find((x) => stepReady(x));
     if (!s) break;

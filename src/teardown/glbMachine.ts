@@ -120,7 +120,9 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
       byId.set(ls.id, step);
       (ls.inner ? inner : outer).push(step);
     }
-    ofModule.set(mod.id, [...outer, ...inner]);
+    // waiting on a module means waiting for it to come off (its outer steps): what is left to do on the piece lying on the ground
+    // (its inner steps) holds nothing else up
+    ofModule.set(mod.id, outer);
 
     const piece = kit.cover(group, outer, mod.pop as V, 0.3);
     const ownedSlots: Slot[] = [];
