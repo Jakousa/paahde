@@ -85,7 +85,7 @@ const en = {
   },
   /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR). */
   gearUse: {
-    motorcycle: 'Press 9 to get on and off.',
+    motorcycle: 'Press Z to get on and off.',
     spyglass: 'Hold the mouse button to look, wheel to zoom.',
     canteen: 'Hold the mouse button to drink; fill it at the pump in the base.',
     backpack: 'Bag room past the hotbar.',
