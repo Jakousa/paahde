@@ -533,6 +533,7 @@ export class TeardownView {
   private locked(o: THREE.Object3D) {
     for (let p: THREE.Object3D | null = o; p; p = p.parent) {
       const t = p.userData.target as Target | undefined;
+      if (t?.type === 'step') return !stepReady(t.step);
       if (t?.type === 'part') return !slotOpen(t.slot) || this.pendingSlot(t.slot);
     }
     return false;
@@ -1058,8 +1059,8 @@ export class TeardownView {
     for (const s of j.steps) {
       const lit = this.lit.has(s);
       const ready = !s.done && stepReady(s);
-      // a step still waiting on another is not there yet: it cannot be seen or aimed at, so it never gets in the way
-      if (!s.done) s.obj.visible = ready;
+      // a step still waiting on another is seen but cannot be aimed at (the pointer goes through it, see `locked`)
+      if (!s.done) s.obj.visible = true;
       // the big indicator (a setting) on every ready step, or just on what the crosshair is on; the glint is always there
       s.marker.visible = !s.done && tdPrefs.markers && (ready || lit);
       if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);

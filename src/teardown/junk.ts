@@ -83,7 +83,7 @@ export function hideDetail(junk: { steps: Step[]; slots: Slot[] }) {
  *  (a hundred new objects in one frame is a long frame: each needs its pipeline and bindings made). */
 export function detailList(junk: { steps: Step[]; slots: Slot[] }): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
-  for (const s of junk.steps) if (!s.done && stepReady(s)) out.push(s.obj);
+  for (const s of junk.steps) if (!s.done) out.push(s.obj);
   for (const sl of junk.slots) if (!sl.taken) out.push(sl.piece.obj);
   return out;
 }
@@ -585,7 +585,7 @@ export class Kit {
     marker.visible = false;
     g.add(marker);
     const step: Step = { kind, label, need, players, progress: 0, done: false, after, obj: g, spin, hit, marker, shine, floorY: floorY * this.fs, mat };
-    hit.userData.target = { type: 'step', step } satisfies Target;
+    hit.userData.target = g.userData.target = { type: 'step', step } satisfies Target;
     this.g.add(g);
     this.steps.push(step);
     return step;
