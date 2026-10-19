@@ -5,7 +5,10 @@ export interface GraphicsPrefs {
   resScale: number;
   /** Resolution follows the frame time (below the scale); off holds it at the scale. */
   dynamicRes: boolean;
-  forceFullscreen: boolean;
+  /** Clicking into the game goes fullscreen (and locks the keyboard); off, the game stays in its window. */
+  fullscreen: boolean;
+  /** Frames per second the game draws at most; 0 = as fast as the screen goes. Adaptive resolution aims at it (60 when 0). */
+  fpsLimit: number;
   shadows: boolean;
   /** Metres out to which the sun casts shadows. */
   shadowDistance: number;
@@ -15,8 +18,9 @@ export interface GraphicsPrefs {
   shadowMap: number;
 }
 
-export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, forceFullscreen: false, shadows: true, shadowDistance: 1600, cascades: 4, shadowMap: 1024 };
+export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, cascades: 4, shadowMap: 1024 };
 export const SHADOW_DISTANCE_RANGE = [200, 1600] as const;
+export const FPS_LIMITS = [30, 60, 90, 120, 144, 240, 0] as const;
 export const SHADOW_MAPS = [512, 1024, 2048] as const;
 
 const KEY = 'dadajam.graphics';
@@ -31,10 +35,11 @@ function load(): GraphicsPrefs {
     num('resScale', 0.25, 2);
     num('shadowDistance', SHADOW_DISTANCE_RANGE[0], SHADOW_DISTANCE_RANGE[1]);
     num('cascades', 1, 4);
+    if ((FPS_LIMITS as readonly number[]).includes(o.fpsLimit)) g.fpsLimit = o.fpsLimit;
     g.cascades = Math.round(g.cascades);
     num('shadowMap', SHADOW_MAPS[0], SHADOW_MAPS[SHADOW_MAPS.length - 1]);
     if (!(SHADOW_MAPS as readonly number[]).includes(g.shadowMap)) g.shadowMap = GRAPHICS_DEFAULTS.shadowMap;
-    for (const k of ['dynamicRes', 'forceFullscreen', 'shadows'] as const) if (typeof o[k] === 'boolean') g[k] = o[k];
+    for (const k of ['dynamicRes', 'fullscreen', 'shadows'] as const) if (typeof o[k] === 'boolean') g[k] = o[k];
   } catch {}
   return g;
 }

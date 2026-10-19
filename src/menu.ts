@@ -6,10 +6,10 @@ import { setCounts, setMarkers, tdPrefs } from './teardown/prefs.ts';
 import { WORLD_ID } from '../shared/world.ts';
 import { audio } from './audio';
 import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
-import { capture, toggleFullscreen, tools, ui } from './input';
+import { capture, setFullscreen, tools, ui } from './input';
 import { openMinigame } from './minigameMenu';
 import { TEXT } from '../shared/text.ts';
-import { SHADOW_DISTANCE_RANGE, SHADOW_MAPS, graphics, needsReload, setGraphics } from './graphics';
+import { FPS_LIMITS, SHADOW_DISTANCE_RANGE, SHADOW_MAPS, graphics, needsReload, setGraphics } from './graphics';
 
 const STATS_KEY = 'dadajam.stats';
 const AO_KEY = 'dadajam.ao';
@@ -28,8 +28,10 @@ const css = `
 #menu .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
 #menu .row > span:first-child { width: 80px; }
 #menu input[type=range] { flex: 1; accent-color: #ffd9a0; }
+#menu select { flex: 1; padding: 3px; font: 12px var(--mono); color: #ffd9a0; background: rgba(255, 217, 160, 0.14); border: 0; border-radius: 4px; }
+#menu select option { background: #2a160a; }
 #menu input[type=checkbox] { accent-color: #ffd9a0; margin: 0; }
-#menu .val, #menu .aoval { width: 36px; text-align: right; opacity: 0.8; }
+#menu .val, #menu .aoval { width: 52px; text-align: right; opacity: 0.8; }
 #menu .panel { max-height: calc(100vh - 32px); overflow-y: auto; }
 #menu .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; opacity: 0.85; }
 #menu .binds { display: grid; grid-template-columns: 1fr 64px 64px; gap: 4px 6px; align-items: center; }
@@ -99,7 +101,6 @@ export class Menu {
     this.el.id = 'menu';
     this.el.innerHTML = `<div class="panel"><div class="main"><h2>${TEXT.game.name}</h2><button class="resume">${TEXT.menu.resume}</button>
 <button class="opt" style="margin-top:12px">${TEXT.menu.options}</button>
-<button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>
 <button class="ctl" style="margin-top:8px">${TEXT.menu.controls}</button>
 <div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
@@ -110,7 +111,8 @@ export class Menu {
 <label class="row"><span>${TEXT.menu.showCounts}</span><input class="counts" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label></div>
 <div class="pane" data-pane="graphics">
-<label class="row"><span>${TEXT.menu.forceFullscreen}</span><input class="gForceFs" type="checkbox"></label>
+<label class="row"><span>${TEXT.menu.display}</span><select class="gDisplay"><option value="1">${TEXT.menu.fullscreen}</option><option value="0">${TEXT.menu.windowed}</option></select></label>
+<label class="row"><span>${TEXT.menu.fpsTarget}</span><input class="gFps" type="range" min="0" max="${FPS_LIMITS.length - 1}" step="1"><span class="val gFpsVal"></span></label>
 <label class="row"><span>${TEXT.menu.resolution}</span><input class="gRes" type="range" min="0.25" max="1" step="0.05"><span class="val gResVal"></span></label>
 <label class="row"><span>${TEXT.menu.dynamicRes}</span><input class="gDyn" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
@@ -203,15 +205,6 @@ export class Menu {
     // Drop focus after using a control, or the arrow keys / space would keep nudging it.
     for (const input of [vol, music, aoEl, stats, guides, counts, ...gInputs]) input.addEventListener('change', () => input.blur());
 
-    const fs = this.el.querySelector<HTMLButtonElement>('.fs')!;
-    const showFs = () => (fs.textContent = document.fullscreenElement ? TEXT.menu.exitFullscreen : TEXT.menu.enterFullscreen);
-    showFs();
-    document.addEventListener('fullscreenchange', showFs);
-    fs.addEventListener('click', () => {
-      toggleFullscreen();
-      fs.blur();
-    });
-
     const resume = () => {
       this.toggle(false);
       capture(canvas);
@@ -245,16 +238,18 @@ export class Menu {
     const text = (c: string, t: string) => (this.el.querySelector<HTMLElement>(c)!.textContent = t);
     const note = this.el.querySelector<HTMLElement>('.gNote')!;
     const showNote = () => (note.textContent = needsReload() ? TEXT.menu.needsReload : '');
-    const forceFs = q('.gForceFs');
-    forceFs.checked = graphics.forceFullscreen;
-    forceFs.addEventListener('change', () => {
-      setGraphics('forceFullscreen', forceFs.checked);
-      if (forceFs.checked && !document.fullscreenElement) toggleFullscreen();
+    const display = this.el.querySelector<HTMLSelectElement>('.gDisplay')!;
+    display.value = graphics.fullscreen ? '1' : '0';
+    display.addEventListener('change', () => {
+      setGraphics('fullscreen', display.value === '1');
+      setFullscreen(graphics.fullscreen); // this change is the click the browser wants
+      display.blur();
     });
-    // Back into fullscreen at the next click when it was left (the browser needs a click to allow it).
-    addEventListener('pointerdown', () => {
-      if (graphics.forceFullscreen && !document.fullscreenElement) toggleFullscreen();
-    }, true);
+    const fps = q('.gFps');
+    fps.value = String(FPS_LIMITS.indexOf(graphics.fpsLimit as never));
+    const showFps = () => text('.gFpsVal', graphics.fpsLimit ? String(graphics.fpsLimit) : TEXT.menu.unlimited);
+    showFps();
+    fps.addEventListener('input', () => (setGraphics('fpsLimit', FPS_LIMITS[parseInt(fps.value)]), showFps()));
     const res = q('.gRes');
     // Over 1 only on screens that have more pixels per CSS pixel than that.
     res.max = String(Math.max(1, Math.min(devicePixelRatio, 2)));
@@ -286,7 +281,7 @@ export class Menu {
     const enable = () => dependent.forEach((i) => (i.disabled = !graphics.shadows));
     enable();
     shadows.addEventListener('change', () => (setGraphics('shadows', shadows.checked), enable()));
-    return [forceFs, res, dyn, shadows, dist, cas, map];
+    return [fps, res, dyn, shadows, dist, cas, map];
   }
 
   /** The teardown minigame (src/minigameMenu.ts) over the world, which stays visible behind it. */

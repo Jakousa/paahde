@@ -1,4 +1,5 @@
 import { isBound, norm, slots, type Action } from './bindings';
+import { graphics } from './graphics';
 import { BACK, BIKE, CROUCH, FORWARD, JUMP, LEFT, RIGHT, SLIDE } from '../shared/sim.ts';
 
 const keys = new Set<string>();
@@ -24,7 +25,7 @@ addEventListener('click', (e) => {
   fullscreen();
 });
 function fullscreen() {
-  if (keyboard) document.documentElement.requestFullscreen?.().then(() => keyboard.lock(), () => {});
+  if (keyboard && graphics.fullscreen) document.documentElement.requestFullscreen?.().then(() => keyboard.lock(), () => {});
 }
 /** Back into the game from a click outside the canvas (the Esc menu): capture the mouse, go fullscreen. */
 export function capture(canvas: HTMLElement) {
@@ -78,10 +79,11 @@ document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) keyboard?.unlock();
 });
 
-/** Menu button: enter or leave fullscreen (leaving also releases the keyboard lock). */
-export function toggleFullscreen() {
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  else document.documentElement.requestFullscreen?.().then(() => keyboard?.lock(), () => {});
+/** Options → Graphics → Display: go fullscreen now (needs the click that chose it) or leave it (also releases the keyboard lock). */
+export function setFullscreen(on: boolean) {
+  if (!on) {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  } else if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().then(() => keyboard?.lock(), () => {});
 }
 
 /** Is this key down right now (for the disassembly mode, which reads A / D itself while the player is frozen)? */

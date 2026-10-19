@@ -108,9 +108,11 @@ renderer.info.autoReset = false;
 const resolution = new DynamicResolution(renderer); // sets the pixel ratio, then keeps it near 60 fps
 resolution.setScale(graphics.resScale);
 resolution.setDynamic(graphics.dynamicRes);
+resolution.setTargetFps(graphics.fpsLimit || 60);
 onGraphics((g, changed) => {
   if (changed === 'resScale') resolution.setScale(g.resScale);
   if (changed === 'dynamicRes') resolution.setDynamic(g.dynamicRes);
+  if (changed === 'fpsLimit') resolution.setTargetFps(g.fpsLimit || 60);
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -357,7 +359,14 @@ const spawnAt = new URLSearchParams(location.search).get('spawn');
 let faceCrash = spawnAt === 'crash' || spawnAt === 'field' || LAB;
 const statsGraph = new StatsGraph();
 
+/** When the next frame is due, with the FPS target (Options → Graphics): frames before it are skipped. */
+let nextFrameAt = 0;
 renderer.setAnimationLoop((time) => {
+  if (graphics.fpsLimit) {
+    const every = 1000 / graphics.fpsLimit;
+    if (time < nextFrameAt - 1) return;
+    nextFrameAt = time - nextFrameAt > every ? time + every : nextFrameAt + every; // keeps the average on target; no catching up after a stall
+  }
   net.telemetry.frame(performance.now());
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);

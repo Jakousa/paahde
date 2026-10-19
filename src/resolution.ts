@@ -17,10 +17,10 @@ import type * as THREE from 'three/webgpu';
  *  this look, and it leaves headroom for 60 fps on laptops. The graphics options can raise it. */
 const MAX_RATIO = 1;
 const MIN_RATIO = 0.65;
-/** Frame time we aim for, a little under 60 fps so vsync jitter doesn't count as slow. */
-const TARGET_MS = 1000 / 57;
-/** Frames slower than this are treated as slow when averaged (55 fps). */
-const SLOW_MS = 1000 / 55;
+/** Frame time we aim for is a little under the fps target, so vsync jitter doesn't count as slow; frames
+ *  slower than the slow time (5 fps under the target) are slow when averaged. */
+const TARGET_SLACK_FPS = 3;
+const SLOW_SLACK_FPS = 5;
 /** Measurement window. */
 const WINDOW_S = 0.5;
 /** Seconds of steady frames before stepping the ratio up, and how much each step adds. */
@@ -46,6 +46,8 @@ export class DynamicResolution {
   private scale = MAX_RATIO;
   /** Off: the ratio stays at the scale instead of following the frame time. */
   private dynamic = true;
+  private targetMs = 1000 / (60 - TARGET_SLACK_FPS);
+  private slowMs = 1000 / (60 - SLOW_SLACK_FPS);
   private ceiling: number;
   private ms = 0;
   private frames = 0;
@@ -72,6 +74,13 @@ export class DynamicResolution {
     this.probe = null;
     this.calm = 0;
     this.set(this.max);
+  }
+
+  /** The frame rate adaptive resolution aims for (the FPS target option). */
+  setTargetFps(fps: number) {
+    this.targetMs = 1000 / Math.max(10, fps - TARGET_SLACK_FPS);
+    this.slowMs = 1000 / Math.max(10, fps - SLOW_SLACK_FPS);
+    this.probe = null;
   }
 
   setDynamic(on: boolean) {
@@ -111,12 +120,12 @@ export class DynamicResolution {
       this.holdS = HOLD_S;
     }
 
-    if (avg > SLOW_MS) {
+    if (avg > this.slowMs) {
       this.calm = 0;
       if (this.ratio <= this.minRatio || this.hold > 0) return;
       this.probe = { ratio: this.ratio, ceiling: this.ceiling, ms: avg };
       this.ceiling = Math.min(this.ceiling, this.ratio * 0.97);
-      this.set(this.ratio * Math.max(0.7, Math.sqrt(TARGET_MS / avg)));
+      this.set(this.ratio * Math.max(0.7, Math.sqrt(this.targetMs / avg)));
     } else if ((this.calm += span) >= CALM_S) {
       this.calm = 0;
       if (this.ratio < this.ceiling) this.set(Math.min(this.ceiling, this.ratio * STEP_UP));
