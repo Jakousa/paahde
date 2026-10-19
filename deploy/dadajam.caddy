@@ -1,4 +1,4 @@
-# Host Caddy snippet on maukass (/etc/caddy/dadajam.caddy), imported into the herkku.org block.
+# Host Caddy snippet on the server (/etc/caddy/dadajam.caddy), imported into the herkku.org block.
 # reverse_proxy upgrades WebSockets automatically. stream_close_delay keeps game connections open
 # through Caddy config reloads (otherwise every reload disconnects all players at once).
 (dadajam_route) {

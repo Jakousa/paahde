@@ -1,7 +1,7 @@
 # Multiplayer architecture
 
 How the game keeps players in sync, why it is built this way, and what to keep in mind when changing it.
-Researched October 2026.
+Researched October 2026; the frameworks and transport notes are as of then.
 
 ## Model: authoritative server + client prediction + interpolation
 
@@ -9,10 +9,10 @@ This is the standard for real-time action games (Valve's Source engine, Gabriel 
 [client-server game architecture](https://www.gabrielgambetta.com/client-server-game-architecture.html)).
 
 1. **Clients send inputs, never positions.** Each fixed tick (60 Hz) the client sends
-   `{seq, input}` where `input` is a bitmask (left/right/jump). The server runs the simulation; it is
+   `{seq, input}` where `input` is a bitmask of held keys (move, jump, slide, bike…). The server runs the simulation; it is
    the only source of truth, so clients can't teleport or fly.
 2. **Client-side prediction.** The client runs the *same* `shared/sim.ts` step on its own input
-   immediately, so your square moves with zero perceived latency.
+   immediately, so you move with zero perceived latency.
 3. **Reconciliation.** Snapshots tell each client the last input `seq` the server applied (`ack`).
    The client takes the server's state for itself, drops acknowledged inputs and replays the rest.
    Any remaining difference is shown as a visual offset that decays over ~100 ms instead of a jump.
@@ -49,7 +49,7 @@ client                         server
 
 ## Frameworks considered
 
-We use a small hand-written server (`server/world.ts`, ~200 lines) because the model above is simple
+We use a small hand-written server (`server/index.ts` in front, one `server/world.ts` process per world) because the model above is simple
 at our scale and the whole team can read and change it. Alternatives, if needs grow:
 
 - **[Colyseus](https://colyseus.io) 0.18** (MIT): rooms, matchmaking, binary delta-compressed state
@@ -62,10 +62,10 @@ at our scale and the whole team can read and change it. Alternatives, if needs g
 
 ## Persistence: SQLite
 
-- `node:sqlite` (built into Node 24; no native dependencies), WAL mode, file at `/data/dadajam.db` on
-  a Docker volume (`/opt/dadajam/data` on the server).
-- The table `players` holds browser ID, colour and last position, saved on join and leave, every
-  5 s, and on shutdown.
+- `node:sqlite` (built into Node 24; no native dependencies), WAL mode. Each world has its own file,
+  `data/worlds/<id>.db` (the front server keeps `data/dadajam.db`), on a Docker volume in production.
+- Players (browser ID, colour, position, survival state), items, terrain edits, crash sites, loot and the rest
+  are saved on join and leave, every 5 s, and on shutdown.
 - Calls are synchronous: keep queries tiny and out of hot loops.
 
 ## Identity
@@ -110,7 +110,7 @@ and player, round trip and fps per player minute, incidents and events you can f
 `--world`, `--player`). `node tools/telemetry.ts tail` follows it live. Stalls close together in one world make an
 incident, and its verdict follows the reading below. Player ids are reused, so the tool groups by world and name.
 
-Or by hand: `ssh maukass tail -f /opt/dadajam/data/telemetry.jsonl`, or e.g. `jq -c 'select(.kind != "summary")'` on it. A `down`
+Or by hand: `ssh <server> tail -f /opt/dadajam/data/telemetry.jsonl`, or e.g. `jq -c 'select(.kind != "summary")'` on it. A `down`
 and `up` at the same moment from one player is their link stalling both ways (Wi-Fi); `down` for everyone at once is
 the server's side of the network; `tick` is the world itself. The stats line (Esc → Show stats) shows the round trip
 and the last stall.
@@ -120,8 +120,8 @@ and the last stall.
 - **All movement or physics that affects position goes in `shared/sim.ts`**, which both sides run.
   Anything only the client simulates will rubber-band. Keep it deterministic: no `Math.random()`,
   `Date.now()` or frame-time `dt` inside `step`.
-- Add new inputs as bits in the input bitmask (the server masks unknown bits: update `input & 7`
-  in `server/world.ts`).
+- Add new inputs as bits in the input bitmask (the server masks unknown bits: update `INPUT_MASK`
+  in `shared/sim.ts`).
 - Purely visual effects (particles, squash and stretch) stay client-side.
 - New message types go in `shared/protocol.ts`.
 - **Terrain edits** (craters, `shared/dig.ts`; players don't dig any more): the server stamps craters, runs the
@@ -139,8 +139,8 @@ and the last stall.
   (~2 Hz while draining, and after every `drink`/`fill`). Drink/fill are requests sent when the client's
   animation finishes; the server validates and always answers with the real state. A thirst death moves
   the player on the server and sends `died`; the client snaps its next reconciliation instead of gliding.
-- To get here next: player-vs-player collision, which makes predicted players interact with
-  interpolated ones (other players appear 100 ms in the past), so keep interactions forgiving.
+- Player-vs-player collision isn't done: it would make predicted players interact with
+  interpolated ones (other players appear 100 ms in the past), so keep any such interaction forgiving.
 
 ## Sources
 

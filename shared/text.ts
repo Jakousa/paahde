@@ -85,7 +85,7 @@ const en = {
   },
   /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR). */
   gearUse: {
-    motorcycle: 'Press Z to get on and off.',
+    motorcycle: 'The motorcycle key gets you on and off.',
     spyglass: 'Hold the mouse button to look, wheel to zoom.',
     canteen: 'Hold the mouse button to drink; fill it at the pump in the base.',
     backpack: 'Bag room past the hotbar.',
@@ -203,7 +203,7 @@ const en = {
     inShade: 'In shade',
     sun: 'Sun',
     sandstorm: '⚠ Sandstorm',
-    death: 'Desert knows no mercy',
+    death: 'The desert knows no mercy',
   },
   /** A death in chat, after the dead player's name (shared/protocol.ts DeathCause). */
   obituary: {
@@ -251,7 +251,7 @@ const en = {
     /** Action names (src/bindings.ts ACTIONS). */
     actions: {
       forward: 'forward', back: 'back', left: 'left', right: 'right', jump: 'jump', sprint: 'slide · hold breath',
-      crouch: 'crouch', use: 'use · throw', aim: 'aim', spyglass: 'spyglass', interact: 'pick up · interact',
+      crouch: 'crouch', use: 'use · throw', aim: 'aim', spyglass: 'telescope', interact: 'pick up · interact',
       bike: 'motorcycle', slot1: 'hotbar 1', slot2: 'hotbar 2', slot3: 'hotbar 3', slot4: 'hotbar 4', slot5: 'hotbar 5',
       inventory: 'inventory', thirdPerson: 'third person', freeLook: 'look around', rotate: 'rotate',
       pickPlaced: 'pick up placed', chat: 'chat', debug: 'debug panel',
@@ -384,7 +384,7 @@ const en = {
     spyglass: () => 'Telescope: on the hotbar, hold mouse to look, wheel to zoom.',
     laser_pistol: () => 'Laser pistol: on the hotbar. Left mouse fires, right aims.',
     laser_rifle: () => 'Laser rifle: on the hotbar. Left mouse fires, right scopes.',
-    jammer: () => 'Jammer: on the hotbar, hold mouse on a drone until it drops.',
+    jammer: () => 'Jammer: on the hotbar, hold mouse on a drone or jet until it drops.',
     receiver_carrier: () => 'Receiver: on the hotbar. Left mouse sends the signal.',
     receiver_queen: () => 'Receiver: on the hotbar. Left mouse sends the signal.',
     receiver_colossus: () => 'Receiver: on the hotbar. Left mouse sends the signal.',
@@ -412,7 +412,7 @@ const en = {
       storm_detector: ['Something to hear the storms coming. If it worked.', 'If this beeps, I run.'],
       wristpad: ['A wrist computer. Dead as the desert.', 'A little map of who is where.'],
       shield: ['A plate to hide behind. Bent, though.', 'Something between me and a bad day.'],
-      laser_rifle: ['A rifle. Once it works, those walkers had better watch out.', 'Now we can talk to those walkers.'],
+      laser_rifle: ['A rifle. Once it works, those walkers had better watch out.', 'Now I can talk back to those walkers.'],
       laser_pistol: ['A pistol. Broken, but a pistol.', 'Small, but it bites.'],
       jammer: ['Some kind of jammer. For the things in the sky?', 'Let them come down to my level.'],
       receiver: ['Some kind of radio. Who would it call?', "Whatever answers this, it won't be small."],

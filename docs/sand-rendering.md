@@ -3,6 +3,8 @@
 Target: three r186 `three/webgpu` + TSL node materials (no GLSL), dune heightfield that is
 deterministic and shared by client and server (`shared/`), game-jam time budget.
 Constants below are starting points to tune by eye, not measured values.
+These are the early research notes; where they differ from the art direction, `docs/look.md` wins
+(shadows are deep warm rust, never blue).
 
 ## Recommended stack (do these, in this order)
 
@@ -126,9 +128,9 @@ diffuse = mix(shadowColor, sunColor * albedo, I)
 The `0.3` on N.y makes the lit/shadow split follow the dune shape rather than tilt. The `4`
 gives the hard, high-contrast desert terminator.
 
-Suggested colors (linear): albedo `(0.80, 0.52, 0.30)` (warm ochre). shadowColor = sky fill
-`(0.28, 0.27, 0.36) * albedo`, a cool lilac. Desert shadows are lit by the blue sky, and this
-contrast between warm sun and cool shadow does most of the "desert" read.
+Suggested colors (linear): albedo `(0.80, 0.52, 0.30)` (warm ochre). shadowColor = a dark warm
+rust (`docs/look.md`: `#4a2414` → `#2a120a`). The contrast between bright sun and deep shadow does
+most of the "desert" read.
 
 **Optional upgrade: Fujii's qualitative Oren-Nayar** (cheap on WebGPU, adds the
 "sand glows with the sun behind you" opposition look). With σ ≈ 0.8 (roughness):
@@ -397,7 +399,7 @@ approach. That's correct, because the mirage is distance-gated.
 - **Sun angle**: a low sun (elevation 15–30°) makes the dune contrast and ripples pop. Overhead sun
   flattens everything. A sun **behind** the camera shows opposition brightening (Oren-Nayar). A sun
   **in front** shows ocean specular, glitter and glare. Pick the play direction accordingly.
-- **Shadow color**: never gray. Shadows are sky-lit lilac-blue, and their saturation sells heat.
+- **Shadow color**: never gray or blue. Shadows are deep warm rust, and their saturation sells heat.
 
 ---
 
@@ -408,8 +410,6 @@ approach. That's correct, because the mirage is distance-gated.
   depends on it.
 - Never sample the GPU-displaced surface for gameplay. GPU noise isn't bit-identical to the
   server. Build the mesh from `duneHeight` on the CPU and keep shader detail visual-only.
-- Current scene sets `scene.background` to a color. Replace it with `SkyMesh` or a TSL
-  `backgroundNode`, otherwise the haze color won't match.
 - Render with `pipeline.render()` instead of `renderer.render()` once post is added. Keep
   `renderer.toneMapping` set: `RenderPipeline` applies it at its output (`outputColorTransform`).
 - Heavy per-frame CPU work (re-meshing terrain chunks when the player moves) belongs in a worker,

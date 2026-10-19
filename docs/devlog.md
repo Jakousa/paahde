@@ -1,6 +1,6 @@
 # Dev log
 
-What we built, why, and what's left. Newest session first. Add an entry when you land something big.
+What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
 ## 2026-10-18 — More kinds of rock
 
@@ -108,7 +108,7 @@ What we built, why, and what's left. Newest session first. Add an entry when you
   are ropes (`src/teardown/rope.ts`, a Verlet chain along the modelled curve, rebuilt into the tube while it moves):
   shaking pulls the held end about and the whole cable swings, and once an end is off the cable hangs from the other,
   floppy, and the loose lug rides its end; one that is still with both ends held goes back to the modelled tube.
-  Not yet seen in the game (no browser here): the stiffness/gravity numbers are in `TeardownView.updateRope`.
+  Not yet tested in a browser: the stiffness/gravity numbers are in `TeardownView.updateRope`.
 - Server: a joined player is not `ready` until the client sends `ready` (after the name, or at once if named).
   Until then they are left out of everyone else's snapshots and name list, can't die (`die()`), take no heat, cast
   no shade and count as `safe` for guardians and bosses. Reconnects resend `ready` on welcome.
@@ -1140,7 +1140,7 @@ Goal of this session: *I can roam around the desert planet with my friends in th
   3. Sky, sun and post-processing
   4. Player movement, camera and avatar
   5. Digging and sync
-  6. 3D models (Blender). **Still running**, see below.
+  6. 3D models (Blender), see below.
 - A research agent wrote `docs/sand-rendering.md`: Journey sand, glitter papers, dune shapes,
   heat haze, sun bloom.
 - Branches were merged into `desert`, checked with `npm run build` and headless-Chrome screenshots,
@@ -1168,6 +1168,10 @@ Goal of this session: *I can roam around the desert planet with my friends in th
   feet; step into the hole to go deeper.
 - **Gameplay:** wrecks to salvage, the trader, scrap items, carrying and stealing (the design pitch:
   walk, pick up, carry, steal, sell).
+
+---
+
+# Topic entries (oldest first)
 
 ## Shadows: cascades, dunes cast, your own shadow
 

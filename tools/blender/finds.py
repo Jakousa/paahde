@@ -1,11 +1,11 @@
 """Gear found broken on the sand (GitHub issue #8): world models and inventory icons.
 
     blender -b --python tools/blender/finds.py                        # models + icons
-    blender -b --python tools/blender/finds.py -- --kind shovel       # just one (repeatable)
+    blender -b --python tools/blender/finds.py -- --kind jammer       # just one (repeatable)
     blender -b --python tools/blender/finds.py -- --preview out.png   # also a perspective render of them on sand
 
-Writes public/models/finds/<kind>.glb for the gear that had only a code-built stand-in (backpack, shovel, metal
-detector, storm detector, wrist computer, jammer, grinder) and the boss receivers (receiver_<boss>), each already in the pose it lies in on the sand; src/world/loot.ts
+Writes public/models/finds/<kind>.glb for the gear that had only a code-built stand-in (backpack,
+storm detector, wrist computer, jammer, grinder) and the boss receivers (receiver_<boss>), each already in the pose it lies in on the sand; src/world/loot.ts
 sits it on the ground. The water bottle, telescope, laser rifle, laser pistol and motorcycle keep their models
 (public/models/canteen.glb, telescope.glb, rifle.glb, pistol.glb, sandbike.glb): they are imported here only to
 render their icons.
@@ -71,7 +71,7 @@ MATERIALS = {
 # Grid cells (w, h) per kind: shared/items.ts ITEMS sizes. The icon has this shape.
 CELLS = {
     'canteen': (1, 2), 'spyglass': (2, 1), 'motorcycle': (4, 3), 'backpack': (2, 2), 'storm_detector': (1, 2),
-    'wristpad': (1, 1), 'metal_detector': (1, 3), 'shovel': (1, 3), 'laser_rifle': (4, 1), 'laser_pistol': (2, 1),
+    'wristpad': (1, 1), 'laser_rifle': (4, 1), 'laser_pistol': (2, 1),
     'jammer': (2, 1), 'grinder': (2, 1), 'shield': (2, 2), 'receiver_carrier': (2, 1), 'receiver_queen': (2, 1), 'receiver_colossus': (2, 1),
     'receiver_worm': (2, 1),
 }
@@ -80,95 +80,6 @@ CELL, GAP = 54, 4  # src/inventory.ts
 
 def span(n):
     return n * CELL + (n - 1) * GAP
-
-
-# ------------------------------------------------------------------------------------------------ shovel
-
-def build_shovel(mb, rng):
-    """A long-handled spade lying flat: blade at +X, dished face up, D-grip at -X. About 1 m long."""
-    z = 0.017
-    mb.cyl(0.017, 0.016, 0.74, 8, (-0.02, 0, z), 'wood', rot=it.Y90)
-    for x in (-0.12, -0.05):
-        mb.cyl(0.0195, 0.0195, 0.045, 8, (x, 0, z), 'tape', rot=(0, D90, rng(-0.1, 0.1)))
-    # D-grip: a bent steel loop with a wooden crossbar.
-    it.wire(mb, [(-0.37, -0.012, z), (-0.43, -0.055, z), (-0.51, -0.056, z), (-0.51, 0.056, z), (-0.43, 0.055, z),
-                 (-0.37, 0.012, z)], 0.009, 6, 'rust_dark')
-    mb.cyl(0.016, 0.016, 0.1, 8, (-0.51, 0, z), 'wood_dark', rot=it.X90)
-    mb.cyl(0.02, 0.02, 0.03, 8, (-0.375, 0, z), 'steel_dull', rot=it.Y90)
-    # Socket: a cone from the shaft into the blade, riveted.
-    mb.cyl(0.02, 0.028, 0.11, 8, (0.395, 0, z - 0.002), 'rust', rot=it.Y90)
-    mb.cyl(0.004, 0.004, 0.06, 5, (0.38, 0, z), 'steel_dull')
-    # Blade: a dished plate, square shoulders with a tread lip, pointed tip.
-    x0, L, hw0, t = 0.44, 0.32, 0.115, 0.006
-    secs = []
-    for i in range(9):
-        s = i / 8
-        hw = hw0 if s < 0.5 else max(0.006, hw0 * math.sqrt(max(0.0, 1 - ((s - 0.5) / 0.5) ** 2)))
-        n = 7
-        top, bot = [], []
-        for j in range(n):
-            u = -1 + 2 * j / (n - 1)
-            dz = 0.022 * u * u * (hw / hw0)
-            top.append((x0 + s * L, u * hw, 0.004 + dz + t / 2))
-            bot.append((x0 + s * L, u * hw, 0.004 + dz - t / 2))
-        secs.append(top + bot[::-1])
-    v = mb.loft(secs, 'steel_dull')
-    mb.jitter(v, rng, 0.0015)
-    mb.box((0.02, 2 * hw0 + 0.01, 0.01), (x0 + 0.005, 0, 0.027), 'rust_dark')
-    # A rust bloom and a ridge down the middle of the blade.
-    mb.box((0.15, 0.012, 0.008), (x0 + 0.08, 0, 0.007), 'rust')
-    for x, y, r in ((0.6, 0.05, 0.03), (0.52, -0.07, 0.025)):
-        mb.cyl(r, r * 0.8, 0.003, 7, (x, y, 0.009 + 0.022 * (y / hw0) ** 2), 'rust')
-
-
-# ------------------------------------------------------------------------------------------------ metal detector
-
-def oval_ring(mb, R, r, sy, loc, mat):
-    v = mb.torus(R, r, 16, 6, (0, 0, 0), mat, smooth=True)
-    for p in v:
-        p.co.y *= sy
-    bmesh.ops.translate(mb.bm, vec=Vector(loc), verts=v)
-    return v
-
-
-def build_metal_detector(mb, rng):
-    """Lying on the sand: the search coil flat at +X, the shaft running back to the grip, control box and arm cuff."""
-    cx = 0.52
-    oval_ring(mb, 0.125, 0.017, 0.78, (cx, 0, 0.018), 'plastic_black')
-    v = mb.cyl(0.12, 0.12, 0.012, 16, (0, 0, 0), 'detector_yellow')
-    for p in v:
-        p.co.y *= 0.78
-    bmesh.ops.translate(mb.bm, vec=Vector((cx, 0, 0.016)), verts=v)
-    mb.box((0.06, 0.02, 0.004), (cx, 0, 0.024), 'label')
-    # Yoke: two ears on the coil, a bolt through them and the lower shaft.
-    for sy in (-1, 1):
-        mb.box((0.05, 0.008, 0.04), (cx - 0.07, sy * 0.016, 0.042), 'plastic_black')
-    mb.cyl(0.006, 0.006, 0.05, 6, (cx - 0.07, 0, 0.05), 'steel', rot=it.X90)
-    mb.cyl(0.007, 0.007, 0.012, 6, (cx - 0.07, 0.026, 0.05), 'plastic_dark', rot=it.X90)
-    zs = 0.05
-    mb.cyl(0.011, 0.011, 0.42, 8, (0.24, 0, zs), 'alu', rot=it.Y90)
-    mb.cyl(0.016, 0.016, 0.04, 8, (0.03, 0, zs), 'plastic_black', rot=it.Y90)  # twist lock
-    mb.cyl(0.013, 0.013, 0.36, 8, (-0.15, 0, zs), 'steel_dull', rot=it.Y90)
-    # Grip, control box on top of the shaft, arm cuff at the back.
-    mb.cyl(0.019, 0.019, 0.13, 8, (-0.27, 0, zs), 'rubber', rot=it.Y90)
-    mb.box((0.15, 0.075, 0.055), (-0.1, 0, zs + 0.035), 'plastic_dark', bevel=0.008)
-    mb.box((0.06, 0.04, 0.004), (-0.07, 0, zs + 0.064), 'glass_dark')
-    mb.cyl(0.016, 0.016, 0.006, 10, (-0.14, -0.01, zs + 0.064), 'label')
-    mb.box((0.012, 0.002, 0.002), (-0.135, -0.008, zs + 0.068), 'term_red', rot=(0, 0, 0.6))
-    for y in (-0.025, 0.025):
-        mb.cyl(0.008, 0.008, 0.012, 8, (-0.165, y, zs + 0.066), 'plastic_black')
-    mb.cyl(0.006, 0.006, 0.004, 8, (-0.05, 0.026, zs + 0.064), 'EmitAmber')
-    mb.lathe([(0.045, -0.035), (0.052, -0.035), (0.052, 0.035), (0.045, 0.035)], 8, (-0.38, 0, zs + 0.05),
-             'plastic_black', rot=(0, D90, 0), arc=math.pi, phase=-D90)
-    mb.box((0.03, 0.02, 0.05), (-0.38, 0, zs + 0.02), 'plastic_black')
-    mb.box((0.05, 0.05, 0.006), (-0.38, 0, zs + 0.05), 'strap')
-    # Coil cable wound round the shaft from the coil to the box.
-    pts = []
-    for k in range(25):
-        x = cx - 0.09 - k * 0.022
-        a = k * 1.1
-        pts.append((x, 0.016 * math.cos(a), zs + 0.016 * math.sin(a)))
-    it.wire(mb, [(cx - 0.05, 0.0, 0.03)] + pts + [(-0.03, 0.02, zs + 0.03)], 0.0035, 5, 'plastic_black')
 
 
 # ------------------------------------------------------------------------------------------------ storm detector
@@ -541,10 +452,7 @@ def build_shield(mb, rng):
 # kind: (builder, pose on the sand (Euler, rad), icon pose, icon camera direction (from the object))
 SIDE = Vector((0.18, -1, 0.32)).normalized()
 THREE_Q = Vector((0.55, -1, 0.42)).normalized()
-UPRIGHT = Vector((0.3, -1, 0.25)).normalized()
 BUILT = {
-    'shovel': (build_shovel, (0, 0, 0), (0, D90, -D90 + 0.25), UPRIGHT),
-    'metal_detector': (build_metal_detector, (0, 0, 0), (0, D90, -D90 + 0.25), UPRIGHT),
     'storm_detector': (build_storm_detector, (-D90, 0, 0.4), (0, 0, -0.35), THREE_Q),
     'wristpad': (build_wristpad, (D90, -D90, 0), (0, 0, -D90 - 0.3), THREE_Q),
     'backpack': (build_backpack, (-D90, 0, 0), (0, 0, -0.35), THREE_Q),

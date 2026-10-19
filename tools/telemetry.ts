@@ -7,7 +7,7 @@
 //
 // Options:
 //   --file <path>     read this file instead of the server's (e.g. data/telemetry.jsonl from `npm run dev`)
-//   --host <ssh>      the server to read from over ssh (default maukass, or TELEMETRY_SSH)
+//   --host <ssh>      the server to read from over ssh (or set TELEMETRY_SSH)
 //   --since <time>    only the last 30m / 6h / 2d, or since an ISO date
 //   --world <id>      only this world      --player <name>   only this player (name or id)
 //   --out <path>      where the HTML goes (default data/telemetry-report.html)   --no-open  don't open it
@@ -38,8 +38,12 @@ const opt = (name: string) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const host = opt('host') ?? process.env.TELEMETRY_SSH ?? 'maukass';
+const host = opt('host') ?? process.env.TELEMETRY_SSH ?? '';
 const file = opt('file');
+if (!host && !file) {
+  console.error('Which server? Pass --host <ssh> or set TELEMETRY_SSH (or read a local --file).');
+  process.exit(1);
+}
 const worldOnly = opt('world');
 const playerOnly = opt('player');
 const since = sinceOf(opt('since'));

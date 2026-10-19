@@ -1,4 +1,4 @@
-# Lives at /opt/dadajam/compose.yml on maukass. `docker compose up -d` once; Watchtower does the rest.
+# Lives at /opt/dadajam/compose.yml on the server. `docker compose up -d` once; Watchtower does the rest.
 services:
   web:
     image: ghcr.io/woltsu/dadajam:latest
