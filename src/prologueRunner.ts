@@ -12,11 +12,12 @@ export const FONT_URL = './fonts/neuropol.woff2';
 const FONT = 'Neuropol, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 const INK = '236, 228, 210'; // the prologue's warm white (rgb, for alpha)
 const GOLD = '217, 178, 106';
-/** Dust colours: whites, pale golds, yellows and ochres; the far layer is dim, the near one bright. */
+/** Dust colours: whites, pale golds, yellows and ochres; the fine haze and the far layer are dim, the near one bright. */
 const LAYERS = [
-  { share: 0.56, speed: 11, width: 0.45, colors: ['rgba(122,92,48,.55)', 'rgba(150,118,62,.5)', 'rgba(104,80,46,.6)', 'rgba(170,150,120,.4)'] },
-  { share: 0.33, speed: 22, width: 0.65, colors: ['rgba(214,170,84,.6)', 'rgba(232,196,110,.55)', 'rgba(190,138,62,.6)', 'rgba(240,226,196,.45)'] },
-  { share: 0.11, speed: 40, width: 0.9, colors: ['rgba(246,214,128,.75)', 'rgba(255,240,206,.7)', 'rgba(228,180,92,.75)', 'rgba(255,250,236,.65)'] },
+  { share: 0.3, speed: 15, width: 0.28, colors: ['rgba(196,164,112,.4)', 'rgba(222,200,160,.35)', 'rgba(168,132,80,.45)', 'rgba(240,228,204,.3)'] },
+  { share: 0.39, speed: 11, width: 0.45, colors: ['rgba(122,92,48,.55)', 'rgba(150,118,62,.5)', 'rgba(104,80,46,.6)', 'rgba(170,150,120,.4)'] },
+  { share: 0.23, speed: 16, width: 0.65, colors: ['rgba(214,170,84,.6)', 'rgba(232,196,110,.55)', 'rgba(190,138,62,.6)', 'rgba(240,226,196,.45)'] },
+  { share: 0.08, speed: 26, width: 0.9, colors: ['rgba(246,214,128,.75)', 'rgba(255,240,206,.7)', 'rgba(228,180,92,.75)', 'rgba(255,250,236,.65)'] },
 ];
 const MAX_PIXELS = 4.2e6; // the visible canvas's backing store, at most (about 2560x1600)
 const TRAIL_PIXELS = 2.2e6; // the dust's own canvas: soft anyway, so cheaper
@@ -149,7 +150,7 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
     vignette.addColorStop(0, 'rgba(0,0,0,0)');
     vignette.addColorStop(1, 'rgba(0,0,0,.7)');
 
-    n = Math.round(Math.min(11000, Math.max(2500, (w * h) / 150)));
+    n = Math.round(Math.min(16000, Math.max(3500, (w * h) / 105)));
     px = new Float32Array(n);
     py = new Float32Array(n);
     ox = new Float32Array(n);
@@ -159,8 +160,9 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
     pace = new Float32Array(n);
     const lists: number[][] = LAYERS.flatMap((l) => l.colors.map(() => []));
     for (let i = 0; i < n; i++) {
-      const r = rnd();
-      const L = r < LAYERS[0].share ? 0 : r < LAYERS[0].share + LAYERS[1].share ? 1 : 2;
+      let r = rnd();
+      let L = 0;
+      while (L < LAYERS.length - 1 && r >= LAYERS[L].share) r -= LAYERS[L++].share;
       layer[i] = L;
       twinkle[i] = rnd() * 1000;
       pace[i] = 0.55 + rnd() * rnd() * 1.4;
