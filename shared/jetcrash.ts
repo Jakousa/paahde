@@ -68,7 +68,8 @@ export function jetSiteById(id: unknown): CrashSite | null {
 }
 
 // ---- what the players bump into -------------------------------------------------------------------------------------------------
-// Each piece that is solid (shared/jetpieces.ts `hit`) is a few capsules about its pivot, carried to where it lies. The rules are
+// Each piece that is solid (shared/jetpieces.ts `hit`) is a few capsules about its pivot (a slab for a wing or a fin: wide in `r`, thin in `hv`),
+// carried to where it lies. The rules are
 // shared/crashsites.ts collideCrash's: a top within `stepUp` below the feet is ground, anything taller a wall. A tilted capsule is a horizontal
 // one of the length it covers on the ground, as high as its higher end plus its radius.
 const STAND_MARGIN = 0.15;
@@ -83,13 +84,15 @@ function capsOf(c: JetCrash): Cap[] {
     const w = c.pieces[i];
     if (!d.hit || !w) return;
     const q: Q4 = [w[3], w[4], w[5], w[6]];
+    // the piece's own up: a slab lying flat is wide and thin, on its side narrow and tall
+    const uy = Math.abs(qRot(q, [0, 1, 0])[1]);
     for (const cap of d.caps) {
       const cc = qRot(q, cap.c), a = qRot(q, cap.a);
       const h = Math.hypot(a[0], a[2]);
-      const ex = cap.half * Math.abs(a[1]);
+      const wide = cap.hv + (cap.r - cap.hv) * uy, tall = cap.r - (cap.r - cap.hv) * uy;
       out!.push({
-        x: w[0] + cc[0], z: w[2] + cc[2], ax: h > 1e-3 ? a[0] / h : 1, az: h > 1e-3 ? a[2] / h : 0, half: cap.half * h, r: cap.r,
-        top: w[1] + cc[1] + ex + cap.r,
+        x: w[0] + cc[0], z: w[2] + cc[2], ax: h > 1e-3 ? a[0] / h : 1, az: h > 1e-3 ? a[2] / h : 0, half: cap.half * h, r: wide,
+        top: w[1] + cc[1] + cap.half * Math.abs(a[1]) + tall,
       });
     }
   });

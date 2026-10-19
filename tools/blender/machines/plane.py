@@ -196,7 +196,27 @@ def pieces():
         mb.pop()
         out.append({'id': pid, 'pivot': pivot, 'mb': mb, 'hit': hit, 'f': f, 'skip': skip,
                     'extra': [tuple(e[i] - pivot[i] for i in range(3)) for e in extra],
-                    'caps': [{'c': tuple(c[i] - pivot[i] for i in range(3)), 'a': a, 'half': h, 'r': r} for (c, a, h, r) in caps]})
+                    'caps': [{'c': tuple(c[i] - pivot[i] for i in range(3)), 'a': a, 'half': h, 'r': r, 'hv': (cp[4] if len(cp) > 4 else r)}
+                             for cp in caps for (c, a, h, r) in [cp[:4]]]})
+
+    def fus_caps(z0, z1, n):
+        """The fuselage between z0 and z1 as n capsules along it, each as fat as the skin there."""
+        out_ = []
+        for i in range(n):
+            za, zb = z1 - (z1 - z0) * i / n, z1 - (z1 - z0) * (i + 1) / n
+            zm = (za + zb) / 2
+            rx, ry, cy = fus_at(zm)
+            out_.append(((0, cy, zm), (0, 0, 1), (za - zb) / 2, rx * 0.97, ry * 0.97))
+        return out_
+
+    def wing_caps(sgn, a, b):
+        """A wing between the fractions a and b of its span, a slab capsule a section long: as wide as the chord there, as thick as the wing."""
+        secs = wing_secs(a, b)
+        out_ = []
+        for (x0, y0, z0, c0, t0), (x1, y1, z1, c1, t1) in zip(secs, secs[1:]):
+            ch, th = (c0 + c1) / 2, (t0 + t1) / 2
+            out_.append((((x0 + x1) / 2 * sgn, (y0 + y1) / 2 + th * 0.2, (z0 + z1) / 2 - ch / 2), (1, 0, 0), abs(x1 - x0) / 2, ch / 2, th / 2 + 0.06))
+        return out_
 
     def nose(mb):
         fus_section(mb, 7.0, 15.0, (True, False), 11)
@@ -226,10 +246,17 @@ def pieces():
     def wing_r(mb):
         surface(mb, wing_secs(0.2, 1.0))
 
-    add('nose', (0, -0.2, 11), nose, [((0, -0.1, 11), (0, 0, 1), 3.9, 1.05)], f=0.2)
-    add('front', (0, 0, 2.5), front, [((0, 0, 2.5), (0, 0, 1), 4.5, 1.75), ((2.9, -0.3, 1.0), (1, 0, 0), 1.4, 1.2), ((-2.9, -0.3, 1.0), (1, 0, 0), 1.4, 1.2)], f=0.1)
-    add('rear', (0, 0.1, -5.5), rear, [((0, 0.1, -5.5), (0, 0, 1), 3.5, 1.6)], f=0.14)
-    add('tail', (0, 1.5, -12), tail, [((0, 0.5, -12), (0, 0, 1), 3.0, 1.2), ((0, 4.0, -11.0), (0, 1, 0), 3.0, 0.7), ((0, 1.3, -12.8), (1, 0, 0), 5.5, 0.9)], f=0.2)
+    add('nose', (0, -0.2, 11), nose, fus_caps(7.0, 14.9, 4) + [((0, 0.2, 14.4), (0, 0, 1), 0.3, 0.45, 0.4)], f=0.2)
+    add('front', (0, 0, 2.5), front, fus_caps(-2.0, 7.0, 3) + [((0, 1.9, 2.5), (0, 0, 1), 1.4, 0.8, 0.45)] + wing_caps(1, 0.0, 0.2) + wing_caps(-1, 0.0, 0.2), f=0.1)
+    add('rear', (0, 0.1, -5.5), rear, fus_caps(-9.0, -2.0, 3), f=0.14)
+    # the fin: slabs thin across and as long as the chord there, as tall as its stretch; the tail planes: thin slabs out each side
+    fin_caps = [((0, 2.8, -10.8), (0, 0, 1), 1.9, 0.36, 1.4), ((0, 5.6, -12.1), (0, 0, 1), 1.0, 0.3, 1.4)]
+    plane_caps = [((sgn * 2.1, 1.05, -12.4), (1, 0, 0), 0.95, 1.1, 0.3) for sgn in (1, -1)] + [((sgn * 4.3, 1.4, -13.4), (1, 0, 0), 1.3, 0.75, 0.22) for sgn in (1, -1)]
+    add('tail', (0, 1.5, -12), tail, fus_caps(-15.0, -9.0, 3) + fin_caps + plane_caps, f=0.2)
+    def engine_pts(sgn):
+        # the nacelle's underside and sides (and the pylon's foot)
+        return [(sgn * ENG_X + dx, ENG_Y + dy, ENG_Z + dz) for dz in (-1.2, 0, 1.1) for (dx, dy) in ((0, -0.95), (0.9, 0), (-0.9, 0))]
+
     def wing_pts(sgn):
         # the wing really is thin: it touches the sand with its own corners (not the fat capsule it is hit with)
         pts = []
@@ -237,9 +264,11 @@ def pieces():
             pts += [(sgn * x, y - th * 0.45, z - ch * 0.4), (sgn * x, y - th * 0.3, z - ch), (sgn * x, y, z)]
         return pts
 
-    add('wingL', (-9.5, -0.8, 1.0), wing_l, [((-10.2, 0.2, -0.3), (1, 0, 0), 5.8, 2.4), ((-ENG_X, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95)], f=0.22,
-        skip=(0,), extra=wing_pts(-1))
-    add('wingR', (10.2, 0.3, -0.3), wing_r, [((10.2, 0.2, -0.3), (1, 0, 0), 5.8, 2.4)], f=0.22, skip=(0,), extra=wing_pts(1))
+    wl, wr = wing_caps(-1, 0.2, 1.0), wing_caps(1, 0.2, 1.0)
+    pylon = ((-ENG_X, ENG_Y + 1.0, ENG_Z - 0.4), (0, 0, 1), 1.2, 0.2, 0.7)
+    add('wingL', (-9.5, -0.8, 1.0), wing_l, wl + [pylon, ((-ENG_X, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95)], f=0.22,
+        skip=tuple(range(len(wl) + 1)), extra=wing_pts(-1) + engine_pts(-1))
+    add('wingR', (10.2, 0.3, -0.3), wing_r, wr, f=0.22, skip=tuple(range(len(wr))), extra=wing_pts(1))
     add('engineR', (ENG_X, ENG_Y, ENG_Z), lambda mb: engine(mb, ENG_X, ENG_Y, ENG_Z, 1), [((ENG_X, ENG_Y, ENG_Z), (0, 0, 1), 1.3, 0.95)], hit=False, f=0.32)
     # skin panels, doors and ribs that came off the body
     for i in range(8):
@@ -248,7 +277,7 @@ def pieces():
         rx, ry, cy = fus_at(z)
         pos = (rx * 1.05 * math.sin(ang), cy + ry * 1.05 * math.cos(ang), z)
         add(f'panel{i}', pos, lambda mb, p=pos, sx=sx, sy=sy, sz=sz, i=i: mb.box(p, (sx, sy, sz), ['JetHull', 'JetSand', 'JetFlap', 'JetDark'][i % 4]),
-            [(pos, (1, 0, 0), sx / 2, max(0.3, sy))], f=rnd.uniform(0.3, 0.45), skip=(0,),
+            [(pos, (1, 0, 0), max(0.05, sx / 2 - sz / 2), sz / 2, sy / 2 + 0.03)], f=rnd.uniform(0.3, 0.45), skip=(0,),
             extra=[(pos[0] + a * sx / 2, pos[1] - sy / 2, pos[2] + b * sz / 2) for a in (-1, 1) for b in (-1, 1)])
     for i in range(3):
         z = rnd.uniform(-8, 8)
@@ -278,18 +307,18 @@ def pieces_ts(ps):
             c, a, h, rad = Vector(cp['c']), Vector(cp['a']).normalized(), cp['half'], cp['r']
             for sgn in (-1, 1):
                 e = c + a * h * sgn
-                for off in ((0, -rad, 0), (rad, 0, 0), (-rad, 0, 0), (0, 0, rad), (0, 0, -rad), (0, rad, 0)):
+                for off in ((0, -cp['hv'], 0), (rad, 0, 0), (-rad, 0, 0), (0, 0, rad), (0, 0, -rad), (0, cp['hv'], 0)):
                     pts.append(r(e + Vector(off)))
         pts += [r(e) for e in p['extra']]
-        caps = [{'c': r(cp['c']), 'a': r(Vector(cp['a']).normalized()), 'half': round(cp['half'], 3), 'r': round(cp['r'], 3)} for cp in p['caps']]
+        caps = [{'c': r(cp['c']), 'a': r(Vector(cp['a']).normalized()), 'half': round(cp['half'], 3), 'r': round(cp['r'], 3), 'hv': round(cp['hv'], 3)} for cp in p['caps']]
         rows.append(json.dumps({'id': p['id'], 'pivot': r(p['pivot']), 'f': round(p['f'], 3), 'hit': p['hit'], 'caps': caps, 'pts': pts}, separators=(',', ':')))
     body = ',\n  '.join(rows)
     return ('// Generated by tools/blender/machines/plane.py from the model: do not edit by hand.\n'
             "// The pieces a downed jet breaks into (public/models/jet.glb nodes `P_<id>`, origin at the pivot): where each was on the whole plane\n"
-            '// (the plane\'s frame: x across, y up, z the nose), its simple hitboxes (capsules about the pivot), the points it touches the sand with, how much of\n'
+            '// (the plane\'s frame: x across, y up, z the nose), its simple hitboxes (capsules about the pivot: `r` the footprint radius, `hv` the half height), the points it touches the sand with, how much of\n'
             "// the plane's speed it keeps (`f`) and whether it is solid once it lies. Read by shared/jetbreak.ts.\n\n"
             'export interface JetPieceDef {\n  id: string;\n  pivot: [number, number, number];\n  f: number;\n  hit: boolean;\n'
-            '  caps: { c: [number, number, number]; a: [number, number, number]; half: number; r: number }[];\n  pts: [number, number, number][];\n}\n\n'
+            '  caps: { c: [number, number, number]; a: [number, number, number]; half: number; r: number; hv: number }[];\n  pts: [number, number, number][];\n}\n\n'
             f'export const JET_PIECES: JetPieceDef[] = [\n  {body},\n];\n')
 
 
