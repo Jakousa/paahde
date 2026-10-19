@@ -1699,4 +1699,9 @@ The first harvester read as a tank with a turret; it's now a pure juggernaut, an
 - **More of them:** every 4–10 min, up to two out at once.
 - **Sound:** at a charge the engine, clank and grind all run faster and louder, opening up into a roar; the ground
   trembles harder near one. Levels still set by ear, not measured in LUFS.
-
+- **Sight, steering, red lamps, the plume:** what it reacts to is now a wedge (`inSight`): 16 m either side of its
+  middle at the bow, widening 0.7 m a metre, out to 170 m. Charging, it steers at the nearest person in it: every
+  0.8 s the server redraws the route ahead of its front axle (`routeCut` keeps everything up to there, so the pose
+  stays continuous for everyone), curving towards them on a radius of 70 m or more, straight on once it's within 25 m,
+  then wandering on; where the way isn't clear (rock, the base, shelters) it stops turning there. Its lamps are red.
+  A wreck sends up a tall plume of smoke off its back (`zaps.plume`: long-lived, fast-rising puffs), seen from 3 km.

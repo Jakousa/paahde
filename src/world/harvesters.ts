@@ -3,7 +3,7 @@
 // their loops (an instanced track shoe), the cutter drum in its maw turns and throws up sand (a storm of it when it
 // charges), the exhausts on its back smoke and the slot in its stern spills sifted sand. The three intake cores in
 // its throat glow, flicker as they're hit and go dark once shot out, pouring smoke; with the last it seizes, burning
-// (onDeath). The rifle tests shots against it (raycast).
+// (onDeath), a huge plume of smoke towering off its back for as long as the wreck lies there. The rifle tests shots against it (raycast).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
@@ -26,8 +26,16 @@ const DRUM = new THREE.Vector3(0, 2.6, 24.6);
 const DRUM_R = 2.4;
 const EXHAUSTS: [number, number, number][] = [[-6.5, 19.1, -19.5], [-3.5, 19.1, -19.5], [3.5, 19.1, -19.5], [6.5, 19.1, -19.5]];
 const CHUTE = new THREE.Vector3(0, 6.2, -25.6);
-/** Effects (dust, smoke) only within this far (m) of the camera. */
+/** Effects (dust, smoke) only within this far (m) of the camera; a wreck's plume within PLUME_R. */
 const FX_R = 800;
+const PLUME_R = 3000;
+/** A burning wreck's plume off its back: puffs a second, their size (m), rise (m/s) and life (s): a column ~100 m
+ *  tall, spreading as it climbs and leaning with the wind (src/world/zaps.ts smoke). */
+const PLUME_RATE = 6;
+const PLUME_SIZE = 9;
+const PLUME_RISE = 16;
+const PLUME_LIFE = 24;
+const PLUME_AT = new THREE.Vector3(0, 19.5, -6);
 const CORE_GLOW = 16;
 
 /** The track shoe's way round a loop d m from the bottom run's rear end, forward: (y, z) of its centre and its turn
@@ -113,6 +121,7 @@ class View {
   /** Effect accumulators. */
   dust = 0;
   smoke = 0;
+  plume = 0;
   private parts: Parts | null = null;
   private links: THREE.InstancedMesh | null = null;
   private coreMats: THREE.MeshStandardMaterial[] = [];
@@ -270,7 +279,9 @@ export class Harvesters {
       v.cores = [...h.cores];
       if (p.state === 1 && v.state === 0) this.onDeath(p.x, p.y + 10, p.z);
       v.state = p.state;
-      if (Math.hypot(p.x - eye.x, p.z - eye.z) < FX_R) this.effects(h, v, p, dt);
+      const far = Math.hypot(p.x - eye.x, p.z - eye.z);
+      if (far < FX_R) this.effects(h, v, p, dt);
+      if (p.state === 1 && far < PLUME_R) this.plume(v, dt);
     }
     for (const [id, v] of this.views) {
       if (seen.has(id)) continue;
@@ -305,6 +316,15 @@ export class Harvesters {
         _v.set(c.x, c.y, c.z + 1).applyMatrix4(m);
         zaps.puff(_v.x, _v.y, _v.z, p.state ? 3 : 1.8, 2);
       }
+    }
+  }
+
+  /** The wreck's plume: big, long-lived puffs off the middle of its back, seen from far off. */
+  private plume(v: View, dt: number) {
+    v.plume += dt * PLUME_RATE;
+    for (; v.plume >= 1; v.plume--) {
+      _v.set(PLUME_AT.x + (Math.random() - 0.5) * 10, PLUME_AT.y, PLUME_AT.z + (Math.random() - 0.5) * 18).applyMatrix4(v.root.matrixWorld);
+      zaps.plume(_v.x, _v.y, _v.z, PLUME_SIZE * (0.7 + Math.random() * 0.6), PLUME_RISE, PLUME_LIFE);
     }
   }
 

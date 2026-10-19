@@ -1,11 +1,13 @@
 // Server side of the harvester (shared/harvester.ts): now and then one sets off on a long route over the dunes that
 // passes some way from a random player, steering round rock, the base, shelters and crash sites. Its list goes out to
 // everyone whenever it changes (a new one, a change of pace, a core shot out, its death). Ticked with the bots: it
-// runs over whoever is under it, charges whoever stands in its lane ahead (a new stretch of pace up to CHARGE, back
-// down to SPEED once the lane has been clear CALM_MS), and ploughs furrows behind its tracks. In memory only.
+// runs over whoever is under it, charges whoever it sees ahead (inSight: a new stretch of pace up to CHARGE, back down
+// to SPEED once it has seen no one for CALM_MS), steering at the nearest of them as it does (the route ahead of its
+// front axle swapped for one curving towards them, then wandering on), and ploughs furrows behind its tracks. In
+// memory only.
 import {
-  AHEAD, BOW, CALM_MS, CHARGE, CORE_HALF, CORE_HP, CORES, HALF_W, harvesterAt, harvesterPose, HULL_TOP, LANE, paceAt,
-  routeLength, SLOW_DOWN, SPEED, SPEED_UP, STEP, STERN, toLocal, toWorld, TRACK, TRACK_LEN, WHEELBASE, WRECK_MS,
+  BOW, CALM_MS, CHARGE, CORE_HALF, CORE_HP, CORES, HALF_W, harvesterAt, harvesterPose, HULL_TOP, inSight, paceAt,
+  routeCut, routeLength, SLOW_DOWN, SPEED, SPEED_UP, STEP, STERN, toLocal, toWorld, TRACK, TRACK_LEN, WHEELBASE, WRECK_MS,
   type Harvester, type HarvesterPose,
 } from '../shared/harvester.ts';
 import { baseHeight } from '../shared/terrain.ts';
@@ -40,6 +42,16 @@ const FURROW_R_M = 2.4;
  *  length (local z: from in front of the maw, give or take). */
 const CORE_SLACK = 0.9;
 const SHOT_FROM_Z = 12;
+/** Steering at whoever it charges: the route ahead is redrawn every STEER_MS, in STEER_STEP m steps turning on a
+ *  radius of at least TURN_R m, for up to STEER_LEN m (straight on once it's within REACHED m of them), then wandering
+ *  on for STEER_ON m; the new route has to be at least STEER_MIN m long, or it keeps the old one. */
+const STEER_MS = 800;
+const STEER_STEP = 5;
+const TURN_R = 70;
+const STEER_LEN = 260;
+const REACHED = 25;
+const STEER_ON = 1500;
+const STEER_MIN = 600;
 /** Seized up by a storm front (shared/storm.ts seized): it brakes to a stop at this (m/s²). */
 const SEIZE_BRAKE = 3;
 
@@ -105,6 +117,8 @@ type Brain = {
   furrowS: number;
   /** Seized up by a storm front: stopped till it has passed. */
   stuck: boolean;
+  /** Last redrew its route to steer at someone (server ms). */
+  steerAt: number;
 };
 
 export type HarvesterPlayer = { id: number; x: number; y: number; z: number; safe: boolean };
@@ -141,7 +155,7 @@ export class HarvesterServer {
       if (!pts) continue;
       const id = this.nextId++, start = Math.round(now);
       this.harvesters.push({ id, pts, pace: [{ t: start, s: 0, v: SPEED, a: 0, to: SPEED }], start, end: 0, cores: CORES.map(() => 0), charging: false });
-      this.brains.set(id, { aheadAt: 0, furrowS: 0, stuck: false });
+      this.brains.set(id, { aheadAt: 0, furrowS: 0, stuck: false, steerAt: 0 });
       this.changed = true;
       return true;
     }
@@ -167,7 +181,7 @@ export class HarvesterServer {
     for (const h of this.harvesters) {
       const b = this.brains.get(h.id)!;
       if (h.down || !harvesterAt(h, now, _p)) continue;
-      let ahead = false;
+      let ahead = false, target: HarvesterPlayer | null = null, near = Infinity;
       for (const p of exposed) {
         toLocal(_p, p.x, p.z, _l);
         const level = p.y < _p.y + HULL_TOP && p.y > _p.y - 4;
@@ -175,7 +189,11 @@ export class HarvesterServer {
         if (Math.abs(_l.x) < HALF_W && _l.z > STERN && _l.z < BOW && level) {
           crushed.push({ id: p.id, push: [Math.sin(_p.yaw) * 6, 3, Math.cos(_p.yaw) * 6] });
         }
-        if (Math.abs(_l.x) < LANE && _l.z >= BOW - 2 && _l.z < BOW + AHEAD && level) ahead = true;
+        if (level && inSight(_l.x, _l.z)) {
+          ahead = true;
+          const d = Math.hypot(_l.x, _l.z);
+          if (d < near) (near = d), (target = p);
+        }
       }
       // A storm front's static seizes it: it brakes to a stop and sits there till it has passed, then sets off again.
       const stuck = seized(storms, _p.x, _p.z, now);
@@ -187,6 +205,7 @@ export class HarvesterServer {
       if (ahead) b.aheadAt = now;
       if (ahead && !h.charging) this.pace(h, now, CHARGE);
       else if (!ahead && h.charging && now - b.aheadAt > CALM_MS) this.pace(h, now, SPEED);
+      if (target) this.steer(h, b, target.x, target.z, now);
       this.furrows(b, players, furrows);
     }
     return crushed;
@@ -199,6 +218,34 @@ export class HarvesterServer {
     // Only the last few matter (the one before covers anyone whose clock is a little behind).
     if (h.pace.length > 3) h.pace.splice(0, h.pace.length - 3);
     h.charging = to === CHARGE;
+    this.changed = true;
+  }
+
+  /** Redraw the route ahead of its front axle to curve towards (tx, tz) (at most every STEER_MS), steering round
+   *  nothing: where the way there isn't clear (rock, the base, a shelter...) it stops turning there and wanders on. */
+  private steer(h: Harvester, b: Brain, tx: number, tz: number, now: number) {
+    if (now - b.steerAt < STEER_MS) return;
+    b.steerAt = now;
+    const keep = routeCut(h.pts, _p.s + WHEELBASE / 2 + STEER_STEP);
+    const n = keep.length;
+    if (n < 4) return;
+    let x = keep[n - 2], z = keep[n - 1], yaw = Math.atan2(x - keep[n - 4], z - keep[n - 3]);
+    const tail: number[] = [];
+    for (let d = 0; d < STEER_LEN; d += STEER_STEP) {
+      if (Math.hypot(tx - x, tz - z) > REACHED) {
+        const turn = Math.atan2(Math.sin(Math.atan2(tx - x, tz - z) - yaw), Math.cos(Math.atan2(tx - x, tz - z) - yaw));
+        yaw += Math.max(-STEER_STEP / TURN_R, Math.min(STEER_STEP / TURN_R, turn));
+      }
+      const nx = x + Math.sin(yaw) * STEER_STEP, nz = z + Math.cos(yaw) * STEER_STEP;
+      if (!clear(nx, nz)) break;
+      x = nx;
+      z = nz;
+      tail.push(r1(x), r1(z));
+    }
+    if (tail.length < 8) return;
+    const on = wander(x, z, yaw, STEER_ON).slice(2);
+    if (routeLength([keep[n - 2], keep[n - 1], ...tail, ...on]) < STEER_MIN) return;
+    h.pts = keep.concat(tail, on);
     this.changed = true;
   }
 

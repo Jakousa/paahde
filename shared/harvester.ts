@@ -1,7 +1,7 @@
 // The harvester: a tracked sand crawler the size of a building, one slab-sided monolith of rust-black iron grinding
 // slowly over the dunes along a long route, sifting the sand for whatever traces of ore it holds (a cutter drum in its
 // maw, a slot at the stern spilling the sifted sand). It pays no one any mind, except whoever stands in its lane right
-// ahead of it: then it opens up and charges (CHARGE m/s, faster than anyone can run or slide: you have to get out of
+// ahead of it (a wide wedge: inSight): then it turns towards them, opens up and charges (CHARGE m/s, faster than anyone can run or slide: you have to get out of
 // its lane) until the lane has been clear for a while. Anyone it drives over is ground into the sand. Its only weak points are the three glowing
 // intake cores in its maw, over the drum (CORE_HP rifle hits each): to kill it you have to stand in front of it.
 // With all three out it seizes, burns where it stopped and its ore hopper bursts (shared/tables.ts HARVESTER_SPOILS).
@@ -57,11 +57,15 @@ export const STERN = -25.4;
 export const BOW = 27.8;
 /** The hull's top (m above its ground). */
 export const HULL_TOP = 19;
-/** Its lane: anyone this far (m) ahead of its bow and within LANE of its middle sets it charging; it calms down
- *  CALM_MS after the lane is clear. */
-export const AHEAD = 110;
-export const LANE = HALF_W + 3;
+/** What it sees: a wedge ahead of its bow, LANE m either side of its middle at the bow and widening by SPREAD m a metre,
+ *  out to SIGHT m. Anyone in it sets it charging, turning towards them; it calms down CALM_MS after it's empty. */
+export const SIGHT = 170;
+export const LANE = HALF_W + 4;
+export const SPREAD = 0.7;
 export const CALM_MS = 5000;
+
+/** Whether local (lx, lz) (toLocal) is in its sight. */
+export const inSight = (lx: number, lz: number) => lz >= BOW - 2 && lz < BOW + SIGHT && Math.abs(lx) < LANE + (lz - BOW) * SPREAD;
 /** Intake cores (local centres, facing forward) on the throat wall over the drum, in plain view from in front under
  *  the raised hood; their half size (m). */
 export const CORES: readonly { x: number; y: number; z: number }[] = [
@@ -139,6 +143,15 @@ function along(pts: number[], s: number, out: { x: number; z: number }) {
   out.x = pts[2 * i] + (pts[2 * i + 2] - pts[2 * i]) * t;
   out.z = pts[2 * i + 1] + (pts[2 * i + 3] - pts[2 * i + 1]) * t;
   return out;
+}
+
+/** The route up to and including its first point at least `s` m along: what has to stay the same for its pose up to
+ *  there to stay the same (the server swaps what comes after when it steers). */
+export function routeCut(pts: number[], s: number): number[] {
+  const c = cumulative(pts);
+  let i = 0;
+  while (i < c.length - 1 && c[i] < s) i++;
+  return pts.slice(0, 2 * i + 2);
 }
 
 /** Sand under a track unit centred on world (x, z), running along (fx, fz): the highest of its middle and ends. */

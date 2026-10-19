@@ -15,7 +15,7 @@ hairline seams), so the eye reads the bulk by them.
   Harvester_Drum     the cutter drum in the maw, about its axle (local X) at DRUM
   Harvester_Core0..2 the three glowing intake cores in the throat behind the drum (emissive; the game darkens the
                      dead ones): its only weak points (shared/harvester.ts CORES)
-  Harvester_Lamps    the small lamps on its hood and cheeks (emissive)
+  Harvester_Lamps    the small red lamps on its hood, cheeks and flanks (emissive)
   Harvester_Link     one track shoe (grouser on +Y): the game lays LINKS round each track unit's loop and runs them
 
 Materials are flat Principled BSDF colours (no textures). Units are metres. Deterministic.
@@ -44,7 +44,7 @@ MATERIALS = {
     'HarvHazard': (0xb08a3a, 0.2, 0.6, None),    # faded yellow-ochre bands on the cheeks
     'HarvVent': (0xff5a10, 0.0, 0.5, 1.6),       # the faint glow deep in a few of the grilles
     'HarvCore': (0xffc070, 0.0, 0.3, 16.0),       # the intake cores (src/world/harvesters.ts darkens dead ones)
-    'HarvLamp': (0xfff0c8, 0.0, 0.3, 6.0),       # the small lamps
+    'HarvLamp': (0xff2a12, 0.0, 0.3, 8.0),       # the small lamps, red
 }
 
 # three.js (Y up) -> Blender (Z up): (x, y, z) -> (x, -z, y), a +90 degree turn about X.

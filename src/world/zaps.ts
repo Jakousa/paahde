@@ -250,6 +250,13 @@ class Zaps {
       size, 2.5 + Math.random() * 2.5 + size * 0.5);
   }
 
+  /** A puff of a big smoke column at (x, y, z), `size` m across, rising at `rise` m/s, living `life` s (a burning
+   *  wreck's plume: longer-lived and faster than a puff, so it towers and spreads). */
+  plume(x: number, y: number, z: number, size: number, rise: number, life: number) {
+    this.smoke.add(x, y, z, (Math.random() - 0.5) * 0.2 * size, rise * (0.8 + Math.random() * 0.4), (Math.random() - 0.5) * 0.2 * size,
+      size, life * (0.8 + Math.random() * 0.4));
+  }
+
   /** After the camera and the first-person gun are placed for the frame (beams follow the drawn muzzle). */
   update(dt: number) {
     this.beams = this.beams.filter((b) => {
