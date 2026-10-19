@@ -40,8 +40,10 @@ export const playerHands = {
   aim: 0, rifleScoped: false, kick: 0, charge: 1,
   /** The jammer's lamp (src/jammer.ts), 0 dark .. 1 fully lit. */
   jamLamp: 0,
-  /** The grinder in hand (src/teardown): 0..1 how hard it is grinding, for the disc and the hands. */
+  /** The grinder in hand: the disc's revs 0..1, the same as heard (src/grinderSound.ts spin): they spool up, sag under load and coast down. */
   grind: 0,
+  /** How hard the grinder shudders in the hands while it cuts, -1..1 (src/grinderSound.ts judder). */
+  grindShake: 0,
   /** Where the grinder in hand touches something hard (src/grinder.ts), or null. */
   grindAt: null as { x: number; y: number; z: number } | null,
   /** The receiver in hand (src/receiver.ts): its boss (null: none in hand), needle (rad, + to the left), lamp 0..1. */

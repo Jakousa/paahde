@@ -153,12 +153,14 @@ export class Grinder {
   update(dt: number, can: boolean) {
     const holding = can && playerHands.held === 'grinder' && !!document.pointerLockElement;
     const using = holding && actionHeld('use');
-    playerHands.grind += ((using ? 1 : 0) - playerHands.grind) * Math.min(1, dt * 10);
     playerHands.grindAt = null;
     this.sparks.update(dt);
     if (!using) this.sparks.lost();
     const touching = using && this.touch(dt);
     grinderSound.update(dt, using, touching, this.sparks.speed);
+    // The disc and the hands follow the very revs that are heard (src/viewmodel.ts).
+    playerHands.grind = grinderSound.spin;
+    playerHands.grindShake = grinderSound.judder;
   }
 
   /** The disc runs: whether it is on something hard (then `playerHands.grindAt` is where, and the sparks fly). */

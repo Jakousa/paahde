@@ -84,6 +84,9 @@ export class ViewModel {
   private pistolMuzzle: THREE.Object3D | null = null;
   private jammer: ReturnType<typeof jammerModel> | null = null;
   private grinder: ReturnType<typeof grinderModel> | null = null;
+  /** Where the grinder rests on its mount (it shudders about that), and a clock for its buzz. */
+  private grinderAt = new THREE.Vector3();
+  private buzzClock = 0;
   /** Where the jammer sits; the receivers are made on it as they're first held, one per boss. */
   private mount: THREE.Object3D | null = null;
   private receivers = new Map<BossKind, ReturnType<typeof receiverModel>>();
@@ -164,6 +167,7 @@ export class ViewModel {
       this.grinder = grinderModel();
       const gr = this.grinder.obj;
       gr.position.copy(gmount.position);
+      this.grinderAt.copy(gmount.position);
       gr.quaternion.copy(gmount.quaternion);
       gr.scale.copy(gmount.scale);
       gr.traverse((o) => (o.frustumCulled = false));
@@ -402,7 +406,12 @@ export class ViewModel {
     }
     this.showTier();
     if (this.jammer) this.jammer.lamp.color.copy(LAMP_ON).multiplyScalar(playerHands.jamLamp);
-    if (this.grinder) this.grinder.disc.rotation.x += playerHands.grind * 70 * dt;
+    if (this.grinder) {
+      // The disc turns with the revs that are heard, and the whole tool shudders with their stagger (and buzzes a little at speed).
+      this.grinder.disc.rotation.x += playerHands.grind * 70 * dt;
+      const g = this.grinder.obj, k = playerHands.grindShake, buzz = playerHands.grind * 0.0012 * Math.sin((this.buzzClock += dt) * 170);
+      g.position.set(this.grinderAt.x, this.grinderAt.y + 0.007 * k + buzz, this.grinderAt.z + 0.005 * k);
+    }
     if (this.shown === 'receiver') {
       const r = playerHands.receiver.kind ? this.receivers.get(playerHands.receiver.kind) : undefined;
       if (!r?.obj.visible) this.showReceiver(); // another boss's receiver came into the hand
