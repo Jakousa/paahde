@@ -50,6 +50,7 @@ import { wind } from './world/wind';
 import { WindSound } from './windSound';
 import { EngineSound } from './engineSound';
 import { drinkSound } from './drinkSound';
+import { grinderSound } from './grinderSound';
 import { footsteps } from './footsteps';
 import { music } from './music';
 import { uiSound } from './uiSound';
@@ -415,7 +416,7 @@ renderer.setAnimationLoop((time) => {
   const others = net.frame(frameDt);
   // The gun raised (or just fired), or the spyglass: others see it shouldered, or at the eye (src/models/scavenger.ts).
   const aiming = playerHands.aim > 0.5 || playerHands.looking;
-  net.setHands(playerHands.held, playerHands.drinking, playerHands.filling, aiming);
+  net.setHands(playerHands.held, playerHands.drinking, playerHands.filling, aiming, playerHands.grinding);
 
   me.setColor(net.color);
   const s = net.me;
@@ -542,6 +543,7 @@ baseSand.update(frameDt, storm.atBase);
   engineSound.update(frameDt, s.riding || s.mounting > 0, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   drinkSound.remotes(others, orbit.camera.position);
+  grinderSound.remotes(frameDt, others, orbit.camera.position);
   footsteps.listener(orbit.camera.position, orbit.viewYaw);
   breathing.update(survival.heatLevel, survival.dead);
   audio.setMuffled(survival.dead); // the world goes dull while you lie dead; the music doesn't

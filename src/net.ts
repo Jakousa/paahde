@@ -84,6 +84,8 @@ export type RemotePlayer = {
   drinking: boolean;
   /** Filling their canteen at the pump. */
   filling: boolean;
+  /** Their grinder: 0 not running, 1 the disc runs, 2 it is cutting (the 'hands' message). */
+  grinding: 0 | 1 | 2;
   /** Gun raised: aiming (the 'hands' message), or a shot of theirs went off just now ('zap'). */
   aiming: boolean;
 };
@@ -124,6 +126,7 @@ export class Net {
   /** What's in our hands, and what the server last heard (-1: tell it again, after a (re)join). */
   private hands: Hands = 0;
   private sentHands = -1;
+  private handsAt = 0;
   private sentSlot = -1;
   private aim = false;
   private sentAim = false;
@@ -450,10 +453,14 @@ export class Net {
    * What we're holding, for other players' view of us; sent when it changes. Call every frame. The server
    * shows others the item in the selected slot; `hands` adds drinking from the canteen or filling it.
    */
-  setHands(held: string, drinking: boolean, filling: boolean, aim: boolean) {
-    this.hands = held === 'canteen' ? (drinking ? 2 : filling ? 3 : 1) : 0;
+  setHands(held: string, drinking: boolean, filling: boolean, aim: boolean, grinding: 0 | 1 | 2 = 0) {
+    this.hands = held === 'canteen' ? (drinking ? 2 : filling ? 3 : 1) : held === 'grinder' && grinding ? (grinding === 2 ? 5 : 4) : 0;
     this.aim = aim;
+    // (the disc touching and not touching can flicker along an edge: a change of that alone waits a moment)
+    const now = performance.now();
+    if (this.hands >= 4 && this.sentHands >= 4 && this.hands !== this.sentHands && now - this.handsAt < 100) return;
     if (this.connected && (this.hands !== this.sentHands || tools.slot !== this.sentSlot || aim !== this.sentAim)) {
+      this.handsAt = now;
       this.send({ t: 'hands', hands: this.hands, slot: tools.slot, ...(aim ? { aim } : {}) });
       this.sentHands = this.hands;
       this.sentSlot = tools.slot;
@@ -831,7 +838,7 @@ export class Net {
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
-        riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, tiers: pick.tiers ?? 0, bike: pick.bike ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3,
+        riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, tiers: pick.tiers ?? 0, bike: pick.bike ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3, grinding: pick.hands === 5 ? 2 : pick.hands === 4 ? 1 : 0,
         aiming: pick.aim === 1 || this.justFired(pb.id),
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t, down: pb.down ?? null,
       });

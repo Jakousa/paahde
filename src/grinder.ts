@@ -161,6 +161,7 @@ export class Grinder {
     // The disc and the hands follow the very revs that are heard (src/viewmodel.ts).
     playerHands.grind = grinderSound.spin;
     playerHands.grindShake = grinderSound.judder;
+    playerHands.grinding = !using ? 0 : touching ? 2 : 1;
   }
 
   /** The disc runs: whether it is on something hard (then `playerHands.grindAt` is where, and the sparks fly). */

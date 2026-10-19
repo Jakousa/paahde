@@ -223,7 +223,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'ready' && p) return onReady(p);
     if (msg.t === 'telemetry' && p) return onTelemetry(p, msg.ev, msg.sum);
     if (msg.t === 'hands' && p) {
-      p.hands = msg.hands === 1 || msg.hands === 2 || msg.hands === 3 ? msg.hands : 0;
+      p.hands = msg.hands === 1 || msg.hands === 2 || msg.hands === 3 || msg.hands === 4 || msg.hands === 5 ? msg.hands : 0;
       p.aim = msg.aim === true;
       const slot = Number.isInteger(msg.slot) && (msg.slot as number) >= 0 && (msg.slot as number) < HOTBAR ? (msg.slot as number) : -1;
       if (slot !== p.slot) {

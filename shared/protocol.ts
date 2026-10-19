@@ -146,8 +146,9 @@ export const NAME_MAX = 20;
 /** The job on the disassembly table: which carried machine, its seed (picked by the server), progress so far. */
 export type BenchJob = { kind: string; seed: number; done: number[]; taken: number[] };
 
-// 0 empty hands, 1 holding the canteen, 2 drinking from it, 3 filling it at the pump.
-export type Hands = 0 | 1 | 2 | 3;
+// 0 empty hands, 1 holding the canteen, 2 drinking from it, 3 filling it at the pump,
+// 4 the grinder's disc running, 5 the grinder cutting (touching something hard); others hear it (src/grinderSound.ts).
+export type Hands = 0 | 1 | 2 | 3 | 4 | 5;
 
 // pitch: the player's quantized camera pitch (pitchFromQ in shared/dig.ts), so remote avatars can
 // tilt their heads.

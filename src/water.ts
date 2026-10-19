@@ -44,6 +44,8 @@ export const playerHands = {
   grind: 0,
   /** How hard the grinder shudders in the hands while it cuts, -1..1 (src/grinderSound.ts judder). */
   grindShake: 0,
+  /** What the grinder in hand is doing, for other players to hear (shared/protocol.ts Hands): 0 not running, 1 the disc runs, 2 it is cutting. */
+  grinding: 0 as 0 | 1 | 2,
   /** Where the grinder in hand touches something hard (src/grinder.ts), or null. */
   grindAt: null as { x: number; y: number; z: number } | null,
   /** The receiver in hand (src/receiver.ts): its boss (null: none in hand), needle (rad, + to the left), lamp 0..1. */
