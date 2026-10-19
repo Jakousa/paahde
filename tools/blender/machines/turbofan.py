@@ -116,6 +116,21 @@ def pad(mb, centre, nrm, w, h, mat='Dark'):
     mb.pop()
 
 
+def rest_swing(mod, pose, hinge_phi, free_phi, radius):
+    """Swing a half-shell open about its hinge until it hangs down and rests on the ground (the lowest swing that touches it)."""
+    h = Vector((radius * math.sin(hinge_phi), radius * math.cos(hinge_phi), 0))
+    best = None
+    for sgn in (1, -1):
+        for k in range(1, 60):
+            M = around(h, (0, 0, 1), sgn * k * 0.04)
+            low = min((pose @ M @ v.co).y for v in mod.mb.bm.verts)
+            if low <= 0.03:
+                break
+        if best is None or (low <= 0.03 and (best[2] > 0.03 or k < best[0])) or (best[2] > 0.03 and low < best[2]):
+            best = (k, M, low)
+    mod.place(best[1])
+
+
 def build(pose, rnd_seed=11):
     rnd = random.Random(rnd_seed)
     m = Machine('jet_engine', 'turbofan', pose)
@@ -190,9 +205,9 @@ def build(pose, rnd_seed=11):
 
     # --- fan cowl: two halves, A hanging open on its hinge, B still on (and dented)
     fa = m.module('fancowl_a', 0.6, pop=(-0.5, 0.8, 0.3))
-    fa.place(swing(math.radians(340), math.radians(180), 0.92, 1.1))
     half_shell(fa, 180, 340, [(0.90, 0.52), (0.925, 0.75), (0.915, 0.94)], 0.014, 9)
     crush(fa.mb, polar(math.radians(235), 0.93, 0.8), 0.4, 0.07)
+    rest_swing(fa, pose, math.radians(340), math.radians(180), 0.92)
     fa.rring('bolt', 'hingePin', 0.62, 0.935, 1, phase=math.radians(340))
     fa.rring('bolt', 'hingePin', 0.86, 0.935, 1, phase=math.radians(340))
     fa.step('clip', 'cowlLatch', polar(math.radians(180), 0.935, 0.58), radial(math.radians(180)), after=['hingePin'])
@@ -212,9 +227,9 @@ def build(pose, rnd_seed=11):
         'reverser_b': (0, 180, 0, 180, 0.5, False, 25),
     }.items():
         rv = m.module(key, chance, pop=(-1 if key.endswith('a') else 1, 0.8, -0.2))
-        if swingit:
-            rv.place(swing(math.radians(hinge), math.radians(free), 0.62, 1.0))
         half_shell(rv, p0, p1, [(0.66, 0.50), (0.64, -0.05), (0.56, -0.62)], 0.014, sd)
+        if swingit:
+            rest_swing(rv, pose, math.radians(hinge), math.radians(free), 0.62)
         rv.rring('bolt', 'hingePin', 0.30, 0.67, 1, phase=math.radians(hinge))
         rv.rring('bolt', 'hingePin', -0.30, 0.62, 1, phase=math.radians(hinge))
         zs = (0.35, -0.05, -0.4)
@@ -227,9 +242,9 @@ def build(pose, rnd_seed=11):
         'corecowl_b': (0, 180, 0, 180, 0.55, False, 35, 'reverser_b'),
     }.items():
         cc = m.module(key, chance, pop=(-1 if key.endswith('a') else 1, 0.8, 0.0))
-        if swingit:
-            cc.place(swing(math.radians(hinge), math.radians(free), 0.45, 1.0))
         half_shell(cc, p0, p1, [(0.45, 0.46), (0.45, 0.1), (0.40, -0.5), (0.34, -0.85)], 0.012, sd)
+        if swingit:
+            rest_swing(cc, pose, math.radians(hinge), math.radians(free), 0.45)
         cc.rring('bolt', 'hingePin', 0.30, 0.46, 1, phase=math.radians(hinge))
         cc.rring('bolt', 'hingePin', -0.40, 0.41, 1, phase=math.radians(hinge))
         for z in (0.28, -0.1, -0.45):

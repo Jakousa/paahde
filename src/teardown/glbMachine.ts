@@ -12,6 +12,7 @@ import { mergePart } from '../world/bossParts.ts';
 import { Kit, type Junk, type Piece, type Slot, type Step, type Target, type V } from './junk.ts';
 
 const loader = new GLTFLoader();
+let twoSided: THREE.MeshStandardNodeMaterial | null = null;
 const cache = new Map<string, Promise<Map<string, THREE.Object3D>>>();
 
 /** The model's nodes by name, each merged into one lit mesh (src/world/bossParts.ts mergePart). */
@@ -20,7 +21,20 @@ function loadModel(model: string): Promise<Map<string, THREE.Object3D>> {
   if (!p) {
     p = loader.loadAsync(`./models/machines/${model}.glb`).then((gltf) => {
       const out = new Map<string, THREE.Object3D>();
-      for (const node of [...gltf.scene.children]) out.set(node.name, mergePart(node));
+      for (const node of [...gltf.scene.children]) {
+        const merged = mergePart(node);
+        // thin shells are seen from both sides
+        merged.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || !(m.material instanceof THREE.MeshStandardNodeMaterial)) return;
+          if (!twoSided) {
+            twoSided = m.material.clone();
+            twoSided.side = THREE.DoubleSide;
+          }
+          m.material = twoSided;
+        });
+        out.set(node.name, merged);
+      }
       return out;
     });
     cache.set(model, p);
