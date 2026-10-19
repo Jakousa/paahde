@@ -11,6 +11,7 @@
 import * as THREE from 'three/webgpu';
 import { abs, cameraPosition, dot, positionWorld, smoothstep, uniform, vec3 } from 'three/tsl';
 import { Rope } from './rope.ts';
+import { hardware } from './hardware.ts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { machineParts } from '../../shared/machine.ts';
 import { layoutOf } from '../../shared/machines.ts';
@@ -132,7 +133,9 @@ export interface Step {
   /** Wires: the cable as a rope that moves when shaken and goes floppy once an end is off (src/teardown/rope.ts), and the
    *  two lugs on its ends. */
   rope?: Rope;
-  lugs?: THREE.Mesh[];
+  lugs?: THREE.Object3D[];
+  /** Hardware that moves its own way as the step goes (a pin slides out, a clamp's T-bolt unwinds), instead of the kind's turn. */
+  act?: (f: number) => void;
 }
 /** A wire shorter than this (m) is one pull: a single shake rips the whole cable out. */
 export const SHORT_WIRE = 0.55;
@@ -710,7 +713,7 @@ export class Kit {
     return step;
   }
   /** Wire from the first point to the last, a ring lug at each end: shake each end loose. */
-  wire(label: string, pts: V[], key: MatKey = 'red', after: Step[] = [], r = 0.035): Step {
+  wire(label: string, pts: V[], key: MatKey = 'red', after: Step[] = [], r = 0.035, plug?: { strands: number }): Step {
     const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p)));
     const mid = curve.getPoint(0.5);
     const short = curve.getLength() < SHORT_WIRE;
@@ -721,14 +724,21 @@ export class Kit {
     const tube = new THREE.Mesh(new THREE.TubeGeometry(rel, 28, r, 6), mat);
     this.add(tube, g);
     const ends: WireEnd[] = [];
-    const lugs: THREE.Mesh[] = [];
+    const lugs: THREE.Object3D[] = [];
     for (const t of [0, 1]) {
       const f = this.fs;
-      const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.06 * f, 0.06 * f, 0.025 * f, 10), this.mats.copper);
+      // (a cable of a model-built machine ends in a connector plug from the hardware kit, which lies along the cable as it leaves)
+      const lug: THREE.Object3D = plug ? new THREE.Group() : new THREE.Mesh(new THREE.CylinderGeometry(0.06 * f, 0.06 * f, 0.025 * f, 10), this.mats.copper);
       lug.position.copy(rel.getPoint(t));
+      if (plug) {
+        const inward = rel.getTangent(t).multiplyScalar(t === 0 ? 1 : -1);
+        lug.userData.base = new THREE.Quaternion().setFromUnitVectors(UP, inward);
+        lug.quaternion.copy(lug.userData.base);
+      }
       this.add(lug, g);
       lugs.push(lug);
       if (!short) ends.push({ lug, base: lug.position.clone(), swings: 0, done: false });
+      if (plug) continue;
       // What it is fastened to: a terminal block with a stud up through the lug, and a nut on it.
       const at = lug.position;
       const block = new THREE.Mesh(new THREE.BoxGeometry(0.16 * f, 0.05 * f, 0.16 * f), this.mats.dark);
@@ -753,9 +763,98 @@ export class Kit {
     step.ends = ends;
     step.lugs = lugs;
     step.rope = new Rope(rel, tube, step.hit, r);
+    if (plug) this.dressWire(step, g, lugs, rel, plug.strands, r);
     // The markers sit on the lugs themselves, wherever the wire runs.
     step.marker.position.set(0, 0, 0);
     (step.marker.userData.ends as THREE.Group[]).forEach((eg, i) => eg.position.copy((ends[i] ?? ends[0]).base));
+    return step;
+  }
+
+  /** The plugs on the ends of a cable and the sockets they sit in, once the hardware kit is in; with several strands, the cable
+   *  fans into its wires at each plug. */
+  private dressWire(step: Step, g: THREE.Group, lugs: THREE.Object3D[], rel: THREE.CatmullRomCurve3, strands: number, r: number) {
+    const k = 1 / this.fs;
+    const colours: MatKey[] = ['red', 'black', 'yellow', 'blue', 'green', 'brown'];
+    hardware().then((hw) => {
+      const plug = hw.get('Plug'), socket = hw.get('Socket');
+      lugs.forEach((lug, i) => {
+        if (plug) {
+          const o = plug.obj.clone(true);
+          o.scale.setScalar(k);
+          lug.add(o);
+          o.traverse((m) => {
+            const mesh = m as THREE.Mesh;
+            if (mesh.isMesh) step.shine.push({ mesh, plain: mesh.material as THREE.MeshStandardNodeMaterial, on: false });
+          });
+        }
+        if (socket) {
+          const s = socket.obj.clone(true);
+          s.scale.setScalar(k);
+          s.position.copy(lug.position);
+          s.quaternion.copy(lug.userData.base as THREE.Quaternion);
+          g.add(s);
+        }
+        // the strands leave the plug's backshell and run together into the cable
+        if (strands > 1) {
+          const along = new THREE.Vector3(0, 1, 0);
+          for (let n = 0; n < strands; n++) {
+            const a = (n / strands) * Math.PI * 2;
+            const spread = new THREE.Vector3(Math.cos(a), 0, Math.sin(a)).multiplyScalar(0.016 * k);
+            const wire = new THREE.CatmullRomCurve3([
+              along.clone().multiplyScalar(0.098 * k).add(spread.clone().multiplyScalar(0.5)),
+              along.clone().multiplyScalar(0.14 * k).add(spread),
+              along.clone().multiplyScalar(0.2 * k).add(spread.clone().multiplyScalar(0.3)),
+              along.clone().multiplyScalar(0.26 * k),
+            ]);
+            const m = new THREE.Mesh(new THREE.TubeGeometry(wire, 8, Math.max(0.006, r * 0.35), 5), this.mats[colours[n % colours.length]]);
+            m.castShadow = false;
+            lug.add(m);
+          }
+        }
+      });
+    });
+  }
+
+  /** A step of a model-built machine (src/teardown/glbMachine.ts) with its hardware from the kit: `kind` decides what the player
+   *  does (as screw, bolt, clip), `hw` what it looks like (bolt, screw, latch, clamp, pin, fitting), `variant` clean (A) or worn (B). */
+  hardwareStep(kind: 'screw' | 'bolt' | 'clip', hw: 'bolt' | 'screw' | 'latch' | 'clamp' | 'pin' | 'fitting', variant: 'A' | 'B', label: string, pos: V,
+    nrm: V, after: Step[], need: number): Step {
+    const { g, spin } = this.stepGroup(pos, nrm);
+    const step = kind === 'bolt' ? this.reg('bolt', label, g, spin, new THREE.SphereGeometry(0.2, 8, 6), need, after, 0.05)
+      : kind === 'screw' ? this.reg('screw', label, g, spin, new THREE.SphereGeometry(0.15, 8, 6), need, after, 0.02)
+        : this.reg('clip', label, g, spin, new THREE.BoxGeometry(0.34, 0.2, 0.26), need, after, 0.04);
+    const base = { bolt: 'Bolt', screw: 'Screw', latch: 'Latch', clamp: 'Clamp', pin: 'Pin', fitting: 'Fitting' }[hw] + variant;
+    if (hw === 'latch') {
+      // (its lever is hinged at its own pivot: the spin group sits there, and the show() of a clip raises it)
+    } else if (hw === 'clamp') {
+      step.act = (f) => {
+        spin.rotation.y = Math.min(f, 1) * 7;
+        spin.position.y = Math.min(f, 1) * 0.05;
+      };
+    } else if (hw === 'pin') {
+      step.act = (f) => (spin.position.y = Math.min(f, 1) * 0.1);
+    }
+    const k = 1 / this.fs;
+    hardware().then((parts) => {
+      const seat = parts.get(base), mover = parts.get(base + '_Spin');
+      const add = (to: THREE.Object3D, o: THREE.Object3D) => {
+        o.scale.setScalar(k);
+        to.add(o);
+        o.traverse((m) => {
+          const mesh = m as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          mesh.castShadow = false; // (hardware this small throws no shadow)
+          step.shine.push({ mesh, plain: mesh.material as THREE.MeshStandardNodeMaterial, on: false });
+        });
+      };
+      if (seat) add(g, seat.obj.clone(true));
+      if (mover) {
+        const o = mover.obj.clone(true);
+        if (hw === 'latch') spin.position.copy(mover.at).multiplyScalar(k); // the lever's hinge
+        else o.position.copy(mover.at).multiplyScalar(k);
+        add(spin, o);
+      }
+    });
     return step;
   }
 

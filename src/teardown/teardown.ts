@@ -637,8 +637,14 @@ export class TeardownView {
     for (const i of [0, 1] as const) {
       const idx = i === 0 ? 0 : Rope.N - 1;
       lugs[i].position.copy(r.pts[idx]);
-      if (attached[i]) lugs[i].quaternion.identity();
-      else lugs[i].quaternion.setFromUnitVectors(this.ropeU.set(0, 1, 0), this.ropeD.copy(r.pts[idx]).sub(r.pts[i === 0 ? 1 : Rope.N - 2]).normalize());
+      const plug = lugs[i].userData.base as THREE.Quaternion | undefined; // a connector plug: its cable leaves it along +Y
+      if (attached[i]) {
+        if (plug) lugs[i].quaternion.copy(plug);
+        else lugs[i].quaternion.identity();
+      } else {
+        const out = this.ropeD.copy(r.pts[idx]).sub(r.pts[i === 0 ? 1 : Rope.N - 2]).normalize();
+        lugs[i].quaternion.setFromUnitVectors(this.ropeU.set(0, 1, 0), plug ? out.negate() : out);
+      }
     }
     // Still, with both ends holding: back to the tube as modelled.
     if (!held && both && r.calm > 40) {
@@ -713,6 +719,10 @@ export class TeardownView {
   /** Show how far a step has got. */
   private show(s: Step) {
     const f = s.progress / s.need;
+    if (s.act && s.kind === 'clip') {
+      s.act(f);
+      return;
+    }
     switch (s.kind) {
       case 'screw':
         s.spin.rotation.y = s.progress * 2.4;

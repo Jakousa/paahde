@@ -42,6 +42,13 @@ function loadModel(model: string): Promise<Map<string, THREE.Object3D>> {
   return p;
 }
 
+/** Which hardware each kind of clip is: what the layout calls it, by label (shared/text.ts TEXT.steps). */
+const CLIP_HARDWARE: Record<string, 'latch' | 'clamp' | 'pin'> = {
+  cowlLatch: 'latch', connectorLatch: 'latch', strapClip: 'latch', vClamp: 'clamp', manifoldClamp: 'clamp', linkagePin: 'pin',
+};
+/** How many wires run in a cable (a harness is several, an igniter lead one). */
+const STRANDS: Record<string, number> = { harness: 5, igniterLead: 2, hoseFitting: 1 };
+
 /** Size of the fasteners and terminals on a full-size model. */
 const FASTENER = 0.6;
 const _p = new THREE.Vector3();
@@ -67,13 +74,15 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
   const labels = TEXT.steps as Record<string, string>;
   let lying = 0;
 
+  let made = 0;
   const make = (ls: LayoutStep, after: Step[], slide: { group: THREE.Group; pop: number[] }): Step => {
     const label = labels[ls.label] ?? ls.label;
     const pos = (ls.pos ?? [0, 0, 0]) as V, nrm = (ls.nrm ?? [0, 1, 0]) as V;
+    const variant = (made++ * 7) % 3 === 0 ? 'B' : 'A'; // some of it worn
     switch (ls.kind) {
-      case 'screw': return kit.screw(label, pos, nrm, after, ls.need ?? 2);
-      case 'bolt': return kit.bolt(label, pos, nrm, after, ls.need ?? 2);
-      case 'clip': return kit.clip(label, pos, nrm, ls.need ?? 1, after);
+      case 'screw': return kit.hardwareStep('screw', 'screw', variant, label, pos, nrm, after, ls.need ?? 2);
+      case 'bolt': return kit.hardwareStep('bolt', ls.label === 'fittingNut' ? 'fitting' : 'bolt', variant, label, pos, nrm, after, ls.need ?? 2);
+      case 'clip': return kit.hardwareStep('clip', CLIP_HARDWARE[ls.label] ?? 'latch', variant, label, pos, nrm, after, ls.need ?? 1);
       case 'pry': return kit.pry(label, pos, nrm, after);
       case 'lift': {
         // the indicator points the way it comes out, the way the module slides
@@ -82,7 +91,7 @@ export function buildModelJunk(kind: JunkKind, seed: number, level: number): Jun
       }
       case 'grind': return kit.grind(label, (ls.pts ?? []) as V[], after);
       case 'mash': return kit.mash(label, (ls.pts ?? []) as V[], after, ls.need ?? 10, slide.group, { dir: new THREE.Vector3(...(slide.pop as V)).normalize(), dist: 0.14 });
-      case 'wire': return kit.wire(label, (ls.pts ?? []) as V[], (ls.key ?? 'black') as 'black', after, ls.r);
+      case 'wire': return kit.wire(label, (ls.pts ?? []) as V[], (ls.key ?? 'black') as 'black', after, ls.r, { strands: STRANDS[ls.label] ?? 1 });
     }
   };
 
