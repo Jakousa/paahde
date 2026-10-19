@@ -14,23 +14,24 @@ export interface GraphicsPrefs {
   shadows: boolean;
   /** Metres out to which the sun casts shadows. */
   shadowDistance: number;
-  /** Cascades the shadow distance is cut into (1–4). Needs a reload. */
-  cascades: number;
-  /** Size of each cascade's shadow map. Needs a reload. */
-  shadowMap: number;
-  /** Taps of the sun-shadow filter: 4, 8 or 16 (src/world/shadowFilter.ts). Needs a reload. */
-  shadowFilter: number;
+  /** Shadow quality, 0 low .. 2 high: how many cascades, how big their maps and how soft the filter (SHADOW_QUALITY). Needs a reload. */
+  shadowQuality: number;
   /** How often the far shadow cascades are redrawn: 0 every frame, 1 some, 2 rarely (src/world/cascades.ts). */
   shadowRefresh: number;
   /** Multisampled edges (the renderer is made with it). Needs a reload. */
   antialias: boolean;
 }
 
-export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, minRes: 0.5, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, cascades: 4, shadowMap: 1024, shadowFilter: 16, shadowRefresh: 1, antialias: true };
+export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, minRes: 0.5, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, shadowQuality: 2, shadowRefresh: 1, antialias: true };
 export const SHADOW_DISTANCE_RANGE = [200, 1600] as const;
 export const FPS_LIMITS = [30, 60, 90, 120, 144, 240, 0] as const;
-export const SHADOW_FILTERS = [4, 8, 16] as const;
-export const SHADOW_MAPS = [512, 1024, 2048] as const;
+/** What each shadow quality means: cascades (at least two: the first is the sharp one round you, a single one over the whole distance is too coarse
+ *  to show anything small), the size of each one's map, and the taps of the edge filter (src/world/shadowFilter.ts). */
+export const SHADOW_QUALITY = [
+  { cascades: 2, map: 1024, filter: 4 },
+  { cascades: 3, map: 1024, filter: 8 },
+  { cascades: 4, map: 1024, filter: 16 },
+] as const;
 
 const KEY = 'dadajam.graphics';
 
@@ -38,18 +39,14 @@ function load(): GraphicsPrefs {
   const g = { ...GRAPHICS_DEFAULTS };
   try {
     const o = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    const num = (k: 'resScale' | 'minRes' | 'shadowDistance' | 'cascades' | 'shadowMap', lo: number, hi: number) => {
+    const num = (k: 'resScale' | 'minRes' | 'shadowDistance', lo: number, hi: number) => {
       if (typeof o[k] === 'number' && Number.isFinite(o[k])) g[k] = Math.min(Math.max(o[k], lo), hi);
     };
     num('resScale', 0.01, 2);
     num('minRes', 0.01, 1);
     num('shadowDistance', SHADOW_DISTANCE_RANGE[0], SHADOW_DISTANCE_RANGE[1]);
-    num('cascades', 1, 4);
     if ((FPS_LIMITS as readonly number[]).includes(o.fpsLimit)) g.fpsLimit = o.fpsLimit;
-    g.cascades = Math.round(g.cascades);
-    num('shadowMap', SHADOW_MAPS[0], SHADOW_MAPS[SHADOW_MAPS.length - 1]);
-    if (!(SHADOW_MAPS as readonly number[]).includes(g.shadowMap)) g.shadowMap = GRAPHICS_DEFAULTS.shadowMap;
-    if ((SHADOW_FILTERS as readonly number[]).includes(o.shadowFilter)) g.shadowFilter = o.shadowFilter;
+    if ([0, 1, 2].includes(o.shadowQuality)) g.shadowQuality = o.shadowQuality;
     if ([0, 1, 2].includes(o.shadowRefresh)) g.shadowRefresh = o.shadowRefresh;
     for (const k of ['dynamicRes', 'fullscreen', 'shadows', 'antialias'] as const) if (typeof o[k] === 'boolean') g[k] = o[k];
   } catch {}
@@ -77,13 +74,13 @@ export function setGraphics<K extends keyof GraphicsPrefs>(key: K, value: Graphi
 
 /** Does a setting that only applies on a fresh page differ from the running one? */
 export function needsReload(): boolean {
-  return graphics.cascades !== startup.cascades || graphics.shadowMap !== startup.shadowMap || graphics.shadowFilter !== startup.shadowFilter || graphics.antialias !== startup.antialias;
+  return graphics.shadowQuality !== startup.shadowQuality || graphics.antialias !== startup.antialias;
 }
 
 /** Far end (m) of each cascade, by cascade count, at the full 1600 m. The nearest is the sharp one around you (a player's long low-sun
  *  shadow stays crisp out to its end), so it is wide; each end is also capped to a share of a shorter shadow distance. */
-const CASCADE_BASE: Record<number, number[]> = { 1: [1600], 2: [60, 1600], 3: [40, 300, 1600], 4: [40, 128, 400, 1600] };
-const CASCADE_SHARE: Record<number, number[]> = { 1: [1], 2: [0.3, 1], 3: [0.25, 0.7, 1], 4: [0.25, 0.6, 0.9, 1] };
+const CASCADE_BASE: Record<number, number[]> = { 2: [60, 1600], 3: [40, 300, 1600], 4: [40, 128, 400, 1600] };
+const CASCADE_SHARE: Record<number, number[]> = { 2: [0.3, 1], 3: [0.25, 0.7, 1], 4: [0.25, 0.6, 0.9, 1] };
 
 /** Far end of each cascade for these settings. */
 export function cascadeEnds(distance: number, count: number): number[] {

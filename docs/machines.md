@@ -105,7 +105,7 @@ reviewer's check cheap: give the lab URL, what to click, what to look for.
 
 **Test lab**: `npm run dev` then `http://localhost:5173/?w=lab` (flat room, every machine and part, the grinder). Dev server is on :8787 (game) and :5173 (Vite); restart it
 fresh before asking for a review (stop the old `npm run dev`, then start it again).
-Jets: the debug menu (F3) has "summon jet"; the rifle hits it three times. `?cascades=1..3` / `?shadows=0` for GPU experiments; "Show stats" in the Esc menu shows the frame-time graphs.
+Jets: the debug menu (F3) has "summon jet"; the rifle hits it three times. `?cascades=2..3` / `?shadows=0` for GPU experiments; "Show stats" in the Esc menu shows the frame-time graphs.
 
 ## 5. Procedure for a new or reworked machine (the loop)
 

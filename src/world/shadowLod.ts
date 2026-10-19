@@ -5,8 +5,8 @@
 // cached on the object; things that are always big (terrain chunks) are tagged where they are made (`tagBig`).
 import * as THREE from 'three/webgpu';
 
-/** The layer bit of casters big enough for cascade `i`, for the cascades that cull (the first two take everything). */
-export const SHADOW_LOD_FIRST = 2;
+/** The layer bit of casters big enough for cascade `i`, for the cascades that cull (the first takes everything). */
+export const SHADOW_LOD_FIRST = 1;
 export const lodLayer = (i: number) => 4 + i;
 
 const SCAN_EVERY = 8;

@@ -10,10 +10,10 @@
 // turned well away from it: the sun moves every frame, and turning the axes with it slid the noise
 // under every pixel (by ~ distance from the origin x angle), reshuffling the grain each frame.
 import * as THREE from 'three/webgpu';
-import { startup } from '../graphics.ts';
+import { SHADOW_QUALITY, startup } from '../graphics.ts';
 import { Fn, add, dot, float, interleavedGradientNoise, positionWorld, reference, renderGroup, texture, uniform, vec2, vogelDiskSample } from 'three/tsl';
 
-const SAMPLES = startup.shadowFilter;
+const SAMPLES = SHADOW_QUALITY[startup.shadowQuality].filter;
 
 /** Two axes across the shadow-casting light's direction (sky.ts sets them from the sun or moon). */
 export const shadowAxisX = uniform(new THREE.Vector3(1, 0, 0));

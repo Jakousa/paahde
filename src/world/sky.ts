@@ -10,7 +10,7 @@
 import * as THREE from 'three/webgpu';
 import { cameraPosition, fog, min, normalize, positionWorld, vec3 } from 'three/tsl';
 import { MAX_FOV } from '../camera.ts';
-import { cascadeEnds, graphics, onGraphics, startup } from '../graphics.ts';
+import { SHADOW_QUALITY, cascadeEnds, graphics, onGraphics, startup } from '../graphics.ts';
 import { CascadedShadows, FIRST_CACHED } from './cascades.ts';
 import { ShadowLod, SHADOW_LOD_FIRST, lodLayer } from './shadowLod.ts';
 import { setShadowNoiseAxes, wideShadowFilter } from './shadowFilter.ts';
@@ -21,11 +21,12 @@ import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm
 /** Sun elevation (radians) below which the moon is the shadow-casting light. Both are ~dark here. */
 const MOON_TAKES_OVER = THREE.MathUtils.degToRad(-3);
 /** Far end of each cascade (m from the camera), from the graphics options. Past the last one the haze is ~95%, so no shadows. */
-// (Dev experiments for the GPU cost: `?cascades=1..3` uses fewer, `?shadows=0` none.)
+// (Dev experiments for the GPU cost: `?cascades=2..3` uses fewer, `?shadows=0` none.)
 const QUERY = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
-const CASCADES = Math.min(4, Math.max(1, Number(QUERY.get('cascades')) || startup.cascades));
+const QUALITY = SHADOW_QUALITY[startup.shadowQuality];
+const CASCADES = Math.min(4, Math.max(2, Number(QUERY.get('cascades')) || QUALITY.cascades));
 const CASCADE_ENDS = cascadeEnds(graphics.shadowDistance, CASCADES);
-const SHADOW_MAP = startup.shadowMap; // per cascade; 2048 looked crisper but cost GPU time on every frame
+const SHADOW_MAP = QUALITY.map; // per cascade; 2048 looked crisper but cost GPU time on every frame
 /** How far sunwards of a slice casters are still drawn: a 30 m crest at 10° throws a ~170 m shadow. */
 const LIGHT_MARGIN = 300;
 /** Depth bias and normal offset, in texels of each cascade (normal-offset shadows, Holbert 2011). */
@@ -128,7 +129,11 @@ export class Sky {
     this.cullSmall();
   }
 
-  /** The cascades from SHADOW_LOD_FIRST on only draw casters big enough to show in their texels (src/world/shadowLod.ts). */
+  /**
+   * Casters too small to survive a cascade's blur are not drawn into it (src/world/shadowLod.ts): a player's shadow is crisp in the first
+   * cascade and fades out across its far end, instead of turning into a faint smear in the next ones. What is left there (dunes, rocks,
+   * wrecks, the base, bosses) is big enough to keep its shape under the blur.
+   */
   private cullSmall() {
     const csm = this.csm;
     if (!csm.camera || !csm.lights.length) return;
@@ -137,7 +142,7 @@ export class Sky {
       csm.lights.forEach((l, i) => i >= SHADOW_LOD_FIRST && l.shadow!.camera.layers.set(lodLayer(i)));
     }
     this.lodMin.length = csm.lights.length;
-    for (let i = SHADOW_LOD_FIRST; i < csm.lights.length; i++) this.lodMin[i] = 0.6 * csm.texel(i);
+    for (let i = SHADOW_LOD_FIRST; i < csm.lights.length; i++) this.lodMin[i] = 0.66 * csm.lights[i].shadow!.radius * csm.texel(i);
     this.lod.update(this.scene, this.lodMin);
   }
 
