@@ -198,9 +198,12 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
  *  starter machines give (battery: beacon, bearing: winch). Taken, another lies there at once. */
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
+/** Parts that only an engine gives (nothing uses them yet): never found loose. */
+const ROTORS: PartId[] = ['fanrotor', 'comprotor', 'turbinerotor'];
+
 /** Loose rare parts (any part, uranium too) lying at guardian ground at once, and their tiers. */
 /** `noParts`: never found this way. The impeller isn't dropped anywhere: nothing uses it. */
-export const RARE_FINDS = { n: 10, noParts: ['impeller'] as PartId[], tierWeights: { quality: 3, space: 1 } satisfies TierWeights };
+export const RARE_FINDS = { n: 10, noParts: ['impeller', ...ROTORS] as PartId[], tierWeights: { quality: 3, space: 1 } satisfies TierWeights };
 
 /** Broken gear (finds and caches): each part slot is filled with these odds, by a part of these tiers (or scrap that
  *  fits); at least one slot is always left empty. */
@@ -213,7 +216,7 @@ export const CACHES = {
   n: 60,
   contents: { part: 0.6, scrap: 0.15, cloth: 0.1, pistol: 0.04, gear: 0.11, receiver: 0.01 },
   /** A cache part: any part but these, at these tiers. */
-  noParts: ['uranium', 'impeller'] as PartId[],
+  noParts: ['uranium', 'impeller', ...ROTORS] as PartId[],
   tierWeights: { scrap: 5, basic: 3, quality: 1.2, space: 0.25 } satisfies TierWeights,
 };
 

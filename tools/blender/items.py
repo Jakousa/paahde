@@ -31,7 +31,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 TIERS = ['scrap', 'basic', 'quality', 'space']
 ITEMS = ['battery', 'motor', 'heatsink', 'compute', 'coil', 'uranium', 'impeller', 'bearing', 'gear', 'valve',
-         'relay']
+         'relay', 'fanrotor', 'comprotor', 'turbinerotor']
 
 # Materials: name -> (sRGB hex, metallic, roughness, emission strength). Emissive ones glow in their colour.
 MATERIALS = {
@@ -1076,9 +1076,117 @@ def build_relay(mb, tier, rng):
         mb.box((0.03, 0.002, 0.0008), (0, UY / 2 - 0.006, H + 0.0002), 'glow')
 
 
+# ---------------------------------------------------------------------------------------------- jet engine rotors
+# The rotors of tools/blender/machines/turbofan.py taken whole out of the engine, at 0.4 of its size (the game scales the
+# model to fit: src/teardown/junk.ts SIZE). The axis is Z, the front of the engine up. Engine dimensions are kept in
+# the numbers below ("E" = engine metres) so the rotor in the engine and this one match.
+
+ROTOR_K = 0.4
+
+
+def _rotor_mats(tier):
+    return {
+        'scrap': dict(body='rust_dark', hub='steel_dull', blade='rust', alt='steel_dull'),
+        'basic': dict(body='steel', hub='paint_blue', blade='alu', alt='steel'),
+        'quality': dict(body='anodised', hub='copper', blade='chrome', alt='brass'),
+        'space': dict(body='gunmetal', hub='white', blade='white', alt='glow_soft'),
+    }[tier]
+
+
+def _rotor_blade(mb, a, r0, r1, z, chord0, chord1, tw0, tw1, thick, mat, bend=0.0, stations=4):
+    """One blade root at r0 tip at r1 about the axis at angle a, centred at engine z (see turbofan.py blade())."""
+    K = ROTOR_K
+    rings = []
+    ca, sa = math.cos(a), math.sin(a)
+    for i in range(stations):
+        s = i / (stations - 1)
+        c = chord0 + (chord1 - chord0) * s
+        tw = tw0 + (tw1 - tw0) * s
+        x = r0 + (r1 - r0) * s
+        off = bend * s * s
+        ring = []
+        for (u, v) in ((-0.5, 0.0), (-0.1, thick), (0.5, 0.0), (-0.1, -thick)):
+            cz, cy = u * c, v
+            y = cy * math.cos(tw) - cz * math.sin(tw) + off
+            zz = z + cy * math.sin(tw) + cz * math.cos(tw)
+            ring.append(Vector(((x * ca - y * sa) * K, (x * sa + y * ca) * K, zz * K)))
+        rings.append(ring)
+    return mb.loft(rings, mat)
+
+
+def _rotor_row(mb, tier, rng, n, r0, r1, z, chord, tw, thick, mat, alt, broken=0, bent=0, phase=0.0):
+    idx = list(range(n))
+    for i in range(n - 1, 0, -1):  # a deterministic shuffle
+        j = int(rng(0, i + 0.999))
+        idx[i], idx[j] = idx[j], idx[i]
+    if tier != 'scrap':
+        broken = bent = 0
+    snapped, folded = set(idx[:broken]), set(idx[broken:broken + bent])
+    for i in range(n):
+        a = phase + 2 * math.pi * i / n
+        if i in snapped:
+            _rotor_blade(mb, a, r0, r0 + (r1 - r0) * rng(0.2, 0.5), z, chord, chord * 0.9, tw, tw, thick, alt)
+        elif i in folded:
+            _rotor_blade(mb, a, r0, r1, z, chord, chord * 0.8, tw, tw, thick, mat, bend=rng(0.12, 0.3))
+        else:
+            _rotor_blade(mb, a, r0, r1, z, chord, chord * 0.8, tw, tw * 0.5, thick, mat)
+
+
+def _disc(mb, prof, mat, segs=32):
+    K = ROTOR_K
+    return mb.lathe([(r * K, z * K) for r, z in prof], segs, (0, 0, 0), mat)
+
+
+def build_fanrotor(mb, tier, rng):
+    """The fan: a disc with a ring of wide, twisted blades (some snapped or bent when scrap), a nose seat on the front."""
+    m = _rotor_mats(tier)
+    _disc(mb, [(0.0, 0.85), (0.23, 0.85), (0.23, 0.97), (0.205, 1.0), (0.0, 1.0)], m['hub'])
+    _disc(mb, [(0.09, 1.0), (0.15, 1.0), (0.15, 1.02), (0.09, 1.02)], m['alt'], 20)
+    _disc(mb, [(0.0, 0.85), (0.1, 0.85), (0.1, 0.8), (0.0, 0.8)], m['body'], 20)  # the shaft stub
+    _rotor_row(mb, tier, rng, 28, 0.20, 0.785, 0.93, 0.19, 0.55, 0.014, m['blade'], m['alt'], broken=5, bent=4)
+    if tier == 'space':
+        _disc(mb, [(0.228, 0.9), (0.232, 0.9), (0.232, 0.92), (0.228, 0.92)], 'glow', 32)
+
+
+def _drum_r(z):
+    return 0.19 + 0.05 * (0.44 - z) / 0.24 if z > 0.2 else 0.24 + 0.015 * (0.2 - z) / 0.28
+
+
+def _case_r(z):
+    return 0.34 - 0.015 * (0.46 - z) / 0.26 if z > 0.2 else 0.325 - 0.015 * (0.2 - z) / 0.28
+
+
+def build_comprotor(mb, tier, rng):
+    """The compressor: a drum widening toward the back with seven rows of blades, each row longer than the one before."""
+    m = _rotor_mats(tier)
+    _disc(mb, [(0.0, 0.44), (0.19, 0.44), (0.24, 0.20), (0.255, -0.08), (0.0, -0.08)], m['hub'])
+    _disc(mb, [(0.05, -0.08), (0.05, -0.14), (0.0, -0.14)], m['body'], 14)
+    for j in range(7):
+        z = 0.40 - j * 0.07
+        _rotor_row(mb, tier, rng, 34, _drum_r(z) - 0.01, _case_r(z) - 0.04, z, 0.045, 0.5, 0.006, m['blade'], m['alt'],
+                   broken=1 if j in (2, 5) else 0, bent=1 if j == 3 else 0, phase=j * 0.07)
+
+
+def build_turbinerotor(mb, tier, rng):
+    """The turbine: a heavy disc with its ring of burnt blades, four lighter discs behind it, and the shaft out of the back."""
+    m = _rotor_mats(tier)
+    burnt = 'rust_dark' if tier == 'scrap' else m['blade']
+    _disc(mb, [(0.0, -0.42), (0.20, -0.42), (0.22, -0.60), (0.0, -0.60)], m['hub'], 24)
+    _rotor_row(mb, tier, rng, 40, 0.20, 0.285, -0.50, 0.07, 0.6, 0.008, burnt, m['alt'], broken=3, bent=2)
+    for j in range(4):
+        z = -0.70 - j * 0.07
+        _rotor_row(mb, tier, rng, 54, 0.12, 0.30 + 0.02 * j, z, 0.05, 0.4, 0.006, burnt, m['alt'], broken=2 if j in (1, 3) else 0,
+                   bent=2 if j == 2 else 0, phase=j * 0.05)
+        _disc(mb, [(0.0, z + 0.015), (0.16 + 0.015 * j, z + 0.015), (0.16 + 0.015 * j, z - 0.015), (0.0, z - 0.015)], m['body'], 24)
+    _disc(mb, [(0.0, -0.60), (0.06, -0.60), (0.06, -0.98), (0.0, -0.98)], m['body'], 14)
+    if tier == 'space':
+        _disc(mb, [(0.2, -0.43), (0.205, -0.43), (0.205, -0.45), (0.2, -0.45)], 'glow', 24)
+
+
 BUILDERS = {'battery': build_battery, 'motor': build_motor, 'heatsink': build_heatsink, 'compute': build_compute,
             'coil': build_coil, 'uranium': build_uranium, 'impeller': build_impeller, 'bearing': build_bearing,
-            'gear': build_gear, 'valve': build_valve, 'relay': build_relay}
+            'gear': build_gear, 'valve': build_valve, 'relay': build_relay,
+            'fanrotor': build_fanrotor, 'comprotor': build_comprotor, 'turbinerotor': build_turbinerotor}
 
 
 def build_item(item, tier):

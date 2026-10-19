@@ -250,7 +250,7 @@ const PART_SIZE = 0.5;
 /** Emissive strength of a part still inside the machine (a free one pulses above it, teardown.ts). */
 export const PART_GLOW = 0.35;
 /** Parts drawn smaller than PART_SIZE across. */
-const SIZE: Partial<Record<PartId, number>> = { relay: 0.3 };
+const SIZE: Partial<Record<PartId, number>> = { relay: 0.3, fanrotor: 3.93, comprotor: 1.5, turbinerotor: 1.48 };
 /** Height along the axis (model +y) of the parts that sit on a shaft, once scaled: where their centre is. */
 const THICKNESS: Partial<Record<PartId, number>> = { bearing: 0.144, gear: 0.152, impeller: 0.175, valve: 0.5 };
 const loader = new GLTFLoader();
@@ -1450,7 +1450,7 @@ export const JUNK_KINDS = Object.keys(BUILDERS) as JunkKind[];
 export function buildJunk(kind: JunkKind, seed: number, level = 1): Junk {
   if (layoutOf(kind)) return buildModelJunk(kind, seed, level);
   const spec = junkSpec(kind);
-  const rolled: Record<PartId, Roll[]> = { battery: [], motor: [], heatsink: [], compute: [], uranium: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [] };
+  const rolled: Record<PartId, Roll[]> = { battery: [], motor: [], heatsink: [], compute: [], uranium: [], coil: [], impeller: [], bearing: [], gear: [], valve: [], relay: [], fanrotor: [], comprotor: [], turbinerotor: [] };
   let best = 0;
   machineParts(kind, seed, level).forEach(({ part, tier }, index) => {
     rolled[part].push({ tier, index });
