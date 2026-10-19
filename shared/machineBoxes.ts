@@ -16,6 +16,20 @@ export function setMachineProgress(source: (id: string) => ReadonlySet<number> |
   boxCache.clear();
 }
 
+/** Where a pushed machine has been shoved to, as metres from where it lay (the server's, mirrored on every client). It stays
+ *  within MAX_SHOVE of its place, so it never reaches what lies round it. */
+export const MAX_SHOVE = 5;
+const shoves = new Map<string, { x: number; z: number }>();
+export function machineShove(id: string): { x: number; z: number } {
+  return shoves.get(id) ?? ZERO;
+}
+const ZERO = { x: 0, z: 0 };
+export function setMachineShove(id: string, x: number, z: number) {
+  if (x === 0 && z === 0) shoves.delete(id);
+  else shoves.set(id, { x, z });
+  boxCache.delete(id);
+}
+
 /** A machine's finished steps changed (or all of them, with no id): its solid is worked out again next time it is asked for. */
 export function machineChanged(id?: string) {
   if (id === undefined) boxCache.clear();
@@ -63,13 +77,14 @@ export function machineCapsules(site: CrashSite): Cap[] {
   const { pitch, lift } = layout.pose;
   const cp = Math.cos(pitch), sp = Math.sin(pitch);
   const sy = Math.sin(site.yaw), cy = Math.cos(site.yaw);
+  const o = machineShove(site.id);
   out = [];
   for (const h of layout.hits) {
     if (h.mods.length && !h.mods.some((id) => present.has(id) && !off.has(id))) continue;
     const zc = (h.z0 + h.z1) / 2;
     const along = zc * cp; // how far out along the ground
     out.push({
-      x: site.x + sy * along, z: site.z + cy * along, ax: sy, az: cy,
+      x: site.x + o.x + sy * along, z: site.z + o.z + cy * along, ax: sy, az: cy,
       half: ((h.z1 - h.z0) / 2) * cp, r: h.r, h: lift - zc * sp + h.r * cp,
     });
   }
@@ -86,7 +101,7 @@ function machinesNear(x: number, z: number): CrashSite[] {
   const key = cx * 100003 + cz;
   let list = nearCache.get(key);
   if (!list) {
-    list = sitesNear((cx + 0.5) * NEAR_CELL, (cz + 0.5) * NEAR_CELL, NEAR_CELL * 0.75 + 8).filter((s) => !!layoutOf(s.kind)?.hits);
+    list = sitesNear((cx + 0.5) * NEAR_CELL, (cz + 0.5) * NEAR_CELL, NEAR_CELL * 0.75 + 8 + MAX_SHOVE).filter((s) => !!layoutOf(s.kind)?.hits);
     if (nearCache.size > 256) nearCache.clear();
     nearCache.set(key, list);
   }
@@ -102,8 +117,9 @@ function machinesNear(x: number, z: number): CrashSite[] {
 export function pushedMachine(p: { x: number; z: number }, y: number, radius: number, stepUp: number, wishX: number, wishZ: number):
   { site: CrashSite; nx: number; nz: number; into: number } | null {
   for (const site of machinesNear(p.x, p.z)) {
-    if (Math.abs(p.x - site.x) > 4 + radius || Math.abs(p.z - site.z) > 4 + radius) continue;
-    const base = heightAt(site.x, site.z);
+    const o = machineShove(site.id);
+    if (Math.abs(p.x - site.x - o.x) > 4 + radius || Math.abs(p.z - site.z - o.z) > 4 + radius) continue;
+    const base = heightAt(site.x + o.x, site.z + o.z);
     for (const b of machineCapsules(site)) {
       let t = (p.x - b.x) * b.ax + (p.z - b.z) * b.az;
       t = t < -b.half ? -b.half : t > b.half ? b.half : t;
@@ -129,8 +145,9 @@ export function collideMachines(p: { x: number; z: number; vx: number; vz: numbe
   let support = -Infinity;
   const feet = Math.max(y, prevY);
   for (const site of sites) {
-    if (Math.abs(p.x - site.x) > 4 + radius || Math.abs(p.z - site.z) > 4 + radius) continue; // (the longest stretch is about 1.5 m each way of the middle)
-    const base = heightAt(site.x, site.z);
+    const o = machineShove(site.id);
+    if (Math.abs(p.x - site.x - o.x) > 4 + radius || Math.abs(p.z - site.z - o.z) > 4 + radius) continue; // (the longest stretch is about 1.5 m each way of the middle)
+    const base = heightAt(site.x + o.x, site.z + o.z);
     for (const b of machineCapsules(site)) {
       const reach = b.half + b.r + radius;
       if (Math.abs(p.x - b.x) > reach || Math.abs(p.z - b.z) > reach) continue;

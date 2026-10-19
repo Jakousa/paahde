@@ -15,7 +15,7 @@ import { hasItem, type Slots } from '../../shared/items.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { viewCull } from './viewCull';
-import { machineChanged, setMachineProgress } from '../../shared/machineBoxes.ts';
+import { machineChanged, setMachineProgress, setMachineShove } from '../../shared/machineBoxes.ts';
 import { attachAll, buildJunk, detailList, hideDetail, lowestOffset, pieceEmpty, restPiece, settle, type Junk } from '../teardown/junk.ts';
 import type { SiteMsg } from '../net.ts';
 import type { SiteLink, WorkSite } from '../teardown/teardown.ts';
@@ -48,8 +48,10 @@ interface SiteView {
   /** Close enough that its fasteners are drawn (seen from afar there are hundreds of meshes for nothing), and whether the
    *  disassembly was working on it last frame. */
   detail?: boolean;
-  /** How far round it is drawn rolled now (it follows the server's angle). */
+  /** Where it is drawn now (it eases to the server's): rolled by `rolled` rad and shoved (sx, sz) m. */
   rolled?: number;
+  sx?: number;
+  sz?: number;
   wasBusy?: boolean;
   /** What is still to be put back into the scene as you come near, a few a frame. */
   queue?: THREE.Object3D[];
@@ -59,8 +61,8 @@ const spent = (site: CrashSite) => !site.lab && !junkSpec(site.kind).carry && cr
 
 export class MachineSites {
   private views = new Map<string, SiteView>();
-  /** The angle (rad) each pushed-round machine is at, from the server. */
-  private rollTo = new Map<string, number>();
+  /** Where each pushed machine is, from the server: its roll (rad) and how far it has been shoved from where it lay (m). */
+  private rollTo = new Map<string, { a: number; x: number; z: number }>();
   private scene: THREE.Scene;
   readonly bench: Bench;
   /** Every large site's progress, from the server. */
@@ -103,11 +105,17 @@ export class MachineSites {
 
   /** Follow the server's angle for a machine that has been pushed round, easing into it. */
   private rolling(v: SiteView) {
-    const to = this.rollTo.get(v.site.id) ?? 0;
-    const cur = v.rolled ?? 0;
-    if (Math.abs(to - cur) < 1e-4) return;
-    v.rolled = Math.abs(to - cur) < 2e-3 ? to : cur + (to - cur) * 0.2;
+    const to = this.rollTo.get(v.site.id) ?? { a: 0, x: 0, z: 0 };
+    const cur = v.rolled ?? 0, cx = v.sx ?? 0, cz = v.sz ?? 0;
+    if (Math.abs(to.a - cur) < 1e-4 && Math.abs(to.x - cx) < 1e-3 && Math.abs(to.z - cz) < 1e-3) return;
+    const k = 0.2;
+    v.rolled = Math.abs(to.a - cur) < 2e-3 ? to.a : cur + (to.a - cur) * k;
+    v.sx = Math.abs(to.x - cx) < 2e-3 ? to.x : cx + (to.x - cx) * k;
+    v.sz = Math.abs(to.z - cz) < 2e-3 ? to.z : cz + (to.z - cz) * k;
+    const root = v.junk!.root;
+    root.position.set(v.site.x + v.sx, heightAt(v.site.x + v.sx, v.site.z + v.sz), v.site.z + v.sz);
     v.junk!.setRoll!(v.rolled);
+    if (!root.matrixAutoUpdate) settle(root); // (setRoll does this for a frozen machine; the position alone needs it too)
   }
 
   /** One test for the whole machine, a sphere round it: outside the view (and far enough off that its shadow cannot reach it
@@ -118,7 +126,7 @@ export class MachineSites {
       root.visible = true;
       return;
     }
-    root.visible = viewCull.visible(v.site.x, root.position.y + 1, v.site.z, CULL_RADIUS);
+    root.visible = viewCull.visible(root.position.x, root.position.y + 1, root.position.z, CULL_RADIUS);
   }
 
   /** Its fasteners are drawn only while you are near (or working on it): the rest of the time they are hidden, and the machine
@@ -179,7 +187,11 @@ export class MachineSites {
     const off = j.fixed ? null : lowestOffset(j.root);
     if (off !== null) j.root.position.y += off;
     v.shown = true;
-    v.rolled = this.rollTo.get(site.id) ?? 0;
+    const at = this.rollTo.get(site.id);
+    v.rolled = at?.a ?? 0;
+    v.sx = at?.x ?? 0;
+    v.sz = at?.z ?? 0;
+    j.root.position.set(site.x + v.sx, heightAt(site.x + v.sx, site.z + v.sz), site.z + v.sz);
     j.setRoll?.(v.rolled);
     v.detail = false;
     v.queue = [];
@@ -220,8 +232,14 @@ export class MachineSites {
     if (m.t === 'bench') return this.bench.set(m.job, active === BENCH_ID);
     if (m.t === 'siteTook') return;
     if (m.t === 'siteRolls') {
-      if (m.reset) this.rollTo.clear();
-      for (const r of m.rolls) this.rollTo.set(r.id, r.a);
+      if (m.reset) {
+        for (const id of this.rollTo.keys()) setMachineShove(id, 0, 0);
+        this.rollTo.clear();
+      }
+      for (const r of m.rolls) {
+        this.rollTo.set(r.id, { a: r.a, x: r.x, z: r.z });
+        setMachineShove(r.id, r.x, r.z); // (the solid is where the server has it; the drawing eases to it)
+      }
       return;
     }
     if (m.t === 'sites') {

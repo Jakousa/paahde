@@ -16,7 +16,7 @@
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
-import { machineChanged, pushedMachine, setMachineProgress } from '../shared/machineBoxes.ts';
+import { machineChanged, machineShove, MAX_SHOVE, pushedMachine, setMachineProgress, setMachineShove } from '../shared/machineBoxes.ts';
 import { CROUCH, BACK, DT, FORWARD, LEFT, PLAYER_RADIUS, RIGHT, STEP_UP } from '../shared/sim.ts';
 import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
@@ -38,8 +38,10 @@ const REACH_SLACK = 1.5;
 const BENCH_REACH = 6;
 const MAX_INDEX = 255;
 const COOLDOWN_MS = 200;
-/** How fast (rad/s) a machine rolls when pushed at a walk: a quarter turn in about five seconds. */
-const ROLL_RATE = 0.3;
+/** How fast (m/s) a machine is shoved by someone walking into it crouched: a slow walk, a ton and a half of engine. */
+const SHOVE_SPEED = 0.4;
+/** About what a lying machine's radius is: it rolls as it goes (rolling without slipping: speed / radius). */
+const ROLL_RADIUS = 0.9;
 /** Session id of the base's disassembly table. */
 export const BENCH_ID = 'bench';
 
@@ -190,7 +192,10 @@ export class CrashServer {
     machineChanged(id);
     this.db.clearProgress(id);
     this.broadcast({ t: 'siteReset', id });
-    if (this.rolls.delete(id)) this.broadcast({ t: 'siteRolls', rolls: [{ id, a: 0 }] }); // (set back as it was)
+    if (this.rolls.delete(id)) {
+      setMachineShove(id, 0, 0);
+      this.broadcast({ t: 'siteRolls', rolls: [{ id, a: 0, x: 0, z: 0 }] }); // (set back as it was)
+    }
   }
 
   /** How far each machine that has been pushed round has rolled about its axis (rad), and which changed since the last message. */
@@ -211,26 +216,40 @@ export class CrashServer {
     wz /= len;
     const hit = pushedMachine(s, s.y, PLAYER_RADIUS, STEP_UP, wx, wz);
     if (!hit) return;
-    const { site, nx, nz, into } = hit;
-    // which way round: the top moves away from the player (the axis' horizontal direction crossed with up, against the push)
+    const { site, into } = hit;
+    // It goes the way they walk, and rolls as it goes (rolling without slipping: the top moves with the push, the part of the push
+    // across its length turns it; along its length it just slides). It cannot be shoved far from where it lay.
+    const v = SHOVE_SPEED * into * DT;
+    const o = machineShove(site.id);
+    let x = o.x + wx * v, z = o.z + wz * v;
+    const far = Math.hypot(x, z);
+    if (far > MAX_SHOVE) {
+      x *= MAX_SHOVE / far;
+      z *= MAX_SHOVE / far;
+    }
     const ax = Math.sin(site.yaw), az = Math.cos(site.yaw);
-    const side = az * nx - ax * nz;
-    if (Math.abs(side) < 0.05) return; // pushing along the axis: it does not roll
-    const rate = ROLL_RATE * into * Math.sign(side);
-    this.rolls.set(site.id, (this.rolls.get(site.id) ?? 0) + rate * DT);
+    const across = -az * wx + ax * wz; // the push across the axis (+: the way the positive roll carries the top)
+    setMachineShove(site.id, x, z);
+    this.rolls.set(site.id, (this.rolls.get(site.id) ?? 0) + (across * v) / ROLL_RADIUS);
     this.rolled.add(site.id);
   }
 
   /** The machines that rolled since last time (each at most once per broadcast). */
   flushRolls(): ServerMsg | null {
     if (!this.rolled.size) return null;
-    const rolls = [...this.rolled].map((id) => ({ id, a: Math.round((this.rolls.get(id) ?? 0) * 1000) / 1000 }));
+    const rolls = [...this.rolled].map((id) => this.rollOf(id));
     this.rolled.clear();
     return { t: 'siteRolls', rolls };
   }
 
+  private rollOf(id: string) {
+    const o = machineShove(id);
+    const r = (n: number) => Math.round(n * 1000) / 1000;
+    return { id, a: r(this.rolls.get(id) ?? 0), x: r(o.x), z: r(o.z) };
+  }
+
   rollsMessage(): ServerMsg {
-    return { t: 'siteRolls', rolls: [...this.rolls].map(([id, a]) => ({ id, a: Math.round(a * 1000) / 1000 })), reset: true };
+    return { t: 'siteRolls', rolls: [...this.rolls.keys()].map((id) => this.rollOf(id)), reset: true };
   }
 
   joinMessage(): ServerMsg {
@@ -284,7 +303,8 @@ export class CrashServer {
     }
     const site = crashSiteById(id);
     // (A lab machine is worked in place whatever its size, and is never spent.)
-    return site && (site.lab || !junkSpec(site.kind).carry) ? { id: site.id, x: site.x, z: site.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed, site.level), wreck: site.lab ? null : site.wreck } : null;
+    const o = site ? machineShove(site.id) : { x: 0, z: 0 };
+    return site && (site.lab || !junkSpec(site.kind).carry) ? { id: site.id, x: site.x + o.x, z: site.z + o.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed, site.level), wreck: site.lab ? null : site.wreck } : null;
   }
   private newSession(done: number[], taken: number[]): Session {
     return { done: new Set(done), taken: new Map(taken.map((i) => [i, -1])), players: new Set(), holders: new Map(), need: new Map() };
