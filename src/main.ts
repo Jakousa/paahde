@@ -254,12 +254,15 @@ loadScavenger().catch((e) => console.warn('scavenger model failed to load; keepi
 // Dark until the player model has loaded, and the bunker too if you spawn in it, so the first frames show
 // neither a half-built room nor placeholder bodies; after 20 s, whatever has loaded.
 const cover = document.getElementById('cover')!; // in index.html, so it is up before this script has loaded
-// The bar counts every model and texture through three's default loading manager; never runs backwards as
-// more loads are queued.
+// The bar: every model and texture through three's default loading manager (never runs backwards as more loads
+// are queued), then the shaders being built (src/warmup.ts) for the last stretch.
+const LOADS_SHARE = 0.6;
 let coverP = 0;
+let warmP = 0;
+const coverProgress = () => prologue.progress(LOADS_SHARE * coverP + (1 - LOADS_SHARE) * warmP);
 THREE.DefaultLoadingManager.onProgress = (_url, done, total) => {
   coverP = Math.max(coverP, done / total);
-  prologue.progress(coverP);
+  coverProgress();
 };
 let loaded = false;
 let coverFrames = 0; // frames drawn behind the cover once loaded (lets shaders compile)
@@ -731,13 +734,17 @@ baseSand.update(frameDt, storm.atBase);
     perf.submitStart();
     post.render();
     perf.submitEnd(renderer);
-  } else if (modelsIn && !warming) {
+  } else if (warming) {
+    warmP = warm.progress;
+    coverProgress();
+  } else if (modelsIn) {
     // Everything sliceable is in: build the first frame's shaders, post passes included, a few materials per round
     // (src/warmup.ts) while the prologue on the loading screen keeps going.
     warming = true;
     perf.milestone('warmup-start');
     warm.run(gpuIdle).then(() => {
-      prologue.progress(1);
+      coverP = warmP = 1;
+      coverProgress();
       warmed = true;
       perf.milestone('warmed');
     });
