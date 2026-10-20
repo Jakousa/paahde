@@ -1,5 +1,8 @@
 # Paahde
 
+> Migrated from [woltsu/dadajam](https://github.com/woltsu/dadajam) (full history included) to continue development
+> here. The old repo is frozen.
+
 Online multiplayer desert survival game, made in the dadajam game jam (repo name: dadajam). three.js (WebGPU renderer, automatic WebGL2 fallback) + TypeScript + Vite,
 and a Node WebSocket game server with SQLite. See [docs/netcode.md](docs/netcode.md) for how syncing works.
 
