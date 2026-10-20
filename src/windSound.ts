@@ -28,7 +28,7 @@ const NOISE_S = 4;
 /** Ear height above the sand (m). */
 const EAR = 1.7;
 /** Ear-level wind speed (m/s) that counts as "full" for the mix; a sandstorm (u10 ≈ 23) is past it. */
-const U_FULL = 15;
+const U_FULL = 20;
 /** The wind is averaged over a ring this wide (m) around the head, so 4 m terrain cells don't step. */
 const RING = 4;
 const RING_N = 6;
@@ -48,7 +48,7 @@ const OWN_FULL = 22;
 /** How much of our own speed counts at most, so riding into a calm is loud but not a sandstorm. */
 const OWN = 0.75;
 /** Wind level at full slider volume. */
-const MIX = 0.4;
+const MIX = 0.2;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const smooth = (a: number, b: number, x: number) => {

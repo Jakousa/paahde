@@ -26,19 +26,19 @@ import { bikeTopSpeed } from '../shared/gear.ts';
 
 /** The revs: idle and redline (the limiter holds it there), and the motor frequency (Hz) at each. */
 const IDLE_RPM = 1500;
-const RED_RPM = 9000;
+const RED_RPM = 12000;
 const F_IDLE = 24;
-const F_RED = 88;
+const F_RED = 200;
 /** Gear ratios, as where each gear reaches the redline: a fraction of the bike's top speed (shared/gear.ts
  *  bikeTopSpeed). A faster bike has longer gears, so every bike revs through the same range. They cruise
  *  at about CRUISE of it, in top gear; the last gear's top is past that, for the air. */
-const GEARS = [0.17, 0.3, 0.44, 0.58, 0.74, 0.95];
+const GEARS = [0.3, 0.6, 0.8, 0.9, 1.0];
 const CRUISE = 0.75;
 /** Shift up past UP_RPM with the throttle open (UP_COAST_RPM without), down once the revs fall under DOWN_RPM
  *  (the lower gear then lands at about twice that); not again within SHIFT_GAP s. */
-const UP_RPM = 8200;
+const UP_RPM = 11000;
 const UP_COAST_RPM = 8800;
-const DOWN_RPM = 3800;
+const DOWN_RPM = 6000;
 const SHIFT_GAP = 0.35;
 /** An upshift cuts the drive this long (s), the level dipping to CUT_LEVEL. */
 const CUT = 0.12;
