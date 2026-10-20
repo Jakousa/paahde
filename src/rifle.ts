@@ -79,6 +79,11 @@ body.rifleHip #rifleHip { display: block; }
 body.rifleHip #crosshair { display: none; }
 body.gunSights #crosshair { display: none; }
 body.third-person.rifleHeld:not(.rifleHip):not(.rifleScoped) #crosshair { display: block; }
+#rifleCharge { position: fixed; left: 50%; top: 50%; width: 18px; height: 2px; margin-left: -9px; pointer-events: none; z-index: 4;
+  background: rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity .12s; }
+#rifleCharge i { display: block; height: 100%; background: rgba(255, 244, 228, 0.7); transform-origin: left; }
+#rifleCharge.on { opacity: 0.8; transition: none; }
+body.rifleScoped #rifleCharge, body.down #rifleCharge { display: none; }
 `;
 
 // The scope: everything outside the eyepiece black, a soft edge, a faint green-grey lens tint and vignette, and a
@@ -118,6 +123,9 @@ export class Rifle {
   private zoomEl: HTMLElement;
   private cellEl: HTMLElement;
   private hip = document.createElement('div');
+  /** The recharge under the crosshair (unscoped; the scope has its own). */
+  private chargeEl = document.createElement('div');
+  private chargeFill: HTMLElement;
   private zoom = ZOOM;
   private time = 0;
   private wasFire = false;
@@ -166,7 +174,10 @@ export class Rifle {
     this.cellEl = this.el.querySelector('.cell i')!;
     this.hip.id = 'rifleHip';
     this.hip.innerHTML = '<i></i><i></i><i></i><i></i>';
-    document.body.append(this.el, this.hip);
+    this.chargeEl.id = 'rifleCharge';
+    this.chargeEl.innerHTML = '<i></i>';
+    this.chargeFill = this.chargeEl.firstElementChild as HTMLElement;
+    document.body.append(this.el, this.hip, this.chargeEl);
     addEventListener('wheel', (e) => {
       if (!this.scoped) return;
       this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * Math.exp(-e.deltaY * 0.0015)));
@@ -258,6 +269,9 @@ export class Rifle {
 
     const charge = Math.min(1, 1 - (this.readyAt - performance.now()) / this.cooldown(feel.kind));
     playerHands.charge = charge;
+    const recharging = holding && charge < 1;
+    this.chargeEl.classList.toggle('on', recharging);
+    if (recharging) this.chargeFill.style.transform = `scaleX(${Math.max(0, charge)})`;
     if (scoped) {
       this.zoomEl.textContent = `${this.zoom.toFixed(1)}×`;
       this.cellEl.style.transform = `scaleX(${charge})`;
@@ -291,6 +305,8 @@ export class Rifle {
     place(ticks[1], gap + 5, 0, 8, 1.5);
     place(ticks[2], 0, -gap - 5, 1.5, 8);
     place(ticks[3], 0, gap + 5, 1.5, 8);
+    // The recharge bar: under the dot, or under the lower tick from the hip.
+    this.chargeEl.style.marginTop = `${document.body.classList.contains('rifleHip') ? gap + 14 : 10}px`;
     if (fire) this.shoot();
   }
 
