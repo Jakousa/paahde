@@ -647,7 +647,8 @@ export class InventoryHud {
   /**
    * Shift-click sends an item where it most likely goes: a part out of the workbench item into the bag; at the
    * workbench, gear onto it and parts into the first slot they fit (an empty one first); gear to its equipment
-   * slot and back; else across to the nearest storage (a tool from it onto a free hotbar slot), or between hotbar and backpack.
+   * slot and back; else across to the nearest storage (from it, gear into a free equipment slot and a tool onto a free
+   * hotbar slot), or between hotbar and backpack.
    */
   private shiftClick(box: string, i: number): boolean {
     const net = this.net;
@@ -664,18 +665,22 @@ export class InventoryHud {
       if (swap >= 0 && net.fit(box, i, swap)) return true;
     }
     if (bench && box !== 'bench' && isGear(it.kind) && net.moveItem(box, i, 'bench', 0)) return true;
-    if (box === 'equip' || box === 'bench') return this.toBag(box, i);
+    if (box !== 'bag') return this.toBag(box, i);
     if (isGear(it.kind) && GEAR[it.kind].equip && repaired(it) && net.moveItem(box, i, 'equip', -1)) return true;
-    // Across: bag → the nearest storage; storage → bag. Without storage, between hotbar and backpack.
-    const to = box !== 'bag' ? 'bag' : this.storages.find((b) => b !== 'bench');
-    return to === 'bag' ? this.toBag(box, i) : to ? net.moveItem(box, i, to, -1) : this.hotbarSwap(i);
+    // Across: bag → the nearest storage. Without storage, between hotbar and backpack.
+    const to = this.storages.find((b) => b !== 'bench');
+    return to ? net.moveItem(box, i, to, -1) : this.hotbarSwap(i);
   }
 
-  /** Into the bag from another box: a tool into the first free hotbar slot, if there is one; else anywhere. */
+  /** Onto you from another box: repaired gear into its equipment slot and a tool into the first free hotbar slot,
+   *  if that's open; else anywhere in the bag. */
   private toBag(box: string, i: number): boolean {
-    const bag = this.net.boxes.bag;
+    const { bag, equip } = this.net.boxes;
     const it = this.net.boxes[box]?.[i];
-    const j = it && TOOLS.has(it.kind) && bag ? bag.findIndex((s, k) => k < HOTBAR && !s) : -1;
+    if (!it) return false;
+    const slot = box !== 'equip' && repaired(it) ? GEAR[it.kind]?.equip : undefined;
+    if (slot && equip && !equip[EQUIP_SLOTS.indexOf(slot)] && this.net.moveItem(box, i, 'equip', -1)) return true;
+    const j = TOOLS.has(it.kind) && bag ? bag.findIndex((s, k) => k < HOTBAR && !s) : -1;
     return (j >= 0 && this.net.moveItem(box, i, 'bag', j)) || this.net.moveItem(box, i, 'bag', -1);
   }
 
