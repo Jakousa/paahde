@@ -120,15 +120,14 @@ function music(el: HTMLElement) {
 
 /** The new world's link in place of the button: copy it to share, Join to go there yourself. */
 function shareLink(el: HTMLElement, url: string) {
-  const p = el.querySelector('p');
-  el.querySelector('.start')!.remove();
-  p?.remove();
+  el.querySelector('p')?.remove();
   const row = document.createElement('div');
   row.className = 'link';
   row.innerHTML = `<input readonly><button>${TEXT.landing.copy}</button>`;
   const join = document.createElement('button');
   join.textContent = TEXT.landing.join;
-  el.querySelector('.optionsBtn')!.before(row, join);
+  // In the button's place: the end screens have no Options button to go before.
+  el.querySelector('.start')!.replaceWith(row, join);
   const input = row.querySelector('input')!;
   const copy = row.querySelector('button')!;
   input.value = url;
