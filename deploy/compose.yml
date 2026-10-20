@@ -1,4 +1,5 @@
 # Lives at /opt/dadajam/compose.yml on the server. `docker compose up -d` once; Watchtower does the rest.
+# web = prod (releases, :latest), web-dev = dev (every push to main, :dev); each has its own data.
 services:
   web:
     image: ghcr.io/woltsu/dadajam:latest
@@ -8,6 +9,17 @@ services:
     volumes:
       - ./data:/data # SQLite DB (+ -wal/-shm); survives redeploys
     stop_grace_period: 15s # time to save players on SIGTERM
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  web-dev:
+    image: ghcr.io/woltsu/dadajam:dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8087:8080"
+    volumes:
+      - ./data-dev:/data
+    stop_grace_period: 15s
     labels:
       - com.centurylinklabs.watchtower.enable=true
 

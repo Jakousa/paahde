@@ -1,8 +1,9 @@
 # dadajam
 
 Public game jam repo, three collaborators. Online multiplayer browser game: three.js + TypeScript + Vite
-client, Node 24 WebSocket game server with SQLite. Every merge to `main` goes live at https://herkku.org/dadajam/ within
-a few minutes, so `main` must always build.
+client, Node 24 WebSocket game server with SQLite. Every merge to `main` goes live on dev, https://dev.paahde.herkku.org/,
+within a few minutes, so `main` must always build. Prod (https://paahde.herkku.org/) only changes on a release: a `v*` tag
+(`git tag v<n> && git push origin v<n>`) ships that commit's image; release only when asked.
 
 ## Commands
 
@@ -173,7 +174,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 
 ## Workflow
 
-- Commit and push straight to `main` (no PRs needed); a push to `main` deploys. Run `npm run build` first.
+- Commit and push straight to `main` (no PRs needed); a push to `main` deploys to dev. Run `npm run build` first.
 - Agents: always push after committing — don't stop at a local commit or ask before pushing.
 - Small, focused commits. Pull often — three people are editing a small codebase quickly.
 - The live build SHA is shown at the bottom of the Esc menu (and in the top-left stats line if "Show stats" is on).

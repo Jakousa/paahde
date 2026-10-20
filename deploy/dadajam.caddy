@@ -10,10 +10,18 @@
 	}
 }
 
-# The same game at the root of its own name (the client uses relative URLs only, so no subpath needed).
+# Prod (releases) at /dadajam and at the root of its own name (the client uses relative URLs only, so no subpath needed).
 paahde.herkku.org {
 	encode zstd gzip
 	reverse_proxy 127.0.0.1:8086 {
+		stream_close_delay 5m
+	}
+}
+
+# Dev: every push to main.
+dev.paahde.herkku.org {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8087 {
 		stream_close_delay 5m
 	}
 }
