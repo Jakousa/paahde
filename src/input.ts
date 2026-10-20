@@ -76,6 +76,11 @@ document.addEventListener('pointerlockchange', () => {
     // Fullscreen and the keyboard lock stay on, so Esc only opens the menu; its button leaves fullscreen.
   }
 });
+// Without the keyboard lock (windowed, or not Chromium) Ctrl+W still reaches the browser; crouch + forward is an
+// easy slip, so while in the game the browser asks before closing the tab.
+addEventListener('beforeunload', (e) => {
+  if (captured()) e.preventDefault();
+});
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) keyboard?.unlock();
 });
