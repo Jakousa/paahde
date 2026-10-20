@@ -198,8 +198,8 @@ export class ItemServer {
   }
 
   /** A whole item (gear with its parts) into the first spot it fits in the bag. False if there is none. */
-  giveItem(browserId: string, item: { kind: string; parts?: (string | null)[] }): boolean {
-    if (!item.parts) return this.give(browserId, item.kind);
+  giveItem(browserId: string, item: { kind: string; parts?: (string | null)[]; n?: number }): boolean {
+    if (!item.parts) return this.give(browserId, item.kind, item.n ?? 1);
     const bag = this.slots(browserId, 'bag');
     const spot = findSpot(bag, this.bagShape(browserId), item.kind);
     if (!spot) return false;

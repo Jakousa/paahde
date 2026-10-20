@@ -328,6 +328,12 @@ export class LootView {
         m.traverse((o) => { o.userData.shared = true; }); // the cached part's geometry: never disposed
         add(m);
       }, () => add(box(new THREE.Group(), 0.3, 0.2, 0.3, STEEL, 0, 0.1, 0)));
+    } else if (l.kind === 'scavenger_bot') {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.28, 0.5), new THREE.MeshStandardNodeMaterial({ color: 0x5a4838, roughness: 0.8, metalness: 0.35 }));
+      b.position.y = 0.14;
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.08), new THREE.MeshStandardNodeMaterial({ color: 0xffaa22, roughness: 0.3, metalness: 0.1 }));
+      eye.position.set(0, 0.24, 0.22);
+      obj.add(b, eye);
     } else {
       // A battered crate for anything else (scrap, carried machines).
       box(obj, 0.5, 0.36, 0.4, WOOD, 0, 0.18, 0);

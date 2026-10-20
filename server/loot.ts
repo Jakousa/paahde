@@ -263,7 +263,7 @@ export class LootServer {
 
   /** A lab pickup lying at its spot (not kept in the DB: the table is laid out afresh every start). */
   private labPlace(it: LabItem) {
-    const l: Loot = { id: this.nextId++, kind: it.kind, ...(it.parts ? { parts: [...it.parts] } : {}), x: it.x, z: it.z, src: 'find' };
+    const l: Loot = { id: this.nextId++, kind: it.kind, ...(it.parts ? { parts: [...it.parts] } : {}), ...(it.n ? { n: it.n } : {}), x: it.x, z: it.z, src: 'find' };
     this.labSpots.set(l.id, it);
     this.add(l);
   }

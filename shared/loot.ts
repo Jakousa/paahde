@@ -12,6 +12,8 @@ export type Loot = {
   kind: string;
   /** Gear: the parts it comes with (shared/gear.ts), null where one is missing. */
   parts?: (string | null)[];
+  /** Stack size for stackable loot (e.g. scrap, cloth). */
+  n?: number;
   x: number;
   z: number;
   src: 'find' | 'cache' | 'drop';

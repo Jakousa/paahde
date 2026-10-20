@@ -7,7 +7,7 @@
 // Layout, in metres from the bunker's door (BASE; +Z is out into the open, away from the door), x across:
 //   spawn      (0, 12), looking out at the machine rows
 //   parts      x 24..33, z 8..38: 11 parts (rows, a name plate left of each) x 4 tiers (columns, tier plates at z 5)
-//   tools+gear x -24 down to -39, z 8 on: the grinder, then every gear kind, broken with every slot empty, 4 a row
+//   tools+gear x -24 down to -39, z 8 on: basic scrap and cloth, grinder, scavenger bot, then every gear kind, broken with every slot empty, 4 a row
 //   machines   z 50 / 70 / 90: the jet engine in six seeds, then the other kinds, each with its name plate in front
 // The pickups come back at once when taken (server/loot.ts), so a table never runs out.
 import { BASE } from './base.ts';
@@ -66,7 +66,7 @@ export function labById(id: unknown): CrashSite | null {
 }
 
 /** An item lying on the lab floor: kind and, for gear, the parts it comes with (all slots empty: broken). */
-export type LabItem = { kind: string; parts?: (string | null)[]; x: number; z: number; /** gets a plate of its own (parts have row and column plates) */ plate?: true };
+export type LabItem = { kind: string; parts?: (string | null)[]; n?: number; x: number; z: number; /** gets a plate of its own (parts have row and column plates) */ plate?: true };
 
 let items: LabItem[] | null = null;
 
@@ -76,9 +76,10 @@ export function labItems(): LabItem[] {
   if (items) return items;
   const out: LabItem[] = [];
   PART_IDS.forEach((part, r) => TIERS.forEach((tier, c) => out.push({ kind: partItem(part, tier), ...at(24 + c * 3, 8 + r * 3) })));
-  ['grinder', 'scavenger_bot', ...GEAR_KINDS].forEach((kind, i) => {
+  ['scrap', 'cloth', 'grinder', 'scavenger_bot', ...GEAR_KINDS].forEach((kind, i) => {
     const gear = GEAR[kind];
-    out.push({ kind, ...(gear ? { parts: gear.slots.map(() => null) } : {}), plate: true, ...at(-24 - (i % 4) * 4, 8 + Math.floor(i / 4) * 4) });
+    const n = kind === 'scrap' || kind === 'cloth' ? 10 : undefined;
+    out.push({ kind, ...(n ? { n } : {}), ...(gear ? { parts: gear.slots.map(() => null) } : {}), plate: true, ...at(-24 - (i % 4) * 4, 8 + Math.floor(i / 4) * 4) });
   });
   return (items = out);
 }
@@ -101,7 +102,9 @@ export function labPlates(): LabPlate[] {
   PART_IDS.forEach((part, r) => out.push({ text: TEXT.parts[part], ...at(20.5, 8 + r * 3), w: 2.6 }));
   TIERS.forEach((tier, c) => out.push({ text: TEXT.tiers[tier], ...at(24 + c * 3, 5), w: 2.6 }));
   labItems().filter((it) => it.plate).forEach((it) => {
-    out.push({ text: ITEMS[it.kind]?.label ?? it.kind, x: it.x, z: it.z + 1.3, w: 2.6 });
+    const label = ITEMS[it.kind]?.label ?? it.kind;
+    const text = it.n && it.n > 1 ? `${label} x${it.n}` : label;
+    out.push({ text, x: it.x, z: it.z + 1.3, w: 2.6 });
   });
   return out;
 }
