@@ -16,6 +16,17 @@ asked seconds and writes `data/perf/<time>[-label].json` (frame gap, cpu, submit
 frames over 20 / 50 ms; startup milestones and long tasks; the graphics settings and machine) plus a Chrome trace of the same stretch
 (`.trace.json.gz`, read with `python tools/trace-report.py`). Options: `--trace play|startup|none`, `--seconds 0` (startup only), `--set k=v` for any graphics
 option (`--set shadows=false --set resScale=0.7`), `--label`, `--world <id>`, `--base <url>`, `--chrome <path>`, `--headless`.
+**Outdoor runs**: a new world starts in the bunker, so use `--spawn field|shelter` (the server's dev spawns: beside a scrap field, 6 m outside a shelter door), `--yaw 3.14` to turn round
+(the field spawn faces the field, which blocks the walk) and `--tod 0.26` for the time of day the run starts at (0.333 = 8 am, sun 28°; **0.26 = about 6 am, sun 8°, long shadows**; sunrise is
+~5:30 and sunset ~18:30 here, so 5 am or 10 pm are dark). The clock then runs on (a day is 30 min). The walk is a very wide circle (about 100 m radius), 140-200 m in 30 s, with a sprint every
+other ten seconds. `--spawn crash` is beside a crash site's machine and its crawlers kill the player: use it to see what a death looks like in the data, not for numbers.
+
+**Dying, and other runs that are not a walk, are part of the data, not noise.** The JSON has `valid` and `invalidReasons` at the top, and `gameplay.events` (`died` / `respawned`, with seconds into the walk,
+position and heat), `gameplay.travelledM`, `framesExcluded`. The trace has a red `player died` / `player respawned` marker on the dadajam track. A run is invalid when the player died, barely moved
+(blocked by a pile or a dune face: under 1.5 m/s), or ended early; `tools/perf.ts` prints `!! INVALID RUN` with the reasons, names the files `...-INVALID.json` and exits with code 2.
+By default a death ends the run (the numbers after it would be a ragdoll's, then the bunker's); `--allow-death` keeps walking and leaves the frames while down, and the next second after the respawn,
+out of the numbers (they are counted in `framesExcluded`; the run stays marked invalid so it is never mistaken for a clean one).
+Example: `npm run perf -- --seconds 30 --spawn field --yaw 3.14 --tod 0.26 --set dynamicRes=false --label morning`.
 Compare settings by running the same command with different `--set`s and `--label`s.
 
 ## 3. By hand

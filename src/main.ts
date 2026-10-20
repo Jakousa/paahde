@@ -355,6 +355,8 @@ perf.describe({ backend, gpu: gpuName, gpuTimestamps: perf.gpuTracked, world: WO
 perf.milestone('renderer-ready');
 perf.scene = scene;
 perf.onDone = () => (orbit.pitch = 0.12);
+perf.setTod = (tod) => net.shareTimeOfDay(tod);
+perf.player = () => ({ x: net.me.x, z: net.me.z, down: survival.dead || net.down !== null, heat: survival.heatLevel });
 perf.cascades = () => sky.csm.lights.map((l) => l.shadow!.camera);
 
 const timer = new THREE.Timer();

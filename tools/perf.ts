@@ -2,7 +2,7 @@
 // route and writes the result (CPU / GPU / frame times, the startup timeline) and a Chrome trace of the same stretch to data/perf/.
 //
 //   node tools/perf.ts [--base http://localhost:5173/] [--seconds 30] [--trace play|startup|none] [--world <id>]
-//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
+//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
 //
 //   --seconds    gameplay to record (0 = the startup timeline only, no walking)
 //   --trace      play: trace only the recorded walk (default); startup: trace from page load until playable; none
@@ -29,6 +29,12 @@ const seconds = Number(opt('seconds', '30'));
 const trace = opt('trace', 'play') as 'play' | 'startup' | 'none';
 const out = opt('out', 'data/perf') as string;
 const label = opt('label', '') as string;
+/** Where the player starts (a dev helper of the server, shared/protocol.ts): field = beside a scrap field, crash = beside a crash site's machine, shelter, base; none = the saved position (the bunker in a new world). */
+const spawnAt = opt('spawn', '') as string;
+/** Time of day the run starts at (0..1: 0.333 = 8 am, 0.833 = 8 pm, the sun at 28°, long shadows); the clock then runs on as usual. Without it, the world's own time. */
+const tod = opt('tod', '') as string;
+/** Radians to turn from the way the player faces at the start (3.14 = about face: away from the scrap field the field spawn looks at). */
+const yaw = opt('yaw', '') as string;
 
 const CHROME = [opt('chrome'), process.env.CHROME, 'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
   `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`, '/usr/bin/google-chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find((p) => p && existsSync(p));
@@ -127,7 +133,7 @@ try {
     await done;
   };
 
-  const url = `${base}?w=${world}&perf=${seconds === 0 ? 'startup' : seconds}&perfdl=0`;
+  const url = `${base}?w=${world}&perf=${seconds === 0 ? 'startup' : seconds}&perfdl=0${spawnAt ? `&spawn=${spawnAt}` : ''}${tod ? `&ptod=${tod}` : ''}${yaw ? `&pyaw=${yaw}` : ''}${flag('allow-death') ? '&pdeath=continue' : ''}`;
   console.log(`world ${world}; ${url}\nChrome: ${CHROME}\n${Object.keys(prefs).length ? `settings ${JSON.stringify(prefs)}\n` : ''}waiting for the game to load...`);
   if (trace === 'startup') await traceStart();
   await send('Page.navigate', { url });
@@ -165,15 +171,24 @@ try {
   const result = (await evaluate('window.__perfResult')) as Record<string, any>;
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const name = `${stamp}${label ? `-${label}` : ''}`;
+  const name = `${stamp}${label ? `-${label}` : ''}${result.valid ? '' : '-INVALID'}`;
   writeFileSync(join(out, `${name}.json`), JSON.stringify(result, null, 2));
   if (traceEvents.length) writeFileSync(join(out, `${name}.trace.json.gz`), gzipSync(JSON.stringify({ traceEvents })));
   if (shotData) writeFileSync(join(out, `${name}.png`), shotData);
   if (shotB) writeFileSync(join(out, `${name}.ab.png`), shotB);
   const g = result.gameplay;
   console.log(`\nwritten ${join(out, name)}.json${traceEvents.length ? ' and .trace.json.gz' : ''}`);
+  if (!result.valid) {
+    console.log(`\n!! INVALID RUN: ${(result.invalidReasons as string[]).join('; ')}`);
+    console.log('   Do not compare these numbers with other runs. Use --spawn field --yaw 3.14 (no enemies, open ground) and an early --tod, or --allow-death to keep the run going and leave the player-down frames out.');
+    process.exitCode = 2;
+  }
   console.log('startup (ms):', JSON.stringify(result.startup.milestonesMs), '| long tasks', JSON.stringify(result.startup.longTasks));
   if (g) {
+    for (const e of g.events as { type: string; atS: number; x: number; z: number; heat: number }[]) console.log(`  event: player ${e.type} at ${e.atS} s, (${e.x}, ${e.z}), heat ${e.heat}`);
+    if (g.framesExcluded) console.log(`  ${g.framesExcluded} frames left out of the numbers (player down or just respawned)`);
+    console.log(`  travelled ${g.travelledM} m`);
+    console.log(`  walk ${JSON.stringify(g.startedAt)} -> ${JSON.stringify(g.endedAt)}`);
     console.log(`gameplay: ${g.fps} fps (1% low ${g.lows1pctFps}), frames ${g.frames}, > 20 ms: ${g.framesOver20ms}, > 50 ms: ${g.framesOver50ms}`);
     console.log(`  frame gap ms p50/p90/p99/max: ${['p50', 'p90', 'p99', 'max'].map((k) => g.gapMs[k]).join(' / ')}`);
     console.log(`  cpu ms p50/p90/p99: ${g.cpuMs ? ['p50', 'p90', 'p99'].map((k) => g.cpuMs[k]).join(' / ') : '-'}   gpu ms p50/p90/p99: ${g.gpuMs ? ['p50', 'p90', 'p99'].map((k) => g.gpuMs[k]).join(' / ') : '-'}   bound: ${g.bound}`);
@@ -182,4 +197,4 @@ try {
 } finally {
   stop();
 }
-process.exit(0);
+process.exit(process.exitCode ?? 0);

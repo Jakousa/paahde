@@ -73,6 +73,22 @@ class Perf {
   scene: THREE.Object3D | null = null;
   /** Called when a run ends (main.ts looks at the horizon, for the pictures tools/perf.ts takes). */
   onDone: (() => void) | null = null;
+  /** Moves the world's clock to a time of day (main.ts), for `&ptod=` (tools/perf.ts --tod). */
+  setTod: ((tod: number) => void) | null = null;
+  /** Where the player is, whether they are down or dead, and how hot they are (main.ts). Dying is part of the data, not noise: see `events` and `valid` in the result. */
+  player: (() => { x: number; z: number; down: boolean; heat: number }) | null = null;
+  private startPos: { x: number; z: number } | null = null;
+  private lastPos: { x: number; z: number } | null = null;
+  private travelled = 0;
+  private wasDown = false;
+  /** Frames left after a respawn that are not counted (the player was just put back at the bunker; the view and streaming reset). */
+  private afterRespawn = 0;
+  private framesExcluded = 0;
+  /** Deaths and respawns during the walk, in order. */
+  private events: { type: 'died' | 'respawned'; atS: number; x: number; z: number; heat: number }[] = [];
+  /** A death ends the run (default: its numbers would be a ragdoll's, then the bunker's); `&pdeath=continue` keeps going and leaves those frames out. */
+  private endOnDeath = params.get('pdeath') !== 'continue';
+  private invalid: string[] = [];
   /** The shadow cascades' cameras (set by main.ts), to count what each one draws. */
   cascades: (() => THREE.Camera[]) | null = null;
 
@@ -152,10 +168,12 @@ class Perf {
     if (this.phase === 'waiting') {
       if (!playable) return;
       this.milestone('playable');
+      if (params.has('ptod')) this.setTod?.(Number(params.get('ptod')));
       this.longTasks.before = this.longTasks.ms;
       if (RUN_S === 0) return this.finish();
       this.phase = 'settling';
       this.phaseT = 0;
+      if (params.has('pyaw')) turn(Number(params.get('pyaw'))); // (turn round to face open ground: `&pyaw=3.14`)
       this.publish();
       return;
     }
@@ -169,11 +187,36 @@ class Perf {
       }
       return;
     }
-    // recording: walk forward, in a slow turn, sprinting every other ten seconds
+    // recording: walk forward, in a very wide turn (a circle of ~100 m at a walk), sprinting every other ten seconds
     const t = this.phaseT;
+    const me = this.player?.();
+    if (me) {
+      this.startPos ??= { x: me.x, z: me.z };
+      if (me.down !== this.wasDown) {
+        // dying and getting up again are events in the data and markers in the trace, not something to puzzle out from the numbers
+        const type = me.down ? 'died' : 'respawned';
+        this.events.push({ type, atS: Math.round(t * 10) / 10, x: Math.round(me.x), z: Math.round(me.z), heat: Math.round(me.heat * 100) / 100 });
+        const now = performance.now();
+        measure(`player ${type}`, now, now, { dataType: 'marker', color: 'error' });
+        performance.mark(`dadajam:player-${type}`);
+        this.wasDown = me.down;
+        if (me.down) this.invalid.push(`the player died at ${this.events[this.events.length - 1].atS} s (${this.endOnDeath ? 'run ended' : 'frames while down and for a second after left out'})`);
+        else this.afterRespawn = 60;
+        this.lastPos = null; // (a respawn is a teleport, not walking)
+        if (me.down && this.endOnDeath) return this.finish();
+      }
+      if (this.lastPos && !me.down) this.travelled += Math.hypot(me.x - this.lastPos.x, me.z - this.lastPos.z);
+      this.lastPos = { x: me.x, z: me.z };
+      if (me.down || this.afterRespawn > 0) {
+        this.afterRespawn = Math.max(0, this.afterRespawn - 1);
+        this.framesExcluded++;
+        if (t >= RUN_S) this.finish();
+        return;
+      }
+    }
     this.key('forward', true);
     this.key('sprint', t % 20 >= 10);
-    turn(0.35 * dt);
+    turn(0.06 * dt);
     const r = this.rec;
     r.gap.push(this.gap);
     r.cpu.push(f.cpu);
@@ -201,6 +244,10 @@ class Perf {
     this.onDone?.();
     this.milestone('run-end');
     const r = this.rec;
+    // a walk that went nowhere (a wall, a scrap pile, a dune face) is no walk either
+    const seconds = Math.min(RUN_S, this.phaseT);
+    if (RUN_S > 0 && seconds > 5 && this.travelled < seconds * 1.5) this.invalid.push(`the player barely moved (${Math.round(this.travelled)} m in ${Math.round(seconds)} s): blocked by something, turn or move the spawn`);
+    if (RUN_S > 0 && this.phaseT < RUN_S - 0.5) this.invalid.push(`the run ended early, at ${Math.round(this.phaseT * 10) / 10} s of ${RUN_S} s`);
     const fps = r.gap.length ? Math.round(10000 / (r.gap.reduce((x, y) => x + y, 0) / r.gap.length)) / 10 : null;
     const worst = [...r.gap].sort((a, b) => b - a).slice(0, Math.max(1, Math.ceil(r.gap.length * 0.01)));
     const result = {
@@ -212,8 +259,20 @@ class Perf {
       graphics: { ...graphics },
       census: this.census(),
       startup: { milestonesMs: this.marks, longTasks: { count: this.longTasks.count, totalMs: Math.round(this.longTasks.ms), beforePlayableMs: Math.round(this.longTasks.before) } },
+      // false when something other than the game's own frame cost decided the numbers: the player died, the walk was blocked, the run ended early.
+      // The reasons are listed; tools/perf.ts prints them and exits with 2.
+      valid: this.invalid.length === 0,
+      invalidReasons: this.invalid,
       gameplay: RUN_S === 0 ? null : {
         seconds: RUN_S,
+        // the walk: where it started and ended, and what happened to the player on it
+        startedAt: this.startPos ? [Math.round(this.startPos.x), Math.round(this.startPos.z)] : null,
+        endedAt: this.player ? (({ x, z }) => [Math.round(x), Math.round(z)])(this.player()!) : null,
+        travelledM: Math.round(this.travelled),
+        events: this.events,
+        died: this.events.some((e) => e.type === 'died'),
+        // frames not in the numbers below because the player was down (or just respawned); the numbers cover the other frames only
+        framesExcluded: this.framesExcluded,
         frames: r.gap.length,
         fps,
         lows1pctFps: worst.length ? Math.round(10000 / (worst.reduce((x, y) => x + y, 0) / worst.length)) / 10 : null,
