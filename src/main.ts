@@ -448,7 +448,7 @@ renderer.setAnimationLoop((time) => {
   // What's in hand (the selected hotbar slot) and worn (shared/gear.ts): drawn on the body, and sets what the tools can do.
   const inHand = tools.slot >= 0 ? net.boxes.bag?.[tools.slot] : null;
   me.setOutfit(inHand?.kind ?? null, wornGear(net.boxes.equip) | carriedGear(net.boxes.bag, tools.slot), gearTiers(net.boxes.equip, net.boxes.bag, tools.slot));
-  const riding = ride(0, me, { ...s, x: v.x, y: v.y, z: v.z, heading: v.heading, pitch: orbit.pitch }, frameDt);
+  const riding = ride(0, me, { ...s, x: v.x, y: v.y, z: v.z, heading: v.heading, nose: v.nose, pitch: orbit.pitch }, frameDt);
   if (!riding) {
     me.update(
       { x: v.x, y: v.y, z: v.z, facing: v.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,

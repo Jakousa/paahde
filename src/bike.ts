@@ -73,6 +73,8 @@ const load = () => (shared ??= new GLTFLoader().loadAsync('./models/sandbike.glb
 export const loadBikeModel = load;
 
 export type BikePose = { x: number; y: number; z: number; heading: number; vx: number; vy: number; vz: number; grounded: boolean;
+  /** The bike's pitch (PlayerState.nose: along the sand, or steered by throttle and brake in the air). */
+  nose: number;
   /** Space held: up on the back wheel while grounded. */
   jumpHeld: boolean };
 
@@ -96,6 +98,7 @@ export class Bike {
   private grounded = true;
   private airTime = 0; // s since it left the ground
   private airV = new THREE.Vector3(); // velocity on the last frame in the air
+  private airNose = 0; // and pitch
   private dustOwed = 0; // puffs owed to tyreDust (fractional)
   private disposed = false;
   private headlight?: (typeof headlights)[number];
@@ -163,15 +166,8 @@ export class Bike {
     const fx = -Math.sin(p.heading), fz = -Math.cos(p.heading);
     const forward = p.vx * fx + p.vz * fz;
 
-    // Nose: along the sand on the ground, along the flight path in the air.
-    let pitch: number;
-    if (p.grounded) {
-      const g = slopeAt(p.x, p.z, tmpSlope);
-      pitch = p.y > heightAt(p.x, p.z) + 0.02 ? 0 : Math.atan(g.gx * fx + g.gz * fz);
-    } else {
-      pitch = Math.max(-0.7, Math.min(0.7, Math.atan2(p.vy, Math.max(hs, 4))));
-    }
-    this.pitch += (pitch - this.pitch) * k(p.grounded ? 14 : 4);
+    // Nose: the sim's (along the sand on the ground, throttle and brake turn it in the air); a crooked landing slams over.
+    this.pitch += (p.nose - this.pitch) * k(p.grounded ? 14 : 30);
     const wheelie = p.grounded && p.jumpHeld ? WHEELIE : 0;
     this.wheelie += (wheelie - this.wheelie) * k(wheelie > this.wheelie ? 7 : p.grounded ? 12 : 3);
     // Lean so that gravity balances the turn: tan(lean) = v·ω / g.
@@ -187,6 +183,7 @@ export class Bike {
     else {
       this.airTime += dt;
       this.airV.set(p.vx, p.vy, p.vz);
+      this.airNose = p.nose;
     }
     this.grounded = p.grounded;
     const steer = Math.abs(forward) > 0.5 ? Math.max(-MAX_STEER, Math.min(MAX_STEER, Math.atan((rate * WHEELBASE) / forward))) : this.steer;
@@ -271,7 +268,9 @@ export class Bike {
   private bigLanding(p: BikePose, hs: number) {
     // How hard it hit: the speed into the sand across the slope, as the sim reckons it (shared/sim.ts stepBike).
     const g = p.y > heightAt(p.x, p.z) + 0.02 ? FLAT : slopeAt(p.x, p.z, tmpSlope);
-    const impact = Math.max(0, g.gx * this.airV.x + g.gz * this.airV.z - this.airV.y);
+    // Coming down off its wheels (the nose off the slope) is rougher, the more so the faster.
+    const off = Math.max(0, Math.abs(this.airNose - Math.atan(-g.gx * Math.sin(p.heading) - g.gz * Math.cos(p.heading))) - 0.1);
+    const impact = Math.max(0, g.gx * this.airV.x + g.gz * this.airV.z - this.airV.y) + off * hs * 0.5;
     const strength = Math.min(1, Math.max(0, (this.airTime - BIG_AIR) / 1.6) * 0.4 + Math.max(0, (impact - 3) / 15) * 0.6);
     const size = (0.6 + strength) * (0.7 + Math.random() * 0.6);
     const n = Math.round(14 + 36 * size);

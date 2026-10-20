@@ -72,6 +72,7 @@ export type RemotePlayer = {
   crouching: boolean;
   pitch: number; // camera pitch in radians (negative = looking down)
   riding: boolean; // on the sand bike; facing is then the bike's heading
+  nose: number; // the bike's pitch (PlayerState.nose)
   jumpHeld: boolean; // Space down: a wheelie while riding
   vy: number;
   /** Kind of the item in their hand (selected hotbar slot), null for none; the gear they wear (wornGear bits). */
@@ -571,6 +572,7 @@ export class Net {
       z: a.z + (b.z - a.z) * alpha + this.errorZ,
       heading: a.riding === b.riding ? lerpAngle(a.heading, b.heading, alpha) : b.heading, // mounting sets it
       facing: lerpAngle(a.facing, b.facing, alpha),
+      nose: a.riding === b.riding ? a.nose + (b.nose - a.nose) * alpha : b.nose,
     };
   }
 
@@ -810,6 +812,7 @@ export class Net {
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
       sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool, slideSpent: server.slideSpent,
       riding: server.riding, bikeHeld: server.bikeHeld, mounting: server.mounting ?? 0, heading: server.heading, bike: server.bike,
+      nose: server.nose ?? 0, noseSpin: server.noseSpin ?? 0,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag, this.legPosts);
     this.errorX += this.me.x - s.x;
@@ -841,7 +844,7 @@ export class Net {
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
-        riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, tiers: pick.tiers ?? 0, bike: pick.bike ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3, grinding: pick.hands === 5 ? 2 : pick.hands === 4 ? 1 : 0,
+        riding: pick.riding ?? false, nose: (pa.nose ?? 0) + ((pb.nose ?? 0) - (pa.nose ?? 0)) * t, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, tiers: pick.tiers ?? 0, bike: pick.bike ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3, grinding: pick.hands === 5 ? 2 : pick.hands === 4 ? 1 : 0,
         aiming: pick.aim === 1 || this.justFired(pb.id),
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t, down: pb.down ?? null,
       });

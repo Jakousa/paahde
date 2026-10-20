@@ -1118,7 +1118,7 @@ function onTelemetry(p: Player, ev: unknown, sum: unknown) {
 const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
 function round(s: PlayerState): PlayerState {
   const r = round4;
-  return { ...s, x: r(s.x), y: r(s.y), z: r(s.z), vx: r(s.vx), vy: r(s.vy), vz: r(s.vz), facing: r(s.facing), heading: r(s.heading) };
+  return { ...s, x: r(s.x), y: r(s.y), z: r(s.z), vx: r(s.vx), vy: r(s.vy), vz: r(s.vz), facing: r(s.facing), heading: r(s.heading), nose: r(s.nose), noseSpin: r(s.noseSpin) };
 }
 
 function send(ws: WebSocket, msg: ServerMsg) {

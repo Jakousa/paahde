@@ -111,6 +111,8 @@ export type PlayerState = {
   mounting: number; // ticks left getting on the bike (MOUNT_TICKS after the bike key; standing still; 0: not)
   heading: number; // the bike's heading (radians, same convention as facing); the body faces it while riding
   bike: number; // the equipped motorcycle (shared/gear.ts bikeLevel): 0 none, else 1 + its quality; set by the server
+  nose: number; // the bike's pitch (rad, + = nose up): along the sand on the ground, steered by throttle/brake in the air
+  noseSpin: number; // how fast it is pitching (rad/s), in the air
 };
 
 // Input is a bitmask so it is tiny on the wire and trivially comparable.
@@ -148,6 +150,7 @@ export function spawnState(x = SPAWN.x, z = SPAWN.z, y = x === SPAWN.x && z === 
     x, y, z, vx: 0, vy: 0, vz: 0, facing: 0,
     grounded: true, airJumps: AIR_JUMPS, jumpHeld: false, landTicks: 0,
     sliding: false, crouching: false, slideCool: 0, slideSpent: false, riding: false, bikeHeld: false, mounting: 0, heading: 0, bike: 0,
+    nose: 0, noseSpin: 0,
   };
 }
 
@@ -400,7 +403,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   if (grounded) airJumps = AIR_JUMPS;
   return {
     x, y, z, vx, vy, vz, facing, grounded, airJumps, jumpHeld: jumpDown, landTicks, sliding, crouching, slideCool,
-    slideSpent, riding: false, bikeHeld: bikeDown, mounting, heading: s.heading, bike: s.bike,
+    slideSpent, riding: false, bikeHeld: bikeDown, mounting, heading: s.heading, bike: s.bike, nose: 0, noseSpin: 0,
   };
 }
 
@@ -429,6 +432,19 @@ const BIKE_AIR_SPIN = 1.4; // rad/s of heading change in the air
 const BIKE_HOP = 6.5;
 const BIKE_LAUNCH_EPS = 0.03; // the ground must fall this far below the ballistic path to leave it
 const BIKE_LAND_KEEP = 0.92; // horizontal speed kept on a landing
+// Pitch in the air (PlayerState.nose): rad/s² the throttle lifts and the brake drops the nose, how strongly it
+// settles towards the flight path (per rad off it) and how quickly spin dies (per s); it goes no further than
+// BIKE_MAX_NOSE either way.
+const BIKE_AIR_THROTTLE = 2.5;
+const BIKE_AIR_BRAKE = 3.5;
+const BIKE_AIR_SETTLE = 1.5;
+const BIKE_AIR_DAMP = 1;
+const BIKE_MAX_NOSE = 1.2;
+// Landing with the nose off the slope (rad): free up to SLACK; past it, up to SKEW_LOSS of the speed is lost
+// (more than in proportion), all of it at WORST, and the engine bogs down when it was well off.
+const BIKE_LAND_SLACK = 0.1;
+const BIKE_LAND_WORST = 1;
+const BIKE_SKEW_LOSS = 0.85;
 export const BIKE_HARD_LANDING = 16; // impact (m/s into the sand) that costs speed and bogs the engine; src/bikeLandSound.ts crashes above it
 
 function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: number, legs: readonly number[]): PlayerState {
@@ -491,6 +507,8 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
 
   let y: number;
   let grounded: boolean;
+  let nose = s.nose, noseSpin = s.noseSpin;
+  const nfx = -Math.sin(h), nfz = -Math.cos(h); // forward after this tick's turn
   const ballisticVy = Math.max(vy + GRAVITY * DT, MAX_FALL);
   if (s.grounded && !hop && ground >= s.y + ballisticVy * DT - BIKE_LAUNCH_EPS) {
     // Riding the surface: climb with it. Capped so a step onto scrap doesn't fire the bike into the sky.
@@ -502,13 +520,26 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
     vy = hop ? Math.max(vy, 0) + BIKE_HOP : ballisticVy;
     y = s.y + vy * DT;
     grounded = false;
+    // In the air the nose turns with the wheel: throttle lifts it, the brake drops it; the rider's weight slowly
+    // settles it towards the flight path, so a jump left alone lands about right.
+    const path = Math.atan2(vy, Math.max(hs, 4));
+    noseSpin += ((throttle > 0 ? BIKE_AIR_THROTTLE : throttle < 0 ? -BIKE_AIR_BRAKE : 0) + BIKE_AIR_SETTLE * (path - nose) - BIKE_AIR_DAMP * noseSpin) * DT;
+    nose += noseSpin * DT;
+    if (Math.abs(nose) > BIKE_MAX_NOSE) {
+      nose = Math.sign(nose) * BIKE_MAX_NOSE;
+      noseSpin = 0;
+    }
     if (y <= ground) {
       // Landing: what goes into the sand is the speed across the slope, not the fall speed, so touching down
       // on a down-slope along the flight path is smooth. A hard one costs speed and bogs the engine down.
       const g = ground > heightAt(x, z) + 0.02 ? flatSlope : slopeAt(x, z, tmpSlope);
       const impact = g.gx * vx + g.gz * vz - vy;
       if (impact > BIKE_HARD_LANDING) landTicks = Math.min(MAX_LAND_TICKS, Math.round(impact - BIKE_HARD_LANDING) * 2 + 8);
-      const keep = impact > 4 ? BIKE_LAND_KEEP : 1;
+      // Not on both wheels (the nose off the slope): the bike slams over onto them, and that costs speed too.
+      const off = Math.abs(nose - Math.atan(g.gx * nfx + g.gz * nfz));
+      const skew = Math.min(1, Math.max(0, (off - BIKE_LAND_SLACK) / (BIKE_LAND_WORST - BIKE_LAND_SLACK)));
+      if (skew > 0.4) landTicks = Math.max(landTicks, Math.round(skew * MAX_LAND_TICKS));
+      const keep = (impact > 4 ? BIKE_LAND_KEEP : 1) * (1 - BIKE_SKEW_LOSS * skew ** 1.5);
       vx *= keep;
       vz *= keep;
       y = ground;
@@ -517,6 +548,12 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
       vy = Math.min(g.gx * vx + g.gz * vz, hs * 0.8 + 1);
       grounded = true;
     }
+  }
+  if (grounded) {
+    // On the ground the nose lies along the sand (flat on scrap and floors).
+    const g = y > heightAt(x, z) + 0.02 ? flatSlope : slopeAt(x, z, tmpSlope);
+    nose = Math.atan(g.gx * nfx + g.gz * nfz);
+    noseSpin = 0;
   }
   const ceiling = Math.min(baseCeiling(x, z, s.y, PLAYER_HEIGHT), shelterCeiling(x, z, s.y, PLAYER_HEIGHT));
   if (y > ceiling) {
@@ -527,6 +564,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   return {
     x, y, z, vx, vy, vz, facing: h, grounded, airJumps: AIR_JUMPS, jumpHeld: jumpDown, landTicks,
     sliding: false, crouching: false, slideCool: s.slideCool, slideSpent: s.slideSpent, riding: true, bikeHeld: bikeDown, mounting: 0, heading: h, bike: s.bike,
+    nose, noseSpin,
   };
 }
 
