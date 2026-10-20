@@ -20,7 +20,7 @@ import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
-import { DARK_LIFT_S, fainting, heatstroke } from './world/env.ts';
+import { DARK_LIFT_S, deathGrade, fainting, heatstroke } from './world/env.ts';
 import { drinkSound } from './drinkSound';
 import { atWater, indoors } from '../shared/shelters.ts';
 import { TEXT } from '../shared/text.ts';
@@ -64,6 +64,8 @@ const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
 /** Fade to black before the respawn, and back in after it (ms). */
 const FADE_OUT_MS = 1500;
 const FADE_IN_MS = 1800;
+/** The colour drains over this long (s) when you die. */
+const DEATH_GRADE_S = 0.25;
 const TOAST_MS = 1800;
 /** Walking this far (m) out of the pump's reach cancels a refill. Under the server's FILL_SLACK. */
 const FILL_CANCEL_SLACK = 0.5;
@@ -424,6 +426,8 @@ export class Survival {
     // Full: fainting (post.ts), black a little before the server's tally kills, so the view is dark when the death comes.
     this.stroke = dead ? 0 : Math.max(0, this.stroke + (w.heat >= HEAT_MAX ? 1 : -STROKE_RECOVER) * dt);
     fainting.value = dead ? Math.max(0, fainting.value - dt / DARK_LIFT_S) : Math.min(1, this.stroke / (STROKE_S * 0.92));
+    // Dead: the colour drains at once (post.ts); off again at the respawn, under the death fade's black.
+    deathGrade.value = dead ? Math.min(1, deathGrade.value + dt / DEATH_GRADE_S) : 0;
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
     // Black out over the last stretch of lying dead, then fade back in on the base after the respawn.

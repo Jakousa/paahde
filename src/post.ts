@@ -11,7 +11,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  choking, fainting, gasEnv, gasLayer, gassed, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
+  choking, deathGrade, fainting, gasEnv, gasLayer, gassed, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
   sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
 import { EDGE, FRONT_TAIL, FRONT_WALL } from '../shared/storm.ts';
@@ -545,6 +545,9 @@ export class Post {
       const fEdge = smoothstep(mix(float(0.75), float(-0.2), ft), mix(float(1), float(0.25), ft), ragged);
       o = mix(o, vec3(0.03, 0.004, 0.002), saturate(fEdge.mul(ft).mul(1.3)));
       o = o.mul(float(1).sub(smoothstep(0.8, 1, ft)));
+      // Dead: grey, with the contrast pushed (the pivot a little under mid-grey keeps the sand from blowing out).
+      const dl = dot(o, vec3(0.2126, 0.7152, 0.0722));
+      o = mix(o, vec3(saturate(dl.sub(0.42).mul(1.6).add(0.42))), deathGrade);
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
       o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(0.028)));

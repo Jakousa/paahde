@@ -50,6 +50,8 @@ export const fainting = uniform(0);
 /** On death the fainting, choking and gas darkness lifts over this long (s) to show the body where it fell, instead of
  *  cutting away; well before the death fade (water.ts) takes the view again. */
 export const DARK_LIFT_S = 1.5;
+/** Lying dead, 0..1: the view drains to a hard-contrast grey (post.ts); set by the HUD (water.ts). */
+export const deathGrade = uniform(0);
 // --- Wind, for shaders (fed from wind.ts by dust.ts every frame) ---
 /** Unit xz vector the wind currently blows towards (wobbles a little around the dunes' wind). */
 export const windDir = uniform(new THREE.Vector2(0.3162, 0.9487));
