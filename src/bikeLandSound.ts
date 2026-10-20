@@ -13,11 +13,11 @@ const SRC = './audio/bike-crash.mp3';
 /** Level at full slider volume, for a hard landing under your own wheels. */
 const GAIN = 0.45;
 /** Impact (m/s into the sand) at which it is the softest thud; up to BIKE_HARD_LANDING it stays a muffled thud. */
-const SOFT = 3;
+const SOFT = 4;
 /** The crash comes in from this fraction of BIKE_HARD_LANDING, whole at it. */
 const HARD_FROM = 0.8;
 /** Past BIKE_HARD_LANDING by this much (m/s), the whole crash plays out. */
-const CRASH = 6;
+const CRASH = 14;
 /** The hit is let through whole for this long (s), then the tail fades. */
 const HOLD = 0.2;
 /** Full level within this distance (m) of the listener, then falling off as 1/d. */

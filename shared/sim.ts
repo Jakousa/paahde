@@ -453,7 +453,7 @@ const BIKE_MAX_NOSE = 1.2;
 const BIKE_LAND_SLACK = 0.1;
 const BIKE_LAND_WORST = 1;
 const BIKE_SKEW_LOSS = 0.85;
-export const BIKE_HARD_LANDING = 16; // impact (m/s into the sand) that costs speed and bogs the engine; src/bikeLandSound.ts crashes above it
+export const BIKE_HARD_LANDING = 22; // impact (m/s into the sand) that costs speed and bogs the engine; src/bikeLandSound.ts crashes above it
 
 function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: number, legs: readonly number[]): PlayerState {
   const top = bikeTopSpeed(s.bike - 1), engine = bikeEngine(s.bike - 1);
