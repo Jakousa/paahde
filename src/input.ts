@@ -77,9 +77,12 @@ document.addEventListener('pointerlockchange', () => {
   }
 });
 // Without the keyboard lock (windowed, or not Chromium) Ctrl+W still reaches the browser; crouch + forward is an
-// easy slip, so while in the game the browser asks before closing the tab.
+// easy slip, so while in the game the browser asks before closing the tab. Its text can't be set; the mouse is freed
+// for its buttons, and staying lands in the Esc menu, whose button goes fullscreen.
 addEventListener('beforeunload', (e) => {
-  if (captured()) e.preventDefault();
+  if (!captured()) return;
+  e.preventDefault();
+  document.exitPointerLock();
 });
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) keyboard?.unlock();
