@@ -311,9 +311,15 @@ export class Net {
     return true;
   }
 
-  /** Pick up loot (shared/loot.ts); the server answers with the bag, or a toast if it's full. */
-  lootTake(id: number) {
-    if (this.connected) this.send({ t: 'lootTake', id });
+  /** Pick up loot (shared/loot.ts): hidden now, confirmed (the bag) or put back by the server. False if the bag is full. */
+  lootTake(id: number): boolean {
+    const l = this.loot.get(id);
+    if (!this.connected || !l) return true;
+    if (!roomFor(this.boxes.bag ?? [], l.kind, bagShape(this.boxes.equip))) return false;
+    this.send({ t: 'lootTake', id });
+    this.loot.delete(id);
+    this.onLoot?.();
+    return true;
   }
 
   /** Debug menu: repaired gear of every kind. */

@@ -690,8 +690,8 @@ baseSand.update(frameDt, storm.atBase);
       if (net.debrisTake(debris)) pickupSound.play();
       else bagFull();
     } else if (find) {
-      net.lootTake(find.id);
-      pickupSound.play();
+      if (net.lootTake(find.id)) pickupSound.play();
+      else bagFull();
     } else if (site) {
       net.crashTake(site.site.id);
     } else if (wreck) net.crashTake(wreck.id);

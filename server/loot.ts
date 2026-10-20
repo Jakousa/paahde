@@ -196,6 +196,13 @@ export class LootServer {
     return { ...msg, add: msg.add.filter((l) => l.id !== this.homeBikeId) };
   }
 
+  /** Loot `id` again, for a player (browser id `who`) whose client hid it on a refused take; null if it's gone. */
+  back(id: unknown, who: string): Extract<ServerMsg, { t: 'loot' }> | null {
+    const l = typeof id === 'number' ? this.loot.get(id) : undefined;
+    const msg = l ? this.seenBy({ t: 'loot', add: [l], remove: [] }, who) : null;
+    return msg?.add.length ? msg : null;
+  }
+
   /** What changed since the last flush, for everyone (null if nothing). */
   flush(): Extract<ServerMsg, { t: 'loot' }> | null {
     if (!this.added.length && !this.removed.length) return null;

@@ -4,6 +4,7 @@
 import type { ServerMsg } from '../shared/protocol.ts';
 import { PICKUP_REACH, scrapChanged, scrapPiece, scrapReach, scrapTaken } from '../shared/scrap.ts';
 import type { openDb } from './db.ts';
+import { spendPickup, type PickupLimit } from './pickupLimit.ts';
 
 type Db = ReturnType<typeof openDb>;
 
@@ -11,8 +12,6 @@ type Db = ReturnType<typeof openDb>;
 const RESPAWN_MS = 30 * 60 * 1000;
 /** Slack on top of PICKUP_REACH for the server's view of the player lagging the client's. */
 const REACH_SLACK = 1.5;
-/** Minimum time between one player's pickups. */
-const PICKUP_COOLDOWN_MS = 200;
 
 export class ScrapServer {
   private db: Db;
@@ -36,14 +35,13 @@ export class ScrapServer {
   /**
    * A player asks to pick up piece i of cell (ix, iz). `give(kind)` puts it in their bag (false: no room).
    * Returns the SCRAP_KINDS index taken, or null if refused (unknown piece, already taken, out of reach,
-   * too soon, bag full).
+   * too many at once, bag full).
    */
-  pickup(feet: { x: number; y: number; z: number }, ix: unknown, iz: unknown, i: unknown, last: { at: number }, give: (kind: number) => boolean): number | null {
+  pickup(feet: { x: number; y: number; z: number }, ix: unknown, iz: unknown, i: unknown, limit: PickupLimit, give: (kind: number) => boolean): number | null {
     const pc = scrapPiece(ix as number, iz as number, i as number);
     const now = Date.now();
-    if (!pc || scrapTaken.has(pc.key) || now - last.at < PICKUP_COOLDOWN_MS) return null;
-    if (scrapReach(feet, pc) > PICKUP_REACH + REACH_SLACK) return null;
-    last.at = now;
+    if (!pc || scrapTaken.has(pc.key)) return null;
+    if (scrapReach(feet, pc) > PICKUP_REACH + REACH_SLACK || !spendPickup(limit, now)) return null;
     const ok = this.db.tx(() => {
       if (!give(pc.kind)) return false;
       this.db.takeScrap(pc.ix, pc.iz, pc.i, now);

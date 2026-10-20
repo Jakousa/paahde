@@ -61,6 +61,7 @@ import { timeOfDayAt } from '../shared/sun.ts';
 import { setTrophies } from '../shared/trophies.ts';
 import { LIVES, WORLD_ID } from '../shared/world.ts';
 import { TEXT } from '../shared/text.ts';
+import { pickupLimit, type PickupLimit } from './pickupLimit.ts';
 
 /** Nobody on for this long: the world saves and exits until someone comes back. */
 const EMPTY_EXIT_MS = 10 * 60_000;
@@ -116,7 +117,7 @@ type Player = {
   tokens: number; // input rate limiter: refills at TICK_RATE/s, so inputs can't speed up time
   lastInputAt: number;
   idleAccum: number;
-  lastPickup: { at: number };
+  pickups: PickupLimit; // server/pickupLimit.ts
   input: number; // last input bitmask (0 while idle), for sprint drain
   heat: Heat; // server/water.ts
   choke: number; // seconds of a mega-storm breathed out in the open (shared/storm.ts frontExposure); CHOKE_S kills
@@ -285,7 +286,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   state.bike = bikeLevel(items.slots(browserId, 'equip'));
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
-    tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
+    tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, pickups: pickupLimit(), lastTend: { at: 0 }, input: 0,
     heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, gassed: 0, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: '', ready: false, jam: null,
   };
   players.set(ws, p);
@@ -792,7 +793,7 @@ function dropBossSpoils(k: BossKill) {
 }
 
 function onPickup(p: Player, ix: unknown, iz: unknown, i: unknown) {
-  const kind = scrap.pickup(p.state, ix, iz, i, p.lastPickup, (k) => items.give(p.browserId, scrapItem(k)));
+  const kind = scrap.pickup(p.state, ix, iz, i, p.pickups, (k) => items.give(p.browserId, scrapItem(k)));
   if (kind !== null) return sendBox(p, 'bag', scrapItem(kind));
   // Refused: the client already hid the piece. If it is still there, tell this client to show it again.
   if (typeof ix === 'number' && typeof iz === 'number' && typeof i === 'number' && !scrapTaken.has(scrapKey(ix, iz, i))) {
@@ -851,8 +852,11 @@ function onLootTake(p: Player, id: unknown) {
   else if (kind === 'had') send(p.ws, { t: 'notice', text: TEXT.notice.alreadyHad });
   else if (kind) {
     sendBox(p, 'bag', kind);
-    gearChanged(p.browserId);
+    return gearChanged(p.browserId);
   }
+  // Not taken: the client already hid it. If it still lies there (and they may see it), show it to them again.
+  const back = loot.back(id, p.browserId);
+  if (back) send(p.ws, back);
 }
 
 // Drop an item on the sand (shared/loot.ts canDropAt: not in the base).
@@ -896,7 +900,7 @@ function onSort(p: Player, box: unknown) {
 // disassembly table (the item is used up), and the shared sessions of large sites and the table.
 function onCrash(p: Player, msg: ClientMsg) {
   if (msg.t === 'crashTake') {
-    const kind = crash.carry(p.state, msg.id, p.lastPickup, (k) => items.give(p.browserId, k));
+    const kind = crash.carry(p.state, msg.id, p.pickups, (k) => items.give(p.browserId, k));
     if (kind) {
       sendBox(p, 'bag', kind);
       gearChanged(p.browserId);
