@@ -36,6 +36,8 @@ export const MENU_CSS = `
 #menu .tip { position: fixed; display: none; padding: 6px 8px; border-radius: 5px; pointer-events: none; font-size: 11px; line-height: 1.4;
   background: rgba(20, 10, 4, 0.96); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.2), 0 6px 18px rgba(0, 0, 0, 0.5); }
 #menu .note { min-height: 16px; margin-top: 6px; opacity: 0.7; font-size: 11px; }
+#menu .fsNote { display: none; margin-top: 6px; opacity: 0.8; font-size: 11px; text-align: center; }
+#menu.closeAsked .fsNote { display: block; }
 #menu .controls, #menu .options { display: none; }
 #menu .panel.sub .controls, #menu .panel.opts .options { display: block; }
 #menu .panel.sub .main, #menu .panel.opts .main { display: none; }

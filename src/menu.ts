@@ -39,6 +39,7 @@ export class Menu {
     this.el.innerHTML = `<div class="panel"><div class="main"><h2>${TEXT.game.name}</h2><button class="resume">${TEXT.menu.resume}</button>
 <button class="opt" style="margin-top:12px">${TEXT.menu.options}</button>
 <button class="fs" style="margin-top:8px"></button>
+<div class="fsNote">${TEXT.menu.ctrlWNote}</div>
 <button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>
 <button class="ctl" style="margin-top:8px">${TEXT.menu.controls}</button>
 <button class="leaveGame" style="margin-top:8px">${TEXT.menu.mainMenu}</button>
@@ -213,6 +214,9 @@ ${optionsHtml()}
   private toggle(open: boolean) {
     this.el.classList.toggle('open', open);
     if (open) this.footEl.textContent = this.lastInfo;
+    // Opened by the leave-site prompt (src/input.ts): say why it came and how fullscreen avoids it, this once.
+    this.el.classList.toggle('closeAsked', open && ui.closeAsked);
+    if (!open) ui.closeAsked = false;
   }
 
   /** Every frame: the stats line under the graphs (render scale, clock, backend, connection, players, build). */

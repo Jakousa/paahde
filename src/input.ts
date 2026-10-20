@@ -11,7 +11,8 @@ export const tools = { frozen: false, slot: -1, bike: false, engaged: false, spi
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 /** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
 /** `escClosedAt`: when Esc last closed the inventory/chest/workbench, so the same press (or the lock change after it) doesn't open the Esc menu (src/menu.ts). */
-export const ui = { inventoryOpen: false, debugFreed: false, escClosedAt: -Infinity };
+/** `closeAsked`: the browser just asked before closing the tab (Ctrl+W while windowed), so the Esc menu says why. */
+export const ui = { inventoryOpen: false, debugFreed: false, escClosedAt: -Infinity, closeAsked: false };
 // While the pointer is locked the game owns the keyboard: swallow browser shortcuts (Tab, F-keys, Alt, Ctrl+S...).
 // Esc frees the mouse (the browser does that itself), and then keys behave normally again.
 const captured = () => !!document.pointerLockElement;
@@ -82,6 +83,7 @@ document.addEventListener('pointerlockchange', () => {
 addEventListener('beforeunload', (e) => {
   if (!captured()) return;
   e.preventDefault();
+  ui.closeAsked = true;
   document.exitPointerLock();
 });
 document.addEventListener('fullscreenchange', () => {
