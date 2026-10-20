@@ -415,6 +415,7 @@ renderer.setAnimationLoop((time) => {
     menu.setInfo(`${backendText} · ${net.status} · build ${__BUILD_SHA__}`);
     return;
   }
+  if (!joined) prologue.joined();
   joined = true;
   perf.milestone('joined');
   // Once the models and terrain are in, draw real frames a few materials at a time (src/warmup.ts): the first full

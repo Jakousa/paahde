@@ -3,7 +3,8 @@
 // long stretches while the world builds, so it is drawn by a worker into an OffscreenCanvas. Without OffscreenCanvas
 // it runs on the page instead.
 // A tab's first load tells the whole prologue and keeps the cover up until it is told (or a key or click skips it);
-// a reload in the same tab (a deploy, src/update.ts) shows only the title.
+// a reload in the same tab (a deploy, src/update.ts), or any load once this browser has joined a game, shows only
+// the title.
 import { createPrologue, FONT_URL, PROLOGUE_S } from './prologueRunner';
 
 let off: (() => void) | null = null;
@@ -15,7 +16,7 @@ function start() {
   if (!cover || off) return;
   let full = true;
   try {
-    full = !sessionStorage.getItem('prologueSeen');
+    full = !sessionStorage.getItem('prologueSeen') && !localStorage.getItem('joinedBefore');
     sessionStorage.setItem('prologueSeen', '1');
   } catch {
     // no storage: tell it every time
@@ -79,7 +80,17 @@ function stopPrologue() {
   progress = () => {};
 }
 
+/** We joined a game: from now on this browser sees only the title. */
+function joined() {
+  try {
+    localStorage.setItem('joinedBefore', '1');
+  } catch {
+    // no storage: the prologue is told again next time
+  }
+}
+
 export const prologue = {
+  joined,
   start,
   stop: stopPrologue,
   progress: (p: number) => progress(p),
