@@ -356,11 +356,13 @@ export function openDb(path: string) {
       z          REAL NOT NULL,
       yaw        REAL NOT NULL,
       task       TEXT NOT NULL DEFAULT 'idle',
+      tier       INTEGER DEFAULT 0,
       created_at INTEGER NOT NULL
     );
   `);
-  const allNpcs = db.prepare('SELECT id, owner, x, y, z, yaw, task FROM npcs');
-  const insertNpc = db.prepare('INSERT INTO npcs (owner, x, y, z, yaw, task, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  try { db.exec('ALTER TABLE npcs ADD COLUMN tier INTEGER DEFAULT 0'); } catch {}
+  const allNpcs = db.prepare('SELECT id, owner, x, y, z, yaw, task, COALESCE(tier, 0) as tier FROM npcs');
+  const insertNpc = db.prepare('INSERT INTO npcs (owner, x, y, z, yaw, task, tier, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
   const updateNpc = db.prepare('UPDATE npcs SET x = ?, y = ?, z = ?, yaw = ?, task = ? WHERE id = ?');
   const deleteNpc = db.prepare('DELETE FROM npcs WHERE id = ?');
 
@@ -403,9 +405,9 @@ export function openDb(path: string) {
     loadBeds: () => allBeds.all() as { id: number; stage: number; growth: number }[],
     saveBed: (id: number, stage: number, growth: number) => upsertBed.run(id, stage, growth),
     deleteBed: (id: number) => deleteBed.run(id),
-    loadNpcs: () => allNpcs.all() as { id: number; owner: string; x: number; y: number; z: number; yaw: number; task: string }[],
-    insertNpc: (owner: string, x: number, y: number, z: number, yaw: number, task = 'idle') =>
-      Number(insertNpc.run(owner, x, y, z, yaw, task, Date.now()).lastInsertRowid),
+    loadNpcs: () => allNpcs.all() as { id: number; owner: string; x: number; y: number; z: number; yaw: number; task: string; tier: number }[],
+    insertNpc: (owner: string, x: number, y: number, z: number, yaw: number, task = 'idle', tier = 0) =>
+      Number(insertNpc.run(owner, x, y, z, yaw, task, tier, Date.now()).lastInsertRowid),
     saveNpc: (id: number, x: number, y: number, z: number, yaw: number, task: string) =>
       updateNpc.run(x, y, z, yaw, task, id),
     deleteNpc: (id: number) => tx(() => {

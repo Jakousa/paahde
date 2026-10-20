@@ -5,6 +5,7 @@
 export type NpcSnap = {
   id: number;
   owner: string;
+  tier?: number; // 0..3 (material grade: 0 scrap, 1 basic, 2 quality, 3 space)
   x: number;
   y: number;
   z: number;

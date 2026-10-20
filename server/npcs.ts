@@ -29,6 +29,7 @@ const THINK_INTERVAL_MS = 3500;
 export type NpcState = {
   id: number;
   owner: string; // Player browserId
+  tier: number;
   x: number;
   y: number;
   z: number;
@@ -37,6 +38,7 @@ export type NpcState = {
   vz: number;
   task: 'idle' | 'follow' | 'gather' | 'deposit' | 'flee';
   targetScrap: { ix: number; iz: number; i: number; x: number; z: number } | null;
+  targetLoot: { id: number; x: number; z: number } | null;
   skirt: Skirt;
   saveAt: number;
   lastThinkAt: number;
@@ -65,6 +67,7 @@ export class NpcServer {
       const npc: NpcState = {
         id: r.id,
         owner: r.owner,
+        tier: r.tier ?? 0,
         x: r.x,
         y: r.y,
         z: r.z,
@@ -73,6 +76,7 @@ export class NpcServer {
         vz: 0,
         task: (r.task as NpcState['task']) || 'follow',
         targetScrap: null,
+        targetLoot: null,
         skirt: { side: 0, until: 0 },
         saveAt: 0,
         lastThinkAt: 0,
@@ -88,6 +92,7 @@ export class NpcServer {
     return {
       id: n.id,
       owner: n.owner,
+      tier: n.tier ?? 0,
       x: n.x,
       y: n.y,
       z: n.z,
@@ -98,11 +103,12 @@ export class NpcServer {
   }
 
   /** Spawn a newly placed companion bot. */
-  spawn(owner: string, x: number, y: number, z: number, yaw: number): NpcState {
-    const id = this.db.insertNpc(owner, x, y, z, yaw, 'follow');
+  spawn(owner: string, x: number, y: number, z: number, yaw: number, tier = 0): NpcState {
+    const id = this.db.insertNpc(owner, x, y, z, yaw, 'follow', tier);
     const npc: NpcState = {
       id,
       owner,
+      tier,
       x,
       y,
       z,
@@ -111,6 +117,7 @@ export class NpcServer {
       vz: 0,
       task: 'follow',
       targetScrap: null,
+      targetLoot: null,
       skirt: { side: 0, until: 0 },
       saveAt: Date.now() + 5000,
       lastThinkAt: 0,
@@ -149,11 +156,13 @@ export class NpcServer {
   }
 
   /** Set current task for bot (e.g. from chat command). */
-  setTask(id: number, task: NpcState['task']) {
+  setTask(id: number, task: NpcState['task'], owner?: string) {
     const bot = this.npcs.get(id);
     if (bot) {
+      if (owner && (!bot.owner || bot.owner === '')) bot.owner = owner;
       bot.task = task;
       bot.targetScrap = null;
+      bot.targetLoot = null;
       bot.saveAt = 0; // force immediate save
     }
   }
@@ -173,7 +182,7 @@ export class NpcServer {
     const x = spawn.x + 2.0;
     const z = spawn.z + 2.5;
     const y = heightAt(x, z);
-    this.spawn('', x, y, z, 0);
+    this.spawn('', x, y, z, 0, 1);
   }
 
   /** Tick all companion bots in the world. */
@@ -194,6 +203,8 @@ export class NpcServer {
         queryBotLlm(JSON.stringify(situation)).then((res: LlmDecisionResponse | null) => {
           bot.thinking = false;
           if (res) {
+            // Respect explicit player stay/idle command unless fleeing threat
+            if (bot.task === 'idle' && res.action !== 'FLEE') return;
             if (res.action === 'GATHER') bot.task = 'gather';
             else if (res.action === 'FOLLOW') bot.task = 'follow';
             else if (res.action === 'WAIT') bot.task = 'idle';
@@ -222,31 +233,50 @@ export class NpcServer {
           bot.vz = 0;
         }
       } else if (bot.task === 'gather') {
-        // Look for or navigate to scrap
-        if (!bot.targetScrap || scrapTaken.has(scrapKey(bot.targetScrap.ix, bot.targetScrap.iz, bot.targetScrap.i))) {
-          bot.targetScrap = this.findNearestScrap(bot.x, bot.z, GATHER_RANGE);
+        // Validate target
+        if (bot.targetScrap && scrapTaken.has(scrapKey(bot.targetScrap.ix, bot.targetScrap.iz, bot.targetScrap.i))) {
+          bot.targetScrap = null;
+        }
+        if (bot.targetLoot && !this.loot.loot.has(bot.targetLoot.id)) {
+          bot.targetLoot = null;
         }
 
-        if (bot.targetScrap) {
-          const dx = bot.targetScrap.x - bot.x;
-          const dz = bot.targetScrap.z - bot.z;
+        if (!bot.targetScrap && !bot.targetLoot) {
+          bot.targetScrap = this.findNearestScrap(bot.x, bot.z, GATHER_RANGE);
+          if (!bot.targetScrap) {
+            bot.targetLoot = this.findNearestLoot(bot.x, bot.z, GATHER_RANGE);
+          }
+        }
+
+        const target = bot.targetScrap ?? bot.targetLoot;
+        if (target) {
+          const dx = target.x - bot.x;
+          const dz = target.z - bot.z;
           const d = Math.hypot(dx, dz);
 
           if (d <= PICKUP_DIST) {
-            // Pick up piece
-            const target = bot.targetScrap;
-            bot.targetScrap = null;
             bot.vx = 0;
             bot.vz = 0;
 
-            const takenKind = this.scrap.takePiece(target.ix, target.iz, target.i, (k) => {
-              const item = scrapItem(k);
-              return this.items.giveToBox('', `bot${bot.id}`, item, 1);
-            });
-
-            // If bag full or couldn't pick up, switch to follow
-            if (takenKind === null) {
-              bot.task = 'follow';
+            if (bot.targetScrap) {
+              const sTarget = bot.targetScrap;
+              bot.targetScrap = null;
+              const takenKind = this.scrap.takePiece(sTarget.ix, sTarget.iz, sTarget.i, (k) => {
+                const item = scrapItem(k);
+                return this.items.giveToBox('', `bot${bot.id}`, item, 1);
+              });
+              if (takenKind === null) {
+                bot.task = 'follow'; // cargo full
+              }
+            } else if (bot.targetLoot) {
+              const lTarget = bot.targetLoot;
+              bot.targetLoot = null;
+              const taken = this.loot.take({ x: bot.x, y: bot.y, z: bot.z } as any, '', lTarget.id, (l) => {
+                return this.items.giveToBox('', `bot${bot.id}`, l.kind, l.n ?? 1);
+              });
+              if (taken === null || taken === 'full') {
+                bot.task = 'follow'; // cargo full
+              }
             }
           } else {
             let h = Math.atan2(dx, dz);
@@ -256,8 +286,9 @@ export class NpcServer {
             bot.yaw = h;
           }
         } else {
-          // No scrap found, fallback to follow
-          bot.task = 'follow';
+          // If no scrap/loot in range, wait patiently in gather mode
+          bot.vx = 0;
+          bot.vz = 0;
         }
       } else {
         bot.vx = 0;
@@ -304,6 +335,21 @@ export class NpcServer {
       }
     }
     return bestPiece;
+  }
+
+  private findNearestLoot(bx: number, bz: number, maxDist: number) {
+    let bestDist = maxDist;
+    let bestLoot: { id: number; x: number; z: number } | null = null;
+
+    for (const l of this.loot.loot.values()) {
+      if (l.kind !== 'scrap' && l.kind !== 'cloth') continue;
+      const d = Math.hypot(l.x - bx, l.z - bz);
+      if (d < bestDist) {
+        bestDist = d;
+        bestLoot = { id: l.id, x: l.x, z: l.z };
+      }
+    }
+    return bestLoot;
   }
 
   snapshot(): NpcSnap[] {

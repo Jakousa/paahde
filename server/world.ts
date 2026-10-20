@@ -683,16 +683,49 @@ function onChat(p: Player, text: unknown) {
   const json = JSON.stringify({ t: 'chat', id: p.id, color: p.color, name: p.name, text: clean, at: Date.now() } satisfies ServerMsg);
   for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
 
-  if (clean.toLowerCase().startsWith('@bot')) {
-    const cmd = clean.slice(4).trim().toLowerCase();
-    const task = cmd.includes('gather') || cmd.includes('scrap') ? 'gather' : cmd.includes('stay') || cmd.includes('idle') || cmd.includes('stop') ? 'idle' : 'follow';
-    for (const bot of npcs.snapshot()) {
-      if (bot.owner === p.browserId || Math.hypot(bot.x - p.state.x, bot.z - p.state.z) < 25) {
-        npcs.setTask(bot.id, task);
-        npcs.setCommand(bot.id, clean);
+  if (clean) {
+    const lower = clean.toLowerCase();
+    const isBotCmd = lower.startsWith('@bot') || lower.startsWith('!bot') || lower.startsWith('/bot') || lower.startsWith('bot ') || lower === 'bot';
+    if (isBotCmd) {
+      let cmd = lower.replace(/^[@!/]bot[:\s]*/, '').replace(/^bot[:\s]*/, '').trim();
+      if (!cmd) cmd = 'status';
+
+      let task: 'gather' | 'idle' | 'follow' = 'follow';
+      let reply = '';
+
+      if (cmd.includes('gather') || cmd.includes('scrap') || cmd.includes('loot') || cmd.includes('mine') || cmd.includes('scavenge')) {
+        task = 'gather';
+        reply = 'Searching for scrap.';
+      } else if (cmd.includes('stay') || cmd.includes('wait') || cmd.includes('stop') || cmd.includes('idle') || cmd.includes('hold') || cmd.includes('halt')) {
+        task = 'idle';
+        reply = 'Holding position.';
+      } else if (cmd.includes('follow') || cmd.includes('come') || cmd.includes('here') || cmd.includes('heel')) {
+        task = 'follow';
+        reply = `Following ${p.name || 'operator'}.`;
+      } else if (cmd.includes('status') || cmd.includes('info') || cmd.includes('help') || cmd.includes('cargo')) {
+        const targetBot = [...npcs.snapshot()].find((b) => b.owner === p.browserId || b.owner === '' || Math.hypot(b.x - p.state.x, b.z - p.state.z) < 60);
+        if (targetBot) {
+          reply = `Status: ${targetBot.task.toUpperCase()} | Cargo: ${targetBot.cargoCount}/6. Orders: follow, gather, stay.`;
+        } else {
+          reply = 'No companion bot in range.';
+        }
+      } else {
+        reply = `Order acknowledged: "${clean}". Following.`;
       }
+
+      for (const bot of npcs.snapshot()) {
+        if (bot.owner === p.browserId || bot.owner === '' || Math.hypot(bot.x - p.state.x, bot.z - p.state.z) < 60) {
+          npcs.setTask(bot.id, task, p.browserId);
+          npcs.setCommand(bot.id, clean);
+        }
+      }
+
+      if (reply) {
+        const botMsg = JSON.stringify({ t: 'chat', id: -1, color: 0xffaa22, name: 'AUTON-1', text: reply, at: Date.now() } satisfies ServerMsg);
+        for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(botMsg);
+      }
+      broadcastNpcs();
     }
-    broadcastNpcs();
   }
 }
 
@@ -972,13 +1005,14 @@ function onDeployBot(p: Player, slot: unknown) {
   const bag = items.slots(p.browserId, 'bag');
   const it = bag[slot];
   if (!it || it.kind !== 'scavenger_bot') return send(p.ws, { t: 'notice', text: TEXT.notice.missingParts });
+  const tier = tierOf(it);
   if (!items.take(p.browserId, 'scavenger_bot')) return;
   sendBox(p, 'bag');
   const d = 1.6;
   const spawnX = p.state.x - Math.sin(p.yaw) * d;
   const spawnZ = p.state.z - Math.cos(p.yaw) * d;
   const spawnY = heightAt(spawnX, spawnZ);
-  npcs.spawn(p.browserId, spawnX, spawnY, spawnZ, p.yaw);
+  npcs.spawn(p.browserId, spawnX, spawnY, spawnZ, p.yaw, tier);
   broadcastNpcs();
 }
 
