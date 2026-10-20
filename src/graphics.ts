@@ -25,12 +25,13 @@ export interface GraphicsPrefs {
 export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, minRes: 0.5, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, shadowQuality: 2, shadowRefresh: 1, antialias: true };
 export const SHADOW_DISTANCE_RANGE = [200, 1600] as const;
 export const FPS_LIMITS = [30, 60, 90, 120, 144, 240, 0] as const;
-/** What each shadow quality means: cascades (at least two: the first is the sharp one round you, a single one over the whole distance is too coarse
- *  to show anything small), the size of each one's map, and the taps of the edge filter (src/world/shadowFilter.ts). */
+/** What each shadow quality means. Shadow maps (players, wrecks, the base, bosses): cascades (at least two: the first is the sharp one round
+ *  you), the size of each one's map, and the taps of the edge filter in the first cascade and the others (src/world/shadowFilter.ts).
+ *  Dune shadows (src/world/heightShadow.ts): the grids round the player (width in m, texels). */
 export const SHADOW_QUALITY = [
-  { cascades: 2, map: 1024, filter: 4 },
-  { cascades: 3, map: 1024, filter: 8 },
-  { cascades: 4, map: 1024, filter: 16 },
+  { cascades: 2, map: 2048, filter: 8, farFilter: 4, height: { levels: [{ size: 1024, res: 1024 }, { size: 9216, res: 512 }] } },
+  { cascades: 3, map: 2048, filter: 12, farFilter: 4, height: { levels: [{ size: 1024, res: 2048 }, { size: 9216, res: 1024 }] } },
+  { cascades: 4, map: 2048, filter: 16, farFilter: 6, height: { levels: [{ size: 1024, res: 2048 }, { size: 4096, res: 1024 }, { size: 9216, res: 1024 }] } },
 ] as const;
 
 const KEY = 'dadajam.graphics';

@@ -13,7 +13,8 @@ import { MAX_FOV } from '../camera.ts';
 import { SHADOW_QUALITY, cascadeEnds, graphics, onGraphics, startup } from '../graphics.ts';
 import { CascadedShadows, FIRST_CACHED } from './cascades.ts';
 import { ShadowLod, SHADOW_LOD_FIRST, lodLayer } from './shadowLod.ts';
-import { setShadowNoiseAxes, wideShadowFilter } from './shadowFilter.ts';
+import { farShadowFilter, nearShadowFilter, setShadowNoiseAxes } from './shadowFilter.ts';
+import { HEIGHT_SHADOWS, HeightShadow } from './heightShadow.ts';
 import { DayNight } from './dayNight.ts';
 import { NightSky, nightSky } from './nightSky.ts';
 import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm, SHADOW_ONLY_LAYER, skyRadiance, sunColor, sunDirection, sunDisc, sunLight, time } from './env.ts';
@@ -32,11 +33,10 @@ const LIGHT_MARGIN = 300;
 /** Depth bias and normal offset, in texels of each cascade (normal-offset shadows, Holbert 2011). */
 const DEPTH_BIAS_TEXELS = 1;
 const NORMAL_BIAS_TEXELS = 2;
-/** PCF filter radius in texels per cascade: at a 10° sun each texel stretches ~6x along the ground, so
- *  a dune's shadow edge is a staircase whose steps survive any filter narrower than the step length
- *  (they showed as a saw along the edge). The coarse cascades therefore blur wide; the nearest one is
- *  fine enough (~3 cm) to stay crisp. */
-const PCF_RADIUS_TEXELS = [2, 5, 8, 8];
+/** PCF filter radius in texels per cascade. The dunes are not in the shadow maps (their shadows come from the heightfield,
+ *  src/world/heightShadow.ts), so the maps only hold things (players, wrecks, the base, bosses) and can stay sharp: they used to blur
+ *  5-8 texels to hide the stairs a low sun makes of a dune's shadow edge. */
+const PCF_RADIUS_TEXELS = [1.5, 1.5, 2, 2];
 
 export class Sky {
   readonly sun = sunLight;
@@ -49,6 +49,10 @@ export class Sky {
   private scene: THREE.Scene;
   private lodSet = false;
   readonly day: DayNight;
+  /** The dunes' shadows (src/world/heightShadow.ts). */
+  readonly heights = new HeightShadow(QUALITY.height as unknown as ConstructorParameters<typeof HeightShadow>[0]);
+  /** Set by main.ts: the heightfield shadow draws with it. */
+  renderer: THREE.WebGPURenderer | null = null;
   readonly night = new NightSky();
 
   constructor(scene: THREE.Scene) {
@@ -91,6 +95,7 @@ export class Sky {
       customSplitsCallback: (_n, _near, far, breaks) => breaks.push(...CASCADE_ENDS.map((d) => d / far)),
     });
     this.csm.onFit = (i) => this.fitLight(i);
+    if (HEIGHT_SHADOWS) this.csm.extraLit = this.heights.litNode();
     this.csm.fade = true; // widens each cascade's map to cover the cross-fade into it
     sun.shadow.shadowNode = this.csm;
     scene.add(sun, sun.target);
@@ -125,6 +130,8 @@ export class Sky {
     this.sun.position.copy(focus).add(moonlit ? moonDirection.value : sunDirection.value);
     this.sun.target.updateMatrixWorld();
     setShadowNoiseAxes(moonlit ? moonDirection.value : sunDirection.value);
+    this.heights.light.value.copy(moonlit ? moonDirection.value : sunDirection.value);
+    if (HEIGHT_SHADOWS && this.renderer && this.sun.castShadow) this.heights.update(this.renderer, this.scene, focus);
     this.fitCascades(camera);
     this.cullSmall();
   }
@@ -178,6 +185,6 @@ export class Sky {
     shadow.normalBias = NORMAL_BIAS_TEXELS * texel;
     shadow.radius = PCF_RADIUS_TEXELS[i];
     (shadow as unknown as { texelWorld: number }).texelWorld = texel; // sizes the filter's world-pinned noise
-    (shadow as unknown as { filterNode: unknown }).filterNode = wideShadowFilter; // wider than the stock 5-tap PCF
+    (shadow as unknown as { filterNode: unknown }).filterNode = i === 0 ? nearShadowFilter : farShadowFilter; // wider than the stock 5-tap PCF
   }
 }

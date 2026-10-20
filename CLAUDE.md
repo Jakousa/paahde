@@ -111,7 +111,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `src/shieldFx.ts`)
 - `src/main.ts` — entry: renderer, scene, fixed-step game loop
 - `src/net.ts` — client netcode (prediction, reconciliation, interpolation, reconnect)
-- `src/world/cascades.ts` (cached cascades: redrawn only when needed), `src/world/shadowLod.ts` (small casters left out of far cascades): see `docs/perf.md`
+- `src/world/heightShadow.ts` (dune shadows from the heightfield, not the shadow maps), `src/world/cascades.ts` (cached cascades: redrawn only when
+  needed; they hold only things: players, wrecks, the base, bosses), `src/world/shadowLod.ts` (small casters left out of far cascades): see `docs/perf.md`
 - `src/perf.ts`, `tools/perf.ts` — CPU/GPU frame timing (stats graphs, User Timing for traces) and the automated benchmark run (`npm run perf`: waits for
   the game to be playable, walks a route, writes JSON + a Chrome trace to `data/perf/`); read `docs/perf.md`
 - `src/telemetry.ts`, `server/telemetry.ts` — stall tracing to `data/telemetry.jsonl` (docs/netcode.md "Telemetry"; read it with

@@ -16,6 +16,7 @@ import { baseHeight, EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../
 import { LAB } from '../../shared/world.ts';
 import { hazeDensity, hazeFar } from './env.ts';
 import { createSandMaterial, sand } from './sandMaterial.ts';
+import { HEIGHT_SHADOWS, TERRAIN_LAYER } from './heightShadow.ts';
 import { tagBig } from './shadowLod.ts';
 
 /** Grid cells per chunk side. */
@@ -250,8 +251,12 @@ export class Terrain {
     mesh.receiveShadow = true;
     // Dunes shadow each other and the players: the sun's cascades reach ~1.6 km (sky.ts). The shadow
     // pass draws back faces, so lit slopes never self-shadow (only faces turned from the sun can).
-    mesh.castShadow = true;
-    tagBig(mesh); // (drawn into every shadow cascade: src/world/shadowLod.ts)
+    // The dunes' shadows come from the heightfield (src/world/heightShadow.ts, which draws the chunks top-down on this layer). Only near
+    // the base and the shelters do the chunks cast into the shadow maps (the nearest cascade): those are underground, roofed by the terrain,
+    // lit through its holes.
+    mesh.castShadow = this.casting;
+    mesh.layers.enable(TERRAIN_LAYER);
+    if (!HEIGHT_SHADOWS) tagBig(mesh); // (the dev comparison: the dunes in every cascade, as before)
     mesh.visible = false;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
@@ -263,6 +268,16 @@ export class Terrain {
   }
 
   /** (Re)generate a chunk's vertices from the heightfield. */
+  private casting = !HEIGHT_SHADOWS;
+
+  /** Whether the chunks cast into the shadow maps (near the base or a shelter). */
+  setCasting(on: boolean) {
+    on ||= !HEIGHT_SHADOWS;
+    if (on === this.casting) return;
+    this.casting = on;
+    for (const c of this.cache.values()) c.mesh.castShadow = on;
+  }
+
   private fill(c: Chunk) {
     const step = c.size / CELLS;
     const W = VERTS + 2;

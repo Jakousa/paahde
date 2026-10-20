@@ -58,9 +58,10 @@ import { uiSound } from './uiSound';
 import { breathing } from './breathing';
 import { slideSound } from './slideSound';
 import { audio } from './audio';
-import { inBase } from '../shared/base.ts';
+import { BASE, inBase, overBase } from '../shared/base.ts';
+import { heightAt } from '../shared/terrain.ts';
 import { mudflat } from '../shared/biomes.ts';
-import { atWater, indoors, inShelter } from '../shared/shelters.ts';
+import { atWater, indoors, inShelter, overShelter, sheltersNear } from '../shared/shelters.ts';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { graphics, onGraphics } from './graphics';
@@ -134,6 +135,7 @@ const orbit = new FirstPersonCamera(renderer.domElement);
 await slice();
 const fly = new FlyCam(renderer.domElement); // F3 → Fly camera, for shooting video
 const sky = new Sky(scene);
+sky.renderer = renderer;
 await slice();
 const terrain = new Terrain(scene);
 if (LAB) {
@@ -353,9 +355,16 @@ const gpuName = gpuInfo ? (gpuInfo.description || [gpuInfo.vendor, gpuInfo.archi
 const backendText = gpuName ? `${backend} ${gpuName}` : backend;
 perf.gpuTracked = gpuTimes && !!(renderer.backend as { trackTimestamp?: boolean }).trackTimestamp;
 perf.describe({ backend, gpu: gpuName, gpuTimestamps: perf.gpuTracked, world: WORLD_ID });
+sky.heights.init(renderer); // (before any material samples the dune-shadow grids: src/world/heightShadow.ts)
 perf.milestone('renderer-ready');
 perf.scene = scene;
-perf.onDone = () => (orbit.pitch = 0.12);
+if (PERF_RUN) Object.assign(window, { __dbg: { renderer, sky, net, terrain, scene, THREE, heightAt } }); // (tools/perf.ts --eval)
+perf.onDone = () => {
+  // (for the pictures tools/perf.ts takes: look away from the sun, a little down, where the shadows fall)
+  const l = sky.heights.light.value;
+  orbit.yaw = Math.atan2(l.x, l.z);
+  orbit.pitch = -0.12;
+};
 perf.setTod = (tod) => net.shareTimeOfDay(tod);
 perf.player = () => ({ x: net.me.x, z: net.me.z, down: survival.dead || net.down !== null, heat: survival.heatLevel });
 perf.cascades = () => sky.csm.lights.map((l) => l.shadow!.camera);
@@ -381,6 +390,7 @@ const statsGraph = new StatsGraph();
 
 /** When the next frame is due, with the FPS target (Options → Graphics): frames before it are skipped. */
 let nextFrameAt = 0;
+let undergroundFrame = 0;
 renderer.setAnimationLoop((time) => {
   if (graphics.fpsLimit) {
     const every = 1000 / graphics.fpsLimit;
@@ -548,6 +558,13 @@ renderer.setAnimationLoop((time) => {
   crashSites.update(focus);
   machines.update(focus);
   wrecks.update(focus);
+  // The terrain casts into the shadow maps only near the underground places it roofs (src/world/heightShadow.ts does the dunes).
+  terrain.setCasting(overBase(focus.x, focus.z, 60) || overShelter(focus.x, focus.z, 60));
+  if (++undergroundFrame % 60 === 1) {
+    // the rooms the dune shadows must not reach (src/world/heightShadow.ts): the base and the nearest shelters, below their huts' floors
+    const near = sheltersNear(focus.x, focus.z, 800).sort((a, b) => Math.hypot(a.x - focus.x, a.z - focus.z) - Math.hypot(b.x - focus.x, b.z - focus.z));
+    sky.heights.setUnderground([{ x: BASE.x, z: BASE.z, r: 45, top: BASE.y - 0.3 }, ...near.slice(0, 3).map((s) => ({ x: s.x, z: s.z, r: 32, top: s.y - 0.3 }))]);
+  }
   sky.update(frameDt, focus, orbit.camera, net.worldTime());
   wind.update(net.serverTime() / 1000);
   if (!LAB) {

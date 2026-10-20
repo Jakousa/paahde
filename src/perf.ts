@@ -19,6 +19,8 @@ const perfParam = params.get('perf');
 export const PERF_RUN = perfParam !== null;
 /** Seconds of gameplay to record; 0 = startup only. */
 const RUN_S = perfParam === 'startup' ? 0 : Math.max(1, Number(perfParam) || 30);
+/** `&proute=spin`: stand and turn a full circle (for comparing rendering: the same views every run); otherwise walk. */
+const SPIN = params.get('proute') === 'spin';
 /** Seconds after the game is playable before recording starts (shaders, streaming and the camera settle). */
 const SETTLE_S = 3;
 
@@ -231,9 +233,14 @@ class Perf {
         return;
       }
     }
-    this.key('forward', true);
-    this.key('sprint', t % 20 >= 10);
-    turn(0.06 * dt);
+    if (SPIN) {
+      // the spin: stand still and turn one full circle over the run, so every run sees the same views whatever its frame rate
+      turn(((Math.PI * 2) / RUN_S) * dt);
+    } else {
+      this.key('forward', true);
+      this.key('sprint', t % 20 >= 10);
+      turn(0.06 * dt);
+    }
     const r = this.rec;
     r.gap.push(this.gap);
     r.cpu.push(f.cpu);
@@ -263,7 +270,7 @@ class Perf {
     const r = this.rec;
     // a walk that went nowhere (a wall, a scrap pile, a dune face) is no walk either
     const seconds = Math.min(RUN_S, this.phaseT);
-    if (RUN_S > 0 && seconds > 5 && this.travelled < seconds * 1.5) this.invalid.push(`the player barely moved (${Math.round(this.travelled)} m in ${Math.round(seconds)} s): blocked by something, turn or move the spawn`);
+    if (RUN_S > 0 && !SPIN && seconds > 5 && this.travelled < seconds * 1.5) this.invalid.push(`the player barely moved (${Math.round(this.travelled)} m in ${Math.round(seconds)} s): blocked by something, turn or move the spawn`);
     if (RUN_S > 0 && this.phaseT < RUN_S - 0.5) this.invalid.push(`the run ended early, at ${Math.round(this.phaseT * 10) / 10} s of ${RUN_S} s`);
     const fps = r.gap.length ? Math.round(10000 / (r.gap.reduce((x, y) => x + y, 0) / r.gap.length)) / 10 : null;
     const worst = [...r.gap].sort((a, b) => b - a).slice(0, Math.max(1, Math.ceil(r.gap.length * 0.01)));
@@ -282,6 +289,7 @@ class Perf {
       invalidReasons: this.invalid,
       gameplay: RUN_S === 0 ? null : {
         seconds: RUN_S,
+        route: SPIN ? 'spin' : 'walk',
         // the walk: where it started and ended, and what happened to the player on it
         startedAt: this.startPos ? [Math.round(this.startPos.x), Math.round(this.startPos.z)] : null,
         endedAt: this.player ? (({ x, z }) => [Math.round(x), Math.round(z)])(this.player()!) : null,

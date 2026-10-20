@@ -2,7 +2,7 @@
 // route and writes the result (CPU / GPU / frame times, the startup timeline) and a Chrome trace of the same stretch to data/perf/.
 //
 //   node tools/perf.ts [--base http://localhost:5173/] [--seconds 30] [--trace play|startup|none] [--world <id>]
-//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
+//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
 //
 //   --seconds    gameplay to record (0 = the startup timeline only, no walking)
 //   --trace      play: trace only the recorded walk (default); startup: trace from page load until playable; none
@@ -110,6 +110,15 @@ try {
 
   // The prologue is skipped (a tab's later loads are short), graphics settings are the asked ones, and stats stay as they were.
   await send('Page.enable');
+  // the page's errors and warnings (a shader that does not compile, a GPU validation error): counted, the first few printed
+  const problems: string[] = [];
+  await send('Runtime.enable');
+  await send('Log.enable');
+  events.push((m) => {
+    if (m.method === 'Runtime.consoleAPICalled' && (m.params.type === 'error' || m.params.type === 'warning')) problems.push(`${m.params.type}: ${m.params.args.map((a: any) => a.value ?? a.description ?? '').join(' ')}`.slice(0, 400));
+    if (m.method === 'Runtime.exceptionThrown') problems.push(`exception: ${m.params.exceptionDetails?.exception?.description ?? m.params.exceptionDetails?.text}`.slice(0, 400));
+    if (m.method === 'Log.entryAdded' && (m.params.entry.level === 'error' || m.params.entry.level === 'warning')) problems.push(`${m.params.entry.level}: ${m.params.entry.text}`.slice(0, 400));
+  });
   if (size) {
     const [w, h] = size.split('x').map(Number);
     await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
@@ -139,7 +148,7 @@ try {
     await done;
   };
 
-  const url = `${base}?w=${world}&perf=${seconds === 0 ? 'startup' : seconds}&perfdl=0${spawnAt ? `&spawn=${spawnAt}` : ''}${tod ? `&ptod=${tod}` : ''}${yaw ? `&pyaw=${yaw}` : ''}${flag('allow-death') ? '&pdeath=continue' : ''}`;
+  const url = `${base}?w=${world}&perf=${seconds === 0 ? 'startup' : seconds}&perfdl=0${spawnAt ? `&spawn=${spawnAt}` : ''}${tod ? `&ptod=${tod}` : ''}${yaw ? `&pyaw=${yaw}` : ''}${flag('allow-death') ? '&pdeath=continue' : ''}${opt('query') ? `&${opt('query')}` : ''}${opt('route') ? `&proute=${opt('route')}` : ''}`;
   console.log(`world ${world}; ${url}\nChrome: ${CHROME}\n${Object.keys(prefs).length ? `settings ${JSON.stringify(prefs)}\n` : ''}waiting for the game to load...`);
   if (trace === 'startup') await traceStart();
   await send('Page.navigate', { url });
@@ -174,6 +183,8 @@ try {
       shotB = await grab();
     }
   }
+  const ev = opt('eval'); // a dev probe: an expression evaluated in the page once the run is done (window.__dbg has the renderer, sky, net, terrain)
+  if (ev) console.log('eval:', JSON.stringify((await send('Runtime.evaluate', { expression: ev, returnByValue: true, awaitPromise: true })).result?.value ?? null));
   const result = (await evaluate('window.__perfResult')) as Record<string, any>;
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -182,6 +193,11 @@ try {
   if (traceEvents.length) writeFileSync(join(out, `${name}.trace.json.gz`), gzipSync(JSON.stringify({ traceEvents })));
   if (shotData) writeFileSync(join(out, `${name}.png`), shotData);
   if (shotB) writeFileSync(join(out, `${name}.ab.png`), shotB);
+  if (problems.length) {
+    const uniq = [...new Set(problems)];
+    console.log(`page errors/warnings: ${problems.length} (${uniq.length} different)`);
+    for (const p of uniq.slice(0, 8)) console.log(`  ${p}`);
+  }
   const g = result.gameplay;
   console.log(`\nwritten ${join(out, name)}.json${traceEvents.length ? ' and .trace.json.gz' : ''}`);
   if (!result.valid) {

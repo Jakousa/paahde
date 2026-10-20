@@ -68,6 +68,8 @@ export class CascadedShadows extends CSMShadowNode {
   private kept: Kept[] = [];
   /** Fits a cascade's shadow settings (depth range, biases, filter) to its box; set by Sky. */
   onFit: ((i: number) => void) | null = null;
+  /** Multiplied into the result: the dunes' shadow from the heightfield (src/world/heightShadow.ts), out past the cascades too. */
+  extraLit: F | null = null;
 
   /** Width of one texel of cascade `i` (m), from the box it is drawn with. */
   texel(i: number): number {
@@ -210,7 +212,8 @@ export class CascadedShadows extends CSMShadowNode {
         lit = lit.add(inRange.mul(mix(self._shadowNodes[i], next, t)));
         covered = covered.add(inRange);
       }
-      const v = lit.add(float(1).sub(covered));
+      let v: F = lit.add(float(1).sub(covered));
+      if (this.extraLit) v = v.mul(this.extraLit);
       return vec4(vec3(v), 1);
     })();
   }

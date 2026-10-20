@@ -50,3 +50,15 @@ Before: ~66 fps, cpu 12.4 ms, ~1100 draw calls, 4 shadow cascades redrawn every 
   triangles, and each layout change records them again: 1 % lows 14 → 5 fps).
 - `npm run perf -- --shot [--ab shadowRefresh=0]` takes a picture where the walk ends, and a second one with an option changed live; the JSON has a `census` of what is drawn
   (casters by root and material, by size, and what each cascade would draw).
+
+## Sun shadows: dunes from the heightfield (src/world/heightShadow.ts)
+The dunes are not in the shadow maps any more. For a grid round the player the GPU finds, per texel, the "shadow ceiling" S (the highest the ray to the
+sun has to clear) by doubling: one pass a frame looks 1, 2, 4 ... texels up-sun, so nothing thin is skipped; a point at height y is in the dunes' shadow when
+y < S. Edges are the clean contour y = S at any distance, without the stairs a low sun makes of shadow-map texels. Grids: 0.5 m round the player, 4 m and 9 m
+out to the terrain's edge (High); fewer and coarser on Low/Medium (graphics.ts SHADOW_QUALITY). The shadow maps keep players, wrecks, the base and bosses, and
+can now filter narrowly (1.5-2 texels, was 5-8); the terrain casts into them only near the base and shelters (their rooms are underground, roofed by it).
+Things learned on the way (all cost a debugging round): a render target sampled before it is first drawn into breaks every frame with "destroyed texture used in
+a submit" (the scene is not drawn at all: clear every target once after renderer.init); three clamps a node material's colour output at 0, so passes that
+write negative numbers use `fragmentNode`; 32-bit float targets cannot blend (NoBlending, or the pipeline is never ready and nothing is drawn) and are read
+texel by texel (`.load`), not sampled. `?hfshadow=0` puts the dunes back into the shadow maps for comparison. Spin runs at 1440p (`--route spin --spawn shelter`)
+gave the two within run-to-run noise (98-135 fps for the same setting); the gain is the look, and ~100 fewer draw calls where the terrain no longer casts.
