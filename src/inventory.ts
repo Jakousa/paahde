@@ -272,6 +272,8 @@ export class InventoryHud {
   private canvas: HTMLElement;
   /** Storage boxes in reach (shared/storage.ts openBoxes), as last drawn. */
   private storages: string[] = [];
+  /** Within reach of the workbench last frame. */
+  private atBench = false;
   private drag: Drag | null = null;
   private over: HTMLElement | null = null;
   /** The cells a drag would take, lit green or red. */
@@ -358,10 +360,14 @@ export class InventoryHud {
       : `${kbd('interact')}${typeof target === 'string' ? target : TEXT.prompt.pickUp(itemLabel(scrapItem(target.kind)))}`;
   }
 
-  /** Every frame: storage boxes come into and out of reach as the player moves. */
+  /** Every frame: storage boxes come into and out of reach as the player moves. Walking away from the workbench
+   *  takes the item on it back into the bag. */
   update(s: PlayerState) {
-    if (!ui.inventoryOpen) return;
     const open = openBoxes(s);
+    const atBench = open.includes('bench');
+    if (this.atBench && !atBench && this.net.boxes.bench?.[0]) this.toBag('bench', 0);
+    this.atBench = atBench;
+    if (!ui.inventoryOpen) return;
     if (open.join() !== this.storages.join()) this.render();
   }
 
