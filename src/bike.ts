@@ -11,6 +11,7 @@ import { slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, TRACK_WRAP, tyreprints } from './footprints.ts';
 import { tyreDust } from './tyreDust.ts';
+import { bikeLandSound } from './bikeLandSound.ts';
 import type { RidePose } from './players.ts';
 import { nightLevel, SHADOW_ONLY_LAYER } from './world/env.ts';
 import { applyTier } from './tierLook.ts';
@@ -29,6 +30,7 @@ const MAX_LEAN = 0.6;
 const MAX_STEER = 0.5;
 const TRACK_STEP = 0.3; // metres per tyre-track strip (short, so turns curve smoothly)
 const WHEELIE = 0.45; // rad the nose comes up, about the rear tyre's contact
+const BIG_AIR = 0.6; // s in the air before a landing throws up a cloud and thumps
 /** The headlight lens in the Handlebar node's frame (tools/blender/sandbike.py lamp_c), and where the beam
  *  aims from there: ahead and a little down, so it pools on the sand ~15 m out. */
 const LAMP = new THREE.Vector3(0, 0.076, -0.25);
@@ -92,6 +94,8 @@ export class Bike {
   private forward = NaN;
   private accel = 0;
   private grounded = true;
+  private airTime = 0; // s since it left the ground
+  private fall = 0; // fastest fall speed (m/s) in this flight
   private dustOwed = 0; // puffs owed to tyreDust (fractional)
   private disposed = false;
   private headlight?: (typeof headlights)[number];
@@ -178,6 +182,12 @@ export class Bike {
     if (dt > 0 && Number.isFinite(this.forward)) this.accel += ((forward - this.forward) / dt - this.accel) * k(5);
     this.forward = forward;
     const landed = p.grounded && !this.grounded;
+    if (landed && this.airTime > BIG_AIR) this.bigLanding(p, hs);
+    if (p.grounded) this.airTime = this.fall = 0;
+    else {
+      this.airTime += dt;
+      this.fall = Math.max(this.fall, -p.vy);
+    }
     this.grounded = p.grounded;
     const steer = Math.abs(forward) > 0.5 ? Math.max(-MAX_STEER, Math.min(MAX_STEER, Math.atan((rate * WHEELBASE) / forward))) : this.steer;
     this.steer += (steer - this.steer) * k(10);
@@ -254,6 +264,25 @@ export class Bike {
       const back = throwBack * (0.4 + Math.random()), spread = (Math.random() - 0.5) * 2;
       tyreDust.emit(x, heightAt(x, z) + 0.15, z, -fx * back - fz * spread, 0.8 + Math.random() * 1.6, -fz * back + fx * spread, 0.8 + Math.random() * 0.6 + hs * 0.045);
     }
+  }
+
+  /** Down after a long jump: a cloud of sand bursting out round the bike, bigger the longer and harder the fall
+   *  (and never quite the same twice), and a thump. */
+  private bigLanding(p: BikePose, hs: number) {
+    const strength = Math.min(1, Math.max(0, (this.airTime - BIG_AIR) / 1.6) * 0.4 + Math.max(0, (this.fall - 4) / 16) * 0.6);
+    const size = (0.6 + strength) * (0.7 + Math.random() * 0.6);
+    const n = Math.round(14 + 36 * size);
+    const fx = p.vx / Math.max(hs, 1), fz = p.vz / Math.max(hs, 1);
+    for (let i = 0; i < n; i++) {
+      // Out in a ring, carried on a little with the bike, low and wide, the biggest puffs slowest.
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 0.8 * size;
+      const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+      const puff = (0.9 + Math.random() * 1.4) * size;
+      const out = (2 + Math.random() * 5) * size / Math.sqrt(puff);
+      tyreDust.emit(x, heightAt(x, z) + 0.2, z, Math.cos(a) * out + fx * hs * 0.25, 0.3 + Math.random() * 1.8 * size,
+        Math.sin(a) * out + fz * hs * 0.25, puff, 3 + Math.random() * 3 * size);
+    }
+    bikeLandSound.play(p.x, p.z, strength);
   }
 
   /** How far the bike leans into the turn (rad, + = left). */

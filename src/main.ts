@@ -52,6 +52,7 @@ import { EngineSound } from './engineSound';
 import { drinkSound } from './drinkSound';
 import { grinderSound } from './grinderSound';
 import { footsteps } from './footsteps';
+import { bikeLandSound } from './bikeLandSound';
 import { music } from './music';
 import { uiSound } from './uiSound';
 import { breathing } from './breathing';
@@ -569,6 +570,7 @@ baseSand.update(frameDt, storm.atBase);
   drinkSound.remotes(others, orbit.camera.position);
   grinderSound.remotes(frameDt, others, orbit.camera.position);
   footsteps.listener(orbit.camera.position, orbit.viewYaw);
+  bikeLandSound.listener(orbit.camera.position, orbit.viewYaw);
   breathing.update(survival.heatLevel, survival.dead);
   audio.setMuffled(survival.dead); // the world goes dull while you lie dead; the music doesn't
   const cam = orbit.camera.position;
