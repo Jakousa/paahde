@@ -512,7 +512,9 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
       vx *= keep;
       vz *= keep;
       y = ground;
-      vy = 0;
+      // Touch down moving with the sand, not at vy = 0: on a down-slope that would leave the ground again
+      // next tick and skip the bike down it in little bounces.
+      vy = Math.min(g.gx * vx + g.gz * vz, hs * 0.8 + 1);
       grounded = true;
     }
   }
