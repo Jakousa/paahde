@@ -75,9 +75,9 @@ body.rifleScoped #crosshair, body.rifleScoped #pickup { display: none !important
 #rifleHip { position: fixed; left: 50%; top: 50%; pointer-events: none; z-index: 4; display: none; }
 #rifleHip i { position: absolute; background: rgba(255, 244, 228, 0.75); box-shadow: 0 0 2px #000; }
 body.rifleHip #rifleHip { display: block; }
-body.third-person #rifleHip { display: none; }
 body.rifleHip #crosshair { display: none; }
 body.gunSights #crosshair { display: none; }
+body.third-person.rifleHeld:not(.rifleHip):not(.rifleScoped) #crosshair { display: block; }
 `;
 
 // The scope: everything outside the eyepiece black, a soft edge, a faint green-grey lens tint and vignette, and a
@@ -208,6 +208,7 @@ export class Rifle {
     }
     playerHands.rifleScoped = scoped;
     document.body.classList.toggle('rifleHip', holding && !aiming);
+    document.body.classList.toggle('rifleHeld', holding);
     document.body.classList.toggle('gunSights', holding && !feel.scope && playerHands.aim > 0.5);
     if (scoped) this.view.zoom = this.zoom;
     else if (isGun(playerHands.held)) this.view.zoom = 1 + (feel.sight - 1) * playerHands.aim;

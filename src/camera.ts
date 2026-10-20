@@ -35,8 +35,8 @@ const CLIMB_SHORTEN = 0.25;
 const CLIMB_HEAVY = 1.2;
 const slope = { gx: 0, gz: 0 };
 const BOOM = 4.5; // third-person distance behind the eye (m)
-const OTS_BOOM = 1.7; // aiming in third person: the camera comes in behind the shoulder (m)
-const OTS_SIDE = 0.6; // ...and over it, to the right of the aim line (m)
+const OTS_BOOM = 3.0; // aiming in third person: the camera comes in behind the shoulder (m)
+const OTS_SIDE = 0.55; // ...and over it, to the right of the aim line (m)
 const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
 /** Speed slide: the view rolls this far (rad) towards the trailing left hand. */
 const SLIDE_ROLL = 0.07;
@@ -256,10 +256,10 @@ export class FirstPersonCamera {
       if (y + by * d < heightAt(px, pz) + BOOM_CLEARANCE) reach = Math.max(0, d - full / 12);
     }
     // Ease out smoothly, but snap in when terrain cuts the boom short.
-    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (ots || this.aimIn ? 16 : 8)));
+    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (this.aimIn ? 16 : ots ? 9 : 8)));
     if (this.boom < 0.01) this.boom = 0;
     this.eye.set(x, y, z);
-    this.shoulder += ((ots ? OTS_SIDE : 0) - this.shoulder) * (1 - Math.exp(-dt * 16));
+    this.shoulder += ((ots ? OTS_SIDE : 0) - this.shoulder) * (1 - Math.exp(-dt * 9));
     if (this.shoulder < 0.005) this.shoulder = 0;
     this.camera.position.set(x + bx * this.boom + vc * this.shoulder, y + by * this.boom, z + bz * this.boom - vs * this.shoulder);
     this.camera.rotation.set(pitch, viewYaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
