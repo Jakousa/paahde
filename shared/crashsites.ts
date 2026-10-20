@@ -35,7 +35,11 @@ import { baseHeight, CORE_HALF, heightAt, WORLD_SEED } from './terrain.ts';
 export const CRASH_CELL = 350;
 /** Fraction of cells with a site, by the level of the cell's centre (siteLevel): sites are rare out in the desert, but
  *  the scrap fields around the base are common enough that every new player finds their starter machines. */
-const DENSITY = [0.4, 0.14, 0.14];
+const DENSITY = [0.4, 0.18, 0.14];
+/** Outposts: crawler ground (level 1) out among the scrap fields, in cells OUTPOST_R..LEVEL_R[0] from the base that hold
+ *  no scrap field, OUTPOST_CHANCE of them; a small pack guards them (server/guardians.ts), the first fight on the way out. */
+const OUTPOST_R = 600;
+const OUTPOST_CHANCE = 0.45;
 /** A site's centre stays this far inside its cell, so the whole trail fits in the cell. */
 const CELL_MARGIN = 75;
 /** Debris lies up to this far behind the wreck's edge. */
@@ -79,7 +83,7 @@ const SCRAP_SMALL = [2, 3];
  * starter machines to carry home, the broken gear a new player repairs first), 1 crawler ground (crawlers, the
  * motorcycle and the other advanced gear), 2 guardian ground (the giant guardians and night drones roam only these,
  * and their machines hold the rarest parts). shared/crash.ts picks the machines, server/loot.ts the finds,
- * server/guardians.ts the walkers by it.
+ * server/guardians.ts the walkers by it. Outposts (OUTPOST_R) put a few level 1 sites out among the scrap fields.
  */
 export type SiteLevel = 0 | 1 | 2;
 export const LEVEL_R = [950, 1650];
@@ -269,9 +273,15 @@ function generate(ix: number, iz: number): CrashSite | null {
   if (LAB) return null; // the dev test lab (shared/lab.ts) has its own machine sites
   const r = rng(ix, iz);
   // The level goes by the cell's centre, so it is known before the site is placed.
-  const level = siteLevel((ix + 0.5) * CRASH_CELL, (iz + 0.5) * CRASH_CELL);
+  const ox = (ix + 0.5) * CRASH_CELL, oz = (iz + 0.5) * CRASH_CELL;
+  let level = siteLevel(ox, oz);
+  if (r() >= DENSITY[level]) {
+    // An empty cell in the outer scrap-field ring may be an outpost (own salt: the other cells' layouts stay as they were).
+    if (level !== 0 || Math.hypot(ox - BASE.x, oz - BASE.z) < OUTPOST_R || rng(ix, iz, 0x0b57)() >= OUTPOST_CHANCE) return null;
+    level = 1;
+  }
   const field = level === 0 && MAIN_KINDS[1].length ? 1 : 0;
-  if (r() >= DENSITY[level] || !MAIN_KINDS[field].length) return null;
+  if (!MAIN_KINDS[field].length) return null;
   const kind = MAIN_KINDS[field][Math.floor(r() * MAIN_KINDS[field].length)];
   const K = CRASH_KINDS[kind];
   // A few candidate centres; keep the first on flat-enough open ground.
