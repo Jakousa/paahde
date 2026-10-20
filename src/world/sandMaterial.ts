@@ -100,6 +100,9 @@ export const sand = {
   rippleHeight: uniform(0.006),
   /** Footprint (ripple cycles per pixel) over which the small ripples fade out: the Sand detail option (RIPPLE_FADES). */
   rippleFade: uniform(new THREE.Vector2(0.2, 0.45)),
+  /** How much of their averaged shading unresolved (far) ripples keep, against smooth sand: 1 all of it, 0 none. The full amount read
+   *  darker from afar than the same ripples up close; half looks right. */
+  farRippleShade: uniform(0.5),
   /** Ocean specular and rim strengths. */
   sheen: uniform(0.02),
   rim: uniform(0.18),
@@ -249,7 +252,8 @@ function rippleMeanDiffuse(s: SandSurface, l: V3): F {
     const nk = normalize(s.nBase.sub(dir3.mul(slope.mul(scale))));
     sum = sum.add(saturate(dot(nk, l).mul(sand.contrast).add(sand.offset)).mul(lit)) as F;
   }
-  return sum.div(MEAN_PHASES);
+  const smooth = saturate(dot(s.nBase, l).mul(sand.contrast).add(sand.offset));
+  return mix(smooth, sum.div(MEAN_PHASES), sand.farRippleShade);
 }
 
 function rippleSun(s: SandSurface, l: V3): F {
