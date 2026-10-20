@@ -422,3 +422,12 @@ approach. That's correct, because the mirage is distance-gated.
 - Oren-Nayar (Fujii): https://mimosa-pudica.net/improved-oren-nayar.html
 - Dunes: Werner 1995 https://planetarygeoscience.uchicago.edu/doc/Werner_1995.pdf · Kok et al. "Physics of wind-blown sand and dust" https://arxiv.org/abs/1201.4353 · domain warp https://iquilezles.org/articles/warp
 - Sky: https://threejs.org/docs/pages/SkyMesh.html · Heat haze: https://gamedev.net/shaderlab/38-heat-haze-distortion/ · https://arxiv.org/abs/2603.02048
+
+## Ripple shadows
+At a low sun every small ripple's crest shadows the steep lee of the next one (the dark stripes of a dune photographed at dawn). `rippleSun` in
+`src/world/sandMaterial.ts` works it out exactly from the ripple profile: from the point towards the sun along the ripple axis the first crest is
+`toCrest` away and `gap` higher, so the point is lit when toCrest·tanθ > gap. No marching, no textures; `sand.rippleHeight` (m) sets how deep.
+Where the ripples are below a pixel it turns into the average share left lit (height / (tanθ·wavelength)), so far ripple fields still darken at a
+low sun instead of popping flat. Not displacement: the ripples are ~1 cm high, finer than any mesh we draw (no tessellation in WebGPU), and a
+centimetre of real relief only shows in silhouette, which the shadows and normals already carry. Parallax occlusion mapping is the next step if
+the ripples should also look raised at grazing views up close.

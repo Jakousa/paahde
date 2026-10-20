@@ -95,6 +95,8 @@ export const sand = {
   /** Max normal slope of the small and large ripples. */
   rippleStrength: uniform(0.085),
   megaRippleStrength: uniform(0.03),
+  /** Crest height (m) of the small ripples, for their self-shadowing: at a low sun each crest shadows the steep lee behind it. */
+  rippleHeight: uniform(0.006),
   /** Ocean specular and rim strengths. */
   sheen: uniform(0.02),
   rim: uniform(0.18),
@@ -191,6 +193,31 @@ function rippleProfile(s: F, a: number): [F, F] {
   return [h, slope];
 }
 
+/** Small ripples: wavelength (m) and the share of a cycle the gentle stoss side takes (the crest is at that phase). */
+const RIPPLE_LENGTH = 0.11;
+const RIPPLE_STOSS = 0.66;
+
+/**
+ * Sunlight left on the small ripples (0..1), from their own profile: walking from the point towards the sun along the ripple axis,
+ * the first crest is `toCrest` away and `gap` higher; the point is shadowed when the sun ray rises less than that over the distance.
+ * Exact for this profile, no marching. Unresolved (far) it becomes the share of a ripple left lit on average, so ripple fields still
+ * darken and streak at a low sun far away. Where there are no ripples (rock, slip faces, crests) it is 1.
+ */
+function rippleSun(s: SandSurface, l: V3): F {
+  const lAlong = dot(l.xz, s.rippleDir);
+  const up = max(dot(l, s.n0), 1e-3);
+  const tanE = up.div(max(abs(lAlong), 1e-3)); // the sun's rise per metre along the ripple axis
+  const f = fract(s.ripplePhase);
+  const [h] = rippleProfile(s.ripplePhase, RIPPLE_STOSS);
+  const toCrest = select(lAlong.greaterThan(0), fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
+  const gap = sand.rippleHeight.mul(float(1).sub(h));
+  const pen = sand.rippleHeight.mul(0.12);
+  const sharp = smoothstep(pen.negate(), pen, toCrest.mul(tanE).sub(gap));
+  // on average: the shadow behind a crest is height/tanθ long, out of a wavelength (a little less: the profile is rounded)
+  const mean = float(1).sub(saturate(sand.rippleHeight.mul(0.75).div(tanE.mul(RIPPLE_LENGTH))));
+  return float(1).sub(s.rippleField.mul(float(1).sub(mix(mean, sharp, s.rippleRes))));
+}
+
 /** Fade for a periodic pattern whose phase (in cycles) is `s`: 1 when well resolved, 0 near Nyquist. */
 function footprintFade(s: F): F {
   return float(1).sub(smoothstep(0.04, 0.16, fwidth(s)));
@@ -231,6 +258,10 @@ interface SandSurface {
   dust: F; // 0..1 dust in the air (wind + storm): dulls glitter and sheen
   rippleVis: F; // how resolved the small ripples are here (0 far away / masked)
   dist: F;
+  ripplePhase: F; // small ripples: phase in cycles along the wind
+  rippleDir: V2; // the direction the phase grows in (the wind, bent with the crests)
+  rippleField: F; // 0..1: how much small ripple there is here (masked, varying), resolved or not
+  rippleRes: F; // 0..1: how well the small ripples are resolved by the pixel
 }
 
 function buildSurface(): SandSurface {
@@ -274,8 +305,8 @@ function buildSurface(): SandSurface {
   const dir = normalize(vec2(wind.x.add(wdx), wind.y.add(wdz)));
 
   // Small ripples (~10 cm) and faint megaripples (~0.9 m, warped differently).
-  const s1 = along.add(w0).div(0.11);
-  const [h1, d1] = rippleProfile(s1, 0.66);
+  const s1 = along.add(w0).div(RIPPLE_LENGTH);
+  const [h1, d1] = rippleProfile(s1, RIPPLE_STOSS);
   const s2 = along.add(w0.mul(1.6)).add(mx_noise_float(vec2(across.mul(0.05), along.mul(0.02))).mul(2.5)).div(0.9);
   const [, d2] = rippleProfile(s2, 0.68);
   // Crest strength varies, so ripple fields fade in and out instead of tiling the whole dune.
@@ -340,7 +371,10 @@ function buildSurface(): SandSurface {
     .mul(float(1).sub(mudFx.x));
   const ground = mix(albedo, mudAlbedo.add(c3(sand.mudCrack).mul(mudFx.x)), mud);
 
-  return { p, n0, n, nSpec, v, albedo: mix(ground, dusted, rock), slip, rock, mud, dust, dist, rippleVis: f1 };
+  return {
+    p, n0, n, nSpec, v, albedo: mix(ground, dusted, rock), slip, rock, mud, dust, dist, rippleVis: f1,
+    ripplePhase: s1, rippleDir: dir, rippleField: rippleMask.mul(vary), rippleRes: footprintFade(s1),
+  };
 }
 
 class SandLightingModel extends THREE.LightingModel {
@@ -369,7 +403,9 @@ class SandLightingModel extends THREE.LightingModel {
     const tON = select(sON.greaterThan(0), max(max(saturate(ndl), ndv), 1e-3), float(1));
     // s/t blows up at grazing views (t -> 0); clamp it, since I is not multiplied by N·L here.
     const on = float(0.75).add(sON.div(tON).clamp(-1, 1.2).mul(0.3));
-    const I = saturate(ndl.mul(sand.contrast).add(sand.offset)).mul(on);
+    // the ripples' own shadows (the sun ray grazes over one crest onto the lee of the next)
+    const ripSun = rippleSun(this.s, l);
+    const I = saturate(ndl.mul(sand.contrast).add(sand.offset)).mul(on).mul(ripSun);
     directDiffuse.addAssign(lightColor.mul(albedo).mul(I).mul(1 / PI));
 
     // Ocean specular on the rippled normal (reads when looking towards the sun), boosted at grazing.
@@ -401,7 +437,7 @@ class SandLightingModel extends THREE.LightingModel {
       .mul(float(1).sub(dust.mul(0.7)))
       .mul(sand.glitter);
 
-    directSpecular.addAssign(lightColor.mul(spec.add(c3(sand.glitterTint).mul(g))));
+    directSpecular.addAssign(lightColor.mul(spec.add(c3(sand.glitterTint).mul(g)).mul(ripSun)));
   }
 
   indirect(builder: THREE.NodeBuilder) {
