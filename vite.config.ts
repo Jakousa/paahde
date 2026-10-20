@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 const BUILD_SHA = process.env.BUILD_SHA ?? 'dev';
 
 export default defineConfig({
-  // Relative asset URLs so the build works under any path (served at herkku.org/dadajam/).
+  // Relative asset URLs so the build works under any path (served at herkku.org/dadajam/ as well as at the root of paahde.herkku.org).
   base: './',
   build: {
     target: 'es2022',
