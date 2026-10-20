@@ -95,14 +95,13 @@ const corpses = new CorpseServer(db, items, (msg) => {
   const json = JSON.stringify(msg);
   for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
 });
-const npcs = new NpcServer(db, items, scrap, loot);
-
 const storms = new StormServer(performance.now());
 const jets = new JetServer(performance.now());
 const jetCrashes = new JetCrashes(db);
 const harvesters = new HarvesterServer(performance.now());
 const bosses = new BossServer();
 const guardians = new GuardianServer();
+const npcs = new NpcServer(db, items, scrap, loot, storms, guardians);
 const throws = new ThrowServer(guardians);
 /** Heat per second from drone searchlights by player id, from the last bot tick. */
 
@@ -689,6 +688,7 @@ function onChat(p: Player, text: unknown) {
     for (const bot of npcs.snapshot()) {
       if (bot.owner === p.browserId || Math.hypot(bot.x - p.state.x, bot.z - p.state.z) < 25) {
         npcs.setTask(bot.id, task);
+        npcs.setCommand(bot.id, clean);
       }
     }
     broadcastNpcs();

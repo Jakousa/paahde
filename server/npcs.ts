@@ -7,10 +7,14 @@ import { scrapPieces, SCRAP_CELL, scrapTaken, scrapKey } from '../shared/scrap.t
 import { scrapItem } from '../shared/items.ts';
 import { NPCS, type NpcSnap } from '../shared/npcs.ts';
 import { keepOut, skirt, type Skirt } from './pack.ts';
+import { compileSituation } from './npcPerception.ts';
+import { queryBotLlm, type LlmDecisionResponse } from './npcLlm.ts';
 import type { openDb } from './db.ts';
 import type { ItemServer } from './items.ts';
 import type { ScrapServer } from './scrap.ts';
 import type { LootServer } from './loot.ts';
+import type { StormServer } from './storm.ts';
+import type { GuardianServer } from './guardians.ts';
 
 type Db = ReturnType<typeof openDb>;
 
@@ -20,6 +24,7 @@ const BOT_FOLLOW_STOP = 2.5;
 const BOT_FOLLOW_START = 3.8;
 const GATHER_RANGE = 50;
 const PICKUP_DIST = 1.6;
+const THINK_INTERVAL_MS = 3500;
 
 export type NpcState = {
   id: number;
@@ -30,10 +35,12 @@ export type NpcState = {
   yaw: number;
   vx: number;
   vz: number;
-  task: 'idle' | 'follow' | 'gather';
+  task: 'idle' | 'follow' | 'gather' | 'deposit' | 'flee';
   targetScrap: { ix: number; iz: number; i: number; x: number; z: number } | null;
   skirt: Skirt;
   saveAt: number;
+  lastThinkAt: number;
+  thinking: boolean;
 };
 
 export class NpcServer {
@@ -41,13 +48,18 @@ export class NpcServer {
   private items: ItemServer;
   private scrap: ScrapServer;
   private loot: LootServer;
+  private storms: StormServer;
+  private guardians: GuardianServer;
   private npcs = new Map<number, NpcState>();
+  private commands = new Map<number, string>();
 
-  constructor(db: Db, items: ItemServer, scrap: ScrapServer, loot: LootServer) {
+  constructor(db: Db, items: ItemServer, scrap: ScrapServer, loot: LootServer, storms: StormServer, guardians: GuardianServer) {
     this.db = db;
     this.items = items;
     this.scrap = scrap;
     this.loot = loot;
+    this.storms = storms;
+    this.guardians = guardians;
 
     for (const r of db.loadNpcs()) {
       const npc: NpcState = {
@@ -59,10 +71,12 @@ export class NpcServer {
         yaw: r.yaw,
         vx: 0,
         vz: 0,
-        task: (r.task as 'idle' | 'follow' | 'gather') || 'follow',
+        task: (r.task as NpcState['task']) || 'follow',
         targetScrap: null,
         skirt: { side: 0, until: 0 },
         saveAt: 0,
+        lastThinkAt: 0,
+        thinking: false,
       };
       this.npcs.set(r.id, npc);
       NPCS.set(r.id, this.snap(npc));
@@ -99,6 +113,8 @@ export class NpcServer {
       targetScrap: null,
       skirt: { side: 0, until: 0 },
       saveAt: Date.now() + 5000,
+      lastThinkAt: 0,
+      thinking: false,
     };
     this.npcs.set(id, npc);
     NPCS.set(id, this.snap(npc));
@@ -133,12 +149,21 @@ export class NpcServer {
   }
 
   /** Set current task for bot (e.g. from chat command). */
-  setTask(id: number, task: 'idle' | 'follow' | 'gather') {
+  setTask(id: number, task: NpcState['task']) {
     const bot = this.npcs.get(id);
     if (bot) {
       bot.task = task;
       bot.targetScrap = null;
       bot.saveAt = 0; // force immediate save
+    }
+  }
+
+  /** Set player text command for bot and trigger evaluation. */
+  setCommand(id: number, command: string) {
+    this.commands.set(id, command);
+    const bot = this.npcs.get(id);
+    if (bot) {
+      bot.lastThinkAt = 0; // rethink immediately
     }
   }
 
@@ -148,6 +173,27 @@ export class NpcServer {
 
     for (const bot of this.npcs.values()) {
       const owner = players.find((p) => p.browserId === bot.owner);
+
+      // Asynchronous SLM strategic decision loop (non-blocking)
+      if (!bot.thinking && now - bot.lastThinkAt >= THINK_INTERVAL_MS) {
+        bot.lastThinkAt = now;
+        bot.thinking = true;
+        const ownerPos = owner ? { x: owner.state.x, z: owner.state.z } : null;
+        const cmd = this.commands.get(bot.id) ?? '';
+        const situation = compileSituation(bot, ownerPos, cmd, this.items, this.loot, this.storms, this.guardians, now);
+
+        queryBotLlm(JSON.stringify(situation)).then((res: LlmDecisionResponse | null) => {
+          bot.thinking = false;
+          if (res) {
+            if (res.action === 'GATHER') bot.task = 'gather';
+            else if (res.action === 'FOLLOW') bot.task = 'follow';
+            else if (res.action === 'WAIT') bot.task = 'idle';
+            else if (res.action === 'FLEE') bot.task = 'follow';
+          }
+        }).catch(() => {
+          bot.thinking = false;
+        });
+      }
 
       // Decision and steering
       if (bot.task === 'follow' && owner) {
