@@ -1,11 +1,10 @@
 name: Build & deploy
 
-# main → :dev (dev.paahde.herkku.org). A release (tag v*) → :latest (paahde.herkku.org, herkku.org/dadajam).
-# Watchtower on the server picks up both tags.
+# main → :dev (dev.paahde.herkku.org); Watchtower on the server picks it up. This repo does not deploy prod
+# (paahde.herkku.org still runs the last release of the old repo, ghcr.io/woltsu/dadajam:latest).
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -18,11 +17,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE: ghcr.io/woltsu/dadajam
+  IMAGE: ghcr.io/woltsu/paahde
 
 jobs:
   image:
-    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,36 +45,3 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  # A release ships the very image dev ran: :<sha> is retagged :latest. If that commit was never built
-  # (a newer push cancelled its build), it is built here.
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: retag
-        continue-on-error: true
-        run: docker buildx imagetools create -t $IMAGE:latest -t $IMAGE:${{ github.ref_name }} $IMAGE:${{ github.sha }}
-
-      - uses: actions/checkout@v4
-        if: steps.retag.outcome == 'failure'
-
-      - uses: docker/build-push-action@v6
-        if: steps.retag.outcome == 'failure'
-        with:
-          context: .
-          push: true
-          build-args: BUILD_SHA=${{ github.sha }}
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ github.ref_name }}
-            ${{ env.IMAGE }}:${{ github.sha }}
-          cache-from: type=gha

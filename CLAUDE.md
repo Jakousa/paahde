@@ -2,8 +2,8 @@
 
 Public game jam repo, three collaborators. Online multiplayer browser game: three.js + TypeScript + Vite
 client, Node 24 WebSocket game server with SQLite. Every merge to `main` goes live on dev, https://dev.paahde.herkku.org/,
-within a few minutes, so `main` must always build. Prod (https://paahde.herkku.org/) only changes on a release: a `v*` tag
-(`git tag v<n> && git push origin v<n>`) ships that commit's image; release only when asked.
+within a few minutes, so `main` must always build. This repo never deploys prod (https://paahde.herkku.org/, frozen on
+the last release of the old repo, woltsu/dadajam): no release tags.
 
 ## Commands
 

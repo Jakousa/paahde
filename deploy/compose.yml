@@ -1,5 +1,6 @@
 # Lives at /opt/dadajam/compose.yml on the server. `docker compose up -d` once; Watchtower does the rest.
-# web = prod (releases, :latest), web-dev = dev (every push to main, :dev); each has its own data.
+# web = prod (frozen on the old repo's last release, dadajam:latest), web-dev = dev (every push to main of
+# woltsu/paahde, paahde:dev); each has its own data.
 services:
   web:
     image: ghcr.io/woltsu/dadajam:latest
@@ -13,7 +14,7 @@ services:
       - com.centurylinklabs.watchtower.enable=true
 
   web-dev:
-    image: ghcr.io/woltsu/dadajam:dev
+    image: ghcr.io/woltsu/paahde:dev
     restart: unless-stopped
     ports:
       - "127.0.0.1:8087:8080"
