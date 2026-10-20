@@ -5,7 +5,7 @@
 import { duneFloor, WORLD_SEED } from '../shared/dunes.ts';
 import { GAS_DEPTH, GAS_GRACE_S, GAS_RECOVER, GAS_S, gasArrival, gasBehind, gasDepth, gasEnvelope, gasExposure, type Gas } from '../shared/gas.ts';
 import { audio } from './audio';
-import { gasEnv, gasLayer, gassed } from './world/env';
+import { DARK_LIFT_S, gasEnv, gasLayer, gassed } from './world/env';
 
 /** Speech: gas this close (s) to reaching us; breathed this long (s) before saying so. */
 const COMING_SAY_S = 20;
@@ -76,7 +76,7 @@ export class GasFx {
     this.tally = dead ? 0 : Math.max(0, this.tally + (exposure > 0 ? exposure : -GAS_RECOVER) * dt);
     this.gassing = this.tally > GASSED_SAY_S;
     // Black a little before the server's tally kills, so the view is dark when the death comes.
-    gassed.value = Math.min(1, this.tally / (GAS_S * 0.92));
+    gassed.value = dead ? Math.max(0, gassed.value - dt / DARK_LIFT_S) : Math.min(1, this.tally / (GAS_S * 0.92));
 
     let comingIn = Infinity, near = 0;
     let drawn: Gas | null = null, drawnD = Infinity;

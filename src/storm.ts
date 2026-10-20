@@ -14,7 +14,7 @@ import { CHOKE_RECOVER, CHOKE_S, STATIC_AT, FRONT_PASS_S, FRONT_RAMP_MS, FRONT_S
 import { WIND } from '../shared/dunes.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { audio } from './audio';
-import { choking, indoorHutMax, indoorHutMin, indoorSurface, STORM_SLOTS, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors } from './world/env';
+import { choking, DARK_LIFT_S, indoorHutMax, indoorHutMin, indoorSurface, STORM_SLOTS, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors } from './world/env';
 import { wind } from './world/wind';
 import { TEXT } from '../shared/text.ts';
 
@@ -141,7 +141,7 @@ export class StormFx {
     this.choke = dead ? 0 : Math.max(0, this.choke + (exposure > 0 ? exposure : -CHOKE_RECOVER) * dt);
     this.choking = this.choke > CHOKE_SAY_S;
     // Full (black) a little before the server's tally kills, so the view is dark when the death comes.
-    choking.value = Math.min(1, Math.max(0, (this.choke / CHOKE_S - 0.1) / 0.82));
+    choking.value = dead ? Math.max(0, choking.value - dt / DARK_LIFT_S) : Math.min(1, Math.max(0, (this.choke / CHOKE_S - 0.1) / 0.82));
     this.atBase += (stormAt(storms, BASE.x, BASE.z + ROOM_Z / 2, now) - this.atBase) * k;
     wind.local = this.outside;
     stormHere.value = this.level;

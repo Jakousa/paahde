@@ -20,7 +20,7 @@ import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
-import { fainting, heatstroke } from './world/env.ts';
+import { DARK_LIFT_S, fainting, heatstroke } from './world/env.ts';
 import { drinkSound } from './drinkSound';
 import { atWater, indoors } from '../shared/shelters.ts';
 import { TEXT } from '../shared/text.ts';
@@ -423,7 +423,7 @@ export class Survival {
     heatstroke.value = dead ? 0 : Math.min(1, Math.max(0, (this.shown - 0.6 * HEAT_MAX) / (0.4 * HEAT_MAX)));
     // Full: fainting (post.ts), black a little before the server's tally kills, so the view is dark when the death comes.
     this.stroke = dead ? 0 : Math.max(0, this.stroke + (w.heat >= HEAT_MAX ? 1 : -STROKE_RECOVER) * dt);
-    fainting.value = Math.min(1, this.stroke / (STROKE_S * 0.92));
+    fainting.value = dead ? Math.max(0, fainting.value - dt / DARK_LIFT_S) : Math.min(1, this.stroke / (STROKE_S * 0.92));
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
     // Black out over the last stretch of lying dead, then fade back in on the base after the respawn.

@@ -47,6 +47,9 @@ export const heatHaze = uniform(1);
 export const heatstroke = uniform(0);
 /** Heatstroke at a full meter, 0..1 (1: about to die of it): the view darkens (post.ts), as when choking or gassed. */
 export const fainting = uniform(0);
+/** On death the fainting, choking and gas darkness lifts over this long (s) to show the body where it fell, instead of
+ *  cutting away; well before the death fade (water.ts) takes the view again. */
+export const DARK_LIFT_S = 1.5;
 // --- Wind, for shaders (fed from wind.ts by dust.ts every frame) ---
 /** Unit xz vector the wind currently blows towards (wobbles a little around the dunes' wind). */
 export const windDir = uniform(new THREE.Vector2(0.3162, 0.9487));
