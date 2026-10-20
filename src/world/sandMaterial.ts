@@ -21,6 +21,7 @@
 // Everything is a pure function of world position, camera and light, so it is stable when standing still.
 // Tunables are exported TSL uniforms (`sand.*`): set `.value` at runtime, no recompile needed.
 import * as THREE from 'three/webgpu';
+import { graphics, onGraphics } from '../graphics.ts';
 import {
   abs,
   attribute,
@@ -97,6 +98,8 @@ export const sand = {
   megaRippleStrength: uniform(0.03),
   /** Crest height (m) of the small ripples, for their self-shadowing: at a low sun each crest shadows the steep lee behind it. */
   rippleHeight: uniform(0.006),
+  /** Footprint (ripple cycles per pixel) over which the small ripples fade out: the Sand detail option (RIPPLE_FADES). */
+  rippleFade: uniform(new THREE.Vector2(0.2, 0.45)),
   /** Ocean specular and rim strengths. */
   sheen: uniform(0.02),
   rim: uniform(0.18),
@@ -163,6 +166,11 @@ const mudCracks = Fn(([xz, fw, m]: [V2, F, F]) => {
   return out;
 });
 
+/** Sand detail (Options → Graphics): where the small ripples fade out, by footprint (cycles per pixel), Low / Medium / High / Ultra. */
+export const RIPPLE_FADES: [number, number][] = [[0.08, 0.2], [0.15, 0.35], [0.22, 0.5], [0.32, 0.75]];
+sand.rippleFade.value.set(...RIPPLE_FADES[graphics.sandDetail]);
+onGraphics((g, changed) => changed === 'sandDetail' && sand.rippleFade.value.set(...RIPPLE_FADES[g.sandDetail]));
+
 /** The dev test lab's floor (shared/lab.ts): a plain light grey, no ripples, glitter or sheen. */
 export function labFloor() {
   sand.albedoRed.value.set(0.58, 0.58, 0.56);
@@ -193,6 +201,18 @@ function rippleProfile(s: F, a: number): [F, F] {
   return [h, slope];
 }
 
+/**
+ * The ripple's slope (normalised like rippleProfile's) averaged over a pixel's footprint `fw` (cycles): the height difference across the
+ * footprint over its width. Exact when the pixel is small, and it goes to 0 by itself once a pixel spans a whole ripple, so the ripples
+ * can be drawn down to a few pixels each without shimmering (a plain slope aliases into moiré and dashes long before that).
+ */
+function filteredSlope(s: F, fw: F, a: number): F {
+  const e = max(fw.mul(0.5), 1e-4);
+  const [hp] = rippleProfile(s.add(e), a);
+  const [hm] = rippleProfile(s.sub(e), a);
+  return hp.sub(hm).div(e.mul(2)).mul((2 * (1 - a)) / PI);
+}
+
 /** Small ripples: wavelength (m) and the share of a cycle the gentle stoss side takes (the crest is at that phase). */
 const RIPPLE_LENGTH = 0.11;
 const RIPPLE_STOSS = 0.66;
@@ -212,7 +232,9 @@ function rippleSun(s: SandSurface, l: V3): F {
   const toCrest = select(lAlong.greaterThan(0), fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
   const height = sand.rippleHeight.mul(s.rippleAmp);
   const gap = height.mul(float(1).sub(h));
-  const pen = sand.rippleHeight.mul(0.12);
+  // the edge widens with the pixel's footprint (in height along the sun ray), so far shadows soften instead of breaking into dashes
+  const foot = fwidth(s.ripplePhase).mul(RIPPLE_LENGTH);
+  const pen = max(sand.rippleHeight.mul(0.12), foot.mul(tanE.add(height.mul(6 / RIPPLE_LENGTH))).mul(0.5));
   // (+ pen: on the crest itself toCrest and gap are both 0; without it the crest drew a thin half-shadowed line)
   const sharp = smoothstep(pen.negate(), pen, toCrest.mul(tanE).sub(gap).add(pen));
   // on average: the shadow behind a crest is height/tanθ long, out of a wavelength (a little less: the profile is rounded)
@@ -220,9 +242,10 @@ function rippleSun(s: SandSurface, l: V3): F {
   return float(1).sub(s.rippleField.mul(float(1).sub(mix(mean, sharp, s.rippleRes))));
 }
 
-/** Fade for a periodic pattern whose phase (in cycles) is `s`: 1 when well resolved, 0 near Nyquist. */
+/** Fade for a periodic pattern whose phase (in cycles) is `s`: 1 when well resolved, 0 near Nyquist. Where it starts and ends (cycles
+ *  per pixel) is the Sand detail option (`sand.rippleFade`): the ripples are filtered (filteredSlope), so it can go late. */
 function footprintFade(s: F): F {
-  return float(1).sub(smoothstep(0.04, 0.16, fwidth(s)));
+  return float(1).sub(smoothstep(sand.rippleFade.x, sand.rippleFade.y, fwidth(s)));
 }
 
 // --- Glitter ---------------------------------------------------------------------------------------
@@ -315,7 +338,8 @@ function buildSurface(): SandSurface {
 
   // Small ripples (~10 cm) and faint megaripples (~0.9 m, warped differently).
   const s1 = along.add(wS).div(RIPPLE_LENGTH);
-  const [h1, d1] = rippleProfile(s1, RIPPLE_STOSS);
+  const [h1] = rippleProfile(s1, RIPPLE_STOSS);
+  const d1 = filteredSlope(s1, fwidth(s1), RIPPLE_STOSS);
   const s2 = along.add(w0.mul(1.6)).add(mx_noise_float(vec2(across.mul(0.05), along.mul(0.02))).mul(2.5)).div(0.9);
   const [, d2] = rippleProfile(s2, 0.68);
   // Crest strength varies, so ripple fields fade in and out instead of tiling the whole dune.

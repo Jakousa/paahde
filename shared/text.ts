@@ -250,6 +250,7 @@ const en = {
     shadowRefresh: 'Shadow refresh',
     shadowRefreshes: ['Always', 'Some', 'Rarely'],
     antialias: 'Anti-aliasing',
+    sandDetail: 'Sand detail',
     shadowQualities: ['Low', 'Medium', 'High', 'Ultra'],
     tips: {
       display: 'Fullscreen goes fullscreen when you click into the game. Windowed never does.',
@@ -262,6 +263,7 @@ const en = {
       shadowDistance: 'How far from you the sun casts shadows. Shorter is faster.',
       shadowQuality: 'Sharpness and softness of the sun shadows. Lower is faster. Needs a reload.',
       shadowRefresh: 'How often far shadows are redrawn. Less often is faster and easier on the processor, but far shadows lag behind.',
+      sandDetail: 'How far out the small ripples in the sand are drawn. Lower is a little faster.',
       antialias: 'Smooths jagged edges. Off is faster. Needs a reload.',
     },
     needsReload: 'Click to reload and apply',

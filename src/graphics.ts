@@ -16,13 +16,15 @@ export interface GraphicsPrefs {
   shadowDistance: number;
   /** Shadow quality, 0 low .. 2 high: how many cascades, how big their maps and how soft the filter (SHADOW_QUALITY). Needs a reload. */
   shadowQuality: number;
+  /** How far out the small sand ripples are drawn (0 low .. 3 ultra: down to a few pixels a ripple). Live. */
+  sandDetail: number;
   /** How often the far shadow cascades are redrawn: 0 every frame, 1 some, 2 rarely (src/world/cascades.ts). */
   shadowRefresh: number;
   /** Multisampled edges (the renderer is made with it). Needs a reload. */
   antialias: boolean;
 }
 
-export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, minRes: 0.5, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, shadowQuality: 2, shadowRefresh: 1, antialias: true };
+export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, minRes: 0.5, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, shadowQuality: 2, sandDetail: 2, shadowRefresh: 1, antialias: true };
 export const SHADOW_DISTANCE_RANGE = [200, 4500] as const;
 export const FPS_LIMITS = [30, 60, 90, 120, 144, 240, 0] as const;
 /** What each shadow quality means. Shadow maps (players, wrecks, the base, bosses): cascades (at least two: the first is the sharp one round
@@ -50,6 +52,7 @@ function load(): GraphicsPrefs {
     num('shadowDistance', SHADOW_DISTANCE_RANGE[0], SHADOW_DISTANCE_RANGE[1]);
     if ((FPS_LIMITS as readonly number[]).includes(o.fpsLimit)) g.fpsLimit = o.fpsLimit;
     if ([0, 1, 2, 3].includes(o.shadowQuality)) g.shadowQuality = o.shadowQuality;
+    if ([0, 1, 2, 3].includes(o.sandDetail)) g.sandDetail = o.sandDetail;
     if ([0, 1, 2].includes(o.shadowRefresh)) g.shadowRefresh = o.shadowRefresh;
     for (const k of ['dynamicRes', 'fullscreen', 'shadows', 'antialias'] as const) if (typeof o[k] === 'boolean') g[k] = o[k];
   } catch {}

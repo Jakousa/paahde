@@ -436,3 +436,7 @@ neighbouring crests drift apart and together and seem to split and merge, with u
 crests die out along their length (`depth` in buildSurface), for the shading and the shadows both. The shadow test is biased by its own
 softness so a crest itself is never half-shadowed (that drew a thin dark line along every crest). `npm run perf -- --shot --view 4 --pitch 40`
 looks down at the sand next to the player (lower than ~2 m the camera is inside the player's head).
+Far ripples: the slope is box-filtered over the pixel's footprint (`filteredSlope`: the height difference across the footprint over its width,
+exact up close, 0 by itself once a pixel spans a ripple), and the ripple shadows' edges widen with the footprint, so the ripples are drawn down to a
+few pixels each without moiré or dashes. Where they fade out is the Sand detail option (`sand.rippleFade`, RIPPLE_FADES: cycles per pixel), live.
+The limit is the screen: an 11 cm ripple seen along the ground is under a pixel within tens of metres; past that only the mean shading carries it.

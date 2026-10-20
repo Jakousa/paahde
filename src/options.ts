@@ -108,6 +108,7 @@ export function optionsHtml(): string {
 <label class="row" data-tip="${TEXT.menu.tips.shadowDistance}"><span>${TEXT.menu.shadowDistance}</span><input class="gDist" type="range" min="${SHADOW_DISTANCE_RANGE[0]}" max="${SHADOW_DISTANCE_RANGE[1]}" step="50"><span class="val gDistVal"></span></label>
 <label class="row" data-tip="${TEXT.menu.tips.shadowQuality}"><span>${TEXT.menu.shadowQuality}</span><input class="gQual" type="range" min="0" max="3" step="1"><span class="val gQualVal"></span></label>
 <label class="row" data-tip="${TEXT.menu.tips.shadowRefresh}"><span>${TEXT.menu.shadowRefresh}</span><input class="gRefresh" type="range" min="0" max="2" step="1"><span class="val gRefreshVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.sandDetail}"><span>${TEXT.menu.sandDetail}</span><input class="gSand" type="range" min="0" max="3" step="1"><span class="val gSandVal"></span></label>
 <label class="row" data-tip="${TEXT.menu.tips.antialias}"><span>${TEXT.menu.antialias}</span><input class="gAa" type="checkbox"></label>
 <div class="note gNote"></div></div>
 <div class="pane" data-pane="audio">
@@ -247,6 +248,11 @@ function bindGraphics(root: HTMLElement): HTMLInputElement[] {
   const showRefresh = () => text('.gRefreshVal', TEXT.menu.shadowRefreshes[graphics.shadowRefresh]);
   showRefresh();
   refresh.addEventListener('input', () => (setGraphics('shadowRefresh', parseInt(refresh.value)), showRefresh()));
+  const sandDetail = q('.gSand');
+  sandDetail.value = String(graphics.sandDetail);
+  const showSand = () => text('.gSandVal', TEXT.menu.shadowQualities[graphics.sandDetail]);
+  showSand();
+  sandDetail.addEventListener('input', () => (setGraphics('sandDetail', parseInt(sandDetail.value)), showSand()));
   const aa = q('.gAa');
   aa.checked = graphics.antialias;
   aa.addEventListener('change', () => (setGraphics('antialias', aa.checked), showNote()));
@@ -254,7 +260,7 @@ function bindGraphics(root: HTMLElement): HTMLInputElement[] {
   const enable = () => dependent.forEach((i) => (i.disabled = !graphics.shadows));
   enable();
   shadows.addEventListener('change', () => (setGraphics('shadows', shadows.checked), enable()));
-  return [aa, qual, refresh, fps, res, dyn, min, shadows, dist];
+  return [sandDetail, aa, qual, refresh, fps, res, dyn, min, shadows, dist];
 }
 
 
