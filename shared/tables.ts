@@ -9,7 +9,7 @@
 // Machine and wreck contents are rolled from a seed on both sides (shared/parts.ts rollParts): changing their yields
 // changes what is inside every machine in the world, including half-stripped ones, which can leave a part someone has
 // already taken back in place. Fine between sessions; just be aware.
-import type { SiteLevel } from './crashsites.ts';
+import type { LootLevel, SiteLevel } from './crashsites.ts';
 import type { ShelterKind } from './shelters.ts';
 import type { ComponentKind, PartId, SalvageId, SalvageYield, Tier } from './salvage.ts';
 import { TEXT } from './text.ts';
@@ -162,18 +162,22 @@ export const COMPONENT_LOOT: Record<ComponentKind, Loot> = {
   },
 };
 
-/** Which machines lie at each crash-site level (0 scrap fields, 1 crawler ground, 2 guardian ground), relative odds.
+/** Which machines lie at each crash-site loot level (0 scrap fields, 0.5 outposts: crawler ground out among the scrap
+ *  fields, 1 crawler ground, 2 guardian ground; shared/crashsites.ts LootLevel), relative odds.
  *  Each site has one large machine (carry: false) and a few small ones; each is picked from its own size. */
-export const LEVEL_KINDS: Record<SiteLevel, Partial<Record<ComponentKind, number>>> = {
+export const LEVEL_KINDS: Record<LootLevel, Partial<Record<ComponentKind, number>>> = {
   0: { winch: 3, solenoid_valve: 3, beacon: 3 },
+  // Outposts: the starter machines still lie about, with now and then a crawler-ground one.
+  0.5: { pump_housing: 3, winch: 2, solenoid_valve: 2, beacon: 2, control_cabinet: 1, robot_arm: 0.5 },
   1: { control_cabinet: 3, robot_arm: 2, beacon: 1, pump_housing: 3 },
   // (jet engines come off downed jets, shared/jetcrash.ts; hardly ever lie at a crash site)
   2: { robot_arm: 3, control_cabinet: 2, jet_engine: 0.15, pump_housing: 1 },
 };
 
-/** Multipliers on a machine's tierWeights by crash-site level. Machines carried home roll at level 1. */
-export const LEVEL_TIERS: Record<SiteLevel, Record<Tier, number>> = {
+/** Multipliers on a machine's tierWeights by crash-site loot level. Machines carried home roll at level 1. */
+export const LEVEL_TIERS: Record<LootLevel, Record<Tier, number>> = {
   0: { scrap: 1, basic: 1, quality: 0.2, space: 0 },
+  0.5: { scrap: 1, basic: 1, quality: 0.5, space: 0.1 },
   1: { scrap: 1, basic: 1, quality: 1, space: 1 },
   2: { scrap: 0.2, basic: 0.6, quality: 2.5, space: 5 },
 };
@@ -181,7 +185,8 @@ export const LEVEL_TIERS: Record<SiteLevel, Record<Tier, number>> = {
 // ---------------------------------------------------------------------------------------------------------------
 // Things lying in the world (server/loot.ts).
 
-/** Broken gear lying around at once, and the crash-site level it lies at (level-0 finds also lie at scrap piles). */
+/** Broken gear lying around at once, and the crash-site loot level it lies at (level-0 finds also lie at scrap piles;
+ *  outposts hold none). */
 export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   canteen: { n: 7, level: 0 }, spyglass: { n: 5, level: 0 }, backpack: { n: 7, level: 0 },
   motorcycle: { n: 3, level: 1 }, storm_detector: { n: 2, level: 1 }, wristpad: { n: 2, level: 1 },

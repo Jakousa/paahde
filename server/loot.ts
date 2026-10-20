@@ -342,7 +342,7 @@ export class LootServer {
       return;
     }
     const level = FINDS[kind]?.level ?? 2;
-    const sites = this.sites.filter((s) => s.level === level);
+    const sites = this.sites.filter((s) => s.loot === level);
     let x = 0, z = 0;
     if (level === 0 && this.piles.length && Math.random() < PILE_ODDS) {
       // Among the pieces of a scrap pile near the base.

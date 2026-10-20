@@ -5,7 +5,7 @@
 // client (rollParts) and never hands out more of a kind than the machine holds.
 import { junkSpec, TIERS, type JunkKind, type PartId, type Tier } from './salvage.ts';
 import { LEVEL_TIERS, type TierWeights } from './tables.ts';
-import type { SiteLevel } from './crashsites.ts';
+import type { LootLevel } from './crashsites.ts';
 import { TEXT } from './text.ts';
 
 export const PART_LABELS: Record<PartId, string> = TEXT.parts;
@@ -46,7 +46,7 @@ export function pickTier(weights: TierWeights, rand: () => number): Tier {
  *  against them. */
 export function rollParts(kind: JunkKind, rand: () => number, level = 1): { part: PartId; tier: Tier }[] {
   const spec = junkSpec(kind);
-  const boost = LEVEL_TIERS[level as SiteLevel] ?? LEVEL_TIERS[1];
+  const boost = LEVEL_TIERS[level as LootLevel] ?? LEVEL_TIERS[1];
   const weights = Object.fromEntries(TIERS.map((t) => [t, (spec.tierWeights[t] ?? 0) * boost[t]])) as Record<Tier, number>;
   const out: { part: PartId; tier: Tier }[] = [];
   for (const y of spec.yields) {
