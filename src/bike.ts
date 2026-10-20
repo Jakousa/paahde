@@ -7,6 +7,7 @@
 // the lamp that turns with the bars, and the lens glows.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { mudflat } from '../shared/biomes.ts';
 import { slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, TRACK_WRAP, tyreprints } from './footprints.ts';
@@ -208,7 +209,10 @@ export class Bike {
       return;
     }
     this.dust(p, fx, fz, hs, dt, landed);
-    this.trackTo(p.x - fx * WHEELBASE * 0.5, p.z - fz * WHEELBASE * 0.5);
+    const rx = p.x - fx * WHEELBASE * 0.5, rz = p.z - fz * WHEELBASE * 0.5;
+    // The dried mud of a lake bed is too hard to take a print: the track breaks there.
+    if (mudflat(rx, rz) > 0.5) this.trackX = NaN;
+    else this.trackTo(rx, rz);
   }
 
   /** Extend the tyre track to the rear wheel at (x, z): a strip from where it last ended, once it is long enough. */
