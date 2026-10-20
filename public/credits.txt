@@ -48,6 +48,12 @@ ring around metallic shower hose 2 (sound)
   Trimmed to the first second, high-passed, faded out and levelled.
   File: audio/teardown-bolt.mp3
 
+Car Crash (with Glass) (sound)
+  By magnuswaker on Freesound (https://freesound.org/s/592388/), CC0
+  (http://creativecommons.org/publicdomain/zero/1.0/).
+  Trimmed, the tail turned down and faded out, levelled and converted to mono.
+  File: audio/bike-land.mp3
+
 cinematic_drum_loop_ares_127 (music)
   By harrisonlace on Freesound (https://freesound.org/s/873168/), CC0
   (http://creativecommons.org/publicdomain/zero/1.0/).

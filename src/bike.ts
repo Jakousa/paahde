@@ -95,7 +95,7 @@ export class Bike {
   private accel = 0;
   private grounded = true;
   private airTime = 0; // s since it left the ground
-  private fall = 0; // fastest fall speed (m/s) in this flight
+  private airV = new THREE.Vector3(); // velocity on the last frame in the air
   private dustOwed = 0; // puffs owed to tyreDust (fractional)
   private disposed = false;
   private headlight?: (typeof headlights)[number];
@@ -183,10 +183,10 @@ export class Bike {
     this.forward = forward;
     const landed = p.grounded && !this.grounded;
     if (landed && this.airTime > BIG_AIR) this.bigLanding(p, hs);
-    if (p.grounded) this.airTime = this.fall = 0;
+    if (p.grounded) this.airTime = 0;
     else {
       this.airTime += dt;
-      this.fall = Math.max(this.fall, -p.vy);
+      this.airV.set(p.vx, p.vy, p.vz);
     }
     this.grounded = p.grounded;
     const steer = Math.abs(forward) > 0.5 ? Math.max(-MAX_STEER, Math.min(MAX_STEER, Math.atan((rate * WHEELBASE) / forward))) : this.steer;
@@ -266,10 +266,13 @@ export class Bike {
     }
   }
 
-  /** Down after a long jump: a cloud of sand bursting out round the bike, bigger the longer and harder the fall
-   *  (and never quite the same twice), and a thump. */
+  /** Down after a long jump: a cloud of sand bursting out round the bike, bigger the longer the flight and the
+   *  rougher the landing (and never quite the same twice), and a thump (rougher: a crash). */
   private bigLanding(p: BikePose, hs: number) {
-    const strength = Math.min(1, Math.max(0, (this.airTime - BIG_AIR) / 1.6) * 0.4 + Math.max(0, (this.fall - 4) / 16) * 0.6);
+    // How hard it hit: the speed into the sand across the slope, as the sim reckons it (shared/sim.ts stepBike).
+    const g = p.y > heightAt(p.x, p.z) + 0.02 ? FLAT : slopeAt(p.x, p.z, tmpSlope);
+    const impact = Math.max(0, g.gx * this.airV.x + g.gz * this.airV.z - this.airV.y);
+    const strength = Math.min(1, Math.max(0, (this.airTime - BIG_AIR) / 1.6) * 0.4 + Math.max(0, (impact - 3) / 15) * 0.6);
     const size = (0.6 + strength) * (0.7 + Math.random() * 0.6);
     const n = Math.round(14 + 36 * size);
     const fx = p.vx / Math.max(hs, 1), fz = p.vz / Math.max(hs, 1);
@@ -282,7 +285,7 @@ export class Bike {
       tyreDust.emit(x, heightAt(x, z) + 0.2, z, Math.cos(a) * out + fx * hs * 0.25, 0.3 + Math.random() * 1.8 * size,
         Math.sin(a) * out + fz * hs * 0.25, puff, 3 + Math.random() * 3 * size);
     }
-    bikeLandSound.play(p.x, p.z, strength);
+    bikeLandSound.play(p.x, p.z, impact);
   }
 
   /** How far the bike leans into the turn (rad, + = left). */
@@ -329,6 +332,7 @@ export class Bike {
 }
 
 const tmpSlope = { gx: 0, gz: 0 };
+const FLAT = { gx: 0, gz: 0 };
 const tmpScale = new THREE.Vector3();
 /** The Handlebar node's origin in the bike's frame, for the grips before the model has loaded. */
 const BARS_PIVOT = new THREE.Vector3(0, 0.98, -0.408);

@@ -429,7 +429,7 @@ const BIKE_AIR_SPIN = 1.4; // rad/s of heading change in the air
 const BIKE_HOP = 6.5;
 const BIKE_LAUNCH_EPS = 0.03; // the ground must fall this far below the ballistic path to leave it
 const BIKE_LAND_KEEP = 0.92; // horizontal speed kept on a landing
-const BIKE_HARD_LANDING = 16;
+export const BIKE_HARD_LANDING = 16; // impact (m/s into the sand) that costs speed and bogs the engine; src/bikeLandSound.ts crashes above it
 
 function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: number, legs: readonly number[]): PlayerState {
   const top = bikeTopSpeed(s.bike - 1), engine = bikeEngine(s.bike - 1);
