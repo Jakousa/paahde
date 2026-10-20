@@ -1,14 +1,14 @@
 // The character's voice as visual-novel blips: one short soft beep per letter as a subtitle types out
 // (src/speech.ts), played locally. A rounded square (fundamental plus a little 3rd harmonic, so it's friendly
-// rather than a pure test tone) around 440 Hz, each blip a few percent off at random and dipping slightly in pitch,
+// rather than a pure test tone) around 330 Hz, each blip a few percent off at random and dipping slightly in pitch,
 // under a 4 ms attack and a 22 ms decay. Rendered offline (same envelope) at volume 1, a line typing at 28 letters/s
-// measures −34 LUFS integrated over the typing, −23 dBTP: under the plop (src/uiSound.ts), present but quiet.
+// measures −38 LUFS integrated over the typing, −26 dBTP: under the plop (src/uiSound.ts), present but quiet.
 import { audio } from './audio';
 
 /** Peak gain of one blip at full volume. */
-const GAIN = 0.07;
+const GAIN = 0.045;
 /** Base pitch (Hz) and how far (ratio, either way) each blip strays from it. */
-const PITCH = 440;
+const PITCH = 330;
 const SPREAD = 0.06;
 
 class SpeechSound {
