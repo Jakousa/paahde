@@ -10,7 +10,8 @@ export const tools = { frozen: false, slot: -1, bike: false, engaged: false, spi
 /* engaged: the crosshair is on something the disassembly (src/teardown) works, so the use button is its, not the hand's. */
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 /** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
-export const ui = { inventoryOpen: false, debugFreed: false };
+/** `escClosedAt`: when Esc last closed the inventory/chest/workbench, so the same press (or the lock change after it) doesn't open the Esc menu (src/menu.ts). */
+export const ui = { inventoryOpen: false, debugFreed: false, escClosedAt: -Infinity };
 // While the pointer is locked the game owns the keyboard: swallow browser shortcuts (Tab, F-keys, Alt, Ctrl+S...).
 // Esc frees the mouse (the browser does that itself), and then keys behave normally again.
 const captured = () => !!document.pointerLockElement;

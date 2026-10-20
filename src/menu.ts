@@ -96,13 +96,14 @@ ${optionsHtml()}
     // Capture phase, so this sees the inventory still open when its own Esc handler is about to close it.
     addEventListener('keydown', (e) => {
       if (e.code === 'Tab' && this.open) this.toggle(false);
-      if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
+      if (e.code === 'Escape' && ui.inventoryOpen) ui.escClosedAt = performance.now(); // the inventory, chest or workbench takes this Esc
+      if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || performance.now() - ui.escClosedAt < 400 || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
       if (document.getElementById('name') || document.getElementById('play')) return; // Esc there skips the name (src/name.ts) or leaves the minigame
       this.toggle(!this.open);
     }, true);
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement) return this.toggle(false);
-      if (ui.inventoryOpen) return;
+      if (ui.inventoryOpen || performance.now() - ui.escClosedAt < 400) return;
       if (ui.debugFreed) {
         ui.debugFreed = false;
         return;
