@@ -18,6 +18,26 @@ services:
       # Makes Vite listen on all interfaces and poll (bind mounts from Windows/macOS hosts give no file events).
       # The game server restarts on edits only where Node's file watching works; otherwise `docker compose restart`.
       DEV_DOCKER: "1"
+      LLM_URL: "http://llm:8080/v1/chat/completions"
+    depends_on:
+      - llm
+
+  llm:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command: >
+      -hf HuggingFaceTB/SmolLM2-360M-Instruct-GGUF:Q4_K_M
+      --host 0.0.0.0
+      --port 8080
+      -t 2
+      -tb 2
+      --ctx-size 1024
+    ports:
+      - "8080:8080"
+    volumes:
+      - llm_cache:/root/.cache/llama.cpp
+    restart: unless-stopped
+
 volumes:
   node_modules:
   dev_data:
+  llm_cache:
