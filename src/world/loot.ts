@@ -43,6 +43,10 @@ const DARK = mat(0x2e2a26, 0.7, 0.4);
 const STEEL = mat(0x8a8f86, 0.5, 0.7);
 const RED = mat(0xa84a32, 0.6, 0.3);
 const WOOD = mat(0x6b4a2e, 0.9, 0);
+const BOT_BODY = mat(0x5a4838, 0.8, 0.35);
+const BOT_EYE = mat(0xffaa22, 0.3, 0.1);
+const BOT_BODY_GEO = new THREE.BoxGeometry(0.4, 0.28, 0.5);
+const BOT_EYE_GEO = new THREE.BoxGeometry(0.12, 0.08, 0.08);
 const glowPulse = uniform(1);
 const rimPulse = uniform(1);
 /**
@@ -329,10 +333,12 @@ export class LootView {
         add(m);
       }, () => add(box(new THREE.Group(), 0.3, 0.2, 0.3, STEEL, 0, 0.1, 0)));
     } else if (l.kind === 'scavenger_bot') {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.28, 0.5), new THREE.MeshStandardNodeMaterial({ color: 0x5a4838, roughness: 0.8, metalness: 0.35 }));
+      const b = new THREE.Mesh(BOT_BODY_GEO, BOT_BODY);
       b.position.y = 0.14;
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.08), new THREE.MeshStandardNodeMaterial({ color: 0xffaa22, roughness: 0.3, metalness: 0.1 }));
+      b.userData.shared = true;
+      const eye = new THREE.Mesh(BOT_EYE_GEO, BOT_EYE);
       eye.position.set(0, 0.24, 0.22);
+      eye.userData.shared = true;
       obj.add(b, eye);
     } else {
       // A battered crate for anything else (scrap, carried machines).

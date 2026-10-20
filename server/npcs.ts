@@ -167,12 +167,21 @@ export class NpcServer {
     }
   }
 
+  /** In the dev test lab, ensure at least one companion robot is placed and active near spawn. */
+  initLab(spawn: { x: number; z: number }) {
+    if (this.npcs.size > 0) return;
+    const x = spawn.x + 2.0;
+    const z = spawn.z + 2.5;
+    const y = heightAt(x, z);
+    this.spawn('', x, y, z, 0);
+  }
+
   /** Tick all companion bots in the world. */
   tick(dt: number, now: number, players: { id: number; browserId: string; state: { x: number; y: number; z: number } }[]) {
     if (this.npcs.size === 0) return;
 
     for (const bot of this.npcs.values()) {
-      const owner = players.find((p) => p.browserId === bot.owner);
+      const owner = players.find((p) => p.browserId === bot.owner) ?? (bot.owner === '' ? players[0] : undefined);
 
       // Asynchronous SLM strategic decision loop (non-blocking)
       if (!bot.thinking && now - bot.lastThinkAt >= THINK_INTERVAL_MS) {

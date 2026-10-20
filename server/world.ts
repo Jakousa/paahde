@@ -102,6 +102,7 @@ const harvesters = new HarvesterServer(performance.now());
 const bosses = new BossServer();
 const guardians = new GuardianServer();
 const npcs = new NpcServer(db, items, scrap, loot, storms, guardians);
+if (LAB) npcs.initLab(LAB_SPAWN);
 const throws = new ThrowServer(guardians);
 /** Heat per second from drone searchlights by player id, from the last bot tick. */
 
