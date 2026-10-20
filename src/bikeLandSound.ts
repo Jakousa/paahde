@@ -1,15 +1,14 @@
 // The thump of a bike coming down after a long jump (src/bike.ts, with the landing dust cloud). Every rider's
 // is heard: panned, and fading with distance.
 //
-// public/audio/bike-land.mp3 is a car crash with glass (see public/credits.txt): the hit, then crunching, clatter
-// and breaking glass. Trimmed to 2.15 s, the tail after 0.35 s turned down (to −6 dB by 0.8 s), mono, levelled to
-// −23 LUFS (true peak −5 dBTP). How rough the landing was decides how much of it is heard: a soft one is just
-// the hit, muffled; the rougher, the brighter and the longer the tail is let ring, and only a really hard crash
-// (well past the sim's hard landing) lets the clatter and glass play out.
+// public/audio/bike-crash.mp3 is mixed for the game from CC0 sounds: a heavy hit, then rumble and debris dying
+// away over ~2 s. Mono, levelled to −23 LUFS (true peak −6 dBTP). How rough the landing was decides how much
+// of it is heard: a soft one is just the hit, muffled; the rougher, the brighter and the longer the tail is let
+// ring, and only a really hard crash (well past the sim's hard landing) lets the debris play out.
 import { audio } from './audio';
 import { BIKE_HARD_LANDING } from '../shared/sim.ts';
 
-const SRC = './audio/bike-land.mp3';
+const SRC = './audio/bike-crash.mp3';
 /** Level at full slider volume, for a hard landing under your own wheels. */
 const GAIN = 0.6;
 /** Impact (m/s into the sand) at which it is the softest thump; at BIKE_HARD_LANDING it is the full hit. */
