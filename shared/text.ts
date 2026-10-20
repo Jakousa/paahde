@@ -248,7 +248,7 @@ const en = {
     shadowRefresh: 'Shadow refresh',
     shadowRefreshes: ['Always', 'Some', 'Rarely'],
     antialias: 'Anti-aliasing',
-    shadowQualities: ['Low', 'Medium', 'High'],
+    shadowQualities: ['Low', 'Medium', 'High', 'Ultra'],
     tips: {
       display: 'Fullscreen goes fullscreen when you click into the game. Windowed never does.',
       fpsTarget: 'The most frames drawn each second. Lower saves power and heat. Unlimited follows your screen.',

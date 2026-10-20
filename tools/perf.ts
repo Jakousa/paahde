@@ -2,7 +2,7 @@
 // route and writes the result (CPU / GPU / frame times, the startup timeline) and a Chrome trace of the same stretch to data/perf/.
 //
 //   node tools/perf.ts [--base http://localhost:5173/] [--seconds 30] [--trace play|startup|none] [--world <id>]
-//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
+//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--view <m above the player, for the picture>] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
 //
 //   --seconds    gameplay to record (0 = the startup timeline only, no walking)
 //   --trace      play: trace only the recorded walk (default); startup: trace from page load until playable; none
@@ -148,7 +148,7 @@ try {
     await done;
   };
 
-  const url = `${base}?w=${world}&perf=${seconds === 0 ? 'startup' : seconds}&perfdl=0${spawnAt ? `&spawn=${spawnAt}` : ''}${tod ? `&ptod=${tod}` : ''}${yaw ? `&pyaw=${yaw}` : ''}${flag('allow-death') ? '&pdeath=continue' : ''}${opt('query') ? `&${opt('query')}` : ''}${opt('route') ? `&proute=${opt('route')}` : ''}`;
+  const url = `${base}?w=${world}&perf=${seconds === 0 ? 'startup' : seconds}&perfdl=0${spawnAt ? `&spawn=${spawnAt}` : ''}${tod ? `&ptod=${tod}` : ''}${yaw ? `&pyaw=${yaw}` : ''}${flag('allow-death') ? '&pdeath=continue' : ''}${opt('query') ? `&${opt('query')}` : ''}${opt('route') ? `&proute=${opt('route')}` : ''}${opt('view') ? `&pview=${opt('view')}` : ''}`;
   console.log(`world ${world}; ${url}\nChrome: ${CHROME}\n${Object.keys(prefs).length ? `settings ${JSON.stringify(prefs)}\n` : ''}waiting for the game to load...`);
   if (trace === 'startup') await traceStart();
   await send('Page.navigate', { url });

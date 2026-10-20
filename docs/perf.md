@@ -62,3 +62,9 @@ a submit" (the scene is not drawn at all: clear every target once after renderer
 write negative numbers use `fragmentNode`; 32-bit float targets cannot blend (NoBlending, or the pipeline is never ready and nothing is drawn) and are read
 texel by texel (`.load`), not sampled. `?hfshadow=0` puts the dunes back into the shadow maps for comparison. Spin runs at 1440p (`--route spin --spawn shelter`)
 gave the two within run-to-run noise (98-135 fps for the same setting); the gain is the look, and ~100 fewer draw calls where the terrain no longer casts.
+
+Ultra (shadow quality 4th step): 5 cascades of 4096² out to 4.5 km (choosing it sets the shadow distance to the maximum), far cascades keep only big casters
+(a downed jet, a boss, the base), dune grid 0.25 m / 1 m / 4.5 m. ~0.6 GB of GPU memory. The packed shadow ceiling gets a small tent filter, which takes the
+stair steps off rock outlines. Near the base and the shelters the heightfield is skipped only where a point is in their reach, under their floor *and* under
+the drawn ground (dune valleys round the base are lower than its floor: they lost their dune shadows inside 45 m). `npm run perf -- --shot --view 60` lifts the
+camera 60 m for the picture (fly camera, no HUD), looking away from the sun: the way to see shadows over a wide stretch.

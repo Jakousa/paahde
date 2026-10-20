@@ -363,10 +363,17 @@ perf.milestone('renderer-ready');
 perf.scene = scene;
 if (PERF_RUN) Object.assign(window, { __dbg: { renderer, sky, net, terrain, scene, THREE, heightAt } }); // (tools/perf.ts --eval)
 perf.onDone = () => {
-  // (for the pictures tools/perf.ts takes: look away from the sun, a little down, where the shadows fall)
+  // (for the pictures tools/perf.ts takes: look away from the sun, a little down, where the shadows fall; `&pview=<m>` lifts the camera
+  // that high above the player, on the fly camera, without the HUD, to see the shadows over a wide stretch)
   const l = sky.heights.light.value;
   orbit.yaw = Math.atan2(l.x, l.z);
   orbit.pitch = -0.12;
+  const lift = Number(new URLSearchParams(location.search).get('pview'));
+  if (lift > 0) {
+    fly.start(orbit.camera, orbit.yaw, orbit.pitch);
+    fly.setClean(true);
+    fly.place(new THREE.Vector3(net.me.x, net.me.y + lift, net.me.z), orbit.yaw, -Math.atan2(lift, lift * 6));
+  }
 };
 perf.setTod = (tod) => net.shareTimeOfDay(tod);
 perf.player = () => ({ x: net.me.x, z: net.me.z, down: survival.dead || net.down !== null, heat: survival.heatLevel });

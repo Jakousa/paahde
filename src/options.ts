@@ -3,7 +3,7 @@
 import { setCounts, setMarkers, tdPrefs } from './teardown/prefs.ts';
 import { audio } from './audio';
 import { TEXT } from '../shared/text.ts';
-import { FPS_LIMITS, SHADOW_DISTANCE_RANGE, graphics, needsReload, onGraphics, setGraphics } from './graphics';
+import { FPS_LIMITS, SHADOW_DISTANCE_RANGE, SHADOW_QUALITY, graphics, needsReload, onGraphics, setGraphics } from './graphics';
 import { setFullscreen } from './input';
 
 const STATS_KEY = 'dadajam.stats';
@@ -104,7 +104,7 @@ export function optionsHtml(): string {
 <label class="row" data-tip="${TEXT.menu.tips.occlusion}"><span>${TEXT.menu.occlusion}</span><input class="ao" type="range" min="0" max="1" step="0.01"><span class="aoval"></span></label>
 <label class="row" data-tip="${TEXT.menu.tips.shadows}"><span>${TEXT.menu.shadows}</span><input class="gShadows" type="checkbox"></label>
 <label class="row" data-tip="${TEXT.menu.tips.shadowDistance}"><span>${TEXT.menu.shadowDistance}</span><input class="gDist" type="range" min="${SHADOW_DISTANCE_RANGE[0]}" max="${SHADOW_DISTANCE_RANGE[1]}" step="50"><span class="val gDistVal"></span></label>
-<label class="row" data-tip="${TEXT.menu.tips.shadowQuality}"><span>${TEXT.menu.shadowQuality}</span><input class="gQual" type="range" min="0" max="2" step="1"><span class="val gQualVal"></span></label>
+<label class="row" data-tip="${TEXT.menu.tips.shadowQuality}"><span>${TEXT.menu.shadowQuality}</span><input class="gQual" type="range" min="0" max="3" step="1"><span class="val gQualVal"></span></label>
 <label class="row" data-tip="${TEXT.menu.tips.shadowRefresh}"><span>${TEXT.menu.shadowRefresh}</span><input class="gRefresh" type="range" min="0" max="2" step="1"><span class="val gRefreshVal"></span></label>
 <label class="row" data-tip="${TEXT.menu.tips.antialias}"><span>${TEXT.menu.antialias}</span><input class="gAa" type="checkbox"></label>
 <div class="note gNote"></div></div>
@@ -229,7 +229,17 @@ function bindGraphics(root: HTMLElement): HTMLInputElement[] {
   qual.value = String(graphics.shadowQuality);
   const showQual = () => text('.gQualVal', TEXT.menu.shadowQualities[graphics.shadowQuality]);
   showQual();
-  qual.addEventListener('input', () => (setGraphics('shadowQuality', parseInt(qual.value)), showQual(), showNote()));
+  qual.addEventListener('input', () => {
+    setGraphics('shadowQuality', parseInt(qual.value));
+    // Ultra is for seeing shadows out to the edge of the terrain: it takes the shadow distance there too (it can be set lower after)
+    if (graphics.shadowQuality === SHADOW_QUALITY.length - 1) {
+      setGraphics('shadowDistance', SHADOW_DISTANCE_RANGE[1]);
+      dist.value = String(graphics.shadowDistance);
+      showDist();
+    }
+    showQual();
+    showNote();
+  });
   const refresh = q('.gRefresh');
   refresh.value = String(graphics.shadowRefresh);
   const showRefresh = () => text('.gRefreshVal', TEXT.menu.shadowRefreshes[graphics.shadowRefresh]);

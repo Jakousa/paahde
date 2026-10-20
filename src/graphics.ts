@@ -23,7 +23,7 @@ export interface GraphicsPrefs {
 }
 
 export const GRAPHICS_DEFAULTS: GraphicsPrefs = { resScale: 1, dynamicRes: true, minRes: 0.5, fullscreen: true, fpsLimit: 0, shadows: true, shadowDistance: 1600, shadowQuality: 2, shadowRefresh: 1, antialias: true };
-export const SHADOW_DISTANCE_RANGE = [200, 1600] as const;
+export const SHADOW_DISTANCE_RANGE = [200, 4500] as const;
 export const FPS_LIMITS = [30, 60, 90, 120, 144, 240, 0] as const;
 /** What each shadow quality means. Shadow maps (players, wrecks, the base, bosses): cascades (at least two: the first is the sharp one round
  *  you), the size of each one's map, and the taps of the edge filter in the first cascade and the others (src/world/shadowFilter.ts).
@@ -32,6 +32,8 @@ export const SHADOW_QUALITY = [
   { cascades: 2, map: 2048, filter: 8, farFilter: 4, height: { levels: [{ size: 1024, res: 1024 }, { size: 9216, res: 512 }] } },
   { cascades: 3, map: 2048, filter: 12, farFilter: 4, height: { levels: [{ size: 1024, res: 2048 }, { size: 9216, res: 1024 }] } },
   { cascades: 4, map: 2048, filter: 16, farFilter: 6, height: { levels: [{ size: 1024, res: 2048 }, { size: 4096, res: 1024 }, { size: 9216, res: 1024 }] } },
+  // Ultra: everything big casts a shadow out to the terrain's edge (set the shadow distance up), the dunes' grid is 0.25 m round you. ~0.6 GB of GPU memory.
+  { cascades: 5, map: 4096, filter: 16, farFilter: 8, height: { levels: [{ size: 512, res: 2048 }, { size: 2048, res: 2048 }, { size: 9216, res: 2048 }] } },
 ] as const;
 
 const KEY = 'dadajam.graphics';
@@ -47,7 +49,7 @@ function load(): GraphicsPrefs {
     num('minRes', 0.01, 1);
     num('shadowDistance', SHADOW_DISTANCE_RANGE[0], SHADOW_DISTANCE_RANGE[1]);
     if ((FPS_LIMITS as readonly number[]).includes(o.fpsLimit)) g.fpsLimit = o.fpsLimit;
-    if ([0, 1, 2].includes(o.shadowQuality)) g.shadowQuality = o.shadowQuality;
+    if ([0, 1, 2, 3].includes(o.shadowQuality)) g.shadowQuality = o.shadowQuality;
     if ([0, 1, 2].includes(o.shadowRefresh)) g.shadowRefresh = o.shadowRefresh;
     for (const k of ['dynamicRes', 'fullscreen', 'shadows', 'antialias'] as const) if (typeof o[k] === 'boolean') g[k] = o[k];
   } catch {}
@@ -80,8 +82,8 @@ export function needsReload(): boolean {
 
 /** Far end (m) of each cascade, by cascade count, at the full 1600 m. The nearest is the sharp one around you (a player's long low-sun
  *  shadow stays crisp out to its end), so it is wide; each end is also capped to a share of a shorter shadow distance. */
-const CASCADE_BASE: Record<number, number[]> = { 2: [60, 1600], 3: [40, 300, 1600], 4: [40, 128, 400, 1600] };
-const CASCADE_SHARE: Record<number, number[]> = { 2: [0.3, 1], 3: [0.25, 0.7, 1], 4: [0.25, 0.6, 0.9, 1] };
+const CASCADE_BASE: Record<number, number[]> = { 2: [60, 1600], 3: [40, 300, 1600], 4: [40, 128, 400, 1600], 5: [40, 128, 400, 1300, 4500] };
+const CASCADE_SHARE: Record<number, number[]> = { 2: [0.3, 1], 3: [0.25, 0.7, 1], 4: [0.25, 0.6, 0.9, 1], 5: [0.2, 0.4, 0.7, 0.9, 1] };
 
 /** Far end of each cascade for these settings. */
 export function cascadeEnds(distance: number, count: number): number[] {

@@ -25,7 +25,7 @@ const MOON_TAKES_OVER = THREE.MathUtils.degToRad(-3);
 // (Dev experiments for the GPU cost: `?cascades=2..3` uses fewer, `?shadows=0` none.)
 const QUERY = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 const QUALITY = SHADOW_QUALITY[startup.shadowQuality];
-const CASCADES = Math.min(4, Math.max(2, Number(QUERY.get('cascades')) || QUALITY.cascades));
+const CASCADES = Math.min(5, Math.max(2, Number(QUERY.get('cascades')) || QUALITY.cascades));
 const CASCADE_ENDS = cascadeEnds(graphics.shadowDistance, CASCADES);
 const SHADOW_MAP = QUALITY.map; // per cascade; 2048 looked crisper but cost GPU time on every frame
 /** How far sunwards of a slice casters are still drawn: a 30 m crest at 10° throws a ~170 m shadow. */
@@ -36,7 +36,7 @@ const NORMAL_BIAS_TEXELS = 2;
 /** PCF filter radius in texels per cascade. The dunes are not in the shadow maps (their shadows come from the heightfield,
  *  src/world/heightShadow.ts), so the maps only hold things (players, wrecks, the base, bosses) and can stay sharp: they used to blur
  *  5-8 texels to hide the stairs a low sun makes of a dune's shadow edge. */
-const PCF_RADIUS_TEXELS = [1.5, 1.5, 2, 2];
+const PCF_RADIUS_TEXELS = [1.5, 1.5, 2, 2, 2];
 
 export class Sky {
   readonly sun = sunLight;

@@ -46,6 +46,10 @@ const BIAS_TEXELS = 1.2;
 /** Underground places the heightfield says nothing about (the base, the shelters near the player): there the shadow maps, with the
  *  terrain in them near those places, decide. */
 const UNDERGROUND_SLOTS = 4;
+/** How far (m) under the drawn ground a point must be to count as underground. */
+const UNDER_GROUND = 1;
+/** S more than this (m) under the surface is clamped to it before smoothing. */
+const SMOOTH_FLOOR = 30;
 /** The grid follows the player when they have moved this share of its width from its centre. */
 const RECENTRE = 0.12;
 /** How far (texels) a receiver is looked up out from a wall. */
@@ -189,8 +193,12 @@ export class HeightShadow {
     })();
     this.packMat.fragmentNode = Fn(() => {
       const px = pixel().toVar();
-      const surface = load(this.heightTex, px);
-      return vec4(load(this.srcTex, px).sub(surface), surface.sub(u.y0), 0, 1);
+      const surface = load(this.heightTex, px).toVar();
+      // A little tent filter over S (the texel and its four neighbours): a rock's outline drawn into the height grid is a staircase of
+      // texels, and so was its shadow's edge. (S far under the surface means "lit by a wide margin": clamped first, so it averages sanely.)
+      const at = (dx: number, dy: number) => max(load(this.srcTex, px.add(vec2(dx, dy)).clamp(0, u.res.sub(1))), surface.sub(SMOOTH_FLOOR));
+      const smooth = at(0, 0).mul(4).add(at(1, 0)).add(at(-1, 0)).add(at(0, 1)).add(at(0, -1)).div(8);
+      return vec4(smooth.sub(surface), surface.sub(u.y0), 0, 1);
     })();
   }
 
@@ -349,12 +357,13 @@ export class HeightShadow {
       const p = positionWorld;
       const lit = float(1).toVar();
       const covered = float(0).toVar();
-      // underground (the base's rooms, a shelter's): nothing from the heightfield there
-      let under: F = float(0);
+      // in an underground place's reach (the base, a shelter) and below its floor
+      let near: F = float(0);
       for (let i = 0; i < UNDERGROUND_SLOTS; i++) {
         const b = this.undergroundU.element(i) as unknown as Node<'vec4'>;
-        under = max(under, step(p.xz.sub(b.xy).length(), b.z).mul(step(p.y, b.w))) as F;
+        near = max(near, step(p.xz.sub(b.xy).length(), b.z).mul(step(p.y, b.w))) as F;
       }
+      let under: F = float(0);
       const tan = this.light.y.div(max(vec2(this.light.x, this.light.z).length(), 1e-4));
       for (const l of this.levels) {
         // A steep wall facing the sun would find its own top a texel away and shadow itself: look it up a little out from the wall
@@ -366,6 +375,8 @@ export class HeightShadow {
         const s = l.frontTex.sample(at) as unknown as Node<'vec4'>;
         const surface = s.g.add(l.front.y0);
         const ceiling = s.r.add(surface);
+        // underground: there, and well under the drawn ground too (the dune valleys round the base are lower than its floor, and lit)
+        if (l === this.levels[0]) under = near.mul(step(p.y, surface.sub(UNDER_GROUND))).mul(l.readyU) as F;
         const rise = tan.mul(l.texel);
         // above the ceiling (less a bias) is lit; a soft edge a texel of rise wide
         const value = smoothstep(rise.mul(-SOFT_TEXELS), rise.mul(SOFT_TEXELS), p.y.sub(ceiling).add(rise.mul(BIAS_TEXELS)));
