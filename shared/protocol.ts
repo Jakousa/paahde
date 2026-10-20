@@ -10,6 +10,7 @@ import type { JetCrash } from './jetcrash.ts';
 import type { Harvester } from './harvester.ts';
 import type { TossPath } from './throw.ts';
 import type { Placed } from './placed.ts';
+import type { NpcSnap } from './npcs.ts';
 import type { BedState } from './garden.ts';
 import type { BossKind, BossSnap } from './bosses.ts';
 
@@ -32,6 +33,10 @@ export type ClientMsg =
   | { t: 'place'; slot: number; x: number; z: number; rot: number }
   // Pick a placed thing back up into the bag (reach, room in the bag). A bed's crop is lost.
   | { t: 'unplace'; id: number }
+  // Deploy the companion bot in hotbar slot `slot` onto the ground in front of you.
+  | { t: 'deployBot'; slot: number }
+  // Pick the companion bot `id` back up into the bag.
+  | { t: 'recallBot'; id: number }
   // Craft a recipe at the workbench (shared/crafting.ts RECIPES id): reach checked, ingredients used up from
   // the bag, answered with 'items' (got: what was made) or a 'notice'.
   | { t: 'craft'; recipe: string }
@@ -320,6 +325,8 @@ export type ServerMsg =
   | { t: 'called'; b: { k: BossKind; x: number; z: number }[] }
   // Something boss `id` did once at (x, y, z) at server time `time` (`e` names it, its view knows what it means;
   // `a`: any numbers it goes with), to everyone within BOSS_SEND_R.
-  | { t: 'bossFx'; id: number; e: string; time: number; x: number; y: number; z: number; a?: number[] };
+  | { t: 'bossFx'; id: number; e: string; time: number; x: number; y: number; z: number; a?: number[] }
+  // Companion bots in the world (shared/npcs.ts).
+  | { t: 'npcs'; list: NpcSnap[] };
 
 export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen' | 'harvester' | 'storm';

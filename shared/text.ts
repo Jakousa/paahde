@@ -59,6 +59,7 @@ const en = {
     hive_core: 'Hive core',
     queen_eye: "Queen's eye",
     furnace_heart: 'Furnace heart',
+    scavenger_bot: 'Scavenger bot',
   },
   /** Machines at the crash sites and salvage wrecks (shared/salvage.ts COMPONENTS, SALVAGE). */
   machines: {
@@ -82,6 +83,7 @@ const en = {
     bag: 'Inventory', equip: 'Equipment', bench: 'Workbench', bike: 'Motorcycle', corpse: 'Left behind', chest: 'Chest',
     chestN: (n: number) => `Chest ${n}`,
     storage: 'Storage',
+    bot: 'Bot cargo',
   },
   /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR). */
   gearUse: {
@@ -130,6 +132,9 @@ const en = {
     broken: 'Broken',
     empty: 'Empty',
     aimAtFloor: 'Aim at the floor',
+    deployBot: 'Deploy bot',
+    recallBot: 'Pick up bot',
+    openBot: 'Open cargo',
   },
 
   // ---- Short notices (toasts), from the client or sent by the server ---------------------------------------------
@@ -464,6 +469,7 @@ const en = {
     gotPart: 'A good part. Something broken back home could use this.',
     gotPlantBed: 'A garden in a bunker. Sure, why not.',
     gotUvLamp: "Sunlight for underground. There's a joke in there somewhere.",
+    gotScavengerBot: "It rattles, but it walks. Let's see if it can carry its own weight.",
     gotRelic: "It's still warm. Something out there is going to want this back.",
     ride: 'Wind in my face and sand in my teeth. I love it.',
     pump: ['There we go.', "Clean water. Well, it's wet, anyway."],

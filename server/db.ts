@@ -346,6 +346,24 @@ export function openDb(path: string) {
   const getSetting = db.prepare('SELECT value FROM settings WHERE key = ?');
   const putSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
 
+  // Companion bots crafted by players (shared/npcs.ts).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS npcs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      owner      TEXT NOT NULL,
+      x          REAL NOT NULL,
+      y          REAL NOT NULL,
+      z          REAL NOT NULL,
+      yaw        REAL NOT NULL,
+      task       TEXT NOT NULL DEFAULT 'idle',
+      created_at INTEGER NOT NULL
+    );
+  `);
+  const allNpcs = db.prepare('SELECT id, owner, x, y, z, yaw, task FROM npcs');
+  const insertNpc = db.prepare('INSERT INTO npcs (owner, x, y, z, yaw, task, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const updateNpc = db.prepare('UPDATE npcs SET x = ?, y = ?, z = ?, yaw = ?, task = ? WHERE id = ?');
+  const deleteNpc = db.prepare('DELETE FROM npcs WHERE id = ?');
+
   return {
     /** The newest `n` deaths, oldest first. */
     lastObituaries: (n: number) =>
@@ -385,6 +403,15 @@ export function openDb(path: string) {
     loadBeds: () => allBeds.all() as { id: number; stage: number; growth: number }[],
     saveBed: (id: number, stage: number, growth: number) => upsertBed.run(id, stage, growth),
     deleteBed: (id: number) => deleteBed.run(id),
+    loadNpcs: () => allNpcs.all() as { id: number; owner: string; x: number; y: number; z: number; yaw: number; task: string }[],
+    insertNpc: (owner: string, x: number, y: number, z: number, yaw: number, task = 'idle') =>
+      Number(insertNpc.run(owner, x, y, z, yaw, task, Date.now()).lastInsertRowid),
+    saveNpc: (id: number, x: number, y: number, z: number, yaw: number, task: string) =>
+      updateNpc.run(x, y, z, yaw, task, id),
+    deleteNpc: (id: number) => tx(() => {
+      deleteNpc.run(id);
+      clearBox.run('', `bot${id}`);
+    }),
     loadTaken: () => allTaken.all() as { ix: number; iz: number; i: number; taken_at: number }[],
     tx,
     takeScrap: (ix: number, iz: number, i: number, at: number) => insertTaken.run(ix, iz, i, at),

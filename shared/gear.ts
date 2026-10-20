@@ -8,6 +8,8 @@
 // both apply the same rules: gear only into its equipment slot (and only once repaired), nothing put down past the
 // bag's open rows (the backpack sets them; taking it off leaves what's there stranded, not lost) and only where it fits in a grid, and parts only into the workbench item's matching slots (fitPart).
 import { isCorpseBox } from './corpse.ts';
+import { botId } from './npcs.ts';
+import { BOT_COLS, BOT_ROWS } from './storage.ts';
 import {
   ITEMS, BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, partKind, sizeOf, strandedAt,
   type Item, type Shape, type Slots,
@@ -253,6 +255,7 @@ export function boxShape(box: string, boxes: Boxes): Shape {
   if (box === 'equip') return freeSlots(EQUIP_SLOTS.length);
   if (box === 'bench') return freeSlots(1);
   if (box === 'bike') return gridShape(BIKE_COLS, BIKE_ROWS);
+  if (botId(box) >= 0) return gridShape(BOT_COLS, BOT_ROWS);
   return gridShape(CHEST_COLS, Math.floor((boxes[box]?.length ?? 0) / CHEST_COLS));
 }
 

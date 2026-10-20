@@ -88,12 +88,15 @@ import { junkSpec, SALVAGE } from '../shared/salvage.ts';
 import { bagShape, carriedGear, equipped, gearTiers, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootPrompt } from './world/loot';
 import { CorpseView } from './world/corpses';
+import { NpcView } from './world/npcs';
 import { corpsesNear } from '../shared/corpse.ts';
+import { botsNear } from '../shared/npcs.ts';
 import { openBoxes } from '../shared/storage.ts';
 import { Chat } from './chat';
 import { nameGate } from './name';
 import { prologue } from './prologue';
-import { tools } from './input';
+import { tools, ui, useHeld } from './input';
+import { isBound } from './bindings';
 import { Wrecks } from './world/wrecks';
 import { Trophies } from './world/trophies';
 import { setTrophies } from '../shared/trophies.ts';
@@ -244,6 +247,7 @@ const lootView = new LootView(scene);
 const shieldFx = new ShieldFx(scene, () => orbit.camera.position, () => net.id, (m) => guardianFx.jolt(m));
 net.onShieldBreak = (m) => shieldFx.play(m);
 const corpseView = new CorpseView(scene);
+const npcView = new NpcView(scene);
 addCrosshair();
 loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
 // Dark until the player model has loaded, and the bunker too if you spawn in it, so the first frames show
@@ -340,6 +344,13 @@ const placer = new Placer(net, placedView);
 window.addEventListener('resize', () => {
   orbit.resize();
   renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+let pickBotPressed = false;
+let botUsePrev = false;
+window.addEventListener('keydown', (e) => {
+  if (ui.inventoryOpen || e.repeat || e.ctrlKey || e.metaKey) return;
+  if (isBound('pickPlaced', e.code)) pickBotPressed = true;
 });
 
 await renderer.init();
@@ -502,6 +513,7 @@ renderer.setAnimationLoop((time) => {
   lootView.update(frameDt, net.loot, focus);
   shieldFx.update(frameDt, (id) => (id === net.id ? me.root.position : others.find((o) => o.id === id) ?? null));
   corpseView.update(frameDt, focus);
+  npcView.update(frameDt, focus);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
   bossFx.update(net, frameDt, orbit.camera);
   bossBar.update(frameDt, bossFx.bar);
@@ -619,11 +631,29 @@ baseSand.update(frameDt, storm.atBase);
   const chest = net.connected && !net.down && station < 0 && !bed && !target && !debris && !find && !site && !wreck && !pack
     && openBoxes(net.me).some((b) => b.startsWith('chest') && net.boxes[b]);
   const packPrompt = pack ? TEXT.prompt.openPack : chest ? TEXT.prompt.openChest : null;
+  // A companion bot (shared/npcs.ts) in view or reach: F opens cargo next to the bag, G picks it up.
+  const botTarget = net.connected && !net.down && station < 0 && !bed && !target && !debris && !find && !site && !wreck && !pack && !chest
+    ? npcView.botUnderCrosshair(net.me, orbit.yaw, orbit.pitch, 3.2) : null;
+  const botNearby = net.connected && !net.down && station < 0 && !bed && !target && !debris && !find && !site && !wreck && !pack && !chest
+    && (botTarget !== null || botsNear(net.me).some((b) => net.boxes[b]));
+  const botPrompt = botNearby ? (botTarget ? `${TEXT.prompt.openBot} ${kbd('pickPlaced')}${TEXT.prompt.recallBot}` : TEXT.prompt.openBot) : null;
+
+  const heldItem = net.boxes.bag?.[survival.slot];
+  const holdingBot = heldItem?.kind === 'scavenger_bot' && !ui.inventoryOpen;
+  const deployPrompt = holdingBot ? `${kbd('use')}${TEXT.prompt.deployBot}` : null;
+
+  const useDown = useHeld() && !ui.inventoryOpen;
+  const usePressed = useDown && !botUsePrev;
+  botUsePrev = useDown;
+  if (holdingBot && usePressed) net.deployBot(survival.slot);
+  if (botTarget && pickBotPressed) net.recallBot(botTarget.id);
+  pickBotPressed = false;
+
   // A piece that came off a machine and lies by you can be picked up to be turned and taken apart in the hands; F again sets it down.
   const pieceHere = teardown.active && !teardown.holding ? teardown.pieceNear(net.me) : null;
   const piecePrompt = teardown.holding ? TEXT.prompt.putDown : pieceHere ? TEXT.prompt.pickUp(pieceHere.label) : null;
-  const fPrompt = piecePrompt ?? use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
-  const extra = [growing, placing.prompt].filter(Boolean).join(' ');
+  const fPrompt = piecePrompt ?? use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt ?? botPrompt;
+  const extra = [growing, placing.prompt, deployPrompt].filter(Boolean).join(' ');
   hud.setTarget(fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup() && !fly.active;
   if (interact && piecePrompt) {
@@ -653,9 +683,9 @@ baseSand.update(frameDt, storm.atBase);
     } else if (site) {
       net.crashTake(site.site.id);
     } else if (wreck) net.crashTake(wreck.id);
-    else if (pack || chest) hud.open();
+    else if (pack || chest || botNearby) hud.open();
   }
-  const targeted = piecePrompt !== null || use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
+  const targeted = piecePrompt !== null || use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null || botPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   const w = net.water;
   const m = net.me;

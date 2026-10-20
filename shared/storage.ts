@@ -5,6 +5,7 @@
 // inventory (src/inventory.ts); the server checks the same thing, with slack, before every move.
 import { BASE, BASE_PIECES } from './base.ts';
 import { corpseId, corpsesNear } from './corpse.ts';
+import { botId, botsNear } from './npcs.ts';
 import { EQUIP_SLOTS } from './gear.ts';
 import { BAG_SLOTS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, CHEST_ROWS, coverage, gridShape, MAX_SIDE, type Slots } from './items.ts';
 import type { PlayerState } from './sim.ts';
@@ -19,9 +20,12 @@ export const CHESTS = BASE_PIECES.filter((p) => p.node === 'chest').map((p) => (
   x: BASE.x + p.x, y: BASE.y + (p.y ?? 0), z: BASE.z + p.z,
 }));
 
+export const BOT_COLS = 3;
+export const BOT_ROWS = 2;
+
 /** Box ids: 'bag', 'equip', 'bench' and 'bike' are the player's own, 'chest<i>' and the packs left by the dead
  *  ('corpse<id>', shared/corpse.ts) are shared. */
-export type BoxId = 'bag' | 'equip' | 'bench' | 'bike' | `chest${number}` | `corpse${number}`;
+export type BoxId = 'bag' | 'equip' | 'bench' | 'bike' | `chest${number}` | `corpse${number}` | `bot${number}`;
 /** The player's own boxes. */
 export const OWN_BOXES = ['bag', 'equip', 'bench', 'bike'];
 
@@ -32,6 +36,7 @@ export function boxSize(box: string): number {
   if (box === 'equip') return EQUIP_SLOTS.length;
   if (box === 'bench') return 1;
   if (box === 'bike') return BIKE_COLS * BIKE_ROWS;
+  if (botId(box) >= 0) return BOT_COLS * BOT_ROWS;
   return chestIndex(box) >= 0 || corpseId(box) >= 0 ? CHEST_COLS * CHEST_ROWS : 0;
 }
 
@@ -58,7 +63,7 @@ export function chestIndex(box: string): number {
 }
 
 /** Shared boxes are owned by nobody (''); the others by the player. */
-export const isShared = (box: string) => chestIndex(box) >= 0 || corpseId(box) >= 0;
+export const isShared = (box: string) => chestIndex(box) >= 0 || corpseId(box) >= 0 || botId(box) >= 0;
 
 export function boxLabel(box: string): string {
   if (box === 'bag') return TEXT.boxes.bag;
@@ -66,6 +71,7 @@ export function boxLabel(box: string): string {
   if (box === 'bench') return TEXT.boxes.bench;
   if (box === 'bike') return TEXT.boxes.bike;
   if (corpseId(box) >= 0) return TEXT.boxes.corpse;
+  if (botId(box) >= 0) return TEXT.boxes.bot;
   return CHESTS.length > 1 ? TEXT.boxes.chestN(chestIndex(box) + 1) : TEXT.boxes.chest;
 }
 
@@ -79,6 +85,7 @@ export function openBoxes(s: PlayerState, slack = 0): BoxId[] {
     .sort((a, b) => a.d - b.d);
   for (const c of near) out.push(`chest${c.i}`);
   for (const b of corpsesNear(s, slack)) out.push(b as BoxId);
+  for (const b of botsNear(s, slack)) out.push(b as BoxId);
   return out;
 }
 

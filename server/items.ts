@@ -7,7 +7,7 @@ import {
   type Item, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
-import { boxSize, canOpen, growChest, isShared, OWN_BOXES } from '../shared/storage.ts';
+import { boxSize, canOpen, growChest, isShared, OWN_BOXES, BOT_COLS, BOT_ROWS } from '../shared/storage.ts';
 import { craft, RECIPES } from '../shared/crafting.ts';
 import { RIFLE } from '../shared/rifle.ts';
 import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
@@ -185,6 +185,15 @@ export class ItemServer {
   give(browserId: string, kind: string, n = 1): boolean {
     if (!addItem(this.slots(browserId, 'bag'), kind, n, this.newId, this.bagShape(browserId))) return false;
     this.save(browserId, 'bag');
+    return true;
+  }
+
+  /** Add `n` of `kind` to arbitrary box `box` (e.g. `bot<id>`). */
+  giveToBox(owner: string, box: string, kind: string, n = 1): boolean {
+    const slots = this.slots(owner, box);
+    const shape = gridShape(BOT_COLS, BOT_ROWS);
+    if (!addItem(slots, kind, n, this.newId, shape)) return false;
+    this.save(owner, box);
     return true;
   }
 

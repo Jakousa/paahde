@@ -46,6 +46,8 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
   plant_bed: { label: TEXT.items.plant_bed, stack: 1, size: [3, 2] },
   uv_lamp: { label: TEXT.items.uv_lamp, stack: 1, size: [1, 2] },
+  // Companion robot crafted at the workbench.
+  scavenger_bot: { label: TEXT.items.scavenger_bot, stack: 1, size: [2, 2] },
   // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.
   laser_rifle: { label: TEXT.items.laser_rifle, stack: 1, size: [4, 1] },
   laser_pistol: { label: TEXT.items.laser_pistol, stack: 1, size: [2, 1] },
@@ -76,7 +78,7 @@ export const RETIRED = new Set(['shovel', 'metal_detector']);
 
 /** Used from the hotbar (held in hand): Store all leaves these in the bag. Placeables (shared/placed.ts) stay too. */
 export const TOOLS = new Set(['canteen', 'spyglass', 'laser_rifle', 'laser_pistol', 'jammer', 'grinder',
-  'receiver_carrier', 'receiver_queen', 'receiver_colossus', 'receiver_worm']);
+  'receiver_carrier', 'receiver_queen', 'receiver_colossus', 'receiver_worm', 'scavenger_bot']);
 
 /** Every item fits a grid this many rows tall once turned (its smaller side): the smallest backpack's rows
  *  (shared/gear.ts backpackRows), so anything can be picked up into any bag; chests keep this many rows empty. */

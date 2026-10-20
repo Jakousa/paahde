@@ -33,6 +33,7 @@ import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
 import { setJetCrashes } from '../shared/jetcrash.ts';
 import { growChest, isShared } from '../shared/storage.ts';
 import { corpseBox, CORPSES } from '../shared/corpse.ts';
+import { NPCS } from '../shared/npcs.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
@@ -139,6 +140,9 @@ export class Net {
 
   /** The packs left by the dead changed (shared/corpse.ts CORPSES). */
   onCorpses?: () => void;
+
+  /** Companion bots in the world changed (shared/npcs.ts NPCS). */
+  onNpcs?: () => void;
 
   /** Item boxes we can see (shared/storage.ts BoxId → slots): bag, equip, bench, bike and chests, from the server. */
   boxes: Record<string, Slots> = {};
@@ -481,6 +485,16 @@ export class Net {
     if (this.connected) this.send({ t: 'unplace', id });
   }
 
+  /** Deploy companion bot from bag slot `slot`. */
+  deployBot(slot: number) {
+    if (this.connected) this.send({ t: 'deployBot', slot });
+  }
+
+  /** Pick a companion bot back up into the bag. */
+  recallBot(id: number) {
+    if (this.connected) this.send({ t: 'recallBot', id });
+  }
+
   /** Craft at the workbench (shared/crafting.ts); the bag comes back with what was made, or a notice. */
   craft(recipe: string) {
     if (this.connected) this.send({ t: 'craft', recipe });
@@ -641,6 +655,11 @@ export class Net {
       }
       for (const c of msg.add) CORPSES.set(c.id, c);
       return this.onCorpses?.();
+    }
+    if (msg.t === 'npcs') {
+      NPCS.clear();
+      for (const n of msg.list) NPCS.set(n.id, n);
+      return this.onNpcs?.();
     }
     if (msg.t === 'loot') {
       if (msg.reset) this.loot.clear();

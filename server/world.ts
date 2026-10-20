@@ -47,6 +47,7 @@ import { CrashServer } from './crash.ts';
 import { LAB, LAB_SPAWN } from '../shared/lab.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
 import { TerrainServer } from './terrain.ts';
+import { NpcServer } from './npcs.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
 import { HEAT_MAX } from '../shared/water.ts';
 import { TIERS } from '../shared/salvage.ts';
@@ -94,6 +95,7 @@ const corpses = new CorpseServer(db, items, (msg) => {
   const json = JSON.stringify(msg);
   for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
 });
+const npcs = new NpcServer(db, items, scrap, loot);
 
 const storms = new StormServer(performance.now());
 const jets = new JetServer(performance.now());
@@ -185,6 +187,8 @@ wss.on('connection', (ws) => {
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
     if (msg.t === 'place' && p) return onPlace(p, msg.slot, msg.x, msg.z, msg.rot);
     if (msg.t === 'unplace' && p) return onUnplace(p, msg.id);
+    if (msg.t === 'deployBot' && p) return onDeployBot(p, msg.slot);
+    if (msg.t === 'recallBot' && p) return onRecallBot(p, msg.id);
     if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
     if (msg.t === 'storm' && p && msg.front) return storms.spawnFront([...players.values()].map((o) => o.state), performance.now());
@@ -317,7 +321,8 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, { t: 'obituaries', list: db.lastObituaries(OBITUARY_KEEP) });
   recall(p);
   send(ws, corpses.joinMessage());
-  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes()]) send(ws, boxMsg(browserId, box));
+  send(ws, npcs.joinMessage());
+  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes(), ...npcs.snapshot().map((n) => `bot${n.id}`)]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
 
 }
@@ -677,6 +682,17 @@ function onChat(p: Player, text: unknown) {
   p.chatAt = now;
   const json = JSON.stringify({ t: 'chat', id: p.id, color: p.color, name: p.name, text: clean, at: Date.now() } satisfies ServerMsg);
   for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+
+  if (clean.toLowerCase().startsWith('@bot')) {
+    const cmd = clean.slice(4).trim().toLowerCase();
+    const task = cmd.includes('gather') || cmd.includes('scrap') ? 'gather' : cmd.includes('stay') || cmd.includes('idle') || cmd.includes('stop') ? 'idle' : 'follow';
+    for (const bot of npcs.snapshot()) {
+      if (bot.owner === p.browserId || Math.hypot(bot.x - p.state.x, bot.z - p.state.z) < 25) {
+        npcs.setTask(bot.id, task);
+      }
+    }
+    broadcastNpcs();
+  }
 }
 
 /** Their name in this world, cleaned like a chat line; blank is fine (asked once, src/name.ts). */
@@ -950,6 +966,37 @@ function onUnplace(p: Player, id: unknown) {
   sendBox(p, 'bag', r.kind);
 }
 
+function onDeployBot(p: Player, slot: unknown) {
+  if (p.down || !p.ready || typeof slot !== 'number') return;
+  const bag = items.slots(p.browserId, 'bag');
+  const it = bag[slot];
+  if (!it || it.kind !== 'scavenger_bot') return send(p.ws, { t: 'notice', text: TEXT.notice.missingParts });
+  if (!items.take(p.browserId, 'scavenger_bot')) return;
+  sendBox(p, 'bag');
+  const d = 1.6;
+  const spawnX = p.state.x - Math.sin(p.yaw) * d;
+  const spawnZ = p.state.z - Math.cos(p.yaw) * d;
+  const spawnY = heightAt(spawnX, spawnZ);
+  npcs.spawn(p.browserId, spawnX, spawnY, spawnZ, p.yaw);
+  broadcastNpcs();
+}
+
+function onRecallBot(p: Player, id: unknown) {
+  if (p.down || !p.ready || typeof id !== 'number') return;
+  const res = npcs.recall(id, { browserId: p.browserId, state: p.state });
+  if (!res.ok) {
+    if (res.reason === 'bag_full') send(p.ws, { t: 'notice', text: TEXT.notice.bagFull });
+    return;
+  }
+  sendBox(p, 'bag', 'scavenger_bot');
+  broadcastNpcs();
+}
+
+function broadcastNpcs() {
+  const json = JSON.stringify({ t: 'npcs', list: npcs.snapshot() } satisfies ServerMsg);
+  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+}
+
 function onCraft(p: Player, recipe: unknown) {
   const r = items.craft(p.browserId, p.state, recipe);
   if (typeof r === 'string') {
@@ -1005,6 +1052,7 @@ setInterval(() => {
   }
   if (!LAB) tickBots(elapsed, now, tod); // (no walkers, drones or bosses in the lab)
   tickThrows(elapsed, now);
+  npcs.tick(elapsed, now, [...players.values()]);
   relaxAccum += elapsed;
   if (relaxAccum >= 1 / RELAX_RATE) {
     relaxAccum %= 1 / RELAX_RATE;
@@ -1056,6 +1104,7 @@ function broadcast(time: number) {
   }
   const lootMsg = loot.flush(); // per player: the home bike is hidden from whoever has had theirs
   if (lootMsg) for (const p of players.values()) send(p.ws, loot.seenBy(lootMsg, p.browserId));
+  if (npcs.snapshot().length > 0) broadcastNpcs();
   const all = [...players.values()].map((p) => {
     const item = p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot]?.kind : undefined;
     const gear = wornGear(items.slots(p.browserId, 'equip')) | carriedGear(items.slots(p.browserId, 'bag'), p.slot);

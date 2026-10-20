@@ -57,6 +57,24 @@ export class ScrapServer {
     return pc.kind;
   }
 
+  /** Autonomous pickup (e.g. companion bots). */
+  takePiece(ix: number, iz: number, i: number, give: (kind: number) => boolean): number | null {
+    const pc = scrapPiece(ix, iz, i);
+    const now = Date.now();
+    if (!pc || scrapTaken.has(pc.key)) return null;
+    const ok = this.db.tx(() => {
+      if (!give(pc.kind)) return false;
+      this.db.takeScrap(pc.ix, pc.iz, pc.i, now);
+      return true;
+    });
+    if (!ok) return null;
+    this.taken.set(pc.key, [pc.ix, pc.iz, pc.i, now]);
+    scrapTaken.add(pc.key);
+    scrapChanged();
+    this.newlyTaken.push(pc.ix, pc.iz, pc.i);
+    return pc.kind;
+  }
+
   /** Respawn pieces taken more than RESPAWN_MS ago. */
   respawn() {
     const cutoff = Date.now() - RESPAWN_MS;
