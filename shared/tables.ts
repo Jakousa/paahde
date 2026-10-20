@@ -171,11 +171,21 @@ export const LEVEL_KINDS: Record<SiteLevel, Partial<Record<ComponentKind, number
   2: { robot_arm: 3, control_cabinet: 2, jet_engine: 0.15, pump_housing: 1 },
 };
 
-/** Multipliers on a machine's tierWeights by crash-site level. Machines carried home roll at level 1. */
+/** Multipliers on a machine's tierWeights by crash-site level. Machines carried home roll at level 1. Scrap fields (level 0,
+ *  the base's surroundings) give nothing better than basic; quality creeps in on crawler ground and space-grade stays a
+ *  few per cent there and rare even on guardian ground. */
 export const LEVEL_TIERS: Record<SiteLevel, Record<Tier, number>> = {
-  0: { scrap: 1, basic: 1, quality: 0.2, space: 0 },
-  1: { scrap: 1, basic: 1, quality: 1, space: 1 },
-  2: { scrap: 0.2, basic: 0.6, quality: 2.5, space: 5 },
+  0: { scrap: 1, basic: 1, quality: 0, space: 0 },
+  1: { scrap: 1, basic: 1, quality: 0.6, space: 0.15 },
+  2: { scrap: 0.3, basic: 0.8, quality: 1.5, space: 1 },
+};
+
+/** Loose finds (caches, shelter stashes) ramp up by distance from the base instead of in steps: a tier's odds are scaled
+ *  from 0 at `from` metres to 1 at `to` (smoothstep), so nothing better than basic lies near home and the best is rare
+ *  until far out. Scrap and basic aren't scaled. (shared/parts.ts tierWeightsAt) */
+export const TIER_RAMP: Partial<Record<Tier, { from: number; to: number }>> = {
+  quality: { from: 600, to: 2400 },
+  space: { from: 900, to: 3200 },
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -206,7 +216,7 @@ const ROTORS: PartId[] = ['fanrotor', 'comprotor', 'turbinerotor', 'turbinedisc'
 
 /** Loose rare parts (any part, uranium too) lying at guardian ground at once, and their tiers. */
 /** `noParts`: never found this way. The impeller isn't dropped anywhere: nothing uses it. */
-export const RARE_FINDS = { n: 10, noParts: ['impeller', ...ROTORS] as PartId[], tierWeights: { quality: 3, space: 1 } satisfies TierWeights };
+export const RARE_FINDS = { n: 10, noParts: ['impeller', ...ROTORS] as PartId[], tierWeights: { quality: 3, space: 0.5 } satisfies TierWeights };
 
 /** Broken gear (finds and caches): each part slot is filled with these odds, by a part of these tiers (or scrap that
  *  fits); at least one slot is always left empty. */

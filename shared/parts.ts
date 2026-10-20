@@ -4,7 +4,8 @@
 // land in the bag through the server (server/crash.ts), which rolls the same contents from the same seed as the
 // client (rollParts) and never hands out more of a kind than the machine holds.
 import { junkSpec, TIERS, type JunkKind, type PartId, type Tier } from './salvage.ts';
-import { LEVEL_TIERS, type TierWeights } from './tables.ts';
+import { LEVEL_TIERS, TIER_RAMP, type TierWeights } from './tables.ts';
+import { BASE } from './base.ts';
 import type { SiteLevel } from './crashsites.ts';
 import { TEXT } from './text.ts';
 
@@ -39,6 +40,18 @@ export function pickTier(weights: TierWeights, rand: () => number): Tier {
   let r = rand() * sum;
   for (const t of TIERS) if ((r -= weights[t] ?? 0) < 0) return t;
   return 'scrap';
+}
+
+/** `weights` scaled for a find lying at (x, z): the better tiers fade in with the distance from the base (TIER_RAMP). */
+export function tierWeightsAt(weights: TierWeights, x: number, z: number): TierWeights {
+  const d = Math.hypot(x - BASE.x, z - BASE.z);
+  const out: TierWeights = {};
+  for (const t of TIERS) {
+    const ramp = TIER_RAMP[t];
+    const u = ramp ? Math.min(1, Math.max(0, (d - ramp.from) / (ramp.to - ramp.from))) : 1;
+    out[t] = (weights[t] ?? 0) * u * u * (3 - 2 * u);
+  }
+  return out;
 }
 
 /** What is inside a component or salvage wreck of `kind`, rolled with `rand` (shared/crash.ts seeded(seed)): every part and its

@@ -14,7 +14,7 @@ import { CLOTH, partKind, RETIRED, SCRAP } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { coreCrashSites, type SiteLevel } from '../shared/crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
-import { PART_IDS, pickTier } from '../shared/parts.ts';
+import { PART_IDS, pickTier, tierWeightsAt } from '../shared/parts.ts';
 import { GUNS, PISTOL } from '../shared/rifle.ts';
 import { rocksNear } from '../shared/rocks.ts';
 import { BROKEN_GEAR, CACHES, FINDS, HOME_BIKE, RARE_FINDS, SHELTER_STASHES, type TierWeights } from '../shared/tables.ts';
@@ -366,13 +366,13 @@ export class LootServer {
     const short = (s: Shelter) => SHELTER_STASHES.perShelter[s.kind] - (lying.get(s.id) ?? 0);
     const most = Math.max(...this.shelters.map(short));
     const { x, z } = shelterLootSpot(pick(this.shelters.filter((s) => short(s) === most)), Math.random);
-    this.place({ id: this.nextId++, ...this.contents(SHELTER_STASHES), x, z, src: 'find' }, STASH_KIND);
+    this.place({ id: this.nextId++, ...this.contents(SHELTER_STASHES, x, z), x, z, src: 'find' }, STASH_KIND);
   }
 
   /** What a cache or stash holds, picked by its table's odds. */
-  private contents(t: { contents: Record<'part' | 'scrap' | 'cloth' | 'pistol' | 'gear' | 'receiver', number>; tierWeights: TierWeights }) {
+  private contents(t: { contents: Record<'part' | 'scrap' | 'cloth' | 'pistol' | 'gear' | 'receiver', number>; tierWeights: TierWeights }, x: number, z: number) {
     const what = pickOdds(t.contents);
-    if (what === 'part') return { kind: partKind(pick(CACHE_PARTS), pickTier(t.tierWeights, Math.random)) };
+    if (what === 'part') return { kind: partKind(pick(CACHE_PARTS), pickTier(tierWeightsAt(t.tierWeights, x, z), Math.random)) };
     if (what === 'scrap') return { kind: SCRAP };
     if (what === 'cloth') return { kind: CLOTH };
     const kind = what === 'pistol' ? PISTOL : what === 'receiver' ? pick(Object.values(RECEIVERS)) : pick(CACHE_GEAR);
@@ -387,6 +387,6 @@ export class LootServer {
       z = BASE.z + Math.cos(a) * d;
       if (!overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break;
     }
-    this.place({ id: this.nextId++, ...this.contents(CACHES), x, z, src: 'cache' }, null);
+    this.place({ id: this.nextId++, ...this.contents(CACHES, x, z), x, z, src: 'cache' }, null);
   }
 }
