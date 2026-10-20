@@ -7,10 +7,12 @@
 //   - inverter: the motor controller switches at a fixed carrier frequency; its whistle has sidebands at
 //               carrier ± the motor frequency, which spread apart as you speed up (the tram / metro sound).
 //               Here: a fixed sine amplitude-modulated by a sine at the motor frequency.
-// Pitch follows the wheel speed; loudness follows the load (throttle, i.e. torque) more than the speed, so
-// coasting is quiet and opening up brings the whine in. A slow wobble on level and pitch keeps it alive.
-// Sitting still on a bike it idles low and quiet. In the air the wheel spins up freely while the throttle
-// is held and winds down when it is let go.
+// Pitch follows the motor's revs: the wheel speed through a gearbox (GEARS). Near the top of a gear it shifts
+// up: the drive cuts for a moment (the level dips), a clunk, and the revs drop into the next gear; slowing
+// down it shifts back down with a softer clunk and the revs blipping up. Loudness follows the load
+// (throttle, i.e. torque) more than the speed, so coasting is quiet and opening up brings the whine in. A
+// slow wobble on level and pitch keeps it alive. Sitting still on a bike it idles low and quiet. In the air
+// the wheel spins up freely while the throttle is held and winds down when it is let go.
 //
 // Your own bike plays straight to your ears. Other riders' bikes are placed in 3D (HRTF PannerNode; the
 // Web Audio listener follows the camera, set in src/crashSound.ts) with a little Doppler shift; we don't
@@ -20,15 +22,32 @@
 // Plays through the shared output in src/audio.ts (volume slider, limiter); every level change is ramped.
 import { audio } from './audio';
 
-/** Motor frequency (Hz) at a standstill, and how much it rises per m/s of wheel speed. */
-const F_IDLE = 32;
-const F_PER_MS = 7;
+/** Motor frequency (Hz) at idle and at the top of a gear. */
+const F_IDLE = 24;
+const F_RED = 88;
+/** Wheel speed (m/s) at the top of each gear (the bikes cruise at 16 to 35 m/s; the last is for the air). */
+const GEARS = [6, 11, 17, 24, 32, 42];
+/** Shift up past this fraction of the gear's top with the throttle open (UP_COAST without), down once the
+ *  speed falls under DOWN of the lower gear's top; not again within SHIFT_GAP s. */
+const UP = 0.9;
+const UP_COAST = 0.97;
+const DOWN = 0.5;
+const SHIFT_GAP = 0.35;
+/** An upshift cuts the drive this long (s), the level dipping to CUT_LEVEL. */
+const CUT = 0.12;
+const CUT_LEVEL = 0.4;
+/** The clunk of a shift: a low thump (Hz) and a click of noise through a band (Hz); level relative to the motor
+ *  at full, a downshift's softer. */
+const THUMP_HZ = 62;
+const CLICK_HZ = 900;
+const CLUNK = 0.5;
+const CLUNK_DOWN = 0.3;
 /** The body's harmonics (amplitude of the 1st, 2nd, …): fundamental, octave, fifth, and a faint 6th order. */
 const HARMONICS = [0, 1, 0.6, 0.3, 0.08, 0, 0.07, 0, 0.02];
 /** The body's twin sits this many Hz above it: a slow beat, the same rate at any speed. */
 const BEAT_HZ = 1.3;
 /** Inverter carrier (Hz), and its sidebands' offset in multiples of the motor frequency. */
-const CARRIER = 1500;
+const CARRIER = 900;
 const SIDEBAND = 2;
 /** Speed (m/s) that counts as top speed for the level and the whine. */
 const TOP = 26;
@@ -42,10 +61,10 @@ const LOAD_TAU = 0.15;
 const IDLE = 0.45;
 const BY_SPEED = 0.3;
 /** Full level at full slider volume. Measured offline (same graph in numpy, ffmpeg ebur128): about
- *  −39 LUFS idling, −33 coasting at 15 m/s, −27 at 15 m/s on the throttle, −26 at top speed on the throttle
- *  (the inverter whistle alone ~8 dB under that), under the wind at speed. Another rider's bike is as loud
- *  at REF metres. */
-const MIX = 0.091;
+ *  −44 LUFS idling, −36 coasting at 15 m/s, −31 at 15 m/s on the throttle, −30 at top speed on the throttle,
+ *  well under the wind at speed (3.5–4.5 dB under the old ungeared, higher-pitched motor). Another rider's
+ *  bike is as loud at REF metres. */
+const MIX = 0.065;
 /** Other bikes: audible within HEAR metres, fading in over the outer FADE; full level inside REF. */
 const HEAR = 90;
 const FADE = 25;
@@ -73,6 +92,7 @@ type Vel = { vx: number; vy: number; vz: number };
 type Rider = Vec & { id: number; riding: boolean; grounded: boolean; vx: number; vy: number; vz: number };
 
 let bodyWave: PeriodicWave | null = null;
+let noise: AudioBuffer | null = null;
 
 /** One bike's motor: its graph and the followed wheel speed and load. */
 class Motor {
@@ -83,9 +103,14 @@ class Motor {
   private carrier: OscillatorNode;
   private mod: OscillatorNode;
   private inverter: GainNode;
+  /** The motor itself (dips on a shift); the clunks go past it into `out`, which only fades on and off. */
+  private engine: GainNode;
   /** Wheel speed (m/s) the motor turns at; the ground speed while grounded. */
   private wheel = 0;
   private load = 0;
+  private gear = 0;
+  private sinceShift = Infinity;
+  private cutLeft = 0; // s of an upshift's drive cut left
   private on = false;
   private time = 0;
   /** Each motor wobbles differently. */
@@ -106,11 +131,18 @@ class Motor {
       return g;
     };
     this.out = gain(0);
+    this.engine = gain(0);
+    this.engine.connect(this.out);
+    if (!noise) {
+      noise = ctx.createBuffer(1, Math.round(ctx.sampleRate * 0.1), ctx.sampleRate);
+      const d = noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
     this.bodyLp = ctx.createBiquadFilter();
     this.bodyLp.type = 'lowpass';
     this.bodyLp.Q.value = 0.5;
     this.bodyLp.frequency.value = 400;
-    this.bodyLp.connect(gain(0.5)).connect(this.out);
+    this.bodyLp.connect(gain(0.5)).connect(this.engine);
     this.body = [0, BEAT_HZ].map((df) => {
       const o = osc(F_IDLE + df);
       o.setPeriodicWave(bodyWave!);
@@ -123,7 +155,45 @@ class Motor {
     const am = gain(1);
     this.mod.connect(am.gain);
     this.inverter = gain(0);
-    this.carrier.connect(am).connect(this.inverter).connect(this.out);
+    this.carrier.connect(am).connect(this.inverter).connect(this.engine);
+  }
+
+  /** The gearbox: up near the top of a gear, down once well into the one below. Returns the shift (+1, −1, 0). */
+  private shift(throttle: number): number {
+    if (this.sinceShift < SHIFT_GAP) return 0;
+    const g = this.gear;
+    if (g < GEARS.length - 1 && this.wheel > GEARS[g] * (throttle > 0.5 ? UP : UP_COAST)) this.gear++;
+    else if (g > 0 && this.wheel < GEARS[g - 1] * DOWN) this.gear--;
+    else return 0;
+    this.sinceShift = 0;
+    return this.gear - g;
+  }
+
+  /** The clunk of the gear going in: a thump and a click, `level` × MIX. */
+  private clunk(level: number) {
+    const ctx = this.ctx, now = ctx.currentTime;
+    const a = MIX * level * (0.85 + Math.random() * 0.3);
+    const thump = ctx.createOscillator();
+    thump.frequency.setValueAtTime(THUMP_HZ * (0.9 + Math.random() * 0.2), now);
+    thump.frequency.exponentialRampToValueAtTime(THUMP_HZ * 0.6, now + 0.12);
+    const tg = ctx.createGain();
+    tg.gain.setValueAtTime(0, now);
+    tg.gain.linearRampToValueAtTime(a, now + 0.004);
+    tg.gain.setTargetAtTime(0, now + 0.004, 0.035);
+    thump.connect(tg).connect(this.out);
+    thump.start(now);
+    thump.stop(now + 0.3);
+    const click = ctx.createBufferSource();
+    click.buffer = noise;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = CLICK_HZ * (0.85 + Math.random() * 0.3);
+    band.Q.value = 1.5;
+    const cg = ctx.createGain();
+    cg.gain.setValueAtTime(a * 0.8, now);
+    cg.gain.setTargetAtTime(0, now, 0.012);
+    click.connect(band).connect(cg).connect(this.out);
+    click.start(now);
   }
 
   /** `throttle` in [0, 1]; `pitch` scales the frequency (Doppler). */
@@ -132,13 +202,22 @@ class Motor {
     if (!riding || grounded) this.wheel = speed;
     else if (throttle > 0.5) this.wheel = Math.min(AIR_TOP, this.wheel + AIR_SPIN_UP * dt);
     else this.wheel += (speed - this.wheel) * (1 - Math.exp(-dt / AIR_DECAY));
-    this.load += (throttle - this.load) * (1 - Math.exp(-dt / LOAD_TAU));
+    this.sinceShift += dt;
+    const shifted = riding ? this.shift(throttle) : 0;
+    if (!riding) this.gear = 0;
+    if (shifted) this.clunk(shifted > 0 ? CLUNK : CLUNK_DOWN);
+    // An upshift cuts the drive: no load while the clutch is out.
+    this.cutLeft = shifted > 0 ? CUT : Math.max(0, this.cutLeft - dt);
+    const cut = this.cutLeft > 0;
+    this.load += ((cut ? 0 : throttle) - this.load) * (1 - Math.exp(-dt / (cut ? 0.03 : LOAD_TAU)));
 
     const now = this.ctx.currentTime;
     const set = (p: AudioParam, v: number, tau = 0.08) => p.setTargetAtTime(v, now, tau);
     const t = this.time, k = this.seed;
     const x = clamp01(this.wheel / TOP);
-    const f = (F_IDLE + F_PER_MS * this.wheel) * pitch * (1 + 0.004 * wobble(t * 0.9, k));
+    // Revs: through the gear, gliding to the new gear's after a shift (the frequencies' 80 ms ramp).
+    const revs = clamp01(this.wheel / GEARS[this.gear]);
+    const f = (F_IDLE + (F_RED - F_IDLE) * revs) * pitch * (1 + 0.004 * wobble(t * 0.9, k));
 
     set(this.body[0].frequency, f);
     set(this.body[1].frequency, f + BEAT_HZ);
@@ -146,12 +225,12 @@ class Motor {
     set(this.carrier.frequency, CARRIER * pitch);
     // Brighter under load, and the inverter whistle comes up with it (a faint trace when coasting).
     set(this.bodyLp.frequency, f * (2.5 + 2.5 * this.load) + 150);
-    set(this.inverter.gain, 0.12 * (0.15 + 0.85 * this.load) * (0.5 + 0.5 * x) * (1 + 0.25 * wobble(t * 0.6, k + 3)));
+    set(this.inverter.gain, 0.05 * (0.15 + 0.85 * this.load) * (0.5 + 0.5 * x) * (1 + 0.25 * wobble(t * 0.6, k + 3)));
 
-    // Mounting and dismounting fade rather than click.
     const drive = BY_SPEED * x + (1 - BY_SPEED) * this.load;
-    const level = riding ? MIX * (IDLE + (1 - IDLE) * drive) * (1 + 0.06 * wobble(t * 0.5, k + 7)) : 0;
-    set(this.out.gain, level, riding !== this.on ? 0.15 : 0.1);
+    set(this.engine.gain, MIX * (IDLE + (1 - IDLE) * drive) * (cut ? CUT_LEVEL : 1) * (1 + 0.06 * wobble(t * 0.5, k + 7)), cut ? 0.02 : 0.1);
+    // Mounting and dismounting fade rather than click.
+    set(this.out.gain, riding ? 1 : 0, riding !== this.on ? 0.15 : 0.1);
     this.on = riding;
   }
 
