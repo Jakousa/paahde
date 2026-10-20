@@ -3,17 +3,18 @@
 // (server/world.ts). The server keeps the list (server/jetcrash.ts, saved in the world's database) and sends it to everyone;
 // the engines are machine sites like any other (shared/crash.ts, ids "jet:<n>").
 import type { CrashSite } from './crash.ts';
-import { ENGINES, qRot, type Fate, type Q4 } from './jetbreak.ts';
-import { JET_PIECES } from './jetpieces.ts';
+import { ENGINES, PIECES_OF, qRot, type Fate, type JetKind, type Q4 } from './jetbreak.ts';
 
 export interface JetCrash {
   id: number;
   /** The flight it was (shared/jets.ts Jet.id), while that is still in the air list. */
   jet: number;
+  /** Which plane it was (sites saved before there were two are all flying wings). */
+  kind: JetKind;
   /** About the middle of the wreck (for culling). */
   x: number;
   z: number;
-  /** Where each piece (shared/jetpieces.ts, in order) lies: x, y, z and its turn as a quaternion x, y, z, w. */
+  /** Where each piece (shared/jetbreak.ts PIECES_OF[kind], in order) lies: x, y, z and its turn as a quaternion x, y, z, w. */
   pieces: number[][];
   /** What became of each engine (shared/jetbreak.ts ENGINES: left, right): on its wing, torn off whole (a machine to take apart where it lies) or wrecked. */
   fates: Fate[];
@@ -49,7 +50,7 @@ function siteOf(c: JetCrash, k: number): CrashSite | null {
   const id = `jet:${c.id}:${k}`;
   let s = sites.get(id);
   if (!s) {
-    const w = c.pieces[JET_PIECES.findIndex((p) => p.id === ENGINES[k])];
+    const w = c.pieces[PIECES_OF[c.kind].findIndex((p) => p.id === ENGINES[k])];
     const fwd = qRot([w[3], w[4], w[5], w[6]], [0, 0, 1]);
     // (worked in place, never spent: like the lab's machines)
     sites.set(id, (s = { id, wreck: -1, index: k, level: 2, lab: true, x: w[0], z: w[2], yaw: Math.atan2(fwd[0], fwd[2]), kind: 'jet_engine', seed: (c.seed + k * 7919) >>> 0 }));
@@ -76,7 +77,7 @@ export function jetSiteById(id: unknown): CrashSite | null {
 }
 
 // ---- what the players bump into -------------------------------------------------------------------------------------------------
-// Each piece that is solid (shared/jetpieces.ts `hit`) is a few capsules about its pivot (a slab for a wing or a fin: wide in `r`, thin in `hv`),
+// Each piece that is solid (its JetPieceDef's `hit`) is a few capsules about its pivot (a slab for a wing or a fin: wide in `r`, thin in `hv`),
 // carried to where it lies. The rules are
 // shared/crashsites.ts collideCrash's: a top within `stepUp` below the feet is ground, anything taller a wall. A tilted capsule is a horizontal
 // one of the length it covers on the ground, as high as its higher end plus its radius.
@@ -88,7 +89,7 @@ function capsOf(c: JetCrash): Cap[] {
   let out = capCache.get(c.id);
   if (out) return out;
   out = [];
-  JET_PIECES.forEach((d, i) => {
+  PIECES_OF[c.kind].forEach((d, i) => {
     const w = c.pieces[i];
     // (an engine that lies whole is a machine of its own, with its own hitboxes)
     const ei = ENGINES.indexOf(d.id);

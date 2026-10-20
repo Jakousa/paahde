@@ -1,5 +1,6 @@
-// Fixed-wing drones (shared/jets.ts): a big unmanned flying wing (public/models/jet.glb, made by
-// tools/blender/machines/plane.py; a primitive stand-in until it has loaded) with the turbofan's own engines in pods on its back.
+// Fixed-wing drones (shared/jets.ts), of two kinds (LOOKS): a big twin-engined unmanned plane with the turbofan's own engines under its wings
+// (public/models/dronejet.glb, made by tools/blender/machines/dronejet.py) and an unmanned stealth flying wing with them in pods on its back
+// (public/models/jet.glb, tools/blender/machines/plane.py); each a primitive stand-in until its model has loaded.
 // Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and
 // the server clock, rolled into its turns. Shot, it trails smoke (more with each hit); brought down it dives in
 // rolling over on a heavy trail, ploughs in nose first (onCrash) and breaks up, its engines torn off. Jammed
@@ -9,8 +10,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { JET_NOSE, JET_SPAN, jetAt, jetImpact, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { jetCrashList } from '../../shared/jetcrash.ts';
-import { breakup, BREAK_DT, ENGINES, STATE_W, type Breakup, type Fate } from '../../shared/jetbreak.ts';
-import { JET_PIECES } from '../../shared/jetpieces.ts';
+import { breakup, BREAK_DT, ENGINES, PIECES_OF, STATE_W, type Breakup, type Fate, type JetKind } from '../../shared/jetbreak.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { tyreDust } from '../tyreDust';
 import { mergePart } from './bossParts';
@@ -21,9 +21,29 @@ const SHOW_R = 5000;
 /** The wrecks on the sand are drawn within this far (m). */
 const WRECK_SHOW_R = 600;
 
-/** The stand-in built from primitives, shown until jet.glb has loaded (and if it fails): the flying wing's outline as a slab, the centre body's
+/** The drone's stand-in built from primitives, shown until dronejet.glb has loaded (and if it fails): the fuselage, the straight wing and tail
+ *  planes as slabs, the fin and the two engines under the wings, at full size. */
+function dronePrimitive(): THREE.Group {
+  const hull = new THREE.MeshStandardNodeMaterial({ color: 0x3a332d, roughness: 0.55, metalness: 0.5 });
+  const pale = new THREE.MeshStandardNodeMaterial({ color: 0xbdb8a8, roughness: 0.7, metalness: 0.15 });
+  const g = new THREE.Group();
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    g.add(m);
+    return m;
+  };
+  add(new THREE.CapsuleGeometry(1.6, 26, 6, 16), hull, 0, 0, 0).rotation.x = Math.PI / 2;
+  add(new THREE.BoxGeometry(32, 0.4, 3.8), hull, 0, -0.6, 0.6);
+  add(new THREE.BoxGeometry(11, 0.25, 2.4), hull, 0, 1.0, -12.5);
+  add(new THREE.BoxGeometry(0.3, 4.2, 3.2), hull, 0, 2.8, -12.8);
+  for (const side of [1, -1]) add(new THREE.CylinderGeometry(0.95, 0.75, 2.6, 16), pale, side * 5.6, -2.05, 1.6).rotation.x = Math.PI / 2;
+  return g;
+}
+
+/** The flying wing's stand-in built from primitives, shown until jet.glb has loaded (and if it fails): its outline as a slab, the centre body's
  *  hump and the two engine pods on its back, at full size. */
-function primitive(): THREE.Group {
+function wingPrimitive(): THREE.Group {
   const hull = new THREE.MeshStandardNodeMaterial({ color: 0x3a332d, roughness: 0.55, metalness: 0.5 });
   const pale = new THREE.MeshStandardNodeMaterial({ color: 0xbdb8a8, roughness: 0.7, metalness: 0.15 });
   const g = new THREE.Group();
@@ -48,30 +68,55 @@ function primitive(): THREE.Group {
   return g;
 }
 
-/** The span jet.glb is modelled for (m). */
+/** The span both models are made for (m). */
 const MODEL_SPAN = 32;
-/** jet.glb's scene (metres, nose +Z, the left engine's exit at its `Tail` empty), once loaded. */
-let model: THREE.Object3D | null = null;
-/** Planes made while it was still loading: they get the model when it comes in. */
-const pending = new Set<THREE.Group>();
+
+/** One kind of jet as drawn. */
+type Look = {
+  file: string;
+  primitive: () => THREE.Group;
+  /** Hit boxes in the body frame (half sizes and centre, before JET_SPAN scaling). */
+  boxes: { h: THREE.Vector3; c: THREE.Vector3 }[];
+  /** The left engine's exit, where the smoke streams from (body frame; the model's `Tail` empty). */
+  tail: THREE.Vector3;
+  /** The model's scene (metres, nose +Z), once loaded. */
+  model: THREE.Object3D | null;
+  /** Planes made while it was still loading: they get the model when it comes in. */
+  pending: Set<THREE.Group>;
+  proto: THREE.Group | null;
+};
+const look = (file: string, primitive: () => THREE.Group, boxes: [number, number, number, number, number, number][], tail: [number, number, number]): Look => ({
+  file, primitive, boxes: boxes.map(([hx, hy, hz, cx, cy, cz]) => ({ h: new THREE.Vector3(hx, hy, hz), c: new THREE.Vector3(cx, cy, cz) })),
+  tail: new THREE.Vector3(...tail), model: null, pending: new Set(), proto: null,
+});
+const LOOKS: Record<JetKind, Look> = {
+  // boxes (half x, y, z, centre x, y, z): the fuselage, the wings
+  drone: look('./models/dronejet.glb', dronePrimitive, [[1.9, 2.0, 15.4, 0, 0, 0], [16.5, 0.9, 3.8, 0, 0.4, -0.4]], [-5.6, -2.05, 0.2]),
+  // the centre body, the inner wing, the outer wing (the swept part, about its middle chord), the engine pods
+  wing: look('./models/jet.glb', wingPrimitive, [[3.0, 1.5, 8.0, 0, 0.25, 0.5], [9.0, 0.6, 4.6, 0, 0.1, -1.4], [16.0, 0.4, 1.8, 0, 0, -2.7], [5.3, 1.0, 1.5, 0, 1.88, -2.6]], [-4.3, 1.88, -4.05]),
+};
+/** A kind we know how to draw (an unknown one, say from a newer server, is drawn as the flying wing). */
+const lookOf = (kind: JetKind): JetKind => (LOOKS[kind] ? kind : 'wing');
 
 /** The prototype: its clones (one per jet in view) note themselves while the model is still loading. */
 class JetProto extends THREE.Group {
+  look!: Look;
   clone(recursive?: boolean): this {
     const c = super.clone(recursive);
-    if (!model) pending.add(c);
+    c.look = this.look;
+    if (!this.look.model) this.look.pending.add(c);
     return c;
   }
 }
 
-/** The plane whole (flying); the pieces it breaks into (jet.glb's `P_<id>` nodes, shared/jetpieces.ts) are never part of it: they are drawn on their own
- *  (`Debris`) once it has come apart. */
-function setBroken(o: THREE.Object3D, broken: boolean) {
+/** The plane whole (flying); the pieces it breaks into (the model's `P_<id>` nodes, shared/jetbreak.ts PIECES_OF) are never part of it: they are
+ *  drawn on their own (`Debris`) once it has come apart. */
+function setBroken(o: THREE.Object3D, kind: JetKind, broken: boolean) {
   for (const [name, on] of [['Jet_Body', !broken], ['Jet_EngineR', !broken]] as const) {
     const n = o.getObjectByName(name);
     if (n) n.visible = on;
   }
-  for (const d of JET_PIECES) {
+  for (const d of PIECES_OF[kind]) {
     const n = o.getObjectByName(`P_${d.id}`);
     if (n) n.visible = false;
   }
@@ -90,18 +135,21 @@ class Debris {
   ev = 0;
 
   private scene: THREE.Scene;
+  private kind: JetKind;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, kind: JetKind) {
     this.scene = scene;
-    for (const d of JET_PIECES) {
+    this.kind = kind;
+    const model = LOOKS[kind].model!;
+    for (const d of PIECES_OF[kind]) {
       const holder = new THREE.Group();
-      const n = model!.getObjectByName(`P_${d.id}`)?.clone();
+      const n = model.getObjectByName(`P_${d.id}`)?.clone();
       if (n) {
         n.position.set(0, 0, 0);
         n.visible = true;
         this.prep(n, d.id);
         holder.add(n);
-        const x = model!.getObjectByName(`P_${d.id}_x`)?.clone();
+        const x = model.getObjectByName(`P_${d.id}_x`)?.clone();
         if (x) {
           x.position.set(0, 0, 0);
           x.visible = false;
@@ -145,7 +193,7 @@ class Debris {
   rest(pieces: number[][], fates: Fate[]) {
     this.holders.forEach((h, i) => {
       const w = pieces[i];
-      const ei = ENGINES.indexOf(JET_PIECES[i].id);
+      const ei = ENGINES.indexOf(PIECES_OF[this.kind][i].id);
       if (ei >= 0) {
         this.wreck(i, fates[ei] === 'wreck');
         h.userData.machine = fates[ei] === 'machine';
@@ -162,7 +210,7 @@ class Debris {
     const bk = this.bk!;
     const k = Math.min(bk.steps - 1, Math.max(0, t / BREAK_DT)), i0 = Math.floor(k), i1 = Math.min(bk.steps - 1, i0 + 1), f = k - i0;
     this.holders.forEach((h, i) => {
-      const ei = ENGINES.indexOf(JET_PIECES[i].id);
+      const ei = ENGINES.indexOf(PIECES_OF[this.kind][i].id);
       if (ei >= 0) this.wreck(i, bk.fates[ei] === 'wreck' && t >= bk.wrecked[ei]);
       const st = bk.states[i], a = i0 * STATE_W, b = i1 * STATE_W;
       h.position.set(st[a] + (st[b] - st[a]) * f, st[a + 1] + (st[b + 1] - st[a + 1]) * f, st[a + 2] + (st[b + 2] - st[a + 2]) * f);
@@ -180,25 +228,29 @@ class Debris {
   }
 }
 
-function fill(g: THREE.Group) {
+function fill(g: THREE.Group, kind: JetKind) {
   g.clear();
+  const { model, primitive } = LOOKS[kind];
   if (model) {
     const c = model.clone();
-    setBroken(c, false);
+    setBroken(c, kind, false);
     g.add(c);
   } else {
     g.add(primitive());
   }
 }
 
-function build(): THREE.Group {
+/** The prototype of `kind`, its model loading. */
+function build(kind: JetKind): THREE.Group {
+  const lk = LOOKS[kind];
   const g = new JetProto();
+  g.look = lk;
   g.scale.setScalar(JET_SPAN / MODEL_SPAN);
-  fill(g);
-  pending.add(g);
-  new GLTFLoader().loadAsync('./models/jet.glb').then(
+  fill(g, kind);
+  lk.pending.add(g);
+  new GLTFLoader().loadAsync(lk.file).then(
     (gltf) => {
-      if (!gltf.scene.getObjectByName('Jet_Body')) throw new Error('jet.glb has no Jet_Body');
+      if (!gltf.scene.getObjectByName('Jet_Body')) throw new Error(`${lk.file} has no Jet_Body`);
       // every node as one lit mesh (a glTF node comes in one mesh per material, and each is drawn again into each shadow cascade)
       const merged = new THREE.Group();
       for (const node of [...gltf.scene.children]) {
@@ -208,37 +260,26 @@ function build(): THREE.Group {
         m.position.copy(node.position);
         merged.add(m);
       }
-      model = merged;
-      for (const p of pending) fill(p);
-      pending.clear();
+      lk.model = merged;
+      for (const p of lk.pending) fill(p, kind);
+      lk.pending.clear();
     },
     (e) => {
-      pending.clear();
-      console.warn('jets: model failed, using primitives', e);
+      lk.pending.clear();
+      console.warn(`jets: ${lk.file} failed, using primitives`, e);
     },
   );
   return g;
 }
 
-type View = { obj: THREE.Object3D; hurt: number; state: number; smoke: number; deb: Debris | null };
+type View = { obj: THREE.Object3D; kind: JetKind; hurt: number; state: number; smoke: number; deb: Debris | null };
 
-/** Hit boxes in the body frame (half sizes and centre, before JET_SPAN scaling): the centre body, the inner wing, the outer wing (the swept
- *  part, about its middle chord), the engine pods. */
-const BOXES = [
-  { h: new THREE.Vector3(3.0, 1.5, 8.0), c: new THREE.Vector3(0, 0.25, 0.5) },
-  { h: new THREE.Vector3(9.0, 0.6, 4.6), c: new THREE.Vector3(0, 0.1, -1.4) },
-  { h: new THREE.Vector3(16.0, 0.4, 1.8), c: new THREE.Vector3(0, 0, -2.7) },
-  { h: new THREE.Vector3(5.3, 1.0, 1.5), c: new THREE.Vector3(0, 1.88, -2.6) },
-];
-/** The left engine's exit, where the smoke streams from (body frame; jet.glb's `Tail` empty). */
-const TAIL = new THREE.Vector3(-4.3, 1.88, -4.05);
 const _inv = new THREE.Matrix4(), _o = new THREE.Vector3(), _d = new THREE.Vector3(), _t = new THREE.Vector3();
 
 export class Jets {
   private views = new Map<number, View>();
   private wreckViews = new Map<number, Debris>();
   private pose: JetPose = jetPose();
-  private proto: THREE.Group | null = null;
   private scene: THREE.Scene;
   /** A shot hit a jet at (x, y, z) (each one counts: the JET_HP-th brings it down). */
   onHit: (x: number, y: number, z: number) => void = () => {};
@@ -267,12 +308,12 @@ export class Jets {
       seen.add(j.id);
       let v = this.views.get(j.id);
       if (!v) {
-        this.proto ??= build();
-        const obj = this.proto.clone();
+        const kind = lookOf(j.kind);
+        const obj = (LOOKS[kind].proto ??= build(kind)).clone();
         obj.rotation.order = 'YXZ';
         this.scene.add(obj);
         // Came into view already hit or down: don't replay it.
-        this.views.set(j.id, (v = { obj, hurt: j.hurt, state: p.state, smoke: 0, deb: null }));
+        this.views.set(j.id, (v = { obj, kind, hurt: j.hurt, state: p.state, smoke: 0, deb: null }));
       }
       const o = v.obj;
       o.position.set(p.x, p.y, p.z);
@@ -288,7 +329,8 @@ export class Jets {
       const soft = !!j.down?.soft;
       if (p.state === 2 && v.state === 1) {
         _t.set(0, 0, 1).transformDirection(o.matrixWorld);
-        this.onCrash(p.x + _t.x * JET_NOSE * 0.8, p.y + _t.y * JET_NOSE * 0.8, p.z + _t.z * JET_NOSE * 0.8, _t.x, _t.y, _t.z);
+        const nose = JET_NOSE[v.kind] * 0.8;
+        this.onCrash(p.x + _t.x * nose, p.y + _t.y * nose, p.z + _t.z * nose, _t.x, _t.y, _t.z);
       }
       v.state = p.state;
       if (p.state === 2) {
@@ -301,7 +343,7 @@ export class Jets {
       // has no fire: a thin trail off the rolling tail (so it reads from far off), a lighter smoulder once down.
       const rate = soft ? (p.state === 2 ? 3 : p.state === 1 ? 14 + j.hurt * 10 : j.hurt * 10) : p.state === 2 ? 6 : p.state === 1 ? 40 : j.hurt * 10;
       v.smoke += dt * rate;
-      if (v.smoke >= 1) _t.copy(TAIL).applyMatrix4(o.matrixWorld);
+      if (v.smoke >= 1) _t.copy(LOOKS[v.kind].tail).applyMatrix4(o.matrixWorld);
       for (; v.smoke >= 1; v.smoke--) zaps.puff(_t.x, _t.y, _t.z, p.state === 1 ? 4 : 2 + j.hurt, 0.5);
     }
     for (const [id, v] of this.views) {
@@ -315,10 +357,10 @@ export class Jets {
 
   /** The broken plane `t` ms into the flight list's clock: the pieces from the simulation started at the impact, smoke off the wreck, sand thrown up where they land. */
   private pieces(j: Jet, v: View, t: number, dt: number) {
-    if (!model) return;
+    if (!LOOKS[v.kind].model) return;
     if (!v.deb) {
-      v.deb = new Debris(this.scene);
-      v.deb.bk = breakup(jetImpact(j), j.id);
+      v.deb = new Debris(this.scene, v.kind);
+      v.deb.bk = breakup(jetImpact(j), j.id, v.kind);
       const since = Math.max(0, (t - j.down!.land) / 1000);
       while (v.deb.ev < v.deb.bk.events.length && v.deb.bk.events[v.deb.ev].t < since - 0.05) v.deb.ev++; // (came into view late: no replay)
     }
@@ -350,13 +392,14 @@ export class Jets {
     for (const c of list) {
       const near = Math.hypot(c.x - eye.x, c.z - eye.z) < WRECK_SHOW_R;
       let o = this.wreckViews.get(c.id);
-      if (near) this.proto ??= build(); // (starts the model loading)
-      if (!near || !model) {
+      const kind = lookOf(c.kind);
+      if (near) LOOKS[kind].proto ??= build(kind); // (starts the model loading)
+      if (!near || !LOOKS[kind].model) {
         if (o) o.holders.forEach((h) => (h.visible = false));
         continue;
       }
       if (!o) {
-        o = new Debris(this.scene);
+        o = new Debris(this.scene, kind);
         o.rest(c.pieces, c.fates);
         this.wreckViews.set(c.id, o);
       }
@@ -380,7 +423,7 @@ export class Jets {
       _inv.copy(v.obj.matrixWorld).invert();
       _o.copy(o).applyMatrix4(_inv);
       _d.copy(o).add(d).applyMatrix4(_inv).sub(_o);
-      for (const b of BOXES) {
+      for (const b of LOOKS[v.kind].boxes) {
         let lo = 0, hi = max;
         for (const ax of ['x', 'y', 'z'] as const) {
           const a = (b.c[ax] - b.h[ax] - _o[ax]) / _d[ax], c = (b.c[ax] + b.h[ax] - _o[ax]) / _d[ax];

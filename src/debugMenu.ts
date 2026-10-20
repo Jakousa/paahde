@@ -5,7 +5,7 @@
 // "Storm front" rolls a mega-storm front in over everyone (30 s to the first of them); "Poison gas" creeps gas in over
 // everyone the same way (shared/gas.ts), by day too.
 // "Guardian here" / "Drone here" bring the nearest guardian, or a drone (by day too), to you, for everyone; "Jet here"
-// sends a fixed-wing drone over you; "Crawlers here" sets a pack of crawlers on you.
+// sends a jet over you (the drone and the flying wing take turns); "Crawlers here" sets a pack of crawlers on you.
 // "Tone" switches the tone curve live (post.ts toneControl); "white" is the filmic curve's white point.
 // "Trophies" shows the boss trophies at the base (src/world/trophies.ts) for the kinds beaten, all or none (local
 // view, looks only: walking into them still follows the kinds beaten).
@@ -61,7 +61,7 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu) { visibility: hidden !impor
 <button id="dbgGas" title="Poison gas creeping in over everyone, 30 s to the first player (by day too)">Poison gas</button></div>
 <div class="row"><button id="dbgGuardian" title="The nearest guardian, brought 90 m from you (for everyone)">Guardian here</button>
 <button id="dbgDrone" title="A searchlight drone over you for a minute, even by day (for everyone)">Drone here</button>
-<button id="dbgJet" title="A fixed-wing drone flying over you in about 15 s (for everyone)">Jet here</button>
+<button id="dbgJet" title="A jet flying over you in about 15 s (for everyone; the drone and the flying wing take turns)">Jet here</button>
 <button id="dbgHarvester" title="A harvester crawling past 50 m away in about a minute (for everyone)">Harvester here</button>
 <button id="dbgCrawlers" title="A pack of six crawlers 30 m off, coming for you (for everyone)">Crawlers here</button></div>
 <div class="row">${BOSS_KINDS.map((k) => `<button data-boss="${k}" title="The ${k} boss near you for ten minutes (for everyone)">${BOSSES[k].label}</button>`).join('')}</div>

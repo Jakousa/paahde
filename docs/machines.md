@@ -15,8 +15,9 @@ are taken apart in the disassembly mode, then grow the world around them: scrap 
   generated `shared/machines/turbofan.ts`): shells that need a grinder then prying, rotor modules, accessories on a gearbox, cables with plugs,
   hardware kit (`tools/blender/machines/hardware.py` -> `hardware.glb`: real screws, bolts, latches, clamps, pins), pushing/rolling the
   engine, picking up and turning pieces that come off, scrap per step, rotors / fuel manifold / turbine disc as collectable parts.
-- Done, not yet marked good: **downed jets**: the plane, a flying wing with two turbofan pods on its back (`tools/blender/machines/plane.py` -> `public/models/jet.glb` +
-  generated `shared/jetpieces.ts`), the break-up simulation (`shared/jetbreak.ts`), permanent crash sites (`shared/jetcrash.ts`,
+- Done, not yet marked good: **downed jets**: two planes (`JetKind`), both with the turbofan's engines: the fixed-wing drone, a twin-engined plane with
+  them under its wings (`tools/blender/machines/dronejet.py` -> `public/models/dronejet.glb` + generated `shared/dronejetpieces.ts`), and the
+  flying wing with them in pods on its back (`tools/blender/machines/plane.py` -> `public/models/jet.glb` + generated `shared/jetpieces.ts`), the break-up simulation (`shared/jetbreak.ts`), permanent crash sites (`shared/jetcrash.ts`,
   `server/jetcrash.ts`), engines that tear off, may be wrecked, otherwise lie as machines to take apart.
 - Not done (suggested order, see section 9): findability of jet wrecks, uses for the rotor parts, the shell turning into scrap, terrain hollow for
   normal crash sites, pieces as inventory items, the other machines one by one (section 8), structures, boss wrecks.
