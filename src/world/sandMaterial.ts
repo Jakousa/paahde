@@ -216,6 +216,8 @@ function filteredSlope(s: F, fw: F, a: number): F {
 /** Small ripples: wavelength (m) and the share of a cycle the gentle stoss side takes (the crest is at that phase). */
 const RIPPLE_LENGTH = 0.11;
 const RIPPLE_STOSS = 0.66;
+/** Phases the far (unresolved) ripple shadow is averaged over. */
+const MEAN_PHASES = 8;
 
 /**
  * Sunlight left on the small ripples (0..1), from their own profile: walking from the point towards the sun along the ripple axis,
@@ -227,18 +229,25 @@ function rippleSun(s: SandSurface, l: V3): F {
   const lAlong = dot(l.xz, s.rippleDir);
   const up = max(dot(l, s.n0), 1e-3);
   const tanE = up.div(max(abs(lAlong), 1e-3)); // the sun's rise per metre along the ripple axis
-  const f = fract(s.ripplePhase);
-  const [h] = rippleProfile(s.ripplePhase, RIPPLE_STOSS);
-  const toCrest = select(lAlong.greaterThan(0), fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
   const height = sand.rippleHeight.mul(s.rippleAmp);
-  const gap = height.mul(float(1).sub(h));
+  const toSun = lAlong.greaterThan(0);
+  // lit (0..1) at phase `f` (0..1 in the cycle) with an edge `pen` wide
+  const litAt = (f: F, pen: F): F => {
+    const [h] = rippleProfile(f, RIPPLE_STOSS);
+    const toCrest = select(toSun, fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
+    const gap = height.mul(float(1).sub(h));
+    // (+ pen: on the crest itself toCrest and gap are both 0; without it the crest drew a thin half-shadowed line)
+    return smoothstep(pen.negate(), pen, toCrest.mul(tanE).sub(gap).add(pen));
+  };
+  const crisp = sand.rippleHeight.mul(0.12);
   // the edge widens with the pixel's footprint (in height along the sun ray), so far shadows soften instead of breaking into dashes
   const foot = fwidth(s.ripplePhase).mul(RIPPLE_LENGTH);
-  const pen = max(sand.rippleHeight.mul(0.12), foot.mul(tanE.add(height.mul(6 / RIPPLE_LENGTH))).mul(0.5));
-  // (+ pen: on the crest itself toCrest and gap are both 0; without it the crest drew a thin half-shadowed line)
-  const sharp = smoothstep(pen.negate(), pen, toCrest.mul(tanE).sub(gap).add(pen));
-  // on average: the shadow behind a crest is height/tanθ long, out of a wavelength (a little less: the profile is rounded)
-  const mean = float(1).sub(saturate(height.mul(0.75).div(tanE.mul(RIPPLE_LENGTH))));
+  const sharp = litAt(fract(s.ripplePhase), max(crisp, foot.mul(tanE.add(height.mul(6 / RIPPLE_LENGTH))).mul(0.5)));
+  // Unresolved, the same test averaged over the cycle (eight phases), so the far look is exactly what the near one averages to: an
+  // estimate here darkened far ripple fields into blotches that faded as you walked up to them.
+  let sum: F = float(0);
+  for (let k = 0; k < MEAN_PHASES; k++) sum = sum.add(litAt(float((k + 0.5) / MEAN_PHASES), crisp)) as F;
+  const mean = sum.div(MEAN_PHASES);
   return float(1).sub(s.rippleField.mul(float(1).sub(mix(mean, sharp, s.rippleRes))));
 }
 
