@@ -44,6 +44,7 @@ import { Telemetry } from './telemetry';
 export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' | 'siteRolls' }>;
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
+import type { Gas } from '../shared/gas.ts';
 import { F_STRIDE } from '../shared/guardians.ts';
 import type { Jet } from '../shared/jets.ts';
 import type { Harvester } from '../shared/harvester.ts';
@@ -180,6 +181,8 @@ export class Net {
   onNotice?: (text: string) => void;
   /** Sandstorms announced and not over yet (shared/storm.ts), times on the server clock. */
   storms: Storm[] = [];
+  /** Poison gas clouds out (shared/gas.ts), times on the server clock. */
+  gas: Gas[] = [];
   /** Fixed-wing drone flights in the air (shared/jets.ts), times on the server clock. */
   jets: Jet[] = [];
   /** Harvesters out (shared/harvester.ts), times on the server clock. */
@@ -544,9 +547,10 @@ export class Net {
     this.send({ t: 'summon', what });
   }
 
-  /** Debug menu: a sandstorm where we stand, for everyone; `front`: a mega-storm front over everyone at once. */
-  summonStorm(front = false) {
-    this.send({ t: 'storm', ...(front ? { front } : {}) });
+  /** Debug menu: a sandstorm where we stand, for everyone; `front`: a mega-storm front over everyone at once; 'gas':
+   *  poison gas creeping in over everyone. */
+  summonStorm(front: boolean | 'gas' = false) {
+    this.send({ t: 'storm', ...(front === 'gas' ? { gas: true } : front ? { front } : {}) });
   }
 
   /** Debug menu: put the shared clock back to real time. */
@@ -701,6 +705,7 @@ export class Net {
     if (msg.t === 'tended') return this.onTended?.(msg.what);
     if (msg.t === 'storms') {
       this.storms = msg.storms;
+      this.gas = msg.gas ?? [];
       return;
     }
     if (msg.t === 'jets') {

@@ -5,6 +5,7 @@ import type { Loot } from './loot.ts';
 import type { Corpse } from './corpse.ts';
 import type { MissilePath } from './missiles.ts';
 import type { Storm } from './storm.ts';
+import type { Gas } from './gas.ts';
 import type { Jet } from './jets.ts';
 import type { JetCrash } from './jetcrash.ts';
 import type { Harvester } from './harvester.ts';
@@ -51,8 +52,9 @@ export type ClientMsg =
   | { t: 'hands'; hands: Hands; slot?: number; aim?: boolean }
   // Stall tracing (src/telemetry.ts → server/telemetry.ts): stalls seen since the last one, and a summary a minute.
   | { t: 'telemetry'; ev: StallEvent[]; sum?: NetSummary }
-  // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning; `front`: a mega-storm front at once.
-  | { t: 'storm'; front?: boolean }
+  // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning; `front`: a mega-storm front at once;
+  // `gas`: poison gas (shared/gas.ts) creeping in at once, by day too.
+  | { t: 'storm'; front?: boolean; gas?: boolean }
   // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
   // to box `to` slot ti (ti -1: anywhere in it). Boxes: 'bag', 'bike', 'chest<i>'. The server checks
   // you can open both, applies moveItem() and answers with 'items' for each box that changed.
@@ -263,9 +265,9 @@ export type ServerMsg =
   /** `bolt`: the guardian's bolt ('shot' id) that killed, which the client draws reaching you before you fall. */
   | { t: 'died'; cause: DeathCause; push?: [number, number, number]; bolt?: number }
   | { t: 'respawn' }
-  // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time).
-  // Sent before 'welcome' on join and to everyone whenever the list changes.
-  | { t: 'storms'; storms: Storm[] }
+  // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time), and every
+  // poison gas cloud out (shared/gas.ts). Sent before 'welcome' on join and to everyone whenever a list changes.
+  | { t: 'storms'; storms: Storm[]; gas: Gas[] }
   // Every fixed-wing drone flight in the air (shared/jets.ts; times on the server clock). Like 'storms': before
   // 'welcome' on join and to everyone whenever the list changes.
   | { t: 'jets'; jets: Jet[] }
@@ -322,4 +324,4 @@ export type ServerMsg =
   // `a`: any numbers it goes with), to everyone within BOSS_SEND_R.
   | { t: 'bossFx'; id: number; e: string; time: number; x: number; y: number; z: number; a?: number[] };
 
-export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen' | 'harvester' | 'storm';
+export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen' | 'harvester' | 'storm' | 'gas';

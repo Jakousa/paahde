@@ -1719,3 +1719,39 @@ The first harvester read as a tank with a turret; it's now a pure juggernaut, an
   behind the throat). The maw is lower (the hood's underside at 9.6 m, was 11.2) and 3 m deeper (the throat wall at
   z 18.2), ribbed inside; the drum sits lower so its teeth bite just under the sand; the cores moved down and back
   with the throat (y 6.8, z 19.3) and are still in plain view from in front.
+
+## Poison gas (night weather)
+
+A third kind of weather, only at night (to balance the daytime heat): a heavy yellow-green pollution cloud creeping in
+low over the land (`shared/gas.ts`, scheduled by `server/storm.ts`, client `src/gas.ts`, drawn in `src/post.ts`).
+
+- **Coming:** like a storm front it appears 30 s from the nearest player (`GAS_LEAD_S`), here from a random side, and
+  creeps at 9 m/s (`GAS_SPEED`: faster than walking, slower than a slide or a bike). It is 990 m deep (110 s over a
+  spot that stays put) and sinks away 20 s after its back has passed the furthest player.
+- **Height:** behind its leading edge it rises from the ground over 25 s (`GAS_RISE_S`) to 7 m (`GAS_DEPTH`) over the
+  dune floor: the corridors between dunes (`duneFloor`, shared/dunes.ts: the erg undulation and the mud flats' sink,
+  under every crest). Small dunes (≤ 3.5 m) are under it; big dunes, rocks and cliffs stand out of it. Out to ±2 km 27%
+  of random spots are already above it and 95% are within 120 m of ground that is (median 20 m); out on the mud flats ~7%
+  are over 250 m from any, so the flats are where it kills.
+- **Bunkers are traps:** in the base or a shelter it has seeped in as soon as it lies outside a metre deep
+  (`gasExposure`), and the post pass fills the rooms.
+- **Choking:** with your head in it you choke (`GAS_S` = 10 s kills, wears off at half that rate; the server's
+  `gassed` tally, server/world.ts, death `'gas'`, "choked on the poison gas"; the shield plate doesn't help, the body
+  just slumps). The client mirrors the tally: the whole view dims, a dark sick green closes in from the edges, black
+  at death (`gassed`, post.ts). After a respawn the gas doesn't count for 25 s (`GAS_GRACE_S`). Without it, a player
+  respawning in a gassed base would die over and over and use up the world's lives.
+- **Not a storm:** it doesn't touch electronics (tools work, no static), doesn't push, doesn't seize machines or
+  ground drones, and the storm detector doesn't hear it. You see it (a green band under the rocks on the horizon, a
+  green sea in the hollows from a crest), hear a low breathing hiss as it nears (filtered noise, about −31.5 LUFS at
+  full volume, measured with ffmpeg ebur128 on the same chain), and the character speaks when it's under 20 s away
+  (worded for being in a bunker) and when choking.
+- **Look:** marched like the front's slab (8 steps) but bounded above by its surface: the floor as a plane through the
+  floor under the camera (`gasEnv`, the erg varies over ~1.6 km so this is good to a few metres at 300 m), plus its
+  depth along its path, billowed by slow noise. ~30 m to see inside it (`GAS_THICK`), with a faint glow of its own so
+  it reads at night.
+- **Balance** (server/storm.ts): gas every 60–110 min (the first 25–110 min in), and only when at least 5 real minutes
+  of night are left; if it's due by day it waits for the next night. That's about one night in three or four. Fronts
+  and gas keep 20 min clear of each other's end (`BIG_GAP_MS`), neither comes while a boss is out (retries in 3 min),
+  and no sandstorm column starts while either is out.
+- **Debug:** F3 → *Poison gas* creeps one in over everyone at once, by day too. `?debug` exposes `dbg.gas` and `dbg.fly`
+  (the fly camera: `dbg.fly.pos.set(...)` to look at it from outside).

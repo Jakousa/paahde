@@ -38,6 +38,9 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/storm.ts` — local sandstorms (path, strength, warning) and rare world-wide storm fronts (mega-storms: choke
   you in the open, `sheltered` = bunker or lee of rock; death tally in server/world.ts); scheduled by `server/storm.ts`, heat in
   `server/water.ts`, beep/banner/locator in `src/storm.ts`, dust columns and the front's wall in `src/post.ts`
+- `shared/gas.ts` — poison gas (night weather, scheduled with the storms in `server/storm.ts`): a low cloud creeping
+  in, rising to `GAS_DEPTH` over the dune floor (`duneFloor`, shared/dunes.ts), so climb a big dune or rock; it fills
+  bunkers; chokes in `GAS_S` (`gassed` in server/world.ts); no effect on electronics. Client `src/gas.ts`, drawn in `src/post.ts`
 - `shared/base.ts` — home base (underground bunker) layout + collision; terrain is its roof, with holes
   (`TERRAIN_HOLES`) over the entrance and skylight. `shared/garden.ts` — plant beds (stages, look target),
   owned by `server/garden.ts`; beds are placed things (`shared/placed.ts`, `server/placed.ts`: items put down on

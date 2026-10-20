@@ -67,6 +67,7 @@ import { PERF_RUN, perf } from './perf';
 import { statsPref } from './options';
 import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
+import { GasFx } from './gas';
 import { Speech } from './speech';
 import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
@@ -171,6 +172,7 @@ await slice();
 const engineSound = new EngineSound();
 await slice();
 const storm = new StormFx();
+const gas = new GasFx();
 await slice();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
 await slice();
@@ -189,7 +191,7 @@ machines.bench.indoors = (root) => base.lightIndoors(root);
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
   const crash = coreCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, mast, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx, bossFx } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, mast, wind, blownSand, dust, windSound, storm, gas, fly, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx, bossFx } });
 }
 
 const net = new Net(getBrowserId());
@@ -493,7 +495,10 @@ renderer.setAnimationLoop((time) => {
   else focus.copy(me.root.position);
   if (orbit.down !== (net.down !== null)) {
     document.body.classList.toggle('down', (orbit.down = net.down !== null));
-    if (!orbit.down) speech.event('respawn', undefined);
+    if (!orbit.down) {
+      speech.event('respawn', undefined);
+      gas.respawned();
+    }
   }
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
   const hands = !s.riding && !net.down && !fly.active; // the tools work
@@ -528,6 +533,7 @@ renderer.setAnimationLoop((time) => {
   // Before the wind: the storm sets how hard it blows here.
   const belt = equipped(net.boxes.equip, 'belt');
   storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me, belt ? stormWarnS(quality(belt)) : 0, survival.dead || net.down !== null);
+  gas.update(frameDt, net.gas, net.serverTime(), orbit.camera.position, net.me, survival.dead || net.down !== null);
   // The locator comes with the wrist computer; a better one shows players further away (the base always).
   const wrist = equipped(net.boxes.equip, 'wrist');
   const range = wrist ? locatorRange(quality(wrist)) : 0;
@@ -661,7 +667,7 @@ baseSand.update(frameDt, storm.atBase);
   const m = net.me;
   speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(m.x, m.y, m.z), shelter: inShelter(m.x, m.y, m.z),
     atPump: atWater(m.x, m.y, m.z), mudflat: mudflat(m.x, m.z) > 0.7, heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
-    storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, riding: s.riding, combat: guardianFx.combat, boss: bossFx.combat,
+    storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, gasComing: gas.coming, gassed: gas.gassing, riding: s.riding, combat: guardianFx.combat, boss: bossFx.combat,
     bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null });
   if ((find?.id ?? null) !== seenFind) {
     seenFind = find?.id ?? null;

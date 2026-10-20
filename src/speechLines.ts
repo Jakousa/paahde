@@ -40,6 +40,9 @@ export type SpeechState = {
   frontComing: boolean;
   choking: boolean;
   lee: boolean;
+  /** Poison gas about to reach us (out in the open or in a bunker); breathing it. */
+  gasComing: boolean;
+  gassed: boolean;
   /** On the motorcycle. */
   riding: boolean;
   /** Walkers or drones after us; a boss close by. */
@@ -153,6 +156,11 @@ export const LINES: Line[] = [
   { id: 'stormFront', on: 'tick', when: (s) => !s.dead && s.frontComing, say: TEXT.speech.stormFront, again: 10 * MIN },
   { id: 'choking', on: 'tick', when: (s) => !s.dead && s.choking, say: TEXT.speech.choking, again: MIN },
   { id: 'lee', on: 'tick', when: (s) => !s.dead && s.lee, say: TEXT.speech.lee, again: 20 * MIN },
+
+  // Poison gas.
+  { id: 'gasComing', on: 'tick', when: (s) => !s.dead && s.gasComing && s.indoors, say: TEXT.speech.gasIndoors, again: 10 * MIN },
+  { id: 'gasComing', on: 'tick', when: (s) => !s.dead && s.gasComing, say: TEXT.speech.gasComing, again: 10 * MIN },
+  { id: 'gassed', on: 'tick', when: (s) => !s.dead && s.gassed, say: TEXT.speech.gassed, again: MIN },
 
   // Things that want us dead.
   { id: 'boss', on: 'tick', when: (s) => !s.dead && s.boss, say: TEXT.speech.boss },

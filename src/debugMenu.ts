@@ -2,7 +2,8 @@
 // Time of day: a slider that holds the sky at that time (local view only), or, with "Apply to all players",
 // moves the shared server clock for everyone, production included. "Sandstorm here" summons one on you
 // (for everyone, after the usual warning); "Local sandstorm" sends one at you from just upwind at once, seen only by you;
-// "Storm front" rolls a mega-storm front in over everyone (30 s to the first of them).
+// "Storm front" rolls a mega-storm front in over everyone (30 s to the first of them); "Poison gas" creeps gas in over
+// everyone the same way (shared/gas.ts), by day too.
 // "Guardian here" / "Drone here" bring the nearest guardian, or a drone (by day too), to you, for everyone; "Jet here"
 // sends a fixed-wing drone over you; "Crawlers here" sets a pack of crawlers on you.
 // "Tone" switches the tone curve live (post.ts toneControl); "white" is the filmic curve's white point.
@@ -26,7 +27,7 @@ export class DebugMenu {
   private panel = document.createElement('div');
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
-  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: (front?: boolean) => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | 'harvester' | BossKind) => void,
+  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: (front?: boolean | 'gas') => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | 'harvester' | BossKind) => void,
     showTrophies: (mode: TrophyShow) => void, resetYard: (all: boolean) => void = () => {}, noHeat: (off: boolean) => void = () => {}, noWeather: (off: boolean) => void = () => {},
     fly: FlyCam, startFly: () => void) {
     const style = document.createElement('style');
@@ -56,7 +57,8 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu) { visibility: hidden !impor
 <div class="row"></div>
 <div class="row"><button id="dbgStorm" title="A sandstorm on you, for everyone, after the 20 s warning">Sandstorm here</button>
 <button id="dbgLocalStorm" title="A sandstorm rolling in from upwind right now, only you see it (no heat)">Local sandstorm</button>
-<button id="dbgFront" title="A mega-storm front rolling in over everyone, 30 s to the first player">Storm front</button></div>
+<button id="dbgFront" title="A mega-storm front rolling in over everyone, 30 s to the first player">Storm front</button>
+<button id="dbgGas" title="Poison gas creeping in over everyone, 30 s to the first player (by day too)">Poison gas</button></div>
 <div class="row"><button id="dbgGuardian" title="The nearest guardian, brought 90 m from you (for everyone)">Guardian here</button>
 <button id="dbgDrone" title="A searchlight drone over you for a minute, even by day (for everyone)">Drone here</button>
 <button id="dbgJet" title="A fixed-wing drone flying over you in about 15 s (for everyone)">Jet here</button>
@@ -85,6 +87,7 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu) { visibility: hidden !impor
     const row = p.querySelector<HTMLElement>('.row')!;
     p.querySelector('#dbgStorm')!.addEventListener('click', () => summonStorm());
     p.querySelector('#dbgFront')!.addEventListener('click', () => summonStorm(true));
+    p.querySelector('#dbgGas')!.addEventListener('click', () => summonStorm('gas'));
     p.querySelector('#dbgLocalStorm')!.addEventListener('click', summonLocalStorm);
     for (const b of p.querySelectorAll<HTMLElement>('[data-gear]')) b.addEventListener('click', () => giveGear(Number(b.dataset.gear)));
     p.querySelector('#dbgHit')!.addEventListener('click', hit);

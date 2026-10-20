@@ -56,7 +56,8 @@ import { BUNKER_SPAWN } from '../shared/base.ts';
 import { blastPush, DOWN_MS } from '../shared/ragdoll.ts';
 import { WIND } from '../shared/dunes.ts';
 import { CHOKE_RECOVER, CHOKE_S, frontExposure, stormAt, stormDrag, toolsDown } from '../shared/storm.ts';
-import { sunElevation, timeOfDayAt } from '../shared/sun.ts';
+import { GAS_GRACE_S, GAS_RECOVER, GAS_S, gasExposure } from '../shared/gas.ts';
+import { timeOfDayAt } from '../shared/sun.ts';
 import { setTrophies } from '../shared/trophies.ts';
 import { LIVES, WORLD_ID } from '../shared/world.ts';
 import { TEXT } from '../shared/text.ts';
@@ -119,6 +120,7 @@ type Player = {
   input: number; // last input bitmask (0 while idle), for sprint drain
   heat: Heat; // server/water.ts
   choke: number; // seconds of a mega-storm breathed out in the open (shared/storm.ts frontExposure); CHOKE_S kills
+  gassed: number; // seconds of poison gas breathed (shared/gas.ts gasExposure); GAS_S kills
   lastTend: { at: number };
   ws: WebSocket;
   alive: boolean;
@@ -187,6 +189,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'unplace' && p) return onUnplace(p, msg.id);
     if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
+    if (msg.t === 'storm' && p && msg.gas) return storms.spawnGas([...players.values()].map((o) => o.state), performance.now());
     if (msg.t === 'storm' && p && msg.front) return storms.spawnFront([...players.values()].map((o) => o.state), performance.now());
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
     if (msg.t === 'summon' && msg.what === 'jet' && p) return jets.spawn(p.state.x, p.state.z, 0, performance.now(), true);
@@ -283,7 +286,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, lastPickup: { at: 0 }, lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: '', ready: false, jam: null,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, gassed: 0, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: '', ready: false, jam: null,
   };
   players.set(ws, p);
   save(p);
@@ -384,15 +387,21 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const choking = frontExposure(storms.storms, p.state.x, p.state.y, p.state.z, serverNow);
   p.choke = Math.max(0, p.choke + (choking > 0 ? choking : -CHOKE_RECOVER) * dt);
   if (p.choke >= CHOKE_S && !p.down) die(p, 'storm', [WIND.x * 4, 1, WIND.z * 4]); // bowled over downwind
+  // With your head in poison gas (in a bunker too) you choke; out of it, it wears off. Not just after respawning.
+  const grace = Date.now() - p.heat.diedAt < DOWN_MS + GAS_GRACE_S * 1000;
+  const gassed = grace ? 0 : gasExposure(storms.gas, p.state.x, p.state.y, p.state.z, serverNow);
+  p.gassed = Math.max(0, p.gassed + (gassed > 0 ? gassed : -GAS_RECOVER) * dt);
+  if (p.gassed >= GAS_S && !p.down) die(p, 'gas'); // slumps where they stand
 }
 
 /** Drop where they stand (off the bike, stopped) for DOWN_MS, as a ragdoll thrown by `push`; then respawn().
  *  `bolt`: the guardian's bolt that did it, which the client lets reach them first. */
 function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 0, 0], bolt?: number) {
   if (p.down || !p.ready || lives <= 0) return;
-  if (cause !== 'heat' && cause !== 'storm' && shielded(p, push)) return;
+  if (cause !== 'heat' && cause !== 'storm' && cause !== 'gas' && shielded(p, push)) return;
   p.down = { until: Date.now() + DOWN_MS, push };
   p.choke = 0;
+  p.gassed = 0;
   p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, mounting: 0, sliding: false, crouching: false };
   revive(p.heat, Date.now());
   send(p.ws, { t: 'died', cause, push, ...(bolt !== undefined ? { bolt } : {}) });
@@ -1034,7 +1043,7 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   // (The lab has no storms and no jets.)
-  const weather = LAB ? null : storms.tick(time, [...players.values()].map((p) => p.state), sunElevation(timeOfDayAt(time + epoch)) < 0,
+  const weather = LAB ? null : storms.tick(time, [...players.values()].map((p) => p.state), timeOfDayAt(time + epoch),
     BOSS_KINDS.some((k) => bosses.alive(k)));
   const flights = LAB ? null : jets.tick(time, [...players.values()].map((p) => p.state));
   const crashed: ServerMsg[] = [];

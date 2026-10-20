@@ -219,6 +219,7 @@ const en = {
     queen: 'killed by the queen',
     harvester: 'ground into the sand by a harvester',
     storm: 'choked in the storm front',
+    gas: 'choked on the poison gas',
   },
 
   // ---- Esc menu, controls, landing page, name ----------------------------------------------------------------------
@@ -480,6 +481,10 @@ const en = {
     stormFront: ["That's a wall of sand. I need rock between me and it.", 'Oh hell, here it comes. I need a cliff or a bunker, right now.'],
     choking: ["Shit, I can't breathe out here!", 'I have to get out of this wind!'],
     lee: 'The rock is taking the worst of it.',
+    /** Poison gas (shared/gas.ts) creeping in at night: out in the open, in a bunker (it fills them), and in it. */
+    gasComing: ["Something's creeping in along the ground. I want to be up high.", 'What is that stink? Better find some high ground.'],
+    gasIndoors: "Something's seeping in down here. I have to get out and up.",
+    gassed: ["Shit, I can't breathe this! Up, get up!", 'My eyes are burning. Higher, I need to get higher!'],
     boss: 'Oh no. Oh, shit.',
     combat: "Shit, they've seen me. Keep moving!",
     night: "Finally, it's cooling down.",

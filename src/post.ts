@@ -1,4 +1,4 @@
-// Post-processing: heat haze → sandstorm dust → bloom → sun glare / lens flare → eye adaptation → grade → tone map →
+// Post-processing: heat haze → sandstorm dust and poison gas → bloom → sun glare / lens flare → eye adaptation → grade → tone map →
 // vignette + grain. One scene pass, a half-res bloom chain, and a single full-screen composite.
 import * as THREE from 'three/webgpu';
 import {
@@ -11,10 +11,11 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  choking, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
+  choking, gasEnv, gasLayer, gassed, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
   sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
 import { EDGE, FRONT_TAIL, FRONT_WALL } from '../shared/storm.ts';
+import { GAS_DEPTH, GAS_RISE_S, GAS_SPEED, GAS_TAIL_S } from '../shared/gas.ts';
 
 type N = Node<'vec3'>;
 type F = Node<'float'>;
@@ -77,6 +78,13 @@ const FRONT_STEPS = 8;
 const FRONT_LIT = 0.6;
 /** How much thicker the front's dust is than a column's: inside it you see 3–10 m. */
 const FRONT_THICK = 4;
+/** Poison gas (shared/gas.ts): how thick it is (×STORM_K: ~30 m to see in it), how soft its surface is (m), how far its
+ *  wisps reach ahead of the leading edge (m), how far a ray is marched through it (m), and the steps. */
+const GAS_THICK = 0.65;
+const GAS_SOFT = 0.9;
+const GAS_FRAY = 25;
+const GAS_REACH = 500;
+const GAS_STEPS = 8;
 /** Ambient occlusion fades out between these view distances (m). Far off, GTAO (half resolution, normals
  *  rebuilt from depth) sees the ground at grazing angles a metre or more per pixel, and the depth step
  *  grows with distance² (near plane 5 cm: ~1 m at 1 km, as big as its 1.2 m radius): it read that as
@@ -230,6 +238,7 @@ export class Post {
     // how much of the scene still shows through.
     const { camWorld, projInv, camPos } = this;
     const dustLit: N = (sunColor as unknown as N).mul(vec3(0.5, 0.3, 0.16)).mul(0.17).add((hazeColor as unknown as N).mul(0.15));
+    const gasLit: N = (sunColor as unknown as N).mul(0.12).add((hazeColor as unknown as N).mul(0.5)).mul(vec3(0.42, 0.85, 0.16)).add(vec3(0.007, 0.016, 0.003));
     const dusted = Fn(() => {
       const p = uv();
       const ndc = vec4(p.x.mul(2).sub(1), float(1).sub(p.y.mul(2)), 1, 1);
@@ -345,12 +354,62 @@ export class Post {
           }
         });
       });
-      const trans = exp(tau.mul(-STORM_K));
+      // Poison gas (shared/gas.ts): a low layer over the dune floor (a plane through the floor under the camera, gasEnv)
+      // behind its leading edge, rising to GAS_DEPTH over it: from above, a sea of fog in the hollows with the crests
+      // standing out; in it, a murk ~30 m deep. In a bunker it has seeped in: the rooms fill as soon as it lies outside.
+      const gTau = float(0).toVar();
+      const gLit = float(0).toVar();
+      const gSeen = float(0).toVar();
+      If(gasEnv.x.greaterThan(0), () => {
+        const gd = gasLayer.xy;
+        const a0 = dot(camPos.xz, gd);
+        const ad = dot(dir.xz, gd);
+        const inv = float(1).div(ad.greaterThanEqual(0).select(max(ad, 1e-5), min(ad, -1e-5)));
+        const ta = gasLayer.z.sub(gasLayer.w).sub(a0).mul(inv);
+        const tb = gasLayer.z.add(GAS_FRAY).sub(a0).mul(inv);
+        // Under its highest surface: y − floor(xz) is linear along the ray, so clip to where it's under GAS_DEPTH + a bit.
+        const floorCam = gasEnv.y.add(gasEnv.z.mul(camPos.x)).add(gasEnv.w.mul(camPos.z));
+        const room = floorCam.add(GAS_DEPTH + 2).sub(camPos.y); // > 0: the eye is under the cap
+        const climb = dir.y.sub(gasEnv.z.mul(dir.x).add(gasEnv.w.mul(dir.z)));
+        const tc = room.div(climb.greaterThanEqual(0).select(max(climb, 1e-5), min(climb, -1e-5)));
+        const t0 = max(max(min(ta, tb), 0), climb.lessThan(0).select(tc, float(0)));
+        const t1 = min(min(min(max(ta, tb), tScene), GAS_REACH), climb.greaterThanEqual(0).select(tc, float(1e9)));
+        If(t1.greaterThan(t0), () => {
+          first.assign(min(first, t0));
+          const len = t1.sub(t0);
+          for (let k = 0; k < GAS_STEPS; k++) {
+            const f = jitter.add(k).div(GAS_STEPS);
+            const t = t0.add(len.mul(f.mul(f)));
+            const dt = len.mul((2 * k + 1) / (GAS_STEPS * GAS_STEPS));
+            const q = camPos.add(dir.mul(t));
+            // Slow, heavy rolls: drifting with the creep, barely rising.
+            const w = vec3(q.x.sub(gd.x.mul(time.mul(GAS_SPEED * 0.6))), q.y.mul(2.5).sub(time.mul(0.6)), q.z.sub(gd.y.mul(time.mul(GAS_SPEED * 0.6))));
+            const n = mx_noise_float(w.mul(0.03)).mul(0.65).add(mx_noise_float(w.mul(0.11)).mul(0.35));
+            const u = gasLayer.z.sub(dot(q.xz, gd)).add(n.mul(GAS_FRAY));
+            const deep = smoothstep(0, GAS_SPEED * GAS_RISE_S, u).mul(float(1).sub(smoothstep(gasLayer.w.sub(GAS_SPEED * GAS_TAIL_S), gasLayer.w, u)))
+              .mul(gasEnv.x).mul(GAS_DEPTH);
+            const top = gasEnv.y.add(gasEnv.z.mul(q.x)).add(gasEnv.w.mul(q.z)).add(deep).add(n.mul(1.2));
+            // Full under its surface, with a thin haze of wisps just over it; filled where the ray is still in the bunker.
+            const under = smoothstep(-GAS_SOFT, GAS_SOFT, top.sub(q.y));
+            const indoor = step(t, tOut).mul(smoothstep(0.5, 1.5, deep));
+            const dens = max(under, indoor).mul(saturate(n.mul(0.6).add(0.75))).mul(step(0.05, deep));
+            const d = dens.mul(dt).mul(GAS_THICK);
+            const ds = d.mul(exp(tau.add(gTau).mul(-STORM_K)));
+            gTau.addAssign(d);
+            gSeen.addAssign(ds);
+            gLit.addAssign(ds.mul(n.mul(0.5).add(0.8)));
+          }
+        });
+      });
+      const trans = exp(tau.add(gTau).mul(-STORM_K));
       // Lit dust: diffused sun on the sand colour plus the haze; far storms fade into the haze like dunes.
       const shade = lit.div(max(seen, 1e-4));
       const dust = dustLit.mul(shade);
+      // The gas: a sickly yellow-green in whatever light there is, with a faint glow of its own so it reads at night.
+      const gas = gasLit.mul(gLit.div(max(gSeen, 1e-4)));
+      const both = dust.mul(seen).add(gas.mul(gSeen)).div(max(seen.add(gSeen), 1e-4));
       const far = float(1).sub(exp(first.mul(hazeDensity).negate()));
-      return vec4(mix(dust, hazeColorFor(dir), far.mul(0.35)), trans);
+      return vec4(mix(both, hazeColorFor(dir), far.mul(0.35)), trans);
     })();
     const storm = vec4(hazed.mul(dusted.w).add(dusted.xyz.mul(float(1).sub(dusted.w))), dusted.w);
 
@@ -473,6 +532,12 @@ export class Post {
       const cEdge = smoothstep(mix(float(0.7), float(-0.15), ch), mix(float(1), float(0.3), ch), ragged);
       o = mix(o, vec3(0.07, 0.04, 0.02), saturate(cEdge.mul(ch).mul(1.3)));
       o = o.mul(float(1).sub(smoothstep(0.75, 1, ch)));
+      // Breathing poison gas: the whole view slowly darkens, a sick dark green closing in from the edges, black at death.
+      const gs = gassed;
+      o = o.mul(float(1).sub(gs.mul(0.6)));
+      const gEdge = smoothstep(mix(float(0.75), float(-0.2), gs), mix(float(1), float(0.25), gs), ragged);
+      o = mix(o, vec3(0.012, 0.02, 0.006), saturate(gEdge.mul(gs).mul(1.3)));
+      o = o.mul(float(1).sub(smoothstep(0.8, 1, gs)));
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
       o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(0.028)));

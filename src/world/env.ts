@@ -65,6 +65,14 @@ export const stormFront = uniform(new THREE.Vector4(1, 0, 0, 0));
 export const stormFrontEnv = uniform(new THREE.Vector2());
 /** Choking in a mega-storm out in the open, 0..1 (1: about to die of it): the view closes in (post.ts). */
 export const choking = uniform(0);
+/** Poison gas for the post pass (post.ts, shared/gas.ts): the unit xz direction it creeps, how far along it its leading
+ *  edge is (m, dot with the direction), and how deep the cloud is (m). Written by src/gas.ts every frame. */
+export const gasLayer = uniform(new THREE.Vector4(1, 0, 0, 0));
+/** Its envelope 0..1 (0 = not drawn), and the dune floor it lies on as a plane round the camera: its height there (m)
+ *  and slope along x and z (m per m). */
+export const gasEnv = uniform(new THREE.Vector4());
+/** Breathing poison gas, 0..1 (1: about to die of it): the view darkens (post.ts). */
+export const gassed = uniform(0);
 /** How deep in a sandstorm the camera is, 0..1 (eased; 0 in the base): the grit on the view (post.ts). */
 export const stormHere = uniform(0);
 /** 1 while the camera is in the base: the post pass's dust starts only where the view ray leaves the
