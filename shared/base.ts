@@ -64,13 +64,13 @@ export const W = 1.1;
  *  (t) and outer height (top): a squat concrete block like a WW2 bunker. */
 export const HUT = { z0: -4.0, z1: 2.0, h: 2.3, door: 0.7, t: 0.6, top: 2.75 };
 /** Stairs: top edge (the landing ends here), steps (rise, run), bottom = the bunker floor. */
-export const STAIRS = { z: 0.6, n: 36, rise: 0.25, run: 0.3 };
+export const STAIRS = { z: 0.6, n: 48, rise: 0.25, run: 0.3 };
 /** Bunker floor height (local). */
 export const FLOOR = -STAIRS.n * STAIRS.rise;
 /** Hallway ends here, where the room begins; its vault's crown above the floor. */
-export const HALL = { z: -14.2, h: 3.3 };
+export const HALL = { z: -17.8, h: 3.3 };
 /** Main room, inner: half width, far wall, ceiling height above the floor. */
-export const ROOM = { w: 8, z: -33.2, h: 6 };
+export const ROOM = { w: 8, z: -36.8, h: 6 };
 /** The room's centre: the disassembly table stands here, under the skylight. */
 export const ROOM_Z = (HALL.z + ROOM.z) / 2;
 /** Arched alcoves through the room's walls: half width, depth past the wall's inner face, springing line of the
@@ -125,7 +125,7 @@ function vaultAt(ax: number, c: number): number {
 }
 
 /** The pad around the base is this flat, then blends back into the dunes (shared/terrain.ts). */
-const PAD = { x0: -14, x1: 14, z0: -39, z1: 14, blend: 24 };
+const PAD = { x0: -14, x1: 14, z0: -43, z1: 14, blend: 24 };
 /** The pad's sand lies just under the entrance floor so they don't z-fight. */
 const PAD_Y = BASE.y - 0.06;
 /** The dev test lab's floor (shared/lab.ts): the pad's height everywhere, so the bunker's entrance sits level in it. */

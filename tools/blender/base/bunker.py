@@ -39,10 +39,10 @@ W = 1.1
 HUT_Z0, HUT_Z1, HUT_H, DOOR, DOOR_H = -4.0, 2.0, 2.3, 0.7, 1.95
 HUT_T, HUT_TOP = 0.6, 2.75  # the entrance's wall thickness and outer height (shared/base.ts HUT.t, HUT.top)
 HUT_FILLET = 0.4  # its rounded-over top edge
-ST_Z, ST_N, ST_RISE, ST_RUN = 0.6, 36, 0.25, 0.3
+ST_Z, ST_N, ST_RISE, ST_RUN = 0.6, 48, 0.25, 0.3
 FLOOR = -ST_N * ST_RISE
-HALL_Z, HALL_H = -14.2, 3.3  # HALL_H: the hallway vault's crown above the floor
-ROOM_W, ROOM_Z0, ROOM_H = 8.0, -33.2, 6.0
+HALL_Z, HALL_H = -17.8, 3.3  # HALL_H: the hallway vault's crown above the floor
+ROOM_W, ROOM_Z0, ROOM_H = 8.0, -36.8, 6.0
 ROOM_Z = (HALL_Z + ROOM_Z0) / 2
 # Arched alcoves in the walls (shared/base.ts ALCOVE, ALCOVES): half width, depth, springing line above the floor;
 # where (x, z on the wall's inner face, outward normal): the workbench's (west), the pump's (east), the chest's (back).
@@ -813,8 +813,8 @@ def render_preview(objs, path):
 
     # A sand slab as the pad, with holes where the game cuts them (entrance, skylight).
     bm = bmesh.new()
-    for x0, x1, z0, z1 in ((-14, -1.25, -36, 14), (1.25, 14, -36, 14), (-1.25, 1.25, 2.15, 14),
-                           (-1.25, 1.25, ROOM_Z + 1.6, HUT_Z0 - 0.15), (-1.25, 1.25, -36, ROOM_Z - 1.6)):
+    for x0, x1, z0, z1 in ((-14, -1.25, -43, 14), (1.25, 14, -43, 14), (-1.25, 1.25, 2.15, 14),
+                           (-1.25, 1.25, ROOM_Z + 1.6, HUT_Z0 - 0.15), (-1.25, 1.25, -43, ROOM_Z - 1.6)):
         m = Matrix.Translation(G((x0 + x1) / 2, -0.06, (z0 + z1) / 2)) @ Matrix.Diagonal((x1 - x0, z1 - z0, 0.001, 1))
         bmesh.ops.create_cube(bm, size=1.0, matrix=m)
     sand_mesh = bpy.data.meshes.new('sand')
