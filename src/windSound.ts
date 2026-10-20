@@ -9,6 +9,11 @@
 //             only come up in strong wind and slide in pitch with the gusts.
 //   - hiss:   saltating sand ticking against everything, high-passed noise that follows the transport
 //             strength q and swells when a streamer passes over you.
+// Everything then goes through one shared band (highpass + lowpass + a peaking bump) that follows the wind:
+// a calm is a narrow, low, soft murmur; strong wind opens the band up and pushes the peak higher and
+// sharper, so the sound gets brighter as it gets louder (as in Farnell's Designing Sound) without ever
+// turning into full-band roar. The level stays well under the mix (about −46 LUFS in a calm, −28 in full
+// wind, at slider 1).
 // The regional wind and gust patches change over seconds; on top of that a fast turbulence term (a few
 // incommensurate sines, so it never visibly repeats) makes the sound breathe.
 // What reaches the ears is the apparent wind, the wind minus your own velocity: riding the bike into a
@@ -43,7 +48,7 @@ const OWN_FULL = 22;
 /** How much of our own speed counts at most, so riding into a calm is loud but not a sandstorm. */
 const OWN = 0.75;
 /** Wind level at full slider volume. */
-const MIX = 0.7;
+const MIX = 0.4;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const smooth = (a: number, b: number, x: number) => {
@@ -87,6 +92,9 @@ type Graph = {
   ctx: AudioContext;
   master: GainNode;
   muffle: BiquadFilterNode;
+  bandHp: BiquadFilterNode;
+  bandLp: BiquadFilterNode;
+  peak: BiquadFilterNode;
   rumble: GainNode;
   rumbleLp: BiquadFilterNode;
   rushL: GainNode;
@@ -120,7 +128,21 @@ export class WindSound {
     muffle.type = 'lowpass';
     muffle.frequency.value = 20000;
     muffle.Q.value = 0.5;
-    master.connect(muffle).connect(out);
+    // The shared band: cut the sub-bass pressure and the top, and lift a moving peak.
+    const bandHp = ctx.createBiquadFilter();
+    bandHp.type = 'highpass';
+    bandHp.frequency.value = 55;
+    bandHp.Q.value = 0;
+    const bandLp = ctx.createBiquadFilter();
+    bandLp.type = 'lowpass';
+    bandLp.frequency.value = 2200;
+    bandLp.Q.value = -3;
+    const peak = ctx.createBiquadFilter();
+    peak.type = 'peaking';
+    peak.frequency.value = 300;
+    peak.Q.value = 0.8;
+    peak.gain.value = 2;
+    master.connect(bandHp).connect(bandLp).connect(peak).connect(muffle).connect(out);
     const pink = noiseBuffer(ctx, false);
     const brown = noiseBuffer(ctx, true);
     // Each layer reads the loop from a different offset so they stay uncorrelated.
@@ -174,7 +196,7 @@ export class WindSound {
     source(pink, 3.2).connect(hissHp).connect(hiss).connect(master);
 
     master.gain.setTargetAtTime(MIX, ctx.currentTime, 1.5); // fade in rather than pop on the first click
-    return { ctx, master, muffle, rumble, rumbleLp, rushL, rushR, rushBp, rushLp, howl, hiss, hissHp };
+    return { ctx, master, muffle, bandHp, bandLp, peak, rumble, rumbleLp, rushL, rushR, rushBp, rushLp, howl, hiss, hissHp };
   }
 
   /** Follow the wind at the listener. `yaw` is the camera yaw (three.js: forward = (−sin, −cos)); `vel` is
@@ -242,23 +264,31 @@ export class WindSound {
     const set = (p: AudioParam, v: number, tau = 0.3) => p.setTargetAtTime(v, now, tau);
     set(g.muffle.frequency, buried ? MUFFLE_HZ : 20000, 0.4);
 
-    // A faint floor of moving air even in a calm, so the desert is never dead silent.
-    set(g.rumble.gain, 0.03 + 0.55 * x ** 1.4 * (1 + 0.4 * gust));
-    set(g.rumbleLp.frequency, 70 + 150 * x);
+    // The band opens with the wind; the peak climbs, narrows and lifts, and a gust pushes it up a little.
+    set(g.bandHp.frequency, 55 + 30 * x, 0.5);
+    set(g.bandLp.frequency, 2200 + 3800 * x, 0.5);
+    set(g.peak.frequency, 300 + 800 * x ** 1.2 + 200 * gust, 0.4);
+    set(g.peak.Q, 0.8 + 1.4 * x, 0.5);
+    set(g.peak.gain, 2 + 4 * x, 0.5);
 
-    const rush = 0.02 + 0.4 * x ** 1.6 * (1 + 0.35 * gust);
+    // A faint floor of moving air even in a calm, so the desert is never dead silent.
+    set(g.rumble.gain, 0.045 + 0.28 * x ** 1.4 * (1 + 0.4 * gust));
+    set(g.rumbleLp.frequency, 70 + 130 * x);
+
+    const rush = 0.04 + 0.3 * x ** 1.6 * (1 + 0.35 * gust);
     // Facing into the wind is louder and brighter; the windward ear gets more than the lee one.
     const face = 0.85 + 0.15 * front;
     set(g.rushL.gain, rush * face * (1 - 0.3 * right));
     set(g.rushR.gain, rush * face * (1 + 0.3 * right));
     set(g.rushBp.frequency, 220 + 750 * x ** 1.3 + 300 * gust);
+    set(g.rushBp.Q, 0.6 + 0.9 * x); // stronger wind is a tighter, more whistling band
     set(g.rushLp.frequency, 1300 + 2700 * x * (0.8 + 0.2 * front));
 
     // Strouhal: f = 0.2 · U / d. With d ≈ 2–3 cm of scrap edge, ~8–30 Hz per m/s; keep it musical.
     const howlAmt = smooth(0.45, 0.95, x);
     for (const [i, h] of g.howl.entries()) {
       set(h.bp.frequency, (180 + 30 * uA) * h.ratio, 0.5);
-      set(h.gain.gain, howlAmt * 0.45 * clamp01(0.55 + 0.45 * wobble(t * 0.37, 2 + i * 3)) ** 2, 0.5);
+      set(h.gain.gain, howlAmt * 0.28 * clamp01(0.55 + 0.45 * wobble(t * 0.37, 2 + i * 3)) ** 2, 0.5);
     }
 
     // Sand hiss follows transport, and swells when a streamer sweeps through (emit).
