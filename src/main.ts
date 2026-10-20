@@ -376,7 +376,8 @@ perf.onDone = () => {
   if (lift > 0) {
     fly.start(orbit.camera, orbit.yaw, orbit.pitch);
     fly.setClean(true);
-    fly.place(new THREE.Vector3(net.me.x, net.me.y + lift, net.me.z), orbit.yaw, -Math.atan2(lift, lift * 6));
+    const pitch = Number(new URLSearchParams(location.search).get('ppitch')); // (degrees down; default a gentle look over the land)
+    fly.place(new THREE.Vector3(net.me.x, net.me.y + lift, net.me.z), orbit.yaw, pitch ? (-pitch * Math.PI) / 180 : -Math.atan2(lift, lift * 6));
   }
 };
 perf.setTod = (tod) => net.shareTimeOfDay(tod);

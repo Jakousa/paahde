@@ -431,3 +431,8 @@ Where the ripples are below a pixel it turns into the average share left lit (he
 low sun instead of popping flat. Not displacement: the ripples are ~1 cm high, finer than any mesh we draw (no tessellation in WebGPU), and a
 centimetre of real relief only shows in silhouette, which the shadows and normals already carry. Parallax occlusion mapping is the next step if
 the ripples should also look raised at grazing views up close.
+The small ripples have their own short-scale bend (crests wiggle every few tens of cm) and a phase warp stretched across the wind, so
+neighbouring crests drift apart and together and seem to split and merge, with uneven spacing; their depth varies over a metre or two and
+crests die out along their length (`depth` in buildSurface), for the shading and the shadows both. The shadow test is biased by its own
+softness so a crest itself is never half-shadowed (that drew a thin dark line along every crest). `npm run perf -- --shot --view 4 --pitch 40`
+looks down at the sand next to the player (lower than ~2 m the camera is inside the player's head).
