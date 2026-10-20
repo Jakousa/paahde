@@ -136,6 +136,8 @@ export type ClientMsg =
   | { t: 'ready' };
 
 /** A death, as chat shows it (ServerMsg 'obituary'). */
+/** How a world is doing, for the landing page's list (GET api/worlds?ids=a,b: server/index.ts). */
+export type WorldStats = { id: string; lives: number; beaten: number; players: number; online: number };
 export type Obituary = { t: 'obituary'; id: number; color: number; name: string; cause: DeathCause; at: number };
 /** Deaths sent to a player as they join (the newest). */
 export const OBITUARY_KEEP = 12;

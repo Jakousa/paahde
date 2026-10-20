@@ -99,7 +99,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/world.ts` — worlds: each game is its own world at its own URL (`?w=<id>`, made on the landing page,
   `src/landing.ts`), with a seed from its id, its own players and DB (`data/worlds/<id>.db`; the old world is
   `?w=main`), and 10 shared lives (`src/lives.ts`; +10 per boss kind beaten); at 0 the game is over
-- `server/index.ts` — front server: static files, `POST /api/worlds`, passes `/ws?w=<id>` through to the world's
+- `server/index.ts` — front server: static files, `POST /api/worlds`, `GET /api/worlds?ids=` (stats for the landing
+  page's list of worlds this browser joined, kept in localStorage by `src/landing.ts`), passes `/ws?w=<id>` through to the world's
   process; `server/world.ts` — authoritative game server for one world (forked per world, exits when empty); `server/db.ts` — SQLite;
   `server/scrap.ts` — scrap pickups, respawn;
   `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`, `shared/storage.ts`), Tab overlay in `src/inventory.ts`

@@ -317,6 +317,12 @@ const en = {
     join: 'Join',
     won: 'The desert is yours',
     playOn: 'Play on',
+    /** The worlds this browser joined, newest first, with how each is doing. */
+    recent: 'Your games',
+    online: (n: number) => `${n} here now`,
+    players: (n: number) => (n === 1 ? '1 player' : `${n} players`),
+    ago: (min: number) =>
+      min < 2 ? 'just now' : min < 60 ? `${min} min ago` : min < 48 * 60 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} days ago`,
   },
   /** The loading cover's prologue (src/prologueRunner.ts): paragraphs, then the game's title over the time. */
   prologue: {

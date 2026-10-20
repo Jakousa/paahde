@@ -24,7 +24,7 @@ import { Menu } from './menu';
 import { StatsGraph } from './statsGraph';
 import { getBrowserId, Net } from './net';
 import { Lives } from './lives';
-import { landing, victory } from './landing';
+import { landing, rememberWorld, victory } from './landing';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { addHeadlights, Bike } from './bike';
@@ -200,6 +200,7 @@ if (location.search.includes('debug')) {
 const net = new Net(getBrowserId());
 const lives = new Lives();
 net.onLives = (n, beaten) => {
+  if (!LAB) rememberWorld(WORLD_ID);
   lives.set(n, beaten);
   trophies.set(beaten);
   setTrophies(beaten);
