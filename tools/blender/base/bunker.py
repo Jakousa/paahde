@@ -55,6 +55,8 @@ PIL_W, PIL_D = 0.6, 0.3
 PIL_SIDES, PIL_ENDS = (2.0, 4.7, 7.4), (2.0, 4.7)
 JAMB_W, JAMB_D = 0.32, 0.12
 SKY_W, SKY_COLLAR, SKY_H = 1.4, 1.8, 0.5
+SKY_BEAM = 0.22  # depth of the steel beam across the skylight's opening (the table's lamp hangs from it; src/world/base.ts)
+TABLE_HW, TABLE_TOP = 1.0, 0.8  # the disassembly table's half size and top (shared/base.ts BASE_PIECES)
 HUT_R, SKY_R = 0.8, 0.6  # outer corner radii of the hut and the skylight collar (shared/base.ts HUT_R, SKY_R)
 ROOM_R = 1.5  # the room's inside corners (shared/base.ts ROOM_R)
 VAULT_HEADROOM, VAULT_K = 3.3, 1.5  # crown over the stair line, softening of its bends (shared/base.ts VAULT)
@@ -572,6 +574,13 @@ def build_bunker():
     mb.box(-sw, sw, ct, BURIED_TOP, z + w, z + sw, 'Concrete')
     mb.box(-sw, -w, ct, BURIED_TOP, z - w, z + w, 'Concrete')
     mb.box(w, sw, ct, BURIED_TOP, z - w, z + w, 'Concrete')
+    # A steel I-beam across the skylight's opening, resting under the ceiling either side; the table's lamp hangs
+    # from a plate under its middle.
+    bx, by, f = w + 0.45, CEIL - SKY_BEAM, 0.09
+    mb.box(-bx, bx, CEIL - 0.025, CEIL + e, z - f, z + f, 'Steel')
+    mb.box(-bx, bx, by + 0.012, CEIL - 0.025, z - 0.012, z + 0.012, 'Steel')
+    mb.box(-bx, bx, by, by + 0.025, z - f, z + f, 'Steel')
+    mb.box(-0.1, 0.1, by - 0.012, by, z - 0.1, z + 0.1, 'Iron')
     # A drain grate in front of the pump (against the east wall, facing the room).
     gx = PUMP_X - 0.9
     mb.box(gx - 0.15, gx + 0.15, FLOOR, FLOOR + 0.006, z - 0.25, z + 0.25, 'Iron')
@@ -644,19 +653,19 @@ def build_workbench():
 
 
 def build_disassembly():
-    """1.6 m square steel table (top at 0.9) with a slatted top. The top is left clear for the machine being taken
-    apart; the tools stay round its sides, none sticking out more than about 0.3 m: a vise and a bolt tray on the
-    west side, a grinder on a bracket and the scrap bin on the east side, a tool rail on the back (-Z) and hazard
-    stripes on the front (+Z)."""
+    """2 m square steel table (top at TABLE_TOP) with a slatted top. The top is left clear for the machine being taken
+    apart; the tools stay round its sides, none sticking out more than about 0.3 m, each bolted to the apron (flush
+    with the top's edge) or standing on the floor: a vise and a bolt tray on the west side, a grinder on a bracket
+    and the scrap bin on the east side, a tool rail on the back (-Z) and hazard stripes on the front (+Z)."""
     mb = MB()
-    hx = hz = 0.8
-    top = 0.9
+    hx = hz = TABLE_HW
+    top = TABLE_TOP
     mb.box(-hx, hx, top - 0.06, top - 0.03, -hz, hz, 'Iron')  # plate under the slats
-    for k in range(9):
-        z = -hz + 0.05 + k * (2 * hz - 0.1) / 8
+    for k in range(11):
+        z = -hz + 0.05 + k * (2 * hz - 0.1) / 10
         mb.box(-hx, hx, top - 0.03, top, z - 0.035, z + 0.035, 'Steel')
     # Apron round the edge (the tools are bolted to it), legs, and a low frame.
-    t = 0.02
+    t = 0.0
     mb.box(-hx + t, hx - t, top - 0.15, top - 0.06, hz - 0.05, hz - t, 'Iron')
     mb.box(-hx + t, hx - t, top - 0.15, top - 0.06, -hz + t, -hz + 0.05, 'Iron')
     mb.box(hx - 0.05, hx - t, top - 0.15, top - 0.06, -hz + 0.05, hz - 0.05, 'Iron')
@@ -669,7 +678,7 @@ def build_disassembly():
         mb.box(-hx + 0.07, hx - 0.07, 0.15, 0.2, sz * (hz - 0.07) - 0.03, sz * (hz - 0.07) + 0.03, 'Iron')
     mb.box(-0.03, 0.03, 0.15, 0.2, -hz + 0.07, hz - 0.07, 'Iron')
     # Hazard stripes along the front edge.
-    for k in range(8):
+    for k in range(10):
         x = -hx + 0.1 + k * 0.2
         mb.box(x - 0.05, x + 0.05, top - 0.08, top - 0.02, hz, hz + 0.01, 'Hazard')
 
@@ -683,6 +692,7 @@ def build_disassembly():
     mb.cyl((-hx - 0.3, top - 0.05, vz - 0.1), (-hx - 0.3, top - 0.05, vz + 0.1), 0.012, 'Steel', seg=6)  # handle
     tz = -0.35
     mb.box(-hx - 0.2, -hx, top - 0.2, top - 0.17, tz - 0.14, tz + 0.14, 'Iron')  # bracket under the tray
+    mb.box(-hx - 0.02, -hx, top - 0.2, top - 0.06, tz - 0.14, tz + 0.14, 'Iron')  # hung from the apron
     mb.box(-hx - 0.21, -hx - 0.01, top - 0.17, top - 0.15, tz - 0.15, tz + 0.15, 'Steel')  # tray floor
     mb.box(-hx - 0.21, -hx - 0.19, top - 0.15, top - 0.08, tz - 0.15, tz + 0.15, 'Steel')  # its walls
     for z in (tz - 0.15, tz + 0.15):
@@ -694,7 +704,7 @@ def build_disassembly():
     # East side: an angle grinder on a bracket shelf, the scrap bin on the floor.
     gz = -0.3
     mb.box(hx, hx + 0.26, top - 0.35, top - 0.32, gz - 0.12, gz + 0.12, 'Iron')  # shelf
-    mb.box(hx, hx + 0.02, top - 0.35, top - 0.2, gz - 0.12, gz + 0.12, 'Iron')  # its back, on the apron
+    mb.box(hx, hx + 0.02, top - 0.35, top - 0.06, gz - 0.12, gz + 0.12, 'Iron')  # its back, up the apron
     mb.cyl((hx + 0.04, top - 0.29, gz), (hx + 0.2, top - 0.29, gz), 0.04, 'Hazard', seg=8)  # body
     mb.cyl((hx + 0.2, top - 0.29, gz), (hx + 0.25, top - 0.29, gz), 0.05, 'Iron', seg=8)  # gear head
     mb.cyl((hx + 0.22, top - 0.28, gz - 0.015), (hx + 0.22, top - 0.28, gz + 0.015), 0.1, 'Steel', seg=12)  # disc
@@ -705,10 +715,10 @@ def build_disassembly():
 
     # Back side: a tool rail on two brackets, with a hammer, a wrench and a screwdriver hanging from it.
     rz = -hz - 0.05
-    for x in (-0.55, 0.55):
-        mb.box(x - 0.02, x + 0.02, top - 0.2, top - 0.05, rz, -hz, 'Iron')
+    for x in (-0.7, 0.7):
+        mb.box(x - 0.02, x + 0.02, top - 0.2, top - 0.06, rz - 0.02, -hz, 'Iron')
     ry = top - 0.1
-    mb.cyl((-0.65, ry, rz - 0.01), (0.65, ry, rz - 0.01), 0.012, 'Steel', seg=6)
+    mb.cyl((-0.8, ry, rz - 0.01), (0.8, ry, rz - 0.01), 0.012, 'Steel', seg=6)
     mb.beam((-0.4, ry, rz - 0.03), (-0.4, ry - 0.32, rz - 0.03), 0.03, 'WoodDark')  # hammer
     mb.box(-0.48, -0.32, ry - 0.06, ry + 0.01, rz - 0.07, rz + 0.01, 'Iron')
     mb.beam((-0.05, ry, rz - 0.03), (-0.03, ry - 0.28, rz - 0.03), 0.025, 'Steel')  # wrench

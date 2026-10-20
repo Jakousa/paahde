@@ -253,7 +253,7 @@ export const BASE_PIECES: BasePiece[] = [
   // The workbench in the west alcove, facing into the room; the disassembly table square in the middle, its tools
   // round its sides (shared/stations.ts makes them interactable).
   { glb: 'bunker', node: 'workbench', x: -ROOM.w - ALCOVE.d + 0.42, z: ROOM_Z, fx: 1, fz: 0, y: FLOOR, hx: 1.0, hz: 0.4, h: 0.95 },
-  { glb: 'bunker', node: 'disassembly', x: 0, z: ROOM_Z, fx: 0, fz: 1, y: FLOOR, hx: 0.8, hz: 0.8, h: 0.92, square: true },
+  { glb: 'bunker', node: 'disassembly', x: 0, z: ROOM_Z, fx: 0, fz: 1, y: FLOOR, hx: 1.0, hz: 1.0, h: 0.82, square: true },
   // Storage chest in the back alcove (shared/storage.ts).
   { glb: 'bunker', node: 'chest', x: 0, z: ROOM.z - ALCOVE.d + 0.5, fx: 0, fz: 1, y: FLOOR, hx: 0.62, hz: 0.37, h: 0.62 },
 ];

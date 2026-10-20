@@ -43,6 +43,9 @@ const LAMP_MOUNT = 4.3;
  *  of the camera's way when it looks down at the machine (src/teardown). */
 const WORK_MOUNT = 2.7;
 const TABLE_MOUNT = 3.2;
+/** The table's lamp hangs from a steel beam across the skylight's opening, this deep under the ceiling (with the
+ *  plate under it; tools/blender/base/bunker.py SKY_BEAM). */
+const SKY_BEAM = 0.232;
 /** The pump's lamp hangs in its alcove, lower than the room's. */
 const PUMP_MOUNT = 3.0;
 /** The alcoves' vaults' crown above the floor: their lamps' rods go up to it. */
@@ -52,7 +55,7 @@ const HALL_LAMP_Z = (STAIRS.z - STAIRS.n * STAIRS.run + HALL.z) / 2;
 const LAMPS: { x: number; z: number; ceil: number; intensity: number; top?: number }[] = [
   { x: 0, z: HALL_LAMP_Z, ceil: vaultCrown(HALL_LAMP_Z) - FLOOR, intensity: 0.8 },
   { x: -BENCH_X, z: ROOM_Z, ceil: WORK_MOUNT, intensity: 9, top: ALCOVE_TOP },
-  { x: 0, z: ROOM_Z, ceil: TABLE_MOUNT, intensity: 9 },
+  { x: 0, z: ROOM_Z, ceil: TABLE_MOUNT, intensity: 9, top: ROOM.h - SKY_BEAM },
   { x: BENCH_X, z: ROOM_Z, ceil: PUMP_MOUNT, intensity: 5.5, top: ALCOVE_TOP }, // over the pump
   { x: 0, z: HALL.z - 3, ceil: LAMP_MOUNT, intensity: 5.5 },
   { x: 0, z: ROOM.z + 3, ceil: LAMP_MOUNT, intensity: 5.5 },
