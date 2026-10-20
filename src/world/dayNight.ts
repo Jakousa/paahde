@@ -18,6 +18,8 @@ const MOONLIGHT = new THREE.Color(0.58, 0.62, 0.78).multiplyScalar(0.55);
 
 const params = new URLSearchParams(location.search);
 /** `?tod=0.75` freezes the clock (0 = midnight, 0.5 = noon); `?day=60` makes a day last 60 s. Visual only. */
+/** Dev: `?nohaze=1` turns the heat haze off (to tell what it does to a picture). */
+const NO_HAZE = params.get('nohaze') === '1';
 const FIXED_TOD = params.has('tod') ? Number(params.get('tod')) : null;
 const DAY_LEN = Number(params.get('day') ?? DAY_SECONDS);
 
@@ -112,6 +114,6 @@ export class DayNight {
     const moonUp = THREE.MathUtils.smoothstep(moonDirection.value.y, -0.02, 0.2);
     moonColor.value.copy(MOONLIGHT).multiplyScalar(moonUp * nightLevel.value);
     // Shimmer needs hot air over sun-baked sand: none in the cool night and morning, full in the afternoon.
-    heatHaze.value = THREE.MathUtils.smoothstep(airTemp(this.tod), 26, 38) * THREE.MathUtils.smoothstep(sunStrength(this.tod), 0, 0.4);
+    heatHaze.value = NO_HAZE ? 0 : THREE.MathUtils.smoothstep(airTemp(this.tod), 26, 38) * THREE.MathUtils.smoothstep(sunStrength(this.tod), 0, 0.4);
   }
 }

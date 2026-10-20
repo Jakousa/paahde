@@ -215,7 +215,8 @@ export class Post {
       // Starts at 25 m: past ~150 m the haze has washed the ground flat, so there is nothing left to warp.
       const far = mix(smoothstep(25, 130, dist), float(0.45), isSky);
       const dy = p.y.sub(horizonY); // > 0 below the horizon
-      const band = smoothstep(0.22, 0.0, abs(dy)).mul(mix(float(0.35), float(1), step(0, dy)));
+      // (eased across the horizon: a hard step there drew a line straight across the ground wherever it rises above the horizon)
+      const band = smoothstep(0.22, 0.0, abs(dy)).mul(mix(float(0.35), float(1), smoothstep(-0.04, 0.04, dy)));
       const mask = far.mul(band).mul(heatHaze);
       const q = vec3(p.x.mul(aspect).mul(28), p.y.mul(110).add(time.mul(2.2)), time.mul(0.6));
       const n = vec2(mx_noise_float(q), mx_noise_float(q.add(vec3(13.7, 5.1, 2.3))));

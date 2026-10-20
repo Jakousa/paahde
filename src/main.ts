@@ -366,7 +366,7 @@ perf.onDone = () => {
   // (for the pictures tools/perf.ts takes: look away from the sun, a little down, where the shadows fall; `&pview=<m>` lifts the camera
   // that high above the player, on the fly camera, without the HUD, to see the shadows over a wide stretch)
   const l = sky.heights.light.value;
-  orbit.yaw = Math.atan2(l.x, l.z);
+  orbit.yaw = Math.atan2(l.x, l.z) + (new URLSearchParams(location.search).get('pface') === 'sun' ? Math.PI : 0); // (`&pface=sun`: into the sun)
   orbit.pitch = -0.12;
   const lift = Number(new URLSearchParams(location.search).get('pview'));
   if (lift > 0) {
