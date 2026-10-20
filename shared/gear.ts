@@ -152,7 +152,7 @@ export const receiverWobble = (q: number) => by(q, 0.35, 0.05);
 export const bikeTopSpeed = (q: number) => by(q, 20, 50);
 export const bikeEngine = (q: number) => by(q, 13, 30);
 /** Telescope's strongest zoom. */
-export const spyglassZoom = (q: number) => by(q, 4, 12);
+export const spyglassZoom = (q: number) => by(q, 6, 20);
 /** Sips in a full water bottle. */
 export const canteenSips = (q: number) => Math.round(by(q, 5, 10));
 /** Backpack rows of bag grid (BAG_COLS wide, past the hotbar). */

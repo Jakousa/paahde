@@ -319,6 +319,7 @@ let seenSite: string | null = null;
 let bagIds: Set<number> | null = null;
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
+if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { telescope });
 const grinder = new Grinder(scene, orbit.camera, [me.root]);
 const jammer = new Jammer(orbit, net, guardianFx.jets, guardianFx.drones);
 const receiver = new Receiver(orbit, net);
@@ -539,6 +540,7 @@ renderer.setAnimationLoop((time) => {
   bossBar.update(frameDt, bossFx.bar);
   guardianFx.update(net, frameDt, orbit.camera, focus);
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
+  telescope.afterCamera(frameDt, others);
   // Flying, the camera leaves the body and the world streams in around it instead.
   if (fly.active) {
     fly.update(frameDt, orbit.camera);
