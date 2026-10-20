@@ -486,7 +486,23 @@ const en = {
     gasIndoors: "Something's seeping in down here. I have to get out and up.",
     gassed: ["Shit, I can't breathe this! Up, get up!", 'My eyes are burning. Higher, I need to get higher!'],
     boss: 'Oh no. Oh, shit.',
-    combat: "Shit, they've seen me. Keep moving!",
+    /** Something turning on us (src/guardians.ts Aggro), by kind: a walker hunting us, a drone's light locked on, a
+     *  harvester charging at us. */
+    aggro: {
+      guardian: ["Shit, the big one's seen me. Keep moving!", "Oh hell, that giant's coming for me. Don't stand still."],
+      crawler: ['Shit, spiders! Get away from them!', "They're faster than me. I have to get clear of this place."],
+      drone: ["Shit, I'm in the light! Get out of it!", "It's got me in its beam. Out of the light, now!"],
+      harvester: ["It's coming straight at me! Get out of its way!", "Oh shit, it's charging. Sideways, sideways!"],
+    },
+    /** Something we shot or jammed going down, by kind (every boss alike). */
+    killed: {
+      guardian: ["Down it goes. Let's see what it was carrying.", "Big one down. Now it's just a pile of parts."],
+      crawler: ['Stay down, bug.', 'One less spider. Plenty more where that came from.'],
+      drone: ['Got it. Lights out.', "That one's done spotting for anyone."],
+      jet: ['Got it! There might be something good in that wreck.', "Down it goes. Whatever's left is mine."],
+      harvester: ["It's dead. I think. Let's see what it ate.", "That's it stopped. Time to see what's inside."],
+      boss: ["Is it dead? It's dead. I can't believe that worked.", "That's one monster I won't see again."],
+    },
     night: "Finally, it's cooling down.",
     bagFull: ["I'm out of room. Something has to go.", "My pockets aren't bottomless."],
     respawn: ["Note to self: don't do that again.", 'Ow. Where was I?', 'Well, that hurt like hell.'],

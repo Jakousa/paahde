@@ -14,6 +14,7 @@ import { RECEIVERS, RELICS } from '../shared/bosses.ts';
 import { RELIC_DROPS } from '../shared/tables.ts';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
 import { TEXT } from '../shared/text.ts';
+import type { Aggro, Kill } from './guardians';
 
 /** What a line can look at, sampled every frame by src/main.ts. */
 export type SpeechState = {
@@ -45,8 +46,7 @@ export type SpeechState = {
   gassed: boolean;
   /** On the motorcycle. */
   riding: boolean;
-  /** Walkers or drones after us; a boss close by. */
-  combat: boolean;
+  /** A boss close by. */
   boss: boolean;
   bag: Slots;
   dead: boolean;
@@ -65,6 +65,10 @@ export type SpeechEvents = {
   bagFull: undefined;
   /** Back on our feet after dying. */
   respawn: undefined;
+  /** Something turned on us (src/guardians.ts). */
+  aggro: Aggro;
+  /** Something we shot or jammed lately just died (src/kills.ts). */
+  killed: Kill | 'boss';
 };
 
 export type Line = {
@@ -91,6 +95,12 @@ const firstGot = (kind: string): Line[] => [
   { id: `got.${kind}`, on: 'got', when: (_, it) => it.kind === kind && !repaired(it), say: TEXT.speech.got[kind][0] },
   { id: `got.${kind}.fixed`, on: 'got', when: (_, it) => it.kind === kind && repaired(it), say: TEXT.speech.got[kind][1] },
 ];
+
+/** Something of this kind turning on us, and going down after we shot it. */
+const aggro = (kind: Aggro): Line =>
+  ({ id: `aggro.${kind}`, on: 'aggro', when: (s, k) => !s.dead && k === kind, say: TEXT.speech.aggro[kind], again: 10 * MIN });
+const killed = (kind: Kill | 'boss', again: number): Line =>
+  ({ id: `killed.${kind}`, on: 'killed', when: (_, k) => k === kind, say: TEXT.speech.killed[kind], again });
 
 /** In order: for one event, the first line whose condition holds (and isn't resting) is said. */
 export const LINES: Line[] = [
@@ -164,7 +174,18 @@ export const LINES: Line[] = [
 
   // Things that want us dead.
   { id: 'boss', on: 'tick', when: (s) => !s.dead && s.boss, say: TEXT.speech.boss },
-  { id: 'combat', on: 'tick', when: (s) => !s.dead && s.combat, say: TEXT.speech.combat },
+  aggro('guardian'),
+  aggro('crawler'),
+  aggro('drone'),
+  aggro('harvester'),
+
+  // Things that wanted us dead, and don't any more.
+  killed('guardian', 10 * MIN),
+  killed('crawler', 10 * MIN),
+  killed('drone', 10 * MIN),
+  killed('jet', 10 * MIN),
+  killed('harvester', 10 * MIN),
+  killed('boss', MIN),
 
   // The first night out.
   { id: 'night', on: 'tick', when: (s) => !s.dead && !s.day && !s.indoors, say: TEXT.speech.night },

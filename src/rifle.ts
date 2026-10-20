@@ -30,6 +30,7 @@ import type { Harvesters } from './world/harvesters';
 import { bossFx } from './bosses';
 import { MINION } from '../shared/bosses.ts';
 import { zaps } from './world/zaps';
+import * as kills from './kills';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
 import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
@@ -363,6 +364,8 @@ export class Rifle {
       for (let i = 0; i < 3; i++) tyreDust.emit(_e.x, _e.y + 0.1, _e.z, (Math.random() - 0.5) * 1.5, 1 + Math.random(), (Math.random() - 0.5) * 1.5, 0.35);
       rifleSound.impact('sand', _e, _o);
     }
+    const key = boss ? `b${boss.boss}` : crawler ? `h${crawler.harvester}` : jet ? `j${jet.jet}` : drone ? `d${drone.drone}` : hit ? `g${hit.walker}` : null;
+    if (key) kills.hit(key);
     this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, boss ? (boss.index >= 0 ? { b: boss.boss, bi: boss.index } : undefined) : crawler ? { h: crawler.harvester, hi: crawler.index } : jet ? { j: jet.jet } : drone ? { d: drone.drone } : hit ? { g: hit.walker, i: hit.index } : undefined);
     // Recoil: the muzzle climbs (some of it stays: pull it back down), kicks a little sideways; less held to the eye.
     const ads = playerHands.aim;

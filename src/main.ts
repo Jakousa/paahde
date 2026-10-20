@@ -305,6 +305,9 @@ const locator = new LocatorBar();
 const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
 const speech = new Speech();
+guardianFx.onAggro = (kind) => speech.event('aggro', kind);
+guardianFx.onKill = (kind) => speech.event('killed', kind);
+bossFx.onKill = () => speech.event('killed', 'boss');
 /** The find last looked at, so the character remarks on it once per look (src/speechLines.ts 'see'). */
 let seenFind: number | null = null;
 /** The machine or wreck last in reach ('near'), and the item ids in the bag at the last frame ('got'; null until the
@@ -689,7 +692,7 @@ baseSand.update(frameDt, storm.atBase);
   const m = net.me;
   speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(m.x, m.y, m.z), shelter: inShelter(m.x, m.y, m.z),
     atPump: atWater(m.x, m.y, m.z), mudflat: mudflat(m.x, m.z) > 0.7, heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
-    storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, gasComing: gas.coming, gassed: gas.gassing, riding: s.riding, combat: guardianFx.combat, boss: bossFx.combat,
+    storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, gasComing: gas.coming, gassed: gas.gassing, riding: s.riding, boss: bossFx.combat,
     bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null });
   if ((find?.id ?? null) !== seenFind) {
     seenFind = find?.id ?? null;
