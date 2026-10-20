@@ -1,7 +1,7 @@
 // The harvesters (shared/harvester.ts): public/models/harvester.glb (made by tools/blender/harvester.py; a block
 // stand-in until it has loaded), placed every frame from the route, the pace and the server clock. Its treads run round
 // their loops (an instanced track shoe), the cutter drum in its maw turns and throws up sand (a storm of it when it
-// charges), the exhausts on its back smoke and the slot in its stern spills sifted sand. The three intake cores in
+// charges), the exhausts on its back smoke and the slot in its stern spills sifted sand. The four intake cores in
 // its throat glow, flicker as they're hit and go dark once shot out, pouring smoke; with the last it seizes, burning
 // (onDeath), a huge plume of smoke towering off its back for as long as the wreck lies there. It heaves up out of the mud in a ring of dust and sinks back
 // the same way. The rifle tests shots against it (raycast).
@@ -23,13 +23,15 @@ const LINKS = 40;
 const LOOP = 4 * LOOP_HALF + 2 * Math.PI * LOOP_R;
 const UNITS: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 /** The drum (local axle) and its radius; the exhausts on its back and the stern slot (tools/blender/harvester.py). */
-const DRUM = new THREE.Vector3(0, 2.3, 24.6);
-const DRUM_R = 2.4;
-const EXHAUSTS: [number, number, number][] = [[-7.5, 19.1, -19.5], [-4, 19.1, -19.5], [4, 19.1, -19.5], [7.5, 19.1, -19.5]];
-/** The maw: the throat wall's z (its back), the cheeks' inner faces (x), the hood's underside (y). */
-const THROAT = 18.2;
+const DRUM = new THREE.Vector3(0, 1.9, 25.6);
+const DRUM_R = 2.1;
+const EXHAUSTS: [number, number, number][] = [[-7.5, 14.6, -19.5], [-4, 14.6, -19.5], [4, 14.6, -19.5], [7.5, 14.6, -19.5]];
+/** The maw: the throat wall's z (its back), the cheeks' inner faces (x), the hood's underside (y) and its top at the
+ *  throat. */
+const THROAT = 16.6;
 const MAW_X = 12;
-const HOOD = 9.6;
+const HOOD = 7.8;
+const HOOD_TOP = 12;
 const CHUTE = new THREE.Vector3(0, 6.2, -25.6);
 /** Effects (dust, smoke) only within this far (m) of the camera; a wreck's plume within PLUME_R. */
 const FX_R = 800;
@@ -40,7 +42,7 @@ const PLUME_RATE = 6;
 const PLUME_SIZE = 9;
 const PLUME_RISE = 16;
 const PLUME_LIFE = 24;
-const PLUME_AT = new THREE.Vector3(0, 19.5, -6);
+const PLUME_AT = new THREE.Vector3(0, 15, -6);
 const CORE_GLOW = 16;
 
 /** The track shoe's way round a loop d m from the bottom run's rear end, forward: (y, z) of its centre and its turn
@@ -102,7 +104,7 @@ function blocks(): Parts {
   };
   const hull = new THREE.Group();
   hull.add(box(2 * HALF_W, HULL_TOP - 5.6, THROAT - STERN, 0, (HULL_TOP + 5.6) / 2, (THROAT + STERN) / 2),
-    box(2 * HALF_W, 4, BOW - THROAT, 0, HOOD + 2, (BOW + THROAT) / 2));
+    box(2 * HALF_W, HOOD_TOP - HOOD, BOW - THROAT, 0, (HOOD + HOOD_TOP) / 2, (BOW + THROAT) / 2));
   const drum = new THREE.Mesh(new THREE.CylinderGeometry(DRUM_R, DRUM_R, 2 * MAW_X - 0.8, 10).rotateZ(Math.PI / 2), iron);
   drum.position.copy(DRUM);
   const cores = CORES.map((c) => {
@@ -214,7 +216,7 @@ class View {
  *  throat behind it. */
 const BOXES: { h: THREE.Vector3; c: THREE.Vector3 }[] = [
   { h: new THREE.Vector3(HALF_W, (HULL_TOP - 1.6) / 2, (THROAT - STERN) / 2), c: new THREE.Vector3(0, (HULL_TOP + 1.6) / 2, (THROAT + STERN) / 2) },
-  { h: new THREE.Vector3(HALF_W, (16.4 - HOOD) / 2, (BOW - THROAT) / 2), c: new THREE.Vector3(0, (16.4 + HOOD) / 2, (BOW + THROAT) / 2) },
+  { h: new THREE.Vector3(HALF_W, (HOOD_TOP - HOOD) / 2, (BOW - THROAT) / 2), c: new THREE.Vector3(0, (HOOD_TOP + HOOD) / 2, (BOW + THROAT) / 2) },
   ...[1, -1].map((s) => ({ h: new THREE.Vector3((HALF_W - MAW_X) / 2, (HOOD + 0.4 - 0.6) / 2, (BOW - THROAT) / 2),
     c: new THREE.Vector3((s * (HALF_W + MAW_X)) / 2, (HOOD + 1) / 2, (BOW + THROAT) / 2) })),
   { h: new THREE.Vector3(MAW_X - 0.4, DRUM_R, DRUM_R), c: DRUM.clone() },
@@ -348,7 +350,7 @@ export class Harvesters {
   *bodies(): Generator<{ id: number; x: number; y: number; z: number; alive: boolean; v: number; cores: number }> {
     for (const [id, v] of this.views) {
       const p = v.root.position;
-      yield { id, x: p.x, y: p.y + 8, z: p.z, alive: v.state === 0, v: v.v, cores: v.cores.filter((n) => n < CORE_HP).length };
+      yield { id, x: p.x, y: p.y + 6, z: p.z, alive: v.state === 0, v: v.v, cores: v.cores.filter((n) => n < CORE_HP).length };
     }
   }
 

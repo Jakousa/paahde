@@ -2,9 +2,9 @@
 // slowly over the dunes along a long route, sifting the sand for whatever traces of ore it holds (a cutter drum in its
 // maw, a slot at the stern spilling the sifted sand). It pays no one any mind, except whoever stands in its lane right
 // ahead of it (a wide wedge: inSight): then it turns towards them, opens up and charges (CHARGE m/s, faster than anyone can run or slide: you have to get out of
-// its lane) until the lane has been clear for a while. Anyone it drives over is ground into the sand. Its only weak points are the three glowing
+// its lane) until the lane has been clear for a while. Anyone it drives over is ground into the sand. Its only weak points are the four glowing
 // intake cores in its maw, over the drum (CORE_HP rifle hits each): to kill it you have to stand in front of it.
-// With all three out it seizes, burns where it stopped and its ore hopper bursts (shared/tables.ts HARVESTER_SPOILS).
+// With all four out it seizes, burns where it stopped and its ore hopper bursts (shared/tables.ts HARVESTER_SPOILS).
 //
 // Like the jets (shared/jets.ts) the server (server/harvesters.ts) sends the route, the pace and its state whenever
 // something changes, and the rest is plain math on that and the server clock: both sides agree where it is. The pace
@@ -48,7 +48,7 @@ export const CHARGE = 22;
 export const SPEED_UP = 4;
 export const SLOW_DOWN = 2;
 /** Front axle to rear axle (m), and from the left tracks' centres to the right ones'. */
-export const WHEELBASE = 22;
+export const WHEELBASE = 18;
 export const TRACK = 21;
 /** Track unit (local): length, width (m). */
 export const TRACK_LEN = 14;
@@ -56,9 +56,9 @@ export const TRACK_W = 5;
 /** Footprint (local, m): half width, from the stern to the front of the maw. Anyone in it is run over. */
 export const HALF_W = 14.2;
 export const STERN = -25.4;
-export const BOW = 27.8;
+export const BOW = 28.6;
 /** The hull's top (m above its ground). */
-export const HULL_TOP = 19;
+export const HULL_TOP = 14.5;
 /** What it sees: a wedge ahead of its bow, LANE m either side of its middle at the bow and widening by SPREAD m a metre,
  *  out to SIGHT m. Anyone in it sets it charging, turning towards them; it calms down CALM_MS after it's empty. */
 export const SIGHT = 170;
@@ -71,7 +71,7 @@ export const inSight = (lx: number, lz: number) => lz >= BOW - 2 && lz < BOW + S
 /** Intake cores (local centres, facing forward) on the throat wall at the back of the maw, over the drum, in plain
  *  view from in front under the hood; their half size (m). */
 export const CORES: readonly { x: number; y: number; z: number }[] = [
-  { x: -6.5, y: 6.8, z: 19.3 }, { x: 0, y: 6.8, z: 19.3 }, { x: 6.5, y: 6.8, z: 19.3 },
+  { x: -9, y: 5.6, z: 17.7 }, { x: -3, y: 5.6, z: 17.7 }, { x: 3, y: 5.6, z: 17.7 }, { x: 9, y: 5.6, z: 17.7 },
 ];
 export const CORE_HALF = 1.6;
 export const CORE_HP = 4;

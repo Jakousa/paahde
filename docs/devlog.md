@@ -1755,3 +1755,7 @@ low over the land (`shared/gas.ts`, scheduled by `server/storm.ts`, client `src/
   and no sandstorm column starts while either is out.
 - **Debug:** F3 → *Poison gas* creeps one in over everyone at once, by day too. `?debug` exposes `dbg.gas` and `dbg.fly`
   (the fly camera: `dbg.fly.pos.set(...)` to look at it from outside).
+- **Lower, sleeker, four cores:** the hull is 14.5 m high (was 19), its flanks raked in more, and its back runs down
+  in one long wedge from z 4 to the hood's lip. The maw is lower (the hood's underside at 7.8 m) and deeper (the throat
+  at z 16.6, the lip out at z 28.6); the axles moved in (WHEELBASE 18) to clear it, and the drum is a little smaller
+  and lower so the cores show over it. Four cores now (x ±3, ±9, y 5.6), still CORE_HP hits each.
