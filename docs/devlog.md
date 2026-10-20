@@ -1181,6 +1181,11 @@ Goal of this session: *I can roam around the desert planet with my friends in th
   feet; step into the hole to go deeper.
 - **Gameplay:** wrecks to salvage, the trader, scrap items, carrying and stealing (the design pitch:
   walk, pick up, carry, steal, sell).
+- **Rifle eyepiece cut by the near plane (todo).** Idle with the rifle in hand (not aiming), the end of the
+  scope nearest the eye grows and shrinks on its own: the RifleIdle pose has the rifle's rear reach ~10 cm
+  behind the camera (measured, viewmodel SCALE 0.55), so the near plane (0.05 m, `src/camera.ts`) slices
+  through it and the idle sway slides the cut along the tube. Fix in the pose (`tools/models/hands.py`,
+  rifle further from the eye, see `docs/viewmodel-hands.md`), not by lowering `near` (depth precision for the terrain).
 
 ---
 
