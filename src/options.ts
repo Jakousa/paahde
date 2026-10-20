@@ -36,8 +36,13 @@ export const MENU_CSS = `
 #menu .tip { position: fixed; display: none; padding: 6px 8px; border-radius: 5px; pointer-events: none; font-size: 11px; line-height: 1.4;
   background: rgba(20, 10, 4, 0.96); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.2), 0 6px 18px rgba(0, 0, 0, 0.5); }
 #menu .note { min-height: 16px; margin-top: 6px; opacity: 0.7; font-size: 11px; }
-#menu .fsNote { display: none; margin-top: 6px; opacity: 0.8; font-size: 11px; text-align: center; }
+#menu .fsNote { position: fixed; display: none; width: 220px; padding: 8px 10px; border-radius: 6px; font-size: 11px; line-height: 1.45;
+  color: #ffe6bf; background: rgba(255, 217, 160, 0.12); box-shadow: 0 0 0 1.5px rgba(255, 217, 160, 0.7); transform: translateY(-50%); }
+#menu .fsNote::before { content: ''; position: absolute; right: 100%; top: 50%; width: 22px; border-top: 1.5px solid rgba(255, 217, 160, 0.7); }
+#menu .fsNote.below { transform: none; }
+#menu .fsNote.below::before { display: none; }
 #menu.closeAsked .fsNote { display: block; }
+#menu .panel.sub ~ .fsNote, #menu .panel.opts ~ .fsNote { display: none !important; }
 #menu .controls, #menu .options { display: none; }
 #menu .panel.sub .controls, #menu .panel.opts .options { display: block; }
 #menu .panel.sub .main, #menu .panel.opts .main { display: none; }
