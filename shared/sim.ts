@@ -423,6 +423,14 @@ const BIKE_BRAKE = 22;
 const BIKE_REVERSE = 4; // top reverse speed (m/s)
 const BIKE_ROLL = 1.2; // rolling resistance in sand (m/s²)
 const BIKE_DRAG = 0.006; // air drag (per m, times v²)
+
+/** The speed (m/s) a bike of quality `q` levels off at on the flat with the throttle held: where the engine's
+ *  push, engine·(1 − v/top), meets rolling resistance and drag (src/engineSound.ts sets its gears by it). */
+export function bikeCruise(q: number): number {
+  const top = bikeTopSpeed(q), engine = bikeEngine(q);
+  const b = engine / top, c = BIKE_ROLL - engine;
+  return (-b + Math.sqrt(b * b - 4 * BIKE_DRAG * c)) / (2 * BIKE_DRAG);
+}
 const BIKE_GRIP = 26; // sideways tyre grip (m/s²): above this the back steps out
 const BIKE_WHEELBASE = 1.36;
 const BIKE_STEER = 0.55; // max steer angle (rad) at a standstill…

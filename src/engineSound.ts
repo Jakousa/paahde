@@ -23,19 +23,20 @@
 //
 // Plays through the shared output in src/audio.ts (volume slider, limiter); every level change is ramped.
 import { audio } from './audio';
-import { bikeTopSpeed } from '../shared/gear.ts';
+import { bikeCruise } from '../shared/sim.ts';
 
 /** The revs: idle and redline (the limiter holds it there), and the motor frequency (Hz) at each. */
 const IDLE_RPM = 1500;
 const RED_RPM = 12000;
-const F_IDLE = 24;
-const F_RED = 200;
-/** Gear ratios, as where each gear reaches the redline: a fraction of the bike's top speed (shared/gear.ts
- *  bikeTopSpeed). A faster bike has longer gears, so every bike revs through the same range. They cruise
- *  at about CRUISE of it, in top gear. Neighbouring gears must be no further apart than UP_RPM / DOWN_RPM
- *  (here 1.83×), or an upshift lands under DOWN_RPM and a downshift near the limiter. */
-const GEARS = [0.3, 0.5, 0.8, 0.9, 1.0];
-const CRUISE = 0.75;
+const F_IDLE = 20;
+const F_RED = 150;
+/** Gear ratios, as where each gear reaches the redline: a fraction of the speed the bike cruises at on the flat
+ *  (shared/sim.ts bikeCruise). A faster bike has longer gears, so every bike revs through the same range. The
+ *  bikes get to cruise in about 2 s, most of it in the first second, so the gears are long: a second of 1st,
+ *  then 2nd, cruising in 3rd at about 80% of its revs; 4th is for running downhill and the air. Neighbouring
+ *  gears must be no further apart than UP_RPM / DOWN_RPM (here 1.83×), or an upshift lands under DOWN_RPM and a
+ *  downshift near the limiter. */
+const GEARS = [0.7, 1.0, 1.25, 1.5];
 /** Shift up past UP_RPM with the throttle open (UP_COAST_RPM without: coasting it revs on further), down once
  *  the revs fall under DOWN_RPM, but only if the lower gear lands clear of the upshift (no hunting between
  *  them); not again within SHIFT_GAP s. */
@@ -63,8 +64,8 @@ const BEAT_HZ = 1.3;
 /** Inverter carrier (Hz), and its sidebands' offset in multiples of the motor frequency. */
 const CARRIER = 900;
 const SIDEBAND = 2;
-/** Free-spinning wheel in the air: spin-up (fraction of the bike's top speed per s) with the throttle held, up
- *  to the top gear's redline. */
+/** Free-spinning wheel in the air: spin-up (fraction of the bike's cruising speed per s) with the throttle held,
+ *  up to the top gear's redline. */
 const AIR_SPIN_UP = 1;
 /** Time constant (s) of the wind-down in the air, and of following the load (throttle). */
 const AIR_DECAY = 1.2;
@@ -171,20 +172,20 @@ class Motor {
   }
 
   /** The gearbox: up near the top of a gear, down once well into the one below. Returns the shift (+1, −1, 0). */
-  private shift(throttle: number, top: number, shiftTime: number): number {
+  private shift(throttle: number, cruise: number, shiftTime: number): number {
     if (this.sinceShift < Math.max(SHIFT_GAP, shiftTime + 0.15)) return 0;
-    const g = this.gear, rpm = this.rpm(g, top);
+    const g = this.gear, rpm = this.rpm(g, cruise);
     if (g < GEARS.length - 1 && rpm > (throttle > 0.5 ? UP_RPM : UP_COAST_RPM)) this.gear++;
-    else if (g > 0 && rpm < DOWN_RPM && this.rpm(g - 1, top) < UP_RPM * 0.95) this.gear--;
+    else if (g > 0 && rpm < DOWN_RPM && this.rpm(g - 1, cruise) < UP_RPM * 0.95) this.gear--;
     else return 0;
     this.sinceShift = 0;
     return this.gear - g;
   }
 
-  /** Revs in gear `g` at the wheel speed, on a bike with top speed `top` (m/s): never under idle (the clutch
+  /** Revs in gear `g` at the wheel speed, on a bike cruising at `cruise` (m/s): never under idle (the clutch
    *  slips), held at the redline by the limiter. */
-  private rpm(g: number, top: number): number {
-    return Math.min(RED_RPM, Math.max(IDLE_RPM, (this.wheel / (GEARS[g] * top)) * RED_RPM));
+  private rpm(g: number, cruise: number): number {
+    return Math.min(RED_RPM, Math.max(IDLE_RPM, (this.wheel / (GEARS[g] * cruise)) * RED_RPM));
   }
 
   /** The clunk of the gear going in: a thump and a click, `level` × MIX. */
@@ -219,13 +220,13 @@ class Motor {
   update(dt: number, riding: boolean, grounded: boolean, speed: number, throttle: number, bike: number, pitch = 1) {
     this.time += dt;
     const q = clamp01((bike - 1) / 3); // quality, 0 Scrap .. 1 Space-grade
-    const top = bikeTopSpeed(Math.max(0, bike - 1));
+    const cruise = bikeCruise(Math.max(0, bike - 1));
     const shiftTime = SHIFT_SLOW * (SHIFT_QUICK / SHIFT_SLOW) ** q;
     if (!riding || grounded) this.wheel = speed;
-    else if (throttle > 0.5) this.wheel = Math.min(GEARS[GEARS.length - 1] * top, this.wheel + AIR_SPIN_UP * top * dt);
+    else if (throttle > 0.5) this.wheel = Math.min(GEARS[GEARS.length - 1] * cruise, this.wheel + AIR_SPIN_UP * cruise * dt);
     else this.wheel += (speed - this.wheel) * (1 - Math.exp(-dt / AIR_DECAY));
     this.sinceShift += dt;
-    const shifted = riding ? this.shift(throttle, top, shiftTime) : 0;
+    const shifted = riding ? this.shift(throttle, cruise, shiftTime) : 0;
     if (!riding) this.gear = 0;
     // A slow box clunks heavily; a quickshifter clicks.
     if (shifted) this.clunk((shifted > 0 ? CLUNK : CLUNK_DOWN) * (1.2 - 0.6 * q));
@@ -237,9 +238,9 @@ class Motor {
     const now = this.ctx.currentTime;
     const set = (p: AudioParam, v: number, tau = 0.08) => p.setTargetAtTime(v, now, tau);
     const t = this.time, k = this.seed;
-    const x = clamp01(this.wheel / (CRUISE * top));
+    const x = clamp01(this.wheel / cruise);
     // Pitch follows the revs, gliding to the new gear's over the shift (else an 80 ms ramp).
-    const revs = (this.rpm(this.gear, top) - IDLE_RPM) / (RED_RPM - IDLE_RPM);
+    const revs = (this.rpm(this.gear, cruise) - IDLE_RPM) / (RED_RPM - IDLE_RPM);
     const f = (F_IDLE + (F_RED - F_IDLE) * revs) * pitch * (1 + 0.004 * wobble(t * 0.9, k));
     const glide = cut ? Math.max(0.01, shiftTime * 0.4) : 0.08;
 
@@ -324,7 +325,7 @@ export class EngineSound {
       const prev = a.speed;
       a.speed += (speed - a.speed) * (1 - Math.exp(-dt / 0.15));
       a.acc += ((a.speed - prev) / Math.max(dt, 1e-3) - a.acc) * (1 - Math.exp(-dt / 0.2));
-      const cruise = CRUISE * bikeTopSpeed(Math.max(0, r.bike - 1));
+      const cruise = bikeCruise(Math.max(0, r.bike - 1));
       const throttle = clamp01(Math.max(Math.abs(a.acc) / REMOTE_LOAD_ACC, REMOTE_CRUISE_LOAD * (a.speed / cruise) ** 2));
 
       // Doppler: how fast the bike closes on us along the line between.
