@@ -60,6 +60,8 @@ class Perf {
   private submitT = 0;
   private lastStart = 0;
   private gpuPending = false;
+  /** GPU time per render pass (render context id), from the timestamp queries while recording: total ms and the frames it was drawn in. */
+  private passes = new Map<string, { ms: number; n: number; max: number }>();
   private gpu: number | null = null;
   private frames = 0;
   private phase: Phase = PERF_RUN ? 'waiting' : 'off';
@@ -142,9 +144,24 @@ class Perf {
       (ms) => {
         this.gpuPending = false;
         if (typeof ms === 'number' && ms > 0) this.gpu = ms;
+        if (this.phase === 'recording') this.countPasses(renderer);
       },
       () => (this.gpuPending = false),
     );
+  }
+
+  /** Adds the passes of the last resolved queries (three keeps `r:<call>:<context id>:f<frame>` -> ms) to the per-context totals. */
+  private countPasses(renderer: unknown) {
+    const pool = (renderer as { backend?: { timestampQueryPool?: { render?: { timestamps?: Map<string, number> } } } }).backend?.timestampQueryPool?.render;
+    if (!pool?.timestamps) return;
+    for (const [uid, ms] of pool.timestamps) {
+      const ctx = uid.split(':')[2];
+      const e = this.passes.get(ctx) ?? { ms: 0, n: 0, max: 0 };
+      e.ms += ms;
+      e.n++;
+      e.max = Math.max(e.max, ms);
+      this.passes.set(ctx, e);
+    }
   }
 
   /** End of a drawn frame. `playable`: the world is shown and nothing covers it. `drive`: turn the view by this many radians. */
@@ -285,6 +302,9 @@ class Perf {
         renderScale: stat(r.ratio),
         framesOver20ms: r.gap.filter((g) => g > 20).length,
         framesOver50ms: r.gap.filter((g) => g > 50).length,
+        // GPU ms by render pass, biggest first. `share` of the frames the pass ran in tells which is which: the scene and the post passes run every frame,
+        // the cascade that follows the player nearly every frame, the cached ones (cascade 1, 2, 3) a fraction of them.
+        gpuPasses: [...this.passes].map(([ctx, e]) => ({ ctx, meanMs: Math.round((e.ms / e.n) * 100) / 100, maxMs: Math.round(e.max * 100) / 100, share: Math.round((e.n / Math.max(1, r.gpu.length)) * 100) / 100, perFrameMs: Math.round((e.ms / Math.max(1, r.gpu.length)) * 100) / 100 })).sort((a, b) => b.perFrameMs - a.perFrameMs).slice(0, 14),
         bound: r.gpu.length ? (stat(r.cpu)!.p50 >= stat(r.gpu)!.p50 ? 'cpu' : 'gpu') : 'unknown (no gpu timestamps)',
       },
     };

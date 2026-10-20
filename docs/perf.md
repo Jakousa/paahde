@@ -26,6 +26,10 @@ position and heat), `gameplay.travelledM`, `framesExcluded`. The trace has a red
 (blocked by a pile or a dune face: under 1.5 m/s), or ended early; `tools/perf.ts` prints `!! INVALID RUN` with the reasons, names the files `...-INVALID.json` and exits with code 2.
 By default a death ends the run (the numbers after it would be a ragdoll's, then the bunker's); `--allow-death` keeps walking and leaves the frames while down, and the next second after the respawn,
 out of the numbers (they are counted in `framesExcluded`; the run stays marked invalid so it is never mistaken for a clean one).
+**Size matters for the GPU**: the game draws one pixel per CSS pixel, so the default 1280x800 window hides a GPU limit. `--size 2560x1440` (or your screen's size) sets the viewport. The JSON's `gpuPasses` and the
+runner's "gpu ms per frame by render pass" split the GPU time by render pass (context id): the scene pass is the big one, the others (shadow cascades, post) small.
+First numbers (field spawn, 6 am, fixed resolution): GPU ms p50 2.4 / 4.5 / 7.9 at 1280x800 / 1920x1080 / 2560x1440 (the scene pass 78 % of it), 142 -> 139 -> 102 fps: GPU-bound from about 1440p.
+At 1440p: sun shadows off -1.2 ms, anti-aliasing off -1.3 ms, shadow quality low/medium 0, resolution 75 % -3.2 ms. The cost is the scene pass's per-pixel work, mostly the sand shader.
 Example: `npm run perf -- --seconds 30 --spawn field --yaw 3.14 --tod 0.26 --set dynamicRes=false --label morning`.
 Compare settings by running the same command with different `--set`s and `--label`s.
 

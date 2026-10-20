@@ -2,7 +2,7 @@
 // route and writes the result (CPU / GPU / frame times, the startup timeline) and a Chrome trace of the same stretch to data/perf/.
 //
 //   node tools/perf.ts [--base http://localhost:5173/] [--seconds 30] [--trace play|startup|none] [--world <id>]
-//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
+//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
 //
 //   --seconds    gameplay to record (0 = the startup timeline only, no walking)
 //   --trace      play: trace only the recorded walk (default); startup: trace from page load until playable; none
@@ -33,6 +33,8 @@ const label = opt('label', '') as string;
 const spawnAt = opt('spawn', '') as string;
 /** Time of day the run starts at (0..1: 0.333 = 8 am, 0.833 = 8 pm, the sun at 28°, long shadows); the clock then runs on as usual. Without it, the world's own time. */
 const tod = opt('tod', '') as string;
+/** Viewport in CSS pixels, WxH (the game renders one pixel per CSS pixel: a bigger window costs the graphics card more). Default: Chrome's own, about 1280x800. */
+const size = opt('size', '') as string;
 /** Radians to turn from the way the player faces at the start (3.14 = about face: away from the scrap field the field spawn looks at). */
 const yaw = opt('yaw', '') as string;
 
@@ -108,6 +110,10 @@ try {
 
   // The prologue is skipped (a tab's later loads are short), graphics settings are the asked ones, and stats stay as they were.
   await send('Page.enable');
+  if (size) {
+    const [w, h] = size.split('x').map(Number);
+    await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+  }
   await send('Page.addScriptToEvaluateOnNewDocument', {
     source: `try { sessionStorage.setItem('prologueSeen', '1'); const k = 'dadajam.graphics'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), ...${JSON.stringify(prefs)} })); } catch {}`,
   });
@@ -192,6 +198,7 @@ try {
     console.log(`gameplay: ${g.fps} fps (1% low ${g.lows1pctFps}), frames ${g.frames}, > 20 ms: ${g.framesOver20ms}, > 50 ms: ${g.framesOver50ms}`);
     console.log(`  frame gap ms p50/p90/p99/max: ${['p50', 'p90', 'p99', 'max'].map((k) => g.gapMs[k]).join(' / ')}`);
     console.log(`  cpu ms p50/p90/p99: ${g.cpuMs ? ['p50', 'p90', 'p99'].map((k) => g.cpuMs[k]).join(' / ') : '-'}   gpu ms p50/p90/p99: ${g.gpuMs ? ['p50', 'p90', 'p99'].map((k) => g.gpuMs[k]).join(' / ') : '-'}   bound: ${g.bound}`);
+    if (g.gpuPasses?.length) console.log('  gpu ms per frame by render pass (ctx: per-frame ms / when drawn / share of frames):', g.gpuPasses.slice(0, 8).map((x: any) => `${x.ctx}: ${x.perFrameMs} (${x.meanMs} x ${Math.round(x.share * 100)}%)`).join(' | '));
     console.log(`  draws ${g.draws.p50}, triangles ${g.trianglesK.p50}k, render scale ${g.renderScale.p50}`);
   }
 } finally {
