@@ -23,9 +23,6 @@ import { heightAt } from '../../shared/terrain.ts';
 
 type F = Node<'float'>;
 
-/** Dev comparison: `?hfshadow=0` puts the dunes back into the shadow maps (every cascade) and leaves the heightfield out. */
-export const HEIGHT_SHADOWS = typeof location === 'undefined' || new URLSearchParams(location.search).get('hfshadow') !== '0';
-
 /** Layer bit of the terrain chunks, for the top-down height render. */
 export const TERRAIN_LAYER = 12;
 

@@ -60,7 +60,7 @@ can now filter narrowly (1.5-2 texels, was 5-8); the terrain casts into them onl
 Things learned on the way (all cost a debugging round): a render target sampled before it is first drawn into breaks every frame with "destroyed texture used in
 a submit" (the scene is not drawn at all: clear every target once after renderer.init); three clamps a node material's colour output at 0, so passes that
 write negative numbers use `fragmentNode`; 32-bit float targets cannot blend (NoBlending, or the pipeline is never ready and nothing is drawn) and are read
-texel by texel (`.load`), not sampled. `?hfshadow=0` puts the dunes back into the shadow maps for comparison. Spin runs at 1440p (`--route spin --spawn shelter`)
+texel by texel (`.load`), not sampled. Spin runs at 1440p (`--route spin --spawn shelter`)
 gave the two within run-to-run noise (98-135 fps for the same setting); the gain is the look, and ~100 fewer draw calls where the terrain no longer casts.
 
 Ultra (shadow quality 4th step): 5 cascades of 4096² out to 4.5 km (choosing it sets the shadow distance to the maximum), far cascades keep only big casters

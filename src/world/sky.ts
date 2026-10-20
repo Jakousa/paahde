@@ -14,7 +14,7 @@ import { SHADOW_QUALITY, cascadeEnds, graphics, onGraphics, startup } from '../g
 import { CascadedShadows, FIRST_CACHED } from './cascades.ts';
 import { ShadowLod, SHADOW_LOD_FIRST, lodLayer } from './shadowLod.ts';
 import { farShadowFilter, nearShadowFilter, setShadowNoiseAxes } from './shadowFilter.ts';
-import { HEIGHT_SHADOWS, HeightShadow } from './heightShadow.ts';
+import { HeightShadow } from './heightShadow.ts';
 import { DayNight } from './dayNight.ts';
 import { NightSky, nightSky } from './nightSky.ts';
 import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm, SHADOW_ONLY_LAYER, skyRadiance, sunColor, sunDirection, sunDisc, sunLight, time } from './env.ts';
@@ -95,7 +95,7 @@ export class Sky {
       customSplitsCallback: (_n, _near, far, breaks) => breaks.push(...CASCADE_ENDS.map((d) => d / far)),
     });
     this.csm.onFit = (i) => this.fitLight(i);
-    if (HEIGHT_SHADOWS) this.csm.extraLit = this.heights.litNode();
+    this.csm.extraLit = this.heights.litNode();
     this.csm.fade = true; // widens each cascade's map to cover the cross-fade into it
     sun.shadow.shadowNode = this.csm;
     scene.add(sun, sun.target);
@@ -131,7 +131,7 @@ export class Sky {
     this.sun.target.updateMatrixWorld();
     setShadowNoiseAxes(moonlit ? moonDirection.value : sunDirection.value);
     this.heights.light.value.copy(moonlit ? moonDirection.value : sunDirection.value);
-    if (HEIGHT_SHADOWS && this.renderer && this.sun.castShadow) this.heights.update(this.renderer, this.scene, focus);
+    if (this.renderer && this.sun.castShadow) this.heights.update(this.renderer, this.scene, focus);
     this.fitCascades(camera);
     this.cullSmall();
   }
