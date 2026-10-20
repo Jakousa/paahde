@@ -197,7 +197,7 @@ export class Rifle {
     const aiming = holding && ((aimDown() && !!document.pointerLockElement) || this.forceAim);
     // The jammer (src/jammer.ts) raises the hand itself.
     if (playerHands.held !== 'jammer' && playerHands.held !== 'grinder') playerHands.aim = Math.max(0, Math.min(1, playerHands.aim + (aiming ? dt : -dt * 1.4) / ADS_S));
-    // In third person aiming brings the view in to the eye (src/camera.ts); the scope only once it's there.
+    // In third person aiming brings the view in over the right shoulder (src/camera.ts); the scope is first person only.
     this.view.aimIn = aiming;
     const scoped = aiming && playerHands.aim >= 1 && feel.scope && this.view.boomLength < 0.05;
     if (scoped !== this.scoped) {
@@ -302,8 +302,9 @@ export class Rifle {
     const feel = FEEL[this.gun], { range } = GUNS[feel.kind], cooldown = this.cooldown(feel.kind);
     this.readyAt = performance.now() + cooldown;
     // From the eye along the aim (sway included), scattered within the cone from the hip. In third person the
-    // camera is behind the eye on the view ray, so this still goes where the crosshair is.
-    _o.copy(this.view.eye);
+    // camera is behind the eye on the view ray, so this still goes where the crosshair is; over the shoulder the
+    // camera is beside that ray, so the shot starts at the camera instead.
+    _o.copy(this.view.shoulder > 0.05 ? cam.position : this.view.eye);
     cam.getWorldQuaternion(_q);
     _d.set(0, 0, -1).applyQuaternion(_q);
     if (this.spread > 0) {

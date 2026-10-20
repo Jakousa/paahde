@@ -35,6 +35,8 @@ const CLIMB_SHORTEN = 0.25;
 const CLIMB_HEAVY = 1.2;
 const slope = { gx: 0, gz: 0 };
 const BOOM = 4.5; // third-person distance behind the eye (m)
+const OTS_BOOM = 1.7; // aiming in third person: the camera comes in behind the shoulder (m)
+const OTS_SIDE = 0.6; // ...and over it, to the right of the aim line (m)
 const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
 /** Speed slide: the view rolls this far (rad) towards the trailing left hand. */
 const SLIDE_ROLL = 0.07;
@@ -78,10 +80,12 @@ export class FirstPersonCamera {
   thirdPerson = false;
   /** Lying dead (shared/ragdoll.ts): third person whatever the T setting, looking at the body. */
   down = false;
-  /** Aiming the rifle (src/rifle.ts): the view comes in to the eye whatever the T setting, quickly. */
+  /** Aiming a gun (src/rifle.ts): first person stays at the eye; third person comes in over the right shoulder, quickly. */
   aimIn = false;
   /** Where the eye is (the view ray passes through it; in third person the camera is behind it on that ray). */
   readonly eye = new THREE.Vector3();
+  /** Sideways offset (m) of the over-the-shoulder view, eased. */
+  shoulder = 0;
   private boom = 0; // current boom length (m), eased toward BOOM or 0
   private rideHeading = NaN; // set while riding in first person: the view is limited to a neck's range of it
 
@@ -239,19 +243,23 @@ export class FirstPersonCamera {
     const pitch = this.pitch + this.freePitch + this.dip * 0.12 + shakeP;
     const cp = Math.cos(pitch), vs = Math.sin(viewYaw), vc = Math.cos(viewYaw);
     const bx = vs * cp, by = -Math.sin(pitch), bz = vc * cp; // unit vector pointing behind the view
-    const third = (this.thirdPerson && !this.aimIn) || this.down;
-    let reach = third ? BOOM : 0;
+    const third = this.thirdPerson || this.down;
+    const ots = this.aimIn && this.thirdPerson && !this.down;
+    const full = ots ? OTS_BOOM : BOOM;
+    let reach = third ? full : 0;
     for (let i = 1; i <= 12 && reach > 0; i++) {
-      const d = (BOOM * i) / 12;
+      const d = (full * i) / 12;
       if (d > reach) break;
       const px = x + bx * d, pz = z + bz * d;
-      if (y + by * d < heightAt(px, pz) + BOOM_CLEARANCE) reach = Math.max(0, d - BOOM / 12);
+      if (y + by * d < heightAt(px, pz) + BOOM_CLEARANCE) reach = Math.max(0, d - full / 12);
     }
     // Ease out smoothly, but snap in when terrain cuts the boom short.
-    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (this.aimIn ? 16 : 8)));
+    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (ots ? 16 : 8)));
     if (this.boom < 0.01) this.boom = 0;
     this.eye.set(x, y, z);
-    this.camera.position.set(x + bx * this.boom, y + by * this.boom, z + bz * this.boom);
+    this.shoulder += ((ots ? OTS_SIDE : 0) - this.shoulder) * (1 - Math.exp(-dt * 16));
+    if (this.shoulder < 0.005) this.shoulder = 0;
+    this.camera.position.set(x + bx * this.boom + vc * this.shoulder, y + by * this.boom, z + bz * this.boom - vs * this.shoulder);
     this.camera.rotation.set(pitch, viewYaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
 
     // FOV kick when moving faster than a walk (sprint, slides).
