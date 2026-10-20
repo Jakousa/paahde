@@ -9,36 +9,32 @@ export type BotAction =
   | { action: 'WAIT'; duration_s?: number; chirp?: string };
 
 export type LlmDecisionResponse = {
-  thought: string;
   action: 'GATHER' | 'DEPOSIT' | 'FOLLOW' | 'FLEE' | 'WAIT';
-  target_type?: 'scrap' | 'loot' | 'chest';
   target_id?: number;
+  target_type?: 'scrap' | 'loot' | 'chest';
+  thought?: string;
   chirp?: string;
 };
 
 const ACTION_SCHEMA = {
   type: 'object',
   properties: {
-    thought: { type: 'string' },
     action: { type: 'string', enum: ['GATHER', 'DEPOSIT', 'FOLLOW', 'FLEE', 'WAIT'] },
-    target_type: { type: 'string', enum: ['scrap', 'loot', 'chest'] },
     target_id: { type: 'integer' },
-    chirp: { type: 'string' },
+    target_type: { type: 'string', enum: ['scrap', 'loot', 'chest'] },
+    thought: { type: 'string' },
   },
-  required: ['thought', 'action'],
+  required: ['action'],
   additionalProperties: false,
 };
 
-const SYSTEM_PROMPT = `You are AUTON-1, a scavenger robot crafted in a desert wasteland.
-Your role: Follow instructions, scavenge scrap and loose loot, deposit cargo into bunker chests, and stay safe from sandstorms and enemies.
-
-You must respond ONLY with a single valid JSON object containing your chosen action and reasoning.
-
-Constraints:
-1. If your inventory is FULL, you MUST DEPOSIT your items into the nearest chest.
-2. If a sandstorm front is near, you MUST FLEE to shelter or base.
-3. If enemy walkers/guardians are within 50m, AVOID them and DO NOT approach.
-4. Keep actions concise and purposeful.`;
+const SYSTEM_PROMPT = `You are AUTON-1, a scavenger robot companion in a desert wasteland. Output only valid JSON.
+Decision rules:
+1. If hazard or sandstorm: action="FLEE".
+2. If cargo is full: action="DEPOSIT".
+3. If instruction="follow" or ownerDist > 25m: action="FOLLOW".
+4. If scrap available: action="GATHER", target_id=<number>.
+5. Otherwise: action="WAIT" or "FOLLOW".`;
 
 export async function queryBotLlm(situationJson: string): Promise<LlmDecisionResponse | null> {
   const url = process.env.LLM_URL ?? 'http://127.0.0.1:8080/v1/chat/completions';
