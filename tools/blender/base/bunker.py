@@ -5,8 +5,9 @@
 
 Top-level nodes (origin = the entrance hut's floor on the doorway's centre line, door facing game +Z):
     hut     outside of the small entrance hut on the surface, the skylight's collar + glass (lit by the sky)
-    bunker  everything indoors: the hut's inside, stairs, tunnel, hallway, main room, skylight shaft
-    pump    hand water pump, origin at its base centre (placed against the room's east wall by shared/base.ts)
+    bunker  everything indoors: the hut's inside, stairs, tunnel, hallway, main room (sandstone pilasters and ribs,
+            arched alcoves for the workbench, the pump and the chest), skylight shaft
+    pump    hand water pump, origin at its base centre (placed in the room's east alcove by shared/base.ts)
     workbench    crafting bench with a pegboard behind it, origin at its base centre, front +Z
     disassembly  square steel disassembly table (clear top) with a vise, bolt tray, grinder, tool rail and scrap bin
                  round its sides, origin at its base centre, front +Z (placed in the room's middle)
@@ -41,14 +42,24 @@ HUT_FILLET = 0.4  # its rounded-over top edge
 ST_Z, ST_N, ST_RISE, ST_RUN = 0.6, 36, 0.25, 0.3
 FLOOR = -ST_N * ST_RISE
 HALL_Z, HALL_H = -14.2, 3.3  # HALL_H: the hallway vault's crown above the floor
-ROOM_W, ROOM_Z0, ROOM_H = 8.0, -30.2, 6.0
+ROOM_W, ROOM_Z0, ROOM_H = 8.0, -33.2, 6.0
 ROOM_Z = (HALL_Z + ROOM_Z0) / 2
-PUMP_X = ROOM_W - 1.0  # the pump stands against the east wall, facing -X (shared/base.ts BASE_PIECES)
+# Arched alcoves in the walls (shared/base.ts ALCOVE, ALCOVES): half width, depth, springing line above the floor;
+# where (x, z on the wall's inner face, outward normal): the workbench's (west), the pump's (east), the chest's (back).
+ALC_HW, ALC_D, ALC_SPRING = 1.3, 1.2, 2.3
+ALCOVES = ((-ROOM_W, ROOM_Z, -1, 0), (ROOM_W, ROOM_Z, 1, 0), (0.0, ROOM_Z0, 0, -1))
+PUMP_X = ROOM_W + ALC_D - 1.0  # the pump stands in the east alcove, facing -X (shared/base.ts BASE_PIECES)
+# Sandstone pilasters (shared/base.ts PILLAR): width, how far they stand out; offsets along the side walls from the
+# room's centre, and along the front and back walls from the middle. Arch frames: width and how far they stand out.
+PIL_W, PIL_D = 0.6, 0.3
+PIL_SIDES, PIL_ENDS = (2.0, 4.7, 7.4), (2.0, 4.7)
+JAMB_W, JAMB_D = 0.32, 0.12
 SKY_W, SKY_COLLAR, SKY_H = 1.4, 1.8, 0.5
 HUT_R, SKY_R = 0.8, 0.6  # outer corner radii of the hut and the skylight collar (shared/base.ts HUT_R, SKY_R)
 ROOM_R = 1.5  # the room's inside corners (shared/base.ts ROOM_R)
 VAULT_HEADROOM, VAULT_K = 3.3, 1.5  # crown over the stair line, softening of its bends (shared/base.ts VAULT)
 COVE, SKIRT = 0.9, 0.12  # the room's rounded wall-ceiling and wall-floor junctions
+ALC_TOP = FLOOR + ALC_SPRING + ALC_HW + WT + 0.25  # the room's lining is cut for the alcoves up to here
 SMOOTH_ANGLE = math.radians(40)  # edges sharper than this stay hard; gentler ones are shaded smooth
 BURIED_TOP = -0.3
 CEIL = FLOOR + ROOM_H
@@ -69,6 +80,9 @@ MATERIALS = {
     'WoodDark': (0x5a3a22, 0.9, 0.0, False),
     'Peg': (0xa08868, 0.9, 0.0, False),
     'Hazard': (0xd8a028, 0.7, 0.1, False),
+    'Sandstone': (0xc49a68, 0.95, 0.0, False),
+    'SandstoneLight': (0xd2ab7c, 0.95, 0.0, False),
+    'SandstoneDark': (0x8a6644, 0.97, 0.0, False),
 }
 EMIT = {'EmitWarm': 0xffb060}
 
@@ -212,6 +226,20 @@ class MB:
                 f.material_index = idx
                 self.fixed.add(f)
 
+    def prism(self, pts, d, mat):
+        """Solid: the polygon through game points [(x, y, z), ...] swept along the game vector d."""
+        a = [self.bm.verts.new(G(*p)) for p in pts]
+        b = [self.bm.verts.new(G(p[0] + d[0], p[1] + d[1], p[2] + d[2])) for p in pts]
+        idx = self.mi(mat)
+        fs = [self.bm.faces.new(a), self.bm.faces.new(list(reversed(b)))]
+        n = len(pts)
+        for i in range(n):
+            j = (i + 1) % n
+            fs.append(self.bm.faces.new([a[i], a[j], b[j], b[i]]))
+        for f in fs:
+            f.material_index = idx
+            f.smooth = False
+
     def poly(self, pts, mat, normal):
         """One flat face through game points [(x, y, z), ...], turned to face game direction `normal`."""
         f = self.bm.faces.new([self.bm.verts.new(G(*p)) for p in pts])
@@ -286,6 +314,93 @@ def rounded_rect(hx, hz, r, zc, seg=6):
             a = math.pi / 2 * (a0 + k / seg)
             pts.append((cx + r * math.cos(a), zc + cz + r * math.sin(a)))
     return pts
+
+
+class Wall:
+    """A frame on a wall's inner face at (x, z), outward normal (nx, nz) along X or Z: u runs along the wall, v out
+    through it (negative: into the room), y is the game's."""
+
+    def __init__(self, x, z, nx, nz):
+        self.x, self.z, self.nx, self.nz = x, z, nx, nz
+
+    def p(self, u, y, v):
+        return (self.x + self.nx * v - self.nz * u, y, self.z + self.nz * v + self.nx * u)
+
+    def box(self, mb, u0, u1, y0, y1, v0, v1, mat):
+        a, b = self.p(u0, y0, v0), self.p(u1, y1, v1)
+        mb.box(a[0], b[0], y0, y1, a[2], b[2], mat)
+
+    def band(self, mb, r0, r1, spring, v0, v1, mat, seg=12):
+        """Arch band between radii r0 and r1 over the springing line, from v0 to v1."""
+        pts = [self.p(u, y, v0) for u, y in arch(r0, spring, seg) + arch(r1, spring, seg, a0=math.pi, a1=0.0)]
+        mb.prism(pts, (self.nx * (v1 - v0), 0, self.nz * (v1 - v0)), mat)
+
+
+def with_alcoves(pts, seg, hx, hz, zc, u):
+    """rounded_rect(hx, hz, ..., zc, seg) with two more points on its west, back and east edges, ±u either side of
+    each alcove's centre (ALCOVES); returns them and the indices of the edges between (the openings)."""
+    ins = {2 * seg + 1: [(-hx, zc + u), (-hx, zc - u)], 3 * seg + 2: [(-u, zc - hz), (u, zc - hz)],
+           4 * seg + 3: [(hx, zc - u), (hx, zc + u)]}
+    out, gaps = [], []
+    for i, p in enumerate(pts):
+        out.append(p)
+        if i in ins:
+            gaps.append(len(out))
+            out += ins[i]
+    return out, gaps
+
+
+def arch_frame(mb, wall, r, spring):
+    """Sandstone frame round an arched opening (radius r, springing at `spring`) on the wall's face: jambs, imposts,
+    the arch and its keystone."""
+    o = r + JAMB_W
+    for s in (-1, 1):
+        wall.box(mb, s * r, s * o, FLOOR, spring - 0.14, -JAMB_D, 0, 'Sandstone')
+        wall.box(mb, s * r, s * (o + 0.05), spring - 0.14, spring, -JAMB_D - 0.04, 0, 'SandstoneLight')
+    wall.band(mb, r, o, spring, -JAMB_D, 0, 'Sandstone')
+    wall.box(mb, -0.16, 0.16, spring + r - 0.06, spring + o + 0.1, -JAMB_D - 0.04, 0, 'SandstoneLight')
+
+
+def build_alcove(mb, wall):
+    """A recess through the room's wall: floor, walls and a barrel vault of concrete, the wall over its arch (the
+    room's lining is cut away under ALC_TOP) and a sandstone frame round the opening."""
+    hw, r1, sp = ALC_HW, ALC_HW + WT, FLOOR + ALC_SPRING
+    under = FLOOR - 0.3
+    wall.box(mb, -r1, r1, under, FLOOR, WT, ALC_D + WT, 'ConcreteDark')
+    for s in (-1, 1):
+        wall.box(mb, s * hw, s * r1, under, sp, 0, ALC_D, 'Concrete')
+    wall.box(mb, -r1, r1, under, sp + r1, ALC_D, ALC_D + WT, 'Concrete')
+    wall.band(mb, hw, r1, sp, 0, ALC_D, 'Concrete')
+    a = math.acos(hw / r1)
+    pts = [wall.p(u, y, 0) for u, y in arch(r1, sp, 8, a, math.pi - a)] + [wall.p(-hw, ALC_TOP, 0), wall.p(hw, ALC_TOP, 0)]
+    mb.poly(pts, 'Concrete', (-wall.nx, 0, -wall.nz))
+    arch_frame(mb, wall, hw, sp)
+
+
+def build_pillar(mb, wall):
+    """A sandstone pilaster from the floor to the cove: plinth, a shaft of courses with sunk joints, stepped capital."""
+    e, top, h = 0.005, CEIL - COVE, PIL_W / 2
+    wall.box(mb, -h - 0.08, h + 0.08, FLOOR, FLOOR + 0.3, -PIL_D - 0.1, e, 'Sandstone')
+    wall.box(mb, -h - 0.04, h + 0.04, FLOOR + 0.3, FLOOR + 0.38, -PIL_D - 0.05, e, 'SandstoneLight')
+    y0, y1, n = FLOOR + 0.38, top - 0.3, 7
+    wall.box(mb, -h + 0.01, h - 0.01, y0, y1, -PIL_D + 0.01, e, 'SandstoneDark')
+    c = (y1 - y0) / n
+    for k in range(n):
+        wall.box(mb, -h, h, y0 + k * c + 0.006, y0 + (k + 1) * c - 0.006, -PIL_D, e, 'SandstoneLight' if k % 2 else 'Sandstone')
+    wall.box(mb, -h - 0.06, h + 0.06, top - 0.3, top - 0.12, -PIL_D - 0.06, e, 'SandstoneLight')
+    wall.box(mb, -h - 0.12, h + 0.12, top - 0.12, top, -PIL_D - 0.12, e, 'Sandstone')
+
+
+def build_rib(mb, z):
+    """A sandstone rib across the room at z, from capital to capital: up the cove, along the ceiling, down."""
+    t, e, hw, cy, cx = PIL_D, 0.005, 0.25, CEIL - COVE, ROOM_W - COVE
+    q = [math.pi / 2 * k / 6 for k in range(7)]
+    r0, r1 = COVE - t, COVE + e
+    pts = [(cx + r0 * math.cos(a), cy + r0 * math.sin(a)) for a in q]
+    pts += [(-cx - r0 * math.cos(a), cy + r0 * math.sin(a)) for a in reversed(q)]
+    pts += [(-cx - r1 * math.cos(a), cy + r1 * math.sin(a)) for a in q]
+    pts += [(cx + r1 * math.cos(a), cy + r1 * math.sin(a)) for a in reversed(q)]
+    mb.prism([(x, y, z - hw) for x, y in pts], (0, 0, 2 * hw), 'Sandstone')
 
 
 # =================================================================================================
@@ -400,27 +515,49 @@ def build_bunker():
     # Room shell: solid walls and ceiling round the skylight, their insides a hair behind the lining below.
     ct, e = CEIL + 0.3, 0.01
     w, z = SKY_W, ROOM_Z
-    mb.box(-rx, rx, under, ct, rz, ROOM_Z0 - e, 'Concrete')
+    # The alcoves go through them (ALCOVES: one in the middle of each side and of the back wall).
+    c, ac = ALC_HW + WT, FLOOR + ALC_SPRING + ALC_HW + WT
+    mb.box(-rx, -c, under, ct, rz, ROOM_Z0 - e, 'Concrete')
+    mb.box(c, rx, under, ct, rz, ROOM_Z0 - e, 'Concrete')
+    mb.box(-c, c, ac, ct, rz, ROOM_Z0 - e, 'Concrete')
     for s in (-1, 1):
-        mb.box(s * (ROOM_W + e), s * rx, under, ct, ROOM_Z0, hz, 'Concrete')
+        mb.box(s * (ROOM_W + e), s * rx, under, ct, ROOM_Z0, ROOM_Z - c, 'Concrete')
+        mb.box(s * (ROOM_W + e), s * rx, under, ct, ROOM_Z + c, hz, 'Concrete')
+        mb.box(s * (ROOM_W + e), s * rx, ac, ct, ROOM_Z - c, ROOM_Z + c, 'Concrete')
         mb.box(s * W, s * ROOM_W, under, ct, HALL_Z, hz, 'Concrete')
     mb.box(-ROOM_W, ROOM_W, CEIL + e, ct, ROOM_Z0, z - w, 'Concrete')
     mb.box(-ROOM_W, ROOM_W, CEIL + e, ct, z + w, HALL_Z, 'Concrete')
     mb.box(-ROOM_W, -w, CEIL + e, ct, z - w, z + w, 'Concrete')
     mb.box(w, ROOM_W, CEIL + e, ct, z - w, z + w, 'Concrete')
     # Lining: rounded corners, a cove into the ceiling and a small one into the floor, the ceiling running
-    # into the skylight. Its front wall is left out (the hallway arch is cut into it below).
+    # into the skylight. Its front wall is left out (the hallway arch is cut into it below), and so are the
+    # alcoves' openings up to ALC_TOP.
     hd, seg = (HALL_Z - ROOM_Z0) / 2, 6
-    ring = lambda d: rounded_rect(ROOM_W - d, hd - d, ROOM_R - d, ROOM_Z, seg)  # noqa: E731
+    ring = lambda d: with_alcoves(rounded_rect(ROOM_W - d, hd - d, ROOM_R - d, ROOM_Z, seg), seg,  # noqa: E731
+                                  ROOM_W - d, hd - d, ROOM_Z, ALC_HW)
+    gaps = ring(0)[1]
     loops = []
     for k in range(seg + 1):
         a = math.pi / 2 * k / seg
-        loops.append((ring(SKIRT - SKIRT * math.sin(a)), FLOOR + SKIRT - SKIRT * math.cos(a)))
+        loops.append((ring(SKIRT - SKIRT * math.sin(a))[0], FLOOR + SKIRT - SKIRT * math.cos(a)))
+    loops.append((ring(0)[0], ALC_TOP))
     for k in range(seg + 1):
         a = math.pi / 2 * k / seg
-        loops.append((ring(COVE - COVE * math.cos(a)), CEIL - COVE + COVE * math.sin(a)))
-    loops.append((rounded_rect(w, w, 1e-3, ROOM_Z, seg), CEIL))
-    mb.fixed.update(mb.loft(loops, 'Concrete', bottom=False, top=False, skip={(k, seg) for k in range(seg + 1)}))
+        loops.append((ring(COVE - COVE * math.cos(a))[0], CEIL - COVE + COVE * math.sin(a)))
+    loops.append((with_alcoves(rounded_rect(w, w, 1e-3, ROOM_Z, seg), seg, w, w, ROOM_Z, w / 2)[0], CEIL))
+    skip = {(k, seg) for k in range(seg + 2)} | {(k, g) for k in range(seg + 1) for g in gaps}
+    mb.fixed.update(mb.loft(loops, 'Concrete', bottom=False, top=False, skip=skip))
+    for a in ALCOVES:
+        build_alcove(mb, Wall(*a))
+    # Sandstone: a frame round the hallway's arch, pilasters round the walls, ribs across between the side ones.
+    arch_frame(mb, Wall(0, HALL_Z, 0, 1), W - 0.01, crown(HALL_Z) - W)
+    pillars = [(s * ROOM_W, ROOM_Z + t * o, s, 0) for s in (-1, 1) for o in PIL_SIDES for t in (-1, 1)]
+    pillars += [(t * o, zw, 0, n) for o in PIL_ENDS for t in (-1, 1) for zw, n in ((HALL_Z, 1), (ROOM_Z0, -1))]
+    for p in pillars:
+        build_pillar(mb, Wall(*p))
+    for o in PIL_SIDES:
+        for t in (-1, 1):
+            build_rib(mb, ROOM_Z + t * o)
     # The front wall round the hallway's arch, and the floor's cove along it.
     ex, wt = ROOM_W - ROOM_R, CEIL - COVE
     for s in (-1, 1):
@@ -640,10 +777,10 @@ def look_at(cam, target):
 def render_preview(objs, path):
     """Shots: the surface from the front, a cutaway from above, inside the room, down the stairs, the benches."""
     hut, bunker, pump, bench, dis, chest = objs
-    chest.location = G(0, FLOOR, ROOM_Z0 + 0.5)
+    chest.location = G(0, FLOOR, ROOM_Z0 - ALC_D + 0.5)
     pump.location = G(PUMP_X, FLOOR, ROOM_Z)
     pump.rotation_euler = (0, 0, -math.pi / 2)
-    bench.location = G(-ROOM_W + 0.42, FLOOR, ROOM_Z)
+    bench.location = G(-ROOM_W - ALC_D + 0.42, FLOOR, ROOM_Z)
     bench.rotation_euler = (0, 0, math.pi / 2)
     dis.location = G(0, FLOOR, ROOM_Z)
     scene = bpy.context.scene
@@ -715,7 +852,7 @@ def render_preview(objs, path):
     shot('bench', G(-ROOM_W + 3.2, FLOOR + 1.7, ROOM_Z + 1.6), G(-ROOM_W + 0.4, FLOOR + 1.0, ROOM_Z), lens=28)
     shot('disassembly', G(-2.6, FLOOR + 1.9, ROOM_Z + 2.4), G(0, FLOOR + 0.5, ROOM_Z), lens=28)
     shot('disassembly_back', G(2.6, FLOOR + 1.9, ROOM_Z - 2.4), G(0, FLOOR + 0.5, ROOM_Z), lens=28)
-    shot('chest', G(1.4, FLOOR + 1.4, ROOM_Z0 + 2.4), G(0, FLOOR + 0.35, ROOM_Z0 + 0.5), lens=35)
+    shot('chest', G(1.4, FLOOR + 1.4, ROOM_Z0 + 2.4), G(0, FLOOR + 0.35, ROOM_Z0 - ALC_D + 0.5), lens=35)
 
 
 def main():

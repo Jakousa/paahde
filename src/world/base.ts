@@ -12,7 +12,7 @@ import * as THREE from 'three/webgpu';
 import { bool, lights, positionWorld } from 'three/tsl';
 import type { LightsNode, Node } from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { BASE, BASE_PIECES, FLOOR, HALL, HUT, ROOM, ROOM_Z, STAIRS, TERRAIN_HOLES, vaultCrown } from '../../shared/base.ts';
+import { ALCOVE, BASE, BASE_PIECES, FLOOR, HALL, HUT, ROOM, ROOM_Z, STAIRS, TERRAIN_HOLES, vaultCrown } from '../../shared/base.ts';
 import { moonColor, sunColor, sunDirection, sunLight } from './env.ts';
 import { shelterHoles } from './shelters.ts';
 
@@ -43,13 +43,17 @@ const LAMP_MOUNT = 4.3;
  *  of the camera's way when it looks down at the machine (src/teardown). */
 const WORK_MOUNT = 2.7;
 const TABLE_MOUNT = 3.2;
-const BENCH_X = ROOM.w - 1.0;
+/** The pump's lamp hangs in its alcove, lower than the room's. */
+const PUMP_MOUNT = 3.0;
+/** The alcoves' vaults' crown above the floor: their lamps' rods go up to it. */
+const ALCOVE_TOP = ALCOVE.spring + ALCOVE.hw;
+const BENCH_X = ROOM.w + ALCOVE.d - 1.0;
 const HALL_LAMP_Z = (STAIRS.z - STAIRS.n * STAIRS.run + HALL.z) / 2;
-const LAMPS = [
+const LAMPS: { x: number; z: number; ceil: number; intensity: number; top?: number }[] = [
   { x: 0, z: HALL_LAMP_Z, ceil: vaultCrown(HALL_LAMP_Z) - FLOOR, intensity: 0.8 },
-  { x: -BENCH_X, z: ROOM_Z, ceil: WORK_MOUNT, intensity: 9 },
+  { x: -BENCH_X, z: ROOM_Z, ceil: WORK_MOUNT, intensity: 9, top: ALCOVE_TOP },
   { x: 0, z: ROOM_Z, ceil: TABLE_MOUNT, intensity: 9 },
-  { x: BENCH_X, z: ROOM_Z, ceil: LAMP_MOUNT, intensity: 5.5 }, // over the pump
+  { x: BENCH_X, z: ROOM_Z, ceil: PUMP_MOUNT, intensity: 5.5, top: ALCOVE_TOP }, // over the pump
   { x: 0, z: HALL.z - 3, ceil: LAMP_MOUNT, intensity: 5.5 },
   { x: 0, z: ROOM.z + 3, ceil: LAMP_MOUNT, intensity: 5.5 },
 ];
@@ -156,7 +160,8 @@ export class Base {
       const o = lamp.clone();
       o.position.set(l.x, FLOOR + l.ceil, l.z);
       this.group.add(o);
-      const rod = l.ceil < ROOM.h ? ROOM.h - l.ceil : 0;
+      const top = l.top ?? ROOM.h;
+      const rod = l.ceil < top ? top - l.ceil : 0;
       if (rod > 0) {
         const r = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, rod, 6), rodMat);
         r.position.set(l.x, FLOOR + l.ceil + rod / 2, l.z);

@@ -1,7 +1,8 @@
 // The players' home base: an underground bunker under a flat pad in a dune pan. On the surface there is
 // only a small entrance hut; inside its door a staircase goes straight down, then a short hallway leads
-// into the main room, lit from above by a skylight, with the disassembly table in the middle and a hand water
-// pump against the east wall.
+// into the main room, lit from above by a skylight, with the disassembly table in the middle. Sandstone pilasters
+// stand round its walls, and arched alcoves in them hold the workbench (west), the hand water pump (east) and the
+// storage chest (back).
 // Shared by server physics and client prediction (collideBase() in sim.ts step()), the terrain (the pad
 // in baseHeight, no digging over the bunker, holes cut in the sand) and the renderer (src/world/base.ts
 // places the models from tools/blender/base/bunker.py with this layout).
@@ -69,9 +70,22 @@ export const FLOOR = -STAIRS.n * STAIRS.rise;
 /** Hallway ends here, where the room begins; its vault's crown above the floor. */
 export const HALL = { z: -14.2, h: 3.3 };
 /** Main room, inner: half width, far wall, ceiling height above the floor. */
-export const ROOM = { w: 8, z: -30.2, h: 6 };
+export const ROOM = { w: 8, z: -33.2, h: 6 };
 /** The room's centre: the disassembly table stands here, under the skylight. */
 export const ROOM_Z = (HALL.z + ROOM.z) / 2;
+/** Arched alcoves through the room's walls: half width, depth past the wall's inner face, springing line of the
+ *  vault above the floor. */
+export const ALCOVE = { hw: 1.3, d: 1.2, spring: 2.3 };
+/** Where they open (local x, z on the wall's inner face) and their outward normal: the workbench's (west), the
+ *  pump's (east), the chest's (back). The walls' capsules below are cut for them at these spots. */
+export const ALCOVES = [
+  { x: -ROOM.w, z: ROOM_Z, nx: -1, nz: 0 },
+  { x: ROOM.w, z: ROOM_Z, nx: 1, nz: 0 },
+  { x: 0, z: ROOM.z, nx: 0, nz: -1 },
+];
+/** Sandstone pilasters round the room: width along the wall, how far they stand out; offsets along the side walls
+ *  from ROOM_Z and along the front and back walls from the middle. The arches' frames (jambs) beside each opening. */
+export const PILLAR = { w: 0.6, d: 0.3, sides: [2.0, 4.7, 7.4], ends: [2.0, 4.7], jambW: 0.32, jambD: 0.12 };
 /** Where players appear (new, respawned, or back after leaving in or over the bunker): down in the main
  *  room, just in from the hallway, looking at the table. World coordinates, `y` = the floor. */
 export const BUNKER_SPAWN = { x: BASE.x, y: BASE.y + FLOOR, z: BASE.z + HALL.z - 3 };
@@ -111,7 +125,7 @@ function vaultAt(ax: number, c: number): number {
 }
 
 /** The pad around the base is this flat, then blends back into the dunes (shared/terrain.ts). */
-const PAD = { x0: -14, x1: 14, z0: -36, z1: 14, blend: 24 };
+const PAD = { x0: -14, x1: 14, z0: -39, z1: 14, blend: 24 };
 /** The pad's sand lies just under the entrance floor so they don't z-fight. */
 const PAD_Y = BASE.y - 0.06;
 /** The dev test lab's floor (shared/lab.ts): the pad's height everywhere, so the bunker's entrance sits level in it. */
@@ -170,10 +184,20 @@ export function withPad(x: number, z: number, h: number): number {
   return w === 1 ? h : PAD_Y + (h - PAD_Y) * w;
 }
 
-/** Local point inside the bunker's footprint (entrance, tunnel, hallway, room, walls included) + margin. */
+/** Local point inside the bunker's footprint (entrance, tunnel, hallway, room and its alcoves, walls included) + margin. */
 function inFootprint(lx: number, lz: number, m: number): boolean {
   if (Math.abs(lx) < W + HUT.t + m && lz > HALL.z - WT - m && lz < HUT.z1 + HUT.t + m) return true;
-  return Math.abs(lx) < ROOM.w + WT + m && lz > ROOM.z - WT - m && lz < HALL.z + WT + m;
+  return Math.abs(lx) < ROOM.w + ALCOVE.d + WT + m && lz > ROOM.z - ALCOVE.d - WT - m && lz < HALL.z + WT + m;
+}
+
+/** How far across from its centre line local (lx, lz) is in an alcove (past the room's wall, its walls within
+ *  margin m), or -1 outside them. */
+function inAlcove(lx: number, lz: number, m: number): number {
+  for (const a of ALCOVES) {
+    const dx = lx - a.x, dz = lz - a.z, v = dx * a.nx + dz * a.nz, u = Math.abs(dz * a.nx - dx * a.nz);
+    if (v > 0 && v < ALCOVE.d + m && u < ALCOVE.hw + m) return u;
+  }
+  return -1;
 }
 
 /** True over the bunker's footprint, around the mast or a trophy's spot + margin (no digging: it would cut into
@@ -224,14 +248,14 @@ export function terrainHidden(x: number, z: number, y: number): boolean {
 export type BasePiece = { glb: string; node: string; x: number; z: number; fx: number; fz: number; y?: number; hx?: number; hz?: number; h?: number; square?: boolean };
 
 export const BASE_PIECES: BasePiece[] = [
-  // Against the east wall, facing into the room (its drain grate is in tools/blender/base/bunker.py, PUMP_X).
-  { glb: 'bunker', node: 'pump', x: ROOM.w - 1.0, z: ROOM_Z, fx: -1, fz: 0, y: FLOOR, hx: 0.35, hz: 0.35, h: 1.2 },
-  // The workbench against the west wall, facing into the room; the disassembly table square in the middle, its tools
+  // In the east alcove, facing into the room (its drain grate is in tools/blender/base/bunker.py, PUMP_X).
+  { glb: 'bunker', node: 'pump', x: ROOM.w + ALCOVE.d - 1.0, z: ROOM_Z, fx: -1, fz: 0, y: FLOOR, hx: 0.35, hz: 0.35, h: 1.2 },
+  // The workbench in the west alcove, facing into the room; the disassembly table square in the middle, its tools
   // round its sides (shared/stations.ts makes them interactable).
-  { glb: 'bunker', node: 'workbench', x: -ROOM.w + 0.42, z: ROOM_Z, fx: 1, fz: 0, y: FLOOR, hx: 1.0, hz: 0.4, h: 0.95 },
+  { glb: 'bunker', node: 'workbench', x: -ROOM.w - ALCOVE.d + 0.42, z: ROOM_Z, fx: 1, fz: 0, y: FLOOR, hx: 1.0, hz: 0.4, h: 0.95 },
   { glb: 'bunker', node: 'disassembly', x: 0, z: ROOM_Z, fx: 0, fz: 1, y: FLOOR, hx: 0.8, hz: 0.8, h: 0.92, square: true },
-  // Storage chest against the back wall (shared/storage.ts).
-  { glb: 'bunker', node: 'chest', x: 0, z: ROOM.z + 0.5, fx: 0, fz: 1, y: FLOOR, hx: 0.62, hz: 0.37, h: 0.62 },
+  // Storage chest in the back alcove (shared/storage.ts).
+  { glb: 'bunker', node: 'chest', x: 0, z: ROOM.z - ALCOVE.d + 0.5, fx: 0, fz: 1, y: FLOOR, hx: 0.62, hz: 0.37, h: 0.62 },
 ];
 const PUMP = BASE_PIECES[0];
 
@@ -251,6 +275,36 @@ export function atPump(x: number, y: number, z: number, margin = 0): boolean {
 export type Capsule = { x: number; z: number; ax: number; az: number; half: number; r: number; y0: number; top: number };
 /** Walls are taller than any jump. */
 const WALL_H = 100;
+
+/** What stands out of the room's walls (local): centre on the wall's inner face, outward normal, width along the
+ *  wall, how far out. The pilasters (`pillar`), and the jambs of the alcoves' and the hallway's arches. */
+const ON_WALL: { x: number; z: number; nx: number; nz: number; w: number; d: number; pillar: boolean }[] = [];
+{
+  const p = (x: number, z: number, nx: number, nz: number) => ON_WALL.push({ x, z, nx, nz, w: PILLAR.w, d: PILLAR.d, pillar: true });
+  const j = (x: number, z: number, nx: number, nz: number) => ON_WALL.push({ x, z, nx, nz, w: PILLAR.jambW, d: PILLAR.jambD, pillar: false });
+  for (const t of [-1, 1]) {
+    for (const o of PILLAR.sides) for (const s of [-1, 1]) p(s * ROOM.w, ROOM_Z + t * o, s, 0);
+    for (const o of PILLAR.ends) {
+      p(t * o, HALL.z, 0, 1);
+      p(t * o, ROOM.z, 0, -1);
+    }
+    for (const a of ALCOVES) {
+      const u = t * (ALCOVE.hw + PILLAR.jambW / 2);
+      j(a.x - a.nz * u, a.z + a.nx * u, a.nx, a.nz);
+    }
+    j(t * (W - 0.01 + PILLAR.jambW / 2), HALL.z, 0, 1);
+  }
+}
+
+/** Local point inside a pilaster. */
+function inPillar(lx: number, lz: number): boolean {
+  for (const b of ON_WALL) {
+    if (!b.pillar) continue;
+    const dx = lx - b.x, dz = lz - b.z, v = dx * b.nx + dz * b.nz;
+    if (v <= 0 && v > -b.d && Math.abs(dz * b.nx - dx * b.nz) < b.w / 2) return true;
+  }
+  return false;
+}
 
 const capsules: Capsule[] = [];
 /** Wall of thickness 2r along its centre line from (x0, z0) to (x1, z1). */
@@ -287,16 +341,31 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
   const hz = HALL.z + WT / 2, rx = ROOM.w + WT / 2, rz = ROOM.z - WT / 2;
   wall(-xs, back, -xs, hz, -Infinity, BURIED_TOP);
   wall(xs, back, xs, hz, -Infinity, BURIED_TOP);
-  // Main room, opening onto the hallway, its corners rounded.
+  // Main room, opening onto the hallway, its corners rounded, broken by the alcoves (in the middle of the side
+  // walls and of the back wall).
   const ex = ROOM.w - ROOM_R, ef = HALL.z - ROOM_R, eb = ROOM.z + ROOM_R, rr = ROOM_R + WT / 2;
+  const g = ALCOVE.hw + WT / 2, ad = ALCOVE.d + WT / 2;
   wall(-ex, hz, -xs, hz, -Infinity, BURIED_TOP);
   wall(xs, hz, ex, hz, -Infinity, BURIED_TOP);
-  wall(-ex, rz, ex, rz, -Infinity, BURIED_TOP);
-  wall(-rx, ef, -rx, eb, -Infinity, BURIED_TOP);
-  wall(rx, ef, rx, eb, -Infinity, BURIED_TOP);
+  wall(-ex, rz, -g, rz, -Infinity, BURIED_TOP);
+  wall(g, rz, ex, rz, -Infinity, BURIED_TOP);
   for (const s of [-1, 1]) {
+    wall(s * rx, ef, s * rx, ROOM_Z + g, -Infinity, BURIED_TOP);
+    wall(s * rx, ROOM_Z - g, s * rx, eb, -Infinity, BURIED_TOP);
     arc(s * ex, ef, rr, s, 1, -Infinity, BURIED_TOP);
     arc(s * ex, eb, rr, s, -1, -Infinity, BURIED_TOP);
+  }
+  // The alcoves' sides and backs.
+  for (const a of ALCOVES) {
+    const tx = -a.nz * g, tz = a.nx * g, x0 = a.x + a.nx * WT / 2, z0 = a.z + a.nz * WT / 2;
+    const x1 = a.x + a.nx * ad, z1 = a.z + a.nz * ad;
+    for (const t of [-1, 1]) wall(x0 + t * tx, z0 + t * tz, x1 + t * tx, z1 + t * tz, -Infinity, BURIED_TOP);
+    wall(x1 - tx, z1 - tz, x1 + tx, z1 + tz, -Infinity, BURIED_TOP);
+  }
+  // Pilasters and the arches' jambs standing out of the walls.
+  for (const b of ON_WALL) {
+    const r = b.d / 2;
+    capsules.push({ x: b.x - b.nx * r, z: b.z - b.nz * r, ax: -b.nz, az: b.nx, half: Math.max(b.w / 2 - r, 0), r, y0: -Infinity, top: BURIED_TOP });
   }
   // Skylight collar on the surface (its glass is a floor, below), outer corners rounded.
   const c = (SKY.collar + SKY.w) / 2, cr = (SKY.collar - SKY.w) / 2, k = SKY.collar - SKY_R;
@@ -347,7 +416,7 @@ function floorAt(lx: number, lz: number, feet: number, stepUp: number): number {
   let best = -Infinity;
   const ax = Math.abs(lx);
   if (ax < W + WT && lz > HALL.z - WT && lz < HUT.z1 + WT) best = stairY(lz);
-  else if (ax < ROOM.w + WT && lz > ROOM.z - WT && lz < HALL.z + WT) best = FLOOR;
+  else if (ax < ROOM.w + ALCOVE.d + WT && lz > ROOM.z - ALCOVE.d - WT && lz < HALL.z + WT) best = FLOOR; // with the alcoves
   // Walk on the skylight's glass, but don't get lifted onto it from below.
   if (ax < SKY.collar && Math.abs(lz - ROOM_Z) < SKY.collar && feet >= SKY.h - 0.05 - stepUp) best = SKY.h - 0.05;
   return best;
@@ -408,7 +477,10 @@ function ceilingAt(lx: number, lz: number): number {
   const ax = Math.abs(lx);
   if (ax < W + WT && lz >= HUT.z0 && lz < HUT.z1 + WT) return HUT.h;
   if (ax < W + WT && lz > HALL.z && lz < HUT.z0) return vaultAt(ax, vaultCrown(lz));
-  if (ax < ROOM.w + WT && lz > ROOM.z - WT && lz <= HALL.z) {
+  if (ax < ROOM.w + ALCOVE.d + WT && lz > ROOM.z - ALCOVE.d - WT && lz <= HALL.z) {
+    // An alcove's barrel vault; then the room's ceiling, the skylight's glass.
+    const u = inAlcove(lx, lz, WT);
+    if (u >= 0) return FLOOR + ALCOVE.spring + Math.sqrt(Math.max(0, ALCOVE.hw * ALCOVE.hw - u * u));
     return ax < SKY.w && Math.abs(lz - ROOM_Z) < SKY.w ? SKY.h - 0.1 : FLOOR + ROOM.h;
   }
   return Infinity;
@@ -431,10 +503,12 @@ export function baseCeiling(x: number, z: number, prevY: number, height: number)
 export function baseSolid(x: number, y: number, z: number): boolean | null {
   const lx = x - BASE.x, lz = z - BASE.z, ly = y - BASE.y, ax = Math.abs(lx);
   if (ly > HUT.top || !inFootprint(lx, lz, 0)) return null;
-  // Air: the hut, stairwell, tunnel and hallway; the doorway; the room (up to the skylight's glass).
+  // Air: the hut, stairwell, tunnel and hallway; the doorway; the room (up to the skylight's glass, round the
+  // pilasters) and its alcoves.
   if (ax < W && lz > HALL.z && lz < HUT.z1 && ly > stairY(lz) && ly < ceilingAt(lx, lz)) return false;
   if (ax < HUT.door && lz >= HUT.z1 - 0.01 && ly > 0 && ly < HUT.h) return false;
-  if (ax < ROOM.w && lz > ROOM.z && lz <= HALL.z && ly > FLOOR && ly < ceilingAt(lx, lz)) return false;
+  if (ax < ROOM.w && lz > ROOM.z && lz <= HALL.z && ly > FLOOR && ly < ceilingAt(lx, lz) && !inPillar(lx, lz)) return false;
+  if (inAlcove(lx, lz, 0) >= 0 && ly > FLOOR && ly < ceilingAt(lx, lz)) return false;
   if (ax < W + HUT.t && lz > HUT.z0 - HUT.t) return true; // the hut's walls and roof
   if (ax < SKY.collar && Math.abs(lz - ROOM_Z) < SKY.collar && ly < SKY.h) return true; // collar, glass
   return ly < BURIED_TOP ? true : null; // underground concrete; the sand over it

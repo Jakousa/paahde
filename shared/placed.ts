@@ -11,7 +11,7 @@
 //
 // Same determinism rules as shared/base.ts for anything collision touches: + - * /, Math.sqrt, Math.abs,
 // Math.min/max only.
-import { BASE, BASE_PIECES, FLOOR, HALL, ROOM, setPlacedCapsules, W, type Capsule } from './base.ts';
+import { BASE, BASE_PIECES, FLOOR, HALL, PILLAR, ROOM, setPlacedCapsules, W, type Capsule } from './base.ts';
 import { EYE_HEIGHT } from './dig.ts';
 import { TEXT } from './text.ts';
 
@@ -113,7 +113,7 @@ export function placeError(kind: string, x: number, z: number, rot: number, list
   if (!isPlaceable(kind)) return TEXT.notice.cantPlace;
   if (!Number.isFinite(x) || !Number.isFinite(z) || (rot !== 0 && rot !== 1)) return TEXT.notice.badSpot;
   const f = footprint(kind, x, z, rot);
-  const m = 0.05;
+  const m = 0.05 + PILLAR.d; // clear of the pilasters
   if (f[0] < BASE.x - ROOM.w + m || f[2] > BASE.x + ROOM.w - m || f[1] < BASE.z + ROOM.z + m || f[3] > BASE.z + HALL.z - m) {
     return TEXT.notice.floorOnly;
   }
