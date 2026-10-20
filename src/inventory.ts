@@ -142,6 +142,7 @@ img.fit { object-fit: contain; }
   text-shadow: 0 1px 2px #000; }
 #invOverlay .slot .bad { position: absolute; right: 3px; top: 1px; font: 700 10px var(--mono); color: #ff8a66; }
 #invOverlay .slot.broken > svg, #invOverlay .slot.broken > img { opacity: 0.5; filter: grayscale(0.8); }
+#invOverlay .slot.broken:not(.over) { background: rgba(200, 52, 30, 0.22); box-shadow: inset 0 0 0 1px rgba(230, 80, 50, 0.45); }
 #invOverlay .slot .ph { font: 600 9px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.4; }
 #invOverlay .slot.dead { background: rgba(222, 62, 34, 0.12); box-shadow: inset 0 0 0 1px rgba(222, 62, 34, 0.5); }
 #invOverlay .slot.fits { box-shadow: inset 0 0 0 1px rgba(140, 220, 150, 0.7); }
