@@ -582,7 +582,7 @@ baseSand.update(frameDt, storm.atBase);
   const ownSpeed = Math.hypot(s.vx, s.vz);
   slideSound.update(frameDt, !s.grounded || s.riding || net.down ? 0 : s.sliding ? 1 : ownSpeed > 2 && isSlipFace(s.x, s.z) ? 0.5 : 0, ownSpeed);
   crosshairRing(s.mounting > 0 && !net.down ? 1 - s.mounting / MOUNT_TICKS : null);
-  engineSound.update(frameDt, s.riding || s.mounting > 0, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
+  engineSound.update(frameDt, s.riding || s.mounting > 0, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0, s.bike);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   drinkSound.remotes(others, orbit.camera.position);
   grinderSound.remotes(frameDt, others, orbit.camera.position);

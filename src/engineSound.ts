@@ -7,7 +7,8 @@
 //   - inverter: the motor controller switches at a fixed carrier frequency; its whistle has sidebands at
 //               carrier ± the motor frequency, which spread apart as you speed up (the tram / metro sound).
 //               Here: a fixed sine amplitude-modulated by a sine at the motor frequency.
-// Pitch follows the motor's revs: the wheel speed through a gearbox (GEARS). Near the top of a gear it shifts
+// Pitch follows the motor's revs (RPM): the wheel speed through a gearbox (GEARS), its ratios longer on a faster
+// bike, so every bike revs through the same range. Near the redline it shifts
 // up: the drive cuts for a moment (the level dips), a clunk, and the revs drop into the next gear; slowing
 // down it shifts back down with a softer clunk and the revs blipping up. Loudness follows the load
 // (throttle, i.e. torque) more than the speed, so coasting is quiet and opening up brings the whine in. A
@@ -21,17 +22,23 @@
 //
 // Plays through the shared output in src/audio.ts (volume slider, limiter); every level change is ramped.
 import { audio } from './audio';
+import { bikeTopSpeed } from '../shared/gear.ts';
 
-/** Motor frequency (Hz) at idle and at the top of a gear. */
+/** The revs: idle and redline (the limiter holds it there), and the motor frequency (Hz) at each. */
+const IDLE_RPM = 1500;
+const RED_RPM = 9000;
 const F_IDLE = 24;
 const F_RED = 88;
-/** Wheel speed (m/s) at the top of each gear (the bikes cruise at 16 to 35 m/s; the last is for the air). */
-const GEARS = [6, 11, 17, 24, 32, 42];
-/** Shift up past this fraction of the gear's top with the throttle open (UP_COAST without), down once the
- *  speed falls under DOWN of the lower gear's top; not again within SHIFT_GAP s. */
-const UP = 0.9;
-const UP_COAST = 0.97;
-const DOWN = 0.5;
+/** Gear ratios, as where each gear reaches the redline: a fraction of the bike's top speed (shared/gear.ts
+ *  bikeTopSpeed). A faster bike has longer gears, so every bike revs through the same range. They cruise
+ *  at about CRUISE of it, in top gear; the last gear's top is past that, for the air. */
+const GEARS = [0.17, 0.3, 0.44, 0.58, 0.74, 0.95];
+const CRUISE = 0.75;
+/** Shift up past UP_RPM with the throttle open (UP_COAST_RPM without), down once the revs fall under DOWN_RPM
+ *  (the lower gear then lands at about twice that); not again within SHIFT_GAP s. */
+const UP_RPM = 8200;
+const UP_COAST_RPM = 8800;
+const DOWN_RPM = 3800;
 const SHIFT_GAP = 0.35;
 /** An upshift cuts the drive this long (s), the level dipping to CUT_LEVEL. */
 const CUT = 0.12;
@@ -49,11 +56,9 @@ const BEAT_HZ = 1.3;
 /** Inverter carrier (Hz), and its sidebands' offset in multiples of the motor frequency. */
 const CARRIER = 900;
 const SIDEBAND = 2;
-/** Speed (m/s) that counts as top speed for the level and the whine. */
-const TOP = 26;
-/** Free-spinning wheel in the air: spin-up (m/s²) with the throttle held, and its top speed (m/s). */
-const AIR_SPIN_UP = 30;
-const AIR_TOP = 34;
+/** Free-spinning wheel in the air: spin-up (fraction of the bike's top speed per s) with the throttle held, up
+ *  to the top gear's redline. */
+const AIR_SPIN_UP = 1;
 /** Time constant (s) of the wind-down in the air, and of following the load (throttle). */
 const AIR_DECAY = 1.2;
 const LOAD_TAU = 0.15;
@@ -89,7 +94,7 @@ const wobble = (t: number, k: number) =>
 type Vec = { x: number; y: number; z: number };
 type Vel = { vx: number; vy: number; vz: number };
 /** What a remote rider looks like to us (src/net.ts RemotePlayer). */
-type Rider = Vec & { id: number; riding: boolean; grounded: boolean; vx: number; vy: number; vz: number };
+type Rider = Vec & { id: number; riding: boolean; grounded: boolean; vx: number; vy: number; vz: number; bike: number };
 
 let bodyWave: PeriodicWave | null = null;
 let noise: AudioBuffer | null = null;
@@ -159,14 +164,20 @@ class Motor {
   }
 
   /** The gearbox: up near the top of a gear, down once well into the one below. Returns the shift (+1, −1, 0). */
-  private shift(throttle: number): number {
+  private shift(throttle: number, top: number): number {
     if (this.sinceShift < SHIFT_GAP) return 0;
-    const g = this.gear;
-    if (g < GEARS.length - 1 && this.wheel > GEARS[g] * (throttle > 0.5 ? UP : UP_COAST)) this.gear++;
-    else if (g > 0 && this.wheel < GEARS[g - 1] * DOWN) this.gear--;
+    const g = this.gear, rpm = this.rpm(g, top);
+    if (g < GEARS.length - 1 && rpm > (throttle > 0.5 ? UP_RPM : UP_COAST_RPM)) this.gear++;
+    else if (g > 0 && rpm < DOWN_RPM) this.gear--;
     else return 0;
     this.sinceShift = 0;
     return this.gear - g;
+  }
+
+  /** Revs in gear `g` at the wheel speed, on a bike with top speed `top` (m/s): never under idle (the clutch
+   *  slips), held at the redline by the limiter. */
+  private rpm(g: number, top: number): number {
+    return Math.min(RED_RPM, Math.max(IDLE_RPM, (this.wheel / (GEARS[g] * top)) * RED_RPM));
   }
 
   /** The clunk of the gear going in: a thump and a click, `level` × MIX. */
@@ -196,14 +207,16 @@ class Motor {
     click.start(now);
   }
 
-  /** `throttle` in [0, 1]; `pitch` scales the frequency (Doppler). */
-  update(dt: number, riding: boolean, grounded: boolean, speed: number, throttle: number, pitch = 1) {
+  /** `throttle` in [0, 1]; `bike` the motorcycle (PlayerState.bike: 1 + its quality); `pitch` scales the
+   *  frequency (Doppler). */
+  update(dt: number, riding: boolean, grounded: boolean, speed: number, throttle: number, bike: number, pitch = 1) {
     this.time += dt;
+    const top = bikeTopSpeed(Math.max(0, bike - 1));
     if (!riding || grounded) this.wheel = speed;
-    else if (throttle > 0.5) this.wheel = Math.min(AIR_TOP, this.wheel + AIR_SPIN_UP * dt);
+    else if (throttle > 0.5) this.wheel = Math.min(GEARS[GEARS.length - 1] * top, this.wheel + AIR_SPIN_UP * top * dt);
     else this.wheel += (speed - this.wheel) * (1 - Math.exp(-dt / AIR_DECAY));
     this.sinceShift += dt;
-    const shifted = riding ? this.shift(throttle) : 0;
+    const shifted = riding ? this.shift(throttle, top) : 0;
     if (!riding) this.gear = 0;
     if (shifted) this.clunk(shifted > 0 ? CLUNK : CLUNK_DOWN);
     // An upshift cuts the drive: no load while the clutch is out.
@@ -214,9 +227,9 @@ class Motor {
     const now = this.ctx.currentTime;
     const set = (p: AudioParam, v: number, tau = 0.08) => p.setTargetAtTime(v, now, tau);
     const t = this.time, k = this.seed;
-    const x = clamp01(this.wheel / TOP);
-    // Revs: through the gear, gliding to the new gear's after a shift (the frequencies' 80 ms ramp).
-    const revs = clamp01(this.wheel / GEARS[this.gear]);
+    const x = clamp01(this.wheel / (CRUISE * top));
+    // Pitch follows the revs, gliding to the new gear's after a shift (the frequencies' 80 ms ramp).
+    const revs = (this.rpm(this.gear, top) - IDLE_RPM) / (RED_RPM - IDLE_RPM);
     const f = (F_IDLE + (F_RED - F_IDLE) * revs) * pitch * (1 + 0.004 * wobble(t * 0.9, k));
 
     set(this.body[0].frequency, f);
@@ -256,10 +269,10 @@ export class EngineSound {
     });
   }
 
-  /** Your bike. `speed`: its ground speed (m/s); `throttle`: forward or back held. */
-  update(dt: number, riding: boolean, grounded: boolean, speed: number, throttle: boolean) {
+  /** Your bike (`bike`: PlayerState.bike). `speed`: its ground speed (m/s); `throttle`: forward or back held. */
+  update(dt: number, riding: boolean, grounded: boolean, speed: number, throttle: boolean, bike: number) {
     if (!this.own || !audio.running) return;
-    this.own.update(dt, riding, grounded, speed, throttle ? 1 : 0);
+    this.own.update(dt, riding, grounded, speed, throttle ? 1 : 0, bike);
   }
 
   /** Other riders' bikes, heard from `listener` moving at `lv` (m/s). */
@@ -300,13 +313,14 @@ export class EngineSound {
       const prev = a.speed;
       a.speed += (speed - a.speed) * (1 - Math.exp(-dt / 0.15));
       a.acc += ((a.speed - prev) / Math.max(dt, 1e-3) - a.acc) * (1 - Math.exp(-dt / 0.2));
-      const throttle = clamp01(Math.max(Math.abs(a.acc) / REMOTE_LOAD_ACC, REMOTE_CRUISE_LOAD * (a.speed / TOP) ** 2));
+      const cruise = CRUISE * bikeTopSpeed(Math.max(0, r.bike - 1));
+      const throttle = clamp01(Math.max(Math.abs(a.acc) / REMOTE_LOAD_ACC, REMOTE_CRUISE_LOAD * (a.speed / cruise) ** 2));
 
       // Doppler: how fast the bike closes on us along the line between.
       const inv = 1 / Math.max(d, 0.1);
       const closing = ((r.vx - lv.vx) * (listener.x - r.x) + (r.vy - lv.vy) * (listener.y - r.y) + (r.vz - lv.vz) * (listener.z - r.z)) * inv;
       const pitch = SOUND_SPEED / (SOUND_SPEED - Math.max(-60, Math.min(60, closing)));
-      a.motor.update(dt, true, r.grounded, a.speed, throttle, pitch);
+      a.motor.update(dt, true, r.grounded, a.speed, throttle, r.bike, pitch);
     }
     for (const [id, a] of this.remotes) {
       if (keep.has(id)) continue;
