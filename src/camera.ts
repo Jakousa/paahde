@@ -80,7 +80,9 @@ export class FirstPersonCamera {
   thirdPerson = false;
   /** Lying dead (shared/ragdoll.ts): third person whatever the T setting, looking at the body. */
   down = false;
-  /** Aiming a gun (src/rifle.ts): first person stays at the eye; third person comes in over the right shoulder, quickly. */
+  /** Holding a gun (src/rifle.ts): third person comes in over the right shoulder, quickly. */
+  shoulderAim = false;
+  /** Aiming a scoped gun: the view comes in to the eye whatever the T setting, quickly. */
   aimIn = false;
   /** Where the eye is (the view ray passes through it; in third person the camera is behind it on that ray). */
   readonly eye = new THREE.Vector3();
@@ -243,8 +245,8 @@ export class FirstPersonCamera {
     const pitch = this.pitch + this.freePitch + this.dip * 0.12 + shakeP;
     const cp = Math.cos(pitch), vs = Math.sin(viewYaw), vc = Math.cos(viewYaw);
     const bx = vs * cp, by = -Math.sin(pitch), bz = vc * cp; // unit vector pointing behind the view
-    const third = this.thirdPerson || this.down;
-    const ots = this.aimIn && this.thirdPerson && !this.down;
+    const third = (this.thirdPerson && !this.aimIn) || this.down;
+    const ots = this.shoulderAim && this.thirdPerson && !this.aimIn && !this.down;
     const full = ots ? OTS_BOOM : BOOM;
     let reach = third ? full : 0;
     for (let i = 1; i <= 12 && reach > 0; i++) {
@@ -254,7 +256,7 @@ export class FirstPersonCamera {
       if (y + by * d < heightAt(px, pz) + BOOM_CLEARANCE) reach = Math.max(0, d - full / 12);
     }
     // Ease out smoothly, but snap in when terrain cuts the boom short.
-    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (ots ? 16 : 8)));
+    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (ots || this.aimIn ? 16 : 8)));
     if (this.boom < 0.01) this.boom = 0;
     this.eye.set(x, y, z);
     this.shoulder += ((ots ? OTS_SIDE : 0) - this.shoulder) * (1 - Math.exp(-dt * 16));
