@@ -13,7 +13,7 @@
 // client and server agree exactly. Edits travel as absolute values (not deltas), so applying the same
 // edit twice is harmless and a client can predict a dig locally and still converge on the server.
 
-import { baseSolid, LAB_FLOOR_Y, nearBunker, overBase, withPad } from './base.ts';
+import { baseSolid, LAB_FLOOR_Y, nearBunker, overBase, overPlaced, withPad } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockHeight } from './rocks.ts';
 import { LAB } from './world.ts';
@@ -88,9 +88,9 @@ export class TerrainEdits {
     return c ? c[(iz - cz * EDIT_CHUNK) * EDIT_CHUNK + (ix - cx * EDIT_CHUNK)] : 0;
   }
 
-  /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. Not over the bunker or a shelter. */
+  /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. Not over the bunker, a shelter or a building on the sand. */
   setMm(ix: number, iz: number, mm: number) {
-    if (mm !== 0 && (overBase(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overShelter(ix * EDIT_CELL, iz * EDIT_CELL, 1))) return;
+    if (mm !== 0 && (overBase(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overShelter(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overPlaced(ix * EDIT_CELL, iz * EDIT_CELL, 1))) return;
     const cx = Math.floor(ix / EDIT_CHUNK), cz = Math.floor(iz / EDIT_CHUNK);
     const k = TerrainEdits.key(cx, cz);
     let c = this.chunks.get(k);

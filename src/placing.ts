@@ -1,8 +1,8 @@
 // Putting things down and picking them up (shared/placed.ts). Select a placeable item in the hotbar (1–5) and
-// a see-through preview follows the crosshair over the bunker floor: green where it fits, red where it
-// doesn't; R turns it, left mouse / E puts it down (the server checks it again). Looking at a placed thing,
+// a see-through preview follows the crosshair over the bunker floor (the sand, for the windmill): green where it
+// fits, red where it doesn't; R turns it, left mouse / E puts it down (the server checks it again). Looking at a placed thing,
 // G picks it back up into the bag. A UV lamp aimed at a bed snaps over it (and a bed under a lone lamp).
-import { isPlaceable, placeAim, placed, placedTarget, placeError, type Placed } from '../shared/placed.ts';
+import { isPlaceable, onSand, placeAim, placed, placedTarget, placedY, placeError, type Placed } from '../shared/placed.ts';
 import { pitchFromQ } from '../shared/dig.ts';
 import { yawFromQ } from '../shared/sim.ts';
 import { isBound, kbd } from './bindings';
@@ -57,8 +57,8 @@ export class Placer {
       return { prompt: pickHint, target };
     }
     const at = placeAim(feet, yaw, pitch, kind, this.rot, placed);
-    const why = at ? placeError(kind, at.x, at.z, at.rot, placed, [feet]) : TEXT.prompt.aimAtFloor;
-    this.view.preview(kind, at, !why);
+    const why = at ? placeError(kind, at.x, at.z, at.rot, placed, [feet]) : onSand(kind) ? TEXT.prompt.aimAtGround : TEXT.prompt.aimAtFloor;
+    this.view.preview(kind, at && { ...at, y: placedY(kind, at.x, at.z, at.rot) }, !why);
     if (pressed) {
       if (why) toast(why);
       else this.net.place(slot, at!.x, at!.z, at!.rot);

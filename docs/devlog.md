@@ -1764,3 +1764,34 @@ low over the land (`shared/gas.ts`, scheduled by `server/storm.ts`, client `src/
   in one long wedge from z 4 to the hood's lip. The maw is lower (the hood's underside at 7.8 m) and deeper (the throat
   at z 16.6, the lip out at z 28.6); the axles moved in (WHEELBASE 18) to clear it, and the drum is a little smaller
   and lower so the cores show over it. Four cores now (x ±3, ±9, y 5.6), still CORE_HP hits each.
+
+## Buildings: the windmill and the battery station
+
+- **Buildings are gear that you put down** (`shared/gear.ts` `built: true`, `isBuilding`): part slots, `quality()`
+  and the tier look like any repaired gear, but crafted, never found (kept out of caches). The **windmill** has six
+  bearing and two coil slots, the **battery station** six battery and two coil slots. Recipes (`shared/tables.ts`):
+  windmill 6 bearings + 2 coils + 20 scrap, battery station 6 batteries + 2 coils + 14 scrap. A crafted building comes
+  with the very parts that went into it fitted (`shared/crafting.ts`; the worst tier is still used first), so it is as
+  good as what you made it from; the scrap is its frame and has no slot.
+- **Placed with the placeables system** (`shared/placed.ts`): `Placed` now has `y` (what it stands on) and a
+  building's `parts`. The battery station goes on the bunker floor like the plant bed. The windmill is a `sand` kind:
+  the aim marches the ray over the terrain, it goes up within `OUTDOOR_RANGE` (75 m) of the base, off the bunker, mast
+  and trophy ground (`overBase`/`insideBase`), on ground that rises at most 0.7 m across its footprint, and stands on
+  the lowest corner. Its legs collide anywhere (`collideOutdoor` in `shared/base.ts`, called in `step()`), and the
+  sand under it can't be dug or cratered (`overPlaced`, checked in `TerrainEdits.setMm`). `placed.y` is a new column.
+- **Swapping parts where it stands:** while a building stands, its item (with its parts) lives in a shared box of one
+  slot, `bld<placed id>` (`buildingBox`), open within reach of it (`shared/storage.ts`). F on a building opens the
+  inventory with its panel, laid out like the workbench's (`src/inventory.ts`: part slots are the pseudo-box
+  `part:<box>`, the bench's being `part:bench`); drag or shift-click parts in and out. `fitPart`/`unfitPart` take the
+  target box (`at`, also on the `fit`/`unfit` messages); the item itself never moves in or out of its box (`tryMove`),
+  can't be dropped or sorted. After a swap the server refreshes the building's `parts` in the placed list
+  (`PlacedServer.refresh`). G picks it up with its parts as they are now.
+- **Look** (`src/world/placed.ts`, `tools/blender/placeables.py`): a farm windmill of scrap: a splayed lattice tower
+  of mismatched tube on concrete footings, a ladder, the cable spiralling down a leg to a junction box; the head
+  (`windmill_head`, generator drum, tail vane of patched sheet) turns into the wind (`WIND`) and the twelve-blade rotor
+  (`windmill_rotor`) spins at `windmillSpin(quality)` (faster in a storm), still while a part is missing. The battery
+  station: a plank skid and an angle-iron rack of six odd cells (`battery_station_cell0..5`, each shown only while its
+  slot holds a battery, each in its own part's tier), bus cables, a charger box with its two coils and a gauge. Indoor
+  things keep the bunker's lights through the tier look (`src/tierLook.ts` copies `lightsNode`).
+- Gaps: the power does nothing yet (no consumer: `windmillSpin` is the only effect of quality); no sounds; the
+  head's turn and the rotor are per-client, not synced.

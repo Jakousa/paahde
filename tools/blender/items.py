@@ -85,6 +85,8 @@ def make_material(name, hex_color, metallic, roughness, emission):
     mat = bpy.data.materials.new(name)
     rgb = [srgb_to_linear(((hex_color >> s) & 0xFF) / 255) for s in (16, 8, 0)]
     mat.diffuse_color = (*rgb, 1)
+    if mat.node_tree is None:  # Blender before 5 makes materials without nodes
+        mat.use_nodes = True
     bsdf = mat.node_tree.nodes.get('Principled BSDF')
     bsdf.inputs['Base Color'].default_value = (*rgb, 1)
     bsdf.inputs['Metallic'].default_value = metallic

@@ -5,6 +5,10 @@
 // Ingredients match groups of item kinds, so any tier of a part will do: wiring is the coil part in any
 // tier (coil_scrap … coil_space, shared/parts.ts); scrap is the one SCRAP item. The worst matching item
 // (lowest tier) is used first.
+//
+// What makes gear (the buildings, shared/gear.ts built) comes with the parts it took fitted in its slots, each slot
+// the first of them that fits it: it is as good as what went into it, and better parts can be swapped in later.
+import { fitsSlot, GEAR } from './gear.ts';
 import { addItem, HOTBAR, ITEMS, type Shape, type Slots } from './items.ts';
 import { partOf } from './parts.ts';
 import { TIERS } from './salvage.ts';
@@ -62,11 +66,21 @@ export function craft(slots: Slots, id: string, newId: () => number, shape: Shap
   if (!pick) return false;
   // Used up first, so what it makes can go where they were; on no room, nothing is used up.
   const s = slots.map((it) => it && { ...it });
+  const used = pick.map((i) => slots[i]!.kind);
   for (const i of pick) {
     const it = s[i]!;
     if (--it.n <= 0) s[i] = null;
   }
-  if (!addItem(s, recipe.makes, 1, newId, shape)) return false;
+  let made = -1;
+  if (!addItem(s, recipe.makes, 1, () => (made = newId()), shape)) return false;
+  const gear = GEAR[recipe.makes];
+  const it = gear && s.find((x) => x?.id === made);
+  if (it) {
+    it.parts = gear.slots.map((slot) => {
+      const j = used.findIndex((k) => fitsSlot(slot, k));
+      return j < 0 ? null : used.splice(j, 1)[0];
+    });
+  }
   slots.splice(0, slots.length, ...s);
   return true;
 }

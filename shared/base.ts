@@ -414,8 +414,20 @@ for (const p of BASE_PIECES) {
 
 /** Things players placed on the floor (shared/placed.ts setPlaced keeps these in step with its list). */
 let withPlaced: Capsule[] = capsules;
-export function setPlacedCapsules(caps: Capsule[]) {
+/** Things players put up on the sand round the base (base-local too, y0/top base-local), and their footprints
+ *  (world [x0, z0, x1, z1]), where the sand is never dug (overPlaced). */
+let outdoor: Capsule[] = [];
+let outdoorSpots: number[][] = [];
+export function setPlacedCapsules(caps: Capsule[], out: Capsule[] = [], spots: number[][] = []) {
   withPlaced = capsules.concat(caps);
+  outdoor = out;
+  outdoorSpots = spots;
+}
+
+/** True over something put up on the sand (shared/placed.ts) + margin: no digging, it would undermine it. */
+export function overPlaced(x: number, z: number, margin = 0): boolean {
+  for (const r of outdoorSpots) if (x > r[0] - margin && x < r[2] + margin && z > r[1] - margin && z < r[3] + margin) return true;
+  return false;
 }
 
 /** Floor height at local (lx, lz) — landing, stairs, bunker floor, skylight glass — or -Infinity. */
@@ -456,8 +468,19 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
 
   const feet = Math.max(y, prevY) - BASE.y;
   const head = Math.min(y, prevY) - BASE.y + height;
-  let support = floorAt(q.x, q.z, feet, stepUp);
-  for (const c of withPlaced) {
+  const support = collideCapsules(q, withPlaced, feet, head, radius, stepUp, floorAt(q.x, q.z, feet, stepUp));
+
+  p.x = q.x + BASE.x;
+  p.z = q.z + BASE.z;
+  p.vx = q.vx;
+  p.vz = q.vz;
+  return support === -Infinity ? support : support + BASE.y;
+}
+
+/** Push local point q out of capsules (feet/head local); returns the highest top under the feet, from `support` up. */
+function collideCapsules(q: { x: number; z: number; vx: number; vz: number }, caps: Capsule[], feet: number, head: number, radius: number,
+  stepUp: number, support: number): number {
+  for (const c of caps) {
     const reach = c.half + c.r + radius;
     if (Math.abs(q.x - c.x) > reach || Math.abs(q.z - c.z) > reach) continue;
     if (head <= c.y0) continue;
@@ -471,7 +494,15 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
     }
     pushCircle(q, cx, cz, c.r + radius);
   }
+  return support;
+}
 
+/** Collide a player with the things put up on the sand round the base (shared/placed.ts), like collideBase. */
+export function collideOutdoor(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, height: number, stepUp: number): number {
+  if (!outdoor.length) return -Infinity;
+  const q = local;
+  q.x = p.x - BASE.x; q.z = p.z - BASE.z; q.vx = p.vx; q.vz = p.vz;
+  const support = collideCapsules(q, outdoor, Math.max(y, prevY) - BASE.y, Math.min(y, prevY) - BASE.y + height, radius, stepUp, -Infinity);
   p.x = q.x + BASE.x;
   p.z = q.z + BASE.z;
   p.vx = q.vx;

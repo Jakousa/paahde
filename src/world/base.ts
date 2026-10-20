@@ -178,6 +178,11 @@ export class Base {
     return convert(src as THREE.MeshStandardMaterial, this.lit);
   }
 
+  /** The same conversion for a thing out on the sand (shared/placed.ts), lit by the sky like everything outside. */
+  outdoorMaterial(src: THREE.Material): THREE.Material {
+    return convert(src as THREE.MeshStandardMaterial, null);
+  }
+
   /** Light a machine on the disassembly table with the bunker's lights instead of the scene's, so the work
    *  lamps reach it at night, and with the work light at your eye (viewFrom). Changes its node materials in place. */
   lightIndoors(root: THREE.Object3D) {

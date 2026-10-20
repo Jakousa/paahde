@@ -64,9 +64,10 @@ export type ClientMsg =
   | { t: 'sort'; box: string }
   // Repairs at the workbench (shared/gear.ts fitPart / unfitPart): fit the part at box `from` slot fi into
   // part slot `slot` of the item on the bench (what was there comes out), or take one out into box `to`
-  // slot ti (-1: anywhere). Answered with 'items' for each box involved.
-  | { t: 'fit'; from: string; fi: number; slot: number }
-  | { t: 'unfit'; slot: number; to: string; ti: number }
+  // slot ti (-1: anywhere). `at`: a building's box ('bld<id>') in reach instead of the bench. Answered with
+  // 'items' for each box involved (and 'placed' for a building).
+  | { t: 'fit'; from: string; fi: number; slot: number; at?: string }
+  | { t: 'unfit'; slot: number; to: string; ti: number; at?: string }
   // Drop one of the item in box `box` slot `slot` (not 'equip' or 'bench') on the sand in front of you: it becomes
   // loot (src 'drop') anyone can pick up. Answered with 'items' for the box (and a 'notice' if refused, e.g. in the base).
   | { t: 'drop'; box: string; slot: number }

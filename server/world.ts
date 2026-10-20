@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
-import { bikeLevel, bottleSips, carriedGear, equipped, gearTiers, GEAR_KINDS, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
+import { bikeLevel, bottleSips, buildingBox, carriedGear, equipped, gearTiers, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
@@ -206,8 +206,8 @@ wss.on('connection', (ws) => {
     if (msg.t === 'fill' && p) return onFill(p);
     if (msg.t === 'move' && p) return onMove(p, msg.from, msg.fi, msg.to, msg.ti, msg.n, msg.r);
     if (msg.t === 'sort' && p) return onSort(p, msg.box);
-    if (msg.t === 'fit' && p) return onFit(p, msg.from, msg.fi, msg.slot);
-    if (msg.t === 'unfit' && p) return onUnfit(p, msg.slot, msg.to, msg.ti);
+    if (msg.t === 'fit' && p) return onFit(p, msg.from, msg.fi, msg.slot, msg.at ?? 'bench');
+    if (msg.t === 'unfit' && p) return onUnfit(p, msg.slot, msg.to, msg.ti, msg.at ?? 'bench');
     if (msg.t === 'lootTake' && p) return onLootTake(p, msg.id);
     if (msg.t === 'drop' && p) return onDrop(p, msg.box, msg.slot);
     if (msg.t === 'debugGear' && p) return onDebugGear(p, msg.tier);
@@ -321,7 +321,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, { t: 'obituaries', list: db.lastObituaries(OBITUARY_KEEP) });
   recall(p);
   send(ws, corpses.joinMessage());
-  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes()]) send(ws, boxMsg(browserId, box));
+  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes(), ...placedThings.boxes()]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
 
 }
@@ -825,24 +825,28 @@ function onMove(p: Player, from: unknown, fi: unknown, to: unknown, ti: unknown,
   if (changed) corpses.check(from);
 }
 
-function onFit(p: Player, from: unknown, fi: unknown, slot: unknown) {
-  const changed = !p.down && items.fit(p.browserId, p.state, from, fi, slot);
-  for (const box of new Set(['bench', 'bag', from])) {
+// Parts fitted into (or taken out of) the item on the workbench, or a building's (`at`: its box, shared/gear.ts
+// buildingBox), whose look follows in the placed list.
+function onFit(p: Player, from: unknown, fi: unknown, slot: unknown, at: unknown) {
+  const changed = !p.down && items.fit(p.browserId, p.state, from, fi, slot, at);
+  for (const box of new Set([at, 'bag', from])) {
     if (typeof box !== 'string' || !boxSize(box)) continue;
     if (changed) sendBox(p, box);
     else send(p.ws, boxMsg(p.browserId, box));
   }
+  if (changed && typeof at === 'string') placedThings.refresh(at);
   if (changed) gearChanged(p.browserId);
   if (changed) corpses.check(from);
 }
 
-function onUnfit(p: Player, slot: unknown, to: unknown, ti: unknown) {
-  const changed = !p.down && items.unfit(p.browserId, p.state, slot, to, ti);
-  for (const box of new Set(['bench', to])) {
+function onUnfit(p: Player, slot: unknown, to: unknown, ti: unknown, at: unknown) {
+  const changed = !p.down && items.unfit(p.browserId, p.state, slot, to, ti, at);
+  for (const box of new Set([at, to])) {
     if (typeof box !== 'string' || !boxSize(box)) continue;
     if (changed) sendBox(p, box);
     else send(p.ws, boxMsg(p.browserId, box));
   }
+  if (changed && typeof at === 'string') placedThings.refresh(at);
   if (changed) gearChanged(p.browserId);
 }
 
@@ -948,12 +952,15 @@ function onTend(p: Player, bed: unknown) {
   if (what) send(p.ws, { t: 'tended', what });
 }
 
-// Placing things from the bag on the bunker floor and picking them up (server/placed.ts), crafting at the
-// workbench (shared/crafting.ts). Refusals get a notice (and the bag back, in case the client guessed).
+// Placing things from the bag on the bunker floor or the sand and picking them up (server/placed.ts), crafting at
+// the workbench (shared/crafting.ts). Refusals get a notice (and the bag back, in case the client guessed). A
+// building's box goes to everyone as it opens; when it's picked up, the placed list closes it.
 function onPlace(p: Player, slot: unknown, x: unknown, z: unknown, rot: unknown) {
   const r = placedThings.place(p.browserId, p.state, slot, x, z, rot, [...players.values()].map((o) => o.state));
   if (typeof r === 'string') send(p.ws, { t: 'notice', text: r });
+  else if (isBuilding(r.kind)) sendBox(p, buildingBox(r.id));
   sendBox(p, 'bag');
+  if (typeof r !== 'string') gearChanged(p.browserId);
 }
 
 function onUnplace(p: Player, id: unknown) {
@@ -961,6 +968,7 @@ function onUnplace(p: Player, id: unknown) {
   if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
   if (r.kind === 'plant_bed') garden.remove(r.id);
   sendBox(p, 'bag', r.kind);
+  gearChanged(p.browserId);
 }
 
 function onCraft(p: Player, recipe: unknown) {

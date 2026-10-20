@@ -1,12 +1,14 @@
 // Storage: the item boxes a player can reach besides their bag (shared/items.ts). Chests stand in the
 // base (the 'chest' pieces in shared/base.ts) and are shared by everyone, and never fill up (growChest); the sand bike has a cargo grid of
-// its own, reachable while riding it. Every player also has their equipment ('equip', shared/gear.ts),
+// its own, reachable while riding it. A building standing in the world keeps its item in a box of its own ('bld<id>',
+// shared/gear.ts buildingBox), shared too, open within reach of it, to swap its parts. Every player also has their equipment ('equip', shared/gear.ts),
 // always open, and a slot on the workbench ('bench') for the item they are repairing, open beside it. The client lists whatever is open next to the bag in the Tab
 // inventory (src/inventory.ts); the server checks the same thing, with slack, before every move.
 import { BASE, BASE_PIECES } from './base.ts';
 import { corpseId, corpsesNear } from './corpse.ts';
-import { EQUIP_SLOTS } from './gear.ts';
-import { BAG_SLOTS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, CHEST_ROWS, coverage, gridShape, MAX_SIDE, type Slots } from './items.ts';
+import { buildingId, EQUIP_SLOTS, isBuilding } from './gear.ts';
+import { BAG_SLOTS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, CHEST_ROWS, coverage, gridShape, ITEMS, MAX_SIDE, type Slots } from './items.ts';
+import { placed, PLACED_REACH, placedReach } from './placed.ts';
 import type { PlayerState } from './sim.ts';
 import { STATION_REACH, STATIONS, stationReach } from './stations.ts';
 import { TEXT } from './text.ts';
@@ -19,9 +21,9 @@ export const CHESTS = BASE_PIECES.filter((p) => p.node === 'chest').map((p) => (
   x: BASE.x + p.x, y: BASE.y + (p.y ?? 0), z: BASE.z + p.z,
 }));
 
-/** Box ids: 'bag', 'equip', 'bench' and 'bike' are the player's own, 'chest<i>' and the packs left by the dead
- *  ('corpse<id>', shared/corpse.ts) are shared. */
-export type BoxId = 'bag' | 'equip' | 'bench' | 'bike' | `chest${number}` | `corpse${number}`;
+/** Box ids: 'bag', 'equip', 'bench' and 'bike' are the player's own, 'chest<i>', the packs left by the dead
+ *  ('corpse<id>', shared/corpse.ts) and the buildings' ('bld<id>') are shared. */
+export type BoxId = 'bag' | 'equip' | 'bench' | 'bike' | `chest${number}` | `corpse${number}` | `bld${number}`;
 /** The player's own boxes. */
 export const OWN_BOXES = ['bag', 'equip', 'bench', 'bike'];
 
@@ -32,6 +34,7 @@ export function boxSize(box: string): number {
   if (box === 'equip') return EQUIP_SLOTS.length;
   if (box === 'bench') return 1;
   if (box === 'bike') return BIKE_COLS * BIKE_ROWS;
+  if (buildingId(box) >= 0) return building(box) ? 1 : 0;
   return chestIndex(box) >= 0 || corpseId(box) >= 0 ? CHEST_COLS * CHEST_ROWS : 0;
 }
 
@@ -57,8 +60,17 @@ export function chestIndex(box: string): number {
   return i < CHESTS.length ? i : -1;
 }
 
+/** The building standing in the world whose box this is, or undefined. */
+export const building = (box: string) => {
+  const id = buildingId(box);
+  return id < 0 ? undefined : placed.find((p) => p.id === id && isBuilding(p.kind));
+};
+
+/** Chests and packs grow without end (growChest); a building's box is one slot. */
+export const grows = (box: string) => chestIndex(box) >= 0 || corpseId(box) >= 0;
+
 /** Shared boxes are owned by nobody (''); the others by the player. */
-export const isShared = (box: string) => chestIndex(box) >= 0 || corpseId(box) >= 0;
+export const isShared = (box: string) => chestIndex(box) >= 0 || corpseId(box) >= 0 || buildingId(box) >= 0;
 
 export function boxLabel(box: string): string {
   if (box === 'bag') return TEXT.boxes.bag;
@@ -66,6 +78,8 @@ export function boxLabel(box: string): string {
   if (box === 'bench') return TEXT.boxes.bench;
   if (box === 'bike') return TEXT.boxes.bike;
   if (corpseId(box) >= 0) return TEXT.boxes.corpse;
+  const b = building(box);
+  if (b) return ITEMS[b.kind].label;
   return CHESTS.length > 1 ? TEXT.boxes.chestN(chestIndex(box) + 1) : TEXT.boxes.chest;
 }
 
@@ -79,6 +93,11 @@ export function openBoxes(s: PlayerState, slack = 0): BoxId[] {
     .sort((a, b) => a.d - b.d);
   for (const c of near) out.push(`chest${c.i}`);
   for (const b of corpsesNear(s, slack)) out.push(b as BoxId);
+  // Buildings in reach, nearest first.
+  const near2 = placed.filter((p) => isBuilding(p.kind)).map((p) => ({ p, d: placedReach(s, p) }))
+    .filter((b) => b.d < PLACED_REACH + slack)
+    .sort((a, b) => a.d - b.d);
+  for (const b of near2) out.push(`bld${b.p.id}`);
   return out;
 }
 

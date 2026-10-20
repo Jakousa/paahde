@@ -9,9 +9,11 @@
 // fills it from the bag (all but tools and placeables); drag it out of the panels
 // to drop it on the sand in front of you (shared/loot.ts; anyone can pick it up again). At the workbench, put
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
-// upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. Moves go through
+// upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. A building in reach (the
+// windmill, the battery station: shared/gear.ts buildingBox) shows its part slots the same way, to swap its parts
+// where it stands. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
-import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, holdsCargo, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
+import { bagShape, boxShape, buildingId, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, holdsCargo, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
 import { findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
@@ -257,6 +259,11 @@ type Drag = { box: string; i: number; half: boolean; x0: number; y0: number; mov
 /** Where a drag would land: a slot (free slot, workbench part slot) or a grid cell for the item's top-left corner. */
 type Target = { box: string; i: number; el?: HTMLElement; grid?: HTMLElement };
 
+/** The part slots of the item in box `at` (the workbench, a building's box) are slots of the box `part:<at>`. */
+const partBox = (at: string) => `part:${at}`;
+/** The box whose item's part slots these are, or null for any other box. */
+const partsIn = (box: string) => (box.startsWith('part:') ? box.slice(5) : null);
+
 export class InventoryHud {
   private prompt = document.createElement('div');
   private toasts = document.createElement('div');
@@ -270,10 +277,14 @@ export class InventoryHud {
   private shown: ScrapPiece | string | null = null;
   private net: Net;
   private canvas: HTMLElement;
-  /** Storage boxes in reach (shared/storage.ts openBoxes), as last drawn. */
+  /** Storage boxes in reach (shared/storage.ts openBoxes), as last drawn (one building of those in reach). */
   private storages: string[] = [];
+  /** Every box in reach, as last drawn. */
+  private reachable = '';
   /** Within reach of the workbench last frame. */
   private atBench = false;
+  /** The building to show when more than one is in reach: the one F was pressed on. */
+  private focus: string | null = null;
   private drag: Drag | null = null;
   private over: HTMLElement | null = null;
   /** The cells a drag would take, lit green or red. */
@@ -368,7 +379,7 @@ export class InventoryHud {
     if (this.atBench && !atBench && this.net.boxes.bench?.[0]) this.toBag('bench', 0);
     this.atBench = atBench;
     if (!ui.inventoryOpen) return;
-    if (open.join() !== this.storages.join()) this.render();
+    if (open.join() !== this.reachable) this.render();
   }
 
   toast(text: string) {
@@ -378,14 +389,26 @@ export class InventoryHud {
     setTimeout(() => el.remove(), TOAST_MS);
   }
 
-  /** Open the inventory from outside (F at the workbench). */
-  open() {
+  /** Open the inventory from outside (F at the workbench, a chest, a building: `focus`, its box). */
+  open(focus?: string) {
+    if (focus) this.focus = focus;
     this.toggle(true);
+    if (focus) this.render();
+  }
+
+  /** The boxes whose item's part slots are open (the workbench, the one building shown), the workbench first. */
+  private fitTargets(): string[] {
+    return this.storages.filter((b) => b === 'bench' || buildingId(b) >= 0);
   }
 
   private render() {
     if (!ui.inventoryOpen) return;
-    this.storages = openBoxes(this.net.me).filter((b) => this.net.boxes[b]);
+    // One building at a time: the one F was pressed on while it's in reach, else the nearest.
+    const open: string[] = openBoxes(this.net.me).filter((b) => this.net.boxes[b]);
+    this.reachable = openBoxes(this.net.me).join();
+    const near = open.filter((b) => buildingId(b) >= 0);
+    const shown = this.focus && near.includes(this.focus) ? this.focus : near[0];
+    this.storages = open.filter((b) => buildingId(b) < 0 || b === shown);
     const bag = this.net.boxes.bag ?? [];
     const equip = this.net.boxes.equip ?? [];
     const shape = bagShape(equip);
@@ -400,6 +423,10 @@ export class InventoryHud {
       const slots = this.net.boxes[box];
       if (box === 'bench') {
         html += this.benchHtml(slots[0] ?? null);
+        continue;
+      }
+      if (buildingId(box) >= 0) {
+        html += `<div class="box bench"><div class="head"><h3>${boxLabel(box)}</h3></div>${this.repairHtml(slots[0] ?? null, box)}</div>`;
         continue;
       }
       html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns">${isCorpseBox(box) ? '' : `<button data-store="${box}">${TEXT.inventory.storeAll}</button>`}<button data-all="${box}">${TEXT.inventory.takeAll}</button><button data-sort="${box}">${TEXT.inventory.sort}</button></span></div>`
@@ -424,12 +451,13 @@ export class InventoryHud {
 
   /** The workbench: the item being repaired, its part slots and what it still needs, then the recipes. */
   private benchHtml(it: Item | null) {
-    return `<div class="box bench"><div class="head"><h3>${boxLabel('bench')}</h3></div>${this.repairHtml(it)}`
+    return `<div class="box bench"><div class="head"><h3>${boxLabel('bench')}</h3></div>${this.repairHtml(it, 'bench')}`
       + `<div class="sep"></div><div class="head"><h3>${TEXT.inventory.craft}</h3></div>${this.recipesHtml(this.net.boxes.bag ?? [])}</div>`;
   }
 
-  private repairHtml(it: Item | null) {
-    let html = `<div class="top">` + this.slotsHtml('bench', [it], 0, 1);
+  /** The item in box `at` (the workbench, a building's box), its part slots and what it still needs. */
+  private repairHtml(it: Item | null, at: string) {
+    let html = `<div class="top">` + this.slotsHtml(at, [it], 0, 1);
     if (!it) {
       return html + `<div class="state">${TEXT.inventory.brokenGear}</div></div>`;
     }
@@ -445,7 +473,7 @@ export class InventoryHud {
       const kind = parts[i];
       const fits = held && fitsSlot(slot, held.kind) ? ' fits' : '';
       const c = kind && rarityColor(kind);
-      html += `<div><div class="slot${kind ? '' : ' empty'}${fits}${c ? ' rare' : ''}" data-box="part" data-i="${i}"${c ? ` style="--c:${c}"` : ''} data-tip="${kind ? '' : TEXT.inventory.needsA(slotLabel(slot))}">`
+      html += `<div><div class="slot${kind ? '' : ' empty'}${fits}${c ? ' rare' : ''}" data-box="${partBox(at)}" data-i="${i}"${c ? ` style="--c:${c}"` : ''} data-tip="${kind ? '' : TEXT.inventory.needsA(slotLabel(slot))}">`
         + (kind ? itemIcon(kind) : `<span class="ph">+</span>`) + `</div><div class="pl">${slotLabel(slot)}</div></div>`;
     });
     return html + '</div>';
@@ -581,7 +609,7 @@ export class InventoryHud {
   private wouldMove(d: Drag, t: Target): boolean {
     const b: Boxes = { ...this.net.boxes };
     for (const id of new Set([d.box, t.box])) b[id] = b[id]?.map((it) => it && { ...it });
-    if (d.box === 'part') return true;
+    if (partsIn(d.box)) return true;
     const it = this.itemAt(d.box, d.i);
     return !!it && tryMove(b, d.box, d.i, t.box, t.i, d.half ? Math.ceil(it.n / 2) : undefined, () => -1, d.r);
   }
@@ -612,10 +640,12 @@ export class InventoryHud {
     this.showHint(this.targetAt(d.x0, d.y0, d), d);
   }
 
-  /** What's in a slot; 'part' slots are the workbench item's fitted parts. */
+  /** What's in a slot; 'part:<box>' slots are the fitted parts of the item in that box (workbench, building). */
   private itemAt(box: string, i: number): Item | null {
-    if (box === 'part') {
-      const kind = this.net.boxes.bench?.[0] && partsOf(this.net.boxes.bench[0])[i];
+    const at = partsIn(box);
+    if (at) {
+      const it = this.net.boxes[at]?.[0];
+      const kind = it && partsOf(it)[i];
       return kind ? { id: 0, kind, n: 1 } : null;
     }
     return this.net.boxes[box]?.[i] ?? null;
@@ -631,7 +661,8 @@ export class InventoryHud {
     const craft = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-craft]');
     if (craft) return void (craft.disabled || this.net.craft(craft.dataset.craft!));
     const at = this.slotAt(e.clientX, e.clientY);
-    if (!at || !this.itemAt(at.box, at.i)) return;
+    // A building's own item stays in it (its parts come and go).
+    if (!at || !this.itemAt(at.box, at.i) || buildingId(at.box) >= 0) return;
     e.preventDefault();
     if (e.shiftKey) return void (this.shiftClick(at.box, at.i) ? uiSound.plop() : uiSound.full());
     // Held where it was grabbed when it lies in a grid; by its first cell's middle from a single slot.
@@ -652,23 +683,26 @@ export class InventoryHud {
    */
   private shiftClick(box: string, i: number): boolean {
     const net = this.net;
-    if (box === 'part') return net.unfit(i, 'bag', -1);
+    const from = partsIn(box);
+    if (from) return net.unfit(i, 'bag', -1, from);
     const it = net.boxes[box]?.[i];
     if (!it) return false;
     const bench = this.storages.includes('bench');
-    const target = net.boxes.bench?.[0];
-    if (bench && box !== 'bench' && target && !isGear(it.kind)) {
+    // A part into the workbench item, else the building shown: an empty slot it fits first, else a swap.
+    for (const at of this.fitTargets()) {
+      const target = net.boxes[at]?.[0];
+      if (box === at || !target || isGear(it.kind)) continue;
       const slots = GEAR[target.kind].slots;
       const parts = partsOf(target);
       const fit = slots.findIndex((s, j) => !parts[j] && fitsSlot(s, it.kind));
       const swap = fit >= 0 ? fit : slots.findIndex((s, j) => fitsSlot(s, it.kind) && parts[j] !== it.kind);
-      if (swap >= 0 && net.fit(box, i, swap)) return true;
+      if (swap >= 0 && net.fit(box, i, swap, at)) return true;
     }
     if (bench && box !== 'bench' && isGear(it.kind) && net.moveItem(box, i, 'bench', 0)) return true;
     if (box !== 'bag') return this.toBag(box, i);
     if (isGear(it.kind) && GEAR[it.kind].equip && repaired(it) && net.moveItem(box, i, 'equip', -1)) return true;
     // Across: bag → the nearest storage. Without storage, between hotbar and backpack.
-    const to = this.storages.find((b) => b !== 'bench');
+    const to = this.storages.find((b) => b !== 'bench' && buildingId(b) < 0);
     return to ? net.moveItem(box, i, to, -1) : this.hotbarSwap(i);
   }
 
@@ -765,10 +799,10 @@ export class InventoryHud {
       this.drawGhost(d, it);
       this.ghost.style.display = 'flex';
       this.slotEl(d.box, d.i)?.classList.add('dragging');
-      // Light up the workbench slots this part fits.
-      const target = this.net.boxes.bench?.[0];
-      if (target && this.storages.includes('bench')) {
-        GEAR[target.kind].slots.forEach((s, j) => this.slotEl('part', j)?.classList.toggle('fits', fitsSlot(s, it.kind)));
+      // Light up the workbench's (and the building's) slots this part fits.
+      for (const at of this.fitTargets()) {
+        const target = this.net.boxes[at]?.[0];
+        if (target) GEAR[target.kind].slots.forEach((s, j) => this.slotEl(partBox(at), j)?.classList.toggle('fits', fitsSlot(s, it.kind)));
       }
     }
     // Remembered for R, which turns it where the pointer is.
@@ -796,9 +830,10 @@ export class InventoryHud {
     const it = this.itemAt(d.box, d.i);
     if (!at || !it || (at.box === d.box && at.i === d.i && d.r === !!it.r)) return;
     let ok: boolean;
+    const from = partsIn(d.box), into = partsIn(at.box);
     if (at.i < 0) ok = false;
-    else if (d.box === 'part') ok = at.box !== 'part' && this.net.unfit(d.i, at.box, at.i);
-    else if (at.box === 'part') ok = this.net.fit(d.box, d.i, at.i);
+    else if (from) ok = !into && this.net.unfit(d.i, at.box, at.i, from);
+    else if (into) ok = this.net.fit(d.box, d.i, at.i, into);
     else ok = this.net.moveItem(d.box, d.i, at.box, at.i, d.half ? Math.ceil(it.n / 2) : undefined, d.r);
     if (ok) uiSound.plop();
     else this.refuse(d.box, d.i, it, at.box);
@@ -812,7 +847,7 @@ export class InventoryHud {
 
   /** Dragged out of the panels: drop it on the sand in front of you. */
   private drop(box: string, i: number) {
-    if (box === 'part') return this.toast(TEXT.notice.takeItOff);
+    if (partsIn(box)) return this.toast(TEXT.notice.takeItOff);
     if (this.net.me.riding && lockedWhileRiding(box, i)) return this.toast(TEXT.notice.getOffFirst);
     if (holdsCargo(this.net.boxes, box, i)) return this.toast(TEXT.notice.emptyItFirst);
     if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast(TEXT.notice.cantDropHere);
@@ -825,7 +860,7 @@ export class InventoryHud {
     else if (holdsCargo(this.net.boxes, from, fi)) this.toast(TEXT.notice.emptyItFirst);
     else if (to === 'equip') this.toast(isGear(it.kind) && GEAR[it.kind].equip ? (repaired(it) ? TEXT.notice.wrongSlot : TEXT.notice.broken) : TEXT.notice.cantWear);
     else if (to === 'bench') this.toast(isGear(it.kind) ? TEXT.notice.benchInUse : TEXT.notice.gearOnly);
-    else if (to === 'part') this.toast(TEXT.notice.partDoesntGo);
+    else if (partsIn(to)) this.toast(TEXT.notice.partDoesntGo);
     else {
       this.toast(TEXT.notice.doesntFit);
       uiSound.full();

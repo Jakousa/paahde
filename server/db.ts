@@ -229,8 +229,9 @@ export function openDb(path: string) {
     if (n) console.log(`items: ${n} old scrap stacks are scrap now`);
   }
 
-  // Placed things (shared/placed.ts, server/placed.ts): items put down on the bunker floor. The old
-  // `garden` table (greenhouse beds by layout index) is unused since beds are placed things.
+  // Placed things (shared/placed.ts, server/placed.ts): items put down on the bunker floor, and buildings out on the
+  // sand (`y`: what it stands on; NULL for those from before, all on the floor). A building's item is in its own box,
+  // `bld<id>` (items). The old `garden` table (greenhouse beds by layout index) is unused since beds are placed things.
   db.exec(`
     CREATE TABLE IF NOT EXISTS placed (
       id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,8 +248,11 @@ export function openDb(path: string) {
       growth REAL NOT NULL                   -- ms grown under a UV lamp so far
     );
   `);
-  const allPlaced = db.prepare('SELECT id, kind, x, z, rot FROM placed ORDER BY id');
-  const insertPlaced = db.prepare('INSERT INTO placed (kind, x, z, rot, owner, placed_at) VALUES (?, ?, ?, ?, ?, ?)');
+  if (!(db.prepare('SELECT name FROM pragma_table_info(?)').all('placed') as { name: string }[]).some((c) => c.name === 'y')) {
+    db.exec('ALTER TABLE placed ADD COLUMN y REAL');
+  }
+  const allPlaced = db.prepare('SELECT id, kind, x, y, z, rot FROM placed ORDER BY id');
+  const insertPlaced = db.prepare('INSERT INTO placed (kind, x, y, z, rot, owner, placed_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const deletePlaced = db.prepare('DELETE FROM placed WHERE id = ?');
   const allBeds = db.prepare('SELECT id, stage, growth FROM beds');
   const upsertBed = db.prepare('INSERT OR REPLACE INTO beds (id, stage, growth) VALUES (?, ?, ?)');
@@ -353,10 +357,10 @@ export function openDb(path: string) {
     putObituary: (o: Obituary) => insertObituary.run(o.id, o.color, o.name, o.cause, o.at),
     getSetting: (key: string) => (getSetting.get(key) as { value: number } | undefined)?.value,
     setSetting: (key: string, value: number) => putSetting.run(key, value),
-    loadPlaced: () => allPlaced.all() as { id: number; kind: string; x: number; z: number; rot: number }[],
+    loadPlaced: () => allPlaced.all() as { id: number; kind: string; x: number; y: number | null; z: number; rot: number }[],
     /** New placed row; returns its id. */
-    insertPlaced: (kind: string, x: number, z: number, rot: number, owner: string) =>
-      Number(insertPlaced.run(kind, x, z, rot, owner, Date.now()).lastInsertRowid),
+    insertPlaced: (kind: string, x: number, y: number, z: number, rot: number, owner: string) =>
+      Number(insertPlaced.run(kind, x, y, z, rot, owner, Date.now()).lastInsertRowid),
     deletePlaced: (id: number) => deletePlaced.run(id),
     loadDropped: () => (allDropped.all() as { id: number; kind: string; parts: string | null; x: number; z: number }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),

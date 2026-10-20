@@ -45,6 +45,8 @@ const en = {
     cloth: 'Cloth',
     plant_bed: 'Plant bed',
     uv_lamp: 'UV lamp',
+    windmill: 'Windmill',
+    battery_station: 'Battery station',
     laser_rifle: 'Laser rifle',
     laser_pistol: 'Laser pistol',
     jammer: 'Jammer',
@@ -96,6 +98,8 @@ const en = {
     jammer: 'Hold the mouse button on a drone or jet until it comes down.',
     shield: 'Takes one killing blow for you, then breaks.',
     receiver: 'Left mouse sends the signal, and the needle points at whatever answers.',
+    windmill: 'Put it up on the sand by the base.',
+    battery_station: 'Put it down in the bunker.',
   },
   /** Where placing is blocked: "Too close to the pump". */
   baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway' },
@@ -122,6 +126,7 @@ const en = {
     useTable: 'Use table',
     openPack: 'Open pack',
     openChest: 'Open chest',
+    open: (what: string) => `Open ${lower(what)}`,
     plantSeeds: 'Plant seeds',
     harvest: 'Harvest',
     needsUvLamp: 'Needs UV lamp',
@@ -130,6 +135,7 @@ const en = {
     broken: 'Broken',
     empty: 'Empty',
     aimAtFloor: 'Aim at the floor',
+    aimAtGround: 'Aim at the ground',
   },
 
   // ---- Short notices (toasts), from the client or sent by the server ---------------------------------------------
@@ -147,6 +153,9 @@ const en = {
     cantPlace: "That can't be placed",
     badSpot: 'Bad spot',
     floorOnly: 'Floor only',
+    outsideOnly: 'Outside only',
+    tooFarFromBase: 'Too far from the base',
+    tooSteep: 'Too steep',
     tooClose: (spot: string) => `Too close to ${spot}`,
     baseFull: 'The base is full',
     lineUp: (what: 'bed' | 'lamp') => `Line it up with the ${what}`,

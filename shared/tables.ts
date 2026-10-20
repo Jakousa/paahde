@@ -44,6 +44,11 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   // The grinder, for seams in a machine's shell: a motor spins the disc through a pair of gears, a battery drives it.
   grinder: [{ label: TEXT.parts.motor, n: 1, part: 'motor' }, { label: TEXT.parts.battery, n: 1, part: 'battery' }, { label: TEXT.parts.gear, n: 2, part: 'gear' }, SCRAP(3)],
   // (Tools, guns and the jammer aren't crafted: they're found broken and repaired, shared/gear.ts.)
+  // The buildings (shared/gear.ts built): the parts go into its slots (shared/crafting.ts), the scrap is its frame.
+  // A windmill: a scrap lattice tower, a rotor of sheet-metal blades on six bearings, a generator wound with two coils.
+  windmill: [{ label: TEXT.parts.bearing, n: 6, part: 'bearing' }, { label: TEXT.parts.coil, n: 2, part: 'coil' }, SCRAP(20)],
+  // A battery station: a welded rack of six cells and a charger wound with two coils.
+  battery_station: [{ label: TEXT.parts.battery, n: 6, part: 'battery' }, { label: TEXT.parts.coil, n: 2, part: 'coil' }, SCRAP(14)],
 };
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -46,7 +46,7 @@ const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
 const RARE_PARTS = PART_IDS.filter((p) => !RARE_FINDS.noParts.includes(p));
 /** Broken gear a cache can hold (not the jammer or the receivers; the guns have their own odds: only the pistol,
  *  CACHES.contents.pistol). */
-const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS) && k !== JAMMER && !receiverBoss(k));
+const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS) && k !== JAMMER && !receiverBoss(k) && !GEAR[k].built);
 
 /** A taken find or cache waiting to come back; id is its loot_pending row. */
 type Spawn = { id: number; at: number; what: 'find' | 'cache'; kind?: string };

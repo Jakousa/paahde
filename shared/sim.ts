@@ -14,7 +14,7 @@
 // - Rock (shared/rocks.ts) holds: bare rock up to ROCK_CLIMB_TAN doesn't slide; steeper rock is a wall you
 //   can't walk up, only jump onto. Off its edge you fall or slide.
 // - Sand bike (dev helper, 9 toggles it): see stepBike() below.
-import { BUNKER_SPAWN, baseCeiling, collideBase } from './base.ts';
+import { BUNKER_SPAWN, baseCeiling, collideBase, collideOutdoor } from './base.ts';
 import { collideShelter, sandHidden, shelterCeiling } from './shelters.ts';
 import { collideCrash } from './crashsites.ts';
 import { collideMachines } from './machineBoxes.ts';
@@ -369,7 +369,8 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   c.vz = vz;
   const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP),
     collideMachines(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideJetWrecks(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideTrophies(c, y, s.y, PLAYER_RADIUS, STEP_UP));
-  const baseTop = Math.max(collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP), collideShelter(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP));
+  const baseTop = Math.max(collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP), collideShelter(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP),
+    collideOutdoor(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, y, PLAYER_RADIUS, legs);
   blockRock(c, s.x, s.z, Math.max(y, s.y));
   vx = c.vx;
@@ -503,7 +504,8 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
   const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP),
     collideMachines(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideJetWrecks(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideTrophies(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
-  const baseTop = Math.max(collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP), collideShelter(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP));
+  const baseTop = Math.max(collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP), collideShelter(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP),
+    collideOutdoor(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, airborneY, BIKE_RADIUS, legs);
   blockRock(c, s.x, s.z, Math.max(airborneY, s.y));
   vx = c.vx;

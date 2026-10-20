@@ -88,7 +88,7 @@ import { LAB_LOOK } from '../shared/lab.ts';
 import { addLabPlates } from './world/labPlates';
 import { labFloor } from './world/sandMaterial';
 import { junkSpec, SALVAGE } from '../shared/salvage.ts';
-import { bagShape, carriedGear, equipped, gearTiers, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
+import { bagShape, buildingBox, carriedGear, equipped, gearTiers, isBuilding, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootPrompt } from './world/loot';
 import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
@@ -151,7 +151,7 @@ const trophies = new Trophies(scene); // a big piece of each beaten boss round t
 await slice();
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
 await slice();
-const placedView = new PlacedView(scene, base); // plant beds and UV lamps on the bunker floor
+const placedView = new PlacedView(scene, base); // plant beds, UV lamps and the buildings, in the bunker and round it
 await slice();
 const scrap = new Scrap(scene);
 await slice();
@@ -619,11 +619,15 @@ baseSand.update(frameDt, storm.atBase);
     sunrise: sky.day.tod < 0.5 && sky.day.elevation > -0.035 && sky.day.elevation < 0.14,
   });
   crashSound.update(orbit.camera.position, orbit.viewYaw);
+  placedView.update(frameDt, storm.level);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
   // Placing from the hotbar and G to pick placed things up (src/placing.ts); its prompt goes after F's.
   const placing = placer.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), true, (t) => hud.toast(t));
+  // A building in view (the windmill, the battery station): F opens it next to the bag, to swap its parts.
+  const building = station < 0 && placing.target && isBuilding(placing.target.kind) ? placing.target : null;
+  const buildingPrompt = building ? TEXT.prompt.open(itemLabel(building.kind)) : null;
   const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), placed) : null;
   const bedState = bed ? net.garden.get(bed.id) : undefined;
   const stage = bed ? (bedState?.stage ?? EMPTY) : -1;
@@ -668,7 +672,7 @@ baseSand.update(frameDt, storm.atBase);
   // A piece that came off a machine and lies by you can be picked up to be turned and taken apart in the hands; F again sets it down.
   const pieceHere = teardown.active && !teardown.holding ? teardown.pieceNear(net.me) : null;
   const piecePrompt = teardown.holding ? TEXT.prompt.putDown : pieceHere ? TEXT.prompt.pickUp(pieceHere.label) : null;
-  const fPrompt = piecePrompt ?? use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
+  const fPrompt = piecePrompt ?? use ?? buildingPrompt ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   const extra = [growing, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup() && !fly.active;
@@ -686,7 +690,8 @@ baseSand.update(frameDt, storm.atBase);
           scrap: () => (teardown.current?.id === BENCH_ID ? teardown.scrap() : scrapBench()),
         });
       } else hud.toast(TEXT.notice.nothingToTakeApart);
-    } else if (tend && bed) net.tend(bed.id);
+    } else if (building) hud.open(buildingBox(building.id));
+    else if (tend && bed) net.tend(bed.id);
     else if (target) {
       if (net.pickup(target)) pickupSound.play();
       else bagFull();
@@ -701,7 +706,7 @@ baseSand.update(frameDt, storm.atBase);
     } else if (wreck) net.crashTake(wreck.id);
     else if (pack || chest) hud.open();
   }
-  const targeted = piecePrompt !== null || use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
+  const targeted = piecePrompt !== null || use !== null || buildingPrompt !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   const w = net.water;
   const m = net.me;

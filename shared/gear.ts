@@ -32,6 +32,9 @@ export type GearSpec = {
   /** What better parts do, and how to use it, for the tooltip. */
   better: string;
   use: string;
+  /** A building: crafted at the workbench with the parts it took fitted (shared/crafting.ts), never found, and put
+   *  down from the hotbar (shared/placed.ts), where its parts are swapped like on the workbench (buildingBox). */
+  built?: true;
 };
 
 const P = (part: PartId): PartSlot => ({ part });
@@ -72,10 +75,27 @@ export const GEAR: Record<string, GearSpec> = {
   receiver_queen: { slots: [CELL, own('brood_gland'), P('coil')], ...RECEIVER },
   receiver_colossus: { slots: [CELL, own('servo_heart'), P('relay')], ...RECEIVER },
   receiver_worm: { slots: [CELL, own('hive_core'), own('queen_eye'), own('furnace_heart')], ...RECEIVER },
+  // The buildings (shared/placed.ts). The windmill: bearings for the rotor shaft, the head's turn and the generator,
+  // coils for the generator's windings. The battery station: a rack of cells, coils for its charger.
+  windmill: { slots: [P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('coil'), P('coil')],
+    better: 'how much power it makes', use: TEXT.gearUse.windmill, built: true },
+  battery_station: { slots: [P('battery'), P('battery'), P('battery'), P('battery'), P('battery'), P('battery'), P('coil'), P('coil')],
+    better: 'how much power it holds', use: TEXT.gearUse.battery_station, built: true },
 };
 export const GEAR_KINDS = Object.keys(GEAR);
 
 export const isGear = (kind: string) => kind in GEAR;
+export const isBuilding = (kind: string | undefined) => !!kind && !!GEAR[kind]?.built;
+
+/** A building standing in the world (shared/placed.ts) keeps its item, parts and all, in a shared box of one slot,
+ *  `bld<placed id>`, open while you're in reach of it (shared/storage.ts): its parts are fitted like the workbench's
+ *  (fitPart / unfitPart with that box as the target), but the item itself never moves in or out of it (tryMove). */
+export const buildingBox = (id: number) => `bld${id}`;
+/** The placed id of a building's box, or -1. */
+export function buildingId(box: string): number {
+  const m = /^bld(\d+)$/.exec(box);
+  return m ? Number(m[1]) : -1;
+}
 
 export function slotLabel(s: PartSlot) {
   return 'part' in s ? PART_LABELS[s.part] : s.label;
@@ -161,6 +181,8 @@ export const backpackRows = (q: number) => Math.round(by(q, 3, BAG_ROWS));
 export const stormWarnS = (q: number) => by(q, 6, 20);
 /** Wrist computer: other players show on the locator this far away (m). The base always does. */
 export const locatorRange = (q: number) => by(q, 250, 2000);
+/** Windmill: how fast its rotor turns in the steady wind (rad/s); better bearings run freer. */
+export const windmillSpin = (q: number) => by(q, 0.8, 2.4);
 
 /** A gun's recharge (ms) at quality q: its base at Scrap parts (a gun is a gun), down a fifth of it per tier to 40% at
  *  Space-grade (two and a half times the fire rate). */
@@ -251,7 +273,7 @@ export type Boxes = Record<string, Slots | undefined>;
 export function boxShape(box: string, boxes: Boxes): Shape {
   if (box === 'bag') return bagShape(boxes.equip);
   if (box === 'equip') return freeSlots(EQUIP_SLOTS.length);
-  if (box === 'bench') return freeSlots(1);
+  if (box === 'bench' || buildingId(box) >= 0) return freeSlots(1);
   if (box === 'bike') return gridShape(BIKE_COLS, BIKE_ROWS);
   return gridShape(CHEST_COLS, Math.floor((boxes[box]?.length ?? 0) / CHEST_COLS));
 }
@@ -318,8 +340,9 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
   const src0 = boxes[from], dst0 = boxes[to];
   const it = src0?.[fi];
   if (!src0 || !dst0 || !it) return false;
-  // A dead player's pack (shared/corpse.ts) is only taken from.
+  // A dead player's pack (shared/corpse.ts) is only taken from; a building's item stays in it.
   if (to !== from && isCorpseBox(to)) return false;
+  if (buildingId(from) >= 0 || buildingId(to) >= 0) return false;
   // Anywhere in equip: the item's own slot.
   if (to === 'equip' && ti === -1) {
     const slot = GEAR[it.kind]?.equip;
@@ -348,20 +371,21 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
 const sameItem = (a: Item, b: Item | null | undefined) => !!b && a.id === b.id && a.kind === b.kind && a.n === b.n && !!a.r === !!b.r;
 
 /**
- * Fit the part at `from`[fi] into slot `slot` of the workbench item. A part already there comes out into
- * `from`[fi] in its place (or anywhere in the bag if one of the stack stays behind): that's how you
- * upgrade. Applies to `boxes` only if allowed; returns whether it did.
+ * Fit the part at `from`[fi] into slot `slot` of the item in box `at` (the workbench, or a building's box). A part
+ * already there comes out into `from`[fi] in its place (or anywhere in the bag if one of the stack stays behind):
+ * that's how you upgrade. Applies to `boxes` only if allowed; returns whether it did.
  */
-export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, newId: () => number): boolean {
-  const target = boxes.bench?.[0];
+export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, newId: () => number, at = 'bench'): boolean {
+  const target = boxes[at]?.[0];
   const src = boxes[from];
   const part = src?.[fi];
   const spec = target && GEAR[target.kind]?.slots[slot];
-  if (!target || !src || !part || !spec || !fitsSlot(spec, part.kind)) return false;
+  if (!target || !src || !part || !spec || !fitsSlot(spec, part.kind) || from === at || buildingId(from) >= 0) return false;
   const parts = partsOf(target);
   const old = parts[slot];
   if (old === part.kind) return false;
-  const b = cloneBoxes(boxes, [...new Set([from, 'bag', 'bench'])]);
+  const ids = [...new Set([from, 'bag', at])];
+  const b = cloneBoxes(boxes, ids);
   const s = b[from]!;
   const p = s[fi]!;
   if (p.n > 1) {
@@ -374,25 +398,26 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
     else if (old && !giveBack(b, old, newId)) return false;
   }
   parts[slot] = part.kind;
-  b.bench![0] = { ...b.bench![0]!, parts };
-  for (const id of new Set([from, 'bag', 'bench'])) boxes[id]?.splice(0, boxes[id]!.length, ...b[id]!);
+  b[at]![0] = { ...b[at]![0]!, parts };
+  for (const id of ids) boxes[id]?.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }
 
-/** Take the part in slot `slot` of the workbench item out into `to`[ti] (-1: anywhere in it). */
-export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, newId: () => number): boolean {
-  const target = boxes.bench?.[0];
-  if (!target || !boxes[to] || isCorpseBox(to)) return false;
+/** Take the part in slot `slot` of the item in box `at` (the workbench, or a building's box) out into `to`[ti] (-1:
+ *  anywhere in it). */
+export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, newId: () => number, at = 'bench'): boolean {
+  const target = boxes[at]?.[0];
+  if (!target || !boxes[to] || isCorpseBox(to) || to === at || buildingId(to) >= 0) return false;
   const parts = partsOf(target);
   const kind = parts[slot];
   if (!kind) return false;
-  const b = cloneBoxes(boxes, [...new Set([to, 'bench'])]);
+  const b = cloneBoxes(boxes, [...new Set([to, at])]);
   const dst = b[to]!;
   const tmp: Slots = [{ id: newId(), kind, n: 1 }];
   if (!moveItem(tmp, 0, ONE, dst, ti, boxShape(to, b), undefined, newId) || tmp[0]) return false;
   parts[slot] = null;
-  b.bench![0] = { ...b.bench![0]!, parts };
-  for (const id of new Set([to, 'bench'])) boxes[id]!.splice(0, boxes[id]!.length, ...b[id]!);
+  b[at]![0] = { ...b[at]![0]!, parts };
+  for (const id of new Set([to, at])) boxes[id]!.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }
 

@@ -24,14 +24,14 @@
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { heal, pitchFromQ } from '../shared/dig.ts';
-import { bagShape, boxShape, fitPart, holdsCargo, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
+import { bagShape, boxShape, buildingId, fitPart, holdsCargo, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
 import { debrisItem, HOTBAR, roomFor, scrapItem, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
 import { setJetCrashes } from '../shared/jetcrash.ts';
-import { growChest, isShared } from '../shared/storage.ts';
+import { growChest, grows } from '../shared/storage.ts';
 import { corpseBox, CORPSES } from '../shared/corpse.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import type { CrashPiece } from '../shared/crashsites.ts';
@@ -265,27 +265,29 @@ export class Net {
     return true;
   }
 
-  /** Fit a part into slot `slot` of the item on the workbench (shared/gear.ts fitPart). False if refused. */
-  fit(from: string, fi: number, slot: number): boolean {
-    if (!this.connected || !fitPart(this.boxes, from, fi, slot, () => --this.tempId)) return false;
+  /** Fit a part into slot `slot` of the item on the workbench, or in a building's box `at` (shared/gear.ts fitPart).
+   *  False if refused. */
+  fit(from: string, fi: number, slot: number, at = 'bench'): boolean {
+    if (!this.connected || !fitPart(this.boxes, from, fi, slot, () => --this.tempId, at)) return false;
     this.growChests(from);
-    this.send({ t: 'fit', from, fi, slot });
-    for (const box of new Set([from, 'bag', 'bench'])) this.onItems?.(box);
+    this.send({ t: 'fit', from, fi, slot, ...(at !== 'bench' ? { at } : {}) });
+    for (const box of new Set([from, 'bag', at])) this.onItems?.(box);
     return true;
   }
 
-  /** Take a part out of the workbench item into box `to` slot ti (-1: anywhere). False if refused. */
-  unfit(slot: number, to: string, ti: number): boolean {
-    if (!this.connected || !unfitPart(this.boxes, slot, to, ti, () => --this.tempId)) return false;
+  /** Take a part out of the workbench item (or a building's, in box `at`) into box `to` slot ti (-1: anywhere). False
+   *  if refused. */
+  unfit(slot: number, to: string, ti: number, at = 'bench'): boolean {
+    if (!this.connected || !unfitPart(this.boxes, slot, to, ti, () => --this.tempId, at)) return false;
     this.growChests(to);
-    this.send({ t: 'unfit', slot, to, ti });
-    for (const box of new Set([to, 'bench'])) this.onItems?.(box);
+    this.send({ t: 'unfit', slot, to, ti, ...(at !== 'bench' ? { at } : {}) });
+    for (const box of new Set([to, at])) this.onItems?.(box);
     return true;
   }
 
   /** Chests are endless (shared/storage.ts growChest): resize the ones a predicted change touched, like the server does. */
   private growChests(...boxes: string[]) {
-    for (const b of boxes) if (isShared(b) && this.boxes[b]) growChest(this.boxes[b]);
+    for (const b of boxes) if (grows(b) && this.boxes[b]) growChest(this.boxes[b]);
   }
 
   /** Tidy a box's grid (the bag's hotbar stays put). False if it wouldn't all fit packed again (nothing changes). */
@@ -703,6 +705,8 @@ export class Net {
     }
     if (msg.t === 'placed') {
       setPlaced(msg.list);
+      // A building picked up: its box is gone with it.
+      for (const box of Object.keys(this.boxes)) if (buildingId(box) >= 0 && !msg.list.some((p) => p.id === buildingId(box))) delete this.boxes[box];
       return this.onPlaced?.();
     }
     if (msg.t === 'garden') {
