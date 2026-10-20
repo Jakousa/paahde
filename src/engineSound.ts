@@ -9,7 +9,8 @@
 //               Here: a fixed sine amplitude-modulated by a sine at the motor frequency.
 // Pitch follows the motor's revs (RPM): the wheel speed through a gearbox (GEARS), its ratios longer on a faster
 // bike, so every bike revs through the same range. Near the redline it shifts
-// up: the drive cuts for a moment (the level dips), a clunk, and the revs drop into the next gear; slowing
+// up: the drive cuts (the level dips), a clunk, and the revs drop into the next gear, slowly on a Scrap bike, at
+// once on a Space-grade quickshifter (SHIFT_SLOW .. SHIFT_QUICK); slowing
 // down it shifts back down with a softer clunk and the revs blipping up. Loudness follows the load
 // (throttle, i.e. torque) more than the speed, so coasting is quiet and opening up brings the whine in. A
 // slow wobble on level and pitch keeps it alive. Sitting still on a bike it idles low and quiet. In the air
@@ -42,9 +43,13 @@ const UP_RPM = 11000;
 const UP_COAST_RPM = 11500;
 const DOWN_RPM = 6000;
 const SHIFT_GAP = 0.35;
-/** An upshift cuts the drive this long (s), the level dipping to CUT_LEVEL. */
-const CUT = 0.12;
-const CUT_LEVEL = 0.4;
+/** How long a shift takes (s), by the bike's quality: a Scrap bike's slow, clunky box (SHIFT_SLOW) to a
+ *  Space-grade quickshifter (SHIFT_QUICK), evenly on a log scale between. While it shifts the drive is cut, the
+ *  level dipping to CUT_LEVEL (a quickshifter's to CUT_LEVEL_QUICK: barely), and the revs glide to the new gear. */
+const SHIFT_SLOW = 0.45;
+const SHIFT_QUICK = 0.03;
+const CUT_LEVEL = 0.3;
+const CUT_LEVEL_QUICK = 0.8;
 /** The clunk of a shift: a low thump (Hz) and a click of noise through a band (Hz); level relative to the motor
  *  at full, a downshift's softer. */
 const THUMP_HZ = 62;
@@ -117,7 +122,7 @@ class Motor {
   private load = 0;
   private gear = 0;
   private sinceShift = Infinity;
-  private cutLeft = 0; // s of an upshift's drive cut left
+  private cutLeft = 0; // s of the shift (drive cut) left
   private on = false;
   private time = 0;
   /** Each motor wobbles differently. */
@@ -166,8 +171,8 @@ class Motor {
   }
 
   /** The gearbox: up near the top of a gear, down once well into the one below. Returns the shift (+1, −1, 0). */
-  private shift(throttle: number, top: number): number {
-    if (this.sinceShift < SHIFT_GAP) return 0;
+  private shift(throttle: number, top: number, shiftTime: number): number {
+    if (this.sinceShift < Math.max(SHIFT_GAP, shiftTime + 0.15)) return 0;
     const g = this.gear, rpm = this.rpm(g, top);
     if (g < GEARS.length - 1 && rpm > (throttle > 0.5 ? UP_RPM : UP_COAST_RPM)) this.gear++;
     else if (g > 0 && rpm < DOWN_RPM && this.rpm(g - 1, top) < UP_RPM * 0.95) this.gear--;
@@ -213,16 +218,19 @@ class Motor {
    *  frequency (Doppler). */
   update(dt: number, riding: boolean, grounded: boolean, speed: number, throttle: number, bike: number, pitch = 1) {
     this.time += dt;
+    const q = clamp01((bike - 1) / 3); // quality, 0 Scrap .. 1 Space-grade
     const top = bikeTopSpeed(Math.max(0, bike - 1));
+    const shiftTime = SHIFT_SLOW * (SHIFT_QUICK / SHIFT_SLOW) ** q;
     if (!riding || grounded) this.wheel = speed;
     else if (throttle > 0.5) this.wheel = Math.min(GEARS[GEARS.length - 1] * top, this.wheel + AIR_SPIN_UP * top * dt);
     else this.wheel += (speed - this.wheel) * (1 - Math.exp(-dt / AIR_DECAY));
     this.sinceShift += dt;
-    const shifted = riding ? this.shift(throttle, top) : 0;
+    const shifted = riding ? this.shift(throttle, top, shiftTime) : 0;
     if (!riding) this.gear = 0;
-    if (shifted) this.clunk(shifted > 0 ? CLUNK : CLUNK_DOWN);
-    // An upshift cuts the drive: no load while the clutch is out.
-    this.cutLeft = shifted > 0 ? CUT : Math.max(0, this.cutLeft - dt);
+    // A slow box clunks heavily; a quickshifter clicks.
+    if (shifted) this.clunk((shifted > 0 ? CLUNK : CLUNK_DOWN) * (1.2 - 0.6 * q));
+    // A shift cuts the drive: no load while the clutch is out.
+    this.cutLeft = shifted ? shiftTime : Math.max(0, this.cutLeft - dt);
     const cut = this.cutLeft > 0;
     this.load += ((cut ? 0 : throttle) - this.load) * (1 - Math.exp(-dt / (cut ? 0.03 : LOAD_TAU)));
 
@@ -230,20 +238,21 @@ class Motor {
     const set = (p: AudioParam, v: number, tau = 0.08) => p.setTargetAtTime(v, now, tau);
     const t = this.time, k = this.seed;
     const x = clamp01(this.wheel / (CRUISE * top));
-    // Pitch follows the revs, gliding to the new gear's after a shift (the frequencies' 80 ms ramp).
+    // Pitch follows the revs, gliding to the new gear's over the shift (else an 80 ms ramp).
     const revs = (this.rpm(this.gear, top) - IDLE_RPM) / (RED_RPM - IDLE_RPM);
     const f = (F_IDLE + (F_RED - F_IDLE) * revs) * pitch * (1 + 0.004 * wobble(t * 0.9, k));
+    const glide = cut ? Math.max(0.01, shiftTime * 0.4) : 0.08;
 
-    set(this.body[0].frequency, f);
-    set(this.body[1].frequency, f + BEAT_HZ);
-    set(this.mod.frequency, f * SIDEBAND);
+    set(this.body[0].frequency, f, glide);
+    set(this.body[1].frequency, f + BEAT_HZ, glide);
+    set(this.mod.frequency, f * SIDEBAND, glide);
     set(this.carrier.frequency, CARRIER * pitch);
     // Brighter under load, and the inverter whistle comes up with it (a faint trace when coasting).
     set(this.bodyLp.frequency, f * (2.5 + 2.5 * this.load) + 150);
     set(this.inverter.gain, 0.05 * (0.15 + 0.85 * this.load) * (0.5 + 0.5 * x) * (1 + 0.25 * wobble(t * 0.6, k + 3)));
 
     const drive = BY_SPEED * x + (1 - BY_SPEED) * this.load;
-    set(this.engine.gain, MIX * (IDLE + (1 - IDLE) * drive) * (cut ? CUT_LEVEL : 1) * (1 + 0.06 * wobble(t * 0.5, k + 7)), cut ? 0.02 : 0.1);
+    set(this.engine.gain, MIX * (IDLE + (1 - IDLE) * drive) * (cut ? CUT_LEVEL + (CUT_LEVEL_QUICK - CUT_LEVEL) * q : 1) * (1 + 0.06 * wobble(t * 0.5, k + 7)), cut ? Math.min(0.02, shiftTime * 0.3) : 0.1);
     // Mounting and dismounting fade rather than click.
     set(this.out.gain, riding ? 1 : 0, riding !== this.on ? 0.15 : 0.1);
     this.on = riding;

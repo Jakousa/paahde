@@ -3,16 +3,19 @@
 //
 // public/audio/bike-crash.mp3 is mixed for the game from CC0 sounds: a heavy hit, then rumble and debris dying
 // away over ~2 s. Mono, levelled to −23 LUFS (true peak −6 dBTP). How rough the landing was decides how much
-// of it is heard: a soft one is just the hit, muffled; the rougher, the brighter and the longer the tail is let
-// ring, and only a really hard crash (well past the sim's hard landing) lets the debris play out.
+// of it is heard: most landings are just the hit, quiet and muffled (a thud in the sand), a little fuller the
+// rougher; only near the sim's hard landing does it open up into the crash, loud and bright, and only a really
+// hard one (well past it) lets the debris play out.
 import { audio } from './audio';
 import { BIKE_HARD_LANDING } from '../shared/sim.ts';
 
 const SRC = './audio/bike-crash.mp3';
 /** Level at full slider volume, for a hard landing under your own wheels. */
-const GAIN = 0.6;
-/** Impact (m/s into the sand) at which it is the softest thump; at BIKE_HARD_LANDING it is the full hit. */
+const GAIN = 0.45;
+/** Impact (m/s into the sand) at which it is the softest thud; up to BIKE_HARD_LANDING it stays a muffled thud. */
 const SOFT = 3;
+/** The crash comes in from this fraction of BIKE_HARD_LANDING, whole at it. */
+const HARD_FROM = 0.8;
 /** Past BIKE_HARD_LANDING by this much (m/s), the whole crash plays out. */
 const CRASH = 6;
 /** The hit is let through whole for this long (s), then the tail fades. */
@@ -52,19 +55,20 @@ class BikeLandSound {
     const d = Math.hypot(dx, dz);
     if (d > FAR) return;
     const rough = Math.min(1, Math.max(0, (impact - SOFT) / (BIKE_HARD_LANDING - SOFT)));
+    const hard = Math.min(1, Math.max(0, (impact / BIKE_HARD_LANDING - HARD_FROM) / (1 - HARD_FROM)));
     const crash = Math.min(1, Math.max(0, (impact - BIKE_HARD_LANDING) / CRASH));
-    const level = GAIN * (0.4 + 0.6 * rough) * Math.min(1, NEAR / d) * Math.min(1, (FAR - d) / 10);
+    const level = GAIN * (0.15 + 0.2 * rough + 0.65 * hard) * Math.min(1, NEAR / d) * Math.min(1, (FAR - d) / 10);
     const now = ctx.currentTime;
 
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = (1.06 - 0.12 * rough) * (0.95 + Math.random() * 0.1);
-    // Soft: a dull thud in the sand (600 Hz), opening up to the whole crash.
+    // A thud in the sand (350 Hz, up to 1.2 kHz the rougher), opening up to the whole crash only when it's hard.
     const tone = ctx.createBiquadFilter();
     tone.type = 'lowpass';
-    tone.frequency.value = 600 * Math.pow(35, rough);
-    // The tail rings longer the rougher it was; under a crash the clatter and glass are faded out before they come.
-    const tail = 0.06 + 0.3 * rough * rough + 4 * crash * crash;
+    tone.frequency.value = 350 * Math.pow(3.5, rough) * Math.pow(17, hard);
+    // The tail rings longer the harder it was; under a crash the debris is faded out before it comes.
+    const tail = 0.05 + 0.12 * rough * rough + 0.25 * hard + 4 * crash * crash;
     const gain = ctx.createGain();
     const g = level * (0.9 + Math.random() * 0.2);
     gain.gain.setValueAtTime(g, now);
