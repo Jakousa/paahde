@@ -28,13 +28,16 @@ services:
       -hf bartowski/SmolLM2-360M-Instruct-GGUF:Q4_K_M
       --host 0.0.0.0
       --port 8080
-      -t 2
-      -tb 2
-      --ctx-size 1024
+      -t 1
+      -tb 1
+      -np 1
+      --ctx-size 512
     ports:
       - "8080:8080"
     volumes:
       - llm_cache:/root/.cache/llama.cpp
+    cpus: 1.0
+    mem_limit: 512m
     restart: unless-stopped
 
 volumes:

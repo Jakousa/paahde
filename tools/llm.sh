@@ -19,22 +19,25 @@ if [[ ! -f "${MODEL_FILE}" || $(stat -c%s "${MODEL_FILE}" 2>/dev/null || echo 0)
 fi
 
 if command -v llama-server >/dev/null 2>&1; then
-  echo "Starting llama-server natively on :8080..."
-  exec llama-server -m "${MODEL_FILE}" --host 127.0.0.1 --port 8080 -t 2 -tb 2 --ctx-size 1024
+  echo "Starting llama-server natively on :8080 (1 thread, 512 ctx)..."
+  exec llama-server -m "${MODEL_FILE}" --host 127.0.0.1 --port 8080 -t 1 -tb 1 -np 1 --ctx-size 512
 elif command -v docker >/dev/null 2>&1; then
   TTY_OPTS=()
   [ -t 0 ] && TTY_OPTS=(-it)
-  echo "Starting llama-server via docker container on :8080..."
+  echo "Starting llama-server via docker container on :8080 (1 CPU, 512m RAM limit)..."
   exec docker run --rm "${TTY_OPTS[@]}" \
     -p 8080:8080 \
+    --cpus="1.0" \
+    --memory="512m" \
     -v "$(pwd)/${MODEL_DIR}:/models" \
     ghcr.io/ggml-org/llama.cpp:server \
     -m "/models/smollm2-360m-instruct-q4_k_m.gguf" \
     --host 0.0.0.0 \
     --port 8080 \
-    -t 2 \
-    -tb 2 \
-    --ctx-size 1024
+    -t 1 \
+    -tb 1 \
+    -np 1 \
+    --ctx-size 512
 else
   echo "Error: Neither llama-server nor docker was found on PATH." >&2
   exit 1
