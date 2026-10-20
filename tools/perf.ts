@@ -52,6 +52,8 @@ async function worldId(): Promise<string> {
   return ((await res.json()) as { id: string }).id;
 }
 
+/** `--ls key=value`: raw localStorage entries (other settings than the graphics ones, e.g. dadajam.ao=0 for no ambient occlusion). */
+const rawLs = args.flatMap((a, i) => (a === '--ls' && args[i + 1] ? [args[i + 1].split('=')] : []));
 const prefs: Record<string, unknown> = {};
 for (const kv of sets) {
   const [k, v] = kv.split('=');
@@ -124,7 +126,7 @@ try {
     await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
   }
   await send('Page.addScriptToEvaluateOnNewDocument', {
-    source: `try { sessionStorage.setItem('prologueSeen', '1'); const k = 'dadajam.graphics'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), ...${JSON.stringify(prefs)} })); } catch {}`,
+    source: `try { sessionStorage.setItem('prologueSeen', '1'); const k = 'dadajam.graphics'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), ...${JSON.stringify(prefs)} })); for (const [lk, lv] of ${JSON.stringify(rawLs)}) localStorage.setItem(lk, lv); } catch {}`,
   });
 
   // Tracing: Chrome's Performance recording categories, streamed back as a file.

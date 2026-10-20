@@ -225,6 +225,33 @@ const MEAN_PHASES = 8;
  * Exact for this profile, no marching. Unresolved (far) it becomes the share of a ripple left lit on average, so ripple fields still
  * darken and streak at a low sun far away. Where there are no ripples (rock, slip faces, crests) it is 1.
  */
+/**
+ * The sand's diffuse light averaged over one small-ripple cycle (eight phases), each phase with its own ripple normal and its own ripple
+ * shadow: what a pixel spanning many ripples should show. The diffuse response (a hard terminator) is far from linear, so lighting the
+ * averaged, flat normal instead came out darker than the ripples it stands for at a low sun, by how deep they were and how their crests
+ * faced the sun: patches far away that faded as you came closer.
+ */
+function rippleMeanDiffuse(s: SandSurface, l: V3): F {
+  const lAlong = dot(l.xz, s.rippleDir);
+  const up = max(dot(l, s.n0), 1e-3);
+  const tanE = up.div(max(abs(lAlong), 1e-3));
+  const height = sand.rippleHeight.mul(s.rippleAmp);
+  const toSun = lAlong.greaterThan(0);
+  const crisp = sand.rippleHeight.mul(0.12);
+  const dir3 = vec3(s.rippleDir.x, 0, s.rippleDir.y);
+  const scale = sand.rippleStrength.mul(s.rippleAmp);
+  let sum: F = float(0);
+  for (let k = 0; k < MEAN_PHASES; k++) {
+    const f = float((k + 0.5) / MEAN_PHASES);
+    const [h, slope] = rippleProfile(f, RIPPLE_STOSS);
+    const toCrest = select(toSun, fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
+    const lit = smoothstep(crisp.negate(), crisp, toCrest.mul(tanE).sub(height.mul(float(1).sub(h))).add(crisp));
+    const nk = normalize(s.nBase.sub(dir3.mul(slope.mul(scale))));
+    sum = sum.add(saturate(dot(nk, l).mul(sand.contrast).add(sand.offset)).mul(lit)) as F;
+  }
+  return sum.div(MEAN_PHASES);
+}
+
 function rippleSun(s: SandSurface, l: V3): F {
   const lAlong = dot(l.xz, s.rippleDir);
   const up = max(dot(l, s.n0), 1e-3);
@@ -296,6 +323,7 @@ interface SandSurface {
   rippleDir: V2; // the direction the phase grows in (the wind, bent with the crests)
   rippleField: F; // 0..1: whether there are small ripples here (not on rock, slip faces, crests)
   rippleAmp: F; // their depth here, 0..~1.3 of sand.rippleHeight
+  nBase: V3; // the sand's normal without the small ripples
   rippleRes: F; // 0..1: how well the small ripples are resolved by the pixel
 }
 
@@ -365,6 +393,8 @@ function buildSurface(): SandSurface {
   const slopeSpec = d1.mul(sand.rippleStrength).mul(1.4).mul(f1).mul(f1).add(d2.mul(sand.megaRippleStrength).mul(f2).mul(f2));
   // Heightfield y = h(x,z) has normal (-hx, 1, -hz); apply the ripple gradient on top of the dune normal.
   const nSand = normalize(n0.sub(vec3(dir.x, 0, dir.y).mul(slope)));
+  // without the small ripples (for averaging their light over a cycle where they are under a pixel)
+  const nBase = normalize(n0.sub(vec3(dir.x, 0, dir.y).mul(d2.mul(sand.megaRippleStrength).mul(f2))));
   const nSpec = normalize(n0.sub(vec3(dir.x, 0, dir.y).mul(slopeSpec)));
 
   // Rock: one noise, stretched vertically, gives both the varnish streaks and (as a bump) the flutes
@@ -419,7 +449,7 @@ function buildSurface(): SandSurface {
 
   return {
     p, n0, n, nSpec, v, albedo: mix(ground, dusted, rock), slip, rock, mud, dust, dist, rippleVis: f1,
-    ripplePhase: s1, rippleDir: dir, rippleField: rippleMask, rippleAmp: amp, rippleRes: footprintFade(s1),
+    ripplePhase: s1, rippleDir: dir, rippleField: rippleMask, rippleAmp: amp, rippleRes: footprintFade(s1), nBase,
   };
 }
 
@@ -451,7 +481,11 @@ class SandLightingModel extends THREE.LightingModel {
     const on = float(0.75).add(sON.div(tON).clamp(-1, 1.2).mul(0.3));
     // the ripples' own shadows (the sun ray grazes over one crest onto the lee of the next)
     const ripSun = rippleSun(this.s, l);
-    const I = saturate(ndl.mul(sand.contrast).add(sand.offset)).mul(on).mul(ripSun);
+    // Resolved ripples are lit pixel by pixel; unresolved, by their light averaged over a cycle (rippleMeanDiffuse), so the sand looks the
+    // same from near and far. (Off the ripples, rock, slip faces, crests: just the pixel.)
+    const nearI = saturate(ndl.mul(sand.contrast).add(sand.offset)).mul(ripSun);
+    const farI = rippleMeanDiffuse(this.s, l);
+    const I = mix(nearI, farI, this.s.rippleField.mul(float(1).sub(this.s.rippleRes))).mul(on);
     directDiffuse.addAssign(lightColor.mul(albedo).mul(I).mul(1 / PI));
 
     // Ocean specular on the rippled normal (reads when looking towards the sun), boosted at grazing.

@@ -441,3 +441,7 @@ Far ripples: the slope is box-filtered over the pixel's footprint (`filteredSlop
 exact up close, 0 by itself once a pixel spans a ripple), and the ripple shadows' edges widen with the footprint, so the ripples are drawn down to a
 few pixels each without moiré or dashes. Where they fade out is the Sand detail option (`sand.rippleFade`, RIPPLE_FADES: cycles per pixel), live.
 The limit is the screen: an 11 cm ripple seen along the ground is under a pixel within tens of metres; past that only the mean shading carries it.
+Far ripples are lit by their light averaged over a cycle (`rippleMeanDiffuse`: eight phases, each with its own ripple normal and shadow),
+not by the averaged (flat) normal: the hard terminator is far from linear, so the flat normal came out darker than the ripples it stood for at a
+low sun, by how deep they were and how their crests faced the sun: patches seen from high up at sunrise and sunset that faded as you came closer.
+Tests of the sun's look need it really low: `--tod 0.235` is ~2-3°, 0.26 already ~8°.
