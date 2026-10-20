@@ -35,8 +35,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')
 
 # --- layout (shared/base.ts) ---------------------------------------------------------------------
 WT = 0.3
-W = 1.1
-HUT_Z0, HUT_Z1, HUT_H, DOOR, DOOR_H = -4.0, 2.0, 2.3, 0.7, 1.95
+W = 1.35
+HUT_Z0, HUT_Z1, HUT_H, DOOR = -4.0, 2.0, 2.3, 0.85
+DOOR_S, DOOR_H = 1.75, 2.15  # the doorway's low arch: springing line, crown (shared/base.ts HUT.doorS, HUT.doorH)
 HUT_T, HUT_TOP = 0.6, 2.75  # the entrance's wall thickness and outer height (shared/base.ts HUT.t, HUT.top)
 HUT_FILLET = 0.4  # its rounded-over top edge
 ST_Z, ST_N, ST_RISE, ST_RUN = 0.6, 48, 0.25, 0.3
@@ -415,6 +416,21 @@ def front_ring(hx, hz, r, zc, door):
     return pts, seg + 1
 
 
+def door_arch(dr=0.0, seg=10):
+    """The doorway's segmental arch [(x, y), ...] from +DOOR to -DOOR (shared/base.ts doorTop), its radius grown by dr."""
+    rise = DOOR_H - DOOR_S
+    r = (DOOR * DOOR + rise * rise) / (2 * rise)
+    cy, a0 = DOOR_H - r, math.atan2(DOOR_S - (DOOR_H - r), DOOR)
+    return [((r + dr) * math.cos(a), cy + (r + dr) * math.sin(a))
+            for a in (a0 + (math.pi - 2 * a0) * k / seg for k in range(seg + 1))]
+
+
+def door_head(mb, z0, z1, mat):
+    """The wall over the doorway from z0 to z1: its underside is the arch, its top HUT_H."""
+    pts = [(x, y, z0) for x, y in door_arch()] + [(-DOOR, HUT_H, z0), (DOOR, HUT_H, z0)]
+    mb.prism(pts, (0, 0, z1 - z0), mat)
+
+
 def build_hut():
     """The entrance: one squat block of poured concrete, thick walls, rounded corners and top edge, the
     doorway sunk into its front wall. Hollow and open at the bottom (the stairs go down inside)."""
@@ -424,13 +440,18 @@ def build_hut():
     xo, fo = W + HUT_T, front + HUT_T  # outer half width, outer front
     base = -0.3  # a little under the sand
     f = HUT_FILLET
-    prof = [(0, base), (0, 0), (0, DOOR_H), (0, HUT_TOP - f)]
+    prof = [(0, base), (0, 0), (0, DOOR_S), (0, HUT_TOP - f)]
     prof += [(-f + f * math.cos(a), HUT_TOP - f + f * math.sin(a)) for a in (math.pi / 2 * k / 5 for k in range(1, 6))]
     loops = []
     for d, y in prof:
         pts, door = front_ring(xo + d, hz + d, HUT_R + d, zc, DOOR)
         loops.append((pts, y))
-    mb.loft(loops, 'Bunker', bottom=False, skip={(1, door)})
+    mb.loft(loops, 'Bunker', bottom=False, skip={(1, door), (2, door)})
+    # The front over the doorway's arch, and a plain cast lip round the arch.
+    pts = [(x, y, fo) for x, y in door_arch()] + [(-DOOR, HUT_TOP - f, fo), (DOOR, HUT_TOP - f, fo)]
+    mb.poly(pts, 'Bunker', (0, 0, 1))
+    lip = door_arch(0.04) + list(reversed(door_arch(0.26)))
+    mb.prism([(x, y, fo - 0.01) for x, y in lip], (0, 0, 0.09), 'Bunker')
     # Formwork seams round it (broken by the doorway), and a vision slit in each side.
     for y in (0.85, 1.7):
         band = [front_ring(xo + 0.008, hz + 0.008, HUT_R + 0.008, zc, DOOR)[0]]
@@ -440,13 +461,14 @@ def build_hut():
     # The doorway's reveal through the wall (faces just inside the shell, so they don't z-fight it).
     e = 0.005
     for s in (-1, 1):
-        mb.box(s * W, s * DOOR, 0, DOOR_H, front, fo - e, 'Bunker')
-    mb.box(-DOOR, DOOR, DOOR_H, HUT_H, front, fo - e, 'Bunker')
-    # Steel frame round the outside of the doorway, a steel threshold through it.
+        mb.box(s * (DOOR + 0.2), s * DOOR, 0, HUT_H, front, fo - e, 'Bunker')  # clear of the rounded corners
+    door_head(mb, front, fo - e, 'Bunker')
+    # Steel frame round the outside of the doorway, following its arch, a steel threshold through it.
     g = 0.07
     for s in (-1, 1):
-        mb.box(s * DOOR - g / 2, s * DOOR + g / 2, 0, DOOR_H + g, fo - 0.05, fo + 0.02, 'Steel')
-    mb.box(-DOOR - g / 2, DOOR + g / 2, DOOR_H, DOOR_H + g, fo - 0.05, fo + 0.02, 'Steel')
+        mb.box(s * DOOR - g / 2, s * DOOR + g / 2, 0, DOOR_S, fo - 0.05, fo + 0.02, 'Steel')
+    band = door_arch(-g / 2) + list(reversed(door_arch(g / 2)))
+    mb.prism([(x, y, fo - 0.05) for x, y in band], (0, 0, 0.07), 'Steel')
     # Landing floor, the threshold, and the nosing of the top step.
     mb.box(-W, W, -0.25, 0, ST_Z, front, 'Concrete')
     mb.box(-DOOR, DOOR, -0.25, 0.01, front, fo, 'Steel')
@@ -477,7 +499,7 @@ def build_bunker():
     for s in (-1, 1):
         mb.box(s * (W - li), s * W, BURIED_TOP, HUT_H, HUT_Z0, HUT_Z1, 'Concrete')
         mb.box(s * DOOR, s * (W - li), BURIED_TOP, HUT_H, HUT_Z1 - li, HUT_Z1, 'Concrete')
-    mb.box(-DOOR, DOOR, DOOR_H, HUT_H, HUT_Z1 - li, HUT_Z1, 'Concrete')
+    door_head(mb, HUT_Z1 - li, HUT_Z1, 'Concrete')
     arch_wall(mb, HUT_Z0 + li, HUT_H, (0, 0, 1))
     mb.box(-W, W, HUT_H, HUT_H + 0.3, HUT_Z0, HUT_Z1, 'Concrete')
     mb.cyl((0, BULB[1], HUT_Z0), (0, BULB[1], HUT_Z0 + 0.1), 0.06, 'Iron', seg=8)

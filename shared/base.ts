@@ -59,10 +59,17 @@ export const BASE_SPAWN = { x: BASE.x, z: BASE.z + 9 };
 /** Wall thickness everywhere. */
 export const WT = 0.3;
 /** Half inner width of the entrance, the stairs and the hallway. */
-export const W = 1.1;
-/** Entrance hut, inner: from the back wall to the door, ceiling height, door half width; its thick walls
- *  (t) and outer height (top): a squat concrete block like a WW2 bunker. */
-export const HUT = { z0: -4.0, z1: 2.0, h: 2.3, door: 0.7, t: 0.6, top: 2.75 };
+export const W = 1.35;
+/** Entrance hut, inner: from the back wall to the door, ceiling height, door half width, the doorway's low arch
+ *  (springing line, crown); its thick walls (t) and outer height (top): a squat concrete block like a WW2 bunker. */
+export const HUT = { z0: -4.0, z1: 2.0, h: 2.3, door: 0.85, doorS: 1.75, doorH: 2.15, t: 0.6, top: 2.75 };
+
+/** Height of the doorway's arch (a circle segment) at |x| = ax, or HUT.h beside it. */
+function doorTop(ax: number): number {
+  if (ax >= HUT.door) return HUT.h;
+  const rise = HUT.doorH - HUT.doorS, r = (HUT.door * HUT.door + rise * rise) / (2 * rise);
+  return HUT.doorH - r + Math.sqrt(r * r - ax * ax);
+}
 /** Stairs: top edge (the landing ends here), steps (rise, run), bottom = the bunker floor. */
 export const STAIRS = { z: 0.6, n: 48, rise: 0.25, run: 0.3 };
 /** Bunker floor height (local). */
@@ -475,7 +482,7 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
 /** Ceiling (local) over local (lx, lz), or Infinity. */
 function ceilingAt(lx: number, lz: number): number {
   const ax = Math.abs(lx);
-  if (ax < W + WT && lz >= HUT.z0 && lz < HUT.z1 + WT) return HUT.h;
+  if (ax < W + WT && lz >= HUT.z0 && lz < HUT.z1 + HUT.t) return lz > HUT.z1 ? doorTop(ax) : HUT.h;
   if (ax < W + WT && lz > HALL.z && lz < HUT.z0) return vaultAt(ax, vaultCrown(lz));
   if (ax < ROOM.w + ALCOVE.d + WT && lz > ROOM.z - ALCOVE.d - WT && lz <= HALL.z) {
     // An alcove's barrel vault; then the room's ceiling, the skylight's glass.
@@ -506,7 +513,7 @@ export function baseSolid(x: number, y: number, z: number): boolean | null {
   // Air: the hut, stairwell, tunnel and hallway; the doorway; the room (up to the skylight's glass, round the
   // pilasters) and its alcoves.
   if (ax < W && lz > HALL.z && lz < HUT.z1 && ly > stairY(lz) && ly < ceilingAt(lx, lz)) return false;
-  if (ax < HUT.door && lz >= HUT.z1 - 0.01 && ly > 0 && ly < HUT.h) return false;
+  if (ax < HUT.door && lz >= HUT.z1 - 0.01 && ly > 0 && ly < doorTop(ax)) return false;
   if (ax < ROOM.w && lz > ROOM.z && lz <= HALL.z && ly > FLOOR && ly < ceilingAt(lx, lz) && !inPillar(lx, lz)) return false;
   if (inAlcove(lx, lz, 0) >= 0 && ly > FLOOR && ly < ceilingAt(lx, lz)) return false;
   if (ax < W + HUT.t && lz > HUT.z0 - HUT.t) return true; // the hut's walls and roof
