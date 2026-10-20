@@ -578,6 +578,8 @@ baseSand.update(frameDt, storm.atBase);
     epic: guardianFx.epic || bossFx.combat,
     combat: guardianFx.combat,
     dead: survival.dead,
+    // The sun coming up: from 2° under the horizon to 8° over it (about a minute).
+    sunrise: sky.day.tod < 0.5 && sky.day.elevation > -0.035 && sky.day.elevation < 0.14,
   });
   crashSound.update(orbit.camera.position, orbit.viewYaw);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
