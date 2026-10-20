@@ -6,7 +6,8 @@ desert would. That lets us drop explanatory UI text.
 
 Code: the words in `shared/text.ts` `TEXT.speech` (with every other text in the game, docs/text.md), when each is
 said in `src/speechLines.ts` (plain data, tune there), the engine and subtitle in `src/speech.ts`, fed each frame
-from `src/main.ts`.
+from `src/main.ts`. A line types out letter by letter with a soft blip per letter, visual-novel style (`src/speechSound.ts`;
+rate and punctuation pauses at the top of `src/speech.ts`), so a remark is heard as well as read.
 
 ## How a line is written
 
