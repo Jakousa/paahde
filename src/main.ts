@@ -571,7 +571,6 @@ baseSand.update(frameDt, storm.atBase);
   audio.setMuffled(survival.dead); // the world goes dull while you lie dead; the music doesn't
   const cam = orbit.camera.position;
   music.update(frameDt, {
-    riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
     indoors: indoors(cam.x, cam.y, cam.z),
     sandstorm: storm.level > 0.3,
     epic: guardianFx.epic || bossFx.combat,
