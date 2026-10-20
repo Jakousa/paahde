@@ -173,8 +173,9 @@ export class FirstPersonCamera {
     }
     const viewYaw = this.yaw + this.freeYaw;
 
-    // Eye height: follow the feet quickly but smoothly; snap if far (respawn/teleport) or airborne.
-    if (!Number.isFinite(this.eyeY) || Math.abs(p.y - this.eyeY) > 3) this.eyeY = p.y;
+    // Eye height: follow the feet quickly but smoothly; snap if far (respawn/teleport) or airborne. Riding, it is
+    // the rider's head (already smooth): any lag here sinks the view into the body and bike on a fast climb.
+    if (!Number.isFinite(this.eyeY) || Math.abs(p.y - this.eyeY) > 3 || p.riding) this.eyeY = p.y;
     else this.eyeY += (p.y - this.eyeY) * (1 - Math.exp(-dt * (p.grounded ? 22 : 40)));
 
     // Landing dip: a damped spring kicked by the impact speed.
