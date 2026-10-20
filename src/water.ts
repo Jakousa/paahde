@@ -2,13 +2,13 @@
 // shared/items.ts: the water bottle, telescope (src/telescope.ts) and the rest,
 // all found broken and repaired, shared/gear.ts), drinking and refilling, and the HUD: the body heat meter
 // (bottom left, glowing while heat builds), the clock and felt temperature with a sun/shade icon (top right,
-// shared/temperature.ts; only with the wrist computer equipped), a heatstroke vignette and swimming view (post.ts) past 60%, and the
-// death screen.
+// shared/temperature.ts; only with the wrist computer equipped), a heatstroke vignette and swimming view (post.ts) past 60%, the
+// view fading out at a full meter (STROKE_S till death), and the death screen.
 //
 // The server owns the numbers; this only plays the actions and asks. Keys 1–5 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // and F at a pump (the base's, some shelters') refills it.
-import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
+import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX, STROKE_RECOVER, STROKE_S } from '../shared/water.ts';
 import { equipped, repaired, tierOf } from '../shared/gear.ts';
 import { HOTBAR } from '../shared/items.ts';
 import { PISTOL, RIFLE } from '../shared/rifle.ts';
@@ -20,7 +20,7 @@ import { tools, useHeld } from './input';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
-import { heatstroke } from './world/env.ts';
+import { fainting, heatstroke } from './world/env.ts';
 import { drinkSound } from './drinkSound';
 import { atWater, indoors } from '../shared/shelters.ts';
 import { TEXT } from '../shared/text.ts';
@@ -163,6 +163,7 @@ export class Survival {
 
   private selected = -1; // hotbar slot, -1 = empty hands
   private shown = 0; // eased meter value
+  private stroke = 0; // seconds at a full meter, counted as the server does (it decides the death)
   private actionAt = 0; // performance.now() when the current sip / refill started
   private needRelease = false; // one sip per press: let go before the next
   private deadUntil = 0;
@@ -420,6 +421,9 @@ export class Survival {
     }
     // Heatstroke vignette and swimming view (post.ts), from 60% to full.
     heatstroke.value = dead ? 0 : Math.min(1, Math.max(0, (this.shown - 0.6 * HEAT_MAX) / (0.4 * HEAT_MAX)));
+    // Full: fainting (post.ts), black a little before the server's tally kills, so the view is dark when the death comes.
+    this.stroke = dead ? 0 : Math.max(0, this.stroke + (w.heat >= HEAT_MAX ? 1 : -STROKE_RECOVER) * dt);
+    fainting.value = Math.min(1, this.stroke / (STROKE_S * 0.92));
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
     // Black out over the last stretch of lying dead, then fade back in on the base after the respawn.

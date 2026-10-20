@@ -4,10 +4,15 @@
 // Heat builds up: the hotter it feels (shared/temperature.ts: air temperature by time of day, plus the
 // sun's bonus, or the shade's chill, capped in the base), the faster, from nothing at COMFORT_TEMP up a
 // quadratic curve. Below COMFORT_TEMP (the base, shade by day, nights) you cool off by yourself. Sips from the water bottle
-// (found broken and repaired, shared/gear.ts) bring it down; the pump in the base refills it. A full meter is heatstroke.
+// (found broken and repaired, shared/gear.ts) bring it down; the pump in the base refills it. A full meter is heatstroke:
+// the view fades out (src/water.ts `fainting`) and STROKE_S later you die, unless a sip brings it back down first.
 
 /** Full heat meter: heatstroke. */
 export const HEAT_MAX = 100;
+/** Heatstroke kills after this long (s) with the meter full... */
+export const STROKE_S = 5;
+/** ...and wears off this many seconds per second once it is below full again. */
+export const STROKE_RECOVER = 1;
 /** Heat neither builds nor fades at this felt temperature (°C). */
 export const COMFORT_TEMP = 30;
 /** At this felt temperature (°C; full sun, early afternoon)... */

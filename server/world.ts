@@ -372,7 +372,7 @@ function shadeCasters(now: number): Caster[] {
   return casters;
 }
 
-// Heat builds up in the sun (server/water.ts); when the meter is full the player dies of heatstroke and respawns
+// Heat builds up in the sun (server/water.ts); STROKE_S after the meter is full the player dies of heatstroke and respawns
 // at the base, recovered.
 // The next snapshot carries the new position, which the client snaps to (src/net.ts reconcile).
 function heat(p: Player, dt: number, tod: number, serverNow: number) {
