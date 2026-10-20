@@ -234,7 +234,7 @@ const en = {
     goWindowed: 'Go windowed',
     goFullscreen: 'Go fullscreen',
     /** Under Go fullscreen after Ctrl+W made the browser ask before closing the tab (src/menu.ts). */
-    ctrlWNote: 'Ctrl+W asks the browser to close the tab. Fullscreen keeps it in the game.',
+    ctrlWNote: 'Ctrl+W is the browser shortcut for closing the tab. Fullscreen turns it off.',
     mainMenu: 'Main menu',
     display: 'Display',
     fullscreen: 'Fullscreen',
