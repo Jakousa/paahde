@@ -31,9 +31,12 @@ function simHash(dir: string): string {
   return h.digest('hex').slice(0, 12);
 }
 
+/** The commit simulated; a `+` after it: with uncommitted changes to the game's code. */
 function gitSha(cwd: string): string {
   try {
-    return execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+    const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+    const dirty = execFileSync('git', ['status', '--porcelain', '--', ':/shared', ':/server'], { cwd, encoding: 'utf8' }).trim();
+    return dirty ? `${sha.slice(0, 7)}+` : sha;
   } catch {
     return 'unknown';
   }

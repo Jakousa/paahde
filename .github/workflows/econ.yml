@@ -1,0 +1,88 @@
+name: Economy sim
+
+# At every push to main that touches the game's code: simulate 200 worlds with tools/econsim (docs/econsim.md) and
+# compare them, world by world, with the commit before the push (measured with this push's simulator, so only the game
+# differs). The report goes in the run's summary; changes it flags go to Discord (the ECON_DISCORD_WEBHOOK secret).
+# It reports only: it never blocks a deploy (that's deploy.yml) and its failure breaks nothing.
+on:
+  push:
+    branches: [main]
+    paths: ['shared/**', 'server/**', 'tools/econsim/**']
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Commit to compare with (default the one before)
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: econ-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  econ:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Base commit and simulator version
+        id: base
+        run: |
+          BASE="${{ github.event.inputs.base || github.event.before }}"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=$(git rev-parse HEAD~1); fi
+          echo "sha=$(git rev-parse "$BASE")" >> "$GITHUB_OUTPUT"
+          echo "sim=$(cat tools/econsim/*.ts | sha1sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+      - name: Simulate this commit
+        run: node --no-warnings tools/econsim/cli.ts run --out head.json --sha ${{ github.sha }} > head.md
+
+      # Each commit's results are kept for the next push (keyed by the simulator too: another simulator, another yardstick).
+      - name: Results of the base commit
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: econ-cache
+          key: econ-${{ steps.base.outputs.sha }}-${{ steps.base.outputs.sim }}
+
+      - name: Simulate the base commit (with this simulator)
+        if: steps.cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          git worktree add --detach ../base ${{ steps.base.outputs.sha }}
+          rm -rf ../base/tools/econsim && cp -r tools/econsim ../base/tools/econsim
+          mkdir -p econ-cache
+          node --no-warnings ../base/tools/econsim/cli.ts run --out econ-cache/results.json --sha ${{ steps.base.outputs.sha }} > /dev/null
+
+      - name: Report
+        env:
+          ECON_DISCORD_WEBHOOK: ${{ secrets.ECON_DISCORD_WEBHOOK }}
+        run: |
+          LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -f econ-cache/results.json ]; then
+            node --no-warnings tools/econsim/cli.ts compare econ-cache/results.json head.json --md report.md --link "$LINK" --discord
+          else
+            { echo "_No results for the base commit ${{ steps.base.outputs.sha }} (older than the simulator, or it failed there): this commit alone._"; echo; cat head.md; } > report.md
+          fi
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p artifact && cp head.json report.md artifact/ && cp econ-cache/results.json artifact/base.json 2>/dev/null || true
+          rm -rf econ-cache && mkdir econ-cache && cp head.json econ-cache/results.json
+
+      - name: Keep this commit's results
+        uses: actions/cache/save@v4
+        with:
+          path: econ-cache
+          key: econ-${{ github.sha }}-${{ steps.base.outputs.sim }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: econ-${{ github.sha }}
+          path: artifact

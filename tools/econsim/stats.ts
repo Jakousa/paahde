@@ -143,6 +143,7 @@ export function compareMd(base: Results, head: Results, changes: Change[], link?
 export function discordText(base: Results, head: Results, changes: Change[], link?: string): string {
   const flagged = changes.filter((c) => c.flag);
   const lines = [`**Economy sim** \`${head.sha.slice(0, 7)}\` vs \`${base.sha.slice(0, 7)}\` (${head.runs.length} worlds)${base.simHash !== head.simHash ? ' · sim changed' : ''}`];
+  if (!flagged.length) lines.push('No significant change.');
   for (const c of flagged.slice(0, 15)) lines.push(`• ${label(c.m)}: ${min(c.base.p50)} → ${min(c.head.p50)} min (${signed(c.rel)}), reached ${pct(c.base.reach)} → ${pct(c.head.reach)} — ${c.flag}`);
   if (flagged.length > 15) lines.push(`…and ${flagged.length - 15} more`);
   if (link) lines.push(link);

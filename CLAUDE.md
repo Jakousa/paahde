@@ -22,13 +22,19 @@ commit or push to `main`. Commit, push to `main`, done. See "Workflow" below.
   where each default lives (src/artBench.ts).
 - `npm run build` — `tsc --noEmit` + production build into `dist/`. Run before pushing.
 - `npm run preview` — build, then run the production server (serves `dist/` + `/ws` on :8787).
+- `npm run econ -- --base origin/main` — the economy simulator (docs/econsim.md): 200 simulated worlds at this tree and
+  at the base, and how the progression moved (milestone times, bottlenecks, part sources). Run it after changing loot
+  tables, drops, recipes, gear slots or the site layout. CI runs it on every push to `main` (report in the run summary,
+  flagged changes to Discord).
 
 There are no tests yet; `npm run build` is the check CI runs on PRs.
 
 ## Layout
 
 - `shared/tables.ts` — every loot table and crafting recipe (machine/wreck yields, world finds, caches, kill
-  drops, workbench recipes) as plain data; tune drops and recipes there
+  drops, workbench recipes) as plain data; tune drops and recipes there. The dice that roll them in the world (caches,
+  stashes, finds and where they lie, kill/jet/harvester/boss drops) are `shared/lootRoll.ts`, shared by the server and
+  the economy simulator (`tools/econsim`, docs/econsim.md): roll loot there, with a `rand`, never inline in server code
 - `shared/sim.ts` — deterministic movement/physics, run by **both** client and server
 - `shared/protocol.ts` — WebSocket message types
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`);
