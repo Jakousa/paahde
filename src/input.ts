@@ -1,4 +1,4 @@
-import { isBound, norm, slots, type Action } from './bindings';
+import { isBound, norm, setDevice, slots, type Action } from './bindings';
 import { graphics } from './graphics';
 import { BACK, BIKE, CROUCH, FORWARD, JUMP, LEFT, RIGHT, SLIDE } from '../shared/sim.ts';
 
@@ -36,7 +36,15 @@ export function capture(canvas: HTMLElement) {
   Promise.resolve(canvas.requestPointerLock()).catch(() => {});
   fullscreen();
 }
+// Real keys and mouse (not the gamepad's synthetic events, src/gamepad.ts) put the hints back on the keyboard's names.
+const keysUsed = (e: Event) => e.isTrusted && setDevice('keys');
+addEventListener('mousedown', keysUsed);
+addEventListener('wheel', keysUsed, { passive: true });
+addEventListener('mousemove', (e) => {
+  if (Math.abs(e.movementX) + Math.abs(e.movementY) > 3) keysUsed(e);
+});
 addEventListener('keydown', (e) => {
+  keysUsed(e);
   // A locked keyboard hands Esc to the page instead of releasing the mouse, so release it ourselves.
   if (e.code === 'Escape' && captured()) document.exitPointerLock();
   if (captured()) e.preventDefault();

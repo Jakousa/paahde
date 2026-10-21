@@ -85,21 +85,22 @@ const en = {
     chestN: (n: number) => `Chest ${n}`,
     storage: 'Storage', ground: 'On the ground',
   },
-  /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR). */
+  /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR); `k` gives the current
+   *  key or button names (src/bindings.ts hintKeys). */
   gearUse: {
-    motorcycle: 'The motorcycle key gets you on and off.',
-    spyglass: 'Hold the mouse button to look through it, and use the wheel to zoom.',
-    canteen: 'Hold the mouse button to drink. You can fill it up at any pump.',
-    backpack: 'Gives your bag more room past the hotbar.',
-    storm_detector: 'Beeps before a sandstorm reaches you.',
-    wristpad: 'Shows the time, the temperature and the locator bar.',
-    laser_pistol: 'Left mouse fires, right mouse aims.',
-    laser_rifle: 'Left mouse fires, right mouse looks through the scope.',
-    jammer: 'Hold the mouse button on a drone or jet until it comes down.',
-    shield: 'Takes killing blows for you, then breaks.',
-    receiver: 'Left mouse sends the signal, and the needle points at whatever answers.',
-    windmill: 'Put it up on the sand by the base.',
-    battery_station: 'Put it down in the bunker.',
+    motorcycle: (k: HintKeys) => `Press ${k.bike} to get on and off.`,
+    spyglass: (k: HintKeys) => `Hold ${k.use} to look through it, and use ${k.zoom} to zoom.`,
+    canteen: (k: HintKeys) => `Hold ${k.use} to drink. You can fill it up at any pump.`,
+    backpack: () => 'Gives your bag more room past the hotbar.',
+    storm_detector: () => 'Beeps before a sandstorm reaches you.',
+    wristpad: () => 'Shows the time, the temperature and the locator bar.',
+    laser_pistol: (k: HintKeys) => `Fire with ${k.use} and aim with ${k.aim}.`,
+    laser_rifle: (k: HintKeys) => `Fire with ${k.use} and look through the scope with ${k.aim}.`,
+    jammer: (k: HintKeys) => `Hold ${k.use} on a drone or jet until it comes down.`,
+    shield: () => 'Takes killing blows for you, then breaks.',
+    receiver: (k: HintKeys) => `Press ${k.use} to send the signal, and the needle points at whatever answers.`,
+    windmill: () => 'Put it up on the sand by the base.',
+    battery_station: () => 'Put it down in the bunker.',
   },
   /** Where placing is blocked: "Too close to the pump". */
   baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway' },
@@ -199,6 +200,11 @@ const en = {
     needs: (slots: string[]) => `Needs ${slots.join(', ')}`,
     needsA: (slot: string) => `Needs ${/^[aeiou]/i.test(slot) ? 'an' : 'a'} ${lower(slot)}`,
     hotbarBroken: (what: string) => `${what} (broken)`,
+    /** The controls under the overlay (src/inventory.ts), after their keys or buttons. */
+    move: 'Move',
+    sendAcross: 'Send across',
+    half: 'Half',
+    close: 'Close',
   },
 
   // ---- HUD ---------------------------------------------------------------------------------------------------------
@@ -318,6 +324,27 @@ const en = {
       Mouse0: 'LMB', Mouse1: 'MMB', Mouse2: 'RMB',
     } as Record<string, string>,
     noKey: '—',
+    /** The wheel, in hints (src/bindings.ts promptKey 'zoom'). */
+    wheel: 'Wheel',
+    /** Shift-click in hints: modifier and button. */
+    combo: (mod: string, key: string) => `${mod}+${key}`,
+    /** Names for keys and buttons inside a sentence (hints, gear use): "Hold the left mouse button to drink." */
+    spoken: {
+      mouse: { Mouse0: 'the left mouse button', Mouse1: 'the middle mouse button', Mouse2: 'the right mouse button' } as Record<string, string>,
+      wheel: 'the mouse wheel',
+      dpad: 'the d-pad',
+    },
+    /** Gamepad button names (src/padMap.ts), by the pad's make. */
+    pad: {
+      xbox: {
+        a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'LB', rb: 'RB', lt: 'LT', rt: 'RT', ls: 'LS', rs: 'RS', view: 'View', menu: 'Menu',
+        up: '▲', down: '▼', left: '◀', right: '▶', stickL: 'L stick', stickR: 'R stick',
+      },
+      playstation: {
+        a: '✕', b: '○', x: '□', y: '△', lb: 'L1', rb: 'R1', lt: 'L2', rt: 'R2', ls: 'L3', rs: 'R3', view: 'Share', menu: 'Options',
+        up: '▲', down: '▼', left: '◀', right: '▶', stickL: 'L stick', stickR: 'R stick',
+      },
+    },
     mouse: (n: number) => `Mouse ${n}`,
     numpad: (key: string) => `Num ${key}`,
   },
@@ -444,16 +471,16 @@ const en = {
     storm_detector: (k: HintKeys) => `Put the storm detector in the Belt slot (${k.inventory}). It beeps before a storm hits.`,
     wristpad: (k: HintKeys) => `Put the wrist computer in the Wrist slot (${k.inventory}).`,
     shield: (k: HintKeys) => `Put the shield plate in the Armor slot (${k.inventory}). It takes one killing blow for you.`,
-    canteen: () => 'With the water bottle on the hotbar, hold the mouse button to drink. Fill it up at a pump.',
-    spyglass: () => 'With the telescope on the hotbar, hold the mouse button to look and use the wheel to zoom.',
-    laser_pistol: () => 'With the pistol on the hotbar, left mouse fires and right mouse aims.',
-    laser_rifle: () => 'With the rifle on the hotbar, left mouse fires and right mouse looks through the scope.',
-    jammer: () => 'With the jammer on the hotbar, hold the mouse button on a drone or jet until it comes down.',
-    receiver_carrier: () => 'With the receiver on the hotbar, left mouse sends the signal.',
-    receiver_queen: () => 'With the receiver on the hotbar, left mouse sends the signal.',
-    receiver_colossus: () => 'With the receiver on the hotbar, left mouse sends the signal.',
-    receiver_worm: () => 'With the receiver on the hotbar, left mouse sends the signal.',
-    plant_bed: () => 'With the plant bed on the hotbar, click to put it down in the bunker.',
+    canteen: (k: HintKeys) => `With the water bottle on the hotbar, hold ${k.use} to drink. Fill it up at a pump.`,
+    spyglass: (k: HintKeys) => `With the telescope on the hotbar, hold ${k.use} to look and use ${k.zoom} to zoom.`,
+    laser_pistol: (k: HintKeys) => `With the pistol on the hotbar, fire with ${k.use} and aim with ${k.aim}.`,
+    laser_rifle: (k: HintKeys) => `With the rifle on the hotbar, fire with ${k.use} and look through the scope with ${k.aim}.`,
+    jammer: (k: HintKeys) => `With the jammer on the hotbar, hold ${k.use} on a drone or jet until it comes down.`,
+    receiver_carrier: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
+    receiver_queen: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
+    receiver_colossus: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
+    receiver_worm: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
+    plant_bed: (k: HintKeys) => `With the plant bed on the hotbar, press ${k.use} to put it down in the bunker.`,
     uv_lamp: () => 'Put the UV lamp down over a plant bed.',
     part: () => 'Parts repair gear at the workbench.',
     broken: () => "It's broken. You can repair it at the workbench in the base.",
@@ -532,8 +559,8 @@ const en = {
   },
 };
 
-/** Key names a hint can mention, as currently bound. */
-export type HintKeys = { inventory: string; bike: string };
+/** Key or button names a hint can mention, as currently bound and for the device in use (src/bindings.ts hintKeys). */
+export type HintKeys = { inventory: string; bike: string; use: string; aim: string; zoom: string };
 
 /** The shape of the texts: what a translation fills in. */
 export type Texts = typeof en;

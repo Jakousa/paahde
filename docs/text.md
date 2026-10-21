@@ -26,6 +26,13 @@ writes player-facing words inline. Two reasons:
   (`items`, `parts`, `tiers`, `machines`, `bosses`, `equip`, `boxes`).
 - **Keys are stable names for the meaning**, not the English words: `notice.cantWear`, not `notice.cantWearIt`
   copied from the text. Item, part and machine sections are keyed by their item kind ids.
+- **Keys and buttons are never written in words.** A hint names a control through the registry in
+  `src/bindings.ts`: `kbd(prompt)` for a key cap, `ctl(prompt, label)` for a key cap with its label (hidden as a whole
+  where the device has none), and inside a sentence the names from `hintKeys()` (`TEXT.hints`, `TEXT.gearUse`:
+  "Hold ${k.use} to drink." reads "the left mouse button" or "RT"). They follow rebinding and the device in use: the
+  keyboard and mouse, or the gamepad (Xbox or PlayStation names, `TEXT.controls.pad`; buttons in `src/padMap.ts`).
+  A control with no action of its own (the pad's hotbar steps, the wheel's zoom, the inventory's mouse moves) is a
+  `Prompt` in `src/bindings.ts`, named for each device in `promptKey`.
 - **The voice:** labels (prompts, notices, menu items, step names, names of things) are terse: sentence case, a few
   words, no explanations or tutorials (CLAUDE.md "Game design"). The character's speech has its own guide:
   `docs/speech.md`.
@@ -63,5 +70,3 @@ saying less, never by clipping the grammar.
 
 - Server notices are sent as finished English strings, and `main.ts` compares one ('Bag full') to play a sound.
   For translation, the server should send a key (`notice: 'bagFull'`) and the client look it up.
-- Hints and some `GEAR` use texts name keys or mouse buttons in words ("Press 9", "Left mouse"). Hints get the
-  bound keys passed in. The `GEAR` texts don't yet.

@@ -14,7 +14,7 @@ import {
 } from './items.ts';
 import { PART_LABELS } from './parts.ts';
 import type { PartId, Tier } from './salvage.ts';
-import { TEXT } from './text.ts';
+import { TEXT, type HintKeys } from './text.ts';
 
 export const EQUIP_SLOTS = ['back', 'wrist', 'belt', 'vehicle', 'armor'] as const;
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
@@ -31,7 +31,8 @@ export type GearSpec = {
   equip?: EquipSlot;
   /** What better parts do, and how to use it, for the tooltip. */
   better: string;
-  use: string;
+  /** Given the current key or button names (src/bindings.ts hintKeys). */
+  use: (k: HintKeys) => string;
   /** A building: crafted at the workbench with the parts it took fitted (shared/crafting.ts), never found, and put
    *  down from the hotbar (shared/placed.ts), where its parts are swapped like on the workbench (buildingBox). */
   built?: true;

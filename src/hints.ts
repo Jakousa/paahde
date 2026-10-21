@@ -2,7 +2,7 @@
 // carry home your first machine) saying how to use it, then never again on this browser (localStorage). The texts are
 // shared/text.ts `hints`, keyed by the gear or recipe (or 'part', 'broken', 'machine').
 // Fed from the inventory's box updates (src/inventory.ts).
-import { actionKey } from './bindings';
+import { hintKeys } from './bindings';
 import { COMPONENTS, SALVAGE } from '../shared/salvage.ts';
 import { isGear, repaired } from '../shared/gear.ts';
 import { partOf } from '../shared/parts.ts';
@@ -84,7 +84,7 @@ export class Hints {
     const key = this.queue.shift();
     if (!key) return;
     this.busy = true;
-    this.el.textContent = TEXT.hints[key]({ inventory: actionKey('inventory'), bike: actionKey('bike') });
+    this.el.textContent = TEXT.hints[key](hintKeys());
     this.el.classList.add('on');
     setTimeout(() => {
       this.el.classList.remove('on');

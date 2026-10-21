@@ -1812,3 +1812,14 @@ src/inventory.ts and src/benchMenu.ts didn't change; moving the real mouse hides
 Known gaps: movement is still the eight-way digital bitmask (shared/sim.ts input; analog would need the protocol),
 no invert-Y or sensitivity option, the Esc menu has no pad cursor (Menu/B resume), and a click
 is needed to capture the mouse first (browsers don't let pad buttons request pointer lock).
+
+### Hints follow the device
+
+Every control hint names its key through one registry (`src/bindings.ts`): `kbd(prompt)` / `ctl(prompt, label)` for key
+caps, `hintKeys()` for names inside sentences (hint banners, the gear texts under tooltips, which now take them as
+functions). It knows the device last used: a real key, click or mouse move switches to the keyboard's names, any pad press
+or push to the pad's (`setDevice`), Xbox or PlayStation by the pad's id; switching relabels every `<kbd data-act>` on
+screen and hides the hints that device has no input for (`[data-ctl]`). The pad's buttons live in `src/padMap.ts`, read
+by src/gamepad.ts, src/padCursor.ts and the hints alike, so they can't drift apart. Added where nothing said it: the
+inventory's moves under the overlay (shift-click, right-drag, R to turn; with the pad its cursor's buttons and close),
+the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu's Resume, and close on the workbench menu.

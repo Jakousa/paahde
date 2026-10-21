@@ -3,12 +3,20 @@
 // two slots and always keeps at least one: binding a key another action holds takes it from there (the two swap if
 // that would leave the other empty), and the last key of an action can't be cleared. Saved in localStorage.
 // Not rebindable: Esc (the browser frees the mouse with it; also cancels a rebind) and Meta keys.
-import { TEXT } from '../shared/text.ts';
+// Also the registry of control hints: every key or button shown to the player comes from promptKey / kbd / ctl (or
+// hintKeys inside a sentence), for the device last used: the keyboard and mouse, or the gamepad (src/padMap.ts
+// names its buttons). Switching device relabels every hint on screen.
+import { TEXT, type HintKeys } from '../shared/text.ts';
+import { PAD_PROMPT, type PadGlyph } from './padMap';
 
 export type Action =
   | 'forward' | 'back' | 'left' | 'right' | 'jump' | 'sprint' | 'crouch' | 'use' | 'aim' | 'spyglass'
   | 'interact' | 'bike' | 'inventory' | 'thirdPerson' | 'rotate' | 'pickPlaced' | 'freeLook' | 'chat' | 'debug'
   | 'slot1' | 'slot2' | 'slot3' | 'slot4' | 'slot5';
+
+/** What a hint can name: an action, or an input that is no action of its own (the pad's hotbar steps, the wheel's zoom,
+ *  the Esc menu, the inventory's mouse moves). */
+export type Prompt = Action | 'hotbarPrev' | 'hotbarNext' | 'zoom' | 'menu' | 'uiDrag' | 'uiHalf' | 'uiSend' | 'uiTurn' | 'uiClose';
 
 /** The hotbar's slots in order (shared/items.ts HOTBAR = 5). */
 export const HOTBAR_ACTIONS: Action[] = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5'];
@@ -91,9 +99,35 @@ function save() {
 }
 
 function changed() {
-  for (const el of document.querySelectorAll<HTMLElement>('kbd[data-act]')) el.textContent = actionKey(el.dataset.act as Action);
+  for (const el of document.querySelectorAll<HTMLElement>('kbd[data-act]')) {
+    el.textContent = promptKey(el.dataset.act as Prompt);
+    el.hidden = !el.textContent;
+  }
+  for (const el of document.querySelectorAll<HTMLElement>('[data-ctl]')) el.hidden = !promptKey(el.dataset.ctl as Prompt);
   for (const l of listeners) l();
 }
+
+// ---- The device in use --------------------------------------------------------------------------------------------
+
+export type Device = 'keys' | 'xbox' | 'playstation';
+let device: Device = 'keys';
+
+/** The keyboard or mouse (src/input.ts) or the gamepad (src/gamepad.ts) was just used: hints follow it. */
+export function setDevice(d: Device) {
+  if (d === device) return;
+  device = d;
+  document.body.classList.toggle('pad', d !== 'keys');
+  changed();
+}
+
+export function usingPad(): boolean {
+  return device !== 'keys';
+}
+
+// Hidden hints take no room, whatever their own display.
+const style = document.createElement('style');
+style.textContent = 'kbd[data-act][hidden], [data-ctl][hidden] { display: none !important; }';
+document.head.append(style);
 
 export function slots(a: Action): Slots {
   return map.get(a)!;
@@ -142,15 +176,49 @@ export function bind(a: Action, slot: 0 | 1, code: string): string | undefined {
   return note;
 }
 
-/** The key to show in prompts for an action: its first set slot. */
-export function actionKey(a: Action): string {
+const keyOf = (a: Action) => {
   const s = map.get(a)!;
-  return keyName(s[0] || s[1]);
+  return s[0] || s[1];
+};
+const padName = (g: PadGlyph) => TEXT.controls.pad[device === 'playstation' ? 'playstation' : 'xbox'][g];
+
+/** The key or button to show for a prompt on the device in use; '' where it has none (its hint hides). Keys: an
+ *  action's first set slot. */
+export function promptKey(p: Prompt): string {
+  if (device !== 'keys') return (PAD_PROMPT[p] ?? []).map(padName).join('/');
+  switch (p) {
+    case 'hotbarPrev': case 'hotbarNext': case 'uiDrag': case 'uiClose': return ''; // the number keys; the mouse itself
+    case 'zoom': return TEXT.controls.wheel;
+    case 'menu': return '';
+    case 'uiHalf': return keyName('Mouse2');
+    case 'uiSend': return TEXT.controls.combo(keyName('ShiftLeft'), keyName('Mouse0'));
+    case 'uiTurn': return keyName(keyOf('rotate'));
+    default: return keyName(keyOf(p));
+  }
 }
 
-/** `<kbd>` markup for HUD prompts; follows rebinding. */
-export function kbd(a: Action): string {
-  return `<kbd data-act="${a}">${actionKey(a)}</kbd>`;
+/** `<kbd>` markup for HUD prompts; follows rebinding and the device (hidden where the device has no such input). */
+export function kbd(p: Prompt): string {
+  const k = promptKey(p);
+  return `<kbd data-act="${p}"${k ? '' : ' hidden'}>${k}</kbd>`;
+}
+
+/** A key and its label (`<kbd>` + text) that hides as a whole where the device has no such input. */
+export function ctl(p: Prompt, label: string): string {
+  return `<span data-ctl="${p}"${promptKey(p) ? '' : ' hidden'}>${kbd(p)}${label}</span>`;
+}
+
+/** A key or button inside a sentence: "the left mouse button", "Tab", "RT"; zoom is the wheel or the d-pad. */
+function spoken(p: Prompt): string {
+  const S = TEXT.controls.spoken;
+  if (device !== 'keys') return p === 'zoom' ? S.dpad : promptKey(p);
+  if (p === 'zoom') return S.wheel;
+  return S.mouse[keyOf(p as Action)] ?? promptKey(p);
+}
+
+/** The names the hint banners and gear texts take (shared/text.ts HintKeys). */
+export function hintKeys(): HintKeys {
+  return { inventory: spoken('inventory'), bike: spoken('bike'), use: spoken('use'), aim: spoken('aim'), zoom: spoken('zoom') };
 }
 
 export function resetAll() {

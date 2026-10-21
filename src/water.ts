@@ -110,6 +110,8 @@ const css = `
 #hotbar .slot.broken { background: rgba(160, 40, 22, 0.5); }
 #hotbar .slot.broken svg, #hotbar .slot.broken img { opacity: 0.45; filter: grayscale(0.8); }
 #hotbar .key { position: absolute; left: 4px; top: 2px; font: 600 9px var(--mono); opacity: 0.6; }
+body.pad #hotbar .key { display: none; }
+#hotbar > kbd { align-self: center; font: bold 10px var(--mono); padding: 1px 4px; border-radius: 3px; background: rgba(255, 244, 228, 0.85); color: #2a160a; }
 #hotbar svg { width: 22px; height: 26px; margin-top: -4px; }
 #hotbar img { width: 36px; height: 36px; margin-top: -2px; }
 #hotbar .pips { position: absolute; bottom: 4px; left: 6px; right: 6px; display: flex; gap: 2px; }
@@ -206,6 +208,9 @@ export class Survival {
       this.slots.push(s);
       hotbar.append(s);
     }
+    // The pad steps through it (src/gamepad.ts); the keys' numbers are on the slots.
+    hotbar.insertAdjacentHTML('afterbegin', kbd('hotbarPrev'));
+    hotbar.insertAdjacentHTML('beforeend', kbd('hotbarNext'));
     this.root.append(hotbar);
     this.prompt.id = 'waterPrompt';
     this.toastEl.id = 'waterToast';

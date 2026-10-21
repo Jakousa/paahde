@@ -3,7 +3,7 @@
 // the stats line in the top-left corner; below them the controls, the build/connection line and credits.
 // The game keeps running behind it: it's multiplayer, nothing pauses.
 import { WORLD_ID } from '../shared/world.ts';
-import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
+import { ACTIONS, bind, kbd, keyName, onChange, resetAll, slots } from './bindings';
 import { capture, setFullscreen, tools, ui } from './input';
 import { openMinigame } from './minigameMenu';
 import { TEXT } from '../shared/text.ts';
@@ -36,7 +36,7 @@ export class Menu {
     this.infoEl.style.display = this.stats ? 'block' : 'none';
 
     this.el.id = 'menu';
-    this.el.innerHTML = `<div class="panel"><div class="main"><h2>${TEXT.game.name}</h2><button class="resume">${TEXT.menu.resume}</button>
+    this.el.innerHTML = `<div class="panel"><div class="main"><h2>${TEXT.game.name}</h2><button class="resume">${kbd('menu')}${TEXT.menu.resume}</button>
 <button class="opt" style="margin-top:12px">${TEXT.menu.options}</button>
 <button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>

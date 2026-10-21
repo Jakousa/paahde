@@ -10,9 +10,11 @@
 //   B (○)        close; View (Share) closes the inventory too
 // The mouse still works alongside: moving it hides the drawn cursor and takes it to the mouse.
 
-// Standard mapping (https://w3c.github.io/gamepad/#remapping).
-const A = 0, B = 1, X = 2, Y = 3, LB = 4, RB = 5, VIEW = 8;
-const UP = 12, DOWN = 13, LEFT = 14, RIGHT = 15;
+import { BTN, PAD_UI } from './padMap';
+
+// The buttons (src/padMap.ts PAD_UI; the inventory's legend names them from there).
+const A = BTN[PAD_UI.drag], Y = BTN[PAD_UI.half], X = BTN[PAD_UI.send], LB = BTN[PAD_UI.turnL], RB = BTN[PAD_UI.turnR], B = BTN[PAD_UI.close];
+const VIEW = BTN.view, UP = BTN.up, DOWN = BTN.down, LEFT = BTN.left, RIGHT = BTN.right;
 
 const DEAD = 0.15;
 /** Cursor speed at full tilt (px/s); the response is squared, for fine moves. */

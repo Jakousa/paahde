@@ -8,25 +8,25 @@
 //   R3           third person
 //   d-pad ↑ / ↓  zoom the scope or spyglass   d-pad ← rotate (placing, the table)   d-pad → pick up a placed thing
 //   View (Share) inventory (worked with a cursor: src/padCursor.ts)   Menu (Options) Esc menu; again (or B) back into the game
-// The pad doesn't drive the game itself: it presses the keys bound to each action (src/bindings.ts), as synthetic
+// The buttons are set in src/padMap.ts (the hints read them there too); using the pad switches every hint to its
+// buttons (src/bindings.ts setDevice). The pad doesn't drive the game itself: it presses the keys bound to each action (src/bindings.ts), as synthetic
 // key events, so everything that reads keys (held or on keydown) works the same and follows rebinding. Only the
 // look is its own: the camera's (src/camera.ts look) and the mouse travel the disassembly reads (src/input.ts).
 // The stick moves on the same digital bits as WASD (shared/sim.ts input is a bitmask): eight ways, full speed.
 // The game must have the mouse captured, as with the keyboard: a click starts it (browsers don't let a pad do that).
-import { HOTBAR_ACTIONS, slots, type Action } from './bindings';
+import { HOTBAR_ACTIONS, setDevice, slots, usingPad, type Action } from './bindings';
+import { BTN, PAD_GAME, PAD_HOLD, padStyle } from './padMap';
 import { addMouse, aimDown, capture, tools, ui } from './input';
 import type { FirstPersonCamera } from './camera';
 import { hidePadCursor, padCursor } from './padCursor';
 
-// Standard mapping (https://w3c.github.io/gamepad/#remapping).
-const A = 0, B = 1, X = 2, Y = 3, LB = 4, RB = 5, LT = 6, RT = 7, VIEW = 8, MENU = 9, L3 = 10, R3 = 11;
-const UP = 12, DOWN = 13, LEFT = 14, RIGHT = 15;
+const B = BTN.b, MENU = BTN[PAD_GAME.menu], L3 = BTN[PAD_GAME.sprint], LB = BTN[PAD_GAME.hotbarPrev], RB = BTN[PAD_GAME.hotbarNext];
+const UP = BTN[PAD_GAME.zoomIn], DOWN = BTN[PAD_GAME.zoomOut];
 
 /** Buttons that hold an action down while pressed. */
-const HOLD: [number, Action][] = [
-  [A, 'jump'], [B, 'crouch'], [X, 'interact'], [Y, 'bike'], [LT, 'aim'], [RT, 'use'], [VIEW, 'inventory'],
-  [R3, 'thirdPerson'], [LEFT, 'rotate'], [RIGHT, 'pickPlaced'],
-];
+const HOLD = Object.entries(PAD_HOLD).map(([a, b]) => [BTN[b], a as Action] as const);
+/** Pushed this far, a stick counts as using the pad (for the hints). */
+const ACTIVE = 0.5;
 const MOVE_DEAD = 0.3;
 /** Past this share of the stick's push towards an axis it counts (sin 22.5°: eight equal sectors). */
 const SECTOR = 0.383;
@@ -78,6 +78,8 @@ export function pollPad(dt: number, view: FirstPersonCamera, canvas: HTMLElement
   const was = prev;
   const pressed = (i: number) => !!down[i] && !was[i];
   prev = down;
+  // Any press or push: the hints name its buttons (and keep to its make while it's in use).
+  if (usingPad() || down.some((d, i) => d && !was[i]) || pad.axes.some((v) => Math.abs(v) > ACTIVE)) setDevice(padStyle(pad.id));
 
   // Out of the game: the inventory and the workbench menu are worked with a cursor (src/padCursor.ts); Menu (or B)
   // goes back in from the Esc menu.

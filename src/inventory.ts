@@ -26,7 +26,7 @@ import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { isCorpseBox } from '../shared/corpse.ts';
 import { canDropAt, lootReach, type Loot } from '../shared/loot.ts';
 import { isPlaceable } from '../shared/placed.ts';
-import { isBound, kbd } from './bindings';
+import { ctl, hintKeys, isBound, kbd } from './bindings';
 import { takePickup, ui } from './input';
 import type { Net } from './net';
 import { uiSound } from './uiSound';
@@ -110,6 +110,9 @@ img.fit { object-fit: contain; }
 #invOverlay .slot.over { box-shadow: inset 0 0 0 2px rgba(255, 210, 140, 0.9); background: rgba(255, 210, 140, 0.14); }
 #invOverlay .slot.dragging > :not(.key) { opacity: 0.3; }
 #invOverlay .slot .key { position: absolute; left: 4px; top: 2px; font: 600 9px var(--mono); opacity: 0.55; }
+body.pad #invOverlay .slot .key { display: none; }
+#invOverlay .legend { display: flex; gap: 14px; opacity: 0.8; }
+#invOverlay .legend kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 5px; border-radius: 3px; background: #fff4e4; color: #2a160a; }
 #invOverlay .slot .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
 #invOverlay .slot svg, #invGhost svg { width: 30px; height: 34px; }
@@ -248,7 +251,7 @@ function tipHtml(it: Item): string {
       + (p ? `<span${pc ? ` style="color:${pc}"` : ''}>${itemLabel(p)}</span>` : `<span class="miss">${TEXT.inventory.missing}</span>`);
   });
   html += '</div>';
-  if (ok) html += `<div class="use">${GEAR[it.kind].use}</div>`;
+  if (ok) html += `<div class="use">${GEAR[it.kind].use(hintKeys())}</div>`;
   return html;
 }
 
@@ -308,7 +311,12 @@ export class InventoryHud {
     this.toasts.id = 'toasts';
     this.overlay.id = 'invOverlay';
     this.boxesEl.className = 'boxes';
-    this.overlay.append(this.boxesEl);
+    // The moves that aren't plain drags (and, with the pad, the cursor's buttons: src/padCursor.ts).
+    const legend = document.createElement('div');
+    legend.className = 'legend';
+    legend.innerHTML = ctl('uiDrag', TEXT.inventory.move) + ctl('uiSend', TEXT.inventory.sendAcross) + ctl('uiHalf', TEXT.inventory.half)
+      + ctl('uiTurn', TEXT.prompt.turn) + ctl('uiClose', TEXT.inventory.close);
+    this.overlay.append(this.boxesEl, legend);
     this.ghost.id = 'invGhost';
     this.ghost.style.display = 'none';
     this.tip.id = 'invTip';
