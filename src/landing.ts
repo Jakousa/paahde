@@ -167,8 +167,8 @@ function options() {
   menu.style.zIndex = '50';
   menu.innerHTML = `<div class="panel opts">${optionsHtml()}</div>`;
   document.body.append(menu);
-  bindOptions(menu, {});
-  const close = () => menu.remove();
+  const unbind = bindOptions(menu, {});
+  const close = () => { unbind(); menu.remove(); };
   menu.querySelector('.optBack')!.addEventListener('click', close);
   menu.addEventListener('pointerdown', (e) => e.target === menu && close());
 }

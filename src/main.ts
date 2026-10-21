@@ -66,6 +66,7 @@ import { atWater, indoors, inShelter, overShelter, sheltersNear } from '../share
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { graphics, onGraphics } from './graphics';
+import { autoGraphicsFrame } from './autoGraphics';
 import { PERF_RUN, perf } from './perf';
 import { statsPref } from './options';
 import { playerHands, Survival } from './water';
@@ -762,4 +763,6 @@ baseSand.update(frameDt, storm.atBase);
   }
   if (PERF_RUN) document.getElementById('name')?.querySelector<HTMLElement>('.skip')?.click(); // (a benchmark answers the name box itself)
   perf.frameEnd(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000, resolution.ratio, loaded && coverFrames >= 3 && !document.getElementById('cover') && !document.getElementById('name'), frameDt, (rad) => (orbit.yaw += rad));
+  autoGraphicsFrame(frameDt, perf.last.cpu, resolution.ratio / Math.min(devicePixelRatio, graphics.resScale), resolution.pixelBound,
+    loaded && coverFrames >= 3 && !document.hidden && !menu.open && !net.down && net.isReady && !document.getElementById('cover'));
 });

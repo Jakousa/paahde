@@ -3,11 +3,10 @@
 import { setCounts, setMarkers, tdPrefs } from './teardown/prefs.ts';
 import { audio } from './audio';
 import { TEXT } from '../shared/text.ts';
-import { FPS_LIMITS, SHADOW_DISTANCE_RANGE, SHADOW_QUALITY, graphics, needsReload, onGraphics, setGraphics } from './graphics';
+import { FPS_LIMITS, PRESET_NAMES, SHADOW_DISTANCE_RANGE, SHADOW_QUALITY, applyGraphicsPreset, currentGraphicsPreset, graphics, needsReload, onGraphics, setGraphics } from './graphics';
 import { setFullscreen } from './input';
 
 const STATS_KEY = 'dadajam.stats';
-const AO_KEY = 'dadajam.ao';
 
 export const MENU_CSS = `
 #menu { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center;
@@ -86,14 +85,6 @@ export function statsPref(): boolean {
   }
 }
 
-export function aoPref(): number {
-  try {
-    const saved = parseFloat(localStorage.getItem(AO_KEY) ?? '');
-    if (Number.isFinite(saved)) return Math.min(Math.max(saved, 0), 1);
-  } catch {}
-  return 0.7;
-}
-
 /** The options view: a `.options` block with its Back button (`.optBack`, the host binds it). */
 export function optionsHtml(): string {
   return `<div class="options"><h2>${TEXT.menu.options}</h2><button class="optBack">${TEXT.controls.back}</button>
@@ -103,6 +94,7 @@ export function optionsHtml(): string {
 <label class="row"><span>${TEXT.menu.showCounts}</span><input class="counts" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label></div>
 <div class="pane" data-pane="graphics">
+<label class="row" data-tip="${TEXT.menu.tips.graphicsPreset}"><span>${TEXT.menu.graphicsPreset}</span><select class="gPreset"><option value="auto">${TEXT.menu.automatic}</option>${PRESET_NAMES.map((name, i) => `<option value="${name}">${TEXT.menu.shadowQualities[i]}</option>`).join('')}<option value="custom" disabled>${TEXT.menu.custom}</option></select></label>
 <label class="row" data-tip="${TEXT.menu.tips.display}"><span>${TEXT.menu.display}</span><select class="gDisplay"><option value="1">${TEXT.menu.fullscreen}</option><option value="0">${TEXT.menu.windowed}</option></select></label>
 <label class="row" data-tip="${TEXT.menu.tips.fpsTarget}"><span>${TEXT.menu.fpsTarget}</span><input class="gFps" type="range" min="0" max="${FPS_LIMITS.length - 1}" step="1"><span class="val gFpsVal"></span></label>
 <label class="row" data-tip="${TEXT.menu.tips.resolution}"><span>${TEXT.menu.resolution}</span><input class="gRes" type="range" min="0.01" max="1" step="0.01"><span class="val gResVal"></span></label>
@@ -117,7 +109,7 @@ export function optionsHtml(): string {
 <label class="row" data-tip="${TEXT.menu.tips.antialias}"><span>${TEXT.menu.antialias}</span><input class="gAa" type="checkbox"></label>
 <div class="note gNote"></div></div>
 <div class="pane" data-pane="audio">
-<label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val"></span></label>
+<label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val volVal"></span></label>
 <label class="row"><span>${TEXT.menu.music}</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label></div></div>
 `;
 }
@@ -125,7 +117,7 @@ export function optionsHtml(): string {
 /** Wire every control in `root`. `onAo`: called with the occlusion level now and when it changes; `onStats`: the stats checkbox. */
 export function bindOptions(root: HTMLElement, hooks: { onAo?: (level: number) => void; onStats?: (on: boolean) => void }) {
   const vol = root.querySelector<HTMLInputElement>('.vol')!;
-  const val = root.querySelector<HTMLElement>('.val')!;
+  const val = root.querySelector<HTMLElement>('.volVal')!;
   const showVol = () => (val.textContent = `${Math.round(audio.volume * 100)}%`);
   vol.value = String(audio.volume);
   showVol();
@@ -142,21 +134,9 @@ export function bindOptions(root: HTMLElement, hooks: { onAo?: (level: number) =
     audio.setMusicVolume(parseFloat(music.value));
     showMusic();
   });
-  const aoEl = root.querySelector<HTMLInputElement>('.ao')!;
-  const aoVal = root.querySelector<HTMLElement>('.aoval')!;
-  let aoLevel = aoPref();
-  aoEl.value = String(aoLevel);
-  aoVal.textContent = `${Math.round(aoLevel * 100)}%`;
-  hooks.onAo?.(aoLevel);
-  aoEl.addEventListener('input', () => {
-    aoLevel = parseFloat(aoEl.value);
-    aoVal.textContent = `${Math.round(aoLevel * 100)}%`;
-    hooks.onAo?.(aoLevel);
-    try {
-      localStorage.setItem(AO_KEY, String(aoLevel));
-    } catch {}
-  });
-  const gInputs = bindGraphics(root);
+  hooks.onAo?.(graphics.occlusion);
+  const unbindAo = onGraphics((g, changed) => changed === 'occlusion' && hooks.onAo?.(g.occlusion));
+  const unbindGraphics = bindGraphics(root, !!hooks.onAo);
   const stats = root.querySelector<HTMLInputElement>('.stats')!;
   stats.checked = statsPref();
   stats.addEventListener('change', () => {
@@ -181,93 +161,76 @@ export function bindOptions(root: HTMLElement, hooks: { onAo?: (level: number) =
   for (const b of root.querySelectorAll<HTMLElement>('.tab')) b.addEventListener('click', () => (tab(b.dataset.tab!), b.blur()));
   bindTips(root);
   // Drop focus after using a control, or the arrow keys / space would keep nudging it.
-  for (const input of [vol, music, aoEl, stats, guides, counts, ...gInputs]) input.addEventListener('change', () => input.blur());
+  for (const input of root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select')) input.addEventListener('change', () => input.blur());
+  return () => { unbindAo(); unbindGraphics(); };
 }
 
-/** The Graphics tab (src/graphics.ts): each control shows and sets one setting. Returns the inputs. */
-function bindGraphics(root: HTMLElement): HTMLInputElement[] {
+/** The same controls serve the landing page and the running game. Sync every control after a preset or Auto change. */
+function bindGraphics(root: HTMLElement, inGame: boolean) {
   const q = (c: string) => root.querySelector<HTMLInputElement>(c)!;
   const text = (c: string, t: string) => (root.querySelector<HTMLElement>(c)!.textContent = t);
-  const note = root.querySelector<HTMLElement>('.gNote')!;
-  const showNote = () => {
-    note.textContent = needsReload() ? TEXT.menu.needsReload : '';
-    note.style.cursor = needsReload() ? 'pointer' : '';
-    note.style.textDecoration = needsReload() ? 'underline' : '';
-  };
-  note.addEventListener('click', () => needsReload() && location.reload());
-  showNote();
+  const preset = root.querySelector<HTMLSelectElement>('.gPreset')!;
   const display = root.querySelector<HTMLSelectElement>('.gDisplay')!;
-  display.value = graphics.fullscreen ? '1' : '0';
-  onGraphics((g, changed) => changed === 'fullscreen' && (display.value = g.fullscreen ? '1' : '0'));
+  const note = root.querySelector<HTMLElement>('.gNote')!;
+  const fps = q('.gFps'), res = q('.gRes'), dyn = q('.gDyn'), min = q('.gMin'), ao = q('.ao');
+  const shadows = q('.gShadows'), dist = q('.gDist'), qual = q('.gQual'), refresh = q('.gRefresh'), sandDetail = q('.gSand'), aa = q('.gAa');
+  res.max = String(Math.max(1, Math.min(devicePixelRatio, 2)));
+  const sync = () => {
+    preset.value = currentGraphicsPreset();
+    display.value = graphics.fullscreen ? '1' : '0';
+    fps.value = String(FPS_LIMITS.indexOf(graphics.fpsLimit as never));
+    text('.gFpsVal', graphics.fpsLimit ? String(graphics.fpsLimit) : TEXT.menu.unlimited);
+    res.value = String(graphics.resScale);
+    text('.gResVal', `${Math.round(graphics.resScale * 100)}%`);
+    dyn.checked = graphics.dynamicRes;
+    min.value = String(graphics.minRes);
+    min.disabled = !graphics.dynamicRes;
+    text('.gMinVal', `${Math.round(graphics.minRes * 100)}%`);
+    ao.value = String(graphics.occlusion);
+    text('.aoval', `${Math.round(graphics.occlusion * 100)}%`);
+    shadows.checked = graphics.shadows;
+    dist.value = String(graphics.shadowDistance);
+    text('.gDistVal', `${graphics.shadowDistance} m`);
+    qual.value = String(graphics.shadowQuality);
+    text('.gQualVal', TEXT.menu.shadowQualities[graphics.shadowQuality]);
+    refresh.value = String(graphics.shadowRefresh);
+    text('.gRefreshVal', TEXT.menu.shadowRefreshes[graphics.shadowRefresh]);
+    sandDetail.value = String(graphics.sandDetail);
+    text('.gSandVal', TEXT.menu.shadowQualities[graphics.sandDetail]);
+    aa.checked = graphics.antialias;
+    for (const input of [dist, qual, refresh]) input.disabled = !graphics.shadows;
+    const reload = inGame && needsReload();
+    note.textContent = reload ? TEXT.menu.needsReload : '';
+    note.style.cursor = reload ? 'pointer' : '';
+    note.style.textDecoration = reload ? 'underline' : '';
+  };
+  sync();
+  const unbind = onGraphics(sync);
+  preset.addEventListener('change', () => {
+    const name = preset.value;
+    if (name === 'auto' || PRESET_NAMES.some((p) => p === name)) applyGraphicsPreset(name as typeof PRESET_NAMES[number] | 'auto');
+  });
+  note.addEventListener('click', () => inGame && needsReload() && location.reload());
   display.addEventListener('change', () => {
     setGraphics('fullscreen', display.value === '1');
-    setFullscreen(graphics.fullscreen); // this change is the click the browser wants
-    display.blur();
+    setFullscreen(graphics.fullscreen);
   });
-  const fps = q('.gFps');
-  fps.value = String(FPS_LIMITS.indexOf(graphics.fpsLimit as never));
-  const showFps = () => text('.gFpsVal', graphics.fpsLimit ? String(graphics.fpsLimit) : TEXT.menu.unlimited);
-  showFps();
-  fps.addEventListener('input', () => (setGraphics('fpsLimit', FPS_LIMITS[parseInt(fps.value)]), showFps()));
-  const res = q('.gRes');
-  // Over 1 only on screens that have more pixels per CSS pixel than that.
-  res.max = String(Math.max(1, Math.min(devicePixelRatio, 2)));
-  res.value = String(graphics.resScale);
-  const showRes = () => text('.gResVal', `${Math.round(graphics.resScale * 100)}%`);
-  showRes();
-  res.addEventListener('input', () => (setGraphics('resScale', parseFloat(res.value)), showRes()));
-  const dyn = q('.gDyn');
-  dyn.checked = graphics.dynamicRes;
+  fps.addEventListener('input', () => setGraphics('fpsLimit', FPS_LIMITS[parseInt(fps.value)]));
+  res.addEventListener('input', () => setGraphics('resScale', parseFloat(res.value)));
   dyn.addEventListener('change', () => setGraphics('dynamicRes', dyn.checked));
-  const min = q('.gMin');
-  min.value = String(graphics.minRes);
-  const showMin = () => text('.gMinVal', `${Math.round(graphics.minRes * 100)}%`);
-  showMin();
-  min.addEventListener('input', () => (setGraphics('minRes', parseFloat(min.value)), showMin()));
-  min.disabled = !graphics.dynamicRes;
-  dyn.addEventListener('change', () => (min.disabled = !dyn.checked));
-  const shadows = q('.gShadows');
-  shadows.checked = graphics.shadows;
-  const dist = q('.gDist');
-  dist.value = String(graphics.shadowDistance);
-  const showDist = () => text('.gDistVal', `${graphics.shadowDistance} m`);
-  showDist();
-  dist.addEventListener('input', () => (setGraphics('shadowDistance', parseFloat(dist.value)), showDist()));
-  const qual = q('.gQual');
-  qual.value = String(graphics.shadowQuality);
-  const showQual = () => text('.gQualVal', TEXT.menu.shadowQualities[graphics.shadowQuality]);
-  showQual();
+  min.addEventListener('input', () => setGraphics('minRes', parseFloat(min.value)));
+  ao.addEventListener('input', () => setGraphics('occlusion', parseFloat(ao.value)));
+  shadows.addEventListener('change', () => setGraphics('shadows', shadows.checked));
+  dist.addEventListener('input', () => setGraphics('shadowDistance', parseFloat(dist.value)));
   qual.addEventListener('input', () => {
     setGraphics('shadowQuality', parseInt(qual.value));
-    // Ultra is for seeing shadows out to the edge of the terrain: it takes the shadow distance there too (it can be set lower after)
-    if (graphics.shadowQuality === SHADOW_QUALITY.length - 1) {
-      setGraphics('shadowDistance', SHADOW_DISTANCE_RANGE[1]);
-      dist.value = String(graphics.shadowDistance);
-      showDist();
-    }
-    showQual();
-    showNote();
+    if (graphics.shadowQuality === SHADOW_QUALITY.length - 1) setGraphics('shadowDistance', SHADOW_DISTANCE_RANGE[1]);
   });
-  const refresh = q('.gRefresh');
-  refresh.value = String(graphics.shadowRefresh);
-  const showRefresh = () => text('.gRefreshVal', TEXT.menu.shadowRefreshes[graphics.shadowRefresh]);
-  showRefresh();
-  refresh.addEventListener('input', () => (setGraphics('shadowRefresh', parseInt(refresh.value)), showRefresh()));
-  const sandDetail = q('.gSand');
-  sandDetail.value = String(graphics.sandDetail);
-  const showSand = () => text('.gSandVal', TEXT.menu.shadowQualities[graphics.sandDetail]);
-  showSand();
-  sandDetail.addEventListener('input', () => (setGraphics('sandDetail', parseInt(sandDetail.value)), showSand()));
-  const aa = q('.gAa');
-  aa.checked = graphics.antialias;
-  aa.addEventListener('change', () => (setGraphics('antialias', aa.checked), showNote()));
-  const dependent = [dist, qual, refresh];
-  const enable = () => dependent.forEach((i) => (i.disabled = !graphics.shadows));
-  enable();
-  shadows.addEventListener('change', () => (setGraphics('shadows', shadows.checked), enable()));
-  return [sandDetail, aa, qual, refresh, fps, res, dyn, min, shadows, dist];
+  refresh.addEventListener('input', () => setGraphics('shadowRefresh', parseInt(refresh.value)));
+  sandDetail.addEventListener('input', () => setGraphics('sandDetail', parseInt(sandDetail.value)));
+  aa.addEventListener('change', () => setGraphics('antialias', aa.checked));
+  return unbind;
 }
-
 
 /** Hover tips: native `title` tooltips don't show in fullscreen or over this overlay, so one of our own follows the pointer. */
 function bindTips(root: HTMLElement) {

@@ -2,6 +2,28 @@
 
 Three tools, from quick to thorough. Numbers from the first runs are in the devlog of whoever changes performance next; write new ones down.
 
+## Quality presets
+
+Options → Graphics starts with **Auto, Low, Medium, High, Ultra**. Individual edits show **Custom** and turn Auto off; display mode is independent.
+The same menu works before joining. Presets update all controls together, including occlusion, and save across reloads. Changes to anti-aliasing or shadow
+quality show the existing reload prompt during a game. Old saved settings (including the separate `dadajam.ao` value) are preserved; new players start on Auto.
+
+| Preset | Resolution ceiling | Shadows | Sand detail | Occlusion | Anti-aliasing | FPS cap |
+| --- | --- | --- | --- | --- | --- | --- |
+| Low | 65%, adaptive | Off | Low | Off | Off | 60 |
+| Medium | 85%, adaptive | Medium, 800 m, rarely refreshed | Medium | 70% | On | 60 |
+| High | 100%, adaptive | High, 1600 m, some refreshes | High | 70% | On | Unlimited |
+| Ultra | 100%, fixed | Ultra, 4500 m, every frame | Ultra | 70% | On | Unlimited |
+
+Auto starts with Medium shadow maps, a 100% resolution ceiling, and a 60 fps cap. The available CPU core count supplies only the initial shadow refresh choice;
+actual frame measurements then guide separate CPU and GPU choices (`src/autoGraphics.ts`). CPU callback time controls shadow refresh/distance. The existing
+adaptive resolution controller confirms GPU pressure only when reducing pixels improves frame times; sustained low resolution also reduces sand detail,
+occlusion and finally sun shadows. A slow CPU alone therefore keeps GPU effects, and a weak GPU alone keeps the CPU's shadow refresh choice. This does not
+require GPU timestamp support or a GPU model-name database. Auto keeps its modest shadow-map allocation and anti-aliasing setting throughout the session;
+it never reloads the game on its own or selects Ultra. Loading, menus, hidden tabs and deaths are excluded; reductions need two three-second windows,
+restoration six. Saved Auto settings are reused on the next visit and re-evaluated while playing. `node tools/check-graphics.ts` checks mixed bottlenecks,
+frame-rate caps, preset persistence and legacy preferences.
+
 ## 1. Stats overlay (Esc → Options → Gameplay → Show stats)
 Frame-time bars, draw calls, triangles, **cpu ms** (our frame callback, render submission included) and **gpu ms** (WebGPU timestamp queries, the render
 passes summed). The larger of the two is what the frame is bound by. GPU queries are only set up when stats were already on at page load (or for a

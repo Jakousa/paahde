@@ -240,6 +240,9 @@ const en = {
     gameplay: 'Gameplay',
     audio: 'Audio',
     graphics: 'Graphics',
+    graphicsPreset: 'Quality preset',
+    automatic: 'Auto',
+    custom: 'Custom',
     goWindowed: 'Go windowed',
     goFullscreen: 'Go fullscreen',
     /** Under Go fullscreen after Ctrl+W made the browser ask before closing the tab (src/menu.ts). */
@@ -262,6 +265,7 @@ const en = {
     sandDetail: 'Sand detail',
     shadowQualities: ['Low', 'Medium', 'High', 'Ultra'],
     tips: {
+      graphicsPreset: 'Low runs fastest; Ultra adds the most detail. Auto adjusts to your processor and graphics performance as you play.',
       display: 'Fullscreen goes fullscreen when you click into the game. Windowed never does.',
       fpsTarget: 'The most frames drawn each second. Lower saves power and heat. Unlimited follows your screen.',
       resolution: 'Draws the game at a lower resolution and stretches it to the window. Lower runs faster on weak PCs.',
