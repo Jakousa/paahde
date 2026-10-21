@@ -58,7 +58,7 @@ async function simulate(dir: string, n: number, jobs: number, sha: string): Prom
     });
   });
   const worker = async () => {
-    while (next < n) await one(next++);
+    while (next < n && failed < 3) await one(next++); // (failing worlds: the code doesn't run here, no use trying them all)
   };
   const t0 = Date.now();
   await Promise.all(Array.from({ length: Math.min(jobs, n) }, worker));
