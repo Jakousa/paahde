@@ -3,8 +3,9 @@
 //
 // Feel: the eye height is smoothed a little so slopes don't jitter, the head bobs with stride, hard
 // landings dip the view on a spring, strafing rolls it slightly, and sprinting kicks the FOV out.
-// T toggles a third-person view: the camera backs off along the view ray from the eye, so the screen centre
-// (crosshair) still aims where the dig/pickup rays go, and the boom shortens so it never sinks into a dune.
+// T toggles a third-person view over the right shoulder: the camera backs off behind the eye and to its right, turned
+// in so the screen centre (crosshair) crosses the dig/pickup ray at about arm's reach, and the boom shortens so it
+// never sinks into a dune.
 // Holding Alt (Option) looks around freely: the mouse turns only the view (freeYaw / freePitch on top of yaw / pitch),
 // so you keep running or sliding the way you were going; letting go swings the view back.
 import * as THREE from 'three/webgpu';
@@ -35,8 +36,9 @@ const CLIMB_SHORTEN = 0.25;
 const CLIMB_HEAVY = 1.2;
 const slope = { gx: 0, gz: 0 };
 const BOOM = 4.5; // third-person distance behind the eye (m)
-const OTS_BOOM = 3.0; // aiming in third person: the camera comes in behind the shoulder (m)
+const OTS_BOOM = 3.0; // third person: the camera sits behind the shoulder (m)
 const OTS_SIDE = 0.55; // ...and over it, to the right of the aim line (m)
+const OTS_MEET = 3; // ...turned in so its centre ray crosses the eye's look ray this far ahead (m): pickups' reach
 const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
 /** Speed slide: the view rolls this far (rad) towards the trailing left hand. */
 const SLIDE_ROLL = 0.07;
@@ -80,8 +82,6 @@ export class FirstPersonCamera {
   thirdPerson = false;
   /** Lying dead (shared/ragdoll.ts): third person whatever the T setting, looking at the body. */
   down = false;
-  /** Holding a gun (src/rifle.ts): third person comes in over the right shoulder, quickly. */
-  shoulderAim = false;
   /** Aiming a scoped gun: the view comes in to the eye whatever the T setting, quickly. */
   aimIn = false;
   /** Where the eye is (the view ray passes through it; in third person the camera is behind it on that ray). */
@@ -253,7 +253,7 @@ export class FirstPersonCamera {
     const cp = Math.cos(pitch), vs = Math.sin(viewYaw), vc = Math.cos(viewYaw);
     const bx = vs * cp, by = -Math.sin(pitch), bz = vc * cp; // unit vector pointing behind the view
     const third = (this.thirdPerson && !this.aimIn) || this.down;
-    const ots = this.shoulderAim && this.thirdPerson && !this.aimIn && !this.down;
+    const ots = this.thirdPerson && !this.aimIn && !this.down;
     const full = ots ? OTS_BOOM : BOOM;
     let reach = third ? full : 0;
     for (let i = 1; i <= 12 && reach > 0; i++) {
@@ -269,7 +269,11 @@ export class FirstPersonCamera {
     this.shoulder += ((ots ? OTS_SIDE : 0) - this.shoulder) * (1 - Math.exp(-dt * 9));
     if (this.shoulder < 0.005) this.shoulder = 0;
     this.camera.position.set(x + bx * this.boom + vc * this.shoulder, y + by * this.boom, z + bz * this.boom - vs * this.shoulder);
-    this.camera.rotation.set(pitch, viewYaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
+    // Turned in towards the point OTS_MEET ahead on the eye's look ray, so the crosshair is on what F picks up there.
+    const mx = x - bx * OTS_MEET - this.camera.position.x, my = y - by * OTS_MEET - this.camera.position.y, mz = z - bz * OTS_MEET - this.camera.position.z;
+    const camYaw = this.shoulder > 0 ? Math.atan2(-mx, -mz) : viewYaw;
+    const camPitch = this.shoulder > 0 ? Math.atan2(my, Math.hypot(mx, mz)) : pitch;
+    this.camera.rotation.set(camPitch, camYaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
 
     // FOV kick when moving faster than a walk (sprint, slides).
     const t = Math.max(0, Math.min(1, (speed - WALK_SPEED - 0.5) / (SPRINT_SPEED - WALK_SPEED - 1)));

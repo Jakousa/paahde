@@ -1,4 +1,4 @@
-// The dot in the middle of the screen (hidden in third person and while dead), and the ring that fills
+// The dot in the middle of the screen (hidden while dead), and the ring that fills
 // around it while something takes time (getting on the bike).
 const RING_R = 16;
 const RING_C = 2 * Math.PI * RING_R;
@@ -10,7 +10,7 @@ export function addCrosshair() {
     #crosshair { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px;
       border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 0 0 1px rgba(0,0,0,.35);
       pointer-events: none; }
-    body.third-person #crosshair, body.down #crosshair { display: none; }
+    body.down #crosshair { display: none; }
     #crossRing { position: fixed; left: 50%; top: 50%; width: ${RING_R * 2 + 8}px; height: ${RING_R * 2 + 8}px;
       margin: -${RING_R + 4}px 0 0 -${RING_R + 4}px; pointer-events: none; display: none; overflow: visible; }
     #crossRing circle { fill: none; stroke-width: 4; }

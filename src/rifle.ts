@@ -79,7 +79,6 @@ body.rifleScoped #crosshair, body.rifleScoped #pickup { display: none !important
 body.rifleHip #rifleHip { display: block; }
 body.rifleHip #crosshair { display: none; }
 body.gunSights #crosshair { display: none; }
-body.third-person.rifleHeld:not(.rifleHip):not(.rifleScoped) #crosshair { display: block; }
 #rifleCharge { position: fixed; left: 50%; top: 50%; width: 18px; height: 2px; margin-left: -9px; pointer-events: none; z-index: 4;
   background: rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity .12s; }
 #rifleCharge i { display: block; height: 100%; background: rgba(255, 244, 228, 0.7); transform-origin: left; }
@@ -210,9 +209,7 @@ export class Rifle {
     const aiming = holding && ((aimDown() && !!document.pointerLockElement) || this.forceAim);
     // The jammer (src/jammer.ts) raises the hand itself.
     if (playerHands.held !== 'jammer' && playerHands.held !== 'grinder') playerHands.aim = Math.max(0, Math.min(1, playerHands.aim + (aiming ? dt : -dt * 1.4) / ADS_S));
-    // In third person holding a gun puts the view over the right shoulder; aiming one with a scope (or raising the
-    // telescope, src/telescope.ts) comes in to the eye (src/camera.ts).
-    this.view.shoulderAim = holding;
+    // In third person aiming a scoped gun (or raising the telescope, src/telescope.ts) comes in to the eye (src/camera.ts).
     this.view.aimIn = (aiming && feel.scope) || playerHands.looking;
     const scoped = aiming && playerHands.aim >= 1 && feel.scope && this.view.boomLength < 0.05;
     if (scoped !== this.scoped) {
