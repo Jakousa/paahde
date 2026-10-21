@@ -291,20 +291,27 @@ function footprintFade(s: F): F {
 // --- Glitter ---------------------------------------------------------------------------------------
 
 /** One scale of hashed mirror flakes in world-space cells of 1/D metres. */
-function glitterLayer(p: V3, n: V3, h: V3, D: number, density: number, spread: number, eps: number, seed: number): F {
+function glitterLayer(p: V3, n: V3, h: V3, mask: F, D: number, density: number, spread: number, eps: number, seed: number): F {
   const q = p.mul(D);
-  const cell = floor(q).add(seed);
-  const rPos = mx_cell_noise_vec3(cell);
-  const rNrm = mx_cell_noise_vec3(cell.add(vec3(17, 59, 113)));
-  const rAlive = mx_cell_noise_float(cell.add(vec3(71, 7, 31)));
-  // A round flake somewhere inside the cell (the surface slices it, so apparent sizes vary).
-  const shape = smoothstep(0.3, 0.08, length(fract(q).sub(rPos.mul(0.5).add(0.25))));
-  const gn = normalize(n.add(rNrm.mul(2).sub(1).mul(spread)));
-  const hit = smoothstep(1 - eps, 1, dot(gn, h));
-  const alive = smoothstep(1 - density, 1 - density + 0.02, rAlive);
-  // Cells smaller than ~a pixel turn into noise: fade them out.
-  const lod = float(1).sub(smoothstep(0.35, 0.9, length(fwidth(q))));
-  return hit.mul(shape).mul(alive).mul(lod);
+  return Fn(() => {
+    // Evaluate derivatives before branching. Most ground pixels have already faded to zero;
+    // hashing their invisible flakes still costs seven random values per layer.
+    const weight = float(1).sub(smoothstep(0.35, 0.9, length(fwidth(q)))).mul(mask).toVar();
+    const glitter = float(0).toVar();
+    If(weight.greaterThan(0), () => {
+      const cell = floor(q).add(seed);
+      const rPos = mx_cell_noise_vec3(cell);
+      const rNrm = mx_cell_noise_vec3(cell.add(vec3(17, 59, 113)));
+      const rAlive = mx_cell_noise_float(cell.add(vec3(71, 7, 31)));
+      // A round flake somewhere inside the cell (the surface slices it, so apparent sizes vary).
+      const shape = smoothstep(0.3, 0.08, length(fract(q).sub(rPos.mul(0.5).add(0.25))));
+      const gn = normalize(n.add(rNrm.mul(2).sub(1).mul(spread)));
+      const hit = smoothstep(1 - eps, 1, dot(gn, h));
+      const alive = smoothstep(1 - density, 1 - density + 0.02, rAlive);
+      glitter.assign(hit.mul(shape).mul(alive).mul(weight));
+    });
+    return glitter;
+  })();
 }
 
 // --- Material --------------------------------------------------------------------------------------
@@ -430,7 +437,14 @@ function buildSurface(): SandSurface {
   const gq2 = p.mul(24);
   const grainFade2 = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(gq2))));
   // Smooth value noise rather than cell noise: cell noise reads as square pixels up close.
-  const grain = mx_noise_float(gq2.add(7.1)).mul(0.16).mul(grainFade2).add(1);
+  const grain = Fn(() => {
+    const fade = grainFade2.toVar(); // derivative must be evaluated outside the branch
+    const g = float(1).toVar();
+    If(fade.greaterThan(0), () => {
+      g.addAssign(mx_noise_float(gq2.add(7.1)).mul(0.16).mul(fade));
+    });
+    return g;
+  })();
   const albedo = mix(sand.albedoRed, sand.albedoGold, patch)
     .mul(grain)
     .mul(float(1).sub(slip.mul(0.12)))
@@ -511,15 +525,15 @@ class SandLightingModel extends THREE.LightingModel {
     const near = float(1).sub(smoothstep(6, 25, dist));
     // Anisotropic masking (Journey): at grazing views a flake's footprint smears into a horizontal streak.
     const facing = smoothstep(0.12, 0.35, dot(n0, v));
-    const g = glitterLayer(p, n0, h, 55, 0.1, 0.75, 0.008, 0)
-      .add(glitterLayer(p, n0, h, 18, 0.06, 0.6, 0.005, 101).mul(0.3))
-      .mul(lit)
+    const glitterMask = lit
       .mul(near)
       .mul(facing)
       .mul(float(1).sub(slip.mul(0.7)))
       .mul(bare)
       .mul(float(1).sub(dust.mul(0.7)))
       .mul(sand.glitter);
+    const g = glitterLayer(p, n0, h, glitterMask, 55, 0.1, 0.75, 0.008, 0)
+      .add(glitterLayer(p, n0, h, glitterMask, 18, 0.06, 0.6, 0.005, 101).mul(0.3));
 
     directSpecular.addAssign(lightColor.mul(spec.add(c3(sand.glitterTint).mul(g)).mul(ripSun)));
   }

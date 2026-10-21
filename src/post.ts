@@ -206,10 +206,13 @@ export class Post {
       // Heatstroke: the whole view swims, near things too: a slow, broad warp and a drunken sway.
       const p0 = uv();
       const hs = heatstroke.mul(heatstroke);
-      const hq = vec3(p0.x.mul(aspect).mul(2.2), p0.y.mul(2.6).add(time.mul(0.35)), time.mul(0.45));
-      const hn = vec2(mx_noise_float(hq), mx_noise_float(hq.add(vec3(7.3, 1.9, 4.1))));
-      const sway = vec2(sin(time.mul(0.9)), sin(time.mul(0.67).add(1.3))).mul(0.006);
-      const p = p0.add(hn.mul(0.022).add(sway).mul(hs));
+      const p = p0.toVar();
+      If(hs.greaterThan(0), () => {
+        const hq = vec3(p0.x.mul(aspect).mul(2.2), p0.y.mul(2.6).add(time.mul(0.35)), time.mul(0.45));
+        const hn = vec2(mx_noise_float(hq), mx_noise_float(hq.add(vec3(7.3, 1.9, 4.1))));
+        const sway = vec2(sin(time.mul(0.9)), sin(time.mul(0.67).add(1.3))).mul(0.006);
+        p.addAssign(hn.mul(0.022).add(sway).mul(hs));
+      });
       const isSky = step(0.99999, depth.sample(p).r);
       const dist = viewZ.negate();
       // Starts at 25 m: past ~150 m the haze has washed the ground flat, so there is nothing left to warp.
@@ -218,9 +221,12 @@ export class Post {
       // (eased across the horizon: a hard step there drew a line straight across the ground wherever it rises above the horizon)
       const band = smoothstep(0.22, 0.0, abs(dy)).mul(mix(float(0.35), float(1), smoothstep(-0.04, 0.04, dy)));
       const mask = far.mul(band).mul(heatHaze);
-      const q = vec3(p.x.mul(aspect).mul(28), p.y.mul(110).add(time.mul(2.2)), time.mul(0.6));
-      const n = vec2(mx_noise_float(q), mx_noise_float(q.add(vec3(13.7, 5.1, 2.3))));
-      const warped = p.add(n.mul(vec2(0.003, 0.009)).mul(mask));
+      const warped = p.toVar();
+      If(mask.greaterThan(0), () => {
+        const q = vec3(p.x.mul(aspect).mul(28), p.y.mul(110).add(time.mul(2.2)), time.mul(0.6));
+        const n = vec2(mx_noise_float(q), mx_noise_float(q.add(vec3(13.7, 5.1, 2.3))));
+        warped.addAssign(n.mul(vec2(0.003, 0.009)).mul(mask));
+      });
       // Don't pull nearby objects (players) into the shimmer: keep the warp only if the warped
       // sample is itself far away.
       const wDist = perspectiveDepthToViewZ(depth.sample(warped).r, camNear, camFar).negate();
@@ -474,28 +480,33 @@ export class Post {
     // --- In a sandstorm: grit flying past the eye, and sand caked on the edges of the view. Streaks run
     // across the screen with the crosswind and burst out from the centre when facing into it.
     const grit = Fn(() => {
-      const s = stormHere;
-      const p = uv();
-      const q = p.sub(0.5).mul(vec2(aspect, 1));
-      const right = camWorld.mul(vec4(1, 0, 0, 0)).xz;
-      const back = camWorld.mul(vec4(0, 0, 1, 0)).xz;
-      const side = dot(windDir, normalize(right));
-      const into = saturate(dot(windDir, normalize(back)));
-      // Crosswind: long thin streaks sliding sideways, two layers at different depths.
-      const t = time;
-      const lat = mx_noise_float(vec3(q.x.mul(2.5).sub(t.mul(side).mul(9)), q.y.mul(70), t.mul(1.5)))
-        .max(mx_noise_float(vec3(q.x.mul(1.2).sub(t.mul(side).mul(5)), q.y.mul(35).add(9), t)).mul(0.8));
-      // Headwind: streaks rushing outwards from the middle.
-      const r = length(q).max(1e-3);
-      const a = q.div(r);
-      const rad = mx_noise_float(vec3(a.x.mul(32), a.y.mul(32), log(r).mul(2.5).sub(t.mul(5))));
-      const radW = into.mul(smoothstep(0.1, 0.5, r));
-      const streak = smoothstep(0.55, 0.9, lat).mul(abs(side).mul(0.8).add(0.2)).max(smoothstep(0.45, 0.85, rad).mul(radW));
-      // Caked edges, slowly shifting.
-      const v = length(p.sub(0.5).mul(vec2(aspect.mul(0.8), 1)));
-      const cake = smoothstep(0.45, 1.1, v.add(mx_noise_float(vec3(q.mul(3), t.mul(0.3))).mul(0.12)));
-      const w = saturate(streak.mul(0.38).add(cake.mul(0.45))).mul(s);
-      return vec4(dustLit.mul(mix(float(0.7), float(1.3), streak)), w);
+      // No storm at the eye: skip four full-screen noise evaluations.
+      const result = vec4(0).toVar();
+      If(stormHere.greaterThan(0), () => {
+        const s = stormHere;
+        const p = uv();
+        const q = p.sub(0.5).mul(vec2(aspect, 1));
+        const right = camWorld.mul(vec4(1, 0, 0, 0)).xz;
+        const back = camWorld.mul(vec4(0, 0, 1, 0)).xz;
+        const side = dot(windDir, normalize(right));
+        const into = saturate(dot(windDir, normalize(back)));
+        // Crosswind: long thin streaks sliding sideways, two layers at different depths.
+        const t = time;
+        const lat = mx_noise_float(vec3(q.x.mul(2.5).sub(t.mul(side).mul(9)), q.y.mul(70), t.mul(1.5)))
+          .max(mx_noise_float(vec3(q.x.mul(1.2).sub(t.mul(side).mul(5)), q.y.mul(35).add(9), t)).mul(0.8));
+        // Headwind: streaks rushing outwards from the middle.
+        const r = length(q).max(1e-3);
+        const a = q.div(r);
+        const rad = mx_noise_float(vec3(a.x.mul(32), a.y.mul(32), log(r).mul(2.5).sub(t.mul(5))));
+        const radW = into.mul(smoothstep(0.1, 0.5, r));
+        const streak = smoothstep(0.55, 0.9, lat).mul(abs(side).mul(0.8).add(0.2)).max(smoothstep(0.45, 0.85, rad).mul(radW));
+        // Caked edges, slowly shifting.
+        const v = length(p.sub(0.5).mul(vec2(aspect.mul(0.8), 1)));
+        const cake = smoothstep(0.45, 1.1, v.add(mx_noise_float(vec3(q.mul(3), t.mul(0.3))).mul(0.12)));
+        const w = saturate(streak.mul(0.38).add(cake.mul(0.45))).mul(s);
+        result.assign(vec4(dustLit.mul(mix(float(0.7), float(1.3), streak)), w));
+      });
+      return result;
     })();
 
     // --- Composite in linear HDR, then grade and tone map.

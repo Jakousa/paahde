@@ -31,6 +31,10 @@ benchmark run), so tick the box and reload. Caveat: the shadow cascade passes ma
 while cpu fell from 12 to 4 ms): trust the cpu line and the trace for shadows. `src/perf.ts` also writes the same numbers as User Timing, which Chrome's
 Performance panel shows as a "dadajam" track (CPU and GPU per frame, startup milestones as markers) in any trace you record by hand.
 
+Cross-check GPU timestamps against actual frame intervals before using them for attribution. On an M2 Pro / Chrome 155 / WebGPU run,
+the summed GPU median was ~506 ms while frames arrived ~42 ms apart. Disabling timestamp queries left throughput unchanged, so those
+pass totals were not used to rank costs. Fixed-resolution comparisons and CPU traces established the graphics bottleneck instead.
+
 ## 2. Automated run: `npm run perf` (`tools/perf.ts`)
 `npm run dev` first. Then `npm run perf -- --seconds 30` opens a real Chrome (GPU on, precise GPU timestamps), makes a world, waits until the game is
 **playable** (loaded, shaders warm, cover gone, name box answered), settles 3 s, walks a fixed route (forward, slow turn, sprint every other 10 s) for the
@@ -72,6 +76,28 @@ Before: ~66 fps, cpu 12.4 ms, ~1100 draw calls, 4 shadow cascades redrawn every 
   triangles, and each layout change records them again: 1 % lows 14 → 5 fps).
 - `npm run perf -- --shot [--ab shadowRefresh=0]` takes a picture where the walk ends, and a second one with an option changed live; the JSON has a `census` of what is drawn
   (casters by root and material, by size, and what each cascade would draw).
+
+## Skipping invisible noise (21 October 2026)
+
+The sand shader skips grain noise and each glitter layer when its existing fade/mask is zero. Derivatives are evaluated before the branches;
+visible detail keeps the same formulas and fade thresholds. Post-processing skips heatstroke distortion when healthy, storm grit outside a storm,
+and heat-haze noise outside its visible band. Texture lookups stay outside the per-pixel haze branch. These savings apply at every quality level.
+
+On an M2 Pro, Chrome 155 / WebGPU, battery with Low Power Mode enabled, fixed 1920×1080 at High effects:
+
+| Paired, fixed-scene rendering | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| Clear, first pair | 24.7 FPS | 30.0 FPS | +21% |
+| Clear, second pair | 24.8 FPS | 30.0 FPS | +21% |
+| Storm grit + heatstroke active | 24.6 FPS | 27.9 FPS | +13% |
+
+Each pair alternated old/new materials and post pipelines in one browser with the same camera, scene, time and effect uniforms: 4 s warm-up,
+8 s measured. Median clear-frame intervals fell from 40.1 to 33.0–33.1 ms. This isolates rendering; it is not a full gameplay FPS claim.
+The first 30 s walking comparison improved 23.0 → 27.2 FPS, but later separate walks varied substantially (even after restoring the original code),
+so use the paired results to judge the change. No resolution reduction or effect removal was used. Local raw results and screenshots are in
+`data/perf/paired-paired-gpu.json` and `data/perf/2026-10-21-optimization-report.md`.
+Build and browser checks pass on WebGPU and WebGL2, including clear/heatstroke/storm combinations and a low-sun fallback comparison.
+The first WebGL profiling run produced a timer-query warning; repeating with queries disabled removed it. No new shader errors appeared.
 
 ## Sun shadows: dunes from the heightfield (src/world/heightShadow.ts)
 The dunes are not in the shadow maps any more. For a grid round the player the GPU finds, per texel, the "shadow ceiling" S (the highest the ray to the
