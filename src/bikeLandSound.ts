@@ -7,6 +7,8 @@
 // rougher; only near the sim's hard landing does it open up into the crash, loud and bright, and only a really
 // hard one (well past it) lets the debris play out.
 import { audio } from './audio';
+import { reflect } from './acoustics';
+import { atEar } from './echo';
 import { BIKE_HARD_LANDING } from '../shared/sim.ts';
 
 const SRC = './audio/bike-crash.mp3';
@@ -24,6 +26,8 @@ const HOLD = 0.2;
 const NEAR = 4;
 /** Beyond this (m) it is not played at all. */
 const FAR = 60;
+/** Echoes off the walls round you (src/acoustics.ts `reflect`), heard from this far (m) of travel. */
+const ECHO_HEAR = 2000;
 
 class BikeLandSound {
   private buf: AudioBuffer | null = null;
@@ -78,6 +82,7 @@ class BikeLandSound {
     const right = dx * Math.cos(this.yaw) - dz * Math.sin(this.yaw);
     pan.pan.value = Math.max(-1, Math.min(1, right / Math.max(d, NEAR))) * 0.7;
     src.connect(tone).connect(gain).connect(pan).connect(audio.out);
+    reflect(gain, d < NEAR ? null : atEar(x, z), g, ECHO_HEAR);
     src.start(now);
     src.stop(now + Math.min(buf.duration, HOLD + tail * 7));
   }

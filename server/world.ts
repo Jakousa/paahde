@@ -14,6 +14,7 @@ import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiv
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { BASE, overBase } from '../shared/base.ts';
+import { canyonFloorNear } from '../shared/canyons.ts';
 import { indoors, overShelter, shelterAt, sheltersNear } from '../shared/shelters.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { BLAST_R, CRATER_MM, CRATER_R, GUARDIAN } from '../shared/guardians.ts';
@@ -280,6 +281,11 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
       const d = Math.hypot(state.x - s.x, state.z - s.z) || 1;
       state = spawnState(s.x + ((state.x - s.x) / d) * (s.radius + 6), s.z + ((state.z - s.z) / d) * (s.radius + 6));
     }
+  }
+  if (spawn === 'canyon') {
+    // Dev helper: on the floor of the nearest deep canyon.
+    const c = canyonFloorNear(state.x, state.z);
+    if (c) state = spawnState(c.x, c.z);
   }
   items.setup(browserId);
   state.bike = bikeLevel(items.slots(browserId, 'equip'));

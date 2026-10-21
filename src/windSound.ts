@@ -9,6 +9,9 @@
 //             only come up in strong wind and slide in pitch with the gusts.
 //   - hiss:   saltating sand ticking against everything, high-passed noise that follows the transport
 //             strength q and swells when a streamer passes over you.
+//   - moan:   between walls (a canyon: src/echo.ts `enclosure`), the wind drawn over the rims and down the gorge:
+//             low hollow tones that swell and sink slowly and slide with the wind, there even in a light breeze.
+// Between walls the wind also echoes off them, a little (src/acoustics.ts `echoBus`), the moan most.
 // Everything then goes through one shared band (highpass + lowpass + a peaking bump) that follows the wind:
 // a calm is a narrow, low, soft murmur; strong wind opens the band up and pushes the peak higher and
 // sharper, so the sound gets brighter as it gets louder (as in Farnell's Designing Sound) without ever
@@ -21,6 +24,8 @@
 //
 // Plays through the shared output in src/audio.ts (volume slider, limiter).
 import { audio } from './audio';
+import { echoBus } from './acoustics';
+import { enclosure } from './echo';
 import { uAt, ustarFrom10, wind, type WindSample } from './world/wind';
 import { heightAt } from '../shared/terrain.ts';
 
@@ -49,6 +54,12 @@ const OWN_FULL = 22;
 const OWN = 0.75;
 /** Wind level at full slider volume. */
 const MIX = 0.2;
+/** Canyon moan: level at full enclosure and wind, and its share in a calm; how much of the wind (and of the moan)
+ *  goes to the echo bus at full enclosure. */
+const MOAN = 0.36;
+const MOAN_CALM = 0.3;
+const WIND_ECHO = 0.35;
+const MOAN_ECHO = 1;
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const smooth = (a: number, b: number, x: number) => {
@@ -102,6 +113,9 @@ type Graph = {
   rushBp: BiquadFilterNode;
   rushLp: BiquadFilterNode;
   howl: { bp: BiquadFilterNode; gain: GainNode; ratio: number }[];
+  moan: { bp: BiquadFilterNode; gain: GainNode; ratio: number }[];
+  windEcho: GainNode;
+  moanEcho: GainNode;
   hiss: GainNode;
   hissHp: BiquadFilterNode;
 };
@@ -191,12 +205,30 @@ export class WindSound {
       return { bp, gain: g, ratio: i ? 1.47 : 1 };
     });
 
+    // The canyon's moan: three hollow voices, wide apart, past the band like the rest; and the echo sends.
+    const moanBus = ctx.createGain();
+    moanBus.connect(master);
+    const moan = [1, 1.34, 2.07].map((ratio, i) => {
+      const bp = filter('bandpass', 100 * ratio, 14);
+      const g = gain();
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = [-0.6, 0.6, 0][i];
+      source(pink, 0.4 + i * 1.1).connect(bp).connect(g).connect(pan).connect(moanBus);
+      return { bp, gain: g, ratio };
+    });
+    const windEcho = gain(), moanEcho = gain();
+    const bus = echoBus();
+    if (bus) {
+      muffle.connect(windEcho).connect(bus);
+      moanBus.connect(moanEcho).connect(bus);
+    }
+
     const hissHp = filter('highpass', 3500, 0.7);
     const hiss = gain();
     source(pink, 3.2).connect(hissHp).connect(hiss).connect(master);
 
     master.gain.setTargetAtTime(MIX, ctx.currentTime, 1.5); // fade in rather than pop on the first click
-    return { ctx, master, muffle, bandHp, bandLp, peak, rumble, rumbleLp, rushL, rushR, rushBp, rushLp, howl, hiss, hissHp };
+    return { ctx, master, muffle, bandHp, bandLp, peak, rumble, rumbleLp, rushL, rushR, rushBp, rushLp, howl, moan, windEcho, moanEcho, hiss, hissHp };
   }
 
   /** Follow the wind at the listener. `yaw` is the camera yaw (three.js: forward = (−sin, −cos)); `vel` is
@@ -290,6 +322,17 @@ export class WindSound {
       set(h.bp.frequency, (180 + 30 * uA) * h.ratio, 0.5);
       set(h.gain.gain, howlAmt * 0.28 * clamp01(0.55 + 0.45 * wobble(t * 0.37, 2 + i * 3)) ** 2, 0.5);
     }
+
+    // Between walls: the moan, slow swells on each voice, sliding up with the wind; the echoes.
+    const walls = buried ? 0 : enclosure;
+    const moanAmt = walls * (MOAN_CALM + (1 - MOAN_CALM) * smooth(0.1, 0.7, x));
+    for (const [i, h] of g.moan.entries()) {
+      set(h.bp.frequency, (70 + 7 * uA) * h.ratio * (1 + 0.06 * wobble(t * 0.11, 4 + i * 2)), 0.8);
+      set(h.gain.gain, moanAmt * MOAN * clamp01(0.45 + 0.6 * wobble(t * (0.09 + 0.03 * i), 9 + i * 5)) ** 2, 0.8);
+    }
+    // (The bus is fed after the master, at the level heard: the master's gain is the mix, MIX.)
+    set(g.windEcho.gain, walls * WIND_ECHO, 0.5);
+    set(g.moanEcho.gain, walls * MOAN_ECHO * MIX, 0.5);
 
     // Sand hiss follows transport, and swells when a streamer sweeps through (emit).
     const sand = clamp01(this.q / 3);

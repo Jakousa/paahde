@@ -23,6 +23,7 @@
 //
 // Plays through the shared output in src/audio.ts (volume slider, limiter); every level change is ramped.
 import { audio } from './audio';
+import { echoBus } from './acoustics';
 import { bikeCruise } from '../shared/sim.ts';
 
 /** The revs: idle and redline (the limiter holds it there), and the motor frequency (Hz) at each. */
@@ -278,6 +279,9 @@ export class EngineSound {
     audio.onStart((ctx, out) => {
       this.own = new Motor(ctx);
       this.own.out.connect(out);
+      // Echoing off the walls round you (src/acoustics.ts `echoBus`).
+      const bus = echoBus();
+      if (bus) this.own.out.connect(bus);
     });
   }
 
@@ -312,6 +316,8 @@ export class EngineSound {
           positionX: r.x, positionY: r.y + 0.5, positionZ: r.z,
         });
         motor.out.connect(fade).connect(panner).connect(out);
+        const bus = echoBus();
+        if (bus) panner.connect(bus);
         const speed = Math.hypot(r.vx, r.vz);
         this.remotes.set(r.id, (a = { motor, fade, panner, speed, acc: 0 }));
       }

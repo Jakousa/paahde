@@ -2,6 +2,18 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-21 — Canyon echoes and the canyon's moan
+
+- Echoes off the walls round you (`src/echo.ts`): 16 level rays round the camera, one a frame, march the heightfield to
+  1.1 km and keep each direction's wall (where the ground stands up, how much sky it fills, rock or sand). A sound's
+  echoes are taps late by the detour via each wall, from its direction, merged when closer than 30 ms, with flutter
+  between walls facing each other within 260 m; all together at most 30% of the direct sound's energy. None indoors.
+- `src/acoustics.ts`: every `placed` sound gets its echoes and a send into a second, longer (4.5 s) canyon reverb by
+  `enclosure` (how much of the sky round you is rock wall); `reflect` does the same for footsteps and bike landings;
+  `echoBus` is for lasting sounds (the bike's engine, the sand slide, the wind): 4 delay lines following the walls.
+- The wind moans between walls (`src/windSound.ts`): three low hollow voices that swell slowly and slide with the wind.
+- Dev helper `?spawn=canyon`: on the floor of the nearest deep canyon (`canyonFloorNear`, shared/canyons.ts).
+
 ## 2026-10-21 — Canyons, the rock column, biomes as one concept
 
 - Canyons (`shared/canyons.ts`): Grand Canyon-scale gorges, 8–14 km long, 220–400 m under the dune floor, cut through a

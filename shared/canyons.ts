@@ -178,6 +178,24 @@ function ownCanyons(ix: number, iz: number): Canyon[] {
   return l;
 }
 
+/** Dev helper (?spawn=canyon, server/world.ts): the deep point (over 200 m under its rim) of a canyon's centreline
+ *  nearest (x, z), or null. */
+export function canyonFloorNear(x: number, z: number): { x: number; z: number } | null {
+  const cx = Math.floor(x / CANYON_CELL), cz = Math.floor(z / CANYON_CELL);
+  let best = Infinity, out: { x: number; z: number } | null = null;
+  for (let j = cz - SEARCH - 1; j <= cz + SEARCH + 1; j++) {
+    for (let i = cx - SEARCH - 1; i <= cx + SEARCH + 1; i++) {
+      for (const c of ownCanyons(i, j)) {
+        for (let p = 0; p < c.xs.length; p++) {
+          const d2 = (c.xs[p] - x) ** 2 + (c.zs[p] - z) ** 2;
+          if (c.rim[p] - c.floor[p] > 200 && d2 < best) { best = d2; out = { x: c.xs[p], z: c.zs[p] }; }
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** Segment i of canyon c (from point i to i + 1). */
 type Seg = { c: Canyon; i: number };
 const fine = new Map<number, Seg[]>();

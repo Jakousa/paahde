@@ -7,6 +7,8 @@
 // which only peak-normalise to about −30 LUFS, so their gain is higher to sound as loud. `gain` pulls both
 // well under the wind, since in game you take ~4.4 steps/s.
 import { audio } from './audio';
+import { reflect } from './acoustics';
+import { atEar } from './echo';
 
 export type Surface = 'sand' | 'concrete';
 
@@ -20,6 +22,10 @@ const SPRITES: Record<Surface, { src: string; slots: number; gain: number }> = {
 const NEAR = 2.5;
 /** Beyond this (m) a step is not played at all. */
 const FAR = 30;
+/** Echoes off the walls round you (src/acoustics.ts `reflect`): a faint slap, so walking doesn't tire; heard from this
+ *  far (m) of travel. */
+const ECHO = 0.5;
+const ECHO_HEAR = 1200;
 const WALK = 6;
 
 class Footsteps {
@@ -72,6 +78,7 @@ class Footsteps {
     const right = dx * Math.cos(this.yaw) - dz * Math.sin(this.yaw);
     pan.pan.value = Math.max(-1, Math.min(1, right / Math.max(d, NEAR))) * 0.7;
     src.connect(gain).connect(pan).connect(audio.out);
+    reflect(gain, d < NEAR ? null : atEar(x, z), gain.gain.value, ECHO_HEAR, ECHO);
     src.start(ctx.currentTime, i * SLOT, SLOT);
   }
 }

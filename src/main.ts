@@ -38,6 +38,8 @@ import { Placer } from './placing';
 import { Scrap } from './world/scrap';
 import { CrashSites } from './world/crashsites';
 import { CrashSound } from './crashSound';
+import { listen } from './echo';
+import { tickEchoBus } from './acoustics';
 import { coreCrashSites, crashSitesNear, debrisTarget } from '../shared/crashsites.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { Dust } from './world/dust';
@@ -626,6 +628,8 @@ baseSand.update(frameDt, storm.atBase);
     sunrise: sky.day.tod < 0.5 && sky.day.elevation > -0.035 && sky.day.elevation < 0.14,
   });
   crashSound.update(orbit.camera.position, orbit.viewYaw);
+  listen(orbit.camera.position);
+  tickEchoBus();
   placedView.update(frameDt, storm.level);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
