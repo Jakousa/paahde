@@ -54,6 +54,26 @@ export const toneControl: { curve: ToneCurve; white: number; set(curve: ToneCurv
   toneControl.set((TONE_CURVES as readonly string[]).includes(name) ? (name as ToneCurve) : 'filmic', Number(params.get('white') ?? 2));
 }
 
+/** The grade's tunables (the art bench, src/artBench.ts, sets them live). Colours are linear. */
+export const grade = {
+  /** On top of the eye adaptation: the overall brightness. */
+  exposure: uniform(1),
+  /** Warm white balance, a gain per channel. */
+  balance: uniform(new THREE.Color(1.06, 0.98, 0.86)),
+  /** Rust lift added in the shadows (never grey/blue blacks), fading out by a quarter of white. */
+  lift: uniform(new THREE.Color(0.03, 0.009, 0.002)),
+  /** Saturation, 1 unchanged (AgX desaturates; the default pushes the orange back). */
+  saturation: uniform(1.18),
+  /** Contrast before the tone curve, a power about mid-grey (0.18): 1 unchanged. */
+  contrast: uniform(1),
+  /** How dark the corners get, 0 none. */
+  vignette: uniform(0.28),
+  /** Film grain strength (a sandstorm at the eye adds to it). */
+  grain: uniform(0.028),
+};
+/** Bloom: strength, radius and threshold of the half-res bloom chain, in Post's constructor. */
+export const BLOOM = { strength: 0.4, radius: 0.45, threshold: 2.0 };
+
 /** Sun tint used for veiling glare and flares (linear). */
 const GLARE_TINT = new THREE.Color(1.0, 0.5, 0.2);
 /** Sandstorm dust: extinction per metre at full strength (~20 m to see 95% lost), how fast it thins
@@ -165,6 +185,8 @@ export class Post {
 
   private lastTime = performance.now();
   private exposureValue = 1;
+  /** The bloom chain: its `strength`, `radius` and `threshold` uniforms can be set live (the art bench). */
+  readonly bloom: ReturnType<typeof bloom>;
   private stareValue = 0;
   private ndc = new THREE.Vector3();
   private fwd = new THREE.Vector3();
@@ -422,7 +444,7 @@ export class Post {
 
     // --- Bloom (half-res mip chain). Threshold sits just above lit sand so the sun, its halo and
     // glints bloom, and bloom bleeds over the dune crests that occlude the sun.
-    const bloomPass = bloom(color, 0.4, 0.45, 2.0);
+    const bloomPass = (this.bloom = bloom(color, BLOOM.strength, BLOOM.radius, BLOOM.threshold));
 
     // --- Sun visibility: fraction of depth taps around the sun that see sky (players and dunes occlude).
     const sunVis = Fn(() => {
@@ -514,20 +536,21 @@ export class Post {
       // Dust in front hides what blooms or flares behind it.
       let c: N = storm.xyz.add(bloomPass.rgb.add(flare).mul(storm.w));
       c = mix(c, grit.xyz, grit.w);
-      c = c.mul(exposure);
+      c = c.mul(exposure).mul(grade.exposure);
       // Warm white balance and a rust lift in the shadows (never grey/blue blacks).
-      c = c.mul(vec3(1.06, 0.98, 0.86));
+      c = c.mul(grade.balance as unknown as N);
       const lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = c.add(vec3(0.03, 0.009, 0.002).mul(saturate(float(1).sub(lum.mul(4)))));
+      c = c.add((grade.lift as unknown as N).mul(saturate(float(1).sub(lum.mul(4)))));
       // Saturation boost (AgX desaturates; push the orange back).
-      c = mix(vec3(lum), c, 1.18);
+      c = mix(vec3(lum), c, grade.saturation);
       c = max(c, vec3(0));
+      c = pow(c.div(0.18), vec3(grade.contrast)).mul(0.18);
       const toned = select(toneIndex.equal(2), saturate(filmic(c)), select(toneIndex.equal(1), agxToneMapping(c, float(1)) as N, acesFilmicToneMapping(c, float(1)) as N));
       let o: N = renderOutput(vec4(toned, 1), THREE.NoToneMapping, THREE.SRGBColorSpace).rgb;
       // Vignette.
       const p = uv();
       const v = length(p.sub(0.5).mul(vec2(aspect.mul(0.8), 1)));
-      o = o.mul(mix(float(1), float(0.72), smoothstep(0.45, 1.05, v)));
+      o = o.mul(mix(float(1), float(1).sub(grade.vignette), smoothstep(0.45, 1.05, v)));
       // Heatstroke: colour drains towards a hot red and a pulsing blood-red vignette closes in, the
       // pulse quickening as the meter fills.
       const hs = heatstroke;
@@ -561,7 +584,7 @@ export class Post {
       o = mix(o, vec3(saturate(dl.sub(0.42).mul(1.6).add(0.42))), deathGrade);
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
-      o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(0.028)));
+      o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(grade.grain)));
       return vec4(o, 1);
     })();
 

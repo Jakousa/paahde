@@ -44,7 +44,7 @@ export class DebugMenu {
   padding: 3px 7px; cursor: pointer; }
 #debugMenu button:hover { background: rgba(255, 233, 204, 0.25); }
 #debugMenu label { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
-body.clean > :not(canvas):not(#debugMenu):not(#menu) { visibility: hidden !important; }`;
+body.clean > :not(canvas):not(#debugMenu):not(#menu):not(#artBench):not(#artBenchAB) { visibility: hidden !important; }`;
     document.head.append(style);
 
     const p = this.panel;

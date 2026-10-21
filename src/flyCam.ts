@@ -65,8 +65,9 @@ export class FlyCam {
     this.setClean(this.clean);
   }
 
-  /** Put the camera at `pos` looking along yaw / pitch at once (tools/perf.ts pictures). */
-  place(pos: THREE.Vector3, yaw: number, pitch: number) {
+  /** Put the camera at `pos` looking along yaw / pitch at once (tools/perf.ts pictures), and at `fov` (degrees) if given. */
+  place(pos: THREE.Vector3, yaw: number, pitch: number, fov?: number) {
+    if (fov !== undefined) this.fov = this.fovShown = fov;
     this.pos.copy(pos);
     this.vel.set(0, 0, 0);
     this.yaw = this.aimYaw = yaw;

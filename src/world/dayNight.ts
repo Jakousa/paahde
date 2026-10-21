@@ -33,7 +33,10 @@ export function timeOfDay(unixMs: number): number {
   return timeOfDayAt(unixMs, DAY_LEN);
 }
 
-type Key = {
+/** Gains on the blended palette (the art bench, src/artBench.ts): sunlight, the ambient fill, moonlight and the heat shimmer. */
+export const dayGain = { sun: 1, ambient: 1, moon: 1, heatHaze: 1 };
+
+export type Key = {
   el: number; // sun elevation, degrees
   sun: THREE.Color; zenith: THREE.Color; mid: THREE.Color; horizon: THREE.Color; horizonSun: THREE.Color;
   haze: THREE.Color; ambSky: THREE.Color; ambGround: THREE.Color; amb: number;
@@ -41,10 +44,10 @@ type Key = {
 
 const hex = (h: number, k = 1) => new THREE.Color(h).multiplyScalar(k);
 const rgb = (r: number, g: number, b: number, k = 1) => new THREE.Color(r, g, b).multiplyScalar(k);
-const COLORS = ['sun', 'zenith', 'mid', 'horizon', 'horizonSun', 'haze', 'ambSky', 'ambGround'] as const;
+export const KEY_COLORS = ['sun', 'zenith', 'mid', 'horizon', 'horizonSun', 'haze', 'ambSky', 'ambGround'] as const;
 const cloneKey = (k: Key): Key => {
   const c = { ...k };
-  for (const n of COLORS) c[n] = k[n].clone();
+  for (const n of KEY_COLORS) c[n] = k[n].clone();
   return c;
 };
 
@@ -52,7 +55,8 @@ export class DayNight {
   tod = 0;
   /** Sun elevation, radians. */
   elevation = 0;
-  private keys: Key[];
+  /** The palette, keyed on sun elevation (ascending); the art bench edits them in place. */
+  readonly keys: Key[];
   private cur: Key;
   private ambient: THREE.HemisphereLight;
 
@@ -96,11 +100,11 @@ export class DayNight {
     const a = keys[i], b = keys[i + 1];
     const t = THREE.MathUtils.smoothstep(el, a.el, b.el);
     const c = this.cur;
-    for (const k of COLORS) c[k].copy(a[k]).lerp(b[k], t);
+    for (const k of KEY_COLORS) c[k].copy(a[k]).lerp(b[k], t);
     c.amb = a.amb + (b.amb - a.amb) * t;
 
     // The disc's light goes out as it sinks; the twilight keys carry the afterglow.
-    sunColor.value.copy(c.sun).multiplyScalar(THREE.MathUtils.smoothstep(el, -2, 1.5));
+    sunColor.value.copy(c.sun).multiplyScalar(THREE.MathUtils.smoothstep(el, -2, 1.5) * dayGain.sun);
     zenithColor.value.copy(c.zenith);
     midSkyColor.value.copy(c.mid);
     horizonColor.value.copy(c.horizon);
@@ -108,12 +112,12 @@ export class DayNight {
     hazeColor.value.copy(c.haze);
     this.ambient.color.copy(c.ambSky);
     this.ambient.groundColor.copy(c.ambGround);
-    this.ambient.intensity = c.amb;
+    this.ambient.intensity = c.amb * dayGain.ambient;
     nightLevel.value = 1 - THREE.MathUtils.smoothstep(el, -12, -2);
     // The moon lights the ground once it is clear of the horizon and the sun has gone.
     const moonUp = THREE.MathUtils.smoothstep(moonDirection.value.y, -0.02, 0.2);
-    moonColor.value.copy(MOONLIGHT).multiplyScalar(moonUp * nightLevel.value);
+    moonColor.value.copy(MOONLIGHT).multiplyScalar(moonUp * nightLevel.value * dayGain.moon);
     // Shimmer needs hot air over sun-baked sand: none in the cool night and morning, full in the afternoon.
-    heatHaze.value = NO_HAZE ? 0 : THREE.MathUtils.smoothstep(airTemp(this.tod), 26, 38) * THREE.MathUtils.smoothstep(sunStrength(this.tod), 0, 0.4);
+    heatHaze.value = NO_HAZE ? 0 : THREE.MathUtils.smoothstep(airTemp(this.tod), 26, 38) * THREE.MathUtils.smoothstep(sunStrength(this.tod), 0, 0.4) * dayGain.heatHaze;
   }
 }

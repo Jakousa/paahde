@@ -59,7 +59,7 @@ import { CHOKE_RECOVER, CHOKE_S, frontExposure, stormAt, stormDrag, toolsDown } 
 import { GAS_GRACE_S, GAS_RECOVER, GAS_S, gasExposure } from '../shared/gas.ts';
 import { timeOfDayAt } from '../shared/sun.ts';
 import { setTrophies } from '../shared/trophies.ts';
-import { LIVES, WORLD_ID } from '../shared/world.ts';
+import { CALM, LIVES, WORLD_ID } from '../shared/world.ts';
 import { TEXT } from '../shared/text.ts';
 import { pickupLimit, type PickupLimit } from './pickupLimit.ts';
 
@@ -1020,7 +1020,7 @@ setInterval(() => {
       if (Date.now() >= p.down.until) respawn(p);
       continue;
     }
-    if (p.ready && !LAB) heat(p, elapsed, tod, now);
+    if (p.ready && !CALM) heat(p, elapsed, tod, now);
     if (Date.now() - p.lastInputAt > IDLE_MS) {
       p.input = 0;
       for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
@@ -1030,7 +1030,7 @@ setInterval(() => {
       p.idleAccum = 0;
     }
   }
-  if (!LAB) tickBots(elapsed, now, tod); // (no walkers, drones or bosses in the lab)
+  if (!CALM) tickBots(elapsed, now, tod); // (no walkers, drones or bosses in the lab or the art bench)
   tickThrows(elapsed, now);
   relaxAccum += elapsed;
   if (relaxAccum >= 1 / RELAX_RATE) {
@@ -1060,12 +1060,12 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
-  // (The lab has no storms and no jets.)
-  const weather = LAB ? null : storms.tick(time, [...players.values()].map((p) => p.state), timeOfDayAt(time + epoch),
+  // (The lab and the art bench have no storms and no jets.)
+  const weather = CALM ? null : storms.tick(time, [...players.values()].map((p) => p.state), timeOfDayAt(time + epoch),
     BOSS_KINDS.some((k) => bosses.alive(k)));
-  const flights = LAB ? null : jets.tick(time, [...players.values()].map((p) => p.state));
+  const flights = CALM ? null : jets.tick(time, [...players.values()].map((p) => p.state));
   const crashed: ServerMsg[] = [];
-  if (!LAB) {
+  if (!CALM) {
     for (const j of jets.landed(time)) jetLanded(j);
     for (let i = jetCraters.length - 1; i >= 0; i--) {
       if (jetCraters[i].at > time) continue;

@@ -45,7 +45,15 @@ export function labAllowed(): boolean {
   return !!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV;
 }
 
+/** The art-style bench (src/artBench.ts): the world with this id, in development only (like the lab): the real desert from a
+ *  fixed seed, without weather, walkers, jets or heat, seen from a list of fixed camera shots while the look is tuned. */
+export const BENCH_WORLD = 'bench';
+
 export const WORLD_ID = readWorldId();
 /** This world is the dev test lab: flat floor, no desert and no events, every machine and part laid out (shared/lab.ts). */
 export const LAB = WORLD_ID === LAB_WORLD && labAllowed();
+/** This world is the art-style bench (BENCH_WORLD). */
+export const BENCH = WORLD_ID === BENCH_WORLD && labAllowed();
+/** A dev world with nothing happening in it: no heat, weather, jets, walkers, drones or bosses (the lab, the bench). */
+export const CALM = LAB || BENCH;
 export const WORLD_SEED = seedFor(WORLD_ID);

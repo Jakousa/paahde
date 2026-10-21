@@ -39,6 +39,8 @@ export const horizonSunColor = uniform(new THREE.Color(0xf08a1c).multiplyScalar(
 export const hazeColor = uniform(new THREE.Color(0xd98a45).multiplyScalar(0.85));
 /** Haze extinction per metre. ~0.006 → ~80% haze at 270 m. */
 export const hazeDensity = uniform(0.006);
+/** How fast the haze thins with height (per m above 0): valleys hazier than crests. */
+export const hazeFalloff = uniform(0.012);
 /** Distance (m) at which the haze becomes total — hides the terrain edge. Set to the terrain radius. */
 export const hazeFar = uniform(290);
 /** Heat-haze shimmer strength (post). 0 disables, 1 default, >3 looks like water. */
@@ -200,7 +202,7 @@ export const sunDisc = Fn(([dir]: [N]) => {
  */
 export const hazeFactor = Fn(([worldPos]: [N]) => {
   const d = worldPos.sub(cameraPosition).length();
-  const heightFall = exp(max(worldPos.y, 0).mul(-0.012));
+  const heightFall = exp(max(worldPos.y, 0).mul(hazeFalloff.negate()));
   // blownSand.ts thickens hazeDensity itself in strong wind; here a storm makes it patchy.
   const plume = mx_noise_float(worldPos.xz.sub(windDrift).mul(0.008)).mul(0.5).add(0.5);
   const dusty = float(1).add(sandStorm.mul(plume.sub(0.5)).mul(1.2));

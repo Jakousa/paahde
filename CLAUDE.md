@@ -16,6 +16,10 @@ commit or push to `main`. Commit, push to `main`, done. See "Workflow" below.
   (http://localhost:5173, proxies `/ws` and `/api`). Make a world on the landing page, then open its URL in a
   second tab to see multiplayer. **Test lab (dev only):** `http://localhost:5173/?w=lab`, a flat room with every
   machine to take apart and every part, gear and the grinder to pick up (shared/lab.ts, docs/devlog.md "The test lab").
+  **Art-style bench (dev only):** `http://localhost:5173/?w=bench`, the desert from a fixed seed with no events, seen from
+  fixed camera shots at set times of day (`[` `]`), with a panel tuning the global look live (tone, grade, bloom, light,
+  sky palette keys, haze, sand/rock/mud colours; hold `\` for the defaults) and exporting it as JSON or a diff naming
+  where each default lives (src/artBench.ts).
 - `npm run build` — `tsc --noEmit` + production build into `dist/`. Run before pushing.
 - `npm run preview` — build, then run the production server (serves `dist/` + `/ws` on :8787).
 

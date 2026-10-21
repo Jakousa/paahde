@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 import sirv from 'sirv';
 import { WebSocketServer } from 'ws';
 import type { WorldStats } from '../shared/protocol.ts';
-import { LAB_WORLD, labAllowed, LEGACY_WORLD, LIVES, newWorldId, WORLD_ID_RE } from '../shared/world.ts';
+import { BENCH_WORLD, LAB_WORLD, labAllowed, LEGACY_WORLD, LIVES, newWorldId, WORLD_ID_RE } from '../shared/world.ts';
 import { leaderboard, minigameApi } from './minigame.ts';
 
 // The dev test lab (?w=lab, shared/lab.ts) exists only when the dev server is started with --lab (npm run dev:server).
@@ -26,7 +26,7 @@ const board = leaderboard(join(dirname(DB_PATH), 'minigame.db')); // the minigam
 
 /** The world from before there were worlds keeps its old database; the rest have one each. */
 const dbPath = (id: string) => (id === LEGACY_WORLD ? DB_PATH : join(WORLDS_DIR, `${id}.db`));
-const exists = (id: string) => (id === LAB_WORLD && labAllowed()) || (WORLD_ID_RE.test(id) && existsSync(dbPath(id)));
+const exists = (id: string) => ((id === LAB_WORLD || id === BENCH_WORLD) && labAllowed()) || (WORLD_ID_RE.test(id) && existsSync(dbPath(id)));
 
 type World = { child: ChildProcess; port: Promise<number> };
 const worlds = new Map<string, World>();
@@ -60,7 +60,7 @@ const STATS_MAX = 12;
 
 /** How a world is doing, read from its database (the world process writes it; WAL lets us read alongside). */
 function stats(id: string): WorldStats | null {
-  if (id === LAB_WORLD || !exists(id)) return null;
+  if (id === LAB_WORLD || id === BENCH_WORLD || !exists(id)) return null;
   let db: DatabaseSync | undefined;
   try {
     db = new DatabaseSync(dbPath(id), { readOnly: true });

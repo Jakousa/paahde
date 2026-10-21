@@ -4,7 +4,7 @@ import { BACK, DT, FORWARD, isSlipFace, MOUNT_TICKS, quantizeYaw } from '../shar
 import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { allBeaten } from '../shared/bosses.ts';
-import { LAB, WORLD_ID } from '../shared/world.ts';
+import { BENCH, CALM, LAB, WORLD_ID } from '../shared/world.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
 import { bedLit, placed } from '../shared/placed.ts';
 import { STATIONS, stationTarget } from '../shared/stations.ts';
@@ -44,6 +44,7 @@ import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
 import { DebugMenu } from './debugMenu.ts';
 import { FlyCam } from './flyCam';
+import { ArtBench } from './artBench';
 import { BossFx } from './bosses';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
@@ -202,7 +203,7 @@ if (location.search.includes('debug')) {
 const net = new Net(getBrowserId());
 const lives = new Lives();
 net.onLives = (n, beaten) => {
-  if (!LAB) rememberWorld(WORLD_ID);
+  if (!CALM) rememberWorld(WORLD_ID);
   lives.set(n, beaten);
   trophies.set(beaten);
   setTrophies(beaten);
@@ -244,6 +245,8 @@ new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.res
   (off) => net.debugHeat(off),
   (off) => net.debugWeather(off),
   fly, () => fly.start(orbit.camera, orbit.yaw, orbit.pitch));
+// The art-style bench (?w=bench, dev only): fixed shots and the look panel (src/artBench.ts).
+const artBench = BENCH ? new ArtBench({ fly, camera: orbit.camera, day: sky.day, post, blownSand, startFly: () => fly.start(orbit.camera, orbit.yaw, orbit.pitch) }) : null;
 new Chat(net);
 const names = nameGate(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
@@ -425,6 +428,7 @@ renderer.setAnimationLoop((time) => {
   }
   if (!joined) prologue.joined();
   joined = true;
+  artBench?.frame(frameDt); // (from the first frame on, so the world streams in round the shot behind the loading screen)
   perf.milestone('joined');
   // Once the models and terrain are in, draw real frames a few materials at a time (src/warmup.ts): the first full
   // frame would take seconds to build every shader and freeze the page. Nothing else is drawn until that is done.
@@ -761,7 +765,7 @@ baseSand.update(frameDt, storm.atBase);
       perf.milestone('warmed');
     });
   }
-  if (PERF_RUN) document.getElementById('name')?.querySelector<HTMLElement>('.skip')?.click(); // (a benchmark answers the name box itself)
+  if (PERF_RUN || BENCH) document.getElementById('name')?.querySelector<HTMLElement>('.skip')?.click(); // (a benchmark, or the art bench, answers the name box itself)
   perf.frameEnd(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000, resolution.ratio, loaded && coverFrames >= 3 && !document.getElementById('cover') && !document.getElementById('name'), frameDt, (rad) => (orbit.yaw += rad));
   autoGraphicsFrame(frameDt, perf.last.cpu, resolution.ratio / Math.min(devicePixelRatio, graphics.resScale), resolution.pixelBound,
     loaded && coverFrames >= 3 && !document.hidden && !menu.open && !net.down && net.isReady && !document.getElementById('cover'));

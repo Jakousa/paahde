@@ -71,7 +71,8 @@ export class BlownSand {
   private sheet: DriftSheet;
   private sample: WindSample = { dx: 0, dz: 0, ustar: 0, q: 0, emit: 0 };
   private n = { x: 0, y: 1, z: 0 };
-  private baseHaze = hazeDensity.value;
+  /** The haze's extinction in still air, thickened in strong wind (the art bench, src/artBench.ts, sets it). */
+  baseHaze = hazeDensity.value;
   private groundSlots = new Map<number, number>();
   private groundCache = new Float32Array(GROUND_CELLS * 4);
 
