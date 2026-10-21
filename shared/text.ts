@@ -83,7 +83,7 @@ const en = {
   boxes: {
     bag: 'Inventory', equip: 'Equipment', bench: 'Workbench', bike: 'Motorcycle', corpse: 'Left behind', chest: 'Chest',
     chestN: (n: number) => `Chest ${n}`,
-    storage: 'Storage',
+    storage: 'Storage', ground: 'On the ground',
   },
   /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR). */
   gearUse: {

@@ -11,7 +11,8 @@
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. A building in reach (the
 // windmill, the battery station: shared/gear.ts buildingBox) shows its part slots the same way, to swap its parts
-// where it stands. Moves go through
+// where it stands. Loot lying in reach (shared/loot.ts lootReach) shows as one more panel, On the ground: click,
+// shift-click or drag a piece into the bag to pick it up, or drag something onto the panel to drop it. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
 import { bagShape, boxShape, buildingId, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, holdsCargo, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
 import { findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
@@ -23,7 +24,7 @@ import { Hints } from './hints';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { isCorpseBox } from '../shared/corpse.ts';
-import { canDropAt } from '../shared/loot.ts';
+import { canDropAt, lootReach, type Loot } from '../shared/loot.ts';
 import { isPlaceable } from '../shared/placed.ts';
 import { isBound, kbd } from './bindings';
 import { takePickup, ui } from './input';
@@ -263,6 +264,8 @@ type Target = { box: string; i: number; el?: HTMLElement; grid?: HTMLElement };
 const partBox = (at: string) => `part:${at}`;
 /** The box whose item's part slots these are, or null for any other box. */
 const partsIn = (box: string) => (box.startsWith('part:') ? box.slice(5) : null);
+/** The loot in reach, as a box of its own: slot i is the i-th piece (InventoryHud.ground). */
+const GROUND = 'ground';
 
 export class InventoryHud {
   private prompt = document.createElement('div');
@@ -279,6 +282,9 @@ export class InventoryHud {
   private canvas: HTMLElement;
   /** Storage boxes in reach (shared/storage.ts openBoxes), as last drawn (one building of those in reach). */
   private storages: string[] = [];
+  /** Loot in reach, as last drawn (the GROUND panel), and its ids. */
+  private ground: Loot[] = [];
+  private groundIds = '';
   /** Every box in reach, as last drawn. */
   private reachable = '';
   /** Within reach of the workbench last frame. */
@@ -379,7 +385,13 @@ export class InventoryHud {
     if (this.atBench && !atBench && this.net.boxes.bench?.[0]) this.toBag('bench', 0);
     this.atBench = atBench;
     if (!ui.inventoryOpen) return;
-    if (open.join() !== this.reachable) this.render();
+    if (open.join() !== this.reachable || this.groundNow().map((l) => l.id).join() !== this.groundIds) this.render();
+  }
+
+  /** Loot lying in reach, oldest first. */
+  private groundNow(): Loot[] {
+    const me = this.net.me;
+    return [...this.net.loot.values()].filter((l) => lootReach(me, l)).sort((a, b) => a.id - b.id);
   }
 
   toast(text: string) {
@@ -432,7 +444,13 @@ export class InventoryHud {
       html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns">${isCorpseBox(box) ? '' : `<button data-store="${box}">${TEXT.inventory.storeAll}</button>`}<button data-all="${box}">${TEXT.inventory.takeAll}</button><button data-sort="${box}">${TEXT.inventory.sort}</button></span></div>`
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
-    if (!this.storages.length) {
+    this.ground = this.groundNow();
+    this.groundIds = this.ground.map((l) => l.id).join();
+    if (this.ground.length) {
+      const items = this.ground.map((l) => ({ id: 0, kind: l.kind, n: 1, parts: l.parts }));
+      html += `<div class="box storage" data-ground><div class="head"><h3>${TEXT.boxes.ground}</h3><button data-all="${GROUND}">${TEXT.inventory.takeAll}</button></div>`
+        + `<div class="grid" style="grid-template-columns: repeat(5, 54px)">${this.slotsHtml(GROUND, items, 0, items.length)}</div></div>`;
+    } else if (!this.storages.length) {
       html += `<div class="box"><div class="head"><h3>${TEXT.boxes.storage}</h3></div><div class="none">${TEXT.inventory.nothingInReach}</div></div>`;
     }
     // Re-rendering resets scrolling: keep each long chest where it was.
@@ -610,6 +628,7 @@ export class InventoryHud {
     const b: Boxes = { ...this.net.boxes };
     for (const id of new Set([d.box, t.box])) b[id] = b[id]?.map((it) => it && { ...it });
     if (partsIn(d.box)) return true;
+    if (d.box === GROUND) return t.box === 'bag';
     const it = this.itemAt(d.box, d.i);
     return !!it && tryMove(b, d.box, d.i, t.box, t.i, d.half ? Math.ceil(it.n / 2) : undefined, () => -1, d.r);
   }
@@ -648,6 +667,10 @@ export class InventoryHud {
       const kind = it && partsOf(it)[i];
       return kind ? { id: 0, kind, n: 1 } : null;
     }
+    if (box === GROUND) {
+      const l = this.ground[i];
+      return l && this.net.loot.has(l.id) ? { id: 0, kind: l.kind, n: 1, parts: l.parts } : null;
+    }
     return this.net.boxes[box]?.[i] ?? null;
   }
 
@@ -685,6 +708,7 @@ export class InventoryHud {
     const net = this.net;
     const from = partsIn(box);
     if (from) return net.unfit(i, 'bag', -1, from);
+    if (box === GROUND) return this.pickUp(i);
     const it = net.boxes[box]?.[i];
     if (!it) return false;
     const bench = this.storages.includes('bench');
@@ -718,8 +742,21 @@ export class InventoryHud {
     return (j >= 0 && this.net.moveItem(box, i, 'bag', j)) || this.net.moveItem(box, i, 'bag', -1);
   }
 
-  /** Take all: everything in a storage box into the bag, as far as it fits; a plop per item moved. */
+  /** Pick up the i-th piece of loot in reach (it goes wherever it fits in the bag). */
+  private pickUp(i: number): boolean {
+    const l = this.ground[i];
+    return !!l && this.net.loot.has(l.id) && this.net.lootTake(l.id);
+  }
+
+  /** Take all: everything in a storage box (or on the ground) into the bag, as far as it fits; a plop per item moved. */
   private takeAll(box: string) {
+    if (box === GROUND) {
+      let moved = 0;
+      for (let i = 0; i < this.ground.length; i++) if (this.pickUp(i)) moved++;
+      if (moved) uiSound.plop(moved);
+      if (moved < this.ground.length) this.noRoom();
+      return this.render();
+    }
     const slots = this.net.boxes[box];
     if (!slots) return;
     let moved = 0;
@@ -824,8 +861,15 @@ export class InventoryHud {
     const d = this.drag;
     if (!d) return;
     this.cancelDrag();
+    // From the ground: a click or a drag anywhere but back onto the ground picks it up.
+    if (d.box === GROUND) {
+      if (d.moved && (this.outside(e.clientX, e.clientY) || this.onGround(e.clientX, e.clientY))) return;
+      if (this.pickUp(d.i)) uiSound.plop();
+      else this.noRoom();
+      return this.render();
+    }
     if (!d.moved) return;
-    if (this.outside(e.clientX, e.clientY)) return this.drop(d.box, d.i);
+    if (this.outside(e.clientX, e.clientY) || this.onGround(e.clientX, e.clientY)) return this.drop(d.box, d.i);
     const at = this.targetAt(e.clientX, e.clientY, d);
     const it = this.itemAt(d.box, d.i);
     if (!at || !it || (at.box === d.box && at.i === d.i && d.r === !!it.r)) return;
@@ -845,7 +889,12 @@ export class InventoryHud {
     return !el || el === this.overlay || el === this.boxesEl;
   }
 
-  /** Dragged out of the panels: drop it on the sand in front of you. */
+  /** Over the On the ground panel. */
+  private onGround(x: number, y: number) {
+    return !!document.elementFromPoint(x, y)?.closest('[data-ground]');
+  }
+
+  /** Dragged out of the panels (or onto the ground): drop it on the sand in front of you. */
   private drop(box: string, i: number) {
     if (partsIn(box)) return this.toast(TEXT.notice.takeItOff);
     if (this.net.me.riding && lockedWhileRiding(box, i)) return this.toast(TEXT.notice.getOffFirst);
