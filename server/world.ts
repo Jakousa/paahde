@@ -8,10 +8,9 @@ import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerStat
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bikeLevel, bottleSips, buildingBox, carriedGear, equipped, gearTiers, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
-import { pickTier } from '../shared/parts.ts';
-import { BOSS_SPOILS, DRONE_JET_SPOILS, HARVESTER_SCRAP, HARVESTER_SPOILS, JET_RELIC_ODDS, JET_SCRAP, KILL_SPOILS, RECEIVER_DROPS, RELIC_DROPS } from '../shared/tables.ts';
-import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, RECEIVERS, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
+import { HOTBAR, SCRAP, scrapItem } from '../shared/items.ts';
+import { bossDrops, harvesterDrops, jetDrops, killDrops, type Drop } from '../shared/lootRoll.ts';
+import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { BASE, overBase } from '../shared/base.ts';
@@ -711,20 +710,12 @@ function sendName(p: Player) {
   for (const o of players.values()) if (o !== p && o.ws.readyState === o.ws.OPEN) o.ws.send(json);
 }
 
-/** A random boss receiver kind (shared/bosses.ts RECEIVERS). */
-const randomReceiver = () => { const r = Object.values(RECEIVERS); return r[Math.floor(Math.random() * r.length)]; };
+/** Lay a rolled drop (shared/lootRoll.ts) on the sand within `spread` m of (x, z). */
+const lay = (x: number, z: number, d: Drop, spread?: number) => (d.parts ? loot.dropBroken(x, z, d.kind, spread, d.parts) : loot.dropAt(x, z, d.kind, spread));
 
 /** What a killed walker or downed drone leaves on the sand (shared/tables.ts KILL_SPOILS). */
 function dropSpoils(k: Kill) {
-  const kind = k.kind === GUARDIAN ? 'guardian' : k.kind === 'drone' ? 'drone' : 'crawler';
-  const sp = KILL_SPOILS[kind];
-  if (Math.random() < RELIC_DROPS[kind].odds) loot.dropAt(k.x, k.z, RELIC_DROPS[kind].kind);
-  if (Math.random() < RECEIVER_DROPS[kind]) loot.dropBroken(k.x, k.z, randomReceiver());
-  const n = Math.random() < sp.odds ? sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1)) : 0;
-  for (let i = 0; i < n; i++) {
-    const part = sp.parts[Math.floor(Math.random() * sp.parts.length)];
-    loot.dropAt(k.x, k.z, partKind(part, pickTier(sp.tierWeights, Math.random)));
-  }
+  for (const d of killDrops(k.kind === GUARDIAN ? 'guardian' : k.kind === 'drone' ? 'drone' : 'crawler', Math.random)) lay(k.x, k.z, d);
 }
 
 /** A jet's nose met the sand (shared/jets.ts): it comes apart (shared/jetbreak.ts: every client flies the same pieces from the same impact), the sand is
@@ -744,18 +735,14 @@ function jetLanded(j: Jet) {
  *  airframe, strewn about where its nose went in. */
 function jetCame(b: { jet: number; kind: JetKind; soft: boolean; bk: Breakup; lx: number; lz: number }): ServerMsg {
   const { crash: c, gone } = jetCrashes.add(b.jet, b.kind, b.bk.final, b.bk.fates);
-  const at = (kind: string) => {
-    const a = Math.random() * Math.PI * 2, d = 3 + Math.random() * 16;
-    loot.dropAt(b.lx + Math.cos(a) * d, b.lz + Math.sin(a) * d, kind);
-  };
-  if (b.kind === 'drone') {
-    const sp = DRONE_JET_SPOILS, n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1)) + (b.soft ? 1 : 0);
-    for (let i = 0; i < n; i++) at(partKind(sp.parts[Math.floor(Math.random() * sp.parts.length)], pickTier(sp.tierWeights, Math.random)));
+  for (const d of jetDrops(b.kind, b.soft, Math.random)) {
+    // A broken receiver by the nose; the rest strewn about it.
+    if (d.parts) lay(b.lx + 4, b.lz, d, 4);
+    else {
+      const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 16;
+      lay(b.lx + Math.cos(a) * r, b.lz + Math.sin(a) * r, d);
+    }
   }
-  if (Math.random() < JET_RELIC_ODDS) at(RELIC_DROPS.drone.kind);
-  if (Math.random() < RECEIVER_DROPS.jet) loot.dropBroken(b.lx + 4, b.lz, randomReceiver(), 4);
-  const scrapN = JET_SCRAP.min + Math.floor(Math.random() * (JET_SCRAP.max - JET_SCRAP.min + 1));
-  for (let i = 0; i < scrapN; i++) at(SCRAP);
   return { t: 'jetCrashes', list: gone.length ? jetCrashList() : [c], reset: gone.length > 0 };
 }
 
@@ -763,18 +750,17 @@ function jetCame(b: { jet: number; kind: JetKind; soft: boolean; bk: Breakup; lx
  *  out round its sides and out of its maw (not under it: the wreck stays there a while). */
 function dropHarvesterSpoils(k: HarvesterKill) {
   const fx = Math.sin(k.yaw), fz = Math.cos(k.yaw);
-  const at = (kind: string) => {
-    // A ring round the hull: along it -22..+22 m, out 16..22 m to either side, or out of its maw ahead.
+  for (const d of harvesterDrops(Math.random)) {
+    // A broken receiver behind it; the rest in a ring round the hull: along it -22..+22 m, out 16..22 m to either side,
+    // or out of its maw ahead.
+    if (d.parts) {
+      lay(k.x - fx * 20, k.z - fz * 20, d, 4);
+      continue;
+    }
     const front = Math.random() < 0.35, along = front ? 30 + Math.random() * 8 : -22 + Math.random() * 44;
     const side = front ? (Math.random() - 0.5) * 22 : (Math.random() < 0.5 ? 1 : -1) * (16 + Math.random() * 6);
-    loot.dropAt(k.x + fx * along + fz * side, k.z + fz * along - fx * side, kind);
-  };
-  const sp = HARVESTER_SPOILS;
-  const n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1));
-  for (let i = 0; i < n; i++) at(partKind(sp.parts[Math.floor(Math.random() * sp.parts.length)], pickTier(sp.tierWeights, Math.random)));
-  const scrapN = HARVESTER_SCRAP.min + Math.floor(Math.random() * (HARVESTER_SCRAP.max - HARVESTER_SCRAP.min + 1));
-  for (let i = 0; i < scrapN; i++) at(SCRAP);
-  if (Math.random() < RECEIVER_DROPS.jet) loot.dropBroken(k.x - fx * 20, k.z - fz * 20, randomReceiver(), 4);
+    lay(k.x + fx * along + fz * side, k.z + fz * along - fx * side, d);
+  }
 }
 
 /** A boss's parts, scattered over its wreck; its kind's first kill counts toward the win and gives the world lives. */
@@ -788,13 +774,13 @@ function dropBossSpoils(k: BossKill) {
     for (const o of players.values()) send(o.ws, { t: 'lives', n: lives, beaten });
     console.log(`world ${WORLD_ID}: ${k.kind} beaten${allBeaten(beaten) ? ', world won' : ''}`);
   }
-  const relic = RELICS[k.kind];
-  if (relic) loot.dropAt(k.x, k.z, relic);
-  const sp = BOSS_SPOILS[k.kind];
-  const n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1));
-  for (let i = 0; i < n; i++) {
-    const part = sp.parts[Math.floor(Math.random() * sp.parts.length)], a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * k.r;
-    loot.dropAt(k.x + Math.cos(a) * d, k.z + Math.sin(a) * d, partKind(part, pickTier(sp.tierWeights, Math.random)));
+  // Its own part where it fell, the rest scattered over the wreck.
+  for (const d of bossDrops(k.kind, Math.random)) {
+    if (d.kind === RELICS[k.kind]) loot.dropAt(k.x, k.z, d.kind);
+    else {
+      const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * k.r;
+      lay(k.x + Math.cos(a) * r, k.z + Math.sin(a) * r, d);
+    }
   }
 }
 

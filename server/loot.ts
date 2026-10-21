@@ -5,19 +5,13 @@
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
 // Kept in the DB (`world_loot`, `loot_pending`, written on change), so a restart keeps what was taken. Items
 // players drop are kept in `dropped` and never respawn.
-import { BASE, BASE_SPAWN, overBase } from '../shared/base.ts';
-import { overShelter, shelterAt, shelterLootSpot, sheltersNear, type Shelter } from '../shared/shelters.ts';
-import { GEAR, GEAR_KINDS, isGear, refit, scrapParts } from '../shared/gear.ts';
-import { JAMMER } from '../shared/jammer.ts';
-import { RECEIVERS, receiverBoss } from '../shared/bosses.ts';
-import { CLOTH, partKind, RETIRED, SCRAP } from '../shared/items.ts';
+import { shelterAt, sheltersNear } from '../shared/shelters.ts';
+import { GEAR, isGear, refit, scrapParts } from '../shared/gear.ts';
+import { partKind, RETIRED } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
-import { coreCrashSites, type SiteLevel } from '../shared/crashsites.ts';
-import { SCRAP_CELL, scrapPieces } from '../shared/scrap.ts';
-import { PART_IDS, pickTier } from '../shared/parts.ts';
-import { GUNS, PISTOL } from '../shared/rifle.ts';
-import { rocksNear } from '../shared/rocks.ts';
-import { BROKEN_GEAR, CACHES, FINDS, HOME_BIKE, RARE_FINDS, SHELTER_STASHES, type TierWeights } from '../shared/tables.ts';
+import { coreCrashSites } from '../shared/crashsites.ts';
+import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, homeBikeSpot, nearPiles, shelterStash, stashSpot } from '../shared/lootRoll.ts';
+import { CACHES, FINDS, HOME_BIKE, RARE_FINDS, SHELTER_STASHES } from '../shared/tables.ts';
 import { CORE_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -27,71 +21,22 @@ import type { openDb } from './db.ts';
 
 type Db = ReturnType<typeof openDb>;
 
-// What lies around and what is in it: FINDS, RARE_FINDS, BROKEN_GEAR and CACHES in shared/tables.ts.
-/** The odds a level-0 find lies at a scrap pile (shared/scrap.ts) within PILE_FIND_R m of the base instead of a crash site. */
-const PILE_ODDS = 0.45;
-const PILE_FIND_R = 600;
+// What lies around and what is in it: FINDS, RARE_FINDS, BROKEN_GEAR and CACHES in shared/tables.ts; the dice (what's in
+// them, where they lie) in shared/lootRoll.ts, shared with the economy simulator (tools/econsim).
 /** The FINDS key for a loose rare part at guardian ground (level 2). */
 const RARE_KIND = 'rare';
 /** The pending-spawn key for the motorcycle in front of the base door (HOME_BIKE). */
 const HOME_KIND = 'home_bike';
 /** The pending-spawn key for a stash on a shelter's floor (SHELTER_STASHES). */
 const STASH_KIND = 'shelter';
-/** How far from the base caches lie (m). */
-const CACHE_MIN_R = 80, CACHE_MAX_R = 1200;
 /** A taken find / cache is replaced this long after (ms). */
 const FIND_RESPAWN_MS = 3 * 60_000;
 const CACHE_RESPAWN_MS = 60_000;
-const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
-const RARE_PARTS = PART_IDS.filter((p) => !RARE_FINDS.noParts.includes(p));
-/** Broken gear a cache can hold (not the jammer or the receivers; the guns have their own odds: only the pistol,
- *  CACHES.contents.pistol). */
-const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS) && k !== JAMMER && !receiverBoss(k) && !GEAR[k].built);
 
 /** A taken find or cache waiting to come back; id is its loot_pending row. */
 type Spawn = { id: number; at: number; what: 'find' | 'cache'; kind?: string };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
-const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
-/** A key of `odds`, picked by its relative odds. */
-function pickOdds<K extends string>(odds: Record<K, number>): K {
-  const ks = Object.keys(odds) as K[];
-  let r = Math.random() * ks.reduce((a, k) => a + odds[k], 0);
-  for (const k of ks) if ((r -= odds[k]) < 0) return k;
-  return ks[0];
-}
-
-/** The scrap piles within PILE_FIND_R of the base: centre and how far their pieces reach. */
-function nearPiles() {
-  const out: { x: number; z: number; r: number }[] = [];
-  const lo = (c: number) => Math.floor((c - PILE_FIND_R) / SCRAP_CELL), hi = (c: number) => Math.floor((c + PILE_FIND_R) / SCRAP_CELL);
-  for (let iz = lo(BASE.z); iz <= hi(BASE.z); iz++) for (let ix = lo(BASE.x); ix <= hi(BASE.x); ix++) {
-    const ps = scrapPieces(ix, iz);
-    if (!ps.length) continue;
-    const x = ps.reduce((a, p) => a + p.x, 0) / ps.length, z = ps.reduce((a, p) => a + p.z, 0) / ps.length;
-    if (Math.hypot(x - BASE.x, z - BASE.z) > PILE_FIND_R || overBase(x, z, 6)) continue;
-    out.push({ x, z, r: Math.max(...ps.map((p) => Math.hypot(p.x - x, p.z - z))) });
-  }
-  return out;
-}
-
-/** Where the home bike lies: out from the door (it faces +Z), off the path a little, on clear sand in plain view.
- *  The same spot every time. */
-function homeBikeSpot() {
-  const clear = (x: number, z: number) => {
-    if (overBase(x, z, 6) || rocksNear(x, z, 3)) return false;
-    const ix = Math.floor(x / SCRAP_CELL), iz = Math.floor(z / SCRAP_CELL);
-    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
-      if (scrapPieces(ix + dx, iz + dz).some((p) => Math.hypot(p.x - x, p.z - z) < 4)) return false;
-    }
-    return true;
-  };
-  for (const d of [22, 28, 34, 16, 42]) for (const a of [0.35, -0.35, 0.6, -0.6, 0, 0.9, -0.9]) {
-    const x = BASE_SPAWN.x + Math.sin(a) * d, z = BASE_SPAWN.z + Math.cos(a) * d;
-    if (clear(x, z)) return { x, z };
-  }
-  return { x: BASE_SPAWN.x + 8, z: BASE_SPAWN.z + 20 };
-}
 
 export class LootServer {
   readonly loot = new Map<number, Loot>();
@@ -262,8 +207,8 @@ export class LootServer {
   }
 
   /** A piece of broken gear left on the sand at (x, z), like dropAt. */
-  dropBroken(x: number, z: number, kind: string, spread = 0.8) {
-    const l: Loot = { id: this.nextId++, kind, parts: this.brokenParts(kind), x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
+  dropBroken(x: number, z: number, kind: string, spread = 0.8, parts = this.brokenParts(kind)) {
+    const l: Loot = { id: this.nextId++, kind, parts, x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
     this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z);
     this.add(l);
   }
@@ -323,13 +268,8 @@ export class LootServer {
     this.pending = this.pending.filter((q) => q !== p);
   }
 
-  /** Broken: a few low-tier parts already in (never a rare slot's), at least one slot empty. */
   private brokenParts(kind: string): (string | null)[] {
-    const slots = GEAR[kind].slots;
-    const parts = slots.map((s): string | null =>
-      !s.rare && Math.random() < BROKEN_GEAR.filled ? ('part' in s ? partKind(s.part, pickTier(BROKEN_GEAR.tierWeights, Math.random)) : pick(s.scrap)) : null);
-    if (!parts.includes(null)) parts[Math.floor(Math.random() * parts.length)] = null;
-    return parts;
+    return brokenParts(kind, Math.random);
   }
 
   /** Gear kind `kind` (FINDS) lying at a crash site of its level, among the debris around the wreck; RARE_KIND: a rare part. */
@@ -341,25 +281,10 @@ export class LootServer {
       this.place({ id: this.homeBikeId, kind: 'motorcycle', parts, ...this.homeBike, src: 'find' }, HOME_KIND);
       return;
     }
-    const level = FINDS[kind]?.level ?? 2;
-    const sites = this.sites.filter((s) => s.loot === level);
-    let x = 0, z = 0;
-    if (level === 0 && this.piles.length && Math.random() < PILE_ODDS) {
-      // Among the pieces of a scrap pile near the base.
-      const p = pick(this.piles);
-      const a = rand(0, Math.PI * 2), d = rand(1, p.r + 1.5);
-      x = p.x + Math.sin(a) * d;
-      z = p.z + Math.cos(a) * d;
-    } else for (let tries = 0; tries < 20; tries++) {
-      const site = pick(sites.length ? sites : this.sites);
-      const a = rand(0, Math.PI * 2), d = rand(site.radius * 0.4, site.radius + 8);
-      x = site.x + Math.sin(a) * d;
-      z = site.z + Math.cos(a) * d;
-      if (!overBase(x, z, 6) && !overShelter(x, z, 6)) break;
-    }
-    if (kind === RARE_KIND) {
-      this.place({ id: this.nextId++, kind: partKind(pick(RARE_PARTS), pickTier(RARE_FINDS.tierWeights, Math.random)), x, z, src: 'find' }, kind);
-    } else this.place({ id: this.nextId++, kind, parts: this.brokenParts(kind), x, z, src: 'find' }, kind);
+    // At a crash site of its level, among the debris round the wreck (level 0 now and then at a scrap pile near the base);
+    // RARE_KIND (not in FINDS): a loose rare part on guardian ground.
+    const { x, z } = findSpot(FINDS[kind]?.level ?? 2, this.sites, this.piles, Math.random);
+    this.place({ id: this.nextId++, ...findContents(kind, Math.random), x, z, src: 'find' }, kind);
   }
 
   /** A stash on the floor of the shelter furthest short of its SHELTER_STASHES.perShelter. */
@@ -370,30 +295,12 @@ export class LootServer {
       const s = l && k === STASH_KIND ? shelterAt(l.x, l.z) : null;
       if (s) lying.set(s.id, (lying.get(s.id) ?? 0) + 1);
     }
-    const short = (s: Shelter) => SHELTER_STASHES.perShelter[s.kind] - (lying.get(s.id) ?? 0);
-    const most = Math.max(...this.shelters.map(short));
-    const { x, z } = shelterLootSpot(pick(this.shelters.filter((s) => short(s) === most)), Math.random);
-    this.place({ id: this.nextId++, ...this.contents(SHELTER_STASHES), x, z, src: 'find' }, STASH_KIND);
-  }
-
-  /** What a cache or stash holds, picked by its table's odds. */
-  private contents(t: { contents: Record<'part' | 'scrap' | 'cloth' | 'pistol' | 'gear' | 'receiver', number>; tierWeights: TierWeights }) {
-    const what = pickOdds(t.contents);
-    if (what === 'part') return { kind: partKind(pick(CACHE_PARTS), pickTier(t.tierWeights, Math.random)) };
-    if (what === 'scrap') return { kind: SCRAP };
-    if (what === 'cloth') return { kind: CLOTH };
-    const kind = what === 'pistol' ? PISTOL : what === 'receiver' ? pick(Object.values(RECEIVERS)) : pick(CACHE_GEAR);
-    return { kind, parts: this.brokenParts(kind) };
+    const { x, z } = stashSpot(this.shelters, lying, Math.random);
+    this.place({ id: this.nextId++, ...shelterStash(Math.random), x, z, src: 'find' }, STASH_KIND);
   }
 
   private spawnCache() {
-    let x = 0, z = 0;
-    for (let tries = 0; tries < 20; tries++) {
-      const a = rand(0, Math.PI * 2), d = rand(CACHE_MIN_R, CACHE_MAX_R);
-      x = BASE.x + Math.sin(a) * d;
-      z = BASE.z + Math.cos(a) * d;
-      if (!overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break;
-    }
-    this.place({ id: this.nextId++, ...this.contents(CACHES), x, z, src: 'cache' }, null);
+    const { x, z } = cacheSpot(Math.random);
+    this.place({ id: this.nextId++, ...cacheContents(Math.random), x, z, src: 'cache' }, null);
   }
 }
