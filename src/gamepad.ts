@@ -7,7 +7,7 @@
 //   L3           sprint / slide: clicked, it stays on until the stick lets go
 //   R3           third person
 //   d-pad ↑ / ↓  zoom the scope or spyglass   d-pad ← rotate (placing, the table)   d-pad → pick up a placed thing
-//   View (Share) inventory                  Menu (Options) Esc menu; again (or B) back into the game
+//   View (Share) inventory (worked with a cursor: src/padCursor.ts)   Menu (Options) Esc menu; again (or B) back into the game
 // The pad doesn't drive the game itself: it presses the keys bound to each action (src/bindings.ts), as synthetic
 // key events, so everything that reads keys (held or on keydown) works the same and follows rebinding. Only the
 // look is its own: the camera's (src/camera.ts look) and the mouse travel the disassembly reads (src/input.ts).
@@ -16,6 +16,7 @@
 import { HOTBAR_ACTIONS, slots, type Action } from './bindings';
 import { addMouse, aimDown, capture, tools, ui } from './input';
 import type { FirstPersonCamera } from './camera';
+import { hidePadCursor, padCursor } from './padCursor';
 
 // Standard mapping (https://w3c.github.io/gamepad/#remapping).
 const A = 0, B = 1, X = 2, Y = 3, LB = 4, RB = 5, LT = 6, RT = 7, VIEW = 8, MENU = 9, L3 = 10, R3 = 11;
@@ -78,12 +79,12 @@ export function pollPad(dt: number, view: FirstPersonCamera, canvas: HTMLElement
   const pressed = (i: number) => !!down[i] && !was[i];
   prev = down;
 
-  // Out of the game: Menu (or B) goes back in from the Esc menu; View / B close the inventory.
+  // Out of the game: the inventory and the workbench menu are worked with a cursor (src/padCursor.ts); Menu (or B)
+  // goes back in from the Esc menu.
+  if (ui.inventoryOpen && !captured()) return padCursor(dt, { down, pressed, axes: pad.axes }, tap, { inventory: code('inventory'), rotate: code('rotate') });
+  hidePadCursor();
   if (!captured()) {
-    if (ui.inventoryOpen) {
-      if (pressed(VIEW)) tap(code('inventory'));
-      else if (pressed(B)) tap('Escape');
-    } else if ((pressed(MENU) || pressed(B)) && document.getElementById('menu')?.classList.contains('open')) capture(canvas);
+    if ((pressed(MENU) || pressed(B)) && document.getElementById('menu')?.classList.contains('open')) capture(canvas);
     return;
   }
   if (pressed(MENU)) return document.exitPointerLock(); // the Esc menu opens (src/menu.ts)

@@ -132,7 +132,8 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `node tools/telemetry.ts` (digest + HTML report, or `tail`)
 - `src/input.ts` — keyboard → input bitmask
 - `src/gamepad.ts` — gamepad (third-person shooter layout): presses the keys bound to each action as synthetic key
-  events, so rebinding and every key reader just work; right stick → `FirstPersonCamera.look`; layout in its header
+  events, so rebinding and every key reader just work; right stick → `FirstPersonCamera.look`; layout in its header. In the inventory and workbench menu a drawn cursor
+  (`src/padCursor.ts`) sends synthetic pointer events, so they work as with the mouse
 - `docs/devlog.md` — what's been built and why, known gaps; `docs/look.md` — art direction; `docs/machines.md` — **the guide for continuing the
   realistic-machines program** (pipeline, rules, checks, backlog; read it before touching `tools/blender/machines/`, `src/teardown/` or the jets); `tools/trace-report.py` reads Chrome performance traces
 - `shared/text.ts` — **every player-visible text** (`TEXT`): names of things, prompts, notices, menus, hints, step

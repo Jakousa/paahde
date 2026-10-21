@@ -1802,6 +1802,11 @@ Menu the Esc menu. The pad doesn't reach into the game: each frame it works out 
 synthetic keydown/keyup events with those actions' bound codes (src/bindings.ts), so every `isBound`/`actionHeld`
 reader works unchanged and follows rebinding. The look is its own: `FirstPersonCamera.look` (shared with the mouse;
 squared response, slower while aiming, a boost held at the edge) and `addMouse` for the disassembly's gestures.
+In the inventory and the workbench menu the pad works a drawn cursor (`src/padCursor.ts`): left stick moves it, the
+d-pad steps it to the middle of the next slot, cell or button, A presses and releases (hold and move to drag; a tap
+clicks), Y does the same with the right button (half a stack), X shift-clicks (send across), LB/RB turn the dragged
+item, the right stick scrolls a long chest, B (or View) closes. It sends synthetic pointer events at its tip, so
+src/inventory.ts and src/benchMenu.ts didn't change; moving the real mouse hides it.
 Known gaps: movement is still the eight-way digital bitmask (shared/sim.ts input; analog would need the protocol),
-no invert-Y or sensitivity option, the inventory overlay can't be worked with the pad (View/B close it), and a click
+no invert-Y or sensitivity option, the Esc menu has no pad cursor (Menu/B resume), and a click
 is needed to capture the mouse first (browsers don't let pad buttons request pointer lock).
