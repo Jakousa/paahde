@@ -32,6 +32,7 @@ import { MINION } from '../shared/bosses.ts';
 import { zaps } from './world/zaps';
 import * as kills from './kills';
 import { rifleSound } from './rifleSound';
+import { rumble } from './gamepad';
 import { tyreDust } from './tyreDust';
 import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
 import { gunCooldown, quality } from '../shared/gear.ts';
@@ -355,6 +356,8 @@ export class Rifle {
     // It starts at the drawn muzzle as the gun kicks and the view climbs.
     zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z, true, this.muzzle);
     rifleSound.shot(null, null, this.gun === 'pistol');
+    if (this.gun === 'pistol') rumble(0.2, 0.6, 90);
+    else rumble(0.6, 0.8, 140);
     rifleSound.recharge(cooldown / 1000 - 0.08);
     if (boss) {
       const lens = boss.index >= 0 && boss.index < MINION;

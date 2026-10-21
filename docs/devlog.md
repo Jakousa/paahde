@@ -1795,3 +1795,17 @@ low over the land (`shared/gas.ts`, scheduled by `server/storm.ts`, client `src/
   things keep the bunker's lights through the tier look (`src/tierLook.ts` copies `lightsNode`).
 - Gaps: the power does nothing yet (no consumer: `windmillSpin` is the only effect of quality); no sounds; the
   head's turn and the rotor are per-client, not synced.
+
+## Gamepad
+
+A standard-mapped pad plays with the usual third-person shooter layout (`src/gamepad.ts`, the table at its top):
+left stick moves, right stick looks, RT fires/uses, LT aims, A jumps, B crouches, X interacts, Y gets on the bike,
+LB/RB step through the hotbar (filled slots and empty hands), L3 sprints (stays on until the stick lets go), R3
+third person, the d-pad zooms the scope (↑/↓), rotates (←) and picks up placed things (→), View is the inventory and
+Menu the Esc menu. The pad doesn't reach into the game: each frame it works out which actions it holds and sends
+synthetic keydown/keyup events with those actions' bound codes (src/bindings.ts), so every `isBound`/`actionHeld`
+reader works unchanged and follows rebinding. The look is its own: `FirstPersonCamera.look` (shared with the mouse;
+squared response, slower while aiming, a boost held at the edge) and `addMouse` for the disassembly's gestures.
+Known gaps: movement is still the eight-way digital bitmask (shared/sim.ts input; analog would need the protocol),
+no invert-Y or sensitivity option, the inventory overlay can't be worked with the pad (View/B close it), and a click
+is needed to capture the mouse first (browsers don't let pad buttons request pointer lock).

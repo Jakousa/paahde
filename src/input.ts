@@ -66,6 +66,11 @@ addEventListener('mousemove', (e) => {
   mdx += e.movementX;
   mdy += e.movementY;
 });
+/** Mouse travel from the gamepad's right stick (src/gamepad.ts), for the same gestures. */
+export function addMouse(dx: number, dy: number) {
+  mdx += dx;
+  mdy += dy;
+}
 export function takeMouse(): [number, number] {
   const r: [number, number] = [mdx, mdy];
   mdx = mdy = 0;

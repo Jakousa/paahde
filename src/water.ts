@@ -17,6 +17,7 @@ import { receiverBoss, type BossKind } from '../shared/bosses.ts';
 import { THROWABLE } from '../shared/throw.ts';
 import { HOTBAR_ACTIONS, isBound, kbd } from './bindings';
 import { tools, useHeld } from './input';
+import { rumble } from './gamepad';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
@@ -224,6 +225,7 @@ export class Survival {
       this.select(this.selected === n ? -1 : n);
     });
     net.onDied = () => {
+      rumble(1, 1, 500);
       this.deadUntil = performance.now() + DOWN_MS;
       this.cancel();
       this.shown = 0;

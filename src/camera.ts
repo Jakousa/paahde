@@ -117,17 +117,23 @@ export class FirstPersonCamera {
     addEventListener('keyup', alt);
     addEventListener('blur', () => (this.freeLook = false));
     addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== dom || tools.spinning) return; // (turning a machine or a piece in the hand with the mouse: the view stays)
-      const s = SENSITIVITY / this.zoomShown; // zoomed in, the same hand movement turns the view less
-      if (this.freeLook && !Number.isFinite(this.rideHeading) && this.zoom <= 1) {
-        this.freeYaw = Math.max(-FREE_YAW_LIMIT, Math.min(FREE_YAW_LIMIT, this.freeYaw - e.movementX * s));
-        this.freePitch = Math.max(-PITCH_LIMIT - this.pitch, Math.min(PITCH_LIMIT - this.pitch, this.freePitch - e.movementY * s));
-        return;
-      }
-      this.yaw -= e.movementX * s;
-      this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - e.movementY * s));
-      if (Number.isFinite(this.rideHeading)) this.limitRide(1);
+      if (document.pointerLockElement !== dom) return;
+      this.look(e.movementX * SENSITIVITY, e.movementY * SENSITIVITY);
     });
+  }
+
+  /** Turn the view by (dx, dy) radians at no zoom, right and down: the mouse, or the gamepad's stick (src/gamepad.ts). */
+  look(dx: number, dy: number) {
+    if (tools.spinning) return; // (turning a machine or a piece in the hand with the mouse: the view stays)
+    const s = 1 / this.zoomShown; // zoomed in, the same hand movement turns the view less
+    if (this.freeLook && !Number.isFinite(this.rideHeading) && this.zoom <= 1) {
+      this.freeYaw = Math.max(-FREE_YAW_LIMIT, Math.min(FREE_YAW_LIMIT, this.freeYaw - dx * s));
+      this.freePitch = Math.max(-PITCH_LIMIT - this.pitch, Math.min(PITCH_LIMIT - this.pitch, this.freePitch - dy * s));
+      return;
+    }
+    this.yaw -= dx * s;
+    this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - dy * s));
+    if (Number.isFinite(this.rideHeading)) this.limitRide(1);
   }
 
   /** Pull yaw/pitch back inside the riding neck limits, all the way (t = 1) or part of it (easing in on mounting). */

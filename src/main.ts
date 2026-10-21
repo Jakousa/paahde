@@ -19,6 +19,7 @@ import { InventoryHud, itemLabel } from './inventory';
 import { addItem, debrisItem, SCRAP } from '../shared/items.ts';
 import { kbd } from './bindings';
 import { readInput, takePickup } from './input';
+import { pollPad } from './gamepad';
 import { LocatorBar } from './locator';
 import { Menu } from './menu';
 import { StatsGraph } from './statsGraph';
@@ -454,6 +455,7 @@ renderer.setAnimationLoop((time) => {
     orbit.yaw = fly.heldYaw;
     orbit.pitch = fly.heldPitch;
   }
+  pollPad(frameDt, orbit, renderer.domElement, net.boxes.bag);
   const input = !net.isReady || fly.active ? 0 : readInput(); // standing still until named
   while (accumulator >= DT) {
     net.tick(input, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
