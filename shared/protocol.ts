@@ -312,7 +312,8 @@ export type ServerMsg =
   // Player `id`'s shield plate (shared/gear.ts) took a killing blow at (x, y, z) and broke; `push` the blow's (m/s),
   // `tier` the plate's (tierOf), `ms` how long its field still keeps them safe (shieldGraceMs). To everyone near: the
   // flash, the crack, the shards, the field.
-  | { t: 'shieldBreak'; id: number; x: number; y: number; z: number; push: [number, number, number]; tier: number; ms: number }
+  // A shield plate took player `id`'s killing blow (server/world.ts shielded); `held`: it holds for more (no break).
+  | { t: 'shieldBreak'; id: number; x: number; y: number; z: number; push: [number, number, number]; tier: number; ms: number; held?: true }
   | { t: 'zap'; by: number; x: number; y: number; z: number; ex: number; ey: number; ez: number; hit: boolean; pistol?: true }
   // Thrown scrap `id` (shared/throw.ts tossAt), item `kind`, thrown by player `by` (their throw `n`), flying from
   // (x, y, z) with velocity (vx, vy, vz) at server time `time`; sent again with `hit` as it bounces off a drone, and

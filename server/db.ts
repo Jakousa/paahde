@@ -118,6 +118,10 @@ export function openDb(path: string) {
   if (!(db.prepare('PRAGMA table_info(items)').all() as { name: string }[]).some((c) => c.name === 'r')) {
     db.exec('ALTER TABLE items ADD COLUMN r INTEGER NOT NULL DEFAULT 0');
   }
+  // v10: killing blows a shield plate has taken since it was last broken (shared/gear.ts shieldSaves).
+  if (!(db.prepare('PRAGMA table_info(items)').all() as { name: string }[]).some((c) => c.name === 'worn')) {
+    db.exec('ALTER TABLE items ADD COLUMN worn INTEGER NOT NULL DEFAULT 0');
+  }
 
   // Small machine sites (shared/crash.ts) whose machine was carried off; they stay empty (taken_at is kept in case
   // they refill some day). The machine itself is an item in the player's bag, given in the same transaction
@@ -174,11 +178,11 @@ export function openDb(path: string) {
       return [];
     }
   };
-  const boxRows = db.prepare('SELECT id, kind, n, slot, parts, r FROM items WHERE owner = ? AND box = ? ORDER BY slot');
+  const boxRows = db.prepare('SELECT id, kind, n, slot, parts, r, worn FROM items WHERE owner = ? AND box = ? ORDER BY slot');
   const clearBox = db.prepare('DELETE FROM items WHERE owner = ? AND box = ?');
-  const insertRow = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot, parts, r) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const insertRow = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot, parts, r, worn) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const insertItem = (it: Item, owner: string, box: string, slot: number) =>
-    insertRow.run(it.id, it.kind, it.n, owner, box, slot, it.parts ? JSON.stringify(it.parts) : null, it.r ? 1 : 0);
+    insertRow.run(it.id, it.kind, it.n, owner, box, slot, it.parts ? JSON.stringify(it.parts) : null, it.r ? 1 : 0, it.worn ?? 0);
   const maxItemId = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM items');
   db.exec('CREATE TABLE IF NOT EXISTS gear_kits (player_id TEXT PRIMARY KEY, given_at INTEGER NOT NULL)');
   const getGearKit = db.prepare('SELECT 1 FROM gear_kits WHERE player_id = ?');
@@ -270,14 +274,18 @@ export function openDb(path: string) {
       dropped_at INTEGER NOT NULL            -- ms since epoch
     );
   `);
+  // v10 (above): a dropped shield plate keeps its wear.
+  if (!(db.prepare('PRAGMA table_info(dropped)').all() as { name: string }[]).some((c) => c.name === 'worn')) {
+    db.exec('ALTER TABLE dropped ADD COLUMN worn INTEGER NOT NULL DEFAULT 0');
+  }
   // v8 (above): dropped scrap too.
   tx(() => {
     const old = OLD_SCRAP.map((k) => `'${k}'`).join(', ');
     db.exec(`UPDATE dropped SET kind = '${SCRAP}' WHERE kind IN (${old})`);
     for (const k of OLD_SCRAP) db.prepare('UPDATE dropped SET parts = REPLACE(parts, ?, ?) WHERE parts LIKE ?').run(`"${k}"`, `"${SCRAP}"`, `%"${k}"%`);
   });
-  const allDropped = db.prepare('SELECT id, kind, parts, x, z FROM dropped ORDER BY id');
-  const insertDropped = db.prepare('INSERT INTO dropped (id, kind, parts, x, z, dropped_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const allDropped = db.prepare('SELECT id, kind, parts, x, z, worn FROM dropped ORDER BY id');
+  const insertDropped = db.prepare('INSERT INTO dropped (id, kind, parts, x, z, dropped_at, worn) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const deleteDropped = db.prepare('DELETE FROM dropped WHERE id = ?');
 
   // World loot (server/loot.ts): finds lying at crash sites and caches out in the desert, so a restart keeps what
@@ -362,10 +370,10 @@ export function openDb(path: string) {
     insertPlaced: (kind: string, x: number, y: number, z: number, rot: number, owner: string) =>
       Number(insertPlaced.run(kind, x, y, z, rot, owner, Date.now()).lastInsertRowid),
     deletePlaced: (id: number) => deletePlaced.run(id),
-    loadDropped: () => (allDropped.all() as { id: number; kind: string; parts: string | null; x: number; z: number }[])
+    loadDropped: () => (allDropped.all() as { id: number; kind: string; parts: string | null; x: number; z: number; worn: number }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
-    insertDropped: (id: number, kind: string, parts: (string | null)[] | undefined, x: number, z: number) =>
-      insertDropped.run(id, kind, parts ? JSON.stringify(parts) : null, x, z, Date.now()),
+    insertDropped: (id: number, kind: string, parts: (string | null)[] | undefined, x: number, z: number, worn = 0) =>
+      insertDropped.run(id, kind, parts ? JSON.stringify(parts) : null, x, z, Date.now(), worn),
     deleteDropped: (id: number) => deleteDropped.run(id),
     loadWorldLoot: () => (allWorldLoot.all() as { id: number; kind: string; parts: string | null; x: number; z: number; depth: number; src: 'find' | 'cache'; spawn: string | null }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
@@ -393,7 +401,7 @@ export function openDb(path: string) {
     tx,
     takeScrap: (ix: number, iz: number, i: number, at: number) => insertTaken.run(ix, iz, i, at),
     respawnScrap: (ix: number, iz: number, i: number) => deleteTaken.run(ix, iz, i),
-    loadBox: (owner: string, box: string) => (boxRows.all(owner, box) as { id: number; kind: string; n: number; slot: number; parts: string | null; r: number }[])
+    loadBox: (owner: string, box: string) => (boxRows.all(owner, box) as { id: number; kind: string; n: number; slot: number; parts: string | null; r: number; worn: number }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined, r: r.r === 1 })),
     /** Rewrite whole boxes in one transaction (an item moving between them keeps its id). */
     saveBoxes: (boxes: { owner: string; box: string; slots: Slots }[]) => tx(() => {

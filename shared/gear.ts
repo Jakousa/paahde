@@ -66,8 +66,9 @@ export const GEAR: Record<string, GearSpec> = {
   jammer: { slots: [P('compute'), P('coil'), P('battery')], better: 'how fast it locks on',
     use: TEXT.gearUse.jammer },
   // The shield plate (server/world.ts die): a hull plate over cloth padding, and an emitter (coil, cell) that throws a
-  // field round you as a killing blow lands. It takes that blow and breaks: the cell burns out and the plate cracks.
-  shield: { slots: [P('coil'), P('battery'), SCRAP, CLOTH], equip: 'armor', better: 'how long you stay safe after it breaks',
+  // field round you as a killing blow lands. It takes that blow; its last one (shieldSaves) breaks it: the cell burns
+  // out and the plate cracks.
+  shield: { slots: [P('coil'), P('battery'), SCRAP, CLOTH], equip: 'armor', better: 'how many killing blows it takes',
     use: TEXT.gearUse.shield },
   // The receivers (shared/bosses.ts RECEIVERS): each calls its boss, spending the cell. Tuned by a part from the boss's
   // kin (shared/tables.ts RELIC_DROPS); the worm's by a part from each of the other bosses.
@@ -191,9 +192,11 @@ export const gunCooldown = (base: number, q: number) => base * by(q, 1, 0.4);
 /** The jammer's lock time (ms) at quality q: from its base (shared/jammer.ts JAM_MS) at Scrap parts down to 60% at Space-grade. */
 export const jamMs = (base: number, q: number) => base * by(q, 1, 0.6);
 
+/** The shield plate: how many killing blows it takes before it breaks, by tier (1 Scrap .. 4 Space-grade). */
+export const shieldSaves = (tier: number) => tier + 1;
 /** The shield plate: after it takes a killing blow, nothing else can hurt you for this long (ms), to get away. */
 export const shieldGraceMs = (q: number) => by(q, 1500, 5000);
-/** What breaks when the shield takes a blow: the cell (burnt out) and the scrap plate (cracked); the coil and padding
+/** What breaks when the shield breaks: the cell (burnt out) and the scrap plate (cracked); the coil and padding
  *  stay. Its part slot indices (GEAR.shield). */
 export const SHIELD_BREAKS = [1, 2];
 

@@ -96,7 +96,7 @@ const en = {
     laser_pistol: 'Left mouse fires, right mouse aims.',
     laser_rifle: 'Left mouse fires, right mouse looks through the scope.',
     jammer: 'Hold the mouse button on a drone or jet until it comes down.',
-    shield: 'Takes one killing blow for you, then breaks.',
+    shield: 'Takes killing blows for you, then breaks.',
     receiver: 'Left mouse sends the signal, and the needle points at whatever answers.',
     windmill: 'Put it up on the sand by the base.',
     battery_station: 'Put it down in the bunker.',

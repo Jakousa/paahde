@@ -110,7 +110,8 @@ export const OLD_SCRAP = ['oil_drum', 'rusty_drum', 'gear', 'scrap_frame', 'bent
  * `parts`: the item kind fitted in each of its part slots (shared/gear.ts), null where one is missing.
  * `r`: turned 90° in a grid (its size's w and h swapped).
  */
-export type Item = { id: number; kind: string; n: number; parts?: (string | null)[]; r?: boolean };
+/** `worn`: a shield plate's killing blows taken since it last broke (shared/gear.ts shieldSaves). */
+export type Item = { id: number; kind: string; n: number; parts?: (string | null)[]; r?: boolean; worn?: number };
 export type Slots = (Item | null)[];
 
 /**

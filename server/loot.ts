@@ -116,7 +116,7 @@ export class LootServer {
     if (LAB) {
       // Nothing of the desert's finds and caches: only what players dropped here, and the lab's own tables.
       for (const r of db.loadDropped()) {
-        this.loot.set(r.id, { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), x: r.x, z: r.z, src: 'drop' });
+        this.loot.set(r.id, { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), ...(r.worn ? { worn: r.worn } : {}), x: r.x, z: r.z, src: 'drop' });
         this.nextId = Math.max(this.nextId, r.id + 1);
       }
       for (const r of db.loadWorldLoot()) db.deleteWorldLoot(r.id);
@@ -132,7 +132,7 @@ export class LootServer {
       }
       // Gear whose slots changed since (shared/gear.ts refit); a jammer from before it was gear works, with Scrap parts.
       const parts = r.parts ? (refit(r.kind, r.parts) ?? r.parts) : isGear(r.kind) ? scrapParts(r.kind) : undefined;
-      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, src: 'drop' });
+      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), ...(r.worn ? { worn: r.worn } : {}), x: r.x, z: r.z, src: 'drop' });
       this.nextId = Math.max(this.nextId, r.id + 1);
     }
     // Finds and caches from before the restart, and the ones waiting to come back. Caches buried back when there was
@@ -244,12 +244,12 @@ export class LootServer {
   }
 
   /** An item a player dropped: it lands on the sand just in front of them. Call inside the transaction that takes it out of their box. */
-  drop(s: PlayerState, item: { kind: string; parts?: (string | null)[] }) {
+  drop(s: PlayerState, item: { kind: string; parts?: (string | null)[]; worn?: number }) {
     const a = s.riding ? s.heading : s.facing;
     const x = s.x - Math.sin(a) * DROP_AHEAD + rand(-0.2, 0.2);
     const z = s.z - Math.cos(a) * DROP_AHEAD + rand(-0.2, 0.2);
-    const l: Loot = { id: this.nextId++, kind: item.kind, ...(item.parts ? { parts: [...item.parts] } : {}), x, z, src: 'drop' };
-    this.db.insertDropped(l.id, l.kind, l.parts, x, z);
+    const l: Loot = { id: this.nextId++, kind: item.kind, ...(item.parts ? { parts: [...item.parts] } : {}), ...(item.worn ? { worn: item.worn } : {}), x, z, src: 'drop' };
+    this.db.insertDropped(l.id, l.kind, l.parts, x, z, l.worn);
     this.add(l);
   }
 

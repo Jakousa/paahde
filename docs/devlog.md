@@ -1554,8 +1554,10 @@ drawn by `src/world/shelters.ts`).
   sidearm), omitted when all Scrap. Gear slots in the Tab inventory get the tier's rarity colour too.
 - **Shield plate** (`shield`, new `armor` equipment slot, found at crawler sites and in caches): a torch-cut shard of
   ship hull on canvas padding with a copper-coil emitter and a cell (tools/blender/finds.py `build_shield`, worn on the
-  chest from Spine2, lies on its back as a find). A killing blow that isn't heatstroke (`die` → `shielded`) breaks it
-  instead: the cell burns out and the plate cracks (`SHIELD_BREAKS`: those slots empty, repair at the workbench), a
+  chest from Spine2, lies on its back as a find). A killing blow that isn't heatstroke (`die` → `shielded`) is taken by
+  it instead; it takes `shieldSaves` of them (its tier + 1: 1 Scrap .. 4 Space-grade; `Item.worn` counts them, kept in
+  the DB and on the sand, and starts over when it breaks; `held` in `shieldBreak` until then: field and ring, no shards
+  or crack), and its last one breaks it: the cell burns out and the plate cracks (`SHIELD_BREAKS`: those slots empty, repair at the workbench), a
   crawler's bites come back off the heat meter, and nothing hurts you for `shieldGraceMs` (1.5 s Scrap .. 5 s
   Space-grade). Everyone near gets `shieldBreak`: the emitter's field flashes round you in the lens's tier colour and
   hangs on for the grace, flickering out at the end, hull shards fly, a crack, a glassy ring and a thump (−24.7 LUFS,

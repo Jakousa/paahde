@@ -422,8 +422,9 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   if (lives <= 0) gameOver();
 }
 
-/** A killing blow (not heatstroke) on someone wearing a shield plate: it takes the blow and breaks (shared/gear.ts
- *  SHIELD_BREAKS), and for a moment after nothing else can hurt them (shieldGraceMs). True if they live. */
+/** A killing blow (not heatstroke) on someone wearing a shield plate: it takes the blow, its last one (shared/gear.ts
+ *  shieldSaves) breaking it (SHIELD_BREAKS), and for a moment after nothing else can hurt them (shieldGraceMs). True
+ *  if they live. */
 function shielded(p: Player, push: [number, number, number]): boolean {
   const now = Date.now();
   if (now < p.shieldUntil) return true;
@@ -431,13 +432,13 @@ function shielded(p: Player, push: [number, number, number]): boolean {
   if (!plate) return false;
   const ms = Math.round(shieldGraceMs(quality(plate))), tier = tierOf(plate); // before it breaks
   p.shieldUntil = now + ms;
-  items.breakShield(p.browserId);
+  const broke = items.wearShield(p.browserId);
   sendBox(p, 'equip');
   // A crawler's bites fill the heat meter: the blow is taken, so take them back off.
   p.heat.heat = Math.min(p.heat.heat, HEAT_MAX * 0.6);
   send(p.ws, waterMsg(p.heat));
   const s = p.state;
-  const msg: ServerMsg = { t: 'shieldBreak', id: p.id, x: round4(s.x), y: round4(s.y), z: round4(s.z), push, tier, ms };
+  const msg: ServerMsg = { t: 'shieldBreak', id: p.id, x: round4(s.x), y: round4(s.y), z: round4(s.z), push, tier, ms, ...(broke ? {} : { held: true as const }) };
   for (const o of players.values()) if (Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, msg);
   return true;
 }

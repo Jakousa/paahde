@@ -12,6 +12,8 @@ export type Loot = {
   kind: string;
   /** Gear: the parts it comes with (shared/gear.ts), null where one is missing. */
   parts?: (string | null)[];
+  /** A dropped shield plate's wear (shared/items.ts Item). */
+  worn?: number;
   x: number;
   z: number;
   src: 'find' | 'cache' | 'drop';
