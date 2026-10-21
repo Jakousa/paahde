@@ -15,7 +15,8 @@ import { heightAt } from '../shared/terrain.ts';
 import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, slopeAt } from '../shared/sim.ts';
 import { CROUCH_CYCLE } from './models/crouchGait';
 import { EYE_HEIGHT } from '../shared/dig.ts'; // the dig and pickup rays start here too
-import { sandHidden } from '../shared/shelters.ts';
+import { sandHidden, shelterSolid } from '../shared/shelters.ts';
+import { baseSolid } from '../shared/base.ts';
 const SENSITIVITY = 0.0022;
 const PITCH_LIMIT = (85 * Math.PI) / 180;
 // Riding in first person the rider's body is drawn (headless) around the eye: a neck's range keeps the view out of it.
@@ -40,6 +41,7 @@ const OTS_BOOM = 3.0; // third person: the camera sits behind the shoulder (m)
 const OTS_SIDE = 0.55; // ...and over it, to the right of the aim line (m)
 const OTS_MEET = 3; // ...turned in so its centre ray crosses the eye's look ray this far ahead (m): pickups' reach
 const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
+const WALL_CLEARANCE = 0.2; // ...and this far from the bunkers' walls, floors and ceilings (m)
 /** Speed slide: the view rolls this far (rad) towards the trailing left hand. */
 const SLIDE_ROLL = 0.07;
 const SPRING_DT = 1 / 120; // the landing dip's longest step (s): a slow frame taken whole would make it swing ever harder
@@ -248,25 +250,27 @@ export class FirstPersonCamera {
     // Never look out from under a dune (in the base's entrance and bunker the sand isn't in the way).
     if (!sandHidden(x, z, p.y)) y = Math.max(y, heightAt(x, z) + 0.3);
 
-    // Third person: back off along the view ray, shortening the boom where it would dip under the sand.
+    // Third person: back off along the view ray (and over the shoulder), shortening both together where the camera
+    // would go into the sand or through a bunker's wall.
     const pitch = this.pitch + this.freePitch + this.dip * 0.12 + shakeP;
     const cp = Math.cos(pitch), vs = Math.sin(viewYaw), vc = Math.cos(viewYaw);
     const bx = vs * cp, by = -Math.sin(pitch), bz = vc * cp; // unit vector pointing behind the view
     const third = (this.thirdPerson && !this.aimIn) || this.down;
     const ots = this.thirdPerson && !this.aimIn && !this.down;
-    const full = ots ? OTS_BOOM : BOOM;
-    let reach = third ? full : 0;
-    for (let i = 1; i <= 12 && reach > 0; i++) {
-      const d = (full * i) / 12;
-      if (d > reach) break;
-      const px = x + bx * d, pz = z + bz * d;
-      if (y + by * d < heightAt(px, pz) + BOOM_CLEARANCE) reach = Math.max(0, d - full / 12);
+    const full = ots ? OTS_BOOM : BOOM, side = ots ? OTS_SIDE : 0;
+    let room = third ? 1 : 0;
+    for (let i = 1; i <= 12 && room > 0; i++) {
+      const f = i / 12;
+      if (f > room) break;
+      if (blocked(x + (bx * full + vc * side) * f, y + by * full * f, z + (bz * full - vs * side) * f)) room = f - 1 / 12;
     }
-    // Ease out smoothly, but snap in when terrain cuts the boom short.
+    const reach = full * room;
+    // Ease out smoothly, but snap in when something cuts the boom short.
     this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (this.aimIn ? 16 : ots ? 9 : 8)));
     if (this.boom < 0.01) this.boom = 0;
     this.eye.set(x, y, z);
-    this.shoulder += ((ots ? OTS_SIDE : 0) - this.shoulder) * (1 - Math.exp(-dt * 9));
+    const shoulder = side * room;
+    this.shoulder = shoulder < this.shoulder ? shoulder : this.shoulder + (shoulder - this.shoulder) * (1 - Math.exp(-dt * 9));
     if (this.shoulder < 0.005) this.shoulder = 0;
     this.camera.position.set(x + bx * this.boom + vc * this.shoulder, y + by * this.boom, z + bz * this.boom - vs * this.shoulder);
     // Turned in towards the point OTS_MEET ahead on the eye's look ray, so the crosshair is on what F picks up there.
@@ -293,3 +297,16 @@ export class FirstPersonCamera {
     this.camera.updateProjectionMatrix();
   }
 }
+
+/** The camera can't be at world (x, y, z): within WALL_CLEARANCE of a bunker's or shelter's solid, or too near the sand. */
+function blocked(x: number, y: number, z: number): boolean {
+  const c = WALL_CLEARANCE;
+  for (const [dx, dy, dz] of PROBE) {
+    const px = x + dx * c, py = y + dy * c, pz = z + dz * c;
+    const solid = baseSolid(px, py, pz) ?? shelterSolid(px, py, pz);
+    if (solid ?? y < heightAt(px, pz) + BOOM_CLEARANCE) return true;
+  }
+  return false;
+}
+/** The point and six around it (unit offsets). */
+const PROBE = [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
