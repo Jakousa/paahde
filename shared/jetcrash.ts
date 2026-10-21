@@ -3,7 +3,7 @@
 // (server/world.ts). The server keeps the list (server/jetcrash.ts, saved in the world's database) and sends it to everyone;
 // the engines are machine sites like any other (shared/crash.ts, ids "jet:<n>").
 import type { CrashSite } from './crash.ts';
-import { ENGINES, PIECES_OF, qRot, type Fate, type JetKind, type Q4 } from './jetbreak.ts';
+import { ENGINES_OF, PIECES_OF, qRot, type Fate, type JetKind, type Q4 } from './jetbreak.ts';
 
 export interface JetCrash {
   id: number;
@@ -16,7 +16,7 @@ export interface JetCrash {
   z: number;
   /** Where each piece (shared/jetbreak.ts PIECES_OF[kind], in order) lies: x, y, z and its turn as a quaternion x, y, z, w. */
   pieces: number[][];
-  /** What became of each engine (shared/jetbreak.ts ENGINES: left, right): on its wing, torn off whole (a machine to take apart where it lies) or wrecked. */
+  /** What became of each engine (shared/jetbreak.ts ENGINES_OF[kind]): on its wing or in its bay, torn off whole (a machine to take apart where it lies) or wrecked. */
   fates: Fate[];
   /** Seeds what is in the engines. */
   seed: number;
@@ -50,7 +50,7 @@ function siteOf(c: JetCrash, k: number): CrashSite | null {
   const id = `jet:${c.id}:${k}`;
   let s = sites.get(id);
   if (!s) {
-    const w = c.pieces[PIECES_OF[c.kind].findIndex((p) => p.id === ENGINES[k])];
+    const w = c.pieces[PIECES_OF[c.kind].findIndex((p) => p.id === ENGINES_OF[c.kind][k])];
     const fwd = qRot([w[3], w[4], w[5], w[6]], [0, 0, 1]);
     // (worked in place, never spent: like the lab's machines)
     sites.set(id, (s = { id, wreck: -1, index: k, level: 2, lab: true, x: w[0], z: w[2], yaw: Math.atan2(fwd[0], fwd[2]), kind: 'jet_engine', seed: (c.seed + k * 7919) >>> 0 }));
@@ -61,7 +61,7 @@ function siteOf(c: JetCrash, k: number): CrashSite | null {
 /** Every torn-off engine that lies whole, as a machine site. */
 export function jetSites(): CrashSite[] {
   const out: CrashSite[] = [];
-  for (const c of crashes.values()) for (let k = 0; k < ENGINES.length; k++) {
+  for (const c of crashes.values()) for (let k = 0; k < ENGINES_OF[c.kind].length; k++) {
     const s = siteOf(c, k);
     if (s) out.push(s);
   }
@@ -92,7 +92,7 @@ function capsOf(c: JetCrash): Cap[] {
   PIECES_OF[c.kind].forEach((d, i) => {
     const w = c.pieces[i];
     // (an engine that lies whole is a machine of its own, with its own hitboxes)
-    const ei = ENGINES.indexOf(d.id);
+    const ei = ENGINES_OF[c.kind].indexOf(d.id);
     if (!d.hit || !w || (ei >= 0 && c.fates[ei] === 'machine')) return;
     const q: Q4 = [w[3], w[4], w[5], w[6]];
     // the piece's own up: a slab lying flat is wide and thin, on its side narrow and tall

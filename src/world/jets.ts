@@ -1,5 +1,5 @@
-// Fixed-wing drones (shared/jets.ts), of two kinds (LOOKS): a big twin-engined unmanned plane with the turbofan's own engines under its wings
-// (public/models/dronejet.glb, made by tools/blender/machines/dronejet.py) and an unmanned stealth flying wing with them in pods on its back
+// Fixed-wing drones (shared/jets.ts), of two kinds (LOOKS): an MQ-9-like recon drone with the turbofan in its rear fuselage
+// (public/models/dronejet.glb, made by tools/blender/machines/dronejet.py) and an unmanned stealth flying wing with two in pods on its back
 // (public/models/jet.glb, tools/blender/machines/plane.py); each a primitive stand-in until its model has loaded.
 // Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and
 // the server clock, rolled into its turns. Shot, it trails smoke (more with each hit); brought down it dives in
@@ -10,35 +10,86 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { JET_NOSE, JET_SPAN, jetAt, jetImpact, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { jetCrashList } from '../../shared/jetcrash.ts';
-import { breakup, BREAK_DT, ENGINES, PIECES_OF, STATE_W, type Breakup, type Fate, type JetKind } from '../../shared/jetbreak.ts';
+import { breakup, BREAK_DT, ENGINES_OF, PIECES_OF, STATE_W, type Breakup, type Fate, type JetKind } from '../../shared/jetbreak.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { tyreDust } from '../tyreDust';
 import { mergePart } from './bossParts';
 import { zaps } from './zaps';
+
+/** The span both models are made for (m). */
+const MODEL_SPAN = 32;
 
 /** Hidden past this distance (m) from the camera. */
 const SHOW_R = 5000;
 /** The wrecks on the sand are drawn within this far (m). */
 const WRECK_SHOW_R = 600;
 
-/** The drone's stand-in built from primitives, shown until dronejet.glb has loaded (and if it fails): the fuselage, the straight wing and tail
- *  planes as slabs, the fin and the two engines under the wings, at full size. */
-function dronePrimitive(): THREE.Group {
-  const hull = new THREE.MeshStandardNodeMaterial({ color: 0x3a332d, roughness: 0.55, metalness: 0.5 });
-  const pale = new THREE.MeshStandardNodeMaterial({ color: 0xbdb8a8, roughness: 0.7, metalness: 0.15 });
-  const g = new THREE.Group();
-  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    g.add(m);
-    return m;
-  };
-  add(new THREE.CapsuleGeometry(1.6, 26, 6, 16), hull, 0, 0, 0).rotation.x = Math.PI / 2;
-  add(new THREE.BoxGeometry(32, 0.4, 3.8), hull, 0, -0.6, 0.6);
-  add(new THREE.BoxGeometry(11, 0.25, 2.4), hull, 0, 1.0, -12.5);
-  add(new THREE.BoxGeometry(0.3, 4.2, 3.2), hull, 0, 2.8, -12.8);
-  for (const side of [1, -1]) add(new THREE.CylinderGeometry(0.95, 0.75, 2.6, 16), pale, side * 5.6, -2.05, 1.6).rotation.x = Math.PI / 2;
+/** A flat trapezoid in the XZ plane (thickness `t`, along -Y..+Y), from x = 0 (root chord `root`, its leading edge
+ *  at z = 0) to x = `len` (tip chord `tip`, leading edge swept back `sweep`). */
+function panel(len: number, root: number, tip: number, sweep: number, t: number) {
+  const s = new THREE.Shape();
+  s.moveTo(0, 0);
+  s.lineTo(len, -sweep);
+  s.lineTo(len, -sweep - tip);
+  s.lineTo(0, -root);
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: t, bevelEnabled: false });
+  g.translate(0, 0, -t / 2);
+  g.rotateX(Math.PI / 2); // shape y → -z: the trailing edge points backwards (-Z), forward is +Z
   return g;
+}
+
+/** The drone's stand-in built from primitives, shown until dronejet.glb has loaded (and if it fails): the fuselage with its sensor dome, the
+ *  intake hump into the nozzle, the long straight wings and the V tail, modelled at 18 m span and scaled up to the model's. */
+function dronePrimitive(): THREE.Group {
+  // Double sided: the left wing and fin are the right ones mirrored (negative scale).
+  const hull = new THREE.MeshStandardNodeMaterial({ color: 0x3a332d, roughness: 0.55, metalness: 0.5, side: THREE.DoubleSide });
+  const dark = new THREE.MeshStandardNodeMaterial({ color: 0x15110f, roughness: 0.4, metalness: 0.7, side: THREE.DoubleSide });
+  const dome = new THREE.MeshStandardNodeMaterial({ color: 0x0c0b0b, roughness: 0.15, metalness: 0.2 });
+  const g = new THREE.Group();
+
+  // Fuselage: a lathe along +Z, nose at +5.6, tail at -5.4, thickest just behind the nose.
+  const prof: [number, number][] = [[0, -5.4], [0.32, -5.3], [0.42, -4.6], [0.55, -2], [0.68, 0.8], [0.72, 2.6], [0.62, 4.2], [0.42, 5.1], [0.12, 5.55], [0, 5.6]];
+  const body = new THREE.LatheGeometry(prof.map(([r, z]) => new THREE.Vector2(r, z)), 20);
+  body.rotateX(Math.PI / 2);
+  g.add(new THREE.Mesh(body, hull));
+  // A sensor dome under the nose.
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(0.32, 14, 10), dome);
+  ball.position.set(0, -0.6, 3.9);
+  g.add(ball);
+  // Intake hump over the back, ending in the nozzle at the tail.
+  const hump = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.48, 4.6, 16), hull);
+  hump.rotation.x = Math.PI / 2;
+  hump.scale.set(1, 1, 0.7);
+  hump.position.set(0, 0.58, -2.4);
+  g.add(hump);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.07, 8, 18), dark);
+  lip.position.set(0, 0.58, -0.1);
+  lip.scale.set(1, 0.7, 1);
+  g.add(lip);
+  const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 1.1, 16, 1, true), dark);
+  nozzle.rotation.x = Math.PI / 2;
+  nozzle.position.set(0, 0.5, -5.1);
+  g.add(nozzle);
+
+  // Wings: straight, long and thin, a little dihedral.
+  for (const side of [1, -1]) {
+    const w = new THREE.Mesh(panel(8.6, 1.9, 0.75, 0.35, 0.16), hull);
+    w.position.set(side * 0.4, 0.15, 0.9);
+    w.scale.x = side;
+    w.rotation.z = side * 0.04;
+    g.add(w);
+    // V tail: two fins canted 40° out from vertical.
+    const f = new THREE.Mesh(panel(2.4, 1.3, 0.6, 0.6, 0.1), hull);
+    f.position.set(0, 0.2, -4.0);
+    f.rotation.z = side * (Math.PI / 2 - 0.7);
+    f.scale.x = side;
+    g.add(f);
+  }
+  g.scale.setScalar(MODEL_SPAN / 18);
+  const out = new THREE.Group();
+  out.add(g);
+  return out;
 }
 
 /** The flying wing's stand-in built from primitives, shown until jet.glb has loaded (and if it fails): its outline as a slab, the centre body's
@@ -68,8 +119,6 @@ function wingPrimitive(): THREE.Group {
   return g;
 }
 
-/** The span both models are made for (m). */
-const MODEL_SPAN = 32;
 
 /** One kind of jet as drawn. */
 type Look = {
@@ -90,8 +139,8 @@ const look = (file: string, primitive: () => THREE.Group, boxes: [number, number
   tail: new THREE.Vector3(...tail), model: null, pending: new Set(), proto: null,
 });
 const LOOKS: Record<JetKind, Look> = {
-  // boxes (half x, y, z, centre x, y, z): the fuselage, the wings
-  drone: look('./models/dronejet.glb', dronePrimitive, [[1.9, 2.0, 15.4, 0, 0, 0], [16.5, 0.9, 3.8, 0, 0.4, -0.4]], [-5.6, -2.05, 0.2]),
+  // boxes (half x, y, z, centre x, y, z): the fuselage, the wings, the V tail
+  drone: look('./models/dronejet.glb', dronePrimitive, [[1.4, 1.6, 10.0, 0, 0.36, 0], [16.4, 0.9, 2.0, 0, 0.27, 0.18], [3.9, 1.8, 1.4, 0, 2.3, -7.9]], [0, 0.89, -10.31]),
   // the centre body, the inner wing, the outer wing (the swept part, about its middle chord), the engine pods
   wing: look('./models/jet.glb', wingPrimitive, [[3.0, 1.5, 8.0, 0, 0.25, 0.5], [9.0, 0.6, 4.6, 0, 0.1, -1.4], [16.0, 0.4, 1.8, 0, 0, -2.7], [5.3, 1.0, 1.5, 0, 1.88, -2.6]], [-4.3, 1.88, -4.05]),
 };
@@ -193,7 +242,7 @@ class Debris {
   rest(pieces: number[][], fates: Fate[]) {
     this.holders.forEach((h, i) => {
       const w = pieces[i];
-      const ei = ENGINES.indexOf(PIECES_OF[this.kind][i].id);
+      const ei = ENGINES_OF[this.kind].indexOf(PIECES_OF[this.kind][i].id);
       if (ei >= 0) {
         this.wreck(i, fates[ei] === 'wreck');
         h.userData.machine = fates[ei] === 'machine';
@@ -210,7 +259,7 @@ class Debris {
     const bk = this.bk!;
     const k = Math.min(bk.steps - 1, Math.max(0, t / BREAK_DT)), i0 = Math.floor(k), i1 = Math.min(bk.steps - 1, i0 + 1), f = k - i0;
     this.holders.forEach((h, i) => {
-      const ei = ENGINES.indexOf(PIECES_OF[this.kind][i].id);
+      const ei = ENGINES_OF[this.kind].indexOf(PIECES_OF[this.kind][i].id);
       if (ei >= 0) this.wreck(i, bk.fates[ei] === 'wreck' && t >= bk.wrecked[ei]);
       const st = bk.states[i], a = i0 * STATE_W, b = i1 * STATE_W;
       h.position.set(st[a] + (st[b] - st[a]) * f, st[a + 1] + (st[b + 1] - st[a + 1]) * f, st[a + 2] + (st[b + 2] - st[a + 2]) * f);

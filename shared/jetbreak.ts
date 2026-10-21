@@ -6,9 +6,9 @@ import { DRONE_JET_PIECES } from './dronejetpieces.ts';
 import { JET_PIECES, type JetPieceDef } from './jetpieces.ts';
 import { baseHeight } from './terrain.ts';
 
-/** The two jets: the fixed-wing drone, a twin-engined unmanned plane (tools/blender/machines/dronejet.py -> public/models/dronejet.glb), and the
- *  stealth flying wing (tools/blender/machines/plane.py -> public/models/jet.glb). Both carry the turbofan's engines (piece ids ENGINES, each on
- *  its `parent` wing piece) and have a `front` body piece. */
+/** The two jets: the fixed-wing drone, an MQ-9-like recon plane with one engine in its rear fuselage (tools/blender/machines/dronejet.py ->
+ *  public/models/dronejet.glb), and the stealth flying wing with two in pods on its back (tools/blender/machines/plane.py -> public/models/jet.glb).
+ *  Their engines are the turbofan's (piece ids ENGINES_OF, each on its `parent` piece); both have a `front` body piece. */
 export type JetKind = 'drone' | 'wing';
 /** The pieces each breaks into. */
 export const PIECES_OF: Record<JetKind, JetPieceDef[]> = { drone: DRONE_JET_PIECES, wing: JET_PIECES };
@@ -85,13 +85,13 @@ export interface BreakEvent {
 
 /** What became of an engine: still on its wing ('on'), torn off and lying whole (a machine to take apart) or wrecked in the landing. */
 export type Fate = 'on' | 'machine' | 'wreck';
-/** The engines' pieces, left then right (shared/jetpieces.ts ids), the odds each tears off the wing and, if it does, is wrecked in the landing. */
-export const ENGINES = ['engineL', 'engineR'];
+/** Each kind's engines' pieces (the wing's left then right), the odds each tears off and, if it does, is wrecked in the landing. */
+export const ENGINES_OF: Record<JetKind, string[]> = { drone: ['engine'], wing: ['engineL', 'engineR'] };
 export const ENGINE_OFF = 0.8;
 export const ENGINE_WRECKED = 0.3;
 
 export interface Breakup {
-  /** What became of each engine (ENGINES order) and, for a wrecked one, when (s after the impact) it was wrecked: from then on its piece is the husk. */
+  /** What became of each engine (ENGINES_OF[kind] order) and, for a wrecked one, when (s after the impact) it was wrecked: from then on its piece is the husk. */
   fates: Fate[];
   wrecked: number[];
   /** Per piece (in PIECES_OF[kind] order), per step: x, y, z, qx, qy, qz, qw, flags (1: on the sand, 2: moving fast). */
@@ -128,7 +128,7 @@ function rng(seed: number) {
 }
 
 export function breakup(im: Impact, seed: number, kind: JetKind): Breakup {
-  const PIECES = PIECES_OF[kind];
+  const PIECES = PIECES_OF[kind], ENGINES = ENGINES_OF[kind];
   const rand = rng(seed * 7919 + 13);
   const qPlane = planeQuat(im.yaw, im.pitch, im.bank);
   const steps = Math.round(BREAK_S / BREAK_DT);

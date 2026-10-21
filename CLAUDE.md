@@ -84,7 +84,7 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   `server/colossus.ts` (server feet, footprint craters, big stomp, fall furrow), view `src/world/colossus.ts` (leg IK,
   death topple), `src/colossusSound.ts`, model `tools/blender/colossus.py`
 - `shared/jets.ts` — fixed-wing drones: high fast flyovers (straight or big circles), day and night; 3 rifle hits and it glides down; scheduled by
-  `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts` (`jets`). Two kinds (`JetKind`, shared/jetbreak.ts): the fixed-wing drone (twin-engined plane,
+  `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts` (`jets`). Two kinds (`JetKind`, shared/jetbreak.ts): the fixed-wing drone (MQ-9-like, one engine in its rear fuselage,
   `tools/blender/machines/dronejet.py` -> `dronejet.glb` + `shared/dronejetpieces.ts`) and the stealth flying wing (`tools/blender/machines/plane.py` -> `jet.glb` +
   `shared/jetpieces.ts`); the wing's odds grow with the distance from the base, 0 to 80% at 10 km (`WING_ODDS`, server/jets.ts). Down, it comes apart on impact (`shared/jetbreak.ts`: each piece (`PIECES_OF[kind]`) flies, tumbles, bounces and settles on the sand, splashing it; deterministic,
   so the server and every client run the same), and when they lie still a permanent crash site is made (`shared/jetcrash.ts`, `server/jetcrash.ts`, in the world's DB, pieces solid via

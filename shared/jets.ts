@@ -9,7 +9,7 @@
 // (shot or jammed) the server adds `down`: from where it was then it dives along its heading (jetDive) until its nose
 // meets the sand, and the wreck stays there nose in, tail up.
 //
-// Two kinds fly (shared/jetbreak.ts JetKind): the fixed-wing drone, a twin-engined plane, near home, and further out more and more often the
+// Two kinds fly (shared/jetbreak.ts JetKind): the fixed-wing drone, an MQ-9-like recon plane, near home, and further out more and more often the
 // stealth flying wing (server/jets.ts WING_ODDS).
 
 import { baseHeight } from './terrain.ts';
@@ -57,7 +57,7 @@ const ROLL_RAMP = 2.5;
 /** The integration step (s): the same steps on both sides, so they agree. */
 export const DIVE_STEP = 0.05;
 /** Nose ahead of the centre (m): the drone's nose cone, the apex of the flying wing. */
-export const JET_NOSE: Record<JetKind, number> = { drone: 15, wing: 8.5 };
+export const JET_NOSE: Record<JetKind, number> = { drone: 10, wing: 8.5 };
 export type Dive = { fwd: number; drop: number; pitch: number; roll: number; v: number };
 const _dv: Dive = { fwd: 0, drop: 0, pitch: 0, roll: 0, v: 0 };
 /** How far along its heading (m) and down (m) a downed jet is `s` s on, its pitch (rad, nose up) and roll, and speed. */
@@ -83,7 +83,7 @@ export function jetDive(speed: number, s: number, soft: boolean, out: Dive = _dv
  *  crash site (shared/jetcrash.ts), which stays, WRECK_MS after it hit. */
 export const WRECK_MS = BREAK_S * 1000 + 2_000;
 
-/** Wingspan (m): a searchlight drone is about 2. Both planes are modelled at this size (tools/blender/machines/dronejet.py, 30 m long;
+/** Wingspan (m): a searchlight drone is about 2. Both planes are modelled at this size (tools/blender/machines/dronejet.py, 20 m long;
  *  plane.py, a flying wing 16 m nose to tail). */
 export const JET_SPAN = 32;
 /** Server hit test: the shot must pass this close (m) to its centre (it's JET_SPAN wide). */
