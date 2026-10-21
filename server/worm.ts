@@ -13,10 +13,9 @@
 // anyway. A new prey it stalks: deep and quiet (no wake, no furrow, no arc), straight at them, to come up under them.
 import { BASE } from '../shared/base.ts';
 import { crowd, scaled } from './bossCrowd.ts';
-import { rockHeight } from '../shared/rocks.ts';
 import { BLAST_R, flightTime, LEAD, SCATTER, type MissilePath } from '../shared/missiles.ts';
 import { blastPush } from '../shared/ragdoll.ts';
-import { heightAt, sandOverRock } from '../shared/terrain.ts';
+import { heightAt, rockTop, sandOverRock } from '../shared/terrain.ts';
 import {
   ACCEL, GRAVITY, HEAD_R, HUNT_SPEED, MODE_AIR, MODE_DIVE, MODE_HUNT, MODE_LUNGE, MODE_RISE, MODE_ROAM, NOTICE_R, RADIUS, RISE_SPEED, RISE_TURN,
   ROAM_SPEED, SEG_LEN, SEGS, segScale, TELL, TURN,
@@ -105,7 +104,7 @@ type Worm = {
 };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
-const inRock = (x: number, y: number, z: number) => y < rockHeight(x, z) + 1.5;
+const inRock = (x: number, y: number, z: number) => y < rockTop(x, z) + 1.5;
 
 function newWaypoint(b: Boss, w: Worm, players: BossPlayer[], far = false) {
   for (let i = 0; i < 12; i++) {

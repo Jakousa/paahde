@@ -11,6 +11,7 @@
 import * as THREE from 'three/webgpu';
 import type { Node } from 'three/webgpu';
 import { cameraPosition, cross, dot, float, instancedBufferAttribute, length, max, mix, normalize, pow, saturate, smoothstep, uv, vec3 } from 'three/tsl';
+import { blend } from '../shared/biomes.ts';
 import { edits, heightAt, normalAt } from '../shared/terrain.ts';
 import { DriftSheet } from './world/driftSheet.ts';
 import { hazeDensity, nightLevel, sunColor, sunDirection } from './world/env.ts';
@@ -113,9 +114,10 @@ export class BlownSand {
   /** Per render frame. `focus` is the local player's feet. */
   update(dt: number, focus: { x: number; y: number; z: number }) {
     if (dt <= 0) return;
-    // Airborne dust thickens the haze in strong wind.
+    // Airborne dust thickens the haze in strong wind. Some biomes have clearer air (shared/biomes.ts `haze`): in a
+    // canyon there are no dunes to blow from, and the far rim, kilometres off, must show for its size to tell.
     const storm = wind.storm;
-    hazeDensity.value = this.baseHaze * (1 + 1.5 * storm * storm);
+    hazeDensity.value = this.baseHaze * (1 + 1.5 * storm * storm) * blend(focus.x, focus.z, (b) => b.haze, 1);
 
     // Saltation is only possible somewhere if the strongest gust on the most exposed crest can do it.
     if (ustarFrom10(wind.u10 * PEAK_LOCAL) > USTAR_T) this.spawnGrains(dt, focus);

@@ -15,7 +15,9 @@
 
 import { baseSolid, LAB_FLOOR_Y, nearBunker, overBase, overPlaced, withPad } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
-import { rockHeight } from './rocks.ts';
+import { ss, vnoise } from './noise.ts';
+import { canyonAt, canyonOut } from './canyons.ts';
+import { canyonRockHeight, rockHeight } from './rocks.ts';
 import { LAB } from './world.ts';
 import { nearShelter, overShelter, shelterSolid, withShelterPad } from './shelters.ts';
 export { WIND, WORLD_SEED } from './dunes.ts';
@@ -31,18 +33,59 @@ export const EDIT_CELL = 0.5;
 /** Edit vertices per chunk side; chunks are the unit of storage, sync and mesh invalidation. */
 export const EDIT_CHUNK = 32;
 
-/** Procedural dunes and rocks (shared/rocks.ts) before player edits, flattened into a pad around the home
- *  base (shared/base.ts) and the shelters (shared/shelters.ts). */
-export function baseHeight(x: number, z: number): number {
-  if (LAB) return LAB_FLOOR_Y; // the dev test lab (shared/lab.ts): one flat floor, same on client and server
-  return withShelterPad(x, z, withPad(x, z, Math.max(duneHeight(x, z, WORLD_SEED), rockHeight(x, z))));
+/** The ground before player edits and pads, in its two layers: `sand` (its top) and `rock` (its top, -Infinity
+ *  with no rock), the surface being the higher. Dunes and rocks (shared/rocks.ts), then the canyons
+ *  (shared/canyons.ts): their tableland adds rock, their gorge cuts everything above its walls to bare rock and
+ *  leaves only its wash's sand on the floor. Written by ground(). */
+const layers = { sand: 0, rock: -Infinity };
+function ground(x: number, z: number) {
+  let sand = duneHeight(x, z, WORLD_SEED), rock = rockHeight(x, z);
+  if (canyonAt(x, z)) {
+    if (canyonOut.plateau > rock) {
+      rock = canyonOut.plateau;
+      // On the tableland: drifts of sand sheet, in soft-edged patches, thinning to bare rock towards its edges. (The
+      // dunes under it poked their crests through it, a wavy sawtooth of sand; where they rise well over it, at its
+      // foot, they are the dunes again.)
+      const n = vnoise(x * (1 / 160), z * (1 / 160), WORLD_SEED + 31) * 0.7 + vnoise(x * (1 / 45), z * (1 / 45), WORLD_SEED + 32) * 0.3;
+      const sheet = rock - 0.5 + Math.max(0, (n - 0.42) * 16) * (1 - canyonOut.bare);
+      const w = ss((sand - rock - 4) * (1 / 6));
+      sand = sheet + (sand - sheet) * w;
+    }
+    const top = Math.max(sand, rock);
+    // (Rounded where the wall meets the top, a smooth min over a few metres: a sharp brink read as a comb.)
+    const k = 6, g = Math.max(0, k - Math.abs(top - canyonOut.cut)), cut = canyonOut.cut - g * g / (4 * k);
+    if (cut < top) {
+      rock = cut;
+      sand = canyonOut.wash === Infinity ? -Infinity : Math.min(canyonOut.wash, top); // (up the walls: bare rock)
+      // Pillars, buttes and boulders standing on its floor (shared/rocks.ts).
+      const fr = canyonRockHeight(x, z);
+      if (fr > rock) rock = fr;
+    }
+  }
+  layers.sand = sand;
+  layers.rock = rock;
 }
 
-/** How far the dunes would have to be dug to reach rock at (x, z), m: 0 on bare rock, Infinity with no
+/** Procedural dunes, rocks and canyons before player edits, flattened into a pad around the home base
+ *  (shared/base.ts) and the shelters (shared/shelters.ts). */
+export function baseHeight(x: number, z: number): number {
+  if (LAB) return LAB_FLOOR_Y; // the dev test lab (shared/lab.ts): one flat floor, same on client and server
+  ground(x, z);
+  return withShelterPad(x, z, withPad(x, z, Math.max(layers.sand, layers.rock)));
+}
+
+/** Height of the rock at (x, z) (the rocks, a canyon's tableland and walls), or -Infinity where there is none. */
+export function rockTop(x: number, z: number): number {
+  if (LAB) return -Infinity;
+  ground(x, z);
+  return layers.rock;
+}
+
+/** How far the sand would have to be dug to reach rock at (x, z), m: 0 on bare rock, Infinity with no
  *  rock under the sand. Rocks avoid the base, so the pad never matters here. */
 export function sandOverRock(x: number, z: number): number {
-  const r = rockHeight(x, z);
-  return r === -Infinity ? Infinity : Math.max(0, duneHeight(x, z, WORLD_SEED) - r);
+  ground(x, z);
+  return layers.rock === -Infinity ? Infinity : Math.max(0, layers.sand - layers.rock);
 }
 
 /** True where bare rock is the ground (no dunes or piled sand over it): hard footing, no digging. */

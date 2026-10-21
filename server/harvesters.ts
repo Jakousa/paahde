@@ -16,7 +16,7 @@ import { rocksNear } from '../shared/rocks.ts';
 import { overBase } from '../shared/base.ts';
 import { nearShelter, indoors } from '../shared/shelters.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
-import { mudflat } from '../shared/biomes.ts';
+import { biome } from '../shared/biomes.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { seized, type Storm } from '../shared/storm.ts';
 
@@ -70,7 +70,7 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** Clear ground for its footprint at (x, z): out on a mud flat, not too steep, away from what it mustn't crush. */
 function clear(x: number, z: number): boolean {
-  if (mudflat(x, z) < MUD_ROAM || overBase(x, z, 140) || nearShelter(x, z, 45) || rocksNear(x, z, 16)) return false;
+  if (biome('mudflat', x, z) < MUD_ROAM || overBase(x, z, 140) || nearShelter(x, z, 45) || rocksNear(x, z, 16)) return false;
   for (const s of crashSitesNear(x, z, 260)) if (Math.hypot(s.x - x, s.z - z) < s.radius + 30) return false;
   const dx = baseHeight(x + 4, z) - baseHeight(x - 4, z), dz = baseHeight(x, z + 4) - baseHeight(x, z - 4);
   return Math.hypot(dx, dz) < SLOPE;
@@ -148,7 +148,7 @@ export class HarvesterServer {
     for (let i = 0; i < tries; i++) {
       const a = rand(-Math.PI, Math.PI), d = soon ? 60 + (i / tries) * DEBUG_R : rand(RISE_MIN, RISE_MAX);
       const px = x + Math.sin(a) * d, pz = z + Math.cos(a) * d;
-      if (mudflat(px, pz) < MUD_RISE || !clear(px, pz)) continue;
+      if (biome('mudflat', px, pz) < MUD_RISE || !clear(px, pz)) continue;
       const pts = wander(px, pz, rand(-Math.PI, Math.PI), ROUTE_LEN);
       if (routeLength(pts) < ROUTE_MIN) continue;
       const id = this.nextId++, start = Math.round(now);

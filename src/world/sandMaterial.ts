@@ -11,7 +11,8 @@
 //   - a smooth, paler crest band (per-vertex `crest` from terrain.ts) where the ripples die out
 //   - large-scale colour variation; slip faces slightly darker and smooth
 //   - shadow/ambient fill pushed towards rust/maroon whatever colour the sky light is
-//   - bare rock (per-vertex `rock` from terrain.ts, shared/rocks.ts): rust sandstone in beds, with dark
+//   - bare rock (per-vertex `rock` from terrain.ts, shared/rocks.ts, shared/canyons.ts): coloured by the rock
+//     column (shared/strata.ts, by height), in beds, with dark
 //     desert-varnish streaks down the faces, bumped by the same noise, and sand settled on its ledges;
 //     no ripples, sheen or glitter there
 //   - mud flats (per-vertex `mud` from terrain.ts, shared/biomes.ts): pale baked clay cracked into polygons at two
@@ -58,6 +59,7 @@ import {
   sin,
   smoothstep,
   sqrt,
+  texture,
   uniform,
   vec2,
   vec3,
@@ -66,6 +68,31 @@ import {
 import type Node from 'three/src/nodes/core/Node.js';
 import { sandStorm, sunColor, windStrength } from './env.ts';
 import { outsideTerrainHoles } from './base.ts';
+import { STRATA, STRATA_Y0, STRATA_Y1, stratumAt } from '../../shared/strata.ts';
+
+let strataTex: THREE.DataTexture | null = null;
+/** The rock column's colours as a 1D texture over STRATA_Y0..STRATA_Y1, a texel per metre: each formation's colour
+ *  over the column's average (linear, per channel, ÷ STRATA_TINT_MAX), a tint for the game's own rock colour. */
+const STRATA_TINT_MAX = 2.5;
+function strataMap(): THREE.DataTexture {
+  if (strataTex) return strataTex;
+  const lin = (c: number, sh: number) => {
+    const v = ((c >> sh) & 255) / 255;
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const mean = [0, 0, 0];
+  for (const st of STRATA) for (let k = 0; k < 3; k++) mean[k] += lin(st.color, 16 - 8 * k) / STRATA.length;
+  const W = STRATA_Y1 - STRATA_Y0, data = new Uint8Array(W * 4);
+  for (let i = 0; i < W; i++) {
+    const c = stratumAt(STRATA_Y0 + i + 0.5).color;
+    for (let k = 0; k < 3; k++) data[i * 4 + k] = Math.round(Math.min(1, lin(c, 16 - 8 * k) / mean[k] / STRATA_TINT_MAX) * 255);
+    data[i * 4 + 3] = 255;
+  }
+  strataTex = new THREE.DataTexture(data, W, 1);
+  strataTex.magFilter = strataTex.minFilter = THREE.LinearFilter;
+  strataTex.needsUpdate = true;
+  return strataTex;
+}
 
 type F = Node<'float'>;
 type V2 = Node<'vec2'>;
@@ -116,14 +143,20 @@ export const sand = {
   rockDark: uniform(new THREE.Color(0.3, 0.12, 0.055)),
   rockLight: uniform(new THREE.Color(0.56, 0.28, 0.13)),
   varnish: uniform(new THREE.Color(0.12, 0.05, 0.03)),
+  /** How strongly the rock column's formations (shared/strata.ts) tint the rock (0 none, 1 their full colours): their
+   *  hue, subtly, and their lightness, more (the darker red middle of a wall, its paler rim). */
+  strata: uniform(0.35),
+  strataShade: uniform(0.8),
   /** Height of one sandstone bed (m). */
   rockBed: uniform(1.4),
   /** Bump depth (m) of the rock's streaks and bed joints. */
-  rockBump: uniform(0.25),
+  rockBump: uniform(0.15),
   /** Mud flat clay: the paler and darker baked crust, and the shadow down in its cracks. */
   mudLight: uniform(new THREE.Color(0.8, 0.67, 0.53)),
   mudDark: uniform(new THREE.Color(0.64, 0.51, 0.39)),
   mudCrack: uniform(new THREE.Color(0.16, 0.1, 0.06)),
+  /** A canyon's dried mud (the per-vertex `silt`): the clay × this, darker and redder with the silt washed off its walls. */
+  silt: uniform(new THREE.Color(0.6, 0.42, 0.33)),
 };
 
 // --- Mud flat cracks ------------------------------------------------------------------------------
@@ -355,8 +388,15 @@ function buildSurface(): SandSurface {
   // Crest band: the brink and the few metres behind it are wind-scoured smooth, no ripples.
   const crest = attribute('crest', 'float') as F;
   const crestBand = smoothstep(0.35, 0.85, crest);
-  const rock = attribute('rock', 'float') as F;
+  // Bare rock: the per-vertex fade (over a metre or so of sand, src/world/terrain.ts) cut by noise into a ragged
+  // edge of sand drifted against the rock, instead of the mesh grid's staircase.
+  const rockFade = attribute('rock', 'float') as F;
+  // (The noise acts only within the fade: bare rock stays rock, buried rock sand.)
+  const edgeNoise = mx_noise_float(vec3(p.x.mul(0.45), p.y.mul(0.2), p.z.mul(0.45))).mul(0.5)
+    .add(mx_noise_float(vec3(p.x.mul(1.7), 0, p.z.mul(1.7))).mul(0.18));
+  const rock = smoothstep(0.3, 0.7, rockFade.add(edgeNoise.mul(rockFade.mul(float(1).sub(rockFade)).mul(4)))) as F;
   const mud = attribute('mud', 'float') as F;
+  const silt = attribute('silt', 'float') as F;
 
   const rippleMask = flatEnough.mul(float(1).sub(slip)).mul(float(1).sub(crestBand)).mul(float(1).sub(rock)).mul(float(1).sub(mud));
 
@@ -410,7 +450,9 @@ function buildSurface(): SandSurface {
 
   // Rock: one noise, stretched vertically, gives both the varnish streaks and (as a bump) the flutes
   // that weathering cuts down the faces; it also wobbles the beds so they don't read as ruled lines.
-  const streak = mx_noise_float(vec3(p.x.mul(0.45), p.y.mul(0.09), p.z.mul(0.45)));
+  // (Warped, so on a big wall the flutes wander and vary in width instead of standing in a regular comb.)
+  const sw = mx_noise_float(vec3(p.x.mul(0.06), p.y.mul(0.03), p.z.mul(0.06))).mul(3);
+  const streak = mx_noise_float(vec3(p.x.mul(0.45).add(sw), p.y.mul(0.09), p.z.mul(0.45).sub(sw)));
   const bedPos = p.y.div(sand.rockBed).add(streak.mul(0.45));
   const bed = fract(bedPos);
   const joint = smoothstep(0.14, 0.0, bed).add(smoothstep(0.88, 1.0, bed)); // groove between beds
@@ -423,7 +465,8 @@ function buildSurface(): SandSurface {
   const bdet = dot(dpx, r1);
   const bumped = (h: F, fade: F) => normalize(abs(bdet).mul(n0).sub(r1.mul(dFdx(h)).add(r2.mul(dFdy(h))).mul(sign(bdet)).mul(fade)));
   const footprint = length(fwidth(p));
-  const nRock = bumped(bump, float(1).sub(smoothstep(0.15, 0.6, footprint)));
+  // (Faded out early: from afar the vertical flutes on a big wall read as a comb.)
+  const nRock = bumped(bump, float(1).sub(smoothstep(0.06, 0.25, footprint)));
 
   // Mud flat: cracks and curled plates (bumped the same way, faded sooner: they are finer).
   const mudFx = mudCracks(xz, footprint, mud) as V2;
@@ -452,17 +495,26 @@ function buildSurface(): SandSurface {
     .mul(float(1).add(crestBand.mul(0.06))); // fine, sorted sand on the crest is a touch paler
   const dust = windStrength.mul(0.35).add(sandStorm.mul(0.65)).min(1);
 
+  // The rock column (shared/strata.ts): the formation at this height tints the rust sandstone, a little paler, redder
+  // or greyer (subtly: the game's rock stays the game's rock), the same table that makes its cliffs and slopes, so the
+  // bands sit on the ledges. Its contacts wander a metre or two over the land, so they don't read as ruled contour
+  // lines. The bed joints show on the faces only: on gentle slopes they drew wavy contour stripes.
+  const sY = p.y.add(mx_noise_float(vec3(p.x.mul(0.004), 0, p.z.mul(0.004))).mul(1.5));
+  const tint = texture(strataMap(), vec2(sY.sub(STRATA_Y0).div(STRATA_Y1 - STRATA_Y0), 0.5)).rgb.mul(STRATA_TINT_MAX);
+  const strataLum = dot(tint, vec3(0.2126, 0.7152, 0.0722)).max(0.05);
   const rockAlbedo = mix(c3(sand.rockDark), c3(sand.rockLight), layer.mul(0.65).add(streak.mul(0.2)).add(0.25).clamp(0, 1))
-    .mul(float(1).sub(joint.mul(0.18)))
+    .mul(mix(vec3(1), tint.div(strataLum), sand.strata).mul(mix(float(1), strataLum, sand.strataShade)))
+    .mul(float(1).sub(joint.mul(face).mul(0.18)))
     .mul(grain);
   const varnished = mix(rockAlbedo, c3(sand.varnish), smoothstep(0.05, 0.6, streak).mul(face).mul(0.55));
-  // Wind-blown sand settles on ledges and flat tops.
-  const dusted = mix(varnished, albedo, smoothstep(0.86, 0.97, n0.y).mul(0.7));
+  // Wind-blown sand settles on ledges and flat tops (a dusting: the rock's colour, its layer, still shows through).
+  const dusted = mix(varnished, albedo, smoothstep(0.93, 0.995, n0.y).mul(0.3));
 
   // Baked clay, blotchy over metres, darker down the cracks.
   const mudAlbedo = mix(c3(sand.mudDark), c3(sand.mudLight), saturate(patch.mul(0.7).add(mx_noise_float(xz.mul(0.4).add(3.3)).mul(0.35)).add(0.15)))
     .mul(grain.sub(1).mul(0.5).add(1))
-    .mul(float(1).sub(mudFx.x));
+    .mul(float(1).sub(mudFx.x))
+    .mul(mix(vec3(1), c3(sand.silt), silt));
   const ground = mix(albedo, mudAlbedo.add(c3(sand.mudCrack).mul(mudFx.x)), mud);
 
   return {

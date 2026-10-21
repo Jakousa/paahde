@@ -43,10 +43,19 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   giant) placed by a rockiness noise, the kind by a regional style noise; part of `baseHeight`
   (max with the dunes). Steep rock is a wall in `step()`, craters stop at rock, `rock` attribute paints them in
   `src/world/sandMaterial.ts`
-- `shared/biomes.ts` — biomes: regions met further out the further you go (noise blobs whose share of the land grows
-  with distance from the origin). First one: mud flats (dried lake beds) — no dunes (`duneHeight`), next to no rocks
-  (`rockiness`), cracked clay via the per-vertex `mud` attribute in `src/world/sandMaterial.ts`, hotter by day
-  (`groundHeat` in shared/temperature.ts). Noise primitives in `shared/noise.ts`
+- `shared/canyons.ts` — canyons: Grand Canyon-scale gorges (8–14 km long, 220–400 m under the dune floor, up to
+  ~1.5 km rim to rim, terraced walls, buttes, side canyons) cut through a raised sandstone tableland, open at their ends;
+  part of `baseHeight` (`ground` in shared/terrain.ts: the tableland adds rock, the gorge cuts to bare rock walls over a
+  sandy floor with dried mud, its floor rocks from `canyonRockHeight` in shared/rocks.ts; `rockTop` for the rock). A
+  biome (`CANYON` in shared/biomes.ts, weight `canyonCover`). Walls and rock tint follow the rock column
+  `shared/strata.ts` (formations by height: colour and hardness, cliff or slope), shaded in `src/world/sandMaterial.ts`
+- `shared/biomes.ts` — biomes: kinds of country met further out the further you go, one common concept: each is an
+  entry in `BIOMES` (in order of precedence: earlier ones claim the land first) with its placement (`place`, weight
+  0..1) and its properties (`groundHeat`, `haze`, `empty`...; new per-biome things like finds or enemies go there).
+  Read them with `biome(id, x, z)`, `biomeAt` or `blend` (a property mixed by weight), never by asking for a specific
+  biome where a property would do. Biomes so far: canyons (`shared/canyons.ts`, first) and mud flats (dried lake
+  beds: noise blobs (`blobs`) — no dunes (`duneHeight`), next to no rocks (`rockiness`), cracked clay via the
+  per-vertex `mud` attribute in `src/world/sandMaterial.ts`, hotter by day). Noise primitives in `shared/noise.ts`
 - `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen
 - `shared/temperature.ts` — air/felt °C by time of day (drives thirst); `shared/shade.ts` — sun ray march (shade)
   tuning, drained and validated in `server/water.ts`, HUD + `playerHands` in `src/water.ts`

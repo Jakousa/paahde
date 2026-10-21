@@ -2,6 +2,32 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-21 — Canyons, the rock column, biomes as one concept
+
+- Canyons (`shared/canyons.ts`): Grand Canyon-scale gorges, 8–14 km long, 220–400 m under the dune floor, cut through a
+  sandstone tableland 25–65 m over it, with 1–3 side canyons. One system per 6 km cell (80%), none within ~1 km of the
+  origin (so of the base). Along a canyon, wide reaches (terraced walls leaning up to 1.7× their height, ~1.5 km rim to
+  rim, buttes standing in them) alternate with narrower, steeper ones whose floor pinches to 15 m; both ends climb out to
+  the desert. On the floor: sand, patches of dried cracked mud (redder than the mud flats': per-vertex `silt`), and
+  pillars, small buttes and boulders made like the desert's rocks (`canyonRockHeight` in shared/rocks.ts). Walls meet the
+  floor in a talus apron, the rims are rounded and blown bare of sand, the tableland carries soft drifts of sand sheet.
+- Part of `baseHeight`: `ground()` in shared/terrain.ts layers sand and rock (dunes, rocks, the tableland, the gorge's cut,
+  its floor rocks); `rockTop` is the rock layer (rock shading, the worm). So they collide, shade and dig like the rest.
+- The rock column (`shared/strata.ts`): Grand Canyon-like formations at fixed heights, each a colour and a hardness. The
+  canyons' walls take their profile from it (`wallY`: cliffs where the hard rock is, slopes and benches in the soft, never
+  steeper than ~5:1), and the rock shader a subtle tint by height from the same table, so the bands sit on the ledges.
+  Mesas show the same layers.
+- Biomes are one concept (`shared/biomes.ts`): each an entry in `BIOMES`, in order of precedence, with its placement and its
+  properties (`groundHeat`, `haze`, `empty`); read with `biome(id, x, z)`, `biomeAt`, `blend`. Canyons come first, so the mud
+  flats keep out of them. Nothing is placed in a canyon (`empty`, via `rocksNear`); the haze is thinner in one.
+- Terrain mesh: each cell is split along the diagonal that follows the slope (no sawtooth on steep edges); skirts deepen
+  with a chunk's height range; the rock/sand edge fades over 1.5 m and is broken up with noise in the shader.
+- Jets cruise over the land round them, not a canyon's floor; drones look further ahead and never dip under the ground.
+- Every world's layout changed where a canyon now runs (mud flats, scrap, crash sites, shelters re-place out of it). Known
+  gaps: finds already saved in an old world's DB can sit on a canyon wall; falling into one only gives a hard landing;
+  poison gas lies relative to the dune floor, so it fills canyon floors; the shade march reaches 180 m, short of a wide
+  reach's walls.
+
 ## 2026-10-19 — Steps and parts left, scrapping the frame, Options tabs
 
 - Near a machine (the table's, a field machine being worked, or a small one you could carry) a small pill at the top of the screen

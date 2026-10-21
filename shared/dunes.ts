@@ -51,7 +51,7 @@ const H2_MAX = 3.5;
 const HORN2 = 6;
 
 import { hash2, ss, vnoise } from './noise.ts';
-import { mudflat } from './biomes.ts';
+import { biome } from './biomes.ts';
 export { hash2, ss, vnoise };
 
 // Derivatives of the last vnoiseD call (scratch, overwritten every call).
@@ -114,14 +114,20 @@ function erg(x: number, z: number, S: number, mud: number): number {
 /** The floor the dunes stand on at world (x, z): the interdune corridors' height, under every dune crest (rocks
  *  rise from it too). Poison gas (shared/gas.ts) lies a few metres deep over it. */
 export function duneFloor(x: number, z: number, seed: number): number {
-  return erg(x + OFFSET_X, z + OFFSET_Z, seed | 0, mudflat(x, z));
+  return erg(x + OFFSET_X, z + OFFSET_Z, seed | 0, biome('mudflat', x, z));
+}
+
+/** The dune floor at (x, z) as if no mud flat were there (the canyons, shared/canyons.ts, which keep the mud flats
+ *  away, are laid out on it). */
+export function dryFloor(x: number, z: number, seed: number): number {
+  return erg(x + OFFSET_X, z + OFFSET_Z, seed | 0, 0);
 }
 
 /** Procedural dune height at world (x, z). Pure function. */
 export function duneHeight(x: number, z: number, seed: number): number {
   const S = seed | 0;
   // Mud flats (shared/biomes.ts): no sand to make dunes of, a dead flat floor a little sunk into the land.
-  const mud = mudflat(x, z);
+  const mud = biome('mudflat', x, z);
   x += OFFSET_X;
   z += OFFSET_Z;
 
