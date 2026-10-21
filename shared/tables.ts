@@ -255,8 +255,10 @@ export const KILL_SPOILS: Record<'guardian' | 'crawler' | 'drone', Spoils> = {
   drone: { odds: 1, min: 1, max: 1, parts: SPOILS, tierWeights: { basic: 1, quality: 1 } },
 };
 
-/** A downed jet's crash site (server/world.ts jetCame): its engine is a machine to take apart (shared/jetcrash.ts); besides, its drone transponder
- *  (what the carrier's receiver takes) with JET_RELIC_ODDS, and some scrap off the airframe. */
+/** A downed jet's crash site (server/world.ts jetCame): the flying wing's engines are machines to take apart (shared/jetcrash.ts); the drone has
+ *  none, its avionics and engine parts lie about instead (DRONE_JET_SPOILS, one more if it was jammed down whole). Besides, either leaves its drone
+ *  transponder (what the carrier's receiver takes) with JET_RELIC_ODDS, and some scrap off the airframe. */
+export const DRONE_JET_SPOILS: Spoils = { odds: 1, min: 2, max: 3, parts: ['compute', 'relay', 'coil', 'battery', 'motor', 'bearing'], tierWeights: { basic: 2, quality: 2, space: 0.3 } };
 export const JET_RELIC_ODDS = 0.2;
 export const JET_SCRAP = { min: 2, max: 4 };
 

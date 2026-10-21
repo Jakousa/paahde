@@ -6,9 +6,9 @@ import { DRONE_JET_PIECES } from './dronejetpieces.ts';
 import { JET_PIECES, type JetPieceDef } from './jetpieces.ts';
 import { baseHeight } from './terrain.ts';
 
-/** The two jets: the fixed-wing drone, an MQ-9-like recon plane with one engine in its rear fuselage (tools/blender/machines/dronejet.py ->
- *  public/models/dronejet.glb), and the stealth flying wing with two in pods on its back (tools/blender/machines/plane.py -> public/models/jet.glb).
- *  Their engines are the turbofan's (piece ids ENGINES_OF, each on its `parent` piece); both have a `front` body piece. */
+/** The two jets: the fixed-wing drone, an MQ-9-like recon plane (tools/blender/machines/dronejet.py -> public/models/dronejet.glb; no engine
+ *  to salvage, its wreck drops parts: shared/tables.ts DRONE_JET_SPOILS), and the stealth flying wing with the turbofan's engines in pods on its
+ *  back (tools/blender/machines/plane.py -> public/models/jet.glb; piece ids ENGINES_OF, each on its `parent` piece). Both have a `front` body piece. */
 export type JetKind = 'drone' | 'wing';
 /** The pieces each breaks into. */
 export const PIECES_OF: Record<JetKind, JetPieceDef[]> = { drone: DRONE_JET_PIECES, wing: JET_PIECES };
@@ -85,8 +85,9 @@ export interface BreakEvent {
 
 /** What became of an engine: still on its wing ('on'), torn off and lying whole (a machine to take apart) or wrecked in the landing. */
 export type Fate = 'on' | 'machine' | 'wreck';
-/** Each kind's engines' pieces (the wing's left then right), the odds each tears off and, if it does, is wrecked in the landing. */
-export const ENGINES_OF: Record<JetKind, string[]> = { drone: ['engine'], wing: ['engineL', 'engineR'] };
+/** Each kind's engines' pieces (the wing's left then right; the drone has none to salvage), the odds each tears off and, if it does, is wrecked
+ *  in the landing. */
+export const ENGINES_OF: Record<JetKind, string[]> = { drone: [], wing: ['engineL', 'engineR'] };
 export const ENGINE_OFF = 0.8;
 export const ENGINE_WRECKED = 0.3;
 

@@ -57,7 +57,7 @@ const ROLL_RAMP = 2.5;
 /** The integration step (s): the same steps on both sides, so they agree. */
 export const DIVE_STEP = 0.05;
 /** Nose ahead of the centre (m): the drone's nose cone, the apex of the flying wing. */
-export const JET_NOSE: Record<JetKind, number> = { drone: 10, wing: 8.5 };
+export const JET_NOSE: Record<JetKind, number> = { drone: 5.6, wing: 8.5 };
 export type Dive = { fwd: number; drop: number; pitch: number; roll: number; v: number };
 const _dv: Dive = { fwd: 0, drop: 0, pitch: 0, roll: 0, v: 0 };
 /** How far along its heading (m) and down (m) a downed jet is `s` s on, its pitch (rad, nose up) and roll, and speed. */
@@ -83,11 +83,11 @@ export function jetDive(speed: number, s: number, soft: boolean, out: Dive = _dv
  *  crash site (shared/jetcrash.ts), which stays, WRECK_MS after it hit. */
 export const WRECK_MS = BREAK_S * 1000 + 2_000;
 
-/** Wingspan (m): a searchlight drone is about 2. Both planes are modelled at this size (tools/blender/machines/dronejet.py, 20 m long;
- *  plane.py, a flying wing 16 m nose to tail). */
-export const JET_SPAN = 32;
+/** Wingspan (m) of each (a searchlight drone is about 2), as modelled: the drone (tools/blender/machines/dronejet.py, 11.4 m long) and the flying
+ *  wing (plane.py, 16 m nose to tail). */
+export const JET_SPAN: Record<JetKind, number> = { drone: 18, wing: 32 };
 /** Server hit test: the shot must pass this close (m) to its centre (it's JET_SPAN wide). */
-export const JET_HIT = JET_SPAN / 2 + 3;
+export const JET_HIT: Record<JetKind, number> = { drone: JET_SPAN.drone / 2 + 3, wing: JET_SPAN.wing / 2 + 3 };
 /** Height above the sand (m) and speed (m/s) a flight picks from. */
 export const JET_ALT_MIN = 110;
 export const JET_ALT_MAX = 180;

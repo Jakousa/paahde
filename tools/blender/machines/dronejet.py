@@ -1,21 +1,18 @@
 """The fixed-wing drone, one of the two jets (shared/jets.ts; the other is the flying wing, plane.py): an unmanned recon/strike plane,
 MQ-9 / Bayraktar-like (the first jet model, tools/blender/jet.py of 9e9e251, cut into pieces for the crash). A slim fuselage with a satcom
 bulge over the nose and a sensor ball under the chin, the intake hump over the back running into the jet nozzle, long straight wings with
-ailerons and flaps and two pylons a wing with a missile on each, a V tail and a ventral fin, worn sand camo blotches on top. Inside the rear
-fuselage, fed by the hump's intake, is the crashed turbofan (tools/blender/machines/turbofan.py) as it was in the plane: when one comes in
-it may tear out and lie as the real thing, to be taken apart (src/teardown).
+ailerons and flaps and two pylons a wing with a missile on each, a V tail and a ventral fin, worn sand camo blotches on top. No engine to
+salvage: its wreck drops parts instead (shared/tables.ts DRONE_JET_SPOILS).
 
     tools/blender/run.sh -b --python tools/blender/machines/dronejet.py [-- --preview dir]     # writes public/models/dronejet.glb
 
 Three.js frame (Y up, +Z the nose, span along X), origin about the centre of mass, turned into Blender's Z-up just before export like the
-other models. Built in the first model's metres (an 18 m span, 11.4 m long) and scaled by K on export to the game's jet size
-(shared/jets.ts JET_SPAN, 32 m); the turbofan is built at its own size (so it matches the machine it becomes), scaled down by K first.
+other models. An 18 m span (shared/jets.ts JET_SPAN.drone), 11.4 m long; metres.
 
-  Jet_Body     the whole plane as it flies (the engine is hidden inside it)
+  Jet_Body     the whole plane as it flies
   P_<id>       the pieces it breaks into when it comes in (shared/dronejetpieces.ts, generated with this): nose, front (the wing roots),
-               rear, tail (the V tail and the nozzle), the wings (with their missiles), the engine, skin panels and spars, each about its
-               own pivot (the node's position) as it sat on the whole plane
-  P_engine_x   the engine wrecked in the landing (instead of P_engine)
+               rear, tail (the V tail and the nozzle), the wings (with their missiles), skin panels and spars, each about its own pivot
+               (the node's position) as it sat on the whole plane
   Tail         an empty at the nozzle exit, where the smoke streams from (src/world/jets.ts LOOKS.drone.tail)
 """
 
@@ -29,12 +26,9 @@ from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit  # noqa: E402
-from kit import MB, PI, T, S, Rx, Rz, aim, crush, ripple  # noqa: E402
+from kit import MB, PI, T, Rx, Rz, aim  # noqa: E402
 
 OUT = os.path.join(kit.ROOT, 'public', 'models')
-
-# The model's metres to the game's: an 18 m span flown as a 32 m one.
-K = 32 / 18
 
 MATERIALS = {
     'JetHull': (0x3a332d, 0.45, 0.6),      # the old jets' grey-brown
@@ -46,16 +40,9 @@ MATERIALS = {
     'JetGlass': (0x0c0d10, 0.3, 0.1),      # sensor windows
     'JetMissile': (0x8b8574, 0.3, 0.55),   # pale grey missile bodies
     'JetBand': (0xa8823a, 0.2, 0.6),       # yellow-brown warhead band
-    'Paint': (0xbdb8a8, 0.15, 0.7),        # the engine's cowls, as turbofan.py
-    'Steel': (0x8d8f91, 0.85, 0.42),
-    'Dark': (0x3d3f43, 0.8, 0.5),
-    'Burnt': (0x5b4a3e, 0.7, 0.55),
-    'Blade': (0xa3a4a6, 0.9, 0.35),
 }
 
 TAIL = (0, 0.5, -5.8)
-# the engine's centre line (model metres), axis Z, fan towards +Z: in the rear fuselage under the hump, behind the intake
-ENG = (0, 0.42, -2.2)
 
 
 def lerp(a, b, t):
@@ -361,64 +348,22 @@ def build_body():
     return mb
 
 
-# ---- the engine: the turbofan at its own size (game metres), scaled into the model's ---------------------------------------------
-
-OUTER = [(0.80, 1.10), (0.835, 1.20), (0.885, 1.14), (0.915, 0.94), (0.925, 0.75), (0.905, 0.52), (0.86, -0.05), (0.80, -0.30), (0.70, -0.62),
-         (0.50, -0.85), (0.37, -1.12), (0.35, -1.20), (0.27, -1.34), (0.255, -1.40)]
-
-
-def engine(mb):
-    """The turbofan as it sat in the plane: the turbofan.py cowls and nozzle in one skin, a fan and its spinner in the intake."""
-    mb.push(S(1 / K, 1 / K, 1 / K))
-    M = T(ENG[0] * K, ENG[1] * K, ENG[2] * K)
-    mb.lathe(OUTER, 36, 'Paint', M=M)
-    mb.lathe([(0.0, 0.93), (0.78, 0.93), (0.78, 0.96), (0.0, 0.96)], 28, 'Dark', M=M)
-    mb.lathe([(0.0, 0.96), (0.1, 0.99), (0.21, 1.06), (0.23, 1.1), (0.205, 1.18), (0.0, 1.24)], 20, 'Steel', M=M)
-    for i in range(24):
-        mb.push(M @ Rz(2 * PI * i / 24))
-        mb.box((0.5, 0.0, 0.97), (0.55, 0.012, 0.13), 'Blade', rot=(0, 0.0, 0.5))
-        mb.pop()
-    mb.lathe([(0.255, -1.40), (0.255, -1.43), (0.27, -1.43), (0.27, -1.34)], 18, 'Burnt', M=M)
-    mb.lathe([(0.0, -1.12), (0.12, -1.12), (0.13, -1.25), (0.0, -1.46)], 16, 'Burnt', M=M)
-    mb.lathe([(0.915, 0.18), (0.94, 0.18), (0.94, 0.05), (0.915, 0.05)], 36, 'Dark', M=M)
-    mb.pop()
-
-
-def engine_husk(mb):
-    """The engine wrecked in the landing: the cowl crushed and burnt, no fan, the nozzle torn."""
-    mb.push(S(1 / K, 1 / K, 1 / K))
-    cx, cy, cz = ENG[0] * K, ENG[1] * K, ENG[2] * K
-    M = T(cx, cy, cz)
-    mb.lathe(OUTER, 24, 'Burnt', M=M)
-    mb.lathe([(0.0, 0.93), (0.78, 0.93), (0.78, 0.96), (0.0, 0.96)], 20, 'JetDark', M=M)
-    mb.lathe([(0.0, 0.96), (0.1, 0.99), (0.21, 1.06), (0.2, 1.1), (0.0, 1.12)], 14, 'JetDark', M=M)
-    for i in range(6):  # stumps of fan blades
-        mb.push(M @ Rz(2 * PI * i / 6 + 0.3))
-        mb.box((0.3, 0.0, 0.97), (0.22, 0.012, 0.12), 'Steel')
-        mb.pop()
-    mb.pop()
-    # (in the piece's own frame: about the engine's centre)
-    crush(mb, (0.5, 0.17, 0.35), 0.5, 0.28, toward=(0, 0, 0))
-    crush(mb, (-0.28, -0.4, -0.22), 0.45, 0.25, toward=(0, 0, 0))
-    ripple(mb, 5, 0.022, 9.0)
-
-
 # ---- the pieces it breaks into -------------------------------------------------------------------------------------------------
 
 def pieces():
     """What the plane breaks into when it comes in (src/world/jets.ts flies them apart with shared/jetbreak.ts): each piece is cut from the whole
     plane (ragged where it tore), built about its own pivot, and has its own simple hitboxes (capsules, centre and axis about the pivot).
-    Returns [{id, pivot, mb, caps, hit, f, ...}] in model metres: `f` is how much of the plane's speed it keeps (heavy things less), `hit`
+    Returns [{id, pivot, mb, caps, hit, f, ...}]: `f` is how much of the plane's speed it keeps (heavy things less), `hit`
     whether it is solid for the players once it lies."""
     rnd = random.Random(7)
     out = []
 
-    def add(pid, pivot, build, caps, hit=True, f=0.2, skip=(), extra=(), parent=None, husk=None):
+    def add(pid, pivot, build, caps, hit=True, f=0.2, skip=(), extra=()):
         mb = MB()
         mb.push(T(-pivot[0], -pivot[1], -pivot[2]))
         build(mb)
         mb.pop()
-        out.append({'id': pid, 'pivot': pivot, 'mb': mb, 'hit': hit, 'f': f, 'skip': skip, 'parent': parent, 'husk': husk,
+        out.append({'id': pid, 'pivot': pivot, 'mb': mb, 'hit': hit, 'f': f, 'skip': skip,
                     'extra': [tuple(e[i] - pivot[i] for i in range(3)) for e in extra],
                     'caps': [{'c': tuple(c[i] - pivot[i] for i in range(3)), 'a': a, 'half': h, 'r': r, 'hv': (cp[4] if len(cp) > 4 else r)}
                              for cp in caps for (c, a, h, r) in [cp[:4]]]})
@@ -494,10 +439,6 @@ def pieces():
     wl, wr = wing_caps(-1, 1.4, 9.0), wing_caps(1, 1.4, 9.0)
     add('wingL', (-5.0, 0.3, 0.6), lambda mb: wing(mb, True, 1.4, 9.0), wl, f=0.22, skip=tuple(range(len(wl))), extra=wing_pts(-1, 1.4, 9.0))
     add('wingR', (5.0, 0.3, 0.6), lambda mb: wing(mb, False, 1.4, 9.0), wr, f=0.22, skip=tuple(range(len(wr))), extra=wing_pts(1, 1.4, 9.0))
-    # the engine: in the rear fuselage unless it tears out; a torn-out one may be wrecked in the landing (the husk: crushed and burnt)
-    er = 0.925 / K
-    add('engine', ENG, engine, [(ENG, (0, 0, 1), 1.3 / K, er)], f=0.3, parent='rear', husk=engine_husk,
-        extra=[(ENG[0] + dx, ENG[1] + dy, ENG[2] + dz) for dz in (-0.7, 0, 0.6) for (dx, dy) in ((0, -er), (er, 0), (-er, 0))])
     # skin panels, doors and spars that came off the body
     for i in range(7):
         sx, sy, sz = rnd.uniform(0.35, 1.0), rnd.uniform(0.04, 0.09), rnd.uniform(0.35, 0.8)
@@ -520,11 +461,11 @@ def pieces():
 
 
 def pieces_ts(ps):
-    """shared/dronejetpieces.ts: what shared/jetbreak.ts needs of each piece, and src/world/jets.ts which node it is; in game metres (× K)."""
+    """shared/dronejetpieces.ts: what shared/jetbreak.ts needs of each piece, and src/world/jets.ts which node it is."""
     import json
 
     def r(v):
-        return [round(x * K, 3) for x in v]
+        return [round(x, 3) for x in v]
 
     rows = []
     for p in ps:
@@ -538,9 +479,9 @@ def pieces_ts(ps):
                 for off in ((0, -cp['hv'], 0), (rad, 0, 0), (-rad, 0, 0), (0, 0, rad), (0, 0, -rad), (0, cp['hv'], 0)):
                     pts.append(r(e + Vector(off)))
         pts += [r(e) for e in p['extra']]
-        caps = [{'c': r(cp['c']), 'a': [round(x, 3) for x in Vector(cp['a']).normalized()], 'half': round(cp['half'] * K, 3), 'r': round(cp['r'] * K, 3),
-                 'hv': round(cp['hv'] * K, 3)} for cp in p['caps']]
-        rows.append(json.dumps({'id': p['id'], 'pivot': r(p['pivot']), 'f': round(p['f'], 3), 'hit': p['hit'], **({'parent': p['parent']} if p['parent'] else {}), 'caps': caps, 'pts': pts}, separators=(',', ':')))
+        caps = [{'c': r(cp['c']), 'a': [round(x, 3) for x in Vector(cp['a']).normalized()], 'half': round(cp['half'], 3), 'r': round(cp['r'], 3),
+                 'hv': round(cp['hv'], 3)} for cp in p['caps']]
+        rows.append(json.dumps({'id': p['id'], 'pivot': r(p['pivot']), 'f': round(p['f'], 3), 'hit': p['hit'], 'caps': caps, 'pts': pts}, separators=(',', ':')))
     body = ',\n  '.join(rows)
     return ('// Generated by tools/blender/machines/dronejet.py from the model: do not edit by hand.\n'
             "// The pieces a downed jet breaks into (public/models/dronejet.glb nodes `P_<id>`, origin at the pivot): where each was on the whole plane\n"
@@ -552,7 +493,7 @@ def pieces_ts(ps):
 
 def make(mb, name, loc=None):
     import bmesh
-    bmesh.ops.transform(mb.bm, matrix=kit.C @ S(K, K, K), verts=mb.bm.verts)
+    bmesh.ops.transform(mb.bm, matrix=kit.C, verts=mb.bm.verts)
     bmesh.ops.recalc_face_normals(mb.bm, faces=mb.bm.faces)
     mb.bm.normal_update()
     mesh = bpy.data.meshes.new(name)
@@ -562,7 +503,7 @@ def make(mb, name, loc=None):
         mesh.materials.append(bpy.data.materials[m])
     obj = bpy.data.objects.new(name, mesh)
     if loc is not None:
-        obj.location = kit.C @ (Vector(loc) * K)
+        obj.location = kit.C @ Vector(loc)
     bpy.context.scene.collection.objects.link(obj)
     return obj
 
@@ -571,24 +512,20 @@ def preview(objs, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     scene, cam, look, shoot = kit.preview_scene(ground_y_blender=-20)
     for name, pos, tgt, lens in (
-        ('side', (36, 3, 4), (0, 0, 0), 38),
-        ('34', (20, 14, 26), (0, 0, 0), 36),
-        ('below', (6, -30, 8), (0, 0, 0), 32),
-        ('rear', (-14, 6, -26), (0, 1, -4), 36),
-        ('wreck', (26, 14, 24), (0, -1, 0), 36),
-        ('wreck_rear', (-12, 6, -18), (0, 0, -4), 34),
+        ('side', (20, 2, 2), (0, 0, 0), 38),
+        ('34', (11, 8, 15), (0, 0, 0), 36),
+        ('below', (3, -17, 4), (0, 0, 0), 32),
+        ('rear', (-8, 3, -15), (0, 0.5, -2), 36),
+        ('wreck', (15, 8, 13), (0, -0.5, 0), 36),
+        ('wreck_rear', (-7, 3, -10), (0, 0, -2), 34),
     ):
         broken = name.startswith('wreck')
         for k, o in objs.items():
             o.hide_render = (k.startswith('P_') != broken) if k.startswith('P_') else broken
-            if broken and k.startswith('P_engine'):
-                # spread a little so the cut shows: the engine out of its bay, the husk hidden
-                o.hide_render = k.endswith('_x')
-        if broken:
+        if broken:  # spread a little so the cuts show
             for k, o in objs.items():
                 if k.startswith('P_'):
-                    p = Vector(o['pivot3'])
-                    o.location = kit.C @ (p * K * 1.25 + (Vector((0, 2.5, 0)) if k == 'P_engine' else Vector()))
+                    o.location = kit.C @ (Vector(o['pivot3']) * 1.25)
         look(pos, tgt, lens)
         shoot(os.path.join(out_dir, f'dronejet_{name}.png'))
 
@@ -601,15 +538,8 @@ def main():
         kit.make_material(name, *spec)
     ps = pieces()
     objs = [make(build_body(), 'Jet_Body')] + [make(q['mb'], 'P_' + q['id'], q['pivot']) for q in ps]
-    for q in ps:
-        if q['husk']:
-            hm = MB()
-            hm.push(T(-q['pivot'][0], -q['pivot'][1], -q['pivot'][2]))
-            q['husk'](hm)
-            hm.pop()
-            objs.append(make(hm, 'P_' + q['id'] + '_x', q['pivot']))
     tail = bpy.data.objects.new('Tail', None)
-    tail.location = kit.C @ (Vector(TAIL) * K)
+    tail.location = kit.C @ Vector(TAIL)
     bpy.context.scene.collection.objects.link(tail)
     os.makedirs(OUT, exist_ok=True)
     kit.export_glb(objs + [tail], os.path.join(OUT, 'dronejet.glb'))
@@ -621,7 +551,7 @@ def main():
         pv = {q['id']: q['pivot'] for q in ps}
         for o in objs:
             if o.name.startswith('P_'):
-                o['pivot3'] = list(pv[o.name[2:].removesuffix('_x')])
+                o['pivot3'] = list(pv[o.name[2:]])
         preview({o.name: o for o in objs}, os.path.abspath(a.preview))
 
 

@@ -10,7 +10,7 @@ import { bikeLevel, bottleSips, buildingBox, carriedGear, equipped, gearTiers, G
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { HOTBAR, partKind, SCRAP, scrapItem } from '../shared/items.ts';
 import { pickTier } from '../shared/parts.ts';
-import { BOSS_SPOILS, HARVESTER_SCRAP, HARVESTER_SPOILS, JET_RELIC_ODDS, JET_SCRAP, KILL_SPOILS, RECEIVER_DROPS, RELIC_DROPS } from '../shared/tables.ts';
+import { BOSS_SPOILS, DRONE_JET_SPOILS, HARVESTER_SCRAP, HARVESTER_SPOILS, JET_RELIC_ODDS, JET_SCRAP, KILL_SPOILS, RECEIVER_DROPS, RELIC_DROPS } from '../shared/tables.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, RECEIVERS, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
@@ -729,24 +729,29 @@ function dropSpoils(k: Kill) {
 
 /** A jet's nose met the sand (shared/jets.ts): it comes apart (shared/jetbreak.ts: every client flies the same pieces from the same impact), the sand is
  *  dug up where they land when they land, and when they have come to rest the crash site is made (jetCame). */
-const jetsBreaking: { due: number; jet: number; kind: JetKind; bk: Breakup; lx: number; lz: number }[] = [];
+const jetsBreaking: { due: number; jet: number; kind: JetKind; soft: boolean; bk: Breakup; lx: number; lz: number }[] = [];
 const jetCraters: { at: number; x: number; z: number; r: number; mm: number }[] = [];
 function jetLanded(j: Jet) {
   const d = j.down!;
   const bk = breakup(jetImpact(j), j.id, j.kind);
   jetCraters.push({ at: d.land, x: d.lx, z: d.lz, r: 7.5, mm: 2800 });
   for (const e of bk.events) jetCraters.push({ at: d.land + e.t * 1000, x: e.x, z: e.z, r: e.r, mm: e.mm });
-  jetsBreaking.push({ due: d.land + BREAK_S * 1000, jet: j.id, kind: j.kind, bk, lx: d.lx, lz: d.lz });
+  jetsBreaking.push({ due: d.land + BREAK_S * 1000, jet: j.id, kind: j.kind, soft: !!d.soft, bk, lx: d.lx, lz: d.lz });
 }
 
-/** The pieces of a jet have come to rest: its crash site is made (shared/jetcrash.ts: they stay, the right engine is a machine to take apart),
- *  its transponder maybe, a broken receiver now and then, and some scrap off the airframe, strewn about where its nose went in. */
-function jetCame(b: { jet: number; kind: JetKind; bk: Breakup; lx: number; lz: number }): ServerMsg {
+/** The pieces of a jet have come to rest: its crash site is made (shared/jetcrash.ts: they stay, the wing's engines that lie whole are machines to
+ *  take apart), the drone's parts (it has no engine to salvage), its transponder maybe, a broken receiver now and then, and some scrap off the
+ *  airframe, strewn about where its nose went in. */
+function jetCame(b: { jet: number; kind: JetKind; soft: boolean; bk: Breakup; lx: number; lz: number }): ServerMsg {
   const { crash: c, gone } = jetCrashes.add(b.jet, b.kind, b.bk.final, b.bk.fates);
   const at = (kind: string) => {
     const a = Math.random() * Math.PI * 2, d = 3 + Math.random() * 16;
     loot.dropAt(b.lx + Math.cos(a) * d, b.lz + Math.sin(a) * d, kind);
   };
+  if (b.kind === 'drone') {
+    const sp = DRONE_JET_SPOILS, n = sp.min + Math.floor(Math.random() * (sp.max - sp.min + 1)) + (b.soft ? 1 : 0);
+    for (let i = 0; i < n; i++) at(partKind(sp.parts[Math.floor(Math.random() * sp.parts.length)], pickTier(sp.tierWeights, Math.random)));
+  }
   if (Math.random() < JET_RELIC_ODDS) at(RELIC_DROPS.drone.kind);
   if (Math.random() < RECEIVER_DROPS.jet) loot.dropBroken(b.lx + 4, b.lz, randomReceiver(), 4);
   const scrapN = JET_SCRAP.min + Math.floor(Math.random() * (JET_SCRAP.max - JET_SCRAP.min + 1));

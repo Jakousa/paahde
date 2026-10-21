@@ -1,5 +1,5 @@
-// Fixed-wing drones (shared/jets.ts), of two kinds (LOOKS): an MQ-9-like recon drone with the turbofan in its rear fuselage
-// (public/models/dronejet.glb, made by tools/blender/machines/dronejet.py) and an unmanned stealth flying wing with two in pods on its back
+// Fixed-wing drones (shared/jets.ts), of two kinds (LOOKS): an MQ-9-like recon drone
+// (public/models/dronejet.glb, made by tools/blender/machines/dronejet.py) and an unmanned stealth flying wing with two turbofans in pods on its back
 // (public/models/jet.glb, tools/blender/machines/plane.py); each a primitive stand-in until its model has loaded.
 // Dark and unlit (no lamps, by day or night). Placed every frame from the flight list and
 // the server clock, rolled into its turns. Shot, it trails smoke (more with each hit); brought down it dives in
@@ -8,7 +8,7 @@
 // against it here (raycast).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { JET_NOSE, JET_SPAN, jetAt, jetImpact, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
+import { JET_NOSE, jetAt, jetImpact, jetPose, type Jet, type JetPose } from '../../shared/jets.ts';
 import { jetCrashList } from '../../shared/jetcrash.ts';
 import { breakup, BREAK_DT, ENGINES_OF, PIECES_OF, STATE_W, type Breakup, type Fate, type JetKind } from '../../shared/jetbreak.ts';
 import { heightAt } from '../../shared/terrain.ts';
@@ -16,8 +16,6 @@ import { tyreDust } from '../tyreDust';
 import { mergePart } from './bossParts';
 import { zaps } from './zaps';
 
-/** The span both models are made for (m). */
-const MODEL_SPAN = 32;
 
 /** Hidden past this distance (m) from the camera. */
 const SHOW_R = 5000;
@@ -40,7 +38,7 @@ function panel(len: number, root: number, tip: number, sweep: number, t: number)
 }
 
 /** The drone's stand-in built from primitives, shown until dronejet.glb has loaded (and if it fails): the fuselage with its sensor dome, the
- *  intake hump into the nozzle, the long straight wings and the V tail, modelled at 18 m span and scaled up to the model's. */
+ *  intake hump into the nozzle, the long straight wings and the V tail, at full size. */
 function dronePrimitive(): THREE.Group {
   // Double sided: the left wing and fin are the right ones mirrored (negative scale).
   const hull = new THREE.MeshStandardNodeMaterial({ color: 0x3a332d, roughness: 0.55, metalness: 0.5, side: THREE.DoubleSide });
@@ -86,10 +84,7 @@ function dronePrimitive(): THREE.Group {
     f.scale.x = side;
     g.add(f);
   }
-  g.scale.setScalar(MODEL_SPAN / 18);
-  const out = new THREE.Group();
-  out.add(g);
-  return out;
+  return g;
 }
 
 /** The flying wing's stand-in built from primitives, shown until jet.glb has loaded (and if it fails): its outline as a slab, the centre body's
@@ -124,7 +119,7 @@ function wingPrimitive(): THREE.Group {
 type Look = {
   file: string;
   primitive: () => THREE.Group;
-  /** Hit boxes in the body frame (half sizes and centre, before JET_SPAN scaling). */
+  /** Hit boxes in the body frame (half sizes and centre, m). */
   boxes: { h: THREE.Vector3; c: THREE.Vector3 }[];
   /** The left engine's exit, where the smoke streams from (body frame; the model's `Tail` empty). */
   tail: THREE.Vector3;
@@ -140,7 +135,7 @@ const look = (file: string, primitive: () => THREE.Group, boxes: [number, number
 });
 const LOOKS: Record<JetKind, Look> = {
   // boxes (half x, y, z, centre x, y, z): the fuselage, the wings, the V tail
-  drone: look('./models/dronejet.glb', dronePrimitive, [[1.4, 1.6, 10.0, 0, 0.36, 0], [16.4, 0.9, 2.0, 0, 0.27, 0.18], [3.9, 1.8, 1.4, 0, 2.3, -7.9]], [0, 0.89, -10.31]),
+  drone: look('./models/dronejet.glb', dronePrimitive, [[0.8, 0.9, 5.6, 0, 0.2, 0], [9.2, 0.5, 1.1, 0, 0.15, 0.1], [2.2, 1.0, 0.8, 0, 1.3, -4.45]], [0, 0.5, -5.8]),
   // the centre body, the inner wing, the outer wing (the swept part, about its middle chord), the engine pods
   wing: look('./models/jet.glb', wingPrimitive, [[3.0, 1.5, 8.0, 0, 0.25, 0.5], [9.0, 0.6, 4.6, 0, 0.1, -1.4], [16.0, 0.4, 1.8, 0, 0, -2.7], [5.3, 1.0, 1.5, 0, 1.88, -2.6]], [-4.3, 1.88, -4.05]),
 };
@@ -208,7 +203,6 @@ class Debris {
           this.whole.set(this.holders.length, n);
         }
       }
-      holder.scale.setScalar(JET_SPAN / MODEL_SPAN);
       holder.matrixAutoUpdate = false; // (placed by hand: see place())
       scene.add(holder);
       this.holders.push(holder);
@@ -294,7 +288,6 @@ function build(kind: JetKind): THREE.Group {
   const lk = LOOKS[kind];
   const g = new JetProto();
   g.look = lk;
-  g.scale.setScalar(JET_SPAN / MODEL_SPAN);
   fill(g, kind);
   lk.pending.add(g);
   new GLTFLoader().loadAsync(lk.file).then(

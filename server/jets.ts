@@ -115,7 +115,7 @@ export class JetServer {
     const near = LAG_MS.some((lag) => {
       if (!jetAt(j, now - lag, _p)) return false;
       const t = Math.max(0, Math.min(1, ((_p.x - x) * dx + (_p.y - y) * dy + (_p.z - z) * dz) / len2));
-      return Math.hypot(x + dx * t - _p.x, y + dy * t - _p.y, z + dz * t - _p.z) < JET_HIT && Math.hypot(ex - _p.x, ey - _p.y, ez - _p.z) < JET_HIT * 1.5;
+      return Math.hypot(x + dx * t - _p.x, y + dy * t - _p.y, z + dz * t - _p.z) < JET_HIT[j.kind] && Math.hypot(ex - _p.x, ey - _p.y, ez - _p.z) < JET_HIT[j.kind] * 1.5;
     });
     if (!near) return false;
     this.changed = true;
