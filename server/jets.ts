@@ -4,7 +4,8 @@
 import { BASE } from '../shared/base.ts';
 import type { JetKind } from '../shared/jetbreak.ts';
 import { DIVE_STEP, JET_NOSE, jetDive, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
-import { baseHeight } from '../shared/terrain.ts';
+import { duneFloor } from '../shared/dunes.ts';
+import { baseHeight, WORLD_SEED } from '../shared/terrain.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 
 /** Time between one flight's start and the next (ms). */
@@ -90,7 +91,9 @@ export class JetServer {
       x: Math.round(ax - Math.sin(yaw) * lead),
       z: Math.round(az - Math.cos(yaw) * lead),
       yaw: Math.round(yaw * 1e4) / 1e4,
-      y: Math.round(baseHeight(x, z) + rand(JET_ALT_MIN, JET_ALT_MAX)),
+      // (Over the land round it, not the bottom of a canyon (shared/canyons.ts): its tableland stands up to ~65 m over
+      // the dune floor, and a jet that took the canyon floor for the ground flew into its walls.)
+      y: Math.round(Math.max(baseHeight(x, z), duneFloor(x, z, WORLD_SEED) + 65) + rand(JET_ALT_MIN, JET_ALT_MAX)),
       speed: Math.round(speed),
       run: lead,
       turn: Math.round(turn * 1e4) / 1e4,

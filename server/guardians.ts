@@ -740,9 +740,12 @@ export class GuardianServer {
         d.z = BASE.z + ((d.z - BASE.z) / bd) * keep;
         this.dronePoint(d);
       }
-      const ground = Math.max(heightAt(d.x, d.z), heightAt(d.x + Math.sin(d.yaw) * 15, d.z + Math.cos(d.yaw) * 15));
+      // (Looking well ahead: a canyon's wall (shared/canyons.ts) rises hundreds of metres in a few steps.)
+      const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), here = heightAt(d.x, d.z);
+      const ground = Math.max(here, heightAt(d.x + fx * 15, d.z + fz * 15), heightAt(d.x + fx * 40, d.z + fz * 40) - 10);
       if (d.fled) d.y += FLEE_CLIMB * dt;
       else d.y += (ground + alt - d.y) * (1 - Math.exp(-dt * (d.leaving ? 0.3 : 1.2)));
+      if (d.y < here + 4) d.y = here + 4; // never through the ground
       // Aim the beam: turning after the prey no faster than TRACK_RATE (SEEK_RATE onto someone noticed), or sweeping ahead.
       if (target) {
         const ax = target.x - d.x, ay = target.y + 1.1 - d.y, az = target.z - d.z, l = Math.hypot(ax, ay, az) || 1;
