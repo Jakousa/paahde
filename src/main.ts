@@ -102,7 +102,7 @@ import { bagShape, buildingBox, cargoBox, carriedGear, equipped, gearTiers, isBu
 import { LootView, lootPrompt } from './world/loot';
 import { VehicleView } from './world/vehicles';
 import { vehicles, vehicleTarget } from '../shared/vehicles.ts';
-import { CorpseView } from './world/corpses';
+import { CorpseView, corpseTargets } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
 import { openBoxes } from '../shared/storage.ts';
 import { Chat } from './chat';
@@ -601,7 +601,7 @@ renderer.setAnimationLoop((time) => {
   const range = wrist ? locatorRange(quality(wrist)) : 0;
   locator.lost = storm.toolsDown || !wrist;
   survival.toolsDown = storm.toolsDown;
-  locator.update(orbit.camera, orbit.viewYaw, orbit.pitch + orbit.freePitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z)]);
+  locator.update(orbit.camera, orbit.viewYaw, orbit.pitch + orbit.freePitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z), ...corpseTargets()]);
   terrain.update(focus);
   scrap.update(focus);
   crashSites.update(focus);

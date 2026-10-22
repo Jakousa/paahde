@@ -1,8 +1,10 @@
 // The packs dead players leave (shared/corpse.ts): a tied canvas bundle on the sand, and beside it a stick pushed in
-// at a slant with a rag of the dead player's colour flapping from it, so it can be found again from a way off.
+// at a slant with a rag of the dead player's colour flapping from it, so it can be found again from a way off. The
+// locator bar (src/locator.ts) shows each one as a flag; so does the spyglass (src/telescope.ts).
 import * as THREE from 'three/webgpu';
 import { CORPSES, type Corpse } from '../../shared/corpse.ts';
 import { heightAt } from '../../shared/terrain.ts';
+import type { LocatorTarget } from '../locator';
 
 /** Drawn within this distance (m). */
 const VIEW = 700;
@@ -22,6 +24,14 @@ const STRAP_GEO = new THREE.TorusGeometry(0.3, 0.025, 6, 20);
 const STICK_GEO = new THREE.CylinderGeometry(0.02, 0.028, STICK, 6).translate(0, STICK / 2, 0);
 
 type Shown = { group: THREE.Group; rag: THREE.Mesh; phase: number };
+
+/** Locator ids for packs: players are positive, the base -1, wrecks count down from -100. */
+const LOCATE_ID = -1_000_000_000;
+
+/** Every pack lying in the world, for the locator bar: a flag of the rag's colour at the top of the stick. */
+export function corpseTargets(): LocatorTarget[] {
+  return [...CORPSES.values()].map((c) => ({ id: LOCATE_ID - c.id, color: c.color, x: c.x, y: heightAt(c.x, c.z) + STICK, z: c.z, shape: 'flag' }));
+}
 
 export class CorpseView {
   private group = new THREE.Group();

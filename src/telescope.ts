@@ -3,11 +3,12 @@
 // lens mask and the mouse wheel sets the zoom, up to what its parts allow (shared/gear.ts spyglassZoom). In third
 // person the view comes in to the eye first, like a scoped gun's (src/camera.ts aimIn).
 // Through the lens, the places worth going to that are in sight (the base, other players, wrecks, crash sites, shelters,
-// downed jets' engines; not behind a dune) get a small mark with their distance, the locator's shapes (src/locator.ts).
+// downed jets' engines, the packs the dead left; not behind a dune) get a small mark with their distance, the locator's shapes (src/locator.ts).
 // Letting go lowers it. Client-only: nothing is sent.
 import * as THREE from 'three/webgpu';
 import { BASE } from '../shared/base.ts';
 import { crashSpent, crashTaken } from '../shared/crash.ts';
+import { CORPSES } from '../shared/corpse.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { jetSites } from '../shared/jetcrash.ts';
 import { sheltersNear } from '../shared/shelters.ts';
@@ -32,10 +33,10 @@ const REFRESH_S = 0.2;
 const LENS_R = 430;
 const LENS_IN = 0.9;
 
-type Kind = 'base' | 'player' | 'wreck' | 'site' | 'shelter';
+type Kind = 'base' | 'player' | 'wreck' | 'site' | 'shelter' | 'corpse';
 type Mark = { key: string; kind: Kind; color: number; x: number; y: number; z: number; id?: number };
 
-const COLOR: Record<Exclude<Kind, 'player'>, number> = { base: 0xf2e6c8, wreck: 0xe8a050, site: 0xc8d6dc, shelter: 0xb9c48e };
+const COLOR: Record<Exclude<Kind, 'player' | 'corpse'>, number> = { base: 0xf2e6c8, wreck: 0xe8a050, site: 0xc8d6dc, shelter: 0xb9c48e };
 
 const css = `
 #telescope { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .12s; z-index: 5; }
@@ -48,6 +49,7 @@ const css = `
 #telescope .mark.wreck i { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
 #telescope .mark.site i { clip-path: polygon(50% 100%, 100% 0, 0 0); }
 #telescope .mark.shelter i { width: 8px; height: 8px; }
+#telescope .mark.corpse i { width: 10px; height: 11px; clip-path: polygon(0 0, 100% 26%, 22% 54%, 22% 100%, 0 100%); }
 #telescope .mark span { font: 600 11px var(--mono); font-variant-numeric: tabular-nums; text-shadow: 0 0 3px #050302, 0 0 1px #050302; white-space: nowrap; }
 body.scoped #crosshair { display: none; }
 `;
@@ -184,7 +186,7 @@ export class Telescope {
   /** The places within MARK_R of the eye (each at a point just over the sand there, for the line of sight). */
   private gather(eye: THREE.Vector3, players: readonly LocatorTarget[]): Mark[] {
     const out: Mark[] = [];
-    const add = (key: string, kind: Kind, x: number, z: number, up: number, color = COLOR[kind as Exclude<Kind, 'player'>], id?: number, y = heightAt(x, z) + up) => {
+    const add = (key: string, kind: Kind, x: number, z: number, up: number, color = COLOR[kind as Exclude<Kind, 'player' | 'corpse'>], id?: number, y = heightAt(x, z) + up) => {
       const d = Math.hypot(x - eye.x, z - eye.z);
       if (d >= MARK_NEAR && d <= MARK_R) out.push({ key, kind, color, x, y, z, id });
     };
@@ -194,6 +196,7 @@ export class Telescope {
     for (const s of crashSitesNear(eye.x, eye.z, MARK_R)) if (!crashSpent.has(s.id)) add(`c${s.id}`, 'site', s.x, s.z, 4);
     for (const s of jetSites()) add(s.id, 'site', s.x, s.z, 3);
     for (const s of sheltersNear(eye.x, eye.z, MARK_R)) add(`s${s.id}`, 'shelter', s.x, s.z, 2.5);
+    for (const c of CORPSES.values()) add(`k${c.id}`, 'corpse', c.x, c.z, 2.6, c.color);
     return out;
   }
 }
