@@ -6,7 +6,7 @@
 import { LEVEL_TIERS } from './tables.ts';
 import { pickTier } from './parts.ts';
 import { junkSpec, TIERS, type JunkKind, type PartId, type Tier } from './salvage.ts';
-import type { SiteLevel } from './crashsites.ts';
+import type { LootLevel } from './crashsites.ts';
 import { LAYOUT as TURBOFAN } from './machines/turbofan.ts';
 
 export interface LayoutStep {
@@ -98,7 +98,7 @@ export function rollModules(kind: JunkKind, rand: () => number, level: number): 
   const layout = LAYOUTS[kind];
   if (!layout) return [];
   const spec = junkSpec(kind);
-  const boost = LEVEL_TIERS[level as SiteLevel] ?? LEVEL_TIERS[1];
+  const boost = LEVEL_TIERS[level as LootLevel] ?? LEVEL_TIERS[1];
   const weights = Object.fromEntries(TIERS.map((t) => [t, (spec.tierWeights[t] ?? 0) * boost[t]])) as Record<Tier, number>;
   const present = layout.modules.filter((m) => rand() < m.chance);
   const out: RolledModule[] = [];

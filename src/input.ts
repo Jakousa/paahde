@@ -1,4 +1,4 @@
-import { isBound, norm, slots, type Action } from './bindings';
+import { isBound, norm, setDevice, slots, type Action } from './bindings';
 import { graphics } from './graphics';
 import { BACK, BIKE, CROUCH, FORWARD, JUMP, LEFT, RIGHT, SLIDE } from '../shared/sim.ts';
 
@@ -6,11 +6,13 @@ const keys = new Set<string>();
 let pickupPressed = false;
 /** slot: the selected hotbar slot (-1 none).
  *  frozen: the disassembly mode (src/teardown) owns the keyboard and mouse, so the player stands still. */
-export const tools = { frozen: false, slot: -1, bike: false, engaged: false, spinning: false };
+export const tools = { frozen: false, slot: -1, getOff: false, engaged: false, spinning: false };
 /* engaged: the crosshair is on something the disassembly (src/teardown) works, so the use button is its, not the hand's. */
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 /** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
-export const ui = { inventoryOpen: false, debugFreed: false };
+/** `escClosedAt`: when Esc last closed the inventory/chest/workbench, so the same press (or the lock change after it) doesn't open the Esc menu (src/menu.ts). */
+/** `closeAsked`: the browser just asked before closing the tab (Ctrl+W while windowed), so the Esc menu says why. */
+export const ui = { inventoryOpen: false, debugFreed: false, escClosedAt: -Infinity, closeAsked: false };
 // While the pointer is locked the game owns the keyboard: swallow browser shortcuts (Tab, F-keys, Alt, Ctrl+S...).
 // Esc frees the mouse (the browser does that itself), and then keys behave normally again.
 const captured = () => !!document.pointerLockElement;
@@ -34,7 +36,15 @@ export function capture(canvas: HTMLElement) {
   Promise.resolve(canvas.requestPointerLock()).catch(() => {});
   fullscreen();
 }
+// Real keys and mouse (not the gamepad's synthetic events, src/gamepad.ts) put the hints back on the keyboard's names.
+const keysUsed = (e: Event) => e.isTrusted && setDevice('keys');
+addEventListener('mousedown', keysUsed);
+addEventListener('wheel', keysUsed, { passive: true });
+addEventListener('mousemove', (e) => {
+  if (Math.abs(e.movementX) + Math.abs(e.movementY) > 3) keysUsed(e);
+});
 addEventListener('keydown', (e) => {
+  keysUsed(e);
   // A locked keyboard hands Esc to the page instead of releasing the mouse, so release it ourselves.
   if (e.code === 'Escape' && captured()) document.exitPointerLock();
   if (captured()) e.preventDefault();
@@ -64,6 +74,11 @@ addEventListener('mousemove', (e) => {
   mdx += e.movementX;
   mdy += e.movementY;
 });
+/** Mouse travel from the gamepad's right stick (src/gamepad.ts), for the same gestures. */
+export function addMouse(dx: number, dy: number) {
+  mdx += dx;
+  mdy += dy;
+}
 export function takeMouse(): [number, number] {
   const r: [number, number] = [mdx, mdy];
   mdx = mdy = 0;
@@ -74,6 +89,15 @@ document.addEventListener('pointerlockchange', () => {
     keys.clear();
     // Fullscreen and the keyboard lock stay on, so Esc only opens the menu; its button leaves fullscreen.
   }
+});
+// Without the keyboard lock (windowed, or not Chromium) Ctrl+W still reaches the browser; crouch + forward is an
+// easy slip, so while in the game the browser asks before closing the tab. Its text can't be set; the mouse is freed
+// for its buttons, and staying lands in the Esc menu, whose button goes fullscreen.
+addEventListener('beforeunload', (e) => {
+  if (!captured()) return;
+  e.preventDefault();
+  ui.closeAsked = true;
+  document.exitPointerLock();
 });
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) keyboard?.unlock();
@@ -99,6 +123,8 @@ export function actionHeld(a: Action): boolean {
 
 export function readInput(): number {
   let input = 0;
+  const getOff = tools.getOff;
+  tools.getOff = false;
   if (tools.frozen) return input;
   if (actionHeld('forward')) input |= FORWARD;
   if (actionHeld('back')) input |= BACK;
@@ -109,11 +135,9 @@ export function readInput(): number {
   if (actionHeld('sprint') && !aimDown()) input |= SLIDE;
   // Ctrl has C as an alias by default: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
   if (actionHeld('crouch')) input |= CROUCH;
-  // The bike key (Z or 9 by default): get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped), whatever's in hand
-  // (getting on puts it away, src/water.ts).
-  if (actionHeld('bike')) input |= BIKE;
-  // A repaired motorcycle in hand (src/water.ts): the use button gets on and off it instead.
-  if (tools.bike && actionHeld('use')) input |= BIKE;
+  // The bike key (Z or 9 by default): get off the motorcycle, or stop getting on it (shared/sim.ts); a press of F while
+  // riding too (`getOff`, one tick, from src/main.ts: F also gets on).
+  if (actionHeld('bike') || getOff) input |= BIKE;
   return input;
 }
 

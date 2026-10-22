@@ -2,7 +2,7 @@
 // route and writes the result (CPU / GPU / frame times, the startup timeline) and a Chrome trace of the same stretch to data/perf/.
 //
 //   node tools/perf.ts [--base http://localhost:5173/] [--seconds 30] [--trace play|startup|none] [--world <id>]
-//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
+//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--view <m above the player, for the picture>] [--face sun] [--pitch <degrees down, with --view>] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
 //
 //   --seconds    gameplay to record (0 = the startup timeline only, no walking)
 //   --trace      play: trace only the recorded walk (default); startup: trace from page load until playable; none
@@ -29,6 +29,14 @@ const seconds = Number(opt('seconds', '30'));
 const trace = opt('trace', 'play') as 'play' | 'startup' | 'none';
 const out = opt('out', 'data/perf') as string;
 const label = opt('label', '') as string;
+/** Where the player starts (a dev helper of the server, shared/protocol.ts): field = beside a scrap field, crash = beside a crash site's machine, shelter, base; none = the saved position (the bunker in a new world). */
+const spawnAt = opt('spawn', '') as string;
+/** Time of day the run starts at (0..1: 0.333 = 8 am, 0.833 = 8 pm, the sun at 28°, long shadows); the clock then runs on as usual. Without it, the world's own time. */
+const tod = opt('tod', '') as string;
+/** Viewport in CSS pixels, WxH (the game renders one pixel per CSS pixel: a bigger window costs the graphics card more). Default: Chrome's own, about 1280x800. */
+const size = opt('size', '') as string;
+/** Radians to turn from the way the player faces at the start (3.14 = about face: away from the scrap field the field spawn looks at). */
+const yaw = opt('yaw', '') as string;
 
 const CHROME = [opt('chrome'), process.env.CHROME, 'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
   `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`, '/usr/bin/google-chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find((p) => p && existsSync(p));
@@ -44,6 +52,8 @@ async function worldId(): Promise<string> {
   return ((await res.json()) as { id: string }).id;
 }
 
+/** `--ls key=value`: raw localStorage entries (other settings than the graphics ones, e.g. dadajam.ao=0 for no ambient occlusion). */
+const rawLs = args.flatMap((a, i) => (a === '--ls' && args[i + 1] ? [args[i + 1].split('=')] : []));
 const prefs: Record<string, unknown> = {};
 for (const kv of sets) {
   const [k, v] = kv.split('=');
@@ -102,8 +112,21 @@ try {
 
   // The prologue is skipped (a tab's later loads are short), graphics settings are the asked ones, and stats stay as they were.
   await send('Page.enable');
+  // the page's errors and warnings (a shader that does not compile, a GPU validation error): counted, the first few printed
+  const problems: string[] = [];
+  await send('Runtime.enable');
+  await send('Log.enable');
+  events.push((m) => {
+    if (m.method === 'Runtime.consoleAPICalled' && (m.params.type === 'error' || m.params.type === 'warning')) problems.push(`${m.params.type}: ${m.params.args.map((a: any) => a.value ?? a.description ?? '').join(' ')}`.slice(0, 400));
+    if (m.method === 'Runtime.exceptionThrown') problems.push(`exception: ${m.params.exceptionDetails?.exception?.description ?? m.params.exceptionDetails?.text}`.slice(0, 400));
+    if (m.method === 'Log.entryAdded' && (m.params.entry.level === 'error' || m.params.entry.level === 'warning')) problems.push(`${m.params.entry.level}: ${m.params.entry.text}`.slice(0, 400));
+  });
+  if (size) {
+    const [w, h] = size.split('x').map(Number);
+    await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+  }
   await send('Page.addScriptToEvaluateOnNewDocument', {
-    source: `try { sessionStorage.setItem('prologueSeen', '1'); const k = 'dadajam.graphics'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), ...${JSON.stringify(prefs)} })); } catch {}`,
+    source: `try { sessionStorage.setItem('prologueSeen', '1'); const k = 'dadajam.graphics'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), ...${JSON.stringify(prefs)} })); for (const [lk, lv] of ${JSON.stringify(rawLs)}) localStorage.setItem(lk, lv); } catch {}`,
   });
 
   // Tracing: Chrome's Performance recording categories, streamed back as a file.
@@ -127,7 +150,7 @@ try {
     await done;
   };
 
-  const url = `${base}?w=${world}&perf=${seconds === 0 ? 'startup' : seconds}&perfdl=0`;
+  const url = `${base}?w=${world}&perf=${seconds === 0 ? 'startup' : seconds}&perfdl=0${spawnAt ? `&spawn=${spawnAt}` : ''}${tod ? `&ptod=${tod}` : ''}${yaw ? `&pyaw=${yaw}` : ''}${flag('allow-death') ? '&pdeath=continue' : ''}${opt('query') ? `&${opt('query')}` : ''}${opt('route') ? `&proute=${opt('route')}` : ''}${opt('view') ? `&pview=${opt('view')}` : ''}${opt('face') ? `&pface=${opt('face')}` : ''}${opt('pitch') ? `&ppitch=${opt('pitch')}` : ''}`;
   console.log(`world ${world}; ${url}\nChrome: ${CHROME}\n${Object.keys(prefs).length ? `settings ${JSON.stringify(prefs)}\n` : ''}waiting for the game to load...`);
   if (trace === 'startup') await traceStart();
   await send('Page.navigate', { url });
@@ -152,7 +175,7 @@ try {
   if (flag('shot')) {
     // the view where the walk ended (it stands still there), then again with one option changed, to compare the two pictures
     const grab = async () => Buffer.from(((await send('Page.captureScreenshot', { format: 'png' })) as { data: string }).data, 'base64');
-    await sleep(1000);
+    await sleep(4000); // (the eye adapts to the new view's brightness over a few seconds)
     shotData = await grab();
     const ab = opt('ab');
     if (ab) {
@@ -162,24 +185,41 @@ try {
       shotB = await grab();
     }
   }
+  const ev = opt('eval'); // a dev probe: an expression evaluated in the page once the run is done (window.__dbg has the renderer, sky, net, terrain)
+  if (ev) console.log('eval:', JSON.stringify((await send('Runtime.evaluate', { expression: ev, returnByValue: true, awaitPromise: true })).result?.value ?? null));
   const result = (await evaluate('window.__perfResult')) as Record<string, any>;
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const name = `${stamp}${label ? `-${label}` : ''}`;
+  const name = `${stamp}${label ? `-${label}` : ''}${result.valid ? '' : '-INVALID'}`;
   writeFileSync(join(out, `${name}.json`), JSON.stringify(result, null, 2));
   if (traceEvents.length) writeFileSync(join(out, `${name}.trace.json.gz`), gzipSync(JSON.stringify({ traceEvents })));
   if (shotData) writeFileSync(join(out, `${name}.png`), shotData);
   if (shotB) writeFileSync(join(out, `${name}.ab.png`), shotB);
+  if (problems.length) {
+    const uniq = [...new Set(problems)];
+    console.log(`page errors/warnings: ${problems.length} (${uniq.length} different)`);
+    for (const p of uniq.slice(0, 8)) console.log(`  ${p}`);
+  }
   const g = result.gameplay;
   console.log(`\nwritten ${join(out, name)}.json${traceEvents.length ? ' and .trace.json.gz' : ''}`);
+  if (!result.valid) {
+    console.log(`\n!! INVALID RUN: ${(result.invalidReasons as string[]).join('; ')}`);
+    console.log('   Do not compare these numbers with other runs. Use --spawn field --yaw 3.14 (no enemies, open ground) and an early --tod, or --allow-death to keep the run going and leave the player-down frames out.');
+    process.exitCode = 2;
+  }
   console.log('startup (ms):', JSON.stringify(result.startup.milestonesMs), '| long tasks', JSON.stringify(result.startup.longTasks));
   if (g) {
+    for (const e of g.events as { type: string; atS: number; x: number; z: number; heat: number }[]) console.log(`  event: player ${e.type} at ${e.atS} s, (${e.x}, ${e.z}), heat ${e.heat}`);
+    if (g.framesExcluded) console.log(`  ${g.framesExcluded} frames left out of the numbers (player down or just respawned)`);
+    console.log(`  travelled ${g.travelledM} m`);
+    console.log(`  walk ${JSON.stringify(g.startedAt)} -> ${JSON.stringify(g.endedAt)}`);
     console.log(`gameplay: ${g.fps} fps (1% low ${g.lows1pctFps}), frames ${g.frames}, > 20 ms: ${g.framesOver20ms}, > 50 ms: ${g.framesOver50ms}`);
     console.log(`  frame gap ms p50/p90/p99/max: ${['p50', 'p90', 'p99', 'max'].map((k) => g.gapMs[k]).join(' / ')}`);
     console.log(`  cpu ms p50/p90/p99: ${g.cpuMs ? ['p50', 'p90', 'p99'].map((k) => g.cpuMs[k]).join(' / ') : '-'}   gpu ms p50/p90/p99: ${g.gpuMs ? ['p50', 'p90', 'p99'].map((k) => g.gpuMs[k]).join(' / ') : '-'}   bound: ${g.bound}`);
+    if (g.gpuPasses?.length) console.log('  gpu ms per frame by render pass (ctx: per-frame ms / when drawn / share of frames):', g.gpuPasses.slice(0, 8).map((x: any) => `${x.ctx}: ${x.perFrameMs} (${x.meanMs} x ${Math.round(x.share * 100)}%)`).join(' | '));
     console.log(`  draws ${g.draws.p50}, triangles ${g.trianglesK.p50}k, render scale ${g.renderScale.p50}`);
   }
 } finally {
   stop();
 }
-process.exit(0);
+process.exit(process.exitCode ?? 0);

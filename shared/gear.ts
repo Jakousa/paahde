@@ -2,7 +2,8 @@
 // the base. Each piece of gear has part slots (GEAR below); an item's `parts` (shared/items.ts) says what is
 // fitted in each. With every slot filled it works, and how well depends on the parts' tiers (quality): a
 // better part can be swapped in any time. Some gear is equipped in the Tab menu (the 'equip' box: back,
-// wrist, belt, vehicle), the rest is used from the hotbar.
+// wrist, belt, armor), the rest is used from the hotbar. The motorcycle is never carried: it stands in the world
+// (shared/vehicles.ts) and is repaired where it lies, its item in a box of its own like a building's.
 //
 // Moves between boxes go through tryMove(), on the client as a prediction and on the server for real, so
 // both apply the same rules: gear only into its equipment slot (and only once repaired), nothing put down past the
@@ -16,13 +17,13 @@ import {
 } from './items.ts';
 import { PART_LABELS } from './parts.ts';
 import type { PartId, Tier } from './salvage.ts';
-import { TEXT } from './text.ts';
+import { TEXT, type HintKeys } from './text.ts';
 
-export const EQUIP_SLOTS = ['back', 'wrist', 'belt', 'vehicle', 'armor'] as const;
+export const EQUIP_SLOTS = ['back', 'wrist', 'belt', 'armor'] as const;
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
 export const EQUIP_LABELS: Record<EquipSlot, string> = TEXT.equip;
 
-/** A part slot: a tiered part from disassembly, or a basic material (shared/items.ts SCRAP or CLOTH; no tier: it holds
+/** A part slot: a tiered part from disassembly, or a basic material (shared/items.ts SCRAP, CLOTH or WIRING; no tier: it holds
  *  things together), or one of the kinds `scrap` lists (an enemy's or boss's own part: no tier either). `rare`: never
  *  already fitted in gear found broken (server/loot.ts). */
 export type PartSlot = ({ part: PartId } | { scrap: string[]; label: string }) & { rare?: true };
@@ -33,51 +34,96 @@ export type GearSpec = {
   equip?: EquipSlot;
   /** What better parts do, and how to use it, for the tooltip. */
   better: string;
-  use: string;
+  /** Given the current key or button names (src/bindings.ts hintKeys). */
+  use: (k: HintKeys) => string;
+  /** A building: put up with the wrench from base materials (shared/crafting.ts BUILDS) with its slots empty, never
+   *  found or carried; its parts are fitted where it stands, like on the workbench (buildingBox). */
+  built?: true;
+  /** A vehicle (shared/vehicles.ts): lies broken in the world and is repaired and ridden where it stands, never carried;
+   *  its item is in its own box (vehicleBox), like a building's. */
+  vehicle?: true;
 };
 
 const P = (part: PartId): PartSlot => ({ part });
-/** The basic materials (shared/items.ts): a piece of scrap metal, a piece of cloth. */
+/** The basic materials (shared/items.ts): a piece of scrap metal, a piece of cloth, a length of wiring. */
 const SCRAP: PartSlot = { scrap: ['scrap'], label: TEXT.items.scrap };
 const CLOTH: PartSlot = { scrap: ['cloth'], label: TEXT.items.cloth };
+const WIRING: PartSlot = { scrap: ['wiring'], label: TEXT.items.wiring };
 /** The receivers' slots: the uranium cell that drives the call, and an enemy's or boss's own part. */
 const CELL: PartSlot = { part: 'uranium', rare: true };
 const own = (kind: keyof typeof TEXT.items): PartSlot => ({ scrap: [kind], label: TEXT.items[kind], rare: true });
 const RECEIVER = { better: 'how steady its needle', use: TEXT.gearUse.receiver };
 
 export const GEAR: Record<string, GearSpec> = {
-  motorcycle: { slots: [P('motor'), P('battery'), P('bearing')], equip: 'vehicle', better: 'top speed and acceleration',
+  motorcycle: { slots: [P('motor'), P('battery'), P('bearing')], vehicle: true, better: 'top speed and acceleration',
     use: TEXT.gearUse.motorcycle },
   spyglass: { slots: [P('gear'), P('bearing')], better: 'zoom', use: TEXT.gearUse.spyglass },
   canteen: { slots: [P('valve'), CLOTH], better: 'how many sips it holds',
     use: TEXT.gearUse.canteen },
   backpack: { slots: [CLOTH, SCRAP, P('gear')], equip: 'back', better: 'room (rows)',
     use: TEXT.gearUse.backpack },
-  storm_detector: { slots: [P('coil'), P('relay')], equip: 'belt', better: 'how early it warns',
+  storm_detector: { slots: [WIRING, P('relay')], equip: 'belt', better: 'how early it warns',
     use: TEXT.gearUse.storm_detector },
   wristpad: { slots: [P('compute'), P('battery')], equip: 'wrist', better: 'how far away players show on the locator',
     use: TEXT.gearUse.wristpad },
-  // The guns (shared/rifle.ts): a coil focuses the beam; the rifle also needs a cell and a heatsink.
-  laser_pistol: { slots: [P('coil'), SCRAP], better: 'how fast it recharges', use: TEXT.gearUse.laser_pistol },
-  laser_rifle: { slots: [P('coil'), P('battery'), P('heatsink'), SCRAP], better: 'how fast it recharges',
+  // The guns (shared/rifle.ts): wiring to the emitter, a heat sink to cool it; the rifle also needs a cell.
+  laser_pistol: { slots: [WIRING, P('heatsink'), SCRAP], better: 'how fast it recharges', use: TEXT.gearUse.laser_pistol },
+  laser_rifle: { slots: [WIRING, P('battery'), P('heatsink'), SCRAP], better: 'how fast it recharges',
     use: TEXT.gearUse.laser_rifle },
-  // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
-  jammer: { slots: [P('compute'), P('coil'), P('battery')], better: 'how fast it locks on',
+  // The jammer (shared/jammer.ts): a compute unit to find the drones' link, wiring for the antenna, a cell to drive it.
+  jammer: { slots: [P('compute'), WIRING, P('battery')], better: 'how fast it locks on',
     use: TEXT.gearUse.jammer },
-  // The shield plate (server/world.ts die): a hull plate over cloth padding, and an emitter (coil, cell) that throws a
-  // field round you as a killing blow lands. It takes that blow and breaks: the cell burns out and the plate cracks.
-  shield: { slots: [P('coil'), P('battery'), SCRAP, CLOTH], equip: 'armor', better: 'how long you stay safe after it breaks',
+  // The shield plate (server/world.ts die): a hull plate over cloth padding, and an emitter (wiring, cell) that throws a
+  // field round you as a killing blow lands. It takes that blow; its last one (shieldSaves) breaks it: the cell burns
+  // out and the plate cracks.
+  shield: { slots: [WIRING, P('battery'), SCRAP, CLOTH], equip: 'armor', better: 'how many killing blows it takes',
     use: TEXT.gearUse.shield },
   // The receivers (shared/bosses.ts RECEIVERS): each calls its boss, spending the cell. Tuned by a part from the boss's
   // kin (shared/tables.ts RELIC_DROPS); the worm's by a part from each of the other bosses.
   receiver_carrier: { slots: [CELL, own('drone_transponder'), P('compute')], ...RECEIVER },
-  receiver_queen: { slots: [CELL, own('brood_gland'), P('coil')], ...RECEIVER },
+  receiver_queen: { slots: [CELL, own('brood_gland'), WIRING], ...RECEIVER },
   receiver_colossus: { slots: [CELL, own('servo_heart'), P('relay')], ...RECEIVER },
   receiver_worm: { slots: [CELL, own('hive_core'), own('queen_eye'), own('furnace_heart')], ...RECEIVER },
+  // The buildings (shared/placed.ts), put up empty (their frame and windings are the base materials they're built of,
+  // shared/tables.ts BUILD_TABLE). The windmill: bearings for the rotor shaft, the head's turn and the generator. The
+  // battery station: a rack of six cells.
+  windmill: { slots: [P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing')],
+    better: 'how much power it makes', use: TEXT.gearUse.windmill, built: true },
+  battery_station: { slots: [P('battery'), P('battery'), P('battery'), P('battery'), P('battery'), P('battery')],
+    better: 'how much power it holds', use: TEXT.gearUse.battery_station, built: true },
 };
 export const GEAR_KINDS = Object.keys(GEAR);
 
 export const isGear = (kind: string) => kind in GEAR;
+export const isBuilding = (kind: string | undefined) => !!kind && !!GEAR[kind]?.built;
+export const isVehicle = (kind: string | undefined) => !!kind && !!GEAR[kind]?.vehicle;
+
+/** A building standing in the world (shared/placed.ts) keeps its item, parts and all, in a shared box of one slot,
+ *  `bld<placed id>`, open while you're in reach of it (shared/storage.ts): its parts are fitted like the workbench's
+ *  (fitPart / unfitPart with that box as the target), but the item itself never moves in or out of it (tryMove). */
+export const buildingBox = (id: number) => `bld${id}`;
+/** The placed id of a building's box, or -1. */
+export function buildingId(box: string): number {
+  const m = /^bld(\d+)$/.exec(box);
+  return m ? Number(m[1]) : -1;
+}
+
+/** A vehicle in the world (shared/vehicles.ts) keeps its item, parts and all, in a shared box of one slot,
+ *  `veh<vehicle id>`, like a building's; its cargo is the shared grid `cargo<vehicle id>`. */
+export const vehicleBox = (id: number) => `veh${id}`;
+export const cargoBox = (id: number) => `cargo${id}`;
+/** The vehicle id of a vehicle's item box, or -1. */
+export function vehicleId(box: string): number {
+  const m = /^veh(\d+)$/.exec(box);
+  return m ? Number(m[1]) : -1;
+}
+/** The vehicle id of a vehicle's cargo box, or -1. */
+export function cargoId(box: string): number {
+  const m = /^cargo(\d+)$/.exec(box);
+  return m ? Number(m[1]) : -1;
+}
+/** A box holding one fitted item that never moves in or out of it, only its parts: a building's or a vehicle's. */
+export const fittedBox = (box: string) => buildingId(box) >= 0 || vehicleId(box) >= 0;
 
 export function slotLabel(s: PartSlot) {
   return 'part' in s ? PART_LABELS[s.part] : s.label;
@@ -154,7 +200,7 @@ export const receiverWobble = (q: number) => by(q, 0.35, 0.05);
 export const bikeTopSpeed = (q: number) => by(q, 20, 50);
 export const bikeEngine = (q: number) => by(q, 13, 30);
 /** Telescope's strongest zoom. */
-export const spyglassZoom = (q: number) => by(q, 4, 12);
+export const spyglassZoom = (q: number) => by(q, 6, 20);
 /** Sips in a full water bottle. */
 export const canteenSips = (q: number) => Math.round(by(q, 5, 10));
 /** Backpack rows of bag grid (BAG_COLS wide, past the hotbar). */
@@ -171,9 +217,11 @@ export const gunCooldown = (base: number, q: number) => base * by(q, 1, 0.4);
 /** The jammer's lock time (ms) at quality q: from its base (shared/jammer.ts JAM_MS) at Scrap parts down to 60% at Space-grade. */
 export const jamMs = (base: number, q: number) => base * by(q, 1, 0.6);
 
+/** The shield plate: how many killing blows it takes before it breaks, by tier (1 Scrap .. 4 Space-grade). */
+export const shieldSaves = (tier: number) => tier + 1;
 /** The shield plate: after it takes a killing blow, nothing else can hurt you for this long (ms), to get away. */
 export const shieldGraceMs = (q: number) => by(q, 1500, 5000);
-/** What breaks when the shield takes a blow: the cell (burnt out) and the scrap plate (cracked); the coil and padding
+/** What breaks when the shield breaks: the cell (burnt out) and the scrap plate (cracked); the coil and padding
  *  stay. Its part slot indices (GEAR.shield). */
 export const SHIELD_BREAKS = [1, 2];
 
@@ -239,11 +287,9 @@ export function bottleSips(bag: Slots | undefined): number {
   return best < 0 ? 0 : canteenSips(best);
 }
 
-/** Motorcycle level for PlayerState.bike: 0 without a repaired one equipped or in hand (`held`: the selected hotbar
- *  item), else 1 + quality (1..4). */
-export function bikeLevel(equip: Slots | undefined, held?: Item | null): number {
-  const b = equipped(equip, 'vehicle') ?? (held?.kind === 'motorcycle' && repaired(held) ? held : undefined);
-  return b ? 1 + quality(b) : 0;
+/** Motorcycle level for PlayerState.bike: 0 for none (or a broken one), else 1 + its quality (1..4). */
+export function bikeLevel(bike: Item | null | undefined): number {
+  return bike?.kind === 'motorcycle' && repaired(bike) ? 1 + quality(bike) : 0;
 }
 
 /** Which box ids hold what: 'equip' is the player's EQUIP_SLOTS, 'bench' the workbench's one slot. */
@@ -253,8 +299,8 @@ export type Boxes = Record<string, Slots | undefined>;
 export function boxShape(box: string, boxes: Boxes): Shape {
   if (box === 'bag') return bagShape(boxes.equip);
   if (box === 'equip') return freeSlots(EQUIP_SLOTS.length);
-  if (box === 'bench') return freeSlots(1);
-  if (box === 'bike') return gridShape(BIKE_COLS, BIKE_ROWS);
+  if (box === 'bench' || fittedBox(box)) return freeSlots(1);
+  if (cargoId(box) >= 0 || box === 'bike') return gridShape(BIKE_COLS, BIKE_ROWS);
   if (botId(box) >= 0) return gridShape(BOT_COLS, BOT_ROWS);
   return gridShape(CHEST_COLS, Math.floor((boxes[box]?.length ?? 0) / CHEST_COLS));
 }
@@ -289,15 +335,9 @@ function strandsNew(before: Boxes, after: Boxes): boolean {
   return false;
 }
 
-/** A repaired motorcycle on you (bag or equipment): what opens the motorcycle's cargo ('bike', shared/storage.ts). */
-const hasBike = (b: Boxes) => [b.bag, b.equip].some((s) => s?.some((it) => it?.kind === 'motorcycle' && repaired(it)));
-
-/**
- * Would going from `before` to `after` shut away what a carrier holds: strand the backpack's rows, or leave the
- * motorcycle's cargo (itself, say) with no motorcycle on you to open it?
- */
+/** Would going from `before` to `after` shut away what a carrier holds: strand the backpack's rows? */
 function losesCargo(before: Boxes, after: Boxes): boolean {
-  return strandsNew(before, after) || (!!after.bike?.some((it) => it) && hasBike(before) && !hasBike(after));
+  return strandsNew(before, after);
 }
 
 /** Is the item at `box`[i] a carrier with something in it (so it can't leave: empty it first)? */
@@ -307,9 +347,6 @@ export function holdsCargo(boxes: Boxes, box: string, i: number): boolean {
   after[box]![i] = null;
   return losesCargo(boxes, after);
 }
-
-/** The motorcycle can't leave its slot while you ride it. */
-export const lockedWhileRiding = (box: string, i: number) => box === 'equip' && EQUIP_SLOTS[i] === 'vehicle';
 
 /**
  * Move n (default all) of `from`[fi] to `to`[ti] (ti -1: anywhere it may go), turned if `r` (default: as it
@@ -321,8 +358,11 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
   const src0 = boxes[from], dst0 = boxes[to];
   const it = src0?.[fi];
   if (!src0 || !dst0 || !it) return false;
-  // A dead player's pack (shared/corpse.ts) is only taken from.
+  // A dead player's pack (shared/corpse.ts) is only taken from; a building's or vehicle's item stays in it.
   if (to !== from && isCorpseBox(to)) return false;
+  if (fittedBox(from) || fittedBox(to)) return false;
+  // Vehicles are never carried (nor put in a cargo).
+  if (isVehicle(it.kind)) return false;
   // Anywhere in equip: the item's own slot.
   if (to === 'equip' && ti === -1) {
     const slot = GEAR[it.kind]?.equip;
@@ -351,20 +391,21 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
 const sameItem = (a: Item, b: Item | null | undefined) => !!b && a.id === b.id && a.kind === b.kind && a.n === b.n && !!a.r === !!b.r;
 
 /**
- * Fit the part at `from`[fi] into slot `slot` of the workbench item. A part already there comes out into
- * `from`[fi] in its place (or anywhere in the bag if one of the stack stays behind): that's how you
- * upgrade. Applies to `boxes` only if allowed; returns whether it did.
+ * Fit the part at `from`[fi] into slot `slot` of the item in box `at` (the workbench, a building's or a vehicle's box). A part
+ * already there comes out into `from`[fi] in its place (or anywhere in the bag if one of the stack stays behind):
+ * that's how you upgrade. Applies to `boxes` only if allowed; returns whether it did.
  */
-export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, newId: () => number): boolean {
-  const target = boxes.bench?.[0];
+export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, newId: () => number, at = 'bench'): boolean {
+  const target = boxes[at]?.[0];
   const src = boxes[from];
   const part = src?.[fi];
   const spec = target && GEAR[target.kind]?.slots[slot];
-  if (!target || !src || !part || !spec || !fitsSlot(spec, part.kind)) return false;
+  if (!target || !src || !part || !spec || !fitsSlot(spec, part.kind) || from === at || fittedBox(from)) return false;
   const parts = partsOf(target);
   const old = parts[slot];
   if (old === part.kind) return false;
-  const b = cloneBoxes(boxes, [...new Set([from, 'bag', 'bench'])]);
+  const ids = [...new Set([from, 'bag', at])];
+  const b = cloneBoxes(boxes, ids);
   const s = b[from]!;
   const p = s[fi]!;
   if (p.n > 1) {
@@ -377,25 +418,26 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
     else if (old && !giveBack(b, old, newId)) return false;
   }
   parts[slot] = part.kind;
-  b.bench![0] = { ...b.bench![0]!, parts };
-  for (const id of new Set([from, 'bag', 'bench'])) boxes[id]?.splice(0, boxes[id]!.length, ...b[id]!);
+  b[at]![0] = { ...b[at]![0]!, parts };
+  for (const id of ids) boxes[id]?.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }
 
-/** Take the part in slot `slot` of the workbench item out into `to`[ti] (-1: anywhere in it). */
-export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, newId: () => number): boolean {
-  const target = boxes.bench?.[0];
-  if (!target || !boxes[to] || isCorpseBox(to)) return false;
+/** Take the part in slot `slot` of the item in box `at` (the workbench, a building's or a vehicle's box) out into
+ *  `to`[ti] (-1: anywhere in it). */
+export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, newId: () => number, at = 'bench'): boolean {
+  const target = boxes[at]?.[0];
+  if (!target || !boxes[to] || isCorpseBox(to) || to === at || fittedBox(to)) return false;
   const parts = partsOf(target);
   const kind = parts[slot];
   if (!kind) return false;
-  const b = cloneBoxes(boxes, [...new Set([to, 'bench'])]);
+  const b = cloneBoxes(boxes, [...new Set([to, at])]);
   const dst = b[to]!;
   const tmp: Slots = [{ id: newId(), kind, n: 1 }];
   if (!moveItem(tmp, 0, ONE, dst, ti, boxShape(to, b), undefined, newId) || tmp[0]) return false;
   parts[slot] = null;
-  b.bench![0] = { ...b.bench![0]!, parts };
-  for (const id of new Set([to, 'bench'])) boxes[id]!.splice(0, boxes[id]!.length, ...b[id]!);
+  b[at]![0] = { ...b[at]![0]!, parts };
+  for (const id of new Set([to, at])) boxes[id]!.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }
 

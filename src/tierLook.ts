@@ -62,6 +62,9 @@ function make(src: Std, tier: number): THREE.Material {
     (m as unknown as Record<string, unknown>)[k] = src[k];
   }
   m.normalScale.copy(src.normalMap ? src.normalScale : m.normalScale);
+  // Lit like the original (a thing in the bunker by its indoor lights, src/world/base.ts).
+  const lights = (src as unknown as THREE.MeshStandardNodeMaterial).lightsNode;
+  if (lights) m.lightsNode = lights;
   m.name = `${src.name}#${tier}`;
   const glows = src.emissive.getHex() !== 0 && src.emissiveIntensity > 0;
   const lamp = LAMP[tier];

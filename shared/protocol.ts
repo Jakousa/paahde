@@ -5,12 +5,16 @@ import type { Loot } from './loot.ts';
 import type { Corpse } from './corpse.ts';
 import type { MissilePath } from './missiles.ts';
 import type { Storm } from './storm.ts';
+import type { Gas } from './gas.ts';
 import type { Jet } from './jets.ts';
 import type { JetCrash } from './jetcrash.ts';
 import type { Harvester } from './harvester.ts';
 import type { TossPath } from './throw.ts';
 import type { Placed } from './placed.ts';
 import type { NpcSnap } from './npcs.ts';
+import type { Vehicle } from './vehicles.ts';
+import type { PowerState } from './power.ts';
+import type { Wire } from './wires.ts';
 import type { BedState } from './garden.ts';
 import type { BossKind, BossSnap } from './bosses.ts';
 
@@ -18,8 +22,9 @@ export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
   // spawn: 'base' starts at the home base's door instead of the saved position, 'crash' next to the nearest
   // crash site with a large machine, 'field' at the edge of the nearest scrap field, 'shelter' outside the nearest
-  // shelter's door (dev helpers, ?spawn=base / ?spawn=crash / ?spawn=field / ?spawn=shelter).
-  | { t: 'hello'; browserId: string; spawn?: 'base' | 'crash' | 'field' | 'shelter' }
+  // shelter's door, 'canyon' on the floor of the nearest deep canyon (dev helpers, ?spawn=base / crash / field / shelter /
+  // canyon).
+  | { t: 'hello'; browserId: string; spawn?: 'base' | 'crash' | 'field' | 'shelter' | 'canyon' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
@@ -31,12 +36,23 @@ export type ClientMsg =
   // (0/1). The server checks the item, reach and placeError(), then answers 'items' (bag) and broadcasts
   // 'placed'; a refusal gets a 'notice'.
   | { t: 'place'; slot: number; x: number; z: number; rot: number }
-  // Pick a placed thing back up into the bag (reach, room in the bag). A bed's crop is lost.
+  // String a power line (shared/wires.ts) from placed thing `a`'s connector to `b`'s with the wiring in bag slot `slot`
+  // in hand (what it takes by its length comes out of the bag), or take down the wire between them (the wiring back). Answered with 'items' (bag) and a broadcast 'wires', or a 'notice'.
+  | { t: 'wire'; slot: number; a: number; b: number }
+  // Pick a placed thing back up into the bag (reach, room in the bag), or take a building down with the wrench (what it
+  // was built of, its parts and its wires' wiring into the bag, all of it or nothing). A bed's crop is lost.
   | { t: 'unplace'; id: number }
   // Deploy the companion bot in hotbar slot `slot` onto the ground in front of you.
   | { t: 'deployBot'; slot: number }
   // Pick the companion bot `id` back up into the bag.
   | { t: 'recallBot'; id: number }
+  // Put up building `kind` (shared/crafting.ts BUILDS) with the wrench, its materials from the bag. Answered like 'place'.
+  | { t: 'build'; kind: string; x: number; z: number; rot: number }
+  // Vehicles (shared/vehicles.ts): stand up broken vehicle `id` once every part slot is filled (in reach), or start
+  // getting on working vehicle `id` (in reach, nobody on it): the server moves you onto it and starts the mount
+  // (shared/sim.ts). Answered with 'vehicles', or a 'notice'.
+  | { t: 'repairVehicle'; id: number }
+  | { t: 'mount'; id: number }
   // Craft a recipe at the workbench (shared/crafting.ts RECIPES id): reach checked, ingredients used up from
   // the bag, answered with 'items' (got: what was made) or a 'notice'.
   | { t: 'craft'; recipe: string }
@@ -56,10 +72,11 @@ export type ClientMsg =
   | { t: 'hands'; hands: Hands; slot?: number; aim?: boolean }
   // Stall tracing (src/telemetry.ts → server/telemetry.ts): stalls seen since the last one, and a summary a minute.
   | { t: 'telemetry'; ev: StallEvent[]; sum?: NetSummary }
-  // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning; `front`: a mega-storm front at once.
-  | { t: 'storm'; front?: boolean }
+  // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning; `front`: a mega-storm front at once;
+  // `gas`: poison gas (shared/gas.ts) creeping in at once, by day too.
+  | { t: 'storm'; front?: boolean; gas?: boolean }
   // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
-  // to box `to` slot ti (ti -1: anywhere in it). Boxes: 'bag', 'bike', 'chest<i>'. The server checks
+  // to box `to` slot ti (ti -1: anywhere in it). Boxes: 'bag', 'chest<i>', 'cargo<id>', ... The server checks
   // you can open both, applies moveItem() and answers with 'items' for each box that changed.
   // `r`: lay it down turned 90° (shared/items.ts Item.r); left out, as it lies.
   | { t: 'move'; from: string; fi: number; to: string; ti: number; n?: number; r?: boolean }
@@ -67,9 +84,10 @@ export type ClientMsg =
   | { t: 'sort'; box: string }
   // Repairs at the workbench (shared/gear.ts fitPart / unfitPart): fit the part at box `from` slot fi into
   // part slot `slot` of the item on the bench (what was there comes out), or take one out into box `to`
-  // slot ti (-1: anywhere). Answered with 'items' for each box involved.
-  | { t: 'fit'; from: string; fi: number; slot: number }
-  | { t: 'unfit'; slot: number; to: string; ti: number }
+  // slot ti (-1: anywhere). `at`: a building's box ('bld<id>') in reach instead of the bench. Answered with
+  // 'items' for each box involved (and 'placed' for a building).
+  | { t: 'fit'; from: string; fi: number; slot: number; at?: string }
+  | { t: 'unfit'; slot: number; to: string; ti: number; at?: string }
   // Drop one of the item in box `box` slot `slot` (not 'equip' or 'bench') on the sand in front of you: it becomes
   // loot (src 'drop') anyone can pick up. Answered with 'items' for the box (and a 'notice' if refused, e.g. in the base).
   | { t: 'drop'; box: string; slot: number }
@@ -139,6 +157,8 @@ export type ClientMsg =
   | { t: 'ready' };
 
 /** A death, as chat shows it (ServerMsg 'obituary'). */
+/** How a world is doing, for the landing page's list (GET api/worlds?ids=a,b: server/index.ts). */
+export type WorldStats = { id: string; lives: number; beaten: number; players: number; online: number };
 export type Obituary = { t: 'obituary'; id: number; color: number; name: string; cause: DeathCause; at: number };
 /** Deaths sent to a player as they join (the newest). */
 export const OBITUARY_KEEP = 12;
@@ -202,7 +222,7 @@ export type ServerMsg =
   // 'welcome', with reset: the full taken list, replacing whatever the client had. Sent before the
   // snapshot, like terrainEdit. A rejected pickup gets its piece back in a message to that player only.
   | { t: 'scrap'; taken: number[]; back: number[]; reset?: boolean }
-  // The contents of an item box (shared/storage.ts BoxId): your 'bag' and 'bike' after 'welcome' and when
+  // The contents of an item box (shared/storage.ts BoxId): your 'bag' and 'equip' after 'welcome' and when
   // they change, every 'chest<i>' on join and to everyone when it changes. `got`: a pickup (scrap, a
   // carried machine, a part out of a machine) added this kind (for the HUD toast).
   | { t: 'items'; box: string; slots: Slots; got?: string }
@@ -245,6 +265,12 @@ export type ServerMsg =
   // Every placed thing in the base (shared/placed.ts), on join (before 'welcome') and whenever it changes
   // (before the snapshot, like terrainEdit, so prediction collides with it from the same tick on).
   | { t: 'placed'; list: Placed[] }
+  // Every vehicle in the world (shared/vehicles.ts), on join (before 'welcome') and whenever it changes.
+  | { t: 'vehicles'; list: Vehicle[] }
+  // Electricity at the base (shared/power.ts), every POWER_SEND_MS: each windmill's output and each station's charge.
+  | ({ t: 'power' } & PowerState)
+  // Every power line (shared/wires.ts), on join and whenever one goes up or comes down.
+  | { t: 'wires'; list: Wire[] }
   // Every plant bed's stage and growth (shared/garden.ts), on join and whenever one changes.
   | { t: 'garden'; beds: BedState[] }
   // A short message for this player's HUD toast (a refused place, pickup or craft).
@@ -268,9 +294,9 @@ export type ServerMsg =
   /** `bolt`: the guardian's bolt ('shot' id) that killed, which the client draws reaching you before you fall. */
   | { t: 'died'; cause: DeathCause; push?: [number, number, number]; bolt?: number }
   | { t: 'respawn' }
-  // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time).
-  // Sent before 'welcome' on join and to everyone whenever the list changes.
-  | { t: 'storms'; storms: Storm[] }
+  // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time), and every
+  // poison gas cloud out (shared/gas.ts). Sent before 'welcome' on join and to everyone whenever a list changes.
+  | { t: 'storms'; storms: Storm[]; gas: Gas[] }
   // Every fixed-wing drone flight in the air (shared/jets.ts; times on the server clock). Like 'storms': before
   // 'welcome' on join and to everyone whenever the list changes.
   | { t: 'jets'; jets: Jet[] }
@@ -312,7 +338,8 @@ export type ServerMsg =
   // Player `id`'s shield plate (shared/gear.ts) took a killing blow at (x, y, z) and broke; `push` the blow's (m/s),
   // `tier` the plate's (tierOf), `ms` how long its field still keeps them safe (shieldGraceMs). To everyone near: the
   // flash, the crack, the shards, the field.
-  | { t: 'shieldBreak'; id: number; x: number; y: number; z: number; push: [number, number, number]; tier: number; ms: number }
+  // A shield plate took player `id`'s killing blow (server/world.ts shielded); `held`: it holds for more (no break).
+  | { t: 'shieldBreak'; id: number; x: number; y: number; z: number; push: [number, number, number]; tier: number; ms: number; held?: true }
   | { t: 'zap'; by: number; x: number; y: number; z: number; ex: number; ey: number; ez: number; hit: boolean; pistol?: true }
   // Thrown scrap `id` (shared/throw.ts tossAt), item `kind`, thrown by player `by` (their throw `n`), flying from
   // (x, y, z) with velocity (vx, vy, vz) at server time `time`; sent again with `hit` as it bounces off a drone, and
@@ -329,4 +356,4 @@ export type ServerMsg =
   // Companion bots in the world (shared/npcs.ts).
   | { t: 'npcs'; list: NpcSnap[] };
 
-export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen' | 'harvester' | 'storm';
+export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen' | 'harvester' | 'storm' | 'gas';

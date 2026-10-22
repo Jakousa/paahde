@@ -25,7 +25,8 @@
 // stay in view) on the `Pistol` mesh, one-handed. The jammer (src/jammer.ts): JammerIdle / JammerWalk, and JammerAim
 // (scrubbed like the guns' aim while jamming: up in front in both hands); its model (src/models/jammer.ts) sits on the
 // `JammerMount` node, its lamp lit by `playerHands.jamLamp`. A receiver (src/receiver.ts) sits on the same mount and
-// is held with the jammer's Idle / Walk clips; its needle and lamp follow `playerHands.receiver`.
+// is held with the jammer's Idle / Walk clips; its needle and lamp follow `playerHands.receiver`. So is the wrench
+// (src/models/wrench.ts), on the same mount.
 // The model still has the shovel and metal detector (`Shovel`, `Detector`, their clips) from when there was digging;
 // they stay hidden. Scrap in hand (`held` 'scrap'): ScrapIdle / ScrapWalk on `ScrapChunk`, and ScrapThrow from `playerHands.throwAt`, the piece
 // hidden from the release (THROW_RELEASE) until the hand is back with the next one.
@@ -37,6 +38,7 @@ import type { FirstPersonCamera } from './camera';
 import { playerHands, type Held } from './water';
 import { jammerModel, LAMP_ON } from './models/jammer';
 import { grinderModel } from './models/grinder';
+import { wrenchModel } from './models/wrench';
 import { applyTier } from './tierLook';
 import { RECEIVER_LAMP, receiverModel } from './models/receiver';
 import type { BossKind } from '../shared/bosses.ts';
@@ -84,6 +86,7 @@ export class ViewModel {
   private pistolMuzzle: THREE.Object3D | null = null;
   private jammer: ReturnType<typeof jammerModel> | null = null;
   private grinder: ReturnType<typeof grinderModel> | null = null;
+  private wrench: THREE.Object3D | null = null;
   /** Where the grinder rests on its mount (it shudders about that), and a clock for its buzz. */
   private grinderAt = new THREE.Vector3();
   private buzzClock = 0;
@@ -160,6 +163,13 @@ export class ViewModel {
       j.scale.copy(mount.scale);
       j.traverse((o) => (o.frustumCulled = false));
       mount.parent.add(j);
+      // The wrench on the same mount (src/models/wrench.ts), held with the jammer's clips.
+      const w = (this.wrench = wrenchModel().obj);
+      w.position.copy(mount.position);
+      w.quaternion.copy(mount.quaternion);
+      w.scale.copy(mount.scale);
+      w.traverse((o) => (o.frustumCulled = false));
+      mount.parent.add(w);
     }
     // The grinder on its own mount (the right fist round its housing, the left on its handle), else on the jammer's.
     const gmount = model.getObjectByName('GrinderMount') ?? mount;
@@ -211,6 +221,7 @@ export class ViewModel {
     if (this.pistol) this.pistol.visible = this.shown === 'pistol';
     if (this.jammer) this.jammer.obj.visible = this.shown === 'jammer';
     if (this.grinder) this.grinder.obj.visible = this.shown === 'grinder';
+    if (this.wrench) this.wrench.visible = this.shown === 'wrench';
     this.showReceiver();
     if (this.scrapChunk) this.scrapChunk.visible = this.shown === 'scrap';
   }
@@ -366,8 +377,8 @@ export class ViewModel {
     } else if (this.shown === 'grinder' && this.has('GrinderIdle')) {
       // held in both hands the way a grinder is: the right fist round the housing, the left round the side handle
       this.play(moving ? (walk = this.has('GrinderWalk') ? 'GrinderWalk' : 'GrinderIdle') : 'GrinderIdle');
-    } else if (this.shown === 'pistol' || this.shown === 'jammer' || this.shown === 'receiver' || this.shown === 'grinder') {
-      // The jammer has its own clips (two hands while jamming), the receiver is held with them; a model without them
+    } else if (this.shown === 'pistol' || this.shown === 'jammer' || this.shown === 'receiver' || this.shown === 'grinder' || this.shown === 'wrench') {
+      // The jammer has its own clips (two hands while jamming), the receiver and the wrench are held with them; a model without them
       // falls back to the pistol's.
       const pre = this.shown !== 'pistol' && this.has('JammerAim') ? 'Jammer' : 'Pistol';
       if (playerHands.aim > 0 && this.has(pre + 'Aim')) {

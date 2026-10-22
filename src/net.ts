@@ -24,14 +24,14 @@
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { heal, pitchFromQ } from '../shared/dig.ts';
-import { bagShape, boxShape, fitPart, holdsCargo, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
+import { bagShape, boxShape, buildingId, cargoId, fitPart, holdsCargo, tryMove, unfitPart, vehicleId } from '../shared/gear.ts';
 import { debrisItem, HOTBAR, roomFor, scrapItem, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
 import { setJetCrashes } from '../shared/jetcrash.ts';
-import { growChest, isShared } from '../shared/storage.ts';
+import { growChest, grows } from '../shared/storage.ts';
 import { corpseBox, CORPSES } from '../shared/corpse.ts';
 import { NPCS } from '../shared/npcs.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
@@ -45,12 +45,16 @@ import { Telemetry } from './telemetry';
 export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' | 'siteRolls' }>;
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
+import type { Gas } from '../shared/gas.ts';
 import { F_STRIDE } from '../shared/guardians.ts';
 import type { Jet } from '../shared/jets.ts';
 import type { Harvester } from '../shared/harvester.ts';
 import type { BossKind } from '../shared/bosses.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 import { setPlaced } from '../shared/placed.ts';
+import { setVehicles, vehicleById } from '../shared/vehicles.ts';
+import type { PowerState } from '../shared/power.ts';
+import { setWires } from '../shared/wires.ts';
 import type { BedState } from '../shared/garden.ts';
 
 const INTERP_MS = 100;
@@ -72,6 +76,7 @@ export type RemotePlayer = {
   crouching: boolean;
   pitch: number; // camera pitch in radians (negative = looking down)
   riding: boolean; // on the sand bike; facing is then the bike's heading
+  nose: number; // the bike's pitch (PlayerState.nose)
   jumpHeld: boolean; // Space down: a wheelie while riding
   vy: number;
   /** Kind of the item in their hand (selected hotbar slot), null for none; the gear they wear (wornGear bits). */
@@ -178,12 +183,19 @@ export class Net {
   private dyingTimer?: ReturnType<typeof setTimeout>;
   /** Plant bed stages and growth by placed id (shared/garden.ts), from the server. Beds without one are empty. */
   garden = new Map<number, BedState>();
+  /** Electricity at the base (shared/power.ts), from the server every couple of seconds. */
+  power: PowerState = { gen: {}, store: {} };
+  onPower?: () => void;
   /** Placed things changed (shared/placed.ts keeps the list), or a bed's stage did. */
   onPlaced?: () => void;
+  /** The vehicles changed (shared/vehicles.ts). */
+  onVehicles?: () => void;
   /** A short message from the server for the HUD (a refused place, pickup or craft). */
   onNotice?: (text: string) => void;
   /** Sandstorms announced and not over yet (shared/storm.ts), times on the server clock. */
   storms: Storm[] = [];
+  /** Poison gas clouds out (shared/gas.ts), times on the server clock. */
+  gas: Gas[] = [];
   /** Fixed-wing drone flights in the air (shared/jets.ts), times on the server clock. */
   jets: Jet[] = [];
   /** Harvesters out (shared/harvester.ts), times on the server clock. */
@@ -256,7 +268,7 @@ export class Net {
    * server answers with both boxes. False if refused.
    */
   moveItem(from: string, fi: number, to: string, ti: number, n?: number, r?: boolean): boolean {
-    if (!this.connected || (this.me.riding && lockedWhileRiding(from, fi))) return false;
+    if (!this.connected) return false;
     if (!tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId, r)) return false;
     this.growChests(from, to);
     this.send({ t: 'move', from, fi, to, ti, ...(n !== undefined ? { n } : {}), ...(r !== undefined ? { r } : {}) });
@@ -265,27 +277,30 @@ export class Net {
     return true;
   }
 
-  /** Fit a part into slot `slot` of the item on the workbench (shared/gear.ts fitPart). False if refused. */
-  fit(from: string, fi: number, slot: number): boolean {
-    if (!this.connected || !fitPart(this.boxes, from, fi, slot, () => --this.tempId)) return false;
+  /** Fit a part into slot `slot` of the item on the workbench, or in a building's box `at` (shared/gear.ts fitPart).
+   *  False if refused. */
+  fit(from: string, fi: number, slot: number, at = 'bench'): boolean {
+    if (!this.connected || !fitPart(this.boxes, from, fi, slot, () => --this.tempId, at)) return false;
     this.growChests(from);
-    this.send({ t: 'fit', from, fi, slot });
-    for (const box of new Set([from, 'bag', 'bench'])) this.onItems?.(box);
+    this.send({ t: 'fit', from, fi, slot, ...(at !== 'bench' ? { at } : {}) });
+    for (const box of new Set([from, 'bag', at])) this.onItems?.(box);
     return true;
   }
 
-  /** Take a part out of the workbench item into box `to` slot ti (-1: anywhere). False if refused. */
-  unfit(slot: number, to: string, ti: number): boolean {
-    if (!this.connected || !unfitPart(this.boxes, slot, to, ti, () => --this.tempId)) return false;
+  /** Take a part out of the workbench item (or a building's or vehicle's, in box `at`) into box `to` slot ti (-1:
+   *  anywhere). False if refused (also out of a working vehicle: its parts are only swapped). */
+  unfit(slot: number, to: string, ti: number, at = 'bench'): boolean {
+    if (!this.connected || vehicleById(vehicleId(at))?.up) return false;
+    if (!unfitPart(this.boxes, slot, to, ti, () => --this.tempId, at)) return false;
     this.growChests(to);
-    this.send({ t: 'unfit', slot, to, ti });
-    for (const box of new Set([to, 'bench'])) this.onItems?.(box);
+    this.send({ t: 'unfit', slot, to, ti, ...(at !== 'bench' ? { at } : {}) });
+    for (const box of new Set([to, at])) this.onItems?.(box);
     return true;
   }
 
   /** Chests are endless (shared/storage.ts growChest): resize the ones a predicted change touched, like the server does. */
   private growChests(...boxes: string[]) {
-    for (const b of boxes) if (isShared(b) && this.boxes[b]) growChest(this.boxes[b]);
+    for (const b of boxes) if (grows(b) && this.boxes[b]) growChest(this.boxes[b]);
   }
 
   /** Tidy a box's grid (the bag's hotbar stays put). False if it wouldn't all fit packed again (nothing changes). */
@@ -303,7 +318,7 @@ export class Net {
   dropItem(box: string, slot: number): boolean {
     const slots = this.boxes[box];
     const it = slots?.[slot];
-    if (!this.connected || !it || (this.me.riding && lockedWhileRiding(box, slot)) || holdsCargo(this.boxes, box, slot)) return false;
+    if (!this.connected || !it || holdsCargo(this.boxes, box, slot)) return false;
     slots[slot] = it.n > 1 ? { ...it, n: it.n - 1 } : null;
     this.growChests(box);
     this.send({ t: 'drop', box, slot });
@@ -311,9 +326,15 @@ export class Net {
     return true;
   }
 
-  /** Pick up loot (shared/loot.ts); the server answers with the bag, or a toast if it's full. */
-  lootTake(id: number) {
-    if (this.connected) this.send({ t: 'lootTake', id });
+  /** Pick up loot (shared/loot.ts): hidden now, confirmed (the bag) or put back by the server. False if the bag is full. */
+  lootTake(id: number): boolean {
+    const l = this.loot.get(id);
+    if (!this.connected || !l) return true;
+    if (!roomFor(this.boxes.bag ?? [], l.kind, bagShape(this.boxes.equip))) return false;
+    this.send({ t: 'lootTake', id });
+    this.loot.delete(id);
+    this.onLoot?.();
+    return true;
   }
 
   /** Debug menu: repaired gear of every kind. */
@@ -471,6 +492,16 @@ export class Net {
   }
 
   /** Plant or harvest a plant bed (its placed id); the server answers with 'garden' (and 'tended' to us). */
+  /** Stand up broken vehicle `id` (shared/vehicles.ts), its part slots all filled; the server answers 'vehicles'. */
+  repairVehicle(id: number) {
+    if (this.connected) this.send({ t: 'repairVehicle', id });
+  }
+
+  /** Get on working vehicle `id`: the server moves us onto it and starts the mount (shared/sim.ts). */
+  mount(id: number) {
+    if (this.connected) this.send({ t: 'mount', id });
+  }
+
   tend(bed: number) {
     if (this.connected) this.send({ t: 'tend', bed });
   }
@@ -480,7 +511,7 @@ export class Net {
     if (this.connected) this.send({ t: 'place', slot, x, z, rot });
   }
 
-  /** Pick a placed thing back up into the bag. */
+  /** Pick a placed thing back up into the bag (a building: take it down with the wrench). */
   unplace(id: number) {
     if (this.connected) this.send({ t: 'unplace', id });
   }
@@ -493,6 +524,16 @@ export class Net {
   /** Pick a companion bot back up into the bag. */
   recallBot(id: number) {
     if (this.connected) this.send({ t: 'recallBot', id });
+  }
+
+  /** Put up building `kind` with the wrench (shared/crafting.ts BUILDS); the server answers 'placed' or a notice. */
+  build(kind: string, x: number, z: number, rot: number) {
+    if (this.connected) this.send({ t: 'build', kind, x, z, rot });
+  }
+
+  /** String a power line from `a` to `b` with the wiring in bag slot `slot`, or take down the one between them. */
+  wire(slot: number, a: number, b: number) {
+    if (this.connected) this.send({ t: 'wire', slot, a, b });
   }
 
   /** Craft at the workbench (shared/crafting.ts); the bag comes back with what was made, or a notice. */
@@ -558,9 +599,10 @@ export class Net {
     this.send({ t: 'summon', what });
   }
 
-  /** Debug menu: a sandstorm where we stand, for everyone; `front`: a mega-storm front over everyone at once. */
-  summonStorm(front = false) {
-    this.send({ t: 'storm', ...(front ? { front } : {}) });
+  /** Debug menu: a sandstorm where we stand, for everyone; `front`: a mega-storm front over everyone at once; 'gas':
+   *  poison gas creeping in over everyone. */
+  summonStorm(front: boolean | 'gas' = false) {
+    this.send({ t: 'storm', ...(front === 'gas' ? { gas: true } : front ? { front } : {}) });
   }
 
   /** Debug menu: put the shared clock back to real time. */
@@ -581,6 +623,7 @@ export class Net {
       z: a.z + (b.z - a.z) * alpha + this.errorZ,
       heading: a.riding === b.riding ? lerpAngle(a.heading, b.heading, alpha) : b.heading, // mounting sets it
       facing: lerpAngle(a.facing, b.facing, alpha),
+      nose: a.riding === b.riding ? a.nose + (b.nose - a.nose) * alpha : b.nose,
     };
   }
 
@@ -603,10 +646,10 @@ export class Net {
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'joining';
-      // ?spawn=base / crash / field / shelter: start down in the bunker, the nearest crash site, scrap field or
-      // shelter (only on the first join; a reconnect keeps where you are).
+      // ?spawn=base / crash / field / shelter / canyon: start down in the bunker, the nearest crash site, scrap field,
+      // shelter or canyon floor (only on the first join; a reconnect keeps where you are).
       const spawn = this.joinedOnce ? null : new URLSearchParams(location.search).get('spawn');
-      this.send(spawn === 'base' || spawn === 'crash' || spawn === 'field' || spawn === 'shelter' ? { t: 'hello', browserId: this.browserId, spawn } : { t: 'hello', browserId: this.browserId });
+      this.send(spawn === 'base' || spawn === 'crash' || spawn === 'field' || spawn === 'shelter' || spawn === 'canyon' ? { t: 'hello', browserId: this.browserId, spawn } : { t: 'hello', browserId: this.browserId });
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
     ws.onclose = (e) => {
@@ -708,9 +751,27 @@ export class Net {
       this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
       return;
     }
+    if (msg.t === 'wires') {
+      setWires(msg.list);
+      return this.onPlaced?.();
+    }
+    if (msg.t === 'power') {
+      this.power = { gen: msg.gen, store: msg.store };
+      return this.onPower?.();
+    }
     if (msg.t === 'placed') {
       setPlaced(msg.list);
+      // A building picked up: its box is gone with it.
+      for (const box of Object.keys(this.boxes)) if (buildingId(box) >= 0 && !msg.list.some((p) => p.id === buildingId(box))) delete this.boxes[box];
       return this.onPlaced?.();
+    }
+    if (msg.t === 'vehicles') {
+      setVehicles(msg.list);
+      for (const box of Object.keys(this.boxes)) {
+        const id = Math.max(vehicleId(box), cargoId(box));
+        if (id >= 0 && !msg.list.some((v) => v.id === id)) delete this.boxes[box];
+      }
+      return this.onVehicles?.();
     }
     if (msg.t === 'garden') {
       this.garden = new Map(msg.beds.map((b) => [b.id, b]));
@@ -720,6 +781,7 @@ export class Net {
     if (msg.t === 'tended') return this.onTended?.(msg.what);
     if (msg.t === 'storms') {
       this.storms = msg.storms;
+      this.gas = msg.gas ?? [];
       return;
     }
     if (msg.t === 'jets') {
@@ -824,6 +886,7 @@ export class Net {
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
       sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool, slideSpent: server.slideSpent,
       riding: server.riding, bikeHeld: server.bikeHeld, mounting: server.mounting ?? 0, heading: server.heading, bike: server.bike,
+      nose: server.nose ?? 0, noseSpin: server.noseSpin ?? 0,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag, this.legPosts);
     this.errorX += this.me.x - s.x;
@@ -855,7 +918,7 @@ export class Net {
         id: pb.id, color: pb.color,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
-        riding: pick.riding ?? false, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, tiers: pick.tiers ?? 0, bike: pick.bike ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3, grinding: pick.hands === 5 ? 2 : pick.hands === 4 ? 1 : 0,
+        riding: pick.riding ?? false, nose: (pa.nose ?? 0) + ((pb.nose ?? 0) - (pa.nose ?? 0)) * t, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, tiers: pick.tiers ?? 0, bike: pick.bike ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3, grinding: pick.hands === 5 ? 2 : pick.hands === 4 ? 1 : 0,
         aiming: pick.aim === 1 || this.justFired(pb.id),
         pitch: pitchFromQ(pa.pitch ?? 32768) * (1 - t) + pitchFromQ(pb.pitch ?? 32768) * t, down: pb.down ?? null,
       });

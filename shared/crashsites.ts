@@ -35,7 +35,11 @@ import { baseHeight, CORE_HALF, heightAt, WORLD_SEED } from './terrain.ts';
 export const CRASH_CELL = 350;
 /** Fraction of cells with a site, by the level of the cell's centre (siteLevel): sites are rare out in the desert, but
  *  the scrap fields around the base are common enough that every new player finds their starter machines. */
-const DENSITY = [0.4, 0.14, 0.14];
+const DENSITY = [0.4, 0.18, 0.14];
+/** Outposts: crawler ground (level 1) out among the scrap fields, in cells OUTPOST_R..LEVEL_R[0] from the base that hold
+ *  no scrap field, OUTPOST_CHANCE of them; a small pack guards them (server/guardians.ts), the first fight on the way out. */
+const OUTPOST_R = 600;
+const OUTPOST_CHANCE = 0.45;
 /** A site's centre stays this far inside its cell, so the whole trail fits in the cell. */
 const CELL_MARGIN = 75;
 /** Debris lies up to this far behind the wreck's edge. */
@@ -79,9 +83,13 @@ const SCRAP_SMALL = [2, 3];
  * starter machines to carry home, the broken gear a new player repairs first), 1 crawler ground (crawlers, the
  * motorcycle and the other advanced gear), 2 guardian ground (the giant guardians and night drones roam only these,
  * and their machines hold the rarest parts). shared/crash.ts picks the machines, server/loot.ts the finds,
- * server/guardians.ts the walkers by it.
+ * server/guardians.ts the walkers by it. Outposts (OUTPOST_R) put a few level 1 sites out among the scrap fields.
  */
 export type SiteLevel = 0 | 1 | 2;
+/** What a site's machines roll and which finds lie there by (shared/tables.ts LEVEL_KINDS, LEVEL_TIERS, FINDS): its level,
+ *  but an outpost's is OUTPOST_LOOT, between a scrap field's and crawler ground's (only a small pack guards it). */
+export const OUTPOST_LOOT = 0.5;
+export type LootLevel = SiteLevel | typeof OUTPOST_LOOT;
 export const LEVEL_R = [950, 1650];
 export function siteLevel(x: number, z: number): SiteLevel {
   const d = Math.sqrt((x - BASE.x) * (x - BASE.x) + (z - BASE.z) * (z - BASE.z));
@@ -113,8 +121,10 @@ export type CrashMachine = { x: number; z: number; dx: number; dz: number; large
 export type CrashSite = {
   /** Stable id: crashSiteId(ix, iz). */
   id: number; ix: number; iz: number;
-  /** How dangerous and rich it is (siteLevel). */
+  /** How dangerous and rich it is (siteLevel; an outpost is level 1). */
   level: SiteLevel;
+  /** What its machines roll and which finds lie there by: the level, or OUTPOST_LOOT at an outpost. */
+  loot: LootLevel;
   /** Centre of the main wreck. */
   x: number; z: number;
   /** Unit direction the craft was travelling when it came down (the debris lies behind, at −dir). */
@@ -269,9 +279,16 @@ function generate(ix: number, iz: number): CrashSite | null {
   if (LAB) return null; // the dev test lab (shared/lab.ts) has its own machine sites
   const r = rng(ix, iz);
   // The level goes by the cell's centre, so it is known before the site is placed.
-  const level = siteLevel((ix + 0.5) * CRASH_CELL, (iz + 0.5) * CRASH_CELL);
+  const ox = (ix + 0.5) * CRASH_CELL, oz = (iz + 0.5) * CRASH_CELL;
+  let level = siteLevel(ox, oz), loot: LootLevel = level;
+  if (r() >= DENSITY[level]) {
+    // An empty cell in the outer scrap-field ring may be an outpost (own salt: the other cells' layouts stay as they were).
+    if (level !== 0 || Math.hypot(ox - BASE.x, oz - BASE.z) < OUTPOST_R || rng(ix, iz, 0x0b57)() >= OUTPOST_CHANCE) return null;
+    level = 1;
+    loot = OUTPOST_LOOT;
+  }
   const field = level === 0 && MAIN_KINDS[1].length ? 1 : 0;
-  if (r() >= DENSITY[level] || !MAIN_KINDS[field].length) return null;
+  if (!MAIN_KINDS[field].length) return null;
   const kind = MAIN_KINDS[field][Math.floor(r() * MAIN_KINDS[field].length)];
   const K = CRASH_KINDS[kind];
   // A few candidate centres; keep the first on flat-enough open ground.
@@ -350,7 +367,7 @@ function generate(ix: number, iz: number): CrashSite | null {
     if (d > radius) radius = d;
   }
   return {
-    id, ix, iz, level, x: cx, z: cz, dirX: tx, dirZ: tz, pieces, machines, smokePoints,
+    id, ix, iz, level, loot, x: cx, z: cz, dirX: tx, dirZ: tz, pieces, machines, smokePoints,
     beacon: { x: main.x + bx * main.dz + bz * main.dx, z: main.z - bx * main.dx + bz * main.dz, y: by }, radius,
   };
 }

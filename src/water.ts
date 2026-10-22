@@ -2,13 +2,13 @@
 // shared/items.ts: the water bottle, telescope (src/telescope.ts) and the rest,
 // all found broken and repaired, shared/gear.ts), drinking and refilling, and the HUD: the body heat meter
 // (bottom left, glowing while heat builds), the clock and felt temperature with a sun/shade icon (top right,
-// shared/temperature.ts; only with the wrist computer equipped), a heatstroke vignette and swimming view (post.ts) past 60%, and the
-// death screen.
+// shared/temperature.ts; only with the wrist computer equipped), a heatstroke vignette and swimming view (post.ts) past 60%, the
+// view fading out at a full meter (STROKE_S till death), and the death screen.
 //
 // The server owns the numbers; this only plays the actions and asks. Keys 1–5 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // and F at a pump (the base's, some shelters') refills it.
-import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX } from '../shared/water.ts';
+import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX, STROKE_RECOVER, STROKE_S } from '../shared/water.ts';
 import { equipped, repaired, tierOf } from '../shared/gear.ts';
 import { HOTBAR } from '../shared/items.ts';
 import { PISTOL, RIFLE } from '../shared/rifle.ts';
@@ -17,10 +17,11 @@ import { receiverBoss, type BossKind } from '../shared/bosses.ts';
 import { THROWABLE } from '../shared/throw.ts';
 import { HOTBAR_ACTIONS, isBound, kbd } from './bindings';
 import { tools, useHeld } from './input';
+import { rumble } from './gamepad';
 import { itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
-import { heatstroke } from './world/env.ts';
+import { DARK_LIFT_S, deathGrade, fainting, heatstroke } from './world/env.ts';
 import { drinkSound } from './drinkSound';
 import { atWater, indoors } from '../shared/shelters.ts';
 import { TEXT } from '../shared/text.ts';
@@ -29,7 +30,7 @@ import { TEXT } from '../shared/text.ts';
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
  * are true for the whole sip / refill action.
  */
-export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer' | 'receiver' | 'scrap' | 'grinder';
+export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer' | 'receiver' | 'scrap' | 'grinder' | 'wrench';
 /** `tier`: how good the item in hand is (shared/gear.ts tierOf), for its look (src/tierLook.ts).
  *  `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden).
  *  `throwAt`: when the last throw of scrap started (performance.now(), src/throw.ts), for the hands' throw. */
@@ -64,6 +65,8 @@ const TEMP_COOL = 18, TEMP_WARM = 34, TEMP_HOT = 50;
 /** Fade to black before the respawn, and back in after it (ms). */
 const FADE_OUT_MS = 1500;
 const FADE_IN_MS = 1800;
+/** The colour drains over this long (s) when you die. */
+const DEATH_GRADE_S = 0.25;
 const TOAST_MS = 1800;
 /** Walking this far (m) out of the pump's reach cancels a refill. Under the server's FILL_SLACK. */
 const FILL_CANCEL_SLACK = 0.5;
@@ -104,8 +107,11 @@ const css = `
 #hotbar .slot { position: relative; width: 44px; height: 44px; border-radius: 6px; background: rgba(20, 10, 5, 0.45);
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.15); display: flex; align-items: center; justify-content: center; }
 #hotbar .slot.sel { background: rgba(60, 34, 16, 0.6); box-shadow: 0 0 0 2px rgba(255, 233, 204, 0.75); }
+#hotbar .slot.broken { background: rgba(160, 40, 22, 0.5); }
 #hotbar .slot.broken svg, #hotbar .slot.broken img { opacity: 0.45; filter: grayscale(0.8); }
 #hotbar .key { position: absolute; left: 4px; top: 2px; font: 600 9px var(--mono); opacity: 0.6; }
+body.pad #hotbar .key { display: none; }
+#hotbar > kbd { align-self: center; font: bold 10px var(--mono); padding: 1px 4px; border-radius: 3px; background: rgba(255, 244, 228, 0.85); color: #2a160a; }
 #hotbar svg { width: 22px; height: 26px; margin-top: -4px; }
 #hotbar img { width: 36px; height: 36px; margin-top: -2px; }
 #hotbar .pips { position: absolute; bottom: 4px; left: 6px; right: 6px; display: flex; gap: 2px; }
@@ -162,6 +168,7 @@ export class Survival {
 
   private selected = -1; // hotbar slot, -1 = empty hands
   private shown = 0; // eased meter value
+  private stroke = 0; // seconds at a full meter, counted as the server does (it decides the death)
   private actionAt = 0; // performance.now() when the current sip / refill started
   private needRelease = false; // one sip per press: let go before the next
   private deadUntil = 0;
@@ -201,6 +208,9 @@ export class Survival {
       this.slots.push(s);
       hotbar.append(s);
     }
+    // The pad steps through it (src/gamepad.ts); the keys' numbers are on the slots.
+    hotbar.insertAdjacentHTML('afterbegin', kbd('hotbarPrev'));
+    hotbar.insertAdjacentHTML('beforeend', kbd('hotbarNext'));
     this.root.append(hotbar);
     this.prompt.id = 'waterPrompt';
     this.toastEl.id = 'waterToast';
@@ -210,16 +220,12 @@ export class Survival {
     document.body.append(this.root, this.heat, this.env, this.prompt, this.toastEl, this.death, this.fade);
 
     addEventListener('keydown', (e) => {
-      const bikeKey = isBound('bike', e.code);
       const n = HOTBAR_ACTIONS.findIndex((a) => isBound(a, e.code));
-      if (e.repeat || !(bikeKey || n >= 0)) return;
-      // The bike key gets on the bike (src/input.ts): put away what's in hand.
-      // (Not a motorcycle in hand: that's the one you'd ride.)
-      if (bikeKey && !net.me.riding && net.me.bike > 0 && !tools.frozen && !tools.bike) return this.select(-1);
-      if (bikeKey) return;
+      if (e.repeat || n < 0) return;
       this.select(this.selected === n ? -1 : n);
     });
     net.onDied = () => {
+      rumble(1, 1, 500);
       this.deadUntil = performance.now() + DOWN_MS;
       this.cancel();
       this.shown = 0;
@@ -245,11 +251,10 @@ export class Survival {
     const it = this.net.boxes.bag?.[this.selected];
     const kind = it?.kind;
     // A broken telescope or gun is just junk in the hand; a broken bottle still shows (it holds no water).
-    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : kind === 'grinder' ? 'grinder' : receiverBoss(kind) ? 'receiver' : kind && THROWABLE.has(kind) ? 'scrap' : 'none';
+    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : kind === 'grinder' ? 'grinder' : kind === 'wrench' ? 'wrench' : receiverBoss(kind) ? 'receiver' : kind && THROWABLE.has(kind) ? 'scrap' : 'none';
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
     playerHands.tier = tierOf(it);
-    tools.bike = kind === 'motorcycle' && repaired(it);
   }
 
   /** Redraw the hotbar slots whose item changed. */
@@ -303,6 +308,8 @@ export class Survival {
     if (clock !== this.lastClock) this.clockEl.textContent = this.lastClock = clock;
     const w = this.net.water;
     const dead = now < this.deadUntil;
+    // Getting on the bike puts away what's in hand.
+    if (this.net.me.mounting > 0 && this.selected >= 0) this.select(-1);
     this.hold();
     this.drawHotbar();
     // The clock and thermometer come with the wrist computer, and die in a storm.
@@ -419,6 +426,11 @@ export class Survival {
     }
     // Heatstroke vignette and swimming view (post.ts), from 60% to full.
     heatstroke.value = dead ? 0 : Math.min(1, Math.max(0, (this.shown - 0.6 * HEAT_MAX) / (0.4 * HEAT_MAX)));
+    // Full: fainting (post.ts), black a little before the server's tally kills, so the view is dark when the death comes.
+    this.stroke = dead ? 0 : Math.max(0, this.stroke + (w.heat >= HEAT_MAX ? 1 : -STROKE_RECOVER) * dt);
+    fainting.value = dead ? Math.max(0, fainting.value - dt / DARK_LIFT_S) : Math.min(1, this.stroke / (STROKE_S * 0.92));
+    // Dead: the colour drains at once (post.ts); off again at the respawn, under the death fade's black.
+    deathGrade.value = dead ? Math.min(1, deathGrade.value + dt / DEATH_GRADE_S) : 0;
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
     // Black out over the last stretch of lying dead, then fade back in on the base after the respawn.

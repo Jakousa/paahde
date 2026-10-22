@@ -59,10 +59,17 @@ export const BASE_SPAWN = { x: BASE.x, z: BASE.z + 9 };
 /** Wall thickness everywhere. */
 export const WT = 0.3;
 /** Half inner width of the entrance, the stairs and the hallway. */
-export const W = 1.1;
-/** Entrance hut, inner: from the back wall to the door, ceiling height, door half width; its thick walls
- *  (t) and outer height (top): a squat concrete block like a WW2 bunker. */
-export const HUT = { z0: -4.0, z1: 2.0, h: 2.3, door: 0.7, t: 0.6, top: 2.75 };
+export const W = 1.35;
+/** Entrance hut, inner: from the back wall to the door, ceiling height, door half width, the doorway's low arch
+ *  (springing line, crown); its thick walls (t) and outer height (top): a squat concrete block like a WW2 bunker. */
+export const HUT = { z0: -4.0, z1: 2.0, h: 2.3, door: 0.85, doorS: 1.75, doorH: 2.15, t: 0.6, top: 2.75 };
+
+/** Height of the doorway's arch (a circle segment) at |x| = ax, or HUT.h beside it. */
+function doorTop(ax: number): number {
+  if (ax >= HUT.door) return HUT.h;
+  const rise = HUT.doorH - HUT.doorS, r = (HUT.door * HUT.door + rise * rise) / (2 * rise);
+  return HUT.doorH - r + Math.sqrt(r * r - ax * ax);
+}
 /** Stairs: top edge (the landing ends here), steps (rise, run), bottom = the bunker floor. */
 export const STAIRS = { z: 0.6, n: 48, rise: 0.25, run: 0.3 };
 /** Bunker floor height (local). */
@@ -166,6 +173,9 @@ function nearMast(lx: number, lz: number, m: number): boolean {
   const dx = lx - MAST.x, dz = lz - MAST.z, r = MAST.fins.reach + 1 + m;
   return dx * dx + dz * dz < r * r;
 }
+
+/** World point within the mast's fins (+ margin). */
+export const byMast = (x: number, z: number, m = 0) => nearMast(x - BASE.x, z - BASE.z, m);
 
 /** Blend weight of the dunes at world (x, z): 0 on the pad, 1 away from it. */
 export function padBlend(x: number, z: number): number {
@@ -407,8 +417,20 @@ for (const p of BASE_PIECES) {
 
 /** Things players placed on the floor (shared/placed.ts setPlaced keeps these in step with its list). */
 let withPlaced: Capsule[] = capsules;
-export function setPlacedCapsules(caps: Capsule[]) {
+/** Things players put up on the sand round the base (base-local too, y0/top base-local), and their footprints
+ *  (world [x0, z0, x1, z1]), where the sand is never dug (overPlaced). */
+let outdoor: Capsule[] = [];
+let outdoorSpots: number[][] = [];
+export function setPlacedCapsules(caps: Capsule[], out: Capsule[] = [], spots: number[][] = []) {
   withPlaced = capsules.concat(caps);
+  outdoor = out;
+  outdoorSpots = spots;
+}
+
+/** True over something put up on the sand (shared/placed.ts) + margin: no digging, it would undermine it. */
+export function overPlaced(x: number, z: number, margin = 0): boolean {
+  for (const r of outdoorSpots) if (x > r[0] - margin && x < r[2] + margin && z > r[1] - margin && z < r[3] + margin) return true;
+  return false;
 }
 
 /** Floor height at local (lx, lz) — landing, stairs, bunker floor, skylight glass — or -Infinity. */
@@ -449,8 +471,19 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
 
   const feet = Math.max(y, prevY) - BASE.y;
   const head = Math.min(y, prevY) - BASE.y + height;
-  let support = floorAt(q.x, q.z, feet, stepUp);
-  for (const c of withPlaced) {
+  const support = collideCapsules(q, withPlaced, feet, head, radius, stepUp, floorAt(q.x, q.z, feet, stepUp));
+
+  p.x = q.x + BASE.x;
+  p.z = q.z + BASE.z;
+  p.vx = q.vx;
+  p.vz = q.vz;
+  return support === -Infinity ? support : support + BASE.y;
+}
+
+/** Push local point q out of capsules (feet/head local); returns the highest top under the feet, from `support` up. */
+function collideCapsules(q: { x: number; z: number; vx: number; vz: number }, caps: Capsule[], feet: number, head: number, radius: number,
+  stepUp: number, support: number): number {
+  for (const c of caps) {
     const reach = c.half + c.r + radius;
     if (Math.abs(q.x - c.x) > reach || Math.abs(q.z - c.z) > reach) continue;
     if (head <= c.y0) continue;
@@ -464,7 +497,15 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
     }
     pushCircle(q, cx, cz, c.r + radius);
   }
+  return support;
+}
 
+/** Collide a player with the things put up on the sand round the base (shared/placed.ts), like collideBase. */
+export function collideOutdoor(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, height: number, stepUp: number): number {
+  if (!outdoor.length) return -Infinity;
+  const q = local;
+  q.x = p.x - BASE.x; q.z = p.z - BASE.z; q.vx = p.vx; q.vz = p.vz;
+  const support = collideCapsules(q, outdoor, Math.max(y, prevY) - BASE.y, Math.min(y, prevY) - BASE.y + height, radius, stepUp, -Infinity);
   p.x = q.x + BASE.x;
   p.z = q.z + BASE.z;
   p.vx = q.vx;
@@ -475,7 +516,7 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
 /** Ceiling (local) over local (lx, lz), or Infinity. */
 function ceilingAt(lx: number, lz: number): number {
   const ax = Math.abs(lx);
-  if (ax < W + WT && lz >= HUT.z0 && lz < HUT.z1 + WT) return HUT.h;
+  if (ax < W + WT && lz >= HUT.z0 && lz < HUT.z1 + HUT.t) return lz > HUT.z1 ? doorTop(ax) : HUT.h;
   if (ax < W + WT && lz > HALL.z && lz < HUT.z0) return vaultAt(ax, vaultCrown(lz));
   if (ax < ROOM.w + ALCOVE.d + WT && lz > ROOM.z - ALCOVE.d - WT && lz <= HALL.z) {
     // An alcove's barrel vault; then the room's ceiling, the skylight's glass.
@@ -506,7 +547,7 @@ export function baseSolid(x: number, y: number, z: number): boolean | null {
   // Air: the hut, stairwell, tunnel and hallway; the doorway; the room (up to the skylight's glass, round the
   // pilasters) and its alcoves.
   if (ax < W && lz > HALL.z && lz < HUT.z1 && ly > stairY(lz) && ly < ceilingAt(lx, lz)) return false;
-  if (ax < HUT.door && lz >= HUT.z1 - 0.01 && ly > 0 && ly < HUT.h) return false;
+  if (ax < HUT.door && lz >= HUT.z1 - 0.01 && ly > 0 && ly < doorTop(ax)) return false;
   if (ax < ROOM.w && lz > ROOM.z && lz <= HALL.z && ly > FLOOR && ly < ceilingAt(lx, lz) && !inPillar(lx, lz)) return false;
   if (inAlcove(lx, lz, 0) >= 0 && ly > FLOOR && ly < ceilingAt(lx, lz)) return false;
   if (ax < W + HUT.t && lz > HUT.z0 - HUT.t) return true; // the hut's walls and roof

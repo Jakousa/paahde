@@ -1,12 +1,19 @@
 // Putting things down and picking them up (shared/placed.ts). Select a placeable item in the hotbar (1–5) and
-// a see-through preview follows the crosshair over the bunker floor: green where it fits, red where it
-// doesn't; R turns it, left mouse / E puts it down (the server checks it again). Looking at a placed thing,
-// G picks it back up into the bag. A UV lamp aimed at a bed snaps over it (and a bed under a lone lamp).
-import { isPlaceable, placeAim, placed, placedTarget, placeError, type Placed } from '../shared/placed.ts';
-import { pitchFromQ } from '../shared/dig.ts';
+// a see-through preview follows the crosshair over the bunker floor: green where it fits, red where it doesn't; R
+// turns it, left mouse / E puts it down (the server checks it again). Looking at a placed thing, G picks it back up
+// into the bag. A UV lamp aimed at a bed snaps over it (and a bed under a lone lamp).
+//
+// The buildings (shared/crafting.ts BUILDS) are put up with the wrench: with it in hand the right mouse opens the build
+// menu (src/buildMenu.ts), and the building picked there is previewed the same way, out on the sand, and goes up from
+// the base materials in the bag (red, too, when they're short). With the wrench, G takes a building down.
+import { BUILDS, isBuildable, pickIngredients, WRENCH } from '../shared/crafting.ts';
+import { isPlaceable, onSand, placeAim, placed, placedTarget, placedY, placeError, type Placed } from '../shared/placed.ts';
+import { EYE_HEIGHT, pitchFromQ } from '../shared/dig.ts';
+import { heightAt } from '../shared/terrain.ts';
 import { yawFromQ } from '../shared/sim.ts';
 import { isBound, kbd } from './bindings';
-import { ui, useHeld } from './input';
+import { actionHeld, ui, useHeld } from './input';
+import type { BuildMenu } from './buildMenu';
 import { itemLabel } from './inventory';
 import type { Net } from './net';
 import type { PlacedView } from './world/placed';
@@ -15,13 +22,18 @@ import { TEXT } from '../shared/text.ts';
 export class Placer {
   private net: Net;
   private view: PlacedView;
+  private menu: BuildMenu;
   private rot = 0;
   private usePrev = false;
+  private aimPrev = false;
   private pickPressed = false;
+  /** The building picked in the build menu, put up with the wrench in hand; null for none. */
+  private chosen: string | null = null;
 
-  constructor(net: Net, view: PlacedView) {
+  constructor(net: Net, view: PlacedView, menu: BuildMenu) {
     this.net = net;
     this.view = view;
+    this.menu = menu;
     addEventListener('keydown', (e) => {
       if (ui.inventoryOpen || e.repeat || e.ctrlKey || e.metaKey) return;
       if (isBound('rotate', e.code)) this.rot ^= 1;
@@ -37,34 +49,54 @@ export class Placer {
   update(slot: number, feet: { x: number; y: number; z: number }, yawQ: number, pitchQ: number, active: boolean,
     toast: (text: string) => void): { prompt: string | null; target: Placed | null } {
     const yaw = yawFromQ(yawQ), pitch = pitchFromQ(pitchQ);
-    const kind = this.net.boxes.bag?.[slot]?.kind;
+    const bag = this.net.boxes.bag ?? [];
+    const held = bag[slot]?.kind;
+    const wrench = held === WRENCH;
+    if (!wrench) this.chosen = null;
     const use = useHeld() && !ui.inventoryOpen;
     const pressed = use && !this.usePrev;
     this.usePrev = use;
+    // (Tracked while a menu is open too: the press that closes the build menu doesn't open it again.)
+    const aim = actionHeld('aim');
+    const aimed = aim && !this.aimPrev && !ui.inventoryOpen;
+    this.aimPrev = aim;
     const pick = this.pickPressed;
     this.pickPressed = false;
     if (!active || !this.net.connected) {
       this.view.preview(null, null, false);
       return { prompt: null, target: null };
     }
+    if (wrench && aimed) this.menu.open(bag, this.chosen, (k) => (this.chosen = k));
 
+    // Buildings come down with the wrench (all they took comes back), the rest is picked up by hand.
     const target = placedTarget(feet, yaw, pitch, placed);
-    if (pick && target) this.net.unplace(target.id);
-    const pickHint = target ? `${kbd('pickPlaced')}${TEXT.prompt.pickUp(itemLabel(target.kind))}` : null;
+    const takeable = target && (!isBuildable(target.kind) || wrench) ? target : null;
+    if (pick && takeable) this.net.unplace(takeable.id);
+    const pickHint = takeable
+      ? `${kbd('pickPlaced')}${isBuildable(takeable.kind) ? TEXT.prompt.dismantle(itemLabel(takeable.kind)) : TEXT.prompt.pickUp(itemLabel(takeable.kind))}` : null;
+    const menuHint = wrench ? `${kbd('aim')}${TEXT.prompt.buildMenu}` : null;
 
-    if (!kind || !isPlaceable(kind)) {
+    // What goes down: the building picked with the wrench, or the placeable in hand (buildings never are).
+    const kind = wrench ? this.chosen : held && isPlaceable(held) && !isBuildable(held) ? held : null;
+    if (!kind) {
       this.view.preview(null, null, false);
-      return { prompt: pickHint, target };
+      return { prompt: [menuHint, pickHint].filter(Boolean).join(' ') || null, target };
     }
     const at = placeAim(feet, yaw, pitch, kind, this.rot, placed);
-    const why = at ? placeError(kind, at.x, at.z, at.rot, placed, [feet]) : TEXT.prompt.aimAtFloor;
-    this.view.preview(kind, at, !why);
+    // Down in the bunker with something for the sand: it goes outside.
+    const below = onSand(kind) && feet.y + EYE_HEIGHT < heightAt(feet.x, feet.z);
+    const short = wrench && !pickIngredients(bag, BUILDS[kind]);
+    const why = below ? TEXT.notice.outsideOnly : !at ? (onSand(kind) ? TEXT.prompt.aimAtGround : TEXT.prompt.aimAtFloor)
+      : placeError(kind, at.x, at.z, at.rot, placed, [feet]) ?? (short ? TEXT.notice.missingMaterials : null);
+    this.view.preview(kind, at && { ...at, y: placedY(kind, at.x, at.z, at.rot) }, !why);
     if (pressed) {
       if (why) toast(why);
+      else if (wrench) this.net.build(kind, at!.x, at!.z, at!.rot);
       else this.net.place(slot, at!.x, at!.z, at!.rot);
     }
-    const prompt = why ? `<span class="bad">${why}</span> ${kbd('rotate')}${TEXT.prompt.turn}` : `${kbd('use')}${TEXT.prompt.place(itemLabel(kind))} ${kbd('rotate')}${TEXT.prompt.turn}`;
-    return { prompt: `${prompt}${pickHint ? ` ${pickHint}` : ''}`, target };
+    const what = wrench ? TEXT.prompt.build(itemLabel(kind)) : TEXT.prompt.place(itemLabel(kind));
+    const prompt = why ? `<span class="bad">${why}</span> ${kbd('rotate')}${TEXT.prompt.turn}` : `${kbd('use')}${what} ${kbd('rotate')}${TEXT.prompt.turn}`;
+    return { prompt: [prompt, pickHint].filter(Boolean).join(' '), target };
   }
 }
 

@@ -271,7 +271,7 @@ export class NpcServer {
             } else if (bot.targetLoot) {
               const lTarget = bot.targetLoot;
               bot.targetLoot = null;
-              const taken = this.loot.take({ x: bot.x, y: bot.y, z: bot.z } as any, '', lTarget.id, (l) => {
+              const taken = this.loot.take({ x: bot.x, y: bot.y, z: bot.z } as any, lTarget.id, (l) => {
                 return this.items.giveToBox('', `bot${bot.id}`, l.kind, l.n ?? 1);
               });
               if (taken === null || taken === 'full') {

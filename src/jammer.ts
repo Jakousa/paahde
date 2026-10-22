@@ -19,6 +19,7 @@ import type { FirstPersonCamera } from './camera';
 import { tools, useHeld } from './input';
 import { jamMs, quality } from '../shared/gear.ts';
 import type { Net } from './net';
+import * as kills from './kills';
 import { playerHands } from './water';
 import type { Drones } from './world/drones';
 import type { Jets } from './world/jets';
@@ -107,6 +108,7 @@ export class Jammer {
     else if (this.target) this.level = Math.max(0, this.level - (dt * 1000 * JAM_BLEED) / lockMs);
     if (on && performance.now() - this.sentAt >= JAM_SEND_MS) {
       this.sentAt = performance.now();
+      kills.hit(`${this.target!.kind === 'jet' ? 'j' : 'd'}${this.target!.id}`);
       this.net.jam(this.target!.kind, this.target!.id, _o.x, _o.y, _o.z, _d.x, _d.y, _d.z);
     }
     const shown = on ? { id: this.target!.id, level: this.level } : null;

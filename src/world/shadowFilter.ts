@@ -13,7 +13,6 @@ import * as THREE from 'three/webgpu';
 import { SHADOW_QUALITY, startup } from '../graphics.ts';
 import { Fn, add, dot, float, interleavedGradientNoise, positionWorld, reference, renderGroup, texture, uniform, vec2, vogelDiskSample } from 'three/tsl';
 
-const SAMPLES = SHADOW_QUALITY[startup.shadowQuality].filter;
 
 /** Two axes across the shadow-casting light's direction (sky.ts sets them from the sun or moon). */
 export const shadowAxisX = uniform(new THREE.Vector3(1, 0, 0));
@@ -34,7 +33,8 @@ export function setShadowNoiseAxes(lightDir: THREE.Vector3) {
 
 type Inputs = { depthTexture: any; shadowCoord: any; shadow: any; depthLayer?: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-export const wideShadowFilter = Fn(({ depthTexture, shadowCoord, shadow, depthLayer }: Inputs) => {
+/** The filter with `samples` taps (the first cascade takes more than the others, which only hold big things). */
+export const makeShadowFilter = (SAMPLES: number) => Fn(({ depthTexture, shadowCoord, shadow, depthLayer }: Inputs) => {
   const compare = (uv: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
     let depth = texture(depthTexture, uv);
     if (depthTexture.isArrayTexture) depth = depth.depth(depthLayer);
@@ -51,3 +51,6 @@ export const wideShadowFilter = Fn(({ depthTexture, shadowCoord, shadow, depthLa
   for (let i = 0; i < SAMPLES; i++) taps.push(compare(shadowCoord.xy.add(vogelDiskSample(float(i) as any, float(SAMPLES) as any, phi).mul(radiusScaled))));
   return add(...(taps as [any, any])).mul(1 / SAMPLES); // eslint-disable-line @typescript-eslint/no-explicit-any
 });
+
+export const nearShadowFilter = makeShadowFilter(SHADOW_QUALITY[startup.shadowQuality].filter);
+export const farShadowFilter = makeShadowFilter(SHADOW_QUALITY[startup.shadowQuality].farFilter);

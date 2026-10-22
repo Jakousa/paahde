@@ -44,6 +44,8 @@ const HOLD_MAX_S = 120;
 
 export class DynamicResolution {
   ratio: number;
+  /** A recent resolution reduction measurably helped: Auto can reduce GPU effects as well as pixels. */
+  pixelBound = false;
   private renderer: THREE.WebGPURenderer;
   private max: number;
   /** The player's resolution scale (Options → Graphics): CSS pixels rendered per pixel, capped by the screen's own ratio. */
@@ -73,6 +75,7 @@ export class DynamicResolution {
 
   /** Render at this many pixels per CSS pixel at most (below 1 the canvas is stretched to the window). */
   setScale(scale: number) {
+    this.pixelBound = false;
     this.scale = scale;
     this.max = Math.min(window.devicePixelRatio, scale);
     this.ceiling = this.max;
@@ -83,6 +86,7 @@ export class DynamicResolution {
 
   /** The frame rate adaptive resolution aims for (the FPS target option). */
   setTargetFps(fps: number) {
+    this.pixelBound = false;
     this.targetMs = 1000 / Math.max(10, fps - TARGET_SLACK_FPS);
     this.slowMs = 1000 / Math.max(10, fps - SLOW_SLACK_FPS);
     this.probe = null;
@@ -95,6 +99,7 @@ export class DynamicResolution {
   }
 
   setDynamic(on: boolean) {
+    this.pixelBound = false;
     this.dynamic = on;
     this.probe = null;
     if (!on) this.set(this.max);
@@ -122,6 +127,7 @@ export class DynamicResolution {
       // A drop that cuts the pixels by a share should cut the frame time by at least a part of it (a small drop can't show a 10 % gain).
       const saved = 1 - (probe.to / probe.ratio) ** 2;
       if (avg > probe.ms * (1 - Math.min(MIN_GAIN, saved * MIN_GAIN_SHARE))) {
+        this.pixelBound = false;
         // Fewer pixels didn't help: not pixel-bound, so put the resolution back.
         this.ceiling = probe.ceiling;
         this.set(probe.ratio);
@@ -130,6 +136,7 @@ export class DynamicResolution {
         this.calm = 0;
         return;
       }
+      this.pixelBound = true;
       this.holdS = HOLD_S;
     }
 

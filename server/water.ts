@@ -1,7 +1,7 @@
 // Server side of survival (shared/water.ts): builds up (or cools off) each player's heat meter by the felt
 // temperature (shared/temperature.ts; how much of the body is in the sun from shared/shade.ts, with other players
 // and bikes as shade casters; it stops rising in a sandstorm, shared/storm.ts; hotter on a mud flat, shared/biomes.ts), validates sips and canteen refills, and says
-// when a player has died of heatstroke (server/world.ts respawns them).
+// when a player has died of heatstroke, STROKE_S at a full meter (server/world.ts respawns them).
 import { atWater, indoors } from '../shared/shelters.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { sunOnBody, type Caster } from '../shared/shade.ts';
@@ -9,7 +9,7 @@ import { type PlayerState } from '../shared/sim.ts';
 import { STORM_SHADE } from '../shared/storm.ts';
 import { feltTemp, groundHeat } from '../shared/temperature.ts';
 import {
-  DRINK_COOLDOWN_MS, FILL_COOLDOWN_MS, FILL_SLACK, HEAT_MAX, heatPerSecond, SIP_COOL,
+  DRINK_COOLDOWN_MS, FILL_COOLDOWN_MS, FILL_SLACK, HEAT_MAX, heatPerSecond, SIP_COOL, STROKE_RECOVER, STROKE_S,
 } from '../shared/water.ts';
 
 /** While the meter moves, a 'water' update goes out this often (the client eases between them). */
@@ -22,6 +22,7 @@ const SEND_TEMP_STEP = 0.5;
 const RESPAWN_GRACE_MS = 3000;
 export type Heat = {
   heat: number; // the meter, 0..HEAT_MAX
+  stroke: number; // seconds of heatstroke (meter full); STROKE_S kills
   sips: number;
   maxSips: number; // what the water bottle in the bag holds (shared/gear.ts bottleSips), 0 without one
   rising: boolean; // heat building up right now
@@ -42,7 +43,7 @@ export function newHeat(heat = 0, sips = 0, maxSips = 0): Heat {
   const h = Number.isFinite(heat) ? Math.min(HEAT_MAX, Math.max(0, heat)) : 0;
   const s = Number.isInteger(sips) ? Math.min(maxSips, Math.max(0, sips)) : 0;
   return {
-    heat: h, sips: s, maxSips, rising: false, temp: 20, sun: 0, shade: true, shadeAt: -Infinity,
+    heat: h, stroke: 0, sips: s, maxSips, rising: false, temp: 20, sun: 0, shade: true, shadeAt: -Infinity,
     sentTemp: 20, sentShade: true,
     sentAt: 0, lastDrink: 0, lastFill: 0, diedAt: -Infinity, off: false,
   };
@@ -63,7 +64,7 @@ export type Surroundings = { casters: readonly Caster[]; self: number };
 
 /**
  * Advance one player's heat by `dt` seconds at time of day `tod`, `storm` (0..1, shared/storm.ts) the sandstorm
- * where they stand. Returns 'died' on heatstroke (the caller respawns and calls revive), 'send' when the client
+ * where they stand. Returns 'died' on heatstroke (STROKE_S at a full meter) (the caller respawns and calls revive), 'send' when the client
  * should get a 'water' update, else null.
  */
 export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod: number, storm: number, now: number,
@@ -83,11 +84,13 @@ export function tickHeat(t: Heat, dt: number, s: PlayerState, input: number, tod
   const rising = rate > 0;
   const before = t.heat;
   t.heat = Math.min(HEAT_MAX, Math.max(0, t.heat + rate * dt));
-  if (t.heat >= HEAT_MAX) return 'died';
+  const full = t.heat >= HEAT_MAX;
+  t.stroke = Math.max(0, t.stroke + (full ? 1 : -STROKE_RECOVER) * dt);
+  if (t.stroke >= STROKE_S) return 'died';
   const moving = t.heat !== before;
   const changed = t.shade !== t.sentShade || Math.abs(t.temp - t.sentTemp) >= SEND_TEMP_STEP;
-  // Just cooled right down: say so now, not on the next tick.
-  const settled = t.heat !== before && t.heat === 0;
+  // Just cooled right down, or just full (the client times the heatstroke from it): say so now, not on the next tick.
+  const settled = t.heat !== before && (t.heat === 0 || full);
   if (rising !== t.rising || changed || settled || (moving && now - t.sentAt >= SEND_MS)) {
     t.rising = rising;
     t.sentAt = now;
@@ -115,6 +118,7 @@ export function bite(t: Heat, heat: number): boolean {
 /** Cooled right down after dying, with a full bottle. */
 export function revive(t: Heat, now: number) {
   t.heat = 0;
+  t.stroke = 0;
   t.sips = t.maxSips;
   t.rising = false;
   t.diedAt = now;

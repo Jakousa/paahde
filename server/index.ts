@@ -6,10 +6,12 @@ import { fork, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
 import { connect, type Socket } from 'node:net';
+import { DatabaseSync } from 'node:sqlite';
 import { dirname, join } from 'node:path';
 import sirv from 'sirv';
 import { WebSocketServer } from 'ws';
-import { LAB_WORLD, labAllowed, LEGACY_WORLD, newWorldId, WORLD_ID_RE } from '../shared/world.ts';
+import type { WorldStats } from '../shared/protocol.ts';
+import { BENCH_WORLD, LAB_WORLD, labAllowed, LEGACY_WORLD, LIVES, newWorldId, WORLD_ID_RE } from '../shared/world.ts';
 import { leaderboard, minigameApi } from './minigame.ts';
 
 // The dev test lab (?w=lab, shared/lab.ts) exists only when the dev server is started with --lab (npm run dev:server).
@@ -24,7 +26,7 @@ const board = leaderboard(join(dirname(DB_PATH), 'minigame.db')); // the minigam
 
 /** The world from before there were worlds keeps its old database; the rest have one each. */
 const dbPath = (id: string) => (id === LEGACY_WORLD ? DB_PATH : join(WORLDS_DIR, `${id}.db`));
-const exists = (id: string) => (id === LAB_WORLD && labAllowed()) || (WORLD_ID_RE.test(id) && existsSync(dbPath(id)));
+const exists = (id: string) => ((id === LAB_WORLD || id === BENCH_WORLD) && labAllowed()) || (WORLD_ID_RE.test(id) && existsSync(dbPath(id)));
 
 type World = { child: ChildProcess; port: Promise<number> };
 const worlds = new Map<string, World>();
@@ -51,6 +53,33 @@ function world(id: string): Promise<number> {
   return w.port;
 }
 
+/** Players connected to each world right now (the sockets piped through below). */
+const online = new Map<string, number>();
+/** Most worlds one stats request asks about (the landing page keeps fewer). */
+const STATS_MAX = 12;
+
+/** How a world is doing, read from its database (the world process writes it; WAL lets us read alongside). */
+function stats(id: string): WorldStats | null {
+  if (id === LAB_WORLD || id === BENCH_WORLD || !exists(id)) return null;
+  let db: DatabaseSync | undefined;
+  try {
+    db = new DatabaseSync(dbPath(id), { readOnly: true });
+    const setting = (key: string) => {
+      try {
+        return (db!.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: number } | undefined)?.value;
+      } catch {
+        return undefined; // a world that never got as far as making the table
+      }
+    };
+    const players = (db.prepare('SELECT COUNT(*) AS n FROM players').get() as { n: number }).n;
+    return { id, lives: setting('lives') ?? LIVES, beaten: setting('bosses_beaten') ?? 0, players, online: online.get(id) ?? 0 };
+  } catch {
+    return null;
+  } finally {
+    db?.close();
+  }
+}
+
 const serveStatic = sirv('dist', {
   etag: true,
   brotli: true,
@@ -64,6 +93,12 @@ let made: number[] = [];
 const http = createServer((req, res) => {
   if (req.url === '/healthz') return void res.end('ok');
   if (minigameApi(board, req, res)) return;
+  if (req.url?.startsWith('/api/worlds?') && req.method === 'GET') {
+    const ids = (new URL(req.url, 'http://x').searchParams.get('ids') ?? '').split(',').slice(0, STATS_MAX);
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    return void res.end(JSON.stringify(ids.map(stats).filter((s) => s)));
+  }
   if (req.url === '/api/worlds' && req.method === 'POST') {
     const now = Date.now();
     made = made.filter((t) => now - t < 60_000);
@@ -115,6 +150,12 @@ http.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
         socket.setNoDelay(true);
         up.setNoDelay(true);
         socket.pipe(up).pipe(socket);
+        online.set(id, (online.get(id) ?? 0) + 1);
+        up.once('close', () => {
+          const n = (online.get(id) ?? 1) - 1;
+          if (n > 0) online.set(id, n);
+          else online.delete(id);
+        });
       });
       up.on('error', () => socket.destroy());
       up.on('close', () => socket.destroy());

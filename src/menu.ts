@@ -3,7 +3,7 @@
 // the stats line in the top-left corner; below them the controls, the build/connection line and credits.
 // The game keeps running behind it: it's multiplayer, nothing pauses.
 import { WORLD_ID } from '../shared/world.ts';
-import { ACTIONS, bind, keyName, onChange, resetAll, slots } from './bindings';
+import { ACTIONS, bind, kbd, keyName, onChange, resetAll, slots } from './bindings';
 import { capture, setFullscreen, tools, ui } from './input';
 import { openMinigame } from './minigameMenu';
 import { TEXT } from '../shared/text.ts';
@@ -36,7 +36,7 @@ export class Menu {
     this.infoEl.style.display = this.stats ? 'block' : 'none';
 
     this.el.id = 'menu';
-    this.el.innerHTML = `<div class="panel"><div class="main"><h2>${TEXT.game.name}</h2><button class="resume">${TEXT.menu.resume}</button>
+    this.el.innerHTML = `<div class="panel"><div class="main"><h2>${TEXT.game.name}</h2><button class="resume">${kbd('menu')}${TEXT.menu.resume}</button>
 <button class="opt" style="margin-top:12px">${TEXT.menu.options}</button>
 <button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>
@@ -47,6 +47,7 @@ ${optionsHtml()}
 <div class="controls"><h2>${TEXT.controls.title}</h2><button class="back">${TEXT.controls.back}</button>
 <h3>${TEXT.controls.how}</h3><div class="binds"></div><div class="note"></div>
 <button class="reset">${TEXT.controls.reset}</button><div class="foot">${TEXT.controls.fixed}</div></div></div>
+<div class="fsNote">${TEXT.menu.ctrlWNote}</div>
 <button class="mini" title="${TEXT.menu.minigame}" aria-label="${TEXT.menu.minigame}">${MACHINE_ICON}</button>`;
     document.body.append(this.el);
     this.footEl = this.el.querySelector('.info')!;
@@ -96,13 +97,14 @@ ${optionsHtml()}
     // Capture phase, so this sees the inventory still open when its own Esc handler is about to close it.
     addEventListener('keydown', (e) => {
       if (e.code === 'Tab' && this.open) this.toggle(false);
-      if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
+      if (e.code === 'Escape' && ui.inventoryOpen) ui.escClosedAt = performance.now(); // the inventory, chest or workbench takes this Esc
+      if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || performance.now() - ui.escClosedAt < 400 || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
       if (document.getElementById('name') || document.getElementById('play')) return; // Esc there skips the name (src/name.ts) or leaves the minigame
       this.toggle(!this.open);
     }, true);
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement) return this.toggle(false);
-      if (ui.inventoryOpen) return;
+      if (ui.inventoryOpen || performance.now() - ui.escClosedAt < 400) return;
       if (ui.debugFreed) {
         ui.debugFreed = false;
         return;
@@ -212,6 +214,21 @@ ${optionsHtml()}
   private toggle(open: boolean) {
     this.el.classList.toggle('open', open);
     if (open) this.footEl.textContent = this.lastInfo;
+    // Opened by the leave-site prompt (src/input.ts): say why it came and how fullscreen avoids it, this once.
+    this.el.classList.toggle('closeAsked', open && ui.closeAsked);
+    if (open && ui.closeAsked) this.placeFsNote();
+    if (!open) ui.closeAsked = false;
+  }
+
+  /** The Ctrl+W note is its own box beside Go fullscreen, a line pointing at it; under the panel if there's no room. */
+  private placeFsNote() {
+    const note = this.el.querySelector<HTMLElement>('.fsNote')!;
+    const b = this.el.querySelector('.fs')!.getBoundingClientRect();
+    const beside = b.right + 22 + 220 + 16 <= innerWidth;
+    note.classList.toggle('below', !beside);
+    const p = this.el.querySelector('.panel')!.getBoundingClientRect();
+    note.style.left = `${beside ? b.right + 22 : p.left}px`;
+    note.style.top = `${beside ? b.top + b.height / 2 : p.bottom + 10}px`;
   }
 
   /** Every frame: the stats line under the graphs (render scale, clock, backend, connection, players, build). */

@@ -15,7 +15,8 @@
 // domain-warped ellipse with a height profile by kind, plus boulders fallen around the big ones; now and then
 // one is a giant. Rocks sit on the lowest sand under them, partly buried; overlapping rocks merge (max).
 import { BASE } from './base.ts';
-import { mudflat } from './biomes.ts';
+import { biome, blend } from './biomes.ts';
+import { canyonAt, canyonOut } from './canyons.ts';
 import { duneHeight, ss, vnoise, WORLD_SEED } from './dunes.ts';
 import { LAB } from './world.ts';
 
@@ -75,7 +76,7 @@ function rng(ix: number, iz: number) {
 /** 0 = sand sea, 1 = rocky country. Large blobs a few km across, with ragged edges. */
 export function rockiness(x: number, z: number): number {
   // Mud flats (shared/biomes.ts) keep only the stray boulder of the sand sea.
-  const flat = 1 - mudflat(x, z);
+  const flat = 1 - biome('mudflat', x, z);
   if (flat <= 0) return 0;
   const n = vnoise(x * (1 / 700) + 31.7, z * (1 / 700) - 12.3, WORLD_SEED + 21) * 0.65 +
     vnoise(x * (1 / 260), z * (1 / 260), WORLD_SEED + 22) * 0.35;
@@ -111,6 +112,7 @@ function makeRock(x: number, z: number, R: number, H: number, kind: number, r: (
   low = Math.min(low, duneHeight(x + ax * e, z + az * e, s), duneHeight(x - ax * e, z - az * e, s));
   low = Math.min(low, duneHeight(x + az * e / aspect, z - ax * e / aspect, s), duneHeight(x - az * e / aspect, z + ax * e / aspect, s));
   low = Math.max(low, foot);
+  if (standOn !== null) low = standOn; // (on a canyon's floor: canyonCellRocks)
   const b = r();
   const bury = H * (kind === BOULDER ? 0.15 + 0.3 * b : kind === PILLAR ? 0.02 + 0.06 * b : 0.04 + 0.12 * b);
   const tilt = kind === PILLAR ? 0.25 : 0.4;
@@ -392,6 +394,67 @@ function rockSurface(rk: Rock, x: number, z: number): number {
   return rk.y0 + h;
 }
 
+/** While set, the rocks being made stand on this height (a canyon's floor) instead of the sand under them. */
+let standOn: number | null = null;
+
+/** Rock formations standing on the canyons' floors (shared/canyons.ts): small buttes, boulders and a lone pillar now
+ *  and then, made like the desert's, a few per cell out on the floor, their foot on it. Kept apart from the desert's
+ *  rocks, which a canyon cuts away: shared/terrain.ts adds these after the cut (canyonRockHeight). */
+function canyonCellRocks(ix: number, iz: number): Rock[] {
+  const r = rng(ix + 7919, iz - 104729);
+  const out: Rock[] = [];
+  // (Many spots tried: the floors are a small share of a cell.)
+  for (let i = 0; i < 10; i++) {
+    const x = (ix + r()) * ROCK_CELL, z = (iz + r()) * ROCK_CELL;
+    const u = r(), k = r(), p = r();
+    // Out on the floor (its wash), away from the walls' foot, and not every spot.
+    if (u > 0.5 || !canyonAt(x, z) || canyonOut.wash === Infinity || canyonOut.foot > 0.6) continue;
+    standOn = canyonOut.wash - 1.5;
+    // Mostly small buttes and boulders; now and then a pillar, alone (small: no field of spires).
+    formation(out, x, z, k < 0.2 ? PILLAR : k < 0.65 ? MESA : BOULDER, k < 0.2 ? p * p * 0.08 : p * p * 0.5, 1, r);
+    standOn = null;
+  }
+  const x0 = (ix - SEARCH) * ROCK_CELL, z0 = (iz - SEARCH) * ROCK_CELL, x1 = (ix + 1 + SEARCH) * ROCK_CELL, z1 = (iz + 1 + SEARCH) * ROCK_CELL;
+  return out.filter((rk) => rk.x - rk.bound >= x0 && rk.x + rk.bound <= x1 && rk.z - rk.bound >= z0 && rk.z + rk.bound <= z1);
+}
+
+const canyonOwn = new Map<number, Rock[]>();
+const canyonNear = new Map<number, Rock[]>();
+
+/** Every canyon-floor rock that reaches into cell (ix, iz). */
+function canyonRocksIn(ix: number, iz: number): Rock[] {
+  if (LAB) return NO_ROCKS;
+  const k = cellKey(ix, iz);
+  let l = canyonNear.get(k);
+  if (l) return l;
+  l = [];
+  const x0 = ix * ROCK_CELL, z0 = iz * ROCK_CELL, x1 = x0 + ROCK_CELL, z1 = z0 + ROCK_CELL;
+  for (let j = iz - SEARCH; j <= iz + SEARCH; j++) {
+    for (let i = ix - SEARCH; i <= ix + SEARCH; i++) {
+      const ck = cellKey(i, j);
+      let own = canyonOwn.get(ck);
+      if (!own) canyonOwn.set(ck, (own = canyonCellRocks(i, j)));
+      for (const rk of own) {
+        if (rk.x + rk.bound > x0 && rk.x - rk.bound < x1 && rk.z + rk.bound > z0 && rk.z - rk.bound < z1) l.push(rk);
+      }
+    }
+  }
+  if (canyonNear.size > 4096) { canyonNear.clear(); canyonOwn.clear(); }
+  canyonNear.set(k, l);
+  return l;
+}
+
+/** Height of the canyon-floor rock at (x, z), or -Infinity where there is none. Pure function. */
+export function canyonRockHeight(x: number, z: number): number {
+  const l = canyonRocksIn(Math.floor(x / ROCK_CELL), Math.floor(z / ROCK_CELL));
+  let top = -Infinity;
+  for (let i = 0; i < l.length; i++) {
+    const h = rockSurface(l[i], x, z);
+    if (h > top) top = h;
+  }
+  return top;
+}
+
 /** Height of the rock at world (x, z), or -Infinity where there is none. Pure function. */
 export function rockHeight(x: number, z: number): number {
   const l = rocksIn(Math.floor(x / ROCK_CELL), Math.floor(z / ROCK_CELL));
@@ -403,8 +466,10 @@ export function rockHeight(x: number, z: number): number {
   return top;
 }
 
-/** True if a rock (with its scree) reaches within `r` of (x, z). For keeping wrecks and scrap off rocks. */
+/** True if a rock (with its scree) reaches within `r` of (x, z), or (x, z) is in a biome where nothing is placed
+ *  (`empty`, shared/biomes.ts: the canyons). For keeping wrecks, scrap, crash sites, shelters and finds off rocks. */
 export function rocksNear(x: number, z: number, r: number): boolean {
+  if (blend(x, z, (b) => (b.empty ? 1 : 0), 0) > 0) return true;
   for (let j = Math.floor((z - r) / ROCK_CELL); j <= Math.floor((z + r) / ROCK_CELL); j++) {
     for (let i = Math.floor((x - r) / ROCK_CELL); i <= Math.floor((x + r) / ROCK_CELL); i++) {
       for (const rk of rocksIn(i, j)) {

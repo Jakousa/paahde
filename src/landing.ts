@@ -2,9 +2,13 @@
 // a title and one button that makes a new world (server/index.ts /api/worlds) and shows its link to copy
 // and share, and to join from. Also the victory screen (every boss beaten), which goes away again: the
 // world plays on. The landing page plays the desert guitar (the game's outdoor music, src/music.ts) once
-// the browser lets it, after the first click or key.
+// the browser lets it, after the first click or key. Under the button, the worlds this browser joined (kept in
+// localStorage when the server says hello), newest first, each with how it's doing (server/index.ts GET api/worlds).
 import { audio } from './audio';
+import { BOSS_KINDS } from '../shared/bosses.ts';
+import type { WorldStats } from '../shared/protocol.ts';
 import { TEXT } from '../shared/text.ts';
+import { WORLD_ID } from '../shared/world.ts';
 import { MENU_CSS, bindOptions, optionsHtml } from './options';
 
 const css = `
@@ -31,6 +35,19 @@ const css = `
   transition: background .25s, border-color .25s, color .25s; }
 #landing button:hover { background: rgba(255, 244, 208, .92); border-color: #fff4d0; color: #2a120a; }
 #landing button:disabled { opacity: .5; cursor: default; }
+#landing .recent { display: grid; gap: 8px; width: min(88vw, 440px); }
+#landing .recent h2 { margin: 0 0 2px; font: 12px var(--title); letter-spacing: .25em; text-transform: uppercase; color: rgba(255, 244, 208, .75); }
+#landing .recent ol { display: grid; gap: 6px; margin: 0; padding: 0 2px; list-style: none; max-height: 30vh; overflow-y: auto; }
+#landing .recent a { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; padding: 10px 14px; text-align: left;
+  color: #fff4d0; text-decoration: none; background: rgba(42, 18, 10, .55); border: 1px solid rgba(255, 244, 208, .25);
+  border-radius: 2px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: background .25s, border-color .25s, color .25s; }
+#landing .recent a:hover { background: rgba(255, 244, 208, .92); border-color: #fff4d0; color: #2a120a; }
+#landing .recent a.dead { opacity: .55; }
+#landing .recent .id { font: 14px var(--mono); letter-spacing: .1em; }
+#landing .recent .when, #landing .recent .stats { font: 12px var(--mono); opacity: .8; }
+#landing .recent .when { text-align: right; }
+#landing .recent .on { color: #9fe39a; }
+#landing .recent a:hover .on { color: #2f6b2a; }
 @keyframes landing-drift { from { transform: scale(1) translateX(0); } to { transform: scale(1.06) translateX(-1.5%); } }
 @keyframes landing-in { from { opacity: 0; transform: translateY(calc(-18vh + 12px)); } }
 @media (prefers-reduced-motion: reduce) { #landing .bg, #landing .panel { animation: none; } }
@@ -51,6 +68,7 @@ export function landing(why?: 'over' | 'missing') {
   el.innerHTML = `${why ? '' : '<div class="bg"></div><div class="shade"></div>'}<div class="panel"><h1>${TEXT.game.name}</h1>${line ? `<p>${line}</p>` : ''}<button class="start">${TEXT.landing.start}</button><button class="optionsBtn">${TEXT.menu.options}</button></div>`;
   document.body.append(el);
   if (!why) music(el);
+  recent(el.querySelector('.panel')!);
   const button = el.querySelector<HTMLButtonElement>('.start')!;
   if (!why) el.querySelector('.optionsBtn')!.addEventListener('click', options);
   else el.querySelector('.optionsBtn')!.remove();
@@ -67,6 +85,74 @@ export function landing(why?: 'over' | 'missing') {
   });
 }
 
+const RECENT_KEY = 'dadajam.recent';
+/** Worlds kept in the list. */
+const RECENT_MAX = 8;
+type Joined = { id: string; at: number };
+
+function joined(): Joined[] {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    return Array.isArray(list) ? list.filter((j) => typeof j?.id === 'string' && typeof j.at === 'number') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveJoined(list: Joined[]) {
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX)));
+  } catch {}
+}
+
+/** This browser joined the world: to the top of the landing page's list. */
+export function rememberWorld(id: string) {
+  saveJoined([{ id, at: Date.now() }, ...joined().filter((j) => j.id !== id)]);
+}
+
+/** The list of worlds joined before, once the server says how they're doing; worlds that are gone drop out. */
+async function recent(panel: HTMLElement) {
+  const list = joined().filter((j) => j.id !== WORLD_ID);
+  if (!list.length) return;
+  let stats: WorldStats[];
+  try {
+    const res = await fetch(`api/worlds?ids=${list.map((j) => j.id).join(',')}`);
+    if (!res.ok) return;
+    stats = await res.json();
+  } catch {
+    return;
+  }
+  const byId = new Map(stats.map((s) => [s.id, s]));
+  saveJoined(joined().filter((j) => j.id === WORLD_ID || byId.has(j.id)));
+  const rows = list.filter((j) => byId.has(j.id));
+  if (!rows.length || !panel.isConnected) return;
+  const box = document.createElement('div');
+  box.className = 'recent';
+  box.innerHTML = `<h2>${TEXT.landing.recent}</h2><ol></ol>`;
+  const ol = box.querySelector('ol')!;
+  for (const j of rows) {
+    const s = byId.get(j.id)!;
+    const n = BOSS_KINDS.filter((_, i) => s.beaten & (1 << i)).length;
+    const bosses = '◆'.repeat(n) + '◇'.repeat(BOSS_KINDS.length - n);
+    const life = s.lives > 0 ? `♥ ${s.lives}` : TEXT.landing.gameOver;
+    const parts = [life, bosses, TEXT.landing.players(s.players)];
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.href = `?w=${encodeURIComponent(j.id)}`;
+    if (s.lives <= 0) a.className = 'dead';
+    a.innerHTML = `<span class="id"></span><span class="when"></span><span class="stats"></span><span class="when on"></span>`;
+    const [id, when, line, on] = a.querySelectorAll('span');
+    id.textContent = j.id;
+    when.textContent = TEXT.landing.ago(Math.floor((Date.now() - j.at) / 60_000));
+    line.textContent = parts.join('  ·  ');
+    if (s.online) on.textContent = TEXT.landing.online(s.online);
+    li.append(a);
+    ol.append(li);
+  }
+  // Below the buttons, which stay where they are when the list comes in.
+  panel.append(box);
+}
+
 /** The options over the main menu, to set up before joining: the Esc menu's own view (src/options.ts). */
 function options() {
   if (!document.getElementById('menuStyle')) {
@@ -81,8 +167,8 @@ function options() {
   menu.style.zIndex = '50';
   menu.innerHTML = `<div class="panel opts">${optionsHtml()}</div>`;
   document.body.append(menu);
-  bindOptions(menu, {});
-  const close = () => menu.remove();
+  const unbind = bindOptions(menu, {});
+  const close = () => { unbind(); menu.remove(); };
   menu.querySelector('.optBack')!.addEventListener('click', close);
   menu.addEventListener('pointerdown', (e) => e.target === menu && close());
 }
@@ -120,15 +206,14 @@ function music(el: HTMLElement) {
 
 /** The new world's link in place of the button: copy it to share, Join to go there yourself. */
 function shareLink(el: HTMLElement, url: string) {
-  const p = el.querySelector('p');
-  el.querySelector('.start')!.remove();
-  p?.remove();
+  el.querySelector('p')?.remove();
   const row = document.createElement('div');
   row.className = 'link';
   row.innerHTML = `<input readonly><button>${TEXT.landing.copy}</button>`;
   const join = document.createElement('button');
   join.textContent = TEXT.landing.join;
-  el.querySelector('.optionsBtn')!.before(row, join);
+  // In the button's place: the end screens have no Options button to go before.
+  el.querySelector('.start')!.replaceWith(row, join);
   const input = row.querySelector('input')!;
   const copy = row.querySelector('button')!;
   input.value = url;

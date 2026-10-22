@@ -841,8 +841,10 @@ def rifle_ready(at, roll, dist=45.0):
 
 
 # hip / low ready: grip low right, bore on the crosshair, canted a touch; close enough in that the left arm
-# reaches the handguard with the elbow still bent (further out it stops short, under it)
-R_READY = rifle_ready((0.09, 0.16, -0.21), roll=-3)
+# reaches the handguard with the elbow still bent (further out it stops short, under it), far enough out that the
+# eyepiece (0.068 behind the grip) stays well past the near plane (0.091 ahead of the eye) through the idle sway,
+# which at 0.16 slid the plane's cut across it
+R_READY = rifle_ready((0.09, 0.19, -0.21), roll=-3)
 
 
 def wrist_bend_of(pose, pre):

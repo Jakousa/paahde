@@ -1,5 +1,6 @@
 // A shield plate (shared/gear.ts) taking a killing blow ('shieldBreak', server/world.ts shielded): the emitter throws
-// its field round the wearer in a flash, the cracked hull plate sheds shards, a crack and a glassy ring; then the field
+// its field round the wearer in a flash and a glassy ring; on its last blow (not `held`) the cracked hull plate sheds
+// shards with a crack too. Then the field
 // hangs on faintly, flickering out, for as long as it still keeps them safe (`ms`). Coloured like the emitter's lens
 // by the plate's tier (src/tierLook.ts). Whoever it saved also gets a jolt and a flash over the screen.
 import * as THREE from 'three/webgpu';
@@ -81,7 +82,7 @@ export class ShieldFx {
     // The plate cracks: shards off the chest, thrown on with the blow.
     const [px, py, pz] = m.push;
     const ph = Math.hypot(px, pz) || 1;
-    for (let i = 0; i < SHARDS; i++) {
+    for (let i = 0; i < (m.held ? 0 : SHARDS); i++) {
       const s = new THREE.Mesh(SHARD_GEO, SHARD_MAT);
       s.scale.setScalar(0.05 + Math.random() * 0.05);
       s.position.set(m.x, m.y + 1.3, m.z);
@@ -100,7 +101,7 @@ export class ShieldFx {
       this.flash.style.background = `radial-gradient(circle, transparent 35%, #${col.getHexString()} 130%)`;
       this.flashT = 0;
     }
-    sound(mine ? 1 : 1 / (1 + d / 10), m.tier);
+    sound(mine ? 1 : 1 / (1 + d / 10), m.tier, !m.held);
   }
 
   /** Every frame; `at` is where a player is drawn now (the field follows them). */
@@ -149,28 +150,16 @@ export class ShieldFx {
   }
 }
 
-/** The break: a crack (noise, high and short), a glassy ring (inharmonic partials, pitched by tier) and a low thump. */
-function sound(level: number, tier: number) {
+/** The blow: a crack (noise, high and short; only when it `breaks`), a glassy ring (inharmonic partials, pitched by
+ *  tier) and a low thump. */
+function sound(level: number, tier: number, breaks: boolean) {
   const ctx = audio.ctx, out = audio.out;
   if (!ctx || !out || !audio.running || level < 0.02) return;
   const t0 = ctx.currentTime + 0.01;
   const bus = ctx.createGain();
   bus.gain.value = level;
   bus.connect(out);
-  // Crack.
-  const n = Math.round(ctx.sampleRate * 0.12);
-  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.018));
-  const noise = ctx.createBufferSource();
-  noise.buffer = buf;
-  const hp = ctx.createBiquadFilter();
-  hp.type = 'highpass';
-  hp.frequency.value = 1800;
-  const cg = ctx.createGain();
-  cg.gain.value = CRACK_GAIN;
-  noise.connect(hp).connect(cg).connect(bus);
-  noise.start(t0);
+  if (breaks) crack(ctx, bus, t0);
   // Ring: higher and cleaner the better the plate.
   const base = 900 + tier * 160;
   for (const [k, a, len] of [[1, 1, 1.4], [2.76, 0.5, 0.9], [5.4, 0.3, 0.5], [8.93, 0.15, 0.3]] as const) {
@@ -196,4 +185,21 @@ function sound(level: number, tier: number) {
   th.start(t0);
   th.stop(t0 + 0.6);
   setTimeout(() => bus.disconnect(), 2500);
+}
+
+/** The plate cracking: noise, high and short. */
+function crack(ctx: AudioContext, bus: AudioNode, t0: number) {
+  const n = Math.round(ctx.sampleRate * 0.12);
+  const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.018));
+  const noise = ctx.createBufferSource();
+  noise.buffer = buf;
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 1800;
+  const cg = ctx.createGain();
+  cg.gain.value = CRACK_GAIN;
+  noise.connect(hp).connect(cg).connect(bus);
+  noise.start(t0);
 }

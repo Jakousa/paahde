@@ -1,8 +1,11 @@
 // Server side of the fixed-wing drones (shared/jets.ts): now and then one flies past a random player, in a straight
 // pass or a big circle around them, and the list goes out to everyone whenever it changes. Shot (shoot) JET_HP times,
 // one glides down to the sand. In memory only.
+import { BASE } from '../shared/base.ts';
+import type { JetKind } from '../shared/jetbreak.ts';
 import { DIVE_STEP, JET_NOSE, jetDive, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
-import { baseHeight } from '../shared/terrain.ts';
+import { duneFloor } from '../shared/dunes.ts';
+import { baseHeight, WORLD_SEED } from '../shared/terrain.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 
 /** Time between one flight's start and the next (ms). */
@@ -17,6 +20,12 @@ const R_MIN = 700;
 const R_MAX = 1400;
 const TURN_MIN = 0.75 * Math.PI;
 const TURN_MAX = 2.5 * Math.PI;
+/** Odds a flight is the stealth flying wing, not the fixed-wing drone: none at home, rising evenly with the distance (m) from the base of the
+ *  player it was picked for to WING_ODDS at WING_FAR, and held there beyond. */
+const WING_ODDS = 0.8;
+const WING_FAR = 10_000;
+const pickKind = (x: number, z: number): JetKind =>
+  Math.random() < WING_ODDS * Math.min(1, Math.hypot(x - BASE.x, z - BASE.z) / WING_FAR) ? 'wing' : 'drone';
 
 /** The shooter sees the jet at its guess of the server clock: test the shot against where it was this far back (ms). */
 const LAG_MS = [0, 100, 200, 300];
@@ -30,6 +39,8 @@ export class JetServer {
   private nextAt: number;
   private changed = false;
   private wrecked = new Set<number>();
+  /** The kind the next debug flight is (they take turns, to see both). */
+  private debugKind: JetKind = 'drone';
 
   constructor(now: number) {
     this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS) / 2;
@@ -69,12 +80,20 @@ export class JetServer {
     }
     // A straight pass is "turn 0" at (px, pz): run in LEAD to it, out LEAD past it.
     const lead = soon ? 1200 : LEAD;
-    const jet = {
+    let kind = pickKind(x, z);
+    if (soon) {
+      kind = this.debugKind;
+      this.debugKind = kind === 'drone' ? 'wing' : 'drone';
+    }
+    const jet: Jet = {
       id: this.nextId++,
+      kind,
       x: Math.round(ax - Math.sin(yaw) * lead),
       z: Math.round(az - Math.cos(yaw) * lead),
       yaw: Math.round(yaw * 1e4) / 1e4,
-      y: Math.round(baseHeight(x, z) + rand(JET_ALT_MIN, JET_ALT_MAX)),
+      // (Over the land round it, not the bottom of a canyon (shared/canyons.ts): its tableland stands up to ~65 m over
+      // the dune floor, and a jet that took the canyon floor for the ground flew into its walls.)
+      y: Math.round(Math.max(baseHeight(x, z), duneFloor(x, z, WORLD_SEED) + 65) + rand(JET_ALT_MIN, JET_ALT_MAX)),
       speed: Math.round(speed),
       run: lead,
       turn: Math.round(turn * 1e4) / 1e4,
@@ -99,7 +118,7 @@ export class JetServer {
     const near = LAG_MS.some((lag) => {
       if (!jetAt(j, now - lag, _p)) return false;
       const t = Math.max(0, Math.min(1, ((_p.x - x) * dx + (_p.y - y) * dy + (_p.z - z) * dz) / len2));
-      return Math.hypot(x + dx * t - _p.x, y + dy * t - _p.y, z + dz * t - _p.z) < JET_HIT && Math.hypot(ex - _p.x, ey - _p.y, ez - _p.z) < JET_HIT * 1.5;
+      return Math.hypot(x + dx * t - _p.x, y + dy * t - _p.y, z + dz * t - _p.z) < JET_HIT[j.kind] && Math.hypot(ex - _p.x, ey - _p.y, ez - _p.z) < JET_HIT[j.kind] * 1.5;
     });
     if (!near) return false;
     this.changed = true;
@@ -126,10 +145,10 @@ export class JetServer {
    *  meets the sand. */
   private bringDown(j: Jet, now: number, soft = false) {
     jetAt(j, now, _p);
-    const sx = Math.sin(_p.yaw), sz = Math.cos(_p.yaw), r = (v: number) => Math.round(v * 100) / 100;
+    const sx = Math.sin(_p.yaw), sz = Math.cos(_p.yaw), r = (v: number) => Math.round(v * 100) / 100, nose = JET_NOSE[j.kind];
     const under = (t: number) => {
-      const m = jetDive(j.speed, t, soft), f = m.fwd + JET_NOSE * Math.cos(m.pitch);
-      return _p.y - m.drop + JET_NOSE * Math.sin(m.pitch) <= baseHeight(_p.x + sx * f, _p.z + sz * f);
+      const m = jetDive(j.speed, t, soft), f = m.fwd + nose * Math.cos(m.pitch);
+      return _p.y - m.drop + nose * Math.sin(m.pitch) <= baseHeight(_p.x + sx * f, _p.z + sz * f);
     };
     let s = 0;
     while (s < 60 && !under(s)) s += DIVE_STEP;

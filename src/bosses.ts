@@ -14,6 +14,7 @@ import { QueenView } from './world/queen';
 import { WormView } from './world/worm';
 import { zaps } from './world/zaps';
 import { rifleSound } from './rifleSound';
+import { claim } from './kills';
 import type { Net } from './net';
 
 type BossesMsg = Extract<ServerMsg, { t: 'bosses' }>;
@@ -52,6 +53,8 @@ export class BossFx {
   combat = false;
   /** The nearest live boss we're in a fight with (BossSnap.f), for the health bar (src/bossBar.ts); null if none. */
   bar: { kind: BossKind; hp: number } | null = null;
+  /** A boss we hit lately (src/kills.ts) just died. */
+  onKill: (kind: BossKind) => void = () => {};
 
   constructor(scene: THREE.Scene, thump: BossCtx['thump'], shake: BossCtx['shake']) {
     this.scene = scene;
@@ -83,7 +86,10 @@ export class BossFx {
       this.shadows(v, Math.hypot(s.x - c.ear.x, s.z - c.ear.z) < SHADOW_R);
       this.syncBroken(v, s.br);
       this.smoulder(v, dt);
-      if (s.dead > 0 && !v.dead) rifleSound.firework(s, c.ear, 1.4, 0.6);
+      if (s.dead > 0 && !v.dead) {
+        rifleSound.firework(s, c.ear, 1.4, 0.6);
+        if (claim(`b${s.id}`)) this.onKill(s.k);
+      }
       v.dead = s.dead > 0;
       const d = c.me ? Math.hypot(s.x - c.me.x, s.z - c.me.z) : Infinity;
       if (!v.dead && d < 250) near = true;

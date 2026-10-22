@@ -2,12 +2,38 @@
 
 Three tools, from quick to thorough. Numbers from the first runs are in the devlog of whoever changes performance next; write new ones down.
 
+## Quality presets
+
+Options → Graphics starts with **Auto, Low, Medium, High, Ultra**. Individual edits show **Custom** and turn Auto off; display mode is independent.
+The same menu works before joining. Presets update all controls together, including occlusion, and save across reloads. Changes to anti-aliasing or shadow
+quality show the existing reload prompt during a game. Old saved settings (including the separate `dadajam.ao` value) are preserved; new players start on Auto.
+
+| Preset | Resolution ceiling | Shadows | Sand detail | Occlusion | Anti-aliasing | FPS cap |
+| --- | --- | --- | --- | --- | --- | --- |
+| Low | 65%, adaptive | Off | Low | Off | Off | 60 |
+| Medium | 85%, adaptive | Medium, 800 m, rarely refreshed | Medium | 70% | On | 60 |
+| High | 100%, adaptive | High, 1600 m, some refreshes | High | 70% | On | Unlimited |
+| Ultra | 100%, fixed | Ultra, 4500 m, every frame | Ultra | 70% | On | Unlimited |
+
+Auto starts with Medium shadow maps, a 100% resolution ceiling, and a 60 fps cap. The available CPU core count supplies only the initial shadow refresh choice;
+actual frame measurements then guide separate CPU and GPU choices (`src/autoGraphics.ts`). CPU callback time controls shadow refresh/distance. The existing
+adaptive resolution controller confirms GPU pressure only when reducing pixels improves frame times; sustained low resolution also reduces sand detail,
+occlusion and finally sun shadows. A slow CPU alone therefore keeps GPU effects, and a weak GPU alone keeps the CPU's shadow refresh choice. This does not
+require GPU timestamp support or a GPU model-name database. Auto keeps its modest shadow-map allocation and anti-aliasing setting throughout the session;
+it never reloads the game on its own or selects Ultra. Loading, menus, hidden tabs and deaths are excluded; reductions need two three-second windows,
+restoration six. Saved Auto settings are reused on the next visit and re-evaluated while playing. `node tools/check-graphics.ts` checks mixed bottlenecks,
+frame-rate caps, preset persistence and legacy preferences.
+
 ## 1. Stats overlay (Esc → Options → Gameplay → Show stats)
 Frame-time bars, draw calls, triangles, **cpu ms** (our frame callback, render submission included) and **gpu ms** (WebGPU timestamp queries, the render
 passes summed). The larger of the two is what the frame is bound by. GPU queries are only set up when stats were already on at page load (or for a
 benchmark run), so tick the box and reload. Caveat: the shadow cascade passes may not be in the gpu number (turning shadows off moved it by 0.1 ms
 while cpu fell from 12 to 4 ms): trust the cpu line and the trace for shadows. `src/perf.ts` also writes the same numbers as User Timing, which Chrome's
 Performance panel shows as a "dadajam" track (CPU and GPU per frame, startup milestones as markers) in any trace you record by hand.
+
+Cross-check GPU timestamps against actual frame intervals before using them for attribution. On an M2 Pro / Chrome 155 / WebGPU run,
+the summed GPU median was ~506 ms while frames arrived ~42 ms apart. Disabling timestamp queries left throughput unchanged, so those
+pass totals were not used to rank costs. Fixed-resolution comparisons and CPU traces established the graphics bottleneck instead.
 
 ## 2. Automated run: `npm run perf` (`tools/perf.ts`)
 `npm run dev` first. Then `npm run perf -- --seconds 30` opens a real Chrome (GPU on, precise GPU timestamps), makes a world, waits until the game is
@@ -16,6 +42,21 @@ asked seconds and writes `data/perf/<time>[-label].json` (frame gap, cpu, submit
 frames over 20 / 50 ms; startup milestones and long tasks; the graphics settings and machine) plus a Chrome trace of the same stretch
 (`.trace.json.gz`, read with `python tools/trace-report.py`). Options: `--trace play|startup|none`, `--seconds 0` (startup only), `--set k=v` for any graphics
 option (`--set shadows=false --set resScale=0.7`), `--label`, `--world <id>`, `--base <url>`, `--chrome <path>`, `--headless`.
+**Outdoor runs**: a new world starts in the bunker, so use `--spawn field|shelter` (the server's dev spawns: beside a scrap field, 6 m outside a shelter door), `--yaw 3.14` to turn round
+(the field spawn faces the field, which blocks the walk) and `--tod 0.26` for the time of day the run starts at (0.333 = 8 am, sun 28°; **0.26 = about 6 am, sun 8°, long shadows**; sunrise is
+~5:30 and sunset ~18:30 here, so 5 am or 10 pm are dark). The clock then runs on (a day is 30 min). The walk is a very wide circle (about 100 m radius), 140-200 m in 30 s, with a sprint every
+other ten seconds. `--spawn crash` is beside a crash site's machine and its crawlers kill the player: use it to see what a death looks like in the data, not for numbers.
+
+**Dying, and other runs that are not a walk, are part of the data, not noise.** The JSON has `valid` and `invalidReasons` at the top, and `gameplay.events` (`died` / `respawned`, with seconds into the walk,
+position and heat), `gameplay.travelledM`, `framesExcluded`. The trace has a red `player died` / `player respawned` marker on the dadajam track. A run is invalid when the player died, barely moved
+(blocked by a pile or a dune face: under 1.5 m/s), or ended early; `tools/perf.ts` prints `!! INVALID RUN` with the reasons, names the files `...-INVALID.json` and exits with code 2.
+By default a death ends the run (the numbers after it would be a ragdoll's, then the bunker's); `--allow-death` keeps walking and leaves the frames while down, and the next second after the respawn,
+out of the numbers (they are counted in `framesExcluded`; the run stays marked invalid so it is never mistaken for a clean one).
+**Size matters for the GPU**: the game draws one pixel per CSS pixel, so the default 1280x800 window hides a GPU limit. `--size 2560x1440` (or your screen's size) sets the viewport. The JSON's `gpuPasses` and the
+runner's "gpu ms per frame by render pass" split the GPU time by render pass (context id): the scene pass is the big one, the others (shadow cascades, post) small.
+First numbers (field spawn, 6 am, fixed resolution): GPU ms p50 2.4 / 4.5 / 7.9 at 1280x800 / 1920x1080 / 2560x1440 (the scene pass 78 % of it), 142 -> 139 -> 102 fps: GPU-bound from about 1440p.
+At 1440p: sun shadows off -1.2 ms, anti-aliasing off -1.3 ms, shadow quality low/medium 0, resolution 75 % -3.2 ms. The cost is the scene pass's per-pixel work, mostly the sand shader.
+Example: `npm run perf -- --seconds 30 --spawn field --yaw 3.14 --tod 0.26 --set dynamicRes=false --label morning`.
 Compare settings by running the same command with different `--set`s and `--label`s.
 
 ## 3. By hand
@@ -35,3 +76,43 @@ Before: ~66 fps, cpu 12.4 ms, ~1100 draw calls, 4 shadow cascades redrawn every 
   triangles, and each layout change records them again: 1 % lows 14 → 5 fps).
 - `npm run perf -- --shot [--ab shadowRefresh=0]` takes a picture where the walk ends, and a second one with an option changed live; the JSON has a `census` of what is drawn
   (casters by root and material, by size, and what each cascade would draw).
+
+## Skipping invisible noise (21 October 2026)
+
+The sand shader skips grain noise and each glitter layer when its existing fade/mask is zero. Derivatives are evaluated before the branches;
+visible detail keeps the same formulas and fade thresholds. Post-processing skips heatstroke distortion when healthy, storm grit outside a storm,
+and heat-haze noise outside its visible band. Texture lookups stay outside the per-pixel haze branch. These savings apply at every quality level.
+
+On an M2 Pro, Chrome 155 / WebGPU, battery with Low Power Mode enabled, fixed 1920×1080 at High effects:
+
+| Paired, fixed-scene rendering | Before | After | Change |
+| --- | ---: | ---: | ---: |
+| Clear, first pair | 24.7 FPS | 30.0 FPS | +21% |
+| Clear, second pair | 24.8 FPS | 30.0 FPS | +21% |
+| Storm grit + heatstroke active | 24.6 FPS | 27.9 FPS | +13% |
+
+Each pair alternated old/new materials and post pipelines in one browser with the same camera, scene, time and effect uniforms: 4 s warm-up,
+8 s measured. Median clear-frame intervals fell from 40.1 to 33.0–33.1 ms. This isolates rendering; it is not a full gameplay FPS claim.
+The first 30 s walking comparison improved 23.0 → 27.2 FPS, but later separate walks varied substantially (even after restoring the original code),
+so use the paired results to judge the change. No resolution reduction or effect removal was used. Local raw results and screenshots are in
+`data/perf/paired-paired-gpu.json` and `data/perf/2026-10-21-optimization-report.md`.
+Build and browser checks pass on WebGPU and WebGL2, including clear/heatstroke/storm combinations and a low-sun fallback comparison.
+The first WebGL profiling run produced a timer-query warning; repeating with queries disabled removed it. No new shader errors appeared.
+
+## Sun shadows: dunes from the heightfield (src/world/heightShadow.ts)
+The dunes are not in the shadow maps any more. For a grid round the player the GPU finds, per texel, the "shadow ceiling" S (the highest the ray to the
+sun has to clear) by doubling: one pass a frame looks 1, 2, 4 ... texels up-sun, so nothing thin is skipped; a point at height y is in the dunes' shadow when
+y < S. Edges are the clean contour y = S at any distance, without the stairs a low sun makes of shadow-map texels. Grids: 0.5 m round the player, 4 m and 9 m
+out to the terrain's edge (High); fewer and coarser on Low/Medium (graphics.ts SHADOW_QUALITY). The shadow maps keep players, wrecks, the base and bosses, and
+can now filter narrowly (1.5-2 texels, was 5-8); the terrain casts into them only near the base and shelters (their rooms are underground, roofed by it).
+Things learned on the way (all cost a debugging round): a render target sampled before it is first drawn into breaks every frame with "destroyed texture used in
+a submit" (the scene is not drawn at all: clear every target once after renderer.init); three clamps a node material's colour output at 0, so passes that
+write negative numbers use `fragmentNode`; 32-bit float targets cannot blend (NoBlending, or the pipeline is never ready and nothing is drawn) and are read
+texel by texel (`.load`), not sampled. Spin runs at 1440p (`--route spin --spawn shelter`)
+gave the two within run-to-run noise (98-135 fps for the same setting); the gain is the look, and ~100 fewer draw calls where the terrain no longer casts.
+
+Ultra (shadow quality 4th step): 5 cascades of 4096² out to 4.5 km (choosing it sets the shadow distance to the maximum), far cascades keep only big casters
+(a downed jet, a boss, the base), dune grid 0.25 m / 1 m / 4.5 m. ~0.6 GB of GPU memory. The packed shadow ceiling gets a small tent filter, which takes the
+stair steps off rock outlines. Near the base and the shelters the heightfield is skipped only where a point is in their reach, under their floor *and* under
+the drawn ground (dune valleys round the base are lower than its floor: they lost their dune shadows inside 45 m). `npm run perf -- --shot --view 60` lifts the
+camera 60 m for the picture (fly camera, no HUD), looking away from the sun: the way to see shadows over a wide stretch.

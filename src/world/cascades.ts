@@ -47,9 +47,9 @@ interface CSMInternals {
  *  which is most of the draw calls of the shadow passes. */
 export const FIRST_CACHED = 1;
 /** The box reaches this share of the cascade's far end past what the view needs: how far the camera can move before a redraw. */
-const SLACK = [0, 0.08, 0.06, 0.05];
+const SLACK = [0, 0.08, 0.06, 0.05, 0.04];
 /** Seconds a cached cascade may go undrawn, by Shadow refresh level, for each cached cascade in turn. */
-const MAX_AGE = [[0, 0, 0], [0.066, 0.25, 0.6], [0.15, 0.8, 2]];
+const MAX_AGE = [[0, 0, 0, 0], [0.066, 0.25, 0.6, 0.8], [0.15, 0.8, 2, 3]];
 /** Tall things in the shadow maps (m): a sun turn of dθ moves the shadow of one by this × dθ. */
 const CASTER_HEIGHT = 120;
 
@@ -68,6 +68,8 @@ export class CascadedShadows extends CSMShadowNode {
   private kept: Kept[] = [];
   /** Fits a cascade's shadow settings (depth range, biases, filter) to its box; set by Sky. */
   onFit: ((i: number) => void) | null = null;
+  /** Multiplied into the result: the dunes' shadow from the heightfield (src/world/heightShadow.ts), out past the cascades too. */
+  extraLit: F | null = null;
 
   /** Width of one texel of cascade `i` (m), from the box it is drawn with. */
   texel(i: number): number {
@@ -210,7 +212,8 @@ export class CascadedShadows extends CSMShadowNode {
         lit = lit.add(inRange.mul(mix(self._shadowNodes[i], next, t)));
         covered = covered.add(inRange);
       }
-      const v = lit.add(float(1).sub(covered));
+      let v: F = lit.add(float(1).sub(covered));
+      if (this.extraLit) v = v.mul(this.extraLit);
       return vec4(vec3(v), 1);
     })();
   }

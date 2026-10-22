@@ -1,9 +1,17 @@
-// A jet breaking up: when its nose meets the sand it comes apart into the pieces of shared/jetpieces.ts (tools/blender/machines/plane.py), each
+// A jet breaking up: when its nose meets the sand it comes apart into its pieces (PIECES_OF: shared/dronejetpieces.ts or shared/jetpieces.ts), each
 // of which flies on with its own share of the plane's speed and a kick of its own, tumbles under gravity, hits the sand, bounces, slides, settles
 // to lie flat on the slope under it, and splashes the sand where it lands hard. Plain math from the impact (shared/jets.ts jetImpact) and the
 // jet's id, so the server (which stamps the craters and keeps where they ended up) and every client (which draws them flying) agree.
-import { JET_PIECES } from './jetpieces.ts';
+import { DRONE_JET_PIECES } from './dronejetpieces.ts';
+import { JET_PIECES, type JetPieceDef } from './jetpieces.ts';
 import { baseHeight } from './terrain.ts';
+
+/** The two jets: the fixed-wing drone, an MQ-9-like recon plane (tools/blender/machines/dronejet.py -> public/models/dronejet.glb; no engine
+ *  to salvage, its wreck drops parts: shared/tables.ts DRONE_JET_SPOILS), and the stealth flying wing with the turbofan's engines in pods on its
+ *  back (tools/blender/machines/plane.py -> public/models/jet.glb; piece ids ENGINES_OF, each on its `parent` piece). Both have a `front` body piece. */
+export type JetKind = 'drone' | 'wing';
+/** The pieces each breaks into. */
+export const PIECES_OF: Record<JetKind, JetPieceDef[]> = { drone: DRONE_JET_PIECES, wing: JET_PIECES };
 
 export type V3 = [number, number, number];
 export type Q4 = [number, number, number, number];
@@ -77,16 +85,17 @@ export interface BreakEvent {
 
 /** What became of an engine: still on its wing ('on'), torn off and lying whole (a machine to take apart) or wrecked in the landing. */
 export type Fate = 'on' | 'machine' | 'wreck';
-/** The engines' pieces, left then right (shared/jetpieces.ts ids), the odds each tears off the wing and, if it does, is wrecked in the landing. */
-export const ENGINES = ['engineL', 'engineR'];
+/** Each kind's engines' pieces (the wing's left then right; the drone has none to salvage), the odds each tears off and, if it does, is wrecked
+ *  in the landing. */
+export const ENGINES_OF: Record<JetKind, string[]> = { drone: [], wing: ['engineL', 'engineR'] };
 export const ENGINE_OFF = 0.8;
 export const ENGINE_WRECKED = 0.3;
 
 export interface Breakup {
-  /** What became of each engine (ENGINES order) and, for a wrecked one, when (s after the impact) it was wrecked: from then on its piece is the husk. */
+  /** What became of each engine (ENGINES_OF[kind] order) and, for a wrecked one, when (s after the impact) it was wrecked: from then on its piece is the husk. */
   fates: Fate[];
   wrecked: number[];
-  /** Per piece (in JET_PIECES order), per step: x, y, z, qx, qy, qz, qw, flags (1: on the sand, 2: moving fast). */
+  /** Per piece (in PIECES_OF[kind] order), per step: x, y, z, qx, qy, qz, qw, flags (1: on the sand, 2: moving fast). */
   states: Float32Array[];
   steps: number;
   events: BreakEvent[];
@@ -119,11 +128,12 @@ function rng(seed: number) {
   };
 }
 
-export function breakup(im: Impact, seed: number): Breakup {
+export function breakup(im: Impact, seed: number, kind: JetKind): Breakup {
+  const PIECES = PIECES_OF[kind], ENGINES = ENGINES_OF[kind];
   const rand = rng(seed * 7919 + 13);
   const qPlane = planeQuat(im.yaw, im.pitch, im.bank);
   const steps = Math.round(BREAK_S / BREAK_DT);
-  const n = JET_PIECES.length;
+  const n = PIECES.length;
   const states: Float32Array[] = [];
   const events: BreakEvent[] = [];
   const final: number[][] = [];
@@ -134,12 +144,12 @@ export function breakup(im: Impact, seed: number): Breakup {
   });
   const wrecked = ENGINES.map(() => -1);
   for (let i = 0; i < n; i++) {
-    const d = JET_PIECES[i];
+    const d = PIECES[i];
     const out = new Float32Array(steps * STATE_W);
     const ei = ENGINES.indexOf(d.id);
     if (ei >= 0 && fates[ei] === 'on') {
       // still on its wing: it goes where the wing goes
-      const pi = JET_PIECES.findIndex((q) => q.id === d.parent), par = JET_PIECES[pi], ps = states[pi];
+      const pi = PIECES.findIndex((q) => q.id === d.parent), par = PIECES[pi], ps = states[pi];
       const rel: V3 = [d.pivot[0] - par.pivot[0], d.pivot[1] - par.pivot[1], d.pivot[2] - par.pivot[2]];
       for (let k = 0; k < steps; k++) {
         const o = k * STATE_W, qp: Q4 = [ps[o + 3], ps[o + 4], ps[o + 5], ps[o + 6]], r = qRot(qp, rel);

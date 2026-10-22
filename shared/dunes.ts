@@ -51,7 +51,7 @@ const H2_MAX = 3.5;
 const HORN2 = 6;
 
 import { hash2, ss, vnoise } from './noise.ts';
-import { mudflat } from './biomes.ts';
+import { biome } from './biomes.ts';
 export { hash2, ss, vnoise };
 
 // Derivatives of the last vnoiseD call (scratch, overwritten every call).
@@ -106,11 +106,28 @@ function dune(s: number, crest: number, h: number, slip: number, kc: number, kt:
   return s > crest ? -smin(-top, 0, kt) : top;
 }
 
+/** The erg undulation under the dunes (x, z already offset), with the mud flats' sink: the floor of the corridors. */
+function erg(x: number, z: number, S: number, mud: number): number {
+  return (vnoise(x * (1 / 1600), z * (1 / 1600), S + 13) - 0.5) * 24 * (1 - 0.6 * mud) - MUD_SINK * mud;
+}
+
+/** The floor the dunes stand on at world (x, z): the interdune corridors' height, under every dune crest (rocks
+ *  rise from it too). Poison gas (shared/gas.ts) lies a few metres deep over it. */
+export function duneFloor(x: number, z: number, seed: number): number {
+  return erg(x + OFFSET_X, z + OFFSET_Z, seed | 0, biome('mudflat', x, z));
+}
+
+/** The dune floor at (x, z) as if no mud flat were there (the canyons, shared/canyons.ts, which keep the mud flats
+ *  away, are laid out on it). */
+export function dryFloor(x: number, z: number, seed: number): number {
+  return erg(x + OFFSET_X, z + OFFSET_Z, seed | 0, 0);
+}
+
 /** Procedural dune height at world (x, z). Pure function. */
 export function duneHeight(x: number, z: number, seed: number): number {
   const S = seed | 0;
   // Mud flats (shared/biomes.ts): no sand to make dunes of, a dead flat floor a little sunk into the land.
-  const mud = mudflat(x, z);
+  const mud = biome('mudflat', x, z);
   x += OFFSET_X;
   z += OFFSET_Z;
 
@@ -119,7 +136,7 @@ export function duneHeight(x: number, z: number, seed: number): number {
   const big = ss((supply - 0.08) * (1 / 0.3));
   const small = ss((supply - 0.06) * (1 / 0.25));
   // Very gentle erg undulation.
-  let h = (vnoise(x * (1 / 1600), z * (1 / 1600), S + 13) - 0.5) * 24 * (1 - 0.6 * mud) - MUD_SINK * mud;
+  let h = erg(x, z, S, mud);
 
   const across = z * WX - x * WZ;
 

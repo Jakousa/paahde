@@ -4,7 +4,7 @@ import { BACK, DT, FORWARD, isSlipFace, MOUNT_TICKS, quantizeYaw } from '../shar
 import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
 import { scrapTarget } from '../shared/scrap.ts';
 import { allBeaten } from '../shared/bosses.ts';
-import { LAB, WORLD_ID } from '../shared/world.ts';
+import { BENCH, CALM, LAB, WORLD_ID } from '../shared/world.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
 import { bedLit, placed } from '../shared/placed.ts';
 import { STATIONS, stationTarget } from '../shared/stations.ts';
@@ -16,15 +16,17 @@ import { addCrosshair, crosshairRing } from './crosshair';
 import { ShieldFx } from './shieldFx';
 import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
+import { stormAt } from '../shared/storm.ts';
 import { addItem, debrisItem, SCRAP } from '../shared/items.ts';
 import { kbd } from './bindings';
 import { readInput, takePickup } from './input';
+import { pollPad } from './gamepad';
 import { LocatorBar } from './locator';
 import { Menu } from './menu';
 import { StatsGraph } from './statsGraph';
 import { getBrowserId, Net } from './net';
 import { Lives } from './lives';
-import { landing, victory } from './landing';
+import { landing, rememberWorld, victory } from './landing';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { addHeadlights, Bike } from './bike';
@@ -33,16 +35,22 @@ import { Post } from './post';
 import * as env from './world/env';
 import { Base } from './world/base';
 import { PlacedView } from './world/placed';
+import { WireView } from './world/wires';
+import { Wiring } from './wiring';
+import { wires } from '../shared/wires.ts';
 import { Placer } from './placing';
 import { Scrap } from './world/scrap';
 import { CrashSites } from './world/crashsites';
 import { CrashSound } from './crashSound';
+import { listen } from './echo';
+import { tickEchoBus } from './acoustics';
 import { coreCrashSites, crashSitesNear, debrisTarget } from '../shared/crashsites.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { Dust } from './world/dust';
 import { clockText } from './world/dayNight';
 import { DebugMenu } from './debugMenu.ts';
 import { FlyCam } from './flyCam';
+import { ArtBench } from './artBench';
 import { BossFx } from './bosses';
 import { Sky } from './world/sky';
 import { Terrain } from './world/terrain';
@@ -52,21 +60,25 @@ import { EngineSound } from './engineSound';
 import { drinkSound } from './drinkSound';
 import { grinderSound } from './grinderSound';
 import { footsteps } from './footsteps';
+import { bikeLandSound } from './bikeLandSound';
 import { music } from './music';
 import { uiSound } from './uiSound';
 import { breathing } from './breathing';
 import { slideSound } from './slideSound';
 import { audio } from './audio';
-import { inBase } from '../shared/base.ts';
-import { mudflat } from '../shared/biomes.ts';
-import { atWater, indoors, inShelter } from '../shared/shelters.ts';
+import { BASE, inBase, overBase } from '../shared/base.ts';
+import { heightAt } from '../shared/terrain.ts';
+import { biome } from '../shared/biomes.ts';
+import { atWater, indoors, inShelter, overShelter, sheltersNear } from '../shared/shelters.ts';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { graphics, onGraphics } from './graphics';
+import { autoGraphicsFrame } from './autoGraphics';
 import { PERF_RUN, perf } from './perf';
 import { statsPref } from './options';
 import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
+import { GasFx } from './gas';
 import { Speech } from './speech';
 import { ViewModel } from './viewmodel';
 import { Telescope } from './telescope';
@@ -80,14 +92,17 @@ import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { BenchMenu } from './benchMenu';
+import { BuildMenu } from './buildMenu';
 import { machinesAt } from '../shared/crash.ts';
 import { LAB_LOOK } from '../shared/lab.ts';
 import { addLabPlates } from './world/labPlates';
 import { labFloor } from './world/sandMaterial';
 import { junkSpec, SALVAGE } from '../shared/salvage.ts';
-import { bagShape, carriedGear, equipped, gearTiers, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
+import { bagShape, buildingBox, cargoBox, carriedGear, equipped, gearTiers, isBuilding, locatorRange, quality, repaired, spyglassZoom, stormWarnS, vehicleBox, wornGear } from '../shared/gear.ts';
 import { LootView, lootPrompt } from './world/loot';
-import { CorpseView } from './world/corpses';
+import { VehicleView } from './world/vehicles';
+import { vehicles, vehicleTarget } from '../shared/vehicles.ts';
+import { CorpseView, corpseTargets } from './world/corpses';
 import { NpcView } from './world/npcs';
 import { corpsesNear } from '../shared/corpse.ts';
 import { botsNear } from '../shared/npcs.ts';
@@ -135,6 +150,7 @@ const orbit = new FirstPersonCamera(renderer.domElement);
 await slice();
 const fly = new FlyCam(renderer.domElement); // F3 → Fly camera, for shooting video
 const sky = new Sky(scene);
+sky.renderer = renderer;
 await slice();
 const terrain = new Terrain(scene);
 if (LAB) {
@@ -150,7 +166,8 @@ const trophies = new Trophies(scene); // a big piece of each beaten boss round t
 await slice();
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
 await slice();
-const placedView = new PlacedView(scene, base); // plant beds and UV lamps on the bunker floor
+const placedView = new PlacedView(scene, base); // plant beds, UV lamps and the buildings, in the bunker and round it
+const wireView = new WireView(scene); // the power lines between them (shared/wires.ts)
 await slice();
 const scrap = new Scrap(scene);
 await slice();
@@ -174,6 +191,7 @@ await slice();
 const engineSound = new EngineSound();
 await slice();
 const storm = new StormFx();
+const gas = new GasFx();
 await slice();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
 await slice();
@@ -192,12 +210,13 @@ machines.bench.indoors = (root) => base.lightIndoors(root);
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
   const crash = coreCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, mast, wind, blownSand, dust, windSound, storm, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx, bossFx } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, mast, wind, blownSand, dust, windSound, storm, gas, fly, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx, bossFx } });
 }
 
 const net = new Net(getBrowserId());
 const lives = new Lives();
 net.onLives = (n, beaten) => {
+  if (!CALM) rememberWorld(WORLD_ID);
   lives.set(n, beaten);
   trophies.set(beaten);
   setTrophies(beaten);
@@ -233,17 +252,21 @@ const scrapBench = () => {
   return true;
 };
 const benchMenu = new BenchMenu(renderer.domElement);
+const buildMenu = new BuildMenu(renderer.domElement); // the wrench's (src/placing.ts)
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), (front) => net.summonStorm(front), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
   (mode) => trophies.show(mode),
   (all) => (all ? net.labReset() : net.labReset(machines.nearestLab(net.me.x, net.me.z)?.site.id)),
   (off) => net.debugHeat(off),
   (off) => net.debugWeather(off),
   fly, () => fly.start(orbit.camera, orbit.yaw, orbit.pitch));
+// The art-style bench (?w=bench, dev only): fixed shots and the look panel (src/artBench.ts).
+const artBench = BENCH ? new ArtBench({ fly, camera: orbit.camera, day: sky.day, post, blownSand, startFly: () => fly.start(orbit.camera, orbit.yaw, orbit.pitch) }) : null;
 new Chat(net);
 const names = nameGate(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
 update.busy = () => fly.active || guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
 const lootView = new LootView(scene);
+const vehicleView = new VehicleView(scene); // motorcycles standing or lying in the world, nobody on them
 const shieldFx = new ShieldFx(scene, () => orbit.camera.position, () => net.id, (m) => guardianFx.jolt(m));
 net.onShieldBreak = (m) => shieldFx.play(m);
 const corpseView = new CorpseView(scene);
@@ -253,12 +276,15 @@ loadScavenger().catch((e) => console.warn('scavenger model failed to load; keepi
 // Dark until the player model has loaded, and the bunker too if you spawn in it, so the first frames show
 // neither a half-built room nor placeholder bodies; after 20 s, whatever has loaded.
 const cover = document.getElementById('cover')!; // in index.html, so it is up before this script has loaded
-// The bar counts every model and texture through three's default loading manager; never runs backwards as
-// more loads are queued.
+// The bar: every model and texture through three's default loading manager (never runs backwards as more loads
+// are queued), then the shaders being built (src/warmup.ts) for the last stretch.
+const LOADS_SHARE = 0.6;
 let coverP = 0;
+let warmP = 0;
+const coverProgress = () => prologue.progress(LOADS_SHARE * coverP + (1 - LOADS_SHARE) * warmP);
 THREE.DefaultLoadingManager.onProgress = (_url, done, total) => {
   coverP = Math.max(coverP, done / total);
-  prologue.progress(coverP);
+  coverProgress();
 };
 let loaded = false;
 let coverFrames = 0; // frames drawn behind the cover once loaded (lets shaders compile)
@@ -304,14 +330,20 @@ const locator = new LocatorBar();
 const hud = new InventoryHud(net, renderer.domElement);
 const survival = new Survival(net);
 const speech = new Speech();
+guardianFx.onAggro = (kind) => speech.event('aggro', kind);
+guardianFx.onKill = (kind) => speech.event('killed', kind);
+bossFx.onKill = () => speech.event('killed', 'boss');
 /** The find last looked at, so the character remarks on it once per look (src/speechLines.ts 'see'). */
 let seenFind: number | null = null;
+/** The vehicle (id and whether it works) we last looked at, for the speech. */
+let seenVehicle: string | null = null;
 /** The machine or wreck last in reach ('near'), and the item ids in the bag at the last frame ('got'; null until the
  *  bag first arrives: what we log in with is old news). */
 let seenSite: string | null = null;
 let bagIds: Set<number> | null = null;
 const menu = new Menu(renderer.domElement, (v) => post.setAoIntensity(v));
 const telescope = new Telescope(orbit);
+if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { telescope });
 const grinder = new Grinder(scene, orbit.camera, [me.root]);
 const jammer = new Jammer(orbit, net, guardianFx.jets, guardianFx.drones);
 const receiver = new Receiver(orbit, net);
@@ -326,7 +358,15 @@ zaps.setCamera(orbit.camera);
 const thrower = new Thrower(scene, orbit, net, scrap);
 thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one drawn in the hand
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
-net.onPlaced = () => placedView.sync(placed, net.garden);
+net.onPlaced = () => {
+  placedView.sync(placed, net.garden);
+  wireView.sync(wires);
+};
+net.onVehicles = () => hud.vehiclesChanged();
+net.onPower = () => {
+  placedView.setPower(net.power);
+  hud.powerChanged();
+};
 net.onNotice = (text) => {
   if (text === TEXT.notice.bagFull) { // the server refused a find (server/world.ts)
     uiSound.full();
@@ -339,7 +379,8 @@ function bagFull() {
   uiSound.full();
   speech.event('bagFull', undefined);
 }
-const placer = new Placer(net, placedView);
+const placer = new Placer(net, placedView, buildMenu);
+const wiring = new Wiring(net, wireView);
 
 window.addEventListener('resize', () => {
   orbit.resize();
@@ -361,9 +402,26 @@ const gpuName = gpuInfo ? (gpuInfo.description || [gpuInfo.vendor, gpuInfo.archi
 const backendText = gpuName ? `${backend} ${gpuName}` : backend;
 perf.gpuTracked = gpuTimes && !!(renderer.backend as { trackTimestamp?: boolean }).trackTimestamp;
 perf.describe({ backend, gpu: gpuName, gpuTimestamps: perf.gpuTracked, world: WORLD_ID });
+sky.heights.init(renderer); // (before any material samples the dune-shadow grids: src/world/heightShadow.ts)
 perf.milestone('renderer-ready');
 perf.scene = scene;
-perf.onDone = () => (orbit.pitch = 0.12);
+if (PERF_RUN) Object.assign(window, { __dbg: { renderer, sky, net, terrain, scene, THREE, heightAt } }); // (tools/perf.ts --eval)
+perf.onDone = () => {
+  // (for the pictures tools/perf.ts takes: look away from the sun, a little down, where the shadows fall; `&pview=<m>` lifts the camera
+  // that high above the player, on the fly camera, without the HUD, to see the shadows over a wide stretch)
+  const l = sky.heights.light.value;
+  orbit.yaw = Math.atan2(l.x, l.z) + (new URLSearchParams(location.search).get('pface') === 'sun' ? Math.PI : 0); // (`&pface=sun`: into the sun)
+  orbit.pitch = -0.12;
+  const lift = Number(new URLSearchParams(location.search).get('pview'));
+  if (lift > 0) {
+    fly.start(orbit.camera, orbit.yaw, orbit.pitch);
+    fly.setClean(true);
+    const pitch = Number(new URLSearchParams(location.search).get('ppitch')); // (degrees down; default a gentle look over the land)
+    fly.place(new THREE.Vector3(net.me.x, net.me.y + lift, net.me.z), orbit.yaw, pitch ? (-pitch * Math.PI) / 180 : -Math.atan2(lift, lift * 6));
+  }
+};
+perf.setTod = (tod) => net.shareTimeOfDay(tod);
+perf.player = () => ({ x: net.me.x, z: net.me.z, down: survival.dead || net.down !== null, heat: survival.heatLevel });
 perf.cascades = () => sky.csm.lights.map((l) => l.shadow!.camera);
 
 const timer = new THREE.Timer();
@@ -387,6 +445,7 @@ const statsGraph = new StatsGraph();
 
 /** When the next frame is due, with the FPS target (Options → Graphics): frames before it are skipped. */
 let nextFrameAt = 0;
+let undergroundFrame = 0;
 renderer.setAnimationLoop((time) => {
   if (graphics.fpsLimit) {
     const every = 1000 / graphics.fpsLimit;
@@ -401,7 +460,9 @@ renderer.setAnimationLoop((time) => {
     menu.setInfo(`${backendText} · ${net.status} · build ${__BUILD_SHA__}`);
     return;
   }
+  if (!joined) prologue.joined();
   joined = true;
+  artBench?.frame(frameDt); // (from the first frame on, so the world streams in round the shot behind the loading screen)
   perf.milestone('joined');
   // Once the models and terrain are in, draw real frames a few materials at a time (src/warmup.ts): the first full
   // frame would take seconds to build every shader and freeze the page. Nothing else is drawn until that is done.
@@ -433,6 +494,7 @@ renderer.setAnimationLoop((time) => {
     orbit.yaw = fly.heldYaw;
     orbit.pitch = fly.heldPitch;
   }
+  pollPad(frameDt, orbit, renderer.domElement, net.boxes.bag);
   const input = !net.isReady || fly.active ? 0 : readInput(); // standing still until named
   while (accumulator >= DT) {
     net.tick(input, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch));
@@ -454,7 +516,7 @@ renderer.setAnimationLoop((time) => {
   // What's in hand (the selected hotbar slot) and worn (shared/gear.ts): drawn on the body, and sets what the tools can do.
   const inHand = tools.slot >= 0 ? net.boxes.bag?.[tools.slot] : null;
   me.setOutfit(inHand?.kind ?? null, wornGear(net.boxes.equip) | carriedGear(net.boxes.bag, tools.slot), gearTiers(net.boxes.equip, net.boxes.bag, tools.slot));
-  const riding = ride(0, me, { ...s, x: v.x, y: v.y, z: v.z, heading: v.heading, pitch: orbit.pitch }, frameDt);
+  const riding = ride(0, me, { ...s, x: v.x, y: v.y, z: v.z, heading: v.heading, nose: v.nose, pitch: orbit.pitch }, frameDt);
   if (!riding) {
     me.update(
       { x: v.x, y: v.y, z: v.z, facing: v.facing, speed: Math.hypot(s.vx, s.vz), vx: s.vx, vz: s.vz, grounded: s.grounded, powerSlide: s.sliding, crouching: s.crouching,
@@ -504,13 +566,17 @@ renderer.setAnimationLoop((time) => {
   else focus.copy(me.root.position);
   if (orbit.down !== (net.down !== null)) {
     document.body.classList.toggle('down', (orbit.down = net.down !== null));
-    if (!orbit.down) speech.event('respawn', undefined);
+    if (!orbit.down) {
+      speech.event('respawn', undefined);
+      gas.respawned();
+    }
   }
   telescope.update(frameDt, spyglassZoom(Math.max(0, quality(inHand))));
   const hands = !s.riding && !net.down && !fly.active; // the tools work
   const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, hands);
   viewCull.begin();
   lootView.update(frameDt, net.loot, focus);
+  vehicleView.update(vehicles, focus, (id) => (id === net.id ? net.me.riding : others.find((o) => o.id === id)?.riding ?? false));
   shieldFx.update(frameDt, (id) => (id === net.id ? me.root.position : others.find((o) => o.id === id) ?? null));
   corpseView.update(frameDt, focus);
   npcView.update(frameDt, focus);
@@ -519,6 +585,7 @@ renderer.setAnimationLoop((time) => {
   bossBar.update(frameDt, bossFx.bar);
   guardianFx.update(net, frameDt, orbit.camera, focus);
   rifle.afterCamera(fire); // the aim's sway and recoil on the view, and the shot, against the walkers as just drawn
+  telescope.afterCamera(frameDt, others);
   // Flying, the camera leaves the body and the world streams in around it instead.
   if (fly.active) {
     fly.update(frameDt, orbit.camera);
@@ -540,17 +607,25 @@ renderer.setAnimationLoop((time) => {
   // Before the wind: the storm sets how hard it blows here.
   const belt = equipped(net.boxes.equip, 'belt');
   storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me, belt ? stormWarnS(quality(belt)) : 0, survival.dead || net.down !== null);
+  gas.update(frameDt, net.gas, net.serverTime(), orbit.camera.position, net.me, survival.dead || net.down !== null);
   // The locator comes with the wrist computer; a better one shows players further away (the base always).
   const wrist = equipped(net.boxes.equip, 'wrist');
   const range = wrist ? locatorRange(quality(wrist)) : 0;
   locator.lost = storm.toolsDown || !wrist;
   survival.toolsDown = storm.toolsDown;
-  locator.update(orbit.camera, orbit.viewYaw, orbit.pitch + orbit.freePitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z)]);
+  locator.update(orbit.camera, orbit.viewYaw, orbit.pitch + orbit.freePitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z), ...corpseTargets()]);
   terrain.update(focus);
   scrap.update(focus);
   crashSites.update(focus);
   machines.update(focus);
   wrecks.update(focus);
+  // The terrain casts into the shadow maps only near the underground places it roofs (src/world/heightShadow.ts does the dunes).
+  terrain.setCasting(overBase(focus.x, focus.z, 60) || overShelter(focus.x, focus.z, 60));
+  if (++undergroundFrame % 60 === 1) {
+    // the rooms the dune shadows must not reach (src/world/heightShadow.ts): the base and the nearest shelters, below their huts' floors
+    const near = sheltersNear(focus.x, focus.z, 800).sort((a, b) => Math.hypot(a.x - focus.x, a.z - focus.z) - Math.hypot(b.x - focus.x, b.z - focus.z));
+    sky.heights.setUnderground([{ x: BASE.x, z: BASE.z, r: 45, top: BASE.y - 0.3 }, ...near.slice(0, 3).map((s) => ({ x: s.x, z: s.z, r: 32, top: s.y - 0.3 }))]);
+  }
   sky.update(frameDt, focus, orbit.camera, net.worldTime());
   wind.update(net.serverTime() / 1000);
   if (!LAB) {
@@ -568,28 +643,43 @@ baseSand.update(frameDt, storm.atBase);
   const ownSpeed = Math.hypot(s.vx, s.vz);
   slideSound.update(frameDt, !s.grounded || s.riding || net.down ? 0 : s.sliding ? 1 : ownSpeed > 2 && isSlipFace(s.x, s.z) ? 0.5 : 0, ownSpeed);
   crosshairRing(s.mounting > 0 && !net.down ? 1 - s.mounting / MOUNT_TICKS : null);
-  engineSound.update(frameDt, s.riding || s.mounting > 0, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0);
+  engineSound.update(frameDt, s.riding || s.mounting > 0, s.grounded, Math.hypot(s.vx, s.vz), s.riding && (input & (FORWARD | BACK)) !== 0, s.bike);
   engineSound.updateRemotes(frameDt, others, orbit.camera.position, s);
   drinkSound.remotes(others, orbit.camera.position);
   grinderSound.remotes(frameDt, others, orbit.camera.position);
   footsteps.listener(orbit.camera.position, orbit.viewYaw);
+  bikeLandSound.listener(orbit.camera.position, orbit.viewYaw);
   breathing.update(survival.heatLevel, survival.dead);
   audio.setMuffled(survival.dead); // the world goes dull while you lie dead; the music doesn't
   const cam = orbit.camera.position;
   music.update(frameDt, {
-    riding: s.riding && Math.hypot(s.vx, s.vz) > 3,
     indoors: indoors(cam.x, cam.y, cam.z),
     sandstorm: storm.level > 0.3,
     epic: guardianFx.epic || bossFx.combat,
     combat: guardianFx.combat,
     dead: survival.dead,
+    // The sun coming up: from 2° under the horizon to 8° over it (about a minute).
+    sunrise: sky.day.tod < 0.5 && sky.day.elevation > -0.035 && sky.day.elevation < 0.14,
   });
   crashSound.update(orbit.camera.position, orbit.viewYaw);
+  listen(orbit.camera.position);
+  tickEchoBus();
+  placedView.update(frameDt, net.worldTime(), (x, z) => stormAt(net.storms, x, z, net.serverTime()));
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
-  // Placing from the hotbar and G to pick placed things up (src/placing.ts); its prompt goes after F's.
+  // Placing from the hotbar, building with the wrench and G to pick placed things up (src/placing.ts); its prompt goes after F's.
   const placing = placer.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), true, (t) => hud.toast(t));
+  // A building in view (the windmill, the battery station): F opens it next to the bag, to swap its parts.
+  const building = station < 0 && placing.target && isBuilding(placing.target.kind) ? placing.target : null;
+  const buildingPrompt = building ? TEXT.prompt.open(itemLabel(building.kind)) : null;
+  // A motorcycle in view (shared/vehicles.ts): F repairs a broken one (its part slots next to the bag), gets on a
+  // working one, or opens its cargo from the back. On the bike (or getting on), F gets off (stops).
+  const onBike = s.riding || s.mounting > 0;
+  const vehicle = net.connected && !net.down && !onBike && station < 0 && !building
+    ? vehicleTarget(net.me, orbit.yaw, orbit.pitch) : null;
+  const ridePrompt = !vehicle ? null : !vehicle.v.up ? TEXT.prompt.repair(itemLabel(vehicle.v.kind))
+    : vehicle.rear ? TEXT.prompt.open(TEXT.boxes.cargo) : TEXT.prompt.getOn;
   const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), placed) : null;
   const bedState = bed ? net.garden.get(bed.id) : undefined;
   const stage = bed ? (bedState?.stage ?? EMPTY) : -1;
@@ -652,11 +742,14 @@ baseSand.update(frameDt, storm.atBase);
   // A piece that came off a machine and lies by you can be picked up to be turned and taken apart in the hands; F again sets it down.
   const pieceHere = teardown.active && !teardown.holding ? teardown.pieceNear(net.me) : null;
   const piecePrompt = teardown.holding ? TEXT.prompt.putDown : pieceHere ? TEXT.prompt.pickUp(pieceHere.label) : null;
-  const fPrompt = piecePrompt ?? use ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt ?? botPrompt;
-  const extra = [growing, placing.prompt, deployPrompt].filter(Boolean).join(' ');
+  const fPrompt = piecePrompt ?? use ?? buildingPrompt ?? ridePrompt ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt ?? botPrompt;
+  // A wiring coil in hand: stringing power lines between connectors (src/wiring.ts).
+  const wirePrompt = wiring.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), !net.down && !fly.active, (t) => hud.toast(t));
+  const extra = [growing, wirePrompt, placing.prompt, deployPrompt].filter(Boolean).join(' ');
   hud.setTarget(fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup() && !fly.active;
-  if (interact && piecePrompt) {
+  if (interact && onBike) tools.getOff = true; // (src/input.ts: the bike key's input, one tick)
+  else if (interact && piecePrompt) {
     if (teardown.holding) teardown.putDown();
     else teardown.hold(pieceHere!.piece);
   } else if (interact) {
@@ -670,7 +763,13 @@ baseSand.update(frameDt, storm.atBase);
           scrap: () => (teardown.current?.id === BENCH_ID ? teardown.scrap() : scrapBench()),
         });
       } else hud.toast(TEXT.notice.nothingToTakeApart);
-    } else if (tend && bed) net.tend(bed.id);
+    } else if (building) hud.open(buildingBox(building.id));
+    else if (vehicle) {
+      if (!vehicle.v.up) hud.open(vehicleBox(vehicle.v.id));
+      else if (vehicle.rear) hud.open(cargoBox(vehicle.v.id));
+      else net.mount(vehicle.v.id);
+    }
+    else if (tend && bed) net.tend(bed.id);
     else if (target) {
       if (net.pickup(target)) pickupSound.play();
       else bagFull();
@@ -678,21 +777,26 @@ baseSand.update(frameDt, storm.atBase);
       if (net.debrisTake(debris)) pickupSound.play();
       else bagFull();
     } else if (find) {
-      net.lootTake(find.id);
-      pickupSound.play();
+      if (net.lootTake(find.id)) pickupSound.play();
+      else bagFull();
     } else if (site) {
       net.crashTake(site.site.id);
     } else if (wreck) net.crashTake(wreck.id);
     else if (pack || chest || botNearby) hud.open();
   }
-  const targeted = piecePrompt !== null || use !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null || botPrompt !== null;
+  const targeted = piecePrompt !== null || use !== null || buildingPrompt !== null || ridePrompt !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null || botPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   const w = net.water;
   const m = net.me;
   speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(m.x, m.y, m.z), shelter: inShelter(m.x, m.y, m.z),
-    atPump: atWater(m.x, m.y, m.z), mudflat: mudflat(m.x, m.z) > 0.7, heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
-    storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, riding: s.riding, combat: guardianFx.combat, boss: bossFx.combat,
+    atPump: atWater(m.x, m.y, m.z), mudflat: biome('mudflat', m.x, m.z) > 0.7, heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
+    storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, gasComing: gas.coming, gassed: gas.gassing, riding: s.riding, boss: bossFx.combat,
     bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null });
+  const vehicleKey = vehicle ? `${vehicle.v.id}:${vehicle.v.up}` : null;
+  if (vehicleKey !== seenVehicle) {
+    seenVehicle = vehicleKey;
+    if (vehicle) speech.event('vehicle', vehicle.v);
+  }
   if ((find?.id ?? null) !== seenFind) {
     seenFind = find?.id ?? null;
     if (find) speech.event('see', find);
@@ -722,17 +826,23 @@ baseSand.update(frameDt, storm.atBase);
     perf.submitStart();
     post.render();
     perf.submitEnd(renderer);
-  } else if (modelsIn && !warming) {
+  } else if (warming) {
+    warmP = warm.progress;
+    coverProgress();
+  } else if (modelsIn) {
     // Everything sliceable is in: build the first frame's shaders, post passes included, a few materials per round
     // (src/warmup.ts) while the prologue on the loading screen keeps going.
     warming = true;
     perf.milestone('warmup-start');
     warm.run(gpuIdle).then(() => {
-      prologue.progress(1);
+      coverP = warmP = 1;
+      coverProgress();
       warmed = true;
       perf.milestone('warmed');
     });
   }
-  if (PERF_RUN) document.getElementById('name')?.querySelector<HTMLElement>('.skip')?.click(); // (a benchmark answers the name box itself)
+  if (PERF_RUN || BENCH) document.getElementById('name')?.querySelector<HTMLElement>('.skip')?.click(); // (a benchmark, or the art bench, answers the name box itself)
   perf.frameEnd(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000, resolution.ratio, loaded && coverFrames >= 3 && !document.getElementById('cover') && !document.getElementById('name'), frameDt, (rad) => (orbit.yaw += rad));
+  autoGraphicsFrame(frameDt, perf.last.cpu, resolution.ratio / Math.min(devicePixelRatio, graphics.resScale), resolution.pixelBound,
+    loaded && coverFrames >= 3 && !document.hidden && !menu.open && !net.down && net.isReady && !document.getElementById('cover'));
 });

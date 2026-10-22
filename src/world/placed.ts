@@ -1,21 +1,43 @@
-// Draws the things placed on the bunker floor (shared/placed.ts): plant beds with their growth stage
-// (shared/garden.ts) and UV lamp stands, from public/models/placeables/*.glb (tools/blender/placeables.py),
-// lit by the bunker's indoor lights. A lamp throws a violet pool of light on the soil (or the floor) under it.
+// Draws the things placed on the bunker floor and the sand (shared/placed.ts): plant beds with their growth stage
+// (shared/garden.ts), UV lamp stands, and the buildings, from public/models/placeables/*.glb
+// (tools/blender/placeables.py). Floor things are lit by the bunker's indoor lights, sand things by the sky. A lamp
+// throws a violet pool of light on the soil (or the floor) under it. A building looks its tier (src/tierLook.ts, by
+// the parts in it): the windmill's head turns into the wind and its rotor turns with it (shared/power.ts rotorSpeed:
+// the wind now, the bearings), the tail folding it out of a gale, still while a bearing is missing; the battery station
+// shows the cells it holds, each in its own tier, each one's lamp lit while it holds charge.
 // Also the see-through green / red preview of where the held placeable would go (src/placing.ts).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { float, smoothstep, uv } from 'three/tsl';
+import { WIND } from '../../shared/dunes.ts';
 import { EMPTY, STAGE_NODES, type BedState } from '../../shared/garden.ts';
-import { bedLit, PLACE_FLOOR_Y, PLACEABLES, type Placed } from '../../shared/placed.ts';
+import { isBuilding, tierOf } from '../../shared/gear.ts';
+import { furl, rotorSpeed, windSpeed, type PowerState } from '../../shared/power.ts';
+import { parsePart } from '../../shared/items.ts';
+import { bedLit, onSand, PLACEABLES, type Placed } from '../../shared/placed.ts';
+import { applyTier } from '../tierLook.ts';
+import { cells } from '../../shared/power.ts';
 import type { Base } from './base';
 
 /** Height of the bed's soil (tools/blender/placeables.py SOIL), for the lamp's light pool. */
 const SOIL = 0.45;
+/** The battery station's cells, one per battery slot (shared/gear.ts GEAR.battery_station). */
+const CELL_NODE = (i: number) => `battery_station_cell${i}`;
+/** How fast the rotor takes up a change of wind (1/s): it has some heft. */
+const ROTOR_LAG = 0.6;
+/** A battery's lamp is lit above this share of its charge. */
+const LIT = 0.02;
+/** Folded right out of the wind, the head turns this far (rad). */
+const FURLED = (75 * Math.PI) / 180;
+
+type Shown = { p: Placed; obj: THREE.Object3D; head?: THREE.Object3D; rotor?: THREE.Object3D; spin: number; phase: number;
+  /** A battery station's cells' lamps, by slot. */
+  lamps?: THREE.Object3D[][] };
 
 export class PlacedView {
   private group = new THREE.Group();
   private models: Record<string, THREE.Object3D> = {};
-  private shown = new Map<number, { p: Placed; obj: THREE.Object3D }>();
+  private shown = new Map<number, Shown>();
   private ghost: { kind: string; obj: THREE.Object3D } | null = null;
   private ghostOk = new THREE.MeshBasicNodeMaterial({ color: 0x7dff9a, transparent: true, opacity: 0.4, depthWrite: false });
   private ghostBad = new THREE.MeshBasicNodeMaterial({ color: 0xff5a3c, transparent: true, opacity: 0.4, depthWrite: false });
@@ -26,6 +48,7 @@ export class PlacedView {
     scene.add(this.group);
     const loader = new GLTFLoader();
     for (const kind of Object.keys(PLACEABLES)) {
+      const material = (mt: THREE.Material) => (onSand(kind) ? base.outdoorMaterial(mt) : base.indoorMaterial(mt));
       loader.load(
         `./models/placeables/${kind}.glb`,
         (gltf) => {
@@ -33,7 +56,7 @@ export class PlacedView {
             const m = o as THREE.Mesh;
             if (!m.isMesh) return;
             m.castShadow = m.receiveShadow = true;
-            m.material = Array.isArray(m.material) ? m.material.map((mt) => base.indoorMaterial(mt)) : base.indoorMaterial(m.material);
+            m.material = Array.isArray(m.material) ? m.material.map(material) : material(m.material);
           });
           this.models[kind] = gltf.scene;
           this.sync(this.last.list, this.last.garden);
@@ -59,7 +82,7 @@ export class PlacedView {
       let s = this.shown.get(p.id);
       if (!s) {
         const obj = model.clone();
-        obj.position.set(p.x, PLACE_FLOOR_Y, p.z);
+        obj.position.set(p.x, p.y, p.z);
         obj.rotation.y = p.rot ? Math.PI / 2 : 0;
         if (p.kind === 'uv_lamp') {
           const pool = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.55), this.pool);
@@ -68,8 +91,10 @@ export class PlacedView {
           obj.add(pool);
         }
         this.group.add(obj);
-        this.shown.set(p.id, (s = { p, obj }));
+        const head = obj.getObjectByName('windmill_head') ?? undefined, rotor = obj.getObjectByName('windmill_rotor') ?? undefined;
+        this.shown.set(p.id, (s = { p, obj, head, rotor, spin: 0, phase: (p.id * 2.399) % (2 * Math.PI) }));
       }
+      s.p = p;
       if (p.kind === 'plant_bed') {
         const stage = garden.get(p.id)?.stage ?? EMPTY;
         STAGE_NODES.forEach((n, i) => {
@@ -79,12 +104,68 @@ export class PlacedView {
       } else if (p.kind === 'uv_lamp') {
         const pool = s.obj.getObjectByName('pool');
         if (pool) pool.position.y = list.some((b) => b.kind === 'plant_bed' && bedLit(b, [p])) ? SOIL + 0.01 : 0.01;
-      }
+      } else if (isBuilding(p.kind)) this.dress(s);
     }
   }
 
-  /** The placement preview: `kind` at `at`, green if it fits, red if not; null hides it. */
-  preview(kind: string | null, at: { x: number; z: number; rot: number } | null, ok: boolean) {
+  /** A building's look from its parts: its tier, the windmill's spin, the battery station's cells. */
+  private dress(s: Shown) {
+    const it = { id: 0, kind: s.p.kind, n: 1, parts: s.p.parts ?? [] };
+    applyTier(s.obj, tierOf(it));
+    if (s.p.kind !== 'battery_station') return;
+    s.lamps ??= it.parts.map((_, i) => {
+      const out: THREE.Object3D[] = [];
+      s.obj.getObjectByName(CELL_NODE(i))?.traverse((o) => {
+        const m = o as THREE.Mesh;
+        const name = ((m.userData.tierBase ?? m.material) as THREE.Material | undefined)?.name ?? '';
+        if (m.isMesh && name.startsWith('EmitLed')) out.push(m);
+      });
+      return out;
+    });
+    this.light(s);
+    it.parts.forEach((kind, i) => {
+      const cell = s.obj.getObjectByName(CELL_NODE(i));
+      if (!cell) return;
+      cell.visible = !!kind;
+      if (kind) applyTier(cell, parsePart(kind)?.tier ?? 1);
+    });
+  }
+
+  /** The batteries' charge came in (shared/power.ts): each cell's lamp. */
+  setPower(state: PowerState) {
+    this.power = state;
+    for (const s of this.shown.values()) if (s.lamps) this.light(s);
+  }
+
+  private power: PowerState = { gen: {}, store: {} };
+
+  /** A station's lamps: lit on each battery holding charge. */
+  private light(s: Shown) {
+    const charge = this.power.store[s.p.id]?.charge ?? [];
+    const cs = cells(s.p.parts);
+    s.lamps?.forEach((ls, i) => {
+      const on = !!cs[i] && (charge[i] ?? 0) > cs[i]!.kwh * LIT;
+      for (const l of ls) l.visible = on;
+    });
+  }
+
+  /** Every frame: windmills turn their heads into the wind and their rotors with it. `worldMs`: the shared clock;
+   *  `stormAt`: a sandstorm's strength at a point (0..1). */
+  update(dt: number, worldMs: number, stormAt: (x: number, z: number) => number) {
+    // Into the wind: the rotor (the head's +Z) faces where it comes from, swinging a little in the gusts.
+    const into = Math.atan2(-WIND.x, -WIND.z);
+    const t = performance.now() / 1000;
+    for (const s of this.shown.values()) {
+      if (!s.head || !s.rotor) continue;
+      const v = windSpeed(worldMs, stormAt(s.p.x, s.p.z));
+      s.spin += (rotorSpeed(s.p.parts, v) - s.spin) * Math.min(1, dt * ROTOR_LAG);
+      s.head.rotation.y = into - s.obj.rotation.y + furl(v) * FURLED + 0.08 * Math.sin(t * 0.37 + s.phase) + 0.04 * Math.sin(t * 1.1 + s.phase * 2);
+      s.rotor.rotation.z -= s.spin * dt;
+    }
+  }
+
+  /** The placement preview: `kind` at `at` (y: what it would stand on), green if it fits, red if not; null hides it. */
+  preview(kind: string | null, at: { x: number; y: number; z: number; rot: number } | null, ok: boolean) {
     if (!kind || !at || !this.models[kind]) {
       if (this.ghost) this.ghost.obj.visible = false;
       return;
@@ -102,7 +183,7 @@ export class PlacedView {
     }
     const g = this.ghost.obj;
     g.visible = true;
-    g.position.set(at.x, PLACE_FLOOR_Y + 0.005, at.z);
+    g.position.set(at.x, at.y + 0.005, at.z);
     g.rotation.y = at.rot ? Math.PI / 2 : 0;
     const mat = ok ? this.ghostOk : this.ghostBad;
     g.traverse((o) => {

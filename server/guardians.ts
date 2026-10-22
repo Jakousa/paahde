@@ -8,7 +8,7 @@
 // (level 0) near the base have none. A few more drones roam the open desert day and night (ROAMERS), drifting in
 // near someone now and then on long legs, and flying off again after a few minutes.
 import { BASE } from '../shared/base.ts';
-import { coreCrashSites, crashSite, crashSitesNear, type CrashSite } from '../shared/crashsites.ts';
+import { coreCrashSites, crashSite, crashSitesNear, type CrashSite, LEVEL_R } from '../shared/crashsites.ts';
 import {
   ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
   CRAWLER, CRAWLER_CALM_MS, CRAWLER_CHASE_MS, CRUSH_SLACK, DRONE_ALT, DRONE_SPEED, FIRE_MS, FIRE_R, footTop, GUARDIAN, GUN_DEPRESS, gunPivot, IGNORE_MS, inBeam, KINDS, type Kind, lineOfSight, LOSE_MS, MUZZLE,
@@ -54,6 +54,8 @@ const CALM_MS = 20_000;
 const SITE_NEAR_R = 300;
 const SITE_LEAVE_R = 450;
 const CRAWLERS_MIN = 1, CRAWLERS_MAX = 4;
+/** Most crawlers at an outpost (a crawler site among the scrap fields, inside LEVEL_R[0]: shared/crashsites.ts). */
+const OUTPOST_CRAWLERS_MAX = 2;
 /** A crawler's body, for keeping it out of wrecks and scrap (m). */
 const CRAWLER_R = 0.8;
 /** A crawler after you keeps track of you this close (m); this close it stops flanking and comes straight in. */
@@ -317,7 +319,8 @@ export class GuardianServer {
     for (const s of sitesNear(players, SITE_NEAR_R)) {
       if (s.level === 0 || this.swarmed.has(s.id)) continue;
       this.swarmed.add(s.id);
-      const n = CRAWLERS_MIN + Math.floor(Math.random() * (CRAWLERS_MAX - CRAWLERS_MIN + 1));
+      const max = Math.hypot(s.x - BASE.x, s.z - BASE.z) < LEVEL_R[0] ? OUTPOST_CRAWLERS_MAX : CRAWLERS_MAX;
+      const n = CRAWLERS_MIN + Math.floor(Math.random() * (max - CRAWLERS_MIN + 1));
       for (let i = 0; i < n; i++) {
         const a = rand(-Math.PI, Math.PI), r = rand(...PATROL[CRAWLER]);
         this.guardians.push(this.walker(CRAWLER, 4, s, s.x + Math.sin(a) * r, s.z + Math.cos(a) * r));
@@ -737,9 +740,12 @@ export class GuardianServer {
         d.z = BASE.z + ((d.z - BASE.z) / bd) * keep;
         this.dronePoint(d);
       }
-      const ground = Math.max(heightAt(d.x, d.z), heightAt(d.x + Math.sin(d.yaw) * 15, d.z + Math.cos(d.yaw) * 15));
+      // (Looking well ahead: a canyon's wall (shared/canyons.ts) rises hundreds of metres in a few steps.)
+      const fx = Math.sin(d.yaw), fz = Math.cos(d.yaw), here = heightAt(d.x, d.z);
+      const ground = Math.max(here, heightAt(d.x + fx * 15, d.z + fz * 15), heightAt(d.x + fx * 40, d.z + fz * 40) - 10);
       if (d.fled) d.y += FLEE_CLIMB * dt;
       else d.y += (ground + alt - d.y) * (1 - Math.exp(-dt * (d.leaving ? 0.3 : 1.2)));
+      if (d.y < here + 4) d.y = here + 4; // never through the ground
       // Aim the beam: turning after the prey no faster than TRACK_RATE (SEEK_RATE onto someone noticed), or sweeping ahead.
       if (target) {
         const ax = target.x - d.x, ay = target.y + 1.1 - d.y, az = target.z - d.z, l = Math.hypot(ax, ay, az) || 1;

@@ -23,6 +23,7 @@ import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
 import { zaps } from './world/zaps';
 import type { Net } from './net';
+import { claim } from './kills';
 
 /** Footfalls shake the camera within this distance (m), up to SHAKE metres at the foot. */
 const SHAKE_R = 90;
@@ -31,6 +32,8 @@ const DUST_R = 600;
 /** A harvester shakes the ground within TREMBLE_R m; one charging within CHARGE_NEAR counts as a fight. */
 const TREMBLE_R = 90;
 const CHARGE_NEAR = 250;
+/** A harvester charging within this (m) is coming for us. */
+const RAM_NEAR = 90;
 /** A crawler's bite jolts the camera this much (m). */
 const BITE_SHAKE = 0.18;
 
@@ -40,6 +43,10 @@ const CRAWLER_FIREWORK = 0.4;
 const DRONE_FIREWORK = 0.5;
 const MISSILE_FIREWORK_PITCH = 0.8;
 const MISSILE_FIREWORK = 0.7;
+
+/** What can turn on us, and what we can kill (the character's remarks: src/speechLines.ts). */
+export type Aggro = 'guardian' | 'crawler' | 'drone' | 'harvester';
+export type Kill = Aggro | 'jet';
 
 export class GuardianFx {
   readonly guardians: Guardians;
@@ -62,6 +69,15 @@ export class GuardianFx {
   /** An epic battle: a guardian on the hunt within its cannon's range (FIRE_R). */
   epic = false;
   private crawled = new Set<number>();
+  /** A harvester charging within RAM_NEAR m of us. */
+  private rammed = false;
+  /** Enemies alive last frame and this frame (src/kills.ts keys), to catch the moment one dies. */
+  private living = new Set<string>();
+  private alive = new Set<string>();
+  /** One turned on us: a walker started hunting us, a drone's light locked on, a harvester is charging at us. */
+  onAggro: (kind: Aggro) => void = () => {};
+  /** One we hit lately (src/kills.ts) just died. */
+  onKill: (kind: Kill) => void = () => {};
   private bitAt = 0;
   private ear = new THREE.Vector3();
   private net: Net | null = null;
@@ -175,6 +191,12 @@ export class GuardianFx {
     return out;
   }
 
+  /** Enemy `key` seen this frame, dead or alive: tells onKill if it just died and we had a hand in it. */
+  private seen(key: string, dead: boolean, kind: Kill) {
+    if (!dead) this.alive.add(key);
+    else if (this.living.has(key) && claim(key)) this.onKill(kind);
+  }
+
   /** Shake the camera this much (m) at least, from now. */
   jolt(amount: number) {
     this.shake = Math.max(this.shake, amount);
@@ -196,12 +218,16 @@ export class GuardianFx {
   private updateHarvesters(net: Net, dt: number) {
     this.harvesters.update(net.harvesters, net.serverTime(), this.ear, dt);
     let nearest: { id: number; x: number; y: number; z: number; v: number; cores: number } | null = null, best = Infinity;
-    this.charged = false;
+    const rammed = this.rammed;
+    this.charged = this.rammed = false;
     for (const b of this.harvesters.bodies()) {
       const d = Math.hypot(b.x - this.ear.x, b.z - this.ear.z);
       if (b.alive && d < best) (best = d), (nearest = b);
       if (b.alive && b.v > SPEED * 1.5 && d < CHARGE_NEAR) this.charged = true;
+      if (b.alive && b.v > SPEED * 1.5 && d < RAM_NEAR) this.rammed = true;
+      this.seen(`h${b.id}`, !b.alive, 'harvester');
     }
+    if (this.rammed && !rammed) this.onAggro('harvester');
     harvesterSound.update(nearest, this.ear);
     const v = nearest ? nearest.v / SPEED : 1;
     if (best < TREMBLE_R) this.shake = Math.max(this.shake, 0.06 * Math.min(4, v) * (1 - best / TREMBLE_R));
@@ -243,6 +269,7 @@ export class GuardianFx {
     this.missiles.update(dt, net.serverTime());
     guardianSound.missiles(this.missiles.heads(net.serverTime()), this.ear);
     this.jets.update(net.jets, net.serverTime(), this.ear, dt);
+    for (const j of net.jets) this.seen(`j${j.id}`, !!j.down && net.serverTime() >= j.down.at, 'jet');
     guardianSound.jets(this.heardJets(net), this.ear);
     this.updateHarvesters(net, dt);
     const t = net.serverTime() - BOT_DELAY_MS;
@@ -262,7 +289,10 @@ export class GuardianFx {
       if (g.kind === CRAWLER) {
         // Crawlers chitter when they come for you, and snap when they get you (the server's bite lands about then).
         const d = Math.hypot(g.x - focus.x, g.z - focus.z);
-        if (g.hunt === 2 && !this.crawled.has(g.id)) guardianSound.chitter(g.x, camera.position.y - 1, g.z, false);
+        if (g.hunt === 2 && !this.crawled.has(g.id)) {
+          guardianSound.chitter(g.x, camera.position.y - 1, g.z, false);
+          if (!this.crawled.size) this.onAggro('crawler');
+        }
         if (g.hunt === 2 && d < KINDS[CRAWLER].reach + 0.8 && performance.now() - this.bitAt > 1000) {
           this.bitAt = performance.now();
           guardianSound.chitter(g.x, camera.position.y - 1, g.z, true);
@@ -272,14 +302,24 @@ export class GuardianFx {
         else this.crawled.delete(g.id);
         continue;
       }
-      if (g.hunt === 2 && !this.hunted.has(g.id)) guardianSound.horn(g.x, camera.position.y + 12, g.z);
+      if (g.hunt === 2 && !this.hunted.has(g.id)) {
+        guardianSound.horn(g.x, camera.position.y + 12, g.z);
+        this.onAggro('guardian');
+      }
       if (g.hunt === 2) this.hunted.add(g.id);
       else this.hunted.delete(g.id);
     }
     for (const id of this.crawled) if (!gs.some((g) => g.id === id)) this.crawled.delete(id);
     for (const id of this.hunted) if (!gs.some((g) => g.id === id)) this.hunted.delete(id);
     const spotted = ds.some((d) => d.lock === 2);
-    if (spotted && !this.locked) guardianSound.chirp();
+    if (spotted && !this.locked) {
+      guardianSound.chirp();
+      this.onAggro('drone');
+    }
+    for (const g of gs) this.seen(`g${g.id}`, g.dead > 0, g.kind === CRAWLER ? 'crawler' : 'guardian');
+    for (const d of ds) this.seen(`d${d.id}`, d.down > 0, 'drone');
+    [this.living, this.alive] = [this.alive, this.living];
+    this.alive.clear();
     this.locked = spotted;
     const incoming = this.missiles.incoming(focus.x, focus.z, 30, net.serverTime()).length > 0;
     this.combat = incoming || spotted || this.hunted.size > 0 || this.crawled.size > 0 || this.charged;

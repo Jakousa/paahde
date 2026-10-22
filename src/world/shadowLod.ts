@@ -13,7 +13,7 @@ const SCAN_EVERY = 8;
 const _s = new THREE.Vector3();
 
 /** Always big: in every culling cascade. */
-export function tagBig(o: THREE.Object3D, cascades = 4) {
+export function tagBig(o: THREE.Object3D, cascades = 5) {
   for (let i = SHADOW_LOD_FIRST; i < cascades; i++) o.layers.enable(lodLayer(i));
   o.userData.lodBig = true;
 }

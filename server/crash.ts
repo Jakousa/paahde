@@ -28,6 +28,7 @@ import { SCRAP_REWARD } from '../shared/tables.ts';
 import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
 import { junkSpec, type JunkKind } from '../shared/salvage.ts';
 import { LAB, labSites } from '../shared/lab.ts';
+import { spendPickup, type PickupLimit } from './pickupLimit.ts';
 import { wreckById } from '../shared/wrecks.ts';
 import type { openDb } from './db.ts';
 
@@ -39,7 +40,6 @@ const HOLD_TTL_MS = 3000;
 const REACH_SLACK = 1.5;
 const BENCH_REACH = 6;
 const MAX_INDEX = 255;
-const COOLDOWN_MS = 200;
 /** How fast (m/s) a machine is shoved by someone walking into it crouched: a slow walk, a ton and a half of engine. */
 const SHOVE_SPEED = 0.4;
 /** About what a lying machine's radius is: it rolls as it goes (rolling without slipping: speed / radius). */
@@ -125,13 +125,12 @@ export class CrashServer {
   // -- carrying -----------------------------------------------------------------------------------------------
 
   /** A player carries off the machine at small site `id`. `give(kind)` puts it in their bag (false: no room).
-   *  Returns the item kind, or null if refused (unknown or taken site, out of reach, too soon, bag full). */
-  carry(feet: Feet, id: unknown, last: { at: number }, give: (kind: string) => boolean): string | null {
+   *  Returns the item kind, or null if refused (unknown or taken site, out of reach, too many at once, bag full). */
+  carry(feet: Feet, id: unknown, limit: PickupLimit, give: (kind: string) => boolean): string | null {
     const site = carrySite(id);
     const now = Date.now();
-    if (!site || crashTaken.has(site.id) || now - last.at < COOLDOWN_MS) return null;
-    if (site.dist(feet) > REACH_SLACK) return null;
-    last.at = now;
+    if (!site || crashTaken.has(site.id)) return null;
+    if (site.dist(feet) > REACH_SLACK || !spendPickup(limit, now)) return null;
     const ok = this.db.tx(() => {
       if (!give(site.kind)) return false;
       this.db.takeCrash(site.id, now);

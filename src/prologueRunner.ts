@@ -1,5 +1,5 @@
 // The loading cover's picture: sand dust blown through a slowly turning flow field on the dark, the prologue's
-// paragraphs fading in over it a letter at a time, then the title card, and a hairline loading bar. On a reload
+// paragraphs fading in over it a letter at a time, then the title card, and a loading bar. On a reload
 // in the same tab (src/prologue.ts) only the title comes up.
 // Plain canvas 2D that knows nothing of the page: it runs in a worker (src/prologueWorker.ts, src/prologue.ts)
 // because the main thread is busy building the world while this is up.
@@ -292,10 +292,15 @@ export function createPrologue(g: Ctx, makeCanvas: (w: number, h: number) => Off
     g.fillStyle = vignette!;
     g.fillRect(0, 0, w, h);
     text();
-    // the loading bar: a hairline that grows out from the middle near the bottom
-    const bw = Math.min(320, w * 0.4) * shown;
-    g.fillStyle = `rgba(${GOLD},${0.18 + 0.12 * shown})`;
-    g.fillRect(Math.round(w / 2 - bw / 2), Math.round(h - 30), bw, 1);
+    // the loading bar near the bottom: a dim track, filled in gold from the left
+    const tw = Math.round(Math.min(360, w * 0.5));
+    const tx = Math.round(w / 2 - tw / 2);
+    const ty = Math.round(h - 48);
+    const a = ramp(clock / 0.6);
+    g.fillStyle = `rgba(${INK},${0.12 * a})`;
+    g.fillRect(tx, ty, tw, 3);
+    g.fillStyle = `rgba(${GOLD},${0.85 * a})`;
+    g.fillRect(tx, ty, tw * shown, 3);
   }
 
   return {

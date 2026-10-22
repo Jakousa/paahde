@@ -43,8 +43,13 @@ const en = {
     shield: 'Shield plate',
     scrap: 'Scrap',
     cloth: 'Cloth',
+    wiring: 'Wiring',
+    wrench: 'Wrench',
     plant_bed: 'Plant bed',
     uv_lamp: 'UV lamp',
+    windmill: 'Windmill',
+    battery_station: 'Battery station',
+    power_pole: 'Power pole',
     laser_rifle: 'Laser rifle',
     laser_pistol: 'Laser pistol',
     jammer: 'Jammer',
@@ -77,30 +82,33 @@ const en = {
   },
   bosses: { worm: 'Worm', carrier: 'Carrier', colossus: 'Colossus', queen: 'Queen' },
   /** Equipment slots (shared/gear.ts EQUIP_SLOTS). */
-  equip: { back: 'Back', wrist: 'Wrist', belt: 'Belt', vehicle: 'Vehicle', armor: 'Armor' },
+  equip: { back: 'Back', wrist: 'Wrist', belt: 'Belt', armor: 'Armor' },
   /** Boxes, as headings in the Tab overlay (shared/storage.ts boxLabel). */
   boxes: {
-    bag: 'Inventory', equip: 'Equipment', bench: 'Workbench', bike: 'Motorcycle', corpse: 'Left behind', chest: 'Chest',
+    bag: 'Inventory', equip: 'Equipment', bench: 'Workbench', cargo: 'Cargo', corpse: 'Left behind', chest: 'Chest',
     chestN: (n: number) => `Chest ${n}`,
-    storage: 'Storage',
+    storage: 'Storage', ground: 'On the ground',
     bot: 'Bot cargo',
   },
-  /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR). */
+  /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR); `k` gives the current
+   *  key or button names (src/bindings.ts hintKeys). */
   gearUse: {
-    motorcycle: 'The motorcycle key gets you on and off.',
-    spyglass: 'Hold the mouse button to look through it, and use the wheel to zoom.',
-    canteen: 'Hold the mouse button to drink. You can fill it up at any pump.',
-    backpack: 'Gives your bag more room past the hotbar.',
-    storm_detector: 'Beeps before a sandstorm reaches you.',
-    wristpad: 'Shows the time, the temperature and the locator bar.',
-    laser_pistol: 'Left mouse fires, right mouse aims.',
-    laser_rifle: 'Left mouse fires, right mouse looks through the scope.',
-    jammer: 'Hold the mouse button on a drone or jet until it comes down.',
-    shield: 'Takes one killing blow for you, then breaks.',
-    receiver: 'Left mouse sends the signal, and the needle points at whatever answers.',
+    motorcycle: (k: HintKeys) => `Get on with ${k.interact}, off with ${k.bike}.`,
+    spyglass: (k: HintKeys) => `Hold ${k.use} to look through it, and use ${k.zoom} to zoom.`,
+    canteen: (k: HintKeys) => `Hold ${k.use} to drink. You can fill it up at any pump.`,
+    backpack: () => 'Gives your bag more room past the hotbar.',
+    storm_detector: () => 'Beeps before a sandstorm reaches you.',
+    wristpad: () => 'Shows the time, the temperature and the locator bar.',
+    laser_pistol: (k: HintKeys) => `Fire with ${k.use} and aim with ${k.aim}.`,
+    laser_rifle: (k: HintKeys) => `Fire with ${k.use} and look through the scope with ${k.aim}.`,
+    jammer: (k: HintKeys) => `Hold ${k.use} on a drone or jet until it comes down.`,
+    shield: () => 'Takes killing blows for you, then breaks.',
+    receiver: (k: HintKeys) => `Press ${k.use} to send the signal, and the needle points at whatever answers.`,
+    windmill: () => 'Makes power when the wind blows.',
+    battery_station: () => 'Keeps the power the windmills make.',
   },
   /** Where placing is blocked: "Too close to the pump". */
-  baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway' },
+  baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base' },
 
   // ---- Prompts under the crosshair (after the key) ---------------------------------------------------------------
 
@@ -124,6 +132,11 @@ const en = {
     useTable: 'Use table',
     openPack: 'Open pack',
     openChest: 'Open chest',
+    open: (what: string) => `Open ${lower(what)}`,
+    /** A broken vehicle lying in the world (shared/vehicles.ts): F opens its part slots. */
+    repair: (what: string) => `Repair ${lower(what)}`,
+    /** A working one: F gets on. */
+    getOn: 'Get on',
     plantSeeds: 'Plant seeds',
     harvest: 'Harvest',
     needsUvLamp: 'Needs UV lamp',
@@ -132,9 +145,19 @@ const en = {
     broken: 'Broken',
     empty: 'Empty',
     aimAtFloor: 'Aim at the floor',
+    aimAtGround: 'Aim at the ground',
     deployBot: 'Deploy bot',
     recallBot: 'Pick up bot',
     openBot: 'Open cargo',
+    /** Putting up a building with the wrench (src/placing.ts): "Build windmill"; the build menu (src/buildMenu.ts). */
+    build: (what: string) => `Build ${lower(what)}`,
+    buildMenu: 'Build',
+    /** Taking a building down with the wrench: its materials and parts come back. */
+    dismantle: (what: string) => `Dismantle ${lower(what)}`,
+    /** Stringing a wire with wiring in hand (shared/wires.ts). */
+    connect: 'Connect',
+    takeDown: 'Take down',
+    cancel: 'Cancel',
   },
 
   // ---- Short notices (toasts), from the client or sent by the server ---------------------------------------------
@@ -149,10 +172,22 @@ const en = {
     tooFar: 'Too far',
     unknownRecipe: 'Unknown recipe',
     missingParts: 'Missing parts',
+    /** Building: not enough base materials in the bag. */
+    missingMaterials: 'Missing materials',
+    /** A power line this long takes `n` wiring (shared/wires.ts wireCost). */
+    needWiring: (n: number) => `Needs ${n} wiring`,
     cantPlace: "That can't be placed",
     badSpot: 'Bad spot',
     floorOnly: 'Floor only',
+    outsideOnly: 'Outside only',
+    tooFarFromBase: 'Too far from the base',
+    tooSteep: 'Too steep',
     tooClose: (spot: string) => `Too close to ${spot}`,
+    /** Too close to another building: "Too close to the windmill". */
+    tooCloseTo: (what: string) => `Too close to the ${lower(what)}`,
+    outOfReach: 'Out of reach',
+    tooManyWires: 'No room for more wires',
+    cantConnect: "Can't connect that",
     baseFull: 'The base is full',
     lineUp: (what: 'bed' | 'lamp') => `Line it up with the ${what}`,
     inTheWay: 'Something is in the way',
@@ -165,7 +200,11 @@ const en = {
     cantPackTighter: "Can't pack it any tighter",
     takeItOff: 'Take it off',
     getOffFirst: 'Get off first',
+    /** Someone else is on (or getting on) that vehicle. */
+    someoneOnIt: 'Someone is on it',
     emptyItFirst: 'Empty it first',
+    /** A part out of a working vehicle: only swapped for another. */
+    swapOnly: 'Swap it for another',
     wrongSlot: 'Wrong slot',
     cantWear: "Can't wear",
     benchInUse: 'Bench in use',
@@ -188,6 +227,8 @@ const en = {
     nothingInReach: 'Nothing in reach',
     noRoom: 'No room',
     craft: 'Craft',
+    /** Stands a broken vehicle up once its part slots are all filled (shared/vehicles.ts). */
+    repair: 'Repair',
     brokenGear: 'Broken gear',
     broken: 'Broken',
     missing: 'missing',
@@ -195,6 +236,11 @@ const en = {
     needs: (slots: string[]) => `Needs ${slots.join(', ')}`,
     needsA: (slot: string) => `Needs ${/^[aeiou]/i.test(slot) ? 'an' : 'a'} ${lower(slot)}`,
     hotbarBroken: (what: string) => `${what} (broken)`,
+    /** The controls under the overlay (src/inventory.ts), after their keys or buttons. */
+    move: 'Move',
+    sendAcross: 'Send across',
+    half: 'Half',
+    close: 'Close',
   },
 
   // ---- HUD ---------------------------------------------------------------------------------------------------------
@@ -224,6 +270,7 @@ const en = {
     queen: 'killed by the queen',
     harvester: 'ground into the sand by a harvester',
     storm: 'choked in the storm front',
+    gas: 'choked on the poison gas',
   },
 
   // ---- Esc menu, controls, landing page, name ----------------------------------------------------------------------
@@ -235,8 +282,13 @@ const en = {
     gameplay: 'Gameplay',
     audio: 'Audio',
     graphics: 'Graphics',
+    graphicsPreset: 'Quality preset',
+    automatic: 'Auto',
+    custom: 'Custom',
     goWindowed: 'Go windowed',
     goFullscreen: 'Go fullscreen',
+    /** Under Go fullscreen after Ctrl+W made the browser ask before closing the tab (src/menu.ts). */
+    ctrlWNote: 'Ctrl+W is the browser shortcut for closing the tab. Fullscreen turns it off.',
     mainMenu: 'Main menu',
     display: 'Display',
     fullscreen: 'Fullscreen',
@@ -252,8 +304,10 @@ const en = {
     shadowRefresh: 'Shadow refresh',
     shadowRefreshes: ['Always', 'Some', 'Rarely'],
     antialias: 'Anti-aliasing',
-    shadowQualities: ['Low', 'Medium', 'High'],
+    sandDetail: 'Sand detail',
+    shadowQualities: ['Low', 'Medium', 'High', 'Ultra'],
     tips: {
+      graphicsPreset: 'Low runs fastest; Ultra adds the most detail. Auto adjusts to your processor and graphics performance as you play.',
       display: 'Fullscreen goes fullscreen when you click into the game. Windowed never does.',
       fpsTarget: 'The most frames drawn each second. Lower saves power and heat. Unlimited follows your screen.',
       resolution: 'Draws the game at a lower resolution and stretches it to the window. Lower runs faster on weak PCs.',
@@ -264,6 +318,7 @@ const en = {
       shadowDistance: 'How far from you the sun casts shadows. Shorter is faster.',
       shadowQuality: 'Sharpness and softness of the sun shadows. Lower is faster. Needs a reload.',
       shadowRefresh: 'How often far shadows are redrawn. Less often is faster and easier on the processor, but far shadows lag behind.',
+      sandDetail: 'How far out the small ripples in the sand are drawn. Lower is a little faster.',
       antialias: 'Smooths jagged edges. Off is faster. Needs a reload.',
     },
     needsReload: 'Click to reload and apply',
@@ -305,6 +360,27 @@ const en = {
       Mouse0: 'LMB', Mouse1: 'MMB', Mouse2: 'RMB',
     } as Record<string, string>,
     noKey: '—',
+    /** The wheel, in hints (src/bindings.ts promptKey 'zoom'). */
+    wheel: 'Wheel',
+    /** Shift-click in hints: modifier and button. */
+    combo: (mod: string, key: string) => `${mod}+${key}`,
+    /** Names for keys and buttons inside a sentence (hints, gear use): "Hold the left mouse button to drink." */
+    spoken: {
+      mouse: { Mouse0: 'the left mouse button', Mouse1: 'the middle mouse button', Mouse2: 'the right mouse button' } as Record<string, string>,
+      wheel: 'the mouse wheel',
+      dpad: 'the d-pad',
+    },
+    /** Gamepad button names (src/padMap.ts), by the pad's make. */
+    pad: {
+      xbox: {
+        a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'LB', rb: 'RB', lt: 'LT', rt: 'RT', ls: 'LS', rs: 'RS', view: 'View', menu: 'Menu',
+        up: '▲', down: '▼', left: '◀', right: '▶', stickL: 'L stick', stickR: 'R stick',
+      },
+      playstation: {
+        a: '✕', b: '○', x: '□', y: '△', lb: 'L1', rb: 'R1', lt: 'L2', rt: 'R2', ls: 'L3', rs: 'R3', view: 'Share', menu: 'Options',
+        up: '▲', down: '▼', left: '◀', right: '▶', stickL: 'L stick', stickR: 'R stick',
+      },
+    },
     mouse: (n: number) => `Mouse ${n}`,
     numpad: (key: string) => `Num ${key}`,
   },
@@ -317,6 +393,12 @@ const en = {
     join: 'Join',
     won: 'The desert is yours',
     playOn: 'Play on',
+    /** The worlds this browser joined, newest first, with how each is doing. */
+    recent: 'Your games',
+    online: (n: number) => `${n} here now`,
+    players: (n: number) => (n === 1 ? '1 player' : `${n} players`),
+    ago: (min: number) =>
+      min < 2 ? 'just now' : min < 60 ? `${min} min ago` : min < 48 * 60 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} days ago`,
   },
   /** The loading cover's prologue (src/prologueRunner.ts): paragraphs, then the game's title over the time. */
   prologue: {
@@ -420,22 +502,23 @@ const en = {
   // ---- One-time how-to banners (src/hints.ts); `k` gives the current key names --------------------------------------
 
   hints: {
-    motorcycle: (k: HintKeys) => `Put the motorcycle in the Vehicle slot (${k.inventory}), then press ${k.bike} to ride.`,
+    motorcycle: (k: HintKeys) => `Get on with ${k.interact}, off with ${k.bike}. The back holds cargo.`,
     backpack: (k: HintKeys) => `Put the backpack in the Back slot (${k.inventory}).`,
     storm_detector: (k: HintKeys) => `Put the storm detector in the Belt slot (${k.inventory}). It beeps before a storm hits.`,
     wristpad: (k: HintKeys) => `Put the wrist computer in the Wrist slot (${k.inventory}).`,
     shield: (k: HintKeys) => `Put the shield plate in the Armor slot (${k.inventory}). It takes one killing blow for you.`,
-    canteen: () => 'With the water bottle on the hotbar, hold the mouse button to drink. Fill it up at a pump.',
-    spyglass: () => 'With the telescope on the hotbar, hold the mouse button to look and use the wheel to zoom.',
-    laser_pistol: () => 'With the pistol on the hotbar, left mouse fires and right mouse aims.',
-    laser_rifle: () => 'With the rifle on the hotbar, left mouse fires and right mouse looks through the scope.',
-    jammer: () => 'With the jammer on the hotbar, hold the mouse button on a drone or jet until it comes down.',
-    receiver_carrier: () => 'With the receiver on the hotbar, left mouse sends the signal.',
-    receiver_queen: () => 'With the receiver on the hotbar, left mouse sends the signal.',
-    receiver_colossus: () => 'With the receiver on the hotbar, left mouse sends the signal.',
-    receiver_worm: () => 'With the receiver on the hotbar, left mouse sends the signal.',
-    plant_bed: () => 'With the plant bed on the hotbar, click to put it down in the bunker.',
+    canteen: (k: HintKeys) => `With the water bottle on the hotbar, hold ${k.use} to drink. Fill it up at a pump.`,
+    spyglass: (k: HintKeys) => `With the telescope on the hotbar, hold ${k.use} to look and use ${k.zoom} to zoom.`,
+    laser_pistol: (k: HintKeys) => `With the pistol on the hotbar, fire with ${k.use} and aim with ${k.aim}.`,
+    laser_rifle: (k: HintKeys) => `With the rifle on the hotbar, fire with ${k.use} and look through the scope with ${k.aim}.`,
+    jammer: (k: HintKeys) => `With the jammer on the hotbar, hold ${k.use} on a drone or jet until it comes down.`,
+    receiver_carrier: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
+    receiver_queen: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
+    receiver_colossus: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
+    receiver_worm: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
+    plant_bed: (k: HintKeys) => `With the plant bed on the hotbar, press ${k.use} to put it down in the bunker.`,
     uv_lamp: () => 'Put the UV lamp down over a plant bed.',
+    wrench: (k: HintKeys) => `With the wrench on the hotbar, press ${k.aim} to build.`,
     part: () => 'Parts repair gear at the workbench.',
     broken: () => "It's broken. You can repair it at the workbench in the base.",
     machine: () => 'Take it apart at the disassembly table in the base.',
@@ -486,16 +569,36 @@ const en = {
     stormFront: ["That's a wall of sand. I need rock between me and it.", 'Oh hell, here it comes. I need a cliff or a bunker, right now.'],
     choking: ["Shit, I can't breathe out here!", 'I have to get out of this wind!'],
     lee: 'The rock is taking the worst of it.',
+    /** Poison gas (shared/gas.ts) creeping in at night: out in the open, in a bunker (it fills them), and in it. */
+    gasComing: ["Something's creeping in along the ground. I want to be up high.", 'What is that stink? Better find some high ground.'],
+    gasIndoors: "Something's seeping in down here. I have to get out and up.",
+    gassed: ["Shit, I can't breathe this! Up, get up!", 'My eyes are burning. Higher, I need to get higher!'],
     boss: 'Oh no. Oh, shit.',
-    combat: "Shit, they've seen me. Keep moving!",
+    /** Something turning on us (src/guardians.ts Aggro), by kind: a walker hunting us, a drone's light locked on, a
+     *  harvester charging at us. */
+    aggro: {
+      guardian: ["Shit, the big one's seen me. Keep moving!", "Oh hell, that giant's coming for me. Don't stand still."],
+      crawler: ['Shit, spiders! Get away from them!', "They're faster than me. I have to get clear of this place."],
+      drone: ["Shit, I'm in the light! Get out of it!", "It's got me in its beam. Out of the light, now!"],
+      harvester: ["It's coming straight at me! Get out of its way!", "Oh shit, it's charging. Sideways, sideways!"],
+    },
+    /** Something we shot or jammed going down, by kind (every boss alike). */
+    killed: {
+      guardian: ["Down it goes. Let's see what it was carrying.", "Big one down. Now it's just a pile of parts."],
+      crawler: ['Stay down, bug.', 'One less spider. Plenty more where that came from.'],
+      drone: ['Got it. Lights out.', "That one's done spotting for anyone."],
+      jet: ['Got it! There might be something good in that wreck.', "Down it goes. Whatever's left is mine."],
+      harvester: ["It's dead. I think. Let's see what it ate.", "That's it stopped. Time to see what's inside."],
+      boss: ["Is it dead? It's dead. I can't believe that worked.", "That's one monster I won't see again."],
+    },
     night: "Finally, it's cooling down.",
     bagFull: ["I'm out of room. Something has to go.", "My pockets aren't bottomless."],
     respawn: ["Note to self: don't do that again.", 'Ow. Where was I?', 'Well, that hurt like hell.'],
   },
 };
 
-/** Key names a hint can mention, as currently bound. */
-export type HintKeys = { inventory: string; bike: string };
+/** Key or button names a hint can mention, as currently bound and for the device in use (src/bindings.ts hintKeys). */
+export type HintKeys = { inventory: string; interact: string; bike: string; use: string; aim: string; zoom: string };
 
 /** The shape of the texts: what a translation fills in. */
 export type Texts = typeof en;

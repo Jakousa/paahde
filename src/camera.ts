@@ -3,8 +3,9 @@
 //
 // Feel: the eye height is smoothed a little so slopes don't jitter, the head bobs with stride, hard
 // landings dip the view on a spring, strafing rolls it slightly, and sprinting kicks the FOV out.
-// T toggles a third-person view: the camera backs off along the view ray from the eye, so the screen centre
-// (crosshair) still aims where the dig/pickup rays go, and the boom shortens so it never sinks into a dune.
+// T toggles a third-person view over the right shoulder: the camera backs off behind the eye and to its right, turned
+// in so the screen centre (crosshair) crosses the dig/pickup ray at about arm's reach, and the boom shortens so it
+// never sinks into a dune.
 // Holding Alt (Option) looks around freely: the mouse turns only the view (freeYaw / freePitch on top of yaw / pitch),
 // so you keep running or sliding the way you were going; letting go swings the view back.
 import * as THREE from 'three/webgpu';
@@ -14,7 +15,8 @@ import { heightAt } from '../shared/terrain.ts';
 import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, slopeAt } from '../shared/sim.ts';
 import { CROUCH_CYCLE } from './models/crouchGait';
 import { EYE_HEIGHT } from '../shared/dig.ts'; // the dig and pickup rays start here too
-import { sandHidden } from '../shared/shelters.ts';
+import { sandHidden, shelterSolid } from '../shared/shelters.ts';
+import { baseSolid } from '../shared/base.ts';
 const SENSITIVITY = 0.0022;
 const PITCH_LIMIT = (85 * Math.PI) / 180;
 // Riding in first person the rider's body is drawn (headless) around the eye: a neck's range keeps the view out of it.
@@ -35,7 +37,11 @@ const CLIMB_SHORTEN = 0.25;
 const CLIMB_HEAVY = 1.2;
 const slope = { gx: 0, gz: 0 };
 const BOOM = 4.5; // third-person distance behind the eye (m)
+const OTS_BOOM = 3.0; // third person: the camera sits behind the shoulder (m)
+const OTS_SIDE = 0.55; // ...and over it, to the right of the aim line (m)
+const OTS_MEET = 3; // ...turned in so its centre ray crosses the eye's look ray this far ahead (m): pickups' reach
 const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
+const WALL_CLEARANCE = 0.2; // ...and this far from the bunkers' walls, floors and ceilings (m)
 /** Speed slide: the view rolls this far (rad) towards the trailing left hand. */
 const SLIDE_ROLL = 0.07;
 const SPRING_DT = 1 / 120; // the landing dip's longest step (s): a slow frame taken whole would make it swing ever harder
@@ -78,10 +84,12 @@ export class FirstPersonCamera {
   thirdPerson = false;
   /** Lying dead (shared/ragdoll.ts): third person whatever the T setting, looking at the body. */
   down = false;
-  /** Aiming the rifle (src/rifle.ts): the view comes in to the eye whatever the T setting, quickly. */
+  /** Aiming a scoped gun: the view comes in to the eye whatever the T setting, quickly. */
   aimIn = false;
   /** Where the eye is (the view ray passes through it; in third person the camera is behind it on that ray). */
   readonly eye = new THREE.Vector3();
+  /** Sideways offset (m) of the over-the-shoulder view, eased. */
+  shoulder = 0;
   private boom = 0; // current boom length (m), eased toward BOOM or 0
   private rideHeading = NaN; // set while riding in first person: the view is limited to a neck's range of it
 
@@ -111,17 +119,23 @@ export class FirstPersonCamera {
     addEventListener('keyup', alt);
     addEventListener('blur', () => (this.freeLook = false));
     addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement !== dom || tools.spinning) return; // (turning a machine or a piece in the hand with the mouse: the view stays)
-      const s = SENSITIVITY / this.zoomShown; // zoomed in, the same hand movement turns the view less
-      if (this.freeLook && !Number.isFinite(this.rideHeading) && this.zoom <= 1) {
-        this.freeYaw = Math.max(-FREE_YAW_LIMIT, Math.min(FREE_YAW_LIMIT, this.freeYaw - e.movementX * s));
-        this.freePitch = Math.max(-PITCH_LIMIT - this.pitch, Math.min(PITCH_LIMIT - this.pitch, this.freePitch - e.movementY * s));
-        return;
-      }
-      this.yaw -= e.movementX * s;
-      this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - e.movementY * s));
-      if (Number.isFinite(this.rideHeading)) this.limitRide(1);
+      if (document.pointerLockElement !== dom) return;
+      this.look(e.movementX * SENSITIVITY, e.movementY * SENSITIVITY);
     });
+  }
+
+  /** Turn the view by (dx, dy) radians at no zoom, right and down: the mouse, or the gamepad's stick (src/gamepad.ts). */
+  look(dx: number, dy: number) {
+    if (tools.spinning) return; // (turning a machine or a piece in the hand with the mouse: the view stays)
+    const s = 1 / this.zoomShown; // zoomed in, the same hand movement turns the view less
+    if (this.freeLook && !Number.isFinite(this.rideHeading) && this.zoom <= 1) {
+      this.freeYaw = Math.max(-FREE_YAW_LIMIT, Math.min(FREE_YAW_LIMIT, this.freeYaw - dx * s));
+      this.freePitch = Math.max(-PITCH_LIMIT - this.pitch, Math.min(PITCH_LIMIT - this.pitch, this.freePitch - dy * s));
+      return;
+    }
+    this.yaw -= dx * s;
+    this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - dy * s));
+    if (Number.isFinite(this.rideHeading)) this.limitRide(1);
   }
 
   /** Pull yaw/pitch back inside the riding neck limits, all the way (t = 1) or part of it (easing in on mounting). */
@@ -167,8 +181,9 @@ export class FirstPersonCamera {
     }
     const viewYaw = this.yaw + this.freeYaw;
 
-    // Eye height: follow the feet quickly but smoothly; snap if far (respawn/teleport) or airborne.
-    if (!Number.isFinite(this.eyeY) || Math.abs(p.y - this.eyeY) > 3) this.eyeY = p.y;
+    // Eye height: follow the feet quickly but smoothly; snap if far (respawn/teleport) or airborne. Riding, it is
+    // the rider's head (already smooth): any lag here sinks the view into the body and bike on a fast climb.
+    if (!Number.isFinite(this.eyeY) || Math.abs(p.y - this.eyeY) > 3 || p.riding) this.eyeY = p.y;
     else this.eyeY += (p.y - this.eyeY) * (1 - Math.exp(-dt * (p.grounded ? 22 : 40)));
 
     // Landing dip: a damped spring kicked by the impact speed.
@@ -235,24 +250,34 @@ export class FirstPersonCamera {
     // Never look out from under a dune (in the base's entrance and bunker the sand isn't in the way).
     if (!sandHidden(x, z, p.y)) y = Math.max(y, heightAt(x, z) + 0.3);
 
-    // Third person: back off along the view ray, shortening the boom where it would dip under the sand.
+    // Third person: back off along the view ray (and over the shoulder), shortening both together where the camera
+    // would go into the sand or through a bunker's wall.
     const pitch = this.pitch + this.freePitch + this.dip * 0.12 + shakeP;
     const cp = Math.cos(pitch), vs = Math.sin(viewYaw), vc = Math.cos(viewYaw);
     const bx = vs * cp, by = -Math.sin(pitch), bz = vc * cp; // unit vector pointing behind the view
     const third = (this.thirdPerson && !this.aimIn) || this.down;
-    let reach = third ? BOOM : 0;
-    for (let i = 1; i <= 12 && reach > 0; i++) {
-      const d = (BOOM * i) / 12;
-      if (d > reach) break;
-      const px = x + bx * d, pz = z + bz * d;
-      if (y + by * d < heightAt(px, pz) + BOOM_CLEARANCE) reach = Math.max(0, d - BOOM / 12);
+    const ots = this.thirdPerson && !this.aimIn && !this.down;
+    const full = ots ? OTS_BOOM : BOOM, side = ots ? OTS_SIDE : 0;
+    let room = third ? 1 : 0;
+    for (let i = 1; i <= 12 && room > 0; i++) {
+      const f = i / 12;
+      if (f > room) break;
+      if (blocked(x + (bx * full + vc * side) * f, y + by * full * f, z + (bz * full - vs * side) * f)) room = f - 1 / 12;
     }
-    // Ease out smoothly, but snap in when terrain cuts the boom short.
-    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (this.aimIn ? 16 : 8)));
+    const reach = full * room;
+    // Ease out smoothly, but snap in when something cuts the boom short.
+    this.boom = reach < this.boom && third ? reach : this.boom + (reach - this.boom) * (1 - Math.exp(-dt * (this.aimIn ? 16 : ots ? 9 : 8)));
     if (this.boom < 0.01) this.boom = 0;
     this.eye.set(x, y, z);
-    this.camera.position.set(x + bx * this.boom, y + by * this.boom, z + bz * this.boom);
-    this.camera.rotation.set(pitch, viewYaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
+    const shoulder = side * room;
+    this.shoulder = shoulder < this.shoulder ? shoulder : this.shoulder + (shoulder - this.shoulder) * (1 - Math.exp(-dt * 9));
+    if (this.shoulder < 0.005) this.shoulder = 0;
+    this.camera.position.set(x + bx * this.boom + vc * this.shoulder, y + by * this.boom, z + bz * this.boom - vs * this.shoulder);
+    // Turned in towards the point OTS_MEET ahead on the eye's look ray, so the crosshair is on what F picks up there.
+    const mx = x - bx * OTS_MEET - this.camera.position.x, my = y - by * OTS_MEET - this.camera.position.y, mz = z - bz * OTS_MEET - this.camera.position.z;
+    const camYaw = this.shoulder > 0 ? Math.atan2(-mx, -mz) : viewYaw;
+    const camPitch = this.shoulder > 0 ? Math.atan2(my, Math.hypot(mx, mz)) : pitch;
+    this.camera.rotation.set(camPitch, camYaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
 
     // FOV kick when moving faster than a walk (sprint, slides).
     const t = Math.max(0, Math.min(1, (speed - WALK_SPEED - 0.5) / (SPRINT_SPEED - WALK_SPEED - 1)));
@@ -272,3 +297,16 @@ export class FirstPersonCamera {
     this.camera.updateProjectionMatrix();
   }
 }
+
+/** The camera can't be at world (x, y, z): within WALL_CLEARANCE of a bunker's or shelter's solid, or too near the sand. */
+function blocked(x: number, y: number, z: number): boolean {
+  const c = WALL_CLEARANCE;
+  for (const [dx, dy, dz] of PROBE) {
+    const px = x + dx * c, py = y + dy * c, pz = z + dz * c;
+    const solid = baseSolid(px, py, pz) ?? shelterSolid(px, py, pz);
+    if (solid ?? y < heightAt(px, pz) + BOOM_CLEARANCE) return true;
+  }
+  return false;
+}
+/** The point and six around it (unit offsets). */
+const PROBE = [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];

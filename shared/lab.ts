@@ -14,7 +14,7 @@ import { BASE } from './base.ts';
 import type { CrashSite } from './crash.ts';
 import { GEAR, GEAR_KINDS } from './gear.ts';
 import { ITEMS } from './items.ts';
-import { PART_IDS, partItem } from './parts.ts';
+import { PART_IDS, partItem, UNTIERED } from './parts.ts';
 import { junkSpec, TIERS, type JunkKind } from './salvage.ts';
 import { TEXT } from './text.ts';
 import { LAB } from './world.ts';
@@ -70,13 +70,17 @@ export type LabItem = { kind: string; parts?: (string | null)[]; n?: number; x: 
 
 let items: LabItem[] | null = null;
 
-/** Every part in every tier, the grinder and every gear kind. */
+/** Every part in every tier (one wiring for the coils: shared/parts.ts UNTIERED), the grinder, the wrench and every
+ *  gear kind but the buildings (put up with the wrench) and the vehicles (a broken motorcycle stands by the base door:
+ *  server/vehicles.ts). */
 export function labItems(): LabItem[] {
   if (!LAB) return [];
   if (items) return items;
   const out: LabItem[] = [];
-  PART_IDS.forEach((part, r) => TIERS.forEach((tier, c) => out.push({ kind: partItem(part, tier), ...at(24 + c * 3, 8 + r * 3) })));
-  ['scrap', 'cloth', 'grinder', 'scavenger_bot', ...GEAR_KINDS].forEach((kind, i) => {
+  PART_IDS.forEach((part, r) => TIERS.forEach((tier, c) => {
+    if (!UNTIERED[part] || c === 0) out.push({ kind: partItem(part, tier), ...at(24 + c * 3, 8 + r * 3) });
+  }));
+  ['scrap', 'cloth', 'grinder', 'wrench', 'scavenger_bot', ...GEAR_KINDS.filter((k) => !GEAR[k].built && !GEAR[k].vehicle)].forEach((kind, i) => {
     const gear = GEAR[kind];
     const n = kind === 'scrap' || kind === 'cloth' ? 10 : undefined;
     out.push({ kind, ...(n ? { n } : {}), ...(gear ? { parts: gear.slots.map(() => null) } : {}), plate: true, ...at(-24 - (i % 4) * 4, 8 + Math.floor(i / 4) * 4) });

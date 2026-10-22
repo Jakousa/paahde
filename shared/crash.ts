@@ -7,7 +7,7 @@
 // same contents. Ids are "<crash site id>:<index>", index 0 the large machine (if the site has one).
 import { BASE_SPAWN } from './base.ts';
 import { crashSite, crashSitesNear, crashTaken, type CrashSite as Wreck } from './crashsites.ts';
-import type { SiteLevel } from './crashsites.ts';
+import type { LootLevel } from './crashsites.ts';
 import { COMPONENTS, SALVAGE, junkSpec, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
 import { labById, labSites } from './lab.ts';
 import { jetSiteById, jetSites } from './jetcrash.ts';
@@ -55,8 +55,8 @@ export interface CrashSite {
   wreck: number;
   /** Index at the crash site: 0 is the large machine (if any), then the small ones. */
   index: number;
-  /** The crash site's level (shared/crashsites.ts SiteLevel): its large machine's parts roll by it. */
-  level: SiteLevel;
+  /** The crash site's loot level (shared/crashsites.ts LootLevel): its large machine's parts roll by it. */
+  level: LootLevel;
   x: number;
   z: number;
   /** Heading of the component, radians (three.js rotation.y; the machine lies across its throw direction). */
@@ -79,7 +79,7 @@ export function seeded(seed: number) {
   };
 }
 
-function pickKind(u: number, carry: boolean, level: SiteLevel): ComponentKind {
+function pickKind(u: number, carry: boolean, level: LootLevel): ComponentKind {
   const ks = (Object.entries(LEVEL_KINDS[level]) as [ComponentKind, number][]).filter(([k]) => COMPONENTS[k].carry === carry);
   let r = u * ks.reduce((s, [, w]) => s + w, 0);
   for (const [k, w] of ks) if ((r -= w) < 0) return k;
@@ -94,8 +94,8 @@ export function machinesAt(w: Wreck): CrashSite[] {
   if (out) return out;
   out = w.machines.map((m, index) => {
     const r = seeded(m.seed);
-    const kind = pickKind(r(), !m.large, w.level);
-    return { id: `${w.id}:${index}`, wreck: w.id, index, level: w.level, x: m.x, z: m.z, yaw: Math.atan2(m.dx, m.dz), kind, seed: (r() * 4294967296) >>> 0 };
+    const kind = pickKind(r(), !m.large, w.loot);
+    return { id: `${w.id}:${index}`, wreck: w.id, index, level: w.loot, x: m.x, z: m.z, yaw: Math.atan2(m.dx, m.dz), kind, seed: (r() * 4294967296) >>> 0 };
   });
   cache.set(w.id, out);
   return out;

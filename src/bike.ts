@@ -7,10 +7,12 @@
 // the lamp that turns with the bars, and the lens glows.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { biome } from '../shared/biomes.ts';
 import { slopeAt } from '../shared/sim.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, TRACK_WRAP, tyreprints } from './footprints.ts';
 import { tyreDust } from './tyreDust.ts';
+import { bikeLandSound } from './bikeLandSound.ts';
 import type { RidePose } from './players.ts';
 import { nightLevel, SHADOW_ONLY_LAYER } from './world/env.ts';
 import { applyTier } from './tierLook.ts';
@@ -29,6 +31,7 @@ const MAX_LEAN = 0.6;
 const MAX_STEER = 0.5;
 const TRACK_STEP = 0.3; // metres per tyre-track strip (short, so turns curve smoothly)
 const WHEELIE = 0.45; // rad the nose comes up, about the rear tyre's contact
+const BIG_AIR = 0.6; // s in the air before a landing throws up a cloud and thumps
 /** The headlight lens in the Handlebar node's frame (tools/blender/sandbike.py lamp_c), and where the beam
  *  aims from there: ahead and a little down, so it pools on the sand ~15 m out. */
 const LAMP = new THREE.Vector3(0, 0.076, -0.25);
@@ -71,6 +74,8 @@ const load = () => (shared ??= new GLTFLoader().loadAsync('./models/sandbike.glb
 export const loadBikeModel = load;
 
 export type BikePose = { x: number; y: number; z: number; heading: number; vx: number; vy: number; vz: number; grounded: boolean;
+  /** The bike's pitch (PlayerState.nose: along the sand, or steered by throttle and brake in the air). */
+  nose: number;
   /** Space held: up on the back wheel while grounded. */
   jumpHeld: boolean };
 
@@ -92,6 +97,9 @@ export class Bike {
   private forward = NaN;
   private accel = 0;
   private grounded = true;
+  private airTime = 0; // s since it left the ground
+  private airV = new THREE.Vector3(); // velocity on the last frame in the air
+  private airNose = 0; // and pitch
   private dustOwed = 0; // puffs owed to tyreDust (fractional)
   private disposed = false;
   private headlight?: (typeof headlights)[number];
@@ -159,15 +167,8 @@ export class Bike {
     const fx = -Math.sin(p.heading), fz = -Math.cos(p.heading);
     const forward = p.vx * fx + p.vz * fz;
 
-    // Nose: along the sand on the ground, along the flight path in the air.
-    let pitch: number;
-    if (p.grounded) {
-      const g = slopeAt(p.x, p.z, tmpSlope);
-      pitch = p.y > heightAt(p.x, p.z) + 0.02 ? 0 : Math.atan(g.gx * fx + g.gz * fz);
-    } else {
-      pitch = Math.max(-0.7, Math.min(0.7, Math.atan2(p.vy, Math.max(hs, 4))));
-    }
-    this.pitch += (pitch - this.pitch) * k(p.grounded ? 14 : 4);
+    // Nose: the sim's (along the sand on the ground, throttle and brake turn it in the air); a crooked landing slams over.
+    this.pitch += (p.nose - this.pitch) * k(p.grounded ? 14 : 30);
     const wheelie = p.grounded && p.jumpHeld ? WHEELIE : 0;
     this.wheelie += (wheelie - this.wheelie) * k(wheelie > this.wheelie ? 7 : p.grounded ? 12 : 3);
     // Lean so that gravity balances the turn: tan(lean) = v·ω / g.
@@ -178,6 +179,13 @@ export class Bike {
     if (dt > 0 && Number.isFinite(this.forward)) this.accel += ((forward - this.forward) / dt - this.accel) * k(5);
     this.forward = forward;
     const landed = p.grounded && !this.grounded;
+    if (landed && this.airTime > BIG_AIR) this.bigLanding(p, hs);
+    if (p.grounded) this.airTime = 0;
+    else {
+      this.airTime += dt;
+      this.airV.set(p.vx, p.vy, p.vz);
+      this.airNose = p.nose;
+    }
     this.grounded = p.grounded;
     const steer = Math.abs(forward) > 0.5 ? Math.max(-MAX_STEER, Math.min(MAX_STEER, Math.atan((rate * WHEELBASE) / forward))) : this.steer;
     this.steer += (steer - this.steer) * k(10);
@@ -201,7 +209,10 @@ export class Bike {
       return;
     }
     this.dust(p, fx, fz, hs, dt, landed);
-    this.trackTo(p.x - fx * WHEELBASE * 0.5, p.z - fz * WHEELBASE * 0.5);
+    const rx = p.x - fx * WHEELBASE * 0.5, rz = p.z - fz * WHEELBASE * 0.5;
+    // The dried mud of a lake bed is too hard to take a print: the track breaks there.
+    if (biome('mudflat', rx, rz) > 0.5) this.trackX = NaN;
+    else this.trackTo(rx, rz);
   }
 
   /** Extend the tyre track to the rear wheel at (x, z): a strip from where it last ended, once it is long enough. */
@@ -256,6 +267,30 @@ export class Bike {
     }
   }
 
+  /** Down after a long jump: a cloud of sand bursting out round the bike, bigger the longer the flight and the
+   *  rougher the landing (and never quite the same twice), and a thump (rougher: a crash). */
+  private bigLanding(p: BikePose, hs: number) {
+    // How hard it hit: the speed into the sand across the slope, as the sim reckons it (shared/sim.ts stepBike).
+    const g = p.y > heightAt(p.x, p.z) + 0.02 ? FLAT : slopeAt(p.x, p.z, tmpSlope);
+    // Coming down off its wheels (the nose off the slope) is rougher, the more so the faster.
+    const off = Math.max(0, Math.abs(this.airNose - Math.atan(-g.gx * Math.sin(p.heading) - g.gz * Math.cos(p.heading))) - 0.1);
+    const impact = Math.max(0, g.gx * this.airV.x + g.gz * this.airV.z - this.airV.y) + off * hs * 0.5;
+    const strength = Math.min(1, Math.max(0, (this.airTime - BIG_AIR) / 1.6) * 0.4 + Math.max(0, (impact - 3) / 15) * 0.6);
+    const size = (0.6 + strength) * (0.7 + Math.random() * 0.6);
+    const n = Math.round(14 + 36 * size);
+    const fx = p.vx / Math.max(hs, 1), fz = p.vz / Math.max(hs, 1);
+    for (let i = 0; i < n; i++) {
+      // Out in a ring, carried on a little with the bike, low and wide, the biggest puffs slowest.
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 0.8 * size;
+      const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+      const puff = (0.9 + Math.random() * 1.4) * size;
+      const out = (2 + Math.random() * 5) * size / Math.sqrt(puff);
+      tyreDust.emit(x, heightAt(x, z) + 0.2, z, Math.cos(a) * out + fx * hs * 0.25, 0.3 + Math.random() * 1.8 * size,
+        Math.sin(a) * out + fz * hs * 0.25, puff, 3 + Math.random() * 3 * size);
+    }
+    bikeLandSound.play(p.x, p.z, impact);
+  }
+
   /** How far the bike leans into the turn (rad, + = left). */
   get leanAngle() {
     return this.lean;
@@ -300,6 +335,7 @@ export class Bike {
 }
 
 const tmpSlope = { gx: 0, gz: 0 };
+const FLAT = { gx: 0, gz: 0 };
 const tmpScale = new THREE.Vector3();
 /** The Handlebar node's origin in the bike's frame, for the grips before the model has loaded. */
 const BARS_PIVOT = new THREE.Vector3(0, 0.98, -0.408);

@@ -1,30 +1,43 @@
-// Placed things: items from the bag (the PLACEABLES kinds of shared/items.ts) standing on the bunker floor —
-// plant beds and UV lamp stands so far (GitHub #22–#24). The server owns the list (server/placed.ts, `placed`
-// table) and sends it whole on join and when it changes; client and server both keep it here with setPlaced(),
-// which also hands their floor-standing parts to the base's collision (shared/base.ts setPlacedCapsules), so
-// prediction and the server collide with the same things.
+// Placed things: items from the bag (the PLACEABLES kinds of shared/items.ts) standing on the bunker floor: plant beds
+// and UV lamp stands (GitHub #22–#24; not crafted for now); and, out on the sand round the base (the `sand` kinds), the
+// buildings put up with the wrench from base materials (shared/crafting.ts BUILDS: the windmill, the battery station,
+// the power pole), of which the windmill and battery station keep their item with its parts in a box of their own while
+// they stand (shared/gear.ts isBuilding, server/placed.ts). The server owns the list
+// (server/placed.ts, `placed` table) and sends it whole on join and when it changes; client and server both keep it
+// here with setPlaced(), which also hands their standing parts to the base's collision (shared/base.ts
+// setPlacedCapsules: the floor's with the bunker, the sand's anywhere), so prediction and the server collide with the
+// same things.
 //
-// Rules (placeError): only on the main room's floor, clear of the walls, the hallway mouth, the pump, the work
-// stations and the chest, and not overlapping another placed thing — except that a UV lamp and a plant bed
-// share their spot when aligned exactly (same centre and turn): the lamp's legs straddle the bed's short ends.
-// placeAim() snaps the aim point to a 0.25 m grid, or onto a bed / lamp waiting for its partner.
+// Rules (placeError): floor kinds only on the main room's floor, clear of the walls, the hallway mouth, the pump, the
+// work stations and the chest; sand kinds within OUTDOOR_RANGE of the base, STRUCTURE_GAP clear of the base's own
+// structures (the entrance hut, the skylight, the mast, the bunker under the sand, the trophies' ground: shared/base.ts
+// overBase / insideBase), on ground no steeper than MAX_TILT across the footprint (it stands on the lowest corner: the
+// rest sinks into the sand), and that sand is never dug again (overPlaced). Sand kinds keep their `gap` (the larger of
+// the two) from each other, edge to edge. Nothing overlaps another placed thing — except that a UV lamp and a plant bed share their spot when aligned exactly (same centre and turn): the
+// lamp's legs straddle the bed's short ends. placeAim() snaps the aim point to a 0.25 m grid, or onto a bed / lamp
+// waiting for its partner.
 //
 // Same determinism rules as shared/base.ts for anything collision touches: + - * /, Math.sqrt, Math.abs,
 // Math.min/max only.
-import { BASE, BASE_PIECES, FLOOR, HALL, PILLAR, ROOM, setPlacedCapsules, W, type Capsule } from './base.ts';
+import { BASE, BASE_PIECES, FLOOR, HALL, byMast, insideBase, overBase, PILLAR, ROOM, setPlacedCapsules, W, type Capsule } from './base.ts';
 import { EYE_HEIGHT } from './dig.ts';
+import { ITEMS } from './items.ts';
+import { heightAt } from './terrain.ts';
 import { TEXT } from './text.ts';
 
-/** A placed thing: DB id, item kind, world position of its footprint centre on the floor, and its turn
- *  (0: long side along X, 1: along Z). */
-export type Placed = { id: number; kind: string; x: number; z: number; rot: number };
+/** A placed thing: DB id, item kind, world position of its footprint centre on the floor or the sand (y: what it
+ *  stands on), its turn (0: long side along X, 1: along Z), and for a building the parts fitted in it (its tier and
+ *  look, src/world/placed.ts). */
+export type Placed = { id: number; kind: string; x: number; y: number; z: number; rot: number; parts?: (string | null)[] };
 
 /** An axis-aligned box in the thing's own frame (rot 0), metres above the floor. */
 type Box = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number };
 
 /** Each placeable kind: footprint half extents (rot 0) and its look/collision boxes. Boxes standing on the
- *  floor (y0 = 0) collide. Sizes match tools/blender/placeables.py. */
-export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[] }> = {
+ *  floor (y0 = 0) collide; the others are only looked at. `sand`: stands outside, on the sand round the base,
+ *  not on the bunker floor, at least `gap` (m, edge to edge) from the other things out there. Sizes match
+ *  tools/blender/placeables.py. */
+export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; sand?: true; gap?: number }> = {
   plant_bed: { hx: 0.82, hz: 0.42, boxes: [{ x0: -0.8, x1: 0.8, y0: 0, y1: 0.52, z0: -0.4, z1: 0.4 }] },
   uv_lamp: {
     hx: 0.99, hz: 0.27,
@@ -34,15 +47,40 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[] }
       { x0: -0.89, x1: 0.89, y0: 1.8, y1: 2.05, z0: -0.11, z1: 0.11 },
     ],
   },
+  // A lattice tower on four splayed legs (their feet collide; you can step in between), the head and rotor up top.
+  windmill: {
+    // Room for the head and its tail (2.4 m back from the tower) to swing round.
+    hx: 1.1, hz: 1.1, sand: true, gap: 4,
+    boxes: [
+      ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => ({ x0: sx * 0.95 - 0.12, x1: sx * 0.95 + 0.12, y0: 0, y1: 2.2, z0: sz * 0.95 - 0.12, z1: sz * 0.95 + 0.12 })),
+      { x0: -0.7, x1: 0.7, y0: 0.4, y1: 7.6, z0: -0.7, z1: 0.7 },
+    ],
+  },
+  // A welded rack of cells on a skid, the charger box on top.
+  battery_station: { hx: 0.78, hz: 0.42, sand: true, gap: 2, boxes: [{ x0: -0.75, x1: 0.75, y0: 0, y1: 1.35, z0: -0.4, z1: 0.4 }] },
+  // A pole: its foot collides, the crossarm and insulator up top are only looked at.
+  power_pole: {
+    hx: 0.3, hz: 0.3, sand: true, gap: 1,
+    boxes: [{ x0: -0.12, x1: 0.12, y0: 0, y1: 4.4, z0: -0.12, z1: 0.12 }, { x0: -0.6, x1: 0.6, y0: 4.2, y1: 4.6, z0: -0.1, z1: 0.1 }],
+  },
 };
 
 export const isPlaceable = (kind: string | undefined) => !!kind && kind in PLACEABLES;
+/** Stands out on the sand (not on the bunker floor). */
+export const onSand = (kind: string) => !!PLACEABLES[kind]?.sand;
 
 /** These two kinds may stand in the same spot when aligned. */
 const PARTNERS: Record<string, string> = { plant_bed: 'uv_lamp', uv_lamp: 'plant_bed' };
 
-/** How far from the eye you can put something down (to the aim point on the floor). */
+/** How far from the eye you can put something down (to the aim point on the floor); out on the sand a little further. */
 export const PLACE_REACH = 5;
+export const SAND_REACH = 8;
+/** Sand kinds go up within this far (m, horizontally) of the base's origin: round the pad, among the trophies. */
+export const OUTDOOR_RANGE = 75;
+/** Most the sand may rise across a sand kind's footprint (m, lowest to highest of its corners and centre). */
+const MAX_TILT = 0.7;
+/** Sand kinds keep this far (m) from the base's own structures: the hut and its door, the skylight, the mast. */
+const STRUCTURE_GAP = 4;
 /** How far from the eye a placed thing can be picked up. */
 export const PLACED_REACH = 4;
 /** At most this many things placed in the base. */
@@ -55,21 +93,32 @@ export const PLACE_FLOOR_Y = BASE.y + FLOOR;
 /** Everything placed right now (from the server). Replace it with setPlaced(). */
 export let placed: Placed[] = [];
 
-/** Replace the list, and the collision of what stands on the floor. */
+/** Replace the list, and the collision of what stands on the floor and the sand. */
 export function setPlaced(list: Placed[]) {
   placed = list;
-  const caps: Capsule[] = [];
+  const caps: Capsule[] = [], out: Capsule[] = [], spots: number[][] = [];
   for (const p of list) {
+    if (!isPlaceable(p.kind)) continue;
+    const sand = onSand(p.kind);
+    if (sand) spots.push(footprint(p.kind, p.x, p.z, p.rot));
     for (const b of worldBoxes(p)) {
-      if (b.y0 > PLACE_FLOOR_Y + 1e-6) continue;
+      if (b.y0 > p.y + 1e-6) continue;
       // Capsule along the box's longer side, in base-local coordinates.
       const hx = (b.x1 - b.x0) / 2, hz = (b.z1 - b.z0) / 2, alongX = hx >= hz;
       const r = alongX ? hz : hx;
-      caps.push({ x: (b.x0 + b.x1) / 2 - BASE.x, z: (b.z0 + b.z1) / 2 - BASE.z, ax: alongX ? 1 : 0, az: alongX ? 0 : 1,
+      (sand ? out : caps).push({ x: (b.x0 + b.x1) / 2 - BASE.x, z: (b.z0 + b.z1) / 2 - BASE.z, ax: alongX ? 1 : 0, az: alongX ? 0 : 1,
         half: (alongX ? hx : hz) - r, r, y0: b.y0 - BASE.y, top: b.y1 - BASE.y });
     }
   }
-  setPlacedCapsules(caps);
+  setPlacedCapsules(caps, out, spots);
+}
+
+/** What `kind` at (x, z) would stand on: the bunker floor, or the lowest sand under its footprint's corners and
+ *  centre (a little into it, so no corner floats). */
+export function placedY(kind: string, x: number, z: number, rot: number): number {
+  if (!onSand(kind)) return PLACE_FLOOR_Y;
+  const f = footprint(kind, x, z, rot);
+  return Math.min(heightAt(x, z), heightAt(f[0], f[1]), heightAt(f[2], f[1]), heightAt(f[0], f[3]), heightAt(f[2], f[3])) - 0.05;
 }
 
 /** World rectangle [x0, z0, x1, z1] of a footprint. */
@@ -82,8 +131,8 @@ function footprint(kind: string, x: number, z: number, rot: number, m = 0): [num
 /** A placed thing's boxes in world coordinates. */
 export function worldBoxes(p: Placed): Box[] {
   return PLACEABLES[p.kind].boxes.map((b) => p.rot
-    ? { x0: p.x + b.z0, x1: p.x + b.z1, y0: PLACE_FLOOR_Y + b.y0, y1: PLACE_FLOOR_Y + b.y1, z0: p.z + b.x0, z1: p.z + b.x1 }
-    : { x0: p.x + b.x0, x1: p.x + b.x1, y0: PLACE_FLOOR_Y + b.y0, y1: PLACE_FLOOR_Y + b.y1, z0: p.z + b.z0, z1: p.z + b.z1 });
+    ? { x0: p.x + b.z0, x1: p.x + b.z1, y0: p.y + b.y0, y1: p.y + b.y1, z0: p.z + b.x0, z1: p.z + b.x1 }
+    : { x0: p.x + b.x0, x1: p.x + b.x1, y0: p.y + b.y0, y1: p.y + b.y1, z0: p.z + b.z0, z1: p.z + b.z1 });
 }
 
 const overlap = (a: number[], b: number[]) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
@@ -113,20 +162,42 @@ export function placeError(kind: string, x: number, z: number, rot: number, list
   if (!isPlaceable(kind)) return TEXT.notice.cantPlace;
   if (!Number.isFinite(x) || !Number.isFinite(z) || (rot !== 0 && rot !== 1)) return TEXT.notice.badSpot;
   const f = footprint(kind, x, z, rot);
-  const m = 0.05 + PILLAR.d; // clear of the pilasters
-  if (f[0] < BASE.x - ROOM.w + m || f[2] > BASE.x + ROOM.w - m || f[1] < BASE.z + ROOM.z + m || f[3] > BASE.z + HALL.z - m) {
-    return TEXT.notice.floorOnly;
+  const sand = onSand(kind);
+  if (sand) {
+    // Corners and edge midpoints: the footprint's outline, against margins round the structures.
+    const corners = [[x, z], [f[0], f[1]], [f[2], f[1]], [f[0], f[3]], [f[2], f[3]]];
+    const outline = [...corners, [x, f[1]], [x, f[3]], [f[0], z], [f[2], z]];
+    if (outline.some(([cx, cz]) => overBase(cx, cz, 0.5) || insideBase(cx, cz, STRUCTURE_GAP) || byMast(cx, cz, STRUCTURE_GAP))) {
+      return TEXT.notice.tooClose(TEXT.baseSpots.base);
+    }
+    if (Math.hypot(x - BASE.x, z - BASE.z) > OUTDOOR_RANGE) return TEXT.notice.tooFarFromBase;
+    const hs = corners.map(([cx, cz]) => heightAt(cx, cz));
+    if (Math.max(...hs) - Math.min(...hs) > MAX_TILT) return TEXT.notice.tooSteep;
+  } else {
+    const m = 0.05 + PILLAR.d; // clear of the pilasters
+    if (f[0] < BASE.x - ROOM.w + m || f[2] > BASE.x + ROOM.w - m || f[1] < BASE.z + ROOM.z + m || f[3] > BASE.z + HALL.z - m) {
+      return TEXT.notice.floorOnly;
+    }
+    for (const k of KEEP_CLEAR) if (overlap(f, k.r)) return TEXT.notice.tooClose(k.what);
   }
-  for (const k of KEEP_CLEAR) if (overlap(f, k.r)) return TEXT.notice.tooClose(k.what);
   if (list.length >= MAX_PLACED) return TEXT.notice.baseFull;
+  if (sand) {
+    for (const p of list) {
+      if (!onSand(p.kind)) continue;
+      const g = footprint(p.kind, p.x, p.z, p.rot);
+      const dx = Math.max(g[0] - f[2], f[0] - g[2], 0), dz = Math.max(g[1] - f[3], f[1] - g[3], 0);
+      if (Math.hypot(dx, dz) < Math.max(PLACEABLES[kind].gap ?? 0, PLACEABLES[p.kind].gap ?? 0)) return TEXT.notice.tooCloseTo(ITEMS[p.kind]?.label ?? p.kind);
+    }
+  }
   for (const p of list) {
     if (!overlap(f, footprint(p.kind, p.x, p.z, p.rot))) continue;
     if (PARTNERS[kind] === p.kind && aligned(p, { x, z, rot })) continue;
     return p.kind === PARTNERS[kind] ? TEXT.notice.lineUp(p.kind === 'plant_bed' ? 'bed' : 'lamp') : TEXT.notice.inTheWay;
   }
   const fp = footprint(kind, x, z, rot, 0.4);
+  const y = placedY(kind, x, z, rot);
   for (const s of players) {
-    if (s.y < PLACE_FLOOR_Y + 2.5 && s.x > fp[0] && s.x < fp[2] && s.z > fp[1] && s.z < fp[3]) return TEXT.notice.blocked;
+    if (s.y < y + 2.5 && s.y > y - 2 && s.x > fp[0] && s.x < fp[2] && s.z > fp[1] && s.z < fp[3]) return TEXT.notice.blocked;
   }
   return null;
 }
@@ -140,6 +211,27 @@ export function placeAim(feet: { x: number; y: number; z: number }, yaw: number,
   const cp = Math.cos(pitch);
   const d = [-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp];
   const ey = feet.y + EYE_HEIGHT;
+  const snap = (v: number, o: number) => o + Math.round((v - o) / GRID) * GRID;
+  if (onSand(kind)) {
+    // Down under the sand (in the bunker): where you stand, which placeError turns down.
+    if (ey < heightAt(feet.x, feet.z)) return { x: snap(feet.x, BASE.x), z: snap(feet.z, BASE.z), rot };
+    // March along the ray to where it goes into the sand, then halve the step a few times.
+    let t0 = 0, t1 = -1;
+    for (let t = 0.25; t <= SAND_REACH; t += 0.25) {
+      if (ey + d[1] * t <= heightAt(feet.x + d[0] * t, feet.z + d[2] * t)) {
+        t1 = t;
+        break;
+      }
+      t0 = t;
+    }
+    if (t1 < 0) return null;
+    for (let k = 0; k < 6; k++) {
+      const t = (t0 + t1) / 2;
+      if (ey + d[1] * t <= heightAt(feet.x + d[0] * t, feet.z + d[2] * t)) t1 = t;
+      else t0 = t;
+    }
+    return { x: snap(feet.x + d[0] * t1, BASE.x), z: snap(feet.z + d[2] * t1, BASE.z), rot };
+  }
   if (d[1] > -0.05 || ey < PLACE_FLOOR_Y) return null;
   const t = (PLACE_FLOOR_Y - ey) / d[1];
   if (t > PLACE_REACH) return null;
@@ -150,7 +242,6 @@ export function placeAim(feet: { x: number; y: number; z: number }, yaw: number,
     const f = footprint(p.kind, p.x, p.z, p.rot);
     if (x > f[0] && x < f[2] && z > f[1] && z < f[3]) return { x: p.x, z: p.z, rot: p.rot };
   }
-  const snap = (v: number, o: number) => o + Math.round((v - o) / GRID) * GRID;
   return { x: snap(x, BASE.x), z: snap(z, BASE.z), rot };
 }
 

@@ -11,7 +11,8 @@
 //   - a smooth, paler crest band (per-vertex `crest` from terrain.ts) where the ripples die out
 //   - large-scale colour variation; slip faces slightly darker and smooth
 //   - shadow/ambient fill pushed towards rust/maroon whatever colour the sky light is
-//   - bare rock (per-vertex `rock` from terrain.ts, shared/rocks.ts): rust sandstone in beds, with dark
+//   - bare rock (per-vertex `rock` from terrain.ts, shared/rocks.ts, shared/canyons.ts): coloured by the rock
+//     column (shared/strata.ts, by height), in beds, with dark
 //     desert-varnish streaks down the faces, bumped by the same noise, and sand settled on its ledges;
 //     no ripples, sheen or glitter there
 //   - mud flats (per-vertex `mud` from terrain.ts, shared/biomes.ts): pale baked clay cracked into polygons at two
@@ -21,6 +22,7 @@
 // Everything is a pure function of world position, camera and light, so it is stable when standing still.
 // Tunables are exported TSL uniforms (`sand.*`): set `.value` at runtime, no recompile needed.
 import * as THREE from 'three/webgpu';
+import { graphics, onGraphics } from '../graphics.ts';
 import {
   abs,
   attribute,
@@ -57,6 +59,7 @@ import {
   sin,
   smoothstep,
   sqrt,
+  texture,
   uniform,
   vec2,
   vec3,
@@ -65,6 +68,31 @@ import {
 import type Node from 'three/src/nodes/core/Node.js';
 import { sandStorm, sunColor, windStrength } from './env.ts';
 import { outsideTerrainHoles } from './base.ts';
+import { STRATA, STRATA_Y0, STRATA_Y1, stratumAt } from '../../shared/strata.ts';
+
+let strataTex: THREE.DataTexture | null = null;
+/** The rock column's colours as a 1D texture over STRATA_Y0..STRATA_Y1, a texel per metre: each formation's colour
+ *  over the column's average (linear, per channel, ÷ STRATA_TINT_MAX), a tint for the game's own rock colour. */
+const STRATA_TINT_MAX = 2.5;
+function strataMap(): THREE.DataTexture {
+  if (strataTex) return strataTex;
+  const lin = (c: number, sh: number) => {
+    const v = ((c >> sh) & 255) / 255;
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const mean = [0, 0, 0];
+  for (const st of STRATA) for (let k = 0; k < 3; k++) mean[k] += lin(st.color, 16 - 8 * k) / STRATA.length;
+  const W = STRATA_Y1 - STRATA_Y0, data = new Uint8Array(W * 4);
+  for (let i = 0; i < W; i++) {
+    const c = stratumAt(STRATA_Y0 + i + 0.5).color;
+    for (let k = 0; k < 3; k++) data[i * 4 + k] = Math.round(Math.min(1, lin(c, 16 - 8 * k) / mean[k] / STRATA_TINT_MAX) * 255);
+    data[i * 4 + 3] = 255;
+  }
+  strataTex = new THREE.DataTexture(data, W, 1);
+  strataTex.magFilter = strataTex.minFilter = THREE.LinearFilter;
+  strataTex.needsUpdate = true;
+  return strataTex;
+}
 
 type F = Node<'float'>;
 type V2 = Node<'vec2'>;
@@ -93,8 +121,15 @@ export const sand = {
   contrast: uniform(1.6),
   offset: uniform(0.2),
   /** Max normal slope of the small and large ripples. */
-  rippleStrength: uniform(0.085),
+  rippleStrength: uniform(0.13),
   megaRippleStrength: uniform(0.03),
+  /** Crest height (m) of the small ripples, for their self-shadowing: at a low sun each crest shadows the steep lee behind it. */
+  rippleHeight: uniform(0.006),
+  /** Footprint (ripple cycles per pixel) over which the small ripples fade out: the Sand detail option (RIPPLE_FADES). */
+  rippleFade: uniform(new THREE.Vector2(0.2, 0.45)),
+  /** How much of their averaged shading unresolved (far) ripples keep, against smooth sand: 1 all of it, 0 none. The full amount read
+   *  darker from afar than the same ripples up close; half looks right. */
+  farRippleShade: uniform(0.5),
   /** Ocean specular and rim strengths. */
   sheen: uniform(0.02),
   rim: uniform(0.18),
@@ -108,14 +143,20 @@ export const sand = {
   rockDark: uniform(new THREE.Color(0.3, 0.12, 0.055)),
   rockLight: uniform(new THREE.Color(0.56, 0.28, 0.13)),
   varnish: uniform(new THREE.Color(0.12, 0.05, 0.03)),
+  /** How strongly the rock column's formations (shared/strata.ts) tint the rock (0 none, 1 their full colours): their
+   *  hue, subtly, and their lightness, more (the darker red middle of a wall, its paler rim). */
+  strata: uniform(0.35),
+  strataShade: uniform(0.8),
   /** Height of one sandstone bed (m). */
   rockBed: uniform(1.4),
   /** Bump depth (m) of the rock's streaks and bed joints. */
-  rockBump: uniform(0.25),
+  rockBump: uniform(0.15),
   /** Mud flat clay: the paler and darker baked crust, and the shadow down in its cracks. */
   mudLight: uniform(new THREE.Color(0.8, 0.67, 0.53)),
   mudDark: uniform(new THREE.Color(0.64, 0.51, 0.39)),
   mudCrack: uniform(new THREE.Color(0.16, 0.1, 0.06)),
+  /** A canyon's dried mud (the per-vertex `silt`): the clay × this, darker and redder with the silt washed off its walls. */
+  silt: uniform(new THREE.Color(0.6, 0.42, 0.33)),
 };
 
 // --- Mud flat cracks ------------------------------------------------------------------------------
@@ -161,6 +202,11 @@ const mudCracks = Fn(([xz, fw, m]: [V2, F, F]) => {
   return out;
 });
 
+/** Sand detail (Options → Graphics): where the small ripples fade out, by footprint (cycles per pixel), Low / Medium / High / Ultra. */
+export const RIPPLE_FADES: [number, number][] = [[0.08, 0.2], [0.15, 0.35], [0.22, 0.5], [0.32, 0.75]];
+sand.rippleFade.value.set(...RIPPLE_FADES[graphics.sandDetail]);
+onGraphics((g, changed) => changed === 'sandDetail' && sand.rippleFade.value.set(...RIPPLE_FADES[g.sandDetail]));
+
 /** The dev test lab's floor (shared/lab.ts): a plain light grey, no ripples, glitter or sheen. */
 export function labFloor() {
   sand.albedoRed.value.set(0.58, 0.58, 0.56);
@@ -191,28 +237,114 @@ function rippleProfile(s: F, a: number): [F, F] {
   return [h, slope];
 }
 
-/** Fade for a periodic pattern whose phase (in cycles) is `s`: 1 when well resolved, 0 near Nyquist. */
+/**
+ * The ripple's slope (normalised like rippleProfile's) averaged over a pixel's footprint `fw` (cycles): the height difference across the
+ * footprint over its width. Exact when the pixel is small, and it goes to 0 by itself once a pixel spans a whole ripple, so the ripples
+ * can be drawn down to a few pixels each without shimmering (a plain slope aliases into moiré and dashes long before that).
+ */
+function filteredSlope(s: F, fw: F, a: number): F {
+  const e = max(fw.mul(0.5), 1e-4);
+  const [hp] = rippleProfile(s.add(e), a);
+  const [hm] = rippleProfile(s.sub(e), a);
+  return hp.sub(hm).div(e.mul(2)).mul((2 * (1 - a)) / PI);
+}
+
+/** Small ripples: wavelength (m) and the share of a cycle the gentle stoss side takes (the crest is at that phase). */
+const RIPPLE_LENGTH = 0.11;
+const RIPPLE_STOSS = 0.66;
+/** Phases the far (unresolved) ripple shadow is averaged over. */
+const MEAN_PHASES = 8;
+
+/**
+ * Sunlight left on the small ripples (0..1), from their own profile: walking from the point towards the sun along the ripple axis,
+ * the first crest is `toCrest` away and `gap` higher; the point is shadowed when the sun ray rises less than that over the distance.
+ * Exact for this profile, no marching. Unresolved (far) it becomes the share of a ripple left lit on average, so ripple fields still
+ * darken and streak at a low sun far away. Where there are no ripples (rock, slip faces, crests) it is 1.
+ */
+/**
+ * The sand's diffuse light averaged over one small-ripple cycle (eight phases), each phase with its own ripple normal and its own ripple
+ * shadow: what a pixel spanning many ripples should show. The diffuse response (a hard terminator) is far from linear, so lighting the
+ * averaged, flat normal instead came out darker than the ripples it stands for at a low sun, by how deep they were and how their crests
+ * faced the sun: patches far away that faded as you came closer.
+ */
+function rippleMeanDiffuse(s: SandSurface, l: V3): F {
+  const lAlong = dot(l.xz, s.rippleDir);
+  const up = max(dot(l, s.n0), 1e-3);
+  const tanE = up.div(max(abs(lAlong), 1e-3));
+  const height = sand.rippleHeight.mul(s.rippleAmp);
+  const toSun = lAlong.greaterThan(0);
+  const crisp = sand.rippleHeight.mul(0.12);
+  const dir3 = vec3(s.rippleDir.x, 0, s.rippleDir.y);
+  const scale = sand.rippleStrength.mul(s.rippleAmp);
+  let sum: F = float(0);
+  for (let k = 0; k < MEAN_PHASES; k++) {
+    const f = float((k + 0.5) / MEAN_PHASES);
+    const [h, slope] = rippleProfile(f, RIPPLE_STOSS);
+    const toCrest = select(toSun, fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
+    const lit = smoothstep(crisp.negate(), crisp, toCrest.mul(tanE).sub(height.mul(float(1).sub(h))).add(crisp));
+    const nk = normalize(s.nBase.sub(dir3.mul(slope.mul(scale))));
+    sum = sum.add(saturate(dot(nk, l).mul(sand.contrast).add(sand.offset)).mul(lit)) as F;
+  }
+  const smooth = saturate(dot(s.nBase, l).mul(sand.contrast).add(sand.offset));
+  return mix(smooth, sum.div(MEAN_PHASES), sand.farRippleShade);
+}
+
+function rippleSun(s: SandSurface, l: V3): F {
+  const lAlong = dot(l.xz, s.rippleDir);
+  const up = max(dot(l, s.n0), 1e-3);
+  const tanE = up.div(max(abs(lAlong), 1e-3)); // the sun's rise per metre along the ripple axis
+  const height = sand.rippleHeight.mul(s.rippleAmp);
+  const toSun = lAlong.greaterThan(0);
+  // lit (0..1) at phase `f` (0..1 in the cycle) with an edge `pen` wide
+  const litAt = (f: F, pen: F): F => {
+    const [h] = rippleProfile(f, RIPPLE_STOSS);
+    const toCrest = select(toSun, fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
+    const gap = height.mul(float(1).sub(h));
+    // (+ pen: on the crest itself toCrest and gap are both 0; without it the crest drew a thin half-shadowed line)
+    return smoothstep(pen.negate(), pen, toCrest.mul(tanE).sub(gap).add(pen));
+  };
+  const crisp = sand.rippleHeight.mul(0.12);
+  // the edge widens with the pixel's footprint (in height along the sun ray), so far shadows soften instead of breaking into dashes
+  const foot = fwidth(s.ripplePhase).mul(RIPPLE_LENGTH);
+  const sharp = litAt(fract(s.ripplePhase), max(crisp, foot.mul(tanE.add(height.mul(6 / RIPPLE_LENGTH))).mul(0.5)));
+  // Unresolved, the same test averaged over the cycle (eight phases), so the far look is exactly what the near one averages to: an
+  // estimate here darkened far ripple fields into blotches that faded as you walked up to them.
+  let sum: F = float(0);
+  for (let k = 0; k < MEAN_PHASES; k++) sum = sum.add(litAt(float((k + 0.5) / MEAN_PHASES), crisp)) as F;
+  const mean = sum.div(MEAN_PHASES);
+  return float(1).sub(s.rippleField.mul(float(1).sub(mix(mean, sharp, s.rippleRes))));
+}
+
+/** Fade for a periodic pattern whose phase (in cycles) is `s`: 1 when well resolved, 0 near Nyquist. Where it starts and ends (cycles
+ *  per pixel) is the Sand detail option (`sand.rippleFade`): the ripples are filtered (filteredSlope), so it can go late. */
 function footprintFade(s: F): F {
-  return float(1).sub(smoothstep(0.04, 0.16, fwidth(s)));
+  return float(1).sub(smoothstep(sand.rippleFade.x, sand.rippleFade.y, fwidth(s)));
 }
 
 // --- Glitter ---------------------------------------------------------------------------------------
 
 /** One scale of hashed mirror flakes in world-space cells of 1/D metres. */
-function glitterLayer(p: V3, n: V3, h: V3, D: number, density: number, spread: number, eps: number, seed: number): F {
+function glitterLayer(p: V3, n: V3, h: V3, mask: F, D: number, density: number, spread: number, eps: number, seed: number): F {
   const q = p.mul(D);
-  const cell = floor(q).add(seed);
-  const rPos = mx_cell_noise_vec3(cell);
-  const rNrm = mx_cell_noise_vec3(cell.add(vec3(17, 59, 113)));
-  const rAlive = mx_cell_noise_float(cell.add(vec3(71, 7, 31)));
-  // A round flake somewhere inside the cell (the surface slices it, so apparent sizes vary).
-  const shape = smoothstep(0.3, 0.08, length(fract(q).sub(rPos.mul(0.5).add(0.25))));
-  const gn = normalize(n.add(rNrm.mul(2).sub(1).mul(spread)));
-  const hit = smoothstep(1 - eps, 1, dot(gn, h));
-  const alive = smoothstep(1 - density, 1 - density + 0.02, rAlive);
-  // Cells smaller than ~a pixel turn into noise: fade them out.
-  const lod = float(1).sub(smoothstep(0.35, 0.9, length(fwidth(q))));
-  return hit.mul(shape).mul(alive).mul(lod);
+  return Fn(() => {
+    // Evaluate derivatives before branching. Most ground pixels have already faded to zero;
+    // hashing their invisible flakes still costs seven random values per layer.
+    const weight = float(1).sub(smoothstep(0.35, 0.9, length(fwidth(q)))).mul(mask).toVar();
+    const glitter = float(0).toVar();
+    If(weight.greaterThan(0), () => {
+      const cell = floor(q).add(seed);
+      const rPos = mx_cell_noise_vec3(cell);
+      const rNrm = mx_cell_noise_vec3(cell.add(vec3(17, 59, 113)));
+      const rAlive = mx_cell_noise_float(cell.add(vec3(71, 7, 31)));
+      // A round flake somewhere inside the cell (the surface slices it, so apparent sizes vary).
+      const shape = smoothstep(0.3, 0.08, length(fract(q).sub(rPos.mul(0.5).add(0.25))));
+      const gn = normalize(n.add(rNrm.mul(2).sub(1).mul(spread)));
+      const hit = smoothstep(1 - eps, 1, dot(gn, h));
+      const alive = smoothstep(1 - density, 1 - density + 0.02, rAlive);
+      glitter.assign(hit.mul(shape).mul(alive).mul(weight));
+    });
+    return glitter;
+  })();
 }
 
 // --- Material --------------------------------------------------------------------------------------
@@ -231,6 +363,12 @@ interface SandSurface {
   dust: F; // 0..1 dust in the air (wind + storm): dulls glitter and sheen
   rippleVis: F; // how resolved the small ripples are here (0 far away / masked)
   dist: F;
+  ripplePhase: F; // small ripples: phase in cycles along the wind
+  rippleDir: V2; // the direction the phase grows in (the wind, bent with the crests)
+  rippleField: F; // 0..1: whether there are small ripples here (not on rock, slip faces, crests)
+  rippleAmp: F; // their depth here, 0..~1.3 of sand.rippleHeight
+  nBase: V3; // the sand's normal without the small ripples
+  rippleRes: F; // 0..1: how well the small ripples are resolved by the pixel
 }
 
 function buildSurface(): SandSurface {
@@ -250,8 +388,15 @@ function buildSurface(): SandSurface {
   // Crest band: the brink and the few metres behind it are wind-scoured smooth, no ripples.
   const crest = attribute('crest', 'float') as F;
   const crestBand = smoothstep(0.35, 0.85, crest);
-  const rock = attribute('rock', 'float') as F;
+  // Bare rock: the per-vertex fade (over a metre or so of sand, src/world/terrain.ts) cut by noise into a ragged
+  // edge of sand drifted against the rock, instead of the mesh grid's staircase.
+  const rockFade = attribute('rock', 'float') as F;
+  // (The noise acts only within the fade: bare rock stays rock, buried rock sand.)
+  const edgeNoise = mx_noise_float(vec3(p.x.mul(0.45), p.y.mul(0.2), p.z.mul(0.45))).mul(0.5)
+    .add(mx_noise_float(vec3(p.x.mul(1.7), 0, p.z.mul(1.7))).mul(0.18));
+  const rock = smoothstep(0.3, 0.7, rockFade.add(edgeNoise.mul(rockFade.mul(float(1).sub(rockFade)).mul(4)))) as F;
   const mud = attribute('mud', 'float') as F;
+  const silt = attribute('silt', 'float') as F;
 
   const rippleMask = flatEnough.mul(float(1).sub(slip)).mul(float(1).sub(crestBand)).mul(float(1).sub(rock)).mul(float(1).sub(mud));
 
@@ -260,39 +405,54 @@ function buildSurface(): SandSurface {
   // metres, so it is linear across a pixel quad) instead of two more warp evaluations, which cost four
   // noise calls per pixel and were the bulk of the sand shader.
   const w0 = mx_noise_float(xz.mul(0.07)).mul(3.2).add(mx_noise_float(xz.mul(0.31).add(19.1)).mul(0.55));
+  const along = dot(xz, wind);
+  const across = dot(xz, perp);
+  // The small ripples bend at a shorter scale too (crests wiggle every few tens of cm), and their phase slips along the crest
+  // (a warp stretched across the wind): neighbouring crests drift apart and together, look as if they split and merge, and the
+  // spacing varies, as on real sand.
+  const wS = w0
+    .add(mx_noise_float(xz.mul(1.4).add(41.3)).mul(0.035))
+    .add(mx_noise_float(vec2(across.mul(1.6), along.mul(0.45)).add(8.9)).mul(0.1));
   const px = dFdx(xz);
   const py = dFdy(xz);
-  const wx = dFdx(w0);
-  const wy = dFdy(w0);
+  const wx = dFdx(wS);
+  const wy = dFdy(wS);
   // Solve [px; py]·∇w = [wx; wy] for the world-space gradient; edge-on (det ≈ 0) falls back to flat.
   const det = px.x.mul(py.y).sub(px.y.mul(py.x));
   const safe = select(abs(det).greaterThan(1e-10), det, float(1e10));
   const wdx = wx.mul(py.y).sub(wy.mul(px.y)).div(safe).clamp(-1, 1);
   const wdz = px.x.mul(wy).sub(py.x.mul(wx)).div(safe).clamp(-1, 1);
-  const along = dot(xz, wind);
-  const across = dot(xz, perp);
   const dir = normalize(vec2(wind.x.add(wdx), wind.y.add(wdz)));
 
   // Small ripples (~10 cm) and faint megaripples (~0.9 m, warped differently).
-  const s1 = along.add(w0).div(0.11);
-  const [h1, d1] = rippleProfile(s1, 0.66);
+  const s1 = along.add(wS).div(RIPPLE_LENGTH);
+  const [h1] = rippleProfile(s1, RIPPLE_STOSS);
+  const d1 = filteredSlope(s1, fwidth(s1), RIPPLE_STOSS);
   const s2 = along.add(w0.mul(1.6)).add(mx_noise_float(vec2(across.mul(0.05), along.mul(0.02))).mul(2.5)).div(0.9);
   const [, d2] = rippleProfile(s2, 0.68);
   // Crest strength varies, so ripple fields fade in and out instead of tiling the whole dune.
   const vary = saturate(mx_noise_float(xz.mul(0.12).add(5.3)).mul(0.9).add(0.65))
     .mul(mx_noise_float(xz.mul(0.9).add(2.1)).mul(0.25).add(0.85));
-  const f1 = footprintFade(s1).mul(rippleMask).mul(vary);
+  // Depth varies: deeper and shallower stretches over a metre or two, and crests that die out along their length.
+  const depth = mx_noise_float(xz.mul(0.7).add(13.1)).mul(0.45).add(1).clamp(0.6, 1.35)
+    .mul(smoothstep(-0.85, -0.1, mx_noise_float(vec2(across.mul(1.9), along.mul(0.5)).add(3.7))).mul(0.6).add(0.4));
+  const amp = vary.mul(depth);
+  const f1 = footprintFade(s1).mul(rippleMask).mul(amp);
   const f2 = footprintFade(s2).mul(rippleMask);
   const slope = d1.mul(sand.rippleStrength).mul(f1).add(d2.mul(sand.megaRippleStrength).mul(f2));
   // The sheen uses a higher power, so it aliases sooner: its ripples fade out earlier (f^2).
   const slopeSpec = d1.mul(sand.rippleStrength).mul(1.4).mul(f1).mul(f1).add(d2.mul(sand.megaRippleStrength).mul(f2).mul(f2));
   // Heightfield y = h(x,z) has normal (-hx, 1, -hz); apply the ripple gradient on top of the dune normal.
   const nSand = normalize(n0.sub(vec3(dir.x, 0, dir.y).mul(slope)));
+  // without the small ripples (for averaging their light over a cycle where they are under a pixel)
+  const nBase = normalize(n0.sub(vec3(dir.x, 0, dir.y).mul(d2.mul(sand.megaRippleStrength).mul(f2))));
   const nSpec = normalize(n0.sub(vec3(dir.x, 0, dir.y).mul(slopeSpec)));
 
   // Rock: one noise, stretched vertically, gives both the varnish streaks and (as a bump) the flutes
   // that weathering cuts down the faces; it also wobbles the beds so they don't read as ruled lines.
-  const streak = mx_noise_float(vec3(p.x.mul(0.45), p.y.mul(0.09), p.z.mul(0.45)));
+  // (Warped, so on a big wall the flutes wander and vary in width instead of standing in a regular comb.)
+  const sw = mx_noise_float(vec3(p.x.mul(0.06), p.y.mul(0.03), p.z.mul(0.06))).mul(3);
+  const streak = mx_noise_float(vec3(p.x.mul(0.45).add(sw), p.y.mul(0.09), p.z.mul(0.45).sub(sw)));
   const bedPos = p.y.div(sand.rockBed).add(streak.mul(0.45));
   const bed = fract(bedPos);
   const joint = smoothstep(0.14, 0.0, bed).add(smoothstep(0.88, 1.0, bed)); // groove between beds
@@ -305,7 +465,8 @@ function buildSurface(): SandSurface {
   const bdet = dot(dpx, r1);
   const bumped = (h: F, fade: F) => normalize(abs(bdet).mul(n0).sub(r1.mul(dFdx(h)).add(r2.mul(dFdy(h))).mul(sign(bdet)).mul(fade)));
   const footprint = length(fwidth(p));
-  const nRock = bumped(bump, float(1).sub(smoothstep(0.15, 0.6, footprint)));
+  // (Faded out early: from afar the vertical flutes on a big wall read as a comb.)
+  const nRock = bumped(bump, float(1).sub(smoothstep(0.06, 0.25, footprint)));
 
   // Mud flat: cracks and curled plates (bumped the same way, faded sooner: they are finer).
   const mudFx = mudCracks(xz, footprint, mud) as V2;
@@ -319,7 +480,14 @@ function buildSurface(): SandSurface {
   const gq2 = p.mul(24);
   const grainFade2 = float(1).sub(smoothstep(0.3, 0.8, length(fwidth(gq2))));
   // Smooth value noise rather than cell noise: cell noise reads as square pixels up close.
-  const grain = mx_noise_float(gq2.add(7.1)).mul(0.16).mul(grainFade2).add(1);
+  const grain = Fn(() => {
+    const fade = grainFade2.toVar(); // derivative must be evaluated outside the branch
+    const g = float(1).toVar();
+    If(fade.greaterThan(0), () => {
+      g.addAssign(mx_noise_float(gq2.add(7.1)).mul(0.16).mul(fade));
+    });
+    return g;
+  })();
   const albedo = mix(sand.albedoRed, sand.albedoGold, patch)
     .mul(grain)
     .mul(float(1).sub(slip.mul(0.12)))
@@ -327,20 +495,32 @@ function buildSurface(): SandSurface {
     .mul(float(1).add(crestBand.mul(0.06))); // fine, sorted sand on the crest is a touch paler
   const dust = windStrength.mul(0.35).add(sandStorm.mul(0.65)).min(1);
 
+  // The rock column (shared/strata.ts): the formation at this height tints the rust sandstone, a little paler, redder
+  // or greyer (subtly: the game's rock stays the game's rock), the same table that makes its cliffs and slopes, so the
+  // bands sit on the ledges. Its contacts wander a metre or two over the land, so they don't read as ruled contour
+  // lines. The bed joints show on the faces only: on gentle slopes they drew wavy contour stripes.
+  const sY = p.y.add(mx_noise_float(vec3(p.x.mul(0.004), 0, p.z.mul(0.004))).mul(1.5));
+  const tint = texture(strataMap(), vec2(sY.sub(STRATA_Y0).div(STRATA_Y1 - STRATA_Y0), 0.5)).rgb.mul(STRATA_TINT_MAX);
+  const strataLum = dot(tint, vec3(0.2126, 0.7152, 0.0722)).max(0.05);
   const rockAlbedo = mix(c3(sand.rockDark), c3(sand.rockLight), layer.mul(0.65).add(streak.mul(0.2)).add(0.25).clamp(0, 1))
-    .mul(float(1).sub(joint.mul(0.18)))
+    .mul(mix(vec3(1), tint.div(strataLum), sand.strata).mul(mix(float(1), strataLum, sand.strataShade)))
+    .mul(float(1).sub(joint.mul(face).mul(0.18)))
     .mul(grain);
   const varnished = mix(rockAlbedo, c3(sand.varnish), smoothstep(0.05, 0.6, streak).mul(face).mul(0.55));
-  // Wind-blown sand settles on ledges and flat tops.
-  const dusted = mix(varnished, albedo, smoothstep(0.86, 0.97, n0.y).mul(0.7));
+  // Wind-blown sand settles on ledges and flat tops (a dusting: the rock's colour, its layer, still shows through).
+  const dusted = mix(varnished, albedo, smoothstep(0.93, 0.995, n0.y).mul(0.3));
 
   // Baked clay, blotchy over metres, darker down the cracks.
   const mudAlbedo = mix(c3(sand.mudDark), c3(sand.mudLight), saturate(patch.mul(0.7).add(mx_noise_float(xz.mul(0.4).add(3.3)).mul(0.35)).add(0.15)))
     .mul(grain.sub(1).mul(0.5).add(1))
-    .mul(float(1).sub(mudFx.x));
+    .mul(float(1).sub(mudFx.x))
+    .mul(mix(vec3(1), c3(sand.silt), silt));
   const ground = mix(albedo, mudAlbedo.add(c3(sand.mudCrack).mul(mudFx.x)), mud);
 
-  return { p, n0, n, nSpec, v, albedo: mix(ground, dusted, rock), slip, rock, mud, dust, dist, rippleVis: f1 };
+  return {
+    p, n0, n, nSpec, v, albedo: mix(ground, dusted, rock), slip, rock, mud, dust, dist, rippleVis: f1,
+    ripplePhase: s1, rippleDir: dir, rippleField: rippleMask, rippleAmp: amp, rippleRes: footprintFade(s1), nBase,
+  };
 }
 
 class SandLightingModel extends THREE.LightingModel {
@@ -369,7 +549,13 @@ class SandLightingModel extends THREE.LightingModel {
     const tON = select(sON.greaterThan(0), max(max(saturate(ndl), ndv), 1e-3), float(1));
     // s/t blows up at grazing views (t -> 0); clamp it, since I is not multiplied by N·L here.
     const on = float(0.75).add(sON.div(tON).clamp(-1, 1.2).mul(0.3));
-    const I = saturate(ndl.mul(sand.contrast).add(sand.offset)).mul(on);
+    // the ripples' own shadows (the sun ray grazes over one crest onto the lee of the next)
+    const ripSun = rippleSun(this.s, l);
+    // Resolved ripples are lit pixel by pixel; unresolved, by their light averaged over a cycle (rippleMeanDiffuse), so the sand looks the
+    // same from near and far. (Off the ripples, rock, slip faces, crests: just the pixel.)
+    const nearI = saturate(ndl.mul(sand.contrast).add(sand.offset)).mul(ripSun);
+    const farI = rippleMeanDiffuse(this.s, l);
+    const I = mix(nearI, farI, this.s.rippleField.mul(float(1).sub(this.s.rippleRes))).mul(on);
     directDiffuse.addAssign(lightColor.mul(albedo).mul(I).mul(1 / PI));
 
     // Ocean specular on the rippled normal (reads when looking towards the sun), boosted at grazing.
@@ -391,17 +577,17 @@ class SandLightingModel extends THREE.LightingModel {
     const near = float(1).sub(smoothstep(6, 25, dist));
     // Anisotropic masking (Journey): at grazing views a flake's footprint smears into a horizontal streak.
     const facing = smoothstep(0.12, 0.35, dot(n0, v));
-    const g = glitterLayer(p, n0, h, 55, 0.1, 0.75, 0.008, 0)
-      .add(glitterLayer(p, n0, h, 18, 0.06, 0.6, 0.005, 101).mul(0.3))
-      .mul(lit)
+    const glitterMask = lit
       .mul(near)
       .mul(facing)
       .mul(float(1).sub(slip.mul(0.7)))
       .mul(bare)
       .mul(float(1).sub(dust.mul(0.7)))
       .mul(sand.glitter);
+    const g = glitterLayer(p, n0, h, glitterMask, 55, 0.1, 0.75, 0.008, 0)
+      .add(glitterLayer(p, n0, h, glitterMask, 18, 0.06, 0.6, 0.005, 101).mul(0.3));
 
-    directSpecular.addAssign(lightColor.mul(spec.add(c3(sand.glitterTint).mul(g))));
+    directSpecular.addAssign(lightColor.mul(spec.add(c3(sand.glitterTint).mul(g)).mul(ripSun)));
   }
 
   indirect(builder: THREE.NodeBuilder) {

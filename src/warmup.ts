@@ -20,6 +20,7 @@ export class Warmup {
   private started = false;
   private done = false;
   private batch = 1;
+  private total = 0;
 
   private roots: THREE.Object3D[];
   private render: () => void;
@@ -94,6 +95,11 @@ export class Warmup {
     return false;
   }
 
+  /** How much of it is built, 0..1 (for the loading bar). */
+  get progress(): number {
+    return this.done ? 1 : this.total ? 1 - this.queue.length / this.total : 0;
+  }
+
   /** Put everything back as it was (also if the loading screen gives up waiting). */
   finish(): boolean {
     if (this.started && !this.done) for (const e of this.every) {
@@ -128,6 +134,7 @@ export class Warmup {
       });
     }
     this.queue = [...seen.values()];
+    this.total = this.queue.length;
     this.every = [...all].map((o) => ({ o, visible: o.visible, culled: o.frustumCulled }));
   }
 }

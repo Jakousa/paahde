@@ -2,6 +2,44 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-21 — Canyon echoes and the canyon's moan
+
+- Echoes off the walls round you (`src/echo.ts`): 16 level rays round the camera, one a frame, march the heightfield to
+  1.1 km and keep each direction's wall (where the ground stands up, how much sky it fills, rock or sand). A sound's
+  echoes are taps late by the detour via each wall, from its direction, merged when closer than 30 ms, with flutter
+  between walls facing each other within 260 m; all together at most 30% of the direct sound's energy. None indoors.
+- `src/acoustics.ts`: every `placed` sound gets its echoes and a send into a second, longer (4.5 s) canyon reverb by
+  `enclosure` (how much of the sky round you is rock wall); `reflect` does the same for footsteps and bike landings;
+  `echoBus` is for lasting sounds (the bike's engine, the sand slide, the wind): 4 delay lines following the walls.
+- The wind moans between walls (`src/windSound.ts`): three low hollow voices that swell slowly and slide with the wind.
+- Dev helper `?spawn=canyon`: on the floor of the nearest deep canyon (`canyonFloorNear`, shared/canyons.ts).
+
+## 2026-10-21 — Canyons, the rock column, biomes as one concept
+
+- Canyons (`shared/canyons.ts`): Grand Canyon-scale gorges, 8–14 km long, 220–400 m under the dune floor, cut through a
+  sandstone tableland 25–65 m over it, with 1–3 side canyons. One system per 6 km cell (80%), none within ~1 km of the
+  origin (so of the base). Along a canyon, wide reaches (terraced walls leaning up to 1.7× their height, ~1.5 km rim to
+  rim, buttes standing in them) alternate with narrower, steeper ones whose floor pinches to 15 m; both ends climb out to
+  the desert. On the floor: sand, patches of dried cracked mud (redder than the mud flats': per-vertex `silt`), and
+  pillars, small buttes and boulders made like the desert's rocks (`canyonRockHeight` in shared/rocks.ts). Walls meet the
+  floor in a talus apron, the rims are rounded and blown bare of sand, the tableland carries soft drifts of sand sheet.
+- Part of `baseHeight`: `ground()` in shared/terrain.ts layers sand and rock (dunes, rocks, the tableland, the gorge's cut,
+  its floor rocks); `rockTop` is the rock layer (rock shading, the worm). So they collide, shade and dig like the rest.
+- The rock column (`shared/strata.ts`): Grand Canyon-like formations at fixed heights, each a colour and a hardness. The
+  canyons' walls take their profile from it (`wallY`: cliffs where the hard rock is, slopes and benches in the soft, never
+  steeper than ~5:1), and the rock shader a subtle tint by height from the same table, so the bands sit on the ledges.
+  Mesas show the same layers.
+- Biomes are one concept (`shared/biomes.ts`): each an entry in `BIOMES`, in order of precedence, with its placement and its
+  properties (`groundHeat`, `haze`, `empty`); read with `biome(id, x, z)`, `biomeAt`, `blend`. Canyons come first, so the mud
+  flats keep out of them. Nothing is placed in a canyon (`empty`, via `rocksNear`); the haze is thinner in one.
+- Terrain mesh: each cell is split along the diagonal that follows the slope (no sawtooth on steep edges); skirts deepen
+  with a chunk's height range; the rock/sand edge fades over 1.5 m and is broken up with noise in the shader.
+- Jets cruise over the land round them, not a canyon's floor; drones look further ahead and never dip under the ground.
+- Every world's layout changed where a canyon now runs (mud flats, scrap, crash sites, shelters re-place out of it). Known
+  gaps: finds already saved in an old world's DB can sit on a canyon wall; falling into one only gives a hard landing;
+  poison gas lies relative to the dune floor, so it fills canyon floors; the shade march reaches 180 m, short of a wide
+  reach's walls.
+
 ## 2026-10-19 — Steps and parts left, scrapping the frame, Options tabs
 
 - Near a machine (the table's, a field machine being worked, or a small one you could carry) a small pill at the top of the screen
@@ -1076,8 +1114,9 @@ Goal of this session: *I can roam around the desert planet with my friends in th
 
 - **First person.** Eye height 1.65 m, pointer-lock mouse look, head bob, landing dip, strafe roll, FOV
   kick when sprinting (`src/camera.ts`). **T** toggles a third-person view (remembered per browser): the
-  camera backs 4.5 m off along the view ray, so the crosshair still aims where digging and pickup go, and
-  the boom shortens rather than going under a dune.
+  camera sits over the right shoulder (3 m back, 0.55 m right; it used to be straight back 4.5 m, and over the
+  shoulder only with a gun), turned in so the crosshair (now shown in third person too) crosses the dig/pickup
+  ray 3 m ahead, about the pickups' reach; the boom shortens rather than going under a dune.
 - **Movement on sand** (`shared/sim.ts`, deterministic):
   - Slower uphill (about half speed on steep ground), a bit faster downhill.
   - You slide down slopes steeper than 30° and can't climb them.
@@ -1553,8 +1592,10 @@ drawn by `src/world/shelters.ts`).
   sidearm), omitted when all Scrap. Gear slots in the Tab inventory get the tier's rarity colour too.
 - **Shield plate** (`shield`, new `armor` equipment slot, found at crawler sites and in caches): a torch-cut shard of
   ship hull on canvas padding with a copper-coil emitter and a cell (tools/blender/finds.py `build_shield`, worn on the
-  chest from Spine2, lies on its back as a find). A killing blow that isn't heatstroke (`die` → `shielded`) breaks it
-  instead: the cell burns out and the plate cracks (`SHIELD_BREAKS`: those slots empty, repair at the workbench), a
+  chest from Spine2, lies on its back as a find). A killing blow that isn't heatstroke (`die` → `shielded`) is taken by
+  it instead; it takes `shieldSaves` of them (its tier + 1: 1 Scrap .. 4 Space-grade; `Item.worn` counts them, kept in
+  the DB and on the sand, and starts over when it breaks; `held` in `shieldBreak` until then: field and ring, no shards
+  or crack), and its last one breaks it: the cell burns out and the plate cracks (`SHIELD_BREAKS`: those slots empty, repair at the workbench), a
   crawler's bites come back off the heat meter, and nothing hurts you for `shieldGraceMs` (1.5 s Scrap .. 5 s
   Space-grade). Everyone near gets `shieldBreak`: the emitter's field flashes round you in the lens's tier colour and
   hangs on for the grace, flickering out at the end, hull shards fly, a crack, a glassy ring and a thump (−24.7 LUFS,
@@ -1719,3 +1760,186 @@ The first harvester read as a tank with a turret; it's now a pure juggernaut, an
   behind the throat). The maw is lower (the hood's underside at 9.6 m, was 11.2) and 3 m deeper (the throat wall at
   z 18.2), ribbed inside; the drum sits lower so its teeth bite just under the sand; the cores moved down and back
   with the throat (y 6.8, z 19.3) and are still in plain view from in front.
+
+## Poison gas (night weather)
+
+A third kind of weather, only at night (to balance the daytime heat): a heavy yellow-green pollution cloud creeping in
+low over the land (`shared/gas.ts`, scheduled by `server/storm.ts`, client `src/gas.ts`, drawn in `src/post.ts`).
+
+- **Coming:** like a storm front it appears 30 s from the nearest player (`GAS_LEAD_S`), here from a random side, and
+  creeps at 9 m/s (`GAS_SPEED`: faster than walking, slower than a slide or a bike). It is 990 m deep (110 s over a
+  spot that stays put) and sinks away 20 s after its back has passed the furthest player.
+- **Height:** behind its leading edge it rises from the ground over 25 s (`GAS_RISE_S`) to 7 m (`GAS_DEPTH`) over the
+  dune floor: the corridors between dunes (`duneFloor`, shared/dunes.ts: the erg undulation and the mud flats' sink,
+  under every crest). Small dunes (≤ 3.5 m) are under it; big dunes, rocks and cliffs stand out of it. Out to ±2 km 27%
+  of random spots are already above it and 95% are within 120 m of ground that is (median 20 m); out on the mud flats ~7%
+  are over 250 m from any, so the flats are where it kills.
+- **Bunkers are traps:** in the base or a shelter it has seeped in as soon as it lies outside a metre deep
+  (`gasExposure`), and the post pass fills the rooms.
+- **Choking:** with your head in it you choke (`GAS_S` = 10 s kills, wears off at half that rate; the server's
+  `gassed` tally, server/world.ts, death `'gas'`, "choked on the poison gas"; the shield plate doesn't help, the body
+  just slumps). The client mirrors the tally: the whole view dims, a dark sick green closes in from the edges, black
+  at death (`gassed`, post.ts). After a respawn the gas doesn't count for 25 s (`GAS_GRACE_S`). Without it, a player
+  respawning in a gassed base would die over and over and use up the world's lives.
+- **Not a storm:** it doesn't touch electronics (tools work, no static), doesn't push, doesn't seize machines or
+  ground drones, and the storm detector doesn't hear it. You see it (a green band under the rocks on the horizon, a
+  green sea in the hollows from a crest), hear a low breathing hiss as it nears (filtered noise, about −31.5 LUFS at
+  full volume, measured with ffmpeg ebur128 on the same chain), and the character speaks when it's under 20 s away
+  (worded for being in a bunker) and when choking.
+- **Look:** marched like the front's slab (8 steps) but bounded above by its surface: the floor as a plane through the
+  floor under the camera (`gasEnv`, the erg varies over ~1.6 km so this is good to a few metres at 300 m), plus its
+  depth along its path, billowed by slow noise. ~30 m to see inside it (`GAS_THICK`), with a faint glow of its own so
+  it reads at night.
+- **Balance** (server/storm.ts): gas every 60–110 min (the first 25–110 min in), and only when at least 5 real minutes
+  of night are left; if it's due by day it waits for the next night. That's about one night in three or four. Fronts
+  and gas keep 20 min clear of each other's end (`BIG_GAP_MS`), neither comes while a boss is out (retries in 3 min),
+  and no sandstorm column starts while either is out.
+- **Debug:** F3 → *Poison gas* creeps one in over everyone at once, by day too. `?debug` exposes `dbg.gas` and `dbg.fly`
+  (the fly camera: `dbg.fly.pos.set(...)` to look at it from outside).
+- **Lower, sleeker, four cores:** the hull is 14.5 m high (was 19), its flanks raked in more, and its back runs down
+  in one long wedge from z 4 to the hood's lip. The maw is lower (the hood's underside at 7.8 m) and deeper (the throat
+  at z 16.6, the lip out at z 28.6); the axles moved in (WHEELBASE 18) to clear it, and the drum is a little smaller
+  and lower so the cores show over it. Four cores now (x ±3, ±9, y 5.6), still CORE_HP hits each.
+
+## Buildings: the windmill and the battery station
+
+- **Buildings are gear that you put down** (`shared/gear.ts` `built: true`, `isBuilding`): part slots, `quality()`
+  and the tier look like any repaired gear, but crafted, never found (kept out of caches). The **windmill** has six
+  bearing and two coil slots, the **battery station** six battery and two coil slots. Recipes (`shared/tables.ts`):
+  windmill 6 bearings + 2 coils + 20 scrap, battery station 6 batteries + 2 coils + 14 scrap. A crafted building comes
+  with the very parts that went into it fitted (`shared/crafting.ts`; the worst tier is still used first), so it is as
+  good as what you made it from; the scrap is its frame and has no slot.
+- **Placed with the placeables system** (`shared/placed.ts`): `Placed` now has `y` (what it stands on) and a
+  building's `parts`. The battery station goes on the bunker floor like the plant bed. The windmill is a `sand` kind:
+  the aim marches the ray over the terrain, it goes up within `OUTDOOR_RANGE` (75 m) of the base, off the bunker, mast
+  and trophy ground (`overBase`/`insideBase`), on ground that rises at most 0.7 m across its footprint, and stands on
+  the lowest corner. Its legs collide anywhere (`collideOutdoor` in `shared/base.ts`, called in `step()`), and the
+  sand under it can't be dug or cratered (`overPlaced`, checked in `TerrainEdits.setMm`). `placed.y` is a new column.
+- **Swapping parts where it stands:** while a building stands, its item (with its parts) lives in a shared box of one
+  slot, `bld<placed id>` (`buildingBox`), open within reach of it (`shared/storage.ts`). F on a building opens the
+  inventory with its panel, laid out like the workbench's (`src/inventory.ts`: part slots are the pseudo-box
+  `part:<box>`, the bench's being `part:bench`); drag or shift-click parts in and out. `fitPart`/`unfitPart` take the
+  target box (`at`, also on the `fit`/`unfit` messages); the item itself never moves in or out of its box (`tryMove`),
+  can't be dropped or sorted. After a swap the server refreshes the building's `parts` in the placed list
+  (`PlacedServer.refresh`). G picks it up with its parts as they are now.
+- **Look** (`src/world/placed.ts`, `tools/blender/placeables.py`): a farm windmill of scrap: a splayed lattice tower
+  of mismatched tube on concrete footings, a ladder, the cable spiralling down a leg to a junction box; the head
+  (`windmill_head`, generator drum, tail vane of patched sheet) turns into the wind (`WIND`) and the twelve-blade rotor
+  (`windmill_rotor`) spins at `windmillSpin(quality)` (faster in a storm), still while a part is missing. The battery
+  station: a plank skid and an angle-iron rack of six odd cells (`battery_station_cell0..5`, each shown only while its
+  slot holds a battery, each in its own part's tier), bus cables, a charger box with its two coils and a gauge. Indoor
+  things keep the bunker's lights through the tier look (`src/tierLook.ts` copies `lightsNode`).
+- Gaps: the power does nothing yet (no consumer: `windmillSpin` is the only effect of quality); no sounds; the
+  head's turn and the rotor are per-client, not synced.
+
+## Gamepad
+
+A standard-mapped pad plays with the usual third-person shooter layout (`src/gamepad.ts`, the table at its top):
+left stick moves, right stick looks, RT fires/uses, LT aims, A jumps, B crouches, X interacts, Y gets on the bike,
+LB/RB step through the hotbar (filled slots and empty hands), L3 sprints (stays on until the stick lets go), R3
+third person, the d-pad zooms the scope (↑/↓), rotates (←) and picks up placed things (→), View is the inventory and
+Menu the Esc menu. The pad doesn't reach into the game: each frame it works out which actions it holds and sends
+synthetic keydown/keyup events with those actions' bound codes (src/bindings.ts), so every `isBound`/`actionHeld`
+reader works unchanged and follows rebinding. The look is its own: `FirstPersonCamera.look` (shared with the mouse;
+squared response, slower while aiming, a boost held at the edge) and `addMouse` for the disassembly's gestures.
+In the inventory and the workbench menu the pad works a drawn cursor (`src/padCursor.ts`): left stick moves it, the
+d-pad steps it to the middle of the next slot, cell or button, A presses and releases (hold and move to drag; a tap
+clicks), Y does the same with the right button (half a stack), X shift-clicks (send across), LB/RB turn the dragged
+item, the right stick scrolls a long chest, B (or View) closes. It sends synthetic pointer events at its tip, so
+src/inventory.ts and src/benchMenu.ts didn't change; moving the real mouse hides it.
+Known gaps: movement is still the eight-way digital bitmask (shared/sim.ts input; analog would need the protocol),
+no invert-Y or sensitivity option, the Esc menu has no pad cursor (Menu/B resume), and a click
+is needed to capture the mouse first (browsers don't let pad buttons request pointer lock).
+
+### Hints follow the device
+
+Every control hint names its key through one registry (`src/bindings.ts`): `kbd(prompt)` / `ctl(prompt, label)` for key
+caps, `hintKeys()` for names inside sentences (hint banners, the gear texts under tooltips, which now take them as
+functions). It knows the device last used: a real key, click or mouse move switches to the keyboard's names, any pad press
+or push to the pad's (`setDevice`), Xbox or PlayStation by the pad's id; switching relabels every `<kbd data-act>` on
+screen and hides the hints that device has no input for (`[data-ctl]`). The pad's buttons live in `src/padMap.ts`, read
+by src/gamepad.ts, src/padCursor.ts and the hints alike, so they can't drift apart. Added where nothing said it: the
+inventory's moves under the overlay (shift-click, right-drag, R to turn; with the pad its cursor's buttons and close),
+the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu's Resume, and close on the workbench menu.
+- **Spacing, and the battery station goes outside too.** Sand kinds keep a `gap` from each other, edge to edge (the
+  larger of the two: windmill 4 m, for its head and tail to swing; battery station 2 m), and `STRUCTURE_GAP` (4 m) from
+  the base's own structures (the hut and its door, the skylight's collar, the mast's fins; the bunker's and the
+  trophies' ground as before), checked along the footprint's outline. Refusals say what's in the way ("Too close to
+  the windmill", "Too close to the base"); with a building in hand down in the bunker the prompt says "Outside only".
+  The battery station is a sand kind now (lit by the sky); ones already standing in a bunker stay where they are.
+
+## Electricity: windmills make it, battery stations store it
+
+- **One grid at the base** (`shared/power.ts`, `server/power.ts`): every second the windmills' output goes into the
+  battery stations, each taking what its charger and its not-yet-full batteries will (water-filling: an equal share,
+  what one can't use goes to the others); what nobody can take is lost. No consumers yet.
+- **Game time:** a game day is 30 real minutes (`DAY_SECONDS`), so energy adds up `GAME_SPEED` = 48× the real clock:
+  watts and kWh mean what they would over a game day.
+- **Wind** (`windSpeed`, deterministic on the shared wall clock and the world seed, so the server, every client and the
+  catch-up agree): ~2 m/s before dawn to ~7 mid-afternoon, × a weather swing over a day or two (0.55–1.45), × gusts
+  over seconds; a sandstorm adds up to 26 m/s (the storm's strength at the base on the server, at the windmill on the
+  client).
+- **Windmill:** P = ½ρAv³·Cp·η, a 3.5 m rotor (9.6 m²) in hot air (1.15 kg/m³). Bearings set Cp (0.14 → 0.30), the
+  wind it needs to start (3.2 → 2 m/s) and the tip speed ratio; coils the generator's efficiency (0.55 → 0.92) and its
+  most (400 W → 1.5 kW). Above 15 m/s the tail folds the rotor out of the wind (edge-on at 22: the head turns 75°, the
+  output and the spin fall). A bearing missing: it doesn't turn; a coil missing: it turns, makes nothing. On Scrap
+  parts it makes ~50 W at 5 m/s and 150 W at 7, about 1–2 kWh a game day; Space-grade ~3–4× that. The rotor turns at
+  tsr·v/R (20–50 rpm), easing into wind changes.
+- **Battery station:** each battery keeps its own charge (`power` table: kWh per slot). By tier: Scrap = a car
+  battery (12 V × 50 Ah ≈ 0.6 kWh, lead-acid: charges at C/5, keeps 80%), Basic a deep-cycle one (1.2 kWh), Quality a
+  lithium-ion module (2.5 kWh, 0.7C, 95%), Space-grade 5 kWh. Six of them: 3.6 kWh (all Scrap) to 30 kWh (all
+  Space-grade). The two coils are the charger: 300 / 600 / 1200 / 2500 W each by tier. A battery taken out loses its
+  charge (the item has none); one put in starts empty; picking the station up empties it.
+- **While nobody plays** (the world's process exits when empty) the wind still blows: on start the server catches up
+  the time since the last save (`powerAt` setting) in one-minute steps of the same wind, storms left out, a week at most.
+  A clock jump from the debug menu isn't counted.
+- **Shown** as little as can be: the building's panel (F) says what a windmill makes ("180 W") and what a station holds
+  ("1.2 / 3.6 kWh · +240 W" while charging); each cell's lamp on the station is lit while it holds charge.
+- Gaps: nothing uses the power yet; no hum or creak; the head's swing and the rotor are drawn per client (from the same
+  wind, so they agree in speed, not in phase).
+
+## Power lines
+
+- **Nothing connects by itself any more** (`shared/wires.ts`): each set of things joined by wires is a grid of its own
+  (`grids()`, union-find), and `server/power.ts` runs each one: its windmills charge its stations. A windmill on a grid
+  with no station that will take charge delivers nothing (its panel says 0 W).
+- **Connectors:** every electric thing has a socket high enough that a sagging wire clears your head (`CONNECTORS`):
+  the windmill an insulator on an angle-iron arm off the tower at 3.2 m, the battery station one on a mast of scrap pipe
+  at 3.25 m, and the new **power pole** (8 scrap: welded pipe on a concrete foot, braced, a crossarm) one on top at 4.5 m.
+  The models (`tools/blender/placeables.py` `insulator`) put the socket exactly there.
+- **A wire is a wiring coil**, used up; its tier is how far it reaches, socket to socket: 10 / 16 / 24 / 35 m (Scrap ..
+  Space-grade). At most MAX_WIRES (6) on a connector. It sags by 2.5% of its length (at most 0.9 m) on a parabola
+  (`wirePoints`), drawn as a thin black tube (`src/world/wires.ts`).
+- **Stringing one** (`src/wiring.ts`): a coil in the hotbar, look at a connector (within 5 m, the crosshair within
+  0.45 m of the socket) and click: the wire hangs from it and follows your aim, red over a connector it can't reach.
+  Click another connector: it goes up (the server checks the coil, both ends, the length, your reach to the second
+  connector), or a toast says why not ("Out of reach"). Right-click (or the first connector again) lets go. Clicking a
+  pair that is wired takes the wire down, its coil back to the bag. Picking a thing up (G) takes its wires down: their
+  coils into the bag, what doesn't fit dropped at your feet.
+- Gaps: the wire is a straight sag between sockets, it doesn't collide or avoid anything; no line losses; you can't
+  take one wire down by looking at it, only by clicking its two connectors.
+
+## Building with the wrench; wiring
+
+- **The wrench** (`wrench`, 4 scrap at the workbench) is the build tool. With it in hand the right mouse opens the
+  **build menu** (`src/buildMenu.ts`): every building (`BUILD_TABLE` in `shared/tables.ts`: windmill 20 scrap + 4 wiring,
+  battery station 12 scrap + 3 wiring + 2 cloth, power pole 8 scrap) with what the bag has of what it takes. Pick one and
+  its preview follows the crosshair as placing did (`src/placing.ts`: red when the spot is wrong or materials are short);
+  the use button puts it up (`build` message, `server/placed.ts` `build`): the materials leave the bag then. Picking the
+  chosen one again in the menu puts it away. With the wrench, G **dismantles** a building: what it was built of, the
+  parts in it and its wires' wiring all come back, or nothing if the bag can't take it all ("Bag full").
+- Buildings are no longer workbench recipes or items in the bag: they only take **base materials**. The windmill and
+  the battery station stand with their part slots empty: six bearings, six batteries, fitted where they stand (F). The
+  coils are gone from both (the generator and charger are the wiring they were built with): `shared/power.ts` runs the
+  generator by the bearings and lets each battery take charge at its own rate.
+- **Wiring** (`wiring`, stack 20) is the third base material and replaces the tiered wiring coil: a machine's coil
+  still sits in it (`src/teardown`, loot tables roll `coil`) but comes out as one wiring (`UNTIERED`, `shared/parts.ts`).
+  Gear slots that took a coil take wiring; the laser pistol's tier now comes from a heat sink (`[wiring, heat sink,
+  scrap]`). A power line takes a wiring per 12 m (`WIRE_M`, up to 36 m), given back when it comes down.
+- **Migration:** v11 in `server/db.ts` turns every coil (in boxes, fitted in gear, dropped, lying in the world) into one
+  wiring; a building item still in a bag or chest is turned back into its materials and parts when the box loads
+  (`server/items.ts`), and old buildings' coil slots drop out (`refit`).
+- Economy sim vs the coils: buildings a little apart (windmill ~11% sooner, battery station ~15% later), early gear
+  (shield, rifle, jammer) ~10% later in the greedy agent.
+- Gaps: the wrench has no sound or swing; no art for wiring of its own (it shows as a Scrap coil); the build menu has
+  no preview of the building beyond its icon.

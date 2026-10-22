@@ -6,7 +6,8 @@ desert would. That lets us drop explanatory UI text.
 
 Code: the words in `shared/text.ts` `TEXT.speech` (with every other text in the game, docs/text.md), when each is
 said in `src/speechLines.ts` (plain data, tune there), the engine and subtitle in `src/speech.ts`, fed each frame
-from `src/main.ts`.
+from `src/main.ts`. A line types out letter by letter with a soft blip per letter, visual-novel style (`src/speechSound.ts`;
+rate and punctuation pauses at the top of `src/speech.ts`), so a remark is heard as well as read.
 
 ## How a line is written
 
@@ -39,8 +40,10 @@ from `src/main.ts`.
   in minutes.
 - **Conditions decide, not just events.** A line has an event plus a condition on what the player has and where they
   are (`SpeechState`). Events: `see` (a find in reach), `near` (a crash-site machine or wreck in reach), `got` (an
-  item newly in the bag: picked up, crafted, repaired, taken out of a machine), `bagFull`, `respawn`, and `tick`
-  (polled, for state: riding, at a pump, in a shelter, overheating, storms, enemies, night). If the condition
+  item newly in the bag: picked up, crafted, repaired, taken out of a machine), `bagFull`, `respawn`, `aggro` (an enemy
+  turning on us, by kind: `GuardianFx.onAggro`), `killed` (an enemy we shot or jammed in the last 20 s dying, by kind,
+  bosses as one: `src/kills.ts`), and `tick` (polled, for state: riding, at a pump, in a shelter, overheating, storms,
+  a boss near, night). If the condition
   doesn't hold, the line isn't said. Example: the water bottle remark needs a bottle in sight and *none in the
   bag, working or broken*, and it's worded by whether the sun is up.
 
@@ -62,13 +65,14 @@ Has lines: a water bottle in sight with none in the bag (day/night), a machine t
 spot, the small ones and wrecks to carry home), the first of each item kind in the bag (each piece of gear broken
 and working, scrap, cloth, parts and the space-grade ones, plant bed, UV lamp, receivers, relics), the first ride,
 a pump (with a bottle to fill, or in a shelter with none), the first shelter, overheating, an empty bottle, the storm
-warning and being in a storm, the first enemy and the first boss, the first night out, a full bag, respawning.
+warning and being in a storm, each kind of enemy turning on you (a guardian hunting you, crawlers, a drone's light
+locking on, a harvester charging) and each kind going down after you shot or jammed it, the first boss, the first night out, a full bag, respawning.
 
 Ideas, not built yet (most need a new event or state field):
 - Taking the first part out of a machine; the first repair or craft at the workbench ("Good as new. Well, good.").
 - Low on water far from any pump; a full bottle that's been carried a while without drinking in the heat.
 - The first drone searchlight at night; the first jet overhead; being shot at for the first time.
-- A shield plate breaking ("That was close."); a guardian going down; a boss beaten.
+- A shield plate breaking ("That was close."); a line per boss kind beaten, and the last one (the world won).
 - Lost: far from the base for a long time with no wrist computer.
 - Lives running low for the world (src/lives.ts).
 - Another player nearby for the first time; a dead player's pack ("Whoever this was, they won't mind.").

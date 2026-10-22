@@ -9,7 +9,7 @@
 // Machine and wreck contents are rolled from a seed on both sides (shared/parts.ts rollParts): changing their yields
 // changes what is inside every machine in the world, including half-stripped ones, which can leave a part someone has
 // already taken back in place. Fine between sessions; just be aware.
-import type { SiteLevel } from './crashsites.ts';
+import type { LootLevel, SiteLevel } from './crashsites.ts';
 import type { ShelterKind } from './shelters.ts';
 import type { ComponentKind, PartId, SalvageId, SalvageYield, Tier } from './salvage.ts';
 import { TEXT } from './text.ts';
@@ -25,6 +25,7 @@ export type IngredientSpec = { label: string; n: number } & ({ part: PartId } | 
 
 const SCRAP = (n: number): IngredientSpec => ({ label: TEXT.items.scrap, n, kinds: ['scrap'] });
 const CLOTH = (n: number): IngredientSpec => ({ label: TEXT.items.cloth, n, kinds: ['cloth'] });
+const WIRING = (n: number): IngredientSpec => ({ label: TEXT.items.wiring, n, kinds: ['wiring'] });
 
 /** Scrap for taking machines apart (server/crash.ts): every step done gives `step`, a module that comes off (all its outer steps) `module`
  *  more, a piece taken apart on the ground (all its inner steps) `piece` more. The frame left when everything is out is mashed to scrap
@@ -34,15 +35,17 @@ export const SCRAP_REWARD = { step: 1, module: 2, piece: 2, machine: 6, perModul
 
 export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   // (The plant bed and UV lamp aren't crafted for now: growing doesn't fit the game yet. Their code is still in
-  // shared/garden.ts; to bring them back: plant_bed: [SCRAP(2), CLOTH(2)], uv_lamp: [SCRAP(2), coil 1].)
+  // shared/garden.ts; to bring them back: plant_bed: [SCRAP(2), CLOTH(2)], uv_lamp: [SCRAP(2), WIRING(1)].)
   // The plain metal parts, hammered out of scrap: Scrap tier only, so better ones still come from salvage. The
-  // electrics (motor, battery, coil, relay, compute, uranium) can't be made.
+  // electrics (motor, battery, relay, compute, uranium) can't be made.
   gear_scrap: [SCRAP(3)],
   bearing_scrap: [SCRAP(2)],
   valve_scrap: [SCRAP(3)],
   heatsink_scrap: [SCRAP(4)],
   // The grinder, for seams in a machine's shell: a motor spins the disc through a pair of gears, a battery drives it.
   grinder: [{ label: TEXT.parts.motor, n: 1, part: 'motor' }, { label: TEXT.parts.battery, n: 1, part: 'battery' }, { label: TEXT.parts.gear, n: 2, part: 'gear' }, SCRAP(3)],
+  // The wrench, the build tool (shared/crafting.ts BUILDS): a bar of scrap, forged.
+  wrench: [SCRAP(4)],
   // A scavenger bot: a compute unit for its brain, a motor, a battery, two bearings and scrap plates.
   scavenger_bot: [
     { label: TEXT.parts.compute, n: 1, part: 'compute' },
@@ -52,6 +55,19 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
     SCRAP(6),
   ],
   // (Tools, guns and the jammer aren't crafted: they're found broken and repaired, shared/gear.ts.)
+};
+
+/** The buildings, put up with the wrench (shared/crafting.ts BUILDS): only base materials (scrap, cloth, wiring), used up
+ *  as it goes up. The id is the placed kind (shared/placed.ts PLACEABLES). A windmill or battery station stands with its
+ *  part slots empty (shared/gear.ts built): the bearings or batteries are fitted afterwards. Taken down with the wrench,
+ *  all of it comes back. */
+export const BUILD_TABLE: Record<string, IngredientSpec[]> = {
+  // A scrap lattice tower, a rotor of sheet-metal blades, a generator wound with wiring (the bearings go in after).
+  windmill: [SCRAP(20), WIRING(4)],
+  // A welded rack for six cells, a charger wound with wiring, a tarp over it (the batteries go in after).
+  battery_station: [SCRAP(12), WIRING(3), CLOTH(2)],
+  // Lengths of scrap pipe welded up, a crossarm, an insulator (the lines between are wiring too, shared/wires.ts).
+  power_pole: [SCRAP(8)],
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -170,18 +186,22 @@ export const COMPONENT_LOOT: Record<ComponentKind, Loot> = {
   },
 };
 
-/** Which machines lie at each crash-site level (0 scrap fields, 1 crawler ground, 2 guardian ground), relative odds.
+/** Which machines lie at each crash-site loot level (0 scrap fields, 0.5 outposts: crawler ground out among the scrap
+ *  fields, 1 crawler ground, 2 guardian ground; shared/crashsites.ts LootLevel), relative odds.
  *  Each site has one large machine (carry: false) and a few small ones; each is picked from its own size. */
-export const LEVEL_KINDS: Record<SiteLevel, Partial<Record<ComponentKind, number>>> = {
+export const LEVEL_KINDS: Record<LootLevel, Partial<Record<ComponentKind, number>>> = {
   0: { winch: 3, solenoid_valve: 3, beacon: 3 },
+  // Outposts: the starter machines still lie about, with now and then a crawler-ground one.
+  0.5: { pump_housing: 3, winch: 2, solenoid_valve: 2, beacon: 2, control_cabinet: 1, robot_arm: 0.5 },
   1: { control_cabinet: 3, robot_arm: 2, beacon: 1, pump_housing: 3 },
   // (jet engines come off downed jets, shared/jetcrash.ts; hardly ever lie at a crash site)
   2: { robot_arm: 3, control_cabinet: 2, jet_engine: 0.15, pump_housing: 1 },
 };
 
-/** Multipliers on a machine's tierWeights by crash-site level. Machines carried home roll at level 1. */
-export const LEVEL_TIERS: Record<SiteLevel, Record<Tier, number>> = {
+/** Multipliers on a machine's tierWeights by crash-site loot level. Machines carried home roll at level 1. */
+export const LEVEL_TIERS: Record<LootLevel, Record<Tier, number>> = {
   0: { scrap: 1, basic: 1, quality: 0.2, space: 0 },
+  0.5: { scrap: 1, basic: 1, quality: 0.5, space: 0.1 },
   1: { scrap: 1, basic: 1, quality: 1, space: 1 },
   2: { scrap: 0.2, basic: 0.6, quality: 2.5, space: 5 },
 };
@@ -189,7 +209,9 @@ export const LEVEL_TIERS: Record<SiteLevel, Record<Tier, number>> = {
 // ---------------------------------------------------------------------------------------------------------------
 // Things lying in the world (server/loot.ts).
 
-/** Broken gear lying around at once, and the crash-site level it lies at (level-0 finds also lie at scrap piles). */
+/** Broken gear lying around at once, and the crash-site loot level it lies at (level-0 finds also lie at scrap piles;
+ *  outposts hold none). Vehicles (the motorcycle, shared/vehicles.ts) lie there as vehicles, repaired where they lie
+ *  (server/vehicles.ts): as many broken ones as this, a new one coming a while after one is stood up. */
 export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   canteen: { n: 7, level: 0 }, spyglass: { n: 5, level: 0 }, backpack: { n: 7, level: 0 },
   motorcycle: { n: 3, level: 1 }, storm_detector: { n: 2, level: 1 }, wristpad: { n: 2, level: 1 },
@@ -204,9 +226,10 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   receiver_worm: { n: 1, level: 2 },
 };
 
-/** One broken motorcycle always lies on the sand in front of the base door (server/loot.ts homeBikeSpot), so a bike is
- *  in sight from the first step out: it has these slots fitted (scrap tier) and the rest are parts the scrap fields'
- *  starter machines give (battery: beacon, bearing: winch). Taken, another lies there at once. */
+/** One broken motorcycle lies on the sand in front of the base door in a new world (server/vehicles.ts,
+ *  shared/lootRoll.ts homeBikeSpot), so a bike is in sight from the first step out: it has these slots fitted (scrap
+ *  tier) and the rest are parts the scrap fields' starter machines give (battery: beacon, bearing: winch). Repaired
+ *  where it lies, it is the world's (everyone's) first bike. */
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
 /** Parts that only an engine gives (nothing uses them yet): never found loose. */
@@ -253,8 +276,10 @@ export const KILL_SPOILS: Record<'guardian' | 'crawler' | 'drone', Spoils> = {
   drone: { odds: 1, min: 1, max: 1, parts: SPOILS, tierWeights: { basic: 1, quality: 1 } },
 };
 
-/** A downed jet's crash site (server/world.ts jetCame): its engine is a machine to take apart (shared/jetcrash.ts); besides, its drone transponder
- *  (what the carrier's receiver takes) with JET_RELIC_ODDS, and some scrap off the airframe. */
+/** A downed jet's crash site (server/world.ts jetCame): the flying wing's engines are machines to take apart (shared/jetcrash.ts); the drone has
+ *  none, its avionics and engine parts lie about instead (DRONE_JET_SPOILS, one more if it was jammed down whole). Besides, either leaves its drone
+ *  transponder (what the carrier's receiver takes) with JET_RELIC_ODDS, and some scrap off the airframe. */
+export const DRONE_JET_SPOILS: Spoils = { odds: 1, min: 2, max: 3, parts: ['compute', 'relay', 'coil', 'battery', 'motor', 'bearing'], tierWeights: { basic: 2, quality: 2, space: 0.3 } };
 export const JET_RELIC_ODDS = 0.2;
 export const JET_SCRAP = { min: 2, max: 4 };
 

@@ -10,13 +10,13 @@
 // once all of its chunks exist, so there are never holes; built chunks are cached for reuse.
 // Edits (digging) invalidate the fine chunks they touch, which are rebuilt nearest-first.
 import * as THREE from 'three/webgpu';
-import { mudflat } from '../../shared/biomes.ts';
-import { rockHeight } from '../../shared/rocks.ts';
-import { baseHeight, EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../shared/terrain.ts';
+import { biome } from '../../shared/biomes.ts';
+import { canyonMud } from '../../shared/canyons.ts';
+import { baseHeight, rockTop, EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../shared/terrain.ts';
 import { LAB } from '../../shared/world.ts';
 import { hazeDensity, hazeFar } from './env.ts';
 import { createSandMaterial, sand } from './sandMaterial.ts';
-import { tagBig } from './shadowLod.ts';
+import { TERRAIN_LAYER } from './heightShadow.ts';
 
 /** Grid cells per chunk side. */
 const CELLS = 64;
@@ -67,7 +67,8 @@ function key(level: number, ix: number, iz: number) {
   return `${level}:${ix}:${iz}`;
 }
 
-/** Index buffer shared by every chunk: the grid, plus double-sided skirt quads along the four edges. */
+/** Index buffer template for every chunk (each copies it; fill() sets the grid's diagonals): the grid, plus
+ *  double-sided skirt quads along the four edges. */
 function buildIndex(): THREE.BufferAttribute {
   const idx: number[] = [];
   for (let j = 0; j < CELLS; j++) {
@@ -244,14 +245,19 @@ export class Terrain {
     geo.setAttribute('crest', new THREE.BufferAttribute(new Float32Array(n), 1));
     geo.setAttribute('rock', new THREE.BufferAttribute(new Float32Array(n), 1));
     geo.setAttribute('mud', new THREE.BufferAttribute(new Float32Array(n), 1));
-    geo.setIndex(this.index);
+    geo.setAttribute('silt', new THREE.BufferAttribute(new Float32Array(n), 1));
+    // Its own copy of the index: fill() picks each cell's diagonal (the skirts' part stays the template's).
+    geo.setIndex(new THREE.BufferAttribute((this.index.array as Uint16Array).slice(), 1));
     const mesh = new THREE.Mesh(geo, this.material);
     mesh.position.set(ix * size, 0, iz * size);
     mesh.receiveShadow = true;
     // Dunes shadow each other and the players: the sun's cascades reach ~1.6 km (sky.ts). The shadow
     // pass draws back faces, so lit slopes never self-shadow (only faces turned from the sun can).
-    mesh.castShadow = true;
-    tagBig(mesh); // (drawn into every shadow cascade: src/world/shadowLod.ts)
+    // The dunes' shadows come from the heightfield (src/world/heightShadow.ts, which draws the chunks top-down on this layer). Only near
+    // the base and the shelters do the chunks cast into the shadow maps (the nearest cascade): those are underground, roofed by the terrain,
+    // lit through its holes.
+    mesh.castShadow = this.casting;
+    mesh.layers.enable(TERRAIN_LAYER);
     mesh.visible = false;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
@@ -263,6 +269,15 @@ export class Terrain {
   }
 
   /** (Re)generate a chunk's vertices from the heightfield. */
+  private casting = false;
+
+  /** Whether the chunks cast into the shadow maps (near the base or a shelter). */
+  setCasting(on: boolean) {
+    if (on === this.casting) return;
+    this.casting = on;
+    for (const c of this.cache.values()) c.mesh.castShadow = on;
+  }
+
   private fill(c: Chunk) {
     const step = c.size / CELLS;
     const W = VERTS + 2;
@@ -300,23 +315,46 @@ export class Terrain {
         this.cbuf[j * VERTS + i] = Math.min(1, Math.max(0, -lap / CREST_CURVATURE));
       }
     }
+    // Each cell's two triangles meet on the diagonal whose ends differ least in height, so the fold follows the
+    // slope's contour: with one fixed diagonal, a steep edge running across it (a canyon's walls and ledges) came out
+    // as a sawtooth.
+    const idx = geo.index!.array as Uint16Array;
+    for (let j = 0, o = 0; j < CELLS; j++) {
+      for (let i = 0; i < CELLS; i++, o += 6) {
+        const a = j * VERTS + i, b = a + 1, cc = a + VERTS, d = cc + 1;
+        const ka = (j + 1) * W + (i + 1);
+        if (Math.abs(h[ka] - h[ka + W + 1]) < Math.abs(h[ka + 1] - h[ka + W])) {
+          idx[o] = a; idx[o + 1] = cc; idx[o + 2] = d; idx[o + 3] = a; idx[o + 4] = d; idx[o + 5] = b;
+        } else {
+          idx[o] = a; idx[o + 1] = cc; idx[o + 2] = b; idx[o + 3] = b; idx[o + 4] = cc; idx[o + 5] = d;
+        }
+      }
+    }
+    geo.index!.needsUpdate = true;
     const crest = geo.attributes.crest.array as Float32Array;
     this.blurCrest(crest);
-    // Bare rock (shared/rocks.ts): 1 where the rock is the surface, fading out under a few cm of sand.
+    // Bare rock (shared/rocks.ts, shared/canyons.ts): 1 where the rock is the surface, fading out under 1.5 m of sand.
     const rock = geo.attributes.rock.array as Float32Array;
     // Mud flat (shared/biomes.ts): 1 out on the cracked clay.
     const mud = geo.attributes.mud.array as Float32Array;
+    // Silt: how much of that mud is a canyon's (shared/canyons.ts), red with the walls' washings.
+    const silt = geo.attributes.silt.array as Float32Array;
     for (let j = 0; j < VERTS; j++) {
       for (let i = 0; i < VERTS; i++) {
         const v = j * VERTS + i;
-        mud[v] = LAB ? 0 : mudflat(c.x0 + i * step, c.z0 + j * step);
-        const t = (rockHeight(c.x0 + i * step, c.z0 + j * step) - pos[v * 3 + 1]) * (1 / 0.3) + 1;
+        // (The mud flats', and the dried mud on the canyons' floors.)
+        silt[v] = LAB ? 0 : canyonMud(c.x0 + i * step, c.z0 + j * step);
+        mud[v] = LAB ? 0 : Math.max(biome('mudflat', c.x0 + i * step, c.z0 + j * step), silt[v]);
+        // (Over 1.5 m of sand, not a few cm: a switch within one cell followed the grid's triangles as a staircase;
+        // the shader breaks the softer edge up with noise.)
+        const t = (rockTop(c.x0 + i * step, c.z0 + j * step) - pos[v * 3 + 1]) * (1 / 1.5) + 1;
         rock[v] = t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
         if (rock[v] > 0) crest[v] = 0; // rims are rock, not a sand brink
       }
     }
-    // Skirts: copies of the edge vertices, dropped by more than the worst LOD mismatch.
-    const drop = 0.5 + step * 1.2;
+    // Skirts: copies of the edge vertices, dropped by more than the worst LOD mismatch (on a canyon's walls a
+    // coarser neighbour can miss the edge's height by a good part of the chunk's height range).
+    const drop = 0.5 + step * 1.2 + (c.level > 0 ? Math.min(450, (maxY - minY) * 0.5) : 0);
     const base = VERTS * VERTS;
     for (let e = 0; e < 4; e++) {
       for (let t = 0; t < VERTS; t++) {
@@ -331,6 +369,7 @@ export class Terrain {
         crest[base + e * VERTS + t] = crest[src];
         rock[base + e * VERTS + t] = rock[src];
         mud[base + e * VERTS + t] = mud[src];
+        silt[base + e * VERTS + t] = silt[src];
       }
     }
     geo.attributes.position.needsUpdate = true;
@@ -338,6 +377,7 @@ export class Terrain {
     geo.attributes.crest.needsUpdate = true;
     geo.attributes.rock.needsUpdate = true;
     geo.attributes.mud.needsUpdate = true;
+    geo.attributes.silt.needsUpdate = true;
     minY -= drop;
     const bb = (geo.boundingBox ??= new THREE.Box3());
     bb.min.set(0, minY, 0);
@@ -395,7 +435,6 @@ export class Terrain {
 
   private drop(c: Chunk) {
     this.scene.remove(c.mesh);
-    c.mesh.geometry.setIndex(null); // the index buffer is shared; don't let dispose() free it
     c.mesh.geometry.dispose();
     this.cache.delete(c.key);
     this.dirty.delete(c.key);

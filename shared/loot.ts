@@ -14,6 +14,8 @@ export type Loot = {
   parts?: (string | null)[];
   /** Stack size for stackable loot (e.g. scrap, cloth). */
   n?: number;
+  /** A dropped shield plate's wear (shared/items.ts Item). */
+  worn?: number;
   x: number;
   z: number;
   src: 'find' | 'cache' | 'drop';

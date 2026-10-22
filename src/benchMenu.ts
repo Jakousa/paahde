@@ -1,7 +1,7 @@
 // The disassembly table's menu (F at the table): with a machine on it, scrap it (click twice); with the table
 // free, every machine carried in the bag to put on it. The mouse is freed like the inventory (ui.inventoryOpen).
 import { ui } from './input';
-import { isBound } from './bindings';
+import { ctl, isBound } from './bindings';
 import { TEXT } from '../shared/text.ts';
 
 const SURE_MS = 3000;
@@ -17,6 +17,8 @@ const css = `
   border-radius: 4px; padding: 7px 10px; cursor: pointer; }
 #benchMenu button:hover { background: rgba(255, 240, 220, 0.24); }
 #benchMenu button.sure { background: #ff9c86; color: #2a160a; }
+#benchMenu .legend { margin-top: 4px; font: 11px var(--mono); color: #fff4e4; opacity: 0.8; }
+#benchMenu .legend kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 5px; border-radius: 3px; background: #fff4e4; color: #2a160a; }
 `;
 
 export interface BenchChoices {
@@ -94,6 +96,8 @@ export class BenchMenu {
         c.place(k.kind);
       });
     }
+    // The pad's way out (src/padCursor.ts); the keys' (Esc, F) go unsaid.
+    p.insertAdjacentHTML('beforeend', `<div class="legend">${ctl('uiClose', TEXT.inventory.close)}</div>`);
     ui.inventoryOpen = true;
     this.el.classList.add('open');
     document.exitPointerLock();

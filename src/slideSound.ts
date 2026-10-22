@@ -6,6 +6,7 @@
 // sliding at 15 m/s, −35 at 5 m/s, under the wind; the start scuff pokes ~5 dB above for a moment. Peaks ≤ −18 dBFS.
 // Plays through the shared output in src/audio.ts (volume slider, limiter); every level change is ramped.
 import { audio } from './audio';
+import { echoBus } from './acoustics';
 
 const NOISE_S = 3;
 /** Level at full slider volume, full amount and speed. */
@@ -78,6 +79,9 @@ class SlideSound {
       src(false).connect(band).connect(hiss).connect(out);
       src(true).connect(low).connect(rumble).connect(out);
       out.connect(dest);
+      // Hissing back off the walls round you (src/acoustics.ts `echoBus`).
+      const bus = echoBus();
+      if (bus) out.connect(bus);
       this.nodes = { band, out };
     });
   }

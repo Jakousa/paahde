@@ -1,4 +1,4 @@
-// Post-processing: heat haze → sandstorm dust → bloom → sun glare / lens flare → eye adaptation → grade → tone map →
+// Post-processing: heat haze → sandstorm dust and poison gas → bloom → sun glare / lens flare → eye adaptation → grade → tone map →
 // vignette + grain. One scene pass, a half-res bloom chain, and a single full-screen composite.
 import * as THREE from 'three/webgpu';
 import {
@@ -11,10 +11,11 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  choking, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
+  choking, deathGrade, fainting, gasEnv, gasLayer, gassed, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
   sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
 import { EDGE, FRONT_TAIL, FRONT_WALL } from '../shared/storm.ts';
+import { GAS_DEPTH, GAS_RISE_S, GAS_SPEED, GAS_TAIL_S } from '../shared/gas.ts';
 
 type N = Node<'vec3'>;
 type F = Node<'float'>;
@@ -53,6 +54,26 @@ export const toneControl: { curve: ToneCurve; white: number; set(curve: ToneCurv
   toneControl.set((TONE_CURVES as readonly string[]).includes(name) ? (name as ToneCurve) : 'filmic', Number(params.get('white') ?? 2));
 }
 
+/** The grade's tunables (the art bench, src/artBench.ts, sets them live). Colours are linear. */
+export const grade = {
+  /** On top of the eye adaptation: the overall brightness. */
+  exposure: uniform(1),
+  /** Warm white balance, a gain per channel. */
+  balance: uniform(new THREE.Color(1.06, 0.98, 0.86)),
+  /** Rust lift added in the shadows (never grey/blue blacks), fading out by a quarter of white. */
+  lift: uniform(new THREE.Color(0.03, 0.009, 0.002)),
+  /** Saturation, 1 unchanged (AgX desaturates; the default pushes the orange back). */
+  saturation: uniform(1.18),
+  /** Contrast before the tone curve, a power about mid-grey (0.18): 1 unchanged. */
+  contrast: uniform(1),
+  /** How dark the corners get, 0 none. */
+  vignette: uniform(0.28),
+  /** Film grain strength (a sandstorm at the eye adds to it). */
+  grain: uniform(0.028),
+};
+/** Bloom: strength, radius and threshold of the half-res bloom chain, in Post's constructor. */
+export const BLOOM = { strength: 0.4, radius: 0.45, threshold: 2.0 };
+
 /** Sun tint used for veiling glare and flares (linear). */
 const GLARE_TINT = new THREE.Color(1.0, 0.5, 0.2);
 /** Sandstorm dust: extinction per metre at full strength (~20 m to see 95% lost), how fast it thins
@@ -77,6 +98,13 @@ const FRONT_STEPS = 8;
 const FRONT_LIT = 0.6;
 /** How much thicker the front's dust is than a column's: inside it you see 3–10 m. */
 const FRONT_THICK = 4;
+/** Poison gas (shared/gas.ts): how thick it is (×STORM_K: ~30 m to see in it), how soft its surface is (m), how far its
+ *  wisps reach ahead of the leading edge (m), how far a ray is marched through it (m), and the steps. */
+const GAS_THICK = 0.65;
+const GAS_SOFT = 0.9;
+const GAS_FRAY = 25;
+const GAS_REACH = 500;
+const GAS_STEPS = 8;
 /** Ambient occlusion fades out between these view distances (m). Far off, GTAO (half resolution, normals
  *  rebuilt from depth) sees the ground at grazing angles a metre or more per pixel, and the depth step
  *  grows with distance² (near plane 5 cm: ~1 m at 1 km, as big as its 1.2 m radius): it read that as
@@ -157,6 +185,8 @@ export class Post {
 
   private lastTime = performance.now();
   private exposureValue = 1;
+  /** The bloom chain: its `strength`, `radius` and `threshold` uniforms can be set live (the art bench). */
+  readonly bloom: ReturnType<typeof bloom>;
   private stareValue = 0;
   private ndc = new THREE.Vector3();
   private fwd = new THREE.Vector3();
@@ -198,20 +228,27 @@ export class Post {
       // Heatstroke: the whole view swims, near things too: a slow, broad warp and a drunken sway.
       const p0 = uv();
       const hs = heatstroke.mul(heatstroke);
-      const hq = vec3(p0.x.mul(aspect).mul(2.2), p0.y.mul(2.6).add(time.mul(0.35)), time.mul(0.45));
-      const hn = vec2(mx_noise_float(hq), mx_noise_float(hq.add(vec3(7.3, 1.9, 4.1))));
-      const sway = vec2(sin(time.mul(0.9)), sin(time.mul(0.67).add(1.3))).mul(0.006);
-      const p = p0.add(hn.mul(0.022).add(sway).mul(hs));
+      const p = p0.toVar();
+      If(hs.greaterThan(0), () => {
+        const hq = vec3(p0.x.mul(aspect).mul(2.2), p0.y.mul(2.6).add(time.mul(0.35)), time.mul(0.45));
+        const hn = vec2(mx_noise_float(hq), mx_noise_float(hq.add(vec3(7.3, 1.9, 4.1))));
+        const sway = vec2(sin(time.mul(0.9)), sin(time.mul(0.67).add(1.3))).mul(0.006);
+        p.addAssign(hn.mul(0.022).add(sway).mul(hs));
+      });
       const isSky = step(0.99999, depth.sample(p).r);
       const dist = viewZ.negate();
       // Starts at 25 m: past ~150 m the haze has washed the ground flat, so there is nothing left to warp.
       const far = mix(smoothstep(25, 130, dist), float(0.45), isSky);
       const dy = p.y.sub(horizonY); // > 0 below the horizon
-      const band = smoothstep(0.22, 0.0, abs(dy)).mul(mix(float(0.35), float(1), step(0, dy)));
+      // (eased across the horizon: a hard step there drew a line straight across the ground wherever it rises above the horizon)
+      const band = smoothstep(0.22, 0.0, abs(dy)).mul(mix(float(0.35), float(1), smoothstep(-0.04, 0.04, dy)));
       const mask = far.mul(band).mul(heatHaze);
-      const q = vec3(p.x.mul(aspect).mul(28), p.y.mul(110).add(time.mul(2.2)), time.mul(0.6));
-      const n = vec2(mx_noise_float(q), mx_noise_float(q.add(vec3(13.7, 5.1, 2.3))));
-      const warped = p.add(n.mul(vec2(0.003, 0.009)).mul(mask));
+      const warped = p.toVar();
+      If(mask.greaterThan(0), () => {
+        const q = vec3(p.x.mul(aspect).mul(28), p.y.mul(110).add(time.mul(2.2)), time.mul(0.6));
+        const n = vec2(mx_noise_float(q), mx_noise_float(q.add(vec3(13.7, 5.1, 2.3))));
+        warped.addAssign(n.mul(vec2(0.003, 0.009)).mul(mask));
+      });
       // Don't pull nearby objects (players) into the shimmer: keep the warp only if the warped
       // sample is itself far away.
       const wDist = perspectiveDepthToViewZ(depth.sample(warped).r, camNear, camFar).negate();
@@ -230,6 +267,7 @@ export class Post {
     // how much of the scene still shows through.
     const { camWorld, projInv, camPos } = this;
     const dustLit: N = (sunColor as unknown as N).mul(vec3(0.5, 0.3, 0.16)).mul(0.17).add((hazeColor as unknown as N).mul(0.15));
+    const gasLit: N = (sunColor as unknown as N).mul(0.12).add((hazeColor as unknown as N).mul(0.5)).mul(vec3(0.42, 0.85, 0.16)).add(vec3(0.007, 0.016, 0.003));
     const dusted = Fn(() => {
       const p = uv();
       const ndc = vec4(p.x.mul(2).sub(1), float(1).sub(p.y.mul(2)), 1, 1);
@@ -345,18 +383,68 @@ export class Post {
           }
         });
       });
-      const trans = exp(tau.mul(-STORM_K));
+      // Poison gas (shared/gas.ts): a low layer over the dune floor (a plane through the floor under the camera, gasEnv)
+      // behind its leading edge, rising to GAS_DEPTH over it: from above, a sea of fog in the hollows with the crests
+      // standing out; in it, a murk ~30 m deep. In a bunker it has seeped in: the rooms fill as soon as it lies outside.
+      const gTau = float(0).toVar();
+      const gLit = float(0).toVar();
+      const gSeen = float(0).toVar();
+      If(gasEnv.x.greaterThan(0), () => {
+        const gd = gasLayer.xy;
+        const a0 = dot(camPos.xz, gd);
+        const ad = dot(dir.xz, gd);
+        const inv = float(1).div(ad.greaterThanEqual(0).select(max(ad, 1e-5), min(ad, -1e-5)));
+        const ta = gasLayer.z.sub(gasLayer.w).sub(a0).mul(inv);
+        const tb = gasLayer.z.add(GAS_FRAY).sub(a0).mul(inv);
+        // Under its highest surface: y − floor(xz) is linear along the ray, so clip to where it's under GAS_DEPTH + a bit.
+        const floorCam = gasEnv.y.add(gasEnv.z.mul(camPos.x)).add(gasEnv.w.mul(camPos.z));
+        const room = floorCam.add(GAS_DEPTH + 2).sub(camPos.y); // > 0: the eye is under the cap
+        const climb = dir.y.sub(gasEnv.z.mul(dir.x).add(gasEnv.w.mul(dir.z)));
+        const tc = room.div(climb.greaterThanEqual(0).select(max(climb, 1e-5), min(climb, -1e-5)));
+        const t0 = max(max(min(ta, tb), 0), climb.lessThan(0).select(tc, float(0)));
+        const t1 = min(min(min(max(ta, tb), tScene), GAS_REACH), climb.greaterThanEqual(0).select(tc, float(1e9)));
+        If(t1.greaterThan(t0), () => {
+          first.assign(min(first, t0));
+          const len = t1.sub(t0);
+          for (let k = 0; k < GAS_STEPS; k++) {
+            const f = jitter.add(k).div(GAS_STEPS);
+            const t = t0.add(len.mul(f.mul(f)));
+            const dt = len.mul((2 * k + 1) / (GAS_STEPS * GAS_STEPS));
+            const q = camPos.add(dir.mul(t));
+            // Slow, heavy rolls: drifting with the creep, barely rising.
+            const w = vec3(q.x.sub(gd.x.mul(time.mul(GAS_SPEED * 0.6))), q.y.mul(2.5).sub(time.mul(0.6)), q.z.sub(gd.y.mul(time.mul(GAS_SPEED * 0.6))));
+            const n = mx_noise_float(w.mul(0.03)).mul(0.65).add(mx_noise_float(w.mul(0.11)).mul(0.35));
+            const u = gasLayer.z.sub(dot(q.xz, gd)).add(n.mul(GAS_FRAY));
+            const deep = smoothstep(0, GAS_SPEED * GAS_RISE_S, u).mul(float(1).sub(smoothstep(gasLayer.w.sub(GAS_SPEED * GAS_TAIL_S), gasLayer.w, u)))
+              .mul(gasEnv.x).mul(GAS_DEPTH);
+            const top = gasEnv.y.add(gasEnv.z.mul(q.x)).add(gasEnv.w.mul(q.z)).add(deep).add(n.mul(1.2));
+            // Full under its surface, with a thin haze of wisps just over it; filled where the ray is still in the bunker.
+            const under = smoothstep(-GAS_SOFT, GAS_SOFT, top.sub(q.y));
+            const indoor = step(t, tOut).mul(smoothstep(0.5, 1.5, deep));
+            const dens = max(under, indoor).mul(saturate(n.mul(0.6).add(0.75))).mul(step(0.05, deep));
+            const d = dens.mul(dt).mul(GAS_THICK);
+            const ds = d.mul(exp(tau.add(gTau).mul(-STORM_K)));
+            gTau.addAssign(d);
+            gSeen.addAssign(ds);
+            gLit.addAssign(ds.mul(n.mul(0.5).add(0.8)));
+          }
+        });
+      });
+      const trans = exp(tau.add(gTau).mul(-STORM_K));
       // Lit dust: diffused sun on the sand colour plus the haze; far storms fade into the haze like dunes.
       const shade = lit.div(max(seen, 1e-4));
       const dust = dustLit.mul(shade);
+      // The gas: a sickly yellow-green in whatever light there is, with a faint glow of its own so it reads at night.
+      const gas = gasLit.mul(gLit.div(max(gSeen, 1e-4)));
+      const both = dust.mul(seen).add(gas.mul(gSeen)).div(max(seen.add(gSeen), 1e-4));
       const far = float(1).sub(exp(first.mul(hazeDensity).negate()));
-      return vec4(mix(dust, hazeColorFor(dir), far.mul(0.35)), trans);
+      return vec4(mix(both, hazeColorFor(dir), far.mul(0.35)), trans);
     })();
     const storm = vec4(hazed.mul(dusted.w).add(dusted.xyz.mul(float(1).sub(dusted.w))), dusted.w);
 
     // --- Bloom (half-res mip chain). Threshold sits just above lit sand so the sun, its halo and
     // glints bloom, and bloom bleeds over the dune crests that occlude the sun.
-    const bloomPass = bloom(color, 0.4, 0.45, 2.0);
+    const bloomPass = (this.bloom = bloom(color, BLOOM.strength, BLOOM.radius, BLOOM.threshold));
 
     // --- Sun visibility: fraction of depth taps around the sun that see sky (players and dunes occlude).
     const sunVis = Fn(() => {
@@ -414,28 +502,33 @@ export class Post {
     // --- In a sandstorm: grit flying past the eye, and sand caked on the edges of the view. Streaks run
     // across the screen with the crosswind and burst out from the centre when facing into it.
     const grit = Fn(() => {
-      const s = stormHere;
-      const p = uv();
-      const q = p.sub(0.5).mul(vec2(aspect, 1));
-      const right = camWorld.mul(vec4(1, 0, 0, 0)).xz;
-      const back = camWorld.mul(vec4(0, 0, 1, 0)).xz;
-      const side = dot(windDir, normalize(right));
-      const into = saturate(dot(windDir, normalize(back)));
-      // Crosswind: long thin streaks sliding sideways, two layers at different depths.
-      const t = time;
-      const lat = mx_noise_float(vec3(q.x.mul(2.5).sub(t.mul(side).mul(9)), q.y.mul(70), t.mul(1.5)))
-        .max(mx_noise_float(vec3(q.x.mul(1.2).sub(t.mul(side).mul(5)), q.y.mul(35).add(9), t)).mul(0.8));
-      // Headwind: streaks rushing outwards from the middle.
-      const r = length(q).max(1e-3);
-      const a = q.div(r);
-      const rad = mx_noise_float(vec3(a.x.mul(32), a.y.mul(32), log(r).mul(2.5).sub(t.mul(5))));
-      const radW = into.mul(smoothstep(0.1, 0.5, r));
-      const streak = smoothstep(0.55, 0.9, lat).mul(abs(side).mul(0.8).add(0.2)).max(smoothstep(0.45, 0.85, rad).mul(radW));
-      // Caked edges, slowly shifting.
-      const v = length(p.sub(0.5).mul(vec2(aspect.mul(0.8), 1)));
-      const cake = smoothstep(0.45, 1.1, v.add(mx_noise_float(vec3(q.mul(3), t.mul(0.3))).mul(0.12)));
-      const w = saturate(streak.mul(0.38).add(cake.mul(0.45))).mul(s);
-      return vec4(dustLit.mul(mix(float(0.7), float(1.3), streak)), w);
+      // No storm at the eye: skip four full-screen noise evaluations.
+      const result = vec4(0).toVar();
+      If(stormHere.greaterThan(0), () => {
+        const s = stormHere;
+        const p = uv();
+        const q = p.sub(0.5).mul(vec2(aspect, 1));
+        const right = camWorld.mul(vec4(1, 0, 0, 0)).xz;
+        const back = camWorld.mul(vec4(0, 0, 1, 0)).xz;
+        const side = dot(windDir, normalize(right));
+        const into = saturate(dot(windDir, normalize(back)));
+        // Crosswind: long thin streaks sliding sideways, two layers at different depths.
+        const t = time;
+        const lat = mx_noise_float(vec3(q.x.mul(2.5).sub(t.mul(side).mul(9)), q.y.mul(70), t.mul(1.5)))
+          .max(mx_noise_float(vec3(q.x.mul(1.2).sub(t.mul(side).mul(5)), q.y.mul(35).add(9), t)).mul(0.8));
+        // Headwind: streaks rushing outwards from the middle.
+        const r = length(q).max(1e-3);
+        const a = q.div(r);
+        const rad = mx_noise_float(vec3(a.x.mul(32), a.y.mul(32), log(r).mul(2.5).sub(t.mul(5))));
+        const radW = into.mul(smoothstep(0.1, 0.5, r));
+        const streak = smoothstep(0.55, 0.9, lat).mul(abs(side).mul(0.8).add(0.2)).max(smoothstep(0.45, 0.85, rad).mul(radW));
+        // Caked edges, slowly shifting.
+        const v = length(p.sub(0.5).mul(vec2(aspect.mul(0.8), 1)));
+        const cake = smoothstep(0.45, 1.1, v.add(mx_noise_float(vec3(q.mul(3), t.mul(0.3))).mul(0.12)));
+        const w = saturate(streak.mul(0.38).add(cake.mul(0.45))).mul(s);
+        result.assign(vec4(dustLit.mul(mix(float(0.7), float(1.3), streak)), w));
+      });
+      return result;
     })();
 
     // --- Composite in linear HDR, then grade and tone map.
@@ -443,20 +536,21 @@ export class Post {
       // Dust in front hides what blooms or flares behind it.
       let c: N = storm.xyz.add(bloomPass.rgb.add(flare).mul(storm.w));
       c = mix(c, grit.xyz, grit.w);
-      c = c.mul(exposure);
+      c = c.mul(exposure).mul(grade.exposure);
       // Warm white balance and a rust lift in the shadows (never grey/blue blacks).
-      c = c.mul(vec3(1.06, 0.98, 0.86));
+      c = c.mul(grade.balance as unknown as N);
       const lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
-      c = c.add(vec3(0.03, 0.009, 0.002).mul(saturate(float(1).sub(lum.mul(4)))));
+      c = c.add((grade.lift as unknown as N).mul(saturate(float(1).sub(lum.mul(4)))));
       // Saturation boost (AgX desaturates; push the orange back).
-      c = mix(vec3(lum), c, 1.18);
+      c = mix(vec3(lum), c, grade.saturation);
       c = max(c, vec3(0));
+      c = pow(c.div(0.18), vec3(grade.contrast)).mul(0.18);
       const toned = select(toneIndex.equal(2), saturate(filmic(c)), select(toneIndex.equal(1), agxToneMapping(c, float(1)) as N, acesFilmicToneMapping(c, float(1)) as N));
       let o: N = renderOutput(vec4(toned, 1), THREE.NoToneMapping, THREE.SRGBColorSpace).rgb;
       // Vignette.
       const p = uv();
       const v = length(p.sub(0.5).mul(vec2(aspect.mul(0.8), 1)));
-      o = o.mul(mix(float(1), float(0.72), smoothstep(0.45, 1.05, v)));
+      o = o.mul(mix(float(1), float(1).sub(grade.vignette), smoothstep(0.45, 1.05, v)));
       // Heatstroke: colour drains towards a hot red and a pulsing blood-red vignette closes in, the
       // pulse quickening as the meter fills.
       const hs = heatstroke;
@@ -473,9 +567,24 @@ export class Post {
       const cEdge = smoothstep(mix(float(0.7), float(-0.15), ch), mix(float(1), float(0.3), ch), ragged);
       o = mix(o, vec3(0.07, 0.04, 0.02), saturate(cEdge.mul(ch).mul(1.3)));
       o = o.mul(float(1).sub(smoothstep(0.75, 1, ch)));
+      // Breathing poison gas: the whole view slowly darkens, a sick dark green closing in from the edges, black at death.
+      const gs = gassed;
+      o = o.mul(float(1).sub(gs.mul(0.6)));
+      const gEdge = smoothstep(mix(float(0.75), float(-0.2), gs), mix(float(1), float(0.25), gs), ragged);
+      o = mix(o, vec3(0.012, 0.02, 0.006), saturate(gEdge.mul(gs).mul(1.3)));
+      o = o.mul(float(1).sub(smoothstep(0.8, 1, gs)));
+      // Fainting of heatstroke (meter full): the same darkening, a scorched blood-dark closing in, black at death.
+      const ft = fainting;
+      o = o.mul(float(1).sub(ft.mul(0.6)));
+      const fEdge = smoothstep(mix(float(0.75), float(-0.2), ft), mix(float(1), float(0.25), ft), ragged);
+      o = mix(o, vec3(0.03, 0.004, 0.002), saturate(fEdge.mul(ft).mul(1.3)));
+      o = o.mul(float(1).sub(smoothstep(0.8, 1, ft)));
+      // Dead: grey, with the contrast pushed (the pivot a little under mid-grey keeps the sand from blowing out).
+      const dl = dot(o, vec3(0.2126, 0.7152, 0.0722));
+      o = mix(o, vec3(saturate(dl.sub(0.42).mul(1.6).add(0.42))), deathGrade);
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
-      o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(0.028)));
+      o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(grade.grain)));
       return vec4(o, 1);
     })();
 

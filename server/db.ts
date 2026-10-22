@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { Obituary } from '../shared/protocol.ts';
-import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, OLD_SCRAP, SCRAP, type Item, type Slots } from '../shared/items.ts';
+import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, OLD_COILS, OLD_SCRAP, SCRAP, WIRING, type Item, type Slots } from '../shared/items.ts';
 
 export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
 /** A player's name in this world: null until they were asked (src/name.ts), '' if they left it blank. */
@@ -94,14 +94,14 @@ export function openDb(path: string) {
   const deleteTaken = db.prepare('DELETE FROM scrap_taken WHERE ix = ? AND iz = ? AND i = ?');
 
   // Items (shared/items.ts, server/items.ts): one row per stack, in a slot of a box. Player boxes ('bag',
-  // 'bike') belong to the player; shared ones ('chest<i>') to nobody ('').
+  // 'equip', 'bench') belong to the player; shared ones ('chest<i>', 'cargo<id>', ...) to nobody ('').
   db.exec(`
     CREATE TABLE IF NOT EXISTS items (
       id    INTEGER PRIMARY KEY,               -- stable stack id
       kind  TEXT NOT NULL,                     -- ITEMS key
       n     INTEGER NOT NULL,                  -- stack size
       owner TEXT NOT NULL,                     -- browser ID, '' for shared boxes
-      box   TEXT NOT NULL,                     -- 'bag', 'bike', 'chest<i>'
+      box   TEXT NOT NULL,                     -- 'bag', 'equip', 'chest<i>', ...
       slot  INTEGER NOT NULL,
       UNIQUE (owner, box, slot)
     );
@@ -117,6 +117,10 @@ export function openDb(path: string) {
   // v7: items lie in grids (shared/items.ts Shape), turned 90° when r = 1.
   if (!(db.prepare('PRAGMA table_info(items)').all() as { name: string }[]).some((c) => c.name === 'r')) {
     db.exec('ALTER TABLE items ADD COLUMN r INTEGER NOT NULL DEFAULT 0');
+  }
+  // v10: killing blows a shield plate has taken since it was last broken (shared/gear.ts shieldSaves).
+  if (!(db.prepare('PRAGMA table_info(items)').all() as { name: string }[]).some((c) => c.name === 'worn')) {
+    db.exec('ALTER TABLE items ADD COLUMN worn INTEGER NOT NULL DEFAULT 0');
   }
 
   // Small machine sites (shared/crash.ts) whose machine was carried off; they stay empty (taken_at is kept in case
@@ -174,11 +178,11 @@ export function openDb(path: string) {
       return [];
     }
   };
-  const boxRows = db.prepare('SELECT id, kind, n, slot, parts, r FROM items WHERE owner = ? AND box = ? ORDER BY slot');
+  const boxRows = db.prepare('SELECT id, kind, n, slot, parts, r, worn FROM items WHERE owner = ? AND box = ? ORDER BY slot');
   const clearBox = db.prepare('DELETE FROM items WHERE owner = ? AND box = ?');
-  const insertRow = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot, parts, r) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const insertRow = db.prepare('INSERT INTO items (id, kind, n, owner, box, slot, parts, r, worn) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const insertItem = (it: Item, owner: string, box: string, slot: number) =>
-    insertRow.run(it.id, it.kind, it.n, owner, box, slot, it.parts ? JSON.stringify(it.parts) : null, it.r ? 1 : 0);
+    insertRow.run(it.id, it.kind, it.n, owner, box, slot, it.parts ? JSON.stringify(it.parts) : null, it.r ? 1 : 0, it.worn ?? 0);
   const maxItemId = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM items');
   db.exec('CREATE TABLE IF NOT EXISTS gear_kits (player_id TEXT PRIMARY KEY, given_at INTEGER NOT NULL)');
   const getGearKit = db.prepare('SELECT 1 FROM gear_kits WHERE player_id = ?');
@@ -229,8 +233,9 @@ export function openDb(path: string) {
     if (n) console.log(`items: ${n} old scrap stacks are scrap now`);
   }
 
-  // Placed things (shared/placed.ts, server/placed.ts): items put down on the bunker floor. The old
-  // `garden` table (greenhouse beds by layout index) is unused since beds are placed things.
+  // Placed things (shared/placed.ts, server/placed.ts): items put down on the bunker floor, and buildings out on the
+  // sand (`y`: what it stands on; NULL for those from before, all on the floor). A building's item is in its own box,
+  // `bld<id>` (items). The old `garden` table (greenhouse beds by layout index) is unused since beds are placed things.
   db.exec(`
     CREATE TABLE IF NOT EXISTS placed (
       id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,9 +252,35 @@ export function openDb(path: string) {
       growth REAL NOT NULL                   -- ms grown under a UV lamp so far
     );
   `);
-  const allPlaced = db.prepare('SELECT id, kind, x, z, rot FROM placed ORDER BY id');
-  const insertPlaced = db.prepare('INSERT INTO placed (kind, x, z, rot, owner, placed_at) VALUES (?, ?, ?, ?, ?, ?)');
+  if (!(db.prepare('SELECT name FROM pragma_table_info(?)').all('placed') as { name: string }[]).some((c) => c.name === 'y')) {
+    db.exec('ALTER TABLE placed ADD COLUMN y REAL');
+  }
+  const allPlaced = db.prepare('SELECT id, kind, x, y, z, rot FROM placed ORDER BY id');
+  const insertPlaced = db.prepare('INSERT INTO placed (kind, x, y, z, rot, owner, placed_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const deletePlaced = db.prepare('DELETE FROM placed WHERE id = ?');
+  // Electricity (shared/power.ts, server/power.ts): each battery station's charge, per part slot (kWh, JSON).
+  db.exec('CREATE TABLE IF NOT EXISTS power (id INTEGER PRIMARY KEY, charge TEXT NOT NULL)');
+  const allPower = db.prepare('SELECT id, charge FROM power');
+  const clearPower = db.prepare('DELETE FROM power');
+  const putPower = db.prepare('INSERT INTO power (id, charge) VALUES (?, ?)');
+  // Power lines (shared/wires.ts, server/wires.ts): wire between placed things a < b; `kind` is what it was made of
+  // (a wiring coil before v11, now always wiring: what comes back follows its length).
+  db.exec(`CREATE TABLE IF NOT EXISTS wires (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, a INTEGER NOT NULL, b INTEGER NOT NULL, kind TEXT NOT NULL,
+    owner TEXT NOT NULL, placed_at INTEGER NOT NULL)`);
+  const allWires = db.prepare('SELECT id, a, b FROM wires ORDER BY id');
+  const insertWire = db.prepare('INSERT INTO wires (a, b, kind, owner, placed_at) VALUES (?, ?, ?, ?, ?)');
+  const deleteWire = db.prepare('DELETE FROM wires WHERE id = ?');
+  // Vehicles (shared/vehicles.ts, server/vehicles.ts): where each stands and whether it's been repaired (stood up). Its
+  // item is in box `veh<id>`, its cargo in `cargo<id>` (items). src: 'home' (the one in front of the base door),
+  // 'find' (lying at a crash site), 'old' (a motorcycle item from before vehicles).
+  db.exec(`CREATE TABLE IF NOT EXISTS vehicles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
+    heading REAL NOT NULL, up INTEGER NOT NULL, src TEXT NOT NULL)`);
+  const allVehicles = db.prepare('SELECT id, kind, x, y, z, heading, up, src FROM vehicles ORDER BY id');
+  const insertVehicle = db.prepare('INSERT INTO vehicles (kind, x, y, z, heading, up, src) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const moveVehicle = db.prepare('UPDATE vehicles SET x = ?, y = ?, z = ?, heading = ? WHERE id = ?');
+  const standVehicle = db.prepare('UPDATE vehicles SET up = 1 WHERE id = ?');
   const allBeds = db.prepare('SELECT id, stage, growth FROM beds');
   const upsertBed = db.prepare('INSERT OR REPLACE INTO beds (id, stage, growth) VALUES (?, ?, ?)');
   const deleteBed = db.prepare('DELETE FROM beds WHERE id = ?');
@@ -266,14 +297,18 @@ export function openDb(path: string) {
       dropped_at INTEGER NOT NULL            -- ms since epoch
     );
   `);
+  // v10 (above): a dropped shield plate keeps its wear.
+  if (!(db.prepare('PRAGMA table_info(dropped)').all() as { name: string }[]).some((c) => c.name === 'worn')) {
+    db.exec('ALTER TABLE dropped ADD COLUMN worn INTEGER NOT NULL DEFAULT 0');
+  }
   // v8 (above): dropped scrap too.
   tx(() => {
     const old = OLD_SCRAP.map((k) => `'${k}'`).join(', ');
     db.exec(`UPDATE dropped SET kind = '${SCRAP}' WHERE kind IN (${old})`);
     for (const k of OLD_SCRAP) db.prepare('UPDATE dropped SET parts = REPLACE(parts, ?, ?) WHERE parts LIKE ?').run(`"${k}"`, `"${SCRAP}"`, `%"${k}"%`);
   });
-  const allDropped = db.prepare('SELECT id, kind, parts, x, z FROM dropped ORDER BY id');
-  const insertDropped = db.prepare('INSERT INTO dropped (id, kind, parts, x, z, dropped_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const allDropped = db.prepare('SELECT id, kind, parts, x, z, worn FROM dropped ORDER BY id');
+  const insertDropped = db.prepare('INSERT INTO dropped (id, kind, parts, x, z, dropped_at, worn) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const deleteDropped = db.prepare('DELETE FROM dropped WHERE id = ?');
 
   // World loot (server/loot.ts): finds lying at crash sites and caches out in the desert, so a restart keeps what
@@ -304,6 +339,19 @@ export function openDb(path: string) {
       db.exec(`UPDATE ${t} SET kind = 'uranium' || SUBSTR(kind, 11) WHERE kind LIKE 'antimatter\\_%' ESCAPE '\\'`);
     }
   });
+  // v11: the wiring coils (`coil_<tier>`) became stackable wiring, one each: in boxes, fitted in gear (JSON parts),
+  // dropped and lying in the world. The scattered stacks of one are merged when a box loads (server/items.ts).
+  {
+    const old = OLD_COILS.map((k) => `'${k}'`).join(', ');
+    const n = (db.prepare(`SELECT COUNT(*) AS n FROM items WHERE kind IN (${old})`).get() as { n: number }).n;
+    tx(() => {
+      for (const t of ['items', 'dropped', 'world_loot']) {
+        db.exec(`UPDATE ${t} SET kind = '${WIRING}' WHERE kind IN (${old})`);
+        for (const k of OLD_COILS) db.prepare(`UPDATE ${t} SET parts = REPLACE(parts, ?, ?) WHERE parts LIKE ?`).run(`"${k}"`, `"${WIRING}"`, `%"${k}"%`);
+      }
+    });
+    if (n) console.log(`items: ${n} wiring coils are wiring now`);
+  }
   const allWorldLoot = db.prepare('SELECT id, kind, parts, x, z, depth, src, spawn FROM world_loot ORDER BY id');
   const insertWorldLoot = db.prepare('INSERT OR REPLACE INTO world_loot (id, kind, parts, x, z, depth, src, spawn) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
   const deleteWorldLoot = db.prepare('DELETE FROM world_loot WHERE id = ?');
@@ -373,15 +421,39 @@ export function openDb(path: string) {
     putObituary: (o: Obituary) => insertObituary.run(o.id, o.color, o.name, o.cause, o.at),
     getSetting: (key: string) => (getSetting.get(key) as { value: number } | undefined)?.value,
     setSetting: (key: string, value: number) => putSetting.run(key, value),
-    loadPlaced: () => allPlaced.all() as { id: number; kind: string; x: number; z: number; rot: number }[],
+    loadPlaced: () => allPlaced.all() as { id: number; kind: string; x: number; y: number | null; z: number; rot: number }[],
     /** New placed row; returns its id. */
-    insertPlaced: (kind: string, x: number, z: number, rot: number, owner: string) =>
-      Number(insertPlaced.run(kind, x, z, rot, owner, Date.now()).lastInsertRowid),
+    insertPlaced: (kind: string, x: number, y: number, z: number, rot: number, owner: string) =>
+      Number(insertPlaced.run(kind, x, y, z, rot, owner, Date.now()).lastInsertRowid),
     deletePlaced: (id: number) => deletePlaced.run(id),
-    loadDropped: () => (allDropped.all() as { id: number; kind: string; parts: string | null; x: number; z: number }[])
+    loadVehicles: () => (allVehicles.all() as { id: number; kind: string; x: number; y: number; z: number; heading: number; up: number; src: string }[])
+      .map((r) => ({ ...r, up: r.up === 1 })),
+    /** New vehicle row; returns its id. */
+    insertVehicle: (kind: string, x: number, y: number, z: number, heading: number, up: boolean, src: string) =>
+      Number(insertVehicle.run(kind, x, y, z, heading, up ? 1 : 0, src).lastInsertRowid),
+    moveVehicle: (id: number, x: number, y: number, z: number, heading: number) => moveVehicle.run(x, y, z, heading, id),
+    standVehicle: (id: number) => standVehicle.run(id),
+    /**
+     * v12, once (call inside a transaction): the motorcycle stopped being an item. Takes every motorcycle out of the
+     * boxes (the equipment's old Vehicle slot too; the Armor slot after it moves up into its place) and returns them
+     * with their owners, and the owners of the old per-player cargo box 'bike'.
+     */
+    takeOldBikes: () => {
+      const bikes = (db.prepare("SELECT owner, box, parts FROM items WHERE kind = 'motorcycle' ORDER BY id").all() as
+        { owner: string; box: string; parts: string | null }[]).map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined }));
+      db.exec("DELETE FROM items WHERE kind = 'motorcycle'");
+      db.exec(`UPDATE items SET slot = 3 WHERE box = 'equip' AND slot = 4
+        AND NOT EXISTS (SELECT 1 FROM items o WHERE o.owner = items.owner AND o.box = 'equip' AND o.slot = 3)`);
+      const cargo = (db.prepare("SELECT DISTINCT owner FROM items WHERE box = 'bike'").all() as { owner: string }[]).map((r) => r.owner);
+      return { bikes, cargo };
+    },
+    /** Every item in one box moves to another (an empty one), keeping its slots. */
+    moveBox: (owner: string, box: string, toOwner: string, toBox: string) =>
+      db.prepare('UPDATE items SET owner = ?, box = ? WHERE owner = ? AND box = ?').run(toOwner, toBox, owner, box),
+    loadDropped: () => (allDropped.all() as { id: number; kind: string; parts: string | null; x: number; z: number; worn: number }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
-    insertDropped: (id: number, kind: string, parts: (string | null)[] | undefined, x: number, z: number) =>
-      insertDropped.run(id, kind, parts ? JSON.stringify(parts) : null, x, z, Date.now()),
+    insertDropped: (id: number, kind: string, parts: (string | null)[] | undefined, x: number, z: number, worn = 0) =>
+      insertDropped.run(id, kind, parts ? JSON.stringify(parts) : null, x, z, Date.now(), worn),
     deleteDropped: (id: number) => deleteDropped.run(id),
     loadWorldLoot: () => (allWorldLoot.all() as { id: number; kind: string; parts: string | null; x: number; z: number; depth: number; src: 'find' | 'cache'; spawn: string | null }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
@@ -403,6 +475,16 @@ export function openDb(path: string) {
       clearBox.run('', `corpse${id}`);
     }),
     loadBeds: () => allBeds.all() as { id: number; stage: number; growth: number }[],
+    loadWires: () => allWires.all() as { id: number; a: number; b: number }[],
+    /** New wire; returns its id. */
+    insertWire: (a: number, b: number, kind: string, owner: string) => Number(insertWire.run(a, b, kind, owner, Date.now()).lastInsertRowid),
+    deleteWire: (id: number) => deleteWire.run(id),
+    /** Battery stations' charge by placed id (kWh per part slot). */
+    loadPower: () => new Map((allPower.all() as { id: number; charge: string }[]).map((r) => [r.id, JSON.parse(r.charge) as number[]])),
+    savePower: (rows: Map<number, number[]>) => tx(() => {
+      clearPower.run();
+      for (const [id, charge] of rows) putPower.run(id, JSON.stringify(charge));
+    }),
     saveBed: (id: number, stage: number, growth: number) => upsertBed.run(id, stage, growth),
     deleteBed: (id: number) => deleteBed.run(id),
     loadNpcs: () => allNpcs.all() as { id: number; owner: string; x: number; y: number; z: number; yaw: number; task: string; tier: number }[],
@@ -418,7 +500,7 @@ export function openDb(path: string) {
     tx,
     takeScrap: (ix: number, iz: number, i: number, at: number) => insertTaken.run(ix, iz, i, at),
     respawnScrap: (ix: number, iz: number, i: number) => deleteTaken.run(ix, iz, i),
-    loadBox: (owner: string, box: string) => (boxRows.all(owner, box) as { id: number; kind: string; n: number; slot: number; parts: string | null; r: number }[])
+    loadBox: (owner: string, box: string) => (boxRows.all(owner, box) as { id: number; kind: string; n: number; slot: number; parts: string | null; r: number; worn: number }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined, r: r.r === 1 })),
     /** Rewrite whole boxes in one transaction (an item moving between them keeps its id). */
     saveBoxes: (boxes: { owner: string; box: string; slots: Slots }[]) => tx(() => {

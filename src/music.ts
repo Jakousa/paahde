@@ -4,12 +4,13 @@
 // seconds and off after it has been gone for `leave`, so a short stop or a trip down the stairs doesn't cut
 // the music.
 //
+// When nothing is going on it is mostly silent. Ambient music plays only on a trigger (`AmbientTrigger`), once,
+// from the top: the first time you are out on the surface since you spawned or died, and at sunrise when you are
+// outdoors. A trigger picks a piece from AMBIENT (the variants that answer it, not the one played last); anything
+// else that takes over ends the piece, and it isn't picked up again.
+//
 // Songs (public/credits.txt), levelled to −23 LUFS, with gapless LAME headers:
-// - "Dune riding" (dune-riding.mp3), on the bike: 120 bpm in 4/4 (2 s a bar), 32 bars, trimmed to exactly
-//   64 s. Bars 1–4 are the fade-in, played once from the top; after that it loops from the end of bar 32
-//   back to the start of bar 5.
-// - "Desert ambience" (desert-ambience.mp3), outdoors when nothing else is going on: exactly 112 s, loops
-//   whole, and picks up where it left off when you come back to it.
+// - "Desert ambience" (desert-ambience.mp3), ambient (both triggers): exactly 112 s, played once.
 // - "Epic battle" (epic-battle.mp3, by Veikko Suhonen), against a boss or a guardian hunting close by: 150 bpm in
 //   4/4 (1.6 s a bar), 25 bars (1764000 samples, exactly 40 s). Bar 1 is the intro and bars 2–9 part A, played once
 //   from the top; then part B, bars 10–25, loops for as long as the fight lasts. Levelled hotter (−20 LUFS) and
@@ -23,10 +24,13 @@
 // Everything plays through `audio.music` (music slider, then the volume slider and limiter).
 import { audio } from './audio';
 
-export type MusicState = 'dead' | 'heatstroke' | 'epic' | 'combat' | 'sandstorm' | 'riding' | 'indoors' | 'peaceful';
-/** What is going on, from main.ts. `peaceful` is not a cue: it is when none of these is. `dead` only starts the
- *  death music (on the way in); the state lasts as long as the song. */
-export type MusicCues = Partial<Record<Exclude<MusicState, 'peaceful'>, boolean>>;
+export type MusicState = 'dead' | 'heatstroke' | 'epic' | 'combat' | 'sandstorm' | 'indoors' | 'ambient';
+/** What is going on, from main.ts. `ambient` is not a cue: it plays a triggered piece when none of these is.
+ *  `dead` only starts the death music (on the way in); the state lasts as long as the song. `sunrise`: the sun
+ *  is coming up (not a state, it triggers ambient music when you are outdoors). */
+export type MusicCues = Partial<Record<Exclude<MusicState, 'ambient'>, boolean>> & { sunrise?: boolean };
+/** What starts an ambient piece: out on the surface for the first time since spawning or dying, or sunrise outdoors. */
+export type AmbientTrigger = 'surface' | 'sunrise';
 
 interface Song {
   src: string;
@@ -43,15 +47,18 @@ interface Song {
   cut?: number;
 }
 
-const BAR = 2;
-const DUNE_RIDING: Song = { src: './audio/dune-riding.mp3', gain: 0.5, loopStart: 4 * BAR, loopEnd: 32 * BAR, resume: false };
-const DESERT_AMBIENCE: Song = { src: './audio/desert-ambience.mp3', gain: 0.45, loopStart: 0, loopEnd: 112, resume: true };
+const DESERT_AMBIENCE: Song = { src: './audio/desert-ambience.mp3', gain: 0.45, loopStart: 0, loopEnd: 112, resume: false, once: true };
 const COMBAT_DRUMS: Song = { src: './audio/combat-drums.mp3', gain: 0.55, loopStart: 0, loopEnd: 1333418 / 44100, resume: false };
 const EPIC_BAR = 1.6;
 const EPIC_BATTLE: Song = { src: './audio/epic-battle.mp3', gain: 0.7, loopStart: 9 * EPIC_BAR, loopEnd: 1764000 / 44100, resume: false };
 const DEATH: Song = { src: './audio/death.mp3', gain: 0.55, loopStart: 0, loopEnd: 421707 / 44100, resume: false, once: true, cut: 0.15 };
 
-/** Highest priority first. */
+/** Ambient pieces and the triggers each answers. Add variants here (`once`, not `resume`). */
+const AMBIENT: { song: Song; on: AmbientTrigger[] }[] = [{ song: DESERT_AMBIENCE, on: ['surface', 'sunrise'] }];
+/** Seconds out on the surface before the `surface` trigger fires. */
+const SURFACE_HOLD = 3;
+
+/** Highest priority first. `ambient`'s song is the triggered piece (Music.ambient). */
 const STATES: { state: MusicState; song: Song | null; enter: number; leave: number }[] = [
   { state: 'dead', song: DEATH, enter: 0, leave: 0 },
   // Not cued: the breathing (src/breathing.ts) plays over whatever music is on.
@@ -59,10 +66,8 @@ const STATES: { state: MusicState; song: Song | null; enter: number; leave: numb
   { state: 'epic', song: EPIC_BATTLE, enter: 0, leave: 8 },
   { state: 'combat', song: COMBAT_DRUMS, enter: 0, leave: 8 },
   { state: 'sandstorm', song: null, enter: 1, leave: 4 },
-  // Under the mix: the wind roars while riding.
-  { state: 'riding', song: DUNE_RIDING, enter: 5, leave: 4 },
   { state: 'indoors', song: null, enter: 1.5, leave: 3 },
-  { state: 'peaceful', song: DESERT_AMBIENCE, enter: 6, leave: 0 },
+  { state: 'ambient', song: null, enter: 0, leave: 0 },
 ];
 
 /** Fade-out time constant (s); the source is dropped after FADE_OUT * 5. */
@@ -97,10 +102,19 @@ class Music {
   /** Context time the death music ends; the `dead` cue last frame. */
   private deathUntil = 0;
   private wasDead = false;
+  /** The triggered ambient piece, until it ends or something else takes over; the one played last. */
+  private ambient: Song | null = null;
+  private ambientUntil = 0;
+  private lastAmbient: Song | null = null;
+  /** Been out on the surface since spawning or dying; seconds out so far. */
+  private surfaced = false;
+  private outFor = 0;
+  /** This sunrise has had its piece (or passed while we were busy). */
+  private sunriseDone = false;
 
   constructor() {
     audio.onStart((ctx) => {
-      for (const song of new Set(STATES.map((s) => s.song))) {
+      for (const song of new Set([...STATES.map((s) => s.song), ...AMBIENT.map((a) => a.song)])) {
         if (!song) continue;
         fetch(song.src)
           .then((r) => r.arrayBuffer())
@@ -120,14 +134,22 @@ class Music {
       this.on.fill(false);
       this.held.fill(0);
       this.gone.fill(0);
+      this.ambient = null;
+      this.surfaced = false;
+      this.outFor = 0;
     }
     this.wasDead = !!cues.dead;
     // The dead aren't in a fight, whatever the walkers still think.
     if (cues.dead) cues = { ...cues, epic: false, combat: false };
-    const quiet = !STATES.some((s) => s.state !== 'peaceful' && s.state !== 'dead' && cues[s.state as keyof MusicCues]);
+    const dying = ctx.currentTime < this.deathUntil;
+    const quiet = !dying && !STATES.some((s) => s.state !== 'ambient' && s.state !== 'dead' && cues[s.state as keyof MusicCues]);
+    // Something else is going on: the ambient piece is over, not paused. (A state still on after its cue has
+    // gone, like `indoors` for a few seconds out the door, only holds it back.)
+    if (!quiet) this.ambient = null;
+    this.triggers(dt, ctx, cues, quiet);
     let top = -1;
     STATES.forEach((s, i) => {
-      const cue = s.state === 'peaceful' ? quiet : s.state === 'dead' ? ctx.currentTime < this.deathUntil : !!cues[s.state as keyof MusicCues];
+      const cue = s.state === 'ambient' ? quiet && !!this.ambient : s.state === 'dead' ? dying : !!cues[s.state as keyof MusicCues];
       if (cue) {
         this.held[i] += dt;
         this.gone[i] = 0;
@@ -140,7 +162,7 @@ class Music {
       if (this.on[i] && top < 0) top = i;
     });
     this.state = top < 0 ? null : STATES[top].state;
-    const want = top < 0 ? null : STATES[top].song;
+    const want = top < 0 ? null : this.state === 'ambient' ? this.ambient : STATES[top].song;
 
     for (let i = this.voices.length - 1; i >= 0; i--) {
       const v = this.voices[i];
@@ -167,8 +189,40 @@ class Music {
       v.dropAt = 0;
     } else if (!v) {
       const buf = this.bufs.get(want);
-      if (buf) this.start(ctx, audio.music, want, buf);
+      if (buf) {
+        this.start(ctx, audio.music, want, buf);
+        if (want === this.ambient) this.ambientUntil = ctx.currentTime + want.loopEnd;
+      }
+    } else if (want === this.ambient && ctx.currentTime >= this.ambientUntil) {
+      this.ambient = null; // played to its end
     }
+  }
+
+  /** Fire the ambient triggers. Outdoors is anywhere not cued `indoors`. A trigger that comes while something
+   *  else is going on is let go (the first trip out still counts as made). */
+  private triggers(dt: number, ctx: AudioContext, cues: MusicCues, quiet: boolean) {
+    const out = !cues.indoors && !this.wasDead;
+    this.outFor = out ? this.outFor + dt : 0;
+    if (!this.surfaced && this.outFor >= SURFACE_HOLD) {
+      this.surfaced = true;
+      if (quiet) this.trigger(ctx, 'surface');
+    }
+    if (!cues.sunrise) this.sunriseDone = false;
+    else if (!this.sunriseDone && out && quiet) {
+      this.sunriseDone = true;
+      this.trigger(ctx, 'sunrise');
+    }
+  }
+
+  /** Start an ambient piece for `why`, unless one is already playing. */
+  private trigger(ctx: AudioContext, why: AmbientTrigger) {
+    if (this.ambient) return;
+    const fits = AMBIENT.filter((a) => a.on.includes(why));
+    const fresh = fits.length > 1 ? fits.filter((a) => a.song !== this.lastAmbient) : fits;
+    const pick = fresh[Math.floor(Math.random() * fresh.length)];
+    if (!pick) return;
+    this.ambient = this.lastAmbient = pick.song;
+    this.ambientUntil = ctx.currentTime + pick.song.loopEnd;
   }
 
   /** Where in the song a voice is now (s). */

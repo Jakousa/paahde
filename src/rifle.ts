@@ -30,7 +30,9 @@ import type { Harvesters } from './world/harvesters';
 import { bossFx } from './bosses';
 import { MINION } from '../shared/bosses.ts';
 import { zaps } from './world/zaps';
+import * as kills from './kills';
 import { rifleSound } from './rifleSound';
+import { rumble } from './gamepad';
 import { tyreDust } from './tyreDust';
 import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
 import { gunCooldown, quality } from '../shared/gear.ts';
@@ -75,9 +77,13 @@ body.rifleScoped #crosshair, body.rifleScoped #pickup { display: none !important
 #rifleHip { position: fixed; left: 50%; top: 50%; pointer-events: none; z-index: 4; display: none; }
 #rifleHip i { position: absolute; background: rgba(255, 244, 228, 0.75); box-shadow: 0 0 2px #000; }
 body.rifleHip #rifleHip { display: block; }
-body.third-person #rifleHip { display: none; }
 body.rifleHip #crosshair { display: none; }
 body.gunSights #crosshair { display: none; }
+#rifleCharge { position: fixed; left: 50%; top: 50%; width: 18px; height: 2px; margin-left: -9px; pointer-events: none; z-index: 4;
+  background: rgba(0, 0, 0, 0.3); opacity: 0; transition: opacity .12s; }
+#rifleCharge i { display: block; height: 100%; background: rgba(255, 244, 228, 0.7); transform-origin: left; }
+#rifleCharge.on { opacity: 0.8; transition: none; }
+body.rifleScoped #rifleCharge, body.down #rifleCharge { display: none; }
 `;
 
 // The scope: everything outside the eyepiece black, a soft edge, a faint green-grey lens tint and vignette, and a
@@ -117,6 +123,9 @@ export class Rifle {
   private zoomEl: HTMLElement;
   private cellEl: HTMLElement;
   private hip = document.createElement('div');
+  /** The recharge under the crosshair (unscoped; the scope has its own). */
+  private chargeEl = document.createElement('div');
+  private chargeFill: HTMLElement;
   private zoom = ZOOM;
   private time = 0;
   private wasFire = false;
@@ -165,7 +174,10 @@ export class Rifle {
     this.cellEl = this.el.querySelector('.cell i')!;
     this.hip.id = 'rifleHip';
     this.hip.innerHTML = '<i></i><i></i><i></i><i></i>';
-    document.body.append(this.el, this.hip);
+    this.chargeEl.id = 'rifleCharge';
+    this.chargeEl.innerHTML = '<i></i>';
+    this.chargeFill = this.chargeEl.firstElementChild as HTMLElement;
+    document.body.append(this.el, this.hip, this.chargeEl);
     addEventListener('wheel', (e) => {
       if (!this.scoped) return;
       this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * Math.exp(-e.deltaY * 0.0015)));
@@ -197,8 +209,8 @@ export class Rifle {
     const aiming = holding && ((aimDown() && !!document.pointerLockElement) || this.forceAim);
     // The jammer (src/jammer.ts) raises the hand itself.
     if (playerHands.held !== 'jammer' && playerHands.held !== 'grinder') playerHands.aim = Math.max(0, Math.min(1, playerHands.aim + (aiming ? dt : -dt * 1.4) / ADS_S));
-    // In third person aiming brings the view in to the eye (src/camera.ts); the scope only once it's there.
-    this.view.aimIn = aiming;
+    // In third person aiming a scoped gun (or raising the telescope, src/telescope.ts) comes in to the eye (src/camera.ts).
+    this.view.aimIn = (aiming && feel.scope) || playerHands.looking;
     const scoped = aiming && playerHands.aim >= 1 && feel.scope && this.view.boomLength < 0.05;
     if (scoped !== this.scoped) {
       this.scoped = scoped;
@@ -207,6 +219,7 @@ export class Rifle {
     }
     playerHands.rifleScoped = scoped;
     document.body.classList.toggle('rifleHip', holding && !aiming);
+    document.body.classList.toggle('rifleHeld', holding);
     document.body.classList.toggle('gunSights', holding && !feel.scope && playerHands.aim > 0.5);
     if (scoped) this.view.zoom = this.zoom;
     else if (isGun(playerHands.held)) this.view.zoom = 1 + (feel.sight - 1) * playerHands.aim;
@@ -255,6 +268,9 @@ export class Rifle {
 
     const charge = Math.min(1, 1 - (this.readyAt - performance.now()) / this.cooldown(feel.kind));
     playerHands.charge = charge;
+    const recharging = holding && charge < 1;
+    this.chargeEl.classList.toggle('on', recharging);
+    if (recharging) this.chargeFill.style.transform = `scaleX(${Math.max(0, charge)})`;
     if (scoped) {
       this.zoomEl.textContent = `${this.zoom.toFixed(1)}×`;
       this.cellEl.style.transform = `scaleX(${charge})`;
@@ -288,6 +304,8 @@ export class Rifle {
     place(ticks[1], gap + 5, 0, 8, 1.5);
     place(ticks[2], 0, -gap - 5, 1.5, 8);
     place(ticks[3], 0, gap + 5, 1.5, 8);
+    // The recharge bar: under the dot, or under the lower tick from the hip.
+    this.chargeEl.style.marginTop = `${document.body.classList.contains('rifleHip') ? gap + 14 : 10}px`;
     if (fire) this.shoot();
   }
 
@@ -302,8 +320,9 @@ export class Rifle {
     const feel = FEEL[this.gun], { range } = GUNS[feel.kind], cooldown = this.cooldown(feel.kind);
     this.readyAt = performance.now() + cooldown;
     // From the eye along the aim (sway included), scattered within the cone from the hip. In third person the
-    // camera is behind the eye on the view ray, so this still goes where the crosshair is.
-    _o.copy(this.view.eye);
+    // camera is behind the eye on the view ray, so this still goes where the crosshair is; over the shoulder the
+    // camera is beside that ray, so the shot starts at the camera instead.
+    _o.copy(this.view.shoulder > 0.05 ? cam.position : this.view.eye);
     cam.getWorldQuaternion(_q);
     _d.set(0, 0, -1).applyQuaternion(_q);
     if (this.spread > 0) {
@@ -334,6 +353,8 @@ export class Rifle {
     // It starts at the drawn muzzle as the gun kicks and the view climbs.
     zaps.beam(m.x, m.y, m.z, _e.x, _e.y, _e.z, true, this.muzzle);
     rifleSound.shot(null, null, this.gun === 'pistol');
+    if (this.gun === 'pistol') rumble(0.2, 0.6, 90);
+    else rumble(0.6, 0.8, 140);
     rifleSound.recharge(cooldown / 1000 - 0.08);
     if (boss) {
       const lens = boss.index >= 0 && boss.index < MINION;
@@ -360,6 +381,8 @@ export class Rifle {
       for (let i = 0; i < 3; i++) tyreDust.emit(_e.x, _e.y + 0.1, _e.z, (Math.random() - 0.5) * 1.5, 1 + Math.random(), (Math.random() - 0.5) * 1.5, 0.35);
       rifleSound.impact('sand', _e, _o);
     }
+    const key = boss ? `b${boss.boss}` : crawler ? `h${crawler.harvester}` : jet ? `j${jet.jet}` : drone ? `d${drone.drone}` : hit ? `g${hit.walker}` : null;
+    if (key) kills.hit(key);
     this.net.fire(_o.x, _o.y, _o.z, _e.x, _e.y, _e.z, boss ? (boss.index >= 0 ? { b: boss.boss, bi: boss.index } : undefined) : crawler ? { h: crawler.harvester, hi: crawler.index } : jet ? { j: jet.jet } : drone ? { d: drone.drone } : hit ? { g: hit.walker, i: hit.index } : undefined);
     // Recoil: the muzzle climbs (some of it stays: pull it back down), kicks a little sideways; less held to the eye.
     const ads = playerHands.aim;

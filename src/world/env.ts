@@ -39,12 +39,21 @@ export const horizonSunColor = uniform(new THREE.Color(0xf08a1c).multiplyScalar(
 export const hazeColor = uniform(new THREE.Color(0xd98a45).multiplyScalar(0.85));
 /** Haze extinction per metre. ~0.006 → ~80% haze at 270 m. */
 export const hazeDensity = uniform(0.006);
+/** How fast the haze thins with height (per m above 0): valleys hazier than crests. */
+export const hazeFalloff = uniform(0.012);
 /** Distance (m) at which the haze becomes total — hides the terrain edge. Set to the terrain radius. */
 export const hazeFar = uniform(290);
 /** Heat-haze shimmer strength (post). 0 disables, 1 default, >3 looks like water. */
 export const heatHaze = uniform(1);
 /** Heatstroke coming on, 0 (heat meter at 60% or less) .. 1 (full); set by the HUD (water.ts), drawn by post. */
 export const heatstroke = uniform(0);
+/** Heatstroke at a full meter, 0..1 (1: about to die of it): the view darkens (post.ts), as when choking or gassed. */
+export const fainting = uniform(0);
+/** On death the fainting, choking and gas darkness lifts over this long (s) to show the body where it fell, instead of
+ *  cutting away; well before the death fade (water.ts) takes the view again. */
+export const DARK_LIFT_S = 1.5;
+/** Lying dead, 0..1: the view drains to a hard-contrast grey (post.ts); set by the HUD (water.ts). */
+export const deathGrade = uniform(0);
 // --- Wind, for shaders (fed from wind.ts by dust.ts every frame) ---
 /** Unit xz vector the wind currently blows towards (wobbles a little around the dunes' wind). */
 export const windDir = uniform(new THREE.Vector2(0.3162, 0.9487));
@@ -65,6 +74,14 @@ export const stormFront = uniform(new THREE.Vector4(1, 0, 0, 0));
 export const stormFrontEnv = uniform(new THREE.Vector2());
 /** Choking in a mega-storm out in the open, 0..1 (1: about to die of it): the view closes in (post.ts). */
 export const choking = uniform(0);
+/** Poison gas for the post pass (post.ts, shared/gas.ts): the unit xz direction it creeps, how far along it its leading
+ *  edge is (m, dot with the direction), and how deep the cloud is (m). Written by src/gas.ts every frame. */
+export const gasLayer = uniform(new THREE.Vector4(1, 0, 0, 0));
+/** Its envelope 0..1 (0 = not drawn), and the dune floor it lies on as a plane round the camera: its height there (m)
+ *  and slope along x and z (m per m). */
+export const gasEnv = uniform(new THREE.Vector4());
+/** Breathing poison gas, 0..1 (1: about to die of it): the view darkens (post.ts). */
+export const gassed = uniform(0);
 /** How deep in a sandstorm the camera is, 0..1 (eased; 0 in the base): the grit on the view (post.ts). */
 export const stormHere = uniform(0);
 /** 1 while the camera is in the base: the post pass's dust starts only where the view ray leaves the
@@ -185,7 +202,7 @@ export const sunDisc = Fn(([dir]: [N]) => {
  */
 export const hazeFactor = Fn(([worldPos]: [N]) => {
   const d = worldPos.sub(cameraPosition).length();
-  const heightFall = exp(max(worldPos.y, 0).mul(-0.012));
+  const heightFall = exp(max(worldPos.y, 0).mul(hazeFalloff.negate()));
   // blownSand.ts thickens hazeDensity itself in strong wind; here a storm makes it patchy.
   const plume = mx_noise_float(worldPos.xz.sub(windDrift).mul(0.008)).mul(0.5).add(0.5);
   const dusty = float(1).add(sandStorm.mul(plume.sub(0.5)).mul(1.2));

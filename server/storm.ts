@@ -1,8 +1,13 @@
-// Server side of sandstorms (shared/storm.ts): now and then one blows up somewhere near a random player,
-// and rarely a mega-storm front rolls in over everyone; the list goes out to everyone whenever it changes.
-// In memory only: a restart clears the weather.
+// Server side of the weather: sandstorms (shared/storm.ts): now and then one blows up somewhere near a random player,
+// and rarely a mega-storm front rolls in over everyone; and on some nights poison gas (shared/gas.ts) creeps in. The
+// lists go out to everyone whenever they change. In memory only: a restart clears the weather.
+//
+// Balance: the big events (fronts, gas) never come within BIG_GAP_MS of each other's end, the gas waits for a night
+// with enough of it left, and no sandstorm column blows up while a big one is out.
 import { WIND } from '../shared/dunes.ts';
 import { FRONT_LEAD_S, FRONT_PASS_S, FRONT_SPEED, MAX_LEN_MS, MIN_LEN_MS, WARN_MS, type Storm } from '../shared/storm.ts';
+import { GAS_LEAD_S, GAS_PASS_S, GAS_SPEED, type Gas } from '../shared/gas.ts';
+import { DAY_SECONDS, sunElevation } from '../shared/sun.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 
 /** Quiet time between one storm's announcement and the next (ms). */
@@ -24,14 +29,28 @@ const FRONT_FIRST_MIN_MS = 15 * 60_000;
 const FRONT_LINGER_MS = 45_000;
 /** A front held back by a boss being out tries again this long (ms) after. */
 const FRONT_RETRY_MS = 3 * 60_000;
+/** Time between poison gas clouds (ms), and before the first one after the world starts; due by day (or too late in
+ *  the night), one waits for the next night with GAS_NIGHT_LEFT of dark ahead. A day is 30 min, half of it night, so
+ *  that's one night in three or four. */
+const GAS_GAP_MIN_MS = 60 * 60_000;
+const GAS_GAP_MAX_MS = 110 * 60_000;
+const GAS_FIRST_MIN_MS = 25 * 60_000;
+/** Real ms of night it needs ahead of it, to creep in, lie and sink away before dawn. */
+const GAS_NIGHT_LEFT_MS = 5 * 60_000;
+/** It sinks away this long (ms) after its back has passed the furthest player it was sent at. */
+const GAS_LINGER_MS = 20_000;
+/** A big event (front or gas) keeps the other kind away this long (ms) after it has ended. */
+const BIG_GAP_MS = 20 * 60_000;
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
 export class StormServer {
   storms: Storm[] = [];
+  gas: Gas[] = [];
   private nextId = 1;
   private nextAt: number;
   private nextFrontAt: number;
+  private nextGasAt: number;
   private changed = false;
   /** Debug menu: no random storms (and any blowing now are cleared). */
   off = false;
@@ -39,25 +58,38 @@ export class StormServer {
   constructor(now: number) {
     this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS) / 2;
     this.nextFrontAt = now + rand(FRONT_FIRST_MIN_MS, FRONT_GAP_MAX_MS);
+    this.nextGasAt = now + rand(GAS_FIRST_MIN_MS, GAS_GAP_MAX_MS);
   }
 
-  /** Server time `now` (ms) and where the players are. Returns a 'storms' message when the list changed.
-   *  `boss`: a boss is alive somewhere, so no storm front comes (it waits till after the fight). */
-  tick(now: number, players: { x: number; z: number }[], night = false, boss = false): ServerMsg | null {
+  /** Server time `now` (ms), where the players are and the time of day (shared/sun.ts). Returns a 'storms' message
+   *  when a list changed. `boss`: a boss is alive somewhere, so no front or gas comes (it waits till after the fight). */
+  tick(now: number, players: { x: number; z: number }[], tod: number, boss = false): ServerMsg | null {
+    const night = sunElevation(tod) < 0;
     const live = this.off ? [] : this.storms.filter((s) => s.end > now);
     if (live.length !== this.storms.length) {
       this.storms = live;
       this.changed = true;
     }
+    const gas = this.off ? [] : this.gas.filter((g) => g.end > now);
+    if (gas.length !== this.gas.length) {
+      this.gas = gas;
+      this.changed = true;
+    }
+    const big = this.gas.length > 0 || this.storms.some((s) => s.front);
     if (now >= this.nextAt) {
       this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS) * (night ? NIGHT_GAP : 1);
       const p = players[Math.floor(Math.random() * players.length)];
-      if (p && !this.off && this.storms.filter((s) => !s.front).length < MAX_STORMS) this.spawn(p.x, p.z, OFFSET, now);
+      if (p && !this.off && !big && this.storms.length < MAX_STORMS) this.spawn(p.x, p.z, OFFSET, now);
     }
-    if (now >= this.nextFrontAt && boss) this.nextFrontAt = now + FRONT_RETRY_MS;
+    if (now >= this.nextFrontAt && (boss || big)) this.nextFrontAt = now + FRONT_RETRY_MS;
     else if (now >= this.nextFrontAt) {
       this.nextFrontAt = now + rand(FRONT_GAP_MIN_MS, FRONT_GAP_MAX_MS);
-      if (players.length && !this.off && !this.storms.some((s) => s.front)) this.spawnFront(players, now);
+      if (players.length && !this.off) this.spawnFront(players, now);
+    }
+    if (now >= this.nextGasAt && (boss || big)) this.nextGasAt = now + FRONT_RETRY_MS;
+    else if (now >= this.nextGasAt && nightLeftMs(tod) >= GAS_NIGHT_LEFT_MS) {
+      this.nextGasAt = now + rand(GAS_GAP_MIN_MS, GAS_GAP_MAX_MS);
+      if (players.length && !this.off) this.spawnGas(players, now);
     }
     if (!this.changed) return null;
     this.changed = false;
@@ -101,10 +133,52 @@ export class StormServer {
       end: Math.round(now + ((last - a0 + depth) / FRONT_SPEED) * 1000 + FRONT_LINGER_MS),
       front: true,
     });
+    this.apart(this.storms[this.storms.length - 1].end);
     this.changed = true;
   }
 
-  msg(): ServerMsg {
-    return { t: 'storms', storms: this.storms };
+  /** Poison gas creeping in from a random side: it reaches the first of `players` GAS_LEAD_S from `now` and sinks
+   *  away once it has passed the last. */
+  spawnGas(players: { x: number; z: number }[], now: number) {
+    const a = Math.random() * Math.PI * 2;
+    const dx = Math.cos(a), dz = Math.sin(a);
+    let first = Infinity, last = -Infinity;
+    for (const p of players) {
+      const along = p.x * dx + p.z * dz;
+      first = Math.min(first, along);
+      last = Math.max(last, along);
+    }
+    const a0 = first - GAS_SPEED * GAS_LEAD_S;
+    const depth = GAS_SPEED * GAS_PASS_S;
+    this.gas.push({
+      id: this.nextId++,
+      x: Math.round(dx * a0),
+      z: Math.round(dz * a0),
+      dx, dz,
+      speed: GAS_SPEED,
+      r: depth,
+      start: Math.round(now),
+      end: Math.round(now + ((last - a0 + depth) / GAS_SPEED) * 1000 + GAS_LINGER_MS),
+    });
+    this.apart(this.gas[this.gas.length - 1].end);
+    this.changed = true;
   }
+
+  /** A big event ending at `end`: neither kind comes again until BIG_GAP_MS after it. */
+  private apart(end: number) {
+    this.nextFrontAt = Math.max(this.nextFrontAt, end + BIG_GAP_MS);
+    this.nextGasAt = Math.max(this.nextGasAt, end + BIG_GAP_MS);
+  }
+
+  msg(): ServerMsg {
+    return { t: 'storms', storms: this.storms, gas: this.gas };
+  }
+}
+
+/** Real ms from time of day `tod` until the sun is up again (0 by day). */
+function nightLeftMs(tod: number): number {
+  const step = 1 / 288; // 5 game minutes
+  let n = 0;
+  while (n < 160 && sunElevation(tod + n * step) < 0) n++;
+  return n * step * DAY_SECONDS * 1000;
 }

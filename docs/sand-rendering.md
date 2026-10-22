@@ -422,3 +422,26 @@ approach. That's correct, because the mirage is distance-gated.
 - Oren-Nayar (Fujii): https://mimosa-pudica.net/improved-oren-nayar.html
 - Dunes: Werner 1995 https://planetarygeoscience.uchicago.edu/doc/Werner_1995.pdf · Kok et al. "Physics of wind-blown sand and dust" https://arxiv.org/abs/1201.4353 · domain warp https://iquilezles.org/articles/warp
 - Sky: https://threejs.org/docs/pages/SkyMesh.html · Heat haze: https://gamedev.net/shaderlab/38-heat-haze-distortion/ · https://arxiv.org/abs/2603.02048
+
+## Ripple shadows
+At a low sun every small ripple's crest shadows the steep lee of the next one (the dark stripes of a dune photographed at dawn). `rippleSun` in
+`src/world/sandMaterial.ts` works it out exactly from the ripple profile: from the point towards the sun along the ripple axis the first crest is
+`toCrest` away and `gap` higher, so the point is lit when toCrest·tanθ > gap. No marching, no textures; `sand.rippleHeight` (m) sets how deep.
+Where the ripples are below a pixel it turns into the same test averaged over eight phases of the cycle (an estimate there was darker than the
+near look and blotched far ripple fields, fading as you walked up), so far ripple fields still darken at a
+low sun instead of popping flat. Not displacement: the ripples are ~1 cm high, finer than any mesh we draw (no tessellation in WebGPU), and a
+centimetre of real relief only shows in silhouette, which the shadows and normals already carry. Parallax occlusion mapping is the next step if
+the ripples should also look raised at grazing views up close.
+The small ripples have their own short-scale bend (crests wiggle every few tens of cm) and a phase warp stretched across the wind, so
+neighbouring crests drift apart and together and seem to split and merge, with uneven spacing; their depth varies over a metre or two and
+crests die out along their length (`depth` in buildSurface), for the shading and the shadows both. The shadow test is biased by its own
+softness so a crest itself is never half-shadowed (that drew a thin dark line along every crest). `npm run perf -- --shot --view 4 --pitch 40`
+looks down at the sand next to the player (lower than ~2 m the camera is inside the player's head).
+Far ripples: the slope is box-filtered over the pixel's footprint (`filteredSlope`: the height difference across the footprint over its width,
+exact up close, 0 by itself once a pixel spans a ripple), and the ripple shadows' edges widen with the footprint, so the ripples are drawn down to a
+few pixels each without moiré or dashes. Where they fade out is the Sand detail option (`sand.rippleFade`, RIPPLE_FADES: cycles per pixel), live.
+The limit is the screen: an 11 cm ripple seen along the ground is under a pixel within tens of metres; past that only the mean shading carries it.
+Far ripples are lit by their light averaged over a cycle (`rippleMeanDiffuse`: eight phases, each with its own ripple normal and shadow),
+not by the averaged (flat) normal: the hard terminator is far from linear, so the flat normal came out darker than the ripples it stood for at a
+low sun, by how deep they were and how their crests faced the sun: patches seen from high up at sunrise and sunset that faded as you came closer.
+Tests of the sun's look need it really low: `--tod 0.235` is ~2-3°, 0.26 already ~8°.
