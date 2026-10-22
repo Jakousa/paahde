@@ -13,6 +13,10 @@ on:
       base:
         description: Commit to compare with (default the one before)
         required: false
+      always:
+        description: Post to Discord even if nothing changed (to check the webhook)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -68,7 +72,7 @@ jobs:
         run: |
           LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ -f econ-cache/results.json ]; then
-            node --no-warnings tools/econsim/cli.ts compare econ-cache/results.json head.json --md report.md --link "$LINK" --discord
+            node --no-warnings tools/econsim/cli.ts compare econ-cache/results.json head.json --md report.md --link "$LINK" --discord ${{ inputs.always && '--always' || '' }}
           else
             { echo "_No results for the base commit ${{ steps.base.outputs.sha }} (older than the simulator, or it failed there): this commit alone._"; echo; cat head.md; } > report.md
           fi
