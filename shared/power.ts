@@ -11,8 +11,8 @@
 //     slow weather swing over the days; a sandstorm blows up to ~26 m/s more. One wind for the whole base, the same on
 //     server and clients (the shared wall clock, the world's seed).
 //   Windmill: a 3.5 m multi-blade rotor: P = ½ ρ A v³ · Cp · η. The bearings set how much of the wind the rotor turns
-//     into shaft power (Cp, friction, the wind it needs to start) and how well the generator runs (its efficiency and
-//     the most it can give; its windings are wiring it was built with). In a gale the tail folds it out of the wind
+//     into shaft power (Cp, friction, the wind it needs to start); the electric motor, run backwards, is the generator
+//     (its efficiency and the most it can give). In a gale the tail folds it out of the wind
 //     (furling) and it nearly stops.
 //   Battery station: each battery holds its own charge. A Scrap battery is a car battery (12 V × 50 Ah ≈ 0.6 kWh,
 //     lead-acid: takes charge slowly, loses a fifth of it), better tiers better chemistries; each takes charge as fast
@@ -69,21 +69,21 @@ const AIR = 1.15;
 /** Above this the tail starts to fold the rotor out of the wind; past FURL_FULL it's edge-on. */
 const FURL_START = 15;
 const FURL_FULL = 22;
-/** Bearings a windmill has (shared/gear.ts GEAR.windmill). */
-const WINDMILL_BEARINGS = 6;
+/** Bearings a windmill has (shared/gear.ts GEAR.windmill), besides its motor. */
+const WINDMILL_BEARINGS = 3;
 
 /** A windmill's machinery from its parts: rotor power coefficient, the wind it needs to start, its tip speed ratio
- *  (rotor rim speed over wind speed), the generator's efficiency and the most it gives (W). Null when it can't run (a
- *  bearing missing: the shaft binds). */
+ *  (rotor rim speed over wind speed) by the bearings, the generator's efficiency and the most it gives (W) by the
+ *  motor. Null when it can't run (a bearing missing: the shaft binds; no motor: nothing to make power). */
 export function windmillSpec(parts: readonly (string | null)[] | undefined) {
-  const b = fitted(parts, 'bearing');
-  if (b.n < WINDMILL_BEARINGS) return null;
+  const b = fitted(parts, 'bearing'), m = fitted(parts, 'motor');
+  if (b.n < WINDMILL_BEARINGS || !m.n) return null;
   return {
     cp: by(b.q, 0.14, 0.3),
     cutIn: by(b.q, 3.2, 2.0),
     tsr: by(b.q, 0.9, 1.3),
-    eff: by(b.q, 0.55, 0.92),
-    rated: by(b.q, 400, 1500),
+    eff: by(m.q, 0.55, 0.92),
+    rated: by(m.q, 400, 1500),
   };
 }
 

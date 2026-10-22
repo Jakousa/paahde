@@ -51,10 +51,10 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
 
 /** The buildings, put up with the wrench (shared/crafting.ts BUILDS): only base materials (scrap, cloth, wiring), used up
  *  as it goes up. The id is the placed kind (shared/placed.ts PLACEABLES). A windmill or battery station stands with its
- *  part slots empty (shared/gear.ts built): the bearings or batteries are fitted afterwards. Taken down with the wrench,
+ *  part slots empty (shared/gear.ts built): the bearings and motor or the batteries are fitted afterwards. Taken down with the wrench,
  *  all of it comes back. */
 export const BUILD_TABLE: Record<string, IngredientSpec[]> = {
-  // A scrap lattice tower, a rotor of sheet-metal blades, a generator wound with wiring (the bearings go in after).
+  // A scrap lattice tower, a rotor of sheet-metal blades, its wiring (the bearings and the motor, its generator, go in after).
   windmill: [SCRAP(20), WIRING(4)],
   // A welded rack for six cells, a charger wound with wiring, a tarp over it (the batteries go in after).
   battery_station: [SCRAP(12), WIRING(3), CLOTH(2)],

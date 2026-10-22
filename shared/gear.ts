@@ -83,9 +83,9 @@ export const GEAR: Record<string, GearSpec> = {
   receiver_colossus: { slots: [CELL, own('servo_heart'), P('relay')], ...RECEIVER },
   receiver_worm: { slots: [CELL, own('hive_core'), own('queen_eye'), own('furnace_heart')], ...RECEIVER },
   // The buildings (shared/placed.ts), put up empty (their frame and windings are the base materials they're built of,
-  // shared/tables.ts BUILD_TABLE). The windmill: bearings for the rotor shaft, the head's turn and the generator. The
-  // battery station: a rack of six cells.
-  windmill: { slots: [P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing')],
+  // shared/tables.ts BUILD_TABLE). The windmill: bearings for the rotor shaft and the head's turn, an electric motor
+  // run backwards for its generator. The battery station: a rack of six cells.
+  windmill: { slots: [P('bearing'), P('bearing'), P('bearing'), P('motor')],
     better: 'how much power it makes', use: TEXT.gearUse.windmill, built: true },
   battery_station: { slots: [P('battery'), P('battery'), P('battery'), P('battery'), P('battery'), P('battery')],
     better: 'how much power it holds', use: TEXT.gearUse.battery_station, built: true },

@@ -3,8 +3,8 @@
 // (tools/blender/placeables.py). Floor things are lit by the bunker's indoor lights, sand things by the sky. A lamp
 // throws a violet pool of light on the soil (or the floor) under it. A building looks its tier (src/tierLook.ts, by
 // the parts in it): the windmill's head turns into the wind and its rotor turns with it (shared/power.ts rotorSpeed:
-// the wind now, the bearings), the tail folding it out of a gale, still while a bearing is missing; the battery station
-// shows the cells it holds, each in its own tier, each one's lamp lit while it holds charge.
+// the wind now, the bearings), the tail folding it out of a gale, still while a bearing or the motor is missing; the
+// battery station shows the cells it holds, each in its own tier, each one's lamp lit while it holds charge.
 // Also the see-through green / red preview of where the held placeable would go (src/placing.ts).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';

@@ -76,12 +76,12 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   wrench (crafted; right mouse with it in hand opens the build menu, `src/buildMenu.ts`, placing in `src/placing.ts`)
   from base materials only (scrap, cloth, wiring: `shared/tables.ts` BUILD_TABLE, `shared/crafting.ts` BUILDS), used up
   as it goes up and all given back when it's dismantled (G with the wrench); never carried as items. The windmill and
-  station are gear with part slots and quality (`shared/gear.ts` `built`), standing with their slots empty (bearings,
+  station are gear with part slots and quality (`shared/gear.ts` `built`), standing with their slots empty (bearings and motor,
   batteries fitted after), placed via `shared/placed.ts` (`sand` kinds:
   `gap` between them, `STRUCTURE_GAP` from the hut/skylight/mast; `collideOutdoor`/`overPlaced` in shared/base.ts); while standing, the item is in box `bld<id>`, whose parts are swapped
   in place (F, `src/inventory.ts` `part:<box>`); drawn by `src/world/placed.ts`, models `tools/blender/placeables.py`
 - `shared/power.ts` — electricity, somewhat realistic in game time (`GAME_SPEED`: a game day is 30 real min): the shared
-  wind (`windSpeed`: day cycle, weather, gusts, storms), windmill output (½ρAv³·Cp·η by bearings/coils, furling) and
+  wind (`windSpeed`: day cycle, weather, gusts, storms), windmill output (½ρAv³·Cp·η by bearings/motor, furling) and
   rotor speed, battery stations (per-battery kWh by tier, a Scrap battery = a car battery, 0.6 kWh; coils = the charger)
   and charging; `server/power.ts` runs each grid (what is wired together) each second, keeps each battery's charge (`power` table),
   catches up the time the world slept; the panel shows W / kWh (`src/inventory.ts`), cells' lamps the charge
