@@ -210,9 +210,9 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   // The shield plate (shared/gear.ts): out where things first try to kill you.
   shield: { n: 3, level: 1 },
   // The guns (shared/rifle.ts): the pistol near home, the rifle out on crawler ground, to take on the guardians with.
-  laser_pistol: { n: 4, level: 0 }, laser_rifle: { n: 3, level: 1 },
+  laser_pistol: { n: 4, level: 0 }, laser_rifle: { n: 8, level: 1 },
   // The jammer (shared/jammer.ts): out where the roaming drones and the jets first come after you.
-  jammer: { n: 3, level: 1 },
+  jammer: { n: 5, level: 1 },
   // The receivers that call the bosses (shared/bosses.ts): out on guardian ground.
   receiver_carrier: { n: 1, level: 2 }, receiver_queen: { n: 1, level: 2 }, receiver_colossus: { n: 1, level: 2 },
   receiver_worm: { n: 1, level: 2 },
@@ -236,11 +236,11 @@ export const RARE_FINDS = { n: 10, noParts: ['impeller', ...ROTORS] as PartId[],
 export const BROKEN_GEAR = { filled: 0.5, tierWeights: { scrap: 7, basic: 3 } satisfies TierWeights };
 
 /** Caches lying out in the desert: how many at once, and what is inside
- *  (relative odds: a part, some scrap, some cloth, a broken laser pistol, a piece of other broken gear, a broken boss
+ *  (relative odds: a part, some scrap, some cloth, a broken laser pistol or rifle, a piece of other broken gear, a broken boss
  *  receiver: any of shared/bosses.ts RECEIVERS). */
 export const CACHES = {
   n: 60,
-  contents: { part: 0.6, scrap: 0.15, cloth: 0.1, pistol: 0.04, gear: 0.11, receiver: 0.01 },
+  contents: { part: 0.57, scrap: 0.15, cloth: 0.1, pistol: 0.04, rifle: 0.03, gear: 0.11, receiver: 0.01 },
   /** A cache part: any part but these, at these tiers. */
   noParts: ['uranium', 'impeller', ...ROTORS] as PartId[],
   tierWeights: { scrap: 5, basic: 3, quality: 1.2, space: 0.25 } satisfies TierWeights,
@@ -251,7 +251,7 @@ export const CACHES = {
  *  richer: more gear, better parts. */
 export const SHELTER_STASHES = {
   perShelter: { small: 2, deep: 3, long: 3 } satisfies Record<ShelterKind, number>,
-  contents: { part: 0.42, scrap: 0.06, cloth: 0.1, pistol: 0.1, gear: 0.29, receiver: 0.03 },
+  contents: { part: 0.36, scrap: 0.06, cloth: 0.1, pistol: 0.1, rifle: 0.06, gear: 0.29, receiver: 0.03 },
   tierWeights: { scrap: 1, basic: 3, quality: 2.5, space: 0.6 } satisfies TierWeights,
 };
 

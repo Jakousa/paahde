@@ -11,7 +11,7 @@ import { CLOTH, partKind, SCRAP, WIRING } from './items.ts';
 import type { CrashSite, SiteLevel } from './crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from './scrap.ts';
 import { PART_IDS, pickTier } from './parts.ts';
-import { GUNS, PISTOL } from './rifle.ts';
+import { GUNS, PISTOL, RIFLE } from './rifle.ts';
 import { rocksNear } from './rocks.ts';
 import type { JetKind } from './jetbreak.ts';
 import {
@@ -31,8 +31,8 @@ export const CACHE_MIN_R = 80, CACHE_MAX_R = 1200;
 
 export const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
 export const RARE_PARTS = PART_IDS.filter((p) => !RARE_FINDS.noParts.includes(p));
-/** Broken gear a cache can hold (not the jammer or the receivers; the guns have their own odds: only the pistol,
- *  CACHES.contents.pistol). */
+/** Broken gear a cache can hold (not the jammer or the receivers; the guns have their own odds: CACHES.contents.pistol
+ *  and .rifle). */
 export const CACHE_GEAR = GEAR_KINDS.filter((k) => !(k in GUNS) && k !== JAMMER && !receiverBoss(k) && !GEAR[k].built);
 
 const between = (rand: Rand, a: number, b: number) => a + rand() * (b - a);
@@ -62,12 +62,12 @@ export const broken = (kind: string, rand: Rand): Drop => ({ kind, parts: broken
 export const randomReceiver = (rand: Rand) => pick(Object.values(RECEIVERS), rand);
 
 /** What a cache or stash holds, picked by its table's odds (CACHES, SHELTER_STASHES). */
-export function stashContents(t: { contents: Record<'part' | 'scrap' | 'cloth' | 'pistol' | 'gear' | 'receiver', number>; tierWeights: TierWeights }, rand: Rand): Drop {
+export function stashContents(t: { contents: Record<'part' | 'scrap' | 'cloth' | 'pistol' | 'rifle' | 'gear' | 'receiver', number>; tierWeights: TierWeights }, rand: Rand): Drop {
   const what = pickOdds(t.contents, rand);
   if (what === 'part') return { kind: partKind(pick(CACHE_PARTS, rand), pickTier(t.tierWeights, rand)) };
   if (what === 'scrap') return { kind: SCRAP };
   if (what === 'cloth') return { kind: CLOTH };
-  const kind = what === 'pistol' ? PISTOL : what === 'receiver' ? randomReceiver(rand) : pick(CACHE_GEAR, rand);
+  const kind = what === 'pistol' ? PISTOL : what === 'rifle' ? RIFLE : what === 'receiver' ? randomReceiver(rand) : pick(CACHE_GEAR, rand);
   return broken(kind, rand);
 }
 export const cacheContents = (rand: Rand) => stashContents(CACHES, rand);
