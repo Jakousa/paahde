@@ -281,11 +281,23 @@ export class NpcServer {
   }
 
   /** Tick all companion bots in the world. */
-  tick(dt: number, now: number, players: { id: number; browserId: string; state: { x: number; y: number; z: number }; heat?: { heat: number; sips: number; maxSips: number; temp: number } }[]) {
+  tick(
+    dt: number,
+    now: number,
+    players: { id: number; browserId: string; state: { x: number; y: number; z: number }; heat?: { heat: number; sips: number; maxSips: number; temp: number } }[],
+    tod?: number
+  ) {
     if (this.npcs.size === 0) return;
 
     for (const bot of this.npcs.values()) {
       const owner = players.find((p) => p.browserId === bot.owner) ?? (bot.owner === '' ? players[0] : undefined);
+
+      // Automatic worklight at night when escorting operator
+      if (typeof tod === 'number' && bot.task === 'follow') {
+        const isNight = tod < 0.22 || tod > 0.78;
+        if (isNight && !bot.light) bot.light = true;
+        else if (!isNight && bot.light) bot.light = false;
+      }
 
       // --------------------------------------------------------------------------------------------
       // 1. Emote Timer Expiration
@@ -380,7 +392,51 @@ export class NpcServer {
         const dz = owner.state.z - bot.z;
         const d = Math.hypot(dx, dz);
 
-        if (d > BOT_FOLLOW_START) {
+        // Opportunistically grab nearby scrap/loot if cargo has space and owner is nearby (<14m)
+        const cargoSlots = this.items.slots('', `bot${bot.id}`);
+        const hasSpace = cargoSlots.some((s) => s === null);
+        let assistTarget = null;
+        if (hasSpace && d < 14) {
+          if (!bot.targetScrap && !bot.targetLoot) {
+            bot.targetScrap = this.findNearestScrap(bot.x, bot.z, 7.5);
+            if (!bot.targetScrap) {
+              bot.targetLoot = this.findNearestLoot(bot.x, bot.z, 7.5);
+            }
+          }
+          assistTarget = bot.targetScrap ?? bot.targetLoot;
+        } else {
+          bot.targetScrap = null;
+          bot.targetLoot = null;
+        }
+
+        if (assistTarget) {
+          const tdx = assistTarget.x - bot.x;
+          const tdz = assistTarget.z - bot.z;
+          const td = Math.hypot(tdx, tdz);
+          if (td <= PICKUP_DIST) {
+            bot.vx = 0;
+            bot.vz = 0;
+            if (bot.targetScrap) {
+              const sTarget = bot.targetScrap;
+              bot.targetScrap = null;
+              this.scrap.takePiece(sTarget.ix, sTarget.iz, sTarget.i, (k) => {
+                return this.items.giveToBox('', `bot${bot.id}`, scrapItem(k), 1);
+              });
+            } else if (bot.targetLoot) {
+              const lTarget = bot.targetLoot;
+              bot.targetLoot = null;
+              this.loot.take({ x: bot.x, y: bot.y, z: bot.z } as any, lTarget.id, (l) => {
+                return this.items.giveToBox('', `bot${bot.id}`, l.kind, l.n ?? 1);
+              });
+            }
+          } else {
+            let h = Math.atan2(tdx, tdz);
+            h = skirt(bot.x, bot.z, h, BOT_RADIUS, bot.skirt, now);
+            bot.vx = Math.sin(h) * BOT_SPEED;
+            bot.vz = Math.cos(h) * BOT_SPEED;
+            bot.yaw = h;
+          }
+        } else if (d > BOT_FOLLOW_START) {
           let h = Math.atan2(dx, dz);
           h = skirt(bot.x, bot.z, h, BOT_RADIUS, bot.skirt, now);
           const spd = Math.min(BOT_SPEED, (d - BOT_FOLLOW_STOP) * 2.0);

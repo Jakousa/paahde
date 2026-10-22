@@ -1201,7 +1201,7 @@ setInterval(() => {
   }
   if (!CALM) tickBots(elapsed, now, tod); // (no walkers, drones or bosses in the lab or the art bench)
   tickThrows(elapsed, now);
-  npcs.tick(elapsed, now, [...players.values()]);
+  npcs.tick(elapsed, now, [...players.values()], tod);
   relaxAccum += elapsed;
   if (relaxAccum >= 1 / RELAX_RATE) {
     relaxAccum %= 1 / RELAX_RATE;

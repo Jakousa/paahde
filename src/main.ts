@@ -105,7 +105,7 @@ import { vehicles, vehicleTarget } from '../shared/vehicles.ts';
 import { CorpseView, corpseTargets } from './world/corpses';
 import { NpcView } from './world/npcs';
 import { corpsesNear } from '../shared/corpse.ts';
-import { botsNear } from '../shared/npcs.ts';
+import { botsNear, botBox } from '../shared/npcs.ts';
 import { openBoxes } from '../shared/storage.ts';
 import { Chat } from './chat';
 import { nameGate } from './name';
@@ -782,7 +782,7 @@ baseSand.update(frameDt, storm.atBase);
     } else if (site) {
       net.crashTake(site.site.id);
     } else if (wreck) net.crashTake(wreck.id);
-    else if (pack || chest || botNearby) hud.open();
+    else if (pack || chest || botNearby) hud.open(botTarget ? botBox(botTarget.id) : undefined);
   }
   const targeted = piecePrompt !== null || use !== null || buildingPrompt !== null || ridePrompt !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null || botPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));

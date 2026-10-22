@@ -8,6 +8,7 @@ import type { Net } from './net';
 import { isBound } from './bindings';
 import { tools, ui } from './input';
 import { TEXT } from '../shared/text.ts';
+import { npcSound } from './npcSound';
 
 /** How long a line stays up (ms), fading out over the last second. */
 const SHOW_MS = 12000;
@@ -53,7 +54,18 @@ export class Chat {
     this.el.append(this.log, this.input);
     document.body.append(this.el);
 
-    net.onChat = (m) => this.add(m.color, m.name, m.text, m.at);
+    net.onChat = (m) => {
+      this.add(m.color, m.name, m.text, m.at);
+      if (m.name === 'AUTON-1') {
+        if (m.text.includes('Warning') || m.text.includes('Alert')) {
+          npcSound.alert();
+        } else if (m.text.includes('whir-spin') || m.text.includes('cheerful')) {
+          npcSound.celebrate();
+        } else {
+          npcSound.chirp();
+        }
+      }
+    };
     net.onObituary = (m) => this.add(m.color, m.name, OBITUARY[m.cause], m.at, 'death');
     // On every (re)join: the world's latest deaths replace the ones we have, already faded.
     net.onObituaries = (list: Obituary[]) => {

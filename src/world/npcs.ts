@@ -7,6 +7,7 @@ import * as THREE from 'three/webgpu';
 import { NPCS, type NpcSnap } from '../../shared/npcs.ts';
 import { heightAt } from '../../shared/terrain.ts';
 import { EYE_HEIGHT } from '../../shared/dig.ts';
+import { npcSound } from '../npcSound';
 
 const VIEW_DIST = 400;
 
@@ -147,6 +148,9 @@ type ShownBot = {
   chassisMeshes: THREE.Mesh[];
   accentMeshes: THREE.Mesh[];
   lensMeshes: THREE.Mesh[];
+  prevLight: boolean;
+  prevEmote: string;
+  prevAlert: boolean;
   prevX: number;
   prevZ: number;
 };
@@ -209,16 +213,26 @@ export class NpcView {
       s.prevZ = bot.z;
 
       // --------------------------------------------------------------------------------------------
-      // Worklight State
+      // Worklight State & Audio Click
       // --------------------------------------------------------------------------------------------
       const lightOn = !!bot.light;
+      if (lightOn !== s.prevLight) {
+        s.prevLight = lightOn;
+        if (d < 25) npcSound.click();
+      }
       s.workLightBeam.visible = lightOn;
       s.workLightSpot.intensity = lightOn ? 2.4 : 0;
 
       // --------------------------------------------------------------------------------------------
-      // Alert Warning State (Pulsing Red Cyclops Sensor)
+      // Alert Warning State (Pulsing Red Cyclops Sensor) & Audio Alert
       // --------------------------------------------------------------------------------------------
-      if (bot.alert) {
+      const alertState = !!bot.alert;
+      if (alertState && !s.prevAlert) {
+        if (d < 35) npcSound.alert();
+      }
+      s.prevAlert = alertState;
+
+      if (alertState) {
         s.pupilMesh.material = ALERT_LENS_MAT;
         ALERT_LENS_MAT.emissive.setHex(Math.sin(performance.now() * 0.016) > 0 ? 0xff0020 : 0x880010);
       } else {
@@ -228,6 +242,12 @@ export class NpcView {
       // --------------------------------------------------------------------------------------------
       // Personality Emotes (Celebratory Victory Spin / Nod)
       // --------------------------------------------------------------------------------------------
+      const emoteState = bot.emote ?? 'none';
+      if (emoteState === 'spin' && s.prevEmote !== 'spin') {
+        if (d < 25) npcSound.celebrate();
+      }
+      s.prevEmote = emoteState;
+
       if (bot.emote === 'spin') {
         s.spinAngle += dt * 14;
         s.torsoGroup.rotation.y = s.spinAngle;
@@ -624,6 +644,9 @@ export class NpcView {
       chassisMeshes,
       accentMeshes,
       lensMeshes,
+      prevLight: false,
+      prevEmote: 'none',
+      prevAlert: false,
       prevX: 0,
       prevZ: 0,
     };
