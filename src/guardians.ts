@@ -186,7 +186,7 @@ export class GuardianFx {
         if (!(ok = jetAt(j, te, p))) break;
         te = now - (Math.hypot(p.x - e.x, p.y - e.y, p.z - e.z) / SPEED_OF_SOUND) * 1000;
       }
-      if (ok && jetAt(j, te, p) && p.state === 0) out.push({ id: j.id, x: p.x, y: p.y, z: p.z, vx: p.vx, vz: p.vz });
+      if (ok && jetAt(j, te, p) && p.state === 0) out.push({ id: j.id, kind: j.kind, x: p.x, y: p.y, z: p.z, vx: p.vx, vz: p.vz });
     }
     return out;
   }

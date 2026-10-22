@@ -17,6 +17,7 @@
 // −32 at 100 m, −45 at 300 m.
 import { audio } from './audio';
 import { placed, SPEED_OF_SOUND } from './acoustics';
+import type { JetKind } from '../shared/jetbreak.ts';
 
 /** Footfalls are heard within this distance (m); full level at REF. */
 const STEP_HEAR = 500;
@@ -49,6 +50,9 @@ const JET_NEAR = 200;
 const JET_GAIN = 0.3;
 const JET_WHINE = 0.05;
 const MAX_JET = 2;
+/** The fixed-wing drone (JetKind 'drone') is smaller than the stealth wing: −6 dB, and heard only within this far (m). */
+const DRONE_JET_GAIN = 0.5;
+const DRONE_JET_HEAR = 2200;
 const HORN_GAIN = 0.22;
 const CHARGE_GAIN = 0.035;
 /** Crawler feet are heard within this distance (m). */
@@ -286,11 +290,12 @@ class GuardianSound {
 
   /** Every frame: the fixed-wing drones, each where it was when the sound now reaching `ear` left it (position,
    *  velocity m/s). */
-  jets(list: { id: number; x: number; y: number; z: number; vx: number; vz: number }[], ear: { x: number; y: number; z: number }) {
+  jets(list: { id: number; kind: JetKind; x: number; y: number; z: number; vx: number; vz: number }[], ear: { x: number; y: number; z: number }) {
     const ctx = audio.ctx, out = audio.out;
     if (!ctx || !out || !audio.running) return;
     const now = ctx.currentTime;
-    const near = list.map((m) => ({ m, d: Math.hypot(m.x - ear.x, m.y - ear.y, m.z - ear.z) })).filter((o) => o.d < JET_HEAR)
+    const hear = (m: { kind: JetKind }) => (m.kind === 'drone' ? DRONE_JET_HEAR : JET_HEAR);
+    const near = list.map((m) => ({ m, d: Math.hypot(m.x - ear.x, m.y - ear.y, m.z - ear.z) })).filter((o) => o.d < hear(o.m))
       .sort((a, b) => a.d - b.d).slice(0, MAX_JET);
     const keep = new Set(near.map((o) => o.m.id));
     for (const [id, r] of this.jet) {
@@ -316,8 +321,9 @@ class GuardianSound {
         this.jet.set(m.id, r);
       }
       const near01 = 1 - Math.min(1, Math.max(0, (d - JET_NEAR) / (JET_FAR - JET_NEAR)));
-      const edge = Math.min(1, (JET_HEAR - d) / (JET_HEAR * 0.3));
-      r.gain.gain.setTargetAtTime(JET_GAIN * (JET_REF / Math.max(JET_REF, d)) * edge, now, 0.1);
+      const h = hear(m), edge = Math.min(1, (h - d) / (h * 0.3));
+      const g = m.kind === 'drone' ? JET_GAIN * DRONE_JET_GAIN : JET_GAIN;
+      r.gain.gain.setTargetAtTime(g * (JET_REF / Math.max(JET_REF, d)) * edge, now, 0.1);
       r.hiss.gain.setTargetAtTime(0.2 + 0.8 * near01 * near01, now, 0.1);
       r.air.frequency.setTargetAtTime(Math.max(300, 16000 * Math.exp(-d / 700)), now, 0.1);
       // Doppler, softened like the missiles': higher coming in, a falling moan going away.
