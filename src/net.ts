@@ -52,6 +52,7 @@ import type { BossKind } from '../shared/bosses.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 import { setPlaced } from '../shared/placed.ts';
 import type { PowerState } from '../shared/power.ts';
+import { setWires } from '../shared/wires.ts';
 import type { BedState } from '../shared/garden.ts';
 
 const INTERP_MS = 100;
@@ -497,6 +498,11 @@ export class Net {
     if (this.connected) this.send({ t: 'unplace', id });
   }
 
+  /** String a power line from `a` to `b` with the coil in bag slot `slot`, or take down the one between them. */
+  wire(slot: number, a: number, b: number) {
+    if (this.connected) this.send({ t: 'wire', slot, a, b });
+  }
+
   /** Craft at the workbench (shared/crafting.ts); the bag comes back with what was made, or a notice. */
   craft(recipe: string) {
     if (this.connected) this.send({ t: 'craft', recipe });
@@ -706,6 +712,10 @@ export class Net {
       this.down = null;
       this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
       return;
+    }
+    if (msg.t === 'wires') {
+      setWires(msg.list);
+      return this.onPlaced?.();
     }
     if (msg.t === 'power') {
       this.power = { gen: msg.gen, store: msg.store };

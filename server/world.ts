@@ -31,6 +31,7 @@ import { trace } from './telemetry.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
 import { PowerServer } from './power.ts';
+import { WireServer } from './wires.ts';
 import { ItemServer } from './items.ts';
 import { LootServer } from './loot.ts';
 import { CorpseServer } from './corpses.ts';
@@ -92,6 +93,7 @@ const crash = new CrashServer(db, (ids, msg) => {
   for (const p of players.values()) send(p.ws, msg);
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
+const wiring = new WireServer(db, items); // after the placed list: it drops wires to things gone
 const garden = new GardenServer(db);
 const loot = new LootServer(db);
 const corpses = new CorpseServer(db, items, (msg) => {
@@ -190,6 +192,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
     if (msg.t === 'place' && p) return onPlace(p, msg.slot, msg.x, msg.z, msg.rot);
     if (msg.t === 'unplace' && p) return onUnplace(p, msg.id);
+    if (msg.t === 'wire' && p) return onWire(p, msg.slot, msg.a, msg.b);
     if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
     if (msg.t === 'storm' && p && msg.gas) return storms.spawnGas([...players.values()].map((o) => o.state), performance.now());
@@ -317,6 +320,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, crash.spentMessage());
   send(ws, crash.rollsMessage());
   send(ws, placedThings.joinMessage());
+  send(ws, wiring.joinMessage());
   send(ws, power.msg());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
@@ -967,8 +971,18 @@ function onPlace(p: Player, slot: unknown, x: unknown, z: unknown, rot: unknown)
 function onUnplace(p: Player, id: unknown) {
   const r = placedThings.unplace(p.browserId, p.state, id);
   if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
+  // Its wires come down: the coils into the bag, at your feet what doesn't fit.
+  wiring.takeDown(r.id, (kind) => items.give(p.browserId, kind), (kind) => loot.dropAt(p.state.x, p.state.z, kind));
   if (r.kind === 'plant_bed') garden.remove(r.id);
   sendBox(p, 'bag', r.kind);
+  gearChanged(p.browserId);
+}
+
+// Stringing a power line, or taking one down (server/wires.ts).
+function onWire(p: Player, slot: unknown, a: unknown, b: unknown) {
+  const r = p.down ? TEXT.notice.cantConnect : wiring.connect(p.browserId, p.state, slot, a, b);
+  if (r !== 'up' && r !== 'down') send(p.ws, { t: 'notice', text: r });
+  sendBox(p, 'bag');
   gearChanged(p.browserId);
 }
 
@@ -1084,7 +1098,7 @@ function broadcast(time: number) {
       if (jetsBreaking[i].due <= time) crashed.push(jetCame(jetsBreaking.splice(i, 1)[0]));
     }
   }
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), wiring.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);

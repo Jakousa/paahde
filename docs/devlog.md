@@ -1897,3 +1897,24 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   ("1.2 / 3.6 kWh · +240 W" while charging); each cell's lamp on the station is lit while it holds charge.
 - Gaps: nothing uses the power yet; no hum or creak; the head's swing and the rotor are drawn per client (from the same
   wind, so they agree in speed, not in phase).
+
+## Power lines
+
+- **Nothing connects by itself any more** (`shared/wires.ts`): each set of things joined by wires is a grid of its own
+  (`grids()`, union-find), and `server/power.ts` runs each one: its windmills charge its stations. A windmill on a grid
+  with no station that will take charge delivers nothing (its panel says 0 W).
+- **Connectors:** every electric thing has a socket high enough that a sagging wire clears your head (`CONNECTORS`):
+  the windmill an insulator on an angle-iron arm off the tower at 3.2 m, the battery station one on a mast of scrap pipe
+  at 3.25 m, and the new **power pole** (8 scrap: welded pipe on a concrete foot, braced, a crossarm) one on top at 4.5 m.
+  The models (`tools/blender/placeables.py` `insulator`) put the socket exactly there.
+- **A wire is a wiring coil**, used up; its tier is how far it reaches, socket to socket: 10 / 16 / 24 / 35 m (Scrap ..
+  Space-grade). At most MAX_WIRES (6) on a connector. It sags by 2.5% of its length (at most 0.9 m) on a parabola
+  (`wirePoints`), drawn as a thin black tube (`src/world/wires.ts`).
+- **Stringing one** (`src/wiring.ts`): a coil in the hotbar, look at a connector (within 5 m, the crosshair within
+  0.45 m of the socket) and click: the wire hangs from it and follows your aim, red over a connector it can't reach.
+  Click another connector: it goes up (the server checks the coil, both ends, the length, your reach to the second
+  connector), or a toast says why not ("Out of reach"). Right-click (or the first connector again) lets go. Clicking a
+  pair that is wired takes the wire down, its coil back to the bag. Picking a thing up (G) takes its wires down: their
+  coils into the bag, what doesn't fit dropped at your feet.
+- Gaps: the wire is a straight sag between sockets, it doesn't collide or avoid anything; no line losses; you can't
+  take one wire down by looking at it, only by clicking its two connectors.

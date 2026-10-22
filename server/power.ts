@@ -1,9 +1,11 @@
-// Server side of the base's electricity (shared/power.ts): every tick the windmills' output goes into the battery
-// stations, each battery's charge is kept (and saved in `power`), and the state goes out to everyone. While the world
+// Server side of the base's electricity (shared/power.ts): every tick each grid's windmills (what is wired together:
+// shared/wires.ts grids) charge that grid's battery stations, each battery's charge is kept (and saved in `power`), and
+// the state goes out to everyone. A windmill on a grid with no station (or only full ones) delivers nothing. While the world
 // sleeps (nobody in it, the process gone) the wind still blows: on start the time since the last save is caught up in
 // steps of the same wind, storms left out.
 import { BASE } from '../shared/base.ts';
 import { placed } from '../shared/placed.ts';
+import { grids } from '../shared/wires.ts';
 import { charge, GAME_SPEED, recharge, windmillWatts, windSpeed, type PowerState, type Store } from '../shared/power.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';
@@ -61,16 +63,20 @@ export class PowerServer {
   private step(worldMs: number, realS: number, storm: number) {
     this.sync();
     const v = windSpeed(worldMs, storm);
-    let watts = 0;
     this.gen = {};
-    for (const p of placed) {
-      if (p.kind !== 'windmill') continue;
-      this.gen[p.id] = windmillWatts(p.parts, v);
-      watts += this.gen[p.id];
+    this.intake = {};
+    const kinds = new Map(placed.map((p) => [p.id, p]));
+    for (const grid of grids(placed)) {
+      const mills = grid.filter((id) => kinds.get(id)?.kind === 'windmill');
+      const ids = grid.filter((id) => this.stores.has(id));
+      const made = mills.map((id) => windmillWatts(kinds.get(id)!.parts, v));
+      const watts = made.reduce((a, b) => a + b, 0);
+      const took = charge(ids.map((id) => this.stores.get(id) as Store), watts, realS * GAME_SPEED);
+      ids.forEach((id, i) => (this.intake[id] = took[i]));
+      // What each windmill gives the grid: its share of what was taken.
+      const used = watts > 0 ? took.reduce((a, b) => a + b, 0) / watts : 0;
+      mills.forEach((id, i) => (this.gen[id] = made[i] * used));
     }
-    const ids = [...this.stores.keys()];
-    const took = charge(ids.map((id) => this.stores.get(id) as Store), watts, realS * GAME_SPEED);
-    this.intake = Object.fromEntries(ids.map((id, i) => [id, took[i]]));
   }
 
   /** Every tick: the time since the last one. `stormAt`: a sandstorm's strength at a point (shared/storm.ts stormAt). */

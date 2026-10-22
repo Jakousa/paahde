@@ -263,6 +263,13 @@ export function openDb(path: string) {
   const allPower = db.prepare('SELECT id, charge FROM power');
   const clearPower = db.prepare('DELETE FROM power');
   const putPower = db.prepare('INSERT INTO power (id, charge) VALUES (?, ?)');
+  // Power lines (shared/wires.ts, server/wires.ts): wire between placed things a < b, the coil it was made of.
+  db.exec(`CREATE TABLE IF NOT EXISTS wires (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, a INTEGER NOT NULL, b INTEGER NOT NULL, kind TEXT NOT NULL,
+    owner TEXT NOT NULL, placed_at INTEGER NOT NULL)`);
+  const allWires = db.prepare('SELECT id, a, b, kind FROM wires ORDER BY id');
+  const insertWire = db.prepare('INSERT INTO wires (a, b, kind, owner, placed_at) VALUES (?, ?, ?, ?, ?)');
+  const deleteWire = db.prepare('DELETE FROM wires WHERE id = ?');
   const allBeds = db.prepare('SELECT id, stage, growth FROM beds');
   const upsertBed = db.prepare('INSERT OR REPLACE INTO beds (id, stage, growth) VALUES (?, ?, ?)');
   const deleteBed = db.prepare('DELETE FROM beds WHERE id = ?');
@@ -400,6 +407,10 @@ export function openDb(path: string) {
       clearBox.run('', `corpse${id}`);
     }),
     loadBeds: () => allBeds.all() as { id: number; stage: number; growth: number }[],
+    loadWires: () => allWires.all() as { id: number; a: number; b: number; kind: string }[],
+    /** New wire; returns its id. */
+    insertWire: (a: number, b: number, kind: string, owner: string) => Number(insertWire.run(a, b, kind, owner, Date.now()).lastInsertRowid),
+    deleteWire: (id: number) => deleteWire.run(id),
     /** Battery stations' charge by placed id (kWh per part slot). */
     loadPower: () => new Map((allPower.all() as { id: number; charge: string }[]).map((r) => [r.id, JSON.parse(r.charge) as number[]])),
     savePower: (rows: Map<number, number[]>) => tx(() => {

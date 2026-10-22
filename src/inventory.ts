@@ -205,6 +205,7 @@ stroke="#a8a294" stroke-width="1.3"/></svg>`,
 const png = (kind: string) => `<img src="./icons/items/${kind}.png" alt="" draggable="false">`;
 ICONS.plant_bed = png('plant_bed');
 ICONS.uv_lamp = png('uv_lamp');
+ICONS.power_pole = png('power_pole');
 // The enemies' and bosses' own parts (tools/blender/relics.py).
 for (const k of ['drone_transponder', 'brood_gland', 'servo_heart', 'hive_core', 'queen_eye', 'furnace_heart']) ICONS[k] = png(k);
 // Gear (shared/gear.ts) icons are rendered at the item's grid shape (tools/blender/finds.py): `fit` stretches them

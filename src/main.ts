@@ -35,6 +35,9 @@ import { Post } from './post';
 import * as env from './world/env';
 import { Base } from './world/base';
 import { PlacedView } from './world/placed';
+import { WireView } from './world/wires';
+import { Wiring } from './wiring';
+import { wires } from '../shared/wires.ts';
 import { Placer } from './placing';
 import { Scrap } from './world/scrap';
 import { CrashSites } from './world/crashsites';
@@ -158,6 +161,7 @@ await slice();
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
 await slice();
 const placedView = new PlacedView(scene, base); // plant beds, UV lamps and the buildings, in the bunker and round it
+const wireView = new WireView(scene); // the power lines between them (shared/wires.ts)
 await slice();
 const scrap = new Scrap(scene);
 await slice();
@@ -343,7 +347,10 @@ zaps.setCamera(orbit.camera);
 const thrower = new Thrower(scene, orbit, net, scrap);
 thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one drawn in the hand
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
-net.onPlaced = () => placedView.sync(placed, net.garden);
+net.onPlaced = () => {
+  placedView.sync(placed, net.garden);
+  wireView.sync(wires);
+};
 net.onPower = () => {
   placedView.setPower(net.power);
   hud.powerChanged();
@@ -361,6 +368,7 @@ function bagFull() {
   speech.event('bagFull', undefined);
 }
 const placer = new Placer(net, placedView);
+const wiring = new Wiring(net, wireView);
 
 window.addEventListener('resize', () => {
   orbit.resize();
@@ -689,7 +697,9 @@ baseSand.update(frameDt, storm.atBase);
   const pieceHere = teardown.active && !teardown.holding ? teardown.pieceNear(net.me) : null;
   const piecePrompt = teardown.holding ? TEXT.prompt.putDown : pieceHere ? TEXT.prompt.pickUp(pieceHere.label) : null;
   const fPrompt = piecePrompt ?? use ?? buildingPrompt ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
-  const extra = [growing, placing.prompt].filter(Boolean).join(' ');
+  // A wiring coil in hand: stringing power lines between connectors (src/wiring.ts).
+  const wirePrompt = wiring.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), !net.down && !fly.active, (t) => hud.toast(t));
+  const extra = [growing, wirePrompt, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup() && !fly.active;
   if (interact && piecePrompt) {

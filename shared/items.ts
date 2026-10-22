@@ -49,6 +49,8 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   // Buildings: crafted at the workbench with their parts fitted (gear, shared/gear.ts GEAR), put down from the hotbar.
   windmill: { label: TEXT.items.windmill, stack: 1, size: [2, 3] },
   battery_station: { label: TEXT.items.battery_station, stack: 1, size: [2, 2] },
+  // A pole to carry power lines (shared/wires.ts): made of scrap, put up on the sand from the hotbar.
+  power_pole: { label: TEXT.items.power_pole, stack: 1, size: [1, 3] },
   // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.
   laser_rifle: { label: TEXT.items.laser_rifle, stack: 1, size: [4, 1] },
   laser_pistol: { label: TEXT.items.laser_pistol, stack: 1, size: [2, 1] },

@@ -49,6 +49,8 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   windmill: [{ label: TEXT.parts.bearing, n: 6, part: 'bearing' }, { label: TEXT.parts.coil, n: 2, part: 'coil' }, SCRAP(20)],
   // A battery station: a welded rack of six cells and a charger wound with two coils.
   battery_station: [{ label: TEXT.parts.battery, n: 6, part: 'battery' }, { label: TEXT.parts.coil, n: 2, part: 'coil' }, SCRAP(14)],
+  // A power pole: lengths of scrap pipe welded up, a crossarm, an insulator (the wires are coils, shared/wires.ts).
+  power_pole: [SCRAP(8)],
 };
 
 // ---------------------------------------------------------------------------------------------------------------

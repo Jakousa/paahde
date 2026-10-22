@@ -47,6 +47,7 @@ const en = {
     uv_lamp: 'UV lamp',
     windmill: 'Windmill',
     battery_station: 'Battery station',
+    power_pole: 'Power pole',
     laser_rifle: 'Laser rifle',
     laser_pistol: 'Laser pistol',
     jammer: 'Jammer',
@@ -137,6 +138,10 @@ const en = {
     empty: 'Empty',
     aimAtFloor: 'Aim at the floor',
     aimAtGround: 'Aim at the ground',
+    /** Stringing a wire with a coil in hand (shared/wires.ts). */
+    connect: 'Connect',
+    takeDown: 'Take down',
+    cancel: 'Cancel',
   },
 
   // ---- Short notices (toasts), from the client or sent by the server ---------------------------------------------
@@ -160,6 +165,9 @@ const en = {
     tooClose: (spot: string) => `Too close to ${spot}`,
     /** Too close to another building: "Too close to the windmill". */
     tooCloseTo: (what: string) => `Too close to the ${lower(what)}`,
+    outOfReach: 'Out of reach',
+    tooManyWires: 'No room for more wires',
+    cantConnect: "Can't connect that",
     baseFull: 'The base is full',
     lineUp: (what: 'bed' | 'lamp') => `Line it up with the ${what}`,
     inTheWay: 'Something is in the way',

@@ -57,6 +57,11 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
   },
   // A welded rack of cells on a skid, the charger box on top.
   battery_station: { hx: 0.78, hz: 0.42, sand: true, gap: 2, boxes: [{ x0: -0.75, x1: 0.75, y0: 0, y1: 1.35, z0: -0.4, z1: 0.4 }] },
+  // A pole: its foot collides, the crossarm and insulator up top are only looked at.
+  power_pole: {
+    hx: 0.3, hz: 0.3, sand: true, gap: 1,
+    boxes: [{ x0: -0.12, x1: 0.12, y0: 0, y1: 4.4, z0: -0.12, z1: 0.12 }, { x0: -0.6, x1: 0.6, y0: 4.2, y1: 4.6, z0: -0.1, z1: 0.1 }],
+  },
 };
 
 export const isPlaceable = (kind: string | undefined) => !!kind && kind in PLACEABLES;

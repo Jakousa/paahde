@@ -12,6 +12,7 @@ import type { Harvester } from './harvester.ts';
 import type { TossPath } from './throw.ts';
 import type { Placed } from './placed.ts';
 import type { PowerState } from './power.ts';
+import type { Wire } from './wires.ts';
 import type { BedState } from './garden.ts';
 import type { BossKind, BossSnap } from './bosses.ts';
 
@@ -33,6 +34,9 @@ export type ClientMsg =
   // (0/1). The server checks the item, reach and placeError(), then answers 'items' (bag) and broadcasts
   // 'placed'; a refusal gets a 'notice'.
   | { t: 'place'; slot: number; x: number; z: number; rot: number }
+  // String a power line (shared/wires.ts) from placed thing `a`'s connector to `b`'s with the coil in bag slot `slot`,
+  // or take down the wire between them. Answered with 'items' (bag) and a broadcast 'wires', or a 'notice'.
+  | { t: 'wire'; slot: number; a: number; b: number }
   // Pick a placed thing back up into the bag (reach, room in the bag). A bed's crop is lost.
   | { t: 'unplace'; id: number }
   // Craft a recipe at the workbench (shared/crafting.ts RECIPES id): reach checked, ingredients used up from
@@ -249,6 +253,8 @@ export type ServerMsg =
   | { t: 'placed'; list: Placed[] }
   // Electricity at the base (shared/power.ts), every POWER_SEND_MS: each windmill's output and each station's charge.
   | ({ t: 'power' } & PowerState)
+  // Every power line (shared/wires.ts), on join and whenever one goes up or comes down.
+  | { t: 'wires'; list: Wire[] }
   // Every plant bed's stage and growth (shared/garden.ts), on join and whenever one changes.
   | { t: 'garden'; beds: BedState[] }
   // A short message for this player's HUD toast (a refused place, pickup or craft).

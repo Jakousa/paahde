@@ -79,8 +79,12 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
 - `shared/power.ts` — electricity, somewhat realistic in game time (`GAME_SPEED`: a game day is 30 real min): the shared
   wind (`windSpeed`: day cycle, weather, gusts, storms), windmill output (½ρAv³·Cp·η by bearings/coils, furling) and
   rotor speed, battery stations (per-battery kWh by tier, a Scrap battery = a car battery, 0.6 kWh; coils = the charger)
-  and charging; `server/power.ts` runs the base's one grid each second, keeps each battery's charge (`power` table),
+  and charging; `server/power.ts` runs each grid (what is wired together) each second, keeps each battery's charge (`power` table),
   catches up the time the world slept; the panel shows W / kWh (`src/inventory.ts`), cells' lamps the charge
+- `shared/wires.ts` — power lines: connectors (`CONNECTORS`, a socket ~3.2 m up on each electric thing; the power pole,
+  scrap, is one up at 4.5 m), a wire per wiring coil (used up; its tier is its reach, `COIL_REACH`), `grids()`; strung
+  with a coil in hand, click a connector then another, right-click cancels (`src/wiring.ts`); `server/wires.ts`
+  (`wires` table), drawn by `src/world/wires.ts`
 - `shared/shelters.ts` — small empty bunkers (small/deep/long) scattered mostly in rocky country: placement, pad,
   collision, pumps (`atWater`), stash spots, `indoors()`/`sandHidden()` (base or shelter); drawn by `src/world/shelters.ts`
 - `shared/crashsites.ts` — deterministic crash-site layout + hitboxes; sites have a level by distance from the base

@@ -17,6 +17,10 @@ tower, origin on the yaw axis at the tower's top: the generator, the tail) and `
 origin at the hub, turning about glTF Z, its front). src/world/placed.ts turns the head into the wind and spins the rotor.
 battery_station.glb: `battery_station` (skid, rack, charger box with its coils) and `battery_station_cell0`..`5`, one
 per battery slot, shown only while that slot holds a battery.
+power_pole.glb: a pole of welded scrap pipe on a concrete foot, crossarm and insulators up top.
+Every electric thing has a connector: an insulator whose top is the socket the power lines hang from (shared/wires.ts
+CONNECTORS: glTF (x, y, z) is Blender (x, -z, y)): the windmill's on a bracket off the tower, the battery station's on a
+mast of pipe, the pole's on top.
 
 Blender is Z-up; the glTF exporter converts to Y-up. Units are metres, origin at the centre of the footprint on
 the floor, long side along X (glTF X). Output is deterministic.
@@ -50,7 +54,19 @@ MATERIALS = {
     'concrete': (0x8d877c, 0.0, 0.95, 0),
     'paint_red_faded': (0x8a4636, 0.1, 0.85, 0),
     'paint_cream': (0xb9ad8e, 0.1, 0.85, 0),
+    'insulator': (0x6d8a74, 0.0, 0.25, 0),
+    'insulator_brown': (0x6b3f24, 0.0, 0.25, 0),
 }
+
+
+def insulator(mb, x, y, top, mat='insulator'):
+    """A glass insulator on a steel pin, its top (the socket, a lug with a bolt) at height `top`."""
+    mb.cyl(0.018, 0.018, 0.1, 6, (x, y, top - 0.17), 'steel_dull')
+    for k, (r, z) in enumerate(((0.07, top - 0.115), (0.06, top - 0.075), (0.045, top - 0.04))):
+        mb.cyl(r, r * 0.55, 0.035, 12, (x, y, z), mat)
+    mb.cyl(0.03, 0.03, 0.03, 10, (x, y, top - 0.015), mat)
+    mb.box((0.05, 0.012, 0.03), (x, y, top + 0.008), 'steel_dull')
+    mb.cyl(0.007, 0.007, 0.05, 6, (x, y, top + 0.01), 'steel', rot=it.X90)
 
 # Plant bed: outer size and soil height (shared/placed.ts uses BED = 1.6 x 0.8, 0.5 high).
 BED_X, BED_Y, BED_H, SOIL = 1.6, 0.8, 0.5, 0.44
@@ -258,6 +274,15 @@ def build_tower(mb, rng):
     mb.box((0.22, 0.02, 0.06), (x - 0.12, y - 0.255, 0.86), 'label')
     it.wire(mb, [pts[-1], (x - 0.05, y - 0.12, 0.92)], 0.012, 4, 'cable')
     it.wire(mb, [(x - 0.12, y - 0.18, 0.58), (x - 0.14, y - 0.3, 0.25), (x - 0.25, y - 0.55, -0.05)], 0.014, 4, 'cable')
+    # The connector (shared/wires.ts: glTF (0.98, 3.2, 0)): an arm of angle iron off a girt between the +X legs, an
+    # insulator on its end, and the generator's line from it down to the junction box's cable.
+    zc = 3.03
+    h = LEG_FOOT + (LEG_TOP - LEG_FOOT) * zc / TOWER_H
+    it.wire(mb, [(h, -h, zc), (h, h, zc)], 0.02, 5, 'rust_dark')
+    mb.box((0.98 - h + 0.05, 0.05, 0.04), ((0.98 + h) / 2, 0, zc), 'steel_dull')
+    it.wire(mb, [(h, 0.25, zc - 0.35), (0.9, 0.0, zc - 0.01)], 0.012, 4, 'rust_dark')
+    insulator(mb, 0.98, 0.0, 3.2)
+    it.wire(mb, [(0.98, 0.0, 3.205), (0.9, 0.08, 3.1), (h + 0.02, 0.2, 2.95), (h + 0.03, h - 0.05, 2.2)], 0.01, 4, 'cable')
 
 
 def build_head(mb, rng):
@@ -376,6 +401,55 @@ def build_station(mb, rng):
         it.wire(mb, [(-0.66, 0.26, z + 0.33), (0.66, 0.26, z + 0.33)], 0.013, 5, 'cable')
     it.wire(mb, [(0.66, 0.3, SHELVES[0] + 0.36), (0.7, 0.32, 0.9), (0.62, 0.3, 1.15)], 0.013, 5, 'wire_red')
     it.wire(mb, [(-0.1, 0.24, 1.15), (-0.2, 0.36, 0.9), (-0.25, 0.39, 0.4), (-0.4, 0.38, 0.13)], 0.018, 5, 'cable')
+    # The connector (shared/wires.ts: glTF (0.6, 3.25, -0.3)): a mast of two lengths of pipe clamped to the rack's back
+    # corner post, an insulator on top, the line down it to the charger.
+    mx, my = 0.6, 0.3
+    mb.cyl(0.035, 0.035, 1.2, 8, (mx, my, 1.13 + 0.6), 'rust')
+    mb.cyl(0.028, 0.028, 0.8, 8, (mx, my, 2.33 + 0.4), 'steel_dull')
+    mb.cyl(0.045, 0.045, 0.08, 8, (mx, my, 2.33), 'rust_dark')
+    for z in (0.5, 0.95):
+        mb.box((0.16, 0.06, 0.04), (mx + 0.06, my + 0.02, z), 'steel_dull')
+    it.wire(mb, [(mx, my, 1.13), (hx - 0.05, hy - 0.05, 1.0)], 0.02, 5, 'rust_dark')
+    insulator(mb, mx, my, 3.25)
+    pts = [(mx, my, 3.255), (mx + 0.06, my - 0.02, 3.15)]
+    for k in range(8):
+        z = 3.0 - k * 0.24
+        pts.append((mx + 0.05 * (1 if k % 2 else -1), my - 0.045, z))
+    pts += [(0.3, 0.1, 1.33), (0.14, 0.0, 1.32)]
+    it.wire(mb, pts, 0.01, 4, 'cable')
+
+
+# ---------------------------------------------------------------------------------------------- power pole
+POLE_H, SOCKET_H = 4.4, 4.5
+
+
+def build_pole(mb, rng):
+    """Welded scrap pipe on a concrete foot, guy-braced, a crossarm with an insulator on top of the pole (the socket,
+    shared/wires.ts: glTF (0, 4.5, 0)) and two spare ones on its ends."""
+    v = mb.box((0.5, 0.5, 0.3), (0, 0, 0.05), 'concrete', rot=(0, 0, rng(-0.3, 0.3)))
+    mb.jitter(v, rng, 0.02)
+    for k, (z0, z1, r, m) in enumerate(((0.15, 1.6, 0.07, 'rust_dark'), (1.6, 3.0, 0.06, 'paint_faded'), (3.0, POLE_H, 0.05, 'rust'))):
+        mb.cyl(r, r, z1 - z0, 10, (rng(-0.005, 0.005), 0, (z0 + z1) / 2), m)
+        if k:
+            mb.cyl(r + 0.02, r + 0.02, 0.1, 10, (0, 0, z0), 'steel_dull')
+            mb.blob(0.035, (r + 0.01, 0, z0 + 0.05), 'steel_dull')
+    # Three braces of rod from the foot up a metre.
+    for a in (0.3, 2.4, 4.5):
+        it.wire(mb, [(0.55 * math.cos(a), 0.55 * math.sin(a), 0.02), (0.07 * math.cos(a), 0.07 * math.sin(a), 1.1)], 0.015, 5, 'rust_dark')
+        mb.box((0.12, 0.12, 0.04), (0.55 * math.cos(a), 0.55 * math.sin(a), 0.0), 'rust_dark')
+    # Crossarm (angle iron), two braces, the insulators, a hand-painted plate and footholds.
+    mb.box((1.2, 0.06, 0.06), (0, 0, 4.22), 'steel_dull')
+    for s in (-1, 1):
+        it.wire(mb, [(s * 0.45, 0, 4.2), (0, 0, 3.75)], 0.012, 4, 'rust_dark')
+        insulator(mb, s * 0.55, 0, 4.4, 'insulator_brown')
+    mb.cyl(0.05, 0.05, 0.06, 10, (0, 0, POLE_H), 'steel_dull')
+    insulator(mb, 0, 0, SOCKET_H)
+    mb.box((0.02, 0.18, 0.24), (0.06, 0, 2.2), 'hazard_yellow')
+    mb.box((0.022, 0.12, 0.03), (0.062, 0, 2.25), 'plastic_black', rot=(0.5, 0, 0))
+    for k in range(5):
+        z = 1.4 + k * 0.45
+        a = 1.0 + (k % 2) * math.pi
+        mb.cyl(0.012, 0.012, 0.22, 5, (0.15 * math.cos(a), 0.15 * math.sin(a), z), 'steel_dull', rot=(0, math.pi / 2, a))
 
 
 def build_cell(i):
@@ -471,7 +545,9 @@ def main():
     station = build('battery_station', build_station, 8)
     cells = [build(f'battery_station_cell{i}', build_cell(i), 9 + i) for i in range(6)]
     export([station, *cells], os.path.join(out, 'battery_station.glb'))
-    for o in (bed, sprouts, grown, lamp, tower, head, rotor, station, *cells):
+    pole = build('power_pole', build_pole, 15)
+    export([pole], os.path.join(out, 'power_pole.glb'))
+    for o in (bed, sprouts, grown, lamp, tower, head, rotor, station, *cells, pole):
         d = o.dimensions
         print(f'{o.name}: tris={it.tri_count(o)} size={d.x:.3f} x {d.y:.3f} x {d.z:.3f} m')
 
@@ -480,11 +556,13 @@ def main():
     render_icon(cam, [lamp], [lamp], os.path.join(icons, 'uv_lamp.png'))
     render_icon(cam, [tower, head, rotor], [tower, head, rotor], os.path.join(icons, 'windmill.png'))
     render_icon(cam, [station, *cells], [station, *cells], os.path.join(icons, 'battery_station.png'))
+    render_icon(cam, [pole], [pole], os.path.join(icons, 'power_pole.png'))
 
     if preview_b:
         scene = bpy.context.scene
         for o in bpy.data.objects:
-            o.hide_render = o not in (tower, head, rotor, station, *cells)
+            o.hide_render = o not in (tower, head, rotor, station, *cells, pole)
+        pole.location = (-3.0, -1.5, 0)
         cells[4].hide_render = True  # one slot empty
         station.location = (2.6, -1.2, 0)
         for c in cells:
