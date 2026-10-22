@@ -1,9 +1,12 @@
 // One simulated player in one world: a greedy agent that goes out for whatever moves its next goals along the most per
 // second (risk, heat and bag room counted), brings it home, takes machines apart, repairs and crafts, and calls the
 // bosses when it can. The rules are the game's (bag grid, gear slots and quality, recipes, machine contents, drop
-// dice); the times and fight odds are tools/econsim/costs.ts. Deterministic for a world and a seed.
+// dice); every enemy (where it's met, what it leaves, the fight odds) is shared/enemies.ts; the times are
+// tools/econsim/costs.ts. Deterministic for a world and a seed.
 import { BASE } from '../../shared/base.ts';
+import { biome } from '../../shared/biomes.ts';
 import { BOSS_KINDS, BOSS_LIVES, RECEIVERS, type BossKind } from '../../shared/bosses.ts';
+import { ENEMIES, fightOdds, type EnemyKind, type Meet, type Weapon } from '../../shared/enemies.ts';
 import { RECIPES } from '../../shared/crafting.ts';
 import { type LootLevel } from '../../shared/crashsites.ts';
 import { seeded } from '../../shared/crash.ts';
@@ -11,18 +14,18 @@ import {
   bagShape, backpackRows, bikeTopSpeed, canteenSips, EQUIP_SLOTS, fitsSlot, GEAR, quality, repaired, shieldSaves, spyglassZoom, tierOf, type EquipSlot,
 } from '../../shared/gear.ts';
 import { addItem, BAG_SLOTS, BIKE_COLS, BIKE_ROWS, gridShape, HOTBAR, parsePart, SCRAP, type Item, type Shape, type Slots } from '../../shared/items.ts';
-import { bossDrops, jetDrops, killDrops, type Rand } from '../../shared/lootRoll.ts';
+import { type Drop, type Rand } from '../../shared/lootRoll.ts';
 import { machineParts } from '../../shared/machine.ts';
 import { frameScrap, stepList } from '../../shared/machineSteps.ts';
 import { PART_IDS } from '../../shared/parts.ts';
 import { COMPONENTS, junkSpec, SALVAGE, type JunkKind, type PartId } from '../../shared/salvage.ts';
 import { DAY_SECONDS } from '../../shared/sun.ts';
 import { RARE_PARTS } from '../../shared/lootRoll.ts';
-import { FINDS, KILL_SPOILS, RARE_FINDS, RECEIVER_DROPS, RELIC_DROPS, SCRAP_REWARD } from '../../shared/tables.ts';
+import { FINDS, RARE_FINDS, SCRAP_REWARD } from '../../shared/tables.ts';
 import { feltTemp } from '../../shared/temperature.ts';
 import { heatPerSecond, SIP_COOL } from '../../shared/water.ts';
 import { LIVES } from '../../shared/world.ts';
-import { COSTS, MIN_SCORE, type Fight, type Weapon } from './costs.ts';
+import { COSTS, MIN_SCORE } from './costs.ts';
 import { CORPSE_S, World, type Poi, type Source, type Thing } from './world.ts';
 
 /** What the agent works towards, in order: each piece of gear repaired (or crafted), each boss beaten. */
@@ -65,9 +68,18 @@ export type RunResult = {
   wait: Record<string, number>;
   km: number;
   trips: number;
+  /** Fights by enemy kind, and how many of them were won (it was killed). */
   fights: Record<string, number>;
+  kills: Record<string, number>;
   bossTries: number;
 };
+
+/** A site's pack is back this long after you've left it (the longest `backS` of the site meets, shared/enemies.ts). */
+const SITE_BACK_S = Math.max(0, ...Object.values(ENEMIES).flatMap((e) => e.meet.map((m) => (m.at === 'site' ? m.backS ?? 0 : 0))));
+
+/** The enemies met on the move: each kind with its roaming meet (shared/enemies.ts). */
+const ROAMING = (Object.keys(ENEMIES) as EnemyKind[]).flatMap((kind) =>
+  ENEMIES[kind].meet.filter((m): m is Extract<Meet, { at: 'roam' }> => m.at === 'roam').map((m) => ({ kind, m })));
 
 export class Sim {
   t = 0;
@@ -90,7 +102,10 @@ export class Sim {
   private fightRand: Rand;
   private machineRand: Rand;
   private todOffset: number;
-  private nextJet: number;
+  /** In a fight (nothing else comes at you meanwhile). */
+  private fighting = false;
+  /** What each enemy kind leaves, a sample of kills (rolled once, from a stream of their own), to value a fight by. */
+  private spoilSamples = new Map<EnemyKind, Drop[][]>();
   private needCache: Map<string, number> | null = null;
   /** Item kind → value, while needCache holds; what's in hand by need key. */
   private valueCache = new Map<string, number>();
@@ -103,8 +118,11 @@ export class Sim {
     this.machineRand = seeded(seed * 7919 + 3);
     this.world = new World(seeded(seed * 7919 + 4));
     this.todOffset = 0.2 + this.rand() * 0.6;
-    this.nextJet = lerp(COSTS.jetGapS, this.rand());
-    this.out = { world: worldId, milestones: {}, deaths: 0, gameOverS: null, wonS: null, endS: 0, sources: {}, tiers: {}, used: {}, leftover: {}, wait: {}, km: 0, trips: 0, fights: {}, bossTries: 0 };
+    this.out = { world: worldId, milestones: {}, deaths: 0, gameOverS: null, wonS: null, endS: 0, sources: {}, tiers: {}, used: {}, leftover: {}, wait: {}, km: 0, trips: 0, fights: {}, kills: {}, bossTries: 0 };
+    const sampleRand = seeded(seed * 7919 + 5);
+    for (const kind of Object.keys(ENEMIES) as EnemyKind[]) {
+      this.spoilSamples.set(kind, Array.from({ length: 40 }, () => ENEMIES[kind].drops(sampleRand, { jet: 'drone' })));
+    }
     // The broken motorcycle in front of the door (shared/tables.ts HOME_BIKE): one each.
     this.chest.push({ id: this.newId(), kind: 'motorcycle', n: 1, parts: GEAR.motorcycle.slots.map((s) => ('part' in s && s.part === 'motor' ? 'motor_scrap' : null)) });
   }
@@ -120,12 +138,19 @@ export class Sim {
   private best(kind: string): Item | null {
     return this.gearOf(kind).filter(repaired).sort((a, b) => quality(b) - quality(a))[0] ?? null;
   }
-  private weapon(): { w: Weapon; q: number } {
+  /** The best gun carried and its quality; the jammer's quality, null without one. */
+  private weapon(): { w: Weapon; q: number; jam: number | null } {
+    const jammer = this.carried('jammer');
+    const jam = jammer ? quality(jammer) : null;
     for (const k of ['laser_rifle', 'laser_pistol'] as const) {
       const g = this.carried(k);
-      if (g) return { w: k === 'laser_rifle' ? 'rifle' : 'pistol', q: quality(g) };
+      if (g) return { w: k === 'laser_rifle' ? 'rifle' : 'pistol', q: quality(g), jam };
     }
-    return { w: 'none', q: 0 };
+    return { w: 'none', q: 0, jam };
+  }
+  private odds(kind: EnemyKind) {
+    const { w, q, jam } = this.weapon();
+    return fightOdds(kind, w, q, jam);
   }
   private carried(kind: string): Item | null {
     const slot = WORN[kind];
@@ -311,8 +336,8 @@ export class Sim {
   /** Spend `s` seconds outdoors (walking, riding or working): heat builds by the time of day, the bottle is sipped,
    *  and the agent sits out the worst in the shade. */
   private outdoors(s: number) {
-    const end = this.t + s;
-    while (this.t < end) {
+    const end = this.t + s, deaths = this.out.deaths;
+    while (this.t < end && this.out.deaths === deaths) {
       const dt = Math.min(20, end - this.t);
       this.heat = Math.max(0, this.heat + heatPerSecond(feltTemp(this.tod(), COSTS.sunShare, false), false) * dt);
       this.t += dt;
@@ -327,11 +352,11 @@ export class Sim {
           this.t += 10;
         }
       }
-      this.jets();
+      this.roam(dt / 60);
     }
   }
 
-  /** Go to (x, z): the time, the heat, what's seen on the way, what's met in guardian ground. False: died on the way. */
+  /** Go to (x, z): the time, the heat, what's seen and met on the way. False: died on the way. */
   private go(x: number, z: number): boolean {
     const d = Math.hypot(x - this.x, z - this.z);
     if (d < 1) return true;
@@ -344,7 +369,6 @@ export class Sim {
       this.z = z0 + ((z - z0) * i) / steps;
       this.out.km += d / steps / 1000;
       this.look();
-      this.roam(s / steps / 60);
       if (this.out.deaths !== deaths) return false;
     }
     return true;
@@ -361,55 +385,112 @@ export class Sim {
     }
   }
 
-  /** `min` minutes out on guardian ground: now and then a roaming guardian crosses your path. */
+  /** `min` minutes outdoors here: whatever roams this ground may come at you (shared/enemies.ts roaming meets). */
   private roam(min: number) {
-    if (this.zone() < 2 || this.lives <= 0) return;
-    if (this.fightRand() < 1 - Math.exp(-COSTS.guardianPerMin * min)) this.fight(COSTS.guardian);
+    if (this.fighting || this.lives <= 0) return;
+    const deaths = this.out.deaths;
+    for (const { kind, m } of ROAMING) {
+      if (!this.roamsHere(m.where) || this.fightRand() >= 1 - Math.exp(-m.perMin * min)) continue;
+      this.fight(kind);
+      if (this.out.deaths !== deaths) return;
+    }
   }
 
-  /** The fights waiting at `p` on arrival, each with its odds: the site's crawlers (unless you were there lately), its
-   *  drones by night, a guardian maybe (guardian ground). */
-  private arrival(p: Poi): [Fight, number][] {
+  /** Is (x, z) (default: here) ground where `where` roams? */
+  private roamsHere(where: Extract<Meet, { at: 'roam' }>['where'], x = this.x, z = this.z): boolean {
+    const d = Math.hypot(x - BASE.x, z - BASE.z);
+    if (where === 'overhead') return d > 30;
+    if (where === 'open') return d > 250; // (server/guardians.ts ROAM_BASE_KEEP_OUT)
+    if (where === 'guardianGround') return d >= 1650; // (shared/crashsites.ts LEVEL_R)
+    return this.world.nearMud(x, z);
+  }
+
+  /** How often `kind` comes to you where it can be hunted (per minute). */
+  private huntRate(kind: EnemyKind): number {
+    return ROAMING.find((r) => r.kind === kind && r.m.hunt)?.m.perMin ?? 0.01;
+  }
+
+  /** At a hunting spot: wait (outdoors, so it can come) until `kind` has been met, or for three times the usual wait. */
+  private hunt(kind: EnemyKind) {
+    const met = this.out.fights[kind] ?? 0, deaths = this.out.deaths;
+    const until = this.t + 3 * 60 / this.huntRate(kind);
+    while ((this.out.fights[kind] ?? 0) === met && this.out.deaths === deaths && this.t < until) this.outdoors(20);
+  }
+
+  /** The fights waiting at `p` on arrival (shared/enemies.ts site meets), each with its odds: a site's crawlers (unless
+   *  you were there lately), its drones by night, a guardian maybe. */
+  private arrival(p: Poi): [EnemyKind, number][] {
     const s = p.site;
-    if (!s || s.level < 1) return [];
-    const out: [Fight, number][] = [];
-    const crawlers = COSTS.crawlers[s.loot];
-    if (crawlers && p.packBackAt <= this.t) out.push([crawlers, 1]);
-    if (this.night()) out.push([COSTS.siteDrones, 1]);
-    if (s.level === 2) out.push([COSTS.guardian, Math.min(1, COSTS.guardians / this.world.sitesAt(2))]);
+    if (!s) return [];
+    const out: [EnemyKind, number][] = [];
+    for (const kind of Object.keys(ENEMIES) as EnemyKind[]) for (const m of ENEMIES[kind].meet) {
+      if (m.at !== 'site' || !m.levels.includes(s.loot) || (m.night && !this.night()) || (m.backS && p.packBackAt > this.t)) continue;
+      out.push([kind, m.spread !== undefined ? Math.min(1, m.spread / this.world.sitesAt(s.loot)) : m.odds ?? 1]);
+    }
     return out;
   }
 
-  /** What one fight is expected to leave (killDrops: its own part, a receiver now and then, its spoils), with a gun. */
-  private spoilsValue(f: Fight): number {
-    if (this.weapon().w === 'none') return 0;
-    const key = `!${f.enemy}`;
+  /** What a fight with `kind` is worth: what its kills leave (a sample of them, valued now) times the odds of winning. */
+  private spoilsValue(kind: EnemyKind): number {
+    const { win } = this.odds(kind);
+    if (!win) return 0;
+    const key = `!${kind}`;
     let v = this.valueCache.get(key);
     if (v === undefined) {
-      const relic = RELIC_DROPS[f.enemy], sp = KILL_SPOILS[f.enemy];
-      const part = sp.parts.reduce((a, q) => a + this.value(`${q}_basic`), 0) / sp.parts.length;
-      v = (relic.odds * this.value(relic.kind) + RECEIVER_DROPS[f.enemy] * 0.3 + sp.odds * ((sp.min + sp.max) / 2) * part) * ((f.n[0] + f.n[1]) / 2);
+      const samples = this.spoilSamples.get(kind)!;
+      v = samples.reduce((a, ds) => a + ds.reduce((b, d) => b + this.value(d.kind, d.parts), 0), 0) / samples.length;
       this.valueCache.set(key, v);
     }
-    return v;
-  }
-  private zone() {
-    const d = Math.hypot(this.x - BASE.x, this.z - BASE.z);
-    return d < 950 ? 0 : d < 1650 ? 1 : 2; // (shared/crashsites.ts LEVEL_R)
+    const n = ENEMIES[kind].n;
+    return v * win * ((n[0] + n[1]) / 2);
   }
 
-  /** A fight: its time, the death roll (the shield takes the blow if it can), and with a gun the kills' drops. */
-  private fight(f: Fight) {
-    const { w, q } = this.weapon();
-    this.out.fights[f.enemy] = (this.out.fights[f.enemy] ?? 0) + 1;
-    this.outdoors(f.seconds[w]);
-    const death = f.death[w] * (1 - f.deathQ * q);
-    if (this.fightRand() < death && !this.shieldSaves()) return this.die();
-    if (w === 'none') return;
-    const n = f.n[0] + Math.floor(this.fightRand() * (f.n[1] - f.n[0] + 1));
-    const things: Thing[] = [];
-    for (let i = 0; i < n; i++) for (const d of killDrops(f.enemy, this.fightRand)) things.push(this.world.thing(d, f.enemy));
-    if (things.length) this.collect(this.world.drop(this.x, this.z, things));
+  /** A fight with `kind` (n of them, one after another): won, it's killed and leaves its loot; lost, it may kill you (the
+   *  shield takes the blow if it can), else you get away. */
+  private fight(kind: EnemyKind) {
+    const e = ENEMIES[kind];
+    const n = e.n[0] + Math.floor(this.fightRand() * (e.n[1] - e.n[0] + 1));
+    this.fighting = true;
+    try {
+      for (let i = 0; i < n; i++) {
+        const { win, death, seconds } = this.odds(kind);
+        this.out.fights[kind] = (this.out.fights[kind] ?? 0) + 1;
+        this.outdoors(seconds);
+        if (this.fightRand() < win) {
+          this.out.kills[kind] = (this.out.kills[kind] ?? 0) + 1;
+          this.out.milestones[`kill:${kind}`] ??= this.t;
+          this.killed(kind);
+          continue;
+        }
+        if (this.fightRand() < death && !this.shieldSaves()) return this.die();
+        return; // (got away)
+      }
+    } finally {
+      this.fighting = false;
+    }
+  }
+
+  /** What a killed `kind` leaves: at your feet (taken at once, as far as it's worth it), or where it came down. */
+  private killed(kind: EnemyKind) {
+    const e = ENEMIES[kind];
+    const jammed = kind === 'jet' && this.weapon().jam !== null;
+    let x = this.x, z = this.z, jet: 'wing' | 'drone' | undefined;
+    if (e.falls) {
+      const a = this.fightRand() * Math.PI * 2, d = lerp(e.falls, this.fightRand());
+      x += Math.cos(a) * d;
+      z += Math.sin(a) * d;
+    }
+    if (kind === 'jet') {
+      const far = Math.hypot(x - BASE.x, z - BASE.z);
+      jet = this.fightRand() < COSTS.wing.odds * Math.min(1, far / COSTS.wing.far) ? 'wing' : 'drone';
+    }
+    const things = e.drops(this.fightRand, { jet, soft: jammed }).map((d) => this.world.thing(d, kind));
+    const p = this.world.drop(x, z, things, e.falls ? 'jet' : 'loot');
+    // The flying wing's engines that tore off whole are machines to take apart (shared/jetcrash.ts).
+    if (jet === 'wing') for (let i = 0; i < COSTS.wing.engines; i++) {
+      if (this.fightRand() < COSTS.wing.tearOff * (1 - COSTS.wing.wrecked)) p.machines.push({ kind: 'jet_engine', seed: (this.fightRand() * 2 ** 32) >>> 0, level: 1, carry: false, backAt: 0, respawn: Infinity });
+    }
+    if (!e.falls) this.collect(p);
   }
 
   /** The shield plate takes a killing blow if it has one left (shared/gear.ts shieldSaves), and breaks on its last. */
@@ -445,42 +526,33 @@ export class Sim {
     if (this.lives <= 0) this.out.gameOverS = this.t;
   }
 
-  /** Jets overhead while you're out: with a rifle or the jammer, now and then one comes down. */
-  private jets() {
-    if (this.t < this.nextJet) return;
-    this.nextJet = this.t + lerp(COSTS.jetGapS, this.rand());
-    const jam = !!this.carried('jammer'), rifle = this.weapon().w === 'rifle';
-    const odds = Math.max(jam ? COSTS.jetDown.jammer : 0, rifle ? COSTS.jetDown.rifle : 0);
-    if (!odds || this.fightRand() >= odds) return;
-    const a = this.fightRand() * Math.PI * 2, d = lerp(COSTS.jetFallM, this.fightRand());
-    const x = this.x + Math.cos(a) * d, z = this.z + Math.sin(a) * d;
-    const far = Math.hypot(x - BASE.x, z - BASE.z);
-    const wing = this.fightRand() < COSTS.wing.odds * Math.min(1, far / COSTS.wing.far);
-    const p = this.world.drop(x, z, jetDrops(wing ? 'wing' : 'drone', jam, this.fightRand).map((dr) => this.world.thing(dr, 'jet')), 'jet');
-    if (wing) for (let i = 0; i < COSTS.wing.engines; i++) {
-      if (this.fightRand() < COSTS.wing.tearOff * (1 - COSTS.wing.wrecked)) p.machines.push({ kind: 'jet_engine', seed: (this.fightRand() * 2 ** 32) >>> 0, level: 1, carry: false, backAt: 0, respawn: Infinity });
-    }
-    this.out.milestones.first_jet ??= this.t;
-  }
-
   // ---- out there ---------------------------------------------------------------------------------------------------
 
-  /** The odds of dying going to `p`: the fights there, and the guardian ground on the way. */
+  /** The odds of dying going to `p`: the fights waiting there, what roams there (a few minutes of it), and at a
+   *  hunting spot the fight it's for. */
   private risk(p: Poi): number {
-    const { w, q } = this.weapon();
-    const shield = this.carried('shield') ? 0.5 : 1;
+    const lose = (kind: EnemyKind) => {
+      const o = this.odds(kind);
+      return (1 - o.win) * o.death;
+    };
     let r = 0;
-    for (const [f, odds] of this.arrival(p)) r += odds * f.death[w] * (1 - f.deathQ * q);
-    if (p.zone >= 2) r += COSTS.guardian.death[w] * (1 - COSTS.guardian.deathQ * q) * (1 - Math.exp(-COSTS.guardianPerMin * 4));
-    return r * shield;
+    for (const [kind, odds] of this.arrival(p)) r += odds * lose(kind);
+    for (const { kind, m } of ROAMING) if (this.roamsHere(m.where, p.x, p.z)) r += (1 - Math.exp(-m.perMin * 4)) * lose(kind);
+    if (p.hunt) r += lose(p.hunt);
+    return r * (this.carried('shield') ? 0.5 : 1);
   }
 
   /** What going to `p` is worth now, and how long working there takes. */
   private worth(p: Poi, room = this.roomLeft()): { v: number; work: number } {
     let v = 0, work = 0;
-    for (const [f, odds] of this.arrival(p)) {
-      v += odds * this.spoilsValue(f);
-      work += odds * f.seconds[this.weapon().w];
+    for (const [kind, odds] of this.arrival(p)) {
+      v += odds * this.spoilsValue(kind);
+      work += odds * this.odds(kind).seconds;
+    }
+    if (p.hunt) {
+      // A hunting spot: the wait for one to come, and the fight.
+      v += this.spoilsValue(p.hunt);
+      work += 60 / this.huntRate(p.hunt) + this.odds(p.hunt).seconds;
     }
     if (p.seenAt === -Infinity && p.type === 'shelter') v += 0.1;
     for (const th of p.things) {
@@ -566,7 +638,11 @@ export class Sim {
       this.fight(f);
       if (this.out.deaths !== deaths) return;
     }
-    p.packBackAt = this.t + COSTS.crawlersBackS;
+    if (p.hunt) {
+      this.hunt(p.hunt);
+      if (this.out.deaths !== deaths) return;
+    }
+    p.packBackAt = this.t + SITE_BACK_S;
     if (p.site) {
       // Walking round a site, the finds among its debris are seen.
       for (const q of this.world.pois) if (!q.known && q.type === 'loot' && Math.hypot(q.x - p.x, q.z - p.z) < p.site.radius + 40) q.known = true;
@@ -820,21 +896,24 @@ export class Sim {
     for (const kind of BOSS_KINDS) {
       if (this.beaten.has(kind) || this.lives <= 0) continue;
       const r = this.best(RECEIVERS[kind]);
-      const rifle = this.best('laser_rifle');
-      if (!r || !rifle) continue;
+      // Called only with a fair chance of winning (shared/enemies.ts: in practice, the rifle).
+      const { win, death, seconds } = this.odds(kind);
+      if (!r || win < 0.5) continue;
       this.out.bossTries++;
-      this.t += COSTS.bossS;
+      this.out.fights[kind] = (this.out.fights[kind] ?? 0) + 1;
+      this.t += seconds;
       r.parts![0] = null; // the uranium cell is spent on the call
-      if (this.fightRand() < lerp(COSTS.bossWin, quality(rifle) / 3)) {
+      if (this.fightRand() < win) {
         this.beaten.add(kind);
         this.lives += BOSS_LIVES;
+        this.out.kills[kind] = (this.out.kills[kind] ?? 0) + 1;
         this.out.milestones[`boss:${kind}`] ??= this.t;
-        for (const d of bossDrops(kind, this.fightRand)) {
+        for (const d of ENEMIES[kind].drops(this.fightRand)) {
           this.toChest(d.kind, 1, d.parts);
-          this.got(d.kind, `boss`);
+          this.got(d.kind, kind);
         }
         this.t += 60;
-      } else this.die();
+      } else if (this.fightRand() < death && !this.shieldSaves()) this.die();
       this.needCache = null;
     }
     if (this.beaten.size === BOSS_KINDS.length) this.out.wonS ??= this.t;

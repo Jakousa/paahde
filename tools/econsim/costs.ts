@@ -1,16 +1,8 @@
-// Everything the economy simulator assumes that the game's own code doesn't say: how long things take a player, how
-// often fights happen and how they end. The loot itself (what lies where, what is in it, what drops) comes from the
-// game's shared/ code, so a change to shared/tables.ts shows in the results; a change here changes the yardstick, and
-// the report says so ("sim changed"). Calibrate against real play (docs/econsim.md).
+// Everything the economy simulator assumes that the game's own code doesn't say: how long things take a player. The
+// loot itself (what lies where, what is in it, what drops) and the enemies (shared/enemies.ts: where they're met, how
+// fights go) come from the game's shared/ code, so a change there shows in the results; a change here changes the
+// yardstick, and the report says so ("sim changed"). Calibrate against real play (docs/econsim.md).
 import { WALK_SPEED } from '../../shared/sim.ts';
-import type { LootLevel } from '../../shared/crashsites.ts';
-
-export type Weapon = 'none' | 'pistol' | 'rifle';
-
-/** A fight at a crash site or with something roaming: how many there are, how long it takes, the odds of dying, by
- *  your best gun. With no gun you only get away (no kills); `deathQ`: each tier of the gun's quality cuts the death odds
- *  by this share. */
-export type Fight = { enemy: 'crawler' | 'guardian' | 'drone'; n: [number, number]; seconds: Record<Weapon, number>; death: Record<Weapon, number>; deathQ: number };
 
 export const COSTS = {
   /** Hard stop for one simulated world (s of game time). */
@@ -61,39 +53,15 @@ export const COSTS = {
   /** Expected unseen finds at a crash site come back this fast after you've looked (s for a full turnover). */
   findTurnoverS: 3600,
 
-  // ---- fights (flat odds; calibrate) ---------------------------------------------------------------------------
-  /** Crawlers turn up at every crash site of crawler and guardian ground as you come near (server/guardians.ts: 1–4, an
-   *  outpost's 1–2): the fight on arriving, unless you were there lately. */
-  crawlers: {
-    0.5: { enemy: 'crawler', n: [1, 2], seconds: { none: 40, pistol: 45, rifle: 30 }, death: { none: 0.25, pistol: 0.06, rifle: 0.02 }, deathQ: 0.2 },
-    1: { enemy: 'crawler', n: [1, 4], seconds: { none: 60, pistol: 90, rifle: 50 }, death: { none: 0.45, pistol: 0.12, rifle: 0.04 }, deathQ: 0.2 },
-    2: { enemy: 'crawler', n: [1, 4], seconds: { none: 60, pistol: 90, rifle: 50 }, death: { none: 0.45, pistol: 0.12, rifle: 0.04 }, deathQ: 0.2 },
-  } as Partial<Record<LootLevel, Fight>>,
-  /** A site's crawlers are back this long after you've left (s; the server refills them a minute after everyone's gone). */
-  crawlersBackS: 5 * 60,
-  /** By night two searchlight drones keep each site of crawler and guardian ground (server/guardians.ts DRONES_PER_SITE). */
-  siteDrones: { enemy: 'drone', n: [1, 2], seconds: { none: 30, pistol: 50, rifle: 30 }, death: { none: 0.3, pistol: 0.1, rifle: 0.05 }, deathQ: 0.2 } as Fight,
-  /** Guardians roam guardian ground's sites (server/guardians.ts GUARDIANS of them): one is at a site you come to with
-   *  the odds GUARDIANS / sites, and one crosses your path out there this likely per minute. */
-  guardians: 6,
-  guardianPerMin: 0.04,
-  guardian: { enemy: 'guardian', n: [1, 1], seconds: { none: 50, pistol: 150, rifle: 110 }, death: { none: 0.5, pistol: 0.35, rifle: 0.15 }, deathQ: 0.2 } as Fight,
-  /** Don't go where one fight's death odds are higher than this (risk taken for a goal you can't reach otherwise: x2). */
+  // ---- risk ----------------------------------------------------------------------------------------------------------
+  // (Every enemy, where it's met and how a fight with it goes, is shared/enemies.ts.)
+  /** Don't go where the odds of dying are higher than this (risk taken for a goal you can't reach otherwise: x2). */
   maxRisk: 0.15,
 
-  // ---- jets (shared/jets.ts, server/jets.ts) -----------------------------------------------------------------------
-  /** A jet over you this often while you're out (s, uniform), and the odds you bring it down with... */
-  jetGapS: [240, 600] as [number, number],
-  jetDown: { rifle: 0.25, jammer: 0.55 },
-  /** ...and it comes down this far off (m). */
-  jetFallM: [150, 700] as [number, number],
-  /** The flying wing's odds grow with distance from the base: up to this at WING_FAR (server/jets.ts). */
+  /** A downed jet: the flying wing's odds grow with distance from the base, up to this at WING_FAR (server/jets.ts
+   *  WING_ODDS, WING_FAR); its engines, the share that tear off whole and of those the share wrecked in the landing
+   *  (shared/jetbreak.ts fates). */
   wing: { odds: 0.8, far: 10_000, engines: 2, tearOff: 0.8, wrecked: 0.3 },
-
-  // ---- bosses ------------------------------------------------------------------------------------------------------
-  /** Calling and fighting a boss (s), and the odds of winning by the rifle's quality 0 .. 3 (a loss: you die, the cell is spent). */
-  bossS: 15 * 60,
-  bossWin: [0.35, 0.8] as [number, number],
 } as const;
 
 /** One pass of value per second worth a trip: below it the agent goes home or explores. */

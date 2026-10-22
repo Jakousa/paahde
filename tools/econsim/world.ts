@@ -2,6 +2,8 @@
 // layout (WORLD_ID picks the seed, shared/world.ts) and loot laid out with the game's own dice (shared/lootRoll.ts).
 // Time is the sim's clock (s); what's taken comes back on the server's timers.
 import { BASE } from '../../shared/base.ts';
+import { biome } from '../../shared/biomes.ts';
+import { ENEMIES, type EnemyKind } from '../../shared/enemies.ts';
 import { machinesAt } from '../../shared/crash.ts';
 import { CRASH_KINDS } from '../../shared/crashKinds.ts';
 import { coreCrashSites, siteLevel, type CrashSite, type LootLevel, type SiteLevel } from '../../shared/crashsites.ts';
@@ -19,6 +21,8 @@ const FIND_BACK = 3 * 60, CACHE_BACK = 60, SCRAP_BACK = 30 * 60, DEBRIS_BACK = 3
 export const CORPSE_S = 30 * 60;
 /** Scrap piles further out than this aren't worth listing: scrap is near home. */
 const PILE_R = 1100;
+/** Hunting spots are looked for within this distance of the base (m). */
+const HUNT_R = 2600;
 
 export type Thing = Drop & { id: number; src: Source };
 /** Where a thing came from, for the report's part sources. */
@@ -46,6 +50,8 @@ export type Poi = {
   packBackAt: number;
   /** A corpse pack or a jet's wreck goes after this. */
   expires: number;
+  /** A hunting spot: ground where this enemy comes to you (shared/enemies.ts roaming meets with `hunt`). */
+  hunt?: EnemyKind;
 };
 
 type Pending = { at: number; what: 'find' | 'cache' | 'stash'; kind: string };
@@ -57,6 +63,7 @@ export class World {
   private sites: CrashSite[];
   private piles = nearPiles();
   private shelters: Poi[] = [];
+  private mudCache = new Map<string, boolean>();
   private rand: Rand;
 
   constructor(rand: Rand) {
@@ -98,6 +105,40 @@ export class World {
     for (const [kind, f] of Object.entries(FINDS)) for (let i = 0; i < f.n; i++) this.spawnFind(kind);
     for (let i = 0; i < RARE_FINDS.n; i++) this.spawnFind('rare');
     for (let i = 0; i < CACHES.n; i++) this.spawnCache();
+    this.huntingSpots();
+  }
+
+  /** Where to go and wait for what can be hunted (shared/enemies.ts `hunt`): the nearest few stretches of its ground. */
+  private huntingSpots() {
+    for (const kind of Object.keys(ENEMIES) as EnemyKind[]) for (const m of ENEMIES[kind].meet) {
+      if (m.at !== 'roam' || !m.hunt) continue;
+      const spots: { x: number; z: number; d: number }[] = [];
+      for (let r = 300; r <= HUNT_R; r += 150) for (let a = 0; a < 24; a++) {
+        const x = BASE.x + Math.cos((a / 24) * Math.PI * 2) * r, z = BASE.z + Math.sin((a / 24) * Math.PI * 2) * r;
+        const ok = m.where === 'mudflat' ? biome('mudflat', x, z) >= 0.9 : m.where === 'guardianGround' ? siteLevel(x, z) === 2 : false;
+        if (ok && spots.every((s) => Math.hypot(s.x - x, s.z - z) > 600)) spots.push({ x, z, d: r });
+      }
+      for (const s of spots.slice(0, 4)) {
+        const p = this.poi('loot', s.x, s.z);
+        p.hunt = kind;
+        p.known = true; // (the lie of the land: seen from afar)
+      }
+    }
+  }
+
+  /** Near a mud flat: within the distance a harvester rises from someone (server/harvesters.ts RISE_MAX), roughly. */
+  nearMud(x: number, z: number): boolean {
+    const k = `${Math.round(x / 200)},${Math.round(z / 200)}`;
+    let near = this.mudCache.get(k);
+    if (near === undefined) {
+      near = false;
+      for (let i = 0; i < 9 && !near; i++) {
+        const r = i ? 600 : 0, a = (i / 8) * Math.PI * 2;
+        near = biome('mudflat', x + Math.cos(a) * r, z + Math.sin(a) * r) >= 0.9;
+      }
+      this.mudCache.set(k, near);
+    }
+    return near;
   }
 
   /** How many crash sites hold finds of loot level `level` (FINDS lie at one of them). */
@@ -157,7 +198,7 @@ export class World {
     }
     for (let i = this.pois.length - 1; i >= 0; i--) {
       const p = this.pois[i];
-      if (p.expires <= now || (p.type === 'loot' && !p.things.length)) this.pois.splice(i, 1);
+      if (p.expires <= now || (p.type === 'loot' && !p.things.length && !p.hunt)) this.pois.splice(i, 1);
     }
   }
 }

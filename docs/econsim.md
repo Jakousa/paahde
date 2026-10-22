@@ -36,7 +36,7 @@ secret the run still writes its report and just doesn't post.
 ## Reading the report
 
 - **Milestones**: the median minutes of play to reach each one (`gear:<kind>`: repaired and working; `q2:<kind>`: Quality-grade
-  parts on average; `boss:<kind>`; `won`: every boss; `game over`: the world's lives used up), and the share of worlds
+  parts on average; `kill:<kind>`: the first of an enemy kind killed; `boss:<kind>`; `won`: every boss; `game over`: the world's lives used up), and the share of worlds
   that got there within the cap (10 h). `Δ` is the change of the median with a 95% interval, from resampling the
   worlds in pairs. A line is **flagged** when the reach rate moves 10 points or more, or the median moves 10% or
   more with an interval that excludes zero.
@@ -63,21 +63,35 @@ From the game's code, so changes there show:
 - gear: `GEAR` slots, `quality`, `bikeTopSpeed`, `canteenSips`, `spyglassZoom`, `shieldSaves` (it breaks on its last blow),
   `RECIPES` (worst tiers first; plain metal parts hammered out of scrap), stripping spare broken gear for parts
 - heat: `heatPerSecond(feltTemp(...))` by the time of day; sips, and resting in the shade when there's no water left
-- bosses: called by a working receiver (the uranium cell is spent); lives: `LIVES`, `BOSS_LIVES`
+- bosses: called by a working receiver (the uranium cell is spent) once the odds of winning are at least even; lives:
+  `LIVES`, `BOSS_LIVES`
+- **every enemy: `shared/enemies.ts`**, the registry of everything a player can destroy and loot (crawlers, guardians,
+  drones, jets, the harvester, the four bosses). Per kind: how many come at once, where you meet them, what one
+  leaves (the server drops loot through the same `drops`), and rough fight odds by your best gun (and the jammer for
+  flying things): the odds of winning, of dying when you don't (else you get away), how long it takes, and how much
+  each tier of the gun's quality helps. Where you meet them:
+  - at a crash site when you get there: crawlers at outposts and crawler/guardian ground (back 5 min after you leave),
+    drones there by night, a guardian with the odds 6 / guardian-ground sites;
+  - roaming, while you're out where they are: drones in the open, guardians on guardian ground, jets overhead (brought
+    down some way off, their wreck a crash site; the flying wing's engines are machines to take apart), the harvester
+    near a mud flat (`shared/biomes.ts`);
+  - hunted: the agent may go and wait where harvesters or guardians roam when what they leave is worth it (a few hunting
+    spots per world, the nearest stretches of that ground);
+  - called: the bosses.
+
+  The odds are rough on purpose and lean towards the player, more so with the rifle; tune them there. A new enemy (or a
+  new way to meet one) is a new entry: the simulator values it by sampling its `drops`, so nothing else needs to change
+  unless it's met somewhere new (`roamsHere` in tools/econsim/sim.ts).
 
 Assumed, in `tools/econsim/costs.ts` (calibrate these against real play; changing one changes the yardstick, and the
 report says "sim changed"):
 
 - speeds, the share of time in the sun, how long picking up, opening, a teardown step and the bench take
 - how far off things are noticed (the spyglass widens it for small loot)
-- fights as a flat table: how many, how long, the odds of dying by your best gun, cut by its quality. Crawlers at every
-  level-1/2 site (back 5 min after you leave), two drones there at night, a guardian with the odds 6 / guardian-ground sites,
-  roaming guardians on the way
-- jets: one over you every 4–10 min; brought down with the rifle or the jammer with fixed odds
-- bosses: a fixed fight time and win odds by the rifle's quality
+- how much risk the agent takes, and the flying wing's wreck (mirroring server/jets.ts and shared/jetbreak.ts)
 
-Not modelled yet: the harvester (uranium!), storms and gas, the worm's ambush, roaming desert drones, other players,
-buildings' effect (power), corpse runs beyond picking the pack up if it's worth it.
+Not modelled yet: storms and gas, the worm's ambush, other players, buildings' effect (power), corpse runs beyond
+picking the pack up if it's worth it.
 
 ## The agent
 

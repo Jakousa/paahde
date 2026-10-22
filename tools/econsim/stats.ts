@@ -14,7 +14,7 @@ export type Results = {
 /** Milestones in the order a player meets them (others follow, sorted by when they're reached). */
 const ORDER = [
   'gear:backpack', 'gear:canteen', 'gear:laser_pistol', 'gear:motorcycle', 'gear:spyglass', 'gear:shield', 'gear:laser_rifle', 'q2:laser_rifle',
-  'gear:jammer', 'first_jet', 'gear:receiver_colossus', 'boss:colossus', 'gear:receiver_queen', 'boss:queen', 'gear:receiver_carrier', 'boss:carrier',
+  'gear:jammer', 'kill:crawler', 'kill:drone', 'kill:jet', 'kill:guardian', 'kill:harvester', 'gear:receiver_colossus', 'boss:colossus', 'gear:receiver_queen', 'boss:queen', 'gear:receiver_carrier', 'boss:carrier',
   'gear:receiver_worm', 'boss:worm', 'won', 'game_over', 'first_death',
 ];
 
@@ -91,7 +91,7 @@ export function compare(base: Results, head: Results, flagRel = 0.1, flagReach =
 const min = (s: number) => (Number.isFinite(s) ? `${Math.round(s / 60)}` : '—');
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const signed = (x: number) => (Number.isFinite(x) ? `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%` : '');
-const label = (m: string) => m.replace(/^gear:/, '').replace(/^q2:(.*)$/, '$1 (quality)').replace(/^boss:(.*)$/, '☠ $1').replace(/_/g, ' ');
+const label = (m: string) => m.replace(/^gear:/, '').replace(/^q2:(.*)$/, '$1 (quality)').replace(/^boss:(.*)$/, '☠ $1').replace(/^kill:(.*)$/, 'first $1 killed').replace(/_/g, ' ');
 
 /** The waits that held the top goal up most, minutes per world. */
 export function bottlenecks(r: Results, n = 6): [string, number][] {

@@ -35,6 +35,9 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   drops, workbench recipes) as plain data; tune drops and recipes there. The dice that roll them in the world (caches,
   stashes, finds and where they lie, kill/jet/harvester/boss drops) are `shared/lootRoll.ts`, shared by the server and
   the economy simulator (`tools/econsim`, docs/econsim.md): roll loot there, with a `rand`, never inline in server code
+- `shared/enemies.ts` — the registry of everything a player can destroy and loot (crawlers, guardians, drones, jets, the
+  harvester, the bosses): how many come at once, where they're met, what one leaves (`drops`: the server's kill drops go
+  through it) and rough fight odds by weapon (read by the economy simulator; tune them there). A new enemy gets an entry
 - `shared/sim.ts` — deterministic movement/physics, run by **both** client and server
 - `shared/protocol.ts` — WebSocket message types
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`);
