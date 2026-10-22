@@ -35,13 +35,13 @@ PI = math.pi
 
 # name -> (sRGB hex, metallic, roughness, emission strength or None)
 MATERIALS = {
-    'HarvIron': (0x2a2420, 0.6, 0.62, None),     # rust-black slab iron
-    'HarvDeck': (0x3a2c22, 0.5, 0.7, None),      # the top, sand-scoured lighter
-    'HarvRust': (0x5a2c18, 0.45, 0.75, None),    # undersides, keel, ribs
-    'HarvDark': (0x100c0a, 0.3, 0.8, None),      # seams, throat, grille recesses, wheels
-    'HarvSteel': (0x6a6158, 0.8, 0.4, None),     # worn steel: treads, teeth, rails, ladders, slats
-    'HarvSand': (0x9a6a3c, 0.0, 0.95, None),     # caked sand
-    'HarvHazard': (0xb08a3a, 0.2, 0.6, None),    # faded yellow-ochre bands on the cheeks
+    'HarvIron': (0xa39580, 0.25, 0.85, None),    # sand-scoured slab plate, dusty light grey-brown
+    'HarvDeck': (0xbfae92, 0.15, 0.9, None),     # the top, sun-bleached paler still
+    'HarvRust': (0x7a5a3e, 0.3, 0.85, None),     # undersides, keel, ribs: dust-caked brown
+    'HarvDark': (0x2a2018, 0.3, 0.85, None),     # seams, throat, grille recesses, wheels
+    'HarvSteel': (0x8a8074, 0.7, 0.45, None),    # worn steel: treads, teeth, rails, ladders, slats
+    'HarvSand': (0xb88a58, 0.0, 0.95, None),     # caked sand
+    'HarvHazard': (0x9a4e2a, 0.2, 0.7, None),    # faded rust-red bands on the cheeks
     'HarvVent': (0xff5a10, 0.0, 0.5, 1.6),       # the faint glow deep in a few of the grilles
     'HarvCore': (0xffc070, 0.0, 0.3, 16.0),       # the intake cores (src/world/harvesters.ts darkens dead ones)
     'HarvLamp': (0xff2a12, 0.0, 0.3, 8.0),       # the small lamps, red

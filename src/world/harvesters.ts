@@ -94,7 +94,7 @@ function load() {
   );
 }
 
-const iron = new THREE.MeshStandardNodeMaterial({ color: 0x2a2420, roughness: 0.62, metalness: 0.6 });
+const iron = new THREE.MeshStandardNodeMaterial({ color: 0xa39580, roughness: 0.85, metalness: 0.25 });
 /** Stand-in parts from blocks, until the model is in (and if it fails). */
 function blocks(): Parts {
   const box = (w: number, h: number, d: number, x: number, y: number, z: number) => {
