@@ -100,10 +100,10 @@ const en = {
     shield: () => 'Takes killing blows for you, then breaks.',
     receiver: (k: HintKeys) => `Press ${k.use} to send the signal, and the needle points at whatever answers.`,
     windmill: () => 'Put it up on the sand by the base.',
-    battery_station: () => 'Put it down in the bunker.',
+    battery_station: () => 'Put it down on the sand by the base.',
   },
   /** Where placing is blocked: "Too close to the pump". */
-  baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway' },
+  baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base' },
 
   // ---- Prompts under the crosshair (after the key) ---------------------------------------------------------------
 
@@ -158,6 +158,8 @@ const en = {
     tooFarFromBase: 'Too far from the base',
     tooSteep: 'Too steep',
     tooClose: (spot: string) => `Too close to ${spot}`,
+    /** Too close to another building: "Too close to the windmill". */
+    tooCloseTo: (what: string) => `Too close to the ${lower(what)}`,
     baseFull: 'The base is full',
     lineUp: (what: 'bed' | 'lamp') => `Line it up with the ${what}`,
     inTheWay: 'Something is in the way',

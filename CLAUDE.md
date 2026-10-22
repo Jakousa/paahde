@@ -72,9 +72,9 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   (`TERRAIN_HOLES`) over the entrance and skylight. `shared/garden.ts` — plant beds (stages, look target),
   owned by `server/garden.ts`; beds are placed things (`shared/placed.ts`, `server/placed.ts`: items put down on
   the bunker floor), crafted at the workbench (`shared/crafting.ts`)
-- Buildings — the windmill (on the sand round the base) and the battery station (bunker floor): gear with part slots
-  and quality (`shared/gear.ts` `built`), crafted with their parts fitted, placed via `shared/placed.ts` (`sand` kinds,
-  `collideOutdoor`/`overPlaced` in shared/base.ts); while standing, the item is in box `bld<id>`, whose parts are swapped
+- Buildings — the windmill and the battery station, both on the sand round the base: gear with part slots
+  and quality (`shared/gear.ts` `built`), crafted with their parts fitted, placed via `shared/placed.ts` (`sand` kinds:
+  `gap` between them, `STRUCTURE_GAP` from the hut/skylight/mast; `collideOutdoor`/`overPlaced` in shared/base.ts); while standing, the item is in box `bld<id>`, whose parts are swapped
   in place (F, `src/inventory.ts` `part:<box>`); drawn by `src/world/placed.ts`, models `tools/blender/placeables.py`
 - `shared/shelters.ts` — small empty bunkers (small/deep/long) scattered mostly in rocky country: placement, pad,
   collision, pumps (`atWater`), stash spots, `indoors()`/`sandHidden()` (base or shelter); drawn by `src/world/shelters.ts`

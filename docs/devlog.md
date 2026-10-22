@@ -1861,3 +1861,9 @@ screen and hides the hints that device has no input for (`[data-ctl]`). The pad'
 by src/gamepad.ts, src/padCursor.ts and the hints alike, so they can't drift apart. Added where nothing said it: the
 inventory's moves under the overlay (shift-click, right-drag, R to turn; with the pad its cursor's buttons and close),
 the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu's Resume, and close on the workbench menu.
+- **Spacing, and the battery station goes outside too.** Sand kinds keep a `gap` from each other, edge to edge (the
+  larger of the two: windmill 4 m, for its head and tail to swing; battery station 2 m), and `STRUCTURE_GAP` (4 m) from
+  the base's own structures (the hut and its door, the skylight's collar, the mast's fins; the bunker's and the
+  trophies' ground as before), checked along the footprint's outline. Refusals say what's in the way ("Too close to
+  the windmill", "Too close to the base"); with a building in hand down in the bunker the prompt says "Outside only".
+  The battery station is a sand kind now (lit by the sky); ones already standing in a bunker stay where they are.

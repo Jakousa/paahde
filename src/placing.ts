@@ -3,7 +3,8 @@
 // fits, red where it doesn't; R turns it, left mouse / E puts it down (the server checks it again). Looking at a placed thing,
 // G picks it back up into the bag. A UV lamp aimed at a bed snaps over it (and a bed under a lone lamp).
 import { isPlaceable, onSand, placeAim, placed, placedTarget, placedY, placeError, type Placed } from '../shared/placed.ts';
-import { pitchFromQ } from '../shared/dig.ts';
+import { EYE_HEIGHT, pitchFromQ } from '../shared/dig.ts';
+import { heightAt } from '../shared/terrain.ts';
 import { yawFromQ } from '../shared/sim.ts';
 import { isBound, kbd } from './bindings';
 import { ui, useHeld } from './input';
@@ -57,7 +58,9 @@ export class Placer {
       return { prompt: pickHint, target };
     }
     const at = placeAim(feet, yaw, pitch, kind, this.rot, placed);
-    const why = at ? placeError(kind, at.x, at.z, at.rot, placed, [feet]) : onSand(kind) ? TEXT.prompt.aimAtGround : TEXT.prompt.aimAtFloor;
+    // Down in the bunker with something for the sand: it goes outside.
+    const below = onSand(kind) && feet.y + EYE_HEIGHT < heightAt(feet.x, feet.z);
+    const why = below ? TEXT.notice.outsideOnly : at ? placeError(kind, at.x, at.z, at.rot, placed, [feet]) : onSand(kind) ? TEXT.prompt.aimAtGround : TEXT.prompt.aimAtFloor;
     this.view.preview(kind, at && { ...at, y: placedY(kind, at.x, at.z, at.rot) }, !why);
     if (pressed) {
       if (why) toast(why);

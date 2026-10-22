@@ -174,6 +174,9 @@ function nearMast(lx: number, lz: number, m: number): boolean {
   return dx * dx + dz * dz < r * r;
 }
 
+/** World point within the mast's fins (+ margin). */
+export const byMast = (x: number, z: number, m = 0) => nearMast(x - BASE.x, z - BASE.z, m);
+
 /** Blend weight of the dunes at world (x, z): 0 on the pad, 1 away from it. */
 export function padBlend(x: number, z: number): number {
   const lx = x - BASE.x, lz = z - BASE.z;
