@@ -2,17 +2,19 @@
 // The client shows the recipes in the Tab inventory while the workbench is in reach (src/inventory.ts) and
 // asks; the server checks reach and runs craft() on the real bag (server/items.ts).
 //
-// Ingredients match groups of item kinds, so any tier of a part will do: wiring is the coil part in any
-// tier (coil_scrap … coil_space, shared/parts.ts); scrap is the one SCRAP item. The worst matching item
-// (lowest tier) is used first.
+// Ingredients match groups of item kinds, so any tier of a part will do (bearing_scrap … bearing_space,
+// shared/parts.ts); scrap, cloth and wiring are one item each. The worst matching item (lowest tier) is used first.
 //
-// What makes gear (the buildings, shared/gear.ts built) comes with the parts it took fitted in its slots, each slot
-// the first of them that fits it: it is as good as what went into it, and better parts can be swapped in later.
+// What makes gear comes with the parts it took fitted in its slots, each slot the first of them that fits it: it is
+// as good as what went into it, and better parts can be swapped in later.
+//
+// The buildings (BUILDS, shared/tables.ts BUILD_TABLE) aren't crafted: they're put up with the wrench in hand from the
+// build menu (src/buildMenu.ts), their materials used up from the bag as they go up (useUp; server/placed.ts build).
 import { fitsSlot, GEAR } from './gear.ts';
 import { addItem, HOTBAR, ITEMS, type Shape, type Slots } from './items.ts';
 import { partOf } from './parts.ts';
 import { TIERS } from './salvage.ts';
-import { RECIPE_TABLE, type IngredientSpec } from './tables.ts';
+import { BUILD_TABLE, RECIPE_TABLE, type IngredientSpec } from './tables.ts';
 
 export type Ingredient = { label: string; n: number; match: (kind: string) => boolean };
 export type Recipe = { makes: string; needs: Ingredient[] };
@@ -34,6 +36,15 @@ const ingredient = (spec: IngredientSpec): Ingredient => ({
 export const RECIPES: Record<string, Recipe> = Object.fromEntries(
   Object.entries(RECIPE_TABLE).map(([id, needs]) => [id, { makes: id, needs: needs.map(ingredient) }]),
 );
+
+/** Building → the base materials it takes (shared/tables.ts BUILD_TABLE). `makes` is the placed kind. */
+export const BUILDS: Record<string, Recipe> = Object.fromEntries(
+  Object.entries(BUILD_TABLE).map(([id, needs]) => [id, { makes: id, needs: needs.map(ingredient) }]),
+);
+/** Put up with the wrench (never carried as an item). */
+export const isBuildable = (kind: string | undefined) => !!kind && kind in BUILDS;
+/** The tool that opens the build menu. */
+export const WRENCH = 'wrench';
 
 /** How many items in `slots` match an ingredient. */
 export const countMatching = (slots: Slots, ing: Ingredient) => slots.reduce((n, it) => n + (it && ing.match(it.kind) ? it.n : 0), 0);
@@ -57,6 +68,21 @@ export function pickIngredients(slots: Slots, recipe: Recipe): number[] | null {
   }
   return out;
 }
+
+/** Use up what `recipe` needs from `slots`. Mutates; false (no change) if something is short. */
+export function useUp(slots: Slots, recipe: Recipe): boolean {
+  const pick = pickIngredients(slots, recipe);
+  if (!pick) return false;
+  for (const i of pick) {
+    const it = slots[i]!;
+    slots[i] = it.n > 1 ? { ...it, n: it.n - 1 } : null;
+  }
+  return true;
+}
+
+/** The materials building `kind` took, as items to give back when it comes down (or [] if it isn't one). */
+export const buildCost = (kind: string): { kind: string; n: number }[] =>
+  (BUILD_TABLE[kind] ?? []).flatMap((s) => ('kinds' in s ? [{ kind: s.kinds[0], n: s.n }] : []));
 
 /** Craft `id` in `slots`: use up the ingredients, add what it makes. Mutates; false (no change) if it can't. */
 export function craft(slots: Slots, id: string, newId: () => number, shape: Shape): boolean {

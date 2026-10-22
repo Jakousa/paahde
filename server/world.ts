@@ -8,7 +8,7 @@ import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerStat
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bikeLevel, bottleSips, buildingBox, carriedGear, equipped, gearTiers, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { HOTBAR, SCRAP, scrapItem } from '../shared/items.ts';
+import { CLOTH, HOTBAR, SCRAP, scrapItem, stackOf, WIRING } from '../shared/items.ts';
 import type { Drop } from '../shared/lootRoll.ts';
 import { ENEMIES } from '../shared/enemies.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
@@ -192,6 +192,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
     if (msg.t === 'place' && p) return onPlace(p, msg.slot, msg.x, msg.z, msg.rot);
     if (msg.t === 'unplace' && p) return onUnplace(p, msg.id);
+    if (msg.t === 'build' && p) return onBuild(p, msg.kind, msg.x, msg.z, msg.rot);
     if (msg.t === 'wire' && p) return onWire(p, msg.slot, msg.a, msg.b);
     if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
@@ -891,11 +892,14 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
 // equipment slots (if free).
 function onDebugGear(p: Player, tier: unknown) {
   const t = TIERS[Number.isInteger(tier) ? (tier as number) : 0] ?? 'scrap';
-  for (const kind of GEAR_KINDS) {
+  for (const kind of GEAR_KINDS.filter((k) => !isBuilding(k))) {
     const parts = scrapParts(kind, t);
     if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
   }
-  items.give(p.browserId, 'grinder'); // (the grinder is made, not found: shared/tables.ts RECIPE_TABLE)
+  items.give(p.browserId, 'grinder'); // (the grinder and the wrench are made, not found: shared/tables.ts RECIPE_TABLE)
+  items.give(p.browserId, 'wrench');
+  // and some of each base material, to build with (shared/tables.ts BUILD_TABLE)
+  for (const kind of [SCRAP, CLOTH, WIRING]) items.give(p.browserId, kind, stackOf(kind));
   for (const box of ['bag', 'equip']) sendBox(p, box);
   gearChanged(p.browserId);
 }
@@ -968,11 +972,20 @@ function onPlace(p: Player, slot: unknown, x: unknown, z: unknown, rot: unknown)
   if (typeof r !== 'string') gearChanged(p.browserId);
 }
 
+// A building put up with the wrench from the base materials in the bag (server/placed.ts build).
+function onBuild(p: Player, kind: unknown, x: unknown, z: unknown, rot: unknown) {
+  const r = p.down ? TEXT.notice.cantPlace : placedThings.build(p.browserId, p.state, kind, x, z, rot, [...players.values()].map((o) => o.state));
+  if (typeof r === 'string') send(p.ws, { t: 'notice', text: r });
+  else if (isBuilding(r.kind)) sendBox(p, buildingBox(r.id));
+  sendBox(p, 'bag');
+  if (typeof r !== 'string') gearChanged(p.browserId);
+}
+
 function onUnplace(p: Player, id: unknown) {
-  const r = placedThings.unplace(p.browserId, p.state, id);
+  // Its wires come down with it, their wiring into the bag too.
+  const r = placedThings.unplace(p.browserId, p.state, id, (q) => wiring.refund(q.id));
   if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
-  // Its wires come down: the coils into the bag, at your feet what doesn't fit.
-  wiring.takeDown(r.id, (kind) => items.give(p.browserId, kind), (kind) => loot.dropAt(p.state.x, p.state.z, kind));
+  wiring.takeDown(r.id);
   if (r.kind === 'plant_bed') garden.remove(r.id);
   sendBox(p, 'bag', r.kind);
   gearChanged(p.browserId);

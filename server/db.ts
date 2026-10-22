@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { Obituary } from '../shared/protocol.ts';
-import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, OLD_SCRAP, SCRAP, type Item, type Slots } from '../shared/items.ts';
+import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, OLD_COILS, OLD_SCRAP, SCRAP, WIRING, type Item, type Slots } from '../shared/items.ts';
 
 export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
 /** A player's name in this world: null until they were asked (src/name.ts), '' if they left it blank. */
@@ -263,11 +263,12 @@ export function openDb(path: string) {
   const allPower = db.prepare('SELECT id, charge FROM power');
   const clearPower = db.prepare('DELETE FROM power');
   const putPower = db.prepare('INSERT INTO power (id, charge) VALUES (?, ?)');
-  // Power lines (shared/wires.ts, server/wires.ts): wire between placed things a < b, the coil it was made of.
+  // Power lines (shared/wires.ts, server/wires.ts): wire between placed things a < b; `kind` is what it was made of
+  // (a wiring coil before v11, now always wiring: what comes back follows its length).
   db.exec(`CREATE TABLE IF NOT EXISTS wires (
     id INTEGER PRIMARY KEY AUTOINCREMENT, a INTEGER NOT NULL, b INTEGER NOT NULL, kind TEXT NOT NULL,
     owner TEXT NOT NULL, placed_at INTEGER NOT NULL)`);
-  const allWires = db.prepare('SELECT id, a, b, kind FROM wires ORDER BY id');
+  const allWires = db.prepare('SELECT id, a, b FROM wires ORDER BY id');
   const insertWire = db.prepare('INSERT INTO wires (a, b, kind, owner, placed_at) VALUES (?, ?, ?, ?, ?)');
   const deleteWire = db.prepare('DELETE FROM wires WHERE id = ?');
   const allBeds = db.prepare('SELECT id, stage, growth FROM beds');
@@ -328,6 +329,19 @@ export function openDb(path: string) {
       db.exec(`UPDATE ${t} SET kind = 'uranium' || SUBSTR(kind, 11) WHERE kind LIKE 'antimatter\\_%' ESCAPE '\\'`);
     }
   });
+  // v11: the wiring coils (`coil_<tier>`) became stackable wiring, one each: in boxes, fitted in gear (JSON parts),
+  // dropped and lying in the world. The scattered stacks of one are merged when a box loads (server/items.ts).
+  {
+    const old = OLD_COILS.map((k) => `'${k}'`).join(', ');
+    const n = (db.prepare(`SELECT COUNT(*) AS n FROM items WHERE kind IN (${old})`).get() as { n: number }).n;
+    tx(() => {
+      for (const t of ['items', 'dropped', 'world_loot']) {
+        db.exec(`UPDATE ${t} SET kind = '${WIRING}' WHERE kind IN (${old})`);
+        for (const k of OLD_COILS) db.prepare(`UPDATE ${t} SET parts = REPLACE(parts, ?, ?) WHERE parts LIKE ?`).run(`"${k}"`, `"${WIRING}"`, `%"${k}"%`);
+      }
+    });
+    if (n) console.log(`items: ${n} wiring coils are wiring now`);
+  }
   const allWorldLoot = db.prepare('SELECT id, kind, parts, x, z, depth, src, spawn FROM world_loot ORDER BY id');
   const insertWorldLoot = db.prepare('INSERT OR REPLACE INTO world_loot (id, kind, parts, x, z, depth, src, spawn) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
   const deleteWorldLoot = db.prepare('DELETE FROM world_loot WHERE id = ?');
@@ -407,7 +421,7 @@ export function openDb(path: string) {
       clearBox.run('', `corpse${id}`);
     }),
     loadBeds: () => allBeds.all() as { id: number; stage: number; growth: number }[],
-    loadWires: () => allWires.all() as { id: number; a: number; b: number; kind: string }[],
+    loadWires: () => allWires.all() as { id: number; a: number; b: number }[],
     /** New wire; returns its id. */
     insertWire: (a: number, b: number, kind: string, owner: string) => Number(insertWire.run(a, b, kind, owner, Date.now()).lastInsertRowid),
     deleteWire: (id: number) => deleteWire.run(id),

@@ -34,11 +34,14 @@ export type ClientMsg =
   // (0/1). The server checks the item, reach and placeError(), then answers 'items' (bag) and broadcasts
   // 'placed'; a refusal gets a 'notice'.
   | { t: 'place'; slot: number; x: number; z: number; rot: number }
-  // String a power line (shared/wires.ts) from placed thing `a`'s connector to `b`'s with the coil in bag slot `slot`,
-  // or take down the wire between them. Answered with 'items' (bag) and a broadcast 'wires', or a 'notice'.
+  // String a power line (shared/wires.ts) from placed thing `a`'s connector to `b`'s with the wiring in bag slot `slot`
+  // in hand (what it takes by its length comes out of the bag), or take down the wire between them (the wiring back). Answered with 'items' (bag) and a broadcast 'wires', or a 'notice'.
   | { t: 'wire'; slot: number; a: number; b: number }
-  // Pick a placed thing back up into the bag (reach, room in the bag). A bed's crop is lost.
+  // Pick a placed thing back up into the bag (reach, room in the bag), or take a building down with the wrench (what it
+  // was built of, its parts and its wires' wiring into the bag, all of it or nothing). A bed's crop is lost.
   | { t: 'unplace'; id: number }
+  // Put up building `kind` (shared/crafting.ts BUILDS) with the wrench, its materials from the bag. Answered like 'place'.
+  | { t: 'build'; kind: string; x: number; z: number; rot: number }
   // Craft a recipe at the workbench (shared/crafting.ts RECIPES id): reach checked, ingredients used up from
   // the bag, answered with 'items' (got: what was made) or a 'notice'.
   | { t: 'craft'; recipe: string }

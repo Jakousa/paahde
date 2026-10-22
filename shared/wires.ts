@@ -2,20 +2,20 @@
 // battery station, the power pole: shared/placed.ts). Only what is wired together shares power: each set of things
 // joined by wires is one grid (grids(), used by server/power.ts).
 //
-// A wire is a wiring coil: hold one in the hotbar, click a connector, click another (src/wiring.ts). The coil is used
-// up, and its tier says how far it reaches (COIL_REACH, socket to socket). A power pole is only a connector up high,
-// to carry a line further than one coil reaches. Picking a thing up takes its wires down, their coils back to you;
+// A wire is wiring (shared/items.ts WIRING): hold some in the hotbar, click a connector, click another (src/wiring.ts).
+// It uses up a wiring for every WIRE_M metres (socket to socket, wireCost), up to MAX_REACH. A power pole is only a
+// connector up high, to carry a line further. Taking a thing down takes its wires down, their wiring back to you;
 // clicking a wired pair again takes that wire down.
 //
 // The server owns the list (server/wires.ts, `wires` table) and sends it whole when it changes; client and server
 // both keep it here with setWires().
 import { EYE_HEIGHT } from './dig.ts';
-import { parsePart } from './items.ts';
+import { WIRING } from './items.ts';
 import type { Placed } from './placed.ts';
 import { TEXT } from './text.ts';
 
-/** A wire: DB id, the two placed things it joins (a < b), and the coil it was made of. */
-export type Wire = { id: number; a: number; b: number; kind: string };
+/** A wire: DB id and the two placed things it joins (a < b). */
+export type Wire = { id: number; a: number; b: number };
 
 /** Each electric kind's connector: where its socket is in its own frame (rot 0; m, from the footprint's centre on
  *  what it stands on). High enough that a sagging wire clears your head. Match tools/blender/placeables.py. */
@@ -27,8 +27,10 @@ export const CONNECTORS: Record<string, { x: number; y: number; z: number }> = {
 
 export const hasConnector = (kind: string) => kind in CONNECTORS;
 
-/** How far a wire of each coil tier reaches (m, socket to socket): Scrap .. Space-grade. */
-export const COIL_REACH = [10, 16, 24, 35];
+/** A wiring is this much wire (m, socket to socket): a wire takes one per WIRE_M, rounded up. */
+export const WIRE_M = 12;
+/** The longest wire (m, socket to socket). */
+export const MAX_REACH = 36;
 /** At most this many wires on one connector. */
 export const MAX_WIRES = 6;
 /** How far from the eye a connector can be clicked (m). */
@@ -36,13 +38,8 @@ export const CONNECT_REACH = 5;
 /** How close to a socket the crosshair must pass (m). */
 const SOCKET_R = 0.45;
 
-/** Is `kind` a wiring coil (any tier)? */
-export const isCoil = (kind: string | undefined) => !!kind && parsePart(kind)?.part === 'coil';
-/** How far a coil of `kind` reaches (m), 0 if it isn't one. */
-export const coilReach = (kind: string | undefined) => {
-  const t = kind ? parsePart(kind) : null;
-  return t?.part === 'coil' ? COIL_REACH[t.tier] : 0;
-};
+/** Is `kind` what wires are strung with? */
+export const isWiring = (kind: string | undefined) => kind === WIRING;
 
 /** Everything strung right now (from the server). Replace it with setWires(). */
 export let wires: Wire[] = [];
@@ -64,11 +61,14 @@ const dist = (a: { x: number; y: number; z: number }, b: { x: number; y: number;
 export const wireBetween = (a: number, b: number, list: Wire[] = wires) =>
   list.find((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a));
 
-/** Why a wire of coil `kind` can't go from `a` to `b`, or null if it can. */
-export function wireError(a: Placed | undefined, b: Placed | undefined, kind: string | undefined, list: Wire[] = wires): string | null {
+/** The wiring a wire from `a` to `b` takes (and gives back when it comes down). */
+export const wireCost = (a: Placed, b: Placed) => Math.max(1, Math.ceil(dist(socketAt(a), socketAt(b)) / WIRE_M));
+
+/** Why a wire can't go from `a` to `b` with `have` wiring in the bag, or null if it can. */
+export function wireError(a: Placed | undefined, b: Placed | undefined, have: number, list: Wire[] = wires): string | null {
   if (!a || !b || a.id === b.id || !hasConnector(a.kind) || !hasConnector(b.kind)) return TEXT.notice.cantConnect;
-  if (!isCoil(kind)) return TEXT.notice.cantConnect;
-  if (dist(socketAt(a), socketAt(b)) > coilReach(kind)) return TEXT.notice.outOfReach;
+  if (dist(socketAt(a), socketAt(b)) > MAX_REACH) return TEXT.notice.outOfReach;
+  if (have < wireCost(a, b)) return TEXT.notice.needWiring(wireCost(a, b));
   for (const p of [a, b]) {
     if (list.filter((w) => w.a === p.id || w.b === p.id).length >= MAX_WIRES) return TEXT.notice.tooManyWires;
   }

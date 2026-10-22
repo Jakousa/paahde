@@ -25,6 +25,7 @@ export type IngredientSpec = { label: string; n: number } & ({ part: PartId } | 
 
 const SCRAP = (n: number): IngredientSpec => ({ label: TEXT.items.scrap, n, kinds: ['scrap'] });
 const CLOTH = (n: number): IngredientSpec => ({ label: TEXT.items.cloth, n, kinds: ['cloth'] });
+const WIRING = (n: number): IngredientSpec => ({ label: TEXT.items.wiring, n, kinds: ['wiring'] });
 
 /** Scrap for taking machines apart (server/crash.ts): every step done gives `step`, a module that comes off (all its outer steps) `module`
  *  more, a piece taken apart on the ground (all its inner steps) `piece` more. The frame left when everything is out is mashed to scrap
@@ -34,22 +35,30 @@ export const SCRAP_REWARD = { step: 1, module: 2, piece: 2, machine: 6, perModul
 
 export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   // (The plant bed and UV lamp aren't crafted for now: growing doesn't fit the game yet. Their code is still in
-  // shared/garden.ts; to bring them back: plant_bed: [SCRAP(2), CLOTH(2)], uv_lamp: [SCRAP(2), coil 1].)
+  // shared/garden.ts; to bring them back: plant_bed: [SCRAP(2), CLOTH(2)], uv_lamp: [SCRAP(2), WIRING(1)].)
   // The plain metal parts, hammered out of scrap: Scrap tier only, so better ones still come from salvage. The
-  // electrics (motor, battery, coil, relay, compute, uranium) can't be made.
+  // electrics (motor, battery, relay, compute, uranium) can't be made.
   gear_scrap: [SCRAP(3)],
   bearing_scrap: [SCRAP(2)],
   valve_scrap: [SCRAP(3)],
   heatsink_scrap: [SCRAP(4)],
   // The grinder, for seams in a machine's shell: a motor spins the disc through a pair of gears, a battery drives it.
   grinder: [{ label: TEXT.parts.motor, n: 1, part: 'motor' }, { label: TEXT.parts.battery, n: 1, part: 'battery' }, { label: TEXT.parts.gear, n: 2, part: 'gear' }, SCRAP(3)],
+  // The wrench, the build tool (shared/crafting.ts BUILDS): a bar of scrap, forged.
+  wrench: [SCRAP(4)],
   // (Tools, guns and the jammer aren't crafted: they're found broken and repaired, shared/gear.ts.)
-  // The buildings (shared/gear.ts built): the parts go into its slots (shared/crafting.ts), the scrap is its frame.
-  // A windmill: a scrap lattice tower, a rotor of sheet-metal blades on six bearings, a generator wound with two coils.
-  windmill: [{ label: TEXT.parts.bearing, n: 6, part: 'bearing' }, { label: TEXT.parts.coil, n: 2, part: 'coil' }, SCRAP(20)],
-  // A battery station: a welded rack of six cells and a charger wound with two coils.
-  battery_station: [{ label: TEXT.parts.battery, n: 6, part: 'battery' }, { label: TEXT.parts.coil, n: 2, part: 'coil' }, SCRAP(14)],
-  // A power pole: lengths of scrap pipe welded up, a crossarm, an insulator (the wires are coils, shared/wires.ts).
+};
+
+/** The buildings, put up with the wrench (shared/crafting.ts BUILDS): only base materials (scrap, cloth, wiring), used up
+ *  as it goes up. The id is the placed kind (shared/placed.ts PLACEABLES). A windmill or battery station stands with its
+ *  part slots empty (shared/gear.ts built): the bearings or batteries are fitted afterwards. Taken down with the wrench,
+ *  all of it comes back. */
+export const BUILD_TABLE: Record<string, IngredientSpec[]> = {
+  // A scrap lattice tower, a rotor of sheet-metal blades, a generator wound with wiring (the bearings go in after).
+  windmill: [SCRAP(20), WIRING(4)],
+  // A welded rack for six cells, a charger wound with wiring, a tarp over it (the batteries go in after).
+  battery_station: [SCRAP(12), WIRING(3), CLOTH(2)],
+  // Lengths of scrap pipe welded up, a crossarm, an insulator (the lines between are wiring too, shared/wires.ts).
   power_pole: [SCRAP(8)],
 };
 

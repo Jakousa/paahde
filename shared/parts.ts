@@ -14,20 +14,25 @@ export const PART_IDS = Object.keys(PART_LABELS) as PartId[];
 /** Quality word in front of the part's name. */
 export const TIER_LABELS: Record<Tier, string> = TEXT.tiers;
 
+/** Parts that come out of a machine as a basic material instead, with no tier (shared/items.ts): a wiring coil is
+ *  unwound into wiring. They still sit in the machines as parts (src/teardown) and roll in the loot tables as parts. */
+export const UNTIERED: Partial<Record<PartId, string>> = { coil: 'wiring' };
+
 /** Item kind of a part. */
-export const partItem = (part: PartId, tier: Tier) => `${part}_${tier}`;
+export const partItem = (part: PartId, tier: Tier) => UNTIERED[part] ?? `${part}_${tier}`;
 
 /** Part and tier of an item kind, or null if it isn't a part. */
 export function partOf(kind: string): { part: PartId; tier: Tier } | null {
   const i = kind.lastIndexOf('_');
   const part = kind.slice(0, i) as PartId, tier = kind.slice(i + 1) as Tier;
-  return i > 0 && part in PART_LABELS && (TIERS as readonly string[]).includes(tier) ? { part, tier } : null;
+  return i > 0 && part in PART_LABELS && !UNTIERED[part] && (TIERS as readonly string[]).includes(tier) ? { part, tier } : null;
 }
 
 /** Catalogue entries for every part item (spread into ITEMS, shared/items.ts), tiers of a part together. */
 export function partItems(): Record<string, { label: string; stack: number; tier: Tier }> {
   const out: Record<string, { label: string; stack: number; tier: Tier }> = {};
   for (const part of PART_IDS) {
+    if (UNTIERED[part]) continue;
     for (const tier of TIERS) out[partItem(part, tier)] = { label: TEXT.partItem(TIER_LABELS[tier], PART_LABELS[part]), stack: 1, tier };
   }
   return out;

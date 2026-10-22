@@ -10,7 +10,8 @@ import { GEAR, isGear, repaired, tierOf } from '../../shared/gear.ts';
 import { applyTier } from '../tierLook';
 import { RECEIVERS, RELICS } from '../../shared/bosses.ts';
 import { RELIC_DROPS } from '../../shared/tables.ts';
-import { parsePart } from '../../shared/items.ts';
+import { parsePart, WIRING } from '../../shared/items.ts';
+import { wrenchModel } from '../models/wrench';
 import { lootReach, lootY, type Loot } from '../../shared/loot.ts';
 import { RARITY, TIERS } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
@@ -309,7 +310,8 @@ export class LootView {
     const obj = new THREE.Group();
     let rims: THREE.Mesh[] | null = null;
     let pool: THREE.Mesh | null = null;
-    const part = parsePart(l.kind);
+    // (Wiring lies there as a Scrap-tier coil, which is what it comes out of: shared/parts.ts UNTIERED.)
+    const part = parsePart(l.kind) ?? (l.kind === WIRING ? { part: 'coil' as const, tier: 0 } : null);
     // Broken gear, parts and relics glow along their edges, with a faint pool on the sand around them: small and
     // dark, they'd otherwise be lost on the sand (a boss's spoils scattered over its wreck, a kill's drop). The colour
     // tells their quality: a part's tier, gear's tier from the parts it still has (tierOf).
@@ -335,6 +337,13 @@ export class LootView {
       if (rims) addRims(obj, rims, hex);
     } else if (l.kind === 'grinder') {
       addFind(obj, l.kind); // a tool, not gear: its model lies in FIND_MODELS
+    } else if (l.kind === 'wrench') {
+      // Lying flat on the sand (it is modelled standing up in the hand), a little bigger to be seen.
+      const w = wrenchModel().obj;
+      w.rotation.z = Math.PI / 2;
+      w.position.y = 0.01;
+      w.scale.setScalar(1.6);
+      obj.add(w);
     } else if (RELIC_KINDS.has(l.kind)) {
       FIND_MODELS[l.kind] ??= { url: `./models/items/${l.kind}.glb` };
       addFind(obj, l.kind);

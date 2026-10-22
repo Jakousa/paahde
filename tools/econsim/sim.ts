@@ -7,17 +7,18 @@ import { BASE } from '../../shared/base.ts';
 import { biome } from '../../shared/biomes.ts';
 import { BOSS_KINDS, BOSS_LIVES, RECEIVERS, type BossKind } from '../../shared/bosses.ts';
 import { ENEMIES, fightOdds, type EnemyKind, type Meet, type Weapon } from '../../shared/enemies.ts';
-import { RECIPES } from '../../shared/crafting.ts';
+import * as crafting from '../../shared/crafting.ts';
+import { RECIPES, type Ingredient, type Recipe } from '../../shared/crafting.ts';
 import { type LootLevel } from '../../shared/crashsites.ts';
 import { seeded } from '../../shared/crash.ts';
 import {
   bagShape, backpackRows, bikeTopSpeed, canteenSips, EQUIP_SLOTS, fitsSlot, GEAR, quality, repaired, shieldSaves, spyglassZoom, tierOf, type EquipSlot,
 } from '../../shared/gear.ts';
-import { addItem, BAG_SLOTS, BIKE_COLS, BIKE_ROWS, gridShape, HOTBAR, parsePart, SCRAP, type Item, type Shape, type Slots } from '../../shared/items.ts';
+import { addItem, BAG_SLOTS, BIKE_COLS, BIKE_ROWS, CLOTH, gridShape, HOTBAR, parsePart, SCRAP, type Item, type Shape, type Slots } from '../../shared/items.ts';
 import { type Drop, type Rand } from '../../shared/lootRoll.ts';
 import { machineParts } from '../../shared/machine.ts';
 import { frameScrap, stepList } from '../../shared/machineSteps.ts';
-import { PART_IDS } from '../../shared/parts.ts';
+import { PART_IDS, partItem } from '../../shared/parts.ts';
 import { COMPONENTS, junkSpec, SALVAGE, type JunkKind, type PartId } from '../../shared/salvage.ts';
 import { DAY_SECONDS } from '../../shared/sun.ts';
 import { RARE_PARTS } from '../../shared/lootRoll.ts';
@@ -32,7 +33,7 @@ import { CORPSE_S, World, type Poi, type Source, type Thing } from './world.ts';
 const GOALS = [
   'canteen', 'backpack', 'laser_pistol', 'motorcycle', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
   'grinder', 'receiver_colossus', 'boss:colossus', 'receiver_queen', 'boss:queen', 'receiver_carrier', 'boss:carrier', 'receiver_worm', 'boss:worm',
-  'windmill', 'battery_station',
+  'wrench', 'windmill', 'battery_station',
 ] as const;
 /** Worn gear: its equipment slot. */
 const WORN: Partial<Record<string, EquipSlot>> = { backpack: 'back', motorcycle: 'vehicle', shield: 'armor', storm_detector: 'belt', wristpad: 'wrist' };
@@ -43,10 +44,19 @@ const QUALITY_MILESTONES = ['laser_rifle', 'motorcycle', 'backpack', 'canteen'];
 /** Scrap-tier metal parts the workbench hammers out of scrap (shared/tables.ts RECIPE_TABLE). */
 const SMITHED: Partial<Record<PartId, string>> = { gear: 'gear_scrap', bearing: 'bearing_scrap', valve: 'valve_scrap', heatsink: 'heatsink_scrap' };
 
-/** What an item counts as for needs: its part, or its own kind (scrap, cloth, a relic, a piece of gear). */
+// (This file also runs against older commits (cli.ts --base): what they may not have yet is looked up, not imported.)
+/** The buildings put up with the wrench (shared/crafting.ts), none before there were. */
+const BUILDS: Record<string, Recipe> = (crafting as { BUILDS?: Record<string, Recipe> }).BUILDS ?? {};
+const WRENCH = 'wrench';
+const WIRING = 'wiring';
+/** The base materials (shared/items.ts): stacked in the chest, a need of their own. */
+const MATERIALS = [SCRAP, CLOTH, WIRING];
+/** What an item counts as for needs: its part, or its own kind (scrap, cloth, wiring, a relic, a piece of gear). */
 const keyOf = (kind: string) => parsePart(kind) ? kind.slice(0, kind.lastIndexOf('_')) : kind;
 const tierNum = (kind: string) => parsePart(kind)?.tier ?? -1;
 const slotKey = (s: (typeof GEAR)[string]['slots'][number]) => ('part' in s ? s.part : s.scrap[0]);
+/** The need key an ingredient is met by: a part (any tier) or a base material. */
+const ingKey = (ing: Ingredient) => keyOf(PART_IDS.map((p) => partItem(p, 'scrap')).find((k) => ing.match(k)) ?? MATERIALS.find((k) => ing.match(k)) ?? CLOTH);
 const lerp = (a: [number, number], u: number) => a[0] + (a[1] - a[0]) * u;
 
 export type RunResult = {
@@ -135,6 +145,10 @@ export class Sim {
   private gearOf(kind: string): Item[] {
     return this.all().filter((x) => x.kind === kind);
   }
+  /** How `goal` is made: its workbench recipe, or, for a building not up yet, what it's built of (the wrench's). */
+  private recipeOf(goal: string): Recipe | undefined {
+    return RECIPES[goal] ?? (BUILDS[goal] && !this.gearOf(goal).length ? BUILDS[goal] : undefined);
+  }
   private best(kind: string): Item | null {
     return this.gearOf(kind).filter(repaired).sort((a, b) => quality(b) - quality(a))[0] ?? null;
   }
@@ -183,7 +197,7 @@ export class Sim {
   }
 
   private toChest(kind: string, n = 1, parts?: (string | null)[]) {
-    const stack = !parts && (kind === SCRAP || kind === 'cloth') ? this.chest.find((x) => x.kind === kind && !x.parts) : undefined;
+    const stack = !parts && MATERIALS.includes(kind) ? this.chest.find((x) => x.kind === kind && !x.parts) : undefined;
     if (stack) stack.n += n;
     else this.chest.push({ id: this.newId(), kind, n, ...(parts ? { parts: [...parts] } : {}) });
     this.needCache = null;
@@ -191,7 +205,8 @@ export class Sim {
 
   /** Count a part coming in, by where it came from. */
   private got(kind: string, src: Source) {
-    const p = parsePart(kind);
+    // (Wiring is a machine's coil: counted with the parts, as Scrap.)
+    const p = parsePart(kind) ?? (kind === WIRING ? { tier: 0 } : null);
     if (!p) return;
     const part = keyOf(kind);
     (this.out.sources[part] ??= {})[src] = (this.out.sources[part]?.[src] ?? 0) + 1;
@@ -208,7 +223,7 @@ export class Sim {
     if (!it) return null;
     if (--it.n <= 0) this.chest.splice(this.chest.indexOf(it), 1);
     this.needCache = null;
-    if (parsePart(it.kind)) this.out.used[key] = (this.out.used[key] ?? 0) + 1;
+    if (parsePart(it.kind) || it.kind === WIRING) this.out.used[key] = (this.out.used[key] ?? 0) + 1;
     return it.kind;
   }
 
@@ -250,12 +265,13 @@ export class Sim {
     this.open().forEach((g, rank) => {
       const w = Math.pow(0.85, rank);
       if (g.startsWith('boss:')) return;
-      if (RECIPES[g]) {
-        for (const ing of RECIPES[g].needs) want(keyOf(PART_IDS.find((p) => ing.match(`${p}_scrap`)) ?? (ing.match(SCRAP) ? SCRAP : 'cloth')), ing.n, w);
-        return;
-      }
+      const r = this.recipeOf(g);
+      if (r) for (const ing of r.needs) want(ingKey(ing), ing.n, w);
+      // A building isn't done when it stands: its slots are filled after (below). (No recipe and no gear: a goal this
+      // commit doesn't have yet.)
+      if (RECIPES[g] || !GEAR[g]) return;
       const it = this.gearOf(g).sort((a, b) => filled(b) - filled(a))[0];
-      if (!it) want(g, 1, w);
+      if (!it && !BUILDS[g]) want(g, 1, w);
       GEAR[g].slots.forEach((s, i) => {
         if (!it?.parts?.[i]) want(slotKey(s), 1, it ? w : w * 0.6);
       });
@@ -288,7 +304,7 @@ export class Sim {
         }
       }
       // A spare: worth less the more of it there is.
-      if (!v) v = (key === SCRAP || key === 'cloth' ? 0.02 : parsePart(kind) ? 0.01 : 0) * 10 / (10 + (this.stock.get(key) ?? 0));
+      if (!v) v = (MATERIALS.includes(key) ? 0.02 : parsePart(kind) ? 0.01 : 0) * 10 / (10 + (this.stock.get(key) ?? 0));
     }
     return v;
   }
@@ -300,7 +316,7 @@ export class Sim {
     if (had !== undefined) return had;
     let v = 0;
     if (kind !== 'jet_engine' || this.gearOf('grinder').length) {
-      for (const y of junkSpec(kind).yields) v += ((y.min + y.max) / 2) * this.value(`${y.part}_${level >= 2 ? 'quality' : 'basic'}`);
+      for (const y of junkSpec(kind).yields) v += ((y.min + y.max) / 2) * this.value(partItem(y.part, level >= 2 ? 'quality' : 'basic'));
       v += this.value(SCRAP) * 10;
     }
     this.valueCache.set(key, v);
@@ -680,7 +696,7 @@ export class Sim {
         m.backAt = Infinity;
         const left: Thing[] = [];
         for (const pt of machineParts(m.kind, m.seed, m.level)) {
-          const kind = `${pt.part}_${pt.tier}`;
+          const kind = partItem(pt.part, pt.tier);
           if (this.stow(kind)) this.got(kind, m.kind);
           else left.push(this.world.thing({ kind }, m.kind));
         }
@@ -709,7 +725,8 @@ export class Sim {
       stock.set(k, have - n);
       return have >= n;
     };
-    if (RECIPES[goal]) return RECIPES[goal].needs.every((ing) => [...stock.keys()].some((k) => (ing.match(k) || ing.match(`${k}_scrap`)) && take(k, ing.n)));
+    const r = this.recipeOf(goal);
+    if (r) return r.needs.every((ing) => [...stock.keys()].some((k) => (ing.match(k) || ing.match(`${k}_scrap`)) && take(k, ing.n)));
     const it = this.gearOf(goal).sort((a, b) => filled(b) - filled(a))[0];
     if (!it) return false;
     if (repaired(it)) return false;
@@ -739,8 +756,8 @@ export class Sim {
         const seed = (this.machineRand() * 2 ** 32) >>> 0;
         this.t += this.teardownS(it.kind as JunkKind, seed, 1);
         for (const pt of machineParts(it.kind as JunkKind, seed, 1)) {
-          this.toChest(`${pt.part}_${pt.tier}`);
-          this.got(`${pt.part}_${pt.tier}`, it.kind);
+          this.toChest(partItem(pt.part, pt.tier));
+          this.got(partItem(pt.part, pt.tier), it.kind);
         }
         this.toChest(SCRAP, this.teardownScrap(it.kind as JunkKind, seed, 1));
       }
@@ -760,17 +777,20 @@ export class Sim {
       changed = false;
       for (const g of this.open()) {
         if (g.startsWith('boss:')) continue;
-        if (RECIPES[g]) {
+        if (this.recipeOf(g)) {
           if (this.craft(g, this.reserved(g))) changed = true;
-          continue;
+          if (RECIPES[g]) continue;
         }
         const it = this.gearOf(g).sort((a, b) => filled(b) - filled(a))[0];
         if (!it) continue;
         const parts = [...(it.parts ?? GEAR[g].slots.map(() => null))];
+        // A building (put up empty) leaves what earlier goals still want, as crafting does.
+        const keep = GEAR[g].built ? this.reserved(g) : null;
         GEAR[g].slots.forEach((s, i) => {
           if (parts[i]) return;
           const key = slotKey(s);
-          let got = this.takeFromChest(key);
+          if (keep && this.chestCount(key) <= (keep.get(key) ?? 0) && !SMITHED[key as PartId]) return;
+          let got = this.takeFromChest(key, !keep);
           if (!got && SMITHED[key as PartId] && this.craft(SMITHED[key as PartId]!)) got = this.takeFromChest(key);
           if (got) {
             parts[i] = got;
@@ -809,7 +829,9 @@ export class Sim {
 
   /** Craft recipe `id` from the chest, leaving what's `reserved` (by need key) for earlier goals. */
   private craft(id: string, reserved = new Map<string, number>()): boolean {
-    const r = RECIPES[id];
+    const r = RECIPES[id] ?? BUILDS[id];
+    // A building goes up with the wrench (src/placing.ts).
+    if (BUILDS[id] && !this.gearOf(WRENCH).length) return false;
     const take: string[] = [];
     const counts = new Map<string, number>();
     for (const it of this.chest) if (!it.parts) counts.set(it.kind, (counts.get(it.kind) ?? 0) + it.n);

@@ -34,6 +34,9 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   scrap: { label: TEXT.items.scrap, stack: 128 }, // (taking machines apart pays in it: shared/tables.ts SCRAP_REWARD)
   // The other basic material: tarps, sacks and seat covers (cloth bundles in the scrap piles, burnt seats at crash sites).
   cloth: { label: TEXT.items.cloth, stack: 20 },
+  // The third: lengths of copper wire, what a machine's wiring coil comes out as (shared/parts.ts UNTIERED). Strung as
+  // power lines (shared/wires.ts) and built into the buildings.
+  wiring: { label: TEXT.items.wiring, stack: 20 },
   // Small crash-site machines carried home to the disassembly table (COMPONENTS with carry: true, shared/salvage.ts).
   // The item kind is the component kind.
   robot_arm: { label: TEXT.machines.robot_arm, stack: 1, size: [2, 2] },
@@ -46,11 +49,14 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
   plant_bed: { label: TEXT.items.plant_bed, stack: 1, size: [3, 2] },
   uv_lamp: { label: TEXT.items.uv_lamp, stack: 1, size: [1, 2] },
-  // Buildings: crafted at the workbench with their parts fitted (gear, shared/gear.ts GEAR), put down from the hotbar.
+  // Buildings: put up with the wrench from the base materials (shared/crafting.ts BUILDS), never carried. A windmill or
+  // battery station keeps its item (gear, shared/gear.ts GEAR: its part slots) in a box of its own while it stands.
   windmill: { label: TEXT.items.windmill, stack: 1, size: [2, 3] },
   battery_station: { label: TEXT.items.battery_station, stack: 1, size: [2, 2] },
-  // A pole to carry power lines (shared/wires.ts): made of scrap, put up on the sand from the hotbar.
+  // A pole to carry power lines (shared/wires.ts).
   power_pole: { label: TEXT.items.power_pole, stack: 1, size: [1, 3] },
+  // The build tool (crafted at the workbench): with it in hand, the right mouse opens the build menu (src/buildMenu.ts).
+  wrench: { label: TEXT.items.wrench, stack: 1 },
   // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.
   laser_rifle: { label: TEXT.items.laser_rifle, stack: 1, size: [4, 1] },
   laser_pistol: { label: TEXT.items.laser_pistol, stack: 1, size: [2, 1] },
@@ -80,7 +86,7 @@ const ORDER = Object.keys(ITEMS);
 export const RETIRED = new Set(['shovel', 'metal_detector']);
 
 /** Used from the hotbar (held in hand): Store all leaves these in the bag. Placeables (shared/placed.ts) stay too. */
-export const TOOLS = new Set(['canteen', 'spyglass', 'laser_rifle', 'laser_pistol', 'jammer', 'grinder',
+export const TOOLS = new Set(['canteen', 'spyglass', 'laser_rifle', 'laser_pistol', 'jammer', 'grinder', 'wrench',
   'receiver_carrier', 'receiver_queen', 'receiver_colossus', 'receiver_worm']);
 
 /** Every item fits a grid this many rows tall once turned (its smaller side): the smallest backpack's rows
@@ -96,10 +102,13 @@ export function parsePart(kind: string): { part: PartId; tier: number } | null {
   return p ? { part: p.part, tier: TIERS.indexOf(p.tier) } : null;
 }
 
-/** The two basic materials: scrap (most scrap-pile pieces and crash-site debris) and cloth (cloth bundles in the
- *  piles, burnt seats at crash sites). */
+/** The basic materials: scrap (most scrap-pile pieces and crash-site debris), cloth (cloth bundles in the piles, burnt
+ *  seats at crash sites) and wiring (the machines' wiring coils). What the buildings are made of. */
 export const SCRAP = 'scrap';
 export const CLOTH = 'cloth';
+export const WIRING = 'wiring';
+/** Wiring coils from before they became wiring (server/db.ts migrates them, one wiring each). */
+export const OLD_COILS = ['coil_scrap', 'coil_basic', 'coil_quality', 'coil_space'];
 /** What scrap-pile piece kind `kind` (SCRAP_KINDS index) gives. */
 export const scrapItem = (kind: number) => SCRAP_KINDS[kind]?.item ?? SCRAP;
 /** What a crash-site debris piece (CRASH_KINDS node name) gives: the burnt seat is cloth, the rest scrap. */

@@ -11,11 +11,12 @@
 //     slow weather swing over the days; a sandstorm blows up to ~26 m/s more. One wind for the whole base, the same on
 //     server and clients (the shared wall clock, the world's seed).
 //   Windmill: a 3.5 m multi-blade rotor: P = ½ ρ A v³ · Cp · η. The bearings set how much of the wind the rotor turns
-//     into shaft power (Cp, friction, the wind it needs to start), the coils the generator (its efficiency and the
-//     most it can give). In a gale the tail folds it out of the wind (furling) and it nearly stops.
+//     into shaft power (Cp, friction, the wind it needs to start) and how well the generator runs (its efficiency and
+//     the most it can give; its windings are wiring it was built with). In a gale the tail folds it out of the wind
+//     (furling) and it nearly stops.
 //   Battery station: each battery holds its own charge. A Scrap battery is a car battery (12 V × 50 Ah ≈ 0.6 kWh,
-//     lead-acid: takes charge slowly, loses a fifth of it), better tiers better chemistries. The coils are the charger,
-//     which caps how fast the station takes power in.
+//     lead-acid: takes charge slowly, loses a fifth of it), better tiers better chemistries; each takes charge as fast
+//     as its chemistry lets it.
 import { DAY_SECONDS, timeOfDayAt } from './sun.ts';
 import { vnoise } from './noise.ts';
 import { WORLD_SEED } from './world.ts';
@@ -68,23 +69,21 @@ const AIR = 1.15;
 /** Above this the tail starts to fold the rotor out of the wind; past FURL_FULL it's edge-on. */
 const FURL_START = 15;
 const FURL_FULL = 22;
-/** Bearings and coils a windmill has (shared/gear.ts GEAR.windmill). */
+/** Bearings a windmill has (shared/gear.ts GEAR.windmill). */
 const WINDMILL_BEARINGS = 6;
-const WINDMILL_COILS = 2;
 
 /** A windmill's machinery from its parts: rotor power coefficient, the wind it needs to start, its tip speed ratio
  *  (rotor rim speed over wind speed), the generator's efficiency and the most it gives (W). Null when it can't run (a
  *  bearing missing: the shaft binds). */
 export function windmillSpec(parts: readonly (string | null)[] | undefined) {
-  const b = fitted(parts, 'bearing'), c = fitted(parts, 'coil');
+  const b = fitted(parts, 'bearing');
   if (b.n < WINDMILL_BEARINGS) return null;
   return {
     cp: by(b.q, 0.14, 0.3),
     cutIn: by(b.q, 3.2, 2.0),
     tsr: by(b.q, 0.9, 1.3),
-    // Coils missing: the rotor turns, nothing is made.
-    eff: c.n < WINDMILL_COILS ? 0 : by(c.q, 0.55, 0.92),
-    rated: by(c.q, 400, 1500),
+    eff: by(b.q, 0.55, 0.92),
+    rated: by(b.q, 400, 1500),
   };
 }
 
@@ -122,10 +121,7 @@ export const CELLS = [
   { kwh: 2.5, c: 0.7, eff: 0.95 },
   { kwh: 5, c: 1, eff: 0.98 },
 ];
-/** The charger: the most each of its coils passes (W), by tier. */
-const CHARGER_W = [300, 600, 1200, 2500];
-
-/** The battery in each slot of a station (by its parts; null for a coil slot or an empty one). */
+/** The battery in each slot of a station (by its parts; null for an empty one). */
 export function cells(parts: readonly (string | null)[] | undefined) {
   return (parts ?? []).map((p) => {
     const t = p ? parsePart(p) : null;
@@ -136,16 +132,6 @@ export function cells(parts: readonly (string | null)[] | undefined) {
 /** What a station's batteries hold all together (kWh). */
 export const capacity = (parts: readonly (string | null)[] | undefined) => cells(parts).reduce((s, c) => s + (c?.kwh ?? 0), 0);
 
-/** The most a station's charger passes (W): its coils' sum. */
-export function chargerWatts(parts: readonly (string | null)[] | undefined): number {
-  let w = 0;
-  for (const p of parts ?? []) {
-    const t = p ? parsePart(p) : null;
-    if (t?.part === 'coil') w += CHARGER_W[t.tier];
-  }
-  return w;
-}
-
 /** A station: its parts and each slot's charge (kWh, one per part slot). */
 export type Store = { parts: readonly (string | null)[]; charge: number[] };
 
@@ -154,11 +140,11 @@ export type Store = { parts: readonly (string | null)[]; charge: number[] };
  * (not full ones) will, the rest is shared out among those with room left. Returns what each took (W, from the grid).
  */
 export function charge(stores: Store[], watts: number, gameS: number): number[] {
-  // What each will take now: the charger's limit, and each battery's charge rate while it has room.
+  // What each will take now: each battery's charge rate while it has room.
   const accept = stores.map((s) => {
     const cs = cells(s.parts);
     const each = cs.map((c, i) => (c && s.charge[i] < c.kwh - 1e-9 ? c.kwh * 1000 * c.c : 0));
-    return { cs, each, max: Math.min(chargerWatts(s.parts), each.reduce((a, b) => a + b, 0)) };
+    return { cs, each, max: each.reduce((a, b) => a + b, 0) };
   });
   const took = stores.map(() => 0);
   // Water-filling: an equal share to each, the one that can't use all of it hands the rest on.

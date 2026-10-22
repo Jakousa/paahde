@@ -8,7 +8,7 @@ import {
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, growChest, grows, isShared, OWN_BOXES } from '../shared/storage.ts';
-import { craft, RECIPES } from '../shared/crafting.ts';
+import { buildCost, craft, isBuildable, RECIPES, useUp, type Recipe } from '../shared/crafting.ts';
 import { RIFLE } from '../shared/rifle.ts';
 import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
@@ -68,6 +68,21 @@ export class ItemServer {
       for (const r of rows) if (!RETIRED.has(r.kind)) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n, ...(r.parts ? { parts: r.parts } : {}), ...(r.r ? { r: true } : {}), ...(r.worn ? { worn: r.worn } : {}) };
       this.boxes.set(key, slots);
       let changed = rows.some((r) => RETIRED.has(r.kind));
+      // Buildings from when they were crafted and carried (shared/crafting.ts BUILDS): back into what they were made
+      // of, their parts and materials, laid out by settle() below. (Not on the workbench, whose one slot can't take
+      // them: moved off it, they're turned back next time the box loads.)
+      if (buildingId(box) < 0 && box !== 'bench') {
+        for (let i = 0; i < slots.length; i++) {
+          const it = slots[i];
+          if (!it || !isBuildable(it.kind)) continue;
+          slots[i] = null;
+          for (const m of buildCost(it.kind)) {
+            for (let n = m.n; n > 0; n -= stackOf(m.kind)) slots.push({ id: this.newId(), kind: m.kind, n: Math.min(n, stackOf(m.kind)) });
+          }
+          for (const p of it.parts ?? []) if (p) slots.push({ id: this.newId(), kind: p, n: 1 });
+          changed = true;
+        }
+      }
       for (const it of [...slots]) {
         // Gear from before repairs existed (the old starter canteen and spyglass, guns crafted before they were gear)
         // works: Scrap parts in every slot.
@@ -188,6 +203,17 @@ export class ItemServer {
     return true;
   }
 
+  /** Everything in `list` into the bag, all or none. False (and no change) if it doesn't all fit. Call inside a transaction. */
+  giveAll(browserId: string, list: { kind: string; n: number }[]): boolean {
+    const bag = this.slots(browserId, 'bag');
+    const s = bag.map((it) => it && { ...it });
+    const shape = this.bagShape(browserId);
+    if (!list.every((m) => m.n <= 0 || addItem(s, m.kind, m.n, this.newId, shape))) return false;
+    bag.splice(0, bag.length, ...s);
+    this.save(browserId, 'bag');
+    return true;
+  }
+
   /** A whole item (gear with its parts) into the first spot it fits in the bag. False if there is none. */
   giveItem(browserId: string, item: { kind: string; parts?: (string | null)[]; worn?: number }): boolean {
     if (!item.parts) return this.give(browserId, item.kind);
@@ -223,6 +249,34 @@ export class ItemServer {
     return false;
   }
 
+  /** How many `kind` the bag holds. */
+  count(browserId: string, kind: string): number {
+    return this.slots(browserId, 'bag').reduce((n, it) => n + (it?.kind === kind ? it.n : 0), 0);
+  }
+
+  /** Use up `n` `kind` from the bag (the last stacks first); all or none. Call inside a transaction. */
+  spend(browserId: string, kind: string, n: number): boolean {
+    if (this.count(browserId, kind) < n) return false;
+    const bag = this.slots(browserId, 'bag');
+    for (let i = bag.length - 1; i >= 0 && n > 0; i--) {
+      const it = bag[i];
+      if (it?.kind !== kind) continue;
+      const k = Math.min(n, it.n);
+      it.n -= k;
+      n -= k;
+      if (it.n <= 0) bag[i] = null;
+    }
+    this.save(browserId, 'bag');
+    return true;
+  }
+
+  /** Use up what `recipe` needs from the bag (shared/crafting.ts useUp); all or none. Call inside a transaction. */
+  useUp(browserId: string, recipe: Recipe): boolean {
+    if (!useUp(this.slots(browserId, 'bag'), recipe)) return false;
+    this.save(browserId, 'bag');
+    return true;
+  }
+
   /** Take the whole item (one of a stack) out of bag slot `slot`, if it is a `kind`. Call inside a transaction. */
   takeItemAt(browserId: string, slot: number, kind: string): Item | null {
     const bag = this.slots(browserId, 'bag');
@@ -240,6 +294,11 @@ export class ItemServer {
     slots.fill(null);
     slots[0] = it;
     this.save('', box);
+  }
+
+  /** A new building's item, its part slots empty (shared/gear.ts built), into its box. Call inside a transaction. */
+  stowNew(box: string, kind: string) {
+    this.stow(box, { id: this.newId(), kind, n: 1, parts: GEAR[kind].slots.map(() => null) });
   }
 
   /** What a building's box holds, taken out (the box is emptied and forgotten). Call inside a transaction. */

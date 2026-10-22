@@ -92,6 +92,7 @@ import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
 import { BENCH_ID, MachineSites } from './world/crash';
 import { BenchMenu } from './benchMenu';
+import { BuildMenu } from './buildMenu';
 import { machinesAt } from '../shared/crash.ts';
 import { LAB_LOOK } from '../shared/lab.ts';
 import { addLabPlates } from './world/labPlates';
@@ -246,6 +247,7 @@ const scrapBench = () => {
   return true;
 };
 const benchMenu = new BenchMenu(renderer.domElement);
+const buildMenu = new BuildMenu(renderer.domElement); // the wrench's (src/placing.ts)
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), (front) => net.summonStorm(front), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
   (mode) => trophies.show(mode),
   (all) => (all ? net.labReset() : net.labReset(machines.nearestLab(net.me.x, net.me.z)?.site.id)),
@@ -367,7 +369,7 @@ function bagFull() {
   uiSound.full();
   speech.event('bagFull', undefined);
 }
-const placer = new Placer(net, placedView);
+const placer = new Placer(net, placedView, buildMenu);
 const wiring = new Wiring(net, wireView);
 
 window.addEventListener('resize', () => {
@@ -647,7 +649,7 @@ baseSand.update(frameDt, storm.atBase);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
-  // Placing from the hotbar and G to pick placed things up (src/placing.ts); its prompt goes after F's.
+  // Placing from the hotbar, building with the wrench and G to pick placed things up (src/placing.ts); its prompt goes after F's.
   const placing = placer.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), true, (t) => hud.toast(t));
   // A building in view (the windmill, the battery station): F opens it next to the bag, to swap its parts.
   const building = station < 0 && placing.target && isBuilding(placing.target.kind) ? placing.target : null;

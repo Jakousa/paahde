@@ -20,7 +20,7 @@ export const EQUIP_SLOTS = ['back', 'wrist', 'belt', 'vehicle', 'armor'] as cons
 export type EquipSlot = (typeof EQUIP_SLOTS)[number];
 export const EQUIP_LABELS: Record<EquipSlot, string> = TEXT.equip;
 
-/** A part slot: a tiered part from disassembly, or a basic material (shared/items.ts SCRAP or CLOTH; no tier: it holds
+/** A part slot: a tiered part from disassembly, or a basic material (shared/items.ts SCRAP, CLOTH or WIRING; no tier: it holds
  *  things together), or one of the kinds `scrap` lists (an enemy's or boss's own part: no tier either). `rare`: never
  *  already fitted in gear found broken (server/loot.ts). */
 export type PartSlot = ({ part: PartId } | { scrap: string[]; label: string }) & { rare?: true };
@@ -33,15 +33,16 @@ export type GearSpec = {
   better: string;
   /** Given the current key or button names (src/bindings.ts hintKeys). */
   use: (k: HintKeys) => string;
-  /** A building: crafted at the workbench with the parts it took fitted (shared/crafting.ts), never found, and put
-   *  down from the hotbar (shared/placed.ts), where its parts are swapped like on the workbench (buildingBox). */
+  /** A building: put up with the wrench from base materials (shared/crafting.ts BUILDS) with its slots empty, never
+   *  found or carried; its parts are fitted where it stands, like on the workbench (buildingBox). */
   built?: true;
 };
 
 const P = (part: PartId): PartSlot => ({ part });
-/** The basic materials (shared/items.ts): a piece of scrap metal, a piece of cloth. */
+/** The basic materials (shared/items.ts): a piece of scrap metal, a piece of cloth, a length of wiring. */
 const SCRAP: PartSlot = { scrap: ['scrap'], label: TEXT.items.scrap };
 const CLOTH: PartSlot = { scrap: ['cloth'], label: TEXT.items.cloth };
+const WIRING: PartSlot = { scrap: ['wiring'], label: TEXT.items.wiring };
 /** The receivers' slots: the uranium cell that drives the call, and an enemy's or boss's own part. */
 const CELL: PartSlot = { part: 'uranium', rare: true };
 const own = (kind: keyof typeof TEXT.items): PartSlot => ({ scrap: [kind], label: TEXT.items[kind], rare: true });
@@ -55,33 +56,34 @@ export const GEAR: Record<string, GearSpec> = {
     use: TEXT.gearUse.canteen },
   backpack: { slots: [CLOTH, SCRAP, P('gear')], equip: 'back', better: 'room (rows)',
     use: TEXT.gearUse.backpack },
-  storm_detector: { slots: [P('coil'), P('relay')], equip: 'belt', better: 'how early it warns',
+  storm_detector: { slots: [WIRING, P('relay')], equip: 'belt', better: 'how early it warns',
     use: TEXT.gearUse.storm_detector },
   wristpad: { slots: [P('compute'), P('battery')], equip: 'wrist', better: 'how far away players show on the locator',
     use: TEXT.gearUse.wristpad },
-  // The guns (shared/rifle.ts): a coil focuses the beam; the rifle also needs a cell and a heatsink.
-  laser_pistol: { slots: [P('coil'), SCRAP], better: 'how fast it recharges', use: TEXT.gearUse.laser_pistol },
-  laser_rifle: { slots: [P('coil'), P('battery'), P('heatsink'), SCRAP], better: 'how fast it recharges',
+  // The guns (shared/rifle.ts): wiring to the emitter, a heat sink to cool it; the rifle also needs a cell.
+  laser_pistol: { slots: [WIRING, P('heatsink'), SCRAP], better: 'how fast it recharges', use: TEXT.gearUse.laser_pistol },
+  laser_rifle: { slots: [WIRING, P('battery'), P('heatsink'), SCRAP], better: 'how fast it recharges',
     use: TEXT.gearUse.laser_rifle },
-  // The jammer (shared/jammer.ts): a compute unit to find the drones' link, a coil for the antenna, a cell to drive it.
-  jammer: { slots: [P('compute'), P('coil'), P('battery')], better: 'how fast it locks on',
+  // The jammer (shared/jammer.ts): a compute unit to find the drones' link, wiring for the antenna, a cell to drive it.
+  jammer: { slots: [P('compute'), WIRING, P('battery')], better: 'how fast it locks on',
     use: TEXT.gearUse.jammer },
-  // The shield plate (server/world.ts die): a hull plate over cloth padding, and an emitter (coil, cell) that throws a
+  // The shield plate (server/world.ts die): a hull plate over cloth padding, and an emitter (wiring, cell) that throws a
   // field round you as a killing blow lands. It takes that blow; its last one (shieldSaves) breaks it: the cell burns
   // out and the plate cracks.
-  shield: { slots: [P('coil'), P('battery'), SCRAP, CLOTH], equip: 'armor', better: 'how many killing blows it takes',
+  shield: { slots: [WIRING, P('battery'), SCRAP, CLOTH], equip: 'armor', better: 'how many killing blows it takes',
     use: TEXT.gearUse.shield },
   // The receivers (shared/bosses.ts RECEIVERS): each calls its boss, spending the cell. Tuned by a part from the boss's
   // kin (shared/tables.ts RELIC_DROPS); the worm's by a part from each of the other bosses.
   receiver_carrier: { slots: [CELL, own('drone_transponder'), P('compute')], ...RECEIVER },
-  receiver_queen: { slots: [CELL, own('brood_gland'), P('coil')], ...RECEIVER },
+  receiver_queen: { slots: [CELL, own('brood_gland'), WIRING], ...RECEIVER },
   receiver_colossus: { slots: [CELL, own('servo_heart'), P('relay')], ...RECEIVER },
   receiver_worm: { slots: [CELL, own('hive_core'), own('queen_eye'), own('furnace_heart')], ...RECEIVER },
-  // The buildings (shared/placed.ts). The windmill: bearings for the rotor shaft, the head's turn and the generator,
-  // coils for the generator's windings. The battery station: a rack of cells, coils for its charger.
-  windmill: { slots: [P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('coil'), P('coil')],
+  // The buildings (shared/placed.ts), put up empty (their frame and windings are the base materials they're built of,
+  // shared/tables.ts BUILD_TABLE). The windmill: bearings for the rotor shaft, the head's turn and the generator. The
+  // battery station: a rack of six cells.
+  windmill: { slots: [P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing'), P('bearing')],
     better: 'how much power it makes', use: TEXT.gearUse.windmill, built: true },
-  battery_station: { slots: [P('battery'), P('battery'), P('battery'), P('battery'), P('battery'), P('battery'), P('coil'), P('coil')],
+  battery_station: { slots: [P('battery'), P('battery'), P('battery'), P('battery'), P('battery'), P('battery')],
     better: 'how much power it holds', use: TEXT.gearUse.battery_station, built: true },
 };
 export const GEAR_KINDS = Object.keys(GEAR);

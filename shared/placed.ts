@@ -1,7 +1,8 @@
-// Placed things: items from the bag (the PLACEABLES kinds of shared/items.ts) standing on the bunker floor or, for
-// the `sand` kinds, out on the sand round the base: plant beds and UV lamp stands (GitHub #22–#24; not crafted for
-// now), and the buildings (shared/gear.ts isBuilding: the windmill outside, the battery station in the bunker), which
-// keep their item with its parts in a box of their own while they stand (server/placed.ts). The server owns the list
+// Placed things: items from the bag (the PLACEABLES kinds of shared/items.ts) standing on the bunker floor: plant beds
+// and UV lamp stands (GitHub #22–#24; not crafted for now); and, out on the sand round the base (the `sand` kinds), the
+// buildings put up with the wrench from base materials (shared/crafting.ts BUILDS: the windmill, the battery station,
+// the power pole), of which the windmill and battery station keep their item with its parts in a box of their own while
+// they stand (shared/gear.ts isBuilding, server/placed.ts). The server owns the list
 // (server/placed.ts, `placed` table) and sends it whole on join and when it changes; client and server both keep it
 // here with setPlaced(), which also hands their standing parts to the base's collision (shared/base.ts
 // setPlacedCapsules: the floor's with the bunker, the sand's anywhere), so prediction and the server collide with the

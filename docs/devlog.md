@@ -1918,3 +1918,28 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   coils into the bag, what doesn't fit dropped at your feet.
 - Gaps: the wire is a straight sag between sockets, it doesn't collide or avoid anything; no line losses; you can't
   take one wire down by looking at it, only by clicking its two connectors.
+
+## Building with the wrench; wiring
+
+- **The wrench** (`wrench`, 4 scrap at the workbench) is the build tool. With it in hand the right mouse opens the
+  **build menu** (`src/buildMenu.ts`): every building (`BUILD_TABLE` in `shared/tables.ts`: windmill 20 scrap + 4 wiring,
+  battery station 12 scrap + 3 wiring + 2 cloth, power pole 8 scrap) with what the bag has of what it takes. Pick one and
+  its preview follows the crosshair as placing did (`src/placing.ts`: red when the spot is wrong or materials are short);
+  the use button puts it up (`build` message, `server/placed.ts` `build`): the materials leave the bag then. Picking the
+  chosen one again in the menu puts it away. With the wrench, G **dismantles** a building: what it was built of, the
+  parts in it and its wires' wiring all come back, or nothing if the bag can't take it all ("Bag full").
+- Buildings are no longer workbench recipes or items in the bag: they only take **base materials**. The windmill and
+  the battery station stand with their part slots empty: six bearings, six batteries, fitted where they stand (F). The
+  coils are gone from both (the generator and charger are the wiring they were built with): `shared/power.ts` runs the
+  generator by the bearings and lets each battery take charge at its own rate.
+- **Wiring** (`wiring`, stack 20) is the third base material and replaces the tiered wiring coil: a machine's coil
+  still sits in it (`src/teardown`, loot tables roll `coil`) but comes out as one wiring (`UNTIERED`, `shared/parts.ts`).
+  Gear slots that took a coil take wiring; the laser pistol's tier now comes from a heat sink (`[wiring, heat sink,
+  scrap]`). A power line takes a wiring per 12 m (`WIRE_M`, up to 36 m), given back when it comes down.
+- **Migration:** v11 in `server/db.ts` turns every coil (in boxes, fitted in gear, dropped, lying in the world) into one
+  wiring; a building item still in a bag or chest is turned back into its materials and parts when the box loads
+  (`server/items.ts`), and old buildings' coil slots drop out (`refit`).
+- Economy sim vs the coils: buildings a little apart (windmill ~11% sooner, battery station ~15% later), early gear
+  (shield, rifle, jammer) ~10% later in the greedy agent.
+- Gaps: the wrench has no sound or swing; no art for wiring of its own (it shows as a Scrap coil); the build menu has
+  no preview of the building beyond its icon.

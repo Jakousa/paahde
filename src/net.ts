@@ -493,12 +493,17 @@ export class Net {
     if (this.connected) this.send({ t: 'place', slot, x, z, rot });
   }
 
-  /** Pick a placed thing back up into the bag. */
+  /** Pick a placed thing back up into the bag (a building: take it down with the wrench). */
   unplace(id: number) {
     if (this.connected) this.send({ t: 'unplace', id });
   }
 
-  /** String a power line from `a` to `b` with the coil in bag slot `slot`, or take down the one between them. */
+  /** Put up building `kind` with the wrench (shared/crafting.ts BUILDS); the server answers 'placed' or a notice. */
+  build(kind: string, x: number, z: number, rot: number) {
+    if (this.connected) this.send({ t: 'build', kind, x, z, rot });
+  }
+
+  /** String a power line from `a` to `b` with the wiring in bag slot `slot`, or take down the one between them. */
   wire(slot: number, a: number, b: number) {
     if (this.connected) this.send({ t: 'wire', slot, a, b });
   }

@@ -10,8 +10,8 @@
 // to drop it on the sand in front of you (shared/loot.ts; anyone can pick it up again). At the workbench, put
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. A building in reach (the
-// windmill, the battery station: shared/gear.ts buildingBox) shows its part slots the same way, to swap its parts
-// where it stands. Loot lying in reach (shared/loot.ts lootReach) shows as one more panel, On the ground: click,
+// windmill, the battery station: shared/gear.ts buildingBox) shows its part slots the same way, to fit its parts
+// where it stands (it goes up with them empty: src/placing.ts). Loot lying in reach (shared/loot.ts lootReach) shows as one more panel, On the ground: click,
 // shift-click or drag a piece into the bag to pick it up, or drag something onto the panel to drop it. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
 import { bagShape, boxShape, buildingId, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, holdsCargo, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
@@ -175,9 +175,15 @@ const CLOTH_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.
 <path d="M3 9c3-2 13-2 16 0v9c-3 2-13 2-16 0z" fill="#b89a6a"/><path d="M3 13.5c3 2 13 2 16 0" fill="none" stroke="#7a6040"/>
 <path d="M5 9.4c0 3 1 6 0 9.4M17 9.4c0 3-1 6 0 9.4" fill="none" stroke="#8a7048" stroke-width="0.7"/>
 <path d="M11 7.6v12.8" stroke="#5a3a1e" stroke-width="1.6"/><path d="M11 7.6c-2-2-4-1-3 0.6M11 7.6c2-2 4-1 3 0.6" fill="none" stroke="#5a3a1e" stroke-width="1"/></g></svg>`;
+// The wrench: a combination spanner lying across, the open jaw up top, the ring below.
+const WRENCH_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9">
+<path d="M4.5 21.5L16.5 9.5" stroke-width="4.8" stroke-linecap="round"/><path d="M4.5 21.5L16.5 9.5" stroke="#a4a8ab" stroke-width="2.9" stroke-linecap="round"/>
+<circle cx="17" cy="8.5" r="4.6" fill="#a4a8ab"/><path d="M17 8.5l4.6-4.6" stroke-width="3.2"/>
+<circle cx="4.5" cy="21.5" r="3.3" fill="#a4a8ab"/><circle cx="4.5" cy="21.5" r="1.5" fill="#2a160a"/></g></svg>`;
 const ICONS: Record<string, string> = {
   scrap: SCRAP_SVG,
   cloth: CLOTH_SVG,
+  wrench: WRENCH_SVG,
   // Carried crash-site machines: a joint with its arm stub, and a cabinet with a door and lamps.
   robot_arm: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="18" width="16" height="4" rx="1" fill="#6a665e"/>
 <rect x="5" y="9" width="9" height="10" rx="2" fill="#d4a24c"/><rect x="12" y="4" width="7" height="4" rx="1" fill="#b8873a" transform="rotate(30 12 6)"/>
@@ -206,6 +212,8 @@ const png = (kind: string) => `<img src="./icons/items/${kind}.png" alt="" dragg
 ICONS.plant_bed = png('plant_bed');
 ICONS.uv_lamp = png('uv_lamp');
 ICONS.power_pole = png('power_pole');
+// Wiring is what a wiring coil comes out as (shared/parts.ts UNTIERED): the coil's render.
+ICONS.wiring = png('coil_basic');
 // The enemies' and bosses' own parts (tools/blender/relics.py).
 for (const k of ['drone_transponder', 'brood_gland', 'servo_heart', 'hive_core', 'queen_eye', 'furnace_heart']) ICONS[k] = png(k);
 // Gear (shared/gear.ts) icons are rendered at the item's grid shape (tools/blender/finds.py): `fit` stretches them

@@ -43,6 +43,8 @@ const en = {
     shield: 'Shield plate',
     scrap: 'Scrap',
     cloth: 'Cloth',
+    wiring: 'Wiring',
+    wrench: 'Wrench',
     plant_bed: 'Plant bed',
     uv_lamp: 'UV lamp',
     windmill: 'Windmill',
@@ -100,8 +102,8 @@ const en = {
     jammer: (k: HintKeys) => `Hold ${k.use} on a drone or jet until it comes down.`,
     shield: () => 'Takes killing blows for you, then breaks.',
     receiver: (k: HintKeys) => `Press ${k.use} to send the signal, and the needle points at whatever answers.`,
-    windmill: () => 'Put it up on the sand by the base.',
-    battery_station: () => 'Put it down on the sand by the base.',
+    windmill: () => 'Makes power when the wind blows.',
+    battery_station: () => 'Keeps the power the windmills make.',
   },
   /** Where placing is blocked: "Too close to the pump". */
   baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base' },
@@ -138,7 +140,12 @@ const en = {
     empty: 'Empty',
     aimAtFloor: 'Aim at the floor',
     aimAtGround: 'Aim at the ground',
-    /** Stringing a wire with a coil in hand (shared/wires.ts). */
+    /** Putting up a building with the wrench (src/placing.ts): "Build windmill"; the build menu (src/buildMenu.ts). */
+    build: (what: string) => `Build ${lower(what)}`,
+    buildMenu: 'Build',
+    /** Taking a building down with the wrench: its materials and parts come back. */
+    dismantle: (what: string) => `Dismantle ${lower(what)}`,
+    /** Stringing a wire with wiring in hand (shared/wires.ts). */
     connect: 'Connect',
     takeDown: 'Take down',
     cancel: 'Cancel',
@@ -156,6 +163,10 @@ const en = {
     tooFar: 'Too far',
     unknownRecipe: 'Unknown recipe',
     missingParts: 'Missing parts',
+    /** Building: not enough base materials in the bag. */
+    missingMaterials: 'Missing materials',
+    /** A power line this long takes `n` wiring (shared/wires.ts wireCost). */
+    needWiring: (n: number) => `Needs ${n} wiring`,
     cantPlace: "That can't be placed",
     badSpot: 'Bad spot',
     floorOnly: 'Floor only',
@@ -492,6 +503,7 @@ const en = {
     receiver_worm: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
     plant_bed: (k: HintKeys) => `With the plant bed on the hotbar, press ${k.use} to put it down in the bunker.`,
     uv_lamp: () => 'Put the UV lamp down over a plant bed.',
+    wrench: (k: HintKeys) => `With the wrench on the hotbar, press ${k.aim} to build.`,
     part: () => 'Parts repair gear at the workbench.',
     broken: () => "It's broken. You can repair it at the workbench in the base.",
     machine: () => 'Take it apart at the disassembly table in the base.',
