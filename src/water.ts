@@ -220,13 +220,8 @@ export class Survival {
     document.body.append(this.root, this.heat, this.env, this.prompt, this.toastEl, this.death, this.fade);
 
     addEventListener('keydown', (e) => {
-      const bikeKey = isBound('bike', e.code);
       const n = HOTBAR_ACTIONS.findIndex((a) => isBound(a, e.code));
-      if (e.repeat || !(bikeKey || n >= 0)) return;
-      // The bike key gets on the bike (src/input.ts): put away what's in hand.
-      // (Not a motorcycle in hand: that's the one you'd ride.)
-      if (bikeKey && !net.me.riding && net.me.bike > 0 && !tools.frozen && !tools.bike) return this.select(-1);
-      if (bikeKey) return;
+      if (e.repeat || n < 0) return;
       this.select(this.selected === n ? -1 : n);
     });
     net.onDied = () => {
@@ -260,7 +255,6 @@ export class Survival {
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
     playerHands.tier = tierOf(it);
-    tools.bike = kind === 'motorcycle' && repaired(it);
   }
 
   /** Redraw the hotbar slots whose item changed. */
@@ -314,6 +308,8 @@ export class Survival {
     if (clock !== this.lastClock) this.clockEl.textContent = this.lastClock = clock;
     const w = this.net.water;
     const dead = now < this.deadUntil;
+    // Getting on the bike puts away what's in hand.
+    if (this.net.me.mounting > 0 && this.selected >= 0) this.select(-1);
     this.hold();
     this.drawHotbar();
     // The clock and thermometer come with the wrist computer, and die in a storm.

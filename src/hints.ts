@@ -69,7 +69,7 @@ export class Hints {
     }
   }
 
-  private show(key: string) {
+  show(key: string) {
     if (!TEXT.hints[key] || this.seen.has(key)) return;
     this.seen.add(key);
     try {

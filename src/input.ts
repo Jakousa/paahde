@@ -6,7 +6,7 @@ const keys = new Set<string>();
 let pickupPressed = false;
 /** slot: the selected hotbar slot (-1 none).
  *  frozen: the disassembly mode (src/teardown) owns the keyboard and mouse, so the player stands still. */
-export const tools = { frozen: false, slot: -1, bike: false, engaged: false, spinning: false };
+export const tools = { frozen: false, slot: -1, getOff: false, engaged: false, spinning: false };
 /* engaged: the crosshair is on something the disassembly (src/teardown) works, so the use button is its, not the hand's. */
 /** The Tab inventory is open (src/inventory.ts): it frees the mouse but we stay fullscreen with the keyboard locked. */
 /** `debugFreed`: the F3 panel just freed the mouse (src/debugMenu.ts), so losing it doesn't open the Esc menu (src/menu.ts). */
@@ -123,6 +123,8 @@ export function actionHeld(a: Action): boolean {
 
 export function readInput(): number {
   let input = 0;
+  const getOff = tools.getOff;
+  tools.getOff = false;
   if (tools.frozen) return input;
   if (actionHeld('forward')) input |= FORWARD;
   if (actionHeld('back')) input |= BACK;
@@ -133,11 +135,9 @@ export function readInput(): number {
   if (actionHeld('sprint') && !aimDown()) input |= SLIDE;
   // Ctrl has C as an alias by default: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
   if (actionHeld('crouch')) input |= CROUCH;
-  // The bike key (Z or 9 by default): get on / off the motorcycle (shared/sim.ts: only with a repaired one equipped), whatever's in hand
-  // (getting on puts it away, src/water.ts).
-  if (actionHeld('bike')) input |= BIKE;
-  // A repaired motorcycle in hand (src/water.ts): the use button gets on and off it instead.
-  if (tools.bike && actionHeld('use')) input |= BIKE;
+  // The bike key (Z or 9 by default): get off the motorcycle, or stop getting on it (shared/sim.ts); a press of F while
+  // riding too (`getOff`, one tick, from src/main.ts: F also gets on).
+  if (actionHeld('bike') || getOff) input |= BIKE;
   return input;
 }
 

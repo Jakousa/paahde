@@ -1,17 +1,17 @@
 // Loot lying in the world (shared/loot.ts): broken gear to find and repair (shared/gear.ts) at the crash sites (the
 // starter gear at the scrap fields near the base, the advanced gear on crawler ground, rare loose parts on guardian
-// ground: shared/crashsites.ts SiteLevel; and one broken motorcycle always in front of the base door, HOME_BIKE), stashes
+// ground: shared/crashsites.ts SiteLevel; the motorcycles among FINDS lie there as vehicles: server/vehicles.ts), stashes
 // on the shelters' floors (SHELTER_STASHES), and caches lying out in the open desert. All shared: the first player to press F
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
 // Kept in the DB (`world_loot`, `loot_pending`, written on change), so a restart keeps what was taken. Items
 // players drop are kept in `dropped` and never respawn.
 import { shelterAt, sheltersNear } from '../shared/shelters.ts';
-import { GEAR, isGear, refit, scrapParts } from '../shared/gear.ts';
-import { partKind, RETIRED } from '../shared/items.ts';
+import { isGear, isVehicle, refit, scrapParts } from '../shared/gear.ts';
+import { RETIRED } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { coreCrashSites } from '../shared/crashsites.ts';
-import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, homeBikeSpot, nearPiles, shelterStash, stashSpot } from '../shared/lootRoll.ts';
-import { CACHES, FINDS, HOME_BIKE, RARE_FINDS, SHELTER_STASHES } from '../shared/tables.ts';
+import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, nearPiles, shelterStash, stashSpot } from '../shared/lootRoll.ts';
+import { CACHES, FINDS, RARE_FINDS, SHELTER_STASHES } from '../shared/tables.ts';
 import { CORE_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -25,8 +25,6 @@ type Db = ReturnType<typeof openDb>;
 // them, where they lie) in shared/lootRoll.ts, shared with the economy simulator (tools/econsim).
 /** The FINDS key for a loose rare part at guardian ground (level 2). */
 const RARE_KIND = 'rare';
-/** The pending-spawn key for the motorcycle in front of the base door (HOME_BIKE). */
-const HOME_KIND = 'home_bike';
 /** The pending-spawn key for a stash on a shelter's floor (SHELTER_STASHES). */
 const STASH_KIND = 'shelter';
 /** A taken find / cache is replaced this long after (ms). */
@@ -47,10 +45,8 @@ export class LootServer {
   /** Finds lie at the sites in the core square (terrain.ts CORE_HALF), not spread over the endless world. */
   private sites = coreCrashSites();
   private piles = nearPiles();
-  private homeBike = homeBikeSpot();
-  private homeBikeId = -1;
   private shelters = sheltersNear(0, 0, CORE_HALF * 1.5);
-  /** What each lying find stands in for (FINDS key, RARE_KIND, HOME_KIND); caches aren't in it. */
+  /** What each lying find stands in for (FINDS key, RARE_KIND, STASH_KIND); caches aren't in it. */
   private spawnKey = new Map<number, string>();
   /** The dev test lab's pickups (shared/lab.ts): taken, they are laid out again where they were. */
   private labSpots = new Map<number, LabItem>();
@@ -93,15 +89,14 @@ export class LootServer {
       const parts = r.parts ? (refit(r.kind, r.parts) ?? r.parts) : undefined;
       this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, src: r.src });
       if (r.spawn) this.spawnKey.set(r.id, r.spawn);
-      if (r.spawn === HOME_KIND) this.homeBikeId = r.id;
       this.nextId = Math.max(this.nextId, r.id + 1);
     }
     this.pending = db.loadLootPending().map((p) => ({ id: p.id, at: p.at, what: p.what, ...(p.kind ? { kind: p.kind } : {}) }));
-    // As many of each as shared/tables.ts says (a fresh DB lays them all out; a changed table tops up or trims).
+    // As many of each as shared/tables.ts says (a fresh DB lays them all out; a changed table tops up or trims). Not the
+    // vehicles (server/vehicles.ts); those lying here from when they were items are trimmed away.
     db.tx(() => {
-      const want = new Map<string, number>(Object.entries(FINDS).map(([k, f]) => [k, f.n]));
+      const want = new Map<string, number>(Object.entries(FINDS).filter(([k]) => !isVehicle(k)).map(([k, f]) => [k, f.n]));
       want.set(RARE_KIND, RARE_FINDS.n);
-      want.set(HOME_KIND, 1);
       want.set(STASH_KIND, this.shelters.reduce((n, s) => n + SHELTER_STASHES.perShelter[s.kind], 0));
       const lying = new Map<string, number[]>();
       for (const [id, k] of this.spawnKey) lying.set(k, [...(lying.get(k) ?? []), id]);
@@ -130,22 +125,15 @@ export class LootServer {
     this.removed = [];
   }
 
-  /** Everything, for a joining client (browser id `who`). */
-  joinMessage(who: string): ServerMsg {
-    return this.seenBy({ t: 'loot', add: [...this.loot.values()], remove: [], reset: true }, who);
+  /** Everything, for a joining client. */
+  joinMessage(): ServerMsg {
+    return { t: 'loot', add: [...this.loot.values()], remove: [], reset: true };
   }
 
-  /** A loot message as player `who` (browser id) sees it: the home bike is gone for whoever has had theirs. */
-  seenBy(msg: Extract<ServerMsg, { t: 'loot' }>, who: string): Extract<ServerMsg, { t: 'loot' }> {
-    if (!msg.add.some((l) => l.id === this.homeBikeId) || !this.db.hasGrant(who, HOME_KIND)) return msg;
-    return { ...msg, add: msg.add.filter((l) => l.id !== this.homeBikeId) };
-  }
-
-  /** Loot `id` again, for a player (browser id `who`) whose client hid it on a refused take; null if it's gone. */
-  back(id: unknown, who: string): Extract<ServerMsg, { t: 'loot' }> | null {
+  /** Loot `id` again, for a player whose client hid it on a refused take; null if it's gone. */
+  back(id: unknown): Extract<ServerMsg, { t: 'loot' }> | null {
     const l = typeof id === 'number' ? this.loot.get(id) : undefined;
-    const msg = l ? this.seenBy({ t: 'loot', add: [l], remove: [] }, who) : null;
-    return msg?.add.length ? msg : null;
+    return l ? { t: 'loot', add: [l], remove: [] } : null;
   }
 
   /** What changed since the last flush, for everyone (null if nothing). */
@@ -159,18 +147,12 @@ export class LootServer {
   }
 
   /**
-   * A player (browser id `who`) takes loot `id`: it must be in reach. `give` puts it in their bag
-   * (false: no room). Returns the item's kind, 'full' if the bag was full, 'had' if it's the home bike and they've
-   * had one (one each, so it can't be farmed for motors; another lies there at once), or null if refused.
+   * A player takes loot `id`: it must be in reach. `give` puts it in their bag (false: no room). Returns the item's
+   * kind, 'full' if the bag was full, or null if refused.
    */
-  take(s: PlayerState, who: string, id: unknown, give: (l: Loot) => boolean): string | null {
+  take(s: PlayerState, id: unknown, give: (l: Loot) => boolean): string | null {
     const l = typeof id === 'number' ? this.loot.get(id) : undefined;
     if (!l || !lootReach(s, l, 1.5)) return null;
-    if (l.id === this.homeBikeId) {
-      if (this.db.hasGrant(who, HOME_KIND)) return 'had';
-      if (!this.db.tx(() => give(l) && (this.db.markGrant(who, HOME_KIND), this.remove(l), this.queue('find', HOME_KIND), true))) return 'full';
-      return l.kind;
-    }
     const spot = this.labSpots.get(l.id);
     if (spot) {
       if (!give(l)) return 'full';
@@ -275,12 +257,6 @@ export class LootServer {
   /** Gear kind `kind` (FINDS) lying at a crash site of its level, among the debris around the wreck; RARE_KIND: a rare part. */
   private spawnFind(kind: string) {
     if (kind === STASH_KIND) return this.spawnStash();
-    if (kind === HOME_KIND) {
-      const parts = GEAR.motorcycle.slots.map((s) => ('part' in s && HOME_BIKE.fitted.includes(s.part) ? partKind(s.part, 'scrap') : null));
-      this.homeBikeId = this.nextId++;
-      this.place({ id: this.homeBikeId, kind: 'motorcycle', parts, ...this.homeBike, src: 'find' }, HOME_KIND);
-      return;
-    }
     // At a crash site of its level, among the debris round the wreck (level 0 now and then at a scrap pile near the base);
     // RARE_KIND (not in FINDS): a loose rare part on guardian ground.
     const { x, z } = findSpot(FINDS[kind]?.level ?? 2, this.sites, this.piles, Math.random);

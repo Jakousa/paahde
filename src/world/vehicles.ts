@@ -1,0 +1,99 @@
+// Vehicles standing in the world (shared/vehicles.ts, from the server via src/net.ts): the sand bike's model
+// (src/bike.ts) where each one is, nobody riding it. A broken one lies on its side, half sunk in the sand, glowing
+// along its edges in the colour of its parts' tier like broken gear on the sand (src/world/loot.ts); a working one
+// stands on its wheels, pitched along the slope and leaning a little on its stand. While someone rides it, it isn't
+// drawn here: src/main.ts draws it under its rider (src/bike.ts Bike).
+import * as THREE from 'three/webgpu';
+import { parsePart } from '../../shared/items.ts';
+import { slopeAt } from '../../shared/sim.ts';
+import type { Vehicle } from '../../shared/vehicles.ts';
+import { loadBikeModel } from '../bike';
+import { applyTier } from '../tierLook';
+import { addRims, glowColor, RIM_VIEW } from './loot';
+
+/** Drawn within this distance (m). */
+const VIEW = 350;
+/** A broken one lies over on its side by this much (rad), its low side this far (m) above the sand origin. */
+const ROLL = 1.3;
+const LIFT = 0.12;
+/** A working one leans on its stand (rad, to the left). */
+const STAND_LEAN = 0.12;
+
+type Shown = { obj: THREE.Group; key: string; rims: THREE.Mesh[] | null };
+
+/** The tier its parts look (0 Scrap .. 3 Space-grade): the mean of the fitted parts', rounded down, as gear's. */
+function tierOf(v: Vehicle): number {
+  const tiers = v.parts.flatMap((p) => (p ? [parsePart(p)?.tier ?? 0] : []));
+  return tiers.length ? Math.floor(tiers.reduce((a, b) => a + b, 0) / tiers.length + 1e-6) : 0;
+}
+
+const tmpSlope = { gx: 0, gz: 0 };
+
+export class VehicleView {
+  private group = new THREE.Group();
+  private shown = new Map<number, Shown>();
+
+  constructor(scene: THREE.Scene) {
+    scene.add(this.group);
+  }
+
+  /** Every frame: the vehicles near `me` that nobody is riding (`riding`: is player `id` on their bike now). */
+  update(list: Vehicle[], me: { x: number; z: number }, riding: (id: number) => boolean) {
+    const want = new Map<number, Vehicle>();
+    for (const v of list) {
+      if (v.rider !== undefined && riding(v.rider)) continue;
+      if (Math.hypot(v.x - me.x, v.z - me.z) > VIEW) continue;
+      want.set(v.id, v);
+    }
+    for (const [id, s] of this.shown) {
+      const v = want.get(id);
+      if (v && s.key === keyOf(v)) continue;
+      this.group.remove(s.obj);
+      this.shown.delete(id);
+    }
+    for (const v of want.values()) {
+      let s = this.shown.get(v.id);
+      if (!s) this.shown.set(v.id, (s = this.build(v)));
+      if (s.rims) {
+        const on = Math.hypot(v.x - me.x, v.z - me.z) < RIM_VIEW;
+        for (const r of s.rims) r.visible = on;
+      }
+    }
+  }
+
+  private build(v: Vehicle): Shown {
+    const obj = new THREE.Group();
+    obj.position.set(v.x, v.y, v.z);
+    obj.rotation.y = v.heading;
+    const tier = tierOf(v);
+    const rims = v.up ? null : ([] as THREE.Mesh[]);
+    const tilt = new THREE.Group();
+    tilt.rotation.order = 'YXZ';
+    if (v.up) {
+      // Along the slope (the sim's nose: shared/sim.ts stepBike), on its stand.
+      const g = slopeAt(v.x, v.z, tmpSlope);
+      tilt.rotation.x = Math.atan(-g.gx * Math.sin(v.heading) - g.gz * Math.cos(v.heading));
+      tilt.rotation.z = STAND_LEAN;
+    } else {
+      tilt.rotation.z = ROLL;
+      tilt.position.y = LIFT;
+    }
+    obj.add(tilt);
+    loadBikeModel().then((gltf) => {
+      const m = gltf.scene.clone(true);
+      m.traverse((o) => {
+        o.castShadow = o.receiveShadow = true;
+        o.userData.shared = true; // its geometry is the ridden bikes' too: never disposed
+      });
+      if (!v.up) m.getObjectByName('Handlebar')?.rotation.set(0, 0.45, 0);
+      applyTier(m, tier);
+      tilt.add(m);
+      if (rims) addRims(m, rims, glowColor(tier));
+    }, () => {});
+    this.group.add(obj);
+    return { obj, key: keyOf(v), rims };
+  }
+}
+
+/** What it's drawn from: a change rebuilds it. */
+const keyOf = (v: Vehicle) => `${v.up ? 1 : 0}|${tierOf(v)}|${v.x}|${v.y}|${v.z}|${v.heading}`;

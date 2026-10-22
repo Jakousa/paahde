@@ -98,8 +98,10 @@ import { LAB_LOOK } from '../shared/lab.ts';
 import { addLabPlates } from './world/labPlates';
 import { labFloor } from './world/sandMaterial';
 import { junkSpec, SALVAGE } from '../shared/salvage.ts';
-import { bagShape, buildingBox, carriedGear, equipped, gearTiers, isBuilding, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
+import { bagShape, buildingBox, cargoBox, carriedGear, equipped, gearTiers, isBuilding, locatorRange, quality, repaired, spyglassZoom, stormWarnS, vehicleBox, wornGear } from '../shared/gear.ts';
 import { LootView, lootPrompt } from './world/loot';
+import { VehicleView } from './world/vehicles';
+import { vehicles, vehicleTarget } from '../shared/vehicles.ts';
 import { CorpseView } from './world/corpses';
 import { corpsesNear } from '../shared/corpse.ts';
 import { openBoxes } from '../shared/storage.ts';
@@ -261,6 +263,7 @@ const names = nameGate(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
 update.busy = () => fly.active || guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
 const lootView = new LootView(scene);
+const vehicleView = new VehicleView(scene); // motorcycles standing or lying in the world, nobody on them
 const shieldFx = new ShieldFx(scene, () => orbit.camera.position, () => net.id, (m) => guardianFx.jolt(m));
 net.onShieldBreak = (m) => shieldFx.play(m);
 const corpseView = new CorpseView(scene);
@@ -328,6 +331,8 @@ guardianFx.onKill = (kind) => speech.event('killed', kind);
 bossFx.onKill = () => speech.event('killed', 'boss');
 /** The find last looked at, so the character remarks on it once per look (src/speechLines.ts 'see'). */
 let seenFind: number | null = null;
+/** The vehicle (id and whether it works) we last looked at, for the speech. */
+let seenVehicle: string | null = null;
 /** The machine or wreck last in reach ('near'), and the item ids in the bag at the last frame ('got'; null until the
  *  bag first arrives: what we log in with is old news). */
 let seenSite: string | null = null;
@@ -353,6 +358,7 @@ net.onPlaced = () => {
   placedView.sync(placed, net.garden);
   wireView.sync(wires);
 };
+net.onVehicles = () => hud.vehiclesChanged();
 net.onPower = () => {
   placedView.setPower(net.power);
   hud.powerChanged();
@@ -559,6 +565,7 @@ renderer.setAnimationLoop((time) => {
   const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, hands);
   viewCull.begin();
   lootView.update(frameDt, net.loot, focus);
+  vehicleView.update(vehicles, focus, (id) => (id === net.id ? net.me.riding : others.find((o) => o.id === id)?.riding ?? false));
   shieldFx.update(frameDt, (id) => (id === net.id ? me.root.position : others.find((o) => o.id === id) ?? null));
   corpseView.update(frameDt, focus);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
@@ -654,6 +661,13 @@ baseSand.update(frameDt, storm.atBase);
   // A building in view (the windmill, the battery station): F opens it next to the bag, to swap its parts.
   const building = station < 0 && placing.target && isBuilding(placing.target.kind) ? placing.target : null;
   const buildingPrompt = building ? TEXT.prompt.open(itemLabel(building.kind)) : null;
+  // A motorcycle in view (shared/vehicles.ts): F repairs a broken one (its part slots next to the bag), gets on a
+  // working one, or opens its cargo from the back. On the bike (or getting on), F gets off (stops).
+  const onBike = s.riding || s.mounting > 0;
+  const vehicle = net.connected && !net.down && !onBike && station < 0 && !building
+    ? vehicleTarget(net.me, orbit.yaw, orbit.pitch) : null;
+  const ridePrompt = !vehicle ? null : !vehicle.v.up ? TEXT.prompt.repair(itemLabel(vehicle.v.kind))
+    : vehicle.rear ? TEXT.prompt.open(TEXT.boxes.cargo) : TEXT.prompt.getOn;
   const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), placed) : null;
   const bedState = bed ? net.garden.get(bed.id) : undefined;
   const stage = bed ? (bedState?.stage ?? EMPTY) : -1;
@@ -698,13 +712,14 @@ baseSand.update(frameDt, storm.atBase);
   // A piece that came off a machine and lies by you can be picked up to be turned and taken apart in the hands; F again sets it down.
   const pieceHere = teardown.active && !teardown.holding ? teardown.pieceNear(net.me) : null;
   const piecePrompt = teardown.holding ? TEXT.prompt.putDown : pieceHere ? TEXT.prompt.pickUp(pieceHere.label) : null;
-  const fPrompt = piecePrompt ?? use ?? buildingPrompt ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
+  const fPrompt = piecePrompt ?? use ?? buildingPrompt ?? ridePrompt ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   // A wiring coil in hand: stringing power lines between connectors (src/wiring.ts).
   const wirePrompt = wiring.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), !net.down && !fly.active, (t) => hud.toast(t));
   const extra = [growing, wirePrompt, placing.prompt].filter(Boolean).join(' ');
   hud.setTarget(fPrompt && extra && typeof fPrompt === 'string' ? `${kbd('interact')}${fPrompt} ${extra}` : (fPrompt ?? (extra || null)));
   const interact = takePickup() && !fly.active;
-  if (interact && piecePrompt) {
+  if (interact && onBike) tools.getOff = true; // (src/input.ts: the bike key's input, one tick)
+  else if (interact && piecePrompt) {
     if (teardown.holding) teardown.putDown();
     else teardown.hold(pieceHere!.piece);
   } else if (interact) {
@@ -719,6 +734,11 @@ baseSand.update(frameDt, storm.atBase);
         });
       } else hud.toast(TEXT.notice.nothingToTakeApart);
     } else if (building) hud.open(buildingBox(building.id));
+    else if (vehicle) {
+      if (!vehicle.v.up) hud.open(vehicleBox(vehicle.v.id));
+      else if (vehicle.rear) hud.open(cargoBox(vehicle.v.id));
+      else net.mount(vehicle.v.id);
+    }
     else if (tend && bed) net.tend(bed.id);
     else if (target) {
       if (net.pickup(target)) pickupSound.play();
@@ -734,7 +754,7 @@ baseSand.update(frameDt, storm.atBase);
     } else if (wreck) net.crashTake(wreck.id);
     else if (pack || chest) hud.open();
   }
-  const targeted = piecePrompt !== null || use !== null || buildingPrompt !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
+  const targeted = piecePrompt !== null || use !== null || buildingPrompt !== null || ridePrompt !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   const w = net.water;
   const m = net.me;
@@ -742,6 +762,11 @@ baseSand.update(frameDt, storm.atBase);
     atPump: atWater(m.x, m.y, m.z), mudflat: biome('mudflat', m.x, m.z) > 0.7, heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
     storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, gasComing: gas.coming, gassed: gas.gassing, riding: s.riding, boss: bossFx.combat,
     bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null });
+  const vehicleKey = vehicle ? `${vehicle.v.id}:${vehicle.v.up}` : null;
+  if (vehicleKey !== seenVehicle) {
+    seenVehicle = vehicleKey;
+    if (vehicle) speech.event('vehicle', vehicle.v);
+  }
   if ((find?.id ?? null) !== seenFind) {
     seenFind = find?.id ?? null;
     if (find) speech.event('see', find);

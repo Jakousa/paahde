@@ -94,14 +94,14 @@ export function openDb(path: string) {
   const deleteTaken = db.prepare('DELETE FROM scrap_taken WHERE ix = ? AND iz = ? AND i = ?');
 
   // Items (shared/items.ts, server/items.ts): one row per stack, in a slot of a box. Player boxes ('bag',
-  // 'bike') belong to the player; shared ones ('chest<i>') to nobody ('').
+  // 'equip', 'bench') belong to the player; shared ones ('chest<i>', 'cargo<id>', ...) to nobody ('').
   db.exec(`
     CREATE TABLE IF NOT EXISTS items (
       id    INTEGER PRIMARY KEY,               -- stable stack id
       kind  TEXT NOT NULL,                     -- ITEMS key
       n     INTEGER NOT NULL,                  -- stack size
       owner TEXT NOT NULL,                     -- browser ID, '' for shared boxes
-      box   TEXT NOT NULL,                     -- 'bag', 'bike', 'chest<i>'
+      box   TEXT NOT NULL,                     -- 'bag', 'equip', 'chest<i>', ...
       slot  INTEGER NOT NULL,
       UNIQUE (owner, box, slot)
     );
@@ -271,6 +271,16 @@ export function openDb(path: string) {
   const allWires = db.prepare('SELECT id, a, b FROM wires ORDER BY id');
   const insertWire = db.prepare('INSERT INTO wires (a, b, kind, owner, placed_at) VALUES (?, ?, ?, ?, ?)');
   const deleteWire = db.prepare('DELETE FROM wires WHERE id = ?');
+  // Vehicles (shared/vehicles.ts, server/vehicles.ts): where each stands and whether it's been repaired (stood up). Its
+  // item is in box `veh<id>`, its cargo in `cargo<id>` (items). src: 'home' (the one in front of the base door),
+  // 'find' (lying at a crash site), 'old' (a motorcycle item from before vehicles).
+  db.exec(`CREATE TABLE IF NOT EXISTS vehicles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
+    heading REAL NOT NULL, up INTEGER NOT NULL, src TEXT NOT NULL)`);
+  const allVehicles = db.prepare('SELECT id, kind, x, y, z, heading, up, src FROM vehicles ORDER BY id');
+  const insertVehicle = db.prepare('INSERT INTO vehicles (kind, x, y, z, heading, up, src) VALUES (?, ?, ?, ?, ?, ?, ?)');
+  const moveVehicle = db.prepare('UPDATE vehicles SET x = ?, y = ?, z = ?, heading = ? WHERE id = ?');
+  const standVehicle = db.prepare('UPDATE vehicles SET up = 1 WHERE id = ?');
   const allBeds = db.prepare('SELECT id, stage, growth FROM beds');
   const upsertBed = db.prepare('INSERT OR REPLACE INTO beds (id, stage, growth) VALUES (?, ?, ?)');
   const deleteBed = db.prepare('DELETE FROM beds WHERE id = ?');
@@ -396,6 +406,30 @@ export function openDb(path: string) {
     insertPlaced: (kind: string, x: number, y: number, z: number, rot: number, owner: string) =>
       Number(insertPlaced.run(kind, x, y, z, rot, owner, Date.now()).lastInsertRowid),
     deletePlaced: (id: number) => deletePlaced.run(id),
+    loadVehicles: () => (allVehicles.all() as { id: number; kind: string; x: number; y: number; z: number; heading: number; up: number; src: string }[])
+      .map((r) => ({ ...r, up: r.up === 1 })),
+    /** New vehicle row; returns its id. */
+    insertVehicle: (kind: string, x: number, y: number, z: number, heading: number, up: boolean, src: string) =>
+      Number(insertVehicle.run(kind, x, y, z, heading, up ? 1 : 0, src).lastInsertRowid),
+    moveVehicle: (id: number, x: number, y: number, z: number, heading: number) => moveVehicle.run(x, y, z, heading, id),
+    standVehicle: (id: number) => standVehicle.run(id),
+    /**
+     * v12, once (call inside a transaction): the motorcycle stopped being an item. Takes every motorcycle out of the
+     * boxes (the equipment's old Vehicle slot too; the Armor slot after it moves up into its place) and returns them
+     * with their owners, and the owners of the old per-player cargo box 'bike'.
+     */
+    takeOldBikes: () => {
+      const bikes = (db.prepare("SELECT owner, box, parts FROM items WHERE kind = 'motorcycle' ORDER BY id").all() as
+        { owner: string; box: string; parts: string | null }[]).map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined }));
+      db.exec("DELETE FROM items WHERE kind = 'motorcycle'");
+      db.exec(`UPDATE items SET slot = 3 WHERE box = 'equip' AND slot = 4
+        AND NOT EXISTS (SELECT 1 FROM items o WHERE o.owner = items.owner AND o.box = 'equip' AND o.slot = 3)`);
+      const cargo = (db.prepare("SELECT DISTINCT owner FROM items WHERE box = 'bike'").all() as { owner: string }[]).map((r) => r.owner);
+      return { bikes, cargo };
+    },
+    /** Every item in one box moves to another (an empty one), keeping its slots. */
+    moveBox: (owner: string, box: string, toOwner: string, toBox: string) =>
+      db.prepare('UPDATE items SET owner = ?, box = ? WHERE owner = ? AND box = ?').run(toOwner, toBox, owner, box),
     loadDropped: () => (allDropped.all() as { id: number; kind: string; parts: string | null; x: number; z: number; worn: number }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
     insertDropped: (id: number, kind: string, parts: (string | null)[] | undefined, x: number, z: number, worn = 0) =>

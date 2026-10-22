@@ -81,17 +81,17 @@ const en = {
   },
   bosses: { worm: 'Worm', carrier: 'Carrier', colossus: 'Colossus', queen: 'Queen' },
   /** Equipment slots (shared/gear.ts EQUIP_SLOTS). */
-  equip: { back: 'Back', wrist: 'Wrist', belt: 'Belt', vehicle: 'Vehicle', armor: 'Armor' },
+  equip: { back: 'Back', wrist: 'Wrist', belt: 'Belt', armor: 'Armor' },
   /** Boxes, as headings in the Tab overlay (shared/storage.ts boxLabel). */
   boxes: {
-    bag: 'Inventory', equip: 'Equipment', bench: 'Workbench', bike: 'Motorcycle', corpse: 'Left behind', chest: 'Chest',
+    bag: 'Inventory', equip: 'Equipment', bench: 'Workbench', cargo: 'Cargo', corpse: 'Left behind', chest: 'Chest',
     chestN: (n: number) => `Chest ${n}`,
     storage: 'Storage', ground: 'On the ground',
   },
   /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR); `k` gives the current
    *  key or button names (src/bindings.ts hintKeys). */
   gearUse: {
-    motorcycle: (k: HintKeys) => `Press ${k.bike} to get on and off.`,
+    motorcycle: (k: HintKeys) => `Get on with ${k.interact}, off with ${k.bike}.`,
     spyglass: (k: HintKeys) => `Hold ${k.use} to look through it, and use ${k.zoom} to zoom.`,
     canteen: (k: HintKeys) => `Hold ${k.use} to drink. You can fill it up at any pump.`,
     backpack: () => 'Gives your bag more room past the hotbar.',
@@ -131,6 +131,10 @@ const en = {
     openPack: 'Open pack',
     openChest: 'Open chest',
     open: (what: string) => `Open ${lower(what)}`,
+    /** A broken vehicle lying in the world (shared/vehicles.ts): F opens its part slots. */
+    repair: (what: string) => `Repair ${lower(what)}`,
+    /** A working one: F gets on. */
+    getOn: 'Get on',
     plantSeeds: 'Plant seeds',
     harvest: 'Harvest',
     needsUvLamp: 'Needs UV lamp',
@@ -191,7 +195,11 @@ const en = {
     cantPackTighter: "Can't pack it any tighter",
     takeItOff: 'Take it off',
     getOffFirst: 'Get off first',
+    /** Someone else is on (or getting on) that vehicle. */
+    someoneOnIt: 'Someone is on it',
     emptyItFirst: 'Empty it first',
+    /** A part out of a working vehicle: only swapped for another. */
+    swapOnly: 'Swap it for another',
     wrongSlot: 'Wrong slot',
     cantWear: "Can't wear",
     benchInUse: 'Bench in use',
@@ -214,6 +222,8 @@ const en = {
     nothingInReach: 'Nothing in reach',
     noRoom: 'No room',
     craft: 'Craft',
+    /** Stands a broken vehicle up once its part slots are all filled (shared/vehicles.ts). */
+    repair: 'Repair',
     brokenGear: 'Broken gear',
     broken: 'Broken',
     missing: 'missing',
@@ -487,7 +497,7 @@ const en = {
   // ---- One-time how-to banners (src/hints.ts); `k` gives the current key names --------------------------------------
 
   hints: {
-    motorcycle: (k: HintKeys) => `Put the motorcycle in the Vehicle slot (${k.inventory}), then press ${k.bike} to ride.`,
+    motorcycle: (k: HintKeys) => `Get on with ${k.interact}, off with ${k.bike}. The back holds cargo.`,
     backpack: (k: HintKeys) => `Put the backpack in the Back slot (${k.inventory}).`,
     storm_detector: (k: HintKeys) => `Put the storm detector in the Belt slot (${k.inventory}). It beeps before a storm hits.`,
     wristpad: (k: HintKeys) => `Put the wrist computer in the Wrist slot (${k.inventory}).`,
@@ -582,7 +592,7 @@ const en = {
 };
 
 /** Key or button names a hint can mention, as currently bound and for the device in use (src/bindings.ts hintKeys). */
-export type HintKeys = { inventory: string; bike: string; use: string; aim: string; zoom: string };
+export type HintKeys = { inventory: string; interact: string; bike: string; use: string; aim: string; zoom: string };
 
 /** The shape of the texts: what a translation fills in. */
 export type Texts = typeof en;

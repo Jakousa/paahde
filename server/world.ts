@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
-import { bikeLevel, bottleSips, buildingBox, carriedGear, equipped, gearTiers, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, wornGear } from '../shared/gear.ts';
+import { bottleSips, buildingBox, cargoBox, carriedGear, equipped, gearTiers, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, isVehicle, vehicleBox, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { CLOTH, HOTBAR, SCRAP, scrapItem, stackOf, WIRING } from '../shared/items.ts';
 import type { Drop } from '../shared/lootRoll.ts';
@@ -30,6 +30,8 @@ import { openDb } from './db.ts';
 import { trace } from './telemetry.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
+import { VehicleServer } from './vehicles.ts';
+import { vehicles } from '../shared/vehicles.ts';
 import { PowerServer } from './power.ts';
 import { WireServer } from './wires.ts';
 import { ItemServer } from './items.ts';
@@ -93,6 +95,7 @@ const crash = new CrashServer(db, (ids, msg) => {
   for (const p of players.values()) send(p.ws, msg);
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
+const vehicleSrv = new VehicleServer(db, items); // before the loot: it turns motorcycles dropped as items into vehicles
 const wiring = new WireServer(db, items); // after the placed list: it drops wires to things gone
 const garden = new GardenServer(db);
 const loot = new LootServer(db);
@@ -193,6 +196,8 @@ wss.on('connection', (ws) => {
     if (msg.t === 'place' && p) return onPlace(p, msg.slot, msg.x, msg.z, msg.rot);
     if (msg.t === 'unplace' && p) return onUnplace(p, msg.id);
     if (msg.t === 'build' && p) return onBuild(p, msg.kind, msg.x, msg.z, msg.rot);
+    if (msg.t === 'mount' && p) return onMount(p, msg.id);
+    if (msg.t === 'repairVehicle' && p) return onRepairVehicle(p, msg.id);
     if (msg.t === 'wire' && p) return onWire(p, msg.slot, msg.a, msg.b);
     if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
@@ -236,10 +241,7 @@ wss.on('connection', (ws) => {
       p.hands = msg.hands === 1 || msg.hands === 2 || msg.hands === 3 || msg.hands === 4 || msg.hands === 5 ? msg.hands : 0;
       p.aim = msg.aim === true;
       const slot = Number.isInteger(msg.slot) && (msg.slot as number) >= 0 && (msg.slot as number) < HOTBAR ? (msg.slot as number) : -1;
-      if (slot !== p.slot) {
-        p.slot = slot;
-        gearChanged(p.browserId); // a motorcycle in hand rides too
-      }
+      p.slot = slot;
       return;
     }
     if (p) return onCrash(p, msg);
@@ -249,6 +251,7 @@ wss.on('connection', (ws) => {
     if (!p) return;
     save(p);
     crash.leaveAll(p.id);
+    vehicleSrv.release(p.id, p.state.riding ? p.state : undefined); // the bike stays where they left
     players.delete(ws);
     if (![...players.values()].some((o) => o.browserId === p.browserId)) {
       items.forget(p.browserId);
@@ -294,7 +297,6 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
     if (c) state = spawnState(c.x, c.z);
   }
   items.setup(browserId);
-  state.bike = bikeLevel(items.slots(browserId, 'equip'));
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, pickups: pickupLimit(), lastTend: { at: 0 }, input: 0,
@@ -321,6 +323,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, crash.spentMessage());
   send(ws, crash.rollsMessage());
   send(ws, placedThings.joinMessage());
+  send(ws, vehicleSrv.joinMessage());
   send(ws, wiring.joinMessage());
   send(ws, power.msg());
   send(ws, garden.joinMessage());
@@ -328,13 +331,13 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, jets.msg());
   send(ws, { t: 'jetCrashes', list: jetCrashList(), reset: true });
   send(ws, harvesters.msg());
-  send(ws, loot.joinMessage(browserId));
+  send(ws, loot.joinMessage());
   send(ws, { t: 'welcome', id: p.id, state, color, epoch, name });
   send(ws, { t: 'names', names: [...players.values()].filter((o) => o.ready).map((o) => [o.id, o.name]), reset: true });
   send(ws, { t: 'obituaries', list: db.lastObituaries(OBITUARY_KEEP) });
   recall(p);
   send(ws, corpses.joinMessage());
-  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes(), ...placedThings.boxes()]) send(ws, boxMsg(browserId, box));
+  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes(), ...placedThings.boxes(), ...vehicleSrv.boxes()]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
 
 }
@@ -351,21 +354,37 @@ function onFill(p: Player) {
   send(p.ws, waterMsg(p.heat));
 }
 
-/** A player's items (or selected hotbar slot) changed: the motorcycle they can ride (equipped, or the one in hand) and
- *  their water bottle follow, on every connection. */
+/** A player's items changed: their water bottle follows, on every connection. */
 function gearChanged(browserId: string) {
-  const bag = items.slots(browserId, 'bag');
-  const sips = bottleSips(bag);
+  const sips = bottleSips(items.slots(browserId, 'bag'));
   for (const o of players.values()) {
-    if (o.browserId !== browserId) continue;
-    const bike = bikeLevel(items.slots(browserId, 'equip'), o.slot >= 0 ? bag[o.slot] : null);
-    if (o.state.bike !== bike) o.state = { ...o.state, bike };
-    if (setBottle(o.heat, sips)) send(o.ws, waterMsg(o.heat));
+    if (o.browserId === browserId && setBottle(o.heat, sips)) send(o.ws, waterMsg(o.heat));
   }
 }
 
+// Vehicles (server/vehicles.ts): standing a broken one up, getting on and off.
+function onRepairVehicle(p: Player, id: unknown) {
+  if (p.down) return;
+  const r = vehicleSrv.repair(p.state, id);
+  if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
+  sendShared(cargoBox(r.id)); // its cargo opens
+}
+
+function onMount(p: Player, id: unknown) {
+  if (p.down || !p.ready) return;
+  const r = vehicleSrv.mount(p.id, p.state, id);
+  if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
+  p.state = r; // the client takes it with the next snapshot (src/net.ts reconcile)
+}
+
+/** After a step (`before`: the state it started from): off the bike (the bike key, or stopped getting on): it's parked
+ *  where they got off, or stays where it stood. */
+function offBike(p: Player, before: PlayerState) {
+  if (before.bike && !p.state.bike) vehicleSrv.release(p.id, before.riding ? p.state : undefined);
+}
+
 /** What casts shade on players besides the world (shared/shade.ts): everyone standing (shorter crouched) or riding
- *  (the bike as a low capsule along its heading), and motorcycles lying on the sand. Rebuilt every CASTERS_MS. */
+ *  (the bike as a low capsule along its heading), and the bikes standing or lying on the sand. Rebuilt every CASTERS_MS. */
 let casters: Caster[] = [];
 let castersAt = -Infinity;
 const CASTERS_MS = 250;
@@ -379,8 +398,10 @@ function shadeCasters(now: number): Caster[] {
     casters.push({ x: s.x, z: s.z, ax: 1, az: 0, half: 0, r: 0.28, y0: s.y, y1: s.y + (s.crouching ? 1.2 : 1.8), id: o.id });
     if (s.riding) casters.push({ x: s.x, z: s.z, ax: -Math.sin(s.heading), az: -Math.cos(s.heading), half: 0.55, r: 0.35, y0: s.y, y1: s.y + 1, id: o.id });
   }
-  for (const l of loot.loot.values()) {
-    if (l.kind === 'motorcycle') casters.push({ x: l.x, z: l.z, ax: 1, az: 0, half: 0, r: 0.7, y0: -Infinity, y1: heightAt(l.x, l.z) + 0.6 });
+  for (const v of vehicles) {
+    if (v.rider !== undefined) continue;
+    if (v.up) casters.push({ x: v.x, z: v.z, ax: -Math.sin(v.heading), az: -Math.cos(v.heading), half: 0.55, r: 0.35, y0: -Infinity, y1: v.y + 1 });
+    else casters.push({ x: v.x, z: v.z, ax: 1, az: 0, half: 0, r: 0.7, y0: -Infinity, y1: v.y + 0.6 });
   }
   return casters;
 }
@@ -416,7 +437,8 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   p.down = { until: Date.now() + DOWN_MS, push };
   p.choke = 0;
   p.gassed = 0;
-  p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, mounting: 0, sliding: false, crouching: false };
+  vehicleSrv.release(p.id, p.state.riding ? p.state : undefined); // the bike falls where they did
+  p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, mounting: 0, bike: 0, sliding: false, crouching: false };
   revive(p.heat, Date.now());
   send(p.ws, { t: 'died', cause, push, ...(bolt !== undefined ? { bolt } : {}) });
   const obit: Obituary = { t: 'obituary', id: p.id, color: p.color, name: p.name, cause, at: Date.now() };
@@ -476,7 +498,7 @@ function onStomped(p: Player, g: number) {
 /** Back to the base, cooled down, with a full canteen. */
 function respawn(p: Player) {
   p.down = null;
-  p.state = { ...spawnState(), bike: p.state.bike };
+  p.state = spawnState();
   revive(p.heat, Date.now());
   save(p);
   send(p.ws, { t: 'respawn' });
@@ -811,6 +833,12 @@ function boxMsg(browserId: string, box: string, got?: string): ServerMsg {
   return { t: 'items', box, slots: items.slots(browserId, box), ...(got !== undefined ? { got } : {}) };
 }
 
+/** A shared box changed (one nobody in particular changed): to everyone. */
+function sendShared(box: string) {
+  const json = JSON.stringify(boxMsg('', box));
+  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+}
+
 /** A box changed: shared ones go to everyone, a player's own to each of their connections. */
 function sendBox(p: Player, box: string, got?: string) {
   const json = JSON.stringify(boxMsg(p.browserId, box, got));
@@ -841,31 +869,32 @@ function onFit(p: Player, from: unknown, fi: unknown, slot: unknown, at: unknown
     else send(p.ws, boxMsg(p.browserId, box));
   }
   if (changed && typeof at === 'string') placedThings.refresh(at);
+  if (changed && typeof at === 'string') vehicleSrv.refresh(at);
   if (changed) gearChanged(p.browserId);
   if (changed) corpses.check(from);
 }
 
 function onUnfit(p: Player, slot: unknown, to: unknown, ti: unknown, at: unknown) {
-  const changed = !p.down && items.unfit(p.browserId, p.state, slot, to, ti, at);
+  const changed = !p.down && items.unfit(p.browserId, p.state, slot, to, ti, at, (box) => vehicleSrv.canUnfit(box));
   for (const box of new Set([at, to])) {
     if (typeof box !== 'string' || !boxSize(box)) continue;
     if (changed) sendBox(p, box);
     else send(p.ws, boxMsg(p.browserId, box));
   }
   if (changed && typeof at === 'string') placedThings.refresh(at);
+  if (changed && typeof at === 'string') vehicleSrv.refresh(at);
   if (changed) gearChanged(p.browserId);
 }
 
 function onLootTake(p: Player, id: unknown) {
-  const kind = loot.take(p.state, p.browserId, id, (l) => items.giveItem(p.browserId, l));
+  const kind = loot.take(p.state, id, (l) => items.giveItem(p.browserId, l));
   if (kind === 'full') send(p.ws, { t: 'notice', text: TEXT.notice.bagFull });
-  else if (kind === 'had') send(p.ws, { t: 'notice', text: TEXT.notice.alreadyHad });
   else if (kind) {
     sendBox(p, 'bag', kind);
     return gearChanged(p.browserId);
   }
   // Not taken: the client already hid it. If it still lies there (and they may see it), show it to them again.
-  const back = loot.back(id, p.browserId);
+  const back = loot.back(id);
   if (back) send(p.ws, back);
 }
 
@@ -892,7 +921,7 @@ function onDrop(p: Player, box: unknown, slot: unknown) {
 // equipment slots (if free).
 function onDebugGear(p: Player, tier: unknown) {
   const t = TIERS[Number.isInteger(tier) ? (tier as number) : 0] ?? 'scrap';
-  for (const kind of GEAR_KINDS.filter((k) => !isBuilding(k))) {
+  for (const kind of GEAR_KINDS.filter((k) => !isBuilding(k) && !isVehicle(k))) {
     const parts = scrapParts(kind, t);
     if (!items.equip(p.browserId, { kind, parts })) items.giveItem(p.browserId, { kind, parts });
   }
@@ -1021,7 +1050,9 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.pitch = pitch as number;
   p.input = input & INPUT_MASK;
   const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
+  const before = p.state;
   p.state = step(p.state, input & INPUT_MASK, p.yaw, drag, guardians.posts);
+  offBike(p, before);
   crash.push(p.state, input & INPUT_MASK, p.yaw); // crouched and leaning on a machine rolls it
 }
 
@@ -1046,7 +1077,9 @@ setInterval(() => {
     if (Date.now() - p.lastInputAt > IDLE_MS) {
       p.input = 0;
       for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
+        const before = p.state;
         p.state = step(p.state, 0, p.yaw, 0, guardians.posts);
+        offBike(p, before);
       }
     } else {
       p.idleAccum = 0;
@@ -1111,13 +1144,13 @@ function broadcast(time: number) {
       if (jetsBreaking[i].due <= time) crashed.push(jetCame(jetsBreaking.splice(i, 1)[0]));
     }
   }
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), wiring.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), vehicleSrv.flush(), wiring.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
   }
-  const lootMsg = loot.flush(); // per player: the home bike is hidden from whoever has had theirs
-  if (lootMsg) for (const p of players.values()) send(p.ws, loot.seenBy(lootMsg, p.browserId));
+  const lootMsg = loot.flush();
+  if (lootMsg) for (const p of players.values()) send(p.ws, lootMsg);
   const all = [...players.values()].map((p) => {
     const item = p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot]?.kind : undefined;
     const gear = wornGear(items.slots(p.browserId, 'equip')) | carriedGear(items.slots(p.browserId, 'bag'), p.slot);
@@ -1191,6 +1224,7 @@ setInterval(() => {
   terrain.save();
   scrap.respawn();
   loot.respawn();
+  for (const id of vehicleSrv.respawn()) sendShared(vehicleBox(id));
   corpses.expire();
   garden.grow();
   power.save();

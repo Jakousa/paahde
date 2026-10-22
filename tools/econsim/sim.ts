@@ -36,7 +36,7 @@ const GOALS = [
   'wrench', 'windmill', 'battery_station',
 ] as const;
 /** Worn gear: its equipment slot. */
-const WORN: Partial<Record<string, EquipSlot>> = { backpack: 'back', motorcycle: 'vehicle', shield: 'armor', storm_detector: 'belt', wristpad: 'wrist' };
+const WORN: Partial<Record<string, EquipSlot>> = { backpack: 'back', shield: 'armor', storm_detector: 'belt', wristpad: 'wrist' };
 /** Carried in the hotbar when there's one. */
 const CARRIED = ['canteen', 'laser_rifle', 'laser_pistol', 'jammer', 'spyglass'];
 /** Gear whose quality is a milestone of its own (q2: quality 2+, Quality-grade parts throughout). */
@@ -104,6 +104,8 @@ export class Sim {
   readonly bag: Slots = Array(BAG_SLOTS).fill(null);
   readonly equip: Slots = Array(EQUIP_SLOTS.length).fill(null);
   readonly cargo: Slots = Array(BIKE_COLS * BIKE_ROWS).fill(null);
+  /** The motorcycle we ride (shared/vehicles.ts: it stands in the world, not worn; the best one repaired, by kit()). */
+  readonly ride: Slots = [null];
   /** The base's chests: room enough for anything. */
   chest: Item[] = [];
   private world: World;
@@ -133,14 +135,14 @@ export class Sim {
     for (const kind of Object.keys(ENEMIES) as EnemyKind[]) {
       this.spoilSamples.set(kind, Array.from({ length: 40 }, () => ENEMIES[kind].drops(sampleRand, { jet: 'drone' })));
     }
-    // The broken motorcycle in front of the door (shared/tables.ts HOME_BIKE): one each.
+    // The broken motorcycle in front of the door (shared/tables.ts HOME_BIKE), one per world: repaired where it lies.
     this.chest.push({ id: this.newId(), kind: 'motorcycle', n: 1, parts: GEAR.motorcycle.slots.map((s) => ('part' in s && s.part === 'motor' ? 'motor_scrap' : null)) });
   }
 
   // ---- inventory --------------------------------------------------------------------------------------------------
 
   private all(): Item[] {
-    return [...this.chest, ...this.bag, ...this.equip, ...this.cargo].filter((x): x is Item => !!x);
+    return [...this.chest, ...this.bag, ...this.equip, ...this.ride, ...this.cargo].filter((x): x is Item => !!x);
   }
   private gearOf(kind: string): Item[] {
     return this.all().filter((x) => x.kind === kind);
@@ -167,6 +169,7 @@ export class Sim {
     return fightOdds(kind, w, q, jam);
   }
   private carried(kind: string): Item | null {
+    if (kind === 'motorcycle') return this.ride[0];
     const slot = WORN[kind];
     const it = slot ? this.equip[EQUIP_SLOTS.indexOf(slot)] : this.bag.slice(0, HOTBAR).find((x) => x?.kind === kind);
     return it && repaired(it) ? it : null;
@@ -296,7 +299,7 @@ export class Sim {
       const t = tierNum(kind);
       if (t > 0) {
         // An upgrade: a better part than one fitted in gear in use.
-        for (const g of [...this.equip, ...this.bag.slice(0, HOTBAR)]) {
+        for (const g of [...this.equip, ...this.ride, ...this.bag.slice(0, HOTBAR)]) {
           if (!g?.parts) continue;
           g.parts.forEach((p, i) => {
             if (p && keyOf(p) === key && fitsSlot(GEAR[g.kind].slots[i], kind) && tierNum(p) < t) v = Math.max(v, 0.08 * (t - tierNum(p)));
@@ -879,8 +882,16 @@ export class Sim {
     }
   }
 
-  /** Wear and carry the best of each. */
+  /** Wear and carry the best of each, and ride the best motorcycle. */
   private kit() {
+    const bike = this.best('motorcycle');
+    if (bike && this.ride[0] !== bike) {
+      if (this.ride[0]) this.chest.push(this.ride[0]);
+      const i = this.chest.indexOf(bike);
+      if (i >= 0) this.chest.splice(i, 1);
+      for (const slots of [this.bag, this.cargo]) if (slots.includes(bike)) slots[slots.indexOf(bike)] = null;
+      this.ride[0] = bike;
+    }
     for (const [kind, slot] of Object.entries(WORN) as [string, EquipSlot][]) {
       const b = this.best(kind);
       const i = EQUIP_SLOTS.indexOf(slot);

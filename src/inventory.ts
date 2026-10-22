@@ -1,8 +1,8 @@
 // Items HUD: "[F] Pick up …" under the crosshair when looking at a piece in reach, a short "+1 …" toast
 // whenever a pickup lands in the bag, and the Tab inventory: an overlay with your equipment (back, wrist,
-// belt, vehicle: shared/gear.ts), the bag (its first row is the hotbar, keys 1–5; below it a grid with as many
+// belt, armor: shared/gear.ts), the bag (its first row is the hotbar, keys 1–5; below it a grid with as many
 // rows as the backpack you wear opens) and, next to it, every box in reach right now (the workbench in the base,
-// chests, the motorcycle while riding; shared/storage.ts), appearing and disappearing as you move. Grids are
+// chests, a motorcycle's cargo; shared/storage.ts), appearing and disappearing as you move. Grids are
 // Tarkov-like: every item takes w × h cells by its size (shared/items.ts). Drag an item to move it (the cells it
 // would take light up green, or red where it doesn't fit; R turns it) or onto another to swap the two; shift-click
 // sends it across to the other side, Take all empties a storage box into the bag and Store all
@@ -11,10 +11,12 @@
 // broken gear on it and drag parts onto its part slots to repair it, or a better part onto a filled slot to
 // upgrade it (the old one comes back); its recipes (shared/crafting.ts) are listed there too. A building in reach (the
 // windmill, the battery station: shared/gear.ts buildingBox) shows its part slots the same way, to fit its parts
-// where it stands (it goes up with them empty: src/placing.ts). Loot lying in reach (shared/loot.ts lootReach) shows as one more panel, On the ground: click,
+// where it stands (it goes up with them empty: src/placing.ts). F on a broken motorcycle (shared/vehicles.ts) opens it
+// alone next to the bag, its part slots to fill, and Repair stands it up once they're full; F on a working one's back
+// opens its cargo with its part slots beside it, to swap in better parts. Loot lying in reach (shared/loot.ts lootReach) shows as one more panel, On the ground: click,
 // shift-click or drag a piece into the bag to pick it up, or drag something onto the panel to drop it. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
-import { bagShape, boxShape, buildingId, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, holdsCargo, isGear, lockedWhileRiding, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
+import { bagShape, boxShape, buildingId, cargoId, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, fittedBox, GEAR, holdsCargo, isGear, partsOf, quality, repaired, slotLabel, tierOf, tryMove, vehicleBox, vehicleId, type Boxes } from '../shared/gear.ts';
 import { findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
@@ -27,6 +29,7 @@ import { boxLabel, openBoxes } from '../shared/storage.ts';
 import { isCorpseBox } from '../shared/corpse.ts';
 import { canDropAt, lootReach, type Loot } from '../shared/loot.ts';
 import { isPlaceable } from '../shared/placed.ts';
+import { vehicleById } from '../shared/vehicles.ts';
 import { ctl, hintKeys, isBound, kbd } from './bindings';
 import { takePickup, ui } from './input';
 import type { Net } from './net';
@@ -162,6 +165,8 @@ body.pad #invOverlay .slot .key { display: none; }
 #invOverlay .bench .state.no { color: #ff9a76; opacity: 1; }
 #invOverlay .bench .parts { display: grid; grid-template-columns: repeat(4, 54px); gap: 4px; }
 #invOverlay .bench .pl { font-size: 9px; line-height: 1.15; text-align: center; opacity: 0.6; margin-top: 2px; width: 54px; }
+#invOverlay .bench button.repair { font-size: 13px; font-weight: 600; padding: 7px; background: rgba(140, 220, 150, 0.25); }
+#invOverlay .bench button.repair:hover:not(:disabled) { background: rgba(140, 220, 150, 0.4); }
 `;
 
 // Icons, 22 × 26 like the hotbar's.
@@ -306,7 +311,8 @@ export class InventoryHud {
   private reachable = '';
   /** Within reach of the workbench last frame. */
   private atBench = false;
-  /** The building to show when more than one is in reach: the one F was pressed on. */
+  /** The building to show when more than one is in reach: the one F was pressed on; or the vehicle F was pressed on (its
+   *  box: alone, to repair it; its cargo: with its part slots). */
   private focus: string | null = null;
   private drag: Drag | null = null;
   private over: HTMLElement | null = null;
@@ -383,7 +389,11 @@ export class InventoryHud {
     if (open) {
       document.exitPointerLock();
       this.render();
-    } else if (relock && document.pointerLockElement !== this.canvas) {
+      return;
+    }
+    // A vehicle is shown only from F on it (Tab near it shows its cargo like a chest's).
+    if (this.focus && (vehicleId(this.focus) >= 0 || cargoId(this.focus) >= 0)) this.focus = null;
+    if (relock && document.pointerLockElement !== this.canvas) {
       // Can be refused (no user gesture, or too soon after the browser's own Esc): a click then does it.
       Promise.resolve(this.canvas.requestPointerLock()).catch(() => {});
     }
@@ -423,16 +433,21 @@ export class InventoryHud {
     setTimeout(() => el.remove(), TOAST_MS);
   }
 
-  /** Open the inventory from outside (F at the workbench, a chest, a building: `focus`, its box). */
+  /** Open the inventory from outside (F at the workbench, a chest, a building or a vehicle: `focus`, its box). */
   open(focus?: string) {
     if (focus) this.focus = focus;
     this.toggle(true);
     if (focus) this.render();
   }
 
-  /** The boxes whose item's part slots are open (the workbench, the one building shown), the workbench first. */
+  /** The boxes whose item's part slots are open (the workbench, the one building or vehicle shown), the workbench first. */
   private fitTargets(): string[] {
-    return this.storages.filter((b) => b === 'bench' || buildingId(b) >= 0);
+    return this.storages.filter((b) => b === 'bench' || fittedBox(b));
+  }
+
+  /** The vehicles changed (one stood up, got on, moved): what's shown follows. */
+  vehiclesChanged() {
+    if (ui.inventoryOpen && !this.drag) this.render();
   }
 
   private render() {
@@ -442,7 +457,11 @@ export class InventoryHud {
     this.reachable = openBoxes(this.net.me).join();
     const near = open.filter((b) => buildingId(b) >= 0);
     const shown = this.focus && near.includes(this.focus) ? this.focus : near[0];
-    this.storages = open.filter((b) => buildingId(b) < 0 || b === shown);
+    // A vehicle F was pressed on: a broken one alone (to repair it), a working one's cargo with its part slots.
+    const vehicle = this.focus && vehicleId(this.focus) >= 0 && open.includes(this.focus) ? this.focus : null;
+    const cargoOf = this.focus && cargoId(this.focus) >= 0 ? vehicleBox(cargoId(this.focus)) : null;
+    this.storages = vehicle ? [vehicle]
+      : open.filter((b) => (vehicleId(b) >= 0 ? b === cargoOf : buildingId(b) < 0 || b === shown));
     const bag = this.net.boxes.bag ?? [];
     const equip = this.net.boxes.equip ?? [];
     const shape = bagShape(equip);
@@ -459,16 +478,19 @@ export class InventoryHud {
         html += this.benchHtml(slots[0] ?? null);
         continue;
       }
-      if (buildingId(box) >= 0) {
-        html += `<div class="box bench"><div class="head"><h3>${boxLabel(box)}</h3></div>${this.repairHtml(slots[0] ?? null, box)}</div>`;
+      if (fittedBox(box)) {
+        html += `<div class="box bench"><div class="head"><h3>${boxLabel(box)}</h3></div>${this.repairHtml(slots[0] ?? null, box)}`
+          + `${this.standHtml(slots[0] ?? null, box)}</div>`;
         continue;
       }
       html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns">${isCorpseBox(box) ? '' : `<button data-store="${box}">${TEXT.inventory.storeAll}</button>`}<button data-all="${box}">${TEXT.inventory.takeAll}</button><button data-sort="${box}">${TEXT.inventory.sort}</button></span></div>`
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
-    this.ground = this.groundNow();
+    this.ground = vehicle ? [] : this.groundNow();
     this.groundIds = this.ground.map((l) => l.id).join();
-    if (this.ground.length) {
+    if (vehicle) {
+      // (The repair view: the bag and the vehicle, nothing else.)
+    } else if (this.ground.length) {
       const items = this.ground.map((l) => ({ id: 0, kind: l.kind, n: 1, parts: l.parts }));
       html += `<div class="box storage" data-ground><div class="head"><h3>${TEXT.boxes.ground}</h3><button data-all="${GROUND}">${TEXT.inventory.takeAll}</button></div>`
         + `<div class="grid" style="grid-template-columns: repeat(5, 54px)">${this.slotsHtml(GROUND, items, 0, items.length)}</div></div>`;
@@ -517,6 +539,13 @@ export class InventoryHud {
         + (kind ? itemIcon(kind) : `<span class="ph">+</span>`) + `</div><div class="pl">${slotLabel(slot)}</div></div>`;
     });
     return html + '</div>';
+  }
+
+  /** Under a broken vehicle's part slots: Repair, which stands it up once they're all filled. */
+  private standHtml(it: Item | null, at: string): string {
+    const v = vehicleById(vehicleId(at));
+    if (!v || v.up) return '';
+    return `<div class="sep"></div><button class="repair" data-repair="${v.id}"${repaired(it) ? '' : ' disabled'}>${TEXT.inventory.repair}</button>`;
   }
 
   /** A building's electricity (shared/power.ts), under its state: what a windmill makes now; what a station holds of
@@ -699,7 +728,7 @@ export class InventoryHud {
     this.showHint(this.targetAt(d.x0, d.y0, d), d);
   }
 
-  /** What's in a slot; 'part:<box>' slots are the fitted parts of the item in that box (workbench, building). */
+  /** What's in a slot; 'part:<box>' slots are the fitted parts of the item in that box (workbench, building, vehicle). */
   private itemAt(box: string, i: number): Item | null {
     const at = partsIn(box);
     if (at) {
@@ -723,9 +752,18 @@ export class InventoryHud {
     if (store) return this.storeAll(store.dataset.store!);
     const craft = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-craft]');
     if (craft) return void (craft.disabled || this.net.craft(craft.dataset.craft!));
+    const repair = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-repair]');
+    if (repair) {
+      if (repair.disabled) return;
+      // Back into the game to see it stand up; how to ride it, once.
+      this.net.repairVehicle(Number(repair.dataset.repair));
+      uiSound.plop();
+      this.toggle(false);
+      return this.hints.show('motorcycle');
+    }
     const at = this.slotAt(e.clientX, e.clientY);
-    // A building's own item stays in it (its parts come and go).
-    if (!at || !this.itemAt(at.box, at.i) || buildingId(at.box) >= 0) return;
+    // A building's or vehicle's own item stays in it (its parts come and go).
+    if (!at || !this.itemAt(at.box, at.i) || fittedBox(at.box)) return;
     e.preventDefault();
     if (e.shiftKey) return void (this.shiftClick(at.box, at.i) ? uiSound.plop() : uiSound.full());
     // Held where it was grabbed when it lies in a grid; by its first cell's middle from a single slot.
@@ -752,7 +790,7 @@ export class InventoryHud {
     const it = net.boxes[box]?.[i];
     if (!it) return false;
     const bench = this.storages.includes('bench');
-    // A part into the workbench item, else the building shown: an empty slot it fits first, else a swap.
+    // A part into the workbench item, else the building or vehicle shown: an empty slot it fits first, else a swap.
     for (const at of this.fitTargets()) {
       const target = net.boxes[at]?.[0];
       if (box === at || !target || isGear(it.kind)) continue;
@@ -766,7 +804,7 @@ export class InventoryHud {
     if (box !== 'bag') return this.toBag(box, i);
     if (isGear(it.kind) && GEAR[it.kind].equip && repaired(it) && net.moveItem(box, i, 'equip', -1)) return true;
     // Across: bag → the nearest storage. Without storage, between hotbar and backpack.
-    const to = this.storages.find((b) => b !== 'bench' && buildingId(b) < 0);
+    const to = this.storages.find((b) => b !== 'bench' && !fittedBox(b));
     return to ? net.moveItem(box, i, to, -1) : this.hotbarSwap(i);
   }
 
@@ -805,8 +843,8 @@ export class InventoryHud {
     if (this.net.boxes[box]?.some((it) => it)) this.noRoom();
   }
 
-  /** Store all: everything in the bag but tools, placeables and a carrier with things in it (the motorcycle whose
-   *  cargo this may be) into a storage box, as far as it fits. */
+  /** Store all: everything in the bag but tools, placeables and a carrier with things in it into a storage box, as far
+   *  as it fits. */
   private storeAll(box: string) {
     const stays = (i: number) => {
       const it = this.net.boxes.bag?.[i];
@@ -876,7 +914,7 @@ export class InventoryHud {
       this.drawGhost(d, it);
       this.ghost.style.display = 'flex';
       this.slotEl(d.box, d.i)?.classList.add('dragging');
-      // Light up the workbench's (and the building's) slots this part fits.
+      // Light up the workbench's (and the building's or vehicle's) slots this part fits.
       for (const at of this.fitTargets()) {
         const target = this.net.boxes[at]?.[0];
         if (target) GEAR[target.kind].slots.forEach((s, j) => this.slotEl(partBox(at), j)?.classList.toggle('fits', fitsSlot(s, it.kind)));
@@ -937,7 +975,6 @@ export class InventoryHud {
   /** Dragged out of the panels (or onto the ground): drop it on the sand in front of you. */
   private drop(box: string, i: number) {
     if (partsIn(box)) return this.toast(TEXT.notice.takeItOff);
-    if (this.net.me.riding && lockedWhileRiding(box, i)) return this.toast(TEXT.notice.getOffFirst);
     if (holdsCargo(this.net.boxes, box, i)) return this.toast(TEXT.notice.emptyItFirst);
     if (!canDropAt(this.net.me.x, this.net.me.z)) return this.toast(TEXT.notice.cantDropHere);
     this.net.dropItem(box, i);
@@ -945,7 +982,8 @@ export class InventoryHud {
 
   /** Say why a drop didn't go through. */
   private refuse(from: string, fi: number, it: Item, to: string) {
-    if (this.net.me.riding && lockedWhileRiding(from, fi)) this.toast(TEXT.notice.getOffFirst);
+    const fittedIn = partsIn(from);
+    if (fittedIn && vehicleById(vehicleId(fittedIn))?.up) this.toast(TEXT.notice.swapOnly);
     else if (holdsCargo(this.net.boxes, from, fi)) this.toast(TEXT.notice.emptyItFirst);
     else if (to === 'equip') this.toast(isGear(it.kind) && GEAR[it.kind].equip ? (repaired(it) ? TEXT.notice.wrongSlot : TEXT.notice.broken) : TEXT.notice.cantWear);
     else if (to === 'bench') this.toast(isGear(it.kind) ? TEXT.notice.benchInUse : TEXT.notice.gearOnly);

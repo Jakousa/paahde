@@ -218,7 +218,7 @@ function spoken(p: Prompt): string {
 
 /** The names the hint banners and gear texts take (shared/text.ts HintKeys). */
 export function hintKeys(): HintKeys {
-  return { inventory: spoken('inventory'), bike: spoken('bike'), use: spoken('use'), aim: spoken('aim'), zoom: spoken('zoom') };
+  return { inventory: spoken('inventory'), interact: spoken('interact'), bike: spoken('bike'), use: spoken('use'), aim: spoken('aim'), zoom: spoken('zoom') };
 }
 
 export function resetAll() {

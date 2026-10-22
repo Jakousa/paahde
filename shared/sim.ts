@@ -13,7 +13,7 @@
 // - Soft sand: you build up and lose speed a bit slowly (momentum), and hard landings bog you down briefly.
 // - Rock (shared/rocks.ts) holds: bare rock up to ROCK_CLIMB_TAN doesn't slide; steeper rock is a wall you
 //   can't walk up, only jump onto. Off its edge you fall or slide.
-// - Sand bike (dev helper, 9 toggles it): see stepBike() below.
+// - Sand bike (a motorcycle standing in the world, shared/vehicles.ts): see stepBike() below.
 import { BUNKER_SPAWN, baseCeiling, collideBase, collideOutdoor } from './base.ts';
 import { collideShelter, sandHidden, shelterCeiling } from './shelters.ts';
 import { collideCrash } from './crashsites.ts';
@@ -107,10 +107,10 @@ export type PlayerState = {
   slideCool: number; // ticks until another slide can start (integer)
   slideSpent: boolean; // this Shift press already started a slide: the next one needs a fresh press
   riding: boolean; // on the sand bike (stepBike)
-  bikeHeld: boolean; // the bike key was down last tick, so mounting needs a fresh press
-  mounting: number; // ticks left getting on the bike (MOUNT_TICKS after the bike key; standing still; 0: not)
+  bikeHeld: boolean; // the bike key was down last tick, so getting off needs a fresh press
+  mounting: number; // ticks left getting on the bike (MOUNT_TICKS, standing still; 0: not), started by the server
   heading: number; // the bike's heading (radians, same convention as facing); the body faces it while riding
-  bike: number; // the equipped motorcycle (shared/gear.ts bikeLevel): 0 none, else 1 + its quality; set by the server
+  bike: number; // the motorcycle being got on or ridden (shared/gear.ts bikeLevel): 0 none, else 1 + its quality; set by the server
   nose: number; // the bike's pitch (rad, + = nose up): along the sand on the ground, steered by throttle/brake in the air
   noseSpin: number; // how fast it is pitching (rad/s), in the air
 };
@@ -124,9 +124,10 @@ export const JUMP = 16;
 export const CROUCH = 32; // Ctrl / C: crouch
 // 64 and 128 were dig and pile (no digging now): free.
 export const SLIDE = 256; // Shift: speed slide
-export const BIKE = 512; // 9: get on / off the motorcycle (needs a repaired one equipped: PlayerState.bike)
+export const BIKE = 512; // Z / 9 (or F while riding): get off the motorcycle, or stop getting on it
 export const INPUT_MASK = 1023;
-/** Getting on the bike takes this long, standing still; the bike key again stops it. Getting off is at once. */
+/** Getting on the bike takes this long, standing still (the server starts it: server/vehicles.ts mount); the bike key
+ *  stops it. Getting off is at once, on the ground. */
 export const MOUNT_TICKS = 2 * TICK_RATE;
 const MOVE_KEYS = FORWARD | BACK | LEFT | RIGHT | JUMP | CROUCH | SLIDE;
 
@@ -224,16 +225,16 @@ const tmpCollide = { x: 0, z: 0, vx: 0, vz: 0 };
 export function step(s: PlayerState, input: number, yawQ: number, storm = 0, legs: readonly number[] = NO_LEGS): PlayerState {
   const yaw = yawFromQ(yawQ);
   const bikeDown = (input & BIKE) !== 0;
-  if (!s.bike && (s.riding || s.mounting > 0)) s = { ...s, riding: false, mounting: 0 }; // unequipped under you
+  if (!s.bike && (s.riding || s.mounting > 0)) s = { ...s, riding: false, mounting: 0 }; // gone from under you
   let mounting = s.mounting > 0 ? s.mounting : 0;
-  if (bikeDown && !s.bikeHeld && (s.riding || s.bike > 0)) {
-    // Get off at once with the bike's momentum; getting on takes MOUNT_TICKS (pressing again stops it).
-    if (s.riding) s = { ...s, riding: false };
-    else mounting = mounting > 0 ? 0 : MOUNT_TICKS;
+  if (bikeDown && !s.bikeHeld && (s.mounting > 0 || (s.riding && s.grounded))) {
+    // Get off at once with the bike's momentum (it stays where you got off: server/vehicles.ts), or stop getting on.
+    s = { ...s, riding: false, bike: 0 };
+    mounting = 0;
   }
   if (mounting > 0 && --mounting === 0) {
-    // On: facing where you look.
-    s = { ...s, riding: true, mounting: 0, heading: yaw, sliding: false, crouching: false };
+    // On: the way the bike stands (the server set the heading when it started the mount).
+    s = { ...s, riding: true, mounting: 0, sliding: false, crouching: false };
   }
   if (s.riding) return stepBike(s, input, bikeDown, storm, legs);
   if (mounting > 0) input &= ~MOVE_KEYS; // standing at the bike, swinging a leg over

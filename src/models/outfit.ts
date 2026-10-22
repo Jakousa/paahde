@@ -84,7 +84,6 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
     box(g, 0.02, 0.07, 0.07, DARK, -0.012, -0.035, 0);
     return g;
   },
-  motorcycle: () => crate(0.36, RED),
   // Muzzle forward and a little down. The avatar turns and places the guns itself (scavenger.ts GUN_HOLD: the rifle
   // across the body in both hands, or shouldered to aim; the pistol by the thigh, or held out at arm's length).
   laser_rifle: (loaded) => {

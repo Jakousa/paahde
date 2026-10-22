@@ -24,7 +24,7 @@
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { heal, pitchFromQ } from '../shared/dig.ts';
-import { bagShape, boxShape, buildingId, fitPart, holdsCargo, lockedWhileRiding, tryMove, unfitPart } from '../shared/gear.ts';
+import { bagShape, boxShape, buildingId, cargoId, fitPart, holdsCargo, tryMove, unfitPart, vehicleId } from '../shared/gear.ts';
 import { debrisItem, HOTBAR, roomFor, scrapItem, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
@@ -51,6 +51,7 @@ import type { Harvester } from '../shared/harvester.ts';
 import type { BossKind } from '../shared/bosses.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 import { setPlaced } from '../shared/placed.ts';
+import { setVehicles, vehicleById } from '../shared/vehicles.ts';
 import type { PowerState } from '../shared/power.ts';
 import { setWires } from '../shared/wires.ts';
 import type { BedState } from '../shared/garden.ts';
@@ -183,6 +184,8 @@ export class Net {
   onPower?: () => void;
   /** Placed things changed (shared/placed.ts keeps the list), or a bed's stage did. */
   onPlaced?: () => void;
+  /** The vehicles changed (shared/vehicles.ts). */
+  onVehicles?: () => void;
   /** A short message from the server for the HUD (a refused place, pickup or craft). */
   onNotice?: (text: string) => void;
   /** Sandstorms announced and not over yet (shared/storm.ts), times on the server clock. */
@@ -261,7 +264,7 @@ export class Net {
    * server answers with both boxes. False if refused.
    */
   moveItem(from: string, fi: number, to: string, ti: number, n?: number, r?: boolean): boolean {
-    if (!this.connected || (this.me.riding && lockedWhileRiding(from, fi))) return false;
+    if (!this.connected) return false;
     if (!tryMove(this.boxes, from, fi, to, ti, n, () => --this.tempId, r)) return false;
     this.growChests(from, to);
     this.send({ t: 'move', from, fi, to, ti, ...(n !== undefined ? { n } : {}), ...(r !== undefined ? { r } : {}) });
@@ -280,10 +283,11 @@ export class Net {
     return true;
   }
 
-  /** Take a part out of the workbench item (or a building's, in box `at`) into box `to` slot ti (-1: anywhere). False
-   *  if refused. */
+  /** Take a part out of the workbench item (or a building's or vehicle's, in box `at`) into box `to` slot ti (-1:
+   *  anywhere). False if refused (also out of a working vehicle: its parts are only swapped). */
   unfit(slot: number, to: string, ti: number, at = 'bench'): boolean {
-    if (!this.connected || !unfitPart(this.boxes, slot, to, ti, () => --this.tempId, at)) return false;
+    if (!this.connected || vehicleById(vehicleId(at))?.up) return false;
+    if (!unfitPart(this.boxes, slot, to, ti, () => --this.tempId, at)) return false;
     this.growChests(to);
     this.send({ t: 'unfit', slot, to, ti, ...(at !== 'bench' ? { at } : {}) });
     for (const box of new Set([to, at])) this.onItems?.(box);
@@ -310,7 +314,7 @@ export class Net {
   dropItem(box: string, slot: number): boolean {
     const slots = this.boxes[box];
     const it = slots?.[slot];
-    if (!this.connected || !it || (this.me.riding && lockedWhileRiding(box, slot)) || holdsCargo(this.boxes, box, slot)) return false;
+    if (!this.connected || !it || holdsCargo(this.boxes, box, slot)) return false;
     slots[slot] = it.n > 1 ? { ...it, n: it.n - 1 } : null;
     this.growChests(box);
     this.send({ t: 'drop', box, slot });
@@ -484,6 +488,16 @@ export class Net {
   }
 
   /** Plant or harvest a plant bed (its placed id); the server answers with 'garden' (and 'tended' to us). */
+  /** Stand up broken vehicle `id` (shared/vehicles.ts), its part slots all filled; the server answers 'vehicles'. */
+  repairVehicle(id: number) {
+    if (this.connected) this.send({ t: 'repairVehicle', id });
+  }
+
+  /** Get on working vehicle `id`: the server moves us onto it and starts the mount (shared/sim.ts). */
+  mount(id: number) {
+    if (this.connected) this.send({ t: 'mount', id });
+  }
+
   tend(bed: number) {
     if (this.connected) this.send({ t: 'tend', bed });
   }
@@ -731,6 +745,14 @@ export class Net {
       // A building picked up: its box is gone with it.
       for (const box of Object.keys(this.boxes)) if (buildingId(box) >= 0 && !msg.list.some((p) => p.id === buildingId(box))) delete this.boxes[box];
       return this.onPlaced?.();
+    }
+    if (msg.t === 'vehicles') {
+      setVehicles(msg.list);
+      for (const box of Object.keys(this.boxes)) {
+        const id = Math.max(vehicleId(box), cargoId(box));
+        if (id >= 0 && !msg.list.some((v) => v.id === id)) delete this.boxes[box];
+      }
+      return this.onVehicles?.();
     }
     if (msg.t === 'garden') {
       this.garden = new Map(msg.beds.map((b) => [b.id, b]));

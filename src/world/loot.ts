@@ -1,5 +1,5 @@
 // Loot on the sand (shared/loot.ts, from the server via src/net.ts): broken gear at crash sites and near the
-// spawn, caches out in the desert, things dropped from a full bag. Gear has its own model (FIND_MODELS; the motorcycle is the sand bike on its side); parts use the disassembly
+// spawn, caches out in the desert, things dropped from a full bag. Gear has its own model (FIND_MODELS); parts use the disassembly
 // part models (src/teardown/junk.ts); broken gear, parts and relics have a faint glow along their edges and a fainter pool
 // on the sand, in the colour of their quality (RARITY; relics warm), so they catch the eye among the crash-site debris;
 // anything else is a battered crate. Each sits on the sand where it is (also at the bottom of a hole).
@@ -18,12 +18,7 @@ import { heightAt } from '../../shared/terrain.ts';
 import { shelterFloorY } from '../../shared/shelters.ts';
 import { loadPart } from '../teardown/junk';
 import { viewCull } from './viewCull';
-import { loadBikeModel } from '../bike';
 import { TEXT } from '../../shared/text.ts';
-
-/** The broken motorcycle lies over on its side by this much (rad), its low side this far (m) above the sand origin. */
-const BIKE_ROLL = 1.3;
-const BIKE_LIFT = 0.12;
 
 /** Drawn within this distance (m). */
 const VIEW = 350;
@@ -33,22 +28,20 @@ const BUILDS_PER_FRAME = 3;
  * thinner than RIM_MIN (m) up close, and how far away it shows. */
 const RIM_PER_M = 0.0024;
 const RIM_MIN = 0.007;
-const RIM_VIEW = 160;
+export const RIM_VIEW = 160;
 /** The warm pool on the sand under it: radius (m) and how far away it shows. */
 const POOL_R = 0.75;
 const POOL_VIEW = 45;
 
 const mat = (color: number, rough = 0.8, metal = 0.2) => new THREE.MeshStandardNodeMaterial({ color, roughness: rough, metalness: metal });
 const RUST = mat(0x7a4a2e, 0.9, 0.3);
-const DARK = mat(0x2e2a26, 0.7, 0.4);
 const STEEL = mat(0x8a8f86, 0.5, 0.7);
-const RED = mat(0xa84a32, 0.6, 0.3);
 const WOOD = mat(0x6b4a2e, 0.9, 0);
 const glowPulse = uniform(1);
 const rimPulse = uniform(1);
 /** The glow's colour for an item of quality `tier` (0..3, RARITY), or a warm one for things without (relics). */
 const WARM = 0xffa040;
-const glowColor = (tier: number | null) => (tier === null ? WARM : RARITY[TIERS[tier]].color);
+export const glowColor = (tier: number | null) => (tier === null ? WARM : RARITY[TIERS[tier]].color);
 /** How bright the rim is over its colour: a hint at the outline, only just touching the bloom (src/post.ts). */
 const RIM_GAIN = 1.1;
 const rimMats = new Map<number, THREE.Material>();
@@ -72,8 +65,8 @@ function rimMaterial(hex: number) {
   return n;
 }
 
-/** Give every mesh under `root` its rim (see rimMaterial). */
-function addRims(root: THREE.Object3D, rims: THREE.Mesh[], hex: number) {
+/** Give every mesh under `root` its rim (see rimMaterial); also the broken vehicles' (src/world/vehicles.ts). */
+export function addRims(root: THREE.Object3D, rims: THREE.Mesh[], hex: number) {
   const meshes: THREE.Mesh[] = [];
   const rim = rimMaterial(hex);
   root.traverse((o) => (o as THREE.Mesh).isMesh && !o.userData.rim && meshes.push(o as THREE.Mesh));
@@ -113,45 +106,6 @@ function box(g: THREE.Group, w: number, h: number, d: number, m: THREE.Material,
   g.add(o);
   return o;
 }
-function cyl(g: THREE.Group, r: number, h: number, m: THREE.Material, x = 0, y = 0, z = 0, rx = 0, rz = 0) {
-  const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 14), m);
-  o.position.set(x, y, z);
-  o.rotation.set(rx, 0, rz);
-  o.castShadow = true;
-  g.add(o);
-  return o;
-}
-
-/** Gear drawn here: the motorcycle (origin at the ground). */
-const GEAR_MODELS: Record<string, (g: THREE.Group) => void> = {
-  motorcycle: (g) => {
-    // The real sand bike (src/bike.ts) dropped on its side, half sunk in the sand, so it reads as a bike from afar;
-    // a box stand-in until the model has loaded.
-    const stand = new THREE.Group();
-    cyl(stand, 0.36, 0.2, DARK, -0.65, 0.12, 0, 0, 0);
-    cyl(stand, 0.36, 0.2, DARK, 0.65, 0.12, 0.05, 0, 0);
-    box(stand, 1.1, 0.16, 0.3, RED, 0, 0.24, 0.05, 0, 0.1);
-    box(stand, 0.5, 0.12, 0.25, DARK, -0.1, 0.36, 0.05);
-    g.add(stand);
-    loadBikeModel().then((gltf) => {
-      const m = gltf.scene.clone(true);
-      m.traverse((o) => {
-        o.castShadow = o.receiveShadow = true;
-        o.userData.shared = true; // its geometry is the ridden bikes' too: never disposed
-      });
-      m.rotation.set(0, Math.PI / 2, 0, 'YXZ');
-      m.rotation.z = BIKE_ROLL;
-      m.getObjectByName('Handlebar')?.rotation.set(0, 0.45, 0);
-      m.position.y = BIKE_LIFT;
-      g.remove(stand);
-      if (g.userData.rims) g.userData.rims.length = 0; // the stand-in's rims went with it
-      stand.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
-      g.add(m);
-      if (g.userData.tier !== undefined) applyTier(m, g.userData.tier);
-      if (g.userData.rims) addRims(m, g.userData.rims, g.userData.glow);
-    }, () => {});
-  },
-};
 
 /**
  * The real models of the gear (issue #8): the water bottle, telescope and guns are the held ones lying down; the rest
@@ -333,7 +287,6 @@ export class LootView {
       // Gear looks its parts' tier (src/tierLook.ts): broken, it's Scrap at best.
       obj.userData.tier = tierOf(item);
       if (FIND_MODELS[l.kind]) addFind(obj, l.kind);
-      else GEAR_MODELS[l.kind]?.(obj);
       if (rims) addRims(obj, rims, hex);
     } else if (l.kind === 'grinder') {
       addFind(obj, l.kind); // a tool, not gear: its model lies in FIND_MODELS

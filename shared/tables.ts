@@ -202,7 +202,8 @@ export const LEVEL_TIERS: Record<LootLevel, Record<Tier, number>> = {
 // Things lying in the world (server/loot.ts).
 
 /** Broken gear lying around at once, and the crash-site loot level it lies at (level-0 finds also lie at scrap piles;
- *  outposts hold none). */
+ *  outposts hold none). Vehicles (the motorcycle, shared/vehicles.ts) lie there as vehicles, repaired where they lie
+ *  (server/vehicles.ts): as many broken ones as this, a new one coming a while after one is stood up. */
 export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   canteen: { n: 7, level: 0 }, spyglass: { n: 5, level: 0 }, backpack: { n: 7, level: 0 },
   motorcycle: { n: 3, level: 1 }, storm_detector: { n: 2, level: 1 }, wristpad: { n: 2, level: 1 },
@@ -217,9 +218,10 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   receiver_worm: { n: 1, level: 2 },
 };
 
-/** One broken motorcycle always lies on the sand in front of the base door (server/loot.ts homeBikeSpot), so a bike is
- *  in sight from the first step out: it has these slots fitted (scrap tier) and the rest are parts the scrap fields'
- *  starter machines give (battery: beacon, bearing: winch). Taken, another lies there at once. */
+/** One broken motorcycle lies on the sand in front of the base door in a new world (server/vehicles.ts,
+ *  shared/lootRoll.ts homeBikeSpot), so a bike is in sight from the first step out: it has these slots fitted (scrap
+ *  tier) and the rest are parts the scrap fields' starter machines give (battery: beacon, bearing: winch). Repaired
+ *  where it lies, it is the world's (everyone's) first bike. */
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
 /** Parts that only an engine gives (nothing uses them yet): never found loose. */

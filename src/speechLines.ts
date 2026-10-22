@@ -7,6 +7,7 @@
 // holds is said, and they share its memory. Without `again` a remark is said once ever on this browser; with it,
 // at most once per `again` ms. `say` may list several wordings; one is picked at random.
 import type { Loot } from '../shared/loot.ts';
+import type { Vehicle } from '../shared/vehicles.ts';
 import type { Item, Slots } from '../shared/items.ts';
 import { isGear, repaired } from '../shared/gear.ts';
 import { partOf } from '../shared/parts.ts';
@@ -57,6 +58,8 @@ export type SpeechEvents = {
   tick: undefined;
   /** Looking at a find on the sand, close enough to pick it up. */
   see: Loot;
+  /** Looking at a vehicle in reach (shared/vehicles.ts), broken or working. */
+  vehicle: Vehicle;
   /** In reach of a machine or wreck at a crash site; `carry`: small enough to take home whole. */
   near: { kind: string; carry: boolean };
   /** An item newly in the bag: picked up, crafted, repaired, taken out of a machine or a chest. */
@@ -117,7 +120,9 @@ export const LINES: Line[] = [
 
   // The first time each kind of thing is in the bag.
   ...firstGot('canteen'),
-  ...firstGot('motorcycle'),
+  // The motorcycle isn't carried (shared/vehicles.ts): said on first seeing one up close, broken, then working.
+  { id: 'got.motorcycle', on: 'vehicle', when: (_, v) => v.kind === 'motorcycle' && !v.up, say: TEXT.speech.got.motorcycle[0] },
+  { id: 'got.motorcycle.fixed', on: 'vehicle', when: (_, v) => v.kind === 'motorcycle' && v.up, say: TEXT.speech.got.motorcycle[1] },
   ...firstGot('spyglass'),
   ...firstGot('backpack'),
   ...firstGot('storm_detector'),

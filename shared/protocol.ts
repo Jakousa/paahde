@@ -11,6 +11,7 @@ import type { JetCrash } from './jetcrash.ts';
 import type { Harvester } from './harvester.ts';
 import type { TossPath } from './throw.ts';
 import type { Placed } from './placed.ts';
+import type { Vehicle } from './vehicles.ts';
 import type { PowerState } from './power.ts';
 import type { Wire } from './wires.ts';
 import type { BedState } from './garden.ts';
@@ -42,6 +43,11 @@ export type ClientMsg =
   | { t: 'unplace'; id: number }
   // Put up building `kind` (shared/crafting.ts BUILDS) with the wrench, its materials from the bag. Answered like 'place'.
   | { t: 'build'; kind: string; x: number; z: number; rot: number }
+  // Vehicles (shared/vehicles.ts): stand up broken vehicle `id` once every part slot is filled (in reach), or start
+  // getting on working vehicle `id` (in reach, nobody on it): the server moves you onto it and starts the mount
+  // (shared/sim.ts). Answered with 'vehicles', or a 'notice'.
+  | { t: 'repairVehicle'; id: number }
+  | { t: 'mount'; id: number }
   // Craft a recipe at the workbench (shared/crafting.ts RECIPES id): reach checked, ingredients used up from
   // the bag, answered with 'items' (got: what was made) or a 'notice'.
   | { t: 'craft'; recipe: string }
@@ -65,7 +71,7 @@ export type ClientMsg =
   // `gas`: poison gas (shared/gas.ts) creeping in at once, by day too.
   | { t: 'storm'; front?: boolean; gas?: boolean }
   // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
-  // to box `to` slot ti (ti -1: anywhere in it). Boxes: 'bag', 'bike', 'chest<i>'. The server checks
+  // to box `to` slot ti (ti -1: anywhere in it). Boxes: 'bag', 'chest<i>', 'cargo<id>', ... The server checks
   // you can open both, applies moveItem() and answers with 'items' for each box that changed.
   // `r`: lay it down turned 90° (shared/items.ts Item.r); left out, as it lies.
   | { t: 'move'; from: string; fi: number; to: string; ti: number; n?: number; r?: boolean }
@@ -211,7 +217,7 @@ export type ServerMsg =
   // 'welcome', with reset: the full taken list, replacing whatever the client had. Sent before the
   // snapshot, like terrainEdit. A rejected pickup gets its piece back in a message to that player only.
   | { t: 'scrap'; taken: number[]; back: number[]; reset?: boolean }
-  // The contents of an item box (shared/storage.ts BoxId): your 'bag' and 'bike' after 'welcome' and when
+  // The contents of an item box (shared/storage.ts BoxId): your 'bag' and 'equip' after 'welcome' and when
   // they change, every 'chest<i>' on join and to everyone when it changes. `got`: a pickup (scrap, a
   // carried machine, a part out of a machine) added this kind (for the HUD toast).
   | { t: 'items'; box: string; slots: Slots; got?: string }
@@ -254,6 +260,8 @@ export type ServerMsg =
   // Every placed thing in the base (shared/placed.ts), on join (before 'welcome') and whenever it changes
   // (before the snapshot, like terrainEdit, so prediction collides with it from the same tick on).
   | { t: 'placed'; list: Placed[] }
+  // Every vehicle in the world (shared/vehicles.ts), on join (before 'welcome') and whenever it changes.
+  | { t: 'vehicles'; list: Vehicle[] }
   // Electricity at the base (shared/power.ts), every POWER_SEND_MS: each windmill's output and each station's charge.
   | ({ t: 'power' } & PowerState)
   // Every power line (shared/wires.ts), on join and whenever one goes up or comes down.
