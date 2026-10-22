@@ -1,11 +1,12 @@
 // Server-side management of craftable companion bots (shared/npcs.ts).
 // Handles bot spawning, recall, physics stepping, scrap collection, following the owner,
-// and inventory synchronization.
+// autonomous base deposits, sentry guard patrols, threat detection, and survival alerts.
 
 import { heightAt } from '../shared/terrain.ts';
 import { scrapPieces, SCRAP_CELL, scrapTaken, scrapKey } from '../shared/scrap.ts';
 import { scrapItem } from '../shared/items.ts';
 import { NPCS, type NpcSnap } from '../shared/npcs.ts';
+import { BASE } from '../shared/base.ts';
 import { keepOut, skirt, type Skirt } from './pack.ts';
 import { compileSituation } from './npcPerception.ts';
 import { queryBotLlm, type LlmDecisionResponse } from './npcLlm.ts';
@@ -15,6 +16,7 @@ import type { ScrapServer } from './scrap.ts';
 import type { LootServer } from './loot.ts';
 import type { StormServer } from './storm.ts';
 import type { GuardianServer } from './guardians.ts';
+import { CRAWLER } from '../shared/guardians.ts';
 
 type Db = ReturnType<typeof openDb>;
 
@@ -26,6 +28,8 @@ const GATHER_RANGE = 50;
 const PICKUP_DIST = 1.6;
 const THINK_INTERVAL_MS = 3500;
 
+export type NpcTask = 'idle' | 'follow' | 'gather' | 'deposit' | 'guard' | 'base' | 'flee';
+
 export type NpcState = {
   id: number;
   owner: string; // Player browserId
@@ -36,14 +40,31 @@ export type NpcState = {
   yaw: number;
   vx: number;
   vz: number;
-  task: 'idle' | 'follow' | 'gather' | 'deposit' | 'flee';
+  task: NpcTask;
   targetScrap: { ix: number; iz: number; i: number; x: number; z: number } | null;
   targetLoot: { id: number; x: number; z: number } | null;
+  guardPos: { x: number; z: number } | null;
+  guardAngle: number;
   skirt: Skirt;
   saveAt: number;
   lastThinkAt: number;
   thinking: boolean;
+  alert: boolean;
+  light: boolean;
+  emote: 'spin' | 'nod' | 'none';
+  emoteUntil: number;
+  lastThreatWarnAt: number;
+  lastStormWarnAt: number;
+  lastWaterWarnAt: number;
 };
+
+/** Convert 2D vector offset into a tactical compass heading (e.g. 'NW', 'SE'). */
+function compassDir(dx: number, dz: number): string {
+  const angle = Math.atan2(dx, -dz) * (180 / Math.PI);
+  const norm = (angle + 360 + 22.5) % 360;
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  return dirs[Math.floor(norm / 45)] || 'N';
+}
 
 export class NpcServer {
   private db: Db;
@@ -52,16 +73,26 @@ export class NpcServer {
   private loot: LootServer;
   private storms: StormServer;
   private guardians: GuardianServer;
+  private onRadio?: (text: string) => void;
   private npcs = new Map<number, NpcState>();
   private commands = new Map<number, string>();
 
-  constructor(db: Db, items: ItemServer, scrap: ScrapServer, loot: LootServer, storms: StormServer, guardians: GuardianServer) {
+  constructor(
+    db: Db,
+    items: ItemServer,
+    scrap: ScrapServer,
+    loot: LootServer,
+    storms: StormServer,
+    guardians: GuardianServer,
+    onRadio?: (text: string) => void
+  ) {
     this.db = db;
     this.items = items;
     this.scrap = scrap;
     this.loot = loot;
     this.storms = storms;
     this.guardians = guardians;
+    this.onRadio = onRadio;
 
     for (const r of db.loadNpcs()) {
       const npc: NpcState = {
@@ -74,17 +105,30 @@ export class NpcServer {
         yaw: r.yaw,
         vx: 0,
         vz: 0,
-        task: (r.task as NpcState['task']) || 'follow',
+        task: (r.task as NpcTask) || 'follow',
         targetScrap: null,
         targetLoot: null,
+        guardPos: null,
+        guardAngle: 0,
         skirt: { side: 0, until: 0 },
         saveAt: 0,
         lastThinkAt: 0,
         thinking: false,
+        alert: false,
+        light: false,
+        emote: 'none',
+        emoteUntil: 0,
+        lastThreatWarnAt: 0,
+        lastStormWarnAt: 0,
+        lastWaterWarnAt: 0,
       };
       this.npcs.set(r.id, npc);
       NPCS.set(r.id, this.snap(npc));
     }
+  }
+
+  private radio(text: string) {
+    if (this.onRadio) this.onRadio(text);
   }
 
   private snap(n: NpcState): NpcSnap {
@@ -99,6 +143,9 @@ export class NpcServer {
       yaw: n.yaw,
       task: n.task,
       cargoCount: cargo,
+      alert: n.alert,
+      light: n.light,
+      emote: n.emote,
     };
   }
 
@@ -118,10 +165,19 @@ export class NpcServer {
       task: 'follow',
       targetScrap: null,
       targetLoot: null,
+      guardPos: null,
+      guardAngle: 0,
       skirt: { side: 0, until: 0 },
       saveAt: Date.now() + 5000,
       lastThinkAt: 0,
       thinking: false,
+      alert: false,
+      light: false,
+      emote: 'none',
+      emoteUntil: 0,
+      lastThreatWarnAt: 0,
+      lastStormWarnAt: 0,
+      lastWaterWarnAt: 0,
     };
     this.npcs.set(id, npc);
     NPCS.set(id, this.snap(npc));
@@ -156,15 +212,35 @@ export class NpcServer {
   }
 
   /** Set current task for bot (e.g. from chat command). */
-  setTask(id: number, task: NpcState['task'], owner?: string) {
+  setTask(id: number, task: NpcTask, owner?: string, guardPos?: { x: number; z: number }) {
     const bot = this.npcs.get(id);
     if (bot) {
       if (owner && (!bot.owner || bot.owner === '')) bot.owner = owner;
       bot.task = task;
       bot.targetScrap = null;
       bot.targetLoot = null;
+      if (task === 'guard') {
+        bot.guardPos = guardPos ?? { x: bot.x, z: bot.z };
+        bot.guardAngle = 0;
+      }
       bot.saveAt = 0; // force immediate save
     }
+  }
+
+  /** Toggle worklight on/off for bot. */
+  toggleLight(id: number): boolean {
+    const bot = this.npcs.get(id);
+    if (!bot) return false;
+    bot.light = !bot.light;
+    return bot.light;
+  }
+
+  /** Trigger an expressive personality emote. */
+  triggerEmote(id: number, emote: 'spin' | 'nod') {
+    const bot = this.npcs.get(id);
+    if (!bot) return;
+    bot.emote = emote;
+    bot.emoteUntil = performance.now() + (emote === 'spin' ? 2200 : 1400);
   }
 
   /** Set player text command for bot and trigger evaluation. */
@@ -174,6 +250,25 @@ export class NpcServer {
     if (bot) {
       bot.lastThinkAt = 0; // rethink immediately
     }
+  }
+
+  /** Unload all collected cargo from bot into home base storage chest (chest0). Returns items moved. */
+  depositCargo(bot: NpcState): number {
+    const cargo = this.items.slots('', `bot${bot.id}`);
+    let count = 0;
+    for (let i = 0; i < cargo.length; i++) {
+      const it = cargo[i];
+      if (!it) continue;
+      const ok = this.items.giveToBox('', 'chest0', it.kind, it.n ?? 1);
+      if (ok) {
+        count += it.n ?? 1;
+        cargo[i] = null;
+      }
+    }
+    if (count > 0) {
+      this.items.save('', `bot${bot.id}`);
+    }
+    return count;
   }
 
   /** In the dev test lab, ensure at least one companion robot is placed and active near spawn. */
@@ -186,13 +281,74 @@ export class NpcServer {
   }
 
   /** Tick all companion bots in the world. */
-  tick(dt: number, now: number, players: { id: number; browserId: string; state: { x: number; y: number; z: number } }[]) {
+  tick(dt: number, now: number, players: { id: number; browserId: string; state: { x: number; y: number; z: number }; heat?: { heat: number; sips: number; maxSips: number; temp: number } }[]) {
     if (this.npcs.size === 0) return;
 
     for (const bot of this.npcs.values()) {
       const owner = players.find((p) => p.browserId === bot.owner) ?? (bot.owner === '' ? players[0] : undefined);
 
-      // Asynchronous SLM strategic decision loop (non-blocking)
+      // --------------------------------------------------------------------------------------------
+      // 1. Emote Timer Expiration
+      // --------------------------------------------------------------------------------------------
+      if (bot.emote !== 'none' && now > bot.emoteUntil) {
+        bot.emote = 'none';
+      }
+
+      // --------------------------------------------------------------------------------------------
+      // 2. Autonomous Threat Radar & Weather Warning
+      // --------------------------------------------------------------------------------------------
+      let threatDetected = false;
+
+      // Scan for hostile walkers and crawlers within 42m
+      for (const w of this.guardians.guardians) {
+        if (w.deadAt > 0) continue;
+        const d = Math.hypot(w.x - bot.x, w.z - bot.z);
+        if (d < 42) {
+          threatDetected = true;
+          if (now - bot.lastThreatWarnAt > 28000) {
+            bot.lastThreatWarnAt = now;
+            const heading = compassDir(w.x - bot.x, w.z - bot.z);
+            const kind = w.kind === CRAWLER ? 'Crawler' : 'Guardian';
+            this.radio(`Warning: Hostile ${kind} spotted ${Math.round(d)}m ${heading}!`);
+          }
+          break;
+        }
+      }
+
+      // Scan for sandstorm proximity
+      for (const s of this.storms.storms) {
+        const d = Math.hypot(s.x - bot.x, s.z - bot.z);
+        if (d < s.r + 90) {
+          threatDetected = true;
+          if (now - bot.lastStormWarnAt > 35000) {
+            bot.lastStormWarnAt = now;
+            this.radio('Weather alert: Sandstorm approaching. Recommend seeking shelter.');
+          }
+          break;
+        }
+      }
+
+      bot.alert = threatDetected;
+
+      // --------------------------------------------------------------------------------------------
+      // 3. Autonomous Operator Health & Heat Monitor
+      // --------------------------------------------------------------------------------------------
+      if (owner?.heat && typeof owner.heat.heat === 'number') {
+        if (owner.heat.heat > 70 && now - bot.lastWaterWarnAt > 30000) {
+          bot.lastWaterWarnAt = now;
+          const cargo = this.items.slots('', `bot${bot.id}`);
+          const hasWater = cargo.some((it) => it && (it.kind === 'canteen' || it.kind === 'water_bottle'));
+          if (hasWater) {
+            this.radio(`Alert: Operator heat index critical (${Math.round(owner.heat.temp)}°C). Canteen ready in cargo hold.`);
+          } else {
+            this.radio(`Warning: Operator heat index critical (${Math.round(owner.heat.temp)}°C). Seek shade or water.`);
+          }
+        }
+      }
+
+      // --------------------------------------------------------------------------------------------
+      // 4. Asynchronous SLM Strategic Decision Loop (Non-blocking)
+      // --------------------------------------------------------------------------------------------
       if (!bot.thinking && now - bot.lastThinkAt >= THINK_INTERVAL_MS) {
         bot.lastThinkAt = now;
         bot.thinking = true;
@@ -209,13 +365,16 @@ export class NpcServer {
             else if (res.action === 'FOLLOW') bot.task = 'follow';
             else if (res.action === 'WAIT') bot.task = 'idle';
             else if (res.action === 'FLEE') bot.task = 'follow';
+            else if (res.action === 'DEPOSIT') bot.task = 'deposit';
           }
         }).catch(() => {
           bot.thinking = false;
         });
       }
 
-      // Decision and steering
+      // --------------------------------------------------------------------------------------------
+      // 5. Task Execution & Navigation
+      // --------------------------------------------------------------------------------------------
       if (bot.task === 'follow' && owner) {
         const dx = owner.state.x - bot.x;
         const dz = owner.state.z - bot.z;
@@ -266,7 +425,9 @@ export class NpcServer {
                 return this.items.giveToBox('', `bot${bot.id}`, item, 1);
               });
               if (takenKind === null) {
-                bot.task = 'follow'; // cargo full
+                this.radio('Cargo hold full (6/6). Ready to deposit.');
+                this.triggerEmote(bot.id, 'nod');
+                bot.task = 'follow';
               }
             } else if (bot.targetLoot) {
               const lTarget = bot.targetLoot;
@@ -275,7 +436,9 @@ export class NpcServer {
                 return this.items.giveToBox('', `bot${bot.id}`, l.kind, l.n ?? 1);
               });
               if (taken === null || taken === 'full') {
-                bot.task = 'follow'; // cargo full
+                this.radio('Cargo hold full (6/6). Ready to deposit.');
+                this.triggerEmote(bot.id, 'nod');
+                bot.task = 'follow';
               }
             }
           } else {
@@ -287,6 +450,69 @@ export class NpcServer {
           }
         } else {
           // If no scrap/loot in range, wait patiently in gather mode
+          bot.vx = 0;
+          bot.vz = 0;
+        }
+      } else if (bot.task === 'deposit') {
+        // Path toward base bunker entrance
+        const dx = BASE.x - bot.x;
+        const dz = BASE.z - bot.z;
+        const d = Math.hypot(dx, dz);
+
+        if (d <= 4.2) {
+          bot.vx = 0;
+          bot.vz = 0;
+          const deposited = this.depositCargo(bot);
+          if (deposited > 0) {
+            this.radio(`Deposited ${deposited} items into base storage.`);
+            this.triggerEmote(bot.id, 'nod');
+          } else {
+            this.radio('Cargo already empty.');
+          }
+          bot.task = 'follow';
+        } else {
+          let h = Math.atan2(dx, dz);
+          h = skirt(bot.x, bot.z, h, BOT_RADIUS, bot.skirt, now);
+          bot.vx = Math.sin(h) * BOT_SPEED;
+          bot.vz = Math.cos(h) * BOT_SPEED;
+          bot.yaw = h;
+        }
+      } else if (bot.task === 'base') {
+        const dx = BASE.x - bot.x;
+        const dz = BASE.z - bot.z;
+        const d = Math.hypot(dx, dz);
+
+        if (d <= 3.6) {
+          bot.vx = 0;
+          bot.vz = 0;
+          bot.task = 'guard';
+          bot.guardPos = { x: bot.x, z: bot.z };
+          this.radio('Arrived at home base bunker. Holding guard.');
+          this.triggerEmote(bot.id, 'nod');
+        } else {
+          let h = Math.atan2(dx, dz);
+          h = skirt(bot.x, bot.z, h, BOT_RADIUS, bot.skirt, now);
+          bot.vx = Math.sin(h) * BOT_SPEED;
+          bot.vz = Math.cos(h) * BOT_SPEED;
+          bot.yaw = h;
+        }
+      } else if (bot.task === 'guard') {
+        if (!bot.guardPos) bot.guardPos = { x: bot.x, z: bot.z };
+        bot.guardAngle += dt * 0.45;
+        const tx = bot.guardPos.x + Math.sin(bot.guardAngle) * 4.2;
+        const tz = bot.guardPos.z + Math.cos(bot.guardAngle) * 4.2;
+
+        const dx = tx - bot.x;
+        const dz = tz - bot.z;
+        const d = Math.hypot(dx, dz);
+
+        if (d > 0.6) {
+          let h = Math.atan2(dx, dz);
+          h = skirt(bot.x, bot.z, h, BOT_RADIUS, bot.skirt, now);
+          bot.vx = Math.sin(h) * (BOT_SPEED * 0.55);
+          bot.vz = Math.cos(h) * (BOT_SPEED * 0.55);
+          bot.yaw = h;
+        } else {
           bot.vx = 0;
           bot.vz = 0;
         }

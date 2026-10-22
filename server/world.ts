@@ -110,7 +110,10 @@ const jetCrashes = new JetCrashes(db);
 const harvesters = new HarvesterServer(performance.now());
 const bosses = new BossServer();
 const guardians = new GuardianServer();
-const npcs = new NpcServer(db, items, scrap, loot, storms, guardians);
+const npcs = new NpcServer(db, items, scrap, loot, storms, guardians, (text) => {
+  const botMsg = JSON.stringify({ t: 'chat', id: -1, color: 0xffaa22, name: 'AUTON-1', text, at: Date.now() } satisfies ServerMsg);
+  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(botMsg);
+});
 if (LAB) npcs.initLab(LAB_SPAWN);
 const throws = new ThrowServer(guardians);
 /** Heat per second from drone searchlights by player id, from the last bot tick. */
@@ -736,33 +739,62 @@ function onChat(p: Player, text: unknown) {
       let cmd = lower.replace(/^[@!/]bot[:\s]*/, '').replace(/^bot[:\s]*/, '').trim();
       if (!cmd) cmd = 'status';
 
-      let task: 'gather' | 'idle' | 'follow' = 'follow';
+      let task: 'gather' | 'idle' | 'follow' | 'guard' | 'base' | 'deposit' | null = null;
       let reply = '';
 
       if (cmd.includes('gather') || cmd.includes('scrap') || cmd.includes('loot') || cmd.includes('mine') || cmd.includes('scavenge')) {
         task = 'gather';
-        reply = 'Searching for scrap.';
+        reply = 'Searching for scrap and salvage.';
       } else if (cmd.includes('stay') || cmd.includes('wait') || cmd.includes('stop') || cmd.includes('idle') || cmd.includes('hold') || cmd.includes('halt')) {
         task = 'idle';
         reply = 'Holding position.';
       } else if (cmd.includes('follow') || cmd.includes('come') || cmd.includes('here') || cmd.includes('heel')) {
         task = 'follow';
         reply = `Following ${p.name || 'operator'}.`;
-      } else if (cmd.includes('status') || cmd.includes('info') || cmd.includes('help') || cmd.includes('cargo')) {
+      } else if (cmd.includes('guard') || cmd.includes('patrol') || cmd.includes('defend') || cmd.includes('sentry') || cmd.includes('watch')) {
+        task = 'guard';
+        reply = 'Establishing perimeter sentry guard.';
+      } else if (cmd.includes('base') || cmd.includes('return') || cmd.includes('home')) {
+        task = 'base';
+        reply = 'Returning to home base bunker.';
+      } else if (cmd.includes('deposit') || cmd.includes('unload') || cmd.includes('store') || cmd.includes('chest')) {
+        task = 'deposit';
+        reply = 'Heading to base storage to deposit cargo.';
+      } else if (cmd.includes('light') || cmd.includes('lamp') || cmd.includes('torch')) {
+        let anyLight = false;
+        for (const bot of npcs.snapshot()) {
+          if (bot.owner === p.browserId || bot.owner === '' || Math.hypot(bot.x - p.state.x, bot.z - p.state.z) < 60) {
+            anyLight = npcs.toggleLight(bot.id);
+          }
+        }
+        reply = anyLight ? 'Worklight engaged.' : 'Worklight disengaged.';
+      } else if (cmd.includes('dance') || cmd.includes('celebrate') || cmd.includes('spin') || cmd.includes('cheer')) {
+        for (const bot of npcs.snapshot()) {
+          if (bot.owner === p.browserId || bot.owner === '' || Math.hypot(bot.x - p.state.x, bot.z - p.state.z) < 60) {
+            npcs.triggerEmote(bot.id, 'spin');
+          }
+        }
+        reply = '*cheerful whir-spin-beep!*';
+      } else if (cmd.includes('status') || cmd.includes('info') || cmd.includes('cargo')) {
         const targetBot = [...npcs.snapshot()].find((b) => b.owner === p.browserId || b.owner === '' || Math.hypot(b.x - p.state.x, b.z - p.state.z) < 60);
         if (targetBot) {
-          reply = `Status: ${targetBot.task.toUpperCase()} | Cargo: ${targetBot.cargoCount}/6. Orders: follow, gather, stay.`;
+          reply = `Status: ${targetBot.task.toUpperCase()} | Cargo: ${targetBot.cargoCount}/6 | Light: ${targetBot.light ? 'ON' : 'OFF'} | Alert: ${targetBot.alert ? 'WARN' : 'OK'}`;
         } else {
           reply = 'No companion bot in range.';
         }
+      } else if (cmd.includes('help')) {
+        reply = 'Commands: follow, gather, stay, guard, base, unload, light, dance, status.';
       } else {
+        task = 'follow';
         reply = `Order acknowledged: "${clean}". Following.`;
       }
 
-      for (const bot of npcs.snapshot()) {
-        if (bot.owner === p.browserId || bot.owner === '' || Math.hypot(bot.x - p.state.x, bot.z - p.state.z) < 60) {
-          npcs.setTask(bot.id, task, p.browserId);
-          npcs.setCommand(bot.id, clean);
+      if (task) {
+        for (const bot of npcs.snapshot()) {
+          if (bot.owner === p.browserId || bot.owner === '' || Math.hypot(bot.x - p.state.x, bot.z - p.state.z) < 60) {
+            npcs.setTask(bot.id, task, p.browserId, { x: p.state.x, z: p.state.z });
+            npcs.setCommand(bot.id, clean);
+          }
         }
       }
 

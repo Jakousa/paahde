@@ -2,7 +2,7 @@
 // Renders an articulated bipedal scavenger robot with a pot-bellied capsule torso,
 // a large monocular cyclops sensor viewport, chunky canister forearms with circular C-clamp pincers,
 // and heavy bipedal walker legs with ventilated boot drums.
-// The aesthetic and materials automatically adapt to the crafted material tier (0 Scrap .. 3 Space).
+// Supports dynamic worklight beams, tactical threat alert eye states, and personality emotes.
 import * as THREE from 'three/webgpu';
 import { NPCS, type NpcSnap } from '../../shared/npcs.ts';
 import { heightAt } from '../../shared/terrain.ts';
@@ -43,6 +43,23 @@ const LENS_MATS = [
   new THREE.MeshStandardNodeMaterial({ color: 0x2bf0ff, roughness: 0.10, metalness: 0.1, emissive: 0x10a0cc }), // Space: cyan laser
 ];
 
+// Pulsing alert pupil material when threat is detected
+const ALERT_LENS_MAT = new THREE.MeshStandardNodeMaterial({
+  color: 0xff1020,
+  roughness: 0.15,
+  metalness: 0.2,
+  emissive: 0xff0020,
+});
+
+// Translucent glowing worklight beam cone
+const WORKLIGHT_MAT = new THREE.MeshBasicNodeMaterial({
+  color: 0xffecb8,
+  transparent: true,
+  opacity: 0.22,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+
 // ------------------------------------------------------------------------------------------------
 // Static Shared Geometries (Zero allocation during render)
 // ------------------------------------------------------------------------------------------------
@@ -60,6 +77,14 @@ const EYE_BEZEL_GEO = new THREE.CylinderGeometry(0.13, 0.165, 0.10, 18).rotateX(
 const EYE_RIM_GEO = new THREE.CylinderGeometry(0.115, 0.125, 0.11, 18).rotateX(Math.PI / 2);
 const EYE_LENS_GEO = new THREE.SphereGeometry(0.112, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5).rotateX(Math.PI / 2);
 const EYE_PUPIL_GEO = new THREE.SphereGeometry(0.045, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5).rotateX(Math.PI / 2);
+
+// Worklight cone geometry
+const WORKLIGHT_GEO = (() => {
+  const g = new THREE.CylinderGeometry(0.06, 0.95, 4.2, 16, 1, true);
+  g.translate(0, 2.1, 0);
+  g.rotateX(Math.PI / 2);
+  return g;
+})();
 
 // 3. Arms & Hands
 const SHOULDER_GEO = new THREE.CylinderGeometry(0.038, 0.038, 0.06, 10).rotateZ(Math.PI / 2);
@@ -98,6 +123,9 @@ type ShownBot = {
   yawGroup: THREE.Group;
   torsoGroup: THREE.Group;
   eyeGroup: THREE.Group;
+  pupilMesh: THREE.Mesh;
+  workLightBeam: THREE.Mesh;
+  workLightSpot: THREE.PointLight;
   leftArmGroup: THREE.Group;
   leftForearmGroup: THREE.Group;
   leftClawGroup: THREE.Group;
@@ -114,6 +142,7 @@ type ShownBot = {
   eyeYaw: number;
   eyePitch: number;
   walkPhase: number;
+  spinAngle: number;
   tier: number;
   chassisMeshes: THREE.Mesh[];
   accentMeshes: THREE.Mesh[];
@@ -180,9 +209,43 @@ export class NpcView {
       s.prevZ = bot.z;
 
       // --------------------------------------------------------------------------------------------
+      // Worklight State
+      // --------------------------------------------------------------------------------------------
+      const lightOn = !!bot.light;
+      s.workLightBeam.visible = lightOn;
+      s.workLightSpot.intensity = lightOn ? 2.4 : 0;
+
+      // --------------------------------------------------------------------------------------------
+      // Alert Warning State (Pulsing Red Cyclops Sensor)
+      // --------------------------------------------------------------------------------------------
+      if (bot.alert) {
+        s.pupilMesh.material = ALERT_LENS_MAT;
+        ALERT_LENS_MAT.emissive.setHex(Math.sin(performance.now() * 0.016) > 0 ? 0xff0020 : 0x880010);
+      } else {
+        s.pupilMesh.material = LENS_MATS[s.tier];
+      }
+
+      // --------------------------------------------------------------------------------------------
+      // Personality Emotes (Celebratory Victory Spin / Nod)
+      // --------------------------------------------------------------------------------------------
+      if (bot.emote === 'spin') {
+        s.spinAngle += dt * 14;
+        s.torsoGroup.rotation.y = s.spinAngle;
+        s.torsoGroup.position.y = 0.44 + Math.abs(Math.sin(s.spinAngle * 2)) * 0.05;
+        s.leftArmGroup.rotation.x = Math.sin(s.spinAngle * 3) * 0.45;
+        s.rightArmGroup.rotation.x = -Math.sin(s.spinAngle * 3) * 0.45;
+      } else if (bot.emote === 'nod') {
+        s.torsoGroup.rotation.y *= 0.85;
+        const nod = Math.sin(performance.now() * 0.012) * 0.22;
+        s.eyeGroup.rotation.x = -s.eyePitch + nod;
+      } else {
+        s.torsoGroup.rotation.y *= 0.85;
+      }
+
+      // --------------------------------------------------------------------------------------------
       // Bipedal Locomotion & Gait Animation
       // --------------------------------------------------------------------------------------------
-      if (speed > 0.15) {
+      if (speed > 0.15 && bot.emote !== 'spin') {
         s.walkPhase += dt * (speed * 6.5);
 
         // Alternating bipedal strides
@@ -211,7 +274,7 @@ export class NpcView {
         s.torsoGroup.position.y = 0.44 + Math.abs(Math.sin(s.walkPhase * 2)) * 0.028;
         s.torsoGroup.rotation.z = Math.sin(s.walkPhase) * 0.035;
         s.torsoGroup.rotation.x = 0.05;
-      } else {
+      } else if (bot.emote !== 'spin') {
         // Idle standing rest stance & gentle mechanical breathing
         s.leftLegGroup.rotation.x *= 0.82;
         s.leftKneeGroup.rotation.x *= 0.82;
@@ -237,7 +300,7 @@ export class NpcView {
       }
 
       // --------------------------------------------------------------------------------------------
-      // Cyclops Eye Tracking (Watches player inquisitively when nearby)
+      // Cyclops Eye Tracking
       // --------------------------------------------------------------------------------------------
       const toPlayerX = me.x - bot.x;
       const toPlayerY = (me.y + EYE_HEIGHT) - (groundY + 0.72);
@@ -247,7 +310,11 @@ export class NpcView {
       let targetEyeYaw = 0;
       let targetEyePitch = 0;
 
-      if (distToPlayer < 7.5) {
+      if (bot.alert) {
+        // Tactical alert sweep when danger detected
+        targetEyeYaw = Math.sin(performance.now() * 0.004) * 0.6;
+        targetEyePitch = 0.1;
+      } else if (distToPlayer < 7.5) {
         const worldAngle = Math.atan2(toPlayerX, toPlayerZ);
         let relAngle = worldAngle - s.currentYaw;
         while (relAngle > Math.PI) relAngle -= Math.PI * 2;
@@ -257,14 +324,16 @@ export class NpcView {
         targetEyePitch = Math.max(-0.45, Math.min(0.55, Math.atan2(toPlayerY, distToPlayer)));
       } else if (bot.task === 'gather') {
         // Scanning downwards for scrap
-        targetEyePitch = -0.22;
+        targetEyePitch = -0.25;
       }
 
       s.eyeYaw += (targetEyeYaw - s.eyeYaw) * Math.min(1, dt * 7);
       s.eyePitch += (targetEyePitch - s.eyePitch) * Math.min(1, dt * 7);
 
       s.eyeGroup.rotation.y = s.eyeYaw;
-      s.eyeGroup.rotation.x = -s.eyePitch;
+      if (bot.emote !== 'nod') {
+        s.eyeGroup.rotation.x = -s.eyePitch;
+      }
     }
   }
 
@@ -352,6 +421,15 @@ export class NpcView {
     // Inner glowing sensor pupil
     const pupil = mesh(EYE_PUPIL_GEO, lMat, lensMeshes, eyeGroup, false);
     pupil.position.set(0, 0, 0.08);
+
+    // Forward worklight spotlight & conical beam
+    const workLightBeam = mesh(WORKLIGHT_GEO, WORKLIGHT_MAT, [], eyeGroup, false);
+    workLightBeam.position.set(0, 0, 0.08);
+    workLightBeam.visible = false;
+
+    const workLightSpot = new THREE.PointLight(0xfff0c0, 0, 14, 1.4);
+    workLightSpot.position.set(0, 0, 0.5);
+    eyeGroup.add(workLightSpot);
 
     // --------------------------------------------------------------------------------------------
     // 3. Articulated Arms & Chunky Canister Forearms
@@ -522,6 +600,9 @@ export class NpcView {
       yawGroup,
       torsoGroup,
       eyeGroup,
+      pupilMesh: pupil,
+      workLightBeam,
+      workLightSpot,
       leftArmGroup,
       leftForearmGroup,
       leftClawGroup,
@@ -538,6 +619,7 @@ export class NpcView {
       eyeYaw: 0,
       eyePitch: 0,
       walkPhase: 0,
+      spinAngle: 0,
       tier: safeTier,
       chassisMeshes,
       accentMeshes,

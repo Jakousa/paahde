@@ -112,7 +112,7 @@ export class ItemServer {
     return slots;
   }
 
-  private save(browserId: string, ...boxes: string[]) {
+  save(browserId: string, ...boxes: string[]) {
     for (const box of boxes) if (grows(box)) growChest(this.slots(browserId, box));
     this.db.saveBoxes([...new Set(boxes)].map((box) => ({ owner: this.ownerOf(browserId, box), box, slots: this.slots(browserId, box) })));
   }
@@ -203,10 +203,11 @@ export class ItemServer {
     return true;
   }
 
-  /** Add `n` of `kind` to arbitrary box `box` (e.g. `bot<id>`). */
+  /** Add `n` of `kind` to arbitrary box `box` (e.g. `bot<id>`, `chest0`). */
   giveToBox(owner: string, box: string, kind: string, n = 1): boolean {
     const slots = this.slots(owner, box);
-    const shape = gridShape(BOT_COLS, BOT_ROWS);
+    if (grows(box)) growChest(slots);
+    const shape = boxShape(box, this.view(owner, box));
     if (!addItem(slots, kind, n, this.newId, shape)) return false;
     this.save(owner, box);
     return true;

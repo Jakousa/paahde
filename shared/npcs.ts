@@ -12,6 +12,9 @@ export type NpcSnap = {
   yaw: number;
   task: string;
   cargoCount: number;
+  alert?: boolean;
+  light?: boolean;
+  emote?: 'spin' | 'nod' | 'none';
 };
 
 /** Active companion bots in the world by id. */
