@@ -12,9 +12,9 @@ import { SPEED_OF_SOUND } from './acoustics';
 import { CHARGE, CORES, SPEED } from '../shared/harvester.ts';
 
 /** Heard within HEAR m, full level within REF (1/d past it); the treads and drum are heard within NEAR. */
-const HEAR = 2500;
+const HEAR = 1500;
 const REF = 40;
-const NEAR = 260;
+const NEAR = 160;
 const GAIN = 0.26;
 /** Engine firing rate (Hz) and its two notes; tread clanks a second (a shoe is about 0.8 m). */
 const FIRE_HZ = 8.5;
@@ -57,7 +57,7 @@ export class HarvesterSound {
     const v = this.v;
     if (!v) return;
     const now = ctx.currentTime;
-    if (!h || d > HEAR + 200) {
+    if (!h || d > HEAR + 120) {
       v.gain.gain.setTargetAtTime(0, now, 0.8);
       if (v.gain.gain.value < 1e-4) this.stop();
       return;
@@ -71,7 +71,7 @@ export class HarvesterSound {
     for (const r of v.rates) r.o.frequency.setTargetAtTime(r.f * (1 + r.k * (rate - 1)), now, 0.25);
     // A charge, or cores shot out: the engine runs harder and rougher, its low-pass opening up.
     v.engine.frequency.setTargetAtTime(200 + 420 * c + (CORES.length - h.cores) * 90, now, 0.4);
-    v.air.frequency.setTargetAtTime(Math.max(140, 7000 * Math.exp(-d / 450)), now, 0.2);
+    v.air.frequency.setTargetAtTime(Math.max(140, 7000 * Math.exp(-d / 270)), now, 0.2);
     v.delay.delayTime.setTargetAtTime(d / SPEED_OF_SOUND, now, 0.3);
     v.panner.positionX.setTargetAtTime(h.x, now, 0.05);
     v.panner.positionY.setTargetAtTime(h.y, now, 0.05);
