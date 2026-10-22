@@ -30,6 +30,7 @@ import { openDb } from './db.ts';
 import { trace } from './telemetry.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
+import { PowerServer } from './power.ts';
 import { ItemServer } from './items.ts';
 import { LootServer } from './loot.ts';
 import { CorpseServer } from './corpses.ts';
@@ -316,6 +317,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, crash.spentMessage());
   send(ws, crash.rollsMessage());
   send(ws, placedThings.joinMessage());
+  send(ws, power.msg());
   send(ws, garden.joinMessage());
   send(ws, storms.msg());
   send(ws, jets.msg());
@@ -1043,6 +1045,19 @@ setInterval(() => {
 const realEpoch = performance.timeOrigin;
 let epoch = realEpoch + (db.getSetting('clockShift') ?? 0);
 
+// Electricity (server/power.ts): the windmills charge the battery stations every second; everyone hears how it stands.
+const power = new PowerServer(db, performance.now() + epoch);
+const POWER_SEND_MS = 2000;
+let powerSent = 0;
+setInterval(() => {
+  const now = performance.now();
+  power.tick(now + epoch, (x, z) => stormAt(storms.storms, x, z, now));
+  if (now - powerSent < POWER_SEND_MS) return;
+  powerSent = now;
+  const json = JSON.stringify(power.msg());
+  for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
+}, 1000);
+
 function onSetEpoch(ws: WebSocket, wanted: unknown) {
   const ok = wanted === null || (typeof wanted === 'number' && Number.isFinite(wanted));
   if (!ok) return send(ws, { t: 'epoch', epoch });
@@ -1151,6 +1166,7 @@ setInterval(() => {
   loot.respawn();
   corpses.expire();
   garden.grow();
+  power.save();
 }, SAVE_INTERVAL_MS);
 
 // Heartbeat: keeps NATs/proxies from dropping idle sockets and terminates dead ones.
@@ -1173,6 +1189,7 @@ function shutdown() {
     p.ws.close(1012, 'server restarting');
   }
   terrain.save(true);
+  power.save();
   db.close();
   http.close();
   process.exit(0);

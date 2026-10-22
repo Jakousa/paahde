@@ -16,6 +16,7 @@ import { addCrosshair, crosshairRing } from './crosshair';
 import { ShieldFx } from './shieldFx';
 import { footprints, streaks, tyreprints } from './footprints';
 import { InventoryHud, itemLabel } from './inventory';
+import { stormAt } from '../shared/storm.ts';
 import { addItem, debrisItem, SCRAP } from '../shared/items.ts';
 import { kbd } from './bindings';
 import { readInput, takePickup } from './input';
@@ -343,6 +344,10 @@ const thrower = new Thrower(scene, orbit, net, scrap);
 thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one drawn in the hand
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => placedView.sync(placed, net.garden);
+net.onPower = () => {
+  placedView.setPower(net.power);
+  hud.powerChanged();
+};
 net.onNotice = (text) => {
   if (text === TEXT.notice.bagFull) { // the server refused a find (server/world.ts)
     uiSound.full();
@@ -630,7 +635,7 @@ baseSand.update(frameDt, storm.atBase);
   crashSound.update(orbit.camera.position, orbit.viewYaw);
   listen(orbit.camera.position);
   tickEchoBus();
-  placedView.update(frameDt, storm.level);
+  placedView.update(frameDt, net.worldTime(), (x, z) => stormAt(net.storms, x, z, net.serverTime()));
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;

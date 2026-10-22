@@ -76,6 +76,11 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   and quality (`shared/gear.ts` `built`), crafted with their parts fitted, placed via `shared/placed.ts` (`sand` kinds:
   `gap` between them, `STRUCTURE_GAP` from the hut/skylight/mast; `collideOutdoor`/`overPlaced` in shared/base.ts); while standing, the item is in box `bld<id>`, whose parts are swapped
   in place (F, `src/inventory.ts` `part:<box>`); drawn by `src/world/placed.ts`, models `tools/blender/placeables.py`
+- `shared/power.ts` — electricity, somewhat realistic in game time (`GAME_SPEED`: a game day is 30 real min): the shared
+  wind (`windSpeed`: day cycle, weather, gusts, storms), windmill output (½ρAv³·Cp·η by bearings/coils, furling) and
+  rotor speed, battery stations (per-battery kWh by tier, a Scrap battery = a car battery, 0.6 kWh; coils = the charger)
+  and charging; `server/power.ts` runs the base's one grid each second, keeps each battery's charge (`power` table),
+  catches up the time the world slept; the panel shows W / kWh (`src/inventory.ts`), cells' lamps the charge
 - `shared/shelters.ts` — small empty bunkers (small/deep/long) scattered mostly in rocky country: placement, pad,
   collision, pumps (`atWater`), stash spots, `indoors()`/`sandHidden()` (base or shelter); drawn by `src/world/shelters.ts`
 - `shared/crashsites.ts` — deterministic crash-site layout + hitboxes; sites have a level by distance from the base

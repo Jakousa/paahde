@@ -258,6 +258,11 @@ export function openDb(path: string) {
   const allPlaced = db.prepare('SELECT id, kind, x, y, z, rot FROM placed ORDER BY id');
   const insertPlaced = db.prepare('INSERT INTO placed (kind, x, y, z, rot, owner, placed_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const deletePlaced = db.prepare('DELETE FROM placed WHERE id = ?');
+  // Electricity (shared/power.ts, server/power.ts): each battery station's charge, per part slot (kWh, JSON).
+  db.exec('CREATE TABLE IF NOT EXISTS power (id INTEGER PRIMARY KEY, charge TEXT NOT NULL)');
+  const allPower = db.prepare('SELECT id, charge FROM power');
+  const clearPower = db.prepare('DELETE FROM power');
+  const putPower = db.prepare('INSERT INTO power (id, charge) VALUES (?, ?)');
   const allBeds = db.prepare('SELECT id, stage, growth FROM beds');
   const upsertBed = db.prepare('INSERT OR REPLACE INTO beds (id, stage, growth) VALUES (?, ?, ?)');
   const deleteBed = db.prepare('DELETE FROM beds WHERE id = ?');
@@ -395,6 +400,12 @@ export function openDb(path: string) {
       clearBox.run('', `corpse${id}`);
     }),
     loadBeds: () => allBeds.all() as { id: number; stage: number; growth: number }[],
+    /** Battery stations' charge by placed id (kWh per part slot). */
+    loadPower: () => new Map((allPower.all() as { id: number; charge: string }[]).map((r) => [r.id, JSON.parse(r.charge) as number[]])),
+    savePower: (rows: Map<number, number[]>) => tx(() => {
+      clearPower.run();
+      for (const [id, charge] of rows) putPower.run(id, JSON.stringify(charge));
+    }),
     saveBed: (id: number, stage: number, growth: number) => upsertBed.run(id, stage, growth),
     deleteBed: (id: number) => deleteBed.run(id),
     loadTaken: () => allTaken.all() as { ix: number; iz: number; i: number; taken_at: number }[],

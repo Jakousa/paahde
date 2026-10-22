@@ -11,6 +11,7 @@ import type { JetCrash } from './jetcrash.ts';
 import type { Harvester } from './harvester.ts';
 import type { TossPath } from './throw.ts';
 import type { Placed } from './placed.ts';
+import type { PowerState } from './power.ts';
 import type { BedState } from './garden.ts';
 import type { BossKind, BossSnap } from './bosses.ts';
 
@@ -246,6 +247,8 @@ export type ServerMsg =
   // Every placed thing in the base (shared/placed.ts), on join (before 'welcome') and whenever it changes
   // (before the snapshot, like terrainEdit, so prediction collides with it from the same tick on).
   | { t: 'placed'; list: Placed[] }
+  // Electricity at the base (shared/power.ts), every POWER_SEND_MS: each windmill's output and each station's charge.
+  | ({ t: 'power' } & PowerState)
   // Every plant bed's stage and growth (shared/garden.ts), on join and whenever one changes.
   | { t: 'garden'; beds: BedState[] }
   // A short message for this player's HUD toast (a refused place, pickup or craft).

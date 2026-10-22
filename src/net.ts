@@ -51,6 +51,7 @@ import type { Harvester } from '../shared/harvester.ts';
 import type { BossKind } from '../shared/bosses.ts';
 import { shiftToTimeOfDay } from '../shared/sun.ts';
 import { setPlaced } from '../shared/placed.ts';
+import type { PowerState } from '../shared/power.ts';
 import type { BedState } from '../shared/garden.ts';
 
 const INTERP_MS = 100;
@@ -176,6 +177,9 @@ export class Net {
   private dyingTimer?: ReturnType<typeof setTimeout>;
   /** Plant bed stages and growth by placed id (shared/garden.ts), from the server. Beds without one are empty. */
   garden = new Map<number, BedState>();
+  /** Electricity at the base (shared/power.ts), from the server every couple of seconds. */
+  power: PowerState = { gen: {}, store: {} };
+  onPower?: () => void;
   /** Placed things changed (shared/placed.ts keeps the list), or a bed's stage did. */
   onPlaced?: () => void;
   /** A short message from the server for the HUD (a refused place, pickup or craft). */
@@ -702,6 +706,10 @@ export class Net {
       this.down = null;
       this.snapNext = true; // the next snapshot has us back at the base: jump there, don't glide
       return;
+    }
+    if (msg.t === 'power') {
+      this.power = { gen: msg.gen, store: msg.store };
+      return this.onPower?.();
     }
     if (msg.t === 'placed') {
       setPlaced(msg.list);

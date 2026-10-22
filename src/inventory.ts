@@ -19,6 +19,7 @@ import { findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Ite
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
+import { capacity } from '../shared/power.ts';
 import type { ScrapPiece } from '../shared/scrap.ts';
 import { Hints } from './hints';
 import type { PlayerState } from '../shared/sim.ts';
@@ -210,6 +211,10 @@ for (const k of ['drone_transponder', 'brood_gland', 'servo_heart', 'hive_core',
 // over the item's cells (--pw/--ph from iconScale), or keeps their shape inside a single slot.
 for (const k of [...Object.keys(GEAR), 'grinder']) ICONS[k] = `<img class="fit" src="./icons/items/${k}.png" alt="" draggable="false">`;
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+/** "180 W", "1.2 kW". */
+const watts = (w: number) => (w < 1000 ? `${Math.round(w)} W` : `${(w / 1000).toFixed(1)} kW`);
+/** Kilowatt-hours: two decimals under one, one above. */
+const kwh = (x: number) => x.toFixed(x < 1 ? 2 : 1);
 /** Parts (shared/parts.ts) use their rendered icons, public/icons/items/<part>_<tier>.png (tools/blender/items.py); a lettered tile in the rarity colour if one fails. */
 function partIcon(kind: string) {
   const letter = (ITEMS[kind]?.label.split(' ').pop() ?? '?')[0].toUpperCase();
@@ -493,7 +498,7 @@ export class InventoryHud {
     const missing = spec.slots.filter((_, i) => !parts[i]).map(slotLabel);
     html += `<div><div class="name">${itemLabel(it.kind)}</div><div class="state ${ok ? 'ok' : 'no'}">`
       + (ok ? TEXT.inventory.works(qualityName(quality(it))) : TEXT.inventory.needs(missing))
-      + `</div></div></div><div class="parts">`;
+      + `</div>${this.powerHtml(it, at)}</div></div><div class="parts">`;
     const held = this.drag ? this.net.boxes[this.drag.box]?.[this.drag.i] : null;
     spec.slots.forEach((slot, i) => {
       const kind = parts[i];
@@ -503,6 +508,24 @@ export class InventoryHud {
         + (kind ? itemIcon(kind) : `<span class="ph">+</span>`) + `</div><div class="pl">${slotLabel(slot)}</div></div>`;
     });
     return html + '</div>';
+  }
+
+  /** A building's electricity (shared/power.ts), under its state: what a windmill makes now; what a station holds of
+   *  what it can, and what it is taking in. */
+  private powerHtml(it: Item, at: string): string {
+    const id = buildingId(at);
+    if (id < 0) return '';
+    const p = this.net.power;
+    if (it.kind === 'windmill') return `<div class="state">${watts(p.gen[id] ?? 0)}</div>`;
+    if (it.kind !== 'battery_station') return '';
+    const s = p.store[id];
+    const held = (s?.charge ?? []).reduce((a, b) => a + b, 0);
+    return `<div class="state">${kwh(held)} / ${kwh(capacity(it.parts))} kWh${s?.w ? ` · +${watts(s.w)}` : ''}</div>`;
+  }
+
+  /** The power came in: a building's panel shows it. */
+  powerChanged() {
+    if (ui.inventoryOpen && !this.drag && this.storages.some((b) => buildingId(b) >= 0)) this.render();
   }
 
   /** The workbench's recipes (shared/crafting.ts): what each needs, what you have, and a Craft button. */

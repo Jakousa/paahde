@@ -183,8 +183,6 @@ export const backpackRows = (q: number) => Math.round(by(q, 3, BAG_ROWS));
 export const stormWarnS = (q: number) => by(q, 6, 20);
 /** Wrist computer: other players show on the locator this far away (m). The base always does. */
 export const locatorRange = (q: number) => by(q, 250, 2000);
-/** Windmill: how fast its rotor turns in the steady wind (rad/s); better bearings run freer. */
-export const windmillSpin = (q: number) => by(q, 0.8, 2.4);
 
 /** A gun's recharge (ms) at quality q: its base at Scrap parts (a gun is a gun), down a fifth of it per tier to 40% at
  *  Space-grade (two and a half times the fire rate). */

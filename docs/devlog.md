@@ -1867,3 +1867,33 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   trophies' ground as before), checked along the footprint's outline. Refusals say what's in the way ("Too close to
   the windmill", "Too close to the base"); with a building in hand down in the bunker the prompt says "Outside only".
   The battery station is a sand kind now (lit by the sky); ones already standing in a bunker stay where they are.
+
+## Electricity: windmills make it, battery stations store it
+
+- **One grid at the base** (`shared/power.ts`, `server/power.ts`): every second the windmills' output goes into the
+  battery stations, each taking what its charger and its not-yet-full batteries will (water-filling: an equal share,
+  what one can't use goes to the others); what nobody can take is lost. No consumers yet.
+- **Game time:** a game day is 30 real minutes (`DAY_SECONDS`), so energy adds up `GAME_SPEED` = 48× the real clock:
+  watts and kWh mean what they would over a game day.
+- **Wind** (`windSpeed`, deterministic on the shared wall clock and the world seed, so the server, every client and the
+  catch-up agree): ~2 m/s before dawn to ~7 mid-afternoon, × a weather swing over a day or two (0.55–1.45), × gusts
+  over seconds; a sandstorm adds up to 26 m/s (the storm's strength at the base on the server, at the windmill on the
+  client).
+- **Windmill:** P = ½ρAv³·Cp·η, a 3.5 m rotor (9.6 m²) in hot air (1.15 kg/m³). Bearings set Cp (0.14 → 0.30), the
+  wind it needs to start (3.2 → 2 m/s) and the tip speed ratio; coils the generator's efficiency (0.55 → 0.92) and its
+  most (400 W → 1.5 kW). Above 15 m/s the tail folds the rotor out of the wind (edge-on at 22: the head turns 75°, the
+  output and the spin fall). A bearing missing: it doesn't turn; a coil missing: it turns, makes nothing. On Scrap
+  parts it makes ~50 W at 5 m/s and 150 W at 7, about 1–2 kWh a game day; Space-grade ~3–4× that. The rotor turns at
+  tsr·v/R (20–50 rpm), easing into wind changes.
+- **Battery station:** each battery keeps its own charge (`power` table: kWh per slot). By tier: Scrap = a car
+  battery (12 V × 50 Ah ≈ 0.6 kWh, lead-acid: charges at C/5, keeps 80%), Basic a deep-cycle one (1.2 kWh), Quality a
+  lithium-ion module (2.5 kWh, 0.7C, 95%), Space-grade 5 kWh. Six of them: 3.6 kWh (all Scrap) to 30 kWh (all
+  Space-grade). The two coils are the charger: 300 / 600 / 1200 / 2500 W each by tier. A battery taken out loses its
+  charge (the item has none); one put in starts empty; picking the station up empties it.
+- **While nobody plays** (the world's process exits when empty) the wind still blows: on start the server catches up
+  the time since the last save (`powerAt` setting) in one-minute steps of the same wind, storms left out, a week at most.
+  A clock jump from the debug menu isn't counted.
+- **Shown** as little as can be: the building's panel (F) says what a windmill makes ("180 W") and what a station holds
+  ("1.2 / 3.6 kWh · +240 W" while charging); each cell's lamp on the station is lit while it holds charge.
+- Gaps: nothing uses the power yet; no hum or creak; the head's swing and the rotor are drawn per client (from the same
+  wind, so they agree in speed, not in phase).

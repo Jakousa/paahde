@@ -2,28 +2,37 @@
 // (shared/garden.ts), UV lamp stands, and the buildings, from public/models/placeables/*.glb
 // (tools/blender/placeables.py). Floor things are lit by the bunker's indoor lights, sand things by the sky. A lamp
 // throws a violet pool of light on the soil (or the floor) under it. A building looks its tier (src/tierLook.ts, by
-// the parts in it): the windmill's head turns into the wind and its rotor spins, faster on better bearings and in a
-// storm, and stands still while a part is missing; the battery station shows the cells it holds, each in its own tier.
+// the parts in it): the windmill's head turns into the wind and its rotor turns with it (shared/power.ts rotorSpeed:
+// the wind now, the bearings), the tail folding it out of a gale, still while a bearing is missing; the battery station
+// shows the cells it holds, each in its own tier, each one's lamp lit while it holds charge.
 // Also the see-through green / red preview of where the held placeable would go (src/placing.ts).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { float, smoothstep, uv } from 'three/tsl';
 import { WIND } from '../../shared/dunes.ts';
 import { EMPTY, STAGE_NODES, type BedState } from '../../shared/garden.ts';
-import { isBuilding, quality, repaired, tierOf, windmillSpin } from '../../shared/gear.ts';
+import { isBuilding, tierOf } from '../../shared/gear.ts';
+import { furl, rotorSpeed, windSpeed, type PowerState } from '../../shared/power.ts';
 import { parsePart } from '../../shared/items.ts';
 import { bedLit, onSand, PLACEABLES, type Placed } from '../../shared/placed.ts';
 import { applyTier } from '../tierLook.ts';
+import { cells } from '../../shared/power.ts';
 import type { Base } from './base';
 
 /** Height of the bed's soil (tools/blender/placeables.py SOIL), for the lamp's light pool. */
 const SOIL = 0.45;
 /** The battery station's cells, one per battery slot (shared/gear.ts GEAR.battery_station). */
 const CELL_NODE = (i: number) => `battery_station_cell${i}`;
-/** A storm (0..1) spins the windmill this much faster on top. */
-const STORM_SPIN = 2.5;
+/** How fast the rotor takes up a change of wind (1/s): it has some heft. */
+const ROTOR_LAG = 0.6;
+/** A battery's lamp is lit above this share of its charge. */
+const LIT = 0.02;
+/** Folded right out of the wind, the head turns this far (rad). */
+const FURLED = (75 * Math.PI) / 180;
 
-type Shown = { p: Placed; obj: THREE.Object3D; head?: THREE.Object3D; rotor?: THREE.Object3D; spin: number; phase: number };
+type Shown = { p: Placed; obj: THREE.Object3D; head?: THREE.Object3D; rotor?: THREE.Object3D; spin: number; phase: number;
+  /** A battery station's cells' lamps, by slot. */
+  lamps?: THREE.Object3D[][] };
 
 export class PlacedView {
   private group = new THREE.Group();
@@ -103,8 +112,17 @@ export class PlacedView {
   private dress(s: Shown) {
     const it = { id: 0, kind: s.p.kind, n: 1, parts: s.p.parts ?? [] };
     applyTier(s.obj, tierOf(it));
-    s.spin = repaired(it) && s.p.kind === 'windmill' ? windmillSpin(quality(it)) : 0;
     if (s.p.kind !== 'battery_station') return;
+    s.lamps ??= it.parts.map((_, i) => {
+      const out: THREE.Object3D[] = [];
+      s.obj.getObjectByName(CELL_NODE(i))?.traverse((o) => {
+        const m = o as THREE.Mesh;
+        const name = ((m.userData.tierBase ?? m.material) as THREE.Material | undefined)?.name ?? '';
+        if (m.isMesh && name.startsWith('EmitLed')) out.push(m);
+      });
+      return out;
+    });
+    this.light(s);
     it.parts.forEach((kind, i) => {
       const cell = s.obj.getObjectByName(CELL_NODE(i));
       if (!cell) return;
@@ -113,15 +131,36 @@ export class PlacedView {
     });
   }
 
-  /** Every frame: windmills turn their heads into the wind and spin. `storm`: the sandstorm here, 0..1. */
-  update(dt: number, storm: number) {
+  /** The batteries' charge came in (shared/power.ts): each cell's lamp. */
+  setPower(state: PowerState) {
+    this.power = state;
+    for (const s of this.shown.values()) if (s.lamps) this.light(s);
+  }
+
+  private power: PowerState = { gen: {}, store: {} };
+
+  /** A station's lamps: lit on each battery holding charge. */
+  private light(s: Shown) {
+    const charge = this.power.store[s.p.id]?.charge ?? [];
+    const cs = cells(s.p.parts);
+    s.lamps?.forEach((ls, i) => {
+      const on = !!cs[i] && (charge[i] ?? 0) > cs[i]!.kwh * LIT;
+      for (const l of ls) l.visible = on;
+    });
+  }
+
+  /** Every frame: windmills turn their heads into the wind and their rotors with it. `worldMs`: the shared clock;
+   *  `stormAt`: a sandstorm's strength at a point (0..1). */
+  update(dt: number, worldMs: number, stormAt: (x: number, z: number) => number) {
     // Into the wind: the rotor (the head's +Z) faces where it comes from, swinging a little in the gusts.
     const into = Math.atan2(-WIND.x, -WIND.z);
     const t = performance.now() / 1000;
     for (const s of this.shown.values()) {
       if (!s.head || !s.rotor) continue;
-      s.head.rotation.y = into - s.obj.rotation.y + 0.08 * Math.sin(t * 0.37 + s.phase) + 0.04 * Math.sin(t * 1.1 + s.phase * 2);
-      s.rotor.rotation.z -= s.spin * (1 + STORM_SPIN * storm) * (1 + 0.15 * Math.sin(t * 0.6 + s.phase)) * dt;
+      const v = windSpeed(worldMs, stormAt(s.p.x, s.p.z));
+      s.spin += (rotorSpeed(s.p.parts, v) - s.spin) * Math.min(1, dt * ROTOR_LAG);
+      s.head.rotation.y = into - s.obj.rotation.y + furl(v) * FURLED + 0.08 * Math.sin(t * 0.37 + s.phase) + 0.04 * Math.sin(t * 1.1 + s.phase * 2);
+      s.rotor.rotation.z -= s.spin * dt;
     }
   }
 
