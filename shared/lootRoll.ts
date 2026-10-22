@@ -7,7 +7,7 @@ import { overShelter, shelterLootSpot, type Shelter } from './shelters.ts';
 import { GEAR, GEAR_KINDS } from './gear.ts';
 import { JAMMER } from './jammer.ts';
 import { RECEIVERS, RELICS, receiverBoss, type BossKind } from './bosses.ts';
-import { CLOTH, partKind, SCRAP } from './items.ts';
+import { CLOTH, partKind, SCRAP, WIRING } from './items.ts';
 import type { CrashSite, SiteLevel } from './crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from './scrap.ts';
 import { PART_IDS, pickTier } from './parts.ts';
@@ -16,7 +16,7 @@ import { rocksNear } from './rocks.ts';
 import type { JetKind } from './jetbreak.ts';
 import {
   BOSS_SPOILS, BROKEN_GEAR, CACHES, DRONE_JET_SPOILS, FINDS, HARVESTER_SCRAP, HARVESTER_SPOILS, JET_RELIC_ODDS, JET_SCRAP,
-  KILL_SPOILS, RARE_FINDS, RECEIVER_DROPS, RELIC_DROPS, SHELTER_STASHES, type TierWeights,
+  KILL_SPOILS, RARE_FINDS, RECEIVER_DROPS, RELIC_DROPS, SHELTER_STASHES, WIRING_DROPS, type TierWeights,
 } from './tables.ts';
 
 export type Rand = () => number;
@@ -167,32 +167,36 @@ function spoils(sp: { odds: number; min: number; max: number; parts: string[]; t
 const scrapHeap = (r: { min: number; max: number }, rand: Rand): Drop[] =>
   Array.from({ length: r.min + Math.floor(rand() * (r.max - r.min + 1)) }, () => ({ kind: SCRAP }));
 
-/** A killed walker or downed drone (KILL_SPOILS): its own part maybe (RELIC_DROPS), a broken receiver now and then, its spoils. */
+/** The wiring a killed `kind` always leaves (WIRING_DROPS); no dice. */
+const wiring = (kind: keyof typeof WIRING_DROPS): Drop[] => Array.from({ length: WIRING_DROPS[kind] }, () => ({ kind: WIRING }));
+
+/** A killed walker or downed drone (KILL_SPOILS): its own part maybe (RELIC_DROPS), a broken receiver now and then, its spoils,
+ *  its wiring. */
 export function killDrops(kind: 'guardian' | 'crawler' | 'drone', rand: Rand): Drop[] {
   const out: Drop[] = [];
   if (rand() < RELIC_DROPS[kind].odds) out.push({ kind: RELIC_DROPS[kind].kind });
   if (rand() < RECEIVER_DROPS[kind]) out.push(broken(randomReceiver(rand), rand));
-  return [...out, ...spoils(KILL_SPOILS[kind], rand)];
+  return [...out, ...spoils(KILL_SPOILS[kind], rand), ...wiring(kind)];
 }
 
 /** A downed jet's loose things (its engines are machines, shared/jetcrash.ts): the drone's parts (one more if `soft`: jammed
- *  down whole), the transponder maybe, a broken receiver now and then, scrap off the airframe. */
+ *  down whole), the transponder maybe, a broken receiver now and then, scrap off the airframe, its wiring. */
 export function jetDrops(kind: JetKind, soft: boolean, rand: Rand): Drop[] {
   const out: Drop[] = kind === 'drone' ? spoils({ ...DRONE_JET_SPOILS, odds: 1 }, rand, soft ? 1 : 0) : [];
   if (rand() < JET_RELIC_ODDS) out.push({ kind: RELIC_DROPS.drone.kind });
   if (rand() < RECEIVER_DROPS.jet) out.push(broken(randomReceiver(rand), rand));
-  return [...out, ...scrapHeap(JET_SCRAP, rand)];
+  return [...out, ...scrapHeap(JET_SCRAP, rand), ...wiring('jet')];
 }
 
-/** A killed harvester's burst hopper: ore and drive parts, a heap of scrap, a broken receiver now and then. */
+/** A killed harvester's burst hopper: ore and drive parts, a heap of scrap, a broken receiver now and then, its wiring. */
 export function harvesterDrops(rand: Rand): Drop[] {
   const out = [...spoils({ ...HARVESTER_SPOILS, odds: 1 }, rand), ...scrapHeap(HARVESTER_SCRAP, rand)];
   if (rand() < RECEIVER_DROPS.jet) out.push(broken(randomReceiver(rand), rand));
-  return out;
+  return [...out, ...wiring('harvester')];
 }
 
-/** A killed boss: its own part (RELICS) and its spoils. */
+/** A killed boss: its own part (RELICS), its spoils and its wiring. */
 export function bossDrops(kind: BossKind, rand: Rand): Drop[] {
   const relic = RELICS[kind];
-  return [...(relic ? [{ kind: relic }] : []), ...spoils({ ...BOSS_SPOILS[kind], odds: 1 }, rand)];
+  return [...(relic ? [{ kind: relic }] : []), ...spoils({ ...BOSS_SPOILS[kind], odds: 1 }, rand), ...wiring(kind)];
 }

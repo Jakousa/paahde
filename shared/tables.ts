@@ -292,6 +292,12 @@ export const RECEIVER_DROPS: Record<'guardian' | 'crawler' | 'drone' | 'jet', nu
   guardian: 0.1, crawler: 0.03, drone: 0, jet: 0.05,
 };
 
+/** Wiring every killed enemy always leaves besides the rest (torn out of it: what the buildings and power lines take,
+ *  BUILD_TABLE), more the bigger it is; a downed jet of either kind. Rolls no dice, so it can't reshuffle the others. */
+export const WIRING_DROPS: Record<'crawler' | 'drone' | 'guardian' | 'jet' | 'harvester' | 'worm' | 'carrier' | 'colossus' | 'queen', number> = {
+  crawler: 1, drone: 1, guardian: 2, jet: 2, harvester: 3, worm: 4, carrier: 3, colossus: 4, queen: 3,
+};
+
 /** A killed boss (shared/bosses.ts): min..max parts scattered over its wreck (`odds` unused: always), a uranium cell
  *  among them likely; its own part too (shared/bosses.ts RELICS). */
 const BOSS_PARTS: PartId[] = [...SPOILS, 'uranium'];
