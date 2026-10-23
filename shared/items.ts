@@ -299,23 +299,30 @@ export function roomFor(slots: Slots, kind: string, shape: Shape): boolean {
  */
 export function addItem(slots: Slots, kind: string, n: number, newId: () => number, shape: Shape, data?: ItemData): boolean {
   const s = [...slots];
-  const own = withData(data);
-  for (let i = 0; i < s.length && n > 0 && !own.data; i++) {
-    const it = s[i];
-    if (!it || !stacks(it, kind) || strandedAt(s, shape, i)) continue;
-    const k = Math.min(n, stackOf(kind) - it.n);
-    if (k > 0) s[i] = { ...it, n: it.n + k };
-    n -= k;
-  }
-  while (n > 0) {
-    const spot = findSpot(s, shape, kind);
-    if (!spot) return false;
-    const k = own.data ? 1 : Math.min(n, stackOf(kind));
-    s[spot.i] = makeItem(newId(), { kind, n: k, r: spot.r, data: own.data });
-    n -= k;
-  }
+  if (addUpTo(s, kind, n, newId, shape, data) < n) return false;
   for (let i = 0; i < s.length; i++) slots[i] = s[i];
   return true;
+}
+
+/** Put up to n of `kind` into `slots` like addItem, as many as fit. Mutates; returns how many went in. */
+export function addUpTo(slots: Slots, kind: string, n: number, newId: () => number, shape: Shape, data?: ItemData): number {
+  const own = withData(data);
+  let left = n;
+  for (let i = 0; i < slots.length && left > 0 && !own.data; i++) {
+    const it = slots[i];
+    if (!it || !stacks(it, kind) || strandedAt(slots, shape, i)) continue;
+    const k = Math.min(left, stackOf(kind) - it.n);
+    if (k > 0) slots[i] = { ...it, n: it.n + k };
+    left -= Math.max(0, k);
+  }
+  while (left > 0) {
+    const spot = findSpot(slots, shape, kind);
+    if (!spot) break;
+    const k = own.data ? 1 : Math.min(left, stackOf(kind));
+    slots[spot.i] = makeItem(newId(), { kind, n: k, r: spot.r, data: own.data });
+    left -= k;
+  }
+  return n - left;
 }
 
 /**

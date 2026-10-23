@@ -3,7 +3,7 @@
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
 import { bagShape, boxShape, EQUIP_SLOTS, fitPart, fittedBox, GEAR, holdsCargo, SHIELD_BREAKS, isGear, refit, scrapParts, shieldSaves, tierOf, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
-  addItem, BAG_SLOTS, makeItem, ownOf, partAt, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, setPart, settle, sizeOf, sortItems, stackOf, stacks,
+  addItem, addUpTo, BAG_SLOTS, makeItem, ownOf, partAt, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, setPart, settle, sizeOf, sortItems, stackOf, stacks,
   type Item, type ItemData, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -195,6 +195,13 @@ export class ItemServer {
     if (!addItem(this.slots(browserId, 'bag'), kind, n, this.newId, this.bagShape(browserId))) return false;
     this.save(browserId, 'bag');
     return true;
+  }
+
+  /** Up to `n` `kind` into the bag, as many as fit (the backpack first, then the hotbar). Returns how many went in. */
+  giveUpTo(browserId: string, kind: string, n: number): number {
+    const got = addUpTo(this.slots(browserId, 'bag'), kind, n, this.newId, this.bagShape(browserId));
+    if (got) this.save(browserId, 'bag');
+    return got;
   }
 
   /** Everything in `list` into the bag (one with `data` is one of its own), all or none. False (and no change) if it
