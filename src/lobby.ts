@@ -11,7 +11,7 @@ import { landing, landingStyle, music } from './landing';
 import { getBrowserId, nameOk, profileForm, setWorldKey, worldKey } from './profile';
 
 /** Your name and colour in this game if you've joined it before (they're kept: server/world.ts join), else null. */
-async function yours(): Promise<{ name: string; color: number } | null> {
+async function yours(): Promise<{ name: string; color: number; played: number } | null> {
   try {
     const res = await fetch('api/worlds/mine', {
       method: 'POST',
@@ -19,7 +19,7 @@ async function yours(): Promise<{ name: string; color: number } | null> {
       body: JSON.stringify({ ids: [WORLD_ID], browserId: getBrowserId() }),
     });
     const [s] = (await res.json()) as WorldStats[];
-    return s?.you && s.color !== undefined ? { name: s.you, color: s.color } : null;
+    return s?.you && s.color !== undefined ? { name: s.you, color: s.color, played: s.played ?? 0 } : null;
   } catch {
     return null;
   }
@@ -73,6 +73,12 @@ export async function lobby(play: () => void) {
   const join = document.createElement('button');
   const profile = profileForm((ok) => (join.disabled = !ok || !open), me ?? undefined);
   panel.append(profile.el);
+  if (me) {
+    const played = document.createElement('p');
+    played.className = 'played';
+    played.textContent = TEXT.landing.you('', Math.floor(me.played / 60_000));
+    panel.append(played);
+  }
   const pw = document.createElement('input');
   pw.type = 'password';
   pw.placeholder = TEXT.landing.password;

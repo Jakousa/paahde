@@ -390,8 +390,9 @@ const en = {
     playOn: 'Play on',
     /** The worlds this browser joined, newest first, with how each is doing. */
     recent: 'Your games',
-    online: (n: number) => `${n} here now`,
-    players: (n: number) => (n === 1 ? '1 player' : `${n} players`),
+    online: (n: number) => `${n} online`,
+    /** Everyone who has ever joined the game. */
+    players: (n: number) => (n === 1 ? '1 has played' : `${n} have played`),
     ago: (min: number) =>
       min < 2 ? 'just now' : min < 60 ? `${min} min ago` : min < 48 * 60 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} days ago`,
     /** Your name in one of your games and how long you've played there. */
@@ -400,8 +401,8 @@ const en = {
       return name ? `${name} · ${t} played` : `${t} played`;
     },
     lives: (n: number) => `♥ ${n}`,
-    /** Here now out of the most allowed. */
-    seats: (online: number, max: number) => `${online}/${max} here`,
+    /** Online now out of the most allowed. */
+    seats: (online: number, max: number) => `${online} of ${max} online`,
     /** Marks a game with a password. */
     lockedMark: '🔒',
     /** The public games (the browser). */
