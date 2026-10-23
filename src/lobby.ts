@@ -1,21 +1,24 @@
-// A game's lobby: what a game's link (?w=<id>) opens before the game loads (src/entry.ts). Its name, lives left,
-// bosses beaten and who's on, its code (click to copy, to share), your name and colour (src/profile.ts; Join waits for
-// a name that will do; locked once you've joined the game: they're yours there for good), and the password if it has one and this browser has no key for it yet (server/index.ts /api/worlds/<id>/key). Join loads
-// the game. A game that turned us away (src/net.ts onEnded: locked, full, our name) comes back here saying why.
+// A game's lobby, a view of the main menu (src/landing.ts): what a game's link (?w=<id>) opens, and where picking a
+// game in the lists or typing its code leads, without loading a page. Its name, lives left, bosses beaten and who's on,
+// its code (click to copy, to share), your name and colour (src/profile.ts; Join waits for a name that will do; locked
+// once you've joined the game: they're yours there for good), and the password if it has one and this browser has no
+// key for it yet (server/index.ts /api/worlds/<id>/key). Join loads the game: here if the page is the game's own,
+// else its page with &join (src/entry.ts goes straight in). Back goes to the view you came from. A game that turned
+// us away (src/net.ts onEnded: locked, full, our name) comes back here saying why.
 import type { WorldStats } from '../shared/protocol.ts';
 import { TEXT } from '../shared/text.ts';
 import { WORLD_ID } from '../shared/world.ts';
 import { copies } from './copy';
-import { crowdEl, landing, landingStyle, music, statsLine, uptimeEl } from './landing';
+import { crowdEl, leave, lockMark, statsLine, uptimeEl } from './landing';
 import { getBrowserId, nameOk, profileForm, setWorldKey, worldKey } from './profile';
 
-/** Your name and colour in this game if you've joined it before (they're kept: server/world.ts join), else null. */
-async function yours(): Promise<{ name: string; color: number; played: number } | null> {
+/** Your name and colour in game `id` if you've joined it before (they're kept: server/world.ts join), else null. */
+async function yours(id: string): Promise<{ name: string; color: number; played: number } | null> {
   try {
     const res = await fetch('api/worlds/mine', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: [WORLD_ID], browserId: getBrowserId() }),
+      body: JSON.stringify({ ids: [id], browserId: getBrowserId() }),
     });
     const [s] = (await res.json()) as WorldStats[];
     return s?.you && s.color !== undefined ? { name: s.you, color: s.color, played: s.played ?? 0 } : null;
@@ -36,80 +39,98 @@ export function refused(why: Refused) {
   location.reload();
 }
 
-/** Show the lobby; `play` loads the game once Join is pressed. */
-export async function lobby(play: () => void) {
+/** The lobby of game `id`, filled in once the server says how it is; `play` loads the game in this page (only when
+ *  the page is that game's own). */
+export function lobbyView(id: string, back: () => void, play?: () => void): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'view';
+  const backBtn = document.createElement('button');
+  backBtn.textContent = TEXT.landing.back;
+  backBtn.addEventListener('click', back);
+  fill(el, id, backBtn, play);
+  return el;
+}
+
+async function fill(el: HTMLElement, id: string, backBtn: HTMLButtonElement, play?: () => void) {
   let s: WorldStats;
   try {
-    const res = await fetch(`api/worlds/${encodeURIComponent(WORLD_ID)}`);
-    if (res.status === 404) return landing('missing');
+    const res = await fetch(`api/worlds/${encodeURIComponent(id)}`);
+    if (res.status === 404) {
+      const p = document.createElement('p');
+      p.textContent = TEXT.landing.noSuchWorld;
+      return el.replaceChildren(p, backBtn);
+    }
     if (!res.ok) throw new Error(String(res.status));
     s = await res.json();
   } catch {
-    return play(); // can't ask: try the game itself, which says if something's wrong
+    if (play) return play(); // can't ask: try the game itself, which says if something's wrong
+    const p = document.createElement('p');
+    p.textContent = TEXT.landing.failed;
+    return el.replaceChildren(p, backBtn);
   }
-  const me = await yours();
+  const me = await yours(id);
+  if (!el.isConnected) return; // gone on to another view meanwhile
   let why: Refused | null = null;
-  try {
-    why = sessionStorage.getItem(REFUSED_KEY) as Refused | null;
-    sessionStorage.removeItem(REFUSED_KEY);
-  } catch {}
+  if (play) {
+    try {
+      why = sessionStorage.getItem(REFUSED_KEY) as Refused | null;
+      sessionStorage.removeItem(REFUSED_KEY);
+    } catch {}
+  }
 
-  landingStyle();
-  const el = document.createElement('div');
-  el.id = 'landing';
-  el.innerHTML = `<div class="bg"></div><div class="shade"></div><div class="panel"><h1>${TEXT.game.name}</h1><p class="gname"></p><p class="stats"></p><button class="codeChip"></button></div>`;
-  const code = el.querySelector<HTMLButtonElement>('.codeChip')!;
-  code.textContent = TEXT.landing.codeOf(WORLD_ID);
-  copies(code, () => WORLD_ID);
-  document.body.append(el);
-  music(el);
-  const panel = el.querySelector<HTMLElement>('.panel')!;
-  el.querySelector('.gname')!.textContent = s.locked ? `${s.name} ${TEXT.landing.lockedMark}` : s.name;
-  const stats = el.querySelector<HTMLElement>('.stats')!;
+  const gname = document.createElement('p');
+  gname.className = 'gname';
+  gname.textContent = s.name;
+  if (s.locked) gname.append(' ', lockMark());
+  const stats = document.createElement('p');
+  stats.className = 'stats';
   const line = document.createElement('span');
   statsLine(s, line);
   stats.replaceChildren(line, uptimeEl(s), crowdEl(s), s.public ? TEXT.landing.public : TEXT.landing.private);
+  const code = document.createElement('button');
+  code.className = 'codeChip';
+  code.dataset.tip = TEXT.menu.server.code;
+  code.textContent = TEXT.landing.codeOf(id);
+  copies(code, () => id);
 
   const join = document.createElement('button');
+  const open = s.lives > 0 && s.online < s.max;
   const profile = profileForm((ok) => (join.disabled = !ok || !open), me ?? undefined);
-  panel.append(profile.el);
+  const parts: HTMLElement[] = [gname, stats, code, profile.el];
   if (me) {
     const played = document.createElement('p');
     played.className = 'played';
     played.textContent = TEXT.landing.you('', Math.floor(me.played / 60_000));
-    panel.append(played);
+    parts.push(played);
   }
   const pw = document.createElement('input');
   pw.type = 'password';
   pw.placeholder = TEXT.landing.password;
   pw.autocomplete = 'current-password';
   pw.maxLength = 64;
-  const needsPw = s.locked && !worldKey(WORLD_ID);
-  if (needsPw) panel.append(pw);
+  const needsPw = s.locked && !worldKey(id);
+  if (needsPw) parts.push(pw);
   const note = document.createElement('div');
   note.className = 'why';
-  panel.append(note);
-  const open = s.lives > 0 && s.online < s.max;
+  parts.push(note);
   if (s.online >= s.max || why === 'full') note.textContent = TEXT.landing.full;
   if (why === 'locked') note.textContent = TEXT.landing.wrongPassword;
   join.textContent = TEXT.landing.join;
   join.disabled = !open || (!me && !nameOk());
-  const back = document.createElement('button');
-  back.textContent = TEXT.landing.menu;
-  back.addEventListener('click', () => location.assign(location.pathname));
   const buttons = document.createElement('div');
   buttons.className = 'buttons';
-  buttons.append(join, back);
-  panel.append(buttons);
+  buttons.append(join, backBtn);
+  parts.push(buttons);
+  el.replaceChildren(...parts);
   if (why === 'name') profile.flag();
   else (needsPw ? pw : join).focus();
 
   const go = async () => {
     if (join.disabled || !profile.flag()) return;
-    if (needsPw && !worldKey(WORLD_ID)) {
+    if (needsPw && !worldKey(id)) {
       join.disabled = true;
       try {
-        const res = await fetch(`api/worlds/${encodeURIComponent(WORLD_ID)}/key`, {
+        const res = await fetch(`api/worlds/${encodeURIComponent(id)}/key`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: pw.value }),
@@ -120,14 +141,16 @@ export async function lobby(play: () => void) {
           pw.classList.add('bad');
           return pw.select();
         }
-        setWorldKey(WORLD_ID, ((await res.json()) as { key: string }).key);
+        setWorldKey(id, ((await res.json()) as { key: string }).key);
       } catch {
         join.disabled = false;
         note.textContent = TEXT.landing.failed;
         return;
       }
     }
-    el.remove();
+    // The world is chosen when the page loads (shared/world.ts): a game other than the page's own needs its page.
+    if (!play) return location.assign(`${location.pathname}?w=${encodeURIComponent(id)}&join`);
+    leave();
     play();
   };
   join.addEventListener('click', go);

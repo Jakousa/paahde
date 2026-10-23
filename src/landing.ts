@@ -12,7 +12,8 @@ import { checkName, GAME_NAME, MAX_PLAYERS } from '../shared/names.ts';
 import type { WorldStats } from '../shared/protocol.ts';
 import { TEXT } from '../shared/text.ts';
 import { WORLD_ID, WORLD_ID_RE } from '../shared/world.ts';
-import { MENU_CSS, bindOptions, optionsHtml } from './options';
+import { lobbyView } from './lobby';
+import { MENU_CSS, bindOptions, bindTips, optionsHtml } from './options';
 import { getBrowserId, setWorldKey } from './profile';
 
 export const LANDING_CSS = `
@@ -76,6 +77,9 @@ export const LANDING_CSS = `
   border-radius: 8px; font: bold 10px/15px var(--mono); text-align: center; color: #2a120a; background: #fff4d0; }
 #landing .games a:hover .crowd b { color: #fff4d0; background: #2a120a; }
 #landing .on { color: #9fe39a; }
+#landing .tip { position: fixed; z-index: 60; display: none; padding: 6px 8px; border-radius: 5px; pointer-events: none; font: 11px/1.4 var(--mono);
+  letter-spacing: 0; text-transform: none; text-align: left; color: #fff4d0;
+  background: rgba(20, 10, 4, 0.96); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.2), 0 6px 18px rgba(0, 0, 0, 0.5); }
 #landing p.stats { display: flex; gap: 14px; align-items: center; justify-content: center; flex-wrap: wrap; }
 #landing p.stats .crowd { opacity: 1; margin-right: 6px; }
 #landing p.stats .up { font: inherit; opacity: 1; }
@@ -94,11 +98,22 @@ export function landingStyle() {
   document.head.appendChild(style);
 }
 
-/** A game's own page (its lobby, src/lobby.ts). */
-const gameUrl = (id: string) => `${location.origin}${location.pathname}?w=${encodeURIComponent(id)}`;
+/** The menu's views, as history.state holds them: the browser's Back and Forward walk them, and moving between them
+ *  never loads a page (the background and title stay put). `from`: the lobby was reached from another view. */
+export type View = { v: 'intro' } | { v: 'join'; tab: 'mine' | 'pub' } | { v: 'create' } | { v: 'lobby'; id: string; from?: boolean };
 
-/** Show the page; `why` puts it over the game as an end screen. */
-export function landing(why?: 'over' | 'missing') {
+/** The page showing now: where views go, why it's up over a game (the end screens), and how to load this page's game. */
+let shown: { view: HTMLElement; why?: 'over' | 'missing'; play?: () => void } | null = null;
+
+const urlOf = (v: View) => (v.v === 'lobby' ? `${location.pathname}?w=${encodeURIComponent(v.id)}` : location.pathname);
+const viewOfUrl = (): View => {
+  const id = new URLSearchParams(location.search).get('w') ?? '';
+  return WORLD_ID_RE.test(id) ? { v: 'lobby', id } : { v: 'intro' };
+};
+
+/** Show the page; `why` puts it over the game as an end screen. `start` is the view to open on (the start screen, or a
+ *  game's lobby when its link was opened), `play` loads this page's game (src/entry.ts). */
+export function landing(why?: 'over' | 'missing', start: View = { v: 'intro' }, play?: () => void) {
   if (document.getElementById('landing')) return;
   document.exitPointerLock?.();
   document.getElementById('cover')?.remove();
@@ -111,25 +126,67 @@ export function landing(why?: 'over' | 'missing') {
   // Typing here is not playing: the end screens sit over the game, whose listeners are on window.
   el.addEventListener('keydown', (e) => e.stopPropagation());
   document.body.append(el);
+  bindTips(el);
   if (!why) music(el);
   const view = document.createElement('div');
   view.className = 'view';
   el.querySelector('.panel')!.append(view);
-  const show = (v: HTMLElement) => view.replaceChildren(v);
-  const intro = () => {
-    const buttons = document.createElement('div');
-    buttons.className = 'buttons';
-    buttons.innerHTML = `<button class="join">${TEXT.landing.join}</button><button class="create">${TEXT.landing.create}</button>${why ? '' : `<button class="optionsBtn">${TEXT.menu.options}</button>`}`;
-    buttons.querySelector('.join')!.addEventListener('click', () => show(joinView(() => show(intro()))));
-    buttons.querySelector('.create')!.addEventListener('click', () => show(make(() => show(intro()))));
-    buttons.querySelector('.optionsBtn')?.addEventListener('click', options);
-    return buttons;
-  };
-  show(intro());
+  shown = { view, why, play };
+  if (!why) {
+    history.replaceState(start, '', location.href);
+    addEventListener('popstate', onPop);
+  }
+  render(start);
 }
 
-/** Joining: your games or the public ones (tabs), the box for a game's code, and back to the start. */
-function joinView(back: () => void): HTMLElement {
+const onPop = (e: PopStateEvent) => shown && render((e.state as View | null) ?? viewOfUrl());
+
+/** Go to view `v` in place; the address follows (a lobby's is the game's link). Over a game (the end screens) a lobby is
+ *  a page of its own: the game behind has to go. */
+export function nav(v: View, how: 'push' | 'replace' = 'push') {
+  if (!shown) return;
+  if (shown.why) return void (v.v === 'lobby' ? location.assign(urlOf(v)) : render(v));
+  if (how === 'push') history.pushState(v, '', urlOf(v));
+  else history.replaceState(v, '', urlOf(v));
+  render(v);
+}
+
+/** Back to where you were: the view before, or the start screen when there's none in this page (a link opened). */
+const back = (v: View) => () => (shown?.why || (v.v === 'lobby' && !v.from) ? nav({ v: 'intro' }) : history.back());
+
+function render(v: View) {
+  if (!shown) return;
+  const el =
+    v.v === 'join' ? joinView(v.tab, back(v))
+    : v.v === 'create' ? make(back(v))
+    : v.v === 'lobby' ? lobbyView(v.id, back(v), v.id === WORLD_ID ? shown.play : undefined)
+    : intro(shown.why);
+  shown.view.replaceChildren(el);
+  const tip = document.querySelector<HTMLElement>('#landing .tip');
+  if (tip) tip.style.display = 'none'; // its row is gone
+}
+
+/** The page goes (Join: the game loads behind its cover). */
+export function leave() {
+  removeEventListener('popstate', onPop);
+  document.getElementById('landing')?.remove();
+  shown = null;
+}
+
+/** The start: Join, Create, Options. */
+function intro(why?: string): HTMLElement {
+  const buttons = document.createElement('div');
+  buttons.className = 'buttons';
+  buttons.innerHTML = `<button class="join">${TEXT.landing.join}</button><button class="create">${TEXT.landing.create}</button>${why ? '' : `<button class="optionsBtn">${TEXT.menu.options}</button>`}`;
+  buttons.querySelector('.join')!.addEventListener('click', () => nav({ v: 'join', tab: 'mine' }));
+  buttons.querySelector('.create')!.addEventListener('click', () => nav({ v: 'create' }));
+  buttons.querySelector('.optionsBtn')?.addEventListener('click', options);
+  return buttons;
+}
+
+/** Joining: your games or the public ones (tabs, kept in the history so Back from a lobby comes back to the same one),
+ *  the box for a game's code, and back to the start. */
+function joinView(start: 'mine' | 'pub', back: () => void): HTMLElement {
   const el = document.createElement('div');
   el.className = 'joinView';
   el.innerHTML = `<div class="seg tabs"><button class="mine">${TEXT.landing.recent}</button><button class="pub">${TEXT.landing.browse}</button></div>
@@ -139,19 +196,20 @@ function joinView(back: () => void): HTMLElement {
   const pub = el.querySelector<HTMLButtonElement>('.pub')!;
   const sorts = el.querySelector<HTMLElement>('.sorts')!;
   const box = el.querySelector<HTMLElement>('.games')!;
-  const tab = (isPublic: boolean) => {
-    mine.classList.toggle('on', !isPublic);
-    pub.classList.toggle('on', isPublic);
+  const tab = (t: 'mine' | 'pub') => {
+    mine.classList.toggle('on', t === 'mine');
+    pub.classList.toggle('on', t === 'pub');
     sorts.replaceChildren();
-    sorts.hidden = !isPublic;
+    sorts.hidden = t !== 'pub';
     box.replaceChildren();
-    if (isPublic) browse(box, sorts);
+    if (t === 'pub') browse(box, sorts);
     else recent(box);
+    if (shown && !shown.why) history.replaceState({ v: 'join', tab: t } satisfies View, '', location.href);
   };
-  mine.addEventListener('click', () => tab(false));
-  pub.addEventListener('click', () => tab(true));
+  mine.addEventListener('click', () => tab('mine'));
+  pub.addEventListener('click', () => tab('pub'));
   el.querySelector('.back')!.addEventListener('click', back);
-  tab(false);
+  tab(start);
   return el;
 }
 
@@ -187,7 +245,7 @@ export const GROUP_SVG = `<svg viewBox="0 0 24 24" width="22" height="22" fill="
 export function uptimeEl(s: WorldStats): HTMLElement {
   const el = document.createElement('span');
   el.className = 'up';
-  el.title = TEXT.landing.tipUptime;
+  el.dataset.tip = TEXT.landing.tipUptime;
   el.innerHTML = CLOCK_SVG;
   el.append(TEXT.landing.uptime(Math.max(0, Math.floor((Date.now() - s.created) / 60_000))));
   return el;
@@ -197,22 +255,31 @@ export function uptimeEl(s: WorldStats): HTMLElement {
 export function crowdEl(s: WorldStats): HTMLElement {
   const el = document.createElement('span');
   el.className = 'crowd';
-  el.title = TEXT.landing.players(s.players);
+  el.dataset.tip = TEXT.landing.players(s.players);
   el.innerHTML = `${GROUP_SVG}<b></b>`;
   el.querySelector('b')!.textContent = String(s.players);
   return el;
 }
 
-/** Lives, bosses beaten and online now / max (lit when someone's on). */
+/** A bit of text with a hover tip (bindTips, src/options.ts: the Esc menu's own). */
+function tipped(text: string, tip: string, cls = ''): HTMLElement {
+  const el = document.createElement('span');
+  el.textContent = text;
+  el.dataset.tip = tip;
+  if (cls) el.className = cls;
+  return el;
+}
+
+/** The lock by a game with a password. */
+export const lockMark = () => tipped(TEXT.landing.lockedMark, TEXT.landing.tipLocked, 'lock');
+
+/** Lives, bosses beaten and online now / max (lit when someone's on), each with its hover tip. */
 export function statsLine(s: WorldStats, into: HTMLElement) {
   const n = BOSS_KINDS.filter((_, i) => s.beaten & (1 << i)).length;
-  const bosses = '◆'.repeat(n) + '◇'.repeat(BOSS_KINDS.length - n);
-  const life = s.lives > 0 ? TEXT.landing.lives(s.lives) : TEXT.landing.gameOver;
-  const seats = document.createElement('span');
-  seats.title = TEXT.landing.tipSeats;
-  seats.textContent = TEXT.landing.seats(s.online, s.max);
-  if (s.online) seats.className = 'on';
-  into.replaceChildren(`${life}  ·  ${bosses}  ·  `, seats);
+  const life = s.lives > 0 ? tipped(TEXT.landing.lives(s.lives), TEXT.menu.server.lives(s.lives)) : tipped(TEXT.landing.gameOver, TEXT.landing.gameOver);
+  const bosses = tipped('◆'.repeat(n) + '◇'.repeat(BOSS_KINDS.length - n), TEXT.menu.server.bosses(n, BOSS_KINDS.length));
+  const seats = tipped(TEXT.landing.seats(s.online, s.max), TEXT.landing.tipSeats, s.online ? 'on' : '');
+  into.replaceChildren(life, '  ·  ', bosses, '  ·  ', seats);
 }
 
 /** A game in one of the lists: name and how long it's been going; lives, bosses and who's on; your name and time
@@ -224,8 +291,15 @@ function gameRow(s: WorldStats, you?: string): HTMLLIElement {
   if (s.lives <= 0) a.className = 'dead';
   a.innerHTML = `<span class="id"></span><span class="stats"></span>`;
   const [id, line] = a.querySelectorAll('span');
-  id.textContent = s.locked ? `${s.name} ${TEXT.landing.lockedMark}` : s.name;
+  id.textContent = s.name;
+  if (s.locked) id.append(' ', lockMark());
   id.after(uptimeEl(s));
+  // Into its lobby in place; a new tab (Ctrl, middle click) still opens its link.
+  a.addEventListener('click', (e) => {
+    if (e.button || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    nav({ v: 'lobby', id: s.id, from: true });
+  });
   statsLine(s, line);
   a.append(crowdEl(s));
   if (you) {
@@ -253,7 +327,7 @@ function gameList(box: HTMLElement, rows: HTMLLIElement[], empty: string) {
 
 /** The games this browser joined before, once the server says how they're doing; worlds that are gone drop out. */
 async function recent(box: HTMLElement) {
-  const list = joined().filter((j) => j.id !== WORLD_ID);
+  const list = joined().filter((j) => j.id !== WORLD_ID || !shown?.why); // not the game you're in
   if (!list.length) return gameList(box, [], TEXT.landing.noMine);
   let stats: WorldStats[];
   try {
@@ -337,7 +411,7 @@ function codeBox(): HTMLElement {
     } catch {} // not a link: the code itself
     id = id.toLowerCase();
     if (!WORLD_ID_RE.test(id)) return input.classList.add('bad');
-    location.assign(gameUrl(id));
+    nav({ v: 'lobby', id, from: true });
   });
   input.addEventListener('input', () => input.classList.remove('bad'));
   return form;
@@ -403,7 +477,7 @@ function make(back: () => void): HTMLElement {
         return;
       }
       setWorldKey(out.id, out.key ?? '');
-      location.assign(gameUrl(out.id)); // straight to its lobby, where its code is to copy and share
+      nav({ v: 'lobby', id: out.id, from: true }, 'replace'); // its lobby in place of the form: Back goes to the start
     } catch {
       why.textContent = TEXT.landing.failed;
       create.disabled = false;

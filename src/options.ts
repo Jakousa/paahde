@@ -238,7 +238,7 @@ function bindGraphics(root: HTMLElement, inGame: boolean) {
 }
 
 /** Hover tips: native `title` tooltips don't show in fullscreen or over this overlay, so one of our own follows the pointer. */
-function bindTips(root: HTMLElement) {
+export function bindTips(root: HTMLElement) {
   const tip = document.createElement('div');
   tip.className = 'tip';
   root.append(tip);

@@ -330,6 +330,10 @@ const en = {
       lives: (n: number) => (n === 1 ? '1 shared life left' : `${n} shared lives left`),
       bosses: (n: number, of: number) => `${n} of ${of} bosses beaten`,
       code: 'Game code · click to copy',
+      uptime: 'Server uptime',
+      /** Your time in this game, short by the hourglass; exact on hover. */
+      played: (min: number) => (min < 60 ? `${min} min` : min < 1440 ? `${Math.floor(min / 60)} h` : min < 2880 ? '1 day' : `${Math.floor(min / 1440)} days`),
+      playedTip: (min: number) => `Time played on this server: ${Math.floor(min / 60)} h ${min % 60} min`,
     },
     controls: 'Controls',
     minigame: 'Play minigame',
@@ -413,6 +417,7 @@ const en = {
     /** Hover tips on the icons. */
     tipUptime: 'Running for',
     tipSeats: 'Online now / max',
+    tipLocked: 'Needs a password',
     /** Marks a game with a password. */
     lockedMark: '🔒',
     /** The public games (the browser). */
