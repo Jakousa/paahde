@@ -284,6 +284,8 @@ const en = {
     goFullscreen: 'Go fullscreen',
     /** Under Go fullscreen after Ctrl+W made the browser ask before closing the tab (src/menu.ts). */
     ctrlWNote: 'Ctrl+W is the browser shortcut for closing the tab. Fullscreen turns it off.',
+    /** The same box after Esc failed again and again to get back in while windowed (src/menu.ts). */
+    escNote: 'In a window the browser gives the mouse back only on a click: click Resume. In fullscreen Esc works.',
     mainMenu: 'Main menu',
     display: 'Display',
     fullscreen: 'Fullscreen',

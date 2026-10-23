@@ -57,6 +57,9 @@ const MACHINE_ICON = `<svg viewBox="2 13 40 28" aria-hidden="true">
 <circle cx="10" cy="20" r="2" fill="#8a8f93" stroke="#3b2616"/><circle cx="34" cy="33" r="2" fill="#8a8f93" stroke="#3b2616"/>
 <path d="M17 33h2M22 33h2M27 33h2" stroke="#3b2616" stroke-width="1.4"/></g></svg>`;
 
+/** Esc presses in a row that didn't get back into the game before the note says why. */
+const ESC_TRIES = 4;
+
 export class Menu {
   private el = document.createElement('div');
   private serverEl!: HTMLElement;
@@ -80,7 +83,7 @@ ${optionsHtml()}</div>
 <div class="chips stat"><span class="chip stat lives">${HEART}<b></b></span><span class="chip stat bosses"></span><span class="chip stat online" data-tip="${TEXT.landing.tipSeats}">${PERSON}<b></b></span></div>
 <div class="copy"><button class="chip code" data-tip="${TEXT.menu.server.code}"><i>#</i>${WORLD_ID}</button>
 <button class="chip invite" data-tip="${TEXT.menu.copyInvite}" aria-label="${TEXT.menu.copyInvite}">${LINK}</button></div></div>
-<div class="fsNote">${TEXT.menu.ctrlWNote}</div>
+<div class="fsNote"></div>
 <button class="mini" title="${TEXT.menu.minigame}" aria-label="${TEXT.menu.minigame}">${MACHINE_ICON}</button>`;
     document.body.append(this.el);
     this.serverEl = this.el.querySelector('.server')!;
@@ -114,18 +117,22 @@ ${optionsHtml()}</div>
 
     // Resume closes the menu once the mouse is the game's again (pointerlockchange below); refused, the menu stays and
     // Resume pulses: click it.
+    // After ESC_TRIES refused Esc presses in a row (windowed), the box beside Go fullscreen says why.
     const resumeButton = this.el.querySelector<HTMLElement>('.resume')!;
-    const resume = () => {
+    let escRefused = 0;
+    const resume = (byEsc = false) => {
       void capture(canvas).then((ok) => {
         if (ok || !this.open) return;
         resumeButton.classList.remove('nudge');
         void resumeButton.offsetWidth; // (restarts the animation)
         resumeButton.classList.add('nudge');
+        if (byEsc && ++escRefused >= ESC_TRIES && !document.fullscreenElement) this.showFsNote(TEXT.menu.escNote);
       });
     };
-    this.el.querySelector('.resume')!.addEventListener('click', resume);
+    this.el.querySelector('.resume')!.addEventListener('click', () => resume());
     this.el.addEventListener('pointerdown', (e) => {
       if (e.target === this.el) resume();
+      escRefused = 0;
     });
 
     // Capture phase, so this sees the inventory still open when its own Esc handler is about to close it.
@@ -146,10 +153,13 @@ ${optionsHtml()}</div>
     addEventListener('keyup', (e) => {
       if (e.code !== 'Escape' || !escResume) return;
       escResume = false;
-      setTimeout(() => this.open && resume(), 0);
+      setTimeout(() => this.open && resume(true), 0);
     }, true);
     document.addEventListener('pointerlockchange', () => {
-      if (document.pointerLockElement) return this.toggle(false);
+      if (document.pointerLockElement) {
+        escRefused = 0;
+        return this.toggle(false);
+      }
       if (ui.inventoryOpen || performance.now() - ui.escClosedAt < 400) return;
       if (ui.debugFreed) {
         ui.debugFreed = false;
@@ -178,14 +188,17 @@ ${optionsHtml()}</div>
     if (open && !this.open) void this.showServer();
     this.el.classList.toggle('open', open);
     // Opened by the leave-site prompt (src/input.ts): say why it came and how fullscreen avoids it, this once.
-    this.el.classList.toggle('closeAsked', open && ui.closeAsked);
-    if (open && ui.closeAsked) this.placeFsNote();
+    this.el.classList.remove('closeAsked');
+    if (open && ui.closeAsked) this.showFsNote(TEXT.menu.ctrlWNote);
     if (!open) ui.closeAsked = false;
   }
 
-  /** The Ctrl+W note is its own box beside Go fullscreen, a line pointing at it; under the panel if there's no room. */
-  private placeFsNote() {
+  /** A note in its own box beside Go fullscreen, a line pointing at it (under the panel if there's no room), until the
+   *  menu closes: why the tab almost closed (Ctrl+W), or why Esc doesn't get back in. Both: fullscreen avoids it. */
+  private showFsNote(text: string) {
     const note = this.el.querySelector<HTMLElement>('.fsNote')!;
+    note.textContent = text;
+    this.el.classList.add('closeAsked');
     const b = this.el.querySelector('.fs')!.getBoundingClientRect();
     const beside = b.right + 22 + 220 + 16 <= innerWidth;
     note.classList.toggle('below', !beside);
