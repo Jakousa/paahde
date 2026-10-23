@@ -19,7 +19,7 @@ import { LegIk, lowestAnkles, type Ground } from './legIk';
 import { Ragdoll, type RagdollGround } from './ragdoll';
 import { CrouchGait } from './crouchGait';
 import type { RidePose } from '../players';
-import { carriedBit, tierIn, wornBit, type TierSlot } from '../../shared/gear.ts';
+import { carriedBit, tierIn, type TierSlot, wornBit } from '../../shared/gearBits.ts';
 import { applyTier } from '../tierLook';
 import { beltModel, disposeModel, DRAW_IN, heldModel, heldMuzzle, wristModel } from './outfit';
 import { LAMP_ON } from './jammer';

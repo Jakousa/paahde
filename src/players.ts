@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { indoors, sandHidden } from '../shared/shelters.ts';
 import { isSlipFace, slopeAt } from '../shared/sim.ts';
-import { wornBit } from '../shared/gear.ts';
+import { wornBit } from '../shared/gearBits.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, footprints, streaks } from './footprints.ts';
 import { footsteps } from './footsteps.ts';

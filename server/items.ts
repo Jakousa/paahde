@@ -2,7 +2,8 @@
 // setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
 import { fittedBox, grows, isShared } from '../shared/boxes.ts';
-import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, holdsCargo, SHIELD_BREAKS, isGear, refit, scrapParts, shieldSaves, tierOf, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
+import { bagShape, EQUIP_SLOTS, GEAR, SHIELD_BREAKS, isGear, refit, scrapParts, shieldSaves, tierOf } from '../shared/gear.ts';
+import { type Boxes, boxShape, fitPart, holdsCargo, tryMove, unfitPart } from '../shared/moves.ts';
 import {
   addItem, addUpTo, BAG_SLOTS, makeItem, ownOf, partAt, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, setPart, settle, sizeOf, sortItems, stackOf, stacks,
   type Item, type ItemData, type Slots,

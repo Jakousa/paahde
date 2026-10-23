@@ -17,7 +17,8 @@
 // shift-click or drag a piece into the bag to pick it up, or drag something onto the panel to drop it. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
 import { buildingId, cargoId, fittedBox, takeOnly, vehicleBox, vehicleId } from '../shared/boxes.ts';
-import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, holdsCargo, isGear, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
+import { bagShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, partsOf, quality, repaired, slotLabel, tierOf } from '../shared/gear.ts';
+import { type Boxes, boxShape, holdsCargo, tryMove } from '../shared/moves.ts';
 import { chargeOf, findSpot, HOTBAR, ITEMS, makeItem, partAt, scrapItem, setData, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
