@@ -12,6 +12,9 @@ const GRAIN = [0.011, 0.064]; // squashed up and down: ripples half as tall as t
 const RISE = 1.0; // ~16 px/s at that grain
 /** The live settings, as multiples of the above (squish: the grain up over across). */
 const tune = { size: 1, strength: 1, squish: GRAIN[1] / GRAIN[0], speed: 1 };
+/** The sliders' settings in the address (&haze=size_strength_squish_speed), so a look can be shared as a link. */
+export const HAZE_PARAM = 'haze';
+const KEYS = ['size', 'strength', 'squish', 'speed'] as const;
 /** Room round the title's box in the texture, for its glow (px). */
 const PAD = 52;
 /** The title's glow, as its CSS text-shadow (src/landing.ts): offset y, blur, colour. */
@@ -64,7 +67,16 @@ export function haze(page: HTMLElement, title: HTMLElement) {
   gl.useProgram(prog);
   const u = (n: string) => gl.getUniformLocation(prog, n);
   const [uView, uBox, uPh, uAlpha, uBend, uGrain] = ['view', 'box', 'ph', 'alpha', 'bend', 'grain'].map(u);
-  if (location.search.includes('debug')) tuner(page);
+  if (location.search.includes('debug')) {
+    // A shared look: the settings from the address.
+    const got = (new URLSearchParams(location.search).get(HAZE_PARAM) ?? '').split('_').map(Number);
+    KEYS.forEach((k, i) => {
+      const v = got[i];
+      // Size and squish divide and multiply the grain: never 0. No strength or speed is fine (it stands still).
+      if (Number.isFinite(v) && (v > 0 || (v === 0 && (k === 'strength' || k === 'speed')))) tune[k] = v;
+    });
+    tuner(page);
+  }
   const quad = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, quad);
   const at = gl.getAttribLocation(prog, 'at');
@@ -186,10 +198,21 @@ function tuner(page: HTMLElement) {
       tune[k] = parseFloat(input.value);
       show();
       say();
+      toUrl();
     });
     show();
     box.append(name, input, value);
   }
+  // Into the address as they change (a moment after: browsers limit how often it may be rewritten).
+  let timer = 0;
+  const toUrl = () => {
+    clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      const q = new URLSearchParams(location.search);
+      q.set(HAZE_PARAM, KEYS.map((k) => +tune[k].toFixed(2)).join('_'));
+      history.replaceState(history.state, '', `${location.pathname}?${q.toString().replace(/=(&|$)/g, '$1')}${location.hash}`);
+    }, 250);
+  };
   out.style.cssText = 'grid-column:1/-1;margin-top:4px;padding:4px 6px;font:10px var(--mono);letter-spacing:0;text-transform:none;color:#2a120a;background:#ffd9a0;border:0;border-radius:3px;cursor:pointer';
   out.addEventListener('click', () => navigator.clipboard?.writeText(out.textContent ?? ''));
   say();

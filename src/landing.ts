@@ -12,7 +12,7 @@ import { checkName, GAME_NAME, MAX_PLAYERS } from '../shared/names.ts';
 import type { WorldStats } from '../shared/protocol.ts';
 import { TEXT } from '../shared/text.ts';
 import { WORLD_ID, WORLD_ID_RE } from '../shared/world.ts';
-import { haze } from './haze';
+import { HAZE_PARAM, haze } from './haze';
 import { lobbyView } from './lobby';
 import { MENU_CSS, bindOptions, bindTips, optionsHtml } from './options';
 import { getBrowserId, setWorldKey } from './profile';
@@ -110,7 +110,14 @@ export type View = { v: 'intro' } | { v: 'join'; tab: 'mine' | 'pub' } | { v: 'c
 /** The page showing now: where views go, why it's up over a game (the end screens), and how to load this page's game. */
 let shown: { view: HTMLElement; why?: 'over' | 'missing'; play?: () => void; place: () => void } | null = null;
 
-const urlOf = (v: View) => (v.v === 'lobby' ? `${location.pathname}?w=${encodeURIComponent(v.id)}` : location.pathname);
+/** A view's address; the dev flags in this one (debug, the haze's look: src/haze.ts) come along. */
+const urlOf = (v: View) => {
+  const now = new URLSearchParams(location.search);
+  const q = new URLSearchParams(v.v === 'lobby' ? { w: v.id } : {});
+  for (const k of ['debug', HAZE_PARAM]) if (now.has(k)) q.set(k, now.get(k)!);
+  const s = q.toString().replace(/=(&|$)/g, '$1'); // a bare "debug", not "debug="
+  return s ? `${location.pathname}?${s}` : location.pathname;
+};
 const viewOfUrl = (): View => {
   const id = new URLSearchParams(location.search).get('w') ?? '';
   return WORLD_ID_RE.test(id) ? { v: 'lobby', id } : { v: 'intro' };
