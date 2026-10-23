@@ -107,6 +107,8 @@ export class BossServer {
 
   tick(dt: number, now: number, players: BossPlayer[]): BossOut {
     const out: BossOut = { kills: [], craters: [], events: [] };
+    this.ticks = [this.ticks[1], now];
+    for (const id of this.seeing.keys()) if (!players.some((p) => p.id === id)) this.seeing.delete(id);
     // Hurt nobody indoors or safe: the brains get them flagged.
     const ps = players.map((p) => (p.safe || indoors(p.x, p.y, p.z) ? { ...p, safe: true } : p));
     this.bosses = this.bosses.filter((b) => {
@@ -160,17 +162,38 @@ export class BossServer {
     return { t: 'called', b: this.bosses.filter((o) => o.deadAt < 0).map((o) => ({ k: o.kind, x: Math.round(o.x), z: Math.round(o.z) })) };
   }
 
-  /** The bosses near (x, z), for player `me`. */
-  msg(now: number, me: number, x: number, z: number): ServerMsg {
-    const b: BossSnap[] = [];
-    for (const o of this.bosses) {
-      if (Math.hypot(o.x - x, o.z - z) > BOSS_SEND_R) continue;
-      b.push({
-        id: o.id, k: o.kind, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: Math.round(o.yaw * 1e4) / 1e4, br: o.broken, hp: r2(o.hp / BOSSES[o.kind].hp),
-        dead: o.deadAt < 0 ? 0 : Math.round((now - o.deadAt) / 10) / 100 + 0.01, s: BRAINS[o.kind].snap(o),
-        ...(o.deadAt < 0 && o.foes.has(me) ? { f: 1 } : {}),
-      });
+  /** Every boss's snapshot at `snapsAt` (built once a tick, shared by everyone's msgs), the time of the tick before
+   *  the last, and whether each player's last 'bosses' had any in it. */
+  private snaps: { o: Boss; s: BossSnap }[] = [];
+  private snapsAt = -1;
+  private ticks: [number, number] = [0, 0];
+  private seeing = new Map<number, boolean>();
+
+  /** The 'bosses' messages for player `me` at (x, z) this tick: the bosses near them; nothing while there are none,
+   *  but one empty list once they've gone (src/bosses.ts shows the last list it got), and ahead of the first list
+   *  after a gap an empty one stamped the tick before (the view interpolates as if it had got the empties all along). */
+  msgs(now: number, me: number, x: number, z: number): ServerMsg[] {
+    if (this.snapsAt !== now) {
+      this.snapsAt = now;
+      this.snaps = this.bosses.map((o) => ({
+        o,
+        s: {
+          id: o.id, k: o.kind, x: r2(o.x), y: r2(o.y), z: r2(o.z), yaw: Math.round(o.yaw * 1e4) / 1e4, br: o.broken, hp: r2(o.hp / BOSSES[o.kind].hp),
+          dead: o.deadAt < 0 ? 0 : Math.round((now - o.deadAt) / 10) / 100 + 0.01, s: BRAINS[o.kind].snap(o),
+        },
+      }));
     }
-    return { t: 'bosses', time: Math.round(now), b };
+    const b: BossSnap[] = [];
+    for (const { o, s } of this.snaps) {
+      if (Math.hypot(o.x - x, o.z - z) > BOSS_SEND_R) continue;
+      b.push(o.deadAt < 0 && o.foes.has(me) ? { ...s, f: 1 } : s);
+    }
+    const time = Math.round(now);
+    // Someone new (a reconnect may still show the bosses from before) counts as seeing some: they get the empty list.
+    const had = this.seeing.get(me) ?? true;
+    this.seeing.set(me, b.length > 0);
+    if (!b.length) return had ? [{ t: 'bosses', time, b }] : [];
+    if (had) return [{ t: 'bosses', time, b }];
+    return [{ t: 'bosses', time: Math.round(this.ticks[0]), b: [] }, { t: 'bosses', time, b }];
   }
 }
