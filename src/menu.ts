@@ -2,7 +2,7 @@
 // panel took it. Resume (or a click on the backdrop) goes back in. Options (src/options.ts: gameplay, graphics, audio,
 // controls), fullscreen, back to the main menu, credits. Over it a bubble with the game itself, laid out like its row on
 // the main menu (src/landing.ts): its name and how long it's been going; lives, bosses beaten, who's on, and everyone who
-// has played (and your own time there, by the hourglass); its code and invite link to copy; each mark explained on hover. The build and connection are in
+// has played (by the name; your own time there by the hourglass); its code and invite link to copy; each mark explained on hover. The build and connection are in
 // the stats (src/statsGraph.ts). The game keeps running behind it: it's multiplayer, nothing pauses.
 import { copies } from './copy';
 import { WORLD_ID } from '../shared/world.ts';
@@ -23,15 +23,17 @@ const css = `${MENU_CSS}
   background: rgba(28, 15, 7, 0.92); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 10px 40px rgba(0, 0, 0, 0.5); }
 #menu .panel.opts ~ .server { display: none; }
 #menu .server { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; }
-#menu .server .sname { font: 600 13px var(--mono); color: #ffd9a0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#menu .server .title { display: flex; align-items: center; gap: 12px; min-width: 0; }
+#menu .server .sname { min-width: 0; font: 600 13px var(--mono); color: #ffd9a0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #menu .server .times { display: flex; gap: 12px; justify-self: end; }
 #menu .server .up, #menu .server .mine { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; opacity: 0.8; }
 #menu .server .mine svg { width: 13px; height: 13px; }
 #menu .server .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-#menu .server .crowd { position: relative; display: inline-flex; justify-self: end; margin-right: 6px; color: #ffd9a0; }
+#menu .server .crowd { position: relative; display: inline-flex; flex: none; margin-right: 6px; color: #ffd9a0; }
+#menu .server .crowd svg { width: 18px; height: 18px; }
 #menu .server .crowd b { position: absolute; right: -6px; top: -5px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
   border-radius: 8px; font: bold 10px/15px var(--mono); text-align: center; color: #2a160a; background: #ffd9a0; }
-#menu .server .copy { grid-column: 1 / -1; display: flex; gap: 6px; justify-self: end; }
+#menu .server .copy { display: flex; gap: 6px; justify-self: end; }
 #menu .server .chip { display: inline-flex; align-items: center; gap: 5px; width: auto; height: 24px; padding: 0 9px; border-radius: 12px;
   font: 600 12px var(--mono); letter-spacing: 0; color: #ffd9a0; background: rgba(255, 217, 160, 0.1); box-sizing: border-box; }
 #menu .server .chip svg { width: 13px; height: 13px; fill: currentColor; }
@@ -76,9 +78,8 @@ export class Menu {
 <button class="leaveGame" style="margin-top:8px">${TEXT.menu.mainMenu}</button>
 <div class="foot"><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
 ${optionsHtml()}</div>
-<div class="server bare"><div class="sname"></div><div class="times"><span class="mine stat">${HOURGLASS}<b></b></span><span class="up stat" data-tip="${TEXT.menu.server.uptime}">${CLOCK_SVG}<b></b></span></div>
+<div class="server bare"><div class="title"><div class="sname"></div><span class="crowd stat">${GROUP_SVG}<b></b></span></div><div class="times"><span class="mine stat">${HOURGLASS}<b></b></span><span class="up stat" data-tip="${TEXT.menu.server.uptime}">${CLOCK_SVG}<b></b></span></div>
 <div class="chips stat"><span class="chip stat lives">${HEART}<b></b></span><span class="chip stat bosses"></span><span class="chip stat online" data-tip="${TEXT.landing.tipSeats}">${PERSON}<b></b></span></div>
-<span class="crowd stat">${GROUP_SVG}<b></b></span>
 <div class="copy"><button class="chip code" data-tip="${TEXT.menu.server.code}"><i>#</i>${WORLD_ID}</button>
 <button class="chip invite" data-tip="${TEXT.menu.copyInvite}" aria-label="${TEXT.menu.copyInvite}">${LINK}</button></div></div>
 <div class="fsNote">${TEXT.menu.ctrlWNote}</div>
