@@ -102,6 +102,8 @@ const SEP_CROWDED = 0.35;
 
 /** What the bots need to know about a player (feet position; `safe` = just respawned, can't be hurt). */
 export type BotPlayer = { id: number; x: number; y: number; z: number; safe: boolean };
+/** Out in the open and not just respawned: can be noticed, chased and hurt. */
+const open = (p: BotPlayer) => !p.safe && !indoors(p.x, p.y, p.z);
 
 type Guardian = {
   id: number; kind: Kind; legs: 3 | 4; x: number; z: number; yaw: number; speed: number;
@@ -346,7 +348,7 @@ export class GuardianServer {
     const bitten = new Map<number, number>();
     const shot: number[] = [], blasted: number[] = [], events: BoltEvent[] = [];
     const byId = new Map(players.map((p) => [p.id, p]));
-    const exposed = players.filter((p) => !p.safe && !indoors(p.x, p.y, p.z));
+    const exposed = players.filter(open);
     this.track(dt, players);
     this.swarm(players, now);
     this.wrecks(now);
@@ -440,7 +442,7 @@ export class GuardianServer {
     const sc = KINDS[g.kind].scale;
     const pv = gunPivot(g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, g.yaw, sc, { x: 0, y: 0, z: 0 });
     const cy = p ? p.y + 1.1 : 0;
-    g.aiming = !!p && !p.safe && !indoors(p.x, p.y, p.z) && Math.hypot(p.x - pv.x, cy - pv.y, p.z - pv.z) < FIRE_R
+    g.aiming = !!p && open(p) && Math.hypot(p.x - pv.x, cy - pv.y, p.z - pv.z) < FIRE_R
       && Math.atan2(pv.y - cy, Math.hypot(p.x - pv.x, p.z - pv.z)) < GUN_DEPRESS
       && lineOfSight(pv.x, pv.y, pv.z, p.x, cy, p.z);
     if (!g.aiming || !p) {
@@ -523,16 +525,16 @@ export class GuardianServer {
     if (g.prey >= 0) {
       const p = byId.get(g.prey);
       const shot = now < g.shotUntil;
-      if (shot && p && !p.safe && !indoors(p.x, p.y, p.z)) this.hunt(g, p, now);
+      if (shot && p && open(p)) this.hunt(g, p, now);
       // Crawlers keep to their site; guardians give up once you've got far from them, unless they were told where
       // you are this tick (a drone's beam holds you: tickDrones runs first, and calls them from up to ALERT_R).
       const far = g.kind === CRAWLER ? Math.hypot(g.px - g.home.x, g.pz - g.home.z)
         : g.knownAt === now ? 0 : Math.hypot(g.px - g.x, g.pz - g.z);
       // Once after you, a crawler keeps track of you within CHASE_SIGHT (not just its sight).
-      if (g.kind === CRAWLER && p && !p.safe && !indoors(p.x, p.y, p.z) && Math.hypot(p.x - g.x, p.z - g.z) < CHASE_SIGHT) this.hunt(g, p, now);
+      if (g.kind === CRAWLER && p && open(p) && Math.hypot(p.x - g.x, p.z - g.z) < CHASE_SIGHT) this.hunt(g, p, now);
       // Tires after a chase (each a little sooner or later, so the pack doesn't all stop at once).
       const tired = g.kind === CRAWLER && now - g.huntAt > CRAWLER_CHASE_MS * (0.75 + ((g.id * 0.618) % 1) * 0.5);
-      const gone = !p || p.safe || indoors(p.x, p.y, p.z) || now - g.knownAt > HUNT_FORGET || (far > HUNT_GIVE_UP_R[g.kind] && !shot) || tired;
+      const gone = !p || !open(p) || now - g.knownAt > HUNT_FORGET || (far > HUNT_GIVE_UP_R[g.kind] && !shot) || tired;
       if (tired) g.calmUntil = now + CRAWLER_CALM_MS;
       if (gone) {
         g.prey = -1;
@@ -855,7 +857,7 @@ export class GuardianServer {
    *  them. The one hunting them calms down after. */
   stomp(id: unknown, p: BotPlayer, now: number): boolean {
     const g = this.guardians.find((o) => o.id === id);
-    if (!g || g.kind !== GUARDIAN || g.deadAt >= 0 || p.safe || indoors(p.x, p.y, p.z)) return false;
+    if (!g || g.kind !== GUARDIAN || g.deadAt >= 0 || !open(p)) return false;
     if (Math.hypot(p.x - g.x, p.z - g.z) > (REST_R + STEP_DIST) * KINDS[GUARDIAN].scale + CRUSH_SLACK) return false;
     if (g.prey === p.id) {
       g.prey = -1;
@@ -944,7 +946,7 @@ export class GuardianServer {
         this.guardians.push(g);
         first ??= g;
       }
-      if (first && !p.safe && !indoors(p.x, p.y, p.z)) {
+      if (first && open(p)) {
         this.hunt(first, p, now);
         this.rouse(first, p, now);
       }
@@ -984,7 +986,7 @@ export class GuardianServer {
     if (!body) g.broken |= 1 << (i as number);
     if (!body && allBroken(g.broken, g.points)) {
       // Killing one sets the rest of the pack on you too.
-      if (!by.safe && !indoors(by.x, by.y, by.z)) this.rouse(g, by, now);
+      if (open(by)) this.rouse(g, by, now);
       g.deadAt = now;
       g.prey = -1;
       g.aiming = false;
@@ -993,7 +995,7 @@ export class GuardianServer {
       return { hit: true, kill: { kind: g.kind, x: g.x, z: g.z, by: by.id } };
     }
     // Hurt (or just hit), it turns on whoever did it; a crawler's pack with it.
-    if (!by.safe && !indoors(by.x, by.y, by.z)) {
+    if (open(by)) {
       g.calmUntil = 0;
       g.shotUntil = now + SHOT_TRACK_MS;
       this.hunt(g, by, now);
