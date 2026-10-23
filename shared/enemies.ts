@@ -63,12 +63,15 @@ const boss = (kind: BossKind): Enemy => ({
   drops: (rand) => bossDrops(kind, rand),
 });
 
+/** A site's crawlers killed are back this long (s) after everyone has left it (server/guardians.ts swarm). */
+export const PACK_BACK_S = 5 * 60;
+
 export const ENEMIES: Record<EnemyKind, Enemy> = {
   // Player-sized walkers at every crash site of crawler and guardian ground (an outpost's pack is smaller: server/guardians.ts
-  // CRAWLERS_MIN..MAX, OUTPOST_CRAWLERS_MAX), refilled a minute after everyone has left (REFILL_MS).
+  // CRAWLERS_MIN..MAX, OUTPOST_CRAWLERS_MAX); the ones killed are back PACK_BACK_S after everyone has left.
   crawler: {
     n: [1, 4],
-    meet: [{ at: 'site', levels: [0.5, 1, 2], odds: 1, backS: 5 * 60 }],
+    meet: [{ at: 'site', levels: [0.5, 1, 2], odds: 1, backS: PACK_BACK_S }],
     fight: { seconds: odds(40, 60, 40), win: odds(0, 0.85, 0.97), death: odds(0.2, 0.08, 0.03), quality: 0.2 },
     drops: (rand) => killDrops('crawler', rand),
   },

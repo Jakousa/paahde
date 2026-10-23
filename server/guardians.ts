@@ -8,6 +8,7 @@
 // (level 0) near the base have none. A few more drones roam the open desert day and night (ROAMERS), drifting in
 // near someone now and then on long legs, and flying off again after a few minutes.
 import { BASE } from '../shared/base.ts';
+import { PACK_BACK_S } from '../shared/enemies.ts';
 import { coreCrashSites, crashSite, crashSitesNear, type CrashSite, LEVEL_R } from '../shared/crashsites.ts';
 import {
   ALERT_R, beamDir, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CHASE_BACK, CHASE_SPEED,
@@ -200,6 +201,8 @@ export class GuardianServer {
   private downed: Kill[] = [];
   /** Crash sites (ids) with crawlers out right now. */
   private swarmed = new Set<number>();
+  /** Crash site id → when everyone left it and how many of its crawlers were alive then (swarm). */
+  private left = new Map<number, { at: number; crawlers: number }>();
   /** Crash site id → when its next replacement drone comes (server ms; 0 none due); a site not in it gets all its drones
    *  at once. Forgotten once everyone has left the site (SITE_LEAVE_R) or the night is over. */
   private refill = new Map<number, number>();
@@ -302,15 +305,19 @@ export class GuardianServer {
     }
   }
 
-  /** Crawlers out at the sites someone is near, gone from the ones everyone has left. */
-  private swarm(players: BotPlayer[]) {
+  /** Crawlers out at the sites someone is near, gone from the ones everyone has left. A site left comes back with the
+   *  crawlers it had then until PACK_BACK_S is up (no fresh pack for stepping out and back in), whole after. */
+  private swarm(players: BotPlayer[], now: number) {
     const near = (s: CrashSite, r: number) => players.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < r);
     for (const id of this.swarmed) {
       const s = crashSite(id)!;
       if (near(s, SITE_LEAVE_R)) continue;
       this.swarmed.delete(id);
+      const left = this.guardians.filter((g) => g.kind === CRAWLER && g.home === s && g.deadAt < 0).length;
+      this.left.set(id, { at: now, crawlers: left });
       this.guardians = this.guardians.filter((g) => g.kind !== CRAWLER || g.home !== s);
     }
+    for (const [id, l] of this.left) if (now - l.at >= PACK_BACK_S * 1000) this.left.delete(id);
     this.summoned = this.summoned.filter((s) => {
       if (near(s, SITE_LEAVE_R)) return true;
       this.guardians = this.guardians.filter((g) => g.home !== s);
@@ -320,7 +327,8 @@ export class GuardianServer {
       if (s.level === 0 || this.swarmed.has(s.id)) continue;
       this.swarmed.add(s.id);
       const max = Math.hypot(s.x - BASE.x, s.z - BASE.z) < LEVEL_R[0] ? OUTPOST_CRAWLERS_MAX : CRAWLERS_MAX;
-      const n = CRAWLERS_MIN + Math.floor(Math.random() * (max - CRAWLERS_MIN + 1));
+      const n = this.left.get(s.id)?.crawlers ?? CRAWLERS_MIN + Math.floor(Math.random() * (max - CRAWLERS_MIN + 1));
+      this.left.delete(s.id);
       for (let i = 0; i < n; i++) {
         const a = rand(-Math.PI, Math.PI), r = rand(...PATROL[CRAWLER]);
         this.guardians.push(this.walker(CRAWLER, 4, s, s.x + Math.sin(a) * r, s.z + Math.cos(a) * r));
@@ -340,7 +348,7 @@ export class GuardianServer {
     const byId = new Map(players.map((p) => [p.id, p]));
     const exposed = players.filter((p) => !p.safe && !indoors(p.x, p.y, p.z));
     this.track(dt, players);
-    this.swarm(players);
+    this.swarm(players, now);
     this.wrecks(now);
     const lit = this.tickDrones(dt, now, tod, players, exposed, byId);
     this.tickMissiles(dt, now, lit, players, exposed, blasted, events);
@@ -516,8 +524,10 @@ export class GuardianServer {
       const p = byId.get(g.prey);
       const shot = now < g.shotUntil;
       if (shot && p && !p.safe && !indoors(p.x, p.y, p.z)) this.hunt(g, p, now);
-      // Crawlers keep to their site; guardians give up once you've got far from them.
-      const far = g.kind === CRAWLER ? Math.hypot(g.px - g.home.x, g.pz - g.home.z) : Math.hypot(g.px - g.x, g.pz - g.z);
+      // Crawlers keep to their site; guardians give up once you've got far from them, unless they were told where
+      // you are this tick (a drone's beam holds you: tickDrones runs first, and calls them from up to ALERT_R).
+      const far = g.kind === CRAWLER ? Math.hypot(g.px - g.home.x, g.pz - g.home.z)
+        : g.knownAt === now ? 0 : Math.hypot(g.px - g.x, g.pz - g.z);
       // Once after you, a crawler keeps track of you within CHASE_SIGHT (not just its sight).
       if (g.kind === CRAWLER && p && !p.safe && !indoors(p.x, p.y, p.z) && Math.hypot(p.x - g.x, p.z - g.z) < CHASE_SIGHT) this.hunt(g, p, now);
       // Tires after a chase (each a little sooner or later, so the pack doesn't all stop at once).
