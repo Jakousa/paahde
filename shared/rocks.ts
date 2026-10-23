@@ -17,7 +17,9 @@
 import { BASE } from './base.ts';
 import { biome, blend } from './biomes.ts';
 import { canyonAt, canyonOut } from './canyons.ts';
+import { cellCache } from './cellCache.ts';
 import { duneHeight, ss, vnoise, WORLD_SEED } from './dunes.ts';
+import { mulberry32, ridged } from './noise.ts';
 import { LAB } from './world.ts';
 
 /** Grid cell size (m). A cell owns the formations whose centres lie in it. */
@@ -64,13 +66,7 @@ type Rock = {
 
 /** Deterministic PRNG seeded from a cell (integer hashing only). */
 function rng(ix: number, iz: number) {
-  let h = Math.imul(ix | 0, 0x2c1b3c6d) ^ Math.imul(iz | 0, 0x297a2d39) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ 0x70c4;
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  return mulberry32(Math.imul(ix | 0, 0x2c1b3c6d) ^ Math.imul(iz | 0, 0x297a2d39) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ 0x70c4);
 }
 
 /** 0 = sand sea, 1 = rocky country. Large blobs a few km across, with ragged edges. */
@@ -260,48 +256,47 @@ function cellRocks(ix: number, iz: number): Rock[] {
     if (budget <= 0) break;
     budget -= formation(out, x, z, kind, p, giant, r);
   }
-  // Keep every rock within reach of its cell's SEARCH neighbourhood (rocksIn looks no further).
+  return withinSearch(out, ix, iz);
+}
+
+/** The rocks of cell (ix, iz) that stay within its SEARCH neighbourhood (rocksIn looks no further). */
+function withinSearch(out: Rock[], ix: number, iz: number): Rock[] {
   const x0 = (ix - SEARCH) * ROCK_CELL, z0 = (iz - SEARCH) * ROCK_CELL, x1 = (ix + 1 + SEARCH) * ROCK_CELL, z1 = (iz + 1 + SEARCH) * ROCK_CELL;
   return out.filter((rk) => rk.x - rk.bound >= x0 && rk.x + rk.bound <= x1 && rk.z - rk.bound >= z0 && rk.z + rk.bound <= z1);
 }
 
-const own = new Map<number, Rock[]>();
-const near = new Map<number, Rock[]>();
-const cellKey = (ix: number, iz: number) => (ix + 2 ** 25) * 2 ** 26 + (iz + 2 ** 25);
-
-function ownRocks(ix: number, iz: number): Rock[] {
-  const k = cellKey(ix, iz);
-  let l = own.get(k);
-  if (!l) own.set(k, (l = cellRocks(ix, iz)));
+/** Every rock of `own`'s cells (cell (ix, iz)'s and its neighbours') that reaches into cell (ix, iz). */
+function reaching(own: (ix: number, iz: number) => Rock[], ix: number, iz: number): Rock[] {
+  const l: Rock[] = [];
+  const x0 = ix * ROCK_CELL, z0 = iz * ROCK_CELL, x1 = x0 + ROCK_CELL, z1 = z0 + ROCK_CELL;
+  for (let j = iz - SEARCH; j <= iz + SEARCH; j++) {
+    for (let i = ix - SEARCH; i <= ix + SEARCH; i++) {
+      for (const rk of own(i, j)) {
+        if (rk.x + rk.bound > x0 && rk.x - rk.bound < x1 && rk.z + rk.bound > z0 && rk.z - rk.bound < z1) l.push(rk);
+      }
+    }
+  }
   return l;
 }
 
+/** The highest of rocks `l`'s surfaces at (x, z), or -Infinity. */
+function topOf(l: Rock[], x: number, z: number): number {
+  let top = -Infinity;
+  for (let i = 0; i < l.length; i++) {
+    const h = rockSurface(l[i], x, z);
+    if (h > top) top = h;
+  }
+  return top;
+}
+
+const ownRocks = cellCache(8192, cellRocks);
+const nearRocks = cellCache(4096, (ix, iz) => reaching(ownRocks, ix, iz));
 const NO_ROCKS: Rock[] = [];
 
 /** Every rock that reaches into cell (ix, iz) (theirs and their neighbours'). */
 function rocksIn(ix: number, iz: number): Rock[] {
   if (LAB) return NO_ROCKS; // the dev test lab (shared/lab.ts) is flat
-  const k = cellKey(ix, iz);
-  let l = near.get(k);
-  if (l) return l;
-  l = [];
-  const x0 = ix * ROCK_CELL, z0 = iz * ROCK_CELL, x1 = x0 + ROCK_CELL, z1 = z0 + ROCK_CELL;
-  for (let j = iz - SEARCH; j <= iz + SEARCH; j++) {
-    for (let i = ix - SEARCH; i <= ix + SEARCH; i++) {
-      for (const rk of ownRocks(i, j)) {
-        if (rk.x + rk.bound > x0 && rk.x - rk.bound < x1 && rk.z + rk.bound > z0 && rk.z - rk.bound < z1) l.push(rk);
-      }
-    }
-  }
-  // Long-lived processes (the server) walk the whole world: keep the caches bounded.
-  if (near.size > 4096) { near.clear(); own.clear(); }
-  near.set(k, l);
-  return l;
-}
-
-/** Ridged value noise: 1 on thin crest lines, falling to 0 between them. */
-function ridged(x: number, z: number, seed: number): number {
-  return 1 - Math.abs(2 * vnoise(x, z, seed) - 1);
+  return nearRocks(ix, iz);
 }
 
 /** Height of one rock's surface at (x, z), or -Infinity outside it. */
@@ -414,56 +409,20 @@ function canyonCellRocks(ix: number, iz: number): Rock[] {
     formation(out, x, z, k < 0.2 ? PILLAR : k < 0.65 ? MESA : BOULDER, k < 0.2 ? p * p * 0.08 : p * p * 0.5, 1, r);
     standOn = null;
   }
-  const x0 = (ix - SEARCH) * ROCK_CELL, z0 = (iz - SEARCH) * ROCK_CELL, x1 = (ix + 1 + SEARCH) * ROCK_CELL, z1 = (iz + 1 + SEARCH) * ROCK_CELL;
-  return out.filter((rk) => rk.x - rk.bound >= x0 && rk.x + rk.bound <= x1 && rk.z - rk.bound >= z0 && rk.z + rk.bound <= z1);
+  return withinSearch(out, ix, iz);
 }
 
-const canyonOwn = new Map<number, Rock[]>();
-const canyonNear = new Map<number, Rock[]>();
-
-/** Every canyon-floor rock that reaches into cell (ix, iz). */
-function canyonRocksIn(ix: number, iz: number): Rock[] {
-  if (LAB) return NO_ROCKS;
-  const k = cellKey(ix, iz);
-  let l = canyonNear.get(k);
-  if (l) return l;
-  l = [];
-  const x0 = ix * ROCK_CELL, z0 = iz * ROCK_CELL, x1 = x0 + ROCK_CELL, z1 = z0 + ROCK_CELL;
-  for (let j = iz - SEARCH; j <= iz + SEARCH; j++) {
-    for (let i = ix - SEARCH; i <= ix + SEARCH; i++) {
-      const ck = cellKey(i, j);
-      let own = canyonOwn.get(ck);
-      if (!own) canyonOwn.set(ck, (own = canyonCellRocks(i, j)));
-      for (const rk of own) {
-        if (rk.x + rk.bound > x0 && rk.x - rk.bound < x1 && rk.z + rk.bound > z0 && rk.z - rk.bound < z1) l.push(rk);
-      }
-    }
-  }
-  if (canyonNear.size > 4096) { canyonNear.clear(); canyonOwn.clear(); }
-  canyonNear.set(k, l);
-  return l;
-}
+const canyonOwn = cellCache(8192, canyonCellRocks);
+const canyonNear = cellCache(4096, (ix, iz) => reaching(canyonOwn, ix, iz));
 
 /** Height of the canyon-floor rock at (x, z), or -Infinity where there is none. Pure function. */
 export function canyonRockHeight(x: number, z: number): number {
-  const l = canyonRocksIn(Math.floor(x / ROCK_CELL), Math.floor(z / ROCK_CELL));
-  let top = -Infinity;
-  for (let i = 0; i < l.length; i++) {
-    const h = rockSurface(l[i], x, z);
-    if (h > top) top = h;
-  }
-  return top;
+  return LAB ? -Infinity : topOf(canyonNear(Math.floor(x / ROCK_CELL), Math.floor(z / ROCK_CELL)), x, z);
 }
 
 /** Height of the rock at world (x, z), or -Infinity where there is none. Pure function. */
 export function rockHeight(x: number, z: number): number {
-  const l = rocksIn(Math.floor(x / ROCK_CELL), Math.floor(z / ROCK_CELL));
-  let top = -Infinity;
-  for (let i = 0; i < l.length; i++) {
-    const h = rockSurface(l[i], x, z);
-    if (h > top) top = h;
-  }
-  return top;
+  return topOf(rocksIn(Math.floor(x / ROCK_CELL), Math.floor(z / ROCK_CELL)), x, z);
 }
 
 /** True if a rock (with its scree) reaches within `r` of (x, z), or (x, z) is in a biome where nothing is placed

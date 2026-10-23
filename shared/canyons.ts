@@ -13,8 +13,9 @@
 // cut that lowers everything above it to bare rock (its walls), with the wash's sand on its floor. Same
 // determinism rules as shared/dunes.ts: integer hashing and exact IEEE operations only, no trig (a direction is
 // turned by adding a bit of its perpendicular and normalising).
+import { cellCache } from './cellCache.ts';
 import { dryFloor } from './dunes.ts';
-import { hash2, ss, vnoise } from './noise.ts';
+import { hash2, mulberry32, ridged, ss, vnoise } from './noise.ts';
 import { wallY } from './strata.ts';
 import { LAB, WORLD_SEED } from './world.ts';
 
@@ -50,17 +51,7 @@ type Canyon = {
 
 /** Deterministic PRNG seeded from a cell (integer hashing only), as in shared/rocks.ts. */
 function rng(ix: number, iz: number) {
-  let h = Math.imul(ix | 0, 0x1b873593) ^ Math.imul(iz | 0, 0x3c6ef372) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ 0x5ca1;
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function ridged(x: number, z: number, seed: number): number {
-  return 1 - Math.abs(2 * vnoise(x, z, seed) - 1);
+  return mulberry32(Math.imul(ix | 0, 0x1b873593) ^ Math.imul(iz | 0, 0x3c6ef372) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ 0x5ca1);
 }
 
 /** A meandering raw path of `n` steps from (x, z) heading (dx, dz), smoothed (Chaikin, twice). */
@@ -168,15 +159,7 @@ function cellCanyons(ix: number, iz: number): Canyon[] {
   return out;
 }
 
-const own = new Map<number, Canyon[]>();
-const cellKey = (ix: number, iz: number) => (ix + 2 ** 25) * 2 ** 26 + (iz + 2 ** 25);
-
-function ownCanyons(ix: number, iz: number): Canyon[] {
-  const k = cellKey(ix, iz);
-  let l = own.get(k);
-  if (!l) own.set(k, (l = cellCanyons(ix, iz)));
-  return l;
-}
+const ownCanyons = cellCache(1024, cellCanyons);
 
 /** Dev helper (?spawn=canyon, server/world.ts): the deep point (over 200 m under its rim) of a canyon's centreline
  *  nearest (x, z), or null. */
@@ -198,17 +181,13 @@ export function canyonFloorNear(x: number, z: number): { x: number; z: number } 
 
 /** Segment i of canyon c (from point i to i + 1). */
 type Seg = { c: Canyon; i: number };
-const fine = new Map<number, Seg[]>();
 const NONE: Seg[] = [];
 
 /** The canyon segments whose zone reaches into lookup cell (fx, fz). */
-function segsIn(fx: number, fz: number): Seg[] {
-  const k = cellKey(fx, fz);
-  let l = fine.get(k);
-  if (l) return l;
+const segsIn = cellCache(8192, (fx, fz): Seg[] => {
   const x0 = fx * FINE, z0 = fz * FINE, x1 = x0 + FINE, z1 = z0 + FINE;
   const cx = Math.floor((x0 + FINE / 2) / CANYON_CELL), cz = Math.floor((z0 + FINE / 2) / CANYON_CELL);
-  l = [];
+  const l: Seg[] = [];
   for (let j = cz - SEARCH; j <= cz + SEARCH; j++) {
     for (let i = cx - SEARCH; i <= cx + SEARCH; i++) {
       for (const c of ownCanyons(i, j)) {
@@ -220,12 +199,8 @@ function segsIn(fx: number, fz: number): Seg[] {
       }
     }
   }
-  if (l.length === 0) l = NONE;
-  // Long-lived processes (the server) walk the whole world: keep the caches bounded.
-  if (fine.size > 8192) { fine.clear(); own.clear(); }
-  fine.set(k, l);
-  return l;
-}
+  return l.length === 0 ? NONE : l;
+});
 
 /** How much (0..1) a canyon's zone covers (x, z): 1 within its walls and tableland, fading out past them. */
 export function canyonCover(x: number, z: number): number {
@@ -240,11 +215,6 @@ export function canyonCover(x: number, z: number): number {
     if (v > cover) cover = v;
   }
   return cover;
-}
-
-/** How much dried mud (0..1) lies on a canyon's floor at (x, z), for the cracked-clay look (src/world/terrain.ts). */
-export function canyonMud(x: number, z: number): number {
-  return canyonAt(x, z) ? canyonOut.mud : 0;
 }
 
 /** What the canyons do at a point: `cut` (the gorge's surface: walls and the bedrock under its floor; Infinity

@@ -123,11 +123,10 @@ export function dryFloor(x: number, z: number, seed: number): number {
   return erg(x + OFFSET_X, z + OFFSET_Z, seed | 0, 0);
 }
 
-/** Procedural dune height at world (x, z). Pure function. */
-export function duneHeight(x: number, z: number, seed: number): number {
+/** Procedural dune height at world (x, z). Pure function. `mud`: the mud flats' weight there, if known. */
+export function duneHeight(x: number, z: number, seed: number, mud = biome('mudflat', x, z)): number {
   const S = seed | 0;
   // Mud flats (shared/biomes.ts): no sand to make dunes of, a dead flat floor a little sunk into the land.
-  const mud = biome('mudflat', x, z);
   x += OFFSET_X;
   z += OFFSET_Z;
 

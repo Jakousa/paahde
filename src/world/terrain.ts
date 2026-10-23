@@ -10,10 +10,7 @@
 // once all of its chunks exist, so there are never holes; built chunks are cached for reuse.
 // Edits (digging) invalidate the fine chunks they touch, which are rebuilt nearest-first.
 import * as THREE from 'three/webgpu';
-import { biome } from '../../shared/biomes.ts';
-import { canyonMud } from '../../shared/canyons.ts';
-import { baseHeight, rockTop, EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../shared/terrain.ts';
-import { LAB } from '../../shared/world.ts';
+import { baseHeight, EDIT_CELL, EDIT_CHUNK, edits, groundAt, heightAt, WIND } from '../../shared/terrain.ts';
 import { hazeDensity, hazeFar } from './env.ts';
 import { createSandMaterial, sand } from './sandMaterial.ts';
 import { TERRAIN_LAYER } from './heightShadow.ts';
@@ -119,6 +116,10 @@ export class Terrain {
   private hbuf = new Float64Array((VERTS + 2) * (VERTS + 2));
   private cbuf = new Float32Array(VERTS * VERTS);
   private cblur = new Float32Array(VERTS * VERTS);
+  /** Per vertex: rock top, mud and silt, read off the ground while sampling its heights. */
+  private rbuf = new Float64Array(VERTS * VERTS);
+  private mbuf = new Float32Array(VERTS * VERTS);
+  private sbuf = new Float32Array(VERTS * VERTS);
 
   /** Stats for debugging/perf overlays. */
   readonly stats = { chunks: 0, triangles: 0, builtThisFrame: 0, buildMs: 0, totalBuilt: 0 };
@@ -287,8 +288,14 @@ export class Terrain {
     for (let j = 0; j < W; j++) {
       const z = c.z0 + (j - 1) * step;
       for (let i = 0; i < W; i++) {
-        const y = sample(c.x0 + (i - 1) * step, z);
-        h[j * W + i] = y;
+        const x = c.x0 + (i - 1) * step;
+        h[j * W + i] = sample(x, z);
+        // The rock and mud there, from the same sample (outside the border).
+        if (i === 0 || j === 0 || i > VERTS || j > VERTS) continue;
+        const g = groundAt(x, z), v = (j - 1) * VERTS + (i - 1);
+        this.rbuf[v] = g.rock;
+        this.sbuf[v] = g.silt;
+        this.mbuf[v] = Math.max(g.mudflat, g.silt);
       }
     }
     const geo = c.mesh.geometry;
@@ -343,11 +350,11 @@ export class Terrain {
       for (let i = 0; i < VERTS; i++) {
         const v = j * VERTS + i;
         // (The mud flats', and the dried mud on the canyons' floors.)
-        silt[v] = LAB ? 0 : canyonMud(c.x0 + i * step, c.z0 + j * step);
-        mud[v] = LAB ? 0 : Math.max(biome('mudflat', c.x0 + i * step, c.z0 + j * step), silt[v]);
+        silt[v] = this.sbuf[v];
+        mud[v] = this.mbuf[v];
         // (Over 1.5 m of sand, not a few cm: a switch within one cell followed the grid's triangles as a staircase;
         // the shader breaks the softer edge up with noise.)
-        const t = (rockTop(c.x0 + i * step, c.z0 + j * step) - pos[v * 3 + 1]) * (1 / 1.5) + 1;
+        const t = (this.rbuf[v] - pos[v * 3 + 1]) * (1 / 1.5) + 1;
         rock[v] = t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
         if (rock[v] > 0) crest[v] = 0; // rims are rock, not a sand brink
       }

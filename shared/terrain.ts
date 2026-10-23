@@ -14,6 +14,7 @@
 // edit twice is harmless and a client can predict a dig locally and still converge on the server.
 
 import { baseSolid, LAB_FLOOR_Y, nearBunker, overBase, overPlaced, withPad } from './base.ts';
+import { biome } from './biomes.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { ss, vnoise } from './noise.ts';
 import { canyonAt, canyonOut } from './canyons.ts';
@@ -36,11 +37,17 @@ export const EDIT_CHUNK = 32;
 /** The ground before player edits and pads, in its two layers: `sand` (its top) and `rock` (its top, -Infinity
  *  with no rock), the surface being the higher. Dunes and rocks (shared/rocks.ts), then the canyons
  *  (shared/canyons.ts): their tableland adds rock, their gorge cuts everything above its walls to bare rock and
- *  leaves only its wash's sand on the floor. Written by ground(). */
-const layers = { sand: 0, rock: -Infinity };
+ *  leaves only its wash's sand on the floor. Also `silt` (0..1, dried mud on a canyon's floor) and `mudflat` (the mud
+ *  flats' weight, shared/biomes.ts). Written by ground(), for the last point asked: heightAt and onRock, or
+ *  baseHeight and rockTop, at one point work it out once. */
+const layers = { sand: 0, rock: -Infinity, silt: 0, mudflat: 0 };
+let lastX = NaN, lastZ = NaN;
 function ground(x: number, z: number) {
-  let sand = duneHeight(x, z, WORLD_SEED), rock = rockHeight(x, z);
+  if (x === lastX && z === lastZ) return;
+  const mudflat = biome('mudflat', x, z);
+  let sand = duneHeight(x, z, WORLD_SEED, mudflat), rock = rockHeight(x, z), silt = 0;
   if (canyonAt(x, z)) {
+    silt = canyonOut.mud; // (read before canyonRockHeight: making its rocks reuses canyonOut)
     if (canyonOut.plateau > rock) {
       rock = canyonOut.plateau;
       // On the tableland: drifts of sand sheet, in soft-edged patches, thinning to bare rock towards its edges. (The
@@ -64,6 +71,19 @@ function ground(x: number, z: number) {
   }
   layers.sand = sand;
   layers.rock = rock;
+  layers.silt = silt;
+  layers.mudflat = mudflat;
+  lastX = x;
+  lastZ = z;
+}
+
+const LAB_GROUND: Readonly<typeof layers> = { sand: LAB_FLOOR_Y, rock: -Infinity, silt: 0, mudflat: 0 };
+
+/** The ground's layers at (x, z) before edits and pads (see `layers`). Overwritten by the next call. */
+export function groundAt(x: number, z: number): Readonly<typeof layers> {
+  if (LAB) return LAB_GROUND;
+  ground(x, z);
+  return layers;
 }
 
 /** Procedural dunes, rocks and canyons before player edits, flattened into a pad around the home base

@@ -64,7 +64,8 @@ when you find it stale.
   Read them with `biome(id, x, z)`, `biomeAt` or `blend` (a property mixed by weight). Biomes so far: canyons
   (`shared/canyons.ts`, first) and mud flats (dried lake beds: noise blobs (`blobs`) — no dunes (`duneHeight`), next to
   no rocks (`rockiness`), cracked clay via the per-vertex `mud` attribute in `src/world/sandMaterial.ts`, hotter by
-  day). Noise primitives in `shared/noise.ts`
+  day). Noise primitives and the seeded PRNG (`mulberry32`) in `shared/noise.ts`; per-cell layouts (rocks, canyons) are
+  cached with `cellCache` (`shared/cellCache.ts`, bounded for the server)
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`);
   pieces give one of the two basic materials, `scrap` or `cloth` (shared/items.ts `SCRAP`/`CLOTH`)
 - `shared/shelters.ts` — small empty bunkers (small/deep/long) scattered mostly in rocky country: placement, pad,
