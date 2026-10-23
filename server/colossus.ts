@@ -127,6 +127,8 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const fromBase = (x: number, z: number) => Math.hypot(x - BASE.x, z - BASE.z);
+/** Someone it can go for: out in the open (not down, not indoors), away from the base. */
+const ok = (p: BossPlayer) => !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT;
 
 /** Foot i's rest spot: beside the hips (foot 0 on its +X side), `lead` m ahead. */
 function rest(x: number, z: number, yaw: number, i: number, lead: number, out: { x: number; z: number }) {
@@ -248,12 +250,12 @@ export const colossus: Brain = {
       // Its prey under it, or (against a crowd) whoever is nearest under it.
       const near = scaled(STOMP_NEAR, n, PER_REACH);
       let who: BossPlayer | null = null;
-      if (dist < near) who = players.find((p) => p.id === st.prey) ?? null;
+      if (dist < near) who = players.find((p) => p.id === st.prey && ok(p)) ?? null;
       if (n > 1) {
         let bd = who ? Math.hypot(who.x - b.x, who.z - b.z) : near;
         for (const p of players) {
           const d = Math.hypot(p.x - b.x, p.z - b.z);
-          if (!p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT && d < bd) (who = p), (bd = d);
+          if (ok(p) && d < bd) (who = p), (bd = d);
         }
         // Against a crowd it doesn't stride on past someone under it: the next step waits, and it stomps.
         st.hold = !!who;
@@ -340,7 +342,6 @@ export const colossus: Brain = {
 /** Who it's after: whoever shot it (from further off), else the nearest out in the open within NOTICE_R, kept
  *  while in sight. Nobody near the base. */
 function hunt(b: Boss, st: St, now: number, players: BossPlayer[]) {
-  const ok = (p: BossPlayer) => !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT;
   let prey = players.find((p) => p.id === st.prey);
   if (prey && ok(prey) && Math.hypot(prey.x - b.x, prey.z - b.z) < LOSE_R) {
     st.px = prey.x;
@@ -485,7 +486,7 @@ function footfalls(st: St, now: number, players: BossPlayer[], out: BossOut) {
 /** Against a crowd: after a stomp, after someone else out in the open (nearest first, mostly). */
 function turnOnAnother(b: Boss, st: St, now: number, players: BossPlayer[]) {
   const others = players
-    .filter((p) => p.id !== st.prey && !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT && Math.hypot(p.x - b.x, p.z - b.z) < NOTICE_R)
+    .filter((p) => p.id !== st.prey && ok(p) && Math.hypot(p.x - b.x, p.z - b.z) < NOTICE_R)
     .sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z));
   if (!others.length) return;
   setPrey(st, others[Math.random() < 0.7 ? 0 : Math.floor(Math.random() * others.length)], now);
