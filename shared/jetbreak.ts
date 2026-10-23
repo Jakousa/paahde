@@ -4,6 +4,7 @@
 // jet's id, so the server (which stamps the craters and keeps where they ended up) and every client (which draws them flying) agree.
 import { DRONE_JET_PIECES } from './dronejetpieces.ts';
 import { JET_PIECES, type JetPieceDef } from './jetpieces.ts';
+import { mulberry32 as rng } from './noise.ts';
 import { baseHeight } from './terrain.ts';
 
 /** The two jets: the fixed-wing drone, an MQ-9-like recon plane (tools/blender/machines/dronejet.py -> public/models/dronejet.glb; no engine
@@ -115,17 +116,6 @@ export interface Impact {
   vx: number;
   vy: number;
   vz: number;
-}
-
-/** Deterministic noise from a seed: a PRNG (as shared/crash.ts seeded, kept here so this has no other imports). */
-function rng(seed: number) {
-  let h = seed | 0;
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 export function breakup(im: Impact, seed: number, kind: JetKind): Breakup {

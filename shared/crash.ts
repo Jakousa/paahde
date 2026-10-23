@@ -13,6 +13,10 @@ import { labById, labSites } from './lab.ts';
 import { jetSiteById, jetSites } from './jetcrash.ts';
 import { STATIONS } from './stations.ts';
 import { LEVEL_KINDS } from './tables.ts';
+import { mulberry32 as seeded } from './noise.ts';
+
+/** Deterministic PRNG from a seed (integer hashing only). */
+export { seeded };
 
 /** Components small enough to carry, and the salvage wrecks (shared/wrecks.ts); each is an item of the same kind
  *  (shared/items.ts) in the bag, taken apart on the disassembly table. */
@@ -66,17 +70,6 @@ export interface CrashSite {
   seed: number;
   /** A machine of the dev test lab (shared/lab.ts) or an engine torn off a downed jet (shared/jetcrash.ts): worked in place whatever its size, never spent. */
   lab?: boolean;
-}
-
-/** Deterministic PRNG from a seed (integer hashing only). */
-export function seeded(seed: number) {
-  let h = seed | 0;
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 function pickKind(u: number, carry: boolean, level: LootLevel): ComponentKind {

@@ -20,6 +20,7 @@ import { BASE_SPAWN, padBlend } from './base.ts';
 import { rocksNear } from './rocks.ts';
 import { shelterWithin } from './shelters.ts';
 import { cellInRange } from './cells.ts';
+import { mulberry32 } from './noise.ts';
 import { LAB } from './world.ts';
 import { baseHeight, heightAt, WORLD_SEED } from './terrain.ts';
 
@@ -75,13 +76,7 @@ export type ScrapPiece = {
 
 /** Deterministic PRNG seeded from a cell (integer hashing only). */
 function rng(ix: number, iz: number) {
-  let h = Math.imul(ix | 0, 0x27d4eb2d) ^ Math.imul(iz | 0, 0x165667b1) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ 0x5c4a9;
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  return mulberry32(Math.imul(ix | 0, 0x27d4eb2d) ^ Math.imul(iz | 0, 0x165667b1) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ 0x5c4a9);
 }
 
 /** A point in the unit disc (rejection sampled), written into `out`. */

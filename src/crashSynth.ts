@@ -1,6 +1,6 @@
 // The electronic "voice" of a crash site (played by crashSound.ts): sparse, soft sci-fi sounds from
 // half-dead systems in the wreck. Pure Web Audio synthesis (oscillators, envelopes, filters, a noise
-// buffer), no samples and no imports, so it also runs in an OfflineAudioContext for loudness checks.
+// buffer), no samples, so it also runs in an OfflineAudioContext for loudness checks.
 //
 // Events, picked at irregular intervals by a PRNG seeded from the site id:
 //   - beep:    one or two soft sine/triangle notes from the site's pitch set
@@ -10,20 +10,12 @@
 //   - servo:   a faint filtered-saw motor whine gliding up, holding, and back down
 //   - crackle: a scatter of tiny band-passed noise grains (arcing wiring)
 // Each site gets its own root note, scale and tempo, so different wrecks sound slightly different.
+import { mulberry32 } from '../shared/noise.ts';
 
 /** Output level of a voice before distance: tuned so a voice 5 m away measures about −26 LUFS. */
 export const VOICE_GAIN = 0.32;
 
 type Rng = () => number;
-function mulberry(seed: number): Rng {
-  let h = seed | 0;
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const SCALES = [
   [0, 3, 5, 7, 10, 12], // minor pentatonic
@@ -38,7 +30,7 @@ function noise(ctx: BaseAudioContext): AudioBuffer {
   if (!b) {
     b = ctx.createBuffer(1, Math.floor(ctx.sampleRate), ctx.sampleRate);
     const d = b.getChannelData(0);
-    const r = mulberry(0x51a7);
+    const r = mulberry32(0x51a7);
     for (let i = 0; i < d.length; i++) d[i] = r() * 2 - 1;
     noiseCache.set(ctx, b);
   }
@@ -58,7 +50,7 @@ export class CrashVoice {
 
   constructor(ctx: BaseAudioContext, id: number, start = ctx.currentTime) {
     this.ctx = ctx;
-    this.r = mulberry(Math.imul(id + 1, 0x9e3779b1) ^ 0x2545f491);
+    this.r = mulberry32(Math.imul(id + 1, 0x9e3779b1) ^ 0x2545f491);
     const r = this.r;
     // Root between ~A4 and ~E6, so it sits above the wind's rumble and rush.
     this.root = 440 * Math.pow(2, Math.floor(r() * 19) / 12);

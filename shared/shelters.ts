@@ -26,6 +26,7 @@ import { atPump, BASE, inBase, bandUnder, collideCapsules, keepUnder, PUMP_REACH
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockiness, rocksNear } from './rocks.ts';
 import { cellId } from './cells.ts';
+import { mulberry32 } from './noise.ts';
 import { LAB } from './world.ts';
 
 export type ShelterKind = 'small' | 'deep' | 'long';
@@ -125,13 +126,7 @@ const MAX_RANGE = 3.5;
 
 /** Deterministic PRNG seeded from a cell (integer hashing only). */
 function rng(ix: number, iz: number) {
-  let h = Math.imul(ix | 0, 0x4f1bbcdd) ^ Math.imul(iz | 0, 0x1b873593) ^ Math.imul(WORLD_SEED, 0x85ebca6b) ^ 0x5e17;
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  return mulberry32(Math.imul(ix | 0, 0x4f1bbcdd) ^ Math.imul(iz | 0, 0x1b873593) ^ Math.imul(WORLD_SEED, 0x85ebca6b) ^ 0x5e17);
 }
 
 const FACINGS: [number, number][] = [[0, 1], [1, 0], [0, -1], [-1, 0]];

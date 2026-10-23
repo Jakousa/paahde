@@ -28,6 +28,7 @@ import { rocksNear } from './rocks.ts';
 import { SCRAP_CELL, scrapPieces } from './scrap.ts';
 import { yawFromQ } from './sim.ts';
 import { cellId, cellOf } from './cells.ts';
+import { mulberry32 } from './noise.ts';
 import { LAB } from './world.ts';
 import { baseHeight, CORE_HALF, heightAt, WORLD_SEED } from './terrain.ts';
 
@@ -172,13 +173,7 @@ export function beaconPos(s: CrashSite, out: { x: number; y: number; z: number }
 
 /** Deterministic PRNG seeded from a cell (integer hashing only); `salt` gives an independent stream. */
 function rng(ix: number, iz: number, salt = 0xc4a5) {
-  let h = Math.imul(ix | 0, 0x2c1b3c6d) ^ Math.imul(iz | 0, 0x297a2d39) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ salt;
-  return () => {
-    h = (h + 0x6d2b79f5) | 0;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  return mulberry32(Math.imul(ix | 0, 0x2c1b3c6d) ^ Math.imul(iz | 0, 0x297a2d39) ^ Math.imul(WORLD_SEED, 0x9e3779b1) ^ salt);
 }
 
 /** A random unit vector (rejection sampled), written into `out`. */

@@ -22,3 +22,19 @@ export function vnoise(x: number, z: number, seed: number): number {
   const c = hash2(ix, iz + 1, seed), d = hash2(ix + 1, iz + 1, seed);
   return a + (b - a) * fx + (c - a) * fz + (a - b - c + d) * fx * fz;
 }
+
+/** Ridged value noise: 1 on thin crest lines, falling to 0 between them. */
+export function ridged(x: number, z: number, seed: number): number {
+  return 1 - Math.abs(2 * vnoise(x, z, seed) - 1);
+}
+
+/** Deterministic PRNG from a seed (mulberry32, integer hashing only), uniform in [0, 1). */
+export function mulberry32(seed: number): () => number {
+  let h = seed | 0;
+  return () => {
+    h = (h + 0x6d2b79f5) | 0;
+    let t = Math.imul(h ^ (h >>> 15), 1 | h);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
