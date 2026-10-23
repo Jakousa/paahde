@@ -16,6 +16,9 @@ when you find it stale.
   the inventory and workbench menu a drawn cursor (`src/padCursor.ts`) sends synthetic pointer events, so they work as
   with the mouse. `src/padMap.ts` — the pad's buttons (read by the pad code and by the hints). Control hints:
   `src/bindings.ts` `kbd`/`ctl`/`hintKeys` name keys or pad buttons for the device last used (docs/text.md)
+- `src/uiScale.ts` — the menus' and inventory's size: `--ui`, from the window's size times Options → Interface size,
+  taken as CSS `zoom` by the panels it lists. In a zoomed panel write `calc(100vw / var(--ui))` for viewport units,
+  and convert pointer px to `left`/`top` with `uiScale()`
 
 ## Worlds, server and players
 

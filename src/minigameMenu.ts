@@ -50,7 +50,7 @@ const css = `
 #play .result { width: 280px; }
 #play .result .row { margin: 12px 0; }
 #play .none { opacity: 0.5; }
-#play .tip { position: relative; box-sizing: border-box; width: min(360px, 94vw); height: 52px; padding: 0 16px; display: flex; align-items: center;
+#play .tip { position: relative; box-sizing: border-box; width: min(360px, calc(94vw / var(--ui, 1))); height: 52px; padding: 0 16px; display: flex; align-items: center;
   gap: 12px; border-radius: 8px; background: rgba(28, 15, 7, 0.88); box-shadow: 0 0 0 1px rgba(255, 217, 160, 0.22); font-size: 13px;
   transition: opacity .25s; }
 #play .tip.off { opacity: 0; }

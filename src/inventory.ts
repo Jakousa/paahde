@@ -33,6 +33,7 @@ import { vehicleById } from '../shared/vehicles.ts';
 import { ctl, hintKeys, isBound, kbd } from './bindings';
 import { takePickup, ui } from './input';
 import type { Net } from './net';
+import { uiScale } from './uiScale';
 import { uiSound } from './uiSound';
 import { TEXT } from '../shared/text.ts';
 
@@ -61,17 +62,19 @@ const css = `
   animation: toast ${TOAST_MS}ms ease-out forwards; }
 @keyframes toast { 0% { opacity: 0; transform: translateY(6px); } 12% { opacity: 1; transform: none; }
   70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
-#invOverlay { position: fixed; inset: 0; z-index: 15; display: none; align-items: center; justify-content: center;
+/* Taller than the window (a big bag at a big Interface size): it scrolls, from the top, rather than losing both ends. */
+#invOverlay { position: fixed; inset: 0; z-index: 15; display: none; align-items: center; justify-content: safe center;
+  overflow-y: auto; padding: 16px 0; box-sizing: border-box;
   flex-direction: column; gap: 10px; background: rgba(12, 6, 2, 0.45); font: 12px var(--mono);
   color: #fff4e4; user-select: none; -webkit-user-select: none; }
 #invOverlay.open { display: flex; }
 #invOverlay .boxes { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; justify-content: center;
-  max-width: calc(100vw - 32px); }
+  max-width: calc(100vw / var(--ui, 1) - 32px); }
 #invOverlay .box { padding: 10px 12px 12px; border-radius: 8px; background: rgba(28, 15, 7, 0.88);
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.45); }
 #invOverlay .box.storage { box-shadow: 0 0 0 1px rgba(255, 200, 120, 0.35), 0 8px 30px rgba(0, 0, 0, 0.45); }
 /* Chests grow without end (shared/storage.ts growChest): past ~10 rows they scroll. */
-#invOverlay .box.storage .grid { max-height: min(578px, calc(100vh - 120px)); overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
+#invOverlay .box.storage .grid { max-height: min(578px, calc(100vh / var(--ui, 1) - 120px)); overflow-y: auto; scrollbar-width: thin; padding-right: 2px; }
 #invOverlay .cell { width: 54px; height: 54px; border-radius: 6px; background: rgba(255, 240, 220, 0.06);
   box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.12); }
 #invOverlay .cell.dead { background: rgba(222, 62, 34, 0.12); box-shadow: inset 0 0 0 1px rgba(222, 62, 34, 0.5); }
@@ -672,9 +675,10 @@ export class InventoryHud {
     const under = document.elementFromPoint(x, y);
     const grid = under?.closest<HTMLElement>('[data-grid]');
     if (grid) {
-      const rect = grid.getBoundingClientRect();
-      const cx = Math.round((x - d.gx - rect.left) / (CELL + GAP));
-      const cy = Math.round((y - d.gy - rect.top + grid.scrollTop) / (CELL + GAP));
+      // The pointer and the rect in screen px, the grid's cells and scroll in its own (src/uiScale.ts).
+      const rect = grid.getBoundingClientRect(), z = uiScale();
+      const cx = Math.round((x - d.gx - rect.left) / z / (CELL + GAP));
+      const cy = Math.round(((y - d.gy - rect.top) / z + grid.scrollTop) / (CELL + GAP));
       const cols = Number(grid.dataset.cols);
       if (cx < 0 || cy < 0 || cx >= cols) return { box: grid.dataset.grid!, i: -2, grid };
       return { box: grid.dataset.grid!, i: Number(grid.dataset.free) + cy * cols + cx, grid };
@@ -728,16 +732,22 @@ export class InventoryHud {
     this.ghost.style.display = 'flex';
   }
 
+  /** The ghost held at the pointer by the point it was grabbed at (both screen px), set in its own (src/uiScale.ts). */
+  private placeGhost(x: number, y: number, d: Drag) {
+    const z = uiScale();
+    this.ghost.style.left = `${(x - d.gx) / z}px`;
+    this.ghost.style.top = `${(y - d.gy) / z}px`;
+  }
+
   /** R while dragging: turn the item 90°, held by its top-left cell. */
   private turn() {
     const d = this.drag;
     const it = d && this.itemAt(d.box, d.i);
     if (!d || !it) return;
     d.r = !d.r;
-    d.gx = d.gy = CELL / 2;
+    d.gx = d.gy = CELL / 2 * uiScale();
     this.drawGhost(d, it);
-    this.ghost.style.left = `${d.x0 - d.gx}px`;
-    this.ghost.style.top = `${d.y0 - d.gy}px`;
+    this.placeGhost(d.x0, d.y0, d);
     this.hintAt = '';
     this.showHint(this.targetAt(d.x0, d.y0, d), d);
   }
@@ -795,7 +805,7 @@ export class InventoryHud {
     const it = this.itemAt(at.box, at.i)!;
     this.drag = {
       box: at.box, i: at.i, half: e.button === 2, x0: e.clientX, y0: e.clientY, moved: false, r: !!it.r,
-      gx: inGrid ? e.clientX - rect.left : CELL / 2, gy: inGrid ? e.clientY - rect.top : CELL / 2,
+      gx: inGrid ? e.clientX - rect.left : CELL / 2 * uiScale(), gy: inGrid ? e.clientY - rect.top : CELL / 2 * uiScale(),
     };
   }
 
@@ -917,12 +927,14 @@ export class InventoryHud {
     }
     if (this.tip.style.display === 'none') return;
     // Below-right of the pointer, flipped to stay on screen.
-    const w = this.tip.offsetWidth, h = this.tip.offsetHeight;
+    // Worked out in screen px, set in the tip's own (src/uiScale.ts).
+    const z = uiScale();
+    const w = this.tip.offsetWidth * z, h = this.tip.offsetHeight * z;
     let x = this.pointer.x + 14, y = this.pointer.y + 18;
     if (x + w > innerWidth - 8) x = this.pointer.x - w - 10;
     if (y + h > innerHeight - 8) y = this.pointer.y - h - 10;
-    this.tip.style.left = `${Math.max(8, x)}px`;
-    this.tip.style.top = `${Math.max(8, y)}px`;
+    this.tip.style.left = `${Math.max(8, x) / z}px`;
+    this.tip.style.top = `${Math.max(8, y) / z}px`;
   }
 
   private dragMove(e: PointerEvent) {
@@ -946,8 +958,7 @@ export class InventoryHud {
     // Remembered for R, which turns it where the pointer is.
     d.x0 = e.clientX;
     d.y0 = e.clientY;
-    this.ghost.style.left = `${e.clientX - d.gx}px`;
-    this.ghost.style.top = `${e.clientY - d.gy}px`;
+    this.placeGhost(e.clientX, e.clientY, d);
     const at = this.targetAt(e.clientX, e.clientY, d);
     this.showHint(at, d);
     this.ghost.classList.toggle('drop', this.outside(e.clientX, e.clientY));

@@ -12,7 +12,7 @@ const css = `
 #buildMenu { position: fixed; inset: 0; z-index: 7; display: none; align-items: center; justify-content: center;
   background: rgba(0, 0, 0, 0.35); font: 13px var(--mono); color: #fff4e4; }
 #buildMenu.open { display: flex; }
-#buildMenu .panel { min-width: 260px; max-width: min(360px, calc(100vw - 32px)); padding: 14px; border-radius: 8px; background: rgba(28, 15, 7, 0.94);
+#buildMenu .panel { min-width: 260px; max-width: min(360px, calc(100vw / var(--ui, 1) - 32px)); padding: 14px; border-radius: 8px; background: rgba(28, 15, 7, 0.94);
   box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; gap: 6px; }
 #buildMenu h3 { margin: 0 0 4px; font: 600 13px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: #ffd9a0; }
 #buildMenu button { display: flex; align-items: center; gap: 10px; font: 12px var(--mono); text-align: left; color: #fff4e4;

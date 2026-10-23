@@ -16,10 +16,11 @@ import { openMinigame } from './minigameMenu';
 import { TEXT } from '../shared/text.ts';
 import { MENU_CSS, bindOptions, optionsHtml, statsPref } from './options';
 import { graphics, onGraphics, setGraphics } from './graphics';
+import { uiScale } from './uiScale';
 
 const css = `${MENU_CSS}
 #menu.game { flex-direction: column; gap: 10px; }
-#menu .server { order: -1; width: min(340px, calc(100vw - 32px)); padding: 10px 18px; border-radius: 8px;
+#menu .server { order: -1; width: min(340px, calc(100vw / var(--ui, 1) - 32px)); padding: 10px 18px; border-radius: 8px;
   background: rgba(28, 15, 7, 0.92); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 10px 40px rgba(0, 0, 0, 0.5); }
 #menu .panel.opts ~ .server { display: none; }
 #menu .server { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; }
@@ -200,11 +201,13 @@ ${optionsHtml()}</div>
     note.textContent = text;
     this.el.classList.add('closeAsked');
     const b = this.el.querySelector('.fs')!.getBoundingClientRect();
-    const beside = b.right + 22 + 220 + 16 <= innerWidth;
+    // The rects in screen px, the note placed in the menu's own (src/uiScale.ts).
+    const z = uiScale();
+    const beside = b.right + (22 + 220 + 16) * z <= innerWidth;
     note.classList.toggle('below', !beside);
     const p = this.el.querySelector('.panel')!.getBoundingClientRect();
-    note.style.left = `${beside ? b.right + 22 : p.left}px`;
-    note.style.top = `${beside ? b.top + b.height / 2 : p.bottom + 10}px`;
+    note.style.left = `${(beside ? b.right + 22 * z : p.left) / z}px`;
+    note.style.top = `${(beside ? b.top + b.height / 2 : p.bottom + 10 * z) / z}px`;
   }
 
   /** The game's bubble, fresh each time the menu opens (server/index.ts, as the main menu's list asks: with our browser

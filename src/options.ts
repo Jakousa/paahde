@@ -7,6 +7,7 @@ import { TEXT } from '../shared/text.ts';
 import { FPS_LIMITS, PRESET_NAMES, SHADOW_DISTANCE_RANGE, SHADOW_QUALITY, applyGraphicsPreset, currentGraphicsPreset, graphics, needsReload, onGraphics, setGraphics } from './graphics';
 import { setFullscreen } from './input';
 import { bindRebind, controlsHtml } from './rebind';
+import { UI_SIZE_RANGE, setUiSize, uiScale, uiSize } from './uiScale';
 
 const STATS_KEY = 'dadajam.stats';
 
@@ -14,7 +15,7 @@ export const MENU_CSS = `
 #menu { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center;
   background: rgba(12, 6, 2, 0.55); font: 12px var(--mono); color: #fff4e4; user-select: none; -webkit-user-select: none; }
 #menu.open { display: flex; }
-#menu .panel { width: min(340px, calc(100vw - 32px)); padding: 16px 18px 14px; border-radius: 8px;
+#menu .panel { width: min(340px, calc(100vw / var(--ui, 1) - 32px)); padding: 16px 18px 14px; border-radius: 8px;
   background: rgba(28, 15, 7, 0.92); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 10px 40px rgba(0, 0, 0, 0.5); }
 #menu h2 { margin: 0 0 14px; font: 15px var(--title); letter-spacing: 0.18em; text-transform: uppercase; color: #ffd9a0; }
 #menu h3 { margin: 16px 0 8px; font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.6; }
@@ -33,7 +34,7 @@ export const MENU_CSS = `
 #menu select option { background: #2a160a; }
 #menu input[type=checkbox] { accent-color: #ffd9a0; margin: 0; }
 #menu .val, #menu .aoval { width: 52px; text-align: right; opacity: 0.8; }
-#menu .panel { max-height: calc(100vh - 32px); overflow-y: auto; }
+#menu .panel { max-height: calc(100vh / var(--ui, 1) - 32px); overflow-y: auto; }
 #menu .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; opacity: 0.85; }
 #menu .binds { display: grid; grid-template-columns: 1fr 64px 64px; gap: 4px 6px; align-items: center; }
 #menu .binds button { padding: 3px 0; font: 600 11px var(--mono); letter-spacing: 0; background: rgba(255, 217, 160, 0.14); color: #ffd9a0; }
@@ -96,6 +97,7 @@ export function optionsHtml(): string {
   return `<div class="options"><h2>${TEXT.menu.options}</h2><button class="optBack">${TEXT.controls.back}</button>
 <div class="tabs"><button class="tab on" data-tab="gameplay">${TEXT.menu.gameplay}</button><button class="tab" data-tab="graphics">${TEXT.menu.graphics}</button><button class="tab" data-tab="audio">${TEXT.menu.audio}</button><button class="tab" data-tab="controls">${TEXT.menu.controls}</button></div>
 <div class="pane" data-pane="gameplay">
+<label class="row" data-tip="${TEXT.menu.tips.interfaceSize}"><span>${TEXT.menu.interfaceSize}</span><input class="uiSize" type="range" min="${UI_SIZE_RANGE[0]}" max="${UI_SIZE_RANGE[1]}" step="0.05"><span class="val uiSizeVal"></span></label>
 <label class="row"><span>${TEXT.menu.showGuides}</span><input class="guides" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.showCounts}</span><input class="counts" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label></div>
@@ -158,6 +160,14 @@ export function bindOptions(root: HTMLElement, hooks: { onAo?: (level: number) =
   const counts = root.querySelector<HTMLInputElement>('.counts')!;
   counts.checked = tdPrefs.counts;
   counts.addEventListener('change', () => setCounts(counts.checked));
+  // Applied on release: the menu growing under the pointer mid-drag would throw the slider about.
+  const size = root.querySelector<HTMLInputElement>('.uiSize')!;
+  const sizeVal = root.querySelector<HTMLElement>('.uiSizeVal')!;
+  const showSize = () => (sizeVal.textContent = `${Math.round(parseFloat(size.value) * 100)}%`);
+  size.value = String(uiSize());
+  showSize();
+  size.addEventListener('input', showSize);
+  size.addEventListener('change', () => setUiSize(parseFloat(size.value)));
 
   // Options: a sub-view with a tab for each group of settings.
   const rebind = bindRebind(root);
@@ -251,10 +261,12 @@ export function bindTips(root: HTMLElement) {
     tip.style.display = row ? 'block' : 'none';
     if (!row) return;
     tip.textContent = row.dataset.tip!;
-    const w = Math.min(260, innerWidth - 16);
-    tip.style.width = `${w}px`;
-    tip.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, e.clientX + 14))}px`;
-    tip.style.top = `${Math.min(innerHeight - tip.offsetHeight - 8, e.clientY + 18)}px`;
+    // Worked out in screen px, set in the menu's own (src/uiScale.ts).
+    const z = uiScale();
+    const w = Math.min(260 * z, innerWidth - 16);
+    tip.style.width = `${w / z}px`;
+    tip.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, e.clientX + 14)) / z}px`;
+    tip.style.top = `${Math.min(innerHeight - tip.offsetHeight * z - 8, e.clientY + 18) / z}px`;
   });
   root.addEventListener('pointerleave', () => (tip.style.display = 'none'));
 }
