@@ -1943,3 +1943,27 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   (shield, rifle, jammer) ~10% later in the greedy agent.
 - Gaps: the wrench has no sound or swing; no art for wiring of its own (it shows as a Scrap coil); the build menu has
   no preview of the building beyond its icon.
+
+## Public and private games, lobbies, your name and colour
+
+- **Making a game** takes settings now: a name, public (listed under "Public games" on the main menu) or private (only
+  by its link or code), max players (1–16, default 8) and an optional password. The front server keeps them in its
+  own database (`server/registry.ts`, `data/registry.db`); worlds from before have no row and count as private, open,
+  named by their id.
+- **Every game's link opens its lobby** (`src/lobby.ts`) before the game loads: its name, lives, bosses beaten and
+  `online/max`, your name and colour, and the password if it's locked. The right password gets a key (an HMAC of the
+  game and its password hash), kept in localStorage per game and sent as `&k=` on the WebSocket, so the password
+  never goes in a URL and reconnects just work. The front server refuses the socket with 4403 (locked) or 4429 (full);
+  the client goes back to the lobby saying why. Dev worlds and perf runs (`?perf=`) skip the lobby.
+- **Main menu:** your name and colour at the top (`src/profile.ts`), "Your games" (the worlds this browser joined, as
+  before, now with each game's name, your name there and your play time: `players.played`, added up in `save()` while
+  you're in the game), "Public games" (busiest first), a box to join by code (the id in the link, or the link
+  itself), and Start a new game.
+- **Names:** your name is now one for every game, chosen before joining, and required: no more per-world prompt
+  (src/name.ts just says ready). `shared/names.ts` checks game and player names: a few allowed characters and the
+  `obscenity` English list (leetspeak and repeated letters), also on the name with everything but letters and digits
+  squeezed out, plus a short list of our own. The client checks as you type; the server checks again (`hello` with a
+  bad or missing name is closed with 4422).
+- **Colour:** any RGB for now, a colour well and a dice button; the server takes it from `hello` and saves it.
+- Gaps: no way to change a game's settings or password after it's made; a password-locked game's key never expires;
+  the minigame's leaderboard names aren't filtered.

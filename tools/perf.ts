@@ -47,7 +47,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function worldId(): Promise<string> {
   const given = opt('world');
   if (given) return given;
-  const res = await fetch(`${base}api/worlds`, { method: 'POST' });
+  const res = await fetch(`${base}api/worlds`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Perf run', public: false, max: 16 }) });
   if (!res.ok) throw new Error(`could not make a world (${res.status}): is the game running (npm run dev)?`);
   return ((await res.json()) as { id: string }).id;
 }
@@ -126,7 +126,7 @@ try {
     await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
   }
   await send('Page.addScriptToEvaluateOnNewDocument', {
-    source: `try { sessionStorage.setItem('prologueSeen', '1'); const k = 'dadajam.graphics'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), ...${JSON.stringify(prefs)} })); for (const [lk, lv] of ${JSON.stringify(rawLs)}) localStorage.setItem(lk, lv); } catch {}`,
+    source: `try { sessionStorage.setItem('prologueSeen', '1'); localStorage.setItem('dadajam.name', localStorage.getItem('dadajam.name') || 'Perf'); const k = 'dadajam.graphics'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), ...${JSON.stringify(prefs)} })); for (const [lk, lv] of ${JSON.stringify(rawLs)}) localStorage.setItem(lk, lv); } catch {}`,
   });
 
   // Tracing: Chrome's Performance recording categories, streamed back as a file.

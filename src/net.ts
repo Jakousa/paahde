@@ -38,6 +38,7 @@ import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
 import { serverBuild } from './update';
 import { WORLD_ID } from '../shared/world.ts';
+import { myColor, myName, worldKey } from './profile';
 import { Telemetry } from './telemetry';
 
 /** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
@@ -168,8 +169,9 @@ export class Net {
   /** The world's shared lives left (shared/world.ts) and the boss kinds beaten (shared/bosses.ts bossBit), on join,
    *  after every death and after a boss kind's first kill. */
   onLives?: (n: number, beaten: number) => void;
-  /** The world turned us away for good: its lives are spent ('over') or it doesn't exist ('missing'). */
-  onEnded?: (why: 'over' | 'missing') => void;
+  /** The world turned us away for good: its lives are spent ('over'), it doesn't exist ('missing'), it wants a
+   *  password we have no key for ('locked'), it's full ('full') or it won't have our name ('name'). */
+  onEnded?: (why: 'over' | 'missing' | 'locked' | 'full' | 'name') => void;
   /** Dead and lying as a ragdoll: the push (m/s) that threw the body (shared/ragdoll.ts); null when alive. */
   down: [number, number, number] | null = null;
   /** True if guardian bolt `id` is still flying on screen (src/world/bolts.ts): a death by it waits for boltArrived. */
@@ -212,9 +214,7 @@ export class Net {
   onChat?: (msg: Extract<ServerMsg, { t: 'chat' }>) => void;
   /** Other players' names by public id ('' unnamed), for the tags over their heads. */
   names = new Map<number, string>();
-  /** The welcome said this world hasn't asked our name yet. */
-  nameAsked = false;
-  /** Loaded and named: the server shows us to others and lets us die. Resent after every reconnect's welcome. */
+  /** Loaded: the server shows us to others and lets us die. Resent after every reconnect's welcome. */
   isReady = false;
   onObituary?: (msg: Obituary) => void;
   /** The world's latest deaths, oldest first, as we join (src/chat.ts). */
@@ -414,12 +414,7 @@ export class Net {
     if (this.connected) this.send({ t: 'chat', text });
   }
 
-  /** Your name in this world ('' none), asked once (src/name.ts). */
-  setName(name: string) {
-    if (this.connected) this.send({ t: 'name', name });
-  }
-
-  /** The game is loaded and the name chosen: become visible and mortal (src/name.ts). */
+  /** The game is loaded: become visible and mortal (src/name.ts). */
   ready() {
     this.isReady = true;
     if (this.connected) this.send({ t: 'ready' });
@@ -627,7 +622,9 @@ export class Net {
 
   private connect() {
     const url = new URL('ws', location.href.replace(/^http/, 'ws'));
-    url.search = `?w=${WORLD_ID}`;
+    // k: the key to a locked game (src/lobby.ts got it with the password; server/index.ts checks it).
+    const key = worldKey(WORLD_ID);
+    url.search = `?w=${WORLD_ID}${key ? `&k=${encodeURIComponent(key)}` : ''}`;
     const ws = new WebSocket(url);
     this.ws = ws;
     ws.onopen = () => {
@@ -635,7 +632,8 @@ export class Net {
       // ?spawn=base / crash / field / shelter / canyon: start down in the bunker, the nearest crash site, scrap field,
       // shelter or canyon floor (only on the first join; a reconnect keeps where you are).
       const spawn = this.joinedOnce ? null : new URLSearchParams(location.search).get('spawn');
-      this.send(spawn === 'base' || spawn === 'crash' || spawn === 'field' || spawn === 'shelter' || spawn === 'canyon' ? { t: 'hello', browserId: this.browserId, spawn } : { t: 'hello', browserId: this.browserId });
+      const me = { t: 'hello', browserId: this.browserId, name: myName(), color: myColor() } as const;
+      this.send(spawn === 'base' || spawn === 'crash' || spawn === 'field' || spawn === 'shelter' || spawn === 'canyon' ? { ...me, spawn } : me);
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
     ws.onclose = (e) => {
@@ -649,8 +647,9 @@ export class Net {
       this.dying = null; // the server's welcome says whether we're alive
       clearTimeout(this.dyingTimer);
       this.status = 'reconnecting';
-      // Game over or no such world (server/world.ts, server/index.ts): nothing to come back to.
-      if (e.code === 4410 || e.code === 4404) return this.onEnded?.(e.code === 4410 ? 'over' : 'missing');
+      // Game over, no such world, locked, full or a name it won't take (server/world.ts, server/index.ts): retrying won't help.
+      const ended = ({ 4410: 'over', 4404: 'missing', 4403: 'locked', 4429: 'full', 4422: 'name' } as const)[e.code as 4410];
+      if (ended) return this.onEnded?.(ended);
       // Reconnect with backoff; deploys restart the server, so this is expected to happen.
       // Jitter spreads everyone's reconnects out after a restart.
       setTimeout(() => this.connect(), this.retryMs * (0.5 + Math.random()));
@@ -826,7 +825,6 @@ export class Net {
       this.sentSlot = -1;
       this.retryMs = 500;
       this.status = 'online';
-      this.nameAsked = msg.name === null;
       if (this.isReady) this.send({ t: 'ready' });
       return;
     }
@@ -917,15 +915,4 @@ function lerpAngle(a: number, b: number, t: number): number {
   return a + d * t;
 }
 
-export function getBrowserId(): string {
-  try {
-    let id = localStorage.getItem('dadajam.browserId');
-    if (!id) {
-      id = crypto.randomUUID();
-      localStorage.setItem('dadajam.browserId', id);
-    }
-    return id;
-  } catch {
-    return crypto.randomUUID(); // storage blocked: play as a fresh guest
-  }
-}
+export { getBrowserId } from './profile';

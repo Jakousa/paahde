@@ -27,6 +27,7 @@ import { StatsGraph } from './statsGraph';
 import { getBrowserId, Net } from './net';
 import { Lives } from './lives';
 import { landing, rememberWorld, victory } from './landing';
+import { refused } from './lobby';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { addHeadlights, Bike } from './bike';
@@ -219,7 +220,7 @@ net.onLives = (n, beaten) => {
   setTrophies(beaten);
   if (allBeaten(beaten)) victory(WORLD_ID);
 };
-net.onEnded = (why) => landing(why);
+net.onEnded = (why) => (why === 'over' || why === 'missing' ? landing(why) : refused(why));
 net.onScrapGot = (n, dropped) => teardown.gotScrap(n, dropped);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { net });
 // Machine progress (large sites and the disassembly table), from the server: every machine is kept up to date,

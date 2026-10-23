@@ -394,6 +394,42 @@ const en = {
     players: (n: number) => (n === 1 ? '1 player' : `${n} players`),
     ago: (min: number) =>
       min < 2 ? 'just now' : min < 60 ? `${min} min ago` : min < 48 * 60 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} days ago`,
+    /** Your name in one of your games and how long you've played there. */
+    you: (name: string, min: number) => {
+      const t = min < 60 ? `${min} min` : `${(min / 60).toFixed(min < 600 ? 1 : 0)} h`;
+      return name ? `${name} · ${t} played` : `${t} played`;
+    },
+    lives: (n: number) => `♥ ${n}`,
+    /** Here now out of the most allowed. */
+    seats: (online: number, max: number) => `${online}/${max} here`,
+    /** Marks a game with a password. */
+    lockedMark: '🔒',
+    /** The public games (the browser). */
+    browse: 'Public games',
+    noGames: 'No public games right now',
+    refresh: 'Refresh',
+    /** Joining a game by its code (the id in its link). */
+    code: 'Game code',
+    yourName: 'Your name',
+    colour: 'Colour',
+    randomColour: '🎲',
+    /** Why a name won't do (shared/names.ts). */
+    nameWhy: { short: 'Too short', long: 'Too long', chars: 'Letters and numbers only', banned: 'Pick another name' },
+    /** Making a game. */
+    gameName: 'Game name',
+    public: 'Public',
+    private: 'Private',
+    maxPlayers: 'Max players',
+    passwordOptional: 'Password (optional)',
+    password: 'Password',
+    create: 'Create',
+    back: 'Back',
+    menu: 'Main menu',
+    busy: 'Try again in a minute',
+    failed: 'Couldn’t reach the server',
+    /** Turned away from a game. */
+    wrongPassword: 'Wrong password',
+    full: 'Game is full',
   },
   /** The loading cover's prologue (src/prologueRunner.ts): paragraphs, then the game's title over the time. */
   prologue: {
@@ -405,7 +441,6 @@ const en = {
     ],
     time: 'Forty-one years after the last rain',
   },
-  name: { placeholder: 'your name', go: 'Go', skip: 'skip' },
 
   // ---- The teardown minigame (src/minigameMenu.ts, src/loadingRunner.ts) ---------------------------------------------
 

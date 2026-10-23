@@ -5,8 +5,6 @@ import type { Obituary } from '../shared/protocol.ts';
 import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, OLD_COILS, OLD_SCRAP, SCRAP, WIRING, type Item, type Slots } from '../shared/items.ts';
 
 export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
-/** A player's name in this world: null until they were asked (src/name.ts), '' if they left it blank. */
-export type PlayerName = string | null;
 
 export function openDb(path: string) {
   mkdirSync(dirname(path), { recursive: true });
@@ -34,14 +32,15 @@ export function openDb(path: string) {
   if (!cols.some((c) => c.name === 'heat')) db.exec('ALTER TABLE players ADD COLUMN heat REAL NOT NULL DEFAULT 0');
   // v5: a name, asked the first time they join this world (NULL: not asked yet).
   if (!cols.some((c) => c.name === 'name')) db.exec('ALTER TABLE players ADD COLUMN name TEXT');
+  // v6: time played in this world (ms, while in the game), shown on the main menu's list of your games.
+  if (!cols.some((c) => c.name === 'played')) db.exec('ALTER TABLE players ADD COLUMN played INTEGER NOT NULL DEFAULT 0');
 
   const get = db.prepare('SELECT id, color, x, z, heat, sips FROM players WHERE id = ?');
-  const getName = db.prepare('SELECT name FROM players WHERE id = ?');
   const putName = db.prepare('UPDATE players SET name = ? WHERE id = ?');
   const upsert = db.prepare(`
-    INSERT INTO players (id, color, x, y, z, heat, sips) VALUES (?, ?, ?, 0, ?, ?, ?)
-    ON CONFLICT (id) DO UPDATE SET x = excluded.x, z = excluded.z, heat = excluded.heat, sips = excluded.sips,
-      last_seen = datetime('now')
+    INSERT INTO players (id, color, x, y, z, heat, sips, played) VALUES (?, ?, ?, 0, ?, ?, ?, ?)
+    ON CONFLICT (id) DO UPDATE SET color = excluded.color, x = excluded.x, z = excluded.z, heat = excluded.heat,
+      sips = excluded.sips, played = played + excluded.played, last_seen = datetime('now')
   `);
 
   // Terrain edit layer (shared/terrain.ts): one row per chunk, data = Int32Array of millimetre offsets
@@ -502,8 +501,8 @@ export function openDb(path: string) {
     loadCrashSpent: () => allSpent.all() as { site: number; spent_at: number }[],
     spendCrash: (site: number, at: number) => insertSpent.run(site, at),
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,
-    savePlayer: (p: PlayerRow) => upsert.run(p.id, p.color, p.x, p.z, p.heat, p.sips),
-    getName: (id: string) => ((getName.get(id) as { name: string | null } | undefined)?.name ?? null) as PlayerName,
+    /** `played`: ms played since the last save, added to the total. */
+    savePlayer: (p: PlayerRow, played = 0) => upsert.run(p.id, p.color, p.x, p.z, p.heat, p.sips, Math.round(played)),
     setName: (id: string, name: string) => putName.run(name, id),
     loadChunks(): { cx: number; cz: number; data: Int32Array }[] {
       return (allChunks.all() as { cx: number; cz: number; data: Uint8Array }[]).map((r) => ({

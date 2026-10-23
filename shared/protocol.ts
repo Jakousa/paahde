@@ -22,8 +22,9 @@ export type ClientMsg =
   // spawn: 'base' starts at the home base's door instead of the saved position, 'crash' next to the nearest
   // crash site with a large machine, 'field' at the edge of the nearest scrap field, 'shelter' outside the nearest
   // shelter's door, 'canyon' on the floor of the nearest deep canyon (dev helpers, ?spawn=base / crash / field / shelter /
-  // canyon).
-  | { t: 'hello'; browserId: string; spawn?: 'base' | 'crash' | 'field' | 'shelter' | 'canyon' }
+  // canyon). name and color: yours, chosen on the main menu or the lobby (src/profile.ts); a name that fails
+  // shared/names.ts checkName is refused (closed with 4422), a color that isn't 24-bit RGB keeps the one you had.
+  | { t: 'hello'; browserId: string; name: string; color?: number; spawn?: 'base' | 'crash' | 'field' | 'shelter' | 'canyon' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
@@ -146,14 +147,18 @@ export type ClientMsg =
   // A chat line (Enter, src/chat.ts). The server trims it to CHAT_MAX, drops empty ones and rate-limits, then sends
   // it to everyone as 'chat'.
   | { t: 'chat'; text: string }
-  // Your name in this world (src/name.ts), asked once after the first 'welcome' (blank: no name). Trimmed to NAME_MAX.
-  | { t: 'name'; name: string }
-  // Loaded and named: visible to others and mortal from now on (src/name.ts). Sent again after every 'welcome'.
+  // Loaded: visible to others and mortal from now on (src/name.ts). Sent again after every 'welcome'.
   | { t: 'ready' };
 
 /** A death, as chat shows it (ServerMsg 'obituary'). */
-/** How a world is doing, for the landing page's list (GET api/worlds?ids=a,b: server/index.ts). */
-export type WorldStats = { id: string; lives: number; beaten: number; players: number; online: number };
+/** How a world is doing, for the main menu's lists and the lobby (server/index.ts): its name, public (in the browser)
+ *  or not, locked (password), most players at once, and for your own games (POST api/worlds/mine) your name there
+ *  and how long you've played (ms). */
+export type WorldStats = {
+  id: string; name: string; public: boolean; locked: boolean; max: number;
+  lives: number; beaten: number; players: number; online: number;
+  you?: string; played?: number;
+};
 export type Obituary = { t: 'obituary'; id: number; color: number; name: string; cause: DeathCause; at: number };
 /** Deaths sent to a player as they join (the newest). */
 export const OBITUARY_KEEP = 12;
@@ -200,8 +205,7 @@ export type ServerMsg =
   | { t: 'lives'; n: number; beaten: number }
   // id is a public per-connection id; the browserId is never sent to other players.
   // epoch = wall-clock ms (Unix) at server time 0, so the time of day survives server restarts.
-  // name: yours in this world, null if you haven't been asked yet (src/name.ts asks).
-  | { t: 'welcome'; id: number; state: PlayerState; color: number; epoch: number; name: string | null }
+  | { t: 'welcome'; id: number; state: PlayerState; color: number; epoch: number }
   // ack = last input seq the server applied for *this* client; time = server clock in ms.
   // Sent right after the tick's terrainEdit, so terrain changes up to `ack` have already arrived.
   | { t: 'snap'; time: number; ack: number; players: PlayerSnap[] }

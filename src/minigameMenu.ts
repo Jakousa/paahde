@@ -10,7 +10,7 @@ import { loading } from './loadingGame';
 import type { Hint, Mode, RunResult } from './loadingRunner';
 import { TEXT } from '../shared/text.ts';
 
-const NAME_KEY = 'dadajam.name'; // the same name as in the world (src/name.ts)
+const NAME_KEY = 'dadajam.name'; // the same name as in the games (src/profile.ts)
 const TIPS_KEY = 'dadajam.mini.tips'; // '0' once tips are hidden
 const MODES: { mode: Mode; key: string; title: string }[] = [
   { mode: 5, key: '5', title: TEXT.minigame.machines(5) },
@@ -233,7 +233,7 @@ export function openMinigame(onClose: () => void) {
       saved = localStorage.getItem(NAME_KEY) ?? '';
     } catch {}
     o.innerHTML = `<div class="panel result"><h2>${m.title}</h2><div class="big"><small>${r.mode === 'endless' ? TEXT.minigame.machinesLabel : TEXT.minigame.timeLabel}</small>${scoreText(r.mode, score)}</div>
-<form class="row"><input maxlength="${NAME_MAX}" placeholder="${TEXT.name.placeholder}" value="${esc(saved)}" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true"><button>${TEXT.minigame.submit}</button></form>
+<form class="row"><input maxlength="${NAME_MAX}" placeholder="${TEXT.landing.yourName}" value="${esc(saved)}" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true"><button>${TEXT.minigame.submit}</button></form>
 <div class="board"></div></div><div class="row"><button class="again">${TEXT.minigame.again}</button><button class="quiet back">${TEXT.minigame.back}</button></div>`;
     o.querySelector('.again')!.addEventListener('click', () => play(m));
     o.querySelector('.back')!.addEventListener('click', pick);

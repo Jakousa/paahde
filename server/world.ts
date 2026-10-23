@@ -25,7 +25,8 @@ import { inCone, JAM_BLEED, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer
 import { THROW_MS, THROWABLE } from '../shared/throw.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, NetSummary, PlayerSnap, ServerMsg, StallEvent } from '../shared/protocol.ts';
-import { CHAT_MAX, NAME_MAX, OBITUARY_KEEP, type Obituary } from '../shared/protocol.ts';
+import { CHAT_MAX, OBITUARY_KEEP, type Obituary } from '../shared/protocol.ts';
+import { checkName, isColor, PLAYER_NAME } from '../shared/names.ts';
 import { openDb } from './db.ts';
 import { trace } from './telemetry.ts';
 import { GardenServer } from './garden.ts';
@@ -142,9 +143,11 @@ type Player = {
   chatAt: number; // last chat line (performance.now() ms)
   traceAt: number; // last 'telemetry' taken (performance.now() ms)
   backlogAt: number; // last traced their sends piling up (performance.now() ms)
-  name: string; // shown in chat ('' none; db.getName null until asked)
-  /** Loaded the game and chose a name ('ready', src/name.ts): until then unseen by others, unhurtable and out of the heat. */
+  name: string; // shown in chat and over their head (from 'hello', shared/names.ts)
+  /** Loaded the game ('ready', src/name.ts): until then unseen by others, unhurtable and out of the heat. */
   ready: boolean;
+  /** Last time their play time was added up (Date.now() ms; save). */
+  savedAt: number;
   /** The jammer's lock (shared/jammer.ts): on which target, built up how far (ms), last told when (performance.now). */
   jam: { kind: 'jet' | 'drone'; id: number; acc: number; at: number } | null;
 };
@@ -189,7 +192,7 @@ wss.on('connection', (ws) => {
       return ws.close(1003, 'bad message');
     }
     const p = players.get(ws);
-    if (msg.t === 'hello' && !p) return join(ws, msg.browserId, msg.spawn);
+    if (msg.t === 'hello' && !p) return join(ws, msg.browserId, msg.spawn, msg.name, msg.color);
     if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
     if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
@@ -234,7 +237,6 @@ wss.on('connection', (ws) => {
       return;
     }
     if (msg.t === 'chat' && p) return onChat(p, msg.text);
-    if (msg.t === 'name' && p) return onName(p, msg.name);
     if (msg.t === 'ready' && p) return onReady(p);
     if (msg.t === 'telemetry' && p) return onTelemetry(p, msg.ev, msg.sum);
     if (msg.t === 'hands' && p) {
@@ -261,10 +263,13 @@ wss.on('connection', (ws) => {
   setTimeout(() => players.has(ws) || ws.close(1008, 'no hello'), 5000);
 });
 
-function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
+function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown, wantedColor: unknown) {
   if (typeof browserId !== 'string' || !UUID.test(browserId)) return ws.close(1008, 'bad browserId');
+  // A name is a must, and one fit to show (the client checks too: this is someone going round it).
+  const named = checkName(typeof wanted === 'string' ? wanted.replace(/[\p{Cc}\p{Cf}]/gu, ' ') : wanted, PLAYER_NAME);
+  if (!named.ok) return ws.close(4422, 'bad name');
   const row = db.getPlayer(browserId);
-  const color = row?.color ?? Math.floor(Math.random() * 0xffffff);
+  const color = isColor(wantedColor) ? wantedColor : (row?.color ?? Math.floor(Math.random() * 0xffffff));
   // Heights aren't saved: someone who left over the bunker (or in it) starts down in it.
   const atBase = spawn === 'base';
   let state = row && !atBase && !overBase(row.x, row.z, 0.5) ? spawnState(row.x, row.z) : spawnState();
@@ -300,7 +305,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, pickups: pickupLimit(), lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, gassed: 0, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: '', ready: false, jam: null,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, gassed: 0, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: named.name, ready: false, savedAt: Date.now(), jam: null,
   };
   players.set(ws, p);
   save(p);
@@ -312,8 +317,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
       onDebugGear(p, 0);
     }
   }
-  const name = db.getName(browserId);
-  p.name = name ?? '';
+  db.setName(browserId, p.name);
   // Terrain first, so the client never sees its spawn without the holes.
   for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
   send(ws, scrap.joinMessage());
@@ -332,7 +336,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown) {
   send(ws, { t: 'jetCrashes', list: jetCrashList(), reset: true });
   send(ws, harvesters.msg());
   send(ws, loot.joinMessage());
-  send(ws, { t: 'welcome', id: p.id, state, color, epoch, name });
+  send(ws, { t: 'welcome', id: p.id, state, color, epoch });
   send(ws, { t: 'names', names: [...players.values()].filter((o) => o.ready).map((o) => [o.id, o.name]), reset: true });
   send(ws, { t: 'obituaries', list: db.lastObituaries(OBITUARY_KEEP) });
   recall(p);
@@ -725,18 +729,11 @@ function onChat(p: Player, text: unknown) {
   for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
 }
 
-/** Their name in this world, cleaned like a chat line; blank is fine (asked once, src/name.ts). */
-function onName(p: Player, name: unknown) {
-  if (typeof name !== 'string') return;
-  p.name = name.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
-  db.setName(p.browserId, p.name);
-  if (p.ready) sendName(p);
-}
-
-/** The client has loaded and chosen a name: from now on others see them and they can die. */
+/** The client has loaded: from now on others see them and they can die. */
 function onReady(p: Player) {
   if (p.ready) return;
   p.ready = true;
+  p.savedAt = Date.now();
   sendName(p);
 }
 
@@ -1214,7 +1211,11 @@ function send(ws: WebSocket, msg: ServerMsg) {
 function save(p: Player) {
   // Lying dead: they come back at the base.
   const at = p.down ? BUNKER_SPAWN : p.state;
-  db.savePlayer({ id: p.browserId, color: p.color, x: at.x, z: at.z, heat: p.heat.heat, sips: p.heat.sips });
+  // Play time counts only once they're in the game (ready), not on the loading screen.
+  const now = Date.now();
+  const played = p.ready ? now - p.savedAt : 0;
+  p.savedAt = now;
+  db.savePlayer({ id: p.browserId, color: p.color, x: at.x, z: at.z, heat: p.heat.heat, sips: p.heat.sips }, played);
 }
 
 setInterval(() => {

@@ -145,10 +145,16 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   machine sites `lab:<n>`, pickups and plates); drawn by `src/world/labPlates.ts`, pickups via `server/loot.ts`
 - `shared/world.ts` — worlds: each game is its own world at its own URL (`?w=<id>`, made on the landing page,
   `src/landing.ts`), with a seed from its id, its own players and DB (`data/worlds/<id>.db`; the old world is
-  `?w=main`), and 10 shared lives (`src/lives.ts`; +10 per boss kind beaten); at 0 the game is over
-- `server/index.ts` — front server: static files, `POST /api/worlds`, `GET /api/worlds?ids=` (stats for the landing
-  page's list of worlds this browser joined, kept in localStorage by `src/landing.ts`), passes `/ws?w=<id>` through to the world's
-  process; `server/world.ts` — authoritative game server for one world (forked per world, exits when empty); `server/db.ts` — SQLite;
+  `?w=main`), and 10 shared lives (`src/lives.ts`; +10 per boss kind beaten); at 0 the game is over. Games are public
+  (in the main menu's browser) or private (link or code), with a max of players and maybe a password
+  (`server/registry.ts`, `data/registry.db`); a game's URL opens its lobby first (`src/lobby.ts`)
+- `shared/names.ts` — names others see (game names, player names): allowed characters and the slur/swear filter
+  (`obscenity` + our list), checked on the client as typed and by the server. Your name and colour are chosen on the main
+  menu or lobby and kept in the browser (`src/profile.ts`), sent in `hello`; a name is required (server closes 4422)
+- `server/index.ts` — front server: static files, `POST /api/worlds` (make a game), `GET /api/browse` (public games),
+  `GET /api/worlds/<id>` (lobby), `POST /api/worlds/<id>/key` (password -> key), `POST /api/worlds/mine` (the landing
+  page's list of worlds this browser joined, kept in localStorage by `src/landing.ts`, with your name and play time
+  there), passes `/ws?w=<id>&k=<key>` through to the world's process (4403 locked, 4429 full); `server/world.ts` — authoritative game server for one world (forked per world, exits when empty); `server/db.ts` — SQLite;
   `server/scrap.ts` — scrap pickups, respawn;
   `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`, `shared/storage.ts`), Tab overlay in `src/inventory.ts`
 - `shared/gear.ts` — gear found broken and repaired with parts at the workbench (part slots, quality, what each
