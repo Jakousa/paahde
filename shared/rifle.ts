@@ -14,6 +14,15 @@ export const COOLDOWN_MS = 420;
 /** How far the beam reaches (m). */
 export const RANGE = 260;
 
+/** The server's check of a hit a client claims: did the shot from (x, y, z) to (ex, ey, ez) pass within `slack` (m) of
+ *  (cx, cy, cz) and end within 1.5 × slack of it? */
+export function shotPasses(x: number, y: number, z: number, ex: number, ey: number, ez: number, cx: number, cy: number, cz: number, slack: number): boolean {
+  const dx = ex - x, dy = ey - y, dz = ez - z, len2 = dx * dx + dy * dy + dz * dz;
+  if (len2 < 0.01) return false;
+  const t = Math.max(0, Math.min(1, ((cx - x) * dx + (cy - y) * dy + (cz - z) * dz) / len2));
+  return Math.hypot(x + dx * t - cx, y + dy * t - cy, z + dz * t - cz) <= slack && Math.hypot(ex - cx, ey - cy, ez - cz) <= slack * 1.5;
+}
+
 /**
  * The laser pistol: the cheap one, found broken at the scrap fields near home (and in caches) and repaired with a
  * coil and scrap. One-handed, iron sights, no scope; it breaks weak points and drones just as the rifle does, but recharges

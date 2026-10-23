@@ -21,7 +21,7 @@ import {
 } from '../shared/missiles.ts';
 import { frontOut, nearStorm, seized, type Storm } from '../shared/storm.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
-import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, weakPoints, WRECK_S } from '../shared/rifle.ts';
+import { allBroken, DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, shotPasses, weakPoints, WRECK_S } from '../shared/rifle.ts';
 import { sunElevation } from '../shared/sun.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { indoors } from '../shared/shelters.ts';
@@ -851,10 +851,6 @@ export class GuardianServer {
     return this.downed.splice(0);
   }
 
-  /**
-   * Player `by` shot from (x, y, z) to (ex, ey, ez) and says it hit drone `id`: plausible (flying, in range, the shot
-   * passing and ending near it), it takes the hit; the last one brings it down. Returns whether it counted.
-   */
   /** Player `p`'s client says guardian `id`'s foot came down on them: crushed, if it's alive and a foot could reach
    *  them. The one hunting them calms down after. */
   stomp(id: unknown, p: BotPlayer, now: number): boolean {
@@ -869,15 +865,16 @@ export class GuardianServer {
     return true;
   }
 
+  /**
+   * Player `by` shot from (x, y, z) to (ex, ey, ez) and says it hit drone `id`: plausible (flying, in range, the shot
+   * passing and ending near it), it takes the hit; the last one brings it down. Returns whether it counted.
+   */
   shootDrone(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number, by = -1): boolean {
     const d = this.drones.find((o) => o.id === id);
     if (!d || d.downAt >= 0) return false;
-    const dx = ex - x, dy = ey - y, dz = ez - z, len = Math.hypot(dx, dy, dz);
-    if (len > RANGE + 5 || len < 0.1) return false;
-    const t = Math.max(0, Math.min(1, ((d.x - x) * dx + (d.y - y) * dy + (d.z - z) * dz) / (len * len)));
+    const dx = ex - x, dz = ez - z, len = Math.hypot(dx, ey - y, dz);
     // The client draws it 250 ms in the past, and it moves up to CHASE_SPEED: slack for that.
-    const slack = DRONE_HIT + 2;
-    if (Math.hypot(x + dx * t - d.x, y + dy * t - d.y, z + dz * t - d.z) > slack || Math.hypot(ex - d.x, ey - d.y, ez - d.z) > slack * 1.5) return false;
+    if (len > RANGE + 5 || !shotPasses(x, y, z, ex, ey, ez, d.x, d.y, d.z, DRONE_HIT + 2)) return false;
     this.hurt(d, dx / len, dz / len, now, by);
     return true;
   }
@@ -981,14 +978,9 @@ export class GuardianServer {
     const body = i === -1;
     if (!g || g.deadAt >= 0 || (!body && (!Number.isInteger(i) || (i as number) < 0 || (i as number) >= g.points || g.broken & (1 << (i as number))))) return miss;
     const sc = KINDS[g.kind].scale;
-    const cx = g.x, cy = heightAt(g.x, g.z) + BODY_H * sc, cz = g.z;
-    const dx = ex - x, dy = ey - y, dz = ez - z, len = Math.hypot(dx, dy, dz);
-    if (len > RANGE + 5 || len < 0.1) return miss;
-    // Closest approach of the shot to the body's centre, and where it ended.
-    const t = Math.max(0, Math.min(1, ((cx - x) * dx + (cy - y) * dy + (cz - z) * dz) / (len * len)));
-    const near = Math.hypot(x + dx * t - cx, y + dy * t - cy, z + dz * t - cz);
-    const slack = SHOT_SLACK * sc + 2;
-    if (near > slack || Math.hypot(ex - cx, ey - cy, ez - cz) > slack * 1.5) return miss;
+    // Passing and ending near the body's centre.
+    if (Math.hypot(ex - x, ey - y, ez - z) > RANGE + 5
+      || !shotPasses(x, y, z, ex, ey, ez, g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, SHOT_SLACK * sc + 2)) return miss;
     if (!body) g.broken |= 1 << (i as number);
     if (!body && allBroken(g.broken, g.points)) {
       // Killing one sets the rest of the pack on you too.

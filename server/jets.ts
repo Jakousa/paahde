@@ -7,6 +7,7 @@ import { DIVE_STEP, JET_NOSE, jetDive, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP
 import { duneFloor } from '../shared/dunes.ts';
 import { baseHeight, WORLD_SEED } from '../shared/terrain.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
+import { shotPasses } from '../shared/rifle.ts';
 
 /** Time between one flight's start and the next (ms). */
 const GAP_MIN_MS = 8 * 60_000;
@@ -113,14 +114,7 @@ export class JetServer {
   shoot(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number): boolean {
     const j = this.jets.find((o) => o.id === id);
     if (!j || j.down) return false;
-    const dx = ex - x, dy = ey - y, dz = ez - z, len2 = dx * dx + dy * dy + dz * dz;
-    if (len2 < 0.01) return false;
-    const near = LAG_MS.some((lag) => {
-      if (!jetAt(j, now - lag, _p)) return false;
-      const t = Math.max(0, Math.min(1, ((_p.x - x) * dx + (_p.y - y) * dy + (_p.z - z) * dz) / len2));
-      return Math.hypot(x + dx * t - _p.x, y + dy * t - _p.y, z + dz * t - _p.z) < JET_HIT[j.kind] && Math.hypot(ex - _p.x, ey - _p.y, ez - _p.z) < JET_HIT[j.kind] * 1.5;
-    });
-    if (!near) return false;
+    if (!LAG_MS.some((lag) => jetAt(j, now - lag, _p) && shotPasses(x, y, z, ex, ey, ez, _p.x, _p.y, _p.z, JET_HIT[j.kind]))) return false;
     this.changed = true;
     if (++j.hurt >= JET_HP) this.bringDown(j, now);
     return true;
