@@ -3,8 +3,8 @@
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
 import { bagShape, boxShape, EQUIP_SLOTS, fitPart, fittedBox, GEAR, holdsCargo, SHIELD_BREAKS, isGear, refit, scrapParts, shieldSaves, tierOf, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
-  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, settle, sizeOf, sortItems, stackOf,
-  type Item, type Slots,
+  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, settle, sizeOf, sortItems, stackOf, withData,
+  type Item, type ItemData, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, growChest, grows, isShared, OWN_BOXES } from '../shared/storage.ts';
@@ -65,7 +65,7 @@ export class ItemServer {
     if (!slots) {
       const rows = this.db.loadBox(owner, box);
       slots = new Array(Math.max(boxSize(box), ...rows.map((r) => r.slot + 1))).fill(null);
-      for (const r of rows) if (!RETIRED.has(r.kind)) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n, ...(r.parts ? { parts: r.parts } : {}), ...(r.r ? { r: true } : {}), ...(r.worn ? { worn: r.worn } : {}) };
+      for (const r of rows) if (!RETIRED.has(r.kind)) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n, ...(r.parts ? { parts: r.parts } : {}), ...(r.r ? { r: true } : {}), ...withData(r.data) };
       this.boxes.set(key, slots);
       let changed = rows.some((r) => RETIRED.has(r.kind));
       // Buildings from when they were crafted and carried (shared/crafting.ts BUILDS): back into what they were made
@@ -214,13 +214,13 @@ export class ItemServer {
     return true;
   }
 
-  /** A whole item (gear with its parts) into the first spot it fits in the bag. False if there is none. */
-  giveItem(browserId: string, item: { kind: string; parts?: (string | null)[]; worn?: number }): boolean {
-    if (!item.parts) return this.give(browserId, item.kind);
+  /** A whole item (gear with its parts, anything with its own state) into the first spot it fits in the bag. False if there is none. */
+  giveItem(browserId: string, item: { kind: string; parts?: (string | null)[]; data?: ItemData }): boolean {
+    if (!item.parts && !item.data) return this.give(browserId, item.kind);
     const bag = this.slots(browserId, 'bag');
     const spot = findSpot(bag, this.bagShape(browserId), item.kind);
     if (!spot) return false;
-    bag[spot.i] = { id: this.newId(), kind: item.kind, n: 1, parts: [...item.parts], ...(spot.r ? { r: true } : {}), ...(item.worn ? { worn: item.worn } : {}) };
+    bag[spot.i] = { id: this.newId(), kind: item.kind, n: 1, ...(item.parts ? { parts: [...item.parts] } : {}), ...(spot.r ? { r: true } : {}), ...withData(item.data) };
     this.save(browserId, 'bag');
     return true;
   }
@@ -282,7 +282,7 @@ export class ItemServer {
     const bag = this.slots(browserId, 'bag');
     const it = bag[slot];
     if (it?.kind !== kind) return null;
-    const out: Item = { id: this.newId(), kind, n: 1, ...(it.parts ? { parts: [...it.parts] } : {}) };
+    const out: Item = { id: this.newId(), kind, n: 1, ...(it.parts ? { parts: [...it.parts] } : {}), ...withData(it.data) };
     if (--it.n <= 0) bag[slot] = null;
     this.save(browserId, 'bag');
     return out;
@@ -327,11 +327,9 @@ export class ItemServer {
   wearShield(browserId: string): boolean {
     const it = this.slots(browserId, 'equip')[EQUIP_SLOTS.indexOf('armor')];
     if (it?.kind !== 'shield' || !it.parts) return false;
-    const worn = (it.worn ?? 0) + 1, broke = worn >= shieldSaves(tierOf(it));
-    if (broke) {
-      it.parts = it.parts.map((p, j) => (SHIELD_BREAKS.includes(j) ? null : p));
-      delete it.worn;
-    } else it.worn = worn;
+    const worn = (it.data?.worn ?? 0) + 1, broke = worn >= shieldSaves(tierOf(it));
+    if (broke) it.parts = it.parts.map((p, j) => (SHIELD_BREAKS.includes(j) ? null : p));
+    setData(it, 'worn', broke ? undefined : worn);
     this.save(browserId, 'equip');
     return broke;
   }
@@ -372,7 +370,7 @@ export class ItemServer {
    * the bag's closed rows; not a carrier with something in it, nor a building's or vehicle's own item). Returns what came out, or null if refused. Call
    * inside the drop's transaction.
    */
-  drop(browserId: string, s: PlayerState, box: unknown, slot: unknown): { kind: string; parts?: (string | null)[]; worn?: number } | null {
+  drop(browserId: string, s: PlayerState, box: unknown, slot: unknown): { kind: string; parts?: (string | null)[]; data?: ItemData } | null {
     if (typeof box !== 'string' || !boxSize(box) || fittedBox(box) || !canOpen(s, box, REACH_SLACK)) return null;
     const slots = this.slots(browserId, box);
     if (!Number.isInteger(slot) || (slot as number) < 0 || (slot as number) >= slots.length) return null;
@@ -380,7 +378,7 @@ export class ItemServer {
     if (!it || holdsCargo(this.view(browserId, box), box, slot as number)) return null;
     if (--it.n <= 0) slots[slot as number] = null;
     this.save(browserId, box);
-    return { kind: it.kind, ...(it.parts ? { parts: it.parts } : {}), ...(it.worn ? { worn: it.worn } : {}) };
+    return { kind: it.kind, ...(it.parts ? { parts: it.parts } : {}), ...withData(it.data) };
   }
 
   /** Fit the part at `from`[fi] into slot `slot` of the item in `at`: the workbench, or a building's or vehicle's box

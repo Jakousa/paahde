@@ -10,7 +10,7 @@
 // and F at a pump (the base's, some shelters') refills it.
 import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX, STROKE_RECOVER, STROKE_S } from '../shared/water.ts';
 import { equipped, repaired, tierOf } from '../shared/gear.ts';
-import { HOTBAR } from '../shared/items.ts';
+import { chargeOf, HOTBAR } from '../shared/items.ts';
 import { PISTOL, RIFLE } from '../shared/rifle.ts';
 import { JAMMER } from '../shared/jammer.ts';
 import { receiverBoss, type BossKind } from '../shared/bosses.ts';
@@ -18,7 +18,7 @@ import { THROWABLE } from '../shared/throw.ts';
 import { HOTBAR_ACTIONS, isBound, kbd } from './bindings';
 import { tools, useHeld } from './input';
 import { rumble } from './gamepad';
-import { itemIcon, itemLabel } from './inventory';
+import { chargeBar, itemIcon, itemLabel } from './inventory';
 import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
 import { DARK_LIFT_S, deathGrade, fainting, heatstroke } from './world/env.ts';
@@ -265,14 +265,14 @@ export class Survival {
       const it = bag?.[i];
       const max = this.net.water.maxSips;
       const broken = !!it?.parts && !repaired(it);
-      const sig = it ? `${it.kind}:${it.n}:${broken}:${max}` : '';
+      const sig = it ? `${it.kind}:${it.n}:${broken}:${max}:${chargeOf(it)}` : '';
       if (s.dataset.sig === sig) return;
       changed = true;
       s.dataset.sig = sig;
       s.classList.toggle('broken', broken);
       s.title = !it ? '' : broken ? TEXT.inventory.hotbarBroken(itemLabel(it.kind))
         : itemLabel(it.kind);
-      s.innerHTML = `<span class="key">${i + 1}</span>${it ? itemIcon(it.kind) : ''}`
+      s.innerHTML = `<span class="key">${i + 1}</span>${it ? itemIcon(it.kind) + chargeBar(it) : ''}`
         + (it?.kind === 'canteen' && !broken ? `<div class="pips">${'<i></i>'.repeat(max)}</div>` : it && it.n > 1 ? `<span class="n">${it.n}</span>` : '');
     });
     if (changed) this.pips = [...this.root.querySelectorAll<HTMLElement>('#hotbar .pips i')];

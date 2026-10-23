@@ -17,7 +17,7 @@
 // shift-click or drag a piece into the bag to pick it up, or drag something onto the panel to drop it. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
 import { bagShape, boxShape, buildingId, cargoId, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, fittedBox, GEAR, holdsCargo, isGear, partsOf, quality, repaired, slotLabel, tierOf, tryMove, vehicleBox, vehicleId, type Boxes } from '../shared/gear.ts';
-import { findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
+import { chargeOf, findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
@@ -144,6 +144,12 @@ body.pad #invOverlay .slot .key { display: none; }
 #invTip .parts .k { opacity: 0.6; }
 #invTip .miss { color: #ff8a66; }
 #invTip .use { margin-top: 4px; opacity: 0.85; }
+#invTip .level { display: flex; align-items: center; gap: 8px; }
+#invTip .level .charge { position: static; width: 90px; }
+/* A battery's charge (shared/items.ts chargeOf): a bar along the bottom of its icon, green full to red empty. */
+.charge { position: absolute; left: 6px; right: 6px; bottom: 4px; height: 4px; border-radius: 2px; pointer-events: none;
+  background: rgba(20, 10, 4, 0.7); box-shadow: 0 0 0 1px rgba(255, 244, 228, 0.25); }
+.charge i { display: block; height: 100%; width: calc(var(--q) * 100%); border-radius: 2px; background: hsl(calc(var(--q) * 110deg) 70% 52%); }
 #invGhost { position: fixed; z-index: 16; pointer-events: none; display: flex; align-items: center; justify-content: center;
   border-radius: 6px; background: rgba(66, 44, 26, 0.55); filter: drop-shadow(0 4px 6px #000); }
 #invGhost.drop::after { content: '${TEXT.inventory.drop}'; position: absolute; top: 100%; font: 600 11px var(--mono); color: #fff4e4;
@@ -239,6 +245,11 @@ const salvageIcon = (kind: string) => `<img src="./icons/salvage/${kind}.png" al
 export const itemIcon = (kind: string) =>
   ICONS[kind] ?? (partOf(kind) ? partIcon(kind) : kind in SALVAGE ? salvageIcon(kind) : `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`);
 export const itemLabel = (kind: string) => ITEMS[kind]?.label ?? kind;
+/** A battery's charge bar to lay over its icon (in a positioned slot), '' for anything else. */
+export function chargeBar(it: Item): string {
+  const q = chargeOf(it);
+  return q === null ? '' : `<div class="charge" style="--q:${q.toFixed(3)}"><i></i></div>`;
+}
 
 /** Quality as a rarity name (rounded down: three Scrap parts and one Quality is still Scrap... ish). */
 function qualityName(q: number) {
@@ -259,6 +270,8 @@ const itemColor = (it: Item) => (isGear(it.kind) && repaired(it) ? hex(RARITY[TI
 function tipHtml(it: Item): string {
   const c = itemColor(it);
   let html = `<div class="name"${c ? ` style="color:${c}"` : ''}>${itemLabel(it.kind)}${it.n > 1 ? ` ×${it.n}` : ''}</div>`;
+  const q = chargeOf(it);
+  if (q !== null) html += `<div class="sub level">${chargeBar(it)}${Math.round(q * 100)}%</div>`;
   if (!isGear(it.kind)) return html;
   const ok = repaired(it);
   const parts = partsOf(it);
@@ -491,7 +504,7 @@ export class InventoryHud {
     if (vehicle) {
       // (The repair view: the bag and the vehicle, nothing else.)
     } else if (this.ground.length) {
-      const items = this.ground.map((l) => ({ id: 0, kind: l.kind, n: 1, parts: l.parts }));
+      const items = this.ground.map((l) => ({ id: 0, kind: l.kind, n: 1, parts: l.parts, data: l.data }));
       html += `<div class="box storage" data-ground><div class="head"><h3>${TEXT.boxes.ground}</h3><button data-all="${GROUND}">${TEXT.inventory.takeAll}</button></div>`
         + `<div class="grid" style="grid-template-columns: repeat(5, 54px)">${this.slotsHtml(GROUND, items, 0, items.length)}</div></div>`;
     } else if (!this.storages.length) {
@@ -638,7 +651,7 @@ export class InventoryHud {
 
   private itemHtml(it: Item) {
     const broken = isGear(it.kind) && !repaired(it);
-    return `${itemIcon(it.kind)}${it.n > 1 ? `<span class="n">${it.n}</span>` : ''}${broken ? '<span class="bad">✕</span>' : ''}`;
+    return `${itemIcon(it.kind)}${chargeBar(it)}${it.n > 1 ? `<span class="n">${it.n}</span>` : ''}${broken ? '<span class="bad">✕</span>' : ''}`;
   }
 
   private slotEl(box: string, i: number) {
@@ -706,7 +719,7 @@ export class InventoryHud {
   private drawGhost(d: Drag, it: Item) {
     const n = d.half ? Math.ceil(it.n / 2) : it.n;
     const [w, h] = sizeOf(it.kind, d.r);
-    this.ghost.innerHTML = `${itemIcon(it.kind)}${n > 1 ? `<span class="n">${n}</span>` : ''}`;
+    this.ghost.innerHTML = `${itemIcon(it.kind)}${chargeBar(it)}${n > 1 ? `<span class="n">${n}</span>` : ''}`;
     this.ghost.setAttribute('style', `${iconScale(w, h)}; --c: ${rarityColor(it.kind) ?? '#fff4e4'}`);
     this.ghost.style.width = `${span(w)}px`;
     this.ghost.style.height = `${span(h)}px`;
@@ -738,7 +751,7 @@ export class InventoryHud {
     }
     if (box === GROUND) {
       const l = this.ground[i];
-      return l && this.net.loot.has(l.id) ? { id: 0, kind: l.kind, n: 1, parts: l.parts } : null;
+      return l && this.net.loot.has(l.id) ? { id: 0, kind: l.kind, n: 1, parts: l.parts, data: l.data } : null;
     }
     return this.net.boxes[box]?.[i] ?? null;
   }

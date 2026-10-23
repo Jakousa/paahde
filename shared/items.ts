@@ -121,8 +121,35 @@ export const OLD_SCRAP = ['oil_drum', 'rusty_drum', 'gear', 'scrap_frame', 'bent
  * `parts`: the item kind fitted in each of its part slots (shared/gear.ts), null where one is missing.
  * `r`: turned 90° in a grid (its size's w and h swapped).
  */
-/** `worn`: a shield plate's killing blows taken since it last broke (shared/gear.ts shieldSaves). */
-export type Item = { id: number; kind: string; n: number; parts?: (string | null)[]; r?: boolean; worn?: number };
+/** `data`: what this one item has of its own (ItemData). */
+export type Item = { id: number; kind: string; n: number; parts?: (string | null)[]; r?: boolean; data?: ItemData };
+
+/**
+ * State one item has of its own, which two of the same kind can differ in. Stored as one JSON column (`data`, server/db.ts)
+ * and carried wherever the item goes (boxes, dropped on the sand, sent to clients): a new field only needs adding here.
+ * Only for kinds that don't stack (a stack has one `data`). Leave a field out for its default, never store it.
+ * `worn`: a shield plate's killing blows taken since it last broke (shared/gear.ts shieldSaves).
+ * `charge`: a battery's charge, the part of what it holds (0..1, shared/power.ts CELLS); full when not set.
+ */
+export type ItemData = { worn?: number; charge?: number };
+
+/** `data` as an item's field to spread into it: a copy, or nothing when there's none. */
+export const withData = (data: ItemData | null | undefined): { data?: ItemData } =>
+  data && Object.keys(data).length ? { data: { ...data } } : {};
+
+/** Set (or with undefined, clear) one of an item's own fields; an item left with none loses `data`. */
+export function setData<K extends keyof ItemData>(it: Item, key: K, value: ItemData[K] | undefined) {
+  const data: ItemData = { ...it.data };
+  if (value === undefined) delete data[key];
+  else data[key] = value;
+  if (Object.keys(data).length) it.data = data;
+  else delete it.data;
+}
+
+/** A battery's charge (0..1), or null for anything that isn't one. */
+export function chargeOf(it: { kind: string; data?: ItemData }): number | null {
+  return partOf(it.kind)?.part === 'battery' ? Math.max(0, Math.min(1, it.data?.charge ?? 1)) : null;
+}
 export type Slots = (Item | null)[];
 
 /**

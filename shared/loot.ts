@@ -3,6 +3,7 @@
 // Stashes lie on shelter floors (shared/shelters.ts) instead of the sand over them (lootY).
 // The client draws it (src/world/loot.ts) and F picks it up.
 import { insideBase, overBase } from './base.ts';
+import type { ItemData } from './items.ts';
 import { overShelter, shelterFloorY } from './shelters.ts';
 import { heightAt } from './terrain.ts';
 
@@ -12,8 +13,8 @@ export type Loot = {
   kind: string;
   /** Gear: the parts it comes with (shared/gear.ts), null where one is missing. */
   parts?: (string | null)[];
-  /** A dropped shield plate's wear (shared/items.ts Item). */
-  worn?: number;
+  /** A dropped item's own state (shared/items.ts ItemData). */
+  data?: ItemData;
   x: number;
   z: number;
   src: 'find' | 'cache' | 'drop';
