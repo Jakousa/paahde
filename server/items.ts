@@ -1,41 +1,23 @@
-// Server side of items (shared/items.ts): every box's slots, cached from the `items` table, the one-time gear
-// setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
-// open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
+// Server side of items (shared/items.ts): every box's slots, cached from the `items` table (made current as they load,
+// server/itemMigrations.ts), pickups landing in the bag, and validated moves, sorts and repairs between the boxes a
+// player can open (shared/storage.ts; the rules are shared/moves.ts tryMove / fitPart / unfitPart). One-off gifts:
+// server/grants.ts.
 import { fittedBox, grows, isShared } from '../shared/boxes.ts';
-import { bagShape, EQUIP_SLOTS, GEAR, SHIELD_BREAKS, isGear, refit, scrapParts, shieldSaves, tierOf } from '../shared/gear.ts';
+import { bagShape, EQUIP_SLOTS, GEAR, SHIELD_BREAKS, shieldSaves, tierOf } from '../shared/gear.ts';
 import { type Boxes, boxShape, fitPart, holdsCargo, tryMove, unfitPart } from '../shared/moves.ts';
 import {
-  addItem, addUpTo, BAG_SLOTS, makeItem, ownOf, partAt, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, setPart, settle, sizeOf, sortItems, stackOf, stacks,
+  addItem, addUpTo, BAG_SLOTS, makeItem, ownOf, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, RETIRED, roomFor, setData, setPart, settle, sizeOf, sortItems,
   type Item, type ItemData, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, growChest, OWN_BOXES } from '../shared/storage.ts';
-import { buildCost, craft, isBuildable, RECIPES, useUp, type Recipe } from '../shared/crafting.ts';
-import { RIFLE } from '../shared/rifle.ts';
+import { craft, RECIPES, useUp, type Recipe } from '../shared/crafting.ts';
 import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
+import { migrateBox } from './itemMigrations.ts';
 import { TEXT } from '../shared/text.ts';
 
 type Db = ReturnType<typeof openDb>;
-
-/** Pile stacks of one kind onto the first of them, up to its stack size (shared/items.ts stacks). Mutates; whether it did. */
-function mergeStacks(slots: Slots): boolean {
-  let changed = false;
-  for (let i = 0; i < slots.length; i++) {
-    const a = slots[i];
-    if (!a || a.n >= stackOf(a.kind)) continue;
-    for (let j = i + 1; j < slots.length && a.n < stackOf(a.kind); j++) {
-      const b = slots[j];
-      if (!b || !stacks(a, b)) continue;
-      const k = Math.min(b.n, stackOf(a.kind) - a.n);
-      a.n += k;
-      b.n -= k;
-      if (b.n <= 0) slots[j] = null;
-      changed = true;
-    }
-  }
-  return changed;
-}
 
 /** Slack (m) on the reach checks for the server's view of the player lagging the client's. */
 const REACH_SLACK = 1.5;
@@ -70,41 +52,7 @@ export class ItemServer {
       for (const r of rows) if (!RETIRED.has(r.kind)) slots[r.slot] = makeItem(r.id, r);
       this.boxes.set(key, slots);
       let changed = rows.some((r) => RETIRED.has(r.kind));
-      // Buildings from when they were crafted and carried (shared/crafting.ts BUILDS): back into what they were made
-      // of, their parts and materials, laid out by settle() below. (Not on the workbench, whose one slot can't take
-      // them: moved off it, they're turned back next time the box loads.)
-      if (!fittedBox(box) && box !== 'bench') {
-        for (let i = 0; i < slots.length; i++) {
-          const it = slots[i];
-          if (!it || !isBuildable(it.kind)) continue;
-          slots[i] = null;
-          for (const m of buildCost(it.kind)) {
-            for (let n = m.n; n > 0; n -= stackOf(m.kind)) slots.push(makeItem(this.newId(), { kind: m.kind, n: Math.min(n, stackOf(m.kind)) }));
-          }
-          for (let j = 0; j < (it.parts?.length ?? 0); j++) {
-            const p = partAt(it, j);
-            if (p) slots.push(makeItem(this.newId(), p));
-          }
-          changed = true;
-        }
-      }
-      for (const it of [...slots]) {
-        // Gear from before repairs existed (the old starter canteen and spyglass, guns crafted before they were gear)
-        // works: Scrap parts in every slot.
-        if (it && isGear(it.kind) && !it.parts) {
-          it.parts = scrapParts(it.kind);
-          changed = true;
-        }
-        // Gear whose slots changed since (shared/gear.ts refit).
-        if (it && refit(it)) changed = true;
-        // Stacks bigger than their kind allows now: one item per stack, the rest past the end for settle() to place.
-        for (; it && it.n > stackOf(it.kind); it.n--) {
-          slots.push(makeItem(this.newId(), { kind: it.kind }));
-          changed = true;
-        }
-      }
-      // Scrap migrated from the old kinds (server/db.ts) comes as many stacks of one: merge them.
-      if (mergeStacks(slots)) changed = true;
+      if (migrateBox(box, slots, this.newId)) changed = true;
       // The bag's own rows past the backpack are kept (stranded) rather than moved: settle with the backpack's shape.
       if (settle(slots, boxShape(box, this.view(browserId, box)), isShared(box))) changed = true;
       if (grows(box)) growChest(slots);
@@ -125,57 +73,11 @@ export class ItemServer {
     return b;
   }
 
-  /**
-   * Once per player: there's no starter kit any more (the water bottle and the rest are found broken, see
-   * server/loot.ts). Players from before keep what they had, and get a backpack with a Quality gear (9 slots) so
-   * their bag keeps its 8; if its slot is taken, it goes past the end of the bag.
-   */
-  setup(browserId: string) {
-    this.rifleGift(browserId);
-    if (this.db.hasGearKit(browserId)) return;
-    this.db.tx(() => {
-      if (this.db.hasStarterKit(browserId)) {
-        const equip = this.slots(browserId, 'equip');
-        const pack = makeItem(this.newId(), { kind: 'backpack', parts: [CLOTH, SCRAP, partKind('gear', 'quality')] });
-        const back = EQUIP_SLOTS.indexOf('back');
-        if (!equip[back]) equip[back] = pack;
-        else {
-          const bag = this.slots(browserId, 'bag');
-          bag.push(pack);
-        }
-        this.save(browserId, 'equip', 'bag');
-      } else this.db.markStarterKit(browserId);
-      this.db.markGearKit(browserId);
-    });
-  }
-
-  /**
-   * Once, to the players from before the laser rifle (shared/rifle.ts): one in the 4th hotbar slot. New players find
-   * and repair their own.
-   */
-  private rifleGift(browserId: string) {
-    this.slotGift(browserId, 'rifle', RIFLE, HOTBAR - 1, this.db.hasGearKit(browserId));
-  }
-
-  /**
-   * Grant `grant`, once: if `give`, a `kind` into bag slot `slot`. Whatever was there moves to the first free spot in
-   * the bag (past its end if there's none).
-   */
-  private slotGift(browserId: string, grant: string, kind: string, slot: number, give: boolean) {
-    if (this.db.hasGrant(browserId, grant)) return;
-    this.db.tx(() => {
-      this.db.markGrant(browserId, grant);
-      if (!give) return;
-      const bag = this.slots(browserId, 'bag');
-      const was = bag[slot];
-      bag[slot] = makeItem(this.newId(), { kind, ...(isGear(kind) ? { parts: scrapParts(kind) } : {}) });
-      if (was) {
-        const spot = findSpot(bag, this.bagShape(browserId), was.kind, !!was.r, [slot]);
-        if (spot) bag[spot.i] = makeItem(was.id, { ...was, r: spot.r });
-        else bag.push(was);
-      }
-      this.save(browserId, 'bag');
-    });
+  /** Change boxes by hand: `fn` changes their slots (from slots(), new items numbered by `newId`), then they're
+   *  saved. Call inside a transaction. */
+  change(browserId: string, boxes: string[], fn: (newId: () => number) => void) {
+    fn(this.newId);
+    this.save(browserId, ...boxes);
   }
 
   has(browserId: string, kind: string) {

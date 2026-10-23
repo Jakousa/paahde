@@ -38,6 +38,7 @@ import { vehicles } from '../shared/vehicles.ts';
 import { PowerServer } from './power.ts';
 import { WireServer } from './wires.ts';
 import { ItemServer } from './items.ts';
+import { grantKits } from './grants.ts';
 import { LootServer } from './loot.ts';
 import { CorpseServer } from './corpses.ts';
 import { canDropAt } from '../shared/loot.ts';
@@ -305,7 +306,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
     const c = canyonFloorNear(state.x, state.z);
     if (c) state = spawnState(c.x, c.z);
   }
-  items.setup(browserId);
+  grantKits(items, db, browserId);
   const p: Player = {
     id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, pickups: pickupLimit(), lastTend: { at: 0 }, input: 0,

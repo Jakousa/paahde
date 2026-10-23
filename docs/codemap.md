@@ -121,6 +121,8 @@ when you find it stale.
 - Item data — one item's own state (`ItemData` in `shared/items.ts`: a battery's `charge`, a shield's `worn`), one
   JSON `data` column; it goes wherever the item goes, and items with any never stack. Fitted parts keep theirs in
   `data.fitted` (`partAt` / `setPart`)
+- `server/itemMigrations.ts` — items saved by older versions made current as their box loads (`migrateBox`);
+  `server/grants.ts` — one-off gifts to players from before a change (the backpack, the rifle)
 - `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`,
   `shared/storage.ts`), Tab overlay in `src/inventory.ts`. Box ids and each kind's traits (own or shared, grows,
   fitted, take-only) are in `shared/boxes.ts` (`BOX_KINDS`); what depends on the world (size, label, shape) is a
