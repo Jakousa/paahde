@@ -219,5 +219,8 @@ when you find it stale.
 - `src/perf.ts`, `tools/perf.ts` — CPU/GPU frame timing (stats graphs, User Timing for traces) and the automated
   benchmark run (`npm run perf`: waits for the game to be playable, walks a route, writes JSON + a Chrome trace to
   `data/perf/`); `tools/trace-report.py` reads Chrome performance traces; read `docs/perf.md`
+- `tools/bench/` — the CI benchmarks (`npm run bench`, `.github/workflows/bench.yml`): world generation, physics and the
+  enemies in Node (`cases/`), the world server under bot load (`server.ts`, `serverHook.ts`), the client in headless
+  Chrome (`client.ts` driving `tools/perf.ts --software`), two commits in turns and compared (`stats.ts`); read `docs/bench.md`
 - `src/telemetry.ts`, `server/telemetry.ts` — stall tracing to `data/telemetry.jsonl` (docs/netcode.md "Telemetry");
   read it with `node tools/telemetry.ts` (digest + HTML report, or `tail`)

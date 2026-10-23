@@ -9,7 +9,8 @@
     "start": "node server/index.ts",
     "preview": "npm run build && npm start",
     "perf": "node tools/perf.ts",
-    "econ": "node --no-warnings tools/econsim/cli.ts"
+    "econ": "node --no-warnings tools/econsim/cli.ts",
+    "bench": "node --no-warnings tools/bench/cli.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

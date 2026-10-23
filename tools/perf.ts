@@ -2,7 +2,7 @@
 // route and writes the result (CPU / GPU / frame times, the startup timeline) and a Chrome trace of the same stretch to data/perf/.
 //
 //   node tools/perf.ts [--base http://localhost:5173/] [--seconds 30] [--trace play|startup|none] [--world <id>]
-//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--view <m above the player, for the picture>] [--face sun] [--pitch <degrees down, with --view>] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--shot [--ab key=value]] [--out data/perf] [--label name]
+//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--view <m above the player, for the picture>] [--face sun] [--pitch <degrees down, with --view>] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--software] [--shot [--ab key=value]] [--out data/perf] [--label name]
 //
 //   --seconds    gameplay to record (0 = the startup timeline only, no walking)
 //   --trace      play: trace only the recorded walk (default); startup: trace from page load until playable; none
@@ -68,7 +68,9 @@ const chrome: ChildProcess = spawn(CHROME, [
   `--remote-debugging-port=${port}`, `--user-data-dir=${dir}`, '--no-first-run', '--no-default-browser-check',
   '--enable-unsafe-webgpu', '--enable-webgpu-developer-features', // (precise GPU timestamps: otherwise rounded to 0.1 ms)
   '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
-  '--window-size=1280,800', ...(flag('headless') ? ['--headless=new'] : []), 'about:blank',
+  '--window-size=1280,800', ...(flag('headless') ? ['--headless=new'] : []),
+  // --software: no graphics card (a CI runner): WebGL2 drawn by SwiftShader on the CPU
+  ...(flag('software') ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-gpu'] : []), 'about:blank',
 ], { stdio: 'ignore' });
 const stop = () => {
   chrome.kill();
@@ -126,7 +128,7 @@ try {
     await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
   }
   await send('Page.addScriptToEvaluateOnNewDocument', {
-    source: `try { sessionStorage.setItem('prologueSeen', '1'); localStorage.setItem('dadajam.name', localStorage.getItem('dadajam.name') || 'Perf'); const k = 'dadajam.graphics'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), ...${JSON.stringify(prefs)} })); for (const [lk, lv] of ${JSON.stringify(rawLs)}) localStorage.setItem(lk, lv); } catch {}`,
+    source: `try { sessionStorage.setItem('prologueSeen', '1'); localStorage.setItem('dadajam.name', localStorage.getItem('dadajam.name') || 'Perf'); const k = 'dadajam.graphics'; localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), ...${JSON.stringify(prefs)} })); for (const [lk, lv] of ${JSON.stringify(rawLs)}) localStorage.setItem(lk, lv); } catch {}${flag('software') ? ' delete Navigator.prototype.gpu;' : ''}`, // (no WebGPU in software: three falls back to WebGL2)
   });
 
   // Tracing: Chrome's Performance recording categories, streamed back as a file.

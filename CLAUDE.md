@@ -22,6 +22,9 @@ woltsu/dadajam): no release tags.
   at the base, and how the progression moved (milestone times, bottlenecks, part sources). Run it after changing loot
   tables, drops, recipes, gear slots or the site layout. CI runs it on every push to `main` (report in the run summary,
   flagged changes to Discord).
+- `npm run bench -- --base origin/main` — the benchmarks (docs/bench.md): world generation, physics, the enemies, the world
+  server under bot load and the client in headless Chrome, at this tree and at the base in turns, and what moved past the
+  noise. CI runs it on every push to `main` that touches the game (report in the run summary, flagged changes to Discord).
 
 There are no tests yet; `npm run build` is the check CI runs on PRs.
 
@@ -38,7 +41,7 @@ The full file-by-file map is `docs/codemap.md`; read the section for the area yo
 - `shared/tables.ts` — every loot table and recipe as plain data; `shared/lootRoll.ts` the dice that roll them;
   `shared/enemies.ts` the registry of everything you can destroy and loot
 - `shared/text.ts` — every player-visible text (`TEXT`)
-- `tools/blender/`, `tools/models/` — model scripts; `tools/econsim` the economy simulator
+- `tools/blender/`, `tools/models/` — model scripts; `tools/econsim` the economy simulator; `tools/bench` the benchmarks
 - `public/` — static assets (models, textures, audio), copied as-is into the build
 - `deploy/`, `Dockerfile`, `.github/workflows/` — deployment; see README. Don't change without asking.
 
@@ -52,7 +55,7 @@ Read before touching:
 - first-person hands, held items: `docs/viewmodel-hands.md`
 - loot, drops, recipes, gear slots, site layout: `docs/econsim.md`
 - player-visible text: `docs/text.md`; the character's lines: `docs/speech.md`
-- rendering cost, shadows: `docs/perf.md`; art direction: `docs/look.md`
+- rendering cost, shadows: `docs/perf.md`; the CI benchmarks: `docs/bench.md`; art direction: `docs/look.md`
 - what's been built and why, known gaps: `docs/devlog.md`
 
 ## Multiplayer rules (read docs/netcode.md before changing netcode)

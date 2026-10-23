@@ -1,0 +1,79 @@
+name: Benchmarks
+
+# At every push to main that touches the game: tools/bench (docs/bench.md) at this commit and at the one before, in turns on
+# the same runner (times can't be kept from one machine to the next, so the base is measured again every time), and what
+# moved past the noise: world generation, physics, the enemies, the world server under load, the client in headless Chrome.
+# Only the suites the changed files can move are run. The report goes in the run's summary; what it flags goes to Discord
+# (the BENCH_DISCORD_WEBHOOK secret, else the economy sim's ECON_DISCORD_WEBHOOK). It reports only: it never blocks a deploy
+# (that's deploy.yml) and its failure breaks nothing.
+on:
+  push:
+    branches: [main]
+    paths: ['shared/**', 'server/**', 'src/**', 'public/**', 'index.html', 'vite.config.ts', 'package.json', 'package-lock.json', 'tools/bench/**', 'tools/perf.ts']
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Commit to compare with (default the one before)
+        required: false
+      suites:
+        description: auto (what the change can move), all, or a list (worldgen,physics,ai,server,client)
+        required: false
+        default: auto
+      always:
+        description: Post to Discord even if nothing changed (to check the webhook)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One at a time (two would slow each other down); a burst of pushes waits, and only the newest of them runs.
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Base commit
+        id: base
+        run: |
+          BASE="${{ github.event.inputs.base || github.event.before }}"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then BASE=$(git rev-parse HEAD~1); fi
+          echo "sha=$(git rev-parse "$BASE")" >> "$GITHUB_OUTPUT"
+
+      # Each commit with its own packages and its own client build (tools/bench/client.ts serves dist/).
+      - name: Install and build both commits
+        run: |
+          npm ci
+          npx vite build
+          git worktree add --detach ../base ${{ steps.base.outputs.sha }}
+          (cd ../base && npm ci && npx vite build) || echo "::warning::the base commit did not build: its client is not measured"
+
+      - name: Benchmark
+        env:
+          BENCH_DISCORD_WEBHOOK: ${{ secrets.BENCH_DISCORD_WEBHOOK || secrets.ECON_DISCORD_WEBHOOK }}
+        run: |
+          LINK="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          node --no-warnings tools/bench/cli.ts ab ../base --suites "${{ inputs.suites || 'auto' }}" --out results.json --md report.md --link "$LINK" --discord ${{ inputs.always && '--always' || '' }}
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-${{ github.sha }}
+          path: |
+            results.json
+            report.md
+          if-no-files-found: ignore
