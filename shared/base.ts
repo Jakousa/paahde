@@ -346,7 +346,7 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
   wall(-cx, bh, cx, bh, vaultCrown(HUT.z0), HUT.top, r);
   for (const s of [-1, 1]) {
     arc(s * cx, cf, rc, s, 1, -Infinity, HUT.top, r);
-    arc(s * cx, cb, rc, s, -1, -Infinity, HUT.top, r);
+    arc(s * cx, cb, rc, s, -1, vaultCrown(HUT.z0), HUT.top, r);
   }
   // Tunnel and hallway under the sand, into the room's front wall.
   const hz = HALL.z + WT / 2, rx = ROOM.w + WT / 2, rz = ROOM.z - WT / 2;
