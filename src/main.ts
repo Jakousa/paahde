@@ -447,7 +447,6 @@ renderer.setAnimationLoop((time) => {
   timer.update(time);
   const frameDt = Math.min(timer.getDelta(), 0.25);
   if (!joined && !net.connected) {
-    menu.setInfo(`${backendText} · ${net.status} · build ${__BUILD_SHA__}`);
     return;
   }
   if (!joined) prologue.joined();
@@ -788,7 +787,12 @@ baseSand.update(frameDt, storm.atBase);
   statsGraph.visible = menu.statsOn;
   perf.collect = menu.statsOn || PERF_RUN;
   statsGraph.frame(ri.drawCalls ?? ri.calls ?? 0, ri.triangles / 1000, graphics.dynamicRes ? resolution.ratio : undefined, perf.last.cpu, perf.gpuTracked ? (perf.last.gpu ?? undefined) : undefined);
-  menu.setInfo(`${resolution.ratio.toFixed(2)}x · ${clockText(sky.day.tod)} · ${backendText} · ${net.status} · ${net.telemetry.text()} · ${others.length + (net.connected ? 1 : 0)} online · build ${__BUILD_SHA__}`);
+  if (menu.statsOn) {
+    statsGraph.info([
+      ...(graphics.dynamicRes ? [] : [`${resolution.ratio.toFixed(2)}x`]), // (adaptive: the scale line shows it)
+      clockText(sky.day.tod), backendText, net.status, net.telemetry.text(), `${others.length + (net.connected ? 1 : 0)} online`, `build ${__BUILD_SHA__}`,
+    ]);
+  }
   teardown.update(frameDt);
   if (loaded) {
     warm.finish();

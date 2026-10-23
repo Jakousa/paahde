@@ -1,10 +1,12 @@
-// The options (Esc menu → Options, and the main menu's Options before joining): tabs for gameplay, graphics and audio. Shared
+// The options (Esc menu → Options, and the main menu's Options before joining): tabs for gameplay, graphics, audio and
+// the controls (src/rebind.ts). Shared
 // markup and wiring: the page that hosts it provides a `#menu` element (the styles are scoped to it, `MENU_CSS`) and the Back button.
 import { setCounts, setMarkers, tdPrefs } from './teardown/prefs.ts';
 import { audio } from './audio';
 import { TEXT } from '../shared/text.ts';
 import { FPS_LIMITS, PRESET_NAMES, SHADOW_DISTANCE_RANGE, SHADOW_QUALITY, applyGraphicsPreset, currentGraphicsPreset, graphics, needsReload, onGraphics, setGraphics } from './graphics';
 import { setFullscreen } from './input';
+import { bindRebind, controlsHtml } from './rebind';
 
 const STATS_KEY = 'dadajam.stats';
 
@@ -42,13 +44,13 @@ export const MENU_CSS = `
 #menu .fsNote.below { transform: none; }
 #menu .fsNote.below::before { display: none; }
 #menu.closeAsked .fsNote { display: block; }
-#menu .panel.sub ~ .fsNote, #menu .panel.opts ~ .fsNote { display: none !important; }
-#menu .controls, #menu .options { display: none; }
-#menu .panel.sub .controls, #menu .panel.opts .options { display: block; }
-#menu .panel.sub .main, #menu .panel.opts .main { display: none; }
+#menu .panel.opts ~ .fsNote { display: none !important; }
+#menu .options { display: none; }
+#menu .panel.opts .options { display: block; }
+#menu .panel.opts .main { display: none; }
 #menu .panel.opts ~ button.mini { display: none; }
 #menu .tabs { display: flex; gap: 6px; margin: 14px 0 6px; }
-#menu .tabs button { padding: 5px 0; font: 600 11px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; background: rgba(255, 217, 160, 0.14); color: #ffd9a0; }
+#menu .tabs button { padding: 5px 0; font: 600 11px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; background: rgba(255, 217, 160, 0.14); color: #ffd9a0; }
 #menu .tabs button:hover { background: rgba(255, 217, 160, 0.28); }
 #menu .tabs button.on { background: #ffd9a0; color: #2a160a; }
 #menu .tabs button { flex: 1; }
@@ -63,7 +65,6 @@ export const MENU_CSS = `
 #menu button.mini { position: absolute; right: 26px; bottom: 26px; width: 72px; height: 54px; padding: 0; border-radius: 0;
   display: grid; place-items: center; background: none; box-shadow: none; transition: transform .15s; }
 #menu button.mini:hover { background: none; transform: scale(1.08); }
-#menu .panel.sub ~ button.mini { display: none; }
 #menu button.mini svg { position: relative; width: 72px; height: 50px; overflow: visible; }
 #menu button.mini svg * { transform-box: fill-box; transform-origin: center; }
 #menu button.mini svg { filter: drop-shadow(0 0 4px rgba(255, 170, 70, 0.55)) drop-shadow(0 0 9px rgba(255, 140, 50, 0.35)); animation: miniShine 3.4s ease-in-out infinite; }
@@ -89,7 +90,7 @@ export function statsPref(): boolean {
 /** The options view: a `.options` block with its Back button (`.optBack`, the host binds it). */
 export function optionsHtml(): string {
   return `<div class="options"><h2>${TEXT.menu.options}</h2><button class="optBack">${TEXT.controls.back}</button>
-<div class="tabs"><button class="tab on" data-tab="gameplay">${TEXT.menu.gameplay}</button><button class="tab" data-tab="graphics">${TEXT.menu.graphics}</button><button class="tab" data-tab="audio">${TEXT.menu.audio}</button></div>
+<div class="tabs"><button class="tab on" data-tab="gameplay">${TEXT.menu.gameplay}</button><button class="tab" data-tab="graphics">${TEXT.menu.graphics}</button><button class="tab" data-tab="audio">${TEXT.menu.audio}</button><button class="tab" data-tab="controls">${TEXT.menu.controls}</button></div>
 <div class="pane" data-pane="gameplay">
 <label class="row"><span>${TEXT.menu.showGuides}</span><input class="guides" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.showCounts}</span><input class="counts" type="checkbox"></label>
@@ -111,7 +112,8 @@ export function optionsHtml(): string {
 <div class="note gNote"></div></div>
 <div class="pane" data-pane="audio">
 <label class="row"><span>${TEXT.menu.volume}</span><input class="vol" type="range" min="0" max="1" step="0.01"><span class="val volVal"></span></label>
-<label class="row"><span>${TEXT.menu.music}</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label></div></div>
+<label class="row"><span>${TEXT.menu.music}</span><input class="music" type="range" min="0" max="1" step="0.01"><span class="val musicVal"></span></label></div>
+${controlsHtml()}</div>
 `;
 }
 
@@ -153,8 +155,10 @@ export function bindOptions(root: HTMLElement, hooks: { onAo?: (level: number) =
   counts.checked = tdPrefs.counts;
   counts.addEventListener('change', () => setCounts(counts.checked));
 
-  // Options: a sub-view like the controls, with a tab for each group of settings.
+  // Options: a sub-view with a tab for each group of settings.
+  const rebind = bindRebind(root);
   const tab = (name: string) => {
+    rebind.leave();
     for (const b of root.querySelectorAll<HTMLElement>('.tab')) b.classList.toggle('on', b.dataset.tab === name);
     for (const p of root.querySelectorAll<HTMLElement>('.pane')) p.style.display = p.dataset.pane === name ? '' : 'none';
   };
@@ -163,7 +167,7 @@ export function bindOptions(root: HTMLElement, hooks: { onAo?: (level: number) =
   bindTips(root);
   // Drop focus after using a control, or the arrow keys / space would keep nudging it.
   for (const input of root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select')) input.addEventListener('change', () => input.blur());
-  return () => { unbindAo(); unbindGraphics(); };
+  return () => { unbindAo(); unbindGraphics(); rebind.unbind(); };
 }
 
 /** The same controls serve the landing page and the running game. Sync every control after a preset or Auto change. */

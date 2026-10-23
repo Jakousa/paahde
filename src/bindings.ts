@@ -226,8 +226,9 @@ export function resetAll() {
   save();
 }
 
-export function onChange(fn: () => void) {
+export function onChange(fn: () => void): () => void {
   listeners.add(fn);
+  return () => listeners.delete(fn);
 }
 
 // Layout-aware names ("Z" for KeyY on QWERTZ). getLayoutMap is Chromium-only; elsewhere the code is prettified.

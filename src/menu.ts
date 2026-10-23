@@ -1,17 +1,41 @@
 // Esc menu: opens whenever the game lets go of the mouse (Esc, alt-tab) unless the inventory or the F3
-// panel took it. Resume (or a click on the backdrop) goes back in. Settings: volume and music volume (src/audio.ts) and
-// the stats line in the top-left corner; below them the controls, the build/connection line and credits.
-// The game keeps running behind it: it's multiplayer, nothing pauses.
+// panel took it. Resume (or a click on the backdrop) goes back in. Options (src/options.ts: gameplay, graphics, audio,
+// controls), fullscreen, back to the main menu, credits. Over it a bubble with the game itself: its name, lives, bosses
+// beaten, who's on, and its code and invite link to copy, each mark explained on hover. The build and connection are in
+// the stats (src/statsGraph.ts). The game keeps running behind it: it's multiplayer, nothing pauses.
 import { copies } from './copy';
 import { WORLD_ID } from '../shared/world.ts';
-import { ACTIONS, bind, kbd, keyName, onChange, resetAll, slots } from './bindings';
+import { BOSS_KINDS } from '../shared/bosses.ts';
+import type { WorldStats } from '../shared/protocol.ts';
+import { kbd } from './bindings';
 import { capture, setFullscreen, tools, ui } from './input';
 import { openMinigame } from './minigameMenu';
 import { TEXT } from '../shared/text.ts';
 import { MENU_CSS, bindOptions, optionsHtml, statsPref } from './options';
 import { graphics, onGraphics, setGraphics } from './graphics';
 
-const css = MENU_CSS;
+const css = `${MENU_CSS}
+#menu.game { flex-direction: column; gap: 10px; }
+#menu .server { order: -1; width: min(340px, calc(100vw - 32px)); padding: 10px 18px; border-radius: 8px;
+  background: rgba(28, 15, 7, 0.92); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 10px 40px rgba(0, 0, 0, 0.5); }
+#menu .panel.opts ~ .server { display: none; }
+#menu .server .sname { margin-bottom: 8px; font: 600 13px var(--mono); color: #ffd9a0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#menu .server .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#menu .server .chip { display: inline-flex; align-items: center; gap: 5px; width: auto; height: 24px; padding: 0 9px; border-radius: 12px;
+  font: 600 12px var(--mono); letter-spacing: 0; color: #ffd9a0; background: rgba(255, 217, 160, 0.1); box-sizing: border-box; }
+#menu .server .chip svg { width: 13px; height: 13px; fill: currentColor; }
+#menu .server button.chip { cursor: pointer; }
+#menu .server button.chip:hover { background: rgba(255, 217, 160, 0.24); }
+#menu .server .chip.code { margin-left: auto; }
+#menu .server .chip.code i { font-style: normal; opacity: 0.5; }
+#menu .server .bosses { letter-spacing: 2px; }
+#menu .server.bare .stat { display: none; }
+`;
+
+/** The marks' icons, in the chips' colour. */
+const HEART = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.2S1.5 10.3 1.5 5.6A3.4 3.4 0 0 1 8 4a3.4 3.4 0 0 1 6.5 1.6c0 4.7-6.5 8.6-6.5 8.6z"/></svg>';
+const PERSON = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5" r="3"/><path d="M2 15c0-3.6 2.7-5.6 6-5.6s6 2 6 5.6z"/></svg>';
+const LINK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 9.4a.9.9 0 0 1 0-1.3l2.9-2.9a.9.9 0 1 1 1.3 1.3L7.9 9.4a.9.9 0 0 1-1.3 0z"/><path d="M9 3.2a3.3 3.3 0 0 1 4.7 4.7l-1.6 1.6a.9.9 0 0 1-1.3-1.3l1.6-1.6a1.5 1.5 0 0 0-2.1-2.1L8.7 6.1a.9.9 0 0 1-1.3-1.3zM7 12.8a3.3 3.3 0 0 1-4.7-4.7l1.6-1.6a.9.9 0 0 1 1.3 1.3L3.6 9.4a1.5 1.5 0 0 0 2.1 2.1l1.6-1.6a.9.9 0 0 1 1.3 1.3z"/></svg>';
 
 
 /** One of the minigame's machines (src/loadingRunner.ts): a rust crate with an accent stripe, a rarity tag and two screws. */
@@ -24,35 +48,32 @@ const MACHINE_ICON = `<svg viewBox="2 13 40 28" aria-hidden="true">
 
 export class Menu {
   private el = document.createElement('div');
-  private infoEl = document.getElementById('info')!;
-  private footEl!: HTMLElement;
+  private serverEl!: HTMLElement;
   private stats = false;
-  private lastInfo = '';
 
   constructor(canvas: HTMLElement, onAo: (intensity: number) => void) {
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
     this.stats = statsPref();
-    this.infoEl.style.display = this.stats ? 'block' : 'none';
 
     this.el.id = 'menu';
+    this.el.className = 'game';
     this.el.innerHTML = `<div class="panel"><div class="main"><h2>${TEXT.game.name}</h2><button class="resume">${kbd('menu')}${TEXT.menu.resume}</button>
 <button class="opt" style="margin-top:12px">${TEXT.menu.options}</button>
 <button class="fs" style="margin-top:8px"></button>
-<button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>
-<button class="code" style="margin-top:8px;text-transform:none">${TEXT.landing.codeOf(WORLD_ID)}</button>
-<button class="ctl" style="margin-top:8px">${TEXT.menu.controls}</button>
 <button class="leaveGame" style="margin-top:8px">${TEXT.menu.mainMenu}</button>
-<div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
-${optionsHtml()}
-<div class="controls"><h2>${TEXT.controls.title}</h2><button class="back">${TEXT.controls.back}</button>
-<h3>${TEXT.controls.how}</h3><div class="binds"></div><div class="note"></div>
-<button class="reset">${TEXT.controls.reset}</button><div class="foot">${TEXT.controls.fixed}</div></div></div>
+<div class="foot"><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
+${optionsHtml()}</div>
+<div class="server bare"><div class="sname"></div><div class="chips">
+<span class="chip stat lives">${HEART}<b></b></span><span class="chip stat bosses"></span><span class="chip stat online">${PERSON}<b></b></span>
+<button class="chip code" data-tip="${TEXT.menu.server.code}"><i>#</i>${WORLD_ID}</button>
+<button class="chip invite" data-tip="${TEXT.menu.copyInvite}" aria-label="${TEXT.menu.copyInvite}">${LINK}</button></div></div>
 <div class="fsNote">${TEXT.menu.ctrlWNote}</div>
 <button class="mini" title="${TEXT.menu.minigame}" aria-label="${TEXT.menu.minigame}">${MACHINE_ICON}</button>`;
     document.body.append(this.el);
-    this.footEl = this.el.querySelector('.info')!;
+    this.serverEl = this.el.querySelector('.server')!;
+    this.serverEl.querySelector('.sname')!.textContent = WORLD_ID;
     // The world's URL (shared/world.ts), without dev flags: anyone opening it joins this world.
     // It opens the world's lobby (src/lobby.ts). The code alone is for the main menu's Join box.
     copies(this.el.querySelector<HTMLButtonElement>('.invite')!, () => `${location.origin}${location.pathname}?w=${WORLD_ID}`);
@@ -60,15 +81,11 @@ ${optionsHtml()}
 
     bindOptions(this.el, {
       onAo,
-      onStats: (on) => {
-        this.stats = on;
-        this.infoEl.style.display = on ? 'block' : 'none';
-      },
+      onStats: (on) => (this.stats = on),
     });
     const panel = this.el.querySelector<HTMLElement>('.panel')!;
     this.el.querySelector('.opt')!.addEventListener('click', () => panel.classList.add('opts'));
     this.el.querySelector('.optBack')!.addEventListener('click', () => panel.classList.remove('opts'));
-    this.bindControls();
     this.el.querySelector('.mini')!.addEventListener('click', () => this.playMinigame());
 
     // Fullscreen on/off in one click (the Display option does the same): easy to get out to other windows and tabs.
@@ -118,89 +135,6 @@ ${optionsHtml()}
     openMinigame(() => (this.el.style.visibility = ''));
   }
 
-  /** The rebinding rows: click a key, press the new one (Esc cancels, Backspace clears). */
-  private bindControls() {
-    const grid = this.el.querySelector<HTMLElement>('.binds')!;
-    grid.innerHTML = ACTIONS.map((a) => `<span>${TEXT.controls.actions[a.id]}</span><button data-a="${a.id}" data-s="0"></button><button data-a="${a.id}" data-s="1"></button>`).join('')
-      ;
-    const note = this.el.querySelector<HTMLElement>('.controls .note')!;
-    const panel = this.el.querySelector<HTMLElement>('.panel')!;
-    const sub = (on: boolean) => {
-      panel.classList.toggle('sub', on);
-      listening = undefined;
-      note.textContent = '';
-      show();
-    };
-    this.el.querySelector('.ctl')!.addEventListener('click', () => sub(true));
-    this.el.querySelector('.back')!.addEventListener('click', () => sub(false));
-    const buttons = [...grid.querySelectorAll<HTMLButtonElement>('button')];
-    let listening: HTMLButtonElement | undefined;
-    const show = () => {
-      for (const b of buttons) {
-        const s = slots(b.dataset.a as never);
-        b.textContent = b === listening ? '…' : keyName(s[Number(b.dataset.s)]);
-        b.classList.toggle('listening', b === listening);
-      }
-    };
-    onChange(show);
-    show();
-    // Capture phase on window and registered first: while listening, no other handler sees the key.
-    addEventListener('keydown', (e) => {
-      if (!listening) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (e.repeat) return;
-      // Modifier keys bind on release, so a chord isn't taken as the modifier alone.
-      if (/^(Shift|Control|Alt)/.test(e.code)) {
-        pendingMod = e.code;
-        return;
-      }
-      pendingMod = '';
-      finish(e.code);
-    }, true);
-    let pendingMod = '';
-    let ignoreClick = false;
-    // A mouse button binds too; the click that follows must not toggle the button again.
-    addEventListener('mousedown', (e) => {
-      if (!listening) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      ignoreClick = true;
-      setTimeout(() => (ignoreClick = false), 0);
-      finish(`Mouse${e.button}`);
-    }, true);
-    addEventListener('keyup', (e) => {
-      if (!listening || e.code !== pendingMod) return;
-      e.stopImmediatePropagation();
-      pendingMod = '';
-      finish(e.code);
-    }, true);
-    const finish = (code: string) => {
-      const b = listening!;
-      listening = undefined;
-      note.textContent = '';
-      if (code === 'Escape') return show();
-      const a = b.dataset.a as never;
-      const slot = Number(b.dataset.s) as 0 | 1;
-      note.textContent = (code === 'Backspace' || code === 'Delete' ? bind(a, slot, '') : bind(a, slot, code)) ?? '';
-      show();
-    };
-    grid.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest('button');
-      if (!b || ignoreClick) return;
-      b.blur();
-      listening = listening === b ? undefined : b;
-      note.textContent = listening ? TEXT.controls.listening : '';
-      show();
-    });
-    this.el.querySelector('.reset')!.addEventListener('click', (e) => {
-      listening = undefined;
-      note.textContent = '';
-      resetAll();
-      (e.currentTarget as HTMLElement).blur();
-    });
-  }
-
   get open() {
     return this.el.classList.contains('open');
   }
@@ -211,8 +145,8 @@ ${optionsHtml()}
   }
 
   private toggle(open: boolean) {
+    if (open && !this.open) void this.showServer();
     this.el.classList.toggle('open', open);
-    if (open) this.footEl.textContent = this.lastInfo;
     // Opened by the leave-site prompt (src/input.ts): say why it came and how fullscreen avoids it, this once.
     this.el.classList.toggle('closeAsked', open && ui.closeAsked);
     if (open && ui.closeAsked) this.placeFsNote();
@@ -230,11 +164,26 @@ ${optionsHtml()}
     note.style.top = `${beside ? b.top + b.height / 2 : p.bottom + 10}px`;
   }
 
-  /** Every frame: the stats line under the graphs (render scale, clock, backend, connection, players, build). */
-  setInfo(text: string) {
-    if (text === this.lastInfo) return;
-    this.lastInfo = text;
-    if (this.stats) this.infoEl.textContent = text;
-    if (this.open) this.footEl.textContent = text;
+  /** The game's bubble, fresh each time the menu opens (server/index.ts, as the lobby asks). Without an answer (the lab,
+   *  the server away) only the code and the invite. */
+  private async showServer() {
+    let w: WorldStats;
+    try {
+      const res = await fetch(`api/worlds/${encodeURIComponent(WORLD_ID)}`);
+      if (!res.ok) throw new Error(String(res.status));
+      w = await res.json();
+    } catch {
+      return this.serverEl.classList.add('bare');
+    }
+    const q = (c: string) => this.serverEl.querySelector<HTMLElement>(c)!;
+    q('.sname').textContent = w.locked ? `${w.name} ${TEXT.landing.lockedMark}` : w.name;
+    q('.lives b').textContent = String(w.lives);
+    q('.lives').dataset.tip = TEXT.menu.server.lives(w.lives);
+    const n = BOSS_KINDS.filter((_, i) => w.beaten & (1 << i)).length;
+    q('.bosses').textContent = '◆'.repeat(n) + '◇'.repeat(BOSS_KINDS.length - n);
+    q('.bosses').dataset.tip = TEXT.menu.server.bosses(n, BOSS_KINDS.length);
+    q('.online b').textContent = `${w.online}/${w.max}`;
+    q('.online').dataset.tip = TEXT.menu.server.online(w.online, w.max, w.players);
+    this.serverEl.classList.remove('bare');
   }
 }

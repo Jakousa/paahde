@@ -2,6 +2,15 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-23 — Esc menu: the game's bubble, controls in Options, info in the stats
+
+- Over the Esc menu a bubble with the game (`Menu.showServer`, fetched from `api/worlds/<id>` each time it opens): its
+  name, then marks with hover tips: lives, bosses beaten (◆◇), online/max (tip: how many have played), the code and a
+  link icon, both click to copy. Without an answer (the lab) only the code and the link. Hidden in Options.
+- Controls are Options' fourth tab (`src/rebind.ts`), so the main menu's Options has them too; no Controls button.
+- The time, renderer, connection, round trip, who's on and the build moved from the Esc menu and the loose `#info` line
+  into the stats panel, under the graphs in the same box (`StatsGraph.info`).
+
 ## 2026-10-21 — Canyon echoes and the canyon's moan
 
 - Echoes off the walls round you (`src/echo.ts`): 16 level rays round the camera, one a frame, march the heightfield to

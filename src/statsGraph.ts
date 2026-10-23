@@ -2,8 +2,10 @@
 //   - frame time, one bar per frame (ms, with the 60 and 120 fps budgets drawn in), coloured by how far over budget it was: a stutter or an every-other-frame
 //     zigzag shows as a pattern, and the numbers above are averaged over half a second (and the slowest 1 % of frames) so they hold still;
 //   - draw calls and thousands of triangles per frame as lines;
-//   - with adaptive resolution on, the render scale it picked (src/resolution.ts) as a line.
-// Fed once a frame by src/main.ts; only drawn while shown. The text line under it (src/menu.ts setInfo) keeps the rarely changing things.
+//   - with adaptive resolution on, the render scale it picked (src/resolution.ts) as a line;
+//   - under the graphs, in the same box, the things that rarely change (`info`): the time of day, the renderer and GPU,
+//     the connection and round trip, who's on, the build.
+// Fed once a frame by src/main.ts; only drawn while shown.
 
 /** Frames kept: about five seconds at 60 fps. */
 const N = 300;
@@ -12,6 +14,10 @@ const GRAPH_H = 56;
 const H = 176;
 /** Taller by the resolution line when adaptive resolution is on. */
 const H_RES = 304;
+/** Room for the info lines under the graphs. */
+const INFO_LINES = 5;
+const LINE_H = 14;
+const H_ALL = H_RES + INFO_LINES * LINE_H + 4;
 /** Frame time axis (ms): the bars are clamped to this. */
 const MAX_MS = 33.4;
 const FONT = '11px ui-monospace, "Cascadia Mono", Consolas, monospace';
@@ -42,12 +48,15 @@ export class StatsGraph {
   private last = performance.now();
   private on = false;
   private sorted = new Float32Array(N);
+  /** The info parts, and them flowed into lines that fit the box (redone only when they change). */
+  private infoKey = '';
+  private infoLines: string[] = [];
 
   constructor() {
     const ratio = Math.min(2, window.devicePixelRatio || 1);
     this.el.width = W * ratio;
-    this.el.height = H_RES * ratio;
-    this.el.style.cssText = `position:fixed;top:8px;left:8px;width:${W}px;height:${H_RES}px;pointer-events:none;display:none;z-index:20`;
+    this.el.height = H_ALL * ratio;
+    this.el.style.cssText = `position:fixed;top:8px;left:8px;width:${W}px;height:${H_ALL}px;pointer-events:none;display:none;z-index:20`;
     document.body.appendChild(this.el);
     this.ctx = this.el.getContext('2d')!;
     this.ctx.scale(ratio, ratio);
@@ -77,6 +86,31 @@ export class StatsGraph {
     if (this.on) this.draw();
   }
 
+  /** The rarely changing things, a few words each, written under the graphs joined by dots and wrapped to the box. */
+  info(parts: string[]) {
+    const key = parts.join('\n');
+    if (key === this.infoKey) return;
+    this.infoKey = key;
+    const c = this.ctx, max = W - 16;
+    c.font = FONT;
+    const lines: string[] = [];
+    let line = '';
+    for (const p of parts) {
+      const next = line ? `${line} · ${p}` : p;
+      if (!line || c.measureText(next).width <= max) line = next;
+      else {
+        lines.push(line);
+        line = p;
+      }
+    }
+    if (line) lines.push(line);
+    // a part longer than the box on its own (the build) is cut where it runs out
+    this.infoLines = lines.slice(0, INFO_LINES).map((l) => {
+      while (c.measureText(l).width > max) l = l.slice(0, -1);
+      return l;
+    });
+  }
+
   /** The value `k` frames back (0 the latest). */
   private at(a: Float32Array, k: number) {
     return a[(this.head - 1 - k + 2 * N) % N];
@@ -84,10 +118,11 @@ export class StatsGraph {
 
   private draw() {
     const c = this.ctx, n = this.count;
-    c.clearRect(0, 0, W, H_RES);
+    c.clearRect(0, 0, W, H_ALL);
+    const graphsH = 86 + 44 * (3 + (this.showGpu ? 1 : 0) + (this.showRes ? 1 : 0)) - 6;
     c.fillStyle = 'rgba(8, 6, 4, 0.55)';
     c.beginPath();
-    c.roundRect(0, 0, W, 86 + 44 * (3 + (this.showGpu ? 1 : 0) + (this.showRes ? 1 : 0)) - 6, 6);
+    c.roundRect(0, 0, W, graphsH + (this.infoLines.length ? this.infoLines.length * LINE_H + 8 : 0), 6);
     c.fill();
     c.font = FONT;
     c.textBaseline = 'top';
@@ -130,6 +165,13 @@ export class StatsGraph {
       y += 44;
     }
     if (this.showRes) this.line('scale', this.res, y, '#b8e07c', (v) => `${v.toFixed(2)}x`);
+
+    // the info, under a hairline
+    if (!this.infoLines.length) return;
+    c.fillStyle = 'rgba(255,255,255,0.1)';
+    c.fillRect(8, graphsH - 2, W - 16, 1);
+    c.fillStyle = '#a8a298';
+    this.infoLines.forEach((l, i) => c.fillText(l, 8, graphsH + 4 + i * LINE_H));
   }
 
   /** A labelled line graph of the last frames of `a`, from its lowest to its highest value, with the latest value written beside the label. */

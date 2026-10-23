@@ -325,13 +325,20 @@ const en = {
     showCounts: 'Steps and parts left',
     copyInvite: 'Copy invite link',
     copied: 'Copied',
+    /** The game's bubble over the Esc menu: hover tips of its marks (lives, bosses, players, code, invite). */
+    server: {
+      lives: (n: number) => (n === 1 ? '1 shared life left' : `${n} shared lives left`),
+      bosses: (n: number, of: number) => `${n} of ${of} bosses beaten`,
+      online: (online: number, max: number, played: number) =>
+        `${online} of ${max} online · ${played === 1 ? '1 has played' : `${played} have played`}`,
+      code: 'Game code · click to copy',
+    },
     controls: 'Controls',
     minigame: 'Play minigame',
     leave: 'Leave',
     credits: 'credits',
   },
   controls: {
-    title: 'Controls',
     back: 'Back',
     how: 'Click a key, then press the new one',
     reset: 'Reset controls',

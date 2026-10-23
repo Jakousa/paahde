@@ -248,4 +248,4 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   branch or open a PR.
 - Never create or push release tags: tags are what deploy production.
 - Small, focused commits. Pull often — three people are editing a small codebase quickly.
-- The live build SHA is shown at the bottom of the Esc menu (and in the top-left stats line if "Show stats" is on).
+- The live build SHA is shown in the stats panel (Esc menu → Options → Gameplay → "Show stats"), under the graphs.

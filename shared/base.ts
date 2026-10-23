@@ -477,6 +477,7 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
   if (feet >= HUT.top - stepUp && onHutRoof(q.x, q.z)) support = Math.max(support, HUT.top);
   archFeet = feet;
   archHead = head;
+  archR = radius + PILLAR.jambD;
   keepUnder(q, prevX - BASE.x, prevZ - BASE.z, underArch);
 
   p.x = q.x + BASE.x;
@@ -493,12 +494,16 @@ function onHutRoof(lx: number, lz: number): boolean {
   return Math.abs(lx) < xo && lz < fo && lz > bo && dx * dx + dz * dz < HUT_R * HUT_R;
 }
 
-/** Feet and head (local) of the player collideBase is moving, for underArch. */
-let archFeet = 0, archHead = 0;
-/** Their head would be in the concrete over local (lx, lz): above the ceiling there, under the roof (the hut's,
- *  or the sand's over the bunker). */
+/** Feet, head (local) and reach (radius + the arch frames standing out of the walls) of the player collideBase is
+ *  moving, for underArch. */
+let archFeet = 0, archHead = 0, archR = 0;
+/** Their head would be in the concrete over local (lx, lz): above the lowest ceiling under their body (its centre
+ *  and its edge each way), under the roof (the hut's, or the sand's over the bunker). */
 function underArch(lx: number, lz: number): boolean {
-  return archHead > ceilingAt(lx, lz) + 0.05 && archFeet < (lz >= HUT.z0 ? HUT.top : BURIED_TOP);
+  if (archFeet >= (lz >= HUT.z0 ? HUT.top : BURIED_TOP)) return false;
+  const r = archR;
+  const c = Math.min(ceilingAt(lx, lz), ceilingAt(lx - r, lz), ceilingAt(lx + r, lz), ceilingAt(lx, lz - r), ceilingAt(lx, lz + r));
+  return archHead > c + 0.05;
 }
 
 /**
