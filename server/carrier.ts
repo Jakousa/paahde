@@ -83,6 +83,8 @@ const SLOT_REST = 1500;
 const CALM_S = 12, RECALL_S = 3;
 /** A shot ending this close (m) to a gun drone hits it (it's drawn a little behind, flying: some slack). */
 const DRONE_HIT = 4;
+/** Looks round for a target (a line of sight to each person about) this often (ms); keeps the one it has between. */
+const SEEK_MS = 300;
 
 type Track = { x: number; z: number; vx: number; vz: number };
 type Bomb = { at: number; x: number; y: number; z: number };
@@ -98,6 +100,8 @@ type St = {
   wx: number; wz: number; ax: number; az: number;
   scourX: number; scourZ: number;
   target: number; tx: number; tz: number; nextBomb: number;
+  /** Next look round for a target (SEEK_MS). */
+  seekAt: number;
   tracks: Map<number, Track>; bombs: Bomb[];
   leaveAt: number;
   /** People up against it this tick (server/bossCrowd.ts). */
@@ -331,7 +335,7 @@ export const carrier: Brain = {
     const st: St = {
       vx: Math.sin(b.yaw) * CRUISE, vz: Math.cos(b.yaw) * CRUISE, yawRate: 0, roll: 0, pitch: 0,
       wx: x + Math.sin(a + Math.PI) * 300, wz: z + Math.cos(a + Math.PI) * 300, ax: x, az: z,
-      scourX: b.x, scourZ: b.z, target: -1, tx: 0, tz: 0, nextBomb: now + 4000,
+      scourX: b.x, scourZ: b.z, target: -1, tx: 0, tz: 0, nextBomb: now + 4000, seekAt: 0,
       tracks: new Map(), bombs: [], leaveAt: -1, crowd: 1,
       drones: [], fightAt: now, recallAt: 0, nextLaunch: now + DRONE_FIRST * 1000, slotFree: new Array<number>(DRONE_SLOTS).fill(0),
       crashAt: -1, crashed: false, ox: 0, oy: 0, oz: 0, fall: 0, spin: 1,
@@ -360,7 +364,9 @@ export const carrier: Brain = {
     for (const id of st.tracks.keys()) if (!players.some((p) => p.id === id)) st.tracks.delete(id);
     const bay = { x: b.x, y: b.y + BAY[1], z: b.z };
     let target: BossPlayer | null = null;
-    if (!b.leaving) {
+    if (!b.leaving && now < st.seekAt) target = players.find((p) => p.id === st.target && !p.safe) ?? null;
+    else if (!b.leaving) {
+      st.seekAt = now + SEEK_MS;
       let best = Infinity;
       for (const p of players) {
         if (p.safe) continue;
