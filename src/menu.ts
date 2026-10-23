@@ -2,7 +2,7 @@
 // panel took it. Resume (or a click on the backdrop) goes back in. Options (src/options.ts: gameplay, graphics, audio,
 // controls), fullscreen, back to the main menu, credits. Over it a bubble with the game itself, laid out like its row on
 // the main menu (src/landing.ts): its name and how long it's been going; lives, bosses beaten, who's on, and everyone who
-// has played; your own time there, and its code and invite link to copy; each mark explained on hover. The build and connection are in
+// has played (and your own time there, by the hourglass); its code and invite link to copy; each mark explained on hover. The build and connection are in
 // the stats (src/statsGraph.ts). The game keeps running behind it: it's multiplayer, nothing pauses.
 import { copies } from './copy';
 import { WORLD_ID } from '../shared/world.ts';
@@ -24,13 +24,14 @@ const css = `${MENU_CSS}
 #menu .panel.opts ~ .server { display: none; }
 #menu .server { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; }
 #menu .server .sname { font: 600 13px var(--mono); color: #ffd9a0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#menu .server .up { display: inline-flex; gap: 5px; align-items: center; justify-self: end; font-size: 12px; opacity: 0.8; }
+#menu .server .times { display: flex; gap: 12px; justify-self: end; }
+#menu .server .up, #menu .server .mine { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; opacity: 0.8; }
+#menu .server .mine svg { width: 13px; height: 13px; }
 #menu .server .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 #menu .server .crowd { position: relative; display: inline-flex; justify-self: end; margin-right: 6px; color: #ffd9a0; }
 #menu .server .crowd b { position: absolute; right: -6px; top: -5px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
   border-radius: 8px; font: bold 10px/15px var(--mono); text-align: center; color: #2a160a; background: #ffd9a0; }
-#menu .server .mine { font-size: 11px; opacity: 0.7; }
-#menu .server .copy { display: flex; gap: 6px; justify-self: end; }
+#menu .server .copy { grid-column: 1 / -1; display: flex; gap: 6px; justify-self: end; }
 #menu .server .chip { display: inline-flex; align-items: center; gap: 5px; width: auto; height: 24px; padding: 0 9px; border-radius: 12px;
   font: 600 12px var(--mono); letter-spacing: 0; color: #ffd9a0; background: rgba(255, 217, 160, 0.1); box-sizing: border-box; }
 #menu .server .chip svg { width: 13px; height: 13px; fill: currentColor; }
@@ -44,6 +45,7 @@ const css = `${MENU_CSS}
 /** The marks' icons, in the chips' colour. */
 const HEART = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.2S1.5 10.3 1.5 5.6A3.4 3.4 0 0 1 8 4a3.4 3.4 0 0 1 6.5 1.6c0 4.7-6.5 8.6-6.5 8.6z"/></svg>';
 const PERSON = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5" r="3"/><path d="M2 15c0-3.6 2.7-5.6 6-5.6s6 2 6 5.6z"/></svg>';
+const HOURGLASS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9"/></svg>';
 const LINK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 9.4a.9.9 0 0 1 0-1.3l2.9-2.9a.9.9 0 1 1 1.3 1.3L7.9 9.4a.9.9 0 0 1-1.3 0z"/><path d="M9 3.2a3.3 3.3 0 0 1 4.7 4.7l-1.6 1.6a.9.9 0 0 1-1.3-1.3l1.6-1.6a1.5 1.5 0 0 0-2.1-2.1L8.7 6.1a.9.9 0 0 1-1.3-1.3zM7 12.8a3.3 3.3 0 0 1-4.7-4.7l1.6-1.6a.9.9 0 0 1 1.3 1.3L3.6 9.4a1.5 1.5 0 0 0 2.1 2.1l1.6-1.6a.9.9 0 0 1 1.3 1.3z"/></svg>';
 
 
@@ -74,10 +76,10 @@ export class Menu {
 <button class="leaveGame" style="margin-top:8px">${TEXT.menu.mainMenu}</button>
 <div class="foot"><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
 ${optionsHtml()}</div>
-<div class="server bare"><div class="sname"></div><span class="up stat" data-tip="${TEXT.landing.tipUptime}">${CLOCK_SVG}<b></b></span>
+<div class="server bare"><div class="sname"></div><div class="times"><span class="mine stat">${HOURGLASS}<b></b></span><span class="up stat" data-tip="${TEXT.menu.server.uptime}">${CLOCK_SVG}<b></b></span></div>
 <div class="chips stat"><span class="chip stat lives">${HEART}<b></b></span><span class="chip stat bosses"></span><span class="chip stat online" data-tip="${TEXT.landing.tipSeats}">${PERSON}<b></b></span></div>
 <span class="crowd stat">${GROUP_SVG}<b></b></span>
-<span class="mine stat"></span><div class="copy"><button class="chip code" data-tip="${TEXT.menu.server.code}"><i>#</i>${WORLD_ID}</button>
+<div class="copy"><button class="chip code" data-tip="${TEXT.menu.server.code}"><i>#</i>${WORLD_ID}</button>
 <button class="chip invite" data-tip="${TEXT.menu.copyInvite}" aria-label="${TEXT.menu.copyInvite}">${LINK}</button></div></div>
 <div class="fsNote">${TEXT.menu.ctrlWNote}</div>
 <button class="mini" title="${TEXT.menu.minigame}" aria-label="${TEXT.menu.minigame}">${MACHINE_ICON}</button>`;
@@ -192,7 +194,9 @@ ${optionsHtml()}</div>
     q('.up b').textContent = TEXT.landing.uptime(Math.max(0, Math.floor((Date.now() - w.created) / 60_000)));
     q('.crowd b').textContent = String(w.players);
     q('.crowd').dataset.tip = TEXT.landing.players(w.players);
-    q('.mine').textContent = TEXT.landing.you('', Math.floor((w.played ?? 0) / 60_000));
+    const mine = Math.floor((w.played ?? 0) / 60_000);
+    q('.mine b').textContent = TEXT.menu.server.played(mine);
+    q('.mine').dataset.tip = TEXT.menu.server.playedTip(mine);
     q('.sname').textContent = w.locked ? `${w.name} ${TEXT.landing.lockedMark}` : w.name;
     q('.lives b').textContent = String(w.lives);
     q('.lives').dataset.tip = TEXT.menu.server.lives(w.lives);
