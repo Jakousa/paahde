@@ -114,6 +114,9 @@ export type ClientMsg =
   | { t: 'throw'; slot: number; n: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }
   // Debug menu: repaired gear of every kind, every part of `tier` (0 Scrap .. 3 Space-grade; for testing).
   | { t: 'debugGear'; tier?: number }
+  // Debug menu: `n` of any item `kind` into the bag; gear comes with every part of `tier` (0 Scrap .. 3 Space-grade), or
+  // broken (no parts) when `tier` is -1.
+  | { t: 'debugGive'; kind: string; n?: number; tier?: number }
   // Debug menu: a killing blow (a guardian's laser), to try the shield plate on.
   | { t: 'debugHit' }
   | { t: 'debugHeat'; off: boolean }

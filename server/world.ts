@@ -8,7 +8,7 @@ import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerStat
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bottleSips, buildingBox, cargoBox, carriedGear, equipped, gearTiers, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, isVehicle, vehicleBox, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { CLOTH, HOTBAR, SCRAP, scrapItem, stackOf, WIRING } from '../shared/items.ts';
+import { CLOTH, HOTBAR, ITEMS, RETIRED, SCRAP, scrapItem, stackOf, WIRING } from '../shared/items.ts';
 import type { Drop } from '../shared/lootRoll.ts';
 import { ENEMIES } from '../shared/enemies.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
@@ -225,6 +225,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'lootTake' && p) return onLootTake(p, msg.id);
     if (msg.t === 'drop' && p) return onDrop(p, msg.box, msg.slot);
     if (msg.t === 'debugGear' && p) return onDebugGear(p, msg.tier);
+    if (msg.t === 'debugGive' && p) return onDebugGive(p, msg.kind, msg.n, msg.tier);
     if (msg.t === 'debugHit' && p) return die(p, 'laser', [0, 3, 6]);
     if (msg.t === 'debugWeather' && p) {
       storms.off = msg.off === true;
@@ -928,6 +929,15 @@ function onDebugGear(p: Player, tier: unknown) {
   // and some of each base material, to build with (shared/tables.ts BUILD_TABLE)
   for (const kind of [SCRAP, CLOTH, WIRING]) items.give(p.browserId, kind, stackOf(kind));
   for (const box of ['bag', 'equip']) sendBox(p, box);
+  gearChanged(p.browserId);
+}
+
+function onDebugGive(p: Player, kind: unknown, n: unknown, tier: unknown) {
+  if (typeof kind !== 'string' || !(kind in ITEMS) || RETIRED.has(kind) || isBuilding(kind)) return;
+  const t = Number.isInteger(tier) ? (tier as number) : 0;
+  if (GEAR_KINDS.includes(kind) && t >= 0) items.giveItem(p.browserId, { kind, parts: scrapParts(kind, TIERS[t] ?? 'scrap') });
+  else items.give(p.browserId, kind, Math.max(1, Math.min(Number.isInteger(n) ? (n as number) : 1, stackOf(kind) * 10)));
+  sendBox(p, 'bag');
   gearChanged(p.browserId);
 }
 

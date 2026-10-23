@@ -12,9 +12,13 @@
 // "Fly camera" (src/flyCam.ts) leaves the body and flies the view freely, for shooting video; "Hide HUD" clears the
 // screen while flying, and FOV / smooth / bank shape the shot.
 // "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, and a laser rifle, pistol and jammer in your bag and equipment.
+// "Give item" puts any one item (shared/items.ts ITEMS; type to search by name or id) in your bag: a count of it, or gear
+// repaired with parts of the chosen tier, or broken.
 import { isBound } from './bindings';
 import { ui } from './input';
 import { BOSS_KINDS, BOSSES, type BossKind } from '../shared/bosses.ts';
+import { isBuilding, isGear } from '../shared/gear.ts';
+import { ITEMS, RETIRED } from '../shared/items.ts';
 import { TONE_CURVES, toneControl, type ToneCurve } from './post';
 import { summonLocalStorm } from './storm';
 import { clockText, timeControl } from './world/dayNight';
@@ -29,7 +33,7 @@ export class DebugMenu {
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
   constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: (front?: boolean | 'gas') => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | 'harvester' | BossKind) => void,
     showTrophies: (mode: TrophyShow) => void, resetYard: (all: boolean) => void = () => {}, noHeat: (off: boolean) => void = () => {}, noWeather: (off: boolean) => void = () => {},
-    fly: FlyCam, startFly: () => void) {
+    fly: FlyCam, startFly: () => void, giveItem: (kind: string, n: number, tier: number) => void = () => {}) {
     const style = document.createElement('style');
     style.textContent = `
 #debugMenu { position: fixed; top: 48px; right: 12px; width: 230px; padding: 10px 12px; display: none;
@@ -43,6 +47,8 @@ export class DebugMenu {
 #debugMenu button { font: inherit; color: inherit; background: rgba(255, 233, 204, 0.12); border: 0; border-radius: 4px;
   padding: 3px 7px; cursor: pointer; }
 #debugMenu button:hover { background: rgba(255, 233, 204, 0.25); }
+#debugMenu #dbgItem { flex: 1; min-width: 0; }
+#debugMenu input:not([type]), #debugMenu input[type=number] { font: inherit; color: inherit; background: rgba(255, 233, 204, 0.12); border: 0; border-radius: 4px; padding: 3px 5px; }
 #debugMenu label { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 body.clean > :not(canvas):not(#debugMenu):not(#menu):not(#artBench):not(#artBenchAB) { visibility: hidden !important; }`;
     document.head.append(style);
@@ -69,6 +75,11 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu):not(#artBench):not(#artBenc
 <label>Tone <select id="dbgTone">${TONE_CURVES.map((c) => `<option>${c}</option>`).join('')}</select></label>
 <label id="dbgWhiteRow">White <input id="dbgWhite" type="range" min="1" max="8" step="0.25"> <b id="dbgWhiteVal"></b></label>
 <div class="row">Give gear ${['Scrap', 'Basic', 'Quality', 'Space'].map((n, i) => `<button data-gear="${i}" title="One of every piece of gear, repaired with ${n} parts (what doesn't fit is skipped)">${n}</button>`).join('')}</div>
+<div class="row">Give item <input id="dbgItem" list="dbgItems" placeholder="search…" title="Any item, by name or id"></div>
+<datalist id="dbgItems">${Object.entries(ITEMS).filter(([k]) => !RETIRED.has(k) && !isBuilding(k)).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</datalist>
+<div class="row"><input id="dbgItemN" type="number" min="1" value="1" style="width:4em" title="How many (stackable items)">
+<select id="dbgItemTier" title="Gear: repaired with parts of this tier, or broken"><option value="-1">broken</option>${['Scrap', 'Basic', 'Quality', 'Space'].map((n, i) => `<option value="${i}"${i ? '' : ' selected'}>${n}</option>`).join('')}</select>
+<button id="dbgGive">Give</button></div>
 <div class="row">Test lab <button id="dbgYard" title="Put the nearest lab machine back together (?w=lab)">Reset near</button><button id="dbgYardAll" title="Put every lab machine back together">Reset all</button></div>
 <label title="No heat build-up for you (the meter drops to zero)"><input id="dbgNoHeat" type="checkbox"> Disable heat</label>
 <label title="No random sandstorms in this world (clears the ones blowing)"><input id="dbgNoWeather" type="checkbox"> Disable weather</label>
@@ -91,6 +102,26 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu):not(#artBench):not(#artBenc
     p.querySelector('#dbgLocalStorm')!.addEventListener('click', summonLocalStorm);
     for (const b of p.querySelectorAll<HTMLElement>('[data-gear]')) b.addEventListener('click', () => giveGear(Number(b.dataset.gear)));
     p.querySelector('#dbgHit')!.addEventListener('click', hit);
+    const item = p.querySelector<HTMLInputElement>('#dbgItem')!;
+    const itemN = p.querySelector<HTMLInputElement>('#dbgItemN')!;
+    const itemTier = p.querySelector<HTMLSelectElement>('#dbgItemTier')!;
+    const showItem = () => {
+      const known = item.value in ITEMS;
+      item.style.outline = item.value && !known ? '1px solid #f66' : '';
+      itemTier.disabled = !isGear(item.value);
+      itemN.disabled = isGear(item.value) && itemTier.value !== '-1';
+    };
+    const give = () => {
+      if (item.value in ITEMS) giveItem(item.value, Math.max(1, Math.round(Number(itemN.value)) || 1), Number(itemTier.value));
+    };
+    item.addEventListener('input', showItem);
+    itemTier.addEventListener('change', showItem);
+    for (const box of [item, itemN]) box.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // typing in the box is not the game's keys
+      if (e.key === 'Enter') give();
+    });
+    p.querySelector('#dbgGive')!.addEventListener('click', give);
+    showItem();
     const noHeatBox = p.querySelector<HTMLInputElement>('#dbgNoHeat')!;
     noHeatBox.addEventListener('change', () => noHeat(noHeatBox.checked));
     const noWeatherBox = p.querySelector<HTMLInputElement>('#dbgNoWeather')!;

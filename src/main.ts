@@ -256,7 +256,8 @@ new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.res
   (all) => (all ? net.labReset() : net.labReset(machines.nearestLab(net.me.x, net.me.z)?.site.id)),
   (off) => net.debugHeat(off),
   (off) => net.debugWeather(off),
-  fly, () => fly.start(orbit.camera, orbit.yaw, orbit.pitch));
+  fly, () => fly.start(orbit.camera, orbit.yaw, orbit.pitch),
+  (kind, n, tier) => net.debugGive(kind, n, tier));
 // The art-style bench (?w=bench, dev only): fixed shots and the look panel (src/artBench.ts).
 const artBench = BENCH ? new ArtBench({ fly, camera: orbit.camera, day: sky.day, post, blownSand, startFly: () => fly.start(orbit.camera, orbit.yaw, orbit.pitch) }) : null;
 new Chat(net);

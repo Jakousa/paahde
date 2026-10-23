@@ -343,6 +343,11 @@ export class Net {
     if (this.connected) this.send({ t: 'debugGear', tier });
   }
 
+  /** Debug menu: `n` of any item into the bag; gear repaired with parts of `tier`, or broken (-1). */
+  debugGive(kind: string, n = 1, tier = 0) {
+    if (this.connected) this.send({ t: 'debugGive', kind, n, tier });
+  }
+
   /** Debug menu: no heat build-up for this player. */
   debugHeat(off: boolean) {
     if (this.connected) this.send({ t: 'debugHeat', off });
