@@ -22,7 +22,7 @@
 // down local -Z (like the base). It is turned by a multiple of 90° (exact): local +Z points along world (dx, dz),
 // local +X along (dz, -dx).
 
-import { atPump, BASE, inBase, keepUnder, PUMP_REACH, terrainHidden, type Capsule } from './base.ts';
+import { atPump, BASE, inBase, bandUnder, collideCapsules, keepUnder, PUMP_REACH, terrainHidden, type Capsule } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockiness, rocksNear } from './rocks.ts';
 import { cellId } from './cells.ts';
@@ -355,12 +355,32 @@ function ceilingAt(L: ShelterLayout, lx: number, lz: number): number {
 
 const local = { x: 0, z: 0, vx: 0, vz: 0 };
 
-/** The shelter, feet and head (local) of the player collideShelter is moving, for underArch. */
-let archL: ShelterLayout = SHELTER_KINDS.small, archFeet = 0, archHead = 0;
-/** Their head would be in the concrete over local (lx, lz): above the ceiling there, under the roof (the hut's, or
- *  the sand's over the rooms). */
+/** The shelter's layout, the feet, head (local) and radius of the player collideShelter is moving, for underArch. */
+let archL: ShelterLayout = SHELTER_KINDS.small, archFeet = 0, archHead = 0, archR = 0;
+/** Their head would be in the concrete over their footprint at local (lx, lz). */
 function underArch(lx: number, lz: number): boolean {
-  return archHead > ceilingAt(archL, lx, lz) + 0.05 && archFeet < (lz >= S_HUT.z0 ? S_HUT.top : BURIED_TOP);
+  return archHead > ceilingUnder(archL, lx, lz, archR, archFeet) + 0.05;
+}
+
+/** How far under a roof feet may be and still count as on it. */
+const ROOF_STEP = 0.35;
+const hutFlat = () => S_HUT.h;
+/**
+ * The lowest ceiling (local) over a footprint of radius r at local (lx, lz) whose feet are at `feet`, or Infinity, read
+ * exactly band by band like shared/base.ts ceilingUnder; the stairs' stepped ceiling falls along them, so at the
+ * footprint's lowest point in the stairwell. Only ceilings it is under count.
+ */
+function ceilingUnder(L: ShelterLayout, lx: number, lz: number, r: number, feet: number): number {
+  if (feet >= S_HUT.top - ROOF_STEP) return Infinity;
+  let c = Math.min(bandUnder(lx, lz, r, S_W, S_HUT.z0, S_HUT.z1, hutFlat), bandUnder(lx, lz, r, S_HUT.door, S_HUT.z1, S_HUT.z1 + S_HUT.t, hutFlat));
+  if (feet >= BURIED_TOP - ROOF_STEP) return c;
+  const ax = Math.abs(lx);
+  if (ax - r < S_W && lz - r < S_HUT.z0 && lz + r > L.hall) {
+    const zLow = lz - (ax < S_W ? r : Math.sqrt(Math.max(0, r * r - (ax - S_W) * (ax - S_W))));
+    c = Math.min(c, stairCeiling(L, Math.min(Math.max(zLow, L.hall + 1e-6), S_HUT.z0)));
+  }
+  if (ax - r < L.room.w && lz - r < L.hall && lz + r > L.room.z) c = Math.min(c, L.floor + L.room.h);
+  return c;
 }
 
 /**
@@ -380,34 +400,14 @@ export function collideShelter(p: { x: number; z: number; vx: number; vz: number
 
   const feet = Math.max(y, prevY) - s.y;
   const head = Math.min(y, prevY) - s.y + height;
-  let support = floorAt(s.L, q.x, q.z);
-  for (const c of (s.pump ? WITH_PUMP : CAPSULES)[s.kind]) {
-    const reach = c.half + c.r + radius;
-    if (Math.abs(q.x - c.x) > reach || Math.abs(q.z - c.z) > reach) continue;
-    if (head <= c.y0) continue;
-    let t = (q.x - c.x) * c.ax + (q.z - c.z) * c.az;
-    t = t < -c.half ? -c.half : t > c.half ? c.half : t;
-    const cx = c.x + c.ax * t, cz = c.z + c.az * t;
-    if (feet >= c.top - stepUp) {
-      const ex = q.x - cx, ez = q.z - cz;
-      if (ex * ex + ez * ez < c.r * c.r && c.top > support) support = c.top;
-      continue;
-    }
-    // Push out of the circle round (cx, cz).
-    let ex = q.x - cx, ez = q.z - cz;
-    const R = c.r + radius, d = Math.sqrt(ex * ex + ez * ez);
-    if (d >= R) continue;
-    if (d > 1e-9) { ex /= d; ez /= d; } else { ex = 1; ez = 0; }
-    q.x = cx + ex * R;
-    q.z = cz + ez * R;
-    const vn = q.vx * ex + q.vz * ez;
-    if (vn < 0) { q.vx -= vn * ex; q.vz -= vn * ez; }
-  }
+  const caps = (s.pump ? WITH_PUMP : CAPSULES)[s.kind];
+  let support = collideCapsules(q, caps, feet, head, radius, stepUp, floorAt(s.L, q.x, q.z));
   if (feet >= S_HUT.top - stepUp && inHut(q.x, q.z, 0)) support = Math.max(support, S_HUT.top);
   archL = s.L;
   archFeet = feet;
   archHead = head;
-  keepUnder(q, localX(s, prevX, prevZ), localZ(s, prevX, prevZ), underArch);
+  archR = radius;
+  if (keepUnder(q, localX(s, prevX, prevZ), localZ(s, prevX, prevZ), underArch)) collideCapsules(q, caps, feet, head, radius, stepUp, support);
 
   const [wx, wz] = toWorld(s.dx, s.dz, q.x, q.z), [wvx, wvz] = toWorld(s.dx, s.dz, q.vx, q.vz);
   p.x = s.x + wx;
@@ -417,12 +417,13 @@ export function collideShelter(p: { x: number; z: number; vx: number; vz: number
   return support === -Infinity ? support : support + s.y;
 }
 
-/** Highest the feet may go at world (x, z) for a player of this height whose feet were at `prevY`, or Infinity. */
-export function shelterCeiling(x: number, z: number, prevY: number, height: number): number {
+/** Highest the feet may go at world (x, z) for a player of this height and radius whose feet were at `prevY`, or
+ *  Infinity: under the lowest ceiling over their footprint. */
+export function shelterCeiling(x: number, z: number, prevY: number, height: number, radius: number): number {
   const s = shelterAt(x, z);
   if (!s) return Infinity;
-  const c = ceilingAt(s.L, localX(s, x, z), localZ(s, x, z));
-  return prevY - s.y + height <= c + 0.05 ? c + s.y - height : Infinity;
+  const c = ceilingUnder(s.L, localX(s, x, z), localZ(s, x, z), radius, prevY - s.y);
+  return c === Infinity ? c : c + s.y - height;
 }
 
 /** What a shot meets at world (x, y, z) in and around a shelter: true solid, false its air, null elsewhere. */

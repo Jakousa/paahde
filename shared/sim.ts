@@ -380,7 +380,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   const z = c.z;
   const ground = Math.max(sandAt(x, z, s.y), scrapTop, baseTop);
   // Under the roof: bump your head.
-  const ceiling = Math.min(baseCeiling(x, z, s.y, PLAYER_HEIGHT), shelterCeiling(x, z, s.y, PLAYER_HEIGHT));
+  const ceiling = Math.min(baseCeiling(x, z, s.y, PLAYER_HEIGHT, PLAYER_RADIUS), shelterCeiling(x, z, s.y, PLAYER_HEIGHT, PLAYER_RADIUS));
   if (y > ceiling) {
     y = ceiling;
     if (vy > 0) vy = 0;
@@ -566,7 +566,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
     nose = Math.atan(g.gx * nfx + g.gz * nfz);
     noseSpin = 0;
   }
-  const ceiling = Math.min(baseCeiling(x, z, s.y, PLAYER_HEIGHT), shelterCeiling(x, z, s.y, PLAYER_HEIGHT));
+  const ceiling = Math.min(baseCeiling(x, z, s.y, PLAYER_HEIGHT, BIKE_RADIUS), shelterCeiling(x, z, s.y, PLAYER_HEIGHT, BIKE_RADIUS));
   if (y > ceiling) {
     y = ceiling;
     if (vy > 0) vy = 0;

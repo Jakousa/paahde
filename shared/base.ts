@@ -445,16 +445,17 @@ function floorAt(lx: number, lz: number, feet: number, stepUp: number): number {
   return best;
 }
 
-/** Push p out of a circle at local (cx, cz) with radius R. */
-function pushCircle(p: { x: number; z: number; vx: number; vz: number }, cx: number, cz: number, R: number) {
+/** Push p out of a circle at local (cx, cz) with radius R; true if it was in it. */
+function pushCircle(p: { x: number; z: number; vx: number; vz: number }, cx: number, cz: number, R: number): boolean {
   let ex = p.x - cx, ez = p.z - cz;
   const d = Math.sqrt(ex * ex + ez * ez);
-  if (d >= R) return;
+  if (d >= R - 1e-6) return false;
   if (d > 1e-9) { ex /= d; ez /= d; } else { ex = 1; ez = 0; }
   p.x = cx + ex * R;
   p.z = cz + ez * R;
   const vn = p.vx * ex + p.vz * ez;
   if (vn < 0) { p.vx -= vn * ex; p.vz -= vn * ez; }
+  return true;
 }
 
 const local = { x: 0, z: 0, vx: 0, vz: 0 };
@@ -477,8 +478,8 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
   if (feet >= HUT.top - stepUp && onHutRoof(q.x, q.z)) support = Math.max(support, HUT.top);
   archFeet = feet;
   archHead = head;
-  archR = radius + PILLAR.jambD;
-  keepUnder(q, prevX - BASE.x, prevZ - BASE.z, underArch);
+  archR = radius;
+  if (keepUnder(q, prevX - BASE.x, prevZ - BASE.z, underArch)) collideCapsules(q, withPlaced, feet, head, radius, stepUp, support);
 
   p.x = q.x + BASE.x;
   p.z = q.z + BASE.z;
@@ -494,46 +495,62 @@ function onHutRoof(lx: number, lz: number): boolean {
   return Math.abs(lx) < xo && lz < fo && lz > bo && dx * dx + dz * dz < HUT_R * HUT_R;
 }
 
-/** Feet, head (local) and reach (radius + the arch frames standing out of the walls) of the player collideBase is
- *  moving, for underArch. */
+/** Feet, head (local) and radius of the player collideBase is moving, for underArch. */
 let archFeet = 0, archHead = 0, archR = 0;
-/** Their head would be in the concrete over local (lx, lz): above the lowest ceiling under their body (its centre
- *  and its edge each way), under the roof (the hut's, or the sand's over the bunker). */
+/** Their head would be in the concrete over their footprint at local (lx, lz). */
 function underArch(lx: number, lz: number): boolean {
-  if (archFeet >= (lz >= HUT.z0 ? HUT.top : BURIED_TOP)) return false;
-  const r = archR;
-  const c = Math.min(ceilingAt(lx, lz), ceilingAt(lx - r, lz), ceilingAt(lx + r, lz), ceilingAt(lx, lz - r), ceilingAt(lx, lz + r));
-  return archHead > c + 0.05;
+  return archHead > ceilingUnder(lx, lz, archR, archFeet) + 0.05;
 }
 
 /**
- * Arches, vaults and steps down in a ceiling are ceilings, not walls: they stop a head going up but not sideways.
- * Undo the move of local q from local (px, pz) along each axis that would put the head into one (`blocked`), unless
- * it was there already (then let it out).
+ * The lowest point of a ceiling over a band, |a| < A and b0 < b < b1 (an opening, a room), whose height `profile`
+ * falls off with |a| (an arch, a vault; or stays level), where a footprint (a disc of radius r round (a, b)) reaches
+ * under it; Infinity where it doesn't. Exact: the disc's widest chord inside the band is the one nearest its centre.
  */
-export function keepUnder(q: { x: number; z: number; vx: number; vz: number }, px: number, pz: number, blocked: (x: number, z: number) => boolean) {
-  if (!blocked(q.x, q.z) || blocked(px, pz)) return;
+export function bandUnder(a: number, b: number, r: number, A: number, b0: number, b1: number, profile: (a: number) => number): number {
+  const db = b < b0 ? b0 - b : b > b1 ? b - b1 : 0;
+  if (db >= r) return Infinity;
+  const h = Math.sqrt(r * r - db * db), aa = Math.abs(a);
+  if (aa - h >= A) return Infinity;
+  return profile(Math.min(aa + h, A));
+}
+
+/**
+ * Arches, vaults and steps down in a ceiling are ceilings over a player's whole footprint, not walls: undo the move of
+ * local q from local (px, pz) along each axis that would put the head into one (`blocked`), unless it was there
+ * already (then let it out; the ceiling pushes it down). True if it moved q: collide it with the walls again, the
+ * axis put back was never pushed out of them.
+ */
+export function keepUnder(q: { x: number; z: number; vx: number; vz: number }, px: number, pz: number, blocked: (x: number, z: number) => boolean): boolean {
+  if (!blocked(q.x, q.z) || blocked(px, pz)) return false;
   if (!blocked(q.x, pz)) { q.z = pz; q.vz = 0; }
   else if (!blocked(px, q.z)) { q.x = px; q.vx = 0; }
   else { q.x = px; q.z = pz; q.vx = 0; q.vz = 0; }
+  return true;
 }
 
+/** Passes over the capsules at most: in an inside corner one wall's push can put q back into the one before. */
+const PUSH_PASSES = 4;
+
 /** Push local point q out of capsules (feet/head local); returns the highest top under the feet, from `support` up. */
-function collideCapsules(q: { x: number; z: number; vx: number; vz: number }, caps: Capsule[], feet: number, head: number, radius: number,
+export function collideCapsules(q: { x: number; z: number; vx: number; vz: number }, caps: Capsule[], feet: number, head: number, radius: number,
   stepUp: number, support: number): number {
-  for (const c of caps) {
-    const reach = c.half + c.r + radius;
-    if (Math.abs(q.x - c.x) > reach || Math.abs(q.z - c.z) > reach) continue;
-    if (head <= c.y0) continue;
-    let t = (q.x - c.x) * c.ax + (q.z - c.z) * c.az;
-    t = t < -c.half ? -c.half : t > c.half ? c.half : t;
-    const cx = c.x + c.ax * t, cz = c.z + c.az * t;
-    if (feet >= c.top - stepUp) {
-      const ex = q.x - cx, ez = q.z - cz;
-      if (ex * ex + ez * ez < c.r * c.r && c.top > support) support = c.top;
-      continue;
+  for (let pass = 0, pushed = true; pushed && pass < PUSH_PASSES; pass++) {
+    pushed = false;
+    for (const c of caps) {
+      const reach = c.half + c.r + radius;
+      if (Math.abs(q.x - c.x) > reach || Math.abs(q.z - c.z) > reach) continue;
+      if (head <= c.y0) continue;
+      let t = (q.x - c.x) * c.ax + (q.z - c.z) * c.az;
+      t = t < -c.half ? -c.half : t > c.half ? c.half : t;
+      const cx = c.x + c.ax * t, cz = c.z + c.az * t;
+      if (feet >= c.top - stepUp) {
+        const ex = q.x - cx, ez = q.z - cz;
+        if (ex * ex + ez * ez < c.r * c.r && c.top > support) support = c.top;
+        continue;
+      }
+      if (pushCircle(q, cx, cz, c.r + radius)) pushed = true;
     }
-    pushCircle(q, cx, cz, c.r + radius);
   }
   return support;
 }
@@ -551,10 +568,10 @@ export function collideOutdoor(p: { x: number; z: number; vx: number; vz: number
   return support === -Infinity ? support : support + BASE.y;
 }
 
-/** Ceiling (local) over local (lx, lz), or Infinity. */
+/** Ceiling (local) over local (lx, lz), or Infinity (shots; players read ceilingUnder, over their footprint). */
 function ceilingAt(lx: number, lz: number): number {
   const ax = Math.abs(lx);
-  if (ax < W + WT && lz >= HUT.z0 && lz < HUT.z1 + HUT.t) return lz > HUT.z1 ? doorTop(ax) : HUT.h;
+  if (lz >= HUT.z0 && lz < HUT.z1 + HUT.t) return lz <= HUT.z1 ? (ax < W ? HUT.h : Infinity) : ax < HUT.door ? doorTop(ax) : Infinity;
   if (ax < W + WT && lz > HALL.z && lz < HUT.z0) return vaultAt(ax, vaultCrown(lz));
   if (ax < ROOM.w + ALCOVE.d + WT && lz > ROOM.z - ALCOVE.d - WT && lz <= HALL.z) {
     // An alcove's barrel vault; then the room's ceiling, the skylight's glass.
@@ -565,13 +582,50 @@ function ceilingAt(lx: number, lz: number): number {
   return Infinity;
 }
 
+/** How far under a roof feet may be and still count as on it. */
+const ROOF_STEP = 0.35;
+/** The ceilings' profiles across their openings (for bandUnder). */
+const hutFlat = () => HUT.h, roomFlat = () => FLOOR + ROOM.h;
+const alcoveArch = (u: number) => FLOOR + ALCOVE.spring + Math.sqrt(Math.max(0, ALCOVE.hw * ALCOVE.hw - u * u));
+/** Slices along the stairs' and the hallway's vault (its crown slopes with the stairs) a footprint is read in. */
+const VAULT_SLICES = 8;
+
 /**
- * Highest the feet may go at world (x, z) for a player of this height whose feet were at `prevY` last
- * tick, or Infinity. Only ceilings the player is under count, not those of the rooms below them.
+ * The lowest ceiling (local) over a footprint of radius r at local (lx, lz) whose feet are at `feet` (local), or
+ * Infinity. Each ceiling is a band through an opening or over a room with its own profile across it, read exactly
+ * where the footprint reaches under it (bandUnder); the vault over the stairs, whose crown also falls along them, in
+ * slices across. Only ceilings it is under count: not the bunker's for someone on the sand over it, nor the hut's
+ * for someone on its roof (or as good as: within a step of it).
  */
-export function baseCeiling(x: number, z: number, prevY: number, height: number): number {
-  const c = ceilingAt(x - BASE.x, z - BASE.z);
-  return prevY - BASE.y + height <= c + 0.05 ? c + BASE.y - height : Infinity;
+function ceilingUnder(lx: number, lz: number, r: number, feet: number): number {
+  if (feet >= HUT.top - ROOF_STEP) return Infinity;
+  // The hut and its doorway (its arch).
+  let c = Math.min(bandUnder(lx, lz, r, W, HUT.z0, HUT.z1, hutFlat), bandUnder(lx, lz, r, HUT.door, HUT.z1, HUT.z1 + HUT.t, doorTop));
+  if (feet >= BURIED_TOP - ROOF_STEP) return c;
+  // The vault over the stairs and the hallway, from the face of the hallway arch's frame to the hut.
+  const z0 = Math.max(lz - r, HALL.z - PILLAR.jambD), z1 = Math.min(lz + r, HUT.z0), ax = Math.abs(lx);
+  for (let k = 0; k <= VAULT_SLICES && z0 < z1; k++) {
+    const z = k < VAULT_SLICES ? z0 + (z1 - z0) * k / VAULT_SLICES : Math.min(Math.max(lz, z0), z1), dz = z - lz;
+    const h = Math.sqrt(Math.max(0, r * r - dz * dz));
+    if (ax - h < W) c = Math.min(c, vaultAt(Math.min(ax + h, W), vaultCrown(z)));
+  }
+  // The room (up the skylight's shaft only all inside it), and the alcoves' arches and vaults, out to their frames.
+  const room = bandUnder(lx, lz, r, ROOM.w, ROOM.z, HALL.z, roomFlat);
+  if (room < Infinity) c = Math.min(c, Math.abs(lx) + r < SKY.w && Math.abs(lz - ROOM_Z) + r < SKY.w ? SKY.h - 0.1 : room);
+  for (const a of ALCOVES) {
+    const dx = lx - a.x, dz = lz - a.z;
+    c = Math.min(c, bandUnder(dz * a.nx - dx * a.nz, dx * a.nx + dz * a.nz, r, ALCOVE.hw, -PILLAR.jambD, ALCOVE.d, alcoveArch));
+  }
+  return c;
+}
+
+/**
+ * Highest the feet may go at world (x, z) for a player of this height and radius whose feet were at `prevY` last
+ * tick, or Infinity: under the lowest ceiling over their footprint.
+ */
+export function baseCeiling(x: number, z: number, prevY: number, height: number, radius: number): number {
+  const c = ceilingUnder(x - BASE.x, z - BASE.z, radius, prevY - BASE.y);
+  return c === Infinity ? c : c + BASE.y - height;
 }
 
 /**
