@@ -377,20 +377,24 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
   // Into the bag from the equipment: laid out as the bag will be once it's off (a backpack never lands in its own rows).
   const dstShape = to === 'bag' && from === 'equip' ? bagShape(boxes.equip?.map((x, i) => (i === fi ? null : x))) : boxShape(to, boxes);
   if (!moveItem(src, fi, boxShape(from, boxes), dst, ti, dstShape, n, newId, r)) return false;
-  // Every slot that changed must allow what's in it now.
-  for (const id of ids) {
-    const slots = b[id]!;
-    for (let i = 0; i < slots.length; i++) {
-      const x = slots[i];
-      if (x && x !== boxes[id]![i] && !sameItem(x, boxes[id]![i]) && !allowed(id, i, x, b)) return false;
-    }
-  }
-  if (losesCargo(boxes, b)) return false;
+  if (!changesAllowed(boxes, b, ids) || losesCargo(boxes, b)) return false;
   for (const id of ids) boxes[id]!.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }
 
 const sameItem = (a: Item, b: Item | null | undefined) => !!b && a.id === b.id && a.kind === b.kind && a.n === b.n && !!a.r === !!b.r;
+
+/** Does every slot of `ids` that changed from `before` to `after` allow what's in it now? */
+function changesAllowed(before: Boxes, after: Boxes, ids: string[]): boolean {
+  for (const id of ids) {
+    const slots = after[id]!;
+    for (let i = 0; i < slots.length; i++) {
+      const x = slots[i];
+      if (x && x !== before[id]![i] && !sameItem(x, before[id]![i]) && !allowed(id, i, x, after)) return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Fit the part at `from`[fi] into slot `slot` of the item in box `at` (the workbench, a building's or a vehicle's box). A part
@@ -437,6 +441,8 @@ export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, ne
   const dst = b[to]!;
   const tmp: Slots = [{ id: newId(), kind: part.kind, n: 1, ...withData(part.data) }];
   if (!moveItem(tmp, 0, ONE, dst, ti, boxShape(to, b), undefined, newId) || tmp[0]) return false;
+  // Into the equipment or onto the workbench only by the same rules as a move (a part is never either).
+  if (!changesAllowed(boxes, b, [to])) return false;
   const t = { ...b[at]![0]! };
   setPart(t, slot, null);
   b[at]![0] = t;
