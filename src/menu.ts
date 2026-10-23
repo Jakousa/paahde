@@ -127,7 +127,12 @@ ${optionsHtml()}</div>
       if (e.code === 'Escape' && ui.inventoryOpen) ui.escClosedAt = performance.now(); // the inventory, chest or workbench takes this Esc
       if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || performance.now() - ui.escClosedAt < 400 || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
       if (document.getElementById('name') || document.getElementById('play')) return; // Esc there skips the name (src/name.ts) or leaves the minigame
-      this.toggle(!this.open);
+      if (!this.open) return this.toggle(true);
+      // Options: back to the menu first. The menu: back into the game, grabbing the mouse if the browser lets us (it
+      // may refuse just after its own Esc released it: then a click on the game does it, src/camera.ts).
+      const panel = this.el.querySelector<HTMLElement>('.panel')!;
+      if (panel.classList.contains('opts')) return panel.classList.remove('opts');
+      resume();
     }, true);
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement) return this.toggle(false);
