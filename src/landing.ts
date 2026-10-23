@@ -26,12 +26,13 @@ export const LANDING_CSS = `
   background: radial-gradient(ellipse 80% 70% at 50% 55%, transparent 60%, rgba(30, 14, 8, .45) 100%); }
 #landing.over .bg, #landing.over .shade { display: none; }
 #landing.over { background: rgba(17, 10, 6, 0.82); }
-/* Placed by centre() (a transform, not the layout), so the title glides between views instead of jumping. */
-#landing .panel { position: relative; display: grid; justify-items: center; gap: 22px; text-align: center; padding: 0 16px 24px;
-  animation: landing-in 1.6s ease-out both; will-change: transform; }
-#landing h1 { margin: 0; font: clamp(40px, 7vw, 88px) var(--title); letter-spacing: .3em;
-  margin-right: -.3em; color: #fff4d0;
+/* The title and what's under it are placed by stage() (transforms, not the layout): only the title moves between views,
+   the rest fades in where it belongs. */
+#landing h1 { position: absolute; top: 0; left: 0; right: 0; margin: 0; padding-left: .3em; text-align: center; will-change: transform;
+  font: clamp(40px, 7vw, 88px) var(--title); letter-spacing: .3em; color: #fff4d0;
   text-shadow: 0 0 40px rgba(255, 179, 71, .45), 0 0 12px rgba(140, 50, 10, .5), 0 2px 3px rgba(60, 20, 5, .45); }
+#landing .below { position: absolute; top: 0; left: 0; right: 0; display: grid; justify-items: center; gap: 22px;
+  padding: 0 16px 24px; text-align: center; }
 #landing p { margin: 0; font: 14px var(--title); letter-spacing: .2em; color: #fff4d0; text-shadow: 0 1px 2px rgba(60, 20, 5, .6); }
 #landing .link, #landing .row { display: flex; gap: 0; }
 #landing input:not([type=color]) { font: 14px var(--mono); width: min(64vw, 380px); padding: 12px 14px; border: 1px solid rgba(255, 244, 208, .5);
@@ -88,8 +89,7 @@ export const LANDING_CSS = `
 #landing p.stats svg { width: 15px; height: 15px; }
 #landing .games a:hover .on { color: #2f6b2a; }
 @keyframes landing-drift { from { transform: scale(1) translateX(0); } to { transform: scale(1.06) translateX(-1.5%); } }
-@keyframes landing-in { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { #landing .bg, #landing .panel { animation: none; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { #landing .bg { animation: none; } #landing h1, #landing .below { transition: none !important; } }
 `;
 
 /** The page's style, once. */
@@ -106,7 +106,7 @@ export function landingStyle() {
 export type View = { v: 'intro' } | { v: 'join'; tab: 'mine' | 'pub' } | { v: 'create' } | { v: 'lobby'; id: string; from?: boolean };
 
 /** The page showing now: where views go, why it's up over a game (the end screens), and how to load this page's game. */
-let shown: { view: HTMLElement; why?: 'over' | 'missing'; play?: () => void } | null = null;
+let shown: { view: HTMLElement; why?: 'over' | 'missing'; play?: () => void; place: () => void } | null = null;
 
 const urlOf = (v: View) => (v.v === 'lobby' ? `${location.pathname}?w=${encodeURIComponent(v.id)}` : location.pathname);
 const viewOfUrl = (): View => {
@@ -127,17 +127,16 @@ export function landing(why?: 'over' | 'missing', start: View = { v: 'intro' }, 
   el.id = 'landing';
   if (why) el.className = 'over';
   const line = why === 'over' ? TEXT.landing.gameOver : why === 'missing' ? TEXT.landing.noSuchWorld : '';
-  el.innerHTML = `${why ? '' : '<div class="bg"></div><div class="shade"></div>'}<div class="panel"><h1>${TEXT.game.name}</h1>${line ? `<p>${line}</p>` : ''}</div>`;
+  el.innerHTML = `${why ? '' : '<div class="bg"></div><div class="shade"></div>'}<h1>${TEXT.game.name}</h1><div class="below">${line ? `<p>${line}</p>` : ''}</div>`;
   // Typing here is not playing: the end screens sit over the game, whose listeners are on window.
   el.addEventListener('keydown', (e) => e.stopPropagation());
   document.body.append(el);
   bindTips(el);
-  centre(el);
   if (!why) music(el);
   const view = document.createElement('div');
   view.className = 'view';
-  el.querySelector('.panel')!.append(view);
-  shown = { view, why, play };
+  el.querySelector('.below')!.append(view);
+  shown = { view, why, play, place: stage(el, !why) };
   if (!why) {
     history.replaceState(start, '', location.href);
     addEventListener('popstate', onPop);
@@ -160,26 +159,82 @@ export function nav(v: View, how: 'push' | 'replace' = 'push') {
 /** Back to where you were: the view before, or the start screen when there's none in this page (a link opened). */
 const back = (v: View) => () => (shown?.why || (v.v === 'lobby' && !v.from) ? nav({ v: 'intro' }) : history.back());
 
-/** Keep the panel in `page` centred, the title with it: up out of the way fast (0.1 s) when the view grows, back down
- *  slowly when it shrinks, and up again whenever it grows (a list coming in, a lobby filled). Too tall to fit, it
- *  sits at the top and the page scrolls. */
-function centre(page: HTMLElement) {
-  const panel = page.querySelector<HTMLElement>('.panel')!;
-  let at: number | null = null;
-  const place = () => {
-    if (!panel.isConnected) return void watch.disconnect();
-    const y = Math.max(16, Math.round((page.clientHeight - panel.offsetHeight) / 2));
-    if (y === at) return;
-    const up = at !== null && y < at;
-    panel.style.transition = at === null ? 'none' : up ? 'transform .1s ease-out' : 'transform 1.4s cubic-bezier(.3, 0, .2, 1)';
-    panel.style.transform = `translateY(${y}px)`;
-    panel.style.marginBottom = `${y}px`; // the scroll height follows the shift (a transform takes no room)
-    at = y;
+const FAST = '.1s ease-out';
+const SLOW = '1.4s cubic-bezier(.3, 0, .2, 1)';
+/** Title to what's under it (px). */
+const GAP = 22;
+
+/** Lay out `page`'s title (h1) over what's under it (.below), the two centred together. Only the title travels: up out of
+ *  the way fast (0.1 s) when a view needs more room, back down slowly when it needs less; a new view (the returned
+ *  `place`, after each change) appears where it belongs and fades in (render). When the view grows on its own (a list
+ *  or lobby filling in) both go up fast to make room; when it shrinks they stay. With `rise` (the first load) the title
+ *  rises slowly into place, and once it has stopped the rest fades in. Too tall to fit, it all sits at the top and the
+ *  page scrolls. */
+function stage(page: HTMLElement, rise: boolean): () => void {
+  const logo = page.querySelector<HTMLElement>('h1')!;
+  const below = page.querySelector<HTMLElement>('.below')!;
+  let logoAt: number | null = null;
+  let belowAt = 0;
+  let size = '';
+  let fading = false; // the first load's title is still rising: its opacity keeps its own transition
+  const target = () => {
+    const top = Math.max(16, Math.round((page.clientHeight - logo.offsetHeight - GAP - below.offsetHeight) / 2));
+    return { logo: top, below: top + logo.offsetHeight + GAP };
   };
-  const watch = new ResizeObserver(place);
-  watch.observe(panel);
+  const moveLogo = (y: number, how: string) => {
+    logo.style.transition = how === 'none' ? 'none' : `transform ${how}${fading ? ', opacity 1.4s ease-out' : ''}`;
+    logo.style.transform = `translateY(${y}px)`;
+    logoAt = y;
+  };
+  const moveBelow = (y: number, how: string) => {
+    below.style.transition = `${how === 'none' ? '' : `transform ${how}, `}opacity .9s ease`;
+    below.style.transform = `translateY(${y}px)`;
+    below.style.marginBottom = `${y}px`; // the scroll height follows the shift (a transform takes no room)
+    belowAt = y;
+  };
+  const sizeNow = () => `${page.clientHeight}:${below.offsetHeight}`;
+  /** A new view: it goes where it belongs, the title follows (fast up, slowly down). */
+  const place = () => {
+    const t = target();
+    size = sizeNow();
+    moveBelow(t.below, 'none');
+    if (logoAt !== null) return moveLogo(t.logo, t.logo < logoAt ? FAST : SLOW);
+    if (!rise || matchMedia('(prefers-reduced-motion: reduce)').matches) return moveLogo(t.logo, 'none');
+    // First load: from a little low, slowly up into place; once it has stopped the rest fades in.
+    moveLogo(Math.max(t.logo + 60, Math.round((page.clientHeight - logo.offsetHeight) / 2)), 'none');
+    logo.style.opacity = '0';
+    below.style.transition = 'none'; // hidden at once, not faded out
+    below.style.opacity = '0';
+    void logo.offsetHeight; // start from there
+    below.style.transition = 'opacity .9s ease';
+    fading = true;
+    moveLogo(t.logo, '2.2s cubic-bezier(.25, .1, .2, 1)');
+    logo.style.opacity = '1';
+    let done = false;
+    const fade = () => {
+      if (done) return;
+      done = true;
+      fading = false;
+      below.style.opacity = '1';
+    };
+    logo.addEventListener('transitionend', (e) => e.propertyName === 'transform' && fade());
+    setTimeout(fade, 2600); // if the rise never ends (interrupted by a move)
+  };
+  // The view grew (or the window changed): make room, both up together, fast. Shrinking, they stay.
+  const watch = new ResizeObserver(() => {
+    if (!below.isConnected) return void watch.disconnect();
+    const now = sizeNow();
+    if (now === size || logoAt === null) return;
+    const resized = now.split(':')[0] !== size.split(':')[0];
+    size = now;
+    const t = target();
+    if (!resized && t.below >= belowAt) return;
+    moveBelow(t.below, FAST);
+    moveLogo(t.logo, FAST);
+  });
+  watch.observe(below);
   watch.observe(page);
-  place();
+  return place;
 }
 
 function render(v: View) {
@@ -191,7 +246,8 @@ function render(v: View) {
     : intro(shown.why);
   const first = !shown.view.childElementCount;
   shown.view.replaceChildren(el);
-  if (!first) el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' }); // a short fade in
+  shown.place();
+  if (!first) el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' }); // a short fade in
   const tip = document.querySelector<HTMLElement>('#landing .tip');
   if (tip) tip.style.display = 'none'; // its row is gone
 }
@@ -599,9 +655,9 @@ export function victory(world: string) {
   const el = document.createElement('div');
   el.id = 'landing';
   el.className = 'over';
-  el.innerHTML = `<div class="panel"><h1>${TEXT.game.name}</h1><p>${TEXT.landing.won}</p><button>${TEXT.landing.playOn}</button></div>`;
+  el.innerHTML = `<h1>${TEXT.game.name}</h1><div class="below"><p>${TEXT.landing.won}</p><button>${TEXT.landing.playOn}</button></div>`;
   document.body.append(el);
-  centre(el);
+  stage(el, false)();
   el.querySelector('button')!.addEventListener('click', () => {
     el.remove();
     Promise.resolve(document.querySelector('canvas')?.requestPointerLock()).catch(() => {});
