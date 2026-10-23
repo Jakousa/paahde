@@ -9,7 +9,7 @@ import type { WorldStats } from '../shared/protocol.ts';
 import { TEXT } from '../shared/text.ts';
 import { WORLD_ID } from '../shared/world.ts';
 import { copies } from './copy';
-import { crowdEl, leave, lockMark, statsLine, uptimeEl } from './landing';
+import { crowdEl, dot, leave, lockMark, playedEl, statsLine, uptimeEl } from './landing';
 import { getBrowserId, nameOk, profileForm, setWorldKey, worldKey } from './profile';
 
 /** Your name and colour in game `id` if you've joined it before (they're kept: server/world.ts join), else null. */
@@ -86,7 +86,8 @@ async function fill(el: HTMLElement, id: string, backBtn: HTMLButtonElement, pla
   stats.className = 'stats';
   const line = document.createElement('span');
   statsLine(s, line);
-  stats.replaceChildren(line, uptimeEl(s), crowdEl(s), s.public ? TEXT.landing.public : TEXT.landing.private);
+  // As the Esc menu's: your time there by the hourglass (once you've played), the game's by the clock.
+  stats.replaceChildren(line, dot(), ...(me ? [playedEl(me.played), dot()] : []), uptimeEl(s), dot(), crowdEl(s), dot(), s.public ? TEXT.landing.public : TEXT.landing.private);
   const code = document.createElement('button');
   code.className = 'codeChip';
   code.dataset.tip = TEXT.menu.server.code;
@@ -97,12 +98,6 @@ async function fill(el: HTMLElement, id: string, backBtn: HTMLButtonElement, pla
   const open = s.lives > 0 && s.online < s.max;
   const profile = profileForm((ok) => (join.disabled = !ok || !open), me ?? undefined);
   const parts: HTMLElement[] = [gname, stats, code, profile.el];
-  if (me) {
-    const played = document.createElement('p');
-    played.className = 'played';
-    played.textContent = TEXT.landing.you('', Math.floor(me.played / 60_000));
-    parts.push(played);
-  }
   const pw = document.createElement('input');
   pw.type = 'password';
   pw.placeholder = TEXT.landing.password;

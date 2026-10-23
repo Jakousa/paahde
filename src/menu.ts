@@ -9,7 +9,7 @@ import { WORLD_ID } from '../shared/world.ts';
 import { BOSS_KINDS } from '../shared/bosses.ts';
 import type { WorldStats } from '../shared/protocol.ts';
 import { kbd } from './bindings';
-import { CLOCK_SVG, GROUP_SVG } from './landing';
+import { CLOCK_SVG, GROUP_SVG, HOURGLASS_SVG as HOURGLASS } from './landing';
 import { getBrowserId } from './profile';
 import { capture, setFullscreen, tools, ui } from './input';
 import { openMinigame } from './minigameMenu';
@@ -29,10 +29,9 @@ const css = `${MENU_CSS}
 #menu .server .up, #menu .server .mine { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; opacity: 0.8; }
 #menu .server .mine svg { width: 13px; height: 13px; }
 #menu .server .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-#menu .server .crowd { position: relative; display: inline-flex; flex: none; margin-right: 6px; color: #ffd9a0; }
-#menu .server .crowd svg { width: 18px; height: 18px; }
-#menu .server .crowd b { position: absolute; right: -6px; top: -5px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
-  border-radius: 8px; font: bold 10px/15px var(--mono); text-align: center; color: #2a160a; background: #ffd9a0; }
+#menu .server .crowd { display: inline-flex; flex: none; gap: 5px; align-items: center; font-size: 12px; color: #ffd9a0; }
+#menu .server .crowd svg { width: 16px; height: 16px; }
+#menu .server .crowd b { font-weight: 600; }
 #menu .server .copy { display: flex; gap: 6px; justify-self: end; }
 #menu .server .chip { display: inline-flex; align-items: center; gap: 5px; width: auto; height: 24px; padding: 0 9px; border-radius: 12px;
   font: 600 12px var(--mono); letter-spacing: 0; color: #ffd9a0; background: rgba(255, 217, 160, 0.1); box-sizing: border-box; }
@@ -47,7 +46,6 @@ const css = `${MENU_CSS}
 /** The marks' icons, in the chips' colour. */
 const HEART = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.2S1.5 10.3 1.5 5.6A3.4 3.4 0 0 1 8 4a3.4 3.4 0 0 1 6.5 1.6c0 4.7-6.5 8.6-6.5 8.6z"/></svg>';
 const PERSON = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5" r="3"/><path d="M2 15c0-3.6 2.7-5.6 6-5.6s6 2 6 5.6z"/></svg>';
-const HOURGLASS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9"/></svg>';
 const LINK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 9.4a.9.9 0 0 1 0-1.3l2.9-2.9a.9.9 0 1 1 1.3 1.3L7.9 9.4a.9.9 0 0 1-1.3 0z"/><path d="M9 3.2a3.3 3.3 0 0 1 4.7 4.7l-1.6 1.6a.9.9 0 0 1-1.3-1.3l1.6-1.6a1.5 1.5 0 0 0-2.1-2.1L8.7 6.1a.9.9 0 0 1-1.3-1.3zM7 12.8a3.3 3.3 0 0 1-4.7-4.7l1.6-1.6a.9.9 0 0 1 1.3 1.3L3.6 9.4a1.5 1.5 0 0 0 2.1 2.1l1.6-1.6a.9.9 0 0 1 1.3 1.3z"/></svg>';
 
 

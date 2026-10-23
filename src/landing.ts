@@ -73,18 +73,18 @@ export const LANDING_CSS = `
 #landing .games .id { font: 14px var(--mono); letter-spacing: .1em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #landing .games a { grid-template-columns: 1fr auto; grid-template-rows: auto auto auto; }
 #landing .games .stats, #landing .games .you { font: 12px var(--mono); opacity: .8; grid-column: 1; }
-#landing .up { display: inline-flex; gap: 5px; align-items: center; justify-content: flex-end; font: 12px var(--mono); opacity: .8; }
-#landing .crowd { position: relative; grid-column: 2; grid-row: 2 / span 2; align-self: end; justify-self: end; display: inline-flex; opacity: .85; }
-#landing .crowd b { position: absolute; right: -6px; top: -5px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
-  border-radius: 8px; font: bold 10px/15px var(--mono); text-align: center; color: #2a120a; background: #fff4d0; }
-#landing .games a:hover .crowd b { color: #fff4d0; background: #2a120a; }
+#landing .up, #landing .crowd, #landing .mine { display: inline-flex; gap: 5px; align-items: center; justify-content: flex-end; font: 12px var(--mono); opacity: .8; }
+#landing .games .crowd { grid-column: 2; grid-row: 2 / span 2; align-self: end; justify-self: end; }
+#landing .dot { margin: 0 .5em; }
+#landing .games .you { display: flex; align-items: center; }
+#landing .games .you .mine { opacity: 1; }
 #landing .on { color: #9fe39a; }
 #landing .tip { position: fixed; z-index: 60; display: none; padding: 6px 8px; border-radius: 5px; pointer-events: none; font: 11px/1.4 var(--mono);
   letter-spacing: 0; text-transform: none; text-align: left; color: #fff4d0;
   background: rgba(20, 10, 4, 0.96); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.2), 0 6px 18px rgba(0, 0, 0, 0.5); }
-#landing p.stats { display: flex; gap: 14px; align-items: center; justify-content: center; flex-wrap: wrap; }
-#landing p.stats .crowd { opacity: 1; margin-right: 6px; }
-#landing p.stats .up { font: inherit; opacity: 1; }
+#landing p.stats { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; }
+#landing p.stats .up, #landing p.stats .crowd, #landing p.stats .mine { font: inherit; opacity: 1; }
+#landing p.stats svg { width: 15px; height: 15px; }
 #landing .games a:hover .on { color: #2f6b2a; }
 @keyframes landing-drift { from { transform: scale(1) translateX(0); } to { transform: scale(1.06) translateX(-1.5%); } }
 @keyframes landing-in { from { opacity: 0; transform: translateY(12px); } }
@@ -243,7 +243,8 @@ export function rememberWorld(id: string) {
 }
 
 export const CLOCK_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>`;
-export const GROUP_SVG = `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-6.2 6.5-6.2s6.5 2.6 6.5 6.2z"/><g opacity=".65"><circle cx="16.8" cy="8.8" r="2.7"/><path d="M15 14c.6-.2 1.2-.3 1.8-.3 2.9 0 4.7 2.2 4.7 5.3h-4.6c-.2-2-.8-3.7-1.9-5z"/></g></svg>`;
+export const HOURGLASS_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9"/></svg>';
+export const GROUP_SVG = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-6.2 6.5-6.2s6.5 2.6 6.5 6.2z"/><g opacity=".65"><circle cx="16.8" cy="8.8" r="2.7"/><path d="M15 14c.6-.2 1.2-.3 1.8-.3 2.9 0 4.7 2.2 4.7 5.3h-4.6c-.2-2-.8-3.7-1.9-5z"/></g></svg>`;
 
 /** How long the game has been going, by a clock. */
 export function uptimeEl(s: WorldStats): HTMLElement {
@@ -255,15 +256,34 @@ export function uptimeEl(s: WorldStats): HTMLElement {
   return el;
 }
 
-/** Everyone who has ever played the game: a group with the number on it. */
+/** Everyone who has ever played the game: a group and the number, like the clock. */
 export function crowdEl(s: WorldStats): HTMLElement {
   const el = document.createElement('span');
   el.className = 'crowd';
   el.dataset.tip = TEXT.landing.players(s.players);
-  el.innerHTML = `${GROUP_SVG}<b></b>`;
-  el.querySelector('b')!.textContent = String(s.players);
+  el.innerHTML = GROUP_SVG;
+  el.append(String(s.players));
   return el;
 }
+
+/** Your own time played in the game, by the hourglass (as in the Esc menu); exact on hover. */
+export function playedEl(ms: number): HTMLElement {
+  const min = Math.floor(ms / 60_000);
+  const el = document.createElement('span');
+  el.className = 'mine';
+  el.dataset.tip = TEXT.menu.server.playedTip(min);
+  el.innerHTML = HOURGLASS_SVG;
+  el.append(TEXT.menu.server.played(min));
+  return el;
+}
+
+/** The dot between marks on a line. */
+export const dot = () => {
+  const el = document.createElement('span');
+  el.className = 'dot';
+  el.textContent = '·';
+  return el;
+};
 
 /** A bit of text with a hover tip (bindTips, src/options.ts: the Esc menu's own). */
 function tipped(text: string, tip: string, cls = ''): HTMLElement {
@@ -283,12 +303,12 @@ export function statsLine(s: WorldStats, into: HTMLElement) {
   const life = s.lives > 0 ? tipped(TEXT.landing.lives(s.lives), TEXT.menu.server.lives(s.lives)) : tipped(TEXT.landing.gameOver, TEXT.landing.gameOver);
   const bosses = tipped('◆'.repeat(n) + '◇'.repeat(BOSS_KINDS.length - n), TEXT.menu.server.bosses(n, BOSS_KINDS.length));
   const seats = tipped(TEXT.landing.seats(s.online, s.max), TEXT.landing.tipSeats, s.online ? 'on' : '');
-  into.replaceChildren(life, '  ·  ', bosses, '  ·  ', seats);
+  into.replaceChildren(life, dot(), bosses, dot(), seats);
 }
 
-/** A game in one of the lists: name and how long it's been going; lives, bosses and who's on; your name and time
- *  there (`you`); in the corner everyone who has played it. */
-function gameRow(s: WorldStats, you?: string): HTMLLIElement {
+/** A game in one of the lists: name and how long it's been going; lives, bosses and who's on; with `mine` your name
+ *  and time there (the hourglass); in the corner everyone who has played it. */
+function gameRow(s: WorldStats, mine = false): HTMLLIElement {
   const li = document.createElement('li');
   const a = document.createElement('a');
   a.href = `?w=${encodeURIComponent(s.id)}`;
@@ -306,10 +326,11 @@ function gameRow(s: WorldStats, you?: string): HTMLLIElement {
   });
   statsLine(s, line);
   a.append(crowdEl(s));
-  if (you) {
+  if (mine && (s.you || s.played)) {
     const y = document.createElement('span');
     y.className = 'you';
-    y.textContent = you;
+    if (s.you) y.append(s.you, dot());
+    y.append(playedEl(s.played ?? 0));
     a.append(y);
   }
   li.append(a);
@@ -353,10 +374,7 @@ async function recent(box: HTMLElement) {
   gameList(
     box,
     rows.map((j) => {
-      const s = byId.get(j.id)!;
-      const played = Math.floor((s.played ?? 0) / 60_000);
-      const you = s.you || played ? TEXT.landing.you(s.you ?? '', played) : undefined;
-      return gameRow(s, you);
+      return gameRow(byId.get(j.id)!, true);
     }),
     TEXT.landing.noMine,
   );
