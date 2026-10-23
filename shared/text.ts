@@ -417,7 +417,7 @@ const en = {
     colour: 'Colour',
     randomColour: '🎲',
     /** Why a name won't do (shared/names.ts). */
-    nameWhy: { short: 'Too short', long: 'Too long', chars: 'Letters and numbers only', banned: 'Pick another name' },
+    nameWhy: { short: 'Too short', long: 'Too long', chars: 'Letters, numbers and simple punctuation only', banned: 'Pick another name' },
     /** Making a game. */
     gameName: 'Game name',
     public: 'Public',

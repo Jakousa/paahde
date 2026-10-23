@@ -6,8 +6,9 @@
 import { englishDataset, englishRecommendedTransformers, RegExpMatcher } from 'obscenity';
 import { NAME_MAX } from './protocol.ts';
 
-/** Letters (with the Nordic ones), digits, spaces and a little punctuation. */
-const ALLOWED = /^[A-Za-z0-9äöåÄÖÅ _\-.'!]+$/;
+/** Letters (with the Nordic ones), digits, spaces and everyday punctuation (no < > or double quotes that look like markup,
+ *  no * that masks a swear). Game and player names alike. */
+const ALLOWED = /^[A-Za-z0-9äöåÄÖÅ _\-.,:;'!?&+#@()[\]/~]+$/;
 /** Not on obscenity's list, or too close to the game's own voice. Matched in the squeezed, lowercased name. */
 const BANNED = ['hitler', 'nazi', 'heil', 'kkk', 'neekeri', 'ryssa', 'admin', 'moderator', 'paahde', 'developer'];
 
