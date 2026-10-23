@@ -128,15 +128,28 @@ ${optionsHtml()}</div>
       if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || performance.now() - ui.escClosedAt < 400 || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
       if (document.getElementById('name') || document.getElementById('play')) return; // Esc there skips the name (src/name.ts) or leaves the minigame
       if (!this.open) return this.toggle(true);
-      // Options: back to the menu first. The menu: back into the game, grabbing the mouse if the browser lets us (it
-      // may refuse just after its own Esc released it: then a click on the game does it, src/camera.ts).
+      // Options: back to the menu first. The menu: back into the game, grabbing the mouse when the key comes up (see below).
       const panel = this.el.querySelector<HTMLElement>('.panel')!;
       if (panel.classList.contains('opts')) return panel.classList.remove('opts');
-      resume();
+      this.toggle(false);
+      escResume = true;
     }, true);
+    // The mouse is grabbed on the Esc's release, not its press: a lock granted while the key is down is let go again
+    // by the browser's own Esc handling, which would bring the menu straight back. The browser may also refuse (just
+    // after its own Esc released the mouse, or without a recent click): then a click on the game does it (src/camera.ts).
+    let escResume = false;
+    addEventListener('keyup', (e) => {
+      if (e.code !== 'Escape' || !escResume) return;
+      escResume = false;
+      if (this.open) return;
+      resumedAt = performance.now();
+      capture(canvas);
+    }, true);
+    let resumedAt = -Infinity;
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement) return this.toggle(false);
       if (ui.inventoryOpen || performance.now() - ui.escClosedAt < 400) return;
+      if (performance.now() - resumedAt < 400) return; // (granted and let go at once after an Esc resume: stay out, a click grabs it)
       if (ui.debugFreed) {
         ui.debugFreed = false;
         return;
