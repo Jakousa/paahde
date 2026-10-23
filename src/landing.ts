@@ -116,7 +116,9 @@ const viewOfUrl = (): View => {
 export function landing(why?: 'over' | 'missing', start: View = { v: 'intro' }, play?: () => void) {
   if (document.getElementById('landing')) return;
   document.exitPointerLock?.();
-  document.getElementById('cover')?.remove();
+  // The loading cover (index.html) stays under the menu: Join loads the game behind it, and src/main.ts needs it. Only
+  // over a game that's ended does it go.
+  if (why) document.getElementById('cover')?.remove();
   landingStyle();
   const el = document.createElement('div');
   el.id = 'landing';
