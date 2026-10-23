@@ -7,7 +7,7 @@ import { overShelter, shelterLootSpot, type Shelter } from './shelters.ts';
 import { GEAR, GEAR_KINDS } from './gear.ts';
 import { JAMMER } from './jammer.ts';
 import { RECEIVERS, RELICS, receiverBoss, type BossKind } from './bosses.ts';
-import { CLOTH, partKind, SCRAP, WIRING } from './items.ts';
+import { chargeOf, CLOTH, partKind, SCRAP, setFitted, WIRING, type ItemData } from './items.ts';
 import type { CrashSite, SiteLevel } from './crashsites.ts';
 import { SCRAP_CELL, scrapPieces } from './scrap.ts';
 import { PART_IDS, pickTier } from './parts.ts';
@@ -57,6 +57,19 @@ export function brokenParts(kind: string, rand: Rand): (string | null)[] {
 
 /** A piece of broken gear of `kind`. */
 export const broken = (kind: string, rand: Rand): Drop => ({ kind, parts: brokenParts(kind, rand) });
+
+/**
+ * A found item's own state (shared/items.ts ItemData), rolled as it's laid out or taken off a machine: a battery,
+ * loose or fitted in broken gear, holds a random part of its charge. Undefined when there's nothing of its own.
+ * (Rolled apart from the drops above, so their dice, and the economy simulator's, stay as they were.)
+ */
+export function foundData(kind: string, parts: readonly (string | null)[] | undefined, rand: Rand): ItemData | undefined {
+  const own = (k: string | null): ItemData | null => (k && chargeOf({ kind: k }) !== null ? { charge: rand() } : null);
+  if (!parts) return own(kind) ?? undefined;
+  const it: { data?: ItemData } = {};
+  setFitted(it, parts.map(own));
+  return it.data;
+}
 
 /** A random boss receiver kind (shared/bosses.ts RECEIVERS). */
 export const randomReceiver = (rand: Rand) => pick(Object.values(RECEIVERS), rand);

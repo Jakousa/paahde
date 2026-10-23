@@ -370,8 +370,12 @@ export function openDb(path: string) {
     });
     if (n) console.log(`items: ${n} wiring coils are wiring now`);
   }
-  const allWorldLoot = db.prepare('SELECT id, kind, parts, x, z, depth, src, spawn FROM world_loot ORDER BY id');
-  const insertWorldLoot = db.prepare('INSERT OR REPLACE INTO world_loot (id, kind, parts, x, z, depth, src, spawn) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  // v12 (above): finds and caches have their own state too (a found battery's charge).
+  if (!(db.prepare('PRAGMA table_info(world_loot)').all() as { name: string }[]).some((c) => c.name === 'data')) {
+    db.exec('ALTER TABLE world_loot ADD COLUMN data TEXT');
+  }
+  const allWorldLoot = db.prepare('SELECT id, kind, parts, x, z, depth, src, spawn, data FROM world_loot ORDER BY id');
+  const insertWorldLoot = db.prepare('INSERT OR REPLACE INTO world_loot (id, kind, parts, x, z, depth, src, spawn, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const deleteWorldLoot = db.prepare('DELETE FROM world_loot WHERE id = ?');
   const surfaceWorldLoot = db.prepare('UPDATE world_loot SET depth = 0 WHERE id = ?');
   const allPending = db.prepare('SELECT id, at, what, kind FROM loot_pending ORDER BY at');
@@ -453,10 +457,10 @@ export function openDb(path: string) {
     insertDropped: (id: number, kind: string, parts: (string | null)[] | undefined, x: number, z: number, data?: ItemData) =>
       insertDropped.run(id, kind, parts ? JSON.stringify(parts) : null, x, z, Date.now(), jsonData(data)),
     deleteDropped: (id: number) => deleteDropped.run(id),
-    loadWorldLoot: () => (allWorldLoot.all() as { id: number; kind: string; parts: string | null; x: number; z: number; depth: number; src: 'find' | 'cache'; spawn: string | null }[])
-      .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined })),
-    putWorldLoot: (l: { id: number; kind: string; parts?: (string | null)[]; x: number; z: number; src: string }, spawn: string | null) =>
-      insertWorldLoot.run(l.id, l.kind, l.parts ? JSON.stringify(l.parts) : null, l.x, l.z, 0, l.src, spawn),
+    loadWorldLoot: () => (allWorldLoot.all() as { id: number; kind: string; parts: string | null; x: number; z: number; depth: number; src: 'find' | 'cache'; spawn: string | null; data: string | null }[])
+      .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined, data: parseData(r.data) })),
+    putWorldLoot: (l: { id: number; kind: string; parts?: (string | null)[]; data?: ItemData; x: number; z: number; src: string }, spawn: string | null) =>
+      insertWorldLoot.run(l.id, l.kind, l.parts ? JSON.stringify(l.parts) : null, l.x, l.z, 0, l.src, spawn, jsonData(l.data)),
     deleteWorldLoot: (id: number) => deleteWorldLoot.run(id),
     surfaceWorldLoot: (id: number) => surfaceWorldLoot.run(id),
     loadLootPending: () => allPending.all() as { id: number; at: number; what: 'find' | 'cache'; kind: string | null }[],

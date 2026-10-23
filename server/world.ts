@@ -8,8 +8,8 @@ import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerStat
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bottleSips, buildingBox, cargoBox, carriedGear, equipped, gearTiers, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, isVehicle, vehicleBox, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
-import { CLOTH, HOTBAR, ITEMS, RETIRED, SCRAP, scrapItem, stackOf, WIRING } from '../shared/items.ts';
-import type { Drop } from '../shared/lootRoll.ts';
+import { CLOTH, HOTBAR, ITEMS, RETIRED, SCRAP, scrapItem, stackOf, withData, WIRING } from '../shared/items.ts';
+import { foundData, type Drop } from '../shared/lootRoll.ts';
 import { ENEMIES } from '../shared/enemies.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
@@ -746,7 +746,10 @@ function sendName(p: Player) {
 }
 
 /** Lay a rolled drop (shared/lootRoll.ts) on the sand within `spread` m of (x, z). */
-const lay = (x: number, z: number, d: Drop, spread?: number) => (d.parts ? loot.dropBroken(x, z, d.kind, spread, d.parts) : loot.dropAt(x, z, d.kind, spread));
+const lay = (x: number, z: number, d: Drop, spread?: number) => {
+  const data = foundData(d.kind, d.parts, Math.random); // a battery's charge, loose or fitted
+  return d.parts ? loot.dropBroken(x, z, d.kind, spread, d.parts, data) : loot.dropAt(x, z, d.kind, spread, data);
+};
 
 /** What a killed walker or downed drone leaves on the sand (shared/enemies.ts). */
 function dropSpoils(k: Kill) {
@@ -979,7 +982,7 @@ function onCrash(p: Player, msg: ClientMsg) {
   else if (msg.t === 'siteHold') crash.hold(p.id, msg.id, msg.i, msg.players, msg.on);
   else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i, (n, x, z) => payScrap(p, n, x, z));
   else if (msg.t === 'siteTake') {
-    const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.give(p.browserId, kind));
+    const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.giveItem(p.browserId, { kind, ...withData(foundData(kind, undefined, Math.random)) }));
     if (answer) send(p.ws, answer);
     if (answer?.t === 'siteTook' && answer.ok) sendBox(p, 'bag', answer.kind);
   }

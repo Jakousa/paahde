@@ -274,7 +274,8 @@ function tipHtml(it: Item): string {
   const c = itemColor(it);
   let html = `<div class="name"${c ? ` style="color:${c}"` : ''}>${itemLabel(it.kind)}${it.n > 1 ? ` ×${it.n}` : ''}</div>`;
   const q = chargeOf(it);
-  if (q !== null) html += `<div class="sub level">${chargeBar(it)}${Math.round(q * 100)}%</div>`;
+  const cell = cells([it.kind])[0];
+  if (q !== null && cell) html += `<div class="sub level">${chargeBar(it)}${kwh(q * cell.kwh)} / ${kwh(cell.kwh)} kWh</div>`;
   if (!isGear(it.kind)) return html;
   const ok = repaired(it);
   const parts = partsOf(it);

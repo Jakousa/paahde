@@ -5,9 +5,9 @@
 // the mount (shared/sim.ts), and whoever rides it carries it with them until they get off (or die, or leave), when it
 // is parked where they are. Keeps shared/vehicles.ts's list in step and broadcasts it when it changes.
 import { cargoBox, bikeLevel, GEAR, isVehicle, partsOf, repaired, scrapParts, vehicleBox, vehicleId } from '../shared/gear.ts';
-import { partKind } from '../shared/items.ts';
+import { partKind, type ItemData } from '../shared/items.ts';
 import { coreCrashSites } from '../shared/crashsites.ts';
-import { brokenParts, findSpot, homeBikeSpot, nearPiles } from '../shared/lootRoll.ts';
+import { brokenParts, findSpot, foundData, homeBikeSpot, nearPiles } from '../shared/lootRoll.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { MOUNT_TICKS, type PlayerState } from '../shared/sim.ts';
 import { FINDS, HOME_BIKE } from '../shared/tables.ts';
@@ -71,12 +71,12 @@ export class VehicleServer {
   }
 
   /** A new vehicle (in the table, its item in its box with `parts`). Call inside a transaction. */
-  private add(x: number, z: number, heading: number, parts: (string | null)[], up: boolean, src: string, y = heightAt(x, z)): Vehicle {
+  private add(x: number, z: number, heading: number, parts: (string | null)[], up: boolean, src: string, y = heightAt(x, z), data?: ItemData): Vehicle {
     const id = this.db.insertVehicle(KIND, x, y, z, heading, up, src);
     const v: Vehicle = { id, kind: KIND, x, y, z, heading, up, parts: [...parts] };
     this.src.set(id, src);
     this.set([...vehicles, v]); // (its box opens with it: shared/storage.ts boxSize)
-    this.items.stowNew(vehicleBox(id), KIND, parts);
+    this.items.stowNew(vehicleBox(id), KIND, parts, data);
     return v;
   }
 
@@ -100,7 +100,8 @@ export class VehicleServer {
   /** A broken one at a crash site of its level (FINDS), like the gear found there (shared/lootRoll.ts). */
   private spawnFind(): Vehicle {
     const { x, z } = findSpot(FINDS[KIND]?.level ?? 1, this.sites, this.piles, Math.random);
-    return this.add(x, z, Math.random() * Math.PI * 2, brokenParts(KIND, Math.random), false, 'find');
+    const parts = brokenParts(KIND, Math.random);
+    return this.add(x, z, Math.random() * Math.PI * 2, parts, false, 'find', undefined, foundData(KIND, parts, Math.random));
   }
 
   /**

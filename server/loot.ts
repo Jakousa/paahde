@@ -10,7 +10,7 @@ import { isGear, isVehicle, refit, scrapParts } from '../shared/gear.ts';
 import { RETIRED, withData, type ItemData } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { coreCrashSites } from '../shared/crashsites.ts';
-import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, nearPiles, shelterStash, stashSpot } from '../shared/lootRoll.ts';
+import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, foundData, nearPiles, shelterStash, stashSpot } from '../shared/lootRoll.ts';
 import { CACHES, FINDS, RARE_FINDS, SHELTER_STASHES } from '../shared/tables.ts';
 import { CORE_HALF } from '../shared/terrain.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -88,8 +88,13 @@ export class LootServer {
         continue;
       }
       if (r.depth > 0) db.surfaceWorldLoot(r.id);
-      const l: Loot = { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), x: r.x, z: r.z, src: r.src };
+      const l: Loot = { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), ...withData(r.data), x: r.x, z: r.z, src: r.src };
       refit(l);
+      // Laid out before finds had their own state: rolled now, once (shared/lootRoll.ts foundData).
+      if (!l.data) {
+        Object.assign(l, withData(foundData(l.kind, l.parts, Math.random)));
+        if (l.data) db.putWorldLoot(l, r.spawn);
+      }
       this.loot.set(r.id, l);
       if (r.spawn) this.spawnKey.set(r.id, r.spawn);
       this.nextId = Math.max(this.nextId, r.id + 1);
@@ -185,16 +190,16 @@ export class LootServer {
 
   /** Something left on the sand within `spread` m of (x, z) (a killed walker's parts, server/guardians.ts; thrown
    *  scrap, server/throws.ts), kept like a dropped item. */
-  dropAt(x: number, z: number, kind: string, spread = 0.8) {
-    const l: Loot = { id: this.nextId++, kind, x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
-    this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z);
+  dropAt(x: number, z: number, kind: string, spread = 0.8, data?: ItemData) {
+    const l: Loot = { id: this.nextId++, kind, ...withData(data), x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
+    this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z, l.data);
     this.add(l);
   }
 
-  /** A piece of broken gear left on the sand at (x, z), like dropAt. */
-  dropBroken(x: number, z: number, kind: string, spread = 0.8, parts = this.brokenParts(kind)) {
-    const l: Loot = { id: this.nextId++, kind, parts, x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
-    this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z);
+  /** A piece of broken gear left on the sand at (x, z), like dropAt; `data`: its own (its fitted parts'). */
+  dropBroken(x: number, z: number, kind: string, spread = 0.8, parts = this.brokenParts(kind), data?: ItemData) {
+    const l: Loot = { id: this.nextId++, kind, parts, ...withData(data), x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
+    this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z, l.data);
     this.add(l);
   }
 
@@ -219,8 +224,10 @@ export class LootServer {
     });
   }
 
-  /** A find or cache laid out (kept in the DB); `spawn`: what a find stands in for. Dropped items use add(). */
+  /** A find or cache laid out (kept in the DB), its own state rolled (a battery's charge, shared/lootRoll.ts
+   *  foundData); `spawn`: what a find stands in for. Dropped items use add(). */
   private place(l: Loot, spawn: string | null) {
+    Object.assign(l, withData(foundData(l.kind, l.parts, Math.random)));
     this.db.putWorldLoot(l, spawn);
     if (spawn) this.spawnKey.set(l.id, spawn);
     this.add(l);

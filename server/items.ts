@@ -301,8 +301,8 @@ export class ItemServer {
 
   /** A new building's item, its part slots empty (shared/gear.ts built), or a vehicle's with `parts`, into its box.
    *  Call inside a transaction. */
-  stowNew(box: string, kind: string, parts: (string | null)[] = GEAR[kind].slots.map(() => null)) {
-    this.stow(box, { id: this.newId(), kind, n: 1, parts: [...parts] });
+  stowNew(box: string, kind: string, parts: (string | null)[] = GEAR[kind].slots.map(() => null), data?: ItemData) {
+    this.stow(box, { id: this.newId(), kind, n: 1, parts: [...parts], ...withData(data) });
   }
 
   /** What a building's box holds, taken out (the box is emptied and forgotten). Call inside a transaction. */
