@@ -7,7 +7,7 @@
 // players drop are kept in `dropped` and never respawn.
 import { shelterAt, sheltersNear } from '../shared/shelters.ts';
 import { isGear, isVehicle, refit, scrapParts } from '../shared/gear.ts';
-import { RETIRED, withData, type ItemData } from '../shared/items.ts';
+import { ownOf, RETIRED, withData, type ItemData } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { coreCrashSites } from '../shared/crashsites.ts';
 import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, foundData, nearPiles, shelterStash, stashSpot } from '../shared/lootRoll.ts';
@@ -57,7 +57,7 @@ export class LootServer {
     if (LAB) {
       // Nothing of the desert's finds and caches: only what players dropped here, and the lab's own tables.
       for (const r of db.loadDropped()) {
-        this.loot.set(r.id, { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), ...withData(r.data), x: r.x, z: r.z, src: 'drop' });
+        this.loot.set(r.id, { id: r.id, kind: r.kind, ...ownOf(r), x: r.x, z: r.z, src: 'drop' });
         this.nextId = Math.max(this.nextId, r.id + 1);
       }
       for (const r of db.loadWorldLoot()) db.deleteWorldLoot(r.id);
@@ -73,7 +73,7 @@ export class LootServer {
       }
       // Gear whose slots changed since (shared/gear.ts refit); a jammer from before it was gear works, with Scrap parts.
       const parts = r.parts ?? (isGear(r.kind) ? scrapParts(r.kind) : undefined);
-      const l: Loot = { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), ...withData(r.data), x: r.x, z: r.z, src: 'drop' };
+      const l: Loot = { id: r.id, kind: r.kind, ...ownOf({ parts, data: r.data }), x: r.x, z: r.z, src: 'drop' };
       refit(l);
       this.loot.set(r.id, l);
       this.nextId = Math.max(this.nextId, r.id + 1);
@@ -88,7 +88,7 @@ export class LootServer {
         continue;
       }
       if (r.depth > 0) db.surfaceWorldLoot(r.id);
-      const l: Loot = { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), ...withData(r.data), x: r.x, z: r.z, src: r.src };
+      const l: Loot = { id: r.id, kind: r.kind, ...ownOf(r), x: r.x, z: r.z, src: r.src };
       refit(l);
       // Laid out before finds had their own state: rolled now, once (shared/lootRoll.ts foundData).
       if (!l.data) {
@@ -183,29 +183,30 @@ export class LootServer {
     const a = s.riding ? s.heading : s.facing;
     const x = s.x - Math.sin(a) * DROP_AHEAD + rand(-0.2, 0.2);
     const z = s.z - Math.cos(a) * DROP_AHEAD + rand(-0.2, 0.2);
-    const l: Loot = { id: this.nextId++, kind: item.kind, ...(item.parts ? { parts: [...item.parts] } : {}), ...withData(item.data), x, z, src: 'drop' };
-    this.db.insertDropped(l.id, l.kind, l.parts, x, z, l.data);
-    this.add(l);
+    this.lay(item, x, z);
   }
 
   /** Something left on the sand within `spread` m of (x, z) (a killed walker's parts, server/guardians.ts; thrown
    *  scrap, server/throws.ts), kept like a dropped item. */
   dropAt(x: number, z: number, kind: string, spread = 0.8, data?: ItemData) {
-    const l: Loot = { id: this.nextId++, kind, ...withData(data), x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
-    this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z, l.data);
-    this.add(l);
+    this.lay({ kind, data }, x + rand(-spread, spread), z + rand(-spread, spread));
   }
 
   /** A piece of broken gear left on the sand at (x, z), like dropAt; `data`: its own (its fitted parts'). */
   dropBroken(x: number, z: number, kind: string, spread = 0.8, parts = this.brokenParts(kind), data?: ItemData) {
-    const l: Loot = { id: this.nextId++, kind, parts, ...withData(data), x: x + rand(-spread, spread), z: z + rand(-spread, spread), src: 'drop' };
-    this.db.insertDropped(l.id, l.kind, l.parts, l.x, l.z, l.data);
+    this.lay({ kind, parts, data }, x + rand(-spread, spread), z + rand(-spread, spread));
+  }
+
+  /** An item lying on the sand at (x, z) from now on, kept like a dropped one (`dropped`) until someone takes it. */
+  private lay(item: { kind: string; parts?: (string | null)[]; data?: ItemData }, x: number, z: number) {
+    const l: Loot = { id: this.nextId++, kind: item.kind, ...ownOf(item), x, z, src: 'drop' };
+    this.db.insertDropped(l.id, l.kind, l.parts, x, z, l.data);
     this.add(l);
   }
 
   /** A lab pickup lying at its spot (not kept in the DB: the table is laid out afresh every start). */
   private labPlace(it: LabItem) {
-    const l: Loot = { id: this.nextId++, kind: it.kind, ...(it.parts ? { parts: [...it.parts] } : {}), x: it.x, z: it.z, src: 'find' };
+    const l: Loot = { id: this.nextId++, kind: it.kind, ...ownOf(it), x: it.x, z: it.z, src: 'find' };
     this.labSpots.set(l.id, it);
     this.add(l);
   }

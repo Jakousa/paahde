@@ -17,7 +17,7 @@
 // shift-click or drag a piece into the bag to pick it up, or drag something onto the panel to drop it. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
 import { bagShape, boxShape, buildingId, cargoId, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, fittedBox, GEAR, holdsCargo, isGear, partsOf, quality, repaired, slotLabel, tierOf, tryMove, vehicleBox, vehicleId, type Boxes } from '../shared/gear.ts';
-import { chargeOf, findSpot, HOTBAR, ITEMS, partAt, scrapItem, setData, withData, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
+import { chargeOf, findSpot, HOTBAR, ITEMS, makeItem, partAt, scrapItem, setData, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
@@ -508,7 +508,7 @@ export class InventoryHud {
     if (vehicle) {
       // (The repair view: the bag and the vehicle, nothing else.)
     } else if (this.ground.length) {
-      const items = this.ground.map((l) => ({ id: 0, kind: l.kind, n: 1, parts: l.parts, data: l.data }));
+      const items = this.ground.map((l) => makeItem(0, l));
       html += `<div class="box storage" data-ground><div class="head"><h3>${TEXT.boxes.ground}</h3><button data-all="${GROUND}">${TEXT.inventory.takeAll}</button></div>`
         + `<div class="grid" style="grid-template-columns: repeat(5, 54px)">${this.slotsHtml(GROUND, items, 0, items.length)}</div></div>`;
     } else if (!this.storages.length) {
@@ -759,7 +759,7 @@ export class InventoryHud {
     const it = this.net.boxes[at]?.[0];
     const p = it && partAt(it, i);
     if (!p) return null;
-    const out: Item = { id: 0, kind: p.kind, n: 1, ...withData(p.data) };
+    const out = makeItem(0, p);
     const cell = it.kind === 'battery_station' ? cells(it.parts)[i] : null;
     const live = this.net.power.store[buildingId(at)]?.charge[i];
     if (cell && live !== undefined) setData(out, 'charge', live < cell.kwh ? live / cell.kwh : undefined);
@@ -772,7 +772,7 @@ export class InventoryHud {
     if (at) return this.fittedAt(at, i);
     if (box === GROUND) {
       const l = this.ground[i];
-      return l && this.net.loot.has(l.id) ? { id: 0, kind: l.kind, n: 1, parts: l.parts, data: l.data } : null;
+      return l && this.net.loot.has(l.id) ? makeItem(0, l) : null;
     }
     return this.net.boxes[box]?.[i] ?? null;
   }

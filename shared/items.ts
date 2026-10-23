@@ -136,9 +136,18 @@ export type Item = { id: number; kind: string; n: number; parts?: (string | null
  */
 export type ItemData = { worn?: number; charge?: number; fitted?: (ItemData | null)[] };
 
-/** `data` as an item's field to spread into it: a copy, or nothing when there's none. */
+/** `data` as an item's field to spread into it: a copy (its fitted parts' too), or nothing when there's none. */
 export const withData = (data: ItemData | null | undefined): { data?: ItemData } =>
-  data && Object.keys(data).length ? { data: { ...data } } : {};
+  data && Object.keys(data).length ? { data: { ...data, ...(data.fitted ? { fitted: data.fitted.map((d) => d && { ...d }) } : {}) } } : {};
+
+/** What an item has of its own (gear's `parts`, its ItemData), copied, to spread into another; nothing for a plain one. */
+export const ownOf = (it: { parts?: (string | null)[] | null; data?: ItemData | null }): { parts?: (string | null)[]; data?: ItemData } =>
+  ({ ...(it.parts ? { parts: [...it.parts] } : {}), ...withData(it.data) });
+
+/** Item `id`: `it`'s kind, count (default one), turn and what it has of its own (ownOf). Build items with this, not by
+ *  hand, so nothing of their own is left behind. */
+export const makeItem = (id: number, it: { kind: string; n?: number; r?: boolean | number; parts?: (string | null)[] | null; data?: ItemData | null }): Item =>
+  ({ id, kind: it.kind, n: it.n ?? 1, ...ownOf(it), ...(it.r ? { r: true } : {}) });
 
 /** Set (or with undefined, clear) one of an item's own fields; an item left with none loses `data`. */
 export function setData<K extends keyof ItemData>(it: { data?: ItemData }, key: K, value: ItemData[K] | undefined) {
@@ -268,7 +277,6 @@ function turn(it: Item, r: boolean) {
   if (r) it.r = true;
   else delete it.r;
 }
-const fresh = (id: number, kind: string, n: number, r: boolean): Item => ({ id, kind, n, ...(r ? { r: true } : {}) });
 
 /** Does `slots` hold an item of this kind? */
 export const hasItem = (slots: Slots | undefined, kind: string) => !!slots?.some((it) => it?.kind === kind);
@@ -303,7 +311,7 @@ export function addItem(slots: Slots, kind: string, n: number, newId: () => numb
     const spot = findSpot(s, shape, kind);
     if (!spot) return false;
     const k = own.data ? 1 : Math.min(n, stackOf(kind));
-    s[spot.i] = { ...fresh(newId(), kind, k, spot.r), ...withData(own.data) };
+    s[spot.i] = makeItem(newId(), { kind, n: k, r: spot.r, data: own.data });
     n -= k;
   }
   for (let i = 0; i < s.length; i++) slots[i] = s[i];
@@ -342,7 +350,7 @@ export function moveItem(src: Slots, si: number, srcShape: Shape, dst: Slots, di
         dst[spot.i] = it;
         return true;
       }
-      dst[spot.i] = fresh(newId(), it.kind, left, spot.r);
+      dst[spot.i] = makeItem(newId(), { kind: it.kind, n: left, r: spot.r });
       left = 0;
     }
     it.n -= k - left;
@@ -362,7 +370,7 @@ export function moveItem(src: Slots, si: number, srcShape: Shape, dst: Slots, di
       turn(it, rr);
       dst[di] = it;
     } else {
-      dst[di] = fresh(newId(), it.kind, k, rr);
+      dst[di] = makeItem(newId(), { kind: it.kind, n: k, r: rr });
       it.n -= k;
     }
     return true;

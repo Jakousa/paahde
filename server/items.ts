@@ -3,7 +3,7 @@
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
 import { bagShape, boxShape, EQUIP_SLOTS, fitPart, fittedBox, GEAR, holdsCargo, SHIELD_BREAKS, isGear, refit, scrapParts, shieldSaves, tierOf, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
-  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, setPart, settle, sizeOf, sortItems, stackOf, stacks, withData,
+  addItem, BAG_SLOTS, makeItem, ownOf, partAt, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, setPart, settle, sizeOf, sortItems, stackOf, stacks,
   type Item, type ItemData, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -65,7 +65,7 @@ export class ItemServer {
     if (!slots) {
       const rows = this.db.loadBox(owner, box);
       slots = new Array(Math.max(boxSize(box), ...rows.map((r) => r.slot + 1))).fill(null);
-      for (const r of rows) if (!RETIRED.has(r.kind)) slots[r.slot] = { id: r.id, kind: r.kind, n: r.n, ...(r.parts ? { parts: r.parts } : {}), ...(r.r ? { r: true } : {}), ...withData(r.data) };
+      for (const r of rows) if (!RETIRED.has(r.kind)) slots[r.slot] = makeItem(r.id, r);
       this.boxes.set(key, slots);
       let changed = rows.some((r) => RETIRED.has(r.kind));
       // Buildings from when they were crafted and carried (shared/crafting.ts BUILDS): back into what they were made
@@ -77,9 +77,12 @@ export class ItemServer {
           if (!it || !isBuildable(it.kind)) continue;
           slots[i] = null;
           for (const m of buildCost(it.kind)) {
-            for (let n = m.n; n > 0; n -= stackOf(m.kind)) slots.push({ id: this.newId(), kind: m.kind, n: Math.min(n, stackOf(m.kind)) });
+            for (let n = m.n; n > 0; n -= stackOf(m.kind)) slots.push(makeItem(this.newId(), { kind: m.kind, n: Math.min(n, stackOf(m.kind)) }));
           }
-          for (const p of it.parts ?? []) if (p) slots.push({ id: this.newId(), kind: p, n: 1 });
+          for (let j = 0; j < (it.parts?.length ?? 0); j++) {
+            const p = partAt(it, j);
+            if (p) slots.push(makeItem(this.newId(), p));
+          }
           changed = true;
         }
       }
@@ -94,7 +97,7 @@ export class ItemServer {
         if (it && refit(it)) changed = true;
         // Stacks bigger than their kind allows now: one item per stack, the rest past the end for settle() to place.
         for (; it && it.n > stackOf(it.kind); it.n--) {
-          slots.push({ id: this.newId(), kind: it.kind, n: 1 });
+          slots.push(makeItem(this.newId(), { kind: it.kind }));
           changed = true;
         }
       }
@@ -131,7 +134,7 @@ export class ItemServer {
     this.db.tx(() => {
       if (this.db.hasStarterKit(browserId)) {
         const equip = this.slots(browserId, 'equip');
-        const pack: Item = { id: this.newId(), kind: 'backpack', n: 1, parts: [CLOTH, SCRAP, partKind('gear', 'quality')] };
+        const pack = makeItem(this.newId(), { kind: 'backpack', parts: [CLOTH, SCRAP, partKind('gear', 'quality')] });
         const back = EQUIP_SLOTS.indexOf('back');
         if (!equip[back]) equip[back] = pack;
         else {
@@ -163,15 +166,10 @@ export class ItemServer {
       if (!give) return;
       const bag = this.slots(browserId, 'bag');
       const was = bag[slot];
-      bag[slot] = { id: this.newId(), kind, n: 1, ...(isGear(kind) ? { parts: scrapParts(kind) } : {}) };
+      bag[slot] = makeItem(this.newId(), { kind, ...(isGear(kind) ? { parts: scrapParts(kind) } : {}) });
       if (was) {
         const spot = findSpot(bag, this.bagShape(browserId), was.kind, !!was.r, [slot]);
-        if (spot) {
-          const moved: Item = { ...was };
-          if (spot.r) moved.r = true;
-          else delete moved.r;
-          bag[spot.i] = moved;
-        }
+        if (spot) bag[spot.i] = makeItem(was.id, { ...was, r: spot.r });
         else bag.push(was);
       }
       this.save(browserId, 'bag');
@@ -217,18 +215,18 @@ export class ItemServer {
     const bag = this.slots(browserId, 'bag');
     const spot = findSpot(bag, this.bagShape(browserId), item.kind);
     if (!spot) return false;
-    bag[spot.i] = { id: this.newId(), kind: item.kind, n: 1, ...(item.parts ? { parts: [...item.parts] } : {}), ...(spot.r ? { r: true } : {}), ...withData(item.data) };
+    bag[spot.i] = makeItem(this.newId(), { ...item, n: 1, r: spot.r });
     this.save(browserId, 'bag');
     return true;
   }
 
   /** Repaired gear straight into its equipment slot, if it has one and that's free. */
-  equip(browserId: string, item: { kind: string; parts: (string | null)[] }): boolean {
+  equip(browserId: string, item: { kind: string; parts: (string | null)[]; data?: ItemData }): boolean {
     const slot = GEAR[item.kind]?.equip;
     const equip = this.slots(browserId, 'equip');
     const i = slot ? EQUIP_SLOTS.indexOf(slot) : -1;
     if (i < 0 || equip[i]) return false;
-    equip[i] = { id: this.newId(), kind: item.kind, n: 1, parts: [...item.parts] };
+    equip[i] = makeItem(this.newId(), { ...item, n: 1 });
     this.save(browserId, 'equip');
     return true;
   }
@@ -279,7 +277,7 @@ export class ItemServer {
     const bag = this.slots(browserId, 'bag');
     const it = bag[slot];
     if (it?.kind !== kind) return null;
-    const out: Item = { id: this.newId(), kind, n: 1, ...(it.parts ? { parts: [...it.parts] } : {}), ...withData(it.data) };
+    const out = makeItem(this.newId(), { ...it, n: 1, r: false });
     if (--it.n <= 0) bag[slot] = null;
     this.save(browserId, 'bag');
     return out;
@@ -302,7 +300,7 @@ export class ItemServer {
   /** A new building's item, its part slots empty (shared/gear.ts built), or a vehicle's with `parts`, into its box.
    *  Call inside a transaction. */
   stowNew(box: string, kind: string, parts: (string | null)[] = GEAR[kind].slots.map(() => null), data?: ItemData) {
-    this.stow(box, { id: this.newId(), kind, n: 1, parts: [...parts], ...withData(data) });
+    this.stow(box, makeItem(this.newId(), { kind, parts, data }));
   }
 
   /** What a building's box holds, taken out (the box is emptied and forgotten). Call inside a transaction. */
@@ -381,7 +379,7 @@ export class ItemServer {
     if (!it || holdsCargo(this.view(browserId, box), box, slot as number)) return null;
     if (--it.n <= 0) slots[slot as number] = null;
     this.save(browserId, box);
-    return { kind: it.kind, ...(it.parts ? { parts: it.parts } : {}), ...withData(it.data) };
+    return { kind: it.kind, ...ownOf(it) };
   }
 
   /** Fit the part at `from`[fi] into slot `slot` of the item in `at`: the workbench, or a building's or vehicle's box
@@ -437,9 +435,7 @@ export class ItemServer {
     for (const it of out) {
       growChest(pack); // MAX_SIDE free rows below what's in: anything fits
       const spot = findSpot(pack, gridShape(CHEST_COLS, pack.length / CHEST_COLS), it.kind, false, [], false);
-      const moved: Item = { ...it };
-      delete moved.r;
-      if (spot?.r) moved.r = true;
+      const moved = makeItem(it.id, { ...it, r: spot?.r });
       if (spot) pack[spot.i] = moved;
       else pack.push(moved);
     }

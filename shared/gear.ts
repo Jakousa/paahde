@@ -10,7 +10,7 @@
 // bag's open rows (the backpack sets them; taking it off leaves what's there stranded, not lost) and only where it fits in a grid, and parts only into the workbench item's matching slots (fitPart).
 import { isCorpseBox } from './corpse.ts';
 import {
-  ITEMS, BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, partAt, partKind, setFitted, setPart, sizeOf, strandedAt, withData,
+  ITEMS, BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, makeItem, moveItem, parsePart, partAt, partKind, setFitted, setPart, sizeOf, strandedAt, withData,
   type Item, type ItemData, type Part, type Shape, type Slots,
 } from './items.ts';
 import { PART_LABELS } from './parts.ts';
@@ -420,7 +420,7 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
   } else {
     // The old part lies down where the new one was (the same part, so the same size), else anywhere in the bag.
     s[fi] = null;
-    if (old && fitsAt(s, boxShape(from, b), fi, ...sizeOf(old.kind, p.r))) s[fi] = { id: newId(), kind: old.kind, n: 1, ...(p.r ? { r: true } : {}), ...withData(old.data) };
+    if (old && fitsAt(s, boxShape(from, b), fi, ...sizeOf(old.kind, p.r))) s[fi] = makeItem(newId(), { ...old, r: p.r });
     else if (old && !giveBack(b, old, newId)) return false;
   }
   const t = { ...b[at]![0]! };
@@ -439,7 +439,7 @@ export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, ne
   if (!part) return false;
   const b = cloneBoxes(boxes, [...new Set([to, at])]);
   const dst = b[to]!;
-  const tmp: Slots = [{ id: newId(), kind: part.kind, n: 1, ...withData(part.data) }];
+  const tmp: Slots = [makeItem(newId(), part)];
   if (!moveItem(tmp, 0, ONE, dst, ti, boxShape(to, b), undefined, newId) || tmp[0]) return false;
   // Into the equipment or onto the workbench only by the same rules as a move (a part is never either).
   if (!changesAllowed(boxes, b, [to])) return false;
@@ -454,6 +454,6 @@ export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, ne
 const ONE: Shape = { free: 1, cols: 1, rows: 0, grid: 0 };
 
 function giveBack(b: Boxes, part: Part, newId: () => number): boolean {
-  const tmp: Slots = [{ id: newId(), kind: part.kind, n: 1, ...withData(part.data) }];
+  const tmp: Slots = [makeItem(newId(), part)];
   return !!b.bag && moveItem(tmp, 0, ONE, b.bag, -1, bagShape(b.equip), undefined, newId) && !tmp[0];
 }
