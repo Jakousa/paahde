@@ -76,6 +76,9 @@ Read before touching:
 - Roll loot in `shared/lootRoll.ts` with a `rand`, never inline in server code (the economy simulator rolls the same
   dice). Tune drops and recipes in `shared/tables.ts`.
 - A new enemy gets an entry in `shared/enemies.ts` (its drops go through it).
+- An item's own state (a battery's charge, wear, ...) is a field of `ItemData` (`shared/items.ts`), never a new column
+  or a side table: it's stored, sent, dropped and moved with the item for free. Items with data never stack. A part
+  keeps its data while fitted (in gear, buildings, vehicles): move parts with `partAt` / `setPart`, never `parts` alone.
 - Read biomes by property (`biome`, `biomeAt`, `blend` in `shared/biomes.ts`), never by asking for a specific biome
   where a property would do; new per-biome things go in its `BIOMES` entry.
 - Control hints name keys or pad buttons through `src/bindings.ts` (`kbd`/`ctl`/`hintKeys`), never as words in code.

@@ -127,23 +127,51 @@ export type Item = { id: number; kind: string; n: number; parts?: (string | null
 /**
  * State one item has of its own, which two of the same kind can differ in. Stored as one JSON column (`data`, server/db.ts)
  * and carried wherever the item goes (boxes, dropped on the sand, sent to clients): a new field only needs adding here.
- * Only for kinds that don't stack (a stack has one `data`). Leave a field out for its default, never store it.
+ * An item with any never stacks (stacks below): it's always one of its own. Leave a field out for its default, never
+ * store it.
  * `worn`: a shield plate's killing blows taken since it last broke (shared/gear.ts shieldSaves).
  * `charge`: a battery's charge, the part of what it holds (0..1, shared/power.ts CELLS); full when not set.
+ * `fitted`: gear's (a building's, a vehicle's) fitted parts' own data, by part slot like `parts`: a part keeps its
+ *   data while it's fitted. Always move parts with partAt / setPart, never `parts` alone.
  */
-export type ItemData = { worn?: number; charge?: number };
+export type ItemData = { worn?: number; charge?: number; fitted?: (ItemData | null)[] };
 
 /** `data` as an item's field to spread into it: a copy, or nothing when there's none. */
 export const withData = (data: ItemData | null | undefined): { data?: ItemData } =>
   data && Object.keys(data).length ? { data: { ...data } } : {};
 
 /** Set (or with undefined, clear) one of an item's own fields; an item left with none loses `data`. */
-export function setData<K extends keyof ItemData>(it: Item, key: K, value: ItemData[K] | undefined) {
+export function setData<K extends keyof ItemData>(it: { data?: ItemData }, key: K, value: ItemData[K] | undefined) {
   const data: ItemData = { ...it.data };
   if (value === undefined) delete data[key];
   else data[key] = value;
   if (Object.keys(data).length) it.data = data;
   else delete it.data;
+}
+
+/** A part as it's fitted into gear or taken out: its kind and its own data. */
+export type Part = { kind: string; data?: ItemData };
+
+/** The part fitted in slot `i` of `it`, with its data; null for an empty slot. */
+export function partAt(it: { parts?: (string | null)[]; data?: ItemData }, i: number): Part | null {
+  const kind = it.parts?.[i];
+  return kind ? { kind, ...withData(it.data?.fitted?.[i]) } : null;
+}
+
+/** Fit `p` into slot `i` of `it` (null: empty it), its data with it. Mutates `it`, with fresh arrays. */
+export function setPart(it: { parts?: (string | null)[]; data?: ItemData }, i: number, p: Part | null) {
+  const parts = [...(it.parts ?? [])];
+  while (parts.length <= i) parts.push(null);
+  parts[i] = p?.kind ?? null;
+  it.parts = parts;
+  setFitted(it, Object.assign([...(it.data?.fitted ?? [])], { [i]: p?.data ?? null }));
+}
+
+/** Set every fitted part's data at once (by slot; null where there's none), dropping it all when there's none. */
+export function setFitted(it: { data?: ItemData }, fitted: (ItemData | null | undefined)[]) {
+  const f = Array.from(fitted, (d) => (d && Object.keys(d).length ? d : null));
+  while (f.length && !f[f.length - 1]) f.pop();
+  setData(it, 'fitted', f.length ? f : undefined);
 }
 
 /** A battery's charge (0..1), or null for anything that isn't one. */
@@ -245,8 +273,11 @@ const fresh = (id: number, kind: string, n: number, r: boolean): Item => ({ id, 
 /** Does `slots` hold an item of this kind? */
 export const hasItem = (slots: Slots | undefined, kind: string) => !!slots?.some((it) => it?.kind === kind);
 
-/** Can these two stack (same kind, and no gear: every gear item is its own)? */
-const stacks = (a: Item, kind: string) => a.kind === kind && !a.parts;
+/** Has it anything of its own (gear's parts, ItemData)? Then it's one of a kind: never stacked, always n = 1. */
+const ownState = (it: Item) => !!it.parts || !!it.data;
+/** Can these two stack: the same kind, and neither has anything of its own? */
+export const stacks = (a: Item, b: Item | string) =>
+  a.kind === (typeof b === 'string' ? b : b.kind) && !ownState(a) && (typeof b === 'string' || !ownState(b));
 
 /** Room for one more of `kind` (on a stack of it, or a free spot)? */
 export function roomFor(slots: Slots, kind: string, shape: Shape): boolean {
@@ -255,11 +286,13 @@ export function roomFor(slots: Slots, kind: string, shape: Shape): boolean {
 
 /**
  * Put n of `kind` into `slots`: onto stacks of it first, then wherever it fits (findSpot: the grid before the
- * free slots, so pickups land in the backpack before the hotbar). Mutates; false (and no change) if there's no room.
+ * free slots, so pickups land in the backpack before the hotbar). With `data` (ItemData), each is one of its own:
+ * never onto a stack. Mutates; false (and no change) if there's no room.
  */
-export function addItem(slots: Slots, kind: string, n: number, newId: () => number, shape: Shape): boolean {
+export function addItem(slots: Slots, kind: string, n: number, newId: () => number, shape: Shape, data?: ItemData): boolean {
   const s = [...slots];
-  for (let i = 0; i < s.length && n > 0; i++) {
+  const own = withData(data);
+  for (let i = 0; i < s.length && n > 0 && !own.data; i++) {
     const it = s[i];
     if (!it || !stacks(it, kind) || strandedAt(s, shape, i)) continue;
     const k = Math.min(n, stackOf(kind) - it.n);
@@ -269,8 +302,8 @@ export function addItem(slots: Slots, kind: string, n: number, newId: () => numb
   while (n > 0) {
     const spot = findSpot(s, shape, kind);
     if (!spot) return false;
-    const k = Math.min(n, stackOf(kind));
-    s[spot.i] = fresh(newId(), kind, k, spot.r);
+    const k = own.data ? 1 : Math.min(n, stackOf(kind));
+    s[spot.i] = { ...fresh(newId(), kind, k, spot.r), ...withData(own.data) };
     n -= k;
   }
   for (let i = 0; i < s.length; i++) slots[i] = s[i];
@@ -292,9 +325,9 @@ export function moveItem(src: Slots, si: number, srcShape: Shape, dst: Slots, di
   if (di === -1) {
     if (src === dst) return false;
     let left = k;
-    for (let j = 0; j < dst.length && left > 0 && !it.parts; j++) {
+    for (let j = 0; j < dst.length && left > 0; j++) {
       const d = dst[j];
-      if (!d || !stacks(d, it.kind) || strandedAt(dst, dstShape, j)) continue;
+      if (!d || !stacks(d, it) || strandedAt(dst, dstShape, j)) continue;
       const m = Math.min(left, stackOf(it.kind) - d.n);
       d.n += m;
       left -= m;
@@ -335,7 +368,7 @@ export function moveItem(src: Slots, si: number, srcShape: Shape, dst: Slots, di
     return true;
   }
   const d = dst[dj]!;
-  if (stacks(d, it.kind) && !it.parts) {
+  if (stacks(d, it)) {
     const m = Math.min(k, stackOf(it.kind) - d.n);
     if (m === 0) return false;
     d.n += m;
@@ -384,7 +417,7 @@ export function sortItems(slots: Slots, shape: Shape): boolean {
   for (const it of items) {
     let left = it.n;
     for (const m of merged) {
-      if (!stacks(m, it.kind) || it.parts || left === 0) continue;
+      if (!stacks(m, it) || left === 0) continue;
       const k = Math.min(left, stackOf(it.kind) - m.n);
       m.n += k;
       left -= k;

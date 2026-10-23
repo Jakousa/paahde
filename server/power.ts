@@ -1,14 +1,18 @@
 // Server side of the base's electricity (shared/power.ts): every tick each grid's windmills (what is wired together:
-// shared/wires.ts grids) charge that grid's battery stations, each battery's charge is kept (and saved in `power`), and
+// shared/wires.ts grids) charge that grid's battery stations, each battery's charge is kept (live here, saved in the
+// battery itself: its ItemData `charge`, fitted in the station's item, so it keeps it when it comes out), and
 // the state goes out to everyone. A windmill on a grid with no station (or only full ones) delivers nothing. While the world
 // sleeps (nobody in it, the process gone) the wind still blows: on start the time since the last save is caught up in
 // steps of the same wind, storms left out.
 import { BASE } from '../shared/base.ts';
 import { placed } from '../shared/placed.ts';
 import { grids } from '../shared/wires.ts';
-import { charge, GAME_SPEED, recharge, windmillWatts, windSpeed, type PowerState, type Store } from '../shared/power.ts';
+import { cells, charge, GAME_SPEED, windmillWatts, windSpeed, type PowerState, type Store } from '../shared/power.ts';
+import { buildingBox, buildingId, partsOf } from '../shared/gear.ts';
+import { chargeOf, partAt, setFitted, type Item } from '../shared/items.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';
+import type { ItemServer } from './items.ts';
 
 type Db = ReturnType<typeof openDb>;
 
@@ -22,6 +26,7 @@ const POWER_AT = 'powerAt';
 
 export class PowerServer {
   private db: Db;
+  private items: ItemServer;
   /** Battery station id → its parts as last seen and each slot's charge (kWh). */
   private stores = new Map<number, { parts: (string | null)[]; charge: number[] }>();
   private gen: Record<number, number> = {};
@@ -29,13 +34,21 @@ export class PowerServer {
   private at: number;
 
   /** Call after the placed list is loaded (server/placed.ts). `worldMs`: the shared clock now. */
-  constructor(db: Db, worldMs: number) {
+  constructor(db: Db, worldMs: number, items: ItemServer) {
     this.db = db;
-    const saved = db.loadPower();
+    this.items = items;
+    // Before the charge was the batteries' own it was kept per station slot in the `power` table: into the batteries.
+    const old = db.loadPower();
     for (const p of placed) {
       if (p.kind !== 'battery_station') continue;
-      const parts = p.parts ?? [];
-      this.stores.set(p.id, { parts, charge: parts.map((_, i) => saved.get(p.id)?.[i] ?? 0) });
+      this.load(p.id);
+      const was = old.get(p.id);
+      const s = this.stores.get(p.id)!;
+      if (was) s.charge = s.charge.map((c, i) => (cells(s.parts)[i] ? Math.min(was[i] ?? 0, cells(s.parts)[i]!.kwh) : c));
+    }
+    if (old.size) {
+      this.flush();
+      db.savePower(new Map());
     }
     const last = db.getSetting(POWER_AT);
     this.at = worldMs;
@@ -45,16 +58,55 @@ export class PowerServer {
     }
   }
 
-  /** The stations and windmills as they stand now: new ones in, gone ones out, swapped parts (shared/power.ts recharge). */
+  /** A station's item (in its box, shared/gear.ts buildingBox), or null. */
+  private station(id: number): Item | null {
+    return this.items.slots('', buildingBox(id))[0] ?? null;
+  }
+
+  /** A station's batteries' charge, from the batteries themselves (their ItemData). */
+  private load(id: number) {
+    const it = this.station(id);
+    const parts = it ? partsOf(it) : [];
+    const cs = cells(parts);
+    this.stores.set(id, { parts, charge: parts.map((_, i) => (it && cs[i] ? (chargeOf(partAt(it, i)!) ?? 0) * cs[i]!.kwh : 0)) });
+  }
+
+  /** Write the live charge into the batteries (every station's, or the one whose box is `box`), so they have it when
+   *  they come out or the station comes down, and saved. */
+  flush(box?: string) {
+    for (const [id, s] of this.stores) {
+      if (box !== undefined && buildingBox(id) !== box) continue;
+      const cs = cells(s.parts);
+      this.items.edit('', buildingBox(id), 0, (it) => {
+        if (partsOf(it).join() !== s.parts.join()) return false;
+        const fitted = partsOf(it).map((_, i) => {
+          const data = { ...partAt(it, i)?.data };
+          const q = cs[i] ? s.charge[i] / cs[i]!.kwh : 1;
+          if (q < 1) data.charge = q;
+          else delete data.charge;
+          return data;
+        });
+        setFitted(it, fitted);
+        return true;
+      });
+    }
+  }
+
+  /** A station's parts were fitted or taken out (`box`, its building box): its charge is its batteries' now. Call
+   *  flush(box) before the change, so the batteries had the live charge. */
+  refit(box: string) {
+    const id = buildingId(box);
+    if (this.stores.has(id)) this.load(id);
+  }
+
+  /** The stations and windmills as they stand now: new ones in, gone ones out (each battery brings its own charge). */
   private sync() {
     const ids = new Set<number>();
     for (const p of placed) {
       if (p.kind !== 'battery_station') continue;
       ids.add(p.id);
-      const parts = p.parts ?? [];
       const s = this.stores.get(p.id);
-      if (!s) this.stores.set(p.id, { parts, charge: parts.map(() => 0) });
-      else if (s.parts.join() !== parts.join()) this.stores.set(p.id, { parts, charge: recharge(s.parts, s.charge, parts) });
+      if (!s || s.parts.join() !== (p.parts ?? []).join()) this.load(p.id);
     }
     for (const id of this.stores.keys()) if (!ids.has(id)) this.stores.delete(id);
   }
@@ -87,7 +139,7 @@ export class PowerServer {
   }
 
   save() {
-    this.db.savePower(new Map([...this.stores].map(([id, s]) => [id, s.charge])));
+    this.flush();
     this.db.setSetting(POWER_AT, this.at);
   }
 

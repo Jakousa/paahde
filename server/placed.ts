@@ -7,6 +7,7 @@
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import { BUILDS, buildCost, isBuildable, WRENCH } from '../shared/crafting.ts';
 import { buildingBox, isBuilding, partsOf } from '../shared/gear.ts';
+import { partAt } from '../shared/items.ts';
 import { isPlaceable, onSand, PLACE_FLOOR_Y, PLACE_REACH, PLACED_REACH, placeError, placed, placedReach, placedY, SAND_REACH, setPlaced, type Placed } from '../shared/placed.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';
@@ -114,7 +115,7 @@ export class PlacedServer {
     const box = buildingBox(p.id);
     const it = isBuilding(p.kind) ? this.items.slots('', box)[0] : null;
     const back = built
-      ? [...buildCost(p.kind), ...(it ? partsOf(it) : []).flatMap((k) => (k ? [{ kind: k, n: 1 }] : [])), ...extra(p)]
+      ? [...buildCost(p.kind), ...(it ? partsOf(it).map((_, i) => partAt(it, i)) : []).flatMap((q) => (q ? [{ ...q, n: 1 }] : [])), ...extra(p)]
       : [{ kind: p.kind, n: 1 }, ...extra(p)];
     const ok = this.db.tx(() => {
       if (!this.items.giveAll(browserId, back)) return false;

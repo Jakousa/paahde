@@ -17,11 +17,11 @@
 // shift-click or drag a piece into the bag to pick it up, or drag something onto the panel to drop it. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
 import { bagShape, boxShape, buildingId, cargoId, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, fittedBox, GEAR, holdsCargo, isGear, partsOf, quality, repaired, slotLabel, tierOf, tryMove, vehicleBox, vehicleId, type Boxes } from '../shared/gear.ts';
-import { chargeOf, findSpot, HOTBAR, ITEMS, scrapItem, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
+import { chargeOf, findSpot, HOTBAR, ITEMS, partAt, scrapItem, setData, withData, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
 import { countMatching, RECIPES } from '../shared/crafting.ts';
-import { capacity } from '../shared/power.ts';
+import { capacity, cells } from '../shared/power.ts';
 import type { ScrapPiece } from '../shared/scrap.ts';
 import { Hints } from './hints';
 import type { PlayerState } from '../shared/sim.ts';
@@ -546,10 +546,11 @@ export class InventoryHud {
     const held = this.drag ? this.net.boxes[this.drag.box]?.[this.drag.i] : null;
     spec.slots.forEach((slot, i) => {
       const kind = parts[i];
+      const part = this.fittedAt(at, i);
       const fits = held && fitsSlot(slot, held.kind) ? ' fits' : '';
       const c = kind && rarityColor(kind);
       html += `<div><div class="slot${kind ? '' : ' empty'}${fits}${c ? ' rare' : ''}" data-box="${partBox(at)}" data-i="${i}"${c ? ` style="--c:${c}"` : ''} data-tip="${kind ? '' : TEXT.inventory.needsA(slotLabel(slot))}">`
-        + (kind ? itemIcon(kind) : `<span class="ph">+</span>`) + `</div><div class="pl">${slotLabel(slot)}</div></div>`;
+        + (part ? itemIcon(part.kind) + chargeBar(part) : `<span class="ph">+</span>`) + `</div><div class="pl">${slotLabel(slot)}</div></div>`;
     });
     return html + '</div>';
   }
@@ -741,14 +742,23 @@ export class InventoryHud {
     this.showHint(this.targetAt(d.x0, d.y0, d), d);
   }
 
+  /** The part fitted in slot `i` of the item in box `at`, as an item with its data; a battery station's batteries
+   *  with the charge they hold now (the server's power state, kept live there). */
+  private fittedAt(at: string, i: number): Item | null {
+    const it = this.net.boxes[at]?.[0];
+    const p = it && partAt(it, i);
+    if (!p) return null;
+    const out: Item = { id: 0, kind: p.kind, n: 1, ...withData(p.data) };
+    const cell = it.kind === 'battery_station' ? cells(it.parts)[i] : null;
+    const live = this.net.power.store[buildingId(at)]?.charge[i];
+    if (cell && live !== undefined) setData(out, 'charge', live < cell.kwh ? live / cell.kwh : undefined);
+    return out;
+  }
+
   /** What's in a slot; 'part:<box>' slots are the fitted parts of the item in that box (workbench, building, vehicle). */
   private itemAt(box: string, i: number): Item | null {
     const at = partsIn(box);
-    if (at) {
-      const it = this.net.boxes[at]?.[0];
-      const kind = it && partsOf(it)[i];
-      return kind ? { id: 0, kind, n: 1 } : null;
-    }
+    if (at) return this.fittedAt(at, i);
     if (box === GROUND) {
       const l = this.ground[i];
       return l && this.net.loot.has(l.id) ? { id: 0, kind: l.kind, n: 1, parts: l.parts, data: l.data } : null;

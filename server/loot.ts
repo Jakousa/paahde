@@ -72,8 +72,10 @@ export class LootServer {
         continue;
       }
       // Gear whose slots changed since (shared/gear.ts refit); a jammer from before it was gear works, with Scrap parts.
-      const parts = r.parts ? (refit(r.kind, r.parts) ?? r.parts) : isGear(r.kind) ? scrapParts(r.kind) : undefined;
-      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), ...withData(r.data), x: r.x, z: r.z, src: 'drop' });
+      const parts = r.parts ?? (isGear(r.kind) ? scrapParts(r.kind) : undefined);
+      const l: Loot = { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), ...withData(r.data), x: r.x, z: r.z, src: 'drop' };
+      refit(l);
+      this.loot.set(r.id, l);
       this.nextId = Math.max(this.nextId, r.id + 1);
     }
     // Finds and caches from before the restart, and the ones waiting to come back. Caches buried back when there was
@@ -86,8 +88,9 @@ export class LootServer {
         continue;
       }
       if (r.depth > 0) db.surfaceWorldLoot(r.id);
-      const parts = r.parts ? (refit(r.kind, r.parts) ?? r.parts) : undefined;
-      this.loot.set(r.id, { id: r.id, kind: r.kind, ...(parts ? { parts } : {}), x: r.x, z: r.z, src: r.src });
+      const l: Loot = { id: r.id, kind: r.kind, ...(r.parts ? { parts: r.parts } : {}), x: r.x, z: r.z, src: r.src };
+      refit(l);
+      this.loot.set(r.id, l);
       if (r.spawn) this.spawnKey.set(r.id, r.spawn);
       this.nextId = Math.max(this.nextId, r.id + 1);
     }

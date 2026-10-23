@@ -172,12 +172,5 @@ export function charge(stores: Store[], watts: number, gameS: number): number[] 
   return took;
 }
 
-/** A station's charge for parts `parts`, from its old charge under `was`: a battery still in its slot keeps what it
- *  held (as far as it fits), anything new starts empty. */
-export function recharge(was: readonly (string | null)[], charge: readonly number[], parts: readonly (string | null)[]): number[] {
-  const cs = cells(parts);
-  return parts.map((p, i) => (p && p === was[i] && cs[i] ? Math.min(cs[i]!.kwh, charge[i] ?? 0) : 0));
-}
-
 /** What the server sends: each windmill's output (W) and each station's charge per slot (kWh) and intake (W). */
 export type PowerState = { gen: Record<number, number>; store: Record<number, { charge: number[]; w: number }> };

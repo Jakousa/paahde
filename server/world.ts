@@ -861,7 +861,10 @@ function onMove(p: Player, from: unknown, fi: unknown, to: unknown, ti: unknown,
 // Parts fitted into (or taken out of) the item on the workbench, or a building's (`at`: its box, shared/gear.ts
 // buildingBox), whose look follows in the placed list.
 function onFit(p: Player, from: unknown, fi: unknown, slot: unknown, at: unknown) {
+  // A battery station's live charge into its batteries first: one swapped out takes what it holds (server/power.ts).
+  if (typeof at === 'string') power.flush(at);
   const changed = !p.down && items.fit(p.browserId, p.state, from, fi, slot, at);
+  if (changed && typeof at === 'string') power.refit(at);
   for (const box of new Set([at, 'bag', from])) {
     if (typeof box !== 'string' || !boxSize(box)) continue;
     if (changed) sendBox(p, box);
@@ -874,7 +877,9 @@ function onFit(p: Player, from: unknown, fi: unknown, slot: unknown, at: unknown
 }
 
 function onUnfit(p: Player, slot: unknown, to: unknown, ti: unknown, at: unknown) {
+  if (typeof at === 'string') power.flush(at);
   const changed = !p.down && items.unfit(p.browserId, p.state, slot, to, ti, at, (box) => vehicleSrv.canUnfit(box));
+  if (changed && typeof at === 'string') power.refit(at);
   for (const box of new Set([at, to])) {
     if (typeof box !== 'string' || !boxSize(box)) continue;
     if (changed) sendBox(p, box);
@@ -1019,7 +1024,8 @@ function onBuild(p: Player, kind: unknown, x: unknown, z: unknown, rot: unknown)
 }
 
 function onUnplace(p: Player, id: unknown) {
-  // Its wires come down with it, their wiring into the bag too.
+  // Its wires come down with it, their wiring into the bag too; a battery station's batteries with their charge.
+  if (typeof id === 'number') power.flush(buildingBox(id));
   const r = placedThings.unplace(p.browserId, p.state, id, (q) => wiring.refund(q.id));
   if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
   wiring.takeDown(r.id);
@@ -1114,7 +1120,7 @@ const realEpoch = performance.timeOrigin;
 let epoch = realEpoch + (db.getSetting('clockShift') ?? 0);
 
 // Electricity (server/power.ts): the windmills charge the battery stations every second; everyone hears how it stands.
-const power = new PowerServer(db, performance.now() + epoch);
+const power = new PowerServer(db, performance.now() + epoch, items);
 const POWER_SEND_MS = 2000;
 let powerSent = 0;
 setInterval(() => {

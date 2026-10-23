@@ -10,8 +10,8 @@
 // bag's open rows (the backpack sets them; taking it off leaves what's there stranded, not lost) and only where it fits in a grid, and parts only into the workbench item's matching slots (fitPart).
 import { isCorpseBox } from './corpse.ts';
 import {
-  ITEMS, BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, partKind, sizeOf, strandedAt,
-  type Item, type Shape, type Slots,
+  ITEMS, BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, moveItem, parsePart, partAt, partKind, setFitted, setPart, sizeOf, strandedAt, withData,
+  type Item, type ItemData, type Part, type Shape, type Slots,
 } from './items.ts';
 import { PART_LABELS } from './parts.ts';
 import type { PartId, Tier } from './salvage.ts';
@@ -145,24 +145,29 @@ export function scrapParts(kind: string, tier: Tier = 'scrap'): string[] {
 }
 
 /**
- * Parts fitted under an older slot list (GEAR changed since: e.g. the backpack got a cloth slot), laid onto `kind`'s
- * slots as they are now: each slot takes the first old part that fits it, and what fits nowhere is gone. Gear that
- * worked keeps working: a slot nothing fits gets its Scrap-tier part or material. Null if nothing needs to change.
+ * Parts fitted under an older slot list (GEAR changed since: e.g. the backpack got a cloth slot), laid onto the
+ * item's slots as they are now: each slot takes the first old part that fits it (its data with it), and what fits
+ * nowhere is gone. Gear that worked keeps working: a slot nothing fits gets its Scrap-tier part or material. Mutates;
+ * false if nothing needed to change.
  */
-export function refit(kind: string, parts: (string | null)[]): (string | null)[] | null {
-  const slots = GEAR[kind]?.slots;
-  if (!slots) return null;
-  if (parts.length === slots.length && parts.every((p, i) => p === null || fitsSlot(slots[i], p))) return null;
+export function refit(it: { kind: string; parts?: (string | null)[]; data?: ItemData }): boolean {
+  const slots = GEAR[it.kind]?.slots;
+  const parts = it.parts;
+  if (!slots || !parts) return false;
+  if (parts.length === slots.length && parts.every((p, i) => p === null || fitsSlot(slots[i], p))) return false;
   const worked = parts.every((p) => p !== null);
-  const left = [...parts];
-  const fallback = scrapParts(kind);
-  return slots.map((s, i) => {
-    const j = left.findIndex((p) => p !== null && fitsSlot(s, p));
-    if (j < 0) return worked ? fallback[i] : null;
+  const left = parts.map((_, i) => partAt(it, i));
+  const fallback = scrapParts(it.kind);
+  const now = slots.map((s, i): Part | null => {
+    const j = left.findIndex((p) => p !== null && fitsSlot(s, p.kind));
+    if (j < 0) return worked ? { kind: fallback[i] } : null;
     const p = left[j];
     left[j] = null;
     return p;
   });
+  it.parts = now.map((p) => p?.kind ?? null);
+  setFitted(it, now.map((p) => p?.data));
+  return true;
 }
 
 /** Every slot filled. */
@@ -398,9 +403,9 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
   const part = src?.[fi];
   const spec = target && GEAR[target.kind]?.slots[slot];
   if (!target || !src || !part || !spec || !fitsSlot(spec, part.kind) || from === at || fittedBox(from)) return false;
-  const parts = partsOf(target);
-  const old = parts[slot];
-  if (old === part.kind) return false;
+  const old = partAt(target, slot);
+  // The same part with the same data: nothing would change.
+  if (old?.kind === part.kind && JSON.stringify(old.data ?? null) === JSON.stringify(part.data ?? null)) return false;
   const ids = [...new Set([from, 'bag', at])];
   const b = cloneBoxes(boxes, ids);
   const s = b[from]!;
@@ -411,11 +416,12 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
   } else {
     // The old part lies down where the new one was (the same part, so the same size), else anywhere in the bag.
     s[fi] = null;
-    if (old && fitsAt(s, boxShape(from, b), fi, ...sizeOf(old, p.r))) s[fi] = { id: newId(), kind: old, n: 1, ...(p.r ? { r: true } : {}) };
+    if (old && fitsAt(s, boxShape(from, b), fi, ...sizeOf(old.kind, p.r))) s[fi] = { id: newId(), kind: old.kind, n: 1, ...(p.r ? { r: true } : {}), ...withData(old.data) };
     else if (old && !giveBack(b, old, newId)) return false;
   }
-  parts[slot] = part.kind;
-  b[at]![0] = { ...b[at]![0]!, parts };
+  const t = { ...b[at]![0]! };
+  setPart(t, slot, { kind: part.kind, ...withData(part.data) });
+  b[at]![0] = t;
   for (const id of ids) boxes[id]?.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }
@@ -425,15 +431,15 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
 export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, newId: () => number, at = 'bench'): boolean {
   const target = boxes[at]?.[0];
   if (!target || !boxes[to] || isCorpseBox(to) || to === at || fittedBox(to)) return false;
-  const parts = partsOf(target);
-  const kind = parts[slot];
-  if (!kind) return false;
+  const part = partAt(target, slot);
+  if (!part) return false;
   const b = cloneBoxes(boxes, [...new Set([to, at])]);
   const dst = b[to]!;
-  const tmp: Slots = [{ id: newId(), kind, n: 1 }];
+  const tmp: Slots = [{ id: newId(), kind: part.kind, n: 1, ...withData(part.data) }];
   if (!moveItem(tmp, 0, ONE, dst, ti, boxShape(to, b), undefined, newId) || tmp[0]) return false;
-  parts[slot] = null;
-  b[at]![0] = { ...b[at]![0]!, parts };
+  const t = { ...b[at]![0]! };
+  setPart(t, slot, null);
+  b[at]![0] = t;
   for (const id of new Set([to, at])) boxes[id]!.splice(0, boxes[id]!.length, ...b[id]!);
   return true;
 }
@@ -441,7 +447,7 @@ export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, ne
 /** A lone item, handed between boxes. */
 const ONE: Shape = { free: 1, cols: 1, rows: 0, grid: 0 };
 
-function giveBack(b: Boxes, kind: string, newId: () => number): boolean {
-  const tmp: Slots = [{ id: newId(), kind, n: 1 }];
+function giveBack(b: Boxes, part: Part, newId: () => number): boolean {
+  const tmp: Slots = [{ id: newId(), kind: part.kind, n: 1, ...withData(part.data) }];
   return !!b.bag && moveItem(tmp, 0, ONE, b.bag, -1, bagShape(b.equip), undefined, newId) && !tmp[0];
 }

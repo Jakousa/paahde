@@ -101,7 +101,7 @@ when you find it stale.
   shared wind (`windSpeed`: day cycle, weather, gusts, storms), windmill output (½ρAv³·Cp·η by bearings/motor,
   furling) and rotor speed, battery stations (per-battery kWh by tier, a Scrap battery = a car battery, 0.6 kWh; coils
   = the charger) and charging; `server/power.ts` runs each grid (what is wired together) each second, keeps each
-  battery's charge (`power` table), catches up the time the world slept; the panel shows W / kWh (`src/inventory.ts`),
+  battery's charge live and saves it in the battery itself (its ItemData `charge`, fitted in the station), catches up the time the world slept; the panel shows W / kWh (`src/inventory.ts`),
   cells' lamps the charge
 - `shared/wires.ts` — power lines: connectors (`CONNECTORS`, a socket ~3.2 m up on each electric thing; the power
   pole, scrap, is one up at 4.5 m), a wire per wiring coil (used up; its tier is its reach, `COIL_REACH`), `grids()`;
@@ -114,6 +114,9 @@ when you find it stale.
   workbench recipes, BUILD_TABLE, BOSS_SPOILS, HARVESTER_SPOILS) as plain data; tune drops and recipes there.
   `shared/lootRoll.ts` — the dice that roll them in the world (caches, stashes, finds and where they lie,
   kill/jet/harvester/boss drops), shared by the server and the economy simulator (`tools/econsim`, docs/econsim.md)
+- Item data — one item's own state (`ItemData` in `shared/items.ts`: a battery's `charge`, a shield's `worn`), one
+  JSON `data` column; it goes wherever the item goes, and items with any never stack. Fitted parts keep theirs in
+  `data.fitted` (`partAt` / `setPart`)
 - `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`,
   `shared/storage.ts`), Tab overlay in `src/inventory.ts`
 - `shared/gear.ts` — gear found broken and repaired with parts at the workbench (part slots, quality, what each does,

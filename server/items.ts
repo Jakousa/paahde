@@ -3,7 +3,7 @@
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
 import { bagShape, boxShape, EQUIP_SLOTS, fitPart, fittedBox, GEAR, holdsCargo, SHIELD_BREAKS, isGear, refit, scrapParts, shieldSaves, tierOf, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
-  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, settle, sizeOf, sortItems, stackOf, withData,
+  addItem, BAG_SLOTS, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, setPart, settle, sizeOf, sortItems, stackOf, stacks, withData,
   type Item, type ItemData, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
@@ -16,15 +16,15 @@ import { TEXT } from '../shared/text.ts';
 
 type Db = ReturnType<typeof openDb>;
 
-/** Pile stacks of one kind onto the first of them, up to its stack size (gear never stacks). Mutates; whether it did. */
+/** Pile stacks of one kind onto the first of them, up to its stack size (shared/items.ts stacks). Mutates; whether it did. */
 function mergeStacks(slots: Slots): boolean {
   let changed = false;
   for (let i = 0; i < slots.length; i++) {
     const a = slots[i];
-    if (!a || a.parts || a.n >= stackOf(a.kind)) continue;
+    if (!a || a.n >= stackOf(a.kind)) continue;
     for (let j = i + 1; j < slots.length && a.n < stackOf(a.kind); j++) {
       const b = slots[j];
-      if (!b || b.kind !== a.kind || b.parts) continue;
+      if (!b || !stacks(a, b)) continue;
       const k = Math.min(b.n, stackOf(a.kind) - a.n);
       a.n += k;
       b.n -= k;
@@ -91,11 +91,7 @@ export class ItemServer {
           changed = true;
         }
         // Gear whose slots changed since (shared/gear.ts refit).
-        const re = it?.parts && refit(it.kind, it.parts);
-        if (it && re) {
-          it.parts = re;
-          changed = true;
-        }
+        if (it && refit(it)) changed = true;
         // Stacks bigger than their kind allows now: one item per stack, the rest past the end for settle() to place.
         for (; it && it.n > stackOf(it.kind); it.n--) {
           slots.push({ id: this.newId(), kind: it.kind, n: 1 });
@@ -203,12 +199,13 @@ export class ItemServer {
     return true;
   }
 
-  /** Everything in `list` into the bag, all or none. False (and no change) if it doesn't all fit. Call inside a transaction. */
-  giveAll(browserId: string, list: { kind: string; n: number }[]): boolean {
+  /** Everything in `list` into the bag (one with `data` is one of its own), all or none. False (and no change) if it
+   *  doesn't all fit. Call inside a transaction. */
+  giveAll(browserId: string, list: { kind: string; n: number; data?: ItemData }[]): boolean {
     const bag = this.slots(browserId, 'bag');
     const s = bag.map((it) => it && { ...it });
     const shape = this.bagShape(browserId);
-    if (!list.every((m) => m.n <= 0 || addItem(s, m.kind, m.n, this.newId, shape))) return false;
+    if (!list.every((m) => m.n <= 0 || addItem(s, m.kind, m.n, this.newId, shape, m.data))) return false;
     bag.splice(0, bag.length, ...s);
     this.save(browserId, 'bag');
     return true;
@@ -288,6 +285,12 @@ export class ItemServer {
     return out;
   }
 
+  /** Change the item at `box`[slot] in place: `fn` changes it and says whether it did; the box is saved if so. */
+  edit(browserId: string, box: string, slot: number, fn: (it: Item) => boolean) {
+    const it = this.slots(browserId, box)[slot];
+    if (it && fn(it)) this.save(browserId, box);
+  }
+
   /** A building's item into its box (shared/gear.ts buildingBox), which must be empty. Call inside a transaction. */
   stow(box: string, it: Item) {
     const slots = this.slots('', box);
@@ -328,7 +331,7 @@ export class ItemServer {
     const it = this.slots(browserId, 'equip')[EQUIP_SLOTS.indexOf('armor')];
     if (it?.kind !== 'shield' || !it.parts) return false;
     const worn = (it.data?.worn ?? 0) + 1, broke = worn >= shieldSaves(tierOf(it));
-    if (broke) it.parts = it.parts.map((p, j) => (SHIELD_BREAKS.includes(j) ? null : p));
+    if (broke) for (const j of SHIELD_BREAKS) setPart(it, j, null);
     setData(it, 'worn', broke ? undefined : worn);
     this.save(browserId, 'equip');
     return broke;
@@ -337,7 +340,7 @@ export class ItemServer {
   spendPart(browserId: string, slot: number, i: number): boolean {
     const it = this.slots(browserId, 'bag')[slot];
     if (!it?.parts?.[i]) return false;
-    it.parts = it.parts.map((p, j) => (j === i ? null : p));
+    setPart(it, i, null);
     this.save(browserId, 'bag');
     return true;
   }
