@@ -407,6 +407,9 @@ const en = {
     /** The public games (the browser). */
     browse: 'Public games',
     noGames: 'No public games right now',
+    noMine: 'No games yet',
+    /** Ordering the public games. */
+    sortBy: { online: 'Players', name: 'Name', lives: 'Lives' },
     refresh: 'Refresh',
     /** Joining a game by its code (the id in its link). */
     code: 'Game code',

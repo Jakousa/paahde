@@ -152,12 +152,12 @@ export type ClientMsg =
 
 /** A death, as chat shows it (ServerMsg 'obituary'). */
 /** How a world is doing, for the main menu's lists and the lobby (server/index.ts): its name, public (in the browser)
- *  or not, locked (password), most players at once, and for your own games (POST api/worlds/mine) your name there
+ *  or not, locked (password), most players at once, and for your own games (POST api/worlds/mine) your name and colour there
  *  and how long you've played (ms). */
 export type WorldStats = {
   id: string; name: string; public: boolean; locked: boolean; max: number;
   lives: number; beaten: number; players: number; online: number;
-  you?: string; played?: number;
+  you?: string; color?: number; played?: number;
 };
 export type Obituary = { t: 'obituary'; id: number; color: number; name: string; cause: DeathCause; at: number };
 /** Deaths sent to a player as they join (the newest). */

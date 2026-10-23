@@ -149,8 +149,9 @@ There are no tests yet; `npm run build` is the check CI runs on PRs.
   (in the main menu's browser) or private (link or code), with a max of players and maybe a password
   (`server/registry.ts`, `data/registry.db`); a game's URL opens its lobby first (`src/lobby.ts`)
 - `shared/names.ts` — names others see (game names, player names): allowed characters and the slur/swear filter
-  (`obscenity` + our list), checked on the client as typed and by the server. Your name and colour are chosen on the main
-  menu or lobby and kept in the browser (`src/profile.ts`), sent in `hello`; a name is required (server closes 4422)
+  (`obscenity` + our list), checked on the client as typed and by the server. Your name and colour are chosen in a
+  game's lobby (`src/profile.ts`, remembered by the browser as the default), sent in `hello`; a name is required (server
+  closes 4422). They're fixed per game after the first join (`server/world.ts` `join` keeps the stored ones)
 - `server/index.ts` — front server: static files, `POST /api/worlds` (make a game), `GET /api/browse` (public games),
   `GET /api/worlds/<id>` (lobby), `POST /api/worlds/<id>/key` (password -> key), `POST /api/worlds/mine` (the landing
   page's list of worlds this browser joined, kept in localStorage by `src/landing.ts`, with your name and play time

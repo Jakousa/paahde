@@ -265,11 +265,12 @@ wss.on('connection', (ws) => {
 
 function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown, wantedColor: unknown) {
   if (typeof browserId !== 'string' || !UUID.test(browserId)) return ws.close(1008, 'bad browserId');
-  // A name is a must, and one fit to show (the client checks too: this is someone going round it).
-  const named = checkName(typeof wanted === 'string' ? wanted.replace(/[\p{Cc}\p{Cf}]/gu, ' ') : wanted, PLAYER_NAME);
-  if (!named.ok) return ws.close(4422, 'bad name');
   const row = db.getPlayer(browserId);
-  const color = isColor(wantedColor) ? wantedColor : (row?.color ?? Math.floor(Math.random() * 0xffffff));
+  // Your name and colour in a world are chosen once, on your first join (the lobby shows them locked after that).
+  // Before that a name is a must, and one fit to show (the client checks too: this is someone going round it).
+  const named = row?.name ? { ok: true as const, name: row.name } : checkName(typeof wanted === 'string' ? wanted.replace(/[\p{Cc}\p{Cf}]/gu, ' ') : wanted, PLAYER_NAME);
+  if (!named.ok) return ws.close(4422, 'bad name');
+  const color = row?.name ? row.color : isColor(wantedColor) ? wantedColor : (row?.color ?? Math.floor(Math.random() * 0xffffff));
   // Heights aren't saved: someone who left over the bunker (or in it) starts down in it.
   const atBase = spawn === 'base';
   let state = row && !atBase && !overBase(row.x, row.z, 0.5) ? spawnState(row.x, row.z) : spawnState();

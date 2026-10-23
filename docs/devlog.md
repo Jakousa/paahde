@@ -1965,5 +1965,10 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   squeezed out, plus a short list of our own. The client checks as you type; the server checks again (`hello` with a
   bad or missing name is closed with 4422).
 - **Colour:** any RGB for now, a colour well and a dice button; the server takes it from `hello` and saves it.
+- **Menu views** (follow-up): the start screen has Join, Create and Options; Join has tabs, "Your games" (default) and
+  "Public games" (sort by players, name or lives; refresh), with the code box in both; Create is the settings form.
+  Name and colour moved to the lobby only, and they are **fixed per game**: on your first join you choose them, after
+  that the lobby shows them locked (`POST api/worlds/mine` returns your name and colour there) and the server ignores
+  what `hello` says for a player it already has a name for.
 - Gaps: no way to change a game's settings or password after it's made; a password-locked game's key never expires;
   the minigame's leaderboard names aren't filtered.

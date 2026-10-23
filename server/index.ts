@@ -91,9 +91,10 @@ function stats(id: string, browserId?: string): WorldStats | null {
     };
     if (browserId) {
       try {
-        const me = db.prepare('SELECT name, played FROM players WHERE id = ?').get(browserId) as { name: string | null; played: number } | undefined;
+        const me = db.prepare('SELECT name, color, played FROM players WHERE id = ?').get(browserId) as { name: string | null; color: number; played: number } | undefined;
         s.you = me?.name ?? '';
         s.played = me?.played ?? 0;
+        if (me?.name) s.color = me.color;
       } catch {} // a world from before play time was kept, not opened since
     }
     return s;

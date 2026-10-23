@@ -1,9 +1,9 @@
-// The landing page (no world in the URL) and the end screens over the game (game over, unknown world): the title,
-// your name and colour (src/profile.ts), the games this browser joined (kept in localStorage when the server says
-// hello) with how each is doing and how long you've played there, the public games to browse, a box to join a game by
-// its code, and a button that makes a new game (name, public or private, most players, a password: server/index.ts
-// /api/worlds) and shows its link to copy and share, and to join from. Every game's link opens its lobby first
-// (src/lobby.ts). Also the victory screen (every boss beaten), which goes away again: the world plays on. The landing
+// The landing page (no world in the URL) and the end screens over the game (game over, unknown world), in views:
+// the start (Join, Create, Options); Join, with tabs for the games this browser joined (kept in localStorage when the
+// server says hello, with how each is doing, your name there and how long you've played) and the public games
+// (sortable), and in both a box to join a game by its code; Create, a new game's settings (name, public or private,
+// most players, a password: server/index.ts /api/worlds), then its link to copy and share, and to join from. Every
+// game's link opens its lobby (src/lobby.ts), where your name and colour are chosen. Also the victory screen (every boss beaten), which goes away again: the world plays on. The landing
 // page plays the desert guitar (the game's outdoor music, src/music.ts) once the browser lets it, after the first
 // click or key.
 import { audio } from './audio';
@@ -13,7 +13,7 @@ import type { WorldStats } from '../shared/protocol.ts';
 import { TEXT } from '../shared/text.ts';
 import { WORLD_ID, WORLD_ID_RE } from '../shared/world.ts';
 import { MENU_CSS, bindOptions, optionsHtml } from './options';
-import { getBrowserId, profileForm, setWorldKey } from './profile';
+import { getBrowserId, setWorldKey } from './profile';
 
 export const LANDING_CSS = `
 #landing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: safe center; color: #e8d2ae;
@@ -45,6 +45,8 @@ export const LANDING_CSS = `
 #landing button:disabled { opacity: .5; cursor: default; }
 #landing button:disabled:hover { background: rgba(42, 18, 10, .55); color: #fff4d0; }
 #landing .profile { display: grid; gap: 6px; justify-items: center; }
+#landing .profile.locked input { cursor: default; background: rgba(255, 244, 208, .7); border-right: 1px solid rgba(255, 244, 208, .5); }
+#landing .profile.locked input[type=color] { border-radius: 0 2px 2px 0; }
 #landing .why { min-height: 1em; font: 12px var(--mono); color: #ffb39a; text-shadow: 0 1px 2px rgba(60, 20, 5, .6); }
 #landing .buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 #landing .make { display: grid; gap: 10px; justify-items: center; }
@@ -53,11 +55,12 @@ export const LANDING_CSS = `
 #landing .seg .n { min-width: 2.5em; font: 15px var(--mono); color: #fff4d0; }
 #landing .seg .label { font: 12px var(--mono); letter-spacing: .15em; text-transform: uppercase; opacity: .85; }
 #landing .games { display: grid; gap: 8px; width: min(88vw, 440px); }
-#landing .games h2 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 2px;
-  font: 12px var(--title); letter-spacing: .25em; text-transform: uppercase; color: rgba(255, 244, 208, .75); }
-#landing .games h2 button { padding: 2px 10px; font-size: 11px; letter-spacing: .15em; }
-#landing .games .none { font: 12px var(--mono); opacity: .7; }
-#landing .games ol { display: grid; gap: 6px; margin: 0; padding: 0 2px; list-style: none; max-height: 24vh; overflow-y: auto; }
+#landing .view, #landing .joinView { display: grid; gap: 16px; justify-items: center; }
+#landing .tabs button { padding: 10px 22px; }
+#landing .sorts button { padding: 4px 12px; font-size: 11px; letter-spacing: .15em; }
+#landing .sorts[hidden] { display: none; }
+#landing .games .none { font: 12px var(--mono); opacity: .7; padding: 12px 0; }
+#landing .games ol { display: grid; gap: 6px; margin: 0; padding: 0 2px; list-style: none; max-height: 44vh; overflow-y: auto; }
 #landing .games a { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; padding: 10px 14px; text-align: left;
   color: #fff4d0; text-decoration: none; background: rgba(42, 18, 10, .55); border: 1px solid rgba(255, 244, 208, .25);
   border-radius: 2px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); transition: background .25s, border-color .25s, color .25s; }
@@ -101,19 +104,47 @@ export function landing(why?: 'over' | 'missing') {
   el.addEventListener('keydown', (e) => e.stopPropagation());
   document.body.append(el);
   if (!why) music(el);
-  const panel = el.querySelector<HTMLElement>('.panel')!;
-  panel.append(profileForm().el);
-  const mine = document.createElement('div');
-  const pub = document.createElement('div');
-  panel.append(mine, pub, codeBox());
-  recent(mine);
-  browse(pub);
-  const buttons = document.createElement('div');
-  buttons.className = 'buttons';
-  buttons.innerHTML = `<button class="start">${TEXT.landing.start}</button>${why ? '' : `<button class="optionsBtn">${TEXT.menu.options}</button>`}`;
-  panel.append(buttons);
-  buttons.querySelector('.optionsBtn')?.addEventListener('click', options);
-  buttons.querySelector('.start')!.addEventListener('click', () => make(buttons));
+  const view = document.createElement('div');
+  view.className = 'view';
+  el.querySelector('.panel')!.append(view);
+  const show = (v: HTMLElement) => view.replaceChildren(v);
+  const intro = () => {
+    const buttons = document.createElement('div');
+    buttons.className = 'buttons';
+    buttons.innerHTML = `<button class="join">${TEXT.landing.join}</button><button class="create">${TEXT.landing.create}</button>${why ? '' : `<button class="optionsBtn">${TEXT.menu.options}</button>`}`;
+    buttons.querySelector('.join')!.addEventListener('click', () => show(joinView(() => show(intro()))));
+    buttons.querySelector('.create')!.addEventListener('click', () => show(make(() => show(intro()))));
+    buttons.querySelector('.optionsBtn')?.addEventListener('click', options);
+    return buttons;
+  };
+  show(intro());
+}
+
+/** Joining: your games or the public ones (tabs), the box for a game's code, and back to the start. */
+function joinView(back: () => void): HTMLElement {
+  const el = document.createElement('div');
+  el.className = 'joinView';
+  el.innerHTML = `<div class="seg tabs"><button class="mine">${TEXT.landing.recent}</button><button class="pub">${TEXT.landing.browse}</button></div>
+<div class="code"></div><div class="seg sorts"></div><div class="games"></div><div class="buttons"><button class="back">${TEXT.landing.back}</button></div>`;
+  el.querySelector('.code')!.replaceWith(codeBox());
+  const mine = el.querySelector<HTMLButtonElement>('.mine')!;
+  const pub = el.querySelector<HTMLButtonElement>('.pub')!;
+  const sorts = el.querySelector<HTMLElement>('.sorts')!;
+  const box = el.querySelector<HTMLElement>('.games')!;
+  const tab = (isPublic: boolean) => {
+    mine.classList.toggle('on', !isPublic);
+    pub.classList.toggle('on', isPublic);
+    sorts.replaceChildren();
+    sorts.hidden = !isPublic;
+    box.replaceChildren();
+    if (isPublic) browse(box, sorts);
+    else recent(box);
+  };
+  mine.addEventListener('click', () => tab(false));
+  pub.addEventListener('click', () => tab(true));
+  el.querySelector('.back')!.addEventListener('click', back);
+  tab(false);
+  return el;
 }
 
 const RECENT_KEY = 'dadajam.recent';
@@ -166,28 +197,23 @@ function gameRow(s: WorldStats, when: string, you?: string): HTMLLIElement {
   return li;
 }
 
-/** A titled list of games; `refresh` adds a button that fills it again. */
-function gameList(box: HTMLElement, title: string, rows: HTMLLIElement[], empty?: string, refresh?: () => void) {
-  box.className = 'games';
-  box.innerHTML = `<h2><span></span></h2><ol></ol>`;
-  box.querySelector('h2 span')!.textContent = title;
-  if (refresh) {
-    const b = document.createElement('button');
-    b.textContent = TEXT.landing.refresh;
-    b.addEventListener('click', refresh);
-    box.querySelector('h2')!.append(b);
+/** A list of games, or `empty` if there are none. */
+function gameList(box: HTMLElement, rows: HTMLLIElement[], empty: string) {
+  if (!rows.length) {
+    const none = document.createElement('div');
+    none.className = 'none';
+    none.textContent = empty;
+    return box.replaceChildren(none);
   }
-  const ol = box.querySelector('ol')!;
-  if (!rows.length && empty) {
-    ol.outerHTML = `<div class="none"></div>`;
-    box.querySelector('.none')!.textContent = empty;
-  } else ol.append(...rows);
+  const ol = document.createElement('ol');
+  ol.append(...rows);
+  box.replaceChildren(ol);
 }
 
 /** The games this browser joined before, once the server says how they're doing; worlds that are gone drop out. */
 async function recent(box: HTMLElement) {
   const list = joined().filter((j) => j.id !== WORLD_ID);
-  if (!list.length) return;
+  if (!list.length) return gameList(box, [], TEXT.landing.noMine);
   let stats: WorldStats[];
   try {
     // Posted: the browser id (who you are in each world, for your name and play time there) stays out of URLs.
@@ -204,21 +230,29 @@ async function recent(box: HTMLElement) {
   const byId = new Map(stats.map((s) => [s.id, s]));
   saveJoined(joined().filter((j) => j.id === WORLD_ID || byId.has(j.id)));
   const rows = list.filter((j) => byId.has(j.id));
-  if (!rows.length || !box.isConnected) return;
+  if (!box.isConnected) return;
   gameList(
     box,
-    TEXT.landing.recent,
     rows.map((j) => {
       const s = byId.get(j.id)!;
       const played = Math.floor((s.played ?? 0) / 60_000);
       const you = s.you || played ? TEXT.landing.you(s.you ?? '', played) : undefined;
       return gameRow(s, TEXT.landing.ago(Math.floor((Date.now() - j.at) / 60_000)), you);
     }),
+    TEXT.landing.noMine,
   );
 }
 
-/** The public games still being played, busiest first (server/index.ts /api/browse). */
-async function browse(box: HTMLElement) {
+type Sort = keyof typeof TEXT.landing.sortBy;
+const SORTS: Record<Sort, (a: WorldStats, b: WorldStats) => number> = {
+  online: (a, b) => b.online - a.online || b.players - a.players,
+  name: (a, b) => a.name.localeCompare(b.name),
+  lives: (a, b) => b.lives - a.lives,
+};
+let sort: Sort = 'online';
+
+/** The public games still being played (server/index.ts /api/browse), in the order picked in `sorts`. */
+async function browse(box: HTMLElement, sorts: HTMLElement) {
   let list: WorldStats[];
   try {
     const res = await fetch('api/browse');
@@ -228,13 +262,23 @@ async function browse(box: HTMLElement) {
     return;
   }
   if (!box.isConnected) return;
-  gameList(
-    box,
-    TEXT.landing.browse,
-    list.map((s) => gameRow(s, TEXT.landing.seats(s.online, s.max))),
-    TEXT.landing.noGames,
-    () => browse(box),
-  );
+  const draw = () => {
+    sorts.replaceChildren(
+      ...(Object.keys(SORTS) as Sort[]).map((k) => {
+        const b = document.createElement('button');
+        b.textContent = TEXT.landing.sortBy[k];
+        b.classList.toggle('on', k === sort);
+        b.addEventListener('click', () => ((sort = k), draw()));
+        return b;
+      }),
+    );
+    const again = document.createElement('button');
+    again.textContent = TEXT.landing.refresh;
+    again.addEventListener('click', () => browse(box, sorts));
+    sorts.append(again);
+    gameList(box, [...list].sort(SORTS[sort]).map((s) => gameRow(s, TEXT.landing.seats(s.online, s.max))), TEXT.landing.noGames);
+  };
+  draw();
 }
 
 /** Join a game by its code (the id in its link; a whole link pasted works too): to its lobby. */
@@ -258,8 +302,8 @@ function codeBox(): HTMLElement {
   return form;
 }
 
-/** The new game's settings in place of the buttons: name, public or private, most players, a password. */
-function make(buttons: HTMLElement) {
+/** Making a game: name, public or private, most players, a password; then its link to share and join. */
+function make(back: () => void): HTMLElement {
   const form = document.createElement('form');
   form.className = 'make';
   form.innerHTML = `<input class="gname" maxlength="${GAME_NAME.max}" autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other">
@@ -293,7 +337,7 @@ function make(buttons: HTMLElement) {
     name.classList.remove('bad');
     why.textContent = '';
   });
-  form.querySelector('.back')!.addEventListener('click', () => form.replaceWith(buttons));
+  form.querySelector('.back')!.addEventListener('click', back);
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const c = checkName(name.value, GAME_NAME);
@@ -324,8 +368,8 @@ function make(buttons: HTMLElement) {
       create.disabled = false;
     }
   });
-  buttons.replaceWith(form);
-  name.focus();
+  queueMicrotask(() => name.focus());
+  return form;
 }
 
 /** The options over the main menu, to set up before joining: the Esc menu's own view (src/options.ts). */

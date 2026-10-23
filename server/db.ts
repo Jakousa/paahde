@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { Obituary } from '../shared/protocol.ts';
 import { addItem, BAG_COLS, BAG_ROWS, BAG_SLOTS, HOTBAR, OLD_COILS, OLD_SCRAP, SCRAP, WIRING, type Item, type Slots } from '../shared/items.ts';
 
-export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number };
+export type PlayerRow = { id: string; color: number; x: number; z: number; heat: number; sips: number; name?: string | null };
 
 export function openDb(path: string) {
   mkdirSync(dirname(path), { recursive: true });
@@ -35,7 +35,7 @@ export function openDb(path: string) {
   // v6: time played in this world (ms, while in the game), shown on the main menu's list of your games.
   if (!cols.some((c) => c.name === 'played')) db.exec('ALTER TABLE players ADD COLUMN played INTEGER NOT NULL DEFAULT 0');
 
-  const get = db.prepare('SELECT id, color, x, z, heat, sips FROM players WHERE id = ?');
+  const get = db.prepare('SELECT id, color, x, z, heat, sips, name FROM players WHERE id = ?');
   const putName = db.prepare('UPDATE players SET name = ? WHERE id = ?');
   const upsert = db.prepare(`
     INSERT INTO players (id, color, x, y, z, heat, sips, played) VALUES (?, ?, ?, 0, ?, ?, ?, ?)

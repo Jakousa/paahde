@@ -57,8 +57,9 @@ export const setWorldKey = (world: string, key: string) => write(keyOf(world), k
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
-/** The name box, colour well and dice; `changed` hears whether the name is fit after every edit. */
-export function profileForm(changed?: (ok: boolean) => void) {
+/** The name box, colour well and dice; `changed` hears whether the name is fit after every edit. `locked`: the name
+ *  and colour you already have in a game (chosen on your first join there), shown and not to be changed. */
+export function profileForm(changed?: (ok: boolean) => void, locked?: { name: string; color: number }) {
   const el = document.createElement('div');
   el.className = 'profile';
   el.innerHTML = `<div class="row"><input class="name" maxlength="${NAME_MAX}" autocomplete="off" spellcheck="false"
@@ -72,6 +73,14 @@ data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><input 
   dice.textContent = TEXT.landing.randomColour;
   name.value = myName();
   color.value = hex(myColor());
+  if (locked) {
+    name.value = locked.name;
+    color.value = hex(locked.color);
+    name.disabled = color.disabled = true;
+    dice.remove();
+    el.classList.add('locked');
+    return { el, flag: () => true };
+  }
 
   const check = (show: boolean) => {
     const c = checkName(name.value, PLAYER_NAME);
