@@ -150,9 +150,10 @@ when you find it stale.
   the harvester, the bosses): how many come at once, where they're met, what one leaves (`drops`: the server's kill
   drops go through it) and rough fight odds by weapon (read by the economy simulator; tune them there)
 - `shared/guardians.ts` — walkers (rare giant guardians with cannons, player-sized crawlers at crash sites) + night
-  searchlight drones (constants, beam test); simulated in `server/guardians.ts`, legs are client IK in
-  `src/world/guardians.ts`, bolts `src/world/bolts.ts`, drones `src/world/drones.ts`, glue/sound/shake in
-  `src/guardians.ts`, `src/guardianSound.ts`
+  searchlight drones (constants, beam test); walkers, bolts and missiles simulated in `server/guardians.ts`, which ticks
+  the drones (`server/drones.ts`; their beams call the guardians, `alert`), what both share in `server/bots.ts`; legs
+  are client IK in `src/world/guardians.ts`, bolts `src/world/bolts.ts`, drones `src/world/drones.ts`, glue/sound/shake
+  in `src/guardians.ts`, `src/guardianSound.ts`
 - `shared/jets.ts` — fixed-wing drones: high fast flyovers (straight or big circles), day and night; 3 rifle hits and
   it glides down; scheduled by `server/jets.ts`, drawn by `src/world/jets.ts`, roar in `src/guardianSound.ts`
   (`jets`). Two kinds (`JetKind`, shared/jetbreak.ts): the fixed-wing drone (MQ-9-like, 18 m span, no engine: its
@@ -193,7 +194,7 @@ when you find it stale.
   shared/gear.ts; model `tools/models/pistol.py`), the walkers' red weak points (all shot: it dies) and drone hits;
   aim, sway, recoil, scope and the hitscan in `src/rifle.ts`, beam/sparks/smoke `src/world/zaps.ts`, sounds
   `src/rifleSound.ts`, targets and the collapse in `src/world/guardians.ts`, checked by `GuardianServer.shoot`
-  (server/guardians.ts)
+  (server/guardians.ts) and `DroneServer.shoot` (server/drones.ts)
 - `shared/jammer.ts` — the jammer (gear, found broken and repaired): hold it 3.5 s on a jet or drone in its cone and it
   glides down whole; the lock is added up by `onJam` (server/world.ts), aimed and heard in `src/jammer.ts`, model
   `src/models/jammer.ts`

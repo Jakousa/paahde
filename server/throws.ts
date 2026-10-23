@@ -1,5 +1,5 @@
 // Thrown scrap in flight (shared/throw.ts): launched from a player's hand, flown on its arc every server tick, struck
-// against the flying drones (server/guardians.ts) and the sand. A drone it hits takes a hit and the junk bounces off;
+// against the flying drones (server/drones.ts) and the sand. A drone it hits takes a hit and the junk bounces off;
 // where it comes down it becomes dropped loot (server/loot.ts), or, over the base where nothing can lie, goes back
 // into the thrower's bag.
 import { canDropAt } from '../shared/loot.ts';
@@ -56,11 +56,11 @@ export class ThrowServer {
           return false;
         }
         if (f.spent) continue;
-        const d = this.guardians.droneNear(_p.x, _p.y, _p.z, THROW_HIT);
+        const d = this.guardians.drones.near(_p.x, _p.y, _p.z, THROW_HIT);
         if (d < 0) continue;
         // A hit: the drone takes it, and the junk glances off back the way it came, falling; it hits nothing more.
         const vx = f.path.vx, vz = f.path.vz, vy = f.path.vy - f.t * THROW_G, sp = Math.hypot(vx, vz) || 1;
-        this.guardians.strikeDrone(d, vx / sp, vz / sp, now, f.by);
+        this.guardians.drones.strike(d, vx / sp, vz / sp, now, f.by);
         f.path = { time: now, x: _p.x, y: _p.y, z: _p.z, vx: -vx * BOUNCE, vy: Math.min(0, vy) * BOUNCE, vz: -vz * BOUNCE };
         f.t = 0;
         f.spent = true;
