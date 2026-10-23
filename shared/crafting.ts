@@ -49,13 +49,18 @@ export const WRENCH = 'wrench';
 /** How many items in `slots` match an ingredient. */
 export const countMatching = (slots: Slots, ing: Ingredient) => slots.reduce((n, it) => n + (it && ing.match(it.kind) ? it.n : 0), 0);
 
-/** Slot indexes to use up for a recipe (one entry per item; backpack before hotbar, worst tier first), or null if short. */
-export function pickIngredients(slots: Slots, recipe: Recipe): number[] | null {
+/**
+ * Indexes into `items` to use up for a recipe (one entry per item used), or null if short. The worst tier goes first,
+ * then the order `before` sets (equal: as listed). Gear (anything with parts) is never an ingredient. The economy
+ * simulator (tools/econsim) picks from its chest with this too.
+ */
+export function pickFrom(items: readonly ({ kind: string; n: number; parts?: unknown } | null)[], recipe: Recipe,
+  before: (a: number, b: number) => number = () => 0): number[] | null {
   const used = new Map<number, number>();
   const out: number[] = [];
   for (const ing of recipe.needs) {
-    const cands = slots.map((it, i) => ({ it, i })).filter((c) => c.it && ing.match(c.it.kind))
-      .sort((a, b) => tierRank(a.it!.kind) - tierRank(b.it!.kind) || (b.i >= HOTBAR ? 1 : 0) - (a.i >= HOTBAR ? 1 : 0) || b.i - a.i);
+    const cands = items.map((it, i) => ({ it, i })).filter((c) => c.it && !c.it.parts && ing.match(c.it.kind))
+      .sort((a, b) => tierRank(a.it!.kind) - tierRank(b.it!.kind) || before(a.i, b.i));
     let need = ing.n;
     for (const c of cands) {
       while (need > 0 && (used.get(c.i) ?? 0) < c.it!.n) {
@@ -67,6 +72,18 @@ export function pickIngredients(slots: Slots, recipe: Recipe): number[] | null {
     if (need > 0) return null;
   }
   return out;
+}
+
+/** Slot indexes to use up for a recipe (one entry per item; backpack before hotbar, worst tier first), or null if short. */
+export const pickIngredients = (slots: Slots, recipe: Recipe): number[] | null =>
+  pickFrom(slots, recipe, (a, b) => (b >= HOTBAR ? 1 : 0) - (a >= HOTBAR ? 1 : 0) || b - a);
+
+/** What gear `kind` comes with in each slot when made from `used`: the first of them that fits it (consumes `used`). */
+export function fitUsed<P extends { kind: string }>(kind: string, used: P[]): (P | null)[] {
+  return (GEAR[kind]?.slots ?? []).map((slot) => {
+    const j = used.findIndex((p) => fitsSlot(slot, p.kind));
+    return j < 0 ? null : used.splice(j, 1)[0];
+  });
 }
 
 /** Use up what `recipe` needs from `slots`. Mutates; false (no change) if something is short. */
@@ -103,10 +120,7 @@ export function craft(slots: Slots, id: string, newId: () => number, shape: Shap
   const it = gear && s.find((x) => x?.id === made);
   if (it) {
     // Each slot takes an ingredient that fits it, its data with it.
-    gear.slots.forEach((slot, i) => {
-      const j = used.findIndex((p) => fitsSlot(slot, p.kind));
-      setPart(it, i, j < 0 ? null : used.splice(j, 1)[0]);
-    });
+    fitUsed(recipe.makes, used).forEach((p, i) => setPart(it, i, p));
   }
   slots.splice(0, slots.length, ...s);
   return true;

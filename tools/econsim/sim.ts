@@ -48,6 +48,12 @@ const SMITHED: Partial<Record<PartId, string>> = { gear: 'gear_scrap', bearing: 
 /** The buildings put up with the wrench (shared/crafting.ts), none before there were. */
 const BUILDS: Record<string, Recipe> = (crafting as { BUILDS?: Record<string, Recipe> }).BUILDS ?? {};
 const WRENCH = 'wrench';
+/** The items a recipe uses up from the chest (indexes; shared/crafting.ts), gear never among them. */
+const pickFrom: (items: Item[], r: Recipe) => number[] | null = (crafting as { pickFrom?: typeof crafting.pickFrom }).pickFrom
+  ?? ((items, r) => crafting.pickIngredients(items.map((it) => (it.parts ? null : it)), r));
+/** What gear `kind` made from `used` comes with in its slots (shared/crafting.ts). */
+const fitUsed: <P extends { kind: string }>(kind: string, used: P[]) => (P | null)[] = (crafting as { fitUsed?: typeof crafting.fitUsed }).fitUsed
+  ?? ((kind, used) => GEAR[kind].slots.map((s) => { const j = used.findIndex((p) => fitsSlot(s, p.kind)); return j < 0 ? null : used.splice(j, 1)[0]; }));
 const WIRING = 'wiring';
 /** The base materials (shared/items.ts): stacked in the chest, a need of their own. */
 const MATERIALS = [SCRAP, CLOTH, WIRING];
@@ -222,8 +228,11 @@ export class Sim {
   /** Take one item of `key` out of the chest: the best tier, or the worst (crafting). */
   private takeFromChest(key: string, best = true): string | null {
     const cands = this.chest.filter((it) => keyOf(it.kind) === key && !it.parts).sort((a, b) => (tierNum(b.kind) - tierNum(a.kind)) * (best ? 1 : -1));
-    const it = cands[0];
-    if (!it) return null;
+    return cands[0] ? this.takeItem(cands[0]) : null;
+  }
+  /** Take one of chest item `it` out. */
+  private takeItem(it: Item): string {
+    const key = keyOf(it.kind);
     if (--it.n <= 0) this.chest.splice(this.chest.indexOf(it), 1);
     this.needCache = null;
     if (parsePart(it.kind) || it.kind === WIRING) this.out.used[key] = (this.out.used[key] ?? 0) + 1;
@@ -815,7 +824,6 @@ export class Sim {
     this.needCache = null;
   }
 
-  /** Craft recipe `id` from the chest (worst tiers first, shared/crafting.ts); gear crafted comes with its parts fitted. */
   /** What the open goals before `goal` still want from the chest, by need key: a slot of gear not found yet counts too. */
   private reserved(goal: string): Map<string, number> {
     const out = new Map<string, number>();
@@ -835,29 +843,16 @@ export class Sim {
     const r = RECIPES[id] ?? BUILDS[id];
     // A building goes up with the wrench (src/placing.ts).
     if (BUILDS[id] && !this.gearOf(WRENCH).length) return false;
-    const take: string[] = [];
-    const counts = new Map<string, number>();
-    for (const it of this.chest) if (!it.parts) counts.set(it.kind, (counts.get(it.kind) ?? 0) + it.n);
+    // Earlier goals' share first; then which items it takes, and how gear made is fitted, is the game's (shared/crafting.ts).
     for (const ing of r.needs) {
-      const key = keyOf([...counts.keys()].find((k) => ing.match(k)) ?? '');
+      const key = keyOf(this.chest.find((it) => !it.parts && ing.match(it.kind))?.kind ?? '');
       if (ing.n > this.chestCount(key) - (reserved.get(key) ?? 0)) return false;
     }
-    for (const ing of r.needs) {
-      let n = ing.n;
-      for (const [k, c] of [...counts].sort((a, b) => tierNum(a[0]) - tierNum(b[0]))) {
-        if (!ing.match(k)) continue;
-        const use = Math.min(c, n);
-        counts.set(k, c - use);
-        n -= use;
-        for (let i = 0; i < use; i++) take.push(k);
-        if (!n) break;
-      }
-      if (n) return false;
-    }
-    const used = take.map((k) => this.takeFromChest(keyOf(k), false)!);
+    const pick = pickFrom(this.chest, r);
+    if (!pick) return false;
+    const used = pick.map((i) => this.chest[i]).map((it) => this.takeItem(it));
     this.t += COSTS.benchS;
-    const gear = GEAR[r.makes];
-    if (gear) this.toChest(r.makes, 1, gear.slots.map((s) => { const j = used.findIndex((k) => fitsSlot(s, k)); return j < 0 ? null : used.splice(j, 1)[0]; }));
+    if (GEAR[r.makes]) this.toChest(r.makes, 1, fitUsed(r.makes, used.map((kind) => ({ kind }))).map((p) => p?.kind ?? null));
     else this.toChest(r.makes);
     return true;
   }
