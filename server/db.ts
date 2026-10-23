@@ -195,6 +195,10 @@ export function openDb(path: string) {
   const insertItem = (it: Item, owner: string, box: string, slot: number) =>
     insertRow.run(it.id, it.kind, it.n, owner, box, slot, it.parts ? JSON.stringify(it.parts) : null, it.r ? 1 : 0, jsonData(it.data));
   const maxItemId = db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM items');
+  const deleteRow = db.prepare('DELETE FROM items WHERE id = ? AND owner = ? AND box = ?');
+  const deleteId = db.prepare('DELETE FROM items WHERE id = ?');
+  const rowSig = (kind: string, n: number, slot: number, parts: string | null, r: number, data: string | null) =>
+    JSON.stringify([kind, n, slot, parts, r, data]);
   db.exec('CREATE TABLE IF NOT EXISTS gear_kits (player_id TEXT PRIMARY KEY, given_at INTEGER NOT NULL)');
   const getGearKit = db.prepare('SELECT 1 FROM gear_kits WHERE player_id = ?');
   const putGearKit = db.prepare('INSERT OR IGNORE INTO gear_kits (player_id, given_at) VALUES (?, ?)');
@@ -495,10 +499,31 @@ export function openDb(path: string) {
     respawnScrap: (ix: number, iz: number, i: number) => deleteTaken.run(ix, iz, i),
     loadBox: (owner: string, box: string) => (boxRows.all(owner, box) as { id: number; kind: string; n: number; slot: number; parts: string | null; r: number; data: string | null }[])
       .map((r) => ({ ...r, parts: r.parts ? (JSON.parse(r.parts) as (string | null)[]) : undefined, r: r.r === 1, data: parseData(r.data) })),
-    /** Rewrite whole boxes in one transaction (an item moving between them keeps its id). */
+    /**
+     * Save whole boxes in one transaction (an item moving between them keeps its id), writing only the rows that
+     * changed: rows gone from a box or changed are deleted first (by id, within their box), then the changed ones
+     * inserted, so moves and swaps never trip UNIQUE (owner, box, slot).
+     */
     saveBoxes: (boxes: { owner: string; box: string; slots: Slots }[]) => tx(() => {
-      for (const b of boxes) clearBox.run(b.owner, b.box);
-      for (const b of boxes) b.slots.forEach((it, slot) => it && insertItem(it, b.owner, b.box, slot));
+      const drop: { id: number; owner: string; box: string }[] = [];
+      const put: { it: Item; owner: string; box: string; slot: number }[] = [];
+      for (const b of boxes) {
+        const had = new Map<number, string>();
+        for (const r of boxRows.all(b.owner, b.box) as { id: number; kind: string; n: number; slot: number; parts: string | null; r: number; data: string | null }[])
+          had.set(r.id, rowSig(r.kind, r.n, r.slot, r.parts, r.r, r.data));
+        const keep = new Set<number>();
+        b.slots.forEach((it, slot) => {
+          if (!it) return;
+          const sig = rowSig(it.kind, it.n, slot, it.parts ? JSON.stringify(it.parts) : null, it.r ? 1 : 0, jsonData(it.data));
+          if (had.get(it.id) === sig) keep.add(it.id);
+          else put.push({ it, owner: b.owner, box: b.box, slot });
+        });
+        for (const id of had.keys()) if (!keep.has(id)) drop.push({ id, owner: b.owner, box: b.box });
+      }
+      for (const d of drop) deleteRow.run(d.id, d.owner, d.box);
+      // An item put here may still sit in a box this call doesn't save: it moves, as its id is unique.
+      for (const p of put) deleteId.run(p.it.id);
+      for (const p of put) insertItem(p.it, p.owner, p.box, p.slot);
     }),
     maxItemId: () => (maxItemId.get() as { id: number }).id,
     hasStarterKit: (playerId: string) => !!getStarter.get(playerId),
