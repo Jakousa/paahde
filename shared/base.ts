@@ -334,18 +334,19 @@ function arc(cx: number, cz: number, rc: number, sx: number, sz: number, y0: num
 {
   const xs = W + WT / 2, back = HUT.z0 - WT / 2;
   // Entrance hut: thick walls (their inner faces are the stairwell's too, all the way down), the doorway
-  // in front, and the back wall stops over the tunnel's vault. Its outer corners are rounded.
+  // in front, and the back wall stops over the tunnel's vault. Its outer corners are rounded; its roof (onHutRoof)
+  // can be stood on.
   const r = HUT.t / 2, xh = W + r, fh = HUT.z1 + r, bh = HUT.z0 - r;
   const cx = W + HUT.t - HUT_R, rc = HUT_R - r;
   const cf = HUT.z1 + HUT.t - HUT_R, cb = HUT.z0 - HUT.t + HUT_R;
-  wall(-xh, cb, -xh, cf, -Infinity, WALL_H, r);
-  wall(xh, cb, xh, cf, -Infinity, WALL_H, r);
-  wall(-cx, fh, -HUT.door - r, fh, -Infinity, WALL_H, r);
-  wall(HUT.door + r, fh, cx, fh, -Infinity, WALL_H, r);
-  wall(-cx, bh, cx, bh, vaultCrown(HUT.z0), WALL_H, r);
+  wall(-xh, cb, -xh, cf, -Infinity, HUT.top, r);
+  wall(xh, cb, xh, cf, -Infinity, HUT.top, r);
+  wall(-cx, fh, -HUT.door - r, fh, -Infinity, HUT.top, r);
+  wall(HUT.door + r, fh, cx, fh, -Infinity, HUT.top, r);
+  wall(-cx, bh, cx, bh, vaultCrown(HUT.z0), HUT.top, r);
   for (const s of [-1, 1]) {
-    arc(s * cx, cf, rc, s, 1, -Infinity, WALL_H, r);
-    arc(s * cx, cb, rc, s, -1, -Infinity, WALL_H, r);
+    arc(s * cx, cf, rc, s, 1, -Infinity, HUT.top, r);
+    arc(s * cx, cb, rc, s, -1, -Infinity, HUT.top, r);
   }
   // Tunnel and hallway under the sand, into the room's front wall.
   const hz = HALL.z + WT / 2, rx = ROOM.w + WT / 2, rz = ROOM.z - WT / 2;
@@ -463,7 +464,8 @@ const local = { x: 0, z: 0, vx: 0, vz: 0 };
  * `y`/`prevY` are the feet heights (world) this and last tick. Returns the height (world) of what the
  * player stands on (floor, stairs, something low), or -Infinity outside the base.
  */
-export function collideBase(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, height: number, stepUp: number): number {
+export function collideBase(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, height: number, stepUp: number,
+  prevX: number, prevZ: number): number {
   const lx0 = p.x - BASE.x, lz0 = p.z - BASE.z;
   if (!inFootprint(lx0, lz0, 1) && !nearMast(lx0, lz0, 0)) return -Infinity;
   const q = local;
@@ -471,13 +473,44 @@ export function collideBase(p: { x: number; z: number; vx: number; vz: number },
 
   const feet = Math.max(y, prevY) - BASE.y;
   const head = Math.min(y, prevY) - BASE.y + height;
-  const support = collideCapsules(q, withPlaced, feet, head, radius, stepUp, floorAt(q.x, q.z, feet, stepUp));
+  let support = collideCapsules(q, withPlaced, feet, head, radius, stepUp, floorAt(q.x, q.z, feet, stepUp));
+  if (feet >= HUT.top - stepUp && onHutRoof(q.x, q.z)) support = Math.max(support, HUT.top);
+  archFeet = feet;
+  archHead = head;
+  keepUnder(q, prevX - BASE.x, prevZ - BASE.z, underArch);
 
   p.x = q.x + BASE.x;
   p.z = q.z + BASE.z;
   p.vx = q.vx;
   p.vz = q.vz;
   return support === -Infinity ? support : support + BASE.y;
+}
+
+/** Local point on the entrance hut's roof (inside its outer walls, round its rounded corners). */
+function onHutRoof(lx: number, lz: number): boolean {
+  const xo = W + HUT.t, fo = HUT.z1 + HUT.t, bo = HUT.z0 - HUT.t;
+  const dx = Math.max(Math.abs(lx) - xo + HUT_R, 0), dz = Math.max(lz - fo + HUT_R, bo + HUT_R - lz, 0);
+  return Math.abs(lx) < xo && lz < fo && lz > bo && dx * dx + dz * dz < HUT_R * HUT_R;
+}
+
+/** Feet and head (local) of the player collideBase is moving, for underArch. */
+let archFeet = 0, archHead = 0;
+/** Their head would be in the concrete over local (lx, lz): above the ceiling there, under the roof (the hut's,
+ *  or the sand's over the bunker). */
+function underArch(lx: number, lz: number): boolean {
+  return archHead > ceilingAt(lx, lz) + 0.05 && archFeet < (lz >= HUT.z0 ? HUT.top : BURIED_TOP);
+}
+
+/**
+ * Arches, vaults and steps down in a ceiling are ceilings, not walls: they stop a head going up but not sideways.
+ * Undo the move of local q from local (px, pz) along each axis that would put the head into one (`blocked`), unless
+ * it was there already (then let it out).
+ */
+export function keepUnder(q: { x: number; z: number; vx: number; vz: number }, px: number, pz: number, blocked: (x: number, z: number) => boolean) {
+  if (!blocked(q.x, q.z) || blocked(px, pz)) return;
+  if (!blocked(q.x, pz)) { q.z = pz; q.vz = 0; }
+  else if (!blocked(px, q.z)) { q.x = px; q.vx = 0; }
+  else { q.x = px; q.z = pz; q.vx = 0; q.vz = 0; }
 }
 
 /** Push local point q out of capsules (feet/head local); returns the highest top under the feet, from `support` up. */

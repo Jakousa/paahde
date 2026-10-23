@@ -22,7 +22,7 @@
 // down local -Z (like the base). It is turned by a multiple of 90° (exact): local +Z points along world (dx, dz),
 // local +X along (dz, -dx).
 
-import { atPump, BASE, inBase, PUMP_REACH, terrainHidden, type Capsule } from './base.ts';
+import { atPump, BASE, inBase, keepUnder, PUMP_REACH, terrainHidden, type Capsule } from './base.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockiness, rocksNear } from './rocks.ts';
 import { cellId } from './cells.ts';
@@ -293,9 +293,6 @@ export function shelterHidden(x: number, z: number, y: number): boolean {
 
 // --- Collision ---
 
-/** Walls are taller than any jump. */
-const WALL_H = 100;
-
 /** Wall capsules (local) for a kind. */
 function kindCapsules(L: ShelterLayout): Capsule[] {
   const out: Capsule[] = [];
@@ -304,13 +301,13 @@ function kindCapsules(L: ShelterLayout): Capsule[] {
     out.push({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, ax: dx / len, az: dz / len, half: len / 2, r, y0, top });
   };
   // Hut: thick walls (their inner faces the stairwell's too, all the way down), the doorway in front, the back
-  // wall stops over the stairwell's ceiling.
+  // wall stops over the stairwell's ceiling. Its roof can be stood on.
   const r = S_HUT.t / 2, xh = S_W + r, fh = S_HUT.z1 + r, bh = S_HUT.z0 - r;
-  wall(-xh, bh, -xh, fh, -Infinity, WALL_H, r);
-  wall(xh, bh, xh, fh, -Infinity, WALL_H, r);
-  wall(-xh, fh, -S_HUT.door - r, fh, -Infinity, WALL_H, r);
-  wall(S_HUT.door + r, fh, xh, fh, -Infinity, WALL_H, r);
-  wall(-xh, bh, xh, bh, stairCeiling(L, S_HUT.z0 - 0.01), WALL_H, r);
+  wall(-xh, bh, -xh, fh, -Infinity, S_HUT.top, r);
+  wall(xh, bh, xh, fh, -Infinity, S_HUT.top, r);
+  wall(-xh, fh, -S_HUT.door - r, fh, -Infinity, S_HUT.top, r);
+  wall(S_HUT.door + r, fh, xh, fh, -Infinity, S_HUT.top, r);
+  wall(-xh, bh, xh, bh, stairCeiling(L, S_HUT.z0 - 0.01), S_HUT.top, r);
   // Stairwell and corridor under the sand, into the room's front wall.
   const xs = S_W + S_WT / 2, hz = L.hall + S_WT / 2;
   wall(-xs, S_HUT.z0, -xs, hz, -Infinity, BURIED_TOP);
@@ -350,7 +347,7 @@ function floorAt(L: ShelterLayout, lx: number, lz: number): number {
 /** Ceiling (local) over local (lx, lz), or Infinity. */
 function ceilingAt(L: ShelterLayout, lx: number, lz: number): number {
   const ax = Math.abs(lx);
-  if (ax < S_W + S_WT && lz >= S_HUT.z0 && lz < S_HUT.z1 + S_WT) return S_HUT.h;
+  if (ax < S_W + S_WT && lz >= S_HUT.z0 && lz < S_HUT.z1 + S_HUT.t) return S_HUT.h;
   if (ax < S_W + S_WT && lz > L.hall && lz < S_HUT.z0) return stairCeiling(L, lz);
   if (ax < L.room.w + S_WT && lz > L.room.z - S_WT && lz <= L.hall) return L.floor + L.room.h;
   return Infinity;
@@ -358,11 +355,20 @@ function ceilingAt(L: ShelterLayout, lx: number, lz: number): number {
 
 const local = { x: 0, z: 0, vx: 0, vz: 0 };
 
+/** The shelter, feet and head (local) of the player collideShelter is moving, for underArch. */
+let archL: ShelterLayout = SHELTER_KINDS.small, archFeet = 0, archHead = 0;
+/** Their head would be in the concrete over local (lx, lz): above the ceiling there, under the roof (the hut's, or
+ *  the sand's over the rooms). */
+function underArch(lx: number, lz: number): boolean {
+  return archHead > ceilingAt(archL, lx, lz) + 0.05 && archFeet < (lz >= S_HUT.z0 ? S_HUT.top : BURIED_TOP);
+}
+
 /**
  * Collide a player (world position p, moved in place, velocity absorbed into walls) with a shelter, like
  * collideBase (shared/base.ts). Returns the height (world) of what the player stands on, or -Infinity.
  */
-export function collideShelter(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, height: number, stepUp: number): number {
+export function collideShelter(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, height: number, stepUp: number,
+  prevX: number, prevZ: number): number {
   const s = shelterAt(p.x, p.z);
   if (!s) return -Infinity;
   const q = local;
@@ -397,6 +403,11 @@ export function collideShelter(p: { x: number; z: number; vx: number; vz: number
     const vn = q.vx * ex + q.vz * ez;
     if (vn < 0) { q.vx -= vn * ex; q.vz -= vn * ez; }
   }
+  if (feet >= S_HUT.top - stepUp && inHut(q.x, q.z, 0)) support = Math.max(support, S_HUT.top);
+  archL = s.L;
+  archFeet = feet;
+  archHead = head;
+  keepUnder(q, localX(s, prevX, prevZ), localZ(s, prevX, prevZ), underArch);
 
   const [wx, wz] = toWorld(s.dx, s.dz, q.x, q.z), [wvx, wvz] = toWorld(s.dx, s.dz, q.vx, q.vz);
   p.x = s.x + wx;
