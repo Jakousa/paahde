@@ -17,7 +17,7 @@ import { MENU_CSS, bindOptions, bindTips, optionsHtml } from './options';
 import { getBrowserId, setWorldKey } from './profile';
 
 export const LANDING_CSS = `
-#landing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: safe center; color: #e8d2ae;
+#landing { position: fixed; inset: 0; z-index: 40; display: block; color: #e8d2ae;
   background: #4a2414; font-family: var(--mono); overflow: hidden auto; }
 #landing { user-select: none; -webkit-user-select: none; } /* a menu, not a page to copy from: only the boxes take a selection */
 #landing input { user-select: text; -webkit-user-select: text; }
@@ -26,8 +26,9 @@ export const LANDING_CSS = `
   background: radial-gradient(ellipse 80% 70% at 50% 55%, transparent 60%, rgba(30, 14, 8, .45) 100%); }
 #landing.over .bg, #landing.over .shade { display: none; }
 #landing.over { background: rgba(17, 10, 6, 0.82); }
-#landing .panel { position: relative; display: grid; justify-items: center; gap: 22px; text-align: center; padding: 6vh 16px;
-  animation: landing-in 1.6s ease-out both; }
+/* Placed by centre() (a transform, not the layout), so the title glides between views instead of jumping. */
+#landing .panel { position: relative; display: grid; justify-items: center; gap: 22px; text-align: center; padding: 0 16px 24px;
+  animation: landing-in 1.6s ease-out both; will-change: transform; }
 #landing h1 { margin: 0; font: clamp(40px, 7vw, 88px) var(--title); letter-spacing: .3em;
   margin-right: -.3em; color: #fff4d0;
   text-shadow: 0 0 40px rgba(255, 179, 71, .45), 0 0 12px rgba(140, 50, 10, .5), 0 2px 3px rgba(60, 20, 5, .45); }
@@ -87,8 +88,8 @@ export const LANDING_CSS = `
 #landing p.stats svg { width: 15px; height: 15px; }
 #landing .games a:hover .on { color: #2f6b2a; }
 @keyframes landing-drift { from { transform: scale(1) translateX(0); } to { transform: scale(1.06) translateX(-1.5%); } }
-@keyframes landing-in { from { opacity: 0; transform: translateY(12px); } }
-@media (prefers-reduced-motion: reduce) { #landing .bg, #landing .panel { animation: none; } }
+@keyframes landing-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #landing .bg, #landing .panel { animation: none; transition: none !important; } }
 `;
 
 /** The page's style, once. */
@@ -131,6 +132,7 @@ export function landing(why?: 'over' | 'missing', start: View = { v: 'intro' }, 
   el.addEventListener('keydown', (e) => e.stopPropagation());
   document.body.append(el);
   bindTips(el);
+  centre(el);
   if (!why) music(el);
   const view = document.createElement('div');
   view.className = 'view';
@@ -158,6 +160,28 @@ export function nav(v: View, how: 'push' | 'replace' = 'push') {
 /** Back to where you were: the view before, or the start screen when there's none in this page (a link opened). */
 const back = (v: View) => () => (shown?.why || (v.v === 'lobby' && !v.from) ? nav({ v: 'intro' }) : history.back());
 
+/** Keep the panel in `page` centred, the title with it: up out of the way fast (0.1 s) when the view grows, back down
+ *  slowly when it shrinks, and up again whenever it grows (a list coming in, a lobby filled). Too tall to fit, it
+ *  sits at the top and the page scrolls. */
+function centre(page: HTMLElement) {
+  const panel = page.querySelector<HTMLElement>('.panel')!;
+  let at: number | null = null;
+  const place = () => {
+    if (!panel.isConnected) return void watch.disconnect();
+    const y = Math.max(16, Math.round((page.clientHeight - panel.offsetHeight) / 2));
+    if (y === at) return;
+    const up = at !== null && y < at;
+    panel.style.transition = at === null ? 'none' : up ? 'transform .1s ease-out' : 'transform 1.4s cubic-bezier(.3, 0, .2, 1)';
+    panel.style.transform = `translateY(${y}px)`;
+    panel.style.marginBottom = `${y}px`; // the scroll height follows the shift (a transform takes no room)
+    at = y;
+  };
+  const watch = new ResizeObserver(place);
+  watch.observe(panel);
+  watch.observe(page);
+  place();
+}
+
 function render(v: View) {
   if (!shown) return;
   const el =
@@ -165,7 +189,9 @@ function render(v: View) {
     : v.v === 'create' ? make(back(v))
     : v.v === 'lobby' ? lobbyView(v.id, back(v), v.id === WORLD_ID ? shown.play : undefined)
     : intro(shown.why);
+  const first = !shown.view.childElementCount;
   shown.view.replaceChildren(el);
+  if (!first) el.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' }); // a short fade in
   const tip = document.querySelector<HTMLElement>('#landing .tip');
   if (tip) tip.style.display = 'none'; // its row is gone
 }
@@ -575,6 +601,7 @@ export function victory(world: string) {
   el.className = 'over';
   el.innerHTML = `<div class="panel"><h1>${TEXT.game.name}</h1><p>${TEXT.landing.won}</p><button>${TEXT.landing.playOn}</button></div>`;
   document.body.append(el);
+  centre(el);
   el.querySelector('button')!.addEventListener('click', () => {
     el.remove();
     Promise.resolve(document.querySelector('canvas')?.requestPointerLock()).catch(() => {});
