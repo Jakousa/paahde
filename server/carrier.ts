@@ -24,6 +24,7 @@ import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { BOSS_SEND_R } from '../shared/bosses.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import { ball, blast, due } from './blasts.ts';
+import { Tracks, type TrackOpts } from './tracks.ts';
 import {
   BAY, bayAt, BOMB_CRATER_MM, BOMB_CRATER_R, BOMB_GAP, BOMB_KILL_R, BOMB_REACH, bombFall, CARRIER_ALT, CHASE, CRASH_FAN_MM, CRASH_FAN_R,
   CRASH_KILL_R, CRASH_MM, CRASH_R, CRUISE, CS_ALL, CS_LEN, CS_LOCK, CS_OX, CS_OY, CS_OZ, CS_FALL, CS_PITCH, CS_ROLL, CS_SPIN, CS_TX, CS_TZ,
@@ -48,8 +49,8 @@ const LEAVE_MAX = 6 * 60_000;
 /** Bomb aim: the player's velocity times the fall time times this (leads a little, not all the way), plus scatter (m). */
 const LEAD = 0.6;
 const SCATTER = 2.5;
-/** A player track's velocity is smoothed over this (s). */
-const TRACK_TAU = 0.6;
+/** Players' velocities, smoothed over 0.6 s (a respawn or a teleport isn't a velocity: the last one stands). */
+const TRACKS: TrackOpts = { k: (dt) => 1 - Math.exp(-dt / 0.6), jump: 40, onJump: 'keep' };
 /** Crowd: the bomb gap is divided by scaled(1, n, BOMB_GAP_PER); a run bombs 1 + floor((n − 1) / BOMB_MARK_PER)
  *  people; from STICK_N people a third bomb lands on its target, with full lead. */
 const BOMB_GAP_PER = 0.15;
@@ -87,7 +88,6 @@ const DRONE_HIT = 4;
 /** Looks round for a target (a line of sight to each person about) this often (ms); keeps the one it has between. */
 const SEEK_MS = 300;
 
-type Track = { x: number; z: number; vx: number; vz: number };
 type Bomb = { at: number; x: number; y: number; z: number };
 /** A gun drone: its slot in the snapshot, its motion, who it's after (-1 none), what it's doing (dropping 'out' of
  *  the bay, 'hunt'ing, 'aim'ing, going 'home') and till when, born, shots fired, where it circles, where it aims. */
@@ -103,7 +103,7 @@ type St = {
   target: number; tx: number; tz: number; nextBomb: number;
   /** Next look round for a target (SEEK_MS). */
   seekAt: number;
-  tracks: Map<number, Track>; bombs: Bomb[];
+  tracks: Tracks; bombs: Bomb[];
   leaveAt: number;
   /** People up against it this tick (server/bossCrowd.ts). */
   crowd: number;
@@ -329,7 +329,7 @@ export const carrier: Brain = {
       vx: Math.sin(b.yaw) * CRUISE, vz: Math.cos(b.yaw) * CRUISE, yawRate: 0, roll: 0, pitch: 0,
       wx: x + Math.sin(a + Math.PI) * 300, wz: z + Math.cos(a + Math.PI) * 300, ax: x, az: z,
       scourX: b.x, scourZ: b.z, target: -1, tx: 0, tz: 0, nextBomb: now + 4000, seekAt: 0,
-      tracks: new Map(), bombs: [], leaveAt: -1, crowd: 1,
+      tracks: new Tracks(TRACKS), bombs: [], leaveAt: -1, crowd: 1,
       drones: [], fightAt: now, recallAt: 0, nextLaunch: now + DRONE_FIRST * 1000, slotFree: new Array<number>(DRONE_SLOTS).fill(0),
       crashAt: -1, crashed: false, ox: 0, oy: 0, oz: 0, fall: 0, spin: 1,
     };
@@ -342,19 +342,7 @@ export const carrier: Brain = {
     const broken = brokenCount(b);
     const n = (st.crowd = crowd(b, players));
     // Who's about: tracks for the lead, the target.
-    for (const p of players) {
-      const t = st.tracks.get(p.id);
-      if (!t) st.tracks.set(p.id, { x: p.x, z: p.z, vx: 0, vz: 0 });
-      else {
-        const k = 1 - Math.exp(-dt / TRACK_TAU);
-        const vx = (p.x - t.x) / dt, vz = (p.z - t.z) / dt;
-        // A respawn or a teleport isn't a velocity.
-        if (Math.hypot(vx, vz) < 40) (t.vx += (vx - t.vx) * k), (t.vz += (vz - t.vz) * k);
-        t.x = p.x;
-        t.z = p.z;
-      }
-    }
-    for (const id of st.tracks.keys()) if (!players.some((p) => p.id === id)) st.tracks.delete(id);
+    st.tracks.update(now, dt, players);
     const bay = { x: b.x, y: b.y + BAY[1], z: b.z };
     let target: BossPlayer | null = null;
     if (!b.leaving && now < st.seekAt) target = players.find((p) => p.id === st.target && !p.safe) ?? null;

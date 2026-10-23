@@ -21,6 +21,7 @@
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import { ball, blast, column, due } from './blasts.ts';
+import { Tracks, type TrackOpts } from './tracks.ts';
 import { BASE } from '../shared/base.ts';
 import { blastPush } from '../shared/ragdoll.ts';
 import { CORE_HALF, heightAt } from '../shared/terrain.ts';
@@ -77,6 +78,9 @@ const PER_SALVO = 0.2;
 const FIRST_SALVO_S = 6;
 const LEAD = 0.5;
 const SCATTER = 3;
+/** Everyone's ground velocity, for leading them: sampled every 0.2 s or more, half of each taken in (a respawn or a
+ *  teleport isn't running). */
+const TRACKS: TrackOpts = { k: () => 0.5, jump: 40, onJump: 'stop', minS: 0.2 };
 /** Hand volleys: the time from one to the next (s, shorter by PER_VOLLEY a person past one), the first not before
  *  FIRST_VOLLEY_S after it turns up; a rocket more per person past one, at most VOLLEY_CAP. The arm stays up ARM_HOLD_S
  *  after the last. */
@@ -92,8 +96,6 @@ type Foot = { x: number; y: number; z: number; left: number; kind: number; span:
 type Pending = { at: number; x: number; y: number; z: number; r: number; mm: number; kill: number; big: boolean };
 /** A missile on its way: lands at (x, y, z) at `at` (seen time). */
 type Missile = { at: number; x: number; y: number; z: number };
-/** A player's ground track: where, when (ms), velocity (m/s, smoothed). */
-type Track = { x: number; z: number; t: number; vx: number; vz: number };
 type St = {
   feet: [Foot, Foot];
   /** Foot to step next; both feet down for (s); standing still for (s); speed (m/s); yaw last tick. */
@@ -118,7 +120,7 @@ type St = {
   /** The salvo: started (ms, -1 none: the tell, then the shots), its targets in firing order, shots fired; the next one
    *  not before (ms). Missiles in the air; everyone's ground track (for leading them). */
   salvoAt: number; salvoTargets: number[]; salvoFired: number; nextSalvo: number;
-  missiles: Missile[]; tracks: Map<number, Track>;
+  missiles: Missile[]; tracks: Tracks;
   /** The hand volley: started (ms, -1 none: the tell, then the shots), with arm (±1, 0 none), rockets in it and fired,
    *  pointing at (aimX, aimZ); the next not before (ms). */
   volleyAt: number; volleyArm: number; volleyCount: number; volleyFired: number; aimX: number; aimZ: number; nextVolley: number;
@@ -183,7 +185,7 @@ export const colossus: Brain = {
       foot: -1, stompAt: 0, ax: 0, az: 0, stompReady: now + 5000, recoverUntil: 0,
       pending: [], lx: 0, lz: 0, leftAt: 0, fall: 0, fell: false,
       n: 1, stompPrey: -1, hold: false,
-      salvoAt: -1, salvoTargets: [], salvoFired: 0, nextSalvo: 0, missiles: [], tracks: new Map(),
+      salvoAt: -1, salvoTargets: [], salvoFired: 0, nextSalvo: 0, missiles: [], tracks: new Tracks(TRACKS),
       volleyAt: -1, volleyArm: 0, volleyCount: 0, volleyFired: 0, aimX: 0, aimZ: 0, nextVolley: now + FIRST_VOLLEY_S * 1000,
     };
     b.st = st;
@@ -195,7 +197,7 @@ export const colossus: Brain = {
     const st = b.st as St;
     footfalls(st, now, players, out);
     landMissiles(st, now, players, out);
-    track(st, now, players);
+    st.tracks.update(now, dt, players);
     st.n = crowd(b, players);
     st.hold = false;
     const n = st.n;
@@ -483,28 +485,6 @@ function turnOnAnother(b: Boss, st: St, now: number, players: BossPlayer[]) {
     .sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z));
   if (!others.length) return;
   setPrey(st, others[Math.random() < 0.7 ? 0 : Math.floor(Math.random() * others.length)], now);
-}
-
-/** Everyone's ground velocity, for leading them. */
-function track(st: St, now: number, players: BossPlayer[]) {
-  for (const p of players) {
-    const t = st.tracks.get(p.id);
-    if (!t) {
-      st.tracks.set(p.id, { x: p.x, z: p.z, t: now, vx: 0, vz: 0 });
-      continue;
-    }
-    const dt = (now - t.t) / 1000;
-    if (dt < 0.2) continue;
-    const vx = (p.x - t.x) / dt, vz = (p.z - t.z) / dt;
-    // A respawn or a teleport isn't running.
-    const jump = Math.hypot(vx, vz) > 40;
-    t.vx += ((jump ? 0 : vx) - t.vx) * (jump ? 1 : 0.5);
-    t.vz += ((jump ? 0 : vz) - t.vz) * (jump ? 1 : 0.5);
-    t.x = p.x;
-    t.z = p.z;
-    t.t = now;
-  }
-  if (st.tracks.size > players.length + 8) for (const id of st.tracks.keys()) if (!players.some((p) => p.id === id)) st.tracks.delete(id);
 }
 
 /** Who a missile can go for: out in the open, away from the base, standing off from it. */

@@ -14,6 +14,7 @@
 import { BASE } from '../shared/base.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import { ball, blast, due } from './blasts.ts';
+import { Tracks, type TrackOpts } from './tracks.ts';
 import { BLAST_R, flightTime, LEAD, SCATTER, type MissilePath } from '../shared/missiles.ts';
 import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt, rockTop, sandOverRock } from '../shared/terrain.ts';
@@ -73,6 +74,8 @@ const OTHER_P = 0.75;
 /** ...and every SWITCH_S s (random within) hunting, whatever; the new prey stalked from STALK_DEPTH (m: no wake). */
 const SWITCH_S: [number, number] = [14, 26];
 const STALK_DEPTH = 22;
+/** Everyone's ground velocity, smoothed over 0.6 s, for leading the missiles (a respawn isn't a run). */
+const TRACKS: TrackOpts = { k: (dt) => Math.min(1, dt / 0.6), jump: 40, onJump: 'ease' };
 /** Its missiles' ids, clear of the guardians' (server/guardians.ts counts from 1). */
 let nextMissile = 1_000_000;
 const BODY_LEN = (SEGS + 1) * SEG_LEN;
@@ -101,7 +104,7 @@ type Worm = {
   /** Stalking its prey (deep and quiet, to surprise them); when it next drops its prey for someone else (clock). */
   stalk: boolean; switchAt: number;
   missiles: { id: number; at: number; x: number; y: number; z: number }[];
-  vel: Map<number, { x: number; z: number; vx: number; vz: number }>;
+  vel: Tracks;
 };
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -238,7 +241,7 @@ export const worm: Brain = {
       vx: fx * ROAM_SPEED, vy: 0, vz: fz * ROAM_SPEED, mode: MODE_ROAM, trail: [], segs: [], tx: x + fx * 300, tz: z + fz * 300,
       clock: 0, surfaceAt: rand(4, 10), surfaceUntil: 0, prey: -1, fixAt: 0, px: 0, pz: 0, shallow: false, lungeUntil: 0, ax: 0, ay: 0, az: 0, riseAt: 0, coolUntil: 0,
       under: true, fx: b.x, fz: b.z,
-      stalk: false, switchAt: rand(SWITCH_S[0], SWITCH_S[1]), arc: false, arcReady: ARC_FIRST, shots: 0, shotAt: 0, missiles: [], vel: new Map(),
+      stalk: false, switchAt: rand(SWITCH_S[0], SWITCH_S[1]), arc: false, arcReady: ARC_FIRST, shots: 0, shotAt: 0, missiles: [], vel: new Tracks(TRACKS),
     };
     // A straight trail behind it, so the body is laid out from the start.
     for (let s = BODY_LEN + 4; s > 0; s -= 2) w.trail.push(b.x - fx * s, b.y, b.z - fz * s);
@@ -251,7 +254,7 @@ export const worm: Brain = {
     w.clock += dt;
     const ground = heightAt(b.x, b.z);
     const n = crowd(b, players);
-    track(w, dt, players);
+    w.vel.update(now, dt, players);
     landMissiles(w, now, players, out);
 
     // Prey: whoever shot it if it can reach them, else the nearest reachable within NOTICE_R.
@@ -483,25 +486,6 @@ function retarget(b: Boss, w: Worm, players: BossPlayer[], p: number) {
   w.px = o.x;
   w.pz = o.z;
   w.stalk = true;
-}
-
-/** Everyone's ground velocity (smoothed), for leading the missiles. */
-function track(w: Worm, dt: number, players: BossPlayer[]) {
-  for (const p of players) {
-    const v = w.vel.get(p.id);
-    if (!v) {
-      w.vel.set(p.id, { x: p.x, z: p.z, vx: 0, vz: 0 });
-      continue;
-    }
-    let vx = (p.x - v.x) / Math.max(dt, 1e-3), vz = (p.z - v.z) / Math.max(dt, 1e-3);
-    if (Math.hypot(vx, vz) > 40) vx = vz = 0; // a respawn, not a run
-    const k = Math.min(1, dt / 0.6);
-    v.vx += (vx - v.vx) * k;
-    v.vz += (vz - v.vz) * k;
-    v.x = p.x;
-    v.z = p.z;
-  }
-  if (w.vel.size > players.length + 8) for (const id of w.vel.keys()) if (!players.some((p) => p.id === id)) w.vel.delete(id);
 }
 
 /** Up on the sky arc: a missile every SHOT_S out of a segment of its back that's clear of the sand. */

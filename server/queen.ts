@@ -30,6 +30,7 @@ import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import { blast, column, due } from './blasts.ts';
+import { Tracks, type TrackOpts } from './tracks.ts';
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { flank, keepOut, skirt, type Skirt } from './pack.ts';
 
@@ -81,7 +82,7 @@ type St = {
   /** When it last fought (hunt, rear, recover), and when the next spiderling may curl up while it's calm. */
   fightAt: number; fadeAt: number;
   /** Players' velocities (smoothed), for leading the leaps. */
-  vel: Map<number, { x: number; z: number; vx: number; vz: number }>;
+  vel: Tracks;
 };
 /** A spiderling: where, which way, state (shared/queen.ts SP_*) since when, its prey (-1 none), born when; crouched
  *  or leaping, where it's springing to (from where); landed, when its bite is worked out (0 done). */
@@ -94,6 +95,8 @@ type Ling = {
 
 /** Calm this long (ms: not hunting anyone), the brood runs down: a spiderling curls up every FADE_MS. */
 const CALM_MS = 12_000, FADE_MS = 2500;
+/** Everyone's velocity, smoothed, for leading the spiderlings' leaps (faster than 25 m/s: respawned). */
+const TRACKS: TrackOpts = { k: (dt) => 1 - Math.exp(-dt * 6), jump: 25, onJump: 'ease' };
 /** A shot ending this close (m, flat) to a spiderling hits it. */
 const LING_HIT = 4;
 
@@ -132,7 +135,7 @@ export const queen: Brain = {
       feet, speed: 0, lastYaw: b.yaw, next: 0, mode: ROAM, modeAt: now, prey: -1, huntAt: 0,
       homeX: site && !summoned ? site.x : b.x, homeZ: site && !summoned ? site.z : b.z, tx: b.x, tz: b.z, waitUntil: now + 1500, leaveAt: 0,
       ignore: new Map(), pending: [], holes: HOLES_MAX,
-      rearMs: REAR_MS, birthAt: 0, due: false, nextBirth: 0, brood: [], nextLing: 1, fightAt: now, fadeAt: 0, vel: new Map(),
+      rearMs: REAR_MS, birthAt: 0, due: false, nextBirth: 0, brood: [], nextLing: 1, fightAt: now, fadeAt: 0, vel: new Tracks(TRACKS),
     };
     wander(st);
     b.st = st;
@@ -142,7 +145,7 @@ export const queen: Brain = {
     const st = b.st as St;
     land(b, st, now, players, out);
     const n = crowd(b, players);
-    track(st, dt, players);
+    st.vel.update(now, dt, players);
     brood(b, st, dt, now, n, players, out);
     let want = 0, heading = b.yaw, turn = TURN;
 
@@ -356,27 +359,6 @@ function land(b: Boss, st: St, now: number, players: BossPlayer[], out: BossOut)
 function ling(l: Ling, s: number, now: number) {
   l.st = s;
   l.stAt = now;
-}
-
-/** Everyone's velocity, smoothed, for leading the spiderlings' leaps. */
-function track(st: St, dt: number, players: BossPlayer[]) {
-  const k = 1 - Math.exp(-dt * 6);
-  const seen = new Set<number>();
-  for (const p of players) {
-    seen.add(p.id);
-    const v = st.vel.get(p.id);
-    if (!v) {
-      st.vel.set(p.id, { x: p.x, z: p.z, vx: 0, vz: 0 });
-      continue;
-    }
-    let vx = (p.x - v.x) / dt, vz = (p.z - v.z) / dt;
-    if (Math.hypot(vx, vz) > 25) vx = vz = 0; // respawned
-    v.vx += (vx - v.vx) * k;
-    v.vz += (vz - v.vz) * k;
-    v.x = p.x;
-    v.z = p.z;
-  }
-  for (const id of st.vel.keys()) if (!seen.has(id)) st.vel.delete(id);
 }
 
 /** The brood (see the top of the file): clutches out of the sac, and every spiderling's run, crouch, leap and bite. */
