@@ -180,8 +180,8 @@ export function rememberWorld(id: string) {
   saveJoined([{ id, at: Date.now() }, ...joined().filter((j) => j.id !== id)]);
 }
 
-const CLOCK_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>`;
-const GROUP_SVG = `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-6.2 6.5-6.2s6.5 2.6 6.5 6.2z"/><g opacity=".65"><circle cx="16.8" cy="8.8" r="2.7"/><path d="M15 14c.6-.2 1.2-.3 1.8-.3 2.9 0 4.7 2.2 4.7 5.3h-4.6c-.2-2-.8-3.7-1.9-5z"/></g></svg>`;
+export const CLOCK_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>`;
+export const GROUP_SVG = `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-6.2 6.5-6.2s6.5 2.6 6.5 6.2z"/><g opacity=".65"><circle cx="16.8" cy="8.8" r="2.7"/><path d="M15 14c.6-.2 1.2-.3 1.8-.3 2.9 0 4.7 2.2 4.7 5.3h-4.6c-.2-2-.8-3.7-1.9-5z"/></g></svg>`;
 
 /** How long the game has been going, by a clock. */
 export function uptimeEl(s: WorldStats): HTMLElement {

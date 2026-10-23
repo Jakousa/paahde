@@ -1,13 +1,16 @@
 // Esc menu: opens whenever the game lets go of the mouse (Esc, alt-tab) unless the inventory or the F3
 // panel took it. Resume (or a click on the backdrop) goes back in. Options (src/options.ts: gameplay, graphics, audio,
-// controls), fullscreen, back to the main menu, credits. Over it a bubble with the game itself: its name, lives, bosses
-// beaten, who's on, and its code and invite link to copy, each mark explained on hover. The build and connection are in
+// controls), fullscreen, back to the main menu, credits. Over it a bubble with the game itself, laid out like its row on
+// the main menu (src/landing.ts): its name and how long it's been going; lives, bosses beaten, who's on, and everyone who
+// has played; your own time there, and its code and invite link to copy; each mark explained on hover. The build and connection are in
 // the stats (src/statsGraph.ts). The game keeps running behind it: it's multiplayer, nothing pauses.
 import { copies } from './copy';
 import { WORLD_ID } from '../shared/world.ts';
 import { BOSS_KINDS } from '../shared/bosses.ts';
 import type { WorldStats } from '../shared/protocol.ts';
 import { kbd } from './bindings';
+import { CLOCK_SVG, GROUP_SVG } from './landing';
+import { getBrowserId } from './profile';
 import { capture, setFullscreen, tools, ui } from './input';
 import { openMinigame } from './minigameMenu';
 import { TEXT } from '../shared/text.ts';
@@ -19,17 +22,23 @@ const css = `${MENU_CSS}
 #menu .server { order: -1; width: min(340px, calc(100vw - 32px)); padding: 10px 18px; border-radius: 8px;
   background: rgba(28, 15, 7, 0.92); box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 10px 40px rgba(0, 0, 0, 0.5); }
 #menu .panel.opts ~ .server { display: none; }
-#menu .server .sname { margin-bottom: 8px; font: 600 13px var(--mono); color: #ffd9a0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#menu .server { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; }
+#menu .server .sname { font: 600 13px var(--mono); color: #ffd9a0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#menu .server .up { display: inline-flex; gap: 5px; align-items: center; justify-self: end; font-size: 12px; opacity: 0.8; }
 #menu .server .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#menu .server .crowd { position: relative; display: inline-flex; justify-self: end; margin-right: 6px; color: #ffd9a0; }
+#menu .server .crowd b { position: absolute; right: -6px; top: -5px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
+  border-radius: 8px; font: bold 10px/15px var(--mono); text-align: center; color: #2a160a; background: #ffd9a0; }
+#menu .server .mine { font-size: 11px; opacity: 0.7; }
+#menu .server .copy { display: flex; gap: 6px; justify-self: end; }
 #menu .server .chip { display: inline-flex; align-items: center; gap: 5px; width: auto; height: 24px; padding: 0 9px; border-radius: 12px;
   font: 600 12px var(--mono); letter-spacing: 0; color: #ffd9a0; background: rgba(255, 217, 160, 0.1); box-sizing: border-box; }
 #menu .server .chip svg { width: 13px; height: 13px; fill: currentColor; }
 #menu .server button.chip { cursor: pointer; }
 #menu .server button.chip:hover { background: rgba(255, 217, 160, 0.24); }
-#menu .server .chip.code { margin-left: auto; }
 #menu .server .chip.code i { font-style: normal; opacity: 0.5; }
 #menu .server .bosses { letter-spacing: 2px; }
-#menu .server.bare .stat { display: none; }
+#menu .server.bare .stat { display: none !important; }
 `;
 
 /** The marks' icons, in the chips' colour. */
@@ -65,9 +74,10 @@ export class Menu {
 <button class="leaveGame" style="margin-top:8px">${TEXT.menu.mainMenu}</button>
 <div class="foot"><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
 ${optionsHtml()}</div>
-<div class="server bare"><div class="sname"></div><div class="chips">
-<span class="chip stat lives">${HEART}<b></b></span><span class="chip stat bosses"></span><span class="chip stat online">${PERSON}<b></b></span>
-<button class="chip code" data-tip="${TEXT.menu.server.code}"><i>#</i>${WORLD_ID}</button>
+<div class="server bare"><div class="sname"></div><span class="up stat" data-tip="${TEXT.landing.tipUptime}">${CLOCK_SVG}<b></b></span>
+<div class="chips stat"><span class="chip stat lives">${HEART}<b></b></span><span class="chip stat bosses"></span><span class="chip stat online" data-tip="${TEXT.landing.tipSeats}">${PERSON}<b></b></span></div>
+<span class="crowd stat">${GROUP_SVG}<b></b></span>
+<span class="mine stat"></span><div class="copy"><button class="chip code" data-tip="${TEXT.menu.server.code}"><i>#</i>${WORLD_ID}</button>
 <button class="chip invite" data-tip="${TEXT.menu.copyInvite}" aria-label="${TEXT.menu.copyInvite}">${LINK}</button></div></div>
 <div class="fsNote">${TEXT.menu.ctrlWNote}</div>
 <button class="mini" title="${TEXT.menu.minigame}" aria-label="${TEXT.menu.minigame}">${MACHINE_ICON}</button>`;
@@ -164,18 +174,25 @@ ${optionsHtml()}</div>
     note.style.top = `${beside ? b.top + b.height / 2 : p.bottom + 10}px`;
   }
 
-  /** The game's bubble, fresh each time the menu opens (server/index.ts, as the lobby asks). Without an answer (the lab,
-   *  the server away) only the code and the invite. */
+  /** The game's bubble, fresh each time the menu opens (server/index.ts, as the main menu's list asks: with our browser
+   *  id, so with our own time there). Without an answer (the lab, the server away) only the code and the invite. */
   private async showServer() {
-    let w: WorldStats;
+    let w: WorldStats | undefined;
     try {
-      const res = await fetch(`api/worlds/${encodeURIComponent(WORLD_ID)}`);
+      const res = await fetch('api/worlds/mine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [WORLD_ID], browserId: getBrowserId() }),
+      });
       if (!res.ok) throw new Error(String(res.status));
-      w = await res.json();
-    } catch {
-      return this.serverEl.classList.add('bare');
-    }
+      [w] = (await res.json()) as WorldStats[];
+    } catch {}
+    if (!w) return this.serverEl.classList.add('bare');
     const q = (c: string) => this.serverEl.querySelector<HTMLElement>(c)!;
+    q('.up b').textContent = TEXT.landing.uptime(Math.max(0, Math.floor((Date.now() - w.created) / 60_000)));
+    q('.crowd b').textContent = String(w.players);
+    q('.crowd').dataset.tip = TEXT.landing.players(w.players);
+    q('.mine').textContent = TEXT.landing.you('', Math.floor((w.played ?? 0) / 60_000));
     q('.sname').textContent = w.locked ? `${w.name} ${TEXT.landing.lockedMark}` : w.name;
     q('.lives b').textContent = String(w.lives);
     q('.lives').dataset.tip = TEXT.menu.server.lives(w.lives);
@@ -183,7 +200,6 @@ ${optionsHtml()}</div>
     q('.bosses').textContent = '◆'.repeat(n) + '◇'.repeat(BOSS_KINDS.length - n);
     q('.bosses').dataset.tip = TEXT.menu.server.bosses(n, BOSS_KINDS.length);
     q('.online b').textContent = `${w.online}/${w.max}`;
-    q('.online').dataset.tip = TEXT.menu.server.online(w.online, w.max, w.players);
     this.serverEl.classList.remove('bare');
   }
 }

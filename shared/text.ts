@@ -329,8 +329,6 @@ const en = {
     server: {
       lives: (n: number) => (n === 1 ? '1 shared life left' : `${n} shared lives left`),
       bosses: (n: number, of: number) => `${n} of ${of} bosses beaten`,
-      online: (online: number, max: number, played: number) =>
-        `${online} of ${max} online · ${played === 1 ? '1 has played' : `${played} have played`}`,
       code: 'Game code · click to copy',
     },
     controls: 'Controls',
