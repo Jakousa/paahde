@@ -11,7 +11,8 @@ automatic, every-commit kind.
   suites; the client suite adds about 6 min (it builds both trees and needs Chrome).
 - `npm run bench -- --suites worldgen,physics`: only some suites (`worldgen`, `physics`, `ai`, `server`, `client`);
   without `--base` both sides are this tree, so every "change" in the report is the noise.
-- `--rounds n` runs each side n times (defaults: 7 for the Node cases, 3 for the server, 2 for the client).
+- `--rounds n` runs each side n times (defaults: 7 for the Node cases, 3 for the server, 2 for the client, after one client
+  run thrown away: the first Chrome on a fresh CI runner starts a second slower).
 - One suite by hand: `node tools/bench/case.ts worldgen|physics|ai`, `node tools/bench/server.ts [dir] [--types]`,
   `node tools/bench/client.ts [dir]` (after `npx vite build`). Each prints its numbers as one JSON line.
 

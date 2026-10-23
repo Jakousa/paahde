@@ -64,6 +64,9 @@ async function ab(base: string, head: string, suites: string[], skipped: string[
     const runs = (r.suites[suite] = { base: [] as Sample[], head: [] as Sample[], errors: {} as { base?: string; head?: string } });
     const n = Number(opt('rounds', String(SUITE_ROUNDS[suite] ?? 3)));
     const t0 = Date.now();
+    // The first Chrome on a fresh runner starts cold (disk, fonts, shader cache): a run thrown away, or the side that went
+    // first would look a second slower to start.
+    if (suite === 'client') await runOnce(suite, head).catch(() => {});
     for (let i = 0; i < n; i++) {
       for (const side of i % 2 ? (['head', 'base'] as const) : (['base', 'head'] as const)) {
         if (runs.errors[side]) continue;
