@@ -19,6 +19,8 @@ import { getBrowserId, setWorldKey } from './profile';
 export const LANDING_CSS = `
 #landing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: safe center; color: #e8d2ae;
   background: #4a2414; font-family: var(--mono); overflow: hidden auto; }
+#landing { user-select: none; -webkit-user-select: none; } /* a menu, not a page to copy from: only the boxes take a selection */
+#landing input { user-select: text; -webkit-user-select: text; }
 #landing .bg { position: fixed; inset: -3%; background: url(./landing.svg) 72% bottom / cover; animation: landing-drift 60s ease-in-out infinite alternate; }
 #landing .shade { position: fixed; inset: 0; pointer-events: none;
   background: radial-gradient(ellipse 80% 70% at 50% 55%, transparent 60%, rgba(30, 14, 8, .45) 100%); }
