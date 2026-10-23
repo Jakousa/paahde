@@ -12,6 +12,7 @@ import { checkName, GAME_NAME, MAX_PLAYERS } from '../shared/names.ts';
 import type { WorldStats } from '../shared/protocol.ts';
 import { TEXT } from '../shared/text.ts';
 import { WORLD_ID, WORLD_ID_RE } from '../shared/world.ts';
+import { haze } from './haze';
 import { lobbyView } from './lobby';
 import { MENU_CSS, bindOptions, bindTips, optionsHtml } from './options';
 import { getBrowserId, setWorldKey } from './profile';
@@ -31,6 +32,7 @@ export const LANDING_CSS = `
 #landing h1 { position: absolute; top: 0; left: 0; right: 0; margin: 0; padding-left: .3em; text-align: center; will-change: transform;
   font: clamp(40px, 7vw, 88px) var(--title); letter-spacing: .3em; color: #fff4d0;
   text-shadow: 0 0 40px rgba(255, 179, 71, .45), 0 0 12px rgba(140, 50, 10, .5), 0 2px 3px rgba(60, 20, 5, .45); }
+#landing .haze { position: absolute; top: 0; left: 0; right: 0; height: 100%; pointer-events: none; }
 #landing .below { position: absolute; top: 0; left: 0; right: 0; display: grid; justify-items: center; gap: 22px;
   padding: 0 16px 24px; text-align: center; }
 #landing p { margin: 0; font: 14px var(--title); letter-spacing: .2em; color: #fff4d0; text-shadow: 0 1px 2px rgba(60, 20, 5, .6); }
@@ -132,6 +134,7 @@ export function landing(why?: 'over' | 'missing', start: View = { v: 'intro' }, 
   el.addEventListener('keydown', (e) => e.stopPropagation());
   document.body.append(el);
   bindTips(el);
+  haze(el, el.querySelector('h1')!); // the title through hot air (src/haze.ts)
   if (!why) music(el);
   const view = document.createElement('div');
   view.className = 'view';
