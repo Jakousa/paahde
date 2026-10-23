@@ -41,6 +41,8 @@ export function registry(path: string) {
   const hmac = (id: string, pass: string) => createHmac('sha256', secret).update(`${id}:${pass}`).digest('base64url').slice(0, 22);
 
   return {
+    /** Held so the database outlives its statements: Node 23 finalizes them once an unreferenced database is collected. */
+    db,
     /** A world made before games had settings: a private one named by its id, open, as full as any. */
     get(id: string): Game {
       const r = row(id);
