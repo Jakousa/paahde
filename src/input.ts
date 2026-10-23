@@ -24,17 +24,45 @@ const keyboard = (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard
 // anything else must not go fullscreen.
 addEventListener('click', (e) => {
   if (document.pointerLockElement || !keyboard || !(e.target instanceof HTMLCanvasElement) || e.target.dataset.nofs) return; // not the minigame's (src/loadingGame.ts)
-  fullscreen();
+  const canvas = e.target;
+  // Going fullscreen cancels the lock the same click just asked for (src/camera.ts): ask again once it's done.
+  void fullscreen().then((went) => {
+    if (went && !document.pointerLockElement) Promise.resolve(canvas.requestPointerLock()).catch(() => {});
+  });
 });
-function fullscreen() {
-  if (keyboard && graphics.fullscreen) document.documentElement.requestFullscreen?.().then(() => keyboard.lock(), () => {});
+/** Fullscreen with the keyboard locked, if that's the setting and we aren't already; resolves when it's done, with
+ *  whether it went fullscreen now. */
+function fullscreen(): Promise<boolean> {
+  if (!keyboard || !graphics.fullscreen || document.fullscreenElement || !document.documentElement.requestFullscreen) return Promise.resolve(false);
+  return document.documentElement.requestFullscreen().then(() => (keyboard.lock(), true), () => false);
 }
-/** Back into the game from a click outside the canvas (the Esc menu): capture the mouse, go fullscreen. */
-export function capture(canvas: HTMLElement) {
-  if (document.pointerLockElement === canvas) return;
-  // Can be refused (too soon after the browser's own Esc): then a click on the game does it.
+/** Back into the game from a click outside the canvas (the Esc menu): capture the mouse, go fullscreen. Resolves
+ *  whether the mouse was taken. Chrome refuses within ~1 s of its own Esc releasing it, and after that without a fresh
+ *  click (Esc is no gesture); after the page released it itself (fullscreen, keyboard locked: see keydown below) no
+ *  gesture is needed. (By the events, not requestPointerLock's promise, which not every browser returns.) */
+export function capture(canvas: HTMLElement): Promise<boolean> {
+  if (document.pointerLockElement === canvas) return Promise.resolve(true);
+  // Fullscreen first: going fullscreen cancels a lock asked for before it.
+  return fullscreen().then(() => lock(canvas));
+}
+
+function lock(canvas: HTMLElement): Promise<boolean> {
+  if (document.pointerLockElement === canvas) return Promise.resolve(true);
+  const got = new Promise<boolean>((resolve) => {
+    const done = (ok: boolean) => {
+      document.removeEventListener('pointerlockchange', change);
+      document.removeEventListener('pointerlockerror', error);
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const change = () => done(document.pointerLockElement === canvas);
+    const error = () => done(false);
+    const timer = setTimeout(() => done(false), 1000);
+    document.addEventListener('pointerlockchange', change);
+    document.addEventListener('pointerlockerror', error);
+  });
   Promise.resolve(canvas.requestPointerLock()).catch(() => {});
-  fullscreen();
+  return got;
 }
 // Real keys and mouse (not the gamepad's synthetic events, src/gamepad.ts) put the hints back on the keyboard's names.
 const keysUsed = (e: Event) => e.isTrusted && setDevice('keys');

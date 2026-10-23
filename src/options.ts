@@ -20,6 +20,10 @@ export const MENU_CSS = `
 #menu h3 { margin: 16px 0 8px; font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.6; }
 #menu button { width: 100%; padding: 8px; font: 600 13px var(--mono); letter-spacing: 0.08em; color: #2a160a;
   background: #ffd9a0; border: 0; border-radius: 5px; cursor: pointer; }
+#menu .resume.nudge { animation: menuNudge .7s ease-out; }
+@keyframes menuNudge { 0%, 100% { transform: none; box-shadow: none; } 15%, 45% { transform: translateX(-4px); } 30%, 60% { transform: translateX(4px); }
+  20% { box-shadow: 0 0 0 3px rgba(255, 217, 160, 0.55); } }
+@media (prefers-reduced-motion: reduce) { #menu .resume.nudge { animation: none; } }
 #menu .resume kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 8px; border-radius: 3px; background: #2a160a; color: #ffd9a0; letter-spacing: 0; }
 #menu button:hover { background: #ffe6bf; }
 #menu .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }

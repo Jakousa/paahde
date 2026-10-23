@@ -112,9 +112,16 @@ ${optionsHtml()}</div>
     // Back to the main menu (the page without a world in its address).
     this.el.querySelector('.leaveGame')!.addEventListener('click', () => location.assign(location.pathname));
 
+    // Resume closes the menu once the mouse is the game's again (pointerlockchange below); refused, the menu stays and
+    // Resume pulses: click it.
+    const resumeButton = this.el.querySelector<HTMLElement>('.resume')!;
     const resume = () => {
-      this.toggle(false);
-      capture(canvas);
+      void capture(canvas).then((ok) => {
+        if (ok || !this.open) return;
+        resumeButton.classList.remove('nudge');
+        void resumeButton.offsetWidth; // (restarts the animation)
+        resumeButton.classList.add('nudge');
+      });
     };
     this.el.querySelector('.resume')!.addEventListener('click', resume);
     this.el.addEventListener('pointerdown', (e) => {
@@ -131,25 +138,19 @@ ${optionsHtml()}</div>
       // Options: back to the menu first. The menu: back into the game, grabbing the mouse when the key comes up (see below).
       const panel = this.el.querySelector<HTMLElement>('.panel')!;
       if (panel.classList.contains('opts')) return panel.classList.remove('opts');
-      this.toggle(false);
       escResume = true;
     }, true);
-    // The mouse is grabbed on the Esc's release, not its press: a lock granted while the key is down is let go again
-    // by the browser's own Esc handling, which would bring the menu straight back. The browser may also refuse (just
-    // after its own Esc released the mouse, or without a recent click): then a click on the game does it (src/camera.ts).
+    // Esc resumes on its release, after the key event: Chrome lets go of a lock taken while it handles an Esc (press
+    // or release) at once. Windowed, its own Esc took the mouse, and it won't give it back without a click: Resume pulses.
     let escResume = false;
     addEventListener('keyup', (e) => {
       if (e.code !== 'Escape' || !escResume) return;
       escResume = false;
-      if (this.open) return;
-      resumedAt = performance.now();
-      capture(canvas);
+      setTimeout(() => this.open && resume(), 0);
     }, true);
-    let resumedAt = -Infinity;
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement) return this.toggle(false);
       if (ui.inventoryOpen || performance.now() - ui.escClosedAt < 400) return;
-      if (performance.now() - resumedAt < 400) return; // (granted and let go at once after an Esc resume: stay out, a click grabs it)
       if (ui.debugFreed) {
         ui.debugFreed = false;
         return;
