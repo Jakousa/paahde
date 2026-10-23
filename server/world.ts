@@ -1,18 +1,19 @@
 // Authoritative game server for one world (WORLD_ID, shared/world.ts): forked by server/index.ts, which hands
 // it the world's WebSocket connections over a local port. Simulates every player with shared/sim.ts and
 // broadcasts snapshots; exits when nobody has been on for a while (server/index.ts starts it again).
+import { buildingBox, cargoBox, isShared, vehicleBox } from '../shared/boxes.ts';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
-import { bottleSips, buildingBox, cargoBox, carriedGear, equipped, gearTiers, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, isVehicle, vehicleBox, wornGear } from '../shared/gear.ts';
+import { bottleSips, carriedGear, equipped, gearTiers, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, isVehicle, wornGear } from '../shared/gear.ts';
 import { scrapKey, scrapTaken } from '../shared/scrap.ts';
 import { CLOTH, HOTBAR, ITEMS, RETIRED, SCRAP, scrapItem, stackOf, withData, WIRING } from '../shared/items.ts';
 import { foundData, type Drop } from '../shared/lootRoll.ts';
 import { ENEMIES } from '../shared/enemies.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
-import { boxSize, CHESTS, isShared, OWN_BOXES } from '../shared/storage.ts';
+import { boxSize, CHESTS, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken } from '../shared/crash.ts';
 import { BASE, overBase } from '../shared/base.ts';
 import { canyonFloorNear } from '../shared/canyons.ts';

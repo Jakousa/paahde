@@ -8,7 +8,7 @@
 // Moves between boxes go through tryMove(), on the client as a prediction and on the server for real, so
 // both apply the same rules: gear only into its equipment slot (and only once repaired), nothing put down past the
 // bag's open rows (the backpack sets them; taking it off leaves what's there stranded, not lost) and only where it fits in a grid, and parts only into the workbench item's matching slots (fitPart).
-import { isCorpseBox } from './corpse.ts';
+import { boxKind, fittedBox, takeOnly, type BoxKind } from './boxes.ts';
 import {
   ITEMS, BAG_COLS, BAG_ROWS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, HOTBAR, makeItem, moveItem, parsePart, partAt, partKind, setFitted, setPart, sizeOf, strandedAt, withData,
   type Item, type ItemData, type Part, type Shape, type Slots,
@@ -95,33 +95,6 @@ export const GEAR_KINDS = Object.keys(GEAR);
 export const isGear = (kind: string) => kind in GEAR;
 export const isBuilding = (kind: string | undefined) => !!kind && !!GEAR[kind]?.built;
 export const isVehicle = (kind: string | undefined) => !!kind && !!GEAR[kind]?.vehicle;
-
-/** A building standing in the world (shared/placed.ts) keeps its item, parts and all, in a shared box of one slot,
- *  `bld<placed id>`, open while you're in reach of it (shared/storage.ts): its parts are fitted like the workbench's
- *  (fitPart / unfitPart with that box as the target), but the item itself never moves in or out of it (tryMove). */
-export const buildingBox = (id: number) => `bld${id}`;
-/** The placed id of a building's box, or -1. */
-export function buildingId(box: string): number {
-  const m = /^bld(\d+)$/.exec(box);
-  return m ? Number(m[1]) : -1;
-}
-
-/** A vehicle in the world (shared/vehicles.ts) keeps its item, parts and all, in a shared box of one slot,
- *  `veh<vehicle id>`, like a building's; its cargo is the shared grid `cargo<vehicle id>`. */
-export const vehicleBox = (id: number) => `veh${id}`;
-export const cargoBox = (id: number) => `cargo${id}`;
-/** The vehicle id of a vehicle's item box, or -1. */
-export function vehicleId(box: string): number {
-  const m = /^veh(\d+)$/.exec(box);
-  return m ? Number(m[1]) : -1;
-}
-/** The vehicle id of a vehicle's cargo box, or -1. */
-export function cargoId(box: string): number {
-  const m = /^cargo(\d+)$/.exec(box);
-  return m ? Number(m[1]) : -1;
-}
-/** A box holding one fitted item that never moves in or out of it, only its parts: a building's or a vehicle's. */
-export const fittedBox = (box: string) => buildingId(box) >= 0 || vehicleId(box) >= 0;
 
 export function slotLabel(s: PartSlot) {
   return 'part' in s ? PART_LABELS[s.part] : s.label;
@@ -300,12 +273,20 @@ export type Boxes = Record<string, Slots | undefined>;
 
 /** A box's layout (shared/items.ts Shape): the bag's depends on the backpack, a chest's on how far it has grown. */
 export function boxShape(box: string, boxes: Boxes): Shape {
-  if (box === 'bag') return bagShape(boxes.equip);
-  if (box === 'equip') return freeSlots(EQUIP_SLOTS.length);
-  if (box === 'bench' || fittedBox(box)) return freeSlots(1);
-  if (cargoId(box) >= 0) return gridShape(BIKE_COLS, BIKE_ROWS);
-  return gridShape(CHEST_COLS, Math.floor((boxes[box]?.length ?? 0) / CHEST_COLS));
+  const k = boxKind(box);
+  return k ? SHAPES[k.kind](box, boxes) : freeSlots(0);
 }
+const grown = (box: string, boxes: Boxes) => gridShape(CHEST_COLS, Math.floor((boxes[box]?.length ?? 0) / CHEST_COLS));
+const SHAPES: Record<BoxKind, (box: string, boxes: Boxes) => Shape> = {
+  bag: (_, boxes) => bagShape(boxes.equip),
+  equip: () => freeSlots(EQUIP_SLOTS.length),
+  bench: () => freeSlots(1),
+  bld: () => freeSlots(1),
+  veh: () => freeSlots(1),
+  cargo: () => gridShape(BIKE_COLS, BIKE_ROWS),
+  chest: grown,
+  corpse: grown,
+};
 
 /** Copy boxes deeply enough that a move can be tried and thrown away. */
 function cloneBoxes(boxes: Boxes, ids: string[]): Boxes {
@@ -361,7 +342,7 @@ export function tryMove(boxes: Boxes, from: string, fi: number, to: string, ti: 
   const it = src0?.[fi];
   if (!src0 || !dst0 || !it) return false;
   // A dead player's pack (shared/corpse.ts) is only taken from; a building's or vehicle's item stays in it.
-  if (to !== from && isCorpseBox(to)) return false;
+  if (to !== from && takeOnly(to)) return false;
   if (fittedBox(from) || fittedBox(to)) return false;
   // Vehicles are never carried (nor put in a cargo).
   if (isVehicle(it.kind)) return false;
@@ -434,7 +415,7 @@ export function fitPart(boxes: Boxes, from: string, fi: number, slot: number, ne
  *  `to`[ti] (-1: anywhere in it). */
 export function unfitPart(boxes: Boxes, slot: number, to: string, ti: number, newId: () => number, at = 'bench'): boolean {
   const target = boxes[at]?.[0];
-  if (!target || !boxes[to] || isCorpseBox(to) || to === at || fittedBox(to)) return false;
+  if (!target || !boxes[to] || takeOnly(to) || to === at || fittedBox(to)) return false;
   const part = partAt(target, slot);
   if (!part) return false;
   const b = cloneBoxes(boxes, [...new Set([to, at])]);

@@ -1,4 +1,5 @@
 import { viewCull } from './world/viewCull';
+import { buildingBox, cargoBox, vehicleBox } from '../shared/boxes.ts';
 import * as THREE from 'three/webgpu';
 import { BACK, DT, FORWARD, isSlipFace, MOUNT_TICKS, quantizeYaw } from '../shared/sim.ts';
 import { EYE_HEIGHT, quantizePitch } from '../shared/dig.ts';
@@ -99,7 +100,7 @@ import { LAB_LOOK } from '../shared/lab.ts';
 import { addLabPlates } from './world/labPlates';
 import { labFloor } from './world/sandMaterial';
 import { junkSpec, SALVAGE } from '../shared/salvage.ts';
-import { bagShape, buildingBox, cargoBox, carriedGear, equipped, gearTiers, isBuilding, locatorRange, quality, repaired, spyglassZoom, stormWarnS, vehicleBox, wornGear } from '../shared/gear.ts';
+import { bagShape, carriedGear, equipped, gearTiers, isBuilding, locatorRange, quality, repaired, spyglassZoom, stormWarnS, wornGear } from '../shared/gear.ts';
 import { LootView, lootPrompt } from './world/loot';
 import { VehicleView } from './world/vehicles';
 import { vehicles, vehicleTarget } from '../shared/vehicles.ts';

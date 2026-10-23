@@ -4,9 +4,10 @@
 // one transaction with the bag. A windmill or battery station (shared/gear.ts isBuilding) keeps its item in its own
 // box while it stands (buildingBox), its part slots empty at first: its parts are fitted there (server/items.ts fit /
 // unfit). Keeps shared/placed.ts's list (and so the collision) in step, and broadcasts the list when it changes.
+import { buildingBox } from '../shared/boxes.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import { BUILDS, buildCost, isBuildable, WRENCH } from '../shared/crafting.ts';
-import { buildingBox, isBuilding, partsOf } from '../shared/gear.ts';
+import { isBuilding, partsOf } from '../shared/gear.ts';
 import { partAt } from '../shared/items.ts';
 import { isPlaceable, onSand, PLACE_FLOOR_Y, PLACE_REACH, PLACED_REACH, placeError, placed, placedReach, placedY, SAND_REACH, setPlaced, type Placed } from '../shared/placed.ts';
 import type { ServerMsg } from '../shared/protocol.ts';

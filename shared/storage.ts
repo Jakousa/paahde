@@ -2,12 +2,13 @@
 // base (the 'chest' pieces in shared/base.ts) and are shared by everyone, and never fill up (growChest). A vehicle
 // standing in the world (shared/vehicles.ts) keeps its item in a box of its own ('veh<id>', to fit its parts) and has a
 // cargo grid ('cargo<id>'), both shared and open in reach of it while nobody rides it. A building standing in the world keeps its item in a box of its own ('bld<id>',
-// shared/gear.ts buildingBox), shared too, open within reach of it, to swap its parts. Every player also has their equipment ('equip', shared/gear.ts),
+// shared/boxes.ts buildingBox), shared too, open within reach of it, to swap its parts. Every player also has their equipment ('equip', shared/gear.ts),
 // always open, and a slot on the workbench ('bench') for the item they are repairing, open beside it. The client lists whatever is open next to the bag in the Tab
 // inventory (src/inventory.ts); the server checks the same thing, with slack, before every move.
 import { BASE, BASE_PIECES } from './base.ts';
 import { corpseId, corpsesNear } from './corpse.ts';
-import { buildingId, cargoId, EQUIP_SLOTS, isBuilding, vehicleId } from './gear.ts';
+import { boxKind, boxNumber, buildingId, cargoId, vehicleId, type BoxKind } from './boxes.ts';
+import { EQUIP_SLOTS, isBuilding } from './gear.ts';
 import { BAG_SLOTS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, CHEST_ROWS, coverage, gridShape, ITEMS, MAX_SIDE, type Slots } from './items.ts';
 import { placed, PLACED_REACH, placedReach } from './placed.ts';
 import type { PlayerState } from './sim.ts';
@@ -31,15 +32,21 @@ export const OWN_BOXES = ['bag', 'equip', 'bench'];
 
 const WORKBENCH = STATIONS.findIndex((s) => s.kind === 'workbench');
 
+/** How many slots a box has to start with (0: there's no such box, or it isn't there now). */
 export function boxSize(box: string): number {
-  if (box === 'bag') return BAG_SLOTS;
-  if (box === 'equip') return EQUIP_SLOTS.length;
-  if (box === 'bench') return 1;
-  if (buildingId(box) >= 0) return building(box) ? 1 : 0;
-  if (vehicleId(box) >= 0) return vehicleById(vehicleId(box)) ? 1 : 0;
-  if (cargoId(box) >= 0) return vehicleById(cargoId(box))?.up ? BIKE_COLS * BIKE_ROWS : 0;
-  return chestIndex(box) >= 0 || corpseId(box) >= 0 ? CHEST_COLS * CHEST_ROWS : 0;
+  const k = boxKind(box);
+  return k ? SIZES[k.kind](box) : 0;
 }
+const SIZES: Record<BoxKind, (box: string) => number> = {
+  bag: () => BAG_SLOTS,
+  equip: () => EQUIP_SLOTS.length,
+  bench: () => 1,
+  chest: (box) => (chestIndex(box) >= 0 ? CHEST_COLS * CHEST_ROWS : 0),
+  corpse: (box) => (corpseId(box) >= 0 ? CHEST_COLS * CHEST_ROWS : 0),
+  bld: (box) => (building(box) ? 1 : 0),
+  veh: (box) => (vehicleById(vehicleId(box)) ? 1 : 0),
+  cargo: (box) => (vehicleById(cargoId(box))?.up ? BIKE_COLS * BIKE_ROWS : 0),
+};
 
 /**
  * Chests are endless: resize a chest's grid to MAX_SIDE empty rows past the lowest item (so anything fits, turned
@@ -58,8 +65,7 @@ export function growChest(slots: Slots) {
 
 /** Chest index from a box id, or -1. */
 export function chestIndex(box: string): number {
-  const m = /^chest(\d+)$/.exec(box);
-  const i = m ? Number(m[1]) : -1;
+  const i = boxNumber('chest', box);
   return i < CHESTS.length ? i : -1;
 }
 
@@ -69,24 +75,20 @@ export const building = (box: string) => {
   return id < 0 ? undefined : placed.find((p) => p.id === id && isBuilding(p.kind));
 };
 
-/** Chests and packs grow without end (growChest); a building's box is one slot. */
-export const grows = (box: string) => chestIndex(box) >= 0 || corpseId(box) >= 0;
-
-/** Shared boxes are owned by nobody (''); the others by the player. */
-export const isShared = (box: string) => chestIndex(box) >= 0 || corpseId(box) >= 0 || buildingId(box) >= 0 || vehicleId(box) >= 0 || cargoId(box) >= 0;
-
 export function boxLabel(box: string): string {
-  if (box === 'bag') return TEXT.boxes.bag;
-  if (box === 'equip') return TEXT.boxes.equip;
-  if (box === 'bench') return TEXT.boxes.bench;
-  if (cargoId(box) >= 0) return TEXT.boxes.cargo;
-  if (corpseId(box) >= 0) return TEXT.boxes.corpse;
-  const v = vehicleById(vehicleId(box));
-  if (v) return ITEMS[v.kind].label;
-  const b = building(box);
-  if (b) return ITEMS[b.kind].label;
-  return CHESTS.length > 1 ? TEXT.boxes.chestN(chestIndex(box) + 1) : TEXT.boxes.chest;
+  const k = boxKind(box);
+  return k ? LABELS[k.kind](box) : '';
 }
+const LABELS: Record<BoxKind, (box: string) => string> = {
+  bag: () => TEXT.boxes.bag,
+  equip: () => TEXT.boxes.equip,
+  bench: () => TEXT.boxes.bench,
+  chest: (box) => (CHESTS.length > 1 ? TEXT.boxes.chestN(chestIndex(box) + 1) : TEXT.boxes.chest),
+  corpse: () => TEXT.boxes.corpse,
+  bld: (box) => ITEMS[building(box)?.kind ?? '']?.label ?? '',
+  veh: (box) => ITEMS[vehicleById(vehicleId(box))?.kind ?? '']?.label ?? '',
+  cargo: () => TEXT.boxes.cargo,
+};
 
 /** Boxes open to a player standing at `s` besides the bag, nearest chest first. */
 export function openBoxes(s: PlayerState, slack = 0): BoxId[] {

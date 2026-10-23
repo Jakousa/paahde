@@ -121,7 +121,9 @@ when you find it stale.
   JSON `data` column; it goes wherever the item goes, and items with any never stack. Fitted parts keep theirs in
   `data.fitted` (`partAt` / `setPart`)
 - `server/items.ts` — item stacks in boxes (bag, equipment, workbench, bike, chests: `shared/items.ts`,
-  `shared/storage.ts`), Tab overlay in `src/inventory.ts`
+  `shared/storage.ts`), Tab overlay in `src/inventory.ts`. Box ids and each kind's traits (own or shared, grows,
+  fitted, take-only) are in `shared/boxes.ts` (`BOX_KINDS`); what depends on the world (size, label, shape) is a
+  `Record<BoxKind, ...>` in `shared/storage.ts` and `shared/gear.ts`, so a new kind of box is added in those places
 - `shared/gear.ts` — gear found broken and repaired with parts at the workbench (part slots, quality, what each does,
   move/repair rules for client and server); `shared/loot.ts` + `server/loot.ts` — finds and caches in the world, drawn
   by `src/world/loot.ts`. Every model of gear shows its tier (quality rounded down: rust → as made → polished brass →

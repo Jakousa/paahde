@@ -16,7 +16,8 @@
 // opens its cargo with its part slots beside it, to swap in better parts. Loot lying in reach (shared/loot.ts lootReach) shows as one more panel, On the ground: click,
 // shift-click or drag a piece into the bag to pick it up, or drag something onto the panel to drop it. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
-import { bagShape, boxShape, buildingId, cargoId, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, fittedBox, GEAR, holdsCargo, isGear, partsOf, quality, repaired, slotLabel, tierOf, tryMove, vehicleBox, vehicleId, type Boxes } from '../shared/gear.ts';
+import { buildingId, cargoId, fittedBox, takeOnly, vehicleBox, vehicleId } from '../shared/boxes.ts';
+import { bagShape, boxShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, holdsCargo, isGear, partsOf, quality, repaired, slotLabel, tierOf, tryMove, type Boxes } from '../shared/gear.ts';
 import { chargeOf, findSpot, HOTBAR, ITEMS, makeItem, partAt, scrapItem, setData, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
@@ -26,7 +27,7 @@ import type { ScrapPiece } from '../shared/scrap.ts';
 import { Hints } from './hints';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxLabel, openBoxes } from '../shared/storage.ts';
-import { isCorpseBox } from '../shared/corpse.ts';
+
 import { canDropAt, lootReach, type Loot } from '../shared/loot.ts';
 import { isPlaceable } from '../shared/placed.ts';
 import { vehicleById } from '../shared/vehicles.ts';
@@ -500,7 +501,7 @@ export class InventoryHud {
           + `${this.standHtml(slots[0] ?? null, box)}</div>`;
         continue;
       }
-      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns">${isCorpseBox(box) ? '' : `<button data-store="${box}">${TEXT.inventory.storeAll}</button>`}<button data-all="${box}">${TEXT.inventory.takeAll}</button><button data-sort="${box}">${TEXT.inventory.sort}</button></span></div>`
+      html += `<div class="box storage"><div class="head"><h3>${boxLabel(box)}</h3><span class="btns">${takeOnly(box) ? '' : `<button data-store="${box}">${TEXT.inventory.storeAll}</button>`}<button data-all="${box}">${TEXT.inventory.takeAll}</button><button data-sort="${box}">${TEXT.inventory.sort}</button></span></div>`
         + `${this.gridHtml(box, slots, boxShape(box, this.net.boxes))}</div>`;
     }
     this.ground = vehicle ? [] : this.groundNow();

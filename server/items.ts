@@ -1,13 +1,14 @@
 // Server side of items (shared/items.ts): every box's slots, cached from the `items` table, the one-time gear
 // setup, pickups landing in the bag, and validated moves, sorts and repairs between the boxes a player can
 // open (shared/storage.ts; the rules are shared/gear.ts tryMove / fitPart / unfitPart).
-import { bagShape, boxShape, EQUIP_SLOTS, fitPart, fittedBox, GEAR, holdsCargo, SHIELD_BREAKS, isGear, refit, scrapParts, shieldSaves, tierOf, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
+import { fittedBox, grows, isShared } from '../shared/boxes.ts';
+import { bagShape, boxShape, EQUIP_SLOTS, fitPart, GEAR, holdsCargo, SHIELD_BREAKS, isGear, refit, scrapParts, shieldSaves, tierOf, tryMove, unfitPart, type Boxes } from '../shared/gear.ts';
 import {
   addItem, addUpTo, BAG_SLOTS, makeItem, ownOf, partAt, CHEST_COLS, CHEST_ROWS, findSpot, gridShape, hasItem, HOTBAR, partKind, RETIRED, roomFor, CLOTH, SCRAP, setData, setPart, settle, sizeOf, sortItems, stackOf, stacks,
   type Item, type ItemData, type Slots,
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
-import { boxSize, canOpen, growChest, grows, isShared, OWN_BOXES } from '../shared/storage.ts';
+import { boxSize, canOpen, growChest, OWN_BOXES } from '../shared/storage.ts';
 import { buildCost, craft, isBuildable, RECIPES, useUp, type Recipe } from '../shared/crafting.ts';
 import { RIFLE } from '../shared/rifle.ts';
 import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';

@@ -4,7 +4,8 @@
 // like a building's, server/items.ts fit / unfit), and getting on and off: mount() moves the player onto it and starts
 // the mount (shared/sim.ts), and whoever rides it carries it with them until they get off (or die, or leave), when it
 // is parked where they are. Keeps shared/vehicles.ts's list in step and broadcasts it when it changes.
-import { cargoBox, bikeLevel, GEAR, isVehicle, partsOf, repaired, scrapParts, vehicleBox, vehicleId } from '../shared/gear.ts';
+import { cargoBox, vehicleBox, vehicleId } from '../shared/boxes.ts';
+import { bikeLevel, GEAR, isVehicle, partsOf, repaired, scrapParts } from '../shared/gear.ts';
 import { partKind, type ItemData } from '../shared/items.ts';
 import { coreCrashSites } from '../shared/crashsites.ts';
 import { brokenParts, findSpot, foundData, homeBikeSpot, nearPiles } from '../shared/lootRoll.ts';

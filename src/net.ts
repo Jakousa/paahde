@@ -21,17 +21,18 @@
 // - Loot (shared/loot.ts): what lies in the world, from the server; F asks to take it.
 // - Hands: what we hold (canteen, drinking, filling, a gun raised to aim) is sent when it changes and relayed in snapshots, cosmetic only;
 //   with it the selected hotbar slot.
+import { buildingId, cargoId, grows, vehicleId } from '../shared/boxes.ts';
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
 import { heal, pitchFromQ } from '../shared/dig.ts';
-import { bagShape, boxShape, buildingId, cargoId, fitPart, holdsCargo, tryMove, unfitPart, vehicleId } from '../shared/gear.ts';
+import { bagShape, boxShape, fitPart, holdsCargo, tryMove, unfitPart } from '../shared/gear.ts';
 import { debrisItem, HOTBAR, roomFor, scrapItem, sortItems, type Slots } from '../shared/items.ts';
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
 import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
 import { setJetCrashes } from '../shared/jetcrash.ts';
-import { growChest, grows } from '../shared/storage.ts';
+import { growChest } from '../shared/storage.ts';
 import { corpseBox, CORPSES } from '../shared/corpse.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import type { CrashPiece } from '../shared/crashsites.ts';

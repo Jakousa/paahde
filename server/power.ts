@@ -4,11 +4,12 @@
 // the state goes out to everyone. A windmill on a grid with no station (or only full ones) delivers nothing. While the world
 // sleeps (nobody in it, the process gone) the wind still blows: on start the time since the last save is caught up in
 // steps of the same wind, storms left out.
+import { buildingBox, buildingId } from '../shared/boxes.ts';
 import { BASE } from '../shared/base.ts';
 import { placed } from '../shared/placed.ts';
 import { grids } from '../shared/wires.ts';
 import { cells, charge, GAME_SPEED, windmillWatts, windSpeed, type PowerState, type Store } from '../shared/power.ts';
-import { buildingBox, buildingId, partsOf } from '../shared/gear.ts';
+import { partsOf } from '../shared/gear.ts';
 import { chargeOf, partAt, setFitted, type Item } from '../shared/items.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';

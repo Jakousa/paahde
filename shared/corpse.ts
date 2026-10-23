@@ -5,6 +5,7 @@
 // Dying in or over the base leaves nothing (nothing can be dropped there, shared/loot.ts canDropAt).
 // The server (server/corpses.ts) keeps the list in SQLite and tells clients ('corpses'); both keep CORPSES up to
 // date, so shared/storage.ts can say which packs are in reach. Each one's items are box `corpse<id>`, shared.
+import { boxNumber } from './boxes.ts';
 
 export type Corpse = {
   id: number;
@@ -27,13 +28,9 @@ export const CORPSES = new Map<number, Corpse>();
 
 export const corpseBox = (id: number) => `corpse${id}`;
 
-/** Is this a pack's box id (lying there or not)? Nothing may be put in one. */
-export const isCorpseBox = (box: string) => /^corpse\d+$/.test(box);
-
-/** A pack's id from its box id, or -1 (also for one that isn't there). */
+/** A pack's id from its box id, or -1 (also for one that isn't there). Nothing may be put in one (shared/boxes.ts takeOnly). */
 export function corpseId(box: string): number {
-  const m = /^corpse(\d+)$/.exec(box);
-  const id = m ? Number(m[1]) : -1;
+  const id = boxNumber('corpse', box);
   return CORPSES.has(id) ? id : -1;
 }
 
