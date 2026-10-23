@@ -8,8 +8,8 @@
 /** How far the heat bends the title (px, across and up), its grain (per px, across and up) and how fast the air
  *  rises (noise units per second: slow). */
 const BEND = [7, 4];
-const GRAIN = [0.011, 0.032];
-const RISE = 0.22;
+const GRAIN = [0.011, 0.064]; // squashed up and down: ripples half as tall as they were
+const RISE = 1.0; // ~16 px/s at that grain
 /** Room round the title's box in the texture, for its glow (px). */
 const PAD = 52;
 /** The title's glow, as its CSS text-shadow (src/landing.ts): offset y, blur, colour. */

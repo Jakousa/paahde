@@ -163,7 +163,7 @@ export function nav(v: View, how: 'push' | 'replace' = 'push') {
 const back = (v: View) => () => (shown?.why || (v.v === 'lobby' && !v.from) ? nav({ v: 'intro' }) : history.back());
 
 const FAST = '.1s ease-out';
-const SLOW = '1.4s cubic-bezier(.3, 0, .2, 1)';
+const SLOW = '2.8s cubic-bezier(.3, 0, .2, 1)';
 /** Title to what's under it (px). */
 const GAP = 22;
 
