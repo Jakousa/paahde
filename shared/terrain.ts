@@ -108,9 +108,10 @@ export function sandOverRock(x: number, z: number): number {
   return layers.rock === -Infinity ? Infinity : Math.max(0, layers.sand - layers.rock);
 }
 
-/** True where bare rock is the ground (no dunes or piled sand over it): hard footing, no digging. */
+/** True where bare rock is the ground (no dunes or piled sand over it, or dug or blasted down to it): hard
+ *  footing, no digging. */
 export function onRock(x: number, z: number): boolean {
-  return sandOverRock(x, z) === 0 && edits.sample(x, z) < 0.05;
+  return sandOverRock(x, z) + edits.sample(x, z) < 0.05;
 }
 
 /** Sparse grid of height offsets (millimetres), chunked. One instance per world (see `edits`). */
