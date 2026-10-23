@@ -13,6 +13,7 @@
 // anyway. A new prey it stalks: deep and quiet (no wake, no furrow, no arc), straight at them, to come up under them.
 import { BASE } from '../shared/base.ts';
 import { crowd, scaled } from './bossCrowd.ts';
+import { ball, blast, due } from './blasts.ts';
 import { BLAST_R, flightTime, LEAD, SCATTER, type MissilePath } from '../shared/missiles.ts';
 import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt, rockTop, sandOverRock } from '../shared/terrain.ts';
@@ -537,14 +538,8 @@ function salvo(b: Boss, w: Worm, n: number, now: number, players: BossPlayer[], 
 
 /** Missiles now landing: a burst, death round it. */
 function landMissiles(w: Worm, now: number, players: BossPlayer[], out: BossOut) {
-  if (!w.missiles.length) return;
-  w.missiles = w.missiles.filter((m) => {
-    if (m.at > now) return true;
-    for (const p of players) {
-      if (p.safe || out.kills.some((k) => k.id === p.id)) continue;
-      if (Math.hypot(p.x - m.x, p.y + 0.9 - m.y, p.z - m.z) < BLAST_R) out.kills.push({ id: p.id, cause: 'missile', push: blastPush(m.x, m.y, m.z, p.x, p.y, p.z, BLAST_R) });
-    }
+  w.missiles = due(w.missiles, now, (m) => {
+    blast(out, players, m.x, m.y, m.z, 'missile', BLAST_R, ball(m.x, m.y, m.z, BLAST_R, 0.9));
     out.events.push({ x: m.x, z: m.z, msg: { t: 'blast', id: m.id, x: m.x, y: m.y, z: m.z } });
-    return false;
   });
 }

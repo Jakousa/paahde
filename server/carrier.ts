@@ -23,6 +23,7 @@
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { BOSS_SEND_R } from '../shared/bosses.ts';
 import { crowd, scaled } from './bossCrowd.ts';
+import { ball, blast, due } from './blasts.ts';
 import {
   BAY, bayAt, BOMB_CRATER_MM, BOMB_CRATER_R, BOMB_GAP, BOMB_KILL_R, BOMB_REACH, bombFall, CARRIER_ALT, CHASE, CRASH_FAN_MM, CRASH_FAN_R,
   CRASH_KILL_R, CRASH_MM, CRASH_R, CRUISE, CS_ALL, CS_LEN, CS_LOCK, CS_OX, CS_OY, CS_OZ, CS_FALL, CS_PITCH, CS_ROLL, CS_SPIN, CS_TX, CS_TZ,
@@ -151,14 +152,9 @@ function pickWander(b: Boss, st: St, players: BossPlayer[]) {
 /** Bombs landing, and the wreck hitting the sand (also ticked once dead, see server/bosses.ts `wreck`). */
 function resolve(b: Boss, now: number, players: BossPlayer[], out: BossOut) {
   const st = b.st as St;
-  st.bombs = st.bombs.filter((m) => {
-    if (now < m.at) return true;
+  st.bombs = due(st.bombs, now, (m) => {
     out.craters.push({ x: m.x, z: m.z, r: BOMB_CRATER_R, mm: BOMB_CRATER_MM });
-    for (const p of players) {
-      if (p.safe || Math.hypot(p.x - m.x, p.y - m.y, p.z - m.z) > BOMB_KILL_R) continue;
-      out.kills.push({ id: p.id, cause: 'bomb', push: blastPush(m.x, m.y, m.z, p.x, p.y, p.z, BOMB_KILL_R) });
-    }
-    return false;
+    blast(out, players, m.x, m.y, m.z, 'bomb', BOMB_KILL_R, ball(m.x, m.y, m.z, BOMB_KILL_R));
   });
   if (st.crashAt < 0 || st.crashed || now < st.crashAt) return;
   st.crashed = true;
@@ -167,10 +163,7 @@ function resolve(b: Boss, now: number, players: BossPlayer[], out: BossOut) {
     const f = fanAt(i, b.x, b.y, b.z, b.yaw);
     out.craters.push({ x: f.x, z: f.z, r: CRASH_FAN_R, mm: CRASH_FAN_MM });
   }
-  for (const p of players) {
-    if (p.safe || Math.hypot(p.x - b.x, p.z - b.z) > CRASH_KILL_R || p.y > b.y + HULL[1] * 3) continue;
-    out.kills.push({ id: p.id, cause: 'bomb', push: blastPush(b.x, b.y, b.z, p.x, p.y, p.z, CRASH_KILL_R) });
-  }
+  blast(out, players, b.x, b.y, b.z, 'bomb', CRASH_KILL_R, (p) => Math.hypot(p.x - b.x, p.z - b.z) <= CRASH_KILL_R && p.y <= b.y + HULL[1] * 3);
 }
 
 /** A bomb out of the bay at `bay` onto player p, aimed `lead` × their velocity × the fall time ahead of them. */

@@ -20,6 +20,7 @@
 //   and more often for a crowd.
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { crowd, scaled } from './bossCrowd.ts';
+import { ball, blast, column, due } from './blasts.ts';
 import { BASE } from '../shared/base.ts';
 import { blastPush } from '../shared/ragdoll.ts';
 import { CORE_HALF, heightAt } from '../shared/terrain.ts';
@@ -468,17 +469,9 @@ function land(st: St, f: Foot, now: number, weight: number, big: boolean) {
 
 /** Footfalls now due: dig, kill. */
 function footfalls(st: St, now: number, players: BossPlayer[], out: BossOut) {
-  if (!st.pending.length) return;
-  st.pending = st.pending.filter((e) => {
-    if (e.at > now) return true;
+  st.pending = due(st.pending, now, (e) => {
     if ((e.big || players.some((p) => Math.hypot(p.x - e.x, p.z - e.z) < FOOTPRINT_R))) out.craters.push({ x: e.x, z: e.z, r: e.r, mm: e.mm });
-    for (const p of players) {
-      if (p.safe || out.kills.some((k) => k.id === p.id)) continue;
-      const d = Math.hypot(p.x - e.x, p.z - e.z);
-      if (d > e.kill || Math.abs(p.y - e.y) > e.kill) continue;
-      out.kills.push({ id: p.id, cause: 'stomp', push: blastPush(e.x, e.y, e.z, p.x, p.y, p.z, e.kill) });
-    }
-    return false;
+    blast(out, players, e.x, e.y, e.z, 'stomp', e.kill, column(e.x, e.y, e.z, e.kill, e.kill));
   });
 }
 
@@ -626,15 +619,8 @@ function volley(b: Boss, st: St, now: number, players: BossPlayer[], out: BossOu
 
 /** Missiles now landing (seen time): a crater, death around it. */
 function landMissiles(st: St, now: number, players: BossPlayer[], out: BossOut) {
-  if (!st.missiles.length) return;
-  st.missiles = st.missiles.filter((m) => {
-    if (m.at > now) return true;
+  st.missiles = due(st.missiles, now, (m) => {
     out.craters.push({ x: m.x, z: m.z, r: MISSILE_CRATER_R, mm: MISSILE_CRATER_MM });
-    for (const p of players) {
-      if (p.safe || out.kills.some((k) => k.id === p.id)) continue;
-      if (Math.hypot(p.x - m.x, p.y - m.y, p.z - m.z) > MISSILE_KILL_R) continue;
-      out.kills.push({ id: p.id, cause: 'missile', push: blastPush(m.x, m.y, m.z, p.x, p.y, p.z, MISSILE_KILL_R) });
-    }
-    return false;
+    blast(out, players, m.x, m.y, m.z, 'missile', MISSILE_KILL_R, ball(m.x, m.y, m.z, MISSILE_KILL_R));
   });
 }

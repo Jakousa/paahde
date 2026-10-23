@@ -29,6 +29,7 @@ import {
 import { blastPush } from '../shared/ragdoll.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { crowd, scaled } from './bossCrowd.ts';
+import { blast, column, due } from './blasts.ts';
 import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { flank, keepOut, skirt, type Skirt } from './pack.ts';
 
@@ -339,28 +340,16 @@ function stepFeet(b: Boss, st: St, dt: number, now: number, players: BossPlayer[
 
 /** Feet (and slams) whose drawn landing is now: holes in the sand, and whoever was under them. */
 function land(b: Boss, st: St, now: number, players: BossPlayer[], out: BossOut) {
-  if (!st.pending.length) return;
-  const killed = new Set(out.kills.map((k) => k.id));
-  st.pending = st.pending.filter((e) => {
-    if (e.at > now) return true;
+  st.pending = due(st.pending, now, (e) => {
     if (e.slam) {
       out.craters.push({ x: e.x, z: e.z, r: SLAM_HOLE.r, mm: SLAM_HOLE.mm }, { x: e.x2, z: e.z2, r: SLAM_HOLE.r, mm: SLAM_HOLE.mm });
       const cx = (e.x + e.x2) / 2, cz = (e.z + e.z2) / 2, cy = heightAt(cx, cz);
-      for (const p of players) {
-        if (p.safe || killed.has(p.id) || Math.hypot(p.x - cx, p.z - cz) > SLAM_R || Math.abs(p.y - cy) > 8) continue;
-        killed.add(p.id);
-        out.kills.push({ id: p.id, cause: 'queen', push: blastPush(cx, cy, cz, p.x, p.y, p.z, SLAM_R) });
-      }
+      blast(out, players, cx, cy, cz, 'queen', SLAM_R, column(cx, cy, cz, SLAM_R, 8));
       out.events.push({ msg: { t: 'bossFx', id: b.id, e: 'slam', time: Math.round(now), x: r2(cx), y: r2(cy), z: r2(cz) }, x: cx, z: cz });
-      return false;
+      return;
     }
     if (e.hole) out.craters.push({ x: e.x, z: e.z, r: STAB_HOLE.r, mm: STAB_HOLE.mm });
-    for (const p of players) {
-      if (p.safe || killed.has(p.id) || Math.hypot(p.x - e.x, p.z - e.z) > STAB_R || Math.abs(p.y - e.y) > 4) continue;
-      killed.add(p.id);
-      out.kills.push({ id: p.id, cause: 'queen', push: blastPush(e.x, e.y, e.z, p.x, p.y, p.z, STAB_R * 2) });
-    }
-    return false;
+    blast(out, players, e.x, e.y, e.z, 'queen', STAB_R * 2, column(e.x, e.y, e.z, STAB_R, 4));
   });
 }
 
