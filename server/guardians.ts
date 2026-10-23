@@ -25,6 +25,7 @@ import { heightAt } from '../shared/terrain.ts';
 import { type BotPlayer, type Kill, open, r2, r3, rand, SEND_R, SITE_LEAVE_R, SITE_NEAR_R, sitesNear, wrap } from './bots.ts';
 import { DroneServer } from './drones.ts';
 import { flank, keepOut, skirt, type Skirt } from './pack.ts';
+import { Tracks } from './tracks.ts';
 
 export { SEND_R, type BotPlayer, type Kill } from './bots.ts';
 
@@ -113,7 +114,7 @@ export class GuardianServer {
   /** Player positions last tick, for leading the missiles. */
   private lastPos = new Map<number, { x: number; z: number }>();
   /** Player velocities (smoothed), for the crawler packs heading them off. */
-  private vel = new Map<number, { x: number; z: number; vx: number; vz: number }>();
+  private vel = new Tracks({ k: (dt) => 1 - Math.exp(-dt * 6), jump: 25, onJump: 'keep' });
   /** The sites in the core square (terrain.ts CORE_HALF); crawlers and night drones go by the sites near players. */
   private sites = coreCrashSites();
   /** Guardian ground: the sites guardians roam. */
@@ -264,7 +265,7 @@ export class GuardianServer {
     const shot: number[] = [], blasted: number[] = [], events: BoltEvent[] = [];
     const byId = new Map(players.map((p) => [p.id, p]));
     const exposed = players.filter(open);
-    this.track(dt, players);
+    this.vel.update(now, dt, players);
     this.swarm(players, now);
     this.wrecks(now);
     const lit = this.drones.tick(dt, now, tod, players, exposed, byId, this.storms, (p) => this.alert(p, now));
@@ -286,22 +287,6 @@ export class GuardianServer {
     return { bitten, shot, blasted, events };
   }
 
-  private track(dt: number, players: BotPlayer[]) {
-    const k = 1 - Math.exp(-dt * 6);
-    for (const p of players) {
-      const v = this.vel.get(p.id);
-      if (!v) {
-        this.vel.set(p.id, { x: p.x, z: p.z, vx: 0, vz: 0 });
-        continue;
-      }
-      const vx = (p.x - v.x) / dt, vz = (p.z - v.z) / dt;
-      // A respawn or a teleport isn't a velocity.
-      if (Math.hypot(vx, vz) < 25) (v.vx += (vx - v.vx) * k), (v.vz += (vz - v.vz) * k);
-      v.x = p.x;
-      v.z = p.z;
-    }
-    if (this.vel.size > players.length) for (const id of this.vel.keys()) if (!players.some((p) => p.id === id)) this.vel.delete(id);
-  }
 
   /** Missiles: guardians shell their prey, and the nearest ones whoever a drone's beam is on; ones that have landed burst. */
   private tickMissiles(dt: number, now: number, lit: Set<number>, players: BotPlayer[], exposed: BotPlayer[], blasted: number[], events: BoltEvent[]) {

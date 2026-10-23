@@ -177,7 +177,9 @@ when you find it stale.
   `src/bossBar.ts`): called with receivers (gear: uranium cell + an enemy's part, `RECEIVERS`/`RELICS`; `onCall` in
   server/world.ts, needle `src/receiver.ts`) or F3; every kind beaten wins the world (`beaten` in server/world.ts,
   trophies `src/world/trophies.ts`). `server/bosses.ts` spawns and ticks one brain per kind, `src/bosses.ts`
-  interpolates them and handles the weak points; spoils in `shared/tables.ts` BOSS_SPOILS
+  interpolates them and handles the weak points; spoils in `shared/tables.ts` BOSS_SPOILS. Shared by the brains:
+  delayed blasts (`server/blasts.ts`: due, blast, ball, column) and players' smoothed velocities (`server/tracks.ts`
+  Tracks, also the crawler packs')
 - Each kind follows one pattern: numbers in `shared/<kind>.ts`, brain `server/<kind>.ts`, view `src/world/<kind>.ts`
   (built on `src/world/bossParts.ts`), sound `src/<kind>Sound.ts`, model `tools/blender/<kind>.py`. The kinds:
   - worm — 200 m, swims through the sand, bursts out under prey, charges half out of it, or flies a huge arc firing
