@@ -68,10 +68,17 @@ export const LANDING_CSS = `
 #landing .games a:hover { background: rgba(255, 244, 208, .92); border-color: #fff4d0; color: #2a120a; }
 #landing .games a.dead { opacity: .55; }
 #landing .games .id { font: 14px var(--mono); letter-spacing: .1em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#landing .games .when, #landing .games .stats, #landing .games .you { font: 12px var(--mono); opacity: .8; }
-#landing .games .when { text-align: right; }
-#landing .games .you { grid-column: 1 / -1; }
-#landing .games .on { color: #9fe39a; }
+#landing .games a { grid-template-columns: 1fr auto; grid-template-rows: auto auto auto; }
+#landing .games .stats, #landing .games .you { font: 12px var(--mono); opacity: .8; grid-column: 1; }
+#landing .up { display: inline-flex; gap: 5px; align-items: center; justify-content: flex-end; font: 12px var(--mono); opacity: .8; }
+#landing .crowd { position: relative; grid-column: 2; grid-row: 2 / span 2; align-self: end; justify-self: end; display: inline-flex; opacity: .85; }
+#landing .crowd b { position: absolute; right: -6px; top: -5px; min-width: 15px; height: 15px; padding: 0 3px; box-sizing: border-box;
+  border-radius: 8px; font: bold 10px/15px var(--mono); text-align: center; color: #2a120a; background: #fff4d0; }
+#landing .games a:hover .crowd b { color: #fff4d0; background: #2a120a; }
+#landing .on { color: #9fe39a; }
+#landing p.stats { display: flex; gap: 14px; align-items: center; justify-content: center; flex-wrap: wrap; }
+#landing p.stats .crowd { opacity: 1; margin-right: 6px; }
+#landing p.stats .up { font: inherit; opacity: 1; }
 #landing .games a:hover .on { color: #2f6b2a; }
 @keyframes landing-drift { from { transform: scale(1) translateX(0); } to { transform: scale(1.06) translateX(-1.5%); } }
 @keyframes landing-in { from { opacity: 0; transform: translateY(12px); } }
@@ -173,21 +180,54 @@ export function rememberWorld(id: string) {
   saveJoined([{ id, at: Date.now() }, ...joined().filter((j) => j.id !== id)]);
 }
 
-/** A game in one of the lists: its name, lives, bosses beaten and players; on the right `when` and who's on now. */
-function gameRow(s: WorldStats, when: string, you?: string): HTMLLIElement {
+const CLOCK_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>`;
+const GROUP_SVG = `<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><circle cx="9" cy="8" r="3.4"/><path d="M2.5 20c0-3.6 2.9-6.2 6.5-6.2s6.5 2.6 6.5 6.2z"/><g opacity=".65"><circle cx="16.8" cy="8.8" r="2.7"/><path d="M15 14c.6-.2 1.2-.3 1.8-.3 2.9 0 4.7 2.2 4.7 5.3h-4.6c-.2-2-.8-3.7-1.9-5z"/></g></svg>`;
+
+/** How long the game has been going, by a clock. */
+export function uptimeEl(s: WorldStats): HTMLElement {
+  const el = document.createElement('span');
+  el.className = 'up';
+  el.title = TEXT.landing.tipUptime;
+  el.innerHTML = CLOCK_SVG;
+  el.append(TEXT.landing.uptime(Math.max(0, Math.floor((Date.now() - s.created) / 60_000))));
+  return el;
+}
+
+/** Everyone who has ever played the game: a group with the number on it. */
+export function crowdEl(s: WorldStats): HTMLElement {
+  const el = document.createElement('span');
+  el.className = 'crowd';
+  el.title = TEXT.landing.players(s.players);
+  el.innerHTML = `${GROUP_SVG}<b></b>`;
+  el.querySelector('b')!.textContent = String(s.players);
+  return el;
+}
+
+/** Lives, bosses beaten and online now / max (lit when someone's on). */
+export function statsLine(s: WorldStats, into: HTMLElement) {
   const n = BOSS_KINDS.filter((_, i) => s.beaten & (1 << i)).length;
   const bosses = '◆'.repeat(n) + '◇'.repeat(BOSS_KINDS.length - n);
   const life = s.lives > 0 ? TEXT.landing.lives(s.lives) : TEXT.landing.gameOver;
+  const seats = document.createElement('span');
+  seats.title = TEXT.landing.tipSeats;
+  seats.textContent = TEXT.landing.seats(s.online, s.max);
+  if (s.online) seats.className = 'on';
+  into.replaceChildren(`${life}  ·  ${bosses}  ·  `, seats);
+}
+
+/** A game in one of the lists: name and how long it's been going; lives, bosses and who's on; your name and time
+ *  there (`you`); in the corner everyone who has played it. */
+function gameRow(s: WorldStats, you?: string): HTMLLIElement {
   const li = document.createElement('li');
   const a = document.createElement('a');
   a.href = `?w=${encodeURIComponent(s.id)}`;
   if (s.lives <= 0) a.className = 'dead';
-  a.innerHTML = `<span class="id"></span><span class="when"></span><span class="stats"></span><span class="when on"></span>`;
-  const [id, right, line, on] = a.querySelectorAll('span');
+  a.innerHTML = `<span class="id"></span><span class="stats"></span>`;
+  const [id, line] = a.querySelectorAll('span');
   id.textContent = s.locked ? `${s.name} ${TEXT.landing.lockedMark}` : s.name;
-  right.textContent = when;
-  line.textContent = [life, bosses, TEXT.landing.players(s.players)].join('  ·  ');
-  if (s.online) on.textContent = TEXT.landing.online(s.online);
+  id.after(uptimeEl(s));
+  statsLine(s, line);
+  a.append(crowdEl(s));
   if (you) {
     const y = document.createElement('span');
     y.className = 'you';
@@ -238,7 +278,7 @@ async function recent(box: HTMLElement) {
       const s = byId.get(j.id)!;
       const played = Math.floor((s.played ?? 0) / 60_000);
       const you = s.you || played ? TEXT.landing.you(s.you ?? '', played) : undefined;
-      return gameRow(s, TEXT.landing.ago(Math.floor((Date.now() - j.at) / 60_000)), you);
+      return gameRow(s, you);
     }),
     TEXT.landing.noMine,
   );
@@ -277,7 +317,7 @@ async function browse(box: HTMLElement, sorts: HTMLElement) {
     again.textContent = TEXT.landing.refresh;
     again.addEventListener('click', () => browse(box, sorts));
     sorts.append(again);
-    gameList(box, [...list].sort(SORTS[sort]).map((s) => gameRow(s, TEXT.landing.seats(s.online, s.max))), TEXT.landing.noGames);
+    gameList(box, [...list].sort(SORTS[sort]).map((s) => gameRow(s)), TEXT.landing.noGames);
   };
   draw();
 }

@@ -409,7 +409,12 @@ const en = {
     },
     lives: (n: number) => `♥ ${n}`,
     /** Online now out of the most allowed. */
-    seats: (online: number, max: number) => `${online} of ${max} online`,
+    seats: (online: number, max: number) => `${online}/${max}`,
+    /** How long a game has been going (by the clock icon). */
+    uptime: (min: number) => (min < 60 ? `${min} min` : min < 1440 ? `${Math.floor(min / 60)} h` : `${Math.floor(min / 1440)} d`),
+    /** Hover tips on the icons. */
+    tipUptime: 'Running for',
+    tipSeats: 'Online now / max',
     /** Marks a game with a password. */
     lockedMark: '🔒',
     /** The public games (the browser). */

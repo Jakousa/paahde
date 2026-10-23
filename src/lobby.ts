@@ -2,12 +2,11 @@
 // bosses beaten and who's on, its code (click to copy, to share), your name and colour (src/profile.ts; Join waits for
 // a name that will do; locked once you've joined the game: they're yours there for good), and the password if it has one and this browser has no key for it yet (server/index.ts /api/worlds/<id>/key). Join loads
 // the game. A game that turned us away (src/net.ts onEnded: locked, full, our name) comes back here saying why.
-import { BOSS_KINDS } from '../shared/bosses.ts';
 import type { WorldStats } from '../shared/protocol.ts';
 import { TEXT } from '../shared/text.ts';
 import { WORLD_ID } from '../shared/world.ts';
 import { copies } from './copy';
-import { landing, landingStyle, music } from './landing';
+import { crowdEl, landing, landingStyle, music, statsLine, uptimeEl } from './landing';
 import { getBrowserId, nameOk, profileForm, setWorldKey, worldKey } from './profile';
 
 /** Your name and colour in this game if you've joined it before (they're kept: server/world.ts join), else null. */
@@ -66,9 +65,10 @@ export async function lobby(play: () => void) {
   music(el);
   const panel = el.querySelector<HTMLElement>('.panel')!;
   el.querySelector('.gname')!.textContent = s.locked ? `${s.name} ${TEXT.landing.lockedMark}` : s.name;
-  const n = BOSS_KINDS.filter((_, i) => s.beaten & (1 << i)).length;
-  const life = s.lives > 0 ? TEXT.landing.lives(s.lives) : TEXT.landing.gameOver;
-  el.querySelector('.stats')!.textContent = [life, '◆'.repeat(n) + '◇'.repeat(BOSS_KINDS.length - n), TEXT.landing.seats(s.online, s.max), TEXT.landing.players(s.players), s.public ? TEXT.landing.public : TEXT.landing.private].join('  ·  ');
+  const stats = el.querySelector<HTMLElement>('.stats')!;
+  const line = document.createElement('span');
+  statsLine(s, line);
+  stats.replaceChildren(line, uptimeEl(s), crowdEl(s), s.public ? TEXT.landing.public : TEXT.landing.private);
 
   const join = document.createElement('button');
   const profile = profileForm((ok) => (join.disabled = !ok || !open), me ?? undefined);

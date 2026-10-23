@@ -155,7 +155,7 @@ export type ClientMsg =
  *  or not, locked (password), most players at once, and for your own games (POST api/worlds/mine) your name and colour there
  *  and how long you've played (ms). */
 export type WorldStats = {
-  id: string; name: string; public: boolean; locked: boolean; max: number;
+  id: string; name: string; public: boolean; locked: boolean; max: number; created: number; // Date.now() it was made
   lives: number; beaten: number; players: number; online: number;
   you?: string; color?: number; played?: number;
 };

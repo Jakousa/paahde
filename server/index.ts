@@ -4,7 +4,7 @@
 // forked here with WORLD_ID), because the world's layout is seeded once when the shared modules load
 // (shared/world.ts). A world starts on its first connection and exits on its own when it's been empty a while.
 import { fork, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { connect, type Socket } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
@@ -85,8 +85,11 @@ function stats(id: string, browserId?: string): WorldStats | null {
     };
     const players = (db.prepare('SELECT COUNT(*) AS n FROM players').get() as { n: number }).n;
     const g = games.get(id);
+    // Made when: the registry says; a world from before it, its first player (or its file).
+    const first = (db.prepare('SELECT MIN(created_at) AS t FROM players').get() as { t: string | null }).t;
+    const created = g.created || (first ? Date.parse(`${first.replace(' ', 'T')}Z`) : statSync(dbPath(id)).birthtimeMs);
     const s: WorldStats = {
-      id, name: g.name, public: g.public, locked: g.locked, max: g.max,
+      id, name: g.name, public: g.public, locked: g.locked, max: g.max, created,
       lives: setting('lives') ?? LIVES, beaten: setting('bosses_beaten') ?? 0, players, online: online.get(id) ?? 0,
     };
     if (browserId) {
