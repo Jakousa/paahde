@@ -383,9 +383,9 @@ const en = {
     start: 'Start a new game',
     gameOver: 'Game over',
     noSuchWorld: 'No such world',
-    copy: 'Copy',
-    copied: 'Copied',
     join: 'Join',
+    /** A game's code (the id in its link), on a button that copies it (the lobby, the Esc menu). */
+    codeOf: (code: string) => `Game code · ${code}`,
     won: 'The desert is yours',
     playOn: 'Play on',
     /** The worlds this browser joined, newest first, with how each is doing. */

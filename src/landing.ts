@@ -2,7 +2,7 @@
 // the start (Join, Create, Options); Join, with tabs for the games this browser joined (kept in localStorage when the
 // server says hello, with how each is doing, your name there and how long you've played) and the public games
 // (sortable), and in both a box to join a game by its code; Create, a new game's settings (name, public or private,
-// most players, a password: server/index.ts /api/worlds), then its link to copy and share, and to join from. Every
+// most players, a password: server/index.ts /api/worlds), then straight to its lobby. Every
 // game's link opens its lobby (src/lobby.ts), where your name and colour are chosen. Also the victory screen (every boss beaten), which goes away again: the world plays on. The landing
 // page plays the desert guitar (the game's outdoor music, src/music.ts) once the browser lets it, after the first
 // click or key.
@@ -45,6 +45,7 @@ export const LANDING_CSS = `
 #landing button:disabled { opacity: .5; cursor: default; }
 #landing button:disabled:hover { background: rgba(42, 18, 10, .55); color: #fff4d0; }
 #landing .profile { display: grid; gap: 6px; justify-items: center; }
+#landing .codeChip { padding: 6px 14px; font-size: 12px; letter-spacing: .15em; text-transform: none; }
 #landing .profile.locked input { cursor: default; background: rgba(255, 244, 208, .7); border-right: 1px solid rgba(255, 244, 208, .5); }
 #landing .profile.locked input[type=color] { border-radius: 0 2px 2px 0; }
 #landing .why { min-height: 1em; font: 12px var(--mono); color: #ffb39a; text-shadow: 0 1px 2px rgba(60, 20, 5, .6); }
@@ -302,7 +303,7 @@ function codeBox(): HTMLElement {
   return form;
 }
 
-/** Making a game: name, public or private, most players, a password; then its link to share and join. */
+/** Making a game: name, public or private, most players, a password; then straight to its lobby. */
 function make(back: () => void): HTMLElement {
   const form = document.createElement('form');
   form.className = 'make';
@@ -362,7 +363,7 @@ function make(back: () => void): HTMLElement {
         return;
       }
       setWorldKey(out.id, out.key ?? '');
-      shareLink(form, gameUrl(out.id));
+      location.assign(gameUrl(out.id)); // straight to its lobby, where its code is to copy and share
     } catch {
       why.textContent = TEXT.landing.failed;
       create.disabled = false;
@@ -421,32 +422,6 @@ export function music(el: HTMLElement) {
     });
     gone.observe(document.body, { childList: true });
   });
-}
-
-/** The new game's link in place of `what`: copy it to share, Join to go there yourself. */
-function shareLink(what: HTMLElement, url: string) {
-  what.parentElement?.querySelector('p')?.remove();
-  const row = document.createElement('div');
-  row.className = 'link';
-  row.innerHTML = `<input readonly><button>${TEXT.landing.copy}</button>`;
-  const join = document.createElement('button');
-  join.textContent = TEXT.landing.join;
-  what.replaceWith(row, join);
-  const input = row.querySelector('input')!;
-  const copy = row.querySelector('button')!;
-  input.value = url;
-  input.addEventListener('focus', () => input.select());
-  input.focus();
-  copy.addEventListener('click', async () => {
-    input.select();
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      document.execCommand('copy');
-    }
-    copy.textContent = TEXT.landing.copied;
-  });
-  join.addEventListener('click', () => location.assign(url));
 }
 
 /** Every boss kind is beaten (shared/bosses.ts allBeaten): say so once per world on this browser, then play on. */

@@ -1,12 +1,12 @@
 // A game's lobby: what a game's link (?w=<id>) opens before the game loads (src/entry.ts). Its name, lives left,
-// bosses beaten and who's on, your name and colour (src/profile.ts; Join waits for a name that will do; locked once
-// you've joined the game: they're yours there for good), and the
-// password if it has one and this browser has no key for it yet (server/index.ts /api/worlds/<id>/key). Join loads
+// bosses beaten and who's on, its code (click to copy, to share), your name and colour (src/profile.ts; Join waits for
+// a name that will do; locked once you've joined the game: they're yours there for good), and the password if it has one and this browser has no key for it yet (server/index.ts /api/worlds/<id>/key). Join loads
 // the game. A game that turned us away (src/net.ts onEnded: locked, full, our name) comes back here saying why.
 import { BOSS_KINDS } from '../shared/bosses.ts';
 import type { WorldStats } from '../shared/protocol.ts';
 import { TEXT } from '../shared/text.ts';
 import { WORLD_ID } from '../shared/world.ts';
+import { copies } from './copy';
 import { landing, landingStyle, music } from './landing';
 import { getBrowserId, nameOk, profileForm, setWorldKey, worldKey } from './profile';
 
@@ -58,7 +58,10 @@ export async function lobby(play: () => void) {
   landingStyle();
   const el = document.createElement('div');
   el.id = 'landing';
-  el.innerHTML = `<div class="bg"></div><div class="shade"></div><div class="panel"><h1>${TEXT.game.name}</h1><p class="gname"></p><p class="stats"></p></div>`;
+  el.innerHTML = `<div class="bg"></div><div class="shade"></div><div class="panel"><h1>${TEXT.game.name}</h1><p class="gname"></p><p class="stats"></p><button class="codeChip"></button></div>`;
+  const code = el.querySelector<HTMLButtonElement>('.codeChip')!;
+  code.textContent = TEXT.landing.codeOf(WORLD_ID);
+  copies(code, () => WORLD_ID);
   document.body.append(el);
   music(el);
   const panel = el.querySelector<HTMLElement>('.panel')!;

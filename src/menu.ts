@@ -2,6 +2,7 @@
 // panel took it. Resume (or a click on the backdrop) goes back in. Settings: volume and music volume (src/audio.ts) and
 // the stats line in the top-left corner; below them the controls, the build/connection line and credits.
 // The game keeps running behind it: it's multiplayer, nothing pauses.
+import { copies } from './copy';
 import { WORLD_ID } from '../shared/world.ts';
 import { ACTIONS, bind, kbd, keyName, onChange, resetAll, slots } from './bindings';
 import { capture, setFullscreen, tools, ui } from './input';
@@ -40,6 +41,7 @@ export class Menu {
 <button class="opt" style="margin-top:12px">${TEXT.menu.options}</button>
 <button class="fs" style="margin-top:8px"></button>
 <button class="invite" style="margin-top:8px">${TEXT.menu.copyInvite}</button>
+<button class="code" style="margin-top:8px;text-transform:none">${TEXT.landing.codeOf(WORLD_ID)}</button>
 <button class="ctl" style="margin-top:8px">${TEXT.menu.controls}</button>
 <button class="leaveGame" style="margin-top:8px">${TEXT.menu.mainMenu}</button>
 <div class="foot"><div class="info"></div><a href="./credits.txt" target="_blank" rel="noopener">${TEXT.menu.credits}</a></div></div>
@@ -52,12 +54,9 @@ ${optionsHtml()}
     document.body.append(this.el);
     this.footEl = this.el.querySelector('.info')!;
     // The world's URL (shared/world.ts), without dev flags: anyone opening it joins this world.
-    const invite = this.el.querySelector<HTMLButtonElement>('.invite')!;
-    invite.addEventListener('click', () => {
-      const url = `${location.origin}${location.pathname}?w=${WORLD_ID}`;
-      navigator.clipboard?.writeText(url).then(() => (invite.textContent = TEXT.menu.copied), () => (invite.textContent = url));
-      setTimeout(() => (invite.textContent = TEXT.menu.copyInvite), 2500);
-    });
+    // It opens the world's lobby (src/lobby.ts). The code alone is for the main menu's Join box.
+    copies(this.el.querySelector<HTMLButtonElement>('.invite')!, () => `${location.origin}${location.pathname}?w=${WORLD_ID}`);
+    copies(this.el.querySelector<HTMLButtonElement>('.code')!, () => WORLD_ID);
 
     bindOptions(this.el, {
       onAo,
