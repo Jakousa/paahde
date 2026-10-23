@@ -6,7 +6,7 @@
 // rasterizer's time as a rough measure of what the frame asks of a graphics card. Prints a Sample (tools/bench/common.ts).
 //
 //   node tools/bench/client.ts [dir] [--seconds 15] [--port 8790] [--chrome <path>]
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -44,13 +44,18 @@ try {
   }
   const out = join(data, 'perf');
   const low = ['resScale=0.5', 'dynamicRes=false', 'shadows=false', 'antialias=false', 'sandDetail=0', 'occlusion=0', 'fpsLimit=0'];
-  execFileSync(process.execPath, [
+  const perf = spawnSync(process.execPath, [
     '--no-warnings', join(import.meta.dirname, '../perf.ts'), '--base', `http://localhost:${port}/`, '--world', BENCH_WORLD_ID, '--seconds', seconds,
     '--trace', 'none', '--headless', '--software', '--route', 'spin', '--spawn', 'field', '--tod', '0.4', '--size', '480x300', '--out', out,
     ...low.flatMap((s) => ['--set', s]), ...(opt('chrome') ? ['--chrome', opt('chrome')!] : []),
-  ], { stdio: ['ignore', 2, 'inherit'], timeout: 10 * 60_000 }); // (its progress to stderr: stdout is the result)
-  const file = readdirSync(out).find((f) => f.endsWith('.json'));
-  if (!file) throw new Error('tools/perf.ts wrote no result');
+  ], { encoding: 'utf8', timeout: 10 * 60_000 });
+  process.stderr.write(perf.stdout ?? '');
+  const file = existsSync(out) ? readdirSync(out).find((f) => f.endsWith('.json')) : undefined;
+  if (!file) {
+    // What tools/perf.ts said last (not the page's shader warnings), for the report.
+    const said = `${perf.stdout ?? ''}\n${perf.stderr ?? ''}`.split('\n').filter((l) => l.trim() && !/warning:|^\s+(at |-)|Vertex attribute/.test(l));
+    throw new Error(`tools/perf.ts ${perf.error ? perf.error.message : `exited ${perf.status}`}: ${said.slice(-5).join(' | ')}`);
+  }
   const r = JSON.parse(readFileSync(join(out, file), 'utf8'));
   if (!r.valid) throw new Error(`invalid run: ${r.invalidReasons.join('; ')}`);
   const ms = r.startup.milestonesMs as Record<string, number>, g = r.gameplay;
