@@ -42,7 +42,7 @@ asked seconds and writes `data/perf/<time>[-label].json` (frame gap, cpu, submit
 frames over 20 / 50 ms; startup milestones and long tasks; the graphics settings and machine) plus a Chrome trace of the same stretch
 (`.trace.json.gz`, read with `python tools/trace-report.py`). Options: `--trace play|startup|none`, `--seconds 0` (startup only), `--set k=v` for any graphics
 option (`--set shadows=false --set resScale=0.7`), `--label`, `--world <id>`, `--base <url>`, `--chrome <path>`, `--headless`.
-`--software` runs without a graphics card (WebGPU hidden, WebGL2 drawn by SwiftShader on the CPU, as on a CI runner): far slower, its "GPU" times
+`--peaceful` turns off heat and weather once the game has joined (the debug menu's switches). `--software` runs without a graphics card (WebGPU hidden, WebGL2 drawn by SwiftShader on the CPU, as on a CI runner): far slower, its "GPU" times
 are the software rasterizer's, but the game's CPU time, draws, triangles and the startup timeline still mean something; the CI benchmarks use it (docs/bench.md).
 **Outdoor runs**: a new world starts in the bunker, so use `--spawn field|shelter` (the server's dev spawns: beside a scrap field, 6 m outside a shelter door), `--yaw 3.14` to turn round
 (the field spawn faces the field, which blocks the walk) and `--tod 0.26` for the time of day the run starts at (0.333 = 8 am, sun 28°; **0.26 = about 6 am, sun 8°, long shadows**; sunrise is

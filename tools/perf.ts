@@ -2,7 +2,7 @@
 // route and writes the result (CPU / GPU / frame times, the startup timeline) and a Chrome trace of the same stretch to data/perf/.
 //
 //   node tools/perf.ts [--base http://localhost:5173/] [--seconds 30] [--trace play|startup|none] [--world <id>]
-//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--view <m above the player, for the picture>] [--face sun] [--pitch <degrees down, with --view>] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--software] [--shot [--ab key=value]] [--out data/perf] [--label name]
+//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--view <m above the player, for the picture>] [--face sun] [--pitch <degrees down, with --view>] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--software] [--peaceful] [--shot [--ab key=value]] [--out data/perf] [--label name]
 //
 //   --seconds    gameplay to record (0 = the startup timeline only, no walking)
 //   --trace      play: trace only the recorded walk (default); startup: trace from page load until playable; none
@@ -167,6 +167,9 @@ try {
       phase = state;
       console.log(`  ${((Date.now() - t0) / 1000).toFixed(1)} s: ${phase}`);
       if (phase === 'settling' && trace === 'startup') await traceStop();
+      // --peaceful: no heat and no weather for this player (the debug menu's switches), so a long load in the sun or a
+      // storm doesn't end the run (CI: tools/bench/client.ts)
+      if (flag('peaceful')) await evaluate('window.__dbg && (window.__dbg.net.debugHeat(true), window.__dbg.net.debugWeather(true))');
       if (phase === 'recording') await traceStart();
     }
     if (phase === 'done') break;

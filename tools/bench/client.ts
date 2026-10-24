@@ -46,7 +46,7 @@ try {
   const low = ['resScale=0.5', 'dynamicRes=false', 'shadows=false', 'antialias=false', 'sandDetail=0', 'occlusion=0', 'fpsLimit=0'];
   const perf = spawnSync(process.execPath, [
     '--no-warnings', join(import.meta.dirname, '../perf.ts'), '--base', `http://localhost:${port}/`, '--world', BENCH_WORLD_ID, '--seconds', seconds,
-    '--trace', 'none', '--headless', '--software', '--route', 'spin', '--spawn', 'field', '--tod', '0.4', '--size', '480x300', '--out', out,
+    '--trace', 'none', '--headless', '--software', '--peaceful', '--route', 'spin', '--spawn', 'field', '--tod', '0.4', '--size', '480x300', '--out', out,
     ...low.flatMap((s) => ['--set', s]), ...(opt('chrome') ? ['--chrome', opt('chrome')!] : []),
   ], { encoding: 'utf8', timeout: 10 * 60_000 });
   process.stderr.write(perf.stdout ?? '');
@@ -57,7 +57,7 @@ try {
     throw new Error(`tools/perf.ts ${perf.error ? perf.error.message : `exited ${perf.status}`}: ${said.slice(-5).join(' | ')}`);
   }
   const r = JSON.parse(readFileSync(join(out, file), 'utf8'));
-  if (!r.valid) throw new Error(`invalid run: ${r.invalidReasons.join('; ')}`);
+  if (!r.valid) throw new Error(`invalid run: ${r.invalidReasons.join('; ')}${r.gameplay?.events?.length ? ` (${JSON.stringify(r.gameplay.events)})` : ''}`);
   const ms = r.startup.milestonesMs as Record<string, number>, g = r.gameplay;
   const sample: Sample = {
     m: {
