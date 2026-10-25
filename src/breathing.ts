@@ -29,18 +29,23 @@ class Breathing {
   /** Breathing now (heatstroke is close). */
   on = false;
   private buf: AudioBuffer | null = null;
+  private loading = false;
+  private retryAt = 0;
   private src: AudioBufferSourceNode | null = null;
   private gain: GainNode | null = null;
   /** Context time a fading-out source is dropped; 0 while playing. */
   private dropAt = 0;
 
-  constructor() {
-    audio.onStart((ctx) => {
-      fetch(SRC)
-        .then((r) => r.arrayBuffer())
-        .then((d) => ctx.decodeAudioData(d))
-        .then((b) => (this.buf = b), (e) => console.warn('breathing failed to load', e));
-    });
+  private load(ctx: AudioContext) {
+    if (this.loading || ctx.currentTime < this.retryAt) return;
+    this.loading = true;
+    fetch(SRC)
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
+      .then((d) => ctx.decodeAudioData(d))
+      .then((b) => (this.buf = b), (e) => {
+        this.retryAt = ctx.currentTime + 30;
+        console.warn('breathing failed to load', e);
+      }).finally(() => (this.loading = false));
   }
 
   /** Every frame, with the heat meter (0..HEAT_MAX) and whether you're dead. */
@@ -48,6 +53,8 @@ class Breathing {
     const wasOn = this.on;
     this.on = !dead && (this.on ? heat > FROM - HYSTERESIS : heat > FROM);
     const ctx = audio.ctx;
+    // Start decoding as heat approaches the warning, never for a cold or muted player.
+    if (ctx && !this.buf && !dead && heat > FROM - 20 && audio.volume > 0) this.load(ctx);
     if (!ctx || !this.buf || !audio.out || !audio.running) return;
     if (this.src && this.dropAt && ctx.currentTime >= this.dropAt) {
       this.src.stop();

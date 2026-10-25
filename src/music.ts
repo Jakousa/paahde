@@ -79,7 +79,7 @@ const MP3_DELAY = 1105 / 44100;
 
 interface Voice {
   song: Song;
-  src: AudioBufferSourceNode;
+  src: Pick<AudioBufferSourceNode, 'stop' | 'disconnect'>;
   gain: GainNode;
   /** Context time it started and the song position (s) it started at. */
   t0: number;
@@ -92,6 +92,8 @@ class Music {
   /** The state playing now. */
   state: MusicState | null = null;
   private bufs = new Map<Song, AudioBuffer>();
+  private loading = new Set<Song>();
+  private retryAt = new Map<Song, number>();
   private voices: Voice[] = [];
   /** Per state (same order as STATES): whether it is on, and how long its cue has held / been gone. */
   private on = STATES.map(() => false);
@@ -112,16 +114,20 @@ class Music {
   /** This sunrise has had its piece (or passed while we were busy). */
   private sunriseDone = false;
 
-  constructor() {
-    audio.onStart((ctx) => {
-      for (const song of new Set([...STATES.map((s) => s.song), ...AMBIENT.map((a) => a.song)])) {
-        if (!song) continue;
-        fetch(song.src)
-          .then((r) => r.arrayBuffer())
-          .then((d) => ctx.decodeAudioData(d))
-          .then((b) => this.bufs.set(song, b), (e) => console.warn('music failed to load', song.src, e));
-      }
-    });
+  private load(ctx: AudioContext, song: Song) {
+    if (this.loading.has(song) || ctx.currentTime < (this.retryAt.get(song) ?? 0)) return;
+    this.loading.add(song);
+    fetch(song.src)
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
+      .then((d) => ctx.decodeAudioData(d))
+      .then((b) => {
+        this.bufs.set(song, b);
+        // Keep at most two decoded songs; a playing source retains its own buffer safely.
+        while (this.bufs.size > 2) this.bufs.delete(this.bufs.keys().next().value!);
+      }, (e) => {
+        this.retryAt.set(song, ctx.currentTime + 30);
+        console.warn('music failed to load', song.src, e);
+      }).finally(() => this.loading.delete(song));
   }
 
   /** Every frame, with what is going on. */
@@ -162,7 +168,7 @@ class Music {
       if (this.on[i] && top < 0) top = i;
     });
     this.state = top < 0 ? null : STATES[top].state;
-    const want = top < 0 ? null : this.state === 'ambient' ? this.ambient : STATES[top].song;
+    const want = audio.volume <= 0 || audio.musicVolume <= 0 || top < 0 ? null : this.state === 'ambient' ? this.ambient : STATES[top].song;
 
     for (let i = this.voices.length - 1; i >= 0; i--) {
       const v = this.voices[i];
@@ -188,11 +194,17 @@ class Music {
       v.gain.gain.setTargetAtTime(want.gain, ctx.currentTime, 0.3);
       v.dropAt = 0;
     } else if (!v) {
+      // Long nonlooping ambience streams instead of retaining ~38 MiB of decoded PCM.
+      if (want === DESERT_AMBIENCE) {
+        this.stream(ctx, audio.music, want);
+        this.ambientUntil = ctx.currentTime + want.loopEnd;
+        return;
+      }
       const buf = this.bufs.get(want);
       if (buf) {
         this.start(ctx, audio.music, want, buf);
         if (want === this.ambient) this.ambientUntil = ctx.currentTime + want.loopEnd;
-      }
+      } else this.load(ctx, want);
     } else if (want === this.ambient && ctx.currentTime >= this.ambientUntil) {
       this.ambient = null; // played to its end
     }
@@ -247,6 +259,26 @@ class Music {
     src.connect(gain).connect(out);
     src.start(ctx.currentTime, lead + pos);
     this.voices.push({ song, src, gain, t0: ctx.currentTime, pos0: pos, dropAt: 0 });
+  }
+
+  private stream(ctx: AudioContext, out: GainNode, song: Song) {
+    const element = new Audio(song.src);
+    element.preload = 'none';
+    const source = ctx.createMediaElementSource(element);
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.gain.setTargetAtTime(song.gain, ctx.currentTime, 0.05);
+    source.connect(gain).connect(out);
+    const src = {
+      stop() { element.pause(); element.removeAttribute('src'); element.load(); },
+      disconnect() { source.disconnect(); },
+    };
+    const voice: Voice = { song, src, gain, t0: ctx.currentTime, pos0: 0, dropAt: 0 };
+    this.voices.push(voice);
+    const finish = () => { voice.dropAt ||= ctx.currentTime + 0.01; if (this.ambient === song) this.ambient = null; };
+    element.addEventListener('ended', finish, { once: true });
+    element.addEventListener('error', finish, { once: true });
+    void element.play().catch(finish);
   }
 }
 
