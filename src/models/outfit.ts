@@ -120,13 +120,9 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
     shadows(g);
     return g;
   },
-  // The scrap mace (src/models/mace.ts, built in the pistol's frame like the wrench): held the same way, head up.
-  scrap_mace: () => {
-    const g = maceModel().obj;
-    g.rotation.set(-0.45, Math.PI, 0);
-    shadows(g);
-    return g;
-  },
+  // The scrap mace (src/models/mace.ts, in the pistol's frame, the shaft along +Z): in both hands, the avatar places it
+  // (scavenger.ts GUN_HOLD).
+  scrap_mace: () => shadows(maceModel().obj),
   // The receivers: held like the jammer.
   ...Object.fromEntries(BOSS_KINDS.map((k) => [RECEIVERS[k], () => {
     const g = receiverModel(k).obj;

@@ -81,8 +81,8 @@ BUILT = {'scrap': (build_scrap, (1, 1)), 'cloth': (build_cloth, (1, 1))}
 CODE = {
     # The wrench (held model: handle up along Z, flat across X) turned face-on to the camera, jaw up and right.
     'wrench': ((1, 1), 'face'),
-    # The scrap mace (src/models/mace.ts, held the same way) stood up in its tall frame, the head at the top.
-    'scrap_mace': ((1, 2), 'upright'),
+    # The scrap mace (src/models/mace.ts, stood up when dumped) in its tall frame, the head at the top.
+    'scrap_mace': ((1, 3), 'upright'),
     'robot_arm': ((2, 2), (0, 0, 0)),
     'control_cabinet': ((2, 3), (math.pi / 2, 0, 0)),  # stood up, its door to the front
     'winch': ((3, 2), (0, 0, 0)),

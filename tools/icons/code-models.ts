@@ -65,7 +65,10 @@ function flatten(root: THREE.Object3D) {
 (window as unknown as { dump: () => Promise<unknown> }).dump = async () => {
   const out: Record<string, unknown> = {};
   out.wrench = flatten(wrenchModel().obj);
-  out.scrap_mace = flatten(maceModel().obj);
+  // The mace stood up like the wrench (its shaft is +Z, along a gun's bore): head up.
+  const mace = maceModel().obj;
+  mace.rotation.x = -Math.PI / 2;
+  out.scrap_mace = flatten(mace);
   const junks = MACHINES.map((k) => [k, buildJunk(k, 7)] as const);
   // The parts inside are loaded glTFs: give them time to arrive.
   await new Promise((r) => setTimeout(r, 4000));

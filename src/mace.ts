@@ -1,7 +1,7 @@
 // The scrap mace (shared/mace.ts): with it out from the hotbar, left mouse / E swings it. The hands wind up first
-// (src/viewmodel.ts, from `playerHands.swingAt`) and the blow lands MACE_STRIKE_MS after the press, where you look
-// then: tested against the walkers as drawn (src/world/guardians.ts raycast, a few rays fanned about the view so a
-// crawler at your feet still counts) and the sand, within MACE_REACH of the eye. A crawler struck loses the lens
+// (src/viewmodel.ts MaceSwing, from `playerHands.swingAt`) and the blow lands MACE_STRIKE_MS after the press, where you
+// look then: tested against the walkers as drawn (src/world/guardians.ts raycast, rays fanned across the width of the
+// stroke and down to a crawler at your feet) and the sand, within MACE_REACH of the eye. A crawler struck loses the lens
 // nearest the blow at once (shattered here, the server agreeing or not); a guardian's leg only clangs. The server
 // checks it (server/world.ts onSwing) and shows the blow to everyone near ('swing'): a clank on metal, a thump on sand.
 import * as THREE from 'three/webgpu';
@@ -18,8 +18,12 @@ import { heightAt } from '../shared/terrain.ts';
 import { MACE, MACE_MS, MACE_REACH, MACE_STRIKE_MS } from '../shared/mace.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 
-/** The rays a blow is tested along (yaw, pitch off the view, rad): the middle first, then about it. */
-const FAN: [number, number][] = [[0, 0], [0.12, 0], [-0.12, 0], [0, -0.14], [0, 0.1], [0.1, -0.12], [-0.1, -0.12]];
+/** The rays a blow is tested along (yaw, pitch off the view, rad; + yaw is left): the middle first, then out across
+ *  the stroke's width and down towards your feet. */
+const FAN: [number, number][] = [[0, 0], [0.2, 0], [-0.2, 0], [0.4, 0], [-0.4, 0], [0.6, -0.1], [-0.6, -0.1],
+  [0, -0.25], [0.25, -0.25], [-0.25, -0.25], [0, -0.5], [0, 0.15]];
+/** The whoosh, as the stroke comes round (ms after the press; the blow lands at MACE_STRIKE_MS). */
+const SWISH_MS = MACE_STRIKE_MS - 120;
 /** Steps (m) the blow is marched along the view to find the sand. */
 const SAND_STEP = 0.1;
 
@@ -33,6 +37,9 @@ export class Mace {
   private wasUse = false;
   private readyAt = 0;
   private strikeAt = 0;
+  private swishAt = 0;
+  /** Someone's swing seen (their id: ours too), for their avatar's stroke (src/models/scavenger.ts swing). */
+  onSwung: ((by: number) => void) | null = null;
 
   constructor(view: FirstPersonCamera, net: Net, guardians: Guardians) {
     this.view = view;
@@ -51,6 +58,11 @@ export class Mace {
       this.readyAt = now + MACE_MS;
       this.strikeAt = now + MACE_STRIKE_MS;
       playerHands.swingAt = now;
+      this.swishAt = now + SWISH_MS;
+      this.onSwung?.(this.net.id);
+    }
+    if (this.swishAt && now >= this.swishAt) {
+      this.swishAt = 0;
       rifleSound.swish();
     }
     if (this.strikeAt && now >= this.strikeAt) {
@@ -106,6 +118,7 @@ export class Mace {
   private onSwing(m: Extract<ServerMsg, { t: 'swing' }>) {
     const ear = this.view.camera.position;
     _e.set(m.x, m.y, m.z);
+    this.onSwung?.(m.by);
     rifleSound.swish(_e, ear);
     if (m.hit) {
       rifleSound.clank(_e, ear);

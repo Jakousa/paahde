@@ -2406,18 +2406,22 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
 
 ## The scrap mace
 
-- **What:** a club made by hand from 6 scrap (`shared/tables.ts` HAND_TABLE `scrap_mace`, no bench needed): the weapon
-  you have before any gun. With it out from the hotbar the use button swings it (`src/mace.ts`): the hands wind up and
-  the blow lands `MACE_STRIKE_MS` after the press on whatever is in front of the eye within `MACE_REACH` (2.4 m), tested
-  against the walkers as drawn along a small fan of rays (so a crawler at your feet still counts) and the sand.
+- **What:** a two-handed club ~1.55 m long made by hand from 6 scrap (`shared/tables.ts` HAND_TABLE `scrap_mace`, no
+  bench needed): the weapon you have before any gun. With it out from the hotbar the use button swings it
+  (`src/mace.ts`): a wide stroke, and the blow lands `MACE_STRIKE_MS` (0.45 s) after the press on whatever is in front of
+  the eye within `MACE_REACH` (3 m), tested against the walkers as drawn along a fan of rays across the stroke's width
+  and down to your feet, and the sand. One swing per `MACE_MS` (0.95 s).
 - **Damage:** a crawler struck loses its flank lens nearest the blow (`Guardians.smashPoint`), so two blows kill one;
   a guardian's leg only clangs and angers it. The server (`onSwing`, `GuardianServer.smash`) checks the mace in hand,
-  the rate (`MACE_MS`) and that the walker is within `MACE_REACH + MACE_SLACK` of the swinger (crawlers run fast and
-  are drawn in the past), then breaks the point the way a shot does (shared `strike`). Others hear it ('swing').
-- **Look:** `src/models/mace.ts` (a pipe, a rag grip, a lump of rusty junk with bolts and a plate through it) on the
-  jammer's mount like the wrench, held with its clips; the swing is procedural (`swingPose` in src/viewmodel.ts: cocked
-  up and right, brought down hard across to the left, back), turning the hands and the mace in the fist together.
-  The icon is rendered from that model (`tools/icons/code-models.ts`, `tools/blender/icons.py`).
+  the rate and that the walker is within `MACE_REACH + MACE_SLACK` of the swinger (crawlers run fast and are drawn in
+  the past), then breaks the point the way a shot does (shared `strike`). Others hear it ('swing').
+- **Look:** `src/models/mace.ts` (a pipe with rags bound round both grips, a big lump of rusty junk welded on its end
+  with bolts and a plate through it), in the pistol's frame with the shaft along +Z like a gun's bore. First person it
+  sits on the hands' own `MaceMount` in both fists like a bat (tools/models/hands.py "mace clips": MaceIdle / MaceWalk
+  shouldered up the right of the view; MaceSwing, 0.9 s: wound back over the right shoulder, round flat from the right,
+  the blow under the crosshair at `MC_STRIKE`, followed through low left). Third person the avatar holds it in both
+  hands (`MACE` GunHold in src/models/scavenger.ts) and swings it along `MACE_STROKE`, the torso turning into it, for
+  everyone who sees the 'swing' (and you, in third person). The icon is rendered from the model.
 - **Economy sim:** a `mace` weapon (`shared/enemies.ts` odds): better than bare hands against crawlers only.
-- **Gaps:** others see the mace in your hand (src/models/outfit.ts HELD, held low like the pistol) but no swing on your
-  avatar: they only hear it.
+- **Gaps:** the hands' wrists bend more than the doc's ~40° at the stroke's fastest keys (up to ~85°, seen only in
+  motion); the avatar's stroke is keyed by hand, not from the hands' clip.

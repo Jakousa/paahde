@@ -85,6 +85,8 @@ export interface AvatarModel {
   eye?(out: THREE.Vector3): boolean;
   /** The held gun's muzzle (world), if there is one in hand and drawn. */
   muzzle?(out: THREE.Vector3): boolean;
+  /** The mace in hand swung now (shared/mace.ts): its stroke, for everyone to see. */
+  swing?(): void;
   /** Go limp as a ragdoll thrown by `push`, or get back up (null). False if it can't (then the Avatar tips it over). */
   ragdoll?(push: THREE.Vector3 | null, ground: (x: number, z: number) => number): boolean;
   /** The ragdoll's middle (world), while it is one. */
@@ -188,6 +190,11 @@ export class Avatar {
   /** The eyes' world position as last drawn; false if the model can't tell (placeholder). */
   eye(out: THREE.Vector3): boolean {
     return this.model.eye?.(out) ?? false;
+  }
+
+  /** The mace in hand swung now (AvatarModel.swing). */
+  swing() {
+    this.model.swing?.();
   }
 
   /** The held gun's muzzle (world) as last drawn; false if none is drawn. */

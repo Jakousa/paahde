@@ -30,13 +30,13 @@ for spec in A[2].split(','):
     name, fr = spec.split(':')
     act = next(a for a in bpy.data.actions if a.name.startswith(name))
     arm.animation_data.action = act
-    if act.slots: arm.animation_data.action_slot = act.slots[0]
+    if getattr(act, 'slots', None): arm.animation_data.action_slot = act.slots[0]
     for o in sc.objects:
         if o.name.startswith('Canteen'): o.hide_render = not (name.startswith('Canteen') or name in ('Drink', 'Fill'))
         if o.name.startswith('Telescope'): o.hide_render = not name.startswith('Telescope')
         if o.name.startswith('Rifle'): o.hide_render = not name.startswith('Rifle')
         if o.name.startswith('Pistol'): o.hide_render = not name.startswith('Pistol')
-        for prop, clips in (('Shovel', 'Shovel'), ('Detector', 'Detector'), ('ScrapChunk', 'Scrap'), ('JammerProxy', 'Jammer'), ('GrinderProxy', 'Grinder')):
+        for prop, clips in (('Shovel', 'Shovel'), ('Detector', 'Detector'), ('ScrapChunk', 'Scrap'), ('JammerProxy', 'Jammer'), ('GrinderProxy', 'Grinder'), ('MaceProxy', 'Mace')):
             if o.name.startswith(prop): o.hide_render = not name.startswith(clips)
     sc.frame_set(int(fr)); bpy.context.view_layer.update()
     h = hand_pos()

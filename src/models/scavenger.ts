@@ -30,6 +30,7 @@ import type { RidePose } from '../players';
 import { carriedBit, tierIn, type TierSlot, wornBit } from '../../shared/gearBits.ts';
 import { applyTier } from '../tierLook';
 import { beltModel, disposeModel, DRAW_IN, heldModel, heldMuzzle, wristModel } from './outfit';
+import { MACE_LEFT } from './mace';
 import { LAMP_ON } from './jammer';
 import { RECEIVERS } from '../../shared/bosses.ts';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -210,6 +211,10 @@ export class ScavengerModel {
   private added = false;
   private sip = 0; // 0 carried .. 1 at the mouth
   private aimT = 0; // a gun in hand: 0 at the low ready .. 1 raised to aim
+  /** When the mace was last swung (performance.now(), swing), and its hold along the stroke (maceHold). */
+  private swingAt = -Infinity;
+  private strokeHold: GunHold = { ...MACE, ready: MACE.ready.clone(), readyUp: MACE.readyUp.clone(), readyAt: MACE.readyAt.clone() };
+  private strokeTurn = 0;
   private slideT = 0; // speed slide: 0 off .. 1 the full slide pose (lean back, hand in the sand, arm out)
   private slideClock = 0;
   private look = 0;
@@ -484,6 +489,28 @@ export class ScavengerModel {
   }
 
   /** The held gun's muzzle (world), if a gun is in hand and drawn. */
+  swing() {
+    this.swingAt = performance.now();
+  }
+
+  /** The mace's hold now: shouldered, or along MACE_STROKE while it's swung (with the torso's turn into it). */
+  private maceHold(): GunHold {
+    const h = this.strokeHold, t = (performance.now() - this.swingAt) / 1000 / MACE_SWING_S;
+    this.strokeTurn = 0;
+    if (!(t >= 0 && t < 1)) return MACE;
+    const i = MACE_STROKE.findIndex((k, j) => j > 0 && t <= k[0]) - 1;
+    const [t0, d0, a0, r0] = MACE_STROKE[i], [t1, d1, a1, r1] = MACE_STROKE[i + 1];
+    let f = (t - t0) / (t1 - t0);
+    f = f * f * (3 - 2 * f);
+    h.ready.copy(d0).lerp(d1, f).normalize();
+    h.readyAt.copy(a0).lerp(a1, f);
+    // The shaft's roll doesn't matter much: any up off its line.
+    h.readyUp.set(0, 0, -1);
+    if (Math.abs(h.ready.z) > 0.7) h.readyUp.set(0, 1, 0);
+    this.strokeTurn = r0 + (r1 - r0) * f;
+    return h;
+  }
+
   muzzle(out: THREE.Vector3): boolean {
     return !!this.held?.visible && heldMuzzle(this.held, out) !== null;
   }
@@ -636,7 +663,15 @@ export class ScavengerModel {
     if (lamp) lamp.color.copy(LAMP_ON).multiplyScalar(pose.aiming && !pose.ride ? (performance.now() % 400 < 200 ? 1 : 0.25) : 0);
     // Digging, the clip swings the arms: the tool goes with the hand.
     const gun = this.item ? GUN_HOLD[this.item] : undefined;
-    if (this.held?.visible && gun) this.holdGun(this.held, gun, loose || !!pose.digging, pitch);
+    if (this.held?.visible && gun) {
+      const g = gun === MACE ? this.maceHold() : gun;
+      // Swinging, the torso turns into the stroke (the head keeps looking ahead).
+      if (this.strokeTurn && this.spine && !loose) {
+        rotateAboutRoot(this.root, this.spine, Y_AXIS, this.strokeTurn);
+        if (this.neck) rotateAboutRoot(this.root, this.neck, Y_AXIS, -this.strokeTurn);
+      }
+      this.holdGun(this.held, g, loose || !!pose.digging, pitch);
+    }
     else if (this.held?.visible && this.item === 'spyglass') this.holdScope(this.held, loose || !!pose.digging, pitch);
     else if (this.held?.visible) this.holdItem(this.held, loose || !!pose.digging);
     if (pose.ride) return this.ride(pose.ride);
@@ -1150,8 +1185,28 @@ const PISTOL: GunHold = {
   elbow: V(0.5, -0.4, 1), aimElbow: V(0.4, -1, 0),
   twist: 0.2,
 };
+/** The scrap mace (src/models/mace.ts, the shaft along +Z) in both fists like a bat, the left fist MACE_LEFT below the
+ *  right: shouldered, the head up behind the right shoulder. Swung (swing), the hold follows MACE_STROKE. */
+const MACE: GunHold = {
+  ready: V(0.25, 0.9, 0.35).normalize(), readyUp: V(0, 0, -1), readyAt: V(-0.08, -0.3, -0.22),
+  aimFrom: V(0, 0, 0), aimOut: 0,
+  elbow: V(0.7, -0.8, 0.3), aimElbow: V(0.7, -0.8, 0.3),
+  twist: 0, support: MACE_LEFT,
+};
+/** The mace's stroke (as the hands' MaceSwing, tools/models/hands.py): (when, 0..1 of MACE_SWING_S; the shaft's
+ *  direction; the right fist from the right shoulder; the torso's turn, rad) in root space (forward -Z, right +X, up +Y). */
+const MACE_SWING_S = 0.9;
+const MACE_STROKE: [number, THREE.Vector3, THREE.Vector3, number][] = [
+  [0, MACE.ready, MACE.readyAt, 0],
+  [0.3, V(0.5, 0.55, 0.65), V(0.02, -0.05, -0.02), -0.5], // wound back, the head behind the right shoulder
+  [0.42, V(0.85, 0.15, -0.5), V(-0.02, -0.2, -0.3), -0.25], // coming round flat from the right
+  [0.5, V(-0.15, -0.15, -1), V(-0.15, -0.28, -0.45), 0.2], // the blow, straight ahead
+  [0.62, V(-0.95, -0.2, -0.25), V(-0.32, -0.35, -0.3), 0.45], // through to the left
+  [0.75, V(-0.6, -0.6, 0.5), V(-0.3, -0.45, -0.15), 0.35], // followed through low left
+  [1, MACE.ready, MACE.readyAt, 0],
+];
 const GUN_HOLD: Record<string, GunHold> = {
-  laser_rifle: RIFLE, laser_pistol: PISTOL, jammer: PISTOL, grinder: PISTOL, wrench: PISTOL, scrap_mace: PISTOL, ...Object.fromEntries(Object.values(RECEIVERS).map((k) => [k, PISTOL])),
+  laser_rifle: RIFLE, laser_pistol: PISTOL, jammer: PISTOL, grinder: PISTOL, wrench: PISTOL, scrap_mace: MACE, ...Object.fromEntries(Object.values(RECEIVERS).map((k) => [k, PISTOL])),
 };
 
 /** Speed slide (slidePose): extra lean back (rad) and where the trailing left hand touches the sand (root space,

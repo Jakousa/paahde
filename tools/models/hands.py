@@ -47,6 +47,9 @@
 #   JammerAim (0.27 s one-shot, scrubbed)  up in front at chest height, the left palm coming up under its body
 # Grinder (src/models/grinder.ts, drawn on the empty `GrinderMount`, in the pistol's frame but with its origin on the housing's axis):
 #   GrinderIdle / GrinderWalk  two-handed: the right fist round the motor housing, the left fist round the side handle
+# Scrap mace (src/models/mace.ts, drawn on the empty `MaceMount`, in the pistol's frame, the shaft along +Z):
+#   MaceIdle / MaceWalk  in both fists like a bat, shouldered up the right side of the view
+#   MaceSwing (0.9 s one-shot)  wound back over the right shoulder, a wide flat stroke through the middle, low left, back
 # Hand tools (tools/models/handtools.py; nodes `Shovel`, `Detector`, `ScrapChunk` on the right hand, own atlases):
 #   ShovelIdle / ShovelWalk  carried in the right fist under the T grip, blade out ahead low in the view
 #   ShovelDig (1.2 s loop)  both hands: drive it in, lever, lift the scoop into view, flick it out to the left
@@ -1461,6 +1464,89 @@ ps = grinder_pose(GR_READY)
 print('WRIST grinder right', round(wrist_bend_of(ps, 'Right')), 'left', round(wrist_bend_of(ps, 'Left')))
 for name, frames, fn in (('GrinderIdle', 90, grinder_idle), ('GrinderWalk', 22, grinder_walk)):
     S.clip(name, frames, fn)
+# ============================================================================== mace clips
+# The scrap mace (src/models/mace.ts, built in the pistol's glTF frame like the grinder: natural +Y = its +Z, the shaft
+# towards the head), ~1.55 m, in both fists like a bat: the RIGHT fist at the origin, the LEFT one MC_LEFT below it
+# towards the pommel, both thumbs towards the head. MaceIdle / MaceWalk: shouldered up the right side of the view, the
+# head up in the top right corner. MaceSwing (one-shot, MC_SWING_FRAMES): wound back over the right shoulder, brought
+# round in a wide flat stroke from the right through the middle of the view (the blow lands at MC_STRIKE, the game's
+# MACE_STRIKE_MS), followed through low to the left and back to the shoulder.
+MC_R, MC_LEFT, MC_HEAD = 0.022, -0.24, 1.12  # shaft radius, the left fist's place and the head's centre on the shaft (natural y)
+MC_R_CONTACT = capsule_sdf(V((0, -0.05, 0)), V((0, 0.05, 0)), MC_R)
+MC_L_CONTACT = capsule_sdf(V((0, MC_LEFT - 0.05, 0)), V((0, MC_LEFT + 0.05, 0)), MC_R)
+MC_SDF_NAT = (lambda sh, hd: lambda p: min(sh(p), hd(p)))(
+    capsule_sdf(V((0, -0.34, 0)), V((0, MC_HEAD - 0.1, 0)), MC_R), lambda p: (p - V((0, MC_HEAD, 0))).length - 0.13)
+MC_FACE = (0.4, -0.3, 0.85)  # a hint for the mace's natural +Z (its bent plate), roughly square to the swing
+# (right fist x y z, towards the head) in view space (x right, y ahead, z up), the face hint added below
+MC_CARRY = (0.20, 0.30, -0.12, 0.28, 0.60, 0.75)
+MC_STRIKE = 0.5
+MC_SWING_FRAMES = 27  # 0.9 s at 30 fps; MC_STRIKE of it is the game's MACE_STRIKE_MS
+MC_SWING = [(0.0, MC_CARRY),
+            (0.30, (0.34, 0.30, -0.06, 0.50, 0.10, 0.86)),  # wound back, the head up over the right shoulder
+            (0.42, (0.34, 0.42, -0.16, 0.80, 0.55, 0.15)),  # coming round flat from the right, side on
+            (MC_STRIKE, (0.20, 0.46, -0.24, -0.35, 0.92, 0.12)),  # the blow: arms out, the head just under the crosshair
+            (0.60, (-0.02, 0.46, -0.32, -0.90, 0.30, -0.20)),  # through to the left
+            (0.72, (-0.16, 0.32, -0.38, -0.70, -0.20, -0.65)),  # followed through low left, the head out of view
+            (1.0, MC_CARRY)]
+MC_KEYS = [k for _, k in MC_SWING[:-1]]
+
+
+def mc_world(k):
+    return obj_world(k[0:3], k[3:6], MC_FACE)
+
+
+def mc_rel(pre, roll, label=None):
+    if pre == 'Right':
+        return bar_in_hand(pre, MC_R_CONTACT, (0, 1, 0), (0, 0, 1), roll, label=label)
+    return bar_in_hand(pre, MC_L_CONTACT, (0, 1, 0), (0, 0, 1), roll, (0, MC_LEFT, 0), label)
+
+
+def mc_cost(pre, roll, twist):
+    rel = mc_rel(pre, roll)[0]
+    return sum(best_pole(pre, mc_world(k) @ rel.inverted(), twist)[1] for k in MC_KEYS)
+
+
+MC_RROLL = min(range(-180, 180, 30), key=lambda r: mc_cost('Right', r, 0.75))
+MC_LROLL = min(range(-180, 180, 30), key=lambda r: mc_cost('Left', r, L_TWIST))
+MC_RHAND, MC_RM = mc_rel('Right', MC_RROLL, 'MACE')
+MC_LHAND, MC_LM = mc_rel('Left', MC_LROLL, 'MACE')
+MC_RGRIP = grasp('Right', in_rest(MC_RM, MC_SDF_NAT), wrap=MC_RM.to_3x3() @ V((0, 1, 0)))
+MC_LGRIP = grasp('Left', in_rest(MC_LM, MC_SDF_NAT), wrap=MC_LM.to_3x3() @ V((0, 1, 0)))
+MC_RPOLES = [best_pole('Right', mc_world(k) @ MC_RHAND.inverted(), 0.75)[0] for k in MC_KEYS]
+MC_LPOLES = [best_pole('Left', mc_world(k) @ MC_LHAND.inverted(), L_TWIST)[0] for k in MC_KEYS]
+
+
+def mace_pose(k, rp, lp, sway=None):
+    mw = mc_world(k)
+    return held_pose([('Right', mw @ MC_RHAND.inverted(), rp, 0.75, MC_RGRIP),
+                      ('Left', mw @ MC_LHAND.inverted(), lp, L_TWIST, MC_LGRIP)], sway)
+
+
+def mace_idle(p):
+    return mace_pose(MC_CARRY, MC_RPOLES[0], MC_LPOLES[0], idle_sway(p)), (0, 0, 0)
+
+
+def mace_walk(p):
+    return mace_pose(MC_CARRY, MC_RPOLES[0], MC_LPOLES[0], walk_sway(p)), (0, 0, 0)
+
+
+def mace_swing(p):
+    k = keys(MC_SWING, p)
+    rp = keys([(q, tuple(v)) for (q, _), v in zip(MC_SWING, MC_RPOLES + [MC_RPOLES[0]])], p)
+    lp = keys([(q, tuple(v)) for (q, _), v in zip(MC_SWING, MC_LPOLES + [MC_LPOLES[0]])], p)
+    # The body goes into it: the view turns with the stroke (right on the wind-up, left through the blow).
+    turn = 6 * math.sin(math.pi * min(1.0, p / 0.3)) * (1 - min(1.0, p / 0.3)) - 8 * math.sin(math.pi * max(0.0, min(1.0, (p - 0.3) / 0.6)))
+    return mace_pose(k, V(rp), V(lp), rot((Z, turn))), (0, 0, 0)
+
+
+print('MACE rolls right', MC_RROLL, 'left', MC_LROLL)
+for i, k in enumerate(MC_KEYS):
+    ps = mace_pose(k, MC_RPOLES[i], MC_LPOLES[i])
+    print('WRIST mace', MC_SWING[i][0], 'right', round(wrist_bend_of(ps, 'Right')), 'left', round(wrist_bend_of(ps, 'Left')))
+for name, frames, fn in (('MaceIdle', 90, mace_idle), ('MaceWalk', 22, mace_walk)):
+    S.clip(name, frames, fn)
+clip_once('MaceSwing', MC_SWING_FRAMES, mace_swing)
+
 for pb in rig.pose.bones:
     pb.rotation_quaternion = Quaternion()
 
@@ -1544,6 +1630,11 @@ gmount = bpy.data.objects.new('GrinderMount', None)
 bpy.context.scene.collection.objects.link(gmount)
 on_right_hand(gmount, GR_HAND @ PS.FLIP)
 extra.append(gmount)
+# where the mace (src/models/mace.ts, in the pistol's glTF frame) goes in the right hand
+mmount = bpy.data.objects.new('MaceMount', None)
+bpy.context.scene.collection.objects.link(mmount)
+on_right_hand(mmount, MC_RHAND @ PS.FLIP)
+extra.append(mmount)
 if FAST:  # a stand-in jammer from its boxes, to look at the grip
     jp = join([rounded_box('JammerProxy', c, sz, S.M['brass'], bevel=0.002, segments=1) for c, sz in (
         ((0, 0.035, 0.066), (0.048, 0.15, 0.044)), ((0, 0.045, 0.044), (0.05, 0.11, 0.008)),
@@ -1561,6 +1652,12 @@ if FAST:  # a stand-in grinder: housing, head, disc and handle
     flat(gp, (0.2, 0.3, 0.55))
     on_right_hand(gp, GR_HAND)
     extra.append(gp)
+if FAST:  # a stand-in mace: the shaft and a lump for the head
+    mp = join([cylinder('MaceProxyShaft', V((0, -0.34, 0)), V((0, MC_HEAD, 0)), MC_R, S.M['brass']),
+               rounded_box('MaceProxyHead', (0, MC_HEAD, 0), (0.22, 0.22, 0.22), S.M['brass'], bevel=0.01, segments=1)], 'MaceProxy')
+    flat(mp, (0.5, 0.3, 0.15))
+    on_right_hand(mp, MC_RHAND)
+    extra.append(mp)
 # marker nodes on the rifle (mesh frame = natural turned by FLIP; identity rotation, so their glTF +Z is
 # the bore direction, towards the muzzle)
 marks = []

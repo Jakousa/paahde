@@ -298,9 +298,10 @@ Everything built is shared, and anyone can take a building down.
   `src/models/jammer.ts`
 - `shared/throw.ts` — thrown scrap (any scrap item in hand, use button): flown and struck against drones in
   `server/throws.ts`, lands as loot; drawn and thrown in `src/throw.ts`
-- `shared/mace.ts` — the scrap mace (made by hand from scrap): a close-range swing, two blows break a crawler's flank
-  lenses; swung and tested against the walkers as drawn in `src/mace.ts` (procedural swing in `src/viewmodel.ts`, model
-  `src/models/mace.ts`), checked by `onSwing` (server/world.ts) and `GuardianServer.smash`
+- `shared/mace.ts` — the scrap mace (a two-handed club made by hand from scrap): a wide stroke, two blows break a
+  crawler's flank lenses; swung and tested against the walkers as drawn in `src/mace.ts`, held and swung in the hands'
+  MaceIdle / MaceSwing clips on `MaceMount` (tools/models/hands.py) and by the avatar (`MACE`, `MACE_STROKE` in
+  src/models/scavenger.ts), model `src/models/mace.ts`, checked by `onSwing` (server/world.ts) and `GuardianServer.smash`
 - `tools/models/hands.py` — first-person hands + held-item clips (docs/viewmodel-hands.md)
 - `tools/blender/icons.py`, `tools/icons/` — inventory icons for what has no Blender model of its own (scrap, cloth, the
   wrench, the carried machines, dumped from their three.js models); every icon's look and size: `docs/icons.md`
