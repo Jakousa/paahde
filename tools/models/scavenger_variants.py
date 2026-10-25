@@ -6,7 +6,7 @@
 #
 # Slots: head (hood | cowl | ragged | down), eyes (goggles | mono | visor), face (respirator | side | mask),
 # coat (long | short), cape (cape | none | poncho), shoulder (none | plate), gloves (leather | wrapped | gauntlet),
-# boots (buckled | tall | wrapped | guard). The player colour (scarf, mask, sash, armband) is the tint the game
+# boots (buckled | tall | wrapped | guard), scarf (scarf | long | snood | bib | veil | none). The player colour (scarf, mask, sash, armband) is the tint the game
 # already sets per player.
 import math
 import os
@@ -49,8 +49,25 @@ VARIANTS = {
     'ghost': dict(head='ragged', eyes='mono', face='mask', coat='long', cape='poncho', gloves='wrapped',
                   boots='wrapped', tint='#9a8a70', robe=SAND, cape_dye=DUNE, wrap=SAND,
                   trousers=('#8a6e50', '#5a4632', '#a88c6c')),
+    # simpler, lighter looks: no pack, no respirator, a wrap tunic
+    'rey': dict(head='none', eyes='goggles', face='mask', scarf='none', tunic='cross', coat='long', cape='none',
+                carry='light', gloves='wrapped', tint='#7a4a2c', robe=('#b9ad96', '#8a7f6c', '#d8cfbc'),
+                wrap=('#d2c8b4', '#a39884', '#ece5d6'), trousers=('#4a4038', '#2a241f', '#6a5e52')),
+    'scout': dict(head='none', eyes='goggles', face='mask', scarf='snood', tunic='cross', coat='short', cape='none',
+                  carry='light', tint='#c0392b', robe=SAND, wrap=DUNE, trousers=('#6a543e', '#43342a', '#8a7058')),
+    'wanderer': dict(head='down', eyes='goggles', face='mask', scarf='bib', coat='long', cape='none',
+                     carry='light', tint='#2f7f8a', robe=RUST, cape_dye=RUST, wrap=BONE),
+    'veiled': dict(head='none', eyes='goggles', face='mask', mask=False, scarf='veil', tunic='cross', coat='long',
+                   cape='none', carry='light', gloves='wrapped', boots='wrapped', tint='#e0a526', robe=INDIGO,
+                   wrap=BONE),
+    'drifter': dict(head='none', eyes='mono', face='mask', scarf='long', coat='short', cape='none',
+                    carry='light', boots='tall', tint='#d9762b', robe=OLIVE, wrap=('#a89a7c', '#6e6450', '#c8bc9e'),
+                    trousers=('#3a3530', '#1e1b18', '#5a524a')),
+    'hooded': dict(head='ragged', eyes='goggles', face='mask', tunic='cross', coat='long', cape='none',
+                   carry='light', tint='#8e44ad', robe=BONE, cape_dye=('#9a8a70', '#6a5c48', '#b8aa90'), wrap=BONE),
 }
-v = VARIANTS[NAME]
+# scarf_<option>: the original with only the scarf changed
+v = dict(VARIANTS['original'], scarf=NAME[6:]) if NAME.startswith('scarf_') else VARIANTS[NAME]
 
 # ------------------------------------------------------------------------------------------- dyes
 for key, label in (('robe', 'Robe'), ('cape_dye', 'Cape'), ('wrap', 'Wrap'), ('trousers', 'Trousers')):
@@ -128,6 +145,7 @@ HOOD = {
     'cowl': lambda: build_hood(size=0.9, front=0.035, point=0.11, drape=0.4),  # deep, pointed
     'ragged': lambda: build_hood(size=0.84, drape=0.3, ragged=0.03),  # short, torn opening
     'down': build_hood_down,
+    'none': skip,
 }
 ns['build_hood'] = HOOD[v['head']]
 
@@ -183,7 +201,20 @@ def build_visor():
     return band(1.6695, 1.6825, 0.110, M['lens'], 'VisorSlit')
 
 
-EYES = {'goggles': None, 'mono': build_mono, 'visor': build_visor}
+def goggles_up():
+    # the goggles pushed up onto the forehead: the whole set (strap too) turned up about the head
+    from mathutils import Matrix
+    lens = orig_goggles()
+    rot = Matrix.Rotation(-0.62, 3, 'X')
+    c = V((0, 0.008, 1.68))
+    for o in (ns['PARTS'][-1][0], lens):
+        for vt in o.data.vertices:
+            vt.co = c + rot @ (vt.co - c) * 1.06
+    return lens
+
+
+orig_goggles = ns['build_goggles']
+EYES = {'goggles': None, 'up': goggles_up, 'mono': build_mono, 'visor': build_visor}
 if EYES[v['eyes']]:
     ns['build_goggles'] = EYES[v['eyes']]
 
@@ -314,8 +345,79 @@ if BOOTS[v.get('boots', 'buckled')]:
 
 
 # extras built alongside the scarf (any build step after the head works)
+# ------------------------------------------------------------------------------------------- scarf
+def scarf_loops(specs, name='ScarfLoops'):
+    # loops of cloth round the neck: (height, tilt down at the front, radius x, radius y, width, phase)
+    objs = []
+    for zc, tilt, rx, ry, w, ph in specs:
+        path = [V((math.cos(a) * rx, 0.004 + math.sin(a) * ry, zc + tilt * math.sin(a)))
+                for a in [2 * math.pi * k / 36 for k in range(36)]]
+        objs.append(ns['sweep']('ScarfLoop', path, [(-w / 2, 0.0), (-w / 4, 0.012), (0, 0.016), (w / 4, 0.012),
+                                                    (w / 2, 0.0), (w / 4, -0.006), (0, -0.007), (-w / 4, -0.006)],
+                                M['tint'], closed_path=True, up=V((0, 0, 1)),
+                                scale_fn=lambda i, f, ph=ph: (1 + 0.18 * math.sin(i * 1.3 + ph),
+                                                              1 + 0.35 * math.sin(i * 0.9 + ph))))
+    part(ns['join'](objs, name), bones=['Neck', 'Spine2', 'Head'], bias={'Neck': 2.0})
+
+
+def scarf_tail(pts, width=0.085, name='ScarfTail', twist=0.25):
+    tail = ns['sweep'](name, ns['catmull'](pts, 4), ns['rect_profile'](0.012, width, 0.004), M['tint'],
+                       up_fn=lambda i: V((0, -1, 0.15)),
+                       scale_fn=lambda i, f: (1.0, 0.85 + 0.25 * f + 0.06 * math.sin(i * 2.1)),
+                       twist_fn=lambda i, f: twist * math.sin(f * 4))
+    part(tail, bones=['Spine2', 'Spine1', 'Neck'], bias={'Spine2': 2.0})
+
+
+# loops sit low at the front (tilt) (the original's values)
+LOOPS = ((1.535, 0.05, 0.122, 0.128, 0.066, 0.0), (1.58, 0.04, 0.108, 0.118, 0.058, 1.7))
+
+
+def scarf_long():
+    # wound twice, both ends hanging long down the chest, crossing
+    scarf_loops(LOOPS)
+    scarf_tail([(0.035, -0.105, 1.545), (0.065, -0.17, 1.48), (0.10, -0.228, 1.39), (0.118, -0.25, 1.25),
+                (0.125, -0.26, 1.10), (0.13, -0.262, 0.98)])
+    scarf_tail([(-0.03, -0.11, 1.55), (-0.06, -0.18, 1.47), (-0.075, -0.236, 1.37), (-0.07, -0.252, 1.26),
+                (-0.06, -0.258, 1.16)], width=0.075, name='ScarfTail2', twist=-0.3)
+
+
+def scarf_snood():
+    # a fat bunched tube collar up to the chin, no ends
+    scarf_loops(((1.515, 0.03, 0.135, 0.142, 0.07, 0.0), (1.555, 0.03, 0.128, 0.136, 0.07, 1.1),
+                 (1.595, 0.02, 0.116, 0.126, 0.06, 2.3), (1.625, 0.01, 0.104, 0.115, 0.05, 3.1)), 'Snood')
+
+
+def scarf_bib():
+    # a cloth knotted at the neck, its point hanging over the chest like a bandana
+    scarf_loops(LOOPS[1:])
+    rings = []
+    for z, r, half in ((1.565, 0.112, 75), (1.52, 0.128, 62), (1.47, 0.142, 46), (1.42, 0.15, 28), (1.375, 0.153, 6)):
+        rr = ring((0, 0.004, z), r, r * 1.04, 15, a0=math.radians(270 - half), a1=math.radians(270 + half),
+                  closed=False, fn=lambda t, k, z=z: 1 + 0.03 * math.sin(t * 9 + z * 50))
+        rings.append(rr)
+    tattered(rings[-1], 0.01, seed=5.0)
+    part(loft('Bib', rings, M['tint'], closed=False), bones=['Spine2', 'Neck'], bias={'Spine2': 2.0})
+
+
+def scarf_veil():
+    # the scarf's end pulled up over the head wrap and hanging as a veil across the face, under the goggles
+    scarf_loops(LOOPS)
+    rings = []
+    for z, r, half, fwd in ((1.66, 0.104, 80, 0.0), (1.62, 0.112, 78, 0.006), (1.575, 0.124, 74, 0.016),
+                            (1.53, 0.134, 68, 0.024), (1.49, 0.14, 60, 0.03)):
+        rings.append(ring((0, 0.004 - fwd, z), r, r * 1.12, 17, a0=math.radians(270 - half),
+                          a1=math.radians(270 + half), closed=False,
+                          fn=lambda t, k, z=z: 1 + 0.025 * math.sin(t * 11 + z * 60)))
+    tattered(rings[-1], 0.012, seed=8.0)
+    part(loft('Veil', rings, M['tint'], closed=False), bones=['Head', 'Neck'], bias={'Head': 2.5})
+
+
+tattered = ns['tattered']
+SCARF = {'scarf': ns['build_scarf'], 'long': scarf_long, 'snood': scarf_snood, 'bib': scarf_bib,
+         'veil': scarf_veil, 'none': skip}
+
 extras = [build_plate] if v.get('shoulder') == 'plate' else []
-orig_scarf = ns['build_scarf']
+orig_scarf = SCARF[v.get('scarf', 'scarf')]
 
 
 def build_scarf():
@@ -326,9 +428,76 @@ def build_scarf():
 
 ns['build_scarf'] = build_scarf
 
+
+# ------------------------------------------------------------------------------------------- tunic
+def torso_r(z):
+    zs = [0.90, 1.00, 1.10, 1.21, 1.31, 1.39, 1.45, 1.50, 1.545, 1.585]
+    rx = [0.172, 0.166, 0.158, 0.168, 0.178, 0.178, 0.162, 0.115, 0.074, 0.064]
+    ry = [0.132, 0.126, 0.118, 0.124, 0.132, 0.128, 0.115, 0.088, 0.068, 0.062]
+    for i in range(len(zs) - 1):
+        if zs[i] <= z <= zs[i + 1]:
+            f = (z - zs[i]) / (zs[i + 1] - zs[i])
+            return rx[i] + (rx[i + 1] - rx[i]) * f, ry[i] + (ry[i + 1] - ry[i]) * f
+    return rx[0], ry[0]
+
+
+def build_cross():
+    # a wrap tunic: two broad panels crossing over the chest from each shoulder down to the opposite hip
+    for s, lift in ((1, 0.0), (-1, 0.007)):
+        path = []
+        for k in range(15):
+            f = k / 14
+            z = 1.53 - 0.48 * f
+            rx, ry = torso_r(z)
+            off = 0.016 + lift + 0.02 * max(0.0, 1 - f * 4)  # over the shoulder seam at the top
+            x = s * (0.085 - 0.25 * f)
+            a = -math.acos(max(-0.98, min(0.98, x / (rx + off))))
+            path.append(V(((rx + off) * math.cos(a), (ry + off) * math.sin(a), z)))
+        band = ns['sweep']('Crossover', path, ns['rect_profile'](0.16, 0.008, 0.002), M['wrap'],
+                           up_fn=lambda i, path=path: V((path[i].x, path[i].y, 0)),
+                           scale_fn=lambda i, f: (1 - 0.1 * f + 0.05 * math.sin(i * 1.7), 1.0))
+        part(band, bones=['Spine', 'Spine1', 'Spine2', 'Hips'], bias={'Spine2': 1.2})
+
+
+if v.get('tunic') == 'cross':
+    extras.append(build_cross)
+
+
+# ------------------------------------------------------------------------------------------- mask
+def headwrap_nomask():
+    n = len(ns['PARTS'])
+    orig_headwrap()
+    for e in [e for e in ns['PARTS'][n:] if e[0].name.startswith('FaceMask')]:
+        ns['PARTS'].remove(e)
+        bpy.data.objects.remove(e[0])
+
+
+orig_headwrap = ns['build_headwrap']
+if v.get('mask', True) is False:
+    ns['build_headwrap'] = headwrap_nomask
+
 import bpy  # noqa: E402
 
 body, lens = ns['build_character']()
+
+
+def drop_groups(obj, names):
+    # what the game hides when you don't carry it: the pack (with its straps and gauge), the shovel, the scrap
+    import bmesh
+    idx = {obj.vertex_groups[n].index for n in names if n in obj.vertex_groups}
+    if not idx:
+        return
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    dl = bm.verts.layers.deform.active
+    bmesh.ops.delete(bm, geom=[vt for vt in bm.verts if any(g in vt[dl] for g in idx)], context='VERTS')
+    bm.to_mesh(obj.data)
+    bm.free()
+
+
+if v.get('carry') == 'light':
+    for o in (body, lens):
+        drop_groups(o, ['GearBack', 'GearShovel', 'GearScrap'])
 ns['make_rig']([body, lens])
 ns['clip']('Idle', 90, ns['idle'])
 for pb in ns['RIG'].pose.bones:
