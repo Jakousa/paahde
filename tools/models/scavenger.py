@@ -1186,21 +1186,34 @@ def build_rope_belt():
 
 
 def build_satchel():
-    """A big cloth satchel on the front of the left hip, on a broad leather strap across the chest from the right
-    shoulder."""
+    """A flat cloth satchel hung on the front of the left hip under the belt, its lid folded over the top, on a broad
+    leather strap across the chest from the right shoulder to the satchel's outer corner."""
+    a, z = math.radians(292), 0.80
+    rx, ry = torso_r(z)
+    n = V((math.cos(a) / rx, math.sin(a) / ry, 0)).normalized()
+    tg = V((-math.sin(a) * rx, math.cos(a) * ry, 0)).normalized()
+    rot = Matrix((tg, n, V((0, 0, 1)))).transposed() @ Matrix.Rotation(math.radians(-5), 3, 'X')
+    w, d, h = 0.18, 0.05, 0.16
+    c = on_robe(a, z, d / 2 + 0.008)
+    corner = c + rot @ V((w / 2 - 0.012, 0.0, h / 2 + 0.006))
     pts = [V((-0.125, 0.08, 1.48)), V((-0.12, -0.04, 1.49)), V((-0.10, -0.10, 1.44))]
-    for z, x in ((1.36, -0.05), (1.26, 0.02), (1.16, 0.09), (1.06, 0.15), (0.98, 0.18)):
-        rx, ry = torso_r(z)
-        pts.append(V((x, 0.012 - math.sqrt(max(0.0, 1 - (x / (rx + 0.03)) ** 2)) * (ry + 0.032), z)))
-    strap = sweep('SatchelStrap', catmull(pts, 3), rect_profile(0.007, 0.055, 0.002), M['leather'],
+    for z_, x in ((1.36, -0.05), (1.26, 0.02), (1.16, 0.08), (1.06, 0.13)):
+        rx_, ry_ = torso_r(z_)
+        pts.append(V((x, 0.012 - math.sqrt(max(0.0, 1 - (x / (rx_ + 0.03)) ** 2)) * (ry_ + 0.032), z_)))
+    pts += [corner + V((0, 0, 0.07)) + n * 0.01, corner]
+    strap = sweep('SatchelStrap', catmull(pts, 3), rect_profile(0.007, 0.05, 0.002), M['leather'],
                   up_fn=lambda i: V((0, -1, 0.25)))
     part(strap, bones=['Spine2', 'Spine1', 'Hips', 'RightShoulder'], bias={'Spine2': 1.5})
-    rot = Matrix.Rotation(math.radians(-35), 3, 'Z')
-    c = V((0.17, -0.15, 0.88))
-    objs = [rounded_box('Satchel', c, (0.19, 0.07, 0.19), M['canvas'], bevel=0.03, segments=3, rot=rot),
-            rounded_box('SatchelFlap', c + rot @ V((0, -0.036, 0.05)), (0.2, 0.012, 0.1), M['leather2'], bevel=0.008, rot=rot),
-            rounded_box('SatchelBuckle', c + rot @ V((0, -0.044, 0.01)), (0.03, 0.008, 0.035), M['brass'], bevel=0.003, rot=rot)]
-    part(join(objs, 'SatchelBag'), rigid='Hips')
+    lid_h = 0.085
+    flap = c + rot @ V((0, d / 2 + 0.004, h / 2 - lid_h / 2 + 0.004))
+    objs = [rounded_box('Satchel', c, (w, d, h), M['canvas'], bevel=0.016, segments=3, rot=rot),
+            rounded_box('SatchelLid', c + rot @ V((0, 0.002, h / 2 - 0.002)), (w + 0.008, d + 0.01, 0.012),
+                        M['leather2'], bevel=0.005, segments=2, rot=rot),
+            rounded_box('SatchelFlap', flap, (w + 0.008, 0.01, lid_h), M['leather2'], bevel=0.005, segments=2,
+                        rot=rot),
+            rounded_box('SatchelBuckle', flap + rot @ V((0, 0.007, -lid_h / 2 + 0.012)), (0.026, 0.006, 0.026),
+                        M['brass'], bevel=0.003, rot=rot)]
+    part(join(objs, 'SatchelBag'), bones=['Hips', 'LeftUpLeg'], bias={'Hips': 3.0})
 
 
 def build_mantle():
