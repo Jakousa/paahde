@@ -11,7 +11,8 @@
 // with `trackTimestamp` at start, so a reload is needed after turning stats on for GPU times).
 import { slots } from './bindings';
 import * as THREE from 'three/webgpu';
-import { graphics, setGraphics } from './graphics';
+import { graphics, onGraphics, setGraphics } from './graphics';
+import { GpuTiming } from './gpuTiming.ts';
 
 const params = new URLSearchParams(location.search);
 const perfParam = params.get('perf');
@@ -65,6 +66,10 @@ class Perf {
   /** GPU time per render pass (render context id), from the timestamp queries while recording: total ms and the frames it was drawn in. */
   private passes = new Map<string, { ms: number; n: number; max: number }>();
   private gpu: number | null = null;
+  private gpuAt = 0;
+  private gpuTiming = new GpuTiming();
+  private gpuFrames = new Map<number, { gap: number; recording: boolean }>();
+  private diagnostics: { atMs: number; type: string; detail: string; durationMs?: number }[] = [];
   private frames = 0;
   private phase: Phase = PERF_RUN ? 'waiting' : 'off';
   private phaseT = 0;
@@ -103,12 +108,21 @@ class Perf {
           for (const e of list.getEntries()) {
             this.longTasks.count++;
             this.longTasks.ms += e.duration;
+            this.event('long-task', '', e.duration, e.startTime);
           }
         }).observe({ type: 'longtask', buffered: true });
       } catch {}
     }
     (window as unknown as { __setGraphics: unknown }).__setGraphics = setGraphics; // (tools/perf.ts --ab changes an option mid-run)
+    onGraphics((g, key) => this.event('graphics-change', `${key}=${g[key]}`));
     this.publish();
+  }
+
+  /** Bounded diagnostic timeline, retained in reports even when a stall has no known cause yet. */
+  event(type: string, detail: string, durationMs?: number, at = performance.now()) {
+    this.diagnostics.push({ atMs: Math.round(at), type, detail, ...(durationMs === undefined ? {} : { durationMs: Math.round(durationMs * 10) / 10 }) });
+    if (this.diagnostics.length > 500) this.diagnostics.shift();
+    if (this.collect) measure(`${type}: ${detail}`, at, at + (durationMs ?? 0), { dataType: durationMs ? 'track-entry' : 'marker', track: 'Diagnostics', trackGroup: 'dadajam', color: 'secondary' });
   }
 
   /** A point on the startup timeline (ms since the page started), also a marker in the trace. Only the first call of a name counts. */
@@ -138,31 +152,41 @@ class Perf {
   }
 
   /** After `post.render()`: reads the GPU time of the passes drawn so far (one query round at a time). */
-  submitEnd(renderer: { resolveTimestampsAsync(type?: never): Promise<number | undefined> } | null) {
+  submitEnd(renderer: { resolveTimestampsAsync(type?: never): Promise<number | undefined>; info?: { frame: number } } | null) {
     this.last.submit = performance.now() - this.submitT;
+    if (renderer?.info) {
+      this.gpuFrames.set(renderer.info.frame, { gap: this.gap, recording: this.phase === 'recording' });
+      if (this.gpuFrames.size > 240) this.gpuFrames.delete(this.gpuFrames.keys().next().value!);
+    }
     if (!this.gpuTracked || !renderer || this.gpuPending) return;
     this.gpuPending = true;
     renderer.resolveTimestampsAsync('render' as never).then(
-      (ms) => {
+      () => {
         this.gpuPending = false;
-        if (typeof ms === 'number' && ms > 0) this.gpu = ms;
-        if (this.phase === 'recording') this.countPasses(renderer);
+        this.countPasses(renderer);
       },
-      () => (this.gpuPending = false),
+      () => { this.gpuPending = false; this.gpu = null; },
     );
   }
 
   /** Adds the passes of the last resolved queries (three keeps `r:<call>:<context id>:f<frame>` -> ms) to the per-context totals. */
   private countPasses(renderer: unknown) {
     const pool = (renderer as { backend?: { timestampQueryPool?: { render?: { timestamps?: Map<string, number> } } } }).backend?.timestampQueryPool?.render;
+    this.gpu = null;
     if (!pool?.timestamps) return;
-    for (const [uid, ms] of pool.timestamps) {
-      const ctx = uid.split(':')[2];
-      const e = this.passes.get(ctx) ?? { ms: 0, n: 0, max: 0 };
-      e.ms += ms;
-      e.n++;
-      e.max = Math.max(e.max, ms);
-      this.passes.set(ctx, e);
+    const fresh = this.gpuTiming.read(pool.timestamps, frame => this.gpuFrames.get(frame)?.gap);
+    for (const sample of fresh) {
+      this.gpu = this.gpuTiming.reliable ? sample.ms : null;
+      this.gpuAt = performance.now();
+      if (this.phase !== 'recording' || !this.gpuFrames.get(sample.frame)?.recording) continue;
+      this.rec.gpu.push(sample.ms);
+      for (const [ctx, ms] of sample.passes) {
+        const e = this.passes.get(ctx) ?? { ms: 0, n: 0, max: 0 };
+        e.ms += ms;
+        e.n++;
+        e.max = Math.max(e.max, ms);
+        this.passes.set(ctx, e);
+      }
     }
   }
 
@@ -171,6 +195,7 @@ class Perf {
     const end = performance.now();
     const cpu = end - this.t0;
     this.last.cpu = cpu;
+    if (end - this.gpuAt > 250) this.gpu = null;
     this.last.gpu = this.gpu;
     if (this.collect) {
       measure('cpu', this.t0, end, { dataType: 'track-entry', track: 'Frame', trackGroup: 'dadajam', color: 'tertiary', properties: [['submit ms', this.last.submit.toFixed(1)], ['draws', String(draws)]] });
@@ -245,7 +270,6 @@ class Perf {
     r.gap.push(this.gap);
     r.cpu.push(f.cpu);
     r.submit.push(this.last.submit);
-    if (this.gpu !== null) r.gpu.push(this.gpu);
     r.draws.push(f.draws);
     r.tris.push(f.trisK);
     r.ratio.push(f.ratio);
@@ -274,6 +298,8 @@ class Perf {
     if (RUN_S > 0 && this.phaseT < RUN_S - 0.5) this.invalid.push(`the run ended early, at ${Math.round(this.phaseT * 10) / 10} s of ${RUN_S} s`);
     const fps = r.gap.length ? Math.round(10000 / (r.gap.reduce((x, y) => x + y, 0) / r.gap.length)) / 10 : null;
     const worst = [...r.gap].sort((a, b) => b - a).slice(0, Math.max(1, Math.ceil(r.gap.length * 0.01)));
+    const gpuReliable = this.gpuTiming.reliable && r.gpu.length >= Math.min(20, r.gap.length * 0.5)
+      && (stat(r.gpu)?.p50 ?? Infinity) <= (stat(r.gap)?.p90 ?? 0) * 1.5;
     const result = {
       version: 1,
       when: new Date().toISOString(),
@@ -283,6 +309,7 @@ class Perf {
       graphics: { ...graphics },
       census: this.census(),
       startup: { milestonesMs: this.marks, longTasks: { count: this.longTasks.count, totalMs: Math.round(this.longTasks.ms), beforePlayableMs: Math.round(this.longTasks.before) } },
+      diagnostics: this.diagnostics,
       // false when something other than the game's own frame cost decided the numbers: the player died, the walk was blocked, the run ended early.
       // The reasons are listed; tools/perf.ts prints them and exits with 2.
       valid: this.invalid.length === 0,
@@ -304,7 +331,10 @@ class Perf {
         gapMs: stat(r.gap),
         cpuMs: stat(r.cpu),
         submitMs: stat(r.submit),
-        gpuMs: stat(r.gpu),
+        gpuMs: gpuReliable ? stat(r.gpu) : null,
+        gpuTiming: { samples: r.gpu.length, accepted: this.gpuTiming.accepted, rejected: this.gpuTiming.rejected,
+          maxRawMs: Math.round(this.gpuTiming.maxRawMs * 100) / 100, coverage: r.gpu.length / Math.max(1, r.gap.length), reliable: gpuReliable,
+          validation: 'fresh unique frame IDs; reject invalid durations and totals above max(50 ms, 2 × observed frame interval)' },
         draws: stat(r.draws),
         trianglesK: stat(r.tris),
         renderScale: stat(r.ratio),
@@ -312,8 +342,8 @@ class Perf {
         framesOver50ms: r.gap.filter((g) => g > 50).length,
         // GPU ms by render pass, biggest first. `share` of the frames the pass ran in tells which is which: the scene and the post passes run every frame,
         // the cascade that follows the player nearly every frame, the cached ones (cascade 1, 2, 3) a fraction of them.
-        gpuPasses: [...this.passes].map(([ctx, e]) => ({ ctx, meanMs: Math.round((e.ms / e.n) * 100) / 100, maxMs: Math.round(e.max * 100) / 100, share: Math.round((e.n / Math.max(1, r.gpu.length)) * 100) / 100, perFrameMs: Math.round((e.ms / Math.max(1, r.gpu.length)) * 100) / 100 })).sort((a, b) => b.perFrameMs - a.perFrameMs).slice(0, 14),
-        bound: r.gpu.length ? (stat(r.cpu)!.p50 >= stat(r.gpu)!.p50 ? 'cpu' : 'gpu') : 'unknown (no gpu timestamps)',
+        gpuPasses: gpuReliable ? [...this.passes].map(([ctx, e]) => ({ ctx, meanMs: Math.round((e.ms / e.n) * 100) / 100, maxMs: Math.round(e.max * 100) / 100, share: Math.round((e.n / Math.max(1, r.gpu.length)) * 100) / 100, perFrameMs: Math.round((e.ms / Math.max(1, r.gpu.length)) * 100) / 100 })).sort((a, b) => b.perFrameMs - a.perFrameMs).slice(0, 14) : [],
+        bound: 'unattributed (compare fixed-resolution runs; asynchronous pass totals alone do not establish the bottleneck)',
       },
     };
     (window as unknown as { __perfResult: unknown }).__perfResult = result;

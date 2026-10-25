@@ -25,8 +25,8 @@ restoration six. Saved Auto settings are reused on the next visit and re-evaluat
 frame-rate caps, preset persistence and legacy preferences.
 
 ## 1. Stats overlay (Esc → Options → Gameplay → Show stats)
-Frame-time bars, draw calls, triangles, **cpu ms** (our frame callback, render submission included) and **gpu ms** (WebGPU timestamp queries, the render
-passes summed). The larger of the two is what the frame is bound by. GPU queries are only set up when stats were already on at page load (or for a
+Frame-time bars, draw calls, triangles, **cpu ms** (our frame callback, render submission included) and **gpu ms** (fresh GPU timestamp queries, the render
+passes grouped by their actual frame ID). Asynchronous pass totals alone do not establish a bottleneck; compare fixed-resolution runs. GPU queries are only set up when stats were already on at page load (or for a
 benchmark run), so tick the box and reload. Caveat: the shadow cascade passes may not be in the gpu number (turning shadows off moved it by 0.1 ms
 while cpu fell from 12 to 4 ms): trust the cpu line and the trace for shadows. `src/perf.ts` also writes the same numbers as User Timing, which Chrome's
 Performance panel shows as a "dadajam" track (CPU and GPU per frame, startup milestones as markers) in any trace you record by hand.
@@ -34,6 +34,12 @@ Performance panel shows as a "dadajam" track (CPU and GPU per frame, startup mil
 Cross-check GPU timestamps against actual frame intervals before using them for attribution. On an M2 Pro / Chrome 155 / WebGPU run,
 the summed GPU median was ~506 ms while frames arrived ~42 ms apart. Disabling timestamp queries left throughput unchanged, so those
 pass totals were not used to rank costs. Fixed-resolution comparisons and CPU traces established the graphics bottleneck instead.
+
+Timestamp reports consume each frame once, aggregate repeated draws of one context within that frame, and reject missing-frame, invalid or
+implausible totals (above max(50 ms, twice the observed frame interval)). GPU results are suppressed when coverage is too sparse, the recent
+valid fraction is below 80%, or the median contradicts observed frame intervals. Rejected counts and maximum raw duration remain in
+`gpuTiming`; `bound` stays unattributed. `node tools/check-gpu-timing.ts` verifies freshness, multi-frame batches and validity recovery.
+Reports also retain a bounded `diagnostics` timeline of graphics changes, long tasks, terrain overruns and shader warmup batches.
 
 ## 2. Automated run: `npm run perf` (`tools/perf.ts`)
 `npm run dev` first. Then `npm run perf -- --seconds 30` opens a real Chrome (GPU on, precise GPU timestamps), makes a world, waits until the game is

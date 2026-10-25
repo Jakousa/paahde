@@ -5,6 +5,7 @@
 // frames stay quick. Each round is one real render (shadows, post passes and all), so what it builds is exactly what
 // the first visible frame would have built. Done, everything is put back.
 import * as THREE from 'three/webgpu';
+import { perf } from './perf.ts';
 
 type Drawn = THREE.Object3D & { material?: THREE.Material | THREE.Material[]; geometry?: THREE.BufferGeometry };
 
@@ -68,6 +69,7 @@ export class Warmup {
       await settle();
       await Promise.all(this.pending.splice(0));
       const ms = performance.now() - t0;
+      perf.event('shader-warmup', this.labels.join(', ').slice(0, 240), ms, t0);
       if (ms > 500) console.info(`[warmup] slow round ${Math.round(ms)} ms:`, this.labels.join(', '));
       this.batch = ms < FAST_MS ? this.batch * 2 : ms > SLOW_MS ? Math.max(1, this.batch >> 1) : this.batch;
       await new Promise((r) => setTimeout(r, PAUSE_MS));
