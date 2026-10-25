@@ -1,27 +1,41 @@
 # The desktop app
 
 `desktop/` wraps the web build in an Electron window: the first step towards a Steam build. It has its own
-`package.json`, so the game's install and CI don't pull Electron. Nothing Steam-specific is in it yet (no Steamworks,
-no Steam login); see "Towards Steam" below.
+`package.json`, so the game's install doesn't pull Electron. Nothing Steam-specific is in it yet (no Steamworks, no
+Steam login); see "Towards Steam" below.
 
-## Running it
+## Getting it
+
+Every push to `main` that touches the game builds it for macOS (Apple silicon and Intel), Windows and Linux
+(`.github/workflows/desktop.yml`): the zips are the run's artifacts in GitHub's Actions tab, kept 30 days. Never a
+GitHub release (tags deploy prod). The app updates its game files by itself (below), so a new download is only needed
+when `desktop/` changes.
+
+The builds aren't signed. On macOS, after unzipping: `xattr -cr Paahde.app` (or right-click → Open, then allow it in
+System Settings → Privacy & Security). Windows SmartScreen: More info → Run anyway.
+
+## Running it from the checkout
 
 ```sh
-npm run build                 # the app serves dist/
+npm run build                 # the app ships dist/
 cd desktop && npm install
-npm start                     # bundled dist/, talking to the dev server
-PAAHDE_SERVER=http://localhost:8787 npm start   # ... or to a local npm run dev / npm run preview
+npm start                     # the dev server
+PAAHDE_SERVER=http://localhost:8787 npm start   # ... or a local npm run dev / npm run preview
 npm run start:remote          # the page itself from the server, like a browser tab
 npm run pack                  # a packaged app in desktop/out/ (unsigned; dist/ is copied in)
+npm run dist                  # the zips CI makes, for this OS
 ```
 
-Flags: `--open=<query>` opens the page with that query (`--open=w=<id>` is a world's lobby), `--shot=<file>` loads,
-waits `SHOT_WAIT_MS` (8 s), saves a screenshot and quits; `SHOT_JS` is run in the page first (fill in a name and
-press Join, say). F11 toggles fullscreen. Add `--mute-audio` when testing.
+Flags: `--open=<query>` opens the page with that query (`--open=w=<id>` is a world's lobby); `--profile=<name>` keeps
+separate saved data (browser ID, downloaded builds), for a second player on one machine or a test; `--shot=<file>`
+loads, waits `SHOT_WAIT_MS` (8 s), saves a screenshot and quits, with `SHOT_JS` run in the page first (fill in a name
+and press Join, say). F11 toggles fullscreen. Add `--mute-audio` when testing.
+
+The icon is `desktop/build/icon.png`, rendered from `public/favicon.svg` by `tools/favicon.mjs`.
 
 ## How it works
 
-- `desktop/main.mjs` serves `dist/` from `app://game/`: a standard, secure scheme, so the page has a stable origin
+- `desktop/main.mjs` serves the game from `app://game/`: a standard, secure scheme, so the page has a stable origin
   (its localStorage, and the browser ID in it, survive restarts), a secure context (WebGPU, pointer lock) and module
   workers. Everything under `app://game/api/` is passed on to the server, so the page's relative `fetch('api/...')`
   calls work unchanged.
@@ -30,16 +44,23 @@ press Join, say). F11 toggles fullscreen. Add `--mute-audio` when testing.
   address, as before. Invite links use it too.
 - Links that open a new window go to the player's browser.
 
-## The build has to match the server
+## Updates
 
-The protocol has no version: a client only works with a server of the same build. In a browser that's handled by
-`src/update.ts` (the server says its build, the page reloads into it). A bundled app can't reload into a newer build,
-and a local build (`BUILD_SHA` unset, so `dev`) doesn't even try. So `npm start` against the dev server only works
-while `dist/` is built from the commit dev is running; after the next push to `main` it may break in odd ways.
-`--remote` doesn't have that problem (it is a browser tab without the browser).
+The protocol has no version: a client only works with a server of the same build. So the app keeps its game files at
+the server's build (`desktop/update.mjs`):
 
-A Steam build needs one of: a server pinned to the build Steam ships (a release server next to prod), a protocol
-version the server checks so an old app can say "update", or Steam updating the app with every server deploy.
+- `npm run build` writes `dist/manifest.json` (`tools/manifest.ts`): every file with a hash of its content.
+- Each time the page loads, the app first reads the server's `manifest.json` and downloads the files whose hash it
+  doesn't have into `userData/content/<hash>`; the rest come from the `dist/` it shipped with. Only what a
+  deploy changed is downloaded (the scripts, mostly; a models change adds those models).
+- That covers a deploy during play too: the server tells the page its new build and `src/update.ts` fetches the
+  page, which makes the app download the new files while the game runs, then reloads into them, as in a browser.
+- Offline, or if a file changes mid-download (another deploy), the app stays on the build it has.
+- A window that is still dark while a big update downloads (an old app, many new models) is the update; there is no
+  progress shown yet.
+
+The app itself (`desktop/`) doesn't update: a change there needs a new download. A Steam build would get those
+through Steam.
 
 ## Towards Steam (not done)
 
@@ -47,7 +68,8 @@ version the server checks so an old app can say "update", or Steam updating the 
   rich presence, invites (an invite would open `--open=w=<id>`).
 - Steam login instead of the browser ID: the app gets a ticket (`GetAuthTicketForWebApi`), the server checks it with
   `ISteamUserAuth/AuthenticateUserTicket` and keys the player by Steam ID.
-- An icon (electron-builder uses Electron's), signing and notarising on macOS, Windows and Linux builds (`npm run
-  pack` on each, or electron-builder's `--win`/`--linux` from one machine). Steam takes the `dir` output as it is.
+- Signing and notarising on macOS (an Apple Developer ID), a Windows code-signing certificate.
+- Which server a Steam build talks to: the game files follow the server, so it would be a server for players (prod),
+  not dev.
 - Steam Deck: no keyboard needed anywhere (the name field, the password), legible text at 1280×800.
 - An in-game credits screen: the CC-BY assets in `public/credits.txt` need visible credit.

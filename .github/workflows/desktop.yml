@@ -1,0 +1,85 @@
+name: Desktop app
+
+# The desktop app (docs/desktop.md) for macOS, Windows and Linux, on every push to main that touches the game. The
+# packages are this run's artifacts. Never a GitHub release: releases mean tags, and tags deploy prod. Installed apps
+# keep themselves up to the dev server's build (desktop/update.mjs), so a new download is only needed when desktop/
+# changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'shared/**'
+      - 'public/**'
+      - 'desktop/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'tools/manifest.ts'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The web build once, with the commit's BUILD_SHA like the dev server's image, so the app starts on the same build.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          BUILD_SHA: ${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 1
+
+  app:
+    needs: web
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, name: mac }
+          - { os: windows-latest, name: windows }
+          - { os: ubuntu-latest, name: linux }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - run: npm ci
+        working-directory: desktop
+      # Unsigned for now (docs/desktop.md).
+      - run: npx electron-builder --publish never
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paahde-${{ matrix.name }}
+          path: |
+            desktop/out/*.zip
+            desktop/out/*.tar.gz
+          compression-level: 0
+          retention-days: 30

@@ -21,7 +21,9 @@ when you find it stale.
   and convert pointer px to `left`/`top` with `uiScale()`
 
 - `desktop/` — the desktop app (Electron; docs/desktop.md): the web build in a window, the first step towards Steam.
-  `src/desktop.ts` — the game server's address when the page isn't served by it (`PAGE_URL`)
+  `desktop/update.mjs` keeps its game files at the server's build, from `dist/manifest.json` (`tools/manifest.ts`).
+  `src/desktop.ts` — the game server's address when the page isn't served by it (`PAGE_URL`). Built by
+  `.github/workflows/desktop.yml`
 
 ## Worlds, server and players
 
