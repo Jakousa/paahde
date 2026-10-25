@@ -23,6 +23,7 @@ import { bikeEngine, bikeTopSpeed } from './gear.ts';
 import { GUARDIAN, KINDS, LEG_POST_H, LEG_POST_R } from './guardians.ts';
 import { collideScrap } from './scrap.ts';
 import { collideTrophies } from './trophies.ts';
+import { collideShip, shipSpawn } from './ship.ts';
 import { WIND } from './dunes.ts';
 import { heightAt, onRock } from './terrain.ts';
 
@@ -87,8 +88,11 @@ const HARD_LANDING = 13; // impact speed (m/s) above which a landing bogs you do
 const LAND_SLOW = 0.4; // speed factor right after a hard landing, recovering linearly
 const MAX_LAND_TICKS = 24;
 
-/** New players start in front of the home base's door. */
-export const SPAWN = BUNKER_SPAWN;
+/** Where new players start: at the foot of the crashed ship's ramp (shared/ship.ts); in the dev test lab, which has no
+ *  ship, down in the bunker (the server puts them in the lab's room). */
+export function spawnPoint(): { x: number; z: number } {
+  return shipSpawn() ?? BUNKER_SPAWN;
+}
 
 export type PlayerState = {
   x: number;
@@ -141,7 +145,7 @@ function sandAt(x: number, z: number, prevY: number): number {
   return sandHidden(x, z, prevY) ? -Infinity : heightAt(x, z);
 }
 
-export function spawnState(x = SPAWN.x, z = SPAWN.z, y = x === SPAWN.x && z === SPAWN.z ? SPAWN.y : heightAt(x, z)): PlayerState {
+export function spawnState(x = spawnPoint().x, z = spawnPoint().z, y = x === BUNKER_SPAWN.x && z === BUNKER_SPAWN.z ? BUNKER_SPAWN.y : heightAt(x, z)): PlayerState {
   return {
     x, y, z, vx: 0, vy: 0, vz: 0, facing: 0,
     grounded: true, airJumps: AIR_JUMPS, jumpHeld: false, landTicks: 0,
@@ -358,7 +362,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   c.vx = vx;
   c.vz = vz;
   const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP),
-    collideMachines(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideJetWrecks(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideTrophies(c, y, s.y, PLAYER_RADIUS, STEP_UP));
+    collideMachines(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideJetWrecks(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideTrophies(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideShip(c, y, s.y, PLAYER_RADIUS, STEP_UP));
   const baseTop = Math.max(collideBase(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP, s.x, s.z), collideShelter(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP, s.x, s.z),
     collideOutdoor(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, y, PLAYER_RADIUS, legs);
@@ -493,7 +497,8 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   c.vz = vz;
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
   const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP),
-    collideMachines(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideJetWrecks(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideTrophies(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
+    collideMachines(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideJetWrecks(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideTrophies(c, airborneY, s.y, BIKE_RADIUS, STEP_UP),
+    collideShip(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
   const baseTop = Math.max(collideBase(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP, s.x, s.z), collideShelter(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP, s.x, s.z),
     collideOutdoor(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, airborneY, BIKE_RADIUS, legs);

@@ -2372,4 +2372,5 @@ def main():
         render_previews(kinds, os.path.abspath(args.preview), args.only.split(',') if args.only else None)
 
 
-main()
+if __name__ == '__main__':  # (tools/blender/ship.py imports the kit)
+    main()

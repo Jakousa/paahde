@@ -21,6 +21,7 @@ import { canyonAt, canyonOut } from './canyons.ts';
 import { canyonRockHeight, rockHeight } from './rocks.ts';
 import { LAB } from './world.ts';
 import { nearShelter, overShelter, shelterSolid, withShelterPad } from './shelters.ts';
+import { nearShip, withShipFurrow } from './shipSpot.ts';
 export { WIND, WORLD_SEED } from './dunes.ts';
 
 /**
@@ -87,11 +88,11 @@ export function groundAt(x: number, z: number): Readonly<typeof layers> {
 }
 
 /** Procedural dunes, rocks and canyons before player edits, flattened into a pad around the home base
- *  (shared/base.ts) and the shelters (shared/shelters.ts). */
+ *  (shared/base.ts) and the shelters (shared/shelters.ts), with the crashed ship's furrow (shared/shipSpot.ts). */
 export function baseHeight(x: number, z: number): number {
   if (LAB) return LAB_FLOOR_Y; // the dev test lab (shared/lab.ts): one flat floor, same on client and server
   ground(x, z);
-  return withShelterPad(x, z, withPad(x, z, Math.max(layers.sand, layers.rock)));
+  return withShipFurrow(x, z, withShelterPad(x, z, withPad(x, z, Math.max(layers.sand, layers.rock))));
 }
 
 /** Height of the rock at (x, z) (the rocks, a canyon's tableland and walls), or -Infinity where there is none. */
@@ -154,7 +155,7 @@ export class TerrainEdits {
 
   /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. Not over the bunker, a shelter or a building on the sand. */
   setMm(ix: number, iz: number, mm: number) {
-    if (mm !== 0 && (overBase(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overShelter(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overPlaced(ix * EDIT_CELL, iz * EDIT_CELL, 1))) return;
+    if (mm !== 0 && (overBase(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overShelter(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overPlaced(ix * EDIT_CELL, iz * EDIT_CELL, 1) || nearShip(ix * EDIT_CELL, iz * EDIT_CELL, 1))) return;
     const cx = Math.floor(ix / EDIT_CHUNK), cz = Math.floor(iz / EDIT_CHUNK);
     const k = TerrainEdits.key(cx, cz);
     let c = this.chunks.get(k);

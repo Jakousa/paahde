@@ -292,7 +292,7 @@ export type ServerMsg =
   // maxSips: what the water bottle in your bag holds (shared/gear.ts bottleSips), 0 without one.
   | { t: 'water'; heat: number; sips: number; maxSips: number; rising: boolean; temp: number; shade: boolean }
   // You died: you lie where you fell as a ragdoll for DOWN_MS (shared/ragdoll.ts; your input is ignored), then
-  // 'respawn' says the server has moved you to BUNKER_SPAWN (the next snapshot snaps you there) with no heat and a
+  // 'respawn' says the server has moved you to your bedroll or the ship (the next snapshot snaps you there) with no heat and a
   // full canteen; a 'water' follows. For the death screen. push: the blast's launch velocity for the body (m/s).
   // 'heat': heatstroke; 'guardian': one walked over you; 'laser': a guardian's cannon got you; 'missile': one called
   // down by a drone's searchlight landed on you (shared/missiles.ts); 'crawler': bitten once too often.

@@ -220,11 +220,15 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   receiver_worm: { n: 1, level: 2 },
 };
 
-/** One broken motorcycle lies on the sand in front of the base door in a new world (server/vehicles.ts,
+/** One broken motorcycle lies on the sand beside the crashed ship in a new world (server/vehicles.ts,
  *  shared/lootRoll.ts homeBikeSpot), so a bike is in sight from the first step out: it has these slots fitted (scrap
  *  tier) and the rest are parts the scrap fields' starter machines give (battery: beacon, bearing: winch). Repaired
  *  where it lies, it is the world's (everyone's) first bike. */
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
+
+/** Lying about the crashed ship players arrive at (shared/ship.ts, server/loot.ts): how many things at once, each one
+ *  of these by relative odds (a broken canteen: shared/gear.ts); taken, another lies there a few minutes later. */
+export const SHIP_LOOT = { n: 6, contents: { scrap: 0.5, cloth: 0.35, canteen: 0.15 } };
 
 /** Parts that only an engine gives (nothing uses them yet): never found loose. */
 const ROTORS: PartId[] = ['fanrotor', 'comprotor', 'turbinerotor', 'turbinedisc', 'fuelmanifold'];

@@ -5,7 +5,7 @@ import { buildingBox, cargoBox, isShared, vehicleBox } from '../shared/boxes.ts'
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { DT, INPUT_MASK, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
+import { DT, INPUT_MASK, spawnPoint, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bottleSips, equipped, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, isVehicle } from '../shared/gear.ts';
 import { carriedGear, gearTiers, wornGear } from '../shared/gearBits.ts';
@@ -61,7 +61,6 @@ import { HEAT_MAX } from '../shared/water.ts';
 import { TIERS } from '../shared/salvage.ts';
 import type { Caster } from '../shared/shade.ts';
 import { heightAt } from '../shared/terrain.ts';
-import { BUNKER_SPAWN } from '../shared/base.ts';
 import { blastPush, DOWN_MS } from '../shared/ragdoll.ts';
 import { WIND } from '../shared/dunes.ts';
 import { CHOKE_RECOVER, CHOKE_S, frontExposure, stormAt, stormDrag, toolsDown } from '../shared/storm.ts';
@@ -501,10 +500,16 @@ function onStomped(p: Player, g: number) {
   if (!p.down && p.ready && guardians.stomp(g, { id: p.id, x: s.x, y: s.y, z: s.z, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }, performance.now())) die(p, 'guardian');
 }
 
-/** Back to the base, cooled down, with a full canteen. */
+/** Where `p` comes back after dying: their bedroll if it's still down (shared/placed.ts), else the ship. */
+function homeOf(p: Player): { x: number; z: number } {
+  return spawnPoint();
+}
+
+/** Back at their bedroll or the ship, cooled down, with a full canteen. */
 function respawn(p: Player) {
   p.down = null;
-  p.state = spawnState();
+  const home = homeOf(p);
+  p.state = spawnState(home.x, home.z);
   revive(p.heat, Date.now());
   save(p);
   send(p.ws, { t: 'respawn' });
@@ -1238,8 +1243,8 @@ function send(ws: WebSocket, msg: ServerMsg) {
 }
 
 function save(p: Player) {
-  // Lying dead: they come back at the base.
-  const at = p.down ? BUNKER_SPAWN : p.state;
+  // Lying dead: they come back at their bedroll or the ship.
+  const at = p.down ? homeOf(p) : p.state;
   // Play time counts only once they're in the game (ready), not on the loading screen.
   const now = Date.now();
   const played = p.ready ? now - p.savedAt : 0;

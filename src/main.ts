@@ -114,6 +114,7 @@ import { prologue } from './prologue';
 import { tools } from './input';
 import { Wrecks } from './world/wrecks';
 import { Trophies } from './world/trophies';
+import { ShipView } from './world/ship';
 import { setTrophies } from '../shared/trophies.ts';
 import { Mast } from './world/mast';
 import { GuardianFx } from './guardians';
@@ -163,6 +164,8 @@ await slice();
 const mast = new Mast(scene); // flag mast with a windsock by the entrance
 await slice();
 const trophies = new Trophies(scene); // a big piece of each beaten boss round the base
+await slice();
+const ship = new ShipView(scene); // the crashed ship players arrive at
 await slice();
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
 await slice();
@@ -608,6 +611,7 @@ renderer.setAnimationLoop((time) => {
   terrain.update(focus);
   scrap.update(focus);
   crashSites.update(focus);
+  ship.update(time / 1000);
   machines.update(focus);
   wrecks.update(focus);
   // The terrain casts into the shadow maps only near the underground places it roofs (src/world/heightShadow.ts does the dunes).

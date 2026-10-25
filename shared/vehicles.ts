@@ -1,5 +1,5 @@
 // Vehicles: things standing in the world that are repaired and ridden where they are, never carried (shared/gear.ts
-// `vehicle`): so far the motorcycle. One lies broken on its side in front of the base door (shared/tables.ts HOME_BIKE)
+// `vehicle`): so far the motorcycle. One lies broken on its side beside the crashed ship (shared/tables.ts HOME_BIKE)
 // and a few out at the crash sites (FINDS.motorcycle); F on a broken one opens its part slots next to the bag (its
 // item is in the shared box `veh<id>`, shared/gear.ts vehicleBox, parts fitted like a building's) and, with every slot
 // filled, Repair stands it up. F on a working one gets on (the server starts the mount, shared/sim.ts; the bike key or

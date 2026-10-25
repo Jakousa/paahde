@@ -6,7 +6,8 @@
 // the sun (shared/sun.ts) and is tested against:
 // - the base's surface buildings (the entrance hut and the skylight's collar, as boxes) and the shelters' huts
 //   (shared/shelters.ts) within HUT_DIST;
-// - crash-site wrecks and debris (their collision capsules, shared/crashsites.ts) within CRASH_DIST;
+// - crash-site wrecks and debris (their collision capsules, shared/crashsites.ts) within CRASH_DIST, and the crashed
+//   ship's (shared/ship.ts);
 // - `casters`: things that move, passed in by the caller: other players, their bikes, motorcycles lying on the sand;
 // - near the start, the scrap piles' hitboxes (shared/scrap.ts);
 // - the terrain (heightAt: dunes, rocks, the base's pad and every dig), marched with steps that grow with distance,
@@ -22,6 +23,7 @@ import { crashTaken, crashSitesNear, pieceY, type CrashSite } from './crashsites
 import { EYE_HEIGHT, MAX_EDIT_MM } from './dig.ts';
 import { scrapPieces, scrapTaken, SCRAP_CELL, type ScrapPiece } from './scrap.ts';
 import { S_HUT, sheltersNear, shelterHutRect } from './shelters.ts';
+import { shipCasters } from './ship.ts';
 import { DECL, skyVector, sunHourAngle, type Vec3 } from './sun.ts';
 import { ROCK_H_MAX } from './rocks.ts';
 import { heightAt } from './terrain.ts';
@@ -187,6 +189,9 @@ function rayClear(x: number, y: number, z: number, d: Vec3, sites: CrashSite[], 
     if (hitsPrism(x, y, z, d, c.x, c.z, c.ax, c.az, c.half, c.r, c.y0, c.y1)) return false;
   }
   if (sites.length && hitsCrash(sites, x, y, z, d)) return false;
+  for (const c of shipCasters(x, z, CRASH_DIST)) {
+    if (hitsPrism(x, y, z, d, c.x, c.z, c.ax, c.az, c.half, c.r, c.y - 0.5, c.top)) return false;
+  }
   let cell = NaN, pieces: ScrapPiece[] = [];
   let prevT = 0, prevGap = Infinity;
   for (let t = STEP0; t < MAX_DIST; t += STEP0 + STEP_GROWTH * t) {

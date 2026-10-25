@@ -13,10 +13,12 @@ import { SCRAP_CELL, scrapPieces } from './scrap.ts';
 import { PART_IDS, pickTier } from './parts.ts';
 import { GUNS, PISTOL, RIFLE } from './rifle.ts';
 import { rocksNear } from './rocks.ts';
+import { SHIP_AT, shipLootSpot } from './ship.ts';
+import { shipToWorld } from './shipSpot.ts';
 import type { JetKind } from './jetbreak.ts';
 import {
   BOSS_SPOILS, BROKEN_GEAR, CACHES, DRONE_JET_SPOILS, FINDS, HARVESTER_SCRAP, HARVESTER_SPOILS, JET_RELIC_ODDS, JET_SCRAP,
-  KILL_SPOILS, RARE_FINDS, RECEIVER_DROPS, RELIC_DROPS, SHELTER_STASHES, WIRING_DROPS, type TierWeights,
+  KILL_SPOILS, RARE_FINDS, RECEIVER_DROPS, RELIC_DROPS, SHELTER_STASHES, SHIP_LOOT, WIRING_DROPS, type TierWeights,
 } from './tables.ts';
 
 export type Rand = () => number;
@@ -105,8 +107,11 @@ export function nearPiles() {
   return out;
 }
 
-/** Where the home bike lies: out from the door (it faces +Z), off the path a little, on clear sand in plain view.
- *  The same spot every time. */
+/** Where the home bike lies, ship-local: on its side by the crashed ship's left flank, in view from the ramp's foot. */
+const BIKE_BY_SHIP: [number, number][] = [[-10, 9], [-11, -6], [-13, 3]];
+
+/** Where the home bike lies: beside the crashed ship (shared/ship.ts), on clear sand in plain view; with no ship (the dev
+ *  lab), out from the base's door, off the path a little. The same spot every time. */
 export function homeBikeSpot() {
   const clear = (x: number, z: number) => {
     if (overBase(x, z, 6) || rocksNear(x, z, 3)) return false;
@@ -116,6 +121,10 @@ export function homeBikeSpot() {
     }
     return true;
   };
+  if (SHIP_AT) for (const [lx, lz] of BIKE_BY_SHIP) {
+    const p = shipToWorld(lx, lz);
+    if (clear(p.x, p.z)) return p;
+  }
   for (const d of [22, 28, 34, 16, 42]) for (const a of [0.35, -0.35, 0.6, -0.6, 0, 0.9, -0.9]) {
     const x = BASE_SPAWN.x + Math.sin(a) * d, z = BASE_SPAWN.z + Math.cos(a) * d;
     if (clear(x, z)) return { x, z };
@@ -163,6 +172,13 @@ export function stashSpot(shelters: Shelter[], lying: Map<number, number>, rand:
   const s = pick(shelters.filter((s) => short(s) === most), rand);
   return { shelter: s, ...shelterLootSpot(s, rand) };
 }
+
+/** Something lying about the crashed ship (SHIP_LOOT): scrap, cloth, now and then a broken canteen; and where. */
+export const shipFind = (rand: Rand): Drop => {
+  const what = pickOdds(SHIP_LOOT.contents, rand);
+  return what === 'canteen' ? broken('canteen', rand) : { kind: what === 'cloth' ? CLOTH : SCRAP };
+};
+export const shipFindSpot = (rand: Rand) => shipLootSpot(rand);
 
 /** A find of FINDS kind `kind` (a broken piece of gear), or a loose rare part. */
 export const findContents = (kind: string, rand: Rand): Drop => (kind in FINDS ? broken(kind, rand) : rarePart(rand));
