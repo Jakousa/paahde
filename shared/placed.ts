@@ -264,18 +264,20 @@ const overlap = (a: number[], b: number[]) => a[0] < b[2] && b[0] < a[2] && a[1]
 
 /** Small things that may stand inside a tarp, under its canvas (sheltered), free of its gap. */
 const UNDER_TARP = new Set(['bedroll', 'storage_chest', 'workbench', 'dismantle_bench', 'battery_station', 'beacon_light']);
-/** Kept this far (m) from a tarp's poles and walls inside it, and under its canvas by this much. */
+/** Kept this far (m) from a tarp's poles inside it, and under its canvas by this much. */
 const TARP_CLEAR = 0.1;
 
-/** Does `kind` at (x, z) turned `rot` stand inside tarp `t` (its footprint within the canvas's square, clear of its poles
- *  and walls, and under the canvas with room to spare)? Then neither keeps a gap from the other, nor counts as in the
+/** Does `kind` at (x, z) turned `rot` stand inside tarp `t` (its footprint within the canvas's square, clear of its poles,
+ *  and under the canvas with room to spare)? Then neither keeps a gap from the other, nor counts as in the
  *  other's way. Deterministic: canvasAt is + - * / and heightAt. */
 function shelteredBy(kind: string, x: number, z: number, rot: number, t: { x: number; z: number; rot: number; y: number }): boolean {
   if (!UNDER_TARP.has(kind)) return false;
   const f = footprint(kind, x, z, rot);
   if (f[0] < t.x - TARP_HALF || f[2] > t.x + TARP_HALF || f[1] < t.z - TARP_HALF || f[3] > t.z + TARP_HALF) return false;
   const g = [f[0] - TARP_CLEAR, f[1] - TARP_CLEAR, f[2] + TARP_CLEAR, f[3] + TARP_CLEAR];
+  // Only its poles are in the way: the walls under the low canvas keep people out, but something low enough fits under there.
   for (const b of worldBoxes({ id: 0, kind: TARP, ...t })) {
+    if (Math.min(b.x1 - b.x0, b.z1 - b.z0) > 0.5) continue;
     if (b.y0 <= t.y + 1e-6 && overlap(g, [b.x0, b.z0, b.x1, b.z1])) return false;
   }
   // Its top under the canvas at its corners and centre (the canvas's faces are flat or sag, so between them too).
