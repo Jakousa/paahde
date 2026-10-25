@@ -21,6 +21,7 @@ import { isBuilding, tierOf } from '../../shared/gear.ts';
 import { furl, rotorSpeed, windSpeed, type PowerState } from '../../shared/power.ts';
 import { parsePart } from '../../shared/items.ts';
 import { BEACON, bedLit, PLACEABLES, TARP, type Placed } from '../../shared/placed.ts';
+import { isTrophy } from '../../shared/trophies.ts';
 import { TARP_WIND, tarpModel } from './tarps.ts';
 import { inShelter } from '../../shared/shelters.ts';
 import { SPIGOT, WELL } from '../../shared/wells.ts';
@@ -81,7 +82,8 @@ export class PlacedView {
     for (const w of ['out', 'shelter'] as Where[]) this.models.set(`${BEACON}:${w}`, beacon);
     const loader = new GLTFLoader();
     for (const kind of Object.keys(PLACEABLES)) {
-      if (kind === BEACON || kind === TARP) continue;
+      // (The beacon's and the tarp's are made in code; the trophies' come from src/world/trophies.ts: provide.)
+      if (kind === BEACON || kind === TARP || isTrophy(kind)) continue;
       loader.load(
         `./models/placeables/${kind}.glb`,
         (gltf) => {
@@ -96,6 +98,12 @@ export class PlacedView {
         (err) => console.warn(`placed: failed to load ${kind}.glb`, err),
       );
     }
+  }
+
+  /** `kind`'s model made elsewhere (a boss's trophy, src/world/trophies.ts), as it is: lit by the scene wherever it stands. */
+  provide(kind: string, obj: THREE.Object3D) {
+    for (const w of ['out', 'shelter'] as Where[]) this.models.set(`${kind}:${w}`, obj);
+    this.sync(this.last.list, this.last.garden);
   }
 
   /** `kind`'s model lit for `where`, or undefined while it loads. */
@@ -135,7 +143,7 @@ export class PlacedView {
       if (!s) {
         const obj = p.kind === TARP ? tarpModel(p.x, p.y, p.z, p.rot, p.id) : model!.clone();
         obj.position.set(p.x, p.y, p.z);
-        if (p.kind !== TARP) obj.rotation.y = p.rot ? Math.PI / 2 : 0;
+        if (p.kind !== TARP) obj.rotation.y = (p.rot * Math.PI) / 2;
         if (p.kind === 'uv_lamp') {
           const pool = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.55), this.pool);
           pool.name = 'pool';
@@ -304,7 +312,7 @@ export class PlacedView {
     const g = this.ghost.obj;
     g.visible = true;
     g.position.set(at.x, at.y + 0.005, at.z);
-    if (kind !== TARP) g.rotation.y = at.rot ? Math.PI / 2 : 0;
+    if (kind !== TARP) g.rotation.y = (at.rot * Math.PI) / 2;
     const mat = ok ? this.ghostOk : this.ghostBad;
     g.traverse((o) => {
       const m = o as THREE.Mesh;

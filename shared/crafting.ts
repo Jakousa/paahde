@@ -16,6 +16,7 @@ import { addItem, HOTBAR, ITEMS, setPart, withData, type Part, type Shape, type 
 import { partOf } from './parts.ts';
 import { TIERS } from './salvage.ts';
 import { BUILD_TABLE, HAND_TABLE, RECIPE_TABLE, type IngredientSpec } from './tables.ts';
+import { TROPHY_PLACEABLES } from './trophies.ts';
 
 export type Ingredient = { label: string; n: number; match: (kind: string) => boolean };
 export type Recipe = { makes: string; needs: Ingredient[] };
@@ -43,10 +44,12 @@ export const HAND_RECIPES: Record<string, Recipe> = Object.fromEntries(
   Object.entries(HAND_TABLE).map(([id, needs]) => [id, { makes: id, needs: needs.map(ingredient) }]),
 );
 
-/** Building → the base materials it takes (shared/tables.ts BUILD_TABLE). `makes` is the placed kind. */
-export const BUILDS: Record<string, Recipe> = Object.fromEntries(
-  Object.entries(BUILD_TABLE).map(([id, needs]) => [id, { makes: id, needs: needs.map(ingredient) }]),
-);
+/** Building → the base materials it takes (shared/tables.ts BUILD_TABLE). `makes` is the placed kind. The bosses' trophies
+ *  take nothing (shared/trophies.ts: only once their kind is beaten, one each). */
+export const BUILDS: Record<string, Recipe> = Object.fromEntries([
+  ...Object.entries(BUILD_TABLE).map(([id, needs]) => [id, { makes: id, needs: needs.map(ingredient) }]),
+  ...Object.keys(TROPHY_PLACEABLES).map((id) => [id, { makes: id, needs: [] }]),
+]);
 /** Put up with the wrench (never carried as an item). */
 export const isBuildable = (kind: string | undefined) => !!kind && kind in BUILDS;
 /** The tool that opens the build menu. */

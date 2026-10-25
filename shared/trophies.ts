@@ -1,187 +1,71 @@
-// The trophies at the world's origin: each boss kind's first kill (shared/bosses.ts, the 'lives' message's `beaten`) sets
-// up a big piece of it, at its full size, on the sand round where the first bunker stood (shared/origin.ts): the worm's head rearing out of the sand
-// with its jaws spread, the colossus's head sunk to the chin with its arm raised out of the sand beside it, one of the
-// carrier's fan ducts standing on edge, the queen's thorax nose-up with a leg arching out each side. Drawn by
-// src/world/trophies.ts; they block (collideTrophies() in sim.ts step()) once setTrophies() has the kind (the server
-// on start and on a kill, the client on each 'lives' message).
+// The trophies: each boss kind's first kill (shared/bosses.ts, the 'lives' message's `beaten`) gives the world a big
+// piece of it, at its full size, to put up where anyone likes: the worm's head rearing out of the sand with its jaws spread,
+// the colossus's head sunk to the chin with its arm raised out of the sand beside it, one of the carrier's fan ducts
+// standing on edge, the queen's thorax nose-up with a leg arching out each side.
 //
-// Each kind's spot (trophyPlaces) is the first of rings of candidates round the origin, the side away from the arrival first,
-// that is clear of where new players arrive (spawnPoint, and the ground kept for the wreck there: shared/shipSpot.ts
-// nearShip, onShipGround), the world's layout (scrap, wrecks, crash sites, shelters, rocks) and the other trophies, all of it deterministic, so the client and the server agree; its ground is
-// never dug (overTrophy), so it can't be undermined.
-//
-// Same determinism rules as shared/scrap.ts in the collision: + - * /, Math.sqrt, Math.abs, Math.min/max only.
-//
-// A trophy's own frame: origin on the sand at its spot, +Z facing the origin, +X to its right.
+// A trophy is a building like the others (shared/placed.ts, kinds `trophy_<boss>`): it appears in the wrench's build menu
+// (src/buildMenu.ts) once its kind is beaten and while it isn't standing anywhere (trophyFree: one per kind per world),
+// costs nothing (shared/crafting.ts BUILDS), and anyone can take it down with the wrench and put it up again elsewhere.
+// It's never lost: taken down, it's back in the menu. Winning (server/world.ts `beaten`) doesn't depend on it standing.
+// Its footprint and what of it blocks (its boxes) come from POSTS, recentred on the footprint's middle (CENTRE), so the
+// ground kept clear round it is its own shape and no more. Drawn by src/world/trophies.ts (from the bosses' models,
+// handed to src/world/placed.ts).
 
 import { BOSS_KINDS, bossBit, type BossKind } from './bosses.ts';
-import { crashSitesNear } from './crashsites.ts';
-import { rocksNear } from './rocks.ts';
-import { SCRAP_CELL, scrapPieces } from './scrap.ts';
-import { shelterWithin } from './shelters.ts';
-import { ORIGIN } from './origin.ts';
-import { nearShip, onShipGround } from './shipSpot.ts';
-import { spawnPoint } from './sim.ts';
-import { LAB } from './world.ts';
-import { baseHeight, keepUndug } from './terrain.ts';
-import { wrecksNear } from './wrecks.ts';
 
-/** How much ground each kind's trophy takes (m round its spot): what of it stands on the sand reaches about this far. */
-const TROPHY_R: Record<BossKind, number> = { worm: 9, queen: 15, colossus: 21, carrier: 14 };
-/** Spots are tried in this order: the biggest first, so it gets the pick. */
-const BY_SIZE: BossKind[] = ['colossus', 'queen', 'carrier', 'worm'];
-/** Directions round the origin (world unit x, z), -Z first (the old bunker ran that way, the arrival lies out along +Z),
- *  then round both sides (no trig). */
-const AROUND: [number, number][] = [[0, -1], [-0.5, -0.866], [0.5, -0.866], [-0.866, -0.5], [0.866, -0.5], [-1, 0], [1, 0],
-  [-0.866, 0.5], [0.866, 0.5], [-0.5, 0.866], [0.5, 0.866], [0, 1]];
-/** How far out from the origin they stand. */
-const RINGS = [30, 40, 52, 66, 82, 100];
-/** What each trophy keeps clear of beyond its own ground (m): `spawn` round where new players appear (the first bike lies
- *  well inside that). */
-const CLEAR = { ship: 6, spawn: 30, scrap: 2, wreck: 8, site: 6, rock: 2, shelter: 6, trophy: 6 };
+/** A trophy's placed kind. */
+export const TROPHY: Record<BossKind, string> = { worm: 'trophy_worm', carrier: 'trophy_carrier', colossus: 'trophy_colossus', queen: 'trophy_queen' };
+/** The boss kind a placed kind is the trophy of, or null. */
+export const trophyBoss = (kind: string): BossKind | null => BOSS_KINDS.find((k) => TROPHY[k] === kind) ?? null;
+export const isTrophy = (kind: string) => trophyBoss(kind) !== null;
 
-/** A blocking post in a trophy's frame: segment centre (x, z) ± half·(ax, az) (unit), radius r, top above the sand. */
-type Post = { x: number; z: number; ax: number; az: number; half: number; r: number; top: number };
-
-/** What of each trophy blocks. Tall ones are walls; there's nothing to stand on up there. */
+/** What blocks, in the trophy's frame (origin on the sand where the model stands, +Z its front, +X its right): segment
+ *  centre (x, z) ± half along X (`ax` 1) or Z (`ax` 0), radius r, top above the sand. Tall ones are walls. */
+type Post = { x: number; z: number; ax: 0 | 1; half: number; r: number; top: number };
 const POSTS: Record<BossKind, Post[]> = {
   // The head (and the segment sunk behind it).
-  worm: [{ x: 0, z: -0.5, ax: 0, az: 1, half: 1.8, r: 4.6, top: 12 }],
+  worm: [{ x: 0, z: -0.5, ax: 0, half: 1.8, r: 4.6, top: 12 }],
   // The head, the forearm, the upper arm along the sand.
-  colossus: [{ x: 0, z: 0.6, ax: 0, az: 1, half: 0.8, r: 3.6, top: 6 }, { x: 7, z: -4.5, ax: 0, az: 1, half: 0.6, r: 3, top: 12 },
-    { x: 13.5, z: -5, ax: 1, az: 0, half: 5.5, r: 2.4, top: 3.5 }],
+  colossus: [{ x: 0, z: 0.6, ax: 0, half: 0.8, r: 3.6, top: 6 }, { x: 7, z: -4.5, ax: 0, half: 0.6, r: 3, top: 12 },
+    { x: 13.5, z: -5, ax: 1, half: 5.5, r: 2.4, top: 3.5 }],
   // The duct's bottom where it goes into the sand, across.
-  carrier: [{ x: 0, z: -0.5, ax: 1, az: 0, half: 8.8, r: 3, top: 20 }],
+  carrier: [{ x: 0, z: -0.5, ax: 1, half: 8.8, r: 3, top: 20 }],
   // The thorax, the legs' feet where they go back into the sand (the knees are overhead).
-  queen: [{ x: 0, z: 1.5, ax: 0, az: 1, half: 3.5, r: 4, top: 7 }, { x: -12.5, z: 1.6, ax: 0, az: 1, half: 0, r: 0.9, top: 4 },
-    { x: 12.5, z: 1.6, ax: 0, az: 1, half: 0, r: 0.9, top: 4 }],
+  queen: [{ x: 0, z: 1.5, ax: 0, half: 3.5, r: 4, top: 7 }, { x: -12.5, z: 1.6, ax: 0, half: 0, r: 0.9, top: 4 },
+    { x: 12.5, z: 1.6, ax: 0, half: 0, r: 0.9, top: 4 }],
 };
 
-/** Where a trophy stands in the world: its spot, the sand there (the lowest round it, so nothing floats), and its
- *  facing (unit, world). */
-export type TrophyPlace = { x: number; y: number; z: number; fx: number; fz: number };
+type Box = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number };
+const box = (p: Post): Box => ({
+  x0: p.x - (p.ax ? p.half : 0) - p.r, x1: p.x + (p.ax ? p.half : 0) + p.r, y0: 0, y1: p.top,
+  z0: p.z - (p.ax ? 0 : p.half) - p.r, z1: p.z + (p.ax ? 0 : p.half) + p.r,
+});
 
-const dist = (ax: number, az: number, bx: number, bz: number) => Math.sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz));
-
-/** Is world (x, z) clear for a trophy taking `r` round it, apart from the others already placed? */
-function clearFor(x: number, z: number, r: number, others: { x: number; z: number; r: number }[]): boolean {
-  if (nearShip(x, z, r + CLEAR.ship) || onShipGround(x, z, r * 0.5)) return false;
-  const spawn = spawnPoint();
-  if (dist(x, z, spawn.x, spawn.z) < r + CLEAR.spawn) return false;
-  if (others.some((o) => dist(x, z, o.x, o.z) < r + o.r + CLEAR.trophy)) return false;
-  if (rocksNear(x, z, r + CLEAR.rock) || shelterWithin(x, z, r + CLEAR.shelter)) return false;
-  if (wrecksNear(x, z, r + CLEAR.wreck).length) return false;
-  if (crashSitesNear(x, z, r + 300).some((s) => dist(s.x, s.z, x, z) < r + s.radius + CLEAR.site)) return false;
-  const reach = r + CLEAR.scrap;
-  for (let iz = Math.floor((z - reach) / SCRAP_CELL); iz <= Math.floor((z + reach) / SCRAP_CELL); iz++) {
-    for (let ix = Math.floor((x - reach) / SCRAP_CELL); ix <= Math.floor((x + reach) / SCRAP_CELL); ix++) {
-      if (scrapPieces(ix, iz).some((p) => dist(p.x, p.z, x, z) < reach)) return false;
-    }
-  }
-  return true;
+/** Where the middle of each kind's footprint is in the model's frame: the placed thing stands there, the model is drawn
+ *  that much back (src/world/trophies.ts). */
+export const CENTRE = {} as Record<BossKind, { x: number; z: number }>;
+/** The trophies as shared/placed.ts PLACEABLES: footprint, boxes, out on the sand, and they sink into it on a slope. */
+export const TROPHY_PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; sand: true; gap: number; tilt: number; turns: number }> = {};
+for (const k of BOSS_KINDS) {
+  const bs = POSTS[k].map(box);
+  const x0 = Math.min(...bs.map((b) => b.x0)), x1 = Math.max(...bs.map((b) => b.x1));
+  const z0 = Math.min(...bs.map((b) => b.z0)), z1 = Math.max(...bs.map((b) => b.z1));
+  const c = (CENTRE[k] = { x: (x0 + x1) / 2, z: (z0 + z1) / 2 });
+  TROPHY_PLACEABLES[TROPHY[k]] = {
+    hx: (x1 - x0) / 2, hz: (z1 - z0) / 2, sand: true, gap: 1, tilt: 2.5, turns: 4,
+    boxes: bs.map((b) => ({ ...b, x0: b.x0 - c.x, x1: b.x1 - c.x, z0: b.z0 - c.z, z1: b.z1 - c.z })),
+  };
 }
 
-function place(kind: BossKind, x: number, z: number): TrophyPlace {
-  let fx = ORIGIN.x - x, fz = ORIGIN.z - z;
-  const d = Math.sqrt(fx * fx + fz * fz);
-  fx /= d;
-  fz /= d;
-  let y = baseHeight(x, z);
-  const r = TROPHY_R[kind] * 0.5;
-  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]]) {
-    y = Math.min(y, baseHeight(x + dx * r, z + dz * r));
-  }
-  return { x, y, z, fx, fz };
+/** Can trophy `kind` be put up now: its boss kind beaten (`beaten`: shared/bosses.ts bossBit mask) and not standing yet
+ *  (`list`: what's placed)? */
+export function trophyFree(kind: string, beaten: number, list: readonly { kind: string }[]): boolean {
+  const k = trophyBoss(kind);
+  return !!k && !!(beaten & bossBit(k)) && !list.some((p) => p.kind === kind);
 }
 
-let places: Partial<Record<BossKind, TrophyPlace>> | null = null;
-/** Where each kind's trophy stands (none in the dev test lab), worked out on first use. */
-export function trophyPlaces(): Partial<Record<BossKind, TrophyPlace>> {
-  if (places) return places;
-  places = {};
-  if (LAB) return places;
-  const taken: { x: number; z: number; r: number }[] = [];
-  for (const kind of BY_SIZE) {
-    const r = TROPHY_R[kind];
-    let spot: { x: number; z: number } | null = null;
-    for (const d of RINGS) {
-      for (const [ux, uz] of AROUND) {
-        const p = { x: ORIGIN.x + ux * d, z: ORIGIN.z + uz * d };
-        if (clearFor(p.x, p.z, r, taken)) {
-          spot = p;
-          break;
-        }
-      }
-      if (spot) break;
-    }
-    // (Nowhere clear on every ring: the outermost first spot, whatever lies there.)
-    spot ??= { x: ORIGIN.x, z: ORIGIN.z - RINGS[RINGS.length - 1] };
-    taken.push({ ...spot, r });
-    places[kind] = place(kind, spot.x, spot.z);
-  }
-  return places;
-}
-
-/** True over a trophy's ground (+ margin): never dug, so it can't be undermined. */
-export function overTrophy(x: number, z: number, margin = 0): boolean {
-  if (LAB || Math.abs(x - ORIGIN.x) > 130 || Math.abs(z - ORIGIN.z) > 130) return false;
-  const ps = trophyPlaces();
-  for (const k of BOSS_KINDS) {
-    const p = ps[k];
-    if (!p) continue;
-    const dx = x - p.x, dz = z - p.z, r = TROPHY_R[k] + margin;
-    if (dx * dx + dz * dz < r * r) return true;
-  }
-  return false;
-}
-
-keepUndug(overTrophy);
-
-/** A post in world coordinates (bottom: the sand). */
-type WorldPost = { x: number; z: number; ax: number; az: number; half: number; r: number; y: number; top: number };
-
-function worldPosts(k: BossKind): WorldPost[] {
-  const p = trophyPlaces()[k];
-  if (!p) return [];
-  const rx = p.fz, rz = -p.fx; // +X of the trophy's frame
-  return POSTS[k].map((q) => ({
-    x: p.x + q.x * rx + q.z * p.fx, z: p.z + q.x * rz + q.z * p.fz,
-    ax: q.ax * rx + q.az * p.fx, az: q.ax * rz + q.az * p.fz, half: q.half, r: q.r, y: p.y, top: p.y + q.top,
-  }));
-}
-
-let up: WorldPost[] = [];
-
-/** The kinds beaten (shared/bosses.ts bossBit mask): their trophies stand and block. */
-export function setTrophies(beaten: number) {
-  up = BOSS_KINDS.filter((k) => beaten & bossBit(k)).flatMap(worldPosts);
-}
-
-const STAND_MARGIN = 0.15;
-
-/** Push `p` out of the standing trophies; returns the height of one under its feet to stand on, or -Infinity. */
-export function collideTrophies(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, stepUp: number): number {
-  let support = -Infinity;
-  const feet = Math.max(y, prevY);
-  for (const b of up) {
-    const reach = b.half + b.r + radius;
-    if (Math.abs(p.x - b.x) > reach || Math.abs(p.z - b.z) > reach || feet < b.y - 2) continue;
-    let t = (p.x - b.x) * b.ax + (p.z - b.z) * b.az;
-    t = t < -b.half ? -b.half : t > b.half ? b.half : t;
-    const qx = b.x + b.ax * t, qz = b.z + b.az * t;
-    let ex = p.x - qx, ez = p.z - qz;
-    const d = Math.sqrt(ex * ex + ez * ez);
-    if (feet >= b.top - stepUp) {
-      if (d < b.r + STAND_MARGIN && b.top > support) support = b.top;
-      continue;
-    }
-    const R = b.r + radius;
-    if (d >= R) continue;
-    if (d > 1e-9) { ex /= d; ez /= d; } else { ex = b.az; ez = -b.ax; }
-    p.x = qx + ex * R;
-    p.z = qz + ez * R;
-    const vn = p.vx * ex + p.vz * ez;
-    if (vn < 0) { p.vx -= vn * ex; p.vz -= vn * ez; }
-  }
-  return support;
-}
+/** Where each kind's trophy stood round the world's origin (local x, z, and turn) before they were put up by hand: the old
+ *  worlds that beat a boss get theirs there (server/bunkerGone.ts). */
+export const OLD_TROPHY_SPOTS: Record<BossKind, { x: number; z: number; rot: number }> = {
+  worm: { x: -27, z: 6, rot: 1 }, queen: { x: 27, z: 8, rot: 3 }, colossus: { x: -28, z: -24, rot: 1 }, carrier: { x: 32, z: -32, rot: 3 },
+};

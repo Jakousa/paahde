@@ -120,7 +120,7 @@ import { Wrecks } from './world/wrecks';
 import { Trophies } from './world/trophies';
 import { ShipView } from './world/ship';
 import { nearShip } from '../shared/ship.ts';
-import { setTrophies } from '../shared/trophies.ts';
+import { isTrophy, trophyFree } from '../shared/trophies.ts';
 import { GuardianFx } from './guardians';
 import { update } from './update';
 import { LOADING_FRAME_MS, slice } from './yield';
@@ -163,7 +163,6 @@ if (LAB) {
   addLabPlates(scene);
 }
 await slice();
-const trophies = new Trophies(scene); // a big piece of each beaten boss round the origin
 await slice();
 const ship = new ShipView(scene); // the crashed ship players arrive at
 await slice();
@@ -218,11 +217,12 @@ if (location.search.includes('debug')) {
 
 const net = new Net(getBrowserId());
 const lives = new Lives();
+/** The boss kinds beaten (shared/bosses.ts bossBit mask), from the server. */
+let beatenNow = 0;
 net.onLives = (n, beaten) => {
   if (!CALM) rememberWorld(WORLD_ID);
   lives.set(n, beaten);
-  trophies.set(beaten);
-  setTrophies(beaten);
+  beatenNow = beaten;
   if (allBeaten(beaten)) victory(WORLD_ID);
 };
 net.onEnded = (why) => (why === 'over' || why === 'missing' ? landing(why) : refused(why));
@@ -256,8 +256,15 @@ const scrapBench = (at: string) => {
 };
 const benchMenu = new BenchMenu(renderer.domElement);
 const buildMenu = new BuildMenu(renderer.domElement); // the wrench's (src/placing.ts)
+// The bosses' trophies (shared/trophies.ts): in the menu once won and while not up; their models are made from the bosses'.
+const trophies = new Trophies((kind, obj) => placedView.provide(kind, obj));
+buildMenu.available = (kind) => {
+  if (!isTrophy(kind)) return true;
+  const free = trophyFree(kind, beatenNow, placed);
+  if (free) trophies.need(kind); // (for the preview)
+  return free;
+};
 new DebugMenu(() => sky.day.tod, (tod) => net.shareTimeOfDay(tod), () => net.resetSharedTime(), (front) => net.summonStorm(front), (tier) => net.debugGear(tier), () => net.debugHit(), (what) => net.summonBot(what),
-  (mode) => trophies.show(mode),
   (all) => (all ? net.labReset() : net.labReset(machines.nearestLab(net.me.x, net.me.z)?.site.id)),
   (off) => net.debugHeat(off),
   (off) => net.debugWeather(off),
@@ -361,6 +368,7 @@ const thrower = new Thrower(scene, orbit, net, scrap);
 thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one drawn in the hand
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onPlaced = () => {
+  for (const p of placed) if (isTrophy(p.kind)) trophies.need(p.kind);
   placedView.sync(placed, net.garden);
   wireView.sync(wires);
 };

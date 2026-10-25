@@ -1,5 +1,5 @@
-// The build menu (the right mouse with the wrench in hand, src/placing.ts): every building (shared/crafting.ts BUILDS)
-// with what it takes of the base materials and what the bag has. Picking one puts its preview on the crosshair to put
+// The build menu (the right mouse with the wrench in hand, src/placing.ts): every building (shared/crafting.ts BUILDS; the
+// bosses' trophies once they're won, shared/trophies.ts) with what it takes of the base materials and what the bag has. Picking one puts its preview on the crosshair to put
 // up; picking it again puts the wrench back to just a wrench. The mouse is freed like the inventory (ui.inventoryOpen).
 import { BUILDS, countMatching } from '../shared/crafting.ts';
 import type { Slots } from '../shared/items.ts';
@@ -31,6 +31,8 @@ const css = `
 `;
 
 export class BuildMenu {
+  /** Whether `kind` is in the menu now (a boss's trophy only once its kind is beaten and while it isn't up: src/main.ts). */
+  available: (kind: string) => boolean = () => true;
   private el = document.createElement('div');
   private panel: HTMLElement;
   private canvas: HTMLElement;
@@ -71,6 +73,7 @@ export class BuildMenu {
     title.textContent = TEXT.prompt.buildMenu;
     p.append(title);
     for (const [kind, r] of Object.entries(BUILDS)) {
+      if (!this.available(kind) && kind !== chosen) continue;
       let ready = true;
       const needs = r.needs.map((ing) => {
         const have = countMatching(bag, ing);

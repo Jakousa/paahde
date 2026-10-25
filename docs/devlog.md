@@ -25,6 +25,27 @@ What we built, why, and what's left. Dated sessions newest first, then undated t
   2.5 km off, louder by the metre (dB linear in the distance), gusting harder and brighter the closer, leaning to the
   ear it's on; muffled underground. −45 LUFS 1.5 km off, −26 at 450 m, −18.5 at its foot (true peak −6.6 dBTP).
 - Known gaps: only the nearest vortex is drawn.
+
+## 2026-10-25 — Trophies are put up by hand
+
+A boss's trophy no longer stands by itself on ground kept for it (that reserved ground, 9–21 m round four spots near the
+start, was most of why building by the spawn said "Too close" everywhere). Now it's a building (shared/trophies.ts):
+
+- Once a boss kind is beaten, its trophy (`trophy_worm`, `trophy_carrier`, `trophy_colossus`, `trophy_queen`) shows in
+  the wrench's build menu, at no cost, while it isn't standing anywhere: one of each per world (`trophyFree`, checked by
+  the server in onBuild). Shared like every building: anyone can take it down with the wrench and it's back in the menu
+  for anyone to put up again, so it can't be lost. Winning (`beaten`) doesn't depend on it.
+- It keeps clear only its own shape: the footprint and the solid boxes come from its posts (the head, the arm, the duct,
+  the legs' feet), recentred on the footprint (`CENTRE`); it may stand on a slope of up to 2.5 m (it sinks in).
+- Drawn as before from the bosses' models (src/world/trophies.ts), handed to the placed things' view (`provide`), loaded
+  when one stands or is about to be put up.
+- Old worlds that beat bosses get theirs put up where they stood before the bunker went (server/bunkerGone.ts
+  `trophiesPlaced`, once). The debug menu's "Trophies" view is gone; the trophies' collision is the placed things'.
+- Nothing else keeps ground round the spawn or the origin now: `originClear` and `ORIGIN_FRONT` only steer the layout
+  (scrap, wrecks, crash sites). What's kept round the ship is its own (being reworked with the pods).
+- Four turns (R), like the tarp; a placed thing's footprint and model now follow turns 2 and 3 too.
+- Gap: the trophies have no icons in the build menu yet (text tiles).
+
 ## 2026-10-25 — The starting bunker is gone
 
 No more base: the hut, the stairs, the rooms, the workbench, the dismantling table, the endless chest, the hand pump, the
@@ -39,8 +60,7 @@ and fetch water from the shelter with a pump near the start, or an electric well
   shelters use, the grid of placed things, now in world coordinates). Indoors, `sandHidden`, the indoor heat cap, the
   storms' and the gas's shelter, the pumps: the shelters only. Stations, tables and chests are the placed ones only (no
   'bench' table id, no `chest<i>` boxes).
-- **Trophies** stand on rings round the origin, where the bunker was, clear of the arrival, the layout and each other
-  (`trophyPlaces`); their ground isn't dug (`keepUndug`, a hook in shared/terrain.ts so the terrain needn't import them).
+- **Trophies** are put up by hand now (see the entry above).
 - **The lab** is laid out from its own spot (`LAB_AT`, world 0, 0) on its flat floor (y 0). `?spawn=base` is `?spawn=ship`.
 - **Old worlds** (`server/bunkerGone.ts`, once per world): the bunker's chests go into new chests put up near the spawn
   (as many as needed), with the machine that was on its table as a whole machine; repair-slot items go back to the bags;

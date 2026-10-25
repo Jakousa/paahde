@@ -30,11 +30,6 @@ export { WIND, WORLD_SEED } from './dunes.ts';
  */
 export const CORE_HALF = 2000;
 
-/** More ground that's never dug (+ margin m), added by the modules that own it (shared/trophies.ts): kept here as
- *  hooks, so the terrain needn't import them (they import the terrain). */
-const undug: ((x: number, z: number, margin: number) => boolean)[] = [];
-export const keepUndug = (f: (x: number, z: number, margin: number) => boolean) => void undug.push(f);
-
 /** Edit grid spacing in metres. Edit vertex (ix, iz) sits at world (ix * EDIT_CELL, iz * EDIT_CELL). */
 export const EDIT_CELL = 0.5;
 /** Edit vertices per chunk side; chunks are the unit of storage, sync and mesh invalidation. */
@@ -161,10 +156,9 @@ export class TerrainEdits {
   }
 
   /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. Not over a shelter, a building on the sand,
-   *  the crashed ship or a trophy's ground (keepUndug). */
+   *  or the crashed ship. */
   setMm(ix: number, iz: number, mm: number) {
-    if (mm !== 0 && (overShelter(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overPlaced(ix * EDIT_CELL, iz * EDIT_CELL, 1) || nearShip(ix * EDIT_CELL, iz * EDIT_CELL, 1) ||
-      undug.some((f) => f(ix * EDIT_CELL, iz * EDIT_CELL, 1)))) return;
+    if (mm !== 0 && (overShelter(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overPlaced(ix * EDIT_CELL, iz * EDIT_CELL, 1) || nearShip(ix * EDIT_CELL, iz * EDIT_CELL, 1))) return;
     const cx = Math.floor(ix / EDIT_CHUNK), cz = Math.floor(iz / EDIT_CHUNK);
     const k = TerrainEdits.key(cx, cz);
     let c = this.chunks.get(k);

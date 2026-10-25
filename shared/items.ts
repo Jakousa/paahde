@@ -67,6 +67,11 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   storage_chest: { label: TEXT.items.storage_chest, stack: 1, size: [2, 1] },
   // A borehole with an electric pump (shared/wells.ts): water at home while it has power.
   well: { label: TEXT.items.well, stack: 1, size: [2, 2] },
+  // The bosses' trophies (shared/trophies.ts): put up with the wrench once their kind is beaten.
+  trophy_worm: { label: TEXT.items.trophy_worm, stack: 1 },
+  trophy_carrier: { label: TEXT.items.trophy_carrier, stack: 1 },
+  trophy_colossus: { label: TEXT.items.trophy_colossus, stack: 1 },
+  trophy_queen: { label: TEXT.items.trophy_queen, stack: 1 },
   // The build tool (crafted by hand): with it in hand, the right mouse opens the build menu (src/buildMenu.ts).
   wrench: { label: TEXT.items.wrench, stack: 1 },
   // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.

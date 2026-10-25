@@ -16,7 +16,6 @@ import { GUNS, PISTOL, RIFLE } from './rifle.ts';
 import { rocksNear } from './rocks.ts';
 import { SHIP_AT, shipLootSpot } from './ship.ts';
 import { nearShip, shipToWorld } from './shipSpot.ts';
-import { overTrophy } from './trophies.ts';
 import type { JetKind } from './jetbreak.ts';
 import {
   BOSS_SPOILS, BROKEN_GEAR, CACHES, DRONE_JET_SPOILS, FINDS, HARVESTER_SCRAP, HARVESTER_SPOILS, JET_RELIC_ODDS, JET_SCRAP,
@@ -154,14 +153,14 @@ export function findSpot(level: SiteLevel, sites: CrashSite[], piles: { x: numbe
   return { x, z };
 }
 
-/** Where a cache lies: out in the open desert CACHE_MIN_R..CACHE_MAX_R from the origin, off the ship and the trophies' ground. */
+/** Where a cache lies: out in the open desert CACHE_MIN_R..CACHE_MAX_R from the origin, off the ship. */
 export function cacheSpot(rand: Rand) {
   let x = 0, z = 0;
   for (let tries = 0; tries < 20; tries++) {
     const a = between(rand, 0, Math.PI * 2), d = between(rand, CACHE_MIN_R, CACHE_MAX_R);
     x = ORIGIN.x + Math.sin(a) * d;
     z = ORIGIN.z + Math.cos(a) * d;
-    if (!overShelter(x, z, 10) && !nearShip(x, z, 10) && !overTrophy(x, z, 10) && !rocksNear(x, z, 3)) break;
+    if (!overShelter(x, z, 10) && !nearShip(x, z, 10) && !rocksNear(x, z, 3)) break;
   }
   return { x, z };
 }

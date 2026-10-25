@@ -1,13 +1,13 @@
-// The trophies round the world's origin (shared/trophies.ts): each boss kind beaten sets up a big piece of it, full size, on the sand
-// round where the first bunker stood, built from the boss's own model (tools/blender/<kind>.py): the worm's head rearing out of the sand,
+// The trophies' models (shared/trophies.ts): each boss kind beaten gives the world a big piece of it, full size, to put up
+// with the wrench where anyone likes (drawn as a placed thing, src/world/placed.ts), built from the boss's own model (tools/blender/<kind>.py): the worm's head rearing out of the sand,
 // jaws spread, the segment behind it sunk; the colossus's head sunk to the chin and its arm raised out of the sand beside it; one of
 // the carrier's fan ducts on edge with its rotor; the queen's thorax nose-up, cutters open, a leg arching out of the sand each side.
 // Dead: their lamps barely glow, the weak points are dark glass. Client-only looks; the collision is shared.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { BOSS_KINDS, bossBit, type BossKind } from '../../shared/bosses.ts';
+import type { BossKind } from '../../shared/bosses.ts';
 import { FEMUR } from '../../shared/queen.ts';
-import { trophyPlaces } from '../../shared/trophies.ts';
+import { CENTRE, TROPHY, trophyBoss } from '../../shared/trophies.ts';
 import { brokenLensMat, lensGeo, mergePart } from './bossParts';
 
 const D = Math.PI / 180;
@@ -49,7 +49,7 @@ function at<T extends THREE.Object3D>(o: T, x: number, y: number, z: number, rx 
   return o;
 }
 
-/** Each kind's trophy, in its frame: origin on the sand, +Z towards the origin (shared/trophies.ts). */
+/** Each kind's trophy, in its frame: origin on the sand, +Z its front (shared/trophies.ts POSTS). */
 const BUILD: Record<BossKind, (p: Parts) => THREE.Object3D> = {
   worm(p) {
     const g = new THREE.Group();
@@ -66,7 +66,7 @@ const BUILD: Record<BossKind, (p: Parts) => THREE.Object3D> = {
   },
   colossus(p) {
     const g = new THREE.Group();
-    // The head sunk to the chin, looking up past the origin; beside it an arm out of the sand: the upper arm a ridge
+    // The head sunk to the chin, looking up ahead; beside it an arm out of the sand: the upper arm a ridge
     // along it from the buried shoulder, the forearm raised from the elbow, fist up.
     g.add(at(part(p, 'Colossus_Head'), 0, -0.8, 0, -15, 0, 9));
     g.add(at(part(p, 'Colossus_UpperArm'), 20, -2.5, -5, 0, 0, -101.5));
@@ -75,7 +75,7 @@ const BUILD: Record<BossKind, (p: Parts) => THREE.Object3D> = {
   },
   carrier(p) {
     const g = new THREE.Group();
-    // The duct on edge, its axis towards the origin, leaning back a little and rolled; a third of it in the sand.
+    // The duct on edge, its axis to the front, leaning back a little and rolled; a third of it in the sand.
     const fan = at(new THREE.Group(), 0, 8, 0, 90 - 12, 0, 9);
     fan.add(part(p, 'Carrier_Duct'), at(part(p, 'Carrier_Rotor'), 0, 0, 0, 0, 33, 0));
     deadLens(fan, 1.1, 0, -3.3, 0);
@@ -103,77 +103,42 @@ const BUILD: Record<BossKind, (p: Parts) => THREE.Object3D> = {
   },
 };
 
-/** Which trophies show: the kinds beaten (the game), or all or none of them (the debug menu; looks only, the
- *  collision still follows the kinds beaten). */
-export type TrophyShow = 'won' | 'all' | 'none';
-
 export class Trophies {
-  private built = new Map<BossKind, THREE.Object3D>();
-  private models = new Map<string, Promise<Parts>>();
-  private scene: THREE.Scene;
-  private beaten = 0;
-  private mode: TrophyShow = 'won';
+  /** Hands a kind's model, once made, to the placed things' view (src/world/placed.ts provide). */
+  private provide: (kind: string, obj: THREE.Object3D) => void;
+  private asked = new Set<BossKind>();
 
-  constructor(scene: THREE.Scene) {
-    this.scene = scene;
+  constructor(provide: (kind: string, obj: THREE.Object3D) => void) {
+    this.provide = provide;
   }
 
-  /** The nodes of public/models/<glb>.glb by name, loaded once. */
-  private load(glb: string): Promise<Parts> {
-    let m = this.models.get(glb);
-    if (!m) {
-      m = new GLTFLoader().loadAsync(`./models/${glb}.glb`).then((gltf) => {
-        const parts: Parts = {};
-        gltf.scene.updateMatrixWorld(true);
-        for (const c of gltf.scene.children) {
-          c.position.set(0, 0, 0);
-          c.quaternion.identity();
-          parts[c.name] = c;
-        }
-        return parts;
-      });
-      this.models.set(glb, m);
+  /** Make trophy `kind`'s model (once; loading its boss's glb), if it is one: it stands somewhere, or is about to be put up. */
+  need(kind: string) {
+    const k = trophyBoss(kind);
+    if (!k || this.asked.has(k)) return;
+    this.asked.add(k);
+    const { glb, nodes } = MODELS[k];
+    load(glb).then((parts) => {
+      for (const n of nodes) if (!parts[n]) throw new Error(`${glb}.glb has no ${n}`);
+      // The placed thing stands at the middle of its footprint (shared/trophies.ts CENTRE): the model that much back.
+      const g = new THREE.Group(), m = BUILD[k](parts);
+      m.position.set(-CENTRE[k].x, 0, -CENTRE[k].z);
+      g.add(m);
+      this.provide(TROPHY[k], g);
+    }).catch((e) => console.warn(`trophy ${k} failed`, e));
+  }
+}
+
+/** The nodes of public/models/<glb>.glb by name. */
+function load(glb: string): Promise<Parts> {
+  return new GLTFLoader().loadAsync(`./models/${glb}.glb`).then((gltf) => {
+    const parts: Parts = {};
+    gltf.scene.updateMatrixWorld(true);
+    for (const c of gltf.scene.children) {
+      c.position.set(0, 0, 0);
+      c.quaternion.identity();
+      parts[c.name] = c;
     }
-    return m;
-  }
-
-  /** The kinds beaten (shared/bosses.ts bossBit mask). */
-  set(beaten: number) {
-    this.beaten = beaten;
-    this.update();
-  }
-
-  /** Debug: show the kinds beaten, all of them or none. */
-  show(mode: TrophyShow) {
-    this.mode = mode;
-    this.update();
-  }
-
-  private shown(kind: BossKind) {
-    return this.mode === 'all' || (this.mode === 'won' && !!(this.beaten & bossBit(kind)));
-  }
-
-  /** Build the ones to show that aren't yet (once each), and show or hide each built one. */
-  private update() {
-    for (const kind of BOSS_KINDS) {
-      const o = this.built.get(kind);
-      if (o) {
-        o.visible = this.shown(kind);
-        continue;
-      }
-      if (!this.shown(kind)) continue;
-      const p = trophyPlaces()[kind];
-      if (!p) continue;
-      const g = new THREE.Group();
-      g.position.set(p.x, p.y, p.z);
-      g.rotation.y = Math.atan2(p.fx, p.fz);
-      this.built.set(kind, g);
-      this.scene.add(g);
-      const { glb, nodes } = MODELS[kind];
-      this.load(glb).then((parts) => {
-        for (const n of nodes) if (!parts[n]) throw new Error(`${glb}.glb has no ${n}`);
-        g.add(BUILD[kind](parts));
-      }).catch((e) => console.warn(`trophy ${kind} failed`, e));
-    }
-  }
+    return parts;
+  });
 }

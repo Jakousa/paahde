@@ -14,7 +14,7 @@
 // Where it goes depends on where you stand (placeFloor): down in a shelter, on its room's floor; else out on the sand
 // (floor-only kinds go only on a shelter's floor). Rules (placeError): on a shelter's floor, inside its room, clear of the
 // pump and the corridor's mouth (shelterRoomClear); on the sand, STRUCTURE_GAP clear of the shelters' huts, off the crashed
-// ship (shared/shipSpot.ts nearShip) and off the trophies' ground (shared/trophies.ts overTrophy), on ground no steeper than MAX_TILT across the
+// ship (shared/shipSpot.ts nearShip), on ground no steeper than MAX_TILT across the
 // footprint (it stands on the lowest corner: the rest sinks into the sand), and that sand is never dug again
 // (overPlaced). Sand kinds keep their `gap` (the larger of the two) from each other, edge to edge. Nothing overlaps
 // another placed thing — except that a UV lamp and a plant bed share their spot when aligned exactly (same centre and
@@ -30,7 +30,7 @@ import { insideShelter, inShelter, shelterAt, shelterRoomClear, shelterUnder } f
 import { nearShip } from './shipSpot.ts';
 import { heightAt } from './terrain.ts';
 import { TARP_HALF, TARP_PEAK } from './tarp.ts';
-import { overTrophy } from './trophies.ts';
+import { TROPHY_PLACEABLES } from './trophies.ts';
 import { TEXT } from './text.ts';
 
 /** A placed thing: DB id, item kind, world position of its footprint centre on the floor or the sand (y: what it
@@ -139,6 +139,8 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
   // A bedroll: low enough to walk over, flat enough to want flat sand. Sizes match tools/blender/placeables.py (ROLL_X,
   // ROLL_Y).
   bedroll: { hx: 1.0, hz: 0.4, sand: true, floor: true, gap: 0.3, tilt: 0.2, boxes: [{ x0: -1.0, x1: 1.0, y0: 0, y1: 0.16, z0: -0.39, z1: 0.39 }] },
+  // The bosses' trophies (shared/trophies.ts), put up once their kind is beaten.
+  ...TROPHY_PLACEABLES,
 };
 export const TARP = 'tarp';
 /** How many turns `kind` can be put up at. */
@@ -225,7 +227,7 @@ export function placedY(kind: string, x: number, z: number, rot: number, floor: 
 /** World rectangle [x0, z0, x1, z1] of a footprint. */
 function footprint(kind: string, x: number, z: number, rot: number, m = 0): [number, number, number, number] {
   const k = PLACEABLES[kind];
-  const hx = (rot ? k.hz : k.hx) + m, hz = (rot ? k.hx : k.hz) + m;
+  const hx = (rot & 1 ? k.hz : k.hx) + m, hz = (rot & 1 ? k.hx : k.hz) + m;
   return [x - hx, z - hz, x + hx, z + hz];
 }
 
@@ -268,7 +270,6 @@ export function placeError(kind: string, x: number, z: number, rot: number, floo
     const outline = [...corners, [x, f[1]], [x, f[3]], [f[0], z], [f[2], z]];
     if (outline.some(([cx, cz]) => insideShelter(cx, cz, STRUCTURE_GAP))) return TEXT.notice.tooClose(TEXT.spots.shelter);
     if (outline.some(([cx, cz]) => nearShip(cx, cz))) return TEXT.notice.tooClose(TEXT.spots.ship);
-    if (outline.some(([cx, cz]) => overTrophy(cx, cz, 0.5))) return TEXT.notice.tooClose(TEXT.spots.trophy);
     const hs = corners.map(([cx, cz]) => heightAt(cx, cz));
     if (Math.max(...hs) - Math.min(...hs) > (PLACEABLES[kind].tilt ?? MAX_TILT)) return TEXT.notice.tooSteep;
   } else if (shelter && Math.abs(shelter.y + shelter.L.floor - floor) < 1e-3) {

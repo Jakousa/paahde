@@ -10,7 +10,7 @@
 // shared/lootRoll.ts, laid out by server/loot.ts). The first broken motorcycle lies beside it (shared/lootRoll.ts
 // homeBikeSpot).
 //
-// Solid (collideShip in sim.ts step(); the rules of shared/trophies.ts: a top within a step of the feet is ground,
+// Solid (collideShip in sim.ts step(); the rules of shared/scrap.ts: a top within a step of the feet is ground,
 // anything taller a wall) and it casts shade (shipCasters, shared/shade.ts). Same determinism rules as shared/scrap.ts in
 // the collision: + - * /, Math.sqrt, Math.abs, Math.min/max only.
 import type { CrashSite } from './crash.ts';

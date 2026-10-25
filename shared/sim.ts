@@ -23,7 +23,6 @@ import { collideJetWrecks } from './jetcrash.ts';
 import { bikeEngine, bikeTopSpeed } from './gear.ts';
 import { GUARDIAN, KINDS, LEG_POST_H, LEG_POST_R } from './guardians.ts';
 import { collideScrap } from './scrap.ts';
-import { collideTrophies } from './trophies.ts';
 import { collideShip, shipSpawn } from './ship.ts';
 import { WIND } from './dunes.ts';
 import { heightAt, onRock } from './terrain.ts';
@@ -372,7 +371,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   c.vx = vx;
   c.vz = vz;
   const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP),
-    collideMachines(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideJetWrecks(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideTrophies(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideShip(c, y, s.y, PLAYER_RADIUS, STEP_UP));
+    collideMachines(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideJetWrecks(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideShip(c, y, s.y, PLAYER_RADIUS, STEP_UP));
   const builtTop = Math.max(collideShelter(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP, s.x, s.z),
     collideOutdoor(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, y, PLAYER_RADIUS, legs);
@@ -510,7 +509,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   c.vz = vz;
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
   const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP),
-    collideMachines(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideJetWrecks(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideTrophies(c, airborneY, s.y, BIKE_RADIUS, STEP_UP),
+    collideMachines(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideJetWrecks(c, airborneY, s.y, BIKE_RADIUS, STEP_UP),
     collideShip(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
   const builtTop = Math.max(collideShelter(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP, s.x, s.z),
     collideOutdoor(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP));

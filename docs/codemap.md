@@ -133,8 +133,7 @@ Everything built is shared, and anyone can take a building down.
   as it goes up and all given back when it's dismantled (G with the wrench); never carried as items. The windmill and
   station are gear with part slots and quality (`shared/gear.ts` `built`), standing with their slots empty (bearings
   and motor, batteries fitted after), placed via `shared/placed.ts` (`sand` kinds: `gap` between them,
-  `STRUCTURE_GAP` from the shelters' huts, off the crashed ship (`nearShip`) and the trophies'
-  ground; where it goes by where you stand, `placeFloor`: the `floor` kinds also on a shelter's room floor,
+  `STRUCTURE_GAP` from the shelters' huts, off the crashed ship (`nearShip`); where it goes by where you stand, `placeFloor`: the `floor` kinds also on a shelter's room floor,
   `shelterRoomClear` in shared/shelters.ts; collision in shared/capsules.ts); while standing, the item is in box
   `bld<id>`, whose parts are swapped in place (F, `src/inventory.ts` `part:<box>`); drawn by `src/world/placed.ts` (lit
   by the sky or a shelter's fill, by where it stands; materials `src/world/glbMaterial.ts`), models
@@ -148,9 +147,12 @@ Everything built is shared, and anyone can take a building down.
   chest with anything in it can't be taken down (server/world.ts onUnplace)
 - `shared/garden.ts` — plant beds (stages, look target), owned by `server/garden.ts`; beds and UV lamps are placed
   things that stand on a shelter's floor only (not crafted for now)
-- `shared/trophies.ts` — a big piece of each boss kind beaten, standing round the world's origin, where the first bunker
-  stood (`trophyPlaces`: rings of spots, -Z first, clear of where players arrive, the layout and each other),
-  solid (`collideTrophies`), their ground never dug (`keepUndug` in shared/terrain.ts); drawn by `src/world/trophies.ts`
+- `shared/trophies.ts` — the bosses' trophies, buildings like the others (kinds `trophy_<boss>`, `TROPHY_PLACEABLES` in
+  shared/placed.ts, no cost in shared/crafting.ts BUILDS): in the wrench's build menu once their kind is beaten and while
+  not up (`trophyFree`: one per kind per world, checked in server/world.ts onBuild); anyone takes one down with the wrench
+  and it's back in the menu. Footprint and boxes from the model's real shape (`POSTS`, recentred: `CENTRE`). Models made
+  from the bosses' glbs by `src/world/trophies.ts` and handed to src/world/placed.ts (`provide`). Winning doesn't need
+  them standing
 - Beacons (`beacon_light`, shared/placed.ts `BEACON`) — a lamp on a mast that shines a column of light into the sky, a
   marker: built with the wrench like the others (scrap, wiring), `MAX_BEACONS` of their own; one battery slot. Powered like a load on the grid (shared/power.ts `BEACON_W`, `draw`;
   server/power.ts): wired, it runs on the windmills, then on every battery on its grid (and the grid charges its battery);

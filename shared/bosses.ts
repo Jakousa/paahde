@@ -16,7 +16,7 @@
 // to it (src/receiver.ts). The worm's receiver takes the part each of the other three leaves (RELICS), so it comes last.
 // The debug menu (F3) brings one to you for a while.
 // Each kind's first death is kept in the world (`beaten`, server/world.ts), gives the world BOSS_LIVES more lives and
-// puts its trophy up round the world's origin (shared/trophies.ts); with every kind beaten the world is won (src/landing.ts
+// gives the world its trophy to put up (shared/trophies.ts); with every kind beaten the world is won (src/landing.ts
 // victory), and play goes on.
 import { TEXT } from './text.ts';
 

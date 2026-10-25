@@ -69,7 +69,7 @@ import { WIND } from '../shared/dunes.ts';
 import { CHOKE_RECOVER, CHOKE_S, frontExposure, stormAt, stormDrag, toolsDown } from '../shared/storm.ts';
 import { GAS_GRACE_S, GAS_RECOVER, GAS_S, gasExposure } from '../shared/gas.ts';
 import { timeOfDayAt } from '../shared/sun.ts';
-import { setTrophies } from '../shared/trophies.ts';
+import { isTrophy, trophyFree } from '../shared/trophies.ts';
 import { CALM, LIVES, WORLD_ID } from '../shared/world.ts';
 import { TEXT } from '../shared/text.ts';
 import { pickupLimit, type PickupLimit } from './pickupLimit.ts';
@@ -90,7 +90,6 @@ const db = openDb(process.env.DB_PATH ?? `data/worlds/${WORLD_ID}.db`);
 let lives = db.getSetting('lives') ?? LIVES;
 /** Boss kinds killed at least once (shared/bosses.ts bossBit); each first kill gave BOSS_LIVES lives. */
 let beaten = db.getSetting('bosses_beaten') ?? 0;
-setTrophies(beaten);
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
 const items = new ItemServer(db);
@@ -98,7 +97,7 @@ const crash = new CrashServer(db, (msg) => {
   for (const p of players.values()) send(p.ws, msg);
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
-bunkerGone(db, items, placedThings); // once: what was in the old bunker comes out (before the vehicles and the garden)
+bunkerGone(db, items, placedThings, beaten); // once: what was in the old bunker comes out (before the vehicles and the garden)
 const vehicleSrv = new VehicleServer(db, items); // before the loot: it turns motorcycles dropped as items into vehicles
 const wiring = new WireServer(db, items); // after the placed list: it drops wires to things gone
 const garden = new GardenServer(db);
@@ -854,8 +853,7 @@ function dropBossSpoils(k: BossKill) {
     beaten |= bossBit(k.kind);
     lives += BOSS_LIVES;
     db.setSetting('bosses_beaten', beaten);
-    setTrophies(beaten);
-    db.setSetting('lives', lives);
+        db.setSetting('lives', lives);
     for (const o of players.values()) send(o.ws, { t: 'lives', n: lives, beaten });
     console.log(`world ${WORLD_ID}: ${k.kind} beaten${allBeaten(beaten) ? ', world won' : ''}`);
   }
@@ -1067,7 +1065,8 @@ function onPlace(p: Player, slot: unknown, x: unknown, z: unknown, rot: unknown)
 
 // A building put up with the wrench from the base materials in the bag (server/placed.ts build).
 function onBuild(p: Player, kind: unknown, x: unknown, z: unknown, rot: unknown) {
-  const r = p.down ? TEXT.notice.cantPlace : placedThings.build(p.browserId, p.state, kind, x, z, rot, [...players.values()].map((o) => o.state));
+  // A boss's trophy only once its kind is beaten, and one of each (shared/trophies.ts).
+  const r = p.down || (typeof kind === 'string' && isTrophy(kind) && !trophyFree(kind, beaten, placed)) ? TEXT.notice.cantPlace : placedThings.build(p.browserId, p.state, kind, x, z, rot, [...players.values()].map((o) => o.state));
   if (typeof r === 'string') send(p.ws, { t: 'notice', text: r });
   else if (isBuilding(r.kind)) sendBox(p, buildingBox(r.id));
   else if (r.kind === CHEST) sendBox(p, storeBox(r.id));

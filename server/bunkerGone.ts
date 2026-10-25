@@ -12,8 +12,11 @@
 //   down, or the chest; the rest (work stations, chests, bedrolls) are moved out onto the sand by the ship, their boxes,
 //   jobs and owners going with them.
 // - Everything on the sand where the bunker's pad and the ship's pad changed the ground is set back on it.
-// - Players who left in or over the bunker, and vehicles parked down in it, are moved to the ship.
+// - Players who left in or over the bunker, and vehicles parked down in it, are moved to the spawn.
+// And once too: the trophies of the bosses beaten are put up where they used to stand by themselves (trophiesPlaced).
 import { storeBox } from '../shared/boxes.ts';
+import { BOSS_KINDS, bossBit } from '../shared/bosses.ts';
+import { CENTRE, OLD_TROPHY_SPOTS, TROPHY } from '../shared/trophies.ts';
 import { CHEST_COLS, CHEST_ROWS, findSpot, gridShape, makeItem, type Item, type Slots } from '../shared/items.ts';
 import { ORIGIN, originClear } from '../shared/origin.ts';
 import { CHEST, onSand, placed, placedY, standsIndoors } from '../shared/placed.ts';
@@ -37,7 +40,8 @@ const FLOOR_ONLY = new Set(['plant_bed', 'uv_lamp']);
 /** How far from the ship's ramp new chests and moved things are looked for a spot (m). */
 const RINGS = [7, 10, 13, 16, 20, 24, 28, 33, 38, 44, 50];
 
-export function bunkerGone(db: Db, items: ItemServer, placedSrv: PlacedServer) {
+export function bunkerGone(db: Db, items: ItemServer, placedSrv: PlacedServer, beaten: number) {
+  trophiesPlaced(db, placedSrv, beaten);
   if (db.getSetting('bunker_gone')) return;
   const spawn = spawnPoint();
   const log: string[] = [];
@@ -123,6 +127,25 @@ export function bunkerGone(db: Db, items: ItemServer, placedSrv: PlacedServer) {
     db.setSetting('bunker_gone', 1);
   });
   console.log(`bunker gone${log.length ? ': ' + log.join('; ') : ''}`);
+}
+
+/** Once per world (settings 'trophies_placed'): the trophies stood by themselves round the origin for each boss kind
+ *  beaten; now they're put up by hand (shared/trophies.ts). A world that beat one gets it put up where it stood. */
+function trophiesPlaced(db: Db, placedSrv: PlacedServer, beaten: number) {
+  if (db.getSetting('trophies_placed')) return;
+  const log: string[] = [];
+  db.tx(() => {
+    for (const k of BOSS_KINDS) {
+      if (!(beaten & bossBit(k)) || placed.some((p) => p.kind === TROPHY[k])) continue;
+      const s = OLD_TROPHY_SPOTS[k], c = CENTRE[k];
+      // The footprint's middle, from where the model stood (turned like shared/placed.ts worldBoxes).
+      const [cx, cz] = [[c.x, c.z], [c.z, -c.x], [-c.x, -c.z], [-c.z, c.x]][s.rot];
+      placedSrv.put('', TROPHY[k], ORIGIN.x + s.x + cx, ORIGIN.z + s.z + cz, s.rot);
+      log.push(k);
+    }
+    db.setSetting('trophies_placed', 1);
+  });
+  if (log.length) console.log(`trophies put up where they stood: ${log.join(', ')}`);
 }
 
 /** Item `it` into the first spot it fits in `owner`'s bag; false if none (the caller saves the bag). */

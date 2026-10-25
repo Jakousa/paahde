@@ -57,6 +57,10 @@ const en = {
     dismantle_bench: 'Dismantling bench',
     storage_chest: 'Chest',
     well: 'Electric well',
+    trophy_worm: "Worm's head",
+    trophy_carrier: "Carrier's fan",
+    trophy_colossus: "Colossus's head",
+    trophy_queen: "Queen's thorax",
     laser_rifle: 'Laser rifle',
     laser_pistol: 'Laser pistol',
     jammer: 'Jammer',
@@ -114,7 +118,7 @@ const en = {
     well: () => 'Pumps up water while it has power, for the water bottle.',
   },
   /** Where placing is blocked: "Too close to the pump". */
-  spots: { pump: 'the pump', doorway: 'the doorway', shelter: 'the shelter', ship: 'the ship', trophy: 'the trophy' },
+  spots: { pump: 'the pump', doorway: 'the doorway', shelter: 'the shelter', ship: 'the ship' },
 
   // ---- Prompts under the crosshair (after the key) ---------------------------------------------------------------
 
