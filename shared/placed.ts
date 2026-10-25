@@ -2,9 +2,9 @@
 // lamp stands (GitHub #22–#24; not crafted for now); and the buildings put up with the wrench from base materials
 // (shared/crafting.ts BUILDS), anywhere out on the sand (the `sand` kinds): the windmill, the battery station, the power
 // pole, the electric well (shared/wells.ts), the beacon (a lamp on a mast shining a column of light into the sky, src/world/beacons.ts; its light's colour is
-// its item's data, BEACON_COLORS), the tarp (shade you build, shared/tarp.ts), and the work stations and the chest (WORKBENCH, TABLE, CHEST), which also go up on a
+// its item's data, BEACON_COLORS), the light pole (a floodlight on a mast lighting the sand at night, src/world/lightPoles.ts), the tarp (shade you build, shared/tarp.ts), and the work stations and the chest (WORKBENCH, TABLE, CHEST), which also go up on a
 // shelter's room floor (`floor`), and the bedroll (a player's own place to wake up after dying, server/world.ts:
-// one each, a new one moves the old, only its owner picks it up, server/placed.ts). The windmill, battery station, well and beacon keep their item with its parts
+// one each, a new one moves the old, only its owner picks it up, server/placed.ts). The windmill, battery station, well, beacon and light pole keep their item with its parts
 // in a box of their own while they stand (shared/gear.ts isBuilding, server/placed.ts), the chest its things in another
 // (shared/storage.ts). The server owns the list (server/placed.ts, `placed` table) and sends it whole on join and when it
 // changes; client and server both keep it here with setPlaced(), which also hands their standing parts to the collision
@@ -90,6 +90,16 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
       { x0: -0.3, x1: 0.3, y0: 0, y1: 0.3, z0: -0.3, z1: 0.3 },
       { x0: -0.08, x1: 0.08, y0: 0, y1: 3.35, z0: -0.08, z1: 0.08 },
       { x0: -0.2, x1: 0.2, y0: 3.3, y1: 3.75, z0: -0.2, z1: 0.2 },
+    ],
+  },
+  // A light pole: a mast on a welded foot (both collide), the arm and floodlight up top reaching out over +Z (only looked
+  // at). Sizes match src/world/lightPoles.ts.
+  light_pole: {
+    hx: 0.32, hz: 0.32, sand: true, gap: 1,
+    boxes: [
+      { x0: -0.3, x1: 0.3, y0: 0, y1: 0.3, z0: -0.3, z1: 0.3 },
+      { x0: -0.08, x1: 0.08, y0: 0, y1: 5.6, z0: -0.08, z1: 0.08 },
+      { x0: -0.22, x1: 0.22, y0: 5.25, y1: 5.65, z0: 0, z1: 1.45 },
     ],
   },
   // A tarp (shared/tarp.ts): a canvas pyramid on a centre pole, the doorway's edge (+Z) up on a short pole. Both poles
@@ -195,6 +205,7 @@ export const MAX_PLACED = 300;
 /** At most this many beacons in the world. */
 export const MAX_BEACONS = 30;
 export const BEACON = 'beacon_light';
+export const LIGHT_POLE = 'light_pole';
 export const BEDROLL = 'bedroll';
 /** Counts towards MAX_PLACED (beacons have their own limit; bedrolls are one per player). */
 const counted = (kind: string) => kind !== BEACON && kind !== BEDROLL;

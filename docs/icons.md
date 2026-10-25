@@ -57,7 +57,7 @@ in `ICONS` if it isn't a part or salvage.
 
 ### Models built in code
 
-The wrench (`src/models/wrench.ts`), the scrap mace (`src/models/mace.ts`), the carried machines (`src/teardown/junk.ts`), the beacon (`src/world/beacons.ts`) and the tarp (`src/world/tarps.ts`) are built with three.js, not
+The wrench (`src/models/wrench.ts`), the scrap mace (`src/models/mace.ts`), the carried machines (`src/teardown/junk.ts`), the beacon (`src/world/beacons.ts`), the light pole (`src/world/lightPoles.ts`) and the tarp (`src/world/tarps.ts`) are built with three.js, not
 Blender. `node tools/icons/dump.mjs` starts Vite and headless Chrome, builds them on a dev-only page
 (`tools/icons/code-models.ts`) and writes their triangles and flat materials to `tools/icons/out/code-models.json`.
 `blender -b --python tools/blender/icons.py` then renders them like any other icon. When one of those models

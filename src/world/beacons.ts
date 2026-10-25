@@ -50,15 +50,7 @@ export function beaconModel(): THREE.Group {
   // The lamp head: a drum, a rim round its top.
   add(new THREE.CylinderGeometry(0.19, 0.17, 0.3, 14), 0, 3.45, 0, 0x55575a);
   add(new THREE.CylinderGeometry(0.21, 0.21, 0.05, 14), 0, 3.6, 0, 0x3e4044);
-  const geos = parts.map(([g, hex]) => {
-    const c = new THREE.Color(hex);
-    const n = g.getAttribute('position').count;
-    const col = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3);
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    return g.index ? g.toNonIndexed() : g;
-  });
-  const body = new THREE.Mesh(mergeAll(geos), new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.45 }));
+  const body = paintedMesh(parts);
   body.name = 'beacon_body';
   const lensGeo = new THREE.CylinderGeometry(0.16, 0.18, 0.12, 14);
   lensGeo.translate(0, LENS_TOP - 0.06, 0);
@@ -69,6 +61,19 @@ export function beaconModel(): THREE.Group {
   const g = new THREE.Group();
   g.add(body, lens);
   return g;
+}
+
+/** Geometries, each in one flat colour, as one mesh of painted scrap metal (vertex colours). */
+export function paintedMesh(parts: [THREE.BufferGeometry, number][]): THREE.Mesh {
+  const geos = parts.map(([g, hex]) => {
+    const c = new THREE.Color(hex);
+    const n = g.getAttribute('position').count;
+    const col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3);
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    return g.index ? g.toNonIndexed() : g;
+  });
+  return new THREE.Mesh(mergeAll(geos), new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.45 }));
 }
 
 /** Non-indexed geometries with position, normal, uv and colour, as one. */

@@ -693,6 +693,7 @@ renderer.setAnimationLoop((time) => {
   listen(orbit.camera.position);
   tickEchoBus();
   placedView.update(frameDt, net.worldTime(), (x, z) => stormAt(net.storms, x, z, net.serverTime()), survival.fillingWell);
+  placedView.updateLamps(orbit.camera.position);
   const ear = orbit.camera.position;
   wellSound.update(placedView.nearestWell(ear, 30), ear, survival.fillingWell !== null);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched

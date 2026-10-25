@@ -3,16 +3,16 @@
 // battery itself: its ItemData `charge`, fitted in the station's item, so it keeps it when it comes out), and
 // the state goes out to everyone. A windmill on a grid with no station (or only full ones) delivers nothing. While the world
 // sleeps (nobody in it, the process gone) the wind still blows: on start the time since the last save is caught up in
-// steps of the same wind, storms left out. A beacon (shared/power.ts BEACON_W) is a store too, of its one battery: on a grid
+// steps of the same wind, storms left out. A beacon (shared/power.ts BEACON_W) or light pole (LIGHT_POLE_W, after dusk) is a store too, of its one battery: on a grid
 // it takes its power first, from the wind and then from every battery on it; on its own it runs its battery flat. An electric
 // well (shared/wells.ts) with every part in takes its control box's little power the same way, and runs while its grid
 // could give its pump what it wants right now (the wind left over, or the batteries holding a bottle's worth); each
 // bottle filled at it takes that out of the batteries (pump).
 import { buildingBox, buildingId } from '../shared/boxes.ts';
 import { ORIGIN } from '../shared/origin.ts';
-import { BEACON, placed } from '../shared/placed.ts';
+import { BEACON, LIGHT_POLE, placed } from '../shared/placed.ts';
 import { grids } from '../shared/wires.ts';
-import { BEACON_W, cells, charge, draw, GAME_SPEED, windmillWatts, windSpeed, type PowerState, type Store } from '../shared/power.ts';
+import { BEACON_W, cells, LIGHT_POLE_W, poleDark, charge, draw, GAME_SPEED, windmillWatts, windSpeed, type PowerState, type Store } from '../shared/power.ts';
 import { setWellsOn, WELL, WELL_IDLE_W, wellSpec } from '../shared/wells.ts';
 import { partsOf } from '../shared/gear.ts';
 import { chargeOf, partAt, setFitted, type Item } from '../shared/items.ts';
@@ -29,8 +29,8 @@ const CATCH_UP_STEP_S = 60;
 const CATCH_UP_MAX_S = 7 * 24 * 3600;
 /** The shared clock of the last tick (setting). */
 const POWER_AT = 'powerAt';
-/** What keeps its batteries' charge here: the battery stations and the beacons. */
-const isStore = (kind: string) => kind === 'battery_station' || kind === BEACON;
+/** What keeps its batteries' charge here: the battery stations, the beacons and the light poles. */
+const isStore = (kind: string) => kind === 'battery_station' || kind === BEACON || kind === LIGHT_POLE;
 
 export class PowerServer {
   private db: Db;
@@ -39,7 +39,7 @@ export class PowerServer {
   private stores = new Map<number, { parts: (string | null)[]; charge: number[] }>();
   private gen: Record<number, number> = {};
   private intake: Record<number, number> = {};
-  /** The beacons lit in the last step. */
+  /** The beacons and light poles lit in the last step. */
   private lit: number[] = [];
   /** The wells running in the last step, and what the wind had left over on each one's grid then (W). */
   private wells: number[] = [];
@@ -135,19 +135,21 @@ export class PowerServer {
     this.spare.clear();
     const kinds = new Map(placed.map((p) => [p.id, p]));
     const gameS = realS * GAME_SPEED;
+    const dark = poleDark(worldMs);
     for (const grid of grids(placed)) {
       const mills = grid.filter((id) => kinds.get(id)?.kind === 'windmill');
       const ids = grid.filter((id) => this.stores.has(id));
       const stores = ids.map((id) => this.stores.get(id) as Store);
       const made = mills.map((id) => windmillWatts(kinds.get(id)!.parts, v));
       const watts = made.reduce((a, b) => a + b, 0);
-      // The beacons and the wells' control boxes first: on the wind, what it can't give out of the batteries; all on,
-      // or (too little) all dark.
+      // The beacons, the light poles after dusk and the wells' control boxes first: on the wind, what it can't give out
+      // of the batteries; all on, or (too little) all dark.
       const beacons = grid.filter((id) => kinds.get(id)?.kind === BEACON);
+      const poles = dark ? grid.filter((id) => kinds.get(id)?.kind === LIGHT_POLE) : [];
       const wells = grid.filter((id) => kinds.get(id)?.kind === WELL && wellSpec(kinds.get(id)!.parts));
-      const need = beacons.length * BEACON_W + wells.length * WELL_IDLE_W;
+      const need = beacons.length * BEACON_W + poles.length * LIGHT_POLE_W + wells.length * WELL_IDLE_W;
       const lit = need > 0 && (watts >= need || draw(stores, need - watts, gameS));
-      if (lit) this.lit.push(...beacons);
+      if (lit) this.lit.push(...beacons, ...poles);
       const lamps = lit ? Math.min(watts, need) : 0;
       // A well runs while its pump could have its power now: from the wind left over, or a bottle's worth from the
       // batteries.

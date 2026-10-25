@@ -53,6 +53,7 @@ const en = {
     battery_station: 'Battery station',
     power_pole: 'Power pole',
     beacon_light: 'Beacon',
+    light_pole: 'Light pole',
     tarp: 'Tarp',
     workbench: 'Workbench',
     dismantle_bench: 'Dismantling bench',
@@ -118,6 +119,7 @@ const en = {
     windmill: () => 'Makes power when the wind blows.',
     battery_station: () => 'Keeps the power the windmills make.',
     beacon_light: () => 'Shines a column of light into the sky while it has power, from a battery or a wire.',
+    light_pole: () => 'Lights the sand around it at night while it has power, from a battery or a wire.',
     well: () => 'Pumps up water while it has power, for the water bottle.',
   },
   /** Where placing is blocked: "Too close to the pump". */

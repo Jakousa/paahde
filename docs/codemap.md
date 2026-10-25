@@ -143,7 +143,7 @@ Everything built is shared, and anyone can take a building down.
 - `server/bunkerGone.ts` — once per world (settings `bunker_gone`): what was kept in the old bunker comes out (its chests
   into new chests by the spawn, the machine on its table, repair slots back to the bags, things on its floor back to
   their owners or moved out onto the sand, players and vehicles in it to the spawn)
-- Buildings — the windmill, the battery station, the power pole, the beacon, the tarp, the well, the workbench, the
+- Buildings — the windmill, the battery station, the power pole, the beacon, the light pole, the tarp, the well, the workbench, the
   dismantling bench and the chest, anywhere on the sand: put up with the wrench (made by hand; right mouse with it in
   hand opens the build menu, `src/buildMenu.ts`, placing in `src/placing.ts`)
   from base materials only (scrap, cloth, wiring: `shared/tables.ts` BUILD_TABLE, `shared/crafting.ts` BUILDS), used up
@@ -177,6 +177,11 @@ Everything built is shared, and anyone can take a building down.
   cycles its colour (`BEACON_COLORS`, 8; src/placing.ts, `beaconColor` message), kept in its item's ItemData `color`.
   Model made in code and every beam in one instanced draw (a camera-facing quad per beam that widens with distance):
   `src/world/beacons.ts`
+- Light poles (`light_pole`, shared/placed.ts `LIGHT_POLE`) — a 5.6 m mast with a floodlight on an arm that lights the
+  sand round it at night: built with the wrench (scrap, wiring), one battery slot, powered like a beacon but only from
+  dusk to dawn (shared/power.ts `LIGHT_POLE_W`, `poleDark`; server/power.ts puts it in `PowerState.lit`). Model made in
+  code; the light is a pool of shadowless spot lights put in the scene at startup and handed to the lit poles nearest
+  the camera (src/world/lightPoles.ts `PoleLamps`, src/world/pooledLight.ts)
 - Tarps (`tarp`, shared/placed.ts `TARP`) — shade you build: an 8 m canvas pyramid on a 4.6 m centre pole, corners
   staked low, one edge up on a short pole as the doorway; wrench-built (3 cloth, 2 scrap), four turns (R: which way the
   doorway faces); the poles and the canvas lower than a head collide (you go in by the doorway; bedrolls, chests,

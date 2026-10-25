@@ -1,11 +1,12 @@
 // Dev-only page (vite dev serves it; not in the build): flattens the models built in code (the wrench, the mace, the carried
-// crash-site machines, the beacon, the tarp) into triangles and flat materials for tools/icons/render.py to render as icons.
+// crash-site machines, the beacon, the light pole, the tarp) into triangles and flat materials for tools/icons/render.py to render as icons.
 // `window.dump()` resolves to { kind: { tris: number[], mats: [...], mat: number[] } } (positions in metres, Y-up).
 import * as THREE from 'three/webgpu';
 import { wrenchModel } from '../../src/models/wrench.ts';
 import { maceModel } from '../../src/models/mace.ts';
 import { buildJunk } from '../../src/teardown/junk.ts';
 import { beaconModel, LENS } from '../../src/world/beacons.ts';
+import { lightPoleModel, POLE_LENS } from '../../src/world/lightPoles.ts';
 import { BEACON_COLORS } from '../../shared/placed.ts';
 import { tarpModel } from '../../src/world/tarps.ts';
 import type { JunkKind } from '../../shared/salvage.ts';
@@ -74,6 +75,10 @@ function flatten(root: THREE.Object3D) {
   const lens = beacon.getObjectByName(LENS) as THREE.Mesh;
   lens.material = new THREE.MeshStandardMaterial({ color: BEACON_COLORS[0], emissive: BEACON_COLORS[0] });
   out.beacon_light = flatten(beacon);
+  // The light pole with its floodlight lit.
+  const pole = lightPoleModel();
+  (pole.getObjectByName(POLE_LENS) as THREE.Mesh).material = new THREE.MeshStandardMaterial({ color: 0xffe2b8, emissive: 0xffe2b8 });
+  out.light_pole = flatten(pole);
   // The tarp on level sand, the high corner at the back.
   out.tarp = flatten(tarpModel(0, 0, 0, 0, 0, true));
   return out;

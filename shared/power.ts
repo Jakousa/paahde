@@ -20,9 +20,11 @@
 //   Beacon (src/world/beacons.ts): an LED lamp, BEACON_W, a load. On a grid it runs on what the
 //     windmills make, then on what the batteries hold (the stations' and its own); the rest goes into the batteries.
 //     Out on its own, on its own battery: a Scrap one lasts it about four game days (two hours), a Space-grade one weeks.
+//   Light pole (src/world/lightPoles.ts): an LED floodlight, LIGHT_POLE_W, a load like a beacon's but only from dusk to
+//     dawn (poleDark). A Scrap battery keeps it lit a couple of nights on its own.
 //   Electric well (shared/wells.ts): its control box a small load all the time, like a beacon's lamp; its pump a big one
 //     (hundreds of watts) for as long as it fills a bottle: it runs while its grid could give that right now.
-import { DAY_SECONDS, timeOfDayAt } from './sun.ts';
+import { DAY_SECONDS, sunElevation, timeOfDayAt } from './sun.ts';
 import { vnoise } from './noise.ts';
 import { WORLD_SEED } from './world.ts';
 import { parsePart } from './items.ts';
@@ -199,7 +201,17 @@ export function draw(stores: Store[], watts: number, gameS: number): boolean {
 /** What a beacon's lamp takes (W). */
 export const BEACON_W = 6;
 
+// ---- Light pole ----------------------------------------------------------------------------------------------------
+
+/** What a light pole's floodlight takes while it's on (W): a Scrap battery keeps it lit a couple of nights. */
+export const LIGHT_POLE_W = 20;
+/** Its dusk switch: on while the sun is lower than this (rad, about 3° over the horizon). */
+const DUSK = 0.05;
+
+/** Is it dark enough for the light poles at shared clock `worldMs`? */
+export const poleDark = (worldMs: number) => sunElevation(timeOfDayAt(worldMs)) < DUSK;
+
 /** What the server sends: each windmill's output (W), each store's (a station's, a beacon's) charge per slot (kWh) and
- *  intake (W), the beacons lit and the wells running (shared/wells.ts). */
+ *  intake (W), the beacons and light poles lit and the wells running (shared/wells.ts). */
 export type PowerState = { gen: Record<number, number>; store: Record<number, { charge: number[]; w: number }>; lit?: number[];
   wells?: number[] };

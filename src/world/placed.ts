@@ -7,7 +7,8 @@
 // the parts in it): the windmill's head turns into the wind and its rotor turns with it (shared/power.ts rotorSpeed:
 // the wind now, the bearings), the tail folding it out of a gale, still while a bearing or the motor is missing; the
 // battery station shows the cells it holds, each in its own tier, each one's lamp lit while it holds charge. A beacon
-// (src/world/beacons.ts, its model made in code) lights its lens and its beam in its colour while it has power.
+// (src/world/beacons.ts, its model made in code) lights its lens and its beam in its colour while it has power, a light
+// pole (src/world/lightPoles.ts, the same) its floodlight on the sand round it.
 // A tarp (src/world/tarps.ts) is built in code for its own patch of sand, its canvas moving in the same wind.
 // An electric well (shared/wells.ts) that runs has its control box's lamp lit, a wet patch under its spigot and a drop
 // falling from it every so often (quicker while someone fills a bottle there).
@@ -22,12 +23,13 @@ import { EMPTY, STAGE_NODES, type BedState } from '../../shared/garden.ts';
 import { isBuilding, tierOf } from '../../shared/gear.ts';
 import { furl, rotorSpeed, windSpeed, type PowerState } from '../../shared/power.ts';
 import { parsePart } from '../../shared/items.ts';
-import { BEACON, BEDROLL, bedLit, PLACEABLES, TARP, type Placed } from '../../shared/placed.ts';
+import { BEACON, BEDROLL, bedLit, LIGHT_POLE, PLACEABLES, TARP, type Placed } from '../../shared/placed.ts';
 import { isTrophy } from '../../shared/trophies.ts';
 import { TARP_WIND, tarpModel } from './tarps.ts';
 import { inShelter } from '../../shared/shelters.ts';
 import { SPIGOT, WELL } from '../../shared/wells.ts';
 import { BeaconBeams, beaconModel, LENS, lensColor } from './beacons.ts';
+import { lightPoleModel, POLE_LENS, PoleLamps, poleLensColor } from './lightPoles.ts';
 import { applyTier } from '../tierLook.ts';
 import { cells } from '../../shared/power.ts';
 
@@ -75,6 +77,7 @@ export class PlacedView {
   private pool = poolMaterial();
   private last: { list: Placed[]; garden: Map<number, BedState> } = { list: [], garden: new Map() };
   private beams: BeaconBeams;
+  private lamps: PoleLamps;
 
   /** `material` makes a model's material lit for where it stands. */
   constructor(scene: THREE.Scene, material: (mt: THREE.Material, where: Where) => THREE.Material) {
@@ -84,10 +87,14 @@ export class PlacedView {
     const beacon = beaconModel();
     beacon.traverse((o) => ((o as THREE.Mesh).isMesh && o.name !== LENS && (o.castShadow = o.receiveShadow = true)));
     for (const w of ['out', 'shelter'] as Where[]) this.models.set(`${BEACON}:${w}`, beacon);
+    this.lamps = new PoleLamps(scene);
+    const pole = lightPoleModel();
+    pole.traverse((o) => ((o as THREE.Mesh).isMesh && o.name !== POLE_LENS && (o.castShadow = o.receiveShadow = true)));
+    for (const w of ['out', 'shelter'] as Where[]) this.models.set(`${LIGHT_POLE}:${w}`, pole);
     const loader = new GLTFLoader();
     for (const kind of Object.keys(PLACEABLES)) {
-      // (The beacon's and the tarp's are made in code; the trophies' come from src/world/trophies.ts: provide.)
-      if (kind === BEACON || kind === TARP || isTrophy(kind)) continue;
+      // (The beacon's, the light pole's and the tarp's are made in code; the trophies' come from src/world/trophies.ts: provide.)
+      if (kind === BEACON || kind === LIGHT_POLE || kind === TARP || isTrophy(kind)) continue;
       loader.load(
         `./models/placeables/${kind}.glb`,
         (gltf) => {
@@ -164,7 +171,7 @@ export class PlacedView {
           obj.add(pool);
         }
         this.group.add(obj);
-        const lens = obj.getObjectByName(LENS) as Shown['lens'] | undefined;
+        const lens = (obj.getObjectByName(LENS) ?? obj.getObjectByName(POLE_LENS)) as Shown['lens'] | undefined;
         if (lens) lens.material = lens.material.clone();
         const head = obj.getObjectByName('windmill_head') ?? undefined, rotor = obj.getObjectByName('windmill_rotor') ?? undefined;
         const node = (n: string) => obj.getObjectByName(n) ?? undefined;
@@ -250,17 +257,25 @@ export class PlacedView {
     return best;
   }
 
-  /** The beacons the server says are lit: their lenses and beams in their colours, the rest dark. */
+  /** The beacons and light poles the server says are lit: the beacons' lenses and beams in their colours, the poles'
+   *  floodlights on, the rest dark. */
   private lightBeacons() {
     const lit = new Set(this.power.lit ?? []);
-    const on: Placed[] = [];
+    const on: Placed[] = [], poles: Placed[] = [];
     for (const s of this.shown.values()) {
       if (!s.lens) continue;
       const yes = lit.has(s.p.id);
-      lensColor(s.p.color, yes, s.lens.material.color);
-      if (yes) on.push(s.p);
+      if (s.p.kind === LIGHT_POLE) poleLensColor(yes, s.lens.material.color);
+      else lensColor(s.p.color, yes, s.lens.material.color);
+      if (yes) (s.p.kind === LIGHT_POLE ? poles : on).push(s.p);
     }
     this.beams.set(on);
+    this.lamps.set(poles);
+  }
+
+  /** Every frame: the light poles' floodlights to the lit ones nearest the camera at `eye`. */
+  updateLamps(eye: THREE.Vector3) {
+    this.lamps.update(eye);
   }
 
   private power: PowerState = { gen: {}, store: {} };
