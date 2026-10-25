@@ -85,6 +85,10 @@ export type Line = {
     when?: (s: SpeechState, arg: SpeechEvents[E]) => boolean;
     say: string | string[];
     again?: number;
+    /** 1: a discovery, 2: an approaching hazard, 3: immediate danger. Omitted: a casual remark. */
+    priority?: 1 | 2 | 3;
+    /** Important events may wait this many ms; tick lines are rechecked instead of queued. */
+    queueFor?: number;
     /** Said once per world rather than once ever (no `again`): what belongs to arriving in each new world. */
     world?: true;
   };
@@ -101,17 +105,17 @@ const isRelic = (kind: string) => Object.values(RELICS).includes(kind) || Object
 
 /** The first time each kind of item is in the bag: by kind, then broken (`b`) or working (`w`). */
 const firstGot = (kind: string): Line[] => [
-  { id: `got.${kind}`, on: 'got', when: (_, it) => it.kind === kind && !repaired(it), say: TEXT.speech.got[kind][0] },
-  { id: `got.${kind}.fixed`, on: 'got', when: (_, it) => it.kind === kind && repaired(it), say: TEXT.speech.got[kind][1] },
+  { id: `got.${kind}`, on: 'got', when: (_, it) => it.kind === kind && !repaired(it), say: TEXT.speech.got[kind][0], priority: 1, queueFor: 20_000 },
+  { id: `got.${kind}.fixed`, on: 'got', when: (_, it) => it.kind === kind && repaired(it), say: TEXT.speech.got[kind][1], priority: 1, queueFor: 20_000 },
 ];
 
 /** Something of this kind turning on us, and going down after we shot it. */
 const aggro = (kind: Aggro): Line =>
-  ({ id: `aggro.${kind}`, on: 'aggro', when: (s, k) => !s.dead && k === kind, say: TEXT.speech.aggro[kind], again: 10 * MIN });
+  ({ id: `aggro.${kind}`, on: 'aggro', when: (s, k) => !s.dead && k === kind, say: TEXT.speech.aggro[kind], again: 10 * MIN, priority: 3 });
 const killed = (kind: Kill | 'boss', again: number): Line =>
   ({ id: `killed.${kind}`, on: 'killed', when: (_, k) => k === kind, say: TEXT.speech.killed[kind], again });
 
-/** In order: for one event, the first line whose condition holds (and isn't resting) is said. */
+/** Highest priority first; ties keep this order. Variants share their once/again memory. */
 export const LINES: Line[] = [
   // The first thing said on arriving in a world (then the inventory hint: src/main.ts).
   { id: 'start', on: 'tick', when: (s) => !s.dead, say: TEXT.speech.start, world: true },
@@ -125,7 +129,7 @@ export const LINES: Line[] = [
   // Machines full of parts: the big ones are opened where they stand, the small ones and wrecks go home whole.
   { id: 'machine', on: 'near', when: (_, m) => !m.carry, say: TEXT.speech.machine },
   { id: 'machine.carry', on: 'near', when: (_, m) => m.carry, say: TEXT.speech.machineCarry },
-  { id: 'machine.bench', on: 'got', when: (_, it) => MACHINE_KINDS.has(it.kind), say: TEXT.speech.machineBench },
+  { id: 'machine.bench', priority: 1, queueFor: 20_000, on: 'got', when: (_, it) => MACHINE_KINDS.has(it.kind), say: TEXT.speech.machineBench },
 
   // The first time each kind of thing is in the bag.
   ...firstGot('canteen'),
@@ -140,8 +144,8 @@ export const LINES: Line[] = [
   ...firstGot('laser_rifle'),
   ...firstGot('laser_pistol'),
   ...firstGot('jammer'),
-  { id: 'got.receiver', on: 'got', when: (_, it) => isReceiver(it.kind) && !repaired(it), say: TEXT.speech.got.receiver[0] },
-  { id: 'got.receiver.fixed', on: 'got', when: (_, it) => isReceiver(it.kind) && repaired(it), say: TEXT.speech.got.receiver[1] },
+  { id: 'got.receiver', priority: 1, queueFor: 20_000, on: 'got', when: (_, it) => isReceiver(it.kind) && !repaired(it), say: TEXT.speech.got.receiver[0] },
+  { id: 'got.receiver.fixed', priority: 1, queueFor: 20_000, on: 'got', when: (_, it) => isReceiver(it.kind) && repaired(it), say: TEXT.speech.got.receiver[1] },
   { id: 'got.broken', on: 'got', when: (_, it) => isGear(it.kind) && !repaired(it), say: TEXT.speech.gotBroken },
   { id: 'got.scrap', on: 'got', when: (_, it) => it.kind === 'scrap', say: TEXT.speech.gotScrap },
   { id: 'got.cloth', on: 'got', when: (_, it) => it.kind === 'cloth', say: TEXT.speech.gotCloth },
@@ -150,7 +154,7 @@ export const LINES: Line[] = [
   { id: 'got.plant_bed', on: 'got', when: (_, it) => it.kind === 'plant_bed', say: TEXT.speech.gotPlantBed },
   { id: 'got.uv_lamp', on: 'got', when: (_, it) => it.kind === 'uv_lamp', say: TEXT.speech.gotUvLamp },
   { id: 'got.bedroll', on: 'got', when: (_, it) => it.kind === 'bedroll', say: TEXT.speech.gotBedroll },
-  { id: 'got.relic', on: 'got', when: (_, it) => isRelic(it.kind), say: TEXT.speech.gotRelic },
+  { id: 'got.relic', priority: 1, queueFor: 20_000, on: 'got', when: (_, it) => isRelic(it.kind), say: TEXT.speech.gotRelic },
 
   // On the bike.
   { id: 'ride', on: 'tick', when: (s) => s.riding, say: TEXT.speech.ride },
@@ -164,11 +168,11 @@ export const LINES: Line[] = [
     say: TEXT.speech.pumpNothing, again: 10 * MIN },
 
   // Overheating.
-  { id: 'hot', on: 'tick', when: (s) => !s.dead && !s.indoors && s.rising && s.heat > 55 && s.maxSips === 0,
+  { id: 'hot', priority: 2, on: 'tick', when: (s) => !s.dead && !s.indoors && s.rising && s.heat > 55 && s.maxSips === 0,
     say: TEXT.speech.hot, again: 2 * MIN },
-  { id: 'hot', on: 'tick', when: (s) => !s.dead && s.rising && s.heat > 55 && s.sips > 0,
+  { id: 'hot', priority: 2, on: 'tick', when: (s) => !s.dead && s.rising && s.heat > 55 && s.sips > 0,
     say: TEXT.speech.sip, again: 2 * MIN },
-  { id: 'dry', on: 'tick', when: (s) => !s.dead && s.maxSips > 0 && s.sips === 0 && s.heat > 40,
+  { id: 'dry', priority: 2, on: 'tick', when: (s) => !s.dead && s.maxSips > 0 && s.sips === 0 && s.heat > 40,
     say: TEXT.speech.dry, again: 4 * MIN },
 
   // Places. The first look at the pod we came down in, by day and by night.
@@ -179,21 +183,21 @@ export const LINES: Line[] = [
   { id: 'mudflat', on: 'tick', when: (s) => !s.dead && s.mudflat, say: TEXT.speech.mudflatNight },
 
   // Sandstorms.
-  { id: 'stormWarning', on: 'tick', when: (s) => !s.dead && s.stormWarning,
+  { id: 'stormWarning', priority: 2, on: 'tick', when: (s) => !s.dead && s.stormWarning,
     say: TEXT.speech.stormWarning, again: 5 * MIN },
-  { id: 'storm', on: 'tick', when: (s) => !s.dead && !s.indoors && s.storm > 0.5,
+  { id: 'storm', priority: 2, on: 'tick', when: (s) => !s.dead && !s.indoors && s.storm > 0.5,
     say: TEXT.speech.storm, again: 5 * MIN },
-  { id: 'stormFront', on: 'tick', when: (s) => !s.dead && s.frontComing, say: TEXT.speech.stormFront, again: 10 * MIN },
-  { id: 'choking', on: 'tick', when: (s) => !s.dead && s.choking, say: TEXT.speech.choking, again: MIN },
+  { id: 'stormFront', priority: 2, on: 'tick', when: (s) => !s.dead && s.frontComing, say: TEXT.speech.stormFront, again: 10 * MIN },
+  { id: 'choking', priority: 3, on: 'tick', when: (s) => !s.dead && s.choking, say: TEXT.speech.choking, again: MIN },
   { id: 'lee', on: 'tick', when: (s) => !s.dead && s.lee, say: TEXT.speech.lee, again: 20 * MIN },
 
   // Poison gas.
-  { id: 'gasComing', on: 'tick', when: (s) => !s.dead && s.gasComing && s.indoors, say: TEXT.speech.gasIndoors, again: 10 * MIN },
-  { id: 'gasComing', on: 'tick', when: (s) => !s.dead && s.gasComing, say: TEXT.speech.gasComing, again: 10 * MIN },
-  { id: 'gassed', on: 'tick', when: (s) => !s.dead && s.gassed, say: TEXT.speech.gassed, again: MIN },
+  { id: 'gasComing', priority: 2, on: 'tick', when: (s) => !s.dead && s.gasComing && s.indoors, say: TEXT.speech.gasIndoors, again: 10 * MIN },
+  { id: 'gasComing', priority: 2, on: 'tick', when: (s) => !s.dead && s.gasComing, say: TEXT.speech.gasComing, again: 10 * MIN },
+  { id: 'gassed', priority: 3, on: 'tick', when: (s) => !s.dead && s.gassed, say: TEXT.speech.gassed, again: MIN },
 
   // Things that want us dead.
-  { id: 'boss', on: 'tick', when: (s) => !s.dead && s.boss, say: TEXT.speech.boss },
+  { id: 'boss', priority: 2, on: 'tick', when: (s) => !s.dead && s.boss, say: TEXT.speech.boss },
   aggro('guardian'),
   aggro('crawler'),
   aggro('drone'),

@@ -35,9 +35,13 @@ rate and punctuation pauses at the top of `src/speech.ts`), so a remark is heard
 - **Only when it helps or it's earned.** It's for the first time something matters (a water bottle when you have
   none, the first night) or a danger the player may not have noticed (overheating, a storm coming). Don't
   narrate what the player can plainly see.
-- **Rarely.** One line at a time, a pause after each, and a quiet start after joining. A remark that matters only
+- **Rarely.** One line at a time, a pause after each, and a quiet start after joining. Approaching hazards (`priority: 2`)
+  and immediate dangers (`priority: 3`) interrupt lower-priority remarks; immediate danger is readable at once.
+  Important discoveries (`priority: 1`, `queueFor` in milliseconds) may wait in a queue of at most four lines, then
+  expire. Their conditions are checked again against the current bag before speaking. A remark that matters only
   once is said once per browser (no `again`), or once per world on it (`world: true`: arriving, wanting a shelter). One that can come back (overheating) has a long `again`, measured
-  in minutes.
+  in minutes. Once-only memory is recorded when its text is fully revealed, so interrupting a half-typed remark does
+  not silently mark it heard. Queued or expired lines do not consume their once/again memory.
 - **Conditions decide, not just events.** A line has an event plus a condition on what the player has and where they
   are (`SpeechState`). Events: `see` (a find in reach), `near` (a crash-site machine or wreck in reach), `got` (an
   item newly in the bag: picked up, crafted, repaired, taken out of a machine), `bagFull`, `respawn`, `aggro` (an enemy

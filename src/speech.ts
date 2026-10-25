@@ -1,7 +1,7 @@
 // The player character talking to themselves: a subtitle at the bottom of the screen when something happens that
 // they'd have a word about (the lines, their conditions and how often: src/speechLines.ts; how to write them:
-// docs/speech.md). Only one line at a time, with a pause after it; an event that comes while talking is dropped
-// (a `tick` remark just comes up again later). Remarks said once are remembered on this browser (localStorage), those
+// docs/speech.md). One line at a time: hazards interrupt casual remarks, important discoveries wait briefly,
+// and stale events are discarded (`tick` remarks are rechecked). Remarks said once are remembered on this browser (localStorage), those
 // said once per world under the world's id.
 // A line types out letter by letter, visual-novel style, a soft blip per letter (src/speechSound.ts), a breath
 // after punctuation; the rest of the line is laid out hidden, so the box doesn't grow as it types.
@@ -23,6 +23,8 @@ const STOP_PAUSE = 0.25;
 const showFor = (text: string) => Math.min(7, Math.max(2.5, 1.2 + text.length * 0.06));
 /** Silence after a line (s), before the next. */
 const GAP = 2;
+const QUEUE_LIMIT = 4;
+type Pending = { line: Line; expires: number; valid: () => boolean; remembered: boolean };
 
 const css = `
 #speech { position: fixed; left: 50%; bottom: 78px; transform: translateX(-50%); z-index: 7; max-width: min(640px, 80vw);
@@ -51,6 +53,8 @@ export class Speech {
   /** Showing until, then quiet until (s). */
   private hideAt = 0;
   private quietUntil = QUIET_START;
+  private current: Pending | null = null;
+  private pending: Pending[] = [];
   /** A line was just said: its id, and how long (s) it stays on screen. */
   onSaid: ((id: string, showS: number) => void) | null = null;
 
@@ -73,28 +77,58 @@ export class Speech {
   update(dt: number, state: SpeechState) {
     this.t += dt;
     this.state = state;
-    if (this.typed < this.text.length) this.type(dt);
-    if (this.hideAt && this.t >= this.hideAt) {
+    if (state.dead) {
+      this.text = '';
+      this.current = null;
       this.hideAt = 0;
       this.el.classList.remove('on');
     }
+    if (this.typed < this.text.length) this.type(dt);
+    if (this.hideAt && this.t >= this.hideAt) {
+      this.hideAt = 0;
+      this.current = null;
+      this.el.classList.remove('on');
+    }
+    this.pending = this.pending.filter((p) => p.expires > this.t && this.ready(p.line) && p.valid());
+    if (!state.dead && this.t >= this.quietUntil && this.pending.length) this.say(this.pending.shift()!);
     if ((this.tickIn -= dt) <= 0) {
       this.tickIn = TICK;
       this.event('tick', undefined);
     }
   }
 
-  /** Something happened: say the first line for it whose condition holds, unless busy talking. */
+  /** Something happened: highest matching priority wins; urgent warnings can interrupt lower priorities. */
   event<E extends keyof SpeechEvents>(on: E, arg: SpeechEvents[E]) {
     const s = this.state;
-    if (!s || this.t < this.quietUntil) return;
-    for (const line of LINES) {
-      if (line.on !== on || !this.ready(line)) continue;
-      const when = line.when as ((s: SpeechState, arg: SpeechEvents[E]) => boolean) | undefined;
-      if (when && !when(s, arg)) continue;
-      this.say(line);
-      return;
-    }
+    if (!s || s.dead) return;
+    const line = LINES.filter((l) => l.on === on && this.ready(l) && this.matches(l, on, arg))
+      .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))[0];
+    if (!line || this.current?.line.id === line.id) return;
+    const p: Pending = { line, expires: this.t + (line.queueFor ?? 0) / 1000,
+      valid: () => this.matches(line, on, arg), remembered: false };
+    const interrupts = (line.priority ?? 0) >= 2 && (line.priority ?? 0) > (this.current?.line.priority ?? 0);
+    if (this.t >= this.quietUntil || interrupts) {
+      if (this.current && !this.current.remembered) this.enqueue(this.current);
+      this.say(p);
+    } else this.enqueue(p);
+  }
+
+  private matches<E extends keyof SpeechEvents>(line: Line, on: E, arg: SpeechEvents[E]): boolean {
+    const state = this.state;
+    if (!state || state.dead) return false;
+    // A queued discovery stops being relevant when the item is dropped, fitted, or repaired meanwhile.
+    const live = on === 'got' ? state.bag.find((it) => it?.id === (arg as SpeechEvents['got']).id) : arg;
+    if (on === 'got' && !live) return false;
+    const when = line.when as ((s: SpeechState, arg: SpeechEvents[E]) => boolean) | undefined;
+    return !when || when(state, live as SpeechEvents[E]);
+  }
+
+  private enqueue(p: Pending) {
+    if (!p.line.queueFor || p.expires <= this.t || !p.valid()) return;
+    if (this.pending.some((q) => q.line.id === p.line.id)) return;
+    this.pending.push(p);
+    this.pending.sort((a, b) => (b.line.priority ?? 0) - (a.line.priority ?? 0));
+    this.pending.length = Math.min(QUEUE_LIMIT, this.pending.length);
   }
 
   private ready(line: Line): boolean {
@@ -103,23 +137,27 @@ export class Speech {
     return last === undefined || this.t - last >= line.again / 1000;
   }
 
-  private say(line: Line) {
+  private say(p: Pending) {
+    const line = p.line;
+    this.pending = this.pending.filter((q) => q.line.id !== line.id);
+    this.current = p;
     const texts = typeof line.say === 'string' ? [line.say] : line.say;
     const text = texts[Math.floor(Math.random() * texts.length)];
-    this.said.set(line.id, this.t);
-    if (line.again === undefined) {
-      this.once.add(onceKey(line));
-      try {
-        localStorage.setItem(KEY, JSON.stringify([...this.once]));
-      } catch { /* not kept */ }
-    }
     this.text = text;
     this.typed = 0;
     this.nextIn = 0;
     this.shown.textContent = '';
     this.rest.textContent = text;
     this.el.classList.add('on');
-    const show = typingTime(text) + showFor(text);
+    // Immediate danger is readable at once, before a long typewriter animation can hide the instruction.
+    const instant = line.priority === 3;
+    if (instant) {
+      this.typed = text.length;
+      this.shown.textContent = text;
+      this.rest.textContent = '';
+      this.remember();
+    }
+    const show = (instant ? 0 : typingTime(text)) + showFor(text);
     this.hideAt = this.t + show;
     this.quietUntil = this.t + show + GAP;
     this.onSaid?.(line.id, show);
@@ -140,6 +178,21 @@ export class Speech {
     }
     this.shown.textContent = this.text.slice(0, this.typed);
     this.rest.textContent = this.text.slice(this.typed);
+    if (this.typed === this.text.length) this.remember();
+  }
+
+  /** An interrupted typewriter line has not delivered its information and remains eligible. */
+  private remember() {
+    const p = this.current;
+    if (!p || p.remembered) return;
+    p.remembered = true;
+    this.said.set(p.line.id, this.t);
+    if (p.line.again === undefined) {
+      this.once.add(onceKey(p.line));
+      try {
+        localStorage.setItem(KEY, JSON.stringify([...this.once]));
+      } catch { /* not kept */ }
+    }
   }
 }
 
