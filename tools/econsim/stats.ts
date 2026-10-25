@@ -98,6 +98,20 @@ export function bottlenecks(r: Results, n = 6): [string, number][] {
   return Object.entries(means(r, (run) => run.wait)).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => [k, v / 60]);
 }
 
+/** Separate finding a body from collecting its parts and acting on them. Old cached results have no stages. */
+function stagesMd(r: Results): string[] {
+  const kinds = [...new Set(r.runs.flatMap((run) => Object.keys(run.stages ?? {})))].sort();
+  if (!kinds.length) return [];
+  const stage = (kind: string, key: 'foundS' | 'readyS' | 'repairedS' | 'calledS') => {
+    const times = r.runs.map((run) => run.stages?.[kind]?.[key] ?? Infinity);
+    return `${min(quantile(times, 0.5))} (${pct(times.filter(Number.isFinite).length / Math.max(1, times.length))})`;
+  };
+  return ['', '<details><summary>Progression stages (median minutes; share reached)</summary>', '',
+    '| gear | body owned | all parts owned | repaired | called |', '|---|---:|---:|---:|---:|',
+    ...kinds.map((kind) => `| ${label(kind)} | ${stage(kind, 'foundS')} | ${stage(kind, 'readyS')} | ${stage(kind, 'repairedS')} | ${kind.startsWith('receiver_') ? stage(kind, 'calledS') : '—'} |`),
+    '', '</details>', ''];
+}
+
 /** A one-set summary (no base to compare with). */
 export function summaryMd(r: Results): string {
   const lines = [`## Economy sim · \`${r.sha.slice(0, 7)}\``, '', `${r.runs.length} worlds, ${r.capS / 3600} h of play each (solo).`, '',
@@ -107,6 +121,7 @@ export function summaryMd(r: Results): string {
     lines.push(`| ${label(m)} | ${pct(s.reach)} | ${min(s.p50)} | ${min(s.p10)}–${min(s.p90)} |`);
   }
   lines.push('', '**Bottlenecks** (min per world the top goal waited on): ' + bottlenecks(r).map(([k, v]) => `${k} ${v.toFixed(0)}`).join(', '));
+  lines.push(...stagesMd(r));
   return lines.join('\n');
 }
 
@@ -116,6 +131,9 @@ export function compareMd(base: Results, head: Results, changes: Change[], link?
   const out = [`## Economy sim · \`${head.sha.slice(0, 7)}\` vs \`${base.sha.slice(0, 7)}\``, ''];
   out.push(`${head.runs.length} worlds, ${head.capS / 3600} h of solo play each, the same worlds on both sides.${link ? ` [Run](${link})` : ''}`, '');
   if (base.simHash !== head.simHash) out.push('> ⚠️ The simulator itself changed between these: some of the difference may be the yardstick, not the game.', '');
+  if (base.runs.some((r) => !r.exactCodeSteps) !== head.runs.some((r) => !r.exactCodeSteps)) {
+    out.push('> Machine-step coverage differs: one revision estimates code-built teardown steps, the other enumerates them exactly. Handling-time and scrap differences can be measurement changes rather than game balance changes.', '');
+  }
   out.push(flagged.length ? `**${flagged.length} change${flagged.length > 1 ? 's' : ''}:**` : '**No significant change.**', '');
   const row = (c: Change) => `| ${label(c.m)} | ${min(c.base.p50)} → **${min(c.head.p50)}** | ${signed(c.rel)} (${signed(c.lo)}…${signed(c.hi)}) | ${pct(c.base.reach)} → ${pct(c.head.reach)} | ${c.flag ?? ''} |`;
   const head4 = ['| milestone | median min | Δ (95% CI) | reached | |', '|---|---:|---:|---:|---|'];
@@ -136,6 +154,7 @@ export function compareMd(base: Results, head: Results, changes: Change[], link?
   }
   const deaths = (r: Results) => r.runs.reduce((a, x) => a + x.deaths, 0) / r.runs.length;
   out.push(`Deaths per world: ${deaths(base).toFixed(1)} → ${deaths(head).toFixed(1)}.`);
+  out.push(...stagesMd(head));
   return out.join('\n');
 }
 

@@ -82,6 +82,10 @@ export type RunResult = {
   world: string;
   /** Game time (s) each milestone was first reached. */
   milestones: Record<string, number>;
+  /** First ownership, all repair parts available, working gear, and receiver use (seconds). */
+  stages: Record<string, { foundS?: number; readyS?: number; repairedS?: number; calledS?: number }>;
+  /** Older shared rules cannot enumerate code-built machine steps; their handling time is estimated. */
+  exactCodeSteps: boolean;
   deaths: number;
   gameOverS: number | null;
   wonS: number | null;
@@ -149,13 +153,14 @@ export class Sim {
     this.machineRand = seeded(seed * 7919 + 3);
     this.world = new World(seeded(seed * 7919 + 4));
     this.todOffset = 0.2 + this.rand() * 0.6;
-    this.out = { world: worldId, milestones: {}, deaths: 0, gameOverS: null, wonS: null, endS: 0, sources: {}, tiers: {}, used: {}, leftover: {}, wait: {}, km: 0, trips: 0, fights: {}, kills: {}, bossTries: 0 };
+    this.out = { world: worldId, milestones: {}, stages: {}, exactCodeSteps: !!stepList(Object.keys(COMPONENTS)[0] as JunkKind, 1, 1), deaths: 0, gameOverS: null, wonS: null, endS: 0, sources: {}, tiers: {}, used: {}, leftover: {}, wait: {}, km: 0, trips: 0, fights: {}, kills: {}, bossTries: 0 };
     const sampleRand = seeded(seed * 7919 + 5);
     for (const kind of Object.keys(ENEMIES) as EnemyKind[]) {
       this.spoilSamples.set(kind, Array.from({ length: 40 }, () => ENEMIES[kind].drops(sampleRand, { jet: 'drone' })));
     }
     // The broken motorcycle by the first crashed pod (shared/tables.ts HOME_BIKE), one per world: repaired where it lies.
     this.chest.push({ id: this.newId(), kind: 'motorcycle', n: 1, parts: GEAR.motorcycle.slots.map((s) => ('part' in s && s.part === 'motor' ? 'motor_scrap' : null)) });
+    this.recordStages();
   }
 
   // ---- inventory --------------------------------------------------------------------------------------------------
@@ -236,6 +241,7 @@ export class Sim {
 
   /** Count a part coming in, by where it came from. */
   private got(kind: string, src: Source) {
+    this.recordStages();
     // (Wiring is a machine's coil: counted with the parts, as Scrap.)
     const p = parsePart(kind) ?? (kind === WIRING ? { tier: 0 } : null);
     if (!p) return;
@@ -656,12 +662,20 @@ export class Sim {
     const steps = stepList(kind, seed, level);
     return COSTS.stepS * (steps ? steps.list.length : COSTS.codeSteps.base + COSTS.codeSteps.perPart * machineParts(kind, seed, level).length);
   }
-  private teardownScrap(kind: JunkKind, seed: number, level: number): number {
+  private teardownScrap(kind: JunkKind, seed: number, level: number, inField = true): number {
+    const frame = frameScrap(kind, seed, level, 0);
+    // server/crash.ts done(): bench sessions do not award scrap per step or module.
+    if (!inField) return frame;
     const steps = stepList(kind, seed, level);
-    if (steps) return steps.list.length * SCRAP_REWARD.step + frameScrap(kind, seed, level, 0);
+    if (steps) {
+      const finished = new Map<string, boolean>();
+      for (const s of steps.list) if (s.module) finished.set(`${s.module}:${s.inner}`, s.inner);
+      const bonuses = [...finished.values()].reduce((n, inner) => n + (inner ? SCRAP_REWARD.piece : SCRAP_REWARD.module), 0);
+      return steps.list.length * SCRAP_REWARD.step + bonuses + frame;
+    }
+    // Old code-built machines paid each step and the bare frame, never imaginary module bonuses.
     const parts = machineParts(kind, seed, level).length;
-    const modules = Math.ceil(parts / 2);
-    return Math.round((COSTS.codeSteps.base + COSTS.codeSteps.perPart * parts) * SCRAP_REWARD.step + modules * (SCRAP_REWARD.module + SCRAP_REWARD.perModule) + SCRAP_REWARD.machine);
+    return Math.round((COSTS.codeSteps.base + COSTS.codeSteps.perPart * parts) * SCRAP_REWARD.step + frame);
   }
 
   /** Pick the best place to go next: value for the time it takes, given the risk. Null: nothing worth it. */
@@ -792,13 +806,21 @@ export class Sim {
       this.toChest(it.kind, it.n, it.parts ?? undefined);
       slots[i] = null;
     }
-    this.dismantle();
-    this.bench();
-    // The dismantling bench may have gone up just now: what waits for it is taken apart, and what that gives used.
-    if (this.dismantle()) this.bench();
-    this.kit();
-    this.milestones();
-    this.bosses();
+    const attempted = new Set<BossKind>();
+    for (;;) {
+      this.dismantle();
+      this.recordStages();
+      this.bench();
+      // The dismantling bench may have gone up just now: use what was waiting on it.
+      if (this.dismantle()) this.bench();
+      this.kit();
+      this.milestones();
+      const beaten = this.beaten.size;
+      this.bosses(attempted);
+      // Boss rewards are already at home. Finish the repairs they unlock before heading out again,
+      // including the final receiver when the last relic arrives after its earlier turn in BOSS_KINDS.
+      if (this.beaten.size === beaten || this.lives <= 0 || this.out.wonS !== null) break;
+    }
     const bottle = this.carried('canteen');
     this.sips = bottle ? canteenSips(quality(bottle)) : 0;
   }
@@ -816,7 +838,7 @@ export class Sim {
           this.toChest(partItem(pt.part, pt.tier));
           this.got(partItem(pt.part, pt.tier), it.kind);
         }
-        this.toChest(SCRAP, this.teardownScrap(it.kind as JunkKind, seed, 1));
+        this.toChest(SCRAP, this.teardownScrap(it.kind as JunkKind, seed, 1, false));
       }
       this.chest.splice(this.chest.indexOf(it), 1);
       any = true;
@@ -954,6 +976,7 @@ export class Sim {
   }
 
   private milestones() {
+    this.recordStages();
     const m = this.out.milestones;
     for (const kind of Object.keys(GEAR)) {
       const b = this.best(kind);
@@ -967,13 +990,15 @@ export class Sim {
   }
 
   /** Call every boss whose receiver works, if there's a rifle to fight it with. */
-  private bosses() {
+  private bosses(attempted: Set<BossKind>) {
     for (const kind of BOSS_KINDS) {
-      if (this.beaten.has(kind) || this.lives <= 0) continue;
+      if (this.beaten.has(kind) || attempted.has(kind) || this.lives <= 0) continue;
       const r = this.best(RECEIVERS[kind]);
       // Called only with a fair chance of winning (shared/enemies.ts: in practice, the rifle).
       const { win, death, seconds } = this.odds(kind);
       if (!r || win < 0.5) continue;
+      attempted.add(kind);
+      (this.out.stages[RECEIVERS[kind]] ??= {}).calledS ??= this.t;
       this.out.bossTries++;
       this.out.fights[kind] = (this.out.fights[kind] ?? 0) + 1;
       this.t += seconds;
@@ -992,6 +1017,33 @@ export class Sim {
       this.needCache = null;
     }
     if (this.beaten.size === BOSS_KINDS.length) this.out.wonS ??= this.t;
+  }
+
+  /** Observe real inventory, without changing the agent's goals or dice. Ready means the body plus all
+   * matching loose/fitted parts are owned; it does not assume access to a bench or count uncrafted scrap. */
+  private recordStages() {
+    const all = this.all();
+    const loose = new Map<string, number>();
+    for (const it of all) if (!it.parts) loose.set(it.kind, (loose.get(it.kind) ?? 0) + it.n);
+    for (const [kind, gear] of Object.entries(GEAR)) {
+      if (gear.built) continue;
+      const bodies = all.filter((it) => it.kind === kind);
+      if (!bodies.length) continue;
+      const stage = this.out.stages[kind] ??= {};
+      stage.foundS ??= this.t;
+      if (stage.readyS === undefined && bodies.some((it) => {
+        const stock = new Map(loose);
+        return gear.slots.every((slot, i) => {
+          if (it.parts?.[i]) return true;
+          for (const [part, n] of stock) if (n > 0 && fitsSlot(slot, part)) {
+            stock.set(part, n - 1);
+            return true;
+          }
+          return false;
+        });
+      })) stage.readyS = this.t;
+      if (bodies.some(repaired)) stage.repairedS ??= this.t;
+    }
   }
 
   // ---- the run -----------------------------------------------------------------------------------------------------

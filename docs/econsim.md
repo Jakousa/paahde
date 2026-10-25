@@ -44,6 +44,15 @@ secret the run still writes its report and just doesn't post.
   something is slow.
 - **Part sources**: per world, how many of each part came from each source (machine kinds, `find`, `cache`, `stash`,
   `crawler`, `guardian`, `drone`, `jet`, `boss`, ...), and which of those moved.
+- **Progression stages**: first ownership of a gear body, ownership of every matching repair part (loose or fitted),
+  a working item, and the first use of each receiver. These are separate `stages` timestamps in the JSON and a
+  collapsed report table. Parts owned does not assume bench access or count scrap that still needs crafting.
+  Use the gaps to distinguish finding a body, collecting parts, and the agent deciding to act. Old cached results
+  without these observations omit the table.
+
+The `exactCodeSteps` flag records whether the simulated revision exposes exact code-built machine topology. Reports
+warn when only one side has it: the older fallback estimates can otherwise look like a loot-balance change. Field
+teardowns count step, module/piece completion and frame rewards; bench teardowns pay only the frame, as on the server.
 
 Any change to a table reshuffles every roll after it (a bit like the machine contents note in shared/tables.ts), so
 expect small wobbles everywhere. The flag thresholds are set so that a change that doesn't matter (one more scrap in
@@ -109,7 +118,10 @@ counted off) and the value of anything it could pick up. A part no goal needs is
 or an upgrade for gear in use. Each stop is the known place with the best `value × (1 − risk) / time`. It heads home
 when the bag is full, when something in it finishes a goal, or when nothing's worth going on for. At home it unloads,
 takes carried machines apart, repairs and crafts goal by goal (a building only from what earlier goals don't need),
-fits better parts, wears and carries the best gear, and calls any boss it can. `made:<kind>` milestones are the
+fits better parts, wears and carries the best gear, and calls any boss it can. After boss rewards arrive it settles
+repairs, gear and milestones again before departing, so a newly awarded relic can immediately finish another receiver.
+Each boss is attempted at most once per home visit; a failed attempt does not create an automatic retry loop.
+`made:<kind>` milestones are the
 wrench and what's put up at home. Against a commit that still has the starting bunker (`home.ts` BUNKER), home is the
 bunker, with its table, chest and pump, and those goals are left out.
 

@@ -35,8 +35,8 @@ export const COSTS = {
   openS: 4,
   /** One teardown step (unscrewing, prying, cutting a wire), s. */
   stepS: 5,
-  /** Steps of a machine built in code (src/teardown/junk.ts; the server can't count them): this many to open it, then
-   *  this many per part in it. Modules ≈ parts / 2 for the scrap they pay (SCRAP_REWARD). */
+  /** Fallback only for older commits whose shared rules cannot enumerate code-built steps: this many to open,
+   *  then this many per part. Current commits use the exact shared topology instead. */
   codeSteps: { base: 4, perPart: 2.5 },
   /** At home: unloading, the workbench, sorting the chest (s per visit), and per repair or craft. */
   baseS: 45,
