@@ -41,7 +41,7 @@ The icon is `desktop/build/icon.png`, rendered from `public/favicon.svg` by `too
 ## How it works
 
 - `desktop/main.mjs` serves the game from `app://game/`: a standard, secure scheme, so the page has a stable origin
-  (its localStorage, and the browser ID in it, survive restarts), a secure context (WebGPU, pointer lock) and module
+  (its localStorage, and the browser ID, name, colour and character look in it, survive restarts), a secure context (WebGPU, pointer lock) and module
   workers. Everything under `app://game/api/` is passed on to the server, so the page's relative `fetch('api/...')`
   calls work unchanged.
 - A WebSocket can't be passed on like that (`new WebSocket('app://...')` throws), so `desktop/preload.cjs` gives the
