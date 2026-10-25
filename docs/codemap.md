@@ -126,7 +126,7 @@ when you find it stale.
   Model made in code and every beam in one instanced draw (a camera-facing quad per beam that widens with distance):
   `src/world/beacons.ts`
 - Tarps (`tarp`, shared/placed.ts `TARP`) — shade you build: a 5.8 m canvas sail on four poles (one corner high, one
-  low), guy lines staked out; wrench-built (6 cloth, 4 scrap), `anywhere`, four turns (R: which corner is high), poles
+  low), guy lines staked out; wrench-built (6 cloth, 4 scrap), four turns (R: which corner is high), poles
   collide, the canvas doesn't. The rig (pole tops on each pole's own sand, the canvas corners, the stakes) is
   `shared/tarp.ts`, used by `shared/shade.ts` (the canvas as four triangles: standing under it is shade for the heat) and
   by `src/world/tarps.ts` (model made in code; the canvas billows in `windSpeed` in a TSL vertex shader)
