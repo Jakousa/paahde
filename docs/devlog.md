@@ -2,6 +2,19 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-25 — One pod, and everything first is built from what lies by it
+
+- **One pod** at the spawn instead of four (`LAYOUT` in `shared/podSpot.ts`; the code still takes any number). Everyone
+  arrives at it.
+- **A starter kit, kept whole** (`POD_LOOT.kit` in `shared/tables.ts`): 20 scrap, 7 cloth, 3 wiring, a broken canteen
+  and a scrap battery and bearing lie about the pod at once. When one is taken, the next to appear is whatever the kit is
+  shortest of (`podFind` with what lies there, `shared/lootRoll.ts`; server/loot.ts counts it).
+- **Cheaper first builds**, so the kit covers the wrench (3 scrap), a workbench (6 scrap, 1 wiring), a dismantling bench
+  (8 scrap, 1 wiring, 1 cloth), a tarp (3 cloth, 2 scrap) and a bedroll (2 cloth, 1 scrap).
+- Economy sim (100 worlds): wrench 5 min, workbench 9, bedroll 11, dismantling bench 12, motorcycle 14; the whole early
+  game 20–40% sooner, the win ~306 min.
+- Also: scrap fields' cloth bundles from ~12% to ~29% of pieces.
+
 ## 2026-10-25 — Crashed pods instead of the crashed ship
 
 The big cargo ship is gone; players come down in escape pods, one each.
