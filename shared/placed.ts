@@ -3,8 +3,8 @@
 // buildings put up with the wrench from base materials (shared/crafting.ts BUILDS: the windmill, the battery station,
 // the power pole), of which the windmill and battery station keep their item with its parts in a box of their own while
 // they stand (shared/gear.ts isBuilding, server/placed.ts). The beacon (a lamp on a mast shining a column of light into
-// the sky, src/world/beacons.ts) is the one building that goes up anywhere out on the sand, not only round the base: a
-// marker; its light's colour is its item's data (BEACON_COLORS). The server owns the list
+// the sky, src/world/beacons.ts) and the tarp (shade you build, shared/tarp.ts) go up anywhere out on the sand, not only
+// round the base; a beacon's light colour is its item's data (BEACON_COLORS). The server owns the list
 // (server/placed.ts, `placed` table) and sends it whole on join and when it changes; client and server both keep it
 // here with setPlaced(), which also hands their standing parts to the base's collision (shared/base.ts
 // setPlacedCapsules: the floor's with the bunker, the sand's anywhere), so prediction and the server collide with the
@@ -25,10 +25,11 @@ import { BASE, BASE_PIECES, FLOOR, HALL, byMast, insideBase, overBase, PILLAR, R
 import { EYE_HEIGHT } from './dig.ts';
 import { ITEMS } from './items.ts';
 import { heightAt } from './terrain.ts';
+import { TARP_HALF } from './tarp.ts';
 import { TEXT } from './text.ts';
 
 /** A placed thing: DB id, item kind, world position of its footprint centre on the floor or the sand (y: what it
- *  stands on), its turn (0: long side along X, 1: along Z), and for a building the parts fitted in it (its tier and
+ *  stands on), its turn (0: long side along X, 1: along Z; a tarp's in quarter turns, 0..3, PLACEABLES `turns`), and for a building the parts fitted in it (its tier and
  *  look, src/world/placed.ts). */
 export type Placed = { id: number; kind: string; x: number; y: number; z: number; rot: number; parts?: (string | null)[];
   /** A beacon's light (BEACON_COLORS index; its item's ItemData `color`). */
@@ -46,7 +47,11 @@ type Box = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: num
  *  floor (y0 = 0) collide; the others are only looked at. `sand`: stands outside, on the sand round the base,
  *  not on the bunker floor, at least `gap` (m, edge to edge) from the other things out there. Sizes match
  *  tools/blender/placeables.py. */
-export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; sand?: true; gap?: number; anywhere?: true }> = {
+export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; sand?: true; gap?: number; anywhere?: true;
+  /** Turns it can be put up at (quarter turns, R cycles them); 2 (along X or Z) if not given. */
+  turns?: number;
+  /** Most the sand may rise across its footprint (m); MAX_TILT if not given. */
+  tilt?: number }> = {
   plant_bed: { hx: 0.82, hz: 0.42, boxes: [{ x0: -0.8, x1: 0.8, y0: 0, y1: 0.52, z0: -0.4, z1: 0.4 }] },
   uv_lamp: {
     hx: 0.99, hz: 0.27,
@@ -82,7 +87,20 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
       { x0: -0.2, x1: 0.2, y0: 3.3, y1: 3.75, z0: -0.2, z1: 0.2 },
     ],
   },
+  // A tarp (shared/tarp.ts): canvas on four poles at its corners. The poles collide (each stands on its own sand, up to
+  // `tilt` over the lowest, so they reach that much higher); the canvas is only looked at (you walk under it). Its
+  // shade: shared/shade.ts. Four turns: which corner is the high one.
+  tarp: {
+    hx: TARP_HALF + 0.1, hz: TARP_HALF + 0.1, sand: true, gap: 1, anywhere: true, turns: 4, tilt: 1.2,
+    boxes: [
+      ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => ({ x0: sx * TARP_HALF - 0.06, x1: sx * TARP_HALF + 0.06, y0: 0, y1: 4.6, z0: sz * TARP_HALF - 0.06, z1: sz * TARP_HALF + 0.06 })),
+      { x0: -TARP_HALF, x1: TARP_HALF, y0: 2.2, y1: 3.6, z0: -TARP_HALF, z1: TARP_HALF },
+    ],
+  },
 };
+export const TARP = 'tarp';
+/** How many turns `kind` can be put up at. */
+export const turnsOf = (kind: string) => PLACEABLES[kind]?.turns ?? 2;
 
 export const isPlaceable = (kind: string | undefined) => !!kind && kind in PLACEABLES;
 /** Stands out on the sand (not on the bunker floor). */
@@ -184,7 +202,7 @@ const KEEP_CLEAR: { what: string; r: number[] }[] = [
  */
 export function placeError(kind: string, x: number, z: number, rot: number, list: Placed[], players: { x: number; y: number; z: number }[] = []): string | null {
   if (!isPlaceable(kind)) return TEXT.notice.cantPlace;
-  if (!Number.isFinite(x) || !Number.isFinite(z) || (rot !== 0 && rot !== 1)) return TEXT.notice.badSpot;
+  if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isInteger(rot) || rot < 0 || rot >= turnsOf(kind)) return TEXT.notice.badSpot;
   const f = footprint(kind, x, z, rot);
   const sand = onSand(kind);
   if (sand) {
@@ -196,7 +214,7 @@ export function placeError(kind: string, x: number, z: number, rot: number, list
     }
     if (!anywhere(kind) && Math.hypot(x - BASE.x, z - BASE.z) > OUTDOOR_RANGE) return TEXT.notice.tooFarFromBase;
     const hs = corners.map(([cx, cz]) => heightAt(cx, cz));
-    if (Math.max(...hs) - Math.min(...hs) > MAX_TILT) return TEXT.notice.tooSteep;
+    if (Math.max(...hs) - Math.min(...hs) > (PLACEABLES[kind].tilt ?? MAX_TILT)) return TEXT.notice.tooSteep;
   } else {
     const m = 0.05 + PILLAR.d; // clear of the pilasters
     if (f[0] < BASE.x - ROOM.w + m || f[2] > BASE.x + ROOM.w - m || f[1] < BASE.z + ROOM.z + m || f[3] > BASE.z + HALL.z - m) {

@@ -9,7 +9,7 @@
 //
 // Looking at a beacon with nothing to put down, R gives its light the next colour (shared/placed.ts BEACON_COLORS).
 import { BUILDS, isBuildable, pickIngredients, WRENCH } from '../shared/crafting.ts';
-import { BEACON, BEACON_COLORS, isPlaceable, onSand, placeAim, placed, placedTarget, placedY, placeError, type Placed } from '../shared/placed.ts';
+import { BEACON, BEACON_COLORS, isPlaceable, onSand, placeAim, placed, placedTarget, placedY, placeError, turnsOf, type Placed } from '../shared/placed.ts';
 import { EYE_HEIGHT, pitchFromQ } from '../shared/dig.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { yawFromQ } from '../shared/sim.ts';
@@ -91,8 +91,10 @@ export class Placer {
       const colourHint = beacon ? `${kbd('rotate')}${TEXT.prompt.colour}` : null;
       return { prompt: [menuHint, colourHint, pickHint].filter(Boolean).join(' ') || null, target };
     }
-    if (rotate) this.rot ^= 1;
-    const at = placeAim(feet, yaw, pitch, kind, this.rot, placed);
+    // R turns it: along X or Z, or a tarp a quarter at a time.
+    const turns = turnsOf(kind);
+    if (rotate) this.rot = (this.rot + 1) % turns;
+    const at = placeAim(feet, yaw, pitch, kind, this.rot % turns, placed);
     // Down in the bunker with something for the sand: it goes outside.
     const below = onSand(kind) && feet.y + EYE_HEIGHT < heightAt(feet.x, feet.z);
     const short = wrench && !pickIngredients(bag, BUILDS[kind]);

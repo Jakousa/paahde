@@ -80,7 +80,8 @@ when you find it stale.
 ## Weather and survival
 
 - `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen
-- `shared/temperature.ts` — air/felt °C by time of day (drives thirst); `shared/shade.ts` — sun ray march (shade)
+- `shared/temperature.ts` — air/felt °C by time of day (drives thirst); `shared/shade.ts` — sun ray march (shade;
+  counts huts, wrecks, players and bikes, built tarps)
   tuning, drained and validated in `server/water.ts`, HUD + `playerHands` in `src/water.ts`
 - `shared/storm.ts` — local sandstorms (path, strength, warning) and rare world-wide storm fronts (mega-storms: choke
   you in the open, `sheltered` = bunker or lee of rock; death tally in server/world.ts); scheduled by
@@ -114,6 +115,11 @@ when you find it stale.
   cycles its colour (`BEACON_COLORS`, 8; src/placing.ts, `beaconColor` message), kept in its item's ItemData `color`.
   Model made in code and every beam in one instanced draw (a camera-facing quad per beam that widens with distance):
   `src/world/beacons.ts`
+- Tarps (`tarp`, shared/placed.ts `TARP`) — shade you build: a 5.8 m canvas sail on four poles (one corner high, one
+  low), guy lines staked out; wrench-built (6 cloth, 4 scrap), `anywhere`, four turns (R: which corner is high), poles
+  collide, the canvas doesn't. The rig (pole tops on each pole's own sand, the canvas corners, the stakes) is
+  `shared/tarp.ts`, used by `shared/shade.ts` (the canvas as four triangles: standing under it is shade for the heat) and
+  by `src/world/tarps.ts` (model made in code; the canvas billows in `windSpeed` in a TSL vertex shader)
 - `shared/power.ts` — electricity, somewhat realistic in game time (`GAME_SPEED`: a game day is 30 real min): the
   shared wind (`windSpeed`: day cycle, weather, gusts, storms), windmill output (½ρAv³·Cp·η by bearings/motor,
   furling) and rotor speed, battery stations (per-battery kWh by tier, a Scrap battery = a car battery, 0.6 kWh; coils

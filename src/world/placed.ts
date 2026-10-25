@@ -6,6 +6,7 @@
 // the wind now, the bearings), the tail folding it out of a gale, still while a bearing or the motor is missing; the
 // battery station shows the cells it holds, each in its own tier, each one's lamp lit while it holds charge. A beacon
 // (src/world/beacons.ts, its model made in code) lights its lens and its beam in its colour while it has power.
+// A tarp (src/world/tarps.ts) is built in code for its own patch of sand, its canvas moving in the same wind.
 // Also the see-through green / red preview of where the held placeable would go (src/placing.ts).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -15,7 +16,8 @@ import { EMPTY, STAGE_NODES, type BedState } from '../../shared/garden.ts';
 import { isBuilding, tierOf } from '../../shared/gear.ts';
 import { furl, rotorSpeed, windSpeed, type PowerState } from '../../shared/power.ts';
 import { parsePart } from '../../shared/items.ts';
-import { BEACON, bedLit, onSand, PLACEABLES, type Placed } from '../../shared/placed.ts';
+import { BEACON, bedLit, onSand, PLACEABLES, TARP, type Placed } from '../../shared/placed.ts';
+import { TARP_WIND, tarpModel } from './tarps.ts';
 import { BeaconBeams, beaconModel, LENS, lensColor } from './beacons.ts';
 import { applyTier } from '../tierLook.ts';
 import { cells } from '../../shared/power.ts';
@@ -57,7 +59,7 @@ export class PlacedView {
     this.models[BEACON] = beacon;
     const loader = new GLTFLoader();
     for (const kind of Object.keys(PLACEABLES)) {
-      if (kind === BEACON) continue;
+      if (kind === BEACON || kind === TARP) continue;
       const material = (mt: THREE.Material) => (onSand(kind) ? base.outdoorMaterial(mt) : base.indoorMaterial(mt));
       loader.load(
         `./models/placeables/${kind}.glb`,
@@ -84,16 +86,17 @@ export class PlacedView {
     for (const [id, s] of this.shown) {
       if (ids.has(id)) continue;
       this.group.remove(s.obj);
+      if (s.p.kind === TARP) disposeGeometry(s.obj);
       this.shown.delete(id);
     }
     for (const p of list) {
       const model = this.models[p.kind];
-      if (!model) continue;
+      if (!model && p.kind !== TARP) continue;
       let s = this.shown.get(p.id);
       if (!s) {
-        const obj = model.clone();
+        const obj = p.kind === TARP ? tarpModel(p.x, p.y, p.z, p.rot, p.id) : model.clone();
         obj.position.set(p.x, p.y, p.z);
-        obj.rotation.y = p.rot ? Math.PI / 2 : 0;
+        if (p.kind !== TARP) obj.rotation.y = p.rot ? Math.PI / 2 : 0;
         if (p.kind === 'uv_lamp') {
           const pool = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.55), this.pool);
           pool.name = 'pool';
@@ -182,6 +185,10 @@ export class PlacedView {
     // Into the wind: the rotor (the head's +Z) faces where it comes from, swinging a little in the gusts.
     const into = Math.atan2(-WIND.x, -WIND.z);
     const t = performance.now() / 1000;
+    // The tarps' canvas: the wind where the stormiest of them stands (one wind for them all; a storm is kilometres wide).
+    let storm = 0;
+    for (const s of this.shown.values()) if (s.p.kind === TARP) storm = Math.max(storm, stormAt(s.p.x, s.p.z));
+    TARP_WIND.value = windSpeed(worldMs, storm);
     for (const s of this.shown.values()) {
       if (!s.head || !s.rotor) continue;
       const v = windSpeed(worldMs, stormAt(s.p.x, s.p.z));
@@ -193,31 +200,41 @@ export class PlacedView {
 
   /** The placement preview: `kind` at `at` (y: what it would stand on), green if it fits, red if not; null hides it. */
   preview(kind: string | null, at: { x: number; y: number; z: number; rot: number } | null, ok: boolean) {
-    if (!kind || !at || !this.models[kind]) {
+    if (!kind || !at || (!this.models[kind] && kind !== TARP)) {
       if (this.ghost) this.ghost.obj.visible = false;
       return;
     }
-    if (this.ghost?.kind !== kind) {
-      if (this.ghost) this.group.remove(this.ghost.obj);
-      const obj = this.models[kind].clone();
+    // A tarp's is built for the spot (it stands on the sand under each pole).
+    const spot = kind === TARP ? `${kind}:${at.x}:${at.z}:${at.rot}` : kind;
+    if (this.ghost?.kind !== spot) {
+      if (this.ghost) {
+        this.group.remove(this.ghost.obj);
+        if (this.ghost.kind.startsWith(`${TARP}:`)) disposeGeometry(this.ghost.obj);
+      }
+      const obj = kind === TARP ? tarpModel(at.x, at.y, at.z, at.rot) : this.models[kind].clone();
       STAGE_NODES.forEach((n) => {
         const o = n && obj.getObjectByName(n);
         if (o) o.visible = false;
       });
       obj.traverse((o) => ((o as THREE.Mesh).castShadow = false));
       this.group.add(obj);
-      this.ghost = { kind, obj };
+      this.ghost = { kind: spot, obj };
     }
     const g = this.ghost.obj;
     g.visible = true;
     g.position.set(at.x, at.y + 0.005, at.z);
-    g.rotation.y = at.rot ? Math.PI / 2 : 0;
+    if (kind !== TARP) g.rotation.y = at.rot ? Math.PI / 2 : 0;
     const mat = ok ? this.ghostOk : this.ghostBad;
     g.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) m.material = mat;
     });
   }
+}
+
+/** Free a model's own geometry (one built for its spot: a tarp's), not its shared materials. */
+function disposeGeometry(o: THREE.Object3D) {
+  o.traverse((m) => (m as THREE.Mesh).isMesh && (m as THREE.Mesh).geometry.dispose());
 }
 
 /** The lamp's violet light on what's under it: additive, brightest in the middle, fading out to the edges. */

@@ -2005,3 +2005,28 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
 - Icon: the code model flattened by tools/icons/dump.mjs (which now reads vertex colours) and rendered by
   tools/blender/icons.py, lens lit.
 - Gaps: no light on the ground round it; a beacon in a rock is possible (the aim finds the sand).
+
+## Tarps: shade you build
+
+- **Why:** the starting bunker is going away, so the shade it gave has to be built. A tarp (`tarp`, "Tarp") is a 5.8 m
+  square of desert-tan canvas pitched as a shade sail on four dark pipe poles, each held by two guy lines to stakes:
+  room for three or four people under it. Built with the wrench (6 cloth, 4 scrap; all back when dismantled), anywhere
+  on the sand (`anywhere`), on ground up to 1.2 m out of level (`tilt`).
+- **Shape (shared/tarp.ts):** corners held 3.3 / 2.6 / 2.15 / 2.6 m over the sand under each pole, so it twists a little
+  like the real ones and follows the ground; the canvas sags 0.3 m in the middle and its edges are cut in. R turns it a
+  quarter at a time (PLACEABLES `turns: 4`; the other kinds still have 2), which picks where the high corner points:
+  the low side towards the sun throws the shade further.
+- **Heat:** `shared/shade.ts` tests each body ray against the tarps within 45 m: the canvas as four triangles (corners
+  and the sagged middle), cached per placed thing. Measured on a flat spot: the whole body shaded under it from 8:00
+  to 16:00, partly at 7 and 17 (the shade has moved off by then); ~40 µs a body check at noon.
+- **Drawing (src/world/tarps.ts):** made in code from the same rig, so what you see shading you is what cools you.
+  Three meshes a tarp (canvas 288 tris; poles and stakes, vertex-coloured; guy lines, no shadow), ~510 tris in all, the
+  three materials shared. The canvas moves on the GPU: positionNode lifts a 12×12 grid by two waves running downwind
+  (`windDir`) and a cross wave, pinned at the corners and freest mid-edge and in the middle, plus a billow that breathes;
+  amplitude and speed grow with `TARP_WIND` (shared/power.ts `windSpeed`, the windmills' wind, set each frame where the
+  stormiest tarp stands): a few cm in a breeze, ~0.3 m in a storm. The normal is rebuilt from the waves' slope along the
+  grid's tangents (attributes from the geometry), so folds catch the light. Underneath, a little of the sun glows
+  through the cloth (emissive on back faces, by day).
+- Icon: the code model on level sand, through tools/icons/dump.mjs and tools/blender/icons.py.
+- Gaps: one variant (no lean-to or hexagonal one yet); the guy lines don't move; the wind uniform is one for all tarps.
+

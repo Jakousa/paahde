@@ -8,6 +8,7 @@
 //   (shared/shelters.ts) within HUT_DIST;
 // - crash-site wrecks and debris (their collision capsules, shared/crashsites.ts) within CRASH_DIST, and the crashed
 //   ship's (shared/ship.ts);
+// - tarps (shared/tarp.ts) within TARP_DIST: their canvas, as four triangles round its sagging middle;
 // - `casters`: things that move, passed in by the caller: other players, their bikes, motorcycles lying on the sand;
 // - near the start, the scrap piles' hitboxes (shared/scrap.ts);
 // - the terrain (heightAt: dunes, rocks, the base's pad and every dig), marched with steps that grow with distance,
@@ -26,6 +27,8 @@ import { S_HUT, sheltersNear, shelterHutRect } from './shelters.ts';
 import { shipCasters } from './ship.ts';
 import { DECL, skyVector, sunHourAngle, type Vec3 } from './sun.ts';
 import { ROCK_H_MAX } from './rocks.ts';
+import { placed, TARP, type Placed } from './placed.ts';
+import { canvasAt, tarpRig, type TarpRig, type Vec } from './tarp.ts';
 import { heightAt } from './terrain.ts';
 
 /** How far towards the sun the ray looks for something in the way (m). */
@@ -46,6 +49,8 @@ const SCRAP_DIST = 25;
 const CRASH_DIST = 80;
 /** Shelter huts (2.6 m tall) are tested this close (m). */
 const HUT_DIST = 60;
+/** Tarps (canvas up to ~4.5 m) are tested this close (m, centre to point on each axis): long shade at a low sun. */
+const TARP_DIST = 45;
 /** Casters (players, bikes) further than this from the point (m, on each axis) are skipped. */
 const CASTER_DIST = 30;
 /** Sun this close to the horizon (sin of its elevation) counts as set. */
@@ -180,9 +185,49 @@ function hutsNear(x: number, z: number): number[][] {
   });
 }
 
+/** A tarp's canvas as two triangles (its corners, and its sagging middle lowered into the shared edge), cached per
+ *  placed thing (the list is replaced whole when it changes). */
+const tarpTris = new WeakMap<Placed, Vec[]>();
+function trisOf(p: Placed): Vec[] {
+  let t = tarpTris.get(p);
+  if (!t) {
+    const r: TarpRig = tarpRig(p.x, p.z, p.rot);
+    // Four triangles round the sagging middle: the corners and the centre.
+    const m = canvasAt(r, 0.5, 0.5);
+    const [a, b, c, d] = r.corners;
+    tarpTris.set(p, (t = [a, b, m, b, c, m, c, d, m, d, a, m]));
+  }
+  return t;
+}
+
+/** Does the ray from o along d hit triangle (a, b, c)? (Möller–Trumbore, either face, t > 0) */
+function hitsTri(ox: number, oy: number, oz: number, d: Vec3, a: Vec, b: Vec, c: Vec): boolean {
+  const e1x = b.x - a.x, e1y = b.y - a.y, e1z = b.z - a.z, e2x = c.x - a.x, e2y = c.y - a.y, e2z = c.z - a.z;
+  const px = d.y * e2z - d.z * e2y, py = d.z * e2x - d.x * e2z, pz = d.x * e2y - d.y * e2x;
+  const det = e1x * px + e1y * py + e1z * pz;
+  if (det > -1e-9 && det < 1e-9) return false;
+  const inv = 1 / det, tx = ox - a.x, ty = oy - a.y, tz = oz - a.z;
+  const u = (tx * px + ty * py + tz * pz) * inv;
+  if (u < 0 || u > 1) return false;
+  const qx = ty * e1z - tz * e1y, qy = tz * e1x - tx * e1z, qz = tx * e1y - ty * e1x;
+  const v = (d.x * qx + d.y * qy + d.z * qz) * inv;
+  if (v < 0 || u + v > 1) return false;
+  return (e2x * qx + e2y * qy + e2z * qz) * inv > 0;
+}
+
+/** The tarps close enough to (x, z) to shade it, as triangles (three corners each, flattened). */
+function tarpsNear(x: number, z: number): Vec[] {
+  const out: Vec[] = [];
+  for (const p of placed) {
+    if (p.kind === TARP && Math.abs(p.x - x) < TARP_DIST && Math.abs(p.z - z) < TARP_DIST) out.push(...trisOf(p));
+  }
+  return out;
+}
+
 /** One ray from (x, y, z) along d (towards the sun, d.y ≥ MIN_SUN_Y): true if nothing is in the way. */
-function rayClear(x: number, y: number, z: number, d: Vec3, sites: CrashSite[], huts: number[][], casters: readonly Caster[], self: number): boolean {
+function rayClear(x: number, y: number, z: number, d: Vec3, sites: CrashSite[], huts: number[][], tarps: Vec[], casters: readonly Caster[], self: number): boolean {
   for (const b of BOXES) if (hitsBox(x, y, z, d, b, MAX_DIST)) return false;
+  for (let i = 0; i < tarps.length; i += 3) if (hitsTri(x, y, z, d, tarps[i], tarps[i + 1], tarps[i + 2])) return false;
   for (const b of huts) if (hitsBox(x, y, z, d, b, MAX_DIST)) return false;
   for (const c of casters) {
     if (c.id === self || Math.abs(c.x - x) > CASTER_DIST || Math.abs(c.z - z) > CASTER_DIST) continue;
@@ -227,7 +272,7 @@ function rayClear(x: number, y: number, z: number, d: Vec3, sites: CrashSite[], 
 export function inSun(x: number, y: number, z: number, tod: number, casters: readonly Caster[] = [], self = -1): boolean {
   const d = sunDirection(tod);
   if (d.y < MIN_SUN_Y) return false;
-  return rayClear(x, y, z, d, sitesNear(x, z), hutsNear(x, z), casters, self);
+  return rayClear(x, y, z, d, sitesNear(x, z), hutsNear(x, z), tarpsNear(x, z), casters, self);
 }
 
 /**
@@ -240,11 +285,11 @@ export function sunOnBody(x: number, y: number, z: number, crouching: boolean, t
   const hl = Math.hypot(d.x, d.z);
   // Across the sun's direction, on the ground (any way when it is straight overhead).
   const sx = hl > 1e-6 ? -d.z / hl : 1, sz = hl > 1e-6 ? d.x / hl : 0;
-  const sites = sitesNear(x, z), huts = hutsNear(x, z);
+  const sites = sitesNear(x, z), huts = hutsNear(x, z), tarps = tarpsNear(x, z);
   const k = crouching ? CROUCH_SCALE : 1;
   let lit = 0;
   for (const [h, side, w] of BODY) {
-    if (rayClear(x + sx * side, y + h * k, z + sz * side, d, sites, huts, casters, self)) lit += w;
+    if (rayClear(x + sx * side, y + h * k, z + sz * side, d, sites, huts, tarps, casters, self)) lit += w;
   }
   return Math.min(1, lit);
 }

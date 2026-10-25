@@ -51,6 +51,7 @@ const en = {
     battery_station: 'Battery station',
     power_pole: 'Power pole',
     beacon_light: 'Beacon',
+    tarp: 'Tarp',
     laser_rifle: 'Laser rifle',
     laser_pistol: 'Laser pistol',
     jammer: 'Jammer',

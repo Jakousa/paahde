@@ -1,11 +1,12 @@
 // Dev-only page (vite dev serves it; not in the build): flattens the models built in code (the wrench, the carried
-// crash-site machines, the beacon) into triangles and flat materials for tools/icons/render.py to render as icons.
+// crash-site machines, the beacon, the tarp) into triangles and flat materials for tools/icons/render.py to render as icons.
 // `window.dump()` resolves to { kind: { tris: number[], mats: [...], mat: number[] } } (positions in metres, Y-up).
 import * as THREE from 'three/webgpu';
 import { wrenchModel } from '../../src/models/wrench.ts';
 import { buildJunk } from '../../src/teardown/junk.ts';
 import { beaconModel, LENS } from '../../src/world/beacons.ts';
 import { BEACON_COLORS } from '../../shared/placed.ts';
+import { tarpModel } from '../../src/world/tarps.ts';
 import type { JunkKind } from '../../shared/salvage.ts';
 
 /** The carried machines (shared/items.ts), at a fixed seed and level so the icon never changes. */
@@ -71,5 +72,7 @@ function flatten(root: THREE.Object3D) {
   const lens = beacon.getObjectByName(LENS) as THREE.Mesh;
   lens.material = new THREE.MeshStandardMaterial({ color: BEACON_COLORS[0], emissive: BEACON_COLORS[0] });
   out.beacon_light = flatten(beacon);
+  // The tarp on level sand, the high corner at the back.
+  out.tarp = flatten(tarpModel(0, 0, 0, 0, 0, true));
   return out;
 };

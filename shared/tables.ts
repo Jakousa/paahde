@@ -62,6 +62,8 @@ export const BUILD_TABLE: Record<string, IngredientSpec[]> = {
   power_pole: [SCRAP(8)],
   // A scrap mast with a lamp head, its wiring (the battery goes in after).
   beacon_light: [SCRAP(6), WIRING(2)],
+  // A tarp (shared/tarp.ts): canvas stitched from cloth, four scrap-pipe poles, the guy lines and stakes from the scraps.
+  tarp: [CLOTH(6), SCRAP(4)],
 };
 
 // ---------------------------------------------------------------------------------------------------------------

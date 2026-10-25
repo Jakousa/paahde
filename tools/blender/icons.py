@@ -88,6 +88,8 @@ CODE = {
     'beacon': ((2, 2), (0, 0, 0)),
     # The beacon building (src/world/beacons.ts): its mast stood up, the lens lit.
     'beacon_light': ((1, 3), (0, 0, 0)),
+    # The tarp (src/world/tarps.ts) on level sand.
+    'tarp': ((2, 2), (0, 0, 0)),
 }
 
 

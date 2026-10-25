@@ -57,6 +57,8 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   power_pole: { label: TEXT.items.power_pole, stack: 1, size: [1, 3] },
   // A mast with a lamp that shines a column of light into the sky (src/world/beacons.ts): a marker, put up anywhere.
   beacon_light: { label: TEXT.items.beacon_light, stack: 1, size: [1, 3] },
+  // A canvas sail on four poles (shared/tarp.ts): shade, put up anywhere.
+  tarp: { label: TEXT.items.tarp, stack: 1, size: [2, 2] },
   // The build tool (crafted at the workbench): with it in hand, the right mouse opens the build menu (src/buildMenu.ts).
   wrench: { label: TEXT.items.wrench, stack: 1 },
   // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.
