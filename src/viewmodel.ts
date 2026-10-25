@@ -380,16 +380,17 @@ export class ViewModel {
     // The mace's swing: the hands (up and right, then down across to the left) and the mace turning in the fist.
     const w = this.shown === 'mace' ? swingPose((performance.now() - playerHands.swingAt) / 1000) : 0;
     if (w !== 0) {
+      // Through, the hands stay up and sweep left, so the head is seen driving in under the crosshair.
       const back = Math.max(0, w), through = Math.max(0, -w);
-      this.sway.rotation.x += 0.22 * back - 0.45 * through;
-      this.sway.rotation.y += -0.3 * back + 0.35 * through;
-      this.sway.rotation.z += -0.35 * back + 0.5 * through;
-      this.sway.position.y += 0.03 * back - 0.02 * through;
+      this.sway.rotation.x += 0.22 * back - 0.05 * through;
+      this.sway.rotation.y += -0.3 * back + 0.6 * through;
+      this.sway.rotation.z += -0.35 * back + 0.3 * through;
+      this.sway.position.y += 0.03 * back;
       this.sway.position.z += -0.03 * back + 0.05 * through;
     }
     if (this.mace) {
       this.mace.quaternion.copy(this.mace.userData.rest as THREE.Quaternion);
-      if (w !== 0) this.mace.rotateX(w > 0 ? -1.1 * w : -1.5 * w);
+      if (w !== 0) this.mace.rotateX(w > 0 ? -1.1 * w : -1.2 * w);
     }
     for (const g of this.rifleGlow) g.emissiveIntensity = (g.userData.base as number) * (0.15 + 0.85 * playerHands.charge ** 3 + 4 * playerHands.kick);
 

@@ -1057,7 +1057,7 @@ const PISTOL: GunHold = {
   twist: 0.2,
 };
 const GUN_HOLD: Record<string, GunHold> = {
-  laser_rifle: RIFLE, laser_pistol: PISTOL, jammer: PISTOL, grinder: PISTOL, wrench: PISTOL, ...Object.fromEntries(Object.values(RECEIVERS).map((k) => [k, PISTOL])),
+  laser_rifle: RIFLE, laser_pistol: PISTOL, jammer: PISTOL, grinder: PISTOL, wrench: PISTOL, scrap_mace: PISTOL, ...Object.fromEntries(Object.values(RECEIVERS).map((k) => [k, PISTOL])),
 };
 
 /** Speed slide (slidePose): extra lean back (rad) and where the trailing left hand touches the sand (root space,

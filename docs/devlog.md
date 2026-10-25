@@ -2419,4 +2419,5 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   up and right, brought down hard across to the left, back), turning the hands and the mace in the fist together.
   The icon is rendered from that model (`tools/icons/code-models.ts`, `tools/blender/icons.py`).
 - **Economy sim:** a `mace` weapon (`shared/enemies.ts` odds): better than bare hands against crawlers only.
-- **Gaps:** others see no swing on your avatar (only hear it), and the mace isn't drawn on remote players.
+- **Gaps:** others see the mace in your hand (src/models/outfit.ts HELD, held low like the pistol) but no swing on your
+  avatar: they only hear it.

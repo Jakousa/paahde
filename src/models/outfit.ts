@@ -12,6 +12,7 @@ import { loadPart } from '../teardown/junk';
 import { jammerModel } from './jammer';
 import { grinderModel } from './grinder';
 import { wrenchModel } from './wrench';
+import { maceModel } from './mace';
 import { receiverModel } from './receiver';
 import { BOSS_KINDS, RECEIVERS } from '../../shared/bosses.ts';
 
@@ -115,6 +116,13 @@ const HELD: Record<string, (loaded: () => void) => THREE.Object3D> = {
   // The wrench (src/models/wrench.ts, built in the pistol's frame): held like the jammer, jaw up.
   wrench: () => {
     const g = wrenchModel().obj;
+    g.rotation.set(-0.45, Math.PI, 0);
+    shadows(g);
+    return g;
+  },
+  // The scrap mace (src/models/mace.ts, built in the pistol's frame like the wrench): held the same way, head up.
+  scrap_mace: () => {
+    const g = maceModel().obj;
     g.rotation.set(-0.45, Math.PI, 0);
     shadows(g);
     return g;
