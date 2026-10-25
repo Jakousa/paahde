@@ -17,17 +17,17 @@
 // Deterministic: + - * / and heightAt only.
 import { heightAt } from './terrain.ts';
 
-/** Half the canvas's side (m): a 6.4 m square, room for three or four to stand round the pole. */
-export const TARP_HALF = 3.2;
+/** Half the canvas's side (m): an 8 m square, room for three or four to stand round the pole. */
+export const TARP_HALF = 4;
 /** The peak (top of the centre pole), the corners, and the doorway's point, over their sand (m). */
-export const TARP_PEAK = 3.8;
-const CORNER_H = 0.4, DOOR_H = 2.3;
+export const TARP_PEAK = 4.6;
+const CORNER_H = 0.4, DOOR_H = 2.8;
 /** Corners in the tarp's own frame (turn 0), round the square from (−, −); the doorway is mid-way along +b (+Z). */
 const CORNER: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
 /** Corner lines: staked this far (m) out along the diagonal. The doorway's guy line: this far out in front. */
-const CORNER_OUT = 0.55, DOOR_OUT = 1.6;
+const CORNER_OUT = 0.55, DOOR_OUT = 1.9;
 /** How far the faces sag between their ridges (m, at the middle of a face). */
-export const TARP_SAG = 0.14;
+export const TARP_SAG = 0.17;
 
 export type Vec = { x: number; y: number; z: number };
 /** A tarp as it stands: its centre pole and door pole (foot and top), the canvas's corners (0..3), its peak and its

@@ -2152,26 +2152,26 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
 
 ## Tarps: shade you build
 
-- **Why:** the starting bunker is gone, so shade has to be built. A tarp (`tarp`, "Tarp") is a 6.4 m square of
+- **Why:** the starting bunker is gone, so shade has to be built. A tarp (`tarp`, "Tarp") is an 8 m square of
   desert-tan canvas pitched as a pyramid ("mid") over one tall pole: room for three or four standing round the pole.
   Built with the wrench, anywhere on the sand, on ground up to 1.2 m out of level (`tilt`). **Cheap on purpose:** 3 cloth
   and 2 scrap (all back when dismantled), the early game's shade, from the first trip's finds.
 - **First version (flat sail):** a 5.8 m sail on four corner poles, 2.15–3.3 m up. It looked right but shaded only
   from about 8:00 to 16:00: with the sun low, the shade fell beside it (the user's shot: standing under it at 64% heat).
-- **Shape now (shared/tarp.ts):** the peak 3.8 m up on the centre pole, the four corners staked 0.4 m over the sand on
-  short lines, so each side is a steep flat wall; the doorway's edge (+Z in its frame) is lifted in the middle to 2.3 m
+- **Shape now (shared/tarp.ts):** (scaled up a quarter after the first pyramid, 6.4 m with a 3.8 m pole) the peak 4.6 m up on the centre pole, the four corners staked 0.4 m over the sand on
+  short lines, so each side is a steep flat wall; the doorway's edge (+Z in its frame) is lifted in the middle to 2.8 m
   on a short pole with a guy line out in front. Every point stands over its own sand, so it follows the ground. The
   canvas is a cone over its square from the peak to the edges (flat faces, sharp ridges to the corners and to the
-  doorway's point), sagging 0.14 m between ridges. R turns it a quarter at a time (PLACEABLES `turns: 4`): which way the
+  doorway's point), sagging 0.17 m between ridges. R turns it a quarter at a time (PLACEABLES `turns: 4`): which way the
   doorway faces. The sun rises towards +Z and sets towards −Z (shared/sun.ts), so a doorway facing ±X keeps it out all
   day, one facing +Z or −Z lets the morning or the evening sun in. `worldBoxes` now turns boxes properly for turns 2 and 3 too.
 - **Collision:** the two poles, and a knee-high wall just inside each closed side, so you go in by the doorway; the
   canvas over it is only looked at.
-- **Heat:** `shared/shade.ts` tests each body ray against the tarps within 50 m: the canvas as a fan of eight triangles
-  from the peak round the rim, cached per placed thing. Worst of five points inside (beside the pole, and 1.2 m out each
+- **Heat:** `shared/shade.ts` tests each body ray against the tarps within 60 m: the canvas as a fan of eight triangles
+  from the peak round the rim, cached per placed thing. Worst of five points inside (beside the pole, and 1.5 m out each
   way), on flat sand: with the doorway facing ±X (turns 1, 3) the body is fully shaded from 6:15 to 18:15 (sun-up to
   sun-down; one 0.25 leak right at sunrise on rippled sand); with it facing +Z (turn 0) the morning sun gets in until
-  ~8:00, facing −Z (turn 2) the evening sun after ~16:00. The flat sail was fully shaded only 8:00–16:00. ~20–30 µs a
+  ~8:30, facing −Z (turn 2) the evening sun after ~16:00. The flat sail was fully shaded only 8:00–16:00. ~20–30 µs a
   body check.
 - **Drawing (src/world/tarps.ts):** made in code from the same rig, so what you see shading you is what cools you.
   Three meshes a tarp (canvas 288 tris, split along its ridges; poles and stakes, vertex-coloured; lines, no shadow),

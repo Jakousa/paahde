@@ -99,8 +99,8 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
   tarp: {
     hx: TARP_HALF + 0.1, hz: TARP_HALF + 0.1, sand: true, gap: 1, turns: 4, tilt: 1.2,
     boxes: [
-      { x0: -0.07, x1: 0.07, y0: 0, y1: 5, z0: -0.07, z1: 0.07 },
-      { x0: -0.06, x1: 0.06, y0: 0, y1: 3.5, z0: TARP_HALF - 0.06, z1: TARP_HALF + 0.06 },
+      { x0: -0.07, x1: 0.07, y0: 0, y1: TARP_PEAK + 1.3, z0: -0.07, z1: 0.07 },
+      { x0: -0.06, x1: 0.06, y0: 0, y1: 4.1, z0: TARP_HALF - 0.06, z1: TARP_HALF + 0.06 },
       { x0: -TARP_HALF, x1: TARP_HALF, y0: 0, y1: 0.8, z0: -TARP_HALF + 0.2, z1: -TARP_HALF + 0.35 },
       { x0: -TARP_HALF + 0.2, x1: -TARP_HALF + 0.35, y0: 0, y1: 0.8, z0: -TARP_HALF, z1: TARP_HALF },
       { x0: TARP_HALF - 0.35, x1: TARP_HALF - 0.2, y0: 0, y1: 0.8, z0: -TARP_HALF, z1: TARP_HALF },

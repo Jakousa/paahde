@@ -160,7 +160,7 @@ Everything built is shared, and anyone can take a building down.
   cycles its colour (`BEACON_COLORS`, 8; src/placing.ts, `beaconColor` message), kept in its item's ItemData `color`.
   Model made in code and every beam in one instanced draw (a camera-facing quad per beam that widens with distance):
   `src/world/beacons.ts`
-- Tarps (`tarp`, shared/placed.ts `TARP`) — shade you build: a 6.4 m canvas pyramid on a 3.8 m centre pole, corners
+- Tarps (`tarp`, shared/placed.ts `TARP`) — shade you build: an 8 m canvas pyramid on a 4.6 m centre pole, corners
   staked low, one edge up on a short pole as the doorway; wrench-built (3 cloth, 2 scrap), four turns (R: which way the
   doorway faces); the poles and the closed sides collide. The rig (peak, corners, doorway, stakes, each over its own
   sand) and the canvas's shape are `shared/tarp.ts`, used by `shared/shade.ts` (the canvas as a fan of triangles: inside

@@ -47,8 +47,8 @@ const SCRAP_DIST = 25;
 const CRASH_DIST = 80;
 /** Shelter huts (2.6 m tall) are tested this close (m). */
 const HUT_DIST = 60;
-/** Tarps (peak up to ~5 m) are tested this close (m, centre to point on each axis): long shade at a low sun. */
-const TARP_DIST = 50;
+/** Tarps (peak up to ~6 m) are tested this close (m, centre to point on each axis): long shade at a low sun. */
+const TARP_DIST = 60;
 /** Casters (players, bikes) further than this from the point (m, on each axis) are skipped. */
 const CASTER_DIST = 30;
 /** Sun this close to the horizon (sin of its elevation) counts as set. */
