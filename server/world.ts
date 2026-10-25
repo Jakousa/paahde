@@ -92,10 +92,7 @@ setTrophies(beaten);
 const terrain = new TerrainServer(db);
 const scrap = new ScrapServer(db);
 const items = new ItemServer(db);
-const crash = new CrashServer(db, (ids, msg) => {
-  const want = new Set(ids);
-  for (const p of players.values()) if (want.has(p.id)) send(p.ws, msg);
-}, (msg) => {
+const crash = new CrashServer(db, (msg) => {
   for (const p of players.values()) send(p.ws, msg);
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
@@ -983,7 +980,6 @@ function onCrash(p: Player, msg: ClientMsg) {
     const state = crash.join(p.id, p.state, msg.id);
     if (state) send(p.ws, state);
   } else if (msg.t === 'siteLeave') crash.leave(p.id, msg.id);
-  else if (msg.t === 'siteHold') crash.hold(p.id, msg.id, msg.i, msg.players, msg.on);
   else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i, (n, x, z) => payScrap(p, n, x, z));
   else if (msg.t === 'siteTake') {
     const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.giveItem(p.browserId, { kind, ...withData(foundData(kind, undefined, Math.random)) }));

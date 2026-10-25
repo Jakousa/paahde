@@ -99,10 +99,8 @@ export interface Step {
   kind: StepKind;
   label: string;
   /** Screws and clips: clicks. Bolts: half turns of the pointer around them. Wires and pry tabs: 1 = one decisive stroke.
-   *  Lifts: seconds the holders must keep it up. */
+   *  Lifts: seconds you must keep it up. */
   need: number;
-  /** Players who must do this at the same moment (lifts: hold the mouse button together). */
-  players: number;
   progress: number;
   done: boolean;
   /** Steps that must be done first (shown as blocked until then). */
@@ -139,6 +137,9 @@ export interface Step {
 }
 /** A wire shorter than this (m) is one pull: a single shake rips the whole cable out. */
 export const SHORT_WIRE = 0.55;
+/** Seconds of holding the use button on the lifting eye of something heavy (the pump motor, the jet engine's upper casing):
+ *  one person heaves it off alone, slowly; letting go drops it back. */
+const HEAVY_LIFT_S = 4;
 
 /** One end of a wire: its lug, how many swings of the shake it has had, and whether it has come loose. */
 export interface WireEnd {
@@ -325,7 +326,7 @@ function markerMesh(parent: THREE.Object3D, geo: THREE.BufferGeometry, x = 0, y 
 }
 
 /** The marker for one step, in the step's frame (+y is the face normal). `userData.pips` are the click beads. */
-function makeMarker(kind: StepKind, need: number, players: number): THREE.Group {
+function makeMarker(kind: StepKind, need: number): THREE.Group {
   const g = new THREE.Group();
   g.userData.ignoreBounds = true;
   if (kind === 'screw' || kind === 'clip') {
@@ -369,11 +370,8 @@ function makeMarker(kind: StepKind, need: number, players: number): THREE.Group 
     g.userData.pull = pull;
   } else {
     const up = new THREE.Group();
-    for (let i = 0; i < players; i++) {
-      const x = (i - (players - 1) / 2) * 0.12;
-      markerMesh(up, UP_SHAFT_GEO, x, 0, 0);
-      markerMesh(up, HEAD_X_GEO, x, 0.14, 0);
-    }
+    markerMesh(up, UP_SHAFT_GEO, 0, 0, 0);
+    markerMesh(up, HEAD_X_GEO, 0, 0.14, 0);
     g.add(up);
     g.userData.up = up;
   }
@@ -563,7 +561,7 @@ export class Kit {
 
   // -- steps ------------------------------------------------------------------------------------------------
   private reg(kind: StepKind, label: string, g: THREE.Group, spin: THREE.Object3D, hitGeo: THREE.BufferGeometry, need: number,
-    after: Step[], floorY: number, mat?: THREE.MeshStandardNodeMaterial, players = 1): Step {
+    after: Step[], floorY: number, mat?: THREE.MeshStandardNodeMaterial): Step {
     // fasteners are small: no shadow pass for them (the draws were a large part of the frame with many machines in view)
     g.traverse((o) => {
       o.castShadow = false;
@@ -582,11 +580,11 @@ export class Kit {
     hit.visible = false; // never drawn, but still hit by the pointer ray
     hit.position.y = 0.05;
     g.add(hit);
-    const marker = makeMarker(kind, need, players);
+    const marker = makeMarker(kind, need);
     marker.position.y = kind === 'lift' ? 0.2 : 0.1;
     marker.visible = false;
     g.add(marker);
-    const step: Step = { kind, label, need, players, progress: 0, done: false, after, obj: g, spin, hit, marker, shine, floorY: floorY * this.fs, mat };
+    const step: Step = { kind, label, need, progress: 0, done: false, after, obj: g, spin, hit, marker, shine, floorY: floorY * this.fs, mat };
     hit.userData.target = g.userData.target = { type: 'step', step } satisfies Target;
     this.g.add(g);
     this.steps.push(step);
@@ -633,12 +631,12 @@ export class Kit {
     this.mesh(new THREE.BoxGeometry(0.28, 0.03, 0.26), 'trim', 0, 0.015, 0.13, spin);
     return this.reg('pry', label, g, spin, new THREE.BoxGeometry(0.4, 0.25, 0.4), 1, after, 0.04);
   }
-  /** Lifting eye on something too heavy for one person: `players` of you must hold the mouse button on it together. */
-  lift(label: string, pos: V, nrm: V, players: number, after: Step[] = [], seconds = 1.6): Step {
+  /** Lifting eye on something heavy: hold the use button on it for `seconds` while it comes up (let go and it drops back). */
+  lift(label: string, pos: V, nrm: V, after: Step[] = [], seconds = 1.6): Step {
     const { g, spin } = this.stepGroup(pos, nrm);
     this.mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.05, 12), 'dark', 0, 0.025, 0, g);
     this.mesh(new THREE.TorusGeometry(0.11, 0.028, 8, 20), 'yellow', 0, 0.15, 0, spin);
-    return this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.22, 8, 6), seconds, after, 0.1, undefined, players);
+    return this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.22, 8, 6), seconds, after, 0.1);
   }
   /** A tab to mash: press the use button on it again and again (the progress drains away between presses). */
   mash(label: string, outline: V[], after: Step[], presses: number, part: THREE.Object3D, slide: { dir: THREE.Vector3; dist: number }): Step {
@@ -713,7 +711,7 @@ export class Kit {
    *  press and drifts back if you stop. `pos` is a point on its surface. */
   pull(label: string, pos: V, nrm: V, after: Step[], presses: number, slide: { obj: THREE.Object3D; dir: THREE.Vector3; dist: number }): Step {
     const { g, spin } = this.stepGroup(pos, nrm);
-    const step = this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.35 / this.fs, 8, 6), presses, after, 0.1, undefined, 1);
+    const step = this.reg('lift', label, g, spin, new THREE.SphereGeometry(0.35 / this.fs, 8, 6), presses, after, 0.1);
     step.kind = 'mash'; // (the arrow marker was made for a lift; what it asks for is the mash)
     step.slide = { ...slide, offset: new THREE.Vector3() };
     slide.obj.userData.target = { type: 'step', step } satisfies Target;
@@ -766,7 +764,7 @@ export class Kit {
     }
     const spin = new THREE.Group();
     g.add(spin);
-    const step = this.reg('wire', label, g, spin, new THREE.TubeGeometry(rel, 12, Math.max(0.1, r * 2), 5), 1, after, 0.03, mat, 1);
+    const step = this.reg('wire', label, g, spin, new THREE.TubeGeometry(rel, 12, Math.max(0.1, r * 2), 5), 1, after, 0.03, mat);
     step.ends = ends;
     step.lugs = lugs;
     step.rope = new Rope(rel, tube, step.hit, r);
@@ -1077,8 +1075,8 @@ function pumpHousing(k: Kit) {
   } else k.cable([[G[0], G[1], G[2]], [1.8, 1.2, 0.1], [1.88, 1.26, 0.1]], 0.035, 'brown'); // straight through
   const motorHolds = [setMotor, liveToMotor, neutral];
   const feet = [[-1, -1], [1, 1]].map(([sx, sz]) => k.bolt(S.motorFootBolt, [1.9 + sx * 0.31, 0.42, sz * 0.28], [0, 1, 0], motorHolds, 2));
-  // the motor is too heavy for one person: two of you lift it off once the feet are free
-  k.mount('motor', [[1.9, 0.42, 0], [0, 0, 0]], () => [...motorHolds, ...feet, k.lift(S.liftTheMotorOff, [2.17, 0.67, 0], [1, 0, 0], 2, feet)]);
+  // the motor is heavy: once the feet are free, a long hold heaves it off (HEAVY_LIFT_S)
+  k.mount('motor', [[1.9, 0.42, 0], [0, 0, 0]], () => [...motorHolds, ...feet, k.lift(S.liftTheMotorOff, [2.17, 0.67, 0], [1, 0, 0], feet, HEAVY_LIFT_S)]);
   if (g >= 3) k.lamps(4, 1.65, 0.45, 0.4, 0.2);
 }
 
@@ -1118,8 +1116,8 @@ function jetEngine(k: Kit) {
   for (const z of [-1, 1]) k.box(1.0, 0.04, 0.1, 0, 0, z * 0.47, 'body', top);
   const split: Step[] = [];
   for (const z of [-1, 1]) split.push(...k.row(S.splitLineBolt, [-0.7, AY + 0.02, z * 0.47], [-0.1, AY + 0.02, z * 0.47], 2, [0, 1, 0]));
-  // the upper casing is heavy: once the flange bolts are out, two of you lift it clear
-  k.cover(top, [...split, k.lift(S.liftTheCasingOff, [-0.4, AY + 0.46, 0], [0, 1, 0], 2, split)], [0, 1, 0.1], 0.45);
+  // the upper casing is heavy: once the flange bolts are out, a long hold heaves it clear (HEAVY_LIFT_S)
+  k.cover(top, [...split, k.lift(S.liftTheCasingOff, [-0.4, AY + 0.46, 0], [0, 1, 0], split, HEAVY_LIFT_S)], [0, 1, 0.1], 0.45);
   // bearings on pedestals under cap blocks, one screw each
   for (const x of [-0.75, -0.1]) {
     k.box(0.26, 0.16, 0.4, x, 0.55, 0, 'trim');

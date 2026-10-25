@@ -355,15 +355,13 @@ class Module:
         v = self._m().to_3x3() @ Vector(n)
         return list(v.normalized())
 
-    def step(self, kind, label, pos, nrm, after=(), need=None, players=1):
+    def step(self, kind, label, pos, nrm, after=(), need=None):
         """A fastener (screw, bolt, clip, pry, lift) at `pos` facing `nrm`. `after`: step ids or module ids that must be done first."""
         self.n += 1
         sid = f'{self.id}.{label}{self.n}'
         d = {'id': sid, 'kind': kind, 'label': label, 'pos': self._tx(pos), 'nrm': self._tn(nrm), 'after': list(after)}
         if need is not None:
             d['need'] = need
-        if players != 1:
-            d['players'] = players
         if self.in_inner:
             d['inner'] = True
         self.steps.append(d)

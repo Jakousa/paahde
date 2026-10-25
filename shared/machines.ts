@@ -24,7 +24,6 @@ export interface LayoutStep {
   /** Step ids, a step label of the same module, or module ids: all of those must be done first (an absent module counts as done). */
   after: string[];
   need?: number;
-  players?: number;
   /** Only there when these modules are all on the machine (a seam joins two halves; with one gone there is nothing to grind). */
   with?: string[];
   /** Done on the piece once it has come off (it lies on the ground), not on the machine it came from. */

@@ -514,7 +514,7 @@ const en = {
     mash: 'mash',
     grind: 'grind the seam',
     needGrinder: 'needs a grinder',
-    players: (have: number, need: number) => `${have}/${need} players`,
+    hold: 'hold',
   },
   /** What holds a machine together: the steps in the disassembly mode (src/teardown/junk.ts, wrecks.ts). */
   steps: {

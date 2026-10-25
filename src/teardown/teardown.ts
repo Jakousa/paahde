@@ -68,10 +68,6 @@ export interface SiteLink {
   take(i: number): void;
   /** The bare frame was mashed to scrap (a field machine; the table's goes through WorkSite.scrap). */
   scrap(): void;
-  /** Holding a lifting eye on step i (or letting go). */
-  hold(i: number, players: number, on: boolean): void;
-  /** How many players hold step i right now, me included. */
-  holders(i: number): number;
 }
 
 interface Loose {
@@ -119,8 +115,6 @@ const TAG_UP = 0.45;
 /** Presses to mash a bare frame to scrap, and how fast they drain away (per second). */
 const FRAME_PRESSES = 14;
 const FRAME_DRAIN = 2.2;
-/** ?debug lets one player do two-player lifts, for testing. */
-const SOLO = new URLSearchParams(location.search).has('debug');
 
 type Phase = 'idle' | 'work';
 
@@ -578,12 +572,6 @@ export class TeardownView {
     return true;
   }
 
-  private holders(s: Step): number {
-    const link = this.site?.link;
-    if (!link) return 1;
-    return link.holders(this.site!.junk.steps.indexOf(s));
-  }
-
   /** "Lid screw ×4, rear latch": the undone steps in `steps`, grouped. */
   private listSteps(steps: Step[]) {
     const by = new Map<string, number>();
@@ -607,10 +595,7 @@ export class TeardownView {
         case 'pry': return { title: s.label, action: TEXT.teardown.pry };
         case 'mash': return { title: s.label, action: TEXT.teardown.mash };
         case 'grind': return playerHands.held === 'grinder' ? { title: s.label, action: TEXT.teardown.grind } : { title: s.label, action: TEXT.teardown.needGrinder, locked: true };
-        case 'lift': {
-          const n = SOLO ? s.players : this.holders(s);
-          return { title: s.label, action: TEXT.teardown.players(n, s.players) };
-        }
+        case 'lift': return { title: s.label, action: TEXT.teardown.hold };
       }
     }
     if (t.type === 'part') {
@@ -718,10 +703,7 @@ export class TeardownView {
       if (end < 0) return;
     }
     this.act = { step: s, angle: NaN, end, sx: 0, sy: 0, lastMove: 0 };
-    if (s.kind === 'lift') {
-      this.site!.link?.hold(this.site!.junk.steps.indexOf(s), s.players, true);
-      return;
-    }
+    if (s.kind === 'lift') return; // (it comes up while held: tick)
     if (s.kind === 'screw' || s.kind === 'clip') {
       s.progress++;
       this.show(s);
@@ -766,7 +748,6 @@ export class TeardownView {
     if (!a) return;
     const s = a.step;
     if (s.kind === 'bolt') teardownSound.stop();
-    if (s.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(s), s.players, false);
     // A half-pried tab or half-lifted weight falls back, and a half-shaken wire end goes still (an end that has come
     // loose stays loose); a half-turned bolt stays where it is.
     if (!s.done && s.kind === 'wire') this.stillWire(s);
@@ -889,7 +870,6 @@ export class TeardownView {
   private endInteraction() {
     const a = this.act;
     if (a?.step.kind === 'wire' && !a.step.done) this.stillWire(a.step);
-    if (a?.step.kind === 'lift') this.site?.link?.hold(this.site.junk.steps.indexOf(a.step), a.step.players, false);
     teardownSound.stop();
     this.act = null;
     tools.engaged = false;
@@ -932,7 +912,9 @@ export class TeardownView {
         this.slide(s, f); // the part lifts away a little with every press
         break;
       case 'lift':
+        // the eye comes up slowly, trembling with the strain while it is still on its way
         s.spin.position.y = Math.min(f, 1) * 0.12;
+        s.spin.position.x = f > 0 && f < 1 ? Math.sin(performance.now() * 0.045) * 0.012 : 0;
         this.slide(s, f); // the module parts from the machine as it is pulled
         break;
       case 'wire':
@@ -951,17 +933,10 @@ export class TeardownView {
     return l;
   }
 
-  /** The player finished a step: tell the others, and apply it here (lifts wait for the server to agree). */
+  /** The player finished a step: apply it here and tell the others. */
   private complete(s: Step) {
     const site = this.site!;
     const i = site.junk.steps.indexOf(s);
-    if (s.kind === 'lift') {
-      // The server checks that enough players held it; its answer (applyDone) does the rest.
-      s.progress = s.need;
-      site.link?.done(i);
-      if (!site.link || SOLO) this.finish(s, 'local');
-      return;
-    }
     this.finish(s, 'local');
     site.link?.done(i);
   }
@@ -1065,13 +1040,12 @@ export class TeardownView {
     this.grind();
     if (this.frame > 0) this.frame = Math.max(0, this.frame - dt * FRAME_DRAIN);
 
-    // Lifts: progress only while enough players hold it.
+    // Lifts: it comes up while you hold it.
     const a = this.act;
     if (a?.step.kind === 'lift' && !a.step.done) {
       const s = a.step;
-      const n = SOLO ? s.players : this.holders(s);
       if (s.progress < s.need) {
-        s.progress = n >= s.players ? Math.min(s.need, s.progress + dt) : Math.max(0, s.progress - dt * 2);
+        s.progress = Math.min(s.need, s.progress + dt);
         this.show(s);
         if (s.progress >= s.need) {
           this.act = null;

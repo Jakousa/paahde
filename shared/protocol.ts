@@ -134,16 +134,14 @@ export type ClientMsg =
   | { t: 'benchScrap' }
   // Mash the frame of a stripped field machine to scrap (siteScrap, below): the server checks that nothing is left on it, pays and
   // the site is spent ('crashSpent'). Not allowed on a machine with parts or steps left.
-  // Large crash sites, and the table (id 'bench'), are worked on together. Join/leave the session; hold a lifting
-  // eye (it needs `players` of you holding at once, re-sent about once a second while held); report a step done (a
-  // lift is checked against the holders) or take a part (first one wins: its item goes in your bag, answered with
+  // Large crash sites, and the table (id 'bench'), are worked on together. Join/leave the session; report a step
+  // done or take a part (first one wins: its item goes in your bag, answered with
   // 'siteTook' and 'items'). Step numbers are indexes into the machine the seed builds (src/teardown/junk.ts),
   // part numbers into machineParts() (shared/machine.ts), the same on every client and the server.
   // Dev test lab only (shared/lab.ts): put a lab machine (or, without an id, all of them) back together.
   | { t: 'labReset'; id?: string }
   | { t: 'siteJoin'; id: string }
   | { t: 'siteLeave'; id: string }
-  | { t: 'siteHold'; id: string; i: number; players: number; on: boolean }
   | { t: 'siteDone'; id: string; i: number }
   | { t: 'siteTake'; id: string; i: number }
   | { t: 'siteScrap'; id: string }
@@ -261,8 +259,6 @@ export type ServerMsg =
   // Your siteTake was answered: ok, the part's item (`kind`, shared/items.ts) is in your bag ('items' follows);
   // or refused because your bag is full (the part stays on the machine). Lost races get siteTake instead.
   | { t: 'siteTook'; id: string; i: number; ok: boolean; reason?: 'full'; kind?: string }
-  // How many players hold lifting eye i right now (to the session's players only).
-  | { t: 'siteHolders'; id: string; i: number; n: number }
   | { t: 'siteDone'; id: string; i: number }
   // Step i is done, part i went to player `by` (the public id; -1 if from before a restart). Sent to everyone.
   // Whoever is carrying the part and isn't `by` has lost it.

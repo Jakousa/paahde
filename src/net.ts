@@ -157,10 +157,7 @@ export class Net {
   /** Ids for stacks split off by a predicted move, until the server's answer brings the real ones. */
   private tempId = 0;
 
-  /** Shared large-site sessions: lifting eye holders by site and step (server 'siteHolders'), and the events for the
-   *  disassembly mode (src/main.ts hands them to it). */
-  private holders = new Map<string, Map<number, number>>();
-  private holdTimers = new Map<string, ReturnType<typeof setInterval>>();
+  /** Shared large-site sessions: the events for the disassembly mode (src/main.ts hands them to it). */
   onSite?: (msg: SiteMsg) => void;
   /** Scrap was paid for taking a machine apart (`dropped` of it left on the ground: the bag was full). */
   onScrapGot?: (n: number, dropped: number) => void;
@@ -395,26 +392,12 @@ export class Net {
 
   /** The shared session of a large crash site, or of the disassembly table ('bench') (see SiteLink in src/teardown/teardown.ts). */
   siteLink(id: string): SiteLink {
-    const key = (i: number) => `${id}:${i}`;
     return {
       join: () => this.send({ t: 'siteJoin', id }),
-      leave: () => {
-        for (const [k, t] of this.holdTimers) if (k.startsWith(`${id}:`)) { clearInterval(t); this.holdTimers.delete(k); }
-        this.holders.delete(id);
-        this.send({ t: 'siteLeave', id });
-      },
+      leave: () => this.send({ t: 'siteLeave', id }),
       done: (i) => this.send({ t: 'siteDone', id, i }),
       take: (i) => this.send({ t: 'siteTake', id, i }),
       scrap: () => this.send({ t: 'siteScrap', id }),
-      hold: (i, players, on) => {
-        // The server forgets a hold after a few seconds, so keep saying it while we hold.
-        const old = this.holdTimers.get(key(i));
-        if (old) clearInterval(old);
-        this.holdTimers.delete(key(i));
-        this.send({ t: 'siteHold', id, i, players, on });
-        if (on) this.holdTimers.set(key(i), setInterval(() => this.send({ t: 'siteHold', id, i, players, on: true }), 1000));
-      },
-      holders: (i) => this.holders.get(id)?.get(i) ?? 0,
     };
   }
 
@@ -652,7 +635,6 @@ export class Net {
       this.snapshots = [];
       this.clockOffset = undefined; // a restarted server has a new clock
       this.jitter = 0;
-      this.holders.clear();
       this.dying = null; // the server's welcome says whether we're alive
       clearTimeout(this.dyingTimer);
       this.status = 'reconnecting';
@@ -716,14 +698,7 @@ export class Net {
       return crashChanged();
     }
     if (msg.t === 'scrapGot') return this.onScrapGot?.(msg.n, msg.dropped);
-    if (msg.t === 'siteHolders') {
-      let m = this.holders.get(msg.id);
-      if (!m) this.holders.set(msg.id, (m = new Map()));
-      m.set(msg.i, msg.n);
-      return;
-    }
     if (msg.t === 'siteState' || msg.t === 'siteDone' || msg.t === 'siteTake' || msg.t === 'sites' || msg.t === 'siteReset' || msg.t === 'bench' || msg.t === 'siteTook' || msg.t === 'siteRolls') {
-      if (msg.t === 'siteDone') this.holders.get(msg.id)?.delete(msg.i);
       return this.onSite?.(msg);
     }
     if (msg.t === 'water') {

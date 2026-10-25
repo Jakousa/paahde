@@ -36,6 +36,9 @@ are taken apart in the disassembly mode, then grow the world around them: scrap 
      that pulls apart shows its indicator on the part and visibly splits.
    - **Shells start on.** A shell may need a grinder along a hinted seam, then a mashing prise (`grind` then `mash`). Both halves of the outer
      shell must go before the inner one can. The same shell model may be used by the flying jets.
+   - **One player can do every step alone.** Several players may work a large machine at once (a shared session), but no step waits for a
+     second pair of hands. Something heavy is a longer action instead: the pump motor and the jet engine's upper casing are a lifting eye held
+     for `HEAVY_LIFT_S` (src/teardown/junk.ts) rather than the default 1.6 s, trembling as it comes up and dropping back if you let go.
    - **Parts are real**: a jet engine's parts come from what an engine really is (rotors, manifold, bearings, starter...). Keep interactions simple
      but visually rich; avoid complexity: few large things, clean connectors, nothing floating or
      sitting inside a rotor.
@@ -239,7 +242,7 @@ in the world settings; craters from footprints and falls are already terrain edi
    each a seeded presence and parts so the same wreck is not identical in two worlds (the world seed already exists in `shared/world.ts`).
 4. **The puzzle.** The relic stops being loose loot and becomes the **last part of the wreck's `requires` chain**: for example on the colossus, the chest plates need the shoulder power bus cut (arm section),
    the core housing needs both plates off and its coolant line drained, and the furnace heart sits in the core behind a seized mounting that needs the grinder. Each requirement is a normal step or part, so the
-   existing mode, scrap and sounds work unchanged. Two players for the biggest lifts is welcome (`players` on a step already exists). Keep each puzzle to a handful of requirements: avoid complexity.
+   existing mode, scrap and sounds work unchanged. Every step stays doable alone (a heavy lift is a long hold or a long mash, not a second player). Keep each puzzle to a handful of requirements: avoid complexity.
 5. **Rules around it.** The worm is the de-facto last boss (its receiver needs the three relics): **decide** whether the worm also gets a wreck and a relic puzzle. A rematch
    kill must not respawn the relic. When a wreck is fully stripped it becomes a husk (the `crash_spent` pattern), never removed.
 6. **Collision and findability.** Solid capsules from the generated layout (huge walkable ruins: the player must be able to climb on and into them), craters already exist, and give a wreck the same

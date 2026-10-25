@@ -3,8 +3,7 @@
 // recognisably what lies on the table: the parts the model shows are where the model shows them, and everything
 // that holds them in is a step, built with the same kit as the crash-site components (junk.ts). A mount only
 // gets its hardware when the roll put a part there; SALVAGE yields and tierWeights decide that (buildJunk).
-// Kit units are about twice the model's metres; SCALE in junk.ts brings them back to size. Everything is done
-// alone on the table, so nothing here needs a two-player lift.
+// Kit units are about twice the model's metres; SCALE in junk.ts brings them back to size.
 import * as THREE from 'three/webgpu';
 import type { Kit } from './junk.ts';
 import { TEXT } from '../../shared/text.ts';

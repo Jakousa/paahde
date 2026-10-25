@@ -10,8 +10,7 @@
 //    is put on the workbench.
 //  - Large machines are worked on by everyone near them through a session per site: which steps are done and
 //    which parts are taken (kept in SQLite, `machine_progress`, and never reset by itself: a stripped machine
-//    stays stripped), and who is holding which lifting eye right now (memory only). A step that needs several
-//    players (a lift) is only accepted while that many are holding. Every player is told about every step and
+//    stays stripped). Every step can be done by one player alone. Every player is told about every step and
 //    take ('sites' on join, then siteDone / siteTake), so a machine looks the same to everyone, worked on or not.
 //  - The base's disassembly table is the same kind of session, with id BENCH_ID: crashUse puts a carried machine
 //    on it with a seed picked here, and the job (kind, seed in `bench_job`, progress like a site's) is kept until
@@ -38,8 +37,6 @@ import type { openDb } from './db.ts';
 type Db = ReturnType<typeof openDb>;
 type Feet = { x: number; y: number; z: number };
 
-/** A lifting eye counts as held this long after the last hold message. */
-const HOLD_TTL_MS = 3000;
 const REACH_SLACK = 1.5;
 const BENCH_REACH = 6;
 const MAX_INDEX = 255;
@@ -56,9 +53,6 @@ interface Session {
   taken: Map<number, number>;
   /** Public ids in the session. */
   players: Set<number>;
-  /** Lifting eye → (player → time of last hold message). */
-  holders: Map<number, Map<number, number>>;
-  need: Map<number, number>;
 }
 
 /** Carried-off salvage wrecks (shared/wrecks.ts) are back after this long. */
@@ -87,7 +81,6 @@ const respawnMs = (id: string) => id.startsWith('w:') ? WRECK_RESPAWN_MS : id.st
 
 export class CrashServer {
   private db: Db;
-  private notify: (ids: Iterable<number>, msg: ServerMsg) => void;
   private taken = new Map<string, number>();
   private newlyTaken: string[] = [];
   private newlyBack: string[] = [];
@@ -98,9 +91,8 @@ export class CrashServer {
   /** The machine on the disassembly table, or null when it is free. */
   private bench: { kind: JunkKind; seed: number } | null = null;
 
-  constructor(db: Db, notify: (ids: Iterable<number>, msg: ServerMsg) => void, broadcast: (msg: ServerMsg) => void) {
+  constructor(db: Db, broadcast: (msg: ServerMsg) => void) {
     this.db = db;
-    this.notify = notify;
     this.broadcast = broadcast;
     const job = db.loadBench();
     if (job && (CARRY_KINDS as string[]).includes(job.kind)) {
@@ -343,18 +335,11 @@ export class CrashServer {
     return site && (site.lab || !junkSpec(site.kind).carry) ? { id: site.id, x: site.x + o.x, z: site.z + o.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed, site.level), wreck: site.lab ? null : site.wreck } : null;
   }
   private newSession(done: number[], taken: number[]): Session {
-    return { done: new Set(done), taken: new Map(taken.map((i) => [i, -1])), players: new Set(), holders: new Map(), need: new Map() };
+    return { done: new Set(done), taken: new Map(taken.map((i) => [i, -1])), players: new Set() };
   }
 
   private index(i: unknown): i is number {
     return typeof i === 'number' && Number.isInteger(i) && i >= 0 && i <= MAX_INDEX;
-  }
-  private live(s: Session, i: number): number {
-    const h = s.holders.get(i);
-    if (!h) return 0;
-    const now = Date.now();
-    for (const [p, at] of h) if (now - at > HOLD_TTL_MS || !s.players.has(p)) h.delete(p);
-    return h.size;
   }
 
   /** `pid` (public id) joins the session of large site `id`; returns the state to send them. */
@@ -370,31 +355,12 @@ export class CrashServer {
   leave(pid: number, id: unknown) {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
-    if (!site || !s || !s.players.delete(pid)) return;
-    for (const [i, h] of s.holders) {
-      if (h.delete(pid)) this.notify(s.players, { t: 'siteHolders', id: site.id, i, n: this.live(s, i) });
-    }
+    if (site && s) s.players.delete(pid);
   }
 
   /** The player disconnected: leave every session. */
   leaveAll(pid: number) {
     for (const id of this.sessions.keys()) this.leave(pid, id);
-  }
-
-  hold(pid: number, id: unknown, i: unknown, players: unknown, on: unknown) {
-    const site = this.large(id);
-    const s = site && this.sessions.get(site.id);
-    if (!site || !s || !s.players.has(pid) || !this.index(i)) return;
-    if (typeof players !== 'number' || !Number.isInteger(players) || players < 1 || players > 8) return;
-    s.need.set(i, players);
-    let h = s.holders.get(i);
-    if (!h) s.holders.set(i, (h = new Map()));
-    const before = this.live(s, i);
-    if (on) h.set(pid, Date.now());
-    else h.delete(pid);
-    const n = this.live(s, i);
-    // The 1 s refreshes change nothing; only tell people when the count moves.
-    if (n !== before) this.notify(s.players, { t: 'siteHolders', id: site.id, i, n });
   }
 
   /** Scrap for step `i` just done (and for what it finished) at a machine: see SCRAP_REWARD. */
@@ -422,11 +388,8 @@ export class CrashServer {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
     if (!site || !s || !s.players.has(pid) || !this.index(i) || s.done.has(i)) return;
-    const need = s.need.get(i) ?? 1;
-    if (need > 1 && (this.live(s, i) < need || !s.holders.get(i)?.has(pid))) return; // not enough hands
     s.done.add(i);
     machineChanged(site.id);
-    s.holders.delete(i);
     this.save(site.id, s);
     this.broadcast({ t: 'siteDone', id: site.id, i });
     const m = crashSiteById(site.id);

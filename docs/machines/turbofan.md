@@ -1,6 +1,6 @@
 # Turbofan engine (replaces `jet_engine`): reference and disassembly plan
 
-Status: built and reviewed in the test lab (`?w=lab`, shared/lab.ts); how to continue the program is in `docs/machines.md`. Done since this was written: scrap per step and per finished machine, the rotors / fuel manifold / turbine disc as parts, downed jets as the engine's source (crash sites with the plane in pieces). Not yet: scrap from the shell at the end, the shell recreated from scrap, a use for the new parts, lifts needing two players.
+Status: built and reviewed in the test lab (`?w=lab`, shared/lab.ts); how to continue the program is in `docs/machines.md`. Done since this was written: scrap per step and per finished machine, the rotors / fuel manifold / turbine disc as parts, downed jets as the engine's source (crash sites with the plane in pieces). Not yet: scrap from the shell at the end, the shell recreated from scrap, a use for the new parts. (Lifts needing two players were dropped: every step is done alone, docs/machines.md.)
 
 ## Why a rework
 

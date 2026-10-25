@@ -868,8 +868,8 @@ above (shared/crashsites.ts) and share only the idea; the names overlap, so the 
 - **Large machines** (pump housing, jet engine) stay where they are. F says "Disassemble": the character walks up to
   3.2 m through the normal input path, the keyboard goes quiet and the disassembly controls take over, in the world,
   no separate scene. Everyone near the site shares one session (server/crash.ts): steps done, parts taken, and
-  **lifts** that need two players holding the mouse button at once (pump motor, jet engine casing). First to take a
-  part gets it.
+  **lifts** that needed two players holding the mouse button at once (pump motor, jet engine casing; since made solo:
+  one player holds the lifting eye for 4 s, and the hold/holders messages are gone). First to take a part gets it.
 - **Small machines** (robot arm joint, control cabinet) are picked up with F and land in the bag as items (kinds
   `robot_arm`, `control_cabinet` in shared/items.ts). Carry them to the **disassembly table** in the bunker (F at it,
   the station from shared/stations.ts) and take them apart there, scaled to fit the table. The table is the
@@ -882,7 +882,7 @@ and swipe across wires, drag pry tabs, hold lifting eyes); on a freed part a **c
 bag); anywhere else a drag looks around (at a large machine; on the table it does nothing). Only middle-drag turns
 the machine over on the table, right-drag moves it about. On the table **W A S D / arrows** turn the
 machine and the wheel zooms; at a large machine W / S step closer and further and A / D walk around it. R resets,
-Esc (or the Leave button) leaves. `?debug` lets one player do the two-player lifts.
+Esc (or the Leave button) leaves.
 
 The UI (redone after "confusing, hard to use"): one panel at the top with the machine, its rarity, steps and parts
 progress bars, a **"Next:"** line (take the freed part / the most common ready step on the side you look at / "turn
@@ -918,7 +918,7 @@ sites, wreckage and the table job. Netcode: `crash*`/`site*` messages in shared/
   you walk up to later is fast-forwarded to it. `CrashServer.resetSite(id)` makes one whole again (dev/admin
   only; nothing calls it).
 - Not done: the server checks part indexes against its own part list but not whether a part's holds are done
-  (step indexes are only range-checked; lifts are checked against the holders). The tray only lists this
+  (step indexes are only range-checked). The tray only lists this
   session's takes (the items are in the bag).
 - Idea taken from the Godot DOHOJAM teardown: parts stay locked until the earlier steps are done.
 
