@@ -53,6 +53,10 @@ export const LANDING_CSS = `
 #landing button:disabled { opacity: .5; cursor: default; }
 #landing button:disabled:hover { background: rgba(42, 18, 10, .55); color: #fff4d0; }
 #landing .profile { display: grid; gap: 6px; justify-items: center; }
+#landing .profile .swatches { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+#landing .profile .swatches button { width: 22px; height: 22px; padding: 0; border-radius: 2px; border: 1px solid rgba(255, 244, 208, .35);
+  backdrop-filter: none; -webkit-backdrop-filter: none; }
+#landing .profile .swatches button.on, #landing .profile .swatches button:hover { border: 2px solid #fff4d0; }
 #landing .codeChip { padding: 6px 14px; font-size: 12px; letter-spacing: .15em; text-transform: none; }
 #landing .profile.locked input { cursor: default; background: rgba(255, 244, 208, .7); border-right: 1px solid rgba(255, 244, 208, .5); }
 #landing .profile.locked input[type=color] { border-radius: 0 2px 2px 0; }

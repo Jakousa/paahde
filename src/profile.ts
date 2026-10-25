@@ -40,6 +40,11 @@ export function getBrowserId(): string {
   }
 }
 
+/** The ready colours under the colour well: bright and far apart, to tell players apart at a glance. */
+const SWATCHES = [
+  0xe8433a, 0xf28c28, 0xf5c518, 0x9bd23c, 0x3cb44b, 0x2ec4b6, 0x3a9ad9, 0x4363d8, 0x8e5bd6, 0xe05ab0, 0xf4f0e6, 0x2b2b2b,
+] as const;
+
 const randomColor = () => Math.floor(Math.random() * 0x1000000);
 
 /** Your name as last typed ('' none yet; the lobby won't let you in unless it passes nameOk). */
@@ -73,7 +78,7 @@ export function profileForm(changed?: (ok: boolean) => void, locked?: { name: st
   const el = document.createElement('div');
   el.className = 'profile';
   el.innerHTML = `<div class="row"><input class="name" maxlength="${NAME_MAX}" autocomplete="off" spellcheck="false"
-data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><input class="color" type="color"><button type="button" class="dice"></button></div><div class="why"></div>`;
+data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><input class="color" type="color"><button type="button" class="dice"></button></div><div class="swatches"></div><div class="why"></div>`;
   const name = el.querySelector<HTMLInputElement>('.name')!;
   const color = el.querySelector<HTMLInputElement>('.color')!;
   const dice = el.querySelector<HTMLButtonElement>('.dice')!;
@@ -88,6 +93,7 @@ data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><input 
     color.value = hex(locked.color);
     name.disabled = color.disabled = true;
     dice.remove();
+    el.querySelector('.swatches')!.remove();
     el.classList.add('locked');
     return { el, flag: () => true };
   }
@@ -102,12 +108,23 @@ data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"><input 
   };
   name.addEventListener('input', () => check(name.value.length > 0));
   name.addEventListener('blur', () => check(name.value.length > 0));
-  color.addEventListener('input', () => write(COLOR_KEY, color.value.slice(1)));
-  dice.addEventListener('click', () => {
-    const c = randomColor();
+  const swatches = SWATCHES.map((c) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.background = hex(c);
+    b.addEventListener('click', () => pick(c));
+    el.querySelector('.swatches')!.append(b);
+    return b;
+  });
+  const mark = () => swatches.forEach((b, i) => b.classList.toggle('on', color.value === hex(SWATCHES[i])));
+  const pick = (c: number) => {
     color.value = hex(c);
     write(COLOR_KEY, c.toString(16));
-  });
+    mark();
+  };
+  mark();
+  color.addEventListener('input', () => (write(COLOR_KEY, color.value.slice(1)), mark()));
+  dice.addEventListener('click', () => pick(randomColor()));
   // Typing here is not playing: keep keys from the game's listeners on window (the end screens sit over the game).
   el.addEventListener('keydown', (e) => e.stopPropagation());
   queueMicrotask(() => check(name.value.length > 0));
