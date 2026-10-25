@@ -245,7 +245,8 @@ Everything built is shared, and anyone can take a building down.
 - `shared/enemies.ts` — the registry of everything a player can destroy and loot (crawlers, guardians, drones, jets,
   the harvester, the bosses): how many come at once, where they're met, what one leaves (`drops`: the server's kill
   drops go through it) and rough fight odds by weapon (read by the economy simulator; tune them there)
-- `shared/guardians.ts` — walkers (rare giant guardians with cannons, player-sized crawlers at crash sites) + night
+- `shared/guardians.ts` — walkers (rare giant guardians with cannons, player-sized crawlers at crash sites and in
+  small packs roaming the open by night) + night
   searchlight drones (constants, beam test); walkers, bolts and missiles simulated in `server/guardians.ts`, which ticks
   the drones (`server/drones.ts`; their beams call the guardians, `alert`), what both share in `server/bots.ts`; legs
   are client IK in `src/world/guardians.ts`, bolts `src/world/bolts.ts`, drones `src/world/drones.ts`, glue/sound/shake

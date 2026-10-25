@@ -456,7 +456,7 @@ export class Sim {
     if (this.fighting || this.lives <= 0) return;
     const deaths = this.out.deaths;
     for (const { kind, m } of ROAMING) {
-      if (!this.roamsHere(m.where) || this.fightRand() >= 1 - Math.exp(-m.perMin * min)) continue;
+      if (!this.roamsHere(m.where) || (m.night && !this.night()) || this.fightRand() >= 1 - Math.exp(-m.perMin * min)) continue;
       this.fight(kind);
       if (this.out.deaths !== deaths) return;
     }
@@ -605,7 +605,7 @@ export class Sim {
     };
     let r = 0;
     for (const [kind, odds] of this.arrival(p)) r += odds * lose(kind);
-    for (const { kind, m } of ROAMING) if (this.roamsHere(m.where, p.x, p.z)) r += (1 - Math.exp(-m.perMin * 4)) * lose(kind);
+    for (const { kind, m } of ROAMING) if (this.roamsHere(m.where, p.x, p.z) && (!m.night || this.night())) r += (1 - Math.exp(-m.perMin * 4)) * lose(kind);
     if (p.hunt) r += lose(p.hunt);
     return r * (this.carried('shield') ? 0.5 : 1);
   }

@@ -6,7 +6,8 @@
 // - Guardians: a few rare giants roaming from crash site to crash site, standing guard now and then. Come within
 //   sight of one (or get caught in a drone's searchlight near one) and it hunts you, slower than you can walk; if one
 //   of its feet comes down on you, you're crushed (FOOT_CRUSH_R; under its body, between the legs, you're safe).
-// - Crawlers: player-sized spiders swarming every crash site someone is near. Faster than you run (slide away),
+// - Crawlers: player-sized spiders swarming every crash site someone is near, and by night roaming the open desert in
+//   small packs (server/guardians.ts nightPacks). Faster than you run (slide away),
 //   the pack spreads out and comes at you from all sides (server/pack.ts); close in, each crouches and lunges straight
 //   at you (LUNGE_WIND_MS): keep moving and it misses; one bite kills (BITE_DAMAGE, shared/health.ts); they give up after a short chase or once
 //   you're well away from their site.

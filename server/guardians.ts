@@ -5,7 +5,8 @@
 //
 // Guardians are few and roam guardian ground (crash sites of level 2, shared/crashsites.ts SiteLevel) from site to
 // site. Crawlers belong to a crash site: they turn up there when someone comes near (any time, at crawler and guardian
-// ground) and go when everyone has left. The scrap fields (level 0) near the start have none.
+// ground) and go when everyone has left. The scrap fields (level 0) near the start have none. At night small packs
+// also roam the open desert (nightPacks): a made-up home walking across the sand, its crawlers patrolling round it.
 import { ORIGIN } from '../shared/origin.ts';
 import type { Vortex } from '../shared/vortex.ts';
 import { PACK_BACK_S } from '../shared/enemies.ts';
@@ -14,7 +15,7 @@ import {
   ALERT_R, BITE_DAMAGE, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CRAWLER, CRAWLER_CALM_MS,
   CRAWLER_CHASE_MS, CRUSH_SLACK, LUNGE_DASH, LUNGE_HIT_R, LUNGE_NONE, LUNGE_OVER, LUNGE_REST, LUNGE_REST_MS, LUNGE_SPEED,
   LUNGE_WIND, LUNGE_WIND_MS, FIRE_MS, FIRE_R, footTop, GUARDIAN, GUN_DEPRESS, gunPivot, KINDS, type Kind, lineOfSight,
-  MUZZLE, REST_R, restSpot, SETTLE, STEP_DIST, STEP_MAX, STEP_MIN,
+  MUZZLE, NIGHT_SUN, REST_R, restSpot, SETTLE, STEP_DIST, STEP_MAX, STEP_MIN,
 } from '../shared/guardians.ts';
 import {
   BLAST_R as MISSILE_BLAST_R, FIRST_MS, flightTime, LEAD, MISSILE_MIN_R, MISSILE_MS, MISSILE_R, type MissilePath, SCATTER, SHOOTERS,
@@ -23,6 +24,7 @@ import {
 import { nearStorm, seized, type Storm } from '../shared/storm.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { allBroken, RANGE, shotPasses, weakPoints, WRECK_S } from '../shared/rifle.ts';
+import { sunElevation } from '../shared/sun.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { type BotPlayer, type Kill, open, r2, r3, rand, SEND_R, SITE_LEAVE_R, SITE_NEAR_R, sitesNear, wrap } from './bots.ts';
 import { DroneServer } from './drones.ts';
@@ -57,6 +59,18 @@ const CALM_MS = 20_000;
 const CRAWLERS_MIN = 1, CRAWLERS_MAX = 4;
 /** Most crawlers at an outpost (a crawler site among the scrap fields, inside LEVEL_R[0]: shared/crashsites.ts). */
 const OUTPOST_CRAWLERS_MAX = 2;
+/** Night packs (nightPacks): at most NIGHT_PACKS out at once. Someone out in the open (NIGHT_PACK_KEEP_OUT m or more from
+ *  the origin) with none within NIGHT_PACK_NEAR (m) gets one about every NIGHT_PACK_EVERY_S seconds of night: NIGHT_PACK_N
+ *  crawlers turning up NIGHT_PACK_FROM (m) off, their home heading past them, then wandering on in legs of NIGHT_PACK_LEG
+ *  (m) at NIGHT_PACK_WALK m/s (while none of them hunts). At dawn they walk off (NIGHT_PACK_GO m/s), gone once out of sight. */
+const NIGHT_PACKS = 4;
+const NIGHT_PACK_KEEP_OUT = 250;
+const NIGHT_PACK_NEAR = 500;
+const NIGHT_PACK_EVERY_S = 150;
+const NIGHT_PACK_N: [number, number] = [1, 3];
+const NIGHT_PACK_FROM: [number, number] = [140, 200];
+const NIGHT_PACK_LEG: [number, number] = [80, 220];
+const NIGHT_PACK_WALK = 1.4, NIGHT_PACK_GO = 2.4;
 /** A crawler's body, for keeping it out of wrecks and scrap (m). */
 const CRAWLER_R = 0.8;
 /** A crawler after you keeps track of you this close (m); this close it stops flanking and comes straight in. */
@@ -95,6 +109,9 @@ type Guardian = {
   /** Knocked back (shared/knockback.ts): sliding at (kx, kz) m/s, dying away. */
   kx: number; kz: number;
 };
+
+/** A night pack: its made-up home (walking to (tx, tz)), and whether it's walking off (day has come). */
+type NightPack = { home: CrashSite; tx: number; tz: number; leaving: boolean };
 
 /** A guardian's foot: planted at (x, y, z), or swinging there with `left` s to go of `dur`. */
 type Foot = { x: number; y: number; z: number; left: number };
@@ -136,6 +153,8 @@ export class GuardianServer {
   /** Debug menu packs: their made-up home (where they were summoned), gone like a site's once everyone has left it. */
   private summoned: CrashSite[] = [];
   private nextSummon = 1;
+  /** The night packs roaming the open desert (their homes' ids are negative too, from nextSummon). */
+  private packs: NightPack[] = [];
   /** Killed guardians come back (server ms), away from (x, z). */
   private comeback: { at: number; x: number; z: number }[] = [];
 
@@ -264,6 +283,72 @@ export class GuardianServer {
     }
   }
 
+  /** Night packs (NIGHT_PACK_*): new ones near people out in the open by night, their homes walking on (stopped while
+   *  one of the pack hunts, so the chase keeps to where it began), walking off at dawn; gone once nobody is near or,
+   *  walking off, nobody can see them, or all of them are dead and cleared away. */
+  private nightPacks(dt: number, now: number, tod: number, players: BotPlayer[], exposed: BotPlayer[]) {
+    const night = sunElevation(tod) < NIGHT_SUN;
+    this.packs = this.packs.filter((k) => {
+      const h = k.home;
+      const pack = this.guardians.filter((g) => g.home === h);
+      const seen = players.some((p) => pack.some((g) => Math.hypot(p.x - g.x, p.z - g.z) < CRAWLER_SEND_R + 30));
+      if (!pack.length || !players.some((p) => Math.hypot(p.x - h.x, p.z - h.z) < SITE_LEAVE_R) || (k.leaving && !seen)) {
+        this.guardians = this.guardians.filter((g) => g.home !== h);
+        return false;
+      }
+      if (!night && !k.leaving) {
+        // Day: off away from whoever is nearest, leaving be whoever they aren't after.
+        k.leaving = true;
+        const p = players.reduce((a, b) => (Math.hypot(a.x - h.x, a.z - h.z) < Math.hypot(b.x - h.x, b.z - h.z) ? a : b));
+        const a = Math.atan2(h.x - p.x, h.z - p.z);
+        k.tx = h.x + Math.sin(a) * 1000;
+        k.tz = h.z + Math.cos(a) * 1000;
+        for (const g of pack) if (g.prey < 0) g.calmUntil = Infinity;
+      }
+      if (pack.some((g) => g.prey >= 0 && g.deadAt < 0)) return true;
+      const dx = k.tx - h.x, dz = k.tz - h.z, d = Math.hypot(dx, dz);
+      if (d < 3) this.packLeg(k);
+      else {
+        const step = Math.min(d, (k.leaving ? NIGHT_PACK_GO : NIGHT_PACK_WALK) * dt);
+        h.x += (dx / d) * step;
+        h.z += (dz / d) * step;
+      }
+      return true;
+    });
+    if (!night) return;
+    for (const p of exposed) {
+      if (this.packs.length >= NIGHT_PACKS) return;
+      if (Math.random() > dt / NIGHT_PACK_EVERY_S) continue;
+      if (Math.hypot(p.x - ORIGIN.x, p.z - ORIGIN.z) < NIGHT_PACK_KEEP_OUT) continue;
+      if (this.packs.some((k) => Math.hypot(k.home.x - p.x, k.home.z - p.z) < NIGHT_PACK_NEAR)) continue;
+      const a = rand(-Math.PI, Math.PI), r = rand(...NIGHT_PACK_FROM);
+      const x = p.x + Math.sin(a) * r, z = p.z + Math.cos(a) * r;
+      if (Math.hypot(x - ORIGIN.x, z - ORIGIN.z) < NIGHT_PACK_KEEP_OUT) continue;
+      // Passing by: it heads for somewhere near them, then wanders on.
+      const b = rand(-Math.PI, Math.PI), q = rand(15, 50);
+      const home: CrashSite = { ...this.sites[0], id: -this.nextSummon++, x, z };
+      this.packs.push({ home, tx: p.x + Math.sin(b) * q, tz: p.z + Math.cos(b) * q, leaving: false });
+      const n = NIGHT_PACK_N[0] + Math.floor(Math.random() * (NIGHT_PACK_N[1] - NIGHT_PACK_N[0] + 1));
+      for (let i = 0; i < n; i++) {
+        const c = rand(-Math.PI, Math.PI), s = rand(...PATROL[CRAWLER]);
+        const [cx, cz] = keepOut(x + Math.sin(c) * s, z + Math.cos(c) * s, CRAWLER_R);
+        this.guardians.push(this.walker(CRAWLER, 4, home, cx, cz));
+      }
+    }
+  }
+
+  /** A night pack's next leg: on the way it was going, turned a little (walking off: straight on), off the start. */
+  private packLeg(k: NightPack) {
+    const h = k.home;
+    const on = Math.atan2(k.tx - h.x, k.tz - h.z) || rand(-Math.PI, Math.PI);
+    for (let i = 0; i < 10; i++) {
+      const a = k.leaving ? on : on + rand(-1.2, 1.2) + (i > 4 ? Math.PI : 0), r = k.leaving ? 1000 : rand(...NIGHT_PACK_LEG);
+      k.tx = h.x + Math.sin(a) * r;
+      k.tz = h.z + Math.cos(a) * r;
+      if (Math.hypot(k.tx - ORIGIN.x, k.tz - ORIGIN.z) > NIGHT_PACK_KEEP_OUT + 20) return;
+    }
+  }
+
   /**
    * Advance by dt seconds at server time `now` (ms), wall-clock time of day `tod`. Returns who was bitten (player id
    * → damage), shot by a bolt or blown up by a missile, and the bolts and missiles fired and burst.
@@ -277,6 +362,7 @@ export class GuardianServer {
     const exposed = players.filter(open);
     this.vel.update(now, dt, players);
     this.swarm(players, now);
+    this.nightPacks(dt, now, tod, players, exposed);
     this.wrecks(now);
     const lit = this.drones.tick(dt, now, tod, players, exposed, byId, this.storms, (p) => this.alert(p, now), this.vortices);
     this.tickMissiles(dt, now, lit, players, exposed, blasted, events);
@@ -571,9 +657,9 @@ export class GuardianServer {
   /** Steps to (nx, nz), kept off the start (and out of wrecks and scrap: crawlers). */
   private moveTo(g: Guardian, nx: number, nz: number, hunting: boolean) {
     // The start (round the origin, where the pod lies) is out of bounds: stopped at the edge (and it gives up the hunt there). Not for a debug menu pack
-    // (made-up home, id < 0), so it can be tried out near the start.
+    // (made-up home), so it can be tried out near the start.
     const bd = Math.hypot(nx - ORIGIN.x, nz - ORIGIN.z);
-    if (bd < START_KEEP_OUT && g.home.id >= 0) {
+    if (bd < START_KEEP_OUT && !this.summoned.includes(g.home)) {
       nx = ORIGIN.x + ((nx - ORIGIN.x) / bd) * START_KEEP_OUT;
       nz = ORIGIN.z + ((nz - ORIGIN.z) / bd) * START_KEEP_OUT;
       if (!hunting) this.patrolPoint(g);
@@ -629,7 +715,7 @@ export class GuardianServer {
       g.tz = g.home.z + Math.cos(a) * r;
       // Not inside a wreck (a crawler would walk round it for ever).
       if (g.kind === CRAWLER) [g.tx, g.tz] = keepOut(g.tx, g.tz, CRAWLER_R + 0.5);
-      if (g.home.id >= 0 && Math.hypot(g.tx - ORIGIN.x, g.tz - ORIGIN.z) <= START_KEEP_OUT + 10) continue;
+      if (!this.summoned.includes(g.home) && Math.hypot(g.tx - ORIGIN.x, g.tz - ORIGIN.z) <= START_KEEP_OUT + 10) continue;
       // Not where another of its kind stands or is heading (guardians: crawlers swarm).
       const sep = SEP_R * KINDS[g.kind].scale;
       if (i < 9 && g.kind === GUARDIAN && this.guardians.some((o) => o !== g && o.kind === g.kind && o.deadAt < 0

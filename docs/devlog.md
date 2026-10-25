@@ -2443,3 +2443,19 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
 - **Client:** walkers and drones are drawn `BOT_DELAY_MS` in the past, so our own hit would be seen to shove them
   that much late; `src/world/shoves.ts` draws them knockOffset(t) − knockOffset(t − delay) ahead at once, which
   goes back to 0 as the server's frames arrive (and also if the server never agrees).
+
+## Night crawler packs
+
+- **What:** by night small packs of crawlers (1–3, `NIGHT_PACK_N`) roam the open desert, not only the crash sites
+  (server/guardians.ts `nightPacks`). Someone out in the open, `NIGHT_PACK_KEEP_OUT` (250 m) or more from the origin,
+  with no pack within `NIGHT_PACK_NEAR` gets one about every `NIGHT_PACK_EVERY_S` (150 s) of night, at most
+  `NIGHT_PACKS` (4) out at once. It turns up 140–200 m off and passes 15–50 m from them, then wanders on.
+- **How:** a pack's home is a made-up crash site (negative id, like a debug menu pack's) that walks to a waypoint at
+  `NIGHT_PACK_WALK` (1.4 m/s, under a crawler's patrol pace), then on in legs of 80–220 m, turning a little, kept off
+  the start. Its crawlers patrol round it as round a site; while one of them hunts the home stands still, so the
+  chase gives up as far from it as at a site (70 m). The pack rouses together, as a site's does. At dawn the home
+  walks off away from the nearest player at `NIGHT_PACK_GO`, the ones not hunting calmed; the pack is gone once out
+  of anyone's sight (`CRAWLER_SEND_R`), once nobody is within `SITE_LEAVE_R` of its home, or once all are dead and
+  their wrecks cleared. Debug menu packs are now told apart by `summoned` (they alone may come near the start).
+- **Economy sim:** a night-only roaming meet on the crawler (`{ at: 'roam', where: 'open', perMin: 0.2, night: true }`;
+  `night` is new on roaming meets): about half the packs pass by unnoticed.

@@ -30,11 +30,11 @@ export type Fight = {
  *    the sites of those levels), only by night if `night`, back `backS` after you've left;
  *  - `roam`: comes to you about `perMin` times a minute while you're out `where`: `open` (past the start's keep-out round the origin),
  *    `guardianGround` (site level 2), `mudflat` (near a mud flat, shared/biomes.ts), `overhead` (anywhere outdoors);
- *    `hunt`: worth going there to wait for one;
+ *    only by night if `night`; `hunt`: worth going there to wait for one;
  *  - `call`: only when you call it (the bosses' receivers, shared/bosses.ts). */
 export type Meet =
   | { at: 'site'; levels: LootLevel[]; odds?: number; spread?: number; night?: boolean; backS?: number }
-  | { at: 'roam'; where: 'open' | 'guardianGround' | 'mudflat' | 'overhead'; perMin: number; hunt?: boolean }
+  | { at: 'roam'; where: 'open' | 'guardianGround' | 'mudflat' | 'overhead'; perMin: number; night?: boolean; hunt?: boolean }
   | { at: 'call' };
 
 /** What a kill happened at: the jet's kind and whether it was jammed down whole (soft). */
@@ -72,10 +72,12 @@ export const PACK_BACK_S = 5 * 60;
 
 export const ENEMIES: Record<EnemyKind, Enemy> = {
   // Player-sized walkers at every crash site of crawler and guardian ground (an outpost's pack is smaller: server/guardians.ts
-  // CRAWLERS_MIN..MAX, OUTPOST_CRAWLERS_MAX); the ones killed are back PACK_BACK_S after everyone has left.
+  // CRAWLERS_MIN..MAX, OUTPOST_CRAWLERS_MAX); the ones killed are back PACK_BACK_S after everyone has left. By night small
+  // packs (1–3) roam the open desert too, one turning up near whoever is out every few minutes (server/guardians.ts
+  // NIGHT_PACK_*); about half of them pass by unnoticed.
   crawler: {
     n: [1, 4],
-    meet: [{ at: 'site', levels: [0.5, 1, 2], odds: 1, backS: PACK_BACK_S }],
+    meet: [{ at: 'site', levels: [0.5, 1, 2], odds: 1, backS: PACK_BACK_S }, { at: 'roam', where: 'open', perMin: 0.2, night: true }],
     fight: { seconds: odds(40, 60, 40, 50), win: odds(0, 0.85, 0.97, 0.6), death: odds(0.2, 0.08, 0.03, 0.15), quality: 0.2 },
     drops: (rand) => killDrops('crawler', rand),
     mass: 100,
