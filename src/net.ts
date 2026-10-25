@@ -241,6 +241,8 @@ export class Net {
   /** Loaded: the server shows us to others and lets us die. Resent after every reconnect's welcome. */
   isReady = false;
   onObituary?: (msg: Obituary) => void;
+  /** Someone came into the world (us too), src/chat.ts. */
+  onJoined?: (msg: Extract<ServerMsg, { t: 'joined' }>) => void;
   /** The world's latest deaths, oldest first, as we join (src/chat.ts). */
   onObituaries?: (list: Obituary[]) => void;
   /** Someone's shield plate took a killing blow (src/shieldFx.ts). */
@@ -861,6 +863,7 @@ export class Net {
       return;
     }
     if (msg.t === 'obituary') return this.onObituary?.(msg);
+    if (msg.t === 'joined') return this.onJoined?.(msg);
     if (msg.t === 'obituaries') return this.onObituaries?.(msg.list);
     if (msg.t === 'shieldBreak') return this.onShieldBreak?.(msg);
     if (msg.t === 'called') {

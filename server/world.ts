@@ -299,6 +299,7 @@ wss.on('connection', (ws) => {
     crash.leaveAll(p.id);
     vehicleSrv.release(p.id, p.state.riding ? p.state : undefined); // the bike stays where they left
     players.delete(ws);
+    if (p.ready) leftAt.set(p.browserId, performance.now());
     if (![...players.values()].some((o) => o.browserId === p.browserId)) {
       items.forget(p.browserId);
     }
@@ -851,7 +852,18 @@ function onReady(p: Player) {
   p.ready = true;
   p.savedAt = Date.now();
   sendName(p);
+  // In chat for everyone, unless they've only dropped and come straight back (or are in already, in another tab).
+  const back = performance.now() - (leftAt.get(p.browserId) ?? -Infinity) < REJOIN_QUIET_MS;
+  if (!back && ![...players.values()].some((o) => o !== p && o.ready && o.browserId === p.browserId)) {
+    const json = JSON.stringify({ t: 'joined', id: p.id, color: p.color, name: p.name, at: Date.now() } satisfies ServerMsg);
+    for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) sendJson(o.ws, json);
+  }
 }
+
+/** A player back within this long of leaving (a dropped connection) isn't announced again (ms). */
+const REJOIN_QUIET_MS = 60_000;
+/** When each player who had loaded last left (performance.now() ms), by browser id. */
+const leftAt = new Map<string, number>();
 
 /** p's name to everyone else, for the tag over their head. */
 function sendName(p: Player) {

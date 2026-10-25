@@ -4,11 +4,13 @@
 // without it. Drag the figure to turn it, wheel or pinch to
 // zoom in on it (up to the face); the dice picks a
 // whole look at random. The figure has its own small renderer, gone with the view.
+// Also the character creation on your first join to a game (src/lobby.ts): the same, with your name and colour
+// (src/profile.ts profileForm, the colour on the figure as you pick it), and Join in place of Save.
 import * as THREE from 'three/webgpu';
 import { bodyScale, DYE_COLORS, dyeChoice, dyeIndex, type DyeSlot, LOOK_SLOTS, type LookKey, packLook, unpackLook } from '../shared/look.ts';
 import { TEXT } from '../shared/text.ts';
 import { ScavengerModel } from './models/scavenger';
-import { myColor, myLook, setMyLook } from './profile';
+import { myColor, myLook, profileForm, setMyLook } from './profile';
 
 const CSS = `
 #landing .lookView { display: grid; gap: 16px; justify-items: center; }
@@ -27,7 +29,9 @@ const CSS = `
 
 const DYED: Partial<Record<LookKey, DyeSlot>> = { robe: 'robe', cloak: 'cloak', wrap: 'wrap' };
 
-export function lookView(back: () => void): HTMLElement {
+/** `join`: character creation for a game, `go` joins it once the name will do; `flag` says at once what's wrong
+ *  with the name (the game turned it away). */
+export function lookView(back: () => void, join?: { go: () => void; flag?: boolean }): HTMLElement {
   if (!document.getElementById('lookStyle')) {
     const style = document.createElement('style');
     style.id = 'lookStyle';
@@ -37,7 +41,7 @@ export function lookView(back: () => void): HTMLElement {
   const el = document.createElement('div');
   el.className = 'lookView';
   el.innerHTML = `<div class="body"><canvas></canvas><div class="slots"></div></div>
-<div class="buttons"><button class="dice">${TEXT.landing.randomColour}</button><button class="save">${TEXT.look.save}</button><button class="back">${TEXT.landing.back}</button></div>`;
+<div class="buttons"><button class="dice">${TEXT.landing.randomColour}</button><button class="save">${join ? TEXT.landing.join : TEXT.look.save}</button><button class="back">${TEXT.landing.back}</button></div>`;
   const canvas = el.querySelector('canvas')!;
   const slots = el.querySelector<HTMLElement>('.slots')!;
   let look = unpackLook(myLook());
@@ -86,9 +90,21 @@ export function lookView(back: () => void): HTMLElement {
     for (const s of LOOK_SLOTS) look[s.key] = Math.floor(Math.random() * s.options.length);
     changed();
   });
-  el.querySelector('.save')!.addEventListener('click', () => {
+  const save = el.querySelector<HTMLButtonElement>('.save')!;
+  const profile = join && profileForm((ok) => (save.disabled = !ok));
+  if (profile) {
+    el.insertBefore(profile.el, el.querySelector('.buttons'));
+    // the colour on the figure as it's picked (the form keeps it before its events reach here)
+    const recolor = () => model.setColor(myColor());
+    profile.el.addEventListener('input', recolor);
+    profile.el.addEventListener('click', recolor);
+    if (join.flag) queueMicrotask(() => profile.flag());
+  }
+  save.addEventListener('click', () => {
+    if (profile && !profile.flag()) return;
     setMyLook(packLook(look));
-    back();
+    if (join) join.go();
+    else back();
   });
   el.querySelector('.back')!.addEventListener('click', back);
   stage(canvas, model, () => model.setLook(packLook(look)), () => bodyScale(look));

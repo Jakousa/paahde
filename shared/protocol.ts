@@ -27,7 +27,7 @@ export type ClientMsg =
   // spawn: 'pod' starts beside a crashed pod's hatch instead of the saved position, 'crash' next to the nearest
   // crash site with a large machine, 'field' at the edge of the nearest scrap field, 'shelter' outside the nearest
   // shelter's door, 'canyon' on the floor of the nearest deep canyon (dev helpers, ?spawn=pod / crash / field / shelter /
-  // canyon). name and color: yours, chosen on the main menu or the lobby (src/profile.ts); a name that fails
+  // canyon). name and color: yours, chosen in character creation on your first join (src/lobby.ts); a name that fails
   // shared/names.ts checkName is refused (closed with 4422), a color that isn't 24-bit RGB keeps the one you had.
   // look: what you wear (shared/look.ts packLook), chosen on the main menu; not a look keeps the plain one.
   | { t: 'hello'; protocol: number; browserId: string; name: string; color?: number; look?: number; spawn?: 'pod' | 'crash' | 'field' | 'shelter' | 'canyon' }
@@ -350,6 +350,9 @@ export type ServerMsg =
   // Player `id` (public id; `color` their avatar's, `name` theirs or '') said `text` in chat at `at` (ms since epoch),
   // to everyone (also back to the sender).
   | { t: 'chat'; id: number; color: number; name: string; text: string; at: number }
+  // Player `id` (`color` their avatar's) came into the world at `at` (ms since epoch), to everyone once they've loaded
+  // (server/world.ts onReady): a line in chat.
+  | { t: 'joined'; id: number; color: number; name: string; at: number }
   // Players' names ([public id, name], '' unnamed) for the tags over their heads: everyone on join (reset), then
   // a player's to everyone when they join or name themselves.
   | { t: 'names'; names: [number, string][]; reset?: boolean }

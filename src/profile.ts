@@ -1,5 +1,5 @@
-// You as others see you: your name and colour, chosen on the main menu or a game's lobby (src/landing.ts,
-// src/lobby.ts), and your look (shared/look.ts, chosen on the main menu: src/lookView.ts), kept in this browser and
+// You as others see you: your name, colour and look (shared/look.ts), chosen in character creation on your first join
+// to a game (src/lobby.ts, src/lookView.ts; the look also on the main menu), kept in this browser and
 // sent with every join ('hello', src/net.ts). The name must pass
 // shared/names.ts checkName, here as you type and again on the server. Also the browser's id (a secret: it is who you
 // are to every world) and the keys of the locked games you've given the password for (server/registry.ts).
@@ -47,7 +47,7 @@ const SWATCHES = [
 
 const randomColor = () => Math.floor(Math.random() * 0x1000000);
 
-/** Your name as last typed ('' none yet; the lobby won't let you in unless it passes nameOk). */
+/** Your name as last typed ('' none yet; character creation won't let you in until it passes checkName). */
 export const myName = () => read(NAME_KEY) ?? '';
 /** Your colour, picked at random the first time. */
 export function myColor(): number {
@@ -57,7 +57,6 @@ export function myColor(): number {
   write(COLOR_KEY, n.toString(16));
   return n;
 }
-export const nameOk = () => checkName(myName(), PLAYER_NAME).ok;
 
 /** Your look (shared/look.ts packLook): the plain one until you choose. */
 export function myLook(): number {

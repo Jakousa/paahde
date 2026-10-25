@@ -1,8 +1,9 @@
 // A game's lobby, a view of the main menu (src/landing.ts): what a game's link (?w=<id>) opens, and where picking a
 // game in the lists or typing its code leads, without loading a page. Its name, lives left, bosses beaten and who's on,
-// its code (click to copy, to share), your name and colour (src/profile.ts; Join waits for a name that will do; locked
-// once you've joined the game: they're yours there for good), and the password if it has one and this browser has no
-// key for it yet (server/index.ts /api/worlds/<id>/key). Join loads the game: here if the page is the game's own,
+// its code (click to copy, to share), your name and colour there once you've joined it (src/profile.ts, locked: they're
+// yours there for good), and the password if it has one and this browser has no key for it yet (server/index.ts
+// /api/worlds/<id>/key). Join on your first time in a game goes through character creation (src/lookView.ts: your
+// look, name and colour) first. Join loads the game: here if the page is the game's own,
 // else its page with &join (src/entry.ts goes straight in). Back goes to the view you came from. A game that turned
 // us away (src/net.ts onEnded: locked, full, our name) comes back here saying why.
 import type { WorldStats } from '../shared/protocol.ts';
@@ -10,7 +11,8 @@ import { TEXT } from '../shared/text.ts';
 import { WORLD_ID } from '../shared/world.ts';
 import { copies } from './copy';
 import { crowdEl, dot, leave, lockMark, playedEl, statsLine, uptimeEl } from './landing';
-import { getBrowserId, nameOk, profileForm, setWorldKey, worldKey } from './profile';
+import { lookView } from './lookView';
+import { getBrowserId, profileForm, setWorldKey, worldKey } from './profile';
 
 /** Your name and colour in game `id` if you've joined it before (they're kept: server/world.ts join), else null. */
 async function yours(id: string): Promise<{ name: string; color: number; played: number } | null> {
@@ -97,8 +99,8 @@ async function fill(el: HTMLElement, id: string, backBtn: HTMLButtonElement, pla
 
   const join = document.createElement('button');
   const open = s.lives > 0 && s.online < s.max;
-  const profile = profileForm((ok) => (join.disabled = !ok || !open), me ?? undefined);
-  const parts: HTMLElement[] = [gname, stats, code, profile.el];
+  const parts: HTMLElement[] = [gname, stats, code];
+  if (me) parts.push(profileForm(undefined, me).el);
   const pw = document.createElement('input');
   pw.type = 'password';
   pw.placeholder = TEXT.landing.password;
@@ -112,17 +114,29 @@ async function fill(el: HTMLElement, id: string, backBtn: HTMLButtonElement, pla
   if (s.online >= s.max || why === 'full') note.textContent = TEXT.landing.full;
   if (why === 'locked') note.textContent = TEXT.landing.wrongPassword;
   join.textContent = TEXT.landing.join;
-  join.disabled = !open || (!me && !nameOk());
+  join.disabled = !open;
   const buttons = document.createElement('div');
   buttons.className = 'buttons';
   buttons.append(join, backBtn);
   parts.push(buttons);
-  el.replaceChildren(...parts);
-  if (why === 'name') profile.flag();
-  else (needsPw ? pw : join).focus();
+  const lobby = () => {
+    el.replaceChildren(...parts);
+    (needsPw && !worldKey(id) ? pw : join).focus();
+  };
+  lobby();
+
+  const enter = () => {
+    // The world is chosen when the page loads (shared/world.ts): a game other than the page's own needs its page.
+    if (!play) return location.assign(`${location.pathname}?w=${encodeURIComponent(id)}&join`);
+    leave();
+    play();
+  };
+  /** Character creation, on a first join (and again if the game turned the name away). */
+  const create = (flag = false) => el.replaceChildren(lookView(lobby, { go: enter, flag }));
+  if (why === 'name' && !me) create(true);
 
   const go = async () => {
-    if (join.disabled || !profile.flag()) return;
+    if (join.disabled) return;
     if (needsPw && !worldKey(id)) {
       join.disabled = true;
       try {
@@ -144,10 +158,8 @@ async function fill(el: HTMLElement, id: string, backBtn: HTMLButtonElement, pla
         return;
       }
     }
-    // The world is chosen when the page loads (shared/world.ts): a game other than the page's own needs its page.
-    if (!play) return location.assign(`${location.pathname}?w=${encodeURIComponent(id)}&join`);
-    leave();
-    play();
+    if (me) enter();
+    else create();
   };
   join.addEventListener('click', go);
   pw.addEventListener('input', () => pw.classList.remove('bad'));

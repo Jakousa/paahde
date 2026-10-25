@@ -277,6 +277,8 @@ const en = {
     stormFront: '⚠ Storm front',
     death: 'The desert won this one',
   },
+  /** In chat after a player's name when they come into the world. */
+  joined: 'joined the game',
   /** A death in chat, after the dead player's name (shared/protocol.ts DeathCause). */
   obituary: {
     heat: 'died of the heat',

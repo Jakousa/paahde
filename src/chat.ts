@@ -1,6 +1,7 @@
 // Chat: Enter opens a line at the bottom left, Enter sends it (Esc or an empty line just closes). Lines from
 // everyone show above it for a while, each behind a swatch of the speaker's avatar colour and their name (src/name.ts); while typing, the
-// recent ones all come back. Each line starts with the time it was said (local hh:mm). Deaths are lines too; the
+// recent ones all come back. Each line starts with the time it was said (local hh:mm). Someone coming in is a line
+// (server/world.ts onReady), and deaths are lines too; the
 // world keeps them, so joining brings back its latest ones, faded, for when you open chat. The input keeps the keys
 // to itself, so typing doesn't walk or open menus.
 import { CHAT_MAX, type DeathCause, type Obituary } from '../shared/protocol.ts';
@@ -23,7 +24,7 @@ const css = `
 #chat .log { display: flex; flex-direction: column; gap: 2px; }
 #chat .line { padding: 2px 6px; border-radius: 4px; background: rgba(20, 14, 10, 0.45); text-shadow: 0 1px 2px #000;
   overflow-wrap: anywhere; animation: chatFade ${SHOW_MS}ms linear forwards; }
-#chat .line.death { font-style: italic; }
+#chat .line.death, #chat .line.joined { font-style: italic; }
 #chat .line time { opacity: 0.55; margin-right: 6px; }
 #chat .line b { font-weight: 600; margin-right: 6px; }
 #chat .line i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; }
@@ -55,6 +56,7 @@ export class Chat {
 
     net.onChat = (m) => this.add(m.color, m.name, m.text, m.at);
     net.onObituary = (m) => this.add(m.color, m.name, OBITUARY[m.cause], m.at, 'death');
+    net.onJoined = (m) => this.add(m.color, m.name, TEXT.joined, m.at, 'joined');
     // On every (re)join: the world's latest deaths replace the ones we have, already faded.
     net.onObituaries = (list: Obituary[]) => {
       for (const line of [...this.log.querySelectorAll('.line.death')]) line.remove();
@@ -107,7 +109,7 @@ export class Chat {
   }
 
   /** A line said at `at` (ms since epoch), in order among the others; `old`: already faded (history). */
-  private add(color: number, name: string, text: string, at: number, kind?: 'death', old = false) {
+  private add(color: number, name: string, text: string, at: number, kind?: 'death' | 'joined', old = false) {
     const line = document.createElement('div');
     line.className = kind ? `line ${kind}` : 'line';
     if (old) line.classList.add('gone');

@@ -3,7 +3,7 @@
 // server says hello, with how each is doing, your name there and how long you've played) and the public games
 // (sortable), and in both a box to join a game by its code; Create, a new game's settings (name, public or private,
 // most players, a password: server/index.ts /api/worlds), then straight to its lobby. Every
-// game's link opens its lobby (src/lobby.ts), where your name and colour are chosen. Also the victory screen (every boss beaten), which goes away again: the world plays on. The landing
+// game's link opens its lobby (src/lobby.ts), whose Join goes through character creation on your first time there. Also the victory screen (every boss beaten), which goes away again: the world plays on. The landing
 // page plays the desert guitar (the game's outdoor music, src/music.ts) once the browser lets it, after the first
 // click or key.
 import { audio } from './audio';
