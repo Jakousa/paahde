@@ -1,11 +1,12 @@
 // The desktop app (docs/desktop.md): the web build in an Electron window, the first step towards a Steam build.
-// By default it serves the bundled dist/ from app://game/ and passes api/ to the game server, whose WebSocket the
-// page dials itself (src/desktop.ts). --remote loads the page from the server instead, so it always matches the
-// server's build.
+// By default it serves the game's files from app://game/ (the dist/ it shipped with, kept up to the server's build by
+// update.mjs) and passes api/ to the game server, whose WebSocket the page dials itself (src/desktop.ts). --remote
+// loads the page from the server instead, like a browser tab.
 import { app, BrowserWindow, net, protocol, shell } from 'electron';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { gameFiles } from './update.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Packaged: dist/ is copied into the app (package.json "build.extraResources"); from the checkout: ../dist.
@@ -16,6 +17,9 @@ const REMOTE = process.argv.includes('--remote');
 const SHOT = process.argv.find((a) => a.startsWith('--shot='))?.slice(7);
 // --open=<query>: the page with that query, e.g. --open=w=<id> for a world's lobby (what a Steam invite will open).
 const QUERY = process.argv.find((a) => a.startsWith('--open='))?.slice(7);
+// --profile=<name>: separate saved data (browser ID, downloaded builds): a second player on one machine, or a test.
+const PROFILE = process.argv.find((a) => a.startsWith('--profile='))?.slice(10);
+if (PROFILE) app.setPath('userData', `${app.getPath('userData')}-${PROFILE}`);
 const PAGE = `${REMOTE ? SERVER : 'app://game/'}${QUERY ? `?${QUERY}` : ''}`;
 
 function withSlash(url) {
@@ -31,7 +35,8 @@ protocol.registerSchemesAsPrivileged([
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 function serveApp() {
-  protocol.handle('app', (req) => {
+  const game = gameFiles(DIST, SERVER);
+  protocol.handle('app', async (req) => {
     const url = new URL(req.url);
     if (url.pathname.startsWith('/api/')) {
       return net.fetch(new URL(url.pathname.slice(1) + url.search, SERVER), {
@@ -41,10 +46,15 @@ function serveApp() {
         duplex: 'half',
       });
     }
-    const file = path.join(DIST, path.normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, ''));
-    if (!file.startsWith(DIST)) return new Response('', { status: 403 });
-    const isFile = statSync(file, { throwIfNoEntry: false })?.isFile();
-    return net.fetch(pathToFileURL(isFile ? file : path.join(DIST, 'index.html')).href);
+    let file = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+    // The page: on every start, and when src/update.ts reloads into the server's new build (it fetches the page
+    // first, so the download happens while the game still runs). The page's other files are then of the same build.
+    if (file === '' || file === 'index.html') {
+      await game.update();
+      file = 'index.html';
+    }
+    const disk = game.path(file);
+    return disk ? net.fetch(pathToFileURL(disk).href) : new Response('', { status: 404 });
   });
 }
 
@@ -92,7 +102,7 @@ function open() {
 
 app.whenReady().then(() => {
   if (!REMOTE) {
-    if (!existsSync(path.join(DIST, 'index.html'))) {
+    if (!existsSync(path.join(DIST, 'manifest.json'))) {
       console.error(`No build at ${DIST}: run npm run build in the repo first (or start with --remote).`);
       app.exit(1);
       return;
