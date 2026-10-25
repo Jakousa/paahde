@@ -7,7 +7,7 @@
 // - the shelters' huts (shared/shelters.ts, as boxes) within HUT_DIST;
 // - crash-site wrecks and debris (their collision capsules, shared/crashsites.ts) within CRASH_DIST, and the crashed
 //   ship's (shared/ship.ts);
-// - tarps (shared/tarp.ts) within TARP_DIST: their canvas, as four triangles round its sagging middle;
+// - tarps (shared/tarp.ts) within TARP_DIST: their canvas, as a fan of triangles from the peak to the rim;
 // - `casters`: things that move, passed in by the caller: other players, their bikes, motorcycles lying on the sand;
 // - near the start, the scrap piles' hitboxes (shared/scrap.ts);
 // - the terrain (heightAt: dunes, rocks, the pads and every dig), marched with steps that grow with distance,
@@ -26,7 +26,7 @@ import { shipCasters } from './ship.ts';
 import { DECL, skyVector, sunHourAngle, type Vec3 } from './sun.ts';
 import { ROCK_H_MAX } from './rocks.ts';
 import { placed, TARP, type Placed } from './placed.ts';
-import { canvasAt, tarpRig, type TarpRig, type Vec } from './tarp.ts';
+import { tarpRig, tarpRim, type TarpRig, type Vec } from './tarp.ts';
 import { heightAt } from './terrain.ts';
 
 /** How far towards the sun the ray looks for something in the way (m). */
@@ -47,8 +47,8 @@ const SCRAP_DIST = 25;
 const CRASH_DIST = 80;
 /** Shelter huts (2.6 m tall) are tested this close (m). */
 const HUT_DIST = 60;
-/** Tarps (canvas up to ~4.5 m) are tested this close (m, centre to point on each axis): long shade at a low sun. */
-const TARP_DIST = 45;
+/** Tarps (peak up to ~5 m) are tested this close (m, centre to point on each axis): long shade at a low sun. */
+const TARP_DIST = 50;
 /** Casters (players, bikes) further than this from the point (m, on each axis) are skipped. */
 const CASTER_DIST = 30;
 /** Sun this close to the horizon (sin of its elevation) counts as set. */
@@ -174,17 +174,17 @@ function hutsNear(x: number, z: number): number[][] {
   });
 }
 
-/** A tarp's canvas as two triangles (its corners, and its sagging middle lowered into the shared edge), cached per
- *  placed thing (the list is replaced whole when it changes). */
+/** A tarp's canvas as a fan of triangles from its peak to its rim (shared/tarp.ts: its faces are flat but for the sag),
+ *  cached per placed thing (the list is replaced whole when it changes). */
 const tarpTris = new WeakMap<Placed, Vec[]>();
 function trisOf(p: Placed): Vec[] {
   let t = tarpTris.get(p);
   if (!t) {
     const r: TarpRig = tarpRig(p.x, p.z, p.rot);
-    // Four triangles round the sagging middle: the corners and the centre.
-    const m = canvasAt(r, 0.5, 0.5);
-    const [a, b, c, d] = r.corners;
-    tarpTris.set(p, (t = [a, b, m, b, c, m, c, d, m, d, a, m]));
+    const rim = tarpRim(r);
+    t = [];
+    for (let i = 0; i < rim.length; i++) t.push(r.peak, rim[i], rim[(i + 1) % rim.length]);
+    tarpTris.set(p, t);
   }
   return t;
 }

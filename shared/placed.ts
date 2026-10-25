@@ -29,7 +29,7 @@ import { ITEMS } from './items.ts';
 import { insideShelter, inShelter, shelterAt, shelterRoomClear, shelterUnder } from './shelters.ts';
 import { nearShip } from './shipSpot.ts';
 import { heightAt } from './terrain.ts';
-import { TARP_HALF } from './tarp.ts';
+import { TARP_HALF, TARP_PEAK } from './tarp.ts';
 import { overTrophy } from './trophies.ts';
 import { TEXT } from './text.ts';
 
@@ -92,14 +92,19 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
       { x0: -0.2, x1: 0.2, y0: 3.3, y1: 3.75, z0: -0.2, z1: 0.2 },
     ],
   },
-  // A tarp (shared/tarp.ts): canvas on four poles at its corners. The poles collide (each stands on its own sand, up to
-  // `tilt` over the lowest, so they reach that much higher); the canvas is only looked at (you walk under it). Its
-  // shade: shared/shade.ts. Four turns: which corner is the high one.
+  // A tarp (shared/tarp.ts): a canvas pyramid on a centre pole, the doorway's edge (+Z) up on a short pole. Both poles
+  // collide (up to `tilt` taller: each stands on its own sand), and so does the low canvas along the three closed sides
+  // (a wall just inside each edge, where the canvas is knee-high): you go in by the doorway. The canvas above is only
+  // looked at. Its shade: shared/shade.ts. Four turns: which way the doorway faces.
   tarp: {
     hx: TARP_HALF + 0.1, hz: TARP_HALF + 0.1, sand: true, gap: 1, turns: 4, tilt: 1.2,
     boxes: [
-      ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => ({ x0: sx * TARP_HALF - 0.06, x1: sx * TARP_HALF + 0.06, y0: 0, y1: 4.6, z0: sz * TARP_HALF - 0.06, z1: sz * TARP_HALF + 0.06 })),
-      { x0: -TARP_HALF, x1: TARP_HALF, y0: 2.2, y1: 3.6, z0: -TARP_HALF, z1: TARP_HALF },
+      { x0: -0.07, x1: 0.07, y0: 0, y1: 5, z0: -0.07, z1: 0.07 },
+      { x0: -0.06, x1: 0.06, y0: 0, y1: 3.5, z0: TARP_HALF - 0.06, z1: TARP_HALF + 0.06 },
+      { x0: -TARP_HALF, x1: TARP_HALF, y0: 0, y1: 0.8, z0: -TARP_HALF + 0.2, z1: -TARP_HALF + 0.35 },
+      { x0: -TARP_HALF + 0.2, x1: -TARP_HALF + 0.35, y0: 0, y1: 0.8, z0: -TARP_HALF, z1: TARP_HALF },
+      { x0: TARP_HALF - 0.35, x1: TARP_HALF - 0.2, y0: 0, y1: 0.8, z0: -TARP_HALF, z1: TARP_HALF },
+      { x0: -TARP_HALF, x1: TARP_HALF, y0: 1.2, y1: TARP_PEAK, z0: -TARP_HALF, z1: TARP_HALF },
     ],
   },
   // The workbench (shared/stations.ts): the bench, its front +Z; the pegboard behind it is only looked at.
@@ -227,9 +232,16 @@ function footprint(kind: string, x: number, z: number, rot: number, m = 0): [num
 /** A placed thing's boxes in world coordinates. Turned a quarter (rot 1), local +X goes to world -Z and local +Z to +X
  *  (three.js rotation.y = π/2, as src/world/placed.ts draws it). */
 export function worldBoxes(p: Placed): Box[] {
-  return PLACEABLES[p.kind].boxes.map((b) => p.rot
-    ? { x0: p.x + b.z0, x1: p.x + b.z1, y0: p.y + b.y0, y1: p.y + b.y1, z0: p.z - b.x1, z1: p.z - b.x0 }
-    : { x0: p.x + b.x0, x1: p.x + b.x1, y0: p.y + b.y0, y1: p.y + b.y1, z0: p.z + b.z0, z1: p.z + b.z1 });
+  // Turned like three.js's rotation.y = rot·π/2: (x, z) → (z, −x), (−x, −z), (−z, x).
+  return PLACEABLES[p.kind].boxes.map((b) => {
+    const y0 = p.y + b.y0, y1 = p.y + b.y1;
+    switch (p.rot) {
+      case 1: return { x0: p.x + b.z0, x1: p.x + b.z1, y0, y1, z0: p.z - b.x1, z1: p.z - b.x0 };
+      case 2: return { x0: p.x - b.x1, x1: p.x - b.x0, y0, y1, z0: p.z - b.z1, z1: p.z - b.z0 };
+      case 3: return { x0: p.x - b.z1, x1: p.x - b.z0, y0, y1, z0: p.z + b.x0, z1: p.z + b.x1 };
+      default: return { x0: p.x + b.x0, x1: p.x + b.x1, y0, y1, z0: p.z + b.z0, z1: p.z + b.z1 };
+    }
+  });
 }
 
 const overlap = (a: number[], b: number[]) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];

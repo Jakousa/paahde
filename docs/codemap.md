@@ -158,11 +158,12 @@ Everything built is shared, and anyone can take a building down.
   cycles its colour (`BEACON_COLORS`, 8; src/placing.ts, `beaconColor` message), kept in its item's ItemData `color`.
   Model made in code and every beam in one instanced draw (a camera-facing quad per beam that widens with distance):
   `src/world/beacons.ts`
-- Tarps (`tarp`, shared/placed.ts `TARP`) — shade you build: a 5.8 m canvas sail on four poles (one corner high, one
-  low), guy lines staked out; wrench-built (6 cloth, 4 scrap), four turns (R: which corner is high), poles
-  collide, the canvas doesn't. The rig (pole tops on each pole's own sand, the canvas corners, the stakes) is
-  `shared/tarp.ts`, used by `shared/shade.ts` (the canvas as four triangles: standing under it is shade for the heat) and
-  by `src/world/tarps.ts` (model made in code; the canvas billows in `windSpeed` in a TSL vertex shader)
+- Tarps (`tarp`, shared/placed.ts `TARP`) — shade you build: a 6.4 m canvas pyramid on a 3.8 m centre pole, corners
+  staked low, one edge up on a short pole as the doorway; wrench-built (3 cloth, 2 scrap), four turns (R: which way the
+  doorway faces); the poles and the closed sides collide. The rig (peak, corners, doorway, stakes, each over its own
+  sand) and the canvas's shape are `shared/tarp.ts`, used by `shared/shade.ts` (the canvas as a fan of triangles: inside
+  is shade for the heat, low sun included) and by `src/world/tarps.ts` (model made in code; the canvas billows in
+  `windSpeed` in a TSL vertex shader)
 - Electric wells (`well`, `shared/wells.ts`) — a borehole with a submersible pump, water at home: built with the wrench
   (scrap, wiring), gear with three slots (motor, valve, relay: `GEAR.well`), wired to a grid. Its control box is a small
   load all the time (`WELL_IDLE_W`, lamp lit); it runs (`PowerState.wells`, `setWellsOn`) while its grid could give the

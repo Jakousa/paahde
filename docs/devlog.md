@@ -2129,27 +2129,37 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
 
 ## Tarps: shade you build
 
-- **Why:** the starting bunker is going away, so the shade it gave has to be built. A tarp (`tarp`, "Tarp") is a 5.8 m
-  square of desert-tan canvas pitched as a shade sail on four dark pipe poles, each held by two guy lines to stakes:
-  room for three or four people under it. Built with the wrench (6 cloth, 4 scrap; all back when dismantled), anywhere
-  on the sand (`anywhere`), on ground up to 1.2 m out of level (`tilt`).
-- **Shape (shared/tarp.ts):** corners held 3.3 / 2.6 / 2.15 / 2.6 m over the sand under each pole, so it twists a little
-  like the real ones and follows the ground; the canvas sags 0.3 m in the middle and its edges are cut in. R turns it a
-  quarter at a time (PLACEABLES `turns: 4`; the other kinds still have 2), which picks where the high corner points:
-  the low side towards the sun throws the shade further.
-- **Heat:** `shared/shade.ts` tests each body ray against the tarps within 45 m: the canvas as four triangles (corners
-  and the sagged middle), cached per placed thing. Measured on a flat spot: the whole body shaded under it from 8:00
-  to 16:00, partly at 7 and 17 (the shade has moved off by then); ~40 µs a body check at noon.
+- **Why:** the starting bunker is gone, so shade has to be built. A tarp (`tarp`, "Tarp") is a 6.4 m square of
+  desert-tan canvas pitched as a pyramid ("mid") over one tall pole: room for three or four standing round the pole.
+  Built with the wrench, anywhere on the sand, on ground up to 1.2 m out of level (`tilt`). **Cheap on purpose:** 3 cloth
+  and 2 scrap (all back when dismantled), the early game's shade, from the first trip's finds.
+- **First version (flat sail):** a 5.8 m sail on four corner poles, 2.15–3.3 m up. It looked right but shaded only
+  from about 8:00 to 16:00: with the sun low, the shade fell beside it (the user's shot: standing under it at 64% heat).
+- **Shape now (shared/tarp.ts):** the peak 3.8 m up on the centre pole, the four corners staked 0.4 m over the sand on
+  short lines, so each side is a steep flat wall; the doorway's edge (+Z in its frame) is lifted in the middle to 2.3 m
+  on a short pole with a guy line out in front. Every point stands over its own sand, so it follows the ground. The
+  canvas is a cone over its square from the peak to the edges (flat faces, sharp ridges to the corners and to the
+  doorway's point), sagging 0.14 m between ridges. R turns it a quarter at a time (PLACEABLES `turns: 4`): which way the
+  doorway faces. The sun rises towards +Z and sets towards −Z (shared/sun.ts), so a doorway facing ±X keeps it out all
+  day, one facing +Z or −Z lets the morning or the evening sun in. `worldBoxes` now turns boxes properly for turns 2 and 3 too.
+- **Collision:** the two poles, and a knee-high wall just inside each closed side, so you go in by the doorway; the
+  canvas over it is only looked at.
+- **Heat:** `shared/shade.ts` tests each body ray against the tarps within 50 m: the canvas as a fan of eight triangles
+  from the peak round the rim, cached per placed thing. Worst of five points inside (beside the pole, and 1.2 m out each
+  way), on flat sand: with the doorway facing ±X (turns 1, 3) the body is fully shaded from 6:15 to 18:15 (sun-up to
+  sun-down; one 0.25 leak right at sunrise on rippled sand); with it facing +Z (turn 0) the morning sun gets in until
+  ~8:00, facing −Z (turn 2) the evening sun after ~16:00. The flat sail was fully shaded only 8:00–16:00. ~20–30 µs a
+  body check.
 - **Drawing (src/world/tarps.ts):** made in code from the same rig, so what you see shading you is what cools you.
-  Three meshes a tarp (canvas 288 tris; poles and stakes, vertex-coloured; guy lines, no shadow), ~510 tris in all, the
-  three materials shared. The canvas moves on the GPU: positionNode lifts a 12×12 grid by two waves running downwind
-  (`windDir`) and a cross wave, pinned at the corners and freest mid-edge and in the middle, plus a billow that breathes;
-  amplitude and speed grow with `TARP_WIND` (shared/power.ts `windSpeed`, the windmills' wind, set each frame where the
-  stormiest tarp stands): a few cm in a breeze, ~0.3 m in a storm. The normal is rebuilt from the waves' slope along the
-  grid's tangents (attributes from the geometry), so folds catch the light. Underneath, a little of the sun glows
-  through the cloth (emissive on back faces, by day).
+  Three meshes a tarp (canvas 288 tris, split along its ridges; poles and stakes, vertex-coloured; lines, no shadow),
+  the three materials shared. The canvas moves on the GPU: positionNode pushes the 12×12 grid out along its normal by two
+  waves running downwind (`windDir`) and a cross wave, plus a slow breathing billow, pinned at the peak, the corners and
+  the doorway's point; amplitude and speed grow with `TARP_WIND` (shared/power.ts `windSpeed`, the windmills' wind, set
+  each frame where the stormiest tarp stands): a couple of cm in a breeze, ~0.25 m in a storm. The normal is rebuilt from
+  the waves' slope along the grid's tangents, so folds catch the light. Inside, a little of the sun glows through.
 - Icon: the code model on level sand, through tools/icons/dump.mjs and tools/blender/icons.py.
-- Gaps: one variant (no lean-to or hexagonal one yet); the guy lines don't move; the wind uniform is one for all tarps.
+- Gaps: one variant; the lines don't move; the wind uniform is one for all tarps; the third-person camera doesn't
+  collide with the canvas (it can end up outside the wall).
 
 ## The electric well
 

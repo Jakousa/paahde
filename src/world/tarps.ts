@@ -1,12 +1,12 @@
-// Tarps (shared/tarp.ts, shared/placed.ts TARP): sand-coloured canvas pitched as a sail on four dark poles, guy lines
-// staked out in the sand. Built here in code from the rig the server's shade uses, so what you see shading you is what
+// Tarps (shared/tarp.ts, shared/placed.ts TARP): sand-coloured canvas pitched as a pyramid on a tall dark pole, its
+// corners staked low on short lines, the doorway's edge up on a short pole with a guy line. Built here in code from the rig the server's shade uses, so what you see shading you is what
 // cools you. Each tarp is three meshes: the canvas, the poles and stakes (vertex colours), the guy lines (no shadow:
 // they're thinner than a shadow texel). Their materials are shared by every tarp; the geometry is each one's own
 // (each stands on its own sand), a few hundred triangles.
 //
-// The canvas moves in the wind on the GPU: a 12×12 grid lifted in the vertex shader by waves running downwind
-// (env.ts windDir), pinned at the corners and freest mid-edge and in the middle, with a slow billow that breathes with
-// the gusts. How hard is `TARP_WIND`, the shared wind (shared/power.ts windSpeed, the windmills' wind: gusts, the day,
+// The canvas moves in the wind on the GPU: a 12×12 grid (split along its ridges) pushed in and out along its normal in
+// the vertex shader by waves running downwind (env.ts windDir), pinned at the peak, the corners and the doorway's point,
+// with a slow billow that breathes with the gusts. How hard is `TARP_WIND`, the shared wind (shared/power.ts windSpeed, the windmills' wind: gusts, the day,
 // storms), set every frame by src/world/placed.ts. The shading normal follows the waves (the surface's tangents, from the
 // geometry, bent by the waves' slope), so the folds catch the low sun.
 import * as THREE from 'three/webgpu';
@@ -37,15 +37,17 @@ function canvasMaterial() {
   const m = new THREE.MeshStandardNodeMaterial({ color: CANVAS, roughness: 1, metalness: 0, side: THREE.DoubleSide });
   const seed = attribute('seed', 'float') as F;
   const tu = attribute('tanU', 'vec3') as V3, tv = attribute('tanV', 'vec3') as V3;
-  // How free a point is: 0 at a corner (tied to its pole), ~1 mid-edge and in the middle.
+  const nrm = attribute('normal', 'vec3') as V3;
+  // How free a point is: 0 where it's tied (a corner, the peak, the doorway's point), ~1 mid-face.
   const free = Fn(([q]: [V2]) => {
     const e = min(q, vec2(1).sub(q));
-    return smoothstep(0, 0.42, e.length());
+    const pin = min(min(e.length(), q.sub(0.5).length()), q.sub(vec2(0.5, 1)).length());
+    return smoothstep(0, 0.3, pin);
   });
   // The lift (m) at canvas point q (uv) and local position p: two waves running downwind and a slow billow.
   const lift = Fn(([q, p]: [V2, V3]) => {
     const v = TARP_WIND;
-    const amp = min(float(0.02).add(v.mul(0.011)), 0.32);
+    const amp = min(float(0.015).add(v.mul(0.008)), 0.25);
     const speed = float(1.4).add(v.mul(0.16));
     const along = dot(p.xz, windDir);
     const across = dot(p.xz, vec2(windDir.y, windDir.x.negate()));
@@ -53,21 +55,21 @@ function canvasMaterial() {
     const w1 = sin(along.mul(1.3).sub(t.mul(2.1)).add(seed));
     const w2 = sin(along.mul(2.6).add(across.mul(1.1)).sub(t.mul(3.3)).add(seed.mul(1.7))).mul(0.45);
     const w3 = cos(across.mul(0.9).add(t.mul(0.6)).add(seed.mul(0.6))).mul(0.3);
-    // The billow: wind under the cloth lifts the middle, pumping with the gusts.
-    const bulge = q.x.mul(q.x.oneMinus()).mul(q.y).mul(q.y.oneMinus()).mul(16)
-      .mul(min(v.mul(0.012), 0.22)).mul(sin(time.mul(0.7).add(seed)).mul(0.35).add(0.65));
-    return free(q).mul(amp).mul(w1.add(w2).add(w3)).add(bulge);
+    // The billow: the walls breathe in and out with the gusts.
+    const bulge = min(v.mul(0.008), 0.15).mul(sin(time.mul(0.7).add(seed)));
+    return free(q).mul(amp.mul(w1.add(w2).add(w3)).add(bulge));
   });
   m.positionNode = Fn(() => {
     const q = uv(), p = positionLocal;
     const e = 1 / N;
     const h = lift(q, p);
-    // The slope along each grid direction, from a step there (the tangents are the step's length on the canvas).
+    // Out along the normal; the slope along each grid direction from a step there (the tangents are the step's length on
+    // the canvas) bends the normal.
     const hu = lift(q.add(vec2(e, 0)), p.add(tu.mul(e))).sub(h);
     const hv = lift(q.add(vec2(0, e)), p.add(tv.mul(e))).sub(h);
-    const du = tu.mul(e).add(vec3(0, hu, 0)), dv = tv.mul(e).add(vec3(0, hv, 0));
+    const du = tu.mul(e).add(nrm.mul(hu)), dv = tv.mul(e).add(nrm.mul(hv));
     normalLocal.assign(dv.cross(du).normalize());
-    return p.add(vec3(0, h, 0));
+    return p.add(nrm.mul(h));
   })();
   // The hem: a darker band along the edges; a little sun through the cloth underneath, by day.
   const q = uv();
@@ -110,12 +112,14 @@ function canvasGeometry(r: TarpRig, o: Vec, seed: number): THREE.BufferGeometry 
       tv.set([(b.x - c.x) / sv, (b.y - c.y) / sv, (b.z - c.z) / sv], k * 3);
     }
   }
-  // Wound so the front face looks up (u × v points down for the corners' order, so v before u).
+  // Wound so the front face looks up and out (v before u). Each cell is split along the ridge through it (the diagonals
+  // from the peak to the corners), so the faces stay flat and the ridges sharp.
   const idx: number[] = [];
   for (let j = 0; j < N; j++) {
     for (let i = 0; i < N; i++) {
       const k = j * n + i;
-      idx.push(k, k + n, k + 1, k + 1, k + n, k + n + 1);
+      if (i < N / 2 === j < N / 2) idx.push(k, k + n, k + n + 1, k, k + n + 1, k + 1);
+      else idx.push(k, k + n, k + 1, k + 1, k + n, k + n + 1);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -128,7 +132,7 @@ function canvasGeometry(r: TarpRig, o: Vec, seed: number): THREE.BufferGeometry 
   g.computeVertexNormals();
   // The waves lift it: room for them in the bounds (culling, shadows).
   g.computeBoundingSphere();
-  g.boundingSphere!.radius += 0.4;
+  g.boundingSphere!.radius += 0.3;
   return g;
 }
 
@@ -161,7 +165,7 @@ export function tarpModel(x: number, y: number, z: number, rot: number, id = 0, 
   canvas.castShadow = canvas.receiveShadow = true;
   const rig: THREE.BufferGeometry[] = [], ropes: THREE.BufferGeometry[] = [];
   for (const p of r.poles) {
-    rig.push(rod(p.foot, p.top, o, 0.05, 0.04, 7, POLE));
+    rig.push(rod(p.foot, p.top, o, 0.055, 0.04, 7, POLE));
     rig.push(rod({ ...p.top, y: p.top.y - 0.03 }, { ...p.top, y: p.top.y + 0.04 }, o, 0.055, 0.055, 7, CAP));
   }
   for (const gy of r.guys) {
