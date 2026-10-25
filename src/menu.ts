@@ -112,7 +112,6 @@ ${optionsHtml()}</div>
     fs.addEventListener('click', () => {
       setGraphics('fullscreen', !graphics.fullscreen);
       setFullscreen(graphics.fullscreen);
-      fs.blur();
     });
     // Back to the main menu (the page without a world in its address).
     this.el.querySelector('.leaveGame')!.addEventListener('click', () => location.assign(location.pathname));
@@ -139,7 +138,6 @@ ${optionsHtml()}</div>
 
     // Capture phase, so this sees the inventory still open when its own Esc handler is about to close it.
     addEventListener('keydown', (e) => {
-      if (e.code === 'Tab' && this.open) this.toggle(false);
       if (e.code === 'Escape' && ui.inventoryOpen) ui.escClosedAt = performance.now(); // the inventory, chest or workbench takes this Esc
       if (e.code !== 'Escape' || e.repeat || document.pointerLockElement || ui.inventoryOpen || performance.now() - ui.escClosedAt < 400 || tools.frozen) return; // Esc leaves the disassembly (src/teardown)
       if (document.getElementById('name') || document.getElementById('play')) return; // Esc there skips the name (src/name.ts) or leaves the minigame

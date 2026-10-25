@@ -74,7 +74,6 @@ export function bindRebind(root: HTMLElement): { leave: () => void; unbind: () =
   grid.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('button');
     if (!b || ignoreClick) return;
-    b.blur();
     listening = listening === b ? undefined : b;
     note.textContent = listening ? TEXT.controls.listening : '';
     show();
@@ -83,7 +82,6 @@ export function bindRebind(root: HTMLElement): { leave: () => void; unbind: () =
     listening = undefined;
     note.textContent = '';
     resetAll();
-    (e.currentTarget as HTMLElement).blur();
   });
   const leave = () => {
     listening = undefined;

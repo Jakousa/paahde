@@ -8,6 +8,8 @@ import { FPS_LIMITS, PRESET_NAMES, SHADOW_DISTANCE_RANGE, SHADOW_QUALITY, applyG
 import { setFullscreen } from './input';
 import { bindRebind, controlsHtml } from './rebind';
 import { UI_SIZE_RANGE, setUiSize, uiScale, uiSize } from './uiScale';
+import { comfort, COMFORT_RANGES, onComfort, setComfort, type Comfort } from './comfort';
+import './uiNavigation';
 
 const STATS_KEY = 'dadajam.stats';
 
@@ -100,7 +102,9 @@ export function optionsHtml(): string {
 <label class="row" data-tip="${TEXT.menu.tips.interfaceSize}"><span>${TEXT.menu.interfaceSize}</span><input class="uiSize" type="range" min="${UI_SIZE_RANGE[0]}" max="${UI_SIZE_RANGE[1]}" step="0.05"><span class="val uiSizeVal"></span></label>
 <label class="row"><span>${TEXT.menu.showGuides}</span><input class="guides" type="checkbox"></label>
 <label class="row"><span>${TEXT.menu.showCounts}</span><input class="counts" type="checkbox"></label>
-<label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label></div>
+<label class="row"><span>${TEXT.menu.showStats}</span><input class="stats" type="checkbox"></label>
+<h3>${TEXT.menu.camera}</h3>${comfortHtml(['mouseX', 'mouseY', 'padX', 'padY', 'invertY', 'fov', 'motion', 'glare', 'grain'])}
+<h3>${TEXT.menu.readability}</h3>${comfortHtml(['hudScale', 'subtitleScale', 'subtitleOpacity', 'subtitleDuration', 'instantText'])}</div>
 <div class="pane" data-pane="graphics">
 <label class="row" data-tip="${TEXT.menu.tips.graphicsPreset}"><span>${TEXT.menu.graphicsPreset}</span><select class="gPreset"><option value="auto">${TEXT.menu.automatic}</option>${PRESET_NAMES.map((name, i) => `<option value="${name}">${TEXT.menu.shadowQualities[i]}</option>`).join('')}<option value="custom" disabled>${TEXT.menu.custom}</option></select></label>
 <label class="row" data-tip="${TEXT.menu.tips.display}"><span>${TEXT.menu.display}</span><select class="gDisplay"><option value="1">${TEXT.menu.fullscreen}</option><option value="0">${TEXT.menu.windowed}</option></select></label>
@@ -125,6 +129,7 @@ ${controlsHtml()}</div>
 
 /** Wire every control in `root`. `onAo`: called with the occlusion level now and when it changes; `onStats`: the stats checkbox. */
 export function bindOptions(root: HTMLElement, hooks: { onAo?: (level: number) => void; onStats?: (on: boolean) => void }) {
+  const unbindComfort = bindComfort(root);
   const vol = root.querySelector<HTMLInputElement>('.vol')!;
   const val = root.querySelector<HTMLElement>('.volVal')!;
   const showVol = () => (val.textContent = `${Math.round(audio.volume * 100)}%`);
@@ -177,11 +182,38 @@ export function bindOptions(root: HTMLElement, hooks: { onAo?: (level: number) =
     for (const p of root.querySelectorAll<HTMLElement>('.pane')) p.style.display = p.dataset.pane === name ? '' : 'none';
   };
   tab('gameplay');
-  for (const b of root.querySelectorAll<HTMLElement>('.tab')) b.addEventListener('click', () => (tab(b.dataset.tab!), b.blur()));
+  for (const b of root.querySelectorAll<HTMLElement>('.tab')) b.addEventListener('click', () => tab(b.dataset.tab!));
   bindTips(root);
-  // Drop focus after using a control, or the arrow keys / space would keep nudging it.
-  for (const input of root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select')) input.addEventListener('change', () => input.blur());
-  return () => { unbindAo(); unbindGraphics(); rebind.unbind(); };
+  return () => { unbindAo(); unbindGraphics(); unbindComfort(); rebind.unbind(); };
+}
+
+function comfortHtml(keys: (keyof Comfort)[]): string {
+  return keys.map((key) => {
+    const range = COMFORT_RANGES[key as keyof typeof COMFORT_RANGES];
+    return `<label class="row"><span>${TEXT.menu.comfort[key]}</span><input data-comfort="${key}" type="${range ? 'range' : 'checkbox'}"${range ? ` min="${range[0]}" max="${range[1]}" step="${key === 'fov' ? 1 : 0.05}"` : ''}>${range ? `<span class="val" data-comfort-value="${key}"></span>` : ''}</label>`;
+  }).join('');
+}
+
+function bindComfort(root: HTMLElement) {
+  const controls = [...root.querySelectorAll<HTMLInputElement>('[data-comfort]')];
+  const sync = () => {
+    for (const input of controls) {
+      const key = input.dataset.comfort as keyof Comfort;
+      const value = comfort[key];
+      if (typeof value === 'boolean') input.checked = value;
+      else {
+        input.value = String(value);
+        const label = root.querySelector<HTMLElement>(`[data-comfort-value="${key}"]`)!;
+        label.textContent = key === 'fov' ? `${Math.round(value)}°` : `${Math.round(value * 100)}%`;
+      }
+    }
+  };
+  sync();
+  for (const input of controls) input.addEventListener(input.type === 'checkbox' ? 'change' : 'input', () => {
+    const key = input.dataset.comfort as keyof Comfort;
+    setComfort(key, input.type === 'checkbox' ? input.checked : Number(input.value));
+  });
+  return onComfort(sync);
 }
 
 /** The same controls serve the landing page and the running game. Sync every control after a preset or Auto change. */

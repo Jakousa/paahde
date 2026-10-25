@@ -11,6 +11,7 @@
 import * as THREE from 'three/webgpu';
 import { isBound } from './bindings';
 import { tools } from './input';
+import { comfort, COMFORT_RANGES } from './comfort';
 import { heightAt } from '../shared/terrain.ts';
 import { placed, TARP, type Placed } from '../shared/placed.ts';
 import { canvasYAt, TARP_HALF, tarpRig, type TarpRig } from '../shared/tarp.ts';
@@ -23,10 +24,9 @@ const PITCH_LIMIT = (85 * Math.PI) / 180;
 // Riding in first person the rider's body is drawn (headless) around the eye: a neck's range keeps the view out of it.
 const RIDE_YAW_LIMIT = (100 * Math.PI) / 180; // either side of the bike's heading
 const RIDE_PITCH_DOWN = (55 * Math.PI) / 180; // looking ahead over the bars; less over a shoulder (see limitRide)
-const BASE_FOV = 72;
 const SPRINT_FOV_KICK = 9;
 /** Widest the view gets (sprinting); the sun's shadow cascades are fitted to it. */
-export const MAX_FOV = BASE_FOV + SPRINT_FOV_KICK;
+export const MAX_FOV = COMFORT_RANGES.fov[1] + SPRINT_FOV_KICK;
 // Metres per step (half a bob cycle): the third-person Run clip's (RUN_REF × its 0.73 s cycle / 2, src/models/scavenger.ts)
 // so the view, the footstep sounds (src/players.ts) and the body's feet keep one cadence, ~4.4 steps/s at a walk.
 const STRIDE = 1.72;
@@ -75,7 +75,7 @@ export class FirstPersonCamera {
   private roll = 0;
   private slide = 0; // 0..1, eased in while speed-sliding: the view leans back onto the trailing (left) hand
   private slideClock = 0; // seconds, drives the slide's shake
-  private fov = BASE_FOV;
+  private fov = comfort.fov;
   /** Magnification (spyglass, src/telescope.ts); 1 = none. The view eases towards it. */
   zoom = 1;
   private zoomShown = 1;
@@ -110,7 +110,7 @@ export class FirstPersonCamera {
         localStorage.setItem(THIRD_PERSON_KEY, this.thirdPerson ? '1' : '0');
       } catch {}
     });
-    this.camera = new THREE.PerspectiveCamera(BASE_FOV, innerWidth / innerHeight, 0.05, 6000);
+    this.camera = new THREE.PerspectiveCamera(comfort.fov, innerWidth / innerHeight, 0.05, 6000);
     this.camera.rotation.order = 'YXZ';
     dom.addEventListener('click', () => {
       if (document.pointerLockElement !== dom) dom.requestPointerLock();
@@ -123,13 +123,14 @@ export class FirstPersonCamera {
     addEventListener('blur', () => (this.freeLook = false));
     addEventListener('mousemove', (e) => {
       if (document.pointerLockElement !== dom) return;
-      this.look(e.movementX * SENSITIVITY, e.movementY * SENSITIVITY);
+      this.look(e.movementX * SENSITIVITY * comfort.mouseX, e.movementY * SENSITIVITY * comfort.mouseY);
     });
   }
 
   /** Turn the view by (dx, dy) radians at no zoom, right and down: the mouse, or the gamepad's stick (src/gamepad.ts). */
   look(dx: number, dy: number) {
     if (tools.spinning) return; // (turning a machine or a piece in the hand with the mouse: the view stays)
+    if (comfort.invertY) dy = -dy;
     const s = 1 / this.zoomShown; // zoomed in, the same hand movement turns the view less
     if (this.freeLook && !Number.isFinite(this.rideHeading) && this.zoom <= 1) {
       this.freeYaw = Math.max(-FREE_YAW_LIMIT, Math.min(FREE_YAW_LIMIT, this.freeYaw - dx * s));
@@ -226,8 +227,8 @@ export class FirstPersonCamera {
     this.bobAmount += (bobTarget - this.bobAmount) * (1 - Math.exp(-dt * 6));
     if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / (crouched ? CROUCH_CYCLE / 2 : STRIDE * this.stride * (1 - CLIMB_SHORTEN * this.climb));
     const s = Math.sin(this.bobPhase);
-    const bobY = (0.5 - s * s) * 0.018 * this.bobAmount;
-    const bobX = s * 0.009 * this.bobAmount;
+    const bobY = (0.5 - s * s) * 0.018 * this.bobAmount * comfort.motion;
+    const bobX = s * 0.009 * this.bobAmount * comfort.motion;
 
     // Camera basis on the ground plane.
     const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
@@ -249,13 +250,13 @@ export class FirstPersonCamera {
       shakeR = a * 0.006 * Math.sin(t * 23.7 + 0.4) * Math.sin(t * 5.1);
       shakeP = a * 0.005 * Math.sin(t * 37.9 + 2.1);
     } else this.slideClock = 0;
-    let y = this.eyeY + EYE_HEIGHT - 0.65 * this.crouch + bobY + this.dip + shakeY;
+    let y = this.eyeY + EYE_HEIGHT - 0.65 * this.crouch + bobY + (this.dip + shakeY) * comfort.motion;
     // Never look out from under a dune (in a shelter's entrance and rooms the sand isn't in the way).
     if (!sandHidden(x, z, p.y)) y = Math.max(y, heightAt(x, z) + 0.3);
 
     // Third person: back off along the view ray (and over the shoulder), shortening both together where the camera
     // would go into the sand or through a shelter's wall.
-    const pitch = this.pitch + this.freePitch + this.dip * 0.12 + shakeP;
+    const pitch = this.pitch + this.freePitch + (this.dip * 0.12 + shakeP) * comfort.motion;
     const cp = Math.cos(pitch), vs = Math.sin(viewYaw), vc = Math.cos(viewYaw);
     const bx = vs * cp, by = -Math.sin(pitch), bz = vc * cp; // unit vector pointing behind the view
     const third = (this.thirdPerson && !this.aimIn) || this.down;
@@ -281,11 +282,11 @@ export class FirstPersonCamera {
     const mx = x - bx * OTS_MEET - this.camera.position.x, my = y - by * OTS_MEET - this.camera.position.y, mz = z - bz * OTS_MEET - this.camera.position.z;
     const camYaw = this.shoulder > 0 ? Math.atan2(-mx, -mz) : viewYaw;
     const camPitch = this.shoulder > 0 ? Math.atan2(my, Math.hypot(mx, mz)) : pitch;
-    this.camera.rotation.set(camPitch, camYaw, this.roll + bobX * 0.1 + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR);
+    this.camera.rotation.set(camPitch, camYaw, (this.roll + this.slide * SLIDE_ROLL * (1 - 0.6 * Math.min(1, this.boom / BOOM)) + shakeR) * comfort.motion + bobX * 0.1);
 
     // FOV kick when moving faster than a walk (sprint, slides).
     const t = Math.max(0, Math.min(1, (speed - WALK_SPEED - 0.5) / (SPRINT_SPEED - WALK_SPEED - 1)));
-    const target = BASE_FOV + SPRINT_FOV_KICK * t;
+    const target = comfort.fov + SPRINT_FOV_KICK * t * comfort.motion;
     this.fov += (target - this.fov) * (1 - Math.exp(-dt * 5));
     // Zoom narrows the view by the magnification (tan of the half-angle), snapping back out when it ends.
     this.zoomShown = this.zoom <= 1 ? 1 : this.zoomShown + (this.zoom - this.zoomShown) * (1 - Math.exp(-dt * 12));

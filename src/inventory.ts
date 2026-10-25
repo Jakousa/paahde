@@ -119,7 +119,7 @@ img.fit { object-fit: contain; }
 #invOverlay .slot.dragging > :not(.key) { opacity: 0.3; }
 #invOverlay .slot .key { position: absolute; left: 4px; top: 2px; font: 600 9px var(--mono); opacity: 0.55; }
 body.pad #invOverlay .slot .key { display: none; }
-#invOverlay .legend { display: flex; gap: 14px; opacity: 0.8; }
+#invOverlay .legend { display: flex; flex-wrap: wrap; justify-content: center; max-width: calc(100vw / var(--ui, 1) - 32px); gap: 6px 14px; opacity: 0.8; }
 #invOverlay .legend kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 5px; border-radius: 3px; background: #fff4e4; color: #2a160a; }
 #invOverlay .slot .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
@@ -314,7 +314,9 @@ export class InventoryHud {
     const legend = document.createElement('div');
     legend.className = 'legend';
     legend.innerHTML = ctl('uiDrag', TEXT.inventory.move) + ctl('uiSend', TEXT.inventory.sendAcross) + ctl('uiHalf', TEXT.inventory.half)
-      + ctl('uiTurn', TEXT.prompt.turn) + ctl('uiClose', TEXT.inventory.close);
+      + ctl('uiTurn', TEXT.prompt.turn) + ctl('uiClose', TEXT.inventory.close)
+      + ctl('uiSelect', TEXT.inventory.move) + ctl('uiTransfer', TEXT.inventory.sendAcross)
+      + ctl('uiSplit', TEXT.inventory.half) + ctl('uiDrop', TEXT.inventory.drop);
     this.overlay.append(this.boxesEl, legend);
     this.ghost.id = 'invGhost';
     this.ghost.style.display = 'none';
@@ -345,7 +347,46 @@ export class InventoryHud {
       if (e.target === this.overlay || e.target === this.boxesEl) this.toggle(false);
     });
     this.overlay.addEventListener('contextmenu', (e) => e.preventDefault());
-    this.boxesEl.addEventListener('pointerdown', (e) => this.press(e));
+    this.boxesEl.addEventListener('pointerdown', (e) => {
+      if (!(e.target as HTMLElement).closest('button')) this.press(e);
+    });
+    // Native activation makes every action work with Enter, Space and the controller too.
+    this.boxesEl.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('button')) this.press(e);
+    });
+    this.overlay.addEventListener('inventoryNavigate', (e) => {
+      const { action, half } = (e as CustomEvent<{ action: string; half: boolean }>).detail;
+      if (action === 'cancel') return this.drag ? this.cancelDrag() : this.toggle(false);
+      const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ui-focus]');
+      if (!el) return;
+      const box = el.dataset.box!, i = Number(el.dataset.i);
+      if (action === 'rotate') { if (this.drag?.moved) this.turn(); return; }
+      if (action === 'transfer') {
+        this.cancelDrag();
+        return void (this.shiftClick(box, i) ? uiSound.plop() : uiSound.full());
+      }
+      if (action === 'drop') {
+        this.cancelDrag();
+        if (this.itemAt(box, i) && box !== GROUND && !fittedBox(box)) this.drop(box, i);
+        return;
+      }
+      const point = this.keyboardPoint(el);
+      const pointer = new PointerEvent('pointermove', { clientX: point.x, clientY: point.y });
+      if (this.drag?.moved) return this.release(pointer);
+      // Use the same move, split, fitting and swap rules as pointer dragging; keep it selected between key presses.
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: point.x, clientY: point.y, button: half ? 2 : 0 }));
+      if (this.drag) {
+        this.dragMove(new PointerEvent('pointermove', { clientX: point.x + DRAG_START + 1, clientY: point.y }));
+        this.dragMove(pointer);
+      }
+    });
+    this.boxesEl.addEventListener('focusin', (e) => {
+      const el = (e.target as HTMLElement).closest<HTMLElement>('[data-ui-focus]');
+      if (!el) return;
+      this.pointer = this.keyboardPoint(el);
+      this.dragMove(new PointerEvent('pointermove', { clientX: this.pointer.x, clientY: this.pointer.y }));
+      this.showTip();
+    });
     addEventListener('pointermove', (e) => {
       this.pointer = { x: e.clientX, y: e.clientY };
       this.dragMove(e);
@@ -489,6 +530,13 @@ export class InventoryHud {
       const top = scrolled.get(el.dataset.grid!);
       if (top) el.scrollTop = top;
     }
+    for (const el of this.boxesEl.querySelectorAll<HTMLElement>('[data-box][data-i]')) {
+      el.dataset.uiFocus = '';
+      el.tabIndex = 0;
+      el.setAttribute('role', 'button');
+      const it = this.itemAt(el.dataset.box!, Number(el.dataset.i));
+      el.setAttribute('aria-label', it ? itemLabel(it.kind) : el.dataset.tip || TEXT.notice.empty);
+    }
     this.hintAt = '';
     if (this.drag) this.slotEl(this.drag.box, this.drag.i)?.classList.add('dragging');
   }
@@ -593,9 +641,19 @@ export class InventoryHud {
       if (it) rows = Math.max(rows, Math.floor((i - shape.free) / shape.cols) + sizeOf(it.kind, it.r)[1]);
     }
     rows = Math.min(rows, shape.grid);
+    const occupied = new Set<number>();
+    for (let i = shape.free; i < Math.min(end, slots.length); i++) {
+      const it = slots[i];
+      if (!it) continue;
+      const [w, h] = sizeOf(it.kind, it.r);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) occupied.add(i + y * shape.cols + x);
+    }
     let html = '';
     for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < shape.cols; x++) html += `<div class="cell${y >= shape.rows ? ' dead' : ''}" style="grid-area: ${y + 1} / ${x + 1}"></div>`;
+      for (let x = 0; x < shape.cols; x++) {
+        const i = shape.free + y * shape.cols + x;
+        html += `<div class="cell${y >= shape.rows ? ' dead' : ''}"${occupied.has(i) ? '' : ` data-box="${box}" data-i="${i}"`} style="grid-area: ${y + 1} / ${x + 1}"></div>`;
+      }
     }
     for (let i = shape.free; i < Math.min(end, slots.length); i++) {
       const it = slots[i];
@@ -744,7 +802,13 @@ export class InventoryHud {
     return this.net.boxes[box]?.[i] ?? null;
   }
 
-  private press(e: PointerEvent) {
+  /** The first cell's centre keeps keyboard placement aligned even for items spanning several cells. */
+  private keyboardPoint(el: HTMLElement) {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + Math.min(r.width, CELL * uiScale()) / 2, y: r.top + Math.min(r.height, CELL * uiScale()) / 2 };
+  }
+
+  private press(e: MouseEvent) {
     const sort = (e.target as HTMLElement).closest<HTMLElement>('[data-sort]');
     if (sort) return void (this.net.sortBox(sort.dataset.sort!) || this.toast(TEXT.notice.cantPackTighter));
     const all = (e.target as HTMLElement).closest<HTMLElement>('[data-all]');

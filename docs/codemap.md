@@ -13,12 +13,16 @@ when you find it stale.
 - `src/input.ts` — keyboard → input bitmask
 - `src/gamepad.ts` — gamepad (third-person shooter layout): presses the keys bound to each action as synthetic key
   events, so rebinding and every key reader just work; right stick → `FirstPersonCamera.look`; layout in its header. In
-  the inventory and workbench menu a drawn cursor (`src/padCursor.ts`) sends synthetic pointer events, so they work as
-  with the mouse. `src/padMap.ts` — the pad's buttons (read by the pad code and by the hints). Control hints:
+  the inventory a drawn cursor (`src/padCursor.ts`) sends synthetic pointer events, so it works as with the mouse.
+  `src/uiNavigation.ts` handles keyboard and controller focus, sliders, back actions and controller text entry on
+  the landing page and all menus; `src/uiFocus.ts` chooses neighbours from their screen bounds at any UI scale.
+  `src/padMap.ts` — the pad's buttons (read by the pad code and by the hints). Control hints:
   `src/bindings.ts` `kbd`/`ctl`/`hintKeys` name keys or pad buttons for the device last used (docs/text.md)
 - `src/uiScale.ts` — the menus' and inventory's size: `--ui`, from the window's size times Options → Interface size,
   taken as CSS `zoom` by the panels it lists. In a zoomed panel write `calc(100vw / var(--ui))` for viewport units,
   and convert pointer px to `left`/`top` with `uiScale()`
+- `src/comfort.ts` — validated, persisted camera/input and readability settings: independent mouse/stick axes,
+  inverted look, FOV, motion, glare/grain, HUD and subtitle presentation; edited in `src/options.ts`.
 
 - `desktop/` — the desktop app (Electron; docs/desktop.md): the web build in a window, the first step towards Steam.
   `desktop/update.mjs` keeps its game files at the server's build, from `dist/manifest.json` (`tools/manifest.ts`).

@@ -11,6 +11,7 @@
 // The mouse still works alongside: moving it hides the drawn cursor and takes it to the mouse.
 
 import { BTN, PAD_UI } from './padMap';
+import { neighbour } from './uiFocus';
 
 // The buttons (src/padMap.ts PAD_UI; the inventory's legend names them from there).
 const A = BTN[PAD_UI.drag], Y = BTN[PAD_UI.half], X = BTN[PAD_UI.send], LB = BTN[PAD_UI.turnL], RB = BTN[PAD_UI.turnR], B = BTN[PAD_UI.close];
@@ -20,12 +21,10 @@ const DEAD = 0.15;
 /** Cursor speed at full tilt (px/s); the response is squared, for fine moves. */
 const SPEED = 1100;
 const SCROLL = 900;
-/** The d-pad's step: one grid cell (src/inventory.ts CELL + GAP); it looks this many steps on for something new. */
-const STEP = 58, LOOK_STEPS = 10;
 /** Held, the d-pad repeats after this long, then every REPEAT_S. */
 const REPEAT_DELAY_S = 0.35, REPEAT_S = 0.09;
 /** What the d-pad lands on. */
-const TARGETS = '#invOverlay .slot, #invOverlay .cell, #invOverlay button, #benchMenu button';
+const TARGETS = '#invOverlay [data-ui-focus], #invOverlay button';
 /** Where the cursor starts when the inventory or the menu opens. */
 const START = '#invOverlay.open .slot[data-box="bag"], #benchMenu.open button';
 
@@ -88,17 +87,14 @@ function centre(t: Element) {
   y = r.top + r.height / 2;
 }
 
-/** The d-pad: on to the middle of the next slot, cell or button that way, else one cell's step. */
+/** The d-pad follows actual slot bounds at any interface scale, including across columns and scroll containers. */
 function step(dx: number, dy: number) {
   const from = under()?.closest(TARGETS) ?? null;
-  for (let k = 1; k <= LOOK_STEPS; k++) {
-    const px = x + dx * STEP * k, py = y + dy * STEP * k;
-    if (px < 0 || py < 0 || px > innerWidth || py > innerHeight) break;
-    const t = document.elementFromPoint(px, py)?.closest(TARGETS);
-    if (t && t !== from) return centre(t);
-  }
-  x = Math.max(0, Math.min(innerWidth - 1, x + dx * STEP));
-  y = Math.max(0, Math.min(innerHeight - 1, y + dy * STEP));
+  const candidates = [...document.querySelectorAll<HTMLElement>(TARGETS)]
+    .filter((e) => e !== from && e.getClientRects().length && !(e as HTMLButtonElement).disabled)
+    .map((element) => ({ element, rect: element.getBoundingClientRect() }));
+  const next = neighbour(from?.getBoundingClientRect() ?? { left: x, top: y, width: 0, height: 0 }, candidates, dx, dy);
+  if (next) { next.scrollIntoView({ block: 'nearest', inline: 'nearest' }); centre(next); }
 }
 
 /** The nearest box under the cursor that scrolls (a long chest), if any. */

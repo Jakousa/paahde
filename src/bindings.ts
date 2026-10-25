@@ -16,7 +16,7 @@ export type Action =
 
 /** What a hint can name: an action, or an input that is no action of its own (the pad's hotbar steps, the wheel's zoom,
  *  the Esc menu, the inventory's mouse moves). */
-export type Prompt = Action | 'hotbarPrev' | 'hotbarNext' | 'zoom' | 'menu' | 'uiDrag' | 'uiHalf' | 'uiSend' | 'uiTurn' | 'uiClose';
+export type Prompt = Action | 'hotbarPrev' | 'hotbarNext' | 'zoom' | 'menu' | 'uiDrag' | 'uiHalf' | 'uiSend' | 'uiTurn' | 'uiClose' | 'uiSelect' | 'uiSplit' | 'uiTransfer' | 'uiDrop';
 
 /** The hotbar's slots in order (shared/items.ts HOTBAR = 5). */
 export const HOTBAR_ACTIONS: Action[] = ['slot1', 'slot2', 'slot3', 'slot4', 'slot5'];
@@ -187,12 +187,17 @@ const padName = (g: PadGlyph) => TEXT.controls.pad[device === 'playstation' ? 'p
 export function promptKey(p: Prompt): string {
   if (device !== 'keys') return (PAD_PROMPT[p] ?? []).map(padName).join('/');
   switch (p) {
-    case 'hotbarPrev': case 'hotbarNext': case 'uiDrag': case 'uiClose': return ''; // the number keys; the mouse itself
+    case 'hotbarPrev': case 'hotbarNext': case 'uiDrag': return ''; // the number keys; the mouse itself
     case 'zoom': return TEXT.controls.wheel;
     case 'menu': return '';
     case 'uiHalf': return keyName('Mouse2');
     case 'uiSend': return TEXT.controls.combo(keyName('ShiftLeft'), keyName('Mouse0'));
     case 'uiTurn': return keyName(keyOf('rotate'));
+    case 'uiSelect': return keyName('Enter');
+    case 'uiSplit': return TEXT.controls.combo(keyName('ShiftLeft'), keyName('Enter'));
+    case 'uiTransfer': return keyName('Space');
+    case 'uiDrop': return keyName('Delete');
+    case 'uiClose': return keyName('Escape');
     default: return keyName(keyOf(p));
   }
 }

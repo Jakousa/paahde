@@ -45,6 +45,7 @@ export function lobbyView(id: string, back: () => void, play?: () => void): HTML
   const el = document.createElement('div');
   el.className = 'view';
   const backBtn = document.createElement('button');
+  backBtn.dataset.uiBack = '';
   backBtn.textContent = TEXT.landing.back;
   backBtn.addEventListener('click', back);
   fill(el, id, backBtn, play);

@@ -16,9 +16,10 @@
 // The game must have the mouse captured, as with the keyboard: a click starts it (browsers don't let a pad do that).
 import { HOTBAR_ACTIONS, setDevice, slots, usingPad, type Action } from './bindings';
 import { BTN, PAD_GAME, PAD_HOLD, padStyle } from './padMap';
-import { addMouse, aimDown, capture, tools, ui } from './input';
+import { addMouse, aimDown, tools } from './input';
 import type { FirstPersonCamera } from './camera';
-import { hidePadCursor, padCursor } from './padCursor';
+import { hidePadCursor } from './padCursor';
+import { comfort } from './comfort';
 
 const B = BTN.b, MENU = BTN[PAD_GAME.menu], L3 = BTN[PAD_GAME.sprint], LB = BTN[PAD_GAME.hotbarPrev], RB = BTN[PAD_GAME.hotbarNext];
 const UP = BTN[PAD_GAME.zoomIn], DOWN = BTN[PAD_GAME.zoomOut];
@@ -81,14 +82,13 @@ export function pollPad(dt: number, view: FirstPersonCamera, canvas: HTMLElement
   // Any press or push: the hints name its buttons (and keep to its make while it's in use).
   if (usingPad() || down.some((d, i) => d && !was[i]) || pad.axes.some((v) => Math.abs(v) > ACTIVE)) setDevice(padStyle(pad.id));
 
-  // Out of the game: the inventory and the workbench menu are worked with a cursor (src/padCursor.ts); Menu (or B)
-  // goes back in from the Esc menu.
-  if (ui.inventoryOpen && !captured()) return padCursor(dt, { down, pressed, axes: pad.axes }, tap, { inventory: code('inventory'), rotate: code('rotate') });
-  hidePadCursor();
+  // All overlays, including the landing page before this loop exists, are handled by uiNavigation.ts.
   if (!captured()) {
-    if ((pressed(MENU) || pressed(B)) && document.getElementById('menu')?.classList.contains('open')) capture(canvas);
+    for (const c of held) send('keyup', c);
+    release();
     return;
   }
+  hidePadCursor();
   if (pressed(MENU)) return document.exitPointerLock(); // the Esc menu opens (src/menu.ts)
 
   const want = new Set<string>();
@@ -139,7 +139,7 @@ export function pollPad(dt: number, view: FirstPersonCamera, canvas: HTMLElement
   const k = ((r - LOOK_DEAD) / (1 - LOOK_DEAD)) ** 2 / r;
   edge = r > 0.95 ? Math.min(1, edge + dt / EDGE_RAMP) : 0;
   const speed = k * (aimDown() ? AIM_SCALE : 1) * (1 + EDGE_BOOST * edge * edge) * dt;
-  view.look(rx * speed * YAW_RATE, ry * speed * PITCH_RATE);
+  view.look(rx * speed * YAW_RATE * comfort.padX, ry * speed * PITCH_RATE * comfort.padY);
   addMouse(rx * k * MOUSE_RATE * dt, ry * k * MOUSE_RATE * dt);
 }
 

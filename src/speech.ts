@@ -7,6 +7,7 @@
 // after punctuation; the rest of the line is laid out hidden, so the box doesn't grow as it types.
 import { LINES, type Line, type SpeechEvents, type SpeechState } from './speechLines';
 import { speechSound } from './speechSound';
+import { comfort } from './comfort';
 
 const KEY = 'dadajam.said';
 /** This world's id (the page's `?w=`), for remarks said once per world. */
@@ -27,9 +28,9 @@ const QUEUE_LIMIT = 4;
 type Pending = { line: Line; expires: number; valid: () => boolean; remembered: boolean };
 
 const css = `
-#speech { position: fixed; left: 50%; bottom: 78px; transform: translateX(-50%); z-index: 7; max-width: min(640px, 80vw);
-  padding: 3px 10px; font: 500 16px var(--mono); line-height: 1.35; text-align: center; color: #fff4e4;
-  background: rgba(12, 6, 2, 0.45); border-radius: 4px; text-shadow: 0 1px 2px #000;
+#speech { position: fixed; left: 50%; bottom: calc(78px * var(--hud-scale, 1)); transform: translateX(-50%); z-index: 7; max-width: min(800px, 90vw);
+  padding: 3px 10px; font: 500 calc(16px * var(--subtitle-scale, 1)) var(--mono); line-height: 1.35; text-align: center; color: #fff4e4;
+  background: rgba(12, 6, 2, var(--subtitle-opacity, 0.45)); border-radius: 4px; text-shadow: 0 1px 2px #000;
   pointer-events: none; opacity: 0; transition: opacity .3s; }
 #speech.on { opacity: 1; }
 #speech .rest { visibility: hidden; }
@@ -150,14 +151,14 @@ export class Speech {
     this.rest.textContent = text;
     this.el.classList.add('on');
     // Immediate danger is readable at once, before a long typewriter animation can hide the instruction.
-    const instant = line.priority === 3;
+    const instant = line.priority === 3 || comfort.instantText;
     if (instant) {
       this.typed = text.length;
       this.shown.textContent = text;
       this.rest.textContent = '';
       this.remember();
     }
-    const show = (instant ? 0 : typingTime(text)) + showFor(text);
+    const show = (instant ? 0 : typingTime(text)) + showFor(text) * comfort.subtitleDuration;
     this.hideAt = this.t + show;
     this.quietUntil = this.t + show + GAP;
     this.onSaid?.(line.id, show);
@@ -165,6 +166,13 @@ export class Speech {
 
   /** Let out the letters due this frame, a blip for each (not for spaces and punctuation). */
   private type(dt: number) {
+    if (comfort.instantText) {
+      this.typed = this.text.length;
+      this.shown.textContent = this.text;
+      this.rest.textContent = '';
+      this.remember();
+      return;
+    }
     this.nextIn -= dt;
     let blipped = false;
     while (this.nextIn <= 0 && this.typed < this.text.length) {

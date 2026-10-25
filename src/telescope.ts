@@ -83,6 +83,8 @@ function hidden(eye: THREE.Vector3, x: number, y: number, z: number): boolean {
 }
 
 export class Telescope {
+  /** Selected spawn point, shared with the locator; null uses the arrival area. */
+  bedroll: { x: number; y: number; z: number } | null = null;
   private view: FirstPersonCamera;
   private el = document.createElement('div');
   private zoomEl: HTMLElement;
@@ -190,7 +192,9 @@ export class Telescope {
       const d = Math.hypot(x - eye.x, z - eye.z);
       if (d >= MARK_NEAR && d <= MARK_R) out.push({ key, kind, color, x, y, z, id });
     };
-    if (ARRIVAL) add('home', 'home', ARRIVAL.x, ARRIVAL.z, 3);
+    const home = this.bedroll ?? ARRIVAL;
+    if (home) add('home', 'home', home.x, home.z, 3, undefined, undefined,
+      this.bedroll ? this.bedroll.y + 3 : heightAt(home.x, home.z) + 3);
     for (const p of players) add(`p${p.id}`, 'player', p.x, p.z, 0, p.color, p.id, p.y + 1.6);
     for (const w of wrecksNear(eye.x, eye.z, MARK_R)) if (!crashTaken.has(w.id)) add(w.id, 'wreck', w.x, w.z, 1.5);
     for (const s of crashSitesNear(eye.x, eye.z, MARK_R)) if (!crashSpent.has(s.id)) add(`c${s.id}`, 'site', s.x, s.z, 4);
