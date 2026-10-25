@@ -22,6 +22,27 @@ const PROFILE = process.argv.find((a) => a.startsWith('--profile='))?.slice(10);
 if (PROFILE) app.setPath('userData', `${app.getPath('userData')}-${PROFILE}`);
 const PAGE = `${REMOTE ? SERVER : 'app://game/'}${QUERY ? `?${QUERY}` : ''}`;
 
+// Downloaded files are stored by hash, without their extension, so the type comes from the page's path (a file://
+// fetch would guess from the name on disk and serve an updated index.html as text).
+const TYPES = {
+  html: 'text/html',
+  js: 'text/javascript',
+  css: 'text/css',
+  json: 'application/json',
+  webmanifest: 'application/manifest+json',
+  wasm: 'application/wasm',
+  svg: 'image/svg+xml',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  ico: 'image/x-icon',
+  glb: 'model/gltf-binary',
+  mp3: 'audio/mpeg',
+  ogg: 'audio/ogg',
+  wav: 'audio/wav',
+  woff2: 'font/woff2',
+  txt: 'text/plain',
+};
+
 function withSlash(url) {
   return url.endsWith('/') ? url : `${url}/`;
 }
@@ -54,7 +75,10 @@ function serveApp() {
       file = 'index.html';
     }
     const disk = game.path(file);
-    return disk ? net.fetch(pathToFileURL(disk).href) : new Response('', { status: 404 });
+    if (!disk) return new Response('', { status: 404 });
+    const res = await net.fetch(pathToFileURL(disk).href);
+    const type = TYPES[path.extname(file).slice(1).toLowerCase()] ?? 'application/octet-stream';
+    return new Response(res.body, { status: res.status, headers: { 'content-type': type } });
   });
 }
 
