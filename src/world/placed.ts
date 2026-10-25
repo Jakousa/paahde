@@ -11,10 +11,12 @@
 // A tarp (src/world/tarps.ts) is built in code for its own patch of sand, its canvas moving in the same wind.
 // An electric well (shared/wells.ts) that runs has its control box's lamp lit, a wet patch under its spigot and a drop
 // falling from it every so often (quicker while someone fills a bottle there).
-// Also the see-through green / red preview of where the held placeable would go (src/placing.ts).
+// Also the see-through green / red preview of where the held placeable would go (src/placing.ts), wrapped in a fainter
+// gridded hull so its openings (a tarp's mouth, under a bench) read as part of it.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { float, smoothstep, uv } from 'three/tsl';
+import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
+import { abs, float, fract, fwidth, max, min, positionWorld, smoothstep, uv, vec3 } from 'three/tsl';
 import { WIND } from '../../shared/dunes.ts';
 import { EMPTY, STAGE_NODES, type BedState } from '../../shared/garden.ts';
 import { isBuilding, tierOf } from '../../shared/gear.ts';
@@ -68,6 +70,8 @@ export class PlacedView {
   private ghost: { kind: string; obj: THREE.Object3D } | null = null;
   private ghostOk = new THREE.MeshBasicNodeMaterial({ color: 0x7dff9a, transparent: true, opacity: 0.4, depthWrite: false });
   private ghostBad = new THREE.MeshBasicNodeMaterial({ color: 0xff5a3c, transparent: true, opacity: 0.4, depthWrite: false });
+  private hullOk = hullMaterial(0x7dff9a);
+  private hullBad = hullMaterial(0xff5a3c);
   private pool = poolMaterial();
   private last: { list: Placed[]; garden: Map<number, BedState> } = { list: [], garden: new Map() };
   private beams: BeaconBeams;
@@ -314,6 +318,7 @@ export class PlacedView {
       if (this.ghost) {
         this.group.remove(this.ghost.obj);
         if (this.ghost.kind.startsWith(`${TARP}:`)) disposeGeometry(this.ghost.obj);
+        else (this.ghost.obj.getObjectByName(HULL) as THREE.Mesh | undefined)?.geometry.dispose();
       }
       const obj = kind === TARP ? tarpModel(at.x, at.y, at.z, at.rot) : model!.clone();
       STAGE_NODES.forEach((n) => {
@@ -321,6 +326,8 @@ export class PlacedView {
         if (o) o.visible = false;
       });
       obj.traverse((o) => ((o as THREE.Mesh).castShadow = false));
+      const hull = hullOf(obj, kind === TARP ? 'tarp_canvas' : undefined);
+      if (hull) obj.add(hull);
       this.group.add(obj);
       this.ghost = { kind: spot, obj };
     }
@@ -331,9 +338,51 @@ export class PlacedView {
     const mat = ok ? this.ghostOk : this.ghostBad;
     g.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.isMesh) m.material = mat;
+      if (m.isMesh) m.material = m.name === HULL ? (ok ? this.hullOk : this.hullBad) : mat;
     });
   }
+}
+
+/** The preview's hull mesh (named so it keeps its own material). */
+const HULL = 'ghost_hull';
+/** The hull's grid: a line every this many metres, in world space. */
+const GRID = 0.5;
+
+/** The convex hull of `obj`'s meshes (only the one named `only`, if given: a tarp's canvas, not its guy lines out to
+ *  the stakes), each point also dropped to the model's foot so the space under it is filled; in `obj`'s own frame. */
+function hullOf(obj: THREE.Object3D, only?: string): THREE.Mesh | null {
+  obj.updateMatrixWorld(true);
+  const inv = obj.matrixWorld.clone().invert();
+  const pts: THREE.Vector3[] = [];
+  const m = new THREE.Matrix4();
+  obj.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh || (only && mesh.name !== only)) return;
+    m.multiplyMatrices(inv, mesh.matrixWorld);
+    const pos = mesh.geometry.getAttribute('position');
+    // (A few hundred points make the same hull as thousands.)
+    const step = Math.max(1, Math.floor(pos.count / 600));
+    for (let i = 0; i < pos.count; i += step) pts.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m));
+  });
+  if (pts.length < 4) return null;
+  const foot = Math.min(0, ...pts.map((p) => p.y));
+  for (const p of pts.slice()) pts.push(new THREE.Vector3(p.x, foot, p.z));
+  const hull = new THREE.Mesh(new ConvexGeometry(pts));
+  hull.name = HULL;
+  hull.castShadow = hull.receiveShadow = false;
+  // Drawn before the model, so the model shows over it.
+  hull.renderOrder = -1;
+  return hull;
+}
+
+/** A faint see-through fill with a brighter world-space grid on it. */
+function hullMaterial(color: number) {
+  const m = new THREE.MeshBasicNodeMaterial({ color, transparent: true, depthWrite: false });
+  const p = positionWorld.div(GRID);
+  const d = abs(fract(p.add(0.5)).sub(0.5)).div(max(fwidth(p), vec3(1e-4)));
+  const line = float(1).sub(min(min(d.x, d.y), d.z).clamp(0, 1));
+  m.opacityNode = float(0.06).add(line.mul(0.22));
+  return m;
 }
 
 /** Free a model's own geometry (one built for its spot: a tarp's), not its shared materials. */
