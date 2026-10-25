@@ -1,4 +1,4 @@
-// The crashed escape pods: where the players arrive. Four one-person drop pods strewn near the world's origin (their spots
+// The crashed escape pods: where the players arrive. One drop pod (PODS; the code takes any number) near the world's origin (their spots
 // and the furrows they ploughed: shared/podSpot.ts), each half ploughed into the sand at its own angle, its side hatch
 // blown open; a drogue chute trails behind one. Each player came down in one: new players appear beside the hatch of
 // "their" pod (podSpawn, by a hash of who they are: server/world.ts), and so do the dead with no bedroll to go back to.

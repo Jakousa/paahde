@@ -3,7 +3,7 @@
 // pump lies near them), the scrap and the wrecks can read it without importing what the pods themselves need (the
 // terrain).
 //
-// Picked from the world seed: a few clusters of four spots round the world's origin (shared/origin.ts), 37–67 m out,
+// Picked from the world seed: a few candidate spots (clusters of LAYOUT) round the world's origin (shared/origin.ts), 37–67 m out,
 // each pod a short walk from the next, all of them come down the same way give or take; the cluster whose sand under
 // the pods and along their furrows is the most even wins. Same determinism rules as shared/dunes.ts: + - * /,
 // Math.sqrt, Math.abs, Math.min/max only (no trig), so client and server agree to the bit.
@@ -25,9 +25,9 @@ const CLUSTER_DIRS: [number, number][] = [[0, 1], [0.7071, 0.7071], [1, 0], [0.7
   [-1, 0], [-0.7071, 0.7071]];
 const CLUSTER_R = 52;
 /** The pods in the cluster's frame (v across the way they came, u along it), each with its turn off the cluster's heading
- *  (cosine, sine): spread out across, staggered along, so no furrow runs into another pod. */
-const LAYOUT: [number, number, number, number][] = [[0, 0, 1, 0], [10.5, -5, 0.9888, 0.1494], [-11, -3, 0.9950, -0.0998],
-  [-4.5, 13, 0.9801, 0.1987]];
+ *  (cosine, sine). One for now: a single pod is the arrival (there were four: [10.5, -5, 0.9888, 0.1494],
+ *  [-11, -3, 0.9950, -0.0998], [-4.5, 13, 0.9801, 0.1987] made the rest of the cluster). */
+const LAYOUT: [number, number, number, number][] = [[0, 0, 1, 0]];
 /** How far each spot may wander from the layout (m), by the seed. */
 const JITTER = 2.5;
 /** What a pod and its furrow take, pod-local: its half length ahead and across, how far back its furrow runs. */
