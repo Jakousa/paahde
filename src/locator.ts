@@ -4,7 +4,8 @@
 // well above or below your view. Close players (name tag in view) get no dot. The home base gets a
 // house-shaped marker the same way, so you can always find your way back (except in a sandstorm). Salvage
 // wrecks lying within a few hundred metres (src/world/wrecks.ts) get a diamond, and the packs the dead left
-// (src/world/corpses.ts) a little flag in the rag's colour, however far.
+// (src/world/corpses.ts) a little flag in the rag's colour, however far, and your own bikes (src/world/vehicles.ts) two
+// wheels under a bar in your colour, however far.
 import type * as THREE from 'three/webgpu';
 import { BASE } from '../shared/base.ts';
 
@@ -12,7 +13,7 @@ const NEAR = 25; // m: closer than this, no dot (fades in over the next FADE met
 const FADE = 10;
 const ELEVATION = 0.35; // rad off the view's pitch before the up/down arrow shows
 
-export type LocatorTarget = { id: number; color: number; x: number; y: number; z: number; shape?: 'wreck' | 'flag' };
+export type LocatorTarget = { id: number; color: number; x: number; y: number; z: number; shape?: 'wreck' | 'flag' | 'bike' };
 
 const BASE_ID = -1; // player ids are positive
 const BASE_TARGET: LocatorTarget = { id: BASE_ID, color: 0xf2e6c8, x: BASE.x, y: BASE.y, z: BASE.z };
@@ -34,6 +35,12 @@ const css = `
 #locator .dot.flag { border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 1px rgba(20, 10, 5, 0.9)); }
 #locator .dot.flag::before { content: ''; position: absolute; inset: 0; background: currentColor;
   clip-path: polygon(0 0, 100% 26%, 22% 54%, 22% 100%, 0 100%); }
+#locator .dot.bike { border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 1px rgba(20, 10, 5, 0.9));
+  background: linear-gradient(currentColor, currentColor) 50% 20% / 64% 24% no-repeat; }
+#locator .dot.bike::before, #locator .dot.bike::after { content: ''; position: absolute; bottom: 0; height: 64%;
+  aspect-ratio: 1; border-radius: 50%; background: currentColor; }
+#locator .dot.bike::before { left: 0; }
+#locator .dot.bike::after { right: 0; }
 `;
 
 export class LocatorBar {
@@ -74,11 +81,12 @@ export class LocatorBar {
       const rel = Math.atan2(Math.sin(Math.atan2(-dx, -dz) - yaw), Math.cos(Math.atan2(-dx, -dz) - yaw));
       const u = -rel / halfH; // -1 = left edge, 1 = right edge
       const outside = Math.abs(u) > 1;
-      const size = (dist < 60 ? 10 : dist < 150 ? 8 : dist < 400 ? 6 : 5) + (isBase ? 4 : p.shape === 'flag' ? 2 : 0);
+      const size = (dist < 60 ? 10 : dist < 150 ? 8 : dist < 400 ? 6 : 5) + (isBase ? 4 : p.shape === 'flag' || p.shape === 'bike' ? 2 : 0);
       const color = `#${p.color.toString(16).padStart(6, '0')}`;
       const s = d.el.style;
       s.left = `${(Math.max(-1, Math.min(1, u)) * 0.5 + 0.5) * 100}%`;
-      s.width = s.height = `${size}px`;
+      s.width = `${p.shape === 'bike' ? Math.round(size * 1.5) : size}px`;
+      s.height = `${size}px`;
       s.color = color;
       s.background = isBase || p.shape ? '' : color;
       s.opacity = String(fade * (outside ? 0.45 : 1));

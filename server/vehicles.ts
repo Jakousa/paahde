@@ -3,7 +3,9 @@
 // is stood up), standing one up once its part slots are filled (its item is in box veh<id>: parts are fitted there
 // like a building's, server/items.ts fit / unfit), and getting on and off: mount() puts the player on it at once
 // (shared/sim.ts riding), and whoever rides it carries it with them until they get off (or die, or leave), when it
-// is parked where they are. Keeps shared/vehicles.ts's list in step and broadcasts it when it changes.
+// is parked where they are. Keeps shared/vehicles.ts's list in step and broadcasts it when it changes. Each one is
+// the player's who stood it up (one stood up before there were owners: whoever rides it first); each player is told
+// which are theirs (`mine` in the 'vehicles' message, never who owns the others: the owner is a browser ID).
 import { cargoBox, vehicleBox, vehicleId } from '../shared/boxes.ts';
 import { bikeLevel, GEAR, isVehicle, partsOf, repaired, scrapParts } from '../shared/gear.ts';
 import { partKind, type ItemData } from '../shared/items.ts';
@@ -35,6 +37,8 @@ export class VehicleServer {
   private changed = false;
   /** Where each came from ('home', 'find', 'old'). */
   private src = new Map<number, string>();
+  /** Whose each is (browser ID), if anyone's. */
+  private owner = new Map<number, string>();
   /** When the finds stood up are replaced (ms since epoch). */
   private due: number[] = [];
   private sites = coreCrashSites();
@@ -47,7 +51,10 @@ export class VehicleServer {
     const rows = db.loadVehicles().filter((r) => isVehicle(r.kind));
     // The list first (shared/storage.ts opens the boxes by it), then each one's parts from its box.
     setVehicles(rows.map((r) => ({ id: r.id, kind: r.kind, x: r.x, y: r.y, z: r.z, heading: r.heading, up: r.up, parts: [] })));
-    for (const r of rows) this.src.set(r.id, r.src);
+    for (const r of rows) {
+      this.src.set(r.id, r.src);
+      if (r.owner) this.owner.set(r.id, r.owner);
+    }
     setVehicles(vehicles.map((v) => this.withParts(v)));
     db.tx(() => {
       if (![...this.src.values()].includes('home')) this.spawnHome();
@@ -125,6 +132,7 @@ export class VehicleServer {
         const parts = b.parts ?? scrapParts(KIND);
         const { x, z } = lined();
         const v = this.add(x, z, 0.6, parts, repaired({ id: 0, kind: KIND, n: 1, parts }), 'old');
+        if (b.owner) this.own(v.id, b.owner);
         if (b.owner && (!mine.has(b.owner) || v.up)) mine.set(b.owner, v);
       }
       for (const d of dropped) {
@@ -136,6 +144,7 @@ export class VehicleServer {
         if (!v?.up) {
           const { x, z } = lined();
           v = this.add(x, z, 0.6, scrapParts(KIND), true, 'old');
+          this.own(v.id, owner);
         }
         this.db.moveBox(owner, 'bike', '', cargoBox(v.id));
       }
@@ -163,24 +172,39 @@ export class VehicleServer {
     return id < 0 || !vehicles.find((v) => v.id === id)?.up;
   }
 
-  /** Stand broken vehicle `id` up (every part slot filled, in reach of `s`). Returns it, or why not. */
-  repair(s: PlayerState, id: unknown): Vehicle | string {
+  /** Vehicle `id` is player `browserId`'s from now on. */
+  private own(id: number, browserId: string) {
+    this.db.ownVehicle(id, browserId);
+    this.owner.set(id, browserId);
+    this.changed = true;
+  }
+
+  /** Player `browserId`'s vehicles' ids. */
+  mine(browserId: string): number[] {
+    return vehicles.flatMap((v) => (this.owner.get(v.id) === browserId ? [v.id] : []));
+  }
+
+  /** Player `browserId` at `s` stands broken vehicle `id` up (every part slot filled, in reach): it's theirs. Returns
+   *  it, or why not. */
+  repair(browserId: string, s: PlayerState, id: unknown): Vehicle | string {
     const v = vehicles.find((q) => q.id === id);
     if (!v || v.up) return TEXT.notice.alreadyGone;
     if (!parked(v) || !inReach(s, v, REACH_SLACK)) return TEXT.notice.tooFar;
     if (!repaired(this.items.slots('', vehicleBox(v.id))[0])) return TEXT.notice.missingParts;
     this.db.standVehicle(v.id);
     this.update(v.id, { up: true });
+    this.own(v.id, browserId);
     // A find stood up: another broken one comes after a while.
     if (this.src.get(v.id) === 'find') this.due.push(Date.now() + FIND_RESPAWN_MS);
     return vehicles.find((q) => q.id === v.id)!;
   }
 
   /**
-   * Player `rider` (public id) at `s` gets on vehicle `id`, at once: it must be working, in reach and nobody's on it.
-   * Returns their state moved onto it, riding (shared/sim.ts), or why not.
+   * Player `rider` (public id; browser ID `browserId`) at `s` gets on vehicle `id`, at once: it must be working, in
+   * reach and nobody's on it (nobody's own yet: it's theirs now). Returns their state moved onto it, riding
+   * (shared/sim.ts), or why not.
    */
-  mount(rider: number, s: PlayerState, id: unknown): PlayerState | string {
+  mount(rider: number, browserId: string, s: PlayerState, id: unknown): PlayerState | string {
     const v = vehicles.find((q) => q.id === id);
     if (!v) return TEXT.notice.alreadyGone;
     if (s.riding || this.ridden(rider)) return TEXT.notice.getOffFirst;
@@ -189,6 +213,7 @@ export class VehicleServer {
     const bike = bikeLevel(this.items.slots('', vehicleBox(v.id))[0]);
     if (!v.up || !bike) return TEXT.notice.broken;
     this.update(v.id, { rider });
+    if (!this.owner.has(v.id)) this.own(v.id, browserId);
     return {
       ...s, x: v.x, y: v.y, z: v.z, vx: 0, vy: 0, vz: 0, sliding: false, crouching: false,
       riding: true, heading: v.heading, bike, nose: 0, noseSpin: 0,
@@ -223,13 +248,15 @@ export class VehicleServer {
     return this.db.tx(() => Array.from({ length: n }, () => this.spawnFind().id));
   }
 
-  joinMessage(): ServerMsg {
-    return { t: 'vehicles', list: vehicles };
+  /** The list for player `browserId`, with which are theirs. */
+  joinMessage(browserId: string): ServerMsg {
+    return { t: 'vehicles', list: vehicles, mine: this.mine(browserId) };
   }
 
-  flush(): ServerMsg | null {
+  /** Changed since the last flush: the message for each player (joinMessage), or null. */
+  flush(): ((browserId: string) => ServerMsg) | null {
     if (!this.changed) return null;
     this.changed = false;
-    return this.joinMessage();
+    return (browserId) => this.joinMessage(browserId);
   }
 }

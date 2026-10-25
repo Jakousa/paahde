@@ -332,7 +332,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   send(ws, crash.spentMessage());
   send(ws, crash.rollsMessage());
   send(ws, placedThings.joinMessage());
-  send(ws, vehicleSrv.joinMessage());
+  send(ws, vehicleSrv.joinMessage(browserId));
   send(ws, wiring.joinMessage());
   send(ws, power.msg());
   send(ws, garden.joinMessage());
@@ -374,14 +374,14 @@ function gearChanged(browserId: string) {
 // Vehicles (server/vehicles.ts): standing a broken one up, getting on and off.
 function onRepairVehicle(p: Player, id: unknown) {
   if (p.down) return;
-  const r = vehicleSrv.repair(p.state, id);
+  const r = vehicleSrv.repair(p.browserId, p.state, id);
   if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
   sendShared(cargoBox(r.id)); // its cargo opens
 }
 
 function onMount(p: Player, id: unknown) {
   if (p.down || !p.ready) return;
-  const r = vehicleSrv.mount(p.id, p.state, id);
+  const r = vehicleSrv.mount(p.id, p.browserId, p.state, id);
   if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
   p.state = r; // the client takes it with the next snapshot (src/net.ts reconcile)
 }
@@ -1164,11 +1164,13 @@ function broadcast(time: number) {
       if (jetsBreaking[i].due <= time) crashed.push(jetCame(jetsBreaking.splice(i, 1)[0]));
     }
   }
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushVisited(), crash.flushRolls(), placedThings.flush(), vehicleSrv.flush(), wiring.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushVisited(), crash.flushRolls(), placedThings.flush(), wiring.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
   }
+  const vehiclesMsg = vehicleSrv.flush(); // each player's own: which are theirs
+  if (vehiclesMsg) for (const p of players.values()) send(p.ws, vehiclesMsg(p.browserId));
   const lootMsg = loot.flush();
   if (lootMsg) for (const p of players.values()) send(p.ws, lootMsg);
   const all = [...players.values()].map((p) => {

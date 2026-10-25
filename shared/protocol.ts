@@ -270,8 +270,9 @@ export type ServerMsg =
   // Every placed thing in the base (shared/placed.ts), on join (before 'welcome') and whenever it changes
   // (before the snapshot, like terrainEdit, so prediction collides with it from the same tick on).
   | { t: 'placed'; list: Placed[] }
-  // Every vehicle in the world (shared/vehicles.ts), on join (before 'welcome') and whenever it changes.
-  | { t: 'vehicles'; list: Vehicle[] }
+  // Every vehicle in the world (shared/vehicles.ts), on join (before 'welcome') and whenever it changes, and the ids
+  // of those that are yours (stood up by you, server/vehicles.ts).
+  | { t: 'vehicles'; list: Vehicle[]; mine: number[] }
   // Electricity at the base (shared/power.ts), every POWER_SEND_MS: each windmill's output and each station's charge.
   | ({ t: 'power' } & PowerState)
   // Every power line (shared/wires.ts), on join and whenever one goes up or comes down.

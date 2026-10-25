@@ -106,6 +106,8 @@ export class Net {
   readonly telemetry = new Telemetry((msg) => this.connected && this.ws?.readyState === WebSocket.OPEN && (this.send(msg), true));
   id = 0;
   color = 0xffffff;
+  /** The ids of the vehicles that are ours (shared/vehicles.ts; stood up by us, server/vehicles.ts). */
+  myVehicles: ReadonlySet<number> = new Set();
   /** Predicted local state (authoritative for physics on this client). */
   me: PlayerState = spawnState();
   /** The predicted state one tick before `me`: view() draws between the two. */
@@ -759,6 +761,7 @@ export class Net {
     }
     if (msg.t === 'vehicles') {
       setVehicles(msg.list);
+      this.myVehicles = new Set(msg.mine);
       for (const box of Object.keys(this.boxes)) {
         const id = Math.max(vehicleId(box), cargoId(box));
         if (id >= 0 && !msg.list.some((v) => v.id === id)) delete this.boxes[box];

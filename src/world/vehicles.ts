@@ -2,12 +2,14 @@
 // (src/bike.ts) where each one is, nobody riding it. A broken one lies on its side, half sunk in the sand, glowing
 // along its edges in the colour of its parts' tier like broken gear on the sand (src/world/loot.ts); a working one
 // stands on its wheels, pitched along the slope and leaning a little on its stand. While someone rides it, it isn't
-// drawn here: src/main.ts draws it under its rider (src/bike.ts Bike).
+// drawn here: src/main.ts draws it under its rider (src/bike.ts Bike). Your own ones are on the locator bar
+// (src/locator.ts), however far, as a little bike in your colour.
 import * as THREE from 'three/webgpu';
 import { parsePart } from '../../shared/items.ts';
 import { slopeAt } from '../../shared/sim.ts';
-import type { Vehicle } from '../../shared/vehicles.ts';
+import { parked, vehicles, type Vehicle } from '../../shared/vehicles.ts';
 import { loadBikeModel } from '../bike';
+import type { LocatorTarget } from '../locator';
 import { applyTier } from '../tierLook';
 import { addRims, glowColor, RIM_VIEW } from './loot';
 
@@ -28,6 +30,16 @@ function tierOf(v: Vehicle): number {
 }
 
 const tmpSlope = { gx: 0, gz: 0 };
+
+/** Locator ids for vehicles: players are positive, the base -1, wrecks count down from -100, packs from -1e9. */
+const LOCATE_ID = -500_000_000;
+
+/** Your own vehicles (`mine`: their ids) standing in the world, for the locator bar, in your `color`. Not one being
+ *  ridden: where it stood is no use then. */
+export function ownVehicleTargets(mine: ReadonlySet<number>, color: number): LocatorTarget[] {
+  if (!mine.size) return [];
+  return vehicles.flatMap((v) => (mine.has(v.id) && parked(v) ? [{ id: LOCATE_ID - v.id, color, x: v.x, y: v.y + 1, z: v.z, shape: 'bike' as const }] : []));
+}
 
 export class VehicleView {
   private group = new THREE.Group();

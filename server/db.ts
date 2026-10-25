@@ -299,10 +299,15 @@ export function openDb(path: string) {
   db.exec(`CREATE TABLE IF NOT EXISTS vehicles (
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
     heading REAL NOT NULL, up INTEGER NOT NULL, src TEXT NOT NULL)`);
-  const allVehicles = db.prepare('SELECT id, kind, x, y, z, heading, up, src FROM vehicles ORDER BY id');
+  // owner: the browser ID of whoever stood it up (or first rode it, stood up before there were owners); NULL: nobody's.
+  if (!(db.prepare('SELECT name FROM pragma_table_info(?)').all('vehicles') as { name: string }[]).some((c) => c.name === 'owner')) {
+    db.exec('ALTER TABLE vehicles ADD COLUMN owner TEXT');
+  }
+  const allVehicles = db.prepare('SELECT id, kind, x, y, z, heading, up, src, owner FROM vehicles ORDER BY id');
   const insertVehicle = db.prepare('INSERT INTO vehicles (kind, x, y, z, heading, up, src) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const moveVehicle = db.prepare('UPDATE vehicles SET x = ?, y = ?, z = ?, heading = ? WHERE id = ?');
   const standVehicle = db.prepare('UPDATE vehicles SET up = 1 WHERE id = ?');
+  const ownVehicle = db.prepare('UPDATE vehicles SET owner = ? WHERE id = ?');
   const allBeds = db.prepare('SELECT id, stage, growth FROM beds');
   const upsertBed = db.prepare('INSERT OR REPLACE INTO beds (id, stage, growth) VALUES (?, ?, ?)');
   const deleteBed = db.prepare('DELETE FROM beds WHERE id = ?');
@@ -439,13 +444,15 @@ export function openDb(path: string) {
     insertPlaced: (kind: string, x: number, y: number, z: number, rot: number, owner: string) =>
       Number(insertPlaced.run(kind, x, y, z, rot, owner, Date.now()).lastInsertRowid),
     deletePlaced: (id: number) => deletePlaced.run(id),
-    loadVehicles: () => (allVehicles.all() as { id: number; kind: string; x: number; y: number; z: number; heading: number; up: number; src: string }[])
+    loadVehicles: () => (allVehicles.all() as { id: number; kind: string; x: number; y: number; z: number; heading: number; up: number; src: string; owner: string | null }[])
       .map((r) => ({ ...r, up: r.up === 1 })),
     /** New vehicle row; returns its id. */
     insertVehicle: (kind: string, x: number, y: number, z: number, heading: number, up: boolean, src: string) =>
       Number(insertVehicle.run(kind, x, y, z, heading, up ? 1 : 0, src).lastInsertRowid),
     moveVehicle: (id: number, x: number, y: number, z: number, heading: number) => moveVehicle.run(x, y, z, heading, id),
     standVehicle: (id: number) => standVehicle.run(id),
+    /** Vehicle `id` is player `owner`'s (browser ID) from now on. */
+    ownVehicle: (id: number, owner: string) => ownVehicle.run(owner, id),
     /**
      * v12, once (call inside a transaction): the motorcycle stopped being an item. Takes every motorcycle out of the
      * boxes (the equipment's old Vehicle slot too; the Armor slot after it moves up into its place) and returns them
