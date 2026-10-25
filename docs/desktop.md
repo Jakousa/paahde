@@ -47,7 +47,17 @@ The icon is `desktop/build/icon.png`, rendered from `public/favicon.svg` by `too
 ## Updates
 
 The protocol has no version: a client only works with a server of the same build. So the app keeps its game files at
-the server's build (`desktop/update.mjs`):
+the server's build (`desktop/update.mjs`). They come from the game server it plays on (`PAAHDE_SERVER`, the dev server
+by default), the same files it serves to browsers, never from GitHub: the server's image and its files are one deploy,
+so they can't drift apart. GitHub only has the app's installers (above).
+
+```
+push to main ──► deploy.yml: image with dist/ + manifest.json ──► dev server
+             └─► desktop.yml: installers (run artifacts)          │
+                                                                   ▼
+app start / reload ──► GET manifest.json ──► GET each file it lacks, check its hash
+                                             └─► userData/content/<hash>; the rest from the shipped dist/
+```
 
 - `npm run build` writes `dist/manifest.json` (`tools/manifest.ts`): every file with a hash of its content.
 - Each time the page loads, the app first reads the server's `manifest.json` and downloads the files whose hash it
