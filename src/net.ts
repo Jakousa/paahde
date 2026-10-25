@@ -49,7 +49,7 @@ import { Telemetry } from './telemetry';
 export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' | 'siteRolls' }>;
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
-import { vortexPull, type Vortex } from '../shared/vortex.ts';
+import { vortexPull, vorticesNear, type Vortex } from '../shared/vortex.ts';
 import type { Pull } from '../shared/sim.ts';
 import type { Gas } from '../shared/gas.ts';
 import { F_STRIDE } from '../shared/guardians.ts';
@@ -204,8 +204,11 @@ export class Net {
   storms: Storm[] = [];
   /** Poison gas clouds out (shared/gas.ts), times on the server clock. */
   gas: Gas[] = [];
-  /** Sand vortices (shared/vortex.ts), sent with the storms. */
+  /** Sand vortices summoned from the debug menu (shared/vortex.ts), sent with the storms; the world's own roam everywhere
+   *  (vorticesNear), on the wall clock whose zero (server ms) comes with them. */
   vortices: Vortex[] = [];
+  vortexZero = NaN;
+  private nearMe: Vortex[] = [];
   /** Fixed-wing drone flights in the air (shared/jets.ts), times on the server clock. */
   jets: Jet[] = [];
   /** Harvesters out (shared/harvester.ts), times on the server clock. */
@@ -255,7 +258,8 @@ export class Net {
     this.seq++;
     this.prev = this.me;
     const drag = stormDrag(this.storms, this.me.x, this.me.y, this.me.z, this.serverTime());
-    const pull = vortexPull(this.vortices, this.me.x, this.me.y, this.me.z, this.serverTime(), { x: 0, z: 0 });
+    const near = vorticesNear(this.me.x, this.me.z, 500, this.vortexZero, this.vortices, this.nearMe);
+    const pull = vortexPull(near, this.me.x, this.me.y, this.me.z, this.serverTime(), { x: 0, z: 0 });
     this.me = step(this.me, input, yaw, drag, this.legPosts, pull);
     this.pending.push({ seq: this.seq, input, yaw, drag, pull });
     this.send({ t: 'input', seq: this.seq, input, yaw, pitch });
@@ -783,6 +787,7 @@ export class Net {
       this.storms = msg.storms;
       this.gas = msg.gas ?? [];
       this.vortices = msg.vortices ?? [];
+      this.vortexZero = msg.vortexZero ?? NaN;
       return;
     }
     if (msg.t === 'jets') {

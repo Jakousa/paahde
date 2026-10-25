@@ -1,11 +1,10 @@
-// Sand vortices: colossal whirlwinds roaming the desert. Every world has ROAMERS of them, out from the moment it starts
-// and never dying down (server/storm.ts makes them and sends them with the storms); everything else is plain math on
-// them and the server clock, so the server and every client agree on where each is.
-//
-// A roamer circles the world's origin (shared/origin.ts; the crashed ship where players arrive lies by it) out among the
-// crash sites, ORBIT_MIN..ORBIT_MAX m from it, about one lap per LAP_S; it sweeps along fastest where it's heading
-// downwind (the dunes' WIND) and labours where it's heading into it, and its distance out swells and shrinks on slow
-// waves seeded per vortex. It never comes near the origin or the ship.
+// Sand vortices: colossal whirlwinds roaming the desert, as far as it goes. The desert is cut into CELL-m squares, and
+// the world's seed decides for each whether a vortex roams it (one in CELL_ODDS) and how: it circles a spot inside its
+// square for ever, its distance out swelling and shrinking on slow waves, sweeping along fastest where it's heading
+// downwind (the dunes' WIND) and labouring where it's heading into it, and never leaves the square. No count, no
+// list: the server and every client work out the ones near whatever they're looking at (vorticesNear) from the seed and
+// the wall clock (server time + `zero`, sent with the storms), so they agree, and a restart finds them where they were.
+// None roams a square that would bring it within SHIP_CLEAR of the world's origin (shared/origin.ts) or the ship.
 //
 // The debug menu can also summon a short-lived one near you: that one drifts downwind at DRIFT m/s, swinging MEANDER m
 // to each side, kept KEEP_OUT from the origin and the ship (sliding round the edge, dying down if it heads deep in).
@@ -17,6 +16,8 @@ import { ORIGIN } from './origin.ts';
 import { WIND } from './dunes.ts';
 import { indoors } from './shelters.ts';
 import { SHIP_AT } from './shipSpot.ts';
+import { mulberry32 } from './noise.ts';
+import { CALM as LAB_OR_BENCH, WORLD_SEED } from './world.ts';
 
 export type Vortex = {
   id: number;
@@ -28,20 +29,75 @@ export type Vortex = {
   end: number;
   /** Phase of its meander, 0..2π. */
   seed: number;
-  /** A roamer: circles (x, z) (the origin) forever instead (`end` is never). */
-  roam?: boolean;
+  /** A roamer: circles (x, z) for ever instead (`end` is never): at `r` m (± a quarter), one lap per `lap` s, `dir` 1
+   *  anticlockwise seen from above, −1 clockwise. */
+  roam?: { r: number; lap: number; dir: number };
 };
 
-/** Roamers per world; their distance (m) from the origin; a lap (s) at its average distance; how much faster (and slower)
- *  it goes heading downwind (and into the wind), as a fraction. */
-export const ROAMERS = 2;
-const ORBIT_MIN = 850;
-const ORBIT_MAX = 2550;
-const LAP_S = 1800;
+/** The squares (m) the desert is cut into, and the odds that a vortex roams one (semi-rare: one per ~22 km²); the radius
+ *  (m) one circles at; its speed round it (m/s); how far (m) they keep from the origin and the ship at the least; how
+ *  much faster (and slower) one goes heading downwind (and into the wind), as a fraction. */
+const CELL = 3000;
+const CELL_ODDS = 0.4;
+const ORBIT_R: [number, number] = [400, 1000];
+const SPEED: [number, number] = [4, 7];
+const SHIP_CLEAR = 900;
 const WIND_SWAY = 0.5;
 /** The never of a roamer's `end` (ms). */
 export const NEVER = Number.MAX_SAFE_INTEGER;
 const WIND_ANGLE = Math.atan2(WIND.z, WIND.x);
+
+/** Ids of the roamers: past any summoned one's. */
+const ROAMER_ID = 1 << 24;
+/** The roamer of each square looked at so far (null: none roams it). Ids: by square, so the same everywhere. */
+const cells = new Map<number, Vortex | null>();
+let cellsZero = NaN;
+const cellKey = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
+
+function roamer(i: number, j: number, zero: number): Vortex | null {
+  const key = cellKey(i, j);
+  const had = cells.get(key);
+  if (had !== undefined) return had;
+  const rand = mulberry32((WORLD_SEED * 73856093) ^ (i * 19349663) ^ (j * 83492791) ^ 0x5a4d7e31);
+  let v: Vortex | null = null;
+  if (rand() < CELL_ODDS) {
+    const r = ORBIT_R[0] + rand() * (ORBIT_R[1] - ORBIT_R[0]);
+    // Its circle (swelling to 1.25 r) stays inside the square.
+    const m = r * 1.25 + 60;
+    const x = i * CELL + m + rand() * (CELL - 2 * m), z = j * CELL + m + rand() * (CELL - 2 * m);
+    const near = AVOID.some((a) => Math.hypot(x - a.x, z - a.z) < SHIP_CLEAR + m);
+    const speed = SPEED[0] + rand() * (SPEED[1] - SPEED[0]);
+    if (!near) v = {
+      id: ROAMER_ID + (key % 16_000_000), x: Math.round(x), z: Math.round(z), start: Math.round(zero), end: NEVER,
+      seed: Math.round(rand() * 6283) / 1000,
+      roam: { r: Math.round(r), lap: Math.round((Math.PI * 2 * r) / speed), dir: rand() < 0.5 ? 1 : -1 },
+    };
+  }
+  cells.set(key, v);
+  return v;
+}
+
+/** The roaming vortices whose squares come within `reach` m of (x, z), and `extra` (summoned ones), into `out`.
+ *  `zero`: the wall clock's zero on the server clock (the server's −performance.timeOrigin, sent with the storms). */
+export function vorticesNear(x: number, z: number, reach: number, zero: number, extra: readonly Vortex[] = [], out: Vortex[] = []): Vortex[] {
+  out.length = 0;
+  if (!Number.isFinite(zero) || LAB_OR_BENCH) {
+    out.push(...extra);
+    return out;
+  }
+  if (zero !== cellsZero) {
+    cells.clear();
+    cellsZero = zero;
+  }
+  const i0 = Math.floor((x - reach) / CELL), i1 = Math.floor((x + reach) / CELL);
+  const j0 = Math.floor((z - reach) / CELL), j1 = Math.floor((z + reach) / CELL);
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+    const v = roamer(i, j, zero);
+    if (v) out.push(v);
+  }
+  out.push(...extra);
+  return out;
+}
 
 /** Downwind drift (m/s), and how far (m) it swings to each side of that line. */
 export const DRIFT = 5;
@@ -63,12 +119,13 @@ const PX = -WIND.z, PZ = WIND.x; // across the wind
 /** Where its wandering would take it at server time `t` (ms), before it's kept off the origin and the ship. */
 function wander<T extends { x: number; z: number }>(v: Vortex, t: number, out: T): T {
   const s = (t - v.start) / 1000;
-  if (v.roam) {
-    // Round the origin: the angle runs faster where the way round it points downwind (heading (cos a, -sin a) at angle a).
-    const w = (Math.PI * 2) / LAP_S, p = w * s + v.seed;
-    const a = p + WIND_SWAY * Math.sin(p + WIND_ANGLE);
-    const mid = (ORBIT_MIN + ORBIT_MAX) / 2, half = (ORBIT_MAX - ORBIT_MIN) / 2;
-    const r = mid + half * (0.8 * Math.sin(s * 0.0021 + v.seed * 1.9) + 0.2 * Math.sin(s * 0.013 + v.seed * 3.1));
+  const o = v.roam;
+  if (o) {
+    // Round its territory: the angle runs faster where the way round points downwind (anticlockwise at angle a the
+    // heading is (cos a, −sin a); clockwise, the opposite).
+    const p = (Math.PI * 2 * s) / o.lap + v.seed;
+    const a = o.dir * (p + WIND_SWAY * Math.sin(p + o.dir * WIND_ANGLE + (o.dir < 0 ? Math.PI : 0)));
+    const r = o.r * (1 + 0.2 * Math.sin(s * 0.0017 + v.seed * 1.9) + 0.05 * Math.sin(s * 0.011 + v.seed * 3.1));
     out.x = v.x + Math.sin(a) * r;
     out.z = v.z + Math.cos(a) * r;
     return out;

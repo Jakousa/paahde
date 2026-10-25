@@ -6,7 +6,7 @@
 // with enough of it left, and no sandstorm column blows up while a big one is out.
 import { WIND } from '../shared/dunes.ts';
 import { FRONT_LEAD_S, FRONT_PASS_S, FRONT_SPEED, MAX_LEN_MS, MIN_LEN_MS, WARN_MS, type Storm } from '../shared/storm.ts';
-import { KEEP_OUT, NEVER, RAMP_MS as VORTEX_RAMP_MS, ROAMERS, vortexEnvelope, type Vortex } from '../shared/vortex.ts';
+import { KEEP_OUT, RAMP_MS as VORTEX_RAMP_MS, vortexEnvelope, vorticesNear, type Vortex } from '../shared/vortex.ts';
 import { ORIGIN } from '../shared/origin.ts';
 import { GAS_LEAD_S, GAS_PASS_S, GAS_SPEED, type Gas } from '../shared/gas.ts';
 import { DAY_SECONDS, sunElevation } from '../shared/sun.ts';
@@ -52,7 +52,10 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a);
 export class StormServer {
   storms: Storm[] = [];
   gas: Gas[] = [];
+  /** Sand vortices summoned from the debug menu (the world's own roam everywhere: shared/vortex.ts vorticesNear). */
   vortices: Vortex[] = [];
+  /** The wall clock's zero on the server clock: the roaming vortices run on it, so a restart finds them where they were. */
+  readonly vortexZero = -Math.round(performance.timeOrigin);
   private nextId = 1;
   private nextAt: number;
   private nextFrontAt: number;
@@ -61,17 +64,10 @@ export class StormServer {
   /** Debug menu: no random storms (and any blowing now are cleared). */
   off = false;
 
-  /** `roamers`: the world has its sand vortices (not the lab or the art bench). */
-  constructor(now: number, roamers = true) {
+  constructor(now: number) {
     this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS) / 2;
     this.nextFrontAt = now + rand(FRONT_FIRST_MIN_MS, FRONT_GAP_MAX_MS);
     this.nextGasAt = now + rand(GAS_FIRST_MIN_MS, GAS_GAP_MAX_MS);
-    // The world's sand vortices: out from the start, already spun up, spread round the base, roaming for ever.
-    const turn = Math.random() * Math.PI * 2;
-    for (let i = 0; roamers && i < ROAMERS; i++) {
-      const seed = Math.round(((turn + (i / ROAMERS) * Math.PI * 2) % (Math.PI * 2)) * 1000) / 1000;
-      this.vortices.push({ id: this.nextId++, x: Math.round(ORIGIN.x), z: Math.round(ORIGIN.z), start: Math.round(now - VORTEX_RAMP_MS), end: NEVER, seed, roam: true });
-    }
   }
 
   /** Server time `now` (ms), where the players are and the time of day (shared/sun.ts). Returns a 'storms' message
@@ -88,8 +84,7 @@ export class StormServer {
       this.gas = gas;
       this.changed = true;
     }
-    // (The roamers are part of the world: weather off or not, they stay.)
-    const vortices = this.vortices.filter((v) => v.roam || (!this.off && v.end > now));
+    const vortices = this.off ? [] : this.vortices.filter((v) => v.end > now);
     if (vortices.length !== this.vortices.length) {
       this.vortices = vortices;
       this.changed = true;
@@ -129,6 +124,11 @@ export class StormServer {
       end: Math.round(start + rand(MIN_LEN_MS, MAX_LEN_MS)),
     });
     this.changed = true;
+  }
+
+  /** Every vortex whose ground comes within `reach` m of (x, z): the roamers there and the summoned ones. */
+  vorticesNear(x: number, z: number, reach: number, out: Vortex[] = []): Vortex[] {
+    return vorticesNear(x, z, reach, this.vortexZero, this.vortices, out);
   }
 
   /** Debug menu: a sand vortex already spun up within sight of (x, z): `ahead` m upwind of it if its path from there stays
@@ -211,7 +211,7 @@ export class StormServer {
   }
 
   msg(): ServerMsg {
-    return { t: 'storms', storms: this.storms, gas: this.gas, vortices: this.vortices };
+    return { t: 'storms', storms: this.storms, gas: this.gas, vortices: this.vortices, vortexZero: this.vortexZero };
   }
 }
 

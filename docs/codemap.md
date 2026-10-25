@@ -107,11 +107,13 @@ when you find it stale.
   in, rising to `GAS_DEPTH` over the dune floor (`duneFloor`, shared/dunes.ts), so climb a big dune or rock; it fills
   shelters; chokes in `GAS_S` (`gassed` in server/world.ts); no effect on electronics. Client `src/gas.ts`, drawn in
   `src/post.ts`
-- `shared/vortex.ts` — sand vortices: two per world (`ROAMERS`, made by `server/storm.ts`, sent with the storms) circling
-  the origin out among the crash sites for ever, faster heading downwind, never near the ship; the drag
-  (`vortexPull`, fed to `step()` like the storm's push), death in the core (thrown high, server/world.ts), drones dragged
-  in and torn apart (server/drones.ts `whirl`). Client `src/vortex.ts` (wind, grit) and `src/vortexSound.ts` (its roar), drawn in `src/post.ts` (its own
-  reduced-resolution pass). Debug menu: summon one, go to one
+- `shared/vortex.ts` — sand vortices: a seeded field over the whole desert (3 km squares, some with a vortex circling
+  inside for ever on the wall clock, none near the ship), found near a point with `vorticesNear` (the server's
+  `StormServer.vorticesNear` adds the debug menu's summoned ones; the clock's zero comes with the storms); faster heading
+  downwind; the drag (`vortexPull`, fed to `step()` like the storm's push), death in the core (thrown high,
+  server/world.ts), drones dragged in and torn apart (server/drones.ts `whirl`). Client `src/vortex.ts` (wind, grit) and
+  `src/vortexSound.ts` (its roar), drawn in `src/post.ts` (its own reduced-resolution pass, the nearest one). Debug
+  menu: summon one, go to one
 
 ## Home, buildings and power
 

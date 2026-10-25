@@ -311,7 +311,7 @@ export type ServerMsg =
   | { t: 'respawn' }
   // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time), and every
   // poison gas cloud out (shared/gas.ts). Sent before 'welcome' on join and to everyone whenever a list changes.
-  | { t: 'storms'; storms: Storm[]; gas: Gas[]; vortices?: Vortex[] }
+  | { t: 'storms'; storms: Storm[]; gas: Gas[]; vortices?: Vortex[]; vortexZero?: number }
   // Every fixed-wing drone flight in the air (shared/jets.ts; times on the server clock). Like 'storms': before
   // 'welcome' on join and to everyone whenever the list changes.
   | { t: 'jets'; jets: Jet[] }

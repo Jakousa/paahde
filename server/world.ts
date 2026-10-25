@@ -46,7 +46,9 @@ import { CorpseServer } from './corpses.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
-import { inVortexCore, vortexCentre, vortexPull } from '../shared/vortex.ts';
+import { inVortexCore, vortexCentre, vortexPull, type Vortex } from '../shared/vortex.ts';
+/** Reused for the vortices near someone (shared/vortex.ts vorticesNear). */
+const nearScratch: Vortex[] = [];
 import { JetServer } from './jets.ts';
 import { JetCrashes } from './jetcrash.ts';
 import { BREAK_S, breakup, type Breakup, type JetKind } from '../shared/jetbreak.ts';
@@ -107,7 +109,7 @@ const corpses = new CorpseServer(db, items, (msg) => {
   for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
 });
 
-const storms = new StormServer(performance.now(), !CALM);
+const storms = new StormServer(performance.now());
 const jets = new JetServer(performance.now());
 const jetCrashes = new JetCrashes(db);
 const harvesters = new HarvesterServer(performance.now());
@@ -237,7 +239,7 @@ wss.on('connection', (ws) => {
       // Out on the sand 600 m from the nearest sand vortex (just outside its pull), on the side you're on.
       const now = performance.now();
       let best: { x: number; z: number } | null = null, bd = Infinity;
-      for (const v of storms.vortices) {
+      for (const v of storms.vorticesNear(p.state.x, p.state.z, 9000)) {
         const c = vortexCentre(v, now, { x: 0, z: 0 }), d = Math.hypot(c.x - p.state.x, c.z - p.state.z);
         if (d < bd) (best = c), (bd = d);
       }
@@ -453,7 +455,7 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
   p.gassed = Math.max(0, p.gassed + (gassed > 0 ? gassed : -GAS_RECOVER) * dt);
   if (p.gassed >= GAS_S && !p.down) die(p, 'gas'); // slumps where they stand
   // In a sand vortex's core: torn off your feet and thrown high, spinning out of it.
-  const v = p.down ? null : inVortexCore(storms.vortices, p.state.x, p.state.y, p.state.z, serverNow);
+  const v = p.down ? null : inVortexCore(storms.vorticesNear(p.state.x, p.state.z, 100, nearScratch), p.state.x, p.state.y, p.state.z, serverNow);
   if (v) {
     const c = vortexCentre(v, serverNow, { x: 0, z: 0 });
     const dx = p.state.x - c.x, dz = p.state.z - c.z, d = Math.hypot(dx, dz) || 1;
@@ -575,7 +577,10 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const wall = Date.now();
   const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !p.ready || !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
   guardians.storms = storms.storms;
-  guardians.vortices = storms.vortices;
+  // The vortices near anyone: the drones only fly near players (they drag them in from 700 m).
+  const near = new Map<number, Vortex>();
+  for (const p of list) for (const v of storms.vorticesNear(p.x, p.z, 1500, nearScratch)) near.set(v.id, v);
+  guardians.vortices = [...near.values()];
   const furrows: Furrow[] = [];
   const crushed = harvesters.tick(now, list, furrows, storms.storms);
   for (const f of furrows) terrain.crater(f.x, f.z, f.r, f.mm, false);
@@ -1136,7 +1141,7 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.pitch = pitch as number;
   p.input = input & INPUT_MASK;
   const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
-  const pull = vortexPull(storms.vortices, p.state.x, p.state.y, p.state.z, performance.now(), { x: 0, z: 0 });
+  const pull = vortexPull(storms.vorticesNear(p.state.x, p.state.z, 500, nearScratch), p.state.x, p.state.y, p.state.z, performance.now(), { x: 0, z: 0 });
   const before = p.state;
   p.state = step(p.state, input & INPUT_MASK, p.yaw, drag, guardians.posts, pull);
   offBike(p, before);

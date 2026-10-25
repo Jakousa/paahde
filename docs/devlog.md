@@ -21,10 +21,13 @@ What we built, why, and what's left. Dated sessions newest first, then undated t
 
 ## 2026-10-25 — Sand vortices
 
-- Two colossal sand vortices roam every world for ever (`shared/vortex.ts`): ~950 m tall, a 50 m foot flaring into a
-  spiral bowl ~650 m across. Each circles the origin (by the crashed ship) 850–2550 m out (a lap ~30 min), fastest heading downwind (~13 m/s)
-  and slowest into the wind (~3 m/s), so it sweeps through the crash sites but never comes near the ship.
-  Not tied to players; made when the world process starts (a restart puts them somewhere else, like the storms).
+- Colossal sand vortices roam the whole desert (`shared/vortex.ts`): ~950 m tall, a 50 m foot flaring into a spiral bowl
+  ~650 m across. No count and no list: the desert is cut into 3 km squares and the seed decides for each whether a
+  vortex roams it (4 in 10: about one per 20 km², the nearest typically 2–2.6 km from the start) and how; it circles a
+  spot inside its square for ever (400–1000 m out, swelling and shrinking), fastest heading downwind and slowest into
+  the wind, never leaving the square, and no square near the ship has one (none comes within ~1.1 km). They run on the
+  wall clock (its zero on the server clock is sent with the storms), so the server and every client work out the ones
+  near them (`vorticesNear`) and agree, and a restart finds them where they were.
 - Within 450 m it drags you in and round (`vortexPull`, a second wind in `step()`, replayed with each input like the
   storm's). Walking straight out gets you away from 250 m, not from 200 m; a bike gets you out. Inside 55 m you die,
   thrown round, out and 32 m/s up ('torn up by the sand vortex'). Bunkers and shelters keep it out.
