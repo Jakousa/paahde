@@ -278,7 +278,7 @@ new Chat(net);
 const names = nameGate(net, renderer.domElement);
 // New builds wait for a quiet moment to reload (src/update.ts).
 update.busy = () => fly.active || guardianFx.combat || bossFx.combat || net.me.riding || teardown.active || !!net.down;
-const lootView = new LootView(scene);
+const lootView = new LootView(scene, scrap);
 const vehicleView = new VehicleView(scene); // motorcycles standing or lying in the world, nobody on them
 const shieldFx = new ShieldFx(scene, () => orbit.camera.position, () => net.id, (m) => guardianFx.jolt(m));
 net.onShieldBreak = (m) => shieldFx.play(m);

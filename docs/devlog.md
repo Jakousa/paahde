@@ -22,8 +22,10 @@ What we built, why, and what's left. Dated sessions newest first, then undated t
 The first wiring is taken out of the pod, not picked up: wrench → dismantling bench → the pod's salvage taken apart on
 it → workbench → the first bike.
 
-- **The kit** (`POD_LOOT.kit`, shared/tables.ts): 20 scrap, 7 cloth, a broken canteen, the **pod console** and the
-  **pod power box**. No wiring, battery or bearing lying about any more.
+- **The kit** (`POD_LOOT.kit`, shared/tables.ts): 20 scrap, 7 cloth, the **pod console** and the **pod power box**.
+  No wiring, battery, bearing or canteen lying about any more (canteens are found at the scrap fields). The scrap and
+  cloth lie as the scrap piles' own pieces (sheets, planks, gears, springs; the tied cloth bundle: src/world/loot.ts),
+  not crates, scattered wider (podLootSpot).
 - **The salvage** are carried machines (`pod_console`, `pod_powerbox` in shared/salvage.ts COMPONENTS, yields in
   `COMPONENT_LOOT`; never at a crash site): picked up whole, kept whole in the kit like the rest, and taken apart on the
   dismantling bench like any carried machine. Not in the hands: a carried machine needs the bench, and the bench needs

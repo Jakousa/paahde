@@ -2,7 +2,7 @@
 // spawn, caches out in the desert, things dropped from a full bag. Gear has its own model (FIND_MODELS); parts use the disassembly
 // part models (src/teardown/junk.ts); broken gear, parts and relics have a faint glow along their edges and a fainter pool
 // on the sand, in the colour of their quality (RARITY; relics warm), so they catch the eye among the crash-site debris;
-// anything else is a battered crate. Each sits on the sand where it is (also at the bottom of a hole).
+// scrap and cloth are the scrap piles' own pieces (src/world/scrap.ts), smaller; anything else is a battered crate. Each sits on the sand where it is (also at the bottom of a hole).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { cameraPosition, float, length, max, modelPosition, normalLocal, positionLocal, smoothstep, uniform, uv, vec3 } from 'three/tsl';
@@ -10,7 +10,9 @@ import { GEAR, isGear, repaired, tierOf } from '../../shared/gear.ts';
 import { applyTier } from '../tierLook';
 import { RECEIVERS, RELICS } from '../../shared/bosses.ts';
 import { RELIC_DROPS } from '../../shared/tables.ts';
-import { parsePart, WIRING } from '../../shared/items.ts';
+import { CLOTH, parsePart, SCRAP, WIRING } from '../../shared/items.ts';
+import { SCRAP_KINDS } from '../../shared/scrap.ts';
+import type { Scrap } from './scrap';
 import { wrenchModel } from '../models/wrench';
 import { lootReach, lootY, type Loot } from '../../shared/loot.ts';
 import { RARITY, TIERS } from '../../shared/salvage.ts';
@@ -159,6 +161,10 @@ function addFind(g: THREE.Group, kind: string) {
   }, (e) => console.warn(`${spec.url} failed to load`, e));
 }
 
+/** The scrap piles' pieces loose scrap and cloth are drawn as (SCRAP_KINDS indexes). */
+const CLOTH_KIND = SCRAP_KINDS.findIndex((k) => k.item === 'cloth');
+const SHEET_KINDS = SCRAP_KINDS.flatMap((k, i) => (k.item || k.node.startsWith('Barrel') ? [] : [i]));
+
 type Shown = { obj: THREE.Group; rims: THREE.Mesh[] | null; pool: THREE.Mesh | null; poolY: number; l: Loot; age: number; frozen: boolean };
 
 /** Lay the pool's vertices just above the sand around (x, z), wherever it has been dug. */
@@ -175,7 +181,10 @@ export class LootView {
   private shown = new Map<number, Shown>();
   private t = 0;
 
-  constructor(scene: THREE.Scene) {
+  private scrap: Scrap;
+
+  constructor(scene: THREE.Scene, scrap: Scrap) {
+    this.scrap = scrap;
     scene.add(this.group);
   }
 
@@ -313,8 +322,22 @@ export class LootView {
         m.traverse((o) => { o.userData.shared = true; }); // the cached part's geometry: never disposed
         add(m);
       }, () => add(box(new THREE.Group(), 0.3, 0.2, 0.3, STEEL, 0, 0.1, 0)));
+    } else if (l.kind === SCRAP || l.kind === CLOTH) {
+      // A piece off the scrap piles, lying flat: a sheet, plank, gear or spring for scrap (no barrels), the tied bundle
+      // for cloth, the same piece for everyone.
+      const kind = l.kind === CLOTH ? CLOTH_KIND : SHEET_KINDS[l.id % SHEET_KINDS.length];
+      const scale = l.kind === CLOTH ? 1 : 0.6;
+      this.scrap.ready.then(() => {
+        const m = this.scrap.mesh(kind);
+        if (!m) return;
+        m.userData.shared = true; // the piles' geometry: never disposed
+        m.receiveShadow = true;
+        m.scale.setScalar(scale);
+        m.position.y = m.geometry.boundingBox!.max.y * scale * 0.85; // a little into the sand
+        obj.add(m);
+      });
     } else {
-      // A battered crate for anything else (scrap, carried machines).
+      // A battered crate for anything else (carried machines).
       box(obj, 0.5, 0.36, 0.4, WOOD, 0, 0.18, 0);
       box(obj, 0.52, 0.05, 0.42, RUST, 0, 0.3, 0);
     }

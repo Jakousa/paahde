@@ -264,12 +264,12 @@ export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
 /** Lying about the crashed pods players arrive in (shared/pods.ts, server/loot.ts): a starter kit, kept whole. `kit`: how
  *  many of each lie about them at once: enough scrap and cloth for the wrench, a dismantling bench, a workbench, a tarp
- *  and a bedroll (HAND_TABLE, BUILD_TABLE), a broken canteen (shared/gear.ts), and the pod's console and power box
+ *  and a bedroll (HAND_TABLE, BUILD_TABLE), and the pod's console and power box
  *  (COMPONENT_LOOT), carried machines whose coils are the first wiring (the workbench's) and whose battery is the first
  *  bike's. The order: wrench, dismantling bench, those two taken apart on it, workbench, bike. Taken, another lies there a
  *  few minutes later: whatever the kit is shortest of. `n` and `contents` (the kit's shares, as odds) are for whoever
  *  doesn't count what's lying (the economy simulator). */
-const POD_KIT = { scrap: 20, cloth: 7, canteen: 1, pod_console: 1, pod_powerbox: 1 };
+const POD_KIT = { scrap: 20, cloth: 7, pod_console: 1, pod_powerbox: 1 };
 export const POD_LOOT = {
   kit: POD_KIT,
   n: Object.values(POD_KIT).reduce((a, b) => a + b, 0),

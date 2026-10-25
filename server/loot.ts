@@ -1,7 +1,7 @@
 // Loot lying in the world (shared/loot.ts): broken gear to find and repair (shared/gear.ts) at the crash sites (the
 // starter gear at the scrap fields near the start, the advanced gear on crawler ground, rare loose parts on guardian
 // ground: shared/crashsites.ts SiteLevel; the motorcycles among FINDS lie there as vehicles: server/vehicles.ts), stashes
-// on the shelters' floors (SHELTER_STASHES), scrap, cloth, wiring and now and then a canteen or a bike part about the crashed
+// on the shelters' floors (SHELTER_STASHES), scrap, cloth and the pod's console and power box about the crashed
 // pods players arrive in (POD_LOOT, shared/pods.ts), and caches lying out in the open desert. All shared: the first player to press F
 // takes it. Taken finds and caches come back somewhere else after a while, so there are always some out there.
 // Kept in the DB (`world_loot`, `loot_pending`, written on change), so a restart keeps what was taken. Items

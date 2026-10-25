@@ -65,6 +65,9 @@ export class Scrap {
   private cellX = NaN;
   private cellZ = NaN;
   private dirty = false;
+  private loaded!: () => void;
+  /** Resolves once the props' model has loaded (mesh() gives them from then on). */
+  readonly ready = new Promise<void>((res) => (this.loaded = res));
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
@@ -105,6 +108,7 @@ export class Scrap {
       return this.add(geo, material!, half);
     });
     this.dirty = true;
+    this.loaded();
   }
 
   private add(geo: THREE.BufferGeometry, material: THREE.Material, half?: THREE.Vector3): Kind {

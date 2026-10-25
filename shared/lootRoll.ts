@@ -172,7 +172,7 @@ export function stashSpot(shelters: Shelter[], lying: Map<number, number>, rand:
 }
 
 /** Something lying about the crashed pods (POD_LOOT): what its kit is shortest of, given how many of each kit entry lie
- *  there (`lying`, by podKitKey; ties and no count: by the kit's shares): scrap, cloth, a broken canteen, the pod's
+ *  there (`lying`, by podKitKey; ties and no count: by the kit's shares): scrap, cloth, the pod's
  *  console or its power box (carried machines, whole). */
 export type PodKitKey = keyof typeof POD_LOOT.kit;
 const POD_KEYS = Object.keys(POD_LOOT.kit) as PodKitKey[];
@@ -183,11 +183,10 @@ export const podFind = (rand: Rand, lying?: Partial<Record<string, number>>): Dr
     const most = Math.max(...POD_KEYS.map(short));
     what = pickOdds(Object.fromEntries(POD_KEYS.filter((k) => short(k) === most).map((k) => [k, POD_LOOT.kit[k]])) as Record<PodKitKey, number>, rand);
   } else what = pickOdds(POD_LOOT.contents, rand);
-  if (what === 'canteen') return broken('canteen', rand);
   return { kind: what === 'cloth' ? CLOTH : what === 'scrap' ? SCRAP : what };
 };
 /** What an item lying about the pods counts as: its POD_LOOT kit entry, or its own kind (left from an older kit: wiring,
- *  a battery or bearing; not the kit's, so it's surplus, server/loot.ts). */
+ *  a canteen, a battery or bearing; not the kit's, so it's surplus, server/loot.ts). */
 export const podKitKey = (kind: string): string => (partOf(kind) ? partOf(kind)!.part : kind);
 /** Is `key` (podKitKey) an entry of the pods' kit? */
 export const inPodKit = (key: string): key is PodKitKey => key in POD_LOOT.kit;

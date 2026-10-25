@@ -9,7 +9,7 @@
 //
 // Together they are a small scrap-field site: a starter machine thrown out by each (podSites: machine sites "pod:<n>"
 // like a crash site's, shared/crash.ts, carried off and back on the starter timer, server/crash.ts), and a starter kit
-// lying about them: scrap, cloth, a broken canteen, and the pod's console and power box, torn out (podLootSpot, POD_LOOT in
+// lying about them: scrap, cloth, and the pod's console and power box, torn out (podLootSpot, POD_LOOT in
 // shared/tables.ts, rolled in shared/lootRoll.ts, laid out by server/loot.ts). The first broken motorcycle lies by the
 // first pod (shared/lootRoll.ts homeBikeSpot).
 //
@@ -175,5 +175,5 @@ const LOOT_SPOTS: [number, number][] = [[-2.6, 4.2], [2.8, 3.5], [3.2, 1.2], [-3
 export function podLootSpot(rand: () => number): { x: number; z: number } {
   const pod = PODS[Math.floor(rand() * PODS.length)];
   const [lx, lz] = LOOT_SPOTS[Math.floor(rand() * LOOT_SPOTS.length)];
-  return podToWorld(pod, lx + (rand() - 0.5) * 1.2, lz + (rand() - 0.5) * 1.2);
+  return podToWorld(pod, lx + (rand() - 0.5) * 2.4, lz + (rand() - 0.5) * 2.4); // a scatter, not heaps
 }
