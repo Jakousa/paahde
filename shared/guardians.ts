@@ -117,7 +117,7 @@ export const BITE_MS = 1500;
 export const LUNGE_WIND_MS = 500;
 export const LUNGE_SPEED = 18;
 export const LUNGE_OVER = 2;
-export const LUNGE_HIT_R = 1;
+export const LUNGE_HIT_R = 0.6;
 export const LUNGE_REST_MS = 700;
 /** A crawler's lunge as sent ('bots' gun, shared/protocol.ts): none, crouched to spring, springing, standing after. */
 export const LUNGE_NONE = -1, LUNGE_WIND = 1, LUNGE_DASH = 2, LUNGE_REST = 3;
