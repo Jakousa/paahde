@@ -108,7 +108,7 @@ when you find it stale.
 - `shared/vortex.ts` — sand vortices: two per world (`ROAMERS`, made by `server/storm.ts`, sent with the storms) circling
   the origin out among the crash sites for ever, faster heading downwind, never near the ship; the drag
   (`vortexPull`, fed to `step()` like the storm's push), death in the core (thrown high, server/world.ts), drones dragged
-  in and torn apart (server/drones.ts `whirl`). Client `src/vortex.ts` (roar, grit), drawn in `src/post.ts` (its own
+  in and torn apart (server/drones.ts `whirl`). Client `src/vortex.ts` (wind, grit) and `src/vortexSound.ts` (its roar), drawn in `src/post.ts` (its own
   reduced-resolution pass). Debug menu: summon one, go to one
 
 ## Home, buildings and power

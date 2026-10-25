@@ -21,7 +21,10 @@ What we built, why, and what's left. Dated sessions newest first, then undated t
   more noise per step made the whole frame go dark in headless Chrome (haze and bloom dropped out), so keep it lean.
 - Debug menu: *Sand vortex* (one more, short-lived, spun up near you or on the first clear spot round the ship) and
   *Go to vortex* (600 m from the nearest, just outside its pull).
-- Known gaps: only the nearest vortex is drawn; no sound of its own (the wind and grit swell near it).
+- Its roar (`src/vortexSound.ts`): a deep, rough synthesised roar (sub pressure, low resonant body, howls, grit) from
+  2.5 km off, louder by the metre (dB linear in the distance), gusting harder and brighter the closer, leaning to the
+  ear it's on; muffled underground. −45 LUFS 1.5 km off, −26 at 450 m, −18.5 at its foot (true peak −6.6 dBTP).
+- Known gaps: only the nearest vortex is drawn.
 ## 2026-10-25 — The starting bunker is gone
 
 No more base: the hut, the stairs, the rooms, the workbench, the dismantling table, the endless chest, the hand pump, the
