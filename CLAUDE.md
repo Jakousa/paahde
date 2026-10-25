@@ -26,7 +26,8 @@ woltsu/dadajam): no release tags.
   server under bot load and the client in headless Chrome, at this tree and at the base in turns, and what moved past the
   noise. CI runs it on every push to `main` that touches the game (report in the run summary, flagged changes to Discord).
 
-There are no tests yet; `npm run build` is the check CI runs on PRs.
+`npm test` runs behavioral regressions; `npm run check` also validates graphics presets and machine geometry/topology.
+CI runs `npm run check` and `npm run build` before publishing a dev image.
 
 ## Layout
 

@@ -5,7 +5,7 @@ RUN npm ci
 COPY . .
 ARG BUILD_SHA=dev
 ENV BUILD_SHA=$BUILD_SHA
-RUN npm run build
+RUN npm run check && npm run build
 
 FROM node:24-alpine
 WORKDIR /app
