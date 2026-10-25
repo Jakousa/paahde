@@ -3,14 +3,18 @@
 // along its edges in the colour of its parts' tier like broken gear on the sand (src/world/loot.ts); a working one
 // stands on its wheels, pitched along the slope and leaning a little on its stand. While someone rides it, it isn't
 // drawn here: src/main.ts draws it under its rider (src/bike.ts Bike). Your own ones are on the locator bar
-// (src/locator.ts), however far, as a little bike in your colour.
+// (src/locator.ts), however far, as a little bike in your colour; and each one standing within sight has a small green
+// standby lamp on its dash, breathing slowly like a parked thing left armed, to tell it from everyone else's on the
+// sand, by day or night. Others' bikes never show it.
 import * as THREE from 'three/webgpu';
+import { float, length, mix, sin, smoothstep, uv, vec3 } from 'three/tsl';
 import { parsePart } from '../../shared/items.ts';
 import { slopeAt } from '../../shared/sim.ts';
 import { parked, vehicles, type Vehicle } from '../../shared/vehicles.ts';
 import { loadBikeModel } from '../bike';
 import type { LocatorTarget } from '../locator';
 import { applyTier } from '../tierLook';
+import { nightLevel, time } from './env';
 import { addRims, glowColor, RIM_VIEW } from './loot';
 
 /** Drawn within this distance (m). */
@@ -21,7 +25,30 @@ const LIFT = 0.12;
 /** A working one leans on its stand (rad, to the left). */
 const STAND_LEAN = 0.12;
 
-type Shown = { obj: THREE.Group; key: string; rims: THREE.Mesh[] | null };
+/** The standby lamp on your own: on the dash gauge (bike frame, tools/blender/sandbike.py), its colour, brightness (HDR,
+ *  before bloom) by day and night, and its glow's size (m): never smaller than this, and from afar this much per metre
+ *  of distance (a few pixels: a point of light, not a marker). One breath every BREATH s. */
+const LED = new THREE.Vector3(0.08, 1.2, -0.33);
+const LED_COLOR = vec3(0.35, 1, 0.45);
+const LED_DAY = 3.2;
+const LED_NIGHT = 1.4;
+const LED_SIZE = 0.09;
+const LED_PER_M = 0.0055;
+const BREATH = 2.8;
+
+/** One material for every standby lamp: a soft additive dot breathing between dim and full. */
+let ledMat: THREE.SpriteNodeMaterial | null = null;
+function ledMaterial() {
+  if (ledMat) return ledMat;
+  ledMat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  const g = float(1).sub(smoothstep(0, 1, length(uv().sub(0.5)).mul(2)));
+  const breath = sin(time.mul((2 * Math.PI) / BREATH)).mul(0.35).add(0.65);
+  ledMat.colorNode = LED_COLOR.mul(mix(float(LED_DAY), float(LED_NIGHT), nightLevel)).mul(breath);
+  ledMat.opacityNode = g.mul(g).mul(g);
+  return ledMat;
+}
+
+type Shown = { obj: THREE.Group; key: string; rims: THREE.Mesh[] | null; tilt: THREE.Group; led: THREE.Sprite | null };
 
 /** The tier its parts look (0 Scrap .. 3 Space-grade): the mean of the fitted parts', rounded down, as gear's. */
 function tierOf(v: Vehicle): number {
@@ -49,8 +76,9 @@ export class VehicleView {
     scene.add(this.group);
   }
 
-  /** Every frame: the vehicles near `me` that nobody is riding (`riding`: is player `id` on their bike now). */
-  update(list: Vehicle[], me: { x: number; z: number }, riding: (id: number) => boolean) {
+  /** Every frame: the vehicles near `me` that nobody is riding (`riding`: is player `id` on their bike now); `mine`
+   *  the ids of yours. */
+  update(list: Vehicle[], mine: ReadonlySet<number>, me: { x: number; y: number; z: number }, riding: (id: number) => boolean) {
     const want = new Map<number, Vehicle>();
     for (const v of list) {
       if (v.rider !== undefined && riding(v.rider)) continue;
@@ -66,10 +94,22 @@ export class VehicleView {
     for (const v of want.values()) {
       let s = this.shown.get(v.id);
       if (!s) this.shown.set(v.id, (s = this.build(v)));
+      const d = Math.hypot(v.x - me.x, v.z - me.z);
       if (s.rims) {
-        const on = Math.hypot(v.x - me.x, v.z - me.z) < RIM_VIEW;
+        const on = d < RIM_VIEW;
         for (const r of s.rims) r.visible = on;
       }
+      const lit = v.up && mine.has(v.id);
+      if (lit && !s.led) {
+        s.led = new THREE.Sprite(ledMaterial());
+        s.led.position.copy(LED);
+        s.led.castShadow = s.led.receiveShadow = false;
+        s.tilt.add(s.led);
+      } else if (!lit && s.led) {
+        s.tilt.remove(s.led);
+        s.led = null;
+      }
+      s.led?.scale.setScalar(Math.max(LED_SIZE, Math.hypot(d, v.y - me.y) * LED_PER_M));
     }
   }
 
@@ -103,7 +143,7 @@ export class VehicleView {
       if (rims) addRims(m, rims, glowColor(tier));
     }, () => {});
     this.group.add(obj);
-    return { obj, key: keyOf(v), rims };
+    return { obj, key: keyOf(v), rims, tilt, led: null };
   }
 }
 

@@ -568,7 +568,7 @@ renderer.setAnimationLoop((time) => {
   const fire = rifle.update(frameDt, { speed: Math.hypot(s.vx, s.vz), grounded: s.grounded, crouching: !!(s.crouching || s.sliding) }, hands);
   viewCull.begin();
   lootView.update(frameDt, net.loot, focus);
-  vehicleView.update(vehicles, focus, (id) => (id === net.id ? net.me.riding : others.find((o) => o.id === id)?.riding ?? false));
+  vehicleView.update(vehicles, net.myVehicles, focus, (id) => (id === net.id ? net.me.riding : others.find((o) => o.id === id)?.riding ?? false));
   shieldFx.update(frameDt, (id) => (id === net.id ? me.root.position : others.find((o) => o.id === id) ?? null));
   corpseView.update(frameDt, focus);
   orbit.update({ x: focus.x, y: focus.y, z: focus.z, vx: s.vx, vy: s.vy, vz: s.vz, grounded: s.grounded, sliding: s.sliding, crouching: s.crouching, riding: s.riding, heading: v.heading, lean: bikes.get(0)?.leanAngle }, frameDt);
