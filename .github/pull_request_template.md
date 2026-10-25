@@ -1,5 +1,3 @@
-## What
+## What (in one sentence)
 
-## How to test
-
-- [ ] `npm run build` passes
+## Why

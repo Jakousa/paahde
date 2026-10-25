@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tools/*.test.mjs",
+    "test": "node --disable-warning=ExperimentalWarning --test tools/*.test.mjs",
     "check": "npm test && node tools/check-graphics.ts && node tools/check-gpu-timing.ts && node tools/check-machine-boxes.ts && node tools/check-teardown-order.ts && node tools/check-machines.ts",
     "dev": "concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"vite\"",
     "dev:server": "node --watch-path=server --watch-path=shared server/index.ts --lab",

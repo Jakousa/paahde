@@ -1,10 +1,25 @@
 {
   "permissions": {
     "allow": [
+      "Bash(npm test:*)",
+      "Bash(npm run check:*)",
       "Bash(npm run dev:*)",
       "Bash(npm run build:*)",
+      "Bash(npm run preview:*)",
+      "Bash(npm run econ:*)",
+      "Bash(npm run bench:*)",
       "Bash(npm install:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(node --no-warnings --test:*)",
+      "Bash(node --disable-warning=ExperimentalWarning --test:*)",
+      "Bash(node --test:*)",
+      "Bash(node tools/check-*:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase origin/main)",
+      "Bash(git push origin HEAD:main)"
     ]
   }
 }
