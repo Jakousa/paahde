@@ -3,12 +3,13 @@
 // battery itself: its ItemData `charge`, fitted in the station's item, so it keeps it when it comes out), and
 // the state goes out to everyone. A windmill on a grid with no station (or only full ones) delivers nothing. While the world
 // sleeps (nobody in it, the process gone) the wind still blows: on start the time since the last save is caught up in
-// steps of the same wind, storms left out.
+// steps of the same wind, storms left out. A beacon (shared/power.ts BEACON_W) is a store too, of its one battery: on a grid
+// it takes its power first, from the wind and then from every battery on it; on its own it runs its battery flat.
 import { buildingBox, buildingId } from '../shared/boxes.ts';
 import { BASE } from '../shared/base.ts';
-import { placed } from '../shared/placed.ts';
+import { BEACON, placed } from '../shared/placed.ts';
 import { grids } from '../shared/wires.ts';
-import { cells, charge, GAME_SPEED, windmillWatts, windSpeed, type PowerState, type Store } from '../shared/power.ts';
+import { BEACON_W, cells, charge, draw, GAME_SPEED, windmillWatts, windSpeed, type PowerState, type Store } from '../shared/power.ts';
 import { partsOf } from '../shared/gear.ts';
 import { chargeOf, partAt, setFitted, type Item } from '../shared/items.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -24,14 +25,18 @@ const CATCH_UP_STEP_S = 60;
 const CATCH_UP_MAX_S = 7 * 24 * 3600;
 /** The shared clock of the last tick (setting). */
 const POWER_AT = 'powerAt';
+/** What keeps its batteries' charge here: the battery stations and the beacons. */
+const isStore = (kind: string) => kind === 'battery_station' || kind === BEACON;
 
 export class PowerServer {
   private db: Db;
   private items: ItemServer;
-  /** Battery station id → its parts as last seen and each slot's charge (kWh). */
+  /** Battery station or beacon id → its parts as last seen and each slot's charge (kWh). */
   private stores = new Map<number, { parts: (string | null)[]; charge: number[] }>();
   private gen: Record<number, number> = {};
   private intake: Record<number, number> = {};
+  /** The beacons lit in the last step. */
+  private lit: number[] = [];
   private at: number;
 
   /** Call after the placed list is loaded (server/placed.ts). `worldMs`: the shared clock now. */
@@ -41,7 +46,7 @@ export class PowerServer {
     // Before the charge was the batteries' own it was kept per station slot in the `power` table: into the batteries.
     const old = db.loadPower();
     for (const p of placed) {
-      if (p.kind !== 'battery_station') continue;
+      if (!isStore(p.kind)) continue;
       this.load(p.id);
       const was = old.get(p.id);
       const s = this.stores.get(p.id)!;
@@ -104,7 +109,7 @@ export class PowerServer {
   private sync() {
     const ids = new Set<number>();
     for (const p of placed) {
-      if (p.kind !== 'battery_station') continue;
+      if (!isStore(p.kind)) continue;
       ids.add(p.id);
       const s = this.stores.get(p.id);
       if (!s || s.parts.join() !== (p.parts ?? []).join()) this.load(p.id);
@@ -118,16 +123,25 @@ export class PowerServer {
     const v = windSpeed(worldMs, storm);
     this.gen = {};
     this.intake = {};
+    this.lit = [];
     const kinds = new Map(placed.map((p) => [p.id, p]));
+    const gameS = realS * GAME_SPEED;
     for (const grid of grids(placed)) {
       const mills = grid.filter((id) => kinds.get(id)?.kind === 'windmill');
       const ids = grid.filter((id) => this.stores.has(id));
+      const stores = ids.map((id) => this.stores.get(id) as Store);
       const made = mills.map((id) => windmillWatts(kinds.get(id)!.parts, v));
       const watts = made.reduce((a, b) => a + b, 0);
-      const took = charge(ids.map((id) => this.stores.get(id) as Store), watts, realS * GAME_SPEED);
+      // The beacons first: on the wind, what it can't give out of the batteries; all lit, or (too little) all dark.
+      const beacons = grid.filter((id) => kinds.get(id)?.kind === BEACON);
+      const need = beacons.length * BEACON_W;
+      const lit = need > 0 && (watts >= need || draw(stores, need - watts, gameS));
+      if (lit) this.lit.push(...beacons);
+      const lamps = lit ? Math.min(watts, need) : 0;
+      const took = charge(stores, watts - lamps, gameS);
       ids.forEach((id, i) => (this.intake[id] = took[i]));
       // What each windmill gives the grid: its share of what was taken.
-      const used = watts > 0 ? took.reduce((a, b) => a + b, 0) / watts : 0;
+      const used = watts > 0 ? (took.reduce((a, b) => a + b, 0) + lamps) / watts : 0;
       mills.forEach((id, i) => (this.gen[id] = made[i] * used));
     }
   }
@@ -149,6 +163,7 @@ export class PowerServer {
     const state: PowerState = {
       gen: Object.fromEntries(Object.entries(this.gen).map(([id, w]) => [id, Math.round(w)])),
       store: Object.fromEntries([...this.stores].map(([id, s]) => [id, { charge: s.charge.map(round), w: Math.round(this.intake[id] ?? 0) }])),
+      lit: this.lit,
     };
     return { t: 'power', ...state };
   }

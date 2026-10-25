@@ -79,11 +79,14 @@ export const GEAR: Record<string, GearSpec> = {
   receiver_worm: { slots: [CELL, own('hive_core'), own('queen_eye'), own('furnace_heart')], ...RECEIVER },
   // The buildings (shared/placed.ts), put up empty (their frame and windings are the base materials they're built of,
   // shared/tables.ts BUILD_TABLE). The windmill: bearings for the rotor shaft and the head's turn, an electric motor
-  // run backwards for its generator. The battery station: a rack of six cells.
+  // run backwards for its generator. The battery station: a rack of six cells. The beacon: one cell.
   windmill: { slots: [P('bearing'), P('bearing'), P('bearing'), P('motor')],
     better: 'how much power it makes', use: TEXT.gearUse.windmill, built: true },
   battery_station: { slots: [P('battery'), P('battery'), P('battery'), P('battery'), P('battery'), P('battery')],
     better: 'how much power it holds', use: TEXT.gearUse.battery_station, built: true },
+  // The beacon (shared/placed.ts): a battery to run its lamp away from the grid (wired to one, it runs on the grid's power
+  // and the grid charges its battery: server/power.ts).
+  beacon_light: { slots: [P('battery')], better: 'how long it shines on its battery', use: TEXT.gearUse.beacon_light, built: true },
 };
 export const GEAR_KINDS = Object.keys(GEAR);
 

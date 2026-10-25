@@ -199,6 +199,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'place' && p) return onPlace(p, msg.slot, msg.x, msg.z, msg.rot);
     if (msg.t === 'unplace' && p) return onUnplace(p, msg.id);
     if (msg.t === 'build' && p) return onBuild(p, msg.kind, msg.x, msg.z, msg.rot);
+    if (msg.t === 'beaconColor' && p) return onBeaconColor(p, msg.id, msg.color);
     if (msg.t === 'mount' && p) return onMount(p, msg.id);
     if (msg.t === 'repairVehicle' && p) return onRepairVehicle(p, msg.id);
     if (msg.t === 'wire' && p) return onWire(p, msg.slot, msg.a, msg.b);
@@ -1023,6 +1024,13 @@ function onBuild(p: Player, kind: unknown, x: unknown, z: unknown, rot: unknown)
   else if (isBuilding(r.kind)) sendBox(p, buildingBox(r.id));
   sendBox(p, 'bag');
   if (typeof r !== 'string') gearChanged(p.browserId);
+}
+
+// A beacon's light to another colour (server/placed.ts recolor): its box to everyone, the placed list follows.
+function onBeaconColor(p: Player, id: unknown, color: unknown) {
+  const r = p.down ? TEXT.notice.cantPlace : placedThings.recolor(p.state, id, color);
+  if (r) return send(p.ws, { t: 'notice', text: r });
+  sendBox(p, buildingBox(id as number));
 }
 
 function onUnplace(p: Player, id: unknown) {

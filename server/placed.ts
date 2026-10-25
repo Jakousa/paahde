@@ -3,13 +3,13 @@
 // bag (shared/crafting.ts BUILDS) and taking it down again (they all come back, with the parts fitted in it), each in
 // one transaction with the bag. A windmill or battery station (shared/gear.ts isBuilding) keeps its item in its own
 // box while it stands (buildingBox), its part slots empty at first: its parts are fitted there (server/items.ts fit /
-// unfit). Keeps shared/placed.ts's list (and so the collision) in step, and broadcasts the list when it changes.
+// unfit); a beacon's light colour is its item's data (recolor). Keeps shared/placed.ts's list (and so the collision) in step, and broadcasts the list when it changes.
 import { buildingBox } from '../shared/boxes.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import { BUILDS, buildCost, isBuildable, WRENCH } from '../shared/crafting.ts';
 import { isBuilding, partsOf } from '../shared/gear.ts';
-import { partAt } from '../shared/items.ts';
-import { isPlaceable, onSand, PLACE_FLOOR_Y, PLACE_REACH, PLACED_REACH, placeError, placed, placedReach, placedY, SAND_REACH, setPlaced, type Placed } from '../shared/placed.ts';
+import { partAt, setData } from '../shared/items.ts';
+import { BEACON, BEACON_COLORS, isPlaceable, onSand, PLACE_FLOOR_Y, PLACE_REACH, PLACED_REACH, placeError, placed, placedReach, placedY, SAND_REACH, setPlaced, type Placed } from '../shared/placed.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';
 import type { ItemServer } from './items.ts';
@@ -34,10 +34,26 @@ export class PlacedServer {
     setPlaced(placed.map((p) => (isBuilding(p.kind) ? this.withParts(p) : p)));
   }
 
-  /** The building as its box has it: the parts fitted now. */
+  /** The building as its box has it: the parts fitted now, a beacon's colour. */
   private withParts(p: Placed): Placed {
     const it = this.items.slots('', buildingBox(p.id))[0];
-    return { ...p, parts: it ? partsOf(it) : [] };
+    const color = it?.data?.color;
+    return { ...p, parts: it ? partsOf(it) : [], ...(color ? { color } : {}) };
+  }
+
+  /** Beacon `id`'s light to colour `color` (BEACON_COLORS index), for a player at `feet` in reach of it. Null when done. */
+  recolor(feet: { x: number; y: number; z: number }, id: unknown, color: unknown): string | null {
+    const p = placed.find((q) => q.id === id);
+    if (!p || p.kind !== BEACON) return TEXT.notice.alreadyGone;
+    if (!Number.isInteger(color) || (color as number) < 0 || (color as number) >= BEACON_COLORS.length) return TEXT.notice.badSpot;
+    if (placedReach(feet, p) > PLACED_REACH + REACH_SLACK) return TEXT.notice.tooFar;
+    const box = buildingBox(p.id);
+    this.items.edit('', box, 0, (it) => {
+      setData(it, 'color', color ? (color as number) : undefined);
+      return true;
+    });
+    this.refresh(box);
+    return null;
   }
 
   /** The buildings' boxes, for a joining player. */

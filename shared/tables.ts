@@ -60,6 +60,8 @@ export const BUILD_TABLE: Record<string, IngredientSpec[]> = {
   battery_station: [SCRAP(12), WIRING(3), CLOTH(2)],
   // Lengths of scrap pipe welded up, a crossarm, an insulator (the lines between are wiring too, shared/wires.ts).
   power_pole: [SCRAP(8)],
+  // A scrap mast with a lamp head, its wiring (the battery goes in after).
+  beacon_light: [SCRAP(6), WIRING(2)],
 };
 
 // ---------------------------------------------------------------------------------------------------------------

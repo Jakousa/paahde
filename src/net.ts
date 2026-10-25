@@ -505,6 +505,11 @@ export class Net {
     if (this.connected) this.send({ t: 'build', kind, x, z, rot });
   }
 
+  /** Set beacon `id`'s light to colour `color` (shared/placed.ts BEACON_COLORS); the server answers 'placed' or a notice. */
+  beaconColor(id: number, color: number) {
+    if (this.connected) this.send({ t: 'beaconColor', id, color });
+  }
+
   /** String a power line from `a` to `b` with the wiring in bag slot `slot`, or take down the one between them. */
   wire(slot: number, a: number, b: number) {
     if (this.connected) this.send({ t: 'wire', slot, a, b });
@@ -726,7 +731,7 @@ export class Net {
       return this.onPlaced?.();
     }
     if (msg.t === 'power') {
-      this.power = { gen: msg.gen, store: msg.store };
+      this.power = { gen: msg.gen, store: msg.store, lit: msg.lit };
       return this.onPower?.();
     }
     if (msg.t === 'placed') {

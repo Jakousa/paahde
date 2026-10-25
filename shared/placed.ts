@@ -2,7 +2,9 @@
 // and UV lamp stands (GitHub #22–#24; not crafted for now); and, out on the sand round the base (the `sand` kinds), the
 // buildings put up with the wrench from base materials (shared/crafting.ts BUILDS: the windmill, the battery station,
 // the power pole), of which the windmill and battery station keep their item with its parts in a box of their own while
-// they stand (shared/gear.ts isBuilding, server/placed.ts). The server owns the list
+// they stand (shared/gear.ts isBuilding, server/placed.ts). The beacon (a lamp on a mast shining a column of light into
+// the sky, src/world/beacons.ts) is the one building that goes up anywhere out on the sand, not only round the base: a
+// marker; its light's colour is its item's data (BEACON_COLORS). The server owns the list
 // (server/placed.ts, `placed` table) and sends it whole on join and when it changes; client and server both keep it
 // here with setPlaced(), which also hands their standing parts to the base's collision (shared/base.ts
 // setPlacedCapsules: the floor's with the bunker, the sand's anywhere), so prediction and the server collide with the
@@ -28,7 +30,14 @@ import { TEXT } from './text.ts';
 /** A placed thing: DB id, item kind, world position of its footprint centre on the floor or the sand (y: what it
  *  stands on), its turn (0: long side along X, 1: along Z), and for a building the parts fitted in it (its tier and
  *  look, src/world/placed.ts). */
-export type Placed = { id: number; kind: string; x: number; y: number; z: number; rot: number; parts?: (string | null)[] };
+export type Placed = { id: number; kind: string; x: number; y: number; z: number; rot: number; parts?: (string | null)[];
+  /** A beacon's light (BEACON_COLORS index; its item's ItemData `color`). */
+  color?: number };
+
+/** A beacon's light colours, cycled with R in view of one (src/placing.ts): saturated and cold enough to stand out
+ *  against the amber day sky and the dark night one (docs/look.md: the world is orange, so none of them is), round the
+ *  colour wheel from cyan (the first, a new one's): cyan, blue, violet, magenta, red, yellow, green, white. */
+export const BEACON_COLORS = [0x2ee6ff, 0x4a6dff, 0xa64dff, 0xff45cc, 0xff2d3c, 0xffe94a, 0x3dff6e, 0xf2f6ff];
 
 /** An axis-aligned box in the thing's own frame (rot 0), metres above the floor. */
 type Box = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number };
@@ -37,7 +46,7 @@ type Box = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: num
  *  floor (y0 = 0) collide; the others are only looked at. `sand`: stands outside, on the sand round the base,
  *  not on the bunker floor, at least `gap` (m, edge to edge) from the other things out there. Sizes match
  *  tools/blender/placeables.py. */
-export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; sand?: true; gap?: number }> = {
+export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; sand?: true; gap?: number; anywhere?: true }> = {
   plant_bed: { hx: 0.82, hz: 0.42, boxes: [{ x0: -0.8, x1: 0.8, y0: 0, y1: 0.52, z0: -0.4, z1: 0.4 }] },
   uv_lamp: {
     hx: 0.99, hz: 0.27,
@@ -63,6 +72,16 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
     hx: 0.3, hz: 0.3, sand: true, gap: 1,
     boxes: [{ x0: -0.12, x1: 0.12, y0: 0, y1: 4.4, z0: -0.12, z1: 0.12 }, { x0: -0.6, x1: 0.6, y0: 4.2, y1: 4.6, z0: -0.1, z1: 0.1 }],
   },
+  // A beacon: a mast on a welded foot (both collide), the lamp head up top (only looked at). `anywhere`: not bound to
+  // the base. Sizes match src/world/beacons.ts.
+  beacon_light: {
+    hx: 0.32, hz: 0.32, sand: true, gap: 1, anywhere: true,
+    boxes: [
+      { x0: -0.3, x1: 0.3, y0: 0, y1: 0.3, z0: -0.3, z1: 0.3 },
+      { x0: -0.08, x1: 0.08, y0: 0, y1: 3.35, z0: -0.08, z1: 0.08 },
+      { x0: -0.2, x1: 0.2, y0: 3.3, y1: 3.75, z0: -0.2, z1: 0.2 },
+    ],
+  },
 };
 
 export const isPlaceable = (kind: string | undefined) => !!kind && kind in PLACEABLES;
@@ -83,8 +102,13 @@ const MAX_TILT = 0.7;
 const STRUCTURE_GAP = 4;
 /** How far from the eye a placed thing can be picked up. */
 export const PLACED_REACH = 4;
-/** At most this many things placed in the base. */
+/** At most this many things placed in the base (beacons aside). */
 export const MAX_PLACED = 40;
+/** At most this many beacons in the world. */
+export const MAX_BEACONS = 30;
+export const BEACON = 'beacon_light';
+/** May go up anywhere on the sand (not only round the base). */
+const anywhere = (kind: string) => !!PLACEABLES[kind]?.anywhere;
 /** Aim snaps to this grid (m, from the base origin). */
 const GRID = 0.25;
 /** World height of the bunker floor. */
@@ -170,7 +194,7 @@ export function placeError(kind: string, x: number, z: number, rot: number, list
     if (outline.some(([cx, cz]) => overBase(cx, cz, 0.5) || insideBase(cx, cz, STRUCTURE_GAP) || byMast(cx, cz, STRUCTURE_GAP))) {
       return TEXT.notice.tooClose(TEXT.baseSpots.base);
     }
-    if (Math.hypot(x - BASE.x, z - BASE.z) > OUTDOOR_RANGE) return TEXT.notice.tooFarFromBase;
+    if (!anywhere(kind) && Math.hypot(x - BASE.x, z - BASE.z) > OUTDOOR_RANGE) return TEXT.notice.tooFarFromBase;
     const hs = corners.map(([cx, cz]) => heightAt(cx, cz));
     if (Math.max(...hs) - Math.min(...hs) > MAX_TILT) return TEXT.notice.tooSteep;
   } else {
@@ -180,7 +204,9 @@ export function placeError(kind: string, x: number, z: number, rot: number, list
     }
     for (const k of KEEP_CLEAR) if (overlap(f, k.r)) return TEXT.notice.tooClose(k.what);
   }
-  if (list.length >= MAX_PLACED) return TEXT.notice.baseFull;
+  if (kind === BEACON) {
+    if (list.filter((p) => p.kind === BEACON).length >= MAX_BEACONS) return TEXT.notice.tooManyBeacons;
+  } else if (list.filter((p) => p.kind !== BEACON).length >= MAX_PLACED) return TEXT.notice.baseFull;
   if (sand) {
     for (const p of list) {
       if (!onSand(p.kind)) continue;

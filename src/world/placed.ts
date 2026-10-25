@@ -4,7 +4,8 @@
 // throws a violet pool of light on the soil (or the floor) under it. A building looks its tier (src/tierLook.ts, by
 // the parts in it): the windmill's head turns into the wind and its rotor turns with it (shared/power.ts rotorSpeed:
 // the wind now, the bearings), the tail folding it out of a gale, still while a bearing or the motor is missing; the
-// battery station shows the cells it holds, each in its own tier, each one's lamp lit while it holds charge.
+// battery station shows the cells it holds, each in its own tier, each one's lamp lit while it holds charge. A beacon
+// (src/world/beacons.ts, its model made in code) lights its lens and its beam in its colour while it has power.
 // Also the see-through green / red preview of where the held placeable would go (src/placing.ts).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -14,7 +15,8 @@ import { EMPTY, STAGE_NODES, type BedState } from '../../shared/garden.ts';
 import { isBuilding, tierOf } from '../../shared/gear.ts';
 import { furl, rotorSpeed, windSpeed, type PowerState } from '../../shared/power.ts';
 import { parsePart } from '../../shared/items.ts';
-import { bedLit, onSand, PLACEABLES, type Placed } from '../../shared/placed.ts';
+import { BEACON, bedLit, onSand, PLACEABLES, type Placed } from '../../shared/placed.ts';
+import { BeaconBeams, beaconModel, LENS, lensColor } from './beacons.ts';
 import { applyTier } from '../tierLook.ts';
 import { cells } from '../../shared/power.ts';
 import type { Base } from './base';
@@ -32,7 +34,9 @@ const FURLED = (75 * Math.PI) / 180;
 
 type Shown = { p: Placed; obj: THREE.Object3D; head?: THREE.Object3D; rotor?: THREE.Object3D; spin: number; phase: number;
   /** A battery station's cells' lamps, by slot. */
-  lamps?: THREE.Object3D[][] };
+  lamps?: THREE.Object3D[][];
+  /** A beacon's lens (its own material). */
+  lens?: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicNodeMaterial> };
 
 export class PlacedView {
   private group = new THREE.Group();
@@ -43,11 +47,17 @@ export class PlacedView {
   private ghostBad = new THREE.MeshBasicNodeMaterial({ color: 0xff5a3c, transparent: true, opacity: 0.4, depthWrite: false });
   private pool = poolMaterial();
   private last: { list: Placed[]; garden: Map<number, BedState> } = { list: [], garden: new Map() };
+  private beams: BeaconBeams;
 
   constructor(scene: THREE.Scene, base: Base) {
     scene.add(this.group);
+    this.beams = new BeaconBeams(scene);
+    const beacon = beaconModel();
+    beacon.traverse((o) => ((o as THREE.Mesh).isMesh && o.name !== LENS && (o.castShadow = o.receiveShadow = true)));
+    this.models[BEACON] = beacon;
     const loader = new GLTFLoader();
     for (const kind of Object.keys(PLACEABLES)) {
+      if (kind === BEACON) continue;
       const material = (mt: THREE.Material) => (onSand(kind) ? base.outdoorMaterial(mt) : base.indoorMaterial(mt));
       loader.load(
         `./models/placeables/${kind}.glb`,
@@ -91,8 +101,10 @@ export class PlacedView {
           obj.add(pool);
         }
         this.group.add(obj);
+        const lens = obj.getObjectByName(LENS) as Shown['lens'] | undefined;
+        if (lens) lens.material = lens.material.clone();
         const head = obj.getObjectByName('windmill_head') ?? undefined, rotor = obj.getObjectByName('windmill_rotor') ?? undefined;
-        this.shown.set(p.id, (s = { p, obj, head, rotor, spin: 0, phase: (p.id * 2.399) % (2 * Math.PI) }));
+        this.shown.set(p.id, (s = { p, obj, head, rotor, lens, spin: 0, phase: (p.id * 2.399) % (2 * Math.PI) }));
       }
       s.p = p;
       if (p.kind === 'plant_bed') {
@@ -106,6 +118,7 @@ export class PlacedView {
         if (pool) pool.position.y = list.some((b) => b.kind === 'plant_bed' && bedLit(b, [p])) ? SOIL + 0.01 : 0.01;
       } else if (isBuilding(p.kind)) this.dress(s);
     }
+    this.lightBeacons();
   }
 
   /** A building's look from its parts: its tier, the windmill's spin, the battery station's cells. */
@@ -135,6 +148,20 @@ export class PlacedView {
   setPower(state: PowerState) {
     this.power = state;
     for (const s of this.shown.values()) if (s.lamps) this.light(s);
+    this.lightBeacons();
+  }
+
+  /** The beacons the server says are lit: their lenses and beams in their colours, the rest dark. */
+  private lightBeacons() {
+    const lit = new Set(this.power.lit ?? []);
+    const on: Placed[] = [];
+    for (const s of this.shown.values()) {
+      if (!s.lens) continue;
+      const yes = lit.has(s.p.id);
+      lensColor(s.p.color, yes, s.lens.material.color);
+      if (yes) on.push(s.p);
+    }
+    this.beams.set(on);
   }
 
   private power: PowerState = { gen: {}, store: {} };

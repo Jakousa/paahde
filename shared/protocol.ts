@@ -44,6 +44,9 @@ export type ClientMsg =
   | { t: 'unplace'; id: number }
   // Put up building `kind` (shared/crafting.ts BUILDS) with the wrench, its materials from the bag. Answered like 'place'.
   | { t: 'build'; kind: string; x: number; z: number; rot: number }
+  // Set beacon `id`'s light to colour `color` (shared/placed.ts BEACON_COLORS index; in reach). Answered with a broadcast
+  // 'placed' (and its box), or a 'notice'.
+  | { t: 'beaconColor'; id: number; color: number }
   // Vehicles (shared/vehicles.ts): stand up broken vehicle `id` once every part slot is filled (in reach), or start
   // getting on working vehicle `id` (in reach, nobody on it): the server moves you onto it and starts the mount
   // (shared/sim.ts). Answered with 'vehicles', or a 'notice'.

@@ -6,8 +6,10 @@
 // The buildings (shared/crafting.ts BUILDS) are put up with the wrench: with it in hand the right mouse opens the build
 // menu (src/buildMenu.ts), and the building picked there is previewed the same way, out on the sand, and goes up from
 // the base materials in the bag (red, too, when they're short). With the wrench, G takes a building down.
+//
+// Looking at a beacon with nothing to put down, R gives its light the next colour (shared/placed.ts BEACON_COLORS).
 import { BUILDS, isBuildable, pickIngredients, WRENCH } from '../shared/crafting.ts';
-import { isPlaceable, onSand, placeAim, placed, placedTarget, placedY, placeError, type Placed } from '../shared/placed.ts';
+import { BEACON, BEACON_COLORS, isPlaceable, onSand, placeAim, placed, placedTarget, placedY, placeError, type Placed } from '../shared/placed.ts';
 import { EYE_HEIGHT, pitchFromQ } from '../shared/dig.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { yawFromQ } from '../shared/sim.ts';
@@ -27,6 +29,7 @@ export class Placer {
   private usePrev = false;
   private aimPrev = false;
   private pickPressed = false;
+  private rotPressed = false;
   /** The building picked in the build menu, put up with the wrench in hand; null for none. */
   private chosen: string | null = null;
 
@@ -36,7 +39,7 @@ export class Placer {
     this.menu = menu;
     addEventListener('keydown', (e) => {
       if (ui.inventoryOpen || e.repeat || e.ctrlKey || e.metaKey) return;
-      if (isBound('rotate', e.code)) this.rot ^= 1;
+      if (isBound('rotate', e.code)) this.rotPressed = true;
       if (isBound('pickPlaced', e.code)) this.pickPressed = true;
     });
   }
@@ -62,6 +65,8 @@ export class Placer {
     this.aimPrev = aim;
     const pick = this.pickPressed;
     this.pickPressed = false;
+    const rotate = this.rotPressed;
+    this.rotPressed = false;
     if (!active || !this.net.connected) {
       this.view.preview(null, null, false);
       return { prompt: null, target: null };
@@ -80,8 +85,13 @@ export class Placer {
     const kind = wrench ? this.chosen : held && isPlaceable(held) && !isBuildable(held) ? held : null;
     if (!kind) {
       this.view.preview(null, null, false);
-      return { prompt: [menuHint, pickHint].filter(Boolean).join(' ') || null, target };
+      // A beacon in view: R its next colour.
+      const beacon = target?.kind === BEACON ? target : null;
+      if (rotate && beacon) this.net.beaconColor(beacon.id, ((beacon.color ?? 0) + 1) % BEACON_COLORS.length);
+      const colourHint = beacon ? `${kbd('rotate')}${TEXT.prompt.colour}` : null;
+      return { prompt: [menuHint, colourHint, pickHint].filter(Boolean).join(' ') || null, target };
     }
+    if (rotate) this.rot ^= 1;
     const at = placeAim(feet, yaw, pitch, kind, this.rot, placed);
     // Down in the bunker with something for the sand: it goes outside.
     const below = onSand(kind) && feet.y + EYE_HEIGHT < heightAt(feet.x, feet.z);

@@ -1,5 +1,5 @@
 // Power lines: wires strung between the connectors of the electric things put up round the base (the windmill, the
-// battery station, the power pole: shared/placed.ts). Only what is wired together shares power: each set of things
+// battery station, the power pole, the beacon: shared/placed.ts). Only what is wired together shares power: each set of things
 // joined by wires is one grid (grids(), used by server/power.ts).
 //
 // A wire is wiring (shared/items.ts WIRING): hold some in the hotbar, click a connector, click another (src/wiring.ts).
@@ -23,6 +23,7 @@ export const CONNECTORS: Record<string, { x: number; y: number; z: number }> = {
   windmill: { x: 0.98, y: 3.2, z: 0 },
   battery_station: { x: 0.6, y: 3.25, z: -0.3 },
   power_pole: { x: 0, y: 4.5, z: 0 },
+  beacon_light: { x: 0.16, y: 3.1, z: 0 },
 };
 
 export const hasConnector = (kind: string) => kind in CONNECTORS;

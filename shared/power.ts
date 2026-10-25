@@ -17,6 +17,9 @@
 //   Battery station: each battery holds its own charge. A Scrap battery is a car battery (12 V × 50 Ah ≈ 0.6 kWh,
 //     lead-acid: takes charge slowly, loses a fifth of it), better tiers better chemistries; each takes charge as fast
 //     as its chemistry lets it.
+//   Beacon (src/world/beacons.ts): an LED lamp, BEACON_W, the one thing that uses power. On a grid it runs on what the
+//     windmills make, then on what the batteries hold (the stations' and its own); the rest goes into the batteries.
+//     Out on its own, on its own battery: a Scrap one lasts it about four game days (two hours), a Space-grade one weeks.
 import { DAY_SECONDS, timeOfDayAt } from './sun.ts';
 import { vnoise } from './noise.ts';
 import { WORLD_SEED } from './world.ts';
@@ -175,5 +178,25 @@ export function charge(stores: Store[], watts: number, gameS: number): number[] 
   return took;
 }
 
-/** What the server sends: each windmill's output (W) and each station's charge per slot (kWh) and intake (W). */
-export type PowerState = { gen: Record<number, number>; store: Record<number, { charge: number[]; w: number }> };
+/**
+ * Take `watts` for `gameS` game seconds out of the stores' batteries, in place, each battery giving its share of what
+ * they hold between them. All or nothing: false (nothing taken) when they don't hold enough.
+ */
+export function draw(stores: Store[], watts: number, gameS: number): boolean {
+  const need = (watts * gameS) / 3600 / 1000;
+  const held = stores.reduce((a, s) => a + s.charge.reduce((x, y) => x + y, 0), 0);
+  if (need <= 0) return true;
+  if (held < need) return false;
+  const keep = 1 - need / held;
+  for (const s of stores) s.charge = s.charge.map((c) => c * keep);
+  return true;
+}
+
+// ---- Beacon --------------------------------------------------------------------------------------------------------
+
+/** What a beacon's lamp takes (W). */
+export const BEACON_W = 6;
+
+/** What the server sends: each windmill's output (W), each store's (a station's, a beacon's) charge per slot (kWh) and
+ *  intake (W), and the beacons lit. */
+export type PowerState = { gen: Record<number, number>; store: Record<number, { charge: number[]; w: number }>; lit?: number[] };

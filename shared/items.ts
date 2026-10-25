@@ -55,6 +55,8 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   battery_station: { label: TEXT.items.battery_station, stack: 1, size: [2, 2] },
   // A pole to carry power lines (shared/wires.ts).
   power_pole: { label: TEXT.items.power_pole, stack: 1, size: [1, 3] },
+  // A mast with a lamp that shines a column of light into the sky (src/world/beacons.ts): a marker, put up anywhere.
+  beacon_light: { label: TEXT.items.beacon_light, stack: 1, size: [1, 3] },
   // The build tool (crafted at the workbench): with it in hand, the right mouse opens the build menu (src/buildMenu.ts).
   wrench: { label: TEXT.items.wrench, stack: 1 },
   // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.
@@ -131,10 +133,11 @@ export type Item = { id: number; kind: string; n: number; parts?: (string | null
  * store it.
  * `worn`: a shield plate's killing blows taken since it last broke (shared/gear.ts shieldSaves).
  * `charge`: a battery's charge, the part of what it holds (0..1, shared/power.ts CELLS); full when not set.
+ * `color`: a beacon's light, by its index in BEACON_COLORS (shared/placed.ts); the first when not set.
  * `fitted`: gear's (a building's, a vehicle's) fitted parts' own data, by part slot like `parts`: a part keeps its
  *   data while it's fitted. Always move parts with partAt / setPart, never `parts` alone.
  */
-export type ItemData = { worn?: number; charge?: number; fitted?: (ItemData | null)[] };
+export type ItemData = { worn?: number; charge?: number; color?: number; fitted?: (ItemData | null)[] };
 
 /** `data` as an item's field to spread into it: a copy (its fitted parts' too), or nothing when there's none. */
 export const withData = (data: ItemData | null | undefined): { data?: ItemData } =>

@@ -50,6 +50,7 @@ const en = {
     windmill: 'Windmill',
     battery_station: 'Battery station',
     power_pole: 'Power pole',
+    beacon_light: 'Beacon',
     laser_rifle: 'Laser rifle',
     laser_pistol: 'Laser pistol',
     jammer: 'Jammer',
@@ -104,6 +105,7 @@ const en = {
     receiver: (k: HintKeys) => `Press ${k.use} to send the signal, and the needle points at whatever answers.`,
     windmill: () => 'Makes power when the wind blows.',
     battery_station: () => 'Keeps the power the windmills make.',
+    beacon_light: () => 'Shines a column of light into the sky while it has power, from a battery or a wire.',
   },
   /** Where placing is blocked: "Too close to the pump". */
   baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base' },
@@ -150,6 +152,8 @@ const en = {
     /** Taking a building down with the wrench: its materials and parts come back. */
     dismantle: (what: string) => `Dismantle ${lower(what)}`,
     /** Stringing a wire with wiring in hand (shared/wires.ts). */
+    /** Looking at a beacon: the next colour of its light (src/placing.ts). */
+    colour: 'Colour',
     connect: 'Connect',
     takeDown: 'Take down',
     cancel: 'Cancel',
@@ -184,6 +188,8 @@ const en = {
     tooManyWires: 'No room for more wires',
     cantConnect: "Can't connect that",
     baseFull: 'The base is full',
+    /** Every beacon the world may have is up (shared/placed.ts MAX_BEACONS). */
+    tooManyBeacons: 'Too many beacons',
     lineUp: (what: 'bed' | 'lamp') => `Line it up with the ${what}`,
     inTheWay: 'Something is in the way',
     blocked: 'Blocked',

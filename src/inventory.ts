@@ -710,13 +710,13 @@ export class InventoryHud {
   }
 
   /** The part fitted in slot `i` of the item in box `at`, as an item with its data; a battery station's batteries
-   *  with the charge they hold now (the server's power state, kept live there). */
+   *  and a beacon's with the charge they hold now (the server's power state, kept live there). */
   private fittedAt(at: string, i: number): Item | null {
     const it = this.net.boxes[at]?.[0];
     const p = it && partAt(it, i);
     if (!p) return null;
     const out = makeItem(0, p);
-    const cell = it.kind === 'battery_station' ? cells(it.parts)[i] : null;
+    const cell = cells(it.parts)[i]; // (live only for what keeps charge: a station's, a beacon's)
     const live = this.net.power.store[buildingId(at)]?.charge[i];
     if (cell && live !== undefined) setData(out, 'charge', live < cell.kwh ? live / cell.kwh : undefined);
     return out;
