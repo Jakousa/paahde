@@ -66,7 +66,11 @@ the head by `head`, the hands and feet by `hands` and `feet`; the arms and legs 
 `hips`: the legs not much, or the robe's hem parts between them like trousers). Only uniform bone scales: a squashed
 bone would shear everything under it as it turns. The girth (`wide`, `deep`, `limbs`) goes into the skin instead:
 each trunk and limb bone's vertices are scaled in the bone's own rest frame (its inverse bind matrix, this instance's
-copy), thicker across, never longer, so the bones, the clips and the IK are untouched. The hood hangs
+copy), thicker across, never longer, so the bones, the clips and the IK are untouched. The gear is not cloth and
+keeps its shape on any build: the pack and the things carried go where the build puts their point nearest the body
+(out on the dwarf's broad back), scaled evenly by the body's `gear` (a smaller pack on a gnome); the wrist computer,
+belt detector and shield plate, hung on bones, move out by the girth the same way and take the same size (the wrist
+computer the forearm's thickness). The hood hangs
 from the neck and head and the face pieces from the head, so `neck` stays close to `head`, or the goggles and masks
 grow out of the hood.
 
@@ -77,7 +81,8 @@ and first-person bob follow the stride, the name tag sits over the head. On the 
 where they are: a short rider sits forward on the seat (up onto the back of the tank), leans over the bars until it
 reaches them, and rests its feet on the frame above the pegs.
 
-**Every piece fits every body.** Whenever a piece or a look is added or changed, look at it on all three bodies
+**Every piece fits every body**, and so does every piece of gear (the pack, the things carried, worn gear: the lab's
+`&gear=255` puts it all on). Whenever a piece or a look is added or changed, look at it on all three bodies
 (models lab `models-lab.html?clip=Idle&body=0,1,2&look=<packLook>`; on the bike with `&ride`): nothing may poke out of
 the hood or through the robe on the dwarf's broad chest or the gnome's big head, and the hems, belt and satchel must
 still sit right on short legs. A new proportion (another body, a changed scale) is checked against every piece the

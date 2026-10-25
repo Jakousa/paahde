@@ -706,31 +706,72 @@ export class ScavengerModel {
       else j.bone.position.y *= this.body.shoulders;
     }
     if (this.built !== this.body) this.thickenSkins();
+    this.fitAttached();
   }
 
   /** The build (girth, thick limbs) goes into the skin, not the skeleton: each bone's vertices are scaled in the bone's
    *  own rest frame (its inverse bind matrix), so a trunk drawn wider never shears the arms turning under it, and the
    *  bones keep their lengths for the clips and the IK. This instance's own copies of the bind matrices (clones share
-   *  them), the rest kept to scale from. */
+   *  them), the rest kept to scale from. The gear (the pack, the things carried) keeps its shape: it goes where the
+   *  build puts the point of it nearest the body, scaled evenly by the body's `gear` about that point. */
   private thickenSkins() {
     this.built = this.body;
-    const { wide, deep, limbs } = this.body;
-    const skeletons = new Set<THREE.Skeleton>();
+    const { gear } = this.body;
+    const anchors = new Map<THREE.SkinnedMesh, THREE.Vector3>();
+    for (const o of [this.pack, ...this.carried.map((c) => c.mesh)]) {
+      if (!o) continue;
+      const anchor = gearAnchor(o);
+      o.traverse((m) => {
+        const mesh = m as THREE.SkinnedMesh;
+        if (!mesh.isSkinnedMesh) return;
+        anchors.set(mesh, _ga.copy(anchor).applyMatrix4(mesh.bindMatrix).clone());
+        // A skeleton of its own, to fit it apart from the body.
+        if (!restInverses.has(mesh.skeleton)) {
+          const sk = new THREE.Skeleton(mesh.skeleton.bones, mesh.skeleton.boneInverses.map((x) => x.clone()));
+          restInverses.set(sk, sk.boneInverses.map((x) => x.clone()));
+          mesh.bind(sk, mesh.bindMatrix);
+        }
+      });
+    }
+    const done = new Set<THREE.Skeleton>();
     this.root.traverse((o) => {
-      if ((o as THREE.SkinnedMesh).isSkinnedMesh) skeletons.add((o as THREE.SkinnedMesh).skeleton);
-    });
-    for (const sk of skeletons) {
+      const mesh = o as THREE.SkinnedMesh;
+      if (!mesh.isSkinnedMesh || done.has(mesh.skeleton)) return;
+      const sk = mesh.skeleton;
+      done.add(sk);
       let rest = restInverses.get(sk);
       if (!rest) {
         rest = sk.boneInverses.map((m) => m.clone());
         sk.boneInverses = rest.map((m) => m.clone());
         restInverses.set(sk, rest);
       }
+      const anchor = anchors.get(mesh);
       sk.bones.forEach((b, i) => {
-        const s = TRUNK.includes(b.name) ? _gs.set(wide, 1, deep) : LIMBS.includes(b.name) ? _gs.set(limbs, 1, limbs) : null;
-        sk.boneInverses[i].copy(rest[i]);
-        if (s) sk.boneInverses[i].premultiply(_gm2.makeScale(s.x, s.y, s.z));
+        const s = this.girth(b.name, _gs);
+        const inv = sk.boneInverses[i].copy(rest[i]);
+        if (!anchor) return void inv.premultiply(_gm2.makeScale(s.x, s.y, s.z));
+        // In the bone's frame: the anchor moved out with the build, the gear scaled about it.
+        _ga.copy(anchor).applyMatrix4(rest[i]);
+        _gb.copy(_ga).multiply(s).addScaledVector(_ga, -gear);
+        inv.premultiply(_gm2.makeScale(gear, gear, gear)).premultiply(_gm2.makeTranslation(_gb.x, _gb.y, _gb.z));
       });
+    });
+  }
+
+  /** The build's scale in a bone's own frame (thickenSkins). */
+  private girth(bone: string, out: THREE.Vector3) {
+    const { wide, deep, limbs } = this.body;
+    return TRUNK.includes(bone) ? out.set(wide, 1, deep) : LIMBS.includes(bone) ? out.set(limbs, 1, limbs) : out.set(1, 1, 1);
+  }
+
+  /** The gear hung on bones (wrist computer, belt detector, shield plate) where the build puts its place on the body:
+   *  out by the girth, at the body's gear size (the wrist computer round the forearm's thickness). */
+  private fitAttached() {
+    for (const o of [this.wrist, this.belt, this.shield]) {
+      if (!o?.parent) continue;
+      const rest = (o.userData.rest ??= { p: o.position.clone(), s: o.scale.x }) as { p: THREE.Vector3; s: number };
+      o.position.copy(rest.p).multiply(this.girth(o.parent.name, _gs));
+      o.scale.setScalar(rest.s * (o === this.wrist ? this.body.limbs : this.body.gear));
     }
   }
 
@@ -1244,6 +1285,20 @@ const CARRIED: [string, number, TierSlot | null][] = [
   ['Scavenger_Sidearm', carriedBit('laser_pistol'), 'laser_pistol'],
 ];
 
+/** The point of a piece of gear nearest the body (model space, the body's axis at x = z = 0): across, the side of its
+ *  bounds that faces the axis (or the axis, when it straddles it); up, its middle. */
+function gearAnchor(o: THREE.Object3D) {
+  const box = new THREE.Box3();
+  o.traverse((m) => {
+    const g = (m as THREE.Mesh).geometry;
+    if (!g) return;
+    g.boundingBox ?? g.computeBoundingBox();
+    box.union(g.boundingBox!);
+  });
+  const near = (lo: number, hi: number) => (lo > 0 ? lo : hi < 0 ? hi : 0);
+  return new THREE.Vector3(near(box.min.x, box.max.x), (box.min.y + box.max.y) / 2, near(box.min.z, box.max.z));
+}
+
 /** Parent `o` to `bone`, placed at `p` / `q` in `model`'s space (as it is posed now). */
 function attach(model: THREE.Object3D, bone: THREE.Object3D, o: THREE.Object3D, p: THREE.Vector3, q: THREE.Quaternion) {
   const m = new THREE.Matrix4().copy(bone.matrixWorld).invert().multiply(model.matrixWorld)
@@ -1313,6 +1368,7 @@ const _gc = new THREE.Vector3();
 const _gm = new THREE.Matrix4();
 const _im = new THREE.Matrix4();
 const _gs = new THREE.Vector3();
+const _gb = new THREE.Vector3();
 /** Each skeleton's inverse bind matrices as loaded (ScavengerModel.thickenSkins scales its own copies from these). */
 const restInverses = new WeakMap<THREE.Skeleton, THREE.Matrix4[]>();
 const _gm2 = new THREE.Matrix4();

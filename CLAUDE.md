@@ -87,7 +87,8 @@ Read before touching:
 - Read biomes by property (`biome`, `biomeAt`, `blend` in `shared/biomes.ts`), never by asking for a specific biome
   where a property would do; new per-biome things go in its `BIOMES` entry.
 - Control hints name keys or pad buttons through `src/bindings.ts` (`kbd`/`ctl`/`hintKeys`), never as words in code.
-- Every look piece (hood, mask, cape, ...) fits every body (human, dwarf, gnome): check it on all three, and on the bike
+- Every look piece (hood, mask, cape, ...) and every piece of gear on the body (pack, carried, worn) fits every body
+  (human, dwarf, gnome): check it on all three, and on the bike
   (docs/character.md "The bodies").
 - Every third-party asset in `public/` gets an entry in `public/credits.txt` (title, author, URL, licence, what we
   changed).
