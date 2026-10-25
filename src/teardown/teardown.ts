@@ -16,6 +16,7 @@ import { isBound } from '../bindings.ts';
 import { tdPrefs } from './prefs.ts';
 import { teardownSound } from '../teardownSound.ts';
 import { Rope } from './rope.ts';
+import { boltTurns } from './boltGesture.ts';
 import { animateMarker, attachAll, lowestOffset, pieceEmpty, restPiece, setSheen, settle, shinyOf, wake, PART_GLOW, slotOpen, stepReady, type Junk, type Piece, type Slot, type Step, type Target } from './junk.ts';
 import { partName, rarityColor, TeardownUi, type Counts } from './ui.ts';
 import { playerHands } from '../water.ts';
@@ -157,7 +158,7 @@ export class TeardownView {
     return this.held ? this.cur.y : innerHeight / 2;
   }
 
-  /** The use button held on a step. sx / sy: smoothed mouse travel (bolts), a stroke so far (wires) or the pull so far (pry). */
+  /** The use button held on a step. sx / sy: smoothed mouse velocity (bolts), a stroke so far (wires) or the pull so far (pry). */
   private act: { step: Step; angle: number; end: number; sx: number; sy: number; lastMove: number } | null = null;
 
   private scene: THREE.Scene;
@@ -609,7 +610,7 @@ export class TeardownView {
   }
 
   /** Every frame: what the crosshair is on, the use button's press and release, and the gesture while it is held. */
-  private pointer(mx: number, my: number) {
+  private pointer(mx: number, my: number, dt: number) {
     const site = this.site!;
     const down = actionHeld('use') && !ui.inventoryOpen;
     const pressed = down && !this.wasDown;
@@ -648,7 +649,7 @@ export class TeardownView {
       this.camera.getWorldPosition(this.tmpB);
       const far = a.step.obj.getWorldPosition(this.tmpA).distanceTo(this.tmpB) > REACH + 1.5;
       if (!down || far || a.step.done) this.letGo();
-      else this.moveStep(a, mx, my);
+      else this.moveStep(a, mx, my, dt);
     } else {
       this.hover = this.pick(this.ax, this.ay, REACH);
       if (pressed && this.hover) {
@@ -713,20 +714,12 @@ export class TeardownView {
   }
 
   /** The mouse moved (mx, my pixels this frame) while a step is held. */
-  private moveStep(a: NonNullable<TeardownView['act']>, mx: number, my: number) {
+  private moveStep(a: NonNullable<TeardownView['act']>, mx: number, my: number, dt: number) {
     const s = a.step;
     if (s.kind === 'bolt') {
-      // turning the mouse in circles: the direction it travels in turns, half a turn of it is one of the bolt's
-      a.sx = a.sx * 0.7 + mx * 0.3;
-      a.sy = a.sy * 0.7 + my * 0.3;
-      if (Math.hypot(a.sx, a.sy) < 2.5) return;
-      const ang = Math.atan2(a.sy, a.sx);
-      if (Number.isNaN(a.angle)) a.angle = ang;
-      let dA = ang - a.angle;
-      dA = Math.atan2(Math.sin(dA), Math.cos(dA));
-      a.angle = ang;
-      s.progress += Math.abs(dA) / Math.PI;
-      if (dA) teardownSound.turn();
+      const turns = boltTurns(a, mx, my, dt);
+      s.progress += turns;
+      if (turns) teardownSound.turn();
     } else if (s.kind === 'wire') {
       this.shake(s, a, mx, my);
     } else if (s.kind === 'pry') {
@@ -1025,7 +1018,7 @@ export class TeardownView {
     this.pulse += dt;
     const j = site.junk;
     const [mx, my] = takeMouse();
-    this.pointer(mx, my);
+    this.pointer(mx, my, dt);
     // the band of the sheen: 0..1 while it runs, its place along its way (m from the eye)
     const sheenQ = (this.pulse % SHEEN_EVERY) / SHEEN_LEN;
     setSheen(sheenQ <= 1 ? -18 + 36 * sheenQ : -99);

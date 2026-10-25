@@ -62,8 +62,10 @@ class TeardownSound {
     if (!ctx || !buf || !audio.out || !audio.running) return;
     const now = ctx.currentTime;
     clearTimeout(this.idle);
-    this.idle = setTimeout(() => this.stop(), BOLT_IDLE * 1000);
-    if (this.ring && now - this.ring.t0 < buf.duration - 0.25) return;
+    if (this.ring && now - this.ring.t0 < buf.duration - 0.25) {
+      this.idle = setTimeout(() => this.stop(), BOLT_IDLE * 1000);
+      return;
+    }
     this.stop();
     const src = ctx.createBufferSource();
     src.buffer = buf;
@@ -78,6 +80,7 @@ class TeardownSound {
       if (this.ring === ring) this.ring = null;
     };
     this.ring = ring;
+    this.idle = setTimeout(() => this.stop(), BOLT_IDLE * 1000);
   }
 
   /** Fade out the bolt ring. */
