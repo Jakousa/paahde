@@ -232,6 +232,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'wire' && p) return onWire(p, msg.slot, msg.a, msg.b);
     if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
+    if ((msg.t === 'storm' || msg.t === 'summon') && LAB) stirred = true;
     if (msg.t === 'storm' && p && msg.vortex) return storms.summonVortex(p.state.x, p.state.z, 600, performance.now());
     if (msg.t === 'storm' && p && msg.gas) return storms.spawnGas([...players.values()].map((o) => o.state), performance.now());
     if (msg.t === 'storm' && p && msg.front) return storms.spawnFront([...players.values()].map((o) => o.state), performance.now());
@@ -1258,7 +1259,7 @@ setInterval(() => {
     simAccum -= DT;
     for (const p of players.values()) if (p.ready && !p.down) simulate(p, now - simAccum * 1000);
   }
-  if (!CALM) tickBots(elapsed, now, tod); // (no walkers, drones or bosses in the lab or the art bench)
+  if (stirred) tickBots(elapsed, now, tod); // (no walkers, drones or bosses in the lab or the art bench until stirred)
   tickThrows(elapsed, now);
   relaxAccum += elapsed;
   if (relaxAccum >= 1 / RELAX_RATE) {
@@ -1301,15 +1302,19 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
   for (const p of players.values()) send(p.ws, { t: 'epoch', epoch });
 }
 
+/** The lab and the art bench are calm (CALM: no walkers, drones, bosses, jets or weather) until something is summoned
+ *  from the debug menu in the lab: from then on those tick there as anywhere. */
+let stirred = !CALM;
+
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
-  // (The lab and the art bench have no storms and no jets.)
+  // (The lab and the art bench have no storms and no jets until stirred.)
   const active = [...players.values()].filter((p) => p.ready && !p.down);
-  const weather = CALM ? null : storms.tick(time, active.map((p) => p.state), timeOfDayAt(time + epoch),
+  const weather = !stirred ? null : storms.tick(time, active.map((p) => p.state), timeOfDayAt(time + epoch),
     bosses.engaged(time, active.map((p) => ({ id: p.id, ...p.state, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }))));
-  const flights = CALM ? null : jets.tick(time, active.map((p) => p.state));
+  const flights = !stirred ? null : jets.tick(time, active.map((p) => p.state));
   const crashed: ServerMsg[] = [];
-  if (!CALM) {
+  if (stirred) {
     for (const j of jets.landed(time)) jetLanded(j);
     for (let i = jetCraters.length - 1; i >= 0; i--) {
       if (jetCraters[i].at > time) continue;

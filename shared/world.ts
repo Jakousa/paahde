@@ -54,6 +54,7 @@ export const WORLD_ID = readWorldId();
 export const LAB = WORLD_ID === LAB_WORLD && labAllowed();
 /** This world is the art-style bench (BENCH_WORLD). */
 export const BENCH = WORLD_ID === BENCH_WORLD && labAllowed();
-/** A dev world with nothing happening in it: no heat, weather, jets, walkers, drones or bosses (the lab, the bench). */
+/** A dev world with nothing happening in it: no heat, weather, jets, walkers, drones or bosses (the lab, the bench; in
+ *  the lab only until something is summoned from the debug menu, server/world.ts `stirred`). */
 export const CALM = LAB || BENCH;
 export const WORLD_SEED = seedFor(WORLD_ID);
