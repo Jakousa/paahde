@@ -2132,3 +2132,25 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   doesn't move (301 min); the windmill comes ~4 min later (the motor is wanted by both), the shield and rifle ~10%
   later (more competition for wiring and parts), none flagged.
 - Gaps: other players filling at a well don't start its pump sound for you; the drop is small at a distance.
+
+## Character customization
+
+- **What:** a Character view on the main menu (src/lookView.ts): the scavenger turning in warm light (drag to turn it),
+  and a row per slot with arrows through its pieces or swatches for its dye; a dice for a random look. Saved at once in
+  the browser, worn from the next join, seen by everyone.
+- **Slots (shared/look.ts):** hood (hood, pointed cowl, ragged), eyes (goggles, monocle, round wire specs, welding
+  goggles, big goggles), mask (respirator, side canister, none, cloth filter mask, leather muzzle, steel grille), scarf
+  (scarf, long, bandana bib, veil, none), cape (capelet, poncho, none), shoulder plate, gloves (leather, wrapped,
+  gauntlets), boots (buckled, wrapped, shin guards, tall), and dyes for the robe, the hood and cape, and the wraps (8
+  each, the first the old colour). All long gowns and a hood up: a study of hats, a hood thrown back, short coats and
+  lighter Rey-style looks read as other characters and was dropped (tools/models/scavenger_variants.py renders such
+  studies from the generator with patches).
+- **Model:** every option is built into scavenger.glb as its own mesh (tagged by vertex group like the gear and split
+  after the bake); ~36k triangles in all, ~22k worn. The robe, hood/cape and wrap cloth is baked in pale greys into
+  materials DyeRobe / DyeCape / DyeWrap the game multiplies by the dye, like PlayerTint. The hood is ~20% smaller than
+  before and the skull bands under it are gone (they read as swirls in the hood's shadow).
+- **Drawing:** setLook merges the body and the chosen pieces into one skinned mesh per material (cached per set of
+  pieces, shared by every player wearing it), so a player is the same few draws whatever they wear.
+- Gaps: the first-person gloves (hands.glb) don't follow the gloves chosen; the look isn't stored by the server (the
+  browser sends it every join).
+

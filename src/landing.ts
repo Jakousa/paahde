@@ -1,5 +1,5 @@
 // The landing page (no world in the URL) and the end screens over the game (game over, unknown world), in views:
-// the start (Join, Create, Options); Join, with tabs for the games this browser joined (kept in localStorage when the
+// the start (Join, Create, Character, Options); Character, your look (src/lookView.ts); Join, with tabs for the games this browser joined (kept in localStorage when the
 // server says hello, with how each is doing, your name there and how long you've played) and the public games
 // (sortable), and in both a box to join a game by its code; Create, a new game's settings (name, public or private,
 // most players, a password: server/index.ts /api/worlds), then straight to its lobby. Every
@@ -14,6 +14,7 @@ import { TEXT } from '../shared/text.ts';
 import { WORLD_ID, WORLD_ID_RE } from '../shared/world.ts';
 import { HAZE_PARAM, haze } from './haze';
 import { lobbyView } from './lobby';
+import { lookView } from './lookView';
 import { MENU_CSS, bindOptions, bindTips, optionsHtml } from './options';
 import { getBrowserId, setWorldKey } from './profile';
 
@@ -105,7 +106,7 @@ export function landingStyle() {
 
 /** The menu's views, as history.state holds them: the browser's Back and Forward walk them, and moving between them
  *  never loads a page (the background and title stay put). `from`: the lobby was reached from another view. */
-export type View = { v: 'intro' } | { v: 'join'; tab: 'mine' | 'pub' } | { v: 'create' } | { v: 'lobby'; id: string; from?: boolean };
+export type View = { v: 'intro' } | { v: 'join'; tab: 'mine' | 'pub' } | { v: 'create' } | { v: 'look' } | { v: 'lobby'; id: string; from?: boolean };
 
 /** The page showing now: where views go, why it's up over a game (the end screens), and how to load this page's game. */
 let shown: { view: HTMLElement; why?: 'over' | 'missing'; play?: () => void; place: () => void } | null = null;
@@ -252,6 +253,7 @@ function render(v: View) {
   const el =
     v.v === 'join' ? joinView(v.tab, back(v))
     : v.v === 'create' ? make(back(v))
+    : v.v === 'look' ? lookView(back(v))
     : v.v === 'lobby' ? lobbyView(v.id, back(v), v.id === WORLD_ID ? shown.play : undefined)
     : intro(shown.why);
   const first = !shown.view.childElementCount;
@@ -269,13 +271,14 @@ export function leave() {
   shown = null;
 }
 
-/** The start: Join, Create, Options. */
+/** The start: Join, Create, Character (src/lookView.ts), Options. */
 function intro(why?: string): HTMLElement {
   const buttons = document.createElement('div');
   buttons.className = 'buttons';
-  buttons.innerHTML = `<button class="join">${TEXT.landing.join}</button><button class="create">${TEXT.landing.create}</button>${why ? '' : `<button class="optionsBtn">${TEXT.menu.options}</button>`}`;
+  buttons.innerHTML = `<button class="join">${TEXT.landing.join}</button><button class="create">${TEXT.landing.create}</button>${why ? '' : `<button class="lookBtn">${TEXT.landing.character}</button><button class="optionsBtn">${TEXT.menu.options}</button>`}`;
   buttons.querySelector('.join')!.addEventListener('click', () => nav({ v: 'join', tab: 'mine' }));
   buttons.querySelector('.create')!.addEventListener('click', () => nav({ v: 'create' }));
+  buttons.querySelector('.lookBtn')?.addEventListener('click', () => nav({ v: 'look' }));
   buttons.querySelector('.optionsBtn')?.addEventListener('click', options);
   return buttons;
 }

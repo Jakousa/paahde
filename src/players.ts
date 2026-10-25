@@ -72,6 +72,8 @@ export type ModelPose = {
 export interface AvatarModel {
   readonly root: THREE.Object3D;
   setColor(hex: number): void;
+  /** What they wear (shared/look.ts packLook); true if meshes were made. */
+  setLook?(look: number): boolean;
   update(pose: ModelPose, dt: number): void;
   /** What's in the hand (an item kind, null for none) and the gear worn (shared/gear.ts wornGear bits). */
   setOutfit?(item: string | null, gear: number, tiers?: number): boolean;
@@ -149,6 +151,11 @@ export class Avatar {
 
   setColor(color: number) {
     this.model.setColor(color);
+  }
+
+  /** What they wear (shared/look.ts); call every frame, it's cheap when nothing changed. */
+  setLook(look: number) {
+    if (this.model.setLook?.(look)) this.attach(this.model);
   }
 
   setHeadless(on: boolean) {

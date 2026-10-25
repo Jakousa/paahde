@@ -1,12 +1,15 @@
 // You as others see you: your name and colour, chosen on the main menu or a game's lobby (src/landing.ts,
-// src/lobby.ts), kept in this browser and sent with every join ('hello', src/net.ts). The name must pass
+// src/lobby.ts), and your look (shared/look.ts, chosen on the main menu: src/lookView.ts), kept in this browser and
+// sent with every join ('hello', src/net.ts). The name must pass
 // shared/names.ts checkName, here as you type and again on the server. Also the browser's id (a secret: it is who you
 // are to every world) and the keys of the locked games you've given the password for (server/registry.ts).
 import { NAME_MAX } from '../shared/protocol.ts';
 import { checkName, PLAYER_NAME } from '../shared/names.ts';
 import { TEXT } from '../shared/text.ts';
+import { isLook } from '../shared/look.ts';
 
 const NAME_KEY = 'dadajam.name';
+const LOOK_KEY = 'dadajam.look';
 const COLOR_KEY = 'dadajam.color';
 const keyOf = (world: string) => `dadajam.key.${world}`;
 
@@ -50,6 +53,13 @@ export function myColor(): number {
   return n;
 }
 export const nameOk = () => checkName(myName(), PLAYER_NAME).ok;
+
+/** Your look (shared/look.ts packLook): the plain one until you choose. */
+export function myLook(): number {
+  const n = Number(read(LOOK_KEY));
+  return isLook(n) ? n : 0;
+}
+export const setMyLook = (look: number) => write(LOOK_KEY, isLook(look) ? String(look) : null);
 
 /** The key to a locked game, if this browser has one ('' none). */
 export const worldKey = (world: string) => read(keyOf(world)) ?? '';

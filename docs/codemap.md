@@ -32,6 +32,11 @@ when you find it stale.
   `?w=main`), and 10 shared lives (`src/lives.ts`; +10 per boss kind beaten); at 0 the game is over. Games are public
   (in the main menu's browser) or private (link or code), with a max of players and maybe a password
   (`server/registry.ts`, `data/registry.db`); a game's URL opens its lobby first (`src/lobby.ts`)
+- `shared/look.ts` — a player's look: the piece in each slot of the scavenger (hood, eyes, mask, scarf, cape, shoulder,
+  gloves, boots) and the dyes of the robe, hood and wraps, packed in one number. Chosen on the main menu's Character view
+  (`src/lookView.ts`, its own little renderer), kept in the browser (`src/profile.ts`), sent in `hello`, relayed in
+  `PlayerSnap.look`; drawn by `src/models/scavenger.ts` `setLook` (the chosen pieces merged with the body, one mesh per
+  material; the pieces are meshes in scavenger.glb, `tools/models/scavenger.py` LOOK_MESH; the dyed cloth is baked pale)
 - `shared/names.ts` — names others see (game names, player names): allowed characters and the slur/swear filter
   (`obscenity` + our list), checked on the client as typed and by the server. Your name and colour are chosen in a
   game's lobby (`src/profile.ts`, remembered by the browser as the default), sent in `hello`; a name is required (server

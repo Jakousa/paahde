@@ -409,6 +409,16 @@ const en = {
     mouse: (n: number) => `Mouse ${n}`,
     numpad: (key: string) => `Num ${key}`,
   },
+  /** The character view on the main menu (src/lookView.ts): each slot of the look (shared/look.ts), by its key. */
+  look: {
+    slots: {
+      hood: 'Hood', eyes: 'Eyes', face: 'Mask', scarf: 'Scarf', cape: 'Cape', shoulder: 'Shoulder', gloves: 'Gloves',
+      boots: 'Boots', robe: 'Robe', cloak: 'Hood dye', wrap: 'Wraps',
+    },
+    /** Steps through a slot's options. */
+    prev: '‹',
+    next: '›',
+  },
   landing: {
     start: 'Start a new game',
     gameOver: 'Game over',
@@ -453,6 +463,8 @@ const en = {
     yourName: 'Your name',
     colour: 'Colour',
     randomColour: '🎲',
+    /** The start screen's button to the character view (src/lookView.ts). */
+    character: 'Character',
     /** Why a name won't do (shared/names.ts). */
     nameWhy: { short: 'Too short', long: 'Too long', chars: 'Letters, numbers and simple punctuation only', banned: 'Pick another name' },
     /** Making a game. */

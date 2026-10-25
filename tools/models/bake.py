@@ -2,7 +2,8 @@
 #
 # Atlas: base colour (AO multiplied in), normal (tangent), ORM (R=AO, G=roughness, B=metallic).
 # Faces that used the material named `tint_name` end up in a separate `PlayerTint` material sharing the
-# same textures, so the game can recolour it via material.color (it multiplies the near-white cloth).
+# same textures, so the game can recolour it via material.color (it multiplies the near-white cloth); so do the faces of
+# each material named in `dyes` (in a material Dye<name>: cloth the game dyes, src/models/scavenger.ts).
 import os
 
 import bpy
@@ -92,13 +93,17 @@ def pack_uvs(obj, margin=0.003):
     bpy.ops.object.mode_set(mode='OBJECT')
 
 
-def bake_atlas(obj, size, out_dir, tint_name='Tint', small=1024, prefix='scavenger'):
+def bake_atlas(obj, size, out_dir, tint_name='Tint', small=1024, prefix='scavenger', dyes=()):
     from sclib import select_only
     _cycles(16)
     pack_uvs(obj)
     mats = [m for m in obj.data.materials]
     tint_idx = [i for i, m in enumerate(mats) if m and m.name == tint_name]
-    face_tint = np.array([p.material_index in tint_idx for p in obj.data.polygons])
+    # each face's final material: 0 the atlas, 1 PlayerTint, 2.. the dyes in order
+    slot_of = {i: 1 for i in tint_idx}
+    for k, d in enumerate(dyes):
+        slot_of.update({i: 2 + k for i, m in enumerate(mats) if m and m.name == d})
+    face_slot = np.array([slot_of.get(p.material_index, 0) for p in obj.data.polygons], dtype=np.int32)
 
     imgs = {k: _image('atlas_' + k, size, k != 'color') for k in ('color', 'rough', 'metal', 'normal', 'ao')}
     for m in mats:
@@ -191,8 +196,9 @@ def bake_atlas(obj, size, out_dir, tint_name='Tint', small=1024, prefix='scaveng
     obj.data.materials.clear()
     obj.data.materials.append(sc_mat)
     obj.data.materials.append(tint_mat)
-    idx = face_tint.astype(np.int32)
-    obj.data.polygons.foreach_set('material_index', idx)
+    for d in dyes:
+        obj.data.materials.append(make('Dye' + d))
+    obj.data.polygons.foreach_set('material_index', face_slot)
     # drop the Detail UVs; only the atlas is exported
     det = obj.data.uv_layers.get('Detail')
     if det:

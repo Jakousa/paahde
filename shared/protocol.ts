@@ -24,7 +24,8 @@ export type ClientMsg =
   // shelter's door, 'canyon' on the floor of the nearest deep canyon (dev helpers, ?spawn=base / crash / field / shelter /
   // canyon). name and color: yours, chosen on the main menu or the lobby (src/profile.ts); a name that fails
   // shared/names.ts checkName is refused (closed with 4422), a color that isn't 24-bit RGB keeps the one you had.
-  | { t: 'hello'; browserId: string; name: string; color?: number; spawn?: 'base' | 'crash' | 'field' | 'shelter' | 'canyon' }
+  // look: what you wear (shared/look.ts packLook), chosen on the main menu; not a look keeps the plain one.
+  | { t: 'hello'; browserId: string; name: string; color?: number; look?: number; spawn?: 'base' | 'crash' | 'field' | 'shelter' | 'canyon' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
@@ -187,7 +188,8 @@ export type Hands = 0 | 1 | 2 | 3 | 4 | 5;
 // gear: the gear they wear and carry (shared/gear.ts wornGear | carriedGear bits), omitted when none.
 // tiers: how good that gear and the item in hand are, for the look (shared/gear.ts gearTiers), omitted when all Scrap.
 // down: dead, lying as a ragdoll until the respawn (shared/ragdoll.ts); the push (m/s) that threw the body, [0, 0, 0] if none.
-export type PlayerSnap = PlayerState & { id: number; color: number; pitch: number; hands?: Hands; aim?: 1; item?: string; gear?: number; tiers?: number; down?: [number, number, number] };
+// look: what they wear (shared/look.ts), omitted when the plain look (0).
+export type PlayerSnap = PlayerState & { id: number; color: number; look?: number; pitch: number; hands?: Hands; aim?: 1; item?: string; gear?: number; tiers?: number; down?: [number, number, number] };
 
 /** A stall the client saw (src/telemetry.ts), `ago` ms before it was sent, lasting `ms`:
  *  - down: no snapshots, though the server sent them on time (the network, server → us); `n` came in the burst after

@@ -30,6 +30,7 @@ import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, NetSummary, PlayerSnap, ServerMsg, StallEvent } from '../shared/protocol.ts';
 import { CHAT_MAX, OBITUARY_KEEP, type Obituary } from '../shared/protocol.ts';
 import { checkName, isColor, PLAYER_NAME } from '../shared/names.ts';
+import { isLook } from '../shared/look.ts';
 import { openDb } from './db.ts';
 import { trace } from './telemetry.ts';
 import { GardenServer } from './garden.ts';
@@ -118,6 +119,7 @@ type Player = {
   id: number;
   browserId: string;
   color: number;
+  look: number; // what they wear (shared/look.ts), as sent with 'hello': not kept, the browser sends it every join
   state: PlayerState;
   yaw: number; // last quantized camera yaw, reused while idle
   pitch: number; // last quantized camera pitch (shared/dig.ts)
@@ -192,7 +194,7 @@ wss.on('connection', (ws) => {
       return ws.close(1003, 'bad message');
     }
     const p = players.get(ws);
-    if (msg.t === 'hello' && !p) return join(ws, msg.browserId, msg.spawn, msg.name, msg.color);
+    if (msg.t === 'hello' && !p) return join(ws, msg.browserId, msg.spawn, msg.name, msg.color, msg.look);
     if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
     if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
@@ -265,7 +267,7 @@ wss.on('connection', (ws) => {
   setTimeout(() => players.has(ws) || ws.close(1008, 'no hello'), 5000);
 });
 
-function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown, wantedColor: unknown) {
+function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown, wantedColor: unknown, wantedLook: unknown) {
   if (typeof browserId !== 'string' || !UUID.test(browserId)) return ws.close(1008, 'bad browserId');
   const row = db.getPlayer(browserId);
   // Your name and colour in a world are chosen once, on your first join (the lobby shows them locked after that).
@@ -306,7 +308,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   }
   grantKits(items, db, browserId);
   const p: Player = {
-    id: nextId++, browserId, color, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
+    id: nextId++, browserId, color, look: isLook(wantedLook) ? wantedLook : 0, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, pickups: pickupLimit(), lastTend: { at: 0 }, input: 0,
     heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, gassed: 0, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: named.name, ready: false, savedAt: Date.now(), jam: null,
   };
@@ -1205,7 +1207,7 @@ function broadcast(time: number) {
     const gear = wornGear(items.slots(p.browserId, 'equip')) | carriedGear(items.slots(p.browserId, 'bag'), p.slot);
     const tiers = gearTiers(items.slots(p.browserId, 'equip'), items.slots(p.browserId, 'bag'), p.slot);
     const snap: PlayerSnap = {
-      id: p.id, color: p.color, pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}), ...(p.aim ? { aim: 1 as const } : {}),
+      id: p.id, color: p.color, ...(p.look ? { look: p.look } : {}), pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}), ...(p.aim ? { aim: 1 as const } : {}),
       ...(item ? { item } : {}), ...(gear ? { gear } : {}), ...(tiers ? { tiers } : {}), ...(p.down ? { down: p.down.push } : {}),
     };
     return { snap, ready: p.ready };

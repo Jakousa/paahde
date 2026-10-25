@@ -7,6 +7,9 @@
 // The root faces -Z (same as the placeholder avatar: facing 0 looks down -Z) with its origin at the feet.
 // The glb is fetched once and shared; each instance gets its own skeleton (SkeletonUtils.clone) and its
 // own copy of the `PlayerTint` material (scarf, face mask, sash, armband), which setColor() recolours.
+// setLook() says what they wear (shared/look.ts): the chosen pieces (their own meshes in the glb, LOOK_PIECES) are
+// merged with the body into one skinned mesh per material (cached per set of pieces, shared by every instance), and the
+// dyed cloth (DyeRobe / DyeCape / DyeWrap, this instance's copies) takes the chosen dyes.
 // setOutfit() says what's in the hand (carried at the right hip, src/models/outfit.ts) and which gear is worn:
 // the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt, the shield plate on
 // the chest (SHIELD_URL), and which things in the bag are carried on the body (CARRIED: their own meshes too). Each
@@ -24,6 +27,8 @@ import { applyTier } from '../tierLook';
 import { beltModel, disposeModel, DRAW_IN, heldModel, heldMuzzle, wristModel } from './outfit';
 import { LAMP_ON } from './jammer';
 import { RECEIVERS } from '../../shared/bosses.ts';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { DYES, type Look, lookOption, unpackLook } from '../../shared/look.ts';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -119,6 +124,12 @@ export class ScavengerModel {
   private actions = new Map<string, THREE.AnimationAction>();
   private current: THREE.AnimationAction | null = null;
   private tint: THREE.MeshStandardMaterial[] = [];
+  /** This instance's dyed cloth, by material name (DyeRobe, DyeCape, DyeWrap). */
+  private dyes = new Map<string, THREE.MeshStandardMaterial>();
+  /** What's worn (shared/look.ts packLook), the glb's pieces' primitives by mesh name, and the merged meshes drawn. */
+  private lookN = 0;
+  private pieces = new Map<string, THREE.SkinnedMesh[]>();
+  private worn: THREE.SkinnedMesh[] = [];
   private neck: THREE.Object3D | null = null;
   private head: THREE.Object3D | null = null;
   private legIk: LegIk | null = null;
@@ -174,8 +185,11 @@ export class ScavengerModel {
     this.ready = loadScavenger().then((gltf) => this.init(gltf));
   }
 
+  private gltf: GLTF | null = null;
+
   private init(gltf: GLTF) {
     if (this.disposed) return;
+    this.gltf = gltf;
     const model = cloneSkinned(gltf.scene);
     model.rotation.y = Math.PI; // glTF character faces +Z; the game's "forward" is -Z
     model.traverse((o) => {
@@ -186,6 +200,12 @@ export class ScavengerModel {
       mesh.frustumCulled = false; // skinned bounds don't follow the animation
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       const own = mats.map((m) => {
+        if (m.name.startsWith('Dye')) {
+          let c = this.dyes.get(m.name);
+          if (!c) this.dyes.set(m.name, (c = (m as THREE.MeshStandardMaterial).clone()));
+          c.userData.noTier = true;
+          return c;
+        }
         if (m.name !== 'PlayerTint') return m;
         const c = (m as THREE.MeshStandardMaterial).clone();
         c.userData.noTier = true; // the player's colour stays the player's colour
@@ -240,7 +260,16 @@ export class ScavengerModel {
         legs: legs as THREE.Object3D[][], arms: this.arms.map((a) => a[0]),
       });
     }
+    for (const name of ['Scavenger_Body', ...ALL_PIECES]) {
+      const o = model.getObjectByName(name);
+      const prims: THREE.SkinnedMesh[] = [];
+      o?.traverse((c) => {
+        if (c instanceof THREE.SkinnedMesh) prims.push(c);
+      });
+      if (prims.length) this.pieces.set(name, prims);
+    }
     this.setColor(this.color);
+    this.setLook(this.lookN, true);
     this.play('Idle', 0);
     // The canteen lives in the root (not the hand bone), placed each frame; the right arm reaches for it.
     canteenCached ??= new GLTFLoader().loadAsync(CANTEEN_URL);
@@ -351,6 +380,40 @@ export class ScavengerModel {
   setColor(hex: number) {
     this.color = hex;
     for (const m of this.tint) m.color.setHex(hex);
+  }
+
+  /** Wear `look` (shared/look.ts packLook). True if meshes were made (the Avatar gives them its layers). */
+  setLook(n: number, force = false): boolean {
+    if (n === this.lookN && !force) return false;
+    this.lookN = n;
+    const look = unpackLook(n);
+    for (const [slot, name] of [['robe', 'DyeRobe'], ['cloak', 'DyeCape'], ['wrap', 'DyeWrap']] as const) {
+      this.dyes.get(name)?.color.setHex(DYES[slot][look[slot]]);
+    }
+    const body = this.pieces.get('Scavenger_Body');
+    if (!body) return false;
+    const names = ['Scavenger_Body', ...piecesOf(look)];
+    for (const m of this.worn) m.removeFromParent();
+    this.worn = [];
+    const merged = mergedLook(this.gltf!, names, this.pieces);
+    for (const [, prims] of this.pieces) for (const p of prims) p.visible = !merged;
+    if (!merged) {
+      // Couldn't merge (an older glb, or pieces that don't fit together): show the chosen pieces as they are.
+      for (const name of names) for (const p of this.pieces.get(name) ?? []) p.visible = true;
+      return true;
+    }
+    const skin = body[0];
+    for (const [matName, geometry] of merged) {
+      const material = [...this.pieces.values()].flat().find((p) => (p.material as THREE.Material).name === matName)!.material;
+      const mesh = new THREE.SkinnedMesh(geometry, material);
+      mesh.name = 'Scavenger_Look';
+      mesh.castShadow = mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      skin.parent!.add(mesh);
+      mesh.bind(skin.skeleton, skin.bindMatrix);
+      this.worn.push(mesh);
+    }
+    return true;
   }
 
   setHeadless(on: boolean) {
@@ -822,6 +885,7 @@ export class ScavengerModel {
     this.mixer?.stopAllAction();
     this.mixer?.uncacheRoot(this.mixer.getRoot());
     for (const m of this.tint) m.dispose();
+    for (const m of this.dyes.values()) m.dispose();
     this.root.removeFromParent();
     // Clones share the glTF's geometry/materials, but own their skeletons and renderer bindings.
     const skeletons = new Set<THREE.Skeleton>();
@@ -901,6 +965,78 @@ const SLIDE_FINGERS = V(-0.03, -0.06, -0.15);
 const _saved = Array.from({ length: 8 }, () => new THREE.Quaternion());
 
 const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt'), ARMOR = wornBit('armor');
+/** The glb's meshes (tools/models/scavenger.py LOOK_MESH) for each option of each slot of the look (shared/look.ts);
+ *  the dye slots have none. */
+const LOOK_PIECES: Record<string, Record<string, string[]>> = {
+  hood: { hood: ['Hood'], cowl: ['Cowl'], ragged: ['HoodRagged'] },
+  eyes: { goggles: ['Goggles'], monocle: ['Monocle'], round: ['RoundSpecs'], welder: ['Welder'], big: ['BigGoggles'] },
+  face: { respirator: ['Respirator'], side: ['SideMask'], none: [], filter: ['FilterMask'], muzzle: ['MuzzleMask'], grille: ['GrillePlate'] },
+  scarf: { scarf: ['Scarf'], long: ['ScarfLong'], bib: ['Bib'], veil: ['Veil'], none: [] },
+  cape: { cape: ['Cape'], poncho: ['Poncho'], none: [] },
+  shoulder: { none: [], plate: ['ShoulderPlate'] },
+  gloves: { leather: ['Gloves'], wrapped: ['GlovesWrapped'], gauntlet: ['Gloves', 'Gauntlets'] },
+  boots: { buckled: ['Boots'], wrapped: ['BootsWrapped'], guard: ['Boots', 'ShinGuards'], tall: ['Boots', 'BootTops'] },
+};
+const ALL_PIECES = [...new Set(Object.values(LOOK_PIECES).flatMap((o) => Object.values(o).flat()))].map((n) => `Scavenger_${n}`);
+
+function piecesOf(look: Look): string[] {
+  return Object.entries(LOOK_PIECES).flatMap(([slot, options]) =>
+    (options[lookOption(look, slot as keyof typeof LOOK_PIECES & keyof Look)] ?? []).map((n) => `Scavenger_${n}`));
+}
+
+/** The body and pieces `names`, merged into one geometry per material (by material name), made once per set of pieces
+ *  for the glb and shared by every instance. Null if they can't be merged. */
+const mergedCache = new WeakMap<GLTF, Map<string, Map<string, THREE.BufferGeometry> | null>>();
+function mergedLook(gltf: GLTF, names: string[], pieces: Map<string, THREE.SkinnedMesh[]>) {
+  let cache = mergedCache.get(gltf);
+  if (!cache) mergedCache.set(gltf, (cache = new Map()));
+  const key = names.join('|');
+  if (cache.has(key)) return cache.get(key)!;
+  const byMat = new Map<string, THREE.BufferGeometry[]>();
+  const bones = pieces.get('Scavenger_Body')?.[0].skeleton.bones.map((b) => b.name).join() ?? '';
+  let ok = true;
+  for (const name of names) {
+    for (const p of pieces.get(name) ?? []) {
+      // every piece must be skinned to the same bones, in the same order, for its joint indices to mean the same
+      if (p.skeleton.bones.map((b) => b.name).join() !== bones) ok = false;
+      const m = (p.material as THREE.Material).name;
+      if (!byMat.has(m)) byMat.set(m, []);
+      byMat.get(m)!.push(p.geometry);
+    }
+  }
+  let out: Map<string, THREE.BufferGeometry> | null = ok ? new Map() : null;
+  for (const [m, geoms] of byMat) {
+    if (!out) break;
+    const g = geoms.length === 1 ? geoms[0] : mergeGeometries(conformed(geoms));
+    if (!g) out = null;
+    else out.set(m, g);
+  }
+  cache.set(key, out);
+  return out;
+}
+
+/** `geoms` with every attribute in one array type, as mergeGeometries needs: the exporter writes each mesh's joint
+ *  indices (and quantized attributes) in the smallest type that fits it. Copies only what differs. */
+function conformed(geoms: THREE.BufferGeometry[]): THREE.BufferGeometry[] {
+  const mixed = Object.keys(geoms[0].attributes).filter(
+    (k) => new Set(geoms.map((g) => g.getAttribute(k)?.array.constructor)).size > 1);
+  if (!mixed.length) return geoms;
+  return geoms.map((g) => {
+    const c = new THREE.BufferGeometry();
+    c.setIndex(g.getIndex());
+    for (const [k, a] of Object.entries(g.attributes) as [string, THREE.BufferAttribute][]) {
+      if (!mixed.includes(k)) {
+        c.setAttribute(k, a);
+        continue;
+      }
+      const out = k === 'skinIndex' ? new Uint16Array(a.count * a.itemSize) : new Float32Array(a.count * a.itemSize);
+      for (let i = 0; i < a.count; i++) for (let j = 0; j < a.itemSize; j++) out[i * a.itemSize + j] = a.getComponent(i, j);
+      c.setAttribute(k, new THREE.BufferAttribute(out, a.itemSize));
+    }
+    return c;
+  });
+}
+
 /** glb meshes of things carried on the body (tools/models/scavenger.py GEAR_MESH) and the gear bits that show them:
  *  the scrap plate is strapped to the backpack, so it needs it too. */
 const CARRIED: [string, number, TierSlot | null][] = [

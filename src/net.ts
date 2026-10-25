@@ -42,7 +42,7 @@ import type { SiteLink } from './teardown/teardown';
 import { serverBuild } from './update';
 import { PAGE_URL } from './desktop';
 import { WORLD_ID } from '../shared/world.ts';
-import { myColor, myName, worldKey } from './profile';
+import { myColor, myLook, myName, worldKey } from './profile';
 import { Telemetry } from './telemetry';
 
 /** Machine progress and table messages, handed to src/world/crash.ts and the disassembly mode (src/main.ts). */
@@ -75,6 +75,7 @@ const JITTER_DECAY = 0.99;
 
 export type RemotePlayer = {
   id: number; color: number; x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
+  look: number; // what they wear (shared/look.ts)
   vx: number; vz: number;
   sliding: boolean; // speed (Shift) slide
   crouching: boolean;
@@ -634,7 +635,7 @@ export class Net {
       // ?spawn=base / crash / field / shelter / canyon: start down in the bunker, the nearest crash site, scrap field,
       // shelter or canyon floor (only on the first join; a reconnect keeps where you are).
       const spawn = this.joinedOnce ? null : new URLSearchParams(location.search).get('spawn');
-      const me = { t: 'hello', browserId: this.browserId, name: myName(), color: myColor() } as const;
+      const me = { t: 'hello', browserId: this.browserId, name: myName(), color: myColor(), look: myLook() } as const;
       this.send(spawn === 'base' || spawn === 'crash' || spawn === 'field' || spawn === 'shelter' || spawn === 'canyon' ? { ...me, spawn } : me);
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
@@ -899,7 +900,7 @@ export class Net {
       const pa = a.players.get(pb.id) ?? pb;
       const pick = t < 0.5 ? pa : pb; // discrete fields come from the nearer snapshot
       out.push({
-        id: pb.id, color: pb.color,
+        id: pb.id, color: pb.color, look: pb.look ?? 0,
         x: pa.x + (pb.x - pa.x) * t, y: pa.y + (pb.y - pa.y) * t, z: pa.z + (pb.z - pa.z) * t,
         facing: lerpAngle(pa.facing, pb.facing, t), speed: Math.hypot(pick.vx, pick.vz), vx: pick.vx, vz: pick.vz, grounded: pick.grounded, sliding: pick.sliding ?? false, crouching: pick.crouching ?? false,
         riding: pick.riding ?? false, nose: (pa.nose ?? 0) + ((pb.nose ?? 0) - (pa.nose ?? 0)) * t, jumpHeld: pick.jumpHeld ?? false, vy: pick.vy, item: pick.item ?? null, gear: pick.gear ?? 0, tiers: pick.tiers ?? 0, bike: pick.bike ?? 0, drinking: pick.hands === 2, filling: pick.hands === 3, grinding: pick.hands === 5 ? 2 : pick.hands === 4 ? 1 : 0,

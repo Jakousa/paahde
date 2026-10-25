@@ -4,7 +4,9 @@
 #   ... -- --fast        skip baking (procedural materials, no export), save tools/models/out/scavenger_fast.blend
 #   ... -- --tex 1024     atlas size (default 2048 baked, colour kept at 2048, normal/ORM downscaled to 1024)
 #
-# Output: public/models/scavenger.glb (skinned meshes Scavenger_Body, Scavenger_Backpack (hidden without one) and the carried gear (GEAR_MESH), materials Scavenger / PlayerTint / Lens,
+# Output: public/models/scavenger.glb (skinned meshes Scavenger_Body, Scavenger_Backpack (hidden without one), the carried
+# gear (GEAR_MESH) and every piece a player can choose for their look (LOOK_MESH, shared/look.ts), materials Scavenger /
+# PlayerTint / DyeRobe / DyeCape / DyeWrap (cloth baked pale, dyed by the game) / Lens,
 # clips Idle, Walk, Run, Jump, Dig, Slide, Powerslide, Crouch, CrouchWalk). Faces -Y in Blender = +Z in three.js.
 import math
 import os
@@ -33,9 +35,11 @@ reset_scene()
 
 # --------------------------------------------------------------------------------------- materials
 M = {
-    'robe': scmats.cloth('Robe', '#9c8a6e', '#6e5c46', dust=1.0, bleach='#c9b391', bleach_amt=0.45),
-    'cape': scmats.cloth('Cape', '#6a4430', '#3a2418', dust=0.9, bleach='#8a6448', bleach_amt=0.3, wrinkle=0.6),
-    'wrap': scmats.cloth('Wrap', '#7d705e', '#4a4035', dust=0.8, weave=0.7, wrinkle=0.3, bleach='#a39581', bleach_amt=0.3),
+    # the robe, the hood and cape, and the wraps are dyed by the game (shared/look.ts DYES): baked in pale greys with
+    # the light and dark of the old dyes, the game multiplies them by the dye
+    'robe': scmats.cloth('Robe', '#f2f2f2', '#aeaeae', dust=1.0, bleach='#ffffff', bleach_amt=0.45),
+    'cape': scmats.cloth('Cape', '#f2f2f2', '#949494', dust=0.9, bleach='#ffffff', bleach_amt=0.3, wrinkle=0.6),
+    'wrap': scmats.cloth('Wrap', '#f2f2f2', '#9c9c9c', dust=0.8, weave=0.7, wrinkle=0.3, bleach='#ffffff', bleach_amt=0.3),
     'trousers': scmats.cloth('Trousers', '#4a3e33', '#2b231c', dust=1.2, bleach='#7a6a58', bleach_amt=0.25),
     'tint': scmats.cloth('Tint', '#cfc6b8', '#958c80', dust=0.55, stains=0.3, bleach='#f0ebe2', bleach_amt=0.2,
                          wrinkle=0.7),
@@ -102,6 +106,21 @@ PARTS = []  # (obj, weight spec)
 GEAR = {'GearBack': [], 'GearShovel': [], 'GearCanteen': [], 'GearSidearm': [], 'GearScrap': []}
 GEAR_MESH = {'GearBack': 'Scavenger_Backpack', 'GearShovel': 'Scavenger_Shovel', 'GearCanteen': 'Scavenger_Canteen',
              'GearSidearm': 'Scavenger_Sidearm', 'GearScrap': 'Scavenger_Scrap'}
+
+
+# The pieces a player chooses between (shared/look.ts, src/models/scavenger.ts LOOK_PIECES), each split into its own
+# mesh the same way: vertex group → glb mesh.
+LOOK = {}
+LOOK_MESH = {}
+
+
+def tagged(group, fn, *args):
+    """Build fn(*args) as the look piece `group`: every part it adds becomes the mesh Scavenger_<group>."""
+    n = len(PARTS)
+    out = fn(*args)
+    LOOK.setdefault(group, []).extend(o for o, _ in PARTS[n:])
+    LOOK_MESH['Look' + group] = 'Scavenger_' + group
+    return out
 
 
 def part(obj, bones=None, rigid=None, fn=None, bias=None, power=4.0):
@@ -230,8 +249,13 @@ def build_skirt(side):
     return part(loft('Skirt' + ('L' if side > 0 else 'R'), rings, M['robe'], closed=False), fn=skirt_weights(side))
 
 
-def build_cape():
-    zs, rx, ry = CAPE_T
+# the poncho: the capelet carried on down to the waist, wider over the arms
+PONCHO_T = (CAPE_T[0] + [1.235, 1.185, 1.135, 1.085], CAPE_T[1] + [0.318, 0.33, 0.338, 0.342],
+            CAPE_T[2] + [0.212, 0.220, 0.226, 0.230])
+
+
+def build_cape(shape=CAPE_T, name='Cape'):
+    zs, rx, ry = shape
     n = 44
     rings = []
     for i, z in enumerate(zs):
@@ -247,12 +271,14 @@ def build_cape():
                 p.z -= 0.16 * (p.y / 0.2) ** 1.5
     tattered(rings[-1], 0.04, seed=3.0)
     rings.append(fold_back(rings[-1], (0, 0.008), 0.975, 0.03))
-    return part(loft('Cape', rings, M['cape']),
+    return part(loft(name, rings, M['cape']),
                 bones=['Spine1', 'Spine2', 'Neck', 'LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm'],
                 bias={'LeftArm': 0.35, 'RightArm': 0.35, 'Spine2': 1.5}, power=3.0)
 
 
-def build_hood():
+def build_hood(size=0.8, front=0.0, point=0.0, drape=0.35, ragged=0.0, name='Hood'):
+    """The hood, scaled about the head (size), with a deeper front, a pointed peak at the back, how far it spreads onto
+    the shoulders (drape), and a torn opening (ragged)."""
     ys = [-0.100, -0.136, -0.112, -0.060, 0.000, 0.060, 0.110, 0.152, 0.186, 0.208]
     rx = [0.128, 0.138, 0.146, 0.153, 0.156, 0.152, 0.142, 0.122, 0.090, 0.045]
     rz = [0.282, 0.300, 0.308, 0.312, 0.306, 0.292, 0.268, 0.228, 0.165, 0.085]
@@ -260,6 +286,8 @@ def build_hood():
     n = 34
     rings = []
     for i, y in enumerate(ys):
+        y -= front * max(0.0, 1 - i / 3)
+        back = max(0.0, (i - 4) / 5)
         pts = []
         for k in range(n):
             s = -0.42 + (math.pi + 0.84) * k / (n - 1)
@@ -268,14 +296,25 @@ def build_hood():
             x = rx[i] * math.copysign(abs(c) ** (2 / p), c)
             z = zc[i] + rz[i] * math.copysign(abs(sn) ** (2 / p), sn)
             if sn < 0:  # drape outward onto the shoulders
-                x *= 1 + 0.45 * (-sn)
+                x *= 1 + drape * (-sn)
+            # the peak: the top of the back rings pulled up and back into a point
+            z += point * back ** 1.5 * max(0.0, sn) ** 6
+            yy = y + point * 0.6 * back ** 2 * max(0.0, sn) ** 6
             wob = 0.012 * fbm((x * 12, y * 12, z * 12))
-            pts.append(V((x * (1 + wob), y + 0.01 * math.sin(s * 5 + i), z + wob * 0.3)))
+            pts.append(V((x * (1 + wob), yy + 0.01 * math.sin(s * 5 + i), z + wob * 0.3)))
         rings.append(pts)
     # brim droops a little at the top centre of the opening
     for p in rings[1]:
         p.z -= 0.012 * max(0.0, (p.z - 1.75) / 0.08)
-    return part(loft('Hood', rings, M['cape'], closed=False),
+    if ragged:
+        for r in rings[:2]:
+            for p in r:
+                p.y -= ragged * (0.4 + fbm((p.x * 30, p.z * 30, 3.0), 2)) * (0.6 + max(0.0, math.sin(p.z * 90)) ** 4)
+    c = V((0, 0.01, 1.67))
+    for r in rings:
+        for p in r:
+            p[:] = c + (p - c) * size
+    return part(loft(name, rings, M['cape'], closed=False),
                 bones=['Head', 'Neck', 'Spine2'], bias={'Head': 3.0, 'Spine2': 0.6}, power=3.0)
 
 
@@ -292,24 +331,6 @@ def build_headwrap():
             return m
         rings.append(ring((0, 0.008, z), r[i], r[i] * 1.12, 20, fn=fn))
     part(loft('HeadWrap', rings, M['wrap'], cap_end=True), bones=['Head', 'Neck'], bias={'Head': 2.0})
-    # wrapped bands of cloth over the skull (tilted loops)
-    bands = []
-    for zc, tilt, rr, w, ph in ((1.735, 0.05, 0.090, 0.030, 0.3), (1.705, -0.04, 0.097, 0.032, 1.1),
-                                (1.765, 0.02, 0.070, 0.028, 2.0), (1.645, 0.0, 0.098, 0.028, 0.7)):
-        path = []
-        for k in range(28):
-            a = 2 * math.pi * k / 28
-            if zc < 1.66 and -math.sin(a) > 0.55:
-                continue  # leave the eyes free
-            path.append(V((math.cos(a) * rr, 0.008 + math.sin(a) * rr * 1.12, zc + tilt * math.sin(a + ph))))
-        closed = len(path) == 28
-        if not closed:  # rotate list so the gap is at the ends
-            idx = max(range(len(path)), key=lambda j: (path[j] - path[j - 1]).length)
-            path = path[idx:] + path[:idx]
-        bands.append(sweep('HeadBand', path, [(-w / 2, 0), (0, 0.006), (w / 2, 0), (0, -0.002)], M['wrap'],
-                           closed_path=closed, up_fn=lambda i, path=path: V((path[i].x, path[i].y - 0.008, 0)),
-                           scale_fn=lambda i, f, ph=ph: (1 + 0.2 * math.sin(i * 1.9 + ph), 1 + 0.4 * math.sin(i * 1.3))))
-    part(join(bands, 'HeadBands'), rigid='Head')
     # scarf pulled up over the lower face (player colour), under the goggles and respirator
     mrings = []
     for z, r in ((1.535, 0.088), (1.565, 0.094), (1.60, 0.102), (1.635, 0.104), (1.652, 0.101), (1.66, 0.096)):
@@ -834,44 +855,363 @@ def build_backpack():
 
 # ====================================================================================== BUILD ALL
 
+# ------------------------------------------------------------------------------ the look's other pieces
+def goggle_cup(E, d, scale, objs, lenses):
+    fr = frame_from(d, V((0, 0, 1)))
+
+    def rr(t, r, n=16):
+        return ring(E + d * t * scale, r * scale, r * scale, n, fr)
+    objs.append(loft('GogCushion', [rr(-0.006, 0.024), rr(0.004, 0.0275), rr(0.012, 0.026)], M['leather']))
+    objs.append(loft('GogCup', [rr(0.010, 0.0235), rr(0.024, 0.024), rr(0.028, 0.0258), rr(0.033, 0.0255),
+                                rr(0.0345, 0.0235), rr(0.034, 0.0195), rr(0.027, 0.0192)], M['brass']))
+    lenses.append(loft('GogLens', [rr(0.026, 0.0196), rr(0.0285, 0.013), rr(0.0295, 0.004)], M['lens'],
+                       cap_end=True))
+
+
+def goggle_strap(objs):
+    path = []
+    for k in range(25):
+        ang = -math.pi / 2 + math.radians(58) + (2 * math.pi - math.radians(116)) * k / 24
+        path.append(V((math.cos(ang) * 0.103, 0.008 + math.sin(ang) * 0.115, 1.68 + 0.006 * math.sin(ang))))
+    objs.append(sweep('GogStrap', path, rect_profile(0.004, 0.022), M['leather2'], up=V((0, 0, 1))))
+
+
+def build_monocle():
+    """One big lens over the right eye on a strap, a leather patch over the other."""
+    objs, lenses = [], []
+    goggle_cup(V((-0.040, -0.098, 1.678)), V((-0.22, -1.0, 0.03)).normalized(), 1.3, objs, lenses)
+    E = V((0.036, -0.096, 1.676))
+    d = V((0.20, -1.0, 0.03)).normalized()
+    fr = frame_from(d, V((0, 0, 1)))
+    objs.append(loft('Patch', [ring(E + d * t, r, r * 0.85, 14, fr) for t, r in
+                               ((-0.004, 0.024), (0.006, 0.026), (0.010, 0.02), (0.012, 0.004))], M['leather'],
+                     cap_end=True))
+    goggle_strap(objs)
+    part(join(objs, 'Monocle'), rigid='Head')
+    return join(lenses, 'MonocleLens')
+
+
+def build_side_mask():
+    """A lighter respirator: a short snout and one big filter canister on the left cheek, no hose."""
+    objs = []
+    base = V((0, -0.103, 1.603))
+    d = V((0, -0.88, -0.47)).normalized()
+    fr = frame_from(d, V((1, 0, 0)))
+    prof = [(-0.004, 0.028), (0.010, 0.030), (0.016, 0.031), (0.026, 0.026), (0.030, 0.018), (0.028, 0.008)]
+    objs.append(loft('RespSnout', [ring(base + d * t, r, r * 0.9, 14, fr) for t, r in prof], M['steel'],
+                     cap_end=True))
+    for k in (-1, 1):
+        a = base + d * 0.03 + fr.col[0] * k * 0.007
+        objs.append(rounded_box('Grille', a, (0.003, 0.004, 0.022), M['brass'], bevel=0.0,
+                                rot=Matrix((fr.col[0], fr.col[2], fr.col[1])).transposed()))
+    c = V((0.055, -0.090, 1.582))
+    cd = V((0.75, -0.5, -0.42)).normalized()
+    objs.append(cylinder('Canister', c, c + cd * 0.075, 0.027, M['paint'], n=14,
+                         rings_extra=[(0.06, 1.0), (0.1, 1.07), (0.18, 1.07), (0.22, 1.0), (0.88, 1.0), (0.93, 0.85)]))
+    objs.append(cylinder('CanCap', c + cd * 0.073, c + cd * 0.082, 0.02, M['brass'], n=12))
+    part(join(objs, 'SideMask'), rigid='Head')
+
+
+def build_round_specs():
+    """Small round wire-rimmed lenses on a bridge, the arms running back under the wrap."""
+    objs, lenses = [], []
+    for s in (1, -1):
+        E = V((s * 0.037, -0.112, 1.678))
+        fr = frame_from(V((s * 0.12, -1.0, 0.02)).normalized(), V((0, 0, 1)))
+        rim = [E + fr @ V((math.cos(a) * 0.021, math.sin(a) * 0.021, 0)) for a in [2 * math.pi * k / 20 for k in range(20)]]
+        objs.append(sweep('SpecRim', rim, circle_profile(0.0026, 6), M['brass'], closed_path=True))
+        lenses.append(loft('SpecLens', [ring(E + fr.col[2] * -0.001, 0.0195, 0.0195, 16, fr),
+                                        ring(E + fr.col[2] * -0.003, 0.004, 0.004, 16, fr)], M['lens'], cap_end=True))
+        arm = catmull([(s * 0.058, -0.108, 1.68), (s * 0.098, -0.06, 1.682), (s * 0.106, 0.0, 1.676)], 3)
+        objs.append(sweep('SpecArm', arm, circle_profile(0.0022, 5), M['brass']))
+    objs.append(sweep('SpecBridge', catmull([(0.016, -0.118, 1.68), (0, -0.124, 1.686), (-0.016, -0.118, 1.68)], 3),
+                      circle_profile(0.0024, 5), M['brass']))
+    part(join(objs, 'RoundSpecs'), rigid='Head')
+    return join(lenses, 'SpecLenses')
+
+
+def build_welder():
+    """Boxy welding goggles: square steel cups with flat dark-glass fronts, a hinged bridge, a broad strap."""
+    objs, lenses = [], []
+    for s in (1, -1):
+        rot = Matrix.Rotation(s * 0.2, 3, 'Z')
+        c = V((s * 0.04, -0.112, 1.676))
+        objs.append(rounded_box('WeldCup', c, (0.046, 0.03, 0.036), M['paint'], bevel=0.005, rot=rot))
+        objs.append(rounded_box('WeldRim', c + rot @ V((0, -0.016, 0)), (0.05, 0.006, 0.04), M['steel'], bevel=0.002,
+                                rot=rot))
+        lenses.append(rounded_box('WeldGlass', c + rot @ V((0, -0.0195, 0)), (0.036, 0.003, 0.026), M['lens'],
+                                  bevel=0.001, segments=1, rot=rot))
+    objs.append(rounded_box('WeldHinge', (0, -0.124, 1.678), (0.016, 0.012, 0.012), M['brass'], bevel=0.002))
+    goggle_strap(objs)
+    part(join(objs, 'Welder'), rigid='Head')
+    return join(lenses, 'WeldLenses')
+
+
+def build_big_goggles():
+    """Oversized goggles: the old cups a third bigger, set wider."""
+    objs, lenses = [], []
+    for s in (1, -1):
+        goggle_cup(V((s * 0.044, -0.094, 1.678)), V((s * 0.26, -1.0, 0.03)).normalized(), 1.35, objs, lenses)
+    objs.append(sweep('GogBridge', catmull([(0.016, -0.128, 1.68), (0, -0.132, 1.684), (-0.016, -0.128, 1.68)], 3),
+                      circle_profile(0.004, 6), M['brass']))
+    goggle_strap(objs)
+    part(join(objs, 'BigGoggles'), rigid='Head')
+    return join(lenses, 'BigLenses')
+
+
+def face_cover(name, mat, half=70, extra=0.012, z0=1.545, z1=1.636):
+    """A cover over the lower face, a little proud of the scarf mask (build_headwrap's FaceMask), under the goggles."""
+    zs = [z0 + (z1 - z0) * k / 5 for k in range(6)]
+    mr = ((1.535, 0.088), (1.565, 0.094), (1.60, 0.102), (1.635, 0.104), (1.652, 0.101))
+    rings = []
+    for z in zs:
+        r = next(r0 + (r1 - r0) * (z - a) / (b - a) for (a, r0), (b, r1) in zip(mr, mr[1:]) if a <= z <= b + 1e-9) + extra
+
+        def fn(t, k, z=z):
+            front = max(0.0, -math.sin(t))
+            return 1.0 + (0.08 * front ** 3 if z < 1.62 else 0.0)
+        rings.append(ring((0, 0.006, z), r, r * 1.12, 17, fn=fn, a0=math.radians(270 - half),
+                          a1=math.radians(270 + half), closed=False))
+    return loft(name, rings, mat, closed=False)
+
+
+def on_cover(t, z, half_out=0.0):
+    """A point on face_cover's surface at angle t (rad, 270° = front) and height z, and its outward normal."""
+    r = 0.098 + 0.012 + half_out
+    front = max(0.0, -math.sin(t))
+    m = 1.0 + (0.08 * front ** 3 if z < 1.62 else 0.0)
+    p = V((math.cos(t) * r * m, 0.006 + math.sin(t) * r * 1.12 * m, z))
+    n = V((math.cos(t), math.sin(t) * 1.12, 0)).normalized()
+    return p, n
+
+
+def build_filter_mask():
+    """A cloth dust mask over nose and mouth, one round filter at the front."""
+    objs = [face_cover('DustMask', M['canvas'], half=72)]
+    p, n = on_cover(math.radians(270), 1.582)
+    objs.append(cylinder('Filter', p - n * 0.004, p + n * 0.022, 0.026, M['paint'], n=16,
+                         rings_extra=[(0.15, 1.0), (0.2, 0.92), (0.8, 0.92), (0.85, 1.0)]))
+    objs.append(cylinder('FilterCap', p + n * 0.02, p + n * 0.026, 0.02, M['brass'], n=14))
+    part(join(objs, 'FilterMask'), rigid='Head')
+
+
+def build_muzzle():
+    """A stitched leather muzzle over the lower face, rows of brass breathing rivets."""
+    objs = [face_cover('Muzzle', M['leather'], half=78, extra=0.014)]
+    for z in (1.565, 1.59, 1.615):
+        for deg in range(246, 296, 12):
+            p, n = on_cover(math.radians(deg), z, 0.002)
+            objs.append(cylinder('Rivet', p - n * 0.002, p + n * 0.004, 0.0035, M['brass'], n=6))
+    part(join(objs, 'MuzzleMask'), rigid='Head')
+
+
+def build_grille():
+    """A steel mouth plate with breathing slots."""
+    objs = [face_cover('Grille', M['steel'], half=62, extra=0.014)]
+    for z in (1.562, 1.578, 1.594, 1.61):
+        p, n = on_cover(math.radians(270), z, 0.003)
+        objs.append(rounded_box('Slot', p + n * 0.002, (0.058, 0.012, 0.008), M['rubber'], bevel=0.002, segments=1))
+    for s in (1, -1):
+        p, n = on_cover(math.radians(270 + s * 52), 1.59, 0.002)
+        objs.append(cylinder('Bolt', p - n * 0.002, p + n * 0.006, 0.005, M['brass'], n=6))
+    part(join(objs, 'GrillePlate'), rigid='Head')
+
+
+def scarf_loops(specs, name='ScarfLoops'):
+    """Loops of cloth round the neck: (height, tilt down at the front, radius x, radius y, width, phase)."""
+    objs = []
+    for zc, tilt, rx, ry, w, ph in specs:
+        path = [V((math.cos(a) * rx, 0.004 + math.sin(a) * ry, zc + tilt * math.sin(a)))
+                for a in [2 * math.pi * k / 36 for k in range(36)]]
+        objs.append(sweep('ScarfLoop', path, [(-w / 2, 0.0), (-w / 4, 0.012), (0, 0.016), (w / 4, 0.012),
+                                               (w / 2, 0.0), (w / 4, -0.006), (0, -0.007), (-w / 4, -0.006)],
+                          M['tint'], closed_path=True, up=V((0, 0, 1)),
+                          scale_fn=lambda i, f, ph=ph: (1 + 0.18 * math.sin(i * 1.3 + ph),
+                                                        1 + 0.35 * math.sin(i * 0.9 + ph))))
+    part(join(objs, name), bones=['Neck', 'Spine2', 'Head'], bias={'Neck': 2.0})
+
+
+def scarf_tail(pts, width=0.085, name='ScarfTail', twist=0.25):
+    tail = sweep(name, catmull(pts, 4), rect_profile(0.012, width, 0.004), M['tint'],
+                 up_fn=lambda i: V((0, -1, 0.15)),
+                 scale_fn=lambda i, f: (1.0, 0.85 + 0.25 * f + 0.06 * math.sin(i * 2.1)),
+                 twist_fn=lambda i, f: twist * math.sin(f * 4))
+    part(tail, bones=['Spine2', 'Spine1', 'Neck'], bias={'Spine2': 2.0})
+
+
+SCARF_LOOPS = ((1.535, 0.05, 0.122, 0.128, 0.066, 0.0), (1.58, 0.04, 0.108, 0.118, 0.058, 1.7))
+
+
+def build_scarf_long():
+    """Wound twice, both ends hanging long down the chest."""
+    scarf_loops(SCARF_LOOPS)
+    scarf_tail([(0.035, -0.105, 1.545), (0.065, -0.17, 1.48), (0.10, -0.228, 1.39), (0.118, -0.25, 1.25),
+                (0.125, -0.26, 1.10), (0.13, -0.262, 0.98)])
+    scarf_tail([(-0.03, -0.11, 1.55), (-0.06, -0.18, 1.47), (-0.075, -0.236, 1.37), (-0.07, -0.252, 1.26),
+                (-0.06, -0.258, 1.16)], width=0.075, name='ScarfTail2', twist=-0.3)
+
+
+def build_bib():
+    """Knotted at the neck, its point hanging over the chest like a bandana."""
+    scarf_loops(SCARF_LOOPS[1:])
+    rings = []
+    for z, r, half in ((1.565, 0.112, 75), (1.52, 0.128, 62), (1.47, 0.142, 46), (1.42, 0.15, 28), (1.375, 0.153, 6)):
+        rings.append(ring((0, 0.004, z), r, r * 1.04, 15, a0=math.radians(270 - half), a1=math.radians(270 + half),
+                          closed=False, fn=lambda t, k, z=z: 1 + 0.03 * math.sin(t * 9 + z * 50)))
+    tattered(rings[-1], 0.01, seed=5.0)
+    part(loft('Bib', rings, M['tint'], closed=False), bones=['Spine2', 'Neck'], bias={'Spine2': 2.0})
+
+
+def build_veil():
+    """The scarf's end pulled up over the head wrap, hanging as a veil across the face under the goggles."""
+    scarf_loops(SCARF_LOOPS)
+    rings = []
+    for z, r, half, fwd in ((1.66, 0.104, 80, 0.0), (1.62, 0.112, 78, 0.006), (1.575, 0.124, 74, 0.016),
+                            (1.53, 0.134, 68, 0.024), (1.49, 0.14, 60, 0.03)):
+        rings.append(ring((0, 0.004 - fwd, z), r, r * 1.12, 17, a0=math.radians(270 - half),
+                          a1=math.radians(270 + half), closed=False,
+                          fn=lambda t, k, z=z: 1 + 0.025 * math.sin(t * 11 + z * 60)))
+    tattered(rings[-1], 0.012, seed=8.0)
+    part(loft('Veil', rings, M['tint'], closed=False), bones=['Head', 'Neck'], bias={'Head': 2.5})
+
+
+def build_shoulder_plate():
+    """Scrap pauldron on the left shoulder: a domed cap and two overlapping bands down the upper arm."""
+    fr = frame_from(UPPER_DIR, V((0, 1, 0)))
+    objs = []
+    for t0, t1, r in ((0.02, 0.075, 0.094), (0.065, 0.12, 0.088)):
+        objs.append(loft('PlateBand', [ring(SH_L + UPPER_DIR * t0, r, r * 0.95, 20, fr),
+                                       ring(SH_L + UPPER_DIR * t1, r * 0.97, r * 0.92, 20, fr),
+                                       ring(SH_L + UPPER_DIR * t1, r * 0.9, r * 0.86, 20, fr)], M['paint']))
+    cap = []
+    for k in range(6):
+        a = math.radians(90 * k / 5)
+        rr = 0.105 * math.cos(a) + 0.003
+        cap.append(ring(SH_L + V((0.0, 0.0, 0.01 + 0.05 * math.sin(a))), rr, rr * 0.92, 20))
+    objs.append(loft('PlateCap', cap, M['steel'], cap_end=True))
+    for o in objs:
+        part(o, bones=['LeftArm', 'LeftShoulder'], bias={'LeftArm': 1.6}, power=4.0)
+
+
+def in_cloth(fn):
+    """fn built in the wrap cloth where it had leather (wrapped gloves, wrapped boots)."""
+    def g(*args):
+        saved = {k: M[k] for k in ('leather', 'leather2')}
+        M['leather'] = M['leather2'] = M['wrap']
+        try:
+            fn(*args)
+        finally:
+            M.update(saved)
+    return g
+
+
+def build_gauntlet(sign):
+    """Over the glove: a flared leather cuff up the forearm and a steel plate on the back of the hand."""
+    pre = 'Left' if sign > 0 else 'Right'
+    W = V((WR_L.x * sign, WR_L.y, WR_L.z))
+    a, pn, t = hand_frame(sign)
+    fr = Matrix((t, pn, a)).transposed()
+
+    def P(u, v, w):
+        return W + t * u + pn * v + a * w
+    cuff = [ring(P(0, 0, w), r, r * 0.92, 18, fr) for w, r in
+            ((-0.03, 0.054), (-0.07, 0.060), (-0.11, 0.066), (-0.135, 0.071), (-0.14, 0.064))]
+    part(loft(pre + 'Cuff', cuff, M['leather2']), bones=[pre + 'ForeArm', pre + 'Hand'], bias={pre + 'ForeArm': 2.0})
+    part(rounded_box('HandPlate', P(0, -0.028, 0.045), (0.062, 0.007, 0.052), M['steel'], bevel=0.003, segments=1,
+                     rot=fr), rigid=pre + 'Hand')
+
+
+def build_boot_top(sign):
+    """The boot carried on up to below the knee, with a turned-down cuff."""
+    x0 = 0.106 * sign
+    rings = [ring((x0, 0.022, z), r, r * 1.08, 16,
+                  fn=lambda a_, k, z=z: 1 + 0.025 * fbm((math.cos(a_) * 3, math.sin(a_) * 3, z * 20)))
+             for z, r in ((0.30, 0.071), (0.36, 0.074), (0.42, 0.077), (0.455, 0.08), (0.47, 0.088), (0.475, 0.09),
+                          (0.44, 0.088), (0.43, 0.08))]
+    part(loft(('Left' if sign > 0 else 'Right') + 'BootTop', rings, M['leather']), rigid=('Left' if sign > 0 else 'Right') + 'Leg')
+
+
+def build_shin_guard(sign):
+    """A curved steel plate strapped over the front of the shin."""
+    x0 = 0.106 * sign
+    rings = [ring((x0, 0.016, z), r, r * 1.1, 14, a0=math.radians(205), a1=math.radians(335), closed=False)
+             for z, r in ((0.17, 0.074), (0.25, 0.077), (0.34, 0.08), (0.42, 0.083), (0.46, 0.081))]
+    part(loft(('Left' if sign > 0 else 'Right') + 'ShinGuard', rings, M['paint'], closed=False),
+         rigid=('Left' if sign > 0 else 'Right') + 'Leg')
+
+
+def both(fn):
+    def g():
+        fn(1)
+        fn(-1)
+    return g
+
+
 def build_character():
     build_torso()
     build_skirt(1)
     build_skirt(-1)
-    build_cape()
-    build_hood()
     build_headwrap()
-    lens_objs = [build_goggles()]
-    build_respirator()
-    build_scarf()
+    lens_objs = []
+    # the look (shared/look.ts): every option of every slot, each its own mesh
+    tagged('Cape', build_cape)
+    tagged('Poncho', build_cape, PONCHO_T, 'Poncho')
+    tagged('Hood', build_hood)
+    tagged('Cowl', build_hood, 0.82, 0.035, 0.11, 0.3, 0.0, 'Cowl')
+    tagged('HoodRagged', build_hood, 0.78, 0.0, 0.0, 0.25, 0.03, 'HoodRagged')
+    lens = tagged('Goggles', build_goggles)
+    lens_objs.append((lens, 'Head'))
+    LOOK['Goggles'].append(lens)
+    lens = tagged('Monocle', build_monocle)
+    lens_objs.append((lens, 'Head'))
+    LOOK['Monocle'].append(lens)
+    for group, fn in (('RoundSpecs', build_round_specs), ('Welder', build_welder), ('BigGoggles', build_big_goggles)):
+        lens = tagged(group, fn)
+        lens_objs.append((lens, 'Head'))
+        LOOK[group].append(lens)
+    tagged('Respirator', build_respirator)
+    tagged('FilterMask', build_filter_mask)
+    tagged('MuzzleMask', build_muzzle)
+    tagged('GrillePlate', build_grille)
+    tagged('SideMask', build_side_mask)
+    tagged('Scarf', build_scarf)
+    tagged('ScarfLong', build_scarf_long)
+    tagged('Bib', build_bib)
+    tagged('Veil', build_veil)
+    tagged('ShoulderPlate', build_shoulder_plate)
+    tagged('Gloves', both(build_glove))
+    tagged('GlovesWrapped', both(in_cloth(build_glove)))
+    tagged('Gauntlets', both(build_gauntlet))
+    tagged('Boots', both(build_boot))
+    tagged('BootsWrapped', both(in_cloth(build_boot)))
+    tagged('ShinGuards', both(build_shin_guard))
+    tagged('BootTops', both(build_boot_top))
     for s in (1, -1):
         build_sleeve(s)
-        build_glove(s)
         build_leg(s)
-        build_boot(s)
-    lens_objs.append(build_belt())
+    lens_objs.append((build_belt(), 'Hips'))
     build_straps()
-    lens_objs.append(build_backpack())
+    lens_objs.append((build_backpack(), 'Spine2'))
 
     # weights
     for obj, spec in PARTS:
         apply_weights(obj, spec)
 
-    # lens objects: goggles → Head, hip tube → Hips, pack tubes → Spine2
-    for lo, bone in zip(lens_objs, ['Head', 'Hips', 'Spine2']):
+    # lens objects: rigid on the head (goggles, monocle), hips (hip tube), chest (pack tubes)
+    for lo, bone in lens_objs:
         apply_weights(lo, dict(bones=None, rigid=bone, fn=None, bias={}, power=4))
 
-    # tag the gear's vertices, to split them off after the joins (main)
-    for group, objs in GEAR.items():
+    # tag the gear's and the look's vertices, to split them off after the joins (main)
+    for group, objs in list(GEAR.items()) + [('Look' + k, v) for k, v in LOOK.items()]:
         for o in objs:
             o.vertex_groups.new(name=group).add(list(range(len(o.data.vertices))), 1.0, 'REPLACE')
 
     body_parts = [o for o, _ in PARTS]
-    total = sum(tri_count(o) for o in body_parts) + sum(tri_count(o) for o in lens_objs)
+    total = sum(tri_count(o) for o in body_parts) + sum(tri_count(o) for o, _ in lens_objs)
     print('TRIS', total, {o.name: tri_count(o) for o in body_parts})
 
     body = join(body_parts, 'Scavenger_Body')
-    lens = join(lens_objs, 'Scavenger_Lens')
+    lens = join([o for o, _ in lens_objs], 'Scavenger_Lens')
 
     return body, lens
 
@@ -1152,12 +1492,12 @@ def main():
     # =========================================================================================== BAKE
     import bake
 
-    final = bake.bake_atlas(body, TEX, OUT_DIR, tint_name='Tint')
+    final = bake.bake_atlas(body, TEX, OUT_DIR, tint_name='Tint', dyes=('Robe', 'Cape', 'Wrap'))
     lens.data.uv_layers['Detail'].name = 'Atlas'
     lens.modifiers.clear()
     body.modifiers.clear()
     body = join([body, lens], 'Scavenger_Body')
-    gear = [split_group(body, group, name) for group, name in GEAR_MESH.items()]
+    gear = [split_group(body, group, name) for group, name in list(GEAR_MESH.items()) + list(LOOK_MESH.items())]
     for m in [body, *gear]:
         mod = m.modifiers.new('Armature', 'ARMATURE')
         mod.object = rig

@@ -30,6 +30,7 @@ import { getBrowserId, Net } from './net';
 import { Lives } from './lives';
 import { landing, rememberWorld, victory } from './landing';
 import { refused } from './lobby';
+import { myLook as storedLook } from './profile';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { addHeadlights, Bike } from './bike';
@@ -303,6 +304,8 @@ let coverTimedOut = false;
 base.ready.then(() => (baseLoaded = true), () => (baseLoaded = true));
 loadScavenger().then(() => (bodyLoaded = true), () => (bodyLoaded = true));
 setTimeout(() => (coverTimedOut = true), 30_000);
+// What you wear (shared/look.ts), chosen on the main menu (src/lookView.ts); others get it with your 'hello'.
+const myLook = storedLook();
 const me = new Avatar(0xffffff);
 me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
 let bodyHidden = true;
@@ -515,6 +518,7 @@ renderer.setAnimationLoop((time) => {
   net.setHands(playerHands.held, playerHands.drinking, playerHands.filling, aiming, playerHands.grinding);
 
   me.setColor(net.color);
+  me.setLook(myLook);
   const s = net.me;
   // Drawn between the last two ticks (the leftover accumulator), so motion is even at any frame rate.
   const v = net.view(accumulator / DT);
@@ -551,6 +555,7 @@ renderer.setAnimationLoop((time) => {
     }
     avatar.setLabel(net.names.get(r.id) || `#${r.id}`, r.color);
     avatar.showLabel(!(fly.active && fly.clean));
+    avatar.setLook(r.look);
     avatar.setOutfit(r.item, r.gear, r.tiers);
     if (!ride(r.id, avatar, { ...r, heading: r.facing }, frameDt)) {
       avatar.update({ ...r, sliding: undefined, powerSlide: r.sliding, crouching: r.crouching }, frameDt);
