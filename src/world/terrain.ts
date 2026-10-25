@@ -14,6 +14,8 @@ import { baseHeight, EDIT_CELL, EDIT_CHUNK, edits, groundAt, heightAt, WIND } fr
 import { hazeDensity, hazeFar } from './env.ts';
 import { createSandMaterial, sand } from './sandMaterial.ts';
 import { TERRAIN_LAYER } from './heightShadow.ts';
+import { graphics } from '../graphics.ts';
+import { perf } from '../perf.ts';
 
 /** Grid cells per chunk side. */
 const CELLS = 64;
@@ -29,14 +31,14 @@ const VIEW_DISTANCE = 4500;
 const EDIT_LEVELS = 2;
 /** Haze extinction per metre for a terrain this large: far dunes fade in layered bands over km. */
 const HAZE_DENSITY = 0.002;
-/** Main-thread milliseconds per frame spent generating chunks (after the first, blocking, build). */
+/** Main-thread milliseconds per frame spent generating chunks, yielding between rows. */
 const FRAME_BUDGET_MS = 3;
 /** If a new layout has waited this long, raise the per-frame budget to LATE_BUDGET_MS. */
 const MAX_PENDING_MS = 500;
-const LATE_BUDGET_MS = 10;
+const LATE_BUDGET_MS = 5;
 /** While the loading screen is up (`loading`) even the first build is spread over frames, this many ms each. */
 const LOADING_BUDGET_MS = 25;
-const CACHE_LIMIT = 500;
+const CACHE_BYTES = [64, 80, 96, 112].map(mib => mib * 1024 * 1024);
 
 const VERTS = CELLS + 1;
 const SKIRT_VERTS = 4 * VERTS;
@@ -58,6 +60,9 @@ type Chunk = {
   size: number;
   mesh: THREE.Mesh;
   lastUsed: number;
+  ready: boolean;
+  revision: number;
+  bytes: number;
 };
 
 function key(level: number, ix: number, iz: number) {
@@ -99,6 +104,7 @@ export class Terrain {
   private material = createTerrainMaterial();
   private index = buildIndex();
   private cache = new Map<string, Chunk>();
+  private cacheBytes = 0;
   private shown = new Set<string>();
   /** Set by the loading screen: build the first chunks under a budget instead of all in one frame. */
   loading = false;
@@ -110,6 +116,7 @@ export class Terrain {
   private pendingSince = 0;
   private dirty = new Set<string>();
   private frame = 0;
+  private building: { chunk: Chunk; revision: number; work: Generator<void> } | null = null;
   private lastX = NaN;
   private lastZ = NaN;
   // Scratch buffers for generation: heights with a 1-vertex border (for central-difference normals).
@@ -122,7 +129,7 @@ export class Terrain {
   private sbuf = new Float32Array(VERTS * VERTS);
 
   /** Stats for debugging/perf overlays. */
-  readonly stats = { chunks: 0, triangles: 0, builtThisFrame: 0, buildMs: 0, totalBuilt: 0 };
+  readonly stats = { chunks: 0, triangles: 0, builtThisFrame: 0, buildMs: 0, totalBuilt: 0, cacheBytes: 0 };
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -148,10 +155,11 @@ export class Terrain {
       this.computeDesired(focus.x, focus.z);
     }
 
-    // First frame: build everything synchronously so the world appears complete. If a layout has been
-    // waiting long (very fast movement), spend more time per frame rather than keep the stale one.
+    // Keep the previous complete layout while generating its replacement. If movement outruns it,
+    // raise the budget slightly; even the first layout yields to keep loading responsive.
     const late = this.pendingSince > 0 && t0 - this.pendingSince > MAX_PENDING_MS;
-    const deadline = this.loading ? t0 + LOADING_BUDGET_MS : this.shown.size === 0 ? Infinity : t0 + (late ? LATE_BUDGET_MS : FRAME_BUDGET_MS);
+    const deadline = t0 + (this.loading ? LOADING_BUDGET_MS : late ? LATE_BUDGET_MS : FRAME_BUDGET_MS);
+    this.resumeBuild(deadline);
 
     // Rebuild dirty (edited) chunks first, nearest first; the chunk under the player always.
     if (this.dirty.size) {
@@ -162,9 +170,9 @@ export class Terrain {
       }
       list.sort((a, b) => this.chunkDist(a, focus) - this.chunkDist(b, focus));
       for (const c of list) {
-        if (performance.now() > deadline && this.chunkDist(c, focus) > 0) break;
-        this.fill(c);
-        this.dirty.delete(c.key);
+        if (this.building || performance.now() > deadline) break;
+        this.startBuild(c);
+        this.resumeBuild(deadline);
       }
     }
 
@@ -174,10 +182,14 @@ export class Terrain {
       const c = this.cache.get(d.key);
       if (c) {
         c.lastUsed = this.frame;
-      } else if (performance.now() > deadline) {
+        if (!c.ready) missing++;
+      } else if (this.building || performance.now() > deadline) {
         missing++;
       } else {
-        this.create(d.level, d.ix, d.iz);
+        const made = this.create(d.level, d.ix, d.iz);
+        this.startBuild(made);
+        this.resumeBuild(deadline);
+        if (!made.ready) missing++;
       }
     }
 
@@ -189,6 +201,23 @@ export class Terrain {
     }
     this.evict();
     this.stats.buildMs = performance.now() - t0;
+    if (this.stats.buildMs > 8 && !this.loading) perf.event('terrain-build', `${this.stats.builtThisFrame} chunks`, this.stats.buildMs, t0);
+  }
+
+  private startBuild(chunk: Chunk) {
+    this.building = { chunk, revision: chunk.revision, work: this.fill(chunk) };
+  }
+
+  /** A single generator owns the shared scratch arrays. Yield between rows, and publish GPU attributes only at completion. */
+  private resumeBuild(deadline: number) {
+    while (this.building && performance.now() < deadline) {
+      const job = this.building;
+      if (!job.work.next().done) continue;
+      job.chunk.ready = true;
+      if (job.revision === job.chunk.revision) this.dirty.delete(job.chunk.key);
+      else this.dirty.add(job.chunk.key);
+      this.building = null;
+    }
   }
 
   /** Quadtree traversal: the leaves to draw for this focus, sorted nearest first. */
@@ -262,11 +291,13 @@ export class Terrain {
     mesh.visible = false;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
-    const c: Chunk = { key: key(level, ix, iz), level, x0: ix * size, z0: iz * size, size, mesh, lastUsed: this.frame };
-    this.fill(c);
+    const bytes = geo.index!.array.byteLength + Object.values(geo.attributes).reduce((n, a) => n + a.array.byteLength, 0);
+    const c: Chunk = { key: key(level, ix, iz), level, x0: ix * size, z0: iz * size, size, mesh, lastUsed: this.frame, ready: false, revision: 0, bytes };
     mesh.userData.soft = true; // sand: the grinder (src/grinder.ts) does not bite on it
     this.scene.add(mesh);
     this.cache.set(c.key, c);
+    this.stats.cacheBytes = this.cacheBytes += bytes;
+    return c;
   }
 
   /** (Re)generate a chunk's vertices from the heightfield. */
@@ -279,7 +310,7 @@ export class Terrain {
     for (const c of this.cache.values()) c.mesh.castShadow = on;
   }
 
-  private fill(c: Chunk) {
+  private *fill(c: Chunk): Generator<void> {
     const step = c.size / CELLS;
     const W = VERTS + 2;
     const h = this.hbuf;
@@ -297,6 +328,7 @@ export class Terrain {
         this.sbuf[v] = g.silt;
         this.mbuf[v] = Math.max(g.mudflat, g.silt);
       }
+      yield;
     }
     const geo = c.mesh.geometry;
     const pos = geo.attributes.position.array as Float32Array;
@@ -321,6 +353,7 @@ export class Terrain {
         const lap = (h[k + 1] + h[k - 1] + h[k + W] + h[k - W] - 4 * y) / (step * step);
         this.cbuf[j * VERTS + i] = Math.min(1, Math.max(0, -lap / CREST_CURVATURE));
       }
+      yield;
     }
     // Each cell's two triangles meet on the diagonal whose ends differ least in height, so the fold follows the
     // slope's contour: with one fixed diagonal, a steep edge running across it (a canyon's walls and ledges) came out
@@ -336,8 +369,8 @@ export class Terrain {
           idx[o] = a; idx[o + 1] = cc; idx[o + 2] = b; idx[o + 3] = b; idx[o + 4] = cc; idx[o + 5] = d;
         }
       }
+      yield;
     }
-    geo.index!.needsUpdate = true;
     const crest = geo.attributes.crest.array as Float32Array;
     this.blurCrest(crest);
     // Bare rock (shared/rocks.ts, shared/canyons.ts): 1 where the rock is the surface, fading out under 1.5 m of sand.
@@ -358,6 +391,7 @@ export class Terrain {
         rock[v] = t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
         if (rock[v] > 0) crest[v] = 0; // rims are rock, not a sand brink
       }
+      yield;
     }
     // Skirts: copies of the edge vertices, dropped by more than the worst LOD mismatch (on a canyon's walls a
     // coarser neighbour can miss the edge's height by a good part of the chunk's height range).
@@ -379,6 +413,7 @@ export class Terrain {
         silt[base + e * VERTS + t] = silt[src];
       }
     }
+    geo.index!.needsUpdate = true;
     geo.attributes.position.needsUpdate = true;
     geo.attributes.normal.needsUpdate = true;
     geo.attributes.crest.needsUpdate = true;
@@ -427,6 +462,7 @@ export class Terrain {
           const k = key(level, ix, iz);
           const c = this.cache.get(k);
           if (!c) continue;
+          c.revision++;
           if (this.shown.has(k)) this.dirty.add(k);
           else this.drop(c); // stale and hidden: just forget it
         }
@@ -441,17 +477,23 @@ export class Terrain {
   }
 
   private drop(c: Chunk) {
+    if (this.building?.chunk === c) this.building = null;
     this.scene.remove(c.mesh);
     c.mesh.geometry.dispose();
     this.cache.delete(c.key);
+    this.stats.cacheBytes = this.cacheBytes -= c.bytes;
     this.dirty.delete(c.key);
   }
 
   private evict() {
-    if (this.cache.size <= CACHE_LIMIT) return;
+    const budget = CACHE_BYTES[graphics.sandDetail];
+    if (this.cacheBytes <= budget) return;
     const old = [...this.cache.values()]
-      .filter((c) => !this.shown.has(c.key) && c.lastUsed < this.frame)
+      .filter((c) => !this.shown.has(c.key) && c.lastUsed < this.frame && this.building?.chunk !== c)
       .sort((a, b) => a.lastUsed - b.lastUsed);
-    for (let i = 0; i < old.length && this.cache.size > CACHE_LIMIT * 0.8; i++) this.drop(old[i]);
+    for (const c of old) {
+      if (this.cacheBytes <= budget * 0.85) break;
+      this.drop(c);
+    }
   }
 }

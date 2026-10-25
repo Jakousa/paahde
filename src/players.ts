@@ -13,6 +13,7 @@ import { END_FADE, footprints, streaks } from './footprints.ts';
 import { footsteps } from './footsteps.ts';
 import { tyreDust } from './tyreDust.ts';
 import { SHADOW_ONLY_LAYER } from './world/env.ts';
+import { viewCull } from './world/viewCull.ts';
 
 export type AvatarPose = {
   x: number; y: number; z: number; facing: number; speed: number; grounded: boolean;
@@ -97,6 +98,10 @@ const STREAK_WIDTH = 0.42;
 
 export class Avatar {
   readonly root = new THREE.Group();
+  /** Remote actors retain movement/sound updates; only their pose work is reduced with distance. */
+  remote = false;
+  private poseOwed = 0;
+  private poseInterval = 0;
   private model: AvatarModel;
   private facing = NaN;
   private stepDist = 0;
@@ -268,11 +273,19 @@ export class Avatar {
 
   /** Called every render frame. */
   update(pose: AvatarPose, dt: number) {
+    if (this.remote && viewCull.camera) {
+      const p = pose.ride ? this.root.position : pose;
+      const eye = viewCull.camera.position;
+      const distance = Math.hypot(eye.x - p.x, eye.y - p.y, eye.z - p.z);
+      // Ragdolls can leave the original root; keep their simulation and visibility conservative.
+      this.root.visible = !!pose.down || viewCull.visibleOrShadow(p.x, p.y + this.size.height, p.z, 3 * this.size.height);
+      this.poseInterval = pose.down || distance < 40 ? 0 : distance < 100 ? 1 / 30 : 1 / 15;
+    }
     if (this.fall(pose, dt)) return;
     if (pose.ride) {
       this.facing = pose.facing; // so getting off turns from here, not from where we got on
       this.streakX = NaN;
-      this.model.update({ speed: 0, grounded: true, pitch: pose.pitch, ride: pose.ride }, dt);
+      this.animate({ speed: 0, grounded: true, pitch: pose.pitch, ride: pose.ride }, dt);
       return;
     }
     this.root.position.set(pose.x, pose.y, pose.z);
@@ -312,7 +325,7 @@ export class Avatar {
       tiltPitch = Math.atan(g.gx * fx + g.gz * fz);
       tiltRoll = Math.atan(g.gx * -fz + g.gz * fx);
     }
-    this.model.update(
+    this.animate(
       {
         speed: pose.speed, grounded: pose.grounded, sliding: slip, powerSlide: power, crouching: pose.crouching, tiltPitch, tiltRoll,
         digging: pose.digging, pitch: pose.pitch, heading, climb: sliding ? 0 : climb, drinking: pose.drinking, aiming: pose.aiming, ground: onSand && !power ? heightAt : undefined,
@@ -343,6 +356,13 @@ export class Avatar {
     // Toes turned out a little; the boot print mirrors per foot.
     if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing - this.foot * 0.08, this.size.height, this.size.height, this.foot);
     footsteps.step(fx, fz, pose.speed, indoors(fx, pose.y, fz) ? 'concrete' : 'sand');
+  }
+
+  private animate(pose: ModelPose, dt: number) {
+    this.poseOwed += dt;
+    if (this.poseOwed < this.poseInterval) return;
+    this.model.update(pose, Math.min(this.poseOwed, 0.15));
+    this.poseOwed = 0;
   }
 
   /** Sand thrown up while sliding: ploughed off the leading boot and, in a speed slide, the hand trailing behind

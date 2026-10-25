@@ -72,3 +72,5 @@ huge). Check a new size in the models lab (`models-lab.html?look=<packLook>,...`
 3. Add the option to its slot in `shared/look.ts` (at the end of the list) and its meshes to `LOOK_PIECES` in
    `src/models/scavenger.ts`, bake (`scavenger.py` without `--fast`, ~10 min, one Blender at a time) and look at it
    in the Character view and in the lab.
+
+The runtime merged-look cache is reference counted: unused merged geometries are evicted beyond 24 looks or 16 MiB; original GLB geometry and live avatars are never disposed by eviction. `src/models/textureBudget.ts` caps only the 2048² color atlas to 1024² on Low/Medium startup, before GPU upload, saving about 16 MiB including mipmaps. Normal/ORM maps and High/Ultra textures retain their original resolution. Unsupported image resizing keeps the original valid texture. A reload applies a different startup texture budget.

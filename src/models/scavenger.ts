@@ -18,6 +18,8 @@
 // piece shows its tier (src/tierLook.ts; `tiers`: shared/gear.ts gearTiers). A gun in hand
 // (GUN_HOLD) is carried at the low ready, or raised along the look pitch while `aiming`.
 import * as THREE from 'three/webgpu';
+import { startup } from '../graphics.ts';
+import { limitColorTextures } from './textureBudget.ts';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { LegIk, lowestAnkles, type Ground } from './legIk';
@@ -110,7 +112,11 @@ const trudgeClips = new WeakMap<GLTF, THREE.AnimationClip | null>();
 
 /** Starts (or reuses) the glb download. Call early to warm the cache. */
 export function loadScavenger(): Promise<GLTF> {
-  cached ??= new GLTFLoader().loadAsync(URL);
+  cached ??= new GLTFLoader().loadAsync(URL).then(async gltf => {
+    // The color atlas dominates this model's resident texture memory. Detail changes never replace live textures.
+    if (startup.sandDetail < 2) await limitColorTextures(gltf.scene, 1024);
+    return gltf;
+  });
   return cached;
 }
 
@@ -182,6 +188,7 @@ export class ScavengerModel {
   private doll: Ragdoll | null = null;
   private color: number;
   private disposed = false;
+  private releaseMerged: (() => void) | null = null;
 
   constructor(color = 0xffffff) {
     this.color = color;
@@ -402,7 +409,10 @@ export class ScavengerModel {
     const names = ['Scavenger_Body', ...piecesOf(look)];
     for (const m of this.worn) m.removeFromParent();
     this.worn = [];
-    const merged = mergedLook(this.gltf!, names, this.pieces);
+    this.releaseMerged?.();
+    const lease = mergedLook(this.gltf!, names, this.pieces);
+    const merged = lease.geometry;
+    this.releaseMerged = lease.release;
     for (const [, prims] of this.pieces) for (const p of prims) p.visible = !merged;
     if (!merged) {
       // Couldn't merge (an older glb, or pieces that don't fit together): show the chosen pieces as they are.
@@ -891,6 +901,8 @@ export class ScavengerModel {
 
   dispose() {
     this.disposed = true;
+    this.releaseMerged?.();
+    this.releaseMerged = null;
     if (this.held) disposeModel(this.held);
     for (const o of [this.wrist, this.belt, this.shield]) if (o) disposeModel(o);
     this.mixer?.stopAllAction();
@@ -1001,12 +1013,41 @@ function piecesOf(look: Look): string[] {
 
 /** The body and pieces `names`, merged into one geometry per material (by material name), made once per set of pieces
  *  for the glb and shared by every instance. Null if they can't be merged. */
-const mergedCache = new WeakMap<GLTF, Map<string, Map<string, THREE.BufferGeometry> | null>>();
+type MergedLook = { geometry: Map<string, THREE.BufferGeometry> | null; owned: THREE.BufferGeometry[]; refs: number; used: number; bytes: number };
+const mergedCache = new WeakMap<GLTF, Map<string, MergedLook>>();
+const MERGED_CACHE_BYTES = 16 * 1024 * 1024;
+const MERGED_CACHE_LOOKS = 24;
+let mergedClock = 0;
+
+function trimMerged(cache: Map<string, MergedLook>) {
+  let bytes = [...cache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+  const unused = [...cache].filter(([, entry]) => entry.refs === 0).sort((a, b) => a[1].used - b[1].used);
+  for (const [key, entry] of unused) {
+    if (cache.size <= MERGED_CACHE_LOOKS && bytes <= MERGED_CACHE_BYTES) break;
+    for (const geometry of entry.owned) geometry.dispose();
+    bytes -= entry.bytes;
+    cache.delete(key);
+  }
+}
+
 function mergedLook(gltf: GLTF, names: string[], pieces: Map<string, THREE.SkinnedMesh[]>) {
   let cache = mergedCache.get(gltf);
   if (!cache) mergedCache.set(gltf, (cache = new Map()));
   const key = names.join('|');
-  if (cache.has(key)) return cache.get(key)!;
+  const lease = (entry: MergedLook) => {
+    entry.refs++;
+    entry.used = ++mergedClock;
+    trimMerged(cache!);
+    let released = false;
+    return { geometry: entry.geometry, release: () => {
+      if (released) return;
+      released = true;
+      entry.refs--;
+      trimMerged(cache!);
+    } };
+  };
+  const hit = cache.get(key);
+  if (hit) return lease(hit);
   const byMat = new Map<string, THREE.BufferGeometry[]>();
   const bones = pieces.get('Scavenger_Body')?.[0].skeleton.bones.map((b) => b.name).join() ?? '';
   let ok = true;
@@ -1020,14 +1061,22 @@ function mergedLook(gltf: GLTF, names: string[], pieces: Map<string, THREE.Skinn
     }
   }
   let out: Map<string, THREE.BufferGeometry> | null = ok ? new Map() : null;
+  const owned: THREE.BufferGeometry[] = [];
   for (const [m, geoms] of byMat) {
     if (!out) break;
     const g = geoms.length === 1 ? geoms[0] : mergeGeometries(conformed(geoms));
     if (!g) out = null;
-    else out.set(m, g);
+    else {
+      out.set(m, g);
+      if (geoms.length > 1) owned.push(g);
+    }
   }
-  cache.set(key, out);
-  return out;
+  if (!out) { for (const geometry of owned) geometry.dispose(); owned.length = 0; }
+  const bytes = owned.reduce((sum, g) => sum + (g.index?.array.byteLength ?? 0)
+    + Object.values(g.attributes).reduce((n, a) => n + a.array.byteLength, 0), 0);
+  const entry: MergedLook = { geometry: out, owned, refs: 0, used: 0, bytes };
+  cache.set(key, entry);
+  return lease(entry);
 }
 
 /** `geoms` with every attribute in one array type, as mergeGeometries needs: the exporter writes each mesh's joint

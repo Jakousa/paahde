@@ -554,6 +554,7 @@ renderer.setAnimationLoop((time) => {
     let avatar = remotes.get(r.id);
     if (!avatar) {
       const a = (avatar = new Avatar(r.color));
+      a.remote = true;
       remotes.set(r.id, a);
       scene.add(a.root);
       // Placeholder until the rigged scavenger has loaded, then swap it in.
