@@ -33,10 +33,11 @@ the repository during this implementation; their health, crawler, character and 
 
 ## Measured results and deliberate alternatives
 
-- Paired rendering on the review machine: inactive headlights improved throughput **17.7%**; Low/Medium detail
-  improved **15.5% / 7.6%** in the tested fixed view. These are local scene comparisons, not universal gameplay FPS.
-- Selective cascade filtering showed no clear gain on the M2 Pro. The all-sample path remains the default;
-  selective sampling is opt-in. Both paths produced matching frozen captures on WebGPU and WebGL2.
+- Paired rendering on the review machine: inactive headlights improved throughput **17.7%** in the tested view.
+  This is a local scene comparison, not universal gameplay FPS. The earlier Low/Medium sand timing claims
+  were withdrawn: a shader branching defect produced incorrect lighting, so those timings do not establish a valid gain.
+- The all-sample cascade path remains the default. Selective sampling is experimental; the earlier frozen
+  captures did not establish its correctness or cost because render-pass caching and late filter setup hid the distinction.
 - Low/Medium scavenger texture storage is approximately **32 → 16 MiB** including mipmaps. Hands GLB size is
   **1,887,412 → 1,612,564 bytes (−14.6%)**. Selective atlas resizing/pruning was used instead of adding a KTX2
   encoder/transcoder dependency. High-quality atlases and data textures are retained.

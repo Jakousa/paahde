@@ -242,7 +242,9 @@ export class CascadedShadows extends CSMShadowNode {
       }
       let v: F = lit.add(float(1).sub(covered));
       if (this.extraLit) v = v.mul(this.extraLit);
-      return vec4(vec3(v), 1);
+      // ShadowNode captures its filter on first setup, before Sky's per-cascade fit can install the custom filter.
+      // Gate the completed result too: disabled 1x1 maps must never cast a full-cascade shadow through the stock filter.
+      return vec4(vec3(mix(float(1), v, this.enabled)), 1);
     })();
   }
 }

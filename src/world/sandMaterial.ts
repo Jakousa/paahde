@@ -298,48 +298,56 @@ function rippleAverage(sample: (phase: F) => F): F {
  * averaged, flat normal instead came out darker than the ripples it stands for at a low sun, by how deep they were and how their crests
  * faced the sun: patches far away that faded as you came closer.
  */
+// TSL caches repeated expressions as temporaries. Shared inputs must be assigned before the quality
+// branches: otherwise a temporary first emitted in one tier is read uninitialised in another tier,
+// or by the resolved-ripple path after the branch (a dark area that follows the camera).
 function rippleMeanDiffuse(s: SandSurface, l: V3): F {
-  const lAlong = dot(l.xz, s.rippleDir);
-  const up = max(dot(l, s.n0), 1e-3);
-  const tanE = up.div(max(abs(lAlong), 1e-3));
-  const height = sand.rippleHeight.mul(s.rippleAmp);
-  const toSun = lAlong.greaterThan(0);
-  const crisp = sand.rippleHeight.mul(0.12);
-  const dir3 = vec3(s.rippleDir.x, 0, s.rippleDir.y);
-  const scale = sand.rippleStrength.mul(s.rippleAmp);
-  const mean = rippleAverage((f) => {
-    const [h, slope] = rippleProfile(f, RIPPLE_STOSS);
-    const toCrest = select(toSun, fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
-    const lit = smoothstep(crisp.negate(), crisp, toCrest.mul(tanE).sub(height.mul(float(1).sub(h))).add(crisp));
-    const nk = normalize(s.nBase.sub(dir3.mul(slope.mul(scale))));
-    return saturate(dot(nk, l).mul(sand.contrast).add(sand.offset)).mul(lit);
-  });
-  const smooth = saturate(dot(s.nBase, l).mul(sand.contrast).add(sand.offset));
-  return mix(smooth, mean, sand.farRippleShade);
+  return Fn(() => {
+    const light = l.toVar();
+    const base = s.nBase.toVar();
+    const lAlong = dot(light.xz, s.rippleDir).toVar();
+    const up = max(dot(light, s.n0), 1e-3);
+    const tanE = up.div(max(abs(lAlong), 1e-3)).toVar();
+    const height = sand.rippleHeight.mul(s.rippleAmp).toVar();
+    const toSun = lAlong.greaterThan(0).toVar();
+    const crisp = sand.rippleHeight.mul(0.12).toVar();
+    const dir3 = vec3(s.rippleDir.x, 0, s.rippleDir.y).toVar();
+    const scale = sand.rippleStrength.mul(s.rippleAmp).toVar();
+    const mean = rippleAverage((f) => {
+      const [h, slope] = rippleProfile(f, RIPPLE_STOSS);
+      const toCrest = select(toSun, fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
+      const lit = smoothstep(crisp.negate(), crisp, toCrest.mul(tanE).sub(height.mul(float(1).sub(h))).add(crisp));
+      const nk = normalize(base.sub(dir3.mul(slope.mul(scale))));
+      return saturate(dot(nk, light).mul(sand.contrast).add(sand.offset)).mul(lit);
+    });
+    const smooth = saturate(dot(base, light).mul(sand.contrast).add(sand.offset));
+    return mix(smooth, mean, sand.farRippleShade);
+  })();
 }
 
 function rippleSun(s: SandSurface, l: V3): F {
-  const lAlong = dot(l.xz, s.rippleDir);
-  const up = max(dot(l, s.n0), 1e-3);
-  const tanE = up.div(max(abs(lAlong), 1e-3)); // the sun's rise per metre along the ripple axis
-  const height = sand.rippleHeight.mul(s.rippleAmp);
-  const toSun = lAlong.greaterThan(0);
-  // lit (0..1) at phase `f` (0..1 in the cycle) with an edge `pen` wide
-  const litAt = (f: F, pen: F): F => {
-    const [h] = rippleProfile(f, RIPPLE_STOSS);
-    const toCrest = select(toSun, fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
-    const gap = height.mul(float(1).sub(h));
-    // (+ pen: on the crest itself toCrest and gap are both 0; without it the crest drew a thin half-shadowed line)
-    return smoothstep(pen.negate(), pen, toCrest.mul(tanE).sub(gap).add(pen));
-  };
-  const crisp = sand.rippleHeight.mul(0.12);
-  // the edge widens with the pixel's footprint (in height along the sun ray), so far shadows soften instead of breaking into dashes
-  const foot = fwidth(s.ripplePhase).mul(RIPPLE_LENGTH);
-  const sharp = litAt(fract(s.ripplePhase), max(crisp, foot.mul(tanE.add(height.mul(6 / RIPPLE_LENGTH))).mul(0.5)));
-  // Unresolved, the same test averaged over the cycle (eight phases), so the far look is exactly what the near one averages to: an
-  // estimate here darkened far ripple fields into blotches that faded as you walked up to them.
-  const mean = rippleAverage(f => litAt(f, crisp));
-  return float(1).sub(s.rippleField.mul(float(1).sub(mix(mean, sharp, s.rippleRes))));
+  return Fn(() => {
+    const lAlong = dot(l.xz, s.rippleDir).toVar();
+    const up = max(dot(l, s.n0), 1e-3);
+    const tanE = up.div(max(abs(lAlong), 1e-3)).toVar(); // the sun's rise per metre along the ripple axis
+    const height = sand.rippleHeight.mul(s.rippleAmp).toVar();
+    const toSun = lAlong.greaterThan(0).toVar();
+    // lit (0..1) at phase `f` (0..1 in the cycle) with an edge `pen` wide
+    const litAt = (f: F, pen: F): F => {
+      const [h] = rippleProfile(f, RIPPLE_STOSS);
+      const toCrest = select(toSun, fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
+      const gap = height.mul(float(1).sub(h));
+      // (+ pen: on the crest itself toCrest and gap are both 0; without it the crest drew a thin half-shadowed line)
+      return smoothstep(pen.negate(), pen, toCrest.mul(tanE).sub(gap).add(pen));
+    };
+    const crisp = sand.rippleHeight.mul(0.12).toVar();
+    // Derivatives and the resolved result are evaluated before any quality branch.
+    const foot = fwidth(s.ripplePhase).mul(RIPPLE_LENGTH);
+    const sharp = litAt(fract(s.ripplePhase), max(crisp, foot.mul(tanE.add(height.mul(6 / RIPPLE_LENGTH))).mul(0.5))).toVar();
+    // Unresolved, the same test averaged over the cycle, so the far look is what the near one averages to.
+    const mean = rippleAverage(f => litAt(f, crisp));
+    return float(1).sub(s.rippleField.mul(float(1).sub(mix(mean, sharp, s.rippleRes))));
+  })();
 }
 
 /** Fade for a periodic pattern whose phase (in cycles) is `s`: 1 when well resolved, 0 near Nyquist. Where it starts and ends (cycles
