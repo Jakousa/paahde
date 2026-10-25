@@ -1,45 +1,35 @@
 name: Desktop app
 
-# The desktop app (docs/desktop.md) for macOS, Windows and Linux, released on GitHub on every push to main that touches
-# the game. The version is the last desktop-v* tag with the patch bumped ([minor] or [major] in a commit message bumps
-# that instead; a manual run picks). Only desktop-v* tags: they deploy nothing, and a prod release job must never take
-# them (CLAUDE.md). Installed apps keep their game files at the dev server's build by themselves (desktop/update.mjs),
-# so a new download is only needed when desktop/ changes.
+# The desktop app (docs/desktop.md) for macOS, Windows and Linux, released on GitHub when a push to main has [minor] or
+# [major] in a commit message, or by a manual run; other pushes build nothing. The version is the last desktop-v* tag
+# with that part bumped. Only desktop-v* tags: they deploy nothing, and a prod release job must never take them
+# (CLAUDE.md). Installed apps keep their game files at the dev server's build by themselves (desktop/update.mjs), so a
+# new release is only needed when desktop/ changes.
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'shared/**'
-      - 'public/**'
-      - 'desktop/**'
-      - 'index.html'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'vite.config.ts'
-      - 'tools/manifest.ts'
-      - '.github/workflows/desktop.yml'
   workflow_dispatch:
     inputs:
       bump:
         description: Version bump
         type: choice
-        options: [patch, minor, major]
-        default: patch
+        options: [minor, major]
+        default: minor
 
 permissions:
   contents: read
 
-# One run at a time, never cancelled once started: two runs at once would pick the same version. A newer push
-# replaces a run that is still waiting.
-concurrency:
-  group: desktop-${{ github.ref }}
-  cancel-in-progress: false
+# No concurrency group: every push starts this workflow (most skip at once), and a group would let a skipped run
+# replace a waiting release. Two releases at once would pick the same version; the second then fails on the tag.
 
 jobs:
   # The next version, and the web build once, with the commit's BUILD_SHA like the dev server's image, so the app
   # starts on the same build.
   web:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(join(github.event.commits.*.message, ' '), '[minor]') ||
+      contains(join(github.event.commits.*.message, ' '), '[major]')
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -57,13 +47,9 @@ jobs:
             version=$(node -p "require('./desktop/package.json').version")
           else
             IFS=. read -r major minor patch <<< "${last#desktop-v}"
-            bump=${BUMP:-patch}
-            case "$MESSAGES" in *'[major]'*) bump=major ;; *'[minor]'*) if [ "$bump" = patch ]; then bump=minor; fi ;; esac
-            case "$bump" in
-              major) version="$((major + 1)).0.0" ;;
-              minor) version="$major.$((minor + 1)).0" ;;
-              *) version="$major.$minor.$((patch + 1))" ;;
-            esac
+            bump=${BUMP:-minor}
+            case "$MESSAGES" in *'[major]'*) bump=major ;; esac
+            if [ "$bump" = major ]; then version="$((major + 1)).0.0"; else version="$major.$((minor + 1)).0"; fi
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Desktop app $version (after ${last:-no release yet})" >> "$GITHUB_STEP_SUMMARY"

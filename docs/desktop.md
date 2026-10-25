@@ -6,15 +6,15 @@ Steam login); see "Towards Steam" below.
 
 ## Getting it
 
-Every push to `main` that touches the game makes a GitHub release (`.github/workflows/desktop.yml`) with the app for
-macOS (Apple silicon and Intel), Windows and Linux. The newest is always at
+A push to `main` with `[minor]` or `[major]` in a commit message makes a GitHub release
+(`.github/workflows/desktop.yml`) with the app for macOS (Apple silicon and Intel), Windows and Linux; so does a manual
+run (Actions → Desktop app → Run workflow). Other pushes build nothing: the app updates its game files by itself
+(below), so a release is only needed when `desktop/` changes. Put `[minor]` in such a commit. The newest is always at
 `https://github.com/woltsu/paahde/releases/latest/download/<file>`: `Paahde-mac-arm64.zip`, `Paahde-mac-x64.zip`,
-`Paahde-win-x64.zip`, `Paahde-linux-x64.tar.gz`. The app updates its game files by itself (below), so a new download
-is only needed when `desktop/` changes.
+`Paahde-win-x64.zip`, `Paahde-linux-x64.tar.gz`.
 
-Versions: the last `desktop-v*` tag with the patch bumped; `[minor]` or `[major]` in a commit message of the push bumps
-that instead, and a manual run of the workflow (Actions → Desktop app → Run workflow) picks one. The version lives
-only in the tag (CI doesn't commit). The tags are `desktop-v*` only: they deploy nothing (CLAUDE.md).
+Versions: the last `desktop-v*` tag with the minor (or major) part bumped. The version lives only in the tag (CI
+doesn't commit). The tags are `desktop-v*` only: they deploy nothing (CLAUDE.md).
 
 The builds aren't signed. On macOS, after unzipping: `xattr -cr Paahde.app` (or right-click → Open, then allow it in
 System Settings → Privacy & Security). Windows SmartScreen: More info → Run anyway.
