@@ -7,6 +7,8 @@
 // dies and it drops, tumbling and spinning down on a smoke trail, crashes in a burst of sparks and dust (onCrash) and
 // smokes on the sand until the server clears it. The rifle tests shots against it here (raycast). Jammed
 // (shared/jammer.ts) it goes dark and sinks level, rotors winding down, and settles on the sand whole.
+import { knockSpeed, type Pusher } from '../../shared/knockback.ts';
+import { Shoves } from './shoves';
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { abs, dot, float, length, normalView, positionViewDirection, pow, smoothstep, uniform, uv, vec3 } from 'three/tsl';
@@ -106,6 +108,8 @@ const _x = new THREE.Vector3(), _y = new THREE.Vector3(), _z = new THREE.Vector3
 
 export class Drones {
   private views = new Map<number, View>();
+  /** Our own hits' knockback, shown before the server's frames do (src/world/shoves.ts). */
+  private shoves = new Shoves();
   private scene: THREE.Scene;
 
   constructor(scene: THREE.Scene) {
@@ -171,6 +175,7 @@ export class Drones {
     for (const f of frames) {
       if (Math.hypot(f.x - focus.x, f.z - focus.z) > SHOW_R) continue;
       seen.add(f.id);
+      this.shoves.apply(f);
       let v = this.views.get(f.id);
       if (v && !v.model && model) {
         this.drop(v);
@@ -310,6 +315,11 @@ export class Drones {
       best = { drone: id, dist: t, point: o.clone().addScaledVector(d, t) };
     }
     return best;
+  }
+
+  /** Drone `id` hit by us with `push` along unit (dx, dy, dz): knocked at once (the server's knock follows). */
+  knock(id: number, push: Pusher, dx: number, dy: number, dz: number) {
+    this.shoves.add(id, knockSpeed(push, 'drone'), dx, dy, dz);
   }
 
   /** A shot-down drone hit the sand at (x, y, z) (src/guardians.ts: the bang). */

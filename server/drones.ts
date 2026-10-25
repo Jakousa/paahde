@@ -6,6 +6,7 @@
 // when everyone has left. The scrap fields (level 0) near the start have none. A few more drones roam the open desert
 // day and night (ROAMERS), drifting in near someone now and then on long legs, and flying off again after a few
 // minutes.
+import { KNOCK_MIN, knockDecay, knockSpeed, type Pusher } from '../shared/knockback.ts';
 import { ORIGIN } from '../shared/origin.ts';
 import { crashSite } from '../shared/crashsites.ts';
 import {
@@ -64,6 +65,8 @@ type Drone = {
   /** Rifle hits taken; shot down when (-1 flying), falling with velocity (vx, vy, vz), on the sand (crashed).
    *  Jammed (shared/jammer.ts): brought down gently instead, settling on the sand whole. */
   hurt: number; downAt: number; vx: number; vy: number; vz: number; crashed: boolean; jammed: boolean;
+  /** Knocked by a hit (shared/knockback.ts): drifting at (kx, ky, kz) m/s on top of its flying, dying away. */
+  kx: number; ky: number; kz: number;
   /** Fleeing a storm front: climbing straight for the sky (leaving too), gone once FLEE_TOP up. */
   fled: boolean;
   /** Caught in a sand vortex's core (shared/vortex.ts): shot up out of it and torn apart, nothing left to fall. */
@@ -192,6 +195,17 @@ export class DroneServer {
       const ground = Math.max(here, heightAt(d.x + fx * 15, d.z + fz * 15), heightAt(d.x + fx * 40, d.z + fz * 40) - 10);
       if (d.fled) d.y += FLEE_CLIMB * dt;
       else d.y += (ground + alt - d.y) * (1 - Math.exp(-dt * (d.leaving ? 0.3 : 1.2)));
+      if (d.kx || d.ky || d.kz) {
+        // Knocked: thrown off its line, the knock dying away.
+        d.x += d.kx * dt;
+        d.y += d.ky * dt;
+        d.z += d.kz * dt;
+        const k = knockDecay(dt);
+        d.kx *= k;
+        d.ky *= k;
+        d.kz *= k;
+        if (Math.hypot(d.kx, d.ky, d.kz) < KNOCK_MIN) d.kx = d.ky = d.kz = 0;
+      }
       if (d.y < here + 4) d.y = here + 4; // never through the ground
       // Aim the beam: turning after the prey no faster than TRACK_RATE (SEEK_RATE onto someone noticed), or sweeping ahead.
       if (target) {
@@ -331,13 +345,13 @@ export class DroneServer {
    * Player `by` shot from (x, y, z) to (ex, ey, ez) and says it hit drone `id`: plausible (flying, in range, the shot
    * passing and ending near it), it takes the hit; the last one brings it down. Returns whether it counted.
    */
-  shoot(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number, by = -1): boolean {
+  shoot(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number, by = -1, push: Pusher = 'rifle'): boolean {
     const d = this.drones.find((o) => o.id === id);
     if (!d || d.downAt >= 0) return false;
     const dx = ex - x, dz = ez - z, len = Math.hypot(dx, ey - y, dz);
     // The client draws it 250 ms in the past, and it moves up to CHASE_SPEED: slack for that.
     if (len > RANGE + 5 || !shotPasses(x, y, z, ex, ey, ez, d.x, d.y, d.z, DRONE_HIT + 2)) return false;
-    this.hurt(d, dx / len, dz / len, now, by);
+    this.hurt(d, dx / len, dz / len, now, by, push, (ey - y) / len);
     return true;
   }
 
@@ -349,7 +363,7 @@ export class DroneServer {
   /** Something thrown by player `by` struck drone `id` going along (dx, dz) (unit): a hit, as from a rifle. */
   strike(id: number, dx: number, dz: number, now: number, by: number) {
     const d = this.drones.find((o) => o.id === id);
-    if (d && d.downAt < 0) this.hurt(d, dx, dz, now, by);
+    if (d && d.downAt < 0) this.hurt(d, dx, dz, now, by, 'throw');
   }
 
   /** Where flying drone `id` is (the jammer's check), or null. */
@@ -370,8 +384,12 @@ export class DroneServer {
     d.vy = -JAM_SINK;
   }
 
-  /** Drone `d` takes a hit along unit (dx, dz) from player `by`; the last one brings it down. */
-  private hurt(d: Drone, dx: number, dz: number, now: number, by: number) {
+  /** Drone `d` takes a hit along unit (dx, dy, dz) from player `by`, knocked by `push`; the last one brings it down. */
+  private hurt(d: Drone, dx: number, dz: number, now: number, by: number, push: Pusher, dy = 0) {
+    const v = knockSpeed(push, 'drone');
+    d.kx += dx * v;
+    d.ky += dy * v;
+    d.kz += dz * v;
     if (++d.hurt < DRONE_HP) {
       // Hit from anywhere: it comes for where the shooter is now.
       if (by >= 0 && !d.leaving) {
@@ -384,9 +402,10 @@ export class DroneServer {
     d.downAt = now;
     d.lock = -1;
     const sp = d.leaving ? CHASE_SPEED : DRONE_SPEED * 0.8;
-    d.vx = Math.sin(d.yaw) * sp + dx * 3;
-    d.vz = Math.cos(d.yaw) * sp + dz * 3;
-    d.vy = 1.5;
+    d.vx = Math.sin(d.yaw) * sp + dx * 3 + d.kx;
+    d.vz = Math.cos(d.yaw) * sp + dz * 3 + d.kz;
+    d.vy = 1.5 + d.ky;
+    d.kx = d.ky = d.kz = 0;
   }
 
   /** Debug menu: a drone comes for a minute. */
@@ -401,7 +420,7 @@ export class DroneServer {
     const z = hz + Math.cos(a) * from;
     const d: Drone = {
       id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
-      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, torn: false, vx: 0, vy: 0, vz: 0, crashed: false, jammed: false, fled: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until,
+      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, torn: false, vx: 0, vy: 0, vz: 0, crashed: false, jammed: false, fled: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until, kx: 0, ky: 0, kz: 0,
     };
     // First pass: across the site from where it came in.
     d.tx = hx + rand(-30, 30);

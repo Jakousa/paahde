@@ -766,8 +766,8 @@ function onFire(p: Player, m: Extract<ClientMsg, { t: 'fire' }>) {
     return;
   }
   const r = m.j !== undefined ? { hit: jets.shoot(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.j, now), kill: null }
-    : m.d !== undefined ? { hit: guardians.shootDrone(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.d, now, p.id), kill: null }
-    : m.g === undefined ? { hit: false, kill: null } : guardians.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.g, m.i, now);
+    : m.d !== undefined ? { hit: guardians.shootDrone(m.x, m.y, m.z, m.ex, m.ey, m.ez, m.d, now, p.id, kind === PISTOL ? 'pistol' : 'rifle'), kill: null }
+    : m.g === undefined ? { hit: false, kill: null } : guardians.shoot(by, m.x, m.y, m.z, m.ex, m.ey, m.ez, m.g, m.i, now, kind === PISTOL ? 'pistol' : 'rifle');
   const zap: ServerMsg = { t: 'zap', by: p.id, x: m.x, y: m.y, z: m.z, ex: m.ex, ey: m.ey, ez: m.ez, hit: r.hit, ...(kind === PISTOL ? { pistol: true as const } : {}) };
   for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, zap);
   if (r.kill) dropSpoils(r.kill);

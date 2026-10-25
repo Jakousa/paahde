@@ -28,6 +28,7 @@ import { type BotPlayer, type Kill, open, r2, r3, rand, SEND_R, SITE_LEAVE_R, SI
 import { DroneServer } from './drones.ts';
 import { flank, keepOut, skirt, type Skirt } from './pack.ts';
 import { Tracks } from './tracks.ts';
+import { KNOCK_MIN, knockDecay, knockSpeed, STAGGER, type Pusher } from '../shared/knockback.ts';
 
 export { SEND_R, type BotPlayer, type Kill } from './bots.ts';
 
@@ -91,6 +92,8 @@ type Guardian = {
    *  unit (lx, lz) with `left` m to go. */
   skirt: Skirt;
   lunge: number; lungeAt: number; lx: number; lz: number; left: number;
+  /** Knocked back (shared/knockback.ts): sliding at (kx, kz) m/s, dying away. */
+  kx: number; kz: number;
 };
 
 /** A guardian's foot: planted at (x, y, z), or swinging there with `left` s to go of `dur`. */
@@ -150,7 +153,7 @@ export class GuardianServer {
       tx: home.x, tz: home.z, guardUntil: 0, prey: -1, huntAt: 0, px: 0, pz: 0, knownAt: 0, calmUntil: 0, shotUntil: 0, bitAt: 0,
       aiming: false, ax: 0, ay: 0, az: 0, chargeAt: -1, firedAt: 0, missileAt: 0,
       points: weakPoints(kind, legs).length, broken: 0, deadAt: -1, feet: null, lastYaw: 0, still: 0, skirt: { side: 0, until: 0 },
-      lunge: LUNGE_NONE, lungeAt: 0, lx: 0, lz: 0, left: 0,
+      lunge: LUNGE_NONE, lungeAt: 0, lx: 0, lz: 0, left: 0, kx: 0, kz: 0,
     };
     g.lastYaw = g.yaw;
     if (kind === GUARDIAN) this.plantFeet(g);
@@ -278,6 +281,7 @@ export class GuardianServer {
     const lit = this.drones.tick(dt, now, tod, players, exposed, byId, this.storms, (p) => this.alert(p, now), this.vortices);
     this.tickMissiles(dt, now, lit, players, exposed, blasted, events);
     for (const g of this.guardians) {
+      this.knocked(g, dt);
       if (g.deadAt >= 0) continue;
       // Seized up by a storm front's static: stands where it is, no bites, no cannon, till it has passed.
       const stuck = seized(this.storms, g.x, g.z, now);
@@ -693,7 +697,7 @@ export class GuardianServer {
    * and the walker (crawlers: the whole pack) comes for the shooter; a body hit does no harm but angers it the same.
    * Returns whether it broke a point, and the kill if that was the last one.
    */
-  shoot(by: BotPlayer, x: number, y: number, z: number, ex: number, ey: number, ez: number, gid: unknown, i: unknown, now: number): { hit: boolean; kill: Kill | null } {
+  shoot(by: BotPlayer, x: number, y: number, z: number, ex: number, ey: number, ez: number, gid: unknown, i: unknown, now: number, push: Pusher): { hit: boolean; kill: Kill | null } {
     const miss = { hit: false, kill: null };
     const g = this.target(gid, i);
     if (!g) return miss;
@@ -701,18 +705,45 @@ export class GuardianServer {
     // Passing and ending near the body's centre.
     if (Math.hypot(ex - x, ey - y, ez - z) > RANGE + 5
       || !shotPasses(x, y, z, ex, ey, ez, g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, SHOT_SLACK * sc + 2)) return miss;
+    // Knocked along the beam.
+    this.knock(g, ex - x, ez - z, push, now);
     return this.strike(g, by, i as number, now);
   }
 
   /**
    * A blow of the scrap mace (shared/mace.ts) by player `by` on walker `gid`, breaking weak point `i` (-1: its body;
    * a guardian's points are out of reach). Plausible (alive, the point whole, the walker within `reach` m of the
-   * swinger): as a shot.
+   * swinger): as a shot, and knocked away from the swinger hard.
    */
   smash(by: BotPlayer, gid: unknown, i: unknown, reach: number, now: number): { hit: boolean; kill: Kill | null } {
     const g = this.target(gid, i);
     if (!g || (g.kind === GUARDIAN && i !== -1) || Math.hypot(g.x - by.x, g.z - by.z) > reach + KINDS[g.kind].scale * 3.6) return { hit: false, kill: null };
+    this.knock(g, g.x - by.x, g.z - by.z, 'mace', now);
     return this.strike(g, by, i as number, now);
+  }
+
+  /** Walker `g` hit along (dx, dz) by `push` (shared/knockback.ts): knocked back by its weight; a crawler knocked hard
+   *  enough is staggered out of its lunge (it stands a moment, as after a miss). */
+  private knock(g: Guardian, dx: number, dz: number, push: Pusher, now: number) {
+    const v = knockSpeed(push, g.kind === CRAWLER ? 'crawler' : 'guardian'), d = Math.hypot(dx, dz);
+    if (!v || d < 1e-6) return;
+    g.kx += (dx / d) * v;
+    g.kz += (dz / d) * v;
+    if (g.kind === CRAWLER && v >= STAGGER && g.lunge !== LUNGE_NONE) {
+      g.lunge = LUNGE_REST;
+      g.lungeAt = now;
+      g.speed = 0;
+    }
+  }
+
+  /** A knocked walker (dead ones too: the wreck slides) slides on, the knock dying away. */
+  private knocked(g: Guardian, dt: number) {
+    if (g.kx === 0 && g.kz === 0) return;
+    this.moveTo(g, g.x + g.kx * dt, g.z + g.kz * dt, true);
+    const k = knockDecay(dt);
+    g.kx *= k;
+    g.kz *= k;
+    if (Math.hypot(g.kx, g.kz) < KNOCK_MIN) g.kx = g.kz = 0;
   }
 
   /** Walker `gid` alive, with weak point `i` whole (-1: its body), or null. */
@@ -781,8 +812,8 @@ export class GuardianServer {
   }
 
   // The drones, for server/world.ts.
-  shootDrone(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number, by = -1): boolean {
-    return this.drones.shoot(x, y, z, ex, ey, ez, id, now, by);
+  shootDrone(x: number, y: number, z: number, ex: number, ey: number, ez: number, id: unknown, now: number, by: number, push: Pusher): boolean {
+    return this.drones.shoot(x, y, z, ex, ey, ez, id, now, by, push);
   }
   droneAt(id: number) {
     return this.drones.at(id);

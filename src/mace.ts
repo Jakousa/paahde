@@ -87,6 +87,8 @@ export class Mace {
     if (hit) {
       const i = hit.index >= 0 ? hit.index : this.guardians.smashPoint(hit.walker, hit.point);
       if (i >= 0) this.guardians.breakLocal(hit.walker, i);
+      // Knocked away from us, hard (shared/knockback.ts; the server's knock follows).
+      this.guardians.knock(hit.walker, 'mace', hit.point.x - this.net.me.x, hit.point.z - this.net.me.z);
       _e.copy(hit.point);
       rifleSound.clank(_e, ear);
       zaps.burst(_e.x, _e.y, _e.z, hit.normal.x, hit.normal.y, hit.normal.z, 12);

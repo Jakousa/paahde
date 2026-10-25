@@ -367,9 +367,11 @@ export class Rifle {
     } else if (drone || jet) {
       zaps.burst(_e.x, _e.y, _e.z, -_d.x, -_d.y, -_d.z, jet ? 24 : 16, jet ? 1.6 : 1);
       rifleSound.impact('metal', _e, _o);
+      if (drone) this.drones.knock(drone.drone, this.gun, _d.x, _d.y, _d.z); // knocked along the beam (shared/knockback.ts)
     } else if (hit) {
       zaps.burst(_e.x, _e.y, _e.z, hit.normal.x, hit.normal.y, hit.normal.z, hit.index >= 0 ? 6 : 16);
       if (hit.index >= 0) this.guardians.breakLocal(hit.walker, hit.index);
+      this.guardians.knock(hit.walker, this.gun, _d.x, _d.z);
       rifleSound.impact(hit.index >= 0 ? 'glass' : 'metal', _e, _o);
     } else if (ground && shelterSolid(_e.x, _e.y, _e.z) === true) {
       // A shelter's concrete.

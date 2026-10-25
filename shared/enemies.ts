@@ -49,6 +49,8 @@ export type Enemy = {
   drops: (rand: Rand, ctx?: KillCtx) => Drop[];
   /** It comes down this far away (m; a jet) instead of at your feet. */
   falls?: [number, number];
+  /** How heavy it is (kg): how far a hit knocks it (shared/knockback.ts). */
+  mass: number;
 };
 
 export type EnemyKind = 'crawler' | 'guardian' | 'drone' | 'jet' | 'harvester' | BossKind;
@@ -62,6 +64,7 @@ const boss = (kind: BossKind): Enemy => ({
   meet: [{ at: 'call' }],
   fight: { seconds: odds(120, 900, 900), win: odds(0, 0.2, 0.75), death: odds(0.9, 0.7, 0.6), quality: 0.25 },
   drops: (rand) => bossDrops(kind, rand),
+  mass: 1e6,
 });
 
 /** A site's crawlers killed are back this long (s) after everyone has left it (server/guardians.ts swarm). */
@@ -75,6 +78,7 @@ export const ENEMIES: Record<EnemyKind, Enemy> = {
     meet: [{ at: 'site', levels: [0.5, 1, 2], odds: 1, backS: PACK_BACK_S }],
     fight: { seconds: odds(40, 60, 40, 50), win: odds(0, 0.85, 0.97, 0.6), death: odds(0.2, 0.08, 0.03, 0.15), quality: 0.2 },
     drops: (rand) => killDrops('crawler', rand),
+    mass: 100,
   },
   // The giant guardians: GUARDIANS (6) roam guardian ground's sites (server/guardians.ts), crossing your path out there now and then.
   guardian: {
@@ -82,6 +86,7 @@ export const ENEMIES: Record<EnemyKind, Enemy> = {
     meet: [{ at: 'site', levels: [2], spread: 6 }, { at: 'roam', where: 'guardianGround', perMin: 0.04, hunt: true }],
     fight: { seconds: odds(50, 150, 100), win: odds(0, 0.45, 0.85), death: odds(0.35, 0.2, 0.08), quality: 0.2 },
     drops: (rand) => killDrops('guardian', rand),
+    mass: 40_000,
   },
   // Searchlight drones: two keep each crawler- and guardian-ground site by night (DRONES_PER_SITE), and a few roam the open
   // desert day and night, drifting in on whoever is out (ROAMERS, ROAM_EVERY_S).
@@ -90,6 +95,7 @@ export const ENEMIES: Record<EnemyKind, Enemy> = {
     meet: [{ at: 'site', levels: [0.5, 1, 2], odds: 1, night: true }, { at: 'roam', where: 'open', perMin: 0.08 }],
     fight: { seconds: odds(30, 45, 30), win: odds(0, 0.75, 0.93), death: odds(0.15, 0.06, 0.03), jammer: 0.95, quality: 0.2 },
     drops: (rand) => killDrops('drone', rand),
+    mass: 40,
   },
   // Jets fly over every 4–10 min (server/jets.ts GAP_MIN_MS..GAP_MAX_MS); bring one down with the rifle (3 hits) or the
   // jammer and it comes down some way off, its wreck a crash site (shared/jetcrash.ts). They don't shoot back.
@@ -99,6 +105,7 @@ export const ENEMIES: Record<EnemyKind, Enemy> = {
     fight: { seconds: odds(0, 0, 20), win: odds(0, 0, 0.4), death: odds(0, 0, 0), jammer: 0.7, quality: 0.2 },
     drops: (rand, ctx) => jetDrops(ctx?.jet ?? 'drone', !!ctx?.soft, rand),
     falls: [150, 700],
+    mass: 4000,
   },
   // The harvester rises out of a mud flat near whoever is out by one, every 4–10 min (server/harvesters.ts GAP_MIN_MS..GAP_MAX_MS),
   // and runs them over; three cores in its maw to shoot out.
@@ -107,6 +114,7 @@ export const ENEMIES: Record<EnemyKind, Enemy> = {
     meet: [{ at: 'roam', where: 'mudflat', perMin: 1 / 7, hunt: true }],
     fight: { seconds: odds(40, 240, 150), win: odds(0, 0.3, 0.85), death: odds(0.25, 0.15, 0.06), quality: 0.2 },
     drops: (rand) => harvesterDrops(rand),
+    mass: 2e6,
   },
   worm: boss('worm'),
   carrier: boss('carrier'),

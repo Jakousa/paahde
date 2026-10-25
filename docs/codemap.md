@@ -298,6 +298,9 @@ Everything built is shared, and anyone can take a building down.
   `src/models/jammer.ts`
 - `shared/throw.ts` — thrown scrap (any scrap item in hand, use button): flown and struck against drones in
   `server/throws.ts`, lands as loot; drawn and thrown in `src/throw.ts`
+- `shared/knockback.ts` — knockback: every weapon's push (`PUSH`), what it does to each enemy by its `mass`
+  (shared/enemies.ts); applied by the server to walkers and drones (server/guardians.ts `knock`, server/drones.ts `hurt`),
+  our own hits shown at once by `src/world/shoves.ts`
 - `shared/mace.ts` — the scrap mace (a two-handed club made by hand from scrap): a wide stroke, two blows break a
   crawler's flank lenses; swung and tested against the walkers as drawn in `src/mace.ts`, held and swung in the hands'
   MaceIdle / MaceSwing clips on `MaceMount` (tools/models/hands.py) and by the avatar (`MACE`, `MACE_STROKE` in

@@ -30,6 +30,8 @@
 //
 // Models: public/models/guardian.glb (tools/blender/guardians.py), one separate node per part with its origin
 // at its joint; boxes stand in until it has loaded.
+import { knockSpeed, type Pusher } from '../../shared/knockback.ts';
+import { Shoves } from './shoves';
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -826,6 +828,8 @@ class Walker {
 
 export class Guardians {
   private walkers = new Map<number, Walker>();
+  /** Our own hits' knockback, shown before the server's frames do (src/world/shoves.ts). */
+  private shoves = new Shoves();
   /** Every foot that lands (src/guardianSound.ts, dust, shake). */
   onFootfall: (f: Footfall) => void = () => {};
   /** Weak points shattering, legs giving out, wrecks hitting the sand (src/guardians.ts: sound, dust). */
@@ -843,6 +847,7 @@ export class Guardians {
     for (const f of frames) {
       if (Math.hypot(f.x - focus.x, f.z - focus.z) > SHOW_R[f.kind]) continue;
       seen.add(f.id);
+      this.shoves.apply(f);
       let w = this.walkers.get(f.id);
       if (!w) {
         if (!parts && !loading) void load();
@@ -891,6 +896,12 @@ export class Guardians {
   smashPoint(id: number, at: THREE.Vector3): number {
     const w = this.walkers.get(id);
     return !w || w.kind !== CRAWLER ? -1 : w.nearestWhole(at);
+  }
+
+  /** Walker `id` hit by us with `push` along (dx, dz): knocked at once by its weight (the server's knock follows). */
+  knock(id: number, push: Pusher, dx: number, dz: number) {
+    const w = this.walkers.get(id), d = Math.hypot(dx, dz);
+    if (w && d > 1e-6) this.shoves.add(id, knockSpeed(push, w.kind === CRAWLER ? 'crawler' : 'guardian'), dx / d, 0, dz / d);
   }
 
   /** Weak point `i` of walker `id` shot by us: shatter it now. */
