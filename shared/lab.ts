@@ -25,7 +25,7 @@ export const LAB_ROWS: JunkKind[][] = [
   // the machine under review, six seeds of it (which shell halves and modules survive differs), then the ones not reworked yet
   ['jet_engine', 'jet_engine', 'jet_engine', 'jet_engine', 'jet_engine', 'jet_engine'],
   ['winch', 'solenoid_valve', 'beacon', 'control_cabinet', 'robot_arm'],
-  ['pump_housing', 'vehicle_frame', 'water_jet', 'warp_core', 'ai_control'],
+  ['pump_housing', 'vehicle_frame', 'water_jet', 'warp_core', 'ai_control', 'pod_console', 'pod_powerbox'],
 ];
 const GAP = 16;
 const FIRST_ROW = 50;

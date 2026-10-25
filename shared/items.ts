@@ -44,6 +44,9 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   winch: { label: TEXT.machines.winch, stack: 1, size: [3, 2] },
   solenoid_valve: { label: TEXT.machines.solenoid_valve, stack: 1, size: [3, 2] },
   beacon: { label: TEXT.machines.beacon, stack: 1, size: [2, 2] },
+  // Torn out of the crashed pod (shared/tables.ts POD_LOOT).
+  pod_console: { label: TEXT.machines.pod_console, stack: 1, size: [3, 2] },
+  pod_powerbox: { label: TEXT.machines.pod_powerbox, stack: 1, size: [2, 2] },
   // Parts taken out of machines (shared/parts.ts): `<part>_<tier>`, e.g. battery_space.
   ...Object.fromEntries(Object.entries(partItems()).map(([k, v]) => [k, { ...v, size: PART_SIZES[partOf(k)!.part] }])),
   // Crafted at the workbench (shared/crafting.ts) and put down on a shelter's floor from the hotbar (shared/placed.ts).

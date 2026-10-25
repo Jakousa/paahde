@@ -11,7 +11,7 @@ import { isGear, isVehicle, refit, scrapParts } from '../shared/gear.ts';
 import { ownOf, RETIRED, withData, type ItemData } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { coreCrashSites } from '../shared/crashsites.ts';
-import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, foundData, nearPiles, shelterStash, podFind, podFindSpot, podKitKey, stashSpot, type PodKitKey } from '../shared/lootRoll.ts';
+import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, foundData, nearPiles, shelterStash, podFind, podFindSpot, inPodKit, podKitKey, stashSpot } from '../shared/lootRoll.ts';
 import { CACHES, FINDS, RARE_FINDS, SHELTER_STASHES, POD_LOOT } from '../shared/tables.ts';
 import { PODS } from '../shared/pods.ts';
 import { CORE_HALF } from '../shared/terrain.ts';
@@ -114,6 +114,19 @@ export class LootServer {
       want.set(POD_KIND, PODS.length ? POD_LOOT.n : 0);
       const lying = new Map<string, number[]>();
       for (const [id, k] of this.spawnKey) lying.set(k, [...(lying.get(k) ?? []), id]);
+      // About the pods, what the kit has more of than it should (or no longer has: the wiring, battery and bearing of an
+      // older kit) goes first, so the top-up below lays out what it lacks.
+      const pod = lying.get(POD_KIND);
+      if (pod) {
+        const seen = new Map<string, number>();
+        const surplus = pod.filter((id) => {
+          const key = podKitKey(this.loot.get(id)!.kind);
+          seen.set(key, (seen.get(key) ?? 0) + 1);
+          return !inPodKit(key) || seen.get(key)! > POD_LOOT.kit[key];
+        });
+        for (const id of surplus) this.remove(this.loot.get(id)!);
+        lying.set(POD_KIND, pod.filter((id) => !surplus.includes(id)));
+      }
       lying.set('', [...this.loot.values()].filter((l) => l.src === 'cache').map((l) => l.id));
       want.set('', CACHES.n);
       const keyOf = (p: Spawn) => (p.what === 'cache' ? '' : p.kind ?? '');
@@ -276,7 +289,7 @@ export class LootServer {
     if (kind === STASH_KIND) return this.spawnStash();
     if (kind === POD_KIND) {
       // The kit's shortest entry, counting what lies there now.
-      const lying: Partial<Record<PodKitKey, number>> = {};
+      const lying: Record<string, number> = {};
       for (const [id, k] of this.spawnKey) {
         const l = k === POD_KIND && this.loot.get(id);
         if (l) lying[podKitKey(l.kind)] = (lying[podKitKey(l.kind)] ?? 0) + 1;

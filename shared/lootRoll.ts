@@ -172,24 +172,25 @@ export function stashSpot(shelters: Shelter[], lying: Map<number, number>, rand:
 }
 
 /** Something lying about the crashed pods (POD_LOOT): what its kit is shortest of, given how many of each kit entry lie
- *  there (`lying`; ties and no count: by the kit's shares) — scrap, cloth, wiring, a broken canteen, a scrap-tier battery or
- *  bearing. */
+ *  there (`lying`, by podKitKey; ties and no count: by the kit's shares): scrap, cloth, a broken canteen, the pod's
+ *  console or its power box (carried machines, whole). */
 export type PodKitKey = keyof typeof POD_LOOT.kit;
-export const podFind = (rand: Rand, lying?: Partial<Record<PodKitKey, number>>): Drop => {
+const POD_KEYS = Object.keys(POD_LOOT.kit) as PodKitKey[];
+export const podFind = (rand: Rand, lying?: Partial<Record<string, number>>): Drop => {
   let what: PodKitKey;
   if (lying) {
-    const ks = Object.keys(POD_LOOT.kit) as PodKitKey[];
     const short = (k: PodKitKey) => POD_LOOT.kit[k] - (lying[k] ?? 0);
-    const most = Math.max(...ks.map(short));
-    what = pickOdds(Object.fromEntries(ks.filter((k) => short(k) === most).map((k) => [k, POD_LOOT.kit[k]])) as Record<PodKitKey, number>, rand);
+    const most = Math.max(...POD_KEYS.map(short));
+    what = pickOdds(Object.fromEntries(POD_KEYS.filter((k) => short(k) === most).map((k) => [k, POD_LOOT.kit[k]])) as Record<PodKitKey, number>, rand);
   } else what = pickOdds(POD_LOOT.contents, rand);
   if (what === 'canteen') return broken('canteen', rand);
-  if (what === 'battery' || what === 'bearing') return { kind: partKind(what, 'scrap') };
-  return { kind: what === 'cloth' ? CLOTH : what === 'wiring' ? WIRING : SCRAP };
+  return { kind: what === 'cloth' ? CLOTH : what === 'scrap' ? SCRAP : what };
 };
-/** The POD_LOOT kit entry an item lying about the pods counts as. */
-export const podKitKey = (kind: string): PodKitKey =>
-  kind === CLOTH ? 'cloth' : kind === WIRING ? 'wiring' : kind === SCRAP ? 'scrap' : kind === 'canteen' ? 'canteen' : partOf(kind)?.part === 'battery' ? 'battery' : 'bearing';
+/** What an item lying about the pods counts as: its POD_LOOT kit entry, or its own kind (left from an older kit: wiring,
+ *  a battery or bearing; not the kit's, so it's surplus, server/loot.ts). */
+export const podKitKey = (kind: string): string => (partOf(kind) ? partOf(kind)!.part : kind);
+/** Is `key` (podKitKey) an entry of the pods' kit? */
+export const inPodKit = (key: string): key is PodKitKey => key in POD_LOOT.kit;
 export const podFindSpot = (rand: Rand) => podLootSpot(rand);
 
 /** A find of FINDS kind `kind` (a broken piece of gear), or a loose rare part. */

@@ -284,7 +284,9 @@ export async function loadPart(part: PartId, tier: Tier): Promise<THREE.Object3D
 
 // ---- kit ---------------------------------------------------------------------------------------------------
 
-type MatKey = 'body' | 'trim' | 'accent' | 'glow' | 'dark' | 'red' | 'blue' | 'yellow' | 'copper' | 'pcb' | 'chip' | 'brown' | 'black' | 'green';
+type MatKey = 'body' | 'trim' | 'accent' | 'glow' | 'dark' | 'red' | 'blue' | 'yellow' | 'copper' | 'pcb' | 'chip' | 'brown' | 'black' | 'green'
+  // The crashed pod's own paint (tools/blender/pod.py), whatever the parts inside: what's torn out of it.
+  | 'hull' | 'hullGrey' | 'orange';
 export type V = [number, number, number];
 const PALETTE = [
   { body: 0x7a5238, trim: 0x3b2616, accent: 0xa04a20, glow: 0x000000, metal: 0.55, rough: 0.9 }, // rusted
@@ -461,6 +463,9 @@ function kitMaterials(grade: number): Record<MatKey, THREE.MeshStandardNodeMater
     brown: mat(0x6b3f1e, 0, 0.6),
     black: mat(0x0c0c0e, 0, 0.5),
     green: mat(0x7da228, 0, 0.6),
+    hull: mat(0xe4dfd3, 0.15, 0.6),
+    hullGrey: mat(0xaeaba3, 0.3, 0.6),
+    orange: mat(0xd2622a, 0.1, 0.55),
   });
 }
 
@@ -1422,6 +1427,105 @@ function beacon(k: Kit) {
   k.lamps(g >= 2 ? 3 : 2, -0.4, 0.5, 0.42, 0.12);
 }
 
+// ---- torn out of the crashed pod (shared/tables.ts POD_LOOT) ------------------------------------------------------
+// In the pod's paint (off-white panels, grey, an orange band, red trim), laid out like their Blender models
+// (tools/blender/finds.py: what lies on the sand and the icons), so what you carried in is what lies on the bench.
+
+/** The pod's instrument console, torn off its frame: a sloped desk unit, low at the front (+z), tall at the back, an
+ *  off-white faceplate (screen, gauges, a row of toggles, the orange band) screwed on at its corners, a bent bracket at
+ *  each end. Under the faceplate, the wiring loom: up to two coils at the back, each on its harness and a connector
+ *  latch. The loom spills out of the torn +x end, cut. */
+function podConsole(k: Kit) {
+  const W = 1.8, D = 1.1, HF = 0.3, HB = 0.8;
+  const A = Math.atan2(HB - HF, D), ca = Math.cos(A), sa = Math.sin(A);
+  const CY = (HF + HB) / 2 + 0.03, L = D / ca;
+  /** A point on the faceplate: x across, v up the slope (from its middle), w out of it. */
+  const face = (x: number, v: number, w: number): V => [x, CY + v * sa + w * ca, w * sa - v * ca];
+  const NRM: V = [0, ca, sa];
+  k.box(W, 0.06, D, 0, 0, 0, 'hullGrey');
+  k.box(W, HF - 0.06, 0.06, 0, 0.06, D / 2 - 0.03, 'hullGrey');
+  k.box(W, HB - 0.06, 0.06, 0, 0.06, -D / 2 + 0.03, 'hullGrey');
+  // the sides: wedges, low at the front (+z), tall at the back
+  const side = new THREE.Shape([new THREE.Vector2(-D / 2, 0.06), new THREE.Vector2(D / 2, 0.06), new THREE.Vector2(D / 2, HF), new THREE.Vector2(-D / 2, HB)]);
+  for (const s of [-1, 1]) {
+    k.mesh(new THREE.ExtrudeGeometry(side, { depth: 0.06, bevelEnabled: false }).rotateY(-Math.PI / 2), 'hullGrey', s * (W / 2 - 0.03) + 0.03, 0, 0);
+    // bent brackets where it was wrenched off
+    const b = k.box(0.08, 0.04, 0.36, s * 1.0, 0.33, 0.33, 'trim');
+    b.rotation.set(0.3 * s, 0.25 * s, 0.6 * s);
+  }
+  // the loom inside, along the back wall, and spilling out of the torn +x end, cut
+  k.cable([[-0.8, 0.12, -0.42], [-0.3, 0.1, -0.45], [0.3, 0.12, -0.42], [0.92, 0.33, -0.17]], 0.035, 'black');
+  k.cable([[-0.8, 0.18, -0.38], [-0.2, 0.17, -0.4], [0.4, 0.19, -0.36], [0.92, 0.36, -0.14]], 0.025, 'yellow');
+  for (const [pts, r, key] of [
+    [[[0.92, 0.37, -0.2], [1.1, 0.2, -0.1], [1.23, 0.03, 0.2], [1.17, 0.03, 0.5]], 0.03, 'red'],
+    [[[0.92, 0.33, -0.13], [1.17, 0.13, -0.23], [1.43, 0.03, -0.17], [1.63, 0.03, 0.03]], 0.03, 'yellow'],
+    [[[0.92, 0.3, -0.17], [1.03, 0.1, -0.37], [1.2, 0.04, -0.63], [1.1, 0.04, -0.87]], 0.037, 'black'],
+  ] as [V[], number, 'red' | 'yellow' | 'black'][]) {
+    k.cable(pts, r, key);
+    const e = pts[pts.length - 1];
+    k.cyl(r * 0.7, 0.05, e[0], e[1] - 0.025, e[2], 'copper');
+  }
+
+  // the faceplate, sloping down to the front
+  const plate = k.group([0, CY, 0], [A, 0, 0]);
+  const on = (w: number, d: number, x: number, v: number, key: Parameters<Kit['mesh']>[1], h = 0.02) =>
+    k.mesh(new THREE.BoxGeometry(w, h, d), key, x, 0.03 + h / 2, -v, plate);
+  on(W + 0.05, L + 0.05, 0, 0, 'hull', 0.06).position.y = 0;
+  on(W + 0.05, 0.15, 0, L / 2 - 0.1, 'orange');
+  on(W + 0.05, 0.05, 0, -L / 2 + 0.03, 'red');
+  on(0.72, 0.46, -0.4, 0.03, 'dark'); // screen
+  on(0.06, 0.5, -0.42, 0.06, 'black', 0.03).rotation.y = 0.7; // its crack
+  for (const x of [0.28, 0.6]) {
+    on(0.24, 0.24, x, 0.17, 'dark', 0.03);
+    k.mesh(new THREE.TorusGeometry(0.12, 0.015, 6, 20).rotateX(Math.PI / 2), 'trim', x, 0.06, -0.17, plate);
+  }
+  for (let i = 0; i < 5; i++) {
+    const x = 0.15 + i * 0.14;
+    on(0.08, 0.12, x, -0.22, 'dark', 0.03);
+    on(0.025, 0.025, x, -0.22 + (i % 2 ? 0.02 : -0.02), 'trim', 0.08);
+  }
+  const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+  const faceScrews = corners.map(([sx, sv]) => k.screw(S.faceplateScrew, face(sx * 0.83, sv * (L / 2 - 0.06), 0.06), NRM));
+  k.cover(plate, faceScrews, [0.2, 1, 0.4], 0.04);
+
+  // the coils of the loom at the back, each on its harness to the back wall and a connector latch
+  for (const [x, key] of [[-0.42, 'red'], [0.42, 'blue']] as [number, 'red' | 'blue'][]) {
+    k.mount('coil', [[x, 0.06, -0.26], [0, 0, 0]], () => {
+      const lead = k.wire(S.harness, [[x + 0.2, 0.3, -0.2], [x + 0.32, 0.36, -0.36], [x + 0.28, 0.5, -0.48]], key, faceScrews, 0.03);
+      return [lead, k.clip(S.connectorLatch, [x - 0.3, 0.5, -0.49], [0, 0, 1], 1, faceScrews)];
+    });
+  }
+}
+
+/** The pod's power box, torn out by its cables: grey walls with the orange band, an off-white lid screwed down at its
+ *  corners. Inside, the emergency battery under a strap and the distribution coil on its bolt, joined by a lead. Cable
+ *  glands on one side, the cables cut short. */
+function podPowerbox(k: Kit) {
+  const H = 0.6;
+  k.box(1.1, 0.06, 0.8, 0, 0, 0, 'trim');
+  for (const z of [-0.37, 0.37]) k.box(1.1, H, 0.06, 0, 0.06, z, 'hullGrey');
+  for (const x of [-0.52, 0.52]) k.box(0.06, H, 0.68, x, 0.06, 0, 'hullGrey');
+  for (const z of [-0.405, 0.405]) k.box(1.12, 0.12, 0.01, 0, 0.3, z, 'orange');
+  for (const x of [-0.555, 0.555]) k.box(0.01, 0.12, 0.8, x, 0.3, 0, 'orange');
+  // cable glands on +x, the cables cut
+  for (const z of [-0.18, 0.18]) {
+    k.cyl(0.07, 0.08, 0.58, 0.38, z, 'dark', 'x', 12);
+    k.cable([[0.6, 0.38, z], [0.8, 0.3, z * 1.3], [0.95, 0.04, z * 1.8], [1.2, 0.03, z * 2.2]], 0.035, z < 0 ? 'black' : 'red');
+    k.cyl(0.04, 0.05, 1.2, 0.0, z * 2.2, 'copper');
+  }
+  // the lid
+  const lid = k.group([0, H + 0.09, 0]);
+  k.mesh(new THREE.BoxGeometry(1.16, 0.06, 0.86), 'hull', 0, 0, 0, lid);
+  k.mesh(new THREE.BoxGeometry(1.16, 0.03, 0.06), 'red', 0, 0.04, 0.4, lid);
+  k.mesh(new THREE.BoxGeometry(0.3, 0.02, 0.2), 'yellow', 0.3, 0.04, 0, lid); // the warning plate
+  const lidScrews = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => k.screw(S.lidScrew, [sx * 0.48, H + 0.13, sz * 0.33]));
+  k.cover(lid, lidScrews, [0, 1, 0.3], 0.04);
+  // inside: the battery, strapped, a lead over to the coil on its bolt
+  const lead = k.wire(S.coilLead, [[-0.2, 0.58, 0.05], [0.0, 0.62, 0.1], [0.25, 0.42, 0.1]], 'red', lidScrews, 0.03);
+  k.mount('battery', [[-0.22, 0.06, 0], [0, 0, 0]], () => [lead, k.clip(S.batteryStrap, [-0.22, 0.58, -0.12], [0, 1, 0], 1, lidScrews)]);
+  k.mount('coil', [[0.25, 0.06, 0], [0, 0, 0]], () => [lead, k.bolt(S.coilBolt, [0.25, 0.1, 0.27], [0, 1, 0], lidScrews, 2)]);
+}
+
 const BUILDERS: Record<JunkKind, (k: Kit) => void> = {
   pump_housing: pumpHousing,
   jet_engine: jetEngine,
@@ -1430,6 +1534,8 @@ const BUILDERS: Record<JunkKind, (k: Kit) => void> = {
   winch,
   solenoid_valve: solenoidValve,
   beacon,
+  pod_console: podConsole,
+  pod_powerbox: podPowerbox,
   vehicle_frame: vehicleFrame,
   water_jet: waterJet,
   warp_core: warpCore,
@@ -1438,6 +1544,7 @@ const BUILDERS: Record<JunkKind, (k: Kit) => void> = {
 // The wrecks are built at about twice their models' size (tools/blender/salvage), so they come back to it here.
 const SCALE: Record<JunkKind, number> = {
   pump_housing: 0.7, jet_engine: 0.7, robot_arm: 0.8, control_cabinet: 0.85, winch: 0.75, solenoid_valve: 0.75, beacon: 0.8,
+  pod_console: 0.6, pod_powerbox: 0.6,
   vehicle_frame: 0.5, water_jet: 0.8, warp_core: 0.55, ai_control: 0.62,
 };
 export const JUNK_KINDS = Object.keys(BUILDERS) as JunkKind[];

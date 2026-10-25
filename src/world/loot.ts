@@ -120,6 +120,9 @@ const FIND_MODELS: Record<string, { url: string; rot?: [number, number, number] 
     .map((k) => [k, { url: `./models/finds/${k}.glb` }])),
   // Made upright, as worn: lies on its back, the emitter to the sky.
   shield: { url: './models/finds/shield.glb', rot: [-Math.PI / 2, 0, 0] },
+  // Carried machines torn out of the crashed pod (shared/tables.ts POD_LOOT), made lying as they lie.
+  pod_console: { url: './models/finds/pod_console.glb' },
+  pod_powerbox: { url: './models/finds/pod_powerbox.glb' },
 };
 /** The enemies' and bosses' own parts (shared/tables.ts RELIC_DROPS, shared/bosses.ts RELICS): tools/blender/relics.py. */
 const RELIC_KINDS = new Set([...Object.values(RELIC_DROPS).map((r) => r.kind), ...Object.values(RELICS)]);
@@ -288,8 +291,8 @@ export class LootView {
       obj.userData.tier = tierOf(item);
       if (FIND_MODELS[l.kind]) addFind(obj, l.kind);
       if (rims) addRims(obj, rims, hex);
-    } else if (l.kind === 'grinder') {
-      addFind(obj, l.kind); // a tool, not gear: its model lies in FIND_MODELS
+    } else if (FIND_MODELS[l.kind]) {
+      addFind(obj, l.kind); // a tool, not gear (the grinder), or a carried machine with a model of its own (the pod's)
     } else if (l.kind === 'wrench') {
       // Lying flat on the sand (it is modelled standing up in the hand), a little bigger to be seen.
       const w = wrenchModel().obj;

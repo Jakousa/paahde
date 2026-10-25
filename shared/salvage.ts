@@ -56,7 +56,8 @@ export const SALVAGE: Record<SalvageId, SalvageKind> = {
 };
 
 /** Crash-site components (src/teardown): smaller than the wrecks above, and taken apart on the spot. */
-export type ComponentKind = 'pump_housing' | 'jet_engine' | 'robot_arm' | 'control_cabinet' | 'winch' | 'solenoid_valve' | 'beacon';
+export type ComponentKind = 'pump_housing' | 'jet_engine' | 'robot_arm' | 'control_cabinet' | 'winch' | 'solenoid_valve' | 'beacon'
+  | 'pod_console' | 'pod_powerbox';
 
 export interface ComponentSpec {
   label: string;
@@ -86,6 +87,12 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
   solenoid_valve: { label: TEXT.machines.solenoid_valve, carry: true, ...COMPONENT_LOOT.solenoid_valve },
   // Emergency locator beacon: a battery pack under the lid, a transmitter coil in the mast's foot.
   beacon: { label: TEXT.machines.beacon, carry: true, ...COMPONENT_LOOT.beacon },
+  // Torn out of the crashed pod (shared/pods.ts), lying about it in its starter kit (shared/tables.ts POD_LOOT): the
+  // first wiring. Never at a crash site (not in LEVEL_KINDS).
+  // The pod's instrument console: a curved faceplate (screen, switches, gauges) over the wiring loom behind it.
+  pod_console: { label: TEXT.machines.pod_console, carry: true, ...COMPONENT_LOOT.pod_console },
+  // The pod's power box: the emergency battery under a screwed lid, a distribution coil, cut cables out of its glands.
+  pod_powerbox: { label: TEXT.machines.pod_powerbox, carry: true, ...COMPONENT_LOOT.pod_powerbox },
 };
 
 /** Anything the disassembly mode can take apart: a crash-site component or a salvage wreck. */

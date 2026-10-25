@@ -85,6 +85,8 @@ const en = {
     winch: 'Cargo winch',
     solenoid_valve: 'Coolant valve',
     beacon: 'Distress beacon',
+    pod_console: 'Pod console',
+    pod_powerbox: 'Pod power box',
     vehicle_frame: 'Broken vehicle frame',
     water_jet: 'Broken water jet',
     warp_core: 'Warp drive core',

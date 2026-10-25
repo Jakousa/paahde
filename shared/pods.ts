@@ -8,8 +8,8 @@
 // at a pump (atPodTap, shared/wells.ts waterAt), so the first water is where you arrive.
 //
 // Together they are a small scrap-field site: a starter machine thrown out by each (podSites: machine sites "pod:<n>"
-// like a crash site's, shared/crash.ts, carried off and back on the starter timer, server/crash.ts), and scrap, cloth,
-// wiring, a broken canteen and now and then a bike's battery or bearing lying about them (podLootSpot, POD_LOOT in
+// like a crash site's, shared/crash.ts, carried off and back on the starter timer, server/crash.ts), and a starter kit
+// lying about them: scrap, cloth, a broken canteen, and the pod's console and power box, torn out (podLootSpot, POD_LOOT in
 // shared/tables.ts, rolled in shared/lootRoll.ts, laid out by server/loot.ts). The first broken motorcycle lies by the
 // first pod (shared/lootRoll.ts homeBikeSpot).
 //
@@ -21,8 +21,8 @@ import { WORLD_SEED } from './dunes.ts';
 import { mulberry32 } from './noise.ts';
 import { POD_POSES } from './podModel.ts';
 import { ARRIVAL, ARRIVAL_R, PODS, podToWorld, type PodSpot } from './podSpot.ts';
-import { COMPONENTS, type ComponentKind } from './salvage.ts';
-import { LEVEL_KINDS } from './tables.ts';
+import { type ComponentKind } from './salvage.ts';
+import { POD_MACHINES } from './tables.ts';
 import { baseHeight } from './terrain.ts';
 
 export { ARRIVAL, nearPod, onPodGround, PODS } from './podSpot.ts';
@@ -145,11 +145,11 @@ const MACHINE_SPOT: [number, number] = [3.4, -1.2];
 
 let sites: CrashSite[] | null = null;
 
-/** The pods' machines, as small machine sites of a scrap field (level 0: the starter machines), one by each pod. */
+/** The pods' machines, as small machine sites of a scrap field (level 0: the starter machines, POD_MACHINES), one by each pod. */
 export function podSites(): CrashSite[] {
   if (sites) return sites;
   const r = mulberry32(Math.imul(WORLD_SEED, 0x2c1b3c6d) ^ 0x90d5);
-  const kinds = (Object.entries(LEVEL_KINDS[0]) as [ComponentKind, number][]).filter(([k]) => COMPONENTS[k].carry);
+  const kinds = Object.entries(POD_MACHINES) as [ComponentKind, number][];
   const total = kinds.reduce((a, [, w]) => a + w, 0);
   return (sites = PODS.map((pod, index) => {
     let u = r() * total, kind = kinds[0][0];

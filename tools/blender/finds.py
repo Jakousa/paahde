@@ -5,7 +5,8 @@
     blender -b --python tools/blender/finds.py -- --preview out.png   # also a perspective render of them on sand
 
 Writes public/models/finds/<kind>.glb for the gear that had only a code-built stand-in (backpack,
-storm detector, wrist computer, jammer, grinder) and the boss receivers (receiver_<boss>), each already in the pose it lies in on the sand; src/world/loot.ts
+storm detector, wrist computer, jammer, grinder), the boss receivers (receiver_<boss>) and what's torn out of the crashed pod
+(pod_console, pod_powerbox: carried machines, taken apart on the bench as src/teardown/junk.ts builds them), each already in the pose it lies in on the sand; src/world/loot.ts
 sits it on the ground. The water bottle, telescope, laser rifle, laser pistol and motorcycle keep their models
 (public/models/canteen.glb, telescope.glb, rifle.glb, pistol.glb, sandbike.glb): they are imported here only to
 render their icons.
@@ -73,7 +74,7 @@ CELLS = {
     'canteen': (1, 2), 'spyglass': (2, 1), 'motorcycle': (4, 3), 'backpack': (2, 2), 'storm_detector': (1, 2),
     'wristpad': (1, 1), 'laser_rifle': (4, 1), 'laser_pistol': (2, 1),
     'jammer': (2, 1), 'grinder': (2, 1), 'shield': (2, 2), 'receiver_carrier': (2, 1), 'receiver_queen': (2, 1), 'receiver_colossus': (2, 1),
-    'receiver_worm': (2, 1),
+    'receiver_worm': (2, 1), 'pod_console': (3, 2), 'pod_powerbox': (2, 2),
 }
 CELL, GAP = 54, 4  # src/inventory.ts
 
@@ -449,6 +450,168 @@ def build_shield(mb, rng):
         mb.box((0.024, 0.008, 0.02), (p[0], p[1] - 0.006, p[2]), 'brass', rot=(0, 0, a))
 
 
+# ------------------------------------------------------------------------------------------------ torn out of the pod
+
+# The crashed pod's paint (tools/blender/pod.py: HULL, HULL_GREY, ORANGE, RED, SEAM).
+POD_MATERIALS = {
+    'pod_hull': (0xe4dfd3, 0.15, 0.6, 0),
+    'pod_grey': (0xaeaba3, 0.3, 0.6, 0),
+    'pod_grey_dk': (0x86837c, 0.35, 0.65, 0),
+    'pod_seam': (0x2b2826, 0.3, 0.8, 0),
+    'pod_orange': (0xd2622a, 0.1, 0.55, 0),
+    'pod_red': (0xa8362a, 0.1, 0.55, 0),
+}
+MATERIALS.update(POD_MATERIALS)
+
+
+def cable(mb, pts, r, mat, n=10):
+    """A sagging cable through `pts` (a smooth curve through them, Catmull-Rom), as short straight pieces."""
+    P = [Vector(p) for p in pts]
+    P = [P[0] + (P[0] - P[1])] + P + [P[-1] + (P[-1] - P[-2])]
+    out = []
+    for i in range(1, len(P) - 2):
+        p0, p1, p2, p3 = P[i - 1], P[i], P[i + 1], P[i + 2]
+        for k in range(n):
+            t = k / n
+            out.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t
+                              + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t))
+    out.append(P[-2])
+    it.wire(mb, [tuple(p) for p in out], r, 6, mat)
+
+
+def cut_end(mb, p, r):
+    """The cut end of a cable: a bare copper core and a frayed strand."""
+    mb.cyl(r * 0.7, r * 0.7, r * 1.6, 8, p, 'copper')
+    mb.blob(r * 0.55, (p[0] + r, p[1] + r * 0.6, p[2]), 'copper')
+
+
+def rivets(mb, a, b, n, mat='pod_grey_dk', r=0.006):
+    for k in range(n):
+        t = k / (n - 1)
+        mb.cyl(r, r, 0.004, 6, tuple(a[i] + (b[i] - a[i]) * t for i in range(3)), mat)
+
+
+def build_pod_console(mb, rng):
+    """The pod's instrument console, torn off its frame: a sloped desk unit lying on its base (as on the dismantling
+    bench, src/teardown/junk.ts podConsole, at its 0.6 scale). A grey body, low at the front (-Y) and tall at the back
+    (the wiring loom's coils sit there), under an off-white faceplate screwed on at its corners: a cracked screen, two
+    gauges, a row of toggles, the orange band and red trim. Bent brackets at its ends; the loom spills out of the torn
+    +X end, cut. About 1.1 x 0.7 x 0.5 m."""
+    W, D, HF, HB = 1.08, 0.66, 0.18, 0.48
+    A = math.atan2(HB - HF, D)  # the faceplate's slope
+    ca, sa = math.cos(A), math.sin(A)
+    prof = lambda x: [(x, -D / 2, 0.0), (x, D / 2, 0.0), (x, D / 2, HB), (x, -D / 2, HF)]  # noqa: E731
+    mb.loft([prof(-W / 2), prof(W / 2)], 'pod_grey')
+    # the dark seam where the faceplate meets the body, and panel lines down the sides
+    T = 0.03
+    cz = (HF + HB) / 2
+
+    def face(u, v, w):
+        """A point on the faceplate: u across, v up the slope (from its middle), w out of it."""
+        return (u, v * ca - w * sa, cz + v * sa + w * ca)
+
+    L = D / ca
+    mb.box((W + 0.01, L + 0.01, 0.012), face(0, 0, 0.0), 'pod_seam', rot=(A, 0, 0))
+    mb.box((W + 0.03, L + 0.03, T), face(0, 0, 0.006 + T / 2), 'pod_hull', rot=(A, 0, 0), bevel=0.006)
+    top = 0.006 + T
+    for s in (-1, 1):
+        mb.box((0.004, D * 0.8, 0.006), (s * (W / 2 + 0.001), 0, 0.09), 'pod_seam', rot=(0, 0, 0))
+        rivets(mb, (s * (W / 2 + 0.002), -0.25, 0.05), (s * (W / 2 + 0.002), 0.28, 0.05), 6)
+    mb.box((W * 0.9, 0.004, 0.006), (0, -D / 2 - 0.001, HF * 0.5), 'pod_seam')
+
+    def on(size, u, v, mat, h=0.004, rot_z=0.0):
+        mb.box((size[0], size[1], h), face(u, v, top + h / 2), mat, rot=(A, 0, rot_z))
+
+    on((W + 0.03, 0.09), 0, L / 2 - 0.06, 'pod_orange', 0.006)
+    on((W + 0.03, 0.028), 0, -L / 2 + 0.02, 'pod_red', 0.006)
+    for k in range(12):
+        mb.cyl(0.006, 0.006, 0.004, 6, face(-0.48 + k * 0.087, L / 2 - 0.115, top + 0.002), 'pod_grey_dk', rot=(A, 0, 0))
+    # the screen, cracked
+    on((0.46, 0.3), -0.24, 0.02, 'pod_seam', 0.006)
+    on((0.43, 0.276), -0.24, 0.02, 'glass_dark', 0.01)
+    on((0.3, 0.006), -0.25, 0.04, 'plastic_black', 0.014, 0.7)
+    on((0.12, 0.005), -0.17, -0.03, 'plastic_black', 0.014, -0.4)
+    # two gauges
+    for x in (0.17, 0.36):
+        mb.cyl(0.072, 0.072, 0.01, 20, face(x, 0.1, top + 0.004), 'plastic_black', rot=(A, 0, 0))
+        mb.torus(0.072, 0.008, 20, 6, face(x, 0.1, top + 0.008), 'steel', rot=(A, 0, 0))
+        on((0.006, 0.06), x + 0.01, 0.09, 'term_red', 0.012, 0.8)
+    # a row of toggles under a label strip, two lamps
+    on((0.44, 0.03), 0.26, -0.06, 'label')
+    for i in range(5):
+        x = 0.09 + i * 0.084
+        on((0.048, 0.072), x, -0.13, 'plastic_black', 0.012)
+        mb.cyl(0.006, 0.006, 0.04, 6, face(x, -0.13 + (0.01 if i % 2 else -0.01), top + 0.026), 'steel',
+               rot=(A + (0.45 if i % 2 else -0.45), 0, 0))
+    mb.cyl(0.016, 0.016, 0.012, 10, face(0.46, -0.24, top + 0.006), 'EmitAmber', rot=(A, 0, 0))
+    mb.cyl(0.016, 0.016, 0.012, 10, face(0.40, -0.24, top + 0.006), 'pod_red', rot=(A, 0, 0))
+    # the corner screws
+    for su in (-1, 1):
+        for sv in (-1, 1):
+            mb.cyl(0.02, 0.02, 0.008, 10, face(su * 0.5, sv * (L / 2 - 0.035), top + 0.004), 'steel', rot=(A, 0, 0))
+            mb.box((0.026, 0.004, 0.004), face(su * 0.5, sv * (L / 2 - 0.035), top + 0.009), 'pod_seam', rot=(A, 0, 0))
+    # bent brackets where it was wrenched off
+    for s in (-1, 1):
+        mb.box((0.05, 0.22, 0.024), (s * 0.6, -0.2, 0.2), 'steel_dull', rot=(0.3 * s, 0.25 * s, 0.6 * s))
+        mb.cyl(0.012, 0.012, 0.03, 8, (s * 0.61, -0.14, 0.21), 'pod_seam', rot=(0.3 * s, 0.25 * s, 0.6 * s))
+    # the torn +X end: a ragged grommet, the loom spilling out of it, cut
+    mb.cyl(0.07, 0.07, 0.03, 12, (W / 2 + 0.01, 0.1, 0.2), 'plastic_black', rot=it.Y90)
+    for pts, r, mat in (
+            ([(0.54, 0.12, 0.22), (0.66, 0.06, 0.12), (0.74, -0.12, 0.02), (0.7, -0.3, 0.018)], 0.018, 'wire_red'),
+            ([(0.54, 0.08, 0.2), (0.7, 0.14, 0.08), (0.86, 0.1, 0.02), (0.98, -0.02, 0.018)], 0.018, 'wire_yellow'),
+            ([(0.54, 0.1, 0.18), (0.62, 0.22, 0.06), (0.72, 0.38, 0.022), (0.66, 0.52, 0.022)], 0.022, 'plastic_black'),
+            ([(0.54, 0.06, 0.24), (0.64, -0.02, 0.15), (0.7, -0.04, 0.03), (0.84, -0.16, 0.014)], 0.011, 'wire_red'),
+    ):
+        cable(mb, pts, r, mat)
+        cut_end(mb, pts[-1], r)
+
+
+def build_pod_powerbox(mb, rng):
+    """The pod's power box, torn out by its cables (as on the dismantling bench, src/teardown/junk.ts podPowerbox, at
+    its 0.6 scale): grey walls wrapped by the orange band, an off-white lid screwed down at its corners with a warning
+    plate, a vent on one end, cable glands on the other (+X) with the cables cut short. About 0.7 x 0.5 x 0.45 m."""
+    W, D, H = 0.66, 0.48, 0.36
+    mb.box((W, D, 0.036), (0, 0, 0.018), 'pod_grey_dk')
+    for s in (-1, 1):
+        mb.box((W, 0.036, H), (0, s * 0.222, 0.036 + H / 2), 'pod_grey')
+        mb.box((0.036, D - 0.072, H), (s * 0.312, 0, 0.036 + H / 2), 'pod_grey')
+        # feet
+        for t in (-1, 1):
+            mb.box((0.06, 0.06, 0.02), (s * 0.28, t * 0.19, 0.01), 'pod_seam')
+    mb.box((W + 0.012, D + 0.012, 0.072), (0, 0, 0.216), 'pod_orange')
+    for z in (0.17, 0.262):
+        mb.box((W + 0.016, D + 0.016, 0.006), (0, 0, z), 'pod_seam')
+    rivets(mb, (-0.28, -0.25, 0.32), (0.28, -0.25, 0.32), 9)
+    # a stencilled plate and a vent grille
+    mb.box((0.16, 0.004, 0.06), (-0.14, -0.247, 0.3), 'label')
+    mb.box((0.06, 0.004, 0.012), (-0.18, -0.25, 0.305), 'plastic_black')
+    for k in range(5):
+        mb.box((0.006, 0.26, 0.016), (-0.333, 0, 0.27 + k * 0.024), 'pod_seam')
+    # the lid
+    LZ = 0.414
+    top = LZ + 0.018
+    mb.box((0.696, 0.516, 0.036), (0, 0, LZ), 'pod_hull', bevel=0.006)
+    mb.box((0.696, 0.036, 0.006), (0, -0.24, top + 0.002), 'pod_red')
+    mb.box((0.18, 0.12, 0.004), (0.15, 0.02, top + 0.002), 'hazard_yellow')
+    for k in range(4):
+        mb.box((0.02, 0.1, 0.005), (0.088 + k * 0.042, 0.02, top + 0.003), 'plastic_black', rot=(0, 0, 0.5))
+    mb.box((0.2, 0.14, 0.003), (0.15, 0.02, top + 0.001), 'pod_seam')
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            mb.cyl(0.018, 0.018, 0.008, 10, (sx * 0.288, sy * 0.198, top + 0.004), 'steel')
+            mb.box((0.024, 0.004, 0.004), (sx * 0.288, sy * 0.198, top + 0.009), 'pod_seam')
+    # cable glands on +X, the cables cut
+    for y, mat in ((0.108, 'plastic_black'), (-0.108, 'wire_red')):
+        mb.cyl(0.042, 0.042, 0.048, 12, (0.348, y, 0.228), 'plastic_black', rot=it.Y90)
+        mb.cyl(0.03, 0.036, 0.03, 12, (0.38, y, 0.228), 'pod_seam', rot=it.Y90)
+        pts = [(0.39, y, 0.228), (0.48, 1.3 * y, 0.18), (0.57, 1.8 * y, 0.03), (0.72, 2.2 * y, 0.02)]
+        cable(mb, pts, 0.021, mat)
+        cut_end(mb, pts[-1], 0.021)
+    # a yellow earth lead torn off the lid's hinge side
+    cable(mb, [(-0.31, 0.2, 0.36), (-0.4, 0.26, 0.2), (-0.46, 0.3, 0.02), (-0.55, 0.22, 0.015)], 0.01, 'wire_yellow')
+    cut_end(mb, (-0.55, 0.22, 0.015), 0.01)
+
+
 # kind: (builder, pose on the sand (Euler, rad), icon pose, icon camera direction (from the object))
 SIDE = Vector((0.18, -1, 0.32)).normalized()
 THREE_Q = Vector((0.55, -1, 0.42)).normalized()
@@ -460,6 +623,9 @@ BUILT = {
     'grinder': (build_grinder, (0, 0, 0), (0, 0, 0), THREE_Q),
     # Exported upright, as worn (src/models/scavenger.ts straps it on; src/world/loot.ts lays it down).
     'shield': (build_shield, (0, 0, 0), (0, 0, 0.2), Vector((0.2, -1, 0.15)).normalized()),
+    # Carried machines torn out of the crashed pod (shared/tables.ts POD_LOOT), made lying as they lie.
+    'pod_console': (build_pod_console, (0, 0, 0), (0, 0, 0.15), THREE_Q),
+    'pod_powerbox': (build_pod_powerbox, (0, 0, 0), (0, 0, -0.35), THREE_Q),
 }
 RECV_VIEW = Vector((-0.3, -1, 0.75)).normalized()  # from behind and above, so the dial (leaning back) shows
 for _boss in RECV_COLOURS:  # lying on the slot-less side, slot and dial up to the sky
