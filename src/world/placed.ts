@@ -349,23 +349,32 @@ function poolMaterial() {
   return m;
 }
 
-/** A small storm lantern standing by a bedroll's pillow end (model +X, its right side): a tin base and cap, a glass that
- *  glows warm, a wire handle. Shown by our spawn point only (PlacedView.setSpawn). */
+/** A small storm lantern standing by a bedroll's pillow end (model +X, its right side): a dark tin base, four wire guards
+ *  and a cap round a smoky amber glass, a small flame burning inside it, a wire handle. Shown by our spawn point only
+ *  (PlacedView.setSpawn). Only the flame glows: a glowing glass reads as a yellow tube. */
 function lanternModel(): THREE.Object3D {
   const g = new THREE.Group();
   g.name = 'spawn_lantern';
-  const tin = new THREE.MeshStandardNodeMaterial({ color: 0x4a3a2a, roughness: 0.6, metalness: 0.6 });
-  const glow = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(0xffb04a).multiplyScalar(3) });
-  const part = (geo: THREE.BufferGeometry, mat: THREE.Material, y: number) => {
+  const tin = new THREE.MeshStandardNodeMaterial({ color: 0x2e261e, roughness: 0.55, metalness: 0.7 });
+  const glass = new THREE.MeshStandardNodeMaterial({ color: 0x8a5a26, roughness: 0.15, transparent: true, opacity: 0.35, depthWrite: false });
+  glass.emissive = new THREE.Color(0x6b3a10);
+  const flame = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(0xffc070).multiplyScalar(2.5) });
+  const part = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) => {
     const m = new THREE.Mesh(geo, mat);
-    m.position.y = y;
+    m.position.set(x, y, z);
     m.castShadow = mat === tin;
     g.add(m);
   };
-  part(new THREE.CylinderGeometry(0.075, 0.085, 0.04, 10), tin, 0.02);
-  part(new THREE.CylinderGeometry(0.07, 0.07, 0.17, 10), glow, 0.125);
-  part(new THREE.ConeGeometry(0.045, 0.05, 10), tin, 0.235);
-  part(new THREE.TorusGeometry(0.045, 0.006, 4, 12, Math.PI), tin, 0.27);
+  part(new THREE.CylinderGeometry(0.075, 0.085, 0.045, 10), tin, 0, 0.022, 0);
+  part(new THREE.CylinderGeometry(0.058, 0.058, 0.15, 10, 1, true), glass, 0, 0.12, 0);
+  part(new THREE.ConeGeometry(0.012, 0.035, 6), flame, 0, 0.1, 0);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    part(new THREE.CylinderGeometry(0.005, 0.005, 0.16, 4), tin, Math.cos(a) * 0.066, 0.12, Math.sin(a) * 0.066);
+  }
+  part(new THREE.CylinderGeometry(0.07, 0.07, 0.015, 10), tin, 0, 0.2, 0);
+  part(new THREE.ConeGeometry(0.06, 0.05, 10), tin, 0, 0.232, 0);
+  part(new THREE.TorusGeometry(0.045, 0.004, 4, 12, Math.PI), tin, 0, 0.26, 0);
   g.scale.setScalar(1.3);
   g.position.set(0.85, 0, 0.55);
   return g;
