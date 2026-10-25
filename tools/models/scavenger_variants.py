@@ -68,7 +68,7 @@ def skip(*a, **k):
 
 
 # ------------------------------------------------------------------------------------------- hood
-def build_hood(size=0.88, front=0.0, point=0.0, drape=0.45, ragged=0.0):
+def build_hood(size=0.8, front=0.0, point=0.0, drape=0.35, ragged=0.0):
     """scavenger.py's hood with knobs: overall size (about the head), a deeper front, a pointed peak at the back,
     how far it spreads onto the shoulders, a ragged opening."""
     ys = [-0.100, -0.136, -0.112, -0.060, 0.000, 0.060, 0.110, 0.152, 0.186, 0.208]
@@ -101,7 +101,7 @@ def build_hood(size=0.88, front=0.0, point=0.0, drape=0.45, ragged=0.0):
             for p in r:
                 p.y -= ragged * (0.4 + fbm((p.x * 30, p.z * 30, 3.0), 2)) * (0.6 + max(0.0, math.sin(p.z * 90)) ** 4)
     # scale about the head, so it sits closer
-    c = V((0, 0.01, 1.64))
+    c = V((0, 0.01, 1.67))
     for r in rings:
         for p in r:
             p[:] = c + (p - c) * size
@@ -111,8 +111,8 @@ def build_hood(size=0.88, front=0.0, point=0.0, drape=0.45, ragged=0.0):
 
 HOOD = {
     'hood': lambda: build_hood(),
-    'cowl': lambda: build_hood(size=0.9, front=0.035, point=0.11, drape=0.4),  # deep, pointed
-    'ragged': lambda: build_hood(size=0.84, drape=0.3, ragged=0.03),  # short, torn opening
+    'cowl': lambda: build_hood(size=0.82, front=0.035, point=0.11, drape=0.3),  # deep, pointed
+    'ragged': lambda: build_hood(size=0.78, drape=0.25, ragged=0.03),  # short, torn opening
 }
 ns['build_hood'] = HOOD[v['head']]
 
@@ -336,8 +336,8 @@ def scarf_long():
 
 def scarf_snood():
     # a fat bunched tube collar up to the chin, no ends
-    scarf_loops(((1.515, 0.03, 0.135, 0.142, 0.07, 0.0), (1.555, 0.03, 0.128, 0.136, 0.07, 1.1),
-                 (1.595, 0.02, 0.116, 0.126, 0.06, 2.3), (1.625, 0.01, 0.104, 0.115, 0.05, 3.1)), 'Snood')
+    scarf_loops(((1.52, 0.03, 0.118, 0.126, 0.06, 0.0), (1.556, 0.03, 0.111, 0.12, 0.058, 1.1),
+                 (1.59, 0.02, 0.102, 0.112, 0.05, 2.3), (1.618, 0.01, 0.095, 0.105, 0.044, 3.1)), 'Snood')
 
 
 def scarf_bib():
