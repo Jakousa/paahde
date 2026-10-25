@@ -174,8 +174,10 @@ export class CrashSites {
         this.drapes.set(mat.name, (d = { src: new Map(), mesh }));
       }
       const geo = src.geometry.clone().applyMatrix4(_m.multiplyMatrices(_t, src.matrixWorld));
-      // The terrain's sand material reads a per-vertex crest weight (terrain.ts); dressing sand is never a crest.
-      if (mat.name === SAND) geo.setAttribute('crest', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count), 1));
+      // Dressing is plain sand. Supply every terrain blend channel rather than relying on Three's missing-attribute fallback.
+      if (mat.name === SAND) for (const name of ['crest', 'rock', 'mud', 'silt']) {
+        geo.setAttribute(name, new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count), 1));
+      }
       const prev = d.src.get(kind);
       d.src.set(kind, prev ? mergeGeometries([prev, geo])! : geo);
     });

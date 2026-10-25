@@ -9,6 +9,9 @@ const ball = new THREE.Sphere();
 
 export const viewCull = {
   camera: null as THREE.Camera | null,
+  /** Direction towards the active sun/moon and its shadow range (updated by Sky). */
+  shadowLight: new THREE.Vector3(0, 1, 0),
+  shadowDistance: 0,
   begin() {
     const cam = this.camera;
     if (!cam) return;
@@ -22,5 +25,16 @@ export const viewCull = {
     ball.center.set(x, y, z);
     ball.radius = r;
     return frustum.intersectsSphere(ball);
+  },
+  /** Conservative directional-caster test: the sphere swept away from the light may reach visible ground.
+   *  Testing the swept volume against each plane keeps long dawn shadows without rendering every offscreen machine. */
+  visibleOrShadow(x: number, y: number, z: number, r: number): boolean {
+    if (!this.camera) return true;
+    ball.center.set(x, y, z);
+    for (const plane of frustum.planes) {
+      const reach = Math.max(0, -plane.normal.dot(this.shadowLight) * this.shadowDistance);
+      if (plane.distanceToPoint(ball.center) + r + reach < 0) return false;
+    }
+    return true;
   },
 };

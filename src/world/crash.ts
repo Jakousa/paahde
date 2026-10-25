@@ -122,15 +122,14 @@ export class MachineSites {
     if (!root.matrixAutoUpdate) settle(root); // (setRoll does this for a frozen machine; the position alone needs it too)
   }
 
-  /** One test for the whole machine, a sphere round it: outside the view (and far enough off that its shadow cannot reach it
-   *  either) its objects are not visited by the renderer at all, instead of each being frustum-tested every frame. */
+  /** Keep the machine when its bounds or its sun-extruded shadow can reach the view. */
   private cull(v: SiteView, d: number) {
     const root = v.junk!.root;
     if (this.busy() === v.site.id || d < CULL_NEAR) {
       root.visible = true;
       return;
     }
-    root.visible = viewCull.visible(root.position.x, root.position.y + 1, root.position.z, CULL_RADIUS);
+    root.visible = viewCull.visibleOrShadow(root.position.x, root.position.y + 1, root.position.z, CULL_RADIUS);
   }
 
   /** Its fasteners are drawn only while you are near (or working on it): the rest of the time they are hidden, and the machine

@@ -515,7 +515,7 @@ export class Post {
         lit.addAssign(vt.y.max(0).mul(exp(tau.mul(-STORM_K))));
         seen.addAssign(vt.z.max(0).mul(exp(tau.mul(-STORM_K))));
         tau.addAssign(vt0);
-        If(vt0.greaterThan(1e-3), () => first.assign(min(first, vt.w)));
+        If(vt0.greaterThan(1e-3), () => { first.assign(min(first, vt.w)); });
       });
       // Poison gas (shared/gas.ts): a low layer over the dune floor (a plane through the floor under the camera, gasEnv)
       // behind its leading edge, rising to GAS_DEPTH over it: from above, a sea of fog in the hollows with the crests

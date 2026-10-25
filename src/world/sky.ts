@@ -15,6 +15,7 @@ import { CascadedShadows, FIRST_CACHED } from './cascades.ts';
 import { ShadowLod, SHADOW_LOD_FIRST, lodLayer } from './shadowLod.ts';
 import { farShadowFilter, nearShadowFilter, setShadowNoiseAxes } from './shadowFilter.ts';
 import { HeightShadow } from './heightShadow.ts';
+import { viewCull } from './viewCull.ts';
 import { DayNight } from './dayNight.ts';
 import { NightSky, nightSky } from './nightSky.ts';
 import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm, SHADOW_ONLY_LAYER, skyRadiance, sunColor, sunDirection, sunDisc, sunLight, time } from './env.ts';
@@ -131,6 +132,8 @@ export class Sky {
     this.sun.target.updateMatrixWorld();
     setShadowNoiseAxes(moonlit ? moonDirection.value : sunDirection.value);
     this.heights.light.value.copy(moonlit ? moonDirection.value : sunDirection.value);
+    viewCull.shadowLight.copy(this.heights.light.value);
+    viewCull.shadowDistance = this.sun.castShadow ? graphics.shadowDistance : 0;
     if (this.renderer && this.sun.castShadow) this.heights.update(this.renderer, this.scene, focus);
     this.fitCascades(camera);
     this.cullSmall();
