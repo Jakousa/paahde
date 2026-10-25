@@ -6,10 +6,15 @@ Steam login); see "Towards Steam" below.
 
 ## Getting it
 
-Every push to `main` that touches the game builds it for macOS (Apple silicon and Intel), Windows and Linux
-(`.github/workflows/desktop.yml`): the zips are the run's artifacts in GitHub's Actions tab, kept 30 days. Never a
-GitHub release (tags deploy prod). The app updates its game files by itself (below), so a new download is only needed
-when `desktop/` changes.
+Every push to `main` that touches the game makes a GitHub release (`.github/workflows/desktop.yml`) with the app for
+macOS (Apple silicon and Intel), Windows and Linux. The newest is always at
+`https://github.com/woltsu/paahde/releases/latest/download/<file>`: `Paahde-mac-arm64.zip`, `Paahde-mac-x64.zip`,
+`Paahde-win-x64.zip`, `Paahde-linux-x64.tar.gz`. The app updates its game files by itself (below), so a new download
+is only needed when `desktop/` changes.
+
+Versions: the last `desktop-v*` tag with the patch bumped; `[minor]` or `[major]` in a commit message of the push bumps
+that instead, and a manual run of the workflow (Actions → Desktop app → Run workflow) picks one. The version lives
+only in the tag (CI doesn't commit). The tags are `desktop-v*` only: they deploy nothing (CLAUDE.md).
 
 The builds aren't signed. On macOS, after unzipping: `xattr -cr Paahde.app` (or right-click → Open, then allow it in
 System Settings → Privacy & Security). Windows SmartScreen: More info → Run anyway.
@@ -49,11 +54,11 @@ The icon is `desktop/build/icon.png`, rendered from `public/favicon.svg` by `too
 The protocol has no version: a client only works with a server of the same build. So the app keeps its game files at
 the server's build (`desktop/update.mjs`). They come from the game server it plays on (`PAAHDE_SERVER`, the dev server
 by default), the same files it serves to browsers, never from GitHub: the server's image and its files are one deploy,
-so they can't drift apart. GitHub only has the app's installers (above).
+so they can't drift apart. GitHub only has the app's releases (above).
 
 ```
 push to main ──► deploy.yml: image with dist/ + manifest.json ──► dev server
-             └─► desktop.yml: installers (run artifacts)          │
+             └─► desktop.yml: desktop-v* release with the apps     │
                                                                    ▼
 app start / reload ──► GET manifest.json ──► GET each file it lacks, check its hash
                                              └─► userData/content/<hash>; the rest from the shipped dist/

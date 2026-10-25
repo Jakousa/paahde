@@ -126,6 +126,8 @@ Read before touching:
 - Agents: always push after committing — don't stop at a local commit or ask before pushing. Working in a worktree or
   on a branch? Rebase onto `origin/main` and push to `main` (`git push origin HEAD:main`); don't leave it on a side
   branch or open a PR.
-- Never create or push release tags: tags are what deploy production.
+- Never create or push release tags: tags are what deploy production. The one exception is `desktop-v*`, which CI
+  makes for the desktop app's GitHub releases (`.github/workflows/desktop.yml`); they deploy nothing, and a prod
+  release job, when there is one again, must only take `v*` tags.
 - Small, focused commits. Pull often — three people are editing a small codebase quickly.
 - The live build SHA is shown in the stats panel (Esc menu → Options → Gameplay → "Show stats"), under the graphs.
