@@ -100,14 +100,17 @@ export function windmillWatts(parts: readonly (string | null)[] | undefined, v: 
   return Math.min(w.rated, 0.5 * AIR * AREA * ve * ve * ve * w.cp * w.eff);
 }
 
+/** Below its start the rotor still idles round at this tip speed ratio: any breath of wind turns it a little. */
+const IDLE_TSR = 0.25;
+
 /** The rotor's speed (rad/s, real time: what you see) in wind `v`. */
 export function rotorSpeed(parts: readonly (string | null)[] | undefined, v: number): number {
   const w = windmillSpec(parts);
-  if (!w || v < w.cutIn * 0.6) return 0;
+  if (!w) return 0;
   const face = Math.cos((furl(v) * 75 * Math.PI) / 180);
-  // From a crawl at the start to its working speed once it has the wind.
-  const start = Math.min(1, (v - w.cutIn * 0.6) / (w.cutIn * 0.6));
-  return (w.tsr * v * face * start) / ROTOR_R;
+  // From an idle crawl to its working speed once it has the wind.
+  const start = Math.min(1, Math.max(0, (v - w.cutIn * 0.6) / (w.cutIn * 0.6)));
+  return (Math.max(IDLE_TSR, w.tsr * start) * v * face) / ROTOR_R;
 }
 
 // ---- Battery station -----------------------------------------------------------------------------------------------
