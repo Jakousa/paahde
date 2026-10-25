@@ -94,8 +94,9 @@ const MAX_SIM_STEPS = 6;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const db = openDb(process.env.DB_PATH ?? `data/worlds/${WORLD_ID}.db`);
-/** Deaths left in this world, shared by everyone; at 0 the game is over. */
-let lives = db.getSetting('lives') ?? LIVES;
+/** Deaths left in this world, shared by everyone; at 0 the game is over. The lab has endless lives: they never run down
+ *  there, and a lab that ran out before that is given them back. */
+let lives = LAB ? Math.max(db.getSetting('lives') ?? LIVES, LIVES) : (db.getSetting('lives') ?? LIVES);
 /** Boss kinds killed at least once (shared/bosses.ts bossBit); each first kill gave BOSS_LIVES lives. */
 let beaten = db.getSetting('bosses_beaten') ?? 0;
 const terrain = new TerrainServer(db);
@@ -536,6 +537,7 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
     sendBox(p, 'bag');
     gearChanged(p.browserId);
   }
+  if (LAB) return; // (endless lives in the lab)
   lives--;
   db.setSetting('lives', lives);
   for (const o of players.values()) send(o.ws, { t: 'lives', n: lives, beaten });
