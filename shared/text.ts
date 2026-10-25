@@ -296,11 +296,22 @@ const en = {
 
   // ---- Esc menu, controls, landing page, name ----------------------------------------------------------------------
 
+  desktop: { checking: 'Checking files', downloading: 'Updating', ready: 'Starting' },
+  recovery: { graphics: 'Graphics stopped', retry: 'Reload', unavailable: 'Graphics unavailable', update: 'Update required' },
+
   menu: {
     resume: 'Resume',
     settings: 'Settings',
     options: 'Options',
     gameplay: 'Gameplay',
+    camera: 'Camera and input',
+    readability: 'Readability',
+    comfort: {
+      mouseX: 'Mouse horizontal', mouseY: 'Mouse vertical', padX: 'Stick horizontal', padY: 'Stick vertical',
+      invertY: 'Invert vertical look', fov: 'Field of view', motion: 'Camera motion', glare: 'Sun glare', grain: 'Film grain',
+      hudScale: 'HUD size', subtitleScale: 'Subtitle size', subtitleOpacity: 'Subtitle background',
+      subtitleDuration: 'Subtitle duration', instantText: 'Instant subtitles',
+    },
     audio: 'Audio',
     graphics: 'Graphics',
     graphicsPreset: 'Quality preset',
@@ -372,6 +383,11 @@ const en = {
   },
   controls: {
     back: 'Back',
+    keyboard: 'Keyboard',
+    keyboardCharacters: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.!@#$%&*+=?/',
+    keyboardSpace: 'Space',
+    keyboardErase: 'Erase',
+    keyboardDone: 'Done',
     how: 'Click a key, then press the new one',
     reset: 'Reset controls',
     fixed: 'Esc: menu · cancel (fixed)',

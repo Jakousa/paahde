@@ -49,7 +49,7 @@ test('one malformed peer leaves seven other players connected and receiving snap
     peers.add(ws);
     ws.on('error', () => {});
     const welcome = message(ws, (m) => m.t === 'welcome');
-    ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', browserId: randomUUID(), name: 'Tester' })));
+    ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', protocol: 1, browserId: randomUUID(), name: 'Tester' })));
     const self = await welcome;
     const ready = message(ws, (m) => m.t === 'snap' && m.players.some((p) => p.id === self.id));
     ws.send(JSON.stringify({ t: 'ready' }));

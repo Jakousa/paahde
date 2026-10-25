@@ -60,16 +60,18 @@ class AudioOut {
   private master: GainNode | null = null;
   private muffle: { lp: BiquadFilterNode; duck: GainNode } | null = null;
   private muffled = false;
+  private stopped = false;
 
   constructor() {
     const start = () => {
+      if (this.stopped) return;
       if (!this.ctx) this.build();
       if (this.ctx!.state === 'suspended') void this.ctx!.resume();
     };
     addEventListener('pointerdown', start);
     addEventListener('keydown', start);
     document.addEventListener('visibilitychange', () => {
-      if (!this.ctx) return;
+      if (!this.ctx || this.stopped) return;
       if (document.hidden) void this.ctx.suspend();
       else void this.ctx.resume();
     });
@@ -83,6 +85,12 @@ class AudioOut {
 
   get running() {
     return this.ctx?.state === 'running';
+  }
+
+  /** Graphics recovery must not leave an invisible game playing its loops. Reload creates a fresh context. */
+  suspendForRecovery() {
+    this.stopped = true;
+    if (this.ctx) void this.ctx.suspend();
   }
 
   private build() {

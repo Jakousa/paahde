@@ -25,6 +25,7 @@ import { setWellsOn } from '../shared/wells.ts';
 import { buildingId, cargoId, grows, vehicleId } from '../shared/boxes.ts';
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import { PROTOCOL_VERSION } from '../shared/protocol.ts';
 import { heal, pitchFromQ } from '../shared/dig.ts';
 import { bagShape } from '../shared/gear.ts';
 import { boxShape, fitPart, holdsCargo, tryMove, unfitPart } from '../shared/moves.ts';
@@ -127,6 +128,8 @@ export class Net {
   errorZ = 0;
 
   private ws?: WebSocket;
+  private stopped = false;
+  private retryTimer?: ReturnType<typeof setTimeout>;
   private seq = 0;
   private pending: { seq: number; input: number; yaw: number; drag: number; pull: Pull }[] = [];
   private snapshots: Snapshot[] = [];
@@ -182,6 +185,8 @@ export class Net {
   /** The world turned us away for good: its lives are spent ('over'), it doesn't exist ('missing'), it wants a
    *  password we have no key for ('locked'), it's full ('full') or it won't have our name ('name'). */
   onEnded?: (why: 'over' | 'missing' | 'locked' | 'full' | 'name') => void;
+  /** The server needs a different wire schema; stop gameplay and offer a deliberate update/reload. */
+  onIncompatible?: () => void;
   /** Dead and lying as a ragdoll: the push (m/s) that threw the body (shared/ragdoll.ts); null when alive. */
   down: [number, number, number] | null = null;
   /** True if guardian bolt `id` is still flying on screen (src/world/bolts.ts): a death by it waits for boltArrived. */
@@ -250,6 +255,19 @@ export class Net {
 
   get connected() {
     return this.id !== 0;
+  }
+
+  /** Permanent shutdown (for example a lost graphics device): leave the server and cancel reconnects. */
+  stop() {
+    this.stopped = true;
+    clearTimeout(this.retryTimer);
+    clearTimeout(this.dyingTimer);
+    this.id = 0;
+    this.isReady = false;
+    this.pending = [];
+    this.snapshots = [];
+    this.status = 'stopped';
+    this.ws?.close(1000, 'client stopped');
   }
 
   /** Called once per fixed tick with the sampled input and quantized camera yaw and pitch. */
@@ -641,6 +659,7 @@ export class Net {
   }
 
   private connect() {
+    if (this.stopped) return;
     const url = new URL('ws', PAGE_URL.replace(/^http/, 'ws'));
     // k: the key to a locked game (src/lobby.ts got it with the password; server/index.ts checks it).
     const key = worldKey(WORLD_ID);
@@ -648,11 +667,12 @@ export class Net {
     const ws = new WebSocket(url);
     this.ws = ws;
     ws.onopen = () => {
+      if (this.stopped) return ws.close(1000, 'client stopped');
       this.status = 'joining';
       // ?spawn=pod / crash / field / shelter / canyon: start beside your pod's hatch, the nearest crash site, scrap field,
       // shelter or canyon floor (only on the first join; a reconnect keeps where you are).
       const spawn = this.joinedOnce ? null : new URLSearchParams(location.search).get('spawn');
-      const me = { t: 'hello', browserId: this.browserId, name: myName(), color: myColor(), look: myLook() } as const;
+      const me = { t: 'hello', protocol: PROTOCOL_VERSION, browserId: this.browserId, name: myName(), color: myColor(), look: myLook() } as const;
       this.send(spawn === 'pod' || spawn === 'crash' || spawn === 'field' || spawn === 'shelter' || spawn === 'canyon' ? { ...me, spawn } : me);
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
@@ -665,23 +685,29 @@ export class Net {
       this.jitter = 0;
       this.dying = null; // the server's welcome says whether we're alive
       clearTimeout(this.dyingTimer);
+      if (this.stopped) return;
+      if (e.code === 4406) { this.stop(); this.onIncompatible?.(); return; }
       this.status = 'reconnecting';
       // Game over, no such world, locked, full or a name it won't take (server/world.ts, server/index.ts): retrying won't help.
       const ended = ({ 4410: 'over', 4404: 'missing', 4403: 'locked', 4429: 'full', 4422: 'name' } as const)[e.code as 4410];
       if (ended) return this.onEnded?.(ended);
       // Reconnect with backoff; deploys restart the server, so this is expected to happen.
       // Jitter spreads everyone's reconnects out after a restart.
-      setTimeout(() => this.connect(), this.retryMs * (0.5 + Math.random()));
+      this.retryTimer = setTimeout(() => this.connect(), this.retryMs * (0.5 + Math.random()));
       this.retryMs = Math.min(this.retryMs * 2, 5000);
     };
   }
 
   private onMessage(msg: ServerMsg) {
+    if (this.stopped) return;
     if (msg.t === 'epoch') {
       this.epoch = msg.epoch;
       return;
     }
-    if (msg.t === 'version') return serverBuild(msg.build);
+    if (msg.t === 'version') {
+      if (msg.protocol !== PROTOCOL_VERSION) { this.stop(); this.onIncompatible?.(); return; }
+      return serverBuild(msg.build);
+    }
     if (msg.t === 'lives') return this.onLives?.(msg.n, msg.beaten);
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
     if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);

@@ -3,7 +3,8 @@
 // Passwords are kept salted and scrypted. Whoever gives the right one gets a key (an HMAC of the game and its password
 // hash under a secret made once here), kept by their browser and sent with the WebSocket, so the password never goes
 // in a URL and every reconnect gets in. Worlds from before (no row) are private and open to all.
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { derivePassword } from './password.ts';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -34,7 +35,7 @@ export function registry(path: string) {
   }
   const getRow = db.prepare('SELECT * FROM games WHERE id = ?');
   const insert = db.prepare('INSERT INTO games (id, name, public, max, pass, created) VALUES (?, ?, ?, ?, ?, ?)');
-  const publicRows = db.prepare('SELECT * FROM games WHERE public = 1 ORDER BY created DESC');
+  const publicRows = db.prepare('SELECT * FROM games WHERE public = 1 ORDER BY created DESC LIMIT ? OFFSET ?');
 
   const row = (id: string) => getRow.get(id) as Row | undefined;
   const game = (r: Row): Game => ({ id: r.id, name: r.name, public: !!r.public, max: r.max, locked: !!r.pass, created: r.created });
@@ -48,21 +49,23 @@ export function registry(path: string) {
       const r = row(id);
       return r ? game(r) : { id, name: id, public: false, max: MAX_PLAYERS.max, locked: false, created: 0 };
     },
-    create(id: string, o: { name: string; public: boolean; max: number; password: string }) {
+    async create(id: string, o: { name: string; public: boolean; max: number; password: string }): Promise<string> {
       let pass: string | null = null;
       if (o.password) {
         const salt = randomBytes(16);
-        pass = `${salt.toString('hex')}:${scryptSync(o.password, salt, 32).toString('hex')}`;
+        pass = `${salt.toString('hex')}:${(await derivePassword(o.password, salt)).toString('hex')}`;
       }
       insert.run(id, o.name, o.public ? 1 : 0, o.max, pass, Date.now());
+      return pass ? hmac(id, pass) : '';
     },
-    publicGames: () => (publicRows.all() as Row[]).map(game),
+    publicGames: (limit = 100, offset = 0) => (publicRows.all(limit, offset) as Row[]).map(game),
+    remove: (id: string) => db.prepare('DELETE FROM games WHERE id = ?').run(id),
     /** The key for a game whose password is `password`, or null if it's wrong ('' for an open game). */
-    unlock(id: string, password: string): string | null {
+    async unlock(id: string, password: string): Promise<string | null> {
       const r = row(id);
       if (!r?.pass) return '';
       const [salt, hash] = r.pass.split(':');
-      const got = scryptSync(password, Buffer.from(salt, 'hex'), 32);
+      const got = await derivePassword(password, Buffer.from(salt, 'hex'));
       return timingSafeEqual(got, Buffer.from(hash, 'hex')) ? hmac(id, r.pass) : null;
     },
     /** May someone with key `k` come in? Anyone may into an open game. */

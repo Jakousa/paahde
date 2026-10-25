@@ -18,6 +18,9 @@ import type { Wire } from './wires.ts';
 import type { BedState } from './garden.ts';
 import type { BossKind, BossSnap } from './bosses.ts';
 
+/** Wire/schema compatibility, independent of the build SHA. Bump when old clients cannot safely play. */
+export const PROTOCOL_VERSION = 1;
+
 export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
   // spawn: 'pod' starts beside a crashed pod's hatch instead of the saved position, 'crash' next to the nearest
@@ -26,7 +29,7 @@ export type ClientMsg =
   // canyon). name and color: yours, chosen on the main menu or the lobby (src/profile.ts); a name that fails
   // shared/names.ts checkName is refused (closed with 4422), a color that isn't 24-bit RGB keeps the one you had.
   // look: what you wear (shared/look.ts packLook), chosen on the main menu; not a look keeps the plain one.
-  | { t: 'hello'; browserId: string; name: string; color?: number; look?: number; spawn?: 'pod' | 'crash' | 'field' | 'shelter' | 'canyon' }
+  | { t: 'hello'; protocol: number; browserId: string; name: string; color?: number; look?: number; spawn?: 'pod' | 'crash' | 'field' | 'shelter' | 'canyon' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
@@ -209,7 +212,7 @@ export type NetSummary = { rtt50: number; rtt95: number; rttMax: number; gapMax:
 export type ServerMsg =
   // First message on every connection: the build the server is serving (dist/version.txt, 'dev' if
   // none). A client built from another SHA reloads the page to pick up the new build.
-  | { t: 'version'; build: string }
+  | { t: 'version'; build: string; protocol: number }
   /** Deaths left in this world (shared/world.ts LIVES), on join, after every death and after a boss kind's first kill;
    *  0 is game over. beaten: the boss kinds killed so far (shared/bosses.ts bossBit), all of them: the world is won. */
   | { t: 'lives'; n: number; beaten: number }

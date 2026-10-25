@@ -29,7 +29,7 @@ import { inCone, JAM_BLEED, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer
 import { THROW_MS, THROWABLE } from '../shared/throw.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, NetSummary, PlayerSnap, ServerMsg, StallEvent } from '../shared/protocol.ts';
-import { CHAT_MAX, OBITUARY_KEEP, type Obituary } from '../shared/protocol.ts';
+import { CHAT_MAX, OBITUARY_KEEP, PROTOCOL_VERSION, type Obituary } from '../shared/protocol.ts';
 import { checkName, isColor, PLAYER_NAME } from '../shared/names.ts';
 import { isLook } from '../shared/look.ts';
 import { openDb } from './db.ts';
@@ -184,7 +184,7 @@ wss.on('connection', (ws) => {
   // Invalid frames (including maxPayload violations) emit an error as ws closes the connection.
   // Keep that connection's protocol error from becoming an uncaught error in the whole world.
   ws.on('error', () => {});
-  send(ws, { t: 'version', build: BUILD });
+  send(ws, { t: 'version', build: BUILD, protocol: PROTOCOL_VERSION });
   send(ws, { t: 'lives', n: lives, beaten });
   if (lives <= 0) return ws.close(4410, 'game over');
   ws.on('pong', () => {
@@ -202,7 +202,10 @@ wss.on('connection', (ws) => {
       return ws.close(1003, 'bad message');
     }
     const p = players.get(ws);
-    if (msg.t === 'hello' && !p) return join(ws, msg.browserId, msg.spawn, msg.name, msg.color, msg.look);
+    if (msg.t === 'hello' && !p) {
+      if (msg.protocol !== PROTOCOL_VERSION) return ws.close(4406, 'incompatible protocol');
+      return join(ws, msg.browserId, msg.spawn, msg.name, msg.color, msg.look);
+    }
     // Loading is a server state, not an invulnerability mode for gameplay actions.
     if (p && !p.ready && !['ready', 'hands', 'telemetry', 'chat'].includes(msg.t)) return;
     if (p?.down && !['input', 'ready', 'hands', 'telemetry', 'chat', 'siteLeave'].includes(msg.t)) return;

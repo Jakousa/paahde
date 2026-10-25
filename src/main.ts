@@ -125,6 +125,7 @@ import { isTrophy, trophyFree } from '../shared/trophies.ts';
 import { GuardianFx } from './guardians';
 import { update } from './update';
 import { registerPooledLights } from './world/pooledLight.ts';
+import { initializeRenderer, showReload } from './recovery.ts';
 import { LOADING_FRAME_MS, slice } from './yield';
 import { Warmup } from './warmup';
 import { TEXT } from '../shared/text.ts';
@@ -230,6 +231,7 @@ net.onLives = (n, beaten) => {
   if (allBeaten(beaten)) victory(WORLD_ID);
 };
 net.onEnded = (why) => (why === 'over' || why === 'missing' ? landing(why) : refused(why));
+net.onIncompatible = () => { audio.suspendForRecovery(); showReload(TEXT.recovery.update); };
 net.onScrapGot = (n, dropped) => teardown.gotScrap(n, dropped);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { net });
 // Machine progress (large sites and the disassembly table), from the server: every machine is kept up to date,
@@ -411,7 +413,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-await renderer.init();
+const graphicsReady = await initializeRenderer(renderer, () => { net.stop(); audio.suspendForRecovery(); });
 const backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? 'WebGPU' : 'WebGL2';
 // which GPU the browser actually gave us (shown in the stats line, so "integrated or not" can be read off it)
 const gpuInfo = (renderer.backend as unknown as { device?: { adapterInfo?: { vendor?: string; architecture?: string; description?: string } } }).device?.adapterInfo;
@@ -464,6 +466,7 @@ const statsGraph = new StatsGraph();
 let nextFrameAt = 0;
 let undergroundFrame = 0;
 renderer.setAnimationLoop((time) => {
+  if (!graphicsReady()) { void renderer.setAnimationLoop(null); return; }
   if (graphics.fpsLimit) {
     const every = 1000 / graphics.fpsLimit;
     if (time < nextFrameAt - 1) return;

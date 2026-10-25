@@ -60,7 +60,7 @@ for (let i = 0; i < BOTS; i++) {
   const bot: Bot = { ws, seq: 0, bytes: 0, msgs: 0, snapTime: 0, joinMs: 0 };
   const t0 = performance.now();
   ws.onopen = () => {
-    ws.send(JSON.stringify({ t: 'hello', browserId: randomUUID(), name: `Bench${i + 1}`, ...(SPAWNS[i % SPAWNS.length] ? { spawn: SPAWNS[i % SPAWNS.length] } : {}) }));
+    ws.send(JSON.stringify({ t: 'hello', protocol: 1, browserId: randomUUID(), name: `Bench${i + 1}`, ...(SPAWNS[i % SPAWNS.length] ? { spawn: SPAWNS[i % SPAWNS.length] } : {}) }));
     ws.send(JSON.stringify({ t: 'ready' }));
   };
   ws.onmessage = (e) => {

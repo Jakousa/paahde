@@ -16,6 +16,7 @@ import { checkName, GAME_NAME, MAX_PLAYERS } from '../shared/names.ts';
 import { BENCH_WORLD, LAB_WORLD, labAllowed, LEGACY_WORLD, LIVES, newWorldId, WORLD_ID_RE } from '../shared/world.ts';
 import { leaderboard, minigameApi } from './minigame.ts';
 import { registry } from './registry.ts';
+import { PasswordBusy } from './password.ts';
 
 // The dev test lab (?w=lab, shared/lab.ts) exists only when the dev server is started with --lab (npm run dev:server).
 if (process.argv.includes('--lab')) process.env.DADAJAM_LAB = '1';
@@ -46,20 +47,29 @@ const exists = (id: string) => ((id === LAB_WORLD || id === BENCH_WORLD) && labA
 type World = { child: ChildProcess; port: Promise<number> };
 const worlds = new Map<string, World>();
 let starting = 0;
-const canStart = () => worlds.size < MAX_WORLDS && starting < MAX_STARTING;
+let reserved = 0;
+const canStart = () => worlds.size + reserved < MAX_WORLDS && starting < MAX_STARTING;
 
 /** The world's process, started if it isn't running; resolves to the local port it takes connections on. */
-function world(id: string): Promise<number> {
+function world(id: string, reservation = false): Promise<number> {
   let w = worlds.get(id);
+  if (reservation) reserved--;
+  if (w && reservation) starting--;
   if (!w) {
-    if (!canStart()) return Promise.reject(new Error('world capacity'));
-    starting++;
-    mkdirSync(WORLDS_DIR, { recursive: true });
-    const child = fork(new URL('./world.ts', import.meta.url), {
-      env: { ...process.env, WORLD_ID: id, DB_PATH: dbPath(id), TELEMETRY_PATH: join(dirname(DB_PATH), 'telemetry.jsonl') },
-      // Not under the dev server's --watch-path: that restarts this process, and the worlds go with it.
-      execArgv: process.execArgv.filter((a) => !a.startsWith('--watch')),
-    });
+    if (!reservation && !canStart()) return Promise.reject(new Error('world capacity'));
+    if (!reservation) starting++;
+    let child: ChildProcess;
+    try {
+      mkdirSync(WORLDS_DIR, { recursive: true });
+      child = fork(new URL('./world.ts', import.meta.url), {
+        env: { ...process.env, WORLD_ID: id, DB_PATH: dbPath(id), TELEMETRY_PATH: join(dirname(DB_PATH), 'telemetry.jsonl') },
+        // Not under the dev server's --watch-path: that restarts this process, and the worlds go with it.
+        execArgv: process.execArgv.filter((a) => !a.startsWith('--watch')),
+      });
+    } catch (error) {
+      starting--;
+      return Promise.reject(error);
+    }
     const port = new Promise<number>((resolve, reject) => {
       let settled = false;
       const finish = (error?: Error, value?: number) => {
@@ -90,11 +100,15 @@ function world(id: string): Promise<number> {
 const online = new Map<string, number>();
 /** Most worlds one stats request asks about (the landing page keeps fewer). */
 const STATS_MAX = 12;
+const summaries = new Map<string, { at: number; value: WorldStats }>();
+const SUMMARY_TTL_MS = 60_000;
 
 /** How a world is doing, read from its database (the world process writes it; WAL lets us read alongside), with
  *  its settings; with `browserId`, also their name there and how long they've played. */
 function stats(id: string, browserId?: string): WorldStats | null {
   if (id === LAB_WORLD || id === BENCH_WORLD || !exists(id)) return null;
+  const cached = summaries.get(id);
+  if (!browserId && cached && Date.now() - cached.at < SUMMARY_TTL_MS) return { ...cached.value, online: online.get(id) ?? 0 };
   let db: DatabaseSync | undefined;
   try {
     db = new DatabaseSync(dbPath(id), { readOnly: true });
@@ -114,6 +128,8 @@ function stats(id: string, browserId?: string): WorldStats | null {
       id, name: g.name, public: g.public, locked: g.locked, max: g.max, created,
       lives: setting('lives') ?? LIVES, beaten: setting('bosses_beaten') ?? 0, players, online: online.get(id) ?? 0,
     };
+    if (summaries.size >= 1000 && !summaries.has(id)) summaries.delete(summaries.keys().next().value!);
+    summaries.set(id, { at: Date.now(), value: { ...s } });
     if (browserId) {
       try {
         const me = db.prepare('SELECT name, color, played FROM players WHERE id = ?').get(browserId) as { name: string | null; color: number; played: number } | undefined;
@@ -193,14 +209,23 @@ async function create(req: IncomingMessage, res: ServerResponse) {
   const password = typeof b.password === 'string' ? b.password : '';
   if (!Number.isInteger(max) || max < MAX_PLAYERS.min || max > MAX_PLAYERS.max || password.length > PASSWORD_MAX) return json(res, { error: 'bad' }, 400);
   if (!canStart()) return json(res, { error: 'busy' }, 503);
+  // Password derivation yields: reserve both the future process and its startup slot before it does.
+  reserved++;
+  starting++;
   let id = newWorldId();
   while (exists(id)) id = newWorldId();
-  games.create(id, { name: name.name, public: b.public === true, max, password });
-  // Started now, so its database exists before anyone joins (unknown worlds are turned away).
-  world(id).then(
-    () => json(res, { id, key: games.unlock(id, password) ?? '' }),
-    () => json(res, { error: 'failed' }, 500),
-  );
+  let handedOff = false;
+  try {
+    const key = await games.create(id, { name: name.name, public: b.public === true, max, password });
+    handedOff = true; // world now owns releasing the reservation, even if fork throws
+    await world(id, true);
+    browsed = null;
+    json(res, { id, key });
+  } catch (error) {
+    if (!handedOff) { reserved--; starting--; }
+    games.remove(id);
+    json(res, { error: error instanceof PasswordBusy ? 'busy' : 'failed' }, error instanceof PasswordBusy ? 503 : 500);
+  }
 }
 
 /** The password for a locked game -> { key }, or 403. */
@@ -215,16 +240,28 @@ async function unlock(req: IncomingMessage, res: ServerResponse, id: string) {
   const b = await body(req);
   if (!exists(id)) return json(res, { error: 'missing' }, 404);
   const password = typeof b?.password === 'string' ? b.password.slice(0, PASSWORD_MAX) : '';
-  const key = games.unlock(id, password);
-  return key === null ? json(res, { error: 'wrong' }, 403) : json(res, { key });
+  try {
+    const key = await games.unlock(id, password);
+    return key === null ? json(res, { error: 'wrong' }, 403) : json(res, { key });
+  } catch (error) {
+    return json(res, { error: 'busy' }, error instanceof PasswordBusy ? 503 : 500);
+  }
 }
 
 /** The public games still being played, busiest first (cached a few seconds: each one opens a database). */
 function browse(): WorldStats[] {
   if (browsed && Date.now() - browsed.at < 5000) return browsed.list;
-  const list = games
-    .publicGames()
-    .map((g) => stats(g.id))
+  // Bound the cold path and refresh cached summaries in small batches. Live older worlds are always candidates.
+  const candidates = [...new Set([...online.keys()].filter((id) => games.get(id).public).concat(games.publicGames(BROWSE_MAX * 2).map((g) => g.id)))];
+  let reads = 16;
+  const now = Date.now();
+  const list = candidates
+    .sort((a, b) => (online.get(b) ?? 0) - (online.get(a) ?? 0))
+    .map((id) => {
+      const cached = summaries.get(id);
+      if ((!cached || now - cached.at >= SUMMARY_TTL_MS) && reads-- > 0) return stats(id);
+      return cached ? { ...cached.value, online: online.get(id) ?? 0 } : null;
+    })
     .filter((s): s is WorldStats => !!s && s.lives > 0)
     .sort((a, b) => b.online - a.online)
     .slice(0, BROWSE_MAX);
