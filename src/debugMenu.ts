@@ -10,13 +10,14 @@
 // "Fly camera" (src/flyCam.ts) leaves the body and flies the view freely, for shooting video; "Hide HUD" clears the
 // screen while flying, and FOV / smooth / bank shape the shot.
 // "Give gear" puts one of every piece of gear (shared/gear.ts), repaired with Scrap parts, and a laser rifle, pistol and jammer in your bag and equipment.
+// "Give materials" puts a full stack each of scrap, cloth and wiring in your bag, to build with.
 // "Give item" puts any one item (shared/items.ts ITEMS; type to search by name or id) in your bag: a count of it, or gear
 // repaired with parts of the chosen tier, or broken.
 import { isBound } from './bindings';
 import { ui } from './input';
 import { BOSS_KINDS, BOSSES, type BossKind } from '../shared/bosses.ts';
 import { isBuilding, isGear } from '../shared/gear.ts';
-import { ITEMS, RETIRED } from '../shared/items.ts';
+import { CLOTH, ITEMS, RETIRED, SCRAP, stackOf, WIRING } from '../shared/items.ts';
 import { TONE_CURVES, toneControl, type ToneCurve } from './post';
 import { summonLocalStorm } from './storm';
 import { clockText, timeControl } from './world/dayNight';
@@ -73,6 +74,7 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu):not(#artBench):not(#artBenc
 <label>Tone <select id="dbgTone">${TONE_CURVES.map((c) => `<option>${c}</option>`).join('')}</select></label>
 <label id="dbgWhiteRow">White <input id="dbgWhite" type="range" min="1" max="8" step="0.25"> <b id="dbgWhiteVal"></b></label>
 <div class="row">Give gear ${['Scrap', 'Basic', 'Quality', 'Space'].map((n, i) => `<button data-gear="${i}" title="One of every piece of gear, repaired with ${n} parts (what doesn't fit is skipped)">${n}</button>`).join('')}</div>
+<div class="row">Give materials <button id="dbgMats" title="A full stack each of scrap, cloth and wiring, to build with">Scrap, cloth, wiring</button></div>
 <div class="row">Give item <input id="dbgItem" list="dbgItems" placeholder="search…" title="Any item, by name or id"></div>
 <datalist id="dbgItems">${Object.entries(ITEMS).filter(([k]) => !RETIRED.has(k) && !isBuilding(k)).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</datalist>
 <div class="row"><input id="dbgItemN" type="number" min="1" value="1" style="width:4em" title="How many (stackable items)">
@@ -121,6 +123,9 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu):not(#artBench):not(#artBenc
       if (e.key === 'Enter') give();
     });
     p.querySelector('#dbgGive')!.addEventListener('click', give);
+    p.querySelector('#dbgMats')!.addEventListener('click', () => {
+      for (const kind of [SCRAP, CLOTH, WIRING]) giveItem(kind, stackOf(kind), 0);
+    });
     showItem();
     const noHeatBox = p.querySelector<HTMLInputElement>('#dbgNoHeat')!;
     noHeatBox.addEventListener('change', () => noHeat(noHeatBox.checked));
