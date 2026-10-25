@@ -16,8 +16,8 @@
 //    a seed picked here, and the job (kind, seed in `bench_jobs`, progress like a site's) is kept until it is scrapped
 //    (scrapBench); then the table is free. A table with a job can't be taken down (busyTable).
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
-// seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
-// (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
+// seed): whoever takes part i first gets that part's item in their bag. Every mutation also validates current
+// reach and the shared step/part prerequisites (shared/machineSteps.ts).
 import { machineChanged, machineShove, maxShove, pushedMachine, setMachineProgress, setMachineShove } from '../shared/machineBoxes.ts';
 import { CROUCH, BACK, DT, FORWARD, LEFT, PLAYER_RADIUS, RIGHT, STEP_UP } from '../shared/sim.ts';
 import { CARRY_KINDS, crashSiteById, isTableId, tableById, crashSpent, crashTaken, crashVisited, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
@@ -25,7 +25,7 @@ import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { crashSite, crashSitesNear, CRASH_CELL, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
 import { debrisItem } from '../shared/items.ts';
 import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
-import { frameScrap, stepList } from '../shared/machineSteps.ts';
+import { frameScrap, stepList, stepAllowed, partAllowed } from '../shared/machineSteps.ts';
 import { SCRAP_REWARD } from '../shared/tables.ts';
 import type { BenchJob, ServerMsg } from '../shared/protocol.ts';
 import { junkSpec, type JunkKind } from '../shared/salvage.ts';
@@ -33,6 +33,7 @@ import { LAB, labSites } from '../shared/lab.ts';
 import { spendPickup, type PickupLimit } from './pickupLimit.ts';
 import { wreckById } from '../shared/wrecks.ts';
 import type { openDb } from './db.ts';
+import { heightAt } from '../shared/terrain.ts';
 
 type Db = ReturnType<typeof openDb>;
 type Feet = { x: number; y: number; z: number };
@@ -334,15 +335,15 @@ export class CrashServer {
 
   /** A machine that can be worked on together: a large site, or the table while it holds a job. */
   /** A large site's or the table's machine; `wreck` is the crash site a field machine lies at (null: the table). */
-  private large(id: unknown): { id: string; x: number; z: number; range: number; parts: MachinePart[]; wreck: number | null } | null {
+  private large(id: unknown): { id: string; x: number; y: number; z: number; range: number; kind: JunkKind; seed: number; level: number; parts: MachinePart[]; wreck: number | null } | null {
     if (isTableId(id)) {
       const table = tableById(id), job = this.benches.get(id as string);
-      return table && job ? { id: table.id, x: table.x, z: table.z, range: BENCH_REACH, parts: machineParts(job.kind, job.seed), wreck: null } : null;
+      return table && job ? { id: table.id, x: table.x, y: table.floor, z: table.z, range: BENCH_REACH, ...job, level: 1, parts: machineParts(job.kind, job.seed), wreck: null } : null;
     }
     const site = crashSiteById(id);
     // (A lab machine is worked in place whatever its size, and is never spent.)
     const o = site ? machineShove(site.id) : { x: 0, z: 0 };
-    return site && (site.lab || !junkSpec(site.kind).carry) ? { id: site.id, x: site.x + o.x, z: site.z + o.z, range: SITE_RANGE + REACH_SLACK, parts: machineParts(site.kind, site.seed, site.level), wreck: site.lab ? null : site.wreck } : null;
+    return site && (site.lab || !junkSpec(site.kind).carry) ? { id: site.id, x: site.x + o.x, y: heightAt(site.x + o.x, site.z + o.z), z: site.z + o.z, range: SITE_RANGE + REACH_SLACK, kind: site.kind, seed: site.seed, level: site.level, parts: machineParts(site.kind, site.seed, site.level), wreck: site.lab ? null : site.wreck } : null;
   }
   private newSession(done: number[], taken: number[]): Session {
     return { done: new Set(done), taken: new Map(taken.map((i) => [i, -1])), players: new Set() };
@@ -355,7 +356,7 @@ export class CrashServer {
   /** `pid` (public id) joins the session of large site `id`; returns the state to send them. */
   join(pid: number, feet: Feet, id: unknown): ServerMsg | null {
     const site = this.large(id);
-    if (!site || (site.wreck !== null && crashSpent.has(site.wreck)) || Math.hypot(site.x - feet.x, site.z - feet.z) > site.range) return null;
+    if (!site || (site.wreck !== null && crashSpent.has(site.wreck)) || Math.hypot(site.x - feet.x, site.y - feet.y, site.z - feet.z) > site.range) return null;
     let s = this.sessions.get(site.id);
     if (!s) this.sessions.set(site.id, (s = this.newSession([], [])));
     s.players.add(pid);
@@ -380,7 +381,7 @@ export class CrashServer {
     if (!steps) return n; // (a machine built in code: only the steps are paid)
     const { list } = steps;
     const me = list[i];
-    if (me) {
+    if (me?.module) {
       let all = true;
       for (let k = 0; k < list.length && all; k++) if (list[k].module === me.module && list[k].inner === me.inner && !s.done.has(k)) all = false;
       if (all) n += me.inner ? SCRAP_REWARD.piece : SCRAP_REWARD.module;
@@ -394,10 +395,11 @@ export class CrashServer {
     return s.taken.size >= site.parts.length && (!steps || steps.list.every((_, k) => s.done.has(k)));
   }
 
-  done(pid: number, id: unknown, i: unknown, reward?: (n: number, x: number, z: number) => void) {
+  done(pid: number, feet: Feet, id: unknown, i: unknown, reward?: (n: number, x: number, z: number) => void) {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
     if (!site || !s || !s.players.has(pid) || !this.index(i) || s.done.has(i)) return;
+    if (Math.hypot(site.x - feet.x, site.y - feet.y, site.z - feet.z) > site.range || !stepAllowed(stepList(site.kind, site.seed, site.level), s.done, i)) return;
     s.done.add(i);
     machineChanged(site.id);
     this.save(site.id, s);
@@ -409,10 +411,11 @@ export class CrashServer {
   /** First to take part `i` gets it: `give(kind)` puts its item in their bag (false: the bag is full, and the part
    *  stays on the machine for someone else). Later askers are told who did. Returns the answer for the taker, or
    *  null when there is nothing to say (bad message, or they already have it). */
-  takePart(pid: number, id: unknown, i: unknown, give: (kind: string) => boolean): ServerMsg | null {
+  takePart(pid: number, feet: Feet, id: unknown, i: unknown, give: (kind: string) => boolean): ServerMsg | null {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
     if (!site || !s || !s.players.has(pid) || !this.index(i) || i >= site.parts.length) return null;
+    if (Math.hypot(site.x - feet.x, site.y - feet.y, site.z - feet.z) > site.range || !partAllowed(stepList(site.kind, site.seed, site.level), s.done, i)) return null;
     const owner = s.taken.get(i);
     if (owner === pid) return null;
     if (owner !== undefined) return { t: 'siteTake', id: site.id, i, by: owner }; // too late
@@ -432,10 +435,11 @@ export class CrashServer {
 
   /** The frame of a machine in the field, with nothing left on it, was mashed to scrap: paid, and the site is spent for good (its frame
    *  is gone). Only a stripped machine can be (the table's: scrapBench). A lab machine is made whole again. */
-  scrapFrame(pid: number, id: unknown, reward: (n: number, x: number, z: number) => void) {
+  scrapFrame(pid: number, feet: Feet, id: unknown, reward: (n: number, x: number, z: number) => void) {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
     if (!site || !s || isTableId(site.id) || !s.players.has(pid) || (site.wreck !== null && crashSpent.has(site.wreck))) return;
+    if (Math.hypot(site.x - feet.x, site.y - feet.y, site.z - feet.z) > site.range) return;
     const m = crashSiteById(site.id);
     if (!m || !this.stripped({ kind: m.kind, seed: m.seed, level: m.level, parts: site.parts }, s)) return;
     reward(frameScrap(m.kind, m.seed, m.level, 0), site.x, site.z);

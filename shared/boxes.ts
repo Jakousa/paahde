@@ -30,7 +30,7 @@ const PARSE = /^([a-z]+?)(\d+)$/;
 export function boxKind(box: string): { kind: BoxKind; id: number } | null {
   if (OWN.has(box)) return { kind: box as BoxKind, id: -1 };
   const m = PARSE.exec(box);
-  return m && m[1] in BOX_KINDS && !OWN.has(m[1]) ? { kind: m[1] as BoxKind, id: Number(m[2]) } : null;
+  return m && Object.hasOwn(BOX_KINDS, m[1]) && !OWN.has(m[1]) && Number.isSafeInteger(Number(m[2])) ? { kind: m[1] as BoxKind, id: Number(m[2]) } : null;
 }
 
 const traits = (box: string): BoxTraits => {

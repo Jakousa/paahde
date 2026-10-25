@@ -89,7 +89,8 @@ export function minigameApi(board: ReturnType<typeof leaderboard>, req: Incoming
     } catch {
       return send(400);
     }
-    const mode = String(m.mode);
+    if (!m || typeof m !== 'object' || Array.isArray(m)) return send(400);
+    const mode = typeof m.mode === 'string' || typeof m.mode === 'number' ? String(m.mode) : '';
     const { score, machines } = m as { score: number; machines: number };
     if (!MODES.includes(mode) || !Number.isInteger(score) || !Number.isInteger(machines)) return send(400);
     if (mode === 'endless') {

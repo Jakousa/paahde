@@ -5,7 +5,8 @@ import { buildingBox, cargoBox, isShared, storeBox, vehicleBox } from '../shared
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { DT, INPUT_MASK, spawnPoint, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
+import { DT, INPUT_MASK, spawnPoint, spawnState, step, TICK_RATE, YAW_STEPS, yawFromQ, type PlayerState } from '../shared/sim.ts';
+import { clientMessage } from './messages.ts';
 import { podOf } from '../shared/pods.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bottleSips, equipped, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, isVehicle } from '../shared/gear.ts';
@@ -191,17 +192,20 @@ wss.on('connection', (ws) => {
     if (p) p.alive = true;
   });
   ws.on('message', (data) => {
-    let msg: ClientMsg;
+    let msg: unknown;
     try {
       msg = JSON.parse(String(data));
     } catch {
       return ws.close(1003, 'bad json');
     }
-    if (msg === null || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.t !== 'string') {
+    if (!clientMessage(msg)) {
       return ws.close(1003, 'bad message');
     }
     const p = players.get(ws);
     if (msg.t === 'hello' && !p) return join(ws, msg.browserId, msg.spawn, msg.name, msg.color, msg.look);
+    // Loading is a server state, not an invulnerability mode for gameplay actions.
+    if (p && !p.ready && !['ready', 'hands', 'telemetry', 'chat'].includes(msg.t)) return;
+    if (p?.down && !['input', 'ready', 'hands', 'telemetry', 'chat', 'siteLeave'].includes(msg.t)) return;
     if (msg.t === 'input' && p) return onInput(p, msg.seq, msg.input, msg.yaw, msg.pitch);
     if (msg.t === 'pickup' && p) return onPickup(p, msg.ix, msg.iz, msg.i);
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
@@ -336,6 +340,9 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
     heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, gassed: 0, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: named.name, ready: false, savedAt: Date.now(), jam: null,
   };
   players.set(ws, p);
+  const loading = setTimeout(() => { if (!p.ready) ws.close(1008, 'loading timeout'); }, 180_000);
+  loading.unref();
+  ws.once('close', () => clearTimeout(loading));
   save(p);
   if (LAB) {
     // No heat in the lab; and a first visit brings the full kit: every gear kind repaired, the grinder.
@@ -481,6 +488,7 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   if (p.down || !p.ready || lives <= 0) return;
   if (cause !== 'heat' && cause !== 'storm' && cause !== 'gas' && cause !== 'vortex' && shielded(p, push)) return;
   p.down = { until: Date.now() + DOWN_MS, push };
+  crash.leaveAll(p.id);
   p.choke = 0;
   p.gassed = 0;
   vehicleSrv.release(p.id, p.state.riding ? p.state : undefined); // the bike falls where they did
@@ -1038,16 +1046,16 @@ function onCrash(p: Player, msg: ClientMsg) {
   } else if (msg.t === 'benchScrap') {
     if (crash.scrapBench(p.state, msg.at, (n) => items.give(p.browserId, SCRAP, n))) sendBox(p, 'bag');
   } else if (msg.t === 'siteScrap') {
-    crash.scrapFrame(p.id, msg.id, (n, x, z) => payScrap(p, n, x, z));
+    crash.scrapFrame(p.id, p.state, msg.id, (n, x, z) => payScrap(p, n, x, z));
   } else if (msg.t === 'labReset') {
     crash.labReset(msg.id);
   } else if (msg.t === 'siteJoin') {
     const state = crash.join(p.id, p.state, msg.id);
     if (state) send(p.ws, state);
   } else if (msg.t === 'siteLeave') crash.leave(p.id, msg.id);
-  else if (msg.t === 'siteDone') crash.done(p.id, msg.id, msg.i, (n, x, z) => payScrap(p, n, x, z));
+  else if (msg.t === 'siteDone') crash.done(p.id, p.state, msg.id, msg.i, (n, x, z) => payScrap(p, n, x, z));
   else if (msg.t === 'siteTake') {
-    const answer = crash.takePart(p.id, msg.id, msg.i, (kind) => items.giveItem(p.browserId, { kind, ...withData(foundData(kind, undefined, Math.random)) }));
+    const answer = crash.takePart(p.id, p.state, msg.id, msg.i, (kind) => items.giveItem(p.browserId, { kind, ...withData(foundData(kind, undefined, Math.random)) }));
     if (answer) send(p.ws, answer);
     if (answer?.t === 'siteTook' && answer.ok) sendBox(p, 'bag', answer.kind);
   }
@@ -1134,10 +1142,10 @@ function onCraft(p: Player, recipe: unknown) {
 }
 
 function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: unknown) {
-  if (typeof seq !== 'number' || typeof input !== 'number' || seq <= p.ack) return;
+  if (!Number.isSafeInteger(seq) || !Number.isSafeInteger(input) || (seq as number) <= p.ack) return;
   if (!Number.isInteger(yaw) || (yaw as number) < 0 || (yaw as number) >= YAW_STEPS) return;
   if (!Number.isInteger(pitch) || (pitch as number) < 0 || (pitch as number) >= PITCH_STEPS) return;
-  p.ack = seq;
+  p.ack = seq as number;
   p.lastInputAt = Date.now();
   if (p.down) return; // lying dead: acknowledged, not simulated
   // Over the rate limit: acknowledge but don't simulate, so the client gets corrected.
@@ -1145,13 +1153,13 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.tokens -= 1;
   p.yaw = yaw as number;
   p.pitch = pitch as number;
-  p.input = input & INPUT_MASK;
+  p.input = (input as number) & INPUT_MASK;
   const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
   const pull = vortexPull(storms.vorticesNear(p.state.x, p.state.z, 500, nearScratch), p.state.x, p.state.y, p.state.z, performance.now(), { x: 0, z: 0 });
   const before = p.state;
-  p.state = step(p.state, input & INPUT_MASK, p.yaw, drag, guardians.posts, pull);
+  p.state = step(p.state, p.input, p.yaw, drag, guardians.posts, pull);
   offBike(p, before);
-  crash.push(p.state, input & INPUT_MASK, p.yaw); // crouched and leaning on a machine rolls it
+  crash.push(p.state, p.input, yawFromQ(p.yaw)); // push expects radians, not the wire's quantized angle
 }
 
 // Fixed-rate server loop: refill input tokens, simulate idle players, broadcast snapshots.

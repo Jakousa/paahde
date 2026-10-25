@@ -30,6 +30,10 @@ const TRIES_PER_MIN = 10;
 const PASSWORD_MAX = 64;
 /** Most games the browser lists. */
 const BROWSE_MAX = 50;
+/** Bound processes (including ones starting), and concurrent world initializations on a small host. */
+const MAX_WORLDS = Math.max(1, Number(process.env.MAX_WORLDS) || 16);
+const MAX_STARTING = 2;
+const START_TIMEOUT_MS = 30_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const board = leaderboard(join(dirname(DB_PATH), 'minigame.db')); // the minigame's leaderboards (server/minigame.ts), shared by all worlds
@@ -41,11 +45,15 @@ const exists = (id: string) => ((id === LAB_WORLD || id === BENCH_WORLD) && labA
 
 type World = { child: ChildProcess; port: Promise<number> };
 const worlds = new Map<string, World>();
+let starting = 0;
+const canStart = () => worlds.size < MAX_WORLDS && starting < MAX_STARTING;
 
 /** The world's process, started if it isn't running; resolves to the local port it takes connections on. */
 function world(id: string): Promise<number> {
   let w = worlds.get(id);
   if (!w) {
+    if (!canStart()) return Promise.reject(new Error('world capacity'));
+    starting++;
     mkdirSync(WORLDS_DIR, { recursive: true });
     const child = fork(new URL('./world.ts', import.meta.url), {
       env: { ...process.env, WORLD_ID: id, DB_PATH: dbPath(id), TELEMETRY_PATH: join(dirname(DB_PATH), 'telemetry.jsonl') },
@@ -53,8 +61,22 @@ function world(id: string): Promise<number> {
       execArgv: process.execArgv.filter((a) => !a.startsWith('--watch')),
     });
     const port = new Promise<number>((resolve, reject) => {
-      child.on('message', (m: { t?: string; port?: number }) => m.t === 'port' && resolve(m.port!));
-      child.on('exit', () => reject(new Error(`world ${id} exited`)));
+      let settled = false;
+      const finish = (error?: Error, value?: number) => {
+        if (settled) return;
+        settled = true;
+        starting--;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(value!);
+      };
+      const timer = setTimeout(() => { finish(new Error('world startup timed out')); child.kill('SIGKILL'); }, START_TIMEOUT_MS);
+      timer.unref();
+      child.on('message', (m: { t?: string; port?: number } | null) => {
+        if (m?.t === 'port' && Number.isInteger(m.port) && m.port! > 0 && m.port! <= 65535) finish(undefined, m.port);
+      });
+      child.once('error', (error) => { finish(error); if (worlds.get(id)?.child === child) worlds.delete(id); });
+      child.once('exit', () => finish(new Error(`world ${id} exited`)));
     });
     port.catch(() => {});
     child.on('exit', () => worlds.get(id) === w && worlds.delete(id));
@@ -161,6 +183,8 @@ async function create(req: IncomingMessage, res: ServerResponse) {
   const now = Date.now();
   made = made.filter((t) => now - t < 60_000);
   if (made.length >= NEW_PER_MIN) return json(res, { error: 'busy' }, 429);
+  // Reserve before reading the asynchronous request body: simultaneous requests share the same limit.
+  made.push(now);
   const b = await body(req);
   if (!b) return json(res, { error: 'bad' }, 400);
   const name = checkName(b.name, GAME_NAME);
@@ -168,7 +192,7 @@ async function create(req: IncomingMessage, res: ServerResponse) {
   const max = Number(b.max);
   const password = typeof b.password === 'string' ? b.password : '';
   if (!Number.isInteger(max) || max < MAX_PLAYERS.min || max > MAX_PLAYERS.max || password.length > PASSWORD_MAX) return json(res, { error: 'bad' }, 400);
-  made.push(now);
+  if (!canStart()) return json(res, { error: 'busy' }, 503);
   let id = newWorldId();
   while (exists(id)) id = newWorldId();
   games.create(id, { name: name.name, public: b.public === true, max, password });
@@ -246,6 +270,14 @@ http.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
   // Locked without the key (src/lobby.ts gets it), or full: say which, so the client can.
   if (!games.keyOk(id, url.searchParams.get('k') ?? '')) return refuse.handleUpgrade(req, socket, head, (ws) => ws.close(4403, 'locked'));
   if ((online.get(id) ?? 0) >= games.get(id).max) return refuse.handleUpgrade(req, socket, head, (ws) => ws.close(4429, 'full'));
+  if (!worlds.has(id) && !canStart()) return refuse.handleUpgrade(req, socket, head, (ws) => ws.close(1013, 'server busy'));
+  // Reserve the slot synchronously, before process startup/TCP connect can yield to another upgrade.
+  online.set(id, (online.get(id) ?? 0) + 1);
+  socket.once('close', () => {
+    const n = (online.get(id) ?? 1) - 1;
+    if (n > 0) online.set(id, n);
+    else online.delete(id);
+  });
   socket.on('error', () => {});
   world(id).then(
     (port) => {
@@ -260,12 +292,6 @@ http.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
         socket.setNoDelay(true);
         up.setNoDelay(true);
         socket.pipe(up).pipe(socket);
-        online.set(id, (online.get(id) ?? 0) + 1);
-        up.once('close', () => {
-          const n = (online.get(id) ?? 1) - 1;
-          if (n > 0) online.set(id, n);
-          else online.delete(id);
-        });
       });
       up.on('error', () => socket.destroy());
       up.on('close', () => socket.destroy());
