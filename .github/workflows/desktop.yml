@@ -4,7 +4,8 @@ name: Desktop app
 # [major] in a commit message, or by a manual run; other pushes build nothing. The version is the last desktop-v* tag
 # with that part bumped. Only desktop-v* tags: they deploy nothing, and a prod release job must never take them
 # (CLAUDE.md). Installed apps keep their game files at the dev server's build by themselves (desktop/update.mjs), so a
-# new release is only needed when desktop/ changes.
+# new release is only needed when desktop/ changes. Each release is announced on Discord (the DESKTOP_DISCORD_WEBHOOK
+# secret, else the economy sim's ECON_DISCORD_WEBHOOK).
 on:
   push:
     branches: [main]
@@ -127,3 +128,19 @@ jobs:
           last=$(git tag -l 'desktop-v*' --sort=-v:refname | head -1)
           gh release create "desktop-v$VERSION" out/* --target "$GITHUB_SHA" --latest \
             --title "Desktop app $VERSION" --generate-notes ${last:+--notes-start-tag "$last"}
+
+      # The announcement only: a failed post leaves the release as it is.
+      - name: Discord
+        continue-on-error: true
+        env:
+          WEBHOOK: ${{ secrets.DESKTOP_DISCORD_WEBHOOK || secrets.ECON_DISCORD_WEBHOOK }}
+          VERSION: ${{ needs.web.outputs.version }}
+          REPO: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          [ -n "$WEBHOOK" ] || { echo "No webhook secret: not posted."; exit 0; }
+          dl="$REPO/releases/download/desktop-v$VERSION"
+          msg="**Desktop app $VERSION** ($REPO/releases/tag/desktop-v$VERSION)
+          [macOS (Apple silicon)](<$dl/Paahde-mac-arm64.zip>) · [macOS (Intel)](<$dl/Paahde-mac-x64.zip>) · [Windows](<$dl/Paahde-win-x64.zip>) · [Linux](<$dl/Paahde-linux-x64.tar.gz>)
+          macOS: \`xattr -cr Paahde.app\` after unzipping (unsigned)."
+          jq -n --arg content "$msg" '{content: $content}' |
+            curl -fsS -H 'Content-Type: application/json' -d @- "$WEBHOOK"

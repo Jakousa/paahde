@@ -11,7 +11,8 @@ A push to `main` with `[minor]` or `[major]` in a commit message makes a GitHub 
 run (Actions → Desktop app → Run workflow). Other pushes build nothing: the app updates its game files by itself
 (below), so a release is only needed when `desktop/` changes. Put `[minor]` in such a commit. The newest is always at
 `https://github.com/woltsu/paahde/releases/latest/download/<file>`: `Paahde-mac-arm64.zip`, `Paahde-mac-x64.zip`,
-`Paahde-win-x64.zip`, `Paahde-linux-x64.tar.gz`.
+`Paahde-win-x64.zip`, `Paahde-linux-x64.tar.gz`. Each release is announced on Discord with its download links (the
+`DESKTOP_DISCORD_WEBHOOK` secret, else `ECON_DISCORD_WEBHOOK`).
 
 Versions: the last `desktop-v*` tag with the minor (or major) part bumped. The version lives only in the tag (CI
 doesn't commit). The tags are `desktop-v*` only: they deploy nothing (CLAUDE.md).
