@@ -87,7 +87,7 @@ export class FirstPersonCamera {
   down = false;
   /** Aiming a scoped gun: the view comes in to the eye whatever the T setting, quickly. */
   aimIn = false;
-  /** The body's drawn height (shared/look.ts bodyScale): the steps are that much longer, in step with the body's. */
+  /** The body's stride (shared/look.ts bodyScale): the steps are that much longer, in step with the body's. */
   stride = 1;
   /** Where the eye is (the view ray passes through it; in third person the camera is behind it on that ray). */
   readonly eye = new THREE.Vector3();

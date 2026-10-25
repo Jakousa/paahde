@@ -311,7 +311,7 @@ Promise.allSettled([loadScavenger(), viewmodel.ready]).then(() => (bodyLoaded = 
 setTimeout(() => (coverTimedOut = true), 30_000);
 // What you wear (shared/look.ts), chosen on the main menu (src/lookView.ts); others get it with your 'hello'.
 const myLook = storedLook();
-orbit.stride = bodyScale(unpackLook(myLook)).height;
+orbit.stride = bodyScale(unpackLook(myLook)).stride;
 const me = new Avatar(0xffffff);
 me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
 let bodyHidden = true;

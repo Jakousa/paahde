@@ -1,5 +1,6 @@
-// The character view on the main menu (src/landing.ts): your scavenger turning slowly in the warm light, and beside it
-// a row per slot of the look (shared/look.ts): arrows step through a slot's pieces, swatches pick a dye. Every change
+// The character view on the main menu (src/landing.ts): your scavenger turning slowly in the warm light in the middle,
+// the body (human, dwarf, gnome) to its left, and to its right a row per slot of the look (shared/look.ts): arrows step
+// through a slot's pieces, swatches pick a dye. Every change
 // shows on the figure at once; Save keeps it (src/profile.ts setMyLook) for your next join and goes back, Back goes back
 // without it. Drag the figure to turn it, wheel or pinch to
 // zoom in on it (up to the face); the dice picks a
@@ -15,6 +16,17 @@ import { myColor, myLook, profileForm, setMyLook } from './profile';
 const CSS = `
 #landing .lookView { display: grid; gap: 16px; justify-items: center; }
 #landing .lookView .body { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: center; }
+#landing .lookView .kinds { display: grid; gap: 6px; justify-items: stretch; }
+#landing .lookView .kinds .label { font: 11px var(--mono); letter-spacing: .15em; text-transform: uppercase; opacity: .85; text-align: center; }
+#landing .lookView .kinds button { padding: 10px 18px; }
+/* narrow: the figure first, then the body in a row under it, then the rest */
+@media (max-width: 760px) {
+  #landing .lookView canvas { order: 0; }
+  #landing .lookView .kinds { order: 1; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; }
+  #landing .lookView .kinds .label { flex-basis: 100%; }
+  #landing .lookView .kinds button { padding: 8px 12px; letter-spacing: .15em; }
+  #landing .lookView .slots { order: 2; }
+}
 #landing .lookView canvas { width: min(80vw, 360px); height: min(115vw, 520px); cursor: grab; touch-action: none; }
 #landing .lookView canvas:active { cursor: grabbing; }
 #landing .lookView .slots { display: grid; gap: 6px; }
@@ -40,10 +52,11 @@ export function lookView(back: () => void, join?: { go: () => void; flag?: boole
   }
   const el = document.createElement('div');
   el.className = 'lookView';
-  el.innerHTML = `<div class="body"><canvas></canvas><div class="slots"></div></div>
+  el.innerHTML = `<div class="body"><div class="kinds"><span class="label">${TEXT.look.slots.body}</span></div><canvas></canvas><div class="slots"></div></div>
 <div class="buttons"><button class="dice">${TEXT.landing.randomColour}</button><button class="save">${join ? TEXT.landing.join : TEXT.look.save}</button><button class="back">${TEXT.landing.back}</button></div>`;
   const canvas = el.querySelector('canvas')!;
   const slots = el.querySelector<HTMLElement>('.slots')!;
+  const kinds = el.querySelector<HTMLElement>('.kinds')!;
   let look = unpackLook(myLook());
   const model = new ScavengerModel(myColor());
 
@@ -53,8 +66,18 @@ export function lookView(back: () => void, join?: { go: () => void; flag?: boole
     model.setLook(n);
     for (const r of rows) r();
   };
+  // the body, on its own on the left
+  const bodies = LOOK_SLOTS.find((s) => s.key === 'body')!.options.map((name, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = TEXT.look.bodies[name];
+    b.addEventListener('click', () => ((look.body = i), changed()));
+    kinds.append(b);
+    return b;
+  });
+  rows.push(() => bodies.forEach((b, i) => b.classList.toggle('on', i === look.body)));
   // the pieces, then the dyes
-  for (const slot of [...LOOK_SLOTS].sort((a, b) => Number(!!DYED[a.key]) - Number(!!DYED[b.key]))) {
+  for (const slot of [...LOOK_SLOTS].filter((s) => s.key !== 'body').sort((a, b) => Number(!!DYED[a.key]) - Number(!!DYED[b.key]))) {
     const row = document.createElement('div');
     row.className = 'slot';
     row.innerHTML = `<span class="label">${TEXT.look.slots[slot.key]}</span>`;

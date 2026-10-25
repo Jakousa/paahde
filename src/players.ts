@@ -107,7 +107,7 @@ export class Avatar {
   private stepDist = 0;
   private foot = 1;
   /** The look's body proportions (shared/look.ts bodyScale): the stride and the tag's height follow them. */
-  private size = { height: 1, head: 1 };
+  private size = bodyScale(unpackLook(0));
   // Where the current slide streak last ended; NaN when not sliding.
   private streakX = NaN;
   private streakZ = NaN;
@@ -346,15 +346,15 @@ export class Avatar {
       if (prints) this.streak(pose.x, pose.z);
       return;
     }
-    const stride = STRIDE * this.size.height;
+    const stride = STRIDE * this.size.stride;
     this.stepDist += pose.speed * dt;
     if (this.stepDist < stride) return;
     this.stepDist %= stride;
     this.foot = -this.foot;
-    const side = 0.13 * this.size.height * this.foot;
+    const side = 0.13 * this.size.size * this.foot;
     const fx = pose.x + Math.cos(this.facing) * side, fz = pose.z - Math.sin(this.facing) * side;
     // Toes turned out a little; the boot print mirrors per foot.
-    if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing - this.foot * 0.08, this.size.height, this.size.height, this.foot);
+    if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing - this.foot * 0.08, this.size.stride, this.size.stride, this.foot);
     footsteps.step(fx, fz, pose.speed, indoors(fx, pose.y, fz) ? 'concrete' : 'sand');
   }
 

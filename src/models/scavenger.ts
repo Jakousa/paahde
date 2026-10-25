@@ -9,9 +9,10 @@
 // own copy of the `PlayerTint` material (scarf, face mask, sash, armband), which setColor() recolours.
 // setLook() says what they wear (shared/look.ts): the chosen pieces (their own meshes in the glb, LOOK_PIECES) are
 // merged with the body into one skinned mesh per material (cached per set of pieces, shared by every instance), and the
-// dyed cloth (DyeRobe / DyeCape / DyeWrap, this instance's copies) takes the chosen dyes. The look's body proportions
-// (shared/look.ts bodyScale) scale the root and the head bone: everything placed in root space (held things, the hand
-// and foot targets) grows with the body, the bike's contact points (RidePose, the parent's space) stay where they are.
+// dyed cloth (DyeRobe / DyeCape / DyeWrap, this instance's copies) takes the chosen dyes. The look's body (human, dwarf,
+// gnome: shared/look.ts bodyScale) scales the root, the legs, the chest and the head bone: everything placed in root
+// space (held things, the hand and foot targets) grows with the body, the bike's contact points (RidePose, the parent's
+// space) stay where they are and the rider tucks and tucks its feet up to reach them. Each body walks its own way (GAITS).
 // setOutfit() says what's in the hand (carried at the right hip, src/models/outfit.ts) and which gear is worn:
 // the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt, the shield plate on
 // the chest (SHIELD_URL), and which things in the bag are carried on the body (CARRIED: their own meshes too). Each
@@ -32,7 +33,7 @@ import { beltModel, disposeModel, DRAW_IN, heldModel, heldMuzzle, wristModel } f
 import { LAMP_ON } from './jammer';
 import { RECEIVERS } from '../../shared/bosses.ts';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { bodyScale, DYE_COLORS, dyeIndex, type Look, lookOption, unpackLook } from '../../shared/look.ts';
+import { bodyScale, type BodyScale, DYE_COLORS, dyeIndex, type Look, lookOption, unpackLook } from '../../shared/look.ts';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -85,6 +86,18 @@ const TRUDGE_FROM = 0.08;
 const TRUDGE_FULL = 0.5;
 const TRUDGE_MIX = 0.7;
 const TRUDGE_LEAN = 0.75;
+/** The legs from the hip joints to the soles (model space), what the body drops by for legs drawn shorter. */
+const HIP_TO_SOLE = 0.94;
+/** How each body (shared/look.ts BODIES) moves, over the same clips. A dwarf is stocky and grounded: short quick steps,
+ *  rolling from foot to foot, arms carried wide of the broad chest. A gnome scurries: a fast cadence, leaning into the
+ *  run, arms pumping hard. `rate` lets the clips play that much faster before the feet slide (short legs take more
+ *  steps), `roll` rocks the hips onto the planted foot (rad; the shoulders counter half of it), `lean` tips the upper
+ *  body into a run (rad), `arms` scales the running arms' swing and `wide` carries them out from the body (m). */
+const GAITS: readonly { rate: number; roll: number; lean: number; arms: number; wide: number }[] = [
+  { rate: 1, roll: 0, lean: 0, arms: 1, wide: 0 },
+  { rate: 1.3, roll: 0.1, lean: 0.05, arms: 0.8, wide: 0.07 },
+  { rate: 1.55, roll: 0.035, lean: 0.2, arms: 1.25, wide: 0.02 },
+];
 
 const CANTEEN_URL = './models/canteen.glb';
 /** The shield plate (tools/blender/finds.py: upright as worn, the wearer's front +Z, origin at the plate's middle). */
@@ -136,9 +149,13 @@ export class ScavengerModel {
   private dyes = new Map<string, THREE.MeshStandardMaterial>();
   /** What's worn (shared/look.ts packLook), the glb's pieces' primitives by mesh name, and the merged meshes drawn. */
   private lookN = 0;
-  /** The body's drawn size (the root's scale) and the head's on top of it (shared/look.ts bodyScale). */
-  private height = 1;
-  private headSize = 1;
+  /** The body's proportions (shared/look.ts bodyScale) and how it moves (GAITS). */
+  private body: BodyScale = bodyScale(unpackLook(0));
+  private gaitStyle = GAITS[0];
+  /** Scaled for the body: the chest, and the shoulders and neck under it (scaled back, the neck to its own), the thighs. */
+  private chest: THREE.Object3D | null = null;
+  private unChest: THREE.Object3D[] = [];
+  private thighs: THREE.Object3D[] = [];
   private pieces = new Map<string, THREE.SkinnedMesh[]>();
   private worn: THREE.SkinnedMesh[] = [];
   private neck: THREE.Object3D | null = null;
@@ -237,6 +254,9 @@ export class ScavengerModel {
     this.minAnkle = lowest.get(gltf)!;
     this.hips = bone('Hips') ?? null;
     this.spine = bone('Spine') ?? null;
+    this.chest = bone('Spine2') ?? null;
+    this.unChest = ['LeftShoulder', 'RightShoulder', 'Neck'].map(bone).filter((b) => b !== undefined);
+    this.thighs = ['LeftUpLeg', 'RightUpLeg'].map(bone).filter((b) => b !== undefined);
     const chain = (names: string[]) => names.map(bone).filter((b) => b !== undefined);
     const arms = ['Left', 'Right'].map((s) => chain([`${s}Arm`, `${s}ForeArm`, `${s}Hand`, `${s}HandIndex1`]));
     const feet = ['Left', 'Right'].map((s) => chain([`${s}UpLeg`, `${s}Leg`, `${s}Foot`, `${s}ToeBase`]));
@@ -399,8 +419,9 @@ export class ScavengerModel {
     if (n === this.lookN && !force) return false;
     this.lookN = n;
     const look = unpackLook(n);
-    ({ height: this.height, head: this.headSize } = bodyScale(look));
-    this.root.scale.setScalar(this.height);
+    this.body = bodyScale(look);
+    this.gaitStyle = GAITS[look.body] ?? GAITS[0];
+    this.root.scale.setScalar(this.body.size);
     for (const [slot, name] of [['robe', 'DyeRobe'], ['cloak', 'DyeCape'], ['wrap', 'DyeWrap']] as const) {
       this.dyes.get(name)?.color.setHex(DYE_COLORS[dyeIndex(look, slot)]);
     }
@@ -510,8 +531,9 @@ export class ScavengerModel {
     // Remote speeds arrive as 20 Hz steps; smooth them so playback rate (and the feet) don't jitter.
     this.speed += (pose.speed - this.speed) * (1 - Math.exp(-dt * 10));
     const speed = this.speed;
-    // The clips' cadence and the crouch's steps go by the body's own size: longer legs, fewer steps.
-    const gait = speed / this.height;
+    // The clips' cadence and the crouch's steps go by the body's own legs: longer legs, fewer steps.
+    const gait = speed / this.body.stride;
+    const rate = this.gaitStyle.rate;
     // Backing up plays the stride in reverse; the hips turn toward the travel direction (or away from it
     // when backing up) so diagonal and sideways moves step that way instead of moonwalking.
     const heading = pose.heading ?? 0;
@@ -534,8 +556,8 @@ export class ScavengerModel {
     else if (pose.sliding) this.play('Slide');
     else if (pose.digging) this.play('Dig');
     else if (pose.crouching) this.play('Crouch'); // stepping or not: crouchGait poses the legs
-    else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(gait / this.runRef(mix), mix > 0 ? 0.5 : 0.75, 1.6));
-    else if (speed > 0.25) this.play('Walk', FADE, dir * clamp(gait / WALK_REF, 0.6, 1.8));
+    else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(gait / this.runRef(mix), mix > 0 ? 0.5 : 0.75, 1.6 * rate));
+    else if (speed > 0.25) this.play('Walk', FADE, dir * clamp(gait / WALK_REF, 0.6, 1.8 * rate));
     else this.play('Idle');
     this.layTrudge(mix);
     // The mixer only writes a bone when its animated value changes, so on a constant track (Dig's Neck,
@@ -546,7 +568,8 @@ export class ScavengerModel {
     // Lean to the slope: pitch about the model's X (+ = nose up), roll about Z, pivoting at the feet.
     const tk = 1 - Math.exp(-dt * 10);
     const power = !!pose.powerSlide && pose.grounded && !pose.ride;
-    this.tilt.position.set(0, 0, 0);
+    // Legs drawn shorter: the body comes down with them, the feet stay on the ground.
+    this.tilt.position.set(0, -(1 - this.body.legs) * HIP_TO_SOLE, 0);
     this.tilt.rotation.x += ((power ? clamp(pose.tiltPitch ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.x) * tk;
     this.tilt.rotation.z += ((power ? clamp(pose.tiltRoll ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.z) * tk;
     for (const p of this.posed) p.base.copy(p.bone.quaternion);
@@ -576,7 +599,9 @@ export class ScavengerModel {
       rotateAboutRoot(this.root, this.neck, Y_AXIS, this.look * 0.4);
       rotateAboutRoot(this.root, this.head, Y_AXIS, this.look * 0.6);
     }
-    this.head?.scale.setScalar(this.headless ? 1e-3 : this.headSize);
+    this.head?.scale.setScalar(this.headless ? 1e-3 : this.body.head / this.body.neck);
+    this.proportion();
+    if (!pose.ride) this.walkStyle();
     this.runArms(speed);
     // After the running arms: sliding in from a run, the slide's arms take over as the Run clip fades.
     this.slideT += ((power ? 1 : 0) - this.slideT) * (1 - Math.exp(-dt * (power ? 9 : 6)));
@@ -614,7 +639,8 @@ export class ScavengerModel {
     const run = this.actions.get('Run');
     const w = run?.isRunning() ? run.getEffectiveWeight() : 0;
     if (w < 1e-3 || this.arms.length < 2) return;
-    const amp = clamp(0.4 + speed / 14, 0.6, 1);
+    const amp = clamp(0.4 + speed / 14, 0.6, 1) * this.gaitStyle.arms;
+    const wide = this.gaitStyle.wide;
     const ph = (run!.time / run!.getClip().duration) * Math.PI * 2;
     // Left arm back at phase 0, so the right shoulder comes forward (+ about Y turns +X towards -Z).
     if (this.spine) {
@@ -633,7 +659,7 @@ export class ScavengerModel {
       _q0.copy(arm[0].quaternion);
       _q1.copy(arm[1].quaternion);
       // Upper arm down, just clear of the body, swung forward/back; forearm bent forward from it, in a touch in front.
-      _u.set(side * 0.12, -Math.cos(swing), -Math.sin(swing)).normalize();
+      _u.set(side * (0.12 + wide * 2), -Math.cos(swing), -Math.sin(swing)).normalize();
       _f.set(-side * (0.04 + 0.12 * Math.max(0, s)), -Math.cos(swing + elbow), -Math.sin(swing + elbow)).normalize();
       this.root.worldToLocal(arm[0].getWorldPosition(_t));
       _t.addScaledVector(_u, RUN_UPPER).addScaledVector(_f, RUN_FORE);
@@ -645,6 +671,38 @@ export class ScavengerModel {
         arm[0].updateMatrixWorld(true);
       }
     }
+  }
+
+  /** The body's proportions on the bones (the mixer doesn't touch their scale, so once is enough, but it's cheap). */
+  private proportion() {
+    const { legs, chest, neck } = this.body;
+    for (const t of this.thighs) t.scale.setScalar(legs);
+    if (this.chest) this.chest.scale.setScalar(chest);
+    for (const b of this.unChest) b.scale.setScalar((b === this.neck ? neck : 1) / chest);
+  }
+
+  /** The body's own way of moving over the walk and run clips (GAITS): the hips roll onto the planted foot, the
+   *  shoulders counter part of it, and the upper body leans into a run. In step with the clip, by its weight. */
+  private walkStyle() {
+    const g = this.gaitStyle;
+    if ((!g.roll && !g.lean) || !this.hips || !this.spine) return;
+    const run = this.actions.get('Run'), walk = this.actions.get('Walk');
+    const wr = run?.isRunning() ? run.getEffectiveWeight() : 0;
+    const ww = walk?.isRunning() ? walk.getEffectiveWeight() : 0;
+    if (wr + ww < 1e-3) return;
+    const clip = wr >= ww ? run! : walk!;
+    const ph = (clip.time / clip.getClip().duration) * Math.PI * 2;
+    // The left foot is planted through the first half of the cycle (the left thigh forward at 0): + about Z rolls
+    // the hips down to the left (+X towards +Y).
+    const roll = g.roll * (wr + ww) * Math.sin(ph);
+    rotateAboutRoot(this.root, this.hips, Z_AXIS, roll);
+    for (const t of this.thighs) rotateAboutRoot(this.root, t, Z_AXIS, -roll); // the legs stay under the body
+    rotateAboutRoot(this.root, this.spine, Z_AXIS, -roll * 1.5);
+    if (g.lean * wr > 1e-3) {
+      rotateAboutRoot(this.root, this.spine, X_AXIS, -g.lean * wr);
+      if (this.neck) rotateAboutRoot(this.root, this.neck, X_AXIS, g.lean * wr * 0.6);
+    }
+    this.root.updateMatrixWorld(true);
   }
 
   /** Speed slide, over the Powerslide clip, weighted by `w` (0..1, eased in and out), the way a slide into base or
@@ -872,7 +930,10 @@ export class ScavengerModel {
     this.root.updateMatrixWorld(true);
     // The pose is in the parent's space; this root is scaled to the body's size.
     const toRoot = _im.copy(this.root.matrix).invert();
-    this.tilt.position.add(_t.copy(r.seat).applyMatrix4(toRoot).sub(this.root.worldToLocal(this.hips.getWorldPosition(_p))));
+    // A short rider sits up on the front of the seat, nearer the bars.
+    const forward = RIDE_FORWARD * (1 - this.body.stride);
+    _t.copy(r.seat).add(_o.set(0, forward * RIDE_PERCH, -forward)).applyMatrix4(toRoot);
+    this.tilt.position.add(_t.sub(this.root.worldToLocal(this.hips.getWorldPosition(_p))));
     this.root.updateMatrixWorld(true);
     rotateAboutRoot(this.root, this.spine, Z_AXIS, r.lean);
     rotateAboutRoot(this.root, this.spine, Y_AXIS, r.twist);
@@ -880,6 +941,20 @@ export class ScavengerModel {
     // Keep looking ahead over the bars.
     if (this.neck) rotateAboutRoot(this.root, this.neck, X_AXIS, r.tuck * 0.8);
     this.root.updateMatrixWorld(true);
+    // Short arms (a dwarf, a gnome) can't reach the bars sitting up: lean further over them until they can.
+    for (let n = 0; n < RIDE_REACH_STEPS && this.arms.length === 2; n++) {
+      let short = 0;
+      for (let i = 0; i < 2; i++) {
+        const arm = this.arms[i];
+        const len = arm[0].getWorldPosition(_s0).distanceTo(arm[1].getWorldPosition(_t)) + _t.distanceTo(arm[2].getWorldPosition(_o));
+        this.root.localToWorld(_t.copy(r.grips[i]).applyMatrix4(toRoot));
+        short = Math.max(short, _s0.distanceTo(_t) - len * 0.97);
+      }
+      if (short <= 0) break;
+      rotateAboutRoot(this.root, this.spine, X_AXIS, -RIDE_REACH_STEP);
+      if (this.neck) rotateAboutRoot(this.root, this.neck, X_AXIS, RIDE_REACH_STEP);
+      this.root.updateMatrixWorld(true);
+    }
     for (let i = 0; i < 2; i++) {
       const side = i === 0 ? -1 : 1;
       const arm = this.arms[i];
@@ -891,10 +966,17 @@ export class ScavengerModel {
       }
       const leg = this.legs[i];
       if (leg) {
-        // Knees forward and a little out, toes forward and down off the peg.
-        this.root.localToWorld(_t.copy(r.pegs[i]).applyMatrix4(toRoot));
+        // Knees forward and a little out, toes forward and down off the peg. Legs too short for the pegs (a dwarf, a
+        // gnome) rest the feet higher up on the frame instead, straight above the pegs, as high as they need.
+        this.tilt.worldToLocal(leg[0].getWorldPosition(_s0));
+        this.tilt.worldToLocal(this.root.localToWorld(_t.copy(r.pegs[i]).applyMatrix4(toRoot)));
+        const len = (leg[0].getWorldPosition(_o).distanceTo(leg[1].getWorldPosition(_p)) + _p.distanceTo(leg[2].getWorldPosition(_o))) / this.body.size;
+        const flat = Math.hypot(_t.x - _s0.x, _t.z - _s0.z), most = len * 0.95;
+        const up = flat < most ? _s0.y - Math.sqrt(most * most - flat * flat) : _s0.y;
+        if (_t.y < up) _t.y = up;
+        this.tilt.localToWorld(_t);
         reach(leg[0], leg[1], leg[2], _t, _pole.set(side * 0.35, 0.3, -1).transformDirection(this.root.matrixWorld));
-        aim(leg[2], leg[3], this.root.localToWorld(_t.copy(r.pegs[i]).applyMatrix4(toRoot).add(_o.set(0, -0.12, -0.12))));
+        aim(leg[2], leg[3], _t.add(_o.set(0, -0.12, -0.12).transformDirection(this.root.matrixWorld).multiplyScalar(0.17 * this.body.stride)));
       }
     }
   }
@@ -1162,6 +1244,13 @@ const RUN_SWING_BACK = 1.15;
 const RUN_ELBOW = 1.45;
 const RUN_ELBOW_VAR = 0.35;
 const RUN_TWIST = 0.12;
+/** A rider short of the bars leans over them this much more at a time (rad), at most this many times. */
+const RIDE_REACH_STEP = 0.08;
+const RIDE_REACH_STEPS = 6;
+/** How far forward on the seat a rider with no legs at all would sit (m; a gnome half that, on the back of the tank),
+ *  and how much higher per metre forward (the seat rises to the tank). */
+const RIDE_FORWARD = 0.42;
+const RIDE_PERCH = 0.3;
 const RUN_UPPER = 0.29;
 const RUN_FORE = 0.26;
 const _pq = new THREE.Quaternion();

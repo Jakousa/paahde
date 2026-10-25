@@ -6,10 +6,14 @@
 // &target=x,y,z: where the camera looks (default 0,1,0).
 // ?gear=255 wears and carries that gear (shared/gear.ts wornGear | carriedGear bits).
 // ?look=0,38354534400 dresses the characters in those looks (shared/look.ts packLook), one after another.
+// ?ride seats each character on a sand bike, to check the fit of every body; &body=0,1,2
+// gives them those bodies (shared/look.ts BODIES) over the plain look. With one clip (?clip, ?ride), one character per look.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ScavengerModel, type ScavengerClip } from './scavenger';
 import { CROUCH_SPEED } from '../../shared/sim.ts';
+import { packLook, unpackLook } from '../../shared/look.ts';
+import { Bike } from '../bike';
 
 const renderer = new THREE.WebGPURenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -60,22 +64,30 @@ const aiming = params.has('aim');
 const drinking = params.has('drink'); // ?item=canteen&drink: at the mouth
 const aimPitch = Number(params.get('pitch') ?? 0);
 const only = params.get('clip') as ScavengerClip | null;
-const clips: ScavengerClip[] = only ? [only] : ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide', 'Powerslide', 'Crouch', 'CrouchWalk'];
-const looks = (params.get('look') ?? '').split(',').filter(Boolean).map(Number);
+const riding = params.has('ride');
+const bodyLooks = (params.get('body') ?? '').split(',').filter(Boolean).map((b) => packLook({ ...unpackLook(0), body: Number(b) }));
+const looks = [...(params.get('look') ?? '').split(',').filter(Boolean).map(Number), ...bodyLooks];
+const one: ScavengerClip | null = riding ? 'Idle' : only;
+const clips: ScavengerClip[] = one ? (looks.length ? looks.map(() => one) : [one]) : ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide', 'Powerslide', 'Crouch', 'CrouchWalk'];
 const colors = [0xd8452b, 0x2f8fd8, 0xe0b23a, 0x4fae5a, 0xb455c8, 0xe8e2d6];
 if (only) dist = 4;
 if (params.has('yaw')) yaw = Number(params.get('yaw'));
 if (params.has('dist')) dist = Number(params.get('dist'));
 if (params.has('target')) target.fromArray(params.get('target')!.split(',').map(Number)); // e.g. &target=0.3,0.95,0 to look at a hand
 
-const models: { m: ScavengerModel; clip: ScavengerClip }[] = [];
+const models: { m: ScavengerModel; clip: ScavengerClip; bike?: Bike }[] = [];
 clips.forEach((clip, i) => {
   const m = new ScavengerModel(colors[i % colors.length]);
   m.root.position.set((i - (clips.length - 1) / 2) * 1.6, 0, 0);
   m.root.rotation.y = Math.PI + 0.5; // face the camera, turned a little to show the profile
   if (clip === 'Jump') m.root.position.y = 0.5;
   scene.add(m.root);
-  models.push({ m, clip });
+  let bike: Bike | undefined;
+  if (riding) {
+    bike = new Bike(scene);
+    bike.root.position.set(m.root.position.x * 1.4, 0, 0);
+  }
+  models.push({ m, clip, bike });
   void m.ready.then(() => {
     m.play(clip, 0);
     if (item || gear) m.setOutfit(item, gear);
@@ -134,7 +146,7 @@ label.textContent = clips.join(' · ');
 renderer.setAnimationLoop((time) => {
   timer.update(time);
   const dt = Math.min(timer.getDelta(), 0.1);
-  for (const { m, clip } of models) {
+  for (const { m, clip, bike } of models) {
     // drive through update() so the clip-selection logic is exercised too
     const pose = {
       speed: clip === 'Walk' ? 1.3 : clip === 'Run' ? 6 : clip === 'CrouchWalk' ? CROUCH_SPEED : 0,
@@ -158,6 +170,13 @@ renderer.setAnimationLoop((time) => {
       const x = home.x + r * Math.cos(a), z = home.z + r * Math.sin(a);
       m.root.position.set(x, dune(x, z) + (clip === 'Jump' ? 0.5 : 0), z);
       m.root.rotation.y = Math.PI - a + (pose.speed > 0 ? heading : 0);
+    }
+    if (bike) {
+      const { x, z } = bike.root.position;
+      bike.update({ x, y: 0, z, heading: 0.5, vx: 0, vy: 0, vz: 0, grounded: true, nose: 0, jumpHeld: false }, dt);
+      bike.seat(m.root);
+      m.update({ ...pose, ride: bike.rider() }, dt);
+      continue;
     }
     m.update(pose, dt);
   }

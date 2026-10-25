@@ -41,16 +41,23 @@ export const LOOK_SLOTS = [
   { key: 'stole', options: ['none', 'stole'] },
   { key: 'belt', options: ['none', 'rope'] },
   { key: 'satchel', options: ['none', 'satchel'] },
-  // the body's proportions (BODY_HEIGHT, HEAD_SIZE): drawn only, the player moves and collides the same at any size.
-  // From the plain one the next option is bigger, the previous smaller.
-  { key: 'height', options: ['normal', 'tall', 'giant', 'tiny', 'short'] },
-  { key: 'head', options: ['normal', 'big', 'huge', 'tiny', 'small'] },
+  // the body (BODIES): drawn only, the player moves and collides the same in any body.
+  { key: 'body', options: ['human', 'dwarf', 'gnome'] },
 ] as const satisfies readonly LookSlot[];
 
-/** How much bigger the whole body is drawn, by `height` option, and the head bone on top of that, by `head` option (the
- *  hood hangs partly from the neck, so the head looks a good deal less scaled than its bone). */
-const BODY_HEIGHT = [1, 1.14, 1.3, 0.72, 0.86] as const;
-const HEAD_SIZE = [1, 1.5, 2, 0.65, 0.8] as const;
+/** Each body's proportions, scales of the scavenger (a 1.85 m human, legs about half of that): `size` the whole
+ *  figure about the feet, `legs` the legs from the hips (the body drops to keep the feet on the ground), `chest` the
+ *  chest (wider shoulders, the arms not scaled with it), `neck` the neck and all on it, and `head` the head (from the
+ *  neck up, the neck's scale included). The hood hangs from both neck and head and the face pieces from the head
+ *  alone, so the two stay close or the goggles and masks poke out of the hood. A dwarf about 1.35 m, stocky: broad
+ *  chest, short legs, a big head. A gnome about 1 m, the head nearly a quarter of it, slight. */
+const BODIES = [
+  { size: 1, legs: 1, chest: 1, neck: 1, head: 1 },
+  { size: 0.82, legs: 0.78, chest: 1.2, neck: 1.15, head: 1.25 },
+  { size: 0.6, legs: 0.82, chest: 1.04, neck: 1.4, head: 1.5 },
+] as const;
+/** The bare legs' share of the height. */
+const LEG_SHARE = 0.51;
 
 export type LookKey = (typeof LOOK_SLOTS)[number]['key'];
 export type Look = Record<LookKey, number>;
@@ -80,8 +87,17 @@ export function unpackLook(n: number): Look {
 
 export const isLook = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n < LOOK_END;
 
-/** The body's drawn proportions: `height` scales the whole figure about the feet, `head` the head (and what's on it). */
-export const bodyScale = (look: Look) => ({ height: BODY_HEIGHT[look.height] ?? 1, head: HEAD_SIZE[look.head] ?? 1 });
+export type BodyScale = (typeof BODIES)[number] & {
+  /** The figure's drawn height and its stride's length, relative to the human's. */
+  height: number;
+  stride: number;
+};
+
+/** The body's drawn proportions (BODIES). */
+export function bodyScale(look: Look): BodyScale {
+  const b = BODIES[look.body] ?? BODIES[0];
+  return { ...b, height: b.size * (1 - LEG_SHARE + LEG_SHARE * b.legs), stride: b.size * b.legs };
+}
 
 /** The option chosen in a slot, by name ('hood', 'cowl', ...). */
 export const lookOption = <K extends LookKey>(look: Look, key: K) =>

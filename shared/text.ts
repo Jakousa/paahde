@@ -444,8 +444,10 @@ const en = {
     slots: {
       hood: 'Hood', eyes: 'Eyes', face: 'Mask', scarf: 'Scarf', cape: 'Cape', shoulder: 'Shoulder', gloves: 'Gloves',
       boots: 'Boots', robe: 'Robe', cloak: 'Hood dye', wrap: 'Wraps', rags: 'Rags', stole: 'Stole', belt: 'Rope',
-      satchel: 'Satchel', height: 'Height', head: 'Head',
+      satchel: 'Satchel', body: 'Body',
     },
+    /** The bodies to choose from (shared/look.ts BODIES). */
+    bodies: { human: 'Human', dwarf: 'Dwarf', gnome: 'Gnome' },
     /** Keeps the look chosen (and goes back to the start). */
     save: 'Save',
     /** Steps through a slot's options. */
