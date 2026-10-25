@@ -4,7 +4,7 @@
 #   Blender -b --factory-startup -P tools/models/scavenger_variants.py -- <variant> <out.blend>
 #   Blender -b --factory-startup -P tools/models/render_preview.py -- <out.blend> <prefix>
 #
-# Slots: head (hood | cowl | ragged | down), eyes (goggles | mono | visor), face (respirator | side | mask),
+# Slots: head (hood | cowl | ragged), eyes (goggles | mono), face (respirator | side | mask),
 # cape (cape | none | poncho), shoulder (none | plate), gloves (leather | wrapped | gauntlet),
 # boots (buckled | tall | wrapped | guard), scarf (scarf | long | snood | bib | veil | none). Always the long gown. The player colour (scarf, mask, sash, armband) is the tint the game
 # already sets per player.
@@ -40,10 +40,10 @@ VARIANTS = {
                  boots='wrapped', tint='#e0a526', robe=INDIGO, cape_dye=NIGHT, wrap=BONE),
     'ragged': dict(scarf='bib', head='ragged', eyes='goggles', face='side', cape='cape', gloves='gauntlet',
                    boots='tall', tint='#2f7f8a', robe=BONE, cape_dye=RUST, wrap=BONE),
-    'hooddown': dict(scarf='snood', head='down', eyes='visor', face='respirator', cape='none', shoulder='plate',
+    'plated': dict(scarf='snood', head='hood', eyes='goggles', face='respirator', cape='none', shoulder='plate',
                      gloves='gauntlet', boots='guard', tint='#d9762b', robe=OLIVE,
                      wrap=('#5a4a3a', '#33281e', '#7a6a58'), trousers=('#3a3530', '#1e1b18', '#5a524a')),
-    'raider': dict(head='cowl', eyes='visor', face='side', cape='cape', shoulder='plate',
+    'raider': dict(head='cowl', eyes='mono', face='side', cape='cape', shoulder='plate',
                    boots='guard', tint='#e8d23a', robe=SOOT, cape_dye=OXBLOOD, wrap=SOOT,
                    trousers=('#2a2522', '#141110', '#45403b')),
     'ghost': dict(scarf='veil', head='ragged', eyes='mono', face='mask', cape='poncho', gloves='wrapped',
@@ -109,26 +109,10 @@ def build_hood(size=0.88, front=0.0, point=0.0, drape=0.45, ragged=0.0):
                 bones=['Head', 'Neck', 'Spine2'], bias={'Head': 3.0, 'Spine2': 0.6}, power=3.0)
 
 
-def build_hood_down():
-    # the hood thrown back: a bunched roll of cloth round the back of the neck, a fold hanging between the shoulders
-    rings = []
-    for z, rx, ry, yo in ((1.42, 0.150, 0.125, 0.045), (1.455, 0.172, 0.150, 0.055), (1.49, 0.176, 0.158, 0.06),
-                          (1.525, 0.160, 0.142, 0.055), (1.55, 0.128, 0.112, 0.045)):
-        def fn(t, k, z=z):
-            return 1.0 + 0.06 * math.sin(t * 7 + z * 40) ** 2 + 0.02 * fbm((math.cos(t) * 3, math.sin(t) * 3, z * 20))
-        r = ring((0, yo, z), rx, ry, 26, fn=fn, a0=math.radians(-15), a1=math.radians(195), closed=False)
-        for p in r:  # the hood's empty bag hangs low at the back
-            p.z -= 0.09 * max(0.0, (p.y - 0.12) / 0.08) ** 2 * (1.55 - z) / 0.13
-        rings.append(r)
-    return part(loft('HoodDown', rings, M['cape'], closed=False), bones=['Neck', 'Spine2', 'Head'],
-                bias={'Spine2': 2.0}, power=3.0)
-
-
 HOOD = {
     'hood': lambda: build_hood(),
     'cowl': lambda: build_hood(size=0.9, front=0.035, point=0.11, drape=0.4),  # deep, pointed
     'ragged': lambda: build_hood(size=0.84, drape=0.3, ragged=0.03),  # short, torn opening
-    'down': build_hood_down,
 }
 ns['build_hood'] = HOOD[v['head']]
 
@@ -169,22 +153,7 @@ def build_mono():
     return ns['join'](lenses, 'Lenses')
 
 
-def build_visor():
-    # a curved steel visor across the eyes with one glowing slit
-    def band(z0, z1, r, mat, name):
-        return loft(name, [ring((0, 0.008, z), r, r * 1.12, 18, a0=math.radians(198), a1=math.radians(342),
-                                closed=False) for z in (z0, z1)], mat, closed=False)
-    objs = [band(1.645, 1.669, 0.112, M['paint'], 'VisorLow'), band(1.683, 1.708, 0.112, M['paint'], 'VisorHigh'),
-            band(1.669, 1.683, 0.106, M['steel'], 'VisorBack')]
-    for s in (1, -1):  # rivets at the hinges
-        objs.append(ns['cylinder']('Rivet', V((s * 0.104, -0.035, 1.676)), V((s * 0.112, -0.038, 1.676)), 0.008,
-                                   M['brass'], n=8))
-    strap(objs)
-    part(ns['join'](objs, 'Visor'), rigid='Head')
-    return band(1.6695, 1.6825, 0.110, M['lens'], 'VisorSlit')
-
-
-EYES = {'goggles': None, 'mono': build_mono, 'visor': build_visor}
+EYES = {'goggles': None, 'mono': build_mono}
 if EYES[v['eyes']]:
     ns['build_goggles'] = EYES[v['eyes']]
 
