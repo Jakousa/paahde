@@ -21,7 +21,7 @@
     "productName": "Paahde",
     "directories": { "output": "out" },
     "artifactName": "${productName}-${os}-${arch}.${ext}",
-    "files": ["main.mjs", "update.mjs", "preload.cjs", "package.json"],
+    "files": ["main.mjs", "update.mjs", "content.mjs", "preload.cjs", "package.json"],
     "extraResources": [{ "from": "../dist", "to": "dist", "filter": ["**/*", "!**/*.br", "!**/*.gz"] }],
     "mac": { "target": { "target": "zip", "arch": ["arm64", "x64"] }, "category": "public.app-category.games" },
     "win": { "target": "zip" },

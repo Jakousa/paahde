@@ -72,11 +72,21 @@ app start / reload ──► GET manifest.json ──► GET each file it lacks,
 - That covers a deploy during play too: the server tells the page its new build and `src/update.ts` fetches the
   page, which makes the app download the new files while the game runs, then reloads into them, as in a browser.
 - Offline, or if a file changes mid-download (another deploy), the app stays on the build it has.
-- A window that is still dark while a big update downloads (an old app, many new models) is the update; there is no
-  progress shown yet.
+- Startup displays update progress. Requests time out after 15 seconds (one retry per file), with a two-minute
+  total update deadline; failures keep the last complete build. Manifests require safe relative paths, fixed-length
+  hashes and entrypoints, and downloads have per-file and total byte limits. Cached files are hash-checked before use;
+  activation replaces the manifest atomically only after every file verifies. The previous build remains available
+  to a running page until its reload.
+- The window only navigates within the configured game origin/path (or `app://game`); other windows are denied,
+  webviews are disabled, and permission requests are limited to pointer lock/fullscreen from the game.
 
 The app itself (`desktop/`) doesn't update: a change there needs a new download. A Steam build would get those
 through Steam.
+
+For shell/security fixes, publish a desktop release (`[minor]` commit) and distribute the new app; content updates
+cannot replace Electron. Before a release run `npm test` (content updater failure/corruption fixtures), `npm run build`,
+and the desktop screenshot smoke check. Keep Electron current through reviewed dependency updates and repeat that
+smoke check on each supported platform; content delivery is deliberately separate from executable updates.
 
 ## Towards Steam (not done)
 

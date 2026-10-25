@@ -4,8 +4,11 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { TEXT } from '../shared/text.ts';
 
 const DIST = 'dist';
+// The desktop startup view uses the same centralized player-facing words as the browser game.
+writeFileSync(join(DIST, 'desktop-text.json'), JSON.stringify(TEXT.desktop));
 
 const files: Record<string, string> = {};
 for (const d of readdirSync(DIST, { recursive: true, withFileTypes: true })) {
