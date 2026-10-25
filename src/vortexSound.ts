@@ -1,5 +1,5 @@
 // The sand vortex's roar (shared/vortex.ts; drawn by src/post.ts, felt by src/vortex.ts): synthesised, no samples. From
-// a couple of kilometres off a low murmur under the wind; closer, a deep, violent roar that swells by the metre, until
+// a kilometre or two off a faint murmur under the wind; closer, a deep, violent roar that swells by the metre, until
 // at its foot it's a freight train of pressure, howling and grit.
 //
 //   - sub:   the pressure of it, brown noise under 60 Hz you feel more than hear.
@@ -10,17 +10,19 @@
 // Everything shakes with gusts (incommensurate sines, so it never visibly repeats) that get more violent the closer you
 // are, comes through the air as a lowpass that opens up as you near, and leans to the ear it's on.
 //
-// Loudness: in dB, linear in the distance, from LEVEL_FAR at HEARD m to 0 at its core. Measured (this graph rendered in
-// headless Chrome's OfflineAudioContext at the default volume 0.4, ffmpeg ebur128): at its foot −18.5 LUFS, true peak
-// −6.6 dBTP (an event, over the −23 mix); at the edge of its pull (450 m) −26 LUFS; 1.1 km off −38; 1.5 km off −45.
+// Loudness: in dB, falling with distance^FALL, from 0 at its core to LEVEL_FAR at HEARD m. Measured (this graph rendered in
+// headless Chrome's OfflineAudioContext at the default volume 0.4, ffmpeg ebur128): at its foot −18 LUFS, true peak
+// −5.7 dBTP (an event, over the −23 mix); at the edge of its pull (450 m) −27 LUFS; 1.1 km off −47; 1.5 km off −61.
 // In a bunker or shelter it's heard through the earth (lowpass, quieter). Plays through the shared output (src/audio.ts).
 import { audio } from './audio';
 import { indoors } from '../shared/shelters.ts';
 import { CORE_R, vortexCentre, vortexEnvelope, type Vortex } from '../shared/vortex.ts';
 
-/** Heard from this far (m); its level there (dB under the foot's). */
-const HEARD = 2500;
-const LEVEL_FAR = -42;
+/** Heard from this far (m); its level there (dB under the foot's); how the level falls with distance (dB go with
+ *  distance^FALL: > 1 keeps it loud near and drops it away far off). */
+const HEARD = 2000;
+const LEVEL_FAR = -60;
+const FALL = 1.3;
 /** Level at full slider volume, at its foot. */
 const MIX = 1.9;
 /** Underground: lowpass (Hz) and level. */
@@ -110,7 +112,7 @@ export function vortexVoice(ctx: BaseAudioContext, out: AudioNode) {
   return {
     set(k: number, side: number, under: boolean, t: number) {
       const now = ctx.currentTime;
-      const level = k > 0 ? MIX * Math.pow(10, (LEVEL_FAR * (1 - k)) / 20) : 0;
+      const level = k > 0 ? MIX * Math.pow(10, (LEVEL_FAR * Math.pow(1 - k, FALL)) / 20) : 0;
       to(master.gain, level * (under ? MUFFLE_GAIN : 1), now, 0.15);
       to(air.frequency, 220 + 4200 * k * k * k, now, 0.2);
       to(pan.pan, side * PAN * (0.4 + 0.6 * k), now, 0.2);

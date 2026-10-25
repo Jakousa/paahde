@@ -22,8 +22,8 @@ What we built, why, and what's left. Dated sessions newest first, then undated t
 - Debug menu: *Sand vortex* (one more, short-lived, spun up near you or on the first clear spot round the ship) and
   *Go to vortex* (600 m from the nearest, just outside its pull).
 - Its roar (`src/vortexSound.ts`): a deep, rough synthesised roar (sub pressure, low resonant body, howls, grit) from
-  2.5 km off, louder by the metre (dB linear in the distance), gusting harder and brighter the closer, leaning to the
-  ear it's on; muffled underground. −45 LUFS 1.5 km off, −26 at 450 m, −18.5 at its foot (true peak −6.6 dBTP).
+  2 km off, louder by the metre (faint far off, rising steeply near), gusting harder and brighter the closer, leaning to the
+  ear it's on; muffled underground. −61 LUFS 1.5 km off, −47 at 1.1 km, −27 at 450 m, −18 at its foot (true peak −5.7 dBTP).
 - Known gaps: only the nearest vortex is drawn.
 
 ## 2026-10-25 — Trophies are put up by hand
