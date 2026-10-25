@@ -2,6 +2,39 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-25 — Build anywhere: the workbench, the dismantling bench and the chest are buildings
+
+First step towards a game without the starting bunker: what it gives you can now be built, and the base still stands
+beside it for now.
+
+- **Anywhere:** sand buildings no longer stop at 75 m from the base (`OUTDOOR_RANGE` is gone); the other rules stay
+  (gap, tilt, clear of the base's structures and now the shelters' huts and the crashed ship, no digging under them). Where a thing goes
+  follows where you stand (shared/placed.ts `placeFloor`): down in a shelter, on its room's floor (inside the room,
+  clear of the pump and the corridor's mouth: shared/shelters.ts `shelterRoomClear`); in the bunker, its floor; else
+  the sand. Floor kinds (beds, lamps) may stand in shelters too. `MAX_PLACED` 40 → 300 for the world.
+- **Collision:** everything not on the bunker floor goes in a grid of 16 m cells (shared/base.ts `setPlacedCapsules`),
+  each capsule in every cell its reach touches, so a player's step looks in one cell, not at every thing in the world.
+  `worldBoxes` now turns a quarter the way the model does (local +X → world −Z; it was mirrored, which only symmetric
+  boxes got away with).
+- **Stations are buildings:** the workbench (10 scrap, 1 wiring), the dismantling bench (16 scrap, 2 wiring, 2 cloth)
+  and the chest (8 scrap, 2 cloth), from the wrench's build menu, all given back when taken down; on the sand or a
+  shelter's floor. Models are the base's (tools/blender/stations.py borrows bunker.py's builders). `shared/stations.ts`
+  `stations()` is the base's plus the placed ones: any workbench opens the repair slot and its recipes.
+- **Tables:** every dismantling table has its own job (shared/crash.ts `tables()`; session id 'bench' for the base's,
+  `bench<placed id>`; `bench_jobs` in the DB, the old single `bench_job` row moved into it). `crashUse`/`benchScrap`
+  name the table; 'bench' messages carry its id. The client keeps a `Bench` per table that has a job, built once the
+  placed list says where the table is.
+- **Chests:** box `store<placed id>`, shared, a fixed CHEST_COLS × CHEST_ROWS grid (not endless like the base's).
+  Taking one down with anything in it is refused ("Empty it first") rather than dropping its things: anyone can take
+  any building down, and a chest spilling a stranger's hoard on the sand is worse than being told no. A table with a
+  machine on it is refused the same way ("Bench in use").
+- **By hand:** a short list under the bag in the Tab inventory, always there (shared/tables.ts `HAND_TABLE`,
+  shared/crafting.ts `HAND_RECIPES`; server/items.ts crafts it without a workbench). The wrench moved there, so
+  wrench → workbench needs nothing built first.
+- **Economy simulator:** the agent makes the wrench and builds a workbench first; no repairs or recipes without it.
+- Gaps: the sim still takes carried machines apart at the base's table without building one; nothing yet steers a
+  player to build a home; a shelter's stash can lie under something built over it.
+
 ## 2026-10-23 — Esc menu: the game's bubble, controls in Options, info in the stats
 
 - Over the Esc menu a bubble with the game (`Menu.showServer`, fetched from `api/worlds/<id>` each time it opens): its

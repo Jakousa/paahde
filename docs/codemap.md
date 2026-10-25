@@ -96,20 +96,30 @@ when you find it stale.
 
 - `shared/base.ts` — home base (underground bunker) layout + collision; terrain is its roof, with holes
   (`TERRAIN_HOLES`) over the entrance and skylight. `shared/garden.ts` — plant beds (stages, look target), owned by
-  `server/garden.ts`; beds are placed things (`shared/placed.ts`, `server/placed.ts`: items put down on the bunker
-  floor), crafted at the workbench (`shared/crafting.ts`)
-- Buildings — the windmill, the battery station and the power pole, on the sand round the base: put up with the
-  wrench (crafted; right mouse with it in hand opens the build menu, `src/buildMenu.ts`, placing in `src/placing.ts`)
+  `server/garden.ts`; beds are placed things (`shared/placed.ts`, `server/placed.ts`: items put down on a floor),
+  crafted at the workbench (`shared/crafting.ts`)
+- Buildings — the windmill, the battery station, the power pole, the beacon, the workbench, the dismantling bench and
+  the chest, anywhere on the sand: put up with the wrench (made by hand; right mouse with it in hand opens the build
+  menu, `src/buildMenu.ts`, placing in `src/placing.ts`)
   from base materials only (scrap, cloth, wiring: `shared/tables.ts` BUILD_TABLE, `shared/crafting.ts` BUILDS), used up
   as it goes up and all given back when it's dismantled (G with the wrench); never carried as items. The windmill and
   station are gear with part slots and quality (`shared/gear.ts` `built`), standing with their slots empty (bearings
   and motor, batteries fitted after), placed via `shared/placed.ts` (`sand` kinds: `gap` between them,
-  `STRUCTURE_GAP` from the hut/skylight/mast; `collideOutdoor`/`overPlaced` in shared/base.ts); while standing, the
-  item is in box `bld<id>`, whose parts are swapped in place (F, `src/inventory.ts` `part:<box>`); drawn by
-  `src/world/placed.ts`, models `tools/blender/placeables.py`
+  `STRUCTURE_GAP` from the hut/skylight/mast and the shelters' huts; where it goes by where you stand, `placeFloor`:
+  the `floor` kinds also on a shelter's room floor, `shelterRoomClear` in shared/shelters.ts; collision of everything
+  not on the bunker floor in a grid of 16 m cells, `collideOutdoor`/`overPlaced` in shared/base.ts); while standing,
+  the item is in box `bld<id>`, whose parts are swapped in place (F, `src/inventory.ts` `part:<box>`); drawn by
+  `src/world/placed.ts` (lit by the sky, the bunker's lamps or a shelter's fill, by where it stands), models
+  `tools/blender/placeables.py`
+- Work stations and chests built with the wrench (shared/placed.ts `WORKBENCH`, `TABLE`, `CHEST`; models
+  `tools/blender/stations.py`, the base's own from bunker.py) — `shared/stations.ts` `stations()`: the base's workbench
+  and table plus every placed one; any workbench opens the repair slot ('bench') and its recipes, any dismantling table
+  takes carried machines apart (shared/crash.ts `tables()`, a session per table: 'bench' the base's, `bench<placed
+  id>`; server/crash.ts keeps a job per table, `bench_jobs`); a chest is box `store<placed id>`
+  (CHEST_COLS × CHEST_ROWS, shared). A table with a machine on it or a chest with anything in it can't be taken down
+  (server/world.ts onUnplace)
 - Beacons (`beacon_light`, shared/placed.ts `BEACON`) — a lamp on a mast that shines a column of light into the sky, a
-  marker: built with the wrench like the others (scrap, wiring) but `anywhere` on the sand, not only round the base
-  (`MAX_BEACONS` of their own); one battery slot. Powered like a load on the grid (shared/power.ts `BEACON_W`, `draw`;
+  marker: built with the wrench like the others (scrap, wiring), `MAX_BEACONS` of their own; one battery slot. Powered like a load on the grid (shared/power.ts `BEACON_W`, `draw`;
   server/power.ts): wired, it runs on the windmills, then on every battery on its grid (and the grid charges its battery);
   alone, its own battery runs flat (a Scrap one ~2 real hours). Dark without power (`PowerState.lit`). R in view of one
   cycles its colour (`BEACON_COLORS`, 8; src/placing.ts, `beaconColor` message), kept in its item's ItemData `color`.
@@ -134,7 +144,7 @@ when you find it stale.
 ## Loot, items and gear
 
 - `shared/tables.ts` — every loot table and crafting recipe (machine/wreck yields, world finds, caches, kill drops,
-  workbench recipes, BUILD_TABLE, BOSS_SPOILS, HARVESTER_SPOILS) as plain data; tune drops and recipes there.
+  workbench recipes, HAND_TABLE (made by hand anywhere: the wrench), BUILD_TABLE, BOSS_SPOILS, HARVESTER_SPOILS) as plain data; tune drops and recipes there.
   `shared/lootRoll.ts` — the dice that roll them in the world (caches, stashes, finds and where they lie,
   kill/jet/harvester/boss drops), shared by the server and the economy simulator (`tools/econsim`, docs/econsim.md)
 - Item data — one item's own state (`ItemData` in `shared/items.ts`: a battery's `charge`, a shield's `worn`), one

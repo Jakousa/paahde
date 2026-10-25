@@ -184,7 +184,7 @@ here.
 
 | Class | Size | How you work it | Examples (working titles) |
 |---|---|---|---|
-| S | 0.4-1.2 m | carried home, taken apart on the disassembly table (`BENCH`, `shared/crash.ts`) | winch, valve, beacon, relay box, filter housing, hand pump |
+| S | 0.4-1.2 m | carried home, taken apart on a dismantling table (`tables()`, `shared/crash.ts`) | winch, valve, beacon, relay box, filter housing, hand pump |
 | M | 1.2-3 m | a site you walk around, worked in place (the turbofan, a well-head pump) | generator set, compressor, cooler unit, gearbox, robot arm |
 | L | 3-8 m, 1-3 sections | a site, sections walked between | tractor, hauler truck, combine header, pivot-irrigation span |
 | XL | 8-60 m, 3-10 sections | a structure site | pumping station, windpump tower, desalination plant, bucket-wheel excavator, crashed cargo hauler |
