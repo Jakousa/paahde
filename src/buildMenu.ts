@@ -12,21 +12,22 @@ const css = `
 #buildMenu { position: fixed; inset: 0; z-index: 7; display: none; align-items: center; justify-content: center;
   background: rgba(0, 0, 0, 0.35); font: 13px var(--mono); color: #fff4e4; }
 #buildMenu.open { display: flex; }
-#buildMenu .panel { min-width: 260px; max-width: min(360px, calc(100vw / var(--ui, 1) - 32px)); padding: 14px; border-radius: 8px; background: rgba(28, 15, 7, 0.94);
-  box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; gap: 6px; }
-#buildMenu h3 { margin: 0 0 4px; font: 600 13px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: #ffd9a0; }
-#buildMenu button { display: flex; align-items: center; gap: 10px; font: 12px var(--mono); text-align: left; color: #fff4e4;
-  background: rgba(255, 240, 220, 0.12); border: 0; border-radius: 4px; padding: 6px 10px 6px 6px; cursor: pointer; }
-#buildMenu button:hover:not(:disabled) { background: rgba(255, 240, 220, 0.24); }
+#buildMenu .panel { padding: 12px; border-radius: 8px; background: rgba(28, 15, 7, 0.94);
+  box-shadow: 0 0 0 1px rgba(255, 240, 220, 0.16), 0 8px 30px rgba(0, 0, 0, 0.45); display: flex; flex-direction: column; gap: 8px; }
+#buildMenu h3 { margin: 0; font: 600 12px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: #ffd9a0; }
+#buildMenu .grid { display: grid; grid-template-columns: repeat(3, 124px); gap: 4px; }
+#buildMenu button { display: flex; flex-direction: column; align-items: center; gap: 2px; font: 11px var(--mono); text-align: center;
+  color: #fff4e4; background: rgba(255, 240, 220, 0.08); border: 0; border-radius: 4px; padding: 6px 4px; cursor: pointer; }
+#buildMenu button:hover:not(:disabled) { background: rgba(255, 240, 220, 0.2); }
 #buildMenu button.sel { box-shadow: inset 0 0 0 2px #ffd9a0; }
-#buildMenu button:disabled { cursor: default; opacity: 0.75; }
-#buildMenu .ico { width: 46px; height: 46px; flex: none; display: flex; align-items: center; justify-content: center; }
-#buildMenu .ico img, #buildMenu .ico svg { max-width: 46px; max-height: 46px; pointer-events: none; }
-#buildMenu .name { font-weight: 600; }
-#buildMenu .need { font-size: 11px; line-height: 1.5; opacity: 0.9; }
+#buildMenu button:disabled { cursor: default; opacity: 0.6; }
+#buildMenu .ico { width: 40px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center; }
+#buildMenu .ico img, #buildMenu .ico svg { max-width: 40px; max-height: 40px; pointer-events: none; }
+#buildMenu .name { font-weight: 600; line-height: 1.25; }
+#buildMenu .need { font-size: 10px; line-height: 1.35; }
 #buildMenu .need .short { color: #ff9a7a; }
 #buildMenu .need .ok { color: #9ad88a; }
-#buildMenu .legend { margin-top: 4px; font: 11px var(--mono); color: #fff4e4; opacity: 0.8; }
+#buildMenu .legend { font: 11px var(--mono); color: #fff4e4; opacity: 0.8; }
 #buildMenu .legend kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 5px; border-radius: 3px; background: #fff4e4; color: #2a160a; }
 `;
 
@@ -71,7 +72,9 @@ export class BuildMenu {
     p.replaceChildren();
     const title = document.createElement('h3');
     title.textContent = TEXT.prompt.buildMenu;
-    p.append(title);
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    p.append(title, grid);
     for (const [kind, r] of Object.entries(BUILDS)) {
       if (!this.available(kind) && kind !== chosen) continue;
       let ready = true;
@@ -84,12 +87,12 @@ export class BuildMenu {
       b.className = kind === chosen ? 'sel' : '';
       // The chosen one stays clickable, to put it away.
       b.disabled = !ready && kind !== chosen;
-      b.innerHTML = `<div class="ico">${itemIcon(kind)}</div><div><div class="name">${itemLabel(kind)}</div><div class="need">${needs}</div></div>`;
+      b.innerHTML = `<div class="ico">${itemIcon(kind)}</div><div class="name">${itemLabel(kind)}</div><div class="need">${needs}</div>`;
       b.addEventListener('click', () => {
         this.close();
         pick(kind === chosen ? null : kind);
       });
-      p.append(b);
+      grid.append(b);
     }
     // The pad's way out (src/padCursor.ts); the keys' (Esc, F) go unsaid.
     p.insertAdjacentHTML('beforeend', `<div class="legend">${ctl('uiClose', TEXT.inventory.close)}</div>`);
