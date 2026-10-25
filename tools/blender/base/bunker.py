@@ -906,4 +906,5 @@ def main():
         render_preview(objs, os.path.abspath(args.preview))
 
 
-main()
+if __name__ == '__main__':
+    main()

@@ -12,15 +12,16 @@
 //    which parts are taken (kept in SQLite, `machine_progress`, and never reset by itself: a stripped machine
 //    stays stripped). Every step can be done by one player alone. Every player is told about every step and
 //    take ('sites' on join, then siteDone / siteTake), so a machine looks the same to everyone, worked on or not.
-//  - The base's disassembly table is the same kind of session, with id BENCH_ID: crashUse puts a carried machine
-//    on it with a seed picked here, and the job (kind, seed in `bench_job`, progress like a site's) is kept until
-//    its last part is taken (or it is scrapped, scrapBench); then the table is free.
+//  - Every dismantling table (shared/crash.ts tables: the base's, 'bench', and each one put up with the wrench,
+//    'bench<placed id>') is the same kind of session, with the table's id: crashUse puts a carried machine on it with
+//    a seed picked here, and the job (kind, seed in `bench_jobs`, progress like a site's) is kept until it is scrapped
+//    (scrapBench); then the table is free. A table with a job can't be taken down (busyTable).
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's
 // seed): whoever takes part i first gets that part's item in their bag. Step indexes are only checked for range
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
 import { machineChanged, machineShove, maxShove, pushedMachine, setMachineProgress, setMachineShove } from '../shared/machineBoxes.ts';
 import { CROUCH, BACK, DT, FORWARD, LEFT, PLAYER_RADIUS, RIGHT, STEP_UP } from '../shared/sim.ts';
-import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, crashVisited, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
+import { CARRY_KINDS, crashSiteById, isTableId, tableById, crashSpent, crashTaken, crashVisited, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import { crashSite, crashSitesNear, CRASH_CELL, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
 import { debrisItem } from '../shared/items.ts';
@@ -44,8 +45,6 @@ const MAX_INDEX = 255;
 const SHOVE_SPEED = 0.4;
 /** About what a lying machine's radius is: it rolls as it goes (rolling without slipping: speed / radius). */
 const ROLL_RADIUS = 0.45; // (half of what it is: it turns twice as fast as it would rolling without slipping)
-/** Session id of the base's disassembly table. */
-export const BENCH_ID = 'bench';
 
 interface Session {
   done: Set<number>;
@@ -88,16 +87,16 @@ export class CrashServer {
   private newlyVisited: number[] = [];
   private sessions = new Map<string, Session>();
   private broadcast: (msg: ServerMsg) => void;
-  /** The machine on the disassembly table, or null when it is free. */
-  private bench: { kind: JunkKind; seed: number } | null = null;
+  /** The machine on each dismantling table that has one, by the table's session id. */
+  private benches = new Map<string, { kind: JunkKind; seed: number }>();
 
   constructor(db: Db, broadcast: (msg: ServerMsg) => void) {
     this.db = db;
     this.broadcast = broadcast;
-    const job = db.loadBench();
-    if (job && (CARRY_KINDS as string[]).includes(job.kind)) {
-      this.bench = { kind: job.kind as JunkKind, seed: job.seed };
-      console.log(`crash: ${job.kind} on the disassembly table`);
+    for (const job of db.loadBenches()) {
+      if (!isTableId(job.id) || !(CARRY_KINDS as string[]).includes(job.kind)) continue;
+      this.benches.set(job.id, { kind: job.kind as JunkKind, seed: job.seed });
+      console.log(`crash: ${job.kind} on dismantling table ${job.id}`);
     }
     for (const r of db.loadProgress()) {
       const m = this.large(r.id);
@@ -108,7 +107,7 @@ export class CrashServer {
       this.sessions.set(m.id, this.newSession(done, r.taken.filter((i) => ok(i) && i < m.parts.length)));
     }
     setMachineProgress((id) => this.sessions.get(id)?.done);
-    if (this.bench && !this.sessions.has(BENCH_ID)) this.sessions.set(BENCH_ID, this.newSession([], []));
+    for (const id of this.benches.keys()) if (!this.sessions.has(id)) this.sessions.set(id, this.newSession([], []));
     console.log(`crash: ${this.sessions.size} machines worked on`);
     for (const r of db.loadCrashTaken()) {
       const s = carrySite(r.id);
@@ -143,35 +142,46 @@ export class CrashServer {
     return site.kind;
   }
 
-  /** Put one carried machine of item `kind` on the disassembly table (if it is free); `take()` uses it up from
-   *  the bag. Everyone is told about the new job. */
-  use(feet: Feet, kind: unknown, take: () => boolean): boolean {
-    if (typeof kind !== 'string' || !(CARRY_KINDS as string[]).includes(kind) || this.bench) return false;
-    if (Math.hypot(BENCH.x - feet.x, BENCH.z - feet.z) > BENCH_REACH) return false;
+  /** Put one carried machine of item `kind` on dismantling table `at` (if it stands and is free); `take()` uses it up
+   *  from the bag. Everyone is told about the new job. */
+  use(feet: Feet, at: unknown, kind: unknown, take: () => boolean): boolean {
+    const table = tableById(at);
+    if (!table || typeof kind !== 'string' || !(CARRY_KINDS as string[]).includes(kind) || this.benches.has(table.id)) return false;
+    if (Math.hypot(table.x - feet.x, table.z - feet.z) > BENCH_REACH) return false;
     const seed = (Math.random() * 4294967296) >>> 0;
     const ok = this.db.tx(() => {
       if (!take()) return false;
-      this.db.saveBench(kind, seed);
-      this.db.saveProgress(BENCH_ID, [], [], TEARDOWN_LAYOUT);
+      this.db.saveBench(table.id, kind, seed);
+      this.db.saveProgress(table.id, [], [], TEARDOWN_LAYOUT);
       return true;
     });
     if (!ok) return false;
-    this.bench = { kind: kind as JunkKind, seed };
-    this.sessions.set(BENCH_ID, this.newSession([], []));
-    this.broadcast(this.benchMessage());
+    this.benches.set(table.id, { kind: kind as JunkKind, seed });
+    this.sessions.set(table.id, this.newSession([], []));
+    this.broadcast(this.benchMessage(table.id));
     return true;
   }
 
-  /** The table's job as it stands, for joining players and after every change of job. */
-  benchMessage(): ServerMsg {
-    const s = this.sessions.get(BENCH_ID);
-    const job: BenchJob | null = this.bench && s ? { ...this.bench, done: [...s.done], taken: [...s.taken.keys()] } : null;
-    return { t: 'bench', job };
+  /** Table `id`'s job as it stands, after every change of job. */
+  benchMessage(id: string): ServerMsg {
+    const s = this.sessions.get(id), job = this.benches.get(id);
+    const out: BenchJob | null = job && s ? { ...job, done: [...s.done], taken: [...s.taken.keys()] } : null;
+    return { t: 'bench', id, job: out };
   }
 
-  /** Steps done and parts taken at every machine worked on (not the table: 'bench' carries that), for joining players. */
+  /** Every table's job, for a joining player. */
+  benchMessages(): ServerMsg[] {
+    return [...this.benches.keys()].map((id) => this.benchMessage(id));
+  }
+
+  /** Does table `id` hold a machine? (It can't be taken down then.) */
+  busyTable(id: string): boolean {
+    return this.benches.has(id);
+  }
+
+  /** Steps done and parts taken at every machine worked on (not the tables: 'bench' carries those), for joining players. */
   progressMessage(): ServerMsg {
-    const sites = [...this.sessions].filter(([id, s]) => id !== BENCH_ID && (s.done.size || s.taken.size))
+    const sites = [...this.sessions].filter(([id, s]) => !isTableId(id) && (s.done.size || s.taken.size))
       .map(([id, s]) => ({ id, done: [...s.done], taken: [...s.taken.keys()] }));
     return { t: 'sites', sites };
   }
@@ -188,7 +198,7 @@ export class CrashServer {
 
   /** Make a site's machine whole again: forget its progress (dev/admin helper; nothing calls it on its own). */
   resetSite(id: string) {
-    if (id === BENCH_ID || !this.sessions.has(id)) return;
+    if (isTableId(id) || !this.sessions.has(id)) return;
     this.sessions.delete(id);
     machineChanged(id);
     this.db.clearProgress(id);
@@ -326,8 +336,9 @@ export class CrashServer {
   /** A machine that can be worked on together: a large site, or the table while it holds a job. */
   /** A large site's or the table's machine; `wreck` is the crash site a field machine lies at (null: the table). */
   private large(id: unknown): { id: string; x: number; z: number; range: number; parts: MachinePart[]; wreck: number | null } | null {
-    if (id === BENCH_ID) {
-      return this.bench ? { id: BENCH_ID, x: BENCH.x, z: BENCH.z, range: BENCH_REACH, parts: machineParts(this.bench.kind, this.bench.seed), wreck: null } : null;
+    if (isTableId(id)) {
+      const table = tableById(id), job = this.benches.get(id as string);
+      return table && job ? { id: table.id, x: table.x, z: table.z, range: BENCH_REACH, parts: machineParts(job.kind, job.seed), wreck: null } : null;
     }
     const site = crashSiteById(id);
     // (A lab machine is worked in place whatever its size, and is never spent.)
@@ -393,7 +404,7 @@ export class CrashServer {
     this.save(site.id, s);
     this.broadcast({ t: 'siteDone', id: site.id, i });
     const m = crashSiteById(site.id);
-    if (reward && m && site.id !== BENCH_ID) reward(this.scrapFor({ kind: m.kind, seed: m.seed, level: m.level }, s, i), site.x, site.z);
+    if (reward && m && !isTableId(site.id)) reward(this.scrapFor({ kind: m.kind, seed: m.seed, level: m.level }, s, i), site.x, site.z);
   }
 
   /** First to take part `i` gets it: `give(kind)` puts its item in their bag (false: the bag is full, and the part
@@ -425,7 +436,7 @@ export class CrashServer {
   scrapFrame(pid: number, id: unknown, reward: (n: number, x: number, z: number) => void) {
     const site = this.large(id);
     const s = site && this.sessions.get(site.id);
-    if (!site || !s || site.id === BENCH_ID || !s.players.has(pid) || (site.wreck !== null && crashSpent.has(site.wreck))) return;
+    if (!site || !s || isTableId(site.id) || !s.players.has(pid) || (site.wreck !== null && crashSpent.has(site.wreck))) return;
     const m = crashSiteById(site.id);
     if (!m || !this.stripped({ kind: m.kind, seed: m.seed, level: m.level, parts: site.parts }, s)) return;
     reward(frameScrap(m.kind, m.seed, m.level, 0), site.x, site.z);
@@ -435,24 +446,25 @@ export class CrashServer {
 
   /** Scrap the machine on the table, finished or not (what is still on it is destroyed, and pays more: frameScrap): `give(n)` puts the scrap
    *  in the bag (false: no room, and the machine stays). The table is free again. */
-  scrapBench(feet: Feet, give: (n: number) => boolean): boolean {
-    const s = this.sessions.get(BENCH_ID);
-    if (!this.bench || !s || Math.hypot(BENCH.x - feet.x, BENCH.z - feet.z) > BENCH_REACH) return false;
-    const n = frameScrap(this.bench.kind, this.bench.seed, 1, Math.max(0, machineParts(this.bench.kind, this.bench.seed).length - s.taken.size));
+  scrapBench(feet: Feet, at: unknown, give: (n: number) => boolean): boolean {
+    const table = tableById(at);
+    const job = table && this.benches.get(table.id), s = table && this.sessions.get(table.id);
+    if (!table || !job || !s || Math.hypot(table.x - feet.x, table.z - feet.z) > BENCH_REACH) return false;
+    const n = frameScrap(job.kind, job.seed, 1, Math.max(0, machineParts(job.kind, job.seed).length - s.taken.size));
     return this.db.tx(() => {
       if (!give(n)) return false;
-      this.freeBench();
+      this.freeBench(table.id);
       return true;
     });
   }
 
-  private freeBench() {
-    this.bench = null;
-    this.sessions.delete(BENCH_ID);
+  private freeBench(id: string) {
+    this.benches.delete(id);
+    this.sessions.delete(id);
     this.db.tx(() => {
-      this.db.clearBench();
-      this.db.clearProgress(BENCH_ID);
+      this.db.clearBench(id);
+      this.db.clearProgress(id);
     });
-    this.broadcast(this.benchMessage());
+    this.broadcast(this.benchMessage(id));
   }
 }

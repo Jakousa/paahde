@@ -532,6 +532,28 @@ export function shelterFloorY(x: number, z: number): number | null {
   return inRoom || inHall ? s.y + (inRoom ? L.floor : shelterStairY(L, lz)) : null;
 }
 
+/** The shelter whose room or corridor feet at world (x, y, z) stand down in (not its hut), or null. */
+export function shelterUnder(x: number, y: number, z: number): Shelter | null {
+  const s = shelterAt(x, z);
+  if (!s) return null;
+  const lz = localZ(s, x, z);
+  return lz < S_HUT.z0 && inShelter(x, y, z) ? s : null;
+}
+
+/** What keeps world rectangle `r` ([x0, z0, x1, z1]) off shelter s's room floor: 'floor' (not all on it, clear of the
+ *  walls), 'pump' (too close to its pump, if it has one), 'doorway' (in the corridor's mouth), or null if it fits.
+ *  Shelters turn by quarter turns, so the rectangle is a rectangle in the shelter's frame too. */
+export function shelterRoomClear(s: Shelter, r: number[]): 'floor' | 'pump' | 'doorway' | null {
+  const ax = localX(s, r[0], r[1]), az = localZ(s, r[0], r[1]), bx = localX(s, r[2], r[3]), bz = localZ(s, r[2], r[3]);
+  const x0 = Math.min(ax, bx), x1 = Math.max(ax, bx), z0 = Math.min(az, bz), z1 = Math.max(az, bz);
+  const L = s.L, m = 0.05;
+  if (x0 < -L.room.w + m || x1 > L.room.w - m || z0 < L.room.z + m || z1 > L.hall - m) return 'floor';
+  const p = shelterPump(L), k = 0.35 + 0.9; // its plinth, and room to stand at it
+  if (s.pump && x0 < p.x + k && x1 > p.x - k && z0 < p.z + k && z1 > p.z - k) return 'pump';
+  if (x0 < S_W + 0.4 && x1 > -S_W - 0.4 && z1 > L.hall - 1.2) return 'doorway';
+  return null;
+}
+
 /** A random spot on a shelter's room floor, clear of the walls and the pump, for a stash (`rand` 0..1). */
 export function shelterLootSpot(s: Shelter, rand: () => number): { x: number; z: number } {
   const L = s.L, p = shelterPump(L);

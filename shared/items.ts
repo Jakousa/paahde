@@ -59,7 +59,11 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   beacon_light: { label: TEXT.items.beacon_light, stack: 1, size: [1, 3] },
   // A canvas sail on four poles (shared/tarp.ts): shade, put up anywhere.
   tarp: { label: TEXT.items.tarp, stack: 1, size: [2, 2] },
-  // The build tool (crafted at the workbench): with it in hand, the right mouse opens the build menu (src/buildMenu.ts).
+  // Work stations and a chest, put up anywhere on the sand or a shelter's floor (shared/stations.ts, shared/storage.ts).
+  workbench: { label: TEXT.items.workbench, stack: 1, size: [3, 2] },
+  dismantle_bench: { label: TEXT.items.dismantle_bench, stack: 1, size: [2, 2] },
+  storage_chest: { label: TEXT.items.storage_chest, stack: 1, size: [2, 1] },
+  // The build tool (crafted by hand): with it in hand, the right mouse opens the build menu (src/buildMenu.ts).
   wrench: { label: TEXT.items.wrench, stack: 1 },
   // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.
   laser_rifle: { label: TEXT.items.laser_rifle, stack: 1, size: [4, 1] },

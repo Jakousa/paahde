@@ -166,7 +166,8 @@ export function openDb(path: string) {
   const insertCrash = db.prepare('INSERT OR REPLACE INTO crash_taken (id, taken_at) VALUES (?, ?)');
   const deleteCrash = db.prepare('DELETE FROM crash_taken WHERE id = ?');
   // Machines being taken apart (server/crash.ts): steps done and parts taken (JSON arrays of indexes) per large
-  // site id, or 'bench' for the disassembly table, whose machine (kind + seed) is in bench_job while it has one.
+  // site id, or a dismantling table's session id ('bench' for the base's, 'bench<placed id>' for one put up with the
+  // wrench: shared/crash.ts tables), whose machine (kind + seed) is in bench_jobs while it has one.
   db.exec(`
     CREATE TABLE IF NOT EXISTS machine_progress (
       id    TEXT PRIMARY KEY,
@@ -178,16 +179,23 @@ export function openDb(path: string) {
       kind TEXT NOT NULL,                   -- component kind (shared/salvage.ts)
       seed INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS bench_jobs (
+      id   TEXT PRIMARY KEY,                -- the table's session id
+      kind TEXT NOT NULL,                   -- component kind (shared/salvage.ts)
+      seed INTEGER NOT NULL
+    );
   `);
+  // The base's table's job from before there were more tables (bench_job, one row) moves into bench_jobs.
+  db.exec(`INSERT OR IGNORE INTO bench_jobs (id, kind, seed) SELECT 'bench', kind, seed FROM bench_job; DELETE FROM bench_job;`);
   // Which step layout `done` indexes refer to (TEARDOWN_LAYOUT in shared/crash.ts); rows from before had layout 1.
   const progCols = db.prepare('SELECT name FROM pragma_table_info(?)').all('machine_progress') as { name: string }[];
   if (!progCols.some((c) => c.name === 'layout')) db.exec('ALTER TABLE machine_progress ADD COLUMN layout INTEGER NOT NULL DEFAULT 1');
   const allProgress = db.prepare('SELECT id, done, taken, layout FROM machine_progress');
   const putProgress = db.prepare('INSERT OR REPLACE INTO machine_progress (id, done, taken, layout) VALUES (?, ?, ?, ?)');
   const deleteProgress = db.prepare('DELETE FROM machine_progress WHERE id = ?');
-  const getBench = db.prepare('SELECT kind, seed FROM bench_job WHERE id = 1');
-  const putBench = db.prepare('INSERT OR REPLACE INTO bench_job (id, kind, seed) VALUES (1, ?, ?)');
-  const deleteBench = db.prepare('DELETE FROM bench_job');
+  const allBenches = db.prepare('SELECT id, kind, seed FROM bench_jobs');
+  const putBench = db.prepare('INSERT OR REPLACE INTO bench_jobs (id, kind, seed) VALUES (?, ?, ?)');
+  const deleteBench = db.prepare('DELETE FROM bench_jobs WHERE id = ?');
   const nums = (json: string): number[] => {
     try {
       const a = JSON.parse(json);
@@ -554,9 +562,9 @@ export function openDb(path: string) {
       .map((r) => ({ id: r.id, done: nums(r.done), taken: nums(r.taken), layout: r.layout })),
     saveProgress: (id: string, done: number[], taken: number[], layout: number) => putProgress.run(id, JSON.stringify(done), JSON.stringify(taken), layout),
     clearProgress: (id: string) => deleteProgress.run(id),
-    loadBench: () => getBench.get() as { kind: string; seed: number } | undefined,
-    saveBench: (kind: string, seed: number) => putBench.run(kind, seed),
-    clearBench: () => deleteBench.run(),
+    loadBenches: () => allBenches.all() as { id: string; kind: string; seed: number }[],
+    saveBench: (id: string, kind: string, seed: number) => putBench.run(id, kind, seed),
+    clearBench: (id: string) => deleteBench.run(id),
     loadJetCrashes: () => (allJetCrashes.all() as { data: string }[]).map((r) => JSON.parse(r.data)),
     saveJetCrash: (id: number, data: unknown) => putJetCrash.run(id, JSON.stringify(data)),
     deleteJetCrash: (id: number) => deleteJetCrash.run(id),

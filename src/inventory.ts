@@ -22,7 +22,7 @@ import { type Boxes, boxShape, holdsCargo, tryMove } from '../shared/moves.ts';
 import { chargeOf, findSpot, HOTBAR, ITEMS, makeItem, partAt, scrapItem, setData, TOOLS, sizeOf, strandedAt, type Item, type Shape, type Slots } from '../shared/items.ts';
 import { partOf } from '../shared/parts.ts';
 import { COMPONENTS, RARITY, SALVAGE, TIERS } from '../shared/salvage.ts';
-import { countMatching, RECIPES } from '../shared/crafting.ts';
+import { countMatching, HAND_RECIPES, RECIPES, type Recipe } from '../shared/crafting.ts';
 import { capacity, cells } from '../shared/power.ts';
 import type { ScrapPiece } from '../shared/scrap.ts';
 import { Hints } from './hints';
@@ -184,7 +184,7 @@ body.pad #invOverlay .slot .key { display: none; }
 const fit = (src: string, extra = '') => `<img class="fit" src="./icons/${src}.png" alt="" draggable="false"${extra}>`;
 const ICONS: Record<string, string> = {};
 for (const k of [...Object.keys(GEAR), 'grinder', 'plant_bed', 'uv_lamp', 'power_pole', 'tarp', 'scrap', 'cloth', 'wrench',
-  'robot_arm', 'control_cabinet', 'winch', 'solenoid_valve', 'beacon']) ICONS[k] = fit(`items/${k}`);
+  'robot_arm', 'control_cabinet', 'winch', 'solenoid_valve', 'beacon', 'workbench', 'dismantle_bench', 'storage_chest']) ICONS[k] = fit(`items/${k}`);
 // Wiring is what a wiring coil comes out as (shared/parts.ts UNTIERED): the coil's render.
 ICONS.wiring = fit('items/coil_basic');
 // The enemies' and bosses' own parts (tools/blender/relics.py).
@@ -444,7 +444,10 @@ export class InventoryHud {
       + `<div class="sep"></div><div class="head"><h3>${boxLabel('bag')}</h3><button data-sort="bag" title="${TEXT.inventory.sortTip}">${TEXT.inventory.sort}</button></div>`
       + `<div class="grid" style="grid-template-columns: repeat(5, 54px)">${this.slotsHtml('bag', bag, 0, HOTBAR)}</div><div class="sep"></div>`;
     if (!shape.rows) html += `<div class="none">${TEXT.inventory.noBackpack}</div>`;
-    html += this.gridHtml('bag', bag, shape) + '</div>';
+    html += this.gridHtml('bag', bag, shape);
+    // What's made by hand, anywhere (shared/crafting.ts HAND_RECIPES), under the bag.
+    if (!vehicle) html += `<div class="sep"></div><div class="head"><h3>${TEXT.inventory.byHand}</h3></div><div class="bench">${this.recipesHtml(bag, HAND_RECIPES)}</div>`;
+    html += '</div>';
     for (const box of this.storages) {
       const slots = this.net.boxes[box];
       if (box === 'bench') {
@@ -487,7 +490,7 @@ export class InventoryHud {
   /** The workbench: the item being repaired, its part slots and what it still needs, then the recipes. */
   private benchHtml(it: Item | null) {
     return `<div class="box bench"><div class="head"><h3>${boxLabel('bench')}</h3></div>${this.repairHtml(it, 'bench')}`
-      + `<div class="sep"></div><div class="head"><h3>${TEXT.inventory.craft}</h3></div>${this.recipesHtml(this.net.boxes.bag ?? [])}</div>`;
+      + `<div class="sep"></div><div class="head"><h3>${TEXT.inventory.craft}</h3></div>${this.recipesHtml(this.net.boxes.bag ?? [], RECIPES)}</div>`;
   }
 
   /** The item in box `at` (the workbench, a building's box), its part slots and what it still needs. */
@@ -540,10 +543,10 @@ export class InventoryHud {
     if (ui.inventoryOpen && !this.drag && this.storages.some((b) => buildingId(b) >= 0)) this.render();
   }
 
-  /** The workbench's recipes (shared/crafting.ts): what each needs, what you have, and a Craft button. */
-  private recipesHtml(bag: Slots) {
+  /** Recipes (shared/crafting.ts: the workbench's, or those made by hand): what each needs, what you have, and a Craft button. */
+  private recipesHtml(bag: Slots, recipes: Record<string, Recipe>) {
     let html = '';
-    for (const [id, r] of Object.entries(RECIPES)) {
+    for (const [id, r] of Object.entries(recipes)) {
       let ready = true;
       const needs = r.needs.map((ing) => {
         const have = countMatching(bag, ing);

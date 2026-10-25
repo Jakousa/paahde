@@ -183,6 +183,11 @@ export class Base {
     return convert(src as THREE.MeshStandardMaterial, null);
   }
 
+  /** The same conversion lit by other lights (a shelter's, src/world/shelters.ts). */
+  materialLitBy(src: THREE.Material, lit: LightsNode): THREE.Material {
+    return convert(src as THREE.MeshStandardMaterial, lit);
+  }
+
   /** Light a machine on the disassembly table with the bunker's lights instead of the scene's, so the work
    *  lamps reach it at night, and with the work light at your eye (viewFrom). Changes its node materials in place. */
   lightIndoors(root: THREE.Object3D) {

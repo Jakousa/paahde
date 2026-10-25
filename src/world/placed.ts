@@ -1,6 +1,8 @@
-// Draws the things placed on the bunker floor and the sand (shared/placed.ts): plant beds with their growth stage
-// (shared/garden.ts), UV lamp stands, and the buildings, from public/models/placeables/*.glb
-// (tools/blender/placeables.py). Floor things are lit by the bunker's indoor lights, sand things by the sky. A lamp
+// Draws the things placed on the floors and the sand (shared/placed.ts): plant beds with their growth stage
+// (shared/garden.ts), UV lamp stands, and the buildings, the work stations and the chest, from
+// public/models/placeables/*.glb (tools/blender/placeables.py, tools/blender/stations.py). Things on the bunker's floor
+// are lit by its indoor lights, on a shelter's by the shelter's, sand things by the sky (Where: one copy of a model per
+// kind and lighting, made as it's first needed). A lamp
 // throws a violet pool of light on the soil (or the floor) under it. A building looks its tier (src/tierLook.ts, by
 // the parts in it): the windmill's head turns into the wind and its rotor turns with it (shared/power.ts rotorSpeed:
 // the wind now, the bearings), the tail folding it out of a gale, still while a bearing or the motor is missing; the
@@ -16,12 +18,18 @@ import { EMPTY, STAGE_NODES, type BedState } from '../../shared/garden.ts';
 import { isBuilding, tierOf } from '../../shared/gear.ts';
 import { furl, rotorSpeed, windSpeed, type PowerState } from '../../shared/power.ts';
 import { parsePart } from '../../shared/items.ts';
-import { BEACON, bedLit, onSand, PLACEABLES, TARP, type Placed } from '../../shared/placed.ts';
+import { BEACON, bedLit, PLACEABLES, TARP, type Placed } from '../../shared/placed.ts';
 import { TARP_WIND, tarpModel } from './tarps.ts';
+import { inBase } from '../../shared/base.ts';
+import { inShelter } from '../../shared/shelters.ts';
 import { BeaconBeams, beaconModel, LENS, lensColor } from './beacons.ts';
 import { applyTier } from '../tierLook.ts';
 import { cells } from '../../shared/power.ts';
-import type { Base } from './base';
+
+/** What lights a placed thing: the sky (out on the sand), the bunker's lamps, a shelter's fill. */
+export type Where = 'out' | 'bunker' | 'shelter';
+const whereOf = (p: { x: number; y: number; z: number }): Where =>
+  inBase(p.x, p.y + 0.1, p.z) ? 'bunker' : inShelter(p.x, p.y + 0.1, p.z) ? 'shelter' : 'out';
 
 /** Height of the bed's soil (tools/blender/placeables.py SOIL), for the lamp's light pool. */
 const SOIL = 0.45;
@@ -42,7 +50,10 @@ type Shown = { p: Placed; obj: THREE.Object3D; head?: THREE.Object3D; rotor?: TH
 
 export class PlacedView {
   private group = new THREE.Group();
-  private models: Record<string, THREE.Object3D> = {};
+  /** Each kind's model as loaded, and its copies with each lighting's materials (`kind:where`). */
+  private loaded: Record<string, THREE.Object3D> = {};
+  private models = new Map<string, THREE.Object3D>();
+  private material: (mt: THREE.Material, where: Where) => THREE.Material;
   private shown = new Map<number, Shown>();
   private ghost: { kind: string; obj: THREE.Object3D } | null = null;
   private ghostOk = new THREE.MeshBasicNodeMaterial({ color: 0x7dff9a, transparent: true, opacity: 0.4, depthWrite: false });
@@ -51,32 +62,51 @@ export class PlacedView {
   private last: { list: Placed[]; garden: Map<number, BedState> } = { list: [], garden: new Map() };
   private beams: BeaconBeams;
 
-  constructor(scene: THREE.Scene, base: Base) {
+  /** `material` makes a model's material lit for where it stands. */
+  constructor(scene: THREE.Scene, material: (mt: THREE.Material, where: Where) => THREE.Material) {
     scene.add(this.group);
+    this.material = material;
     this.beams = new BeaconBeams(scene);
     const beacon = beaconModel();
     beacon.traverse((o) => ((o as THREE.Mesh).isMesh && o.name !== LENS && (o.castShadow = o.receiveShadow = true)));
-    this.models[BEACON] = beacon;
+    for (const w of ['out', 'bunker', 'shelter'] as Where[]) this.models.set(`${BEACON}:${w}`, beacon);
     const loader = new GLTFLoader();
     for (const kind of Object.keys(PLACEABLES)) {
       if (kind === BEACON || kind === TARP) continue;
-      const material = (mt: THREE.Material) => (onSand(kind) ? base.outdoorMaterial(mt) : base.indoorMaterial(mt));
       loader.load(
         `./models/placeables/${kind}.glb`,
         (gltf) => {
           gltf.scene.traverse((o) => {
             const m = o as THREE.Mesh;
-            if (!m.isMesh) return;
-            m.castShadow = m.receiveShadow = true;
-            m.material = Array.isArray(m.material) ? m.material.map(material) : material(m.material);
+            if (m.isMesh) m.castShadow = m.receiveShadow = true;
           });
-          this.models[kind] = gltf.scene;
+          this.loaded[kind] = gltf.scene;
           this.sync(this.last.list, this.last.garden);
         },
         undefined,
         (err) => console.warn(`placed: failed to load ${kind}.glb`, err),
       );
     }
+  }
+
+  /** `kind`'s model lit for `where`, or undefined while it loads. */
+  private model(kind: string, where: Where): THREE.Object3D | undefined {
+    const key = `${kind}:${where}`;
+    let m = this.models.get(key);
+    if (m || !this.loaded[kind]) return m;
+    m = this.loaded[kind].clone();
+    const conv = new Map<THREE.Material, THREE.Material>();
+    const one = (mt: THREE.Material) => {
+      let c = conv.get(mt);
+      if (!c) conv.set(mt, (c = this.material(mt, where)));
+      return c;
+    };
+    m.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh) mesh.material = Array.isArray(mesh.material) ? mesh.material.map(one) : one(mesh.material);
+    });
+    this.models.set(key, m);
+    return m;
   }
 
   /** Match the drawn things to the list and the beds' stages. Call when either changes. */
@@ -90,11 +120,11 @@ export class PlacedView {
       this.shown.delete(id);
     }
     for (const p of list) {
-      const model = this.models[p.kind];
+      const model = p.kind === TARP ? undefined : this.model(p.kind, whereOf(p));
       if (!model && p.kind !== TARP) continue;
       let s = this.shown.get(p.id);
       if (!s) {
-        const obj = p.kind === TARP ? tarpModel(p.x, p.y, p.z, p.rot, p.id) : model.clone();
+        const obj = p.kind === TARP ? tarpModel(p.x, p.y, p.z, p.rot, p.id) : model!.clone();
         obj.position.set(p.x, p.y, p.z);
         if (p.kind !== TARP) obj.rotation.y = p.rot ? Math.PI / 2 : 0;
         if (p.kind === 'uv_lamp') {
@@ -200,7 +230,8 @@ export class PlacedView {
 
   /** The placement preview: `kind` at `at` (y: what it would stand on), green if it fits, red if not; null hides it. */
   preview(kind: string | null, at: { x: number; y: number; z: number; rot: number } | null, ok: boolean) {
-    if (!kind || !at || (!this.models[kind] && kind !== TARP)) {
+    const model = kind && kind !== TARP ? this.model(kind, 'out') : undefined;
+    if (!kind || !at || (!model && kind !== TARP)) {
       if (this.ghost) this.ghost.obj.visible = false;
       return;
     }
@@ -211,7 +242,7 @@ export class PlacedView {
         this.group.remove(this.ghost.obj);
         if (this.ghost.kind.startsWith(`${TARP}:`)) disposeGeometry(this.ghost.obj);
       }
-      const obj = kind === TARP ? tarpModel(at.x, at.y, at.z, at.rot) : this.models[kind].clone();
+      const obj = kind === TARP ? tarpModel(at.x, at.y, at.z, at.rot) : model!.clone();
       STAGE_NODES.forEach((n) => {
         const o = n && obj.getObjectByName(n);
         if (o) o.visible = false;

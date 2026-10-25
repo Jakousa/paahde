@@ -52,6 +52,9 @@ const en = {
     power_pole: 'Power pole',
     beacon_light: 'Beacon',
     tarp: 'Tarp',
+    workbench: 'Workbench',
+    dismantle_bench: 'Dismantling bench',
+    storage_chest: 'Chest',
     laser_rifle: 'Laser rifle',
     laser_pistol: 'Laser pistol',
     jammer: 'Jammer',
@@ -109,7 +112,7 @@ const en = {
     beacon_light: () => 'Shines a column of light into the sky while it has power, from a battery or a wire.',
   },
   /** Where placing is blocked: "Too close to the pump". */
-  baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base' },
+  baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base', shelter: 'the shelter' },
 
   // ---- Prompts under the crosshair (after the key) ---------------------------------------------------------------
 
@@ -180,7 +183,6 @@ const en = {
     badSpot: 'Bad spot',
     floorOnly: 'Floor only',
     outsideOnly: 'Outside only',
-    tooFarFromBase: 'Too far from the base',
     tooSteep: 'Too steep',
     tooClose: (spot: string) => `Too close to ${spot}`,
     /** Too close to another building: "Too close to the windmill". */
@@ -188,7 +190,8 @@ const en = {
     outOfReach: 'Out of reach',
     tooManyWires: 'No room for more wires',
     cantConnect: "Can't connect that",
-    baseFull: 'The base is full',
+    /** Every placed thing the world may have is up (shared/placed.ts MAX_PLACED). */
+    tooManyPlaced: 'Too many things built',
     /** Every beacon the world may have is up (shared/placed.ts MAX_BEACONS). */
     tooManyBeacons: 'Too many beacons',
     lineUp: (what: 'bed' | 'lamp') => `Line it up with the ${what}`,
@@ -229,6 +232,8 @@ const en = {
     nothingInReach: 'Nothing in reach',
     noRoom: 'No room',
     craft: 'Craft',
+    /** Recipes made anywhere, no workbench needed (shared/crafting.ts HAND_RECIPES). */
+    byHand: 'By hand',
     /** Stands a broken vehicle up once its part slots are all filled (shared/vehicles.ts). */
     repair: 'Repair',
     brokenGear: 'Broken gear',

@@ -381,14 +381,15 @@ export class Net {
     return true;
   }
 
-  /** Put a carried machine (its item kind) on the workbench; the server uses one up and answers with the bag. */
-  crashUse(kind: string) {
-    if (this.connected) this.send({ t: 'crashUse', kind });
+  /** Put a carried machine (its item kind) on dismantling table `at` (its session id); the server uses one up and
+   *  answers with the bag. */
+  crashUse(at: string, kind: string) {
+    if (this.connected) this.send({ t: 'crashUse', kind, at });
   }
 
-  /** Scrap the machine on the disassembly table (the server answers with 'bench' and the bag). */
-  benchScrap() {
-    if (this.connected) this.send({ t: 'benchScrap' });
+  /** Scrap the machine on dismantling table `at` (the server answers with 'bench' and the bag). */
+  benchScrap(at: string) {
+    if (this.connected) this.send({ t: 'benchScrap', at });
   }
 
   /** The shared session of a large crash site, or of the disassembly table ('bench') (see SiteLink in src/teardown/teardown.ts). */

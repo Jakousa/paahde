@@ -1,15 +1,16 @@
 // Putting things down and picking them up (shared/placed.ts). Select a placeable item in the hotbar (1–5) and
-// a see-through preview follows the crosshair over the bunker floor: green where it fits, red where it doesn't; R
+// a see-through preview follows the crosshair over the floor: green where it fits, red where it doesn't; R
 // turns it, left mouse / E puts it down (the server checks it again). Looking at a placed thing, G picks it back up
 // into the bag. A UV lamp aimed at a bed snaps over it (and a bed under a lone lamp).
 //
 // The buildings (shared/crafting.ts BUILDS) are put up with the wrench: with it in hand the right mouse opens the build
-// menu (src/buildMenu.ts), and the building picked there is previewed the same way, out on the sand, and goes up from
-// the base materials in the bag (red, too, when they're short). With the wrench, G takes a building down.
+// menu (src/buildMenu.ts), and the building picked there is previewed the same way, out on the sand (or, for the work
+// stations and the chest, on the floor of the shelter you stand in: shared/placed.ts placeFloor), and goes up from the
+// base materials in the bag (red, too, when they're short). With the wrench, G takes a building down.
 //
 // Looking at a beacon with nothing to put down, R gives its light the next colour (shared/placed.ts BEACON_COLORS).
 import { BUILDS, isBuildable, pickIngredients, WRENCH } from '../shared/crafting.ts';
-import { BEACON, BEACON_COLORS, isPlaceable, onSand, placeAim, placed, placedTarget, placedY, placeError, turnsOf, type Placed } from '../shared/placed.ts';
+import { BEACON, BEACON_COLORS, isPlaceable, placeAim, placed, placedTarget, placedY, placeError, placeFloor, turnsOf, type Placed } from '../shared/placed.ts';
 import { EYE_HEIGHT, pitchFromQ } from '../shared/dig.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { yawFromQ } from '../shared/sim.ts';
@@ -95,12 +96,13 @@ export class Placer {
     const turns = turnsOf(kind);
     if (rotate) this.rot = (this.rot + 1) % turns;
     const at = placeAim(feet, yaw, pitch, kind, this.rot % turns, placed);
-    // Down in the bunker with something for the sand: it goes outside.
-    const below = onSand(kind) && feet.y + EYE_HEIGHT < heightAt(feet.x, feet.z);
+    const floor = placeFloor(kind, feet);
+    // Down in the bunker or a shelter with something for the sand: it goes outside.
+    const below = floor === null && feet.y + EYE_HEIGHT < heightAt(feet.x, feet.z);
     const short = wrench && !pickIngredients(bag, BUILDS[kind]);
-    const why = below ? TEXT.notice.outsideOnly : !at ? (onSand(kind) ? TEXT.prompt.aimAtGround : TEXT.prompt.aimAtFloor)
-      : placeError(kind, at.x, at.z, at.rot, placed, [feet]) ?? (short ? TEXT.notice.missingMaterials : null);
-    this.view.preview(kind, at && { ...at, y: placedY(kind, at.x, at.z, at.rot) }, !why);
+    const why = below ? TEXT.notice.outsideOnly : !at ? (floor === null ? TEXT.prompt.aimAtGround : TEXT.prompt.aimAtFloor)
+      : placeError(kind, at.x, at.z, at.rot, floor, placed, [feet]) ?? (short ? TEXT.notice.missingMaterials : null);
+    this.view.preview(kind, at && { ...at, y: placedY(kind, at.x, at.z, at.rot, floor) }, !why);
     if (pressed) {
       if (why) toast(why);
       else if (wrench) this.net.build(kind, at!.x, at!.z, at!.rot);

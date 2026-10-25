@@ -5,11 +5,12 @@
 // way while you are around. The large machine of a spent crash site (crashSpent: stripped, then its frame mashed to scrap) is gone.
 // How far each machine has been taken apart is the server's (server/crash.ts): every step and take arrives here
 // for every machine, and a machine built later is fast-forwarded to it. Machines you carried home (small ones, and the salvage wrecks of src/world/wrecks.ts)
-// are taken apart on the base's disassembly table, whose job is the server's too and is seen by everyone.
+// are taken apart on a dismantling table (the base's, or one put up with the wrench), whose job is the server's too and is seen by everyone.
 import * as THREE from 'three/webgpu';
 import {
-  BENCH, CARRY_KINDS, crashTaken, CRASH_REACH, seeded, siteSpent, sitesNear, type CrashSite,
+  BASE_TABLE, CARRY_KINDS, crashTaken, CRASH_REACH, isTableId, seeded, siteSpent, sitesNear, tableById, type CrashSite, type Table,
 } from '../../shared/crash.ts';
+import type { BenchJob } from '../../shared/protocol.ts';
 import { hasItem, type Slots } from '../../shared/items.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { heightAt } from '../../shared/terrain.ts';
@@ -33,8 +34,8 @@ const CULL_NEAR = 24;
 /** Objects put back per frame as a machine's detail comes in. */
 const DETAIL_PER_FRAME = 24;
 const DROP_R = 140;
-/** Session id of the disassembly table (server/crash.ts BENCH_ID). */
-export const BENCH_ID = 'bench';
+/** Session id of the base's dismantling table (shared/crash.ts). */
+export const BENCH_ID = BASE_TABLE;
 
 /** Steps done and parts taken at one machine. */
 type Progress = { done: Set<number>; taken: Set<number> };
@@ -61,7 +62,10 @@ export class MachineSites {
   /** Where each pushed machine is, from the server: its roll (rad) and how far it has been shoved from where it lay (m). */
   private rollTo = new Map<string, { a: number; x: number; z: number }>();
   private scene: THREE.Scene;
-  readonly bench: Bench;
+  /** The tables that have (or had) a job, by session id. */
+  private benches = new Map<string, Bench>();
+  /** Lights the machine on the base's table with the bunker's lamps (Base.lightIndoors). */
+  indoors?: (root: THREE.Object3D) => void;
   /** Every large site's progress, from the server. */
   private progress = new Map<string, Progress>();
   /** Id of the site the disassembly mode is working on (src/teardown): its machine is never swapped under it. */
@@ -69,13 +73,20 @@ export class MachineSites {
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
-    this.bench = new Bench(scene);
     // the players bump into what is still on a machine (shared/machineBoxes.ts): it reads which steps are done from here
     setMachineProgress((id) => this.progress.get(id)?.done);
   }
 
   /** Every frame with the local player's position. */
   update(focus: THREE.Vector3) {
+    for (const [id, b] of this.benches) {
+      b.update();
+      // Taken down (only ever free): forget it.
+      if (!b.busy && !b.table) {
+        b.dispose();
+        this.benches.delete(id);
+      }
+    }
     const near = sitesNear(focus.x, focus.z, DROP_R);
     const keep = new Set<string>();
     for (const site of near) {
@@ -192,6 +203,33 @@ export class MachineSites {
     settle(j.root); // (a machine at rest is not walked over every frame)
   }
 
+  /** Table `id`'s job (made when a job comes for it). */
+  bench(id: string): Bench {
+    let b = this.benches.get(id);
+    if (!b) {
+      this.benches.set(id, (b = new Bench(this.scene, id)));
+      if (id === BENCH_ID) b.indoors = (root) => this.indoors?.(root);
+    }
+    return b;
+  }
+
+  /** What table `id`'s menu offers (shared/crash.ts tables). */
+  tableMenu(id: string, bag: Slots | undefined): TableMenu {
+    return this.benches.get(id)?.menu(bag) ?? freeMenu(bag);
+  }
+
+  /** The table with a machine on it nearest (x, z) within `r`, or null. */
+  benchNear(x: number, z: number, r: number): Bench | null {
+    let best: Bench | null = null, bd = r;
+    for (const b of this.benches.values()) {
+      const t = b.table;
+      if (!t || !b.busy) continue;
+      const d = Math.hypot(t.x - x, t.z - z);
+      if (d < bd) (bd = d), (best = b);
+    }
+    return best;
+  }
+
   /** The site's frame has been scrapped (by anyone): the machine is gone. */
   isSpent(id: string): boolean {
     const v = this.views.get(id);
@@ -228,7 +266,7 @@ export class MachineSites {
   /** A progress message from the server (src/net.ts onSite). `active` is the id the disassembly mode is working on:
    *  that machine is left to the mode (it animates the change); every other one is brought up to date at once. */
   apply(m: SiteMsg, active: string | null) {
-    if (m.t === 'bench') return this.bench.set(m.job, active === BENCH_ID);
+    if (m.t === 'bench') return this.bench(m.id).set(m.job, active === m.id);
     if (m.t === 'siteTook') return;
     if (m.t === 'siteRolls') {
       if (m.reset) {
@@ -249,7 +287,7 @@ export class MachineSites {
       for (const v of this.views.values()) if (v.junk && v.site.id !== active) this.drop(v, true);
       return;
     }
-    if (m.id === BENCH_ID) return this.bench.apply(m, active === BENCH_ID);
+    if (isTableId(m.id)) return this.benches.get(m.id)?.apply(m, active === m.id);
     if (m.t === 'siteReset') {
       this.progress.delete(m.id);
       machineChanged(m.id);
@@ -285,7 +323,7 @@ export class MachineSites {
   }
 }
 
-// ---- disassembly table -------------------------------------------------------------------------------------
+// ---- dismantling tables -------------------------------------------------------------------------------------
 
 interface Job {
   kind: JunkKind;
@@ -293,39 +331,56 @@ interface Job {
   junk: Junk;
 }
 
-/** Machines carried home are taken apart on the base's disassembly table (shared/stations.ts). The job is the
- *  server's ('bench' messages): everyone sees the machine on the table and its progress, and anyone at the table
- *  can work on it. A machine on the table is scaled down to fit it, and you stand closer. */
+/** What a table's menu offers: the machine on it (name, the scrap it is worth as it is: the server's frameScrap), or the
+ *  carried machines that can be put on it. */
+export type TableMenu = { job: string | null; scrap: number; kinds: { kind: JunkKind; label: string }[] };
+
+/** Machines carried home are taken apart on a dismantling table (shared/crash.ts tables: the base's, or one put up
+ *  with the wrench). The job is the server's ('bench' messages, per table): everyone sees the machine on the table and
+ *  its progress, and anyone at the table can work on it. A machine on the table is scaled down to fit it, and you
+ *  stand closer. The table's place comes from shared/crash.ts tableById (a placed one's from the placed list), looked
+ *  up again until it is known. */
 export class Bench {
+  readonly id: string;
   private scene: THREE.Scene;
   private job: Job | null = null;
+  /** The server's job, waiting for the table to be known (the placed list) to be built. */
+  private pending: BenchJob | null = null;
   /** The table's job ended while the mode was open on it: tidy the machine away when it closes. */
   private stale: Junk | null = null;
-  /** Lights a new machine with the bunker's lamps (Base.lightIndoors). */
+  /** Lights a new machine with the bunker's lamps (Base.lightIndoors): the base's table only. */
   indoors?: (root: THREE.Object3D) => void;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, id: string) {
     this.scene = scene;
+    this.id = id;
   }
 
-  /** Tabletop height over the table, the room's floor elsewhere. */
-  ground = (x: number, z: number) =>
-    Math.abs(x - BENCH.x) < BENCH.w / 2 && Math.abs(z - BENCH.z) < BENCH.d / 2 ? BENCH.top : BENCH.floor;
+  get table(): Table | undefined {
+    return tableById(this.id);
+  }
 
-  /** What the table's menu offers: the machine on it (name, the scrap it is worth as it is: the server's frameScrap), or the carried
-   *  machines that can be put on it. */
-  menu(bag: Slots | undefined): { job: string | null; scrap: number; kinds: { kind: JunkKind; label: string }[] } {
+  get busy() {
+    return !!this.job || !!this.pending;
+  }
+
+  /** Tabletop height over the table, its floor elsewhere. */
+  ground = (x: number, z: number) => {
+    const t = this.table;
+    if (!t) return heightAt(x, z);
+    return Math.abs(x - t.x) < t.w / 2 && Math.abs(z - t.z) < t.d / 2 ? t.top : t.floor;
+  };
+
+  menu(bag: Slots | undefined): TableMenu {
     const cur = this.job;
-    return {
-      job: cur ? junkSpec(cur.kind).label : null,
-      scrap: cur ? frameScrap(cur.kind, cur.seed, 1, cur.junk.slots.filter((s) => !s.taken).length) : 0,
-      kinds: cur ? [] : CARRY_KINDS.filter((k) => hasItem(bag, k)).map((kind) => ({ kind, label: junkSpec(kind).label })),
-    };
+    return cur ? { job: junkSpec(cur.kind).label, scrap: frameScrap(cur.kind, cur.seed, 1, cur.junk.slots.filter((s) => !s.taken).length), kinds: [] }
+      : freeMenu(bag);
   }
 
   /** The table's job from the server (null: free). `active`: the mode is open on the table. */
-  set(job: { kind: string; seed: number; done: number[]; taken: number[] } | null, active: boolean) {
+  set(job: BenchJob | null, active: boolean) {
     const cur = this.job;
+    this.pending = null;
     if (cur && (!job || job.seed !== cur.seed || job.kind !== cur.kind)) {
       // Finished (or replaced): gone from the table, after the mode closes if it is open on it.
       if (active) this.stale = cur.junk;
@@ -333,21 +388,37 @@ export class Bench {
       this.job = null;
     }
     if (!job || !(CARRY_KINDS as string[]).includes(job.kind)) return;
+    const t = this.table;
+    if (!t) {
+      this.pending = job;
+      return;
+    }
     if (!this.job) {
       const kind = job.kind as JunkKind;
       const junk = buildJunk(kind, job.seed);
       this.indoors?.(junk.root);
-      // Fit the table: its long side is BENCH.d.
+      // Fit the table: its shorter side.
       const size = new THREE.Box3().setFromObject(junk.root).getSize(new THREE.Vector3());
-      junk.root.scale.setScalar(Math.min(1, (BENCH.d * 0.95) / Math.max(size.x, size.z, 1e-3)));
+      junk.root.scale.setScalar(Math.min(1, (Math.min(t.w, t.d) * 0.95) / Math.max(size.x, size.z, 1e-3)));
       this.job = { kind, seed: job.seed, junk };
       this.place();
     }
     if (!active) fastForward(this.job.junk, job.done, job.taken);
   }
 
+  /** Every frame: a job waiting for its table is built once the table is known. */
+  update() {
+    if (this.pending && this.table) this.set(this.pending, false);
+  }
+
   /** A step or take on the table's machine; the mode animates it itself when open on the table. */
   apply(m: SiteMsg, active: boolean) {
+    if (this.pending) {
+      // (Not built yet: kept with the job.)
+      if (m.t === 'siteDone') this.pending.done.push(m.i);
+      else if (m.t === 'siteTake') this.pending.taken.push(m.i);
+      return;
+    }
     const j = this.job?.junk;
     if (!j || active) return;
     if (m.t === 'siteState') fastForward(j, m.done, m.taken);
@@ -357,10 +428,10 @@ export class Bench {
 
   /** On the middle of the table, upright (the mode can move and turn it; nobody else sees that). */
   private place() {
-    const junk = this.job?.junk;
-    if (!junk) return;
+    const junk = this.job?.junk, t = this.table;
+    if (!junk || !t) return;
     junk.root.quaternion.identity();
-    junk.root.position.set(BENCH.x, BENCH.top, BENCH.z);
+    junk.root.position.set(t.x, t.top, t.z);
     if (!junk.root.parent) this.scene.add(junk.root);
     const off = lowestOffset(junk.root);
     if (off !== null) junk.root.position.y += off;
@@ -369,10 +440,10 @@ export class Bench {
   /** The job for the mode, or null if the table is free. `link` is the table's shared session; `scrap` turns the
    *  machine into scrap (false: no room in the bag). */
   site(link: SiteLink, scrap: () => boolean): WorkSite | null {
-    const job = this.job;
-    if (!job) return null;
+    const job = this.job, t = this.table;
+    if (!job || !t) return null;
     return {
-      id: BENCH_ID, kind: job.kind, label: junkSpec(job.kind).label, junk: job.junk, x: BENCH.x, z: BENCH.z, ground: this.ground,
+      id: this.id, kind: job.kind, label: junkSpec(job.kind).label, junk: job.junk, x: t.x, z: t.z, ground: this.ground,
       radius: 0.8, movable: true, link, stand: 2.3,
       closed: () => this.closed(),
       scrap,
@@ -387,7 +458,19 @@ export class Bench {
     }
     this.place();
   }
+
+  /** Gone for good (the table was taken down): its machine out of the scene. */
+  dispose() {
+    if (this.job) this.scene.remove(this.job.junk.root);
+    if (this.stale) this.scene.remove(this.stale.root);
+    this.job = this.pending = this.stale = null;
+  }
 }
+
+/** A free table's menu: the carried machines in the bag. */
+const freeMenu = (bag: Slots | undefined): TableMenu => ({
+  job: null, scrap: 0, kinds: CARRY_KINDS.filter((k) => hasItem(bag, k)).map((kind) => ({ kind, label: junkSpec(kind).label })),
+});
 
 /** Apply the server's progress to a machine without any animation. `taken` are part indexes (Slot.index). */
 function fastForward(junk: Junk, done: Iterable<number>, taken: Iterable<number>) {

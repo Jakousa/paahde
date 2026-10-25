@@ -1,7 +1,7 @@
 // Authoritative game server for one world (WORLD_ID, shared/world.ts): forked by server/index.ts, which hands
 // it the world's WebSocket connections over a local port. Simulates every player with shared/sim.ts and
 // broadcasts snapshots; exits when nobody has been on for a while (server/index.ts starts it again).
-import { buildingBox, cargoBox, isShared, vehicleBox } from '../shared/boxes.ts';
+import { buildingBox, cargoBox, isShared, storeBox, vehicleBox } from '../shared/boxes.ts';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -15,7 +15,8 @@ import { foundData, type Drop } from '../shared/lootRoll.ts';
 import { ENEMIES } from '../shared/enemies.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, OWN_BOXES } from '../shared/storage.ts';
-import { crashTaken } from '../shared/crash.ts';
+import { crashTaken, isTableId, tableId } from '../shared/crash.ts';
+import { CHEST, placed, TABLE } from '../shared/placed.ts';
 import { BASE, overBase } from '../shared/base.ts';
 import { canyonFloorNear } from '../shared/canyons.ts';
 import { indoors, overShelter, shelterAt, sheltersNear } from '../shared/shelters.ts';
@@ -325,10 +326,10 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   send(ws, scrap.joinMessage());
   send(ws, crash.joinMessage());
   send(ws, crash.progressMessage());
-  send(ws, crash.benchMessage());
+  send(ws, placedThings.joinMessage()); // (before the tables' jobs: a placed table's place comes from it)
+  for (const m of crash.benchMessages()) send(ws, m);
   send(ws, crash.spentMessage());
   send(ws, crash.rollsMessage());
-  send(ws, placedThings.joinMessage());
   send(ws, vehicleSrv.joinMessage(browserId));
   send(ws, wiring.joinMessage());
   send(ws, power.msg());
@@ -972,12 +973,12 @@ function onCrash(p: Player, msg: ClientMsg) {
     }
     else if (typeof msg.id === 'string' && !crashTaken.has(msg.id)) send(p.ws, { t: 'crash', taken: [], back: [msg.id] });
   } else if (msg.t === 'crashUse') {
-    crash.use(p.state, msg.kind, () => items.take(p.browserId, msg.kind));
+    crash.use(p.state, msg.at, msg.kind, () => items.take(p.browserId, msg.kind));
     sendBox(p, 'bag');
-    send(p.ws, crash.benchMessage()); // refused (the table was taken): what is on it
+    if (isTableId(msg.at)) send(p.ws, crash.benchMessage(msg.at)); // refused (the table was taken): what is on it
     gearChanged(p.browserId);
   } else if (msg.t === 'benchScrap') {
-    if (crash.scrapBench(p.state, (n) => items.give(p.browserId, SCRAP, n))) sendBox(p, 'bag');
+    if (crash.scrapBench(p.state, msg.at, (n) => items.give(p.browserId, SCRAP, n))) sendBox(p, 'bag');
   } else if (msg.t === 'siteScrap') {
     crash.scrapFrame(p.id, msg.id, (n, x, z) => payScrap(p, n, x, z));
   } else if (msg.t === 'labReset') {
@@ -1027,6 +1028,7 @@ function onBuild(p: Player, kind: unknown, x: unknown, z: unknown, rot: unknown)
   const r = p.down ? TEXT.notice.cantPlace : placedThings.build(p.browserId, p.state, kind, x, z, rot, [...players.values()].map((o) => o.state));
   if (typeof r === 'string') send(p.ws, { t: 'notice', text: r });
   else if (isBuilding(r.kind)) sendBox(p, buildingBox(r.id));
+  else if (r.kind === CHEST) sendBox(p, storeBox(r.id));
   sendBox(p, 'bag');
   if (typeof r !== 'string') gearChanged(p.browserId);
 }
@@ -1041,6 +1043,10 @@ function onBeaconColor(p: Player, id: unknown, color: unknown) {
 function onUnplace(p: Player, id: unknown) {
   // Its wires come down with it, their wiring into the bag too; a battery station's batteries with their charge.
   if (typeof id === 'number') power.flush(buildingBox(id));
+  // A dismantling table holding a machine, or a chest with things in it, stays up.
+  const q = placed.find((o) => o.id === id);
+  if (q?.kind === TABLE && crash.busyTable(tableId(q.id))) return send(p.ws, { t: 'notice', text: TEXT.notice.benchInUse });
+  if (q?.kind === CHEST && items.slots('', storeBox(q.id)).some(Boolean)) return send(p.ws, { t: 'notice', text: TEXT.notice.emptyItFirst });
   const r = placedThings.unplace(p.browserId, p.state, id, (q) => wiring.refund(q.id));
   if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
   wiring.takeDown(r.id);

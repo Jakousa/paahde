@@ -1,6 +1,7 @@
-// Crafting at the base's workbench (shared/stations.ts): recipes, and using up their ingredients from the bag.
-// The client shows the recipes in the Tab inventory while the workbench is in reach (src/inventory.ts) and
-// asks; the server checks reach and runs craft() on the real bag (server/items.ts).
+// Crafting at a workbench (shared/stations.ts) and by hand: recipes, and using up their ingredients from the bag.
+// The client shows the workbench's recipes in the Tab inventory while one is in reach, the ones made by hand
+// (HAND_RECIPES) always (src/inventory.ts), and asks; the server checks reach and runs craft() on the real bag
+// (server/items.ts).
 //
 // Ingredients match groups of item kinds, so any tier of a part will do (bearing_scrap … bearing_space,
 // shared/parts.ts); scrap, cloth and wiring are one item each. The worst matching item (lowest tier) is used first.
@@ -14,7 +15,7 @@ import { fitsSlot, GEAR } from './gear.ts';
 import { addItem, HOTBAR, ITEMS, setPart, withData, type Part, type Shape, type Slots } from './items.ts';
 import { partOf } from './parts.ts';
 import { TIERS } from './salvage.ts';
-import { BUILD_TABLE, RECIPE_TABLE, type IngredientSpec } from './tables.ts';
+import { BUILD_TABLE, HAND_TABLE, RECIPE_TABLE, type IngredientSpec } from './tables.ts';
 
 export type Ingredient = { label: string; n: number; match: (kind: string) => boolean };
 export type Recipe = { makes: string; needs: Ingredient[] };
@@ -35,6 +36,11 @@ const ingredient = (spec: IngredientSpec): Ingredient => ({
 /** Recipe id → what it makes and needs (shared/tables.ts RECIPE_TABLE). The id is the item kind it makes. */
 export const RECIPES: Record<string, Recipe> = Object.fromEntries(
   Object.entries(RECIPE_TABLE).map(([id, needs]) => [id, { makes: id, needs: needs.map(ingredient) }]),
+);
+
+/** Made by hand anywhere, no station needed (shared/tables.ts HAND_TABLE): recipe id → what it makes and needs. */
+export const HAND_RECIPES: Record<string, Recipe> = Object.fromEntries(
+  Object.entries(HAND_TABLE).map(([id, needs]) => [id, { makes: id, needs: needs.map(ingredient) }]),
 );
 
 /** Building → the base materials it takes (shared/tables.ts BUILD_TABLE). `makes` is the placed kind. */
@@ -103,7 +109,7 @@ export const buildCost = (kind: string): { kind: string; n: number }[] =>
 
 /** Craft `id` in `slots`: use up the ingredients, add what it makes. Mutates; false (no change) if it can't. */
 export function craft(slots: Slots, id: string, newId: () => number, shape: Shape): boolean {
-  const recipe = RECIPES[id];
+  const recipe = RECIPES[id] ?? HAND_RECIPES[id];
   if (!recipe || !(recipe.makes in ITEMS)) return false;
   const pick = pickIngredients(slots, recipe);
   if (!pick) return false;

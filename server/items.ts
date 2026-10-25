@@ -11,8 +11,8 @@ import {
 } from '../shared/items.ts';
 import type { PlayerState } from '../shared/sim.ts';
 import { boxSize, canOpen, growChest, OWN_BOXES } from '../shared/storage.ts';
-import { craft, RECIPES, useUp, type Recipe } from '../shared/crafting.ts';
-import { STATION_REACH, stationReach, STATIONS } from '../shared/stations.ts';
+import { craft, HAND_RECIPES, RECIPES, useUp, type Recipe } from '../shared/crafting.ts';
+import { nearStation } from '../shared/stations.ts';
 import type { openDb } from './db.ts';
 import { migrateBox } from './itemMigrations.ts';
 import { TEXT } from '../shared/text.ts';
@@ -254,14 +254,13 @@ export class ItemServer {
     return true;
   }
 
-  /** Craft a recipe (shared/crafting.ts) at the workbench. Returns the item kind made, or why not. */
+  /** Craft a recipe (shared/crafting.ts) at a workbench, or one made by hand anywhere. Returns the item kind made, or why not. */
   craft(browserId: string, s: PlayerState, recipe: unknown): string | { made: string } {
-    if (typeof recipe !== 'string' || !RECIPES[recipe]) return TEXT.notice.unknownRecipe;
-    const bench = STATIONS.findIndex((st) => st.kind === 'workbench');
-    if (bench < 0 || stationReach(s, bench) > STATION_REACH + REACH_SLACK) return TEXT.notice.tooFar;
+    if (typeof recipe !== 'string' || !(RECIPES[recipe] ?? HAND_RECIPES[recipe])) return TEXT.notice.unknownRecipe;
+    if (!HAND_RECIPES[recipe] && !nearStation(s, 'workbench', REACH_SLACK)) return TEXT.notice.tooFar;
     if (!craft(this.slots(browserId, 'bag'), recipe, this.newId, this.bagShape(browserId))) return TEXT.notice.missingParts;
     this.save(browserId, 'bag');
-    return { made: RECIPES[recipe].makes };
+    return { made: (RECIPES[recipe] ?? HAND_RECIPES[recipe]).makes };
   }
 
   /** A move from the client. Returns whether anything changed (either way the client gets both boxes back). */

@@ -5,14 +5,13 @@
 // large machines' part tiers (shared/tables.ts LEVEL_KINDS, LEVEL_TIERS).
 // The layout is the crash sites' (deterministic, integer hashing), so every client sees the same machines with the
 // same contents. Ids are "<crash site id>:<index>", index 0 the large machine (if the site has one).
-import { BASE_SPAWN } from './base.ts';
 import { crashSite, crashSitesNear, crashTaken, type CrashSite as Wreck } from './crashsites.ts';
 import type { LootLevel } from './crashsites.ts';
 import { COMPONENTS, SALVAGE, junkSpec, type ComponentKind, type JunkKind, type SalvageId } from './salvage.ts';
 import { labById, labSites } from './lab.ts';
 import { jetSiteById, jetSites } from './jetcrash.ts';
 import { shipSiteById, shipSites } from './ship.ts';
-import { STATIONS } from './stations.ts';
+import { stations, type Station } from './stations.ts';
 import { LEVEL_KINDS } from './tables.ts';
 import { mulberry32 as seeded } from './noise.ts';
 
@@ -25,12 +24,27 @@ export const CARRY_KINDS: JunkKind[] = [
   ...(Object.keys(COMPONENTS) as ComponentKind[]).filter((k) => COMPONENTS[k].carry),
   ...(Object.keys(SALVAGE) as SalvageId[]),
 ];
-/** Where carried components are taken apart: the disassembly table in the base (shared/stations.ts). `top` is the
- *  tabletop's height, `floor` the room's. */
-const TABLE = STATIONS.find((s) => s.kind === 'disassembly');
-export const BENCH = TABLE
-  ? { x: (TABLE.x0 + TABLE.x1) / 2, z: (TABLE.z0 + TABLE.z1) / 2, top: TABLE.y1, floor: TABLE.y0, w: TABLE.x1 - TABLE.x0, d: TABLE.z1 - TABLE.z0 }
-  : { x: BASE_SPAWN.x, z: BASE_SPAWN.z, top: 0, floor: 0, w: 1, d: 1 };
+/** Where carried components are taken apart: a dismantling table (shared/stations.ts), the base's or one put up with
+ *  the wrench. `id` is its session (server/crash.ts): 'bench' for the base's, `bench<placed id>` for a placed one; `top`
+ *  is the tabletop's height, `floor` what it stands on, `w`/`d` its size along X/Z. */
+export type Table = { id: string; placed?: number; x: number; z: number; top: number; floor: number; w: number; d: number };
+/** Session id of the base's table. */
+export const BASE_TABLE = 'bench';
+/** Session id of a placed table. */
+export const tableId = (placedId: number) => `bench${placedId}`;
+const toTable = (s: Station): Table => ({
+  id: s.placed === undefined ? BASE_TABLE : tableId(s.placed), ...(s.placed === undefined ? {} : { placed: s.placed }),
+  x: (s.x0 + s.x1) / 2, z: (s.z0 + s.z1) / 2, top: s.y1, floor: s.y0, w: s.x1 - s.x0, d: s.z1 - s.z0,
+});
+/** Every table in the world now. */
+export const tables = (): Table[] => stations().filter((s) => s.kind === 'disassembly').map(toTable);
+/** The table with session id `id`, if it stands. */
+export function tableById(id: unknown): Table | undefined {
+  if (typeof id !== 'string' || !id.startsWith(BASE_TABLE)) return undefined;
+  return tables().find((t) => t.id === id);
+}
+/** Is `id` a table's session id (standing or not)? */
+export const isTableId = (id: unknown) => typeof id === 'string' && /^bench\d*$/.test(id);
 /** How far (m) from a large site you may be to work on it with others. */
 export const SITE_RANGE = 14;
 

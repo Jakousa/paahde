@@ -128,13 +128,13 @@ export type ClientMsg =
   // Crash-site machines (shared/crash.ts). Carry a small one home: the server checks reach and that it is still
   // there, puts it in your bag as an item (of the component's kind) and answers 'items'.
   | { t: 'crashTake'; id: string }
-  // Put a carried machine (item kind) on the disassembly table to take it apart: if the table is free, uses one
-  // up from the bag (checked against the table's reach), picks the machine's seed and tells everyone ('bench');
-  // answers 'items' either way.
-  | { t: 'crashUse'; kind: string }
+  // Put a carried machine (item kind) on dismantling table `at` (its session id, shared/crash.ts tables) to take it
+  // apart: if the table is free, uses one up from the bag (checked against the table's reach), picks the machine's
+  // seed and tells everyone ('bench'); answers 'items' either way.
+  | { t: 'crashUse'; kind: string; at: string }
   // Scrap the machine on the disassembly table, finished or not (shared/machineSteps.ts frameScrap: more if parts are still on it,
   // which are destroyed): the scrap goes in your bag, if it all fits, and the table is free ('bench' to everyone, 'items' to you).
-  | { t: 'benchScrap' }
+  | { t: 'benchScrap'; at: string }
   // Mash the frame of a stripped field machine to scrap (siteScrap, below): the server checks that nothing is left on it, pays and
   // the site is spent ('crashSpent'). Not allowed on a machine with parts or steps left.
   // Large crash sites, and the table (id 'bench'), are worked on together. Join/leave the session; report a step
@@ -256,9 +256,10 @@ export type ServerMsg =
   // Machines pushed along (shared/machineBoxes.ts pushedMachine): how far round their own axis (a, rad) and how far shoved (x, z, m from
   // where they lay) each that has been is, on join (with reset: all of them) and whenever one moves.
   | { t: 'siteRolls'; rolls: { id: string; a: number; x: number; z: number }[]; reset?: boolean }
-  // The machine on the base's disassembly table (null: the table is free). On join, and to everyone when a job
-  // starts or its last part is taken. Its steps and takes come as siteDone / siteTake with id 'bench'.
-  | { t: 'bench'; job: BenchJob | null }
+  // The machine on dismantling table `id` (its session id, shared/crash.ts tables; null: the table is free). On join
+  // (every table with one), and to everyone when a job starts or ends. Its steps and takes come as siteDone / siteTake
+  // with the table's id.
+  | { t: 'bench'; id: string; job: BenchJob | null }
   // Your siteTake was answered: ok, the part's item (`kind`, shared/items.ts) is in your bag ('items' follows);
   // or refused because your bag is full (the part stays on the machine). Lost races get siteTake instead.
   | { t: 'siteTook'; id: string; i: number; ok: boolean; reason?: 'full'; kind?: string }

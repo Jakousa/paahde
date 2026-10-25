@@ -416,15 +416,31 @@ for (const p of BASE_PIECES) {
   capsules.push({ x: p.x, z: p.z, ax: alongX ? fz : fx, az: alongX ? -fx : fz, half, r, y0, top: y0 + p.h });
 }
 
-/** Things players placed on the floor (shared/placed.ts setPlaced keeps these in step with its list). */
+/** Things players placed on the bunker's floor (shared/placed.ts setPlaced keeps these in step with its list). */
 let withPlaced: Capsule[] = capsules;
-/** Things players put up on the sand round the base (base-local too, y0/top base-local), and their footprints
- *  (world [x0, z0, x1, z1]), where the sand is never dug (overPlaced). */
-let outdoor: Capsule[] = [];
+/** Things players put up out on the sand or on a shelter's floor (base-local too, y0/top base-local), in a grid of
+ *  OUT_CELL squares: each capsule is in every cell its reach (plus OUT_MARGIN, more than any player's or bike's radius)
+ *  touches, so a player only looks in the one cell they are in, however many things the world has. Their footprints on
+ *  the sand (world [x0, z0, x1, z1]), where it is never dug (overPlaced). */
+let outdoor = new Map<number, Capsule[]>();
 let outdoorSpots: number[][] = [];
+const OUT_CELL = 16;
+const OUT_MARGIN = 1;
+const outKey = (ix: number, iz: number) => ix * 65536 + iz;
 export function setPlacedCapsules(caps: Capsule[], out: Capsule[] = [], spots: number[][] = []) {
   withPlaced = capsules.concat(caps);
-  outdoor = out;
+  outdoor = new Map();
+  for (const c of out) {
+    const reach = c.half + c.r + OUT_MARGIN;
+    for (let iz = Math.floor((c.z - reach) / OUT_CELL); iz <= Math.floor((c.z + reach) / OUT_CELL); iz++) {
+      for (let ix = Math.floor((c.x - reach) / OUT_CELL); ix <= Math.floor((c.x + reach) / OUT_CELL); ix++) {
+        const k = outKey(ix, iz);
+        const list = outdoor.get(k);
+        if (list) list.push(c);
+        else outdoor.set(k, [c]);
+      }
+    }
+  }
   outdoorSpots = spots;
 }
 
@@ -555,12 +571,15 @@ export function collideCapsules(q: { x: number; z: number; vx: number; vz: numbe
   return support;
 }
 
-/** Collide a player with the things put up on the sand round the base (shared/placed.ts), like collideBase. */
+/** Collide a player with the things put up on the sand or a shelter's floor (shared/placed.ts), like collideBase:
+ *  only with what is in their grid cell. */
 export function collideOutdoor(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, height: number, stepUp: number): number {
-  if (!outdoor.length) return -Infinity;
+  if (!outdoor.size) return -Infinity;
   const q = local;
   q.x = p.x - BASE.x; q.z = p.z - BASE.z; q.vx = p.vx; q.vz = p.vz;
-  const support = collideCapsules(q, outdoor, Math.max(y, prevY) - BASE.y, Math.min(y, prevY) - BASE.y + height, radius, stepUp, -Infinity);
+  const caps = outdoor.get(outKey(Math.floor(q.x / OUT_CELL), Math.floor(q.z / OUT_CELL)));
+  if (!caps) return -Infinity;
+  const support = collideCapsules(q, caps, Math.max(y, prevY) - BASE.y, Math.min(y, prevY) - BASE.y + height, radius, stepUp, -Infinity);
   p.x = q.x + BASE.x;
   p.z = q.z + BASE.z;
   p.vx = q.vx;

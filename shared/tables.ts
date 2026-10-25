@@ -44,9 +44,15 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
   heatsink_scrap: [SCRAP(4)],
   // The grinder, for seams in a machine's shell: a motor spins the disc through a pair of gears, a battery drives it.
   grinder: [{ label: TEXT.parts.motor, n: 1, part: 'motor' }, { label: TEXT.parts.battery, n: 1, part: 'battery' }, { label: TEXT.parts.gear, n: 2, part: 'gear' }, SCRAP(3)],
-  // The wrench, the build tool (shared/crafting.ts BUILDS): a bar of scrap, forged.
-  wrench: [SCRAP(4)],
   // (Tools, guns and the jammer aren't crafted: they're found broken and repaired, shared/gear.ts.)
+};
+
+/** Made by hand, anywhere: no station needed (shared/crafting.ts HAND_RECIPES, listed in the Tab inventory). The id is
+ *  the item kind it makes. */
+export const HAND_TABLE: Record<string, IngredientSpec[]> = {
+  // The wrench, the build tool (shared/crafting.ts BUILDS): a bar of scrap, bent and beaten into shape. It puts up the
+  // workbench, so it can't need one.
+  wrench: [SCRAP(4)],
 };
 
 /** The buildings, put up with the wrench (shared/crafting.ts BUILDS): only base materials (scrap, cloth, wiring), used up
@@ -64,6 +70,13 @@ export const BUILD_TABLE: Record<string, IngredientSpec[]> = {
   beacon_light: [SCRAP(6), WIRING(2)],
   // A tarp (shared/tarp.ts): canvas stitched from cloth, four scrap-pipe poles, the guy lines and stakes from the scraps.
   tarp: [CLOTH(6), SCRAP(4)],
+  // A scrap bench with a pegboard, a lamp wired in (shared/stations.ts: repairs and recipes).
+  workbench: [SCRAP(10), WIRING(1)],
+  // A heavy slatted steel table with a vise, a grinder wired to it, a tarp for the parts (carried machines are taken
+  // apart on it: shared/crash.ts tables).
+  dismantle_bench: [SCRAP(16), WIRING(2), CLOTH(2)],
+  // A scrap box lined with cloth, its lid on a hinge (shared/storage.ts: CHEST_COLS × CHEST_ROWS, shared).
+  storage_chest: [SCRAP(8), CLOTH(2)],
 };
 
 // ---------------------------------------------------------------------------------------------------------------

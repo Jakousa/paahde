@@ -103,7 +103,8 @@ function boxGeometry(boxes: Box[]): THREE.BufferGeometry | null {
 export class Shelters {
   private group = new THREE.Group();
   private fill = new THREE.PointLight(0xd8dce4, 0, FILL.distance, 1);
-  private lit = lights([sunLight, this.fill]);
+  /** What lights their insides (the sun down the stairs, the room's fill). */
+  readonly lit = lights([sunLight, this.fill]);
   private geos = new Map<ShelterKind, [Mat, THREE.BufferGeometry][]>();
   private mats: Record<Mat, THREE.Material>;
   private shown = new Map<number, THREE.Group>();

@@ -1,15 +1,16 @@
 // Server side of placed things (shared/placed.ts): the `placed` table, putting an item from the bag down on
-// the bunker floor and picking it back up, and putting up a building with the wrench from the base materials in the
+// a floor and picking it back up, and putting up a building with the wrench from the base materials in the
 // bag (shared/crafting.ts BUILDS) and taking it down again (they all come back, with the parts fitted in it), each in
 // one transaction with the bag. A windmill or battery station (shared/gear.ts isBuilding) keeps its item in its own
 // box while it stands (buildingBox), its part slots empty at first: its parts are fitted there (server/items.ts fit /
-// unfit); a beacon's light colour is its item's data (recolor). Keeps shared/placed.ts's list (and so the collision) in step, and broadcasts the list when it changes.
-import { buildingBox } from '../shared/boxes.ts';
+// unfit); a beacon's light colour is its item's data (recolor); a chest keeps its things in box `store<id>` (shared/storage.ts;
+// server/world.ts won't take one down with anything in it, nor a dismantling table with a machine on it). Keeps shared/placed.ts's list (and so the collision) in step, and broadcasts the list when it changes.
+import { buildingBox, storeBox } from '../shared/boxes.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import { BUILDS, buildCost, isBuildable, WRENCH } from '../shared/crafting.ts';
 import { isBuilding, partsOf } from '../shared/gear.ts';
 import { partAt, setData } from '../shared/items.ts';
-import { BEACON, BEACON_COLORS, isPlaceable, onSand, PLACE_FLOOR_Y, PLACE_REACH, PLACED_REACH, placeError, placed, placedReach, placedY, SAND_REACH, setPlaced, type Placed } from '../shared/placed.ts';
+import { BEACON, BEACON_COLORS, CHEST, isPlaceable, PLACE_FLOOR_Y, PLACE_REACH, PLACED_REACH, placeError, placeFloor, placed, placedReach, placedY, SAND_REACH, setPlaced, type Placed } from '../shared/placed.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';
 import type { ItemServer } from './items.ts';
@@ -56,9 +57,9 @@ export class PlacedServer {
     return null;
   }
 
-  /** The buildings' boxes, for a joining player. */
+  /** The buildings' and the chests' boxes, for a joining player. */
   boxes(): string[] {
-    return placed.filter((p) => isBuilding(p.kind)).map((p) => buildingBox(p.id));
+    return placed.flatMap((p) => (isBuilding(p.kind) ? [buildingBox(p.id)] : p.kind === CHEST ? [storeBox(p.id)] : []));
   }
 
   /**
@@ -74,7 +75,7 @@ export class PlacedServer {
     if (why) return why;
     const p = this.db.tx((): Placed | null => {
       if (!this.items.takeItemAt(browserId, slot as number, kind)) return null;
-      return this.add(browserId, kind, x as number, z as number, rot as number);
+      return this.add(browserId, kind, x as number, z as number, rot as number, placeFloor(kind, feet));
     });
     if (!p) return TEXT.notice.cantPlace;
     return p;
@@ -92,7 +93,7 @@ export class PlacedServer {
     if (why) return why;
     const p = this.db.tx((): Placed | null => {
       if (!this.items.useUp(browserId, BUILDS[kind])) return null;
-      const q = this.add(browserId, kind, x as number, z as number, rot as number);
+      const q = this.add(browserId, kind, x as number, z as number, rot as number, placeFloor(kind, feet));
       if (isBuilding(kind)) this.items.stowNew(buildingBox(q.id), kind);
       return q;
     });
@@ -103,16 +104,17 @@ export class PlacedServer {
   private spotError(kind: string, feet: { x: number; y: number; z: number }, x: unknown, z: unknown, rot: unknown,
     players: { x: number; y: number; z: number }[]): string | null {
     if (typeof x !== 'number' || typeof z !== 'number' || typeof rot !== 'number') return TEXT.notice.badSpot;
-    const why = placeError(kind, x, z, rot, placed, players);
+    const floor = placeFloor(kind, feet);
+    const why = placeError(kind, x, z, rot, floor, placed, players);
     if (why) return why;
-    const dy = placedY(kind, x, z, rot) - feet.y - EYE_HEIGHT;
-    if (Math.hypot(x - feet.x, dy, z - feet.z) > (onSand(kind) ? SAND_REACH : PLACE_REACH) + REACH_SLACK) return TEXT.notice.tooFar;
+    const dy = placedY(kind, x, z, rot, floor) - feet.y - EYE_HEIGHT;
+    if (Math.hypot(x - feet.x, dy, z - feet.z) > (floor === null ? SAND_REACH : PLACE_REACH) + REACH_SLACK) return TEXT.notice.tooFar;
     return null;
   }
 
   /** Into the table and the list (a building's box opens with it, shared/storage.ts boxSize). Call inside a transaction. */
-  private add(browserId: string, kind: string, x: number, z: number, rot: number): Placed {
-    const y = placedY(kind, x, z, rot);
+  private add(browserId: string, kind: string, x: number, z: number, rot: number, floor: number | null): Placed {
+    const y = placedY(kind, x, z, rot, floor);
     const q: Placed = { id: this.db.insertPlaced(kind, x, y, z, rot, browserId), kind, x, y, z, rot, ...(isBuilding(kind) ? { parts: partsOf({ id: 0, kind, n: 1 }) } : {}) };
     setPlaced([...placed, q]);
     this.changed = true;

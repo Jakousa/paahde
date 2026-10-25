@@ -1,7 +1,7 @@
 // Item box ids and what kind of box each is: the one place their grammar lives. 'bag', 'equip' and 'bench' are the
-// player's own; the rest are numbered and shared: chests in the base ('chest<i>'), the packs left by the dead
-// ('corpse<id>', shared/corpse.ts), a building's item ('bld<placed id>') and a vehicle's ('veh<id>', its cargo
-// 'cargo<id>'). A kind's fixed traits are in BOX_KINDS; what depends on the world (size, label, shape, reach) is per
+// player's own; the rest are numbered and shared: chests in the base ('chest<i>'), chests put up with the wrench
+// ('store<placed id>'), the packs left by the dead ('corpse<id>', shared/corpse.ts), a building's item ('bld<placed id>')
+// and a vehicle's ('veh<id>', its cargo 'cargo<id>'). A kind's fixed traits are in BOX_KINDS; what depends on the world (size, label, shape, reach) is per
 // kind in shared/storage.ts and shared/gear.ts, as Record<BoxKind, ...> so a new kind can't be missed there.
 
 /**
@@ -16,6 +16,7 @@ export const BOX_KINDS = {
   equip: { own: true },
   bench: { own: true },
   chest: { grows: true },
+  store: {},
   corpse: { grows: true, takeOnly: true },
   bld: { fitted: true },
   veh: { fitted: true },
@@ -59,6 +60,10 @@ export const takeOnly = (box: string) => !!traits(box).takeOnly;
 export const buildingBox = (id: number) => `bld${id}`;
 /** The placed id of a building's box, or -1. */
 export const buildingId = (box: string) => boxNumber('bld', box);
+/** A chest put up with the wrench (shared/placed.ts CHEST) keeps its things in box `store<placed id>`, of a fixed size. */
+export const storeBox = (id: number) => `store${id}`;
+/** The placed id of a chest's box, or -1. */
+export const storeId = (box: string) => boxNumber('store', box);
 /** A vehicle in the world (shared/vehicles.ts) keeps its item in a box of one slot, `veh<vehicle id>`, like a
  *  building's; its cargo is the grid `cargo<vehicle id>`. */
 export const vehicleBox = (id: number) => `veh${id}`;

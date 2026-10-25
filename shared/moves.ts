@@ -6,7 +6,7 @@
 import { boxKind, fittedBox, takeOnly, type BoxKind } from './boxes.ts';
 import { bagShape, EQUIP_SLOTS, fitsSlot, GEAR, isGear, isVehicle, repaired } from './gear.ts';
 import {
-  BIKE_COLS, BIKE_ROWS, CHEST_COLS, fitsAt, freeSlots, gridShape, makeItem, moveItem, partAt, setPart, sizeOf, strandedAt, withData,
+  BIKE_COLS, BIKE_ROWS, CHEST_COLS, CHEST_ROWS, fitsAt, freeSlots, gridShape, makeItem, moveItem, partAt, setPart, sizeOf, strandedAt, withData,
   type Item, type Part, type Shape, type Slots,
 } from './items.ts';
 
@@ -27,6 +27,7 @@ const SHAPES: Record<BoxKind, (box: string, boxes: Boxes) => Shape> = {
   veh: () => freeSlots(1),
   cargo: () => gridShape(BIKE_COLS, BIKE_ROWS),
   chest: grown,
+  store: () => gridShape(CHEST_COLS, CHEST_ROWS),
   corpse: grown,
 };
 

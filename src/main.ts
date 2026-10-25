@@ -8,7 +8,8 @@ import { allBeaten } from '../shared/bosses.ts';
 import { BENCH, CALM, LAB, WORLD_ID } from '../shared/world.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
 import { bedLit, placed } from '../shared/placed.ts';
-import { STATIONS, stationTarget } from '../shared/stations.ts';
+import { stationTarget } from '../shared/stations.ts';
+import { BASE_TABLE, isTableId, tableId } from '../shared/crash.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
 import { BaseSand } from './world/baseSand';
@@ -92,7 +93,7 @@ import { BossBar } from './bossBar';
 import { Thrower } from './throw';
 import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
-import { BENCH_ID, MachineSites } from './world/crash';
+import { MachineSites } from './world/crash';
 import { BenchMenu } from './benchMenu';
 import { BuildMenu } from './buildMenu';
 import { machinesAt } from '../shared/crash.ts';
@@ -169,7 +170,9 @@ const ship = new ShipView(scene); // the crashed ship players arrive at
 await slice();
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
 await slice();
-const placedView = new PlacedView(scene, base); // plant beds, UV lamps and the buildings, in the bunker and round it
+// Plant beds, UV lamps, the buildings, the work stations and the chests: in the bunker, the shelters and out on the sand.
+const placedView = new PlacedView(scene, (mt, where) =>
+  (where === 'out' ? base.outdoorMaterial(mt) : where === 'bunker' ? base.indoorMaterial(mt) : base.materialLitBy(mt, shelters.lit)));
 const wireView = new WireView(scene); // the power lines between them (shared/wires.ts)
 await slice();
 const scrap = new Scrap(scene);
@@ -208,7 +211,7 @@ const teardown = new TeardownView(scene, orbit.camera, renderer.domElement); // 
 await slice();
 machines.busy = () => teardown.current?.id;
 viewCull.camera = orbit.camera;
-machines.bench.indoors = (root) => base.lightIndoors(root);
+machines.indoors = (root) => base.lightIndoors(root);
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
@@ -234,7 +237,7 @@ net.onSite = (m) => {
   const cur = teardown.current;
   machines.apply(m, cur?.id ?? null);
   // Someone scrapped the table's machine while we work on it (a finished one stays open until we leave).
-  if (m.t === 'bench' && !m.job && cur?.id === BENCH_ID) teardown.end();
+  if (m.t === 'bench' && !m.job && cur?.id === m.id) teardown.end();
   if (m.t === 'siteTook' && cur?.id === m.id) {
     teardown.applyTook(m.i, m.ok, m.reason);
   }
@@ -246,10 +249,10 @@ net.onSite = (m) => {
   else teardown.applyTake(m.i, m.by === net.id);
 };
 // Scrap the machine on the disassembly table, finished or not (what is still on it is destroyed and pays more), if the scrap fits in the bag.
-const scrapBench = () => {
-  const n = machines.bench.menu(net.boxes.bag).scrap;
+const scrapBench = (at: string) => {
+  const n = machines.tableMenu(at, net.boxes.bag).scrap;
   if (!addItem([...(net.boxes.bag ?? [])], SCRAP, n, () => 0, bagShape(net.boxes.equip))) return false;
-  net.benchScrap();
+  net.benchScrap(at);
   pickupSound.play();
   hud.toast(TEXT.notice.got(n, itemLabel(SCRAP)));
   return true;
@@ -630,7 +633,7 @@ renderer.setAnimationLoop((time) => {
 baseSand.update(frameDt, storm.atBase);
   tyreDust.update(frameDt);
   base.update();
-  base.viewFrom(teardown.current?.id === BENCH_ID ? orbit.camera.position : null);
+  base.viewFrom(teardown.current?.id === BASE_TABLE ? orbit.camera.position : null);
   shelters.update(orbit.camera.position);
   mast.update(frameDt);
   windSound.update(frameDt, orbit.camera.position, orbit.viewYaw, s);
@@ -661,59 +664,61 @@ baseSand.update(frameDt, storm.atBase);
   placedView.update(frameDt, net.worldTime(), (x, z) => stormAt(net.storms, x, z, net.serverTime()));
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
-  const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : -1;
+  const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   // Placing from the hotbar, building with the wrench and G to pick placed things up (src/placing.ts); its prompt goes after F's.
   const placing = placer.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), true, (t) => hud.toast(t));
   // A building in view (the windmill, the battery station): F opens it next to the bag, to swap its parts.
-  const building = station < 0 && placing.target && isBuilding(placing.target.kind) ? placing.target : null;
+  const building = !station && placing.target && isBuilding(placing.target.kind) ? placing.target : null;
   const buildingPrompt = building ? TEXT.prompt.open(itemLabel(building.kind)) : null;
   // A motorcycle in view (shared/vehicles.ts): F repairs a broken one (its part slots next to the bag), gets on a
   // working one, or opens its cargo from the back. On the bike, F gets off.
   const onBike = s.riding;
-  const vehicle = net.connected && !net.down && !onBike && station < 0 && !building
+  const vehicle = net.connected && !net.down && !onBike && !station && !building
     ? vehicleTarget(net.me, orbit.yaw, orbit.pitch) : null;
   const ridePrompt = !vehicle ? null : !vehicle.v.up ? TEXT.prompt.repair(itemLabel(vehicle.v.kind))
     : vehicle.rear ? TEXT.prompt.open(TEXT.boxes.cargo) : TEXT.prompt.getOn;
-  const bed = net.connected && station < 0 ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), placed) : null;
+  const bed = net.connected && !station ? bedTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), placed) : null;
   const bedState = bed ? net.garden.get(bed.id) : undefined;
   const stage = bed ? (bedState?.stage ?? EMPTY) : -1;
   const tend = stage === EMPTY ? TEXT.prompt.plantSeeds : stage === GROWN ? TEXT.prompt.harvest : null;
   // Sprouts grow only under a UV lamp (shared/garden.ts).
   const growing = stage === SPROUTS && bed ? (bedLit(bed) ? `<span>${Math.round((bedState?.grow ?? 0) * 100)}%</span>` : `<span class="bad">${TEXT.prompt.needsUvLamp}</span>`) : null;
-  const target = net.connected && station < 0 && !bed ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  const target = net.connected && !station && !bed ? scrapTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   // Debris at the crash sites (hull plates, pipes, ...) is picked up as what it gives: scrap or cloth (shared/items.ts debrisItem).
-  const debris = net.connected && station < 0 && !bed && !target ? debrisTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
+  const debris = net.connected && !station && !bed && !target ? debrisTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   const debrisPrompt = debris ? TEXT.prompt.pickUp(itemLabel(debrisItem(CRASH_KINDS[debris.kind].node))) : null;
-  const find = net.connected && station < 0 && !bed && !target && !debris ? lootView.target(net.me, orbit.yaw) : null;
+  const find = net.connected && !station && !bed && !target && !debris ? lootView.target(net.me, orbit.yaw) : null;
   const findPrompt = find ? lootPrompt(find, itemLabel) : null;
   // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
   // it lies. A carried one is taken apart on the base's disassembly table.
-  const nearSite = net.connected && station < 0 && !bed && !target && !debris && !find ? machines.nearest(net.me.x, net.me.z) : null;
+  const nearSite = net.connected && !station && !bed && !target && !debris && !find ? machines.nearest(net.me.x, net.me.z) : null;
   const small = nearSite ? junkSpec(nearSite.site.kind).carry && !nearSite.site.lab : false;
   // A small one is picked up with F; a big one starts its disassembly by itself when you come close (src/teardown).
   const site = small ? nearSite : null;
   if (nearSite && !small && !teardown.active) teardown.begin(machines.workSite(nearSite, net.siteLink(nearSite.site.id)));
   // A machine on the disassembly table is worked like a big one: it starts by itself when you stand at the table.
   if (!teardown.active && !benchMenu.isOpen && net.connected) {
-    const job = machines.bench.site(net.siteLink(BENCH_ID), scrapBench);
-    if (job && Math.hypot(job.x - net.me.x, job.z - net.me.z) < 3.5) teardown.begin(job);
+    const b = machines.benchNear(net.me.x, net.me.z, 3.5);
+    const job = b?.site(net.siteLink(b.id), () => scrapBench(b.id));
+    if (job) teardown.begin(job);
   }
   // Its frame was scrapped (by us or someone else) while we work on it: it is gone.
-  if (teardown.current && teardown.current.id !== BENCH_ID && machines.isSpent(teardown.current.id)) teardown.end();
+  if (teardown.current && !isTableId(teardown.current.id) && machines.isSpent(teardown.current.id)) teardown.end();
   // Close to a machine that is not being worked (a small one to carry home): its steps and parts, as when working it.
   teardown.setNear(site?.junk ? { label: junkSpec(site.site.kind).label, steps: site.junk.steps.filter((s) => !s.done).length, parts: site.junk.slots.filter((s) => !s.taken).length, scrap: false } : null);
   // Salvage wrecks (src/world/wrecks.ts) are always carried home.
-  const wreck = net.connected && station < 0 && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
+  const wreck = net.connected && !station && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
   const sitePrompt = site ? (small ? TEXT.prompt.pickUp(junkSpec(site.site.kind).label) : TEXT.prompt.disassemble(junkSpec(site.site.kind).label))
     : wreck ? TEXT.prompt.pickUp(SALVAGE[wreck.kind].label) : null;
-  const table = station >= 0 && STATIONS[station].kind === 'disassembly' ? machines.bench.menu(net.boxes.bag) : null;
-  const use = station < 0 ? null : STATIONS[station].kind === 'workbench' ? TEXT.prompt.useWorkbench : TEXT.prompt.useTable;
+  const tableAt = station?.kind === 'disassembly' ? (station.placed === undefined ? BASE_TABLE : tableId(station.placed)) : null;
+  const table = tableAt ? machines.tableMenu(tableAt, net.boxes.bag) : null;
+  const use = !station ? null : station.kind === 'workbench' ? TEXT.prompt.useWorkbench : TEXT.prompt.useTable;
   // A dead player's pack (shared/corpse.ts) lying here: F opens it next to the bag, like a chest.
-  const pack = net.connected && !net.down && station < 0 && !bed && !target && !debris && !find && !site && !wreck
+  const pack = net.connected && !net.down && !station && !bed && !target && !debris && !find && !site && !wreck
     && corpsesNear(net.me).some((b) => net.boxes[b]);
   // The base's chest in reach (shared/storage.ts): F opens it next to the bag.
-  const chest = net.connected && !net.down && station < 0 && !bed && !target && !debris && !find && !site && !wreck && !pack
-    && openBoxes(net.me).some((b) => b.startsWith('chest') && net.boxes[b]);
+  const chest = net.connected && !net.down && !station && !bed && !target && !debris && !find && !site && !wreck && !pack
+    && openBoxes(net.me).some((b) => (b.startsWith('chest') || b.startsWith('store')) && net.boxes[b]);
   const packPrompt = pack ? TEXT.prompt.openPack : chest ? TEXT.prompt.openChest : null;
   // A piece that came off a machine and lies by you can be picked up to be turned and taken apart in the hands; F again sets it down.
   const pieceHere = teardown.active && !teardown.holding ? teardown.pieceNear(net.me) : null;
@@ -730,13 +735,13 @@ baseSand.update(frameDt, storm.atBase);
     else teardown.hold(pieceHere!.piece);
   } else if (interact) {
     if (use) {
-      if (STATIONS[station].kind === 'workbench') hud.open();
+      if (station!.kind === 'workbench') hud.open();
       else if (table && (table.job || table.kinds.length)) {
         benchMenu.open({
           job: table.job,
           kinds: table.kinds,
-          place: (kind) => net.crashUse(kind),
-          scrap: () => (teardown.current?.id === BENCH_ID ? teardown.scrap() : scrapBench()),
+          place: (kind) => net.crashUse(tableAt!, kind),
+          scrap: () => (teardown.current?.id === tableAt ? teardown.scrap() : scrapBench(tableAt!)),
         });
       } else hud.toast(TEXT.notice.nothingToTakeApart);
     } else if (building) hud.open(buildingBox(building.id));
