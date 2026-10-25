@@ -20,6 +20,7 @@ import * as THREE from 'three/webgpu';
 import { Fn, float, int, ivec2, max, normalWorld, positionWorld, screenCoordinate, smoothstep, step, texture, uniform, uniformArray, vec2, vec4 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { heightAt } from '../../shared/terrain.ts';
+import { graphics } from '../graphics.ts';
 
 type F = Node<'float'>;
 
@@ -91,11 +92,11 @@ class Level {
     this.res = l.res;
     this.texel = l.size / l.res;
     // Heights: exact, read texel by texel (no filtering), with depth so the top surface wins.
-    this.height = new THREE.RenderTarget(l.res, l.res, { type: THREE.FloatType, format: THREE.RedFormat, depthBuffer: true, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+    this.height = new THREE.RenderTarget(1, 1, { type: THREE.FloatType, format: THREE.RedFormat, depthBuffer: true, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
     // Shadow: R = S − surface, G = surface − y0. Half floats are enough (S − surface is small where it matters, at the edge) and filter.
-    const make = () => new THREE.RenderTarget(l.res, l.res, { type: THREE.HalfFloatType, format: THREE.RGFormat, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
+    const make = () => new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, format: THREE.RGFormat, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
     this.shadow = [make(), make()];
-    const work = () => new THREE.RenderTarget(l.res, l.res, { type: THREE.FloatType, format: THREE.RedFormat, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
+    const work = () => new THREE.RenderTarget(1, 1, { type: THREE.FloatType, format: THREE.RedFormat, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
     this.ping = [work(), work()];
     this.passes = Math.ceil(Math.log2(l.res * 1.5));
     this.frontTex = texture(this.shadow[0].texture);
@@ -112,6 +113,8 @@ class Level {
 }
 
 export class HeightShadow {
+  private renderer: THREE.WebGPURenderer | null = null;
+  private enabled: boolean | null = null;
   private levels: Level[];
   private cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 6000);
   // (no blending: a 32-bit float target cannot blend, and a pipeline that asks for it is never ready, so nothing would be drawn)
@@ -205,9 +208,24 @@ export class HeightShadow {
    * every frame then fails ("destroyed texture used in a submit") and the scene is not drawn at all.
    */
   init(renderer: THREE.WebGPURenderer) {
+    this.renderer = renderer;
+    this.setEnabled(graphics.shadows);
+  }
+
+  /** Keep valid tiny textures while disabled; resizing releases their large GPU allocations. */
+  setEnabled(enabled: boolean) {
+    const renderer = this.renderer;
+    if (!renderer || this.enabled === enabled) return;
+    this.enabled = enabled;
     const target = renderer.getRenderTarget();
     for (const l of this.levels) {
+      l.pass = -1;
+      l.ready = false;
+      l.readyU.value = 0;
+      l.heightsAt = -Infinity;
       for (const rt of [l.height, ...l.shadow, ...l.ping]) {
+        rt.setSize(enabled ? l.res : 1, enabled ? l.res : 1);
+        rt.texture.needsUpdate = true;
         renderer.setRenderTarget(rt);
         renderer.clear();
       }
@@ -217,6 +235,7 @@ export class HeightShadow {
 
   /** Every frame: start a level's job when it is due, run one pass of the one in progress. */
   update(renderer: THREE.WebGPURenderer, scene: THREE.Scene, focus: THREE.Vector3) {
+    if (!this.enabled) return;
     const light = this.light.value;
     if (light.y < 0.005) return; // the light is down: nothing is lit to shadow
     const horiz = Math.hypot(light.x, light.z);
@@ -319,7 +338,7 @@ export class HeightShadow {
     renderer.setClearColor(new THREE.Color(l.back.y0.value - 200, 0, 0), 1); // (past the drawn terrain: low ground)
     // what should be drawn: the terrain chunks shown and in view (a chunk whose pipeline is still compiling is skipped by the renderer,
     // and would leave a hole of low ground in the heights: then it is all done again next frame)
-    _frustum.setFromProjectionMatrix(_m.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+    _frustum.setFromProjectionMatrix(_m.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse), cam.coordinateSystem);
     let expected = 0;
     scene.traverseVisible((o) => {
       if ((o as THREE.Mesh).isMesh && o.layers.isEnabled(TERRAIN_LAYER) && _frustum.intersectsObject(o)) expected++;

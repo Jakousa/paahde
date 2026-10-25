@@ -306,7 +306,7 @@ let loaded = false;
 let coverFrames = 0; // frames drawn behind the cover once loaded (lets shaders compile)
 let bodyLoaded = false;
 let coverTimedOut = false;
-loadScavenger().then(() => (bodyLoaded = true), () => (bodyLoaded = true));
+Promise.allSettled([loadScavenger(), viewmodel.ready]).then(() => (bodyLoaded = true));
 setTimeout(() => (coverTimedOut = true), 30_000);
 // What you wear (shared/look.ts), chosen on the main menu (src/lookView.ts); others get it with your 'hello'.
 const myLook = storedLook();

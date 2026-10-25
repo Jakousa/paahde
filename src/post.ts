@@ -1,10 +1,12 @@
 // Post-processing: heat haze → sandstorm dust and poison gas → bloom → sun glare / lens flare → eye adaptation → grade → tone map →
 // vignette + grain. One scene pass, a half-res bloom chain, and a single full-screen composite.
 import * as THREE from 'three/webgpu';
+import { comfort } from './comfort.ts';
+import { graphics } from './graphics.ts';
 import {
   Fn, abs, atan, cos, dot, exp, float, length, max, mix, mx_noise_float, pass, pow, renderOutput, saturate,
   smoothstep, step, uniform, uv, vec2, vec3, vec4, fract, sin, perspectiveDepthToViewZ, If, normalize, sqrt, min, log, rtt,
-  select, acesFilmicToneMapping, agxToneMapping,
+  select, acesFilmicToneMapping, agxToneMapping, textureSize,
 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
@@ -201,8 +203,12 @@ export class Post {
   private exposure = uniform(1);
   /** How directly we are staring into the (unoccluded) sun, 0..1 — drives veiling glare. */
   private stare = uniform(0);
+  private comfortGlare = uniform(1).onRenderUpdate(() => comfort.glare);
+  private comfortGrain = uniform(1).onRenderUpdate(() => comfort.grain);
+  private comfortMotion = uniform(1).onRenderUpdate(() => comfort.motion);
   /** Ambient occlusion strength, 0 (off) .. 1; set from the Esc menu. */
   private aoIntensity = uniform(0.7);
+  private aoDenoise = uniform(1).onRenderUpdate(() => graphics.sandDetail >= 2 ? 1 : 0);
   private camNear = uniform(0.1);
   private camFar = uniform(6000);
   private camWorld = uniform(new THREE.Matrix4());
@@ -253,7 +259,7 @@ export class Post {
     const hazed = Fn(() => {
       // Heatstroke: the whole view swims, near things too: a slow, broad warp and a drunken sway.
       const p0 = uv();
-      const hs = heatstroke.mul(heatstroke);
+      const hs = heatstroke.mul(heatstroke).mul(this.comfortMotion);
       const p = p0.toVar();
       If(hs.greaterThan(0), () => {
         const hq = vec3(p0.x.mul(aspect).mul(2.2), p0.y.mul(2.6).add(time.mul(0.35)), time.mul(0.45));
@@ -268,7 +274,7 @@ export class Post {
       const dy = p.y.sub(horizonY); // > 0 below the horizon
       // (eased across the horizon: a hard step there drew a line straight across the ground wherever it rises above the horizon)
       const band = smoothstep(0.22, 0.0, abs(dy)).mul(mix(float(0.35), float(1), smoothstep(-0.04, 0.04, dy)));
-      const mask = far.mul(band).mul(heatHaze);
+      const mask = far.mul(band).mul(heatHaze).mul(this.comfortMotion);
       const warped = p.toVar();
       If(mask.greaterThan(0), () => {
         const q = vec3(p.x.mul(aspect).mul(28), p.y.mul(110).add(time.mul(2.2)), time.mul(0.6));
@@ -282,8 +288,26 @@ export class Post {
       // Ambient occlusion darkens creases (GTAO from the scene depth); the slider scales it. None far
       // away (AO_FADE_END), where it only adds speckle.
       const aoNear = float(1).sub(smoothstep(AO_FADE_START, AO_FADE_END, dist));
-      const occl = mix(float(1), aoTex.sample(p).r, aoIntensity.mul(aoNear));
-      return color.sample(mix(p, warped, keep)).rgb.mul(occl);
+      const filteredAo = Fn(() => {
+        const sum = aoTex.sample(p).r.toVar();
+        const weight = float(1).toVar();
+        If(this.aoDenoise.greaterThan(0).and(aoIntensity.greaterThan(0)), () => {
+          const pixel = vec2(1).div(vec2(textureSize(aoTex) as unknown as Node<'uvec2'>));
+          for (const [x, y] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const q = p.add(pixel.mul(vec2(x, y)));
+            const other = perspectiveDepthToViewZ(depth.sample(q).r, camNear, camFar).negate();
+            const w = exp(abs(other.sub(dist)).div(max(0.03, dist.mul(0.01))).negate());
+            sum.addAssign(aoTex.sample(q).r.mul(w));
+            weight.addAssign(w);
+          }
+        });
+        return sum.div(weight);
+      })();
+      const lostAmbient = float(1).sub(filteredAo).mul(aoIntensity).mul(aoNear);
+      const litColor = color.sample(mix(p, warped, keep)).rgb;
+      // Bounded ambient approximation: preserve HDR emission/sun highlights instead of multiplying the complete lit image.
+      // Exact ambient isolation would require an additional scene prepass or MRT attachment.
+      return litColor.sub(min(litColor, vec3(0.16)).mul(lostAmbient));
     })();
 
     // --- Sandstorms (shared/storm.ts): each is a dust column, a vertical cylinder whose dust fades out
@@ -668,7 +692,7 @@ export class Post {
     // --- Composite in linear HDR, then grade and tone map.
     const graded = Fn(() => {
       // Dust in front hides what blooms or flares behind it.
-      let c: N = storm.xyz.add(bloomPass.rgb.add(flare).mul(storm.w));
+      let c: N = storm.xyz.add(bloomPass.rgb.add(flare.mul(this.comfortGlare)).mul(storm.w));
       c = mix(c, grit.xyz, grit.w);
       c = c.mul(exposure).mul(grade.exposure);
       // Warm white balance and a rust lift in the shadows (never grey/blue blacks).
@@ -688,7 +712,7 @@ export class Post {
       // Heatstroke: colour drains towards a hot red and a pulsing blood-red vignette closes in, the
       // pulse quickening as the meter fills.
       const hs = heatstroke;
-      const beat = pow(abs(sin(time.mul(hs.mul(2.2).add(2.6)))), 6);
+      const beat = pow(abs(sin(time.mul(hs.mul(2.2).add(2.6)))), 6).mul(this.comfortMotion);
       const ol = dot(o, vec3(0.2126, 0.7152, 0.0722));
       o = mix(o, vec3(ol).mul(vec3(1.25, 0.72, 0.55)), hs.mul(0.4));
       const ragged = v.add(mx_noise_float(vec3(p.sub(0.5).mul(vec2(aspect, 1)).mul(2.5), time.mul(0.4))).mul(0.06));
@@ -718,7 +742,7 @@ export class Post {
       o = mix(o, vec3(saturate(dl.sub(0.42).mul(1.6).add(0.42))), deathGrade);
       // Film grain.
       const g = fract(sin(dot(p.mul(vec2(1237.1, 913.7)).add(fract(time.mul(13.37))), vec2(12.9898, 78.233))).mul(43758.5453));
-      o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(grade.grain)));
+      o = o.add(g.sub(0.5).mul(stormHere.mul(0.05).add(grade.grain)).mul(this.comfortGrain));
       return vec4(o, 1);
     })();
 

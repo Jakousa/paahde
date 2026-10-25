@@ -17,7 +17,7 @@ export const viewCull = {
     if (!cam) return;
     cam.updateMatrixWorld();
     viewProj.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
-    frustum.setFromProjectionMatrix(viewProj);
+    frustum.setFromProjectionMatrix(viewProj, cam.coordinateSystem);
   },
   /** Is a sphere of radius `r` at (x, y, z) at least partly in view? (True when there is no camera yet.) */
   visible(x: number, y: number, z: number, r: number): boolean {

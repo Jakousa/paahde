@@ -27,14 +27,16 @@
 // `JammerMount` node, its lamp lit by `playerHands.jamLamp`. A receiver (src/receiver.ts) sits on the same mount and
 // is held with the jammer's Idle / Walk clips; its needle and lamp follow `playerHands.receiver`. So is the wrench
 // (src/models/wrench.ts), on the same mount.
-// The model still has the shovel and metal detector (`Shovel`, `Detector`, their clips) from when there was digging;
-// they stay hidden. Scrap in hand (`held` 'scrap'): ScrapIdle / ScrapWalk on `ScrapChunk`, and ScrapThrow from `playerHands.throwAt`, the piece
+// Obsolete shovel and detector geometry/clips are stripped at export; legacy files still hide their nodes. Scrap in hand (`held` 'scrap'): ScrapIdle / ScrapWalk on `ScrapChunk`, and ScrapThrow from `playerHands.throwAt`, the piece
 // hidden from the release (THROW_RELEASE) until the hand is back with the next one.
 //
 // Debug (with ?debug, `dbg.viewmodel`): ?hold=canteen|telescope|rifle|… forces what's held, ?anim=Drink loops one clip.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { FirstPersonCamera } from './camera';
+import { comfort } from './comfort';
+import { materialColor } from 'three/tsl';
+import { handShade, updateHandShade } from './world/materialLighting.ts';
 import { playerHands, type Held } from './water';
 import { jammerModel, LAMP_ON } from './models/jammer';
 import { grinderModel } from './models/grinder';
@@ -72,6 +74,7 @@ const forcedAnim = params.get('anim');
 
 export class ViewModel {
   readonly root = new THREE.Group();
+  readonly ready: Promise<void>;
   /** Sway / lower offsets, rotating about the eye. */
   private sway = new THREE.Group();
   private mixer: THREE.AnimationMixer | null = null;
@@ -115,10 +118,11 @@ export class ViewModel {
     // Children of the camera only render if the camera is in the scene graph.
     if (!view.camera.parent) scene.add(view.camera);
     this.root.name = 'ViewModel';
+    this.root.userData.prewarmHidden = true; // held tools share the camera but begin hidden; compile them before first equip
     this.root.scale.setScalar(SCALE);
     this.root.add(this.sway);
     view.camera.add(this.root);
-    new GLTFLoader().loadAsync(URL).then(
+    this.ready = new GLTFLoader().loadAsync(URL).then(
       (gltf) => this.init(gltf.scene, gltf.animations),
       (e) => console.warn('hands model failed to load', e),
     );
@@ -133,10 +137,14 @@ export class ViewModel {
       mesh.frustumCulled = false; // skinned bounds don't follow the animation; it's always in view anyway
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       const own = mats.map((m) => {
-        if (m.name !== 'PlayerTint') return m;
+        if (!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial) return m;
         const c = (m as THREE.MeshStandardMaterial).clone();
-        c.userData.noTier = true;
-        this.tint.push(c);
+        // The renderer's material adapter copies this node to its MeshStandardNodeMaterial.
+        (c as THREE.MeshStandardMaterial & { colorNode: THREE.Node }).colorNode = materialColor.mul(handShade);
+        if (m.name === 'PlayerTint') {
+          c.userData.noTier = true;
+          this.tint.push(c);
+        }
         return c;
       });
       mesh.material = Array.isArray(mesh.material) ? own : own[0];
@@ -303,6 +311,7 @@ export class ViewModel {
   /** Called every render frame, after the camera has been updated. */
   update(dt: number, pose: HandsPose) {
     const view = this.view;
+    updateHandShade(view.camera.position, dt);
     // Mouse-look sway: the hands trail the view a little, then catch up.
     if (!Number.isFinite(this.lagYaw)) this.lagYaw = view.yaw;
     let dYaw = view.yaw - this.lagYaw;
@@ -310,8 +319,8 @@ export class ViewModel {
     const k = 1 - Math.exp(-dt * 14);
     this.lagYaw += dYaw * k;
     this.lagPitch += (view.pitch - this.lagPitch) * k;
-    const swayYaw = clamp(dYaw, -0.15, 0.15);
-    const swayPitch = clamp(view.pitch - this.lagPitch, -0.12, 0.12);
+    const swayYaw = clamp(dYaw, -0.15, 0.15) * comfort.motion;
+    const swayPitch = clamp(view.pitch - this.lagPitch, -0.12, 0.12) * comfort.motion;
 
     // Swap what's held behind a quick lower/raise.
     const want: Held = forcedHold ?? playerHands.held;
@@ -342,18 +351,19 @@ export class ViewModel {
     this.slide += ((pose.sliding && pose.grounded ? 1 : 0) - this.slide) * (1 - Math.exp(-dt * 10));
     const l = smooth(this.lower);
     const rest = REST_PITCH * (1 - playerHands.aim);
+    const kick = this.kick * comfort.motion;
     this.sway.rotation.set(
-      rest - swayPitch * 0.5 * steady - l * 0.9 - this.slide * 0.25 + this.kick * 0.09,
+      rest - swayPitch * 0.5 * steady - l * 0.9 - this.slide * 0.25 * comfort.motion + kick * 0.09,
       -swayYaw * 0.6 * steady,
-      -swayYaw * 0.35 * steady + this.kick * 0.02,
+      -swayYaw * 0.35 * steady + kick * 0.02,
     );
-    this.sway.position.set(-swayYaw * 0.04 * steady, -this.kick * 0.01, this.kick * 0.09);
+    this.sway.position.set(-swayYaw * 0.04 * steady, -kick * 0.01, kick * 0.09);
     for (const g of this.rifleGlow) g.emissiveIntensity = (g.userData.base as number) * (0.15 + 0.85 * playerHands.charge ** 3 + 4 * playerHands.kick);
 
     if (!this.mixer) return;
     const draw = this.shown === 'telescope' && playerHands.looking ? 1 : 0;
     if (draw !== this.drawn) this.setDrawn(clamp(this.drawn + Math.sign(draw - this.drawn) * (dt / DRAW_S), 0, 1));
-    const moving = pose.grounded && !pose.sliding && pose.speed > MOVING;
+    const moving = comfort.motion > 0 && pose.grounded && !pose.sliding && pose.speed > MOVING;
     let walk: string | null = null;
     if (forcedAnim && this.has(forcedAnim)) this.play(forcedAnim);
     else if (this.shown === 'canteen') {
@@ -420,7 +430,7 @@ export class ViewModel {
     if (this.grinder) {
       // The disc turns with the revs that are heard, and the whole tool shudders with their stagger (and buzzes a little at speed).
       this.grinder.disc.rotation.x += playerHands.grind * 70 * dt;
-      const g = this.grinder.obj, k = playerHands.grindShake, buzz = playerHands.grind * 0.0012 * Math.sin((this.buzzClock += dt) * 170);
+      const g = this.grinder.obj, k = playerHands.grindShake * comfort.motion, buzz = playerHands.grind * 0.0012 * Math.sin((this.buzzClock += dt) * 170) * comfort.motion;
       g.position.set(this.grinderAt.x, this.grinderAt.y + 0.007 * k + buzz, this.grinderAt.z + 0.005 * k);
     }
     if (this.shown === 'receiver') {

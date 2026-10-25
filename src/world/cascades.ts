@@ -3,8 +3,9 @@
 //
 // The stock node looks each cascade up inside an `If` on the fragment's depth. Every cascade but the
 // first then came out black at any shadow intensity (both backends, r186), so the sun vanished beyond
-// cascade 0. Here every cascade is sampled unconditionally and the results are blended arithmetically,
+// cascade 0. Here every cascade keeps its projection outside that branch and the results are blended arithmetically,
 // with a short cross-fade at each cascade's far end so the resolution change doesn't show as a seam.
+// shadowFilter.ts branches only the depth-comparison taps; ?cascadeSampling=selective opts in; all-sample remains the measured default.
 //
 // The stock node also snaps each cascade's shadow camera to whole texels in light space measured from
 // the world origin. That stops swimming when the camera moves, but the sun turns a little every frame,
@@ -13,11 +14,12 @@
 // the grid is re-snapped about an anchor near the camera (moved in coarse steps), so a turn slides
 // nearby casters by only (distance from the anchor) x angle.
 import * as THREE from 'three/webgpu';
-import { MAX_FOV } from '../camera.ts';
+import { comfort } from '../comfort.ts';
 import { graphics } from '../graphics.ts';
 import { Fn, float, mix, positionView, saturate, step, uniform, vec3, vec4, viewZToOrthographicDepth } from 'three/tsl';
 import { CSMShadowNode, type CSMShadowNodeData } from 'three/addons/csm/CSMShadowNode.js';
 import type { Node, NodeBuilder, NodeFrame } from 'three/webgpu';
+import { selectiveShadowSampling, sunShadowsEnabled } from './shadowFilter.ts';
 
 type F = Node<'float'>;
 type Lw = CSMShadowNode['lights'][number];
@@ -65,6 +67,9 @@ interface Kept {
 }
 
 export class CascadedShadows extends CSMShadowNode {
+  readonly sampling = selectiveShadowSampling;
+  readonly enabled = sunShadowsEnabled;
+  private mapSize: THREE.Vector2;
   private kept: Kept[] = [];
   /** Fits a cascade's shadow settings (depth range, biases, filter) to its box; set by Sky. */
   onFit: ((i: number) => void) | null = null;
@@ -83,9 +88,24 @@ export class CascadedShadows extends CSMShadowNode {
 
   constructor(light: THREE.DirectionalLight, data: CSMShadowNodeData) {
     super(light, data);
+    this.mapSize = light.shadow.mapSize.clone();
+  }
+
+  /** Stable light/shader structure when Auto changes quality; release large maps while disabled. */
+  setEnabled(on: boolean) {
+    this.enabled.value = on ? 1 : 0;
+    for (const light of [this.light as THREE.DirectionalLight, ...this.lights]) {
+      const shadow = light.shadow!;
+      shadow.mapSize.copy(on ? this.mapSize : new THREE.Vector2(1, 1));
+      if (!on && shadow.map) shadow.map.setSize(1, 1);
+      shadow.autoUpdate = false;
+      shadow.needsUpdate = true;
+    }
+    this.invalidate();
   }
 
   updateBefore(frame: NodeFrame): boolean | undefined {
+    if (!this.enabled.value) return undefined;
     super.updateBefore(frame);
     const light = this.light as THREE.DirectionalLight;
     const camera = this.camera as THREE.Camera;
@@ -111,6 +131,14 @@ export class CascadedShadows extends CSMShadowNode {
     // Frames a cascade isn't drawn it keeps the camera its map was drawn with, which the lookups read (the stock node refits every cascade to the view each frame).
     this.lights.forEach((lw, i) => {
       const shadow = lw.shadow!, cam = shadow.camera as THREE.OrthographicCamera;
+      const far = Math.min(this.maxFar, (this.camera as THREE.PerspectiveCamera).far);
+      const near = (this.camera as THREE.PerspectiveCamera).near;
+      const previous = i ? this.breaks[i - 1] : 0;
+      const previousStart = i > 1 ? this.breaks[i - 2] : 0;
+      Object.assign(shadow, {
+        cascadeNear: near + (far - near) * (i ? previous - (previous - previousStart) * FADE : 0),
+        cascadeFar: near + (far - near) * this.breaks[i],
+      });
       shadow.autoUpdate = false;
       const k = this.kept[i];
       if (i >= FIRST_CACHED) {
@@ -140,7 +168,7 @@ export class CascadedShadows extends CSMShadowNode {
     const camera = this.camera as THREE.PerspectiveCamera;
     const far = Math.min(this.maxFar, camera.far);
     const end = this.breaks[i] * far;
-    const v = Math.tan(THREE.MathUtils.degToRad(MAX_FOV) / 2);
+    const v = Math.tan(THREE.MathUtils.degToRad(comfort.fov + 9) / 2);
     const reach = Math.sqrt(1 + v * v + v * v * camera.aspect * camera.aspect);
     return end * (reach + SLACK[i]);
   }

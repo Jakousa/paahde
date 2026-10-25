@@ -9,13 +9,14 @@
 // 200 m shadow. Terrain casts too. Biases are set per cascade in world units, scaled to its texel size.
 import * as THREE from 'three/webgpu';
 import { cameraPosition, fog, min, normalize, positionWorld, vec3 } from 'three/tsl';
-import { MAX_FOV } from '../camera.ts';
+import { comfort } from '../comfort.ts';
 import { SHADOW_QUALITY, cascadeEnds, graphics, onGraphics, startup } from '../graphics.ts';
 import { CascadedShadows, FIRST_CACHED } from './cascades.ts';
 import { ShadowLod, SHADOW_LOD_FIRST, lodLayer } from './shadowLod.ts';
 import { farShadowFilter, nearShadowFilter, setShadowNoiseAxes } from './shadowFilter.ts';
 import { HeightShadow } from './heightShadow.ts';
 import { viewCull } from './viewCull.ts';
+import { desertEnvironment, updateMaterialLighting } from './materialLighting.ts';
 import { DayNight } from './dayNight.ts';
 import { NightSky, nightSky } from './nightSky.ts';
 import { hazeColorFor, hazeFactor, moonColor, moonDirection, moonDisc, sandStorm, SHADOW_ONLY_LAYER, skyRadiance, sunColor, sunDirection, sunDisc, sunLight, time } from './env.ts';
@@ -45,6 +46,7 @@ export class Sky {
   private ambient: THREE.HemisphereLight;
   csm: CascadedShadows;
   private fittedAspect = NaN;
+  private fittedFov = NaN;
   private lod = new ShadowLod();
   private lodMin: number[] = [];
   private scene: THREE.Scene;
@@ -80,11 +82,13 @@ export class Sky {
 
     // Warm rust fill: shadows stay deep maroon-brown, never grey or blue.
     this.ambient = new THREE.HemisphereLight(0xd27a40, 0x5a2810, 0.55);
+    scene.environmentNode = desertEnvironment;
     scene.add(this.ambient);
     this.day = new DayNight(this.ambient);
 
     const sun = this.sun;
-    sun.castShadow = QUERY.get('shadows') !== '0' && graphics.shadows;
+    // Keep the light's shader structure stable. CSM toggles drawing/sampling and map allocations itself.
+    sun.castShadow = true;
     sun.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
     // Each cascade clones this shadow, layers included: also draw shadow-only objects (own body).
     sun.shadow.camera.layers.enable(SHADOW_ONLY_LAYER);
@@ -96,12 +100,16 @@ export class Sky {
       customSplitsCallback: (_n, _near, far, breaks) => breaks.push(...CASCADE_ENDS.map((d) => d / far)),
     });
     this.csm.onFit = (i) => this.fitLight(i);
+    this.csm.setEnabled(QUERY.get('shadows') !== '0' && graphics.shadows);
     this.csm.extraLit = this.heights.litNode();
     this.csm.fade = true; // widens each cascade's map to cover the cross-fade into it
     sun.shadow.shadowNode = this.csm;
     scene.add(sun, sun.target);
     onGraphics((g, changed) => {
-      if (changed === 'shadows') sun.castShadow = g.shadows;
+      if (changed === 'shadows') {
+        this.csm.setEnabled(g.shadows);
+        this.heights.setEnabled(g.shadows);
+      }
       if (changed === 'shadowDistance') this.setShadowDistance(g.shadowDistance);
     });
   }
@@ -122,6 +130,7 @@ export class Sky {
   update(dt: number, focus: THREE.Vector3, camera: THREE.PerspectiveCamera, unixMs: number) {
     time.value += dt;
     this.day.update(unixMs);
+    updateMaterialLighting(this.ambient, this.day.tod, this.day.elevation > 0);
     this.night.update(unixMs);
     const moonlit = this.day.elevation < MOON_TAKES_OVER;
     this.sun.color.copy(moonlit ? moonColor.value : sunColor.value);
@@ -133,8 +142,8 @@ export class Sky {
     setShadowNoiseAxes(moonlit ? moonDirection.value : sunDirection.value);
     this.heights.light.value.copy(moonlit ? moonDirection.value : sunDirection.value);
     viewCull.shadowLight.copy(this.heights.light.value);
-    viewCull.shadowDistance = this.sun.castShadow ? graphics.shadowDistance : 0;
-    if (this.renderer && this.sun.castShadow) this.heights.update(this.renderer, this.scene, focus);
+    viewCull.shadowDistance = this.csm.enabled.value ? graphics.shadowDistance : 0;
+    if (this.renderer && this.csm.enabled.value) this.heights.update(this.renderer, this.scene, focus);
     this.fitCascades(camera);
     this.cullSmall();
   }
@@ -163,10 +172,12 @@ export class Sky {
    */
   private fitCascades(camera: THREE.PerspectiveCamera) {
     const csm = this.csm;
-    if (!csm.camera || camera.aspect === this.fittedAspect) return;
+    const widestFov = comfort.fov + 9;
+    if (!csm.camera || (camera.aspect === this.fittedAspect && widestFov === this.fittedFov)) return;
     this.fittedAspect = camera.aspect;
+    this.fittedFov = widestFov;
     const fov = camera.fov;
-    camera.fov = MAX_FOV;
+    camera.fov = widestFov;
     camera.updateProjectionMatrix();
     csm.updateFrustums();
     camera.fov = fov;

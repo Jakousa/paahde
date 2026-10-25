@@ -127,6 +127,8 @@ export const sand = {
   rippleHeight: uniform(0.006),
   /** Footprint (ripple cycles per pixel) over which the small ripples fade out: the Sand detail option (RIPPLE_FADES). */
   rippleFade: uniform(new THREE.Vector2(0.2, 0.45)),
+  /** Draw-uniform shader work tier: reduced noise, glitter and integration work without compiling during Auto changes. */
+  detail: uniform(graphics.sandDetail),
   /** How much of their averaged shading unresolved (far) ripples keep, against smooth sand: 1 all of it, 0 none. The full amount read
    *  darker from afar than the same ripples up close; half looks right. */
   farRippleShade: uniform(0.5),
@@ -205,7 +207,20 @@ const mudCracks = Fn(([xz, fw, m]: [V2, F, F]) => {
 /** Sand detail (Options → Graphics): where the small ripples fade out, by footprint (cycles per pixel), Low / Medium / High / Ultra. */
 export const RIPPLE_FADES: [number, number][] = [[0.08, 0.2], [0.15, 0.35], [0.22, 0.5], [0.32, 0.75]];
 sand.rippleFade.value.set(...RIPPLE_FADES[graphics.sandDetail]);
-onGraphics((g, changed) => changed === 'sandDetail' && sand.rippleFade.value.set(...RIPPLE_FADES[g.sandDetail]));
+onGraphics((g, changed) => {
+  if (changed !== 'sandDetail') return;
+  sand.rippleFade.value.set(...RIPPLE_FADES[g.sandDetail]);
+  sand.detail.value = g.sandDetail;
+});
+
+/** Optional procedural work in a draw-uniform branch. Derivatives of its result remain outside the branch. */
+function detailValue(value: F, tier: number, fallback = 0): F {
+  return Fn(() => {
+    const result = float(fallback).toVar();
+    If(sand.detail.greaterThanEqual(tier), () => { result.assign(value); });
+    return result;
+  })();
+}
 
 /** The dev test lab's floor (shared/lab.ts): a plain light grey, no ripples, glitter or sheen. */
 export function labFloor() {
@@ -255,6 +270,22 @@ const RIPPLE_STOSS = 0.66;
 /** Phases the far (unresolved) ripple shadow is averaged over. */
 const MEAN_PHASES = 8;
 
+/** Fewer quadrature points at lower settings. The branches are uniform and keep Auto's shader pipelines stable. */
+function rippleAverage(sample: (phase: F) => F): F {
+  const average = (count: number) => {
+    let sum: F = float(0);
+    for (let k = 0; k < count; k++) sum = sum.add(sample(float((k + 0.5) / count)));
+    return sum.div(count);
+  };
+  return Fn(() => {
+    const out = float(0).toVar();
+    If(sand.detail.greaterThanEqual(2), () => { out.assign(average(MEAN_PHASES)); })
+      .ElseIf(sand.detail.greaterThanEqual(1), () => { out.assign(average(4)); })
+      .Else(() => { out.assign(average(2)); });
+    return out;
+  })();
+}
+
 /**
  * Sunlight left on the small ripples (0..1), from their own profile: walking from the point towards the sun along the ripple axis,
  * the first crest is `toCrest` away and `gap` higher; the point is shadowed when the sun ray rises less than that over the distance.
@@ -276,17 +307,15 @@ function rippleMeanDiffuse(s: SandSurface, l: V3): F {
   const crisp = sand.rippleHeight.mul(0.12);
   const dir3 = vec3(s.rippleDir.x, 0, s.rippleDir.y);
   const scale = sand.rippleStrength.mul(s.rippleAmp);
-  let sum: F = float(0);
-  for (let k = 0; k < MEAN_PHASES; k++) {
-    const f = float((k + 0.5) / MEAN_PHASES);
+  const mean = rippleAverage((f) => {
     const [h, slope] = rippleProfile(f, RIPPLE_STOSS);
     const toCrest = select(toSun, fract(float(RIPPLE_STOSS).sub(f)), fract(f.sub(RIPPLE_STOSS))).mul(RIPPLE_LENGTH);
     const lit = smoothstep(crisp.negate(), crisp, toCrest.mul(tanE).sub(height.mul(float(1).sub(h))).add(crisp));
     const nk = normalize(s.nBase.sub(dir3.mul(slope.mul(scale))));
-    sum = sum.add(saturate(dot(nk, l).mul(sand.contrast).add(sand.offset)).mul(lit)) as F;
-  }
+    return saturate(dot(nk, l).mul(sand.contrast).add(sand.offset)).mul(lit);
+  });
   const smooth = saturate(dot(s.nBase, l).mul(sand.contrast).add(sand.offset));
-  return mix(smooth, sum.div(MEAN_PHASES), sand.farRippleShade);
+  return mix(smooth, mean, sand.farRippleShade);
 }
 
 function rippleSun(s: SandSurface, l: V3): F {
@@ -309,9 +338,7 @@ function rippleSun(s: SandSurface, l: V3): F {
   const sharp = litAt(fract(s.ripplePhase), max(crisp, foot.mul(tanE.add(height.mul(6 / RIPPLE_LENGTH))).mul(0.5)));
   // Unresolved, the same test averaged over the cycle (eight phases), so the far look is exactly what the near one averages to: an
   // estimate here darkened far ripple fields into blotches that faded as you walked up to them.
-  let sum: F = float(0);
-  for (let k = 0; k < MEAN_PHASES; k++) sum = sum.add(litAt(float((k + 0.5) / MEAN_PHASES), crisp)) as F;
-  const mean = sum.div(MEAN_PHASES);
+  const mean = rippleAverage(f => litAt(f, crisp));
   return float(1).sub(s.rippleField.mul(float(1).sub(mix(mean, sharp, s.rippleRes))));
 }
 
@@ -404,15 +431,15 @@ function buildSurface(): SandSurface {
   // normal follow the bent crest direction: taken from screen-space derivatives (the warp varies over
   // metres, so it is linear across a pixel quad) instead of two more warp evaluations, which cost four
   // noise calls per pixel and were the bulk of the sand shader.
-  const w0 = mx_noise_float(xz.mul(0.07)).mul(3.2).add(mx_noise_float(xz.mul(0.31).add(19.1)).mul(0.55));
+  const w0 = mx_noise_float(xz.mul(0.07)).mul(3.2).add(detailValue(mx_noise_float(xz.mul(0.31).add(19.1)).mul(0.55), 1));
   const along = dot(xz, wind);
   const across = dot(xz, perp);
   // The small ripples bend at a shorter scale too (crests wiggle every few tens of cm), and their phase slips along the crest
   // (a warp stretched across the wind): neighbouring crests drift apart and together, look as if they split and merge, and the
   // spacing varies, as on real sand.
   const wS = w0
-    .add(mx_noise_float(xz.mul(1.4).add(41.3)).mul(0.035))
-    .add(mx_noise_float(vec2(across.mul(1.6), along.mul(0.45)).add(8.9)).mul(0.1));
+    .add(detailValue(mx_noise_float(xz.mul(1.4).add(41.3)).mul(0.035), 2))
+    .add(detailValue(mx_noise_float(vec2(across.mul(1.6), along.mul(0.45)).add(8.9)).mul(0.1), 1));
   const px = dFdx(xz);
   const py = dFdy(xz);
   const wx = dFdx(wS);
@@ -432,10 +459,10 @@ function buildSurface(): SandSurface {
   const [, d2] = rippleProfile(s2, 0.68);
   // Crest strength varies, so ripple fields fade in and out instead of tiling the whole dune.
   const vary = saturate(mx_noise_float(xz.mul(0.12).add(5.3)).mul(0.9).add(0.65))
-    .mul(mx_noise_float(xz.mul(0.9).add(2.1)).mul(0.25).add(0.85));
+    .mul(detailValue(mx_noise_float(xz.mul(0.9).add(2.1)).mul(0.25).add(0.85), 1, 0.85));
   // Depth varies: deeper and shallower stretches over a metre or two, and crests that die out along their length.
-  const depth = mx_noise_float(xz.mul(0.7).add(13.1)).mul(0.45).add(1).clamp(0.6, 1.35)
-    .mul(smoothstep(-0.85, -0.1, mx_noise_float(vec2(across.mul(1.9), along.mul(0.5)).add(3.7))).mul(0.6).add(0.4));
+  const depth = detailValue(mx_noise_float(xz.mul(0.7).add(13.1)).mul(0.45).add(1).clamp(0.6, 1.35), 1, 1)
+    .mul(detailValue(smoothstep(-0.85, -0.1, mx_noise_float(vec2(across.mul(1.9), along.mul(0.5)).add(3.7))).mul(0.6).add(0.4), 2, 0.85));
   const amp = vary.mul(depth);
   const f1 = footprintFade(s1).mul(rippleMask).mul(amp);
   const f2 = footprintFade(s2).mul(rippleMask);
@@ -483,7 +510,7 @@ function buildSurface(): SandSurface {
   const grain = Fn(() => {
     const fade = grainFade2.toVar(); // derivative must be evaluated outside the branch
     const g = float(1).toVar();
-    If(fade.greaterThan(0), () => {
+    If(fade.greaterThan(0).and(sand.detail.greaterThanEqual(1)), () => {
       g.addAssign(mx_noise_float(gq2.add(7.1)).mul(0.16).mul(fade));
     });
     return g;
@@ -584,8 +611,8 @@ class SandLightingModel extends THREE.LightingModel {
       .mul(bare)
       .mul(float(1).sub(dust.mul(0.7)))
       .mul(sand.glitter);
-    const g = glitterLayer(p, n0, h, glitterMask, 55, 0.1, 0.75, 0.008, 0)
-      .add(glitterLayer(p, n0, h, glitterMask, 18, 0.06, 0.6, 0.005, 101).mul(0.3));
+    const g = glitterLayer(p, n0, h, glitterMask.mul(float(sand.detail.greaterThanEqual(1))), 55, 0.1, 0.75, 0.008, 0)
+      .add(glitterLayer(p, n0, h, glitterMask.mul(float(sand.detail.greaterThanEqual(2))), 18, 0.06, 0.6, 0.005, 101).mul(0.3));
 
     directSpecular.addAssign(lightColor.mul(spec.add(c3(sand.glitterTint).mul(g)).mul(ripSun)));
   }

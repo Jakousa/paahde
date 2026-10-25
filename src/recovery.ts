@@ -36,6 +36,10 @@ export async function initializeRenderer(renderer: THREE.WebGPURenderer, stop: (
   try {
     await renderer.init();
     initialized = true;
+    // Three intentionally ignores a destroyed WebGPU device in onDeviceLost; this game has no live disposal path.
+    // Observe the device itself too, so forced loss cannot leave networking running behind a frozen frame.
+    const device = (renderer.backend as unknown as { device?: { lost: Promise<unknown> } }).device;
+    void device?.lost.then(() => fail());
   } catch (error) {
     console.error('Graphics initialization failed', error);
     fail(true);

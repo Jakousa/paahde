@@ -18,6 +18,7 @@ const PAUSE_MS = 30;
 export class Warmup {
   private queue: THREE.Object3D[] = [];
   private every: { o: THREE.Object3D; visible: boolean; culled: boolean }[] = [];
+  private ancestors = new Map<THREE.Object3D, boolean>();
   private started = false;
   private done = false;
   private batch = 1;
@@ -88,10 +89,12 @@ export class Warmup {
       const mat = Array.isArray(m) ? m[0] : m;
       return `${o.name || o.type}/${mat?.name || mat?.type}`;
     });
+    for (const [o, visible] of this.ancestors) o.visible = visible;
     for (const e of this.every) e.o.visible = false;
     for (const o of stage) {
       o.visible = true;
       o.frustumCulled = false; // built even when it is behind the camera
+      for (let p = o.parent; p; p = p.parent) if (this.ancestors.has(p)) p.visible = true;
     }
     this.render();
     return false;
@@ -104,9 +107,12 @@ export class Warmup {
 
   /** Put everything back as it was (also if the loading screen gives up waiting). */
   finish(): boolean {
-    if (this.started && !this.done) for (const e of this.every) {
-      e.o.visible = e.visible;
-      e.o.frustumCulled = e.culled;
+    if (this.started && !this.done) {
+      for (const e of this.every) {
+        e.o.visible = e.visible;
+        e.o.frustumCulled = e.culled;
+      }
+      for (const [o, visible] of this.ancestors) o.visible = visible;
     }
     this.done = true;
     // The wrappers stay until the last background compile is in, or a frame could draw a pipeline that isn't there.
@@ -122,17 +128,25 @@ export class Warmup {
     this.started = true;
     const seen = new Map<string, THREE.Object3D>();
     const all = new Set<THREE.Object3D>();
+    const collect = (o: THREE.Object3D) => {
+      const d = o as Drawn;
+      if (!d.material || !d.geometry || all.has(o)) return;
+      all.add(o);
+      const mats = Array.isArray(d.material) ? d.material : [d.material];
+      const attrs = Object.keys(d.geometry.attributes).sort().join();
+      const inst = (o as THREE.InstancedMesh).isInstancedMesh ? o.uuid : '';
+      const bones = (o as THREE.SkinnedMesh).skeleton ? (o as THREE.SkinnedMesh).skeleton.bones.length : 0;
+      const key = `${mats.map((m) => m.uuid).join()}|${attrs}|${inst}|${bones}|${o.receiveShadow}|${o.castShadow}`;
+      if (!seen.has(key)) seen.set(key, o);
+    };
     for (const root of this.roots) {
-      root.traverseVisible((o) => {
-        const d = o as Drawn;
-        if (!d.material || !d.geometry || all.has(o)) return;
-        all.add(o);
-        const mats = Array.isArray(d.material) ? d.material : [d.material];
-        const attrs = Object.keys(d.geometry.attributes).sort().join();
-        const inst = (o as THREE.InstancedMesh).isInstancedMesh ? o.uuid : '';
-        const bones = (o as THREE.SkinnedMesh).skeleton ? (o as THREE.SkinnedMesh).skeleton.bones.length : 0;
-        const key = `${mats.map((m) => m.uuid).join()}|${attrs}|${inst}|${bones}|${o.receiveShadow}|${o.castShadow}`;
-        if (!seen.has(key)) seen.set(key, o);
+      root.traverseVisible(collect);
+      // Opt in only small, known subtrees. Walking every hidden actor variant would make startup unbounded.
+      root.traverse((o) => {
+        if (!o.userData.prewarmHidden) return;
+        o.traverse(collect);
+        for (let p: THREE.Object3D | null = o; p; p = p.parent) this.ancestors.set(p, p.visible);
+        o.traverse((child) => this.ancestors.set(child, child.visible));
       });
     }
     this.queue = [...seen.values()];

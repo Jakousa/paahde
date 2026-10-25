@@ -11,7 +11,11 @@
 // under every pixel (by ~ distance from the origin x angle), reshuffling the grain each frame.
 import * as THREE from 'three/webgpu';
 import { SHADOW_QUALITY, startup } from '../graphics.ts';
-import { Fn, add, dot, float, interleavedGradientNoise, positionWorld, reference, renderGroup, texture, uniform, vec2, vogelDiskSample } from 'three/tsl';
+import { Fn, If, add, dot, float, interleavedGradientNoise, positionView, positionWorld, reference, renderGroup, texture, uniform, vec2, vogelDiskSample } from 'three/tsl';
+
+/** The arithmetic CSM combination stays intact; only unnecessary depth compares are skipped. The measured all-sample fallback stays the default; ?cascadeSampling=selective enables the comparison. */
+export const selectiveShadowSampling = uniform(new URLSearchParams(location.search).get('cascadeSampling') === 'selective' ? 1 : 0);
+export const sunShadowsEnabled = uniform(1);
 
 
 /** Two axes across the shadow-casting light's direction (sky.ts sets them from the sun or moon). */
@@ -47,9 +51,16 @@ export const makeShadowFilter = (SAMPLES: number) => Fn(({ depthTexture, shadowC
   const texel = (reference('texelWorld', 'float', shadow) as any).setGroup(renderGroup); // eslint-disable-line @typescript-eslint/no-explicit-any
   const cell = vec2(dot(positionWorld, shadowAxisX), dot(positionWorld, shadowAxisY)).div(texel);
   const phi = interleavedGradientNoise(cell).mul(6.28318530718);
-  const taps = [];
+  const taps: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
   for (let i = 0; i < SAMPLES; i++) taps.push(compare(shadowCoord.xy.add(vogelDiskSample(float(i) as any, float(SAMPLES) as any, phi).mul(radiusScaled))));
-  return add(...(taps as [any, any])).mul(1 / SAMPLES); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const near = uniform(0).onRenderUpdate(() => shadow.cascadeNear ?? 0);
+  const far = uniform(1e9).onRenderUpdate(() => shadow.cascadeFar ?? 1e9);
+  const result = float(1).toVar();
+  const depth = positionView.z.negate();
+  If(sunShadowsEnabled.greaterThan(0).and(selectiveShadowSampling.equal(0).or(depth.greaterThanEqual(near).and(depth.lessThanEqual(far)))), () => {
+    result.assign(add(...(taps as [any, any])).mul(1 / SAMPLES)); // eslint-disable-line @typescript-eslint/no-explicit-any
+  });
+  return result;
 });
 
 export const nearShadowFilter = makeShadowFilter(SHADOW_QUALITY[startup.shadowQuality].filter);
