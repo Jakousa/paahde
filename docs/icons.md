@@ -50,6 +50,7 @@ in `ICONS` if it isn't a part or salvage.
 | gear (canteen, spyglass, guns, receivers, ...) | `tools/blender/finds.py` |
 | buildings and placeables (windmill, battery station, power pole, plant bed, UV lamp) | `tools/blender/placeables.py` |
 | the workbench, the dismantling bench, the chest | `tools/blender/stations.py` (bunker.py's models) |
+| the electric well | `tools/blender/well.py` |
 | enemy and boss relics | `tools/blender/relics.py` |
 | salvage wrecks | `tools/blender/salvage/` |
 | scrap, cloth, the wrench, the carried crash-site machines | `tools/blender/icons.py` |

@@ -79,7 +79,8 @@ when you find it stale.
 
 ## Weather and survival
 
-- `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen
+- `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen; where
+  it fills: `shared/wells.ts` `waterAt` (a pump, or a running electric well)
 - `shared/temperature.ts` — air/felt °C by time of day (drives thirst); `shared/shade.ts` — sun ray march (shade;
   counts huts, wrecks, players and bikes, built tarps)
   tuning, drained and validated in `server/water.ts`, HUD + `playerHands` in `src/water.ts`
@@ -130,6 +131,14 @@ when you find it stale.
   collide, the canvas doesn't. The rig (pole tops on each pole's own sand, the canvas corners, the stakes) is
   `shared/tarp.ts`, used by `shared/shade.ts` (the canvas as four triangles: standing under it is shade for the heat) and
   by `src/world/tarps.ts` (model made in code; the canvas billows in `windSpeed` in a TSL vertex shader)
+- Electric wells (`well`, `shared/wells.ts`) — a borehole with a submersible pump, water at home: built with the wrench
+  (scrap, wiring), gear with three slots (motor, valve, relay: `GEAR.well`), wired to a grid. Its control box is a small
+  load all the time (`WELL_IDLE_W`, lamp lit); it runs (`PowerState.wells`, `setWellsOn`) while its grid could give the
+  pump `wellSpec().watts` right now (wind left over, or a bottle's worth in the batteries), and each bottle filled
+  takes that out of them (server/power.ts `pump`). The canteen fills at its spigot (`waterAt`: a pump or a running
+  well, the fill time by the parts; server/water.ts `fill`, src/water.ts); no water table, it goes wherever a building
+  can. Drawn with its lamp, wet patch and drip in `src/world/placed.ts`, hum and pump in `src/wellSound.ts`; the
+  character remarks on a dry one (`src/speechLines.ts` `well.dry`). Model `tools/blender/well.py`
 - `shared/power.ts` — electricity, somewhat realistic in game time (`GAME_SPEED`: a game day is 30 real min): the
   shared wind (`windSpeed`: day cycle, weather, gusts, storms), windmill output (½ρAv³·Cp·η by bearings/motor,
   furling) and rotor speed, battery stations (per-battery kWh by tier, a Scrap battery = a car battery, 0.6 kWh; coils

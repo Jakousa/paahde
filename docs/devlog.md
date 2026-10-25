@@ -2063,3 +2063,37 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
 - Icon: the code model on level sand, through tools/icons/dump.mjs and tools/blender/icons.py.
 - Gaps: one variant (no lean-to or hexagonal one yet); the guy lines don't move; the wind uniform is one for all tarps.
 
+## The electric well
+
+- **Why:** the starting base and its hand pump are going away; the first water will be a shelter's pump near the
+  arrival point. The well is water at home, built and shared like the other buildings.
+- **What:** a building (`well`, "Electric well", shared/wells.ts): a borehole on a concrete pad, the steel casing with
+  its cap and the pump's cable going down a gland, a riser to a galvanised header tank on an angle-iron stand, a
+  downpipe with a red valve wheel to a brass spigot over a drain, and the pump's control box on a post with a lamp on
+  top, the post carrying on up as the mast for the power line. Built with the wrench from 12 scrap and 3 wiring, gear with
+  three slots fitted afterwards in its `bld<id>` box: the pump's **motor**, the **valve** (the riser's check valve) and
+  the **relay** that switches the pump (an impeller would read best, but nothing drops one; a fourth slot, a bearing,
+  cost the rifle and shield ~10% in the economy sim through more competition for parts, so three it is).
+- **Power:** the control box is a load all the time, `WELL_IDLE_W` = 4 W (taken with the beacons, first on the grid).
+  The pump wants `wellSpec().watts` (600 W on Scrap parts down to 300 W on Space-grade) while it fills a bottle; the
+  well runs (`PowerState.wells`) while its grid could give that right then: the wind left over after the lamps, or a
+  bottle's worth in the batteries. Each fill takes it out of them (server/power.ts `pump`): on Scrap parts a fill is
+  3.75 s, ~3 game minutes at 600 W = 30 Wh, so a Scrap car battery runs about twenty bottles. A Scrap windmill rarely
+  makes 600 W by itself, so in practice a well needs a battery station on its grid.
+- **Filling:** shared/wells.ts `waterAt` is the one check, on both sides: a pump (shelters.ts `atWater`) or a running
+  well's spigot within `WELL_REACH` (1.3 m). The fill takes the pump's 1.5 s, or the well's by the mean tier of its parts
+  (2.5× to 0.8× of it), on the client's progress line and the server's cooldown; the pour sound plays slower and loops its
+  middle for a long fill. With the bottle out at a running well's tap, F fills it instead of opening the well's box.
+- **Telling by the world, no text:** lit, the lamp on the control box glows green; a wet patch spreads under the spigot
+  and a drop swells and falls from it every second or so (quicker while someone fills). Near a running one you hear a
+  faint electric hum (−47 LUFS at 2 m); filling, a contactor clacks and the motor and the water in the riser start up
+  (−31.5 LUFS at 2 m, about the pour; true peak −24 dBTP; measured offline in Chrome, src/wellSound.ts). At a dry one
+  the character says "No pump down there yet. Just a very deep hole." (parts missing) or "Not a drop. The pump needs
+  power." The panel shows the pump's draw, "−450 W".
+- **Groundwater: none.** A per-biome water table was considered (mud flats and dune pans yes, rock no) and left out:
+  the dune sea and the mud flats both have water under them and are where every building goes, and the canyons' rock
+  is too steep to build on anyway, so the rule would almost never bite, and when it did it would be friction without a
+  choice. Wells go wherever a building can.
+- **Economy sim:** the well is a goal after the battery station (`gear:well`, median 63 min, all 200 worlds); the
+  windmill comes ~5 min later (the motor is wanted by both), the rest within the noise (the rifle +10%, not flagged).
+- Gaps: other players filling at a well don't start its pump sound for you; the drop is small at a distance.
