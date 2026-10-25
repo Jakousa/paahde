@@ -13,9 +13,8 @@
 //
 // Where it goes depends on where you stand (placeFloor): down in a shelter, on its room's floor; else out on the sand
 // (floor-only kinds go only on a shelter's floor). Rules (placeError): on a shelter's floor, inside its room, clear of the
-// pump and the corridor's mouth (shelterRoomClear); on the sand, STRUCTURE_GAP clear of the shelters' huts, SHIP_GAP off
-// the crashed ship by its real shape (shared/shipSpot.ts rectNearShip) and off the trophies' ground (shared/trophies.ts
-// overTrophy), on ground no steeper than MAX_TILT across the
+// pump and the corridor's mouth (shelterRoomClear); on the sand, STRUCTURE_GAP clear of the shelters' huts, off the crashed
+// ship (shared/shipSpot.ts nearShip) and off the trophies' ground (shared/trophies.ts overTrophy), on ground no steeper than MAX_TILT across the
 // footprint (it stands on the lowest corner: the rest sinks into the sand), and that sand is never dug again
 // (overPlaced). Sand kinds keep their `gap` (the larger of the two) from each other, edge to edge. Nothing overlaps
 // another placed thing — except that a UV lamp and a plant bed share their spot when aligned exactly (same centre and
@@ -28,7 +27,7 @@ import { setPlacedCapsules, type Capsule } from './capsules.ts';
 import { EYE_HEIGHT } from './dig.ts';
 import { ITEMS } from './items.ts';
 import { insideShelter, inShelter, shelterAt, shelterRoomClear, shelterUnder } from './shelters.ts';
-import { rectNearShip } from './shipSpot.ts';
+import { nearShip } from './shipSpot.ts';
 import { heightAt } from './terrain.ts';
 import { TARP_HALF } from './tarp.ts';
 import { overTrophy } from './trophies.ts';
@@ -166,8 +165,6 @@ export const SAND_REACH = 8;
 const MAX_TILT = 0.7;
 /** Sand kinds keep this far (m) from the shelters' huts and their doors. */
 const STRUCTURE_GAP = 4;
-/** ...and this far from the crashed ship's hull and the debris behind it (by their capsules), so the ramp's foot is free. */
-const SHIP_GAP = 0.5;
 /** How far from the eye a placed thing can be picked up. */
 export const PLACED_REACH = 4;
 /** At most this many things placed in the world (beacons aside). */
@@ -258,7 +255,7 @@ export function placeError(kind: string, x: number, z: number, rot: number, floo
     const corners = [[x, z], [f[0], f[1]], [f[2], f[1]], [f[0], f[3]], [f[2], f[3]]];
     const outline = [...corners, [x, f[1]], [x, f[3]], [f[0], z], [f[2], z]];
     if (outline.some(([cx, cz]) => insideShelter(cx, cz, STRUCTURE_GAP))) return TEXT.notice.tooClose(TEXT.spots.shelter);
-    if (rectNearShip(f, SHIP_GAP)) return TEXT.notice.tooClose(TEXT.spots.ship);
+    if (outline.some(([cx, cz]) => nearShip(cx, cz))) return TEXT.notice.tooClose(TEXT.spots.ship);
     if (outline.some(([cx, cz]) => overTrophy(cx, cz, 0.5))) return TEXT.notice.tooClose(TEXT.spots.trophy);
     const hs = corners.map(([cx, cz]) => heightAt(cx, cz));
     if (Math.max(...hs) - Math.min(...hs) > (PLACEABLES[kind].tilt ?? MAX_TILT)) return TEXT.notice.tooSteep;

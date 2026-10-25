@@ -21,7 +21,7 @@ import { canyonAt, canyonOut } from './canyons.ts';
 import { canyonRockHeight, rockHeight } from './rocks.ts';
 import { LAB } from './world.ts';
 import { nearShelter, overShelter, shelterSolid, withShelterPad } from './shelters.ts';
-import { nearShip, shipPadLevel, withShipFurrow, withShipPad } from './shipSpot.ts';
+import { nearShip, withShipFurrow } from './shipSpot.ts';
 export { WIND, WORLD_SEED } from './dunes.ts';
 
 /**
@@ -94,20 +94,12 @@ export function groundAt(x: number, z: number): Readonly<typeof layers> {
   return layers;
 }
 
-/** The ground with the shelters' pads, before the crashed ship's. */
-function padded(x: number, z: number): number {
-  ground(x, z);
-  return withShelterPad(x, z, Math.max(layers.sand, layers.rock));
-}
-/** The level of the ship's pad (shared/shipSpot.ts shipPadLevel), worked out on first use: null not yet or no ship. */
-let shipPad: number | null | undefined;
-
 /** Procedural dunes, rocks and canyons before player edits, flattened into a pad round the shelters
- *  (shared/shelters.ts) and along the crashed ship's door side, with the ship's furrow (shared/shipSpot.ts). */
+ *  (shared/shelters.ts), with the crashed ship's furrow (shared/shipSpot.ts). */
 export function baseHeight(x: number, z: number): number {
   if (LAB) return LAB_FLOOR_Y; // the dev test lab (shared/lab.ts): one flat floor, same on client and server
-  if (shipPad === undefined) shipPad = shipPadLevel(padded);
-  return withShipFurrow(x, z, withShipPad(x, z, padded(x, z), shipPad));
+  ground(x, z);
+  return withShipFurrow(x, z, withShelterPad(x, z, Math.max(layers.sand, layers.rock)));
 }
 
 /** Height of the rock at (x, z) (the rocks, a canyon's tableland and walls), or -Infinity where there is none. */

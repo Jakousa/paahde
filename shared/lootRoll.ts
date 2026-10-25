@@ -15,7 +15,7 @@ import { PART_IDS, pickTier } from './parts.ts';
 import { GUNS, PISTOL, RIFLE } from './rifle.ts';
 import { rocksNear } from './rocks.ts';
 import { SHIP_AT, shipLootSpot } from './ship.ts';
-import { nearShip, SHIP_BIKE_SPOTS, shipToWorld } from './shipSpot.ts';
+import { nearShip, shipToWorld } from './shipSpot.ts';
 import { overTrophy } from './trophies.ts';
 import type { JetKind } from './jetbreak.ts';
 import {
@@ -109,7 +109,10 @@ export function nearPiles() {
   return out;
 }
 
-/** Where the home bike lies: beside the crashed ship (shared/ship.ts, SHIP_BIKE_SPOTS), on clear sand in plain view; with
+/** Where the home bike lies, ship-local: on its side by the crashed ship's left flank, in view from the ramp's foot. */
+const BIKE_BY_SHIP: [number, number][] = [[-10, 9], [-11, -6], [-13, 3]];
+
+/** Where the home bike lies: beside the crashed ship (shared/ship.ts, BIKE_BY_SHIP), on clear sand in plain view; with
  *  no ship (the dev lab), out in front of where you start, off the middle a little. The same spot every time. */
 export function homeBikeSpot() {
   const clear = (x: number, z: number) => {
@@ -120,7 +123,7 @@ export function homeBikeSpot() {
     }
     return true;
   };
-  if (SHIP_AT) for (const [lx, lz] of SHIP_BIKE_SPOTS) {
+  if (SHIP_AT) for (const [lx, lz] of BIKE_BY_SHIP) {
     const p = shipToWorld(lx, lz);
     if (clear(p.x, p.z)) return p;
   }
@@ -175,7 +178,7 @@ export function stashSpot(shelters: Shelter[], lying: Map<number, number>, rand:
 /** Something lying about the crashed ship (SHIP_LOOT): scrap, cloth, now and then a broken canteen; and where. */
 export const shipFind = (rand: Rand): Drop => {
   const what = pickOdds(SHIP_LOOT.contents, rand);
-  return what === 'canteen' ? broken('canteen', rand) : { kind: what === 'cloth' ? CLOTH : SCRAP };
+  return what === 'canteen' ? broken('canteen', rand) : { kind: what === 'cloth' ? CLOTH : what === 'wiring' ? WIRING : SCRAP };
 };
 export const shipFindSpot = (rand: Rand) => shipLootSpot(rand);
 

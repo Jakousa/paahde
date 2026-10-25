@@ -161,7 +161,7 @@ if (LAB) {
   addLabPlates(scene);
 }
 await slice();
-const trophies = new Trophies(scene); // a big piece of each beaten boss round the ship
+const trophies = new Trophies(scene); // a big piece of each beaten boss round the origin
 await slice();
 const ship = new ShipView(scene); // the crashed ship players arrive at
 await slice();
