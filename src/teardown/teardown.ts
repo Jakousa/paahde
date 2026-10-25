@@ -131,6 +131,8 @@ export class TeardownView {
   private restY = 0;
   private loose: Loose[] = [];
   private raycaster = new THREE.Raycaster();
+  /** Whether a wire's lug is in sight (hideCovered). */
+  private occluder = new THREE.Raycaster();
   private ndc = new THREE.Vector2();
   private pulse = 0;
   private announced = new Set<Slot>();
@@ -541,6 +543,23 @@ export class TeardownView {
       }
     }
     return hit;
+  }
+
+  /** A wire's markers are drawn over everything (they sit on its own lugs): hide each end that something else of the machine
+   *  is in front of, like a wire in a bay still closed by its lid, which cannot be reached yet. */
+  private hideCovered(s: Step) {
+    const root = this.site!.junk.root;
+    const eye = this.camera.getWorldPosition(this.tmpA);
+    for (const eg of s.marker.children) {
+      if (!eg.visible) continue;
+      const to = eg.getWorldPosition(this.tmpB).sub(eye);
+      const dist = to.length();
+      this.occluder.set(eye, to.divideScalar(dist));
+      this.occluder.far = dist - 0.1 * root.scale.x;
+      const h = this.occluder.intersectObject(root, true)
+        .find((i) => i.object.visible && this.shown(i.object) && !inside(i.object, s.obj));
+      if (h) eg.visible = false;
+    }
   }
 
   /** A part still locked inside the machine is drawn but the pointer goes through it. */
@@ -1084,6 +1103,7 @@ export class TeardownView {
       // the big indicator (a setting) on every ready step, or just on what the crosshair is on; the glint is always there
       s.marker.visible = !s.done && tdPrefs.markers && (ready || lit);
       if (s.marker.visible) animateMarker(s, this.pulse, lit, this.camera);
+      if (s.marker.visible && s.ends) this.hideCovered(s);
       // The enchanted look: what can be worked looks as made, and now and then a band of light runs across the world and lights it
       // where it passes (setSheen below). Not while the big indicators are on it.
       const calm = ready && !s.marker.visible;
@@ -1233,4 +1253,10 @@ export class TeardownView {
       this.ui.setNext(this.nextHint());
     }
   }
+}
+
+/** Whether `o` is `root` or under it. */
+function inside(o: THREE.Object3D, root: THREE.Object3D) {
+  for (let p: THREE.Object3D | null = o; p; p = p.parent) if (p === root) return true;
+  return false;
 }
