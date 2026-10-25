@@ -7,6 +7,7 @@ import * as THREE from 'three/webgpu';
 import { indoors, sandHidden } from '../shared/shelters.ts';
 import { isSlipFace, slopeAt } from '../shared/sim.ts';
 import { wornBit } from '../shared/gearBits.ts';
+import { bodyScale, unpackLook } from '../shared/look.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { END_FADE, footprints, streaks } from './footprints.ts';
 import { footsteps } from './footsteps.ts';
@@ -100,6 +101,8 @@ export class Avatar {
   private facing = NaN;
   private stepDist = 0;
   private foot = 1;
+  /** The look's body proportions (shared/look.ts bodyScale): the stride and the tag's height follow them. */
+  private size = { height: 1, head: 1 };
   // Where the current slide streak last ended; NaN when not sliding.
   private streakX = NaN;
   private streakZ = NaN;
@@ -155,7 +158,16 @@ export class Avatar {
 
   /** What they wear (shared/look.ts); call every frame, it's cheap when nothing changed. */
   setLook(look: number) {
-    if (this.model.setLook?.(look)) this.attach(this.model);
+    if (this.model.setLook?.(look)) {
+      this.attach(this.model);
+      this.size = bodyScale(unpackLook(look));
+      this.placeLabel();
+    }
+  }
+
+  /** Over the head, however big the body and head are drawn. */
+  private placeLabel() {
+    if (this.label) this.label.position.y = (2.25 + 0.3 * (this.size.head - 1)) * this.size.height;
   }
 
   setHeadless(on: boolean) {
@@ -212,7 +224,7 @@ export class Avatar {
     const mat = new THREE.SpriteNodeMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
     this.label = new THREE.Sprite(mat);
     this.label.scale.set((0.3 * canvas.width) / canvas.height, 0.3, 1);
-    this.label.position.y = 2.25;
+    this.placeLabel();
     this.root.add(this.label);
   }
 
@@ -321,14 +333,15 @@ export class Avatar {
       if (prints) this.streak(pose.x, pose.z);
       return;
     }
+    const stride = STRIDE * this.size.height;
     this.stepDist += pose.speed * dt;
-    if (this.stepDist < STRIDE) return;
-    this.stepDist %= STRIDE;
+    if (this.stepDist < stride) return;
+    this.stepDist %= stride;
     this.foot = -this.foot;
-    const side = 0.13 * this.foot;
+    const side = 0.13 * this.size.height * this.foot;
     const fx = pose.x + Math.cos(this.facing) * side, fz = pose.z - Math.sin(this.facing) * side;
     // Toes turned out a little; the boot print mirrors per foot.
-    if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing - this.foot * 0.08, 1, 1, this.foot);
+    if (prints) footprints.add(fx, heightAt(fx, fz), fz, this.facing - this.foot * 0.08, this.size.height, this.size.height, this.foot);
     footsteps.step(fx, fz, pose.speed, indoors(fx, pose.y, fz) ? 'concrete' : 'sand');
   }
 

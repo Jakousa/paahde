@@ -439,7 +439,7 @@ const en = {
     slots: {
       hood: 'Hood', eyes: 'Eyes', face: 'Mask', scarf: 'Scarf', cape: 'Cape', shoulder: 'Shoulder', gloves: 'Gloves',
       boots: 'Boots', robe: 'Robe', cloak: 'Hood dye', wrap: 'Wraps', rags: 'Rags', stole: 'Stole', belt: 'Rope',
-      satchel: 'Satchel',
+      satchel: 'Satchel', height: 'Height', head: 'Head',
     },
     /** Keeps the look chosen (and goes back to the start). */
     save: 'Save',

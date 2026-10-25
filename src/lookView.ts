@@ -5,7 +5,7 @@
 // zoom in on it (up to the face); the dice picks a
 // whole look at random. The figure has its own small renderer, gone with the view.
 import * as THREE from 'three/webgpu';
-import { DYE_COLORS, dyeChoice, dyeIndex, type DyeSlot, LOOK_SLOTS, type LookKey, packLook, unpackLook } from '../shared/look.ts';
+import { bodyScale, DYE_COLORS, dyeChoice, dyeIndex, type DyeSlot, LOOK_SLOTS, type LookKey, packLook, unpackLook } from '../shared/look.ts';
 import { TEXT } from '../shared/text.ts';
 import { ScavengerModel } from './models/scavenger';
 import { myColor, myLook, setMyLook } from './profile';
@@ -91,12 +91,12 @@ export function lookView(back: () => void): HTMLElement {
     back();
   });
   el.querySelector('.back')!.addEventListener('click', back);
-  stage(canvas, model, () => model.setLook(packLook(look)));
+  stage(canvas, model, () => model.setLook(packLook(look)), () => bodyScale(look));
   return el;
 }
 
 /** The figure: its own renderer on `canvas`, until the canvas leaves the page. */
-function stage(canvas: HTMLCanvasElement, model: ScavengerModel, ready: () => void) {
+function stage(canvas: HTMLCanvasElement, model: ScavengerModel, ready: () => void, size: () => { height: number; head: number }) {
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setClearColor(0x000000, 0);
@@ -114,6 +114,8 @@ function stage(canvas: HTMLCanvasElement, model: ScavengerModel, ready: () => vo
   let spin = 0.12; // rad/s, until it's dragged
   // Zoom: 0 the whole figure .. 1 the head and shoulders; eased towards `zoomTo`.
   let zoom = 0, zoomTo = 0;
+  // The figure's proportions (shared/look.ts bodyScale), eased: the framing follows a body or head drawn bigger.
+  let height = 1, head = 1;
   const zoomBy = (d: number) => (zoomTo = Math.min(1, Math.max(0, zoomTo + d)));
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -168,9 +170,18 @@ function stage(canvas: HTMLCanvasElement, model: ScavengerModel, ready: () => vo
       yaw += spin * dt;
       zoom += (zoomTo - zoom) * Math.min(1, dt * 10);
       const z = zoom * zoom * (3 - 2 * zoom);
-      // whole figure from 4.6 m, looking at its middle; the head and shoulders from 1.3 m, looking at the face
-      camera.position.set(0, 1.05 + 0.55 * z, 4.6 - 3.3 * z);
-      camera.lookAt(0, 0.92 + 0.7 * z, 0);
+      const want = size();
+      height += (want.height - height) * Math.min(1, dt * 8);
+      head += (want.head - head) * Math.min(1, dt * 8);
+      // whole figure from 4.6 m, looking at its middle; the head and shoulders from 1.3 m, looking at the face,
+      // wherever it is and however big. A figure drawn taller backs the camera off only partly and raises the
+      // view to keep the head in, so it fills more of the frame (and a small one less): the size reads.
+      const top = 1.85 * height * (1 + 0.17 * (head - 1));
+      const fit = Math.max(1, 1 + (top / 1.85 - 1) * 0.6);
+      const mid = Math.max(0.92, top + 0.06 - 1.06 * fit); // 1.06: half the view's height at 4.6 m
+      const face = (1.62 + 0.1 * (head - 1)) * height, near = 1.3 * height * head;
+      camera.position.set(0, mid + 0.13 * fit + (face - 0.02 - mid - 0.13 * fit) * z, 4.6 * fit + (near - 4.6 * fit) * z);
+      camera.lookAt(0, mid + (face - mid) * z, 0);
       model.root.rotation.y = Math.PI + yaw;
       model.update({ speed: 0, grounded: true, plant: false }, dt);
       renderer.render(scene, camera);

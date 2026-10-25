@@ -87,6 +87,8 @@ export class FirstPersonCamera {
   down = false;
   /** Aiming a scoped gun: the view comes in to the eye whatever the T setting, quickly. */
   aimIn = false;
+  /** The body's drawn height (shared/look.ts bodyScale): the steps are that much longer, in step with the body's. */
+  stride = 1;
   /** Where the eye is (the view ray passes through it; in third person the camera is behind it on that ray). */
   readonly eye = new THREE.Vector3();
   /** Sideways offset (m) of the over-the-shoulder view, eased. */
@@ -222,7 +224,7 @@ export class FirstPersonCamera {
       : crouched ? 0.35 * Math.min(1, speed / CROUCH_SPEED)
       : (pace <= 1 ? pace : Math.min(1 + (pace - 1) * 0.12, 1.15)) * (1 + CLIMB_HEAVY * this.climb);
     this.bobAmount += (bobTarget - this.bobAmount) * (1 - Math.exp(-dt * 6));
-    if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / (crouched ? CROUCH_CYCLE / 2 : STRIDE * (1 - CLIMB_SHORTEN * this.climb));
+    if (p.grounded) this.bobPhase += (speed * dt * Math.PI) / (crouched ? CROUCH_CYCLE / 2 : STRIDE * this.stride * (1 - CLIMB_SHORTEN * this.climb));
     const s = Math.sin(this.bobPhase);
     const bobY = (0.5 - s * s) * 0.018 * this.bobAmount;
     const bobX = s * 0.009 * this.bobAmount;

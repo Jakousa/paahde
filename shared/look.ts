@@ -41,7 +41,16 @@ export const LOOK_SLOTS = [
   { key: 'stole', options: ['none', 'stole'] },
   { key: 'belt', options: ['none', 'rope'] },
   { key: 'satchel', options: ['none', 'satchel'] },
+  // the body's proportions (BODY_HEIGHT, HEAD_SIZE): drawn only, the player moves and collides the same at any size.
+  // From the plain one the next option is bigger, the previous smaller.
+  { key: 'height', options: ['normal', 'tall', 'giant', 'tiny', 'short'] },
+  { key: 'head', options: ['normal', 'big', 'huge', 'tiny', 'small'] },
 ] as const satisfies readonly LookSlot[];
+
+/** How much bigger the whole body is drawn, by `height` option, and the head bone on top of that, by `head` option (the
+ *  hood hangs partly from the neck, so the head looks a good deal less scaled than its bone). */
+const BODY_HEIGHT = [1, 1.14, 1.3, 0.72, 0.86] as const;
+const HEAD_SIZE = [1, 1.5, 2, 0.65, 0.8] as const;
 
 export type LookKey = (typeof LOOK_SLOTS)[number]['key'];
 export type Look = Record<LookKey, number>;
@@ -70,6 +79,9 @@ export function unpackLook(n: number): Look {
 }
 
 export const isLook = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n < LOOK_END;
+
+/** The body's drawn proportions: `height` scales the whole figure about the feet, `head` the head (and what's on it). */
+export const bodyScale = (look: Look) => ({ height: BODY_HEIGHT[look.height] ?? 1, head: HEAD_SIZE[look.head] ?? 1 });
 
 /** The option chosen in a slot, by name ('hood', 'cowl', ...). */
 export const lookOption = <K extends LookKey>(look: Look, key: K) =>

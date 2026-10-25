@@ -47,6 +47,18 @@ cape, poncho and mantle; and the wraps.
 
 The backpack, the gear on the belt and the things carried are gameplay, not look: they show what you have.
 
+## The body's proportions
+
+Height (tall, giant, tiny, short) and head size (big, huge, tiny, small) are two more slots (shared/look.ts
+`bodyScale`), for fun: a dwarf, a giant, a big head. They are drawn only: the player moves, collides, is hit and
+sees from the same height at any size (shared/sim.ts knows nothing of them). src/models/scavenger.ts scales the
+model's root by the height (so everything placed in root space, the held things and the hand and foot targets, grows
+with it) and the head bone by the head size; the bike's seat, grips and pegs come in the parent's space and stay where
+they are, so a giant rides with knees high and a tiny one stretches for the bars. The clips' cadence, the footprints, the
+footstep sounds and the first-person bob follow the height (longer legs, fewer steps); the name tag sits over the head.
+The hood hangs partly from the neck, so the head looks far less scaled than its bone: hence the big numbers (2 for
+huge). Check a new size in the models lab (`models-lab.html?look=<packLook>,...`) and on the bike.
+
 ## Adding a piece
 
 1. Build it in `tools/models/scavenger.py` as a `build_<piece>()` that adds its parts with `part(...)`, and register it

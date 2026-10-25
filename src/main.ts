@@ -30,6 +30,7 @@ import { Lives } from './lives';
 import { landing, rememberWorld, victory } from './landing';
 import { refused } from './lobby';
 import { myLook as storedLook } from './profile';
+import { bodyScale, unpackLook } from '../shared/look.ts';
 import { loadScavenger, ScavengerModel } from './models/scavenger';
 import { Avatar } from './players';
 import { addHeadlights, Bike } from './bike';
@@ -309,6 +310,7 @@ loadScavenger().then(() => (bodyLoaded = true), () => (bodyLoaded = true));
 setTimeout(() => (coverTimedOut = true), 30_000);
 // What you wear (shared/look.ts), chosen on the main menu (src/lookView.ts); others get it with your 'hello'.
 const myLook = storedLook();
+orbit.stride = bodyScale(unpackLook(myLook)).height;
 const me = new Avatar(0xffffff);
 me.setShadowOnly(true); // first person: your body casts a shadow but is not drawn
 let bodyHidden = true;

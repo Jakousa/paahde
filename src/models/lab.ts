@@ -5,6 +5,7 @@
 // ?item=laser_rifle puts that item in every hand; &aim raises it to aim (&pitch=0.3 aims up).
 // &target=x,y,z: where the camera looks (default 0,1,0).
 // ?gear=255 wears and carries that gear (shared/gear.ts wornGear | carriedGear bits).
+// ?look=0,38354534400 dresses the characters in those looks (shared/look.ts packLook), one after another.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { ScavengerModel, type ScavengerClip } from './scavenger';
@@ -60,6 +61,7 @@ const drinking = params.has('drink'); // ?item=canteen&drink: at the mouth
 const aimPitch = Number(params.get('pitch') ?? 0);
 const only = params.get('clip') as ScavengerClip | null;
 const clips: ScavengerClip[] = only ? [only] : ['Idle', 'Walk', 'Run', 'Jump', 'Dig', 'Slide', 'Powerslide', 'Crouch', 'CrouchWalk'];
+const looks = (params.get('look') ?? '').split(',').filter(Boolean).map(Number);
 const colors = [0xd8452b, 0x2f8fd8, 0xe0b23a, 0x4fae5a, 0xb455c8, 0xe8e2d6];
 if (only) dist = 4;
 if (params.has('yaw')) yaw = Number(params.get('yaw'));
@@ -77,6 +79,7 @@ clips.forEach((clip, i) => {
   void m.ready.then(() => {
     m.play(clip, 0);
     if (item || gear) m.setOutfit(item, gear);
+    if (looks.length) m.setLook(looks[i % looks.length]);
   });
 });
 

@@ -36,6 +36,7 @@ const _ax0 = new THREE.Vector3();
 const _ax1 = new THREE.Vector3();
 const _v = new THREE.Vector3();
 const _n = new THREE.Vector3();
+const _s = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 const _qa = new THREE.Quaternion();
 const _qb = new THREE.Quaternion();
@@ -79,7 +80,8 @@ export class LegIk {
 
   /**
    * After mixer.update(). `minAnkle` is the current clip's lowest ankle height above the feet (model
-   * space, from footContact()), or null to skip locking (airborne, sliding). `ground` null = flat.
+   * space, from footContact()), or null to skip locking (airborne, sliding). `ground` null = flat. The root may be
+   * scaled (a body drawn bigger or smaller): model heights are scaled to the world, world drops back to the model.
    */
   update(dt: number, grounded: boolean, minAnkle: number | null, ground: Ground | null) {
     const k = (rate: number) => 1 - Math.exp(-dt * rate);
@@ -91,6 +93,7 @@ export class LegIk {
     travel.transformDirection(_m.copy(this.root.matrixWorld).invert());
     this.last.copy(_v);
     const rootX = _v.x, rootY = _v.y, rootZ = _v.z;
+    const size = this.root.getWorldScale(_s).y;
     const g0 = ground ? ground(rootX, rootZ) : 0;
     _v.set(0, 0, -1).transformDirection(this.root.matrixWorld);
     const yaw = Math.atan2(-_v.x, -_v.z);
@@ -114,7 +117,7 @@ export class LegIk {
       const local = this.root.worldToLocal(_n.copy(anim));
       const along = _ca.subVectors(local, l.prevLocal).dot(travel) / Math.max(dt, 1e-4);
       l.prevLocal.copy(local);
-      const planted = minAnkle !== null && anim.y - rootY < minAnkle + LOCK_ON && !(along > SWING);
+      const planted = minAnkle !== null && anim.y - rootY < minAnkle * size + LOCK_ON && !(along > SWING);
       // After a release, step back under the body before planting again (else it re-pins in place).
       if (planted && !l.locked && l.offset.lengthSq() < RELOCK * RELOCK) {
         l.locked = true;
@@ -137,7 +140,7 @@ export class LegIk {
 
     // Drop the body so the lower foot is in reach (uphill feet bend the knee instead).
     this.drop += (Math.max(lowest, -MAX_DROP) - this.drop) * k(12);
-    this.body.position.y = this.drop * this.weight;
+    this.body.position.y = (this.drop * this.weight) / size;
     this.root.updateMatrixWorld(true);
 
     for (let i = 0; i < this.legs.length; i++) {

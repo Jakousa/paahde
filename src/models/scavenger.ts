@@ -9,7 +9,9 @@
 // own copy of the `PlayerTint` material (scarf, face mask, sash, armband), which setColor() recolours.
 // setLook() says what they wear (shared/look.ts): the chosen pieces (their own meshes in the glb, LOOK_PIECES) are
 // merged with the body into one skinned mesh per material (cached per set of pieces, shared by every instance), and the
-// dyed cloth (DyeRobe / DyeCape / DyeWrap, this instance's copies) takes the chosen dyes.
+// dyed cloth (DyeRobe / DyeCape / DyeWrap, this instance's copies) takes the chosen dyes. The look's body proportions
+// (shared/look.ts bodyScale) scale the root and the head bone: everything placed in root space (held things, the hand
+// and foot targets) grows with the body, the bike's contact points (RidePose, the parent's space) stay where they are.
 // setOutfit() says what's in the hand (carried at the right hip, src/models/outfit.ts) and which gear is worn:
 // the backpack (its own mesh in the glb), the wrist computer and the storm detector on the belt, the shield plate on
 // the chest (SHIELD_URL), and which things in the bag are carried on the body (CARRIED: their own meshes too). Each
@@ -28,7 +30,7 @@ import { beltModel, disposeModel, DRAW_IN, heldModel, heldMuzzle, wristModel } f
 import { LAMP_ON } from './jammer';
 import { RECEIVERS } from '../../shared/bosses.ts';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DYE_COLORS, dyeIndex, type Look, lookOption, unpackLook } from '../../shared/look.ts';
+import { bodyScale, DYE_COLORS, dyeIndex, type Look, lookOption, unpackLook } from '../../shared/look.ts';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -128,6 +130,9 @@ export class ScavengerModel {
   private dyes = new Map<string, THREE.MeshStandardMaterial>();
   /** What's worn (shared/look.ts packLook), the glb's pieces' primitives by mesh name, and the merged meshes drawn. */
   private lookN = 0;
+  /** The body's drawn size (the root's scale) and the head's on top of it (shared/look.ts bodyScale). */
+  private height = 1;
+  private headSize = 1;
   private pieces = new Map<string, THREE.SkinnedMesh[]>();
   private worn: THREE.SkinnedMesh[] = [];
   private neck: THREE.Object3D | null = null;
@@ -387,6 +392,8 @@ export class ScavengerModel {
     if (n === this.lookN && !force) return false;
     this.lookN = n;
     const look = unpackLook(n);
+    ({ height: this.height, head: this.headSize } = bodyScale(look));
+    this.root.scale.setScalar(this.height);
     for (const [slot, name] of [['robe', 'DyeRobe'], ['cloak', 'DyeCape'], ['wrap', 'DyeWrap']] as const) {
       this.dyes.get(name)?.color.setHex(DYE_COLORS[dyeIndex(look, slot)]);
     }
@@ -493,6 +500,8 @@ export class ScavengerModel {
     // Remote speeds arrive as 20 Hz steps; smooth them so playback rate (and the feet) don't jitter.
     this.speed += (pose.speed - this.speed) * (1 - Math.exp(-dt * 10));
     const speed = this.speed;
+    // The clips' cadence and the crouch's steps go by the body's own size: longer legs, fewer steps.
+    const gait = speed / this.height;
     // Backing up plays the stride in reverse; the hips turn toward the travel direction (or away from it
     // when backing up) so diagonal and sideways moves step that way instead of moonwalking.
     const heading = pose.heading ?? 0;
@@ -515,8 +524,8 @@ export class ScavengerModel {
     else if (pose.sliding) this.play('Slide');
     else if (pose.digging) this.play('Dig');
     else if (pose.crouching) this.play('Crouch'); // stepping or not: crouchGait poses the legs
-    else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(speed / this.runRef(mix), mix > 0 ? 0.5 : 0.75, 1.6));
-    else if (speed > 0.25) this.play('Walk', FADE, dir * clamp(speed / WALK_REF, 0.6, 1.8));
+    else if (speed > RUN_ABOVE) this.play('Run', FADE, dir * clamp(gait / this.runRef(mix), mix > 0 ? 0.5 : 0.75, 1.6));
+    else if (speed > 0.25) this.play('Walk', FADE, dir * clamp(gait / WALK_REF, 0.6, 1.8));
     else this.play('Idle');
     this.layTrudge(mix);
     // The mixer only writes a bone when its animated value changes, so on a constant track (Dig's Neck,
@@ -532,7 +541,7 @@ export class ScavengerModel {
     this.tilt.rotation.z += ((power ? clamp(pose.tiltRoll ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.z) * tk;
     for (const p of this.posed) p.base.copy(p.bone.quaternion);
     const crouched = !!pose.crouching && pose.grounded && !pose.ride && !pose.sliding && !pose.powerSlide && !pose.digging;
-    this.crouch?.apply(dt, crouched, crouched ? speed : 0, dir);
+    this.crouch?.apply(dt, crouched, crouched ? gait : 0, dir);
 
     this.root.updateMatrixWorld(true);
     if (Math.abs(this.hipYaw) > 1e-3 && this.hips && this.spine) {
@@ -557,7 +566,7 @@ export class ScavengerModel {
       rotateAboutRoot(this.root, this.neck, Y_AXIS, this.look * 0.4);
       rotateAboutRoot(this.root, this.head, Y_AXIS, this.look * 0.6);
     }
-    this.head?.scale.setScalar(this.headless ? 1e-3 : 1);
+    this.head?.scale.setScalar(this.headless ? 1e-3 : this.headSize);
     this.runArms(speed);
     // After the running arms: sliding in from a run, the slide's arms take over as the Run clip fades.
     this.slideT += ((power ? 1 : 0) - this.slideT) * (1 - Math.exp(-dt * (power ? 9 : 6)));
@@ -851,7 +860,9 @@ export class ScavengerModel {
     if (!this.hips || !this.spine) return;
     this.tilt.rotation.set(0, 0, 0);
     this.root.updateMatrixWorld(true);
-    this.tilt.position.add(_t.copy(r.seat).sub(this.root.worldToLocal(this.hips.getWorldPosition(_p))));
+    // The pose is in the parent's space; this root is scaled to the body's size.
+    const toRoot = _im.copy(this.root.matrix).invert();
+    this.tilt.position.add(_t.copy(r.seat).applyMatrix4(toRoot).sub(this.root.worldToLocal(this.hips.getWorldPosition(_p))));
     this.root.updateMatrixWorld(true);
     rotateAboutRoot(this.root, this.spine, Z_AXIS, r.lean);
     rotateAboutRoot(this.root, this.spine, Y_AXIS, r.twist);
@@ -864,16 +875,16 @@ export class ScavengerModel {
       const arm = this.arms[i];
       if (arm) {
         // Wrist a hand's width behind and above the grip; elbows out and down; fingers forward round the bar.
-        this.root.localToWorld(_t.copy(r.grips[i]).add(_o.set(-side * 0.02, 0.04, 0.07)));
+        this.root.localToWorld(_t.copy(r.grips[i]).applyMatrix4(toRoot).add(_o.set(-side * 0.02, 0.04, 0.07)));
         reach(arm[0], arm[1], arm[2], _t, _pole.set(side, -0.6, 0.4).transformDirection(this.root.matrixWorld));
-        aim(arm[2], arm[3], this.root.localToWorld(_t.copy(r.grips[i]).add(_o.set(0, -0.03, -0.05))));
+        aim(arm[2], arm[3], this.root.localToWorld(_t.copy(r.grips[i]).applyMatrix4(toRoot).add(_o.set(0, -0.03, -0.05))));
       }
       const leg = this.legs[i];
       if (leg) {
         // Knees forward and a little out, toes forward and down off the peg.
-        this.root.localToWorld(_t.copy(r.pegs[i]));
+        this.root.localToWorld(_t.copy(r.pegs[i]).applyMatrix4(toRoot));
         reach(leg[0], leg[1], leg[2], _t, _pole.set(side * 0.35, 0.3, -1).transformDirection(this.root.matrixWorld));
-        aim(leg[2], leg[3], this.root.localToWorld(_t.copy(r.pegs[i]).add(_o.set(0, -0.12, -0.12))));
+        aim(leg[2], leg[3], this.root.localToWorld(_t.copy(r.pegs[i]).applyMatrix4(toRoot).add(_o.set(0, -0.12, -0.12))));
       }
     }
   }
@@ -1109,6 +1120,7 @@ const _ga = new THREE.Vector3();
 const _gt = new THREE.Vector3();
 const _gc = new THREE.Vector3();
 const _gm = new THREE.Matrix4();
+const _im = new THREE.Matrix4();
 const _gm2 = new THREE.Matrix4();
 const _gq = new THREE.Quaternion();
 const _gq2 = new THREE.Quaternion();
