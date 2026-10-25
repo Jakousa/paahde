@@ -8,7 +8,8 @@
 // Mega-storm fronts: drawn as a wall of dust (post.ts, stormFront), roaring up as it nears; in the lee of rock
 // the grit and the wind ease off, and out in the open the view closes in as you choke (the server's tally,
 // mirrored here: server/world.ts).
-import { BASE, HUT, ROOM_Z, W, inBase } from '../shared/base.ts';
+import { HUT, ROOM_Z, W, inBase } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { indoors, S_HUT, shelterAt, shelterHutInside } from '../shared/shelters.ts';
 import { CHOKE_RECOVER, CHOKE_S, STATIC_AT, FRONT_PASS_S, FRONT_RAMP_MS, FRONT_SPEED, RAMP_MS, frontArrival, frontAt, frontDepth, frontExposure, inStormPath, sheltered, stormAt, stormCentre, stormEnvelope, stormStrength, type Storm } from '../shared/storm.ts';
 import { WIND } from '../shared/dunes.ts';
@@ -142,7 +143,7 @@ export class StormFx {
     this.choking = this.choke > CHOKE_SAY_S;
     // Full (black) a little before the server's tally kills, so the view is dark when the death comes.
     choking.value = dead ? Math.max(0, choking.value - dt / DARK_LIFT_S) : Math.min(1, Math.max(0, (this.choke / CHOKE_S - 0.1) / 0.82));
-    this.atBase += (stormAt(storms, BASE.x, BASE.z + ROOM_Z / 2, now) - this.atBase) * k;
+    this.atBase += (stormAt(storms, ORIGIN.x, ORIGIN.z + ROOM_Z / 2, now) - this.atBase) * k;
     wind.local = this.outside;
     stormHere.value = this.level;
     stormIndoors.value = inside ? 1 : 0;
@@ -153,9 +154,9 @@ export class StormFx {
       indoorHutMax.value.set(x1, sh.y + S_HUT.h, z1);
       indoorSurface.value = sh.y;
     } else {
-      indoorHutMin.value.set(BASE.x - W, BASE.y - 100, BASE.z + HUT.z0);
-      indoorHutMax.value.set(BASE.x + W, BASE.y + HUT.h, BASE.z + HUT.z1);
-      indoorSurface.value = BASE.y;
+      indoorHutMin.value.set(ORIGIN.x - W, ORIGIN.y - 100, ORIGIN.z + HUT.z0);
+      indoorHutMax.value.set(ORIGIN.x + W, ORIGIN.y + HUT.h, ORIGIN.z + HUT.z1);
+      indoorSurface.value = ORIGIN.y;
     }
 
     const g = stormGround.value;

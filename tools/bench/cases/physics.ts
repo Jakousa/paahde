@@ -1,11 +1,11 @@
 // Movement physics (shared/sim.ts step, what the server runs for every player at 60 Hz and the client re-runs to predict):
 // a minute of scripted input in a few kinds of place, and a minute on the motorcycle. Each also gives a checksum of where
 // it ended up: if that changes, the physics does something else now (and old clients would rubber-band against it).
-import { checksum, time, type Sample } from '../common.ts';
+import { checksum, originFront, time, type Sample } from '../common.ts';
 
 export async function run(): Promise<Sample> {
-  const { spawnState, step, quantizeYaw, TICK_RATE, FORWARD, LEFT, RIGHT, JUMP, SLIDE, CROUCH } = await import('../../../shared/sim.ts');
-  const { BUNKER_SPAWN, BASE_SPAWN } = await import('../../../shared/base.ts');
+  const { spawnState, spawnPoint, step, quantizeYaw, TICK_RATE, FORWARD, LEFT, RIGHT, JUMP, SLIDE, CROUCH } = await import('../../../shared/sim.ts');
+  const ORIGIN_FRONT = await originFront();
   const { crashSitesNear } = await import('../../../shared/crashsites.ts');
   const { sheltersNear } = await import('../../../shared/shelters.ts');
   type State = ReturnType<typeof spawnState>;
@@ -33,14 +33,14 @@ export async function run(): Promise<Sample> {
     return { s, ms };
   };
 
-  const field = crashSitesNear(BASE_SPAWN.x, BASE_SPAWN.z, 3000).find((o) => o.level === 0);
-  const shelter = sheltersNear(BASE_SPAWN.x, BASE_SPAWN.z, 6000)[0];
+  const field = crashSitesNear(ORIGIN_FRONT.x, ORIGIN_FRONT.z, 3000).find((o) => o.level === 0);
+  const shelter = sheltersNear(ORIGIN_FRONT.x, ORIGIN_FRONT.z, 6000)[0];
   const places: [string, State][] = [
-    ['bunker', spawnState(BUNKER_SPAWN.x, BUNKER_SPAWN.z, BUNKER_SPAWN.y)],
-    ['base', spawnState(BASE_SPAWN.x, BASE_SPAWN.z)],
+    ['spawn', spawnState(spawnPoint().x, spawnPoint().z)],
+    ['origin', spawnState(ORIGIN_FRONT.x, ORIGIN_FRONT.z)],
     ...(field ? [['scrap field', spawnState(field.x + field.radius, field.z)] as [string, State]] : []),
     ...(shelter ? [['shelter', spawnState(shelter.x + shelter.dx * 4, shelter.z + shelter.dz * 4)] as [string, State]] : []),
-    ['open dunes', spawnState(BASE_SPAWN.x + 700, BASE_SPAWN.z - 900)],
+    ['open dunes', spawnState(ORIGIN_FRONT.x + 700, ORIGIN_FRONT.z - 900)],
   ];
   // Warm the heightfield's caches and the JIT first: the numbers are the physics, not the first touch of the sand.
   for (const [, s] of places) go(s, walkInput, walkYaw, 5);
@@ -57,7 +57,7 @@ export async function run(): Promise<Sample> {
   m['walking, per step'] = [(total / (places.length * 60 * TICK_RATE)) * 1000, 'µs'];
 
   // The motorcycle: on it at the start (bike 2: a basic one), full throttle with long turns and a jump now and then.
-  const bike = { ...spawnState(BASE_SPAWN.x + 700, BASE_SPAWN.z - 900), riding: true, bike: 2 } as State;
+  const bike = { ...spawnState(ORIGIN_FRONT.x + 700, ORIGIN_FRONT.z - 900), riding: true, bike: 2 } as State;
   const ride = go(bike, (t) => FORWARD | (t % 240 < 60 ? LEFT : 0) | (t % 600 < 4 ? JUMP : 0), (t) => quantizeYaw(t / 200));
   m['ride a minute'] = [ride.ms, 'ms'];
   ends.push(ride.s.x, ride.s.y, ride.s.z, ride.s.heading, ride.s.nose);

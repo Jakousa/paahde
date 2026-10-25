@@ -6,7 +6,8 @@
 import * as THREE from 'three/webgpu';
 import type { Node } from 'three/webgpu';
 import { cameraPosition, cross, float, instancedBufferAttribute, length, max, normalize, saturate, uv, vec3 } from 'three/tsl';
-import { BASE, FLOOR, HUT, ROOM_Z, SKY, stairY } from '../../shared/base.ts';
+import { FLOOR, HUT, ROOM_Z, SKY, stairY } from '../../shared/base.ts';
+import { ORIGIN } from '../../shared/origin.ts';
 import { hazeColor, nightLevel, sunColor } from './env.ts';
 import { wind } from './wind.ts';
 
@@ -136,8 +137,8 @@ export class BaseSand {
     const lx = Math.max(-SKY.w, Math.min(SKY.w, dx * up * SKY.w - dz * across));
     const lz = Math.max(-SKY.w, Math.min(SKY.w, dz * up * SKY.w + dx * across));
     const push = 1.2 + 1.5 * r();
-    this.add(BASE.x + lx, BASE.y + SKY.h * r(), BASE.z + ROOM_Z + lz, dx * push, -1 - r(), dz * push,
-      BASE.y + FLOOR, 6);
+    this.add(ORIGIN.x + lx, ORIGIN.y + SKY.h * r(), ORIGIN.z + ROOM_Z + lz, dx * push, -1 - r(), dz * push,
+      ORIGIN.y + FLOOR, 6);
   }
 
   /** In at the hut's door, low, skidding inwards and down onto the landing and the first stairs. */
@@ -148,7 +149,7 @@ export class BaseSand {
     const lz = HUT.z1 - 0.05;
     const inward = 2.5 + 3.5 * r();
     const stop = HUT.z1 - 0.5 - inward * 0.6 * r();
-    this.add(BASE.x + lx, BASE.y + ly, BASE.z + lz, (r() * 2 - 1) * 0.6, 0.3 * r(), -inward,
-      BASE.y + stairY(stop), 2.5);
+    this.add(ORIGIN.x + lx, ORIGIN.y + ly, ORIGIN.z + lz, (r() * 2 - 1) * 0.6, 0.3 * r(), -inward,
+      ORIGIN.y + stairY(stop), 2.5);
   }
 }

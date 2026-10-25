@@ -9,7 +9,8 @@
 //
 // A trophy's own frame: origin on the sand at its spot, +Z facing the base (TROPHY_FACE), +X to its right.
 
-import { BASE, TROPHY_SPOTS } from './base.ts';
+import { TROPHY_SPOTS } from './base.ts';
+import { ORIGIN } from './origin.ts';
 import { BOSS_KINDS, bossBit, type BossKind } from './bosses.ts';
 import { baseHeight } from './terrain.ts';
 
@@ -38,7 +39,7 @@ const POSTS: Record<BossKind, Post[]> = {
 export type TrophyPlace = { x: number; y: number; z: number; fx: number; fz: number };
 
 function place(kind: BossKind): TrophyPlace {
-  const s = TROPHY_SPOTS[kind], x = BASE.x + s.x, z = BASE.z + s.z;
+  const s = TROPHY_SPOTS[kind], x = ORIGIN.x + s.x, z = ORIGIN.z + s.z;
   let fx = TROPHY_FACE.x - s.x, fz = TROPHY_FACE.z - s.z;
   const d = Math.sqrt(fx * fx + fz * fz);
   fx /= d;

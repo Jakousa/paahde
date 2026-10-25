@@ -70,7 +70,8 @@ import { uiSound } from './uiSound';
 import { breathing } from './breathing';
 import { slideSound } from './slideSound';
 import { audio } from './audio';
-import { BASE, inBase, overBase } from '../shared/base.ts';
+import { inBase, overBase } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { biome } from '../shared/biomes.ts';
 import { indoors, inShelter, overShelter, sheltersNear } from '../shared/shelters.ts';
@@ -638,7 +639,7 @@ renderer.setAnimationLoop((time) => {
   if (++undergroundFrame % 60 === 1) {
     // the rooms the dune shadows must not reach (src/world/heightShadow.ts): the base and the nearest shelters, below their huts' floors
     const near = sheltersNear(focus.x, focus.z, 800).sort((a, b) => Math.hypot(a.x - focus.x, a.z - focus.z) - Math.hypot(b.x - focus.x, b.z - focus.z));
-    sky.heights.setUnderground([{ x: BASE.x, z: BASE.z, r: 45, top: BASE.y - 0.3 }, ...near.slice(0, 3).map((s) => ({ x: s.x, z: s.z, r: 32, top: s.y - 0.3 }))]);
+    sky.heights.setUnderground([{ x: ORIGIN.x, z: ORIGIN.z, r: 45, top: ORIGIN.y - 0.3 }, ...near.slice(0, 3).map((s) => ({ x: s.x, z: s.z, r: 32, top: s.y - 0.3 }))]);
   }
   sky.update(frameDt, focus, orbit.camera, net.worldTime());
   wind.update(net.serverTime() / 1000);

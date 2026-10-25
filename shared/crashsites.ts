@@ -20,7 +20,8 @@
 //
 // Piece frame: yaw turns model +Z (the nose) to (dx, dz) and model +X to (dz, -dx), like scrap. Each
 // piece's origin sits at heightAt(x, z) − sink; capsule tops are origin + h.
-import { BASE, BASE_SPAWN, padBlend } from './base.ts';
+import { padBlend } from './base.ts';
+import { ORIGIN, ORIGIN_FRONT } from './origin.ts';
 import { CRASH_KINDS, type CrashKind } from './crashKinds.ts';
 import { shelterWithin } from './shelters.ts';
 import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
@@ -93,7 +94,7 @@ export const OUTPOST_LOOT = 0.5;
 export type LootLevel = SiteLevel | typeof OUTPOST_LOOT;
 export const LEVEL_R = [950, 1650];
 export function siteLevel(x: number, z: number): SiteLevel {
-  const d = Math.sqrt((x - BASE.x) * (x - BASE.x) + (z - BASE.z) * (z - BASE.z));
+  const d = Math.sqrt((x - ORIGIN.x) * (x - ORIGIN.x) + (z - ORIGIN.z) * (z - ORIGIN.z));
   return d < LEVEL_R[0] ? 0 : d < LEVEL_R[1] ? 1 : 2;
 }
 
@@ -278,7 +279,7 @@ function generate(ix: number, iz: number): CrashSite | null {
   let level = siteLevel(ox, oz), loot: LootLevel = level;
   if (r() >= DENSITY[level]) {
     // An empty cell in the outer scrap-field ring may be an outpost (own salt: the other cells' layouts stay as they were).
-    if (level !== 0 || Math.hypot(ox - BASE.x, oz - BASE.z) < OUTPOST_R || rng(ix, iz, 0x0b57)() >= OUTPOST_CHANCE) return null;
+    if (level !== 0 || Math.hypot(ox - ORIGIN.x, oz - ORIGIN.z) < OUTPOST_R || rng(ix, iz, 0x0b57)() >= OUTPOST_CHANCE) return null;
     level = 1;
     loot = OUTPOST_LOOT;
   }
@@ -292,7 +293,7 @@ function generate(ix: number, iz: number): CrashSite | null {
   for (let t = 0; t < 6 && !ok; t++) {
     cx = ix * CRASH_CELL + CELL_MARGIN + span * r();
     cz = iz * CRASH_CELL + CELL_MARGIN + span * r();
-    const bx = cx - BASE.x, bz = cz - BASE.z, sx = cx - BASE_SPAWN.x, sz = cz - BASE_SPAWN.z;
+    const bx = cx - ORIGIN.x, bz = cz - ORIGIN.z, sx = cx - ORIGIN_FRONT.x, sz = cz - ORIGIN_FRONT.z;
     ok = bx * bx + bz * bz > BASE_CLEAR * BASE_CLEAR && sx * sx + sz * sz > BASE_CLEAR * BASE_CLEAR &&
       padBlend(cx, cz) >= 1 && flatEnough(cx, cz, K.radius) && !nearScrap(cx, cz, K.radius) && !shelterWithin(cx, cz, K.radius);
   }

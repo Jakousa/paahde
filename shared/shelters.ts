@@ -23,7 +23,8 @@
 // down local -Z (like the base). It is turned by a multiple of 90° (exact): local +Z points along world (dx, dz),
 // local +X along (dz, -dx).
 
-import { atPump, BASE, inBase, bandUnder, collideCapsules, keepUnder, PUMP_REACH, terrainHidden, type Capsule } from './base.ts';
+import { atPump, inBase, bandUnder, collideCapsules, keepUnder, PUMP_REACH, terrainHidden, type Capsule } from './base.ts';
+import { ORIGIN } from './origin.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockiness, rocksNear } from './rocks.ts';
 import { cellId } from './cells.ts';
@@ -174,7 +175,7 @@ function findHomeShelter(): Shelter | null {
     const ix = Math.floor(x / SHELTER_CELL), iz = Math.floor(z / SHELTER_CELL);
     const cx = x - ix * SHELTER_CELL, cz = z - iz * SHELTER_CELL;
     if (cx < CELL_MARGIN || cx > SHELTER_CELL - CELL_MARGIN || cz < CELL_MARGIN || cz > SHELTER_CELL - CELL_MARGIN) continue;
-    const bx = x - BASE.x, bz = z - BASE.z;
+    const bx = x - ORIGIN.x, bz = z - ORIGIN.z;
     if (bx * bx + bz * bz < 80 * 80 || onShipGround(x, z, 30) || rocksNear(x, z, REACH)) continue;
     // The door faces the world axis nearest the way back to the ship.
     const tx = s.x - x, tz = s.z - z;
@@ -209,7 +210,7 @@ function cellShelter(ix: number, iz: number): Shelter | null {
     const x = Math.round(ix * SHELTER_CELL + CELL_MARGIN + span * r());
     const z = Math.round(iz * SHELTER_CELL + CELL_MARGIN + span * r());
     const [dx, dz] = FACINGS[Math.floor(r() * 4)];
-    const bx = x - BASE.x, bz = z - BASE.z;
+    const bx = x - ORIGIN.x, bz = z - ORIGIN.z;
     if (bx * bx + bz * bz < BASE_CLEAR * BASE_CLEAR) continue;
     const L = SHELTER_KINDS[kind];
     const p = padRect(L);

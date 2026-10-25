@@ -12,7 +12,8 @@ import * as THREE from 'three/webgpu';
 import { bool, lights, positionWorld } from 'three/tsl';
 import type { LightsNode, Node } from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { ALCOVE, BASE, BASE_PIECES, FLOOR, HALL, HUT, ROOM, ROOM_Z, STAIRS, TERRAIN_HOLES, vaultCrown } from '../../shared/base.ts';
+import { ALCOVE, BASE_PIECES, FLOOR, HALL, HUT, ROOM, ROOM_Z, STAIRS, TERRAIN_HOLES, vaultCrown } from '../../shared/base.ts';
+import { ORIGIN } from '../../shared/origin.ts';
 import { moonColor, sunColor, sunDirection, sunLight } from './env.ts';
 import { shelterHoles } from './shelters.ts';
 
@@ -77,14 +78,14 @@ export class Base {
   private view = new THREE.PointLight(0xfff0dc, 0, VIEW_LIGHT.distance, VIEW_LIGHT.decay);
 
   constructor(scene: THREE.Scene) {
-    this.group.position.set(BASE.x, BASE.y, BASE.z);
+    this.group.position.set(ORIGIN.x, ORIGIN.y, ORIGIN.z);
     scene.add(this.group);
-    this.bounce.position.set(BASE.x, BASE.y + FLOOR + ROOM.h - 0.6, BASE.z + ROOM_Z);
-    this.bulb.position.set(BASE.x + BULB.x, BASE.y + BULB.y, BASE.z + BULB.z);
+    this.bounce.position.set(ORIGIN.x, ORIGIN.y + FLOOR + ROOM.h - 0.6, ORIGIN.z + ROOM_Z);
+    this.bulb.position.set(ORIGIN.x + BULB.x, ORIGIN.y + BULB.y, ORIGIN.z + BULB.z);
     this.bounce.updateMatrixWorld();
     this.bulb.updateMatrixWorld();
     LAMPS.forEach((l, i) => {
-      this.lamps[i].position.set(BASE.x + l.x, BASE.y + FLOOR + l.ceil + LAMP.bulbY, BASE.z + l.z);
+      this.lamps[i].position.set(ORIGIN.x + l.x, ORIGIN.y + FLOOR + l.ceil + LAMP.bulbY, ORIGIN.z + l.z);
       this.lamps[i].updateMatrixWorld();
     });
     const loader = new GLTFLoader();

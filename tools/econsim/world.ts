@@ -1,7 +1,7 @@
 // The simulated world: everything a player can go to, as points of interest built from the game's own deterministic
 // layout (WORLD_ID picks the seed, shared/world.ts) and loot laid out with the game's own dice (shared/lootRoll.ts).
 // Time is the sim's clock (s); what's taken comes back on the server's timers.
-import { BASE } from '../../shared/base.ts';
+import { ORIGIN } from './origin.ts';
 import { biome } from '../../shared/biomes.ts';
 import { ENEMIES, type EnemyKind } from '../../shared/enemies.ts';
 import { machinesAt } from '../../shared/crash.ts';
@@ -83,17 +83,17 @@ export class World {
         p.machines.push({ kind: m.kind, seed: m.seed, level: m.level, carry, backAt: 0, respawn: carry && s.loot === 0 ? STARTER_BACK : Infinity });
       }
     }
-    const lo = Math.floor((BASE.x - PILE_R) / SCRAP_CELL), hi = Math.floor((BASE.x + PILE_R) / SCRAP_CELL);
-    const loZ = Math.floor((BASE.z - PILE_R) / SCRAP_CELL), hiZ = Math.floor((BASE.z + PILE_R) / SCRAP_CELL);
+    const lo = Math.floor((ORIGIN.x - PILE_R) / SCRAP_CELL), hi = Math.floor((ORIGIN.x + PILE_R) / SCRAP_CELL);
+    const loZ = Math.floor((ORIGIN.z - PILE_R) / SCRAP_CELL), hiZ = Math.floor((ORIGIN.z + PILE_R) / SCRAP_CELL);
     for (let iz = loZ; iz <= hiZ; iz++) for (let ix = lo; ix <= hi; ix++) {
       const ps = scrapPieces(ix, iz);
       if (!ps.length) continue;
       const x = ps.reduce((a, q) => a + q.x, 0) / ps.length, z = ps.reduce((a, q) => a + q.z, 0) / ps.length;
-      if (Math.hypot(x - BASE.x, z - BASE.z) > PILE_R) continue;
+      if (Math.hypot(x - ORIGIN.x, z - ORIGIN.z) > PILE_R) continue;
       const p = this.poi('pile', x, z);
       for (const q of ps) p.pieces.push({ item: scrapItem(q.kind), backAt: 0, respawn: SCRAP_BACK });
     }
-    for (const w of wrecksNear(BASE.x, BASE.z, CORE_HALF)) {
+    for (const w of wrecksNear(ORIGIN.x, ORIGIN.z, CORE_HALF)) {
       const p = this.poi('wreck', w.x, w.z);
       p.machines.push({ kind: w.kind, seed: 0, level: 1, carry: true, backAt: 0, respawn: WRECK_BACK });
     }
@@ -123,7 +123,7 @@ export class World {
       if (m.at !== 'roam' || !m.hunt) continue;
       const spots: { x: number; z: number; d: number }[] = [];
       for (let r = 300; r <= HUNT_R; r += 150) for (let a = 0; a < 24; a++) {
-        const x = BASE.x + Math.cos((a / 24) * Math.PI * 2) * r, z = BASE.z + Math.sin((a / 24) * Math.PI * 2) * r;
+        const x = ORIGIN.x + Math.cos((a / 24) * Math.PI * 2) * r, z = ORIGIN.z + Math.sin((a / 24) * Math.PI * 2) * r;
         const ok = m.where === 'mudflat' ? biome('mudflat', x, z) >= 0.9 : m.where === 'guardianGround' ? siteLevel(x, z) === 2 : false;
         if (ok && spots.every((s) => Math.hypot(s.x - x, s.z - z) > 600)) spots.push({ x, z, d: r });
       }

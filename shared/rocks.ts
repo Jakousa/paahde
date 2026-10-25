@@ -14,7 +14,7 @@
 // elsewhere), up to a footprint budget so the dunes keep their room. A formation is one or more rocks, each a
 // domain-warped ellipse with a height profile by kind, plus boulders fallen around the big ones; now and then
 // one is a giant. Rocks sit on the lowest sand under them, partly buried; overlapping rocks merge (max).
-import { BASE } from './base.ts';
+import { ORIGIN } from './origin.ts';
 import { biome, blend } from './biomes.ts';
 import { canyonAt, canyonOut } from './canyons.ts';
 import { cellCache } from './cellCache.ts';
@@ -91,7 +91,7 @@ function styleWeights(x: number, z: number): [number, number, number, number] {
  *  other than the sand (a rock it stands on). */
 function makeRock(x: number, z: number, R: number, H: number, kind: number, r: () => number, aspect = 1 + 0.8 * r(),
   foot = -Infinity): Rock | null {
-  const dx = x - BASE.x, dz = z - BASE.z;
+  const dx = x - ORIGIN.x, dz = z - ORIGIN.z;
   const cut = CUT[kind];
   const bound = R * (cut / (1 - WARP)) + 1;
   const clear = BASE_CLEAR + bound;

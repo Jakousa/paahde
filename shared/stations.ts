@@ -3,7 +3,8 @@
 // looking at. At a workbench, the 'bench' box (the repair slot) and the recipes are open (shared/storage.ts openBoxes,
 // server/items.ts craft); a carried machine is taken apart on a table (shared/crash.ts tables, server/crash.ts). The
 // server checks reach with stationReach().
-import { BASE, BASE_PIECES } from './base.ts';
+import { BASE_PIECES } from './base.ts';
+import { ORIGIN } from './origin.ts';
 import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
 import { placed, PLACEABLES, TABLE, WORKBENCH, type Placed } from './placed.ts';
 import { yawFromQ } from './sim.ts';
@@ -25,7 +26,7 @@ const BASE_STATIONS: Station[] = BASE_PIECES.flatMap((p) => {
   // Facing ±X turns the footprint's long side along Z.
   const sideways = Math.abs(p.fx) > Math.abs(p.fz);
   const hx = sideways ? p.hz : p.hx, hz = sideways ? p.hx : p.hz;
-  const x = BASE.x + p.x, z = BASE.z + p.z, y = BASE.y + (p.y ?? 0);
+  const x = ORIGIN.x + p.x, z = ORIGIN.z + p.z, y = ORIGIN.y + (p.y ?? 0);
   return [{ kind, x0: x - hx, y0: y, z0: z - hz, x1: x + hx, y1: y + p.h, z1: z + hz }];
 });
 

@@ -25,7 +25,8 @@
 //
 // Same determinism rules as shared/base.ts for anything collision touches: + - * /, Math.sqrt, Math.abs,
 // Math.min/max, Math.floor only.
-import { BASE, BASE_PIECES, FLOOR, HALL, byMast, inBase, insideBase, overBase, PILLAR, ROOM, setPlacedCapsules, W, type Capsule } from './base.ts';
+import { BASE_PIECES, FLOOR, HALL, byMast, inBase, insideBase, overBase, PILLAR, ROOM, setPlacedCapsules, W, type Capsule } from './base.ts';
+import { ORIGIN } from './origin.ts';
 import { EYE_HEIGHT } from './dig.ts';
 import { ITEMS } from './items.ts';
 import { insideShelter, inShelter, shelterAt, shelterRoomClear, shelterUnder } from './shelters.ts';
@@ -179,7 +180,7 @@ const counted = (kind: string) => kind !== BEACON && kind !== BEDROLL;
 /** Aim snaps to this grid (m, from the base origin). */
 const GRID = 0.25;
 /** World height of the bunker floor. */
-export const PLACE_FLOOR_Y = BASE.y + FLOOR;
+export const PLACE_FLOOR_Y = ORIGIN.y + FLOOR;
 
 /** Everything placed right now (from the server). Replace it with setPlaced(). */
 export let placed: Placed[] = [];
@@ -198,8 +199,8 @@ export function setPlaced(list: Placed[]) {
       // Capsule along the box's longer side, in base-local coordinates.
       const hx = (b.x1 - b.x0) / 2, hz = (b.z1 - b.z0) / 2, alongX = hx >= hz;
       const r = alongX ? hz : hx;
-      (bunker ? caps : out).push({ x: (b.x0 + b.x1) / 2 - BASE.x, z: (b.z0 + b.z1) / 2 - BASE.z, ax: alongX ? 1 : 0, az: alongX ? 0 : 1,
-        half: (alongX ? hx : hz) - r, r, y0: b.y0 - BASE.y, top: b.y1 - BASE.y });
+      (bunker ? caps : out).push({ x: (b.x0 + b.x1) / 2 - ORIGIN.x, z: (b.z0 + b.z1) / 2 - ORIGIN.z, ax: alongX ? 1 : 0, az: alongX ? 0 : 1,
+        half: (alongX ? hx : hz) - r, r, y0: b.y0 - ORIGIN.y, top: b.y1 - ORIGIN.y });
     }
   }
   setPlacedCapsules(caps, out, spots);
@@ -252,11 +253,11 @@ const KEEP_CLEAR: { what: string; r: number[] }[] = [
     const sideways = Math.abs(p.fx) > Math.abs(p.fz);
     const m = p.node === 'pump' ? 0.9 : 0.5; // room to reach the pump and to stand at a station
     const hx = (sideways ? p.hz! : p.hx!) + m, hz = (sideways ? p.hx! : p.hz!) + m;
-    const x = BASE.x + p.x, z = BASE.z + p.z;
+    const x = ORIGIN.x + p.x, z = ORIGIN.z + p.z;
     const spots = TEXT.baseSpots;
     return { what: p.node === 'pump' ? spots.pump : p.node === 'chest' ? spots.chest : p.node === 'workbench' ? spots.workbench : spots.table, r: [x - hx, z - hz, x + hx, z + hz] };
   }),
-  { what: TEXT.baseSpots.doorway, r: [BASE.x - W - 0.4, BASE.z + HALL.z - 1.2, BASE.x + W + 0.4, BASE.z + HALL.z + 1] },
+  { what: TEXT.baseSpots.doorway, r: [ORIGIN.x - W - 0.4, ORIGIN.z + HALL.z - 1.2, ORIGIN.x + W + 0.4, ORIGIN.z + HALL.z + 1] },
 ];
 
 /**
@@ -289,7 +290,7 @@ export function placeError(kind: string, x: number, z: number, rot: number, floo
   } else {
     if (Math.abs(floor - PLACE_FLOOR_Y) > 1e-3) return TEXT.notice.floorOnly;
     const m = 0.05 + PILLAR.d; // clear of the pilasters
-    if (f[0] < BASE.x - ROOM.w + m || f[2] > BASE.x + ROOM.w - m || f[1] < BASE.z + ROOM.z + m || f[3] > BASE.z + HALL.z - m) {
+    if (f[0] < ORIGIN.x - ROOM.w + m || f[2] > ORIGIN.x + ROOM.w - m || f[1] < ORIGIN.z + ROOM.z + m || f[3] > ORIGIN.z + HALL.z - m) {
       return TEXT.notice.floorOnly;
     }
     for (const k of KEEP_CLEAR) if (overlap(f, k.r)) return TEXT.notice.tooClose(k.what);
@@ -334,7 +335,7 @@ export function placeAim(feet: { x: number; y: number; z: number }, yaw: number,
   const floor = placeFloor(kind, feet);
   if (floor === null) {
     // Down under the sand (in the bunker): where you stand, which placeError turns down.
-    if (ey < heightAt(feet.x, feet.z)) return { x: snap(feet.x, BASE.x), z: snap(feet.z, BASE.z), rot };
+    if (ey < heightAt(feet.x, feet.z)) return { x: snap(feet.x, ORIGIN.x), z: snap(feet.z, ORIGIN.z), rot };
     // March along the ray to where it goes into the sand, then halve the step a few times.
     let t0 = 0, t1 = -1;
     for (let t = 0.25; t <= SAND_REACH; t += 0.25) {
@@ -350,7 +351,7 @@ export function placeAim(feet: { x: number; y: number; z: number }, yaw: number,
       if (ey + d[1] * t <= heightAt(feet.x + d[0] * t, feet.z + d[2] * t)) t1 = t;
       else t0 = t;
     }
-    return { x: snap(feet.x + d[0] * t1, BASE.x), z: snap(feet.z + d[2] * t1, BASE.z), rot };
+    return { x: snap(feet.x + d[0] * t1, ORIGIN.x), z: snap(feet.z + d[2] * t1, ORIGIN.z), rot };
   }
   if (d[1] > -0.05 || ey < floor) return null;
   const t = (floor - ey) / d[1];
@@ -362,7 +363,7 @@ export function placeAim(feet: { x: number; y: number; z: number }, yaw: number,
     const f = footprint(p.kind, p.x, p.z, p.rot);
     if (x > f[0] && x < f[2] && z > f[1] && z < f[3]) return { x: p.x, z: p.z, rot: p.rot };
   }
-  return { x: snap(x, BASE.x), z: snap(z, BASE.z), rot };
+  return { x: snap(x, ORIGIN.x), z: snap(z, ORIGIN.z), rot };
 }
 
 /** Distance from a player's eye to a placed thing's nearest box (0 inside). For server-side reach checks. */

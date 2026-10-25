@@ -11,7 +11,7 @@
 // Against more than one person it doesn't stay on whoever is kiting it: every time it goes back under (after a leap or
 // a charge) it picks someone (most likely someone else), and every SWITCH_S or so it drops its prey for another
 // anyway. A new prey it stalks: deep and quiet (no wake, no furrow, no arc), straight at them, to come up under them.
-import { BASE } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import { ball, blast, due } from './blasts.ts';
 import { Tracks, type TrackOpts } from './tracks.ts';
@@ -114,15 +114,15 @@ function newWaypoint(b: Boss, w: Worm, players: BossPlayer[], far = false) {
   for (let i = 0; i < 12; i++) {
     const a = Math.random() * Math.PI * 2, d = far ? 900 : rand(LEG[0], LEG[1]);
     const x = b.x + Math.sin(a) * d, z = b.z + Math.cos(a) * d;
-    if (Math.hypot(x - BASE.x, z - BASE.z) < BASE_KEEP_OUT + 100) continue;
+    if (Math.hypot(x - ORIGIN.x, z - ORIGIN.z) < BASE_KEEP_OUT + 100) continue;
     if (sandOverRock(x, z) < 12) continue;
     if (far && players.some((p) => Math.hypot(p.x - x, p.z - z) < 600)) continue;
     w.tx = x;
     w.tz = z;
     return;
   }
-  w.tx = b.x + (b.x - BASE.x);
-  w.tz = b.z + (b.z - BASE.z);
+  w.tx = b.x + (b.x - ORIGIN.x);
+  w.tz = b.z + (b.z - ORIGIN.z);
 }
 
 /** Turn the head's velocity towards unit (dx, dy, dz) at most `turn` × dt, and its speed towards `speed`. */
@@ -169,7 +169,7 @@ function swim(b: Boss, w: Worm, tx: number, tz: number, depth: number, speed: nu
 
 /** Can it go after this player: out on the sand, off rock, away from the base? */
 function reachable(p: BossPlayer): boolean {
-  if (p.safe || Math.hypot(p.x - BASE.x, p.z - BASE.z) < PREY_BASE) return false;
+  if (p.safe || Math.hypot(p.x - ORIGIN.x, p.z - ORIGIN.z) < PREY_BASE) return false;
   if (sandOverRock(p.x, p.z) < ON_ROCK) return false;
   return p.y < heightAt(p.x, p.z) + 3;
 }
@@ -230,7 +230,7 @@ export const worm: Brain = {
     let a = Math.random() * Math.PI * 2, d = summoned ? 170 : 650;
     for (let i = 0; i < 16; i++, a += 0.4) {
       const sx = x + Math.sin(a) * d, sz = z + Math.cos(a) * d;
-      if (sandOverRock(sx, sz) > 25 && Math.hypot(sx - BASE.x, sz - BASE.z) > BASE_KEEP_OUT) break;
+      if (sandOverRock(sx, sz) > 25 && Math.hypot(sx - ORIGIN.x, sz - ORIGIN.z) > BASE_KEEP_OUT) break;
     }
     b.x = x + Math.sin(a) * d;
     b.z = z + Math.cos(a) * d;
@@ -284,7 +284,7 @@ export const worm: Brain = {
 
     const under = b.y < ground;
     if (w.mode === MODE_ROAM) {
-      if (Math.hypot(w.tx - b.x, w.tz - b.z) < 40 || Math.hypot(w.tx - BASE.x, w.tz - BASE.z) < BASE_KEEP_OUT) newWaypoint(b, w, players, b.leaving);
+      if (Math.hypot(w.tx - b.x, w.tz - b.z) < 40 || Math.hypot(w.tx - ORIGIN.x, w.tz - ORIGIN.z) < BASE_KEEP_OUT) newWaypoint(b, w, players, b.leaving);
       if (!b.leaving && w.clock > w.surfaceAt) {
         w.surfaceUntil = w.clock + rand(SURFACE_FOR[0], SURFACE_FOR[1]);
         w.surfaceAt = w.surfaceUntil + rand(SURFACE_EVERY[0], SURFACE_EVERY[1]);

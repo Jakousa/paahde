@@ -19,7 +19,8 @@
 //
 // Deterministic (no time, no randomness), but it uses the sun's trig, so it is not bit-exact across JS
 // engines: fine, since only the server decides. Cost: ~40 µs per ray on average, so ~150–200 µs per body check.
-import { BASE, HUT, ROOM_Z, SKY, W } from './base.ts';
+import { HUT, ROOM_Z, SKY, W } from './base.ts';
+import { ORIGIN } from './origin.ts';
 import { crashTaken, crashSitesNear, pieceY, type CrashSite } from './crashsites.ts';
 import { EYE_HEIGHT, MAX_EDIT_MM } from './dig.ts';
 import { scrapPieces, scrapTaken, SCRAP_CELL, type ScrapPiece } from './scrap.ts';
@@ -74,10 +75,10 @@ const CROUCH_SCALE = 0.65;
 /** Boxes that cast shade (world x0, x1, y0, y1, z0, z1): the entrance hut and the skylight's collar.
  *  Match tools/blender/base/bunker.py build_hut(). */
 const BOXES: [number, number, number, number, number, number][] = [
-  [BASE.x - W - HUT.t, BASE.x + W + HUT.t, BASE.y - 0.3, BASE.y + HUT.top,
-    BASE.z + HUT.z0 - HUT.t, BASE.z + HUT.z1 + HUT.t],
-  [BASE.x - SKY.collar, BASE.x + SKY.collar, BASE.y - 0.3, BASE.y + SKY.h,
-    BASE.z + ROOM_Z - SKY.collar, BASE.z + ROOM_Z + SKY.collar],
+  [ORIGIN.x - W - HUT.t, ORIGIN.x + W + HUT.t, ORIGIN.y - 0.3, ORIGIN.y + HUT.top,
+    ORIGIN.z + HUT.z0 - HUT.t, ORIGIN.z + HUT.z1 + HUT.t],
+  [ORIGIN.x - SKY.collar, ORIGIN.x + SKY.collar, ORIGIN.y - 0.3, ORIGIN.y + SKY.h,
+    ORIGIN.z + ROOM_Z - SKY.collar, ORIGIN.z + ROOM_Z + SKY.collar],
 ];
 
 /** Does the ray from (ox, oy, oz) along unit d hit the box within maxT? (slab test) */

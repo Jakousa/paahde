@@ -36,3 +36,11 @@ export function checksum(xs: number[], digits = 3): string {
   for (const x of xs) for (const c of x.toFixed(digits)) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193);
   return (h >>> 0).toString(16).padStart(8, '0');
 }
+
+/** 9 m out from the world's origin (shared/origin.ts ORIGIN_FRONT), where the layout is measured from, in this tree or in
+ *  an older one (the bunker's door, shared/base.ts BASE_SPAWN): the benchmarks run on both commits. */
+export async function originFront(): Promise<{ x: number; z: number }> {
+  const o = (await import('../../shared/origin.ts').catch(() => null)) as { ORIGIN_FRONT: { x: number; z: number } } | null;
+  if (o) return o.ORIGIN_FRONT;
+  return ((await import('../../shared/base.ts' as string)) as { BASE_SPAWN: { x: number; z: number } }).BASE_SPAWN;
+}

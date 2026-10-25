@@ -3,7 +3,7 @@
 // bosses when it can. The rules are the game's (bag grid, gear slots and quality, recipes, machine contents, drop
 // dice); every enemy (where it's met, what it leaves, the fight odds) is shared/enemies.ts; the times are
 // tools/econsim/costs.ts. Deterministic for a world and a seed.
-import { BASE } from '../../shared/base.ts';
+import { ORIGIN } from './origin.ts';
 import { biome } from '../../shared/biomes.ts';
 import { BOSS_KINDS, BOSS_LIVES, RECEIVERS, type BossKind } from '../../shared/bosses.ts';
 import { ENEMIES, fightOdds, type EnemyKind, type Meet, type Weapon } from '../../shared/enemies.ts';
@@ -107,8 +107,8 @@ const ROAMING = (Object.keys(ENEMIES) as EnemyKind[]).flatMap((kind) =>
 
 export class Sim {
   t = 0;
-  x = BASE.x;
-  z = BASE.z;
+  x = ORIGIN.x;
+  z = ORIGIN.z;
   heat = 0;
   sips = 0;
   lives = LIVES;
@@ -440,7 +440,7 @@ export class Sim {
 
   /** Is (x, z) (default: here) ground where `where` roams? */
   private roamsHere(where: Extract<Meet, { at: 'roam' }>['where'], x = this.x, z = this.z): boolean {
-    const d = Math.hypot(x - BASE.x, z - BASE.z);
+    const d = Math.hypot(x - ORIGIN.x, z - ORIGIN.z);
     if (where === 'overhead') return d > 30;
     if (where === 'open') return d > 250; // (server/guardians.ts ROAM_BASE_KEEP_OUT)
     if (where === 'guardianGround') return d >= 1650; // (shared/crashsites.ts LEVEL_R)
@@ -523,7 +523,7 @@ export class Sim {
       z += Math.sin(a) * d;
     }
     if (kind === 'jet') {
-      const far = Math.hypot(x - BASE.x, z - BASE.z);
+      const far = Math.hypot(x - ORIGIN.x, z - ORIGIN.z);
       jet = this.fightRand() < COSTS.wing.odds * Math.min(1, far / COSTS.wing.far) ? 'wing' : 'drone';
     }
     const things = e.drops(this.fightRand, { jet, soft: jammed }).map((d) => this.world.thing(d, kind));
@@ -561,8 +561,8 @@ export class Sim {
     }
     if (things.length) this.world.drop(this.x, this.z, things, 'corpse', this.t + CORPSE_S);
     this.t += COSTS.respawnS;
-    this.x = BASE.x;
-    this.z = BASE.z;
+    this.x = ORIGIN.x;
+    this.z = ORIGIN.z;
     this.heat = 0;
     this.needCache = null;
     if (this.lives <= 0) this.out.gameOverS = this.t;
@@ -661,7 +661,7 @@ export class Sim {
       const risk = this.risk(p);
       if (risk > COSTS.maxRisk * (v >= top && top > 0 ? 2 : 1)) continue;
       const out = Math.hypot(p.x - this.x, p.z - this.z) / spd;
-      const back = Math.max(0, Math.hypot(p.x - BASE.x, p.z - BASE.z) - Math.hypot(this.x - BASE.x, this.z - BASE.z)) / spd;
+      const back = Math.max(0, Math.hypot(p.x - ORIGIN.x, p.z - ORIGIN.z) - Math.hypot(this.x - ORIGIN.x, this.z - ORIGIN.z)) / spd;
       const score = (v * (1 - risk) - risk * 2) / (out + work + 0.5 * back + 1);
       if (score > bestScore) {
         bestScore = score;
@@ -765,7 +765,7 @@ export class Sim {
   // ---- at the base -------------------------------------------------------------------------------------------------
 
   private home() {
-    this.go(BASE.x, BASE.z);
+    this.go(ORIGIN.x, ORIGIN.z);
     if (this.lives <= 0) return;
     this.t += COSTS.baseS;
     this.heat = 0;
@@ -1009,7 +1009,7 @@ export class Sim {
     const p = unseen.sort((a, b) => Math.hypot(a.x - this.x, a.z - this.z) - Math.hypot(b.x - this.x, b.z - this.z))[0];
     if (p) return this.visit(p);
     const a = this.rand() * Math.PI * 2, d = 200 + this.rand() * 700;
-    this.go(BASE.x + Math.cos(a) * d, BASE.z + Math.sin(a) * d);
+    this.go(ORIGIN.x + Math.cos(a) * d, ORIGIN.z + Math.sin(a) * d);
   }
 }
 

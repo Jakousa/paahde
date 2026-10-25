@@ -2,7 +2,8 @@
 // holds, where finds and caches are laid out, and what a killed enemy, a downed jet, a harvester or a boss leaves. The
 // server rolls them with Math.random (server/loot.ts, server/world.ts); the economy simulator (tools/econsim) rolls the
 // same ones with seeded streams, so the two can't drift apart. Tables in shared/tables.ts.
-import { BASE, BASE_SPAWN, overBase } from './base.ts';
+import { overBase } from './base.ts';
+import { ORIGIN, ORIGIN_FRONT } from './origin.ts';
 import { overShelter, shelterLootSpot, type Shelter } from './shelters.ts';
 import { GEAR, GEAR_KINDS } from './gear.ts';
 import { JAMMER } from './jammer.ts';
@@ -97,11 +98,11 @@ export const rarePart = (rand: Rand): Drop => ({ kind: partKind(pick(RARE_PARTS,
 export function nearPiles() {
   const out: { x: number; z: number; r: number }[] = [];
   const lo = (c: number) => Math.floor((c - PILE_FIND_R) / SCRAP_CELL), hi = (c: number) => Math.floor((c + PILE_FIND_R) / SCRAP_CELL);
-  for (let iz = lo(BASE.z); iz <= hi(BASE.z); iz++) for (let ix = lo(BASE.x); ix <= hi(BASE.x); ix++) {
+  for (let iz = lo(ORIGIN.z); iz <= hi(ORIGIN.z); iz++) for (let ix = lo(ORIGIN.x); ix <= hi(ORIGIN.x); ix++) {
     const ps = scrapPieces(ix, iz);
     if (!ps.length) continue;
     const x = ps.reduce((a, p) => a + p.x, 0) / ps.length, z = ps.reduce((a, p) => a + p.z, 0) / ps.length;
-    if (Math.hypot(x - BASE.x, z - BASE.z) > PILE_FIND_R || overBase(x, z, 6)) continue;
+    if (Math.hypot(x - ORIGIN.x, z - ORIGIN.z) > PILE_FIND_R || overBase(x, z, 6)) continue;
     out.push({ x, z, r: Math.max(...ps.map((p) => Math.hypot(p.x - x, p.z - z))) });
   }
   return out;
@@ -126,10 +127,10 @@ export function homeBikeSpot() {
     if (clear(p.x, p.z)) return p;
   }
   for (const d of [22, 28, 34, 16, 42]) for (const a of [0.35, -0.35, 0.6, -0.6, 0, 0.9, -0.9]) {
-    const x = BASE_SPAWN.x + Math.sin(a) * d, z = BASE_SPAWN.z + Math.cos(a) * d;
+    const x = ORIGIN_FRONT.x + Math.sin(a) * d, z = ORIGIN_FRONT.z + Math.cos(a) * d;
     if (clear(x, z)) return { x, z };
   }
-  return { x: BASE_SPAWN.x + 8, z: BASE_SPAWN.z + 20 };
+  return { x: ORIGIN_FRONT.x + 8, z: ORIGIN_FRONT.z + 20 };
 }
 
 /** Where a find of FINDS level `level` lies: among the debris of a crash site of that level (`sites`: the ones finds lie
@@ -157,8 +158,8 @@ export function cacheSpot(rand: Rand) {
   let x = 0, z = 0;
   for (let tries = 0; tries < 20; tries++) {
     const a = between(rand, 0, Math.PI * 2), d = between(rand, CACHE_MIN_R, CACHE_MAX_R);
-    x = BASE.x + Math.sin(a) * d;
-    z = BASE.z + Math.cos(a) * d;
+    x = ORIGIN.x + Math.sin(a) * d;
+    z = ORIGIN.z + Math.cos(a) * d;
     if (!overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break;
   }
   return { x, z };

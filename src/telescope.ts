@@ -6,7 +6,7 @@
 // downed jets' engines, the packs the dead left; not behind a dune) get a small mark with their distance, the locator's shapes (src/locator.ts).
 // Letting go lowers it. Client-only: nothing is sent.
 import * as THREE from 'three/webgpu';
-import { BASE } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { crashSpent, crashTaken } from '../shared/crash.ts';
 import { CORPSES } from '../shared/corpse.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
@@ -190,7 +190,7 @@ export class Telescope {
       const d = Math.hypot(x - eye.x, z - eye.z);
       if (d >= MARK_NEAR && d <= MARK_R) out.push({ key, kind, color, x, y, z, id });
     };
-    add('base', 'base', BASE.x, BASE.z, 2);
+    add('base', 'base', ORIGIN.x, ORIGIN.z, 2);
     for (const p of players) add(`p${p.id}`, 'player', p.x, p.z, 0, p.color, p.id, p.y + 1.6);
     for (const w of wrecksNear(eye.x, eye.z, MARK_R)) if (!crashTaken.has(w.id)) add(w.id, 'wreck', w.x, w.z, 1.5);
     for (const s of crashSitesNear(eye.x, eye.z, MARK_R)) if (!crashSpent.has(s.id)) add(`c${s.id}`, 'site', s.x, s.z, 4);

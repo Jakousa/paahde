@@ -6,7 +6,8 @@
 // shared/boxes.ts buildingBox), shared too, open within reach of it, to swap its parts. Every player also has their equipment ('equip', shared/gear.ts),
 // always open, and a slot on the workbench ('bench') for the item they are repairing, open beside any workbench. The client lists whatever is open next to the bag in the Tab
 // inventory (src/inventory.ts); the server checks the same thing, with slack, before every move.
-import { BASE, BASE_PIECES } from './base.ts';
+import { BASE_PIECES } from './base.ts';
+import { ORIGIN } from './origin.ts';
 import { corpseId, corpsesNear } from './corpse.ts';
 import { boxKind, boxNumber, buildingId, cargoId, storeId, vehicleId, type BoxKind } from './boxes.ts';
 import { EQUIP_SLOTS, isBuilding } from './gear.ts';
@@ -22,7 +23,7 @@ export const STORAGE_REACH = 2.5;
 
 /** Chest i is box `chest<i>`. */
 export const CHESTS = BASE_PIECES.filter((p) => p.node === 'chest').map((p) => ({
-  x: BASE.x + p.x, y: BASE.y + (p.y ?? 0), z: BASE.z + p.z,
+  x: ORIGIN.x + p.x, y: ORIGIN.y + (p.y ?? 0), z: ORIGIN.z + p.z,
 }));
 
 /** Box ids: 'bag', 'equip' and 'bench' are the player's own, 'chest<i>', the packs left by the dead

@@ -9,7 +9,7 @@
 // could give its pump what it wants right now (the wind left over, or the batteries holding a bottle's worth); each
 // bottle filled at it takes that out of the batteries (pump).
 import { buildingBox, buildingId } from '../shared/boxes.ts';
-import { BASE } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { BEACON, placed } from '../shared/placed.ts';
 import { grids } from '../shared/wires.ts';
 import { BEACON_W, cells, charge, draw, GAME_SPEED, windmillWatts, windSpeed, type PowerState, type Store } from '../shared/power.ts';
@@ -184,7 +184,7 @@ export class PowerServer {
   tick(worldMs: number, stormAt: (x: number, z: number) => number) {
     const s = (worldMs - this.at) / 1000;
     this.at = worldMs;
-    if (s > 0 && s <= MAX_TICK_S) this.step(worldMs, s, stormAt(BASE.x, BASE.z));
+    if (s > 0 && s <= MAX_TICK_S) this.step(worldMs, s, stormAt(ORIGIN.x, ORIGIN.z));
   }
 
   save() {

@@ -4,13 +4,13 @@
 // (baseHeight in shared/terrain.ts), the layouts of rocks, scrap, wrecks, crash sites and shelters are empty, the
 // clock stands at noon, and the server runs no storms, jets, walkers, bosses or heat (server/world.ts).
 //
-// Layout, in metres from the bunker's door (BASE; +Z is out into the open, away from the door), x across:
+// Layout, in metres from the bunker's door (ORIGIN; +Z is out into the open, away from the door), x across:
 //   spawn      (0, 12), looking out at the machine rows
 //   parts      x 24..33, z 8..38: 11 parts (rows, a name plate left of each) x 4 tiers (columns, tier plates at z 5)
 //   tools+gear x -24 down to -39, z 8 on: the grinder, then every gear kind, broken with every slot empty, 4 a row
 //   machines   z 50 / 70 / 90: the jet engine in six seeds, then the other kinds, each with its name plate in front
 // The pickups come back at once when taken (server/loot.ts), so a table never runs out.
-import { BASE } from './base.ts';
+import { ORIGIN } from './origin.ts';
 import type { CrashSite } from './crash.ts';
 import { GEAR, GEAR_KINDS } from './gear.ts';
 import { ITEMS } from './items.ts';
@@ -32,7 +32,7 @@ const GAP = 16;
 const FIRST_ROW = 50;
 const ROW_GAP = 20;
 
-const at = (lx: number, lz: number) => ({ x: BASE.x + lx, z: BASE.z + lz });
+const at = (lx: number, lz: number) => ({ x: ORIGIN.x + lx, z: ORIGIN.z + lz });
 
 /** Where a new player appears, and the point they face. */
 export const LAB_SPAWN = at(0, 12);

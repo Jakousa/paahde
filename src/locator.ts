@@ -8,7 +8,7 @@
 // (src/world/corpses.ts) a little flag in the rag's colour, however far, and your own bikes (src/world/vehicles.ts) two
 // wheels under a bar in your colour, however far.
 import type * as THREE from 'three/webgpu';
-import { BASE } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { SHIP_AT, shipPoint } from '../shared/ship.ts';
 
 const NEAR = 25; // m: closer than this, no dot (fades in over the next FADE metres)
@@ -19,7 +19,7 @@ export type LocatorTarget = { id: number; color: number; x: number; y: number; z
 
 const BASE_ID = -1; // player ids are positive
 /** The crashed ship's middle (the base's origin in the dev lab, which has no ship). */
-const SHIP = SHIP_AT ? (() => { const p = shipPoint('door'); return { x: SHIP_AT.x, y: p.y, z: SHIP_AT.z }; })() : BASE;
+const SHIP = SHIP_AT ? (() => { const p = shipPoint('door'); return { x: SHIP_AT.x, y: p.y, z: SHIP_AT.z }; })() : ORIGIN;
 
 const css = `
 #locator { position: fixed; left: 50%; bottom: 70px; width: min(480px, 70vw); height: 6px;

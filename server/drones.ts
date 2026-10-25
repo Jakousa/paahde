@@ -6,7 +6,7 @@
 // when everyone has left. The scrap fields (level 0) near the base have none. A few more drones roam the open desert
 // day and night (ROAMERS), drifting in near someone now and then on long legs, and flying off again after a few
 // minutes.
-import { BASE } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { crashSite } from '../shared/crashsites.ts';
 import {
   beamDir, CHASE_BACK, CHASE_SPEED, DRONE_ALT, DRONE_SPEED, IGNORE_MS, inBeam, lineOfSight, LOSE_MS, NIGHT_SUN, NOTICE_R,
@@ -166,10 +166,10 @@ export class DroneServer {
         d.z += (dz / dist) * step;
         if (!target) d.yaw = wrap(d.yaw + wrap(Math.atan2(dx, dz) - d.yaw) * (1 - Math.exp(-dt * 1.5)));
       }
-      const bd = Math.hypot(d.x - BASE.x, d.z - BASE.z), keep = d.site === ROAM && !prey ? ROAM_BASE_KEEP_OUT : DRONE_BASE_KEEP_OUT;
+      const bd = Math.hypot(d.x - ORIGIN.x, d.z - ORIGIN.z), keep = d.site === ROAM && !prey ? ROAM_BASE_KEEP_OUT : DRONE_BASE_KEEP_OUT;
       if (bd < keep && !d.leaving) {
-        d.x = BASE.x + ((d.x - BASE.x) / bd) * keep;
-        d.z = BASE.z + ((d.z - BASE.z) / bd) * keep;
+        d.x = ORIGIN.x + ((d.x - ORIGIN.x) / bd) * keep;
+        d.z = ORIGIN.z + ((d.z - ORIGIN.z) / bd) * keep;
         this.point(d);
       }
       // (Looking well ahead: a canyon's wall (shared/canyons.ts) rises hundreds of metres in a few steps.)
@@ -359,7 +359,7 @@ export class DroneServer {
         const a = d.yaw + rand(-1.6, 1.6), r = rand(...ROAM_LEG);
         d.tx = d.x + Math.sin(a) * r;
         d.tz = d.z + Math.cos(a) * r;
-        if (Math.hypot(d.tx - BASE.x, d.tz - BASE.z) > ROAM_BASE_KEEP_OUT + 20) return;
+        if (Math.hypot(d.tx - ORIGIN.x, d.tz - ORIGIN.z) > ROAM_BASE_KEEP_OUT + 20) return;
       }
       return;
     }
@@ -378,7 +378,7 @@ export class DroneServer {
       // Passing by: it heads for somewhere near them, then wanders on.
       const a = rand(-Math.PI, Math.PI), r = rand(40, 120);
       const hx = p.x + Math.sin(a) * r, hz = p.z + Math.cos(a) * r;
-      if (Math.hypot(hx - BASE.x, hz - BASE.z) < ROAM_BASE_KEEP_OUT) continue;
+      if (Math.hypot(hx - ORIGIN.x, hz - ORIGIN.z) < ROAM_BASE_KEEP_OUT) continue;
       this.spawn(hx, hz, ROAM, now + rand(ROAM_MIN, ROAM_MAX), rand(...ROAM_FROM));
       out++;
     }

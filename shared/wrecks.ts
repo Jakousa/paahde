@@ -4,7 +4,8 @@
 // the small crash-site machines of shared/crash.ts: the server's CrashServer handles both, and a carried-off wreck
 // is in `crashTaken` until it respawns (45 min). Layout is deterministic like shared/scrap.ts (integer hashing, exact
 // arithmetic), so every client and the server agree where every wreck is.
-import { BASE_SPAWN, padBlend } from './base.ts';
+import { padBlend } from './base.ts';
+import { ORIGIN_FRONT } from './origin.ts';
 import { seeded, sitesNear } from './crash.ts';
 import { crashSitesNear, siteLevel } from './crashsites.ts';
 import { shelterWithin } from './shelters.ts';
@@ -91,7 +92,7 @@ function starterWreck(): Wreck | null {
   starter = null;
   const r = cellRng(9, 9);
   for (const [dx, dz] of STARTER_OFFSETS) {
-    const x = BASE_SPAWN.x + dx, z = BASE_SPAWN.z + dz;
+    const x = ORIGIN_FRONT.x + dx, z = ORIGIN_FRONT.z + dz;
     if (!clear(x, z)) continue;
     starter = { id: 'w:start', x, z, yaw: r() * 6.2831853, kind: 'vehicle_frame' };
     break;

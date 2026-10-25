@@ -1,7 +1,7 @@
 // Server side of the fixed-wing drones (shared/jets.ts): now and then one flies past a random player, in a straight
 // pass or a big circle around them, and the list goes out to everyone whenever it changes. Shot (shoot) JET_HP times,
 // one glides down to the sand. In memory only.
-import { BASE } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import type { JetKind } from '../shared/jetbreak.ts';
 import { DIVE_STEP, JET_NOSE, jetDive, JET_ALT_MAX, JET_ALT_MIN, JET_HIT, JET_HP, JET_SPEED_MAX, JET_SPEED_MIN, LEAD, WRECK_MS, jetAt, jetLength, jetPose, type Jet } from '../shared/jets.ts';
 import { duneFloor } from '../shared/dunes.ts';
@@ -26,7 +26,7 @@ const TURN_MAX = 2.5 * Math.PI;
 const WING_ODDS = 0.8;
 const WING_FAR = 10_000;
 const pickKind = (x: number, z: number): JetKind =>
-  Math.random() < WING_ODDS * Math.min(1, Math.hypot(x - BASE.x, z - BASE.z) / WING_FAR) ? 'wing' : 'drone';
+  Math.random() < WING_ODDS * Math.min(1, Math.hypot(x - ORIGIN.x, z - ORIGIN.z) / WING_FAR) ? 'wing' : 'drone';
 
 /** The shooter sees the jet at its guess of the server clock: test the shot against where it was this far back (ms). */
 const LAG_MS = [0, 100, 200, 300];

@@ -17,7 +17,8 @@ import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiv
 import { boxSize, CHESTS, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken, isTableId, tableId } from '../shared/crash.ts';
 import { BEDROLL, CHEST, placed, TABLE } from '../shared/placed.ts';
-import { BASE, overBase } from '../shared/base.ts';
+import { overBase } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { canyonFloorNear } from '../shared/canyons.ts';
 import { indoors, overShelter, shelterAt, sheltersNear } from '../shared/shelters.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';

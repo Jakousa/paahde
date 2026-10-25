@@ -16,7 +16,8 @@
 // ground up to h metres above it. Pieces lower than MIN_HITBOX are walked over.
 import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
 import { yawFromQ } from './sim.ts';
-import { BASE_SPAWN, padBlend } from './base.ts';
+import { padBlend } from './base.ts';
+import { ORIGIN_FRONT } from './origin.ts';
 import { rocksNear } from './rocks.ts';
 import { shelterWithin } from './shelters.ts';
 import { onShipGround } from './shipSpot.ts';
@@ -99,7 +100,7 @@ function flatEnough(x: number, z: number): boolean {
   return gx * gx + gz * gz < MAX_GRAD2;
 }
 
-const SPAWN_IX = Math.floor(BASE_SPAWN.x / SCRAP_CELL), SPAWN_IZ = Math.floor(BASE_SPAWN.z / SCRAP_CELL);
+const SPAWN_IX = Math.floor(ORIGIN_FRONT.x / SCRAP_CELL), SPAWN_IZ = Math.floor(ORIGIN_FRONT.z / SCRAP_CELL);
 const cache = new Map<string, ScrapPiece[]>();
 const NONE: ScrapPiece[] = [];
 

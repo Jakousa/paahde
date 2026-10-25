@@ -22,7 +22,7 @@ import type { Boss, BossOut, BossPlayer, Brain } from './bosses.ts';
 import { crowd, scaled } from './bossCrowd.ts';
 import { ball, blast, column, due } from './blasts.ts';
 import { Tracks, type TrackOpts } from './tracks.ts';
-import { BASE } from '../shared/base.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { blastPush } from '../shared/ragdoll.ts';
 import { CORE_HALF, heightAt } from '../shared/terrain.ts';
 import {
@@ -129,7 +129,7 @@ type St = {
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const r2 = (v: number) => Math.round(v * 100) / 100;
-const fromBase = (x: number, z: number) => Math.hypot(x - BASE.x, z - BASE.z);
+const fromBase = (x: number, z: number) => Math.hypot(x - ORIGIN.x, z - ORIGIN.z);
 /** Someone it can go for: out in the open (not down, not indoors), away from the base. */
 const ok = (p: BossPlayer) => !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT;
 
@@ -228,7 +228,7 @@ export const colossus: Brain = {
     else if (Math.hypot(st.tx - b.x, st.tz - b.z) < WAYPOINT_R) waypoint(st, b.x, b.z);
     if (!b.leaving && fromBase(b.x, b.z) < BASE_KEEP_OUT) {
       // Too near the base and heading in: off somewhere else, away from it.
-      const away = Math.atan2(b.x - BASE.x, b.z - BASE.z);
+      const away = Math.atan2(b.x - ORIGIN.x, b.z - ORIGIN.z);
       if (Math.abs(wrap(Math.atan2(gx - b.x, gz - b.z) - away)) > Math.PI / 2) {
         st.prey = -1;
         waypoint(st, b.x, b.z, away);

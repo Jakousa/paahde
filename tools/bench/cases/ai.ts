@@ -2,7 +2,7 @@
 // server/harvesters.ts, server/storm.ts, server/jets.ts): a minute of night with four players about, everything summoned
 // on them, ticked as server/world.ts ticks it (bots at TICK_HZ, weather at the snapshot rate) on a simulated clock, and
 // what each player is sent about them built and serialized. The dice are seeded, so both commits fight the same fight.
-import { checksum, type Sample } from '../common.ts';
+import { checksum, originFront, type Sample } from '../common.ts';
 
 export async function run(): Promise<Sample> {
   const { GuardianServer, TICK_HZ } = await import('../../../server/guardians.ts');
@@ -12,7 +12,7 @@ export async function run(): Promise<Sample> {
   const { JetServer } = await import('../../../server/jets.ts');
   const { BOSS_KINDS } = await import('../../../shared/bosses.ts');
   const { coreCrashSites } = await import('../../../shared/crashsites.ts');
-  const { BASE_SPAWN } = await import('../../../shared/base.ts');
+  const ORIGIN_FRONT = await originFront();
   const { heightAt } = await import('../../../shared/terrain.ts');
 
   let now = 1_000_000; // server ms
@@ -25,7 +25,7 @@ export async function run(): Promise<Sample> {
   // Four players: at crawler ground, at guardian ground, out on the dunes twice. They walk small circles.
   const sites = coreCrashSites();
   const at = (level: number) => sites.find((s) => s.level === level) ?? sites[0];
-  const homes = [at(1), at(2), { x: BASE_SPAWN.x + 700, z: BASE_SPAWN.z - 900 }, { x: BASE_SPAWN.x - 800, z: BASE_SPAWN.z + 600 }].map((s, i) => ({ x: s.x + 40, z: s.z + 40 * (i % 2 ? 1 : -1) }));
+  const homes = [at(1), at(2), { x: ORIGIN_FRONT.x + 700, z: ORIGIN_FRONT.z - 900 }, { x: ORIGIN_FRONT.x - 800, z: ORIGIN_FRONT.z + 600 }].map((s, i) => ({ x: s.x + 40, z: s.z + 40 * (i % 2 ? 1 : -1) }));
   const players = homes.map((h, id) => ({ id: id + 1, x: h.x, y: heightAt(h.x, h.z), z: h.z, safe: false }));
   const move = (t: number) => {
     for (const [i, p] of players.entries()) {

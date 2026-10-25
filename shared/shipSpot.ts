@@ -2,14 +2,15 @@
 // shared/ship.ts so the terrain (shared/terrain.ts: the furrow is part of baseHeight) and the shelters (shared/shelters.ts:
 // one with a pump lies near it) can read it without importing what the ship itself needs (the terrain).
 //
-// The spot is picked from the world seed among a few candidates out in front of the base's door (BASE: where the world
+// The spot is picked from the world seed among a few candidates out in front of the base's door (ORIGIN: where the world
 // is measured from), clear of the bunker, the mast, the trophies' ground and the pad: the one whose sand under the hull
 // and along its furrow is the most even. Same determinism rules as shared/dunes.ts: + - * /, Math.sqrt, Math.abs,
 // Math.min/max only (no trig), so client and server agree to the bit.
 //
 // Ship frame: origin on the sand under the middle of the hull, +Z the way it was going (the nose: model +Z of
 // public/models/ship.glb), +X to its right. World = origin + lx·(dz, -dx) + lz·(dx, dz).
-import { BASE, withPad } from './base.ts';
+import { withPad } from './base.ts';
+import { ORIGIN } from './origin.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { LAB } from './world.ts';
 
@@ -26,7 +27,7 @@ export type ShipSpot = { x: number; z: number; dx: number; dz: number };
 function pick(): ShipSpot {
   let best: ShipSpot = { x: 0, z: 0, dx: 0, dz: 1 }, bestScore = Infinity;
   CANDIDATES.forEach(([lx, lz, a, b], i) => {
-    const l = Math.sqrt(a * a + b * b), dx = a / l, dz = b / l, x = BASE.x + lx, z = BASE.z + lz;
+    const l = Math.sqrt(a * a + b * b), dx = a / l, dz = b / l, x = ORIGIN.x + lx, z = ORIGIN.z + lz;
     const h = (u: number, v: number) => {
       const wx = x + v * dz + u * dx, wz = z - v * dx + u * dz;
       return withPad(wx, wz, duneHeight(wx, wz, WORLD_SEED));

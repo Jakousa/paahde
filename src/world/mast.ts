@@ -2,7 +2,8 @@
 // pole on a plinth with big buttress fins, and a striped windsock that swings round to the wind and lifts and flutters with it (src/world/wind.ts).
 // Built from primitives here; small enough not to need a Blender model.
 import * as THREE from 'three/webgpu';
-import { BASE, MAST } from '../../shared/base.ts';
+import { MAST } from '../../shared/base.ts';
+import { ORIGIN } from '../../shared/origin.ts';
 import { uAt, wind, type WindSample } from './wind.ts';
 
 const CONCRETE = 0x9a8f80, CONCRETE_DARK = 0x6f675d, STEEL = 0x3a3430;
@@ -42,7 +43,7 @@ export class Mast {
   private sample: WindSample = { dx: 0, dz: 0, ustar: 0, q: 0, emit: 0 };
 
   constructor(scene: THREE.Scene) {
-    this.group.position.set(BASE.x + MAST.x, BASE.y, BASE.z + MAST.z);
+    this.group.position.set(ORIGIN.x + MAST.x, ORIGIN.y, ORIGIN.z + MAST.z);
     scene.add(this.group);
     const concrete = material(CONCRETE, 0.92), dark = material(CONCRETE_DARK, 0.95), steel = material(STEEL, 0.6, 0.6);
     const { plinth, fins } = MAST;
