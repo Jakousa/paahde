@@ -1,6 +1,6 @@
 """Inventory icons for the items that have no Blender model of their own (docs/icons.md): the base materials (scrap,
 cloth), and the things modelled in code (the wrench, src/models/wrench.ts; the carried crash-site machines,
-src/teardown/junk.ts), flattened to triangles by tools/icons/dump.mjs first.
+src/teardown/junk.ts; the beacon, src/world/beacons.ts), flattened to triangles by tools/icons/dump.mjs first.
 
     node tools/icons/dump.mjs                                  # writes tools/icons/out/code-models.json
     blender -b --python tools/blender/icons.py                 # all of them
@@ -86,6 +86,8 @@ CODE = {
     'winch': ((3, 2), (0, 0, 0)),
     'solenoid_valve': ((3, 2), (0, 0, 0)),
     'beacon': ((2, 2), (0, 0, 0)),
+    # The beacon building (src/world/beacons.ts): its mast stood up, the lens lit.
+    'beacon_light': ((1, 3), (0, 0, 0)),
 }
 
 

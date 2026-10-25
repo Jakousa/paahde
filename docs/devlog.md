@@ -2002,4 +2002,6 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   instanced draw, turned to face the camera about the vertical and widened with distance (≈6 px at any range) in the
   vertex shader; additive, no depth write, soft core and glow, fading with height over 520 m, taking only 40% of the
   haze. Seen in headless shots at 600 m by day and 1.5 km by night.
-- Gaps: no icon render (an SVG); no light on the ground round it; a beacon in a rock is possible (the aim finds the sand).
+- Icon: the code model flattened by tools/icons/dump.mjs (which now reads vertex colours) and rendered by
+  tools/blender/icons.py, lens lit.
+- Gaps: no light on the ground round it; a beacon in a rock is possible (the aim finds the sand).

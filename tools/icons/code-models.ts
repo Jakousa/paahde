@@ -1,9 +1,11 @@
 // Dev-only page (vite dev serves it; not in the build): flattens the models built in code (the wrench, the carried
-// crash-site machines) into triangles and flat materials for tools/icons/render.py to render as icons.
+// crash-site machines, the beacon) into triangles and flat materials for tools/icons/render.py to render as icons.
 // `window.dump()` resolves to { kind: { tris: number[], mats: [...], mat: number[] } } (positions in metres, Y-up).
 import * as THREE from 'three/webgpu';
 import { wrenchModel } from '../../src/models/wrench.ts';
 import { buildJunk } from '../../src/teardown/junk.ts';
+import { beaconModel, LENS } from '../../src/world/beacons.ts';
+import { BEACON_COLORS } from '../../shared/placed.ts';
 import type { JunkKind } from '../../shared/salvage.ts';
 
 /** The carried machines (shared/items.ts), at a fixed seed and level so the icon never changes. */
@@ -19,6 +21,12 @@ function flatten(root: THREE.Object3D) {
   const mat: number[] = [];
   const v = new THREE.Vector3();
   const m = new THREE.Matrix4();
+  const c = new THREE.Color();
+  const matOf = (spec: Mat) => {
+    const k = JSON.stringify(spec);
+    if (!key.has(k)) { key.set(k, mats.length); mats.push(spec); }
+    return key.get(k)!;
+  };
   root.traverseVisible((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -26,11 +34,11 @@ function flatten(root: THREE.Object3D) {
     if (src.visible === false || (src.transparent && src.opacity < 0.3)) return;
     const em = src.emissive ? src.emissive.r + src.emissive.g + src.emissive.b : 0;
     const spec: Mat = { color: src.color?.getHex() ?? 0x888888, rough: src.roughness ?? 0.6, metal: src.metalness ?? 0, emit: em > 0.1 ? 1 : 0 };
-    const k = JSON.stringify(spec);
-    if (!key.has(k)) { key.set(k, mats.length); mats.push(spec); }
-    const mi = key.get(k)!;
+    const mi = matOf(spec);
     const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
     const pos = g.attributes.position;
+    // Vertex colours (the beacon): each triangle its first corner's colour.
+    const col = src.vertexColors ? g.attributes.color : undefined;
     const inst = (mesh as THREE.InstancedMesh).isInstancedMesh ? (mesh as THREE.InstancedMesh).count : 1;
     for (let n = 0; n < inst; n++) {
       m.copy(mesh.matrixWorld);
@@ -44,7 +52,7 @@ function flatten(root: THREE.Object3D) {
           v.fromBufferAttribute(pos, i + j).applyMatrix4(m);
           tris.push(+v.x.toFixed(5), +v.y.toFixed(5), +v.z.toFixed(5));
         }
-        mat.push(mi);
+        mat.push(col ? matOf({ ...spec, color: c.fromBufferAttribute(col, i).getHex() }) : mi);
       }
     }
   });
@@ -58,5 +66,10 @@ function flatten(root: THREE.Object3D) {
   // The parts inside are loaded glTFs: give them time to arrive.
   await new Promise((r) => setTimeout(r, 4000));
   for (const [k, j] of junks) out[k] = flatten(j.root);
+  // The beacon with its lens lit in its first colour.
+  const beacon = beaconModel();
+  const lens = beacon.getObjectByName(LENS) as THREE.Mesh;
+  lens.material = new THREE.MeshStandardMaterial({ color: BEACON_COLORS[0], emissive: BEACON_COLORS[0] });
+  out.beacon_light = flatten(beacon);
   return out;
 };
