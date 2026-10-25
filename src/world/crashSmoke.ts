@@ -1,5 +1,5 @@
-// Smoke over smouldering crash sites (every one whose large machine hasn't been stripped yet, shared/crash.ts
-// `crashSpent`; a site that goes spent while you watch stops feeding its columns and they drift away): a lazy column of puffs rising 40–85 m
+// Smoke over smouldering crash sites (every one nobody has picked anything up from yet, shared/crash.ts `crashVisited`,
+// and whose large machine hasn't been stripped, `crashSpent`; a site that goes visited or spent while you watch stops feeding its columns and they drift away): a lazy column of puffs rising 40–85 m
 // from each smoke point, bending downwind, spreading and slowly thinning out to nothing, so players can
 // spot a site on the horizon from several hundred metres. Purely visual.
 //
@@ -25,7 +25,7 @@ const CAPACITY = PUFFS * MAX_COLUMNS;
 const LIFE = 48;
 /** Share of the aerial haze the smoke takes on, < 1 so the plumes still read far away. */
 const HAZE = 0.5;
-/** Seconds over which a column's feed tapers off when its site goes spent. */
+/** Seconds over which a column's feed tapers off when its site goes visited or spent. */
 export const STOP_TAPER = 10;
 
 const c3 = (u: unknown) => u as Node<'vec3'>;

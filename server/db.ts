@@ -137,7 +137,8 @@ export function openDb(path: string) {
   // Small machine sites (shared/crash.ts) whose machine was carried off; they stay empty (taken_at is kept in case
   // they refill some day). The machine itself is an item in the player's bag, given in the same transaction
   // (server/crash.ts). crash_spent: crash sites (shared/crashsites.ts ids) whose large machine has been stripped
-  // of every part; they stop smoking for good.
+  // of every part; they stop smoking for good. crash_visited: crash sites someone has picked something up from (a
+  // part, a small machine, debris, a find): they stop smoking for good too, so the world shows the site was visited.
   db.exec(`
     CREATE TABLE IF NOT EXISTS crash_taken (
       id       TEXT PRIMARY KEY,
@@ -147,6 +148,10 @@ export function openDb(path: string) {
       site     INTEGER PRIMARY KEY,
       spent_at INTEGER NOT NULL               -- ms since epoch
     );
+    CREATE TABLE IF NOT EXISTS crash_visited (
+      site       INTEGER PRIMARY KEY,
+      visited_at INTEGER NOT NULL             -- ms since epoch
+    );
   `);
   // Downed jets' crash sites (shared/jetcrash.ts): one JSON row each.
   db.exec('CREATE TABLE IF NOT EXISTS jet_crashes (id INTEGER PRIMARY KEY, data TEXT NOT NULL)');
@@ -155,6 +160,8 @@ export function openDb(path: string) {
   const deleteJetCrash = db.prepare('DELETE FROM jet_crashes WHERE id = ?');
   const allSpent = db.prepare('SELECT site, spent_at FROM crash_spent');
   const insertSpent = db.prepare('INSERT OR IGNORE INTO crash_spent (site, spent_at) VALUES (?, ?)');
+  const allVisited = db.prepare('SELECT site FROM crash_visited');
+  const insertVisited = db.prepare('INSERT OR IGNORE INTO crash_visited (site, visited_at) VALUES (?, ?)');
   const allCrash = db.prepare('SELECT id, taken_at FROM crash_taken');
   const insertCrash = db.prepare('INSERT OR REPLACE INTO crash_taken (id, taken_at) VALUES (?, ?)');
   const deleteCrash = db.prepare('DELETE FROM crash_taken WHERE id = ?');
@@ -548,6 +555,8 @@ export function openDb(path: string) {
     deleteJetCrash: (id: number) => deleteJetCrash.run(id),
     loadCrashSpent: () => allSpent.all() as { site: number; spent_at: number }[],
     spendCrash: (site: number, at: number) => insertSpent.run(site, at),
+    loadCrashVisited: () => (allVisited.all() as { site: number }[]).map((r) => r.site),
+    visitCrash: (site: number, at: number) => insertVisited.run(site, at),
     getPlayer: (id: string) => get.get(id) as PlayerRow | undefined,
     /** `played`: ms played since the last save, added to the total. */
     savePlayer: (p: PlayerRow, played = 0) => upsert.run(p.id, p.color, p.x, p.z, p.heat, p.sips, Math.round(played)),

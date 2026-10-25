@@ -134,8 +134,8 @@ export type CrashSite = {
   /** Machines lying here to take apart: [0] is the large one, then 0–2 small ones (shared/crash.ts); a scrap field
    *  (level 0) has no large one, only SCRAP_SMALL small ones. */
   machines: CrashMachine[];
-  /** Smoke points in world xz plus height above the piece origin. Every site smoulders until its large machine
-   *  has been stripped (spent, shared/crash.ts `crashSpent`). */
+  /** Smoke points in world xz plus height above the piece origin. Every site smoulders until someone picks something
+   *  up there (visited, shared/crash.ts `crashVisited`) or its large machine has been stripped (spent, `crashSpent`). */
   smokePoints: { piece: number; x: number; z: number; y: number }[];
   /** The main wreck's beacon (sound source / glow), world xz plus height above its origin. */
   beacon: { x: number; z: number; y: number };

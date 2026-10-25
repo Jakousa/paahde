@@ -31,7 +31,7 @@ import { debrisItem, HOTBAR, roomFor, scrapItem, sortItems, type Slots } from '.
 import type { Loot } from '../shared/loot.ts';
 import { tools } from './input';
 import { scrapChanged, scrapKey, scrapPiece, scrapTaken, type ScrapPiece } from '../shared/scrap.ts';
-import { crashChanged, crashSpent, crashTaken } from '../shared/crash.ts';
+import { crashChanged, crashSpent, crashTaken, crashVisited } from '../shared/crash.ts';
 import { setJetCrashes } from '../shared/jetcrash.ts';
 import { growChest } from '../shared/storage.ts';
 import { corpseBox, CORPSES } from '../shared/corpse.ts';
@@ -706,6 +706,11 @@ export class Net {
     if (msg.t === 'crashSpent') {
       if (msg.reset) crashSpent.clear();
       for (const id of msg.spent) crashSpent.add(id);
+      return crashChanged();
+    }
+    if (msg.t === 'crashVisited') {
+      if (msg.reset) crashVisited.clear();
+      for (const id of msg.visited) crashVisited.add(id);
       return crashChanged();
     }
     if (msg.t === 'scrapGot') return this.onScrapGot?.(msg.n, msg.dropped);

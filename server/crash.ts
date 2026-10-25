@@ -1,6 +1,9 @@
 // Server side of the machine sites (shared/crash.ts) at the crashed spacecraft.
 //  - When every part of a crash site's large machine has been taken, the crash site is spent (persisted with a
 //    timestamp, broadcast as 'crashSpent'): it stops smoking and its machine stays a husk, permanently.
+//  - The first time anyone picks something up at a crash site (a part off its large machine, a small machine, a debris
+//    piece, a find lying there: visit) it is visited (persisted, broadcast as 'crashVisited'): it stops smoking for good,
+//    for everyone, so the world shows someone has been there.
 //  - Small machines are carried home: crashTake validates reach and puts the machine in the player's bag (an item
 //    of the component's kind); the site stays empty for good, except at a scrap field (STARTER_RESPAWN_MS). Salvage wrecks (shared/wrecks.ts, ids "w:...") are
 //    carried the same way, and lie out there again WRECK_RESPAWN_MS later. crashUse takes one out of the bag when it
@@ -18,9 +21,9 @@
 // (what they mean is up to the client's build of the machine, src/teardown/junk.ts).
 import { machineChanged, machineShove, maxShove, pushedMachine, setMachineProgress, setMachineShove } from '../shared/machineBoxes.ts';
 import { CROUCH, BACK, DT, FORWARD, LEFT, PLAYER_RADIUS, RIGHT, STEP_UP } from '../shared/sim.ts';
-import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
+import { BENCH, CARRY_KINDS, crashSiteById, crashSpent, crashTaken, crashVisited, CRASH_REACH, SITE_RANGE, TEARDOWN_LAYOUT } from '../shared/crash.ts';
 import { CRASH_KINDS } from '../shared/crashKinds.ts';
-import { crashSite, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
+import { crashSite, crashSitesNear, CRASH_CELL, debrisById, debrisReach, DEBRIS_REACH } from '../shared/crashsites.ts';
 import { debrisItem } from '../shared/items.ts';
 import { machineParts, partItem, type MachinePart } from '../shared/machine.ts';
 import { frameScrap, stepList } from '../shared/machineSteps.ts';
@@ -65,15 +68,17 @@ const DEBRIS_RESPAWN_MS = 30 * 60 * 1000;
 
 /** A small crash-site machine, a salvage wreck (shared/wrecks.ts, ids "w:...") or a crash debris piece (shared/crashsites.ts,
  *  ids "d:..."): something carried off whole. `kind` is the item it becomes; `dist` how far the player is from its reach. */
-function carrySite(id: unknown): { id: string; kind: string; dist: (feet: Feet) => number } | null {
+function carrySite(id: unknown): { id: string; kind: string; dist: (feet: Feet) => number; wreck: number | null } | null {
   const flat = (s: { x: number; z: number }) => (f: Feet) => Math.hypot(s.x - f.x, s.z - f.z) - CRASH_REACH;
   const w = wreckById(id);
-  if (w) return { id: w.id, kind: w.kind, dist: flat(w) };
+  if (w) return { id: w.id, kind: w.kind, dist: flat(w), wreck: null };
   const d = debrisById(id);
-  if (d) return { id: d.id!, kind: debrisItem(CRASH_KINDS[d.kind].node), dist: (f) => debrisReach(f, d) - DEBRIS_REACH };
+  if (d) return { id: d.id!, kind: debrisItem(CRASH_KINDS[d.kind].node), dist: (f) => debrisReach(f, d) - DEBRIS_REACH, wreck: d.site };
   const s = crashSiteById(id);
-  return s && !s.lab && junkSpec(s.kind).carry ? { id: s.id, kind: s.kind, dist: flat(s) } : null;
+  return s && !s.lab && junkSpec(s.kind).carry ? { id: s.id, kind: s.kind, dist: flat(s), wreck: s.wreck } : null;
 }
+/** How far (m) past a crash site's pieces a find may lie and still count as taken from it. */
+const VISIT_SLACK = 6;
 /** A scrap field's small machines (site level 0, the starter machines every new player needs) are back after this long;
  *  other small machines stay gone. */
 const STARTER_RESPAWN_MS = 20 * 60 * 1000;
@@ -87,6 +92,7 @@ export class CrashServer {
   private newlyTaken: string[] = [];
   private newlyBack: string[] = [];
   private newlySpent: number[] = [];
+  private newlyVisited: number[] = [];
   private sessions = new Map<string, Session>();
   private broadcast: (msg: ServerMsg) => void;
   /** The machine on the disassembly table, or null when it is free. */
@@ -119,7 +125,8 @@ export class CrashServer {
       crashTaken.add(r.id);
     }
     for (const r of db.loadCrashSpent()) if (crashSite(r.site)) crashSpent.add(r.site);
-    console.log(`crash: ${this.taken.size} machines carried off, ${crashSpent.size} sites spent`);
+    for (const site of db.loadCrashVisited()) if (crashSite(site)) crashVisited.add(site);
+    console.log(`crash: ${this.taken.size} machines carried off, ${crashSpent.size} sites spent, ${crashVisited.size} visited`);
   }
 
   // -- carrying -----------------------------------------------------------------------------------------------
@@ -140,6 +147,7 @@ export class CrashServer {
     this.taken.set(site.id, now);
     crashTaken.add(site.id);
     this.newlyTaken.push(site.id);
+    if (site.wreck !== null) this.visit(site.wreck);
     return site.kind;
   }
 
@@ -267,6 +275,31 @@ export class CrashServer {
     const msg: ServerMsg = { t: 'crashSpent', spent: this.newlySpent };
     this.newlySpent = [];
     return msg;
+  }
+
+  visitedMessage(): ServerMsg {
+    return { t: 'crashVisited', visited: [...crashVisited], reset: true };
+  }
+
+  flushVisited(): ServerMsg | null {
+    if (!this.newlyVisited.length) return null;
+    const msg: ServerMsg = { t: 'crashVisited', visited: this.newlyVisited };
+    this.newlyVisited = [];
+    return msg;
+  }
+
+  /** Someone picked something up at crash site `wreck`: visited for good (its smoke stops). */
+  visit(wreck: number) {
+    if (crashVisited.has(wreck) || !crashSite(wreck)) return;
+    crashVisited.add(wreck);
+    this.db.visitCrash(wreck, Date.now());
+    this.newlyVisited.push(wreck);
+  }
+
+  /** Something lying at (x, z) was picked up (a find, server/loot.ts): the crash site it lay at, if any, is visited. */
+  visitAt(x: number, z: number) {
+    const s = crashSitesNear(x, z, CRASH_CELL / 2)[0];
+    if (s && Math.hypot(s.x - x, s.z - z) <= s.radius + VISIT_SLACK) this.visit(s.id);
   }
 
   /** The large machine of crash site `wreck` has no parts left: spent for good. */
@@ -420,6 +453,7 @@ export class CrashServer {
     });
     if (!ok) return { t: 'siteTook', id: site.id, i, ok: false, reason: 'full' };
     this.broadcast({ t: 'siteTake', id: site.id, i, by: pid });
+    if (site.wreck !== null) this.visit(site.wreck);
     return { t: 'siteTook', id: site.id, i, ok: true, kind };
   }
 

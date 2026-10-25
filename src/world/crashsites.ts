@@ -1,7 +1,7 @@
 // Crash sites: draws the wrecks and debris (public/models/crashsites.glb, from tools/blender/crashsites.py)
 // that shared/crashsites.ts lays out, including the ground dressing under each machine, and the smoke over the
-// ones still smouldering (crashSmoke.ts: every site until its large machine is stripped, shared/crash.ts
-// crashSpent; one that goes spent in view fades out). The
+// ones still smouldering (crashSmoke.ts: every site until someone picks something up there, shared/crash.ts
+// crashVisited, or its large machine is stripped, crashSpent; one that goes in view fades out). The
 // layout and hitboxes live in shared/crashsites.ts (the server collides players with them too); this only
 // turns pieces into instance matrices.
 //
@@ -24,7 +24,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { attribute, color, float, mx_noise_float, smoothstep, texture, vec2 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
 import { CRASH_KINDS, type CrashKind } from '../../shared/crashKinds.ts';
-import { crashListeners, crashSpent, crashTaken } from '../../shared/crash.ts';
+import { crashListeners, crashSpent, crashTaken, crashVisited } from '../../shared/crash.ts';
 import { crashSitesNear, pieceY, type CrashPiece, type CrashSite } from '../../shared/crashsites.ts';
 import { EDIT_CELL, EDIT_CHUNK, edits, heightAt } from '../../shared/terrain.ts';
 import { createSandMaterial } from './sandMaterial.ts';
@@ -106,11 +106,11 @@ export class CrashSites {
   private dirty = false;
   /** Sites currently drawn, nearest first (also read by the sound and debug). */
   sites: CrashSite[] = [];
-  /** Sites seen smouldering this session, and when the smoke of each one seen going spent stops (`time`). */
+  /** Sites seen smouldering this session, and when the smoke of each one seen going spent or visited stops (`time`). */
   private live = new Set<number>();
   private stops = new Map<number, number>();
   private stopAt = (id: number) => {
-    if (!crashSpent.has(id)) {
+    if (!crashSpent.has(id) && !crashVisited.has(id)) {
       this.live.add(id);
       return Infinity;
     }

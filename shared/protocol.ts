@@ -240,6 +240,9 @@ export type ServerMsg =
   // Crash sites (shared/crashsites.ts ids) whose large machine has been stripped: they stop smoking and stay that
   // way. On join (with reset: the full list), then each newly spent one.
   | { t: 'crashSpent'; spent: number[]; reset?: boolean }
+  // Crash sites (shared/crashsites.ts ids) someone has picked something up from (server/crash.ts visit): their smoke
+  // tapers out and stays out, for everyone. On join (with reset: the full list), then each newly visited one.
+  | { t: 'crashVisited'; visited: number[]; reset?: boolean }
   // A shared session was joined: what is already done (step indexes) and taken (part indexes) at that site.
   | { t: 'siteState'; id: string; done: number[]; taken: number[] }
   // On join, before 'welcome': the progress of every large site's machine that has been worked on. Kept for

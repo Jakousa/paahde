@@ -39,6 +39,10 @@ export const crashListeners: (() => void)[] = [];
 /** Crash sites (numeric shared/crashsites.ts ids) whose large machine has been stripped of every part: no smoke,
  *  no beeping, and its frame was scrapped. Kept in step with the server ('crashSpent' messages). */
 export const crashSpent = new Set<number>();
+/** Crash sites (numeric shared/crashsites.ts ids) someone has picked something up from (a part off its large machine, a
+ *  small machine, debris, a find lying there): it has been visited, and stops smoking for good (src/world/crashsites.ts).
+ *  Kept in step with the server ('crashVisited' messages). */
+export const crashVisited = new Set<number>();
 /** The large machine at this site had its frame scrapped (every part out, then mashed to scrap): it is gone, solid and drawn no more. */
 export const siteSpent = (site: CrashSite) => !site.lab && !junkSpec(site.kind).carry && crashSpent.has(site.wreck);
 export function crashChanged() {

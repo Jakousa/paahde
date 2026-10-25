@@ -896,9 +896,11 @@ function onUnfit(p: Player, slot: unknown, to: unknown, ti: unknown, at: unknown
 }
 
 function onLootTake(p: Player, id: unknown) {
+  const l = typeof id === 'number' ? loot.loot.get(id) : undefined;
   const kind = loot.take(p.state, id, (l) => items.giveItem(p.browserId, l));
   if (kind === 'full') send(p.ws, { t: 'notice', text: TEXT.notice.bagFull });
   else if (kind) {
+    if (l && l.src !== 'drop') crash.visitAt(l.x, l.z); // (a find lying at a crash site: it has been visited)
     sendBox(p, 'bag', kind);
     return gearChanged(p.browserId);
   }
@@ -1162,7 +1164,7 @@ function broadcast(time: number) {
       if (jetsBreaking[i].due <= time) crashed.push(jetCame(jetsBreaking.splice(i, 1)[0]));
     }
   }
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushRolls(), placedThings.flush(), vehicleSrv.flush(), wiring.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
+  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushVisited(), crash.flushRolls(), placedThings.flush(), vehicleSrv.flush(), wiring.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
     for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
