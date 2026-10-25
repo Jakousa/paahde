@@ -71,7 +71,7 @@ export class StormServer {
   }
 
   /** Server time `now` (ms), where the players are and the time of day (shared/sun.ts). Returns a 'storms' message
-   *  when a list changed. `boss`: a boss is alive somewhere, so no front or gas comes (it waits till after the fight). */
+   *  when a list changed. `boss`: an active boss encounter, so front/gas waits till after the fight. */
   tick(now: number, players: { x: number; z: number }[], tod: number, boss = false): ServerMsg | null {
     const night = sunElevation(tod) < 0;
     const live = this.off ? [] : this.storms.filter((s) => s.end > now);

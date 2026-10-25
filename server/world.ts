@@ -282,6 +282,7 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     const p = players.get(ws);
     if (!p) return;
+    corpses.expire(playingOwners());
     save(p);
     crash.leaveAll(p.id);
     vehicleSrv.release(p.id, p.state.riding ? p.state : undefined); // the bike stays where they left
@@ -650,19 +651,32 @@ function onCall(p: Player) {
   items.spendPart(p.browserId, p.slot, 0); // the uranium cell (shared/gear.ts: first slot)
   sendBox(p, 'bag');
   db.setSetting(calledKey(kind), 1);
+  saveBossPlaces();
   console.log(`world ${WORLD_ID}: ${kind} called`);
   sendAll(bosses.whereMsg());
 }
 
-/** Bosses called before a restart (the world's process ends when the last player leaves) come back near whoever
- *  joins first, with the hits they had taken. */
+/** Called bosses keep their location and damage across restarts; only transient attacks reset. */
 function recall(p: Player) {
   const s = p.state;
   for (const kind of BOSS_KINDS) {
     const v = db.getSetting(calledKey(kind)) ?? 0;
-    if (v > 0 && !bosses.alive(kind)) bosses.call(kind, { id: p.id, x: s.x, y: s.y, z: s.z, safe: false }, performance.now(), v - 1);
+    const x = db.getSetting(`${calledKey(kind)}_x`), z = db.getSetting(`${calledKey(kind)}_z`), yaw = db.getSetting(`${calledKey(kind)}_yaw`);
+    const at = x !== undefined && z !== undefined && yaw !== undefined && [x, z, yaw].every(Number.isFinite) ? { x, z, yaw } : undefined;
+    if (v > 0 && !bosses.alive(kind)) bosses.call(kind, { id: p.id, x: s.x, y: s.y, z: s.z, safe: false }, performance.now(), v - 1, at);
   }
+  saveBossPlaces();
   send(p.ws, bosses.whereMsg());
+}
+
+function saveBossPlaces() {
+  db.tx(() => {
+    for (const b of bosses.bosses) if (b.called && b.deadAt < 0) {
+      db.setSetting(`${calledKey(b.kind)}_x`, b.x);
+      db.setSetting(`${calledKey(b.kind)}_z`, b.z);
+      db.setSetting(`${calledKey(b.kind)}_yaw`, b.yaw);
+    }
+  });
 }
 
 /** The sand marks and one-off effects of the bosses (server/bosses.ts). */
@@ -807,6 +821,7 @@ function onChat(p: Player, text: unknown) {
 /** The client has loaded: from now on others see them and they can die. */
 function onReady(p: Player) {
   if (p.ready) return;
+  corpses.expire(playingOwners());
   p.ready = true;
   p.savedAt = Date.now();
   sendName(p);
@@ -1237,9 +1252,10 @@ function onSetEpoch(ws: WebSocket, wanted: unknown) {
 function broadcast(time: number) {
   // Terrain and scrap changes go out before the snapshot, so a client seeing ack N has every edit up to N.
   // (The lab and the art bench have no storms and no jets.)
-  const weather = CALM ? null : storms.tick(time, [...players.values()].map((p) => p.state), timeOfDayAt(time + epoch),
-    BOSS_KINDS.some((k) => bosses.alive(k)));
-  const flights = CALM ? null : jets.tick(time, [...players.values()].map((p) => p.state));
+  const active = [...players.values()].filter((p) => p.ready && !p.down);
+  const weather = CALM ? null : storms.tick(time, active.map((p) => p.state), timeOfDayAt(time + epoch),
+    bosses.engaged(time, active.map((p) => ({ id: p.id, ...p.state, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }))));
+  const flights = CALM ? null : jets.tick(time, active.map((p) => p.state));
   const crashed: ServerMsg[] = [];
   if (!CALM) {
     for (const j of jets.landed(time)) jetLanded(j);
@@ -1331,6 +1347,10 @@ function save(p: Player) {
   db.savePlayer({ id: p.browserId, color: p.color, x: at.x, z: at.z, heat: p.heat.heat, sips: p.heat.sips }, played);
 }
 
+function playingOwners(): Set<string> {
+  return new Set([...players.values()].filter((p) => p.ready).map((p) => p.browserId));
+}
+
 setInterval(() => {
   players.forEach(save);
   terrain.heal();
@@ -1339,7 +1359,8 @@ setInterval(() => {
   scrap.respawn();
   loot.respawn();
   for (const id of vehicleSrv.respawn()) sendShared(vehicleBox(id));
-  corpses.expire();
+  corpses.expire(playingOwners());
+  saveBossPlaces();
   garden.grow();
   power.save();
 }, SAVE_INTERVAL_MS);
@@ -1359,6 +1380,8 @@ setInterval(() => {
 // Watchtower stops the container with SIGTERM on every deploy: persist everyone, then tell
 // clients the server is restarting (1012) so they reconnect.
 function shutdown() {
+  corpses.expire(playingOwners());
+  saveBossPlaces();
   for (const p of players.values()) {
     save(p);
     p.ws.close(1012, 'server restarting');

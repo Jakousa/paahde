@@ -13,11 +13,11 @@ export type Corpse = {
   z: number;
   /** The dead player's colour, for the rag. */
   color: number;
-  /** Wall-clock ms (Date.now) it goes. */
+  /** Estimated expiry while its owner plays; the server pauses recovery time while they are offline. */
   until: number;
 };
 
-/** A pack lies this long (ms) before it's gone, with whatever is still in it. */
+/** Recovery time (ms of the owner's play time) before a pack is gone with whatever is still in it. */
 export const CORPSE_MS = 30 * 60_000;
 
 /** It opens when your feet are this close (m, horizontally). */

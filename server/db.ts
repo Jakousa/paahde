@@ -426,7 +426,9 @@ export function openDb(path: string) {
       until   INTEGER NOT NULL               -- ms since epoch: gone then
     );
   `);
-  const allCorpses = db.prepare('SELECT id, color, x, z, until FROM corpses ORDER BY id');
+  const corpseCols = db.prepare('SELECT name FROM pragma_table_info(?)').all('corpses') as { name: string }[];
+  if (!corpseCols.some((c) => c.name === 'remaining')) db.exec('ALTER TABLE corpses ADD COLUMN remaining INTEGER');
+  const allCorpses = db.prepare('SELECT id, owner, color, x, z, until, remaining FROM corpses ORDER BY id');
   const insertCorpse = db.prepare('INSERT INTO corpses (owner, color, x, z, until) VALUES (?, ?, ?, ?, ?)');
   const deleteCorpse = db.prepare('DELETE FROM corpses WHERE id = ?');
 
@@ -513,7 +515,8 @@ export function openDb(path: string) {
     /** Returns the new row's id. */
     insertLootPending: (at: number, what: string, kind: string | null) => Number(insertPending.run(at, what, kind).lastInsertRowid),
     deleteLootPending: (id: number) => deletePending.run(id),
-    loadCorpses: () => allCorpses.all() as { id: number; color: number; x: number; z: number; until: number }[],
+    loadCorpses: () => allCorpses.all() as { id: number; owner: string; color: number; x: number; z: number; until: number; remaining: number | null }[],
+    saveCorpseTime: (id: number, remaining: number, until: number) => db.prepare('UPDATE corpses SET remaining = ?, until = ? WHERE id = ?').run(remaining, until, id),
     /** New pack row; returns its id. */
     insertCorpse: (owner: string, color: number, x: number, z: number, until: number) =>
       Number(insertCorpse.run(owner, color, x, z, until).lastInsertRowid),

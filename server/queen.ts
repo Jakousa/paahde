@@ -118,13 +118,14 @@ function wander(st: St) {
 }
 
 export const queen: Brain = {
-  spawn(b, x, z, summoned, now) {
+  spawn(b, x, z, summoned, now, restore) {
     // Home: the nearest crawler or guardian site, else where it turned up.
     const site = crashSitesNear(x, z, 1500).find((s) => s.level >= 1);
     const a = rand(-Math.PI, Math.PI), d = summoned ? 75 : rand(350, 500);
     b.x = x + Math.sin(a) * d;
     b.z = z + Math.cos(a) * d;
     b.yaw = summoned ? Math.atan2(x - b.x, z - b.z) : rand(-Math.PI, Math.PI);
+    if (restore) Object.assign(b, restore);
     b.y = heightAt(b.x, b.z) + BODY_H;
     const feet: Foot[] = [];
     for (let i = 0; i < LEGS; i++) {

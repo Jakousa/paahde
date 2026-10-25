@@ -168,7 +168,7 @@ function waypoint(st: St, x: number, z: number, dir?: number) {
 }
 
 export const colossus: Brain = {
-  spawn(b, x, z, summoned, now) {
+  spawn(b, x, z, summoned, now, restore) {
     const a = Math.random() * Math.PI * 2, d = summoned ? NEAR_SPAWN : FAR_SPAWN;
     b.x = x + Math.sin(a) * d;
     b.z = z + Math.cos(a) * d;
@@ -176,6 +176,7 @@ export const colossus: Brain = {
     const off = summoned ? 0 : rand(150, 400) * (Math.random() < 0.5 ? -1 : 1);
     const tx = x + Math.cos(a) * off, tz = z - Math.sin(a) * off;
     b.yaw = Math.atan2(tx - b.x, tz - b.z);
+    if (restore) Object.assign(b, restore);
     const st: St = {
       feet: [{ x: 0, y: 0, z: 0, left: 0, kind: 0, span: 0 }, { x: 0, y: 0, z: 0, left: 0, kind: 0, span: 0 }],
       next: 1, down: 0, still: 0, speed: 0, lastYaw: b.yaw,

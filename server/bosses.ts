@@ -11,6 +11,7 @@ import { worm } from './worm.ts';
 
 /** A player as the bosses see them: feet position; `safe`: down or just respawned, can't be hurt. */
 export type BossPlayer = { id: number; x: number; y: number; z: number; safe: boolean };
+export type BossPlace = { x: number; z: number; yaw: number };
 
 export type Boss = {
   id: number; kind: BossKind;
@@ -42,7 +43,7 @@ export type BossOut = {
 /** What a kind's brain does. All times server ms (performance.now()). */
 export type Brain = {
   /** Put a new boss somewhere near (x, z) (summoned: close by, in sight; else further off) and set up `st`. */
-  spawn(b: Boss, x: number, z: number, summoned: boolean, now: number): void;
+  spawn(b: Boss, x: number, z: number, summoned: boolean, now: number, restore?: BossPlace): void;
   /** One tick (`dt` s). While b.leaving, take it away: return true once it's gone. Dead bosses aren't ticked. */
   tick(b: Boss, dt: number, now: number, players: BossPlayer[], out: BossOut): boolean;
   /** Could a shot ending at (x, y, z) have hit it (generous: lag, its size)? */
@@ -91,17 +92,17 @@ export class BossServer {
 
   /** A receiver's call (or one from before a restart, with the hits it had taken): `kind` turns up some way off
    *  player `p` and stays until it's killed. False if one of it is already about. */
-  call(kind: BossKind, p: BossPlayer, now: number, hurt = 0): boolean {
+  call(kind: BossKind, p: BossPlayer, now: number, hurt = 0, restore?: BossPlace): boolean {
     if (this.alive(kind)) return false;
-    this.spawn(kind, p.x, p.z, false, now, Infinity, true, Math.max(1, BOSSES[kind].hp - hurt));
+    this.spawn(kind, restore?.x ?? p.x, restore?.z ?? p.z, false, now, Infinity, true, Math.max(1, BOSSES[kind].hp - hurt), restore);
     return true;
   }
 
-  private spawn(kind: BossKind, x: number, z: number, summoned: boolean, now: number, until: number, called: boolean, hp = BOSSES[kind].hp) {
+  private spawn(kind: BossKind, x: number, z: number, summoned: boolean, now: number, until: number, called: boolean, hp = BOSSES[kind].hp, restore?: BossPlace) {
     const b: Boss = {
       id: this.nextId++, kind, x, y: 0, z, yaw: 0, broken: 0, regrow: [], hp, deadAt: -1, until, leaving: false, called, angry: -1, angryUntil: 0, foes: new Map(), st: null,
     };
-    BRAINS[kind].spawn(b, x, z, summoned, now);
+    BRAINS[kind].spawn(b, x, z, summoned, now, restore);
     this.bosses.push(b);
   }
 
@@ -117,6 +118,7 @@ export class BossServer {
         return now - b.deadAt < BOSSES[b.kind].wreckS * 1000;
       }
       if (!b.leaving && now > b.until) b.leaving = true;
+      for (const [id, until] of b.foes) if (now > until || !players.some((p) => p.id === id)) b.foes.delete(id);
       for (let i = 0; i < BOSSES[b.kind].points; i++) if (b.broken & (1 << i) && now >= b.regrow[i]) b.broken &= ~(1 << i);
       const killed = out.kills.length;
       const gone = BRAINS[b.kind].tick(b, dt, now, ps, out);
@@ -126,6 +128,12 @@ export class BossServer {
       return !gone;
     });
     return out;
+  }
+
+  /** Only a current fight postpones dangerous weather, not an abandoned called boss kilometres away. */
+  engaged(now: number, players: BossPlayer[]): boolean {
+    return this.bosses.some((b) => b.deadAt < 0 && !b.leaving && players.some((p) => !p.safe && !indoors(p.x, p.y, p.z)
+      && (b.foes.get(p.id) ?? 0) > now && Math.hypot(p.x - b.x, p.z - b.z) < BOSS_SEND_R));
   }
 
   /** Player `by` shot from (x, y, z) to (ex, ey, ez) and says it broke weak point `i` of boss `id`. Plausible (alive,

@@ -225,7 +225,7 @@ function event(out: BossOut, b: Boss, e: string, x: number, y: number, z: number
 }
 
 export const worm: Brain = {
-  spawn(b, x, z, summoned) {
+  spawn(b, x, z, summoned, _now, restore) {
     // Under the sand some way off, heading past the player.
     let a = Math.random() * Math.PI * 2, d = summoned ? 170 : 650;
     for (let i = 0; i < 16; i++, a += 0.4) {
@@ -236,6 +236,10 @@ export const worm: Brain = {
     b.z = z + Math.cos(a) * d;
     b.y = heightAt(b.x, b.z) - HUNT_DEPTH;
     b.yaw = Math.atan2(x - b.x, z - b.z);
+    if (restore) {
+      Object.assign(b, restore);
+      b.y = heightAt(b.x, b.z) - HUNT_DEPTH;
+    }
     const fx = Math.sin(b.yaw), fz = Math.cos(b.yaw);
     const w: Worm = {
       vx: fx * ROAM_SPEED, vy: 0, vz: fz * ROAM_SPEED, mode: MODE_ROAM, trail: [], segs: [], tx: x + fx * 300, tz: z + fz * 300,

@@ -318,12 +318,13 @@ function tickDrones(b: Boss, st: St, dt: number, now: number, players: BossPlaye
 }
 
 export const carrier: Brain = {
-  spawn(b, x, z, summoned, now) {
+  spawn(b, x, z, summoned, now, restore) {
     // Comes in from off to one side, already heading past the player.
     const a = Math.random() * Math.PI * 2, d = summoned ? 260 : 1300;
     b.x = x + Math.sin(a) * d;
     b.z = z + Math.cos(a) * d;
     b.yaw = Math.atan2(x - b.x, z - b.z) + rand(-0.3, 0.3);
+    if (restore) Object.assign(b, restore);
     b.y = groundUnder(b.x, b.z, b.yaw) + CARRIER_ALT;
     const st: St = {
       vx: Math.sin(b.yaw) * CRUISE, vz: Math.cos(b.yaw) * CRUISE, yawRate: 0, roll: 0, pitch: 0,
