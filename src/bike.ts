@@ -16,6 +16,7 @@ import { bikeLandSound } from './bikeLandSound.ts';
 import type { RidePose } from './players.ts';
 import { nightLevel, SHADOW_ONLY_LAYER } from './world/env.ts';
 import { applyTier } from './tierLook.ts';
+import { PooledSpotLight } from './world/pooledLight.ts';
 
 // Rider contact points, in the bike's frame (origin on the ground between the tyres, forward is -z), from
 // tools/blender/sandbike.py: hips over the front of the seat (top 0.86), ankles over the pegs (0.2, 0.34, 0.12).
@@ -51,7 +52,7 @@ export function addHeadlights(scene: THREE.Scene) {
   if (headlights.length) return;
   for (let i = 0; i < POOL; i++) {
     const h = HEADLIGHT;
-    const light = new THREE.SpotLight(h.color, 0, h.distance, h.angle, h.penumbra, h.decay);
+    const light = new PooledSpotLight(h.color, 0, h.distance, h.angle, h.penumbra, h.decay);
     const s = HEADLIGHT_SHADOW;
     light.castShadow = true; // always on (toggling recompiles too), but the map only renders while lit
     light.shadow.autoUpdate = false;

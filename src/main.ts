@@ -124,6 +124,7 @@ import { nearPod } from '../shared/podSpot.ts';
 import { isTrophy, trophyFree } from '../shared/trophies.ts';
 import { GuardianFx } from './guardians';
 import { update } from './update';
+import { registerPooledLights } from './world/pooledLight.ts';
 import { LOADING_FRAME_MS, slice } from './yield';
 import { Warmup } from './warmup';
 import { TEXT } from '../shared/text.ts';
@@ -134,6 +135,7 @@ perf.milestone('main-start');
 // GPU timestamp queries (src/perf.ts) are only set up when stats were on at load, or for a benchmark run: they cost a readback a frame.
 const gpuTimes = statsPref() || PERF_RUN;
 const renderer = new THREE.WebGPURenderer({ antialias: graphics.antialias, powerPreference: 'high-performance', trackTimestamp: gpuTimes });
+registerPooledLights(renderer);
 // (the stats line counts a whole frame: the shadow passes, the scene and the post passes, not just the last render call, which is a full-screen quad)
 renderer.info.autoReset = false;
 const resolution = new DynamicResolution(renderer); // sets the pixel ratio, then keeps it near 60 fps
