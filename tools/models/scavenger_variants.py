@@ -186,6 +186,22 @@ FACE = {'respirator': None, 'mask': skip, 'side': build_side}
 if FACE[v['face']]:
     ns['build_respirator'] = FACE[v['face']]
 
+# ------------------------------------------------------------------------------------------- head wrap
+def headwrap_smooth():
+    # the head wrap without the tilted bands wound over the skull (they read as swirly "vortex" lines in the hood)
+    n = len(ns['PARTS'])
+    orig_headwrap()
+    import bpy
+    for e in [e for e in ns['PARTS'][n:] if e[0].name.startswith('HeadBands')]:
+        ns['PARTS'].remove(e)
+        bpy.data.objects.remove(e[0])
+
+
+orig_headwrap = ns['build_headwrap']
+if v.get('bands', False) is False:
+    ns['build_headwrap'] = headwrap_smooth
+
+
 # ------------------------------------------------------------------------------------------- coat / cape
 if v['cape'] == 'none':
     ns['build_cape'] = skip
