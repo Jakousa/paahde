@@ -20,13 +20,13 @@ import type { BossKind, BossSnap } from './bosses.ts';
 
 export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
-  // spawn: 'ship' starts at the crashed ship's ramp instead of the saved position, 'crash' next to the nearest
+  // spawn: 'pod' starts beside a crashed pod's hatch instead of the saved position, 'crash' next to the nearest
   // crash site with a large machine, 'field' at the edge of the nearest scrap field, 'shelter' outside the nearest
-  // shelter's door, 'canyon' on the floor of the nearest deep canyon (dev helpers, ?spawn=ship / crash / field / shelter /
+  // shelter's door, 'canyon' on the floor of the nearest deep canyon (dev helpers, ?spawn=pod / crash / field / shelter /
   // canyon). name and color: yours, chosen on the main menu or the lobby (src/profile.ts); a name that fails
   // shared/names.ts checkName is refused (closed with 4422), a color that isn't 24-bit RGB keeps the one you had.
   // look: what you wear (shared/look.ts packLook), chosen on the main menu; not a look keeps the plain one.
-  | { t: 'hello'; browserId: string; name: string; color?: number; look?: number; spawn?: 'ship' | 'crash' | 'field' | 'shelter' | 'canyon' }
+  | { t: 'hello'; browserId: string; name: string; color?: number; look?: number; spawn?: 'pod' | 'crash' | 'field' | 'shelter' | 'canyon' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
@@ -302,7 +302,7 @@ export type ServerMsg =
   // maxSips: what the water bottle in your bag holds (shared/gear.ts bottleSips), 0 without one.
   | { t: 'water'; heat: number; sips: number; maxSips: number; rising: boolean; temp: number; shade: boolean }
   // You died: you lie where you fell as a ragdoll for DOWN_MS (shared/ragdoll.ts; your input is ignored), then
-  // 'respawn' says the server has moved you to your bedroll or the ship (the next snapshot snaps you there) with no heat and a
+  // 'respawn' says the server has moved you to your bedroll or your pod (the next snapshot snaps you there) with no heat and a
   // full canteen; a 'water' follows. For the death screen. push: the blast's launch velocity for the body (m/s).
   // 'heat': heatstroke; 'guardian': one walked over you; 'laser': a guardian's cannon got you; 'missile': one called
   // down by a drone's searchlight landed on you (shared/missiles.ts); 'crawler': bitten once too often.

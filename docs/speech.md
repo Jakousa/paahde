@@ -64,7 +64,7 @@ rate and punctuation pauses at the top of `src/speech.ts`), so a remark is heard
 Has lines: a water bottle in sight with none in the bag (day/night), a machine to take apart (the big ones on the
 spot, the small ones and wrecks to carry home), the first of each item kind in the bag (each piece of gear broken
 and working, scrap, cloth, parts and the space-grade ones, plant bed, UV lamp, bedroll, receivers, relics), the
-crashed ship we arrived in (day/night), the first ride,
+crashed pod we came down in (day/night), the first ride,
 a pump (with a bottle to fill, or in a shelter with none), the first shelter, overheating, an empty bottle, the storm
 warning and being in a storm, each kind of enemy turning on you (a guardian hunting you, crawlers, a drone's light
 locking on, a harvester charging) and each kind going down after you shot or jammed it, the first boss, the first night out, a full bag, respawning.
@@ -74,7 +74,7 @@ Ideas, not built yet (most need a new event or state field):
 - Low on water far from any pump; a full bottle that's been carried a while without drinking in the heat.
 - The first drone searchlight at night; the first jet overhead; being shot at for the first time.
 - A shield plate breaking ("That was close."); a line per boss kind beaten, and the last one (the world won).
-- Lost: far from home (the bedroll, the ship) for a long time with no wrist computer.
+- Lost: far from home (the bedroll, the pods) for a long time with no wrist computer.
 - Lives running low for the world (src/lives.ts).
 - Another player nearby for the first time; a dead player's pack ("Whoever this was, they won't mind.").
 - Sand sifting into a shelter during a storm; a plant bed growing up, and the first harvest.

@@ -15,6 +15,7 @@
 // the mud flats both have it, and the canyons' rock is too steep to build on anyway).
 import { parsePart } from './items.ts';
 import { placed, turnXZ, type Placed } from './placed.ts';
+import { atPodTap } from './pods.ts';
 import { atWater } from './shelters.ts';
 import { FILL_MS } from './water.ts';
 
@@ -63,10 +64,10 @@ export function wellAt(x: number, y: number, z: number, margin = 0, list: Placed
   return null;
 }
 
-/** Where the canteen fills at world (x, y, z) (+ margin): a shelter's pump (shared/shelters.ts atWater),
- *  or a running well, with how long a fill takes there (ms); null where there's no water. */
+/** Where the canteen fills at world (x, y, z) (+ margin): a shelter's pump (shared/shelters.ts atWater), a crashed pod's
+ *  water tap (shared/pods.ts atPodTap), or a running well, with how long a fill takes there (ms); null where there's no water. */
 export function waterAt(x: number, y: number, z: number, margin = 0): { well: Placed | null; ms: number } | null {
-  if (atWater(x, y, z, margin)) return { well: null, ms: FILL_MS };
+  if (atWater(x, y, z, margin) || atPodTap(x, y, z, margin)) return { well: null, ms: FILL_MS };
   const well = wellAt(x, y, z, margin);
   return well ? { well, ms: wellSpec(well.parts)?.fillMs ?? FILL_MS } : null;
 }

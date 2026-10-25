@@ -2,7 +2,7 @@
 // raise it to the eye; once the raise clip (src/viewmodel.ts) has played, the view zooms in behind a round
 // lens mask and the mouse wheel sets the zoom, up to what its parts allow (shared/gear.ts spyglassZoom). In third
 // person the view comes in to the eye first, like a scoped gun's (src/camera.ts aimIn).
-// Through the lens, the places worth going to that are in sight (the crashed ship, other players, wrecks, crash sites, shelters,
+// Through the lens, the places worth going to that are in sight (the crashed pods, other players, wrecks, crash sites, shelters,
 // downed jets' engines, the packs the dead left; not behind a dune) get a small mark with their distance, the locator's shapes (src/locator.ts).
 // Letting go lowers it. Client-only: nothing is sent.
 import * as THREE from 'three/webgpu';
@@ -11,7 +11,7 @@ import { CORPSES } from '../shared/corpse.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { jetSites } from '../shared/jetcrash.ts';
 import { sheltersNear } from '../shared/shelters.ts';
-import { SHIP_AT } from '../shared/shipSpot.ts';
+import { ARRIVAL } from '../shared/podSpot.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { wrecksNear } from '../shared/wrecks.ts';
 import type { FirstPersonCamera } from './camera';
@@ -190,7 +190,7 @@ export class Telescope {
       const d = Math.hypot(x - eye.x, z - eye.z);
       if (d >= MARK_NEAR && d <= MARK_R) out.push({ key, kind, color, x, y, z, id });
     };
-    if (SHIP_AT) add('home', 'home', SHIP_AT.x, SHIP_AT.z, 5);
+    if (ARRIVAL) add('home', 'home', ARRIVAL.x, ARRIVAL.z, 3);
     for (const p of players) add(`p${p.id}`, 'player', p.x, p.z, 0, p.color, p.id, p.y + 1.6);
     for (const w of wrecksNear(eye.x, eye.z, MARK_R)) if (!crashTaken.has(w.id)) add(w.id, 'wreck', w.x, w.z, 1.5);
     for (const s of crashSitesNear(eye.x, eye.z, MARK_R)) if (!crashSpent.has(s.id)) add(`c${s.id}`, 'site', s.x, s.z, 4);

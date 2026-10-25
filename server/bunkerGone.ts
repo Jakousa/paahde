@@ -1,17 +1,17 @@
 // Once per world: the starting bunker is gone (it stood at the world's origin, shared/origin.ts; players arrive at the
-// crashed ship now), so whatever was kept in it comes out, and nothing anyone owned is lost. Run on world load
+// crashed pods now), so whatever was kept in it comes out, and nothing anyone owned is lost. Run on world load
 // (server/world.ts) after the terrain, the items and the placed things are in, before the vehicles, the garden and the
 // players; marked done in `settings` ('bunker_gone').
 //
-// - The bunker's chests ('chest<i>', shared, endless) go into new chests put up by the ship (box `store<id>`, as many as
+// - The bunker's chests ('chest<i>', shared, endless) go into new chests put up by the pods (box `store<id>`, as many as
 //   their things need), with the machine left on its dismantling table (the 'bench' job, as a whole machine again: the
 //   parts already taken were given out) and whatever doesn't fit back in its owner's bag.
 // - What players had on a workbench's repair slot (their 'bench' box) goes back into their bag, or that chest. (Any
 //   workbench opens the slot, but there may be none standing now.)
 // - Things put down on the bunker's floor: plant beds and UV lamps (they stand on floors only) back to whoever put them
-//   down, or the chest; the rest (work stations, chests, bedrolls) are moved out onto the sand by the ship, their boxes,
+//   down, or the chest; the rest (work stations, chests, bedrolls) are moved out onto the sand by the pods, their boxes,
 //   jobs and owners going with them.
-// - Everything on the sand where the bunker's pad and the ship's pad changed the ground is set back on it.
+// - Everything on the sand where the bunker's pad (and the crashed ship's that stood here for a while) changed the ground is set back on it.
 // - Players who left in or over the bunker, and vehicles parked down in it, are moved to the spawn.
 // And once too: the trophies of the bosses beaten are put up where they used to stand by themselves (trophiesPlaced).
 import { storeBox } from '../shared/boxes.ts';
@@ -37,7 +37,7 @@ const inFootprint = (x: number, z: number) => x > FOOTPRINT[0] && x < FOOTPRINT[
 const below = (x: number, y: number, z: number) => inFootprint(x, z) && y < ORIGIN.y - 1;
 /** The floor-only kinds: no sand to move them to. */
 const FLOOR_ONLY = new Set(['plant_bed', 'uv_lamp']);
-/** How far from the ship's ramp new chests and moved things are looked for a spot (m). */
+/** How far from the first pod's hatch new chests and moved things are looked for a spot (m). */
 const RINGS = [7, 10, 13, 16, 20, 24, 28, 33, 38, 44, 50];
 
 export function bunkerGone(db: Db, items: ItemServer, placedSrv: PlacedServer, beaten: number) {
@@ -90,13 +90,13 @@ export function bunkerGone(db: Db, items: ItemServer, placedSrv: PlacedServer, b
       if (at) {
         placedSrv.moveTo(p.id, at.x, at.z, at.rot);
         log.push(`${p.kind} ${p.id} moved out`);
-      } else log.push(`${p.kind} ${p.id}: no spot by the ship, left where it was`);
+      } else log.push(`${p.kind} ${p.id}: no spot by the pods, left where it was`);
     }
-    // The loose things into new chests by the ship.
+    // The loose things into new chests by the pods.
     while (loose.length) {
       const at = placedSrv.freeSpot(CHEST, spawn, RINGS);
       if (!at) {
-        log.push(`no room for a chest by the ship: ${loose.length} stacks left in box chest0`);
+        log.push(`no room for a chest by the pods: ${loose.length} stacks left in box chest0`);
         items.change('', ['chest0'], () => items.slots('', 'chest0').push(...loose.splice(0)));
         break;
       }
@@ -111,19 +111,19 @@ export function bunkerGone(db: Db, items: ItemServer, placedSrv: PlacedServer, b
         break;
       }
     }
-    // The sand round the origin and by the ship has changed: what stands on it stands on it again.
+    // The sand round the origin and by the pods has changed: what stands on it stands on it again.
     for (const p of [...placed]) {
       if (standsIndoors(p) || below(p.x, p.y, p.z)) continue;
       const y = placedY(p.kind, p.x, p.z, p.rot, null);
       if (Math.abs(y - p.y) > 0.02) placedSrv.moveTo(p.id, p.x, p.z, p.rot);
     }
-    // Vehicles down in it to the ship; those on the sand over the old pad back on the sand.
+    // Vehicles down in it to the pods; those on the sand over the old pad back on the sand.
     for (const v of db.loadVehicles()) {
       if (below(v.x, v.y, v.z)) db.moveVehicle(v.id, spawn.x + 4, heightAt(spawn.x + 4, spawn.z + 4), spawn.z + 4, v.heading);
       else if (originClear(v.x, v.z) < 1) db.moveVehicle(v.id, v.x, heightAt(v.x, v.z), v.z, v.heading);
     }
     const moved = db.movePlayers(FOOTPRINT, spawn.x, spawn.z);
-    if (moved) log.push(`${moved} players moved to the ship`);
+    if (moved) log.push(`${moved} players moved to the pods`);
     db.setSetting('bunker_gone', 1);
   });
   console.log(`bunker gone${log.length ? ': ' + log.join('; ') : ''}`);
@@ -149,7 +149,7 @@ function trophiesPlaced(db: Db, placedSrv: PlacedServer, beaten: number) {
 }
 
 /** Item `it` into the first spot it fits in `owner`'s bag; false if none (the caller saves the bag). */
-function intoBag(items: ItemServer, owner: string, it: Item): boolean {
+export function intoBag(items: ItemServer, owner: string, it: Item): boolean {
   const bag = items.slots(owner, 'bag');
   const spot = findSpot(bag, items.bagShape(owner), it.kind, !!it.r);
   if (!spot) return false;

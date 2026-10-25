@@ -119,8 +119,8 @@ import { prologue } from './prologue';
 import { tools } from './input';
 import { Wrecks } from './world/wrecks';
 import { Trophies } from './world/trophies';
-import { ShipView } from './world/ship';
-import { nearShip } from '../shared/ship.ts';
+import { PodsView } from './world/pods';
+import { nearPod } from '../shared/podSpot.ts';
 import { isTrophy, trophyFree } from '../shared/trophies.ts';
 import { GuardianFx } from './guardians';
 import { update } from './update';
@@ -165,7 +165,7 @@ if (LAB) {
 }
 await slice();
 await slice();
-const ship = new ShipView(scene); // the crashed ship players arrive at
+const pods = new PodsView(scene); // the crashed pods players arrive in
 await slice();
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
 await slice();
@@ -635,7 +635,7 @@ renderer.setAnimationLoop((time) => {
   terrain.update(focus);
   scrap.update(focus);
   crashSites.update(focus);
-  ship.update(time / 1000);
+  pods.update(time / 1000);
   machines.update(focus);
   wrecks.update(focus);
   // The terrain casts into the shadow maps only near the underground places it roofs (src/world/heightShadow.ts does the dunes).
@@ -797,7 +797,7 @@ renderer.setAnimationLoop((time) => {
   speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(m.x, m.y, m.z), shelter: inShelter(m.x, m.y, m.z),
     atPump: !!waterAt(m.x, m.y, m.z), dryWell: dryWell(m), mudflat: biome('mudflat', m.x, m.z) > 0.7, heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
     storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, gasComing: gas.coming, gassed: gas.gassing, riding: s.riding, boss: bossFx.combat,
-    bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null, atShip: nearShip(m.x, m.z, 6) });
+    bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null, atPod: nearPod(m.x, m.z, 4) });
   const vehicleKey = vehicle ? `${vehicle.v.id}:${vehicle.v.up}` : null;
   if (vehicleKey !== seenVehicle) {
     seenVehicle = vehicleKey;

@@ -14,8 +14,7 @@
 // Placement: the world is cut into SHELTER_CELL squares; a cell holds at most one shelter, likelier where it is
 // rocky (rockiness, shared/rocks.ts). Its spot is kept off the rocks (the pad flattens dunes only) but, in rocky
 // country, close beside them. A shelter and its pad stay well inside its cell, so only the cell a point is in can
-// hold a shelter that reaches it (margins up to ~20 m). One cell is the exception: a small shelter with a pump always
-// lies within HOME_R of the crashed ship players arrive at (shared/shipSpot.ts; homeShelter), so the first water is near.
+// hold a shelter that reaches it (margins up to ~20 m).
 //
 // Local frame: origin = the hut's floor at its doorway centre line; the door faces local +Z and the shelter runs
 // down local -Z. It is turned by a multiple of 90° (exact): local +Z points along world (dx, dz),
@@ -27,7 +26,6 @@ import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockiness, rocksNear } from './rocks.ts';
 import { cellId } from './cells.ts';
 import { mulberry32 } from './noise.ts';
-import { onShipGround, SHIP_AT } from './shipSpot.ts';
 import { LAB } from './world.ts';
 
 export type ShelterKind = 'small' | 'deep' | 'long';
@@ -120,7 +118,7 @@ function padRect(L: ShelterLayout) {
 export const SHELTER_CELL = 400;
 /** A shelter's origin stays this far inside its cell (m), so it and its pad never reach the next one. */
 const CELL_MARGIN = 64;
-/** No shelters this close to the origin (m; the one by the ship aside). */
+/** No shelters this close to the origin (m). */
 const ORIGIN_CLEAR = 350;
 /** Most cut or fill the pad may need (m of dune height range under it). */
 const MAX_RANGE = 3.5;
@@ -137,67 +135,8 @@ function toWorld(dx: number, dz: number, lx: number, lz: number): [number, numbe
   return [lx * dz + lz * dx, -lx * dx + lz * dz];
 }
 
-/** The shelter near the crashed ship lies this far from it (m), at most. */
-const HOME_R = 140;
-/** Directions round the ship it is looked for in (unit; no trig). */
-const AROUND: [number, number][] = [[1, 0], [0.7071067811865476, 0.7071067811865476], [0, 1], [-0.7071067811865476, 0.7071067811865476],
-  [-1, 0], [-0.7071067811865476, -0.7071067811865476], [0, -1], [0.7071067811865476, -0.7071067811865476]];
-
-/** How much cut or fill a shelter's pad would need at (x, z) facing (dx, dz) (the dune height's range under it), and its
- *  floor's height (the mean). */
-function padFit(L: ShelterLayout, x: number, z: number, dx: number, dz: number): { range: number; y: number } {
-  const p = padRect(L);
-  let lo = Infinity, hi = -Infinity, sum = 0, n = 0;
-  for (let lz = p.z0; lz <= p.z1; lz += 4) {
-    for (let lx = p.x0; lx <= p.x1; lx += 2) {
-      const [ox, oz] = toWorld(dx, dz, lx, lz);
-      const h = duneHeight(x + ox, z + oz, WORLD_SEED);
-      lo = Math.min(lo, h);
-      hi = Math.max(hi, h);
-      sum += h;
-      n++;
-    }
-  }
-  return { range: hi - lo, y: Math.round((sum / n) * 100) / 100 };
-}
-
-/** The small shelter with a pump near the crashed ship: on the flattest (and nearest) spot 90..HOME_R m from it, well inside its cell,
- *  80 m clear of the origin, off the ship's ground, its door facing the ship. */
-function findHomeShelter(): Shelter | null {
-  const s = SHIP_AT;
-  if (!s) return null;
-  const L = SHELTER_KINDS.small;
-  let best: Shelter | null = null, bestRange = Infinity;
-  for (const d of [100, 120, HOME_R, 90]) for (const [ux, uz] of AROUND) {
-    const x = Math.round(s.x + ux * d), z = Math.round(s.z + uz * d);
-    const ix = Math.floor(x / SHELTER_CELL), iz = Math.floor(z / SHELTER_CELL);
-    const cx = x - ix * SHELTER_CELL, cz = z - iz * SHELTER_CELL;
-    if (cx < CELL_MARGIN || cx > SHELTER_CELL - CELL_MARGIN || cz < CELL_MARGIN || cz > SHELTER_CELL - CELL_MARGIN) continue;
-    const bx = x - ORIGIN.x, bz = z - ORIGIN.z;
-    if (bx * bx + bz * bz < 80 * 80 || onShipGround(x, z, 30) || rocksNear(x, z, REACH)) continue;
-    // The door faces the world axis nearest the way back to the ship.
-    const tx = s.x - x, tz = s.z - z;
-    const [dx, dz]: [number, number] = Math.abs(tx) > Math.abs(tz) ? [tx > 0 ? 1 : -1, 0] : [0, tz > 0 ? 1 : -1];
-    const fit = padFit(L, x, z, dx, dz), score = fit.range + (d - 90) * 0.02; // (nearer is a little better)
-    if (score < bestRange) {
-      bestRange = score;
-      best = { id: cellId(ix, iz), kind: 'small', x, y: fit.y, z, dx, dz, L, pump: true };
-    }
-  }
-  return best;
-}
-
-let home: Shelter | null | undefined;
-/** The shelter near the ship (findHomeShelter), worked out once. */
-export function homeShelter(): Shelter | null {
-  if (home === undefined) home = findHomeShelter();
-  return home;
-}
-
 function cellShelter(ix: number, iz: number): Shelter | null {
   if (LAB) return null;
-  const h = homeShelter();
-  if (h && Math.floor(h.x / SHELTER_CELL) === ix && Math.floor(h.z / SHELTER_CELL) === iz) return h;
   const r = rng(ix, iz);
   const k = rockiness((ix + 0.5) * SHELTER_CELL, (iz + 0.5) * SHELTER_CELL);
   if (r() > 0.02 + 0.45 * k) return null;

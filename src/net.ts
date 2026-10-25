@@ -9,7 +9,7 @@
 //   average, so the shared clock (wind, interpolation) doesn't wobble with jitter.
 // - Terrain: the server owns the edit layer (craters, the wind's healing) and sends absolute values.
 // - Survival: heat/canteen state comes from the server ('water'); src/water.ts plays drink/fill and asks.
-//   Dying moves us to our bedroll or the ship on the server; the next reconciliation snaps there.
+//   Dying moves us to our bedroll or our pod on the server; the next reconciliation snaps there.
 // - Scrap: picked-up pieces are hidden (and lose their hitbox) as soon as we ask; the server sends the
 //   piece back to us if it refuses, and our new bag if it agrees.
 // - Items: moves between boxes (shared/items.ts) are applied at once with the server's own rules; its
@@ -649,11 +649,11 @@ export class Net {
     this.ws = ws;
     ws.onopen = () => {
       this.status = 'joining';
-      // ?spawn=ship / crash / field / shelter / canyon: start at the ship's ramp, the nearest crash site, scrap field,
+      // ?spawn=pod / crash / field / shelter / canyon: start beside your pod's hatch, the nearest crash site, scrap field,
       // shelter or canyon floor (only on the first join; a reconnect keeps where you are).
       const spawn = this.joinedOnce ? null : new URLSearchParams(location.search).get('spawn');
       const me = { t: 'hello', browserId: this.browserId, name: myName(), color: myColor(), look: myLook() } as const;
-      this.send(spawn === 'ship' || spawn === 'crash' || spawn === 'field' || spawn === 'shelter' || spawn === 'canyon' ? { ...me, spawn } : me);
+      this.send(spawn === 'pod' || spawn === 'crash' || spawn === 'field' || spawn === 'shelter' || spawn === 'canyon' ? { ...me, spawn } : me);
     };
     ws.onmessage = (e) => this.onMessage(JSON.parse(e.data) as ServerMsg);
     ws.onclose = (e) => {
@@ -745,7 +745,7 @@ export class Net {
     if (msg.t === 'respawn') {
       if (this.dying) this.fall(this.dying);
       this.down = null;
-      this.snapNext = true; // the next snapshot has us back at the bedroll or the ship: jump there, don't glide
+      this.snapNext = true; // the next snapshot has us back at the bedroll or our pod: jump there, don't glide
       return;
     }
     if (msg.t === 'wires') {

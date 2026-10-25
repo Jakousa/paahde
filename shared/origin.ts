@@ -1,6 +1,6 @@
 // The world's origin: the point every world's layout is measured from. Site levels go by the distance from it (shared/
-// crashsites.ts), and so do the scrap fields, the wrecks, the rocks' and canyons' keep-out, the shelters', the crashed ship's
-// spot (shared/shipSpot.ts), the flying wing's odds (server/jets.ts) and the walkers' tiers. Picked per seed: it's where the
+// crashsites.ts), and so do the scrap fields, the wrecks, the rocks' and canyons' keep-out, the shelters', the crashed pods'
+// spots (shared/podSpot.ts), the flying wing's odds (server/jets.ts) and the walkers' tiers. Picked per seed: it's where the
 // first players' bunker used to stand, and it stays put so every world keeps its layout.
 //
 // Same determinism rules as shared/dunes.ts: + - * /, Math.sqrt, Math.abs, Math.min/max only.
@@ -57,9 +57,3 @@ export function originClear(x: number, z: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** The dunes' height `h` at (x, z) as the layout first saw them, flattened into the bunker's pad round the origin: the
- *  crashed ship's spot was picked on these (shared/shipSpot.ts), and keeps it. Not the terrain: there's no pad now. */
-export function padLevel(x: number, z: number, h: number): number {
-  const w = originClear(x, z), y = ORIGIN.y - 0.06;
-  return w === 1 ? h : y + (h - y) * w;
-}

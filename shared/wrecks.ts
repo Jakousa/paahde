@@ -8,7 +8,7 @@ import { ORIGIN_FRONT, originClear } from './origin.ts';
 import { seeded, sitesNear } from './crash.ts';
 import { crashSitesNear, siteLevel } from './crashsites.ts';
 import { shelterWithin } from './shelters.ts';
-import { onShipGround } from './shipSpot.ts';
+import { onPodGround } from './podSpot.ts';
 import { rocksNear } from './rocks.ts';
 import { LAB } from './world.ts';
 import { SALVAGE, type SalvageId } from './salvage.ts';
@@ -54,7 +54,7 @@ function flatEnough(x: number, z: number): boolean {
 function clear(x: number, z: number): boolean {
   return flatEnough(x, z) && originClear(x, z) > 0.3 && !rocksNear(x, z, 4) &&
     sitesNear(x, z, 12).length === 0 && crashSitesNear(x, z, 30).length === 0 && !shelterWithin(x, z, 6) &&
-    !onShipGround(x, z, 6);
+    !onPodGround(x, z, 6);
 }
 
 const cache = new Map<string, Wreck | null>();

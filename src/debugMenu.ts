@@ -63,7 +63,7 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu):not(#artBench):not(#artBenc
 <button id="dbgLocalStorm" title="A sandstorm rolling in from upwind right now, only you see it (no heat)">Local sandstorm</button>
 <button id="dbgFront" title="A mega-storm front rolling in over everyone, 30 s to the first player">Storm front</button>
 <button id="dbgGas" title="Poison gas creeping in over everyone, 30 s to the first player (by day too)">Poison gas</button>
-<button id="dbgVortex" title="One more sand vortex, short-lived, spun up 600 m upwind of you or the first clear spot round the ship (for everyone)">Sand vortex</button>
+<button id="dbgVortex" title="One more sand vortex, short-lived, spun up 600 m upwind of you or the first clear spot round the pods (for everyone)">Sand vortex</button>
 <button id="dbgVortexVisit" title="Put you 600 m from the nearest sand vortex, just outside its pull">Go to vortex</button></div>
 <div class="row"><button id="dbgGuardian" title="The nearest guardian, brought 90 m from you (for everyone)">Guardian here</button>
 <button id="dbgDrone" title="A searchlight drone over you for a minute, even by day (for everyone)">Drone here</button>

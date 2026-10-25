@@ -4,9 +4,10 @@
 //   one, the starting bunker's spot (shared/base.ts BASE), the same point.
 // - BUNKER: the commit still has the starting bunker (shared/base.ts): home is the bunker (its workbench, table, chests
 //   and pump stand there, and the dead wake up in it).
-// - HOME: without the bunker, the agent settles at the shelter with a pump that lies near the crashed ship
-//   (shared/shelters.ts homeShelter: water at hand, cool inside), building its workbench, chest and dismantling bench
-//   by its door; SPAWN: where new players and the dead without a bedroll appear (shared/sim.ts spawnPoint).
+// - HOME: without the bunker, the agent settles by the crashed pods (SPAWN: where new players and the dead without a
+//   bedroll appear, shared/sim.ts spawnPoint, by a pod's hatch and its water tap), building its workbench, chest and
+//   dismantling bench there; in a commit with a shelter with a pump near where players arrive (shared/shelters.ts
+//   homeShelter, the crashed ship's), by that shelter's door.
 type Point = { x: number; z: number };
 type Spot = Point & { y: number };
 const b = (await import('../../shared/base.ts' as string).catch(() => null)) as { BASE?: Spot } | null;

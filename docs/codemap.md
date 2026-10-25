@@ -47,11 +47,15 @@ when you find it stale.
   there), passes `/ws?w=<id>&k=<key>` through to the world's process (4403 locked, 4429 full)
 - `server/world.ts` — authoritative game server for one world (forked per world, exits when empty); `server/db.ts` —
   SQLite; `server/scrap.ts` — scrap pickups, respawn
-- `shared/ship.ts` — the crashed ship players arrive at (new players and the dead without a bedroll appear at the foot
-  of its ramp: `shipSpawn`, `spawnPoint()` in shared/sim.ts): its pieces in the world, collision (`collideShip`), shade
-  casters, its starter machines (`shipSites`, ids `ship:<n>`, through shared/crash.ts) and loot spots (`SHIP_LOOT`,
-  server/loot.ts). Its spot (picked per world 40–60 m from the origin) and the furrow in the terrain: `shared/shipSpot.ts`;
-  model `tools/blender/ship.py` → `public/models/ship.glb` + generated `shared/shipModel.ts`; drawn by `src/world/ship.ts`
+- `shared/pods.ts` — the four crashed escape pods players arrive in (new players and the dead without a bedroll appear
+  beside the hatch of "their" pod, `podOf(browserId)`: `podSpawn`, `spawnPoint(n)` in shared/sim.ts): each pod in the
+  world (`podPlaces`), collision (`collidePods`), shade casters, the water tap on each hull (`atPodTap`, through
+  shared/wells.ts `waterAt`), a starter machine by each (`podSites`, ids `pod:<n>`, through shared/crash.ts) and loot
+  spots (`POD_LOOT`, server/loot.ts). Their spots (a cluster picked per world 37–67 m from the origin), the keep-clear
+  that hugs each hull (`nearPod`), the layout's keep-off (`onPodGround`) and the furrows in the terrain:
+  `shared/podSpot.ts`; model `tools/blender/pod.py` → `public/models/pod.glb` + generated `shared/podModel.ts` (one
+  model in four poses, a drogue chute behind one); drawn by `src/world/pods.ts`. Old worlds: `server/podsLanded.ts`
+  (once: things in a pod's way moved out, the first bike by the pods, the gone pump shelter's things back on the sand)
 - Bedrolls (`bedroll`, shared/placed.ts) and spawn points — each player has at most one spawn point, a bedroll
   (anyone's), where they wake up after dying (`homeOf` in server/world.ts; none: where players arrive). Laying a
   bedroll makes it yours; F on one toggles it (`spawnToggle`, server/placed.ts `toggleSpawn`; `spawns` table, browser
@@ -89,8 +93,8 @@ when you find it stale.
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`);
   pieces give one of the two basic materials, `scrap` or `cloth` (shared/items.ts `SCRAP`/`CLOTH`)
 - `shared/shelters.ts` — small empty bunkers (small/deep/long) scattered mostly in rocky country: placement, pad,
-  collision, pumps (`atWater`), stash spots, `indoors()`/`sandHidden()`; one small one with a pump
-  always within 140 m of the crashed ship (`homeShelter`); drawn by `src/world/shelters.ts`
+  collision, pumps (`atWater`), stash spots, `indoors()`/`sandHidden()`; none within 350 m of the origin; drawn by
+  `src/world/shelters.ts`
 
 ## Weather and survival
 
@@ -108,7 +112,7 @@ when you find it stale.
   shelters; chokes in `GAS_S` (`gassed` in server/world.ts); no effect on electronics. Client `src/gas.ts`, drawn in
   `src/post.ts`
 - `shared/vortex.ts` — sand vortices: a seeded field over the whole desert (3 km squares, some with a vortex circling
-  inside for ever on the wall clock, none near the ship), found near a point with `vorticesNear` (the server's
+  inside for ever on the wall clock, none near the pods), found near a point with `vorticesNear` (the server's
   `StormServer.vorticesNear` adds the debug menu's summoned ones; the clock's zero comes with the storms); faster heading
   downwind; the drag (`vortexPull`, fed to `step()` like the storm's push), death in the core (thrown high,
   server/world.ts), drones dragged in and torn apart (server/drones.ts `whirl`). Client `src/vortex.ts` (wind, grit) and
@@ -117,19 +121,18 @@ when you find it stale.
 
 ## Home, buildings and power
 
-There is no starting base: players arrive at the crashed ship (shared/ship.ts, above) and build what they need, anywhere.
+There is no starting base: players arrive in the crashed pods (shared/pods.ts, above) and build what they need, anywhere.
 Everything built is shared, and anyone can take a building down.
 
 - `shared/origin.ts` — the world's origin (`ORIGIN`, picked per seed: where the first bunker stood), which the layout is
-  measured from (site levels, the scrap fields, the ship's spot, keep-outs round the start, the flying wing's odds); it
-  stays put so every world keeps its layout. `originClear` is the ground round it the layout keeps clear, `padLevel` the
-  dunes as the ship's spot was picked on them (the terrain itself has no pad there now)
+  measured from (site levels, the scrap fields, the pods' spots, keep-outs round the start, the flying wing's odds); it
+  stays put so every world keeps its layout. `originClear` is the ground round it the layout keeps clear
 - `shared/capsules.ts` — vertical capsule collision (`collideCapsules`, the arch/vault helpers the shelters use) and the
   grid of 16 m cells holding everything put up (`setPlacedCapsules`, `collideOutdoor`, `overPlaced`: never dug), in
   world coordinates
 - `server/bunkerGone.ts` — once per world (settings `bunker_gone`): what was kept in the old bunker comes out (its chests
-  into new chests by the ship, the machine on its table, repair slots back to the bags, things on its floor back to
-  their owners or moved out onto the sand, players and vehicles in it to the ship)
+  into new chests by the spawn, the machine on its table, repair slots back to the bags, things on its floor back to
+  their owners or moved out onto the sand, players and vehicles in it to the spawn)
 - Buildings — the windmill, the battery station, the power pole, the beacon, the tarp, the well, the workbench, the
   dismantling bench and the chest, anywhere on the sand: put up with the wrench (made by hand; right mouse with it in
   hand opens the build menu, `src/buildMenu.ts`, placing in `src/placing.ts`)
@@ -137,7 +140,7 @@ Everything built is shared, and anyone can take a building down.
   as it goes up and all given back when it's dismantled (G with the wrench); never carried as items. The windmill and
   station are gear with part slots and quality (`shared/gear.ts` `built`), standing with their slots empty (bearings
   and motor, batteries fitted after), placed via `shared/placed.ts` (`sand` kinds: `gap` between them,
-  `STRUCTURE_GAP` from the shelters' huts, off the crashed ship (`nearShip`); where it goes by where you stand, `placeFloor`: the `floor` kinds also on a shelter's room floor,
+  `STRUCTURE_GAP` from the shelters' huts, `POD_GAP` (0.8 m) off a crashed pod's hull (`nearPod`); where it goes by where you stand, `placeFloor`: the `floor` kinds also on a shelter's room floor,
   `shelterRoomClear` in shared/shelters.ts; collision in shared/capsules.ts); while standing, the item is in box
   `bld<id>`, whose parts are swapped in place (F, `src/inventory.ts` `part:<box>`); drawn by `src/world/placed.ts` (lit
   by the sky or a shelter's fill, by where it stands; materials `src/world/glbMaterial.ts`), models
@@ -294,7 +297,7 @@ Everything built is shared, and anyone can take a building down.
 ## Rendering and performance
 
 - `src/world/heightShadow.ts` (dune shadows from the heightfield, not the shadow maps), `src/world/cascades.ts`
-  (cached cascades: redrawn only when needed; they hold only things: players, wrecks, the ship, bosses),
+  (cached cascades: redrawn only when needed; they hold only things: players, wrecks, the pods, bosses),
   `src/world/shadowLod.ts` (small casters left out of far cascades): see `docs/perf.md`
 - `src/perf.ts`, `tools/perf.ts` — CPU/GPU frame timing (stats graphs, User Timing for traces) and the automated
   benchmark run (`npm run perf`: waits for the game to be playable, walks a route, writes JSON + a Chrome trace to

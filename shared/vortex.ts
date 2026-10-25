@@ -4,10 +4,10 @@
 // downwind (the dunes' WIND) and labouring where it's heading into it, and never leaves the square. No count, no
 // list: the server and every client work out the ones near whatever they're looking at (vorticesNear) from the seed and
 // the wall clock (server time + `zero`, sent with the storms), so they agree, and a restart finds them where they were.
-// None roams a square that would bring it within SHIP_CLEAR of the world's origin (shared/origin.ts) or the ship.
+// None roams a square that would bring it within START_CLEAR of the world's origin (shared/origin.ts) or the crashed pods.
 //
 // The debug menu can also summon a short-lived one near you: that one drifts downwind at DRIFT m/s, swinging MEANDER m
-// to each side, kept KEEP_OUT from the origin and the ship (sliding round the edge, dying down if it heads deep in).
+// to each side, kept KEEP_OUT from the origin and the pods (sliding round the edge, dying down if it heads deep in).
 //
 // Gameplay: within PULL_R it drags you in and round (vortexPull, shared/sim.ts), too hard to walk out of past the
 // middle of that; a bike gets you out. Inside CORE_R you're dead, thrown high into the air (server/world.ts). Drones
@@ -15,7 +15,7 @@
 import { ORIGIN } from './origin.ts';
 import { WIND } from './dunes.ts';
 import { indoors } from './shelters.ts';
-import { SHIP_AT } from './shipSpot.ts';
+import { ARRIVAL } from './podSpot.ts';
 import { mulberry32 } from './noise.ts';
 import { CALM as LAB_OR_BENCH, WORLD_SEED } from './world.ts';
 
@@ -35,13 +35,13 @@ export type Vortex = {
 };
 
 /** The squares (m) the desert is cut into, and the odds that a vortex roams one (semi-rare: one per ~22 km²); the radius
- *  (m) one circles at; its speed round it (m/s); how far (m) they keep from the origin and the ship at the least; how
+ *  (m) one circles at; its speed round it (m/s); how far (m) they keep from the origin and the pods at the least; how
  *  much faster (and slower) one goes heading downwind (and into the wind), as a fraction. */
 const CELL = 3000;
 const CELL_ODDS = 0.4;
 const ORBIT_R: [number, number] = [400, 1000];
 const SPEED: [number, number] = [4, 7];
-const SHIP_CLEAR = 900;
+const START_CLEAR = 900;
 const WIND_SWAY = 0.5;
 /** The never of a roamer's `end` (ms). */
 export const NEVER = Number.MAX_SAFE_INTEGER;
@@ -65,7 +65,7 @@ function roamer(i: number, j: number, zero: number): Vortex | null {
     // Its circle (swelling to 1.25 r) stays inside the square.
     const m = r * 1.25 + 60;
     const x = i * CELL + m + rand() * (CELL - 2 * m), z = j * CELL + m + rand() * (CELL - 2 * m);
-    const near = AVOID.some((a) => Math.hypot(x - a.x, z - a.z) < SHIP_CLEAR + m);
+    const near = AVOID.some((a) => Math.hypot(x - a.x, z - a.z) < START_CLEAR + m);
     const speed = SPEED[0] + rand() * (SPEED[1] - SPEED[0]);
     if (!near) v = {
       id: ROAMER_ID + (key % 16_000_000), x: Math.round(x), z: Math.round(z), start: Math.round(zero), end: NEVER,
@@ -110,13 +110,13 @@ export const CORE_R = 55;
 export const PULL_MAX = 20;
 /** How much of the pull goes round it rather than in. */
 const SWIRL = 0.75;
-/** Its centre keeps this far (m) from the origin and the crashed ship. */
+/** Its centre keeps this far (m) from the origin and the crashed pods. */
 export const KEEP_OUT = PULL_R + 150;
-const AVOID = SHIP_AT ? [ORIGIN, SHIP_AT] : [ORIGIN];
+const AVOID = ARRIVAL ? [ORIGIN, ARRIVAL] : [ORIGIN];
 
 const PX = -WIND.z, PZ = WIND.x; // across the wind
 
-/** Where its wandering would take it at server time `t` (ms), before it's kept off the origin and the ship. */
+/** Where its wandering would take it at server time `t` (ms), before it's kept off the origin and the pods. */
 function wander<T extends { x: number; z: number }>(v: Vortex, t: number, out: T): T {
   const s = (t - v.start) / 1000;
   const o = v.roam;
@@ -138,7 +138,7 @@ function wander<T extends { x: number; z: number }>(v: Vortex, t: number, out: T
 }
 
 /** The vortex's centre at server time `t` (ms), written into `out`: its wandering, pushed out to KEEP_OUT from the origin
- *  and the ship when it strays nearer (sliding round the edge; one heading deep in has died down, vortexEnvelope). */
+ *  and the pods when it strays nearer (sliding round the edge; one heading deep in has died down, vortexEnvelope). */
 export function vortexCentre<T extends { x: number; z: number }>(v: Vortex, t: number, out: T): T {
   wander(v, t, out);
   let x = out.x, z = out.z;
@@ -163,7 +163,7 @@ const smooth = (x: number) => {
 const c = { x: 0, z: 0 };
 
 /** Its strength at server time `t`, 0..1: spinning up, dying down, and breaking up where its wandering would take it
- *  deep into the keep-out round the origin or the ship (so it never sweeps round the edge fast; it re-forms past it). */
+ *  deep into the keep-out round the origin or the pods (so it never sweeps round the edge fast; it re-forms past it). */
 export function vortexEnvelope(v: Vortex, t: number): number {
   let e = smooth((t - v.start) / RAMP_MS) * smooth((v.end - t) / RAMP_MS);
   if (e <= 0) return 0;

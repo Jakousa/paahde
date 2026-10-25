@@ -19,7 +19,7 @@ import { yawFromQ } from './sim.ts';
 import { ORIGIN_FRONT, originClear } from './origin.ts';
 import { rocksNear } from './rocks.ts';
 import { shelterWithin } from './shelters.ts';
-import { onShipGround } from './shipSpot.ts';
+import { onPodGround } from './podSpot.ts';
 import { cellInRange } from './cells.ts';
 import { mulberry32 } from './noise.ts';
 import { LAB } from './world.ts';
@@ -122,7 +122,7 @@ function generate(ix: number, iz: number): ScrapPiece[] {
     px = (ix + 0.1 + 0.8 * r()) * SCRAP_CELL;
     pz = (iz + 0.1 + 0.8 * r()) * SCRAP_CELL;
     ok = flatEnough(px, pz) && originClear(px, pz) > 0.3 && !rocksNear(px, pz, PILE_RADIUS + 2) &&
-      !shelterWithin(px, pz, PILE_RADIUS + 2) && !onShipGround(px, pz, PILE_RADIUS + 2);
+      !shelterWithin(px, pz, PILE_RADIUS + 2) && !onPodGround(px, pz, PILE_RADIUS + 2);
   }
   if (!ok) return NONE;
   const out: ScrapPiece[] = [];

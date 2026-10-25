@@ -24,7 +24,7 @@ const BOTS = Number(opt('bots', '8'));
 /** Seconds after everyone joined before the summons, and after the summons before measuring (they arrive, the bosses
  *  rise, the first deaths and the terrain's craters go out). */
 const SETTLE_S = 3, WARM_S = 4;
-/** Where each bot starts (the server's dev spawns; null: where new players start, at the ship or, in older commits, the bunker). */
+/** Where each bot starts (the server's dev spawns; null: where new players start, by the pods (the crashed ship before them) or, in older commits, the bunker). */
 const SPAWNS = [null, 'field', 'shelter', 'crash', 'field', null, 'shelter', 'canyon'] as const;
 /** shared/sim.ts input bits (fixed here: the driver must speak to old commits too). */
 const FORWARD = 1, LEFT = 4, RIGHT = 8, JUMP = 16, SLIDE = 256;

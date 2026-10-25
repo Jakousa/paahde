@@ -2,6 +2,45 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-25 — Crashed pods instead of the crashed ship
+
+The big cargo ship is gone; players come down in escape pods, one each.
+
+- **The pods** (`shared/pods.ts`, spots and furrows `shared/podSpot.ts`, model `tools/blender/pod.py` →
+  `public/models/pod.glb` + `shared/podModel.ts`, drawn by `src/world/pods.ts`): one-person drop pods (~3.9 m, 2.5 m
+  across) in the manner of a classic sci-fi model kit: a squat barrel of off-white and grey panels standing proud of a
+  dark core (the seams read as recessed), an orange band and red trim, small hatch outlines, reaction-control quads, a
+  sensor dish and whip antenna, a red beacon; at the back a dense ring of machinery (tanks, valves, boxes, grilles, pipes,
+  conduit hoops, a yellow hose snaking through) round four big flared nozzles. ~6.6k triangles. The side hatch is blown
+  open, its door hanging off the lower hinge.
+- **Four of them**, one model in four poses (`POD_POSES`: ploughed in, on its side, nose dug in, rolled), each half
+  sunk with a heap of sand round its nose and a 13 m furrow behind it in the terrain (`withPodFurrows` in
+  `baseHeight`); a drogue chute (orange and white gores, crumpled, one lobe still holding air) trails behind the one
+  dug in. Their spots: a cluster picked per world from eight round the origin, 52 m out, each pod 10–15 m from the
+  next, all come down the same way give or take, the cluster with the most even sand winning (pure arithmetic, so client
+  and server agree). Solid (two capsules each, read off the posed mesh by the script) and shady.
+- **Where you arrive**: beside the hatch of "your" pod, the same one every time (`podOf`, a hash of the browser ID on
+  the server, never sent); the dead without a bedroll come back there. The locator's home and the telescope's point to
+  the pods' middle (`ARRIVAL`). Dev spawn `?spawn=pod` (was `?spawn=ship`).
+- **Building by them**: what's kept clear hugs each hull by its capsules, 0.8 m (`nearPod`, `POD_GAP` in
+  shared/placed.ts); nothing else round the spawn is reserved. A workbench, a chest and a bedroll go down a couple of
+  metres from the hatch. The layout (scrap piles, wrecks) keeps off the pods and their furrows (`onPodGround`).
+- **Water at the pods**: each has an emergency water tank strapped above its hatch, a tap with a red wheel, its spout
+  dripping; the canteen fills there like at a pump (`atPodTap`, through shared/wells.ts `waterAt`), never dry. The
+  guaranteed pump shelter 90–140 m from the ship is gone: every shelter keeps 350 m from the origin again.
+- **What lies about them**: a starter machine by each (`podSites`, ids `pod:<n>`), and `POD_LOOT` (8 at a time:
+  scrap, cloth, wiring, a broken canteen, and a scrap-tier battery or bearing now and then, so the first bike runs
+  before there's a dismantling bench). The first broken motorcycle lies by the first pod.
+- **Speech**: "That pod won't fly again…" at the pods, by day or night.
+- **Old worlds** (`server/podsLanded.ts`, once): anything put up where a pod now lies moves out beside it (the chests
+  the bunker's removal put by the ship's ramp among them); everything on the sand sits on it again where the ship's
+  furrow was; the first bike, still broken where the ship left it, moves to the pods; what stood on the gone pump
+  shelter's floor stands on the sand over it (floor-only things back to their owners). The ship's carried machines
+  (`ship:<n>`) and its loot (key `ship`) are forgotten on their own.
+- **Economy sim**: home is by the pods (water at the tap); the pods are one known place with their machines and loot.
+  Older trees still find the ship (`tools/econsim/world.ts` looks it up). Against the ship: motorcycle 78 → 16 min,
+  workbench 19 → 13, canteen 26 → 20, dismantling bench 52 → 33, first deaths 29% → 21% of worlds.
+
 ## 2026-10-25 — Spawn points: any bedroll, toggled
 
 - Each player has at most one **spawn point**: a bedroll, or none (then you wake up where players arrive,

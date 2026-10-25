@@ -53,8 +53,8 @@ export type SpeechState = {
   boss: boolean;
   bag: Slots;
   dead: boolean;
-  /** By the crashed ship we arrived in (shared/ship.ts). */
-  atShip: boolean;
+  /** By a crashed pod, like the one we came down in (shared/pods.ts). */
+  atPod: boolean;
 };
 
 /** Events and what each one carries. `tick` is polled a couple of times a second, for remarks about the state. */
@@ -166,9 +166,9 @@ export const LINES: Line[] = [
   { id: 'dry', on: 'tick', when: (s) => !s.dead && s.maxSips > 0 && s.sips === 0 && s.heat > 40,
     say: TEXT.speech.dry, again: 4 * MIN },
 
-  // Places. The first look at the wreck we came down in, by day and by night.
-  { id: 'ship', on: 'tick', when: (s) => !s.dead && s.atShip && s.day, say: TEXT.speech.shipDay },
-  { id: 'ship', on: 'tick', when: (s) => !s.dead && s.atShip, say: TEXT.speech.shipNight },
+  // Places. The first look at the pod we came down in, by day and by night.
+  { id: 'pod', on: 'tick', when: (s) => !s.dead && s.atPod && s.day, say: TEXT.speech.podDay },
+  { id: 'pod', on: 'tick', when: (s) => !s.dead && s.atPod, say: TEXT.speech.podNight },
   { id: 'shelter', on: 'tick', when: (s) => s.shelter, say: TEXT.speech.shelter },
   { id: 'mudflat', on: 'tick', when: (s) => !s.dead && s.mudflat && s.day, say: TEXT.speech.mudflatDay },
   { id: 'mudflat', on: 'tick', when: (s) => !s.dead && s.mudflat, say: TEXT.speech.mudflatNight },

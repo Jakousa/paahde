@@ -1,5 +1,5 @@
 // Server side of vehicles (shared/vehicles.ts): the `vehicles` table, the broken motorcycles lying in the world (one
-// beside the crashed ship in a new world, HOME_BIKE; FINDS.motorcycle at the crash sites, a new one a while after one
+// by the first crashed pod in a new world, HOME_BIKE; FINDS.motorcycle at the crash sites, a new one a while after one
 // is stood up), standing one up once its part slots are filled (its item is in box veh<id>: parts are fitted there
 // like a building's, server/items.ts fit / unfit), and getting on and off: mount() puts the player on it at once
 // (shared/sim.ts riding), and whoever rides it carries it with them until they get off (or die, or leave), when it
@@ -88,7 +88,7 @@ export class VehicleServer {
     return v;
   }
 
-  /** The broken motorcycle beside the crashed ship, once in a world (HOME_BIKE). */
+  /** The broken motorcycle by the first crashed pod, once in a world (HOME_BIKE). */
   private spawnHome() {
     const { x, z } = homeBikeSpot();
     const parts = GEAR[KIND].slots.map((s) => ('part' in s && HOME_BIKE.fitted.includes(s.part) ? partKind(s.part, 'scrap') : null));

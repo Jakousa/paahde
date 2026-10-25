@@ -44,7 +44,7 @@ frames over 20 / 50 ms; startup milestones and long tasks; the graphics settings
 option (`--set shadows=false --set resScale=0.7`), `--label`, `--world <id>`, `--base <url>`, `--chrome <path>`, `--headless`.
 `--peaceful` turns off heat and weather once the game has joined (the debug menu's switches). `--software` runs without a graphics card (WebGPU hidden, WebGL2 drawn by SwiftShader on the CPU, as on a CI runner): far slower, its "GPU" times
 are the software rasterizer's, but the game's CPU time, draws, triangles and the startup timeline still mean something; the CI benchmarks use it (docs/bench.md).
-**Outdoor runs**: a new world starts at the crashed ship (its hull fills the view), so use `--spawn field|shelter` (the server's dev spawns: beside a scrap field, 6 m outside a shelter door), `--yaw 3.14` to turn round
+**Outdoor runs**: a new world starts by a crashed pod (its hull fills part of the view), so use `--spawn field|shelter` (the server's dev spawns: beside a scrap field, 6 m outside a shelter door), `--yaw 3.14` to turn round
 (the field spawn faces the field, which blocks the walk) and `--tod 0.26` for the time of day the run starts at (0.333 = 8 am, sun 28°; **0.26 = about 6 am, sun 8°, long shadows**; sunrise is
 ~5:30 and sunset ~18:30 here, so 5 am or 10 pm are dark). The clock then runs on (a day is 30 min). The walk is a very wide circle (about 100 m radius), 140-200 m in 30 s, with a sprint every
 other ten seconds. `--spawn crash` is beside a crash site's machine and its crawlers kill the player: use it to see what a death looks like in the data, not for numbers.
@@ -105,7 +105,7 @@ The first WebGL profiling run produced a timer-query warning; repeating with que
 The dunes are not in the shadow maps any more. For a grid round the player the GPU finds, per texel, the "shadow ceiling" S (the highest the ray to the
 sun has to clear) by doubling: one pass a frame looks 1, 2, 4 ... texels up-sun, so nothing thin is skipped; a point at height y is in the dunes' shadow when
 y < S. Edges are the clean contour y = S at any distance, without the stairs a low sun makes of shadow-map texels. Grids: 0.5 m round the player, 4 m and 9 m
-out to the terrain's edge (High); fewer and coarser on Low/Medium (graphics.ts SHADOW_QUALITY). The shadow maps keep players, wrecks, the ship and bosses, and
+out to the terrain's edge (High); fewer and coarser on Low/Medium (graphics.ts SHADOW_QUALITY). The shadow maps keep players, wrecks, the pods and bosses, and
 can now filter narrowly (1.5-2 texels, was 5-8); the terrain casts into them only near the shelters (their rooms are underground, roofed by it).
 Things learned on the way (all cost a debugging round): a render target sampled before it is first drawn into breaks every frame with "destroyed texture used in
 a submit" (the scene is not drawn at all: clear every target once after renderer.init); three clamps a node material's colour output at 0, so passes that
@@ -114,7 +114,7 @@ texel by texel (`.load`), not sampled. Spin runs at 1440p (`--route spin --spawn
 gave the two within run-to-run noise (98-135 fps for the same setting); the gain is the look, and ~100 fewer draw calls where the terrain no longer casts.
 
 Ultra (shadow quality 4th step): 5 cascades of 4096² out to 4.5 km (choosing it sets the shadow distance to the maximum), far cascades keep only big casters
-(a downed jet, a boss, the ship), dune grid 0.25 m / 1 m / 4.5 m. ~0.6 GB of GPU memory. The packed shadow ceiling gets a small tent filter, which takes the
+(a downed jet, a boss, the pods), dune grid 0.25 m / 1 m / 4.5 m. ~0.6 GB of GPU memory. The packed shadow ceiling gets a small tent filter, which takes the
 stair steps off rock outlines. Near the shelters the heightfield is skipped only where a point is in their reach, under their floor *and* under
 the drawn ground (dune valleys round a shelter can be lower than its floor). `npm run perf -- --shot --view 60` lifts the
 camera 60 m for the picture (fly camera, no HUD), looking away from the sun: the way to see shadows over a wide stretch.

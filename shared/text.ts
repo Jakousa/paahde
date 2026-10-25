@@ -118,7 +118,7 @@ const en = {
     well: () => 'Pumps up water while it has power, for the water bottle.',
   },
   /** Where placing is blocked: "Too close to the pump". */
-  spots: { pump: 'the pump', doorway: 'the doorway', shelter: 'the shelter', ship: 'the ship' },
+  spots: { pump: 'the pump', doorway: 'the doorway', shelter: 'the shelter', pod: 'the pod' },
 
   // ---- Prompts under the crosshair (after the key) ---------------------------------------------------------------
 
@@ -657,9 +657,9 @@ const en = {
     sip: ['Time for a sip.', 'My throat feels like sandpaper.'],
     dry: ["The bottle's empty. I need to find a pump.", 'Not a single drop left. Shit.'],
     shelter: "Somebody dug in here once. It's nice and cool.",
-    /** The first moments at the crashed ship we arrived in (shared/ship.ts), by day and by night. */
-    shipDay: ["Well, that thing won't fly again. I need water before the sun gets high.", "We're down. Now to find some water."],
-    shipNight: ["Well, that thing won't fly again. I'd better find water while it's cool."],
+    /** The first moments by the crashed pod we came down in (shared/pods.ts), by day and by night. */
+    podDay: ["That pod won't fly again. I need water before the sun gets high.", 'Down in one piece. Now to find some water.'],
+    podNight: ["That pod won't fly again. I'd better find water while it's cool."],
     /** First time out on a mud flat (shared/biomes.ts), by day and by night. */
     mudflatDay: 'A dried-up lake. The ground is even hotter than the air.',
     mudflatNight: "A dried-up lake. I wouldn't want to cross this by day.",

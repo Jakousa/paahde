@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DT, INPUT_MASK, spawnPoint, spawnState, step, TICK_RATE, YAW_STEPS, type PlayerState } from '../shared/sim.ts';
+import { podOf } from '../shared/pods.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bottleSips, equipped, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, isVehicle } from '../shared/gear.ts';
 import { carriedGear, gearTiers, wornGear } from '../shared/gearBits.ts';
@@ -35,6 +36,7 @@ import { trace } from './telemetry.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
 import { bunkerGone } from './bunkerGone.ts';
+import { podsLanded } from './podsLanded.ts';
 import { VehicleServer } from './vehicles.ts';
 import { vehicles } from '../shared/vehicles.ts';
 import { PowerServer } from './power.ts';
@@ -100,6 +102,7 @@ const crash = new CrashServer(db, (msg) => {
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
 bunkerGone(db, items, placedThings, beaten); // once: what was in the old bunker comes out (before the vehicles and the garden)
+podsLanded(db, items, placedThings); // once: nothing left in the pods' way, the first bike by them (before the vehicles)
 const vehicleSrv = new VehicleServer(db, items); // before the loot: it turns motorcycles dropped as items into vehicles
 const wiring = new WireServer(db, items); // after the placed list: it drops wires to things gone
 const garden = new GardenServer(db);
@@ -294,11 +297,13 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   const named = row?.name ? { ok: true as const, name: row.name } : checkName(typeof wanted === 'string' ? wanted.replace(/[\p{Cc}\p{Cf}]/gu, ' ') : wanted, PLAYER_NAME);
   if (!named.ok) return ws.close(4422, 'bad name');
   const color = row?.name ? row.color : isColor(wantedColor) ? wantedColor : (row?.color ?? Math.floor(Math.random() * 0xffffff));
-  // Where they left (heights aren't saved: on the sand there), or at the ship (the lab's floor in the dev test lab).
-  const atShip = spawn === 'ship';
-  let state = row && !atShip ? spawnState(row.x, row.z) : spawnState();
+  // Where they left (heights aren't saved: on the sand there), or beside their pod's hatch (the lab's floor in the dev
+  // test lab).
+  const atPod = spawn === 'pod';
+  const pod = spawnPoint(podOf(browserId));
+  let state = row && !atPod ? spawnState(row.x, row.z) : spawnState(pod.x, pod.z);
   // Someone who left in a shelter starts outside its door.
-  const left = row && !atShip && overShelter(row.x, row.z, 0.5) ? shelterAt(row.x, row.z) : null;
+  const left = row && !atPod && overShelter(row.x, row.z, 0.5) ? shelterAt(row.x, row.z) : null;
   if (left) state = spawnState(left.x + left.dx * 4, left.z + left.dz * 4);
   if (spawn === 'shelter') {
     // Dev helper: 6 m outside the door of the nearest shelter.
@@ -434,7 +439,7 @@ function shadeCasters(now: number): Caster[] {
 }
 
 // Heat builds up in the sun (server/water.ts); STROKE_S after the meter is full the player dies of heatstroke and respawns
-// at their bedroll or the ship, recovered.
+// at their bedroll or their pod, recovered.
 // The next snapshot carries the new position, which the client snaps to (src/net.ts reconcile).
 function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const now = Date.now();
@@ -536,10 +541,10 @@ function onStomped(p: Player, g: number) {
 }
 
 /** Where `p` comes back after dying: beside their spawn point, a bedroll (anyone's, server/placed.ts spawnOf), if they
- *  have one and it's still down; else where players arrive. */
+ *  have one and it's still down; else beside the hatch of the pod they first came down in (podOf). */
 function homeOf(p: Player): { x: number; y?: number; z: number } {
   const b = placedThings.spawnOf(p.browserId);
-  return b ? { x: b.x, y: b.y + 0.2, z: b.z } : spawnPoint();
+  return b ? { x: b.x, y: b.y + 0.2, z: b.z } : spawnPoint(podOf(p.browserId));
 }
 
 /** Tell `p` which bedroll is their spawn point (its lantern, the locator's home: src/world/placed.ts, src/locator.ts), or none. */
@@ -555,7 +560,7 @@ function onSpawnToggle(p: Player, id: unknown) {
   sendSpawn(p);
 }
 
-/** Back at their bedroll or the ship, cooled down, with a full canteen. */
+/** Back at their bedroll or their pod, cooled down, with a full canteen. */
 function respawn(p: Player) {
   p.down = null;
   const home = homeOf(p);
@@ -1306,7 +1311,7 @@ function send(ws: WebSocket, msg: ServerMsg) {
 }
 
 function save(p: Player) {
-  // Lying dead: they come back at their bedroll or the ship.
+  // Lying dead: they come back at their bedroll or their pod.
   const at = p.down ? homeOf(p) : p.state;
   // Play time counts only once they're in the game (ready), not on the loading screen.
   const now = Date.now();

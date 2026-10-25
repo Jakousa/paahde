@@ -23,7 +23,7 @@ import { collideJetWrecks } from './jetcrash.ts';
 import { bikeEngine, bikeTopSpeed } from './gear.ts';
 import { GUARDIAN, KINDS, LEG_POST_H, LEG_POST_R } from './guardians.ts';
 import { collideScrap } from './scrap.ts';
-import { collideShip, shipSpawn } from './ship.ts';
+import { collidePods, podSpawn } from './pods.ts';
 import { WIND } from './dunes.ts';
 import { heightAt, onRock } from './terrain.ts';
 
@@ -94,10 +94,10 @@ const HARD_LANDING = 13; // impact speed (m/s) above which a landing bogs you do
 const LAND_SLOW = 0.4; // speed factor right after a hard landing, recovering linearly
 const MAX_LAND_TICKS = 24;
 
-/** Where new players start: at the foot of the crashed ship's ramp (shared/ship.ts); in the dev test lab, which has no
- *  ship, on its floor looking at the machines (shared/lab.ts). */
-export function spawnPoint(): { x: number; z: number } {
-  return shipSpawn() ?? LAB_SPAWN;
+/** Where new players start: beside the hatch of crashed pod `n` (shared/pods.ts; mod the number of pods: podOf picks a
+ *  player's); in the dev test lab, which has no pods, on its floor looking at the machines (shared/lab.ts). */
+export function spawnPoint(n = 0): { x: number; z: number } {
+  return podSpawn(n) ?? LAB_SPAWN;
 }
 
 export type PlayerState = {
@@ -371,7 +371,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   c.vx = vx;
   c.vz = vz;
   const scrapTop = Math.max(collideScrap(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideCrash(c, y, s.y, PLAYER_RADIUS, STEP_UP),
-    collideMachines(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideJetWrecks(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideShip(c, y, s.y, PLAYER_RADIUS, STEP_UP));
+    collideMachines(c, y, s.y, PLAYER_RADIUS, STEP_UP), collideJetWrecks(c, y, s.y, PLAYER_RADIUS, STEP_UP), collidePods(c, y, s.y, PLAYER_RADIUS, STEP_UP));
   const builtTop = Math.max(collideShelter(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP, s.x, s.z),
     collideOutdoor(c, y, s.y, PLAYER_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, y, PLAYER_RADIUS, legs);
@@ -510,7 +510,7 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
   const airborneY = s.y + (vy + GRAVITY * DT) * DT;
   const scrapTop = Math.max(collideScrap(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideCrash(c, airborneY, s.y, BIKE_RADIUS, STEP_UP),
     collideMachines(c, airborneY, s.y, BIKE_RADIUS, STEP_UP), collideJetWrecks(c, airborneY, s.y, BIKE_RADIUS, STEP_UP),
-    collideShip(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
+    collidePods(c, airborneY, s.y, BIKE_RADIUS, STEP_UP));
   const builtTop = Math.max(collideShelter(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP, s.x, s.z),
     collideOutdoor(c, airborneY, s.y, BIKE_RADIUS, PLAYER_HEIGHT, STEP_UP));
   if (legs.length) collideLegs(c, airborneY, BIKE_RADIUS, legs);

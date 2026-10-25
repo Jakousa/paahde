@@ -132,7 +132,7 @@ export class StormServer {
   }
 
   /** Debug menu: a sand vortex already spun up within sight of (x, z): `ahead` m upwind of it if its path from there stays
-   *  clear of the base and the ship for a few minutes, else on the first clear spot round them (you start there). */
+   *  clear of the base and the pods for a few minutes, else on the first clear spot round them (you start there). */
   summonVortex(x: number, z: number, ahead: number, now: number) {
     const tries: [number, number][] = [[x - WIND.x * ahead, z - WIND.z * ahead]];
     for (let i = 0; i < 12; i++) {

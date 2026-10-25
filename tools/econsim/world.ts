@@ -8,14 +8,27 @@ import { machinesAt } from '../../shared/crash.ts';
 import { CRASH_KINDS } from '../../shared/crashKinds.ts';
 import { coreCrashSites, siteLevel, type CrashSite, type LootLevel, type SiteLevel } from '../../shared/crashsites.ts';
 import { debrisItem, scrapItem } from '../../shared/items.ts';
-import { cacheContents, cacheSpot, findContents, findSpot, nearPiles, shelterStash, shipFind, shipFindSpot, type Drop, type Rand } from '../../shared/lootRoll.ts';
-import { SHIP_AT, shipSites } from '../../shared/ship.ts';
+import * as lootRoll from '../../shared/lootRoll.ts';
+import { cacheContents, cacheSpot, findContents, findSpot, nearPiles, shelterStash, type Drop, type Rand } from '../../shared/lootRoll.ts';
 import { SCRAP_CELL, scrapPieces } from '../../shared/scrap.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { sheltersNear, shelterLootSpot } from '../../shared/shelters.ts';
-import { CACHES, FINDS, RARE_FINDS, SHELTER_STASHES, SHIP_LOOT } from '../../shared/tables.ts';
+import * as tables from '../../shared/tables.ts';
+import { CACHES, FINDS, RARE_FINDS, SHELTER_STASHES } from '../../shared/tables.ts';
 import { CORE_HALF } from '../../shared/terrain.ts';
 import { wrecksNear } from '../../shared/wrecks.ts';
+
+// Where players arrive (this file also runs against older commits, cli.ts --base: what they may not have is looked up,
+// not imported): the crashed pods (shared/pods.ts: their middle, their machines, POD_LOOT), or in a commit from before
+// them the crashed ship (shared/ship.ts SHIP_AT, shipSites, SHIP_LOOT), or neither (the bunker).
+type Arrival = { at: { x: number; z: number } | null; sites: () => { kind: string; seed: number }[] };
+const podsMod = (await import('../../shared/pods.ts' as string).catch(() => null)) as { ARRIVAL: Arrival['at']; podSites: Arrival['sites'] } | null;
+const shipMod = podsMod ? null : (await import('../../shared/ship.ts' as string).catch(() => null)) as { SHIP_AT: Arrival['at']; shipSites: Arrival['sites'] } | null;
+const ARRIVE: Arrival = podsMod ? { at: podsMod.ARRIVAL, sites: podsMod.podSites } : shipMod ? { at: shipMod.SHIP_AT, sites: shipMod.shipSites } : { at: null, sites: () => [] };
+const rolls = lootRoll as unknown as Record<string, (rand: Rand) => unknown>;
+const arriveFind = (rolls.podFind ?? rolls.shipFind) as (rand: Rand) => Drop;
+const arriveFindSpot = (rolls.podFindSpot ?? rolls.shipFindSpot) as (rand: Rand) => unknown;
+const ARRIVE_LOOT = ((tables as Record<string, unknown>).POD_LOOT ?? (tables as Record<string, unknown>).SHIP_LOOT ?? { n: 0 }) as { n: number };
 
 /** Server timers (server/loot.ts, server/scrap.ts, server/crash.ts, shared/corpse.ts), s. */
 const FIND_BACK = 3 * 60, CACHE_BACK = 60, SCRAP_BACK = 30 * 60, DEBRIS_BACK = 30 * 60, WRECK_BACK = 45 * 60, STARTER_BACK = 20 * 60;
@@ -55,7 +68,7 @@ export type Poi = {
   hunt?: EnemyKind;
 };
 
-type Pending = { at: number; what: 'find' | 'cache' | 'stash' | 'ship'; kind: string };
+type Pending = { at: number; what: 'find' | 'cache' | 'stash' | 'pod'; kind: string };
 
 export class World {
   readonly pois: Poi[] = [];
@@ -64,8 +77,8 @@ export class World {
   private sites: CrashSite[];
   private piles = nearPiles();
   private shelters: Poi[] = [];
-  /** The crashed ship players arrive at (shared/ship.ts): its starter machines and what lies about it. */
-  private ship: Poi | null = null;
+  /** The crashed pods players arrive in (shared/pods.ts), as one place: their starter machines and what lies about it. */
+  private pods: Poi | null = null;
   private mudCache = new Map<string, boolean>();
   private rand: Rand;
 
@@ -105,11 +118,11 @@ export class World {
         p.things.push(this.thing(shelterStash(this.rand), 'stash'));
       }
     }
-    if (SHIP_AT) {
-      const p = (this.ship = this.poi('wreck', SHIP_AT.x, SHIP_AT.z));
+    if (ARRIVE.at) {
+      const p = (this.pods = this.poi('wreck', ARRIVE.at.x, ARRIVE.at.z));
       p.known = true; // (where you start)
-      for (const m of shipSites()) p.machines.push({ kind: m.kind, seed: m.seed, level: 0, carry: true, backAt: 0, respawn: STARTER_BACK });
-      for (let i = 0; i < SHIP_LOOT.n; i++) this.spawnShip();
+      for (const m of ARRIVE.sites()) p.machines.push({ kind: m.kind, seed: m.seed, level: 0, carry: true, backAt: 0, respawn: STARTER_BACK });
+      for (let i = 0; i < ARRIVE_LOOT.n; i++) this.spawnPod();
     }
     for (const [kind, f] of Object.entries(FINDS)) for (let i = 0; i < f.n; i++) this.spawnFind(kind);
     for (let i = 0; i < RARE_FINDS.n; i++) this.spawnFind('rare');
@@ -170,11 +183,11 @@ export class World {
     this.poi('loot', x, z).things.push(this.thing(findContents(kind, this.rand), kind === 'rare' ? 'rare find' : 'find'));
   }
 
-  /** Scrap, cloth or a broken canteen about the ship (server/loot.ts rolls the thing, then its spot). */
-  private spawnShip() {
-    const d = shipFind(this.rand);
-    shipFindSpot(this.rand);
-    this.ship!.things.push(this.thing(d, 'ship'));
+  /** Scrap, cloth, wiring, a broken canteen or a bike part about the pods (server/loot.ts rolls the thing, then its spot). */
+  private spawnPod() {
+    const d = arriveFind(this.rand);
+    arriveFindSpot(this.rand);
+    this.pods!.things.push(this.thing(d, 'pod'));
   }
 
   private spawnCache() {
@@ -197,7 +210,7 @@ export class World {
     if (t.src === 'find' || t.src === 'rare find') this.pending.push({ at: now + FIND_BACK, what: 'find', kind: t.src === 'rare find' ? 'rare' : t.kind });
     else if (t.src === 'cache') this.pending.push({ at: now + CACHE_BACK, what: 'cache', kind: '' });
     else if (t.src === 'stash') this.pending.push({ at: now + FIND_BACK, what: 'stash', kind: '' });
-    else if (t.src === 'ship') this.pending.push({ at: now + FIND_BACK, what: 'ship', kind: '' });
+    else if (t.src === 'pod') this.pending.push({ at: now + FIND_BACK, what: 'pod', kind: '' });
   }
 
   /** Bring back what's due, drop what's expired. */
@@ -207,7 +220,7 @@ export class World {
     for (const q of due) {
       if (q.what === 'find') this.spawnFind(q.kind);
       else if (q.what === 'cache') this.spawnCache();
-      else if (q.what === 'ship') this.spawnShip();
+      else if (q.what === 'pod') this.spawnPod();
       else {
         // The shelter furthest short of its stashes (shared/lootRoll.ts stashSpot, by counts).
         const s = this.shelters.reduce((a, b) => (b.things.length < a.things.length ? b : a));

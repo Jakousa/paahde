@@ -6,7 +6,7 @@
 // the sun (shared/sun.ts) and is tested against:
 // - the shelters' huts (shared/shelters.ts, as boxes) within HUT_DIST;
 // - crash-site wrecks and debris (their collision capsules, shared/crashsites.ts) within CRASH_DIST, and the crashed
-//   ship's (shared/ship.ts);
+//   pods' (shared/pods.ts);
 // - tarps (shared/tarp.ts) within TARP_DIST: their canvas, as a fan of triangles from the peak to the rim;
 // - `casters`: things that move, passed in by the caller: other players, their bikes, motorcycles lying on the sand;
 // - near the start, the scrap piles' hitboxes (shared/scrap.ts);
@@ -22,7 +22,7 @@ import { crashTaken, crashSitesNear, pieceY, type CrashSite } from './crashsites
 import { EYE_HEIGHT, MAX_EDIT_MM } from './dig.ts';
 import { scrapPieces, scrapTaken, SCRAP_CELL, type ScrapPiece } from './scrap.ts';
 import { S_HUT, sheltersNear, shelterHutRect } from './shelters.ts';
-import { shipCasters } from './ship.ts';
+import { podCasters } from './pods.ts';
 import { DECL, skyVector, sunHourAngle, type Vec3 } from './sun.ts';
 import { ROCK_H_MAX } from './rocks.ts';
 import { placed, TARP, type Placed } from './placed.ts';
@@ -222,7 +222,7 @@ function rayClear(x: number, y: number, z: number, d: Vec3, sites: CrashSite[], 
     if (hitsPrism(x, y, z, d, c.x, c.z, c.ax, c.az, c.half, c.r, c.y0, c.y1)) return false;
   }
   if (sites.length && hitsCrash(sites, x, y, z, d)) return false;
-  for (const c of shipCasters(x, z, CRASH_DIST)) {
+  for (const c of podCasters(x, z, CRASH_DIST)) {
     if (hitsPrism(x, y, z, d, c.x, c.z, c.ax, c.az, c.half, c.r, c.y - 0.5, c.top)) return false;
   }
   let cell = NaN, pieces: ScrapPiece[] = [];

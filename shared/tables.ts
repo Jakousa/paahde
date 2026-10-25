@@ -240,17 +240,19 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
   receiver_worm: { n: 1, level: 2 },
 };
 
-/** One broken motorcycle lies on the sand beside the crashed ship in a new world (server/vehicles.ts,
+/** One broken motorcycle lies on the sand by the first crashed pod in a new world (server/vehicles.ts,
  *  shared/lootRoll.ts homeBikeSpot), so a bike is in sight from the first step out: it has these slots fitted (scrap
- *  tier) and the rest are parts the scrap fields' starter machines give (battery: beacon, bearing: winch). Repaired
+ *  tier) and the rest are parts the scrap fields' starter machines give (battery: beacon, bearing: winch), or that lie
+ *  about the pods now and then (POD_LOOT). Repaired
  *  where it lies, it is the world's (everyone's) first bike. */
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
-/** Lying about the crashed ship players arrive at (shared/ship.ts, server/loot.ts): how many things at once, each one
- *  of these by relative odds (a broken canteen: shared/gear.ts; wiring torn out of its hold, enough before long for the first
- *  workbench and dismantling bench, which carried machines need before they give any); taken, another lies there a few
+/** Lying about the crashed pods players arrive in (shared/pods.ts, server/loot.ts): how many things at once, each one
+ *  of these by relative odds (a broken canteen: shared/gear.ts; wiring torn out of them, enough before long for the first
+ *  workbench and dismantling bench, which carried machines need before they give any; a battery or a bearing, scrap
+ *  tier, which the first bike lacks, so it can run before there's a dismantling bench); taken, another lies there a few
  *  minutes later. */
-export const SHIP_LOOT = { n: 6, contents: { scrap: 0.42, cloth: 0.3, wiring: 0.13, canteen: 0.15 } };
+export const POD_LOOT = { n: 8, contents: { scrap: 0.34, cloth: 0.24, wiring: 0.18, canteen: 0.1, battery: 0.16, bearing: 0.08 } };
 
 /** Parts that only an engine gives (nothing uses them yet): never found loose. */
 const ROTORS: PartId[] = ['fanrotor', 'comprotor', 'turbinerotor', 'turbinedisc', 'fuelmanifold'];

@@ -3,14 +3,14 @@
 // players behind you pin to its ends, dimmed. Dots shrink with distance, and an arrow marks players
 // well above or below your view. Close players (name tag in view) get no dot. Home gets a house-shaped marker the
 // same way, so you can always find your way back (except in a sandstorm): your bedroll if you've laid one out (where you
-// wake up after dying, shared/placed.ts), else the crashed ship (shared/ship.ts). Salvage
+// wake up after dying, shared/placed.ts), else the crashed pods (shared/pods.ts). Salvage
 // wrecks lying within a few hundred metres (src/world/wrecks.ts) get a diamond, and the packs the dead left
 // (src/world/corpses.ts) a little flag in the rag's colour, however far, and your own bikes (src/world/vehicles.ts) two
 // wheels under a bar in your colour, however far.
 import type * as THREE from 'three/webgpu';
 import { LAB_SPAWN } from '../shared/lab.ts';
 import { heightAt } from '../shared/terrain.ts';
-import { SHIP_AT, shipPoint } from '../shared/ship.ts';
+import { ARRIVAL } from '../shared/podSpot.ts';
 
 const NEAR = 25; // m: closer than this, no dot (fades in over the next FADE metres)
 const FADE = 10;
@@ -19,9 +19,10 @@ const ELEVATION = 0.35; // rad off the view's pitch before the up/down arrow sho
 export type LocatorTarget = { id: number; color: number; x: number; y: number; z: number; shape?: 'wreck' | 'flag' | 'bike' };
 
 const HOME_ID = -1; // player ids are positive
-/** The crashed ship's middle (where you start in the dev lab, which has no ship). Worked out on first use (the terrain). */
-let ship: { x: number; y: number; z: number } | null = null;
-const SHIP = () => (ship ??= SHIP_AT ? { x: SHIP_AT.x, y: shipPoint('door').y, z: SHIP_AT.z } : { ...LAB_SPAWN, y: heightAt(LAB_SPAWN.x, LAB_SPAWN.z) });
+/** The middle of the crashed pods, where players arrive (where you start in the dev lab, which has none). Worked out on
+ *  first use (the terrain). */
+let pods: { x: number; y: number; z: number } | null = null;
+const PODS_HOME = () => (pods ??= ARRIVAL ? { ...ARRIVAL, y: heightAt(ARRIVAL.x, ARRIVAL.z) + 2 } : { ...LAB_SPAWN, y: heightAt(LAB_SPAWN.x, LAB_SPAWN.z) });
 
 const css = `
 #locator { position: fixed; left: 50%; bottom: 70px; width: min(480px, 70vw); height: 6px;
@@ -67,7 +68,7 @@ export class LocatorBar {
   update(camera: THREE.PerspectiveCamera, yaw: number, pitch: number, me: { x: number; y: number; z: number }, players: LocatorTarget[]) {
     const halfH = Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
     const seen = new Set<number>();
-    const home = this.bedroll ?? SHIP();
+    const home = this.bedroll ?? PODS_HOME();
     for (const p of [...players, { id: HOME_ID, color: 0xf2e6c8, x: home.x, y: home.y, z: home.z }]) {
       const isHome = p.id === HOME_ID;
       const dx = p.x - me.x, dy = p.y - me.y, dz = p.z - me.z;
