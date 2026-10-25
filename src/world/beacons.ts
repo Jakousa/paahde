@@ -88,10 +88,10 @@ function mergeAll(geos: THREE.BufferGeometry[]): THREE.BufferGeometry {
   return out;
 }
 
-/** The lens's colour while lit (bright: it blooms), and dark. */
+/** The lens's colour while lit (bright: it blooms), and dark: tinted glass, so R's next colour shows without power too. */
 export function lensColor(color: number | undefined, lit: boolean, out: THREE.Color): THREE.Color {
-  if (!lit) return out.setHex(0x1a1c1e);
-  return out.setHex(BEACON_COLORS[color ?? 0] ?? BEACON_COLORS[0]).multiplyScalar(3);
+  out.setHex(BEACON_COLORS[color ?? 0] ?? BEACON_COLORS[0]);
+  return lit ? out.multiplyScalar(3) : out.multiplyScalar(0.08);
 }
 
 /** Every lit beacon's beam, in one draw. */
