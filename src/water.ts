@@ -15,6 +15,7 @@ import { PISTOL, RIFLE } from '../shared/rifle.ts';
 import { JAMMER } from '../shared/jammer.ts';
 import { receiverBoss, type BossKind } from '../shared/bosses.ts';
 import { THROWABLE } from '../shared/throw.ts';
+import { MACE } from '../shared/mace.ts';
 import { HOTBAR_ACTIONS, isBound, kbd } from './bindings';
 import { tools, useHeld } from './input';
 import { rumble } from './gamepad';
@@ -31,14 +32,15 @@ import { TEXT } from '../shared/text.ts';
  * What the first-person hands are doing, for the viewmodel (src/viewmodel.ts). `drinking` / `filling`
  * are true for the whole sip / refill action.
  */
-export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer' | 'receiver' | 'scrap' | 'grinder' | 'wrench';
+export type Held = 'none' | 'canteen' | 'telescope' | 'rifle' | 'pistol' | 'jammer' | 'receiver' | 'scrap' | 'grinder' | 'wrench' | 'mace';
 /** `tier`: how good the item in hand is (shared/gear.ts tierOf), for its look (src/tierLook.ts).
  *  `looking`: spyglass being raised or at the eye; `scoped`: at the eye, view zoomed (hands hidden).
- *  `throwAt`: when the last throw of scrap started (performance.now(), src/throw.ts), for the hands' throw. */
+ *  `throwAt`: when the last throw of scrap started (performance.now(), src/throw.ts), for the hands' throw; `swingAt`:
+ *  when the last swing of the mace started (src/mace.ts), for the hands' swing. */
 /** Rifle or pistol (src/rifle.ts): `aim` 0..1 raised to the eye, `rifleScoped` looking through its scope (hands hidden), `kick`
  *  the recoil to show (1 on firing, decaying), `charge` the cell 0..1 (1: ready to fire). */
 export const playerHands = {
-  held: 'none' as Held, tier: 1, throwAt: 0, drinking: false, filling: false, looking: false, scoped: false,
+  held: 'none' as Held, tier: 1, throwAt: 0, swingAt: 0, drinking: false, filling: false, looking: false, scoped: false,
   aim: 0, rifleScoped: false, kick: 0, charge: 1,
   /** The jammer's lamp (src/jammer.ts), 0 dark .. 1 fully lit. */
   jamLamp: 0,
@@ -257,7 +259,7 @@ export class Survival {
     const it = this.net.boxes.bag?.[this.selected];
     const kind = it?.kind;
     // A broken telescope or gun is just junk in the hand; a broken bottle still shows (it holds no water).
-    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : kind === 'grinder' ? 'grinder' : kind === 'wrench' ? 'wrench' : receiverBoss(kind) ? 'receiver' : kind && THROWABLE.has(kind) ? 'scrap' : 'none';
+    const held = kind === 'canteen' ? 'canteen' : kind === 'spyglass' && repaired(it) ? 'telescope' : kind === RIFLE && repaired(it) ? 'rifle' : kind === PISTOL && repaired(it) ? 'pistol' : kind === JAMMER && repaired(it) ? 'jammer' : kind === 'grinder' ? 'grinder' : kind === 'wrench' ? 'wrench' : kind === MACE ? 'mace' : receiverBoss(kind) ? 'receiver' : kind && THROWABLE.has(kind) ? 'scrap' : 'none';
     if (held !== playerHands.held) this.cancel();
     playerHands.held = held;
     playerHands.tier = tierOf(it);

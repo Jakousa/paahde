@@ -35,7 +35,7 @@ import { CORPSE_S, World, type Poi, type Source, type Thing } from './world.ts';
  *  crafted, the chest and the bedroll (commits from before these were built skip them, and with the bunker standing the
  *  chest, the bedroll and the bench are its: OPEN_GOALS). */
 const GOALS = [
-  'wrench', 'dismantle_bench', 'workbench', 'canteen', 'bedroll', 'backpack', 'laser_pistol', 'motorcycle', 'storage_chest', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
+  'wrench', 'dismantle_bench', 'workbench', 'canteen', 'bedroll', 'scrap_mace', 'backpack', 'laser_pistol', 'motorcycle', 'storage_chest', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
   'grinder', 'receiver_colossus', 'boss:colossus', 'receiver_queen', 'boss:queen', 'receiver_carrier', 'boss:carrier', 'receiver_worm', 'boss:worm',
   'windmill', 'battery_station', 'well',
 ] as const;
@@ -52,6 +52,8 @@ const SMITHED: Partial<Record<PartId, string>> = { gear: 'gear_scrap', bearing: 
 /** The buildings put up with the wrench (shared/crafting.ts), none before there were. */
 const BUILDS: Record<string, Recipe> = (crafting as { BUILDS?: Record<string, Recipe> }).BUILDS ?? {};
 const WRENCH = 'wrench';
+/** The scrap mace (shared/mace.ts), made by hand; none before there was (HAND). */
+const MACE = 'scrap_mace';
 /** Made by hand anywhere, no workbench needed (shared/crafting.ts), none before there were. */
 const HAND: Record<string, Recipe> = (crafting as { HAND_RECIPES?: Record<string, Recipe> }).HAND_RECIPES ?? {};
 /** The workbench is a building put up with the wrench (shared/crafting.ts BUILDS); before, it stood in the bunker. */
@@ -195,6 +197,8 @@ export class Sim {
       const g = this.carried(k);
       if (g) return { w: k === 'laser_rifle' ? 'rifle' : 'pistol', q: quality(g), jam };
     }
+    // The scrap mace (made by hand, shared/mace.ts): taken along once there is one (it isn't gear, so isn't packed).
+    if (this.gearOf(MACE).length) return { w: 'mace', q: 0, jam };
     return { w: 'none', q: 0, jam };
   }
   private odds(kind: EnemyKind) {

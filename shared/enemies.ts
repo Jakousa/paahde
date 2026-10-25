@@ -9,8 +9,8 @@ import type { LootLevel } from './crashsites.ts';
 import type { JetKind } from './jetbreak.ts';
 import { bossDrops, harvesterDrops, jetDrops, killDrops, type Drop, type Rand } from './lootRoll.ts';
 
-/** The best gun you carry. */
-export type Weapon = 'none' | 'pistol' | 'rifle';
+/** The best gun you carry, else the scrap mace (shared/mace.ts). */
+export type Weapon = 'none' | 'mace' | 'pistol' | 'rifle';
 
 export type Fight = {
   /** How long one takes (s). */
@@ -53,7 +53,8 @@ export type Enemy = {
 
 export type EnemyKind = 'crawler' | 'guardian' | 'drone' | 'jet' | 'harvester' | BossKind;
 
-const odds = (none: number, pistol: number, rifle: number): Record<Weapon, number> => ({ none, pistol, rifle });
+/** The mace is no better than bare hands but against crawlers, the one thing it can reach. */
+const odds = (none: number, pistol: number, rifle: number, mace = none): Record<Weapon, number> => ({ none, mace, pistol, rifle });
 
 /** A boss: called with its receiver, a long fight that wants the rifle. */
 const boss = (kind: BossKind): Enemy => ({
@@ -72,7 +73,7 @@ export const ENEMIES: Record<EnemyKind, Enemy> = {
   crawler: {
     n: [1, 4],
     meet: [{ at: 'site', levels: [0.5, 1, 2], odds: 1, backS: PACK_BACK_S }],
-    fight: { seconds: odds(40, 60, 40), win: odds(0, 0.85, 0.97), death: odds(0.2, 0.08, 0.03), quality: 0.2 },
+    fight: { seconds: odds(40, 60, 40, 50), win: odds(0, 0.85, 0.97, 0.6), death: odds(0.2, 0.08, 0.03, 0.15), quality: 0.2 },
     drops: (rand) => killDrops('crawler', rand),
   },
   // The giant guardians: GUARDIANS (6) roam guardian ground's sites (server/guardians.ts), crossing your path out there now and then.

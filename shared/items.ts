@@ -77,6 +77,8 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   trophy_queen: { label: TEXT.items.trophy_queen, stack: 1 },
   // The build tool (crafted by hand): with it in hand, the right mouse opens the build menu (src/buildMenu.ts).
   wrench: { label: TEXT.items.wrench, stack: 1 },
+  // A club of scrap (crafted by hand): swung at crawlers (shared/mace.ts).
+  scrap_mace: { label: TEXT.items.scrap_mace, stack: 1, size: [1, 2] },
   // The guns (shared/rifle.ts) and the jammer are gear: found broken, repaired at the workbench.
   laser_rifle: { label: TEXT.items.laser_rifle, stack: 1, size: [4, 1] },
   laser_pistol: { label: TEXT.items.laser_pistol, stack: 1, size: [2, 1] },
@@ -106,7 +108,7 @@ const ORDER = Object.keys(ITEMS);
 export const RETIRED = new Set(['shovel', 'metal_detector']);
 
 /** Used from the hotbar (held in hand): Store all leaves these in the bag. Placeables (shared/placed.ts) stay too. */
-export const TOOLS = new Set(['canteen', 'spyglass', 'laser_rifle', 'laser_pistol', 'jammer', 'grinder', 'wrench',
+export const TOOLS = new Set(['canteen', 'spyglass', 'laser_rifle', 'laser_pistol', 'jammer', 'grinder', 'wrench', 'scrap_mace',
   'receiver_carrier', 'receiver_queen', 'receiver_colossus', 'receiver_worm']);
 
 /** Every item fits a grid this many rows tall once turned (its smaller side): the smallest backpack's rows

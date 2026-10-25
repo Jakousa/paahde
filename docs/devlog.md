@@ -2402,3 +2402,21 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   walking straight away 97% (the overshoot catches you); strafing round at 7.5 m/s 42%; zig-zagging 67%. Move across
   its line, not away from it. A first version crept in while crouched and locked from 0–2 m, which no strafe dodges;
   it holds still now.
+
+
+## The scrap mace
+
+- **What:** a club made by hand from 6 scrap (`shared/tables.ts` HAND_TABLE `scrap_mace`, no bench needed): the weapon
+  you have before any gun. With it out from the hotbar the use button swings it (`src/mace.ts`): the hands wind up and
+  the blow lands `MACE_STRIKE_MS` after the press on whatever is in front of the eye within `MACE_REACH` (2.4 m), tested
+  against the walkers as drawn along a small fan of rays (so a crawler at your feet still counts) and the sand.
+- **Damage:** a crawler struck loses its flank lens nearest the blow (`Guardians.smashPoint`), so two blows kill one;
+  a guardian's leg only clangs and angers it. The server (`onSwing`, `GuardianServer.smash`) checks the mace in hand,
+  the rate (`MACE_MS`) and that the walker is within `MACE_REACH + MACE_SLACK` of the swinger (crawlers run fast and
+  are drawn in the past), then breaks the point the way a shot does (shared `strike`). Others hear it ('swing').
+- **Look:** `src/models/mace.ts` (a pipe, a rag grip, a lump of rusty junk with bolts and a plate through it) on the
+  jammer's mount like the wrench, held with its clips; the swing is procedural (`swingPose` in src/viewmodel.ts: cocked
+  up and right, brought down hard across to the left, back), turning the hands and the mace in the fist together.
+  The icon is rendered from that model (`tools/icons/code-models.ts`, `tools/blender/icons.py`).
+- **Economy sim:** a `mace` weapon (`shared/enemies.ts` odds): better than bare hands against crawlers only.
+- **Gaps:** others see no swing on your avatar (only hear it), and the mace isn't drawn on remote players.

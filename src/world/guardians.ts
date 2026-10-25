@@ -407,6 +407,17 @@ class Walker {
     this.shown = mask;
   }
 
+  /** The whole weak point nearest `at` (a mace's blow on a crawler: src/mace.ts), -1 for none. */
+  nearestWhole(at: THREE.Vector3): number {
+    let best = -1, bd = Infinity;
+    this.targets.forEach((t, i) => {
+      if (t.broken) return;
+      const d = t.group.getWorldPosition(_w).distanceToSquared(at);
+      if (d < bd) (bd = d), (best = i);
+    });
+    return best;
+  }
+
   /** Server mask plus unconfirmed local breaks (dropped after a second and a half if the server never agrees). */
   private syncBroken(server: number) {
     let mask = server;
@@ -873,6 +884,13 @@ export class Guardians {
       if (hit && (!best || hit.dist < best.dist)) best = hit;
     }
     return best;
+  }
+
+  /** A mace's blow on walker `id` at `at`: the crawler's whole weak point nearest it, -1 for none (a guardian's are out
+   *  of reach: its body). */
+  smashPoint(id: number, at: THREE.Vector3): number {
+    const w = this.walkers.get(id);
+    return !w || w.kind !== CRAWLER ? -1 : w.nearestWhole(at);
   }
 
   /** Weak point `i` of walker `id` shot by us: shatter it now. */

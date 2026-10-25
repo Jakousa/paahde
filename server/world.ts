@@ -30,6 +30,7 @@ import { BLAST_R as MISSILE_BLAST_R } from '../shared/missiles.ts';
 import { GUNS, PISTOL } from '../shared/rifle.ts';
 import { inCone, JAM_BLEED, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer.ts';
 import { THROW_MS, THROWABLE } from '../shared/throw.ts';
+import { MACE, MACE_MS, MACE_REACH, MACE_SLACK } from '../shared/mace.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
 import type { ClientMsg, DeathCause, Hands, NetSummary, ServerMsg, StallEvent } from '../shared/protocol.ts';
 import { CHAT_MAX, OBITUARY_KEEP, PROTOCOL_VERSION, type Obituary } from '../shared/protocol.ts';
@@ -154,7 +155,7 @@ type Player = {
   /** Dead and lying where they fell until `until` (Date.now ms), thrown by `push` (shared/ragdoll.ts). */
   down: { until: number; push: [number, number, number] } | null;
   shieldUntil: number; // Date.now() ms: their shield plate just broke, nothing hurts them till then (shielded)
-  firedAt: number; // last laser rifle shot or throw (performance.now() ms)
+  firedAt: number; // last laser rifle shot, throw or swing (performance.now() ms)
   chatAt: number; // last chat line (performance.now() ms)
   traceAt: number; // last 'telemetry' taken (performance.now() ms)
   backlogAt: number; // last traced their sends piling up (performance.now() ms)
@@ -243,6 +244,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'jam' && p) return onJam(p, msg);
     if (msg.t === 'call' && p) return onCall(p);
     if (msg.t === 'throw' && p) return onThrow(p, msg);
+    if (msg.t === 'swing' && p) return onSwing(p, msg);
     if (msg.t === 'stomped' && p) return onStomped(p, msg.g);
     if (msg.t === 'drink' && p) return onDrink(p);
     if (msg.t === 'fill' && p) return onFill(p);
@@ -807,6 +809,24 @@ function onThrow(p: Player, m: Extract<ClientMsg, { t: 'throw' }>) {
   p.firedAt = now;
   sendBox(p, 'bag');
   tossEvents([throws.launch(p.id, p.browserId, m.n, kind, m.x, m.y, m.z, m.dx / len, m.dy / len, m.dz / len, now)]);
+}
+
+/** A blow of the scrap mace (shared/mace.ts): the mace in hand, not too soon after the last, landing within reach of
+ *  the eye; on a walker within reach of the swinger it breaks the point (as a shot). Shown to everyone near. */
+function onSwing(p: Player, m: Extract<ClientMsg, { t: 'swing' }>) {
+  const now = performance.now();
+  if (![m.x, m.y, m.z].every((v) => typeof v === 'number' && Number.isFinite(v))) return;
+  const held = p.slot < 0 ? undefined : items.slots(p.browserId, 'bag')[p.slot];
+  const s = p.state;
+  if (held?.kind !== MACE || p.down || s.riding || now - p.firedAt < MACE_MS * 0.8) return;
+  if (Math.hypot(m.x - s.x, m.y - (s.y + EYE_HEIGHT), m.z - s.z) > MACE_REACH + SHOT_FROM) return;
+  p.firedAt = now;
+  const by = { id: p.id, x: s.x, y: s.y, z: s.z, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS };
+  const r = m.g === undefined ? { hit: false, kill: null } : guardians.smash(by, m.g, m.i, MACE_REACH + MACE_SLACK, now);
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const swing: ServerMsg = { t: 'swing', by: p.id, x: r2(m.x), y: r2(m.y), z: r2(m.z), ...(m.g !== undefined ? { hit: true as const } : {}) };
+  for (const o of players.values()) if (o !== p && Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, swing);
+  if (r.kill) dropSpoils(r.kill);
 }
 
 /** Thrown scrap launched, bouncing or landed: to everyone near it. */

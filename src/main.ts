@@ -96,6 +96,7 @@ import { Grinder } from './grinder';
 import { Receiver } from './receiver';
 import { BossBar } from './bossBar';
 import { Thrower } from './throw';
+import { Mace } from './mace';
 import { zaps } from './world/zaps';
 import { TeardownView } from './teardown/teardown';
 import { MachineSites } from './world/crash';
@@ -376,6 +377,7 @@ scene.add(zaps.root);
 zaps.setCamera(orbit.camera);
 const thrower = new Thrower(scene, orbit, net, scrap);
 thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one drawn in the hand
+const mace = new Mace(orbit, net, guardianFx.guardians);
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
 net.onSpawn = () => placedView.setSpawn(net.spawn?.id ?? null);
 net.onPlaced = () => {
@@ -615,6 +617,7 @@ renderer.setAnimationLoop((time) => {
     focus.copy(fly.pos);
   }
   thrower.update(frameDt, hands);
+  mace.update(hands);
   grinder.update(frameDt, hands);
   jammer.update(frameDt, hands && !storm.toolsDown); // dead in a storm's static (storm.update is later: last frame's)
   jammer.others(others, orbit.camera.position); // others' jammers: their static

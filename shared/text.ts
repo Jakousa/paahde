@@ -45,6 +45,7 @@ const en = {
     cloth: 'Cloth',
     wiring: 'Wiring',
     wrench: 'Wrench',
+    scrap_mace: 'Scrap mace',
     plant_bed: 'Plant bed',
     uv_lamp: 'UV lamp',
     bedroll: 'Bedroll',

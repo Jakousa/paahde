@@ -53,11 +53,11 @@ in `ICONS` if it isn't a part or salvage.
 | the electric well | `tools/blender/well.py` |
 | enemy and boss relics | `tools/blender/relics.py` |
 | salvage wrecks | `tools/blender/salvage/` |
-| scrap, cloth, the wrench, the carried crash-site machines | `tools/blender/icons.py` |
+| scrap, cloth, the wrench, the scrap mace, the carried crash-site machines | `tools/blender/icons.py` |
 
 ### Models built in code
 
-The wrench (`src/models/wrench.ts`), the carried machines (`src/teardown/junk.ts`), the beacon (`src/world/beacons.ts`) and the tarp (`src/world/tarps.ts`) are built with three.js, not
+The wrench (`src/models/wrench.ts`), the scrap mace (`src/models/mace.ts`), the carried machines (`src/teardown/junk.ts`), the beacon (`src/world/beacons.ts`) and the tarp (`src/world/tarps.ts`) are built with three.js, not
 Blender. `node tools/icons/dump.mjs` starts Vite and headless Chrome, builds them on a dev-only page
 (`tools/icons/code-models.ts`) and writes their triangles and flat materials to `tools/icons/out/code-models.json`.
 `blender -b --python tools/blender/icons.py` then renders them like any other icon. When one of those models

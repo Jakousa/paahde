@@ -695,14 +695,38 @@ export class GuardianServer {
    */
   shoot(by: BotPlayer, x: number, y: number, z: number, ex: number, ey: number, ez: number, gid: unknown, i: unknown, now: number): { hit: boolean; kill: Kill | null } {
     const miss = { hit: false, kill: null };
-    const g = this.guardians.find((o) => o.id === gid);
-    const body = i === -1;
-    if (!g || g.deadAt >= 0 || (!body && (!Number.isInteger(i) || (i as number) < 0 || (i as number) >= g.points || g.broken & (1 << (i as number))))) return miss;
+    const g = this.target(gid, i);
+    if (!g) return miss;
     const sc = KINDS[g.kind].scale;
     // Passing and ending near the body's centre.
     if (Math.hypot(ex - x, ey - y, ez - z) > RANGE + 5
       || !shotPasses(x, y, z, ex, ey, ez, g.x, heightAt(g.x, g.z) + BODY_H * sc, g.z, SHOT_SLACK * sc + 2)) return miss;
-    if (!body) g.broken |= 1 << (i as number);
+    return this.strike(g, by, i as number, now);
+  }
+
+  /**
+   * A blow of the scrap mace (shared/mace.ts) by player `by` on walker `gid`, breaking weak point `i` (-1: its body;
+   * a guardian's points are out of reach). Plausible (alive, the point whole, the walker within `reach` m of the
+   * swinger): as a shot.
+   */
+  smash(by: BotPlayer, gid: unknown, i: unknown, reach: number, now: number): { hit: boolean; kill: Kill | null } {
+    const g = this.target(gid, i);
+    if (!g || (g.kind === GUARDIAN && i !== -1) || Math.hypot(g.x - by.x, g.z - by.z) > reach + KINDS[g.kind].scale * 3.6) return { hit: false, kill: null };
+    return this.strike(g, by, i as number, now);
+  }
+
+  /** Walker `gid` alive, with weak point `i` whole (-1: its body), or null. */
+  private target(gid: unknown, i: unknown): Guardian | null {
+    const g = this.guardians.find((o) => o.id === gid);
+    const body = i === -1;
+    if (!g || g.deadAt >= 0 || (!body && (!Number.isInteger(i) || (i as number) < 0 || (i as number) >= g.points || g.broken & (1 << (i as number))))) return null;
+    return g;
+  }
+
+  /** Weak point `i` of `g` broken by player `by` (-1: just its body hit): a kill if it was the last. */
+  private strike(g: Guardian, by: BotPlayer, i: number, now: number): { hit: boolean; kill: Kill | null } {
+    const body = i === -1;
+    if (!body) g.broken |= 1 << i;
     if (!body && allBroken(g.broken, g.points)) {
       // Killing one sets the rest of the pack on you too.
       if (open(by)) this.rouse(g, by, now);

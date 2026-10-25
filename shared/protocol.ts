@@ -123,6 +123,10 @@ export type ClientMsg =
   // Throw the scrap item in hotbar slot `slot` (shared/throw.ts) from the eye (x, y, z) along unit (dx, dy, dz). `n`:
   // the client's count of its throws, echoed in the 'toss' so it can tie its own flying junk to the server's.
   | { t: 'throw'; slot: number; n: number; x: number; y: number; z: number; dx: number; dy: number; dz: number }
+  // A blow of the scrap mace in hand (shared/mace.ts) landing at (x, y, z) (or swung through the air to there). `g`/`i`:
+  // the client found it landed on walker g, breaking weak point i (-1: just its body). The server checks the mace, the
+  // rate and the reach, breaks the point and shows the blow to everyone near ('swing').
+  | { t: 'swing'; x: number; y: number; z: number; g?: number; i?: number }
   // Debug menu: repaired gear of every kind, every part of `tier` (0 Scrap .. 3 Space-grade; for testing).
   | { t: 'debugGear'; tier?: number }
   // Debug menu: `n` of any item `kind` into the bag; gear comes with every part of `tier` (0 Scrap .. 3 Space-grade), or
@@ -370,6 +374,8 @@ export type ServerMsg =
   // (x, y, z) with velocity (vx, vy, vz) at server time `time`; sent again with `hit` as it bounces off a drone, and
   // 'tossEnd' where it lands (it becomes loot there) or is lost.
   | ({ t: 'toss'; id: number; by: number; n: number; kind: string; hit?: true } & TossPath)
+  // Someone's scrap mace swung (shared/mace.ts), its blow at (x, y, z): `hit` on a walker, else air or sand.
+  | { t: 'swing'; by: number; x: number; y: number; z: number; hit?: true }
   | { t: 'tossEnd'; id: number; x: number; y: number; z: number }
   // The bosses (shared/bosses.ts) within BOSS_SEND_R, about 10 times a second, at server time `time`.
   | { t: 'bosses'; time: number; b: BossSnap[] }

@@ -251,6 +251,7 @@ export class Net {
   onZap?: (msg: Extract<ServerMsg, { t: 'zap' }>) => void;
   /** Thrown scrap flying, bouncing off a drone or landed (src/throw.ts). */
   onToss?: (msg: Extract<ServerMsg, { t: 'toss' | 'tossEnd' }>) => void;
+  onSwing?: (msg: Extract<ServerMsg, { t: 'swing' }>) => void;
   /** A bed we tended was planted or harvested. */
   onTended?: (what: 'planted' | 'harvested') => void;
 
@@ -491,6 +492,12 @@ export class Net {
   throwScrap(slot: number, n: number, x: number, y: number, z: number, dx: number, dy: number, dz: number) {
     const r = (v: number) => Math.round(v * 1000) / 1000;
     this.send({ t: 'throw', slot, n, x: r(x), y: r(y), z: r(z), dx: r(dx), dy: r(dy), dz: r(dz) });
+  }
+
+  /** A blow of the scrap mace in hand landing at (x, y, z) (shared/mace.ts), on walker `g`'s weak point `i` (-1: its body). */
+  swing(x: number, y: number, z: number, on?: { g: number; i: number }) {
+    const r = (n: number) => Math.round(n * 100) / 100;
+    this.send({ t: 'swing', x: r(x), y: r(y), z: r(z), ...on });
   }
 
   /** Guardian `g`'s foot came down on us (src/guardians.ts). */
@@ -856,6 +863,7 @@ export class Net {
       return this.onZap?.(msg);
     }
     if (msg.t === 'toss' || msg.t === 'tossEnd') return this.onToss?.(msg);
+    if (msg.t === 'swing') return this.onSwing?.(msg);
     if (msg.t === 'chat') return this.onChat?.(msg);
     if (msg.t === 'names') {
       if (msg.reset) this.names.clear();

@@ -81,6 +81,8 @@ BUILT = {'scrap': (build_scrap, (1, 1)), 'cloth': (build_cloth, (1, 1))}
 CODE = {
     # The wrench (held model: handle up along Z, flat across X) turned face-on to the camera, jaw up and right.
     'wrench': ((1, 1), 'face'),
+    # The scrap mace (src/models/mace.ts, held the same way) stood up in its tall frame, the head at the top.
+    'scrap_mace': ((1, 2), 'upright'),
     'robot_arm': ((2, 2), (0, 0, 0)),
     'control_cabinet': ((2, 3), (math.pi / 2, 0, 0)),  # stood up, its door to the front
     'winch': ((3, 2), (0, 0, 0)),
@@ -91,6 +93,10 @@ CODE = {
     # The tarp (src/world/tarps.ts) on level sand.
     'tarp': ((2, 2), (0, 0, 0)),
 }
+
+
+# Poses turned face-on (face_on), by how far (degrees) the length is tipped from the screen's up.
+FACE_TILT = {'face': 40, 'upright': 18}
 
 
 def code_mesh(kind, d):
@@ -166,7 +172,7 @@ def main():
         else:
             cells, pose = CODE[kind]
             obj = code_mesh(kind, dump[kind])
-            obj.rotation_euler = face_on(math.radians(40)) if pose == 'face' else Euler(pose)
+            obj.rotation_euler = face_on(math.radians(FACE_TILT[pose])) if pose in FACE_TILT else Euler(pose)
         it.render_grid_icon(cam, [obj], cells, os.path.join(args.out, kind + '.png'))
         print(f'{kind}: {it.tri_count(obj)} tris, {cells[0]}x{cells[1]} cells')
 

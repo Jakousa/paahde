@@ -45,6 +45,7 @@ export function clientMessage(v: unknown): v is ClientMsg {
     case 'stomped': return int(m.g);
     case 'fire': return pos('x', 'y', 'z', 'ex', 'ey', 'ez') && ['g', 'i', 'd', 'j', 'h', 'hi', 'b', 'bi'].every((k) => optional(m[k], (x) => int(x, -1)));
     case 'throw': return int(m.slot, 0, 4095) && int(m.n) && pos('x', 'y', 'z', 'dx', 'dy', 'dz');
+    case 'swing': return pos('x', 'y', 'z') && ['g', 'i'].every((k) => optional(m[k], (x) => int(x, -1)));
     case 'debugGear': return optional(m.tier, (x) => int(x, 0, 3));
     case 'debugGive': return str(m.kind) && Object.hasOwn(ITEMS, m.kind) && optional(m.n, (x) => int(x, 1, 1e6)) && optional(m.tier, (x) => int(x, -1, 3));
     case 'debugHeat': case 'debugWeather': return bool(m.off);

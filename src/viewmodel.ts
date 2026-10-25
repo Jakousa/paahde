@@ -26,7 +26,9 @@
 // (scrubbed like the guns' aim while jamming: up in front in both hands); its model (src/models/jammer.ts) sits on the
 // `JammerMount` node, its lamp lit by `playerHands.jamLamp`. A receiver (src/receiver.ts) sits on the same mount and
 // is held with the jammer's Idle / Walk clips; its needle and lamp follow `playerHands.receiver`. So is the wrench
-// (src/models/wrench.ts), on the same mount.
+// (src/models/wrench.ts), on the same mount, and the scrap mace (src/models/mace.ts): from `playerHands.swingAt` it is
+// swung (swingPose), cocked up and right, brought down hard across to the left and back, the hands and the mace in the
+// fist turned together, with no clip of its own.
 // Obsolete shovel and detector geometry/clips are stripped at export; legacy files still hide their nodes. Scrap in hand (`held` 'scrap'): ScrapIdle / ScrapWalk on `ScrapChunk`, and ScrapThrow from `playerHands.throwAt`, the piece
 // hidden from the release (THROW_RELEASE) until the hand is back with the next one.
 //
@@ -41,6 +43,8 @@ import { playerHands, type Held } from './water';
 import { jammerModel, LAMP_ON } from './models/jammer';
 import { grinderModel } from './models/grinder';
 import { wrenchModel } from './models/wrench';
+import { maceModel } from './models/mace';
+import { MACE_STRIKE_MS } from '../shared/mace.ts';
 import { applyTier } from './tierLook';
 import { RECEIVER_LAMP, receiverModel } from './models/receiver';
 import type { BossKind } from '../shared/bosses.ts';
@@ -70,6 +74,10 @@ const forcedHold = params.get('hold') as Held | null;
 /** ScrapThrow lets go of the piece here (fraction of the clip, hands.py SC_RELEASE) and has the next in hand from here. */
 const THROW_RELEASE = 0.42;
 const THROW_NEXT = 0.9;
+/** The mace's swing (s): the wind-up to the blow (MACE_STRIKE_MS, when it lands), the stroke through, the way back. */
+const SWING_UP = MACE_STRIKE_MS / 1000 - 0.05, SWING_STROKE = 0.1, SWING_BACK = 0.3;
+/** The mace's rest in the fist: tipped forward (rad), the head out in front. */
+const MACE_TIP = 0.45;
 const forcedAnim = params.get('anim');
 
 export class ViewModel {
@@ -90,6 +98,7 @@ export class ViewModel {
   private jammer: ReturnType<typeof jammerModel> | null = null;
   private grinder: ReturnType<typeof grinderModel> | null = null;
   private wrench: THREE.Object3D | null = null;
+  private mace: THREE.Object3D | null = null;
   /** Where the grinder rests on its mount (it shudders about that), and a clock for its buzz. */
   private grinderAt = new THREE.Vector3();
   private buzzClock = 0;
@@ -178,6 +187,15 @@ export class ViewModel {
       w.scale.copy(mount.scale);
       w.traverse((o) => (o.frustumCulled = false));
       mount.parent.add(w);
+      // The mace too, tipped forward in the fist (it turns there as it's swung).
+      const mc = (this.mace = maceModel().obj);
+      mc.position.copy(mount.position);
+      mc.quaternion.copy(mount.quaternion);
+      mc.scale.copy(mount.scale);
+      mc.rotateX(MACE_TIP);
+      mc.userData.rest = mc.quaternion.clone();
+      mc.traverse((o) => (o.frustumCulled = false));
+      mount.parent.add(mc);
     }
     // The grinder on its own mount (the right fist round its housing, the left on its handle), else on the jammer's.
     const gmount = model.getObjectByName('GrinderMount') ?? mount;
@@ -230,6 +248,7 @@ export class ViewModel {
     if (this.jammer) this.jammer.obj.visible = this.shown === 'jammer';
     if (this.grinder) this.grinder.obj.visible = this.shown === 'grinder';
     if (this.wrench) this.wrench.visible = this.shown === 'wrench';
+    if (this.mace) this.mace.visible = this.shown === 'mace';
     this.showReceiver();
     if (this.scrapChunk) this.scrapChunk.visible = this.shown === 'scrap';
   }
@@ -358,6 +377,20 @@ export class ViewModel {
       -swayYaw * 0.35 * steady + kick * 0.02,
     );
     this.sway.position.set(-swayYaw * 0.04 * steady, -kick * 0.01, kick * 0.09);
+    // The mace's swing: the hands (up and right, then down across to the left) and the mace turning in the fist.
+    const w = this.shown === 'mace' ? swingPose((performance.now() - playerHands.swingAt) / 1000) : 0;
+    if (w !== 0) {
+      const back = Math.max(0, w), through = Math.max(0, -w);
+      this.sway.rotation.x += 0.22 * back - 0.45 * through;
+      this.sway.rotation.y += -0.3 * back + 0.35 * through;
+      this.sway.rotation.z += -0.35 * back + 0.5 * through;
+      this.sway.position.y += 0.03 * back - 0.02 * through;
+      this.sway.position.z += -0.03 * back + 0.05 * through;
+    }
+    if (this.mace) {
+      this.mace.quaternion.copy(this.mace.userData.rest as THREE.Quaternion);
+      if (w !== 0) this.mace.rotateX(w > 0 ? -1.1 * w : -1.5 * w);
+    }
     for (const g of this.rifleGlow) g.emissiveIntensity = (g.userData.base as number) * (0.15 + 0.85 * playerHands.charge ** 3 + 4 * playerHands.kick);
 
     if (!this.mixer) return;
@@ -387,8 +420,8 @@ export class ViewModel {
     } else if (this.shown === 'grinder' && this.has('GrinderIdle')) {
       // held in both hands the way a grinder is: the right fist round the housing, the left round the side handle
       this.play(moving ? (walk = this.has('GrinderWalk') ? 'GrinderWalk' : 'GrinderIdle') : 'GrinderIdle');
-    } else if (this.shown === 'pistol' || this.shown === 'jammer' || this.shown === 'receiver' || this.shown === 'grinder' || this.shown === 'wrench') {
-      // The jammer has its own clips (two hands while jamming), the receiver and the wrench are held with them; a model without them
+    } else if (this.shown === 'pistol' || this.shown === 'jammer' || this.shown === 'receiver' || this.shown === 'grinder' || this.shown === 'wrench' || this.shown === 'mace') {
+      // The jammer has its own clips (two hands while jamming), the receiver, the wrench and the mace are held with them; a model without them
       // falls back to the pistol's.
       const pre = this.shown !== 'pistol' && this.has('JammerAim') ? 'Jammer' : 'Pistol';
       if (playerHands.aim > 0 && this.has(pre + 'Aim')) {
@@ -447,6 +480,14 @@ export class ViewModel {
 
 function clamp(x: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, x));
+}
+
+/** The mace's swing `t` s after it began: 0 at rest, up to 1 cocked back at the top, down to -1 followed through. */
+function swingPose(t: number): number {
+  if (t < 0 || t >= SWING_UP + SWING_STROKE + SWING_BACK) return 0;
+  if (t < SWING_UP) return smooth(t / SWING_UP);
+  if ((t -= SWING_UP) < SWING_STROKE) return 1 - 2 * (t / SWING_STROKE) ** 1.5;
+  return -1 + smooth((t - SWING_STROKE) / SWING_BACK);
 }
 
 function smooth(t: number) {

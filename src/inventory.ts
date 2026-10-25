@@ -180,11 +180,11 @@ body.pad #invOverlay .slot .key { display: none; }
 
 // Every item's icon is a Blender render (docs/icons.md), shown `fit`: stretched over the item's cells (--pw/--ph from
 // iconScale) keeping its shape, so an icon rendered at the item's grid shape fills them. Gear (tools/blender/finds.py),
-// the buildings and placeables (tools/blender/placeables.py), the base materials, the wrench and the carried machines
+// the buildings and placeables (tools/blender/placeables.py), the base materials, the wrench, the mace and the carried machines
 // (tools/blender/icons.py) are; the parts, relics and salvage are still square.
 const fit = (src: string, extra = '') => `<img class="fit" src="./icons/${src}.png" alt="" draggable="false"${extra}>`;
 const ICONS: Record<string, string> = {};
-for (const k of [...Object.keys(GEAR), 'grinder', 'plant_bed', 'uv_lamp', 'bedroll', 'power_pole', 'tarp', 'scrap', 'cloth', 'wrench',
+for (const k of [...Object.keys(GEAR), 'grinder', 'plant_bed', 'uv_lamp', 'bedroll', 'power_pole', 'tarp', 'scrap', 'cloth', 'wrench', 'scrap_mace',
   'robot_arm', 'control_cabinet', 'winch', 'solenoid_valve', 'beacon', 'pod_console', 'pod_powerbox', 'workbench', 'dismantle_bench', 'storage_chest']) ICONS[k] = fit(`items/${k}`);
 // Wiring is what a wiring coil comes out as (shared/parts.ts UNTIERED): the coil's render.
 ICONS.wiring = fit('items/coil_basic');
