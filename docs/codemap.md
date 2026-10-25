@@ -47,11 +47,15 @@ when you find it stale.
   there), passes `/ws?w=<id>&k=<key>` through to the world's process (4403 locked, 4429 full)
 - `server/world.ts` — authoritative game server for one world (forked per world, exits when empty); `server/db.ts` —
   SQLite; `server/scrap.ts` — scrap pickups, respawn
-- `shared/pods.ts` — the four crashed escape pods players arrive in (new players and the dead without a bedroll appear
+- `shared/pods.ts` — the crashed escape pod(s) players arrive in (new players and the dead without a bedroll appear
   beside the hatch of "their" pod, `podOf(browserId)`: `podSpawn`, `spawnPoint(n)` in shared/sim.ts): each pod in the
   world (`podPlaces`), collision (`collidePods`), shade casters, the water tap on each hull (`atPodTap`, through
-  shared/wells.ts `waterAt`), a starter machine by each (`podSites`, ids `pod:<n>`, through shared/crash.ts) and loot
-  spots (`POD_LOOT`, server/loot.ts). Their spots (a cluster picked per world 37–67 m from the origin), the keep-clear
+  shared/wells.ts `waterAt`), a starter machine by each (`podSites`, ids `pod:<n>`, through shared/crash.ts; kinds
+  `POD_MACHINES`, no winch: no bearing before the workbench) and loot spots (`POD_LOOT`, server/loot.ts: a starter kit
+  kept whole, an older kit's surplus cleared on load). The kit's pod console and power box (`pod_console`,
+  `pod_powerbox`) are carried machines (shared/salvage.ts COMPONENTS, never at crash sites) holding the first wiring and
+  the first bike's battery: models `tools/blender/finds.py` → `public/models/finds/pod_*.glb` (lying, and the icons),
+  on the bench `podConsole` / `podPowerbox` in src/teardown/junk.ts. Their spots (a cluster picked per world 37–67 m from the origin), the keep-clear
   that hugs each hull (`nearPod`), the layout's keep-off (`onPodGround`) and the furrows in the terrain:
   `shared/podSpot.ts`; model `tools/blender/pod.py` → `public/models/pod.glb` + generated `shared/podModel.ts` (one
   model in four poses, a drogue chute behind one); drawn by `src/world/pods.ts`. Old worlds: `server/podsLanded.ts`

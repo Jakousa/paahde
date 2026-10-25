@@ -47,7 +47,7 @@ in `ICONS` if it isn't a part or salvage.
 | Icons | Script |
 |---|---|
 | parts, all tiers | `tools/blender/items.py` |
-| gear (canteen, spyglass, guns, receivers, ...) | `tools/blender/finds.py` |
+| gear (canteen, spyglass, guns, receivers, ...), the pod's console and power box | `tools/blender/finds.py` |
 | buildings and placeables (windmill, battery station, power pole, plant bed, UV lamp) | `tools/blender/placeables.py` |
 | the workbench, the dismantling bench, the chest | `tools/blender/stations.py` (models from `stationkit.py`) |
 | the electric well | `tools/blender/well.py` |
