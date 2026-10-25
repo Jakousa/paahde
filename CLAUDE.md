@@ -56,6 +56,7 @@ Read before touching:
 - loot, drops, recipes, gear slots, site layout: `docs/econsim.md`
 - player-visible text: `docs/text.md`; the character's lines: `docs/speech.md`
 - rendering cost, shadows: `docs/perf.md`; the CI benchmarks: `docs/bench.md`; art direction: `docs/look.md`; item icons: `docs/icons.md`
+- the desktop app (`desktop/`, the way to Steam): `docs/desktop.md`
 - what's been built and why, known gaps: `docs/devlog.md`
 
 ## Multiplayer rules (read docs/netcode.md before changing netcode)

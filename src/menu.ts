@@ -17,6 +17,7 @@ import { TEXT } from '../shared/text.ts';
 import { MENU_CSS, bindOptions, optionsHtml, statsPref } from './options';
 import { graphics, onGraphics, setGraphics } from './graphics';
 import { uiScale } from './uiScale';
+import { PAGE_URL } from './desktop';
 
 const css = `${MENU_CSS}
 #menu.game { flex-direction: column; gap: 10px; }
@@ -91,7 +92,7 @@ ${optionsHtml()}</div>
     this.serverEl.querySelector('.sname')!.textContent = WORLD_ID;
     // The world's URL (shared/world.ts), without dev flags: anyone opening it joins this world.
     // It opens the world's lobby (src/lobby.ts). The code alone is for the main menu's Join box.
-    copies(this.el.querySelector<HTMLButtonElement>('.invite')!, () => `${location.origin}${location.pathname}?w=${WORLD_ID}`);
+    copies(this.el.querySelector<HTMLButtonElement>('.invite')!, () => `${PAGE_URL}?w=${WORLD_ID}`);
     copies(this.el.querySelector<HTMLButtonElement>('.code')!, () => WORLD_ID);
 
     bindOptions(this.el, {

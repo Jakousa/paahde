@@ -39,6 +39,7 @@ import { CRASH_KINDS } from '../shared/crashKinds.ts';
 import type { CrashPiece } from '../shared/crashsites.ts';
 import type { SiteLink } from './teardown/teardown';
 import { serverBuild } from './update';
+import { PAGE_URL } from './desktop';
 import { WORLD_ID } from '../shared/world.ts';
 import { myColor, myName, worldKey } from './profile';
 import { Telemetry } from './telemetry';
@@ -613,7 +614,7 @@ export class Net {
   }
 
   private connect() {
-    const url = new URL('ws', location.href.replace(/^http/, 'ws'));
+    const url = new URL('ws', PAGE_URL.replace(/^http/, 'ws'));
     // k: the key to a locked game (src/lobby.ts got it with the password; server/index.ts checks it).
     const key = worldKey(WORLD_ID);
     url.search = `?w=${WORLD_ID}${key ? `&k=${encodeURIComponent(key)}` : ''}`;

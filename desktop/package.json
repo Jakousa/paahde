@@ -1,0 +1,29 @@
+{
+  "name": "paahde-desktop",
+  "productName": "Paahde",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Paahde as a desktop app (docs/desktop.md)",
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "start:remote": "electron . --remote",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "org.herkku.paahde",
+    "productName": "Paahde",
+    "directories": { "output": "out" },
+    "files": ["main.mjs", "preload.cjs", "package.json"],
+    "extraResources": [{ "from": "../dist", "to": "dist", "filter": ["**/*", "!**/*.br", "!**/*.gz"] }],
+    "mac": { "target": "dir", "category": "public.app-category.games" },
+    "win": { "target": "dir" },
+    "linux": { "target": "dir" }
+  }
+}

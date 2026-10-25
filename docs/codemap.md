@@ -20,6 +20,9 @@ when you find it stale.
   taken as CSS `zoom` by the panels it lists. In a zoomed panel write `calc(100vw / var(--ui))` for viewport units,
   and convert pointer px to `left`/`top` with `uiScale()`
 
+- `desktop/` — the desktop app (Electron; docs/desktop.md): the web build in a window, the first step towards Steam.
+  `src/desktop.ts` — the game server's address when the page isn't served by it (`PAGE_URL`)
+
 ## Worlds, server and players
 
 - `shared/world.ts` — worlds: each game is its own world at its own URL (`?w=<id>`, made on the landing page,
