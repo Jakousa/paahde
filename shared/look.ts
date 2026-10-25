@@ -46,15 +46,20 @@ export const LOOK_SLOTS = [
 ] as const satisfies readonly LookSlot[];
 
 /** Each body's proportions, scales of the scavenger (a 1.85 m human, legs about half of that): `size` the whole
- *  figure about the feet, `legs` the legs from the hips (the body drops to keep the feet on the ground), `chest` the
- *  chest (wider shoulders, the arms not scaled with it), `neck` the neck and all on it, and `head` the head (from the
- *  neck up, the neck's scale included). The hood hangs from both neck and head and the face pieces from the head
- *  alone, so the two stay close or the goggles and masks poke out of the hood. A dwarf about 1.35 m, stocky: broad
- *  chest, short legs, a big head. A gnome about 1 m, the head nearly a quarter of it, slight. */
+ *  figure about the feet, `legs` the legs' length from the hips (the body drops to keep the feet on the ground),
+ *  `chest` the chest (the arms not scaled with it), `neck` the neck and all on it, and `head` the head (from the neck
+ *  up, the neck's scale included). The hood hangs from both neck and head and the face pieces from the head alone, so
+ *  the two stay close or the goggles and masks poke out of the hood. The build, without touching the skeleton's
+ *  lengths: `wide` and `deep` the trunk's girth (side to side, front to back), `limbs` the arms' and legs' thickness,
+ *  `hands` and `feet` their size, and `hips` and `shoulders` how far apart the legs and arms are set (the legs not too
+ *  far: the robe's hem hangs from both and parts between them like trousers).
+ *  A dwarf about 1.35 m and nearly as wide as tall: a barrel of a trunk, thick limbs on wide-set joints, big hands and
+ *  boots, short legs, a big head. A gnome about 1 m: the head nearly a quarter of it, big hands and boots on a small
+ *  slight body. */
 const BODIES = [
-  { size: 1, legs: 1, chest: 1, neck: 1, head: 1 },
-  { size: 0.82, legs: 0.78, chest: 1.2, neck: 1.15, head: 1.25 },
-  { size: 0.6, legs: 0.82, chest: 1.04, neck: 1.4, head: 1.5 },
+  { size: 1, legs: 1, chest: 1, neck: 1, head: 1, wide: 1, deep: 1, limbs: 1, hands: 1, feet: 1, hips: 1, shoulders: 1 },
+  { size: 0.85, legs: 0.72, chest: 1.1, neck: 1.25, head: 1.38, wide: 1.6, deep: 1.4, limbs: 1.5, hands: 1.4, feet: 1.35, hips: 1.3, shoulders: 1.7 },
+  { size: 0.6, legs: 0.82, chest: 1, neck: 1.5, head: 1.65, wide: 1.1, deep: 1.1, limbs: 0.95, hands: 1.65, feet: 1.6, hips: 1.15, shoulders: 1.1 },
 ] as const;
 /** The bare legs' share of the height. */
 const LEG_SHARE = 0.51;

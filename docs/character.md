@@ -53,15 +53,20 @@ The backpack, the gear on the belt and the things carried are gameplay, not look
 
 Three bodies to choose from: human, dwarf and gnome (the `body` slot; its buttons sit to the left of the figure in
 the Character view, the clothes and dyes to its right). The same scavenger in all three, with different proportions
-(shared/look.ts `BODIES`): the human 1.85 m; the dwarf about 1.35 m, stocky (short legs, broad chest, a big head);
-the gnome about 1 m, slight, the head nearly a quarter of its height. Fantasy convention (Tolkien, D&D, Warcraft)
+(shared/look.ts `BODIES`): the human 1.85 m; the dwarf about 1.35 m and nearly as wide (a barrel of a trunk, thick
+limbs on wide-set shoulders, big hands and boots, short legs, a big head; a Warcraft dwarf under a robe); the gnome
+about 1 m, the head nearly a quarter of it, big hands and boots on a slight body. Fantasy convention (Tolkien, D&D, Warcraft)
 for the sizes; fixed presets, not sliders (a body is a choice, not a tuning job). They are drawn only: the player
 moves, collides, is hit and sees from the same height in any body (shared/sim.ts knows nothing of them).
 
 src/models/scavenger.ts scales bones, not meshes: the root by `size` (so the held things and the hand and foot
 targets grow with it), the thighs by `legs` (the body drops by what they lose, the feet stay on the ground), the chest
 (Spine2) by `chest` with the shoulders scaled back (broad shoulders, arms of the same length), the neck by `neck` and
-the head by `head`. Only uniform scales: a squashed bone would shear everything under it as it turns. The hood hangs
+the head by `head`, the hands and feet by `hands` and `feet`; the arms and legs are set further apart (`shoulders`,
+`hips`: the legs not much, or the robe's hem parts between them like trousers). Only uniform bone scales: a squashed
+bone would shear everything under it as it turns. The girth (`wide`, `deep`, `limbs`) goes into the skin instead:
+each trunk and limb bone's vertices are scaled in the bone's own rest frame (its inverse bind matrix, this instance's
+copy), thicker across, never longer, so the bones, the clips and the IK are untouched. The hood hangs
 from the neck and head and the face pieces from the head, so `neck` stays close to `head`, or the goggles and masks
 grow out of the hood.
 

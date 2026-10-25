@@ -86,8 +86,14 @@ const TRUDGE_FROM = 0.08;
 const TRUDGE_FULL = 0.5;
 const TRUDGE_MIX = 0.7;
 const TRUDGE_LEAN = 0.75;
-/** The legs from the hip joints to the soles (model space), what the body drops by for legs drawn shorter. */
+/** The legs from the hip joints to the soles (model space), what the body drops by for legs drawn shorter, and the
+ *  ankles over the soles (bigger feet lift the body by what they grow under the ankle). */
 const HIP_TO_SOLE = 0.94;
+const ANKLE_H = 0.089;
+/** The trunk's bones, thickened by the body's `wide` and `deep` (their X is to the side, Z to the front), and the
+ *  limbs', thickened across their length (Y runs along each). */
+const TRUNK = ['Hips', 'Spine', 'Spine1', 'Spine2'];
+const LIMBS = ['LeftUpLeg', 'LeftLeg', 'RightUpLeg', 'RightLeg', 'LeftArm', 'LeftForeArm', 'RightArm', 'RightForeArm'];
 /** How each body (shared/look.ts BODIES) moves, over the same clips. A dwarf is stocky and grounded: short quick steps,
  *  rolling from foot to foot, arms carried wide of the broad chest. A gnome scurries: a fast cadence, leaning into the
  *  run, arms pumping hard. `rate` lets the clips play that much faster before the feet slide (short legs take more
@@ -152,7 +158,13 @@ export class ScavengerModel {
   /** The body's proportions (shared/look.ts bodyScale) and how it moves (GAITS). */
   private body: BodyScale = bodyScale(unpackLook(0));
   private gaitStyle = GAITS[0];
-  /** Scaled for the body: the chest, and the shoulders and neck under it (scaled back, the neck to its own), the thighs. */
+  /** Scaled for the body: the chest, and the shoulders and neck under it (scaled back, the neck to its own), the thighs,
+   *  the hands and feet; set apart: the arms (on the shoulders) and the thighs (on the hips), from where they rest. */
+  private palms: THREE.Object3D[] = [];
+  private feet: THREE.Object3D[] = [];
+  private joints: { bone: THREE.Object3D; rest: THREE.Vector3; by: 'hips' | 'shoulders' }[] = [];
+  /** The body whose build the skeletons' bind matrices have (thickenSkins). */
+  private built: BodyScale | null = null;
   private chest: THREE.Object3D | null = null;
   private unChest: THREE.Object3D[] = [];
   private thighs: THREE.Object3D[] = [];
@@ -257,6 +269,12 @@ export class ScavengerModel {
     this.chest = bone('Spine2') ?? null;
     this.unChest = ['LeftShoulder', 'RightShoulder', 'Neck'].map(bone).filter((b) => b !== undefined);
     this.thighs = ['LeftUpLeg', 'RightUpLeg'].map(bone).filter((b) => b !== undefined);
+    this.palms = ['LeftHand', 'RightHand'].map(bone).filter((b) => b !== undefined);
+    this.feet = ['LeftFoot', 'RightFoot'].map(bone).filter((b) => b !== undefined);
+    this.joints = [
+      ...this.thighs.map((b) => ({ bone: b, rest: b.position.clone(), by: 'hips' as const })),
+      ...['LeftArm', 'RightArm'].map(bone).filter((b) => b !== undefined).map((b) => ({ bone: b, rest: b.position.clone(), by: 'shoulders' as const })),
+    ];
     const chain = (names: string[]) => names.map(bone).filter((b) => b !== undefined);
     const arms = ['Left', 'Right'].map((s) => chain([`${s}Arm`, `${s}ForeArm`, `${s}Hand`, `${s}HandIndex1`]));
     const feet = ['Left', 'Right'].map((s) => chain([`${s}UpLeg`, `${s}Leg`, `${s}Foot`, `${s}ToeBase`]));
@@ -569,7 +587,7 @@ export class ScavengerModel {
     const tk = 1 - Math.exp(-dt * 10);
     const power = !!pose.powerSlide && pose.grounded && !pose.ride;
     // Legs drawn shorter: the body comes down with them, the feet stay on the ground.
-    this.tilt.position.set(0, -(1 - this.body.legs) * HIP_TO_SOLE, 0);
+    this.tilt.position.set(0, -(1 - this.body.legs) * HIP_TO_SOLE + (this.body.feet - 1) * ANKLE_H * this.body.legs, 0);
     this.tilt.rotation.x += ((power ? clamp(pose.tiltPitch ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.x) * tk;
     this.tilt.rotation.z += ((power ? clamp(pose.tiltRoll ?? 0, -0.9, 0.9) : 0) - this.tilt.rotation.z) * tk;
     for (const p of this.posed) p.base.copy(p.bone.quaternion);
@@ -675,10 +693,45 @@ export class ScavengerModel {
 
   /** The body's proportions on the bones (the mixer doesn't touch their scale, so once is enough, but it's cheap). */
   private proportion() {
-    const { legs, chest, neck } = this.body;
+    const { legs, chest, neck, hands, feet } = this.body;
     for (const t of this.thighs) t.scale.setScalar(legs);
     if (this.chest) this.chest.scale.setScalar(chest);
     for (const b of this.unChest) b.scale.setScalar((b === this.neck ? neck : 1) / chest);
+    for (const h of this.palms) h.scale.setScalar(hands);
+    for (const f of this.feet) f.scale.setScalar(feet);
+    // The legs set apart on the hips (sideways), the arms out along the shoulders (each shoulder bone points out).
+    for (const j of this.joints) {
+      j.bone.position.copy(j.rest);
+      if (j.by === 'hips') j.bone.position.x *= this.body.hips;
+      else j.bone.position.y *= this.body.shoulders;
+    }
+    if (this.built !== this.body) this.thickenSkins();
+  }
+
+  /** The build (girth, thick limbs) goes into the skin, not the skeleton: each bone's vertices are scaled in the bone's
+   *  own rest frame (its inverse bind matrix), so a trunk drawn wider never shears the arms turning under it, and the
+   *  bones keep their lengths for the clips and the IK. This instance's own copies of the bind matrices (clones share
+   *  them), the rest kept to scale from. */
+  private thickenSkins() {
+    this.built = this.body;
+    const { wide, deep, limbs } = this.body;
+    const skeletons = new Set<THREE.Skeleton>();
+    this.root.traverse((o) => {
+      if ((o as THREE.SkinnedMesh).isSkinnedMesh) skeletons.add((o as THREE.SkinnedMesh).skeleton);
+    });
+    for (const sk of skeletons) {
+      let rest = restInverses.get(sk);
+      if (!rest) {
+        rest = sk.boneInverses.map((m) => m.clone());
+        sk.boneInverses = rest.map((m) => m.clone());
+        restInverses.set(sk, rest);
+      }
+      sk.bones.forEach((b, i) => {
+        const s = TRUNK.includes(b.name) ? _gs.set(wide, 1, deep) : LIMBS.includes(b.name) ? _gs.set(limbs, 1, limbs) : null;
+        sk.boneInverses[i].copy(rest[i]);
+        if (s) sk.boneInverses[i].premultiply(_gm2.makeScale(s.x, s.y, s.z));
+      });
+    }
   }
 
   /** The body's own way of moving over the walk and run clips (GAITS): the hips roll onto the planted foot, the
@@ -1259,6 +1312,9 @@ const _gt = new THREE.Vector3();
 const _gc = new THREE.Vector3();
 const _gm = new THREE.Matrix4();
 const _im = new THREE.Matrix4();
+const _gs = new THREE.Vector3();
+/** Each skeleton's inverse bind matrices as loaded (ScavengerModel.thickenSkins scales its own copies from these). */
+const restInverses = new WeakMap<THREE.Skeleton, THREE.Matrix4[]>();
 const _gm2 = new THREE.Matrix4();
 const _gq = new THREE.Quaternion();
 const _gq2 = new THREE.Quaternion();
