@@ -5,8 +5,8 @@ buildings (shared/gear.ts built): the windmill and the battery station.
     blender -b --python tools/blender/placeables.py -- --preview out.png  # also a perspective preview render
     blender -b --python tools/blender/placeables.py -- --preview-buildings out.png  # the windmill and battery station
 
-Writes public/models/placeables/<kind>.glb and public/icons/items/<kind>.png (128x128, the same camera and
-lighting as the part icons of tools/blender/items.py, whose helpers this imports).
+Writes public/models/placeables/<kind>.glb and public/icons/items/<kind>.png (at the item's grid shape, the same
+camera and lighting as the part icons of tools/blender/items.py, whose helpers this imports; docs/icons.md).
 
 plant_bed.glb holds three objects: `plant_bed` (the scrap-metal trough with soil) and the growth stages
 `plant_bed_sprouts` and `plant_bed_grown`, which src/world/placed.ts shows or hides (shared/garden.ts stages).
@@ -509,19 +509,6 @@ def export(objs, path):
                               export_texcoords=False)
 
 
-def render_icon(cam, objs, show, path):
-    scene = bpy.context.scene
-    for o in bpy.data.objects:
-        if o.type == 'MESH':
-            o.hide_render = o not in show
-    it.frame_ortho(cam, show)
-    # Back off for the big ones (the windmill), so nothing of it is behind the camera.
-    cam.location += it.CAM_DIR * 12
-    cam.data.clip_end = 40
-    scene.render.filepath = path
-    bpy.ops.render.render(write_still=True)
-
-
 def main():
     argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
     preview = argv[argv.index('--preview') + 1] if '--preview' in argv else None
@@ -552,12 +539,15 @@ def main():
         d = o.dimensions
         print(f'{o.name}: tris={it.tri_count(o)} size={d.x:.3f} x {d.y:.3f} x {d.z:.3f} m')
 
+    # Icons at each item's grid shape (shared/items.ts ITEMS sizes).
     cam = it.setup_render(bpy.context.scene, 128, 128)
-    render_icon(cam, [bed, grown, sprouts], [bed, grown], os.path.join(icons, 'plant_bed.png'))
-    render_icon(cam, [lamp], [lamp], os.path.join(icons, 'uv_lamp.png'))
-    render_icon(cam, [tower, head, rotor], [tower, head, rotor], os.path.join(icons, 'windmill.png'))
-    render_icon(cam, [station, *cells], [station, *cells], os.path.join(icons, 'battery_station.png'))
-    render_icon(cam, [pole], [pole], os.path.join(icons, 'power_pole.png'))
+    it.render_grid_icon(cam, [bed, grown], (3, 2), os.path.join(icons, 'plant_bed.png'))
+    lamp.rotation_euler.z = math.radians(-60)  # end-on, so the wide gantry fits its tall 1 x 2 icon
+    it.render_grid_icon(cam, [lamp], (1, 2), os.path.join(icons, 'uv_lamp.png'))
+    lamp.rotation_euler.z = 0
+    it.render_grid_icon(cam, [tower, head, rotor], (2, 3), os.path.join(icons, 'windmill.png'))
+    it.render_grid_icon(cam, [station, *cells], (2, 2), os.path.join(icons, 'battery_station.png'))
+    it.render_grid_icon(cam, [pole], (1, 3), os.path.join(icons, 'power_pole.png'))
 
     if preview_b:
         scene = bpy.context.scene

@@ -49,3 +49,8 @@ deep rust, with crisp black-brown shadows behind every crest.
 
 - Blue sky, white/grey haze, neutral grey shadows, pale beige "beach sand".
 - Flat midday lighting.
+
+## Icons
+
+Inventory icons follow `docs/icons.md`: a Blender render of the item's own model, the same 3/4 camera, lights and
+outline for all of them, at the item's grid shape.

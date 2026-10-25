@@ -1335,6 +1335,44 @@ def frame_ortho(cam, objs):
     cam.data.clip_end = 10
 
 
+CELL, GAP = 54, 4  # src/inventory.ts: a grid cell and the gap between cells, CSS px
+
+
+def grid_px(n):
+    """Icon pixels for an item n cells long: twice its CSS size in the Tab inventory (docs/icons.md)."""
+    return 2 * (n * CELL + (n - 1) * GAP)
+
+
+def render_grid_icon(cam, objs, cells, path, dirv=CAM_DIR, pad=1.1):
+    """Render `objs` (others hidden) along `dirv` (default the 3/4 icon view), ortho, filling an icon of the item's
+    grid shape `cells` (w, h) with a `pad` margin. Call setup_render first."""
+    scene = bpy.context.scene
+    w, h = cells
+    rx, ry = grid_px(w), grid_px(h)
+    scene.render.resolution_x, scene.render.resolution_y = rx, ry
+    bpy.context.view_layer.update()
+    for o in bpy.data.objects:
+        if o.type == 'MESH':
+            o.hide_render = o not in objs
+    pts = [o.matrix_world @ v.co for o in objs for v in o.data.vertices]
+    lo = Vector([min(p[i] for p in pts) for i in range(3)])
+    hi = Vector([max(p[i] for p in pts) for i in range(3)])
+    dist = (hi - lo).length + 1
+    cam.location = (lo + hi) / 2 + dirv * dist
+    cam.rotation_euler = (-dirv).to_track_quat('-Z', 'Y').to_euler()
+    bpy.context.view_layer.update()
+    inv = cam.matrix_world.inverted()
+    loc = [inv @ p for p in pts]
+    x0, x1 = min(p.x for p in loc), max(p.x for p in loc)
+    y0, y1 = min(p.y for p in loc), max(p.y for p in loc)
+    cam.location = cam.matrix_world @ Vector(((x0 + x1) / 2, (y0 + y1) / 2, 0))
+    cam.data.type = 'ORTHO'
+    cam.data.ortho_scale = pad * (max(x1 - x0, (y1 - y0) * rx / ry) if rx >= ry else max(y1 - y0, (x1 - x0) * ry / rx))
+    cam.data.clip_start, cam.data.clip_end = 0.01, 2 * dist
+    scene.render.filepath = path
+    bpy.ops.render.render(write_still=True)
+
+
 def render_icons(objs_by_item, out_dir, size):
     scene = bpy.context.scene
     cam = setup_render(scene, size, size)

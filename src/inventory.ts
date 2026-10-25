@@ -47,8 +47,8 @@ const CELL = 54;
 const GAP = 4;
 /** Size (px) of an item w × h cells big. */
 const span = (n: number) => n * CELL + (n - 1) * GAP;
-/** Icon scale for an item w × h cells big: by its short side, and a little more for long ones (SVGs; images stay square). */
-const iconScale = (w: number, h: number) => `--s: ${Math.min(w, h)}; --sv: ${Math.min(w, h) + (w !== h ? 0.4 : 0)}; --pw: ${span(w)}px; --ph: ${span(h)}px`;
+/** The cells an item w × h cells big spans, for its icon to fill (img.fit). */
+const iconScale = (w: number, h: number) => `--pw: ${span(w)}px; --ph: ${span(h)}px`;
 
 const css = `
 #pickup { position: fixed; left: 50%; top: calc(50% + 22px); transform: translateX(-50%); padding: 3px 8px;
@@ -93,12 +93,10 @@ const css = `
     radial-gradient(circle at calc(100% - 4px) calc(100% - 4px), rgba(210, 190, 160, 0.85) 1.5px, transparent 2px); }
 /* Items in a grid span their cells, over the empty-cell backdrop. */
 #invOverlay .slot.item { width: auto; height: auto; z-index: 1; background: rgba(66, 44, 26, 0.96); }
-#invOverlay .slot.item svg, #invGhost svg { width: calc(30px * var(--sv, 1)); height: calc(34px * var(--sv, 1)); }
-#invOverlay .slot.item img, #invGhost img { width: calc(46px * var(--s, 1)); height: calc(46px * var(--s, 1)); }
 img.fit { object-fit: contain; }
 #invOverlay .slot.item img.fit, #invGhost img.fit { width: calc(var(--pw, 54px) - 6px); height: calc(var(--ph, 54px) - 6px); }
 #invOverlay .slot.item.turned > img.fit, #invGhost.turned > img.fit { width: calc(var(--ph, 54px) - 6px); height: calc(var(--pw, 54px) - 6px); }
-#invOverlay .slot.turned > svg, #invOverlay .slot.turned > img, #invGhost.turned > svg, #invGhost.turned > img { transform: rotate(90deg); }
+#invOverlay .slot.turned > img, #invGhost.turned > img { transform: rotate(90deg); }
 #invOverlay .hint { z-index: 2; pointer-events: none; border-radius: 6px; }
 #invOverlay .hint.ok { background: rgba(140, 220, 150, 0.22); box-shadow: inset 0 0 0 2px rgba(140, 220, 150, 0.85); }
 #invOverlay .hint.no { background: rgba(222, 62, 34, 0.22); box-shadow: inset 0 0 0 2px rgba(222, 62, 34, 0.85); }
@@ -124,7 +122,6 @@ body.pad #invOverlay .slot .key { display: none; }
 #invOverlay .legend kbd { font: bold 11px var(--mono); padding: 0 4px; margin-right: 5px; border-radius: 3px; background: #fff4e4; color: #2a160a; }
 #invOverlay .slot .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono);
   font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px #000; }
-#invOverlay .slot svg, #invGhost svg { width: 30px; height: 34px; }
 #invOverlay .slot img, #invGhost img, #invOverlay .recipe .ico img { width: 46px; height: 46px; pointer-events: none; }
 #invOverlay .slot .tile, #invGhost .tile { font: 700 18px var(--mono); color: var(--c); }
 #invOverlay .slot.rare { box-shadow: inset 0 0 0 1px rgba(255, 240, 220, 0.12), inset 0 -3px 0 var(--c);
@@ -162,7 +159,7 @@ body.pad #invOverlay .slot .key { display: none; }
 #invGhost .n { position: absolute; right: 4px; bottom: 2px; font: 600 11px var(--mono); color: #fff4e4;
   text-shadow: 0 1px 2px #000; }
 #invOverlay .slot .bad { position: absolute; right: 3px; top: 1px; font: 700 10px var(--mono); color: #ff8a66; }
-#invOverlay .slot.broken > svg, #invOverlay .slot.broken > img { opacity: 0.5; filter: grayscale(0.8); }
+#invOverlay .slot.broken > img { opacity: 0.5; filter: grayscale(0.8); }
 #invOverlay .slot.broken:not(.over) { background: rgba(200, 52, 30, 0.22); box-shadow: inset 0 0 0 1px rgba(230, 80, 50, 0.45); }
 #invOverlay .slot .ph { font: 600 9px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.4; }
 #invOverlay .slot.dead { background: rgba(222, 62, 34, 0.12); box-shadow: inset 0 0 0 1px rgba(222, 62, 34, 0.5); }
@@ -180,61 +177,18 @@ body.pad #invOverlay .slot .key { display: none; }
 #invOverlay .bench button.repair:hover:not(:disabled) { background: rgba(140, 220, 150, 0.4); }
 `;
 
-// Icons, 22 × 26 like the hotbar's.
-// Scrap: a dented sheet with a plank across it and a cog on top, a little heap of junk.
-const SCRAP_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><path d="M2 10l12-3 4 13-12 3z" fill="#9a968c"/>
-<path d="M5 12l9-2c-1 2 1 3-1 4" fill="none" stroke="#c9c4b8" opacity="0.8"/><path d="M3 21L17 9l1.8 2.2L4.8 23z" fill="#7d7a72"/>
-<g transform="translate(14 7.5)" fill="#8a7f6a">${[0, 60, 120, 180, 240, 300].map((a) => `<rect x="-1.4" y="-5.6" width="2.8" height="2.6" transform="rotate(${a})"/>`).join('')}
-<circle r="3.8"/><circle r="1.4" fill="#2a160a"/></g></g></svg>`;
-// Cloth: a folded tarp, tied with a cord.
-const CLOTH_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9" stroke-linejoin="round">
-<path d="M3 9c3-2 13-2 16 0v9c-3 2-13 2-16 0z" fill="#b89a6a"/><path d="M3 13.5c3 2 13 2 16 0" fill="none" stroke="#7a6040"/>
-<path d="M5 9.4c0 3 1 6 0 9.4M17 9.4c0 3-1 6 0 9.4" fill="none" stroke="#8a7048" stroke-width="0.7"/>
-<path d="M11 7.6v12.8" stroke="#5a3a1e" stroke-width="1.6"/><path d="M11 7.6c-2-2-4-1-3 0.6M11 7.6c2-2 4-1 3 0.6" fill="none" stroke="#5a3a1e" stroke-width="1"/></g></svg>`;
-// The wrench: a combination spanner lying across, the open jaw up top, the ring below.
-const WRENCH_SVG = `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9">
-<path d="M4.5 21.5L16.5 9.5" stroke-width="4.8" stroke-linecap="round"/><path d="M4.5 21.5L16.5 9.5" stroke="#a4a8ab" stroke-width="2.9" stroke-linecap="round"/>
-<circle cx="17" cy="8.5" r="4.6" fill="#a4a8ab"/><path d="M17 8.5l4.6-4.6" stroke-width="3.2"/>
-<circle cx="4.5" cy="21.5" r="3.3" fill="#a4a8ab"/><circle cx="4.5" cy="21.5" r="1.5" fill="#2a160a"/></g></svg>`;
-const ICONS: Record<string, string> = {
-  scrap: SCRAP_SVG,
-  cloth: CLOTH_SVG,
-  wrench: WRENCH_SVG,
-  // Carried crash-site machines: a joint with its arm stub, and a cabinet with a door and lamps.
-  robot_arm: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="18" width="16" height="4" rx="1" fill="#6a665e"/>
-<rect x="5" y="9" width="9" height="10" rx="2" fill="#d4a24c"/><rect x="12" y="4" width="7" height="4" rx="1" fill="#b8873a" transform="rotate(30 12 6)"/>
-<circle cx="9.5" cy="14" r="2.2" fill="#2a160a"/></g></svg>`,
-  control_cabinet: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="3" width="16" height="20" rx="1.5" fill="#7d7a72"/>
-<rect x="5" y="5" width="12" height="16" fill="#5e6a5a"/><circle cx="8" cy="8" r="1.1" fill="#ffb050"/><circle cx="12" cy="8" r="1.1" fill="#74d08a"/>
-<rect x="7" y="12" width="8" height="5" fill="#2a160a"/></g></svg>`,
-  // The scrap fields' starter machines: a winch drum with its crank, a valve in a pipe with its coil, a beacon with its mast.
-  winch: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="2" y="19" width="18" height="3" fill="#6a665e"/>
-<rect x="4" y="10" width="3" height="9" fill="#7a5238"/><rect x="15" y="7" width="3" height="12" fill="#7a5238"/>
-<rect x="6" y="11" width="10" height="7" rx="1.5" fill="#56705e"/><path d="M7 12.5h8M7 14.5h8M7 16.5h8" stroke="#2a160a" stroke-width="0.6"/>
-<path d="M18 8h2v-4" fill="none"/><circle cx="20" cy="4" r="1.2" fill="#b02a20"/></g></svg>`,
-  solenoid_valve: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="1" y="15" width="20" height="4" fill="#7d7a72"/>
-<rect x="6" y="13" width="1.6" height="8" fill="#55575a"/><rect x="14.4" y="13" width="1.6" height="8" fill="#55575a"/>
-<rect x="8" y="12" width="6" height="9" rx="1" fill="#d4a24c"/><rect x="8.5" y="4" width="5" height="7" rx="1" fill="#c87a44"/>
-<path d="M13.5 6c4 0 5 2 5 6" fill="none" stroke="#6b3f1e"/></g></svg>`,
-  beacon: `<svg viewBox="0 0 22 26"><g stroke="#2a160a" stroke-width="0.9"><rect x="3" y="12" width="16" height="10" rx="1.5" fill="#e0c060"/>
-<path d="M3 15h16M3 19h16" stroke="#2a160a" stroke-width="0.6"/><rect x="9" y="8" width="4" height="4" fill="#7d7a72"/>
-<path d="M11 8V2" stroke-width="1.2"/><circle cx="11" cy="2.5" r="1.4" fill="#ff5a3a"/></g></svg>`,
-  spring: `<svg viewBox="0 0 22 26"><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
-stroke="#2a160a" stroke-width="2.6"/><path d="M5 4h12M5 22h12M6 4c10 1 10 3 0 4.5s10 3 0 4.5 10 3 0 4.5 10 3 0 4.5" fill="none"
-stroke="#a8a294" stroke-width="1.3"/></svg>`,
-};
-// Rendered icons (public/icons/items/<kind>.png, tools/blender/placeables.py) for the crafted placeables.
-const png = (kind: string) => `<img src="./icons/items/${kind}.png" alt="" draggable="false">`;
-ICONS.plant_bed = png('plant_bed');
-ICONS.uv_lamp = png('uv_lamp');
-ICONS.power_pole = png('power_pole');
+// Every item's icon is a Blender render (docs/icons.md), shown `fit`: stretched over the item's cells (--pw/--ph from
+// iconScale) keeping its shape, so an icon rendered at the item's grid shape fills them. Gear (tools/blender/finds.py),
+// the buildings and placeables (tools/blender/placeables.py), the base materials, the wrench and the carried machines
+// (tools/blender/icons.py) are; the parts, relics and salvage are still square.
+const fit = (src: string, extra = '') => `<img class="fit" src="./icons/${src}.png" alt="" draggable="false"${extra}>`;
+const ICONS: Record<string, string> = {};
+for (const k of [...Object.keys(GEAR), 'grinder', 'plant_bed', 'uv_lamp', 'power_pole', 'scrap', 'cloth', 'wrench',
+  'robot_arm', 'control_cabinet', 'winch', 'solenoid_valve', 'beacon']) ICONS[k] = fit(`items/${k}`);
 // Wiring is what a wiring coil comes out as (shared/parts.ts UNTIERED): the coil's render.
-ICONS.wiring = png('coil_basic');
+ICONS.wiring = fit('items/coil_basic');
 // The enemies' and bosses' own parts (tools/blender/relics.py).
-for (const k of ['drone_transponder', 'brood_gland', 'servo_heart', 'hive_core', 'queen_eye', 'furnace_heart']) ICONS[k] = png(k);
-// Gear (shared/gear.ts) icons are rendered at the item's grid shape (tools/blender/finds.py): `fit` stretches them
-// over the item's cells (--pw/--ph from iconScale), or keeps their shape inside a single slot.
-for (const k of [...Object.keys(GEAR), 'grinder']) ICONS[k] = `<img class="fit" src="./icons/items/${k}.png" alt="" draggable="false">`;
+for (const k of ['drone_transponder', 'brood_gland', 'servo_heart', 'hive_core', 'queen_eye', 'furnace_heart']) ICONS[k] = fit(`items/${k}`);
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 /** "180 W", "1.2 kW". */
 const watts = (w: number) => (w < 1000 ? `${Math.round(w)} W` : `${(w / 1000).toFixed(1)} kW`);
@@ -243,10 +197,10 @@ const kwh = (x: number) => x.toFixed(x < 1 ? 2 : 1);
 /** Parts (shared/parts.ts) use their rendered icons, public/icons/items/<part>_<tier>.png (tools/blender/items.py); a lettered tile in the rarity colour if one fails. */
 function partIcon(kind: string) {
   const letter = (ITEMS[kind]?.label.split(' ').pop() ?? '?')[0].toUpperCase();
-  return `<img src="./icons/items/${kind}.png" alt="" draggable="false" onerror="this.outerHTML='<b class=&quot;tile&quot;>${letter}</b>'">`;
+  return fit(`items/${kind}`, ` onerror="this.outerHTML='<b class=&quot;tile&quot;>${letter}</b>'"`);
 }
 /** Carried salvage wrecks use their Blender-rendered icons, public/icons/salvage/<id>.png (tools/blender/salvage). */
-const salvageIcon = (kind: string) => `<img src="./icons/salvage/${kind}.png" alt="" draggable="false">`;
+const salvageIcon = (kind: string) => fit(`salvage/${kind}`);
 export const itemIcon = (kind: string) =>
   ICONS[kind] ?? (partOf(kind) ? partIcon(kind) : kind in SALVAGE ? salvageIcon(kind) : `<b>${(ITEMS[kind]?.label ?? kind).slice(0, 3)}</b>`);
 export const itemLabel = (kind: string) => ITEMS[kind]?.label ?? kind;

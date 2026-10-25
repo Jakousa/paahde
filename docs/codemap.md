@@ -203,6 +203,8 @@ when you find it stale.
 - `shared/throw.ts` — thrown scrap (any scrap item in hand, use button): flown and struck against drones in
   `server/throws.ts`, lands as loot; drawn and thrown in `src/throw.ts`
 - `tools/models/hands.py` — first-person hands + held-item clips (docs/viewmodel-hands.md)
+- `tools/blender/icons.py`, `tools/icons/` — inventory icons for what has no Blender model of its own (scrap, cloth, the
+  wrench, the carried machines, dumped from their three.js models); every icon's look and size: `docs/icons.md`
 
 ## Text and speech
 
