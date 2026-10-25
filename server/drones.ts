@@ -13,6 +13,7 @@ import {
   SEEK_GIVE_UP, SEEK_RATE, sweepAt, TRACK_RATE,
 } from '../shared/guardians.ts';
 import { frontOut, nearStorm, type Storm } from '../shared/storm.ts';
+import { CORE_R, vortexCentre, vortexEnvelope, type Vortex } from '../shared/vortex.ts';
 import { DRONE_HIT, DRONE_HP, DRONE_WRECK_S, RANGE, shotPasses } from '../shared/rifle.ts';
 import { sunElevation } from '../shared/sun.ts';
 import { heightAt } from '../shared/terrain.ts';
@@ -65,12 +66,26 @@ type Drone = {
   hurt: number; downAt: number; vx: number; vy: number; vz: number; crashed: boolean; jammed: boolean;
   /** Fleeing a storm front: climbing straight for the sky (leaving too), gone once FLEE_TOP up. */
   fled: boolean;
+  /** Caught in a sand vortex's core (shared/vortex.ts): shot up out of it and torn apart, nothing left to fall. */
+  torn: boolean;
 };
 
 /** Drones fleeing a storm front climb this fast (m/s), drifting on at this, and are gone this high (m) over the sand. */
 const FLEE_CLIMB = 14;
 const FLEE_DRIFT = 6;
 const FLEE_TOP = 260;
+
+/** Sand vortices (shared/vortex.ts) drag drones in from this far (m), slowly at first: DRAG_MIN m/s at the edge up to
+ *  DRAG_MAX near the core, some of it round (a drone flies at 5 m/s: it gets away only from the edge). Within CORE_R·TEAR_K of the axis one is shot up at TEAR_UP m/s, spinning
+ *  out at TEAR_OUT, and is gone after TEAR_MS. */
+const DRAG_R = 700;
+const DRAG_MIN = 2.5;
+const DRAG_MAX = 22;
+const DRAG_SWIRL = 0.9;
+const TEAR_K = 1.5;
+const TEAR_UP = 45;
+const TEAR_OUT = 22;
+const TEAR_MS = 3000;
 
 /** A jammed drone sinks this fast (m/s). */
 const JAM_SINK = 2.5;
@@ -90,7 +105,7 @@ export class DroneServer {
    * guardians near them come for them). Returns who the beams hold right now.
    */
   tick(dt: number, now: number, tod: number, players: BotPlayer[], exposed: BotPlayer[], byId: Map<number, BotPlayer>,
-    storms: readonly Storm[], alert: (p: BotPlayer) => void): Set<number> {
+    storms: readonly Storm[], alert: (p: BotPlayer) => void, vortices: readonly Vortex[] = []): Set<number> {
     const lit = new Set<number>();
     const night = sunElevation(tod) < NIGHT_SUN;
     // A storm front coming: every drone flies up out of it, and none come until it has died down.
@@ -221,7 +236,8 @@ export class DroneServer {
         alert(p);
       }
     }
-    this.drones = this.drones.filter((d) => d.downAt >= 0 ? now - d.downAt < DRONE_WRECK_S * 1000 : !d.leaving || d.y < heightAt(d.x, d.z) + (d.fled ? FLEE_TOP : DRONE_ALT * 4.5));
+    this.whirl(dt, now, vortices);
+    this.drones = this.drones.filter((d) => d.torn ? now - d.downAt < TEAR_MS : d.downAt >= 0 ? now - d.downAt < DRONE_WRECK_S * 1000 : !d.leaving || d.y < heightAt(d.x, d.z) + (d.fled ? FLEE_TOP : DRONE_ALT * 4.5));
     return lit;
   }
 
@@ -245,9 +261,50 @@ export class DroneServer {
     }
   }
 
+  /** Sand vortices drag the drones near them in, flying or falling, and shoot the ones that reach the core up out of it,
+   *  torn apart. */
+  private whirl(dt: number, now: number, vortices: readonly Vortex[]) {
+    const c = { x: 0, z: 0 };
+    for (const v of vortices) {
+      const e = vortexEnvelope(v, now);
+      if (e <= 0) continue;
+      vortexCentre(v, now, c);
+      for (const d of this.drones) {
+        if (d.crashed || d.torn) continue;
+        const dx = c.x - d.x, dz = c.z - d.z, r = Math.hypot(dx, dz);
+        if (r >= DRAG_R) continue;
+        if (r < CORE_R * TEAR_K && e > 0.5) {
+          d.torn = true;
+          d.downAt = now;
+          d.lock = d.seek = d.hunt = -1;
+          d.jammed = false;
+          const ux = r > 1e-3 ? dx / r : 1, uz = r > 1e-3 ? dz / r : 0;
+          d.vx = -uz * TEAR_OUT;
+          d.vz = ux * TEAR_OUT;
+          d.vy = TEAR_UP;
+          continue;
+        }
+        const k = 1 - r / DRAG_R;
+        const sp = e * (DRAG_MIN + (DRAG_MAX - DRAG_MIN) * Math.pow(k, 1.2));
+        d.x += ((dx - dz * DRAG_SWIRL) / r) * sp * dt;
+        d.z += ((dz + dx * DRAG_SWIRL) / r) * sp * dt;
+        // Fighting it, it has no eyes for anyone.
+        if (k > 0.5) d.lock = d.seek = d.hunt = -1;
+      }
+    }
+  }
+
   /** A shot-down drone: drops, carried on by its speed, until it hits the sand (and lies there). */
   private fall(d: Drone, dt: number) {
     if (d.crashed) return;
+    if (d.torn) {
+      // Spinning up and out of the vortex, its pieces flung everywhere: nothing comes down.
+      d.vy -= 9.8 * dt;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.z += d.vz * dt;
+      return;
+    }
     // Jammed: sinking at a steady JAM_SINK while it drifts to a stop.
     if (d.jammed) d.vy = -JAM_SINK;
     else d.vy -= 9.8 * dt;
@@ -344,7 +401,7 @@ export class DroneServer {
     const z = hz + Math.cos(a) * from;
     const d: Drone = {
       id: this.nextDrone++, x, z, y: heightAt(x, z) + DRONE_ALT, yaw: Math.atan2(hx - x, hz - z),
-      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, vx: 0, vy: 0, vz: 0, crashed: false, jammed: false, fled: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until,
+      hx, hz, tx: hx, tz: hz, site, lock: -1, hurt: 0, downAt: -1, torn: false, vx: 0, vy: 0, vz: 0, crashed: false, jammed: false, fled: false, litAt: 0, leaving: false, lost: -1, lostUntil: 0, seek: -1, seenAt: 0, hunt: -1, huntUntil: 0, dx: 0, dy: -1, dz: 0, until,
     };
     // First pass: across the site from where it came in.
     d.tx = hx + rand(-30, 30);

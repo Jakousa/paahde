@@ -7,6 +7,7 @@
 // site. Crawlers belong to a crash site: they turn up there when someone comes near (any time, at crawler and guardian
 // ground) and go when everyone has left. The scrap fields (level 0) near the start have none.
 import { ORIGIN } from '../shared/origin.ts';
+import type { Vortex } from '../shared/vortex.ts';
 import { PACK_BACK_S } from '../shared/enemies.ts';
 import { coreCrashSites, crashSite, type CrashSite, LEVEL_R } from '../shared/crashsites.ts';
 import {
@@ -105,6 +106,8 @@ export class GuardianServer {
   readonly drones = new DroneServer();
   /** Sandstorms right now (set by the server before each tick), shared/storm.ts. */
   storms: readonly Storm[] = [];
+  /** Sand vortices right now (set with the storms), shared/vortex.ts: they drag the drones in. */
+  vortices: readonly Vortex[] = [];
   bolts: Bolt[] = [];
   missiles: Missile[] = [];
   private nextBolt = 1;
@@ -268,7 +271,7 @@ export class GuardianServer {
     this.vel.update(now, dt, players);
     this.swarm(players, now);
     this.wrecks(now);
-    const lit = this.drones.tick(dt, now, tod, players, exposed, byId, this.storms, (p) => this.alert(p, now));
+    const lit = this.drones.tick(dt, now, tod, players, exposed, byId, this.storms, (p) => this.alert(p, now), this.vortices);
     this.tickMissiles(dt, now, lit, players, exposed, blasted, events);
     for (const g of this.guardians) {
       if (g.deadAt >= 0) continue;

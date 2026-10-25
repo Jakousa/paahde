@@ -46,6 +46,7 @@ import { CorpseServer } from './corpses.ts';
 import { canDropAt } from '../shared/loot.ts';
 import { ScrapServer } from './scrap.ts';
 import { StormServer } from './storm.ts';
+import { inVortexCore, vortexCentre, vortexPull } from '../shared/vortex.ts';
 import { JetServer } from './jets.ts';
 import { JetCrashes } from './jetcrash.ts';
 import { BREAK_S, breakup, type Breakup, type JetKind } from '../shared/jetbreak.ts';
@@ -107,7 +108,7 @@ const corpses = new CorpseServer(db, items, (msg) => {
   for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
 });
 
-const storms = new StormServer(performance.now());
+const storms = new StormServer(performance.now(), !CALM);
 const jets = new JetServer(performance.now());
 const jetCrashes = new JetCrashes(db);
 const harvesters = new HarvesterServer(performance.now());
@@ -208,6 +209,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'wire' && p) return onWire(p, msg.slot, msg.a, msg.b);
     if (msg.t === 'craft' && p) return onCraft(p, msg.recipe);
     if (msg.t === 'setEpoch' && p) return onSetEpoch(ws, msg.epoch);
+    if (msg.t === 'storm' && p && msg.vortex) return storms.summonVortex(p.state.x, p.state.z, 600, performance.now());
     if (msg.t === 'storm' && p && msg.gas) return storms.spawnGas([...players.values()].map((o) => o.state), performance.now());
     if (msg.t === 'storm' && p && msg.front) return storms.spawnFront([...players.values()].map((o) => o.state), performance.now());
     if (msg.t === 'storm' && p) return storms.spawn(p.state.x, p.state.z, 0, performance.now());
@@ -231,6 +233,20 @@ wss.on('connection', (ws) => {
     if (msg.t === 'debugGear' && p) return onDebugGear(p, msg.tier);
     if (msg.t === 'debugGive' && p) return onDebugGive(p, msg.kind, msg.n, msg.tier);
     if (msg.t === 'debugHit' && p) return die(p, 'laser', [0, 3, 6]);
+    if (msg.t === 'debugVortexVisit' && p && !p.down && !p.state.riding) {
+      // Out on the sand 600 m from the nearest sand vortex (just outside its pull), on the side you're on.
+      const now = performance.now();
+      let best: { x: number; z: number } | null = null, bd = Infinity;
+      for (const v of storms.vortices) {
+        const c = vortexCentre(v, now, { x: 0, z: 0 }), d = Math.hypot(c.x - p.state.x, c.z - p.state.z);
+        if (d < bd) (best = c), (bd = d);
+      }
+      if (!best) return;
+      const ux = bd > 1 ? (p.state.x - best.x) / bd : 1, uz = bd > 1 ? (p.state.z - best.z) / bd : 0;
+      const x = best.x + ux * 600, z = best.z + uz * 600;
+      p.state = { ...p.state, x, z, y: heightAt(x, z) + 0.5, vx: 0, vy: 0, vz: 0, grounded: false };
+      return;
+    }
     if (msg.t === 'debugWeather' && p) {
       storms.off = msg.off === true;
       return;
@@ -436,13 +452,26 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const gassed = grace ? 0 : gasExposure(storms.gas, p.state.x, p.state.y, p.state.z, serverNow);
   p.gassed = Math.max(0, p.gassed + (gassed > 0 ? gassed : -GAS_RECOVER) * dt);
   if (p.gassed >= GAS_S && !p.down) die(p, 'gas'); // slumps where they stand
+  // In a sand vortex's core: torn off your feet and thrown high, spinning out of it.
+  const v = p.down ? null : inVortexCore(storms.vortices, p.state.x, p.state.y, p.state.z, serverNow);
+  if (v) {
+    const c = vortexCentre(v, serverNow, { x: 0, z: 0 });
+    const dx = p.state.x - c.x, dz = p.state.z - c.z, d = Math.hypot(dx, dz) || 1;
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    die(p, 'vortex', [r2((-dz / d) * FLING_ROUND + (dx / d) * FLING_OUT), FLING_UP, r2((dx / d) * FLING_ROUND + (dz / d) * FLING_OUT)]);
+  }
 }
+
+/** A sand vortex's throw (m/s): round it, out of it and up. */
+const FLING_ROUND = 18;
+const FLING_OUT = 5;
+const FLING_UP = 32;
 
 /** Drop where they stand (off the bike, stopped) for DOWN_MS, as a ragdoll thrown by `push`; then respawn().
  *  `bolt`: the guardian's bolt that did it, which the client lets reach them first. */
 function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 0, 0], bolt?: number) {
   if (p.down || !p.ready || lives <= 0) return;
-  if (cause !== 'heat' && cause !== 'storm' && cause !== 'gas' && shielded(p, push)) return;
+  if (cause !== 'heat' && cause !== 'storm' && cause !== 'gas' && cause !== 'vortex' && shielded(p, push)) return;
   p.down = { until: Date.now() + DOWN_MS, push };
   p.choke = 0;
   p.gassed = 0;
@@ -539,6 +568,7 @@ function tickBots(elapsed: number, now: number, tod: number) {
   const wall = Date.now();
   const list = [...players.values()].map((p) => ({ id: p.id, x: p.state.x, y: p.state.y, z: p.state.z, safe: !p.ready || !!p.down || wall - p.heat.diedAt < BOT_GRACE_MS }));
   guardians.storms = storms.storms;
+  guardians.vortices = storms.vortices;
   const furrows: Furrow[] = [];
   const crushed = harvesters.tick(now, list, furrows, storms.storms);
   for (const f of furrows) terrain.crater(f.x, f.z, f.r, f.mm, false);
@@ -1098,8 +1128,9 @@ function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: u
   p.pitch = pitch as number;
   p.input = input & INPUT_MASK;
   const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
+  const pull = vortexPull(storms.vortices, p.state.x, p.state.y, p.state.z, performance.now(), { x: 0, z: 0 });
   const before = p.state;
-  p.state = step(p.state, input & INPUT_MASK, p.yaw, drag, guardians.posts);
+  p.state = step(p.state, input & INPUT_MASK, p.yaw, drag, guardians.posts, pull);
   offBike(p, before);
   crash.push(p.state, input & INPUT_MASK, p.yaw); // crouched and leaning on a machine rolls it
 }

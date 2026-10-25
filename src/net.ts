@@ -49,6 +49,8 @@ import { Telemetry } from './telemetry';
 export type SiteMsg = Extract<ServerMsg, { t: 'siteState' | 'siteDone' | 'siteTake' | 'sites' | 'siteReset' | 'bench' | 'siteTook' | 'siteRolls' }>;
 import { EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import { stormDrag, type Storm } from '../shared/storm.ts';
+import { vortexPull, type Vortex } from '../shared/vortex.ts';
+import type { Pull } from '../shared/sim.ts';
 import type { Gas } from '../shared/gas.ts';
 import { F_STRIDE } from '../shared/guardians.ts';
 import type { Jet } from '../shared/jets.ts';
@@ -124,7 +126,7 @@ export class Net {
 
   private ws?: WebSocket;
   private seq = 0;
-  private pending: { seq: number; input: number; yaw: number; drag: number }[] = [];
+  private pending: { seq: number; input: number; yaw: number; drag: number; pull: Pull }[] = [];
   private snapshots: Snapshot[] = [];
   private clockOffset?: number; // serverTime - localTime
   /** Recent worst snapshot delay beyond the best one (ms), and the eased interpolation delay. */
@@ -200,6 +202,8 @@ export class Net {
   storms: Storm[] = [];
   /** Poison gas clouds out (shared/gas.ts), times on the server clock. */
   gas: Gas[] = [];
+  /** Sand vortices (shared/vortex.ts), sent with the storms. */
+  vortices: Vortex[] = [];
   /** Fixed-wing drone flights in the air (shared/jets.ts), times on the server clock. */
   jets: Jet[] = [];
   /** Harvesters out (shared/harvester.ts), times on the server clock. */
@@ -249,8 +253,9 @@ export class Net {
     this.seq++;
     this.prev = this.me;
     const drag = stormDrag(this.storms, this.me.x, this.me.y, this.me.z, this.serverTime());
-    this.me = step(this.me, input, yaw, drag, this.legPosts);
-    this.pending.push({ seq: this.seq, input, yaw, drag });
+    const pull = vortexPull(this.vortices, this.me.x, this.me.y, this.me.z, this.serverTime(), { x: 0, z: 0 });
+    this.me = step(this.me, input, yaw, drag, this.legPosts, pull);
+    this.pending.push({ seq: this.seq, input, yaw, drag, pull });
     this.send({ t: 'input', seq: this.seq, input, yaw, pitch });
     this.telemetry.sent(this.seq);
   }
@@ -585,8 +590,9 @@ export class Net {
 
   /** Debug menu: a sandstorm where we stand, for everyone; `front`: a mega-storm front over everyone at once; 'gas':
    *  poison gas creeping in over everyone. */
-  summonStorm(front: boolean | 'gas' = false) {
-    this.send({ t: 'storm', ...(front === 'gas' ? { gas: true } : front ? { front } : {}) });
+  summonStorm(front: boolean | 'gas' | 'vortex' | 'vortexVisit' = false) {
+    if (front === 'vortexVisit') return this.send({ t: 'debugVortexVisit' });
+    this.send({ t: 'storm', ...(front === 'gas' ? { gas: true } : front === 'vortex' ? { vortex: true } : front ? { front } : {}) });
   }
 
   /** Debug menu: put the shared clock back to real time. */
@@ -768,6 +774,7 @@ export class Net {
     if (msg.t === 'storms') {
       this.storms = msg.storms;
       this.gas = msg.gas ?? [];
+      this.vortices = msg.vortices ?? [];
       return;
     }
     if (msg.t === 'jets') {
@@ -873,7 +880,7 @@ export class Net {
       riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading, bike: server.bike,
       nose: server.nose ?? 0, noseSpin: server.noseSpin ?? 0,
     };
-    for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag, this.legPosts);
+    for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag, this.legPosts, p.pull);
     this.errorX += this.me.x - s.x;
     this.errorY += this.me.y - s.y;
     this.errorZ += this.me.z - s.z;

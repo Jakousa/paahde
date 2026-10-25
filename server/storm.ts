@@ -6,6 +6,8 @@
 // with enough of it left, and no sandstorm column blows up while a big one is out.
 import { WIND } from '../shared/dunes.ts';
 import { FRONT_LEAD_S, FRONT_PASS_S, FRONT_SPEED, MAX_LEN_MS, MIN_LEN_MS, WARN_MS, type Storm } from '../shared/storm.ts';
+import { KEEP_OUT, NEVER, RAMP_MS as VORTEX_RAMP_MS, ROAMERS, vortexEnvelope, type Vortex } from '../shared/vortex.ts';
+import { ORIGIN } from '../shared/origin.ts';
 import { GAS_LEAD_S, GAS_PASS_S, GAS_SPEED, type Gas } from '../shared/gas.ts';
 import { DAY_SECONDS, sunElevation } from '../shared/sun.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
@@ -39,6 +41,9 @@ const GAS_FIRST_MIN_MS = 25 * 60_000;
 const GAS_NIGHT_LEFT_MS = 5 * 60_000;
 /** It sinks away this long (ms) after its back has passed the furthest player it was sent at. */
 const GAS_LINGER_MS = 20_000;
+/** A sand vortex summoned from the debug menu (the world's own roam for ever, shared/vortex.ts) lasts this long (ms). */
+const VORTEX_SUMMON_MS = 6 * 60_000;
+
 /** A big event (front or gas) keeps the other kind away this long (ms) after it has ended. */
 const BIG_GAP_MS = 20 * 60_000;
 
@@ -47,6 +52,7 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a);
 export class StormServer {
   storms: Storm[] = [];
   gas: Gas[] = [];
+  vortices: Vortex[] = [];
   private nextId = 1;
   private nextAt: number;
   private nextFrontAt: number;
@@ -55,10 +61,17 @@ export class StormServer {
   /** Debug menu: no random storms (and any blowing now are cleared). */
   off = false;
 
-  constructor(now: number) {
+  /** `roamers`: the world has its sand vortices (not the lab or the art bench). */
+  constructor(now: number, roamers = true) {
     this.nextAt = now + rand(GAP_MIN_MS, GAP_MAX_MS) / 2;
     this.nextFrontAt = now + rand(FRONT_FIRST_MIN_MS, FRONT_GAP_MAX_MS);
     this.nextGasAt = now + rand(GAS_FIRST_MIN_MS, GAS_GAP_MAX_MS);
+    // The world's sand vortices: out from the start, already spun up, spread round the base, roaming for ever.
+    const turn = Math.random() * Math.PI * 2;
+    for (let i = 0; roamers && i < ROAMERS; i++) {
+      const seed = Math.round(((turn + (i / ROAMERS) * Math.PI * 2) % (Math.PI * 2)) * 1000) / 1000;
+      this.vortices.push({ id: this.nextId++, x: Math.round(ORIGIN.x), z: Math.round(ORIGIN.z), start: Math.round(now - VORTEX_RAMP_MS), end: NEVER, seed, roam: true });
+    }
   }
 
   /** Server time `now` (ms), where the players are and the time of day (shared/sun.ts). Returns a 'storms' message
@@ -73,6 +86,12 @@ export class StormServer {
     const gas = this.off ? [] : this.gas.filter((g) => g.end > now);
     if (gas.length !== this.gas.length) {
       this.gas = gas;
+      this.changed = true;
+    }
+    // (The roamers are part of the world: weather off or not, they stay.)
+    const vortices = this.vortices.filter((v) => v.roam || (!this.off && v.end > now));
+    if (vortices.length !== this.vortices.length) {
+      this.vortices = vortices;
       this.changed = true;
     }
     const big = this.gas.length > 0 || this.storms.some((s) => s.front);
@@ -110,6 +129,27 @@ export class StormServer {
       end: Math.round(start + rand(MIN_LEN_MS, MAX_LEN_MS)),
     });
     this.changed = true;
+  }
+
+  /** Debug menu: a sand vortex already spun up within sight of (x, z): `ahead` m upwind of it if its path from there stays
+   *  clear of the base and the ship for a few minutes, else on the first clear spot round them (you start there). */
+  summonVortex(x: number, z: number, ahead: number, now: number) {
+    const tries: [number, number][] = [[x - WIND.x * ahead, z - WIND.z * ahead]];
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2, r = KEEP_OUT + 350;
+      tries.push([ORIGIN.x + Math.sin(a) * r, ORIGIN.z + Math.cos(a) * r]);
+    }
+    const start = Math.round(now - VORTEX_RAMP_MS);
+    for (const [tx, tz] of tries) {
+      const v: Vortex = { id: this.nextId, x: Math.round(tx), z: Math.round(tz), start, end: Math.round(now + VORTEX_SUMMON_MS), seed: Math.round(Math.random() * 6283) / 1000 };
+      let clear = true;
+      for (let t = now; t < now + 240_000 && clear; t += 5000) clear = vortexEnvelope(v, t) > 0.95;
+      if (!clear) continue;
+      this.nextId++;
+      this.vortices.push(v);
+      this.changed = true;
+      return;
+    }
   }
 
   /** A mega-storm front rolling in from upwind of everyone: it reaches the first of `players` FRONT_LEAD_S
@@ -171,7 +211,7 @@ export class StormServer {
   }
 
   msg(): ServerMsg {
-    return { t: 'storms', storms: this.storms, gas: this.gas };
+    return { t: 'storms', storms: this.storms, gas: this.gas, vortices: this.vortices };
   }
 }
 

@@ -72,6 +72,9 @@ export const stormGround = uniform(new THREE.Vector4());
 export const stormFront = uniform(new THREE.Vector4(1, 0, 0, 0));
 /** The front's strength envelope 0..1 (0 = not drawn), and the ground height (m) its dust thins upwards from. */
 export const stormFrontEnv = uniform(new THREE.Vector2());
+/** The sand vortex nearest the camera for the post pass (post.ts, shared/vortex.ts): centre x, z, the ground height (m)
+ *  under it, and its strength 0..1 (0 = not drawn). Written by src/vortex.ts every frame. */
+export const vortex = uniform(new THREE.Vector4());
 /** Choking in a mega-storm out in the open, 0..1 (1: about to die of it): the view closes in (post.ts). */
 export const choking = uniform(0);
 /** Poison gas for the post pass (post.ts, shared/gas.ts): the unit xz direction it creeps, how far along it its leading

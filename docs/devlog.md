@@ -2,6 +2,26 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-25 — Sand vortices
+
+- Two colossal sand vortices roam every world for ever (`shared/vortex.ts`): ~950 m tall, a 50 m foot flaring into a
+  spiral bowl ~650 m across. Each circles the origin (by the crashed ship) 850–2550 m out (a lap ~30 min), fastest heading downwind (~13 m/s)
+  and slowest into the wind (~3 m/s), so it sweeps through the crash sites but never comes near the ship.
+  Not tied to players; made when the world process starts (a restart puts them somewhere else, like the storms).
+- Within 450 m it drags you in and round (`vortexPull`, a second wind in `step()`, replayed with each input like the
+  storm's). Walking straight out gets you away from 250 m, not from 200 m; a bike gets you out. Inside 55 m you die,
+  thrown round, out and 32 m/s up ('torn up by the sand vortex'). Bunkers and shelters keep it out.
+- Drones are dragged in from 700 m (slower than they fly at the edge, faster further in), shot up out of the core and
+  gone: no wreck, no parts.
+- Drawn in the post pass as a ray-marched volume: a snaking, leaning axis, lumpy radius, spiral arms, a debris skirt.
+  Marched at half resolution in its own target (at most 400k pixels, so a retina screen gets about a quarter), only
+  while one is out, stopping where the dust is opaque. Full resolution cost 60 → 22–27 fps at 1600×900 in headless
+  Chrome; this way 60 fps at 1600×900, and ~4–5 ms at 2880×1800 with one far off in view. The cost of the low
+  resolution: a blotchy grain in the dust. While it was marched in the full-resolution dust pass, more than ~24 steps or
+  more noise per step made the whole frame go dark in headless Chrome (haze and bloom dropped out), so keep it lean.
+- Debug menu: *Sand vortex* (one more, short-lived, spun up near you or on the first clear spot round the ship) and
+  *Go to vortex* (600 m from the nearest, just outside its pull).
+- Known gaps: only the nearest vortex is drawn; no sound of its own (the wind and grit swell near it).
 ## 2026-10-25 — The starting bunker is gone
 
 No more base: the hut, the stairs, the rooms, the workbench, the dismantling table, the endless chest, the hand pump, the

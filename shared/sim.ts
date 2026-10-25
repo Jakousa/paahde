@@ -83,6 +83,12 @@ const STORM_SLOW = 0.2;
 const STORM_PUSH = 2;
 const STORM_PUSH_ACCEL = 4;
 const STORM_PUSH_BIKE = 3;
+/** A sand vortex's drag (shared/vortex.ts vortexPull, m/s): added as is to the velocity you steer towards on the ground,
+ *  as an acceleration (m/s²) this many times it in the air and on the bike. */
+const PULL_AIR = 1.5;
+const PULL_BIKE = 0.7;
+export type Pull = { readonly x: number; readonly z: number };
+export const NO_PULL: Pull = { x: 0, z: 0 };
 
 // Landing.
 const HARD_LANDING = 13; // impact speed (m/s) above which a landing bogs you down
@@ -222,7 +228,7 @@ const tmpCollide = { x: 0, z: 0, vx: 0, vz: 0 };
  * Advance one tick. `yawQ` is the quantized camera yaw: yaw 0 looks down -Z, and increases
  * counter-clockwise seen from above (three.js camera rotation.y convention).
  */
-export function step(s: PlayerState, input: number, yawQ: number, storm = 0, legs: readonly number[] = NO_LEGS): PlayerState {
+export function step(s: PlayerState, input: number, yawQ: number, storm = 0, legs: readonly number[] = NO_LEGS, pull: Pull = NO_PULL): PlayerState {
   const yaw = yawFromQ(yawQ);
   const bikeDown = (input & BIKE) !== 0;
   if (!s.bike && s.riding) s = { ...s, riding: false }; // gone from under you
@@ -231,7 +237,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
     s = { ...s, riding: false, bike: 0 };
   }
   // Getting on is at once too: the server puts you on it (server/vehicles.ts mount).
-  if (s.riding) return stepBike(s, input, bikeDown, storm, legs);
+  if (s.riding) return stepBike(s, input, bikeDown, storm, legs, pull);
   const fwd = (input & FORWARD ? 1 : 0) - (input & BACK ? 1 : 0);
   const strafe = (input & RIGHT ? 1 : 0) - (input & LEFT ? 1 : 0);
   // Camera forward is (-sin yaw, -cos yaw), right is (cos yaw, -sin yaw).
@@ -248,6 +254,9 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   if (landTicks > 0) speed *= LAND_SLOW + (1 - LAND_SLOW) * (1 - landTicks / MAX_LAND_TICKS);
   speed *= 1 - STORM_SLOW * Math.min(1, storm);
   const pushX = WIND.x * storm, pushZ = WIND.z * storm;
+  // What the wind adds to the velocity you steer towards on the ground (m/s), and as an acceleration in the air (m/s²).
+  const dragX = pushX * STORM_PUSH + pull.x, dragZ = pushZ * STORM_PUSH + pull.z;
+  const airX = pushX * STORM_PUSH_ACCEL + pull.x * PULL_AIR, airZ = pushZ * STORM_PUSH_ACCEL + pull.z * PULL_AIR;
 
   let vx = s.vx;
   let vz = s.vz;
@@ -273,8 +282,8 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
   const crouching = (input & CROUCH) !== 0 && s.grounded && !sliding;
   if (crouching) speed = Math.min(speed, CROUCH_SPEED);
   if (sliding) {
-    vx += pushX * STORM_PUSH_ACCEL * DT;
-    vz += pushZ * STORM_PUSH_ACCEL * DT;
+    vx += airX * DT;
+    vz += airZ * DT;
     const onScrap = s.y > heightAt(s.x, s.z) + 0.02;
     const g = onScrap ? flatSlope : slopeAt(s.x, s.z, tmpSlope);
     const steep = Math.hypot(g.gx, g.gz);
@@ -317,8 +326,8 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
       const sin = steep * cos;
       const slide = -GRAVITY * (sin - SLIDE_FRICTION * cos) + SLIDE_PUSH;
       const down = Math.max(0, vx * ux + vz * uz); // keep downhill momentum, don't let control brake it
-      const tx = dx * speed * SLIDE_CONTROL + ux * down + pushX * STORM_PUSH;
-      const tz = dz * speed * SLIDE_CONTROL + uz * down + pushZ * STORM_PUSH;
+      const tx = dx * speed * SLIDE_CONTROL + ux * down + dragX;
+      const tz = dz * speed * SLIDE_CONTROL + uz * down + dragZ;
       [vx, vz] = approach2(vx, vz, tx, tz, SLIDE_ACCEL * DT);
       vx += ux * slide * DT;
       vz += uz * slide * DT;
@@ -326,7 +335,7 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
       // Normal sand: speed depends on the slope along the direction you want to go.
       const rise = dx * g.gx + dz * g.gz;
       const k = rise > 0 ? 1 / (1 + UPHILL_DRAG * rise) : 1 + DOWNHILL_BOOST * Math.min(-rise, 0.6);
-      [vx, vz] = approach2(vx, vz, dx * speed * k + pushX * STORM_PUSH, dz * speed * k + pushZ * STORM_PUSH, (len > 0 ? ACCEL : BRAKE) * DT);
+      [vx, vz] = approach2(vx, vz, dx * speed * k + dragX, dz * speed * k + dragZ, (len > 0 ? ACCEL : BRAKE) * DT);
     }
     const hs = Math.hypot(vx, vz);
     if (hs > MAX_GROUND_SPEED) {
@@ -338,8 +347,8 @@ export function step(s: PlayerState, input: number, yawQ: number, storm = 0, leg
     const hs = Math.hypot(vx, vz);
     const cap = Math.max(speed, hs);
     [vx, vz] = approach2(vx, vz, len > 0 ? dx * cap : vx, len > 0 ? dz * cap : vz, AIR_ACCEL * DT);
-    vx += pushX * STORM_PUSH_ACCEL * DT;
-    vz += pushZ * STORM_PUSH_ACCEL * DT;
+    vx += airX * DT;
+    vz += airZ * DT;
   }
   const facing = yaw; // first person: the body faces where the camera looks
 
@@ -451,7 +460,7 @@ const BIKE_LAND_WORST = 1;
 const BIKE_SKEW_LOSS = 0.85;
 export const BIKE_HARD_LANDING = 22; // impact (m/s into the sand) that costs speed and bogs the engine; src/bikeLandSound.ts crashes above it
 
-function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: number, legs: readonly number[]): PlayerState {
+function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: number, legs: readonly number[], pull: Pull): PlayerState {
   const top = bikeTopSpeed(s.bike - 1), engine = bikeEngine(s.bike - 1);
   const throttle = (input & FORWARD ? 1 : 0) - (input & BACK ? 1 : 0);
   const steer = (input & LEFT ? 1 : 0) - (input & RIGHT ? 1 : 0); // + turns left (heading grows counter-clockwise)
@@ -481,6 +490,9 @@ function stepBike(s: PlayerState, input: number, bikeDown: boolean, storm: numbe
     // The storm's push, before the tyres: mostly a head- or tailwind, they hold most of the sideways part.
     vf += WIND.x * storm * STORM_PUSH_BIKE * DT * fx + WIND.z * storm * STORM_PUSH_BIKE * DT * fz;
     vr += WIND.x * storm * STORM_PUSH_BIKE * DT * rx + WIND.z * storm * STORM_PUSH_BIKE * DT * rz;
+    // A vortex's drag the same way.
+    vf += (pull.x * fx + pull.z * fz) * PULL_BIKE * DT;
+    vr += (pull.x * rx + pull.z * rz) * PULL_BIKE * DT;
     // Tyres: grip pulls the sideways slip towards zero, up to their limit.
     vr = vr > 0 ? Math.max(0, vr - BIKE_GRIP * DT) : Math.min(0, vr + BIKE_GRIP * DT);
     h += (vf * Math.tan((steer * BIKE_STEER) / (1 + Math.abs(vf) / BIKE_STEER_FADE)) / BIKE_WHEELBASE) * DT;

@@ -11,7 +11,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  choking, deathGrade, fainting, gasEnv, gasLayer, gassed, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
+  choking, deathGrade, fainting, gasEnv, gasLayer, vortex, gassed, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
   sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
 import { EDGE, FRONT_TAIL, FRONT_WALL } from '../shared/storm.ts';
@@ -98,6 +98,29 @@ const FRONT_STEPS = 8;
 const FRONT_LIT = 0.6;
 /** How much thicker the front's dust is than a column's: inside it you see 3–10 m. */
 const FRONT_THICK = 4;
+/** The sand vortex (shared/vortex.ts, env.ts vortex): how tall (m), its funnel's radius at the ground and at the top (m), how
+ *  sharply it flares (the radius goes with height^VX_FLARE), the debris skirt round its foot (radius, height m), its spin
+ *  (rad/s), how thick its dust is (×STORM_K) and the march steps. */
+const VX_H = 950;
+const VX_R0 = 50;
+const VX_R1 = 650;
+/** How fast its arms wind round it (rad per m out). */
+const VX_SPIRAL = 0.008;
+const VX_FLARE = 2.8;
+const VX_SKIRT_R = 240;
+const VX_SKIRT_H = 80;
+const VX_SPIN = 0.5;
+const VX_THICK = 0.45;
+const VX_STEPS = 24;
+/** The vortex is marched at up to this fraction of the screen's resolution and at most VX_PIXELS pixels (a retina screen
+ *  gets about a quarter), and stops where it's this thick (optical depth). */
+const VX_RES = 0.5;
+const VX_PIXELS = 400_000;
+const VX_OPAQUE = 30;
+/** How far (m) its axis snakes about at the top, and leans downwind. */
+const VX_BEND = 160;
+const VX_LEAN = 150;
+const VX_LIT = 1.4;
 /** Poison gas (shared/gas.ts): how thick it is (×STORM_K: ~30 m to see in it), how soft its surface is (m), how far its
  *  wisps reach ahead of the leading edge (m), how far a ray is marched through it (m), and the steps. */
 const GAS_THICK = 0.65;
@@ -268,6 +291,103 @@ export class Post {
     const { camWorld, projInv, camPos } = this;
     const dustLit: N = (sunColor as unknown as N).mul(vec3(0.5, 0.3, 0.16)).mul(0.17).add((hazeColor as unknown as N).mul(0.15));
     const gasLit: N = (sunColor as unknown as N).mul(0.12).add((hazeColor as unknown as N).mul(0.5)).mul(vec3(0.42, 0.85, 0.16)).add(vec3(0.007, 0.016, 0.003));
+    // --- The sand vortex (shared/vortex.ts): a funnel of dust spinning round a snaking, leaning axis, narrow at the ground
+    // and flaring into a vast spiral bowl overhead, its dust thickest in the funnel's wall, over a skirt of debris churning
+    // round its foot. The ray is clipped to its bounding cylinder and marched with the samples bunched where it passes
+    // nearest the axis; the billows turn with it, curl in along spiral arms and climb its wall. Huge on screen and dear per
+    // pixel, so it's marched at VX_RES resolution into its own target (and not at all with no vortex out): optical depth,
+    // its lit and seen weights (as the dust's below) and where it starts; the dust pass adds it in.
+    const vortexVol = Fn(() => {
+      const p = uv();
+      const ndc = vec4(p.x.mul(2).sub(1), float(1).sub(p.y.mul(2)), 1, 1);
+      const v = projInv.mul(ndc);
+      const dv = normalize(v.xyz.div(v.w));
+      const dir = normalize(camWorld.mul(vec4(dv, 0)).xyz).toVar();
+      const tScene = viewZ.div(dv.z).toVar();
+      const jitter = fract(sin(dot(p.mul(vec2(911.3, 577.7)), vec2(12.9898, 78.233))).mul(43758.5453)).toVar();
+      const tau = float(0).toVar();
+      const lit = float(0).toVar();
+      const seen = float(0).toVar();
+      const first = float(6e4).toVar();
+      const oc = camPos.xz.sub(vortex.xy);
+      const a = max(dot(dir.xz, dir.xz), 1e-6);
+      const b = dot(oc, dir.xz);
+      const R = float(VX_R1 * 1.25 + VX_BEND + VX_LEAN);
+      const h0 = b.mul(b).sub(a.mul(dot(oc, oc).sub(R.mul(R))));
+      If(h0.greaterThan(0), () => {
+        const sq = sqrt(h0);
+        const t0 = max(b.negate().sub(sq).div(a), 0);
+        const top = vortex.z.add(VX_H * 1.05).sub(camPos.y).div(max(dir.y, 1e-4));
+        const t1 = min(min(b.negate().add(sq).div(a), tScene), top);
+        If(t1.greaterThan(t0), () => {
+          first.assign(min(first, t0));
+          // Samples bunched where the ray passes nearest the axis (the funnel), spreading out towards the ends.
+          const tc = b.negate().div(a).clamp(t0, t1);
+          const hs = max(tc.sub(t0), t1.sub(tc));
+          const sunSide = normalize(vec2(sunDirection.x, sunDirection.z).add(vec2(1e-4, 0)));
+          for (let k = 0; k < VX_STEPS; k++) {
+            // Seen through to (nearly) nothing: the rest of the ray can't show.
+            If(tau.lessThan(VX_OPAQUE), () => {
+              const u = jitter.add(k).div(VX_STEPS).mul(2).sub(1);
+              const t = tc.add(u.mul(abs(u)).mul(hs));
+              const dt = abs(u).mul(hs).mul(4 / VX_STEPS).mul(step(t0, t)).mul(step(t, t1));
+              const q = camPos.add(dir.mul(t));
+              const h = max(q.y.sub(vortex.z), 0);
+              const hn = h.div(VX_H).clamp(1e-3, 1); // (pow of 0 is NaN on some GPUs, and bloom smears a NaN over the screen)
+              // Its axis isn't straight: it leans downwind and snakes about higher up, the bends crawling up it over time.
+              const bend = vec2(sin(h.mul(0.006).add(time.mul(0.11)).add(1.3)), cos(h.mul(0.0045).add(time.mul(0.09))))
+                .mul(VX_BEND).add(windDir.mul(VX_LEAN)).mul(hn.mul(hn));
+              const d = q.xz.sub(vortex.xy).sub(bend);
+              const r = length(d);
+              // Turning with the vortex and twisting up its height, so the billows wind round it; on a circle (cos, sin of
+              // the angle round it) so the noise has no seam, stretched along the spin into streaks.
+              // Spiral arms: the angle winds on with the radius, so bands of dust curl in towards the axis.
+              const ang = atan(d.y, d.x).add(time.mul(VX_SPIN)).add(h.mul(0.003)).sub(r.mul(VX_SPIRAL));
+              const ring = vec2(cos(ang), sin(ang));
+              const lift = h.sub(time.mul(14));
+              const n1 = mx_noise_float(vec3(ring.mul(1.8), lift.mul(0.004).add(r.mul(0.004))));
+              // Long streaks along the arms: slow round them, fast across them.
+              const n2 = mx_noise_float(vec3(ring.mul(2.5), r.mul(0.05).add(lift.mul(0.012))));
+              const n = n1.mul(0.6).add(n2.mul(0.4));
+              // The funnel: its wall at radius Rh, a ragged band of dust either side; the core thinner.
+              // Lumpy, not round: the radius swells and pinches round it and up it, the lumps turning with it.
+              const lump = n1;
+              const Rh = pow(hn, VX_FLARE).mul(VX_R1 - VX_R0).add(VX_R0).mul(lump.mul(0.5).add(1));
+              const off = r.add(n.mul(Rh.mul(0.35))).sub(Rh).div(Rh.mul(0.3).add(8));
+              const wall = exp(off.mul(off).negate()).add(float(1).sub(smoothstep(0, 1, r.div(Rh))).mul(0.35));
+              const fadeTop = float(1).sub(smoothstep(0.7, 1, hn.add(n.mul(0.2))));
+              // The skirt: dust and debris thrown out round the foot, thinning upwards.
+              const rs = r.add(n.mul(30)).div(VX_SKIRT_R);
+              const skirt = float(1).sub(smoothstep(0, 1, rs)).mul(exp(h.mul(n.mul(0.8).add(1)).div(-VX_SKIRT_H))).mul(saturate(n.mul(2.5).add(0.8))).mul(4);
+              const billow = saturate(n.mul(1.4).add(0.6));
+              const dens = wall.mul(fadeTop).add(skirt).mul(billow);
+              const dd = vortex.w.mul(dens).mul(dt).mul(VX_THICK);
+              const ds = dd.mul(exp(tau.mul(-STORM_K)));
+              tau.addAssign(dd);
+              seen.addAssign(ds);
+              // Lit on the sun's side of the funnel, its foot in its own shade.
+              const side = max(dot(d.div(max(r, 1e-3)), sunSide).mul(0.8).add(0.65), 0.3);
+              lit.addAssign(ds.mul(n.mul(1.2).add(0.9)).mul(side).mul(smoothstep(0, 260, h).mul(0.6).add(0.45)).mul(VX_LIT));
+            });
+          }
+        });
+      });
+      return vec4(tau, lit, seen, first);
+    })();
+    const vortexTex = rtt(vortexVol, null, null, { type: THREE.HalfFloatType, depthBuffer: false, resolutionScale: VX_RES });
+    {
+      const node = vortexTex as unknown as { updateBefore(frame: unknown): void };
+      const draw = node.updateBefore.bind(node);
+      const size = new THREE.Vector2();
+      node.updateBefore = (frame) => {
+        if (vortex.value.w <= 0) return;
+        renderer.getDrawingBufferSize(size);
+        const scale = Math.min(VX_RES, Math.sqrt(VX_PIXELS / Math.max(1, size.x * size.y)));
+        if (Math.abs(scale - vortexTex.getResolutionScale()) > 0.01) vortexTex.setResolutionScale(scale);
+        draw(frame);
+      };
+    }
+
     const dusted = Fn(() => {
       const p = uv();
       const ndc = vec4(p.x.mul(2).sub(1), float(1).sub(p.y.mul(2)), 1, 1);
@@ -382,6 +502,15 @@ export class Post {
             lit.addAssign(ds.mul(n.mul(0.7).add(0.45)).mul(float(1).sub(up.mul(0.55))).mul(FRONT_LIT));
           }
         });
+      });
+      // The sand vortex: marched at reduced resolution in its own pass (vortexTex, below), added in here.
+      If(vortex.w.greaterThan(0), () => {
+        const vt = vortexTex.sample(uv());
+        const vt0 = vt.x.max(0);
+        lit.addAssign(vt.y.max(0).mul(exp(tau.mul(-STORM_K))));
+        seen.addAssign(vt.z.max(0).mul(exp(tau.mul(-STORM_K))));
+        tau.addAssign(vt0);
+        If(vt0.greaterThan(1e-3), () => first.assign(min(first, vt.w)));
       });
       // Poison gas (shared/gas.ts): a low layer over the dune floor (a plane through the floor under the camera, gasEnv)
       // behind its leading edge, rising to GAS_DEPTH over it: from above, a sea of fog in the hollows with the crests

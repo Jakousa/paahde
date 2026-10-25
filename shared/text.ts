@@ -282,6 +282,7 @@ const en = {
     harvester: 'ground into the sand by a harvester',
     storm: 'choked in the storm front',
     gas: 'choked on the poison gas',
+    vortex: 'torn up by the sand vortex',
   },
 
   // ---- Esc menu, controls, landing page, name ----------------------------------------------------------------------

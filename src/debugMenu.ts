@@ -31,7 +31,7 @@ export class DebugMenu {
   private panel = document.createElement('div');
 
   /** `currentTod` reads the sky's present time of day (0..1) so the slider starts from it. */
-  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: (front?: boolean | 'gas') => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | 'harvester' | BossKind) => void,
+  constructor(currentTod: () => number, shareTod: (tod: number) => void, resetShared: () => void, summonStorm: (front?: boolean | 'gas' | 'vortex' | 'vortexVisit') => void, giveGear: (tier: number) => void, hit: () => void, summonBot: (what: 'guardian' | 'drone' | 'jet' | 'crawlers' | 'harvester' | BossKind) => void,
     showTrophies: (mode: TrophyShow) => void, resetYard: (all: boolean) => void = () => {}, noHeat: (off: boolean) => void = () => {}, noWeather: (off: boolean) => void = () => {},
     fly: FlyCam, startFly: () => void, giveItem: (kind: string, n: number, tier: number) => void = () => {}) {
     const style = document.createElement('style');
@@ -64,7 +64,9 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu):not(#artBench):not(#artBenc
 <div class="row"><button id="dbgStorm" title="A sandstorm on you, for everyone, after the 20 s warning">Sandstorm here</button>
 <button id="dbgLocalStorm" title="A sandstorm rolling in from upwind right now, only you see it (no heat)">Local sandstorm</button>
 <button id="dbgFront" title="A mega-storm front rolling in over everyone, 30 s to the first player">Storm front</button>
-<button id="dbgGas" title="Poison gas creeping in over everyone, 30 s to the first player (by day too)">Poison gas</button></div>
+<button id="dbgGas" title="Poison gas creeping in over everyone, 30 s to the first player (by day too)">Poison gas</button>
+<button id="dbgVortex" title="One more sand vortex, short-lived, spun up 600 m upwind of you or the first clear spot round the ship (for everyone)">Sand vortex</button>
+<button id="dbgVortexVisit" title="Put you 600 m from the nearest sand vortex, just outside its pull">Go to vortex</button></div>
 <div class="row"><button id="dbgGuardian" title="The nearest guardian, brought 90 m from you (for everyone)">Guardian here</button>
 <button id="dbgDrone" title="A searchlight drone over you for a minute, even by day (for everyone)">Drone here</button>
 <button id="dbgJet" title="A jet flying over you in about 15 s (for everyone; the drone and the flying wing take turns)">Jet here</button>
@@ -99,6 +101,8 @@ body.clean > :not(canvas):not(#debugMenu):not(#menu):not(#artBench):not(#artBenc
     p.querySelector('#dbgStorm')!.addEventListener('click', () => summonStorm());
     p.querySelector('#dbgFront')!.addEventListener('click', () => summonStorm(true));
     p.querySelector('#dbgGas')!.addEventListener('click', () => summonStorm('gas'));
+    p.querySelector('#dbgVortex')!.addEventListener('click', () => summonStorm('vortex'));
+    p.querySelector('#dbgVortexVisit')!.addEventListener('click', () => summonStorm('vortexVisit'));
     p.querySelector('#dbgLocalStorm')!.addEventListener('click', summonLocalStorm);
     for (const b of p.querySelectorAll<HTMLElement>('[data-gear]')) b.addEventListener('click', () => giveGear(Number(b.dataset.gear)));
     p.querySelector('#dbgHit')!.addEventListener('click', hit);

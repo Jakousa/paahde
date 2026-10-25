@@ -1,4 +1,5 @@
 // WebSocket message shapes (JSON). `t` is the message type.
+import type { Vortex } from './vortex.ts';
 import type { PlayerState } from './sim.ts';
 import type { Slots } from './items.ts';
 import type { Loot } from './loot.ts';
@@ -74,7 +75,7 @@ export type ClientMsg =
   | { t: 'telemetry'; ev: StallEvent[]; sum?: NetSummary }
   // Debug menu: a sandstorm right here (shared/storm.ts), after the usual warning; `front`: a mega-storm front at once;
   // `gas`: poison gas (shared/gas.ts) creeping in at once, by day too.
-  | { t: 'storm'; front?: boolean; gas?: boolean }
+  | { t: 'storm'; front?: boolean; gas?: boolean; vortex?: boolean }
   // Inventory (shared/items.ts, shared/storage.ts): move n (default all) of the stack in box `from` slot fi
   // to box `to` slot ti (ti -1: anywhere in it). Boxes: 'bag', 'chest<i>', 'cargo<id>', ... The server checks
   // you can open both, applies moveItem() and answers with 'items' for each box that changed.
@@ -123,6 +124,7 @@ export type ClientMsg =
   | { t: 'debugGive'; kind: string; n?: number; tier?: number }
   // Debug menu: a killing blow (a guardian's laser), to try the shield plate on.
   | { t: 'debugHit' }
+  | { t: 'debugVortexVisit' }
   | { t: 'debugHeat'; off: boolean }
   // Debug menu: no random sandstorms in this world (shared by everyone) while on.
   | { t: 'debugWeather'; off: boolean }
@@ -306,7 +308,7 @@ export type ServerMsg =
   | { t: 'respawn' }
   // Every sandstorm announced and not yet over (shared/storm.ts; times on the server clock, like snap.time), and every
   // poison gas cloud out (shared/gas.ts). Sent before 'welcome' on join and to everyone whenever a list changes.
-  | { t: 'storms'; storms: Storm[]; gas: Gas[] }
+  | { t: 'storms'; storms: Storm[]; gas: Gas[]; vortices?: Vortex[] }
   // Every fixed-wing drone flight in the air (shared/jets.ts; times on the server clock). Like 'storms': before
   // 'welcome' on join and to everyone whenever the list changes.
   | { t: 'jets'; jets: Jet[] }
@@ -364,4 +366,4 @@ export type ServerMsg =
   // `a`: any numbers it goes with), to everyone within BOSS_SEND_R.
   | { t: 'bossFx'; id: number; e: string; time: number; x: number; y: number; z: number; a?: number[] };
 
-export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen' | 'harvester' | 'storm' | 'gas';
+export type DeathCause = 'heat' | 'guardian' | 'laser' | 'missile' | 'crawler' | 'worm' | 'stomp' | 'bomb' | 'queen' | 'harvester' | 'storm' | 'gas' | 'vortex';

@@ -82,6 +82,7 @@ import { PERF_RUN, perf } from './perf';
 import { statsPref } from './options';
 import { playerHands, Survival } from './water';
 import { StormFx } from './storm';
+import { VortexFx } from './vortex';
 import { GasFx } from './gas';
 import { Speech } from './speech';
 import { ViewModel } from './viewmodel';
@@ -191,6 +192,7 @@ await slice();
 const engineSound = new EngineSound();
 await slice();
 const storm = new StormFx();
+const vortexFx = new VortexFx();
 const gas = new GasFx();
 await slice();
 const machines = new MachineSites(scene); // wrecked machinery to take apart (not the crashed spacecraft above), and the disassembly table job
@@ -605,6 +607,7 @@ renderer.setAnimationLoop((time) => {
   // Before the wind: the storm sets how hard it blows here.
   const belt = equipped(net.boxes.equip, 'belt');
   storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me, belt ? stormWarnS(quality(belt)) : 0, survival.dead || net.down !== null);
+  vortexFx.update(frameDt, net.vortices, net.serverTime(), orbit.camera.position);
   gas.update(frameDt, net.gas, net.serverTime(), orbit.camera.position, net.me, survival.dead || net.down !== null);
   // The locator comes with the wrist computer; a better one shows players further away.
   const wrist = equipped(net.boxes.equip, 'wrist');
@@ -834,3 +837,4 @@ renderer.setAnimationLoop((time) => {
   autoGraphicsFrame(frameDt, perf.last.cpu, resolution.ratio / Math.min(devicePixelRatio, graphics.resScale), resolution.pixelBound,
     loaded && coverFrames >= 3 && !document.hidden && !menu.open && !net.down && net.isReady && !document.getElementById('cover'));
 });
+
