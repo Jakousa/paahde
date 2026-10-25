@@ -8,16 +8,19 @@
 // Options:
 //   --file <path>     read this file instead of the server's (e.g. data/telemetry.jsonl from `npm run dev`)
 //   --host <ssh>      the server to read from over ssh (or set TELEMETRY_SSH)
-//   --since <time>    only the last 30m / 6h / 2d, or since an ISO date
+//   --since <time>    only the last 30m / 6h / 2d, or since an ISO date (default 24h)
+//   --max-mb <MiB>    newest log bytes read for a report, 1–256 (default 16)
 //   --world <id>      only this world      --player <name>   only this player (name or id)
 //   --out <path>      where the HTML goes (default data/telemetry-report.html)   --no-open  don't open it
 //
 // Stalls close together in one world make an incident, and its verdict follows the rules in docs/netcode.md: a late
 // tick is the world's own loop; a `down` for several players at once is the server's side of the network; `down` and
 // `up` from one player is their link stalling both ways; `frame` alone is their browser busy.
-import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { REPORT_BYTES, TAIL_FILES, TelemetryTail, telemetryFiles, telemetryLines } from './telemetry-io.ts';
 
 const REMOTE = '/opt/dadajam/data/telemetry.jsonl';
 /** Stalls in one world this close (ms) to the last one's end belong to the same incident. */
@@ -46,7 +49,10 @@ if (!host && !file) {
 }
 const worldOnly = opt('world');
 const playerOnly = opt('player');
-const since = sinceOf(opt('since'));
+const since = sinceOf(opt('since') ?? '24h');
+const maxMb = Number(opt('max-mb') ?? REPORT_BYTES / 1024 / 1024);
+if (!Number.isFinite(maxMb) || maxMb < 1 || maxMb > 256) throw new Error('--max-mb must be between 1 and 256');
+const reportBytes = Math.floor(maxMb * 1024 * 1024);
 
 const tty = process.stdout.isTTY;
 const paint = (code: number) => (s: string) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -62,27 +68,62 @@ function sinceOf(s: string | undefined): number {
   return t;
 }
 
-function read(): string {
-  if (file) return readFileSync(file, 'utf8');
-  // The rolled-over file first: it holds the older events.
-  return execFileSync('ssh', [host, `cat ${REMOTE}.1 ${REMOTE} 2>/dev/null; true`], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+// SSH concatenates its command arguments remotely, so quote each value as shell data.
+const shellQuote = (s: string) => "'" + s.replaceAll("'", "'\\''") + "'";
+function remotePatterns(rotated: boolean): string {
+  const base = [shellQuote(REMOTE), ...(rotated ? [shellQuote(`${REMOTE}.1`)] : [])];
+  const stem = REMOTE.replace(/\.jsonl$/, '');
+  if (worldOnly) base.push(shellQuote(`${stem}.${worldOnly}.jsonl`), ...(rotated ? [shellQuote(`${stem}.${worldOnly}.jsonl.1`)] : []));
+  else base.push(`${shellQuote(`${stem}.`)}*.jsonl`, ...(rotated ? [`${shellQuote(`${stem}.`)}*.jsonl.1`] : []));
+  return base.join(' ');
+}
+
+async function* read(): AsyncGenerator<string> {
+  if (file) {
+    const budget = { remaining: reportBytes, truncated: false };
+    yield* telemetryLines(telemetryFiles(file, worldOnly), budget);
+    if (budget.truncated) console.error(`Report limited to the newest ${maxMb} MiB of logs; narrow --world or raise --max-mb.`);
+    return;
+  }
+  // Bound bytes at the source, before SSH sends them. Paths contain no shell syntax from user input.
+  const command = `ls -1t -- ${remotePatterns(true)} 2>/dev/null | (
+    left=${reportBytes}
+    while IFS= read -r f; do
+      [ -f "$f" ] || continue
+      size=$(wc -c < "$f") || continue
+      if [ "$left" -le 0 ]; then echo 'Telemetry report reached its byte limit; narrow --world or raise --max-mb.' >&2; break; fi
+      if [ "$size" -gt "$left" ]; then
+        echo 'Telemetry report reached its byte limit; narrow --world or raise --max-mb.' >&2
+        tail -c "$left" -- "$f" | sed '1d'
+        left=0
+      else
+        head -c "$size" -- "$f"
+        left=$((left - size))
+      fi
+      printf '\\n'
+    done
+  )`;
+  const ssh = spawn('ssh', [host, command], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const exited = new Promise<void>((resolve, reject) => {
+    ssh.once('error', reject);
+    ssh.once('close', (code) => code === 0 ? resolve() : reject(new Error(`ssh exited with ${code}`)));
+  });
+  void exited.catch(() => {}); // Awaited below; an early spawn failure must not become an unhandled rejection.
+  const lines = createInterface({ input: ssh.stdout, crlfDelay: Infinity });
+  try { for await (const line of lines) yield line; await exited; }
+  finally { lines.close(); if (ssh.exitCode === null) ssh.kill(); }
+}
+
+function parseEvent(line: string): Row | null {
+  let e: Ev;
+  try { e = JSON.parse(line); } catch { return null; }
+  if (!e || typeof e !== 'object' || typeof e.kind !== 'string') return null;
+  const t = Date.parse(e.at);
+  return Number.isNaN(t) ? null : { ...e, t, start: t - (e.kind === 'summary' || e.kind === 'backlog' ? 0 : Number(e.ms) || 0) };
 }
 
 function parse(text: string): Row[] {
-  const rows: Row[] = [];
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    let e: Ev;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    const t = Date.parse(e.at);
-    if (Number.isNaN(t) || typeof e.kind !== 'string') continue;
-    rows.push({ ...e, t, start: t - (e.kind === 'summary' || e.kind === 'backlog' ? 0 : Number(e.ms) || 0) });
-  }
-  return sessions(rows.sort((a, b) => a.t - b.t));
+  return sessions(text.split('\n').map(parseEvent).filter((e): e is Row => !!e).sort((a, b) => a.t - b.t));
 }
 
 /** Groups events into player sessions. Ids are reused (the lowest free one, and from 1 again when a world restarts), so
@@ -193,11 +234,18 @@ function players(rows: Row[]): Player[] {
   return [...map.values()].sort((a, b) => a.first - b.first);
 }
 
-function report() {
-  const all = parse(read());
-  const rows = all.filter(keep);
+async function report() {
+  const rows: Row[] = [];
+  let seen = 0;
+  for await (const line of read()) {
+    const event = parseEvent(line);
+    if (!event) continue;
+    seen++;
+    if (keep(event)) rows.push(event);
+  }
+  sessions(rows.sort((a, b) => a.t - b.t));
   if (!rows.length) {
-    console.log(all.length ? 'no events match the filters' : 'no telemetry yet');
+    console.log(seen ? 'no events match the filters' : 'no telemetry yet');
     return;
   }
   const incs = incidents(rows);
@@ -263,19 +311,17 @@ function tail() {
     for (const e of parse(text)) if (keep(e)) console.log(line(e));
   };
   if (file) {
-    // Local file: show what's there, then poll it.
-    let size = 0;
+    const reader = new TelemetryTail();
     const poll = () => {
-      const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
-      if (text.length < size) size = 0;
-      lines(text.slice(size));
-      size = text.length;
+      // Include a current name while only its .1 exists during rotation, then cap the active tail set.
+      const files = [...new Set(telemetryFiles(file, worldOnly).map((f) => f.endsWith('.1') ? f.slice(0, -2) : f))].slice(0, TAIL_FILES);
+      lines(reader.poll(files).join('\n'));
     };
     poll();
     setInterval(poll, 1000);
     return;
   }
-  const ssh = spawn('ssh', [host, `tail -n 40 -F ${REMOTE}`], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const ssh = spawn('ssh', [host, `ls -1t -- ${remotePatterns(false)} 2>/dev/null | head -n ${TAIL_FILES} | xargs -r tail -n 40 -F --`], { stdio: ['ignore', 'pipe', 'inherit'] });
   let buf = '';
   ssh.stdout.setEncoding('utf8');
   ssh.stdout.on('data', (chunk: string) => {
@@ -302,7 +348,7 @@ function html(rows: Row[], incs: Incident[], pls: Player[]): string {
 }
 
 if (mode === 'tail') tail();
-else if (mode === 'report') report();
+else if (mode === 'report') await report();
 else {
   console.error(`unknown mode '${mode}': report or tail`);
   process.exit(1);

@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BENCH_WORLD_ID, type Sample } from './common.ts';
+import { agedWorld } from './aged.ts';
 
 const args = process.argv.slice(2);
 const opt = (name: string, def: string) => {
@@ -20,6 +21,7 @@ const opt = (name: string, def: string) => {
 };
 const dir = resolve(args[0] && !args[0].startsWith('--') ? args[0] : '.');
 const SECONDS = Number(opt('seconds', '30'));
+const protocol = (await import(pathToFileURL(join(dir, 'shared/protocol.ts')).href)).PROTOCOL_VERSION ?? 1;
 const BOTS = Number(opt('bots', '8'));
 /** Seconds after everyone joined before the summons, and after the summons before measuring (they arrive, the bosses
  *  rise, the first deaths and the terrain's craters go out). */
@@ -33,6 +35,7 @@ const DAY_MS = 30 * 60 * 1000, DAY_OFFSET = 0.3;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const data = mkdtempSync(join(tmpdir(), 'dadajam-bench-'));
+if (args.includes('--aged')) await agedWorld(dir, join(data, `${BENCH_WORLD_ID}.db`));
 const started = performance.now();
 const child = fork(join(dir, 'server/world.ts'), {
   cwd: dir,
@@ -60,7 +63,7 @@ for (let i = 0; i < BOTS; i++) {
   const bot: Bot = { ws, seq: 0, bytes: 0, msgs: 0, snapTime: 0, joinMs: 0 };
   const t0 = performance.now();
   ws.onopen = () => {
-    ws.send(JSON.stringify({ t: 'hello', protocol: 1, browserId: randomUUID(), name: `Bench${i + 1}`, ...(SPAWNS[i % SPAWNS.length] ? { spawn: SPAWNS[i % SPAWNS.length] } : {}) }));
+    ws.send(JSON.stringify({ t: 'hello', protocol, browserId: randomUUID(), name: `Bench${i + 1}`, ...(SPAWNS[i % SPAWNS.length] ? { spawn: SPAWNS[i % SPAWNS.length] } : {}) }));
     ws.send(JSON.stringify({ t: 'ready' }));
   };
   ws.onmessage = (e) => {

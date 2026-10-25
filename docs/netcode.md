@@ -113,8 +113,9 @@ turning into unlimited memory growth.
 ## Telemetry (stall tracing)
 
 Clients trace the stalls they see (`src/telemetry.ts`) and send them in small batches, with a summary a minute; the
-world adds its own (`server/telemetry.ts`). Everything goes, one JSON line per event, to `telemetry.jsonl` next to the
-database (`/opt/dadajam/data/telemetry.jsonl` on the server; it survives redeploys, and past 20 MB becomes `.1`).
+world adds its own (`server/telemetry.ts`). Each world owns `telemetry.<world>.jsonl` next to the databases
+(`/opt/dadajam/data/` on the server), with one JSON line per event. Past 20 MiB it becomes `.1`; a bounded pending
+queue prevents a slow disk from growing memory without limit. Independent files prevent worlds racing during rotation.
 `at` is when it happened, `w` the world, `p`/`name` the player, `ms` how long.
 
 | kind | from | means |
@@ -131,10 +132,15 @@ database (`/opt/dadajam/data/telemetry.jsonl` on the server; it survives redeplo
 **`node tools/telemetry.ts`** reads it over ssh (`--file data/telemetry.jsonl` for a local one), prints a digest
 (incidents by cause, round trip and fps per player, the worst incidents) and opens an HTML report: a timeline per world
 and player, round trip and fps per player minute, incidents and events you can filter and zoom (`--since 6h`,
-`--world`, `--player`). `node tools/telemetry.ts tail` follows it live. Stalls close together in one world make an
+`--world`, `--player`). Reports default to the past 24 hours and read at most 16 MiB from the newest log file tails
+(`--max-mb 1–256` changes that cap); a warning says when data was omitted. `--world` selects filenames before
+reading, and old shared logs are still supported. Local and SSH reports stream bounded reads.
+`node tools/telemetry.ts tail` follows up to 64 recent world files. Local tail discovers newly active worlds, preserves
+partial lines and UTF-8 characters, and recovers unread events across rotation. Remote tail follows files present at
+startup. Stalls close together in one world make an
 incident, and its verdict follows the reading below. Player ids are reused, so the tool groups by world and name.
 
-Or by hand: `ssh <server> tail -f /opt/dadajam/data/telemetry.jsonl`, or e.g. `jq -c 'select(.kind != "summary")'` on it. A `down`
+Or by hand: `ssh <server> 'tail -F /opt/dadajam/data/telemetry.<world>.jsonl'`, or e.g. `jq -c 'select(.kind != "summary")'` on it. A `down`
 and `up` at the same moment from one player is their link stalling both ways (Wi-Fi); `down` for everyone at once is
 the server's side of the network; `tick` is the world itself. The stats line (Esc → Show stats) shows the round trip
 and the last stall.
