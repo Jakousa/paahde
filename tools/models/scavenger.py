@@ -251,11 +251,11 @@ def build_skirt(side):
 
 
 # the poncho: the capelet carried on down to the waist, wider over the arms
-PONCHO_T = (CAPE_T[0] + [1.235, 1.185, 1.135, 1.085], CAPE_T[1] + [0.318, 0.33, 0.338, 0.342],
-            CAPE_T[2] + [0.180, 0.186, 0.190, 0.193])
+PONCHO_T = (CAPE_T[0] + [1.235, 1.185, 1.135], CAPE_T[1] + [0.318, 0.33, 0.338],
+            CAPE_T[2] + [0.180, 0.186, 0.190])  # its hem stays above the belt's pouches
 
 
-def build_cape(shape=CAPE_T, name='Cape'):
+def build_cape(shape=CAPE_T, name='Cape', tatter=0.04):
     zs, rx, ry = shape
     n = 44
     rings = []
@@ -270,7 +270,7 @@ def build_cape(shape=CAPE_T, name='Cape'):
         for p in r:
             if p.y > 0:  # longer at the back
                 p.z -= 0.16 * (p.y / 0.2) ** 1.5
-    tattered(rings[-1], 0.04, seed=3.0)
+    tattered(rings[-1], tatter, seed=3.0)
     rings.append(fold_back(rings[-1], (0, 0.008), 0.99, 0.012))  # a thin hem
     return part(loft(name, rings, M['cape']),
                 bones=['Spine1', 'Spine2', 'Neck', 'LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm'],
@@ -307,6 +307,10 @@ def build_hood(size=0.83, front=0.0, point=0.0, drape=0.35, ragged=0.0, name='Ho
     # brim droops a little at the top centre of the opening
     for p in rings[1]:
         p.z -= 0.012 * max(0.0, (p.z - 1.75) / 0.08)
+    # closed at the back: the last ring drawn in to a point (no hole to see into without a cape)
+    end = rings[-1]
+    mid = sum(end, V()) / len(end)
+    rings.append([mid + (p - mid) * 0.08 + V((0, 0.014, 0)) for p in end])
     if ragged:
         for r in rings[:2]:
             for p in r:
@@ -419,16 +423,16 @@ def build_respirator():
 
 def build_scarf():
     objs = []
-    for zc, tilt, rx, ry, w, ph in ((1.535, 0.05, 0.122, 0.128, 0.066, 0.0), (1.58, 0.04, 0.108, 0.118, 0.058, 1.7)):
+    for zc, tilt, rx, ry, w, ph in ((1.535, 0.05, 0.108, 0.114, 0.062, 0.0), (1.58, 0.04, 0.098, 0.106, 0.054, 1.7)):
         path = []
         for k in range(36):
             a = 2 * math.pi * k / 36
             front = -math.sin(a)  # +1 at front (-Y)
-            path.append(V((math.cos(a) * rx, 0.004 + math.sin(a) * ry, zc - tilt * front)))
+            path.append(V((math.cos(a) * rx, 0.004 + math.sin(a) * ry, zc - tilt * max(front, 0.0))))  # level at the back, under the hood
         objs.append(sweep('ScarfLoop', path, [(-w / 2, 0.0), (-w / 4, 0.012), (0, 0.016), (w / 4, 0.012),
                                                (w / 2, 0.0), (w / 4, -0.006), (0, -0.007), (-w / 4, -0.006)],
                           M['tint'], closed_path=True, up=V((0, 0, 1)),
-                          scale_fn=lambda i, f, ph=ph: (1 + 0.18 * math.sin(i * 1.3 + ph), 1 + 0.35 * math.sin(i * 0.9 + ph))))
+                          scale_fn=lambda i, f, ph=ph: (1 + 0.12 * math.sin(i * 1.3 + ph), 1 + 0.25 * math.sin(i * 0.9 + ph))))
     loops = join(objs, 'ScarfLoops')
     part(loops, bones=['Neck', 'Spine2', 'Head'], bias={'Neck': 2.0})
     # hanging tail over the chest
@@ -1024,13 +1028,13 @@ def scarf_loops(specs, name='ScarfLoops'):
     """Loops of cloth round the neck: (height, tilt down at the front, radius x, radius y, width, phase)."""
     objs = []
     for zc, tilt, rx, ry, w, ph in specs:
-        path = [V((math.cos(a) * rx, 0.004 + math.sin(a) * ry, zc + tilt * math.sin(a)))
+        path = [V((math.cos(a) * rx, 0.004 + math.sin(a) * ry, zc + tilt * min(math.sin(a), 0.0)))
                 for a in [2 * math.pi * k / 36 for k in range(36)]]
         objs.append(sweep('ScarfLoop', path, [(-w / 2, 0.0), (-w / 4, 0.012), (0, 0.016), (w / 4, 0.012),
                                                (w / 2, 0.0), (w / 4, -0.006), (0, -0.007), (-w / 4, -0.006)],
                           M['tint'], closed_path=True, up=V((0, 0, 1)),
-                          scale_fn=lambda i, f, ph=ph: (1 + 0.18 * math.sin(i * 1.3 + ph),
-                                                        1 + 0.35 * math.sin(i * 0.9 + ph))))
+                          scale_fn=lambda i, f, ph=ph: (1 + 0.12 * math.sin(i * 1.3 + ph),
+                                                        1 + 0.25 * math.sin(i * 0.9 + ph))))
     part(join(objs, name), bones=['Neck', 'Spine2', 'Head'], bias={'Neck': 2.0})
 
 
@@ -1042,7 +1046,7 @@ def scarf_tail(pts, width=0.085, name='ScarfTail', twist=0.25):
     part(tail, bones=['Spine2', 'Spine1', 'Neck'], bias={'Spine2': 2.0})
 
 
-SCARF_LOOPS = ((1.535, 0.05, 0.122, 0.128, 0.066, 0.0), (1.58, 0.04, 0.108, 0.118, 0.058, 1.7))
+SCARF_LOOPS = ((1.535, 0.05, 0.108, 0.114, 0.062, 0.0), (1.58, 0.04, 0.098, 0.106, 0.054, 1.7))
 
 
 def build_scarf_long():
@@ -1063,6 +1067,174 @@ def build_bib():
                           closed=False, fn=lambda t, k, z=z: 1 + 0.03 * math.sin(t * 9 + z * 50)))
     tattered(rings[-1], 0.01, seed=5.0)
     part(loft('Bib', rings, M['tint'], closed=False), bones=['Spine2', 'Neck'], bias={'Spine2': 2.0})
+
+
+def torso_r(z):
+    """The robe's radii (x, y) at height z: the torso above the belt, the skirt below."""
+    tz = [0.90, 1.00, 1.10, 1.21, 1.31, 1.39, 1.45, 1.50, 1.545, 1.585]
+    trx = [0.172, 0.166, 0.158, 0.168, 0.178, 0.178, 0.162, 0.115, 0.074, 0.064]
+    tr_y = [0.132, 0.126, 0.118, 0.124, 0.132, 0.128, 0.115, 0.088, 0.068, 0.062]
+    if z < 1.03:
+        zs, rx, ry = SKIRT_Z[::-1], SKIRT_RX[::-1], SKIRT_RY[::-1]
+    else:
+        zs, rx, ry = tz, trx, tr_y
+    z = min(max(z, zs[0]), zs[-1])
+    for i in range(len(zs) - 1):
+        if zs[i] <= z <= zs[i + 1]:
+            f = (z - zs[i]) / (zs[i + 1] - zs[i])
+            return rx[i] + (rx[i + 1] - rx[i]) * f, ry[i] + (ry[i + 1] - ry[i]) * f
+    return rx[-1], ry[-1]
+
+
+def on_robe(a, z, off):
+    """A point on the robe's surface at angle a (rad; 270° = front) and height z, `off` out from it."""
+    rx, ry = torso_r(z)
+    return V((math.cos(a) * (rx + off), 0.012 + math.sin(a) * (ry + off), z))
+
+
+def build_face_wrap():
+    """Bandages wound tight round the lower face and over the nose, under the eyes."""
+    mr = ((1.535, 0.088), (1.565, 0.094), (1.60, 0.102), (1.635, 0.104), (1.652, 0.101), (1.67, 0.098))
+
+    def mask_r(z):
+        return next(r0 + (r1 - r0) * (z - z0) / (z1 - z0) for (z0, r0), (z1, r1) in zip(mr, mr[1:]) if z0 <= z <= z1 + 1e-9)
+    bands = []
+    for zc, tilt, w, ph in ((1.548, 0.012, 0.036, 0.0), (1.572, -0.016, 0.036, 1.3), (1.597, 0.018, 0.036, 2.1),
+                            (1.622, -0.012, 0.034, 3.3), (1.646, 0.01, 0.03, 4.4)):
+        path = []
+        for k in range(32):
+            a = 2 * math.pi * k / 32
+            z = zc + tilt * math.sin(a + ph)
+            r = mask_r(min(max(z, 1.535), 1.67)) + 0.007
+            front = max(0.0, -math.sin(a))
+            m = 1.0 + (0.08 * front ** 3 if z < 1.62 else 0.0)
+            path.append(V((math.cos(a) * r * m, 0.006 + math.sin(a) * r * 1.12 * m, z)))
+        bands.append(sweep('Bandage', path, [(-w / 2, 0), (0, 0.005), (w / 2, 0), (0, -0.002)], M['wrap'],
+                           closed_path=True, up_fn=lambda i, path=path: V((path[i].x, path[i].y - 0.006, 0)),
+                           scale_fn=lambda i, f, ph=ph: (1 + 0.12 * math.sin(i * 1.9 + ph), 1 + 0.2 * math.sin(i * 1.3))))
+    part(join(bands, 'FaceWrap'), rigid='Head')
+
+
+def build_shroud():
+    """A cloth over the head and shoulders: a loose hood in the wrap cloth, two flaps hanging down the chest."""
+    saved = M['cape']
+    M['cape'] = M['wrap']
+    try:
+        build_hood(0.88, 0.0, 0.0, 0.75, 0.02, 'Shroud')
+    finally:
+        M['cape'] = saved
+    for s_ in (1, -1):
+        pts = catmull([(s_ * 0.105, -0.045, 1.62), (s_ * 0.13, -0.10, 1.50), (s_ * 0.135, -0.15, 1.40),
+                       (s_ * 0.12, -0.17, 1.28)], 4)
+        flap = sweep('ShroudFlap', pts, rect_profile(0.008, 0.11, 0.003), M['wrap'],
+                     up_fn=lambda i, pts=pts: V((pts[i].x * 0.4, -1, 0.1)),
+                     scale_fn=lambda i, f: (1.0, 0.8 + 0.5 * f + 0.05 * math.sin(i * 2.3)))
+        for v in flap.data.vertices:
+            if v.co.z < 1.33:
+                v.co.z -= 0.05 * (0.5 + fbm((v.co.x * 50, v.co.y * 50, 1.0)))
+        part(flap, bones=['Head', 'Neck', 'Spine2'], bias={'Spine2': 2.0})
+
+
+def build_rags():
+    """Long torn strips of cloth hanging over the robe from the belt, their ends cut to points."""
+    for k in range(16):
+        a = 2 * math.pi * (k + 0.5 * (k % 2)) / 16
+        end = 0.36 + 0.14 * (0.5 + 0.5 * math.sin(k * 2.7)) - (0.08 if math.sin(a) > 0.3 else 0)
+        path = [on_robe(a, z, 0.016) for z in [0.98 - (0.98 - end) * j / 7 for j in range(8)]]
+        w = 0.07 + 0.02 * math.sin(k * 1.7)
+        strip = sweep('Rag', path, rect_profile(0.005, w, 0.002), M['robe'],
+                      up_fn=lambda i, path=path: V((path[i].x, path[i].y - 0.012, 0)),
+                      scale_fn=lambda i, f: (1.0, 1.0 - 0.85 * max(0.0, (f - 0.6) / 0.4)),
+                      twist_fn=lambda i, f, k=k: 0.08 * math.sin(f * 5 + k))
+        part(strip, fn=skirt_weights(1 if math.cos(a) > 0 else -1))
+
+
+def build_stole():
+    """A long stole hung round the neck, its two ends down the front to the knees."""
+    for s_ in (1, -1):
+        x = s_ * 0.065
+        pts = [V((s_ * 0.075, -0.06, 1.56)), V((x, -0.12, 1.50))]
+        for z in (1.42, 1.32, 1.20, 1.08, 0.96, 0.84, 0.74):
+            rx, ry = torso_r(z)
+            pts.append(V((x, 0.012 - math.sqrt(max(0.0, 1 - (x / rx) ** 2)) * ry - 0.028, z)))
+        path = catmull(pts, 2)
+        st = sweep('Stole', path, rect_profile(0.006, 0.075, 0.002), M['tint'], up_fn=lambda i: V((0, -1, 0)))
+        part(st, bones=['Spine2', 'Spine1', 'Spine', 'Hips'], bias={'Hips': 1.5})
+
+
+def build_rope_belt():
+    """A thick rope wound twice round the waist above the belt, knotted at the front, two cords hanging with tassels."""
+    objs = []
+    for dz, ph in ((0.0, 0.0), (0.03, 1.3)):
+        path = [on_robe(a, 1.10 + dz + 0.008 * math.sin(a * 2 + ph), 0.012) for a in [2 * math.pi * k / 40 for k in range(40)]]
+        objs.append(sweep('Rope', path, circle_profile(0.014, 7), M['leather2'], closed_path=True))
+    knot = on_robe(math.radians(262), 1.115, 0.03)
+    objs.append(rounded_box('Knot', knot, (0.05, 0.035, 0.04), M['leather2'], bevel=0.016, segments=2))
+    for s_, ln in ((1, 0.40), (-1, 0.32)):
+        top = knot + V((s_ * 0.012, -0.005, -0.015))
+        pts = [top]
+        for z in (1.02, 0.94, 0.86, 0.78, 0.70):
+            if top.z - z > ln:
+                break
+            p = on_robe(math.radians(262 + s_ * 4), z, 0.05)
+            pts.append(V((top.x + s_ * 0.01 * (top.z - z), p.y, z)))
+        cord = catmull(pts, 3)
+        objs.append(sweep('Cord', cord, circle_profile(0.01, 6), M['leather2']))
+        end = cord[-1]
+        objs.append(cylinder('Tassel', end, end - V((0, 0, 0.11)), 0.014, M['wrap'], n=10, r2=0.034))
+    part(join(objs, 'RopeBelt'), rigid='Hips')
+
+
+def build_satchel():
+    """A big cloth satchel on the front of the left hip, on a broad leather strap across the chest from the right
+    shoulder."""
+    pts = [V((-0.125, 0.08, 1.48)), V((-0.12, -0.04, 1.49)), V((-0.10, -0.10, 1.44))]
+    for z, x in ((1.36, -0.05), (1.26, 0.02), (1.16, 0.09), (1.06, 0.15), (0.98, 0.18)):
+        rx, ry = torso_r(z)
+        pts.append(V((x, 0.012 - math.sqrt(max(0.0, 1 - (x / (rx + 0.03)) ** 2)) * (ry + 0.032), z)))
+    strap = sweep('SatchelStrap', catmull(pts, 3), rect_profile(0.007, 0.055, 0.002), M['leather'],
+                  up_fn=lambda i: V((0, -1, 0.25)))
+    part(strap, bones=['Spine2', 'Spine1', 'Hips', 'RightShoulder'], bias={'Spine2': 1.5})
+    rot = Matrix.Rotation(math.radians(-35), 3, 'Z')
+    c = V((0.17, -0.15, 0.88))
+    objs = [rounded_box('Satchel', c, (0.19, 0.07, 0.19), M['canvas'], bevel=0.03, segments=3, rot=rot),
+            rounded_box('SatchelFlap', c + rot @ V((0, -0.036, 0.05)), (0.2, 0.012, 0.1), M['leather2'], bevel=0.008, rot=rot),
+            rounded_box('SatchelBuckle', c + rot @ V((0, -0.044, 0.01)), (0.03, 0.008, 0.035), M['brass'], bevel=0.003, rot=rot)]
+    part(join(objs, 'SatchelBag'), rigid='Hips')
+
+
+def build_mantle():
+    """A long ragged shoulder mantle to the waist: a rolled collar, a deep sawtooth hem and fringe strands below it."""
+    zs = CAPE_T[0] + [1.24, 1.20, 1.16]  # the torn hem stays above the belt's pouches
+    rx = CAPE_T[1] + [0.312, 0.318, 0.322]
+    ry = CAPE_T[2] + [0.180, 0.186, 0.19]
+    n = 56
+    rings = []
+    for i, z in enumerate(zs):
+        depth = i / (len(zs) - 1)
+
+        def fn(t, k, depth=depth):
+            return 1 + depth ** 1.5 * (0.06 * math.sin(t * 11 + 0.5) + 0.03 * math.sin(t * 23)) \
+                + 0.03 * depth * fbm((math.cos(t) * 3, math.sin(t) * 3, 7.0))
+        rings.append(ring((0, 0.008, z), rx[i], ry[i], n, fn=fn))
+    hem = rings[-1]
+    for k, p in enumerate(hem):  # torn into points, longer at the back
+        tooth = abs(((k * 0.37) % 1.0) - 0.5) * 2
+        p.z -= 0.07 * tooth * (0.6 + 0.8 * fbm((p.x * 9, p.y * 9, 2.0))) + (0.05 if p.y > 0.05 else 0.0)
+    rings.append(fold_back(hem, (0, 0.008), 0.99, 0.01))
+    objs = [loft('Mantle', rings, M['cape'])]
+    for k in range(0, n, 3):  # fringe: loose threads hanging from the hem
+        p = hem[k]
+        ln = 0.05 + 0.07 * (0.5 + 0.5 * math.sin(k * 1.9))
+        objs.append(sweep('Fringe', [p, p + V((0, 0, -ln * 0.5)), p + V((0.004, 0, -ln))], circle_profile(0.004, 4),
+                          M['cape']))
+    # the rolled collar round the neck
+    path = [V((math.cos(a) * 0.112, 0.008 + math.sin(a) * 0.118, 1.565 + 0.012 * math.sin(a * 3))) for a in
+            [2 * math.pi * k / 36 for k in range(36)]]
+    objs.append(sweep('Collar', path, circle_profile(0.028, 8, 0.02), M['cape'], closed_path=True,
+                      scale_fn=lambda i, f: (1 + 0.2 * math.sin(i * 1.7), 1 + 0.25 * math.sin(i * 1.1))))
+    part(join(objs, 'MantleCloth'), bones=['Spine1', 'Spine2', 'Neck', 'LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm'],
+         bias={'LeftArm': 0.35, 'RightArm': 0.35, 'Spine2': 1.5}, power=3.0)
 
 
 def build_veil():
@@ -1181,6 +1353,13 @@ def build_character():
     tagged('ScarfLong', build_scarf_long)
     tagged('Bib', build_bib)
     tagged('Veil', build_veil)
+    tagged('FaceWrap', build_face_wrap)
+    tagged('Shroud', build_shroud)
+    tagged('Rags', build_rags)
+    tagged('Stole', build_stole)
+    tagged('RopeBelt', build_rope_belt)
+    tagged('Satchel', build_satchel)
+    tagged('Mantle', build_mantle)
     tagged('ShoulderPlate', build_shoulder_plate)
     tagged('Gloves', both(build_glove))
     tagged('GlovesWrapped', both(in_cloth(build_glove)))

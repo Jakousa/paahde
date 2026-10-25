@@ -1,6 +1,7 @@
 // The character view on the main menu (src/landing.ts): your scavenger turning slowly in the warm light, and beside it
 // a row per slot of the look (shared/look.ts): arrows step through a slot's pieces, swatches pick a dye. Every change
-// is kept at once (src/profile.ts setMyLook) and goes with your next join. Drag the figure to turn it, wheel or pinch to
+// shows on the figure at once; Save keeps it (src/profile.ts setMyLook) for your next join and goes back, Back goes back
+// without it. Drag the figure to turn it, wheel or pinch to
 // zoom in on it (up to the face); the dice picks a
 // whole look at random. The figure has its own small renderer, gone with the view.
 import * as THREE from 'three/webgpu';
@@ -36,7 +37,7 @@ export function lookView(back: () => void): HTMLElement {
   const el = document.createElement('div');
   el.className = 'lookView';
   el.innerHTML = `<div class="body"><canvas></canvas><div class="slots"></div></div>
-<div class="buttons"><button class="dice">${TEXT.landing.randomColour}</button><button class="back">${TEXT.landing.back}</button></div>`;
+<div class="buttons"><button class="dice">${TEXT.landing.randomColour}</button><button class="save">${TEXT.look.save}</button><button class="back">${TEXT.landing.back}</button></div>`;
   const canvas = el.querySelector('canvas')!;
   const slots = el.querySelector<HTMLElement>('.slots')!;
   let look = unpackLook(myLook());
@@ -45,11 +46,11 @@ export function lookView(back: () => void): HTMLElement {
   const rows: (() => void)[] = [];
   const changed = () => {
     const n = packLook(look);
-    setMyLook(n);
     model.setLook(n);
     for (const r of rows) r();
   };
-  for (const slot of LOOK_SLOTS) {
+  // the pieces, then the dyes
+  for (const slot of [...LOOK_SLOTS].sort((a, b) => Number(!!DYED[a.key]) - Number(!!DYED[b.key]))) {
     const row = document.createElement('div');
     row.className = 'slot';
     row.innerHTML = `<span class="label">${TEXT.look.slots[slot.key]}</span>`;
@@ -84,6 +85,10 @@ export function lookView(back: () => void): HTMLElement {
   el.querySelector('.dice')!.addEventListener('click', () => {
     for (const s of LOOK_SLOTS) look[s.key] = Math.floor(Math.random() * s.options.length);
     changed();
+  });
+  el.querySelector('.save')!.addEventListener('click', () => {
+    setMyLook(packLook(look));
+    back();
   });
   el.querySelector('.back')!.addEventListener('click', back);
   stage(canvas, model, () => model.setLook(packLook(look)));

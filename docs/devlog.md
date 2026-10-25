@@ -2204,6 +2204,10 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   before and the skull bands under it are gone (they read as swirls in the hood's shadow).
 - The view: drag turns the figure, the wheel or a pinch zooms in to the head and shoulders.
 - The capelet sits closer to the body (less deep, a thin hem); the head wrap's crown is pulled in so no hood clips it.
+- **Primitive pieces** (references: a ragged pilgrim, a sand traveller, a burlap poncho, a long cloak): a shroud (a
+  head cloth hanging in flaps), bandages wound over the face, a long torn mantle with fringe and a rolled collar, rags
+  hanging over the robe, a stole, a rope belt with tasselled cords, a satchel on a strap. Design notes: docs/character.md.
+- The view keeps changes only on Save (Back drops them).
 - **Drawing:** setLook merges the body and the chosen pieces into one skinned mesh per material (cached per set of
   pieces, shared by every player wearing it), so a player is the same few draws whatever they wear.
 - Gaps: the first-person gloves (hands.glb) don't follow the gloves chosen; the look isn't stored by the server (the

@@ -968,14 +968,18 @@ const BACK = wornBit('back'), WRIST = wornBit('wrist'), BELT = wornBit('belt'), 
 /** The glb's meshes (tools/models/scavenger.py LOOK_MESH) for each option of each slot of the look (shared/look.ts);
  *  the dye slots have none. */
 const LOOK_PIECES: Record<string, Record<string, string[]>> = {
-  hood: { hood: ['Hood'], cowl: ['Cowl'], ragged: ['HoodRagged'] },
+  hood: { hood: ['Hood'], cowl: ['Cowl'], ragged: ['HoodRagged'], shroud: ['Shroud'] },
   eyes: { goggles: ['Goggles'], monocle: ['Monocle'], round: ['RoundSpecs'], welder: ['Welder'], big: ['BigGoggles'] },
-  face: { respirator: ['Respirator'], side: ['SideMask'], none: [], filter: ['FilterMask'], muzzle: ['MuzzleMask'], grille: ['GrillePlate'] },
+  face: { respirator: ['Respirator'], side: ['SideMask'], none: [], filter: ['FilterMask'], muzzle: ['MuzzleMask'], grille: ['GrillePlate'], bandages: ['FaceWrap'] },
   scarf: { scarf: ['Scarf'], long: ['ScarfLong'], bib: ['Bib'], veil: ['Veil'], none: [] },
-  cape: { cape: ['Cape'], poncho: ['Poncho'], none: [] },
+  cape: { cape: ['Cape'], poncho: ['Poncho'], none: [], mantle: ['Mantle'] },
   shoulder: { none: [], plate: ['ShoulderPlate'] },
   gloves: { leather: ['Gloves'], wrapped: ['GlovesWrapped'], gauntlet: ['Gloves', 'Gauntlets'] },
   boots: { buckled: ['Boots'], wrapped: ['BootsWrapped'], guard: ['Boots', 'ShinGuards'], tall: ['Boots', 'BootTops'] },
+  rags: { none: [], rags: ['Rags'] },
+  stole: { none: [], stole: ['Stole'] },
+  belt: { none: [], rope: ['RopeBelt'] },
+  satchel: { none: [], satchel: ['Satchel'] },
 };
 const ALL_PIECES = [...new Set(Object.values(LOOK_PIECES).flatMap((o) => Object.values(o).flat()))].map((n) => `Scavenger_${n}`);
 

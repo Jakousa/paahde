@@ -52,7 +52,7 @@ Read before touching:
 
 - netcode, `shared/sim.ts`: `docs/netcode.md`
 - `tools/blender/machines/`, `src/teardown/`, the jets: `docs/machines.md`
-- first-person hands, held items: `docs/viewmodel-hands.md`
+- first-person hands, held items: `docs/viewmodel-hands.md`; the player character's look and its pieces: `docs/character.md`
 - loot, drops, recipes, gear slots, site layout: `docs/econsim.md`
 - player-visible text: `docs/text.md`; the character's lines: `docs/speech.md`
 - rendering cost, shadows: `docs/perf.md`; the CI benchmarks: `docs/bench.md`; art direction: `docs/look.md`; item icons: `docs/icons.md`

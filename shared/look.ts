@@ -24,11 +24,11 @@ export const dyeChoice = (slot: DyeSlot, index: number) => (index - DYE_FIRST[sl
 /** The slots and their options, top to bottom of the body. A new option goes at the end of its list (looks saved in
  *  browsers keep their meaning); a new slot at the end of the list. */
 export const LOOK_SLOTS = [
-  { key: 'hood', options: ['hood', 'cowl', 'ragged'] },
+  { key: 'hood', options: ['hood', 'cowl', 'ragged', 'shroud'] },
   { key: 'eyes', options: ['goggles', 'monocle', 'round', 'welder', 'big'] },
-  { key: 'face', options: ['respirator', 'side', 'none', 'filter', 'muzzle', 'grille'] },
+  { key: 'face', options: ['respirator', 'side', 'none', 'filter', 'muzzle', 'grille', 'bandages'] },
   { key: 'scarf', options: ['scarf', 'long', 'bib', 'veil', 'none'] },
-  { key: 'cape', options: ['cape', 'poncho', 'none'] },
+  { key: 'cape', options: ['cape', 'poncho', 'none', 'mantle'] },
   { key: 'shoulder', options: ['none', 'plate'] },
   { key: 'gloves', options: ['leather', 'wrapped', 'gauntlet'] },
   { key: 'boots', options: ['buckled', 'wrapped', 'guard', 'tall'] },
@@ -36,6 +36,11 @@ export const LOOK_SLOTS = [
   { key: 'robe', options: DYE_OPTIONS },
   { key: 'cloak', options: DYE_OPTIONS },
   { key: 'wrap', options: DYE_OPTIONS },
+  // over the robe (docs/character.md)
+  { key: 'rags', options: ['none', 'rags'] },
+  { key: 'stole', options: ['none', 'stole'] },
+  { key: 'belt', options: ['none', 'rope'] },
+  { key: 'satchel', options: ['none', 'satchel'] },
 ] as const satisfies readonly LookSlot[];
 
 export type LookKey = (typeof LOOK_SLOTS)[number]['key'];
