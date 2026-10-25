@@ -95,7 +95,8 @@ picking the pack up if it's worth it.
 
 ## The agent
 
-`tools/econsim/sim.ts`. Goals in order: canteen, backpack, pistol, motorcycle, spyglass, shield, rifle, storm detector,
+`tools/econsim/sim.ts`. Goals in order: the wrench (made by hand), the workbench (built with it; nothing is repaired or
+crafted at home without one; carried machines are still taken apart as if on the base's table), canteen, backpack, pistol, motorcycle, spyglass, shield, rifle, storm detector,
 jammer, wristpad, grinder, then each receiver and its boss, the worm last, the windmill and battery station. Each open goal
 weighs 0.85× the one before. From that come needs (`needs()`: what's missing for each goal after the chest is
 counted off) and the value of anything it could pick up. A part no goal needs is a spare (worth less the more there are)

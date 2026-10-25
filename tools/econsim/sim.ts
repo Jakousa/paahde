@@ -29,11 +29,13 @@ import { LIVES } from '../../shared/world.ts';
 import { COSTS, MIN_SCORE } from './costs.ts';
 import { CORPSE_S, World, type Poi, type Source, type Thing } from './world.ts';
 
-/** What the agent works towards, in order: each piece of gear repaired (or crafted), each boss beaten. */
+/** What the agent works towards, in order: each piece of gear repaired (or crafted), each boss beaten. First the wrench
+ *  (made by hand) and with it the workbench (put up at home), without which nothing is repaired or crafted (commits from
+ *  before the workbench was built skip it: OPEN_GOALS). */
 const GOALS = [
-  'canteen', 'backpack', 'laser_pistol', 'motorcycle', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
+  'wrench', 'workbench', 'canteen', 'backpack', 'laser_pistol', 'motorcycle', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
   'grinder', 'receiver_colossus', 'boss:colossus', 'receiver_queen', 'boss:queen', 'receiver_carrier', 'boss:carrier', 'receiver_worm', 'boss:worm',
-  'wrench', 'windmill', 'battery_station',
+  'windmill', 'battery_station',
 ] as const;
 /** Worn gear: its equipment slot. */
 const WORN: Partial<Record<string, EquipSlot>> = { backpack: 'back', shield: 'armor', storm_detector: 'belt', wristpad: 'wrist' };
@@ -48,6 +50,12 @@ const SMITHED: Partial<Record<PartId, string>> = { gear: 'gear_scrap', bearing: 
 /** The buildings put up with the wrench (shared/crafting.ts), none before there were. */
 const BUILDS: Record<string, Recipe> = (crafting as { BUILDS?: Record<string, Recipe> }).BUILDS ?? {};
 const WRENCH = 'wrench';
+/** Made by hand anywhere, no workbench needed (shared/crafting.ts), none before there were. */
+const HAND: Record<string, Recipe> = (crafting as { HAND_RECIPES?: Record<string, Recipe> }).HAND_RECIPES ?? {};
+/** The workbench is a building put up with the wrench (shared/crafting.ts BUILDS); before, it stood in the base. */
+const WORKBENCH = 'workbench';
+const BUILT_WORKBENCH = WORKBENCH in BUILDS;
+const OPEN_GOALS = GOALS.filter((g) => g !== WORKBENCH || BUILT_WORKBENCH);
 /** The items a recipe uses up from the chest (indexes; shared/crafting.ts), gear never among them. */
 const pickFrom: (items: Item[], r: Recipe) => number[] | null = (crafting as { pickFrom?: typeof crafting.pickFrom }).pickFrom
   ?? ((items, r) => crafting.pickIngredients(items.map((it) => (it.parts ? null : it)), r));
@@ -153,9 +161,14 @@ export class Sim {
   private gearOf(kind: string): Item[] {
     return this.all().filter((x) => x.kind === kind);
   }
-  /** How `goal` is made: its workbench recipe, or, for a building not up yet, what it's built of (the wrench's). */
+  /** How `goal` is made: its workbench recipe or one made by hand, or, for a building not up yet, what it's built of
+   *  (the wrench's). */
   private recipeOf(goal: string): Recipe | undefined {
-    return RECIPES[goal] ?? (BUILDS[goal] && !this.gearOf(goal).length ? BUILDS[goal] : undefined);
+    return RECIPES[goal] ?? HAND[goal] ?? (BUILDS[goal] && !this.gearOf(goal).length ? BUILDS[goal] : undefined);
+  }
+  /** A workbench stands at home: repairs and its recipes can be done. */
+  private get workbench(): boolean {
+    return !BUILT_WORKBENCH || this.gearOf(WORKBENCH).length > 0;
   }
   private best(kind: string): Item | null {
     return this.gearOf(kind).filter(repaired).sort((a, b) => quality(b) - quality(a))[0] ?? null;
@@ -250,7 +263,7 @@ export class Sim {
   }
 
   private open(): string[] {
-    return GOALS.filter((g) => !this.done(g));
+    return OPEN_GOALS.filter((g) => !this.done(g));
   }
 
   /** What's still wanted, by need key, with the weight of the most pressing goal that wants it (the first open goal
@@ -739,6 +752,7 @@ export class Sim {
     };
     const r = this.recipeOf(goal);
     if (r) return r.needs.every((ing) => [...stock.keys()].some((k) => (ing.match(k) || ing.match(`${k}_scrap`)) && take(k, ing.n)));
+    if (!GEAR[goal] || !this.workbench) return false;
     const it = this.gearOf(goal).sort((a, b) => filled(b) - filled(a))[0];
     if (!it) return false;
     if (repaired(it)) return false;
@@ -791,8 +805,10 @@ export class Sim {
         if (g.startsWith('boss:')) continue;
         if (this.recipeOf(g)) {
           if (this.craft(g, this.reserved(g))) changed = true;
-          if (RECIPES[g]) continue;
+          if (RECIPES[g] || HAND[g]) continue;
         }
+        // (Repairs are done at the workbench; a building's slots are filled where it stands.)
+        if (!GEAR[g] || (!GEAR[g].built && !this.workbench)) continue;
         const it = this.gearOf(g).sort((a, b) => filled(b) - filled(a))[0];
         if (!it) continue;
         const parts = [...(it.parts ?? GEAR[g].slots.map(() => null))];
@@ -840,9 +856,10 @@ export class Sim {
 
   /** Craft recipe `id` from the chest, leaving what's `reserved` (by need key) for earlier goals. */
   private craft(id: string, reserved = new Map<string, number>()): boolean {
-    const r = RECIPES[id] ?? BUILDS[id];
-    // A building goes up with the wrench (src/placing.ts).
+    const r = RECIPES[id] ?? HAND[id] ?? BUILDS[id];
+    // A building goes up with the wrench (src/placing.ts); the workbench's recipes need one standing.
     if (BUILDS[id] && !this.gearOf(WRENCH).length) return false;
+    if (RECIPES[id] && !this.workbench) return false;
     // Earlier goals' share first; then which items it takes, and how gear made is fitted, is the game's (shared/crafting.ts).
     for (const ing of r.needs) {
       const key = keyOf(this.chest.find((it) => !it.parts && ing.match(it.kind))?.kind ?? '');
@@ -859,6 +876,7 @@ export class Sim {
 
   /** Better parts into the gear in use, when nothing still open needs them. */
   private upgrade() {
+    if (!this.workbench) return;
     const needs = this.needs();
     for (const it of this.all()) {
       if (!it.parts || !repaired(it) || !GEAR[it.kind] || GEAR[it.kind].built) continue;
