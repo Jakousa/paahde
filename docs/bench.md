@@ -31,7 +31,7 @@ All of it runs in the bench world (`bench0001`: its id is its seed, so the deser
   the spawn (2 m, a terrain chunk's detail); normals; biomes; every crash site, shelter, wreck and scrap pile in the
   core, all cold. Plus the counts of sites and scrap pieces, and a checksum of the layout.
 - **physics** (`cases/physics.ts`): `shared/sim.ts step` for a minute of scripted walking (forward, a weave, jumps,
-  slides, crouching) in the bunker, at the base, by a scrap field, at a shelter and on open dunes, and a minute on the
+  slides, crouching) where new players start (the ship's ramp), by the world's origin, by a scrap field, at a shelter and on open dunes, and a minute on the
   motorcycle, each the fastest of three goes. The checksum of where they all ended up changes when the physics does
   something else (old clients would then mispredict against the server).
 - **ai** (`cases/ai.ts`): a simulated minute of night with four players about, everything summoned on them (crawlers,

@@ -44,7 +44,7 @@ frames over 20 / 50 ms; startup milestones and long tasks; the graphics settings
 option (`--set shadows=false --set resScale=0.7`), `--label`, `--world <id>`, `--base <url>`, `--chrome <path>`, `--headless`.
 `--peaceful` turns off heat and weather once the game has joined (the debug menu's switches). `--software` runs without a graphics card (WebGPU hidden, WebGL2 drawn by SwiftShader on the CPU, as on a CI runner): far slower, its "GPU" times
 are the software rasterizer's, but the game's CPU time, draws, triangles and the startup timeline still mean something; the CI benchmarks use it (docs/bench.md).
-**Outdoor runs**: a new world starts in the bunker, so use `--spawn field|shelter` (the server's dev spawns: beside a scrap field, 6 m outside a shelter door), `--yaw 3.14` to turn round
+**Outdoor runs**: a new world starts at the crashed ship (its hull fills the view), so use `--spawn field|shelter` (the server's dev spawns: beside a scrap field, 6 m outside a shelter door), `--yaw 3.14` to turn round
 (the field spawn faces the field, which blocks the walk) and `--tod 0.26` for the time of day the run starts at (0.333 = 8 am, sun 28°; **0.26 = about 6 am, sun 8°, long shadows**; sunrise is
 ~5:30 and sunset ~18:30 here, so 5 am or 10 pm are dark). The clock then runs on (a day is 30 min). The walk is a very wide circle (about 100 m radius), 140-200 m in 30 s, with a sprint every
 other ten seconds. `--spawn crash` is beside a crash site's machine and its crawlers kill the player: use it to see what a death looks like in the data, not for numbers.
@@ -52,7 +52,7 @@ other ten seconds. `--spawn crash` is beside a crash site's machine and its craw
 **Dying, and other runs that are not a walk, are part of the data, not noise.** The JSON has `valid` and `invalidReasons` at the top, and `gameplay.events` (`died` / `respawned`, with seconds into the walk,
 position and heat), `gameplay.travelledM`, `framesExcluded`. The trace has a red `player died` / `player respawned` marker on the dadajam track. A run is invalid when the player died, barely moved
 (blocked by a pile or a dune face: under 1.5 m/s), or ended early; `tools/perf.ts` prints `!! INVALID RUN` with the reasons, names the files `...-INVALID.json` and exits with code 2.
-By default a death ends the run (the numbers after it would be a ragdoll's, then the bunker's); `--allow-death` keeps walking and leaves the frames while down, and the next second after the respawn,
+By default a death ends the run (the numbers after it would be a ragdoll's, then the respawn's); `--allow-death` keeps walking and leaves the frames while down, and the next second after the respawn,
 out of the numbers (they are counted in `framesExcluded`; the run stays marked invalid so it is never mistaken for a clean one).
 **Size matters for the GPU**: the game draws one pixel per CSS pixel, so the default 1280x800 window hides a GPU limit. `--size 2560x1440` (or your screen's size) sets the viewport. The JSON's `gpuPasses` and the
 runner's "gpu ms per frame by render pass" split the GPU time by render pass (context id): the scene pass is the big one, the others (shadow cascades, post) small.
@@ -105,8 +105,8 @@ The first WebGL profiling run produced a timer-query warning; repeating with que
 The dunes are not in the shadow maps any more. For a grid round the player the GPU finds, per texel, the "shadow ceiling" S (the highest the ray to the
 sun has to clear) by doubling: one pass a frame looks 1, 2, 4 ... texels up-sun, so nothing thin is skipped; a point at height y is in the dunes' shadow when
 y < S. Edges are the clean contour y = S at any distance, without the stairs a low sun makes of shadow-map texels. Grids: 0.5 m round the player, 4 m and 9 m
-out to the terrain's edge (High); fewer and coarser on Low/Medium (graphics.ts SHADOW_QUALITY). The shadow maps keep players, wrecks, the base and bosses, and
-can now filter narrowly (1.5-2 texels, was 5-8); the terrain casts into them only near the base and shelters (their rooms are underground, roofed by it).
+out to the terrain's edge (High); fewer and coarser on Low/Medium (graphics.ts SHADOW_QUALITY). The shadow maps keep players, wrecks, the ship and bosses, and
+can now filter narrowly (1.5-2 texels, was 5-8); the terrain casts into them only near the shelters (their rooms are underground, roofed by it).
 Things learned on the way (all cost a debugging round): a render target sampled before it is first drawn into breaks every frame with "destroyed texture used in
 a submit" (the scene is not drawn at all: clear every target once after renderer.init); three clamps a node material's colour output at 0, so passes that
 write negative numbers use `fragmentNode`; 32-bit float targets cannot blend (NoBlending, or the pipeline is never ready and nothing is drawn) and are read
@@ -114,7 +114,7 @@ texel by texel (`.load`), not sampled. Spin runs at 1440p (`--route spin --spawn
 gave the two within run-to-run noise (98-135 fps for the same setting); the gain is the look, and ~100 fewer draw calls where the terrain no longer casts.
 
 Ultra (shadow quality 4th step): 5 cascades of 4096² out to 4.5 km (choosing it sets the shadow distance to the maximum), far cascades keep only big casters
-(a downed jet, a boss, the base), dune grid 0.25 m / 1 m / 4.5 m. ~0.6 GB of GPU memory. The packed shadow ceiling gets a small tent filter, which takes the
-stair steps off rock outlines. Near the base and the shelters the heightfield is skipped only where a point is in their reach, under their floor *and* under
-the drawn ground (dune valleys round the base are lower than its floor: they lost their dune shadows inside 45 m). `npm run perf -- --shot --view 60` lifts the
+(a downed jet, a boss, the ship), dune grid 0.25 m / 1 m / 4.5 m. ~0.6 GB of GPU memory. The packed shadow ceiling gets a small tent filter, which takes the
+stair steps off rock outlines. Near the shelters the heightfield is skipped only where a point is in their reach, under their floor *and* under
+the drawn ground (dune valleys round a shelter can be lower than its floor). `npm run perf -- --shot --view 60` lifts the
 camera 60 m for the picture (fly camera, no HUD), looking away from the sun: the way to see shadows over a wide stretch.

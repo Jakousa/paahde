@@ -1,7 +1,7 @@
 // The simulated world: everything a player can go to, as points of interest built from the game's own deterministic
 // layout (WORLD_ID picks the seed, shared/world.ts) and loot laid out with the game's own dice (shared/lootRoll.ts).
 // Time is the sim's clock (s); what's taken comes back on the server's timers.
-import { ORIGIN } from './origin.ts';
+import { ORIGIN } from './home.ts';
 import { biome } from '../../shared/biomes.ts';
 import { ENEMIES, type EnemyKind } from '../../shared/enemies.ts';
 import { machinesAt } from '../../shared/crash.ts';

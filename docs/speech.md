@@ -74,7 +74,7 @@ Ideas, not built yet (most need a new event or state field):
 - Low on water far from any pump; a full bottle that's been carried a while without drinking in the heat.
 - The first drone searchlight at night; the first jet overhead; being shot at for the first time.
 - A shield plate breaking ("That was close."); a line per boss kind beaten, and the last one (the world won).
-- Lost: far from the base for a long time with no wrist computer.
+- Lost: far from home (the bedroll, the ship) for a long time with no wrist computer.
 - Lives running low for the world (src/lives.ts).
 - Another player nearby for the first time; a dead player's pack ("Whoever this was, they won't mind.").
-- Sand in the bunker during a storm; a plant bed growing up, and the first harvest.
+- Sand sifting into a shelter during a storm; a plant bed growing up, and the first harvest.

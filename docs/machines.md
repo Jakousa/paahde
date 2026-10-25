@@ -214,7 +214,7 @@ structure's own model. The id scheme already allows it (`"<site>:<0-9>"`); the e
 4. **Per-kind layout versions.** Today one global `TEARDOWN_LAYOUT` resets everyone's progress whenever any machine changes. Move to a hash per kind (saved with the progress row in `machine_progress`)
    so reworking one machine resets only that machine.
 5. **Placement and collision.** A deterministic cell grid in the style of `shared/crashsites.ts` and `shared/wrecks.ts` with its own random stream (nothing existing may move), a level by
-   distance from the base (`SiteLevel`), solid capsules from the layout's `hits` (`shared/machineBoxes.ts` already does this per machine; sections just add more), and a husk state per section
+   distance from the origin (`SiteLevel`), solid capsules from the layout's `hits` (`shared/machineBoxes.ts` already does this per machine; sections just add more), and a husk state per section
    and per structure (the `crash_spent` pattern).
 6. **Dev placement.** Put one of each structure in the test lab (`shared/lab.ts`) so it can be reviewed without finding it.
 

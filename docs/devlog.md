@@ -2,6 +2,40 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-25 — The starting bunker is gone
+
+No more base: the hut, the stairs, the rooms, the workbench, the dismantling table, the endless chest, the hand pump, the
+flag mast and the pad are all gone. Players arrive where new players start (`spawnPoint`), build what they need anywhere
+and fetch water from the shelter with a pump near the start, or an electric well.
+
+- **The origin stays** (`shared/origin.ts` `ORIGIN`, picked per seed just as the base was): the layout is measured from
+  it, so crash sites, scrap, wrecks, shelters and the ship lie exactly where they did in every world (checked on a few
+  seeds). The ground the layout kept clear round the pad is `originClear`; the ship's spot is still scored on the dunes
+  as they were with the pad (`padLevel`). The terrain has no pad any more: the sand there is the dunes.
+- **Collision**: what the bunker had that others use moved to `shared/capsules.ts` (capsules, the arch helpers the
+  shelters use, the grid of placed things, now in world coordinates). Indoors, `sandHidden`, the indoor heat cap, the
+  storms' and the gas's shelter, the pumps: the shelters only. Stations, tables and chests are the placed ones only (no
+  'bench' table id, no `chest<i>` boxes).
+- **Trophies** stand on rings round the origin, where the bunker was, clear of the arrival, the layout and each other
+  (`trophyPlaces`); their ground isn't dug (`keepUndug`, a hook in shared/terrain.ts so the terrain needn't import them).
+- **The lab** is laid out from its own spot (`LAB_AT`, world 0, 0) on its flat floor (y 0). `?spawn=base` is `?spawn=ship`.
+- **Old worlds** (`server/bunkerGone.ts`, once per world): the bunker's chests go into new chests put up near the spawn
+  (as many as needed), with the machine that was on its table as a whole machine; repair-slot items go back to the bags;
+  plant beds and UV lamps on its floor back to their owners (or the chest); stations, chests and bedrolls on its floor are
+  moved out onto the sand near the spawn with their boxes and jobs; players and vehicles in it move to the spawn; things on
+  sand that changed are set back on it. Tried on a world with 101 stacks in the chest, a winch on the table, a canteen
+  in a repair slot, a bed, a workbench (from before `y`) and a chest on the floor: all came out, nothing lost.
+- **Models**: the hand pump the shelters use is `public/models/pump.glb` (`tools/blender/stations.py --only pump`); the
+  stations' builders are `tools/blender/stationkit.py`; the bunker's models and scripts are gone.
+- **Wiring at the start**: carried machines need a dismantling bench now (16 scrap, 2 wiring, 2 cloth) and the workbench
+  needs a wiring too, but the first machines' coils were the start's only wiring. The ship's loot (`SHIP_LOOT`) now has
+  wiring among it, or the economy sim's agent went hours (or the whole 10 h) without a workbench.
+- **Economy sim**: home is the pump shelter by the start (`tools/econsim/home.ts`); the agent builds the workbench, the
+  dismantling bench (carried machines wait for it), the bedroll and the chest (`made:<kind>` milestones). Against the
+  bunker: the start is much slower (motorcycle 5 → 78 min, canteen 9 → 26, workbench 5 → 19, the dismantling bench at 52),
+  everything later ~30-60% slower, the win 298 → 354 min, deaths 0.1 → 0.4 per world. That's the bunker's free table,
+  workbench and pump being earned now; tune the building costs or the start's loot if it's too slow.
+
 ## 2026-10-25 — A crashed ship to arrive at, and a bedroll to come back to
 
 The starting bunker is going (shared/base.ts stays the world's origin for now). Where you arrive, where you die back to:

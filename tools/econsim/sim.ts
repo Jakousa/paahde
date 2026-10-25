@@ -3,7 +3,7 @@
 // bosses when it can. The rules are the game's (bag grid, gear slots and quality, recipes, machine contents, drop
 // dice); every enemy (where it's met, what it leaves, the fight odds) is shared/enemies.ts; the times are
 // tools/econsim/costs.ts. Deterministic for a world and a seed.
-import { ORIGIN } from './origin.ts';
+import { BUNKER, HOME, ORIGIN, SPAWN } from './home.ts';
 import { biome } from '../../shared/biomes.ts';
 import { BOSS_KINDS, BOSS_LIVES, RECEIVERS, type BossKind } from '../../shared/bosses.ts';
 import { ENEMIES, fightOdds, type EnemyKind, type Meet, type Weapon } from '../../shared/enemies.ts';
@@ -30,10 +30,12 @@ import { COSTS, MIN_SCORE } from './costs.ts';
 import { CORPSE_S, World, type Poi, type Source, type Thing } from './world.ts';
 
 /** What the agent works towards, in order: each piece of gear repaired (or crafted), each boss beaten. First the wrench
- *  (made by hand) and with it the workbench (put up at home), without which nothing is repaired or crafted (commits from
- *  before the workbench was built skip it: OPEN_GOALS). */
+ *  (made by hand) and with it the workbench (put up at home), without which nothing is repaired or crafted, the chest
+ *  and the bedroll; the dismantling bench, without which carried machines aren't taken apart, after the canteen (commits
+ *  from before these were built skip them, and with the bunker standing the chest, the bedroll and the bench are its:
+ *  OPEN_GOALS). */
 const GOALS = [
-  'wrench', 'workbench', 'canteen', 'backpack', 'laser_pistol', 'motorcycle', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
+  'wrench', 'workbench', 'canteen', 'dismantle_bench', 'bedroll', 'backpack', 'laser_pistol', 'motorcycle', 'storage_chest', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
   'grinder', 'receiver_colossus', 'boss:colossus', 'receiver_queen', 'boss:queen', 'receiver_carrier', 'boss:carrier', 'receiver_worm', 'boss:worm',
   'windmill', 'battery_station', 'well',
 ] as const;
@@ -52,10 +54,13 @@ const BUILDS: Record<string, Recipe> = (crafting as { BUILDS?: Record<string, Re
 const WRENCH = 'wrench';
 /** Made by hand anywhere, no workbench needed (shared/crafting.ts), none before there were. */
 const HAND: Record<string, Recipe> = (crafting as { HAND_RECIPES?: Record<string, Recipe> }).HAND_RECIPES ?? {};
-/** The workbench is a building put up with the wrench (shared/crafting.ts BUILDS); before, it stood in the base. */
+/** The workbench is a building put up with the wrench (shared/crafting.ts BUILDS); before, it stood in the bunker. */
 const WORKBENCH = 'workbench';
 const BUILT_WORKBENCH = WORKBENCH in BUILDS;
-const OPEN_GOALS = GOALS.filter((g) => g !== WORKBENCH || BUILT_WORKBENCH);
+/** The dismantling bench, the chest and the bedroll: built (made) at home, unless the bunker stands (home.ts BUNKER). */
+const TABLE = 'dismantle_bench';
+const BUNKER_HAS: string[] = [TABLE, 'storage_chest', 'bedroll'];
+const OPEN_GOALS = GOALS.filter((g) => (g !== WORKBENCH || BUILT_WORKBENCH) && !(BUNKER && BUNKER_HAS.includes(g)));
 /** The items a recipe uses up from the chest (indexes; shared/crafting.ts), gear never among them. */
 const pickFrom: (items: Item[], r: Recipe) => number[] | null = (crafting as { pickFrom?: typeof crafting.pickFrom }).pickFrom
   ?? ((items, r) => crafting.pickIngredients(items.map((it) => (it.parts ? null : it)), r));
@@ -107,8 +112,8 @@ const ROAMING = (Object.keys(ENEMIES) as EnemyKind[]).flatMap((kind) =>
 
 export class Sim {
   t = 0;
-  x = ORIGIN.x;
-  z = ORIGIN.z;
+  x = SPAWN.x;
+  z = SPAWN.z;
   heat = 0;
   sips = 0;
   lives = LIVES;
@@ -120,7 +125,7 @@ export class Sim {
   readonly cargo: Slots = Array(BIKE_COLS * BIKE_ROWS).fill(null);
   /** The motorcycle we ride (shared/vehicles.ts: it stands in the world, not worn; the best one repaired, by kit()). */
   readonly ride: Slots = [null];
-  /** The base's chests: room enough for anything. */
+  /** What's kept at home (the chests, and what lies by them): room enough for anything. */
   chest: Item[] = [];
   private world: World;
   private rand: Rand;
@@ -169,6 +174,10 @@ export class Sim {
   /** A workbench stands at home: repairs and its recipes can be done. */
   private get workbench(): boolean {
     return !BUILT_WORKBENCH || this.gearOf(WORKBENCH).length > 0;
+  }
+  /** A dismantling bench stands at home (or the bunker's table): carried machines can be taken apart. */
+  private get table(): boolean {
+    return BUNKER || this.gearOf(TABLE).length > 0;
   }
   private best(kind: string): Item | null {
     return this.gearOf(kind).filter(repaired).sort((a, b) => quality(b) - quality(a))[0] ?? null;
@@ -561,8 +570,10 @@ export class Sim {
     }
     if (things.length) this.world.drop(this.x, this.z, things, 'corpse', this.t + CORPSE_S);
     this.t += COSTS.respawnS;
-    this.x = ORIGIN.x;
-    this.z = ORIGIN.z;
+    // By the bedroll laid out at home, else at the ship (shared/placed.ts BEDROLL, server/world.ts homeOf).
+    const at = this.gearOf('bedroll').length ? HOME : SPAWN;
+    this.x = at.x;
+    this.z = at.z;
     this.heat = 0;
     this.needCache = null;
     if (this.lives <= 0) this.out.gameOverS = this.t;
@@ -661,7 +672,7 @@ export class Sim {
       const risk = this.risk(p);
       if (risk > COSTS.maxRisk * (v >= top && top > 0 ? 2 : 1)) continue;
       const out = Math.hypot(p.x - this.x, p.z - this.z) / spd;
-      const back = Math.max(0, Math.hypot(p.x - ORIGIN.x, p.z - ORIGIN.z) - Math.hypot(this.x - ORIGIN.x, this.z - ORIGIN.z)) / spd;
+      const back = Math.max(0, Math.hypot(p.x - HOME.x, p.z - HOME.z) - Math.hypot(this.x - HOME.x, this.z - HOME.z)) / spd;
       const score = (v * (1 - risk) - risk * 2) / (out + work + 0.5 * back + 1);
       if (score > bestScore) {
         bestScore = score;
@@ -742,7 +753,7 @@ export class Sim {
     return fixable;
   }
 
-  /** Could `goal` be done at the base with what's in the chest and the bag? */
+  /** Could `goal` be done at home with what's in the chest and the bag? */
   private couldFinish(goal: string): boolean {
     const stock = new Map<string, number>();
     for (const it of this.all()) if (!it.parts) stock.set(keyOf(it.kind), (stock.get(keyOf(it.kind)) ?? 0) + it.n);
@@ -762,10 +773,10 @@ export class Sim {
     return inBag && GEAR[goal].slots.every((s, i) => it.parts?.[i] || take(slotKey(s), 1) || (SMITHED[slotKey(s) as PartId] && take(SCRAP, 4)));
   }
 
-  // ---- at the base -------------------------------------------------------------------------------------------------
+  // ---- at home -----------------------------------------------------------------------------------------------------
 
   private home() {
-    this.go(ORIGIN.x, ORIGIN.z);
+    this.go(HOME.x, HOME.z);
     if (this.lives <= 0) return;
     this.t += COSTS.baseS;
     this.heat = 0;
@@ -776,8 +787,9 @@ export class Sim {
       this.toChest(it.kind, it.n, it.parts ?? undefined);
       slots[i] = null;
     }
-    // The disassembly table: carried machines, each rolled afresh at level 1 (server/crash.ts crashUse).
-    for (const it of [...this.chest]) {
+    // The dismantling bench: carried machines, each rolled afresh at level 1 (server/crash.ts crashUse). None standing
+    // yet: they wait in the chest.
+    for (const it of this.table ? [...this.chest] : []) {
       if (it.parts || !isMachine(it.kind)) continue;
       for (let k = 0; k < it.n; k++) {
         const seed = (this.machineRand() * 2 ** 32) >>> 0;
@@ -791,6 +803,7 @@ export class Sim {
       this.chest.splice(this.chest.indexOf(it), 1);
     }
     this.bench();
+    // (The dismantling bench may have gone up just now: what waits for it is taken apart on the next visit.)
     this.kit();
     this.milestones();
     this.bosses();
@@ -936,6 +949,8 @@ export class Sim {
       if (QUALITY_MILESTONES.includes(kind) && quality(b) >= 2) m[`q2:${kind}`] ??= this.t;
     }
     if (bagShape(this.equip).rows >= backpackRows(3)) m.full_backpack ??= this.t;
+    // The wrench and what's put up (or laid out) at home: the start of a game without the bunker.
+    for (const k of [WRENCH, ...BUNKER_HAS, WORKBENCH]) if (this.gearOf(k).length) m[`made:${k}`] ??= this.t;
   }
 
   /** Call every boss whose receiver works, if there's a rifle to fight it with. */
@@ -1009,7 +1024,7 @@ export class Sim {
     const p = unseen.sort((a, b) => Math.hypot(a.x - this.x, a.z - this.z) - Math.hypot(b.x - this.x, b.z - this.z))[0];
     if (p) return this.visit(p);
     const a = this.rand() * Math.PI * 2, d = 200 + this.rand() * 700;
-    this.go(ORIGIN.x + Math.cos(a) * d, ORIGIN.z + Math.sin(a) * d);
+    this.go(HOME.x + Math.cos(a) * d, HOME.z + Math.sin(a) * d);
   }
 }
 

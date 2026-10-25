@@ -246,8 +246,10 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
 /** Lying about the crashed ship players arrive at (shared/ship.ts, server/loot.ts): how many things at once, each one
- *  of these by relative odds (a broken canteen: shared/gear.ts); taken, another lies there a few minutes later. */
-export const SHIP_LOOT = { n: 6, contents: { scrap: 0.5, cloth: 0.35, canteen: 0.15 } };
+ *  of these by relative odds (a broken canteen: shared/gear.ts; wiring torn out of its hold, enough before long for the first
+ *  workbench and dismantling bench, which carried machines need before they give any); taken, another lies there a few
+ *  minutes later. */
+export const SHIP_LOOT = { n: 6, contents: { scrap: 0.42, cloth: 0.3, wiring: 0.13, canteen: 0.15 } };
 
 /** Parts that only an engine gives (nothing uses them yet): never found loose. */
 const ROTORS: PartId[] = ['fanrotor', 'comprotor', 'turbinerotor', 'turbinedisc', 'fuelmanifold'];

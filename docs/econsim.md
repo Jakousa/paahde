@@ -55,7 +55,7 @@ boss milestones (the win comes ~20% sooner, the uranium wait halves).
 From the game's code, so changes there show:
 
 - the layout: `coreCrashSites`/`machinesAt` (levels, outposts, machine kinds), `scrapPieces` (scrap and cloth), `wrecksNear`, `sheltersNear`,
-  the crashed ship players arrive at (`shipSites`, `SHIP_LOOT`: known from the start)
+  the crashed ship players arrive at (`shipSites`, `SHIP_LOOT`: known from the start), home by it (`homeShelter`)
 - what lies where: `shared/lootRoll.ts` (finds, caches, stashes and where they go, kill, jet, harvester and boss drops; the server
   rolls the same functions) on the server's respawn timers
 - what's inside a machine: `machineParts` (site level; carried ones roll again at level 1 on the table, as `server/crash.ts` does),
@@ -96,15 +96,20 @@ picking the pack up if it's worth it.
 
 ## The agent
 
-`tools/econsim/sim.ts`. Goals in order: the wrench (made by hand), the workbench (built with it; nothing is repaired or
-crafted at home without one; carried machines are still taken apart as if on the base's table), canteen, backpack, pistol, motorcycle, spyglass, shield, rifle, storm detector,
-jammer, wristpad, grinder, then each receiver and its boss, the worm last, the windmill, battery station and well. Each open goal
+`tools/econsim/sim.ts`. Home (`tools/econsim/home.ts`) is the shelter with a pump that always lies near the crashed ship
+(shared/shelters.ts `homeShelter`: water and shade at hand); it starts where new players do (`spawnPoint`) and comes back
+there after dying, or to home once it has laid out its bedroll. Goals in order: the wrench (made by hand), the workbench (built with
+it; nothing is repaired or crafted at home without one), canteen, the dismantling bench (carried machines wait in the
+chest until it stands), the bedroll, backpack, pistol, motorcycle, the chest (what's kept at home is never short of
+room: until the chest stands it lies by the door), spyglass, shield, rifle, storm detector, jammer, wristpad, grinder, then each receiver and its boss, the worm last, the windmill, battery station and well. Each open goal
 weighs 0.85× the one before. From that come needs (`needs()`: what's missing for each goal after the chest is
 counted off) and the value of anything it could pick up. A part no goal needs is a spare (worth less the more there are)
 or an upgrade for gear in use. Each stop is the known place with the best `value × (1 − risk) / time`. It heads home
 when the bag is full, when something in it finishes a goal, or when nothing's worth going on for. At home it unloads,
 takes carried machines apart, repairs and crafts goal by goal (a building only from what earlier goals don't need),
-fits better parts, wears and carries the best gear, and calls any boss it can.
+fits better parts, wears and carries the best gear, and calls any boss it can. `made:<kind>` milestones are the
+wrench and what's put up at home. Against a commit that still has the starting bunker (`home.ts` BUNKER), home is the
+bunker, with its table, chest and pump, and those goals are left out.
 
 Every random draw comes from seeded streams (layout loot, fights, machines on the table, the rest), so a world plays
 the same every time for the same code.

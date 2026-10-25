@@ -50,13 +50,13 @@ when you find it stale.
 - `shared/ship.ts` — the crashed ship players arrive at (new players and the dead without a bedroll appear at the foot
   of its ramp: `shipSpawn`, `spawnPoint()` in shared/sim.ts): its pieces in the world, collision (`collideShip`), shade
   casters, its starter machines (`shipSites`, ids `ship:<n>`, through shared/crash.ts) and loot spots (`SHIP_LOOT`,
-  server/loot.ts). Its spot (picked per world near the base's door) and the furrow in the terrain: `shared/shipSpot.ts`;
+  server/loot.ts). Its spot (picked per world 40–60 m from the origin) and the furrow in the terrain: `shared/shipSpot.ts`;
   model `tools/blender/ship.py` → `public/models/ship.glb` + generated `shared/shipModel.ts`; drawn by `src/world/ship.ts`
 - Bedrolls (`bedroll`, shared/placed.ts) — a player's own place to wake up after dying (`homeOf` in server/world.ts):
   laid out on the sand or a shelter's floor, one each, owner kept server-side (server/placed.ts), told to them alone
   (`bedroll` message; the locator's home, src/locator.ts)
-- `shared/lab.ts` — the dev test lab (`?w=lab`, `LAB` in shared/world.ts: flat floor, no desert or events; layout of the
-  machine sites `lab:<n>`, pickups and plates); drawn by `src/world/labPlates.ts`, pickups via `server/loot.ts`
+- `shared/lab.ts` — the dev test lab (`?w=lab`, `LAB` in shared/world.ts: flat floor at y 0, no desert or events; laid out
+  from its own spot `LAB_AT`, world (0, 0), you start at `LAB_SPAWN`; layout of the machine sites `lab:<n>`, pickups and plates); drawn by `src/world/labPlates.ts`, pickups via `server/loot.ts`
 - `src/artBench.ts` — the art-style bench (`?w=bench`): the desert from a fixed seed with no events, fixed camera shots
   at set times of day (`[` `]`), a panel tuning the global look live (tone, grade, bloom, light, sky palette keys,
   haze, sand/rock/mud colours; hold `\` for the defaults), exported as JSON or a diff naming where each default lives
@@ -87,7 +87,7 @@ when you find it stale.
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`);
   pieces give one of the two basic materials, `scrap` or `cloth` (shared/items.ts `SCRAP`/`CLOTH`)
 - `shared/shelters.ts` — small empty bunkers (small/deep/long) scattered mostly in rocky country: placement, pad,
-  collision, pumps (`atWater`), stash spots, `indoors()`/`sandHidden()` (base or shelter); one small one with a pump
+  collision, pumps (`atWater`), stash spots, `indoors()`/`sandHidden()`; one small one with a pump
   always within 140 m of the crashed ship (`homeShelter`); drawn by `src/world/shelters.ts`
 
 ## Weather and survival
@@ -98,40 +98,54 @@ when you find it stale.
   counts huts, wrecks, players and bikes, built tarps)
   tuning, drained and validated in `server/water.ts`, HUD + `playerHands` in `src/water.ts`
 - `shared/storm.ts` — local sandstorms (path, strength, warning) and rare world-wide storm fronts (mega-storms: choke
-  you in the open, `sheltered` = bunker or lee of rock; death tally in server/world.ts); scheduled by
+  you in the open, `sheltered` = a shelter or the lee of rock; death tally in server/world.ts); scheduled by
   `server/storm.ts`, heat in `server/water.ts`, beep/banner/locator in `src/storm.ts`, dust columns and the front's wall
   in `src/post.ts`
 - `shared/gas.ts` — poison gas (night weather, scheduled with the storms in `server/storm.ts`): a low cloud creeping
   in, rising to `GAS_DEPTH` over the dune floor (`duneFloor`, shared/dunes.ts), so climb a big dune or rock; it fills
-  bunkers; chokes in `GAS_S` (`gassed` in server/world.ts); no effect on electronics. Client `src/gas.ts`, drawn in
+  shelters; chokes in `GAS_S` (`gassed` in server/world.ts); no effect on electronics. Client `src/gas.ts`, drawn in
   `src/post.ts`
 
-## Base, buildings and power
+## Home, buildings and power
 
-- `shared/base.ts` — home base (underground bunker) layout + collision; terrain is its roof, with holes
-  (`TERRAIN_HOLES`) over the entrance and skylight. `shared/garden.ts` — plant beds (stages, look target), owned by
-  `server/garden.ts`; beds are placed things (`shared/placed.ts`, `server/placed.ts`: items put down on a floor),
-  crafted at the workbench (`shared/crafting.ts`)
-- Buildings — the windmill, the battery station, the power pole, the beacon, the workbench, the dismantling bench and
-  the chest, anywhere on the sand: put up with the wrench (made by hand; right mouse with it in hand opens the build
-  menu, `src/buildMenu.ts`, placing in `src/placing.ts`)
+There is no starting base: players arrive at the crashed ship (shared/ship.ts, above) and build what they need, anywhere.
+Everything built is shared, and anyone can take a building down.
+
+- `shared/origin.ts` — the world's origin (`ORIGIN`, picked per seed: where the first bunker stood), which the layout is
+  measured from (site levels, the scrap fields, the ship's spot, keep-outs round the start, the flying wing's odds); it
+  stays put so every world keeps its layout. `originClear` is the ground round it the layout keeps clear, `padLevel` the
+  dunes as the ship's spot was picked on them (the terrain itself has no pad there now)
+- `shared/capsules.ts` — vertical capsule collision (`collideCapsules`, the arch/vault helpers the shelters use) and the
+  grid of 16 m cells holding everything put up (`setPlacedCapsules`, `collideOutdoor`, `overPlaced`: never dug), in
+  world coordinates
+- `server/bunkerGone.ts` — once per world (settings `bunker_gone`): what was kept in the old bunker comes out (its chests
+  into new chests by the ship, the machine on its table, repair slots back to the bags, things on its floor back to
+  their owners or moved out onto the sand, players and vehicles in it to the ship)
+- Buildings — the windmill, the battery station, the power pole, the beacon, the tarp, the well, the workbench, the
+  dismantling bench and the chest, anywhere on the sand: put up with the wrench (made by hand; right mouse with it in
+  hand opens the build menu, `src/buildMenu.ts`, placing in `src/placing.ts`)
   from base materials only (scrap, cloth, wiring: `shared/tables.ts` BUILD_TABLE, `shared/crafting.ts` BUILDS), used up
   as it goes up and all given back when it's dismantled (G with the wrench); never carried as items. The windmill and
   station are gear with part slots and quality (`shared/gear.ts` `built`), standing with their slots empty (bearings
   and motor, batteries fitted after), placed via `shared/placed.ts` (`sand` kinds: `gap` between them,
-  `STRUCTURE_GAP` from the hut/skylight/mast and the shelters' huts; where it goes by where you stand, `placeFloor`:
-  the `floor` kinds also on a shelter's room floor, `shelterRoomClear` in shared/shelters.ts; collision of everything
-  not on the bunker floor in a grid of 16 m cells, `collideOutdoor`/`overPlaced` in shared/base.ts); while standing,
-  the item is in box `bld<id>`, whose parts are swapped in place (F, `src/inventory.ts` `part:<box>`); drawn by
-  `src/world/placed.ts` (lit by the sky, the bunker's lamps or a shelter's fill, by where it stands), models
+  `STRUCTURE_GAP` from the shelters' huts, off the crashed ship (`nearShip`) and the trophies'
+  ground; where it goes by where you stand, `placeFloor`: the `floor` kinds also on a shelter's room floor,
+  `shelterRoomClear` in shared/shelters.ts; collision in shared/capsules.ts); while standing, the item is in box
+  `bld<id>`, whose parts are swapped in place (F, `src/inventory.ts` `part:<box>`); drawn by `src/world/placed.ts` (lit
+  by the sky or a shelter's fill, by where it stands; materials `src/world/glbMaterial.ts`), models
   `tools/blender/placeables.py`
 - Work stations and chests built with the wrench (shared/placed.ts `WORKBENCH`, `TABLE`, `CHEST`; models
-  `tools/blender/stations.py`, the base's own from bunker.py) — `shared/stations.ts` `stations()`: the base's workbench
-  and table plus every placed one; any workbench opens the repair slot ('bench') and its recipes, any dismantling table
-  takes carried machines apart (shared/crash.ts `tables()`, a session per table: 'bench' the base's, `bench<placed
-  id>`; server/crash.ts keeps a job per table, `bench_jobs`); a chest is box `store<placed id>`
-  (CHEST_COLS × CHEST_ROWS, shared). A table with a machine on it or a chest with anything in it can't be taken down
-  (server/world.ts onUnplace)
+  `tools/blender/stations.py` with the builders in `tools/blender/stationkit.py`, which also makes the shelters' hand
+  pump, `public/models/pump.glb`) — `shared/stations.ts` `stations()`: every placed one; any workbench opens the repair
+  slot ('bench', each player's own) and its recipes, any dismantling table takes carried machines apart
+  (shared/crash.ts `tables()`, a session per table, `bench<placed id>`; server/crash.ts keeps a job per table,
+  `bench_jobs`); a chest is box `store<placed id>` (CHEST_COLS × CHEST_ROWS, shared). A table with a machine on it or a
+  chest with anything in it can't be taken down (server/world.ts onUnplace)
+- `shared/garden.ts` — plant beds (stages, look target), owned by `server/garden.ts`; beds and UV lamps are placed
+  things that stand on a shelter's floor only (not crafted for now)
+- `shared/trophies.ts` — a big piece of each boss kind beaten, standing round the world's origin, where the first bunker
+  stood (`trophyPlaces`: rings of spots, -Z first, clear of where players arrive, the layout and each other),
+  solid (`collideTrophies`), their ground never dug (`keepUndug` in shared/terrain.ts); drawn by `src/world/trophies.ts`
 - Beacons (`beacon_light`, shared/placed.ts `BEACON`) — a lamp on a mast that shines a column of light into the sky, a
   marker: built with the wrench like the others (scrap, wiring), `MAX_BEACONS` of their own; one battery slot. Powered like a load on the grid (shared/power.ts `BEACON_W`, `draw`;
   server/power.ts): wired, it runs on the windmills, then on every battery on its grid (and the grid charges its battery);
@@ -187,7 +201,7 @@ when you find it stale.
 
 ## Crash sites and machines
 
-- `shared/crashsites.ts` — deterministic crash-site layout + hitboxes; sites have a level by distance from the base
+- `shared/crashsites.ts` — deterministic crash-site layout + hitboxes; sites have a level by distance from the origin
   (`SiteLevel`: 0 scrap fields with starter machines/gear, 1 crawlers, 2 guardians + rarest parts; outposts are level 1
   sites among the scrap fields, 1–2 crawlers, loot in between: `LootLevel`) that picks their wrecks, machines
   (`LEVEL_KINDS`, shared/crash.ts), finds (server/loot.ts) and walkers (`shared/crashKinds.ts` is generated by
@@ -210,7 +224,7 @@ when you find it stale.
   (`jets`). Two kinds (`JetKind`, shared/jetbreak.ts): the fixed-wing drone (MQ-9-like, 18 m span, no engine: its
   wreck drops parts, `DRONE_JET_SPOILS`, `tools/blender/machines/dronejet.py` -> `dronejet.glb` +
   `shared/dronejetpieces.ts`) and the stealth flying wing (`tools/blender/machines/plane.py` -> `jet.glb` +
-  `shared/jetpieces.ts`); the wing's odds grow with the distance from the base, 0 to 80% at 10 km (`WING_ODDS`,
+  `shared/jetpieces.ts`); the wing's odds grow with the distance from the origin, 0 to 80% at 10 km (`WING_ODDS`,
   server/jets.ts). Down, it comes apart on impact (`shared/jetbreak.ts`: each piece (`PIECES_OF[kind]`) flies,
   tumbles, bounces and settles on the sand, splashing it; deterministic, so the server and every client run the same),
   and when they lie still a permanent crash site is made (`shared/jetcrash.ts`, `server/jetcrash.ts`, in the world's
@@ -267,7 +281,7 @@ when you find it stale.
 ## Rendering and performance
 
 - `src/world/heightShadow.ts` (dune shadows from the heightfield, not the shadow maps), `src/world/cascades.ts`
-  (cached cascades: redrawn only when needed; they hold only things: players, wrecks, the base, bosses),
+  (cached cascades: redrawn only when needed; they hold only things: players, wrecks, the ship, bosses),
   `src/world/shadowLod.ts` (small casters left out of far cascades): see `docs/perf.md`
 - `src/perf.ts`, `tools/perf.ts` — CPU/GPU frame timing (stats graphs, User Timing for traces) and the automated
   benchmark run (`npm run perf`: waits for the game to be playable, walks a route, writes JSON + a Chrome trace to
