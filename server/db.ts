@@ -289,6 +289,14 @@ export function openDb(path: string) {
   const allPlaced = db.prepare('SELECT id, kind, x, y, z, rot, owner FROM placed ORDER BY id');
   const insertPlaced = db.prepare('INSERT INTO placed (kind, x, y, z, rot, owner, placed_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const deletePlaced = db.prepare('DELETE FROM placed WHERE id = ?');
+  // Each player's spawn point (server/placed.ts): the bedroll (placed id) they wake up at after dying, or no row. Made
+  // the first time with each player's own bedroll (the newest), as it was before spawn points could be toggled.
+  const hadSpawns = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'spawns'").get()) !== undefined;
+  db.exec('CREATE TABLE IF NOT EXISTS spawns (owner TEXT PRIMARY KEY, placed INTEGER NOT NULL)');
+  if (!hadSpawns) db.exec("INSERT INTO spawns (owner, placed) SELECT owner, MAX(id) FROM placed WHERE kind = 'bedroll' GROUP BY owner");
+  const allSpawns = db.prepare('SELECT owner, placed FROM spawns');
+  const putSpawn = db.prepare('INSERT INTO spawns (owner, placed) VALUES (?, ?) ON CONFLICT (owner) DO UPDATE SET placed = excluded.placed');
+  const clearSpawn = db.prepare('DELETE FROM spawns WHERE owner = ?');
   // Electricity (shared/power.ts, server/power.ts): each battery station's charge, per part slot (kWh, JSON).
   db.exec('CREATE TABLE IF NOT EXISTS power (id INTEGER PRIMARY KEY, charge TEXT NOT NULL)');
   const allPower = db.prepare('SELECT id, charge FROM power');
@@ -453,6 +461,8 @@ export function openDb(path: string) {
     insertPlaced: (kind: string, x: number, y: number, z: number, rot: number, owner: string) =>
       Number(insertPlaced.run(kind, x, y, z, rot, owner, Date.now()).lastInsertRowid),
     deletePlaced: (id: number) => deletePlaced.run(id),
+    loadSpawns: () => allSpawns.all() as { owner: string; placed: number }[],
+    setSpawn: (owner: string, placed: number | null) => (placed === null ? clearSpawn.run(owner) : putSpawn.run(owner, placed)),
     /** Placed thing `id` stands somewhere else now. */
     movePlaced: (id: number, x: number, y: number, z: number, rot: number) => db.prepare('UPDATE placed SET x = ?, y = ?, z = ?, rot = ? WHERE id = ?').run(x, y, z, rot, id),
     /** The shared boxes (owner '') whose ids match `re`, and the owners of player boxes called `box` with anything in them. */

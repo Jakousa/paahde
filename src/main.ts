@@ -7,7 +7,7 @@ import { scrapTarget } from '../shared/scrap.ts';
 import { allBeaten } from '../shared/bosses.ts';
 import { BENCH, CALM, LAB, WORLD_ID } from '../shared/world.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
-import { bedLit, placed } from '../shared/placed.ts';
+import { BEDROLL, bedLit, placed } from '../shared/placed.ts';
 import { stationTarget } from '../shared/stations.ts';
 import { isTableId, tableId } from '../shared/crash.ts';
 import { FirstPersonCamera } from './camera';
@@ -367,6 +367,7 @@ zaps.setCamera(orbit.camera);
 const thrower = new Thrower(scene, orbit, net, scrap);
 thrower.piece = () => viewmodel.scrapPiece(); // the piece in flight is the one drawn in the hand
 if (location.search.includes('debug')) Object.assign((window as unknown as { dbg: object }).dbg, { rifle, zaps });
+net.onSpawn = () => placedView.setSpawn(net.spawn?.id ?? null);
 net.onPlaced = () => {
   for (const p of placed) if (isTrophy(p.kind)) trophies.need(p.kind);
   placedView.sync(placed, net.garden);
@@ -624,7 +625,7 @@ renderer.setAnimationLoop((time) => {
   const wrist = equipped(net.boxes.equip, 'wrist');
   const range = wrist ? locatorRange(quality(wrist)) : 0;
   locator.lost = storm.toolsDown || !wrist;
-  locator.bedroll = net.bedroll;
+  locator.bedroll = net.spawn;
   survival.toolsDown = storm.toolsDown;
   locator.update(orbit.camera, orbit.viewYaw, orbit.pitch + orbit.freePitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z), ...corpseTargets(), ...ownVehicleTargets(net.myVehicles, net.color)]);
   terrain.update(focus);
@@ -686,6 +687,9 @@ renderer.setAnimationLoop((time) => {
   const atTap = playerHands.held === 'canteen' && placing.target?.kind === WELL && !!waterAt(net.me.x, net.me.y, net.me.z);
   const building = !station && placing.target && isBuilding(placing.target.kind) && !atTap ? placing.target : null;
   const buildingPrompt = building ? TEXT.prompt.open(itemLabel(building.kind)) : null;
+  // A bedroll in view (anyone's): F makes it where we wake up after dying, or stops that (net.spawn).
+  const roll = !station && placing.target?.kind === BEDROLL ? placing.target : null;
+  const rollPrompt = roll ? (net.spawn?.id === roll.id ? TEXT.prompt.dontSleepHere : TEXT.prompt.sleepHere) : null;
   // A motorcycle in view (shared/vehicles.ts): F repairs a broken one (its part slots next to the bag), gets on a
   // working one, or opens its cargo from the back. On the bike, F gets off.
   const onBike = s.riding;
@@ -739,7 +743,7 @@ renderer.setAnimationLoop((time) => {
   // A piece that came off a machine and lies by you can be picked up to be turned and taken apart in the hands; F again sets it down.
   const pieceHere = teardown.active && !teardown.holding ? teardown.pieceNear(net.me) : null;
   const piecePrompt = teardown.holding ? TEXT.prompt.putDown : pieceHere ? TEXT.prompt.pickUp(pieceHere.label) : null;
-  const fPrompt = piecePrompt ?? use ?? buildingPrompt ?? ridePrompt ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
+  const fPrompt = piecePrompt ?? use ?? buildingPrompt ?? rollPrompt ?? ridePrompt ?? tend ?? target ?? debrisPrompt ?? findPrompt ?? sitePrompt ?? packPrompt;
   // A wiring coil in hand: stringing power lines between connectors (src/wiring.ts).
   const wirePrompt = wiring.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), !net.down && !fly.active, (t) => hud.toast(t));
   const extra = [growing, wirePrompt, placing.prompt].filter(Boolean).join(' ');
@@ -761,6 +765,7 @@ renderer.setAnimationLoop((time) => {
         });
       } else hud.toast(TEXT.notice.nothingToTakeApart);
     } else if (building) hud.open(buildingBox(building.id));
+    else if (roll) net.spawnToggle(roll.id);
     else if (vehicle) {
       if (!vehicle.v.up) hud.open(vehicleBox(vehicle.v.id));
       else if (vehicle.rear) hud.open(cargoBox(vehicle.v.id));
@@ -781,7 +786,7 @@ renderer.setAnimationLoop((time) => {
     } else if (wreck) net.crashTake(wreck.id);
     else if (pack || chest) hud.open();
   }
-  const targeted = piecePrompt !== null || use !== null || buildingPrompt !== null || ridePrompt !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
+  const targeted = piecePrompt !== null || use !== null || buildingPrompt !== null || rollPrompt !== null || ridePrompt !== null || tend !== null || target !== null || debrisPrompt !== null || findPrompt !== null || sitePrompt !== null || packPrompt !== null;
   survival.update(frameDt, net.me, targeted, interact && !targeted, clockText(sky.day.tod));
   const w = net.water;
   const m = net.me;

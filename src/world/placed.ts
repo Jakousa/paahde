@@ -20,7 +20,7 @@ import { EMPTY, STAGE_NODES, type BedState } from '../../shared/garden.ts';
 import { isBuilding, tierOf } from '../../shared/gear.ts';
 import { furl, rotorSpeed, windSpeed, type PowerState } from '../../shared/power.ts';
 import { parsePart } from '../../shared/items.ts';
-import { BEACON, bedLit, PLACEABLES, TARP, type Placed } from '../../shared/placed.ts';
+import { BEACON, BEDROLL, bedLit, PLACEABLES, TARP, type Placed } from '../../shared/placed.ts';
 import { isTrophy } from '../../shared/trophies.ts';
 import { TARP_WIND, tarpModel } from './tarps.ts';
 import { inShelter } from '../../shared/shelters.ts';
@@ -126,6 +126,15 @@ export class PlacedView {
     return m;
   }
 
+  /** The bedroll that is our spawn point (src/net.ts `spawn`): a lit lantern stands by its pillow, for us alone. */
+  private spawnId: number | null = null;
+  private lantern: THREE.Object3D | null = null;
+
+  setSpawn(id: number | null) {
+    this.spawnId = id;
+    this.sync(this.last.list, this.last.garden);
+  }
+
   /** Match the drawn things to the list and the beds' stages. Call when either changes. */
   sync(list: Placed[], garden: Map<number, BedState>) {
     this.last = { list, garden };
@@ -170,6 +179,12 @@ export class PlacedView {
         const pool = s.obj.getObjectByName('pool');
         if (pool) pool.position.y = list.some((b) => b.kind === 'plant_bed' && bedLit(b, [p])) ? SOIL + 0.01 : 0.01;
       } else if (isBuilding(p.kind)) this.dress(s);
+      else if (p.kind === BEDROLL) {
+        const mine = p.id === this.spawnId;
+        let l = s.obj.getObjectByName('spawn_lantern');
+        if (mine && !l) s.obj.add((l = (this.lantern ??= lanternModel()).clone()));
+        if (l) l.visible = mine;
+      }
     }
     this.lightBeacons();
     this.lightWells();
@@ -332,4 +347,26 @@ function poolMaterial() {
   const q = uv().sub(0.5).abs().mul(2);
   m.opacityNode = float(0.18).mul(float(1).sub(smoothstep(0.55, 1, q.x))).mul(float(1).sub(smoothstep(0.1, 1, q.y)));
   return m;
+}
+
+/** A small storm lantern standing by a bedroll's pillow end (model +X, its right side): a tin base and cap, a glass that
+ *  glows warm, a wire handle. Shown by our spawn point only (PlacedView.setSpawn). */
+function lanternModel(): THREE.Object3D {
+  const g = new THREE.Group();
+  g.name = 'spawn_lantern';
+  const tin = new THREE.MeshStandardNodeMaterial({ color: 0x4a3a2a, roughness: 0.6, metalness: 0.6 });
+  const glow = new THREE.MeshBasicNodeMaterial({ color: new THREE.Color(0xffb04a).multiplyScalar(3) });
+  const part = (geo: THREE.BufferGeometry, mat: THREE.Material, y: number) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.y = y;
+    m.castShadow = mat === tin;
+    g.add(m);
+  };
+  part(new THREE.CylinderGeometry(0.075, 0.085, 0.04, 10), tin, 0.02);
+  part(new THREE.CylinderGeometry(0.07, 0.07, 0.17, 10), glow, 0.125);
+  part(new THREE.ConeGeometry(0.045, 0.05, 10), tin, 0.235);
+  part(new THREE.TorusGeometry(0.045, 0.006, 4, 12, Math.PI), tin, 0.27);
+  g.scale.setScalar(1.3);
+  g.position.set(0.85, 0, 0.55);
+  return g;
 }

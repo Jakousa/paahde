@@ -2,6 +2,23 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-25 — Spawn points: any bedroll, toggled
+
+- Each player has at most one **spawn point**: a bedroll, or none (then you wake up where players arrive,
+  `spawnPoint()`). Laying a bedroll makes it yours, as before; F on any bedroll in reach toggles it ("Sleep here" /
+  "Don't sleep here", `spawnToggle` → server/placed.ts `toggleSpawn`). Anyone's bedroll will do (everything built is
+  shared), so a team can share a camp.
+- **Several bedrolls each:** the one-per-player rule is gone (one at home, one at a far camp). Picking one up stays
+  the owner's alone ("Not yours"): letting anyone roll up someone's bed would let them take a stranger's item, and
+  sleeping at it is what's shared. Taking a bedroll up clears it as a spawn point for everyone who had it (they're told).
+- **Server:** the `spawns` table (browser ID → placed id), never sent; each player alone gets a `spawn` message (its
+  id and where it lies) on join and when it changes. Existing worlds: the first start makes each player's newest
+  bedroll their spawn point, as it was.
+- **Seen in the world, not on a meter:** a small lit storm lantern stands by your spawn bedroll's pillow, drawn for you
+  alone (src/world/placed.ts `setSpawn`); the locator's home marker follows it.
+- Checked on a private server: lay two, toggle the first, die → wake at the first; toggle it off, die → wake at the
+  arrival.
+
 ## 2026-10-25 — Sand vortices
 
 - Two colossal sand vortices roam every world for ever (`shared/vortex.ts`): ~950 m tall, a 50 m foot flaring into a
@@ -108,7 +125,7 @@ The starting bunker is going (shared/base.ts stays the world's origin for now). 
   anywhere on the sand (no steeper than 0.2 m across it, not on the ship's ground) or on a room's floor (`floor`). One
   per player: laying a new one moves your old one there (you keep the other in the bag); the owner is kept server-side
   (`placed.owner`, browser IDs never sent) and only they roll it up ("Not yours"). Dying, you wake up beside it if it's
-  still there, else at the ship (`homeOf` in server/world.ts); the owner alone is told where it lies (`bedroll`
+  still there, else at the ship (`homeOf` in server/world.ts; since replaced by spawn points, above); the owner alone is told where it lies (`bedroll`
   message), and the locator's house marker points there, else at the ship. Model and icon in
   `tools/blender/placeables.py` (`--only bedroll`).
 - **Speech**: a first line at the wreck (day or night), and one for the first bedroll.

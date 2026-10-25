@@ -201,6 +201,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'tend' && p) return onTend(p, msg.bed);
     if (msg.t === 'place' && p) return onPlace(p, msg.slot, msg.x, msg.z, msg.rot);
     if (msg.t === 'unplace' && p) return onUnplace(p, msg.id);
+    if (msg.t === 'spawnToggle' && p) return onSpawnToggle(p, msg.id);
     if (msg.t === 'build' && p) return onBuild(p, msg.kind, msg.x, msg.z, msg.rot);
     if (msg.t === 'beaconColor' && p) return onBeaconColor(p, msg.id, msg.color);
     if (msg.t === 'mount' && p) return onMount(p, msg.id);
@@ -346,7 +347,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   for (const m of crash.benchMessages()) send(ws, m);
   send(ws, crash.spentMessage());
   send(ws, crash.rollsMessage());
-  sendBedroll(p);
+  sendSpawn(p);
   send(ws, vehicleSrv.joinMessage(browserId));
   send(ws, wiring.joinMessage());
   send(ws, power.msg());
@@ -532,17 +533,24 @@ function onStomped(p: Player, g: number) {
   if (!p.down && p.ready && guardians.stomp(g, { id: p.id, x: s.x, y: s.y, z: s.z, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }, performance.now())) die(p, 'guardian');
 }
 
-/** Where `p` comes back after dying: beside their bedroll if it's still down (shared/placed.ts; on its floor in a shelter),
- *  else at the ship. */
+/** Where `p` comes back after dying: beside their spawn point, a bedroll (anyone's, server/placed.ts spawnOf), if they
+ *  have one and it's still down; else where players arrive. */
 function homeOf(p: Player): { x: number; y?: number; z: number } {
-  const b = placedThings.bedrollOf(p.browserId);
+  const b = placedThings.spawnOf(p.browserId);
   return b ? { x: b.x, y: b.y + 0.2, z: b.z } : spawnPoint();
 }
 
-/** Tell `p` where their bedroll lies (the locator's home: src/locator.ts), or that it's gone. */
-function sendBedroll(p: Player) {
-  const b = placedThings.bedrollOf(p.browserId);
-  send(p.ws, { t: 'bedroll', at: b ? { x: b.x, y: b.y, z: b.z } : null });
+/** Tell `p` which bedroll is their spawn point (its lantern, the locator's home: src/world/placed.ts, src/locator.ts), or none. */
+function sendSpawn(p: Player) {
+  const b = placedThings.spawnOf(p.browserId);
+  send(p.ws, { t: 'spawn', id: b?.id ?? null, at: b ? { x: b.x, y: b.y, z: b.z } : null });
+}
+
+/** F on a bedroll: it becomes your spawn point, or stops being it (server/placed.ts toggleSpawn). */
+function onSpawnToggle(p: Player, id: unknown) {
+  const r = p.down ? TEXT.notice.cantPlace : placedThings.toggleSpawn(p.browserId, p.state, id);
+  if (r) send(p.ws, { t: 'notice', text: r });
+  sendSpawn(p);
 }
 
 /** Back at their bedroll or the ship, cooled down, with a full canteen. */
@@ -1060,7 +1068,7 @@ function onPlace(p: Player, slot: unknown, x: unknown, z: unknown, rot: unknown)
   else if (isBuilding(r.kind)) sendBox(p, buildingBox(r.id));
   sendBox(p, 'bag');
   if (typeof r !== 'string') gearChanged(p.browserId);
-  if (typeof r !== 'string' && r.kind === BEDROLL) sendBedroll(p);
+  if (typeof r !== 'string' && r.kind === BEDROLL) sendSpawn(p);
 }
 
 // A building put up with the wrench from the base materials in the bag (server/placed.ts build).
@@ -1092,7 +1100,8 @@ function onUnplace(p: Player, id: unknown) {
   if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
   wiring.takeDown(r.id);
   if (r.kind === 'plant_bed') garden.remove(r.id);
-  if (r.kind === BEDROLL) sendBedroll(p);
+  // Whoever woke up at this bedroll has no spawn point now.
+  for (const o of players.values()) if (r.unspawned?.includes(o.browserId)) sendSpawn(o);
   sendBox(p, 'bag', r.kind);
   gearChanged(p.browserId);
 }

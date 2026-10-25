@@ -53,7 +53,7 @@ export class LocatorBar {
   private dots = new Map<number, { el: HTMLDivElement; arrow: HTMLDivElement }>();
   /** Lost in a sandstorm (src/storm.ts): the bar fades out until the dust clears. */
   lost = false;
-  /** Home: your bedroll (src/net.ts `bedroll`), or null for the ship. */
+  /** Home: your spawn point, a bedroll (src/net.ts `spawn`), or null for where players arrive. */
   bedroll: { x: number; y: number; z: number } | null = null;
 
   constructor() {

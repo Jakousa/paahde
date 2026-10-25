@@ -131,6 +131,9 @@ const en = {
 
   prompt: {
     putDown: 'Put it down',
+    /** A bedroll in view (shared/placed.ts): make it where you wake up after dying, or stop that. */
+    sleepHere: 'Sleep here',
+    dontSleepHere: "Don't sleep here",
     pickUp: (what: string) => `Pick up ${lower(what)}`,
     /** A find with parts missing: "Pick up broken telescope (1/2 parts)". */
     pickUpBroken: (what: string, have: number, n: number) => `Pick up broken ${lower(what)} (${have}/${n} parts)`,

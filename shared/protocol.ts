@@ -44,6 +44,8 @@ export type ClientMsg =
   // Pick a placed thing back up into the bag (reach, room in the bag), or take a building down with the wrench (what it
   // was built of, its parts and its wires' wiring into the bag, all of it or nothing). A bed's crop is lost.
   | { t: 'unplace'; id: number }
+  // F on a bedroll in reach: it becomes your spawn point, or stops being it (server/placed.ts toggleSpawn).
+  | { t: 'spawnToggle'; id: number }
   // Put up building `kind` (shared/crafting.ts BUILDS) with the wrench, its materials from the bag. Answered like 'place'.
   | { t: 'build'; kind: string; x: number; z: number; rot: number }
   // Set beacon `id`'s light to colour `color` (shared/placed.ts BEACON_COLORS index; in reach). Answered with a broadcast
@@ -274,8 +276,9 @@ export type ServerMsg =
   // Every placed thing in the world (shared/placed.ts), on join (before 'welcome') and whenever it changes
   // (before the snapshot, like terrainEdit, so prediction collides with it from the same tick on).
   | { t: 'placed'; list: Placed[] }
-  // Where your own bedroll lies (shared/placed.ts; you wake up there after dying), or null: on join and when it changes.
-  | { t: 'bedroll'; at: { x: number; y: number; z: number } | null }
+  // Your spawn point: the bedroll you wake up at after dying (shared/placed.ts; anyone's), its id and where it lies, or
+  // null for none (you wake up where players arrive). On join and whenever it changes.
+  | { t: 'spawn'; id: number | null; at: { x: number; y: number; z: number } | null }
   // Every vehicle in the world (shared/vehicles.ts), on join (before 'welcome') and whenever it changes, and the ids
   // of those that are yours (stood up by you, server/vehicles.ts).
   | { t: 'vehicles'; list: Vehicle[]; mine: number[] }

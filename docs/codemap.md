@@ -52,9 +52,11 @@ when you find it stale.
   casters, its starter machines (`shipSites`, ids `ship:<n>`, through shared/crash.ts) and loot spots (`SHIP_LOOT`,
   server/loot.ts). Its spot (picked per world 40–60 m from the origin) and the furrow in the terrain: `shared/shipSpot.ts`;
   model `tools/blender/ship.py` → `public/models/ship.glb` + generated `shared/shipModel.ts`; drawn by `src/world/ship.ts`
-- Bedrolls (`bedroll`, shared/placed.ts) — a player's own place to wake up after dying (`homeOf` in server/world.ts):
-  laid out on the sand or a shelter's floor, one each, owner kept server-side (server/placed.ts), told to them alone
-  (`bedroll` message; the locator's home, src/locator.ts)
+- Bedrolls (`bedroll`, shared/placed.ts) and spawn points — each player has at most one spawn point, a bedroll
+  (anyone's), where they wake up after dying (`homeOf` in server/world.ts; none: where players arrive). Laying a
+  bedroll makes it yours; F on one toggles it (`spawnToggle`, server/placed.ts `toggleSpawn`; `spawns` table, browser
+  IDs server-side only). Only a bedroll's owner picks it up; taking one up clears it for whoever slept there. Each
+  player alone is told theirs (`spawn` message): a lantern by its pillow (src/world/placed.ts), the locator's home
 - `shared/lab.ts` — the dev test lab (`?w=lab`, `LAB` in shared/world.ts: flat floor at y 0, no desert or events; laid out
   from its own spot `LAB_AT`, world (0, 0), you start at `LAB_SPAWN`; layout of the machine sites `lab:<n>`, pickups and plates); drawn by `src/world/labPlates.ts`, pickups via `server/loot.ts`
 - `src/artBench.ts` — the art-style bench (`?w=bench`): the desert from a fixed seed with no events, fixed camera shots

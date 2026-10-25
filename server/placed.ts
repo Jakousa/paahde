@@ -4,9 +4,10 @@
 // one transaction with the bag. A windmill or battery station (shared/gear.ts isBuilding) keeps its item in its own
 // box while it stands (buildingBox), its part slots empty at first: its parts are fitted there (server/items.ts fit /
 // unfit); a beacon's light colour is its item's data (recolor); a chest keeps its things in box `store<id>` (shared/storage.ts;
-// server/world.ts won't take one down with anything in it, nor a dismantling table with a machine on it). A bedroll is its
-// owner's (browser IDs stay here, never sent: the owner alone is told where theirs lies, bedrollOf): one each, laying a new
-// one moves the old, and only the owner picks it up. Keeps shared/placed.ts's list (and so the collision) in step, and
+// server/world.ts won't take one down with anything in it, nor a dismantling table with a machine on it). A bedroll has its
+// owner (only they pick it up), and any bedroll can be anyone's spawn point (spawnOf, toggleSpawn: laying one sets yours,
+// taking one up clears it for everyone it was theirs). Browser IDs stay here, never sent: each player alone is told which
+// bedroll is theirs to wake up at. Keeps shared/placed.ts's list (and so the collision) in step, and
 // broadcasts the list when it changes.
 import { buildingBox, storeBox } from '../shared/boxes.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
@@ -31,12 +32,15 @@ export class PlacedServer {
   private changed = false;
   /** Who put each bedroll down (browser ID): server-side only. */
   private owners = new Map<number, string>();
+  /** Each player's spawn point (browser ID → a bedroll's placed id): server-side only. */
+  private spawns = new Map<string, number>();
 
   constructor(db: Db, items: ItemServer) {
     this.db = db;
     this.items = items;
     const rows = db.loadPlaced().filter((r) => isPlaceable(r.kind));
     for (const r of rows) if (r.kind === BEDROLL) this.owners.set(r.id, r.owner);
+    for (const r of db.loadSpawns()) if (this.owners.has(r.placed)) this.spawns.set(r.owner, r.placed);
     // (Rows from before `y` was saved were all on the old bunker's floor: server/bunkerGone.ts moves them out.)
     setPlaced(rows.map((r) => ({ id: r.id, kind: r.kind, x: r.x, y: r.y ?? OLD_FLOOR_Y, z: r.z, rot: r.rot })));
     // A building's parts come from its box (shared/storage.ts opens it now the list is in).
@@ -65,9 +69,32 @@ export class PlacedServer {
     return null;
   }
 
-  /** The bedroll `browserId` laid out, if it's still there. */
-  bedrollOf(browserId: string): Placed | null {
-    return placed.find((p) => p.kind === BEDROLL && this.owners.get(p.id) === browserId) ?? null;
+  /** `browserId`'s spawn point: the bedroll they wake up at after dying (anyone's), if it's still there. */
+  spawnOf(browserId: string): Placed | null {
+    const id = this.spawns.get(browserId);
+    return id === undefined ? null : (placed.find((p) => p.id === id && p.kind === BEDROLL) ?? null);
+  }
+
+  private setSpawn(browserId: string, id: number | null) {
+    if (id === null) this.spawns.delete(browserId);
+    else this.spawns.set(browserId, id);
+    this.db.setSpawn(browserId, id);
+  }
+
+  /** Bedroll `id` in reach becomes `browserId`'s spawn point, or stops being it if it was. Returns why not, or null. */
+  toggleSpawn(browserId: string, feet: { x: number; y: number; z: number }, id: unknown): string | null {
+    const p = placed.find((q) => q.id === id);
+    if (!p || p.kind !== BEDROLL) return TEXT.notice.alreadyGone;
+    if (placedReach(feet, p) > PLACED_REACH + REACH_SLACK) return TEXT.notice.tooFar;
+    this.setSpawn(browserId, this.spawns.get(browserId) === p.id ? null : p.id);
+    return null;
+  }
+
+  /** The players whose spawn point bedroll `id` was (it's gone: they have none now). */
+  private dropSpawns(id: number): string[] {
+    const out = [...this.spawns].filter(([, s]) => s === id).map(([b]) => b);
+    for (const b of out) this.setSpawn(b, null);
+    return out;
   }
 
   /** The buildings' and the chests' boxes, for a joining player. */
@@ -84,21 +111,15 @@ export class PlacedServer {
     const kind = Number.isInteger(slot) ? this.items.slots(browserId, 'bag')[slot as number]?.kind : undefined;
     // (A building is put up with the wrench: build.)
     if (!kind || !isPlaceable(kind) || isBuildable(kind)) return TEXT.notice.cantPlace;
-    // A new bedroll rolls up your old one, back into the bag: the same as moving the old one here and keeping this one in
-    // the bag (bedrolls are all alike), which can't run out of room.
-    const old = kind === BEDROLL ? this.bedrollOf(browserId) : null;
-    const why = this.spotError(kind, feet, x, z, rot, players, old);
+    const why = this.spotError(kind, feet, x, z, rot, players);
     if (why) return why;
     const p = this.db.tx((): Placed | null => {
-      if (old) this.db.deletePlaced(old.id);
-      else if (!this.items.takeItemAt(browserId, slot as number, kind)) return null;
-      return this.add(browserId, kind, x as number, z as number, rot as number, placeFloor(kind, feet));
+      if (!this.items.takeItemAt(browserId, slot as number, kind)) return null;
+      const q = this.add(browserId, kind, x as number, z as number, rot as number, placeFloor(kind, feet));
+      // A bedroll laid out is where you wake up from now on.
+      if (kind === BEDROLL) this.setSpawn(browserId, q.id);
+      return q;
     });
-    if (p && old) {
-      this.owners.delete(old.id);
-      setPlaced(placed.filter((q) => q !== old));
-      this.changed = true;
-    }
     if (!p) return TEXT.notice.cantPlace;
     return p;
   }
@@ -124,10 +145,10 @@ export class PlacedServer {
 
   /** Why `kind` can't go at (x, z) turned `rot` for a player at `feet`, or null. */
   private spotError(kind: string, feet: { x: number; y: number; z: number }, x: unknown, z: unknown, rot: unknown,
-    players: { x: number; y: number; z: number }[], moving: Placed | null = null): string | null {
+    players: { x: number; y: number; z: number }[]): string | null {
     if (typeof x !== 'number' || typeof z !== 'number' || typeof rot !== 'number') return TEXT.notice.badSpot;
     const floor = placeFloor(kind, feet);
-    const why = placeError(kind, x, z, rot, floor, moving ? placed.filter((q) => q !== moving) : placed, players);
+    const why = placeError(kind, x, z, rot, floor, placed, players);
     if (why) return why;
     const dy = placedY(kind, x, z, rot, floor) - feet.y - EYE_HEIGHT;
     if (Math.hypot(x - feet.x, dy, z - feet.z) > (floor === null ? SAND_REACH : PLACE_REACH) + REACH_SLACK) return TEXT.notice.tooFar;
@@ -147,9 +168,10 @@ export class PlacedServer {
 
   /**
    * Pick placed thing `id` back up into the bag, or take a building down with the wrench: what it was built of and the
-   * parts in it come back, with `extra` (its wires' wiring). All of it must fit in the bag. Returns it, or why not.
+   * parts in it come back, with `extra` (its wires' wiring). All of it must fit in the bag. Returns it (with the players
+   * whose spawn point it was, a bedroll), or why not.
    */
-  unplace(browserId: string, feet: { x: number; y: number; z: number }, id: unknown, extra: (p: Placed) => { kind: string; n: number }[] = () => []): Placed | string {
+  unplace(browserId: string, feet: { x: number; y: number; z: number }, id: unknown, extra: (p: Placed) => { kind: string; n: number }[] = () => []): Placed & { unspawned?: string[] } | string {
     const p = placed.find((q) => q.id === id);
     if (!p) return TEXT.notice.alreadyGone;
     if (placedReach(feet, p) > PLACED_REACH + REACH_SLACK) return TEXT.notice.tooFar;
@@ -169,9 +191,10 @@ export class PlacedServer {
     });
     if (!ok) return TEXT.notice.bagFull;
     this.owners.delete(p.id);
+    const unspawned = p.kind === BEDROLL ? this.dropSpawns(p.id) : [];
     setPlaced(placed.filter((q) => q !== p));
     this.changed = true;
-    return p;
+    return { ...p, unspawned };
   }
 
   /** Put `kind` up at (x, z) on the sand turned `rot` for `owner`, no questions asked (server/bunkerGone.ts: check the spot
@@ -200,6 +223,7 @@ export class PlacedServer {
   remove(id: number) {
     this.db.deletePlaced(id);
     this.owners.delete(id);
+    this.dropSpawns(id);
     setPlaced(placed.filter((p) => p.id !== id));
     this.changed = true;
   }

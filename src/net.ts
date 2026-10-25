@@ -113,8 +113,10 @@ export class Net {
   color = 0xffffff;
   /** The ids of the vehicles that are ours (shared/vehicles.ts; stood up by us, server/vehicles.ts). */
   myVehicles: ReadonlySet<number> = new Set();
-  /** Where your bedroll lies (you wake up there after dying), or null: the locator's home then is the ship. */
-  bedroll: { x: number; y: number; z: number } | null = null;
+  /** Your spawn point: the bedroll you wake up at after dying (its placed id, where it lies), or null: you wake up where
+   *  players arrive, and the locator's home is there. */
+  spawn: { id: number; x: number; y: number; z: number } | null = null;
+  onSpawn?: () => void;
   /** Predicted local state (authoritative for physics on this client). */
   me: PlayerState = spawnState();
   /** The predicted state one tick before `me`: view() draws between the two. */
@@ -505,6 +507,11 @@ export class Net {
     if (this.connected) this.send({ t: 'place', slot, x, z, rot });
   }
 
+  /** Make bedroll `id` our spawn point, or stop it being that (the server answers 'spawn'). */
+  spawnToggle(id: number) {
+    if (this.connected) this.send({ t: 'spawnToggle', id });
+  }
+
   /** Pick a placed thing back up into the bag (a building: take it down with the wrench). */
   unplace(id: number) {
     if (this.connected) this.send({ t: 'unplace', id });
@@ -746,8 +753,9 @@ export class Net {
       setWellsOn(msg.wells);
       return this.onPower?.();
     }
-    if (msg.t === 'bedroll') {
-      this.bedroll = msg.at;
+    if (msg.t === 'spawn') {
+      this.spawn = msg.id !== null && msg.at ? { id: msg.id, ...msg.at } : null;
+      this.onSpawn?.();
       return;
     }
     if (msg.t === 'placed') {
