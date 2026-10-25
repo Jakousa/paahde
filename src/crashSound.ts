@@ -32,27 +32,33 @@ export class CrashSound {
   private active = new Map<number, Active>();
   private pos = { x: 0, y: 0, z: 0 };
 
-  /** Called every frame with the camera position and yaw (three.js: forward = (−sin, −cos)). */
-  update(cam: { x: number; y: number; z: number }, yaw: number) {
-    const ctx = audio.ctx, out = audio.out;
+  /** The final camera rotation includes pitch, freelook and roll, so elevated sounds stay in the right direction. */
+  update(cam: { x: number; y: number; z: number }, yaw: number, rotation?: { x: number; y: number; z: number; w: number }) {
+    const ctx = audio.ctx, out = audio.ambience;
     if (!ctx || !out || !audio.running) return;
     const now = ctx.currentTime;
     const l = ctx.listener;
+    let fx = -Math.sin(yaw), fy = 0, fz = -Math.cos(yaw), ux = 0, uy = 1, uz = 0;
+    if (rotation) {
+      const { x, y, z, w } = rotation;
+      fx = -2 * (x * z + w * y); fy = -2 * (y * z - w * x); fz = -1 + 2 * (x * x + y * y);
+      ux = 2 * (x * y - w * z); uy = 1 - 2 * (x * x + z * z); uz = 2 * (y * z + w * x);
+    }
     if (l.positionX) {
       const set = (p: AudioParam, v: number) => p.setTargetAtTime(v, now, 0.03);
       set(l.positionX, cam.x);
       set(l.positionY, cam.y);
       set(l.positionZ, cam.z);
-      set(l.forwardX, -Math.sin(yaw));
-      set(l.forwardY, 0);
-      set(l.forwardZ, -Math.cos(yaw));
-      set(l.upX, 0);
-      set(l.upY, 1);
-      set(l.upZ, 0);
+      set(l.forwardX, fx);
+      set(l.forwardY, fy);
+      set(l.forwardZ, fz);
+      set(l.upX, ux);
+      set(l.upY, uy);
+      set(l.upZ, uz);
     } else {
       // Browsers without the AudioParam listener (older Firefox).
       l.setPosition(cam.x, cam.y, cam.z);
-      l.setOrientation(-Math.sin(yaw), 0, -Math.cos(yaw), 0, 1, 0);
+      l.setOrientation(fx, fy, fz, ux, uy, uz);
     }
 
     // The nearest beacons in earshot.

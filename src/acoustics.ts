@@ -19,6 +19,10 @@
 // The Web Audio listener follows the camera (src/crashSound.ts sets it). Out through `audio.out`.
 import { audio } from './audio';
 import { echoTaps, enclosure } from './echo';
+import { AudioBudget } from './audioBudget.ts';
+import { obstruction } from './obstruction.ts';
+
+export const audioMetrics = { voices: new AudioBudget(80), echoes: new AudioBudget(64) };
 
 export type P = { x: number; y: number; z: number };
 
@@ -90,7 +94,8 @@ function reverbIn(ctx: AudioContext, out: AudioNode): AudioNode {
   }
   const node = ctx.createConvolver();
   node.buffer = ir; // normalised by the node, so the send gain sets the level
-  node.connect(out);
+  // Shared wet tails always use the effects bus, even when the first source is a protected warning.
+  node.connect(audio.out ?? out);
   reverb = { ctx, node };
   return node;
 }
@@ -113,14 +118,14 @@ function canyonIn(ctx: AudioContext, out: AudioNode): AudioNode {
   }
   const node = ctx.createConvolver();
   node.buffer = ir;
-  node.connect(out);
+  node.connect(audio.out ?? out);
   canyon = { ctx, node };
   return node;
 }
 
 /** The echoes of a sound (src/echo.ts) off `input`, × `scale` of what comes out of it, out to `out`. `level`: the
  *  level it's heard at (to drop the inaudible ones). */
-function echoes(ctx: AudioContext, input: AudioNode, out: AudioNode, at: P | null, scale: number, level: number, hear: number) {
+function echoes(ctx: AudioContext, input: AudioNode, out: AudioNode, at: P | null, scale: number, level: number, hear: number, duration = 8) {
   const taps = echoTaps(at, level, hear, SPEED_OF_SOUND);
   if (taps.length === 0) return;
   // One filter for them all, at the loudest tap's path.
@@ -129,10 +134,16 @@ function echoes(ctx: AudioContext, input: AudioNode, out: AudioNode, at: P | nul
   lp.frequency.value = Math.max(ECHO_AIR_MIN, AIR_F * Math.exp(-taps[0].path / ECHO_AIR_D));
   lp.Q.value = 0.707;
   input.connect(lp);
-  for (const t of taps) {
+  for (const t of taps.slice(0, 4)) {
+    let voice: GainNode | undefined;
+    if (!audioMetrics.echoes.reserve(ctx.currentTime, t.delay + duration, 0, level * t.gain, () => {
+      voice?.gain.setTargetAtTime(0, ctx.currentTime, 0.015);
+      setTimeout(() => voice?.disconnect(), 150);
+    })) continue;
     const delay = ctx.createDelay(t.delay + 0.01);
     delay.delayTime.value = t.delay;
     const g = ctx.createGain();
+    voice = g;
     g.gain.value = t.gain * scale;
     const p = ctx.createPanner();
     p.panningModel = 'equalpower';
@@ -244,11 +255,22 @@ function falloff(d: number, ref: number) {
  * the context time to start them (late by the distance). Null when out of earshot (`hear` m) or audio is off.
  * `at` null is your own: dry, centred, now.
  */
-export function placed(at: P | null, ear: P | null, gain: number, ref: number, hear = 600): { input: AudioNode; t: number } | null {
-  const ctx = audio.ctx, out = audio.out;
+export function placed(at: P | null, ear: P | null, gain: number, ref: number, hear = 600,
+  options: { warning?: boolean; duration?: number } = {}): { input: AudioNode; t: number } | null {
+  const ctx = audio.ctx, out = options.warning ? audio.warning : audio.out;
   if (!ctx || !out || !audio.running) return null;
   const now = ctx.currentTime;
+  const distance = at && ear ? Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z) : 0;
+  if (distance >= hear) return null;
   const input = ctx.createGain();
+  const duration = options.duration ?? 8;
+  if (!audioMetrics.voices.reserve(now, duration + distance / SPEED_OF_SOUND, options.warning ? 3 : !at ? 2 : 1,
+    gain * falloff(distance, ref), () => {
+      input.gain.cancelScheduledValues(ctx.currentTime);
+      input.gain.setTargetAtTime(0, ctx.currentTime, 0.015);
+      setTimeout(() => input.disconnect(), 150);
+    })) return null;
+  if (options.warning) audio.protectWarning(Math.min(4, duration));
   if (!at || !ear) {
     input.gain.value = gain;
     input.connect(out);
@@ -260,11 +282,10 @@ export function placed(at: P | null, ear: P | null, gain: number, ref: number, h
       cw.gain.value = OWN_CANYON_WET * enclosure;
       input.connect(cw).connect(canyonIn(ctx, out));
     }
-    echoes(ctx, input, out, null, 1, gain, hear * ECHO_HEAR);
+    echoes(ctx, input, out, null, 1, gain, hear * ECHO_HEAR, duration);
     return { input, t: now };
   }
-  const d = Math.hypot(at.x - ear.x, at.y - ear.y, at.z - ear.z);
-  if (d >= hear) return null;
+  const d = distance;
   const t = now + d / SPEED_OF_SOUND;
   // Softened attack.
   const attack = Math.min(ATTACK_MAX, d * ATTACK_PER_M);
@@ -292,7 +313,13 @@ export function placed(at: P | null, ear: P | null, gain: number, ref: number, h
   const edge = Math.min(1, Math.max(0, (hear - d) / (hear * 0.3)));
   const dry = falloff(d, ref);
   const direct = ctx.createGain();
-  direct.gain.value = gain * dry * edge * HRTF_MAKEUP;
+  const blocked = obstruction(at, ear, now);
+  direct.gain.value = gain * dry * edge * HRTF_MAKEUP * (1 - blocked * 0.65);
+  const muffled = ctx.createBiquadFilter();
+  muffled.type = 'lowpass';
+  muffled.frequency.value = f;
+  muffled.frequency.setTargetAtTime(Math.min(f, 20000 - blocked * 18800), now, 0.04);
+  muffled.Q.value = 0.707;
   const p = ctx.createPanner();
   p.panningModel = 'HRTF';
   p.distanceModel = 'linear';
@@ -300,7 +327,7 @@ export function placed(at: P | null, ear: P | null, gain: number, ref: number, h
   p.positionX.value = at.x;
   p.positionY.value = at.y;
   p.positionZ.value = at.z;
-  node.connect(direct).connect(p).connect(out);
+  node.connect(muffled).connect(direct).connect(p).connect(out);
   const wet = ctx.createGain();
   wet.gain.value = gain * WET * Math.sqrt(dry) * Math.min(1, d / WET_FROM) * edge * (1 - CANYON_DUCKS * enclosure);
   node.connect(wet).connect(reverbIn(ctx, out));
@@ -309,6 +336,6 @@ export function placed(at: P | null, ear: P | null, gain: number, ref: number, h
     cw.gain.value = gain * CANYON_WET * Math.sqrt(dry) * edge * enclosure;
     node.connect(cw).connect(canyonIn(ctx, out));
   }
-  echoes(ctx, input, out, at, gain * dry * edge, gain * dry * edge, hear * ECHO_HEAR);
+  echoes(ctx, input, out, at, gain * dry * edge, gain * dry * edge, hear * ECHO_HEAR, duration + d / SPEED_OF_SOUND);
   return { input, t };
 }

@@ -288,7 +288,7 @@ export class GuardianFx {
     for (const g of latest) {
       if (g.kind !== CRAWLER || g.dead) continue;
       if (g.gun === LUNGE_WIND && !this.crouched.has(g.id) && Math.hypot(g.x - focus.x, g.z - focus.z) < 40) {
-        guardianSound.rattle(g.x, camera.position.y - 1, g.z, LUNGE_WIND_MS / 1000);
+        guardianSound.rattle(g.x, camera.position.y - 1, g.z, LUNGE_WIND_MS / 1000, this.ear);
       }
       if (g.gun === LUNGE_WIND) this.crouched.add(g.id);
       else this.crouched.delete(g.id);

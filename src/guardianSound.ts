@@ -12,18 +12,17 @@
 //   off and from where the plane was when the sound left it (it lags well behind a fast one overhead).
 // Footfalls (and so the bolts' and missiles' blasts) and the cannon carry across the desert through src/acoustics.ts.
 // The Web Audio listener follows the camera (src/crashSound.ts sets it). Through the shared output in
-// src/audio.ts; levels ramped. Measured at the default volume (OfflineAudioContext + ffmpeg ebur128): a step
-// every 1.2 s ≈ −22 LUFS within 12 m and −27 at 20 m (peaks −4 dBFS close up); one drone at 15 m −31; the
-// chirp −26 (momentary); the horn at 60 m −25; a missile's roar (before panning) −20 within 30 m, −26.5 at 60 m,
-// −32 at 100 m, −45 at 300 m; a crawler's lunge rattle close by −24.8 momentary (−13.4 dBTP).
+// src/audio.ts; levels ramped. Footfalls and their blasts are calibrated together with shots, music and warnings
+// through the actual browser master/limiter, rather than summing isolated sample readings; see docs/audio.md.
 import { audio } from './audio';
-import { placed, SPEED_OF_SOUND } from './acoustics';
+import { placed, SPEED_OF_SOUND, type P } from './acoustics';
 import type { JetKind } from '../shared/jetbreak.ts';
 
 /** Footfalls are heard within this distance (m); full level at REF. */
 const STEP_HEAR = 500;
 const STEP_REF = 12;
-const STEP_GAIN = 1.4;
+/** Full-mix calibration, including simultaneous shots and blasts; see docs/audio.md. */
+const STEP_GAIN = 0.7;
 /** A bolt's or missile's blast: its two booms, as footfall weights. */
 const BOOM_GAIN = 0.7;
 /** Drone buzz within this distance (m), at most this many at once. */
@@ -94,7 +93,7 @@ class GuardianSound {
 
   /** A foot landed at (x, y, z), `weight` 0..1; the listener is at `ear`. */
   footfall(x: number, y: number, z: number, weight: number, ear: { x: number; y: number; z: number }) {
-    const ctx = audio.ctx, s = placed({ x, y, z }, ear, STEP_GAIN * weight, STEP_REF, STEP_HEAR);
+    const ctx = audio.ctx, s = placed({ x, y, z }, ear, STEP_GAIN * weight, STEP_REF, STEP_HEAR, { duration: 1.6 });
     if (!ctx || !s) return;
     const { input: air, t } = s;
 
@@ -160,12 +159,11 @@ class GuardianSound {
 
   /** A crawler at (x, y, z) crouches to lunge, springing `s` seconds from now: a dry rattle, quickening and rising to
    *  the spring. */
-  rattle(x: number, y: number, z: number, s: number) {
-    const ctx = audio.ctx, out = audio.out;
-    if (!ctx || !out || !audio.running || s <= 0) return;
-    const t = ctx.currentTime;
-    const p = panner(ctx, x, y, z, 4);
-    p.connect(out);
+  rattle(x: number, y: number, z: number, s: number, ear: P) {
+    if (s <= 0) return;
+    const ctx = audio.ctx, sound = placed({ x, y, z }, ear, RATTLE_GAIN, 4, 40, { warning: true, duration: s + 0.1 });
+    if (!ctx || !sound) return;
+    const { t, input: p } = sound;
     // Clicks closer and closer together, each a little higher and louder.
     for (let at = 0, gap = 0.07; at < s; at += gap, gap = Math.max(0.018, gap * 0.85)) {
       const k = at / s, when = t + at + Math.random() * 0.006;
@@ -174,7 +172,7 @@ class GuardianSound {
       o.frequency.setValueAtTime(1100 + 1400 * k + Math.random() * 300, when);
       o.frequency.exponentialRampToValueAtTime(500 + 400 * k, when + 0.025);
       const g = ctx.createGain();
-      g.gain.setValueAtTime(RATTLE_GAIN * (0.6 + 0.8 * k), when);
+      g.gain.setValueAtTime(0.6 + 0.8 * k, when);
       g.gain.exponentialRampToValueAtTime(0.001, when + 0.025);
       o.connect(g).connect(p);
       o.start(when);

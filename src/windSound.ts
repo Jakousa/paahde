@@ -132,7 +132,7 @@ export class WindSound {
   private time = 0;
 
   constructor() {
-    audio.onStart((ctx, out) => (this.g = this.build(ctx, out)));
+    audio.onStart((ctx, out) => (this.g = this.build(ctx, audio.ambience ?? out)));
   }
 
   private build(ctx: AudioContext, out: GainNode): Graph {

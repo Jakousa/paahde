@@ -16,15 +16,14 @@
 // - thrown scrap (src/throw.ts): the swish of the throw, and a dull clank as it strikes a drone.
 // - a dying walker: servos winding down with a clunk as each leg gives out, then the crash of the hull on the sand.
 // Everything placed in the world goes through src/acoustics.ts, then the shared output (src/audio.ts), every level
-// ramped. Measured at the default volume (OfflineAudioContext + ffmpeg ebur128, momentary max): your own shot −24 LUFS
-// (peaks −10 dBFS); another player's at 45 m −37, 100 m −43, 300 m −51 (mostly tail), 500 m −57. The synthesised
-// ones, before the acoustics (integrated): glass shattering at 20 m −28; a guardian dying at 40 m −27, a crawler at
-// 8 m −33.
+// ramped. Shots are calibrated in the complete browser mix, including simultaneous players, footsteps, warnings,
+// music and the master limiter (docs/audio.md); the source assets' levels alone do not predict that mix.
 import { audio } from './audio';
 import { placed, type P } from './acoustics';
 
-const SHOT_GAIN = 0.75;
-/** The pulse samples, on top of SHOT_GAIN: together about 1. */
+// Measured with the full browser mix (docs/audio.md), leaving room for simultaneous players and warnings.
+const SHOT_GAIN = 0.3;
+/** Pulse multiplier on top of the calibrated SHOT_GAIN. */
 const PULSE_GAIN = 1.3;
 const PULSES = ['./audio/laser-1.mp3', './audio/laser-2.mp3', './audio/laser-3.mp3'];
 /** A guardian's cannon: the pulses at this pitch (lower: slower, heavier), level and full-level distance (m). */
@@ -107,15 +106,18 @@ class RifleSound {
   /** A shot: yours (`at` null) or someone else's at `at`, heard from `ear`. `pistol`: the laser pistol's, higher,
    *  shorter and lighter. */
   shot(at: P | null = null, ear: P | null = null, pistol = false) {
-    const ctx = audio.ctx, s = placed(at, ear, SHOT_GAIN * (pistol ? 0.75 : 1), 15, 600);
-    if (!ctx || !s) return;
+    const ctx = audio.ctx;
+    if (!ctx || !audio.running || !this.pulses.length) return;
+    const buf = this.pulses[Math.floor(Math.random() * this.pulses.length)];
+    const rate = (pistol ? 1.35 : 1) * (0.96 + Math.random() * 0.08);
+    const s = placed(at, ear, SHOT_GAIN * (pistol ? 0.75 : 1), 15, 600, { duration: buf.duration / rate + 0.1 });
+    if (!s) return;
     const { input: o, t } = s;
     // The pistol: up in pitch (so quicker), less body.
-    const buf = this.pulses[Math.floor(Math.random() * this.pulses.length)];
     if (buf) {
       const src = ctx.createBufferSource();
       src.buffer = buf;
-      src.playbackRate.value = (pistol ? 1.35 : 1) * (0.96 + Math.random() * 0.08);
+      src.playbackRate.value = rate;
       const g = ctx.createGain();
       g.gain.value = PULSE_GAIN;
       src.connect(g).connect(o);
@@ -127,11 +129,12 @@ class RifleSound {
   /** A firework burst at `at`, heard from `ear`, at `level` × FIREWORK_GAIN and `pitch` (about 1, lower is bigger). */
   firework(at: P, ear: P, level = 1, pitch = 1) {
     const ctx = audio.ctx, buf = this.fireworks[Math.floor(Math.random() * this.fireworks.length)];
-    const s = buf ? placed(at, ear, FIREWORK_GAIN * level, FIREWORK_REF, 600) : null;
+    const rate = Math.max(0.05, pitch) * (0.92 + Math.random() * 0.16);
+    const s = buf ? placed(at, ear, FIREWORK_GAIN * level, FIREWORK_REF, 600, { duration: buf.duration / rate + 0.1 }) : null;
     if (!ctx || !s) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.playbackRate.value = pitch * (0.92 + Math.random() * 0.16);
+    src.playbackRate.value = rate;
     src.connect(s.input);
     src.start(s.t);
   }
@@ -139,11 +142,12 @@ class RifleSound {
   /** A guardian's cannon firing at `at`, heard from `ear` (src/guardians.ts): a rifle shot an octave down. */
   cannon(at: P, ear: P) {
     const ctx = audio.ctx, buf = this.pulses[Math.floor(Math.random() * this.pulses.length)];
-    const s = buf ? placed(at, ear, CANNON_GAIN, CANNON_REF, 500) : null;
+    const rate = CANNON_PITCH * (0.95 + Math.random() * 0.1);
+    const s = buf ? placed(at, ear, CANNON_GAIN, CANNON_REF, 500, { duration: buf.duration / rate + 0.1 }) : null;
     if (!ctx || !s) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.playbackRate.value = CANNON_PITCH * (0.95 + Math.random() * 0.1);
+    src.playbackRate.value = rate;
     src.connect(s.input);
     src.start(s.t);
   }

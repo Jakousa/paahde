@@ -112,7 +112,7 @@ class ColossusSound {
 
   /** The big stomp hangs over its prey for `len` s: a steam shriek rising, a servo groan. */
   tell(x: number, y: number, z: number, ear: P, len: number) {
-    const ctx = audio.ctx, s = placed({ x, y, z }, ear, TELL_GAIN, 30, 900);
+    const ctx = audio.ctx, s = placed({ x, y, z }, ear, TELL_GAIN, 30, 900, { warning: true, duration: len + 0.6 });
     if (!ctx || !s) return;
     const { input: o, t } = s;
     const n = ctx.createBufferSource();
@@ -149,7 +149,7 @@ class ColossusSound {
   /** An arm comes up to point for a hand volley (`len` s till the first rocket): a servo groan and a whine rising
    *  as the palm heats. */
   charge(x: number, y: number, z: number, ear: P, len: number) {
-    const ctx = audio.ctx, s = placed({ x, y, z }, ear, CHARGE_GAIN, 30, 1000);
+    const ctx = audio.ctx, s = placed({ x, y, z }, ear, CHARGE_GAIN, 30, 1000, { warning: true, duration: len + 1 });
     if (!ctx || !s) return;
     const { input: o, t } = s;
     const whine = ctx.createOscillator();

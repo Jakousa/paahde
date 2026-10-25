@@ -426,7 +426,7 @@ perf.describe({ backend, gpu: gpuName, gpuTimestamps: perf.gpuTracked, world: WO
 sky.heights.init(renderer); // (before any material samples the dune-shadow grids: src/world/heightShadow.ts)
 perf.milestone('renderer-ready');
 perf.scene = scene;
-if (PERF_RUN) Object.assign(window, { __dbg: { renderer, sky, net, terrain, scene, THREE, heightAt } }); // (tools/perf.ts --eval)
+if (PERF_RUN) Object.assign(window, { __dbg: { renderer, sky, net, terrain, scene, THREE, heightAt, audio } }); // (tools/perf.ts --eval)
 perf.onDone = () => {
   // (for the pictures tools/perf.ts takes: look away from the sun, a little down, where the shadows fall; `&pview=<m>` lifts the camera
   // that high above the player, on the fly camera, without the HUD, to see the shadows over a wide stretch)
@@ -686,7 +686,7 @@ renderer.setAnimationLoop((time) => {
     // The sun coming up: from 2° under the horizon to 8° over it (about a minute).
     sunrise: sky.day.tod < 0.5 && sky.day.elevation > -0.035 && sky.day.elevation < 0.14,
   });
-  crashSound.update(orbit.camera.position, orbit.viewYaw);
+  crashSound.update(orbit.camera.position, orbit.viewYaw, orbit.camera.quaternion);
   listen(orbit.camera.position);
   tickEchoBus();
   placedView.update(frameDt, net.worldTime(), (x, z) => stormAt(net.storms, x, z, net.serverTime()), survival.fillingWell);

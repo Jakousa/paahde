@@ -304,6 +304,15 @@ Everything built is shared, and anyone can take a building down.
 - `src/speech.ts`, `src/speechLines.ts` — the character's subtitled remarks: engine + when each line is said (event,
   condition, once/again; the words are in `TEXT.speech`); guidelines in `docs/speech.md`
 
+## Audio and measurement
+
+- `src/audio.ts` — shared audio context, volume buses, warning ducking, finite-sample guard and post-limiter capture;
+  `src/audioWorklet.js`, `src/limiterKernel.mjs` — stereo-linked look-ahead limiter with intersample peak detection
+- `src/acoustics.ts` — placed sounds, distance/air filtering, shared reverbs and echoes; `src/audioBudget.ts` bounds
+  transient voices/echoes, and `src/obstruction.ts` caches conservative line-of-sight attenuation
+- `tools/audio-bench.html`, `tools/audio-bench.ts`, `tools/audio-measure.mjs` — real browser sound graphs captured
+  after the limiter, measured by FFmpeg; scenarios, target levels and recorded results in `docs/audio.md`
+
 ## Rendering and performance
 
 - `src/world/heightShadow.ts` (dune shadows from the heightfield, not the shadow maps), `src/world/cascades.ts`

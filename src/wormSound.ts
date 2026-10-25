@@ -114,7 +114,7 @@ class WormSound {
 
   /** The sand at (x, y, z) shivers: it's about to burst out there, in `len` s. */
   tell(at: P, ear: P, len: number) {
-    const ctx = audio.ctx, s = placed(at, ear, TELL_GAIN, 20, 700);
+    const ctx = audio.ctx, s = placed(at, ear, TELL_GAIN, 20, 700, { warning: true, duration: len + 1.4 });
     if (!ctx || !s) return;
     const { input, t } = s;
     const n = ctx.createBufferSource();

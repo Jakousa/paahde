@@ -98,7 +98,7 @@ class QueenSound {
 
   /** Rearing up at `at`: a metallic shriek for about `s` seconds. */
   screech(at: P, ear: P, s = 1.1) {
-    const ctx = audio.ctx, p = placed(at, ear, SCREECH_GAIN, SCREECH_REF, 1500);
+    const ctx = audio.ctx, p = placed(at, ear, SCREECH_GAIN, SCREECH_REF, 1500, { warning: true, duration: s + 1 });
     if (!ctx || !p) return;
     const { input: o, t } = p;
     const env = ctx.createGain();
