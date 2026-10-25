@@ -1981,3 +1981,25 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   what `hello` says for a player it already has a name for.
 - Gaps: no way to change a game's settings or password after it's made; a password-locked game's key never expires;
   the minigame's leaderboard names aren't filtered.
+
+## Beacons
+
+- **What:** a building (`beacon_light`, "Beacon") that shines a column of light into the sky, for players to mark
+  places: built with the wrench from base materials (6 scrap, 2 wiring, shared/tables.ts BUILD_TABLE) and, unlike the
+  other buildings, anywhere on the sand (shared/placed.ts `anywhere`; its own cap, `MAX_BEACONS`, so they don't fill the
+  base's 40). Dark without power.
+- **Power:** it's a load, the first one. It has one battery slot and a connector, so both ways work: wired into a grid
+  (server/power.ts) it runs on what the windmills make, then on what every battery on the grid holds (shared/power.ts
+  `draw`, all or nothing), and the grid charges its own battery like a station's; out on its own it runs its battery
+  flat. `BEACON_W` = 6 W (an LED lamp): a Scrap battery (0.6 kWh) lasts ~4 game days (~2 real hours), Space-grade weeks.
+  The batteries charge only in a station or on a grid, so a field beacon means a charged battery carried out.
+- **Colour:** 8 presets (`BEACON_COLORS`), cold and saturated so they read against the amber day sky and the dark
+  night one (no orange): cyan (a new one's), blue, violet, magenta, red, yellow, green, white. R in view of a beacon
+  with nothing to put down cycles it (src/placing.ts; R turns a preview otherwise), `[R] Colour`. Kept in the beacon
+  item's ItemData `color` (its box, like its parts), so it's in `Placed.color` for everyone.
+- **Drawing (src/world/beacons.ts):** the model is a few boxes and cylinders merged into one vertex-coloured mesh plus
+  the lens (no Blender run, no glb); the lens takes the light's colour while lit. Every beam is one quad in a single
+  instanced draw, turned to face the camera about the vertical and widened with distance (≈6 px at any range) in the
+  vertex shader; additive, no depth write, soft core and glow, fading with height over 520 m, taking only 40% of the
+  haze. Seen in headless shots at 600 m by day and 1.5 km by night.
+- Gaps: no icon render (an SVG); no light on the ground round it; a beacon in a rock is possible (the aim finds the sand).

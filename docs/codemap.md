@@ -104,6 +104,14 @@ when you find it stale.
   `STRUCTURE_GAP` from the hut/skylight/mast; `collideOutdoor`/`overPlaced` in shared/base.ts); while standing, the
   item is in box `bld<id>`, whose parts are swapped in place (F, `src/inventory.ts` `part:<box>`); drawn by
   `src/world/placed.ts`, models `tools/blender/placeables.py`
+- Beacons (`beacon_light`, shared/placed.ts `BEACON`) — a lamp on a mast that shines a column of light into the sky, a
+  marker: built with the wrench like the others (scrap, wiring) but `anywhere` on the sand, not only round the base
+  (`MAX_BEACONS` of their own); one battery slot. Powered like a load on the grid (shared/power.ts `BEACON_W`, `draw`;
+  server/power.ts): wired, it runs on the windmills, then on every battery on its grid (and the grid charges its battery);
+  alone, its own battery runs flat (a Scrap one ~2 real hours). Dark without power (`PowerState.lit`). R in view of one
+  cycles its colour (`BEACON_COLORS`, 8; src/placing.ts, `beaconColor` message), kept in its item's ItemData `color`.
+  Model made in code and every beam in one instanced draw (a camera-facing quad per beam that widens with distance):
+  `src/world/beacons.ts`
 - `shared/power.ts` — electricity, somewhat realistic in game time (`GAME_SPEED`: a game day is 30 real min): the
   shared wind (`windSpeed`: day cycle, weather, gusts, storms), windmill output (½ρAv³·Cp·η by bearings/motor,
   furling) and rotor speed, battery stations (per-battery kWh by tier, a Scrap battery = a car battery, 0.6 kWh; coils
