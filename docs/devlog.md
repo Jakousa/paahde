@@ -2141,13 +2141,15 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
 - **Slots (shared/look.ts):** hood (hood, pointed cowl, ragged), eyes (goggles, monocle, round wire specs, welding
   goggles, big goggles), mask (respirator, side canister, none, cloth filter mask, leather muzzle, steel grille), scarf
   (scarf, long, bandana bib, veil, none), cape (capelet, poncho, none), shoulder plate, gloves (leather, wrapped,
-  gauntlets), boots (buckled, wrapped, shin guards, tall), and dyes for the robe, the hood and cape, and the wraps (8
-  each, the first the old colour). All long gowns and a hood up: a study of hats, a hood thrown back, short coats and
+  gauntlets), boots (buckled, wrapped, shin guards, tall), and dyes for the robe, the hood and cape, and the wraps: one
+  palette of 14 in the same order for all three (each slot's default is its old colour). All long gowns and a hood up: a study of hats, a hood thrown back, short coats and
   lighter Rey-style looks read as other characters and was dropped.
 - **Model:** every option is built into scavenger.glb as its own mesh (tagged by vertex group like the gear and split
   after the bake); ~36k triangles in all, ~22k worn. The robe, hood/cape and wrap cloth is baked in pale greys into
   materials DyeRobe / DyeCape / DyeWrap the game multiplies by the dye, like PlayerTint. The hood is ~20% smaller than
   before and the skull bands under it are gone (they read as swirls in the hood's shadow).
+- The view: drag turns the figure, the wheel or a pinch zooms in to the head and shoulders.
+- The capelet sits closer to the body (less deep, a thin hem); the head wrap's crown is pulled in so no hood clips it.
 - **Drawing:** setLook merges the body and the chosen pieces into one skinned mesh per material (cached per set of
   pieces, shared by every player wearing it), so a player is the same few draws whatever they wear.
 - Gaps: the first-person gloves (hands.glb) don't follow the gloves chosen; the look isn't stored by the server (the

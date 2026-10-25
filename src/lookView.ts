@@ -1,9 +1,10 @@
 // The character view on the main menu (src/landing.ts): your scavenger turning slowly in the warm light, and beside it
 // a row per slot of the look (shared/look.ts): arrows step through a slot's pieces, swatches pick a dye. Every change
-// is kept at once (src/profile.ts setMyLook) and goes with your next join. Drag the figure to turn it; the dice picks a
+// is kept at once (src/profile.ts setMyLook) and goes with your next join. Drag the figure to turn it, wheel or pinch to
+// zoom in on it (up to the face); the dice picks a
 // whole look at random. The figure has its own small renderer, gone with the view.
 import * as THREE from 'three/webgpu';
-import { DYES, LOOK_SLOTS, type LookKey, packLook, unpackLook } from '../shared/look.ts';
+import { DYE_COLORS, dyeChoice, dyeIndex, type DyeSlot, LOOK_SLOTS, type LookKey, packLook, unpackLook } from '../shared/look.ts';
 import { TEXT } from '../shared/text.ts';
 import { ScavengerModel } from './models/scavenger';
 import { myColor, myLook, setMyLook } from './profile';
@@ -11,7 +12,7 @@ import { myColor, myLook, setMyLook } from './profile';
 const CSS = `
 #landing .lookView { display: grid; gap: 16px; justify-items: center; }
 #landing .lookView .body { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: center; }
-#landing .lookView canvas { width: min(64vw, 280px); height: min(92vw, 400px); cursor: grab; touch-action: none; }
+#landing .lookView canvas { width: min(80vw, 360px); height: min(115vw, 520px); cursor: grab; touch-action: none; }
 #landing .lookView canvas:active { cursor: grabbing; }
 #landing .lookView .slots { display: grid; gap: 6px; }
 #landing .lookView .slot { display: grid; grid-template-columns: 7.5em auto; gap: 10px; align-items: center; justify-items: start; }
@@ -19,11 +20,11 @@ const CSS = `
 #landing .lookView .steps { display: flex; gap: 4px; }
 #landing .lookView .steps button { padding: 4px 14px; font-size: 15px; letter-spacing: 0; }
 #landing .lookView .dyes { display: flex; gap: 4px; }
-#landing .lookView .dyes button { width: 20px; height: 20px; padding: 0; border-radius: 2px; border: 1px solid rgba(255, 244, 208, .35); }
+#landing .lookView .dyes button { width: 18px; height: 18px; padding: 0; border-radius: 2px; border: 1px solid rgba(255, 244, 208, .35); }
 #landing .lookView .dyes button.on, #landing .lookView .dyes button:hover { border: 2px solid #fff4d0; }
 `;
 
-const DYED: Partial<Record<LookKey, keyof typeof DYES>> = { robe: 'robe', cloak: 'cloak', wrap: 'wrap' };
+const DYED: Partial<Record<LookKey, DyeSlot>> = { robe: 'robe', cloak: 'cloak', wrap: 'wrap' };
 
 export function lookView(back: () => void): HTMLElement {
   if (!document.getElementById('lookStyle')) {
@@ -57,15 +58,16 @@ export function lookView(back: () => void): HTMLElement {
     if (dye) {
       const box = document.createElement('div');
       box.className = 'dyes';
-      const swatches = DYES[dye].map((c, i) => {
+      // the same palette in the same order on every dyed slot
+      const swatches = DYE_COLORS.map((c, i) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.style.background = `#${c.toString(16).padStart(6, '0')}`;
-        b.addEventListener('click', () => ((look[slot.key] = i), changed()));
+        b.addEventListener('click', () => ((look[slot.key] = dyeChoice(dye, i)), changed()));
         box.append(b);
         return b;
       });
-      rows.push(() => swatches.forEach((b, i) => b.classList.toggle('on', i === look[slot.key])));
+      rows.push(() => swatches.forEach((b, i) => b.classList.toggle('on', i === dyeIndex(look, dye))));
       row.append(box);
     } else {
       const steps = document.createElement('div');
@@ -102,23 +104,43 @@ function stage(canvas: HTMLCanvasElement, model: ScavengerModel, ready: () => vo
   rim.position.set(3, 3, -4);
   scene.add(sun, rim);
   const camera = new THREE.PerspectiveCamera(26, 0.7, 0.1, 50);
-  camera.position.set(0, 1.05, 4.6);
-  camera.lookAt(0, 0.92, 0);
   scene.add(model.root);
   let yaw = 0.45;
   let spin = 0.12; // rad/s, until it's dragged
-  let drag: number | null = null;
+  // Zoom: 0 the whole figure .. 1 the head and shoulders; eased towards `zoomTo`.
+  let zoom = 0, zoomTo = 0;
+  const zoomBy = (d: number) => (zoomTo = Math.min(1, Math.max(0, zoomTo + d)));
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoomBy(-e.deltaY * 0.0015);
+  }, { passive: false });
+  // One pointer turns the figure, two pinch.
+  const down = new Map<number, number[]>();
+  let pinch = 0;
+  const spread = () => {
+    const [a, b] = [...down.values()];
+    return Math.hypot(a[0] - b[0], a[1] - b[1]);
+  };
   canvas.addEventListener('pointerdown', (e) => {
-    drag = e.clientX;
+    down.set(e.pointerId, [e.clientX, e.clientY]);
     spin = 0;
     canvas.setPointerCapture(e.pointerId);
+    if (down.size === 2) pinch = spread();
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (drag === null) return;
-    yaw += (e.clientX - drag) * 0.012;
-    drag = e.clientX;
+    const was = down.get(e.pointerId);
+    if (!was) return;
+    if (down.size === 1) yaw += (e.clientX - was[0]) * 0.012;
+    down.set(e.pointerId, [e.clientX, e.clientY]);
+    if (down.size === 2) {
+      const now = spread();
+      zoomBy((now - pinch) * 0.004);
+      pinch = now;
+    }
   });
-  canvas.addEventListener('pointerup', () => (drag = null));
+  const up = (e: PointerEvent) => down.delete(e.pointerId);
+  canvas.addEventListener('pointerup', up);
+  canvas.addEventListener('pointercancel', up);
   model.ready.then(ready, () => {});
   const timer = new THREE.Timer();
   const stop = () => {
@@ -139,6 +161,11 @@ function stage(canvas: HTMLCanvasElement, model: ScavengerModel, ready: () => vo
       timer.update(time);
       const dt = Math.min(timer.getDelta(), 0.1);
       yaw += spin * dt;
+      zoom += (zoomTo - zoom) * Math.min(1, dt * 10);
+      const z = zoom * zoom * (3 - 2 * zoom);
+      // whole figure from 4.6 m, looking at its middle; the head and shoulders from 1.3 m, looking at the face
+      camera.position.set(0, 1.05 + 0.55 * z, 4.6 - 3.3 * z);
+      camera.lookAt(0, 0.92 + 0.7 * z, 0);
       model.root.rotation.y = Math.PI + yaw;
       model.update({ speed: 0, grounded: true, plant: false }, dt);
       renderer.render(scene, camera);

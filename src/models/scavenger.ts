@@ -28,7 +28,7 @@ import { beltModel, disposeModel, DRAW_IN, heldModel, heldMuzzle, wristModel } f
 import { LAMP_ON } from './jammer';
 import { RECEIVERS } from '../../shared/bosses.ts';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { DYES, type Look, lookOption, unpackLook } from '../../shared/look.ts';
+import { DYE_COLORS, dyeIndex, type Look, lookOption, unpackLook } from '../../shared/look.ts';
 
 export type ScavengerPose = {
   /** Horizontal speed in m/s. */
@@ -388,7 +388,7 @@ export class ScavengerModel {
     this.lookN = n;
     const look = unpackLook(n);
     for (const [slot, name] of [['robe', 'DyeRobe'], ['cloak', 'DyeCape'], ['wrap', 'DyeWrap']] as const) {
-      this.dyes.get(name)?.color.setHex(DYES[slot][look[slot]]);
+      this.dyes.get(name)?.color.setHex(DYE_COLORS[dyeIndex(look, slot)]);
     }
     const body = this.pieces.get('Scavenger_Body');
     if (!body) return false;

@@ -199,9 +199,10 @@ def build_torso():
                 bones=['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'LeftShoulder', 'RightShoulder'])
 
 
+# the capelet: close over the chest and back (depth), wide enough over the arms
 CAPE_T = ([1.585, 1.555, 1.525, 1.485, 1.435, 1.385, 1.335, 1.285],
-          [0.078, 0.122, 0.185, 0.238, 0.266, 0.284, 0.296, 0.304],
-          [0.073, 0.108, 0.140, 0.165, 0.180, 0.190, 0.198, 0.204])
+          [0.078, 0.120, 0.180, 0.232, 0.262, 0.282, 0.296, 0.304],
+          [0.073, 0.104, 0.130, 0.150, 0.160, 0.166, 0.170, 0.174])
 SKIRT_Z = [1.03, 0.93, 0.82, 0.70, 0.58, 0.47, 0.37]
 SKIRT_RX = [0.180, 0.196, 0.215, 0.232, 0.246, 0.256, 0.262]
 SKIRT_RY = [0.140, 0.158, 0.178, 0.194, 0.206, 0.214, 0.220]
@@ -251,7 +252,7 @@ def build_skirt(side):
 
 # the poncho: the capelet carried on down to the waist, wider over the arms
 PONCHO_T = (CAPE_T[0] + [1.235, 1.185, 1.135, 1.085], CAPE_T[1] + [0.318, 0.33, 0.338, 0.342],
-            CAPE_T[2] + [0.212, 0.220, 0.226, 0.230])
+            CAPE_T[2] + [0.180, 0.186, 0.190, 0.193])
 
 
 def build_cape(shape=CAPE_T, name='Cape'):
@@ -270,13 +271,13 @@ def build_cape(shape=CAPE_T, name='Cape'):
             if p.y > 0:  # longer at the back
                 p.z -= 0.16 * (p.y / 0.2) ** 1.5
     tattered(rings[-1], 0.04, seed=3.0)
-    rings.append(fold_back(rings[-1], (0, 0.008), 0.975, 0.03))
+    rings.append(fold_back(rings[-1], (0, 0.008), 0.99, 0.012))  # a thin hem
     return part(loft(name, rings, M['cape']),
                 bones=['Spine1', 'Spine2', 'Neck', 'LeftShoulder', 'RightShoulder', 'LeftArm', 'RightArm'],
                 bias={'LeftArm': 0.35, 'RightArm': 0.35, 'Spine2': 1.5}, power=3.0)
 
 
-def build_hood(size=0.8, front=0.0, point=0.0, drape=0.35, ragged=0.0, name='Hood'):
+def build_hood(size=0.83, front=0.0, point=0.0, drape=0.35, ragged=0.0, name='Hood'):
     """The hood, scaled about the head (size), with a deeper front, a pointed peak at the back, how far it spreads onto
     the shoulders (drape), and a torn opening (ragged)."""
     ys = [-0.100, -0.136, -0.112, -0.060, 0.000, 0.060, 0.110, 0.152, 0.186, 0.208]
@@ -310,7 +311,7 @@ def build_hood(size=0.8, front=0.0, point=0.0, drape=0.35, ragged=0.0, name='Hoo
         for r in rings[:2]:
             for p in r:
                 p.y -= ragged * (0.4 + fbm((p.x * 30, p.z * 30, 3.0), 2)) * (0.6 + max(0.0, math.sin(p.z * 90)) ** 4)
-    c = V((0, 0.01, 1.67))
+    c = V((0, 0.01, 1.71))  # about the brow, so the crown keeps clear of the skull
     for r in rings:
         for p in r:
             p[:] = c + (p - c) * size
@@ -319,7 +320,7 @@ def build_hood(size=0.8, front=0.0, point=0.0, drape=0.35, ragged=0.0, name='Hoo
 
 
 def build_headwrap():
-    zs = [1.50, 1.545, 1.585, 1.625, 1.665, 1.705, 1.742, 1.772, 1.79]
+    zs = [1.50, 1.545, 1.585, 1.625, 1.665, 1.705, 1.740, 1.762, 1.776]
     r = [0.058, 0.070, 0.084, 0.092, 0.095, 0.093, 0.084, 0.062, 0.03]
     rings = []
     for i, z in enumerate(zs):
@@ -328,6 +329,8 @@ def build_headwrap():
             m = 1.0 + 0.012 * fbm((math.cos(t) * 4, math.sin(t) * 4, z * 30))
             if 1.53 < z < 1.62:
                 m += 0.10 * front ** 3  # chin / jaw under the mask
+            if z > 1.68:
+                m -= 0.12 * max(0.0, math.sin(t))  # the back of the skull, kept inside the hood
             return m
         rings.append(ring((0, 0.008, z), r[i], r[i] * 1.12, 20, fn=fn))
     part(loft('HeadWrap', rings, M['wrap'], cap_end=True), bones=['Head', 'Neck'], bias={'Head': 2.0})
@@ -1158,7 +1161,7 @@ def build_character():
     tagged('Poncho', build_cape, PONCHO_T, 'Poncho')
     tagged('Hood', build_hood)
     tagged('Cowl', build_hood, 0.82, 0.035, 0.11, 0.3, 0.0, 'Cowl')
-    tagged('HoodRagged', build_hood, 0.78, 0.0, 0.0, 0.25, 0.03, 'HoodRagged')
+    tagged('HoodRagged', build_hood, 0.81, 0.0, 0.0, 0.25, 0.03, 'HoodRagged')
     lens = tagged('Goggles', build_goggles)
     lens_objs.append((lens, 'Head'))
     LOOK['Goggles'].append(lens)
