@@ -166,6 +166,7 @@ export class CrashSites {
       if (!d) {
         const m = mat.name === SAND ? createSandMaterial() : mat;
         const mesh = new THREE.Mesh(new THREE.BufferGeometry(), m);
+        mesh.visible = false; // no vertices until at least one dressing piece uses this material
         mesh.castShadow = mat.name !== SAND;
         mesh.receiveShadow = true;
         mesh.frustumCulled = false;
@@ -208,8 +209,10 @@ export class CrashSites {
           geos.push(g);
         }
       }
+      const merged = geos.length ? mergeGeometries(geos) : null;
+      d.mesh.visible = merged !== null; // empty placeholders must not compile main or shadow-pass shaders
       d.mesh.geometry.dispose();
-      d.mesh.geometry = geos.length ? mergeGeometries(geos)! : new THREE.BufferGeometry();
+      d.mesh.geometry = merged ?? new THREE.BufferGeometry();
       for (const g of geos) g.dispose();
     }
   }
