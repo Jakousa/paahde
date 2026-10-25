@@ -311,7 +311,7 @@ export function openDb(path: string) {
   const insertWire = db.prepare('INSERT INTO wires (a, b, kind, owner, placed_at) VALUES (?, ?, ?, ?, ?)');
   const deleteWire = db.prepare('DELETE FROM wires WHERE id = ?');
   // Vehicles (shared/vehicles.ts, server/vehicles.ts): where each stands and whether it's been repaired (stood up). Its
-  // item is in box `veh<id>`, its cargo in `cargo<id>` (items). src: 'home' (the first one, by the crashed ship),
+  // item is in box `veh<id>`, its cargo in `cargo<id>` (items). src: 'home' (the first one, by the crashed pod),
   // 'find' (lying at a crash site), 'old' (a motorcycle item from before vehicles).
   db.exec(`CREATE TABLE IF NOT EXISTS vehicles (
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,

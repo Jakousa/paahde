@@ -34,7 +34,7 @@ const LIGHT_MARGIN = 300;
 const DEPTH_BIAS_TEXELS = 1;
 const NORMAL_BIAS_TEXELS = 2;
 /** PCF filter radius in texels per cascade. The dunes are not in the shadow maps (their shadows come from the heightfield,
- *  src/world/heightShadow.ts), so the maps only hold things (players, wrecks, the ship, bosses) and can stay sharp: they used to blur
+ *  src/world/heightShadow.ts), so the maps only hold things (players, wrecks, the pod, bosses) and can stay sharp: they used to blur
  *  5-8 texels to hide the stairs a low sun makes of a dune's shadow edge. */
 const PCF_RADIUS_TEXELS = [1.5, 1.5, 2, 2, 2];
 
@@ -139,7 +139,7 @@ export class Sky {
   /**
    * Casters too small to survive a cascade's blur are not drawn into it (src/world/shadowLod.ts): a player's shadow is crisp in the first
    * cascade and fades out across its far end, instead of turning into a faint smear in the next ones. What is left there (dunes, rocks,
-   * wrecks, the ship, bosses) is big enough to keep its shape under the blur.
+   * wrecks, the pod, bosses) is big enough to keep its shape under the blur.
    */
   private cullSmall() {
     const csm = this.csm;

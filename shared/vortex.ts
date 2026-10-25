@@ -11,7 +11,7 @@
 //
 // Gameplay: within PULL_R it drags you in and round (vortexPull, shared/sim.ts), too hard to walk out of past the
 // middle of that; a bike gets you out. Inside CORE_R you're dead, thrown high into the air (server/world.ts). Drones
-// are dragged in and torn apart (server/drones.ts). Bunkers and shelters keep it out.
+// are dragged in and torn apart (server/drones.ts). Shelters keep it out.
 import { ORIGIN } from './origin.ts';
 import { WIND } from './dunes.ts';
 import { indoors } from './shelters.ts';

@@ -30,7 +30,7 @@ const REFILL_MS = 60_000;
 const HUNT_MS = 45_000;
 /** A drone with nobody within this distance (m) leaves. */
 const DRONE_LONELY = 600;
-/** Drones keep this far (m) from the start (the origin, where the ship lies). */
+/** Drones keep this far (m) from the start (the origin, where the pod lies). */
 const DRONE_START_KEEP_OUT = 60;
 /** Roaming drones (site ROAM): at most ROAMERS out at once. Someone out in the open with fewer than ROAM_EACH within
  *  ROAM_NEAR (m) gets one about every ROAM_EVERY_S seconds, coming in from ROAM_FROM (m); it stays ROAM_MIN..MAX ms, flying legs of

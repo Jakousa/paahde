@@ -75,9 +75,9 @@ export const BUILD_TABLE: Record<string, IngredientSpec[]> = {
   tarp: [CLOTH(3), SCRAP(2)],
   // A scrap bench with a pegboard, a lamp wired in (shared/stations.ts: repairs and recipes).
   workbench: [SCRAP(6), WIRING(1)],
-  // A heavy slatted steel table with a vise, a grinder wired to it, a tarp for the parts (carried machines are taken
-  // apart on it: shared/crash.ts tables).
-  dismantle_bench: [SCRAP(8), WIRING(1), CLOTH(1)],
+  // A heavy slatted steel table with a vise, a hand-cranked grinder, a tarp for the parts (carried machines are taken
+  // apart on it: shared/crash.ts tables). No wiring: it's what gets the first wiring out of the machines.
+  dismantle_bench: [SCRAP(8), CLOTH(1)],
   // A scrap box lined with cloth, its lid on a hinge (shared/storage.ts: CHEST_COLS × CHEST_ROWS, shared).
   storage_chest: [SCRAP(8), CLOTH(2)],
   // Casing and riser pipe of scrap, a tank on a stand, a control box, the cable down the bore (the pump's parts go in after).

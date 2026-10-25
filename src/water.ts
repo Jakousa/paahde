@@ -446,7 +446,7 @@ export class Survival {
     deathGrade.value = dead ? Math.min(1, deathGrade.value + dt / DEATH_GRADE_S) : 0;
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
-    // Black out over the last stretch of lying dead, then fade back in at the bedroll or the ship after the respawn.
+    // Black out over the last stretch of lying dead, then fade back in at the bedroll or the pod after the respawn.
     const toEnd = this.deadUntil - now;
     const black = toEnd > 0 ? 1 - Math.min(1, toEnd / FADE_OUT_MS) : Math.max(0, 1 + toEnd / FADE_IN_MS);
     this.fade.style.display = black > 0 && this.deadUntil > 0 ? 'block' : 'none';

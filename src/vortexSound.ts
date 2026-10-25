@@ -13,7 +13,7 @@
 // Loudness: in dB, falling with distance^FALL, from 0 at its core to LEVEL_FAR at HEARD m. Measured (this graph rendered in
 // headless Chrome's OfflineAudioContext at the default volume 0.4, ffmpeg ebur128): at its foot −18 LUFS, true peak
 // −5.7 dBTP (an event, over the −23 mix); at the edge of its pull (450 m) −27 LUFS; 1.1 km off −47; 1.5 km off −61.
-// In a bunker or shelter it's heard through the earth (lowpass, quieter). Plays through the shared output (src/audio.ts).
+// In a shelter it's heard through the earth (lowpass, quieter). Plays through the shared output (src/audio.ts).
 import { audio } from './audio';
 import { indoors } from '../shared/shelters.ts';
 import { CORE_R, vortexCentre, vortexEnvelope, type Vortex } from '../shared/vortex.ts';

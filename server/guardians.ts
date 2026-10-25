@@ -34,7 +34,7 @@ export const TICK_HZ = 10;
 const CRAWLER_SEND_R = 300;
 /** How many guardians roam guardian ground, starting spread evenly over its sites from nearest the origin to farthest. */
 const GUARDIANS = 6;
-/** Walkers never come this close (m) to the start (the origin, where the ship lies): it's safe ground. */
+/** Walkers never come this close (m) to the start (the origin, where the pod lies): it's safe ground. */
 const START_KEEP_OUT = 200;
 /** Patrol waypoints lie this far (m) from the site's centre, by kind. */
 const PATROL: Record<Kind, [number, number]> = { [GUARDIAN]: [30, 80], [CRAWLER]: [6, 34] };
@@ -512,7 +512,7 @@ export class GuardianServer {
     }
     g.speed += (want - g.speed) * (1 - Math.exp(-dt / ease));
     let nx = g.x + Math.sin(g.yaw) * g.speed * dt, nz = g.z + Math.cos(g.yaw) * g.speed * dt;
-    // The start (round the origin, where the ship lies) is out of bounds: stopped at the edge (and it gives up the hunt there). Not for a debug menu pack
+    // The start (round the origin, where the pod lies) is out of bounds: stopped at the edge (and it gives up the hunt there). Not for a debug menu pack
     // (made-up home, id < 0), so it can be tried out near the start.
     const bd = Math.hypot(nx - ORIGIN.x, nz - ORIGIN.z);
     if (bd < START_KEEP_OUT && g.home.id >= 0) {

@@ -6,7 +6,7 @@
 // height y is in the dunes' shadow when y < S. S is smooth and is filtered like any texture, so the shadow edge is the clean contour
 // y = S at any distance: no shadow-map texels stretched along the ground by a low sun, no stairs, nothing that blurs out far away. It
 // costs one texture read per pixel, and the terrain leaves the shadow maps (most of their draw calls) to the things that need them:
-// players, wrecks, the ship, bosses.
+// players, wrecks, the pod, bosses.
 //
 // S is found by doubling, on the GPU, one pass a frame: S0 looks one texel up-sun; S(k+1)(p) = max(Sk(p), Sk(p + 2^k texels) - 2^k
 // texels·tanθ) looks twice as far. Every texel on the way is seen, so a thin pillar 1 km off still throws its whole shadow (a walk in

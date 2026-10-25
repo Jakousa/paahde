@@ -39,7 +39,7 @@ const NOTICE_R = 250;
 const SHOT_NOTICE_R = 700;
 const LOSE_R = 420;
 const FORGET_MS = 8000;
-/** Keeps this far (m) from the start (the origin, where the ship lies): it doesn't walk over it or hunt anyone near it. */
+/** Keeps this far (m) from the start (the origin, where the pod lies): it doesn't walk over it or hunt anyone near it. */
 const START_KEEP_OUT = 260;
 /** Roaming: the next waypoint 700–1500 m off, within the world (less a margin); reached within WAYPOINT_R. */
 const ROAM: [number, number] = [700, 1500];

@@ -185,7 +185,7 @@ export const canteenSips = (q: number) => Math.round(by(q, 5, 10));
 export const backpackRows = (q: number) => Math.round(by(q, 3, BAG_ROWS));
 /** Storm detector: warns this long before a storm reaches you (s). */
 export const stormWarnS = (q: number) => by(q, 6, 20);
-/** Wrist computer: other players show on the locator this far away (m). Home (your bedroll, else the ship) always does. */
+/** Wrist computer: other players show on the locator this far away (m). Home (your bedroll, else the pod) always does. */
 export const locatorRange = (q: number) => by(q, 250, 2000);
 
 /** A gun's recharge (ms) at quality q: its base at Scrap parts (a gun is a gun), down a fifth of it per tier to 40% at

@@ -2,6 +2,21 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-25 — A calm start: no storm front at the spawn, a first line, a cheaper dismantling bench
+
+- **No mega-storm front blows round where players arrive** (shared/storm.ts `frontCalm`): calm within 120 m of
+  `ARRIVAL`, building to full strength by 260 m. It's in the front's strength, so choking, the push, the static and
+  seizing machines all follow; the client draws the wall parted round it (`stormCalm` in src/world/env.ts, the post
+  pass), skips the "wall of sand" line and quiets the roar inside the calm. The start used to have the bunker; now a new
+  player there can't lose one of the world's lives to a front.
+- **The dismantling bench needs no wiring** (8 scrap, 1 cloth); the workbench still takes one. Taking machines apart is
+  how the first wiring comes, so the bench mustn't wait on it.
+- **First words:** arriving, the character says "I'd better find a way to build a shelter.", and once it's read, a
+  one-time hint "Press Tab for the inventory." (src/speech.ts `onSaid` → InventoryHud `oneTimeHint`).
+- **The first machine in the bag** (a small one or a wreck to take apart): "I can't take this apart by hand. I'll have
+  to build a dismantling bench." (replaces "I'll haul it home" on picking one up; that one stays for walking up to one).
+- Texts and comments that still spoke of the ship or the bunker now say the pod or a shelter.
+
 ## 2026-10-25 — One pod, and everything first is built from what lies by it
 
 - **One pod** at the spawn instead of four (`LAYOUT` in `shared/podSpot.ts`; the code still takes any number). Everyone

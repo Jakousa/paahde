@@ -85,7 +85,7 @@ class Perf {
   private lastPos: { x: number; z: number } | null = null;
   private travelled = 0;
   private wasDown = false;
-  /** Frames left after a respawn that are not counted (the player was just put back at the bedroll or the ship; the view and streaming reset). */
+  /** Frames left after a respawn that are not counted (the player was just put back at the bedroll or the pod; the view and streaming reset). */
   private afterRespawn = 0;
   private framesExcluded = 0;
   /** Deaths and respawns during the walk, in order. */

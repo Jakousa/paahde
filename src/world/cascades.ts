@@ -8,7 +8,7 @@
 //
 // The stock node also snaps each cascade's shadow camera to whole texels in light space measured from
 // the world origin. That stops swimming when the camera moves, but the sun turns a little every frame,
-// and a turn about the origin slides everything ~200 m out (the ship) by a third of a texel per frame
+// and a turn about the origin slides everything ~200 m out by a third of a texel per frame
 // across the grid, so every shadow edge re-rasterised each frame: the edges crawled and flickered. Here
 // the grid is re-snapped about an anchor near the camera (moved in coarse steps), so a turn slides
 // nearby casters by only (distance from the anchor) x angle.

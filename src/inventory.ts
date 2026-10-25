@@ -295,6 +295,11 @@ export class InventoryHud {
   private hintAt = '';
   private hints = new Hints();
 
+  /** Show a one-time hint (src/hints.ts) from outside the inventory. */
+  oneTimeHint(key: string) {
+    this.hints.show(key);
+  }
+
   constructor(net: Net, canvas: HTMLElement) {
     this.net = net;
     this.canvas = canvas;

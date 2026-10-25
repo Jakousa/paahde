@@ -43,7 +43,7 @@ export const GAS_DEPTH = 7;
 /** Seconds with your head in it before it kills; it wears off this many times slower. */
 export const GAS_S = 10;
 export const GAS_RECOVER = 0.5;
-/** After respawning (by a bedroll or at the ship, which may be in it) the gas doesn't count for this long (s): time to get out and
+/** After respawning (by a bedroll or at the pod, which may be in it) the gas doesn't count for this long (s): time to get out and
  *  up, so one cloud can't kill you over and over and eat the world's lives. */
 export const GAS_GRACE_S = 25;
 /** Eye height over the feet (m): the gas has to be over it to choke you. */

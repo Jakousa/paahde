@@ -615,6 +615,7 @@ const en = {
     part: () => 'Parts repair gear at the workbench.',
     broken: () => "It's broken. You can repair it at a workbench.",
     machine: () => 'Take it apart at a dismantling bench.',
+    inventory: (k: HintKeys) => `Press ${k.inventory} for the inventory.`,
   } as Record<string, (k: HintKeys) => string>,
 
   // ---- The character talking to themselves (src/speechLines.ts, docs/speech.md); a list: one picked at random -------
@@ -624,6 +625,10 @@ const en = {
     bottleNight: ["A water bottle. I'll be glad of that when the sun comes up.", "I'd better grab that before the day comes."],
     machine: "This thing's full of good parts. Let's crack it open.",
     machineCarry: "It's too fiddly to strip out here. I'll haul it home.",
+    /** The first machine in the bag to take apart: it wants a dismantling bench (built with the wrench). */
+    machineBench: "I can't take this apart by hand. I'll have to build a dismantling bench.",
+    /** The first thing said in a world, on arriving at the pod. */
+    start: "I'd better find a way to build a shelter.",
     /** The first time each kind is in the bag: broken, then working. */
     got: {
       canteen: ["It's cracked, but I can patch it up.", "Water I can carry around. I'm never letting go of this."],
@@ -643,7 +648,7 @@ const en = {
     gotCloth: "A bit of cloth. That'll do for patching things up.",
     gotSpacePart: "Now that's no ordinary part.",
     gotPart: 'A good part. Something broken back home could use this.',
-    gotPlantBed: 'A garden in a bunker. Sure, why not.',
+    gotPlantBed: 'A garden out here. Sure, why not.',
     gotUvLamp: "Sunlight for underground. There's a joke in there somewhere.",
     gotBedroll: "Somewhere to sleep that isn't the bare sand. Well, it's on the sand.",
     gotRelic: "It's still warm. Something out there is going to want this back.",
@@ -665,10 +670,10 @@ const en = {
     mudflatNight: "A dried-up lake. I wouldn't want to cross this by day.",
     stormWarning: "That beeping can't be good. I'd better get under a roof.",
     storm: ["Damn it, I can't see a thing!", "There's sand in my everything."],
-    stormFront: ["That's a wall of sand. I need rock between me and it.", 'Oh hell, here it comes. I need a cliff or a bunker, right now.'],
+    stormFront: ["That's a wall of sand. I need rock between me and it.", 'Oh hell, here it comes. I need a cliff or a roof, right now.'],
     choking: ["Shit, I can't breathe out here!", 'I have to get out of this wind!'],
     lee: 'The rock is taking the worst of it.',
-    /** Poison gas (shared/gas.ts) creeping in at night: out in the open, in a bunker (it fills them), and in it. */
+    /** Poison gas (shared/gas.ts) creeping in at night: out in the open, in a shelter (it fills them), and in it. */
     gasComing: ["Something's creeping in along the ground. I want to be up high.", 'What is that stink? Better find some high ground.'],
     gasIndoors: "Something's seeping in down here. I have to get out and up.",
     gassed: ["Shit, I can't breathe this! Up, get up!", 'My eyes are burning. Higher, I need to get higher!'],

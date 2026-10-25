@@ -48,6 +48,8 @@ export class Speech {
   /** Showing until, then quiet until (s). */
   private hideAt = 0;
   private quietUntil = QUIET_START;
+  /** A line was just said: its id, and how long (s) it stays on screen. */
+  onSaid: ((id: string, showS: number) => void) | null = null;
 
   constructor() {
     const style = document.createElement('style');
@@ -117,6 +119,7 @@ export class Speech {
     const show = typingTime(text) + showFor(text);
     this.hideAt = this.t + show;
     this.quietUntil = this.t + show + GAP;
+    this.onSaid?.(line.id, show);
   }
 
   /** Let out the letters due this frame, a blip for each (not for spaces and punctuation). */

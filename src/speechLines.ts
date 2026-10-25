@@ -111,6 +111,9 @@ const killed = (kind: Kill | 'boss', again: number): Line =>
 
 /** In order: for one event, the first line whose condition holds (and isn't resting) is said. */
 export const LINES: Line[] = [
+  // The first thing said on arriving (then the inventory hint: src/main.ts).
+  { id: 'start', on: 'tick', when: (s) => !s.dead, say: TEXT.speech.start },
+
   // A water bottle, and we have none: the first thing anyone needs out here.
   { id: 'bottle', on: 'see', when: (s, l) => l.kind === 'canteen' && !carries(s, 'canteen') && s.day,
     say: TEXT.speech.bottleDay, again: 3 * MIN },
@@ -120,7 +123,7 @@ export const LINES: Line[] = [
   // Machines full of parts: the big ones are opened where they stand, the small ones and wrecks go home whole.
   { id: 'machine', on: 'near', when: (_, m) => !m.carry, say: TEXT.speech.machine },
   { id: 'machine.carry', on: 'near', when: (_, m) => m.carry, say: TEXT.speech.machineCarry },
-  { id: 'machine.carry', on: 'got', when: (_, it) => MACHINE_KINDS.has(it.kind), say: TEXT.speech.machineCarry },
+  { id: 'machine.bench', on: 'got', when: (_, it) => MACHINE_KINDS.has(it.kind), say: TEXT.speech.machineBench },
 
   // The first time each kind of thing is in the bag.
   ...firstGot('canteen'),
