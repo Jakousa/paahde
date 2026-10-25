@@ -2143,8 +2143,7 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   (scarf, long, bandana bib, veil, none), cape (capelet, poncho, none), shoulder plate, gloves (leather, wrapped,
   gauntlets), boots (buckled, wrapped, shin guards, tall), and dyes for the robe, the hood and cape, and the wraps (8
   each, the first the old colour). All long gowns and a hood up: a study of hats, a hood thrown back, short coats and
-  lighter Rey-style looks read as other characters and was dropped (tools/models/scavenger_variants.py renders such
-  studies from the generator with patches).
+  lighter Rey-style looks read as other characters and was dropped.
 - **Model:** every option is built into scavenger.glb as its own mesh (tagged by vertex group like the gear and split
   after the bake); ~36k triangles in all, ~22k worn. The robe, hood/cape and wrap cloth is baked in pale greys into
   materials DyeRobe / DyeCape / DyeWrap the game multiplies by the dye, like PlayerTint. The hood is ~20% smaller than
