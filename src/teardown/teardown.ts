@@ -1067,11 +1067,15 @@ export class TeardownView {
 
     // Highlight: the step under the pointer, or what is in the way of the thing under the pointer.
     const focus: Target | null = this.act ? { type: 'step', step: this.act.step } : this.hover;
+    // Only steps that can be done now are lit: one still waiting (a wire inside a cover) lights what it waits on instead.
     this.lit.clear();
-    if (focus?.type === 'step') {
-      const b = focus.step.after.filter((x) => !x.done);
-      for (const s of b.length ? b : [focus.step]) this.lit.add(s);
-    } else if (focus?.type === 'part' && !slotOpen(focus.slot)) for (const s of focus.slot.piece.holds) if (!s.done) this.lit.add(s);
+    const light = (s: Step) => {
+      if (s.done) return;
+      if (stepReady(s)) this.lit.add(s);
+      else for (const a of s.after) light(a);
+    };
+    if (focus?.type === 'step') light(focus.step);
+    else if (focus?.type === 'part' && !slotOpen(focus.slot)) for (const s of focus.slot.piece.holds) light(s);
     for (const s of j.steps) {
       const lit = this.lit.has(s);
       const ready = !s.done && stepReady(s);
