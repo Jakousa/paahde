@@ -12,7 +12,8 @@ import { PACK_BACK_S } from '../shared/enemies.ts';
 import { coreCrashSites, crashSite, type CrashSite, LEVEL_R } from '../shared/crashsites.ts';
 import {
   ALERT_R, BITE_DAMAGE, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CRAWLER, CRAWLER_CALM_MS,
-  CRAWLER_CHASE_MS, CRUSH_SLACK, FIRE_MS, FIRE_R, footTop, GUARDIAN, GUN_DEPRESS, gunPivot, KINDS, type Kind, lineOfSight,
+  CRAWLER_CHASE_MS, CRUSH_SLACK, LUNGE_DASH, LUNGE_HIT_R, LUNGE_NONE, LUNGE_OVER, LUNGE_REST, LUNGE_REST_MS, LUNGE_SPEED,
+  LUNGE_WIND, LUNGE_WIND_MS, FIRE_MS, FIRE_R, footTop, GUARDIAN, GUN_DEPRESS, gunPivot, KINDS, type Kind, lineOfSight,
   MUZZLE, REST_R, restSpot, SETTLE, STEP_DIST, STEP_MAX, STEP_MIN,
 } from '../shared/guardians.ts';
 import {
@@ -86,8 +87,10 @@ type Guardian = {
   points: number; broken: number; deadAt: number;
   /** Guardians' feet (crawlers' are only drawn, src/world/guardians.ts); yaw last tick; standing still for (s). */
   feet: Foot[] | null; lastYaw: number; still: number;
-  /** Crawlers: which way round what's in its way (server/pack.ts). */
+  /** Crawlers: which way round what's in its way (server/pack.ts); the lunge (LUNGE_*) since when, springing along
+   *  unit (lx, lz) with `left` m to go. */
   skirt: Skirt;
+  lunge: number; lungeAt: number; lx: number; lz: number; left: number;
 };
 
 /** A guardian's foot: planted at (x, y, z), or swinging there with `left` s to go of `dur`. */
@@ -147,6 +150,7 @@ export class GuardianServer {
       tx: home.x, tz: home.z, guardUntil: 0, prey: -1, huntAt: 0, px: 0, pz: 0, knownAt: 0, calmUntil: 0, shotUntil: 0, bitAt: 0,
       aiming: false, ax: 0, ay: 0, az: 0, chargeAt: -1, firedAt: 0, missileAt: 0,
       points: weakPoints(kind, legs).length, broken: 0, deadAt: -1, feet: null, lastYaw: 0, still: 0, skirt: { side: 0, until: 0 },
+      lunge: LUNGE_NONE, lungeAt: 0, lx: 0, lz: 0, left: 0,
     };
     g.lastYaw = g.yaw;
     if (kind === GUARDIAN) this.plantFeet(g);
@@ -281,6 +285,7 @@ export class GuardianServer {
         g.speed = 0;
         g.aiming = false;
         g.chargeAt = -1;
+        g.lunge = LUNGE_NONE;
       } else this.tickGuardian(g, dt, now, exposed, byId, bitten);
       this.stepFeet(g, dt);
       if (KINDS[g.kind].gun && !stuck) this.tickGun(g, now, byId, events);
@@ -454,19 +459,14 @@ export class GuardianServer {
           g.tx = g.px;
           g.tz = g.pz;
         }
-        // A guardian over you only crushes you if a foot comes down on you (stomp); a crawler bites.
-        if (g.kind === CRAWLER && Math.hypot(p.x - g.x, p.z - g.z) < k.reach) {
-          if (now - g.bitAt >= BITE_MS) {
-            // Bites, and backs off.
-            g.bitAt = now;
-            bitten.set(p.id, (bitten.get(p.id) ?? 0) + BITE_DAMAGE);
-            g.prey = -1;
-            g.calmUntil = now + CRAWLER_CALM_MS;
-            this.patrolPoint(g);
-          }
+        // A guardian over you only crushes you if a foot comes down on you (stomp); a crawler close by lunges.
+        if (g.kind === CRAWLER && g.lunge === LUNGE_NONE && Math.hypot(p.x - g.x, p.z - g.z) < k.reach && now - g.bitAt >= BITE_MS) {
+          g.lunge = LUNGE_WIND;
+          g.lungeAt = now;
         }
       }
     }
+    if (g.lunge !== LUNGE_NONE) return this.lunge(g, dt, now, byId, exposed, bitten);
     const hunting = g.prey >= 0;
     // Others of its kind close by: it steers away from them (their legs would tangle).
     const sep = SEP_R * k.scale;
@@ -511,7 +511,61 @@ export class GuardianServer {
         : (hunting ? k.hunt : k.patrol) * Math.max(0, Math.cos(turn)) ** 2 * Math.min(1, dist / (near + 2));
     }
     g.speed += (want - g.speed) * (1 - Math.exp(-dt / ease));
-    let nx = g.x + Math.sin(g.yaw) * g.speed * dt, nz = g.z + Math.cos(g.yaw) * g.speed * dt;
+    this.moveTo(g, g.x + Math.sin(g.yaw) * g.speed * dt, g.z + Math.cos(g.yaw) * g.speed * dt, hunting);
+  }
+
+  /** A crawler's lunge (shared/guardians.ts LUNGE_*): crouched, it turns to face its prey; then it springs straight
+   *  at where they are, biting whoever it passes close by and backing off; after a miss it stands a moment. */
+  private lunge(g: Guardian, dt: number, now: number, byId: Map<number, BotPlayer>, exposed: BotPlayer[], bitten: Map<number, number>) {
+    const k = KINDS[g.kind];
+    if (g.lunge === LUNGE_WIND) {
+      const p = byId.get(g.prey);
+      if (!p || !open(p)) {
+        g.lunge = LUNGE_NONE;
+        return;
+      }
+      const dx = p.x - g.x, dz = p.z - g.z, d = Math.hypot(dx, dz) || 1;
+      if (now - g.lungeAt < LUNGE_WIND_MS) {
+        const rate = k.huntTurn * dt;
+        g.yaw = wrap(g.yaw + Math.max(-rate, Math.min(rate, wrap(Math.atan2(dx, dz) - g.yaw))));
+        g.speed = 0;
+        return;
+      }
+      g.lunge = LUNGE_DASH;
+      g.lungeAt = g.bitAt = now;
+      g.lx = dx / d;
+      g.lz = dz / d;
+      g.left = d + LUNGE_OVER;
+      g.yaw = Math.atan2(dx, dz);
+      g.speed = LUNGE_SPEED;
+    }
+    if (g.lunge === LUNGE_DASH) {
+      const x0 = g.x, z0 = g.z, step = Math.min(g.left, LUNGE_SPEED * dt);
+      this.moveTo(g, x0 + g.lx * step, z0 + g.lz * step, true);
+      g.left -= step;
+      const hit = exposed.find((p) => segDist(p.x, p.z, x0, z0, g.x, g.z) < LUNGE_HIT_R);
+      if (hit) {
+        // Bites, and backs off.
+        bitten.set(hit.id, (bitten.get(hit.id) ?? 0) + BITE_DAMAGE);
+        g.lunge = LUNGE_NONE;
+        g.speed = 0;
+        g.prey = -1;
+        g.calmUntil = now + CRAWLER_CALM_MS;
+        this.patrolPoint(g);
+      } else if (g.left <= 0 || Math.hypot(g.x - x0, g.z - z0) < step * 0.5) {
+        // Missed (or ran into a wreck, or the start's edge).
+        g.lunge = LUNGE_REST;
+        g.lungeAt = now;
+        g.speed = 0;
+      }
+      return;
+    }
+    g.speed = 0;
+    if (now - g.lungeAt >= LUNGE_REST_MS) g.lunge = LUNGE_NONE;
+  }
+
+  /** Steps to (nx, nz), kept off the start (and out of wrecks and scrap: crawlers). */
+  private moveTo(g: Guardian, nx: number, nz: number, hunting: boolean) {
     // The start (round the origin, where the pod lies) is out of bounds: stopped at the edge (and it gives up the hunt there). Not for a debug menu pack
     // (made-up home, id < 0), so it can be tried out near the start.
     const bd = Math.hypot(nx - ORIGIN.x, nz - ORIGIN.z);
@@ -695,7 +749,8 @@ export class GuardianServer {
       if (Math.hypot(o.x - x, o.z - z) > (o.kind === CRAWLER ? CRAWLER_SEND_R : SEND_R)) continue;
       if (o.feet && o.deadAt < 0) o.feet.forEach((e, i) => f.push(o.id, i, r2(e.x), r2(e.y), r2(e.z), r2(e.left)));
       g.push(o.id, o.kind, o.legs, r2(o.x), r2(o.z), r3(o.yaw), o.prey < 0 ? 0 : o.prey === id ? 2 : 1,
-        o.aiming ? r2(o.ax) : 0, o.aiming ? r2(o.ay) : 0, o.aiming ? r2(o.az) : 0, o.chargeAt >= 0 ? 1 : o.aiming ? 0 : -1,
+        o.aiming ? r2(o.ax) : 0, o.aiming ? r2(o.ay) : 0, o.aiming ? r2(o.az) : 0,
+        o.kind === CRAWLER ? o.lunge : o.chargeAt >= 0 ? 1 : o.aiming ? 0 : -1,
         o.broken, o.deadAt < 0 ? 0 : Math.round((time - o.deadAt) / 100) / 10 + 0.01);
     }
     return { t: 'bots', time, g, d: this.drones.msg(time, id, x, z), f };
@@ -714,4 +769,11 @@ export class GuardianServer {
   crashes(): Kill[] {
     return this.drones.crashes();
   }
+}
+
+/** How far (m) (px, pz) is from the segment (ax, az)–(bx, bz). */
+function segDist(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / l2)) : 0;
+  return Math.hypot(px - ax - dx * t, pz - az - dz * t);
 }

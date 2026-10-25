@@ -2385,3 +2385,20 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   bar, and a shield had to take the bite back off the meter.
 - **For now** every blow does `KILL` (all of it); crawlers bite for `BITE_DAMAGE`. Health is server-side only and
   never shown or saved: no hit leaves you hurt yet.
+
+## Crawler lunge
+
+- **What:** a crawler no longer bites on touch. Within `reach` (5 m) of its prey it stops and crouches for
+  `LUNGE_WIND_MS` (0.5 s), turning to face you, then springs in a straight line at where you are then (`LUNGE_SPEED`
+  18 m/s, `LUNGE_OVER` 2 m past it). It bites (`BITE_DAMAGE`) whoever it passes within `LUNGE_HIT_R` (1 m) of and
+  backs off as before; a miss leaves it standing for `LUNGE_REST_MS` (0.7 s). One lunge per `BITE_MS`. Server:
+  `lunge` in server/guardians.ts; constants in shared/guardians.ts.
+- **Sent** in the crawler's `gun` slot of 'bots' (`LUNGE_NONE/WIND/DASH/REST`). The client crouches it (sinks, rears
+  back and quivers; noses down springing, src/world/guardians.ts) and plays a quickening rattle (`guardianSound.rattle`,
+  −24.8 LUFS momentary close by, −13.4 dBTP) as soon as the latest message says it crouches, since the drawn walkers
+  are `BOT_DELAY_MS` behind and the wind-up would be half over. The snap and shake now come when a crawler that was
+  lunging at you stops close by.
+- **Dodging** (headless sim, a pack of six summoned on a player for 30 s, 20 runs): standing still every lunge hits;
+  walking straight away 97% (the overshoot catches you); strafing round at 7.5 m/s 42%; zig-zagging 67%. Move across
+  its line, not away from it. A first version crept in while crouched and locked from 0–2 m, which no strafe dodges;
+  it holds still now.

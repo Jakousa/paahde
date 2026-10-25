@@ -7,7 +7,8 @@
 //   sight of one (or get caught in a drone's searchlight near one) and it hunts you, slower than you can walk; if one
 //   of its feet comes down on you, you're crushed (FOOT_CRUSH_R; under its body, between the legs, you're safe).
 // - Crawlers: player-sized spiders swarming every crash site someone is near. Faster than you run (slide away),
-//   the pack spreads out and comes at you from all sides (server/pack.ts); one bite kills (BITE_DAMAGE, shared/health.ts); they give up after a short chase or once
+//   the pack spreads out and comes at you from all sides (server/pack.ts); close in, each crouches and lunges straight
+//   at you (LUNGE_WIND_MS): keep moving and it misses; one bite kills (BITE_DAMAGE, shared/health.ts); they give up after a short chase or once
 //   you're well away from their site.
 //
 // While it hunts you and sees you, a guardian's cannon (hung under its body, turning to follow you) charges for
@@ -97,18 +98,29 @@ export function restSpot<T extends { x: number; z: number }>(x: number, z: numbe
 /**
  * The walker kinds. `scale` multiplies every length above (the model is built at 1). Speeds in m/s (a player runs
  * 7.5, slides 15), turn rates in rad/s; `sight`: notices someone out in the open this close (m), from any side;
- * `reach`: gets this close (m, horizontally) to its prey: a crawler bites, a guardian stands over you; `gun`: has the cannon.
+ * `reach`: gets this close (m, horizontally) to its prey: a crawler crouches to lunge (LUNGE_WIND_MS), a guardian stands
+ * over you; `gun`: has the cannon.
  */
 export const KINDS = [
   { name: 'guardian', scale: 1.5, patrol: 2.8, hunt: 5.2, turn: 0.3, huntTurn: 0.6, sight: 65, reach: 7.5, gun: true },
-  { name: 'crawler', scale: 0.11, patrol: 2.6, hunt: 9.5, turn: 3, huntTurn: 9, sight: 12, reach: 1.5, gun: false },
+  { name: 'crawler', scale: 0.11, patrol: 2.6, hunt: 9.5, turn: 3, huntTurn: 9, sight: 12, reach: 5, gun: false },
 ] as const;
 export const GUARDIAN = 0, CRAWLER = 1;
 export type Kind = typeof GUARDIAN | typeof CRAWLER;
-/** A crawler's bite: damage (shared/health.ts), at most every BITE_MS. After a bite, or chasing for CRAWLER_CHASE_MS,
- *  it backs off for CRAWLER_CALM_MS. One bite kills. */
+/** A crawler's bite: damage (shared/health.ts), a lunge at most every BITE_MS. After a bite, or chasing for
+ *  CRAWLER_CHASE_MS, it backs off for CRAWLER_CALM_MS. One bite kills. */
 export const BITE_DAMAGE = KILL;
 export const BITE_MS = 1500;
+/** The lunge: within `reach` of you a crawler stops and crouches, turning to face you, for LUNGE_WIND_MS; then it springs in a straight line at where you are then, at LUNGE_SPEED, LUNGE_OVER m past it.
+ *  It bites whoever it passes within LUNGE_HIT_R of (m, horizontally); keep moving and it misses. A miss leaves it
+ *  standing for LUNGE_REST_MS. */
+export const LUNGE_WIND_MS = 500;
+export const LUNGE_SPEED = 18;
+export const LUNGE_OVER = 2;
+export const LUNGE_HIT_R = 1;
+export const LUNGE_REST_MS = 700;
+/** A crawler's lunge as sent ('bots' gun, shared/protocol.ts): none, crouched to spring, springing, standing after. */
+export const LUNGE_NONE = -1, LUNGE_WIND = 1, LUNGE_DASH = 2, LUNGE_REST = 3;
 export const CRAWLER_CHASE_MS = 10_000;
 export const CRAWLER_CALM_MS = 2500;
 

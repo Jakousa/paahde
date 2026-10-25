@@ -17,7 +17,7 @@ import { harvesterSound } from './harvesterSound';
 import { SPEED } from '../shared/harvester.ts';
 import { jetAt, jetPose, type JetPose } from '../shared/jets.ts';
 import { SPEED_OF_SOUND } from './acoustics';
-import { CHARGE_MS, CRAWLER, FIRE_R, FOOT_CRUSH_R, GUARDIAN, KINDS } from '../shared/guardians.ts';
+import { CHARGE_MS, CRAWLER, FIRE_R, FOOT_CRUSH_R, GUARDIAN, KINDS, LUNGE_DASH, LUNGE_HIT_R, LUNGE_WIND, LUNGE_WIND_MS } from '../shared/guardians.ts';
 import { guardianSound } from './guardianSound';
 import { rifleSound } from './rifleSound';
 import { tyreDust } from './tyreDust';
@@ -69,6 +69,9 @@ export class GuardianFx {
   /** An epic battle: a guardian on the hunt within its cannon's range (FIRE_R). */
   epic = false;
   private crawled = new Set<number>();
+  /** Crawlers crouched to lunge (as of the latest message), and springing at us (as drawn). */
+  private crouched = new Set<number>();
+  private lunging = new Set<number>();
   /** A harvester charging within RAM_NEAR m of us. */
   private rammed = false;
   /** Enemies alive last frame and this frame (src/kills.ts keys), to catch the moment one dies. */
@@ -279,24 +282,40 @@ export class GuardianFx {
     this.guardians.update(gs, dt, focus);
     this.drones.update(ds, dt, focus, net.storms, t);
     guardianSound.drones(ds.filter((d) => !d.down), this.ear); // shot-down ones are quiet
+    // A crawler crouching to lunge rattles as soon as we hear of it: drawn BOT_DELAY_MS late, it would be half over.
+    const latest = guardiansAt(net.bots, net.serverTime());
+    for (const id of this.crouched) if (!latest.some((g) => g.id === id)) this.crouched.delete(id);
+    for (const g of latest) {
+      if (g.kind !== CRAWLER || g.dead) continue;
+      if (g.gun === LUNGE_WIND && !this.crouched.has(g.id) && Math.hypot(g.x - focus.x, g.z - focus.z) < 40) {
+        guardianSound.rattle(g.x, camera.position.y - 1, g.z, LUNGE_WIND_MS / 1000);
+      }
+      if (g.gun === LUNGE_WIND) this.crouched.add(g.id);
+      else this.crouched.delete(g.id);
+    }
     // The horn, once, when one starts hunting you; the cannon's whine as it charges.
     for (const g of gs) {
-      if (g.gun === 1 && !this.charging.has(g.id) && Math.hypot(g.x - focus.x, g.z - focus.z) < 250) {
+      if (g.kind === GUARDIAN && g.gun === 1 && !this.charging.has(g.id) && Math.hypot(g.x - focus.x, g.z - focus.z) < 250) {
         guardianSound.charge(g.x, camera.position.y + 10, g.z, (CHARGE_MS - BOT_DELAY_MS) / 1000);
       }
-      if (g.gun === 1) this.charging.add(g.id);
+      if (g.kind === GUARDIAN && g.gun === 1) this.charging.add(g.id);
       else this.charging.delete(g.id);
       if (g.kind === CRAWLER) {
-        // Crawlers chitter when they come for you, and snap when they get you (the server's bite lands about then).
+        // Crawlers chitter when they come for you, and snap when a lunge at you gets you (it backs off as it bites, so
+        // the frame it lands in has it no longer lunging).
         const d = Math.hypot(g.x - focus.x, g.z - focus.z);
         if (g.hunt === 2 && !this.crawled.has(g.id)) {
           guardianSound.chitter(g.x, camera.position.y - 1, g.z, false);
           if (!this.crawled.size) this.onAggro('crawler');
         }
-        if (g.hunt === 2 && d < KINDS[CRAWLER].reach + 0.8 && performance.now() - this.bitAt > 1000) {
-          this.bitAt = performance.now();
-          guardianSound.chitter(g.x, camera.position.y - 1, g.z, true);
-          this.shake = Math.max(this.shake, BITE_SHAKE);
+        if (g.gun === LUNGE_DASH && g.hunt === 2) this.lunging.add(g.id);
+        else if (g.gun !== LUNGE_DASH) {
+          if (this.lunging.has(g.id) && d < LUNGE_HIT_R + 1.5 && performance.now() - this.bitAt > 1000) {
+            this.bitAt = performance.now();
+            guardianSound.chitter(g.x, camera.position.y - 1, g.z, true);
+            this.shake = Math.max(this.shake, BITE_SHAKE);
+          }
+          this.lunging.delete(g.id);
         }
         if (g.hunt === 2) this.crawled.add(g.id);
         else this.crawled.delete(g.id);
@@ -310,6 +329,7 @@ export class GuardianFx {
       else this.hunted.delete(g.id);
     }
     for (const id of this.crawled) if (!gs.some((g) => g.id === id)) this.crawled.delete(id);
+    for (const id of this.lunging) if (!gs.some((g) => g.id === id)) this.lunging.delete(id);
     for (const id of this.hunted) if (!gs.some((g) => g.id === id)) this.hunted.delete(id);
     const spotted = ds.some((d) => d.lock === 2);
     if (spotted && !this.locked) {

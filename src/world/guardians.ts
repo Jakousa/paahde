@@ -14,7 +14,8 @@
 //   ahead of the rest spot (by half a step's travel), so the feet lead the body instead of dragging behind it.
 // - A swing follows the rest spot as it moves, lifted on a sine arc, eased in and out; it lands with a thud
 //   (onFootfall: sound, dust, camera shake) and the body dips on a spring under the weight.
-// - The body rides BODY_H over the average height of its feet, pitched and rolled to the plane through them.
+// - The body rides BODY_H over the average height of its feet, pitched and rolled to the plane through them. A crawler
+//   crouching to lunge sinks and rears back, quivering, and noses down as it springs (shared/guardians.ts LUNGE_*).
 // - Each leg is two-bone IK from the hip to the ankle above the foot, the knee bent up and outwards: hip turret
 //   yawed to the foot, femur and tibia aimed with explicit bases, the foot flat on the sand.
 //
@@ -33,7 +34,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  ANKLE, BODY_H, CRAWLER, FEMUR, footTop, GUN_DEPRESS, GUN_MOUNT, GUN_PIVOT, KINDS, MUZZLE, REST_R, SETTLE, SOCKETS, STEP_DIST, STEP_MAX, STEP_MIN, TIBIA,
+  ANKLE, BODY_H, CRAWLER, FEMUR, LUNGE_DASH, LUNGE_WIND, footTop, GUN_DEPRESS, GUN_MOUNT, GUN_PIVOT, KINDS, MUZZLE, REST_R, SETTLE, SOCKETS, STEP_DIST, STEP_MAX, STEP_MIN, TIBIA,
 } from '../../shared/guardians.ts';
 import { heightAt, normalAt } from '../../shared/terrain.ts';
 import { HIT_PAD, weakPoints, WRECK_S, WRECK_SINK, type WeakPoint } from '../../shared/rifle.ts';
@@ -282,6 +283,9 @@ class Walker {
   vx = 0; vz = 0;
   y: number; vy = 0;
   pitch = 0; roll = 0;
+  /** A crawler's lunge (shared/guardians.ts LUNGE_*), eased: crouched to spring, springing. */
+  private crouch = 0;
+  private spring = 0;
   still = 0;
   hunt = 0;
   /** Built from guardian.glb, not the stand-in boxes. */
@@ -541,7 +545,11 @@ class Walker {
     this.roll += (clamp(Math.atan(sr / Math.max(1, rr))) - this.roll) * tk;
     // Sags a little while feet are off the ground, and sways with the stride.
     const sag = this.legs.reduce((a, l) => a + (l.t >= 0 ? Math.sin(Math.PI * l.t) : 0), 0) * 0.35 * S;
-    const target = gy + BODY_H * S - sag;
+    // A crawler crouching to lunge sinks low and rears back, quivering; springing, it noses down.
+    const ek = 1 - Math.exp(-dt * 10);
+    this.crouch += ((f.gun === LUNGE_WIND && f.kind === CRAWLER ? 1 : 0) - this.crouch) * ek;
+    this.spring += ((f.gun === LUNGE_DASH && f.kind === CRAWLER ? 1 : 0) - this.spring) * ek;
+    const target = gy + BODY_H * S * (1 - 0.35 * this.crouch) - sag;
     this.vy += ((target - this.y) * (SPRING_K / (T * T)) - this.vy * (SPRING_C / T)) * dt;
     this.y += this.vy * dt;
     if (Math.abs(target - this.y) > 6 * S) this.y = target;
@@ -551,7 +559,8 @@ class Walker {
     const jolt = Math.sin(this.flinch * Math.PI) * 0.12 * this.flinch;
     const fz = this.flinchX * s + this.flinchZ * c, fx = this.flinchX * c - this.flinchZ * s;
     this.body.position.set(this.x + this.flinchX * jolt * 2 * S, this.y, this.z + this.flinchZ * jolt * 2 * S);
-    this.body.rotation.set(this.pitch - fz * jolt, this.yaw, this.roll + fx * jolt, 'YXZ');
+    const quiver = this.crouch * 0.04 * Math.sin(performance.now() / 18);
+    this.body.rotation.set(this.pitch - fz * jolt - 0.3 * this.crouch + 0.25 * this.spring, this.yaw + quiver, this.roll + fx * jolt, 'YXZ');
     this.body.updateMatrixWorld();
     for (const leg of this.legs) this.pose(leg, dt);
 

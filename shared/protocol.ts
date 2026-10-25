@@ -324,7 +324,8 @@ export type ServerMsg =
   | { t: 'harvesters'; harvesters: Harvester[] }
   // Guardians and night drones (shared/guardians.ts) within reach, about 10 times a second, at server time `time`.
   // g: [id, kind, legs, x, z, yaw, hunt, ax, ay, az, gun, broken, dead] per walker (kind: shared/guardians.ts KINDS
-  // index; (ax, ay, az) where its cannon aims; gun -1 idle, 0 aiming, 1 charging; broken: bit i set once weak point i
+  // index; (ax, ay, az) where its cannon aims; gun -1 idle, 0 aiming, 1 charging; a crawler's gun is its lunge,
+  // shared/guardians.ts LUNGE_*; broken: bit i set once weak point i
   // is shot (shared/rifle.ts); dead: 0 alive, else seconds since it died + 0.01);
   // d: [id, x, y, z, yaw, dx, dy, dz, lock, hurt, down, jammed] per drone ((dx, dy, dz) the searchlight's unit direction;
   // hurt: rifle hits taken (shared/rifle.ts DRONE_HP); down: 0 flying, else seconds since it was shot down + 0.01;

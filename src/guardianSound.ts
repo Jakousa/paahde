@@ -3,6 +3,7 @@
 //   short metal clank, placed at the foot in 3D and heard late by the distance at the speed of sound, duller
 //   further off. Hundreds of metres away you hear them before you see them land; it sells the size.
 // - horn: a guardian starting to hunt you sounds a low brass blare (detuned saws through a low-pass).
+// - crawlers: a chitter when one comes for you, a quickening rattle as it crouches to lunge, a snap when it bites.
 // - drones: the nearest few buzz where they hover (rotor saw + whine); one locking on to you gives a short
 //   rising double chirp, once (not a siren: the beam and the HUD say the rest).
 // - missiles: a rocket's roar flying with each one (looped noise: a low rumble and a jet's hiss, fluttering), louder
@@ -14,7 +15,7 @@
 // src/audio.ts; levels ramped. Measured at the default volume (OfflineAudioContext + ffmpeg ebur128): a step
 // every 1.2 s ≈ −22 LUFS within 12 m and −27 at 20 m (peaks −4 dBFS close up); one drone at 15 m −31; the
 // chirp −26 (momentary); the horn at 60 m −25; a missile's roar (before panning) −20 within 30 m, −26.5 at 60 m,
-// −32 at 100 m, −45 at 300 m.
+// −32 at 100 m, −45 at 300 m; a crawler's lunge rattle close by −24.8 momentary (−13.4 dBTP).
 import { audio } from './audio';
 import { placed, SPEED_OF_SOUND } from './acoustics';
 import type { JetKind } from '../shared/jetbreak.ts';
@@ -59,6 +60,8 @@ const CHARGE_GAIN = 0.035;
 const TICK_HEAR = 30;
 const TICK_GAIN = 0.12;
 const CHITTER_GAIN = 0.05;
+/** A crawler crouching to lunge: the warning to move, so it carries over the fight. */
+const RATTLE_GAIN = 0.12;
 
 type Buzz = { id: number; osc: OscillatorNode; whine: OscillatorNode; gain: GainNode; panner: PannerNode };
 type Roar = { srcs: AudioBufferSourceNode[]; gain: GainNode; hiss: GainNode; air: BiquadFilterNode; panner: PannerNode; whine?: OscillatorNode };
@@ -153,6 +156,30 @@ class GuardianSound {
     n.connect(bp).connect(g).connect(panner(ctx, x, y, z, 3)).connect(out);
     n.start(t, Math.random());
     n.stop(t + 0.05);
+  }
+
+  /** A crawler at (x, y, z) crouches to lunge, springing `s` seconds from now: a dry rattle, quickening and rising to
+   *  the spring. */
+  rattle(x: number, y: number, z: number, s: number) {
+    const ctx = audio.ctx, out = audio.out;
+    if (!ctx || !out || !audio.running || s <= 0) return;
+    const t = ctx.currentTime;
+    const p = panner(ctx, x, y, z, 4);
+    p.connect(out);
+    // Clicks closer and closer together, each a little higher and louder.
+    for (let at = 0, gap = 0.07; at < s; at += gap, gap = Math.max(0.018, gap * 0.85)) {
+      const k = at / s, when = t + at + Math.random() * 0.006;
+      const o = ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.setValueAtTime(1100 + 1400 * k + Math.random() * 300, when);
+      o.frequency.exponentialRampToValueAtTime(500 + 400 * k, when + 0.025);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(RATTLE_GAIN * (0.6 + 0.8 * k), when);
+      g.gain.exponentialRampToValueAtTime(0.001, when + 0.025);
+      o.connect(g).connect(p);
+      o.start(when);
+      o.stop(when + 0.03);
+    }
   }
 
   /** A crawler at (x, y, z) goes for you (`bite`: and gets you): a rattling chitter, a snap of mandibles. */
