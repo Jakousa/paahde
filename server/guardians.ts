@@ -11,7 +11,7 @@ import type { Vortex } from '../shared/vortex.ts';
 import { PACK_BACK_S } from '../shared/enemies.ts';
 import { coreCrashSites, crashSite, type CrashSite, LEVEL_R } from '../shared/crashsites.ts';
 import {
-  ALERT_R, BITE_HEAT, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CRAWLER, CRAWLER_CALM_MS,
+  ALERT_R, BITE_DAMAGE, BITE_MS, BLAST_R, BODY_H, BOLT_R, BOLT_RANGE, BOLT_SPEED, CHARGE_MS, CRAWLER, CRAWLER_CALM_MS,
   CRAWLER_CHASE_MS, CRUSH_SLACK, FIRE_MS, FIRE_R, footTop, GUARDIAN, GUN_DEPRESS, gunPivot, KINDS, type Kind, lineOfSight,
   MUZZLE, REST_R, restSpot, SETTLE, STEP_DIST, STEP_MAX, STEP_MIN,
 } from '../shared/guardians.ts';
@@ -259,7 +259,7 @@ export class GuardianServer {
 
   /**
    * Advance by dt seconds at server time `now` (ms), wall-clock time of day `tod`. Returns who was bitten (player id
-   * → heat), shot by a bolt or blown up by a missile, and the bolts and missiles fired and burst.
+   * → damage), shot by a bolt or blown up by a missile, and the bolts and missiles fired and burst.
    */
   tick(dt: number, now: number, tod: number, players: BotPlayer[]): {
     bitten: Map<number, number>; shot: number[]; blasted: number[]; events: BoltEvent[];
@@ -459,7 +459,7 @@ export class GuardianServer {
           if (now - g.bitAt >= BITE_MS) {
             // Bites, and backs off.
             g.bitAt = now;
-            bitten.set(p.id, (bitten.get(p.id) ?? 0) + BITE_HEAT);
+            bitten.set(p.id, (bitten.get(p.id) ?? 0) + BITE_DAMAGE);
             g.prey = -1;
             g.calmUntil = now + CRAWLER_CALM_MS;
             this.patrolPoint(g);

@@ -104,6 +104,8 @@ when you find it stale.
 
 - `shared/sun.ts` — day clock + sun elevation (client sky and server heat); `shared/water.ts` — thirst/canteen; where
   it fills: `shared/wells.ts` `waterAt` (a pump, or a running electric well)
+- `shared/health.ts` — health (`HEALTH_MAX`), apart from heat: blows go through `hurt` in server/world.ts (a shield
+  takes each one whole), heatstroke, choking and vortices take it all (`die`); server-side only for now
 - `shared/temperature.ts` — air/felt °C by time of day (drives thirst); `shared/shade.ts` — sun ray march (shade;
   counts huts, wrecks, players and bikes, built tarps)
   tuning, drained and validated in `server/water.ts`, HUD + `playerHands` in `src/water.ts`

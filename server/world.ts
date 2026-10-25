@@ -64,8 +64,8 @@ import { CrashServer } from './crash.ts';
 import { LAB } from '../shared/lab.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
 import { TerrainServer } from './terrain.ts';
-import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
-import { HEAT_MAX } from '../shared/water.ts';
+import { drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
+import { HEALTH_MAX, KILL } from '../shared/health.ts';
 import { TIERS } from '../shared/salvage.ts';
 import type { Caster } from '../shared/shade.ts';
 import { heightAt } from '../shared/terrain.ts';
@@ -138,6 +138,7 @@ type Player = {
   pickups: PickupLimit; // server/pickupLimit.ts
   input: number; // last input bitmask (0 while idle), for sprint drain
   heat: Heat; // server/water.ts
+  health: number; // shared/health.ts: what blows take off (hurt); 0 is death
   choke: number; // seconds of a mega-storm breathed out in the open (shared/storm.ts frontExposure); CHOKE_S kills
   gassed: number; // seconds of poison gas breathed (shared/gas.ts gasExposure); GAS_S kills
   lastTend: { at: number };
@@ -245,7 +246,7 @@ wss.on('connection', (ws) => {
     if (msg.t === 'drop' && p) return onDrop(p, msg.box, msg.slot);
     if (msg.t === 'debugGear' && p) return onDebugGear(p, msg.tier);
     if (msg.t === 'debugGive' && p) return onDebugGive(p, msg.kind, msg.n, msg.tier);
-    if (msg.t === 'debugHit' && p) return die(p, 'laser', [0, 3, 6]);
+    if (msg.t === 'debugHit' && p) return hurt(p, 'laser', KILL, [0, 3, 6]);
     if (msg.t === 'debugVortexVisit' && p && !p.down && !p.state.riding) {
       // Out on the sand 600 m from the nearest sand vortex (just outside its pull), on the side you're on.
       const now = performance.now();
@@ -341,7 +342,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   const p: Player = {
     id: nextId++, browserId, color, look: isLook(wantedLook) ? wantedLook : 0, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
     tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, pickups: pickupLimit(), lastTend: { at: 0 }, input: 0,
-    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, gassed: 0, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: named.name, ready: false, savedAt: Date.now(), jam: null,
+    heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, gassed: 0, health: HEALTH_MAX, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: named.name, ready: false, savedAt: Date.now(), jam: null,
   };
   players.set(ws, p);
   const loading = setTimeout(() => { if (!p.ready) ws.close(1008, 'loading timeout'); }, 180_000);
@@ -486,11 +487,20 @@ const FLING_ROUND = 18;
 const FLING_OUT = 5;
 const FLING_UP = 32;
 
-/** Drop where they stand (off the bike, stopped) for DOWN_MS, as a ragdoll thrown by `push`; then respawn().
+/** A blow of `damage` (shared/health.ts): a shield plate takes it whole (shielded), else it comes off their health
+ *  and they die of it at 0. `push` and `bolt` as for die(). */
+function hurt(p: Player, cause: DeathCause, damage: number, push: [number, number, number] = [0, 0, 0], bolt?: number) {
+  if (p.down || !p.ready || lives <= 0 || shielded(p, push)) return;
+  p.health = Math.max(0, p.health - damage);
+  if (p.health <= 0) die(p, cause, push, bolt);
+}
+
+/** Their health is gone: by a blow (hurt), or all at once by heatstroke, choking or a vortex, which no shield stops.
+ *  Drop where they stand (off the bike, stopped) for DOWN_MS, as a ragdoll thrown by `push`; then respawn().
  *  `bolt`: the guardian's bolt that did it, which the client lets reach them first. */
 function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 0, 0], bolt?: number) {
   if (p.down || !p.ready || lives <= 0) return;
-  if (cause !== 'heat' && cause !== 'storm' && cause !== 'gas' && cause !== 'vortex' && shielded(p, push)) return;
+  p.health = 0;
   p.down = { until: Date.now() + DOWN_MS, push };
   crash.leaveAll(p.id);
   p.choke = 0;
@@ -515,7 +525,7 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   if (lives <= 0) gameOver();
 }
 
-/** A killing blow (not heatstroke) on someone wearing a shield plate: it takes the blow, its last one (shared/gear.ts
+/** A blow (hurt) on someone wearing a shield plate: it takes the whole blow, its last one (shared/gear.ts
  *  shieldSaves) breaking it (SHIELD_BREAKS), and for a moment after nothing else can hurt them (shieldGraceMs). True
  *  if they live. */
 function shielded(p: Player, push: [number, number, number]): boolean {
@@ -527,9 +537,6 @@ function shielded(p: Player, push: [number, number, number]): boolean {
   p.shieldUntil = now + ms;
   const broke = items.wearShield(p.browserId);
   sendBox(p, 'equip');
-  // A crawler's bites fill the heat meter: the blow is taken, so take them back off.
-  p.heat.heat = Math.min(p.heat.heat, HEAT_MAX * 0.6);
-  send(p.ws, waterMsg(p.heat));
   const s = p.state;
   const msg: ServerMsg = { t: 'shieldBreak', id: p.id, x: round4(s.x), y: round4(s.y), z: round4(s.z), push, tier, ms, ...(broke ? {} : { held: true as const }) };
   for (const o of players.values()) if (Math.hypot(o.state.x - s.x, o.state.z - s.z) < BOT_SEND_R) send(o.ws, msg);
@@ -550,7 +557,7 @@ function gameOver() {
 /** The client saw a guardian's foot come down on it (the feet are client IK). */
 function onStomped(p: Player, g: number) {
   const s = p.state;
-  if (!p.down && p.ready && guardians.stomp(g, { id: p.id, x: s.x, y: s.y, z: s.z, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }, performance.now())) die(p, 'guardian');
+  if (!p.down && p.ready && guardians.stomp(g, { id: p.id, x: s.x, y: s.y, z: s.z, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }, performance.now())) hurt(p, 'guardian', KILL);
 }
 
 /** Where `p` comes back after dying: beside their spawn point, a bedroll (anyone's, server/placed.ts spawnOf), if they
@@ -578,6 +585,7 @@ function respawn(p: Player) {
   p.down = null;
   const home = homeOf(p);
   p.state = spawnState(home.x, home.z, home.y);
+  p.health = HEALTH_MAX;
   revive(p.heat, Date.now());
   save(p);
   send(p.ws, { t: 'respawn' });
@@ -611,19 +619,18 @@ function tickBots(elapsed: number, now: number, tod: number) {
   }
   for (const p of players.values()) {
     const c = crushed.find((o) => o.id === p.id);
-    if (c) die(p, 'harvester', c.push);
+    if (c) hurt(p, 'harvester', KILL, c.push);
     else if (r.shot.includes(p.id)) {
       const hit = boltPush(p, r.events, 'boom', BLAST_R);
-      die(p, 'laser', hit.push, hit.id);
-    } else if (r.blasted.includes(p.id)) die(p, 'missile', boltPush(p, r.events, 'blast', MISSILE_BLAST_R).push);
-    else if (r.bitten.has(p.id) && bite(p.heat, r.bitten.get(p.id)!)) die(p, 'crawler');
-    else if (r.bitten.has(p.id)) send(p.ws, waterMsg(p.heat));
+      hurt(p, 'laser', KILL, hit.push, hit.id);
+    } else if (r.blasted.includes(p.id)) hurt(p, 'missile', KILL, boltPush(p, r.events, 'blast', MISSILE_BLAST_R).push);
+    else if (r.bitten.has(p.id)) hurt(p, 'crawler', r.bitten.get(p.id)!);
   }
   for (const e of r.events) if ((e.msg.t === 'boom' && e.msg.ground) || e.msg.t === 'blast') terrain.crater(e.msg.x, e.msg.z, CRATER_R, CRATER_MM);
   const b = bosses.tick(dt, now, list);
   for (const p of players.values()) {
     const k = b.kills.find((o) => o.id === p.id);
-    if (k) die(p, k.cause, k.push);
+    if (k) hurt(p, k.cause, KILL, k.push);
     for (const m of bosses.msgs(now, p.id, p.state.x, p.state.z)) send(p.ws, m);
   }
   bossOut(b);

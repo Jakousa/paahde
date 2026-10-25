@@ -109,14 +109,6 @@ export function setBottle(t: Heat, max: number): boolean {
   return true;
 }
 
-/** A crawler's bite (shared/guardians.ts): `heat` more on the meter. True if that was heatstroke. */
-export function bite(t: Heat, heat: number): boolean {
-  if (t.off || Date.now() - t.diedAt < RESPAWN_GRACE_MS) return false;
-  t.heat = Math.min(HEAT_MAX, t.heat + heat);
-  t.sentAt = Date.now();
-  return t.heat >= HEAT_MAX;
-}
-
 /** Cooled right down after dying, with a full bottle. */
 export function revive(t: Heat, now: number) {
   t.heat = 0;

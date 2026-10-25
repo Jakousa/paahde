@@ -1861,11 +1861,11 @@ drawn by `src/world/shelters.ts`).
   sidearm), omitted when all Scrap. Gear slots in the Tab inventory get the tier's rarity colour too.
 - **Shield plate** (`shield`, new `armor` equipment slot, found at crawler sites and in caches): a torch-cut shard of
   ship hull on canvas padding with a copper-coil emitter and a cell (tools/blender/finds.py `build_shield`, worn on the
-  chest from Spine2, lies on its back as a find). A killing blow that isn't heatstroke (`die` → `shielded`) is taken by
+  chest from Spine2, lies on its back as a find). A blow (`hurt` → `shielded`; not heatstroke, choking or a vortex) is taken by
   it instead; it takes `shieldSaves` of them (its tier + 1: 1 Scrap .. 4 Space-grade; `Item.worn` counts them, kept in
   the DB and on the sand, and starts over when it breaks; `held` in `shieldBreak` until then: field and ring, no shards
   or crack), and its last one breaks it: the cell burns out and the plate cracks (`SHIELD_BREAKS`: those slots empty, repair at the workbench), a
-  crawler's bites come back off the heat meter, and nothing hurts you for `shieldGraceMs` (1.5 s Scrap .. 5 s
+  and nothing hurts you for `shieldGraceMs` (1.5 s Scrap .. 5 s
   Space-grade). Everyone near gets `shieldBreak`: the emitter's field flashes round you in the lens's tier colour and
   hangs on for the grace, flickering out at the end, hull shards fly, a crack, a glassy ring and a thump (−24.7 LUFS,
   −1.3 dBTP); the wearer gets a jolt and a flash over the screen.
@@ -2374,3 +2374,14 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
 - Gaps: the first-person gloves (hands.glb) don't follow the gloves chosen; the look isn't stored by the server (the
   browser sends it every join).
 
+## Health
+
+- **What:** players have health (`shared/health.ts`, `HEALTH_MAX` 100), apart from the heat meter. Blows (crawler
+  bites, a guardian's foot, bolts, missiles, harvesters, the bosses) go through `hurt` in server/world.ts: a shield
+  plate takes a blow whole (`shielded`), else its damage comes off health, and at 0 you die. Heatstroke, choking in a
+  storm front or poison gas, and a vortex's throw take it all at once (`die`), and no shield stops them. Full again on
+  respawn.
+- **Before:** a crawler's bite filled the heat meter (`BITE_HEAT` = `HEAT_MAX`), so bites and heatstroke shared one
+  bar, and a shield had to take the bite back off the meter.
+- **For now** every blow does `KILL` (all of it); crawlers bite for `BITE_DAMAGE`. Health is server-side only and
+  never shown or saved: no hit leaves you hurt yet.

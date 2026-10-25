@@ -7,7 +7,7 @@
 //   sight of one (or get caught in a drone's searchlight near one) and it hunts you, slower than you can walk; if one
 //   of its feet comes down on you, you're crushed (FOOT_CRUSH_R; under its body, between the legs, you're safe).
 // - Crawlers: player-sized spiders swarming every crash site someone is near. Faster than you run (slide away),
-//   the pack spreads out and comes at you from all sides (server/pack.ts); one bite kills (BITE_HEAT fills the heat meter, shared/water.ts); they give up after a short chase or once
+//   the pack spreads out and comes at you from all sides (server/pack.ts); one bite kills (BITE_DAMAGE, shared/health.ts); they give up after a short chase or once
 //   you're well away from their site.
 //
 // While it hunts you and sees you, a guardian's cannon (hung under its body, turning to follow you) charges for
@@ -24,7 +24,7 @@
 import { collideCrash } from './crashsites.ts';
 import { collideScrap } from './scrap.ts';
 import { heightAt } from './terrain.ts';
-import { HEAT_MAX } from './water.ts';
+import { KILL } from './health.ts';
 import { indoors } from './shelters.ts';
 
 // --- Guardian body and legs (metres; must match tools/blender/guardians.py) ---
@@ -105,9 +105,9 @@ export const KINDS = [
 ] as const;
 export const GUARDIAN = 0, CRAWLER = 1;
 export type Kind = typeof GUARDIAN | typeof CRAWLER;
-/** A crawler's bite: heat added (HEAT_MAX 100), at most every BITE_MS. After a bite, or chasing for CRAWLER_CHASE_MS,
+/** A crawler's bite: damage (shared/health.ts), at most every BITE_MS. After a bite, or chasing for CRAWLER_CHASE_MS,
  *  it backs off for CRAWLER_CALM_MS. One bite kills. */
-export const BITE_HEAT = HEAT_MAX;
+export const BITE_DAMAGE = KILL;
 export const BITE_MS = 1500;
 export const CRAWLER_CHASE_MS = 10_000;
 export const CRAWLER_CALM_MS = 2500;
