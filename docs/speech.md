@@ -36,7 +36,7 @@ rate and punctuation pauses at the top of `src/speech.ts`), so a remark is heard
   none, the first night) or a danger the player may not have noticed (overheating, a storm coming). Don't
   narrate what the player can plainly see.
 - **Rarely.** One line at a time, a pause after each, and a quiet start after joining. A remark that matters only
-  once is said once per browser (no `again`). One that can come back (overheating) has a long `again`, measured
+  once is said once per browser (no `again`), or once per world on it (`world: true`: arriving, wanting a shelter). One that can come back (overheating) has a long `again`, measured
   in minutes.
 - **Conditions decide, not just events.** A line has an event plus a condition on what the player has and where they
   are (`SpeechState`). Events: `see` (a find in reach), `near` (a crash-site machine or wreck in reach), `got` (an

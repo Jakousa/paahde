@@ -4,8 +4,8 @@
 //
 // A line answers an event (`on`) when its condition (`when`) holds at that moment. Lines sharing an `id` are
 // variants of one remark (e.g. by day and by night, or the same thing met two ways): the first whose condition
-// holds is said, and they share its memory. Without `again` a remark is said once ever on this browser; with it,
-// at most once per `again` ms. `say` may list several wordings; one is picked at random.
+// holds is said, and they share its memory. Without `again` a remark is said once ever on this browser (with `world`,
+// once per world on it); with `again`, at most once per `again` ms. `say` may list several wordings; one is picked at random.
 import type { Loot } from '../shared/loot.ts';
 import type { Vehicle } from '../shared/vehicles.ts';
 import type { Item, Slots } from '../shared/items.ts';
@@ -85,6 +85,8 @@ export type Line = {
     when?: (s: SpeechState, arg: SpeechEvents[E]) => boolean;
     say: string | string[];
     again?: number;
+    /** Said once per world rather than once ever (no `again`): what belongs to arriving in each new world. */
+    world?: true;
   };
 }[keyof SpeechEvents];
 
@@ -111,8 +113,8 @@ const killed = (kind: Kill | 'boss', again: number): Line =>
 
 /** In order: for one event, the first line whose condition holds (and isn't resting) is said. */
 export const LINES: Line[] = [
-  // The first thing said on arriving (then the inventory hint: src/main.ts).
-  { id: 'start', on: 'tick', when: (s) => !s.dead, say: TEXT.speech.start },
+  // The first thing said on arriving in a world (then the inventory hint: src/main.ts).
+  { id: 'start', on: 'tick', when: (s) => !s.dead, say: TEXT.speech.start, world: true },
 
   // A water bottle, and we have none: the first thing anyone needs out here.
   { id: 'bottle', on: 'see', when: (s, l) => l.kind === 'canteen' && !carries(s, 'canteen') && s.day,

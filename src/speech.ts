@@ -1,13 +1,16 @@
 // The player character talking to themselves: a subtitle at the bottom of the screen when something happens that
 // they'd have a word about (the lines, their conditions and how often: src/speechLines.ts; how to write them:
 // docs/speech.md). Only one line at a time, with a pause after it; an event that comes while talking is dropped
-// (a `tick` remark just comes up again later). Remarks said once are remembered on this browser (localStorage).
+// (a `tick` remark just comes up again later). Remarks said once are remembered on this browser (localStorage), those
+// said once per world under the world's id.
 // A line types out letter by letter, visual-novel style, a soft blip per letter (src/speechSound.ts), a breath
 // after punctuation; the rest of the line is laid out hidden, so the box doesn't grow as it types.
 import { LINES, type Line, type SpeechEvents, type SpeechState } from './speechLines';
 import { speechSound } from './speechSound';
 
 const KEY = 'dadajam.said';
+/** This world's id (the page's `?w=`), for remarks said once per world. */
+const WORLD = new URLSearchParams(location.search).get('w') ?? '';
 /** Nothing said this long (s) after joining: let the world come in first. */
 const QUIET_START = 4;
 /** How often (s) `tick` lines are checked. */
@@ -95,7 +98,7 @@ export class Speech {
   }
 
   private ready(line: Line): boolean {
-    if (line.again === undefined) return !this.once.has(line.id);
+    if (line.again === undefined) return !this.once.has(onceKey(line));
     const last = this.said.get(line.id);
     return last === undefined || this.t - last >= line.again / 1000;
   }
@@ -105,7 +108,7 @@ export class Speech {
     const text = texts[Math.floor(Math.random() * texts.length)];
     this.said.set(line.id, this.t);
     if (line.again === undefined) {
-      this.once.add(line.id);
+      this.once.add(onceKey(line));
       try {
         localStorage.setItem(KEY, JSON.stringify([...this.once]));
       } catch { /* not kept */ }
@@ -138,6 +141,11 @@ export class Speech {
     this.shown.textContent = this.text.slice(0, this.typed);
     this.rest.textContent = this.text.slice(this.typed);
   }
+}
+
+/** What a remark said once is remembered by: its id, and the world's for one said once per world. */
+function onceKey(line: Line) {
+  return line.world ? `${line.id}@${WORLD}` : line.id;
 }
 
 /** Time (s) after letting out `ch` before the next letter. */
