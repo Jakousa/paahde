@@ -1,8 +1,8 @@
 // Echoes off the walls round you: canyon walls, mesas, big rocks. Sound goes through src/acoustics.ts `placed`,
 // which asks here for the taps to add to a sound: one late copy per wall near you, from that wall's direction.
 //
-// `listen` (every frame, from the camera) casts one of RAYS level rays a frame, so a full sweep takes a quarter of a
-// second. Each marches the heightfield outwards to REACH m and keeps, for its direction, where the ground first stands
+// `listen` receives the camera every frame, but probes at a fixed rate and reuses a completed sweep while still.
+// Each ray marches the heightfield outwards to REACH m and keeps, for its direction, where the ground first stands
 // up into a wall (`at`: higher than WALL_SLOPE over the distance), how much of the sky in that direction it fills
 // (`cover`: how high the highest of it stands, as an angle) and how hard it is (`hard`: rock rings, sand swallows).
 // Indoors (a shelter) none of it: the roof would read as walls all round.
@@ -51,6 +51,9 @@ const walls: (Wall | null)[] = new Array(RAYS).fill(null);
 let next = 0;
 let inside = false;
 const ear = { x: 0, y: 0, z: 0 };
+const sampled = { x: Infinity, y: Infinity, z: Infinity };
+const PROBE_INTERVAL = 1 / 60;
+let lastTime = 0, nextProbe = 0, remaining = RAYS;
 
 /** A sound on the ground at (x, z), at the ear's height (for those that only know where on the map they are). */
 export function atEar(x: number, z: number): P {
@@ -60,17 +63,35 @@ export function atEar(x: number, z: number): P {
 /** How much of the sky round you is rock wall, 0..1 (follows `listen`). */
 export let enclosure = 0;
 
-/** Every frame, with the camera position: probe the next direction. */
-export function listen(cam: P) {
+/** Fixed-cadence probes, time-based smoothing, and no repeated terrain work while stationary. */
+export function listen(cam: P, now = performance.now() / 1000) {
+  const dt = Math.max(0, Math.min(0.25, now - lastTime));
+  lastTime = now;
   ear.x = cam.x; ear.y = cam.y; ear.z = cam.z;
+  const wasInside = inside;
   inside = indoors(cam.x, cam.y, cam.z);
-  const i = next;
-  next = (next + 1) % RAYS;
-  walls[i] = inside ? null : probe(cam, (i / RAYS) * Math.PI * 2);
+  const moved = Math.hypot(cam.x - sampled.x, cam.y - sampled.y, cam.z - sampled.z);
+  if (inside !== wasInside || moved > 1.5) {
+    Object.assign(sampled, cam);
+    remaining = RAYS;
+    if (inside !== wasInside || moved > 80) walls.fill(null);
+  }
+  if (inside) { walls.fill(null); remaining = 0; }
+  if (now >= nextProbe) {
+    // Catch up at most three directions after a slow frame; never replay a hidden tab's backlog.
+    const count = Math.min(3, remaining, 1 + Math.floor((now - nextProbe) / PROBE_INTERVAL));
+    for (let k = 0; k < count; k++) {
+      const i = next;
+      next = (next + 1) % RAYS;
+      walls[i] = probe(cam, (i / RAYS) * Math.PI * 2);
+      remaining--;
+    }
+    nextProbe = count && remaining ? Math.max(nextProbe + count * PROBE_INTERVAL, now - PROBE_INTERVAL) : now + PROBE_INTERVAL;
+  }
   let e = 0;
   for (const w of walls) if (w) e += w.w;
   // Smoothed, so a ray flipping on a ridge doesn't swing the reverb.
-  enclosure += (e / RAYS - enclosure) * 0.1;
+  enclosure += (e / RAYS - enclosure) * (1 - Math.exp(-dt / 0.16));
 }
 
 function probe(o: P, a: number): Wall | null {

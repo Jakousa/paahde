@@ -310,8 +310,8 @@ export class WormView implements BossView {
 
   fx(m: BossFxMsg, ctx: BossCtx) {
     if (m.e === 'tell') {
-      const len = (m.a?.[0] ?? TELL) + TELL_AFTER;
-      this.tells.push({ x: m.x, y: m.y, z: m.z, t: 0, len });
+      const len = Math.max(0.15, m.a?.[0] ?? TELL);
+      this.tells.push({ x: m.x, y: m.y, z: m.z, t: 0, len: len + TELL_AFTER });
       wormSound.tell(m, ctx.ear, len);
     } else if (m.e === 'lunge') {
       wormSound.tell(m, ctx.ear, 0.7);

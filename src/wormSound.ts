@@ -119,6 +119,8 @@ class WormSound {
     const { input, t } = s;
     const n = ctx.createBufferSource();
     n.buffer = noise(ctx);
+    // A random starting offset must not end the warning before its crescendo.
+    n.loop = true;
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.frequency.setValueAtTime(90, t);
