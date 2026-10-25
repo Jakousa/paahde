@@ -29,12 +29,12 @@ import { ITEMS } from './items.ts';
 import { insideShelter, inShelter, shelterAt, shelterRoomClear, shelterUnder } from './shelters.ts';
 import { nearShip } from './shipSpot.ts';
 import { heightAt } from './terrain.ts';
-import { TARP_HALF, TARP_PEAK } from './tarp.ts';
+import { canvasYAt, TARP_DOOR_HALF, TARP_HALF, TARP_INNER, TARP_PEAK, tarpRig } from './tarp.ts';
 import { TROPHY_PLACEABLES } from './trophies.ts';
 import { TEXT } from './text.ts';
 
 /** A placed thing: DB id, item kind, world position of its footprint centre on the floor or the sand (y: what it
- *  stands on), its turn (0: long side along X, 1: along Z; a tarp's in quarter turns, 0..3, PLACEABLES `turns`), and for a building the parts fitted in it (its tier and
+ *  stands on), its turn (quarter turns 0..3, like three.js's rotation.y = rot·π/2: turnXZ, worldBoxes), and for a building the parts fitted in it (its tier and
  *  look, src/world/placed.ts). */
 export type Placed = { id: number; kind: string; x: number; y: number; z: number; rot: number; parts?: (string | null)[];
   /** A beacon's light (BEACON_COLORS index; its item's ItemData `color`). */
@@ -53,7 +53,7 @@ type Box = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: num
  *  (m, edge to edge) from the other things out there; with `floor` it may stand on a shelter room's floor too. Neither:
  *  on a floor only. Sizes match tools/blender/placeables.py. */
 export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; sand?: true; floor?: true; gap?: number;
-  /** Turns it can be put up at (quarter turns, R cycles them); 2 (along X or Z) if not given. */
+  /** Turns it can be put up at (quarter turns, R cycles them); 4 if not given. */
   turns?: number;
   /** Most the sand may rise across its footprint (m); MAX_TILT if not given. */
   tilt?: number }> = {
@@ -93,18 +93,21 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
     ],
   },
   // A tarp (shared/tarp.ts): a canvas pyramid on a centre pole, the doorway's edge (+Z) up on a short pole. Both poles
-  // collide (up to `tilt` taller: each stands on its own sand), and so does the low canvas along the three closed sides
-  // (a wall just inside each edge, where the canvas is knee-high): you go in by the doorway. The canvas above is only
-  // looked at. Its shade: shared/shade.ts. Four turns: which way the doorway faces.
+  // collide (up to `tilt` taller: each stands on its own sand), and so does the canvas wherever it's lower than a head
+  // (TARP_INNER out from the centre): a band under each closed side and under the doorway's side either side of the
+  // doorway (its capsule as thick as the band, as high as a head), so the walls are solid from outside and in and you go
+  // in by the doorway. The canvas above is only looked at. Its shade: shared/shade.ts.
   tarp: {
-    hx: TARP_HALF + 0.1, hz: TARP_HALF + 0.1, sand: true, gap: 1, turns: 4, tilt: 1.2,
+    hx: TARP_HALF + 0.1, hz: TARP_HALF + 0.1, sand: true, gap: 1, tilt: 1.2,
     boxes: [
       { x0: -0.07, x1: 0.07, y0: 0, y1: TARP_PEAK + 1.3, z0: -0.07, z1: 0.07 },
       { x0: -0.06, x1: 0.06, y0: 0, y1: 4.1, z0: TARP_HALF - 0.06, z1: TARP_HALF + 0.06 },
-      { x0: -TARP_HALF, x1: TARP_HALF, y0: 0, y1: 0.8, z0: -TARP_HALF + 0.2, z1: -TARP_HALF + 0.35 },
-      { x0: -TARP_HALF + 0.2, x1: -TARP_HALF + 0.35, y0: 0, y1: 0.8, z0: -TARP_HALF, z1: TARP_HALF },
-      { x0: TARP_HALF - 0.35, x1: TARP_HALF - 0.2, y0: 0, y1: 0.8, z0: -TARP_HALF, z1: TARP_HALF },
-      { x0: -TARP_HALF, x1: TARP_HALF, y0: 1.2, y1: TARP_PEAK, z0: -TARP_HALF, z1: TARP_HALF },
+      { x0: -TARP_HALF, x1: TARP_HALF, y0: 0, y1: 1.9, z0: -TARP_HALF, z1: -TARP_INNER },
+      { x0: -TARP_HALF, x1: -TARP_INNER, y0: 0, y1: 1.9, z0: -TARP_HALF, z1: TARP_HALF },
+      { x0: TARP_INNER, x1: TARP_HALF, y0: 0, y1: 1.9, z0: -TARP_HALF, z1: TARP_HALF },
+      { x0: -TARP_HALF, x1: -TARP_DOOR_HALF, y0: 0, y1: 1.9, z0: TARP_INNER, z1: TARP_HALF },
+      { x0: TARP_DOOR_HALF, x1: TARP_HALF, y0: 0, y1: 1.9, z0: TARP_INNER, z1: TARP_HALF },
+      { x0: -TARP_HALF, x1: TARP_HALF, y0: 2, y1: TARP_PEAK, z0: -TARP_HALF, z1: TARP_HALF },
     ],
   },
   // The workbench (shared/stations.ts): the bench, its front +Z; the pegboard behind it is only looked at.
@@ -143,8 +146,19 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
   ...TROPHY_PLACEABLES,
 };
 export const TARP = 'tarp';
-/** How many turns `kind` can be put up at. */
-export const turnsOf = (kind: string) => PLACEABLES[kind]?.turns ?? 2;
+/** How many turns `kind` can be put up at (R cycles them): four quarter turns unless it says otherwise. */
+export const turnsOf = (kind: string) => PLACEABLES[kind]?.turns ?? 4;
+
+/** A point (x, z) in a placed thing's own frame turned `rot` quarter turns: its offset in the world. Like three.js's
+ *  rotation.y = rot·π/2 and worldBoxes: (x, z) → (z, −x), (−x, −z), (−z, x). */
+export function turnXZ(rot: number, x: number, z: number): [number, number] {
+  switch (rot & 3) {
+    case 1: return [z, -x];
+    case 2: return [-x, -z];
+    case 3: return [-z, x];
+    default: return [x, z];
+  }
+}
 
 /** The placed work stations and the chest (shared/stations.ts, shared/storage.ts). */
 export const WORKBENCH = 'workbench';
@@ -248,6 +262,38 @@ export function worldBoxes(p: Placed): Box[] {
 
 const overlap = (a: number[], b: number[]) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
 
+/** Small things that may stand inside a tarp, under its canvas (sheltered), free of its gap. */
+const UNDER_TARP = new Set(['bedroll', 'storage_chest', 'workbench', 'dismantle_bench', 'battery_station', 'beacon_light']);
+/** Kept this far (m) from a tarp's poles and walls inside it, and under its canvas by this much. */
+const TARP_CLEAR = 0.1;
+
+/** Does `kind` at (x, z) turned `rot` stand inside tarp `t` (its footprint within the canvas's square, clear of its poles
+ *  and walls, and under the canvas with room to spare)? Then neither keeps a gap from the other, nor counts as in the
+ *  other's way. Deterministic: canvasAt is + - * / and heightAt. */
+function shelteredBy(kind: string, x: number, z: number, rot: number, t: { x: number; z: number; rot: number; y: number }): boolean {
+  if (!UNDER_TARP.has(kind)) return false;
+  const f = footprint(kind, x, z, rot);
+  if (f[0] < t.x - TARP_HALF || f[2] > t.x + TARP_HALF || f[1] < t.z - TARP_HALF || f[3] > t.z + TARP_HALF) return false;
+  const g = [f[0] - TARP_CLEAR, f[1] - TARP_CLEAR, f[2] + TARP_CLEAR, f[3] + TARP_CLEAR];
+  for (const b of worldBoxes({ id: 0, kind: TARP, ...t })) {
+    if (b.y0 <= t.y + 1e-6 && overlap(g, [b.x0, b.z0, b.x1, b.z1])) return false;
+  }
+  // Its top under the canvas at its corners and centre (the canvas's faces are flat or sag, so between them too).
+  const top = placedY(kind, x, z, rot, null) + Math.max(...PLACEABLES[kind].boxes.map((b) => b.y1)) + TARP_CLEAR;
+  const r = tarpRig(t.x, t.z, t.rot);
+  for (const [px, pz] of [[x, z], [f[0], f[1]], [f[2], f[1]], [f[0], f[3]], [f[2], f[3]]]) {
+    if (!(canvasYAt(r, px, pz) >= top)) return false;
+  }
+  return true;
+}
+
+/** `kind` at (x, z, rot) (standing at y) and placed thing `p`: one inside the other's tarp? */
+function shareTarp(kind: string, x: number, z: number, rot: number, y: number, p: Placed): boolean {
+  if (p.kind === TARP) return shelteredBy(kind, x, z, rot, p);
+  if (kind === TARP) return shelteredBy(p.kind, p.x, p.z, p.rot, { x, z, rot, y });
+  return false;
+}
+
 /** Same spot and turn (a lamp over a bed). */
 const aligned = (a: { x: number; z: number; rot: number }, b: { x: number; z: number; rot: number }) =>
   Math.abs(a.x - b.x) < 1e-3 && Math.abs(a.z - b.z) < 1e-3 && a.rot === b.rot;
@@ -280,26 +326,29 @@ export function placeError(kind: string, x: number, z: number, rot: number, floo
   if (kind === BEACON) {
     if (list.filter((p) => p.kind === BEACON).length >= MAX_BEACONS) return TEXT.notice.tooManyBeacons;
   } else if (counted(kind) && list.filter((p) => counted(p.kind)).length >= MAX_PLACED) return TEXT.notice.tooManyPlaced;
+  const y0 = placedY(kind, x, z, rot, floor);
   if (sand) {
     for (const p of list) {
-      if (!onSand(p.kind) || standsIndoors(p)) continue;
+      if (!onSand(p.kind) || standsIndoors(p) || shareTarp(kind, x, z, rot, y0, p)) continue;
       const g = footprint(p.kind, p.x, p.z, p.rot);
       const dx = Math.max(g[0] - f[2], f[0] - g[2], 0), dz = Math.max(g[1] - f[3], f[1] - g[3], 0);
       if (Math.hypot(dx, dz) < Math.max(PLACEABLES[kind].gap ?? 0, PLACEABLES[p.kind].gap ?? 0)) return TEXT.notice.tooCloseTo(ITEMS[p.kind]?.label ?? p.kind);
     }
   }
-  const y0 = placedY(kind, x, z, rot, floor);
   for (const p of list) {
-    if (Math.abs(p.y - y0) > 2 || !overlap(f, footprint(p.kind, p.x, p.z, p.rot))) continue;
+    if (Math.abs(p.y - y0) > 2 || !overlap(f, footprint(p.kind, p.x, p.z, p.rot)) || (sand && shareTarp(kind, x, z, rot, y0, p))) continue;
     if (PARTNERS[kind] === p.kind && aligned(p, { x, z, rot })) continue;
     return p.kind === PARTNERS[kind] ? TEXT.notice.lineUp(p.kind === 'plant_bed' ? 'bed' : 'lamp') : TEXT.notice.inTheWay;
   }
   // (Nothing low enough to step on boxes anyone in: a bedroll goes down at your feet.)
   if (PLACEABLES[kind].boxes.every((b) => b.y1 < 0.3)) return null;
-  const fp = footprint(kind, x, z, rot, 0.4);
-  const y = placedY(kind, x, z, rot, floor);
+  const y = y0;
+  // A tarp boxes in nobody standing under it: only its poles and walls must miss them.
+  const fps = kind === TARP
+    ? worldBoxes({ id: 0, kind, x, y, z, rot }).filter((b) => b.y0 <= y + 1e-6).map((b) => [b.x0 - 0.4, b.z0 - 0.4, b.x1 + 0.4, b.z1 + 0.4])
+    : [footprint(kind, x, z, rot, 0.4)];
   for (const s of players) {
-    if (s.y < y + 2.5 && s.y > y - 2 && s.x > fp[0] && s.x < fp[2] && s.z > fp[1] && s.z < fp[3]) return TEXT.notice.blocked;
+    if (s.y < y + 2.5 && s.y > y - 2 && fps.some((fp) => s.x > fp[0] && s.x < fp[2] && s.z > fp[1] && s.z < fp[3])) return TEXT.notice.blocked;
   }
   return null;
 }

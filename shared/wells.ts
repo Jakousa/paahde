@@ -14,7 +14,7 @@
 // everywhere the sand is: the wells go wherever a building can (no water table to read off the biomes: the dunes and
 // the mud flats both have it, and the canyons' rock is too steep to build on anyway).
 import { parsePart } from './items.ts';
-import { placed, type Placed } from './placed.ts';
+import { placed, turnXZ, type Placed } from './placed.ts';
 import { atWater } from './shelters.ts';
 import { FILL_MS } from './water.ts';
 
@@ -47,8 +47,8 @@ export const wellOn = (id: number) => on.has(id);
 
 /** World position of a well's spigot. */
 export function spigotAt(p: Placed): { x: number; y: number; z: number } {
-  // Turned a quarter (rot 1): local +X goes to world -Z, local +Z to +X (as shared/wires.ts socketAt).
-  return p.rot ? { x: p.x + SPIGOT.z, y: p.y + SPIGOT.y, z: p.z - SPIGOT.x } : { x: p.x + SPIGOT.x, y: p.y + SPIGOT.y, z: p.z + SPIGOT.z };
+  const [dx, dz] = turnXZ(p.rot, SPIGOT.x, SPIGOT.z);
+  return { x: p.x + dx, y: p.y + SPIGOT.y, z: p.z + dz };
 }
 
 /** The running well (or with `any`, any well) whose spigot someone with feet at world (x, y, z) is at (+ margin), or

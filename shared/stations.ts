@@ -26,7 +26,7 @@ function placedStation(p: Placed): Station[] {
   const k = PLACEABLES[p.kind];
   // The table's tools stick out past its top: the box is the top itself (2 × 2 m).
   const hx0 = p.kind === TABLE ? 1 : k.hx, hz0 = p.kind === TABLE ? 1 : k.hz;
-  const hx = p.rot ? hz0 : hx0, hz = p.rot ? hx0 : hz0;
+  const hx = p.rot & 1 ? hz0 : hx0, hz = p.rot & 1 ? hx0 : hz0;
   return [{ kind: t.kind, placed: p.id, x0: p.x - hx, y0: p.y, z0: p.z - hz, x1: p.x + hx, y1: p.y + t.h, z1: p.z + hz }];
 }
 

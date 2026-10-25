@@ -12,6 +12,8 @@ import * as THREE from 'three/webgpu';
 import { isBound } from './bindings';
 import { tools } from './input';
 import { heightAt } from '../shared/terrain.ts';
+import { placed, TARP, type Placed } from '../shared/placed.ts';
+import { canvasYAt, TARP_HALF, tarpRig, type TarpRig } from '../shared/tarp.ts';
 import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, slopeAt } from '../shared/sim.ts';
 import { CROUCH_CYCLE } from './models/crouchGait';
 import { EYE_HEIGHT } from '../shared/dig.ts'; // the dig and pickup rays start here too
@@ -261,7 +263,8 @@ export class FirstPersonCamera {
     for (let i = 1; i <= 12 && room > 0; i++) {
       const f = i / 12;
       if (f > room) break;
-      if (blocked(x + (bx * full + vc * side) * f, y + by * full * f, z + (bz * full - vs * side) * f)) room = f - 1 / 12;
+      const px = x + (bx * full + vc * side) * f, py = y + by * full * f, pz = z + (bz * full - vs * side) * f;
+      if (blocked(px, py, pz) || tarpBetween(x, y, z, px, py, pz)) room = f - 1 / 12;
     }
     const reach = full * room;
     // Ease out smoothly, but snap in when something cuts the boom short.
@@ -307,5 +310,22 @@ function blocked(x: number, y: number, z: number): boolean {
   }
   return false;
 }
+/** The tarps' rigs (shared/tarp.ts), per placed thing. */
+const rigs = new WeakMap<Placed, TarpRig>();
+/** Would the camera at (px, py, pz) be on the other side of a tarp's canvas from the eye at (ex, ey, ez), or in it? Under
+ *  the canvas is one side, everything else (over it, or out past its edge) the other; the doorway counts as canvas,
+ *  which only shortens the boom there. */
+function tarpBetween(ex: number, ey: number, ez: number, px: number, py: number, pz: number): boolean {
+  for (const p of placed) {
+    if (p.kind !== TARP || Math.abs(p.x - px) > TARP_HALF + 4 || Math.abs(p.z - pz) > TARP_HALF + 4) continue;
+    let r = rigs.get(p);
+    if (!r) rigs.set(p, (r = tarpRig(p.x, p.z, p.rot)));
+    const ce = canvasYAt(r, ex, ez), cp = canvasYAt(r, px, pz);
+    const eyeUnder = ey < ce, camUnder = py < cp - WALL_CLEARANCE;
+    if (eyeUnder !== camUnder || Math.abs(py - cp) < WALL_CLEARANCE) return true;
+  }
+  return false;
+}
+
 /** The point and six around it (unit offsets). */
 const PROBE = [[0, 0, 0], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];

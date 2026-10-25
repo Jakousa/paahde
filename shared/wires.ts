@@ -11,7 +11,7 @@
 // both keep it here with setWires().
 import { EYE_HEIGHT } from './dig.ts';
 import { WIRING } from './items.ts';
-import type { Placed } from './placed.ts';
+import { turnXZ, type Placed } from './placed.ts';
 import { TEXT } from './text.ts';
 
 /** A wire: DB id and the two placed things it joins (a < b). */
@@ -52,8 +52,8 @@ export function setWires(list: Wire[]) {
 /** World position of a placed thing's socket. */
 export function socketAt(p: Placed): { x: number; y: number; z: number } {
   const c = CONNECTORS[p.kind];
-  // Turned a quarter (rot 1): local +X goes to world -Z, local +Z to +X (three.js rotation.y = π/2).
-  return p.rot ? { x: p.x + c.z, y: p.y + c.y, z: p.z - c.x } : { x: p.x + c.x, y: p.y + c.y, z: p.z + c.z };
+  const [dx, dz] = turnXZ(p.rot, c.x, c.z);
+  return { x: p.x + dx, y: p.y + c.y, z: p.z + dz };
 }
 
 const dist = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) =>

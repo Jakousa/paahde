@@ -2182,8 +2182,20 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   doorway's point), sagging 0.17 m between ridges. R turns it a quarter at a time (PLACEABLES `turns: 4`): which way the
   doorway faces. The sun rises towards +Z and sets towards −Z (shared/sun.ts), so a doorway facing ±X keeps it out all
   day, one facing +Z or −Z lets the morning or the evening sun in. `worldBoxes` now turns boxes properly for turns 2 and 3 too.
-- **Collision:** the two poles, and a knee-high wall just inside each closed side, so you go in by the doorway; the
-  canvas over it is only looked at.
+- **Collision:** the two poles, and the canvas wherever it comes down below head height (1.9 m): a band under each
+  closed side from `TARP_INNER` (2.57 m out) to the edge, and under the doorway's side either side of the doorway
+  (`TARP_DOOR_HALF`, 1.5 m): boxes that thick make capsules that thick, as high as a head. So the walls are solid from
+  outside (the first pyramid's knee-high walls just inside the edge let you stand in the sloping canvas) and you go in
+  by the doorway. The canvas over it is only looked at. The third-person camera doesn't go through it either
+  (src/camera.ts `tarpBetween`: a boom step on the other side of the canvas from the eye cuts the boom there).
+- **Things inside:** a bedroll, a chest, a workbench, a dismantling bench, a battery station or a beacon (`UNDER_TARP`)
+  may stand inside a tarp, free of its `gap` and footprint, when its footprint is inside the canvas's square, 0.1 m clear
+  of the poles and the bands, and its top under the canvas at its corners and centre (`shelteredBy`); either may go up
+  first. A tarp also boxes in nobody standing inside it: only its poles and bands must miss them. (A beacon is too tall
+  to fit anywhere but at the pole, so in practice it doesn't.)
+- **Four turns for everything:** every placeable now turns four ways with R (`turnsOf` defaults to 4), and the
+  footprint, `worldBoxes`, the drawn model, the stations' look boxes, the wells' spigots and the wires' sockets
+  (`turnXZ`) follow all four.
 - **Heat:** `shared/shade.ts` tests each body ray against the tarps within 60 m: the canvas as a fan of eight triangles
   from the peak round the rim, cached per placed thing. Worst of five points inside (beside the pole, and 1.5 m out each
   way), on flat sand: with the doorway facing ±X (turns 1, 3) the body is fully shaded from 6:15 to 18:15 (sun-up to

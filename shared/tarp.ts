@@ -22,6 +22,12 @@ export const TARP_HALF = 4;
 /** The peak (top of the centre pole), the corners, and the doorway's point, over their sand (m). */
 export const TARP_PEAK = 4.6;
 const CORNER_H = 0.4, DOOR_H = 2.8;
+/** Where the canvas comes down below this (m over the sand) it's solid: a player's head height. */
+const HEAD = 1.9;
+/** How far out from the centre (m, along a or b) the closed sides come down to HEAD; inside that you can stand. */
+export const TARP_INNER = (TARP_HALF * (TARP_PEAK - HEAD)) / (TARP_PEAK - CORNER_H);
+/** Half the doorway's width (m) along its edge where the canvas there is over HEAD. */
+export const TARP_DOOR_HALF = TARP_HALF * ((HEAD - CORNER_H) / (DOOR_H - CORNER_H) > 1 ? 0 : 1 - (HEAD - CORNER_H) / (DOOR_H - CORNER_H));
 /** Corners in the tarp's own frame (turn 0), round the square from (−, −); the doorway is mid-way along +b (+Z). */
 const CORNER: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
 /** Corner lines: staked this far (m) out along the diagonal. The doorway's guy line: this far out in front. */
@@ -105,4 +111,12 @@ export function canvasAt(r: TarpRig, u: number, v: number, out: Vec = { x: 0, y:
   if (door) g *= 4 * tt < 1 ? 4 * tt : 1;
   out.y = r.peak.y + (edge - r.peak.y) * s - TARP_SAG * 4 * s * (1 - s) * g;
   return out;
+}
+
+/** The canvas's height (without the wind) over world (x, z), or NaN outside its square. */
+export function canvasYAt(r: TarpRig, x: number, z: number): number {
+  const h2 = TARP_HALF * TARP_HALF, dx = x - r.cx, dz = z - r.cz;
+  const a = (dx * r.ax + dz * r.az) / h2, b = (dx * r.bx + dz * r.bz) / h2;
+  if (a < -1 || a > 1 || b < -1 || b > 1) return NaN;
+  return canvasAt(r, (a + 1) / 2, (b + 1) / 2).y;
 }
