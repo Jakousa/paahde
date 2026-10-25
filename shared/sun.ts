@@ -13,6 +13,8 @@ export const LAT = (42 * Math.PI) / 180;
 export const DECL = (9 * Math.PI) / 180;
 /** Shifts the cycle against the Unix epoch (fraction of a day). */
 export const DAY_OFFSET = 0.3;
+/** The time of day a new world starts at (server/world.ts): 05:30, just before sunrise. */
+export const NEW_WORLD_TOD = 5.5 / 24;
 /** The sun's elevation at noon (radians): 57°. */
 export const NOON_ELEVATION = Math.PI / 2 - LAT + DECL;
 

@@ -72,7 +72,7 @@ import { blastPush, DOWN_MS } from '../shared/ragdoll.ts';
 import { WIND } from '../shared/dunes.ts';
 import { CHOKE_RECOVER, CHOKE_S, frontExposure, stormAt, stormDrag, toolsDown } from '../shared/storm.ts';
 import { GAS_GRACE_S, GAS_RECOVER, GAS_S, gasExposure } from '../shared/gas.ts';
-import { timeOfDayAt } from '../shared/sun.ts';
+import { NEW_WORLD_TOD, shiftToTimeOfDay, timeOfDayAt } from '../shared/sun.ts';
 import { isTrophy, trophyFree } from '../shared/trophies.ts';
 import { CALM, LIVES, WORLD_ID } from '../shared/world.ts';
 import { TEXT } from '../shared/text.ts';
@@ -101,6 +101,7 @@ const crash = new CrashServer(db, (msg) => {
   for (const p of players.values()) send(p.ws, msg);
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
+const newWorld = db.getSetting('pods_landed') === undefined; // read before podsLanded sets it: the world's first start
 bunkerGone(db, items, placedThings, beaten); // once: what was in the old bunker comes out (before the vehicles and the garden)
 podsLanded(db, items, placedThings); // once: nothing left in the pods' way, the first bike by them (before the vehicles)
 const vehicleSrv = new VehicleServer(db, items); // before the loot: it turns motorcycles dropped as items into vehicles
@@ -1199,7 +1200,9 @@ setInterval(() => {
 // The wall-clock ms at server time 0 drives the day/night cycle. The debug menu (F3) can move it for everyone,
 // in production too (a game jam: the team wants it). Any client can send it, so lock it down if this goes public.
 // The shift from the real clock is stored, since node --watch restarts the server on every code edit.
+// A new world starts at dawn (NEW_WORLD_TOD); a world that never had the shift stored keeps the real clock.
 const realEpoch = performance.timeOrigin;
+if (newWorld) db.setSetting('clockShift', shiftToTimeOfDay(realEpoch + performance.now(), NEW_WORLD_TOD));
 let epoch = realEpoch + (db.getSetting('clockShift') ?? 0);
 
 // Electricity (server/power.ts): the windmills charge the battery stations every second; everyone hears how it stands.
