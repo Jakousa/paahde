@@ -255,7 +255,7 @@ export class Terrain {
     // Dunes shadow each other and the players: the sun's cascades reach ~1.6 km (sky.ts). The shadow
     // pass draws back faces, so lit slopes never self-shadow (only faces turned from the sun can).
     // The dunes' shadows come from the heightfield (src/world/heightShadow.ts, which draws the chunks top-down on this layer). Only near
-    // the base and the shelters do the chunks cast into the shadow maps (the nearest cascade): those are underground, roofed by the terrain,
+    // the shelters do the chunks cast into the shadow maps (the nearest cascade): those are underground, roofed by the terrain,
     // lit through its holes.
     mesh.castShadow = this.casting;
     mesh.layers.enable(TERRAIN_LAYER);
@@ -272,7 +272,7 @@ export class Terrain {
   /** (Re)generate a chunk's vertices from the heightfield. */
   private casting = false;
 
-  /** Whether the chunks cast into the shadow maps (near the base or a shelter). */
+  /** Whether the chunks cast into the shadow maps (near a shelter). */
   setCasting(on: boolean) {
     if (on === this.casting) return;
     this.casting = on;

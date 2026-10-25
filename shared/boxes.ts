@@ -1,5 +1,5 @@
 // Item box ids and what kind of box each is: the one place their grammar lives. 'bag', 'equip' and 'bench' are the
-// player's own; the rest are numbered and shared: chests in the base ('chest<i>'), chests put up with the wrench
+// player's own; the rest are numbered and shared: chests put up with the wrench
 // ('store<placed id>'), the packs left by the dead ('corpse<id>', shared/corpse.ts), a building's item ('bld<placed id>')
 // and a vehicle's ('veh<id>', its cargo 'cargo<id>'). A kind's fixed traits are in BOX_KINDS; what depends on the world (size, label, shape, reach) is per
 // kind in shared/storage.ts and shared/gear.ts, as Record<BoxKind, ...> so a new kind can't be missed there.
@@ -15,7 +15,6 @@ export const BOX_KINDS = {
   bag: { own: true },
   equip: { own: true },
   bench: { own: true },
-  chest: { grows: true },
   store: {},
   corpse: { grows: true, takeOnly: true },
   bld: { fitted: true },

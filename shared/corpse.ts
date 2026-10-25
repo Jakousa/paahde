@@ -2,7 +2,7 @@
 // is left at the spot where you fell, in a bundle on the sand with a stick and a rag of your colour planted beside it
 // (src/world/corpses.ts). The hotbar and the worn equipment stay with you. Anyone can open it like a chest (Tab, or F
 // beside it) and take what's in it, but nothing can be put in; it goes when it's empty or after CORPSE_MS.
-// Dying in or over the base leaves nothing (nothing can be dropped there, shared/loot.ts canDropAt).
+// Dying in or over a shelter leaves nothing (nothing can be dropped there, shared/loot.ts canDropAt).
 // The server (server/corpses.ts) keeps the list in SQLite and tells clients ('corpses'); both keep CORPSES up to
 // date, so shared/storage.ts can say which packs are in reach. Each one's items are box `corpse<id>`, shared.
 import { boxNumber } from './boxes.ts';

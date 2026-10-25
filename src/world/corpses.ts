@@ -25,7 +25,7 @@ const STICK_GEO = new THREE.CylinderGeometry(0.02, 0.028, STICK, 6).translate(0,
 
 type Shown = { group: THREE.Group; rag: THREE.Mesh; phase: number };
 
-/** Locator ids for packs: players are positive, the base -1, wrecks count down from -100. */
+/** Locator ids for packs: players are positive, home -1, wrecks count down from -100. */
 const LOCATE_ID = -1_000_000_000;
 
 /** Every pack lying in the world, for the locator bar: a flag of the rag's colour at the top of the stick. */

@@ -39,8 +39,8 @@ const NOTICE_R = 250;
 const SHOT_NOTICE_R = 700;
 const LOSE_R = 420;
 const FORGET_MS = 8000;
-/** Keeps this far (m) from the home base: it doesn't walk over it or hunt anyone near it. */
-const BASE_KEEP_OUT = 260;
+/** Keeps this far (m) from the start (the origin, where the ship lies): it doesn't walk over it or hunt anyone near it. */
+const START_KEEP_OUT = 260;
 /** Roaming: the next waypoint 700–1500 m off, within the world (less a margin); reached within WAYPOINT_R. */
 const ROAM: [number, number] = [700, 1500];
 const MARGIN = 150;
@@ -129,9 +129,9 @@ type St = {
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const r2 = (v: number) => Math.round(v * 100) / 100;
-const fromBase = (x: number, z: number) => Math.hypot(x - ORIGIN.x, z - ORIGIN.z);
-/** Someone it can go for: out in the open (not down, not indoors), away from the base. */
-const ok = (p: BossPlayer) => !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT;
+const fromStart = (x: number, z: number) => Math.hypot(x - ORIGIN.x, z - ORIGIN.z);
+/** Someone it can go for: out in the open (not down, not indoors), away from the start. */
+const ok = (p: BossPlayer) => !p.safe && fromStart(p.x, p.z) > START_KEEP_OUT;
 
 /** Foot i's rest spot: beside the hips (foot 0 on its +X side), `lead` m ahead. */
 function rest(x: number, z: number, yaw: number, i: number, lead: number, out: { x: number; z: number }) {
@@ -153,12 +153,12 @@ function plant(b: Boss, st: St) {
   });
 }
 
-/** A roaming waypoint: far off, in the core square (terrain.ts CORE_HALF), away from the base (roughly towards `dir` if given). */
+/** A roaming waypoint: far off, in the core square (terrain.ts CORE_HALF), away from the start (roughly towards `dir` if given). */
 function waypoint(st: St, x: number, z: number, dir?: number) {
   for (let k = 0; k < 20; k++) {
     const a = dir === undefined ? Math.random() * Math.PI * 2 : dir + rand(-1.1, 1.1), d = rand(ROAM[0], ROAM[1]);
     const tx = x + Math.sin(a) * d, tz = z + Math.cos(a) * d;
-    if (Math.abs(tx) > CORE_HALF - MARGIN || Math.abs(tz) > CORE_HALF - MARGIN || fromBase(tx, tz) < BASE_KEEP_OUT + 100) continue;
+    if (Math.abs(tx) > CORE_HALF - MARGIN || Math.abs(tz) > CORE_HALF - MARGIN || fromStart(tx, tz) < START_KEEP_OUT + 100) continue;
     st.tx = tx;
     st.tz = tz;
     return;
@@ -221,13 +221,13 @@ export const colossus: Brain = {
       if ((near > GONE_R && st.foot < 0 && !st.missiles.length) || now - st.leftAt > LEAVE_MS) return true;
     } else hunt(b, st, now, players);
 
-    // Where to: its prey, its way out, or the next waypoint (away from the base).
+    // Where to: its prey, its way out, or the next waypoint (away from the start).
     let gx = st.tx, gz = st.tz;
     if (b.leaving) (gx = st.lx), (gz = st.lz);
     else if (st.prey >= 0) (gx = st.px), (gz = st.pz);
     else if (Math.hypot(st.tx - b.x, st.tz - b.z) < WAYPOINT_R) waypoint(st, b.x, b.z);
-    if (!b.leaving && fromBase(b.x, b.z) < BASE_KEEP_OUT) {
-      // Too near the base and heading in: off somewhere else, away from it.
+    if (!b.leaving && fromStart(b.x, b.z) < START_KEEP_OUT) {
+      // Too near the start and heading in: off somewhere else, away from it.
       const away = Math.atan2(b.x - ORIGIN.x, b.z - ORIGIN.z);
       if (Math.abs(wrap(Math.atan2(gx - b.x, gz - b.z) - away)) > Math.PI / 2) {
         st.prey = -1;
@@ -343,7 +343,7 @@ export const colossus: Brain = {
 };
 
 /** Who it's after: whoever shot it (from further off), else the nearest out in the open within NOTICE_R, kept
- *  while in sight. Nobody near the base. */
+ *  while in sight. Nobody near the start. */
 function hunt(b: Boss, st: St, now: number, players: BossPlayer[]) {
   let prey = players.find((p) => p.id === st.prey);
   if (prey && ok(prey) && Math.hypot(prey.x - b.x, prey.z - b.z) < LOSE_R) {
@@ -487,10 +487,10 @@ function turnOnAnother(b: Boss, st: St, now: number, players: BossPlayer[]) {
   setPrey(st, others[Math.random() < 0.7 ? 0 : Math.floor(Math.random() * others.length)], now);
 }
 
-/** Who a missile can go for: out in the open, away from the base, standing off from it. */
+/** Who a missile can go for: out in the open, away from the start, standing off from it. */
 function missileOk(b: Boss, p: BossPlayer) {
   const d = Math.hypot(p.x - b.x, p.z - b.z);
-  return !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT && d > MISSILE_MIN && d < MISSILE_MAX;
+  return !p.safe && fromStart(p.x, p.z) > START_KEEP_OUT && d > MISSILE_MIN && d < MISSILE_MAX;
 }
 
 /**
@@ -559,11 +559,11 @@ function fire(b: Boss, st: St, now: number, p: BossPlayer, sx: number, out: Boss
   out.events.push({ msg: { t: 'bossFx', id: b.id, e: 'missile', time: Math.round(now), x: r1(x0), y: r1(y0), z: r1(z0), a: [r1(x), r1(y), r1(z), r2(T), sx, hand ? 1 : 0] }, x: b.x, z: b.z });
 }
 
-/** Who a hand volley can go for: its prey, out in the open, away from the base, off its feet. */
+/** Who a hand volley can go for: its prey, out in the open, away from the start, off its feet. */
 function volleyOk(b: Boss, p: BossPlayer | undefined): p is BossPlayer {
   if (!p) return false;
   const d = Math.hypot(p.x - b.x, p.z - b.z);
-  return !p.safe && fromBase(p.x, p.z) > BASE_KEEP_OUT && d > VOLLEY_MIN && d < VOLLEY_MAX;
+  return !p.safe && fromStart(p.x, p.z) > START_KEEP_OUT && d > VOLLEY_MIN && d < VOLLEY_MAX;
 }
 
 /**

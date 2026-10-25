@@ -1,15 +1,13 @@
-// Storage: the item boxes a player can reach besides their bag (shared/items.ts). Chests stand in the
-// base (the 'chest' pieces in shared/base.ts) and are shared by everyone, and never fill up (growChest); chests put up
-// with the wrench anywhere (shared/placed.ts CHEST, box 'store<id>') are shared too, CHEST_COLS × CHEST_ROWS. A vehicle
+// Storage: the item boxes a player can reach besides their bag (shared/items.ts). Chests put up with the wrench anywhere
+// (shared/placed.ts CHEST, box 'store<id>') are shared by everyone, CHEST_COLS × CHEST_ROWS; the packs the dead leave
+// ('corpse<id>', shared/corpse.ts) never fill up (growChest). A vehicle
 // standing in the world (shared/vehicles.ts) keeps its item in a box of its own ('veh<id>', to fit its parts) and has a
 // cargo grid ('cargo<id>'), both shared and open in reach of it while nobody rides it. A building standing in the world keeps its item in a box of its own ('bld<id>',
 // shared/boxes.ts buildingBox), shared too, open within reach of it, to swap its parts. Every player also has their equipment ('equip', shared/gear.ts),
 // always open, and a slot on the workbench ('bench') for the item they are repairing, open beside any workbench. The client lists whatever is open next to the bag in the Tab
 // inventory (src/inventory.ts); the server checks the same thing, with slack, before every move.
-import { BASE_PIECES } from './base.ts';
-import { ORIGIN } from './origin.ts';
 import { corpseId, corpsesNear } from './corpse.ts';
-import { boxKind, boxNumber, buildingId, cargoId, storeId, vehicleId, type BoxKind } from './boxes.ts';
+import { boxKind, buildingId, cargoId, storeId, vehicleId, type BoxKind } from './boxes.ts';
 import { EQUIP_SLOTS, isBuilding } from './gear.ts';
 import { BAG_SLOTS, BIKE_COLS, BIKE_ROWS, CHEST_COLS, CHEST_ROWS, coverage, gridShape, ITEMS, MAX_SIDE, type Slots } from './items.ts';
 import { CHEST, placed, PLACED_REACH, placedReach } from './placed.ts';
@@ -18,17 +16,12 @@ import { vehicleById, vehiclesNear } from './vehicles.ts';
 import { nearStation } from './stations.ts';
 import { TEXT } from './text.ts';
 
-/** A chest opens when your feet are this close (m, horizontally) to its centre, on its floor. */
+/** A chest opens within this reach (m) of the eye. */
 export const STORAGE_REACH = 2.5;
 
-/** Chest i is box `chest<i>`. */
-export const CHESTS = BASE_PIECES.filter((p) => p.node === 'chest').map((p) => ({
-  x: ORIGIN.x + p.x, y: ORIGIN.y + (p.y ?? 0), z: ORIGIN.z + p.z,
-}));
-
-/** Box ids: 'bag', 'equip' and 'bench' are the player's own, 'chest<i>', the packs left by the dead
+/** Box ids: 'bag', 'equip' and 'bench' are the player's own; the chests ('store<id>'), the packs left by the dead
  *  ('corpse<id>', shared/corpse.ts), the buildings' ('bld<id>') and the vehicles' ('veh<id>', 'cargo<id>') are shared. */
-export type BoxId = 'bag' | 'equip' | 'bench' | `chest${number}` | `store${number}` | `corpse${number}` | `bld${number}` | `veh${number}` | `cargo${number}`;
+export type BoxId = 'bag' | 'equip' | 'bench' | `store${number}` | `corpse${number}` | `bld${number}` | `veh${number}` | `cargo${number}`;
 /** The player's own boxes. */
 export const OWN_BOXES = ['bag', 'equip', 'bench'];
 
@@ -41,7 +34,6 @@ const SIZES: Record<BoxKind, (box: string) => number> = {
   bag: () => BAG_SLOTS,
   equip: () => EQUIP_SLOTS.length,
   bench: () => 1,
-  chest: (box) => (chestIndex(box) >= 0 ? CHEST_COLS * CHEST_ROWS : 0),
   store: (box) => (storeChest(box) ? CHEST_COLS * CHEST_ROWS : 0),
   corpse: (box) => (corpseId(box) >= 0 ? CHEST_COLS * CHEST_ROWS : 0),
   bld: (box) => (building(box) ? 1 : 0),
@@ -50,8 +42,8 @@ const SIZES: Record<BoxKind, (box: string) => number> = {
 };
 
 /**
- * Chests are endless: resize a chest's grid to MAX_SIDE empty rows past the lowest item (so anything fits, turned
- * if need be), at least CHEST_ROWS, in place. Run after anything changes one, on the server and in the client's
+ * Growing boxes (a dead player's pack) are endless: resize its grid to MAX_SIDE empty rows past the lowest item (so
+ * anything fits, turned if need be), at least CHEST_ROWS, in place. Run after anything changes one, on the server and in the client's
  * prediction alike, so both agree on its size.
  */
 export function growChest(slots: Slots) {
@@ -62,12 +54,6 @@ export function growChest(slots: Slots) {
   const old = slots.length;
   slots.length = n;
   if (n > old) slots.fill(null, old);
-}
-
-/** Chest index from a box id, or -1. */
-export function chestIndex(box: string): number {
-  const i = boxNumber('chest', box);
-  return i < CHESTS.length ? i : -1;
 }
 
 /** The placed chest whose box this is, or undefined. */
@@ -90,7 +76,6 @@ const LABELS: Record<BoxKind, (box: string) => string> = {
   bag: () => TEXT.boxes.bag,
   equip: () => TEXT.boxes.equip,
   bench: () => TEXT.boxes.bench,
-  chest: (box) => (CHESTS.length > 1 ? TEXT.boxes.chestN(chestIndex(box) + 1) : TEXT.boxes.chest),
   store: () => TEXT.boxes.chest,
   corpse: () => TEXT.boxes.corpse,
   bld: (box) => ITEMS[building(box)?.kind ?? '']?.label ?? '',
@@ -102,11 +87,7 @@ const LABELS: Record<BoxKind, (box: string) => string> = {
 export function openBoxes(s: PlayerState, slack = 0): BoxId[] {
   const out: BoxId[] = [];
   if (nearStation(s, 'workbench', slack)) out.push('bench');
-  const near = CHESTS.map((c, i) => ({ i, d: Math.hypot(s.x - c.x, s.z - c.z), dy: Math.abs(s.y - c.y) }))
-    .filter((c) => c.d < STORAGE_REACH + slack && c.dy < 1.5 + slack)
-    .sort((a, b) => a.d - b.d);
-  for (const c of near) out.push(`chest${c.i}`);
-  // Placed chests in reach, nearest first.
+  // Chests in reach, nearest first.
   const stores = placed.filter((p) => p.kind === CHEST).map((p) => ({ p, d: placedReach(s, p) }))
     .filter((c) => c.d < STORAGE_REACH + slack)
     .sort((a, b) => a.d - b.d);

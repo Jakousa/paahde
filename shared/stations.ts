@@ -1,10 +1,7 @@
-// Work stations: the crafting workbench and the dismantling table (disassembly), the base's own (pieces in
-// shared/base.ts) and every one put up with the wrench (shared/placed.ts WORKBENCH, TABLE), and which one the player is
-// looking at. At a workbench, the 'bench' box (the repair slot) and the recipes are open (shared/storage.ts openBoxes,
+// Work stations: the crafting workbench and the dismantling table (disassembly), every one put up with the wrench
+// (shared/placed.ts WORKBENCH, TABLE), and which one the player is looking at. At a workbench, the 'bench' box (the repair slot) and the recipes are open (shared/storage.ts openBoxes,
 // server/items.ts craft); a carried machine is taken apart on a table (shared/crash.ts tables, server/crash.ts). The
 // server checks reach with stationReach().
-import { BASE_PIECES } from './base.ts';
-import { ORIGIN } from './origin.ts';
 import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
 import { placed, PLACEABLES, TABLE, WORKBENCH, type Placed } from './placed.ts';
 import { yawFromQ } from './sim.ts';
@@ -15,20 +12,8 @@ export const STATION_REACH = 3;
 export const STATION_KINDS = ['workbench', 'disassembly'] as const;
 export type StationKind = (typeof STATION_KINDS)[number];
 
-/** A station: its kind, the placed thing it is (absent: the base's own), and its look-target box (world,
- *  axis-aligned: stations face ±X or ±Z). */
-export type Station = { kind: StationKind; placed?: number; x0: number; y0: number; z0: number; x1: number; y1: number; z1: number };
-
-/** The base's own stations. */
-const BASE_STATIONS: Station[] = BASE_PIECES.flatMap((p) => {
-  const kind = STATION_KINDS.find((k) => k === p.node);
-  if (!kind || !p.hx || !p.hz || !p.h) return [];
-  // Facing ±X turns the footprint's long side along Z.
-  const sideways = Math.abs(p.fx) > Math.abs(p.fz);
-  const hx = sideways ? p.hz : p.hx, hz = sideways ? p.hx : p.hz;
-  const x = ORIGIN.x + p.x, z = ORIGIN.z + p.z, y = ORIGIN.y + (p.y ?? 0);
-  return [{ kind, x0: x - hx, y0: y, z0: z - hz, x1: x + hx, y1: y + p.h, z1: z + hz }];
-});
+/** A station: its kind, the placed thing it is, and its look-target box (world, axis-aligned: stations face ±X or ±Z). */
+export type Station = { kind: StationKind; placed: number; x0: number; y0: number; z0: number; x1: number; y1: number; z1: number };
 
 /** A placed station's kind and the height of its working top. (Looked up when called: shared/placed.ts may not be
  *  loaded yet while this module is, the two import each other's neighbours.) */
@@ -46,9 +31,9 @@ function placedStation(p: Placed): Station[] {
 }
 
 let cache: { list: Placed[] | null; out: Station[] } = { list: null, out: [] };
-/** Every station in the world now: the base's, then the placed ones (shared/placed.ts `placed`). */
+/** Every station in the world now: the placed ones (shared/placed.ts `placed`). */
 export function stations(): Station[] {
-  if (cache.list !== placed) cache = { list: placed, out: [...BASE_STATIONS, ...placed.flatMap(placedStation)] };
+  if (cache.list !== placed) cache = { list: placed, out: placed.flatMap(placedStation) };
   return cache.out;
 }
 

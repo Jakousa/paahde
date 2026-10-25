@@ -47,7 +47,7 @@ function autoSettings(): Partial<GraphicsPrefs> {
 }
 export const SHADOW_DISTANCE_RANGE = [200, 4500] as const;
 export const FPS_LIMITS = [30, 60, 90, 120, 144, 240, 0] as const;
-/** What each shadow quality means. Shadow maps (players, wrecks, the base, bosses): cascades (at least two: the first is the sharp one round
+/** What each shadow quality means. Shadow maps (players, wrecks, the ship, bosses): cascades (at least two: the first is the sharp one round
  *  you), the size of each one's map, and the taps of the edge filter in the first cascade and the others (src/world/shadowFilter.ts).
  *  Dune shadows (src/world/heightShadow.ts): the grids round the player (width in m, texels). */
 export const SHADOW_QUALITY = [

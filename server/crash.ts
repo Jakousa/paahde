@@ -12,8 +12,7 @@
 //    which parts are taken (kept in SQLite, `machine_progress`, and never reset by itself: a stripped machine
 //    stays stripped). Every step can be done by one player alone. Every player is told about every step and
 //    take ('sites' on join, then siteDone / siteTake), so a machine looks the same to everyone, worked on or not.
-//  - Every dismantling table (shared/crash.ts tables: the base's, 'bench', and each one put up with the wrench,
-//    'bench<placed id>') is the same kind of session, with the table's id: crashUse puts a carried machine on it with
+//  - Every dismantling table (shared/crash.ts tables: each one put up with the wrench, 'bench<placed id>') is the same kind of session, with the table's id: crashUse puts a carried machine on it with
 //    a seed picked here, and the job (kind, seed in `bench_jobs`, progress like a site's) is kept until it is scrapped
 //    (scrapBench); then the table is free. A table with a job can't be taken down (busyTable).
 // A part index is checked against the machine's own part list (shared/machine.ts, from the site's or job's

@@ -4,14 +4,13 @@
 // `sunOnBody` casts BODY rays (head, both shoulders, knees; lower when crouching) and weighs them, so standing half
 // behind a hut or with the legs below a crest is partial shade. Each ray (`inSun`) goes from the point towards
 // the sun (shared/sun.ts) and is tested against:
-// - the base's surface buildings (the entrance hut and the skylight's collar, as boxes) and the shelters' huts
-//   (shared/shelters.ts) within HUT_DIST;
+// - the shelters' huts (shared/shelters.ts, as boxes) within HUT_DIST;
 // - crash-site wrecks and debris (their collision capsules, shared/crashsites.ts) within CRASH_DIST, and the crashed
 //   ship's (shared/ship.ts);
 // - tarps (shared/tarp.ts) within TARP_DIST: their canvas, as four triangles round its sagging middle;
 // - `casters`: things that move, passed in by the caller: other players, their bikes, motorcycles lying on the sand;
 // - near the start, the scrap piles' hitboxes (shared/scrap.ts);
-// - the terrain (heightAt: dunes, rocks, the base's pad and every dig), marched with steps that grow with distance,
+// - the terrain (heightAt: dunes, rocks, the pads and every dig), marched with steps that grow with distance,
 //   giving up after MAX_DIST or once the ray is above the highest possible ground. Where a step lands close
 //   over the sand (closer than REFINE × the step), that step is walked again in short substeps, so a thin crest
 //   between two far samples isn't missed at a grazing sun.
@@ -19,8 +18,6 @@
 //
 // Deterministic (no time, no randomness), but it uses the sun's trig, so it is not bit-exact across JS
 // engines: fine, since only the server decides. Cost: ~40 µs per ray on average, so ~150–200 µs per body check.
-import { HUT, ROOM_Z, SKY, W } from './base.ts';
-import { ORIGIN } from './origin.ts';
 import { crashTaken, crashSitesNear, pieceY, type CrashSite } from './crashsites.ts';
 import { EYE_HEIGHT, MAX_EDIT_MM } from './dig.ts';
 import { scrapPieces, scrapTaken, SCRAP_CELL, type ScrapPiece } from './scrap.ts';
@@ -71,15 +68,6 @@ const BODY: [number, number, number][] = [
 ];
 /** Crouching, the points sit this much lower (× height). */
 const CROUCH_SCALE = 0.65;
-
-/** Boxes that cast shade (world x0, x1, y0, y1, z0, z1): the entrance hut and the skylight's collar.
- *  Match tools/blender/base/bunker.py build_hut(). */
-const BOXES: [number, number, number, number, number, number][] = [
-  [ORIGIN.x - W - HUT.t, ORIGIN.x + W + HUT.t, ORIGIN.y - 0.3, ORIGIN.y + HUT.top,
-    ORIGIN.z + HUT.z0 - HUT.t, ORIGIN.z + HUT.z1 + HUT.t],
-  [ORIGIN.x - SKY.collar, ORIGIN.x + SKY.collar, ORIGIN.y - 0.3, ORIGIN.y + SKY.h,
-    ORIGIN.z + ROOM_Z - SKY.collar, ORIGIN.z + ROOM_Z + SKY.collar],
-];
 
 /** Does the ray from (ox, oy, oz) along unit d hit the box within maxT? (slab test) */
 function hitsBox(ox: number, oy: number, oz: number, d: Vec3, b: readonly number[], maxT: number): boolean {
@@ -178,7 +166,7 @@ function sitesNear(x: number, z: number): CrashSite[] {
   return crashSitesNear(x, z, CRASH_DIST + 120);
 }
 
-/** The shelters' huts close enough to (x, z) to shade it, as boxes like BOXES. */
+/** The shelters' huts close enough to (x, z) to shade it, as boxes (world x0, x1, y0, y1, z0, z1). */
 function hutsNear(x: number, z: number): number[][] {
   return sheltersNear(x, z, HUT_DIST).map((s) => {
     const [x0, z0, x1, z1] = shelterHutRect(s);
@@ -227,7 +215,6 @@ function tarpsNear(x: number, z: number): Vec[] {
 
 /** One ray from (x, y, z) along d (towards the sun, d.y ≥ MIN_SUN_Y): true if nothing is in the way. */
 function rayClear(x: number, y: number, z: number, d: Vec3, sites: CrashSite[], huts: number[][], tarps: Vec[], casters: readonly Caster[], self: number): boolean {
-  for (const b of BOXES) if (hitsBox(x, y, z, d, b, MAX_DIST)) return false;
   for (let i = 0; i < tarps.length; i += 3) if (hitsTri(x, y, z, d, tarps[i], tarps[i + 1], tarps[i + 2])) return false;
   for (const b of huts) if (hitsBox(x, y, z, d, b, MAX_DIST)) return false;
   for (const c of casters) {

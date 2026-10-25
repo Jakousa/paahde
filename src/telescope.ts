@@ -2,16 +2,16 @@
 // raise it to the eye; once the raise clip (src/viewmodel.ts) has played, the view zooms in behind a round
 // lens mask and the mouse wheel sets the zoom, up to what its parts allow (shared/gear.ts spyglassZoom). In third
 // person the view comes in to the eye first, like a scoped gun's (src/camera.ts aimIn).
-// Through the lens, the places worth going to that are in sight (the base, other players, wrecks, crash sites, shelters,
+// Through the lens, the places worth going to that are in sight (the crashed ship, other players, wrecks, crash sites, shelters,
 // downed jets' engines, the packs the dead left; not behind a dune) get a small mark with their distance, the locator's shapes (src/locator.ts).
 // Letting go lowers it. Client-only: nothing is sent.
 import * as THREE from 'three/webgpu';
-import { ORIGIN } from '../shared/origin.ts';
 import { crashSpent, crashTaken } from '../shared/crash.ts';
 import { CORPSES } from '../shared/corpse.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { jetSites } from '../shared/jetcrash.ts';
 import { sheltersNear } from '../shared/shelters.ts';
+import { SHIP_AT } from '../shared/shipSpot.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { wrecksNear } from '../shared/wrecks.ts';
 import type { FirstPersonCamera } from './camera';
@@ -33,10 +33,10 @@ const REFRESH_S = 0.2;
 const LENS_R = 430;
 const LENS_IN = 0.9;
 
-type Kind = 'base' | 'player' | 'wreck' | 'site' | 'shelter' | 'corpse';
+type Kind = 'home' | 'player' | 'wreck' | 'site' | 'shelter' | 'corpse';
 type Mark = { key: string; kind: Kind; color: number; x: number; y: number; z: number; id?: number };
 
-const COLOR: Record<Exclude<Kind, 'player' | 'corpse'>, number> = { base: 0xf2e6c8, wreck: 0xe8a050, site: 0xc8d6dc, shelter: 0xb9c48e };
+const COLOR: Record<Exclude<Kind, 'player' | 'corpse'>, number> = { home: 0xf2e6c8, wreck: 0xe8a050, site: 0xc8d6dc, shelter: 0xb9c48e };
 
 const css = `
 #telescope { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .12s; z-index: 5; }
@@ -45,7 +45,7 @@ const css = `
 #telescope .mark { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 #telescope .mark i { width: 9px; height: 9px; background: currentColor; filter: drop-shadow(0 0 1.5px rgba(5, 3, 2, 0.9)); }
 #telescope .mark.player i { border-radius: 50%; }
-#telescope .mark.base i { width: 12px; height: 12px; clip-path: polygon(50% 0, 100% 48%, 84% 48%, 84% 100%, 16% 100%, 16% 48%, 0 48%); }
+#telescope .mark.home i { width: 12px; height: 12px; clip-path: polygon(50% 0, 100% 48%, 84% 48%, 84% 100%, 16% 100%, 16% 48%, 0 48%); }
 #telescope .mark.wreck i { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
 #telescope .mark.site i { clip-path: polygon(50% 100%, 100% 0, 0 0); }
 #telescope .mark.shelter i { width: 8px; height: 8px; }
@@ -69,7 +69,7 @@ const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const distText = (d: number) => (d < 1000 ? `${Math.round(d / 10) * 10} m` : `${(d / 1000).toFixed(1)} km`);
 
 /** Whether the sand or rock hides the point (x, y, z) from the eye (marched over the heightfield; the first few metres skipped,
- *  so looking out of a bunker's hatch works). */
+ *  so looking out of a shelter's door works). */
 function hidden(eye: THREE.Vector3, x: number, y: number, z: number): boolean {
   const dx = x - eye.x, dy = y - eye.y, dz = z - eye.z;
   const d = Math.hypot(dx, dz);
@@ -190,7 +190,7 @@ export class Telescope {
       const d = Math.hypot(x - eye.x, z - eye.z);
       if (d >= MARK_NEAR && d <= MARK_R) out.push({ key, kind, color, x, y, z, id });
     };
-    add('base', 'base', ORIGIN.x, ORIGIN.z, 2);
+    if (SHIP_AT) add('home', 'home', SHIP_AT.x, SHIP_AT.z, 5);
     for (const p of players) add(`p${p.id}`, 'player', p.x, p.z, 0, p.color, p.id, p.y + 1.6);
     for (const w of wrecksNear(eye.x, eye.z, MARK_R)) if (!crashTaken.has(w.id)) add(w.id, 'wreck', w.x, w.z, 1.5);
     for (const s of crashSitesNear(eye.x, eye.z, MARK_R)) if (!crashSpent.has(s.id)) add(`c${s.id}`, 'site', s.x, s.z, 4);

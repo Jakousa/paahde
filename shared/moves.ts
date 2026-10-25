@@ -13,7 +13,7 @@ import {
 /** Which box ids hold what: 'equip' is the player's EQUIP_SLOTS, 'bench' the workbench's one slot. */
 export type Boxes = Record<string, Slots | undefined>;
 
-/** A box's layout (shared/items.ts Shape): the bag's depends on the backpack, a chest's on how far it has grown. */
+/** A box's layout (shared/items.ts Shape): the bag's depends on the backpack, a dead player's pack's on how far it has grown. */
 export function boxShape(box: string, boxes: Boxes): Shape {
   const k = boxKind(box);
   return k ? SHAPES[k.kind](box, boxes) : freeSlots(0);
@@ -26,7 +26,6 @@ const SHAPES: Record<BoxKind, (box: string, boxes: Boxes) => Shape> = {
   bld: () => freeSlots(1),
   veh: () => freeSlots(1),
   cargo: () => gridShape(BIKE_COLS, BIKE_ROWS),
-  chest: grown,
   store: () => gridShape(CHEST_COLS, CHEST_ROWS),
   corpse: grown,
 };

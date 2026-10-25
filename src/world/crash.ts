@@ -1,14 +1,14 @@
 // Machine sites at the crashed spacecraft (shared/crash.ts; the wrecks, debris and the Blender-made ground
-// dressing under each machine are drawn by src/world/crashsites.ts) and the disassembly table job at the base.
+// dressing under each machine are drawn by src/world/crashsites.ts) and the jobs on the dismantling benches.
 // Each machine (src/teardown/junk.ts) is built when you come within BUILD_R and dropped again when you are far
 // away. The machine is the same object the disassembly mode works on, so a half taken-apart machine stays that
 // way while you are around. The large machine of a spent crash site (crashSpent: stripped, then its frame mashed to scrap) is gone.
 // How far each machine has been taken apart is the server's (server/crash.ts): every step and take arrives here
 // for every machine, and a machine built later is fast-forwarded to it. Machines you carried home (small ones, and the salvage wrecks of src/world/wrecks.ts)
-// are taken apart on a dismantling table (the base's, or one put up with the wrench), whose job is the server's too and is seen by everyone.
+// are taken apart on a dismantling table (put up with the wrench), whose job is the server's too and is seen by everyone.
 import * as THREE from 'three/webgpu';
 import {
-  BASE_TABLE, CARRY_KINDS, crashTaken, CRASH_REACH, isTableId, seeded, siteSpent, sitesNear, tableById, type CrashSite, type Table,
+  CARRY_KINDS, crashTaken, CRASH_REACH, isTableId, seeded, siteSpent, sitesNear, tableById, type CrashSite, type Table,
 } from '../../shared/crash.ts';
 import type { BenchJob } from '../../shared/protocol.ts';
 import { hasItem, type Slots } from '../../shared/items.ts';
@@ -34,8 +34,6 @@ const CULL_NEAR = 24;
 /** Objects put back per frame as a machine's detail comes in. */
 const DETAIL_PER_FRAME = 24;
 const DROP_R = 140;
-/** Session id of the base's dismantling table (shared/crash.ts). */
-export const BENCH_ID = BASE_TABLE;
 
 /** Steps done and parts taken at one machine. */
 type Progress = { done: Set<number>; taken: Set<number> };
@@ -64,8 +62,6 @@ export class MachineSites {
   private scene: THREE.Scene;
   /** The tables that have (or had) a job, by session id. */
   private benches = new Map<string, Bench>();
-  /** Lights the machine on the base's table with the bunker's lamps (Base.lightIndoors). */
-  indoors?: (root: THREE.Object3D) => void;
   /** Every large site's progress, from the server. */
   private progress = new Map<string, Progress>();
   /** Id of the site the disassembly mode is working on (src/teardown): its machine is never swapped under it. */
@@ -206,10 +202,7 @@ export class MachineSites {
   /** Table `id`'s job (made when a job comes for it). */
   bench(id: string): Bench {
     let b = this.benches.get(id);
-    if (!b) {
-      this.benches.set(id, (b = new Bench(this.scene, id)));
-      if (id === BENCH_ID) b.indoors = (root) => this.indoors?.(root);
-    }
+    if (!b) this.benches.set(id, (b = new Bench(this.scene, id)));
     return b;
   }
 
@@ -335,8 +328,8 @@ interface Job {
  *  carried machines that can be put on it. */
 export type TableMenu = { job: string | null; scrap: number; kinds: { kind: JunkKind; label: string }[] };
 
-/** Machines carried home are taken apart on a dismantling table (shared/crash.ts tables: the base's, or one put up
- *  with the wrench). The job is the server's ('bench' messages, per table): everyone sees the machine on the table and
+/** Machines carried home are taken apart on a dismantling table (shared/crash.ts tables: each one put up with the
+ *  wrench). The job is the server's ('bench' messages, per table): everyone sees the machine on the table and
  *  its progress, and anyone at the table can work on it. A machine on the table is scaled down to fit it, and you
  *  stand closer. The table's place comes from shared/crash.ts tableById (a placed one's from the placed list), looked
  *  up again until it is known. */
@@ -348,8 +341,6 @@ export class Bench {
   private pending: BenchJob | null = null;
   /** The table's job ended while the mode was open on it: tidy the machine away when it closes. */
   private stale: Junk | null = null;
-  /** Lights a new machine with the bunker's lamps (Base.lightIndoors): the base's table only. */
-  indoors?: (root: THREE.Object3D) => void;
 
   constructor(scene: THREE.Scene, id: string) {
     this.scene = scene;
@@ -396,7 +387,6 @@ export class Bench {
     if (!this.job) {
       const kind = job.kind as JunkKind;
       const junk = buildJunk(kind, job.seed);
-      this.indoors?.(junk.root);
       // Fit the table: its shorter side.
       const size = new THREE.Box3().setFromObject(junk.root).getSize(new THREE.Vector3());
       junk.root.scale.setScalar(Math.min(1, (Math.min(t.w, t.d) * 0.95) / Math.max(size.x, size.z, 1e-3)));

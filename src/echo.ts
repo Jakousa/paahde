@@ -5,7 +5,7 @@
 // second. Each marches the heightfield outwards to REACH m and keeps, for its direction, where the ground first stands
 // up into a wall (`at`: higher than WALL_SLOPE over the distance), how much of the sky in that direction it fills
 // (`cover`: how high the highest of it stands, as an angle) and how hard it is (`hard`: rock rings, sand swallows).
-// Indoors (the bunker, a shelter) none of it: the roof would read as walls all round.
+// Indoors (a shelter) none of it: the roof would read as walls all round.
 //
 // A tap for a sound at `src` heard at the ear: late by the detour via the wall (src → wall → ear, less the direct
 // path), and at most ECHO of the direct sound, less the further the detour goes. Between two walls facing each other

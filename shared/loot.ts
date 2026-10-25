@@ -2,7 +2,6 @@
 // Players can also drop items from the Tab inventory: they lie on the sand (src 'drop') until someone takes them.
 // Stashes lie on shelter floors (shared/shelters.ts) instead of the sand over them (lootY).
 // The client draws it (src/world/loot.ts) and F picks it up.
-import { insideBase, overBase } from './base.ts';
 import type { ItemData } from './items.ts';
 import { overShelter, shelterFloorY } from './shelters.ts';
 import { heightAt } from './terrain.ts';
@@ -26,8 +25,8 @@ export const LOOT_REACH = 2.5;
 /** Dropped items land this far (m) in front of the feet, well within LOOT_REACH. */
 export const DROP_AHEAD = 1.2;
 
-/** Not in or over the base or a shelter: it would lie on the sand above the bunker (the chests are for that). */
-export const canDropAt = (x: number, z: number) => !overBase(x, z, 2) && !insideBase(x, z, 2) && !overShelter(x, z, 2);
+/** Not in or over a shelter: it would lie on the sand above its rooms (the chests are for that). */
+export const canDropAt = (x: number, z: number) => !overShelter(x, z, 2);
 
 /** The height (world) loot at (x, z) lies at: a shelter's floor, or the sand. */
 export function lootY(l: { x: number; z: number }): number {

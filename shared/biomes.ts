@@ -12,8 +12,8 @@
 // shared/canyons.ts), so does the renderer (per-vertex attributes in src/world/terrain.ts, shaded in
 // src/world/sandMaterial.ts), the heat (shared/temperature.ts), the haze (src/blownSand.ts), and anything placed in
 // the world (rocksNear keeps finds out of the canyons). The origin stands in for the spawn when a biome grows with
-// distance: the base is always within 600 m of it (shared/base.ts findBase), and the base's spot is picked from the
-// dunes, which read the biomes, so the biomes cannot measure from the base itself.
+// distance: the world's origin is always within 600 m of it (shared/origin.ts findOrigin), and its spot is picked from the
+// dunes, which read the biomes, so the biomes cannot measure from the origin itself.
 //
 // To add one: an id, a placement, an entry in BIOMES at its precedence, and whatever reads it (its ground in
 // duneHeight or a layout of its own, its look in the sand shader, its properties here).

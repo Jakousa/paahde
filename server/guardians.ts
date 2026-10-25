@@ -5,7 +5,7 @@
 //
 // Guardians are few and roam guardian ground (crash sites of level 2, shared/crashsites.ts SiteLevel) from site to
 // site. Crawlers belong to a crash site: they turn up there when someone comes near (any time, at crawler and guardian
-// ground) and go when everyone has left. The scrap fields (level 0) near the base have none.
+// ground) and go when everyone has left. The scrap fields (level 0) near the start have none.
 import { ORIGIN } from '../shared/origin.ts';
 import { PACK_BACK_S } from '../shared/enemies.ts';
 import { coreCrashSites, crashSite, type CrashSite, LEVEL_R } from '../shared/crashsites.ts';
@@ -31,10 +31,10 @@ export { SEND_R, type BotPlayer, type Kill } from './bots.ts';
 
 export const TICK_HZ = 10;
 const CRAWLER_SEND_R = 300;
-/** How many guardians roam guardian ground, starting spread evenly over its sites from nearest the base to farthest. */
+/** How many guardians roam guardian ground, starting spread evenly over its sites from nearest the origin to farthest. */
 const GUARDIANS = 6;
-/** Walkers never come this close (m) to the base: it's safe ground. */
-const BASE_KEEP_OUT = 200;
+/** Walkers never come this close (m) to the start (the origin, where the ship lies): it's safe ground. */
+const START_KEEP_OUT = 200;
 /** Patrol waypoints lie this far (m) from the site's centre, by kind. */
 const PATROL: Record<Kind, [number, number]> = { [GUARDIAN]: [30, 80], [CRAWLER]: [6, 34] };
 /** At a waypoint: the chance to stand guard for a while (GUARD_MIN..MAX ms), and (guardians) to move on to another site. */
@@ -509,12 +509,12 @@ export class GuardianServer {
     }
     g.speed += (want - g.speed) * (1 - Math.exp(-dt / ease));
     let nx = g.x + Math.sin(g.yaw) * g.speed * dt, nz = g.z + Math.cos(g.yaw) * g.speed * dt;
-    // The base is out of bounds: stopped at the edge (and it gives up the hunt there). Not for a debug menu pack
-    // (made-up home, id < 0), so it can be tried out near the base.
+    // The start (round the origin, where the ship lies) is out of bounds: stopped at the edge (and it gives up the hunt there). Not for a debug menu pack
+    // (made-up home, id < 0), so it can be tried out near the start.
     const bd = Math.hypot(nx - ORIGIN.x, nz - ORIGIN.z);
-    if (bd < BASE_KEEP_OUT && g.home.id >= 0) {
-      nx = ORIGIN.x + ((nx - ORIGIN.x) / bd) * BASE_KEEP_OUT;
-      nz = ORIGIN.z + ((nz - ORIGIN.z) / bd) * BASE_KEEP_OUT;
+    if (bd < START_KEEP_OUT && g.home.id >= 0) {
+      nx = ORIGIN.x + ((nx - ORIGIN.x) / bd) * START_KEEP_OUT;
+      nz = ORIGIN.z + ((nz - ORIGIN.z) / bd) * START_KEEP_OUT;
       if (!hunting) this.patrolPoint(g);
     }
     if (g.kind === CRAWLER) [nx, nz] = keepOut(nx, nz, CRAWLER_R);
@@ -554,7 +554,7 @@ export class GuardianServer {
     if (Math.random() < GUARD_CHANCE[g.kind]) g.guardUntil = now + rand(GUARD_MIN, GUARD_MAX) * (g.kind === CRAWLER ? 0.4 : 1);
     if (g.kind === GUARDIAN && Math.random() < WANDER_CHANCE) {
       const next = this.ground.filter((s) => s !== g.home && Math.hypot(s.x - g.home.x, s.z - g.home.z) < WANDER_R
-        && Math.hypot(s.x - ORIGIN.x, s.z - ORIGIN.z) > BASE_KEEP_OUT + PATROL[GUARDIAN][1]
+        && Math.hypot(s.x - ORIGIN.x, s.z - ORIGIN.z) > START_KEEP_OUT + PATROL[GUARDIAN][1]
         && !this.guardians.some((o) => o !== g && o.kind === GUARDIAN && o.home === s));
       if (next.length) g.home = next[Math.floor(Math.random() * next.length)];
     }
@@ -568,7 +568,7 @@ export class GuardianServer {
       g.tz = g.home.z + Math.cos(a) * r;
       // Not inside a wreck (a crawler would walk round it for ever).
       if (g.kind === CRAWLER) [g.tx, g.tz] = keepOut(g.tx, g.tz, CRAWLER_R + 0.5);
-      if (g.home.id >= 0 && Math.hypot(g.tx - ORIGIN.x, g.tz - ORIGIN.z) <= BASE_KEEP_OUT + 10) continue;
+      if (g.home.id >= 0 && Math.hypot(g.tx - ORIGIN.x, g.tz - ORIGIN.z) <= START_KEEP_OUT + 10) continue;
       // Not where another of its kind stands or is heading (guardians: crawlers swarm).
       const sep = SEP_R * KINDS[g.kind].scale;
       if (i < 9 && g.kind === GUARDIAN && this.guardians.some((o) => o !== g && o.kind === g.kind && o.deadAt < 0
@@ -676,7 +676,7 @@ export class GuardianServer {
     this.comeback = this.comeback.filter((c) => {
       if (now < c.at) return true;
       const far = this.ground.filter((s) => Math.hypot(s.x - c.x, s.z - c.z) > GUARDIAN_BACK_FAR
-        && Math.hypot(s.x - ORIGIN.x, s.z - ORIGIN.z) > BASE_KEEP_OUT + PATROL[GUARDIAN][1]
+        && Math.hypot(s.x - ORIGIN.x, s.z - ORIGIN.z) > START_KEEP_OUT + PATROL[GUARDIAN][1]
         && !this.guardians.some((o) => o.kind === GUARDIAN && o.home === s));
       const pool = far.length ? far : this.ground.length ? this.ground : this.sites;
       const home = pool[Math.floor(Math.random() * pool.length)];

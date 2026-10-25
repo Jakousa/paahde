@@ -18,7 +18,7 @@ import { attribute, cameraPosition, dot, exp, float, instancedBufferAttribute, l
 import { EDIT_CELL, EDIT_CHUNK, edits, heightAt, WIND } from '../../shared/terrain.ts';
 import { time } from './env.ts';
 import { PEAK_LOCAL, ustarFrom10, USTAR_T, wind, type WindSample } from './wind.ts';
-import { outsideTerrainHoles } from './base.ts';
+import { outsideTerrainHoles } from './shelters.ts';
 
 const HALF = 48; // grid half-width (m)
 const STEP = 1; // grid spacing (m)

@@ -97,14 +97,14 @@ export function openDb(path: string) {
   const deleteTaken = db.prepare('DELETE FROM scrap_taken WHERE ix = ? AND iz = ? AND i = ?');
 
   // Items (shared/items.ts, server/items.ts): one row per stack, in a slot of a box. Player boxes ('bag',
-  // 'equip', 'bench') belong to the player; shared ones ('chest<i>', 'cargo<id>', ...) to nobody ('').
+  // 'equip', 'bench') belong to the player; shared ones ('store<id>', 'cargo<id>', ...) to nobody ('').
   db.exec(`
     CREATE TABLE IF NOT EXISTS items (
       id    INTEGER PRIMARY KEY,               -- stable stack id
       kind  TEXT NOT NULL,                     -- ITEMS key
       n     INTEGER NOT NULL,                  -- stack size
       owner TEXT NOT NULL,                     -- browser ID, '' for shared boxes
-      box   TEXT NOT NULL,                     -- 'bag', 'equip', 'chest<i>', ...
+      box   TEXT NOT NULL,                     -- 'bag', 'equip', 'store<id>', ...
       slot  INTEGER NOT NULL,
       UNIQUE (owner, box, slot)
     );
@@ -166,7 +166,7 @@ export function openDb(path: string) {
   const insertCrash = db.prepare('INSERT OR REPLACE INTO crash_taken (id, taken_at) VALUES (?, ?)');
   const deleteCrash = db.prepare('DELETE FROM crash_taken WHERE id = ?');
   // Machines being taken apart (server/crash.ts): steps done and parts taken (JSON arrays of indexes) per large
-  // site id, or a dismantling table's session id ('bench' for the base's, 'bench<placed id>' for one put up with the
+  // site id, or a dismantling table's session id ('bench<placed id>' for one put up with the
   // wrench: shared/crash.ts tables), whose machine (kind + seed) is in bench_jobs while it has one.
   db.exec(`
     CREATE TABLE IF NOT EXISTS machine_progress (
@@ -185,7 +185,8 @@ export function openDb(path: string) {
       seed INTEGER NOT NULL
     );
   `);
-  // The base's table's job from before there were more tables (bench_job, one row) moves into bench_jobs.
+  // The old bunker's table's job from before there were more tables (bench_job, one row) moves into bench_jobs (as
+  // 'bench'; server/bunkerGone.ts gives it back).
   db.exec(`INSERT OR IGNORE INTO bench_jobs (id, kind, seed) SELECT 'bench', kind, seed FROM bench_job; DELETE FROM bench_job;`);
   // Which step layout `done` indexes refer to (TEARDOWN_LAYOUT in shared/crash.ts); rows from before had layout 1.
   const progCols = db.prepare('SELECT name FROM pragma_table_info(?)').all('machine_progress') as { name: string }[];
@@ -263,7 +264,7 @@ export function openDb(path: string) {
     if (n) console.log(`items: ${n} old scrap stacks are scrap now`);
   }
 
-  // Placed things (shared/placed.ts, server/placed.ts): items put down on the bunker floor, and buildings out on the
+  // Placed things (shared/placed.ts, server/placed.ts): items put down on a shelter's floor, and buildings out on the
   // sand (`y`: what it stands on; NULL for those from before, all on the floor). A building's item is in its own box,
   // `bld<id>` (items). The old `garden` table (greenhouse beds by layout index) is unused since beds are placed things.
   db.exec(`
@@ -302,7 +303,7 @@ export function openDb(path: string) {
   const insertWire = db.prepare('INSERT INTO wires (a, b, kind, owner, placed_at) VALUES (?, ?, ?, ?, ?)');
   const deleteWire = db.prepare('DELETE FROM wires WHERE id = ?');
   // Vehicles (shared/vehicles.ts, server/vehicles.ts): where each stands and whether it's been repaired (stood up). Its
-  // item is in box `veh<id>`, its cargo in `cargo<id>` (items). src: 'home' (the one in front of the base door),
+  // item is in box `veh<id>`, its cargo in `cargo<id>` (items). src: 'home' (the first one, by the crashed ship),
   // 'find' (lying at a crash site), 'old' (a motorcycle item from before vehicles).
   db.exec(`CREATE TABLE IF NOT EXISTS vehicles (
     id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL,
@@ -452,6 +453,15 @@ export function openDb(path: string) {
     insertPlaced: (kind: string, x: number, y: number, z: number, rot: number, owner: string) =>
       Number(insertPlaced.run(kind, x, y, z, rot, owner, Date.now()).lastInsertRowid),
     deletePlaced: (id: number) => deletePlaced.run(id),
+    /** Placed thing `id` stands somewhere else now. */
+    movePlaced: (id: number, x: number, y: number, z: number, rot: number) => db.prepare('UPDATE placed SET x = ?, y = ?, z = ?, rot = ? WHERE id = ?').run(x, y, z, rot, id),
+    /** The shared boxes (owner '') whose ids match `re`, and the owners of player boxes called `box` with anything in them. */
+    sharedBoxes: (re: RegExp) => (db.prepare("SELECT DISTINCT box FROM items WHERE owner = ''").all() as { box: string }[]).map((r) => r.box).filter((b) => re.test(b)),
+    ownersOf: (box: string) => (db.prepare("SELECT DISTINCT owner FROM items WHERE box = ? AND owner != ''").all(box) as { owner: string }[]).map((r) => r.owner),
+    clearBox: (owner: string, box: string) => clearBox.run(owner, box),
+    /** Players saved inside the world rectangle [x0, z0, x1, z1] are at (x, z) from now on; returns how many. */
+    movePlayers: (r: number[], x: number, z: number) =>
+      Number(db.prepare('UPDATE players SET x = ?, z = ? WHERE x > ? AND x < ? AND z > ? AND z < ?').run(x, z, r[0], r[2], r[1], r[3]).changes),
     loadVehicles: () => (allVehicles.all() as { id: number; kind: string; x: number; y: number; z: number; heading: number; up: number; src: string; owner: string | null }[])
       .map((r) => ({ ...r, up: r.up === 1 })),
     /** New vehicle row; returns its id. */

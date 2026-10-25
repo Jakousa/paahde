@@ -19,7 +19,7 @@
 // caught in the beam and it locks on: it follows you, every guardian within ALERT_R
 // comes for you and the nearest ones shell you with missiles from afar (shared/missiles.ts). The beam turns after
 // you no faster than TRACK_RATE and the drone flies slower than you walk: sprint sideways out of the light, break
-// its line of sight (behind a dune crest, into the base) or outrun it, and after LOSE_MS in the dark it lets you go
+// its line of sight (behind a dune crest, into a shelter) or outrun it, and after LOSE_MS in the dark it lets you go
 // and leaves you be for IGNORE_MS.
 import { collideCrash } from './crashsites.ts';
 import { collideScrap } from './scrap.ts';
@@ -206,7 +206,7 @@ export function lineOfSight(ax: number, ay: number, az: number, bx: number, by: 
 
 /**
  * Is a player with feet at (px, py, pz) lit by a beam from (x, y, z) along unit vector (dx, dy, dz)? Inside the
- * cone (checked at the chest), in range, out of the base and nothing in the way.
+ * cone (checked at the chest), in range, out of the shelters and nothing in the way.
  */
 export function inBeam(x: number, y: number, z: number, dx: number, dy: number, dz: number, px: number, py: number, pz: number): boolean {
   const cy = py + 1.1;

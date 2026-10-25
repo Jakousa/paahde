@@ -1,5 +1,5 @@
 // Temperature: the desert's air temperature over the day, and how hot it feels to a player in the sun,
-// in the shade (shared/shade.ts) or in the base. Heat builds up by the felt temperature (shared/water.ts).
+// in the shade (shared/shade.ts) or indoors (a shelter). Heat builds up by the felt temperature (shared/water.ts).
 // Plain math on the shared clock (shared/sun.ts), so the server and the client agree. Server-authoritative:
 // the server sends the felt temperature in its 'water' message; the client only shows it.
 //
@@ -11,10 +11,10 @@
 //
 // Felt: air, plus up to SUN_BONUS in direct sun (scaled by the sun's height, like sunlight per m²). In
 // shade, SHADE_DROP under the air while the sun is up (cool sand, no glare), and never above SHADE_MAX, so even at
-// midday the shadow of a rock, a dune or a wreck cools you off (slowly; the base is faster): finding shade is how
+// midday the shadow of a rock, a dune or a wreck cools you off (slowly; a shelter is faster): finding shade is how
 // you get through the afternoon. Both fade out as the sun nears the horizon. Partly in shade (shared/shade.ts sunOnBody), it is
-// the mix of the two by how much of the body the sun reaches. In the base (the hut or the bunker) the thick walls
-// and the sand keep it at most BASE_MAX.
+// the mix of the two by how much of the body the sun reaches. In a shelter (its hut or down in it) the thick walls
+// and the sand keep it at most INDOOR_MAX.
 //
 // Ground: some biomes (shared/biomes.ts, their `groundHeat`) are hotter than the dune sea while the sun is up. Out on
 // a mud flat the bare baked clay adds up to its `sun` °C in the sun (`shade` in what little shade there is), by the
@@ -38,8 +38,8 @@ export const SHADE_DROP = 10;
 export const SHADE_MAX = 26;
 /** ...both in full above this sunStrength, fading to none at sunset. */
 const SHADE_FULL_STRENGTH = 0.2;
-/** The base never feels hotter than this (°C): cool enough that you cool off there. */
-export const BASE_MAX = 22;
+/** Indoors (a shelter) never feels hotter than this (°C): cool enough that you cool off there. */
+export const INDOOR_MAX = 22;
 
 
 /** Air temperature (°C) at a time of day in [0, 1). */
@@ -66,11 +66,11 @@ export function sunStrength(tod: number): number {
 
 /**
  * Felt temperature (°C) at a time of day with `sun` (0..1, shared/shade.ts sunOnBody) of the body in direct sun,
- * inside the base or not.
+ * indoors (shared/shelters.ts indoors) or not.
  */
 export function feltTemp(tod: number, sun: number, inside: boolean): number {
   const air = airTemp(tod);
-  if (inside) return Math.min(air, BASE_MAX);
+  if (inside) return Math.min(air, INDOOR_MAX);
   const strength = sunStrength(tod);
   const lit = air + SUN_BONUS * strength;
   const shaded = air + (Math.min(air - SHADE_DROP, SHADE_MAX) - air) * Math.min(1, strength / SHADE_FULL_STRENGTH);

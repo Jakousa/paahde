@@ -2,8 +2,8 @@
 // holds, where finds and caches are laid out, and what a killed enemy, a downed jet, a harvester or a boss leaves. The
 // server rolls them with Math.random (server/loot.ts, server/world.ts); the economy simulator (tools/econsim) rolls the
 // same ones with seeded streams, so the two can't drift apart. Tables in shared/tables.ts.
-import { overBase } from './base.ts';
-import { ORIGIN, ORIGIN_FRONT } from './origin.ts';
+import { LAB_SPAWN } from './lab.ts';
+import { ORIGIN } from './origin.ts';
 import { overShelter, shelterLootSpot, type Shelter } from './shelters.ts';
 import { GEAR, GEAR_KINDS } from './gear.ts';
 import { JAMMER } from './jammer.ts';
@@ -15,7 +15,8 @@ import { PART_IDS, pickTier } from './parts.ts';
 import { GUNS, PISTOL, RIFLE } from './rifle.ts';
 import { rocksNear } from './rocks.ts';
 import { SHIP_AT, shipLootSpot } from './ship.ts';
-import { shipToWorld } from './shipSpot.ts';
+import { nearShip, SHIP_BIKE_SPOTS, shipToWorld } from './shipSpot.ts';
+import { overTrophy } from './trophies.ts';
 import type { JetKind } from './jetbreak.ts';
 import {
   BOSS_SPOILS, BROKEN_GEAR, CACHES, DRONE_JET_SPOILS, FINDS, HARVESTER_SCRAP, HARVESTER_SPOILS, JET_RELIC_ODDS, JET_SCRAP,
@@ -26,10 +27,10 @@ export type Rand = () => number;
 /** Something laid on the sand: an item kind, and the parts in it if it's broken gear. */
 export type Drop = { kind: string; parts?: (string | null)[] };
 
-/** The odds a level-0 find lies at a scrap pile (shared/scrap.ts) within PILE_FIND_R m of the base instead of a crash site. */
+/** The odds a level-0 find lies at a scrap pile (shared/scrap.ts) within PILE_FIND_R m of the origin instead of a crash site. */
 export const PILE_ODDS = 0.45;
 export const PILE_FIND_R = 600;
-/** How far from the base caches lie (m). */
+/** How far from the origin caches lie (m). */
 export const CACHE_MIN_R = 80, CACHE_MAX_R = 1200;
 
 export const CACHE_PARTS = PART_IDS.filter((p) => !CACHES.noParts.includes(p));
@@ -94,7 +95,7 @@ export const rarePart = (rand: Rand): Drop => ({ kind: partKind(pick(RARE_PARTS,
 
 // ---- where things lie --------------------------------------------------------------------------------------------
 
-/** The scrap piles within PILE_FIND_R of the base: centre and how far their pieces reach. */
+/** The scrap piles within PILE_FIND_R of the origin (shared/origin.ts): centre and how far their pieces reach. */
 export function nearPiles() {
   const out: { x: number; z: number; r: number }[] = [];
   const lo = (c: number) => Math.floor((c - PILE_FIND_R) / SCRAP_CELL), hi = (c: number) => Math.floor((c + PILE_FIND_R) / SCRAP_CELL);
@@ -102,39 +103,36 @@ export function nearPiles() {
     const ps = scrapPieces(ix, iz);
     if (!ps.length) continue;
     const x = ps.reduce((a, p) => a + p.x, 0) / ps.length, z = ps.reduce((a, p) => a + p.z, 0) / ps.length;
-    if (Math.hypot(x - ORIGIN.x, z - ORIGIN.z) > PILE_FIND_R || overBase(x, z, 6)) continue;
+    if (Math.hypot(x - ORIGIN.x, z - ORIGIN.z) > PILE_FIND_R) continue;
     out.push({ x, z, r: Math.max(...ps.map((p) => Math.hypot(p.x - x, p.z - z))) });
   }
   return out;
 }
 
-/** Where the home bike lies, ship-local: on its side by the crashed ship's left flank, in view from the ramp's foot. */
-const BIKE_BY_SHIP: [number, number][] = [[-10, 9], [-11, -6], [-13, 3]];
-
-/** Where the home bike lies: beside the crashed ship (shared/ship.ts), on clear sand in plain view; with no ship (the dev
- *  lab), out from the base's door, off the path a little. The same spot every time. */
+/** Where the home bike lies: beside the crashed ship (shared/ship.ts, SHIP_BIKE_SPOTS), on clear sand in plain view; with
+ *  no ship (the dev lab), out in front of where you start, off the middle a little. The same spot every time. */
 export function homeBikeSpot() {
   const clear = (x: number, z: number) => {
-    if (overBase(x, z, 6) || rocksNear(x, z, 3)) return false;
+    if (rocksNear(x, z, 3)) return false;
     const ix = Math.floor(x / SCRAP_CELL), iz = Math.floor(z / SCRAP_CELL);
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       if (scrapPieces(ix + dx, iz + dz).some((p) => Math.hypot(p.x - x, p.z - z) < 4)) return false;
     }
     return true;
   };
-  if (SHIP_AT) for (const [lx, lz] of BIKE_BY_SHIP) {
+  if (SHIP_AT) for (const [lx, lz] of SHIP_BIKE_SPOTS) {
     const p = shipToWorld(lx, lz);
     if (clear(p.x, p.z)) return p;
   }
   for (const d of [22, 28, 34, 16, 42]) for (const a of [0.35, -0.35, 0.6, -0.6, 0, 0.9, -0.9]) {
-    const x = ORIGIN_FRONT.x + Math.sin(a) * d, z = ORIGIN_FRONT.z + Math.cos(a) * d;
+    const x = LAB_SPAWN.x + Math.sin(a) * d, z = LAB_SPAWN.z + Math.cos(a) * d;
     if (clear(x, z)) return { x, z };
   }
-  return { x: ORIGIN_FRONT.x + 8, z: ORIGIN_FRONT.z + 20 };
+  return { x: LAB_SPAWN.x + 8, z: LAB_SPAWN.z + 20 };
 }
 
 /** Where a find of FINDS level `level` lies: among the debris of a crash site of that level (`sites`: the ones finds lie
- *  at), or for level 0 now and then among the pieces of a scrap pile near the base (`piles`, nearPiles). */
+ *  at), or for level 0 now and then among the pieces of a scrap pile near the origin (`piles`, nearPiles). */
 export function findSpot(level: SiteLevel, sites: CrashSite[], piles: { x: number; z: number; r: number }[], rand: Rand) {
   const atLevel = sites.filter((s) => s.loot === level);
   let x = 0, z = 0;
@@ -148,19 +146,19 @@ export function findSpot(level: SiteLevel, sites: CrashSite[], piles: { x: numbe
     const a = between(rand, 0, Math.PI * 2), d = between(rand, site.radius * 0.4, site.radius + 8);
     x = site.x + Math.sin(a) * d;
     z = site.z + Math.cos(a) * d;
-    if (!overBase(x, z, 6) && !overShelter(x, z, 6)) break;
+    if (!overShelter(x, z, 6)) break;
   }
   return { x, z };
 }
 
-/** Where a cache lies: out in the open desert CACHE_MIN_R..CACHE_MAX_R from the base. */
+/** Where a cache lies: out in the open desert CACHE_MIN_R..CACHE_MAX_R from the origin, off the ship and the trophies' ground. */
 export function cacheSpot(rand: Rand) {
   let x = 0, z = 0;
   for (let tries = 0; tries < 20; tries++) {
     const a = between(rand, 0, Math.PI * 2), d = between(rand, CACHE_MIN_R, CACHE_MAX_R);
     x = ORIGIN.x + Math.sin(a) * d;
     z = ORIGIN.z + Math.cos(a) * d;
-    if (!overBase(x, z, 10) && !overShelter(x, z, 10) && !rocksNear(x, z, 3)) break;
+    if (!overShelter(x, z, 10) && !nearShip(x, z, 10) && !overTrophy(x, z, 10) && !rocksNear(x, z, 3)) break;
   }
   return { x, z };
 }

@@ -1,4 +1,4 @@
-// Procedural dune field: the base heightfield under the edit layer (see terrain.ts).
+// Procedural dune field: the bare heightfield under the edit layer (see terrain.ts).
 //
 // Shared by server physics (every tick) and client meshing (per vertex), so it must be deterministic
 // across JS engines and cheap (~0.2 µs/call). Only exact IEEE operations are used: + - * /, Math.sqrt,
@@ -18,7 +18,7 @@
 //   - A regional "sand supply" mask flattens some areas into pans; a very gentle erg undulation on top.
 //   - Mud flats (shared/biomes.ts) have no sand supply at all: flat, slightly sunk, the erg undulation damped.
 
-/** Seeds the dunes, scrap, wrecks and crash sites, and so where the base goes (shared/base.ts); per world
+/** Seeds the dunes, scrap, wrecks and crash sites, and so where the world's origin is (shared/origin.ts); per world
  *  (shared/world.ts). */
 export { WORLD_SEED } from './world.ts';
 

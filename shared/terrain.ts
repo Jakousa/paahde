@@ -13,7 +13,7 @@
 // client and server agree exactly. Edits travel as absolute values (not deltas), so applying the same
 // edit twice is harmless and a client can predict a dig locally and still converge on the server.
 
-import { baseSolid, LAB_FLOOR_Y, nearBunker, overBase, overPlaced, withPad } from './base.ts';
+import { overPlaced } from './capsules.ts';
 import { biome } from './biomes.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { ss, vnoise } from './noise.ts';
@@ -21,7 +21,7 @@ import { canyonAt, canyonOut } from './canyons.ts';
 import { canyonRockHeight, rockHeight } from './rocks.ts';
 import { LAB } from './world.ts';
 import { nearShelter, overShelter, shelterSolid, withShelterPad } from './shelters.ts';
-import { nearShip, withShipFurrow } from './shipSpot.ts';
+import { nearShip, shipPadLevel, withShipFurrow, withShipPad } from './shipSpot.ts';
 export { WIND, WORLD_SEED } from './dunes.ts';
 
 /**
@@ -29,6 +29,11 @@ export { WIND, WORLD_SEED } from './dunes.ts';
  * this square of ±CORE_HALF metres round the origin; scrap, crash sites, wrecks and shelters go on forever.
  */
 export const CORE_HALF = 2000;
+
+/** More ground that's never dug (+ margin m), added by the modules that own it (shared/trophies.ts): kept here as
+ *  hooks, so the terrain needn't import them (they import the terrain). */
+const undug: ((x: number, z: number, margin: number) => boolean)[] = [];
+export const keepUndug = (f: (x: number, z: number, margin: number) => boolean) => void undug.push(f);
 
 /** Edit grid spacing in metres. Edit vertex (ix, iz) sits at world (ix * EDIT_CELL, iz * EDIT_CELL). */
 export const EDIT_CELL = 0.5;
@@ -78,6 +83,8 @@ function ground(x: number, z: number) {
   lastZ = z;
 }
 
+/** The dev test lab's floor (shared/lab.ts): one height everywhere. */
+export const LAB_FLOOR_Y = 0;
 const LAB_GROUND: Readonly<typeof layers> = { sand: LAB_FLOOR_Y, rock: -Infinity, silt: 0, mudflat: 0 };
 
 /** The ground's layers at (x, z) before edits and pads (see `layers`). Overwritten by the next call. */
@@ -87,12 +94,20 @@ export function groundAt(x: number, z: number): Readonly<typeof layers> {
   return layers;
 }
 
-/** Procedural dunes, rocks and canyons before player edits, flattened into a pad around the home base
- *  (shared/base.ts) and the shelters (shared/shelters.ts), with the crashed ship's furrow (shared/shipSpot.ts). */
+/** The ground with the shelters' pads, before the crashed ship's. */
+function padded(x: number, z: number): number {
+  ground(x, z);
+  return withShelterPad(x, z, Math.max(layers.sand, layers.rock));
+}
+/** The level of the ship's pad (shared/shipSpot.ts shipPadLevel), worked out on first use: null not yet or no ship. */
+let shipPad: number | null | undefined;
+
+/** Procedural dunes, rocks and canyons before player edits, flattened into a pad round the shelters
+ *  (shared/shelters.ts) and along the crashed ship's door side, with the ship's furrow (shared/shipSpot.ts). */
 export function baseHeight(x: number, z: number): number {
   if (LAB) return LAB_FLOOR_Y; // the dev test lab (shared/lab.ts): one flat floor, same on client and server
-  ground(x, z);
-  return withShipFurrow(x, z, withShelterPad(x, z, withPad(x, z, Math.max(layers.sand, layers.rock))));
+  if (shipPad === undefined) shipPad = shipPadLevel(padded);
+  return withShipFurrow(x, z, withShipPad(x, z, padded(x, z), shipPad));
 }
 
 /** Height of the rock at (x, z) (the rocks, a canyon's tableland and walls), or -Infinity where there is none. */
@@ -103,7 +118,7 @@ export function rockTop(x: number, z: number): number {
 }
 
 /** How far the sand would have to be dug to reach rock at (x, z), m: 0 on bare rock, Infinity with no
- *  rock under the sand. Rocks avoid the base, so the pad never matters here. */
+ *  rock under the sand. The pads flatten only dunes (rocks avoid them), so they never matter here. */
 export function sandOverRock(x: number, z: number): number {
   ground(x, z);
   return layers.rock === -Infinity ? Infinity : Math.max(0, layers.sand - layers.rock);
@@ -153,9 +168,11 @@ export class TerrainEdits {
     return c ? c[(iz - cz * EDIT_CHUNK) * EDIT_CHUNK + (ix - cx * EDIT_CHUNK)] : 0;
   }
 
-  /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. Not over the bunker, a shelter or a building on the sand. */
+  /** Set the offset at edit vertex (ix, iz) to an absolute value in millimetres. Not over a shelter, a building on the sand,
+   *  the crashed ship or a trophy's ground (keepUndug). */
   setMm(ix: number, iz: number, mm: number) {
-    if (mm !== 0 && (overBase(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overShelter(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overPlaced(ix * EDIT_CELL, iz * EDIT_CELL, 1) || nearShip(ix * EDIT_CELL, iz * EDIT_CELL, 1))) return;
+    if (mm !== 0 && (overShelter(ix * EDIT_CELL, iz * EDIT_CELL, 1) || overPlaced(ix * EDIT_CELL, iz * EDIT_CELL, 1) || nearShip(ix * EDIT_CELL, iz * EDIT_CELL, 1) ||
+      undug.some((f) => f(ix * EDIT_CELL, iz * EDIT_CELL, 1)))) return;
     const cx = Math.floor(ix / EDIT_CHUNK), cz = Math.floor(iz / EDIT_CHUNK);
     const k = TerrainEdits.key(cx, cz);
     let c = this.chunks.get(k);
@@ -233,15 +250,15 @@ export function normalAt(x: number, z: number, out: { x: number; y: number; z: n
   return out;
 }
 
-/** A shot at world (x, y, z) is stopped here: in the sand, or the base's or a shelter's walls (down in them the sand
- *  above is their roof, not in the way). */
+/** A shot at world (x, y, z) is stopped here: in the sand, or a shelter's walls (down in one the sand above is its roof,
+ *  not in the way). */
 export function shotSolid(x: number, y: number, z: number): boolean {
-  return baseSolid(x, y, z) ?? shelterSolid(x, y, z) ?? y <= heightAt(x, z);
+  return shelterSolid(x, y, z) ?? y <= heightAt(x, z);
 }
 
 /**
- * How far a shot from (ox, oy, oz) along unit (dx, dy, dz) goes before the sand or the base's walls stop it, or
- * `range` if nothing does. Sampled every 0.75 m (0.15 m by the bunker), then refined.
+ * How far a shot from (ox, oy, oz) along unit (dx, dy, dz) goes before the sand or a shelter's walls stop it, or
+ * `range` if nothing does. Sampled every 0.75 m (0.15 m by a shelter), then refined.
  */
 export function shotGround(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, range: number): number {
   const at = (t: number) => shotSolid(ox + dx * t, oy + dy * t, oz + dz * t);
@@ -258,7 +275,7 @@ export function shotGround(ox: number, oy: number, oz: number, dx: number, dy: n
     }
     prev = t;
     const px = ox + dx * t, pz = oz + dz * t;
-    t += nearBunker(px, pz, 2) || nearShelter(px, pz, 2) ? 0.15 : 0.75;
+    t += nearShelter(px, pz, 2) ? 0.15 : 0.75;
   }
   return range;
 }

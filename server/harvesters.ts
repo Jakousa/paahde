@@ -1,6 +1,6 @@
 // Server side of the harvester (shared/harvester.ts): the mud flats (shared/biomes.ts) are its ground. Now and then,
 // when a player is out near one, a harvester rises out of the mud of a flat some way from them and crawls a route that
-// keeps to the flat (steering round rock, the base, shelters and crash sites too), sinking back where it runs out. Its list goes out to
+// keeps to the flat (steering round rock, the crashed ship, shelters and crash sites too), sinking back where it runs out. Its list goes out to
 // everyone whenever it changes (a new one, a change of pace, a core shot out, its death). Ticked with the bots: it
 // runs over whoever is under it, charges whoever it sees ahead (inSight: a new stretch of pace up to CHARGE, back down
 // to SPEED once it has seen no one for CALM_MS), steering at the nearest of them as it does (the route ahead of its
@@ -13,7 +13,7 @@ import {
 } from '../shared/harvester.ts';
 import { baseHeight } from '../shared/terrain.ts';
 import { rocksNear } from '../shared/rocks.ts';
-import { overBase } from '../shared/base.ts';
+import { nearShip } from '../shared/shipSpot.ts';
 import { nearShelter, indoors } from '../shared/shelters.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
 import { biome } from '../shared/biomes.ts';
@@ -70,7 +70,7 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** Clear ground for its footprint at (x, z): out on a mud flat, not too steep, away from what it mustn't crush. */
 function clear(x: number, z: number): boolean {
-  if (biome('mudflat', x, z) < MUD_ROAM || overBase(x, z, 140) || nearShelter(x, z, 45) || rocksNear(x, z, 16)) return false;
+  if (biome('mudflat', x, z) < MUD_ROAM || nearShip(x, z, 140) || nearShelter(x, z, 45) || rocksNear(x, z, 16)) return false;
   for (const s of crashSitesNear(x, z, 260)) if (Math.hypot(s.x - x, s.z - z) < s.radius + 30) return false;
   const dx = baseHeight(x + 4, z) - baseHeight(x - 4, z), dz = baseHeight(x, z + 4) - baseHeight(x, z - 4);
   return Math.hypot(dx, dz) < SLOPE;
@@ -219,7 +219,7 @@ export class HarvesterServer {
   }
 
   /** Redraw the route ahead of its front axle to curve towards (tx, tz) (at most every STEER_MS), steering round
-   *  nothing: where the way there isn't clear (rock, the base, a shelter...) it stops turning there and wanders on. */
+   *  nothing: where the way there isn't clear (rock, the ship, a shelter...) it stops turning there and wanders on. */
   private steer(h: Harvester, b: Brain, tx: number, tz: number, now: number) {
     if (now - b.steerAt < STEER_MS) return;
     b.steerAt = now;

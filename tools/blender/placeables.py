@@ -12,7 +12,7 @@ camera and lighting as the part icons of tools/blender/items.py, whose helpers t
 plant_bed.glb holds three objects: `plant_bed` (the scrap-metal trough with soil) and the growth stages
 `plant_bed_sprouts` and `plant_bed_grown`, which src/world/placed.ts shows or hides (shared/garden.ts stages).
 uv_lamp.glb is a gantry whose legs straddle a bed's short ends (shared/placed.ts footprints match these
-sizes); its tube's material is named Emit* so the bunker's material conversion keeps it glowing.
+sizes); its tube's material is named Emit* so the material conversion (src/world/glbMaterial.ts) keeps it glowing.
 windmill.glb is a farm windmill of scrap on the sand: `windmill` (the lattice tower), `windmill_head` (child of the
 tower, origin on the yaw axis at the tower's top: the generator, the tail) and `windmill_rotor` (child of the head,
 origin at the hub, turning about glTF Z, its front). src/world/placed.ts turns the head into the wind and spins the rotor.

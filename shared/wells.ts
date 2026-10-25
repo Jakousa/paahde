@@ -63,7 +63,7 @@ export function wellAt(x: number, y: number, z: number, margin = 0, list: Placed
   return null;
 }
 
-/** Where the canteen fills at world (x, y, z) (+ margin): a pump (the base's, a shelter's: shared/shelters.ts atWater),
+/** Where the canteen fills at world (x, y, z) (+ margin): a shelter's pump (shared/shelters.ts atWater),
  *  or a running well, with how long a fill takes there (ms); null where there's no water. */
 export function waterAt(x: number, y: number, z: number, margin = 0): { well: Placed | null; ms: number } | null {
   if (atWater(x, y, z, margin)) return { well: null, ms: FILL_MS };

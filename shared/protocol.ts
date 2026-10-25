@@ -19,13 +19,13 @@ import type { BossKind, BossSnap } from './bosses.ts';
 
 export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
-  // spawn: 'base' starts at the home base's door instead of the saved position, 'crash' next to the nearest
+  // spawn: 'ship' starts at the crashed ship's ramp instead of the saved position, 'crash' next to the nearest
   // crash site with a large machine, 'field' at the edge of the nearest scrap field, 'shelter' outside the nearest
-  // shelter's door, 'canyon' on the floor of the nearest deep canyon (dev helpers, ?spawn=base / crash / field / shelter /
+  // shelter's door, 'canyon' on the floor of the nearest deep canyon (dev helpers, ?spawn=ship / crash / field / shelter /
   // canyon). name and color: yours, chosen on the main menu or the lobby (src/profile.ts); a name that fails
   // shared/names.ts checkName is refused (closed with 4422), a color that isn't 24-bit RGB keeps the one you had.
   // look: what you wear (shared/look.ts packLook), chosen on the main menu; not a look keeps the plain one.
-  | { t: 'hello'; browserId: string; name: string; color?: number; look?: number; spawn?: 'base' | 'crash' | 'field' | 'shelter' | 'canyon' }
+  | { t: 'hello'; browserId: string; name: string; color?: number; look?: number; spawn?: 'ship' | 'crash' | 'field' | 'shelter' | 'canyon' }
   // One per fixed tick: input bitmask + quantized camera yaw and pitch (shared/dig.ts quantizePitch),
   // with an increasing sequence number.
   | { t: 'input'; seq: number; input: number; yaw: number; pitch: number }
@@ -62,8 +62,8 @@ export type ClientMsg =
   // Survival (shared/water.ts): one sip from the canteen finished (sent when the ~1.2 s drink completes).
   // The server checks sips > 0, the drink cooldown and that you are not mid-respawn, then answers 'water'.
   | { t: 'drink' }
-  // Refill the canteen at the base (sent when the ~1.5 s fill completes). The server checks you are in
-  // the base (inBase with FILL_SLACK) and answers 'water'.
+  // Refill the canteen at a pump or a running well (sent when the fill completes). The server checks you are at one
+  // (shared/wells.ts waterAt with FILL_SLACK) and answers 'water'.
   | { t: 'fill' }
   // What's in your hands (Hands below), sent when it changes and after every 'welcome'. Cosmetic: other
   // players see it on your avatar; the drink/fill checks don't depend on it.
@@ -89,7 +89,7 @@ export type ClientMsg =
   | { t: 'fit'; from: string; fi: number; slot: number; at?: string }
   | { t: 'unfit'; slot: number; to: string; ti: number; at?: string }
   // Drop one of the item in box `box` slot `slot` (not 'equip' or 'bench') on the sand in front of you: it becomes
-  // loot (src 'drop') anyone can pick up. Answered with 'items' for the box (and a 'notice' if refused, e.g. in the base).
+  // loot (src 'drop') anyone can pick up. Answered with 'items' for the box (and a 'notice' if refused, e.g. in a shelter).
   | { t: 'drop'; box: string; slot: number }
   // Pick up loot (shared/loot.ts) in reach. Answered with 'items' (or a 'notice' when the bag is full).
   | { t: 'lootTake'; id: number }
@@ -269,7 +269,7 @@ export type ServerMsg =
   // Step i is done, part i went to player `by` (the public id; -1 if from before a restart). Sent to everyone.
   // Whoever is carrying the part and isn't `by` has lost it.
   | { t: 'siteTake'; id: string; i: number; by: number }
-  // Every placed thing in the base (shared/placed.ts), on join (before 'welcome') and whenever it changes
+  // Every placed thing in the world (shared/placed.ts), on join (before 'welcome') and whenever it changes
   // (before the snapshot, like terrainEdit, so prediction collides with it from the same tick on).
   | { t: 'placed'; list: Placed[] }
   // Where your own bedroll lies (shared/placed.ts; you wake up there after dying), or null: on join and when it changes.
@@ -277,7 +277,7 @@ export type ServerMsg =
   // Every vehicle in the world (shared/vehicles.ts), on join (before 'welcome') and whenever it changes, and the ids
   // of those that are yours (stood up by you, server/vehicles.ts).
   | { t: 'vehicles'; list: Vehicle[]; mine: number[] }
-  // Electricity at the base (shared/power.ts), every POWER_SEND_MS: each windmill's output and each station's charge.
+  // Electricity (shared/power.ts), every POWER_SEND_MS: each windmill's output and each station's charge.
   | ({ t: 'power' } & PowerState)
   // Every power line (shared/wires.ts), on join and whenever one goes up or comes down.
   | { t: 'wires'; list: Wire[] }
@@ -291,7 +291,7 @@ export type ServerMsg =
   | { t: 'epoch'; epoch: number }
   // Your heat meter (0..HEAT_MAX, rounded to 0.01; full = heatstroke), canteen sips left (0..CANTEEN_SIPS),
   // whether heat is building up right now, the felt temperature (°C, 0.1; shared/temperature.ts) and
-  // whether you're out of direct sun (shade, night or the base; shared/shade.ts). Sent after 'welcome',
+  // whether you're out of direct sun (shade, night or a shelter; shared/shade.ts). Sent after 'welcome',
   // after every drink/fill (also refused ones, so the client resyncs), when heat starts or stops building
   // or shade flips, when temp moves by 0.5 °C, and about twice a second while the meter moves.
   // maxSips: what the water bottle in your bag holds (shared/gear.ts bottleSips), 0 without one.

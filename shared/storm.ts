@@ -10,13 +10,13 @@
 //
 // Gameplay: inside one the dust hides the sun, so your body heat stops rising (STORM_SHADE, server/water.ts), you
 // walk slower and it pushes you downwind (STORM_SLOW, STORM_PUSH, shared/sim.ts), and the electronics die in its
-// static (toolsDown). The base keeps it out.
+// static (toolsDown). A shelter keeps it out.
 //
 // Mega-storms (`front`): rare world-wide storm fronts. A straight wall of dust across the whole world rolls
 // downwind at FRONT_SPEED, faster than you can run and only outrun on a good bike. It appears FRONT_LEAD_S
 // upwind of the first player it will reach, takes FRONT_PASS_S to blow over a spot, and dies down after
 // it has passed the last player (server/storm.ts). Out in the open inside it you choke (frontExposure,
-// CHOKE_S; server/world.ts kills you); in a bunker or in the lee of a cliff (sheltered) you're fine.
+// CHOKE_S; server/world.ts kills you); in a shelter or in the lee of a cliff (sheltered) you're fine.
 import { WIND } from './dunes.ts';
 import { indoors } from './shelters.ts';
 import { heightAt } from './terrain.ts';
@@ -139,7 +139,7 @@ export function nearStorm(storms: readonly Storm[], x: number, z: number, t: num
 export const FRONT_PUSH = 2.5;
 
 /** The storm's wind on a player standing at (x, y, z) (feet): a column's strength 0..1, a front's up to FRONT_PUSH
- *  (it slows you no more than a column, shared/sim.ts, but pushes harder). None in a bunker or in the lee of rock:
+ *  (it slows you no more than a column, shared/sim.ts, but pushes harder). None in a shelter or in the lee of rock:
  *  the wind blows over your head. Fed to step() by the server per input and by the client per predicted tick (kept
  *  for replays), shared/sim.ts. */
 export function stormDrag(storms: readonly Storm[], x: number, y: number, z: number, t: number): number {
@@ -154,7 +154,7 @@ export function frontOut(storms: readonly Storm[], t: number): boolean {
   return storms.some((s) => s.front && t >= s.start && t < s.end);
 }
 
-/** Any storm's static knocks out our electronics once it blows this hard where you stand (out of a bunker): the wrist
+/** Any storm's static knocks out our electronics once it blows this hard where you stand (out of a shelter): the wrist
  *  computer (clock, thermometer, locator), the storm detector, the jammer, the receivers. src/storm.ts toolsDown on the
  *  client, toolsDown() here for the server's checks. */
 export const STATIC_AT = 0.35;
@@ -186,7 +186,7 @@ const LEE_OVER = 0.6;
 const LEE_SLOPE = 0.8;
 const EYE = 1.6;
 
-/** Out of a mega-storm's wind at (x, y, z) (feet): in a bunker, or with rock rising steeply just upwind. */
+/** Out of a mega-storm's wind at (x, y, z) (feet): in a shelter, or with rock rising steeply just upwind. */
 export function sheltered(x: number, y: number, z: number): boolean {
   if (indoors(x, y + 1, z)) return true;
   const eye = y + EYE;

@@ -7,7 +7,7 @@
 //
 // The server owns the numbers; this only plays the actions and asks. Keys 1–5 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
-// and F at a pump (the base's, some shelters') refills it.
+// and F at a pump (some shelters have one) or a running electric well refills it.
 import { DRINK_MS, HEAT_HIGH, HEAT_MAX, STROKE_RECOVER, STROKE_S } from '../shared/water.ts';
 import { equipped, repaired, tierOf } from '../shared/gear.ts';
 import { chargeOf, HOTBAR } from '../shared/items.ts';
@@ -379,7 +379,7 @@ export class Survival {
       else if (byPump) html = `${kbd('interact')}${TEXT.prompt.fill}`;
       else if (w.sips <= 0) html = TEXT.prompt.empty;
     }
-    // Junk in hand (src/throw.ts): it can be thrown, out of the bunker.
+    // Junk in hand (src/throw.ts): it can be thrown, out of a shelter.
     if (!scrapTargeted && !dead && kind && THROWABLE.has(kind) && !indoors(pos.x, pos.y, pos.z)) html = `${kbd('use')}${TEXT.prompt.throw}`;
     if (html !== this.promptHtml) {
       this.promptHtml = html;
@@ -446,7 +446,7 @@ export class Survival {
     deathGrade.value = dead ? Math.min(1, deathGrade.value + dt / DEATH_GRADE_S) : 0;
     this.pips.forEach((p, i) => p.classList.toggle('on', i < w.sips));
     this.death.style.display = dead ? 'flex' : 'none';
-    // Black out over the last stretch of lying dead, then fade back in on the base after the respawn.
+    // Black out over the last stretch of lying dead, then fade back in at the bedroll or the ship after the respawn.
     const toEnd = this.deadUntil - now;
     const black = toEnd > 0 ? 1 - Math.min(1, toEnd / FADE_OUT_MS) : Math.max(0, 1 + toEnd / FADE_IN_MS);
     this.fade.style.display = black > 0 && this.deadUntil > 0 ? 'block' : 'none';

@@ -3,7 +3,7 @@
 // and the missiles at them.
 //
 // Drones belong to a crash site: at night they turn up over the crawler and guardian ground someone is near, and go
-// when everyone has left. The scrap fields (level 0) near the base have none. A few more drones roam the open desert
+// when everyone has left. The scrap fields (level 0) near the start have none. A few more drones roam the open desert
 // day and night (ROAMERS), drifting in near someone now and then on long legs, and flying off again after a few
 // minutes.
 import { ORIGIN } from '../shared/origin.ts';
@@ -29,11 +29,11 @@ const REFILL_MS = 60_000;
 const HUNT_MS = 45_000;
 /** A drone with nobody within this distance (m) leaves. */
 const DRONE_LONELY = 600;
-/** Drones keep this far (m) from the base. */
-const DRONE_BASE_KEEP_OUT = 60;
+/** Drones keep this far (m) from the start (the origin, where the ship lies). */
+const DRONE_START_KEEP_OUT = 60;
 /** Roaming drones (site ROAM): at most ROAMERS out at once. Someone out in the open with fewer than ROAM_EACH within
  *  ROAM_NEAR (m) gets one about every ROAM_EVERY_S seconds, coming in from ROAM_FROM (m); it stays ROAM_MIN..MAX ms, flying legs of
- *  ROAM_LEG (m), and keeps ROAM_BASE_KEEP_OUT (m) from the base. */
+ *  ROAM_LEG (m), and keeps ROAM_START_KEEP_OUT (m) from the start. */
 const ROAM = -2;
 const ROAMERS = 6;
 const ROAM_NEAR = 800;
@@ -42,7 +42,7 @@ const ROAM_EVERY_S = 90;
 const ROAM_FROM: [number, number] = [300, 420];
 const ROAM_MIN = 3 * 60_000, ROAM_MAX = 6 * 60_000;
 const ROAM_LEG: [number, number] = [120, 350];
-const ROAM_BASE_KEEP_OUT = 250;
+const ROAM_START_KEEP_OUT = 250;
 
 type Drone = {
   id: number; x: number; y: number; z: number; yaw: number;
@@ -166,7 +166,7 @@ export class DroneServer {
         d.z += (dz / dist) * step;
         if (!target) d.yaw = wrap(d.yaw + wrap(Math.atan2(dx, dz) - d.yaw) * (1 - Math.exp(-dt * 1.5)));
       }
-      const bd = Math.hypot(d.x - ORIGIN.x, d.z - ORIGIN.z), keep = d.site === ROAM && !prey ? ROAM_BASE_KEEP_OUT : DRONE_BASE_KEEP_OUT;
+      const bd = Math.hypot(d.x - ORIGIN.x, d.z - ORIGIN.z), keep = d.site === ROAM && !prey ? ROAM_START_KEEP_OUT : DRONE_START_KEEP_OUT;
       if (bd < keep && !d.leaving) {
         d.x = ORIGIN.x + ((d.x - ORIGIN.x) / bd) * keep;
         d.z = ORIGIN.z + ((d.z - ORIGIN.z) / bd) * keep;
@@ -354,12 +354,12 @@ export class DroneServer {
 
   private point(d: Drone) {
     if (d.site === ROAM) {
-      // A long leg somewhere ahead-ish, clear of the base.
+      // A long leg somewhere ahead-ish, clear of the start.
       for (let i = 0; i < 8; i++) {
         const a = d.yaw + rand(-1.6, 1.6), r = rand(...ROAM_LEG);
         d.tx = d.x + Math.sin(a) * r;
         d.tz = d.z + Math.cos(a) * r;
-        if (Math.hypot(d.tx - ORIGIN.x, d.tz - ORIGIN.z) > ROAM_BASE_KEEP_OUT + 20) return;
+        if (Math.hypot(d.tx - ORIGIN.x, d.tz - ORIGIN.z) > ROAM_START_KEEP_OUT + 20) return;
       }
       return;
     }
@@ -378,7 +378,7 @@ export class DroneServer {
       // Passing by: it heads for somewhere near them, then wanders on.
       const a = rand(-Math.PI, Math.PI), r = rand(40, 120);
       const hx = p.x + Math.sin(a) * r, hz = p.z + Math.cos(a) * r;
-      if (Math.hypot(hx - ORIGIN.x, hz - ORIGIN.z) < ROAM_BASE_KEEP_OUT) continue;
+      if (Math.hypot(hx - ORIGIN.x, hz - ORIGIN.z) < ROAM_START_KEEP_OUT) continue;
       this.spawn(hx, hz, ROAM, now + rand(ROAM_MIN, ROAM_MAX), rand(...ROAM_FROM));
       out++;
     }

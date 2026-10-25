@@ -38,10 +38,10 @@ export const COSTS = {
   /** Steps of a machine built in code (src/teardown/junk.ts; the server can't count them): this many to open it, then
    *  this many per part in it. Modules ≈ parts / 2 for the scrap they pay (SCRAP_REWARD). */
   codeSteps: { base: 4, perPart: 2.5 },
-  /** At the base: unloading, the workbench, sorting the chest (s per visit), and per repair or craft. */
+  /** At home: unloading, the workbench, sorting the chest (s per visit), and per repair or craft. */
   baseS: 45,
   benchS: 8,
-  /** Down, then out of the bunker again (shared/ragdoll.ts DOWN_MS plus finding your feet), s. */
+  /** Down, then up again at home (shared/ragdoll.ts DOWN_MS plus finding your feet), s. */
   respawnS: 20,
 
   // ---- seeing --------------------------------------------------------------------------------------------------
@@ -58,7 +58,7 @@ export const COSTS = {
   /** Don't go where the odds of dying are higher than this (risk taken for a goal you can't reach otherwise: x2). */
   maxRisk: 0.15,
 
-  /** A downed jet: the flying wing's odds grow with distance from the base, up to this at WING_FAR (server/jets.ts
+  /** A downed jet: the flying wing's odds grow with distance from the origin, up to this at WING_FAR (server/jets.ts
    *  WING_ODDS, WING_FAR); its engines, the share that tear off whole and of those the share wrecked in the landing
    *  (shared/jetbreak.ts fates). */
   wing: { odds: 0.8, far: 10_000, engines: 2, tearOff: 0.8, wrecked: 0.3 },

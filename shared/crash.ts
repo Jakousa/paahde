@@ -24,27 +24,25 @@ export const CARRY_KINDS: JunkKind[] = [
   ...(Object.keys(COMPONENTS) as ComponentKind[]).filter((k) => COMPONENTS[k].carry),
   ...(Object.keys(SALVAGE) as SalvageId[]),
 ];
-/** Where carried components are taken apart: a dismantling table (shared/stations.ts), the base's or one put up with
- *  the wrench. `id` is its session (server/crash.ts): 'bench' for the base's, `bench<placed id>` for a placed one; `top`
- *  is the tabletop's height, `floor` what it stands on, `w`/`d` its size along X/Z. */
-export type Table = { id: string; placed?: number; x: number; z: number; top: number; floor: number; w: number; d: number };
-/** Session id of the base's table. */
-export const BASE_TABLE = 'bench';
+/** Where carried components are taken apart: a dismantling table put up with the wrench (shared/stations.ts). `id` is
+ *  its session (server/crash.ts), `bench<placed id>`; `top` is the tabletop's height, `floor` what it stands on, `w`/`d`
+ *  its size along X/Z. */
+export type Table = { id: string; placed: number; x: number; z: number; top: number; floor: number; w: number; d: number };
 /** Session id of a placed table. */
 export const tableId = (placedId: number) => `bench${placedId}`;
 const toTable = (s: Station): Table => ({
-  id: s.placed === undefined ? BASE_TABLE : tableId(s.placed), ...(s.placed === undefined ? {} : { placed: s.placed }),
+  id: tableId(s.placed), placed: s.placed,
   x: (s.x0 + s.x1) / 2, z: (s.z0 + s.z1) / 2, top: s.y1, floor: s.y0, w: s.x1 - s.x0, d: s.z1 - s.z0,
 });
 /** Every table in the world now. */
 export const tables = (): Table[] => stations().filter((s) => s.kind === 'disassembly').map(toTable);
+/** Is `id` a table's session id (standing or not)? */
+export const isTableId = (id: unknown): id is string => typeof id === 'string' && /^bench\d+$/.test(id);
 /** The table with session id `id`, if it stands. */
 export function tableById(id: unknown): Table | undefined {
-  if (typeof id !== 'string' || !id.startsWith(BASE_TABLE)) return undefined;
+  if (!isTableId(id)) return undefined;
   return tables().find((t) => t.id === id);
 }
-/** Is `id` a table's session id (standing or not)? */
-export const isTableId = (id: unknown) => typeof id === 'string' && /^bench\d*$/.test(id);
 /** How far (m) from a large site you may be to work on it with others. */
 export const SITE_RANGE = 14;
 

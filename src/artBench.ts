@@ -39,10 +39,11 @@ function aim(name: string, from: [number, number, number], at: [number, number, 
   return { name, x, z, up, yaw: r(THREE.MathUtils.radToDeg(Math.atan2(-dx, -dz))), pitch: r(THREE.MathUtils.radToDeg(Math.atan2(dy, Math.hypot(dx, dz)))), fov, hour };
 }
 
-/** The bench's shots, in the bench world (seed of BENCH_WORLD): the base at (-376, -8), a rock outcrop to its east, the big
- *  dune to the north-east, scrap fields and a crashed ship further north, mud flats to the north-west. */
+/** The bench's shots, in the bench world (seed of BENCH_WORLD): the crashed ship at (-330, 30) by the world's origin (-376, -8),
+ *  a rock outcrop to its east, the big dune to the north-east, scrap fields and a crash site further north, mud flats to
+ *  the north-west. */
 const SHOTS: Shot[] = [
-  aim('Base, golden hour', [-340, 20, 3], [-376, -8, 1], 17),
+  aim('Ship, golden hour', [-355, 21, 3], [-330, 30, 3], 17),
   aim('Rock, dawn', [-260, -170, 2], [-197, -249, 12], 6.5),
   aim('Dune crest, noon', [-46, 218, 2], [-300, 400, 0], 12),
   aim('Scrap field, afternoon', [-140, 478, 2], [-159, 498, 0.5], 15),

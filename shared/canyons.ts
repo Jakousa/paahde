@@ -9,7 +9,7 @@
 // buttes, boulders: canyonRockHeight in shared/rocks.ts), and the wind keeps the tableland's edges bare. The canyons
 // are a biome (CANYON in shared/biomes.ts): canyonCover is its weight, ahead of the mud flats, which so keep out of it.
 //
-// Part of the base heightfield (shared/terrain.ts `ground`): the plateau is rock added to the rocks, the gorge a
+// Part of the bare heightfield (shared/terrain.ts `ground`): the plateau is rock added to the rocks, the gorge a
 // cut that lowers everything above it to bare rock (its walls), with the wash's sand on its floor. Same
 // determinism rules as shared/dunes.ts: integer hashing and exact IEEE operations only, no trig (a direction is
 // turned by adding a bit of its perpendicular and normalising).
@@ -25,9 +25,9 @@ export const CANYON_CELL = 6000;
 const ODDS = 0.8;
 /** Canyons owned by a cell reach at most this many cells beyond it. */
 const SEARCH = 3;
-/** No part of a canyon's zone this close to the origin (m): the base is within 600 m of it (shared/base.ts
- *  findBase), and its spot is picked from the dunes, which read the canyons, so they can't measure from the base. */
-const BASE_CLEAR = 1000;
+/** No part of a canyon's zone this close to (0, 0) (m): the world's origin is within 600 m of it (shared/origin.ts
+ *  findOrigin), and its spot is picked from the dunes, which read the canyons, so they can't measure from the origin. */
+const ORIGIN_CLEAR = 1000;
 /** Lookup grid (m): each cell lists the canyon segments whose zone reaches into it. */
 const FINE = 128;
 /** Raw centreline step (m), before smoothing. */
@@ -149,10 +149,10 @@ function cellCanyons(ix: number, iz: number): Canyon[] {
     }
     out.push(b);
   }
-  // Keep the base clear: drop the whole system if any of it comes near.
+  // Keep the origin clear: drop the whole system if any of it comes near.
   for (const c of out) {
     for (let i = 0; i < c.xs.length; i += 2) {
-      const bx = c.xs[i], bz = c.zs[i], clear = BASE_CLEAR + c.reach;
+      const bx = c.xs[i], bz = c.zs[i], clear = ORIGIN_CLEAR + c.reach;
       if (bx * bx + bz * bz < clear * clear) return [];
     }
   }

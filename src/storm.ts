@@ -3,15 +3,13 @@
 // src/world/wind.ts, and through it the dust, grains, haze and wind sound), and the storm columns the post
 // pass draws (src/post.ts). The heat is the server's (server/water.ts); the HUD just shows the felt °C.
 //
-// In the dust you lose the locator bar (src/locator.ts): no bearings on the base or the others.
+// In the dust you lose the locator bar (src/locator.ts): no bearings on home or the others.
 //
 // Mega-storm fronts: drawn as a wall of dust (post.ts, stormFront), roaring up as it nears; in the lee of rock
 // the grit and the wind ease off, and out in the open the view closes in as you choke (the server's tally,
 // mirrored here: server/world.ts).
-import { HUT, ROOM_Z, W, inBase } from '../shared/base.ts';
-import { ORIGIN } from '../shared/origin.ts';
 import { indoors, S_HUT, shelterAt, shelterHutInside } from '../shared/shelters.ts';
-import { CHOKE_RECOVER, CHOKE_S, STATIC_AT, FRONT_PASS_S, FRONT_RAMP_MS, FRONT_SPEED, RAMP_MS, frontArrival, frontAt, frontDepth, frontExposure, inStormPath, sheltered, stormAt, stormCentre, stormEnvelope, stormStrength, type Storm } from '../shared/storm.ts';
+import { CHOKE_RECOVER, CHOKE_S, STATIC_AT, FRONT_PASS_S, FRONT_RAMP_MS, FRONT_SPEED, RAMP_MS, frontArrival, frontAt, frontDepth, frontExposure, inStormPath, sheltered, stormCentre, stormEnvelope, stormStrength, type Storm } from '../shared/storm.ts';
 import { WIND } from '../shared/dunes.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { audio } from './audio';
@@ -72,12 +70,10 @@ const css = `
 `;
 
 export class StormFx {
-  /** Storm strength at the camera, eased, 0..1 (0 in the base). */
+  /** Storm strength at the camera, eased, 0..1 (0 in a shelter). */
   level = 0;
-  /** Storm strength over the camera's spot, in the base too, eased, 0..1. */
+  /** Storm strength over the camera's spot, in a shelter too, eased, 0..1. */
   outside = 0;
-  /** Storm strength over the base, eased, 0..1: the sand sifting in (src/world/baseSand.ts). */
-  atBase = 0;
   /** The storm detector is warning of a storm on its way here. */
   warning = false;
   /** A mega-storm front is about to hit us out in the open; we're choking in one; sitting one out in the lee of rock. */
@@ -117,10 +113,9 @@ export class StormFx {
     }
     for (let i = localStorms.length - 1; i >= 0; i--) if (localStorms[i].end <= now) localStorms.splice(i, 1);
     const storms = localStorms.length ? [...serverStorms, ...localStorms] : serverStorms;
-    // The bunker (or a shelter) keeps the dust out: no grit on the view and the locator works down there. But the storm
-    // still blows overhead: the wind (muffled underground, src/windSound.ts), the columns seen up through
-    // the skylight and out of the door (the post pass starts them where the view leaves the base), and the
-    // sand sifting in (src/world/baseSand.ts).
+    // A shelter keeps the dust out: no grit on the view and the locator works down there. But the storm still blows
+    // overhead: the wind (muffled underground, src/windSound.ts) and the columns seen out of the door (the post pass
+    // starts them where the view leaves the shelter).
     const inside = indoors(cam.x, cam.y, cam.z);
     let column = 0, roar = 0;
     for (const s of storms) {
@@ -143,20 +138,15 @@ export class StormFx {
     this.choking = this.choke > CHOKE_SAY_S;
     // Full (black) a little before the server's tally kills, so the view is dark when the death comes.
     choking.value = dead ? Math.max(0, choking.value - dt / DARK_LIFT_S) : Math.min(1, Math.max(0, (this.choke / CHOKE_S - 0.1) / 0.82));
-    this.atBase += (stormAt(storms, ORIGIN.x, ORIGIN.z + ROOM_Z / 2, now) - this.atBase) * k;
     wind.local = this.outside;
     stormHere.value = this.level;
     stormIndoors.value = inside ? 1 : 0;
-    const sh = inside && !inBase(cam.x, cam.y, cam.z) ? shelterAt(cam.x, cam.z) : null;
+    const sh = inside ? shelterAt(cam.x, cam.z) : null;
     if (sh) {
       const [x0, z0, x1, z1] = shelterHutInside(sh);
       indoorHutMin.value.set(x0, sh.y - 100, z0);
       indoorHutMax.value.set(x1, sh.y + S_HUT.h, z1);
       indoorSurface.value = sh.y;
-    } else {
-      indoorHutMin.value.set(ORIGIN.x - W, ORIGIN.y - 100, ORIGIN.z + HUT.z0);
-      indoorHutMax.value.set(ORIGIN.x + W, ORIGIN.y + HUT.h, ORIGIN.z + HUT.z1);
-      indoorSurface.value = ORIGIN.y;
     }
 
     const g = stormGround.value;

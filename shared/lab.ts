@@ -1,16 +1,15 @@
-// The dev test lab: world `?w=lab` (shared/world.ts LAB, development only), a flat bright room next to the bunker where
+// The dev test lab: world `?w=lab` (shared/world.ts LAB, development only), a flat bright floor where
 // every machine can be taken apart with the real disassembly mode (the server's sessions, part grants, other players)
 // and every part, gear and tool lies on the floor to pick up. Nothing of the desert is in it: the ground is one height
 // (baseHeight in shared/terrain.ts), the layouts of rocks, scrap, wrecks, crash sites and shelters are empty, the
 // clock stands at noon, and the server runs no storms, jets, walkers, bosses or heat (server/world.ts).
 //
-// Layout, in metres from the bunker's door (ORIGIN; +Z is out into the open, away from the door), x across:
+// Layout, in metres from its own spot (LAB_AT, on the floor at world (0, 0); +Z away from where you start), x across:
 //   spawn      (0, 12), looking out at the machine rows
 //   parts      x 24..33, z 8..38: 11 parts (rows, a name plate left of each) x 4 tiers (columns, tier plates at z 5)
 //   tools+gear x -24 down to -39, z 8 on: the grinder, then every gear kind, broken with every slot empty, 4 a row
 //   machines   z 50 / 70 / 90: the jet engine in six seeds, then the other kinds, each with its name plate in front
 // The pickups come back at once when taken (server/loot.ts), so a table never runs out.
-import { ORIGIN } from './origin.ts';
 import type { CrashSite } from './crash.ts';
 import { GEAR, GEAR_KINDS } from './gear.ts';
 import { ITEMS } from './items.ts';
@@ -32,7 +31,9 @@ const GAP = 16;
 const FIRST_ROW = 50;
 const ROW_GAP = 20;
 
-const at = (lx: number, lz: number) => ({ x: ORIGIN.x + lx, z: ORIGIN.z + lz });
+/** Where the lab is laid out from: the floor is the same everywhere (shared/terrain.ts LAB_FLOOR_Y), so anywhere would do. */
+export const LAB_AT = { x: 0, z: 0 };
+const at = (lx: number, lz: number) => ({ x: LAB_AT.x + lx, z: LAB_AT.z + lz });
 
 /** Where a new player appears, and the point they face. */
 export const LAB_SPAWN = at(0, 12);
@@ -71,8 +72,8 @@ export type LabItem = { kind: string; parts?: (string | null)[]; x: number; z: n
 let items: LabItem[] | null = null;
 
 /** Every part in every tier (one wiring for the coils: shared/parts.ts UNTIERED), the grinder, the wrench and every
- *  gear kind but the buildings (put up with the wrench) and the vehicles (a broken motorcycle stands by the base door:
- *  server/vehicles.ts). */
+ *  gear kind but the buildings (put up with the wrench) and the vehicles (a broken motorcycle stands out in front of the
+ *  spawn: server/vehicles.ts, shared/lootRoll.ts homeBikeSpot). */
 export function labItems(): LabItem[] {
   if (!LAB) return [];
   if (items) return items;

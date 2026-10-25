@@ -6,7 +6,7 @@
 // height y is in the dunes' shadow when y < S. S is smooth and is filtered like any texture, so the shadow edge is the clean contour
 // y = S at any distance: no shadow-map texels stretched along the ground by a low sun, no stairs, nothing that blurs out far away. It
 // costs one texture read per pixel, and the terrain leaves the shadow maps (most of their draw calls) to the things that need them:
-// players, wrecks, the base, bosses.
+// players, wrecks, the ship, bosses.
 //
 // S is found by doubling, on the GPU, one pass a frame: S0 looks one texel up-sun; S(k+1)(p) = max(Sk(p), Sk(p + 2^k texels) - 2^k
 // texels·tanθ) looks twice as far. Every texel on the way is seen, so a thin pillar 1 km off still throws its whole shadow (a walk in
@@ -15,7 +15,7 @@
 // Grids (levels): a fine one round the player and coarser ones out to the edge of the terrain. Each is redone when the sun has
 // turned enough to move a shadow by part of a texel, or the player has moved far from its centre: the heights are drawn top-down
 // (the terrain chunks with a height material), the doubling runs, and the result takes over when it is complete. Underground (the
-// base's and the shelters' rooms) it says nothing: there the shadow maps, with the terrain in them near those places, decide.
+// shelters' rooms) it says nothing: there the shadow maps, with the terrain in them near those places, decide.
 import * as THREE from 'three/webgpu';
 import { Fn, float, int, ivec2, max, normalWorld, positionWorld, screenCoordinate, smoothstep, step, texture, uniform, uniformArray, vec2, vec4 } from 'three/tsl';
 import type { Node } from 'three/webgpu';
@@ -40,7 +40,7 @@ export interface HeightShadowSettings {
 /** Edge softness and bias, in texels of rise along the sun (scaled by tanθ to height). */
 const SOFT_TEXELS = 0.8;
 const BIAS_TEXELS = 1.2;
-/** Underground places the heightfield says nothing about (the base, the shelters near the player): there the shadow maps, with the
+/** Underground places the heightfield says nothing about (the shelters near the player): there the shadow maps, with the
  *  terrain in them near those places, decide. */
 const UNDERGROUND_SLOTS = 4;
 /** How far (m) under the drawn ground a point must be to count as underground. */
@@ -354,7 +354,7 @@ export class HeightShadow {
       const p = positionWorld;
       const lit = float(1).toVar();
       const covered = float(0).toVar();
-      // in an underground place's reach (the base, a shelter) and below its floor
+      // in an underground place's reach (a shelter) and below its floor
       let near: F = float(0);
       for (let i = 0; i < UNDERGROUND_SLOTS; i++) {
         const b = this.undergroundU.element(i) as unknown as Node<'vec4'>;
@@ -372,7 +372,7 @@ export class HeightShadow {
         const s = l.frontTex.sample(at) as unknown as Node<'vec4'>;
         const surface = s.g.add(l.front.y0);
         const ceiling = s.r.add(surface);
-        // underground: there, and well under the drawn ground too (the dune valleys round the base are lower than its floor, and lit)
+        // underground: there, and well under the drawn ground too (the dune valleys round a shelter can be lower than its floor, and lit)
         if (l === this.levels[0]) under = near.mul(step(p.y, surface.sub(UNDER_GROUND))).mul(l.readyU) as F;
         const rise = tan.mul(l.texel);
         // above the ceiling (less a bias) is lit; a soft edge a texel of rise wide

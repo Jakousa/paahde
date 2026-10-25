@@ -1,8 +1,8 @@
 // Draws the things placed on the floors and the sand (shared/placed.ts): plant beds with their growth stage
 // (shared/garden.ts), UV lamp stands, and the buildings, the work stations and the chest, from
-// public/models/placeables/*.glb (tools/blender/placeables.py, tools/blender/stations.py). Things on the bunker's floor
-// are lit by its indoor lights, on a shelter's by the shelter's, sand things by the sky (Where: one copy of a model per
-// kind and lighting, made as it's first needed). A lamp
+// public/models/placeables/*.glb (tools/blender/placeables.py, tools/blender/stations.py). Things on a shelter's floor
+// are lit by the shelter's lights, sand things by the sky (Where: one copy of a model per kind and lighting, made as it's
+// first needed). A lamp
 // throws a violet pool of light on the soil (or the floor) under it. A building looks its tier (src/tierLook.ts, by
 // the parts in it): the windmill's head turns into the wind and its rotor turns with it (shared/power.ts rotorSpeed:
 // the wind now, the bearings), the tail folding it out of a gale, still while a bearing or the motor is missing; the
@@ -22,17 +22,15 @@ import { furl, rotorSpeed, windSpeed, type PowerState } from '../../shared/power
 import { parsePart } from '../../shared/items.ts';
 import { BEACON, bedLit, PLACEABLES, TARP, type Placed } from '../../shared/placed.ts';
 import { TARP_WIND, tarpModel } from './tarps.ts';
-import { inBase } from '../../shared/base.ts';
 import { inShelter } from '../../shared/shelters.ts';
 import { SPIGOT, WELL } from '../../shared/wells.ts';
 import { BeaconBeams, beaconModel, LENS, lensColor } from './beacons.ts';
 import { applyTier } from '../tierLook.ts';
 import { cells } from '../../shared/power.ts';
 
-/** What lights a placed thing: the sky (out on the sand), the bunker's lamps, a shelter's fill. */
-export type Where = 'out' | 'bunker' | 'shelter';
-const whereOf = (p: { x: number; y: number; z: number }): Where =>
-  inBase(p.x, p.y + 0.1, p.z) ? 'bunker' : inShelter(p.x, p.y + 0.1, p.z) ? 'shelter' : 'out';
+/** What lights a placed thing: the sky (out on the sand), a shelter's fill. */
+export type Where = 'out' | 'shelter';
+const whereOf = (p: { x: number; y: number; z: number }): Where => (inShelter(p.x, p.y + 0.1, p.z) ? 'shelter' : 'out');
 
 /** Height of the bed's soil (tools/blender/placeables.py SOIL), for the lamp's light pool. */
 const SOIL = 0.45;
@@ -80,7 +78,7 @@ export class PlacedView {
     this.beams = new BeaconBeams(scene);
     const beacon = beaconModel();
     beacon.traverse((o) => ((o as THREE.Mesh).isMesh && o.name !== LENS && (o.castShadow = o.receiveShadow = true)));
-    for (const w of ['out', 'bunker', 'shelter'] as Where[]) this.models.set(`${BEACON}:${w}`, beacon);
+    for (const w of ['out', 'shelter'] as Where[]) this.models.set(`${BEACON}:${w}`, beacon);
     const loader = new GLTFLoader();
     for (const kind of Object.keys(PLACEABLES)) {
       if (kind === BEACON || kind === TARP) continue;

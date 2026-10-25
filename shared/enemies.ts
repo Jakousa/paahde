@@ -28,7 +28,7 @@ export type Fight = {
 /** Where you meet it:
  *  - `site`: at crash sites of these loot levels when you get there (`odds` each time, or `spread`: that many go round
  *    the sites of those levels), only by night if `night`, back `backS` after you've left;
- *  - `roam`: comes to you about `perMin` times a minute while you're out `where`: `open` (past the base's keep-out),
+ *  - `roam`: comes to you about `perMin` times a minute while you're out `where`: `open` (past the start's keep-out round the origin),
  *    `guardianGround` (site level 2), `mudflat` (near a mud flat, shared/biomes.ts), `overhead` (anywhere outdoors);
  *    `hunt`: worth going there to wait for one;
  *  - `call`: only when you call it (the bosses' receivers, shared/bosses.ts). */

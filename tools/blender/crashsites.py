@@ -9,7 +9,7 @@ olive), exposed pipes, cracked portholes, greebles, torn hulls with ribs showing
 public/models/crashsites.glb has one top-level node per variant (Crash_Fighter, Crash_Freighter, Crash_Pod,
 Crash_Nacelle, Crash_Shuttle, Crash_Probe, Crash_Debris_1..7, the Crash_Cradle / Crash_Skid dressing, then the
 scrap-field pieces: Crash_Crawler, Crash_Mast, Crash_Skiff, Crash_CargoPod, Crash_Drill, Crash_Debris_8..14).
-Scrap fields (site level 0, near the base) use only the scrap-field pieces (CrashKind.field); other sites never
+Scrap fields (site level 0, near the start) use only the scrap-field pieces (CrashKind.field); other sites never
 do. Their wrecks are older, smaller and more mundane, and their junk is all picked up as scrap (shared/items.ts
 SCRAP). Every node sits at the scene origin with
 identity transform; its mesh origin is on the ground at the piece's centre. Hulls continue 0.5-1.5 m below
@@ -35,7 +35,7 @@ from mathutils import Euler, Matrix, Vector
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.dont_write_bytecode = True  # no __pycache__ next to the shared helper
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'base'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from coplanar import separate_coplanar  # noqa: E402
 
 # Materials: name -> (metallic, roughness, double-sided, emission (sRGB hex, strength) or None).
@@ -1346,7 +1346,7 @@ def dress_skid(mb, rng):
 
 
 # --------------------------------------------------------------------------------------------- field
-# Scrap fields (site level 0, near the base): older, smaller, more mundane wrecks than the spacecraft, and
+# Scrap fields (site level 0, near the start): older, smaller, more mundane wrecks than the spacecraft, and
 # small junk to carry home. Only scrap fields use these, and they use only these (CrashKind.field).
 
 MINE_YEL = 0xc0902e   # faded mining-equipment yellow

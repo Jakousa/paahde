@@ -37,7 +37,6 @@ import { tyreDust } from './tyreDust';
 import { GUNS, PISTOL, RIFLE } from '../shared/rifle.ts';
 import { gunCooldown, quality } from '../shared/gear.ts';
 import { heightAt, shotGround } from '../shared/terrain.ts';
-import { baseSolid } from '../shared/base.ts';
 import { shelterSolid } from '../shared/shelters.ts';
 import { SPRINT_SPEED, WALK_SPEED } from '../shared/sim.ts';
 
@@ -372,8 +371,8 @@ export class Rifle {
       zaps.burst(_e.x, _e.y, _e.z, hit.normal.x, hit.normal.y, hit.normal.z, hit.index >= 0 ? 6 : 16);
       if (hit.index >= 0) this.guardians.breakLocal(hit.walker, hit.index);
       rifleSound.impact(hit.index >= 0 ? 'glass' : 'metal', _e, _o);
-    } else if (ground && (baseSolid(_e.x, _e.y, _e.z) ?? shelterSolid(_e.x, _e.y, _e.z)) === true) {
-      // The bunker's concrete.
+    } else if (ground && shelterSolid(_e.x, _e.y, _e.z) === true) {
+      // A shelter's concrete.
       zaps.burst(_e.x, _e.y, _e.z, -_d.x, -_d.y, -_d.z, 10);
       rifleSound.impact('metal', _e, _o);
     } else if (ground) {

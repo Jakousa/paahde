@@ -31,9 +31,9 @@ const SURFACE_DEPTH = RADIUS * 0.55;
 /** Roaming: runs at the surface every SURFACE_EVERY s (random within), for SURFACE_FOR s. */
 const SURFACE_EVERY: [number, number] = [18, 40];
 const SURFACE_FOR: [number, number] = [10, 18];
-/** Waypoints (m from where it is); it keeps BASE_KEEP_OUT from the base, and hunts nobody within PREY_BASE of it. */
+/** Waypoints (m from where it is); it keeps START_KEEP_OUT from the start (the origin), and hunts nobody within PREY_START of it. */
 const LEG: [number, number] = [180, 420];
-const BASE_KEEP_OUT = 380, PREY_BASE = 320;
+const START_KEEP_OUT = 380, PREY_START = 320;
 /** Rock: it can't reach anyone standing on rock or sand thinner than ON_ROCK over it; it looks AHEAD m for rock. */
 const ON_ROCK = 4;
 const AHEAD = 10;
@@ -114,7 +114,7 @@ function newWaypoint(b: Boss, w: Worm, players: BossPlayer[], far = false) {
   for (let i = 0; i < 12; i++) {
     const a = Math.random() * Math.PI * 2, d = far ? 900 : rand(LEG[0], LEG[1]);
     const x = b.x + Math.sin(a) * d, z = b.z + Math.cos(a) * d;
-    if (Math.hypot(x - ORIGIN.x, z - ORIGIN.z) < BASE_KEEP_OUT + 100) continue;
+    if (Math.hypot(x - ORIGIN.x, z - ORIGIN.z) < START_KEEP_OUT + 100) continue;
     if (sandOverRock(x, z) < 12) continue;
     if (far && players.some((p) => Math.hypot(p.x - x, p.z - z) < 600)) continue;
     w.tx = x;
@@ -167,9 +167,9 @@ function swim(b: Boss, w: Worm, tx: number, tz: number, depth: number, speed: nu
   steer(w, hx / n, dy / n, hz / n, TURN, speed, accel, dt);
 }
 
-/** Can it go after this player: out on the sand, off rock, away from the base? */
+/** Can it go after this player: out on the sand, off rock, away from the start? */
 function reachable(p: BossPlayer): boolean {
-  if (p.safe || Math.hypot(p.x - ORIGIN.x, p.z - ORIGIN.z) < PREY_BASE) return false;
+  if (p.safe || Math.hypot(p.x - ORIGIN.x, p.z - ORIGIN.z) < PREY_START) return false;
   if (sandOverRock(p.x, p.z) < ON_ROCK) return false;
   return p.y < heightAt(p.x, p.z) + 3;
 }
@@ -230,7 +230,7 @@ export const worm: Brain = {
     let a = Math.random() * Math.PI * 2, d = summoned ? 170 : 650;
     for (let i = 0; i < 16; i++, a += 0.4) {
       const sx = x + Math.sin(a) * d, sz = z + Math.cos(a) * d;
-      if (sandOverRock(sx, sz) > 25 && Math.hypot(sx - ORIGIN.x, sz - ORIGIN.z) > BASE_KEEP_OUT) break;
+      if (sandOverRock(sx, sz) > 25 && Math.hypot(sx - ORIGIN.x, sz - ORIGIN.z) > START_KEEP_OUT) break;
     }
     b.x = x + Math.sin(a) * d;
     b.z = z + Math.cos(a) * d;
@@ -284,7 +284,7 @@ export const worm: Brain = {
 
     const under = b.y < ground;
     if (w.mode === MODE_ROAM) {
-      if (Math.hypot(w.tx - b.x, w.tz - b.z) < 40 || Math.hypot(w.tx - ORIGIN.x, w.tz - ORIGIN.z) < BASE_KEEP_OUT) newWaypoint(b, w, players, b.leaving);
+      if (Math.hypot(w.tx - b.x, w.tz - b.z) < 40 || Math.hypot(w.tx - ORIGIN.x, w.tz - ORIGIN.z) < START_KEEP_OUT) newWaypoint(b, w, players, b.leaving);
       if (!b.leaving && w.clock > w.surfaceAt) {
         w.surfaceUntil = w.clock + rand(SURFACE_FOR[0], SURFACE_FOR[1]);
         w.surfaceAt = w.surfaceUntil + rand(SURFACE_EVERY[0], SURFACE_EVERY[1]);

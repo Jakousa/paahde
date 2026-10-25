@@ -1,4 +1,4 @@
-// Server side of the base's electricity (shared/power.ts): every tick each grid's windmills (what is wired together:
+// Server side of the electricity (shared/power.ts): every tick each grid's windmills (what is wired together:
 // shared/wires.ts grids) charge that grid's battery stations, each battery's charge is kept (live here, saved in the
 // battery itself: its ItemData `charge`, fitted in the station's item, so it keeps it when it comes out), and
 // the state goes out to everyone. A windmill on a grid with no station (or only full ones) delivers nothing. While the world
@@ -124,7 +124,7 @@ export class PowerServer {
     for (const id of this.stores.keys()) if (!ids.has(id)) this.stores.delete(id);
   }
 
-  /** `realS` seconds of the grid at shared clock `worldMs`, in a sandstorm of strength `storm` at the base. */
+  /** `realS` seconds of the grid at shared clock `worldMs`, in a sandstorm of strength `storm` where it is. */
   private step(worldMs: number, realS: number, storm: number) {
     this.sync();
     const v = windSpeed(worldMs, storm);

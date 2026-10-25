@@ -9,10 +9,9 @@ import { BENCH, CALM, LAB, WORLD_ID } from '../shared/world.ts';
 import { bedTarget, EMPTY, GROWN, SPROUTS } from '../shared/garden.ts';
 import { bedLit, placed } from '../shared/placed.ts';
 import { stationTarget } from '../shared/stations.ts';
-import { BASE_TABLE, isTableId, tableId } from '../shared/crash.ts';
+import { isTableId, tableId } from '../shared/crash.ts';
 import { FirstPersonCamera } from './camera';
 import { BlownSand } from './blownSand';
-import { BaseSand } from './world/baseSand';
 import { Shelters } from './world/shelters';
 import { addCrosshair } from './crosshair';
 import { ShieldFx } from './shieldFx';
@@ -37,7 +36,7 @@ import { addHeadlights, Bike } from './bike';
 import { tyreDust } from './tyreDust';
 import { Post } from './post';
 import * as env from './world/env';
-import { Base } from './world/base';
+import { glbMaterial } from './world/glbMaterial';
 import { PlacedView } from './world/placed';
 import { WireView } from './world/wires';
 import { Wiring } from './wiring';
@@ -70,8 +69,6 @@ import { uiSound } from './uiSound';
 import { breathing } from './breathing';
 import { slideSound } from './slideSound';
 import { audio } from './audio';
-import { inBase, overBase } from '../shared/base.ts';
-import { ORIGIN } from '../shared/origin.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { biome } from '../shared/biomes.ts';
 import { indoors, inShelter, overShelter, sheltersNear } from '../shared/shelters.ts';
@@ -122,7 +119,6 @@ import { Trophies } from './world/trophies';
 import { ShipView } from './world/ship';
 import { nearShip } from '../shared/ship.ts';
 import { setTrophies } from '../shared/trophies.ts';
-import { Mast } from './world/mast';
 import { GuardianFx } from './guardians';
 import { update } from './update';
 import { LOADING_FRAME_MS, slice } from './yield';
@@ -165,19 +161,14 @@ if (LAB) {
   addLabPlates(scene);
 }
 await slice();
-const base = new Base(scene);
-await slice();
-const mast = new Mast(scene); // flag mast with a windsock by the entrance
-await slice();
-const trophies = new Trophies(scene); // a big piece of each beaten boss round the base
+const trophies = new Trophies(scene); // a big piece of each beaten boss round the ship
 await slice();
 const ship = new ShipView(scene); // the crashed ship players arrive at
 await slice();
 const shelters = new Shelters(scene); // small empty bunkers out in the desert
 await slice();
-// Plant beds, UV lamps, the buildings, the work stations and the chests: in the bunker, the shelters and out on the sand.
-const placedView = new PlacedView(scene, (mt, where) =>
-  (where === 'out' ? base.outdoorMaterial(mt) : where === 'bunker' ? base.indoorMaterial(mt) : base.materialLitBy(mt, shelters.lit)));
+// Plant beds, UV lamps, the buildings, the work stations and the chests: in the shelters and out on the sand.
+const placedView = new PlacedView(scene, (mt, where) => glbMaterial(mt, where === 'out' ? null : shelters.lit));
 const wireView = new WireView(scene); // the power lines between them (shared/wires.ts)
 await slice();
 const scrap = new Scrap(scene);
@@ -191,8 +182,6 @@ await slice();
 const post = new Post(renderer, scene, orbit.camera);
 await slice();
 const blownSand = new BlownSand(scene);
-await slice();
-const baseSand = new BaseSand(scene);
 await slice();
 const viewmodel = new ViewModel(orbit, scene); // first-person hands, parented to the camera
 await slice();
@@ -216,12 +205,11 @@ const teardown = new TeardownView(scene, orbit.camera, renderer.domElement); // 
 await slice();
 machines.busy = () => teardown.current?.id;
 viewCull.camera = orbit.camera;
-machines.indoors = (root) => base.lightIndoors(root);
 // Debug handle for screenshots/tuning from the console: open with ?debug.
 if (location.search.includes('debug')) {
   // crash: every crash site's id, centre, wreck kind and its machines (shared/crashsites.ts, shared/crash.ts).
   const crash = coreCrashSites().map((s) => ({ id: s.id, x: Math.round(s.x), z: Math.round(s.z), kind: s.pieces[0].kind, pieces: s.pieces.length, machines: machinesAt(s).map((m) => m.kind) }));
-  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, base, mast, wind, blownSand, dust, windSound, storm, gas, fly, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx, bossFx } });
+  Object.assign(window, { dbg: { orbit, sky, post, scene, renderer, env, terrain, scrap, wind, blownSand, dust, windSound, storm, gas, fly, viewmodel, crashSites, crashSound, crash, playerHands, machines, wrecks, teardown, placedView, guardianFx, bossFx } });
 }
 
 const net = new Net(getBrowserId());
@@ -284,8 +272,7 @@ net.onShieldBreak = (m) => shieldFx.play(m);
 const corpseView = new CorpseView(scene);
 addCrosshair();
 loadScavenger().catch((e) => console.warn('scavenger model failed to load; keeping placeholders', e));
-// Dark until the player model has loaded, and the bunker too if you spawn in it, so the first frames show
-// neither a half-built room nor placeholder bodies; after 20 s, whatever has loaded.
+// Dark until the player model has loaded, so the first frames show no placeholder bodies; after 30 s, whatever has loaded.
 const cover = document.getElementById('cover')!; // in index.html, so it is up before this script has loaded
 // The bar: every model and texture through three's default loading manager (never runs backwards as more loads
 // are queued), then the shaders being built (src/warmup.ts) for the last stretch.
@@ -299,10 +286,8 @@ THREE.DefaultLoadingManager.onProgress = (_url, done, total) => {
 };
 let loaded = false;
 let coverFrames = 0; // frames drawn behind the cover once loaded (lets shaders compile)
-let baseLoaded = false;
 let bodyLoaded = false;
 let coverTimedOut = false;
-base.ready.then(() => (baseLoaded = true), () => (baseLoaded = true));
 loadScavenger().then(() => (bodyLoaded = true), () => (bodyLoaded = true));
 setTimeout(() => (coverTimedOut = true), 30_000);
 // What you wear (shared/look.ts), chosen on the main menu (src/lookView.ts); others get it with your 'hello'.
@@ -478,7 +463,7 @@ renderer.setAnimationLoop((time) => {
   perf.milestone('joined');
   // Once the models and terrain are in, draw real frames a few materials at a time (src/warmup.ts): the first full
   // frame would take seconds to build every shader and freeze the page. Nothing else is drawn until that is done.
-  const modelsIn = bodyLoaded && (baseLoaded || !inBase(net.me.x, net.me.y, net.me.z, 2)) && terrain.built;
+  const modelsIn = bodyLoaded && terrain.built;
   if (modelsIn) perf.milestone('models-in');
   loaded ||= coverTimedOut || warmed;
   if (loaded) perf.milestone('loaded');
@@ -621,7 +606,7 @@ renderer.setAnimationLoop((time) => {
   const belt = equipped(net.boxes.equip, 'belt');
   storm.update(frameDt, net.storms, net.serverTime(), orbit.camera.position, net.me, belt ? stormWarnS(quality(belt)) : 0, survival.dead || net.down !== null);
   gas.update(frameDt, net.gas, net.serverTime(), orbit.camera.position, net.me, survival.dead || net.down !== null);
-  // The locator comes with the wrist computer; a better one shows players further away (the base always).
+  // The locator comes with the wrist computer; a better one shows players further away.
   const wrist = equipped(net.boxes.equip, 'wrist');
   const range = wrist ? locatorRange(quality(wrist)) : 0;
   locator.lost = storm.toolsDown || !wrist;
@@ -635,11 +620,11 @@ renderer.setAnimationLoop((time) => {
   machines.update(focus);
   wrecks.update(focus);
   // The terrain casts into the shadow maps only near the underground places it roofs (src/world/heightShadow.ts does the dunes).
-  terrain.setCasting(overBase(focus.x, focus.z, 60) || overShelter(focus.x, focus.z, 60));
+  terrain.setCasting(overShelter(focus.x, focus.z, 60));
   if (++undergroundFrame % 60 === 1) {
-    // the rooms the dune shadows must not reach (src/world/heightShadow.ts): the base and the nearest shelters, below their huts' floors
+    // the rooms the dune shadows must not reach (src/world/heightShadow.ts): the nearest shelters, below their huts' floors
     const near = sheltersNear(focus.x, focus.z, 800).sort((a, b) => Math.hypot(a.x - focus.x, a.z - focus.z) - Math.hypot(b.x - focus.x, b.z - focus.z));
-    sky.heights.setUnderground([{ x: ORIGIN.x, z: ORIGIN.z, r: 45, top: ORIGIN.y - 0.3 }, ...near.slice(0, 3).map((s) => ({ x: s.x, z: s.z, r: 32, top: s.y - 0.3 }))]);
+    sky.heights.setUnderground(near.slice(0, 4).map((s) => ({ x: s.x, z: s.z, r: 32, top: s.y - 0.3 })));
   }
   sky.update(frameDt, focus, orbit.camera, net.worldTime());
   wind.update(net.serverTime() / 1000);
@@ -647,12 +632,8 @@ renderer.setAnimationLoop((time) => {
     blownSand.update(frameDt, focus);
     dust.update(frameDt, orbit.camera.position);
   }
-baseSand.update(frameDt, storm.atBase);
   tyreDust.update(frameDt);
-  base.update();
-  base.viewFrom(teardown.current?.id === BASE_TABLE ? orbit.camera.position : null);
   shelters.update(orbit.camera.position);
-  mast.update(frameDt);
   windSound.update(frameDt, orbit.camera.position, orbit.viewYaw, s);
   // Sand hissing under you: a speed slide, or (softer) slipping down a slip face on your feet.
   const ownSpeed = Math.hypot(s.vx, s.vz);
@@ -711,7 +692,7 @@ baseSand.update(frameDt, storm.atBase);
   const find = net.connected && !station && !bed && !target && !debris ? lootView.target(net.me, orbit.yaw) : null;
   const findPrompt = find ? lootPrompt(find, itemLabel) : null;
   // Machines at the crash sites: a small one is picked up (it goes in the bag); a large one is taken apart where
-  // it lies. A carried one is taken apart on the base's disassembly table.
+  // it lies. A carried one is taken apart on a dismantling bench.
   const nearSite = net.connected && !station && !bed && !target && !debris && !find ? machines.nearest(net.me.x, net.me.z) : null;
   const small = nearSite ? junkSpec(nearSite.site.kind).carry && !nearSite.site.lab : false;
   // A small one is picked up with F; a big one starts its disassembly by itself when you come close (src/teardown).
@@ -731,15 +712,15 @@ baseSand.update(frameDt, storm.atBase);
   const wreck = net.connected && !station && !bed && !target && !debris && !site ? wrecks.nearest(net.me.x, net.me.z) : null;
   const sitePrompt = site ? (small ? TEXT.prompt.pickUp(junkSpec(site.site.kind).label) : TEXT.prompt.disassemble(junkSpec(site.site.kind).label))
     : wreck ? TEXT.prompt.pickUp(SALVAGE[wreck.kind].label) : null;
-  const tableAt = station?.kind === 'disassembly' ? (station.placed === undefined ? BASE_TABLE : tableId(station.placed)) : null;
+  const tableAt = station?.kind === 'disassembly' ? tableId(station.placed) : null;
   const table = tableAt ? machines.tableMenu(tableAt, net.boxes.bag) : null;
   const use = !station ? null : station.kind === 'workbench' ? TEXT.prompt.useWorkbench : TEXT.prompt.useTable;
   // A dead player's pack (shared/corpse.ts) lying here: F opens it next to the bag, like a chest.
   const pack = net.connected && !net.down && !station && !bed && !target && !debris && !find && !site && !wreck
     && corpsesNear(net.me).some((b) => net.boxes[b]);
-  // The base's chest in reach (shared/storage.ts): F opens it next to the bag.
+  // A chest in reach (shared/storage.ts): F opens it next to the bag.
   const chest = net.connected && !net.down && !station && !bed && !target && !debris && !find && !site && !wreck && !pack
-    && openBoxes(net.me).some((b) => (b.startsWith('chest') || b.startsWith('store')) && net.boxes[b]);
+    && openBoxes(net.me).some((b) => b.startsWith('store') && net.boxes[b]);
   const packPrompt = pack ? TEXT.prompt.openPack : chest ? TEXT.prompt.openChest : null;
   // A piece that came off a machine and lies by you can be picked up to be turned and taken apart in the hands; F again sets it down.
   const pieceHere = teardown.active && !teardown.holding ? teardown.pieceNear(net.me) : null;

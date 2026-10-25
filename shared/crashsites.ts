@@ -8,10 +8,10 @@
 // the renderer turns them into angles. The layout depends only on WORLD_SEED and baseHeight, so sites
 // never move; piece heights follow the (possibly dug) ground at each piece's centre.
 //
-// The world is cut into CRASH_CELL squares; about DENSITY of them hold one site (more around the base, see SiteLevel). A site is one main wreck
+// The world is cut into CRASH_CELL squares; about DENSITY of them hold one site (more around the origin, see SiteLevel). A site is one main wreck
 // (a CRASH_KINDS entry with main: true) plus DEBRIS_MIN..DEBRIS_MAX debris pieces strewn along the
 // approach line behind it, one large machine thrown clear of the wreck and 0–2 small ones among the debris
-// (a scrap field near the base: no large machine, 2–3 small ones; see SiteLevel)
+// (a scrap field near the origin: no large machine, 2–3 small ones; see SiteLevel)
 // (each on a ground-dressing piece: CRASH_KINDS entries with dressing: true). Everything lies well inside its own cell (centre ≥ CELL_MARGIN from the edges,
 // pieces within TRAIL + a few metres), so collision only looks at the player's cell.
 //
@@ -20,8 +20,7 @@
 //
 // Piece frame: yaw turns model +Z (the nose) to (dx, dz) and model +X to (dz, -dx), like scrap. Each
 // piece's origin sits at heightAt(x, z) − sink; capsule tops are origin + h.
-import { padBlend } from './base.ts';
-import { ORIGIN, ORIGIN_FRONT } from './origin.ts';
+import { ORIGIN, ORIGIN_FRONT, originClear } from './origin.ts';
 import { CRASH_KINDS, type CrashKind } from './crashKinds.ts';
 import { shelterWithin } from './shelters.ts';
 import { EYE_HEIGHT, pitchFromQ } from './dig.ts';
@@ -36,9 +35,9 @@ import { baseHeight, CORE_HALF, heightAt, WORLD_SEED } from './terrain.ts';
 /** Grid cell size (m); each cell holds at most one site. */
 export const CRASH_CELL = 350;
 /** Fraction of cells with a site, by the level of the cell's centre (siteLevel): sites are rare out in the desert, but
- *  the scrap fields around the base are common enough that every new player finds their starter machines. */
+ *  the scrap fields around the origin are common enough that every new player finds their starter machines. */
 const DENSITY = [0.4, 0.18, 0.14];
-/** Outposts: crawler ground (level 1) out among the scrap fields, in cells OUTPOST_R..LEVEL_R[0] from the base that hold
+/** Outposts: crawler ground (level 1) out among the scrap fields, in cells OUTPOST_R..LEVEL_R[0] from the origin that hold
  *  no scrap field, OUTPOST_CHANCE of them; a small pack guards them (server/guardians.ts), the first fight on the way out. */
 const OUTPOST_R = 600;
 const OUTPOST_CHANCE = 0.45;
@@ -47,8 +46,8 @@ const CELL_MARGIN = 75;
 /** Debris lies up to this far behind the wreck's edge. */
 const TRAIL = 48;
 const DEBRIS_MIN = 3, DEBRIS_MAX = 8;
-/** No sites this close to the base or the spawn point (m). */
-const BASE_CLEAR = 220;
+/** No sites this close to the origin or ORIGIN_FRONT (m). */
+const ORIGIN_CLEAR = 220;
 /** Keep pieces this far (beyond their radius) from any scrap piece. */
 const SCRAP_CLEAR = 3;
 /** Sites avoid ground steeper than this gradient² at the centre (normal.y < 0.9), like scrap piles. */
@@ -81,7 +80,7 @@ const SMALL_MAX = 2;
 const SCRAP_SMALL = [2, 3];
 
 /**
- * How far into the game a site is, by its distance from the base (LEVEL_R; a site goes by its cell's centre): 0 a scrap field (no walkers: small
+ * How far into the game a site is, by its distance from the origin (shared/origin.ts; LEVEL_R; a site goes by its cell's centre): 0 a scrap field (no walkers: small
  * starter machines to carry home, the broken gear a new player repairs first), 1 crawler ground (crawlers, the
  * motorcycle and the other advanced gear), 2 guardian ground (the giant guardians and night drones roam only these,
  * and their machines hold the rarest parts). shared/crash.ts picks the machines, server/loot.ts the finds,
@@ -294,8 +293,8 @@ function generate(ix: number, iz: number): CrashSite | null {
     cx = ix * CRASH_CELL + CELL_MARGIN + span * r();
     cz = iz * CRASH_CELL + CELL_MARGIN + span * r();
     const bx = cx - ORIGIN.x, bz = cz - ORIGIN.z, sx = cx - ORIGIN_FRONT.x, sz = cz - ORIGIN_FRONT.z;
-    ok = bx * bx + bz * bz > BASE_CLEAR * BASE_CLEAR && sx * sx + sz * sz > BASE_CLEAR * BASE_CLEAR &&
-      padBlend(cx, cz) >= 1 && flatEnough(cx, cz, K.radius) && !nearScrap(cx, cz, K.radius) && !shelterWithin(cx, cz, K.radius);
+    ok = bx * bx + bz * bz > ORIGIN_CLEAR * ORIGIN_CLEAR && sx * sx + sz * sz > ORIGIN_CLEAR * ORIGIN_CLEAR &&
+      originClear(cx, cz) >= 1 && flatEnough(cx, cz, K.radius) && !nearScrap(cx, cz, K.radius) && !shelterWithin(cx, cz, K.radius);
   }
   if (!ok) return null;
   const id = crashSiteId(ix, iz);

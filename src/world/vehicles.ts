@@ -58,7 +58,7 @@ function tierOf(v: Vehicle): number {
 
 const tmpSlope = { gx: 0, gz: 0 };
 
-/** Locator ids for vehicles: players are positive, the base -1, wrecks count down from -100, packs from -1e9. */
+/** Locator ids for vehicles: players are positive, home -1, wrecks count down from -100, packs from -1e9. */
 const LOCATE_ID = -500_000_000;
 
 /** Your own vehicles (`mine`: their ids) standing in the world, for the locator bar, in your `color`. Not one being

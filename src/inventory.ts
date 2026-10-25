@@ -1,7 +1,7 @@
 // Items HUD: "[F] Pick up …" under the crosshair when looking at a piece in reach, a short "+1 …" toast
 // whenever a pickup lands in the bag, and the Tab inventory: an overlay with your equipment (back, wrist,
 // belt, armor: shared/gear.ts), the bag (its first row is the hotbar, keys 1–5; below it a grid with as many
-// rows as the backpack you wear opens) and, next to it, every box in reach right now (the workbench in the base,
+// rows as the backpack you wear opens) and, next to it, every box in reach right now (a workbench's repair slot,
 // chests, a motorcycle's cargo; shared/storage.ts), appearing and disappearing as you move. Grids are
 // Tarkov-like: every item takes w × h cells by its size (shared/items.ts). Drag an item to move it (the cells it
 // would take light up green, or red where it doesn't fit; R turns it) or onto another to swap the two; shift-click

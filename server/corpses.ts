@@ -34,7 +34,7 @@ export class CorpseServer {
 
   /**
    * A player died at (x, z): their bag past the hotbar goes into a new pack there. Returns its box id, or null if
-   * nothing was left (an empty bag, or in or over the base).
+   * nothing was left (an empty bag, or in or over a shelter).
    */
   leave(browserId: string, color: number, x: number, z: number): string | null {
     if (!canDropAt(x, z) || !this.items.hasPack(browserId)) return null;

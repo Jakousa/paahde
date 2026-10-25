@@ -1,6 +1,6 @@
 // Thrown scrap in flight (shared/throw.ts): launched from a player's hand, flown on its arc every server tick, struck
 // against the flying drones (server/drones.ts) and the sand. A drone it hits takes a hit and the junk bounces off;
-// where it comes down it becomes dropped loot (server/loot.ts), or, over the base where nothing can lie, goes back
+// where it comes down it becomes dropped loot (server/loot.ts), or, over a shelter where nothing can lie, goes back
 // into the thrower's bag.
 import { canDropAt } from '../shared/loot.ts';
 import type { ServerMsg } from '../shared/protocol.ts';

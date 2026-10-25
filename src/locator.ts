@@ -8,7 +8,8 @@
 // (src/world/corpses.ts) a little flag in the rag's colour, however far, and your own bikes (src/world/vehicles.ts) two
 // wheels under a bar in your colour, however far.
 import type * as THREE from 'three/webgpu';
-import { ORIGIN } from '../shared/origin.ts';
+import { LAB_SPAWN } from '../shared/lab.ts';
+import { heightAt } from '../shared/terrain.ts';
 import { SHIP_AT, shipPoint } from '../shared/ship.ts';
 
 const NEAR = 25; // m: closer than this, no dot (fades in over the next FADE metres)
@@ -17,9 +18,10 @@ const ELEVATION = 0.35; // rad off the view's pitch before the up/down arrow sho
 
 export type LocatorTarget = { id: number; color: number; x: number; y: number; z: number; shape?: 'wreck' | 'flag' | 'bike' };
 
-const BASE_ID = -1; // player ids are positive
-/** The crashed ship's middle (the base's origin in the dev lab, which has no ship). */
-const SHIP = SHIP_AT ? (() => { const p = shipPoint('door'); return { x: SHIP_AT.x, y: p.y, z: SHIP_AT.z }; })() : ORIGIN;
+const HOME_ID = -1; // player ids are positive
+/** The crashed ship's middle (where you start in the dev lab, which has no ship). Worked out on first use (the terrain). */
+let ship: { x: number; y: number; z: number } | null = null;
+const SHIP = () => (ship ??= SHIP_AT ? { x: SHIP_AT.x, y: shipPoint('door').y, z: SHIP_AT.z } : { ...LAB_SPAWN, y: heightAt(LAB_SPAWN.x, LAB_SPAWN.z) });
 
 const css = `
 #locator { position: fixed; left: 50%; bottom: 70px; width: min(480px, 70vw); height: 6px;
@@ -29,8 +31,8 @@ const css = `
   box-shadow: 0 0 0 1.5px rgba(20, 10, 5, 0.8); }
 #locator .arrow { position: absolute; left: 50%; transform: translateX(-50%); font: bold 9px var(--mono);
   line-height: 1; color: inherit; text-shadow: 0 0 2px #000; }
-#locator .dot.base { border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 1px rgba(20, 10, 5, 0.9)); }
-#locator .dot.base::before { content: ''; position: absolute; inset: 0; background: currentColor;
+#locator .dot.home { border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 1px rgba(20, 10, 5, 0.9)); }
+#locator .dot.home::before { content: ''; position: absolute; inset: 0; background: currentColor;
   clip-path: polygon(50% 0, 100% 48%, 84% 48%, 84% 100%, 16% 100%, 16% 48%, 0 48%); }
 #locator .dot.wreck { border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 1px rgba(20, 10, 5, 0.9)); }
 #locator .dot.wreck::before { content: ''; position: absolute; inset: 0; background: currentColor;
@@ -65,9 +67,9 @@ export class LocatorBar {
   update(camera: THREE.PerspectiveCamera, yaw: number, pitch: number, me: { x: number; y: number; z: number }, players: LocatorTarget[]) {
     const halfH = Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
     const seen = new Set<number>();
-    const home = this.bedroll ?? SHIP;
-    for (const p of [...players, { id: BASE_ID, color: 0xf2e6c8, x: home.x, y: home.y, z: home.z }]) {
-      const isBase = p.id === BASE_ID;
+    const home = this.bedroll ?? SHIP();
+    for (const p of [...players, { id: HOME_ID, color: 0xf2e6c8, x: home.x, y: home.y, z: home.z }]) {
+      const isHome = p.id === HOME_ID;
       const dx = p.x - me.x, dy = p.y - me.y, dz = p.z - me.z;
       const flat = Math.hypot(dx, dz);
       const dist = Math.hypot(flat, dy);
@@ -77,7 +79,7 @@ export class LocatorBar {
       let d = this.dots.get(p.id);
       if (!d) {
         d = { el: document.createElement('div'), arrow: document.createElement('div') };
-        d.el.className = isBase ? 'dot base' : p.shape ? `dot ${p.shape}` : 'dot';
+        d.el.className = isHome ? 'dot home' : p.shape ? `dot ${p.shape}` : 'dot';
         d.arrow.className = 'arrow';
         d.el.appendChild(d.arrow);
         this.bar.appendChild(d.el);
@@ -87,14 +89,14 @@ export class LocatorBar {
       const rel = Math.atan2(Math.sin(Math.atan2(-dx, -dz) - yaw), Math.cos(Math.atan2(-dx, -dz) - yaw));
       const u = -rel / halfH; // -1 = left edge, 1 = right edge
       const outside = Math.abs(u) > 1;
-      const size = (dist < 60 ? 10 : dist < 150 ? 8 : dist < 400 ? 6 : 5) + (isBase ? 4 : p.shape === 'flag' || p.shape === 'bike' ? 2 : 0);
+      const size = (dist < 60 ? 10 : dist < 150 ? 8 : dist < 400 ? 6 : 5) + (isHome ? 4 : p.shape === 'flag' || p.shape === 'bike' ? 2 : 0);
       const color = `#${p.color.toString(16).padStart(6, '0')}`;
       const s = d.el.style;
       s.left = `${(Math.max(-1, Math.min(1, u)) * 0.5 + 0.5) * 100}%`;
       s.width = `${p.shape === 'bike' ? Math.round(size * 1.5) : size}px`;
       s.height = `${size}px`;
       s.color = color;
-      s.background = isBase || p.shape ? '' : color;
+      s.background = isHome || p.shape ? '' : color;
       s.opacity = String(fade * (outside ? 0.45 : 1));
       const elev = Math.atan2(dy, flat) - pitch;
       d.arrow.textContent = elev > ELEVATION ? '▲' : elev < -ELEVATION ? '▼' : '';

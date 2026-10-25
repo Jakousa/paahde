@@ -13,10 +13,11 @@ import { EYE_HEIGHT } from '../shared/dig.ts';
 import { BUILDS, buildCost, isBuildable, WRENCH } from '../shared/crafting.ts';
 import { isBuilding, partsOf } from '../shared/gear.ts';
 import { partAt, setData } from '../shared/items.ts';
-import { BEACON, BEACON_COLORS, BEDROLL, CHEST, isPlaceable, PLACE_FLOOR_Y, PLACE_REACH, PLACED_REACH, placeError, placeFloor, placed, placedReach, placedY, SAND_REACH, setPlaced, type Placed } from '../shared/placed.ts';
+import { BEACON, BEACON_COLORS, BEDROLL, CHEST, isPlaceable, PLACE_REACH, PLACED_REACH, placeError, placeFloor, placed, placedReach, placedY, SAND_REACH, setPlaced, type Placed } from '../shared/placed.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import type { openDb } from './db.ts';
 import type { ItemServer } from './items.ts';
+import { OLD_FLOOR_Y } from './bunkerGone.ts';
 import { TEXT } from '../shared/text.ts';
 
 type Db = ReturnType<typeof openDb>;
@@ -36,7 +37,8 @@ export class PlacedServer {
     this.items = items;
     const rows = db.loadPlaced().filter((r) => isPlaceable(r.kind));
     for (const r of rows) if (r.kind === BEDROLL) this.owners.set(r.id, r.owner);
-    setPlaced(rows.map((r) => ({ id: r.id, kind: r.kind, x: r.x, y: r.y ?? PLACE_FLOOR_Y, z: r.z, rot: r.rot })));
+    // (Rows from before `y` was saved were all on the old bunker's floor: server/bunkerGone.ts moves them out.)
+    setPlaced(rows.map((r) => ({ id: r.id, kind: r.kind, x: r.x, y: r.y ?? OLD_FLOOR_Y, z: r.z, rot: r.rot })));
     // A building's parts come from its box (shared/storage.ts opens it now the list is in).
     setPlaced(placed.map((p) => (isBuilding(p.kind) ? this.withParts(p) : p)));
   }
@@ -170,6 +172,47 @@ export class PlacedServer {
     setPlaced(placed.filter((q) => q !== p));
     this.changed = true;
     return p;
+  }
+
+  /** Put `kind` up at (x, z) on the sand turned `rot` for `owner`, no questions asked (server/bunkerGone.ts: check the spot
+   *  with freeSpot). A building's box opens with it, empty. Returns it. */
+  put(owner: string, kind: string, x: number, z: number, rot: number): Placed {
+    return this.db.tx(() => {
+      const q = this.add(owner, kind, x, z, rot, null);
+      if (isBuilding(kind)) this.items.stowNew(buildingBox(q.id), kind);
+      return q;
+    });
+  }
+
+  /** Placed thing `id` now stands at (x, z) on the sand, turned `rot` (its boxes, owner and jobs go with its id). */
+  moveTo(id: number, x: number, z: number, rot: number) {
+    const i = placed.findIndex((p) => p.id === id);
+    if (i < 0) return;
+    const y = placedY(placed[i].kind, x, z, rot, null);
+    this.db.movePlaced(id, x, y, z, rot);
+    const list = [...placed];
+    list[i] = { ...list[i], x, y, z, rot };
+    setPlaced(list);
+    this.changed = true;
+  }
+
+  /** Placed thing `id` is gone (what it was is the caller's to give back). */
+  remove(id: number) {
+    this.db.deletePlaced(id);
+    this.owners.delete(id);
+    setPlaced(placed.filter((p) => p.id !== id));
+    this.changed = true;
+  }
+
+  /** The first spot on the sand where `kind` may go (shared/placed.ts placeError, nobody about), trying rings of
+   *  `rings` m round `at` in eight directions each, either turn; null if none. */
+  freeSpot(kind: string, at: { x: number; z: number }, rings: number[]): { x: number; z: number; rot: number } | null {
+    const dirs = [[1, 0], [0.7071, 0.7071], [0, 1], [-0.7071, 0.7071], [-1, 0], [-0.7071, -0.7071], [0, -1], [0.7071, -0.7071]];
+    for (const d of rings) for (const [ux, uz] of dirs) for (const rot of [0, 1]) {
+      const x = Math.round((at.x + ux * d) * 4) / 4, z = Math.round((at.z + uz * d) * 4) / 4;
+      if (!placeError(kind, x, z, rot, null, placed)) return { x, z, rot };
+    }
+    return null;
   }
 
   /** A building's box changed (parts fitted or taken out): its parts in the list follow. */

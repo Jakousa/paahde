@@ -2,7 +2,7 @@
 // route and writes the result (CPU / GPU / frame times, the startup timeline) and a Chrome trace of the same stretch to data/perf/.
 //
 //   node tools/perf.ts [--base http://localhost:5173/] [--seconds 30] [--trace play|startup|none] [--world <id>]
-//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|base] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--view <m above the player, for the picture>] [--face sun] [--pitch <degrees down, with --view>] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--software] [--peaceful] [--shot [--ab key=value]] [--out data/perf] [--label name]
+//                      [--set resScale=0.7 --set shadows=false ...] [--chrome <path>] [--spawn field|crash|shelter|ship] [--tod 0.333] [--yaw 3.14] [--allow-death] [--size 2560x1440] [--route walk|spin] [--view <m above the player, for the picture>] [--face sun] [--pitch <degrees down, with --view>] [--query k=v&k2=v2 (extra address parameters, e.g. dev comparisons)] [--headless] [--software] [--peaceful] [--shot [--ab key=value]] [--out data/perf] [--label name]
 //
 //   --seconds    gameplay to record (0 = the startup timeline only, no walking)
 //   --trace      play: trace only the recorded walk (default); startup: trace from page load until playable; none
@@ -29,7 +29,7 @@ const seconds = Number(opt('seconds', '30'));
 const trace = opt('trace', 'play') as 'play' | 'startup' | 'none';
 const out = opt('out', 'data/perf') as string;
 const label = opt('label', '') as string;
-/** Where the player starts (a dev helper of the server, shared/protocol.ts): field = beside a scrap field, crash = beside a crash site's machine, shelter, base; none = the saved position (the bunker in a new world). */
+/** Where the player starts (a dev helper of the server, shared/protocol.ts): field = beside a scrap field, crash = beside a crash site's machine, shelter, ship; none = the saved position (the ship's ramp in a new world). */
 const spawnAt = opt('spawn', '') as string;
 /** Time of day the run starts at (0..1: 0.333 = 8 am, 0.833 = 8 pm, the sun at 28°, long shadows); the clock then runs on as usual. Without it, the world's own time. */
 const tod = opt('tod', '') as string;

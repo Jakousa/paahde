@@ -39,7 +39,7 @@ const RING = 4;
 const RING_N = 6;
 /** How much of the local wind (vs the regional one) you hear: < 1 so dune lees are quieter, not silent. */
 const LOCAL = 0.6;
-/** Friction velocity left underground (the base's bunker), as a fraction of the surface's: a storm overhead
+/** Friction velocity left underground (in a shelter), as a fraction of the surface's: a storm overhead
  *  still roars down the skylight and the stairs, but through the muffle below. */
 const BURIED = 0.45;
 /** Underground everything goes through a lowpass at this cutoff (Hz): the wind is heard through the earth. */
@@ -253,7 +253,7 @@ export class WindSound {
     const qR = wind.storm * 4;
     us = LOCAL * (us / (RING_N + 1)) + (1 - LOCAL) * usR;
     q = LOCAL * (q / (RING_N + 1)) + (1 - LOCAL) * qR;
-    // Down in the bunker the wind is a faint draught from the skylight and the stairs.
+    // Down in a shelter the wind is a faint draught down the stairs.
     const buried = listener.y < heightAt(listener.x, listener.z) - 0.5;
     if (buried) {
       us *= BURIED;

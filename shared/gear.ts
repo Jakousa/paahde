@@ -1,5 +1,5 @@
-// Gear: the things you find broken in the desert (server/loot.ts) and repair with parts at the workbench in
-// the base. Each piece of gear has part slots (GEAR below); an item's `parts` (shared/items.ts) says what is
+// Gear: the things you find broken in the desert (server/loot.ts) and repair with parts at a workbench
+// (built with the wrench). Each piece of gear has part slots (GEAR below); an item's `parts` (shared/items.ts) says what is
 // fitted in each. With every slot filled it works, and how well depends on the parts' tiers (quality): a
 // better part can be swapped in any time. Some gear is equipped in the Tab menu (the 'equip' box: back,
 // wrist, belt, armor), the rest is used from the hotbar. The motorcycle is never carried: it stands in the world
@@ -185,7 +185,7 @@ export const canteenSips = (q: number) => Math.round(by(q, 5, 10));
 export const backpackRows = (q: number) => Math.round(by(q, 3, BAG_ROWS));
 /** Storm detector: warns this long before a storm reaches you (s). */
 export const stormWarnS = (q: number) => by(q, 6, 20);
-/** Wrist computer: other players show on the locator this far away (m). The base always does. */
+/** Wrist computer: other players show on the locator this far away (m). Home (your bedroll, else the ship) always does. */
 export const locatorRange = (q: number) => by(q, 250, 2000);
 
 /** A gun's recharge (ms) at quality q: its base at Scrap parts (a gun is a gun), down a fifth of it per tier to 40% at

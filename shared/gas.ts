@@ -1,7 +1,7 @@
 // Poison gas: a night-time weather event. A heavy, yellow-green pollution cloud creeps in over the land from one
 // side, like a storm front (shared/storm.ts) but low: it lies on the ground, rising behind its leading edge over
 // GAS_RISE_S to GAS_DEPTH over the dune corridors' floor (shared/dunes.ts duneFloor), so the crests of big dunes, rock
-// and cliffs stand out of it. It sinks into every bunker (base and shelters), so the usual cover is a trap. It
+// and cliffs stand out of it. It sinks into every shelter, so the usual cover is a trap. It
 // doesn't touch electronics, push or blind machines: it only chokes people whose head is in it, darkening their view
 // until they die (GAS_S; server/world.ts counts it, src/gas.ts mirrors it and draws the view going dark).
 //
@@ -43,7 +43,7 @@ export const GAS_DEPTH = 7;
 /** Seconds with your head in it before it kills; it wears off this many times slower. */
 export const GAS_S = 10;
 export const GAS_RECOVER = 0.5;
-/** After respawning (in the base, which may be full of it) the gas doesn't count for this long (s): time to get out and
+/** After respawning (by a bedroll or at the ship, which may be in it) the gas doesn't count for this long (s): time to get out and
  *  up, so one cloud can't kill you over and over and eat the world's lives. */
 export const GAS_GRACE_S = 25;
 /** Eye height over the feet (m): the gas has to be over it to choke you. */
@@ -94,7 +94,7 @@ export function gasTop(gas: readonly Gas[], x: number, z: number, t: number): nu
   return d > 0 ? duneFloor(x, z, WORLD_SEED) + d : -Infinity;
 }
 
-/** How much someone standing at (x, y, z) (feet) breathes gas at time `t`, 0..1: GAS_S of 1 kills. In a bunker it
+/** How much someone standing at (x, y, z) (feet) breathes gas at time `t`, 0..1: GAS_S of 1 kills. In a shelter it
  *  has seeped in as soon as it lies over the spot a metre deep; out in the open, by how far it's over your eyes. */
 export function gasExposure(gas: readonly Gas[], x: number, y: number, z: number, t: number): number {
   if (!gas.length) return 0;

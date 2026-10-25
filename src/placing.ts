@@ -97,7 +97,7 @@ export class Placer {
     if (rotate) this.rot = (this.rot + 1) % turns;
     const at = placeAim(feet, yaw, pitch, kind, this.rot % turns, placed);
     const floor = placeFloor(kind, feet);
-    // Down in the bunker or a shelter with something for the sand: it goes outside.
+    // Down in a shelter with something for the sand: it goes outside.
     const below = floor === null && feet.y + EYE_HEIGHT < heightAt(feet.x, feet.z);
     const short = wrench && !pickIngredients(bag, BUILDS[kind]);
     const why = below ? TEXT.notice.outsideOnly : !at ? (floor === null ? TEXT.prompt.aimAtGround : TEXT.prompt.aimAtFloor)

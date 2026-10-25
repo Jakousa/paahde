@@ -1,4 +1,4 @@
-// Power lines: wires strung between the connectors of the electric things put up round the base (the windmill, the
+// Power lines: wires strung between the connectors of the electric things put up anywhere (the windmill, the
 // battery station, the power pole, the beacon, the well: shared/placed.ts). Only what is wired together shares power: each set of things
 // joined by wires is one grid (grids(), used by server/power.ts).
 //

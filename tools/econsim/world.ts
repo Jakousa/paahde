@@ -22,7 +22,7 @@ const FIND_BACK = 3 * 60, CACHE_BACK = 60, SCRAP_BACK = 30 * 60, DEBRIS_BACK = 3
 export const CORPSE_S = 30 * 60;
 /** Scrap piles further out than this aren't worth listing: scrap is near home. */
 const PILE_R = 1100;
-/** Hunting spots are looked for within this distance of the base (m). */
+/** Hunting spots are looked for within this distance of the origin (m). */
 const HUNT_R = 2600;
 
 export type Thing = Drop & { id: number; src: Source };

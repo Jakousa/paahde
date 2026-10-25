@@ -14,11 +14,9 @@ import { CLOTH, HOTBAR, ITEMS, RETIRED, SCRAP, scrapItem, stackOf, withData, WIR
 import { foundData, type Drop } from '../shared/lootRoll.ts';
 import { ENEMIES } from '../shared/enemies.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
-import { boxSize, CHESTS, OWN_BOXES } from '../shared/storage.ts';
+import { boxSize, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken, isTableId, tableId } from '../shared/crash.ts';
 import { BEDROLL, CHEST, placed, TABLE } from '../shared/placed.ts';
-import { overBase } from '../shared/base.ts';
-import { ORIGIN } from '../shared/origin.ts';
 import { canyonFloorNear } from '../shared/canyons.ts';
 import { indoors, overShelter, shelterAt, sheltersNear } from '../shared/shelters.ts';
 import { crashSitesNear } from '../shared/crashsites.ts';
@@ -36,6 +34,7 @@ import { openDb } from './db.ts';
 import { trace } from './telemetry.ts';
 import { GardenServer } from './garden.ts';
 import { PlacedServer } from './placed.ts';
+import { bunkerGone } from './bunkerGone.ts';
 import { VehicleServer } from './vehicles.ts';
 import { vehicles } from '../shared/vehicles.ts';
 import { PowerServer } from './power.ts';
@@ -56,7 +55,7 @@ import { HarvesterServer, type Furrow, type HarvesterKill } from './harvesters.t
 import { BossServer, type BossKill, type BossOut } from './bosses.ts';
 import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } from './guardians.ts';
 import { CrashServer } from './crash.ts';
-import { LAB, LAB_SPAWN } from '../shared/lab.ts';
+import { LAB } from '../shared/lab.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
 import { TerrainServer } from './terrain.ts';
 import { bite, drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
@@ -98,6 +97,7 @@ const crash = new CrashServer(db, (msg) => {
   for (const p of players.values()) send(p.ws, msg);
 });
 const placedThings = new PlacedServer(db, items); // before the garden: it loads the beds
+bunkerGone(db, items, placedThings); // once: what was in the old bunker comes out (before the vehicles and the garden)
 const vehicleSrv = new VehicleServer(db, items); // before the loot: it turns motorcycles dropped as items into vehicles
 const wiring = new WireServer(db, items); // after the placed list: it drops wires to things gone
 const garden = new GardenServer(db);
@@ -276,14 +276,12 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   const named = row?.name ? { ok: true as const, name: row.name } : checkName(typeof wanted === 'string' ? wanted.replace(/[\p{Cc}\p{Cf}]/gu, ' ') : wanted, PLAYER_NAME);
   if (!named.ok) return ws.close(4422, 'bad name');
   const color = row?.name ? row.color : isColor(wantedColor) ? wantedColor : (row?.color ?? Math.floor(Math.random() * 0xffffff));
-  // Heights aren't saved: someone who left over the bunker (or in it) starts down in it.
-  const atBase = spawn === 'base';
-  let state = row && !atBase && !overBase(row.x, row.z, 0.5) ? spawnState(row.x, row.z) : spawnState();
+  // Where they left (heights aren't saved: on the sand there), or at the ship (the lab's floor in the dev test lab).
+  const atShip = spawn === 'ship';
+  let state = row && !atShip ? spawnState(row.x, row.z) : spawnState();
   // Someone who left in a shelter starts outside its door.
-  const left = row && !atBase && overShelter(row.x, row.z, 0.5) ? shelterAt(row.x, row.z) : null;
+  const left = row && !atShip && overShelter(row.x, row.z, 0.5) ? shelterAt(row.x, row.z) : null;
   if (left) state = spawnState(left.x + left.dx * 4, left.z + left.dz * 4);
-  // The dev test lab (shared/lab.ts): new players appear in the open room, not down in the bunker.
-  if (LAB && (!row || atBase || overBase(row.x, row.z, 0.5))) state = spawnState(LAB_SPAWN.x, LAB_SPAWN.z);
   if (spawn === 'shelter') {
     // Dev helper: 6 m outside the door of the nearest shelter.
     const s = sheltersNear(state.x, state.z, 6000).sort((a, b) => Math.hypot(a.x - state.x, a.z - state.z) - Math.hypot(b.x - state.x, b.z - state.z))[0];
@@ -295,7 +293,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
     if (m) state = spawnState(m.x + m.dx * 7, m.z + m.dz * 7);
   }
   if (spawn === 'field') {
-    // Dev helper: just outside the nearest scrap field, on the base's side, looking at it.
+    // Dev helper: just outside the nearest scrap field, on the side we're on, looking at it.
     const s = crashSitesNear(state.x, state.z, 3000).find((o) => o.level === 0);
     if (s) {
       const d = Math.hypot(state.x - s.x, state.z - s.z) || 1;
@@ -348,7 +346,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   send(ws, { t: 'obituaries', list: db.lastObituaries(OBITUARY_KEEP) });
   recall(p);
   send(ws, corpses.joinMessage());
-  for (const box of [...OWN_BOXES, ...CHESTS.map((_, i) => `chest${i}`), ...corpses.boxes(), ...placedThings.boxes(), ...vehicleSrv.boxes()]) send(ws, boxMsg(browserId, box));
+  for (const box of [...OWN_BOXES, ...corpses.boxes(), ...placedThings.boxes(), ...vehicleSrv.boxes()]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
 
 }
@@ -418,7 +416,7 @@ function shadeCasters(now: number): Caster[] {
 }
 
 // Heat builds up in the sun (server/water.ts); STROKE_S after the meter is full the player dies of heatstroke and respawns
-// at the base, recovered.
+// at their bedroll or the ship, recovered.
 // The next snapshot carries the new position, which the client snaps to (src/net.ts reconcile).
 function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const now = Date.now();
@@ -433,7 +431,7 @@ function heat(p: Player, dt: number, tod: number, serverNow: number) {
   const choking = frontExposure(storms.storms, p.state.x, p.state.y, p.state.z, serverNow);
   p.choke = Math.max(0, p.choke + (choking > 0 ? choking : -CHOKE_RECOVER) * dt);
   if (p.choke >= CHOKE_S && !p.down) die(p, 'storm', [WIND.x * 4, 1, WIND.z * 4]); // bowled over downwind
-  // With your head in poison gas (in a bunker too) you choke; out of it, it wears off. Not just after respawning.
+  // With your head in poison gas (in a shelter too) you choke; out of it, it wears off. Not just after respawning.
   const grace = Date.now() - p.heat.diedAt < DOWN_MS + GAS_GRACE_S * 1000;
   const gassed = grace ? 0 : gasExposure(storms.gas, p.state.x, p.state.y, p.state.z, serverNow);
   p.gassed = Math.max(0, p.gassed + (gassed > 0 ? gassed : -GAS_RECOVER) * dt);
@@ -723,7 +721,7 @@ function tossEvents(events: TossEvent[]) {
   }
 }
 
-/** Fly the thrown scrap on; what lands lies there (or, over the base, goes back to the thrower). */
+/** Fly the thrown scrap on; what lands lies there (or, over a shelter, goes back to the thrower). */
 function tickThrows(dt: number, now: number) {
   const r = throws.tick(dt, now);
   tossEvents(r.events);
@@ -926,7 +924,7 @@ function onLootTake(p: Player, id: unknown) {
   if (back) send(p.ws, back);
 }
 
-// Drop an item on the sand (shared/loot.ts canDropAt: not in the base).
+// Drop an item on the sand (shared/loot.ts canDropAt: not in a shelter).
 function onDrop(p: Player, box: unknown, slot: unknown) {
   if (typeof box !== 'string' || !boxSize(box)) return;
   const s = p.state;
@@ -1025,7 +1023,7 @@ function onTend(p: Player, bed: unknown) {
   if (what) send(p.ws, { t: 'tended', what });
 }
 
-// Placing things from the bag on the bunker floor or the sand and picking them up (server/placed.ts), crafting at
+// Placing things from the bag on a shelter's floor or the sand and picking them up (server/placed.ts), crafting at
 // the workbench (shared/crafting.ts). Refusals get a notice (and the bag back, in case the client guessed). A
 // building's box goes to everyone as it opens; when it's picked up, the placed list closes it.
 function onPlace(p: Player, slot: unknown, x: unknown, z: unknown, rot: unknown) {

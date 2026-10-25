@@ -1,11 +1,9 @@
-// Shelters: small empty bunkers scattered over the desert, mostly in the rocky country near its formations. Like
-// the home base (shared/base.ts) each is a squat concrete hut on a flat pad with stairs going down inside it, and
-// under the sand a room; down there the sun, the storms and the drones can't reach you. Three kinds:
+// Shelters: small empty bunkers scattered over the desert, mostly in the rocky country near its formations. Each is a
+// squat concrete hut on a flat pad with stairs going down inside it, and under the sand a room; down there the sun, the storms and the drones can't reach you. Three kinds:
 // - small: a short flight down into a little room;
 // - deep: a long flight down to a room far under the sand;
 // - long: a short flight, then a long low corridor to a narrow gallery.
-// Some have a hand pump in the middle of the room, like the base's (the deeper, the likelier: PUMP_ODDS), where the
-// canteen fills. Server/loot.ts keeps stashes on their floors (shelterLootSpot).
+// Some have a hand pump in the middle of the room (the deeper, the likelier: PUMP_ODDS), where the canteen fills. Server/loot.ts keeps stashes on their floors (shelterLootSpot).
 // Shared by server physics and client prediction (collideShelter() etc. in sim.ts), the terrain (the pad in
 // baseHeight, no digging over them, the hut's floor cut out of the sand) and the renderer (src/world/shelters.ts
 // builds them from this layout).
@@ -20,10 +18,10 @@
 // lies within HOME_R of the crashed ship players arrive at (shared/shipSpot.ts; homeShelter), so the first water is near.
 //
 // Local frame: origin = the hut's floor at its doorway centre line; the door faces local +Z and the shelter runs
-// down local -Z (like the base). It is turned by a multiple of 90° (exact): local +Z points along world (dx, dz),
+// down local -Z. It is turned by a multiple of 90° (exact): local +Z points along world (dx, dz),
 // local +X along (dz, -dx).
 
-import { atPump, inBase, bandUnder, collideCapsules, keepUnder, PUMP_REACH, terrainHidden, type Capsule } from './base.ts';
+import { bandUnder, collideCapsules, keepUnder, type Capsule } from './capsules.ts';
 import { ORIGIN } from './origin.ts';
 import { duneHeight, WORLD_SEED } from './dunes.ts';
 import { rockiness, rocksNear } from './rocks.ts';
@@ -122,8 +120,8 @@ function padRect(L: ShelterLayout) {
 export const SHELTER_CELL = 400;
 /** A shelter's origin stays this far inside its cell (m), so it and its pad never reach the next one. */
 const CELL_MARGIN = 64;
-/** No shelters this close to the base (m). */
-const BASE_CLEAR = 350;
+/** No shelters this close to the origin (m; the one by the ship aside). */
+const ORIGIN_CLEAR = 350;
 /** Most cut or fill the pad may need (m of dune height range under it). */
 const MAX_RANGE = 3.5;
 
@@ -164,7 +162,7 @@ function padFit(L: ShelterLayout, x: number, z: number, dx: number, dz: number):
 }
 
 /** The small shelter with a pump near the crashed ship: on the flattest (and nearest) spot 90..HOME_R m from it, well inside its cell,
- *  off the base's ground and the ship's, its door facing the ship. */
+ *  80 m clear of the origin, off the ship's ground, its door facing the ship. */
 function findHomeShelter(): Shelter | null {
   const s = SHIP_AT;
   if (!s) return null;
@@ -211,7 +209,7 @@ function cellShelter(ix: number, iz: number): Shelter | null {
     const z = Math.round(iz * SHELTER_CELL + CELL_MARGIN + span * r());
     const [dx, dz] = FACINGS[Math.floor(r() * 4)];
     const bx = x - ORIGIN.x, bz = z - ORIGIN.z;
-    if (bx * bx + bz * bz < BASE_CLEAR * BASE_CLEAR) continue;
+    if (bx * bx + bz * bz < ORIGIN_CLEAR * ORIGIN_CLEAR) continue;
     const L = SHELTER_KINDS[kind];
     const p = padRect(L);
     // The pad's middle and a circle round it with its blend: no rock in there; in rocky country, rock close by.
@@ -384,7 +382,7 @@ const CAPSULES: Record<ShelterKind, Capsule[]> = {
   deep: kindCapsules(SHELTER_KINDS.deep),
   long: kindCapsules(SHELTER_KINDS.long),
 };
-/** The same with the pump (the base's pump hitbox: 0.35 m round, 1.2 m tall). */
+/** The same with the pump (its hitbox: 0.35 m round, 1.2 m tall). */
 const WITH_PUMP: Record<ShelterKind, Capsule[]> = {
   small: [], deep: [], long: [],
 };
@@ -424,7 +422,7 @@ const ROOF_STEP = 0.35;
 const hutFlat = () => S_HUT.h;
 /**
  * The lowest ceiling (local) over a footprint of radius r at local (lx, lz) whose feet are at `feet`, or Infinity, read
- * exactly band by band like shared/base.ts ceilingUnder; the stairs' stepped ceiling falls along them, so at the
+ * exactly band by band (shared/capsules.ts bandUnder); the stairs' stepped ceiling falls along them, so at the
  * footprint's lowest point in the stairwell. Only ceilings it is under count.
  */
 function ceilingUnder(L: ShelterLayout, lx: number, lz: number, r: number, feet: number): number {
@@ -441,8 +439,8 @@ function ceilingUnder(L: ShelterLayout, lx: number, lz: number, r: number, feet:
 }
 
 /**
- * Collide a player (world position p, moved in place, velocity absorbed into walls) with a shelter, like
- * collideBase (shared/base.ts). Returns the height (world) of what the player stands on, or -Infinity.
+ * Collide a player (world position p, moved in place, velocity absorbed into walls) with a shelter: `y`/`prevY` are the
+ * feet heights (world) this and last tick, `prevX`/`prevZ` where they were (arches and vaults: keepUnder). Returns the height (world) of what the player stands on, or -Infinity.
  */
 export function collideShelter(p: { x: number; z: number; vx: number; vz: number }, y: number, prevY: number, radius: number, height: number, stepUp: number,
   prevX: number, prevZ: number): number {
@@ -509,6 +507,9 @@ export function shelterToWorld(s: Shelter, lx: number, lz: number): { x: number;
   return { x: s.x + ox, z: s.z + oz };
 }
 
+/** The canteen fills at a pump: feet within this (m, horizontally) of it, down on its floor. */
+export const PUMP_REACH = 1.6;
+
 /** True for someone whose feet are at world (x, y, z) by a shelter's pump (+ margin), down on its floor. */
 export function atShelterPump(x: number, y: number, z: number, margin = 0): boolean {
   const s = shelterAt(x, z);
@@ -517,10 +518,8 @@ export function atShelterPump(x: number, y: number, z: number, margin = 0): bool
   return y - s.y < s.L.floor + 1 + margin && dx * dx + dz * dz < r * r;
 }
 
-/** By a pump the canteen fills at: the base's or a shelter's. */
-export function atWater(x: number, y: number, z: number, margin = 0): boolean {
-  return atPump(x, y, z, margin) || atShelterPump(x, y, z, margin);
-}
+/** By a pump the canteen fills at (a shelter's). */
+export const atWater = atShelterPump;
 
 /** The height (world) of the floor something lies on at (x, z) inside a shelter's room or corridor, or null outside
  *  them (it lies on the sand). */
@@ -567,14 +566,10 @@ export function shelterLootSpot(s: Shelter, rand: () => number): { x: number; z:
   return shelterToWorld(s, lx, lz);
 }
 
-// --- The base and the shelters together ---
+// --- Indoors ---
 
-/** In the home base or a shelter: out of the sun, the storm and the drones' sight. */
-export function indoors(x: number, y: number, z: number, margin = 0): boolean {
-  return inBase(x, y, z, margin) || inShelter(x, y, z, margin);
-}
+/** In a shelter: out of the sun, the storm and the drones' sight. */
+export const indoors = inShelter;
 
-/** The sand is not the ground here for feet that were at `y`: in the base or a shelter. */
-export function sandHidden(x: number, z: number, y: number): boolean {
-  return terrainHidden(x, z, y) || shelterHidden(x, z, y);
-}
+/** The sand is not the ground here for feet that were at `y`: in a shelter. */
+export const sandHidden = shelterHidden;

@@ -1,5 +1,5 @@
 // Dying: the body drops as a ragdoll where it fell (src/models/ragdoll.ts) and the camera pulls back to third person
-// for DOWN_MS before the server respawns you at the base. A blast that kills you throws the body: `blastPush` is
+// for DOWN_MS before the server respawns you at your bedroll or the ship. A blast that kills you throws the body: `blastPush` is
 // the launch velocity (m/s) the server sends with the death ('died' and the snapshot's `down`).
 
 /** How long a dead player lies there before respawning (ms). */

@@ -2,13 +2,14 @@
 // same layout the physics collides with, one merged geometry per kind and material, shared by every shelter of that
 // kind; those within DRAW_R of the camera are in the scene.
 //
-// Like the base (src/world/base.ts) the sand stays on top as the roof, and the hut's floor is cut out of it: the
-// HOLES nearest shelters' huts go to the sand's mask (outsideTerrainHoles). Indoors only the sun (through the door,
-// shadowed) and a dim fill in the nearest shelter's room light the concrete, and a faint glow keeps it from black.
-// Shelters with a pump get the base's (the `pump` node of public/models/base/bunker.glb).
+// The sand stays on top as the roof, and the hut's floor is cut out of it: the HOLES nearest shelters' huts go to the
+// sand's mask (outsideTerrainHoles). Indoors only the sun (through the door, shadowed) and a dim fill in the nearest
+// shelter's room light the concrete, and a faint glow keeps it from black. Shelters with a pump get the hand pump
+// (public/models/pump.glb, tools/blender/stations.py).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { lights, uniform } from 'three/tsl';
+import { bool, lights, positionWorld, uniform } from 'three/tsl';
+import type { Node } from 'three/webgpu';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   S_HALL_H, S_HUT, S_STAIRS, S_W, S_WT, SHELTER_KINDS, sheltersNear, shelterHole, shelterPump, stairCeiling, type Shelter, type ShelterKind,
@@ -22,6 +23,16 @@ const DRAW_R = 900, DROP_R = 1000;
 export const HOLES = 4;
 /** Holes in the sand over the nearest shelters' huts (world x0, z0, x1, z1); unused slots are far away. */
 export const shelterHoles = Array.from({ length: HOLES }, () => uniform(new THREE.Vector4(1e9, 1e9, 1e9, 1e9)));
+
+/** False inside the holes cut in the terrain over the nearest shelters' huts (shelterHoles): use as a material's maskNode. */
+export function outsideTerrainHoles(): Node<'bool'> {
+  let outside: Node<'bool'> = bool(true);
+  const p = positionWorld;
+  for (const h of shelterHoles) {
+    outside = outside.and(p.x.lessThan(h.x).or(p.x.greaterThan(h.z)).or(p.z.lessThan(h.y)).or(p.z.greaterThan(h.w)));
+  }
+  return outside;
+}
 /** The room's fill light: intensity at full daylight and at night, reach (m). */
 const FILL = { day: 2, night: 0.2, distance: 16 };
 /** Never quite dark: emissive fraction of each indoor surface's own colour. */
@@ -115,9 +126,9 @@ export class Shelters {
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
-    new GLTFLoader().loadAsync('./models/base/bunker.glb').then((gltf) => {
+    new GLTFLoader().loadAsync('./models/pump.glb').then((gltf) => {
       const pump = gltf.scene.getObjectByName('pump');
-      if (!pump) return console.warn('shelters: no node pump in bunker.glb');
+      if (!pump) return console.warn('shelters: no node pump in pump.glb');
       pump.traverse((o) => {
         const m = o as THREE.Mesh;
         if (!m.isMesh) return;
@@ -131,7 +142,7 @@ export class Shelters {
       });
       this.pump = pump;
       for (const g of this.shown.values()) this.addPump(g);
-    }, (err) => console.warn('shelters: failed to load bunker.glb', err));
+    }, (err) => console.warn('shelters: failed to load pump.glb', err));
     const mat = (hex: number, roughness: number, metalness: number, indoor: boolean) => {
       const m = new THREE.MeshStandardNodeMaterial({ color: hex, roughness, metalness });
       if (indoor) {
@@ -142,7 +153,7 @@ export class Shelters {
       m.shadowSide = THREE.DoubleSide;
       return m;
     };
-    // Colours from tools/blender/base/bunker.py (Bunker, BunkerDark, Steel, Concrete, ConcreteDark).
+    // Concrete and steel (tools/blender/stationkit.py's Steel, Concrete and ConcreteDark; the hut's two the old bunker's).
     this.mats = {
       hut: mat(0xb09f86, 0.97, 0, false),
       trim: mat(0x8c7c66, 0.97, 0, false),

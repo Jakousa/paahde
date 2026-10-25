@@ -21,7 +21,7 @@ import type { Aggro, Kill } from './guardians';
 export type SpeechState = {
   /** Sun above the horizon. */
   day: boolean;
-  /** In the base or a shelter; in a shelter (one of the small bunkers out in the desert). */
+  /** In a shelter (one of the small bunkers out in the desert): indoors, and the same again for its own lines. */
   indoors: boolean;
   shelter: boolean;
   /** Close enough to a pump to fill a bottle. */
@@ -44,7 +44,7 @@ export type SpeechState = {
   frontComing: boolean;
   choking: boolean;
   lee: boolean;
-  /** Poison gas about to reach us (out in the open or in a bunker); breathing it. */
+  /** Poison gas about to reach us (out in the open or in a shelter); breathing it. */
   gasComing: boolean;
   gassed: boolean;
   /** On the motorcycle. */

@@ -92,7 +92,6 @@ const en = {
   /** Boxes, as headings in the Tab overlay (shared/storage.ts boxLabel). */
   boxes: {
     bag: 'Inventory', equip: 'Equipment', bench: 'Workbench', cargo: 'Cargo', corpse: 'Left behind', chest: 'Chest',
-    chestN: (n: number) => `Chest ${n}`,
     storage: 'Storage', ground: 'On the ground',
   },
   /** How each piece of gear is used, under its tooltip once it works (shared/gear.ts GEAR); `k` gives the current
@@ -115,7 +114,7 @@ const en = {
     well: () => 'Pumps up water while it has power, for the water bottle.',
   },
   /** Where placing is blocked: "Too close to the pump". */
-  baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base', shelter: 'the shelter', ship: 'the ship' },
+  spots: { pump: 'the pump', doorway: 'the doorway', shelter: 'the shelter', ship: 'the ship', trophy: 'the trophy' },
 
   // ---- Prompts under the crosshair (after the key) ---------------------------------------------------------------
 
@@ -598,13 +597,13 @@ const en = {
     receiver_queen: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
     receiver_colossus: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
     receiver_worm: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
-    plant_bed: (k: HintKeys) => `With the plant bed on the hotbar, press ${k.use} to put it down in the bunker.`,
+    plant_bed: (k: HintKeys) => `With the plant bed on the hotbar, press ${k.use} to put it down in a shelter.`,
     uv_lamp: () => 'Put the UV lamp down over a plant bed.',
     bedroll: (k: HintKeys) => `With the bedroll on the hotbar, press ${k.use} to lay it down. You'll wake up there after you die.`,
     wrench: (k: HintKeys) => `With the wrench on the hotbar, press ${k.aim} to build.`,
     part: () => 'Parts repair gear at the workbench.',
-    broken: () => "It's broken. You can repair it at the workbench in the base.",
-    machine: () => 'Take it apart at the disassembly table in the base.',
+    broken: () => "It's broken. You can repair it at a workbench.",
+    machine: () => 'Take it apart at a dismantling bench.',
   } as Record<string, (k: HintKeys) => string>,
 
   // ---- The character talking to themselves (src/speechLines.ts, docs/speech.md); a list: one picked at random -------

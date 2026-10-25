@@ -62,7 +62,7 @@ export interface ComponentSpec {
   label: string;
   yields: SalvageYield[];
   tierWeights: TierWeights;
-  /** Small enough to carry home as junk (taken apart at the base workbench); the rest is taken apart where it lies. */
+  /** Small enough to carry home as junk (taken apart on a dismantling bench); the rest is taken apart where it lies. */
   carry: boolean;
 }
 
@@ -78,7 +78,7 @@ export const COMPONENTS: Record<ComponentKind, ComponentSpec> = {
   // Wall-mounted control cabinet: mains in through a gland, a transformer, contactors on a rail and a controller
   // board with a heatsink on its regulator, a backup battery.
   control_cabinet: { label: TEXT.machines.control_cabinet, carry: true, ...COMPONENT_LOOT.control_cabinet },
-  // The starter machines of the scrap fields near the base (shared/tables.ts LEVEL_KINDS).
+  // The starter machines of the scrap fields near the start (shared/tables.ts LEVEL_KINDS).
   // Hand winch off a cargo hoist: a cable drum on a shaft between two bearing blocks, driven through a gear pair
   // from the crank, a pawl on the ratchet.
   winch: { label: TEXT.machines.winch, carry: true, ...COMPONENT_LOOT.winch },

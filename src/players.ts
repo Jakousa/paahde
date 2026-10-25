@@ -238,7 +238,7 @@ export class Avatar {
       this.down = true;
       this.streakX = NaN;
       if (!pose.ride) this.root.position.set(pose.x, pose.y, pose.z); // first frame we see them: already dead
-      // In the base the bunker floor is under the feet, not the sand overhead.
+      // In a shelter its floor is under the feet, not the sand overhead.
       const y = this.root.position.y;
       const ground = (x: number, z: number) => (sandHidden(x, z, y) ? y : heightAt(x, z));
       this.tipped = !this.model.ragdoll?.(_push.fromArray(pose.down), ground);
@@ -312,7 +312,7 @@ export class Avatar {
     else this.slideFor = 0;
 
     // Footprints: one per stride while walking; a sliding body draws a continuous streak instead. Only on the sand
-    // itself: on the bunker's stairs and floors the print would hang at the sand's height overhead.
+    // itself: on a shelter's stairs and floors the print would hang at the sand's height overhead.
     const prints = this.footprints && onSand && !sandHidden(pose.x, pose.z, pose.y);
     if (!prints || !sliding) this.streakX = NaN;
     if (!this.footprints || !pose.grounded) return;

@@ -67,7 +67,7 @@ import {
 } from 'three/tsl';
 import type Node from 'three/src/nodes/core/Node.js';
 import { sandStorm, sunColor, windStrength } from './env.ts';
-import { outsideTerrainHoles } from './base.ts';
+import { outsideTerrainHoles } from './shelters.ts';
 import { STRATA, STRATA_Y0, STRATA_Y1, stratumAt } from '../../shared/strata.ts';
 
 let strataTex: THREE.DataTexture | null = null;
@@ -616,7 +616,7 @@ class SandNodeMaterial extends THREE.NodeMaterial {
     // pass takes the caster's alpha from colorNode.a, and a vec3 there keeps the dunes out of the map.
     this.colorNode = vec4(this.surface.albedo, 1);
     this.castShadowPositionNode = positionLocal.sub(normalLocal.mul(CASTER_SINK));
-    // No sand (nor its shadow) over the base's entrance and skylight.
+    // No sand (nor its shadow) over the shelters' huts.
     this.maskNode = outsideTerrainHoles();
   }
 

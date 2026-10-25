@@ -1,5 +1,5 @@
 // Loot lying in the world (shared/loot.ts): broken gear to find and repair (shared/gear.ts) at the crash sites (the
-// starter gear at the scrap fields near the base, the advanced gear on crawler ground, rare loose parts on guardian
+// starter gear at the scrap fields near the start, the advanced gear on crawler ground, rare loose parts on guardian
 // ground: shared/crashsites.ts SiteLevel; the motorcycles among FINDS lie there as vehicles: server/vehicles.ts), stashes
 // on the shelters' floors (SHELTER_STASHES), scrap, cloth and a canteen now and then about the crashed ship players arrive
 // at (SHIP_LOOT, shared/ship.ts), and caches lying out in the open desert. All shared: the first player to press F
@@ -274,7 +274,7 @@ export class LootServer {
   private spawnFind(kind: string) {
     if (kind === STASH_KIND) return this.spawnStash();
     if (kind === SHIP_KIND) return this.place({ id: this.nextId++, ...shipFind(Math.random), ...shipFindSpot(Math.random), src: 'find' }, SHIP_KIND);
-    // At a crash site of its level, among the debris round the wreck (level 0 now and then at a scrap pile near the base);
+    // At a crash site of its level, among the debris round the wreck (level 0 now and then at a scrap pile near the start);
     // RARE_KIND (not in FINDS): a loose rare part on guardian ground.
     const { x, z } = findSpot(FINDS[kind]?.level ?? 2, this.sites, this.piles, Math.random);
     this.place({ id: this.nextId++, ...findContents(kind, Math.random), x, z, src: 'find' }, kind);

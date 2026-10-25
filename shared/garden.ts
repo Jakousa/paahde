@@ -1,4 +1,4 @@
-// Plant beds: the plant beds players placed in the base (shared/placed.ts, kind 'plant_bed'), their growth
+// Plant beds: the plant beds players placed on a shelter's floor (shared/placed.ts, kind 'plant_bed'), their growth
 // stages, and which bed the player is looking at. The server owns the stages (server/garden.ts): F on an
 // empty bed plants it, sprouts grow only under a UV lamp (a uv_lamp placed over the bed) and are grown
 // after GROW_MS of lamp light, F on a grown bed harvests it back to soil. Without a lamp sprouts just wait.

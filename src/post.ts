@@ -282,8 +282,8 @@ export class Post {
       const first = float(1e9).toVar(); // where the dust starts, for the haze in front of it
       const jitter = fract(sin(dot(p.mul(vec2(911.3, 577.7)), vec2(12.9898, 78.233))).mul(43758.5453)).toVar();
       const ground = [stormGround.x, stormGround.y, stormGround.z, stormGround.w];
-      // In the base (or a shelter) the dust only starts where the ray gets out: up past the pad's surface (the
-      // skylight, the stairwell) and out of the entrance hut (its door). Rays that end on the walls never get there.
+      // In a shelter the dust only starts where the ray gets out: up past the sand's surface (the stairwell) and out
+      // of the entrance hut (its door). Rays that end on the walls never get there.
       const ly = camPos.y.sub(indoorSurface);
       const rising = dir.y.greaterThan(1e-4);
       const tSurf = ly.greaterThanEqual(0).select(float(0), rising.select(ly.negate().div(max(dir.y, 1e-4)), float(1e9)));
@@ -385,7 +385,7 @@ export class Post {
       });
       // Poison gas (shared/gas.ts): a low layer over the dune floor (a plane through the floor under the camera, gasEnv)
       // behind its leading edge, rising to GAS_DEPTH over it: from above, a sea of fog in the hollows with the crests
-      // standing out; in it, a murk ~30 m deep. In a bunker it has seeped in: the rooms fill as soon as it lies outside.
+      // standing out; in it, a murk ~30 m deep. In a shelter it has seeped in: the rooms fill as soon as it lies outside.
       const gTau = float(0).toVar();
       const gLit = float(0).toVar();
       const gSeen = float(0).toVar();
@@ -418,7 +418,7 @@ export class Post {
             const deep = smoothstep(0, GAS_SPEED * GAS_RISE_S, u).mul(float(1).sub(smoothstep(gasLayer.w.sub(GAS_SPEED * GAS_TAIL_S), gasLayer.w, u)))
               .mul(gasEnv.x).mul(GAS_DEPTH);
             const top = gasEnv.y.add(gasEnv.z.mul(q.x)).add(gasEnv.w.mul(q.z)).add(deep).add(n.mul(1.2));
-            // Full under its surface, with a thin haze of wisps just over it; filled where the ray is still in the bunker.
+            // Full under its surface, with a thin haze of wisps just over it; filled where the ray is still in the shelter.
             const under = smoothstep(-GAS_SOFT, GAS_SOFT, top.sub(q.y));
             const indoor = step(t, tOut).mul(smoothstep(0.5, 1.5, deep));
             const dens = max(under, indoor).mul(saturate(n.mul(0.6).add(0.75))).mul(step(0.05, deep));

@@ -1,5 +1,5 @@
-// Electricity at the base: the windmills make it, the battery stations store it (shared/gear.ts buildings, standing
-// on the sand: shared/placed.ts). Everything put up round the base is on one grid: what the windmills make goes into
+// Electricity: the windmills make it, the battery stations store it (shared/gear.ts buildings, standing
+// on the sand: shared/placed.ts). Everything wired together is one grid: what the windmills make goes into
 // the stations' batteries, as fast as each will take it; what nobody can take is lost. The server runs it
 // (server/power.ts), the clients draw it (src/world/placed.ts: the rotor, the cells' lamps; the numbers in the
 // building's panel, src/inventory.ts).

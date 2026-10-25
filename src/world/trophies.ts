@@ -1,5 +1,5 @@
-// The trophies at the base (shared/trophies.ts): each boss kind beaten sets up a big piece of it, full size, on the sand
-// round the pad, built from the boss's own model (tools/blender/<kind>.py): the worm's head rearing out of the sand,
+// The trophies by the crashed ship (shared/trophies.ts): each boss kind beaten sets up a big piece of it, full size, on the sand
+// round the ship, built from the boss's own model (tools/blender/<kind>.py): the worm's head rearing out of the sand,
 // jaws spread, the segment behind it sunk; the colossus's head sunk to the chin and its arm raised out of the sand beside it; one of
 // the carrier's fan ducts on edge with its rotor; the queen's thorax nose-up, cutters open, a leg arching out of the sand each side.
 // Dead: their lamps barely glow, the weak points are dark glass. Client-only looks; the collision is shared.
@@ -7,7 +7,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BOSS_KINDS, bossBit, type BossKind } from '../../shared/bosses.ts';
 import { FEMUR } from '../../shared/queen.ts';
-import { TROPHY_PLACES } from '../../shared/trophies.ts';
+import { trophyPlaces } from '../../shared/trophies.ts';
 import { brokenLensMat, lensGeo, mergePart } from './bossParts';
 
 const D = Math.PI / 180;
@@ -49,7 +49,7 @@ function at<T extends THREE.Object3D>(o: T, x: number, y: number, z: number, rx 
   return o;
 }
 
-/** Each kind's trophy, in its frame: origin on the sand, +Z towards the base (shared/trophies.ts). */
+/** Each kind's trophy, in its frame: origin on the sand, +Z towards the ship (shared/trophies.ts). */
 const BUILD: Record<BossKind, (p: Parts) => THREE.Object3D> = {
   worm(p) {
     const g = new THREE.Group();
@@ -66,7 +66,7 @@ const BUILD: Record<BossKind, (p: Parts) => THREE.Object3D> = {
   },
   colossus(p) {
     const g = new THREE.Group();
-    // The head sunk to the chin, looking up past the base; beside it an arm out of the sand: the upper arm a ridge
+    // The head sunk to the chin, looking up past the ship; beside it an arm out of the sand: the upper arm a ridge
     // along it from the buried shoulder, the forearm raised from the elbow, fist up.
     g.add(at(part(p, 'Colossus_Head'), 0, -0.8, 0, -15, 0, 9));
     g.add(at(part(p, 'Colossus_UpperArm'), 20, -2.5, -5, 0, 0, -101.5));
@@ -75,7 +75,7 @@ const BUILD: Record<BossKind, (p: Parts) => THREE.Object3D> = {
   },
   carrier(p) {
     const g = new THREE.Group();
-    // The duct on edge, its axis towards the base, leaning back a little and rolled; a third of it in the sand.
+    // The duct on edge, its axis towards the ship, leaning back a little and rolled; a third of it in the sand.
     const fan = at(new THREE.Group(), 0, 8, 0, 90 - 12, 0, 9);
     fan.add(part(p, 'Carrier_Duct'), at(part(p, 'Carrier_Rotor'), 0, 0, 0, 0, 33, 0));
     deadLens(fan, 1.1, 0, -3.3, 0);
@@ -162,7 +162,9 @@ export class Trophies {
         continue;
       }
       if (!this.shown(kind)) continue;
-      const g = new THREE.Group(), p = TROPHY_PLACES[kind];
+      const p = trophyPlaces()[kind];
+      if (!p) continue;
+      const g = new THREE.Group();
       g.position.set(p.x, p.y, p.z);
       g.rotation.y = Math.atan2(p.fx, p.fz);
       this.built.set(kind, g);

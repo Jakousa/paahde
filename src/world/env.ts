@@ -82,13 +82,13 @@ export const gasLayer = uniform(new THREE.Vector4(1, 0, 0, 0));
 export const gasEnv = uniform(new THREE.Vector4());
 /** Breathing poison gas, 0..1 (1: about to die of it): the view darkens (post.ts). */
 export const gassed = uniform(0);
-/** How deep in a sandstorm the camera is, 0..1 (eased; 0 in the base): the grit on the view (post.ts). */
+/** How deep in a sandstorm the camera is, 0..1 (eased; 0 in a shelter): the grit on the view (post.ts). */
 export const stormHere = uniform(0);
-/** 1 while the camera is in the base: the post pass's dust starts only where the view ray leaves the
- *  bunker (up through the skylight, out of the hut's door), so the storm shows outside but the rooms stay clear. */
+/** 1 while the camera is in a shelter: the post pass's dust starts only where the view ray leaves it (out of the hut's
+ *  door), so the storm shows outside but the rooms stay clear. */
 export const stormIndoors = uniform(0);
-/** The hut of the bunker the camera is in (the base's, or a shelter's): its air's box (world min, max; open far
- *  below, into the stairwell), and the sand's height over the bunker. Set with stormIndoors (src/storm.ts). */
+/** The hut of the shelter the camera is in: its air's box (world min, max; open far below, into the stairwell), and
+ *  the sand's height over the shelter. Set with stormIndoors (src/storm.ts). */
 export const indoorHutMin = uniform(new THREE.Vector3());
 export const indoorHutMax = uniform(new THREE.Vector3());
 export const indoorSurface = uniform(0);

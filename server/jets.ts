@@ -21,7 +21,7 @@ const R_MIN = 700;
 const R_MAX = 1400;
 const TURN_MIN = 0.75 * Math.PI;
 const TURN_MAX = 2.5 * Math.PI;
-/** Odds a flight is the stealth flying wing, not the fixed-wing drone: none at home, rising evenly with the distance (m) from the base of the
+/** Odds a flight is the stealth flying wing, not the fixed-wing drone: none at home, rising evenly with the distance (m) from the origin of the
  *  player it was picked for to WING_ODDS at WING_FAR, and held there beyond. */
 const WING_ODDS = 0.8;
 const WING_FAR = 10_000;

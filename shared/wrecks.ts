@@ -1,11 +1,10 @@
 // Salvage wrecks (GitHub issue #13): big broken objects lying out in the desert, one per site (SALVAGE in
 // salvage.ts: a vehicle frame, a jet ski, an AI rack, now and then a warp drive core). You carry one home (it
-// becomes an item of the same kind in the bag) and take it apart on the base's disassembly table, the same way as
+// becomes an item of the same kind in the bag) and take it apart on a dismantling bench, the same way as
 // the small crash-site machines of shared/crash.ts: the server's CrashServer handles both, and a carried-off wreck
 // is in `crashTaken` until it respawns (45 min). Layout is deterministic like shared/scrap.ts (integer hashing, exact
 // arithmetic), so every client and the server agree where every wreck is.
-import { padBlend } from './base.ts';
-import { ORIGIN_FRONT } from './origin.ts';
+import { ORIGIN_FRONT, originClear } from './origin.ts';
 import { seeded, sitesNear } from './crash.ts';
 import { crashSitesNear, siteLevel } from './crashsites.ts';
 import { shelterWithin } from './shelters.ts';
@@ -22,7 +21,7 @@ const DENSITY = 0.45;
 export const WRECK_REACH = 3.5;
 
 export interface Wreck {
-  /** Unique, stable id: "w:ix,iz", or "w:start" near the base. Never clashes with shared/crash.ts ids. */
+  /** Unique, stable id: "w:ix,iz", or "w:start" near the origin. Never clashes with shared/crash.ts ids. */
   id: string;
   x: number;
   z: number;
@@ -51,9 +50,9 @@ function flatEnough(x: number, z: number): boolean {
   return gx * gx + gz * gz < MAX_GRAD2;
 }
 
-/** Clear of the base pad, rocks, shelters, the crash-site machines and the crashed spacecraft. */
+/** Clear of the origin's ground, rocks, shelters, the crash-site machines and the crashed spacecraft. */
 function clear(x: number, z: number): boolean {
-  return flatEnough(x, z) && padBlend(x, z) > 0.3 && !rocksNear(x, z, 4) &&
+  return flatEnough(x, z) && originClear(x, z) > 0.3 && !rocksNear(x, z, 4) &&
     sitesNear(x, z, 12).length === 0 && crashSitesNear(x, z, 30).length === 0 && !shelterWithin(x, z, 6) &&
     !onShipGround(x, z, 6);
 }

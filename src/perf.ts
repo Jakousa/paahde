@@ -85,12 +85,12 @@ class Perf {
   private lastPos: { x: number; z: number } | null = null;
   private travelled = 0;
   private wasDown = false;
-  /** Frames left after a respawn that are not counted (the player was just put back at the bunker; the view and streaming reset). */
+  /** Frames left after a respawn that are not counted (the player was just put back at the bedroll or the ship; the view and streaming reset). */
   private afterRespawn = 0;
   private framesExcluded = 0;
   /** Deaths and respawns during the walk, in order. */
   private events: { type: 'died' | 'respawned'; atS: number; x: number; z: number; heat: number }[] = [];
-  /** A death ends the run (default: its numbers would be a ragdoll's, then the bunker's); `&pdeath=continue` keeps going and leaves those frames out. */
+  /** A death ends the run (default: its numbers would be a ragdoll's, then the respawn's); `&pdeath=continue` keeps going and leaves those frames out. */
   private endOnDeath = params.get('pdeath') !== 'continue';
   private invalid: string[] = [];
   /** The shadow cascades' cameras (set by main.ts), to count what each one draws. */

@@ -115,7 +115,7 @@ export class VehicleServer {
   /**
    * v12: the motorcycle was an item (in the bag, the Vehicle slot, the chests, dropped on the sand) with a cargo box
    * of its own per player ('bike'). Each becomes a vehicle: one dropped on the sand where it lay, the others in a row
-   * by the base door; a player's old cargo goes into their bike's (or a working one of their own if they had none).
+   * by the home bike's spot; a player's old cargo goes into their bike's (or a working one of their own if they had none).
    */
   private migrate() {
     this.db.tx(() => {

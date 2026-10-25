@@ -16,7 +16,6 @@ import { WALK_SPEED, SPRINT_SPEED, CROUCH_SPEED, slopeAt } from '../shared/sim.t
 import { CROUCH_CYCLE } from './models/crouchGait';
 import { EYE_HEIGHT } from '../shared/dig.ts'; // the dig and pickup rays start here too
 import { sandHidden, shelterSolid } from '../shared/shelters.ts';
-import { baseSolid } from '../shared/base.ts';
 const SENSITIVITY = 0.0022;
 const PITCH_LIMIT = (85 * Math.PI) / 180;
 // Riding in first person the rider's body is drawn (headless) around the eye: a neck's range keeps the view out of it.
@@ -41,7 +40,7 @@ const OTS_BOOM = 3.0; // third person: the camera sits behind the shoulder (m)
 const OTS_SIDE = 0.55; // ...and over it, to the right of the aim line (m)
 const OTS_MEET = 3; // ...turned in so its centre ray crosses the eye's look ray this far ahead (m): pickups' reach
 const BOOM_CLEARANCE = 0.35; // keep the camera this far above the sand
-const WALL_CLEARANCE = 0.2; // ...and this far from the bunkers' walls, floors and ceilings (m)
+const WALL_CLEARANCE = 0.2; // ...and this far from the shelters' walls, floors and ceilings (m)
 /** Speed slide: the view rolls this far (rad) towards the trailing left hand. */
 const SLIDE_ROLL = 0.07;
 const SPRING_DT = 1 / 120; // the landing dip's longest step (s): a slow frame taken whole would make it swing ever harder
@@ -247,11 +246,11 @@ export class FirstPersonCamera {
       shakeP = a * 0.005 * Math.sin(t * 37.9 + 2.1);
     } else this.slideClock = 0;
     let y = this.eyeY + EYE_HEIGHT - 0.65 * this.crouch + bobY + this.dip + shakeY;
-    // Never look out from under a dune (in the base's entrance and bunker the sand isn't in the way).
+    // Never look out from under a dune (in a shelter's entrance and rooms the sand isn't in the way).
     if (!sandHidden(x, z, p.y)) y = Math.max(y, heightAt(x, z) + 0.3);
 
     // Third person: back off along the view ray (and over the shoulder), shortening both together where the camera
-    // would go into the sand or through a bunker's wall.
+    // would go into the sand or through a shelter's wall.
     const pitch = this.pitch + this.freePitch + this.dip * 0.12 + shakeP;
     const cp = Math.cos(pitch), vs = Math.sin(viewYaw), vc = Math.cos(viewYaw);
     const bx = vs * cp, by = -Math.sin(pitch), bz = vc * cp; // unit vector pointing behind the view
@@ -298,12 +297,12 @@ export class FirstPersonCamera {
   }
 }
 
-/** The camera can't be at world (x, y, z): within WALL_CLEARANCE of a bunker's or shelter's solid, or too near the sand. */
+/** The camera can't be at world (x, y, z): within WALL_CLEARANCE of a shelter's solid, or too near the sand. */
 function blocked(x: number, y: number, z: number): boolean {
   const c = WALL_CLEARANCE;
   for (const [dx, dy, dz] of PROBE) {
     const px = x + dx * c, py = y + dy * c, pz = z + dz * c;
-    const solid = baseSolid(px, py, pz) ?? shelterSolid(px, py, pz);
+    const solid = shelterSolid(px, py, pz);
     if (solid ?? y < heightAt(px, pz) + BOOM_CLEARANCE) return true;
   }
   return false;

@@ -1,5 +1,5 @@
 // The grinder in your hand: hold the use button and the disc spins up, in the air or on anything. Touched to something hard
-// (a machine, scrap, a wreck, the bunker) it throws sparks and sings (src/grinderSound.ts: the motor spools up, sags under load); on sand it only runs. Where it touches is
+// (a machine, scrap, a wreck, a shelter's concrete) it throws sparks and sings (src/grinderSound.ts: the motor spools up, sags under load); on sand it only runs. Where it touches is
 // `playerHands.grindAt`, which the disassembly reads (src/teardown) to cut the seams of a machine's shell.
 import * as THREE from 'three/webgpu';
 import { actionHeld } from './input.ts';

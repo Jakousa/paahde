@@ -1,7 +1,7 @@
 // Which world this is. Every world is its own game at its own URL (?w=<id>), with its own seed, players and
 // lives; the server runs each in a process of its own (server/index.ts forks server/world.ts with WORLD_ID),
 // the client reads it from the page's URL. Read once when the modules load: the layouts seeded from it
-// (dunes, rocks, scrap, wrecks, crash sites, shelters, the base) are worked out at import time.
+// (dunes, rocks, scrap, wrecks, crash sites, shelters, the origin and the ship) are worked out at import time.
 
 /** World ids: what the landing page makes (newWorldId) and the URL carries. */
 export const WORLD_ID_RE = /^[a-z0-9]{4,16}$/;

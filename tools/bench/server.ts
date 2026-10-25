@@ -24,7 +24,8 @@ const BOTS = Number(opt('bots', '8'));
 /** Seconds after everyone joined before the summons, and after the summons before measuring (they arrive, the bosses
  *  rise, the first deaths and the terrain's craters go out). */
 const SETTLE_S = 3, WARM_S = 4;
-const SPAWNS = ['base', 'field', 'shelter', 'crash', 'field', 'base', 'shelter', 'canyon'] as const;
+/** Where each bot starts (the server's dev spawns; null: where new players start, at the ship or, in older commits, the bunker). */
+const SPAWNS = [null, 'field', 'shelter', 'crash', 'field', null, 'shelter', 'canyon'] as const;
 /** shared/sim.ts input bits (fixed here: the driver must speak to old commits too). */
 const FORWARD = 1, LEFT = 4, RIGHT = 8, JUMP = 16, SLIDE = 256;
 /** shared/sun.ts: a day is 30 min, shifted by 0.3 of a day. */
@@ -59,7 +60,7 @@ for (let i = 0; i < BOTS; i++) {
   const bot: Bot = { ws, seq: 0, bytes: 0, msgs: 0, snapTime: 0, joinMs: 0 };
   const t0 = performance.now();
   ws.onopen = () => {
-    ws.send(JSON.stringify({ t: 'hello', browserId: randomUUID(), name: `Bench${i + 1}`, spawn: SPAWNS[i % SPAWNS.length] }));
+    ws.send(JSON.stringify({ t: 'hello', browserId: randomUUID(), name: `Bench${i + 1}`, ...(SPAWNS[i % SPAWNS.length] ? { spawn: SPAWNS[i % SPAWNS.length] } : {}) }));
     ws.send(JSON.stringify({ t: 'ready' }));
   };
   ws.onmessage = (e) => {

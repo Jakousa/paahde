@@ -1,7 +1,7 @@
 // Salvage wrecks in the desert (shared/wrecks.ts), drawn with their Blender models (public/models/salvage/<id>.glb,
 // tools/blender/salvage/*.py). Walk up and press F to pick one up: it goes into the bag through the same
 // server path as the small crash-site machines (net.crashTake), vanishes for everyone until it respawns, and is
-// taken apart on the base's disassembly table (src/world/crash.ts Bench). Wrecks within LOCATE_R show on the
+// taken apart on a dismantling bench (src/world/crash.ts Bench). Wrecks within LOCATE_R show on the
 // locator bar as diamonds, so you can go looking for them.
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -44,7 +44,7 @@ interface View {
 export class Wrecks {
   private scene: THREE.Scene;
   private views = new Map<string, View>();
-  private nextId = -100; // locator ids: players are positive, the base is -1
+  private nextId = -100; // locator ids: players are positive, home is -1
   private dirty = true;
 
   constructor(scene: THREE.Scene) {

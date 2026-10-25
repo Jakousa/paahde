@@ -1,5 +1,5 @@
 // Rock formations standing out of the dunes: sandstone mesas and buttes with cliffs, ledges and scree, fields
-// of pillars, broad hills carved by gullies, jagged peaks, and boulders. Part of the base heightfield
+// of pillars, broad hills carved by gullies, jagged peaks, and boulders. Part of the bare heightfield
 // (baseHeight in shared/terrain.ts is max(dunes, rock)), so they collide, cast shade and render like the dunes;
 // sim.ts makes their steep faces walls, dig.ts stops at rock, and the terrain renderer paints them as rock
 // (rockCover).
@@ -35,8 +35,8 @@ const WARP = 0.22;
 /** Normalised distance where a mesa's or pillar's scree apron ends (falling away steeply past it so it meets
  *  the sand without a step). */
 const APRON_END = 1.35;
-/** No rocks this close to the base (m). */
-const BASE_CLEAR = 150;
+/** No rocks this close to the origin (m). */
+const ORIGIN_CLEAR = 150;
 
 /** Kinds. Boulder: rounded. Mesa: flat top, terraced cliffs, scree. Pillar: sheer-sided spire or hoodoo with a
  *  cap and a rubble skirt. Hill: broad dome, gentle enough to climb, cut by gullies running down it. Peak:
@@ -87,14 +87,14 @@ function styleWeights(x: number, z: number): [number, number, number, number] {
   return [0.3 + 2 * (1 - a) * (1 - b), 0.15 + 2 * a * (1 - b), 0.15 + 2 * (1 - a) * b, 0.1 + 1.5 * a * b];
 }
 
-/** A rock of `kind`, radius R and height H at (x, z), or null too near the base. `foot`: something under it
+/** A rock of `kind`, radius R and height H at (x, z), or null too near the origin. `foot`: something under it
  *  other than the sand (a rock it stands on). */
 function makeRock(x: number, z: number, R: number, H: number, kind: number, r: () => number, aspect = 1 + 0.8 * r(),
   foot = -Infinity): Rock | null {
   const dx = x - ORIGIN.x, dz = z - ORIGIN.z;
   const cut = CUT[kind];
   const bound = R * (cut / (1 - WARP)) + 1;
-  const clear = BASE_CLEAR + bound;
+  const clear = ORIGIN_CLEAR + bound;
   if (dx * dx + dz * dz < clear * clear) return null;
   let ax = 1, az = 0;
   for (let i = 0; i < 16; i++) {

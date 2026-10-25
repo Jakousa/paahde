@@ -46,7 +46,7 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   beacon: { label: TEXT.machines.beacon, stack: 1, size: [2, 2] },
   // Parts taken out of machines (shared/parts.ts): `<part>_<tier>`, e.g. battery_space.
   ...Object.fromEntries(Object.entries(partItems()).map(([k, v]) => [k, { ...v, size: PART_SIZES[partOf(k)!.part] }])),
-  // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
+  // Crafted at the workbench (shared/crafting.ts) and put down on a shelter's floor from the hotbar (shared/placed.ts).
   plant_bed: { label: TEXT.items.plant_bed, stack: 1, size: [3, 2] },
   uv_lamp: { label: TEXT.items.uv_lamp, stack: 1, size: [1, 2] },
   // Made by hand and laid out on the sand or a shelter's floor (shared/placed.ts): where you wake up after dying.

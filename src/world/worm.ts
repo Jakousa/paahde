@@ -7,7 +7,7 @@
 // and the plunge throw up fountains of sand ('breach', 'plunge'); the jaws gape while it's out, and while it charges
 // half out of the sand ('lunge': a roar, the ground shaking). Dead, whatever was out
 // of the sand falls and slams down onto it, segment after segment, and lies there; the wreck sinks before it's cleared.
-// Hidden while we're underground (the base, a shelter): it swims under them.
+// Hidden while we're underground (in a shelter): it swims under them.
 //
 // Model: public/models/worm.glb (tools/blender/worm.py); plain shapes stand in until it has loaded.
 import * as THREE from 'three/webgpu';
@@ -176,7 +176,7 @@ export class WormView implements BossView {
   }
 
   update(s: BossSnap, ctx: BossCtx) {
-    // Under a roof (the base, a shelter) it's out of sight: it would show through the sand from below.
+    // Under a roof (a shelter) it's out of sight: it would show through the sand from below.
     const e = ctx.ear;
     this.root.visible = !indoors(e.x, e.y, e.z);
     const mode = s.s[0] ?? 0;

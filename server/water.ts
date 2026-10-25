@@ -29,7 +29,7 @@ export type Heat = {
   maxSips: number; // what the water bottle in the bag holds (shared/gear.ts bottleSips), 0 without one
   rising: boolean; // heat building up right now
   temp: number; // felt temperature (°C)
-  sun: number; // how much of the body is in direct sun, 0..1 (0 at night and in the base)
+  sun: number; // how much of the body is in direct sun, 0..1 (0 at night and in a shelter)
   shade: boolean; // mostly out of direct sun (sun < 0.5)
   shadeAt: number; // when sun was last checked
   sentTemp: number; // temp and shade in the last 'water' sent
@@ -137,7 +137,7 @@ export function drink(t: Heat, now: number): boolean {
   return true;
 }
 
-/** Refill the canteen at the base's pump, a shelter's or a running electric well (shared/wells.ts waterAt; their
+/** Refill the canteen at a shelter's pump or a running electric well (shared/wells.ts waterAt; their
  *  supply is endless; a slow well's fill takes longer, and so does its cooldown). False if not at water or too soon;
  *  else where it was filled: the well (its pump draws power for it, server/power.ts pump), or null at a pump. */
 export function fill(t: Heat, s: PlayerState, now: number): false | { well: Placed | null } {
