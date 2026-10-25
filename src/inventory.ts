@@ -16,6 +16,7 @@
 // opens its cargo with its part slots beside it, to swap in better parts. Loot lying in reach (shared/loot.ts lootReach) shows as one more panel, On the ground: click,
 // shift-click or drag a piece into the bag to pick it up, or drag something onto the panel to drop it. Moves go through
 // Net (applied at once, the server confirms). Picking up, putting down and moving plop (src/uiSound.ts), once per item.
+import { WELL, wellSpec } from '../shared/wells.ts';
 import { buildingId, cargoId, fittedBox, takeOnly, vehicleBox, vehicleId } from '../shared/boxes.ts';
 import { bagShape, EQUIP_LABELS, EQUIP_SLOTS, fitsSlot, GEAR, isGear, partsOf, quality, repaired, slotLabel, tierOf } from '../shared/gear.ts';
 import { type Boxes, boxShape, holdsCargo, tryMove } from '../shared/moves.ts';
@@ -526,12 +527,14 @@ export class InventoryHud {
   }
 
   /** A building's electricity (shared/power.ts), under its state: what a windmill makes now; what a station holds of
-   *  what it can, and what it is taking in. */
+   *  what it can, and what it is taking in; what a well's pump wants while it fills a bottle (shared/wells.ts). */
   private powerHtml(it: Item, at: string): string {
     const id = buildingId(at);
     if (id < 0) return '';
     const p = this.net.power;
     if (it.kind === 'windmill') return `<div class="state">${watts(p.gen[id] ?? 0)}</div>`;
+    const well = it.kind === WELL ? wellSpec(it.parts) : null;
+    if (well) return `<div class="state">−${watts(well.watts)}</div>`;
     if (it.kind !== 'battery_station') return '';
     const s = p.store[id];
     const held = (s?.charge ?? []).reduce((a, b) => a + b, 0);

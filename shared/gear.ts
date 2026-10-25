@@ -87,6 +87,10 @@ export const GEAR: Record<string, GearSpec> = {
   // The beacon (shared/placed.ts): a battery to run its lamp away from the grid (wired to one, it runs on the grid's power
   // and the grid charges its battery: server/power.ts).
   beacon_light: { slots: [P('battery')], better: 'how long it shines on its battery', use: TEXT.gearUse.beacon_light, built: true },
+  // The electric well (shared/wells.ts): the submersible pump's motor down the bore, the check valve in the riser, the
+  // relay in the control box that switches the pump.
+  well: { slots: [P('motor'), P('valve'), P('relay')], better: 'how fast it fills a bottle, and the less power it takes',
+    use: TEXT.gearUse.well, built: true },
 };
 export const GEAR_KINDS = Object.keys(GEAR);
 

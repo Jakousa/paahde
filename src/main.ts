@@ -72,7 +72,9 @@ import { audio } from './audio';
 import { BASE, inBase, overBase } from '../shared/base.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { biome } from '../shared/biomes.ts';
-import { atWater, indoors, inShelter, overShelter, sheltersNear } from '../shared/shelters.ts';
+import { indoors, inShelter, overShelter, sheltersNear } from '../shared/shelters.ts';
+import { waterAt, WELL, wellAt, wellSpec } from '../shared/wells.ts';
+import { wellSound } from './wellSound';
 import { pickupSound } from './pickupSound';
 import { DynamicResolution } from './resolution';
 import { graphics, onGraphics } from './graphics';
@@ -380,6 +382,13 @@ net.onNotice = (text) => {
   }
   hud.toast(text);
 };
+/** At an electric well that doesn't run (shared/wells.ts), and why: its pump's parts, or its power. */
+function dryWell(m: { x: number; y: number; z: number }): 'parts' | 'power' | null {
+  if (waterAt(m.x, m.y, m.z)) return null;
+  const w = wellAt(m.x, m.y, m.z, 0, placed, true);
+  return w ? (wellSpec(w.parts) ? 'power' : 'parts') : null;
+}
+
 function bagFull() {
   hud.toast(TEXT.notice.bagFull);
   uiSound.full();
@@ -661,14 +670,18 @@ baseSand.update(frameDt, storm.atBase);
   crashSound.update(orbit.camera.position, orbit.viewYaw);
   listen(orbit.camera.position);
   tickEchoBus();
-  placedView.update(frameDt, net.worldTime(), (x, z) => stormAt(net.storms, x, z, net.serverTime()));
+  placedView.update(frameDt, net.worldTime(), (x, z) => stormAt(net.storms, x, z, net.serverTime()), survival.fillingWell);
+  const ear = orbit.camera.position;
+  wellSound.update(placedView.nearestWell(ear, 30), ear, survival.fillingWell !== null);
   // F: use the work station in view, else tend the plant bed in view (planted beds can't be touched
   // while they grow), else pick up scrap, else (canteen out, at the pump) fill the canteen.
   const station = net.connected ? stationTarget(net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch)) : null;
   // Placing from the hotbar, building with the wrench and G to pick placed things up (src/placing.ts); its prompt goes after F's.
   const placing = placer.update(survival.slot, net.me, quantizeYaw(orbit.yaw), quantizePitch(orbit.pitch), true, (t) => hud.toast(t));
-  // A building in view (the windmill, the battery station): F opens it next to the bag, to swap its parts.
-  const building = !station && placing.target && isBuilding(placing.target.kind) ? placing.target : null;
+  // A building in view (the windmill, the battery station): F opens it next to the bag, to swap its parts. At a running
+  // well's tap with the water bottle out, F fills the bottle instead (src/water.ts).
+  const atTap = playerHands.held === 'canteen' && placing.target?.kind === WELL && !!waterAt(net.me.x, net.me.y, net.me.z);
+  const building = !station && placing.target && isBuilding(placing.target.kind) && !atTap ? placing.target : null;
   const buildingPrompt = building ? TEXT.prompt.open(itemLabel(building.kind)) : null;
   // A motorcycle in view (shared/vehicles.ts): F repairs a broken one (its part slots next to the bag), gets on a
   // working one, or opens its cargo from the back. On the bike, F gets off.
@@ -770,7 +783,7 @@ baseSand.update(frameDt, storm.atBase);
   const w = net.water;
   const m = net.me;
   speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(m.x, m.y, m.z), shelter: inShelter(m.x, m.y, m.z),
-    atPump: atWater(m.x, m.y, m.z), mudflat: biome('mudflat', m.x, m.z) > 0.7, heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
+    atPump: !!waterAt(m.x, m.y, m.z), dryWell: dryWell(m), mudflat: biome('mudflat', m.x, m.z) > 0.7, heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
     storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, gasComing: gas.coming, gassed: gas.gassing, riding: s.riding, boss: bossFx.combat,
     bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null });
   const vehicleKey = vehicle ? `${vehicle.v.id}:${vehicle.v.up}` : null;

@@ -2,14 +2,16 @@
 // temperature (shared/temperature.ts; how much of the body is in the sun from shared/shade.ts, with other players
 // and bikes as shade casters; it stops rising in a sandstorm, shared/storm.ts; hotter on a mud flat, shared/biomes.ts), validates sips and canteen refills, and says
 // when a player has died of heatstroke, STROKE_S at a full meter (server/world.ts respawns them).
-import { atWater, indoors } from '../shared/shelters.ts';
+import { indoors } from '../shared/shelters.ts';
+import { waterAt } from '../shared/wells.ts';
+import type { Placed } from '../shared/placed.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
 import { sunOnBody, type Caster } from '../shared/shade.ts';
 import { type PlayerState } from '../shared/sim.ts';
 import { STORM_SHADE } from '../shared/storm.ts';
 import { feltTemp, groundHeat } from '../shared/temperature.ts';
 import {
-  DRINK_COOLDOWN_MS, FILL_COOLDOWN_MS, FILL_SLACK, HEAT_MAX, heatPerSecond, SIP_COOL, STROKE_RECOVER, STROKE_S,
+  DRINK_COOLDOWN_MS, FILL_COOLDOWN_MS, FILL_MS, FILL_SLACK, HEAT_MAX, heatPerSecond, SIP_COOL, STROKE_RECOVER, STROKE_S,
 } from '../shared/water.ts';
 
 /** While the meter moves, a 'water' update goes out this often (the client eases between them). */
@@ -135,11 +137,14 @@ export function drink(t: Heat, now: number): boolean {
   return true;
 }
 
-/** Refill the canteen at the base's pump or a shelter's (their supply is endless). False if not at the pump or too soon. */
-export function fill(t: Heat, s: PlayerState, now: number): boolean {
-  if (t.maxSips <= 0 || !atWater(s.x, s.y, s.z, FILL_SLACK) || now - t.lastFill < FILL_COOLDOWN_MS) return false;
+/** Refill the canteen at the base's pump, a shelter's or a running electric well (shared/wells.ts waterAt; their
+ *  supply is endless; a slow well's fill takes longer, and so does its cooldown). False if not at water or too soon;
+ *  else where it was filled: the well (its pump draws power for it, server/power.ts pump), or null at a pump. */
+export function fill(t: Heat, s: PlayerState, now: number): false | { well: Placed | null } {
+  const at = t.maxSips > 0 ? waterAt(s.x, s.y, s.z, FILL_SLACK) : null;
+  if (!at || now - t.lastFill < (FILL_COOLDOWN_MS * at.ms) / FILL_MS) return false;
   t.lastFill = now;
   t.sips = t.maxSips;
   t.sentAt = now;
-  return true;
+  return { well: at.well };
 }

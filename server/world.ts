@@ -357,7 +357,8 @@ function onDrink(p: Player) {
 }
 
 function onFill(p: Player) {
-  fill(p.heat, p.state, Date.now());
+  const at = fill(p.heat, p.state, Date.now());
+  if (at && at.well) power.pump(at.well.id);
   send(p.ws, waterMsg(p.heat));
 }
 

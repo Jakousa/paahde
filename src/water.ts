@@ -8,7 +8,7 @@
 // The server owns the numbers; this only plays the actions and asks. Keys 1–5 take out what's in that
 // hotbar slot or put it away; items can be rearranged in the Tab inventory (src/inventory.ts). With it out, holding left mouse / E for DRINK_MS drinks one sip
 // and F at a pump (the base's, some shelters') refills it.
-import { DRINK_MS, FILL_MS, HEAT_HIGH, HEAT_MAX, STROKE_RECOVER, STROKE_S } from '../shared/water.ts';
+import { DRINK_MS, HEAT_HIGH, HEAT_MAX, STROKE_RECOVER, STROKE_S } from '../shared/water.ts';
 import { equipped, repaired, tierOf } from '../shared/gear.ts';
 import { chargeOf, HOTBAR } from '../shared/items.ts';
 import { PISTOL, RIFLE } from '../shared/rifle.ts';
@@ -23,7 +23,8 @@ import type { Net } from './net';
 import { DOWN_MS } from '../shared/ragdoll.ts';
 import { DARK_LIFT_S, deathGrade, fainting, heatstroke } from './world/env.ts';
 import { drinkSound } from './drinkSound';
-import { atWater, indoors } from '../shared/shelters.ts';
+import { indoors } from '../shared/shelters.ts';
+import { waterAt } from '../shared/wells.ts';
 import { TEXT } from '../shared/text.ts';
 
 /**
@@ -170,6 +171,10 @@ export class Survival {
   private shown = 0; // eased meter value
   private stroke = 0; // seconds at a full meter, counted as the server does (it decides the death)
   private actionAt = 0; // performance.now() when the current sip / refill started
+  /** How long the current refill takes (ms): a pump's FILL_MS, a well's by its parts (shared/wells.ts). */
+  private fillMs = 0;
+  /** The electric well the bottle is filling at right now (its pump runs: src/wellSound.ts), or null. */
+  fillingWell: number | null = null;
   private needRelease = false; // one sip per press: let go before the next
   private deadUntil = 0;
   private wasRiding = false;
@@ -319,7 +324,8 @@ export class Survival {
     this.env.style.display = equipped(this.net.boxes.equip, 'wrist') && !this.toolsDown ? '' : 'none';
     const holding = playerHands.held === 'canteen';
     const bottle = w.maxSips > 0;
-    const byPump = atWater(pos.x, pos.y, pos.z);
+    const water = waterAt(pos.x, pos.y, pos.z);
+    const byPump = !!water;
     const kind = this.net.boxes.bag?.[this.selected]?.kind;
     // Drinking: hold the use button for DRINK_MS; letting go early spills nothing and costs nothing.
     const use = useHeld();
@@ -343,10 +349,11 @@ export class Survival {
       }
     }
 
-    // Refilling: one F press at the pump, takes FILL_MS; walking out or putting the canteen away cancels.
+    // Refilling: one F press at the pump, takes FILL_MS (longer or shorter at a well); walking out or putting the
+    // canteen away cancels.
     if (playerHands.filling) {
-      if (!holding || dead || !atWater(pos.x, pos.y, pos.z, FILL_CANCEL_SLACK)) this.cancel();
-      else if (now - this.actionAt >= FILL_MS) {
+      if (!holding || dead || !waterAt(pos.x, pos.y, pos.z, FILL_CANCEL_SLACK)) this.cancel();
+      else if (now - this.actionAt >= this.fillMs) {
         drinkSound.filled();
         this.cancel();
         this.net.fill();
@@ -356,9 +363,12 @@ export class Survival {
       else {
         playerHands.filling = true;
         this.actionAt = now;
-        drinkSound.fill();
+        this.fillMs = water!.ms;
+        drinkSound.fill(this.fillMs);
       }
     }
+
+    this.fillingWell = playerHands.filling ? (water?.well?.id ?? null) : null;
 
     // Prompt under the crosshair (the scrap prompt wins when a piece is targeted).
     let html = '';
@@ -379,7 +389,7 @@ export class Survival {
       this.prompt.classList.toggle('bare', html.startsWith('<span class="prog"'));
     }
     const prog = this.prompt.querySelector<HTMLElement>('.prog');
-    if (prog) prog.style.transform = `scaleX(${Math.min(1, (now - this.actionAt) / (playerHands.filling ? FILL_MS : DRINK_MS))})`;
+    if (prog) prog.style.transform = `scaleX(${Math.min(1, (now - this.actionAt) / (playerHands.filling ? this.fillMs : DRINK_MS))})`;
     if (this.toastUntil && now > this.toastUntil) {
       this.toastUntil = 0;
       this.toastEl.style.opacity = '0';

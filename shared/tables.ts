@@ -77,6 +77,8 @@ export const BUILD_TABLE: Record<string, IngredientSpec[]> = {
   dismantle_bench: [SCRAP(16), WIRING(2), CLOTH(2)],
   // A scrap box lined with cloth, its lid on a hinge (shared/storage.ts: CHEST_COLS × CHEST_ROWS, shared).
   storage_chest: [SCRAP(8), CLOTH(2)],
+  // Casing and riser pipe of scrap, a tank on a stand, a control box, the cable down the bore (the pump's parts go in after).
+  well: [SCRAP(12), WIRING(3)],
 };
 
 // ---------------------------------------------------------------------------------------------------------------

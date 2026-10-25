@@ -9,6 +9,8 @@
 // battery station shows the cells it holds, each in its own tier, each one's lamp lit while it holds charge. A beacon
 // (src/world/beacons.ts, its model made in code) lights its lens and its beam in its colour while it has power.
 // A tarp (src/world/tarps.ts) is built in code for its own patch of sand, its canvas moving in the same wind.
+// An electric well (shared/wells.ts) that runs has its control box's lamp lit, a wet patch under its spigot and a drop
+// falling from it every so often (quicker while someone fills a bottle there).
 // Also the see-through green / red preview of where the held placeable would go (src/placing.ts).
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -22,6 +24,7 @@ import { BEACON, bedLit, PLACEABLES, TARP, type Placed } from '../../shared/plac
 import { TARP_WIND, tarpModel } from './tarps.ts';
 import { inBase } from '../../shared/base.ts';
 import { inShelter } from '../../shared/shelters.ts';
+import { SPIGOT, WELL } from '../../shared/wells.ts';
 import { BeaconBeams, beaconModel, LENS, lensColor } from './beacons.ts';
 import { applyTier } from '../tierLook.ts';
 import { cells } from '../../shared/power.ts';
@@ -41,12 +44,20 @@ const ROTOR_LAG = 0.6;
 const LIT = 0.02;
 /** Folded right out of the wind, the head turns this far (rad). */
 const FURLED = (75 * Math.PI) / 180;
+/** A running well's drip: the drop swells on the spigot this long (s), then falls to the pad (tools/blender/well.py
+ *  PAD_H); while a bottle fills there, it drips this many times quicker. */
+const DRIP_HANG = 0.55;
+const PAD_Y = 0.1;
+const DRIP_FILLING = 4;
+const G = 9.8;
 
 type Shown = { p: Placed; obj: THREE.Object3D; head?: THREE.Object3D; rotor?: THREE.Object3D; spin: number; phase: number;
   /** A battery station's cells' lamps, by slot. */
   lamps?: THREE.Object3D[][];
   /** A beacon's lens (its own material). */
-  lens?: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicNodeMaterial> };
+  lens?: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicNodeMaterial>;
+  /** A well's lamp, its drop (and how far into its drip, s) and its wet patch. */
+  well?: { lamp?: THREE.Object3D; drop?: THREE.Object3D; wet?: THREE.Object3D; t: number; y0: number } };
 
 export class PlacedView {
   private group = new THREE.Group();
@@ -137,7 +148,10 @@ export class PlacedView {
         const lens = obj.getObjectByName(LENS) as Shown['lens'] | undefined;
         if (lens) lens.material = lens.material.clone();
         const head = obj.getObjectByName('windmill_head') ?? undefined, rotor = obj.getObjectByName('windmill_rotor') ?? undefined;
-        this.shown.set(p.id, (s = { p, obj, head, rotor, lens, spin: 0, phase: (p.id * 2.399) % (2 * Math.PI) }));
+        const node = (n: string) => obj.getObjectByName(n) ?? undefined;
+        const well = p.kind === WELL ? { lamp: node('well_lamp'), drop: node('well_drop'), wet: node('well_wet'), t: (p.id * 0.37) % 1,
+          y0: node('well_drop')?.position.y ?? 0 } : undefined;
+        this.shown.set(p.id, (s = { p, obj, head, rotor, lens, well, spin: 0, phase: (p.id * 2.399) % (2 * Math.PI) }));
       }
       s.p = p;
       if (p.kind === 'plant_bed') {
@@ -152,6 +166,7 @@ export class PlacedView {
       } else if (isBuilding(p.kind)) this.dress(s);
     }
     this.lightBeacons();
+    this.lightWells();
   }
 
   /** A building's look from its parts: its tier, the windmill's spin, the battery station's cells. */
@@ -182,6 +197,32 @@ export class PlacedView {
     this.power = state;
     for (const s of this.shown.values()) if (s.lamps) this.light(s);
     this.lightBeacons();
+    this.lightWells();
+  }
+
+  /** The wells the server says run: the lamp lit, wet under the spigot, dripping. */
+  private lightWells() {
+    const on = new Set(this.power.wells ?? []);
+    for (const s of this.shown.values()) {
+      if (!s.well) continue;
+      const yes = on.has(s.p.id);
+      for (const o of [s.well.lamp, s.well.drop, s.well.wet]) if (o) o.visible = yes;
+    }
+  }
+
+  /** The nearest running well to `at` within `range` m (its spigot), for its sound (src/wellSound.ts), or null. */
+  nearestWell(at: { x: number; y: number; z: number }, range: number): { id: number; x: number; y: number; z: number } | null {
+    const on = new Set(this.power.wells ?? []);
+    let best: { id: number; x: number; y: number; z: number } | null = null, bestD = range;
+    for (const s of this.shown.values()) {
+      if (!s.well || !on.has(s.p.id)) continue;
+      const d = Math.hypot(s.p.x - at.x, s.p.y - at.y, s.p.z - at.z);
+      if (d < bestD) {
+        bestD = d;
+        best = { id: s.p.id, x: s.p.x, y: s.p.y + 1.2, z: s.p.z };
+      }
+    }
+    return best;
   }
 
   /** The beacons the server says are lit: their lenses and beams in their colours, the rest dark. */
@@ -211,7 +252,18 @@ export class PlacedView {
 
   /** Every frame: windmills turn their heads into the wind and their rotors with it. `worldMs`: the shared clock;
    *  `stormAt`: a sandstorm's strength at a point (0..1). */
-  update(dt: number, worldMs: number, stormAt: (x: number, z: number) => number) {
+  update(dt: number, worldMs: number, stormAt: (x: number, z: number) => number, fillingWell: number | null = null) {
+    // A running well's drop: hangs on the spigot swelling, falls, again.
+    const fall = Math.sqrt((2 * (SPIGOT.y - PAD_Y)) / G);
+    for (const s of this.shown.values()) {
+      const d = s.well?.drop;
+      if (!d?.visible) continue;
+      const w = s.well!;
+      w.t = (w.t + dt * (s.p.id === fillingWell ? DRIP_FILLING : 1)) % (DRIP_HANG + fall);
+      const f = Math.max(0, w.t - DRIP_HANG);
+      d.position.y = w.y0 - 0.5 * G * f * f;
+      d.scale.setScalar(f > 0 ? 1 : 0.4 + (0.6 * w.t) / DRIP_HANG);
+    }
     // Into the wind: the rotor (the head's +Z) faces where it comes from, swinging a little in the gusts.
     const into = Math.atan2(-WIND.x, -WIND.z);
     const t = performance.now() / 1000;

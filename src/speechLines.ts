@@ -26,6 +26,8 @@ export type SpeechState = {
   shelter: boolean;
   /** Close enough to a pump to fill a bottle. */
   atPump: boolean;
+  /** At an electric well that isn't running (shared/wells.ts): its pump's parts not all in, or no power. */
+  dryWell: 'parts' | 'power' | null;
   /** Out on a mud flat (shared/biomes.ts): hotter by day, no shade. */
   mudflat: boolean;
   /** Body heat (0..shared/water.ts HEAT_MAX), whether it's building up, and whether we stand in shade. */
@@ -147,6 +149,9 @@ export const LINES: Line[] = [
 
   // Water.
   { id: 'pump', on: 'tick', when: (s) => s.atPump && s.maxSips > 0 && s.sips < s.maxSips, say: TEXT.speech.pump },
+  { id: 'well.dry', on: 'tick', when: (s) => s.dryWell === 'parts' && s.maxSips > 0, say: TEXT.speech.wellNoPump, again: 10 * MIN },
+  { id: 'well.dry', on: 'tick', when: (s) => s.dryWell === 'power' && s.maxSips > 0 && s.sips < s.maxSips, say: TEXT.speech.wellNoPower,
+    again: 5 * MIN },
   { id: 'pump.nothing', on: 'tick', when: (s) => s.atPump && s.shelter && !carries(s, 'canteen'),
     say: TEXT.speech.pumpNothing, again: 10 * MIN },
 

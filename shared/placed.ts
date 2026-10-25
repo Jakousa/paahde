@@ -1,9 +1,9 @@
 // Placed things: items from the bag (the PLACEABLES kinds of shared/items.ts) standing on a floor: plant beds and UV
 // lamp stands (GitHub #22–#24; not crafted for now); and the buildings put up with the wrench from base materials
 // (shared/crafting.ts BUILDS), anywhere out on the sand (the `sand` kinds): the windmill, the battery station, the power
-// pole, the beacon (a lamp on a mast shining a column of light into the sky, src/world/beacons.ts; its light's colour is
+// pole, the electric well (shared/wells.ts), the beacon (a lamp on a mast shining a column of light into the sky, src/world/beacons.ts; its light's colour is
 // its item's data, BEACON_COLORS), the tarp (shade you build, shared/tarp.ts), and the work stations and the chest (WORKBENCH, TABLE, CHEST), which also go up on a
-// shelter's room floor or the bunker's (`floor`). The windmill, battery station and beacon keep their item with its parts
+// shelter's room floor or the bunker's (`floor`). The windmill, battery station, well and beacon keep their item with its parts
 // in a box of their own while they stand (shared/gear.ts isBuilding, server/placed.ts), the chest its things in another
 // (shared/storage.ts). The server owns the list (server/placed.ts, `placed` table) and sends it whole on join and when it
 // changes; client and server both keep it here with setPlaced(), which also hands their standing parts to the collision
@@ -119,6 +119,18 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
   },
   // A chest (shared/storage.ts storeBox): lid hinged at the back, front +Z.
   storage_chest: { hx: 0.68, hz: 0.4, sand: true, floor: true, boxes: [{ x0: -0.6, x1: 0.6, y0: 0, y1: 0.62, z0: -0.35, z1: 0.35 }] },
+  // The electric well (shared/wells.ts): the tank's stand, the bore casing and the control box's post collide; the pad
+  // (just off the ground: walked on) and the box are only looked at. Sizes match tools/blender/well.py.
+  well: {
+    hx: 0.9, hz: 0.6, sand: true, gap: 2,
+    boxes: [
+      { x0: 0.2, x1: 0.82, y0: 0, y1: 1.8, z0: -0.46, z1: 0.1 },
+      { x0: -0.33, x1: -0.07, y0: 0, y1: 1.9, z0: -0.28, z1: -0.02 },
+      { x0: -0.74, x1: -0.62, y0: 0, y1: 3.2, z0: 0.22, z1: 0.34 },
+      { x0: -0.86, x1: -0.5, y0: 1.02, y1: 1.5, z0: 0.24, z1: 0.45 },
+      { x0: -0.9, x1: 0.9, y0: 0.02, y1: 0.12, z0: -0.6, z1: 0.6 },
+    ],
+  },
 };
 export const TARP = 'tarp';
 /** How many turns `kind` can be put up at. */

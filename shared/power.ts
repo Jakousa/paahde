@@ -17,9 +17,11 @@
 //   Battery station: each battery holds its own charge. A Scrap battery is a car battery (12 V × 50 Ah ≈ 0.6 kWh,
 //     lead-acid: takes charge slowly, loses a fifth of it), better tiers better chemistries; each takes charge as fast
 //     as its chemistry lets it.
-//   Beacon (src/world/beacons.ts): an LED lamp, BEACON_W, the one thing that uses power. On a grid it runs on what the
+//   Beacon (src/world/beacons.ts): an LED lamp, BEACON_W, a load. On a grid it runs on what the
 //     windmills make, then on what the batteries hold (the stations' and its own); the rest goes into the batteries.
 //     Out on its own, on its own battery: a Scrap one lasts it about four game days (two hours), a Space-grade one weeks.
+//   Electric well (shared/wells.ts): its control box a small load all the time, like a beacon's lamp; its pump a big one
+//     (hundreds of watts) for as long as it fills a bottle: it runs while its grid could give that right now.
 import { DAY_SECONDS, timeOfDayAt } from './sun.ts';
 import { vnoise } from './noise.ts';
 import { WORLD_SEED } from './world.ts';
@@ -198,5 +200,6 @@ export function draw(stores: Store[], watts: number, gameS: number): boolean {
 export const BEACON_W = 6;
 
 /** What the server sends: each windmill's output (W), each store's (a station's, a beacon's) charge per slot (kWh) and
- *  intake (W), and the beacons lit. */
-export type PowerState = { gen: Record<number, number>; store: Record<number, { charge: number[]; w: number }>; lit?: number[] };
+ *  intake (W), the beacons lit and the wells running (shared/wells.ts). */
+export type PowerState = { gen: Record<number, number>; store: Record<number, { charge: number[]; w: number }>; lit?: number[];
+  wells?: number[] };

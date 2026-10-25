@@ -55,6 +55,7 @@ const en = {
     workbench: 'Workbench',
     dismantle_bench: 'Dismantling bench',
     storage_chest: 'Chest',
+    well: 'Electric well',
     laser_rifle: 'Laser rifle',
     laser_pistol: 'Laser pistol',
     jammer: 'Jammer',
@@ -110,6 +111,7 @@ const en = {
     windmill: () => 'Makes power when the wind blows.',
     battery_station: () => 'Keeps the power the windmills make.',
     beacon_light: () => 'Shines a column of light into the sky while it has power, from a battery or a wire.',
+    well: () => 'Pumps up water while it has power, for the water bottle.',
   },
   /** Where placing is blocked: "Too close to the pump". */
   baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base', shelter: 'the shelter', ship: 'the ship' },
@@ -621,6 +623,9 @@ const en = {
     ride: 'Wind in my face and sand in my teeth. I love it.',
     pump: ['There we go.', "Clean water. Well, it's wet, anyway."],
     pumpNothing: 'All this water and nothing to carry it in. Great.',
+    /** At an electric well (shared/wells.ts) that doesn't run: no pump in it yet; every part in but no power. */
+    wellNoPump: 'No pump down there yet. Just a very deep hole.',
+    wellNoPower: ['Not a drop. The pump needs power.', 'Dead quiet. No power, no water.'],
     hot: ["It's too hot. I need some shade.", "Damn, I'm cooking out here.", "I need shade, and I need it now."],
     sip: ['Time for a sip.', 'My throat feels like sandpaper.'],
     dry: ["The bottle's empty. I need to find a pump.", 'Not a single drop left. Shit.'],

@@ -24,6 +24,10 @@ const REMOTE_HEAR = 30;
 
 /** The pour speeds up by this much over FILL_MS, so it rises in pitch as the bottle fills. */
 const FILL_RISE = 0.12;
+/** A well's pour plays this much slower or quicker at most; a long one loops this stretch of it (s). */
+const FILL_SLOW = 0.85;
+const FILL_FAST = 1.25;
+const FILL_LOOP: [number, number] = [0.35, 1.35];
 
 class DrinkSound {
   private bufs = new Map<string, AudioBuffer>();
@@ -72,16 +76,25 @@ class DrinkSound {
     }
   }
 
-  /** You started refilling at the pump. */
-  fill() {
+  /** You started refilling at a pump, taking `ms` (an electric well's may be slower or quicker, shared/wells.ts): the
+   *  pour a little slower or quicker, its middle looped for as long as a slow one needs. */
+  fill(ms = FILL_MS) {
     this.stop();
     this.gulps = this.play(FILL, false);
     const ctx = audio.ctx;
-    if (ctx && this.gulps) this.rise(ctx, this.gulps.src, ctx.currentTime);
+    if (!ctx || !this.gulps) return;
+    const src = this.gulps.src;
+    src.playbackRate.value = Math.min(FILL_FAST, Math.max(FILL_SLOW, FILL_MS / ms));
+    if ((ms / 1000) * src.playbackRate.value > FILL_LOOP[1]) {
+      src.loop = true;
+      [src.loopStart, src.loopEnd] = FILL_LOOP;
+    }
+    this.rise(ctx, src, ctx.currentTime, ms);
   }
 
   /** The refill finished: let the pour's tail play out. */
   filled() {
+    if (this.gulps) this.gulps.src.loop = false;
     this.gulps = null;
   }
 
@@ -134,10 +147,10 @@ class DrinkSound {
   }
 
   /** Speed the pour up over FILL_MS from `t`. */
-  private rise(ctx: AudioContext, src: AudioBufferSourceNode, t: number) {
+  private rise(ctx: AudioContext, src: AudioBufferSourceNode, t: number, ms = FILL_MS) {
     const rate = src.playbackRate;
     rate.setValueAtTime(rate.value, t);
-    rate.linearRampToValueAtTime(rate.value + FILL_RISE, t + FILL_MS / 1000);
+    rate.linearRampToValueAtTime(rate.value + FILL_RISE, t + ms / 1000);
   }
 }
 

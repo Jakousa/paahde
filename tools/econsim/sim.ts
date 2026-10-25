@@ -35,7 +35,7 @@ import { CORPSE_S, World, type Poi, type Source, type Thing } from './world.ts';
 const GOALS = [
   'wrench', 'workbench', 'canteen', 'backpack', 'laser_pistol', 'motorcycle', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
   'grinder', 'receiver_colossus', 'boss:colossus', 'receiver_queen', 'boss:queen', 'receiver_carrier', 'boss:carrier', 'receiver_worm', 'boss:worm',
-  'windmill', 'battery_station',
+  'windmill', 'battery_station', 'well',
 ] as const;
 /** Worn gear: its equipment slot. */
 const WORN: Partial<Record<string, EquipSlot>> = { backpack: 'back', shield: 'armor', storm_detector: 'belt', wristpad: 'wrist' };
@@ -263,7 +263,8 @@ export class Sim {
   }
 
   private open(): string[] {
-    return OPEN_GOALS.filter((g) => !this.done(g));
+    // (A goal an older commit doesn't have yet, like the well before there was one, is left out: cli.ts --base.)
+    return OPEN_GOALS.filter((g) => !this.done(g) && (g.startsWith('boss:') || !!GEAR[g] || !!RECIPES[g] || !!BUILDS[g]));
   }
 
   /** What's still wanted, by need key, with the weight of the most pressing goal that wants it (the first open goal

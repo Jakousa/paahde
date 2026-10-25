@@ -21,6 +21,7 @@
 // - Loot (shared/loot.ts): what lies in the world, from the server; F asks to take it.
 // - Hands: what we hold (canteen, drinking, filling, a gun raised to aim) is sent when it changes and relayed in snapshots, cosmetic only;
 //   with it the selected hotbar slot.
+import { setWellsOn } from '../shared/wells.ts';
 import { buildingId, cargoId, grows, vehicleId } from '../shared/boxes.ts';
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
 import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
@@ -732,7 +733,8 @@ export class Net {
       return this.onPlaced?.();
     }
     if (msg.t === 'power') {
-      this.power = { gen: msg.gen, store: msg.store, lit: msg.lit };
+      this.power = { gen: msg.gen, store: msg.store, lit: msg.lit, wells: msg.wells };
+      setWellsOn(msg.wells);
       return this.onPower?.();
     }
     if (msg.t === 'placed') {
