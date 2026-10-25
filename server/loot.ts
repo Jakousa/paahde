@@ -11,7 +11,7 @@ import { isGear, isVehicle, refit, scrapParts } from '../shared/gear.ts';
 import { ownOf, RETIRED, withData, type ItemData } from '../shared/items.ts';
 import { DROP_AHEAD, lootReach, type Loot } from '../shared/loot.ts';
 import { coreCrashSites } from '../shared/crashsites.ts';
-import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, foundData, nearPiles, shelterStash, podFind, podFindSpot, stashSpot } from '../shared/lootRoll.ts';
+import { brokenParts, cacheContents, cacheSpot, findContents, findSpot, foundData, nearPiles, shelterStash, podFind, podFindSpot, podKitKey, stashSpot, type PodKitKey } from '../shared/lootRoll.ts';
 import { CACHES, FINDS, RARE_FINDS, SHELTER_STASHES, POD_LOOT } from '../shared/tables.ts';
 import { PODS } from '../shared/pods.ts';
 import { CORE_HALF } from '../shared/terrain.ts';
@@ -274,7 +274,15 @@ export class LootServer {
   /** Gear kind `kind` (FINDS) lying at a crash site of its level, among the debris around the wreck; RARE_KIND: a rare part. */
   private spawnFind(kind: string) {
     if (kind === STASH_KIND) return this.spawnStash();
-    if (kind === POD_KIND) return this.place({ id: this.nextId++, ...podFind(Math.random), ...podFindSpot(Math.random), src: 'find' }, POD_KIND);
+    if (kind === POD_KIND) {
+      // The kit's shortest entry, counting what lies there now.
+      const lying: Partial<Record<PodKitKey, number>> = {};
+      for (const [id, k] of this.spawnKey) {
+        const l = k === POD_KIND && this.loot.get(id);
+        if (l) lying[podKitKey(l.kind)] = (lying[podKitKey(l.kind)] ?? 0) + 1;
+      }
+      return this.place({ id: this.nextId++, ...podFind(Math.random, lying), ...podFindSpot(Math.random), src: 'find' }, POD_KIND);
+    }
     // At a crash site of its level, among the debris round the wreck (level 0 now and then at a scrap pile near the start);
     // RARE_KIND (not in FINDS): a loose rare part on guardian ground.
     const { x, z } = findSpot(FINDS[kind]?.level ?? 2, this.sites, this.piles, Math.random);

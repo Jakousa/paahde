@@ -52,9 +52,9 @@ export const RECIPE_TABLE: Record<string, IngredientSpec[]> = {
 export const HAND_TABLE: Record<string, IngredientSpec[]> = {
   // The wrench, the build tool (shared/crafting.ts BUILDS): a bar of scrap, bent and beaten into shape. It puts up the
   // workbench, so it can't need one.
-  wrench: [SCRAP(4)],
+  wrench: [SCRAP(3)],
   // A bedroll (shared/placed.ts): canvas and a blanket, a couple of scrap buckles. Where you wake up after dying.
-  bedroll: [CLOTH(3), SCRAP(1)],
+  bedroll: [CLOTH(2), SCRAP(1)],
 };
 
 /** The buildings, put up with the wrench (shared/crafting.ts BUILDS): only base materials (scrap, cloth, wiring), used up
@@ -74,10 +74,10 @@ export const BUILD_TABLE: Record<string, IngredientSpec[]> = {
   // Cheap: it's the early game's shade, built from the first trip's finds.
   tarp: [CLOTH(3), SCRAP(2)],
   // A scrap bench with a pegboard, a lamp wired in (shared/stations.ts: repairs and recipes).
-  workbench: [SCRAP(10), WIRING(1)],
+  workbench: [SCRAP(6), WIRING(1)],
   // A heavy slatted steel table with a vise, a grinder wired to it, a tarp for the parts (carried machines are taken
   // apart on it: shared/crash.ts tables).
-  dismantle_bench: [SCRAP(16), WIRING(2), CLOTH(2)],
+  dismantle_bench: [SCRAP(8), WIRING(1), CLOTH(1)],
   // A scrap box lined with cloth, its lid on a hinge (shared/storage.ts: CHEST_COLS × CHEST_ROWS, shared).
   storage_chest: [SCRAP(8), CLOTH(2)],
   // Casing and riser pipe of scrap, a tank on a stand, a control box, the cable down the bore (the pump's parts go in after).
@@ -247,12 +247,17 @@ export const FINDS: Record<string, { n: number; level: SiteLevel }> = {
  *  where it lies, it is the world's (everyone's) first bike. */
 export const HOME_BIKE = { fitted: ['motor'] as PartId[] };
 
-/** Lying about the crashed pods players arrive in (shared/pods.ts, server/loot.ts): how many things at once, each one
- *  of these by relative odds (a broken canteen: shared/gear.ts; wiring torn out of them, enough before long for the first
- *  workbench and dismantling bench, which carried machines need before they give any; a battery or a bearing, scrap
- *  tier, which the first bike lacks, so it can run before there's a dismantling bench); taken, another lies there a few
- *  minutes later. */
-export const POD_LOOT = { n: 8, contents: { scrap: 0.34, cloth: 0.24, wiring: 0.18, canteen: 0.1, battery: 0.16, bearing: 0.08 } };
+/** Lying about the crashed pods players arrive in (shared/pods.ts, server/loot.ts): a starter kit, kept whole. `kit`: how
+ *  many of each lie about them at once — enough scrap, cloth and wiring for the wrench, a workbench, a dismantling bench,
+ *  a tarp and a bedroll (HAND_TABLE, BUILD_TABLE), a broken canteen (shared/gear.ts), and a scrap-tier battery and bearing,
+ *  which the first bike lacks. Taken, another lies there a few minutes later: whatever the kit is shortest of. `n` and
+ *  `contents` (the kit's shares, as odds) are for whoever doesn't count what's lying (the economy simulator). */
+const POD_KIT = { scrap: 20, cloth: 7, wiring: 3, canteen: 1, battery: 1, bearing: 1 };
+export const POD_LOOT = {
+  kit: POD_KIT,
+  n: Object.values(POD_KIT).reduce((a, b) => a + b, 0),
+  contents: POD_KIT as Record<keyof typeof POD_KIT, number>,
+};
 
 /** Parts that only an engine gives (nothing uses them yet): never found loose. */
 const ROTORS: PartId[] = ['fanrotor', 'comprotor', 'turbinerotor', 'turbinedisc', 'fuelmanifold'];
