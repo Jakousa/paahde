@@ -16,8 +16,10 @@
 // downwind at FRONT_SPEED, faster than you can run and only outrun on a good bike. It appears FRONT_LEAD_S
 // upwind of the first player it will reach, takes FRONT_PASS_S to blow over a spot, and dies down after
 // it has passed the last player (server/storm.ts). Out in the open inside it you choke (frontExposure,
-// CHOKE_S; server/world.ts kills you); in a shelter or in the lee of a cliff (sheltered) you're fine.
+// CHOKE_S; server/world.ts kills you); in a shelter or in the lee of a cliff (sheltered) you're fine. Round where
+// players arrive (shared/podSpot.ts ARRIVAL) no front blows (frontCalm): the start is no place to lose a life on.
 import { WIND } from './dunes.ts';
+import { ARRIVAL } from './podSpot.ts';
 import { indoors } from './shelters.ts';
 import { heightAt } from './terrain.ts';
 
@@ -64,6 +66,9 @@ export const FRONT_TAIL = 300;
 /** Seconds out in the open at full strength before it chokes you; it wears off this many times slower. */
 export const CHOKE_S = 12;
 export const CHOKE_RECOVER = 0.5;
+/** No front blows within FRONT_CALM_IN (m) of where players arrive; it builds up to full strength by FRONT_CALM_OUT. */
+export const FRONT_CALM_IN = 120;
+export const FRONT_CALM_OUT = 260;
 /** Strength under this (the thin tail, the fade) doesn't choke. */
 const CHOKE_FROM = 0.3;
 
@@ -98,13 +103,19 @@ export function frontArrival(s: Storm, x: number, z: number): number {
   return s.start - (frontDepth(s, x, z, s.start) / s.speed) * 1000;
 }
 
+/** How much of a front blows at (x, z), 0..1: 0 round where players arrive (FRONT_CALM_IN), 1 from FRONT_CALM_OUT. */
+export function frontCalm(x: number, z: number): number {
+  if (!ARRIVAL) return 1;
+  return smooth((Math.hypot(x - ARRIVAL.x, z - ARRIVAL.z) - FRONT_CALM_IN) / (FRONT_CALM_OUT - FRONT_CALM_IN));
+}
+
 /** Strength of storm `s` at (x, z) at server time `t`, 0..1. */
 export function stormStrength(s: Storm, x: number, z: number, t: number): number {
   const e = stormEnvelope(s, t);
   if (e <= 0) return 0;
   if (s.front) {
     const u = frontDepth(s, x, z, t);
-    return e * smooth(u / FRONT_WALL) * smooth((s.r - u) / FRONT_TAIL);
+    return e * smooth(u / FRONT_WALL) * smooth((s.r - u) / FRONT_TAIL) * frontCalm(x, z);
   }
   stormCentre(s, t, c);
   const d = Math.hypot(x - c.x, z - c.z) / s.r;

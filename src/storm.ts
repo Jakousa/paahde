@@ -9,11 +9,12 @@
 // the grit and the wind ease off, and out in the open the view closes in as you choke (the server's tally,
 // mirrored here: server/world.ts).
 import { indoors, S_HUT, shelterAt, shelterHutInside } from '../shared/shelters.ts';
-import { CHOKE_RECOVER, CHOKE_S, STATIC_AT, FRONT_PASS_S, FRONT_RAMP_MS, FRONT_SPEED, RAMP_MS, frontArrival, frontAt, frontDepth, frontExposure, inStormPath, sheltered, stormCentre, stormEnvelope, stormStrength, type Storm } from '../shared/storm.ts';
+import { CHOKE_RECOVER, CHOKE_S, STATIC_AT, FRONT_PASS_S, FRONT_RAMP_MS, FRONT_SPEED, RAMP_MS, frontArrival, frontAt, frontCalm, frontDepth, frontExposure, inStormPath, sheltered, stormCentre, stormEnvelope, stormStrength, type Storm } from '../shared/storm.ts';
 import { WIND } from '../shared/dunes.ts';
+import { ARRIVAL } from '../shared/podSpot.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { audio } from './audio';
-import { choking, DARK_LIFT_S, indoorHutMax, indoorHutMin, indoorSurface, STORM_SLOTS, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors } from './world/env';
+import { choking, DARK_LIFT_S, indoorHutMax, indoorHutMin, indoorSurface, STORM_SLOTS, stormDiscs, stormCalm, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors } from './world/env';
 import { wind } from './world/wind';
 import { TEXT } from '../shared/text.ts';
 
@@ -123,7 +124,7 @@ export class StormFx {
       else {
         const u = frontDepth(s, cam.x, cam.z, now);
         const k = u < 0 ? 1 + u / FRONT_HEARD : u > s.r ? 1 - (u - s.r) / FRONT_CALM : 1;
-        roar = Math.max(roar, stormEnvelope(s, now) * FRONT_ROAR * Math.max(0, k));
+        roar = Math.max(roar, stormEnvelope(s, now) * FRONT_ROAR * Math.max(0, k) * frontCalm(cam.x, cam.z));
       }
     }
     const front = frontAt(storms, cam.x, cam.z, now);
@@ -164,6 +165,7 @@ export class StormFx {
         fd = d;
         stormCentre(s, now, this.c);
         stormFront.value.set(WIND.x, WIND.z, this.c.x * WIND.x + this.c.z * WIND.z, s.r);
+        if (ARRIVAL) stormCalm.value.set(ARRIVAL.x, ARRIVAL.z, 1);
         continue;
       }
       if (e <= 0 || n >= STORM_SLOTS) continue;
@@ -182,7 +184,8 @@ export class StormFx {
     for (const s of storms) {
       if (s.front) {
         const at = frontArrival(s, me.x, me.z);
-        if (now >= at || at >= s.end) continue;
+        // Round where players arrive it never blows (shared/storm.ts frontCalm): nothing to warn of.
+        if (now >= at || at >= s.end || frontCalm(me.x, me.z) < 0.3) continue;
         frontIn = Math.min(frontIn, (at - now) / 1000);
         if (at - now <= warnS * 2000 && (!coming || at < coming.start)) coming = s;
         continue;

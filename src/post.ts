@@ -11,10 +11,10 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { heightAt } from '../shared/terrain.ts';
 import {
-  choking, deathGrade, fainting, gasEnv, gasLayer, vortex, gassed, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
+  choking, deathGrade, fainting, gasEnv, gasLayer, vortex, gassed, hazeColor, hazeColorFor, hazeDensity, heatHaze, heatstroke, indoorHutMax, indoorHutMin, indoorSurface, stormCalm, stormDiscs, stormFront, stormFrontEnv, stormGround, stormHere, stormIndoors, sunColor, sunDirection,
   sunDiscRadius, time, windDir, windDrift,
 } from './world/env.ts';
-import { EDGE, FRONT_TAIL, FRONT_WALL } from '../shared/storm.ts';
+import { EDGE, FRONT_CALM_IN, FRONT_CALM_OUT, FRONT_TAIL, FRONT_WALL } from '../shared/storm.ts';
 import { GAS_DEPTH, GAS_RISE_S, GAS_SPEED, GAS_TAIL_S } from '../shared/gas.ts';
 
 type N = Node<'vec3'>;
@@ -167,13 +167,16 @@ function sunThroughDust(o: THREE.Vector3, sd: THREE.Vector3): number {
   });
   // The front: the sun ray marched out to FRONT_REACH through the slab (billows averaged out).
   const f = stormFront.value, fe = stormFrontEnv.value;
+  const cv = stormCalm.value;
+  const calmAt = (x: number, z: number) => cv.z ? THREE.MathUtils.smoothstep(Math.hypot(x - cv.x, z - cv.y), FRONT_CALM_IN, FRONT_CALM_OUT) : 1;
   if (fe.x > 0) {
     const top = (fe.y + FRONT_H * FRONT_HEAD * 2.5 - o.y) / Math.max(sd.y, 1e-4);
     const n = 16, len = Math.min(FRONT_REACH, top), dt = len / n;
     for (let k = 0; k < n; k++) {
       const t = dt * (k + 0.5);
       const u = f.z - ((o.x + sd.x * t) * f.x + (o.z + sd.z * t) * f.y);
-      const wall = THREE.MathUtils.smoothstep(u, -FRONT_FRAY, FRONT_WALL) * (1 - THREE.MathUtils.smoothstep(u, f.w - FRONT_TAIL, f.w));
+      const wall = THREE.MathUtils.smoothstep(u, -FRONT_FRAY, FRONT_WALL) * (1 - THREE.MathUtils.smoothstep(u, f.w - FRONT_TAIL, f.w))
+        * calmAt(o.x + sd.x * t, o.z + sd.z * t);
       const H = FRONT_H * (1 + (FRONT_HEAD - 1) * Math.exp(-Math.max(u, 0) / 300));
       const hh = Math.max(o.y + sd.y * t - fe.y, 0);
       tau += fe.x * wall * Math.exp(-hh / H) * 0.7 * dt;
@@ -486,7 +489,9 @@ export class Post {
             const n = mx_noise_float(w.mul(0.011)).mul(0.6).add(mx_noise_float(w.mul(0.035)).mul(0.4));
             // How far behind the leading edge, the billows pushing it in and out.
             const u = stormFront.z.sub(dot(q.xz, fd)).add(n.mul(FRONT_FRAY));
-            const wall = smoothstep(-FRONT_FRAY, FRONT_WALL, u).mul(float(1).sub(smoothstep(stormFront.w.sub(FRONT_TAIL), stormFront.w, u)));
+            // Round where players arrive it never blows (shared/storm.ts frontCalm): the wall parts round it.
+            const calm = mix(float(1), smoothstep(FRONT_CALM_IN, FRONT_CALM_OUT, length(q.xz.sub(stormCalm.xy))), stormCalm.z);
+            const wall = smoothstep(-FRONT_FRAY, FRONT_WALL, u).mul(float(1).sub(smoothstep(stormFront.w.sub(FRONT_TAIL), stormFront.w, u))).mul(calm);
             const H = exp(max(u, 0).div(-300)).mul(FRONT_H * (FRONT_HEAD - 1)).add(FRONT_H);
             const h = max(q.y.sub(stormFrontEnv.y), 0);
             // A crisp, billowing top: full up to its height, gone within half as much again.

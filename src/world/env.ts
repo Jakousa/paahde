@@ -70,6 +70,9 @@ export const stormGround = uniform(new THREE.Vector4());
 /** A mega-storm front for the post pass (post.ts): the unit xz direction it rolls, how far along it its leading
  *  edge is (m, dot with the direction), and how deep its dust is (m). Written by src/storm.ts every frame. */
 export const stormFront = uniform(new THREE.Vector4(1, 0, 0, 0));
+/** Where no front blows (shared/storm.ts frontCalm: round where players arrive): x, z, and 1 when there is such a
+ *  place (0 in the lab). The front's dust thins out towards it. */
+export const stormCalm = uniform(new THREE.Vector3());
 /** The front's strength envelope 0..1 (0 = not drawn), and the ground height (m) its dust thins upwards from. */
 export const stormFrontEnv = uniform(new THREE.Vector2());
 /** The sand vortex nearest the camera for the post pass (post.ts, shared/vortex.ts): centre x, z, the ground height (m)
