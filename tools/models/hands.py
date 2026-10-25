@@ -1607,5 +1607,7 @@ def check_aim(label='RIFLE', clip='RifleAim', muzzle=0, eye=1):
 check_aim()
 check_aim('PISTOL', 'PistolAim', 2, 3)
 bake.export(rig, [body, can, *tel_parts, rif, pis, *marks, *extra], OUT)
+from prune_hands import prune_hands
+prune_hands(OUT)
 print('TRIS_FINAL', tri_count(body), 'CANTEEN', tri_count(can), 'TELESCOPE', tri_count(tel), 'RIFLE', tri_count(rif),
       'PISTOL', tri_count(pis))

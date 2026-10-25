@@ -74,6 +74,7 @@ the hand correctly and let the fingers close on it.
 ## Checking
 
 - Build: `/Applications/Blender.app/Contents/MacOS/Blender -b --factory-startup -P tools/models/hands.py`
+  The export runs `tools/models/prune_hands.py`: obsolete Shovel/Detector meshes, clips and their unreferenced images/buffers are removed without renumbering skeleton nodes.
   takes about 1 minute (bake). Read the `GRASP`/`WRIST` lines. The `WARN out of reach` lines during the
   at-eye roll search are expected.
 - Quick pose checks: `HANDS_FAST=1 HANDS_OUT=/tmp/x.glb` skips the bakes (flat colours, a stand-in box jammer) for a
