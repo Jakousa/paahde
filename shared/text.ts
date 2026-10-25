@@ -112,7 +112,7 @@ const en = {
     beacon_light: () => 'Shines a column of light into the sky while it has power, from a battery or a wire.',
   },
   /** Where placing is blocked: "Too close to the pump". */
-  baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base', shelter: 'the shelter' },
+  baseSpots: { pump: 'the pump', chest: 'the chest', workbench: 'the workbench', table: 'the disassembly table', doorway: 'the doorway', base: 'the base', shelter: 'the shelter', ship: 'the ship' },
 
   // ---- Prompts under the crosshair (after the key) ---------------------------------------------------------------
 

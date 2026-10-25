@@ -15,7 +15,7 @@
 // on the bunker floor, clear of the walls, the hallway mouth, the pump, the work stations and the chest; on a shelter's,
 // inside its room, clear of the pump and the corridor's mouth (shelterRoomClear); on the sand, STRUCTURE_GAP clear of the
 // base's own structures (the entrance hut, the skylight, the mast, the bunker under the sand, the trophies' ground:
-// shared/base.ts overBase / insideBase) and of the shelters' huts, on ground no steeper than MAX_TILT across the
+// shared/base.ts overBase / insideBase), of the shelters' huts and off the crashed ship (shared/shipSpot.ts nearShip), on ground no steeper than MAX_TILT across the
 // footprint (it stands on the lowest corner: the rest sinks into the sand), and that sand is never dug again
 // (overPlaced). Sand kinds keep their `gap` (the larger of the two) from each other, edge to edge. Nothing overlaps
 // another placed thing — except that a UV lamp and a plant bed share their spot when aligned exactly (same centre and
@@ -28,6 +28,7 @@ import { BASE, BASE_PIECES, FLOOR, HALL, byMast, inBase, insideBase, overBase, P
 import { EYE_HEIGHT } from './dig.ts';
 import { ITEMS } from './items.ts';
 import { insideShelter, inShelter, shelterAt, shelterRoomClear, shelterUnder } from './shelters.ts';
+import { nearShip } from './shipSpot.ts';
 import { heightAt } from './terrain.ts';
 import { TARP_HALF } from './tarp.ts';
 import { TEXT } from './text.ts';
@@ -259,6 +260,7 @@ export function placeError(kind: string, x: number, z: number, rot: number, floo
       return TEXT.notice.tooClose(TEXT.baseSpots.base);
     }
     if (outline.some(([cx, cz]) => insideShelter(cx, cz, STRUCTURE_GAP))) return TEXT.notice.tooClose(TEXT.baseSpots.shelter);
+    if (outline.some(([cx, cz]) => nearShip(cx, cz))) return TEXT.notice.tooClose(TEXT.baseSpots.ship);
     const hs = corners.map(([cx, cz]) => heightAt(cx, cz));
     if (Math.max(...hs) - Math.min(...hs) > (PLACEABLES[kind].tilt ?? MAX_TILT)) return TEXT.notice.tooSteep;
   } else if (shelter && Math.abs(shelter.y + shelter.L.floor - floor) < 1e-3) {
