@@ -264,7 +264,7 @@ export class Sim {
 
   private open(): string[] {
     // (A goal an older commit doesn't have yet, like the well before there was one, is left out: cli.ts --base.)
-    return OPEN_GOALS.filter((g) => !this.done(g) && (g.startsWith('boss:') || !!GEAR[g] || !!RECIPES[g] || !!BUILDS[g]));
+    return OPEN_GOALS.filter((g) => !this.done(g) && (g.startsWith('boss:') || !!GEAR[g] || !!RECIPES[g] || !!HAND[g] || !!BUILDS[g]));
   }
 
   /** What's still wanted, by need key, with the weight of the most pressing goal that wants it (the first open goal

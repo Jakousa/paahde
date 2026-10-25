@@ -2128,6 +2128,7 @@ the pad's LB/RB at the ends of the hotbar (its 1–5 hide), Menu on the Esc menu
   the dune sea and the mud flats both have water under them and are where every building goes, and the canyons' rock
   is too steep to build on anyway, so the rule would almost never bite, and when it did it would be friction without a
   choice. Wells go wherever a building can.
-- **Economy sim:** the well is a goal after the battery station (`gear:well`, median 63 min, all 200 worlds); the
-  windmill comes ~5 min later (the motor is wanted by both), the rest within the noise (the rifle +10%, not flagged).
+- **Economy sim:** the well is a goal after the battery station (`gear:well`, median 64 min, all 200 worlds); the win
+  doesn't move (301 min); the windmill comes ~4 min later (the motor is wanted by both), the shield and rifle ~10%
+  later (more competition for wiring and parts), none flagged.
 - Gaps: other players filling at a well don't start its pump sound for you; the drop is small at a distance.
