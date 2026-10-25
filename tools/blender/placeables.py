@@ -309,11 +309,12 @@ def build_head(mb, rng):
     for y in (0.8, 1.3):
         it.wire(mb, [(0, y, HUB[2] - 0.08 + (y - 0.3) * 0.16), (0, y + 0.05, HUB[2] + 0.1 + (y - 0.3) * 0.075)], 0.012, 4, 'rust')
     mb.box((0.018, 0.75, 0.82), (0, 2.0, HUB[2] + 0.3), 'paint_cream')
-    mb.box((0.022, 0.32, 0.4), (0.002, 2.18, HUB[2] + 0.48), 'rust', rot=(0.05, 0, 0))
-    mb.box((0.022, 0.3, 0.1), (0.003, 1.85, HUB[2] + 0.12), 'paint_red_faded')
+    # The patches stand a clear 8 mm proud of the sheet on both faces: flush, they z-fight at range.
+    mb.box((0.034, 0.32, 0.4), (0, 2.18, HUB[2] + 0.48), 'rust', rot=(0.05, 0, 0))
+    mb.box((0.034, 0.3, 0.1), (0, 1.85, HUB[2] + 0.12), 'paint_red_faded')
     for y in (1.66, 2.34):
         for z in (0.0, 0.3, 0.6):
-            mb.cyl(0.012, 0.012, 0.03, 6, (0, y, HUB[2] + z), 'steel_dull', rot=it.Y90)
+            mb.cyl(0.012, 0.012, 0.046, 6, (0, y, HUB[2] + z), 'steel_dull', rot=it.Y90)
 
 
 def build_rotor(mb, rng):
