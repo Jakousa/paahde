@@ -30,12 +30,12 @@ import { COSTS, MIN_SCORE } from './costs.ts';
 import { CORPSE_S, World, type Poi, type Source, type Thing } from './world.ts';
 
 /** What the agent works towards, in order: each piece of gear repaired (or crafted), each boss beaten. First the wrench
- *  (made by hand) and with it the workbench (put up at home), without which nothing is repaired or crafted, the chest
- *  and the bedroll; the dismantling bench, without which carried machines aren't taken apart, after the canteen (commits
- *  from before these were built skip them, and with the bunker standing the chest, the bedroll and the bench are its:
- *  OPEN_GOALS). */
+ *  (made by hand) and with it the dismantling bench, without which carried machines aren't taken apart (the pod's console
+ *  and power box hold the first wiring), then the workbench (put up at home), without which nothing is repaired or
+ *  crafted, the chest and the bedroll (commits from before these were built skip them, and with the bunker standing the
+ *  chest, the bedroll and the bench are its: OPEN_GOALS). */
 const GOALS = [
-  'wrench', 'workbench', 'canteen', 'dismantle_bench', 'bedroll', 'backpack', 'laser_pistol', 'motorcycle', 'storage_chest', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
+  'wrench', 'dismantle_bench', 'workbench', 'canteen', 'bedroll', 'backpack', 'laser_pistol', 'motorcycle', 'storage_chest', 'spyglass', 'shield', 'laser_rifle', 'storm_detector', 'jammer', 'wristpad',
   'grinder', 'receiver_colossus', 'boss:colossus', 'receiver_queen', 'boss:queen', 'receiver_carrier', 'boss:carrier', 'receiver_worm', 'boss:worm',
   'windmill', 'battery_station', 'well',
 ] as const;
@@ -344,6 +344,11 @@ export class Sim {
     return v;
   }
 
+  /** What a thing lying somewhere is worth: a carried machine (the pod's console and power box) what it holds. */
+  private thingValue(th: Thing): number {
+    return isMachine(th.kind) ? this.machineValue(th.kind as JunkKind, 1) : this.value(th.kind, th.parts);
+  }
+
   /** What a machine is worth before it's opened: the mean of what its kind holds, and its scrap. */
   private machineValue(kind: JunkKind, level: LootLevel): number {
     const key = `@${kind}:${level}`;
@@ -610,7 +615,7 @@ export class Sim {
     if (p.seenAt === -Infinity && p.type === 'shelter') v += 0.1;
     for (const th of p.things) {
       if (p.type === 'shelter' && p.seenAt === -Infinity) break;
-      const tv = this.value(th.kind, th.parts);
+      const tv = this.thingValue(th);
       if (tv > 0.009) {
         v += tv;
         work += COSTS.openS;
@@ -706,8 +711,8 @@ export class Sim {
 
   /** Take what's worth taking at `p`, as far as there's room. */
   private collect(p: Poi) {
-    for (const th of [...p.things].sort((a, b) => this.value(b.kind, b.parts) - this.value(a.kind, a.parts))) {
-      if (this.value(th.kind, th.parts) <= 0.009) break;
+    for (const th of [...p.things].sort((a, b) => this.thingValue(b) - this.thingValue(a))) {
+      if (this.thingValue(th) <= 0.009) break;
       this.outdoors(COSTS.openS);
       if (!this.stow(th.kind, th.parts)) continue;
       this.world.taken(p, th, this.t);
@@ -787,8 +792,21 @@ export class Sim {
       this.toChest(it.kind, it.n, it.parts ?? undefined);
       slots[i] = null;
     }
-    // The dismantling bench: carried machines, each rolled afresh at level 1 (server/crash.ts crashUse). None standing
-    // yet: they wait in the chest.
+    this.dismantle();
+    this.bench();
+    // The dismantling bench may have gone up just now: what waits for it is taken apart, and what that gives used.
+    if (this.dismantle()) this.bench();
+    this.kit();
+    this.milestones();
+    this.bosses();
+    const bottle = this.carried('canteen');
+    this.sips = bottle ? canteenSips(quality(bottle)) : 0;
+  }
+
+  /** The dismantling bench: carried machines, each rolled afresh at level 1 (server/crash.ts crashUse). None standing
+   *  yet: they wait in the chest. True if anything was taken apart. */
+  private dismantle(): boolean {
+    let any = false;
     for (const it of this.table ? [...this.chest] : []) {
       if (it.parts || !isMachine(it.kind)) continue;
       for (let k = 0; k < it.n; k++) {
@@ -801,14 +819,9 @@ export class Sim {
         this.toChest(SCRAP, this.teardownScrap(it.kind as JunkKind, seed, 1));
       }
       this.chest.splice(this.chest.indexOf(it), 1);
+      any = true;
     }
-    this.bench();
-    // (The dismantling bench may have gone up just now: what waits for it is taken apart on the next visit.)
-    this.kit();
-    this.milestones();
-    this.bosses();
-    const bottle = this.carried('canteen');
-    this.sips = bottle ? canteenSips(quality(bottle)) : 0;
+    return any;
   }
 
   /** Repairs, crafting and upgrades, goal by goal, until nothing more can be done. */

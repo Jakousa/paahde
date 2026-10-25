@@ -183,7 +183,7 @@ export class World {
     this.poi('loot', x, z).things.push(this.thing(findContents(kind, this.rand), kind === 'rare' ? 'rare find' : 'find'));
   }
 
-  /** Scrap, cloth, wiring, a broken canteen or a bike part about the pods (server/loot.ts rolls the thing, then its spot). */
+  /** Something of the starter kit about the pods (POD_LOOT: server/loot.ts rolls the thing, then its spot). */
   private spawnPod() {
     const d = arriveFind(this.rand);
     arriveFindSpot(this.rand);
