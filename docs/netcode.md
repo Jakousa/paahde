@@ -13,7 +13,7 @@ This is the standard for real-time action games (Valve's Source engine, Gabriel 
    the only source of truth, so clients can't teleport or fly.
 2. **Client-side prediction.** The client runs the *same* `shared/sim.ts` step on its own input
    immediately, so you move with zero perceived latency.
-3. **Reconciliation.** Snapshots tell each client the last input `seq` the server applied (`ack`).
+3. **Reconciliation.** Snapshots tell each client the last input `seq` the server consumed or discarded (`ack`).
    The client takes the server's state for itself, drops acknowledged inputs and replays the rest.
    Any remaining difference is shown as a visual offset that decays over ~100 ms instead of a jump.
 4. **Entity interpolation.** Other players are drawn 100 ms in the past, between the two snapshots
@@ -21,8 +21,8 @@ This is the standard for real-time action games (Valve's Source engine, Gabriel 
 
 ```
 client                         server
-  tick: input → step() ──seq,input──▶ step() (rate-limited to the tick rate)
-  pending inputs [seq…]               every 50 ms: snapshot {time, ack, players[]}
+  tick: input → step() ──seq,input──▶ bounded queue → fixed 60 Hz step()
+  pending inputs [seq…]               every 50 ms: snapshot {time, ack, state, players[]}
   snapshot ◀───────────────────────── 
   state = server state + replay(pending after ack)
   remote players = lerp(snapshots, now − 100 ms)
@@ -80,11 +80,35 @@ at our scale and the whole team can read and change it. Alternatives, if needs g
   Clients reconnect with exponential backoff plus jitter and resume from the saved position.
 - **Heartbeat.** The server pings every 25 s and drops dead sockets.
 - **Caddy reloads.** `stream_close_delay 5m` keeps WebSockets open when the host Caddy config reloads.
-- **Speed hacks.** A token bucket allows at most 60 simulated inputs/s (burst 15). Excess inputs are
-  acknowledged but not simulated, so the cheater just gets corrected.
-- **Hidden tabs.** Browsers stop the render loop. After 1 s without input the server keeps
-  simulating that player with no keys pressed, so they land instead of hanging in mid-air.
-- Message size is capped at 1 KB and the browser ID format is validated.
+- **Server time.** Physics advances at 60 Hz regardless of incoming packet rate. Each step consumes at most one
+  queued input; the queue holds 12 (200 ms), and older overflow is acknowledged as discarded. A late server callback
+  catches up at most six steps. Extra packets cannot speed movement or slow gravity.
+- **Hidden tabs and stalls.** The server holds the last controls for up to 250 ms, then uses no keys while
+  physics keeps running. The client keeps at most 120 pending inputs; after a longer acknowledgment stall it stops
+  prediction and waits for an authoritative state acknowledging its last sent input before resuming.
+- Message size is capped at 1 KB, every action is validated at runtime, and browser IDs are format-checked.
+- Loading players cannot perform gameplay actions; readiness is explicit and loading times out after three minutes.
+- The hello/version exchange checks a schema version independently of the build SHA. Incompatible clients stop
+  and offer an update instead of continuing against changed rules.
+
+## Bandwidth and backpressure
+
+The schema version is 2. Each `snap` contains a complete `state` for owner reconciliation and compact pose tuples
+for ready players within 1200 m (plus the owner). Boolean pose flags are packed; remote positions/velocities round
+to millimetres. Colour, look, held item and gear are sent as whole appearance patches only when they change or
+re-enter range. Owner simulation fields retain the previous precision.
+
+Terrain subscriptions cover a 1792 m window around a centre quantized to 256 m. Chunk-local vertex indices avoid
+repeating world coordinates in deltas. Full chunks use run-length encoding when shorter; dense chunks stay plain.
+Live updates and full chunk batches contain at most sixteen chunks per message. Initial and newly entered windows stream those batches, yield between batches, and wait above 64 KiB
+of socket backlog. Each batch reads current absolute values, so live edits/healing can safely interleave. The first
+baseline completes before `welcome`; entering a new window completes before the next snapshot. Distant chunks are
+evicted and a return always sends current values, including healing missed while away.
+
+Obsolete player/enemy snapshots are skipped above 64 KiB of backlog. Reliable changes remain ordered; above 1 MiB
+the connection closes with 1013 and reconnects from a fresh baseline. The browser stops prediction at 120 pending
+inputs and closes/reconnects if its outgoing socket exceeds 128 KiB. These bounds keep a slow connection from
+turning into unlimited memory growth.
 
 ## Telemetry (stall tracing)
 
@@ -128,7 +152,7 @@ and the last stall.
   angle-of-repose sand relaxation at 30 Hz on recently changed vertices only, and broadcasts changed vertices as
   `terrainEdit` right before each snapshot. Edits are absolute integer millimetres, so they are idempotent. The wind's healing pass (every 5 s, every edited vertex creeps back towards 0) isn't sent vertex by
   vertex: the server says `terrainHeal` and each client runs the same deterministic `heal()` on its copy (edits
-  flushed after it carry the post-heal absolute values, so the two can't drift). Joining clients get all edited chunks (`terrainChunks`) before `welcome`; chunks persist in
+  flushed after it carry the post-heal absolute values, so the two can't drift). Joining clients get nearby edited chunks (`terrainChunks`) before `welcome`, then current chunks as they enter new areas; chunks persist in
   the `terrain_chunks` SQLite table (saved every 5 s and on shutdown).
 - **Scrap pickups** (`shared/scrap.ts`, `server/scrap.ts`): the client sends `pickup` with the piece id
   and hides the piece (and its hitbox) at once. The server checks reach from its own view of the player,

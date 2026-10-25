@@ -60,6 +60,7 @@ export function registry(path: string) {
     },
     publicGames: (limit = 100, offset = 0) => (publicRows.all(limit, offset) as Row[]).map(game),
     remove: (id: string) => db.prepare('DELETE FROM games WHERE id = ?').run(id),
+    count: () => (db.prepare('SELECT COUNT(*) AS n FROM games').get() as { n: number }).n,
     /** The key for a game whose password is `password`, or null if it's wrong ('' for an open game). */
     async unlock(id: string, password: string): Promise<string | null> {
       const r = row(id);

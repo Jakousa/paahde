@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import WebSocket from 'ws';
+import { PROTOCOL_VERSION } from '../shared/protocol.ts';
 
 function message(ws, accept) {
   return new Promise((resolve, reject) => {
@@ -49,9 +50,9 @@ test('one malformed peer leaves seven other players connected and receiving snap
     peers.add(ws);
     ws.on('error', () => {});
     const welcome = message(ws, (m) => m.t === 'welcome');
-    ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', protocol: 1, browserId: randomUUID(), name: 'Tester' })));
+    ws.on('open', () => ws.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL_VERSION, browserId: randomUUID(), name: 'Tester' })));
     const self = await welcome;
-    const ready = message(ws, (m) => m.t === 'snap' && m.players.some((p) => p.id === self.id));
+    const ready = message(ws, (m) => m.t === 'snap' && m.players.some((p) => (Array.isArray(p) ? p[0] : p.id) === self.id));
     ws.send(JSON.stringify({ t: 'ready' }));
     await ready;
     return ws;

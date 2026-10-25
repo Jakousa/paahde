@@ -34,6 +34,8 @@ const BROWSE_MAX = 50;
 /** Bound processes (including ones starting), and concurrent world initializations on a small host. */
 const MAX_WORLDS = Math.max(1, Number(process.env.MAX_WORLDS) || 16);
 const MAX_STARTING = 2;
+/** Preserve saved games; once this quota is reached an operator can archive unused worlds explicitly. */
+const MAX_STORED_WORLDS = Math.max(1, Number(process.env.MAX_STORED_WORLDS) || 1000);
 const START_TIMEOUT_MS = 30_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -208,7 +210,7 @@ async function create(req: IncomingMessage, res: ServerResponse) {
   const max = Number(b.max);
   const password = typeof b.password === 'string' ? b.password : '';
   if (!Number.isInteger(max) || max < MAX_PLAYERS.min || max > MAX_PLAYERS.max || password.length > PASSWORD_MAX) return json(res, { error: 'bad' }, 400);
-  if (!canStart()) return json(res, { error: 'busy' }, 503);
+  if (!canStart() || games.count() + reserved >= MAX_STORED_WORLDS) return json(res, { error: 'busy' }, 503);
   // Password derivation yields: reserve both the future process and its startup slot before it does.
   reserved++;
   starting++;

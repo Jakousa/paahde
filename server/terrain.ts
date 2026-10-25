@@ -4,6 +4,7 @@ import { cellKey, cellX, cellZ, deposit, heal, Relaxer, strokeDig } from '../sha
 import type { ServerMsg } from '../shared/protocol.ts';
 import { EDIT_CELL, EDIT_CHUNK, edits, TerrainEdits } from '../shared/terrain.ts';
 import type { openDb } from './db.ts';
+import { encodeChunk } from '../shared/network.ts';
 
 type Db = ReturnType<typeof openDb>;
 
@@ -14,6 +15,14 @@ const RELAX_MAX_CELLS = 20_000;
 /** Chunks only healed are saved a share at a time, all of them over this many saves (12 × 5 s: at worst a minute's
  *  healing lost on a crash). */
 const HEAL_SAVE_EVERY = 12;
+/** A generous visible/physics window; hysteresis keeps small movement from resending boundary chunks. */
+const VIEW_RADIUS = 1792;
+const VIEW_STEP = 256;
+export type TerrainView = { x: number; z: number; known: Set<string> };
+export const newTerrainView = (): TerrainView => ({ x: NaN, z: NaN, known: new Set() });
+type Delta = Extract<ServerMsg, { t: 'terrainEdit' }>;
+const near = (v: TerrainView, cx: number, cz: number) => Math.abs((cx + 0.5) * EDIT_CHUNK * EDIT_CELL - v.x) <= VIEW_RADIUS
+  && Math.abs((cz + 0.5) * EDIT_CHUNK * EDIT_CELL - v.z) <= VIEW_RADIUS;
 
 export class TerrainServer {
   private db: Db;
@@ -74,30 +83,56 @@ export class TerrainServer {
   }
 
   /** Changed vertices since the last call as a terrainEdit message, or null if none. */
-  flush(): ServerMsg | null {
+  flush(): Delta | null {
     if (this.changed.size === 0) return null;
-    const cells: number[] = [];
+    const chunks = new Map<string, Delta['chunks'][number]>();
     for (const k of this.changed) {
       const ix = cellX(k), iz = cellZ(k);
-      cells.push(ix, iz, edits.getMm(ix, iz));
+      const cx = Math.floor(ix / EDIT_CHUNK), cz = Math.floor(iz / EDIT_CHUNK), key = TerrainEdits.key(cx, cz);
+      let c = chunks.get(key);
+      if (!c) chunks.set(key, (c = [cx, cz, []]));
+      c[2].push((iz - cz * EDIT_CHUNK) * EDIT_CHUNK + ix - cx * EDIT_CHUNK, edits.getMm(ix, iz));
     }
     this.changed.clear();
-    return { t: 'terrainEdit', cells };
+    return { t: 'terrainEdit', chunks: [...chunks.values()] };
   }
 
-  /** All edited chunks as terrainChunks messages, nearest to (x, z) first. */
-  joinMessages(x: number, z: number): ServerMsg[] {
+  /** Only changes in the subscribed window. All values stay absolute and ordered before owner reconciliation. */
+  *forView(delta: Delta, view: TerrainView): Generator<Delta> {
+    const chunks = delta.chunks.filter(([cx, cz]) => near(view, cx, cz));
+    for (const [cx, cz] of chunks) view.known.add(TerrainEdits.key(cx, cz));
+    for (let i = 0; i < chunks.length; i += CHUNKS_PER_MSG) yield { t: 'terrainEdit', chunks: chunks.slice(i, i + CHUNKS_PER_MSG) };
+  }
+
+  needsView(view: TerrainView, x: number, z: number): boolean {
+    return view.x !== Math.round(x / VIEW_STEP) * VIEW_STEP || view.z !== Math.round(z / VIEW_STEP) * VIEW_STEP;
+  }
+
+  /** New chunks on entering an area. Encode each batch only when sent, so edits/healing while a slow baseline
+   *  streams cannot overwrite newer values. First call replaces a previous connection's edits. */
+  *viewMessages(view: TerrainView, x: number, z: number): Generator<ServerMsg> {
+    const vx = Math.round(x / VIEW_STEP) * VIEW_STEP, vz = Math.round(z / VIEW_STEP) * VIEW_STEP;
+    if (view.x === vx && view.z === vz) return;
+    const reset = !Number.isFinite(view.x);
+    view.x = vx; view.z = vz;
+    const remove: [number, number][] = [];
+    for (const key of view.known) {
+      const [cx, cz] = key.split(',').map(Number);
+      if (!near(view, cx, cz)) { remove.push([cx, cz]); view.known.delete(key); }
+    }
     const size = EDIT_CHUNK * EDIT_CELL;
     const list = [...edits.entries()]
-      .filter(([, , c]) => c.some((v) => v !== 0))
-      .map(([cx, cz, c]) => ({ cx, cz, c, d: Math.hypot((cx + 0.5) * size - x, (cz + 0.5) * size - z) }))
+      .filter(([cx, cz, c]) => near(view, cx, cz) && !view.known.has(TerrainEdits.key(cx, cz)) && c.some((v) => v !== 0))
+      .map(([cx, cz]) => ({ cx, cz, d: Math.hypot((cx + 0.5) * size - x, (cz + 0.5) * size - z) }))
       .sort((a, b) => a.d - b.d);
-    const msgs: ServerMsg[] = [];
     for (let i = 0; i < list.length || i === 0; i += CHUNKS_PER_MSG) {
-      const chunks = list.slice(i, i + CHUNKS_PER_MSG).map(({ cx, cz, c }) => ({ cx, cz, mm: Array.from(c) }));
-      msgs.push({ t: 'terrainChunks', chunks, reset: i === 0, done: i + CHUNKS_PER_MSG >= list.length });
+      const chunks = list.slice(i, i + CHUNKS_PER_MSG).map(({ cx, cz }) => {
+        view.known.add(TerrainEdits.key(cx, cz));
+        return { cx, cz, ...encodeChunk(edits.chunk(cx, cz) ?? new Int32Array(EDIT_CHUNK * EDIT_CHUNK)) };
+      });
+      if (chunks.length || reset || remove.length) yield { t: 'terrainChunks', chunks,
+        ...(reset ? { reset: i === 0, done: i + CHUNKS_PER_MSG >= list.length } : {}), ...(i === 0 && remove.length ? { remove } : {}) };
     }
-    return msgs;
   }
 
   /** Persist chunks changed since the last save, and 1/HEAL_SAVE_EVERY of those only healed (`all`: all of them). */

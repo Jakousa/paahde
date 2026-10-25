@@ -24,8 +24,9 @@
 import { setWellsOn } from '../shared/wells.ts';
 import { buildingId, cargoId, grows, vehicleId } from '../shared/boxes.ts';
 import { spawnState, step, type PlayerState } from '../shared/sim.ts';
-import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, PlayerSnap, ServerMsg } from '../shared/protocol.ts';
+import type { BenchJob, ClientMsg, DeathCause, Hands, Obituary, ServerMsg } from '../shared/protocol.ts';
 import { PROTOCOL_VERSION } from '../shared/protocol.ts';
+import { decodeChunk, MAX_PENDING_INPUTS, unpackPlayerPose, type PlayerAppearance, type RemotePlayerSnap } from '../shared/network.ts';
 import { heal, pitchFromQ } from '../shared/dig.ts';
 import { bagShape } from '../shared/gear.ts';
 import { boxShape, fitPart, holdsCargo, tryMove, unfitPart } from '../shared/moves.ts';
@@ -104,7 +105,7 @@ export type RemotePlayer = {
   aiming: boolean;
 };
 
-type Snapshot = { time: number; players: Map<number, PlayerSnap> };
+type Snapshot = { time: number; players: Map<number, RemotePlayerSnap> };
 
 export class Net {
   status = 'connecting';
@@ -132,7 +133,10 @@ export class Net {
   private retryTimer?: ReturnType<typeof setTimeout>;
   private seq = 0;
   private pending: { seq: number; input: number; yaw: number; drag: number; pull: Pull }[] = [];
+  /** Stop speculative movement if acknowledgments fall too far behind; resume from a fresh authoritative state. */
+  private resyncAfter = 0;
   private snapshots: Snapshot[] = [];
+  private appearances = new Map<number, PlayerAppearance>();
   private clockOffset?: number; // serverTime - localTime
   /** Recent worst snapshot delay beyond the best one (ms), and the eased interpolation delay. */
   private jitter = 0;
@@ -266,13 +270,20 @@ export class Net {
     this.isReady = false;
     this.pending = [];
     this.snapshots = [];
+    this.appearances.clear();
     this.status = 'stopped';
     this.ws?.close(1000, 'client stopped');
   }
 
   /** Called once per fixed tick with the sampled input and quantized camera yaw and pitch. */
   tick(input: number, yaw: number, pitch: number) {
-    if (!this.connected || this.down) return; // the server ignores input while we lie dead
+    if (!this.connected || !this.isReady || this.down || this.resyncAfter) return;
+    if (this.pending.length >= MAX_PENDING_INPUTS || (this.ws?.bufferedAmount ?? 0) > 64 * 1024) {
+      this.resyncAfter = this.seq;
+      this.pending = [];
+      this.snapNext = true;
+      return;
+    }
     this.seq++;
     this.prev = this.me;
     const drag = stormDrag(this.storms, this.me.x, this.me.y, this.me.z, this.serverTime());
@@ -569,10 +580,15 @@ export class Net {
     scrapChanged();
   }
 
-  private applyTerrainEdit(cells: number[]) {
-    for (let i = 0; i + 2 < cells.length; i += 3) {
-      const ix = cells[i], iz = cells[i + 1], mm = cells[i + 2];
-      edits.setMm(ix, iz, mm);
+  private applyTerrainEdit(chunks: Extract<ServerMsg, { t: 'terrainEdit' }>['chunks']) {
+    for (const [cx, cz, cells] of chunks) {
+      // A live edit can arrive before that chunk's baseline. Clear the previous connection's version first;
+      // the later full chunk supplies the rest, or this was a new chunk whose untouched cells are zero.
+      if (this.staleChunks.delete(TerrainEdits.key(cx, cz))) edits.deleteChunk(cx, cz);
+      for (let i = 0; i + 1 < cells.length; i += 2) {
+        const index = cells[i];
+        edits.setMm(cx * EDIT_CHUNK + index % EDIT_CHUNK, cz * EDIT_CHUNK + Math.floor(index / EDIT_CHUNK), cells[i + 1]);
+      }
     }
   }
 
@@ -582,10 +598,12 @@ export class Net {
       for (const [cx, cz] of edits.entries()) this.staleChunks.add(TerrainEdits.key(cx, cz));
     }
     for (const c of msg.chunks) {
-      if (c.mm.length !== EDIT_CHUNK * EDIT_CHUNK) continue;
+      const mm = decodeChunk(c);
+      if (!mm) continue;
       this.staleChunks.delete(TerrainEdits.key(c.cx, c.cz));
-      edits.setChunk(c.cx, c.cz, Int32Array.from(c.mm));
+      edits.setChunk(c.cx, c.cz, mm);
     }
+    for (const [cx, cz] of msg.remove ?? []) edits.deleteChunk(cx, cz);
     if (msg.done) {
       for (const k of this.staleChunks) {
         const [cx, cz] = k.split(',').map(Number);
@@ -680,7 +698,9 @@ export class Net {
       this.telemetry.closed(e.code);
       this.id = 0;
       this.pending = [];
+      this.resyncAfter = 0;
       this.snapshots = [];
+      this.appearances.clear();
       this.clockOffset = undefined; // a restarted server has a new clock
       this.jitter = 0;
       this.dying = null; // the server's welcome says whether we're alive
@@ -710,7 +730,7 @@ export class Net {
     }
     if (msg.t === 'lives') return this.onLives?.(msg.n, msg.beaten);
     if (msg.t === 'terrainChunks') return this.applyTerrainChunks(msg);
-    if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.cells);
+    if (msg.t === 'terrainEdit') return this.applyTerrainEdit(msg.chunks);
     if (msg.t === 'terrainHeal') return void heal(edits);
     if (msg.t === 'scrap') return this.applyScrap(msg);
     if (msg.t === 'items') {
@@ -872,6 +892,7 @@ export class Net {
       this.epoch = msg.epoch;
       this.me = this.prev = msg.state;
       this.seq = 0;
+      this.resyncAfter = 0;
       this.telemetry.opened();
       this.sentHands = -1;
       this.sentSlot = -1;
@@ -887,13 +908,14 @@ export class Net {
       this.clockOffset = this.clockOffset === undefined ? offset : Math.max(offset, this.clockOffset - OFFSET_DECAY_MS);
       this.jitter = Math.max(this.clockOffset - offset, this.jitter * JITTER_DECAY);
 
-      const players = new Map(msg.players.map((p) => [p.id, p]));
+      for (const a of msg.appearance ?? []) this.appearances.set(a.id, a);
+      const players = new Map(msg.players.map((p) => [p[0], unpackPlayerPose(p, this.appearances.get(p[0]) ?? { id: p[0], color: 0xffffff })]));
+      for (const id of this.appearances.keys()) if (!players.has(id)) this.appearances.delete(id);
       this.snapshots.push({ time: msg.time, players });
       while (this.snapshots.length > 30) this.snapshots.shift();
 
-      const server = players.get(this.id);
       this.telemetry.snap(msg.time, msg.ack);
-      if (server) this.reconcile(server, msg.ack);
+      this.reconcile(msg.state, msg.ack);
     }
   }
 
@@ -907,10 +929,12 @@ export class Net {
     clearTimeout(this.dyingTimer);
     this.down = msg.push ?? [0, 0, 0];
     this.pending = []; // the server drops whatever we sent after dying, so don't replay it
+    this.resyncAfter = 0;
     this.onDied?.(msg.cause);
   }
 
   private reconcile(server: PlayerState, ack: number) {
+    if (this.resyncAfter && ack >= this.resyncAfter) { this.resyncAfter = 0; this.snapNext = true; }
     this.pending = this.pending.filter((p) => p.seq > ack);
     let s: PlayerState = {
       x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
@@ -958,7 +982,9 @@ export class Net {
   }
 
   private send(msg: ClientMsg) {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    if (this.ws.bufferedAmount > 128 * 1024) { this.ws.close(4008, 'resync'); this.id = 0; this.pending = []; return; }
+    this.ws.send(JSON.stringify(msg));
   }
 }
 

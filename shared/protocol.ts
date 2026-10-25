@@ -17,9 +17,10 @@ import type { PowerState } from './power.ts';
 import type { Wire } from './wires.ts';
 import type { BedState } from './garden.ts';
 import type { BossKind, BossSnap } from './bosses.ts';
+import type { ChunkData, PlayerAppearance, PlayerPose } from './network.ts';
 
 /** Wire/schema compatibility, independent of the build SHA. Bump when old clients cannot safely play. */
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export type ClientMsg =
   // First message after connecting. browserId is a random UUID kept in localStorage.
@@ -219,14 +220,16 @@ export type ServerMsg =
   // id is a public per-connection id; the browserId is never sent to other players.
   // epoch = wall-clock ms (Unix) at server time 0, so the time of day survives server restarts.
   | { t: 'welcome'; id: number; state: PlayerState; color: number; epoch: number }
-  // ack = last input seq the server applied for *this* client; time = server clock in ms.
+  // ack = last input seq consumed or discarded for this client; time = server clock in ms.
+  // state is the complete owner simulation state. Remote poses omit private simulation fields; appearance is sent on change.
   // Sent right after the tick's terrainEdit, so terrain changes up to `ack` have already arrived.
-  | { t: 'snap'; time: number; ack: number; players: PlayerSnap[] }
-  // Terrain edit layer (shared/terrain.ts): absolute millimetre offsets. Sent as whole chunks on join
-  // (in batches before 'welcome': the first batch has reset, the last has done; chunks the client holds
-  // that the server didn't send are dropped at done) and as changed vertices [ix, iz, mm, ...] after digs.
-  | { t: 'terrainChunks'; chunks: { cx: number; cz: number; mm: number[] }[]; reset?: boolean; done?: boolean }
-  | { t: 'terrainEdit'; cells: number[] }
+  | { t: 'snap'; time: number; ack: number; state: PlayerState; players: PlayerPose[]; appearance?: PlayerAppearance[] }
+  // Terrain: nearby whole chunks on join and entry, paced before welcome/snapshots. data is 1024 offsets or
+  // [runLength, mm, ...] when rle=1. reset/done replace a prior connection's window; remove evicts far chunks.
+  // Live changes group [localVertexIndex, absoluteMm, ...] by chunk. Live edits/heals may interleave with
+  // a baseline; each full chunk reads current values at send time, so an older value cannot overwrite a newer edit.
+  | { t: 'terrainChunks'; chunks: ({ cx: number; cz: number } & ChunkData)[]; remove?: [number, number][]; reset?: boolean; done?: boolean }
+  | { t: 'terrainEdit'; chunks: [cx: number, cz: number, cells: number[]][] }
   // The wind's healing pass (shared/dig.ts heal) just ran on the server: run it on your copy too. Its changes aren't
   // sent (they touch every edited vertex every pass); it's deterministic, and later edits come as absolute values.
   | { t: 'terrainHeal' }

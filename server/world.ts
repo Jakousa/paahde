@@ -7,6 +7,9 @@ import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DT, INPUT_MASK, spawnPoint, spawnState, step, TICK_RATE, YAW_STEPS, yawFromQ, type PlayerState } from '../shared/sim.ts';
 import { clientMessage } from './messages.ts';
+import { InputQueue } from './inputQueue.ts';
+import { sendJson, sendStream, SOFT_BACKLOG_BYTES } from './outgoing.ts';
+import { packPlayerPose, PLAYER_VIEW_RADIUS, type PlayerAppearance } from '../shared/network.ts';
 import { podOf } from '../shared/pods.ts';
 import { PITCH_STEPS, quantizePitch } from '../shared/dig.ts';
 import { bottleSips, equipped, GEAR_KINDS, isBuilding, shieldGraceMs, tierOf, gunCooldown, jamMs, quality, repaired, scrapParts, isVehicle } from '../shared/gear.ts';
@@ -28,7 +31,7 @@ import { GUNS, PISTOL } from '../shared/rifle.ts';
 import { inCone, JAM_BLEED, JAM_MS, JAM_SEND_MS, JAMMER } from '../shared/jammer.ts';
 import { THROW_MS, THROWABLE } from '../shared/throw.ts';
 import { EYE_HEIGHT } from '../shared/dig.ts';
-import type { ClientMsg, DeathCause, Hands, NetSummary, PlayerSnap, ServerMsg, StallEvent } from '../shared/protocol.ts';
+import type { ClientMsg, DeathCause, Hands, NetSummary, ServerMsg, StallEvent } from '../shared/protocol.ts';
 import { CHAT_MAX, OBITUARY_KEEP, PROTOCOL_VERSION, type Obituary } from '../shared/protocol.ts';
 import { checkName, isColor, PLAYER_NAME } from '../shared/names.ts';
 import { isLook } from '../shared/look.ts';
@@ -63,7 +66,7 @@ import { GuardianServer, SEND_R as BOT_SEND_R, TICK_HZ as BOT_HZ, type Kill } fr
 import { CrashServer } from './crash.ts';
 import { LAB } from '../shared/lab.ts';
 import { ThrowServer, type TossEvent } from './throws.ts';
-import { TerrainServer } from './terrain.ts';
+import { newTerrainView, TerrainServer, type TerrainView } from './terrain.ts';
 import { drink, fill, newHeat, revive, setBottle, tickHeat, waterMsg, type Heat } from './water.ts';
 import { HEALTH_MAX, KILL } from '../shared/health.ts';
 import { TIERS } from '../shared/salvage.ts';
@@ -81,13 +84,12 @@ import { pickupLimit, type PickupLimit } from './pickupLimit.ts';
 
 /** Nobody on for this long: the world saves and exits until someone comes back. */
 const EMPTY_EXIT_MS = 10 * 60_000;
+const NEVER_JOINED_EXIT_MS = 60_000;
 const SNAPSHOT_RATE = 20; // Hz; clients interpolate remote players between snapshots
 const RELAX_RATE = 30; // Hz; sand avalanche passes (shared/dig.ts Relaxer)
 const SAVE_INTERVAL_MS = 5000;
-const IDLE_MS = 1000; // no input for this long (e.g. hidden tab) → server keeps simulating with no keys
-/** Inputs a client may bank: a network stall delivers its delayed inputs in one burst, and any past this
- *  are acked unsimulated (the client snaps back). One second, like IDLE_MS; the long-run rate stays TICK_RATE. */
-const MAX_INPUT_BURST = TICK_RATE;
+/** Bound catch-up after a server stall instead of letting one late tick spiral into more late ticks. */
+const MAX_SIM_STEPS = 6;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const db = openDb(process.env.DB_PATH ?? `data/worlds/${WORLD_ID}.db`);
@@ -111,7 +113,7 @@ const garden = new GardenServer(db);
 const loot = new LootServer(db);
 const corpses = new CorpseServer(db, items, (msg) => {
   const json = JSON.stringify(msg);
-  for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
+  for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) sendJson(p.ws, json);
 });
 
 const storms = new StormServer(performance.now());
@@ -131,10 +133,12 @@ type Player = {
   state: PlayerState;
   yaw: number; // last quantized camera yaw, reused while idle
   pitch: number; // last quantized camera pitch (shared/dig.ts)
-  ack: number; // last applied input seq
-  tokens: number; // input rate limiter: refills at TICK_RATE/s, so inputs can't speed up time
-  lastInputAt: number;
-  idleAccum: number;
+  inputs: InputQueue;
+  terrainView: TerrainView;
+  syncing: boolean; // Initial terrain must finish before welcome/readiness.
+  terrainStreaming: boolean;
+  readyWanted: boolean;
+  appearances: Map<number, string>; // Last appearance actually sent to this connection, by visible player id.
   pickups: PickupLimit; // server/pickupLimit.ts
   input: number; // last input bitmask (0 while idle), for sprint drain
   heat: Heat; // server/water.ts
@@ -165,6 +169,7 @@ type Player = {
 
 const players = new Map<WebSocket, Player>();
 let nextId = 1;
+let everJoined = false;
 
 const BUILD = (() => {
   try {
@@ -205,7 +210,10 @@ wss.on('connection', (ws) => {
     const p = players.get(ws);
     if (msg.t === 'hello' && !p) {
       if (msg.protocol !== PROTOCOL_VERSION) return ws.close(4406, 'incompatible protocol');
-      return join(ws, msg.browserId, msg.spawn, msg.name, msg.color, msg.look);
+      return void join(ws, msg.browserId, msg.spawn, msg.name, msg.color, msg.look).catch((error) => {
+        console.error('join failed', error);
+        ws.close(1011, 'join failed');
+      });
     }
     // Loading is a server state, not an invulnerability mode for gameplay actions.
     if (p && !p.ready && !['ready', 'hands', 'telemetry', 'chat'].includes(msg.t)) return;
@@ -299,7 +307,7 @@ wss.on('connection', (ws) => {
   setTimeout(() => players.has(ws) || ws.close(1008, 'no hello'), 5000);
 });
 
-function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown, wantedColor: unknown, wantedLook: unknown) {
+async function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown, wantedColor: unknown, wantedLook: unknown) {
   if (typeof browserId !== 'string' || !UUID.test(browserId)) return ws.close(1008, 'bad browserId');
   const row = db.getPlayer(browserId);
   // Your name and colour in a world are chosen once, on your first join (the lobby shows them locked after that).
@@ -340,11 +348,12 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   }
   grantKits(items, db, browserId);
   const p: Player = {
-    id: nextId++, browserId, color, look: isLook(wantedLook) ? wantedLook : 0, state, yaw: 0, pitch: quantizePitch(0), ack: 0,
-    tokens: MAX_INPUT_BURST, lastInputAt: Date.now(), idleAccum: 0, pickups: pickupLimit(), lastTend: { at: 0 }, input: 0,
+    id: nextId++, browserId, color, look: isLook(wantedLook) ? wantedLook : 0, state, yaw: 0, pitch: quantizePitch(0), inputs: new InputQueue(), terrainView: newTerrainView(), syncing: true, terrainStreaming: false, readyWanted: false, appearances: new Map(),
+    pickups: pickupLimit(), lastTend: { at: 0 }, input: 0,
     heat: newHeat(row?.heat, row?.sips, bottleSips(items.slots(browserId, 'bag'))), choke: 0, gassed: 0, health: HEALTH_MAX, ws, alive: true, hands: 0, slot: -1, aim: false, down: null, shieldUntil: 0, firedAt: 0, chatAt: 0, traceAt: -Infinity, backlogAt: -Infinity, name: named.name, ready: false, savedAt: Date.now(), jam: null,
   };
   players.set(ws, p);
+  everJoined = true;
   const loading = setTimeout(() => { if (!p.ready) ws.close(1008, 'loading timeout'); }, 180_000);
   loading.unref();
   ws.once('close', () => clearTimeout(loading));
@@ -359,7 +368,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   }
   db.setName(browserId, p.name);
   // Terrain first, so the client never sees its spawn without the holes.
-  for (const m of terrain.joinMessages(state.x, state.z)) send(ws, m);
+  if (!await sendStream(ws, terrain.viewMessages(p.terrainView, state.x, state.z))) return;
   send(ws, scrap.joinMessage());
   send(ws, crash.joinMessage());
   send(ws, crash.progressMessage());
@@ -384,6 +393,8 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   send(ws, corpses.joinMessage());
   for (const box of [...OWN_BOXES, ...corpses.boxes(), ...placedThings.boxes(), ...vehicleSrv.boxes()]) send(ws, boxMsg(browserId, box));
   send(ws, waterMsg(p.heat));
+  p.syncing = false;
+  if (p.readyWanted) onReady(p);
 
 }
 
@@ -502,6 +513,8 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   if (p.down || !p.ready || lives <= 0) return;
   p.health = 0;
   p.down = { until: Date.now() + DOWN_MS, push };
+  p.inputs.clear();
+  p.input = 0;
   crash.leaveAll(p.id);
   p.choke = 0;
   p.gassed = 0;
@@ -583,6 +596,7 @@ function onSpawnToggle(p: Player, id: unknown) {
 /** Back at their bedroll or their pod, cooled down, with a full canteen. */
 function respawn(p: Player) {
   p.down = null;
+  p.inputs.clear();
   const home = homeOf(p);
   p.state = spawnState(home.x, home.z, home.y);
   p.health = HEALTH_MAX;
@@ -631,7 +645,8 @@ function tickBots(elapsed: number, now: number, tod: number) {
   for (const p of players.values()) {
     const k = b.kills.find((o) => o.id === p.id);
     if (k) hurt(p, k.cause, KILL, k.push);
-    for (const m of bosses.msgs(now, p.id, p.state.x, p.state.z)) send(p.ws, m);
+    // msgs tracks visibility transitions: do not advance that state when this snapshot would be skipped.
+    if (p.ws.bufferedAmount <= SOFT_BACKLOG_BYTES) for (const m of bosses.msgs(now, p.id, p.state.x, p.state.z)) send(p.ws, m);
   }
   bossOut(b);
   if (now - whereSentAt > 1000) {
@@ -645,7 +660,7 @@ let whereSentAt = 0;
 /** A message to everyone. */
 function sendAll(msg: ServerMsg) {
   const json = JSON.stringify(msg);
-  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) sendJson(o.ws, json);
 }
 
 /** Settings key of a called boss: the hits it has taken + 1 while it's about, 0 once it's dead (none called). */
@@ -694,7 +709,7 @@ function bossOut(b: BossOut) {
   for (const c of b.craters) terrain.crater(c.x, c.z, c.r, c.mm, false);
   for (const e of b.events) {
     const json = JSON.stringify(e.msg);
-    for (const p of players.values()) if (Math.hypot(e.x - p.state.x, e.z - p.state.z) < BOSS_SEND_R && p.ws.readyState === p.ws.OPEN) p.ws.send(json);
+    for (const p of players.values()) if (Math.hypot(e.x - p.state.x, e.z - p.state.z) < BOSS_SEND_R && p.ws.readyState === p.ws.OPEN) sendJson(p.ws, json);
   }
 }
 
@@ -797,7 +812,7 @@ function onThrow(p: Player, m: Extract<ClientMsg, { t: 'throw' }>) {
 function tossEvents(events: TossEvent[]) {
   for (const e of events) {
     const json = JSON.stringify(e.msg);
-    for (const o of players.values()) if (Math.hypot(o.state.x - e.x, o.state.z - e.z) < BOT_SEND_R && o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+    for (const o of players.values()) if (Math.hypot(o.state.x - e.x, o.state.z - e.z) < BOT_SEND_R && o.ws.readyState === o.ws.OPEN) sendJson(o.ws, json);
   }
 }
 
@@ -825,11 +840,12 @@ function onChat(p: Player, text: unknown) {
   if (!clean) return;
   p.chatAt = now;
   const json = JSON.stringify({ t: 'chat', id: p.id, color: p.color, name: p.name, text: clean, at: Date.now() } satisfies ServerMsg);
-  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) sendJson(o.ws, json);
 }
 
 /** The client has loaded: from now on others see them and they can die. */
 function onReady(p: Player) {
+  if (p.syncing) { p.readyWanted = true; return; }
   if (p.ready) return;
   corpses.expire(playingOwners());
   p.ready = true;
@@ -840,7 +856,7 @@ function onReady(p: Player) {
 /** p's name to everyone else, for the tag over their head. */
 function sendName(p: Player) {
   const json = JSON.stringify({ t: 'names', names: [[p.id, p.name]] } satisfies ServerMsg);
-  for (const o of players.values()) if (o !== p && o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+  for (const o of players.values()) if (o !== p && o.ws.readyState === o.ws.OPEN) sendJson(o.ws, json);
 }
 
 /** Lay a rolled drop (shared/lootRoll.ts) on the sand within `spread` m of (x, z). */
@@ -935,14 +951,14 @@ function boxMsg(browserId: string, box: string, got?: string): ServerMsg {
 /** A shared box changed (one nobody in particular changed): to everyone. */
 function sendShared(box: string) {
   const json = JSON.stringify(boxMsg('', box));
-  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+  for (const o of players.values()) if (o.ws.readyState === o.ws.OPEN) sendJson(o.ws, json);
 }
 
 /** A box changed: shared ones go to everyone, a player's own to each of their connections. */
 function sendBox(p: Player, box: string, got?: string) {
   const json = JSON.stringify(boxMsg(p.browserId, box, got));
   for (const o of players.values()) {
-    if ((isShared(box) || o.browserId === p.browserId) && o.ws.readyState === o.ws.OPEN) o.ws.send(json);
+    if ((isShared(box) || o.browserId === p.browserId) && o.ws.readyState === o.ws.OPEN) sendJson(o.ws, json);
   }
 }
 
@@ -1167,28 +1183,28 @@ function onCraft(p: Player, recipe: unknown) {
 }
 
 function onInput(p: Player, seq: unknown, input: unknown, yaw: unknown, pitch: unknown) {
-  if (!Number.isSafeInteger(seq) || !Number.isSafeInteger(input) || (seq as number) <= p.ack) return;
+  if (!Number.isSafeInteger(seq) || !Number.isSafeInteger(input)) return;
   if (!Number.isInteger(yaw) || (yaw as number) < 0 || (yaw as number) >= YAW_STEPS) return;
   if (!Number.isInteger(pitch) || (pitch as number) < 0 || (pitch as number) >= PITCH_STEPS) return;
-  p.ack = seq as number;
-  p.lastInputAt = Date.now();
-  if (p.down) return; // lying dead: acknowledged, not simulated
-  // Over the rate limit: acknowledge but don't simulate, so the client gets corrected.
-  if (p.tokens < 1) return;
-  p.tokens -= 1;
-  p.yaw = yaw as number;
-  p.pitch = pitch as number;
-  p.input = (input as number) & INPUT_MASK;
-  const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, performance.now());
-  const pull = vortexPull(storms.vorticesNear(p.state.x, p.state.z, 500, nearScratch), p.state.x, p.state.y, p.state.z, performance.now(), { x: 0, z: 0 });
+  p.inputs.receive({ seq: seq as number, input: (input as number) & INPUT_MASK, yaw: yaw as number, pitch: pitch as number }, performance.now());
+  if (p.down) p.inputs.clear();
+}
+
+function simulate(p: Player, now: number) {
+  const command = p.inputs.take(now);
+  p.input = command?.input ?? 0;
+  if (command) { p.yaw = command.yaw; p.pitch = command.pitch; }
+  const drag = stormDrag(storms.storms, p.state.x, p.state.y, p.state.z, now);
+  const pull = vortexPull(storms.vorticesNear(p.state.x, p.state.z, 500, nearScratch), p.state.x, p.state.y, p.state.z, now, { x: 0, z: 0 });
   const before = p.state;
   p.state = step(p.state, p.input, p.yaw, drag, guardians.posts, pull);
   offBike(p, before);
   crash.push(p.state, p.input, yawFromQ(p.yaw)); // push expects radians, not the wire's quantized angle
 }
 
-// Fixed-rate server loop: refill input tokens, simulate idle players, broadcast snapshots.
+// Fixed server time owns physics. Packets only queue intent; silence, bursts and hidden tabs cannot change gravity or speed.
 let last = performance.now();
+let simAccum = 0;
 let snapAccum = 0;
 let relaxAccum = 0;
 setInterval(() => {
@@ -1199,22 +1215,16 @@ setInterval(() => {
   if (elapsed > LATE_TICK_S) trace('tick', { ms: Math.round(elapsed * 1000), players: players.size });
   const tod = timeOfDayAt(now + epoch);
   for (const p of players.values()) {
-    p.tokens = Math.min(MAX_INPUT_BURST, p.tokens + elapsed * TICK_RATE);
     if (p.down) {
       if (Date.now() >= p.down.until) respawn(p);
       continue;
     }
     if (p.ready && !CALM) heat(p, elapsed, tod, now);
-    if (Date.now() - p.lastInputAt > IDLE_MS) {
-      p.input = 0;
-      for (p.idleAccum += elapsed; p.idleAccum >= DT; p.idleAccum -= DT) {
-        const before = p.state;
-        p.state = step(p.state, 0, p.yaw, 0, guardians.posts);
-        offBike(p, before);
-      }
-    } else {
-      p.idleAccum = 0;
-    }
+  }
+  simAccum = Math.min(MAX_SIM_STEPS * DT, simAccum + Math.max(0, elapsed));
+  while (simAccum + 1e-9 >= DT) {
+    simAccum -= DT;
+    for (const p of players.values()) if (p.ready && !p.down) simulate(p, now - simAccum * 1000);
   }
   if (!CALM) tickBots(elapsed, now, tod); // (no walkers, drones or bosses in the lab or the art bench)
   tickThrows(elapsed, now);
@@ -1248,7 +1258,7 @@ setInterval(() => {
   if (now - powerSent < POWER_SEND_MS) return;
   powerSent = now;
   const json = JSON.stringify(power.msg());
-  for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
+  for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) sendJson(p.ws, json);
 }, 1000);
 
 function onSetEpoch(ws: WebSocket, wanted: unknown) {
@@ -1278,10 +1288,11 @@ function broadcast(time: number) {
       if (jetsBreaking[i].due <= time) crashed.push(jetCame(jetsBreaking.splice(i, 1)[0]));
     }
   }
-  for (const msg of [terrain.flush(), scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushVisited(), crash.flushRolls(), placedThings.flush(), wiring.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
+  const terrainDelta = terrain.flush();
+  for (const msg of [scrap.flush(), crash.flush(), crash.flushSpent(), crash.flushVisited(), crash.flushRolls(), placedThings.flush(), wiring.flush(), garden.flush(), weather, flights, harvesters.flush(), ...crashed]) {
     if (!msg) continue;
     const json = JSON.stringify(msg);
-    for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) p.ws.send(json);
+    for (const p of players.values()) if (p.ws.readyState === p.ws.OPEN) sendJson(p.ws, json);
   }
   const vehiclesMsg = vehicleSrv.flush(); // each player's own: which are theirs
   if (vehiclesMsg) for (const p of players.values()) send(p.ws, vehiclesMsg(p.browserId));
@@ -1291,18 +1302,30 @@ function broadcast(time: number) {
     const item = p.slot >= 0 ? items.slots(p.browserId, 'bag')[p.slot]?.kind : undefined;
     const gear = wornGear(items.slots(p.browserId, 'equip')) | carriedGear(items.slots(p.browserId, 'bag'), p.slot);
     const tiers = gearTiers(items.slots(p.browserId, 'equip'), items.slots(p.browserId, 'bag'), p.slot);
-    const snap: PlayerSnap = {
-      id: p.id, color: p.color, ...(p.look ? { look: p.look } : {}), pitch: p.pitch, ...round(p.state), ...(p.hands ? { hands: p.hands } : {}), ...(p.aim ? { aim: 1 as const } : {}),
+    const appearance: PlayerAppearance = {
+      id: p.id, color: p.color, ...(p.look ? { look: p.look } : {}), ...(p.hands ? { hands: p.hands } : {}), ...(p.aim ? { aim: 1 as const } : {}),
       ...(item ? { item } : {}), ...(gear ? { gear } : {}), ...(tiers ? { tiers } : {}), ...(p.down ? { down: p.down.push } : {}),
     };
-    return { snap, ready: p.ready };
+    return { player: p, pose: packPlayerPose(p.id, p.state, p.pitch), appearance, key: JSON.stringify(appearance) };
   });
-  // Players still loading are seen only by themselves.
-  const seen = all.filter((o) => o.ready).map((o) => o.snap);
   for (const p of players.values()) {
-    const list = p.ready ? seen : [...seen, all.find((o) => o.snap.id === p.id)!.snap];
-    send(p.ws, { t: 'snap', time, ack: p.ack, players: list });
-    // Sends piling up past the kernel's buffer: TCP can't get them out to this player (a stalled or slow link).
+    // Full chunks when entering an area, followed by absolute changes, always precede owner reconciliation.
+    if (!p.syncing && !p.terrainStreaming && terrain.needsView(p.terrainView, p.state.x, p.state.z)) {
+      p.terrainStreaming = true;
+      void sendStream(p.ws, terrain.viewMessages(p.terrainView, p.state.x, p.state.z))
+        .catch(() => p.ws.close(1011, 'terrain sync failed')).finally(() => { p.terrainStreaming = false; });
+    }
+    if (terrainDelta) for (const delta of terrain.forView(terrainDelta, p.terrainView)) send(p.ws, delta);
+    // Keep reliable changes; omit obsolete poses when this connection cannot keep up.
+    if (!p.syncing && !p.terrainStreaming && p.ws.bufferedAmount <= SOFT_BACKLOG_BYTES) {
+      const seen = all.filter((o) => o.player === p || (o.player.ready
+        && Math.hypot(o.player.state.x - p.state.x, o.player.state.z - p.state.z) <= PLAYER_VIEW_RADIUS));
+      const appearance = seen.filter((o) => p.appearances.get(o.player.id) !== o.key).map((o) => o.appearance);
+      if (send(p.ws, { t: 'snap', time, ack: p.inputs.ack, state: round(p.state), players: seen.map((o) => o.pose), ...(appearance.length ? { appearance } : {}) })) {
+        // Only cache delivered patches. Re-entering relevance sends a complete appearance again.
+        p.appearances = new Map(seen.map((o) => [o.player.id, o.key]));
+      }
+    }
     if (p.ws.bufferedAmount > BACKLOG_BYTES && time - p.backlogAt > TRACE_GAP_MS) {
       p.backlogAt = time;
       trace('backlog', { p: p.id, name: p.name, bytes: p.ws.bufferedAmount });
@@ -1343,8 +1366,8 @@ function round(s: PlayerState): PlayerState {
   return { ...s, x: r(s.x), y: r(s.y), z: r(s.z), vx: r(s.vx), vy: r(s.vy), vz: r(s.vz), facing: r(s.facing), heading: r(s.heading), nose: r(s.nose), noseSpin: r(s.noseSpin) };
 }
 
-function send(ws: WebSocket, msg: ServerMsg) {
-  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+function send(ws: WebSocket, msg: ServerMsg): boolean {
+  return sendJson(ws, JSON.stringify(msg), msg.t === 'snap' || msg.t === 'bots' || msg.t === 'bosses');
 }
 
 function save(p: Player) {
@@ -1408,7 +1431,7 @@ process.on('SIGINT', shutdown);
 let emptySince = Date.now();
 setInterval(() => {
   if (players.size > 0) emptySince = Date.now();
-  else if (Date.now() - emptySince > EMPTY_EXIT_MS) shutdown();
+  else if (Date.now() - emptySince > (everJoined ? EMPTY_EXIT_MS : NEVER_JOINED_EXIT_MS)) shutdown();
 }, 30_000);
 
 // A free local port, told to server/index.ts over IPC.
