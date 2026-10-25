@@ -172,6 +172,7 @@ export class Survival {
   private actionAt = 0; // performance.now() when the current sip / refill started
   private needRelease = false; // one sip per press: let go before the next
   private deadUntil = 0;
+  private wasRiding = false;
   private toastUntil = 0;
   private promptHtml = '';
   private lastNum = -1;
@@ -309,7 +310,9 @@ export class Survival {
     const w = this.net.water;
     const dead = now < this.deadUntil;
     // Getting on the bike puts away what's in hand.
-    if (this.net.me.mounting > 0 && this.selected >= 0) this.select(-1);
+    const riding = this.net.me.riding;
+    if (riding && !this.wasRiding && this.selected >= 0) this.select(-1);
+    this.wasRiding = riding;
     this.hold();
     this.drawHotbar();
     // The clock and thermometer come with the wrist computer, and die in a storm.

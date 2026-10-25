@@ -386,8 +386,7 @@ function onMount(p: Player, id: unknown) {
   p.state = r; // the client takes it with the next snapshot (src/net.ts reconcile)
 }
 
-/** After a step (`before`: the state it started from): off the bike (the bike key, or stopped getting on): it's parked
- *  where they got off, or stays where it stood. */
+/** After a step (`before`: the state it started from): off the bike (the bike key): it's parked where they got off. */
 function offBike(p: Player, before: PlayerState) {
   if (before.bike && !p.state.bike) vehicleSrv.release(p.id, before.riding ? p.state : undefined);
 }
@@ -447,7 +446,7 @@ function die(p: Player, cause: DeathCause, push: [number, number, number] = [0, 
   p.choke = 0;
   p.gassed = 0;
   vehicleSrv.release(p.id, p.state.riding ? p.state : undefined); // the bike falls where they did
-  p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, mounting: 0, bike: 0, sliding: false, crouching: false };
+  p.state = { ...p.state, vx: 0, vy: 0, vz: 0, riding: false, bike: 0, sliding: false, crouching: false };
   revive(p.heat, Date.now());
   send(p.ws, { t: 'died', cause, push, ...(bolt !== undefined ? { bolt } : {}) });
   const obit: Obituary = { t: 'obituary', id: p.id, color: p.color, name: p.name, cause, at: Date.now() };

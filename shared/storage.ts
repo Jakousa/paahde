@@ -105,7 +105,7 @@ export function openBoxes(s: PlayerState, slack = 0): BoxId[] {
     .sort((a, b) => a.d - b.d);
   for (const b of near2) out.push(`bld${b.p.id}`);
   // Vehicles in reach that nobody rides: their parts, and a working one's cargo.
-  if (!s.riding && s.mounting <= 0) {
+  if (!s.riding) {
     for (const v of vehiclesNear(s, slack)) {
       out.push(`veh${v.id}`);
       if (v.up) out.push(`cargo${v.id}`);

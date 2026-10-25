@@ -1,8 +1,8 @@
 // Server side of vehicles (shared/vehicles.ts): the `vehicles` table, the broken motorcycles lying in the world (one in
 // front of the base door in a new world, HOME_BIKE; FINDS.motorcycle at the crash sites, a new one a while after one
 // is stood up), standing one up once its part slots are filled (its item is in box veh<id>: parts are fitted there
-// like a building's, server/items.ts fit / unfit), and getting on and off: mount() moves the player onto it and starts
-// the mount (shared/sim.ts), and whoever rides it carries it with them until they get off (or die, or leave), when it
+// like a building's, server/items.ts fit / unfit), and getting on and off: mount() puts the player on it at once
+// (shared/sim.ts riding), and whoever rides it carries it with them until they get off (or die, or leave), when it
 // is parked where they are. Keeps shared/vehicles.ts's list in step and broadcasts it when it changes.
 import { cargoBox, vehicleBox, vehicleId } from '../shared/boxes.ts';
 import { bikeLevel, GEAR, isVehicle, partsOf, repaired, scrapParts } from '../shared/gear.ts';
@@ -10,7 +10,7 @@ import { partKind, type ItemData } from '../shared/items.ts';
 import { coreCrashSites } from '../shared/crashsites.ts';
 import { brokenParts, findSpot, foundData, homeBikeSpot, nearPiles } from '../shared/lootRoll.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
-import { MOUNT_TICKS, type PlayerState } from '../shared/sim.ts';
+import type { PlayerState } from '../shared/sim.ts';
 import { FINDS, HOME_BIKE } from '../shared/tables.ts';
 import { heightAt } from '../shared/terrain.ts';
 import { TEXT } from '../shared/text.ts';
@@ -177,13 +177,13 @@ export class VehicleServer {
   }
 
   /**
-   * Player `rider` (public id) at `s` starts getting on vehicle `id`: it must be working, in reach and nobody's on it.
-   * Returns their state moved onto it, mounting (shared/sim.ts), or why not.
+   * Player `rider` (public id) at `s` gets on vehicle `id`, at once: it must be working, in reach and nobody's on it.
+   * Returns their state moved onto it, riding (shared/sim.ts), or why not.
    */
   mount(rider: number, s: PlayerState, id: unknown): PlayerState | string {
     const v = vehicles.find((q) => q.id === id);
     if (!v) return TEXT.notice.alreadyGone;
-    if (s.riding || s.mounting > 0 || this.ridden(rider)) return TEXT.notice.getOffFirst;
+    if (s.riding || this.ridden(rider)) return TEXT.notice.getOffFirst;
     if (!parked(v)) return TEXT.notice.someoneOnIt;
     if (!inReach(s, v, REACH_SLACK)) return TEXT.notice.tooFar;
     const bike = bikeLevel(this.items.slots('', vehicleBox(v.id))[0]);
@@ -191,18 +191,18 @@ export class VehicleServer {
     this.update(v.id, { rider });
     return {
       ...s, x: v.x, y: v.y, z: v.z, vx: 0, vy: 0, vz: 0, sliding: false, crouching: false,
-      riding: false, mounting: MOUNT_TICKS, heading: v.heading, bike, nose: 0, noseSpin: 0,
+      riding: true, heading: v.heading, bike, nose: 0, noseSpin: 0,
     };
   }
 
-  /** The vehicle player `rider` is getting on or riding, if any. */
+  /** The vehicle player `rider` is riding, if any. */
   ridden(rider: number): Vehicle | undefined {
     return vehicles.find((v) => v.rider === rider);
   }
 
   /**
-   * Player `rider` is off their vehicle: after riding it (`s`: where they got off), it's parked there; stopped while
-   * getting on, it stays where it stood.
+   * Player `rider` is off their vehicle: after riding it (`s`: where they got off), it's parked there; without `s`, it
+   * stays where it stood.
    */
   release(rider: number, s?: PlayerState) {
     const v = this.ridden(rider);

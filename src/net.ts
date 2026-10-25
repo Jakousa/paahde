@@ -495,7 +495,7 @@ export class Net {
     if (this.connected) this.send({ t: 'repairVehicle', id });
   }
 
-  /** Get on working vehicle `id`: the server moves us onto it and starts the mount (shared/sim.ts). */
+  /** Get on working vehicle `id`: the server puts us on it (shared/sim.ts riding). */
   mount(id: number) {
     if (this.connected) this.send({ t: 'mount', id });
   }
@@ -871,7 +871,7 @@ export class Net {
       x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, facing: server.facing,
       grounded: server.grounded, airJumps: server.airJumps, jumpHeld: server.jumpHeld, landTicks: server.landTicks,
       sliding: server.sliding, crouching: server.crouching, slideCool: server.slideCool, slideSpent: server.slideSpent,
-      riding: server.riding, bikeHeld: server.bikeHeld, mounting: server.mounting ?? 0, heading: server.heading, bike: server.bike,
+      riding: server.riding, bikeHeld: server.bikeHeld, heading: server.heading, bike: server.bike,
       nose: server.nose ?? 0, noseSpin: server.noseSpin ?? 0,
     };
     for (const p of this.pending) s = step(s, p.input, p.yaw, p.drag, this.legPosts);

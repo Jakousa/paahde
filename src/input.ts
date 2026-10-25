@@ -163,7 +163,7 @@ export function readInput(): number {
   if (actionHeld('sprint') && !aimDown()) input |= SLIDE;
   // Ctrl has C as an alias by default: browsers swallow Ctrl+W (close tab) so W-then-Ctrl can't always be used.
   if (actionHeld('crouch')) input |= CROUCH;
-  // The bike key (Z or 9 by default): get off the motorcycle, or stop getting on it (shared/sim.ts); a press of F while
+  // The bike key (Z or 9 by default): get off the motorcycle (shared/sim.ts); a press of F while
   // riding too (`getOff`, one tick, from src/main.ts: F also gets on).
   if (actionHeld('bike') || getOff) input |= BIKE;
   return input;
