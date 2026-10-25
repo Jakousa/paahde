@@ -110,6 +110,8 @@ export class Net {
   color = 0xffffff;
   /** The ids of the vehicles that are ours (shared/vehicles.ts; stood up by us, server/vehicles.ts). */
   myVehicles: ReadonlySet<number> = new Set();
+  /** Where your bedroll lies (you wake up there after dying), or null: the locator's home then is the ship. */
+  bedroll: { x: number; y: number; z: number } | null = null;
   /** Predicted local state (authoritative for physics on this client). */
   me: PlayerState = spawnState();
   /** The predicted state one tick before `me`: view() draws between the two. */
@@ -736,6 +738,10 @@ export class Net {
       this.power = { gen: msg.gen, store: msg.store, lit: msg.lit, wells: msg.wells };
       setWellsOn(msg.wells);
       return this.onPower?.();
+    }
+    if (msg.t === 'bedroll') {
+      this.bedroll = msg.at;
+      return;
     }
     if (msg.t === 'placed') {
       setPlaced(msg.list);

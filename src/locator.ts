@@ -1,13 +1,15 @@
 // Locator bar, after Minecraft's (1.21.6): a thin strip at the bottom of the screen with a coloured dot
 // per far-away player at their bearing relative to where you look. The bar spans the horizontal FOV;
 // players behind you pin to its ends, dimmed. Dots shrink with distance, and an arrow marks players
-// well above or below your view. Close players (name tag in view) get no dot. The home base gets a
-// house-shaped marker the same way, so you can always find your way back (except in a sandstorm). Salvage
+// well above or below your view. Close players (name tag in view) get no dot. Home gets a house-shaped marker the
+// same way, so you can always find your way back (except in a sandstorm): your bedroll if you've laid one out (where you
+// wake up after dying, shared/placed.ts), else the crashed ship (shared/ship.ts). Salvage
 // wrecks lying within a few hundred metres (src/world/wrecks.ts) get a diamond, and the packs the dead left
 // (src/world/corpses.ts) a little flag in the rag's colour, however far, and your own bikes (src/world/vehicles.ts) two
 // wheels under a bar in your colour, however far.
 import type * as THREE from 'three/webgpu';
 import { BASE } from '../shared/base.ts';
+import { SHIP_AT, shipPoint } from '../shared/ship.ts';
 
 const NEAR = 25; // m: closer than this, no dot (fades in over the next FADE metres)
 const FADE = 10;
@@ -16,7 +18,8 @@ const ELEVATION = 0.35; // rad off the view's pitch before the up/down arrow sho
 export type LocatorTarget = { id: number; color: number; x: number; y: number; z: number; shape?: 'wreck' | 'flag' | 'bike' };
 
 const BASE_ID = -1; // player ids are positive
-const BASE_TARGET: LocatorTarget = { id: BASE_ID, color: 0xf2e6c8, x: BASE.x, y: BASE.y, z: BASE.z };
+/** The crashed ship's middle (the base's origin in the dev lab, which has no ship). */
+const SHIP = SHIP_AT ? (() => { const p = shipPoint('door'); return { x: SHIP_AT.x, y: p.y, z: SHIP_AT.z }; })() : BASE;
 
 const css = `
 #locator { position: fixed; left: 50%; bottom: 70px; width: min(480px, 70vw); height: 6px;
@@ -48,6 +51,8 @@ export class LocatorBar {
   private dots = new Map<number, { el: HTMLDivElement; arrow: HTMLDivElement }>();
   /** Lost in a sandstorm (src/storm.ts): the bar fades out until the dust clears. */
   lost = false;
+  /** Home: your bedroll (src/net.ts `bedroll`), or null for the ship. */
+  bedroll: { x: number; y: number; z: number } | null = null;
 
   constructor() {
     const style = document.createElement('style');
@@ -60,7 +65,8 @@ export class LocatorBar {
   update(camera: THREE.PerspectiveCamera, yaw: number, pitch: number, me: { x: number; y: number; z: number }, players: LocatorTarget[]) {
     const halfH = Math.atan(Math.tan((camera.fov * Math.PI) / 360) * camera.aspect);
     const seen = new Set<number>();
-    for (const p of [...players, BASE_TARGET]) {
+    const home = this.bedroll ?? SHIP;
+    for (const p of [...players, { id: BASE_ID, color: 0xf2e6c8, x: home.x, y: home.y, z: home.z }]) {
       const isBase = p.id === BASE_ID;
       const dx = p.x - me.x, dy = p.y - me.y, dz = p.z - me.z;
       const flat = Math.hypot(dx, dz);

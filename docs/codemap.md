@@ -42,6 +42,14 @@ when you find it stale.
   there), passes `/ws?w=<id>&k=<key>` through to the world's process (4403 locked, 4429 full)
 - `server/world.ts` — authoritative game server for one world (forked per world, exits when empty); `server/db.ts` —
   SQLite; `server/scrap.ts` — scrap pickups, respawn
+- `shared/ship.ts` — the crashed ship players arrive at (new players and the dead without a bedroll appear at the foot
+  of its ramp: `shipSpawn`, `spawnPoint()` in shared/sim.ts): its pieces in the world, collision (`collideShip`), shade
+  casters, its starter machines (`shipSites`, ids `ship:<n>`, through shared/crash.ts) and loot spots (`SHIP_LOOT`,
+  server/loot.ts). Its spot (picked per world near the base's door) and the furrow in the terrain: `shared/shipSpot.ts`;
+  model `tools/blender/ship.py` → `public/models/ship.glb` + generated `shared/shipModel.ts`; drawn by `src/world/ship.ts`
+- Bedrolls (`bedroll`, shared/placed.ts) — a player's own place to wake up after dying (`homeOf` in server/world.ts):
+  laid out on the sand or a shelter's floor, one each, owner kept server-side (server/placed.ts), told to them alone
+  (`bedroll` message; the locator's home, src/locator.ts)
 - `shared/lab.ts` — the dev test lab (`?w=lab`, `LAB` in shared/world.ts: flat floor, no desert or events; layout of the
   machine sites `lab:<n>`, pickups and plates); drawn by `src/world/labPlates.ts`, pickups via `server/loot.ts`
 - `src/artBench.ts` — the art-style bench (`?w=bench`): the desert from a fixed seed with no events, fixed camera shots
@@ -74,8 +82,8 @@ when you find it stale.
 - `shared/scrap.ts` — deterministic scrap-pile layout + hitboxes (collided in `step()`, drawn by `src/world/scrap.ts`);
   pieces give one of the two basic materials, `scrap` or `cloth` (shared/items.ts `SCRAP`/`CLOTH`)
 - `shared/shelters.ts` — small empty bunkers (small/deep/long) scattered mostly in rocky country: placement, pad,
-  collision, pumps (`atWater`), stash spots, `indoors()`/`sandHidden()` (base or shelter); drawn by
-  `src/world/shelters.ts`
+  collision, pumps (`atWater`), stash spots, `indoors()`/`sandHidden()` (base or shelter); one small one with a pump
+  always within 140 m of the crashed ship (`homeShelter`); drawn by `src/world/shelters.ts`
 
 ## Weather and survival
 

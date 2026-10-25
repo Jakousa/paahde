@@ -63,7 +63,8 @@ rate and punctuation pauses at the top of `src/speech.ts`), so a remark is heard
 
 Has lines: a water bottle in sight with none in the bag (day/night), a machine to take apart (the big ones on the
 spot, the small ones and wrecks to carry home), the first of each item kind in the bag (each piece of gear broken
-and working, scrap, cloth, parts and the space-grade ones, plant bed, UV lamp, receivers, relics), the first ride,
+and working, scrap, cloth, parts and the space-grade ones, plant bed, UV lamp, bedroll, receivers, relics), the
+crashed ship we arrived in (day/night), the first ride,
 a pump (with a bottle to fill, or in a shelter with none), the first shelter, overheating, an empty bottle, the storm
 warning and being in a storm, each kind of enemy turning on you (a guardian hunting you, crawlers, a drone's light
 locking on, a harvester charging) and each kind going down after you shot or jammed it, the first boss, the first night out, a full bag, respawning.

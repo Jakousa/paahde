@@ -16,7 +16,7 @@ import { ENEMIES } from '../shared/enemies.ts';
 import { allBeaten, BOSS_KINDS, BOSS_LIVES, BOSS_SEND_R, BOSSES, bossBit, receiverBoss, RELICS, type BossKind } from '../shared/bosses.ts';
 import { boxSize, CHESTS, OWN_BOXES } from '../shared/storage.ts';
 import { crashTaken, isTableId, tableId } from '../shared/crash.ts';
-import { CHEST, placed, TABLE } from '../shared/placed.ts';
+import { BEDROLL, CHEST, placed, TABLE } from '../shared/placed.ts';
 import { BASE, overBase } from '../shared/base.ts';
 import { canyonFloorNear } from '../shared/canyons.ts';
 import { indoors, overShelter, shelterAt, sheltersNear } from '../shared/shelters.ts';
@@ -330,6 +330,7 @@ function join(ws: WebSocket, browserId: unknown, spawn: unknown, wanted: unknown
   for (const m of crash.benchMessages()) send(ws, m);
   send(ws, crash.spentMessage());
   send(ws, crash.rollsMessage());
+  sendBedroll(p);
   send(ws, vehicleSrv.joinMessage(browserId));
   send(ws, wiring.joinMessage());
   send(ws, power.msg());
@@ -502,16 +503,24 @@ function onStomped(p: Player, g: number) {
   if (!p.down && p.ready && guardians.stomp(g, { id: p.id, x: s.x, y: s.y, z: s.z, safe: Date.now() - p.heat.diedAt < BOT_GRACE_MS }, performance.now())) die(p, 'guardian');
 }
 
-/** Where `p` comes back after dying: their bedroll if it's still down (shared/placed.ts), else the ship. */
-function homeOf(p: Player): { x: number; z: number } {
-  return spawnPoint();
+/** Where `p` comes back after dying: beside their bedroll if it's still down (shared/placed.ts; on its floor in a shelter),
+ *  else at the ship. */
+function homeOf(p: Player): { x: number; y?: number; z: number } {
+  const b = placedThings.bedrollOf(p.browserId);
+  return b ? { x: b.x, y: b.y + 0.2, z: b.z } : spawnPoint();
+}
+
+/** Tell `p` where their bedroll lies (the locator's home: src/locator.ts), or that it's gone. */
+function sendBedroll(p: Player) {
+  const b = placedThings.bedrollOf(p.browserId);
+  send(p.ws, { t: 'bedroll', at: b ? { x: b.x, y: b.y, z: b.z } : null });
 }
 
 /** Back at their bedroll or the ship, cooled down, with a full canteen. */
 function respawn(p: Player) {
   p.down = null;
   const home = homeOf(p);
-  p.state = spawnState(home.x, home.z);
+  p.state = spawnState(home.x, home.z, home.y);
   revive(p.heat, Date.now());
   save(p);
   send(p.ws, { t: 'respawn' });
@@ -1022,6 +1031,7 @@ function onPlace(p: Player, slot: unknown, x: unknown, z: unknown, rot: unknown)
   else if (isBuilding(r.kind)) sendBox(p, buildingBox(r.id));
   sendBox(p, 'bag');
   if (typeof r !== 'string') gearChanged(p.browserId);
+  if (typeof r !== 'string' && r.kind === BEDROLL) sendBedroll(p);
 }
 
 // A building put up with the wrench from the base materials in the bag (server/placed.ts build).
@@ -1052,6 +1062,7 @@ function onUnplace(p: Player, id: unknown) {
   if (typeof r === 'string') return send(p.ws, { t: 'notice', text: r });
   wiring.takeDown(r.id);
   if (r.kind === 'plant_bed') garden.remove(r.id);
+  if (r.kind === BEDROLL) sendBedroll(p);
   sendBox(p, 'bag', r.kind);
   gearChanged(p.browserId);
 }

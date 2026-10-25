@@ -2,6 +2,40 @@
 
 What we built, why, and what's left. Dated sessions newest first, then undated topic entries (oldest first, 17–19 October). Add an entry when you land something big.
 
+## 2026-10-25 — A crashed ship to arrive at, and a bedroll to come back to
+
+The starting bunker is going (shared/base.ts stays the world's origin for now). Where you arrive, where you die back to:
+
+- **The ship** (`shared/ship.ts`, spot and furrow `shared/shipSpot.ts`, model `tools/blender/ship.py` →
+  `public/models/ship.glb` + `shared/shipModel.ts`, drawn by `src/world/ship.ts`): a ~28 m cargo lander on its belly,
+  nose ploughed into a heap of sand, rolled onto its right side with that wing's tip dug in, the left wing torn off and
+  lying back along a 60 m furrow with a hull plate and a landing leg. Built with the crash sites' kit
+  (`crashsites.py` is importable now), so it reads as one of them, bigger and newer. The tall swept fin (~14 m, a red
+  lamp blinking on top) is the landmark from far off. The cargo door is down as a ramp on the left; new players appear
+  at its foot (`shipSpawn`, `spawnPoint()` in shared/sim.ts; the lab, with no ship, still starts in the bunker).
+- **Where**: picked per world from six candidates 40–60 m out in front of the bunker's door, clear of the hut, mast,
+  trophies and pad: the one with the most even sand under the hull and along its furrow (pure arithmetic on the dunes,
+  so client and server agree). The furrow is part of `baseHeight` (a trench with low banks of thrown sand, a heap at
+  the nose); nobody digs under the hull (`nearShip`), and scrap piles and wrecks keep off its ground (`onShipGround`).
+- **Solid and shady**: capsules from the model (the hull's back, the fin as its own thin one, the engines, the wing,
+  the ramp's three treads you can walk up, the debris), collided in `step()` (`collideShip`) and cast as shade
+  (`shipCasters` in shared/shade.ts).
+- **A small level-0 site**: three of the starter machines thrown out of its hold (`shipSites`, ids `ship:<n>`, carried
+  home and back after 20 min like a scrap field's), and `SHIP_LOOT` (shared/tables.ts: 6 things at a time, scrap,
+  cloth, now and then a broken canteen) lying about it, rolled in `shipFind` (shared/lootRoll.ts) on the finds' 3 min
+  timer. The world's first broken motorcycle lies by its left flank (`homeBikeSpot`; worlds that have one keep it).
+- **Water near**: a small shelter with a pump always lies 90–140 m from the ship (`homeShelter` in shared/shelters.ts:
+  the flattest and nearest spot round it, well inside its cell, which it takes over; its door faces the ship). Every
+  other shelter still keeps 350 m from the base.
+- **The bedroll** (`bedroll`, cloth ×3 + scrap, made by hand: `HAND_TABLE`): laid out like a placeable (shared/placed.ts)
+  anywhere on the sand (no steeper than 0.2 m across it, not on the ship's ground) or on a room's floor (`floor`). One
+  per player: laying a new one moves your old one there (you keep the other in the bag); the owner is kept server-side
+  (`placed.owner`, browser IDs never sent) and only they roll it up ("Not yours"). Dying, you wake up beside it if it's
+  still there, else at the ship (`homeOf` in server/world.ts); the owner alone is told where it lies (`bedroll`
+  message), and the locator's house marker points there, else at the ship. Model and icon in
+  `tools/blender/placeables.py` (`--only bedroll`).
+- **Speech**: a first line at the wreck (day or night), and one for the first bedroll.
+- **Economy sim**: the ship is a known place from the start, with its machines and loot on the server's timers.
 ## 2026-10-25 — Build anywhere: the workbench, the dismantling bench and the chest are buildings
 
 First step towards a game without the starting bunker: what it gives you can now be built, and the base still stands

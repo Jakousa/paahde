@@ -8,11 +8,12 @@ import { machinesAt } from '../../shared/crash.ts';
 import { CRASH_KINDS } from '../../shared/crashKinds.ts';
 import { coreCrashSites, siteLevel, type CrashSite, type LootLevel, type SiteLevel } from '../../shared/crashsites.ts';
 import { debrisItem, scrapItem } from '../../shared/items.ts';
-import { cacheContents, cacheSpot, findContents, findSpot, nearPiles, shelterStash, type Drop, type Rand } from '../../shared/lootRoll.ts';
+import { cacheContents, cacheSpot, findContents, findSpot, nearPiles, shelterStash, shipFind, shipFindSpot, type Drop, type Rand } from '../../shared/lootRoll.ts';
+import { SHIP_AT, shipSites } from '../../shared/ship.ts';
 import { SCRAP_CELL, scrapPieces } from '../../shared/scrap.ts';
 import { junkSpec, type JunkKind } from '../../shared/salvage.ts';
 import { sheltersNear, shelterLootSpot } from '../../shared/shelters.ts';
-import { CACHES, FINDS, RARE_FINDS, SHELTER_STASHES } from '../../shared/tables.ts';
+import { CACHES, FINDS, RARE_FINDS, SHELTER_STASHES, SHIP_LOOT } from '../../shared/tables.ts';
 import { CORE_HALF } from '../../shared/terrain.ts';
 import { wrecksNear } from '../../shared/wrecks.ts';
 
@@ -54,7 +55,7 @@ export type Poi = {
   hunt?: EnemyKind;
 };
 
-type Pending = { at: number; what: 'find' | 'cache' | 'stash'; kind: string };
+type Pending = { at: number; what: 'find' | 'cache' | 'stash' | 'ship'; kind: string };
 
 export class World {
   readonly pois: Poi[] = [];
@@ -63,6 +64,8 @@ export class World {
   private sites: CrashSite[];
   private piles = nearPiles();
   private shelters: Poi[] = [];
+  /** The crashed ship players arrive at (shared/ship.ts): its starter machines and what lies about it. */
+  private ship: Poi | null = null;
   private mudCache = new Map<string, boolean>();
   private rand: Rand;
 
@@ -101,6 +104,12 @@ export class World {
         shelterLootSpot(s, this.rand); // (the server rolls a spot too: keep the stream in step with it)
         p.things.push(this.thing(shelterStash(this.rand), 'stash'));
       }
+    }
+    if (SHIP_AT) {
+      const p = (this.ship = this.poi('wreck', SHIP_AT.x, SHIP_AT.z));
+      p.known = true; // (where you start)
+      for (const m of shipSites()) p.machines.push({ kind: m.kind, seed: m.seed, level: 0, carry: true, backAt: 0, respawn: STARTER_BACK });
+      for (let i = 0; i < SHIP_LOOT.n; i++) this.spawnShip();
     }
     for (const [kind, f] of Object.entries(FINDS)) for (let i = 0; i < f.n; i++) this.spawnFind(kind);
     for (let i = 0; i < RARE_FINDS.n; i++) this.spawnFind('rare');
@@ -161,6 +170,13 @@ export class World {
     this.poi('loot', x, z).things.push(this.thing(findContents(kind, this.rand), kind === 'rare' ? 'rare find' : 'find'));
   }
 
+  /** Scrap, cloth or a broken canteen about the ship (server/loot.ts rolls the thing, then its spot). */
+  private spawnShip() {
+    const d = shipFind(this.rand);
+    shipFindSpot(this.rand);
+    this.ship!.things.push(this.thing(d, 'ship'));
+  }
+
   private spawnCache() {
     const { x, z } = cacheSpot(this.rand);
     this.poi('loot', x, z).things.push(this.thing(cacheContents(this.rand), 'cache'));
@@ -181,6 +197,7 @@ export class World {
     if (t.src === 'find' || t.src === 'rare find') this.pending.push({ at: now + FIND_BACK, what: 'find', kind: t.src === 'rare find' ? 'rare' : t.kind });
     else if (t.src === 'cache') this.pending.push({ at: now + CACHE_BACK, what: 'cache', kind: '' });
     else if (t.src === 'stash') this.pending.push({ at: now + FIND_BACK, what: 'stash', kind: '' });
+    else if (t.src === 'ship') this.pending.push({ at: now + FIND_BACK, what: 'ship', kind: '' });
   }
 
   /** Bring back what's due, drop what's expired. */
@@ -190,6 +207,7 @@ export class World {
     for (const q of due) {
       if (q.what === 'find') this.spawnFind(q.kind);
       else if (q.what === 'cache') this.spawnCache();
+      else if (q.what === 'ship') this.spawnShip();
       else {
         // The shelter furthest short of its stashes (shared/lootRoll.ts stashSpot, by counts).
         const s = this.shelters.reduce((a, b) => (b.things.length < a.things.length ? b : a));

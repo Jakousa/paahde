@@ -4,6 +4,7 @@ buildings (shared/gear.ts built): the windmill and the battery station.
     blender -b --python tools/blender/placeables.py                       # models + icons
     blender -b --python tools/blender/placeables.py -- --preview out.png  # also a perspective preview render
     blender -b --python tools/blender/placeables.py -- --preview-buildings out.png  # the windmill and battery station
+    blender -b --python tools/blender/placeables.py -- --only bedroll [--preview out.png]  # just the bedroll
 
 Writes public/models/placeables/<kind>.glb and public/icons/items/<kind>.png (at the item's grid shape, the same
 camera and lighting as the part icons of tools/blender/items.py, whose helpers this imports; docs/icons.md).
@@ -18,6 +19,8 @@ origin at the hub, turning about glTF Z, its front). src/world/placed.ts turns t
 battery_station.glb: `battery_station` (skid, rack, charger box with its coils) and `battery_station_cell0`..`5`, one
 per battery slot, shown only while that slot holds a battery.
 power_pole.glb: a pole of welded scrap pipe on a concrete foot, crossarm and insulators up top.
+bedroll.glb: a canvas bedroll rolled out on the sand (shared/placed.ts: a player's respawn point), its blanket turned
+back, a rolled pillow end with two leather straps.
 Every electric thing has a connector: an insulator whose top is the socket the power lines hang from (shared/wires.ts
 CONNECTORS: glTF (x, y, z) is Blender (x, -z, y)): the windmill's on a bracket off the tower, the battery station's on a
 mast of pipe, the pole's on top.
@@ -56,7 +59,45 @@ MATERIALS = {
     'paint_cream': (0xb9ad8e, 0.1, 0.85, 0),
     'insulator': (0x6d8a74, 0.0, 0.25, 0),
     'insulator_brown': (0x6b3f24, 0.0, 0.25, 0),
+    'canvas': (0xa58c62, 0.0, 0.95, 0),
+    'canvas_dark': (0x725d3f, 0.0, 0.95, 0),
+    'blanket': (0x7e3a2a, 0.0, 0.95, 0),
+    'blanket_stripe': (0xc9a86a, 0.0, 0.95, 0),
+    'leather': (0x4a2c1a, 0.0, 0.7, 0),
 }
+
+# Bedroll: length along X, width, and the pad's thickness (shared/placed.ts PLACEABLES.bedroll matches).
+ROLL_X, ROLL_Y, ROLL_T = 1.95, 0.78, 0.06
+
+
+def build_bedroll(mb, rng):
+    """A canvas bedroll rolled out flat: the ground sheet, a wool blanket over it turned back at the head, a pillow
+    end rolled up in canvas with two leather straps, a couple of patches."""
+    hx, hy = ROLL_X / 2, ROLL_Y / 2
+    # Ground sheet, a little wider than the rest, its edges sagging to the sand.
+    v = mb.box((ROLL_X, ROLL_Y, ROLL_T), (0, 0, ROLL_T / 2), 'canvas', bevel=0.012)
+    for p in v:
+        if abs(p.co.y) > hy - 0.03:
+            p.co.z *= 0.45
+    mb.jitter(v, rng, 0.006)
+    # The blanket from the foot up to the turn-back, then folded back over itself.
+    b0, b1 = -hx + 0.06, hx - 0.52
+    v = mb.box((b1 - b0, ROLL_Y - 0.1, 0.035), ((b0 + b1) / 2, 0, ROLL_T + 0.017), 'blanket', bevel=0.01)
+    mb.jitter(v, rng, 0.006)
+    mb.box((0.26, ROLL_Y - 0.08, 0.03), (b1 - 0.1, 0, ROLL_T + 0.05), 'blanket', rot=(0, -0.12, 0), bevel=0.01)
+    for x in (b0 + 0.12, b0 + 0.2):
+        mb.box((0.035, ROLL_Y - 0.098, 0.037), (x, 0, ROLL_T + 0.017), 'blanket_stripe')
+    mb.cyl(0.03, 0.03, ROLL_Y - 0.1, 8, (b1 + 0.015, 0, ROLL_T + 0.035), 'blanket', rot=it.X90)   # the fold
+    # The pillow end: canvas rolled up, two straps round it.
+    px = hx - 0.2
+    mb.cyl(0.12, 0.12, ROLL_Y - 0.04, 12, (px, 0, ROLL_T + 0.1), 'canvas_dark', rot=it.X90)
+    mb.cyl(0.085, 0.085, ROLL_Y - 0.01, 12, (px, 0, ROLL_T + 0.1), 'canvas', rot=it.X90)
+    for y in (-0.22, 0.22):
+        mb.cyl(0.126, 0.126, 0.04, 12, (px, y, ROLL_T + 0.1), 'leather', rot=it.X90)
+        mb.box((0.035, 0.032, 0.05), (px + 0.11, y, ROLL_T + 0.16), 'steel_dull')   # buckle
+    # Patches sewn on, and a strap's loose end on the sand.
+    mb.box((0.22, 0.16, 0.006), (-0.35, 0.18, ROLL_T + 0.037), 'canvas_dark', rot=(0, 0, 0.2))
+    mb.box((0.3, 0.04, 0.008), (hx + 0.05, 0.22, 0.006), 'leather', rot=(0, 0, 0.35))
 
 
 def insulator(mb, x, y, top, mat='insulator'):
@@ -513,6 +554,7 @@ def main():
     argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
     preview = argv[argv.index('--preview') + 1] if '--preview' in argv else None
     preview_b = argv[argv.index('--preview-buildings') + 1] if '--preview-buildings' in argv else None
+    only = argv[argv.index('--only') + 1] if '--only' in argv else None
     bpy.ops.wm.read_factory_settings(use_empty=True)
     for name, spec in {**it.MATERIALS, **MATERIALS}.items():
         it.make_material(name, *spec)
@@ -520,6 +562,29 @@ def main():
     out = os.path.join(ROOT, 'public', 'models', 'placeables')
     icons = os.path.join(ROOT, 'public', 'icons', 'items')
     os.makedirs(out, exist_ok=True)
+    if only in (None, 'bedroll'):
+        roll = build('bedroll', build_bedroll, 17)
+        export([roll], os.path.join(out, 'bedroll.glb'))
+        d = roll.dimensions
+        print(f'bedroll: tris={it.tri_count(roll)} size={d.x:.3f} x {d.y:.3f} x {d.z:.3f} m')
+        cam = it.setup_render(bpy.context.scene, 128, 128)
+        roll.rotation_euler.z = math.radians(-12)
+        it.render_grid_icon(cam, [roll], (2, 1), os.path.join(icons, 'bedroll.png'))
+        roll.rotation_euler.z = 0
+        if only:
+            if preview:
+                scene = bpy.context.scene
+                scene.render.resolution_x, scene.render.resolution_y = 1200, 800
+                scene.render.film_transparent = False
+                scene.render.use_freestyle = False
+                bpy.ops.mesh.primitive_plane_add(size=20, location=(0, 0, 0))
+                bpy.context.active_object.data.materials.append(it.make_material('ground', 0xc46a24, 0, 0.95, 0))
+                cam.data.type = 'PERSP'
+                cam.data.lens = 40
+                it.aim(cam, Vector((0, 0, 0.1)), 3.2)
+                scene.render.filepath = os.path.abspath(preview)
+                bpy.ops.render.render(write_still=True)
+            return
     bed = build('plant_bed', build_bed, 1)
     sprouts = build('plant_bed_sprouts', build_sprouts, 2)
     grown = build('plant_bed_grown', build_grown, 3)

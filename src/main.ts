@@ -118,6 +118,7 @@ import { tools } from './input';
 import { Wrecks } from './world/wrecks';
 import { Trophies } from './world/trophies';
 import { ShipView } from './world/ship';
+import { nearShip } from '../shared/ship.ts';
 import { setTrophies } from '../shared/trophies.ts';
 import { Mast } from './world/mast';
 import { GuardianFx } from './guardians';
@@ -618,6 +619,7 @@ renderer.setAnimationLoop((time) => {
   const wrist = equipped(net.boxes.equip, 'wrist');
   const range = wrist ? locatorRange(quality(wrist)) : 0;
   locator.lost = storm.toolsDown || !wrist;
+  locator.bedroll = net.bedroll;
   survival.toolsDown = storm.toolsDown;
   locator.update(orbit.camera, orbit.viewYaw, orbit.pitch + orbit.freePitch, focus, [...others.filter((o) => Math.hypot(o.x - focus.x, o.z - focus.z) < range), ...wrecks.targets(focus.x, focus.z), ...corpseTargets(), ...ownVehicleTargets(net.myVehicles, net.color)]);
   terrain.update(focus);
@@ -785,7 +787,7 @@ baseSand.update(frameDt, storm.atBase);
   speech.update(frameDt, { day: sky.day.elevation > 0, indoors: indoors(m.x, m.y, m.z), shelter: inShelter(m.x, m.y, m.z),
     atPump: !!waterAt(m.x, m.y, m.z), dryWell: dryWell(m), mudflat: biome('mudflat', m.x, m.z) > 0.7, heat: survival.heatLevel, rising: w.rising, shade: w.shade, sips: w.sips, maxSips: w.maxSips,
     storm: storm.level, stormWarning: storm.warning, frontComing: storm.frontComing, choking: storm.choking, lee: storm.lee, gasComing: gas.coming, gassed: gas.gassing, riding: s.riding, boss: bossFx.combat,
-    bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null });
+    bag: net.boxes.bag ?? [], dead: survival.dead || net.down !== null, atShip: nearShip(m.x, m.z, 6) });
   const vehicleKey = vehicle ? `${vehicle.v.id}:${vehicle.v.up}` : null;
   if (vehicleKey !== seenVehicle) {
     seenVehicle = vehicleKey;

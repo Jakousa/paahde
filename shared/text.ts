@@ -47,6 +47,7 @@ const en = {
     wrench: 'Wrench',
     plant_bed: 'Plant bed',
     uv_lamp: 'UV lamp',
+    bedroll: 'Bedroll',
     windmill: 'Windmill',
     battery_station: 'Battery station',
     power_pole: 'Power pole',
@@ -200,6 +201,8 @@ const en = {
     inTheWay: 'Something is in the way',
     blocked: 'Blocked',
     alreadyGone: 'Already gone',
+    /** Someone else's bedroll: only its owner rolls it up. */
+    notYours: 'Not yours',
     nothingToTakeApart: 'Nothing to take apart',
     broken: 'Broken',
     empty: 'Empty',
@@ -585,6 +588,7 @@ const en = {
     receiver_worm: (k: HintKeys) => `With the receiver on the hotbar, press ${k.use} to send the signal.`,
     plant_bed: (k: HintKeys) => `With the plant bed on the hotbar, press ${k.use} to put it down in the bunker.`,
     uv_lamp: () => 'Put the UV lamp down over a plant bed.',
+    bedroll: (k: HintKeys) => `With the bedroll on the hotbar, press ${k.use} to lay it down. You'll wake up there after you die.`,
     wrench: (k: HintKeys) => `With the wrench on the hotbar, press ${k.aim} to build.`,
     part: () => 'Parts repair gear at the workbench.',
     broken: () => "It's broken. You can repair it at the workbench in the base.",
@@ -619,6 +623,7 @@ const en = {
     gotPart: 'A good part. Something broken back home could use this.',
     gotPlantBed: 'A garden in a bunker. Sure, why not.',
     gotUvLamp: "Sunlight for underground. There's a joke in there somewhere.",
+    gotBedroll: "Somewhere to sleep that isn't the bare sand. Well, it's on the sand.",
     gotRelic: "It's still warm. Something out there is going to want this back.",
     ride: 'Wind in my face and sand in my teeth. I love it.',
     pump: ['There we go.', "Clean water. Well, it's wet, anyway."],
@@ -630,6 +635,9 @@ const en = {
     sip: ['Time for a sip.', 'My throat feels like sandpaper.'],
     dry: ["The bottle's empty. I need to find a pump.", 'Not a single drop left. Shit.'],
     shelter: "Somebody dug in here once. It's nice and cool.",
+    /** The first moments at the crashed ship we arrived in (shared/ship.ts), by day and by night. */
+    shipDay: ["Well, that thing won't fly again. I need water before the sun gets high.", "We're down. Now to find some water."],
+    shipNight: ["Well, that thing won't fly again. I'd better find water while it's cool."],
     /** First time out on a mud flat (shared/biomes.ts), by day and by night. */
     mudflatDay: 'A dried-up lake. The ground is even hotter than the air.',
     mudflatNight: "A dried-up lake. I wouldn't want to cross this by day.",

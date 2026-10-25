@@ -49,6 +49,8 @@ export const ITEMS: Record<string, { label: string; stack: number; tier?: Tier; 
   // Crafted at the workbench (shared/crafting.ts) and put down in the base from the hotbar (shared/placed.ts).
   plant_bed: { label: TEXT.items.plant_bed, stack: 1, size: [3, 2] },
   uv_lamp: { label: TEXT.items.uv_lamp, stack: 1, size: [1, 2] },
+  // Made by hand and laid out on the sand or a shelter's floor (shared/placed.ts): where you wake up after dying.
+  bedroll: { label: TEXT.items.bedroll, stack: 1, size: [2, 1] },
   // Buildings: put up with the wrench from the base materials (shared/crafting.ts BUILDS), never carried. A windmill or
   // battery station keeps its item (gear, shared/gear.ts GEAR: its part slots) in a box of its own while it stands.
   windmill: { label: TEXT.items.windmill, stack: 1, size: [2, 3] },

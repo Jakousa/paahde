@@ -54,7 +54,8 @@ boss milestones (the win comes ~20% sooner, the uranium wait halves).
 
 From the game's code, so changes there show:
 
-- the layout: `coreCrashSites`/`machinesAt` (levels, outposts, machine kinds), `scrapPieces` (scrap and cloth), `wrecksNear`, `sheltersNear`
+- the layout: `coreCrashSites`/`machinesAt` (levels, outposts, machine kinds), `scrapPieces` (scrap and cloth), `wrecksNear`, `sheltersNear`,
+  the crashed ship players arrive at (`shipSites`, `SHIP_LOOT`: known from the start)
 - what lies where: `shared/lootRoll.ts` (finds, caches, stashes and where they go, kill, jet, harvester and boss drops; the server
   rolls the same functions) on the server's respawn timers
 - what's inside a machine: `machineParts` (site level; carried ones roll again at level 1 on the table, as `server/crash.ts` does),

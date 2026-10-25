@@ -285,7 +285,7 @@ export function openDb(path: string) {
   if (!(db.prepare('SELECT name FROM pragma_table_info(?)').all('placed') as { name: string }[]).some((c) => c.name === 'y')) {
     db.exec('ALTER TABLE placed ADD COLUMN y REAL');
   }
-  const allPlaced = db.prepare('SELECT id, kind, x, y, z, rot FROM placed ORDER BY id');
+  const allPlaced = db.prepare('SELECT id, kind, x, y, z, rot, owner FROM placed ORDER BY id');
   const insertPlaced = db.prepare('INSERT INTO placed (kind, x, y, z, rot, owner, placed_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
   const deletePlaced = db.prepare('DELETE FROM placed WHERE id = ?');
   // Electricity (shared/power.ts, server/power.ts): each battery station's charge, per part slot (kWh, JSON).
@@ -447,7 +447,7 @@ export function openDb(path: string) {
     putObituary: (o: Obituary) => insertObituary.run(o.id, o.color, o.name, o.cause, o.at),
     getSetting: (key: string) => (getSetting.get(key) as { value: number } | undefined)?.value,
     setSetting: (key: string, value: number) => putSetting.run(key, value),
-    loadPlaced: () => allPlaced.all() as { id: number; kind: string; x: number; y: number | null; z: number; rot: number }[],
+    loadPlaced: () => allPlaced.all() as { id: number; kind: string; x: number; y: number | null; z: number; rot: number; owner: string }[],
     /** New placed row; returns its id. */
     insertPlaced: (kind: string, x: number, y: number, z: number, rot: number, owner: string) =>
       Number(insertPlaced.run(kind, x, y, z, rot, owner, Date.now()).lastInsertRowid),

@@ -53,6 +53,8 @@ export const HAND_TABLE: Record<string, IngredientSpec[]> = {
   // The wrench, the build tool (shared/crafting.ts BUILDS): a bar of scrap, bent and beaten into shape. It puts up the
   // workbench, so it can't need one.
   wrench: [SCRAP(4)],
+  // A bedroll (shared/placed.ts): canvas and a blanket, a couple of scrap buckles. Where you wake up after dying.
+  bedroll: [CLOTH(3), SCRAP(1)],
 };
 
 /** The buildings, put up with the wrench (shared/crafting.ts BUILDS): only base materials (scrap, cloth, wiring), used up

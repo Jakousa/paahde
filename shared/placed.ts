@@ -3,7 +3,8 @@
 // (shared/crafting.ts BUILDS), anywhere out on the sand (the `sand` kinds): the windmill, the battery station, the power
 // pole, the electric well (shared/wells.ts), the beacon (a lamp on a mast shining a column of light into the sky, src/world/beacons.ts; its light's colour is
 // its item's data, BEACON_COLORS), the tarp (shade you build, shared/tarp.ts), and the work stations and the chest (WORKBENCH, TABLE, CHEST), which also go up on a
-// shelter's room floor or the bunker's (`floor`). The windmill, battery station, well and beacon keep their item with its parts
+// shelter's room floor or the bunker's (`floor`), and the bedroll (a player's own place to wake up after dying, server/world.ts:
+// one each, a new one moves the old, only its owner picks it up, server/placed.ts). The windmill, battery station, well and beacon keep their item with its parts
 // in a box of their own while they stand (shared/gear.ts isBuilding, server/placed.ts), the chest its things in another
 // (shared/storage.ts). The server owns the list (server/placed.ts, `placed` table) and sends it whole on join and when it
 // changes; client and server both keep it here with setPlaced(), which also hands their standing parts to the collision
@@ -131,6 +132,9 @@ export const PLACEABLES: Record<string, { hx: number; hz: number; boxes: Box[]; 
       { x0: -0.9, x1: 0.9, y0: 0.02, y1: 0.12, z0: -0.6, z1: 0.6 },
     ],
   },
+  // A bedroll: low enough to walk over, flat enough to want flat sand. Sizes match tools/blender/placeables.py (ROLL_X,
+  // ROLL_Y).
+  bedroll: { hx: 1.0, hz: 0.4, sand: true, floor: true, gap: 0.3, tilt: 0.2, boxes: [{ x0: -1.0, x1: 1.0, y0: 0, y1: 0.16, z0: -0.39, z1: 0.39 }] },
 };
 export const TARP = 'tarp';
 /** How many turns `kind` can be put up at. */
@@ -169,6 +173,9 @@ export const MAX_PLACED = 300;
 /** At most this many beacons in the world. */
 export const MAX_BEACONS = 30;
 export const BEACON = 'beacon_light';
+export const BEDROLL = 'bedroll';
+/** Counts towards MAX_PLACED (beacons have their own limit; bedrolls are one per player). */
+const counted = (kind: string) => kind !== BEACON && kind !== BEDROLL;
 /** Aim snaps to this grid (m, from the base origin). */
 const GRID = 0.25;
 /** World height of the bunker floor. */
@@ -289,7 +296,7 @@ export function placeError(kind: string, x: number, z: number, rot: number, floo
   }
   if (kind === BEACON) {
     if (list.filter((p) => p.kind === BEACON).length >= MAX_BEACONS) return TEXT.notice.tooManyBeacons;
-  } else if (list.filter((p) => p.kind !== BEACON).length >= MAX_PLACED) return TEXT.notice.tooManyPlaced;
+  } else if (counted(kind) && list.filter((p) => counted(p.kind)).length >= MAX_PLACED) return TEXT.notice.tooManyPlaced;
   if (sand) {
     for (const p of list) {
       if (!onSand(p.kind) || standsIndoors(p)) continue;
@@ -304,6 +311,8 @@ export function placeError(kind: string, x: number, z: number, rot: number, floo
     if (PARTNERS[kind] === p.kind && aligned(p, { x, z, rot })) continue;
     return p.kind === PARTNERS[kind] ? TEXT.notice.lineUp(p.kind === 'plant_bed' ? 'bed' : 'lamp') : TEXT.notice.inTheWay;
   }
+  // (Nothing low enough to step on boxes anyone in: a bedroll goes down at your feet.)
+  if (PLACEABLES[kind].boxes.every((b) => b.y1 < 0.3)) return null;
   const fp = footprint(kind, x, z, rot, 0.4);
   const y = placedY(kind, x, z, rot, floor);
   for (const s of players) {

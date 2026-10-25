@@ -53,6 +53,8 @@ export type SpeechState = {
   boss: boolean;
   bag: Slots;
   dead: boolean;
+  /** By the crashed ship we arrived in (shared/ship.ts). */
+  atShip: boolean;
 };
 
 /** Events and what each one carries. `tick` is polled a couple of times a second, for remarks about the state. */
@@ -142,6 +144,7 @@ export const LINES: Line[] = [
   { id: 'got.part', on: 'got', when: (_, it) => !!partOf(it.kind), say: TEXT.speech.gotPart },
   { id: 'got.plant_bed', on: 'got', when: (_, it) => it.kind === 'plant_bed', say: TEXT.speech.gotPlantBed },
   { id: 'got.uv_lamp', on: 'got', when: (_, it) => it.kind === 'uv_lamp', say: TEXT.speech.gotUvLamp },
+  { id: 'got.bedroll', on: 'got', when: (_, it) => it.kind === 'bedroll', say: TEXT.speech.gotBedroll },
   { id: 'got.relic', on: 'got', when: (_, it) => isRelic(it.kind), say: TEXT.speech.gotRelic },
 
   // On the bike.
@@ -163,7 +166,9 @@ export const LINES: Line[] = [
   { id: 'dry', on: 'tick', when: (s) => !s.dead && s.maxSips > 0 && s.sips === 0 && s.heat > 40,
     say: TEXT.speech.dry, again: 4 * MIN },
 
-  // Places.
+  // Places. The first look at the wreck we came down in, by day and by night.
+  { id: 'ship', on: 'tick', when: (s) => !s.dead && s.atShip && s.day, say: TEXT.speech.shipDay },
+  { id: 'ship', on: 'tick', when: (s) => !s.dead && s.atShip, say: TEXT.speech.shipNight },
   { id: 'shelter', on: 'tick', when: (s) => s.shelter, say: TEXT.speech.shelter },
   { id: 'mudflat', on: 'tick', when: (s) => !s.dead && s.mudflat && s.day, say: TEXT.speech.mudflatDay },
   { id: 'mudflat', on: 'tick', when: (s) => !s.dead && s.mudflat, say: TEXT.speech.mudflatNight },
