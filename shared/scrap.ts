@@ -56,7 +56,7 @@ export const SCRAP_KINDS: { node: string; scale: number; half: [number, number, 
   { node: 'Metal sheet v1.001', scale: 0.75, half: [0.75, 0.015, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
   { node: 'Metal sheet v2.001', scale: 0.75, half: [0.765, 0.146, 0.75], weight: 2, poses: [['flat', 0.6], ['stuck', 0.4]] },
   { node: 'Metal spring v1.001', scale: 0.3, half: [0.708, 0.234, 0.236], weight: 1, poses: [['flat', 1]] },
-  { node: '', scale: 1, half: [0.34, 0.16, 0.26], weight: 2.5, poses: [['flat', 1]], item: 'cloth' },
+  { node: '', scale: 1, half: [0.34, 0.16, 0.26], weight: 3.5, poses: [['flat', 1]], item: 'cloth' },
 ];
 const TOTAL_WEIGHT = SCRAP_KINDS.reduce((s, k) => s + k.weight, 0);
 
